@@ -3,7 +3,8 @@
 import type { ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { appendTermHint, CUSTOM_TERM_HINTS } from "./bay-audience";
-import { BAY_FORM_CHIP_BUTTON_CLASS, BAY_FORM_HELP_CLASS, BAY_FORM_TEXTAREA_CLASS } from "./form-ui";
+import { BayAutoTextarea } from "./BayAutoTextarea";
+import { BAY_FORM_CHIP_BUTTON_CLASS, BAY_FORM_HELP_CLASS } from "./form-ui";
 
 export function BayCustomTerms(props: {
   value: string;
@@ -28,9 +29,7 @@ export function BayCustomTerms(props: {
           </button>
         ))}
       </div>
-      <textarea
-        className={BAY_FORM_TEXTAREA_CLASS}
-        rows={4}
+      <BayAutoTextarea
         maxLength={2000}
         value={props.value}
         disabled={props.disabled}

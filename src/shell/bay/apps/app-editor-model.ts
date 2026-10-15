@@ -1,4 +1,5 @@
 import type { HostedSite } from "../../../api/hosted-sites";
+import { deadlineFromRow, deadlineToPayload } from "../form/bay-deadline";
 import type { BayAppMine, BayAppPatchInput } from "../../../lib/bay/apps";
 import {
   audienceDone,
@@ -31,16 +32,6 @@ export type AppDraft = {
 const TITLE_LIMIT = 80;
 const SUMMARY_LIMIT = 200;
 const DESCRIPTION_LIMIT = 4000;
-
-function dateInputValue(value: string | null | undefined): string {
-  if (!value) return "";
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? "" : at.toISOString().slice(0, 10);
-}
-
-function deadlinePayload(deadlineAt: string): string | null {
-  return deadlineAt ? new Date(`${deadlineAt}T23:59:59`).toISOString() : null;
-}
 
 function priceInputFromFen(fen: number): string {
   if (!Number.isFinite(fen) || fen <= 0) return "";
@@ -83,7 +74,7 @@ export function draftFromApp(app: BayAppMine): AppDraft {
     endpointId: app.endpoint_id || "",
     customTerms: typeof app.custom_terms === "string" ? app.custom_terms : "",
     audience: audienceFromApp(app),
-    deadlineAt: dateInputValue(app.deadline_at),
+    deadlineAt: deadlineFromRow(app.deadline_at),
     priceModel: priceModelOf(app.price_model),
     price: priceInputFromFen(app.price_fen || 0),
   };
@@ -154,8 +145,8 @@ export function patchFromDraft(draft: AppDraft, app: BayAppMine): BayAppPatchInp
   if (nextHandle !== prevHandle) patch.audience_handle = nextHandle || null;
   if (nextMembers.join("\0") !== prevMembers.join("\0")) patch.audience_member_ids = nextMembers;
   const nextDeadline = draft.deadlineAt || "";
-  const prevDeadline = dateInputValue(app.deadline_at);
-  if (nextDeadline !== prevDeadline) patch.deadline_at = deadlinePayload(nextDeadline);
+  const prevDeadline = deadlineFromRow(app.deadline_at);
+  if (nextDeadline !== prevDeadline) patch.deadline_at = deadlineToPayload(nextDeadline);
   return patch;
 }
 

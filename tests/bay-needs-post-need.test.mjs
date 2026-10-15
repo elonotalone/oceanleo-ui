@@ -289,7 +289,7 @@ test("类目按站预选；门户为空；答疑类目不出现", async () => {
   assert.equal(ppt.host.querySelector("header"), null, "不自带标题栏");
   assert.equal(ppt.host.querySelector("[data-bay-detail-bar]"), null, "返回栏归外壳");
   assert.ok(ppt.host.querySelectorAll("[data-bay-reveal-open]").length >= 2);
-  assert.equal(ppt.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "cover");
+  assert.equal(ppt.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "how-you-deliver");
   assert.ok(ppt.host.querySelector('[data-bay-section="product"]'));
   assert.ok(ppt.host.querySelector('[data-bay-section="price"]'));
   assert.ok(ppt.host.querySelector('[data-bay-section="terms"]'));
@@ -375,11 +375,11 @@ test("发需求表一次看全：标题和介绍分开，截止日期在交付�
   assert.match(text, /放文件/);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["cover", "title", "description", "files"],
+    ["how-you-deliver", "cover", "title", "description", "files"],
   );
   assert.ok(view.host.querySelector("[data-bay-how-you-deliver]"));
   assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);
-  assert.equal(view.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "cover");
+  assert.equal(view.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "how-you-deliver");
   assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-field="deadline"]'));
   assert.ok(view.host.querySelector("[data-bay-help-text]"));
   await expandTerms(view);

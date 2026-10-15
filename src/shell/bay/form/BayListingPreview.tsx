@@ -5,16 +5,15 @@ import { useUI } from "../../../i18n/ui/useUI";
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import { snapshotDisplayTitle, yuanLabel, type BayPostSnapshot } from "./post-templates";
 import { BayTypedPreview } from "./BayTypedPreview";
+import { formatDeadline } from "./bay-deadline";
 import { cleanGalleryUrls } from "./bay-gallery";
 
 function deadlineLabelText(tt: UITranslate, value: string | undefined): string {
   const raw = (value || "").trim();
   if (!raw) return "";
-  const day = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (day) return tt("{date} 截止", { date: day[1] });
-  const at = Date.parse(raw);
-  if (Number.isFinite(at)) return tt("{date} 截止", { date: new Date(at).toISOString().slice(0, 10) });
-  return raw;
+  // 绝对时刻按看的人自己的时区显示；不是时刻的老文案原样给出。
+  const shown = formatDeadline(raw);
+  return shown ? tt("{date} 截止", { date: shown }) : raw;
 }
 
 function listingArtifactId(snap: BayPostSnapshot): string | undefined {

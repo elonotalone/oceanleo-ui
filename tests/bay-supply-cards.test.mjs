@@ -27,7 +27,7 @@ const stateStub = dataModule(`
   export function requireBayLogin(){ return true; }
   export function bayBack(){}
 `);
-const authStub = dataModule(`export async function getUserId(){ return null; }`);
+const authStub = dataModule(`export async function getUserId(){ return null; } export async function accessToken(){ return null; } export function cachedAccessToken(){ return null; } export const AUTH_STATE_EVENT = "oceanleo:auth-state";`);
 const dealStub = dataModule(`export async function openTradeThread(){} export function DealConversationView(){ return null; }`);
 const settingsStub = dataModule(`export async function ensureBayTerms(){ return true; }`);
 const paymentsStub = dataModule(`

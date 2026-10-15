@@ -1096,3 +1096,24 @@ test("地址栏会话优先于服务器 active，只发一次打开请求", asyn
     assert.deepEqual(sentFrames().filter(frame => frame.t === "open_session").map(frame => frame.acp_session), ["url-session"]);
   } finally { view.cleanup(); }
 });
+
+test("过去的会话列表自动刷新：新会话开出来、窗口重新获得焦点都会重新拉取", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [{ id: "one", title: "First", cwd: "/root", updated_at: "" }] });
+    const asked = () => sentFrames().filter((frame) => frame.t === "sessions" && frame.program === "cursor").length;
+    const before = asked();
+    await server({ t: "session_opened", program: "cursor", acp_session: "two", cwd: "/root", replayed: 0 });
+    const afterOpen = asked();
+    assert.ok(afterOpen > before, "新会话开出来后要重新拉列表");
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
+    assert.ok(asked() > afterOpen, "窗口重新获得焦点要重新拉列表");
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [
+      { id: "one", title: "First", cwd: "/root", updated_at: "" },
+      { id: "two", title: "Second", cwd: "/root", updated_at: "" },
+    ] });
+    assert.ok(view.$('[data-oceanleo-acp-session="two"]'));
+  } finally {
+    view.cleanup();
+  }
+});

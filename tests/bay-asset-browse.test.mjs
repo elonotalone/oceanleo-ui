@@ -289,8 +289,8 @@ test("官方来源分区标出国家编号，自有分区不冒充官方", () =>
   assert.equal(resume.licenseLabel, "OceanLeo 自有");
 });
 
-test("文档分区页头画授权标签和格式说明，空区是整理中", () => {
-  assert.match(LIBRARY, /整理中/);
+test("文档分区页头画授权标签和格式说明，空区不再画「整理中」空盒子", () => {
+  assert.doesNotMatch(LIBRARY, /整理中/);
   assert.match(LIBRARY, /官方原文/);
   assert.match(LIBRARY, /许可来源/);
   assert.match(LIBRARY, /可下载格式/);

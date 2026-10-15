@@ -97,7 +97,7 @@ const stateStub = dataModule(`
   export function openBay(target){ globalThis.__w07panes.opened.push(target); }
   export function requireBayLogin(){ globalThis.__w07panes.opened.push({ kind: "login" }); return false; }
 `);
-const authStub = dataModule("export async function getUserId(){ return globalThis.__w07panes.userId; }");
+const authStub = dataModule("export async function getUserId(){ return globalThis.__w07panes.userId; } export async function accessToken(){ return null; } export function cachedAccessToken(){ return null; } export const AUTH_STATE_EVENT = \"oceanleo:auth-state\";");
 const messagesStub = dataModule("export function openMessages(t){ globalThis.__w07panes.messages.push(t); }");
 const settingsStub = dataModule("export function openBaySettings(pane){ globalThis.__w07panes.settings.push(pane); }");
 const termsStub = dataModule(`
@@ -108,6 +108,14 @@ const termsStub = dataModule(`
 `);
 const tradeStub = dataModule("export async function openTradeThread(s){ globalThis.__w07panes.opened.push({ kind: \"trade\", ...s }); }");
 const familyStub = dataModule(`
+  export const CONFIGURED_DOMAIN_FAMILY = undefined;
+  export function currentDomainFamily(){ return undefined; }
+  export function familyForHost(){ return undefined; }
+  export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function sharedCookieDomainFor(){ return undefined; }
+  export const REGISTRABLE_DOMAINS = [];
+  export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.com/" }; }
+  export function portalHref(path){ return "https://oceanleo.com" + path; }
   export function currentFamilySubsiteOrigin(label) {
     if ((globalThis.__w07panes.missingSubsites || []).includes(label)) return undefined;
     return "https://" + label + ".oceanleo.com";
@@ -376,14 +384,13 @@ test("我的订单：买卖切换、空状态、点开一单", async () => {
   await view.unmount();
 });
 
-test("我的订单：买家空态去逛逛，卖家空态去发布", async () => {
+test("我的订单：买家空态不画空盒子，卖家空态去发布", async () => {
   reset({ "GET /v1/talent/contracts?role=all&limit=200": { items: [] } });
   const view = await mount(React.createElement(MyOrdersPane, { target: { kind: "mine", tab: "bought" }, layout: "docked", siteKey: "ppt" }));
-  assert.ok(view.q("[data-bay-empty=all]"));
-  assert.match(view.host.textContent, /去逛逛/);
-  await view.click("[data-bay-action=browse-services]");
-  assert.deepEqual(W.opened.at(-1), { kind: "feed", filter: { kind: "service" } });
+  assert.equal(view.q("[data-bay-empty=all]"), null);
+  assert.equal(view.q("[data-bay-action=browse-services]"), null);
   await view.click("[data-bay-role=seller]");
+  assert.ok(view.q("[data-bay-empty=all]"));
   await view.click("[data-bay-action=publish-service]");
   assert.deepEqual(W.opened.at(-1), { kind: "publish" });
   await view.unmount();

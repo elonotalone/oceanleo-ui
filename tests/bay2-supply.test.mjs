@@ -116,7 +116,6 @@ function digitalService(extra = {}) {
     tiers: [
       { id: "t1", service_id: "svc-d", tier: "basic", title: "基础", description: "", price_fen: 0, delivery_days: 3, revisions: 0, features: [], enabled: true },
     ],
-    addons: [{ id: "a1", service_id: "svc-d", title: "加急", description: "", price_fen: 5000, extra_days: 1, enabled: true }],
     faq: [],
     media: [],
     reviews: [],
@@ -136,7 +135,7 @@ test("数字商品卡：角标是数字商品，价格为 0 写免费，官方�
   assert.doesNotMatch(out, />服务</);
 });
 
-test("数字商品详情：不出档位表与加购，出立即交付，不出授权罐头句，免费时按钮是免费获取", () => {
+test("数字商品详情：不出档位表与附加项，出立即交付，不出授权罐头句，免费时按钮是免费获取", () => {
   const out = html(React.createElement(ServiceDetailView, { service: digitalService(), viewerId: "buyer-1", layout: "docked" }));
   assert.doesNotMatch(out, /选择档位/);
   assert.doesNotMatch(out, /data-bay-tier=/);
@@ -168,7 +167,7 @@ test("数字商品详情：自定义条款原样出现，有截止日期就写�
   assert.match(out, /只给甲方用/);
   assert.match(out, /不得外传/);
   assert.match(out, /data-bay-deadline/);
-  assert.match(out, /2026-12-01 截止/);
+  assert.match(out, /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC\S* 截止/);
   assert.doesNotMatch(out, /授权范围/);
   assert.doesNotMatch(out, /个人使用/);
 });

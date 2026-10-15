@@ -30,6 +30,8 @@ import { BAY_APP_ENDPOINT_MESSAGES } from "./bay-app-endpoint-copy";
 import { BAY_FORM_MESSAGES } from "./bay-form-copy";
 import { BAY_POSTING_MESSAGES } from "./bay-posting-copy";
 import { BAY_MINE_MESSAGES } from "./bay-mine-copy";
+import { BAY_DEADLINE_MESSAGES } from "./bay-deadline-copy";
+import { BAY_FORM_GAP_MESSAGES } from "./bay-form-gap-copy";
 
 const PARTS = [
   BAY_SHELL_MESSAGES,
@@ -61,6 +63,8 @@ const PARTS = [
   BAY_FORM_MESSAGES,
   BAY_POSTING_MESSAGES,
   BAY_MINE_MESSAGES,
+  BAY_DEADLINE_MESSAGES,
+  BAY_FORM_GAP_MESSAGES,
 ];
 
 export const BAY_MESSAGES: Record<Locale, Record<string, string>> =

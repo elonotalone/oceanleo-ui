@@ -74,7 +74,8 @@ test("draftFromApp 读回自定义条款、找谁、截止日期", () => {
     draft.audience.members.map((row) => row.userId),
     ["u2", "u3"],
   );
-  assert.equal(draft.deadlineAt, "2026-12-01");
+  // 截止时间存绝对时刻（ISO）；纯日期的老值才按当地当天结束。
+  assert.equal(draft.deadlineAt, "2026-12-01T23:59:59.000Z");
 });
 
 test("patchFromDraft 只带改过的字段", () => {

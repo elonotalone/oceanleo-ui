@@ -205,7 +205,6 @@ function reset({ service = existingService(), profile = PROFILE } = {}) {
     if (method === "GET" && path === "/v1/talent/me/services/s1/tiers") {
       return { items: [{ id: "t1", tier: "basic", title: "基础版", description: "一版", price_fen: 12000, delivery_days: 3, revisions: 1, features: ["源文件"], enabled: true }] };
     }
-    if (method === "GET" && path === "/v1/talent/me/services/s1/addons") return { items: [] };
     if (method === "GET" && path === "/v1/talent/me/services/s1/faq") return { items: [{ id: "f1", question: "开始前需要我提供什么？", answer: "品牌名与参考图", position: 0 }] };
     if (method === "GET" && path === "/v1/talent/me/services/s1/media") {
       return { items: [{ id: "m1", kind: "image", url: "https://cdn.example.com/cover.png", poster_url: null, caption: "", position: 0 }] };
@@ -264,6 +263,10 @@ async function expandTerms(view) {
 
 async function pickHowYouDeliver(view, kind) {
   await expandTerms(view);
+  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
+  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
+    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
+  }
   await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
 }
 
@@ -311,18 +314,17 @@ test("字段校验：每一步缺什么就拦在本地", () => {
   assert.deepEqual(missing, { message: "还差这几项没填：{items}", vars: { items: "交付格式" } });
   assert.equal(blocked("fields", {}), null);
   const draft = filledDraft();
-  const withTiers = (prices, enabled = [true, true, true]) => ({ tiers: draft.tiers.map((tier, i) => ({ ...tier, price_fen: prices[i], enabled: enabled[i] })) });
-  assert.equal(blocked("pricing", withTiers([0, 0, 0], [true, false, false])), "每档价格都要大于 0");
-  assert.equal(blocked("pricing", { ...withTiers([100, 0, 0], [true, false, false]), pricingModel: "free" }), "免费协作的每档价格都要是 0");
-  assert.equal(blocked("pricing", withTiers([300, 200, 400])), "启用的价格档要按基础、标准、高级从低到高");
-  assert.equal(blocked("pricing", withTiers([0, 0, 0], [false, false, false])), "至少启用一档价格");
-  assert.equal(blocked("pricing", withTiers([100, 200, 300])), null);
+  const withPrice = (price) => ({ tiers: draft.tiers.map((tier) => ({ ...tier, price_fen: price })) });
+  assert.equal(draft.tiers.length, 1, "价格档位已下线：草稿里只有一个价格");
+  assert.equal(blocked("pricing", withPrice(0)), "价格要大于 0");
+  assert.equal(blocked("pricing", { ...withPrice(100), pricingModel: "free" }), "免费协作的价格要是 0");
+  assert.equal(blocked("pricing", withPrice(100)), null);
   assert.equal(blocked("media", { media: [{ key: "m", kind: "image", url: "javascript:alert(1)", poster_url: "", caption: "" }] }), "作品图地址要以 https:// 开头");
   const consult = { catalogKind: "consult", domain: "tax", category: "tax-basic" };
   assert.equal(blocked("domain", { ...consult, domain: "medical" }), "先选一个领域", "受限领域选不上");
   assert.equal(blocked("domain", { ...consult, category: "" }), "再选一个这个领域下的类目");
-  assert.equal(blocked("pricing", { ...consult, consultRounds: 3, ...withTiers([0, 0, 0]) }), null);
-  assert.equal(blocked("pricing", { ...consult, ...withTiers([0, 0, 0]) }), "按次答疑要写明一次包含几轮问答");
+  assert.equal(blocked("pricing", { ...consult, consultRounds: 3, ...withPrice(0) }), null);
+  assert.equal(blocked("pricing", { ...consult, ...withPrice(0) }), "按次答疑要写明一次包含几轮问答");
   assert.equal(blocked("pricing", { ...consult, consultUnit: "hour", consultMinutes: null }), "按小时答疑要写明一小时按多少分钟计");
 });
 
@@ -379,12 +381,15 @@ test("常见问题：空行不存，其余按顺序留下", () => {
   assert.deepEqual(saved.deleted, ["f2"]);
 });
 
-test("载入已有服务：档位、常见问题、作品图顺序都映射回来", () => {
+test("载入已有服务：价格、常见问题、作品图顺序都映射回来", () => {
   const draft = model.draftFromLoaded(
     {
       service: existingService({ status: "paused", moderation_hidden: true }),
-      tiers: [{ tier: "premium", title: "高级", description: "", price_fen: 50000, delivery_days: 7, revisions: -1, features: [], enabled: true }],
-      addons: [{ id: "a1", title: "加急", description: "", price_fen: 2000, extra_days: 0, position: 0, enabled: true }],
+      // 旧数据里可能还留着 standard / premium 行：载入时只认 basic，其余忽略。
+      tiers: [
+        { tier: "basic", title: "基础", description: "", price_fen: 50000, delivery_days: 7, revisions: -1, features: [], enabled: true },
+        { tier: "premium", title: "高级", description: "", price_fen: 90000, delivery_days: 9, revisions: 3, features: [], enabled: true },
+      ],
       faq: [
         { id: "f2", question: "能开发票吗", answer: "可以", position: 1 },
         { id: "f1", question: "开始前需要我提供什么？", answer: "品牌名", position: 0 },
@@ -402,12 +407,12 @@ test("载入已有服务：档位、常见问题、作品图顺序都映射回�
   assert.equal(draft.catalogKind, "delivery");
   assert.deepEqual(draft.faqs.map((faq) => faq.id), ["f1", "f2"]);
   assert.deepEqual(draft.media.map((item) => item.id), ["m1", "m2"]);
-  assert.deepEqual(draft.tiers.map((tier) => [tier.tier, tier.enabled, tier.price_fen]), [["basic", true, 0], ["standard", false, 0], ["premium", true, 50000]]);
+  assert.deepEqual(draft.tiers.map((tier) => [tier.tier, tier.enabled, tier.price_fen]), [["basic", true, 50000]]);
   assert.equal(draft.pricingModel, "fixed");
   assert.deepEqual(draft.fieldValues, { file_formats: ["PNG"] });
 });
 
-test("预览卡：买家在信息流里看到的价格区间、币种、封面；地址只认 http(s)", () => {
+test("预览卡：买家在信息流里看到的价格、币种、封面；地址只认 http(s)", () => {
   const draft = filledDraft({
     coverUrl: "",
     media: [
@@ -415,10 +420,10 @@ test("预览卡：买家在信息流里看到的价格区间、币种、封面�
       { key: "y", kind: "image", url: "https://cdn.example.com/y.png", poster_url: "", caption: "" },
     ],
   });
-  draft.tiers = draft.tiers.map((tier, index) => ({ ...tier, enabled: index < 2, price_fen: [12000, 30000, 90000][index] }));
+  draft.tiers = draft.tiers.map((tier) => ({ ...tier, enabled: true, price_fen: 12000 }));
   const item = model.previewFeedItem(draft, { profile: PROFILE, siteKey: "video", currency: "usd", model: MODELS[0] });
   assert.equal(item.kind, "service");
-  assert.deepEqual(item.price, { min_fen: 12000, max_fen: 30000, unit: "project", currency: "USD" });
+  assert.deepEqual(item.price, { min_fen: 12000, max_fen: 12000, unit: "project", currency: "USD" });
   assert.equal(item.cover_url, "https://cdn.example.com/y.png");
   assert.equal(item.posted_site, "video");
   assert.equal(item.author.handle, "leo");
@@ -483,13 +488,13 @@ test("发布表：三块在一张常开表单里，标签和输入都看得见",
   assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);
   assert.ok(view.host.querySelector("[data-bay-field='title']"));
   assert.ok(view.host.querySelector("[data-bay-field='price']"));
-  assert.ok(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="billing"]'));
+  assert.equal(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="billing"]'), null, "计费方式只在卡片里，不再有计费行");
   assert.equal(view.host.querySelector('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
   assert.match(view.host.querySelector("[data-bay-price-currency]").textContent, /USD/);
   assert.doesNotMatch(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="price"]').textContent, /预算/);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["billing", "price"],
+    ["price"],
   );
   assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="revisions"]'));
   await view.unmount();
@@ -536,4 +541,21 @@ test("交付约定：交期、改稿次数为空时用第一档的数字补上�
   assert.equal(model.stepsFor("consult").includes("media"), false, "答疑没有作品图、加购");
   assert.equal(model.isLocalStep("pricing", "consult"), true);
   assert.equal(model.isLocalStep("pricing", "delivery"), false);
+});
+
+test("价格档位已下线：保存只发 basic 一行，且恒为启用", () => {
+  const draft = filledDraft();
+  const rows = model.tierRows({ tiers: [{ ...draft.tiers[0], enabled: false, price_fen: 1234.4 }, { ...draft.tiers[0], tier: "premium", price_fen: 9 }] });
+  assert.deepEqual(rows.map((row) => [row.tier, row.enabled, row.price_fen]), [["basic", true, 1234]]);
+  assert.equal(model.defaultTiers(tt).length, 1);
+  assert.equal(model.pricesOrdered, undefined, "不再有「从低到高」这条规则");
+});
+
+test("价格输入：敲 0 不会把价格框锁成免费，也不会吞掉小数点", () => {
+  const source = readFileSync(fileURLToPath(new URL("../src/shell/bay/seller/ServiceEditorPane.tsx", import.meta.url)), "utf8");
+  assert.match(source, /function setSimplePrice\(fen: number \| null\) \{/);
+  assert.equal(source.includes("setSimplePrice(0, true)"), false, "免费不再有单独的「免费」入口，只由价格框 0 表达");
+  const fields = readFileSync(fileURLToPath(new URL("../src/shell/bay/form/listing-terms-fields.tsx", import.meta.url)), "utf8");
+  assert.equal(fields.includes('{ value: "free"'), false, "计价方式的选项里没有免费");
+  assert.equal(fields.includes("appFree"), false);
 });

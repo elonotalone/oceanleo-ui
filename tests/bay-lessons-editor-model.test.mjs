@@ -103,7 +103,7 @@ test("draftFromLesson 读回自定义条款、找谁、截止日期", () => {
   assert.equal(draft.customTerms, "含改稿");
   assert.equal(draft.audience.mode, "invited");
   assert.equal(draft.audience.handle, "alice");
-  assert.equal(draft.deadlineAt, "2026-12-01");
+  assert.equal(draft.deadlineAt, "2026-12-01T23:59:59.000Z");
 });
 
 test("lessonPatch 只带改过的字段；空封面转 null；价格留空当 0", () => {

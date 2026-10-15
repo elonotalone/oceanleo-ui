@@ -1,19 +1,89 @@
 "use client";
 
-import { type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { useLocale } from "next-intl";
 import { normalizeLocale, type Locale } from "../../../i18n/config";
 import { useUI } from "../../../i18n/ui/useUI";
+import {
+  DEVICE_ZONE,
+  daysInMonth,
+  deadlineMs,
+  deviceTimeZone,
+  offsetLabel,
+  readStoredZone,
+  resolveZone,
+  selectableZones,
+  storeZone,
+  wallClockText,
+  zonedParts,
+  zonedToInstant,
+  type ZonedParts,
+} from "./bay-deadline";
+import { BAY_FORM_CHIP_BUTTON_CLASS, BAY_FORM_HELP_CLASS, BAY_FORM_PRIMARY_BUTTON_CLASS } from "./form-ui";
 
-function displayDate(value: string, locale: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return value;
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(date);
+type Time = { hour: number; minute: number; second: number };
+const END_OF_DAY: Time = { hour: 23, minute: 59, second: 59 };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
-/** 截止日期：短胶囊，点开系统日历。不用整行原生日期框。 */
+function monthTitle(year: number, month: number, locale: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)));
+  } catch {
+    return `${year}-${String(month).padStart(2, "0")}`;
+  }
+}
+
+function weekdayLabels(locale: string): string[] {
+  const out: string[] = [];
+  for (let index = 0; index < 7; index += 1) {
+    try {
+      // 2024-01-07 是周日；从周日排起。
+      out.push(new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, 7 + index))));
+    } catch {
+      out.push(String(index));
+    }
+  }
+  return out;
+}
+
+function TimeBox(props: {
+  label: string;
+  value: number;
+  max: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}): ReactElement {
+  return (
+    <input
+      aria-label={props.label}
+      inputMode="numeric"
+      maxLength={2}
+      disabled={props.disabled}
+      value={String(props.value).padStart(2, "0")}
+      onFocus={(event) => event.currentTarget.select()}
+      onChange={(event) => {
+        const digits = event.target.value.replace(/\D/g, "").slice(-2);
+        props.onChange(clamp(Number(digits || 0), 0, props.max));
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          const step = event.key === "ArrowUp" ? 1 : -1;
+          props.onChange((props.value + step + props.max + 1) % (props.max + 1));
+        }
+      }}
+      className="h-10 w-14 rounded-full border-0 bg-neutral-200/80 text-center text-[14px] tabular-nums text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50"
+    />
+  );
+}
+
+/**
+ * 截止时间：点开是一张日历 + 时分秒 + 时区。库里只存一个绝对时刻；
+ * 默认按「我设备的时间」填，面板里同时写出设备时间和 UTC，方便核对；别人看到时按他们自己的时区换算。
+ */
 export function BayDeadlineField(props: {
   value: string;
   onChange: (value: string) => void;
@@ -26,29 +96,194 @@ export function BayDeadlineField(props: {
   } catch {
     locale = "zh";
   }
-  const filled = Boolean(props.value);
+  const [open, setOpen] = useState(false);
+  const [zone, setZone] = useState<string>(DEVICE_ZONE);
+  useEffect(() => setZone(readStoredZone()), []);
+
+  const tz = resolveZone(zone);
+  const at = deadlineMs(props.value);
+  const parts: ZonedParts | null = at == null ? null : zonedParts(at, tz);
+  const [time, setTime] = useState<Time>(parts ? { hour: parts.hour, minute: parts.minute, second: parts.second } : END_OF_DAY);
+  const today = zonedParts(Date.now(), tz);
+  const [view, setView] = useState<{ year: number; month: number }>(() => ({
+    year: (parts || today).year,
+    month: (parts || today).month,
+  }));
+
+  // 值或时区从外面变了（载入草稿、换时区）：时间框和月份跟着走。
+  const key = at == null ? "" : `${at}|${tz}`;
+  useEffect(() => {
+    if (at == null) return;
+    const p = zonedParts(at, tz);
+    setTime({ hour: p.hour, minute: p.minute, second: p.second });
+    setView({ year: p.year, month: p.month });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const zones = useMemo(() => (open ? selectableZones() : []), [open]);
+  const weekdays = useMemo(() => weekdayLabels(locale), [locale]);
+
+  function emit(next: ZonedParts) {
+    props.onChange(new Date(zonedToInstant(next, tz)).toISOString());
+  }
+
+  function pickDay(day: number) {
+    emit({ year: view.year, month: view.month, day, ...time });
+  }
+
+  function changeTime(next: Time) {
+    setTime(next);
+    if (parts) emit({ year: parts.year, month: parts.month, day: parts.day, ...next });
+  }
+
+  function shiftMonth(delta: number) {
+    setView((current) => {
+      const index = current.year * 12 + (current.month - 1) + delta;
+      return { year: Math.floor(index / 12), month: (index % 12) + 1 };
+    });
+  }
+
+  function changeZone(next: string) {
+    setZone(next);
+    storeZone(next);
+  }
+
+  const firstWeekday = new Date(Date.UTC(view.year, view.month - 1, 1)).getUTCDay();
+  const total = daysInMonth(view.year, view.month);
+  const cells: (number | null)[] = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: total }, (_, index) => index + 1),
+  ];
+  while (cells.length % 7) cells.push(null);
+
+  const summaryText = at == null ? "" : `${wallClockText(at, tz)} ${offsetLabel(at, tz)}`;
+  const device = deviceTimeZone();
+
   return (
-    <div
-      data-bay-deadline-field=""
-      className={`relative inline-flex h-11 w-40 items-center gap-2 overflow-hidden rounded-full bg-neutral-200/80 px-4${props.disabled ? " opacity-50" : ""}`}
-    >
-      <span
-        className={`pointer-events-none min-w-0 flex-1 truncate text-[13px] tabular-nums ${filled ? "text-neutral-900" : "text-neutral-400"}`}
-      >
-        {filled ? displayDate(props.value, locale) : tt("选日期")}
-      </span>
-      <svg className="pointer-events-none h-4 w-4 shrink-0 text-neutral-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-        <rect x="4" y="6" width="16" height="14" rx="2" />
-        <path d="M8 4v4M16 4v4M4 10h16" />
-      </svg>
-      <input
-        type="date"
-        data-bay-field="deadline"
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+    <div data-bay-deadline-field="" data-bay-deadline-open={open ? "" : undefined} className={props.disabled ? "opacity-50" : undefined}>
+      <button
+        type="button"
         disabled={props.disabled}
-        value={props.value}
-        onChange={(event) => props.onChange(event.target.value)}
-      />
+        aria-expanded={open}
+        data-bay-deadline-trigger=""
+        data-bay-field="deadline"
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-11 w-full max-w-sm items-center gap-2 rounded-full border-0 bg-neutral-200/80 px-4 text-left text-[13px] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+      >
+        <svg className="h-4 w-4 shrink-0 text-neutral-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <rect x="4" y="6" width="16" height="14" rx="2" />
+          <path d="M8 4v4M16 4v4M4 10h16" />
+        </svg>
+        <span className={`min-w-0 flex-1 truncate ${at == null ? "text-neutral-400" : "text-neutral-900"}`}>
+          {at == null ? tt("选日期和时间") : summaryText}
+        </span>
+        <svg className={`h-4 w-4 shrink-0 text-neutral-600 ${open ? "rotate-180" : ""}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m4 6 4 4 4-4" />
+        </svg>
+      </button>
+
+      {open ? (
+        <div data-bay-deadline-panel="" className="mt-3 w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <button type="button" aria-label={tt("上个月")} onClick={() => shiftMonth(-1)} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
+              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m10 3-5 5 5 5" />
+              </svg>
+            </button>
+            <p className="text-[14px] font-semibold text-neutral-900" data-bay-deadline-month="">
+              {monthTitle(view.year, view.month, locale)}
+            </p>
+            <button type="button" aria-label={tt("下个月")} onClick={() => shiftMonth(1)} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
+              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m6 3 5 5-5 5" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="mt-3 grid gap-1 text-center" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+            {weekdays.map((name, index) => (
+              <span key={index} className="text-[12px] text-neutral-500">
+                {name}
+              </span>
+            ))}
+            {cells.map((day, index) => {
+              if (day == null) return <span key={`blank-${index}`} />;
+              const selected = parts != null && parts.year === view.year && parts.month === view.month && parts.day === day;
+              const isToday = today.year === view.year && today.month === view.month && today.day === day;
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  data-bay-deadline-day={day}
+                  aria-pressed={selected}
+                  onClick={() => pickDay(day)}
+                  className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full text-[13px] tabular-nums ${
+                    selected
+                      ? "bg-neutral-900 font-semibold text-white"
+                      : isToday
+                        ? "border border-neutral-900 text-neutral-900"
+                        : "text-neutral-800 hover:bg-neutral-100"
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex items-center justify-center gap-2" data-bay-deadline-time="">
+            <TimeBox label={tt("时")} value={time.hour} max={23} onChange={(hour) => changeTime({ ...time, hour })} />
+            <span className="text-[14px] text-neutral-500">:</span>
+            <TimeBox label={tt("分")} value={time.minute} max={59} onChange={(minute) => changeTime({ ...time, minute })} />
+            <span className="text-[14px] text-neutral-500">:</span>
+            <TimeBox label={tt("秒")} value={time.second} max={59} onChange={(second) => changeTime({ ...time, second })} />
+          </div>
+
+          <label className="mt-4 block">
+            <span className="mb-1 block text-[13px] font-medium text-neutral-900">{tt("时区")}</span>
+            <select
+              data-bay-deadline-zone=""
+              value={zone}
+              onChange={(event) => changeZone(event.target.value)}
+              className="h-11 w-full rounded-full border-0 bg-neutral-200/80 px-4 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+            >
+              <option value={DEVICE_ZONE}>{`${tt("按我设备的时间")} · ${device} (${offsetLabel(Date.now(), device)})`}</option>
+              {zones
+                .filter((name) => name !== device)
+                .map((name) => (
+                  <option key={name} value={name}>
+                    {`${name} (${offsetLabel(Date.now(), name)})`}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          {at != null ? (
+            <div className={`mt-4 space-y-1 rounded-2xl bg-neutral-100 px-4 py-3 tabular-nums ${BAY_FORM_HELP_CLASS}`} data-bay-deadline-check="">
+              <p>
+                {tt("你设备的时间")}：{wallClockText(at, device)} {offsetLabel(at, device)}
+              </p>
+              <p>UTC：{wallClockText(at, "UTC")}</p>
+              <p>{tt("其他人会按他们自己的时区看到同一时刻。")}</p>
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              data-bay-deadline-clear=""
+              disabled={at == null}
+              onClick={() => props.onChange("")}
+              className={BAY_FORM_CHIP_BUTTON_CLASS}
+            >
+              {tt("清除")}
+            </button>
+            <button type="button" data-bay-deadline-done="" onClick={() => setOpen(false)} className={BAY_FORM_PRIMARY_BUTTON_CLASS}>
+              {tt("完成")}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

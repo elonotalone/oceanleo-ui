@@ -70,11 +70,13 @@ test("发帖白板贴着页的上下边，页框不再上下留白", () => {
   assert.match(page, /paper \? PAPER_HEADER_CLASS : APP_PAGE_HEADER_ROW_CLASS/);
 });
 
-test("截止日期是短胶囊，不是整行原生日期框", () => {
+test("截止时间是自己的日历面板（日期 + 时分秒 + 时区），不是原生日期框", () => {
   const deadline = readFileSync(join(REPO, "src/shell/bay/form/BayDeadlineField.tsx"), "utf8");
   assert.match(deadline, /data-bay-deadline-field/);
-  assert.match(deadline, /\binline-flex h-11 w-40\b/);
-  assert.match(deadline, /type="date"/);
+  assert.match(deadline, /data-bay-deadline-panel/);
+  assert.match(deadline, /data-bay-deadline-zone/);
+  assert.match(deadline, /data-bay-deadline-time/);
+  assert.doesNotMatch(deadline, /type="date"/);
   const terms = readFileSync(join(REPO, "src/shell/bay/form/listing-terms-fields.tsx"), "utf8");
   assert.match(terms, /BayDeadlineField/);
   assert.doesNotMatch(terms, /type="date"/);

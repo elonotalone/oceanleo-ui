@@ -114,6 +114,7 @@ test("listingPayload 仍只输出第一份 digital_work", () => {
   const draft = model.emptyDraft(tt);
   draft.catalogKind = "delivery";
   draft.listingKind = "digital";
+  draft.offerKind = "digital";
   draft.license = "personal";
   draft.digitalWork = { id: "art-1", title: "主件", kind: "artifact" };
   draft.digitalWorks = [

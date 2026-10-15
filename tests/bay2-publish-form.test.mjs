@@ -196,6 +196,10 @@ async function expandTerms(view) {
 
 async function pickHowYouDeliver(view, kind) {
   await expandTerms(view);
+  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
+  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
+    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
+  }
   await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
 }
 
@@ -220,10 +224,10 @@ test("新草稿直接出表单，顶上是卖买和分类，默认打开封面",
   assert.ok(view.host.querySelector('[data-bay-kind="lesson"]'));
   assert.ok(view.host.querySelector('[data-bay-kind="need"]'));
   assert.equal(view.host.querySelector('[data-bay-kind="consult"]'), null);
-  assert.equal(view.host.querySelector('[data-bay-publish="form"] [data-bay-reveal-open]')?.getAttribute("data-bay-reveal-item"), "cover");
+  assert.equal(view.host.querySelector('[data-bay-publish="form"] [data-bay-reveal-open]')?.getAttribute("data-bay-reveal-item"), "how-you-deliver");
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["cover", "title", "description", "files"],
+    ["how-you-deliver", "cover", "title", "description", "files"],
   );
   assert.equal(view.find('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
   assert.deepEqual(
@@ -256,12 +260,13 @@ test("选素材后出三块、没有步骤条、没有档位表", async () => {
   await view.unmount();
 });
 
-test("选服务后「更多定价」默认收起", async () => {
+test("选服务后价格组没有「更多定价」折叠，也没有附加项", async () => {
   reset();
   const view = await mount();
   await pickHowYouDeliver(view, "service");
-  assert.equal(view.find("[data-bay-more-pricing-toggle]").getAttribute("aria-expanded"), "false");
+  assert.equal(view.host.querySelector("[data-bay-more-pricing-toggle]"), null);
   assert.equal(view.host.querySelector("[data-bay-more-pricing]"), null);
+  assert.equal(view.host.querySelector("[data-bay-addon]"), null);
   assert.equal(view.host.querySelector("[data-bay-tier]"), null);
   assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-reveal-item='category']"));
   await view.unmount();
@@ -287,25 +292,25 @@ test("没有步骤条文案；换类别仍在表单里", async () => {
   await view.unmount();
 });
 
-test("选服务后再切按次：仍是三块，产品信息还是封面标题介绍文件", async () => {
+test("选服务后价格组只有价格框（计费方式由卡片选，不再有计费行）：仍是三块，产品信息是封面标题介绍文件", async () => {
   reset();
   const view = await mount();
   await pickHowYouDeliver(view, "service");
-  await view.click('[data-bay-section="price"] [data-bay-service-form-option="consult"]');
   assert.ok(view.host.querySelector('[data-bay-section="product"]'));
   assert.ok(view.host.querySelector('[data-bay-section="price"]'));
   assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
   assert.equal(view.host.querySelector("[data-bay-steps]"), null);
-  assert.ok(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="billing"]'));
+  assert.equal(view.host.querySelector('[data-bay-section="price"] [data-bay-reveal-item="billing"]'), null);
+  assert.equal(view.host.querySelector('[data-bay-service-form-option="consult"]'), null);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["billing", "price"],
+    ["price"],
   );
-  assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="consult-rounds"]'));
+  assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="delivery-days"]'));
   assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="revisions"]'));
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["cover", "title", "description", "files"],
+    ["how-you-deliver", "cover", "title", "description", "files"],
   );
   assert.doesNotMatch(view.find('[data-bay-section="product"]').textContent, /领域/);
   assert.equal(view.host.querySelector("[data-bay-domains]"), null);
@@ -316,9 +321,9 @@ test("素材：向谁展示和交付内容在交付条款上方；条款里是�
   reset();
   const view = await mount();
   assert.ok(view.host.querySelector('[data-bay-section="audience"] [data-bay-reveal-item="who"]'));
-  assert.ok(view.host.querySelector('[data-bay-section="offer"] [data-bay-how-you-deliver]'));
+  assert.ok(view.host.querySelector('[data-bay-section="product"] [data-bay-how-you-deliver]'));
   assert.match(view.find('[data-bay-section="audience"] [data-bay-section-title]').textContent, /向谁展示/);
-  assert.match(view.find('[data-bay-section="offer"] [data-bay-section-title]').textContent, /你交付什么/);
+  assert.match(view.find('[data-bay-section="product"] [data-bay-reveal-item="how-you-deliver"] [data-bay-reveal-label]').textContent, /你交付什么/);
   await expandTerms(view);
   const terms = view.find('[data-bay-section="terms"]');
   assert.deepEqual(
@@ -329,7 +334,7 @@ test("素材：向谁展示和交付内容在交付条款上方；条款里是�
   assert.ok(terms.querySelector('[data-bay-reveal-item="deadline"]'));
   const deadline = terms.querySelector("[data-bay-deadline-field]");
   assert.ok(deadline);
-  assert.match(deadline.className, /\bw-40\b/);
+  assert.ok(deadline.querySelector("[data-bay-deadline-trigger]"));
   assert.ok(terms.querySelector('[data-bay-reveal-item="custom-terms"]'));
   assert.ok(view.host.querySelector("[data-bay-audience]"));
   assert.ok(view.host.querySelector('[data-bay-field="custom-terms"]'));

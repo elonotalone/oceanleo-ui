@@ -1,5 +1,6 @@
 "use client";
 
+import { deadlineFromRow, deadlineToPayload } from "../form/bay-deadline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { HANDOFF_BRIEF_MAX_LENGTH } from "../../../api/talent-handoff";
@@ -146,7 +147,7 @@ export function GetHelpForm(props: GetHelpFormProps) {
     const attachedWork = first?.id
       ? { kind: (first.kind === "artifact" ? "artifact" : "task") as "artifact" | "task", id: first.id }
       : null;
-    const due = deadline ? new Date(`${deadline}T23:59:59`).toISOString() : null;
+    const due = deadlineToPayload(deadline);
     const brief = details || titleLine;
     const asDemand = defaultMode !== "open";
     setBusy(true);
@@ -168,7 +169,7 @@ export function GetHelpForm(props: GetHelpFormProps) {
             listing_kind: offerKind,
             delivery_days: offerKind === "service" && deliveryDays && deliveryDays > 0 ? deliveryDays : null,
             cover_url: coverUrls[0] || null,
-            engagement_kind: engagementOf(offerKind, billing, appPriceModel),
+            engagement_kind: engagementOf(offerKind, billing, appPriceModel, priceFen),
             revisions: offerKind === "service" ? revisions : null,
             consult_rounds: offerKind === "service" && billing === "session" ? consultRounds : null,
             consult_minutes: offerKind === "service" && billing === "hour" ? consultMinutes : null,
@@ -314,13 +315,11 @@ export function GetHelpForm(props: GetHelpFormProps) {
     offerKind,
     priceFen,
     onPriceFen: setPriceFen,
+    showBilling: true,
     billing,
     onBilling: setBilling,
     appPriceModel,
-    onAppPriceModel: (value) => {
-      setAppPriceModel(value);
-      if (value === "free") setPriceFen(0);
-    },
+    onAppPriceModel: setAppPriceModel,
   });
   const termsItems = listingTermsItems(tt, {
     offerKind,

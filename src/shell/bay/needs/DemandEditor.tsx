@@ -1,5 +1,6 @@
 "use client";
 
+import { deadlineFromRow, deadlineToPayload } from "../form/bay-deadline";
 import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -44,12 +45,6 @@ import { BTN_PRIMARY, BTN_SECONDARY, CategoryChooser, PaneNotice, errorText } fr
 
 const DESCRIPTION_MIN_LENGTH = 20;
 
-function dateInput(value: string | null | undefined): string {
-  if (!value) return "";
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? "" : at.toISOString().slice(0, 10);
-}
-
 function billingOf(kind: string | undefined): ListingBilling {
   if (kind === "hourly") return "hour";
   if (kind === "session") return "session";
@@ -57,7 +52,6 @@ function billingOf(kind: string | undefined): ListingBilling {
 }
 
 function appPriceOf(kind: string | undefined): ListingAppPriceModel {
-  if (kind === "free") return "free";
   if (kind === "retainer") return "subscription";
   return "one_time";
 }
@@ -95,7 +89,7 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
   const [revisions, setRevisions] = useState(initial?.revisions ?? 0);
   const [consultRounds, setConsultRounds] = useState<number | null>(initial?.consult_rounds ?? null);
   const [consultMinutes, setConsultMinutes] = useState<number | null>(initial?.consult_minutes ?? null);
-  const [deadline, setDeadline] = useState(dateInput(initial?.deadline_at));
+  const [deadline, setDeadline] = useState(deadlineFromRow(initial?.deadline_at));
   const [audience, setAudience] = useState<BayAudience>(() =>
     normalizeAudience({
       mode: initial?.audience_mode || "public",
@@ -138,7 +132,7 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
       reference_links: initial?.reference_links || [],
       budget_min_fen: priceFen,
       budget_max_fen: priceFen,
-      deadline_at: deadline ? new Date(`${deadline}T23:59:59`).toISOString() : null,
+      deadline_at: deadlineToPayload(deadline),
       status: "open",
       audience_mode: audience.mode === "verified_first" ? "public" : audience.mode,
       audience_handle: audience.mode === "invited" ? audience.handle.trim() || audience.members[0]?.name || null : null,
@@ -147,7 +141,7 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
       listing_kind: offerKind,
       delivery_days: offerKind === "service" && deliveryDays && deliveryDays > 0 ? deliveryDays : null,
       cover_url: coverUrls[0] || null,
-      engagement_kind: engagementOf(offerKind, billing, appPriceModel),
+      engagement_kind: engagementOf(offerKind, billing, appPriceModel, priceFen),
       revisions: offerKind === "service" ? revisions : null,
       consult_rounds: offerKind === "service" && billing === "session" ? consultRounds : null,
       consult_minutes: offerKind === "service" && billing === "hour" ? consultMinutes : null,
@@ -250,13 +244,11 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
     offerKind,
     priceFen,
     onPriceFen: setPriceFen,
+    showBilling: true,
     billing,
     onBilling: setBilling,
     appPriceModel,
-    onAppPriceModel: (value) => {
-      setAppPriceModel(value);
-      if (value === "free") setPriceFen(0);
-    },
+    onAppPriceModel: setAppPriceModel,
   });
   const termsItems = listingTermsItems(tt, {
     offerKind,

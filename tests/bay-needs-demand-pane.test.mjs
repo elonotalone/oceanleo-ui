@@ -503,7 +503,7 @@ test("发布者点「编辑需求」换成编辑表单，取消回到详情", as
   assert.ok(editor);
   assert.ok(editor.querySelector('[data-bay-reveal-item="title"]'));
   assert.ok(editor.querySelectorAll("[data-bay-reveal-open]").length >= 2);
-  assert.equal(editor.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "cover");
+  assert.equal(editor.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "how-you-deliver");
   assert.equal(editor.querySelector("[data-bay-demand-title]").value, "做一份路演稿");
   assert.ok(editor.querySelector("[data-bay-demand-description]"));
   const cancel = [...editor.querySelectorAll("button")].find((node) => /取消/.test(node.textContent));

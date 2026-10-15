@@ -3,6 +3,7 @@
 // supply 各窗格共用的小部件：加载/出错、收藏、举报、卖家卡、交付记录、评价列表。
 // 用户内容一律纯文本；图片只认 http(s)。
 
+import { formatDeadline } from "../form/bay-deadline";
 import { useState, type ReactNode } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -15,15 +16,13 @@ import { openBay, requireBayLogin } from "../shell/bay-state";
 import { initialOf, ratingShort, responseTimeText, safeHttpUrl } from "./format";
 import { errorText, useBayResource } from "./use-bay-resource";
 
-/** 有日期就写成「YYYY-MM-DD 截止」；已经是一句人话则原样留下。没有值则空。 */
+/** 绝对时刻按看的人设备的时区写成「YYYY-MM-DD HH:MM:SS UTC+8 截止」；旧的纯日期保持「YYYY-MM-DD 截止」；已经是一句人话则原样留下。没有值则空。 */
 export function deadlineCopy(tt: UITranslate, value: string | null | undefined): string {
   const raw = (value || "").trim();
   if (!raw) return "";
-  const day = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (day) return tt("{date} 截止", { date: day[1] });
-  const at = Date.parse(raw);
-  if (Number.isFinite(at)) return tt("{date} 截止", { date: new Date(at).toISOString().slice(0, 10) });
-  return raw;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return tt("{date} 截止", { date: raw });
+  const shown = formatDeadline(raw);
+  return shown ? tt("{date} 截止", { date: shown }) : raw;
 }
 
 export function PaneLoading() {

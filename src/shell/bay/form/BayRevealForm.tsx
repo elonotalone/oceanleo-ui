@@ -10,6 +10,10 @@ export type BayRevealItem = {
   done: boolean;
   summary?: string;
   optional?: boolean;
+  /** 必填：标签后面画一个红色「*」。 */
+  required?: boolean;
+  /** 提交时发现这一项没填：标签变红。 */
+  invalid?: boolean;
   /** 保留给调用方；字段现在一律常开，随时可改。 */
   alwaysOpen?: boolean;
   children: ReactNode;
@@ -51,10 +55,22 @@ export function BayRevealForm(props: {
 
   function renderRow(item: BayRevealItem): ReactElement {
     return (
-      <div key={item.id} data-bay-reveal-item={item.id} data-bay-reveal-open="" data-bay-reveal-pinned={item.alwaysOpen ? "" : undefined}>
+      <div
+        key={item.id}
+        data-bay-reveal-item={item.id}
+        data-bay-reveal-open=""
+        data-bay-reveal-pinned={item.alwaysOpen ? "" : undefined}
+        data-bay-reveal-invalid={item.invalid ? "" : undefined}
+        className="scroll-mt-4"
+      >
         {item.label ? (
-          <p data-bay-reveal-label="" className={BAY_FORM_LABEL_CLASS}>
+          <p data-bay-reveal-label="" className={item.invalid ? "text-[13px] font-medium text-rose-600" : BAY_FORM_LABEL_CLASS}>
             {item.label}
+            {item.required ? (
+              <span data-bay-required="" role="img" aria-label={tt("必填")} className="ml-0.5 text-rose-600">
+                *
+              </span>
+            ) : null}
           </p>
         ) : null}
         <div className={item.label ? "mt-2" : undefined}>{item.children}</div>

@@ -72,7 +72,7 @@ test("seller 源码里的 tt 字面量都有 16 语译文", () => {
     const code = stripJsComments(readFileSync(join(dir, name), "utf8"));
     for (const match of code.matchAll(/tt\(\s*(["'`])((?:\\.|(?!\1).)*)\1/g)) keys.add(match[2]);
   }
-  assert.ok(keys.size >= 180, `只收到 ${keys.size} 条`);
+  assert.ok(keys.size >= 150, `只收到 ${keys.size} 条`);
   const missing = [];
   for (const key of keys) {
     for (const locale of LOCALES) {

@@ -93,7 +93,7 @@ test("我的库：列自己的全部任务（含放进项目的），给出 atta
     { kind: "task", id: "t1", site_key: "ppt", title: "路演稿", status: "done", created_at: "2026-10-02T00:00:00Z" },
     { kind: "task", id: "t2", site_key: "oceanleo", title: "", status: "running", created_at: null },
   ]);
-  assert.deepEqual(library.libraryWorkRef(works[0]), { kind: "task", id: "t1", site_key: "ppt", title: "路演稿" });
+  assert.deepEqual(library.libraryWorkRef(works[0]), { kind: "task", id: "t1", site_key: "ppt", title: "路演稿", thumb_url: undefined });
   assert.deepEqual(library.filterLibraryWorks(works, "路演").map((w) => w.id), ["t1"]);
   assert.deepEqual(library.filterLibraryWorks(works, "  ").map((w) => w.id), ["t1", "t2"]);
   delete globalThis.__tasksReply;

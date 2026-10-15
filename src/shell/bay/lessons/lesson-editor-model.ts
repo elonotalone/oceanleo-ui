@@ -1,4 +1,5 @@
 import type { BayLesson, BayLessonInput, BayLessonMine, BayLessonPurchase } from "../../../lib/bay/lessons";
+import { deadlineFromRow, deadlineToPayload } from "../form/bay-deadline";
 import {
   audienceDone,
   audienceMemberIds,
@@ -33,16 +34,6 @@ const TITLE_LIMIT = 80;
 const SUMMARY_LIMIT = 200;
 const DESCRIPTION_LIMIT = 4000;
 
-function dateInputValue(value: string | null | undefined): string {
-  if (!value) return "";
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? "" : at.toISOString().slice(0, 10);
-}
-
-function deadlinePayload(deadlineAt: string): string | null {
-  return deadlineAt ? new Date(`${deadlineAt}T23:59:59`).toISOString() : null;
-}
-
 function audienceFromLesson(
   lesson: Pick<BayLesson, "audience_mode" | "audience_handle" | "audience_member_ids">,
 ): BayAudience {
@@ -63,7 +54,7 @@ export function lessonTermsWrite(draft: LessonDraft): Pick<
     audience_mode: audience.mode === "verified_first" ? "public" : audience.mode,
     audience_handle: audience.mode === "invited" ? audience.handle.trim() || audience.members[0]?.name || null : null,
     audience_member_ids: audience.mode === "invited" || audience.mode === "group" ? audienceMemberIds(audience) : [],
-    deadline_at: deadlinePayload(draft.deadlineAt || ""),
+    deadline_at: deadlineToPayload(draft.deadlineAt || ""),
   };
 }
 
@@ -125,7 +116,7 @@ export function draftFromLesson(
     price: toInput(lesson.price_fen || 0),
     customTerms: typeof lesson.custom_terms === "string" ? lesson.custom_terms : "",
     audience: audienceFromLesson(lesson),
-    deadlineAt: dateInputValue(lesson.deadline_at),
+    deadlineAt: deadlineFromRow(lesson.deadline_at),
   };
 }
 
@@ -173,8 +164,8 @@ export function lessonPatch(
   if (nextHandle !== prevHandle) patch.audience_handle = nextHandle || null;
   if (nextMembers.join("\0") !== prevMembers.join("\0")) patch.audience_member_ids = nextMembers;
   const nextDeadline = draft.deadlineAt || "";
-  const prevDeadline = dateInputValue(lesson.deadline_at);
-  if (nextDeadline !== prevDeadline) patch.deadline_at = deadlinePayload(nextDeadline);
+  const prevDeadline = deadlineFromRow(lesson.deadline_at);
+  if (nextDeadline !== prevDeadline) patch.deadline_at = deadlineToPayload(nextDeadline);
   return patch;
 }
 

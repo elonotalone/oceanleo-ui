@@ -8,6 +8,15 @@ import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
+// 计费方式卡片：免费协作（free）不在卡片里，免费只由价格框 0 表达。
+const PRICING_MODEL_CARDS = [
+  { key: "fixed", name_zh: "一口价交付", unit: "project", requires: [], settlement_rule_zh: "交付清单齐全即完成", auto_accept_days_default: 7 },
+  { key: "session", name_zh: "按次会诊", unit: "session", requires: [], settlement_rule_zh: "以会话时间戳为准", auto_accept_days_default: 2 },
+  { key: "hourly", name_zh: "按时计费", unit: "hour", requires: [], settlement_rule_zh: "按已记录时长结算", auto_accept_days_default: 3 },
+  { key: "milestone", name_zh: "分阶段", unit: "project", requires: [], settlement_rule_zh: "每个里程碑独立验收", auto_accept_days_default: 7 },
+  { key: "free", name_zh: "免费协作", unit: "project", requires: [], settlement_rule_zh: "不涉及金额", auto_accept_days_default: 0 },
+];
+
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
@@ -151,7 +160,7 @@ function reset() {
   globalThis.__bayPickedWork = { kind: "task", id: "task-42", title: "季度汇报" };
   globalThis.__bayRespond = (method, path, body) => {
     if (method === "GET" && path === "/v1/talent/me") return { profile: PROFILE };
-    if (method === "GET" && path === "/v1/talent/pricing-models") return { items: [] };
+    if (method === "GET" && path === "/v1/talent/pricing-models") return { items: PRICING_MODEL_CARDS };
     if (method === "GET" && path === "/v1/moderation/my-cases") return { cases: [] };
     if (method === "GET" && path === "/v1/talent/domains") return { domains: [{ key: "tax", name_zh: "税务", gated: false }] };
     if (method === "GET" && path === "/v1/talent/me/services") return { items: [] };
@@ -202,6 +211,10 @@ async function expandTerms(view) {
 
 async function pickHowYouDeliver(view, kind) {
   await expandTerms(view);
+  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
+  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
+    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
+  }
   await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
 }
 
@@ -226,33 +239,35 @@ test("类别选择器是卖/买，卖的交付方式含 digital / service / app 
   assert.ok(view.host.querySelector("[data-bay-publish-category-field] [data-bay-menu-trigger]"));
   assert.ok(view.host.querySelector("[data-bay-publish-top-pair]"));
   assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-category-select]"));
-  assert.equal(view.host.querySelector('[data-bay-publish="form"] [data-bay-reveal-open]')?.getAttribute("data-bay-reveal-item"), "cover");
+  assert.equal(view.host.querySelector('[data-bay-publish="form"] [data-bay-reveal-open]')?.getAttribute("data-bay-reveal-item"), "how-you-deliver");
   assert.equal(view.find('[data-bay-section="terms"]').getAttribute("data-bay-section-collapsed"), "");
   await view.unmount();
 });
 
-test("选 service 后计费方式在价格条款，默认按约定时间交付", async () => {
+test("选 service 后价格组只有价格框，计费方式卡片是交付条款的第一项，不含免费协作", async () => {
   reset();
   const view = await mount({ kind: "publish" });
   assert.equal(view.find('[data-bay-section="terms"]').getAttribute("data-bay-section-collapsed"), "");
   await pickHowYouDeliver(view, "service");
   const price = view.find('[data-bay-section="price"]');
-  const form = price.querySelector("[data-bay-service-form]");
-  assert.ok(form, "计费方式应在价格条款");
-  assert.equal(form.querySelector('[data-bay-service-form-option="service"]')?.getAttribute("aria-pressed"), "true");
-  assert.equal(form.querySelector('[data-bay-service-form-option="consult"]')?.getAttribute("aria-pressed"), "false");
-  assert.equal(form.querySelector('[data-bay-billing="hour"]')?.getAttribute("aria-pressed"), "false");
-  assert.match(view.find('[data-bay-section="price"] [data-bay-reveal-item="billing"]').textContent, /计费方式/);
-  assert.equal(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="billing"]'), null);
+  const terms = view.find('[data-bay-section="terms"]');
+  assert.equal(price.querySelector("[data-bay-service-form]"), null, "不再有「计费方式」选择行");
+  assert.equal(price.querySelector('[data-bay-reveal-item="billing"]'), null);
+  assert.equal(price.querySelector("[data-bay-model]"), null, "计费方式卡片不在价格组里");
+  assert.deepEqual(
+    [...terms.querySelectorAll("[data-bay-model]")].map((node) => node.getAttribute("data-bay-model")),
+    ["fixed", "session", "hourly", "milestone"],
+  );
+  assert.equal(terms.querySelector('[data-bay-model="fixed"]').hasAttribute("data-bay-choice-selected"), true);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["billing", "price"],
+    ["price"],
   );
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="terms"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["delivery-days", "revisions", "deadline", "custom-terms"],
+    ["billing-model", "delivery-days", "revisions", "deadline", "custom-terms"],
   );
-  assert.ok(view.host.querySelector('[data-bay-section="offer"] [data-bay-how-you-deliver]'));
+  assert.ok(view.host.querySelector('[data-bay-section="product"] [data-bay-how-you-deliver]'));
   assert.ok(view.host.querySelector('[data-bay-section="audience"] [data-bay-reveal-item="who"]'));
   assert.ok(view.host.querySelector('[data-bay-field="delivery-days"]'));
   assert.ok(view.host.querySelector('[data-bay-field="revisions"]'));
@@ -264,15 +279,25 @@ test("选 service 后计费方式在价格条款，默认按约定时间交付",
   await view.unmount();
 });
 
-test("点按次后产品信息仍是封面标题介绍文件，不换成领域", async () => {
+test("点按次卡片后产品信息仍是封面标题介绍文件，不换成领域", async () => {
   reset();
   const view = await mount({ kind: "publish" });
   await pickHowYouDeliver(view, "service");
-  await view.click('[data-bay-section="price"] [data-bay-service-form-option="consult"]');
-  assert.equal(view.find('[data-bay-section="price"] [data-bay-service-form-option="consult"]').getAttribute("aria-pressed"), "true");
+  await view.click('[data-bay-section="terms"] [data-bay-model="session"]');
+  // 选定后只留被选中的那一张，旁边有「更改」重新展开。
+  assert.deepEqual(
+    [...view.host.querySelectorAll("[data-bay-model]")].map((node) => node.getAttribute("data-bay-model")),
+    ["session"],
+  );
+  assert.equal(view.find('[data-bay-section="terms"] [data-bay-model="session"]').hasAttribute("data-bay-choice-selected"), true);
+  // 没有「更改」键：点这一张（右侧是展开小箭头）就重新展开，可以改选。
+  assert.equal(view.host.querySelector("[data-bay-choice-change]"), null);
+  assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-choice-chevron]'));
+  await view.click('[data-bay-section="terms"] [data-bay-model="session"]');
+  assert.equal(view.host.querySelectorAll("[data-bay-model]").length, 4);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["cover", "title", "description", "files"],
+    ["how-you-deliver", "cover", "title", "description", "files"],
   );
   assert.doesNotMatch(view.find('[data-bay-section="product"]').textContent, /领域/);
   assert.equal(view.host.querySelector("[data-bay-domains]"), null);
@@ -321,5 +346,42 @@ test("publish 带 category=design 时，选素材后类目是 design，填齐后
   const created = globalThis.__bayCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/me/services");
   assert.ok(created, "没有发出创建请求");
   assert.equal(created.body.category, "design");
+  await view.unmount();
+});
+
+test("必填项带 *；点发布缺项时标红、不显示「还差几项」；选定后卡片收起可更改", async () => {
+  reset();
+  const view = await mount({ kind: "publish" });
+  for (const id of ["cover", "title", "how-you-deliver"]) {
+    assert.ok(view.host.querySelector(`[data-bay-reveal-item="${id}"] [data-bay-required]`), `${id} 缺少 *`);
+  }
+  assert.equal(view.host.querySelector('[data-bay-reveal-item="description"] [data-bay-required]'), null);
+  assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-required]"));
+  assert.doesNotMatch(view.find("[data-bay-publish-bar]").textContent, /还差|more and you can publish/);
+  await view.click('[data-bay-action="publish"]');
+  assert.ok(view.host.querySelector('[data-bay-reveal-item="title"][data-bay-reveal-invalid]'));
+  // 描述默认一行，随内容变高由 scrollHeight 决定；这里只确认是单行起步。
+  assert.equal(view.find('[data-bay-field="description"]').getAttribute("rows"), "1");
+  await view.click('[data-bay-how-you-deliver] [data-bay-choice-option="service"]');
+  assert.equal(view.host.querySelectorAll("[data-bay-how-you-deliver] [data-bay-choice-option]").length, 1);
+  await view.click('[data-bay-how-you-deliver] [data-bay-choice-option="service"]');
+  assert.equal(view.host.querySelectorAll("[data-bay-how-you-deliver] [data-bay-choice-option]").length, 5);
+  await view.unmount();
+});
+
+test("截止时间：点开是日历加时分秒和时区，选日期后写出设备时间与 UTC，可清除", async () => {
+  reset();
+  const view = await mount({ kind: "publish" });
+  await expandTerms(view);
+  assert.equal(view.host.querySelector("[data-bay-deadline-panel]"), null);
+  await view.click("[data-bay-deadline-trigger]");
+  assert.ok(view.find("[data-bay-deadline-panel]"));
+  assert.ok(view.find("[data-bay-deadline-zone]"));
+  assert.equal(view.host.querySelectorAll("[data-bay-deadline-time] input").length, 3);
+  await view.click('[data-bay-deadline-day="15"]');
+  assert.match(view.find("[data-bay-deadline-trigger]").textContent, /\d{4}-\d{2}-15 23:59:59 UTC/);
+  assert.match(view.find("[data-bay-deadline-check]").textContent, /UTC：\d{4}-\d{2}-1[56] \d{2}:\d{2}:\d{2}/);
+  await view.click("[data-bay-deadline-clear]");
+  assert.doesNotMatch(view.find("[data-bay-deadline-trigger]").textContent, /UTC/);
   await view.unmount();
 });

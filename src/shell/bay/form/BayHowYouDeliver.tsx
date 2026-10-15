@@ -30,6 +30,7 @@ export function BayHowYouDeliver(props: {
         value={props.value}
         onChange={props.onChange}
         columns={2}
+        collapsible
         disabled={props.disabled}
         optionProps={(id) => ({
           "data-bay-kind": id,
@@ -77,14 +78,18 @@ export function listingSectionGroups(input: {
   const missing = input.missing || {};
   const highlight = input.highlight;
   const offerLabel = input.intent === "buy" ? LISTING_SECTION_LABELS.offerBuy : LISTING_SECTION_LABELS.offer;
+  // 「你交付什么 / 交付给你的是什么」是产品信息里的第一块，不再单独成组。
+  const offerItems = (input.offerItems || []).map((item, index) => (index === 0 ? { ...item, label: input.tt(offerLabel), required: true } : item));
+  const productMissing = [...(missing.offer || []), ...(missing.product || [])];
+  const productHighlight = highlight === "product" || highlight === "offer";
   const groups: BayRevealGroup[] = [
     {
       id: "product",
       label: input.tt(LISTING_SECTION_LABELS.product),
-      items: input.productItems,
-      highlight: highlight === "product",
-      missing: highlight === "product" ? missing.product : undefined,
-      done: (missing.product || []).length === 0,
+      items: [...offerItems, ...input.productItems],
+      highlight: productHighlight,
+      missing: productHighlight ? productMissing : undefined,
+      done: productMissing.length === 0,
     },
     {
       id: "price",
@@ -104,16 +109,6 @@ export function listingSectionGroups(input: {
       highlight: highlight === "audience",
       missing: highlight === "audience" ? missing.audience : undefined,
       done: (missing.audience || []).length === 0,
-    });
-  }
-  if (input.offerItems?.length) {
-    groups.push({
-      id: "offer",
-      label: input.tt(offerLabel),
-      items: input.offerItems,
-      highlight: highlight === "offer",
-      missing: highlight === "offer" ? missing.offer : undefined,
-      done: (missing.offer || []).length === 0,
     });
   }
   groups.push({

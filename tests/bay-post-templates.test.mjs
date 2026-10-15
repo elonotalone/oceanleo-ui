@@ -230,7 +230,7 @@ test("素材预览：自定义条款原样出现，截止日期写成日期截�
   assert.match(out, /data-bay-custom-terms/);
   assert.match(out, /只给甲方用/);
   assert.match(out, /data-bay-deadline/);
-  assert.match(out, /2026-12-01 截止/);
+  assert.match(out, /2026-12-01 23:59:59 UTC\S* 截止/);
   assert.doesNotMatch(out, /可商用/);
 });
 

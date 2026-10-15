@@ -1,6 +1,7 @@
 // 服务向导的纯逻辑（移植自 talent `components/seller/ServiceWizard.tsx`）：步骤、校验、载荷、载入映射、预览卡。
 // 不碰 React 与网络，测试直接调用。界面文案在这里只写中文原文，由调用方 tt() 翻译。
 
+import { deadlineFromRow, deadlineToPayload } from "../form/bay-deadline";
 import type { BayFeedItem } from "../../../lib/bay/types";
 import { BAY_GALLERY_MAX, cleanGalleryUrls } from "../form/bay-gallery";
 import {
@@ -38,7 +39,6 @@ import {
   type BaySellerCategory,
   type BaySellerPriceUnit,
   type BaySellerProfile,
-  type BayServiceAddonRow,
   type BayServiceFaqRow,
   type BayServiceInput,
   type BayServiceMediaKind,
@@ -59,15 +59,14 @@ export type EditorStep =
   | "model"
   | "fields"
   | "pricing"
-  | "addons"
   | "details"
   | "faq"
   | "media"
   | "publish";
 
-export const DELIVERY_STEPS: EditorStep[] = ["kind", "basics", "model", "fields", "pricing", "addons", "details", "faq", "media", "publish"];
+export const DELIVERY_STEPS: EditorStep[] = ["kind", "basics", "model", "fields", "pricing", "details", "faq", "media", "publish"];
 
-/** 答疑没有计费方式、加购、图集：按次或按小时一个价，对话本身就是交付物。 */
+/** 答疑没有计费方式、图集：按次或按小时一个价，对话本身就是交付物。 */
 export const CONSULT_STEPS: EditorStep[] = ["kind", "domain", "prompts", "basics", "pricing", "publish"];
 
 export const STEP_LABELS: Record<EditorStep, string> = {
@@ -78,7 +77,6 @@ export const STEP_LABELS: Record<EditorStep, string> = {
   model: "计费方式",
   fields: "交付约定",
   pricing: "价格与交期",
-  addons: "加购项",
   details: "详情",
   faq: "常见问题",
   media: "作品图",
@@ -114,16 +112,6 @@ export interface DraftTier {
   enabled: boolean;
 }
 
-export interface DraftAddon {
-  key: string;
-  id?: string;
-  title: string;
-  description: string;
-  price_fen: number;
-  extra_days: number;
-  enabled: boolean;
-}
-
 export interface DraftFaq {
   key: string;
   id?: string;
@@ -154,10 +142,8 @@ export interface EditorDraft {
   pricingModel: string;
   fieldValues: BayFieldValues;
   tiers: DraftTier[];
-  addons: DraftAddon[];
   faqs: DraftFaq[];
   media: DraftMedia[];
-  deletedAddonIds: string[];
   deletedFaqIds: string[];
   deletedMediaIds: string[];
   domain: string;
@@ -185,12 +171,9 @@ export function clientKey(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${keySeq}`;
 }
 
+/** 一个服务只有一个价格；`basic` 行是它的载体（订单、台账、信息流都从这一行读价）。 */
 export function defaultTiers(tt: Translate): DraftTier[] {
-  return [
-    { tier: "basic", title: tt("基础版"), description: tt("完成核心交付"), price_fen: 0, delivery_days: 3, revisions: 1, features: [], enabled: true },
-    { tier: "standard", title: tt("标准版"), description: tt("更完整的交付范围"), price_fen: 0, delivery_days: 5, revisions: 2, features: [], enabled: false },
-    { tier: "premium", title: tt("高级版"), description: tt("完整方案与优先协作"), price_fen: 0, delivery_days: 7, revisions: 3, features: [], enabled: false },
-  ];
+  return [{ tier: "basic", title: tt("基础版"), description: tt("完成核心交付"), price_fen: 0, delivery_days: 3, revisions: 1, features: [], enabled: true }];
 }
 
 export function emptyDraft(tt: Translate): EditorDraft {
@@ -208,10 +191,8 @@ export function emptyDraft(tt: Translate): EditorDraft {
     pricingModel: "",
     fieldValues: {},
     tiers: defaultTiers(tt),
-    addons: [],
     faqs: [],
     media: [],
-    deletedAddonIds: [],
     deletedFaqIds: [],
     deletedMediaIds: [],
     domain: "",
@@ -358,21 +339,17 @@ export function pricesLegal(draft: Pick<EditorDraft, "tiers" | "pricingModel" | 
   return tiers.every((tier) => tier.price_fen > 0);
 }
 
-export function pricesOrdered(draft: Pick<EditorDraft, "tiers">): boolean {
-  const tiers = enabledTiers(draft);
-  return tiers.every((tier, index) => index === 0 || tiers[index - 1].price_fen <= tier.price_fen);
-}
-
+/** 只发 basic 这一行；服务端也只认它。 */
 export function tierRows(draft: Pick<EditorDraft, "tiers">): BayServiceTierRow[] {
-  return draft.tiers.map((tier) => ({
-    tier: tier.tier,
+  return draft.tiers.slice(0, 1).map((tier) => ({
+    tier: "basic" as const,
     title: tier.title.trim(),
     description: tier.description.trim(),
     price_fen: Math.max(0, Math.round(tier.price_fen || 0)),
     delivery_days: tier.delivery_days,
     revisions: tier.revisions,
     features: tier.features.map((item) => item.trim()).filter(Boolean).slice(0, 20),
-    enabled: tier.enabled,
+    enabled: true,
   }));
 }
 
@@ -404,9 +381,10 @@ export function listingPayload(draft: EditorDraft): {
 }
 
 export function resolvedPricingModel(draft: EditorDraft): string {
-  if (draft.listingKind === "digital" || draft.simplePrice) {
-    return (draft.tiers[0]?.price_fen || 0) === 0 ? "free" : "fixed";
-  }
+  const free = !draft.priceUnset && (draft.tiers[0]?.price_fen || 0) === 0;
+  if (draft.listingKind === "digital") return free ? "free" : "fixed";
+  // 单一价格：计费方式由「计费方式」卡片选；价格是 0 就是免费。
+  if (draft.simplePrice) return free ? "free" : draft.pricingModel && draft.pricingModel !== "free" ? draft.pricingModel : "fixed";
   return draft.pricingModel;
 }
 
@@ -439,7 +417,7 @@ export function serviceInput(draft: EditorDraft, model?: BayPricingModel): BaySe
     audience_mode: draft.audience.mode,
     audience_handle: draft.audience.mode === "invited" ? draft.audience.handle.trim() || draft.audience.members[0]?.name || null : null,
     audience_member_ids: draft.audience.mode === "invited" || draft.audience.mode === "group" ? audienceMemberIds(draft.audience) : [],
-    deadline_at: draft.deadlineAt ? new Date(`${draft.deadlineAt}T23:59:59`).toISOString() : null,
+    deadline_at: deadlineToPayload(draft.deadlineAt),
   };
 }
 
@@ -461,7 +439,7 @@ export function consultInput(draft: EditorDraft, status: "draft" | "published"):
     audience_mode: draft.audience.mode,
     audience_handle: draft.audience.mode === "invited" ? draft.audience.handle.trim() || draft.audience.members[0]?.name || null : null,
     audience_member_ids: draft.audience.mode === "invited" || draft.audience.mode === "group" ? audienceMemberIds(draft.audience) : [],
-    deadline_at: draft.deadlineAt ? new Date(`${draft.deadlineAt}T23:59:59`).toISOString() : null,
+    deadline_at: deadlineToPayload(draft.deadlineAt),
   };
 }
 
@@ -484,7 +462,6 @@ export function faqRowsForSave(draft: EditorDraft): { rows: DraftFaq[]; deleted:
 export interface LoadedService {
   service: BayOwnService;
   tiers: BayServiceTierRow[];
-  addons: BayServiceAddonRow[];
   faq: BayServiceFaqRow[];
   media: BayServiceMediaRow[];
   pricing: BayServicePricing | null;
@@ -505,15 +482,13 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
           delivery_days: saved.delivery_days ?? null,
           revisions: typeof saved.revisions === "number" ? saved.revisions : 0,
           features: Array.isArray(saved.features) ? saved.features : [],
-          enabled: saved.enabled !== false,
+          enabled: true,
         }
       : fallback;
   });
   const faqRows = [...(loaded.faq || [])].sort((a, b) => (a.position || 0) - (b.position || 0));
   const pricing = loaded.pricing;
   const extras = extrasFromService(service);
-  const enabledCount = tiers.filter((tier) => tier.enabled).length;
-  const addonCount = (loaded.addons || []).filter((row) => row.title).length;
   return {
     ...base,
     serviceId: service.id,
@@ -529,15 +504,6 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
     pricingModel: pricing?.pricing_model?.key || service.engagement_kind || "",
     fieldValues: { ...(pricing?.values || {}) },
     tiers,
-    addons: (loaded.addons || []).map((row) => ({
-      key: row.id,
-      id: row.id,
-      title: row.title || "",
-      description: row.description || "",
-      price_fen: row.price_fen || 0,
-      extra_days: row.extra_days || 0,
-      enabled: row.enabled !== false,
-    })),
     faqs: faqRows.map((row) => ({ key: row.id, id: row.id, question: row.question || "", answer: row.answer || "" })),
     media: [...(loaded.media || [])]
       .sort((a, b) => (a.position || 0) - (b.position || 0))
@@ -547,18 +513,12 @@ export function draftFromLoaded(loaded: LoadedService, tt: Translate): EditorDra
     license: extras.license,
     ...applyDigitalWorks(digitalWorksFromLoaded({ digitalWork: extras.digitalWork, media: loaded.media || [] })),
     official: extras.official,
-    simplePrice: extras.listingKind === "digital" || (enabledCount <= 1 && addonCount === 0),
+    simplePrice: true,
     customTerms: extras.customTerms,
     audience: extras.audience,
     deadlineAt: extras.deadlineAt,
     priceUnset: false,
   };
-}
-
-function dateInputValue(value: string | null | undefined): string {
-  if (!value) return "";
-  const at = new Date(value);
-  return Number.isNaN(at.getTime()) ? "" : at.toISOString().slice(0, 10);
 }
 
 function extrasFromService(service: BayOwnService): {
@@ -592,7 +552,7 @@ function extrasFromService(service: BayOwnService): {
       handle: service.audience_handle || "",
       members: (service.audience_member_ids || []).map((userId) => ({ userId, name: userId })),
     }),
-    deadlineAt: dateInputValue(service.deadline_at),
+    deadlineAt: deadlineFromRow(service.deadline_at),
   };
 }
 
@@ -635,9 +595,7 @@ export function blockedReason(step: EditorStep, draft: EditorDraft, ctx: EditorC
       if (draft.consultUnit === "session" && !(draft.consultRounds && draft.consultRounds > 0)) return { message: "按次答疑要写明一次包含几轮问答" };
       if (draft.consultUnit === "hour" && !(draft.consultMinutes && draft.consultMinutes > 0)) return { message: "按小时答疑要写明一小时按多少分钟计" };
     } else {
-      if (!enabledTiers(draft).length) return { message: "至少启用一档价格" };
-      if (!pricesLegal(draft)) return { message: draft.pricingModel === "free" ? "免费协作的每档价格都要是 0" : "每档价格都要大于 0" };
-      if (!pricesOrdered(draft)) return { message: "启用的价格档要按基础、标准、高级从低到高" };
+      if (!pricesLegal(draft)) return { message: draft.pricingModel === "free" ? "免费协作的价格要是 0" : "价格要大于 0" };
     }
   }
   if (step === "media") {
@@ -775,10 +733,9 @@ export function sectionMissing(draft: EditorDraft, ctx: EditorContext): Record<P
       if (!(draft.tiers[0]?.delivery_days && draft.tiers[0].delivery_days > 0)) terms.push("交付天数");
     } else {
       if (!resolvedPricingModel(draft) && !draft.pricingModel) terms.push("计费方式");
-      if (!enabledTiers(draft).length) price.push("至少启用一档价格");
-      else if (!pricesLegal({ ...draft, pricingModel: resolvedPricingModel(draft) || draft.pricingModel })) {
-        price.push(draft.pricingModel === "free" ? "免费协作的每档价格都要是 0" : "每档价格都要大于 0");
-      } else if (!pricesOrdered(draft)) price.push("启用的价格档要按基础、标准、高级从低到高");
+      if (!pricesLegal({ ...draft, pricingModel: resolvedPricingModel(draft) || draft.pricingModel })) {
+        price.push(draft.pricingModel === "free" ? "免费协作的价格要是 0" : "价格要大于 0");
+      }
     }
     if (!audienceDone(draft.audience)) terms.push("向谁展示");
   } else if (kind === "consult") {

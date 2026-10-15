@@ -140,6 +140,12 @@ const settingsStub = dataModule(`
   export function openBaySettings(pane){ globalThis.__baySettingsOpened ??= []; globalThis.__baySettingsOpened.push(pane); }
 `);
 const domainStub = dataModule(`
+  export const CONFIGURED_DOMAIN_FAMILY = undefined;
+  export function currentDomainFamily(){ return undefined; }
+  export function familyForHost(){ return undefined; }
+  export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }
+  export function sharedCookieDomainFor(){ return undefined; }
+  export const REGISTRABLE_DOMAINS = [];
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }
   export function currentFamilySubsiteOrigin(label){ return ["slide", "design", "3d"].includes(label) ? "https://" + label + ".oceanleo.test" : undefined; }
   export function portalHref(path){ return "https://oceanleo.test" + path; }

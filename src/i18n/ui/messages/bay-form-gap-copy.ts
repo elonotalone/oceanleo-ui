@@ -1,0 +1,125 @@
+// LeoBay 填写页补齐的 16 语文案（发布 / 需求页里已在用、此前漏译的几句）。key = 简体中文原文；已在 ./bay-copy.ts 的 PARTS 里登记。
+import { assembleCopy } from "./shell-overhaul-copy-shared";
+
+const SOURCE = {
+  chooseAudience: "请选择要给谁看",
+  writeTitleFirst: "请先写标题",
+  videoWorkflow: "视频工作流",
+  games: "游戏",
+  interactiveDoc: "交互文档",
+} as const;
+
+export const BAY_FORM_GAP_MESSAGES = assembleCopy(SOURCE, {
+  "de": {
+    chooseAudience: "Wähle aus, wer das sehen darf",
+    writeTitleFirst: "Schreibe zuerst einen Titel",
+    videoWorkflow: "Video-Workflow",
+    games: "Spiele",
+    interactiveDoc: "Interaktive Dokumente",
+  },
+  "en": {
+    chooseAudience: "Choose who can see this",
+    writeTitleFirst: "Write a title first",
+    videoWorkflow: "Video workflow",
+    games: "Games",
+    interactiveDoc: "Interactive documents",
+  },
+  "es": {
+    chooseAudience: "Elige quién puede verlo",
+    writeTitleFirst: "Escribe primero un título",
+    videoWorkflow: "Flujo de trabajo de vídeo",
+    games: "Juegos",
+    interactiveDoc: "Documentos interactivos",
+  },
+  "es-419": {
+    chooseAudience: "Elige quién puede verlo",
+    writeTitleFirst: "Escribe primero un título",
+    videoWorkflow: "Flujo de trabajo de video",
+    games: "Juegos",
+    interactiveDoc: "Documentos interactivos",
+  },
+  "fr": {
+    chooseAudience: "Choisissez qui peut voir ceci",
+    writeTitleFirst: "Écrivez d'abord un titre",
+    videoWorkflow: "Workflow vidéo",
+    games: "Jeux",
+    interactiveDoc: "Documents interactifs",
+  },
+  "it": {
+    chooseAudience: "Scegli chi può vederlo",
+    writeTitleFirst: "Scrivi prima un titolo",
+    videoWorkflow: "Workflow video",
+    games: "Giochi",
+    interactiveDoc: "Documenti interattivi",
+  },
+  "pt-BR": {
+    chooseAudience: "Escolha quem pode ver isto",
+    writeTitleFirst: "Escreva um título primeiro",
+    videoWorkflow: "Fluxo de trabalho de vídeo",
+    games: "Jogos",
+    interactiveDoc: "Documentos interativos",
+  },
+  "pt-PT": {
+    chooseAudience: "Escolha quem pode ver isto",
+    writeTitleFirst: "Escreva primeiro um título",
+    videoWorkflow: "Fluxo de trabalho de vídeo",
+    games: "Jogos",
+    interactiveDoc: "Documentos interativos",
+  },
+  "vi": {
+    chooseAudience: "Chọn người được xem nội dung này",
+    writeTitleFirst: "Hãy viết tiêu đề trước",
+    videoWorkflow: "Quy trình video",
+    games: "Trò chơi",
+    interactiveDoc: "Tài liệu tương tác",
+  },
+  "tr": {
+    chooseAudience: "Bunu kimlerin görebileceğini seçin",
+    writeTitleFirst: "Önce bir başlık yazın",
+    videoWorkflow: "Video iş akışı",
+    games: "Oyunlar",
+    interactiveDoc: "Etkileşimli belgeler",
+  },
+  "zh-TW": {
+    chooseAudience: "請選擇要給誰看",
+    writeTitleFirst: "請先寫標題",
+    videoWorkflow: "影片工作流程",
+    games: "遊戲",
+    interactiveDoc: "互動文件",
+  },
+  "ja": {
+    chooseAudience: "公開する相手を選んでください",
+    writeTitleFirst: "先にタイトルを入力してください",
+    videoWorkflow: "動画ワークフロー",
+    games: "ゲーム",
+    interactiveDoc: "インタラクティブドキュメント",
+  },
+  "ko": {
+    chooseAudience: "누구에게 보여줄지 선택하세요",
+    writeTitleFirst: "먼저 제목을 입력하세요",
+    videoWorkflow: "동영상 워크플로",
+    games: "게임",
+    interactiveDoc: "인터랙티브 문서",
+  },
+  "ar": {
+    chooseAudience: "اختر من يمكنه رؤية هذا",
+    writeTitleFirst: "اكتب عنوانًا أولًا",
+    videoWorkflow: "سير عمل الفيديو",
+    games: "الألعاب",
+    interactiveDoc: "مستندات تفاعلية",
+  },
+  "th": {
+    chooseAudience: "เลือกว่าใครจะเห็นได้",
+    writeTitleFirst: "กรุณาเขียนชื่อเรื่องก่อน",
+    videoWorkflow: "เวิร์กโฟลว์วิดีโอ",
+    games: "เกม",
+    interactiveDoc: "เอกสารเชิงโต้ตอบ",
+  },
+  "hi": {
+    chooseAudience: "चुनें कि इसे कौन देख सकता है",
+    writeTitleFirst: "पहले शीर्षक लिखें",
+    videoWorkflow: "वीडियो वर्कफ़्लो",
+    games: "गेम",
+    interactiveDoc: "इंटरैक्टिव दस्तावेज़",
+  },
+});

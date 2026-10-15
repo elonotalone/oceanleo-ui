@@ -1,6 +1,7 @@
 "use client";
 
 // 上架 / 编辑一个作品。本文件归 U3 单元；组件名与 props 是合同，不许改。
+import { deadlineFromRow, deadlineToPayload, formatDeadline } from "../form/bay-deadline";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -357,7 +358,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
       label: tt("截止日期"),
       done: true,
       optional: true,
-      summary: draft.deadlineAt || tt("交期可协商"),
+      summary: formatDeadline(draft.deadlineAt) || tt("交期可协商"),
       children: (
         <BayDeadlineField
           value={draft.deadlineAt}
@@ -409,7 +410,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
       : undefined,
     priceFen: priceModel === "free" ? 0 : priceFen,
     customTerms: draft.customTerms,
-    deadlineLabel: draft.deadlineAt || undefined,
+    deadlineLabel: deadlineToPayload(draft.deadlineAt) || undefined,
   };
 
   return (
@@ -424,7 +425,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
           coverUrl: next.coverUrls?.[0] || (next.coverUrl?.startsWith("https://") ? next.coverUrl : draft.coverUrl),
           galleryUrls: next.coverUrls?.length ? next.coverUrls : draft.galleryUrls,
           customTerms: next.customTerms != null ? next.customTerms : draft.customTerms,
-          deadlineAt: next.deadlineLabel || draft.deadlineAt,
+          deadlineAt: deadlineFromRow(next.deadlineLabel) || draft.deadlineAt,
           price: next.priceFen != null ? (next.priceFen > 0 ? String(next.priceFen / 100) : "") : draft.price,
           priceModel: next.priceFen != null ? (next.priceFen > 0 ? (priceModel === "free" ? "one_time" : priceModel) : "free") : draft.priceModel,
         })

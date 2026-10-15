@@ -1,4 +1,5 @@
 import type { UITranslate } from "../../../i18n/ui/useUI";
+import { formatDeadline } from "../form/bay-deadline";
 import { formatBayFen } from "../../../lib/bay/demands";
 import type { BayPrice } from "../../../lib/bay/types";
 import { baySiteName } from "../shell/bay-links";
@@ -42,7 +43,7 @@ export function deadlineText(tt: UITranslate, value: string | null | undefined, 
   if (days < 0) return tt("已过截止日");
   if (days === 0) return tt("今天截止");
   if (days <= 7) return tt("{n} 天后截止", { n: days });
-  return tt("{date} 截止", { date: new Date(at).toISOString().slice(0, 10) });
+  return tt("{date} 截止", { date: formatDeadline(value) });
 }
 
 export function authorName(tt: UITranslate, author: { display_name?: string | null; handle?: string | null } | null | undefined): string {

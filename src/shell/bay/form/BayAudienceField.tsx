@@ -31,6 +31,7 @@ export function BayAudienceField(props: {
       <BayChoice
         label={tt("向谁展示")}
         columns={1}
+        collapsible
         value={mode}
         onChange={(next) => props.onChange({ ...props.value, mode: next })}
         disabled={props.disabled}

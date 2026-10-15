@@ -31,7 +31,16 @@ export function BayPublishKindPair({
   );
 }
 
-export function BayPublishSubcategoryLabel(): ReactElement {
+export function BayPublishSubcategoryLabel({ required, invalid }: { required?: boolean; invalid?: boolean } = {}): ReactElement {
   const tt = useUI();
-  return <span className={`mb-2 block ${BAY_FORM_LABEL_CLASS}`}>{tt(BAY_CATEGORY_LABEL)}</span>;
+  return (
+    <span className={`mb-2 block ${invalid ? "text-[13px] font-medium text-rose-600" : BAY_FORM_LABEL_CLASS}`}>
+      {tt(BAY_CATEGORY_LABEL)}
+      {required ? (
+        <span data-bay-required="" role="img" aria-label={tt("必填")} className="ml-0.5 text-rose-600">
+          *
+        </span>
+      ) : null}
+    </span>
+  );
 }

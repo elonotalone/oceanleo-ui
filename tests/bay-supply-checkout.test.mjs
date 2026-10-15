@@ -73,7 +73,7 @@ const settingsStub = dataModule(`
   export async function ensureBayTerms(scope) { globalThis.__bayTerms.push(scope); return globalThis.__bayTermsAccept !== false; }
   export function BaySettingsSection(){ return null; }
 `);
-const authStub = dataModule(`export async function getUserId(){ return globalThis.__bayViewer ?? null; }`);
+const authStub = dataModule(`export async function getUserId(){ return globalThis.__bayViewer ?? null; } export async function accessToken(){ return null; } export function cachedAccessToken(){ return null; } export const AUTH_STATE_EVENT = "oceanleo:auth-state";`);
 const stateStub = dataModule(`
   globalThis.__bayOpened ??= [];
   export function openBay(target){ globalThis.__bayOpened.push(target); }
@@ -115,7 +115,6 @@ function service(extra = {}) {
       { id: "t1", service_id: "svc-1", tier: "basic", title: "一版", description: "", price_fen: 30000, delivery_days: 3, revisions: 1, features: [], enabled: true },
       { id: "t3", service_id: "svc-1", tier: "premium", title: "三版", description: "", price_fen: 90000, delivery_days: 7, revisions: -1, features: [], enabled: true },
     ],
-    addons: [{ id: "a1", service_id: "svc-1", title: "加急", description: "", price_fen: 5000, extra_days: 1, enabled: true }],
     faq: [],
     media: [],
     reviews: [],
@@ -202,7 +201,6 @@ test("付款没开放：下单只建订单，不调付款，没有付款按钮�
   assert.deepEqual(orders[0].body, {
     service_id: "svc-1",
     tier: "premium",
-    addon_ids: [],
     requirements: { title: "品牌 Logo 设计", what: "三版方案，含源文件", reference_links: ["https://a.example", "https://b.example"], deadline: "", notes: "" },
   });
   assert.ok(view.host.querySelector("[data-bay-pay-unavailable]"), "写着付款暂未开放");
@@ -281,19 +279,15 @@ test("付款就绪：下单后才出现付款按钮，点了才调 startBayPayme
   await view.unmount();
 });
 
-test("服务页勾的加购带到下单页；停用的档位提示换一个", async () => {
+test("服务页下单带档位去下单页；下单页合计只算档位；停用的档位提示换一个", async () => {
   reset();
   const servicePane = await mount(React.createElement(supply.ServicePane, { target: { kind: "service", id: "svc-1" }, layout: "docked", siteKey: "design" }));
-  const box = servicePane.host.querySelector('[data-bay-addon="a1"] input');
-  await act(async () => box.click());
   await servicePane.click('[data-bay-action="order"]');
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "checkout", serviceId: "svc-1", tier: "basic" });
   await servicePane.unmount();
   const view = await mount(pane("basic"));
-  assert.equal(view.host.querySelector('[data-bay-addon="a1"] input').checked, true);
-  assert.match(view.host.querySelector('[data-bay-addon="a1"]').className, /bg-white/);
-  assert.match(view.host.querySelector('[data-bay-addon="a1"]').className, /ring-1 ring-neutral-900/);
-  assert.match(view.host.querySelector("[data-bay-total]").textContent, /¥350/);
+  assert.equal(view.host.querySelector("[data-bay-addon]"), null);
+  assert.match(view.host.querySelector("[data-bay-total]").textContent, /¥300/);
   await view.unmount();
   const stale = await mount(pane("standard"));
   assert.equal(stale.host.querySelector("[data-bay-problem]").getAttribute("data-bay-problem"), "tier");

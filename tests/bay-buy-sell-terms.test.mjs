@@ -168,20 +168,14 @@ const EXPECTED = {
     price: ["price"],
     terms: ["deadline", "custom-terms"],
   },
+  // 发布页的计费方式由「计费方式」卡片选，价格组只剩价格框；需求单（买）仍保留计费行。
   service: {
-    price: ["billing", "price"],
+    price: ["price"],
+    buyPrice: ["billing", "price"],
     terms: ["delivery-days", "revisions", "deadline", "custom-terms"],
   },
-  session: {
-    price: ["billing", "price"],
-    terms: ["consult-rounds", "delivery-days", "revisions", "deadline", "custom-terms"],
-  },
-  hour: {
-    price: ["billing", "price"],
-    terms: ["consult-minutes", "delivery-days", "revisions", "deadline", "custom-terms"],
-  },
   app: {
-    price: ["app-price-model", "price"],
+    price: ["price"],
     terms: ["deadline", "custom-terms"],
   },
   lesson: {
@@ -244,11 +238,15 @@ async function expandTerms(view) {
 }
 
 async function pickHowYouDeliver(view, kind) {
+  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
+  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
+    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
+  }
   await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
 }
 
 function revealIds(host, section) {
-  return [...host.querySelectorAll(`[data-bay-section="${section}"] [data-bay-reveal-item]`)].map((node) => node.getAttribute("data-bay-reveal-item"));
+  return [...host.querySelectorAll(`[data-bay-section="${section}"] [data-bay-reveal-item]`)].map((node) => node.getAttribute("data-bay-reveal-item")).filter((id) => id !== "billing-model" /* 只有卖的表单有计费方式卡片，买的需求单自己在价格组选 */);
 }
 
 function sectionDump(host) {
@@ -278,9 +276,8 @@ async function mountPair() {
 async function assertKind(kind, buy, sell, expected, extra) {
   assert.deepEqual(revealIds(sell.host, "price"), expected.price, pairDump(kind, buy, sell, expected));
   assert.deepEqual(revealIds(sell.host, "terms"), expected.terms, pairDump(kind, buy, sell, expected));
-  assert.deepEqual(revealIds(buy.host, "price"), expected.price, pairDump(kind, buy, sell, expected));
+  assert.deepEqual(revealIds(buy.host, "price"), expected.buyPrice ?? expected.price, pairDump(kind, buy, sell, expected));
   assert.deepEqual(revealIds(buy.host, "terms"), expected.terms, pairDump(kind, buy, sell, expected));
-  assert.deepEqual(revealIds(buy.host, "price"), revealIds(sell.host, "price"), pairDump(kind, buy, sell, expected));
   assert.deepEqual(revealIds(buy.host, "terms"), revealIds(sell.host, "terms"), pairDump(kind, buy, sell, expected));
   extra?.();
 }
@@ -291,16 +288,15 @@ test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格�
     assert.ok(view.host.querySelector('[data-bay-section="product"]'));
     assert.ok(view.host.querySelector('[data-bay-section="price"]'));
     assert.ok(view.host.querySelector('[data-bay-section="audience"]'));
-    assert.ok(view.host.querySelector('[data-bay-section="offer"]'));
     assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
     assert.equal(view.find('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
     assert.match(view.find('[data-bay-section="audience"] [data-bay-section-title]').textContent, /向谁展示/);
     assert.equal(view.find('[data-bay-section="terms"]').getAttribute("data-bay-section-collapsed"), "");
     assert.deepEqual(
       [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-      ["cover", "title", "description", "files"],
+      ["how-you-deliver", "cover", "title", "description", "files"],
     );
-    assert.ok(view.host.querySelector('[data-bay-section="offer"] [data-bay-how-you-deliver]'));
+    assert.ok(view.host.querySelector('[data-bay-section="product"] [data-bay-how-you-deliver]'));
     for (const kind of ["digital", "service", "app", "lesson", "other"]) {
       assert.ok(view.host.querySelector(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`), `缺交付内容 ${kind}`);
     }
@@ -316,8 +312,8 @@ test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格�
     assert.ok(view.host.querySelector('[data-bay-help-mode="public"]'));
     assert.doesNotMatch(view.find('[data-bay-section="terms"]').textContent, /授权范围|FAQ|网站|我的链接/);
   }
-  assert.match(buy.find('[data-bay-section="offer"] [data-bay-section-title]').textContent, /交付给你的是什么/);
-  assert.match(sell.find('[data-bay-section="offer"] [data-bay-section-title]').textContent, /你交付什么/);
+  assert.match(buy.find('[data-bay-reveal-item="how-you-deliver"] [data-bay-reveal-label]').textContent, /交付给你的是什么/);
+  assert.match(sell.find('[data-bay-reveal-item="how-you-deliver"] [data-bay-reveal-label]').textContent, /你交付什么/);
   await buy.unmount();
   await sell.unmount();
 });
@@ -339,48 +335,35 @@ test("默认 digital：价格组只有 price，短输入后面是 USD，可空�
       assert.equal(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="who"]'), null);
       assert.equal(view.host.querySelector('[data-bay-section="terms"] [data-bay-how-you-deliver]'), null);
       assert.ok(view.host.querySelector('[data-bay-section="audience"] [data-bay-reveal-item="who"]'));
-      assert.ok(view.host.querySelector('[data-bay-section="offer"] [data-bay-how-you-deliver]'));
+      assert.ok(view.host.querySelector('[data-bay-section="product"] [data-bay-how-you-deliver]'));
     }
   });
   await buy.unmount();
   await sell.unmount();
 });
 
-test("点 service：价格条款 billing 然后 price；交付条款含交期和改稿；按次/按小时出现附加项；买卖列表相同", async () => {
+test("点 service：卖的价格组只有 price，买的需求单仍有 billing 然后 price；交付条款含交期和改稿；买的按次/按小时出现附加项", async () => {
   const { buy, sell } = await mountPair();
   await pickHowYouDeliver(buy, "service");
   await pickHowYouDeliver(sell, "service");
   await assertKind("service", buy, sell, EXPECTED.service);
 
   await buy.click('[data-bay-section="price"] [data-bay-billing="session"]');
-  await sell.click('[data-bay-section="price"] [data-bay-billing="session"]');
-  await assertKind("service+session", buy, sell, EXPECTED.session, () => {
-    for (const view of [buy, sell]) {
-      assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-rounds"]'));
-    }
-  });
-
+  assert.ok(buy.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-rounds"]'));
   await buy.click('[data-bay-section="price"] [data-bay-billing="hour"]');
-  await sell.click('[data-bay-section="price"] [data-bay-billing="hour"]');
-  await assertKind("service+hour", buy, sell, EXPECTED.hour, () => {
-    for (const view of [buy, sell]) {
-      assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-minutes"]'));
-    }
-  });
+  assert.ok(buy.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-minutes"]'));
   await buy.unmount();
   await sell.unmount();
 });
 
-test("点 app：价格组 app-price-model 然后 price，选项免费/一次买断/按月；没有交付说明；买卖列表相同", async () => {
+test("点 app：价格组只有 price（没有计价方式一次买断/按月）；没有交付说明；买卖列表相同", async () => {
   const { buy, sell } = await mountPair();
   await pickHowYouDeliver(buy, "app");
   await pickHowYouDeliver(sell, "app");
   await assertKind("app", buy, sell, EXPECTED.app, () => {
     for (const view of [buy, sell]) {
-      const model = view.find('[data-bay-section="price"] [data-bay-reveal-item="app-price-model"]');
-      assert.match(model.textContent, /免费/);
-      assert.match(model.textContent, /一次买断/);
-      assert.match(model.textContent, /按月/);
+      assert.equal(view.host.querySelector('[data-bay-reveal-item="app-price-model"]'), null);
+      assert.doesNotMatch(view.find('[data-bay-section="price"]').textContent, /一次买断|按月/);
       assert.equal(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="delivery-mode"]'), null);
     }
   });

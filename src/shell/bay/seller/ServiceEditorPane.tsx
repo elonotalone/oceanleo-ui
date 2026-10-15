@@ -8,10 +8,8 @@ import { fetchBayCategories } from "../../../lib/bay/categories";
 import {
   createMyConsult,
   createMyService,
-  createServiceAddon,
   createServiceMedia,
   deleteMyService,
-  deleteServiceAddon,
   deleteServiceMedia,
   getDomainPrompts,
   getSellerProfile,
@@ -21,11 +19,9 @@ import {
   listMyContentCases,
   listMyServices,
   listPricingModels,
-  listServiceAddons,
   listServiceFaq,
   listServiceMedia,
   listServiceTiers,
-  patchServiceAddon,
   patchServiceMedia,
   pauseMyService,
   publishMyService,
@@ -47,6 +43,7 @@ import { useToast } from "../../../ui/Toast";
 import { getCurrentArtifactItem } from "../../artifact-client";
 import {
   applyDigitalWorks,
+  BayAutoTextarea,
   BayDigitalWorksField,
   BAY_FILES_LABEL,
   BayPublishKindPair,
@@ -64,6 +61,7 @@ import {
   type BayOfferKind,
   type BayPostSnapshot,
   type BayRevealItem,
+  type ListingGroupId,
 } from "../form";
 import { ensureBayTerms } from "../settings";
 import { stripLeoCategoryPrefix } from "../shell/bay-links";
@@ -75,12 +73,10 @@ import {
   draftFromLoaded,
   emptyDraft,
   freshPublishDraft,
-  firstMissingSection,
   hasPreviewImage,
   imageUrlsOf,
   draftFromGalleryUrls,
   mediaForDigitalWorks,
-  missingTotal,
   prefillFieldsFromTiers,
   pricingInput,
   publishKindOf,
@@ -94,22 +90,32 @@ import {
   type EditorContext,
   type EditorDraft,
   type PublishKind,
-  type PublishSection,
 } from "./editor-model";
 import {
-  AddonsStep,
   CategorySelect,
   MediaStep,
   ModelStep,
   OverreachHintList,
-  TiersStep,
 } from "./editor-steps";
 import { BAY_FORM_BAR_CLASS, BAY_FORM_PAGE_CLASS } from "../form/form-ui";
-import { DANGER_BUTTON, HiddenByPlatformNotice, INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
+import { DANGER_BUTTON, HiddenByPlatformNotice, INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerNotice } from "./seller-ui";
 
 function errorText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "";
 }
+
+/** 必填项的缺项文案 → 页面上对应的那一项与它所在的组；顺序就是页面从上到下的顺序。 */
+const MISSING_ITEMS: { label: string; item: string; group: ListingGroupId }[] = [
+  { label: "分类", item: "category", group: "product" },
+  { label: "至少一张预览图", item: "cover", group: "product" },
+  { label: "标题", item: "title", group: "product" },
+  { label: "放文件", item: "files", group: "product" },
+  { label: "价格要大于 0", item: "price", group: "price" },
+  { label: "免费协作的价格要是 0", item: "price", group: "price" },
+  { label: "向谁展示", item: "who", group: "audience" },
+  { label: "计费方式", item: "billing-model", group: "terms" },
+  { label: "交付天数", item: "delivery-days", group: "terms" },
+];
 
 function isOfficialProfile(profile: BaySellerProfile | null): boolean {
   return profile?.official === true;
@@ -150,10 +156,11 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const [promptNonce, setPromptNonce] = useState(0);
   const [modelNonce, setModelNonce] = useState(0);
   const [pendingDelete, setPendingDelete] = useState(false);
-  const [morePricing, setMorePricing] = useState(false);
-  const [highlight, setHighlight] = useState<PublishSection | null>(null);
+  // 点过发布但还有必填项没填：之后页面一直标出缺的项，补好一项就少一项。
+  const [attempted, setAttempted] = useState(false);
+  const [focusReq, setFocusReq] = useState<{ item: string; n: number } | null>(null);
   const termsOk = useRef(false);
-  const sectionEls = useRef<Partial<Record<PublishSection, HTMLElement | null>>>({});
+  const formEl = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -192,10 +199,9 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
           setLoad({ loading: false, error: "" });
           return;
         }
-        const [services, tiers, addons, faq, media, pricingBody] = await Promise.all([
+        const [services, tiers, faq, media, pricingBody] = await Promise.all([
           listMyServices(),
           listServiceTiers(routeId),
-          listServiceAddons(routeId),
           listServiceFaq(routeId),
           listServiceMedia(routeId),
           getServicePricing(routeId).catch(() => null),
@@ -207,12 +213,11 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
           return;
         }
         setPricing(pricingBody);
-        const loaded = draftFromLoaded({ service, tiers: tiers.items || [], addons: addons.items || [], faq: faq.items || [], media: media.items || [], pricing: pricingBody }, tt);
+        const loaded = draftFromLoaded({ service, tiers: tiers.items || [], faq: faq.items || [], media: media.items || [], pricing: pricingBody }, tt);
         loaded.official = loaded.official || isOfficialProfile(nextProfile);
         setDraft(loaded);
         setDirty(false);
-        setHighlight(null);
-        setMorePricing(false);
+        setAttempted(false);
         setLoad({ loading: false, error: "" });
       } catch (error) {
         if (alive) setLoad({ loading: false, error: errorText(error) || tt("服务加载失败，请稍后再试。") });
@@ -223,6 +228,15 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn, routeId, nonce]);
+
+  // 跳到缺的那一项：先等高亮把收着的组撑开，再滚到位并把光标放进去。
+  useEffect(() => {
+    if (!focusReq) return;
+    const node = formEl.current?.querySelector<HTMLElement>(`[data-bay-reveal-item="${focusReq.item}"]`);
+    if (!node) return;
+    node.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    node.querySelector<HTMLElement>("input:not([type=file]), textarea, button")?.focus({ preventScroll: true });
+  }, [focusReq]);
 
   const kind = publishKindOf(draft);
   const isConsult = kind === "consult";
@@ -265,7 +279,11 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const specs = useMemo(() => (isConsult || kind === "digital" ? [] : specsFor(draft, pricing, selectedCategory)), [isConsult, kind, draft, pricing, selectedCategory]);
   const ctx: EditorContext = { profile, categories, specs, domainKeys: domains.data.map((row) => row.key) };
   const missing = sectionMissing(draft, ctx);
-  const leftover = missingTotal(missing);
+  const missingLabels = new Set<string>([...missing.product, ...missing.price, ...missing.terms]);
+  const missingItems = MISSING_ITEMS.filter((row) => missingLabels.has(row.label));
+  const invalidItems = new Set(attempted ? missingItems.map((row) => row.item) : []);
+  const highlight: ListingGroupId | null = attempted ? missingItems[0]?.group ?? null : null;
+  const groupMissing = (group: ListingGroupId) => missingItems.filter((row) => row.group === group).map((row) => tt(row.label));
   const hiddenCase = hiddenCaseFor(cases, "talent_service", draft.serviceId || undefined);
   const currency = (profile?.currency || "USD").toUpperCase();
   const narrow = layout === "docked" || layout === "mobile";
@@ -310,8 +328,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     }
     setDraft({ ...base, ...extra });
     setDirty(true);
-    setHighlight(null);
-    setMorePricing(false);
+    setAttempted(false);
   }
 
   function pickOffer(next: BayOfferKind) {
@@ -320,16 +337,6 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       offerKind: next,
       listingKind: next === "service" || next === "other" ? "service" : "digital",
       catalogKind: "delivery",
-    });
-  }
-
-  function pickBilling(next: "service" | "session" | "hour") {
-    patch({
-      offerKind: "service",
-      listingKind: "service",
-      catalogKind: "delivery",
-      consultUnit: next === "hour" ? "hour" : "session",
-      pricingModel: next === "service" ? "fixed" : next,
     });
   }
 
@@ -376,16 +383,12 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     patch({ category: slug, fieldValues: {} });
   }
 
-  function changeTier(index: number, next: Partial<EditorDraft["tiers"][number]>) {
-    setDraft((current) => ({ ...current, simplePrice: false, tiers: current.tiers.map((tier, i) => (i === index ? { ...tier, ...next } : tier)) }));
-    setDirty(true);
-  }
-
+  // 免费只由价格框表达：价格是 0 就是免费，填了正数再从免费切回一口价。
   function setSimplePrice(fen: number | null) {
     setDraft((current) => ({
       ...current,
       priceUnset: fen == null,
-      pricingModel: fen === 0 ? "free" : fen == null ? current.pricingModel : "fixed",
+      pricingModel: fen == null ? current.pricingModel : fen === 0 ? "free" : current.pricingModel === "free" ? "fixed" : current.pricingModel,
       tiers: current.tiers.map((tier, index) => (index === 0 ? { ...tier, price_fen: fen ?? 0, enabled: true } : tier)),
     }));
     setDirty(true);
@@ -416,7 +419,8 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   async function saveBase(): Promise<string | null> {
     if (!draft.title.trim()) {
       setRejection(tt("请先填写标题"));
-      setHighlight("product");
+      setAttempted(true);
+      setFocusReq((current) => ({ item: "title", n: (current?.n ?? 0) + 1 }));
       return null;
     }
     const input = serviceInput(draft, selectedModel);
@@ -449,24 +453,6 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       return;
     }
     await replaceServiceTiers(sid, tierRows(draft));
-  }
-
-  async function saveAddons(sid: string): Promise<void> {
-    await Promise.all(draft.deletedAddonIds.map((id) => deleteServiceAddon(sid, id)));
-    await Promise.all(
-      draft.addons
-        .filter((addon) => addon.title.trim())
-        .map((addon, position) => {
-          const input = { title: addon.title.trim(), description: addon.description.trim(), price_fen: addon.price_fen, extra_days: addon.extra_days, position, enabled: addon.enabled };
-          return addon.id ? patchServiceAddon(sid, addon.id, input) : createServiceAddon(sid, input);
-        }),
-    );
-    const fresh = await listServiceAddons(sid);
-    setDraft((current) => ({
-      ...current,
-      deletedAddonIds: [],
-      addons: (fresh.items || []).map((row) => ({ key: row.id, id: row.id, title: row.title, description: row.description || "", price_fen: row.price_fen, extra_days: row.extra_days, enabled: row.enabled !== false })),
-    }));
   }
 
   async function saveMedia(sid: string): Promise<void> {
@@ -512,10 +498,9 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   async function persist(mode: "draft" | "publish") {
     if (saving) return;
     if (mode === "publish") {
-      const first = firstMissingSection(missing);
-      if (first) {
-        setHighlight(first);
-        sectionEls.current[first]?.scrollIntoView?.({ block: "start" });
+      if (missingItems.length) {
+        setAttempted(true);
+        setFocusReq((current) => ({ item: missingItems[0].item, n: (current?.n ?? 0) + 1 }));
         return;
       }
       if (!(await ensureBayTerms("seller"))) {
@@ -552,9 +537,6 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         await savePricing(sid);
       }
       await saveTiers(sid);
-      if (kind === "service") {
-        await saveAddons(sid);
-      }
       await saveMedia(sid);
       if (mode === "publish") {
         const result = await publishMyService(sid, kind === "service" ? pricingInput({ ...draft, pricingModel: resolvedPricingModel(draft) }, specs) : undefined);
@@ -664,7 +646,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       <input className={INPUT_CLASS} data-bay-field="title" value={draft.title} maxLength={TITLE_MAX} onChange={(event) => patch({ title: event.target.value })} />
       <OverreachHintList text={draft.title} />
     </>,
-    { summary: draft.title.trim() || undefined },
+    { summary: draft.title.trim() || undefined, required: true },
   );
   const offerKind: BayOfferKind = draft.offerKind || (publishKind === "service" ? "service" : "digital");
   // 人工服务与「其他」都走服务的定价与条款；成品文件、作品、课程各有自己的一套。
@@ -672,15 +654,14 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const coverRow = revealRow("cover", tt("作品图"), coverDone, <MediaStep {...mediaProps} plain imagesOnly />, {
     summary: coverDone ? tt("已填好") : undefined,
     alwaysOpen: true,
+    required: true,
   });
   const descriptionRow = revealRow(
     "description",
     tt("详细介绍"),
     Boolean(draft.description.trim()),
-    <textarea
-      className={TEXTAREA_CLASS}
+    <BayAutoTextarea
       data-bay-field="description"
-      rows={8}
       maxLength={20000}
       value={draft.description}
       onChange={(event) => patch({ description: event.target.value })}
@@ -699,26 +680,47 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       summary: (draft.digitalWorks[0] ?? draft.digitalWork)?.title || (draft.digitalWorks[0] ?? draft.digitalWork)?.id,
       alwaysOpen: true,
       optional: pricedOffer || offerKind === "lesson",
+      required: offerKind === "digital" || offerKind === "app",
     },
   );
-  const productItems: BayRevealItem[] = [coverRow, titleRow, descriptionRow, filesRow];
+  const flagged = (items: BayRevealItem[]) => items.map((item) => (invalidItems.has(item.id) ? { ...item, invalid: true } : item));
+  const productItems: BayRevealItem[] = flagged([coverRow, titleRow, descriptionRow, filesRow]);
   const priceFen = draft.priceUnset ? null : draft.tiers[0]?.price_fen ?? null;
   const billingValue: "service" | "session" | "hour" =
     !pricedOffer ? "service" : draft.pricingModel === "hour" ? "hour" : draft.pricingModel === "session" ? "session" : "service";
-  const appPriceModel = draft.pricingModel === "subscription" ? "subscription" : draft.pricingModel === "free" ? "free" : "one_time";
+  const appPriceModel = draft.pricingModel === "subscription" ? "subscription" : "one_time";
   const priceItems = listingPriceItems(tt, {
     offerKind,
     priceFen,
     onPriceFen: setSimplePrice,
-    billing: billingValue,
-    onBilling: pickBilling,
     appPriceModel,
-    onAppPriceModel: (value) => {
-      if (value === "free") setSimplePrice(0);
-      else patch({ pricingModel: value, simplePrice: true });
-    },
+    onAppPriceModel: (value) => patch({ pricingModel: value, simplePrice: true }),
   });
-  const termsItems = listingTermsItems(tt, {
+  // 计费方式排在交付条款的第一项：一口价 / 按次 / 按时 / 分阶段，各带结算规则与自动验收天数。
+  const billingModel = models.data.find((model) => model.key === resolvedPricingModel(draft));
+  const billingItem: BayRevealItem[] = pricedOffer
+    ? [
+        {
+          id: "billing-model",
+          label: tt("计费方式"),
+          done: Boolean(billingModel),
+          required: true,
+          summary: billingModel ? tt(billingModel.name_zh) : undefined,
+          children: (
+            <ModelStep
+              plain
+              models={models.data.filter((model) => model.key !== "free")}
+              loading={models.loading}
+              error={models.error}
+              onReload={() => setModelNonce((value) => value + 1)}
+              selected={resolvedPricingModel(draft)}
+              onSelect={(key) => patch({ pricingModel: key })}
+            />
+          ),
+        },
+      ]
+    : [];
+  const termsItems = flagged([...billingItem, ...listingTermsItems(tt, {
     offerKind,
     billing: billingValue,
     deliveryDays: draft.tiers[0]?.delivery_days ?? null,
@@ -733,7 +735,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     onDeadline: (deadlineAt) => patch({ deadlineAt }),
     customTerms: draft.customTerms,
     onCustomTerms: (customTerms) => patch({ customTerms }),
-  });
+  })]);
 
   const listingKind = pricedOffer ? "service" : offerKind;
   const previewWork = draft.digitalWorks[0] ?? draft.digitalWork;
@@ -761,7 +763,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
 
   return (
     <BayPublishShell kind={listingKind} snapshot={snapshot} onApply={applySnapshot}>
-    <section data-bay-pane="service-editor" data-bay-publish="form" className={narrow ? "flex flex-col gap-6 p-4" : BAY_FORM_PAGE_CLASS}>
+    <section ref={formEl} data-bay-pane="service-editor" data-bay-publish="form" className={narrow ? "flex flex-col gap-6 p-4" : BAY_FORM_PAGE_CLASS}>
       {draft.serviceId ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-600" data-bay-editor-status={draft.status}>
@@ -776,7 +778,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
           siteCategory={presetCategory}
           subcategory={
             <>
-              <BayPublishSubcategoryLabel />
+              <BayPublishSubcategoryLabel required invalid={invalidItems.has("category")} />
               <CategorySelect categories={visibleCategories} value={draft.category} onChange={changeCategory} />
             </>
           }
@@ -787,76 +789,21 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
       {hiddenMessage && !hiddenCase ? <SellerNotice tone="warn">{hiddenMessage}</SellerNotice> : null}
 
       <BayRevealForm
-        onGroupNode={(id, node) => {
-          if (id === "product" || id === "price" || id === "terms") sectionEls.current[id] = node;
-        }}
         groups={listingSectionGroups({
           tt,
           intent: "sell",
           productItems,
           priceItems,
-          audienceItems: [listingAudienceItem(tt, draft.audience, (audience) => patch({ audience }))],
-          offerItems: [howYouDeliverRow(tt, offerKind, pickOffer)],
+          audienceItems: flagged([listingAudienceItem(tt, draft.audience, (audience) => patch({ audience }))]),
+          offerItems: flagged([howYouDeliverRow(tt, offerKind, pickOffer)]),
           termsItems,
           highlight,
           missing: {
-            product: missing.product.map((item) => tt(item)),
-            price: missing.price.map((item) => tt(item)),
-            terms: missing.terms.map((item) => tt(item)),
+            product: groupMissing("product"),
+            price: groupMissing("price"),
+            audience: groupMissing("audience"),
+            terms: groupMissing("terms"),
           },
-          priceExtra:
-            pricedOffer ? (
-              <div>
-                <button type="button" data-bay-more-pricing-toggle aria-expanded={morePricing} onClick={() => setMorePricing((open) => !open)} className={SECONDARY_BUTTON}>
-                  {tt("更多定价")}
-                </button>
-                {morePricing ? (
-                  <div data-bay-more-pricing className="mt-6 flex flex-col gap-6">
-                    <ModelStep
-                      plain
-                      models={models.data}
-                      loading={models.loading}
-                      error={models.error}
-                      onReload={() => setModelNonce((value) => value + 1)}
-                      selected={draft.pricingModel}
-                      onSelect={(key) =>
-                        patch({
-                          simplePrice: false,
-                          pricingModel: key,
-                          tiers: key === "free" ? draft.tiers.map((tier) => ({ ...tier, price_fen: 0 })) : draft.tiers,
-                        })
-                      }
-                    />
-                    <TiersStep
-                      plain
-                      tiers={draft.tiers}
-                      currency={currency}
-                      free={draft.pricingModel === "free"}
-                      onChange={changeTier}
-                      onBasicOnly={() => patch({ tiers: draft.tiers.map((tier, index) => ({ ...tier, enabled: index === 0 })) })}
-                    />
-                    <AddonsStep
-                      plain
-                      addons={draft.addons}
-                      currency={currency}
-                      onChange={(key, next) => {
-                        patch({ simplePrice: false, addons: draft.addons.map((addon) => (addon.key === key ? { ...addon, ...next } : addon)) });
-                      }}
-                      onAdd={() =>
-                        patch({
-                          simplePrice: false,
-                          addons: [...draft.addons, { key: clientKey("addon"), title: "", description: "", price_fen: 0, extra_days: 0, enabled: true }],
-                        })
-                      }
-                      onRemove={(key) => {
-                        const row = draft.addons.find((addon) => addon.key === key);
-                        patch({ addons: draft.addons.filter((addon) => addon.key !== key), deletedAddonIds: row?.id ? [...draft.deletedAddonIds, row.id] : draft.deletedAddonIds });
-                      }}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : undefined,
         })}
       />
 
@@ -869,9 +816,8 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
 
       <footer
         data-bay-publish-bar
-        className={`${BAY_FORM_BAR_CLASS} justify-between`}
+        className={`${BAY_FORM_BAR_CLASS} justify-end`}
       >
-        <p className={`text-[13px] font-medium ${leftover ? "text-neutral-600" : "text-emerald-600"}`}>{leftover ? tt("还差 {n} 项就能发布", { n: leftover }) : tt("可以发布了")}</p>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={saving} onClick={() => void persist("draft")} className={SECONDARY_BUTTON} data-bay-action="save-draft">
             {tt("存草稿")}
@@ -897,7 +843,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
 
       {pendingDelete ? (
         <ConfirmDialog
-          title={tt("确定删除「{title}」？价格档、加购项、作品图会一起删除。", { title: draft.title || tt("未命名服务") })}
+          title={tt("确定删除「{title}」？价格、作品图会一起删除。", { title: draft.title || tt("未命名服务") })}
           danger
           onConfirm={() => void confirmRemove()}
           onCancel={() => setPendingDelete(false)}
@@ -913,8 +859,8 @@ function revealRow(
   label: string,
   done: boolean,
   children: ReactNode,
-  extra?: { summary?: string; optional?: boolean; alwaysOpen?: boolean },
+  extra?: { summary?: string; optional?: boolean; required?: boolean; alwaysOpen?: boolean },
 ): BayRevealItem {
-  return { id, label, done, children, summary: extra?.summary, optional: extra?.optional, alwaysOpen: extra?.alwaysOpen };
+  return { id, label, done, children, summary: extra?.summary, optional: extra?.optional, required: extra?.required, alwaysOpen: extra?.alwaysOpen };
 }
 

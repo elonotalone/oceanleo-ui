@@ -62,6 +62,7 @@ export { BayAudienceField, audienceModeLabel, listingAudienceItem } from "./BayA
 export { BaySelectMembers } from "./BaySelectMembers";
 export { BayCustomTerms } from "./BayCustomTerms";
 export { BayDeadlineField } from "./BayDeadlineField";
+export { BayAutoTextarea } from "./BayAutoTextarea";
 export {
   CUSTOM_TERM_HINTS,
   appendTermHint,

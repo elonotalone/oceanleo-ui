@@ -307,7 +307,7 @@ test("叫真人：三块表单、类目按站预选、门户为空、答疑不�
   const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
   assert.equal(view.host.querySelector("header"), null);
   assert.ok(view.host.querySelectorAll("[data-bay-reveal-open]").length >= 2);
-  assert.equal(view.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "cover");
+  assert.equal(view.host.querySelector("[data-bay-reveal-open]").getAttribute("data-bay-reveal-item"), "how-you-deliver");
   assert.ok(view.host.querySelector('[data-bay-section="product"]'));
   assert.ok(view.host.querySelector('[data-bay-section="price"]'));
   assert.ok(view.host.querySelector('[data-bay-section="terms"]'));
@@ -490,7 +490,7 @@ test("找人帮忙表单字段都开着：标签和输入都看得见", async ()
   assert.match(text, /放文件/);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["cover", "title", "description", "files"],
+    ["how-you-deliver", "cover", "title", "description", "files"],
   );
   assert.ok(view.host.querySelector("[data-bay-how-you-deliver]"));
   assert.ok(view.host.querySelector("[data-bay-reveal-open] [data-bay-help-text]"));

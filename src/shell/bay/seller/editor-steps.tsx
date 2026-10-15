@@ -2,7 +2,7 @@
 
 // 服务向导的各步界面（移植自 talent `ServiceWizardFields.tsx`，外壳不搬）。只吃 props；用户内容一律纯文本。
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { stripLeoCategoryPrefix } from "../shell/bay-links";
 import {
@@ -19,19 +19,17 @@ import {
   type BaySellerCategory,
   type BayServiceMediaKind,
 } from "../../../lib/bay/seller";
-import { BayImageGallery, BayMenuSelect } from "../form";
+import { BayChoice, BayImageGallery, BayMenuSelect } from "../form";
 import { cleanGalleryUrls } from "../form/bay-gallery";
+import { isPriceInputText, parsePriceInput } from "../form/bay-price";
 import {
   MIN_DESCRIPTION,
   SUMMARY_MAX,
   TITLE_MAX,
   safeHttpUrl,
-  toFen,
   yuanText,
-  type DraftAddon,
   type DraftFaq,
   type DraftMedia,
-  type DraftTier,
   type PublishCheck,
 } from "./editor-model";
 import { DANGER_BUTTON, INPUT_CLASS, SECONDARY_BUTTON, SellerCard, SellerEmpty, SellerField, SellerNotice, TEXTAREA_CLASS } from "./seller-ui";
@@ -343,20 +341,26 @@ export function ModelStep({
           </button>
         </SellerNotice>
       ) : (
-        <div className="space-y-2" role="radiogroup">
-          {models.map((model) => (
-            <label key={model.key} className={`${OPTION_CLASS} ${selected === model.key ? OPTION_ON : OPTION_OFF}`}>
-              <input type="radio" name="bay-pricing-model" data-bay-model={model.key} className="mt-1" checked={selected === model.key} onChange={() => onSelect(model.key)} />
-              <span className="min-w-0">
-                <span className="block text-[13px] font-semibold text-stone-900">{tt(model.name_zh)}</span>
-                <span className="mt-0.5 block text-[12px] leading-5 text-stone-600">{tt(model.settlement_rule_zh)}</span>
-                <span className="mt-0.5 block text-[12px] text-stone-600">
+        <BayChoice
+          label={tt("计费方式")}
+          columns={1}
+          collapsible
+          value={selected}
+          onChange={onSelect}
+          optionProps={(key) => ({ "data-bay-model": key })}
+          options={models.map((model) => ({
+            value: model.key,
+            title: tt(model.name_zh),
+            detail: (
+              <>
+                <span className="block">{tt(model.settlement_rule_zh)}</span>
+                <span className="block">
                   {model.auto_accept_days_default ? tt("交付后 {n} 天自动验收", { n: model.auto_accept_days_default }) : tt("不自动验收")}
                 </span>
-              </span>
-            </label>
-          ))}
-        </div>
+              </>
+            ),
+          }))}
+        />
       )}
     </StepFrame>
   );
@@ -449,70 +453,46 @@ export function RequiredField({ spec, value, onChange }: { spec: BayFieldSpec; v
 }
 
 // ---- 价格与交期 -------------------------------------------------------------------
+// 价格只有一个：想卖不同深度的版本，发布多个帖子即可。价格、交付天数、修改次数在
+// 发布表单的价格与条款区里填，这里只放咨询价。
 
-const TIER_LABEL: Record<DraftTier["tier"], string> = { basic: "基础档", standard: "标准档", premium: "高级档" };
-
-export function TiersStep({
-  tiers,
-  onChange,
-  onBasicOnly,
-  free,
-  currency,
-  plain,
+/** 金额输入框：本地保存正在敲的文字，打「12.」「0」这类中间态不会被回写成数字吃掉。 */
+function PriceTextInput({
+  valueFen,
+  onChangeFen,
+  disabled,
+  ...rest
 }: {
-  tiers: DraftTier[];
-  onChange: (index: number, patch: Partial<DraftTier>) => void;
-  onBasicOnly: () => void;
-  free: boolean;
-  currency: string;
-  plain?: boolean;
+  valueFen: number;
+  onChangeFen: (fen: number) => void;
+  disabled?: boolean;
+  "data-bay-field"?: string;
 }) {
-  const tt = useUI();
+  const [text, setText] = useState(() => yuanText(valueFen));
+  useEffect(() => {
+    const parsed = parsePriceInput(text);
+    if (parsed === "partial") return;
+    if ((parsed ?? 0) === valueFen) return;
+    setText(yuanText(valueFen));
+    // 只跟外部金额：本地正在打小数点或清空时不要被格式化掉。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueFen]);
   return (
-    <StepFrame title={tt("价格与交期")} hint={free ? tt("免费协作：每档价格都是 0。") : tt("最多三档。价格、交付天数、修改次数和包含的内容都会直接展示给买家。")} plain={plain}>
-      <div className="flex justify-end">
-        <button type="button" onClick={onBasicOnly} className={SECONDARY_BUTTON}>
-          {tt("只用一档")}
-        </button>
-      </div>
-      <div className="space-y-3">
-        {tiers.map((tier, index) => (
-          <article key={tier.tier} data-bay-tier={tier.tier} className={`space-y-3 py-2 ${tier.enabled ? "" : "opacity-70"}`}>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[13px] font-semibold text-stone-900">{tt(TIER_LABEL[tier.tier])}</p>
-              <label className="flex items-center gap-2 text-[12px] text-stone-600">
-                <input type="checkbox" checked={tier.enabled} disabled={index === 0} onChange={(event) => onChange(index, { enabled: event.target.checked })} />
-                {tt("启用")}
-              </label>
-            </div>
-            {tier.enabled ? (
-              <>
-                <SellerField label={tt("档位名")}>
-                  <input className={INPUT_CLASS} value={tier.title} maxLength={60} onChange={(event) => onChange(index, { title: event.target.value })} />
-                </SellerField>
-                <SellerField label={tt("简短说明")}>
-                  <input className={INPUT_CLASS} value={tier.description} maxLength={200} onChange={(event) => onChange(index, { description: event.target.value })} />
-                </SellerField>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <SellerField label={tt("价格（{currency}）", { currency })}>
-                    <input className={INPUT_CLASS} inputMode="decimal" disabled={free} value={yuanText(tier.price_fen)} onChange={(event) => onChange(index, { price_fen: toFen(event.target.value) })} />
-                  </SellerField>
-                  <SellerField label={tt("交付天数")}>
-                    <input className={INPUT_CLASS} inputMode="numeric" value={tier.delivery_days == null ? "" : String(tier.delivery_days)} onChange={(event) => onChange(index, { delivery_days: intOrNull(event.target.value, 1, 365) })} />
-                  </SellerField>
-                  <SellerField label={tt("修改次数")} hint={tt("-1 表示不限")}>
-                    <input className={INPUT_CLASS} inputMode="numeric" value={String(tier.revisions)} onChange={(event) => onChange(index, { revisions: intOrNull(event.target.value, -1, 100) ?? 0 })} />
-                  </SellerField>
-                </div>
-                <SellerField label={tt("包含内容")} hint={tt("每行一项")}>
-                  <textarea className={TEXTAREA_CLASS} rows={3} value={tier.features.join("\n")} onChange={(event) => onChange(index, { features: event.target.value.split("\n").slice(0, 20) })} />
-                </SellerField>
-              </>
-            ) : null}
-          </article>
-        ))}
-      </div>
-    </StepFrame>
+    <input
+      {...rest}
+      className={INPUT_CLASS}
+      inputMode="decimal"
+      disabled={disabled}
+      value={text}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (!isPriceInputText(next)) return;
+        setText(next);
+        const parsed = parsePriceInput(next);
+        if (parsed === "partial") return;
+        onChangeFen(parsed ?? 0);
+      }}
+    />
   );
 }
 
@@ -562,7 +542,7 @@ export function ConsultPricingStep({
         ))}
       </div>
       <SellerField label={unit === "session" ? tt("每次价格（{currency}）", { currency }) : tt("每小时价格（{currency}）", { currency })}>
-        <input className={INPUT_CLASS} data-bay-field="consult-price" inputMode="decimal" value={yuanText(priceFen)} onChange={(event) => onPriceFen(toFen(event.target.value))} />
+        <PriceTextInput data-bay-field="consult-price" valueFen={priceFen} onChangeFen={onPriceFen} />
       </SellerField>
       {includeTerms ? (
         <>
@@ -627,56 +607,7 @@ export function ConsultTermsFields({
   );
 }
 
-// ---- 加购、详情、常见问题、作品图 ------------------------------------------------------
-
-export function AddonsStep({
-  addons,
-  onChange,
-  onAdd,
-  onRemove,
-  currency,
-  plain,
-}: {
-  addons: DraftAddon[];
-  onChange: (key: string, patch: Partial<DraftAddon>) => void;
-  onAdd: () => void;
-  onRemove: (key: string) => void;
-  currency: string;
-  plain?: boolean;
-}) {
-  const tt = useUI();
-  return (
-    <StepFrame title={tt("加购项")} hint={tt("把加急、源文件、多一个版本写成可选项，买家不用反复问价。")} plain={plain}>
-      {addons.length === 0 ? <SellerEmpty>{tt("还没有加购项；价格档已经包含全部内容的话可以直接继续。")}</SellerEmpty> : null}
-      {addons.map((addon) => (
-        <article key={addon.key} className="space-y-3 py-2">
-          <SellerField label={tt("名称")}>
-            <input className={INPUT_CLASS} value={addon.title} maxLength={80} onChange={(event) => onChange(addon.key, { title: event.target.value })} />
-          </SellerField>
-          <SellerField label={tt("说明")}>
-            <input className={INPUT_CLASS} value={addon.description} maxLength={200} onChange={(event) => onChange(addon.key, { description: event.target.value })} />
-          </SellerField>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <SellerField label={tt("加价（{currency}）", { currency })}>
-              <input className={INPUT_CLASS} inputMode="decimal" value={yuanText(addon.price_fen)} onChange={(event) => onChange(addon.key, { price_fen: toFen(event.target.value) })} />
-            </SellerField>
-            <SellerField label={tt("多加几天")}>
-              <input className={INPUT_CLASS} inputMode="numeric" value={String(addon.extra_days)} onChange={(event) => onChange(addon.key, { extra_days: intOrNull(event.target.value, 0, 365) ?? 0 })} />
-            </SellerField>
-          </div>
-          <div className="flex justify-end">
-            <button type="button" onClick={() => onRemove(addon.key)} className="text-[12px] font-medium text-rose-600">
-              {tt("移除")}
-            </button>
-          </div>
-        </article>
-      ))}
-      <button type="button" onClick={onAdd} className={SECONDARY_BUTTON}>
-        {tt("添加加购项")}
-      </button>
-    </StepFrame>
-  );
-}
+// ---- 详情、常见问题、作品图 ------------------------------------------------------
 
 export function DetailsStep({
   description,

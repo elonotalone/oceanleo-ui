@@ -1,6 +1,6 @@
 // W05：服务详情窗格。
-// 覆盖：档位/加购/作品图/评价/卖家卡的展示与合计；不画 FAQ；自定义条款原样出现；卖家本人看到「编辑」看不到下单；
-// 未登录点下单、先聊聊、收藏都只弹登录；下单带档位与加购；先聊聊走 openTradeThread；收藏的请求形状；
+// 覆盖：档位/作品图/评价/卖家卡的展示与合计；不画 FAQ；自定义条款原样出现；卖家本人看到「编辑」看不到下单；
+// 未登录点下单、先聊聊、收藏都只弹登录；下单带档位；先聊聊走 openTradeThread；收藏的请求形状；
 // 用户内容当纯文本、媒体只认 http(s)。网络、登录、浮窗状态、交易会话全部用桩。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -105,7 +105,6 @@ function fixture(extra = {}) {
       { id: "t1", service_id: "svc-1", tier: "basic", title: "一版", description: "", price_fen: 30000, delivery_days: 3, revisions: 1, features: ["源文件"], enabled: true },
       { id: "t3", service_id: "svc-1", tier: "premium", title: "三版", description: "", price_fen: 90000, delivery_days: 7, revisions: -1, features: [], enabled: true },
     ],
-    addons: [{ id: "a1", service_id: "svc-1", title: "加急", description: "", price_fen: 5000, extra_days: 1, enabled: true }],
     faq: [{ id: "f1", question: "能开发票吗？", answer: "可以" }],
     media: [
       { id: "m1", kind: "image", url: "https://cdn.example/1.png", poster_url: null, caption: "" },
@@ -130,13 +129,13 @@ function reset() {
 
 const html = (props) => renderToStaticMarkup(React.createElement(ServiceDetailView, props));
 
-test("服务详情：档位、加购、作品图、评价、卖家卡与合计，不画常见问题", () => {
+test("服务详情：档位、作品图、评价、卖家卡与合计，不画常见问题与附加项", () => {
   reset();
   const out = html({ service: fixture(), viewerId: "buyer-1", layout: "docked" });
   assert.match(out, /品牌 Logo 设计/);
   assert.match(out, /data-bay-tier="basic" data-selected="true"/, "默认选最便宜的档");
   assert.match(out, /data-bay-tier="premium" data-selected="false"/);
-  assert.match(out, /data-bay-addon="a1"/);
+  assert.doesNotMatch(out, /data-bay-addon=/);
   assert.doesNotMatch(out, /常见问题/);
   assert.doesNotMatch(out, /能开发票吗？/);
   assert.doesNotMatch(out, /data-bay-custom-terms/);
@@ -163,7 +162,7 @@ test("服务详情：自定义条款原样出现，有截止日期写出，条�
   assert.ok(!out.includes("<script>alert(1)</script>"));
   assert.ok(out.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
   assert.match(out, /data-bay-deadline/);
-  assert.match(out, /2026-11-01 截止/);
+  assert.match(out, /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC\S* 截止/);
   assert.doesNotMatch(out, /常见问题/);
 });
 
@@ -214,7 +213,7 @@ async function mount(element) {
   };
 }
 
-test("服务窗格：取详情（匿名），选高级档 + 加购后下单，带着档位与加购去下单页", async () => {
+test("服务窗格：取详情（匿名），选高级档后下单，带着档位去下单页", async () => {
   reset();
   globalThis.__bayHttpRespond = (method, path) => {
     if (path.startsWith("/v1/talent/services/")) return { service: fixture() };
@@ -228,9 +227,7 @@ test("服务窗格：取详情（匿名），选高级档 + 加购后下单，�
   assert.deepEqual(detail.opts, { anonymous: true });
   const premium = [...view.host.querySelectorAll('[data-bay-tier="premium"] button')].at(-1);
   await act(async () => premium.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-  const box = view.host.querySelector('[data-bay-addon="a1"] input');
-  await act(async () => box.click());
-  assert.match(view.host.querySelector("[data-bay-total]").textContent, /¥950/);
+  assert.match(view.host.querySelector("[data-bay-total]").textContent, /¥900/);
   await view.click('[data-bay-action="order"]');
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "checkout", serviceId: "svc-1", tier: "premium" });
   await view.unmount();

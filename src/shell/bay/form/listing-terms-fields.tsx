@@ -5,13 +5,17 @@ import type { UITranslate } from "../../../i18n/ui/useUI";
 import { BayChoice } from "./BayChoice";
 import { BayCustomTerms } from "./BayCustomTerms";
 import { BayDeadlineField } from "./BayDeadlineField";
+import { formatDeadline } from "./bay-deadline";
 import { isPricedOffer, type BayOfferKind } from "./bay-listing";
 import { formatPriceInput, isPriceInputText, parsePriceInput } from "./bay-price";
-import { BAY_FORM_AMOUNT_INPUT_CLASS, BAY_FORM_INPUT_CLASS as INPUT_CLASS } from "./form-ui";
+import { BAY_FORM_AMOUNT_INPUT_CLASS } from "./form-ui";
 import type { BayRevealItem } from "./BayRevealForm";
 
+// 天数、轮数、分钟数都是几位数：用短槽，不撑满一行。
+const INPUT_CLASS = BAY_FORM_AMOUNT_INPUT_CLASS;
+
 export type ListingBilling = "service" | "session" | "hour";
-export type ListingAppPriceModel = "free" | "one_time" | "subscription";
+export type ListingAppPriceModel = "one_time" | "subscription";
 export type ListingEngagement = "fixed" | "session" | "hourly" | "free" | "retainer";
 
 function intOrNull(value: string, min: number, max: number): number | null {
@@ -27,9 +31,9 @@ function revealRow(
   label: string,
   done: boolean,
   children: ReactNode,
-  extra?: { summary?: string; optional?: boolean; alwaysOpen?: boolean },
+  extra?: { summary?: string; optional?: boolean; required?: boolean; alwaysOpen?: boolean },
 ): BayRevealItem {
-  return { id, label, done, children, summary: extra?.summary, optional: extra?.optional, alwaysOpen: extra?.alwaysOpen };
+  return { id, label, done, children, summary: extra?.summary, optional: extra?.optional, required: extra?.required, alwaysOpen: extra?.alwaysOpen };
 }
 
 function BayPriceInput(props: {
@@ -75,9 +79,10 @@ export function engagementOf(
   offerKind: BayOfferKind,
   billing: ListingBilling,
   appPriceModel?: ListingAppPriceModel,
+  priceFen?: number | null,
 ): ListingEngagement {
   if (offerKind === "app") {
-    if (appPriceModel === "free") return "free";
+    if (priceFen === 0) return "free";
     if (appPriceModel === "subscription") return "retainer";
     return "fixed";
   }
@@ -92,18 +97,20 @@ export function listingPriceItems(
     offerKind: BayOfferKind;
     priceFen: number | null;
     onPriceFen: (fen: number | null) => void;
-    billing: ListingBilling;
-    onBilling: (value: ListingBilling) => void;
+    /** 需求表单还要自己选计费方式；发布页的计费方式已经由「计费方式」卡片选，不再在这里重复。 */
+    showBilling?: boolean;
+    billing?: ListingBilling;
+    onBilling?: (value: ListingBilling) => void;
     appPriceModel: ListingAppPriceModel;
     onAppPriceModel: (value: ListingAppPriceModel) => void;
     disabled?: boolean;
   },
 ): BayRevealItem[] {
   const priceFen = input.priceFen;
-  const priceLabel =
-    input.appPriceModel === "free" || priceFen == null ? (input.appPriceModel === "free" ? tt("免费") : undefined) : priceFen <= 0 ? tt("免费") : formatPriceInput(priceFen);
+  // 免费只在价格框里表达：填 0 就是免费，不再单独设「免费」选项。
+  const priceLabel = priceFen == null ? undefined : priceFen <= 0 ? tt("免费") : formatPriceInput(priceFen);
   const billingRow =
-    isPricedOffer(input.offerKind)
+    input.showBilling && isPricedOffer(input.offerKind)
       ? revealRow(
           "billing",
           tt("计费方式"),
@@ -115,8 +122,8 @@ export function listingPriceItems(
                 { value: "session", title: tt("按次") },
                 { value: "hour", title: tt("按小时") },
               ]}
-              value={input.billing}
-              onChange={(value) => input.onBilling(value)}
+              value={input.billing ?? "service"}
+              onChange={(value) => input.onBilling?.(value)}
               disabled={input.disabled}
               optionProps={(value) => ({
                 "data-bay-service-form-option": value === "service" ? "service" : "consult",
@@ -132,38 +139,12 @@ export function listingPriceItems(
         )
       : null;
   return [
-    ...(input.offerKind === "app"
-      ? [
-          revealRow(
-            "app-price-model",
-            tt("计价方式"),
-            true,
-            <BayChoice
-              options={[
-                { value: "free", title: tt("免费") },
-                { value: "one_time", title: tt("一次买断") },
-                { value: "subscription", title: tt("按月") },
-              ]}
-              value={input.appPriceModel}
-              onChange={(value) => input.onAppPriceModel(value)}
-              disabled={input.disabled}
-            />,
-            {
-              summary: input.appPriceModel === "free" ? tt("免费") : input.appPriceModel === "subscription" ? tt("按月") : tt("一次买断"),
-            },
-          ),
-        ]
-      : []),
     ...(billingRow ? [billingRow] : []),
     revealRow(
       "price",
       "",
       true,
-      <BayPriceInput
-        valueFen={input.appPriceModel === "free" ? null : priceFen}
-        onChangeFen={input.onPriceFen}
-        disabled={input.disabled || input.appPriceModel === "free"}
-      />,
+      <BayPriceInput valueFen={priceFen} onChangeFen={input.onPriceFen} disabled={input.disabled} />,
       { summary: priceLabel, optional: true },
     ),
   ];
@@ -239,7 +220,7 @@ export function listingTermsItems(
               value={input.deliveryDays == null ? "" : String(input.deliveryDays)}
               onChange={(event) => input.onDeliveryDays(intOrNull(event.target.value, 1, 365))}
             />,
-            { summary: input.deliveryDays != null ? String(input.deliveryDays) : undefined },
+            { summary: input.deliveryDays != null ? String(input.deliveryDays) : undefined, required: true },
           ),
           revealRow(
             "revisions",
@@ -267,7 +248,7 @@ export function listingTermsItems(
       tt("截止日期"),
       true,
       <BayDeadlineField value={input.deadline} onChange={input.onDeadline} disabled={input.disabled} />,
-      { summary: input.deadline || tt("交期可协商"), optional: true },
+      { summary: formatDeadline(input.deadline) || tt("交期可协商"), optional: true },
     ),
     revealRow(
       "custom-terms",

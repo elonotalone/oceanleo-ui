@@ -41,6 +41,8 @@ const MAX_PROMPT_CHARS = 32000;
 // 那份文件就在加载期炸一次（2026-09-23 实测）。同数改动时两处一起改。
 const MAX_OCEAN_PROMPT_CHARS = 8000;
 
+const SESSIONS_REFRESH_MS = 15_000;
+
 function sendJson(socket: WebSocket | null, frame: Record<string, unknown>): boolean {
   if (!socket || socket.readyState !== WebSocket.OPEN) return false;
   socket.send(JSON.stringify(frame));
@@ -305,7 +307,10 @@ export function useAgentDialog({
     if (frame.t === "install_done" || frame.t === "login_done") {
       sendJson(socketRef.current, { t: "status" });
     }
-    if (frame.t === "done" && frameProgram) sendJson(socketRef.current, { t: "sessions", program: frameProgram });
+    // New sessions and fresh activity must show up in "Past sessions" without a manual refresh.
+    if ((frame.t === "done" || frame.t === "session_opened" || frame.t === "turn_start") && frameProgram) {
+      sendJson(socketRef.current, { t: "sessions", program: frameProgram });
+    }
   }, [clearTimer, initialSessionId, mountProgram]);
 
   const scheduleReconnect = useCallback(() => {
@@ -889,6 +894,26 @@ export function useAgentDialog({
     })();
   }, [ensureOpen]);
 
+  // Sessions can also be created or renamed outside this view (CLI, another tab),
+  // so keep the list fresh while the dialog is on screen and when it regains focus.
+  useEffect(() => {
+    if (!enabled || !active) return;
+    const refresh = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const program = stateRef.current.program;
+      if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+      sendJson(socketRef.current, { t: "sessions", program });
+    };
+    const timer = setInterval(refresh, SESSIONS_REFRESH_MS);
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [enabled, active]);
+
   const requestSessionPath = useCallback(() => {
     const program = stateRef.current.program;
     const acpSession = stateRef.current.activeSession.trim();
@@ -962,7 +987,15 @@ export function useAgentDialog({
       });
       return;
     }
-    void cwd; // New adapter sessions are created only with the first prompt.
+    // New adapter sessions are created only with the first prompt, but the
+    // model/Fast/effort catalog must still be on this empty view.
+    if (usesDialogSocket(program, localOceanleoRef.current)) {
+      void (async () => {
+        const socket = await ensureOpen();
+        sendJson(socket, { t: "models", program });
+      })();
+    }
+    void cwd;
   }, [clearOceanWait, ensureOpen]);
 
   const openInstall = useCallback((program: WsProgram) => {
