@@ -326,7 +326,11 @@ test("程序条展示状态、无选择页；缺安装与凭据时顶部操作�
     assert.deepEqual(view.$$("[data-oceanleo-program-strip-item]").map(n => n.dataset.oceanleoProgramStripItem), ["oceanleo", "cursor", "claude", "codex", "hermes"]);
     assert.equal(view.$("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "oceanleo");
     assert.ok(FakeSocket.sockets.every(socket => !socket.url.includes("session_id")));
-    assert.ok(view.$('[data-oceanleo-program-strip-item="cursor"] .bg-emerald-500'));
+    // 就绪不画绿点；只有没登录（黄）和没安装（灰）有点。选中的那项加粗。
+    assert.equal(view.$('[data-oceanleo-program-strip] .bg-emerald-500'), null);
+    assert.equal(view.$('[data-oceanleo-program-strip-item="cursor"] [aria-hidden]'), null);
+    assert.match(view.$('[data-oceanleo-program-strip-item="oceanleo"]').className, /\bfont-bold\b/);
+    assert.doesNotMatch(view.$('[data-oceanleo-program-strip-item="cursor"]').className, /\bfont-bold\b/);
     assert.ok(view.$('[data-oceanleo-program-strip-item="claude"] .bg-amber-500'));
     assert.ok(view.$('[data-oceanleo-program-strip-item="codex"] .bg-zinc-400'));
     await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
@@ -999,7 +1003,9 @@ test("默认程序优先地址、其次本地记忆，缓存按电脑和程序�
     await act(async () => root.render(React.createElement(AcpCard, { computer })));
     assert.equal(host.querySelector("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "cursor");
     assert.ok(host.querySelector('[data-oceanleo-acp-session="cached"]'));
-    assert.ok(host.querySelector('[data-oceanleo-program-strip-item="cursor"] .bg-emerald-500'));
+    // 缓存里的状态是「已就绪」：既不是没安装的灰点，也不是没登录的黄点。
+    assert.equal(host.querySelector('[data-oceanleo-program-strip-item="cursor"] .bg-zinc-400'), null);
+    assert.equal(host.querySelector('[data-oceanleo-program-strip-item="cursor"] .bg-amber-500'), null);
     await act(async () => root.render(React.createElement(AcpCard, { key: "other", computer: { ...computer, id: "uncached" } })));
     assert.equal(host.querySelector("[data-oceanleo-acp-card]").dataset.oceanleoAcpProgram, "oceanleo");
     assert.equal(host.querySelector('[data-oceanleo-acp-session="cached"]'), null);

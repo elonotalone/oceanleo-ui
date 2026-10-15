@@ -59,6 +59,14 @@ export function emptyCheckoutForm(title = ""): BayCheckoutForm {
   return { title, what: "", links: "", deadline: "", notes: "" };
 }
 
+/** 期望截止时间：新表单给绝对时刻（ISO），老表单给纯日期；都原样规整，认不出就留空。 */
+function requirementsDeadline(value: string): string {
+  const raw = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? new Date(at).toISOString() : "";
+}
+
 /** 表单 → 后端 `requirements`（与 talent 下单页同形）。 */
 export function checkoutRequirements(form: BayCheckoutForm): BayOrderRequirements {
   return {
@@ -69,7 +77,7 @@ export function checkoutRequirements(form: BayCheckoutForm): BayOrderRequirement
       .map((line) => line.trim())
       .filter(Boolean)
       .slice(0, BAY_CHECKOUT_LIMITS.links),
-    deadline: /^\d{4}-\d{2}-\d{2}$/.test(form.deadline.trim()) ? form.deadline.trim() : "",
+    deadline: requirementsDeadline(form.deadline),
     notes: form.notes.trim().slice(0, BAY_CHECKOUT_LIMITS.notes),
   };
 }

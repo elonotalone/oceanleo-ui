@@ -34,6 +34,8 @@ import {
   serviceSelection,
   type BayServiceDetail,
 } from "../../../lib/bay/services";
+import { formatDeadline } from "../form/bay-deadline";
+import { BayDeadlineField } from "../form/BayDeadlineField";
 import { BAY_FORM_LABEL_CLASS } from "../form/form-ui";
 import { BayRevealForm, type BayRevealItem } from "../form/BayRevealForm";
 import { ensureBayTerms } from "../settings";
@@ -208,10 +210,8 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
       label: tt("期望截止时间"),
       done: Boolean(form.deadline.trim()),
       optional: true,
-      summary: form.deadline.trim() || undefined,
-      children: (
-        <input data-bay-field="deadline" type="date" value={form.deadline} onChange={(event) => patch({ deadline: event.target.value })} className={field + " sm:max-w-xs"} />
-      ),
+      summary: formatDeadline(form.deadline) || undefined,
+      children: <BayDeadlineField value={form.deadline} onChange={(deadline) => patch({ deadline })} />,
     },
     {
       id: "notes",

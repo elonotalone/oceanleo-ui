@@ -198,7 +198,10 @@ test("付款没开放：下单只建订单，不调付款，没有付款按钮�
   const orders = globalThis.__bayHttpCalls.filter((call) => call.method === "POST");
   assert.equal(orders.length, 1);
   assert.equal(orders[0].path, "/v1/talent/orders");
-  assert.deepEqual(orders[0].body, {
+  // 附加项已下线：旧网关仍可能带空的 addon_ids，有就必须是空的，其余字段逐字核对。
+  const { addon_ids: addonIds = [], ...orderBody } = orders[0].body;
+  assert.deepEqual(addonIds, []);
+  assert.deepEqual(orderBody, {
     service_id: "svc-1",
     tier: "premium",
     requirements: { title: "品牌 Logo 设计", what: "三版方案，含源文件", reference_links: ["https://a.example", "https://b.example"], deadline: "", notes: "" },

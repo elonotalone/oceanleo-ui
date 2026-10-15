@@ -53,3 +53,12 @@ test("库里的值原样往返；旧的纯日期按当地当天结束；坏值�
   assert.equal(deadlineToPayload("两周内"), null);
   assert.equal(deadlineFromRow(null), "");
 });
+
+test("下单的期望截止时间：绝对时刻原样写进 requirements，老的纯日期照旧，坏值留空", async () => {
+  const { checkoutRequirements } = await import("../src/lib/bay/checkout.ts");
+  const base = { title: "t", what: "w", links: "", notes: "" };
+  assert.equal(checkoutRequirements({ ...base, deadline: "2026-10-20T10:30:00Z" }).deadline, "2026-10-20T10:30:00.000Z");
+  assert.equal(checkoutRequirements({ ...base, deadline: "2026-10-20" }).deadline, "2026-10-20");
+  assert.equal(checkoutRequirements({ ...base, deadline: "下周" }).deadline, "");
+  assert.equal(checkoutRequirements({ ...base, deadline: "" }).deadline, "");
+});

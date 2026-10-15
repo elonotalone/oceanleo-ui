@@ -102,11 +102,12 @@ export function ProgramStrip({
               disabled={item.disabled}
               title={item.title}
               onClick={() => onSelect(item.id)}
-              className={`inline-flex min-w-0 items-center gap-1 truncate text-sm ${selected === item.id ? tone.tabActive : tone.tab}`}
+              className={`inline-flex min-w-0 items-center gap-1 truncate text-sm ${selected === item.id ? `${tone.tabActive} font-bold` : tone.tab}`}
               data-oceanleo-program-strip-item={item.id}
+              data-oceanleo-program-strip-running={item.running ? "" : undefined}
             >
-              {item.dot && item.dot !== "none" ? <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${item.dot === "green" ? "bg-emerald-500" : item.dot === "yellow" ? "bg-amber-500" : "bg-zinc-400"}`} /> : null}
-              {item.running ? <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-emerald-500" /> : null}
+              {/* 绿点（已就绪 / 运行中）几乎每项都亮，没有信息量，不画；只留需要处理的黄点（没登录）和灰点（没安装）。 */}
+              {item.dot === "yellow" || item.dot === "gray" ? <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${item.dot === "yellow" ? "bg-amber-500" : "bg-zinc-400"}`} /> : null}
               {item.label}
             </button>
             {onSettings ? (
