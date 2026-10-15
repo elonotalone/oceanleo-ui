@@ -57,13 +57,13 @@ export function MyBoughtLessonsPane(_props: MyBoughtLessonsPaneProps): ReactElem
         setLoad({ loading: false, error: "" });
       },
       (error: unknown) => {
-        if (alive) setLoad({ loading: false, error: errorText(error) || tt("没读到你买到的课，请稍后再试。") });
+        if (alive) setLoad({ loading: false, error: errorText(error) || "没读到你买到的课，请稍后再试。" });
       },
     );
     return () => {
       alive = false;
     };
-  }, [signedIn, nonce, tt]);
+  }, [signedIn, nonce]);
 
   if (!signedIn) return <BaySignInPrompt text={tt("登录后查看你买到的课")} />;
   if (load.loading) return <PaneLoading />;

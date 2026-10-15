@@ -56,9 +56,9 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
     } catch (err) {
       setAccess(null);
       onAccess(null);
-      setLoadError(errorText(err) || tt("没读到收费信息，请重试。"));
+      setLoadError(errorText(err) || "没读到收费信息，请重试。");
     }
-  }, [app.id, applyAccess, onAccess, tt]);
+  }, [app.id, applyAccess, onAccess]);
 
   useEffect(() => {
     let alive = true;
@@ -75,7 +75,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
         if (!alive) return;
         setAccess(null);
         onAccess(null);
-        setLoadError(errorText(err) || tt("没读到收费信息，请重试。"));
+        setLoadError(errorText(err) || "没读到收费信息，请重试。");
         setLoading(false);
       },
     );
@@ -83,7 +83,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
       alive = false;
       ac.abort();
     };
-  }, [app.id, applyAccess, onAccess, tt]);
+  }, [app.id, applyAccess, onAccess]);
 
   const currency = access?.currency || "CNY";
   const fen = access?.price_fen ?? app.price_fen;

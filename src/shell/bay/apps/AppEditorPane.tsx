@@ -112,19 +112,19 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
         const row = (body.items || []).find((item) => item.id === routeId);
         if (!row) {
           setApp(null);
-          setLoad({ loading: false, error: tt("这个作品不存在") });
+          setLoad({ loading: false, error: "这个作品不存在" });
           return;
         }
         applyApp(row);
         setLoad({ loading: false, error: "" });
       } catch (error) {
-        if (alive) setLoad({ loading: false, error: errorText(error, tt("作品没读出来，请稍后再试。")) });
+        if (alive) setLoad({ loading: false, error: errorText(error, "作品没读出来，请稍后再试。") });
       }
     })();
     return () => {
       alive = false;
     };
-  }, [signedIn, routeId, props.target.kind, applyApp, tt]);
+  }, [signedIn, routeId, props.target.kind, applyApp]);
 
   if (props.target.kind !== "app-editor") return null;
   if (!signedIn) return <BaySignInPrompt text={tt("登录后才能上架作品")} />;
@@ -199,7 +199,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
   if (load.error && !app) {
     return (
       <section data-bay-pane="app-editor" className="space-y-3 p-4">
-        <SellerNotice tone="error">{load.error}</SellerNotice>
+        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
       </section>
     );
   }

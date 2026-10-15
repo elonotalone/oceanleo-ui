@@ -85,13 +85,13 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
         if (alive) setStats({ ...next });
       },
       (error: unknown) => {
-        if (alive) setLoad({ loading: false, error: errorText(error, tt("作品列表没读出来，请稍后再试。")) });
+        if (alive) setLoad({ loading: false, error: errorText(error, "作品列表没读出来，请稍后再试。") });
       },
     );
     return () => {
       alive = false;
     };
-  }, [signedIn, nonce, tt]);
+  }, [signedIn, nonce]);
 
   if (!signedIn) return <BaySignInPrompt text={tt("登录后管理你上架的作品")} />;
 
@@ -148,7 +148,7 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
   if (load.error) {
     return (
       <section data-bay-pane="mine-apps" className="space-y-3 p-4">
-        <SellerNotice tone="error">{load.error}</SellerNotice>
+        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
         <button type="button" className={SECONDARY_BUTTON} onClick={reload}>
           {tt("重试")}
         </button>

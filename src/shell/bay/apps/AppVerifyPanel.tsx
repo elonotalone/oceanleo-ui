@@ -30,13 +30,13 @@ export function AppVerifyPanel({
         if (alive) setProof(body);
       },
       (error: unknown) => {
-        if (alive) setLoadError(error instanceof BayApiError && error.message ? error.message : tt("核验信息没取到，请稍后再试。"));
+        if (alive) setLoadError(error instanceof BayApiError && error.message ? error.message : "核验信息没取到，请稍后再试。");
       },
     );
     return () => {
       alive = false;
     };
-  }, [app.id, verified, tt]);
+  }, [app.id, verified]);
 
   async function copy(text: string) {
     setCopyError("");
@@ -76,7 +76,7 @@ export function AppVerifyPanel({
   return (
     <section data-bay-app-verify className="space-y-3">
       <h3 className="text-[14px] font-semibold text-stone-900">{tt("证明这个网站是你的")}</h3>
-      {loadError ? <SellerNotice tone="error">{loadError}</SellerNotice> : null}
+      {loadError ? <SellerNotice tone="error">{tt(loadError)}</SellerNotice> : null}
       {proof ? (
         <div className="space-y-3">
           <div className="space-y-1.5">

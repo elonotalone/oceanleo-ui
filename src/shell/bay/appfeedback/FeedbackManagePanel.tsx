@@ -86,7 +86,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
         if (live) setSettings(page.settings);
       },
       (caught: unknown) => {
-        if (live) setSettingsError(actionErrorText(caught, tt("这次没提交成功，请稍后再试。")));
+        if (live) setSettingsError(actionErrorText(caught, "这次没提交成功，请稍后再试。"));
       },
     );
     void getBayAppDigest(appId).then(
@@ -94,13 +94,13 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
         if (live) setDigest(body.digest);
       },
       (caught: unknown) => {
-        if (live) setDigestError(actionErrorText(caught, tt("这次没提交成功，请稍后再试。")));
+        if (live) setDigestError(actionErrorText(caught, "这次没提交成功，请稍后再试。"));
       },
     );
     return () => {
       live = false;
     };
-  }, [appId, tt]);
+  }, [appId]);
 
   const loadInbox = useCallback(
     async (offset: number, replace: boolean, nextStatus: StatusFilter) => {
@@ -125,17 +125,21 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
         setError("");
       } catch (caught) {
         if (request !== requestRef.current || isAbort(caught) || controller?.signal.aborted) return;
-        setError(actionErrorText(caught, tt("留言没读出来，请稍后点「重试」。")));
+        setError(actionErrorText(caught, "留言没读出来，请稍后点「重试」。"));
       } finally {
         if (request === requestRef.current) setLoading(false);
       }
     },
-    [appId, tt],
+    [appId],
   );
 
   useEffect(() => {
     void loadInbox(0, true, status);
-    return () => abortRef.current?.abort();
+    return () => {
+      // The client can finish even after abort; invalidate success/finally too.
+      requestRef.current += 1;
+      abortRef.current?.abort();
+    };
   }, [loadInbox, status]);
 
   async function saveSettings(patch: { feedback_mode?: "open" | "off"; ai_answer?: boolean }) {
@@ -153,7 +157,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
       setSettings(result.settings);
     } catch (caught) {
       setSettings(previous);
-      setSettingsError(actionErrorText(caught, tt("这次没提交成功，请稍后再试。")));
+      setSettingsError(actionErrorText(caught, "这次没提交成功，请稍后再试。"));
     } finally {
       setSaving(false);
     }
@@ -167,7 +171,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
       const result = await refreshBayAppDigest(appId);
       setDigest(result.digest);
     } catch (caught) {
-      setDigestError(actionErrorText(caught, tt("这次没提交成功，请稍后再试。")));
+      setDigestError(actionErrorText(caught, "这次没提交成功，请稍后再试。"));
     } finally {
       setRefreshing(false);
     }
@@ -208,7 +212,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
             />
           </div>
           {saving ? <p className="text-[12px] text-neutral-500">{tt("保存中…")}</p> : null}
-          {settingsError ? <p className="text-[12px] text-rose-600">{settingsError}</p> : null}
+          {settingsError ? <p className="text-[12px] text-rose-600">{tt(settingsError)}</p> : null}
         </div>
       </Section>
 
@@ -242,7 +246,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
           >
             {refreshing ? tt("重写中…") : tt("现在重写")}
           </button>
-          {digestError ? <p className="text-[12px] text-rose-600">{digestError}</p> : null}
+          {digestError ? <p className="text-[12px] text-rose-600">{tt(digestError)}</p> : null}
         </div>
       </Section>
 
@@ -270,7 +274,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
           {loading && items.length === 0 ? <p className="text-[12.5px] text-neutral-500">{tt("正在读取留言…")}</p> : null}
           {error ? (
             <div className="space-y-2">
-              <p className="text-[12.5px] text-rose-600">{error}</p>
+              <p className="text-[12.5px] text-rose-600">{tt(error)}</p>
               <button type="button" onClick={() => void loadInbox(0, true, status)} className="text-[12px] text-neutral-600 hover:underline">
                 {tt("重试")}
               </button>

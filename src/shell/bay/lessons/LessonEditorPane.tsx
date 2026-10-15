@@ -98,13 +98,13 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
       } catch (error) {
         if (!alive) return;
         setLesson(null);
-        setLoad({ loading: false, error: errorText(error, tt("这门课不存在")) });
+        setLoad({ loading: false, error: errorText(error, "这门课不存在") });
       }
     })();
     return () => {
       alive = false;
     };
-  }, [signedIn, routeId, props.target.kind, applyLesson, tt]);
+  }, [signedIn, routeId, props.target.kind, applyLesson]);
 
   if (props.target.kind !== "lesson-editor") return null;
   if (!signedIn) return <BaySignInPrompt text={tt("登录后才能发布课程")} />;
@@ -202,7 +202,7 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
   if (load.error && !lesson) {
     return (
       <section data-bay-pane="lesson-editor" className="space-y-3 p-4">
-        <SellerNotice tone="error">{load.error}</SellerNotice>
+        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
       </section>
     );
   }

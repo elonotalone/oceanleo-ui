@@ -45,7 +45,7 @@ export function BaySelectMembers(props: {
         setError("");
       })
       .catch(() => {
-        if (alive) setError(tt("联系人暂时读不出来，也可以搜名字"));
+        if (alive) setError("联系人暂时读不出来，也可以搜名字");
       });
     void import("../../../lib/im/inbox-api")
       .then(({ fetchConversations }) => fetchConversations("group"))
@@ -59,7 +59,7 @@ export function BaySelectMembers(props: {
     return () => {
       alive = false;
     };
-  }, [tt]);
+  }, []);
 
   useEffect(() => {
     const needle = query.trim();
@@ -175,7 +175,7 @@ export function BaySelectMembers(props: {
       ) : (
         <p className={BAY_FORM_HELP_CLASS}>{tt("还没选人")}</p>
       )}
-      {error ? <p className="text-[12px] text-amber-700">{error}</p> : null}
+      {error ? <p className="text-[12px] text-amber-700">{tt(error)}</p> : null}
       {renderList(tt("好友"), friendRows, tt("还没有好友"))}
       {renderList(tt("群聊"), groupRows, tt("还没有群聊"))}
     </div>

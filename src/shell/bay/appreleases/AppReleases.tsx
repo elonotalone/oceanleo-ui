@@ -40,14 +40,14 @@ export function AppReleases({ appId, isOwner }: { appId: string; isOwner: boolea
       },
       (err: unknown) => {
         if (!live) return;
-        setError(errorText(err) || tt("没读到更新日志，请稍后再试。"));
+        setError(errorText(err) || "没读到更新日志，请稍后再试。");
         setLoading(false);
       },
     );
     return () => {
       live = false;
     };
-  }, [appId, tt]);
+  }, [appId]);
 
   async function loadMore() {
     if (!appId || loadingMore || nextOffset == null) return;

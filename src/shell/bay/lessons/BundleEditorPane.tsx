@@ -85,19 +85,19 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
         const row = (body.items || []).find((item) => item.id === routeId);
         if (!row) {
           setBundle(null);
-          setLoad({ loading: false, error: tt("这个套餐不存在") });
+          setLoad({ loading: false, error: "这个套餐不存在" });
           return;
         }
         applyBundle(row);
         setLoad({ loading: false, error: "" });
       } catch (error) {
-        if (alive) setLoad({ loading: false, error: errorText(error, tt("套餐没读出来，请稍后再试。")) });
+        if (alive) setLoad({ loading: false, error: errorText(error, "套餐没读出来，请稍后再试。") });
       }
     })();
     return () => {
       alive = false;
     };
-  }, [signedIn, routeId, props.target.kind, applyBundle, tt]);
+  }, [signedIn, routeId, props.target.kind, applyBundle]);
 
   const listed = useMemo(
     () => mine.filter((row) => row.status === "published" && !row.moderation_hidden),
@@ -222,7 +222,7 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
   if (load.error && !bundle) {
     return (
       <section data-bay-pane="bundle-editor" className="space-y-3 p-4">
-        <SellerNotice tone="error">{load.error}</SellerNotice>
+        <SellerNotice tone="error">{tt(load.error)}</SellerNotice>
       </section>
     );
   }
