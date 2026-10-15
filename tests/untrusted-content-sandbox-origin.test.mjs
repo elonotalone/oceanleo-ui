@@ -321,8 +321,9 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
   );
 });
 
-// 附件条的 PDF 预览曾经是无沙箱 iframe，src 又常是 blob:（与宿主同源）。
-// Chromium PDF 插件不能加 sandbox，库查看器才走主机白名单豁免；这里不许开第二条例外。
+// UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：blob: PDF iframe 与宿主同源，再免沙箱就等于把不可信字节放进
+// 能读非 httpOnly SSO cookie 的 origin。附件条不许开 PDF 插件豁免。
 test("附件条不得用 iframe 预览 PDF", () => {
   const text = source("../src/shell/AttachmentStrip.tsx");
   assert.equal((text.match(/<iframe\b/g) || []).length, 0);
