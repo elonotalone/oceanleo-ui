@@ -12,7 +12,7 @@ Own clean src/i18n files, tests/i18n-*.test.mjs and narrowly necessary translati
 
 ## EFFECT
 
-Own tests/effect-tt-dependency.test.mjs and clean non-Bay/non-cloud-computer source effect sites it flags. Run and repair actual translation/effect risks and stale historical registration evidence without weakening scanner or debt guard. Do not edit src/i18n or shared global test helpers without parent coordination. Report effect-report.md.
+Own tests/effect-tt-dependency.test.mjs and the verified-clean Bay loading-effect cluster: src/shell/bay/appfeedback/FeedbackManagePanel.tsx, apppaid/AppPurchaseBar.tsx, appreleases/AppReleases.tsx, apps/AppEditorPane.tsx, apps/AppVerifyPanel.tsx, apps/MyAppsPane.tsx, form/BaySelectMembers.tsx, lessons/BundleEditorPane.tsx, lessons/LessonEditorPane.tsx, lessons/MyBoughtLessonsPane.tsx, lessons/MyLessonsPane.tsx (all relative to src/shell/bay). Own new focused effect regression tests. Run and repair actual translation/effect risks and stale historical registration evidence without weakening scanner or debt guard. Do not edit src/i18n or shared global test helpers without parent coordination. Report effect-report.md. Parent verified these sites are outside all other owners and initially clean; preserve true load/cancellation dependencies, prevent locale changes resetting editing drafts.
 
 ## FORM
 
