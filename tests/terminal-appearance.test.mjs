@@ -37,7 +37,7 @@ function memoryStorage(initial = null) {
 
 test("外观默认值完整，回滚行数固定为 10000", () => {
   assert.deepEqual(parseTerminalAppearance(null), DEFAULT_TERMINAL_APPEARANCE);
-  assert.equal(DEFAULT_TERMINAL_APPEARANCE.theme, "system");
+  assert.equal(DEFAULT_TERMINAL_APPEARANCE.theme, "dark");
   assert.equal(DEFAULT_TERMINAL_APPEARANCE.scrollback, 10_000);
   assert.equal(DEFAULT_TERMINAL_APPEARANCE.fontSize, 13);
   assert.equal(DEFAULT_TERMINAL_APPEARANCE.copyOnSelect, false);
@@ -60,7 +60,7 @@ test("坏 JSON 和坏字段逐项回默认，不抹掉仍合法的偏好", () =>
     cursorBlink: "yes",
     cursorStyle: "beam",
   });
-  assert.equal(normalized.theme, "system");
+  assert.equal(normalized.theme, "dark");
   assert.equal(normalized.fontFamily, "JetBrains Mono");
   assert.equal(normalized.fontSize, 13);
   assert.equal(normalized.fontWeight, "400");
@@ -164,7 +164,7 @@ test("明暗主题都有 ANSI 16 色，跟随网站 dark class", () => {
   for (const palette of [LIGHT_TERMINAL_THEME, DARK_TERMINAL_THEME]) {
     for (const color of ansi) assert.match(palette[color], /^#[0-9a-f]{6}$/i);
   }
-  assert.equal(resolveTerminalThemeMode("system", false), "light");
+  assert.equal(resolveTerminalThemeMode("system", false), "dark");
   assert.equal(resolveTerminalThemeMode("system", true), "dark");
   assert.equal(resolveTerminalThemeMode("light", true), "light");
   assert.equal(resolveTerminalThemeMode("dark", false), "dark");
@@ -172,6 +172,11 @@ test("明暗主题都有 ANSI 16 色，跟随网站 dark class", () => {
     siteThemeIsDark({ classList: { contains: (name) => name === "dark" } }),
     true,
   );
+});
+
+test("旧版跟随网站偏好升级为深色终端，显式浅色偏好仍保留", () => {
+  assert.equal(parseTerminalAppearance('{"theme":"system"}').theme, "dark");
+  assert.equal(parseTerminalAppearance('{"theme":"light"}').theme, "light");
 });
 
 test("MutationObserver 只观察 html class，并在切换时回调", () => {
@@ -205,4 +210,3 @@ test("MutationObserver 只观察 html class，并在切换时回调", () => {
   assert.equal(disconnected, true);
   globalThis.MutationObserver = previous;
 });
-

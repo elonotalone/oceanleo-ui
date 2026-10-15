@@ -103,7 +103,6 @@ export function AppearancePanel({
             update("theme", event.currentTarget.value as TerminalThemePreference)
           }
         >
-          <option value="system">{tt("跟随网站")}</option>
           <option value="light">{tt("白色")}</option>
           <option value="dark">{tt("黑色")}</option>
         </select>

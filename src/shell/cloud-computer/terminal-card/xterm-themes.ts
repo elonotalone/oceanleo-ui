@@ -69,10 +69,12 @@ export function siteThemeIsDark(
 
 export function resolveTerminalThemeMode(
   preference: TerminalThemePreference,
-  siteDark: boolean,
+  _siteDark: boolean,
 ): ResolvedTerminalTheme {
   if (preference === "light" || preference === "dark") return preference;
-  return siteDark ? "dark" : "light";
+  // Interactive CLI programs frequently emit colors for a dark terminal even
+  // when the surrounding website is light. Legacy "system" means dark here.
+  return "dark";
 }
 
 export function terminalThemeFor(
@@ -127,4 +129,3 @@ export function observeSiteTheme(
   observer.observe(root, { attributes: true, attributeFilter: ["class"] });
   return () => observer.disconnect();
 }
-

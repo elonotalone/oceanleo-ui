@@ -31,6 +31,8 @@ import {
   orderedCliPrograms,
   runningCliTerminals,
   sortCliChats,
+  sortTerminalRecords,
+  terminalEndCopy,
 } from "./model";
 import { TerminalViewport } from "./TerminalViewport";
 
@@ -80,6 +82,7 @@ export function CliCard({
   const [programs, setPrograms] = useState<CliProgram[]>(() => cache.programs ?? []);
   const [programId, setProgramId] = useState(initial.program);
   const [records, setRecords] = useState<TerminalRecord[]>(() => cache.records ?? []);
+  const [recordsSupported, setRecordsSupported] = useState(true);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initial.session);
   const [chatLists, setChatLists] = useState(() => new Map(cache.chats));
   const chats = chatLists.get(programId)?.sessions ?? [];
@@ -111,9 +114,15 @@ export function CliCard({
     () => runningCliTerminals(records, programId),
     [programId, records],
   );
+  const ended = useMemo(
+    () => recordsSupported
+      ? sortTerminalRecords(records.filter((record) => record.program === programId && !record.alive))
+      : [],
+    [programId, records, recordsSupported],
+  );
   const selectedTerminal = useMemo(
-    () => running.find((record) => record.id === selectedSessionId) ?? null,
-    [running, selectedSessionId],
+    () => [...running, ...ended].find((record) => record.id === selectedSessionId) ?? null,
+    [running, ended, selectedSessionId],
   );
 
   const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
@@ -155,6 +164,7 @@ export function CliCard({
         });
       cache.records = next;
       setRecords(next);
+      setRecordsSupported(result.records_supported);
     } catch {
       setFailed(true);
     }
@@ -206,16 +216,16 @@ export function CliCard({
 
   useEffect(() => {
     setSelectedSessionId((current) => {
-      if (current && running.some((record) => record.id === current)) return current;
+      if (current && [...running, ...ended].some((record) => record.id === current)) return current;
       if (
         initial.session &&
-        running.some((record) => record.id === initial.session)
+        [...running, ...ended].some((record) => record.id === initial.session)
       ) {
         return initial.session;
       }
-      return running[0]?.id ?? null;
+      return running[0]?.id ?? ended[0]?.id ?? null;
     });
-  }, [initial.session, programId, running]);
+  }, [ended, initial.session, programId, running]);
 
   useEffect(() => {
     if (!active || !programId) return;
@@ -437,6 +447,29 @@ export function CliCard({
                 </p>
               )}
             </div>
+            {ended.length > 0 && (
+              <>
+                <h3 className={`mt-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${tone.muted}`}>
+                  {tt("最近结束")}
+                </h3>
+                <div className="grid gap-1">
+                  {ended.map((record) => (
+                    <button
+                      key={record.id}
+                      type="button"
+                      className={`rounded-lg px-2 py-2 text-left text-xs ${record.id === selectedSessionId ? tone.rowActive : tone.hover}`}
+                      data-oceanleo-cli-ended={record.id}
+                      onClick={() => setSelectedSessionId(record.id)}
+                    >
+                      <span className="block truncate">{record.title || record.id.slice(0, 8)}</span>
+                      <span className={`mt-1 block text-[10px] ${tone.muted}`}>
+                        {tt(terminalEndCopy(record).key, terminalEndCopy(record).vars)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <h3 className={`mt-3 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${tone.muted}`}>
               {tt("过去的对话")}
             </h3>

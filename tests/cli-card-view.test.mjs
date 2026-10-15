@@ -429,6 +429,31 @@ test("旧节点缺少 CLI kind 时，启动后的会话仍保持可见", async (
   }
 });
 
+test("CLI 启动后立即退出仍保留终端回放和退出码", async () => {
+  const api = createClient();
+  const list = api.listTerminalsWithRecords;
+  api.listTerminalsWithRecords = async (...args) => {
+    const result = await list(...args);
+    return {
+      ...result,
+      sessions: result.sessions.map((session) => session.id === "launched-1"
+        ? { ...session, alive: false, end_reason: "exit", exit_code: 1, ended_at: "2026-09-23T12:00:01Z" }
+        : session),
+    };
+  };
+  const view = await renderCard({ api });
+  try {
+    const open = view.host.querySelector("[data-oceanleo-new-cli-chat]");
+    await act(async () => open.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    assert.ok(view.host.querySelector('[data-oceanleo-cli-ended="launched-1"]'));
+    assert.equal(view.host.querySelector('[data-test-cli-viewport]')?.getAttribute("data-test-cli-viewport"), "launched-1");
+    assert.match(view.host.textContent || "", /已退出（代码 1）/);
+  } finally {
+    view.cleanup();
+  }
+});
+
 test("地址变化只更新浅地址，不重拉列表；失活时暂停终端轮询", async () => {
   const api = createClient();
   const view = await renderCard({ api, props: { active: false, refreshIntervalMs: 20 } });

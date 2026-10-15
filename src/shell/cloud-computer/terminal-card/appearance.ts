@@ -39,7 +39,7 @@ export type TerminalAppearance = {
 };
 
 export const DEFAULT_TERMINAL_APPEARANCE: Readonly<TerminalAppearance> = {
-  theme: "system",
+  theme: "dark",
   fontFamily:
     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
   fontSize: 13,
@@ -117,11 +117,11 @@ export function normalizeTerminalAppearance(value: unknown): TerminalAppearance 
   const family =
     typeof raw.fontFamily === "string" ? raw.fontFamily.trim() : "";
   return {
-    theme: enumValue(
-      raw.theme,
-      THEME_VALUES,
-      DEFAULT_TERMINAL_APPEARANCE.theme,
-    ),
+    // Older installations stored "system", which made dark CLI interfaces
+    // unreadable when the surrounding site used a light theme.
+    theme: raw.theme === "system"
+      ? "dark"
+      : enumValue(raw.theme, THEME_VALUES, DEFAULT_TERMINAL_APPEARANCE.theme),
     fontFamily:
       family && family.length <= 240
         ? family
@@ -278,4 +278,3 @@ export function useTerminalAppearance(): readonly [
 
   return [appearance, setAppearance] as const;
 }
-
