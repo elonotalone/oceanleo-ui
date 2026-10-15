@@ -114,6 +114,8 @@ test("W8/1 workbench 嵌入：白名单 base 保留同源，任何其他 URL 立
     "https://website.oceanleo.com/embed/attacker",
     "https://design.oceanleo.com/embed/editor?next=https://evil.test",
     "https://user.oceanleo.app/embed/editor",
+    // UC-3 §8.3.2: Photopea 同源只许 photopeaFrameSandbox()，通用嵌入路径必须降级。
+    "https://www.photopea.com",
     "",
   ];
   for (const base of userControlled) {

@@ -7,7 +7,6 @@ import {
   toPhotopeaDocumentRef,
 } from "../src/shell/advanced-routes/image-pro-handoff.ts";
 import { photopeaFrameSandbox } from "../src/shell/image-editor/photopea-mount.ts";
-import { UNTRUSTED_FRAME_SANDBOX } from "../src/shell/editor-sandbox-origin.ts";
 
 const route = readFileSync("src/shell/advanced-routes/ImageRoute.tsx", "utf8");
 const session = readFileSync("src/shell/image-editor/photopea-session.ts", "utf8");
@@ -116,9 +115,9 @@ test("相同字节不新版本；保存仍是同一条 single_file_image", async
   assert.equal(again.unchanged, true);
 });
 
-test("UC-3 / UC-6：Photopea 仍是不可信沙箱，收信仍校验 origin+source", () => {
-  assert.equal(photopeaFrameSandbox(), UNTRUSTED_FRAME_SANDBOX);
-  assert.equal(photopeaFrameSandbox().includes("allow-same-origin"), false);
+test("UC-3 / UC-6：Photopea 精确 origin 可同源，收信仍校验 origin+source", () => {
+  assert.ok(photopeaFrameSandbox().includes("allow-same-origin"));
+  assert.equal(photopeaFrameSandbox().includes("allow-scripts"), true);
   assert.match(session, /setAttribute\("sandbox", photopeaFrameSandbox\(\)\)/);
   assert.match(session, /isPhotopeaFrameSource\(event, frame\?\.contentWindow\)/);
   assert.match(session, /postToPhotopea\(frame.contentWindow,[\s\S]*?PHOTOPEA_ORIGIN\)/);

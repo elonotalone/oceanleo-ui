@@ -249,7 +249,8 @@ export function createPhotopeaSession(input: {
         Object.assign(host.style, { position: "fixed", zIndex: "40", overflow: "hidden" });
         frame = ownerDocument.createElement("iframe");
         frame.title = "Photopea";
-        // UC-3: preserve the untrusted sandbox; no allow-same-origin.
+        // UC-3 §8.3.2: exact-origin Photopea sandbox (allow-same-origin for
+        // photopea.com itself; cookie isolation holds across eTLD+1).
         frame.setAttribute("sandbox", photopeaFrameSandbox());
         frame.setAttribute("referrerpolicy", "no-referrer");
         frame.dataset.testid = "image-photopea-frame";

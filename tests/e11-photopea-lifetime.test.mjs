@@ -209,5 +209,5 @@ test('UC-3/UC-6：模块监听继续使用沙箱和精确 origin/source，React 
   assert.match(source,/postToPhotopea\(frame.contentWindow,[\s\S]*?PHOTOPEA_ORIGIN\)/);
   assert.equal(/cloneNode|appendChild\(frame\)/.test(source),false);
   assert.equal(/removeEventListener/.test(component),false);
-  assert.equal(photopeaFrameSandbox().includes('allow-same-origin'),false);
+  assert.equal(photopeaFrameSandbox().includes('allow-same-origin'),true);
 });

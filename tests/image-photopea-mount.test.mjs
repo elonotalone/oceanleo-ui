@@ -17,13 +17,20 @@ import React, { act } from "react";
 
 import { compileModule } from "./helpers/module-bench.mjs";
 import {
+  HOSTED_EDITOR_EMBED_BASES,
   TRUSTED_EMBED_EDITOR_BASES,
   UNTRUSTED_FRAME_SANDBOX,
   embedEditorFrameSandbox,
   isTrustedEmbedEditorBase,
+  sandboxGrantsScriptedSameOrigin,
 } from "../src/shell/editor-sandbox-origin.ts";
-import { PHOTOPEA_ORIGIN } from "../src/shell/image-editor/photopea-bridge.ts";
 import {
+  PHOTOPEA_ORIGIN,
+  classifyPhotopeaMessage,
+  isPhotopeaFrameSource,
+} from "../src/shell/image-editor/photopea-bridge.ts";
+import {
+  PHOTOPEA_FRAME_SANDBOX,
   photopeaFrameSandbox,
   planPhotopeaMount,
 } from "../src/shell/image-editor/photopea-mount.ts";
@@ -42,10 +49,17 @@ test("pro 档才允许挂 Photopea，normal 档不允许", () => {
   assert.equal(planPhotopeaMount(false).mount, false);
 });
 
-test("Photopea sandbox 是不可信档，且不在 TRUSTED 表里", () => {
-  // UC-3: docs/architecture/oceanleo-untrusted-content-isolation.md §8.3
-  assert.equal(photopeaFrameSandbox(), UNTRUSTED_FRAME_SANDBOX);
+test("Photopea sandbox 是精确 origin 跨源例外，且不在 TRUSTED/HOSTED 表里", () => {
+  // UC-3 §8.3.2: docs/architecture/oceanleo-untrusted-content-isolation.md
+  assert.equal(PHOTOPEA_ORIGIN, "https://www.photopea.com");
+  assert.equal(photopeaFrameSandbox(), PHOTOPEA_FRAME_SANDBOX);
+  assert.equal(sandboxGrantsScriptedSameOrigin(photopeaFrameSandbox()), true);
+  assert.ok(photopeaFrameSandbox().includes("allow-same-origin"));
   assert.equal(embedEditorFrameSandbox(PHOTOPEA_ORIGIN), UNTRUSTED_FRAME_SANDBOX);
+  assert.equal(
+    sandboxGrantsScriptedSameOrigin(embedEditorFrameSandbox(PHOTOPEA_ORIGIN)),
+    false,
+  );
   assert.equal(UNTRUSTED_FRAME_SANDBOX.includes("allow-same-origin"), false);
   assert.equal(isTrustedEmbedEditorBase(PHOTOPEA_ORIGIN), false);
   assert.equal(
@@ -53,6 +67,19 @@ test("Photopea sandbox 是不可信档，且不在 TRUSTED 表里", () => {
     false,
     "不许把 photopea.com 加进 TRUSTED_EMBED_EDITOR_BASES",
   );
+  assert.equal(
+    HOSTED_EDITOR_EMBED_BASES.some((base) => /photopea/i.test(base)),
+    false,
+    "不许把 photopea.com 加进 HOSTED_EDITOR_EMBED_BASES",
+  );
+  const frame = {};
+  assert.equal(
+    isPhotopeaFrameSource({ origin: "null", source: frame }, frame),
+    false,
+  );
+  assert.deepEqual(classifyPhotopeaMessage({ origin: "null", data: "done" }), {
+    kind: "foreign",
+  });
 });
 
 test("Host 必须问 planPhotopeaMount，Frame 必须走共享沙箱与精确 origin", () => {
