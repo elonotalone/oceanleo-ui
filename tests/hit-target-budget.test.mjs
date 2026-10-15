@@ -389,9 +389,8 @@ const FILE_BUDGET = new Map([
   ["src/shell/HumanHandoffDialog.tsx", 2],
   ["src/shell/HumanHandoffStatus.tsx", 2],
   ["src/shell/InlineAdvancedWorkbenchShell.tsx", 1],
-  ["src/shell/InputCard.tsx", 1],
   ["src/shell/LeoAssistant.tsx", 2],
-  ["src/shell/LeoComposer.tsx", 6],
+  ["src/shell/LeoComposer.tsx", 5],
   ["src/shell/LocalFileTree.tsx", 1],
   ["src/shell/MyAppsRail.tsx", 1],
   ["src/shell/MyLibrary.tsx", 2],
@@ -435,6 +434,9 @@ const FILE_BUDGET = new Map([
   ["src/shell/leo/LeoBoard.tsx", 2],
   // W03 的面（`ui/index.tsx`）。W04 不许动，已写进 `signals/W04-request.md`。
   ["src/ui/index.tsx", 1],
+  // 2026-10-15：InputCard / LeoComposer 各自那枚附件「×」搬进共用的 AttachmentStrip，
+  // 两处各减 1、这里记 1（同一枚角标，净减 1）。
+  ["src/shell/AttachmentStrip.tsx", 1],
 ]);
 
 // ---------------------------------------------------------------- 用例

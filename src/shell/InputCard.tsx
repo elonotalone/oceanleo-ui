@@ -39,12 +39,8 @@ import {
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import { persistedPayerOrgId } from "../lib/payer";
-import {
-  AttachmentProgressChip,
-  CompressionNote,
-  liveProgress,
-  UploadProgressList,
-} from "../lib/upload/progress-view";
+import { CompressionNote } from "../lib/upload/progress-view";
+import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -57,6 +53,9 @@ export interface InputAttachment {
   name?: string;
   /** 仍在上传中：缩略条上显示转圈。 */
   uploading?: boolean;
+  /** 点击缩略卡时右侧预览用的文件地址与类型。 */
+  url?: string;
+  mime?: string;
   /**
    * 真读数（W08）。业务把 `uploadFile` 的进度填进来，缩略条就把那个不确定态
    * 转圈换成真进度条。**不传时行为与今天逐字一致**——业务侧没接进度的站
@@ -208,52 +207,7 @@ export function InputCard({
         className={dragging ? "border-dashed" : ""}
       />
 
-      {attachments && attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {attachments.map((a) => (
-            <div
-              key={a.id}
-              className="group relative flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-1 py-1 pr-2 text-[11px] text-stone-600 shadow-sm"
-            >
-              {a.previewUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={a.previewUrl}
-                  alt={a.name || ""}
-                  className="h-9 w-9 rounded-md object-cover"
-                />
-              ) : (
-                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-stone-100">
-                  <FileGlyph />
-                </span>
-              )}
-              <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
-              {/* 业务填了真读数就把那个不确定态转圈换掉；没填则逐字维持今天的样子。 */}
-              {liveProgress(a.progress) ? (
-                <AttachmentProgressChip snapshot={a.progress} tt={tt} />
-              ) : (
-                a.uploading && (
-                  <span className="v-spinner text-[10px] text-stone-400" />
-                )
-              )}
-              {onRemoveAttachment && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveAttachment(a.id)}
-                  aria-label={tt("移除")}
-                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 进度总线（W08）：业务层什么都不回传也看得见进度。只有总线真报过数才
-          渲染——宿主拿了文件却不上传时，一行永远不动的进度比没有更糟。 */}
-      <UploadProgressList entries={intake.inFlight} accent={accent} tt={tt} />
+      <AttachmentStrip attachments={attachments ?? []} onRemove={onRemoveAttachment} />
 
       {intake.compressing && (
         <p className="text-[11px] text-stone-500">{tt("正在压缩图片…")}</p>

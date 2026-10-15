@@ -27,11 +27,9 @@ import {
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import {
-  AttachmentProgressChip,
   CompressionNote,
-  liveProgress,
-  UploadProgressList,
 } from "../lib/upload/progress-view";
+import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
@@ -95,6 +93,9 @@ export interface ComposerAttachment {
   name?: string;
   /** 仍在上传中：缩略条上显示转圈。 */
   uploading?: boolean;
+  /** 点击缩略卡时右侧预览用的文件地址与类型。 */
+  url?: string;
+  mime?: string;
   /**
    * 真读数（W08）。业务把 `uploadFile` 的进度填进来，缩略条就把那个不确定态
    * 转圈换成真进度条。**不传时行为与今天逐字一致**——业务侧没接进度的站
@@ -490,63 +491,12 @@ export function LeoComposer({
         className="rounded-t-2xl"
       />
 
-      {/* 附件缩略条（上传中转圈 / 可删除） */}
-      {attachments && attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-4 pb-1">
-          {attachments.map((a) => (
-            <div
-              key={a.id}
-              className="group relative flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-1 py-1 pr-2 text-[11px] text-neutral-600 shadow-sm"
-            >
-              {a.previewUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={a.previewUrl}
-                  alt={a.name || ""}
-                  className="h-9 w-9 rounded-md object-cover"
-                />
-              ) : (
-                <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-100">
-                  <FileGlyph />
-                </span>
-              )}
-              <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
-              {/* 业务填了真读数就把那个不确定态转圈换掉；没填则逐字维持今天的样子。 */}
-              {liveProgress(a.progress) ? (
-                <AttachmentProgressChip snapshot={a.progress} tt={tt} />
-              ) : (
-                a.uploading && (
-                  <span className="v-spinner text-[10px] text-neutral-400" />
-                )
-              )}
-              {onRemoveAttachment && !a.uploading && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveAttachment(a.id)}
-                  aria-label={tt("移除")}
-                  className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full text-neutral-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 进度总线（W08）：本组件不负责上传，但业务把 File 原样交给 `uploadFile`
-          （`useAttachments.ts:63`），总线按 File 对象身份挂键，所以这里订阅得到。
-          只有总线真报过数才渲染——宿主拿了文件却不传时，一行永远不动的进度比
-          没有更糟。业务侧零改动。 */}
-      {intake.inFlight.length > 0 && (
-        <div className="px-4 pb-2">
-          <UploadProgressList
-            entries={intake.inFlight}
-            accent={accentColor}
-            tt={tt}
-          />
-        </div>
-      )}
+      {/* 附件缩略条（上传中转圈 / 点击右侧预览 / 右上角删除） */}
+      <AttachmentStrip
+        attachments={attachments ?? []}
+        onRemove={onRemoveAttachment}
+        className="px-4 pb-1"
+      />
 
       {intake.compressing && (
         <p className="px-4 pb-2 text-[11px] text-neutral-500">

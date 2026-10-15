@@ -19,6 +19,8 @@ export interface PendingAttachment {
   id: string;
   name: string;
   previewUrl?: string;
+  url?: string;
+  mime?: string;
   uploading: boolean;
   attachment?: AgentAttachment;
 }
@@ -56,9 +58,10 @@ export function useAttachments(
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const isImage = file.type.startsWith("image/");
         const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+        const localUrl = previewUrl || URL.createObjectURL(file);
         setAttachments((prev) => [
           ...prev,
-          { id, name: file.name, previewUrl, uploading: true },
+          { id, name: file.name, previewUrl, url: localUrl, mime: file.type, uploading: true },
         ]);
         void uploadFile(file, { siteId }).then((r) => {
           if (r.ok && r.data?.file?.url) {
@@ -70,6 +73,8 @@ export function useAttachments(
                       id,
                       name: f.title || file.name,
                       previewUrl: previewUrl || f.thumb_url,
+                      url: localUrl,
+                      mime: f.mime || file.type,
                       uploading: false,
                       attachment: {
                         url: f.url,
@@ -140,6 +145,8 @@ export function useAttachments(
         id: a.id,
         name: a.name,
         previewUrl: a.previewUrl,
+        url: a.url || a.attachment?.url,
+        mime: a.mime || a.attachment?.mime,
         uploading: a.uploading,
       }),
     ),
