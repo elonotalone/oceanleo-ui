@@ -212,9 +212,8 @@ export const MATERIAL_TAXONOMY_LABEL: Record<ArtifactType, string> = {
 };
 
 function designTemplateDocumentUrl(value = ""): string {
-  // design 子站与素材域都按**当前家族**取。境内 v1 没有 design 子站，
-  // `currentFamilySubsiteOrigin()` 给 undefined → 这里直接返回空串（fail closed），
-  // 而不是回落去信一个 `.com` 主机。
+  // design 子站与素材域都按**当前家族**取。ws 已开放 design（com / cn 也有），
+  // 缺 origin 才返回空串（fail closed），而不是回落去信一个 `.com` 主机。
   const designOrigin = currentFamilySubsiteOrigin("design");
   if (!designOrigin) return "";
   const designHost = new URL(designOrigin).hostname;

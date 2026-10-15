@@ -97,11 +97,12 @@ export function isUntrustedContentUrl(value: string): boolean {
  *   * 境内家族在 2026-08-13 的全量上线里也有了这三个子站 → 本表是三条 `.cn`
  *     base，**永远不会出现 `.com`**：域名由当前家族的可注册域拼出来，家族表是
  *     单次查表，没有任何跨族回落分支。
+ *   * ws 家族 2026-10-16 开放 design / website / video → 本表是三条
+ *     `*.oceanbizs.com` base，**永远不会出现 `.com`**。
  *   * 某个家族缺这个子站时本表相应少一条；三个都缺就是空表，
  *     `isTrustedEmbedEditorBase()` 对任何 base 都是 false，嵌入路径整条
  *     fail closed（拿不到 same-origin，也构造不出 URL）。宁可暂时没有内嵌
- *     编辑器，也不能让境内页面去嵌一个 `.com` 主机 —— 那等于把境内用户的
- *     请求和数据送出境。
+ *     编辑器，也不能让境内或分身页面去嵌一个 `.com` 主机。
  */
 const EMBED_EDITOR_ROUTES = [
   { subsite: "website", path: "/embed/site-editor" },

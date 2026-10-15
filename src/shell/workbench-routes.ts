@@ -245,10 +245,10 @@ function unavailable(reason: string): EditorCapability {
  * `editor-sandbox-origin.ts` 的 `TRUSTED_EMBED_EDITOR_BASES` 逐字对应 ——
  * 那张表是「谁能拿 allow-same-origin」的白名单，两边必须同源同规则。
  *
- * 境内 v1 三个子站一个都不存在，`currentFamilySubsiteOrigin()` 给 undefined，
- * 这里就返回 unavailable。**不许回落到 `.com` 的 base**：那会把境内用户的
- * 产物送进境外编辑器，既是数据出境，也拿不到白名单（白名单在境内是空的），
- * 结果只会是一个加载不出来的 iframe。给一句说得清的「暂未开放」更诚实。
+ * ws 只开放 design / website / video；`currentFamilySubsiteOrigin()` 对这三
+ * 个给分身子站 origin，其余（excel / slide 等）给 undefined，这里就返回
+ * unavailable。**不许回落到 `.com` 的 base**：那会把分身页面嵌到生产编辑器，
+ * 既跨族串门，也违反 UC-3。缺 origin 才写「暂未开放」。
  */
 const EMBED_EDITOR_SUBSITES = {
   website: {

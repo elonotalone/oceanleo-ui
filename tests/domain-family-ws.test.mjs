@@ -7,7 +7,9 @@
 //   1. `oceanbizs.com` 及其子域 → 家族 ws；`ws.oceanleo.app` 及其子域 → 不属于任何家族；
 //   2. ws 页面的会话 / 非会话 cookie 域是 `.oceanbizs.com`，在 `*.ws.oceanleo.app` 上 host-only；
 //   3. `NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws` 能选中该家族，且在那个进程里：
-//      - 姐妹站清单为空 ⇒ 家族内嵌编辑器白名单为空、整条嵌入路径 fail closed；
+//      - 姐妹站清单恰好 design / website / video ⇒ 内嵌白名单是三条
+//        `*.oceanbizs.com` base；`.com` 编辑器 origin 仍不可信、仍不得
+//        `buildEditorEmbedUrl` 到 `.com`（UC-3）；
 //      - Hosted 编辑器 / MCP App 承载面拼在 `ws.oceanleo.app` 上（全串白名单，不是后缀）；
 //      - `.com` / `.cn` 的第一方主机在 ws 页面上都不可信（家族互不串门）；
 //      - `oceanleo.app` / `leoapp.cn` / `ws.oceanleo.app` 在 ws 页面上同样都不可信。
@@ -92,9 +94,14 @@ test("ws/1 familyForHost / cookie 域：oceanbizs.com 是 ws，ws.oceanleo.app �
       assetOrigin: "https://asset.oceanleo.com",
       untrustedContentDomain: "ws.oceanleo.app",
       hostedEditorDomain: "ws.oceanleo.app",
-      availableSubsites: [],
+      availableSubsites: ["design", "website", "video"],
     },
   );
+  assert.equal(m.familyHasSubsite("ws", "design"), true);
+  assert.equal(m.familyHasSubsite("ws", "website"), true);
+  assert.equal(m.familyHasSubsite("ws", "video"), true);
+  assert.equal(m.familyHasSubsite("ws", "excel"), false);
+  assert.equal(m.familyHasSubsite("ws", "slide"), false);
   assert.deepEqual(
     [...m.UNTRUSTED_CONTENT_DOMAINS],
     ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
@@ -106,7 +113,7 @@ test("ws/1 familyForHost / cookie 域：oceanbizs.com 是 ws，ws.oceanleo.app �
 
 // UC-3 §8.3 + UC-6 §8.6 + UC-7 §8.7
 // 违反后果：ws 槽位若仍拿到 .com 的内嵌白名单，分身页面就会给生产主机 allow-same-origin 并投 postMessage。
-test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌入 fail closed，Hosted 面落在 ws.oceanleo.app", () => {
+test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbizs 编辑器，.com 仍 fail closed，Hosted 面落在 ws.oceanleo.app", () => {
   const probe = `
     const family = await import(${JSON.stringify(FAMILY_URL)});
     const cfg = await import(${JSON.stringify(CONFIG_URL)});
@@ -133,6 +140,8 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌入 fail close
       ),
       buildThrew,
       subsiteOrigin: family.currentFamilySubsiteOrigin("design") ?? null,
+      excelOrigin: family.currentFamilySubsiteOrigin("excel") ?? null,
+      slideOrigin: family.currentFamilySubsiteOrigin("slide") ?? null,
       hostedOrigins: [...hosted.HOSTED_EDITOR_ORIGINS],
       hostedProd: hosted.isHostedEditorOrigin("https://slides.oceanleo.app"),
       hostedWs: hosted.isHostedEditorOrigin("https://slides.ws.oceanleo.app"),
@@ -175,13 +184,24 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌入 fail close
   assert.equal(ws.configured, "ws");
   assert.equal(ws.gateway, "https://api.oceanbizs.com");
   assert.equal(ws.profileGateway, "https://api.oceanbizs.com");
-  // 姐妹站不部署 ⇒ 空白名单，嵌入整条 fail closed。
-  assert.deepEqual(ws.bases, []);
-  assert.deepEqual(ws.origins, []);
+  // 分身内嵌三件：白名单按 EMBED_EDITOR_ROUTES（website → design → video）。
+  // UC-3：`.com` 编辑器 origin 在 ws 进程里仍不可信，仍不得 build 到 `.com`。
+  assert.deepEqual(ws.bases, [
+    "https://website.oceanbizs.com/embed/site-editor",
+    "https://design.oceanbizs.com/embed/editor",
+    "https://video.oceanbizs.com/canvas-board",
+  ]);
+  assert.deepEqual(ws.origins, [
+    "https://website.oceanbizs.com",
+    "https://design.oceanbizs.com",
+    "https://video.oceanbizs.com",
+  ]);
   assert.equal(ws.comBaseTrusted, false);
   assert.equal(ws.comBaseGrantsSameOrigin, false);
   assert.equal(ws.buildThrew, true, "ws 不得构造出指向 .com 编辑器的 embed URL");
-  assert.equal(ws.subsiteOrigin, null, "ws 没有姐妹站链接");
+  assert.equal(ws.subsiteOrigin, "https://design.oceanbizs.com");
+  assert.equal(ws.excelOrigin, null);
+  assert.equal(ws.slideOrigin, null);
   // Hosted 六件 / MCP App 承载面：ws 自己的隔离区，生产的 .app 全串在 ws 页面上不在表里。
   assert.deepEqual(
     [...ws.hostedOrigins].sort(),
