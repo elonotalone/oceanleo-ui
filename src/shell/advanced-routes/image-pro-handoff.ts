@@ -100,7 +100,7 @@ export async function photopeaContentDigest(bytes: ArrayBuffer): Promise<string>
 }
 
 async function dataUrlDigest(url: string): Promise<string | undefined> {
-  const match = /^data:image\/[^;,]+;base64,(.*)$/s.exec(url);
+  const match = /^data:image\/[^;,]+;base64,([\s\S]*)$/.exec(url);
   if (!match) return undefined;
   try {
     const binary = atob(match[1]);
