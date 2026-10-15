@@ -366,7 +366,7 @@ test("新对话在过去的对话上方，标题旁复制服务器上的对话�
     assert.equal(button.parentElement.firstElementChild.textContent, "Cursor");
     assert.equal(button.parentElement.lastElementChild, button);
     assert.match(button.className, /ml-auto/);
-    const cursorPath = "/root/.cursor/acp-sessions/9100123f-6459-4781-a624-62d57f0e6a05";
+    const cursorPath = "/data/.cursor/acp-sessions/9100123f-6459-4781-a624-62d57f0e6a05";
     await server({ t: "session_opened", program: "cursor", acp_session: "9100123f-6459-4781-a624-62d57f0e6a05", cwd: "/root", path: cursorPath, replayed: 0 });
     await click(button);
     assert.equal(copied.at(-1), cursorPath);
@@ -381,7 +381,7 @@ test("新对话在过去的对话上方，标题旁复制服务器上的对话�
     await click(button);
     assert.equal(copied.length, beforeLookup);
     assert.ok(sentFrames().some((frame) => frame.t === "session_path" && frame.program === "claude" && frame.acp_session === "claude-recent"));
-    const claudePath = "/root/.claude/projects/-root/claude-recent.jsonl";
+    const claudePath = "/data/.claude/projects/-root/claude-recent.jsonl";
     await server({ t: "session_path", program: "claude", acp_session: "claude-recent", path: claudePath });
     await until(() => copied.at(-1) === claudePath, "copied located path");
     assert.equal(button.getAttribute("aria-label"), "已复制对话位置");
@@ -407,9 +407,34 @@ test("复制地址时剪贴板不可用或拒绝，不显示已复制", async ()
       configurable: true,
       value: { async writeText() { throw new Error("permission denied"); } },
     });
-    await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", path: "/root/.cursor/acp-sessions/one", replayed: 0 });
+    await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", path: "/data/.cursor/acp-sessions/one", replayed: 0 });
     await click(button);
     assert.equal(button.getAttribute("aria-label"), "复制对话位置");
+  } finally {
+    view.cleanup();
+    delete navigator.clipboard;
+  }
+});
+
+test("已复制对话位置只提示 3 秒，随后按钮还原", async () => {
+  const copied = [];
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { async writeText(value) { copied.push(value); } },
+  });
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    const button = view.$("[data-oceanleo-acp-copy-link]");
+    const path = "/data/acp-sessions/copy-feedback";
+    await server({ t: "session_opened", program: "cursor", acp_session: "copy-feedback", cwd: "/root", path, replayed: 0 });
+    await click(button);
+    assert.equal(copied.at(-1), path);
+    assert.equal(button.getAttribute("aria-label"), "已复制对话位置");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 2500)); });
+    assert.equal(button.textContent, "已复制对话位置");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 700)); });
+    assert.equal(button.getAttribute("aria-label"), "复制对话位置");
+    assert.equal(button.textContent, "复制对话位置");
   } finally {
     view.cleanup();
     delete navigator.clipboard;

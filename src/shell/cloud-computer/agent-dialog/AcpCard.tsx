@@ -37,6 +37,8 @@ const PROGRAMS: readonly AgentProgram[] = [
   "hermes",
 ];
 
+const COPY_FEEDBACK_MS = 3000;
+
 function agentProgram(value: string | undefined): AgentProgram | null {
   return PROGRAMS.find((program) => program === value) ?? null;
 }
@@ -203,6 +205,12 @@ export function AcpCard({
       setCopiedLink("missing");
     }
   }, [pendingCopy, dialog.sessionPath, dialog.sessionPathResolved, dialog.sessions, dialog.activeSession]);
+
+  useEffect(() => {
+    if (!copiedLink) return;
+    const timer = window.setTimeout(() => setCopiedLink(""), COPY_FEEDBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [copiedLink]);
 
   useEffect(() => {
     setPendingCopy("");
