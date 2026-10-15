@@ -23,7 +23,7 @@ import type { AgentDialogController } from "./types";
 // ============================================================================
 // Shell 对话框输入框（合同 I7）：对**所有**程序渲染——OceanLeo agent 与
 // Cursor/Hermes/Claude Code/Codex 共用同一个消息列表、同一个输入框（含左下角
-// 同一颗 ✦ leo 按钮）。模型/模式选择器仅在有数据时出现（条件渲染，未变）。
+// 同一颗 ✦ leo 按钮）。模型选择器在有目录时出现；Fast/effort 有目录就一直留着。
 // Enter 守 isComposing：中文输入法候选态按 Enter 是选字，不是发送（事实 D3）。
 // ============================================================================
 
@@ -167,6 +167,7 @@ export function Composer({
     };
   }, []);
   const restoreKey = useRef("");
+  const catalogFor = useRef<{ model: string; options: typeof dialog.configOptions }>({ model: "", options: [] });
   const tuningRef = useRef<HTMLDivElement>(null);
   const [openTuning, setOpenTuning] = useState<string | null>(null);
   useEffect(() => {
@@ -176,6 +177,11 @@ export function Composer({
     const params = (dialog.configOptions || []).filter((option) =>
       option.id !== "model" && option.category !== "model");
     if (!params.length) return;
+    // Fast/effort stay on screen across model switches. Do not write the
+    // previous model's catalog into the new model's memory before its own
+    // config frame arrives.
+    if (catalogFor.current.options === dialog.configOptions && catalogFor.current.model !== model) return;
+    catalogFor.current = { model, options: dialog.configOptions };
     const computerId = dialog.computerId || shellInfo.computerId || "";
     const memory = readModelParamMemory(computerId, program);
     const merged = mergeLiveParams(memory[model], params);

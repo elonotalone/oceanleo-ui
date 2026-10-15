@@ -307,6 +307,77 @@ test("重连间隔、安装目录、提问退化和行级 diff", () => {
   assert.equal(tool.tool.content[0].type, "diff");
 });
 
+test("Fast/effort stay visible across model switches until a real catalog replaces them", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "config",
+      program: "cursor",
+      options: [{
+        id: "mode",
+        name: "mode",
+        category: "mode",
+        current: "agent",
+        options: [{ value: "agent", name: "Agent" }],
+      }, {
+        id: "fast",
+        name: "fast",
+        category: "fast",
+        current: true,
+        options: [{ value: true, name: "Fast" }, { value: false, name: "Standard" }],
+      }, {
+        id: "thought_level",
+        name: "thinking",
+        category: "thought_level",
+        current: "high",
+        options: [{ value: "high", name: "high" }, { value: "xhigh", name: "xhigh" }],
+      }],
+    },
+  });
+  state = applyDialog(state, { type: "set-model", id: "other" });
+  assert.deepEqual(state.configOptions.map((option) => option.id), ["mode", "fast", "thought_level"]);
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "config",
+      program: "cursor",
+      options: [{
+        id: "mode",
+        name: "mode",
+        category: "mode",
+        current: "plan",
+        options: [{ value: "agent", name: "Agent" }, { value: "plan", name: "Plan" }],
+      }],
+    },
+  });
+  assert.deepEqual(state.configOptions.map((option) => option.id), ["mode", "fast", "thought_level"]);
+  state = applyDialog(state, { type: "frame", frame: { t: "config", program: "cursor", options: [] } });
+  assert.deepEqual(state.configOptions.map((option) => option.id), ["mode", "fast", "thought_level"]);
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "config",
+      program: "cursor",
+      options: [{
+        id: "model",
+        name: "Model",
+        category: "model",
+        current: "other",
+        options: [{ value: "other", name: "Other" }],
+      }, {
+        id: "mode",
+        name: "mode",
+        category: "mode",
+        current: "agent",
+        options: [{ value: "agent", name: "Agent" }],
+      }],
+    },
+  });
+  assert.deepEqual(state.configOptions.map((option) => option.id), ["model", "mode"]);
+});
+
 test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", async () => {
   const view = await boot();
   try {
@@ -476,8 +547,8 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     await act(async () => {
       setControlValue(model, "a");
     });
-    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="fast"]'), null);
-    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]'), null);
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="fast"]').value, "false");
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-config="thought_level"]').value, "fast");
     await act(async () => {
       view.socket().server({
         t: "config",

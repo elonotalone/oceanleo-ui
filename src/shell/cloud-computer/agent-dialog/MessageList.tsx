@@ -79,7 +79,14 @@ function ToolView({ tool }: { tool: ToolCard }) {
         <span className={tone.faint}>{open ? tt("收起") : tt("展开")}</span>
       </button>
       {open ? (
-        <div className="mt-1 space-y-2 pl-4">
+        <div
+          data-oceanleo-cc-tool-expanded=""
+          className="mt-1 cursor-pointer space-y-2 pl-4"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.getSelection()?.toString()) return;
+            setOpen(false);
+          }}
+        >
           {tool.content.map((part, index) => {
             if (part.type === "diff") {
               return (
@@ -127,6 +134,33 @@ function ToolView({ tool }: { tool: ToolCard }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+// 「已自动允许：<整条命令>」这一行可能长达几千字：默认单行截断，点任意处展开 / 收起。
+function AutoAllowedView({ permId, name }: { permId: string; name: string }) {
+  const tt = useUI();
+  const [open, setOpen] = useState(false);
+  return (
+    <p
+      data-oceanleo-cc-permission-auto={permId}
+      aria-expanded={open}
+      role="button"
+      tabIndex={0}
+      onClick={() => {
+        if (typeof window !== "undefined" && window.getSelection()?.toString()) return;
+        setOpen((value) => !value);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setOpen((value) => !value);
+        }
+      }}
+      className={`cursor-pointer text-[12px] ${tone.muted} ${open ? "whitespace-pre-wrap break-words" : "truncate"}`}
+    >
+      {tt("已自动允许：{name}", { name })}
+    </p>
   );
 }
 
@@ -333,11 +367,7 @@ function ItemView({ item, dialog, active = false }: { item: TurnItem; dialog: Ag
   if (item.kind === "permission") {
     if (item.auto) {
       const allowed = item.toolTitle || item.title || tt("这项操作");
-      return (
-        <p data-oceanleo-cc-permission-auto={item.permId} className={`text-[12px] ${tone.muted}`}>
-          {tt("已自动允许：{name}", { name: allowed })}
-        </p>
-      );
+      return <AutoAllowedView permId={item.permId} name={allowed} />;
     }
     return (
       <div data-oceanleo-cc-permission={item.permId} className="space-y-2 text-[12px]">

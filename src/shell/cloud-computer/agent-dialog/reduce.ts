@@ -623,6 +623,17 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     let configOptions = parseConfigOptions(frame.options);
     const mode = parseMode(frame.options);
     const model = configOptions.find((option) => option.id === "model" || option.category === "model");
+    // An empty or mode-only update is not a new model catalog. Keep Fast/effort
+    // that we already have so the chips do not blink out between frames.
+    if (!configOptions.length) return state;
+    const hasTuning = configOptions.some((option) => !isModelFamilyConfig(option, mode?.id));
+    if (!hasTuning && !model) {
+      const seen = new Set(configOptions.map((option) => option.id));
+      configOptions = [
+        ...configOptions,
+        ...state.configOptions.filter((option) => !isModelFamilyConfig(option, state.mode?.id) && !seen.has(option.id)),
+      ];
+    }
     // A fresh view's choices belong to the user, not the spare session used
     // to discover the adapter's options. Existing history remains authoritative.
     if (!state.activeSession) {
@@ -784,20 +795,13 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       return {
         ...state,
         selectedModel: event.id,
-        // Fast/High belong to the current model. Drop them until the next
-        // config frame; a leftover Fast selector would lie about the new model.
-        configOptions: state.configOptions.filter((option) => isModelFamilyConfig(option, state.mode?.id)),
       };
     case "set-mode":
       return { ...state, selectedMode: event.value };
     case "set-config":
       return {
         ...state,
-        configOptions: (
-          event.id === "model"
-            ? state.configOptions.filter((option) => isModelFamilyConfig(option, state.mode?.id))
-            : state.configOptions
-        ).map((option) =>
+        configOptions: state.configOptions.map((option) =>
           option.id === event.id ? { ...option, current: event.value } : option,
         ),
         mode:
