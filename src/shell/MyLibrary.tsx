@@ -54,6 +54,7 @@ import {
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
+import { adoptSavedEditorItem } from "./advanced-session";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
@@ -1134,7 +1135,11 @@ export function MyLibrary({
           appId={editorBinding.appId}
           accent={accent}
           embedded
-          onSavedItem={setStandaloneEditorItem}
+          onSavedItem={(saved) =>
+            setStandaloneEditorItem((current) =>
+              adoptSavedEditorItem(current, saved),
+            )
+          }
           onClose={() => setStandaloneEditorItem(null)}
         />
       </div>

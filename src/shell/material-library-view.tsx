@@ -13,6 +13,7 @@ import type { ArtifactContextRef, ArtifactType } from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
 import { deckDeliverySections } from "./deck-delivery-family";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
+import { adoptSavedEditorItem } from "./advanced-session";
 import { libraryIdentityAction } from "./library-current-identity";
 import { MaterialStandaloneEditor } from "./material-library-standalone";
 import { useMaterialLibraryOpenItem } from "./material-library-open";
@@ -709,7 +710,7 @@ export function MaterialLibrary({
         appId={runtimeAppId}
         accent={accent}
         className={className}
-        onSavedItem={setStandaloneEditorItem}
+        onSavedItem={(saved) => setStandaloneEditorItem((current) => adoptSavedEditorItem(current, saved))}
         onClose={() => setStandaloneEditorItem(null)}
       />
     );

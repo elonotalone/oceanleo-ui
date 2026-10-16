@@ -245,6 +245,22 @@ export function advancedRootItemId(item: LibraryItem): string {
   );
 }
 
+/**
+ * Hosts that wire `onSavedItem` to the currently open library item must ignore
+ * a save that belongs to a different root. Otherwise a departed PPT instance
+ * can steal the stage after the person already opened another card. A closed
+ * stage (`current == null`) stays closed.
+ */
+export function adoptSavedEditorItem(
+  current: LibraryItem | null | undefined,
+  saved: LibraryItem,
+): LibraryItem | null {
+  if (!current) return null;
+  return advancedRootItemId(current) === advancedRootItemId(saved)
+    ? saved
+    : current;
+}
+
 export type SavedEditorRevisionTransitionCode =
   | "non-durable-source"
   | "metadata-only"

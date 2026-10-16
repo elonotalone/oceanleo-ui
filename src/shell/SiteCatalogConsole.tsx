@@ -64,6 +64,7 @@ import { useAppCapabilityUrlBinding } from "./app-capability-context";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   advancedItemFromSession,
+  advancedRootItemId,
   advancedSnapshotFromSession,
 } from "./advanced-session";
 import type { OceanLeoSiteManifest } from "../contracts/site-manifest";
@@ -656,6 +657,7 @@ export function SiteCatalogConsole({
         resumeLatest={false}
       >
         <AdvancedContentWorkbench
+          key={advancedRootItemId(advancedHistoryItem)}
           item={advancedHistoryItem}
           previewContent={advancedHistoryItem.content}
           linkUrl={advancedHistoryItem.url}

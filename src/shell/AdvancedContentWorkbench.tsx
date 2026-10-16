@@ -351,6 +351,19 @@ function AdvancedContentWorkbenchRuntime(
   const [item, setItem] = useState<LibraryItem>(
     () => restoredItem || props.item,
   );
+  const stageAliveRef = useRef(true);
+  useEffect(() => {
+    stageAliveRef.current = true;
+    return () => {
+      stageAliveRef.current = false;
+    };
+  }, []);
+  if (
+    editorHost.embedded &&
+    advancedRootItemId(item) !== advancedRootItemId(props.item)
+  ) {
+    setItem(props.item);
+  }
   const loadedSessionIdRef = useRef(workspace.session?.id || "");
   const restoredSessionId = workspace.session?.id || "";
   const activeItem =
@@ -393,17 +406,24 @@ function AdvancedContentWorkbenchRuntime(
       (materialRef.current.artifactId !== props.item.artifactId ||
         materialRef.current.revisionId !== props.item.revisionId),
   );
+  const embeddedHostRootChanged = Boolean(
+    editorHost.embedded &&
+      advancedRootItemId(materialRef.current) !==
+        advancedRootItemId(props.item),
+  );
   if (
     (restoredSessionId &&
       materialSessionIdRef.current !== restoredSessionId) ||
     advancedRootItemId(materialRef.current) !== advancedRootItemId(activeItem) ||
     materialRef.current.kind !== activeItem.kind ||
     materialRef.current.siteId !== activeItem.siteId ||
-    embeddedPinnedRevisionChanged
+    embeddedPinnedRevisionChanged ||
+    embeddedHostRootChanged
   ) {
-    materialRef.current = embeddedPinnedRevisionChanged
-      ? props.item
-      : activeItem;
+    materialRef.current =
+      embeddedPinnedRevisionChanged || embeddedHostRootChanged
+        ? props.item
+        : activeItem;
     materialSessionIdRef.current = restoredSessionId;
   }
   const flushRef = useRef<
@@ -487,6 +507,22 @@ function AdvancedContentWorkbenchRuntime(
     },
     [editorHost.embedded, makeSnapshot, workspace],
   );
+  const hostItemRef = useRef(props.item);
+  hostItemRef.current = props.item;
+  const saveBelongsToCurrentStage = (candidate: LibraryItem) => {
+    if (!stageAliveRef.current) return false;
+    // Full-page workspaces publish a new version id; only the unmount gate
+    // applies. Embedded library hosts reuse one session, so a departed PPT
+    // instance must not claim a different card's stage or history head.
+    if (!editorHost.embedded) return true;
+    const savedRoot = advancedRootItemId(candidate);
+    const hostRoot = advancedRootItemId(hostItemRef.current);
+    return Boolean(
+      savedRoot &&
+        savedRoot === hostRoot &&
+        savedRoot === advancedRootItemId(materialRef.current),
+    );
+  };
   const recordDraft = useCallback(
     async (draft: AdvancedDraftPointer): Promise<boolean> => {
       const expectedSessionId = workspace.sessionId;
@@ -495,6 +531,9 @@ function AdvancedContentWorkbenchRuntime(
         const active = draftQueueRef.current.current(currentWorkspace.session);
         const material = materialRef.current;
         const identity = advancedDraftIdentity(material);
+        if (!stageAliveRef.current || !saveBelongsToCurrentStage(material)) {
+          return true;
+        }
         if (!active || active.id !== expectedSessionId || draft.rootId !== identity.rootId) return false;
         if (versionSchemaRef.current === draft.schema && advancedDraftCovers(versionCoveredRef.current, draft.editRevision)) return true;
         const pointer = { ...draft, baseRevisionId: identity.baseRevisionId };
@@ -517,6 +556,7 @@ function AdvancedContentWorkbenchRuntime(
       return draftQueueRef.current.run(async () => {
         const workspace = workspaceRef.current;
         if (expectedSessionId && workspace.sessionId !== expectedSessionId) return false;
+        if (!saveBelongsToCurrentStage(savedItem)) return true;
         const previousItem = materialRef.current;
         const previousSession = draftQueueRef.current.current(workspace.session);
         const draft = advancedDraftAfterVersion(
@@ -559,6 +599,7 @@ function AdvancedContentWorkbenchRuntime(
     async (title: string) => {
       const nextTitle = title.trim();
       if (!nextTitle) return false;
+      if (!saveBelongsToCurrentStage(materialRef.current)) return true;
       const nextItem = { ...materialRef.current, title: nextTitle };
       materialRef.current = nextItem;
       setItem(nextItem);

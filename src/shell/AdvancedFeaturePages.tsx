@@ -22,6 +22,7 @@ import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import {
   advancedItemFromSession,
+  advancedRootItemId,
   advancedSnapshotFromSession,
 } from "./advanced-session";
 import {
@@ -330,6 +331,7 @@ export function AdvancedFeatureRoute({
         ) : null}
         <div className="min-h-0 flex-1">
           <AdvancedContentWorkbench
+            key={advancedRootItemId(item)}
             item={item}
             siteId={session?.site_id || runtimeSiteId}
             accent={accent || feature.accent}
