@@ -631,9 +631,10 @@ export function SettingsHub({
         <div
           className={
             variant === "modal"
-              ? "flex min-h-full w-full flex-col items-center justify-center px-6 pb-10 pt-16"
+              ? "flex min-h-full w-full flex-col items-center justify-center px-6 pb-10"
               : "flex min-h-[70vh] w-full flex-col items-center justify-center px-6 py-16"
           }
+          style={variant === "modal" ? { paddingTop: 96 } : undefined}
         >
         {onSignInClick ? (
           <div className="v-fade-up mx-auto mt-8 max-w-sm text-center">

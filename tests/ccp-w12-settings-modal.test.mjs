@@ -34,4 +34,5 @@ test("SettingsHub keeps page variant and uses callback tabs in modal variant", (
   assert.match(hub, /data-settings-guest-auth/);
   assert.match(hub, /<AuthPanel/);
   assert.match(hub, /radial-gradient\(#d4d4d8 1px, transparent 1px\)/);
+  assert.match(hub, /paddingTop: 96/);
 });
