@@ -314,8 +314,8 @@ test("CLI 共享程序条、运行/历史列表、浅地址、续聊 options 与
         program: "cursor",
         resume_id: "resume-new",
         options: { model: "pro", confirm_dangerous: false },
-        cols: 120,
-        rows: 36,
+        cols: 80,
+        rows: 24,
       },
     });
     assert.equal(
@@ -449,6 +449,92 @@ test("CLI 启动后立即退出仍保留终端回放和退出码", async () => {
     assert.ok(view.host.querySelector('[data-oceanleo-cli-ended="launched-1"]'));
     assert.equal(view.host.querySelector('[data-test-cli-viewport]')?.getAttribute("data-test-cli-viewport"), "launched-1");
     assert.match(view.host.textContent || "", /已退出（代码 1）/);
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("切到只有已结束会话的程序时不要自动打开死亡回放", async () => {
+  const api = createClient();
+  const programs = api.listCliPrograms;
+  api.listCliPrograms = async () => {
+    const result = await programs();
+    return {
+      programs: result.programs.map((item) =>
+        item.id === "claude" ? { ...item, installed: true } : item,
+      ),
+    };
+  };
+  const list = api.listTerminalsWithRecords;
+  api.listTerminalsWithRecords = async (...args) => {
+    const result = await list(...args);
+    return {
+      ...result,
+      sessions: [
+        record({
+          id: "claude-dead",
+          program: "claude",
+          alive: false,
+          ended_at: "2026-10-16T05:55:14Z",
+          end_reason: "exit",
+          exit_code: 1,
+        }),
+      ],
+    };
+  };
+  const view = await renderCard({ api, props: { initialProgram: "claude" } });
+  try {
+    assert.equal(view.host.querySelector("[data-test-cli-viewport]"), null);
+    assert.match(view.host.textContent || "", /选择运行中的命令行，或打开一个新的/);
+    assert.ok(view.host.querySelector('[data-oceanleo-cli-ended="claude-dead"]'));
+    assert.equal(
+      window.location.pathname + window.location.search,
+      "/computers/cc_1?card=cli&program=claude",
+    );
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("深链仍能打开指定的已结束命令行", async () => {
+  const api = createClient();
+  const programs = api.listCliPrograms;
+  api.listCliPrograms = async () => {
+    const result = await programs();
+    return {
+      programs: result.programs.map((item) =>
+        item.id === "claude" ? { ...item, installed: true } : item,
+      ),
+    };
+  };
+  const list = api.listTerminalsWithRecords;
+  api.listTerminalsWithRecords = async (...args) => {
+    const result = await list(...args);
+    return {
+      ...result,
+      sessions: [
+        record({
+          id: "claude-dead",
+          program: "claude",
+          alive: false,
+          ended_at: "2026-10-16T05:55:14Z",
+          end_reason: "exit",
+          exit_code: 1,
+        }),
+      ],
+    };
+  };
+  const view = await renderCard({
+    api,
+    props: { initialProgram: "claude", initialSessionId: "claude-dead" },
+  });
+  try {
+    assert.equal(
+      view.host.querySelector("[data-test-cli-viewport]")?.getAttribute(
+        "data-test-cli-viewport",
+      ),
+      "claude-dead",
+    );
   } finally {
     view.cleanup();
   }

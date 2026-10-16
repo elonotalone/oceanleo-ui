@@ -21,6 +21,14 @@ test("terminal UTF-8 survives packet boundaries inside Chinese and emoji", () =>
   }
 });
 
+test("PTY 流关闭 convertEol，避免和 termios 重复翻译换行", async () => {
+  const source = await import("node:fs/promises").then((fs) =>
+    fs.readFile(new URL("../src/shell/cloud-computer/TerminalPanel.tsx", import.meta.url), "utf8"),
+  );
+  assert.match(source, /export const PTY_CONVERT_EOL = false;/);
+  assert.match(source, /convertEol: PTY_CONVERT_EOL,/);
+});
+
 test("xterm OSC and DCS replies are not keystrokes", () => {
   assert.equal(isTerminalProtocolReply("\u001b]11;rgb:0a0a/0a0a/0a0a\u0007"), true);
   assert.equal(isTerminalProtocolReply("\u001b]7501;?\u0007"), true);

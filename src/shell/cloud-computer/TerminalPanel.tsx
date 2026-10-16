@@ -56,6 +56,9 @@ export function stripTerminalAnsi(text: string): string {
     .replace(/\u009b[0-?]*[ -/]*[@-~]/g, "");
 }
 
+/** PTY already emits CR/LF. xterm convertEol must stay off. */
+export const PTY_CONVERT_EOL = false;
+
 /** xterm.js answers OSC/DCS queries on onData. Those are not keystrokes. */
 export function isTerminalProtocolReply(data: string): boolean {
   if (!data || data.charCodeAt(0) !== 0x1b) return false;
@@ -279,6 +282,7 @@ export function useComputerTerminal({
       const isCurrent = () => life.current === lifeToken && socketRef.current === socket;
       socket.addEventListener("open", () => {
         if (!isCurrent()) return;
+        announceSize();
         applyConnEventRef.current({ type: "reconnect_ok" });
       });
       socket.addEventListener("message", (event) => {
@@ -309,12 +313,14 @@ export function useComputerTerminal({
       if (socket.readyState === WebSocket.OPEN) {
         // 同步就绪的套接字（测试桩）没有 open 事件，补一次。
         queueMicrotask(() => {
-          if (isCurrent()) applyConnEventRef.current({ type: "reconnect_ok" });
+          if (!isCurrent()) return;
+          announceSize();
+          applyConnEventRef.current({ type: "reconnect_ok" });
         });
       }
       return true;
     },
-    [computerId],
+    [announceSize, computerId],
   );
   attachSocketRef.current = attachSocket;
 
@@ -347,7 +353,7 @@ export function useComputerTerminal({
       if (disposed || !hostRef.current) return;
       hostRef.current.replaceChildren();
       const term = new Terminal({
-        convertEol: true,
+        convertEol: PTY_CONVERT_EOL,
         ...terminalOptionsFromAppearance(
           appearanceRef.current,
           siteThemeIsDark(),

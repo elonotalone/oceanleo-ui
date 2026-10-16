@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DEFAULT_PTY_COLS,
+  DEFAULT_PTY_ROWS,
   orderedCliPrograms,
+  pickCliSessionId,
   runningCliTerminals,
   shellTerminalRecords,
   sortCliChats,
@@ -104,6 +107,28 @@ test("终端列表按活着优先、组内时间倒序，兼容旧节点的 CLI 
     ["legacy-cli-live", "cli-live"],
   );
   assert.deepEqual(runningCliTerminals(rows, "claude"), []);
+});
+
+test("切程序只自动选正在跑的命令行，深链才能打开已结束的", () => {
+  assert.equal(DEFAULT_PTY_COLS, 80);
+  assert.equal(DEFAULT_PTY_ROWS, 24);
+  assert.equal(pickCliSessionId(null, [], ["claude-dead"], null), null);
+  assert.equal(
+    pickCliSessionId(null, [], ["claude-dead"], "claude-dead"),
+    "claude-dead",
+  );
+  assert.equal(
+    pickCliSessionId("claude-dead", [], ["claude-dead"], null),
+    "claude-dead",
+  );
+  assert.equal(
+    pickCliSessionId(null, ["cursor-live"], ["cursor-ended"], null),
+    "cursor-live",
+  );
+  assert.equal(
+    pickCliSessionId("gone", ["cursor-live"], ["cursor-ended"], "cursor-ended"),
+    "cursor-ended",
+  );
 });
 
 test("结束原因映射成人话，退出码 0 不丢失", () => {

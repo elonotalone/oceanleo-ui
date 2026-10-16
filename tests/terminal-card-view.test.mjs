@@ -283,7 +283,7 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
     await act(async () => create.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await flush();
     assert.deepEqual(api.calls.open, [
-      { id: "cc_1", body: { cols: 120, rows: 36, kind: "shell" } },
+      { id: "cc_1", body: { cols: 80, rows: 24, kind: "shell" } },
     ]);
     assert.equal(view.replaces.length, 0);
     assert.equal(window.location.search, "?card=terminal&session=new-1");

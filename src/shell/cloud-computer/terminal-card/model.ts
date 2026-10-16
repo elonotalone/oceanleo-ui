@@ -12,6 +12,10 @@ export const CLI_PROGRAM_ORDER = [
   "hermes",
 ] as const;
 
+/** xterm.js, the node PTY, and the gateway all start at 80×24. */
+export const DEFAULT_PTY_COLS = 80;
+export const DEFAULT_PTY_ROWS = 24;
+
 function timestamp(value: string | null | undefined): number {
   if (!value) return 0;
   const parsed = Date.parse(value);
@@ -54,6 +58,19 @@ export function runningCliTerminals(
         record.program === program && record.alive,
     ),
   );
+}
+
+/** Keep a deep-linked or already-open session; never auto-open a dead one. */
+export function pickCliSessionId(
+  current: string | null,
+  runningIds: readonly string[],
+  endedIds: readonly string[],
+  initialSession: string | null,
+): string | null {
+  const known = new Set([...runningIds, ...endedIds]);
+  if (current && known.has(current)) return current;
+  if (initialSession && known.has(initialSession)) return initialSession;
+  return runningIds[0] ?? null;
 }
 
 export function orderedCliPrograms(

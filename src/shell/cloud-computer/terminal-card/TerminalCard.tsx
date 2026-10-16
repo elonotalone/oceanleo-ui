@@ -15,6 +15,8 @@ import { ServerPageStripPortal } from "../server-page/server-page-chrome";
 import { tone } from "../server-page/tone";
 import { AppearancePanel } from "./AppearancePanel";
 import {
+  DEFAULT_PTY_COLS,
+  DEFAULT_PTY_ROWS,
   shellTerminalRecords,
   terminalEndCopy,
 } from "./model";
@@ -127,8 +129,8 @@ export function TerminalCard({
     setBusyId("new");
     try {
       const result = await client.openTerminalSession(computer.id, {
-        cols: 120,
-        rows: 36,
+        cols: DEFAULT_PTY_COLS,
+        rows: DEFAULT_PTY_ROWS,
         kind: "shell",
       });
       setRecords((current) => [

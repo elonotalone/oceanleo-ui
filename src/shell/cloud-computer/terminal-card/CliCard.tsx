@@ -28,7 +28,10 @@ import {
   type CliToolProgram,
 } from "./CliSettingsPanel";
 import {
+  DEFAULT_PTY_COLS,
+  DEFAULT_PTY_ROWS,
   orderedCliPrograms,
+  pickCliSessionId,
   runningCliTerminals,
   sortCliChats,
   sortTerminalRecords,
@@ -215,16 +218,14 @@ export function CliCard({
   }, [active, refreshIntervalMs, refreshTerminals]);
 
   useEffect(() => {
-    setSelectedSessionId((current) => {
-      if (current && [...running, ...ended].some((record) => record.id === current)) return current;
-      if (
-        initial.session &&
-        [...running, ...ended].some((record) => record.id === initial.session)
-      ) {
-        return initial.session;
-      }
-      return running[0]?.id ?? ended[0]?.id ?? null;
-    });
+    setSelectedSessionId((current) =>
+      pickCliSessionId(
+        current,
+        running.map((record) => record.id),
+        ended.map((record) => record.id),
+        initial.session,
+      ),
+    );
   }, [ended, initial.session, programId, running]);
 
   useEffect(() => {
@@ -246,8 +247,8 @@ export function CliCard({
             stored,
             serverConfirmDangerous,
           ),
-          cols: 120,
-          rows: 36,
+          cols: DEFAULT_PTY_COLS,
+          rows: DEFAULT_PTY_ROWS,
         });
         const session = normalizeCliRecord(result.session, selectedProgram.id);
         legacyCliPrograms.current.set(session.id, selectedProgram.id);
