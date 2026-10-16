@@ -19,7 +19,7 @@ import {
 } from "./parse";
 import { isModelFamilyConfig } from "./notice";
 import { normalizeUserMessage } from "./message-attachments";
-import { hasOpenTurn } from "./session-status";
+import { hasOpenTurn, turnLooksSettled, turnStillRunning } from "./session-status";
 import type {
   AgentDialogMessage,
   AgentProgram,
@@ -636,7 +636,8 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       for (const key of Object.keys(liveTurns)) {
         if (!key.startsWith(prefix)) continue;
         const id = key.slice(prefix.length);
-        if (busy.has(id) || (id === current && state.busy)) continue;
+        if (busy.has(id)) continue;
+        if (id === current && state.busy && !hasOpenTurn(state.messages)) continue;
         delete liveTurns[key];
       }
       for (const id of busy) {
@@ -644,6 +645,30 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
         if (state.cancelledTurns?.[key]) continue;
         liveTurns[key] = true;
       }
+      const currentKey = turnKey(state.program, current);
+      const currentLive = Boolean(current && liveTurns[currentKey]);
+      let messages = state.messages;
+      if (current && !busy.has(current) && turnLooksSettled(state.messages)) {
+        messages = stampOpenTurn(state.messages, "end_turn");
+      }
+      const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
+      const runningSessions = Array.isArray(frame.running)
+        ? frame.running.filter((id): id is string => typeof id === "string" && Boolean(id))
+        : state.runningSessions;
+      return {
+        ...state,
+        messages,
+        liveTurns,
+        runningSessions,
+        sessionsSupported: frame.supported !== false,
+        sessions,
+        serverActiveSession: str(frame.active),
+        sessionPath: listedPath || state.sessionPath,
+        sessionPathResolved: Boolean(listedPath) || state.sessionPathResolved,
+        busy: currentLive,
+        busySession: currentLive ? current : "",
+      };
     }
     const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
@@ -717,15 +742,20 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       const item = asRecord(raw);
       if (item) next = onFrame(next, item);
     }
-    const open = hasOpenTurn(next.messages);
+    let messages = next.messages;
+    if (frame.live === false && turnLooksSettled(messages)) {
+      messages = stampOpenTurn(messages, "end_turn");
+    }
+    const running = turnStillRunning(messages);
     const live = typeof frame.live === "boolean"
-      ? frame.live || open
-      : open || isLiveTurn(keptTurns, next.program, next.activeSession);
+      ? frame.live || running
+      : running || isLiveTurn(keptTurns, next.program, next.activeSession);
     const liveTurns = { ...keptTurns };
     if (live) liveTurns[turnKey(next.program, next.activeSession)] = true;
     else delete liveTurns[turnKey(next.program, next.activeSession)];
     return rememberSession({
       ...next,
+      messages,
       liveTurns,
       busy: live,
       busySession: live ? next.activeSession : "",
@@ -908,7 +938,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         commands: event.commands,
       };
       const id = next.activeSession || next.draftRef || "";
-      const live = isLiveTurn(next.liveTurns, next.program, id) || hasOpenTurn(next.messages);
+      const live = isLiveTurn(next.liveTurns, next.program, id) || turnStillRunning(next.messages);
       const liveTurns = { ...next.liveTurns };
       if (live && id) liveTurns[turnKey(next.program, id)] = true;
       return { ...next, liveTurns, busy: live, busySession: live ? next.activeSession : "", agentBusy: false };

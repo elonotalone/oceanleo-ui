@@ -15,7 +15,7 @@ import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oc
 import { isWsProgram } from "./parse";
 import { applyDialog, busySessionsFor, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
-import { hasOpenTurn, isCompletedStop, sessionInterrupted } from "./session-status";
+import { isCompletedStop, sessionInterrupted, turnStillRunning } from "./session-status";
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
@@ -882,7 +882,7 @@ export function useAgentDialog({
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
     const current = stateRef.current;
     const thisBusy = busySessionsFor(current.liveTurns, current.program).includes(current.activeSession || current.draftRef || "")
-      || hasOpenTurn(current.messages);
+      || turnStillRunning(current.messages);
     if (thisBusy || current.offline || current.sessionLoading) return;
     const text = draftRef.current.trim();
     if (inboxWaiters.current.size) {

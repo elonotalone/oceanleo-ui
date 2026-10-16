@@ -17,7 +17,7 @@ import {
   writeModelParamMemory,
 } from "./model-param-memory";
 import { modelControls } from "./model-controls";
-import { hasOpenTurn } from "./session-status";
+import { turnStillRunning } from "./session-status";
 import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
@@ -226,7 +226,7 @@ export function Composer({
   const listedBusy = Array.isArray(dialog.busySessions)
     ? dialog.busySessions.includes(thisSessionId)
     : Boolean(dialog.busy);
-  const thisSessionBusy = listedBusy || hasOpenTurn(dialog.messages);
+  const thisSessionBusy = listedBusy || turnStillRunning(dialog.messages);
   const showStop = thisSessionBusy;
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
   const showTuning = tuningParams.length > 0 || Boolean(controls.effort) || Boolean(dialog.mode && dialog.mode.options.length > 0);

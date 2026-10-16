@@ -9,7 +9,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { applyDialog, busySessionsFor, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { hasOpenTurn, sessionListStatus } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
+import { hasOpenTurn, sessionListStatus, turnLooksSettled, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 // AI 对话卡：保留旧功能回归并覆盖 cloud-computer-polish W2 的 I1–I4 / I9。
@@ -607,6 +607,98 @@ test("reduce：思考增量把回合标成进行中；transcript.live=false 但�
   } });
   assert.equal(replayed.busy, false);
   assert.equal(hasOpenTurn(replayed.messages), false);
+});
+
+test("reduce：缺 done 的完结回复在 live=false 或 sessions.busy 清空后收口", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "transcript",
+    program: "cursor",
+    acp_session: "s",
+    live: false,
+    frames: [
+      { t: "user_message", program: "cursor", acp_session: "s", text: "go" },
+      { t: "turn_start", program: "cursor", acp_session: "s" },
+      { t: "delta", program: "cursor", acp_session: "s", text: "already finished" },
+    ],
+  } });
+  assert.equal(state.busy, false);
+  assert.equal(hasOpenTurn(state.messages), false);
+  assert.equal(turnLooksSettled(state.messages), false);
+  assert.equal(state.messages.at(-1)?.stop, "end_turn");
+
+  state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "session-loading", id: "s" });
+  state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "delta", program: "cursor", acp_session: "s", text: "reply" } });
+  assert.equal(state.busy, true);
+  assert.equal(turnLooksSettled(state.messages), true);
+  assert.equal(turnStillRunning(state.messages), false);
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "sessions",
+    program: "cursor",
+    supported: true,
+    sessions: [{ id: "s", title: "S" }],
+    busy: [],
+    running: ["s"],
+  } });
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::s"]), false);
+  assert.equal(state.messages.at(-1)?.stop, "end_turn");
+});
+
+test("reduce：刚发出、还没有回合正文时，空的 sessions.busy 不能把 Stop 打掉", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = { ...state, draftRef: "new:draft1" };
+  state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, true);
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "sessions",
+    program: "cursor",
+    supported: true,
+    sessions: [],
+    busy: [],
+    running: [],
+  } });
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), true);
+});
+
+test("缺 done 的完结回复显示发送，思考未闭合仍显示停止", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [
+      { id: "live", title: "Live", cwd: "/root", updated_at: "" },
+    ] });
+    await click(view.$('[data-oceanleo-acp-session="live"]'));
+    await server({
+      t: "transcript",
+      program: "cursor",
+      acp_session: "live",
+      live: false,
+      frames: [
+        { t: "user_message", program: "cursor", acp_session: "live", text: "go" },
+        { t: "turn_start", program: "cursor", acp_session: "live" },
+        { t: "delta", program: "cursor", acp_session: "live", text: "already finished" },
+      ],
+    });
+    await server({ t: "session_opened", program: "cursor", acp_session: "live", cwd: "/root", replayed: 0 });
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null, "finished text with a missing done shows Send");
+    await server({
+      t: "sessions",
+      program: "cursor",
+      supported: true,
+      sessions: [{ id: "live", title: "Live", cwd: "/root", updated_at: "" }],
+      busy: [],
+      running: ["live"],
+    });
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.equal(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-session-status="running"]'), null);
+  } finally { view.cleanup(); }
 });
 
 test("sessionListStatus：进行中优先于中断和未读，绿点只表示未读完成", () => {
