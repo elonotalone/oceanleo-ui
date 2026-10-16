@@ -315,8 +315,15 @@ export function useAgentDialog({
     }
     if (frame.t === "sessions" && frameProgram === stateRef.current.program) {
       const program = frameProgram as AgentProgram;
+      const listed = cached.sessions.get(program)?.sessions ?? [];
       const target = program === mountProgram && initialSessionId ? initialSessionId : typeof frame.active === "string" ? frame.active.trim() : "";
-      if (target && !initialOpened.current.has(program) && !stateRef.current.activeSession && !stateRef.current.sessionLoading) {
+      if (
+        target
+        && listed.some((session) => session.id === target)
+        && !initialOpened.current.has(program)
+        && !stateRef.current.activeSession
+        && !stateRef.current.sessionLoading
+      ) {
         initialOpened.current.add(program);
         queueMicrotask(() => openSessionRef.current(target));
       }

@@ -228,6 +228,8 @@ export type DialogState = {
   busySession: string;
   /** `${program}::${acpSession}` keys that still have an open turn. */
   liveTurns: Record<string, true>;
+  /** Locally stopped turns. A stale sessions.busy list must not turn Stop back on. */
+  cancelledTurns: Record<string, true>;
   /** ACP session ids that still have a process. Idle leftovers are not in-progress. */
   runningSessions: string[];
   sessionLoading: boolean;

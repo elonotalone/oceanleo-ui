@@ -85,15 +85,38 @@ function markTurn(state: DialogState, program: string | null, session: string, l
   const liveTurns = { ...state.liveTurns };
   if (live) liveTurns[key] = true;
   else delete liveTurns[key];
+  let cancelledTurns = state.cancelledTurns ?? {};
+  if (live && cancelledTurns[key]) {
+    cancelledTurns = { ...cancelledTurns };
+    delete cancelledTurns[key];
+  }
   const currentKey = turnKey(state.program, state.activeSession || state.draftRef || "");
   const busy = Boolean(liveTurns[currentKey]);
   return {
     ...state,
     liveTurns,
+    cancelledTurns,
     busy,
     busySession: busy ? state.activeSession : "",
     agentBusy: live ? state.agentBusy : state.agentBusy && busy,
   };
+}
+
+function stampOpenTurn(messages: DialogState["messages"], stop: string): DialogState["messages"] {
+  const next = messages.slice();
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    const message = next[index];
+    if (message.kind === "turn" && !message.stop) {
+      next[index] = { ...message, stop };
+      break;
+    }
+  }
+  return next;
+}
+
+function currentTurnIds(state: DialogState): string[] {
+  const ids = [state.activeSession || "", state.draftRef || ""];
+  return [...new Set(ids)];
 }
 
 function blankInstall(): InstallState {
@@ -147,6 +170,7 @@ export function initialDialogState(): DialogState {
     serverActiveSession: "",
     busySession: "",
     liveTurns: {},
+    cancelledTurns: {},
     runningSessions: [],
     sessionLoading: false,
     historyOffset: 0,
@@ -441,14 +465,7 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
 function onDone(state: DialogState, frame: Record<string, unknown>): DialogState {
   const stop = str(frame.stop);
   const session = str(frame.acp_session);
-  const messages = state.messages.slice();
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.kind === "turn" && !message.stop) {
-      messages[index] = { ...message, stop };
-      break;
-    }
-  }
+  const messages = stampOpenTurn(state.messages, stop);
   const program = str(frame.program) || state.program;
   const ended = session || state.activeSession || state.draftRef || "";
   return markTurn({ ...state, messages }, program, ended, false);
@@ -611,7 +628,11 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
         if (busy.has(id) || (id === current && state.busy)) continue;
         delete liveTurns[key];
       }
-      for (const id of busy) liveTurns[turnKey(state.program, id)] = true;
+      for (const id of busy) {
+        const key = turnKey(state.program, id);
+        if (state.cancelledTurns?.[key]) continue;
+        liveTurns[key] = true;
+      }
     }
     const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
@@ -791,6 +812,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     let next = started;
     if (session && !started.activeSession) next = { ...next, activeSession: session };
     if (session) next = markTurn(next, program, "", false);
+    if (session && started.draftRef) next = markTurn(next, program, started.draftRef, false);
     next = markTurn(next, program, session || next.activeSession, true);
     return next;
   }
@@ -897,8 +919,19 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         true,
       );
     }
-    case "cancel-local":
-      return markTurn({ ...state, agentBusy: false }, state.program, state.activeSession, false);
+    case "cancel-local": {
+      const ids = currentTurnIds(state);
+      const cancelledTurns = { ...(state.cancelledTurns ?? {}) };
+      for (const id of ids) cancelledTurns[turnKey(state.program, id)] = true;
+      let next: DialogState = {
+        ...state,
+        agentBusy: false,
+        cancelledTurns,
+        messages: stampOpenTurn(state.messages, "cancelled"),
+      };
+      for (const id of ids) next = markTurn(next, next.program, id, false);
+      return next;
+    }
     case "clear-offline":
       // 已不在离线就原样返回：调用方可能在 effect 里每次挂载都发，别白造一帧渲染。
       return state.offline ? { ...state, offline: false } : state;

@@ -629,6 +629,51 @@ test("reducer：多会话 liveTurns 互不打断；普通错误不把当前轮�
   assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
 });
 
+test("reducer：Stop 清掉当前轮次，后到的 sessions.busy 不能把按钮打回 Stop", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = { ...state, draftRef: "new:draft1" };
+  state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), true);
+
+  state = applyDialog(state, { type: "cancel-local" });
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), false);
+
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "sessions",
+      program: "cursor",
+      supported: true,
+      sessions: [{ id: "s-ghost", title: "s-ghost" }],
+      busy: ["new:draft1"],
+      running: [],
+    },
+  });
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), false);
+
+  state = applyDialog(state, { type: "session-loading", id: "s-a" });
+  state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "cancel-local" });
+  assert.equal(state.busy, false);
+  state = applyDialog(state, {
+    type: "frame",
+    frame: {
+      t: "sessions",
+      program: "cursor",
+      supported: true,
+      sessions: [{ id: "s-a", title: "A" }],
+      busy: ["s-a"],
+      running: ["s-a"],
+    },
+  });
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), false);
+});
+
 test("reducer：sessions.busy 清掉已结束的回合，不把空闲 running 当成进行中", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
