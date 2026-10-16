@@ -7,6 +7,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { getTask, stopTask, type TaskDetail } from "../../../lib/agent";
 import { resolveTaskStatus } from "../../agent-thread/rules";
 import { agentDialogWsUrl } from "../../../lib/cloud-computer-api";
+import * as computerApi from "../../../lib/cloud-computer-api";
 import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import { installDirPayload } from "./install-dir";
@@ -17,15 +18,36 @@ import { nextReconnectDelay } from "./reconnect";
 import { hasOpenTurn, isCompletedStop, sessionInterrupted } from "./session-status";
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
-import { safeImagePreview } from "./message-attachments";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
 import type {
   AgentDialogController,
   AgentDialogMessage,
   AgentProgram,
   DialogAttachment,
+  UserMessageAttachment,
   WsProgram,
 } from "./types";
+
+function isInboxReady(item: DialogAttachment): item is DialogAttachment & { path: string } {
+  const path = (item.path ?? "").trim();
+  return item.state === "done" && path.startsWith("/") && !path.includes("://") && !path.includes("\0");
+}
+
+function promptFiles(items: DialogAttachment[]): Array<{ name: string; mime: string; path: string }> {
+  return items.filter(isInboxReady).map((item) => ({
+    name: item.name,
+    mime: item.mime,
+    path: item.path,
+  }));
+}
+
+function userFileRows(items: DialogAttachment[]): UserMessageAttachment[] {
+  return items.filter(isInboxReady).map((item) => ({
+    name: item.name,
+    mime: item.mime,
+    path: item.path,
+  }));
+}
 
 // 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
 // W3 把这些成员并入 AgentDialogController 后，这个交叉类型删除、恢复用 types 里的。
@@ -152,6 +174,7 @@ export function useAgentDialog({
   );
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
+  const inboxWaiters = useRef(new Map<string, Promise<void>>());
   const [fresh, setFresh] = useState(false);
   const [computerName, setComputerName] = useState("");
   const unreadRef = useRef<string[]>([]);
@@ -654,7 +677,10 @@ export function useAgentDialog({
     const computerId = computerIdRef.current;
     if (!computerId) return;
     if (stateRef.current.busy || stateRef.current.offline) return;
-    const pendingFiles = attachmentsRef.current;
+    if (inboxWaiters.current.size) {
+      await Promise.all([...inboxWaiters.current.values()]);
+    }
+    const pendingFiles = attachmentsRef.current.filter(isInboxReady);
     const text = draftRef.current.trim();
     if (!text && pendingFiles.length === 0) return;
     // 后端 turn 上限 8000：超了明说，不静默截断（WS 程序的 32000 是另一条协议）。
@@ -666,14 +692,14 @@ export function useAgentDialog({
     clearOceanWait();
     // 与 WS send 同款乐观写：dispatch 到重渲染之间再按发送不能发出第二句。
     stateRef.current = { ...stateRef.current, busy: true };
-    const named = pendingFiles.map((item) => ({ name: item.name, mime: item.mime }));
+    const named = userFileRows(pendingFiles);
     const fileNote = pendingFiles.length
-      ? `${text ? "\n\n" : ""}` + pendingFiles.map((item) => `[attached file: ${item.name}]`).join("\n")
+      ? `${text ? "\n\n" : ""}` + pendingFiles.map((item) => `附件：${item.path}`).join("\n")
       : "";
     const outgoing = `${text}${fileNote}`;
     dispatch({ type: "user", text: outgoing, attachments: named });
     setDraft("");
-    setAttachments([]);
+    setAttachments((current) => current.filter((item) => item.state === "error"));
     const freshTurn = freshRef.current;
     setFresh(false);
     if (freshTurn) {
@@ -859,7 +885,10 @@ export function useAgentDialog({
       || hasOpenTurn(current.messages);
     if (thisBusy || current.offline || current.sessionLoading) return;
     const text = draftRef.current.trim();
-    const files = attachmentsRef.current;
+    if (inboxWaiters.current.size) {
+      await Promise.all([...inboxWaiters.current.values()]);
+    }
+    const files = attachmentsRef.current.filter(isInboxReady);
     if (!text && files.length === 0) return;
     if (text.length > MAX_PROMPT_CHARS) {
       dispatch({ type: "notice", code: "invalid_argument", program });
@@ -896,16 +925,19 @@ export function useAgentDialog({
       if (Object.keys(config).length) frame.config = config;
     }
     if (files.length) {
-      frame.files = files.map((item) => ({ name: item.name, mime: item.mime, data: item.data }));
+      frame.files = promptFiles(files);
     }
     socket.send(JSON.stringify(frame));
-    ingest(JSON.stringify({ t: "user_message", program, text, ...(acpSession ? { acp_session: acpSession } : { ref }), attachments: files.map((item) => {
-      const preview = safeImagePreview(`data:${item.mime};base64,${item.data}`);
-      return { name: item.name, mime: item.mime, ...(preview ? { preview } : {}) };
-    }) }));
+    ingest(JSON.stringify({
+      t: "user_message",
+      program,
+      text,
+      ...(acpSession ? { acp_session: acpSession } : { ref }),
+      attachments: userFileRows(files),
+    }));
     pendingConfig.current.delete(origin);
     setDraft("");
-    setAttachments([]);
+    setAttachments((current) => current.filter((item) => item.state === "error"));
     setFresh(false);
   }, [ensureOpen, ingest]);
 
@@ -1283,36 +1315,69 @@ export function useAgentDialog({
   }, []);
 
   const addAttachments = useCallback((files: File[]) => {
-    const next: DialogAttachment[] = [];
-    let remaining = files;
-    void Promise.all(
-      remaining.slice(0, 20).map(
-        (file) =>
-          new Promise<DialogAttachment | null>((resolve) => {
-            if (file.size > 8 * 1024 * 1024) {
-              resolve(null);
-              return;
-            }
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = String(reader.result || "");
-              const comma = result.indexOf(",");
-              resolve({
-                id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-                name: file.name || "file",
-                mime: file.type || "application/octet-stream",
-                size: file.size,
-                data: comma >= 0 ? result.slice(comma + 1) : result,
-              });
-            };
-            reader.onerror = () => resolve(null);
-            reader.readAsDataURL(file);
-          }),
-      ),
-    ).then((rows) => {
-      const kept = rows.filter((item): item is DialogAttachment => item !== null);
-      if (!kept.length) return;
-      setAttachments((current) => [...current, ...kept].slice(0, 20));
+    const computerId = computerIdRef.current.trim();
+    const room = Math.max(0, 20 - attachmentsRef.current.length);
+    const accepted = files.slice(0, room);
+    if (!accepted.length) return;
+    const created: DialogAttachment[] = accepted.map((file) => ({
+      id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name: file.name || "file",
+      mime: file.type || "application/octet-stream",
+      size: file.size,
+      percent: 0,
+      state: "uploading",
+    }));
+    setAttachments((current) => [...current, ...created].slice(0, 20));
+    const put = computerApi.putComputerInbox;
+    created.forEach((chip, index) => {
+      const file = accepted[index];
+      let settleWaiter: () => void = () => {};
+      const waiter = new Promise<void>((resolve) => {
+        settleWaiter = resolve;
+      });
+      inboxWaiters.current.set(chip.id, waiter);
+      const finish = (patch: Partial<DialogAttachment>) => {
+        setAttachments((current) =>
+          current.map((item) => (item.id === chip.id ? { ...item, ...patch } : item)),
+        );
+      };
+      const done = () => {
+        inboxWaiters.current.delete(chip.id);
+        settleWaiter();
+      };
+      if (typeof put !== "function" || !computerId) {
+        finish({
+          state: "error",
+          error: !computerId ? "missing computer" : "inbox upload unavailable",
+        });
+        done();
+        return;
+      }
+      void put(computerId, file, (percent) => {
+        finish({ percent });
+      })
+        .then((result) => {
+          finish({
+            state: "done",
+            percent: 100,
+            path: result.path,
+            name: result.name || chip.name,
+            mime: result.mime || chip.mime,
+            size: typeof result.size === "number" ? result.size : chip.size,
+            error: undefined,
+          });
+        })
+        .catch((err: unknown) => {
+          const message =
+            err && typeof err === "object" && "message" in err
+              ? String((err as { message: unknown }).message || "").trim()
+              : "";
+          finish({
+            state: "error",
+            error: message || "upload failed",
+          });
+        })
+        .finally(done);
     });
   }, []);
 

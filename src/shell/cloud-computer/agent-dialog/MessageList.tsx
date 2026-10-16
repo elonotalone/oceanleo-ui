@@ -683,9 +683,10 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                     <ul className="mt-1.5 flex flex-wrap gap-1.5 text-[12px] opacity-80" data-oceanleo-cc-user-files="">
                       {visible.attachments.map((item, index) => (
                         <li key={`${item.name}-${index}`} className="rounded-md bg-black/5 px-1.5 py-0.5 dark:bg-white/10">
-                          {/* UC-4: validated, bounded raster data only; no HTML,
-                              SVG, remote fetch, or navigation from attachments. */}
-                          {item.preview ? (
+                          {/* Path-type inbox rows are text only. Historical
+                              previews stay bounded; never file:// or a large
+                              data URL. */}
+                          {item.preview && !item.path ? (
                             <img
                               data-oceanleo-cc-user-image=""
                               src={item.preview}
@@ -696,7 +697,15 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                               onError={(event) => { event.currentTarget.hidden = true; }}
                             />
                           ) : null}
-                          {item.name === "图片" ? tt("图片") : item.name}
+                          <span>{item.name === "图片" ? tt("图片") : item.name}</span>
+                          {item.path ? (
+                            <span
+                              data-oceanleo-cc-user-path={item.path}
+                              className="mt-0.5 block break-all font-mono text-[11px]"
+                            >
+                              {item.path}
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>

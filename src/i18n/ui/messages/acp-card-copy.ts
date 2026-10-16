@@ -40,6 +40,7 @@ const SOURCE = {
   copyLink: "复制对话位置",
   linkCopied: "已复制对话位置",
   copyLinkMissing: "还没有可复制的对话文件",
+  inboxUploading: "正在上传 {pct}%",
 } as const;
 
 export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
@@ -80,6 +81,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "Process still running",
     reasoningEffort: "Reasoning effort",
     invalidSetting: "OceanLeo sent invalid setting parameters to the program. The setting was not applied. Refresh the model options and try again.",
+    inboxUploading: "Uploading {pct}%",
   },
   de: {
     installedVersion: "Installiert · {version}",
@@ -118,6 +120,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "Prozess läuft noch",
     reasoningEffort: "Denkaufwand",
     invalidSetting: "OceanLeo hat ungültige Einstellungsparameter an das Programm gesendet. Die Einstellung wurde nicht übernommen. Aktualisiere die Modelloptionen und versuche es erneut.",
+    inboxUploading: "Wird hochgeladen {pct}%",
   },
   es: {
     installedVersion: "Instalado · {version}",
@@ -156,6 +159,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "El proceso sigue en marcha",
     reasoningEffort: "Intensidad de razonamiento",
     invalidSetting: "OceanLeo envió parámetros de configuración no válidos al programa. La configuración no se aplicó. Actualiza las opciones del modelo e inténtalo de nuevo.",
+    inboxUploading: "Subiendo {pct}%",
   },
   "es-419": {
     installedVersion: "Instalado · {version}",
@@ -194,6 +198,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "El proceso sigue en marcha",
     reasoningEffort: "Intensidad de razonamiento",
     invalidSetting: "OceanLeo envió parámetros de configuración no válidos al programa. La configuración no se aplicó. Actualiza las opciones del modelo e inténtalo de nuevo.",
+    inboxUploading: "Subiendo {pct}%",
   },
   fr: {
     installedVersion: "Installé · {version}",
@@ -232,6 +237,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "Le processus tourne encore",
     reasoningEffort: "Effort de raisonnement",
     invalidSetting: "OceanLeo a envoyé des paramètres de réglage invalides au programme. Le réglage n’a pas été appliqué. Actualisez les options du modèle et réessayez.",
+    inboxUploading: "Envoi {pct}%",
   },
   it: {
     installedVersion: "Installato · {version}",
@@ -270,6 +276,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "Il processo è ancora in esecuzione",
     reasoningEffort: "Intensità di ragionamento",
     invalidSetting: "OceanLeo ha inviato parametri di configurazione non validi al programma. L’impostazione non è stata applicata. Aggiorna le opzioni del modello e riprova.",
+    inboxUploading: "Caricamento {pct}%",
   },
   "pt-BR": {
     installedVersion: "Instalado · {version}",
@@ -308,6 +315,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "O processo ainda está a correr",
     reasoningEffort: "Esforço de raciocínio",
     invalidSetting: "O OceanLeo enviou parâmetros de configuração inválidos ao programa. A configuração não foi aplicada. Atualize as opções do modelo e tente novamente.",
+    inboxUploading: "Enviando {pct}%",
   },
   "pt-PT": {
     installedVersion: "Instalado · {version}",
@@ -346,6 +354,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "O processo ainda está a correr",
     reasoningEffort: "Esforço de raciocínio",
     invalidSetting: "O OceanLeo enviou parâmetros de configuração inválidos ao programa. A configuração não foi aplicada. Atualize as opções do modelo e tente novamente.",
+    inboxUploading: "A enviar {pct}%",
   },
   vi: {
     installedVersion: "Đã cài · {version}",
@@ -384,6 +393,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "Tiến trình vẫn chạy",
     reasoningEffort: "Mức độ suy luận",
     invalidSetting: "OceanLeo đã gửi tham số cài đặt không hợp lệ đến chương trình. Cài đặt chưa được áp dụng. Hãy tải lại các tùy chọn mô hình và thử lại.",
+    inboxUploading: "Đang tải lên {pct}%",
   },
   tr: {
     installedVersion: "Yüklü · {version}",
@@ -422,6 +432,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "Süreç hâlâ çalışıyor",
     reasoningEffort: "Akıl yürütme düzeyi",
     invalidSetting: "OceanLeo programa geçersiz ayar parametreleri gönderdi. Ayar uygulanmadı. Model seçeneklerini yenileyip tekrar deneyin.",
+    inboxUploading: "Yükleniyor {pct}%",
   },
   "zh-TW": {
     installedVersion: "已安裝 · {version}",
@@ -460,6 +471,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "處理程序還在",
     reasoningEffort: "推理強度",
     invalidSetting: "OceanLeo 傳給程式的設定參數不正確，設定未生效。請重新整理模型選項後再試。",
+    inboxUploading: "正在上傳 {pct}%",
   },
   ja: {
     installedVersion: "インストール済み · {version}",
@@ -498,6 +510,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "プロセスは残っています",
     reasoningEffort: "推論の強度",
     invalidSetting: "OceanLeo がプログラムに無効な設定パラメーターを送信したため、設定は適用されませんでした。モデルの選択肢を更新して再試行してください。",
+    inboxUploading: "アップロード中 {pct}%",
   },
   ko: {
     installedVersion: "설치됨 · {version}",
@@ -536,6 +549,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "프로세스가 아직 살아 있습니다",
     reasoningEffort: "추론 강도",
     invalidSetting: "OceanLeo가 프로그램에 잘못된 설정 매개변수를 보내 설정이 적용되지 않았습니다. 모델 옵션을 새로 고친 후 다시 시도하세요.",
+    inboxUploading: "업로드 중 {pct}%",
   },
   ar: {
     installedVersion: "مثبّت · {version}",
@@ -574,6 +588,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "العملية ما زالت تعمل",
     reasoningEffort: "مستوى الاستدلال",
     invalidSetting: "أرسل OceanLeo معلمات إعداد غير صالحة إلى البرنامج. لم يُطبّق الإعداد. حدّث خيارات النموذج وحاول مرة أخرى.",
+    inboxUploading: "جارٍ الرفع {pct}%",
   },
   th: {
     installedVersion: "ติดตั้งแล้ว · {version}",
@@ -612,6 +627,7 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "โปรเซสยังทำงาน",
     reasoningEffort: "ระดับการใช้เหตุผล",
     invalidSetting: "OceanLeo ส่งพารามิเตอร์การตั้งค่าที่ไม่ถูกต้องไปยังโปรแกรม จึงยังไม่ใช้การตั้งค่านี้ โปรดรีเฟรชตัวเลือกโมเดลแล้วลองอีกครั้ง",
+    inboxUploading: "กำลังอัปโหลด {pct}%",
   },
   hi: {
     installedVersion: "इंस्टॉल है · {version}",
@@ -650,5 +666,6 @@ export const ACP_CARD_MESSAGES = assembleCopy(SOURCE, {
     processAlive: "प्रक्रिया अभी चल रही है",
     reasoningEffort: "तर्क की तीव्रता",
     invalidSetting: "OceanLeo ने प्रोग्राम को अमान्य सेटिंग पैरामीटर भेजे। सेटिंग लागू नहीं हुई। मॉडल विकल्प रीफ़्रेश करके फिर कोशिश करें।",
+    inboxUploading: "अपलोड हो रहा है {pct}%",
   },
 });

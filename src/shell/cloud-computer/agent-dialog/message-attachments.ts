@@ -1,4 +1,11 @@
-export type UserAttachment = { name: string; mime: string; preview?: string };
+export type UserAttachment = { name: string; mime: string; preview?: string; path?: string };
+
+function inboxPath(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const path = value.trim();
+  if (!path.startsWith("/") || path.includes("\0") || path.includes("://")) return undefined;
+  return path.slice(0, 500);
+}
 
 const RASTER = /^image\/(png|jpeg|gif|webp)$/i;
 const MAX_PREVIEW = 128 * 1024;
@@ -17,7 +24,8 @@ export function userAttachments(raw: unknown): UserAttachment[] {
     const name = typeof row.name === "string" ? row.name.slice(0, 200) : "";
     if (!name) return [];
     const preview = safeImagePreview(row.preview);
-    return [{ name, mime, ...(preview ? { preview } : {}) }];
+    const path = inboxPath(row.path);
+    return [{ name, mime, ...(preview ? { preview } : {}), ...(path ? { path } : {}) }];
   });
 }
 

@@ -706,6 +706,89 @@ export function getUsageSummary() {
   return ccRequest<UsageSummary>("/v1/computers/usage/summary");
 }
 
+export type ComputerInboxFile = {
+  path: string;
+  name: string;
+  size: number;
+  mime: string;
+};
+
+/**
+ * PUT inbox bytes with XHR `upload.onprogress`. Do not send the file body
+ * through `fetch` — that path has no upload percent for the chip.
+ */
+export async function putComputerInbox(
+  computerId: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<ComputerInboxFile> {
+  const token = await accessToken();
+  if (!token) {
+    throw new CloudComputerError("client_unauthorized", "未登录", 401);
+  }
+  const id = computerId.trim();
+  if (!id) {
+    throw new CloudComputerError("client_invalid_argument", "missing computer", 400);
+  }
+  const name = (file.name || "file").trim() || "file";
+  const query = new URLSearchParams({ name });
+  const url = `${GATEWAY_BASE}/v1/computers/${encodeURIComponent(id)}/inbox?${query.toString()}`;
+  return await new Promise<ComputerInboxFile>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let finished = false;
+    const fail = (error: CloudComputerError) => {
+      if (finished) return;
+      finished = true;
+      reject(error);
+    };
+    xhr.open("PUT", url, true);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (finished || !event.lengthComputable || !onProgress) return;
+      onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+      if (finished) return;
+      let payload: unknown = null;
+      try {
+        payload = JSON.parse(xhr.responseText || "");
+      } catch {
+        /* empty / non-JSON */
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        fail(errorFromPayload(xhr.status, payload));
+        return;
+      }
+      const row =
+        payload && typeof payload === "object" && !Array.isArray(payload)
+          ? (payload as Record<string, unknown>)
+          : {};
+      const path = typeof row.path === "string" ? row.path.trim() : "";
+      if (!path.startsWith("/") || path.includes("\0") || path.includes("://")) {
+        fail(new CloudComputerError(`client_http_${xhr.status || 200}`, "inbox path missing", xhr.status || 200));
+        return;
+      }
+      finished = true;
+      onProgress?.(100);
+      resolve({
+        path,
+        name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : name,
+        size: typeof row.size === "number" ? row.size : file.size,
+        mime:
+          typeof row.mime === "string" && row.mime.trim()
+            ? row.mime.trim()
+            : file.type || "application/octet-stream",
+      });
+    };
+    xhr.onerror = () => {
+      fail(new CloudComputerError("client_network_error", "网络错误：无法连接到网关。", 0));
+    };
+    xhr.send(file);
+  });
+}
+
 export type CloudComputerClient = {
   listComputers: typeof listComputers;
   getCatalog: typeof getCatalog;
@@ -740,6 +823,7 @@ export type CloudComputerClient = {
   setCliTools: typeof setCliTools;
   getUsage: typeof getUsage;
   getUsageSummary: typeof getUsageSummary;
+  putComputerInbox: typeof putComputerInbox;
 };
 
 export const cloudComputerApi: CloudComputerClient = {
@@ -776,4 +860,5 @@ export const cloudComputerApi: CloudComputerClient = {
   setCliTools,
   getUsage,
   getUsageSummary,
+  putComputerInbox,
 };

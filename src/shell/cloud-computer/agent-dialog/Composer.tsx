@@ -238,6 +238,7 @@ export function Composer({
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const canAttach = typeof dialog.addAttachments === "function";
+  const inboxBusy = (dialog.attachments || []).some((item) => item.state === "uploading");
   const commandMatches = commandQuery === null
     ? []
     : dialog.commands.filter((command) => {
@@ -286,11 +287,40 @@ export function Composer({
           {dialog.attachments?.length ? (
             <ul className="flex flex-wrap gap-1.5" data-oceanleo-cc-attachments="">
               {dialog.attachments.map((item) => (
-                <li key={item.id} className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${tone.border}`}>
-                  <span className="max-w-[12rem] truncate">{item.name}</span>
-                  <button type="button" className={tone.muted} onClick={() => dialog.removeAttachment(item.id)} aria-label={tt("移除文件")}>
-                    ×
-                  </button>
+                <li
+                  key={item.id}
+                  data-oceanleo-cc-attach-state={item.state || "done"}
+                  className={`flex min-w-[10rem] max-w-[18rem] flex-col gap-1 rounded-md border px-2 py-1 text-[11px] ${tone.border}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                    <button type="button" className={tone.muted} onClick={() => dialog.removeAttachment(item.id)} aria-label={tt("移除文件")}>
+                      ×
+                    </button>
+                  </div>
+                  {item.state === "uploading" ? (
+                    <>
+                      <div className="h-1.5 w-full min-w-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-neutral-800">
+                        <div
+                          className="h-full bg-zinc-900 transition-all dark:bg-neutral-200"
+                          style={{ width: `${item.percent ?? 0}%` }}
+                        />
+                      </div>
+                      <span className={tone.muted} data-oceanleo-cc-attach-percent={item.percent ?? 0}>
+                        {tt("正在上传 {pct}%", { pct: item.percent ?? 0 })}
+                      </span>
+                    </>
+                  ) : null}
+                  {item.state === "done" && item.path ? (
+                    <span className={`break-all ${tone.muted}`} data-oceanleo-cc-attach-path={item.path}>
+                      {item.path}
+                    </span>
+                  ) : null}
+                  {item.state === "error" ? (
+                    <span className="break-all text-red-600 dark:text-red-400" data-oceanleo-cc-attach-error="">
+                      {item.error}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -490,7 +520,7 @@ export function Composer({
         ) : (
           <button
             type="submit"
-            disabled={dialog.offline || dialog.sessionLoading}
+            disabled={dialog.offline || dialog.sessionLoading || inboxBusy}
             className={`rounded-lg px-3 py-2 text-[12px] font-medium disabled:opacity-40 ${tone.primary}`}
           >
             {tt("发送")}
