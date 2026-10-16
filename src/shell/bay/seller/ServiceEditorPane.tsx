@@ -696,7 +696,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     appPriceModel,
     onAppPriceModel: (value) => patch({ pricingModel: value, simplePrice: true }),
   });
-  // 计费方式排在交付条款的第一项：一口价 / 按次 / 按时 / 分阶段，各带结算规则与自动验收天数。
+  // 计费方式排在交付条款的第一项：卡片只留名称，结算说明写在卡片外面。
   const billingModel = models.data.find((model) => model.key === resolvedPricingModel(draft));
   const billingItem: BayRevealItem[] = pricedOffer
     ? [

@@ -1,6 +1,6 @@
 "use client";
 
-// 「我发布的 / 我卖出的 / 我买到的 / 我的收藏」里标类别的一套：成品文件、人工服务、作品、课程、其他。
+// 「我发布的 / 我卖出的 / 我买到的 / 我的收藏」里标类别的一套：成品文件、人工服务、网站与软件服务、课程、其他。
 // 标签（每行右边）与顶上的选择条用的是同一份名字，所以两边永远对得上。
 import { useUI } from "../../../i18n/ui/useUI";
 
@@ -11,7 +11,7 @@ export const PUBLISHED_CATEGORIES: readonly PublishedCategory[] = ["digital", "s
 export const PUBLISHED_CATEGORY_LABEL: Readonly<Record<PublishedCategory, string>> = {
   digital: "成品文件",
   service: "人工服务",
-  app: "作品",
+  app: "网站与软件服务",
   lesson: "课程",
   other: "其他",
 };

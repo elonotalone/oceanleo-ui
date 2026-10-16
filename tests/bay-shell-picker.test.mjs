@@ -34,7 +34,7 @@ test("发帖、我的、数据面板垫白底圆角板", () => {
   const page = readFileSync(join(REPO, "src/shell/bay/shell/LeoBayPage.tsx"), "utf8");
   assert.match(page, /BAY_FORM_PAPER_CLASS/);
   assert.match(page, /data-bay-page-paper=\{target\.kind\}/);
-  assert.match(page, /"app-editor",\s*"lesson-editor",\s*"bundle-editor"/);
+  assert.match(page, /"service-editor",\s*"app-editor",\s*"lesson-editor",\s*"bundle-editor"/);
   const headerAt = page.indexOf("data-bay-page-detail-header");
   const paperAt = page.indexOf("data-bay-page-paper={target.kind}");
   assert.ok(headerAt >= 0 && paperAt > headerAt, "返回和标题在板外");
@@ -47,6 +47,8 @@ test("发帖、我的、数据面板垫白底圆角板", () => {
 test("发帖白板跟页一起滚：板上没有滚动条，下滑盖住返回和标题", () => {
   const page = readFileSync(join(REPO, "src/shell/bay/shell/LeoBayPage.tsx"), "utf8");
   assert.match(page, /data-bay-page-scroll/);
+  assert.match(page, /overflow-y-auto" data-bay-page-scroll=""/);
+  assert.doesNotMatch(page, /overflow-y-auto bg-white" data-bay-page-scroll=/);
   assert.match(page, /sticky top-0 z-0/);
   const paperReturn = page.slice(page.indexOf("data-bay-page-scroll"));
   assert.match(paperReturn, /\{header\}/);
@@ -58,14 +60,16 @@ test("发帖白板跟页一起滚：板上没有滚动条，下滑盖住返回�
   assert.match(form, /BAY_FORM_PAPER_CLASS = "relative z-10 flex min-h-0 flex-1 flex-col rounded-3xl bg-white p-6"/);
 });
 
-test("发帖白板贴着页的上下边，页框不再上下留白", () => {
+test("发帖白板贴着页的上下边，页框不再上下留白；编辑页和发帖同一块板，不另铺白底", () => {
   const page = readFileSync(join(REPO, "src/shell/bay/shell/LeoBayPage.tsx"), "utf8");
   assert.match(page, /PAPER_FRAME_CLASS/);
   assert.match(page, /paperPage \? PAPER_FRAME_CLASS : FRAME_CLASS/);
   assert.match(page, /PAPER_FRAME_CLASS = "mx-auto flex h-\[calc\(100dvh-1px\)\] min-h-0 w-full max-w-6xl flex-col px-4"/);
+  assert.doesNotMatch(page, /PAPER_FRAME_CLASS = "[^"]*\bbg-white\b/);
   assert.doesNotMatch(page, /PAPER_FRAME_CLASS = "[^"]*\bpt-3\b/);
   assert.doesNotMatch(page, /PAPER_FRAME_CLASS = "[^"]*\bpb-5\b/);
   assert.match(page, /PAPER_HEADER_CLASS = "sticky top-0 z-0 flex min-h-14 shrink-0 items-center justify-between gap-3"/);
+  assert.doesNotMatch(page, /PAPER_HEADER_CLASS = "[^"]*\bbg-white\b/);
   assert.doesNotMatch(page, /PAPER_HEADER_CLASS = "[^"]*\bmb-3\b/);
   assert.match(page, /paper \? PAPER_HEADER_CLASS : APP_PAGE_HEADER_ROW_CLASS/);
 });

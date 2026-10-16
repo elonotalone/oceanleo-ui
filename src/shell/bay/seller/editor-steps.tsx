@@ -19,7 +19,7 @@ import {
   type BaySellerCategory,
   type BayServiceMediaKind,
 } from "../../../lib/bay/seller";
-import { BayChoice, BayImageGallery, BayMenuSelect } from "../form";
+import { BayChoice, BayImageGallery, BayMenuSelect, BAY_FORM_HELP_CLASS } from "../form";
 import { cleanGalleryUrls } from "../form/bay-gallery";
 import { isPriceInputText, parsePriceInput } from "../form/bay-price";
 import {
@@ -329,6 +329,7 @@ export function ModelStep({
   plain?: boolean;
 }) {
   const tt = useUI();
+  const selectedModel = models.find((model) => model.key === selected);
   return (
     <StepFrame title={tt("计费方式")} plain={plain}>
       {loading ? (
@@ -341,26 +342,25 @@ export function ModelStep({
           </button>
         </SellerNotice>
       ) : (
-        <BayChoice
-          label={tt("计费方式")}
-          columns={1}
-          collapsible
-          value={selected}
-          onChange={onSelect}
-          optionProps={(key) => ({ "data-bay-model": key })}
-          options={models.map((model) => ({
-            value: model.key,
-            title: tt(model.name_zh),
-            detail: (
-              <>
-                <span className="block">{tt(model.settlement_rule_zh)}</span>
-                <span className="block">
-                  {model.auto_accept_days_default ? tt("交付后 {n} 天自动验收", { n: model.auto_accept_days_default }) : tt("不自动验收")}
-                </span>
-              </>
-            ),
-          }))}
-        />
+        <div className="space-y-2">
+          <BayChoice
+            label={tt("计费方式")}
+            columns={1}
+            collapsible
+            value={selected}
+            onChange={onSelect}
+            optionProps={(key) => ({ "data-bay-model": key })}
+            options={models.map((model) => ({
+              value: model.key,
+              title: tt(model.name_zh),
+            }))}
+          />
+          {selectedModel ? (
+            <p data-bay-model-rule={selectedModel.key} className={BAY_FORM_HELP_CLASS}>
+              {tt(selectedModel.settlement_rule_zh)}
+            </p>
+          ) : null}
+        </div>
       )}
     </StepFrame>
   );

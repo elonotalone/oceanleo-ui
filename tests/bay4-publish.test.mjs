@@ -259,6 +259,10 @@ test("选 service 后价格组只有价格框，计费方式卡片是交付条�
     ["fixed", "session", "hourly", "milestone"],
   );
   assert.equal(terms.querySelector('[data-bay-model="fixed"]').hasAttribute("data-bay-choice-selected"), true);
+  const fixedCard = terms.querySelector('[data-bay-model="fixed"]');
+  assert.doesNotMatch(fixedCard.textContent, /交付清单齐全|自动验收|Auto-accepted|不自动验收/);
+  assert.equal(terms.querySelector("[data-bay-model-rule]")?.getAttribute("data-bay-model-rule"), "fixed");
+  assert.match(terms.querySelector("[data-bay-model-rule]").textContent, /交付清单齐全即完成/);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="price"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
     ["price"],
@@ -290,6 +294,8 @@ test("点按次卡片后产品信息仍是封面标题介绍文件，不换成�
     ["session"],
   );
   assert.equal(view.find('[data-bay-section="terms"] [data-bay-model="session"]').hasAttribute("data-bay-choice-selected"), true);
+  assert.doesNotMatch(view.find('[data-bay-section="terms"] [data-bay-model="session"]').textContent, /自动验收|以会话时间戳/);
+  assert.equal(view.host.querySelector("[data-bay-model-rule]")?.getAttribute("data-bay-model-rule"), "session");
   // 没有「更改」键：点这一张（右侧是展开小箭头）就重新展开，可以改选。
   assert.equal(view.host.querySelector("[data-bay-choice-change]"), null);
   assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-choice-chevron]'));

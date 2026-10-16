@@ -56,7 +56,7 @@ function useAvailability(): Availability {
 }
 
 const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`;
-/** 有白板的详情：左右仍露出页框，上下贴齐，不再垫 pt-3 / pb-5。 */
+/** 有白板的详情：左右露出页底渐变，上下贴齐，不再垫 pt-3 / pb-5。页框、滚动区、返回行都不铺白，圆角白板才看得见。 */
 const PAPER_FRAME_CLASS = "mx-auto flex h-[calc(100dvh-1px)] min-h-0 w-full max-w-6xl flex-col px-4";
 const PAPER_HEADER_CLASS = "sticky top-0 z-0 flex min-h-14 shrink-0 items-center justify-between gap-3";
 const BTN =
@@ -215,12 +215,13 @@ const FORM_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(
   "propose",
 ]);
 
-/** 发帖、我的、数据面板：正文垫白底圆角板。返回和标题留在板外。 */
+/** 发帖、编辑、我的、数据面板：正文垫白底圆角板。返回和标题留在板外，坐在页底渐变上，和逛 Bay 同一块底。 */
 const PAPER_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>([
   "publish",
   "post-need",
   "mine",
   "dashboard",
+  "service-editor",
   "app-editor",
   "lesson-editor",
   "bundle-editor",

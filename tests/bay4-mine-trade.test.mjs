@@ -291,7 +291,7 @@ test("我发布的：一张统一列表，没有需求、没有分区标题，�
   assert.doesNotMatch(view.host.textContent, /做一份路演稿/);
   assert.match(view.host.textContent, /人工服务/);
   assert.match(view.host.textContent, /成品文件/);
-  assert.match(view.host.textContent, /作品/);
+  assert.match(view.host.textContent, /网站与软件服务/);
   assert.match(view.host.textContent, /课程/);
   assert.match(view.host.textContent, /我的计算器/);
   assert.match(view.host.textContent, /PPT 入门/);
@@ -332,7 +332,7 @@ test("我卖出的：报价和卖家订单在同一张清单；没有概况、�
   assert.equal(view.q("[data-bay-role]"), null);
   assert.ok(view.q("[data-bay-order-row=sell-1]"));
   assert.equal(view.q("[data-bay-order-row=buy-1]"), null);
-  assert.match(view.host.textContent, /人工服务|成品文件|作品|课程|其他/);
+  assert.match(view.host.textContent, /人工服务|成品文件|网站与软件服务|课程|其他/);
   await view.unmount();
 });
 
@@ -421,7 +421,7 @@ test("我发布的：每一行都能删除，先二次确认，再调对应的�
 
   reset();
   const apps = await mount(React.createElement(MyPublishedPane, props("published")));
-  await clickConfirm(apps, "作品", "app:a1");
+  await clickConfirm(apps, "网站与软件服务", "app:a1");
   assert.ok(W.calls.some((call) => call.method === "DELETE" && call.path === "/v1/bay/apps/a1"));
   await clickConfirm(apps, "课程", "lesson:l1");
   assert.ok(W.calls.some((call) => call.method === "DELETE" && call.path === "/v1/bay/lessons/l1"));

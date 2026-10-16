@@ -17,4 +17,5 @@ test("买卖共用板块标题、分类、放文件、五种交付（含其他�
     ["digital", "service", "app", "lesson", "other"],
   );
   assert.equal(BAY_OFFER_OPTIONS.find((row) => row.id === "service")?.label, "人工服务");
+  assert.equal(BAY_OFFER_OPTIONS.find((row) => row.id === "app")?.label, "网站与软件服务");
 });

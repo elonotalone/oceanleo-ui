@@ -42,12 +42,12 @@ test("收藏：服务按 listing_kind；卖家和需求算其他", () => {
   assert.equal(favoriteCategory({ id: "3", target_kind: "demand", target_ref: "d", created_at: null, target: {} }), "other");
 });
 
-test("类别选择条：全部 + 五类，顺序是成品文件、人工服务、作品、课程、其他", () => {
+test("类别选择条：全部 + 五类，顺序是成品文件、人工服务、网站与软件服务、课程、其他", () => {
   const tag = src("src/shell/bay/mine/PublishedCategoryTag.tsx");
   assert.match(tag, /PUBLISHED_CATEGORIES: readonly PublishedCategory\[\] = \["digital", "service", "app", "lesson", "other"\]/);
   assert.match(tag, /digital: "成品文件"/);
   assert.match(tag, /service: "人工服务"/);
-  assert.match(tag, /app: "作品"/);
+  assert.match(tag, /app: "网站与软件服务"/);
   assert.match(tag, /lesson: "课程"/);
   assert.match(tag, /other: "其他"/);
   const bar = src("src/shell/bay/mine/MineCategoryBar.tsx");

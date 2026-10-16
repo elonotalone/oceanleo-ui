@@ -1,6 +1,6 @@
 "use client";
 
-// 「我发布的 / 我卖出的 / 我买到的 / 我的收藏」最上方的类别选择条：全部、成品文件、人工服务、作品、课程、其他。
+// 「我发布的 / 我卖出的 / 我买到的 / 我的收藏」最上方的类别选择条：全部、成品文件、人工服务、网站与软件服务、课程、其他。
 // 选中哪一类，下面的列表只留这一类。状态在 BayMine 里，四个页面共用。
 import { useUI } from "../../../i18n/ui/useUI";
 import { PUBLISHED_CATEGORIES, PUBLISHED_CATEGORY_LABEL } from "./PublishedCategoryTag";

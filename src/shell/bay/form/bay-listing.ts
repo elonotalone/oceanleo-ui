@@ -4,12 +4,12 @@ export type BayOfferKind = "digital" | "service" | "app" | "lesson" | "other";
 export const BAY_OFFER_OPTIONS: { id: BayOfferKind; label: string }[] = [
   { id: "digital", label: "现成文件" },
   { id: "service", label: "人工服务" },
-  { id: "app", label: "作品" },
+  { id: "app", label: "网站与软件服务" },
   { id: "lesson", label: "课程" },
   { id: "other", label: "其他" },
 ];
 
-/** 买方「交付给你的是什么」里，「作品」那一格换成这个说法。 */
+/** 买方「交付给你的是什么」里，这一格跟卖方用同一个说法。 */
 export const BAY_OFFER_BUY_APP_LABEL = "网站与软件服务";
 
 export const LISTING_SECTION_LABELS = {

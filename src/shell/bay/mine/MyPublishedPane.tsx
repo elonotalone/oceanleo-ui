@@ -1,6 +1,6 @@
 "use client";
 
-// 「我的」→「我发布的」：一张列表。成品文件、人工服务、作品、课程、其他都在这里，每一行右边标明类别。
+// 「我的」→「我发布的」：一张列表。成品文件、人工服务、网站与软件服务、课程、其他都在这里，每一行右边标明类别。
 import { useUI } from "../../../i18n/ui/useUI";
 import { deleteBayApp, listMyBayApps } from "../../../lib/bay/apps";
 import { deleteBayLesson, listMyBayLessons } from "../../../lib/bay/lessons";

@@ -262,6 +262,27 @@ test("境内只渲染素材货架", async () => {
   await view.unmount();
 });
 
+test("编辑页和发帖页用同一块白底圆角板，页框不另铺白", async () => {
+  for (const current of [
+    { kind: "publish" },
+    { kind: "service-editor", serviceId: "s1" },
+  ]) {
+    reset({ current });
+    const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
+    const paper = view.host.querySelector("[data-bay-page-paper]");
+    assert.equal(paper?.getAttribute("data-bay-page-paper"), current.kind);
+    assert.match(paper.className, /\brounded-3xl\b/);
+    assert.match(paper.className, /\bbg-white\b/);
+    const scroll = view.host.querySelector("[data-bay-page-scroll]");
+    assert.ok(scroll);
+    assert.doesNotMatch(scroll.className, /\bbg-white\b/);
+    const page = view.host.querySelector('[data-bay-page="detail"]');
+    assert.ok(page);
+    assert.doesNotMatch(page.className, /\bbg-white\b/);
+    await view.unmount();
+  }
+});
+
 test("openBay 不在 /bay 页上时调用 setBayNavigator 交进来的函数、地址是 /bay?bay=<目标>", () => {
   const hrefs = [];
   window.history.replaceState(window.history.state, "", "https://video.oceanleo.com/library");
