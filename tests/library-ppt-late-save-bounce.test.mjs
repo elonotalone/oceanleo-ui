@@ -20,6 +20,8 @@ import {
   INLINE_EDITOR_HISTORY_KEY,
   adoptSavedEditorItem,
   advancedRootItemId,
+  inlineEditorItemsFromSession,
+  withInlineEditorHistoryHead,
 } from "../src/shell/advanced-session.ts";
 import {
   resetLibraryCurrentIdentityForTests,
@@ -350,11 +352,15 @@ const workspaceStubUrl = dataModule(`
       return workspace.session;
     },
     async bindTask() { return workspace.session; },
-    async saveSnapshot(snapshot, schema) {
-      snapshots.push(snapshot);
+    async saveSnapshot(snapshot, schema, options) {
+      const payload =
+        options && typeof options.mergeFromLatest === "function"
+          ? options.mergeFromLatest(workspace.session.snapshot)
+          : snapshot;
+      snapshots.push(payload);
       workspace.session = {
         ...workspace.session,
-        snapshot,
+        snapshot: payload,
         schema_version: schema,
         revision: (workspace.session.revision || 1) + 1,
       };
@@ -362,6 +368,22 @@ const workspaceStubUrl = dataModule(`
       globalThis.__w3WorkspaceSession = workspace.session;
       return { ok: true, session: workspace.session };
     },
+  };
+  globalThis.__w3PlantSnapshot = (snapshot) => {
+    workspace.session = { ...workspace.session, snapshot };
+    globalThis.__w3WorkspaceSession = workspace.session;
+  };
+  globalThis.__w3ResetWorkspace = () => {
+    snapshots.length = 0;
+    workspace.session = {
+      id: "w3-lib-session",
+      schema_version: 1,
+      snapshot: {},
+      title: "library",
+      revision: 1,
+    };
+    globalThis.__w3Snapshots = [];
+    globalThis.__w3WorkspaceSession = workspace.session;
   };
   export function WorkspaceSessionProvider({ children }) { return children; }
   export function useOptionalWorkspaceSession() { return workspace; }
@@ -536,6 +558,9 @@ function resetCase({ pro = false, items = [PPT, IMAGE, PPT_B, PDF] } = {}) {
   globalThis.__w3LibraryItems = items;
   globalThis.__w3Snapshots = [];
   globalThis.__w3WorkspaceSession = null;
+  if (typeof globalThis.__w3ResetWorkspace === "function") {
+    globalThis.__w3ResetWorkspace();
+  }
   return installLateSaveGate();
 }
 
@@ -597,6 +622,19 @@ function historyLatestRoot() {
   return history?.latestRootId || "";
 }
 
+function historyHasRoot(item) {
+  const items = inlineEditorItemsFromSession(globalThis.__w3WorkspaceSession);
+  const root = advancedRootItemId(item);
+  return items.some((entry) => advancedRootItemId(entry) === root);
+}
+
+function plantImageHistoryHead() {
+  const current = globalThis.__w3WorkspaceSession?.snapshot || {};
+  globalThis.__w3PlantSnapshot(
+    withInlineEditorHistoryHead(current, IMAGE, "image"),
+  );
+}
+
 async function flushLateSave(gate, saved = PPT_SAVED) {
   assert.equal(typeof gate.flush, "function", "deck 桩应已把迟到保存接到真实 recordSavedItem");
   await act(async () => {
@@ -628,10 +666,14 @@ test("MyLibrary：开 PPT（pro）再开图片，PPT 迟到的保存不得抢舞
     await clickCard(container, IMAGE.artifactId);
     await waitFor(container, '[data-workbench-editor="image"]');
     assertQueryItem(IMAGE.artifactId);
+    plantImageHistoryHead();
+    assert.equal(historyLatestRoot(), advancedRootItemId(IMAGE));
     await flushLateSave(gate);
     assertStage(container, "image", IMAGE.artifactId);
     assertQueryItem(IMAGE.artifactId);
-    assert.notEqual(historyLatestRoot(), advancedRootItemId(PPT));
+    assert.equal(historyLatestRoot(), advancedRootItemId(IMAGE));
+    assert.ok(historyHasRoot(PPT_SAVED), "离场 PPT 应把自己的新版本写进 heads");
+    assert.ok(historyHasRoot(IMAGE), "新卡片的 heads 不得被旧快照覆盖");
     assert.ok(peekProSavedRevision(handoffItemKey(PPT)), "PPT 的库内保存仍应完成");
   });
 });

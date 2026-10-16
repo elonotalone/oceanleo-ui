@@ -16,10 +16,7 @@
 
 import { useEffect, useRef } from "react";
 import { getCurrentArtifactItem } from "./artifact-client";
-import {
-  resolveLibraryCurrentIdentity,
-  setLibraryCurrentIdentity,
-} from "./library-current-identity";
+import { setLibraryCurrentIdentity } from "./library-current-identity";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
   consumeWorkspaceAction,
@@ -218,8 +215,6 @@ export function useLibraryEditIntent({
     if (nonce && !consumeWorkspaceAction(nonce, "library-edit-intent")) return;
     handledNonceRef.current = nonce;
     const deliver = (item: LibraryItem) => {
-      const identity = resolveLibraryCurrentIdentity();
-      if (identity?.artifactId && identity.artifactId !== artifactId) return;
       setLibraryCurrentIdentity({ artifactId, entryId: "" });
       if (mode === "preview") {
         latest.current.onPreviewItem?.(item);

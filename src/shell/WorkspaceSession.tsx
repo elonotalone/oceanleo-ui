@@ -516,7 +516,6 @@ export function WorkspaceSessionProvider({
           error: "工作会话 snapshot 必须是 JSON object。",
         };
       }
-      const recordSnapshot = snapshot as Record<string, unknown>;
       const current = sessionRef.current;
       if (isWorkspaceSessionReadOnly(mode, current)) {
         return {
@@ -566,6 +565,21 @@ export function WorkspaceSessionProvider({
         }
         const queuedBlocked = blockedSnapshotSave(conflictRef.current);
         if (queuedBlocked) return queuedBlocked;
+        let recordSnapshot = snapshot as Record<string, unknown>;
+        if (typeof options.mergeFromLatest === "function") {
+          const merged = options.mergeFromLatest(queuedCurrent?.snapshot);
+          if (
+            !merged ||
+            typeof merged !== "object" ||
+            Array.isArray(merged)
+          ) {
+            return {
+              ok: false,
+              error: "工作会话 snapshot 必须是 JSON object。",
+            };
+          }
+          recordSnapshot = merged;
+        }
         // 未建档的自动保存只写草稿，不发起 sessions 建行。
         if (
           !sessionRef.current &&
@@ -654,6 +668,38 @@ export function WorkspaceSessionProvider({
         if (result.status === 409) {
           // 冲突后只重新读取，不拿新 revision 偷偷覆盖。站点可据 conflict 显式合并/重试。
           const latestResult = await getAppSession(active.id, sessionSurface);
+          if (
+            latestResult.ok &&
+            latestResult.data &&
+            typeof options.mergeFromLatest === "function"
+          ) {
+            const retrySnap = options.mergeFromLatest(
+              latestResult.data.snapshot,
+            );
+            if (
+              retrySnap &&
+              typeof retrySnap === "object" &&
+              !Array.isArray(retrySnap)
+            ) {
+              const retried = await updateAppSession(
+                latestResult.data.id,
+                {
+                  revision: latestResult.data.revision,
+                  snapshot: retrySnap,
+                  schemaVersion,
+                  title: options.title,
+                  activity: snapshotSaveCountsAsActivity(options.intent),
+                },
+                sessionSurface,
+              );
+              if (retried.ok && retried.data) {
+                applySession(retried.data);
+                conflictRef.current = null;
+                setConflict(null);
+                return { ok: true, session: retried.data };
+              }
+            }
+          }
           if (latestResult.ok && latestResult.data) {
             applySession(latestResult.data);
             const nextConflict: WorkspaceSessionConflict = {

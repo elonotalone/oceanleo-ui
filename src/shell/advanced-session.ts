@@ -709,6 +709,48 @@ export function withInlineEditorHistoryHead(
   return { ...base, [INLINE_EDITOR_HISTORY_KEY]: state };
 }
 
+/**
+ * Update one reopenable editor head without claiming `latestRootId`.
+ * A departed PPT instance can park its newest revision/draft here so reopen
+ * finds it, while the stage stays on the card the person opened next.
+ */
+export function withInlineEditorHistoryEntry(
+  currentSnapshot: unknown,
+  item: LibraryItem,
+  route: EditorRoute["type"],
+  taskId?: string | null,
+  draft?: AdvancedDraftPointer | null,
+): Record<string, unknown> {
+  const next = withInlineEditorHistoryHead(
+    currentSnapshot,
+    item,
+    route,
+    taskId,
+    draft,
+  );
+  const rawState =
+    currentSnapshot &&
+    typeof currentSnapshot === "object" &&
+    !Array.isArray(currentSnapshot) &&
+    (currentSnapshot as Record<string, unknown>)[INLINE_EDITOR_HISTORY_KEY] &&
+    typeof (currentSnapshot as Record<string, unknown>)[INLINE_EDITOR_HISTORY_KEY] ===
+      "object" &&
+    !Array.isArray(
+      (currentSnapshot as Record<string, unknown>)[INLINE_EDITOR_HISTORY_KEY],
+    )
+      ? ((currentSnapshot as Record<string, unknown>)[
+          INLINE_EDITOR_HISTORY_KEY
+        ] as Record<string, unknown>)
+      : null;
+  const previousLatest =
+    typeof rawState?.latestRootId === "string" ? rawState.latestRootId : "";
+  const history = next[INLINE_EDITOR_HISTORY_KEY];
+  if (history && typeof history === "object" && !Array.isArray(history)) {
+    (history as InlineEditorHistoryState).latestRootId = previousLatest;
+  }
+  return next;
+}
+
 /** Read saved editor heads embedded in a normal App session. */
 export function inlineEditorItemsFromSession(
   session: AppSession | null | undefined,

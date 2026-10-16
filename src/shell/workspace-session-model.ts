@@ -140,6 +140,12 @@ export interface SaveWorkspaceSnapshotOptions {
   expectedSessionId?: string;
   /** 默认 `"attach"`：自动保存永远不建档，只有伴随产物的保存才建。 */
   intent?: SessionCreateIntent;
+  /**
+   * Rebuild the snapshot from session state at write time, after earlier
+   * saves in the mutation queue have settled. Used so a departed editor can
+   * merge only its own inline-history head without clobbering a newer card.
+   */
+  mergeFromLatest?: (latestSnapshot: unknown) => Record<string, unknown>;
 }
 
 export interface WorkspaceSessionContextValue {

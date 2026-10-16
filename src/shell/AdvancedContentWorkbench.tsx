@@ -39,6 +39,7 @@ import {
   advancedSessionAppId,
   advancedSessionSnapshot,
   advancedDraftFromSnapshot,
+  withInlineEditorHistoryEntry,
   withInlineEditorHistoryHead,
 } from "./advanced-session";
 import {
@@ -523,6 +524,52 @@ function AdvancedContentWorkbenchRuntime(
         savedRoot === advancedRootItemId(materialRef.current),
     );
   };
+  const writeOwnHistoryEntry = async (
+    item: LibraryItem,
+    draft?: AdvancedDraftPointer | null,
+  ) => {
+    const currentWorkspace = workspaceRef.current;
+    const live =
+      draftQueueRef.current.current(currentWorkspace.session) ||
+      currentWorkspace.session;
+    if (!live) return true;
+    const merge = (latest: unknown) =>
+      withInlineEditorHistoryEntry(
+        latest,
+        item,
+        route.type,
+        currentWorkspace.taskId,
+        draft,
+      );
+    const stored = await currentWorkspace.saveSnapshot(
+      merge(live.snapshot),
+      live.schema_version || 1,
+      {
+        expectedSessionId: live.id,
+        title: live.title || item.title,
+        mergeFromLatest: merge,
+      },
+    );
+    if (stored.ok) {
+      draftQueueRef.current.accept(stored.session);
+      return true;
+    }
+    if (stored.conflict?.latest || stored.stale) {
+      const latest = stored.session || currentWorkspace.session;
+      if (!latest) return true;
+      const retried = await currentWorkspace.saveSnapshot(
+        merge(latest.snapshot),
+        latest.schema_version || 1,
+        {
+          expectedSessionId: latest.id,
+          title: latest.title || item.title,
+          mergeFromLatest: merge,
+        },
+      );
+      if (retried.ok) draftQueueRef.current.accept(retried.session);
+    }
+    return true;
+  };
   const recordDraft = useCallback(
     async (draft: AdvancedDraftPointer): Promise<boolean> => {
       const expectedSessionId = workspace.sessionId;
@@ -532,6 +579,13 @@ function AdvancedContentWorkbenchRuntime(
         const material = materialRef.current;
         const identity = advancedDraftIdentity(material);
         if (!stageAliveRef.current || !saveBelongsToCurrentStage(material)) {
+          if (
+            editorHost.embedded &&
+            draft.rootId === identity.rootId
+          ) {
+            const pointer = { ...draft, baseRevisionId: identity.baseRevisionId };
+            return writeOwnHistoryEntry(material, pointer);
+          }
           return true;
         }
         if (!active || active.id !== expectedSessionId || draft.rootId !== identity.rootId) return false;
@@ -556,7 +610,18 @@ function AdvancedContentWorkbenchRuntime(
       return draftQueueRef.current.run(async () => {
         const workspace = workspaceRef.current;
         if (expectedSessionId && workspace.sessionId !== expectedSessionId) return false;
-        if (!saveBelongsToCurrentStage(savedItem)) return true;
+        if (!saveBelongsToCurrentStage(savedItem)) {
+          if (editorHost.embedded) {
+            const previousItem = materialRef.current;
+            const previousSession = draftQueueRef.current.current(workspace.session);
+            const draft = advancedDraftAfterVersion(
+              advancedDraftFromSnapshot(previousSession?.snapshot, previousItem),
+              coveredRevision, advancedDraftIdentity(savedItem).baseRevisionId, coverage,
+            );
+            return writeOwnHistoryEntry(savedItem, draft);
+          }
+          return true;
+        }
         const previousItem = materialRef.current;
         const previousSession = draftQueueRef.current.current(workspace.session);
         const draft = advancedDraftAfterVersion(

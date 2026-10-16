@@ -693,18 +693,7 @@ export function WorkspaceLibrary({
     // `intent:"edit"` 已经由宿主直接送进 typed 编辑器，这里不要再抢着开一份安静
     // 预览详情——否则用户会看到编辑器背后还压着一层列表详情。
     if (next.intent === "edit") return;
-    const identity = resolveLibraryCurrentIdentity();
-    const actionItemId = String(next.itemId || "").trim();
-    const actionConflictsWithIdentity = Boolean(
-      identity?.artifactId &&
-        actionItemId &&
-        identity.artifactId !== actionItemId,
-    );
     if (!consumeWorkspaceAction(action.nonce, "workspace-library")) {
-      restoreCurrentIdentity();
-      return;
-    }
-    if (actionConflictsWithIdentity) {
       restoreCurrentIdentity();
       return;
     }

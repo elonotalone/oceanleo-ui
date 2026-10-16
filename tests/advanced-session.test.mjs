@@ -8,10 +8,12 @@ const source = readFileSync(
 );
 const {
   INLINE_EDITOR_HISTORY_KEY,
+  advancedRootItemId,
   advancedSessionAppId,
   advancedSessionSnapshot,
   advancedSnapshotFromSession,
   inlineEditorItemsFromSession,
+  withInlineEditorHistoryEntry,
   withInlineEditorHistoryHead,
 } = await import("../src/shell/advanced-session.ts");
 
@@ -152,4 +154,44 @@ test("legacy Office sessions upgrade to typed lightweight routes only", () => {
     source,
     /session\.app_id !== expectedAppId && session\.app_id !== legacyOfficeAppId/,
   );
+});
+
+test("withInlineEditorHistoryEntry updates one head without claiming latestRootId", () => {
+  const ppt = {
+    key: "creation:ppt",
+    source: "creation",
+    id: "ppt-annual",
+    title: "年度述职.pptx",
+    kind: "ppt",
+    siteId: "ppt",
+    url: "https://files.test/annual.pptx",
+    favorite: false,
+    meta: { format: "pptx" },
+  };
+  const image = {
+    key: "creation:image",
+    source: "creation",
+    id: "img-photo",
+    title: "现场照片.png",
+    kind: "image",
+    siteId: "image",
+    url: "https://files.test/photo.png",
+    favorite: false,
+    meta: { format: "png" },
+  };
+  const claimed = withInlineEditorHistoryHead({}, image, "image");
+  assert.equal(
+    claimed[INLINE_EDITOR_HISTORY_KEY].latestRootId,
+    advancedRootItemId(image),
+  );
+  const parked = withInlineEditorHistoryEntry(claimed, ppt, "deck");
+  assert.equal(
+    parked[INLINE_EDITOR_HISTORY_KEY].latestRootId,
+    advancedRootItemId(image),
+    "离场 PPT 不得把 latestRootId 改成自己",
+  );
+  const items = inlineEditorItemsFromSession({ snapshot: parked });
+  assert.equal(items.length, 2);
+  assert.ok(items.some((item) => advancedRootItemId(item) === advancedRootItemId(ppt)));
+  assert.ok(items.some((item) => advancedRootItemId(item) === advancedRootItemId(image)));
 });
