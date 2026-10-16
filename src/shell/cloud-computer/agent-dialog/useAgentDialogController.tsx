@@ -14,7 +14,8 @@ import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oc
 import { isWsProgram } from "./parse";
 import { applyDialog, busySessionsFor, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
-import { sessionInterrupted } from "./session-status";
+import { hasOpenTurn, isCompletedStop, sessionInterrupted } from "./session-status";
+import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { safeImagePreview } from "./message-attachments";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
@@ -153,6 +154,8 @@ export function useAgentDialog({
   const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
   const [fresh, setFresh] = useState(false);
   const [computerName, setComputerName] = useState("");
+  const unreadRef = useRef<string[]>([]);
+  const [unreadSessions, setUnreadSessions] = useState<string[]>([]);
 
   const stateRef = useRef(state);
   const draftRef = useRef(draft);
@@ -221,6 +224,36 @@ export function useAgentDialog({
   sessionIdRef.current = sessionId;
   localOceanleoRef.current = localOceanleo;
 
+  const persistUnread = useCallback((program: string, ids: string[]) => {
+    writeUnreadSessions(computerIdRef.current, program, ids);
+    if (program === (stateRef.current.program ?? "")) {
+      unreadRef.current = ids;
+      setUnreadSessions(ids);
+    }
+  }, []);
+  const addUnread = useCallback((program: string, id: string) => {
+    if (!id || !program) return;
+    const current = program === (stateRef.current.program ?? "")
+      ? unreadRef.current
+      : readUnreadSessions(computerIdRef.current, program);
+    if (current.includes(id)) return;
+    persistUnread(program, [...current, id]);
+  }, [persistUnread]);
+  const clearUnread = useCallback((program: string, id: string) => {
+    if (!id || !program) return;
+    const current = program === (stateRef.current.program ?? "")
+      ? unreadRef.current
+      : readUnreadSessions(computerIdRef.current, program);
+    if (!current.includes(id)) return;
+    persistUnread(program, current.filter((item) => item !== id));
+  }, [persistUnread]);
+
+  useEffect(() => {
+    const ids = readUnreadSessions(computerId, state.program ?? "");
+    unreadRef.current = ids;
+    setUnreadSessions(ids);
+  }, [computerId, state.program]);
+
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -243,6 +276,7 @@ export function useAgentDialog({
       dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
       return;
     }
+    const viewingSession = stateRef.current.activeSession;
     if (frame.t === "error" && (frame.code === "computer_offline" || frame.code === "computer_reconnecting")) {
       // A node reconnects after gateway replacement. Treat offline as a
       // retryable connection loss, not a permanent stop requiring a click.
@@ -335,7 +369,13 @@ export function useAgentDialog({
     if ((frame.t === "done" || frame.t === "session_opened" || frame.t === "turn_start") && frameProgram) {
       sessionsRefreshRef.current?.request(frameProgram, "activity");
     }
-  }, [clearTimer, initialSessionId, mountProgram]);
+    if (frame.t === "done" && frameSession && frameProgram) {
+      const viewingThis = frameProgram === (stateRef.current.program ?? "") && frameSession === viewingSession;
+      if (viewingThis) clearUnread(frameProgram, frameSession);
+      else if (isCompletedStop(typeof frame.stop === "string" ? frame.stop : "")) addUnread(frameProgram, frameSession);
+    }
+    if (frame.t === "turn_start" && frameSession && frameProgram) clearUnread(frameProgram, frameSession);
+  }, [addUnread, clearTimer, clearUnread, initialSessionId, mountProgram]);
 
   const scheduleReconnect = useCallback(() => {
     if (!enabledRef.current || !activeRef.current) return;
@@ -815,7 +855,8 @@ export function useAgentDialog({
     }
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
     const current = stateRef.current;
-    const thisBusy = busySessionsFor(current.liveTurns, current.program).includes(current.activeSession || current.draftRef || "");
+    const thisBusy = busySessionsFor(current.liveTurns, current.program).includes(current.activeSession || current.draftRef || "")
+      || hasOpenTurn(current.messages);
     if (thisBusy || current.offline || current.sessionLoading) return;
     const text = draftRef.current.trim();
     const files = attachmentsRef.current;
@@ -969,6 +1010,7 @@ export function useAgentDialog({
     const program = stateRef.current.program;
     if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
     if (stateRef.current.activeSession === acpSession && stateRef.current.sessionLoading) return;
+    clearUnread(program ?? "", acpSession);
     const cache = presentationFor(computerIdRef.current);
     cache.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
     const cacheKey = `${program}::${acpSession}`;
@@ -987,7 +1029,7 @@ export function useAgentDialog({
       }
       sendJson(socket, { t: "open_session", program, acp_session: acpSession });
     })();
-  }, [ensureOpen]);
+  }, [clearUnread, ensureOpen]);
   openSessionRef.current = openSession;
 
   const loadOlderHistory = useCallback(() => {
@@ -1292,6 +1334,7 @@ export function useAgentDialog({
     interruptedSessions: [...presentationFor(computerId).views.entries()]
       .filter(([key, view]) => key.startsWith(`${state.program}::`) && view.activeSession && sessionInterrupted(view.messages))
       .map(([, view]) => view.activeSession),
+    unreadSessions,
     send,
     abort,
     programs: state.programs,

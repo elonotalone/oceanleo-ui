@@ -60,6 +60,41 @@ function permissionClass(kind: string): string {
   return `${base} border ${tone.border}`;
 }
 
+function collapseUnlessSelecting(close: () => void) {
+  if (typeof window !== "undefined" && window.getSelection()?.toString()) return;
+  close();
+}
+
+function ThoughtView({ text }: { text: string }) {
+  const tt = useUI();
+  const [open, setOpen] = useState(false);
+  return (
+    <div data-oceanleo-cc-thought="">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className={`flex w-full items-center gap-2 text-left text-[12px] ${tone.faint}`}
+      >
+        <span className="min-w-0 flex-1 truncate">{tt("思考")}</span>
+        <span>{open ? tt("收起") : tt("展开")}</span>
+      </button>
+      {open ? (
+        <div
+          data-oceanleo-cc-thought-expanded=""
+          className="mt-1 cursor-pointer space-y-2 pl-4"
+          onClick={() => collapseUnlessSelecting(() => setOpen(false))}
+        >
+          <AgentText
+            text={text}
+            className={`cursor-pointer whitespace-pre-wrap text-[12px] ${tone.faint}`}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ToolView({ tool }: { tool: ToolCard }) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
@@ -82,10 +117,7 @@ function ToolView({ tool }: { tool: ToolCard }) {
         <div
           data-oceanleo-cc-tool-expanded=""
           className="mt-1 cursor-pointer space-y-2 pl-4"
-          onClick={() => {
-            if (typeof window !== "undefined" && window.getSelection()?.toString()) return;
-            setOpen(false);
-          }}
+          onClick={() => collapseUnlessSelecting(() => setOpen(false))}
         >
           {tool.content.map((part, index) => {
             if (part.type === "diff") {
@@ -314,14 +346,7 @@ function ItemView({ item, dialog, active = false }: { item: TurnItem; dialog: Ag
       </div>
     );
   }
-  if (item.kind === "thought") {
-    return (
-      <details data-oceanleo-cc-thought="" className={`text-[12px] ${tone.faint}`}>
-        <summary>{tt("思考")}</summary>
-        <AgentText text={item.text} className={`whitespace-pre-wrap text-[12px] ${tone.faint}`} />
-      </details>
-    );
-  }
+  if (item.kind === "thought") return <ThoughtView text={item.text} />;
   if (item.kind === "tool") return <ToolView tool={item.tool} />;
   if (item.kind === "plan") {
     return (

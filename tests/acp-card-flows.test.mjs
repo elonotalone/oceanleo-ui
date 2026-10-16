@@ -8,7 +8,8 @@ import test from "node:test";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { applyDialog, busySessionsFor, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { hasOpenTurn, sessionListStatus } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 // AI 对话卡：保留旧功能回归并覆盖 cloud-computer-polish W2 的 I1–I4 / I9。
@@ -441,7 +442,7 @@ test("已复制对话位置只提示 3 秒，随后按钮还原", async () => {
   }
 });
 
-test("会话标题前显示绿色呼吸运行点，后台取消变红且不串到其它会话", async () => {
+test("会话进行中用像素动态图标，后台取消变红，未看过的完成亮绿点", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await server({ t: "sessions", program: "cursor", supported: true, sessions: [
@@ -453,23 +454,32 @@ test("会话标题前显示绿色呼吸运行点，后台取消变红且不串�
     await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", replayed: 0 });
     await server({ t: "turn_start", program: "cursor", acp_session: "one" });
     const row = view.$('[data-oceanleo-acp-session="one"]');
-    let dot = row.querySelector('[data-oceanleo-acp-session-status="running"]');
-    assert.ok(dot);
-    assert.match(dot.className, /bg-emerald-500/);
-    assert.match(dot.className, /motion-safe:animate-pulse/);
-    assert.equal(dot.parentElement.firstElementChild, dot);
-    assert.equal(dot.nextElementSibling.textContent, "First");
+    let mark = row.querySelector('[data-oceanleo-acp-session-status="running"]');
+    assert.ok(mark);
+    assert.ok(mark.querySelector("svg"));
+    assert.equal(mark.getAttribute("data-oceanleo-acp-pixel-run"), "");
+    assert.doesNotMatch(mark.className, /animate-pulse/);
+    assert.equal(mark.getAttribute("aria-label"), "进行中");
+    assert.equal(mark.parentElement.firstElementChild, mark);
+    assert.equal(mark.nextElementSibling.textContent, "First");
     await click(view.$('[data-oceanleo-acp-session="two"]'));
     await server({ t: "session_opened", program: "cursor", acp_session: "two", cwd: "/root", replayed: 0 });
     await server({ t: "done", program: "cursor", acp_session: "one", stop: "cancelled" });
-    dot = row.querySelector('[data-oceanleo-acp-session-status="interrupted"]');
-    assert.ok(dot);
-    assert.match(dot.className, /bg-red-500/);
+    mark = row.querySelector('[data-oceanleo-acp-session-status="interrupted"]');
+    assert.ok(mark);
+    assert.match(mark.className, /bg-red-500/);
     assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
     assert.equal(view.$('[data-oceanleo-acp-session="unknown"] [data-oceanleo-acp-session-status]'), null);
     await server({ t: "turn_start", program: "cursor", acp_session: "one" });
     assert.ok(row.querySelector('[data-oceanleo-acp-session-status="running"]'));
     await server({ t: "done", program: "cursor", acp_session: "one", stop: "end_turn" });
+    mark = row.querySelector('[data-oceanleo-acp-session-status="unread"]');
+    assert.ok(mark);
+    assert.match(mark.className, /bg-emerald-500/);
+    assert.doesNotMatch(mark.className, /animate-pulse/);
+    assert.equal(mark.getAttribute("aria-label"), "未读完成");
+    await click(view.$('[data-oceanleo-acp-session="one"]'));
+    await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", replayed: 0 });
     assert.equal(row.querySelector('[data-oceanleo-acp-session-status]'), null);
     await server({ t: "turn_start", program: "cursor", acp_session: "two" });
     await server({ t: "error", program: "cursor", acp_session: "two", code: "acp_exited" });
@@ -478,7 +488,7 @@ test("会话标题前显示绿色呼吸运行点，后台取消变红且不串�
   } finally { view.cleanup(); }
 });
 
-test("Past sessions 绿点只标进行中的回合，空闲进程不亮", async () => {
+test("Past sessions 进行中用像素图标，空闲进程不亮；后台结束亮未读绿点", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await server({
@@ -493,7 +503,10 @@ test("Past sessions 绿点只标进行中的回合，空闲进程不亮", async 
       busy: ["one"],
       running: ["one", "two", "three"],
     });
-    assert.ok(view.$('[data-oceanleo-acp-session="one"] [data-oceanleo-acp-session-status="running"]'));
+    const running = view.$('[data-oceanleo-acp-session="one"] [data-oceanleo-acp-session-status="running"]');
+    assert.ok(running);
+    assert.ok(running.querySelector("svg"));
+    assert.equal(running.getAttribute("data-oceanleo-acp-pixel-run"), "");
     assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
     assert.equal(view.$('[data-oceanleo-acp-session="three"] [data-oceanleo-acp-session-status]'), null);
     await server({
@@ -509,7 +522,98 @@ test("Past sessions 绿点只标进行中的回合，空闲进程不亮", async 
     });
     assert.equal(view.$('[data-oceanleo-acp-session="one"] [data-oceanleo-acp-session-status]'), null);
     assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
+    await server({ t: "done", program: "cursor", acp_session: "one", stop: "end_turn" });
+    const unread = view.$('[data-oceanleo-acp-session="one"] [data-oceanleo-acp-session-status="unread"]');
+    assert.ok(unread);
+    assert.match(unread.className, /bg-emerald-500/);
+    assert.doesNotMatch(unread.className, /animate-pulse/);
+    assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
   } finally { view.cleanup(); }
+});
+
+test("思考展开后点击正文折叠；思考增量把发送换成停止", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [
+      { id: "live", title: "Live", cwd: "/root", updated_at: "" },
+    ] });
+    await click(view.$('[data-oceanleo-acp-session="live"]'));
+    await server({
+      t: "transcript",
+      program: "cursor",
+      acp_session: "live",
+      live: false,
+      frames: [
+        { t: "user_message", program: "cursor", acp_session: "live", text: "go" },
+        { t: "turn_start", program: "cursor", acp_session: "live" },
+        { t: "thought", program: "cursor", acp_session: "live", text: "plan A" },
+      ],
+    });
+    await server({ t: "session_opened", program: "cursor", acp_session: "live", cwd: "/root", replayed: 0 });
+    assert.ok(view.$("[data-oceanleo-cc-stop]"), "open thought with no done keeps Stop");
+    assert.equal(view.$("[data-oceanleo-cc-stop]").textContent, "停止");
+    const thought = view.$("[data-oceanleo-cc-thought]");
+    assert.ok(thought);
+    assert.equal(view.$("[data-oceanleo-cc-thought-expanded]"), null);
+    await click(thought.querySelector("button"));
+    assert.match(view.$("[data-oceanleo-cc-thought-expanded]").textContent, /plan A/);
+    await click(view.$("[data-oceanleo-cc-thought-expanded] p"));
+    assert.equal(view.$("[data-oceanleo-cc-thought-expanded]"), null);
+    await server({ t: "done", program: "cursor", acp_session: "live", stop: "end_turn" });
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    await server({ t: "thought", program: "cursor", acp_session: "live", text: "still going" });
+    assert.ok(view.$("[data-oceanleo-cc-stop]"), "thought after a false done brings Stop back");
+  } finally { view.cleanup(); }
+});
+
+test("reduce：思考增量把回合标成进行中；transcript.live=false 但未闭合仍保持进行中", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "done", program: "cursor", acp_session: "s", stop: "end_turn" } });
+  assert.equal(state.busy, false);
+  assert.equal(hasOpenTurn(state.messages), false);
+  state = applyDialog(state, { type: "frame", frame: { t: "thought", program: "cursor", acp_session: "s", text: "hmm" } });
+  assert.equal(state.busy, true);
+  assert.equal(state.liveTurns["cursor::s"], true);
+  assert.equal(hasOpenTurn(state.messages), true);
+  assert.deepEqual(busySessionsFor(state.liveTurns, "cursor"), ["s"]);
+
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "transcript",
+    program: "cursor",
+    acp_session: "s",
+    live: false,
+    frames: [
+      { t: "user_message", program: "cursor", acp_session: "s", text: "go" },
+      { t: "turn_start", program: "cursor", acp_session: "s" },
+      { t: "thought", program: "cursor", acp_session: "s", text: "plan" },
+    ],
+  } });
+  assert.equal(state.busy, true);
+  assert.equal(hasOpenTurn(state.messages), true);
+
+  let replayed = initialDialogState();
+  replayed = applyDialog(replayed, { type: "program", program: "cursor" });
+  replayed = applyDialog(replayed, { type: "frame", frame: {
+    t: "transcript",
+    program: "cursor",
+    acp_session: "hist",
+    live: false,
+    frames: [
+      { t: "user_message", program: "cursor", acp_session: "hist", replay: true, text: "old" },
+      { t: "delta", program: "cursor", acp_session: "hist", replay: true, text: "reply" },
+    ],
+  } });
+  assert.equal(replayed.busy, false);
+  assert.equal(hasOpenTurn(replayed.messages), false);
+});
+
+test("sessionListStatus：进行中优先于中断和未读，绿点只表示未读完成", () => {
+  assert.equal(sessionListStatus("a", ["a"], ["a"], ["a"]), "running");
+  assert.equal(sessionListStatus("a", [], ["a"], ["a"]), "interrupted");
+  assert.equal(sessionListStatus("a", [], [], ["a"]), "unread");
+  assert.equal(sessionListStatus("a", [], [], []), null);
 });
 
 test("模型目录刷新保留配置菜单中已选的基础模型，不退回旧组合型号", () => {

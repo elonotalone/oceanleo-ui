@@ -17,6 +17,7 @@ import { ServerPageStripPortal } from "../server-page/server-page-chrome";
 import { tone } from "../server-page/tone";
 import { AcpSettings } from "./AcpSettings";
 import { sessionListStatus } from "./session-status";
+import { SessionRunningIcon } from "./SessionRunningIcon";
 import { Composer } from "./Composer";
 import { InstallSheet } from "./InstallSheet";
 import { KeySheet } from "./KeySheet";
@@ -352,7 +353,13 @@ export function AcpCard({
                       session.id,
                       dialog.busySessions,
                       dialog.interruptedSessions,
+                      dialog.unreadSessions,
                     );
+                    const statusLabel = status === "running"
+                      ? tt("进行中")
+                      : status === "unread"
+                        ? tt("未读完成")
+                        : tt("已中断");
                     return (
                       <button
                         key={session.id}
@@ -367,16 +374,16 @@ export function AcpCard({
                         data-oceanleo-acp-session={session.id}
                       >
                         <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
-                          {status ? (
+                          {status === "running" ? (
+                            <SessionRunningIcon label={statusLabel} />
+                          ) : status ? (
                             <span
                               className={`size-1.5 shrink-0 rounded-full ${
-                                status === "running"
-                                  ? "bg-emerald-500 motion-safe:animate-pulse"
-                                  : "bg-red-500"
+                                status === "unread" ? "bg-emerald-500" : "bg-red-500"
                               }`}
                               role="img"
-                              aria-label={status === "running" ? tt("进行中") : tt("已中断")}
-                              title={status === "running" ? tt("进行中") : tt("已中断")}
+                              aria-label={statusLabel}
+                              title={statusLabel}
                               data-oceanleo-acp-session-status={status}
                             />
                           ) : null}

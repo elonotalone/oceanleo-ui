@@ -257,6 +257,8 @@ export type AgentDialogController = {
   runningSessions?: string[];
   /** Known interrupted sessions of the current program, without inferring unopened history. */
   interruptedSessions?: string[];
+  /** Completions the operator has not opened since they finished. */
+  unreadSessions?: string[];
   send: () => Promise<void>;
   abort: () => void;
   programs: ProgramStatus[];

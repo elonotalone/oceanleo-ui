@@ -19,6 +19,7 @@ import {
 } from "./parse";
 import { isModelFamilyConfig } from "./notice";
 import { normalizeUserMessage } from "./message-attachments";
+import { hasOpenTurn } from "./session-status";
 import type {
   AgentDialogMessage,
   AgentProgram,
@@ -79,6 +80,16 @@ const COMPUTER_WIDE_ERRORS = new Set([
   "dialog_unreachable",
   "acp_exited",
 ]);
+
+function armTurn(state: DialogState, frame: Record<string, unknown>): DialogState {
+  if (frame.replay === true) return state;
+  const program = str(frame.program) || state.program;
+  const session = str(frame.acp_session) || state.activeSession || state.draftRef || "";
+  if (!session) return state;
+  const key = turnKey(program, session);
+  if (state.cancelledTurns?.[key]) return state;
+  return markTurn(state, program, session, true);
+}
 
 function markTurn(state: DialogState, program: string | null, session: string, live: boolean): DialogState {
   const key = turnKey(program, session);
@@ -706,7 +717,10 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       const item = asRecord(raw);
       if (item) next = onFrame(next, item);
     }
-    const live = typeof frame.live === "boolean" ? frame.live : isLiveTurn(keptTurns, next.program, next.activeSession);
+    const open = hasOpenTurn(next.messages);
+    const live = typeof frame.live === "boolean"
+      ? frame.live || open
+      : open || isLiveTurn(keptTurns, next.program, next.activeSession);
     const liveTurns = { ...keptTurns };
     if (live) liveTurns[turnKey(next.program, next.activeSession)] = true;
     else delete liveTurns[turnKey(next.program, next.activeSession)];
@@ -816,13 +830,19 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     next = markTurn(next, program, session || next.activeSession, true);
     return next;
   }
-  if (kind === "delta") return appendText(state, "assistant", str(frame.text));
-  if (kind === "thought") return appendText(state, "thought", str(frame.text));
-  if (kind === "tool") return onTool(state, frame);
-  if (kind === "plan") return onPlan(state, frame);
+  if (kind === "delta") {
+    const text = str(frame.text);
+    return text ? armTurn(appendText(state, "assistant", text), frame) : state;
+  }
+  if (kind === "thought") {
+    const text = str(frame.text);
+    return text ? armTurn(appendText(state, "thought", text), frame) : state;
+  }
+  if (kind === "tool") return str(frame.id) ? armTurn(onTool(state, frame), frame) : state;
+  if (kind === "plan") return armTurn(onPlan(state, frame), frame);
   if (kind === "usage") return onUsage(state, frame);
-  if (kind === "permission") return onPermission(state, frame);
-  if (kind === "question") return onQuestion(state, frame);
+  if (kind === "permission") return armTurn(onPermission(state, frame), frame);
+  if (kind === "question") return armTurn(onQuestion(state, frame), frame);
   if (kind === "commands") return { ...state, commands: parseCommands(frame.commands) };
   if (kind === "done") return onDone(state, frame);
   if (kind === "error" || kind === "notice") return onError(state, frame);
@@ -887,8 +907,11 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         configOptions: event.configOptions,
         commands: event.commands,
       };
-      const live = isLiveTurn(next.liveTurns, next.program, next.activeSession || next.draftRef || "");
-      return { ...next, busy: live, busySession: live ? next.activeSession : "", agentBusy: false };
+      const id = next.activeSession || next.draftRef || "";
+      const live = isLiveTurn(next.liveTurns, next.program, id) || hasOpenTurn(next.messages);
+      const liveTurns = { ...next.liveTurns };
+      if (live && id) liveTurns[turnKey(next.program, id)] = true;
+      return { ...next, liveTurns, busy: live, busySession: live ? next.activeSession : "", agentBusy: false };
     }
     case "send-began":
       return markTurn(state, state.program, state.activeSession || state.draftRef || "", true);
