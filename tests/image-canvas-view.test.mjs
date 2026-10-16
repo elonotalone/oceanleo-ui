@@ -4,6 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { readFileSync } from "node:fs";
+
 import {
   CANVAS_VIEW_LABELS,
   applyCanvasViewClick,
@@ -58,6 +60,11 @@ test("点了必须真切：从结构到皮肤，状态档位要变", () => {
   assert.equal(route.state.rulerVisible, true);
   const planned = planEditorModeSwitch(DESIGN_MODE_INITIAL_STATE, "design", document);
   assert.deepEqual(route, planned, "入口必须把 planEditorModeSwitch 的 route 原样交还");
+});
+
+test("ImageCanvasViewSwitch 点击只走 applyCanvasViewClick", () => {
+  const switchSrc = readFileSync("src/shell/image-editor/ImageCanvasViewSwitch.tsx", "utf8");
+  assert.match(switchSrc, /applyCanvasViewClick\(state, choice\.mode, document\)/);
 });
 
 test("切了不得碰文档：交还的必须是进函数时那份文件", () => {

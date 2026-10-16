@@ -43,7 +43,7 @@ export interface AdvancedEditorPagesAdapter {
   activePageId?: string;
   /** 宿主切页时通知插件（aux 页需要它切自己的视图；artifact/pro 走 mode）。 */
   onSelectPage?: (pageId: string) => void;
-  /** 专业编辑页的标签覆盖（例如「Photopea」）。缺省「专业编辑」。 */
+  /** 专业编辑页的标签覆盖。缺省「专业编辑」；不要写第三方产品名。 */
   proLabel?: string;
   /** 专业编辑页不可用的人话原因（缺省视为可用）。 */
   proUnavailableReason?: string;

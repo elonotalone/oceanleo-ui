@@ -17,7 +17,7 @@ import {
 test("没存过就是普通模式（R3）", () => {
   resetPluginModeCache();
   assert.equal(rememberedImagePluginMode(), DEFAULT_EDITOR_MODE);
-  assert.equal(applyImageL0Mode("normal").showPhotopea, false);
+  assert.deepEqual(Object.keys(applyImageL0Mode("normal")), ["mode"]);
 });
 
 test("记住的档位是专业模式时，打开就进专业模式", () => {
@@ -25,16 +25,16 @@ test("记住的档位是专业模式时，打开就进专业模式", () => {
   setPluginMode(IMAGE_PLUGIN_ID, "pro");
   assert.equal(currentPluginMode("image"), "pro");
   assert.equal(rememberedImagePluginMode(), "pro");
-  assert.equal(applyImageL0Mode(rememberedImagePluginMode()).showPhotopea, true);
+  assert.equal(applyImageL0Mode(rememberedImagePluginMode()).mode, "pro");
 });
 
 test("setMode(\"pro\") 必须改状态，空转不算接上", () => {
   const applied = applyImageL0Mode("pro");
   assert.equal(applied.mode, "pro");
-  assert.equal(applied.showPhotopea, true);
+  assert.deepEqual(Object.keys(applied), ["mode"]);
   const back = applyImageL0Mode("normal");
   assert.equal(back.mode, "normal");
-  assert.equal(back.showPhotopea, false);
+  assert.deepEqual(Object.keys(back), ["mode"]);
 });
 
 test("adapter.mode 必须挂上 setMode，undefined 当场拒", () => {
@@ -54,5 +54,5 @@ test("adapter.mode 必须挂上 setMode，undefined 当场拒", () => {
 test("认不出的档位一律当普通模式，不另开第三条路", () => {
   const applied = applyImageL0Mode(/** @type {never} */ ("studio"));
   assert.equal(applied.mode, "normal");
-  assert.equal(applied.showPhotopea, false);
+  assert.deepEqual(Object.keys(applied), ["mode"]);
 });

@@ -4,7 +4,7 @@
 // 这份判据是**源码级**的：路由是 React 组件，而 §2 第 5 条禁止用浏览器/截图做
 // 验收，本仓也没有渲染 `ImageRoute` 的既有装置。所以这里用 TypeScript AST 判
 // 「接线在不在、接对没接对」，而每个被接的模块**各自有行为级判据**
-// （`design-mode.test.mjs` / `image-ai-commands.test.mjs` / `photopea-bridge.test.mjs`）。
+// （`design-mode.test.mjs` / `image-ai-commands.test.mjs`）。
 //
 // 查证范围（§7 要求写明）：只读 `src/shell/advanced-routes/ImageRoute.tsx` 与
 // `src/shell/advanced-editor-adapter.ts` 两个文件，范围之外未查证。
@@ -40,7 +40,7 @@ test("专业模式经 W01 的 mode 适配器暴露，不是自造开关", () => 
   );
   // §10 第 5 条：不得各自发明开关。
   assert.equal(
-    /setShowPhotopea|togglePro|proSwitch/.test(route),
+    /togglePro|proSwitch/.test(route),
     false,
     "专业模式只能走 W01 契约的 set-mode / mode 适配器，不许自造开关",
   );
@@ -59,21 +59,12 @@ test("打开编辑器：用记住的档位初始化，不是一律普通模式",
   );
 });
 
-test("Photopea 只在用户切到专业模式后才可能装载（不预载广告）", () => {
-  // 路由里不许出现常量 iframe src / 预热请求。
-  assert.equal(
-    /photopea\.com/i.test(route),
-    false,
-    "路由里出现 Photopea 地址就意味着它可能在挂载期被拉起；地址只应存在于惰性桥里",
-  );
+test("专业页与编辑页共用同一份 Fabric 稿，舞台上没有 iframe", () => {
   assert.match(route, /setEditorMode = useCallback\(\(mode: EditorMode\)/);
-  assert.match(route, /applyImageL0Mode\(mode\)\.mode/);
+  assert.match(route, /setPluginModeState\(applyImageL0Mode\(mode\)\.mode\)/);
   assert.match(route, /data-editor-mode=\{pluginMode\}/);
-  assert.match(
-    route,
-    /<ImagePhotopeaHost showPhotopea=\{showPhotopea\}/,
-    "专业模式必须把 ImagePhotopeaHost 挂上舞台；只写 data-image-show-photopea 用户看不见",
-  );
+  assert.match(route, /<FabricImageStage /);
+  assert.equal(/<iframe/i.test(route), false);
 });
 
 test("画布内结构/皮肤入口走 applyCanvasViewClick，不占 L0", () => {
@@ -135,8 +126,8 @@ test("两种模式共用一份文档：L0 不占 photo/design 那条轴", () => 
   );
 });
 
-test("第二行申报 Photopea，不报 aux；抠图在 adapter.actions 里（编辑栏文档段）", () => {
-  assert.match(route, /pages:\s*\{\s*proLabel:\s*"Photopea"\s*\}/);
+test("第二行不覆盖专业页标签、不报 aux；抠图在 adapter.actions 里（编辑栏文档段）", () => {
+  assert.equal(/proLabel/.test(route), false);
   assert.doesNotMatch(route, /aux:\s*\[/);
   assert.match(route, /id:\s*"image-cutout"/);
   assert.match(route, /label:\s*"抠图（背景变透明）"/);

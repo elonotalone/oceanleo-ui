@@ -645,7 +645,7 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
     return unavailable("没有可加载的 GLB 或已整包托管的 glTF 模型。");
   }
 
-  if (IMAGE_EXT.has(ext) || mime.startsWith("image/")) {
+  if (ext === "psd" || IMAGE_EXT.has(ext) || mime.startsWith("image/")) {
     return available("image", { type: "image" });
   }
   if (hasStructuredSlides(item)) {

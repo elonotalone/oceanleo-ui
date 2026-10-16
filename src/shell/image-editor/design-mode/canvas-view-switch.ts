@@ -1,8 +1,8 @@
 /**
  * 画布内的结构 / 皮肤入口（photo | design）。
  *
- * 这不是 W01 的 L0「专业模式」。L0 闭集是 `normal | pro`，图片件上 pro 才挂
- * Photopea。结构 / 皮肤是同一份文件的两种视图，走已经改好的
+ * 这不是 W01 的 L0「专业模式」。L0 闭集是 `normal | pro`，两页共用同一份
+ * Fabric 稿。结构 / 皮肤是同一份文件的两种视图，走已经改好的
  * `switchEditorMode` → `planEditorModeSwitch`。点了必须真切，切了不得碰文档。
  */
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useAdvancedSession } from "../advanced-session-context";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import {
   advancedCommittedRevisionItem,
@@ -71,21 +70,12 @@ import {
 import { DESIGN_MODE_INITIAL_STATE } from "../image-editor/design-mode/design-mode-state";
 import { applyCanvasViewClick } from "../image-editor/design-mode/canvas-view-switch";
 import { ImageCanvasViewSwitch } from "../image-editor/ImageCanvasViewSwitch";
-import { ImagePhotopeaHost } from "../image-editor/ImagePhotopeaHost";
-import { clearLocalImageDraft } from "../image-editor/editor-persistence";
 import {
   bindNormalFaceHandoff,
   bindProFaceHandoff,
-  captureBeforeEnterPro,
   handoffItemKey,
   handoffRevisionOf,
-  reportProSaved,
-  useProSavedRevision,
 } from "./editor-handoff";
-import {
-  toPhotopeaDocumentRef,
-} from "./image-pro-handoff";
-import { createPhotopeaSession } from "../image-editor/photopea-session";
 import {
   IMAGE_DESIGN_MANIFEST_VERSION,
   imageDesignChipManifestEntries,
@@ -103,13 +93,9 @@ export function ImageRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const [activeItem, setActiveItem] = useState(item);
-  const proSaved = useProSavedRevision(handoffItemKey(item));
   useEffect(() => {
     setActiveItem(item);
   }, [item.id, item.key]);
-  useEffect(() => {
-    if (proSaved) setActiveItem(proSaved);
-  }, [proSaved]);
   // 多人同改：画布编辑器先创建（房间要读画布），所以「只读」「存成功」「本地多了一步」走 state / ref 回填。
   const [collabReadOnly, setCollabReadOnly] = useState<boolean>(false);
   const [localSnapshot, setLocalSnapshot] = useState<ImageSnapshot | null>(null);
@@ -172,37 +158,22 @@ export function ImageRoute({
   );
   const peerSelections = useCollabSelections(collab.room, selectedLayerIds);
   const [importNotice, setImportNotice] = useState("");
-  const [documentDataUrl, setDocumentDataUrl] = useState<string | undefined>();
-  const advancedSession = useAdvancedSession();
-  const makePhotopeaSession = useCallback((opened = activeItem) => createPhotopeaSession({
-    item: opened,
-    siteId,
-    recordSavedItem: advancedSession ? (saved) => advancedSession.recordSavedItem(saved) : undefined,
-    onSaved: (saved) => {
-      clearLocalImageDraft(opened);
-      reportProSaved(handoffItemKey(opened), saved);
-    },
-  }), [activeItem, siteId, advancedSession]);
-  const [photopeaSession, setPhotopeaSession] = useState(() => makePhotopeaSession(item));
-  const photopeaStatus = useSyncExternalStore(photopeaSession.subscribe, photopeaSession.snapshot, photopeaSession.snapshot);
-  const photopeaItemKey = useRef(handoffItemKey(item));
   /**
    * L0 专业模式（W01：`normal | pro`）。第二行「专业编辑」页切到这里；
    * 打开时用 `currentPluginMode("image")` 记住的档位，之后只走 `setEditorMode`。
+   * 两页共用同一份 Fabric 稿，切页不卸载画布。
    * photo / design 是另一条轴，不占这个槽（`switchEditorMode`）。
    */
   const [pluginMode, setPluginModeState] = useState<EditorMode>(
     () => rememberedImagePluginMode(),
   );
-  const { showPhotopea } = applyImageL0Mode(pluginMode);
+  const openedItemKey = useRef(handoffItemKey(item));
   useEffect(() => {
     const nextKey = handoffItemKey(item);
-    if (photopeaItemKey.current === nextKey) return;
-    photopeaItemKey.current = nextKey;
-    setDocumentDataUrl(undefined);
+    if (openedItemKey.current === nextKey) return;
+    openedItemKey.current = nextKey;
     setPluginModeState("normal");
-    setPhotopeaSession(makePhotopeaSession(item));
-  }, [item, makePhotopeaSession]);
+  }, [item]);
   /**
    * 画布内结构 / 皮肤（photo | design）。不占 L0 槽。
    * 点开关走 `applyCanvasViewClick` → `switchEditorMode` → `planEditorModeSwitch`。
@@ -287,22 +258,7 @@ export function ImageRoute({
     [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl, viewOnly],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  const photopeaCloud =
-    showPhotopea ||
-    photopeaStatus.phase === "saving" ||
-    photopeaStatus.phase === "error";
   const saveBeforeNewConversation = useCallback(async () => {
-    if (showPhotopea || photopeaSession.active()) {
-      try {
-        const next = await photopeaSession.save();
-        return { ok: true as const, item: next };
-      } catch (caught) {
-        return {
-          ok: false as const,
-          error: caught instanceof Error ? caught.message : undefined,
-        };
-      }
-    }
     const saved = await editor.save();
     if (!saved) {
       return {
@@ -341,13 +297,13 @@ export function ImageRoute({
             : "图片 revision 回执无法固定到当前 artifact head。",
       };
     }
-  }, [activeItem, editor.error, editor.save, photopeaSession, showPhotopea]);
+  }, [activeItem, editor.error, editor.save]);
   useEffect(() => {
     return bindProFaceHandoff(handoffItemKey(activeItem), {
-      hasUnsavedChanges: () => photopeaCloud || editor.dirty,
+      hasUnsavedChanges: () => editor.dirty,
       flush: async () => (await saveBeforeNewConversation()).ok,
     });
-  }, [activeItem, editor.dirty, photopeaCloud, saveBeforeNewConversation]);
+  }, [activeItem, editor.dirty, saveBeforeNewConversation]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
       setImportNotice("");
@@ -466,56 +422,8 @@ export function ImageRoute({
   }, [activeItem, collab.saveGate, editor.dirty, editor.save, editor.savedUrl]);
 
   const setEditorMode = useCallback((mode: EditorMode) => {
-    const next = applyImageL0Mode(mode).mode;
-    if (next === "pro" && pluginMode !== "pro") {
-      void (async () => {
-        try {
-          let url = "";
-          const captured = await captureBeforeEnterPro(activeItem);
-          if (captured.ok && captured.handoff.kind === "url") {
-            url = captured.handoff.url;
-          }
-          try {
-            url = await frozenCanvasUrl();
-          } catch {
-            url =
-              url ||
-              activeItem.previewUrl ||
-              activeItem.url ||
-              "";
-          }
-          const ref = await toPhotopeaDocumentRef(url);
-          if (!ref.ok) {
-            setImportNotice(ref.error);
-            return;
-          }
-          setImportNotice("");
-          setDocumentDataUrl(ref.documentDataUrl);
-          setPhotopeaSession(makePhotopeaSession());
-          setPluginModeState("pro");
-        } catch (caught) {
-          setImportNotice(
-            caught instanceof Error
-              ? caught.message
-              : "还没准备好打开专业编辑，稍后再试。",
-          );
-        }
-      })();
-      return;
-    }
-    if (next === "normal" && pluginMode === "pro") {
-      setPluginModeState("normal");
-      void Promise.resolve(saveBeforeNewConversation()).catch(() => {});
-      return;
-    }
-    setPluginModeState(next);
-  }, [
-    activeItem,
-    frozenCanvasUrl,
-    makePhotopeaSession,
-    pluginMode,
-    saveBeforeNewConversation,
-  ]);
+    setPluginModeState(applyImageL0Mode(mode).mode);
+  }, []);
 
 
   /**
@@ -613,10 +521,9 @@ export function ImageRoute({
         label: editorToolLabel({ type: "image" }),
         /**
          * L0 专业模式。第二行「专业编辑」页调用 `setEditorMode`；
-         * Photopea 只在返回 `pro` 之后才挂。
+         * 两页共用同一份 Fabric 稿，切页不卸载画布。
          */
         mode: bindImageModeAdapter(pluginMode, setEditorMode),
-        pages: { proLabel: "Photopea" },
         drawers: [
           // 明位（不 hiddenFromRail）：抠图/放大高清这些能力此前引擎和网关都通了，
           // 界面上一个入口都没有，等于没做。
@@ -783,15 +690,10 @@ export function ImageRoute({
           <div
             className="relative flex h-full min-h-0 flex-col"
             data-editor-mode={pluginMode}
-            data-image-show-photopea={showPhotopea ? "true" : "false"}
             data-canvas-view={designMode.mode}
           >
             <div className="relative min-h-0 flex-1">
               <FabricImageStage editor={editor} accent={accent} peers={peerSelections} />
-              <ImagePhotopeaHost showPhotopea={showPhotopea}
-                documentDataUrl={documentDataUrl || activeItem.previewUrl || activeItem.url}
-                session={photopeaSession}
-              />
             </div>
             {/* 结构 / 皮肤：画布右下角、与宿主缩放控件同组（规范 v2 §1），
                 顶部不再画通栏。 */}
@@ -816,13 +718,8 @@ export function ImageRoute({
           (editor.loading ? "正在载入图片编辑器" : ""),
         collab: collab.collab,
         persistence: {
-          // Photopea has no mutation feed. Unconfirmed stays on the cloud.
-          // After leaving pro, keep the cloud on this flush until export settles.
-          autoSave: !photopeaCloud,
-          confirmation: photopeaCloud
-            ? { state: photopeaStatus.phase, message: photopeaStatus.message }
-            : undefined,
-          dirty: photopeaCloud || (editor.dirty && collab.saveGate),
+          autoSave: true,
+          dirty: editor.dirty && collab.saveGate,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
         },

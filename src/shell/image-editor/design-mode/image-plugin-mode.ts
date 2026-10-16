@@ -2,8 +2,8 @@
  * 图片件的 L0 专业模式（W01 契约：`normal | pro`）。
  *
  * 顶栏开关是 W01 的面，已经做好了。这一份只做内核这一端：读记住的档位、
- * 收下 `setMode`、决定 Photopea 能不能挂。photo / design 是另一条轴
- * （两视图一份文件，见 `switchEditorMode`），不占这个槽。
+ * 收下 `setMode`。专业页与编辑页共用同一份 Fabric 稿，不再挂任何 iframe。
+ * photo / design 是另一条轴（两视图一份文件，见 `switchEditorMode`），不占这个槽。
  *
  * 去向写成纯函数，不写成 `ImageRoute` 里的 `if`：写成 `if` 的话，
  * `setMode: undefined` 或空转一句就能绕过，而「文件里出现过 setMode」
@@ -18,13 +18,11 @@ export const IMAGE_PLUGIN_ID: PluginThemeId = "image";
 
 export interface ImageL0ModeApplication {
   mode: EditorMode;
-  /** 专业模式才允许挂 Photopea。普通模式连 iframe 都不该存在。 */
-  showPhotopea: boolean;
 }
 
 export function applyImageL0Mode(next: EditorMode): ImageL0ModeApplication {
   const mode: EditorMode = next === "pro" ? "pro" : DEFAULT_EDITOR_MODE;
-  return { mode, showPhotopea: mode === "pro" };
+  return { mode };
 }
 
 /**
