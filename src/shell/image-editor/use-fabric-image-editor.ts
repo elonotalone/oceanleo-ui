@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import type { FabricImage } from "fabric";
+import { useUI } from "../../i18n/ui/useUI";
 import { aiEditImage } from "../../lib/image-ai-edit";
 import { uploadFile } from "../../lib/database";
 import {
@@ -70,6 +71,12 @@ import {
   type FabricImageSaveResult,
   type FabricImageEditorState,
 } from "./types";
+import {
+  PsdCompositeError,
+  assertFabricImageOpenUrl,
+  isPsdSource,
+  resolvePsdCanvasSource,
+} from "./psd-composite";
 
 const INITIAL_VIEW: FabricControllerView = {
   doc: { width: 1080, height: 1080 },
@@ -175,6 +182,60 @@ async function canvasImageSource(
       : {}),
   };
   return { canvasUrl: canvasSafeUrl(durable), dependency };
+}
+
+const PSD_FETCH_MAX_BYTES = 80 * 1024 * 1024;
+
+async function openImagePixels(
+  source: string,
+  siteId: string,
+  title: string,
+  evidence?: ImageDependencySeed | null,
+  hints?: {
+    format?: string;
+    mime?: string;
+    name?: string;
+    previewUrl?: string;
+    thumbUrl?: string;
+    bytes?: ArrayBuffer;
+    signal?: AbortSignal;
+  },
+): Promise<{ canvasUrl: string; dependency: ImageDependencySeed | null }> {
+  let openUrl = source;
+  if (
+    isPsdSource({
+      url: source,
+      format: hints?.format,
+      mime: hints?.mime,
+      name: hints?.name,
+    })
+  ) {
+    const resolved = await resolvePsdCanvasSource({
+      url: source,
+      format: hints?.format,
+      mime: hints?.mime,
+      name: hints?.name,
+      previewUrl: hints?.previewUrl,
+      thumbUrl: hints?.thumbUrl,
+      bytes: hints?.bytes,
+      fetchBytes: async (url) => {
+        const blob = await fetchMediaBlob(url, {
+          maxBytes: PSD_FETCH_MAX_BYTES,
+          signal: hints?.signal,
+        });
+        return blob.arrayBuffer();
+      },
+    });
+    if (!resolved.ok) throw new PsdCompositeError(resolved.error);
+    openUrl = resolved.canvasUrl;
+  }
+  assertFabricImageOpenUrl(openUrl);
+  const loaded = await canvasImageSource(openUrl, siteId, title, evidence);
+  assertFabricImageOpenUrl(loaded.canvasUrl);
+  return {
+    canvasUrl: loaded.canvasUrl,
+    dependency: loaded.dependency ?? evidence ?? null,
+  };
 }
 
 async function loadEditableImageProject(
@@ -552,6 +613,7 @@ export function useFabricImageEditor(
   const [exportScale, setExportScaleState] = useState(1);
   const [aiPrompt, setAiPrompt] = useState("");
   const [collabTick, setCollabTick] = useState(0);
+  const tt = useUI();
 
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FabricEditorController | null>(null);
@@ -747,11 +809,24 @@ export function useFabricImageEditor(
           return;
         }
         if (!projectLoaded && sourceUrl) {
-          const loadedSource = await canvasImageSource(
+          const loadedSource = await openImagePixels(
             sourceUrl,
             siteId,
             item.title,
             renditionDependencyFor(item, sourceUrl),
+            {
+              format: editorSource?.format,
+              mime: String(
+                item.meta.source_media_type ||
+                  item.meta.preview_media_type ||
+                  item.descriptor?.contentType ||
+                  "",
+              ),
+              name: String(item.meta.filename || item.title || sourceUrl),
+              previewUrl: item.previewUrl,
+              thumbUrl: item.thumbUrl,
+              signal: abort.signal,
+            },
           );
           if (cancelled || abort.signal.aborted) return;
           const image = await loadImageObject(
@@ -787,7 +862,11 @@ export function useFabricImageEditor(
       } catch (caught) {
         if (!cancelled && !isAbortError(caught)) {
           const message =
-            caught instanceof Error ? caught.message : "图片画布初始化失败";
+            caught instanceof PsdCompositeError
+              ? tt(caught.message)
+              : caught instanceof Error
+                ? caught.message
+                : "图片画布初始化失败";
           setError(message);
           if (caught instanceof ImageSceneSourceError) {
             setSceneDiagnostic({
@@ -825,7 +904,11 @@ export function useFabricImageEditor(
     siteId,
     sourceUrl,
     structuredSourceRequired,
+    tt,
     updateDirty,
+    editorSource?.format,
+    item.previewUrl,
+    item.thumbUrl,
   ]);
 
   const addImageFromUrl = useCallback(
@@ -838,10 +921,12 @@ export function useFabricImageEditor(
       setError("");
       setNotice("正在导入图片…");
       try {
-        const loadedSource = await canvasImageSource(
+        const loadedSource = await openImagePixels(
           source,
           siteId,
           item.title,
+          undefined,
+          { name: source, signal: abort.signal },
         );
         if (abort.signal.aborted || controllerRef.current !== controller) return;
         const image = await loadImageObject(
@@ -860,13 +945,19 @@ export function useFabricImageEditor(
         setNotice("图片已添加为独立图层");
       } catch (caught) {
         if (!isAbortError(caught)) {
-          setError(caught instanceof Error ? caught.message : "图片导入失败");
+          setError(
+            caught instanceof PsdCompositeError
+              ? tt(caught.message)
+              : caught instanceof Error
+                ? caught.message
+                : "图片导入失败",
+          );
         }
       } finally {
         finishAbort(abort);
       }
     },
-    [finishAbort, item.title, makeAbort, siteId],
+    [finishAbort, item.title, makeAbort, siteId, tt],
   );
   const replaceSelectedImageFromUrl = useCallback(
     async (url: string) => {
@@ -878,10 +969,12 @@ export function useFabricImageEditor(
       setError("");
       setNotice("正在替换图片…");
       try {
-        const loadedSource = await canvasImageSource(
+        const loadedSource = await openImagePixels(
           source,
           siteId,
           item.title,
+          undefined,
+          { name: source, signal: abort.signal },
         );
         if (abort.signal.aborted || controllerRef.current !== controller) return;
         const image = await loadImageObject(
@@ -903,7 +996,11 @@ export function useFabricImageEditor(
       } catch (caught) {
         if (!isAbortError(caught)) {
           const error =
-            caught instanceof Error ? caught : new Error("图片替换失败");
+            caught instanceof PsdCompositeError
+              ? new Error(tt(caught.message))
+              : caught instanceof Error
+                ? caught
+                : new Error("图片替换失败");
           setError(error.message);
           throw error;
         }
@@ -911,7 +1008,7 @@ export function useFabricImageEditor(
         finishAbort(abort);
       }
     },
-    [finishAbort, item.title, makeAbort, siteId],
+    [finishAbort, item.title, makeAbort, siteId, tt],
   );
 
   const addImageFromFile = useCallback(
@@ -919,7 +1016,9 @@ export function useFabricImageEditor(
       const controller = controllerRef.current;
       const fabric = fabricRef.current;
       if (!controller || !fabric) return;
-      if (!file.type.startsWith("image/")) {
+      const fileName = file.name || `${item.title}-图片`;
+      const psdFile = isPsdSource({ name: fileName, mime: file.type });
+      if (!psdFile && !file.type.startsWith("image/")) {
         setError("请选择图片文件");
         return;
       }
@@ -927,24 +1026,42 @@ export function useFabricImageEditor(
       setError("");
       setNotice("正在上传图片；完成后会同时加入画布和文件库…");
       try {
+        const psdBytes = psdFile ? await file.arrayBuffer() : undefined;
+        if (psdFile) {
+          const resolved = await resolvePsdCanvasSource({
+            url: fileName,
+            format: "psd",
+            mime: file.type,
+            name: fileName,
+            bytes: psdBytes,
+          });
+          if (!resolved.ok) throw new PsdCompositeError(resolved.error);
+        }
         const uploaded = await uploadFile(file, {
           siteId: siteId || "image",
-          title: file.name || `${item.title}-图片`,
+          title: fileName,
         });
         const durableUrl = uploaded.data?.file?.url || "";
         if (!uploaded.ok || !durableUrl) {
           throw new Error(uploaded.error || "图片上传失败");
         }
         if (abort.signal.aborted || controllerRef.current !== controller) return;
-        const loadedSource = await canvasImageSource(
+        const loadedSource = await openImagePixels(
           durableUrl,
           siteId,
-          file.name || item.title,
+          fileName,
           {
             kind: "image",
             required: true,
             url: durableUrl,
             digest: await sha256Blob(file),
+          },
+          {
+            format: psdFile ? "psd" : undefined,
+            mime: file.type,
+            name: fileName,
+            bytes: psdBytes,
+            signal: abort.signal,
           },
         );
         if (abort.signal.aborted || controllerRef.current !== controller) return;
@@ -964,13 +1081,19 @@ export function useFabricImageEditor(
         setNotice("图片已加入画布和文件库，并会随工程继续保存");
       } catch (caught) {
         if (!isAbortError(caught)) {
-          setError(caught instanceof Error ? caught.message : "图片上传失败");
+          setError(
+            caught instanceof PsdCompositeError
+              ? tt(caught.message)
+              : caught instanceof Error
+                ? caught.message
+                : "图片上传失败",
+          );
         }
       } finally {
         finishAbort(abort);
       }
     },
-    [finishAbort, item.title, makeAbort, siteId],
+    [finishAbort, item.title, makeAbort, siteId, tt],
   );
 
   const addSignatureFromSvg = useCallback(

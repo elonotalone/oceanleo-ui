@@ -460,7 +460,7 @@ export function FabricImageSignaturePanel({
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml,.psd,image/vnd.adobe.photoshop"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -1127,7 +1127,7 @@ export function FabricImageAiPanel({
               <input
                 ref={backgroundFileRef}
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept="image/png,image/jpeg,image/webp,.psd,image/vnd.adobe.photoshop"
                 className="hidden"
                 onChange={(event) => {
                   const file = event.target.files?.[0];

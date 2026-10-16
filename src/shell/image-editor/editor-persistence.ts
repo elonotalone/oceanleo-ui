@@ -35,6 +35,11 @@ import {
 import type { ExportFormat } from "./types";
 
 export const IMAGE_PROJECT_SCHEMA = "oceanleo.fabric-image.v1";
+/** Fabric 保存的新版本永远是 PNG，不得把原 PSD 格式写回去。 */
+export const FABRIC_IMAGE_REVISION_SOURCE = {
+  sourceFormat: "png",
+  sourceMediaType: "image/png",
+} as const;
 const MAX_PROJECT_BYTES = 5_000_000;
 const LOCAL_DRAFT_PREFIX = "oceanleo:advanced:image-draft:v1:";
 
@@ -289,8 +294,8 @@ export async function persistImageProject(
             type: "image/png",
           });
         },
-        sourceFormat: "png",
-        sourceMediaType: "image/png",
+        sourceFormat: FABRIC_IMAGE_REVISION_SOURCE.sourceFormat,
+        sourceMediaType: FABRIC_IMAGE_REVISION_SOURCE.sourceMediaType,
         artifactRevision: {
           artifactType: "single_file_image",
           editor: "fabric-v3",

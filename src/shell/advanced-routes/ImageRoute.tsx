@@ -10,6 +10,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedEditorSourceFor } from "../advanced-features";
 import { usePluginCommandSurface } from "../plugin-command";
 import { createImageCommandSurface } from "../image-editor/image-command-surface";
+import { isPsdSource } from "../image-editor/psd-composite";
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
 import {
   DEFAULT_LOSSY_QUALITY,
@@ -309,8 +310,17 @@ export function ImageRoute({
       setImportNotice("");
       // heic / bmp / tiff / raw 先转成画布吃得下的格式；转不了的说清为什么，
       // 不像以前那样按 MIME 一言不发地丢掉。
-      const batch = await normalizeVisualUploads(files, "image");
-      for (const file of batch.files) {
+      const psdFiles: File[] = [];
+      const otherFiles: File[] = [];
+      for (const file of files) {
+        if (isPsdSource({ name: file.name, mime: file.type })) {
+          psdFiles.push(file);
+        } else {
+          otherFiles.push(file);
+        }
+      }
+      const batch = await normalizeVisualUploads(otherFiles, "image");
+      for (const file of [...psdFiles, ...batch.files]) {
         await editor.addImageFromFile(file);
       }
       setImportNotice(batch.notes.join(" "));
@@ -682,7 +692,7 @@ export function ImageRoute({
           },
         ],
         upload: {
-          accept: visualUploadAccept("image"),
+          accept: `${visualUploadAccept("image")},.psd,image/vnd.adobe.photoshop`,
           multiple: true,
           onFiles: viewOnlyUploadHandler(viewOnly, addLocalImages),
         },
