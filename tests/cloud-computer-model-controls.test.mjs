@@ -29,10 +29,11 @@ test("other adapters preserve their exact parameterized model IDs", () => {
   assert.deepEqual(controls.models, models);
   assert.equal(controls.effort, null);
 });
-test("Invalid params describes the failed application setting request", () => {
+test("Invalid params stays the original sentence", () => {
   const copy = visibleNoticeCopy(text => text, "invalid_argument", null, "Invalid params");
-  assert.match(copy, /OceanLeo/);
-  assert.match(copy, /设置没有生效/);
+  assert.equal(copy, "Invalid params");
+  assert.doesNotMatch(copy, /设置没有生效/);
+  assert.doesNotMatch(copy, /OceanLeo/);
 });
 test("legacy model switches restore each model's advertised saved effort", () => {
   const catalog = [...models, { id: "gpt-next[high]", name: "Next (high)", default: false }];

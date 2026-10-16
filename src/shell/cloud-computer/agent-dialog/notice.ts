@@ -5,7 +5,6 @@ export type Translate = (zh: string, vars?: Record<string, string | number>) => 
 
 const SESSION_NOT_OPENED = "程序没能开新会话。";
 const SESSION_UNAVAILABLE = "这个程序现在开不了会话。";
-const INVALID_PARAMS = "OceanLeo 发给程序的设置参数不正确，设置没有生效。请刷新模型选项后重试。";
 const OPAQUE_DIALOG_DID_NOT_START = new Set([
   "对话没有启动。",
   "The dialog did not start.",
@@ -24,7 +23,6 @@ export function visibleNoticeCopy(
   spoken = "",
 ): string {
   const trimmed = spoken.trim();
-  if (/^invalid (params|parameters)\.?$/i.test(trimmed)) return tt(INVALID_PARAMS);
   const translated = trimmed ? tt(trimmed) : "";
   if (translated && !isOpaqueDialogDidNotStart(translated) && !isOpaqueDialogDidNotStart(trimmed)) {
     return translated;
