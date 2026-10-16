@@ -30,7 +30,10 @@ export function createOccupancyProbe({
   function request(program: string): boolean {
     if (!allowed(program)) return false;
     const entry = entryFor(program);
-    if (entry.pending) return false;
+    if (entry.pending && now() - entry.pendingSince <= OCCUPANCY_STALE_MS) return false;
+    // A response may be lost while the tab is suspended or the connection is
+    // degraded. Do not let that one request permanently block the probe.
+    entry.pending = false;
     if (!send(program)) return false;
     const t = now();
     entry.sentAt = t;
@@ -48,8 +51,9 @@ export function createOccupancyProbe({
   function stale(program: string, staleMs = OCCUPANCY_STALE_MS): boolean {
     const entry = entries.get(program);
     if (!entry) return true;
-    if (entry.pending && now() - entry.pendingSince > staleMs) return true;
-    return false;
+    if (!entry.pending || now() - entry.pendingSince <= staleMs) return false;
+    entry.pending = false;
+    return true;
   }
 
   function start(programOf: () => string | null | undefined): void {

@@ -1101,6 +1101,11 @@ export function useAgentDialog({
   useEffect(() => {
     if (!enabled || !active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const probeProgram = () => (
+      usesDialogSocket(stateRef.current.program, localOceanleoRef.current)
+        ? stateRef.current.program
+        : null
+    );
     const refresh = (reason: "wake" | "poll" = "wake") => {
       if (timer) clearTimeout(timer);
       timer = undefined;
@@ -1117,11 +1122,14 @@ export function useAgentDialog({
         timer = setTimeout(() => refresh("poll"), SESSIONS_REFRESH_MS);
       }
     };
-    const wake = () => refresh();
+    const wake = () => {
+      if (typeof document === "undefined" || !document.hidden) {
+        occupancyProbeRef.current?.start(probeProgram);
+      }
+      refresh();
+    };
     refresh();
-    occupancyProbeRef.current?.start(() => (
-      usesDialogSocket(stateRef.current.program, localOceanleoRef.current) ? stateRef.current.program : null
-    ));
+    occupancyProbeRef.current?.start(probeProgram);
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("focus", wake);
     return () => {
