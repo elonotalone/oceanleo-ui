@@ -18,7 +18,6 @@ import {
   type EditorMode,
 } from "../hosted-editor/index";
 import {
-  MODEL3D_HOSTED_EMBED_ORIGIN,
   buildModel3DEmbedUrl,
   buildModel3DInitEnvelope,
   canBuildModel3DEmbedUrl,
@@ -54,25 +53,26 @@ export function Model3DHostedFrame({
   const innerRef = useRef<HTMLIFrameElement>(null);
   const iframe = iframeRef ?? innerRef;
   const embedBase = model3dHostedEmbedBase();
+  const editorOrigin = embedBase;
   const sandbox = embedEditorFrameSandbox(embedBase);
 
   const send = useCallback(
     (data: Record<string, unknown>) => {
       const frame = iframe.current?.contentWindow;
       if (!frame) return false;
-      if (!isValidEditorTargetOrigin(MODEL3D_HOSTED_EMBED_ORIGIN)) return false;
+      if (!isValidEditorTargetOrigin(editorOrigin)) return false;
       const checked = asHostToEditorMessage(data, instanceId);
       if (!checked) return false;
-      frame.postMessage(checked, MODEL3D_HOSTED_EMBED_ORIGIN);
+      frame.postMessage(checked, editorOrigin);
       return true;
     },
-    [instanceId],
+    [editorOrigin, instanceId],
   );
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const accepted = acceptEditorFrameMessage(event, {
-        expectedOrigin: MODEL3D_HOSTED_EMBED_ORIGIN,
+        expectedOrigin: editorOrigin,
         frameWindow: iframe.current?.contentWindow,
         instanceId,
       });
@@ -107,7 +107,7 @@ export function Model3DHostedFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [instanceId, onDirty, onError, onReady, onSnapshot]);
+  }, [editorOrigin, instanceId, onDirty, onError, onReady, onSnapshot]);
 
   void send;
   void hostOrigin;
@@ -130,12 +130,13 @@ export function postModel3DInit(
   instanceId: string,
   envelope: ReturnType<typeof buildModel3DInitEnvelope>,
 ): boolean {
-  if (!frame || !isValidEditorTargetOrigin(MODEL3D_HOSTED_EMBED_ORIGIN)) {
+  const editorOrigin = model3dHostedEmbedBase();
+  if (!frame || !isValidEditorTargetOrigin(editorOrigin)) {
     return false;
   }
   const checked = asHostToEditorMessage(envelope, instanceId);
   if (!checked) return false;
-  frame.postMessage(checked, MODEL3D_HOSTED_EMBED_ORIGIN);
+  frame.postMessage(checked, editorOrigin);
   return true;
 }
 
@@ -144,13 +145,14 @@ export function postModel3DSetMode(
   instanceId: string,
   mode: EditorMode,
 ): boolean {
-  if (!frame || !isValidEditorTargetOrigin(MODEL3D_HOSTED_EMBED_ORIGIN)) {
+  const editorOrigin = model3dHostedEmbedBase();
+  if (!frame || !isValidEditorTargetOrigin(editorOrigin)) {
     return false;
   }
   const message = buildSetModeMessage(instanceId, mode);
   const checked = asHostToEditorMessage(message, instanceId);
   if (!checked) return false;
-  frame.postMessage(checked, MODEL3D_HOSTED_EMBED_ORIGIN);
+  frame.postMessage(checked, editorOrigin);
   return true;
 }
 
@@ -159,7 +161,8 @@ export function postModel3DRecoveryCapture(
   instanceId: string,
   recoveryId: string,
 ): boolean {
-  if (!frame || !isValidEditorTargetOrigin(MODEL3D_HOSTED_EMBED_ORIGIN)) {
+  const editorOrigin = model3dHostedEmbedBase();
+  if (!frame || !isValidEditorTargetOrigin(editorOrigin)) {
     return false;
   }
   const envelope = {
@@ -170,7 +173,7 @@ export function postModel3DRecoveryCapture(
   };
   const checked = asHostToEditorMessage(envelope, instanceId);
   if (!checked) return false;
-  frame.postMessage(checked, MODEL3D_HOSTED_EMBED_ORIGIN);
+  frame.postMessage(checked, editorOrigin);
   return true;
 }
 
@@ -179,6 +182,7 @@ export function postModel3DSaveRequest(
   instanceId: string,
   saveId: string,
 ): boolean {
+  const editorOrigin = model3dHostedEmbedBase();
   if (!frame) return false;
   const envelope = {
     protocol: EDITOR_PROTOCOL,
@@ -188,7 +192,7 @@ export function postModel3DSaveRequest(
   };
   const checked = asHostToEditorMessage(envelope, instanceId);
   if (!checked) return false;
-  frame.postMessage(checked, MODEL3D_HOSTED_EMBED_ORIGIN);
+  frame.postMessage(checked, editorOrigin);
   return true;
 }
 

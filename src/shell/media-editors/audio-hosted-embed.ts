@@ -5,32 +5,25 @@
  * 音频字节不放进查询串，只走 init 的自由载荷（ArrayBuffer → base64）。
  */
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
-import { HOSTED_EDITOR_ORIGINS } from "../hosted-editor-origins";
+import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 
+/** 缺省家族（com）的音频 origin。运行时嵌 iframe 走 `audioHostedEmbedBase()`。 */
 export const AUDIO_HOSTED_EMBED_ORIGIN = "https://audio.oceanleo.app";
 
-const ORIGIN_SET = new Set<string>(
-  HOSTED_EDITOR_ORIGINS.filter(
-    (origin) => origin === AUDIO_HOSTED_EMBED_ORIGIN,
-  ),
-);
-
 export function audioHostedEmbedBase(override?: string): string {
-  if (!override) return AUDIO_HOSTED_EMBED_ORIGIN;
+  const current = hostedEditorOrigin("audio");
+  if (!override) return current;
   try {
     const url = new URL(override);
-    if (!ORIGIN_SET.has(url.origin)) return AUDIO_HOSTED_EMBED_ORIGIN;
+    if (url.origin !== current) return current;
     if (url.search || url.hash || url.username || url.password) {
-      return AUDIO_HOSTED_EMBED_ORIGIN;
+      return current;
     }
-    return (
-      `${url.origin}${url.pathname.replace(/\/+$/, "")}` ||
-      AUDIO_HOSTED_EMBED_ORIGIN
-    );
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}` || current;
   } catch {
-    return AUDIO_HOSTED_EMBED_ORIGIN;
+    return current;
   }
 }
 

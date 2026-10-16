@@ -26,9 +26,9 @@ test('mode entry awaits version/session gate and does not bypass it through lega
   } finally { gate(); normal(); }
 });
 
-test('failed draft recovery/version gate still blocks mode entry; leave-pro never locks', async () => {
+test('failed draft recovery/version gate still blocks mode entry when the normal face has no document; leave-pro never locks', async () => {
   const item = { id: 'e9-failed-gate', key: 'e9-failed-gate', meta: {} };
-  const normal = handoff.bindNormalFaceHandoff(item.key, { getHandoff: () => ({ kind: 'inline', json: {} }) });
+  const normal = handoff.bindNormalFaceHandoff(item.key, { getHandoff: () => ({ kind: 'empty' }) });
   let gateCalls = 0;
   const gate = bindAdvancedDraftGate(item.key, async () => {
     gateCalls += 1;
@@ -39,6 +39,20 @@ test('failed draft recovery/version gate still blocks mode entry; leave-pro neve
     assert.equal(await handoff.saveBeforeLeavePro(item.key), true);
     await Promise.resolve();
     assert.ok(gateCalls >= 2, 'leave-pro must kick the same draft gate even when it fails');
+  } finally { gate(); normal(); }
+});
+
+test('failed cloud save still enters pro from the in-memory document already on screen', async () => {
+  const item = { id: 'e9-failed-memory', key: 'e9-failed-memory', meta: {} };
+  const normal = handoff.bindNormalFaceHandoff(item.key, {
+    getHandoff: () => ({ kind: 'inline', json: { text: 'on screen' }, revision: 3 }),
+  });
+  const gate = bindAdvancedDraftGate(item.key, async () => ({ ok: false, error: 'editor revision save failed' }));
+  try {
+    const result = await handoff.captureBeforeEnterPro(item);
+    assert.equal(result.ok, true);
+    assert.equal(result.handoff.kind, 'inline');
+    assert.equal(result.handoff.json.text, 'on screen');
   } finally { gate(); normal(); }
 });
 

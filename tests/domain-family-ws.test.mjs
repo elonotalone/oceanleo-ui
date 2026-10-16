@@ -143,6 +143,10 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
       excelOrigin: family.currentFamilySubsiteOrigin("excel") ?? null,
       slideOrigin: family.currentFamilySubsiteOrigin("slide") ?? null,
       hostedOrigins: [...hosted.HOSTED_EDITOR_ORIGINS],
+      slidesOrigin: hosted.hostedEditorOrigin("slides"),
+      docsOrigin: hosted.hostedEditorOrigin("docs"),
+      audioOrigin: hosted.hostedEditorOrigin("audio"),
+      model3dOrigin: hosted.hostedEditorOrigin("3d"),
       hostedProd: hosted.isHostedEditorOrigin("https://slides.oceanleo.app"),
       hostedWs: hosted.isHostedEditorOrigin("https://slides.ws.oceanleo.app"),
       hostedSandbox: sandbox.embedEditorFrameSandbox("https://slides.ws.oceanleo.app"),
@@ -214,6 +218,10 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
       "https://slides.ws.oceanleo.app",
     ],
   );
+  assert.equal(ws.slidesOrigin, "https://slides.ws.oceanleo.app");
+  assert.equal(ws.docsOrigin, "https://docs.ws.oceanleo.app");
+  assert.equal(ws.audioOrigin, "https://audio.ws.oceanleo.app");
+  assert.equal(ws.model3dOrigin, "https://3d.ws.oceanleo.app");
   assert.equal(ws.hostedWs, true);
   assert.equal(ws.hostedProd, false);
   assert.equal(ws.hostedSandbox, sandboxConst("HOSTED_EDITOR_SANDBOX"));

@@ -115,7 +115,7 @@ test("AudioMass iframe 拿 HOSTED_EDITOR_SANDBOX；UGC / cover 仍无同源", ()
   assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
   assert.match(frame, /embedEditorFrameSandbox/);
   assert.match(frame, /referrerPolicy="no-referrer"/);
-  assert.match(frame, /postMessage\(checked, AUDIO_HOSTED_EMBED_ORIGIN\)/);
+  assert.match(frame, /postMessage\(checked, editorOrigin\)/);
   assert.doesNotMatch(frame, /postMessage\([^,]+,\s*"\*"\)/);
   assert.doesNotMatch(frame, /allow-same-origin/);
   assert.equal(AUDIO_HOSTED_EMBED_ORIGIN, "https://audio.oceanleo.app");

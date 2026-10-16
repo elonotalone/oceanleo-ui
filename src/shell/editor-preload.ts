@@ -1,4 +1,4 @@
-import { HOSTED_EDITOR_ORIGINS } from "./hosted-editor-origins";
+import { hostedEditorOrigins } from "./hosted-editor-origins";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import {
   prefetchOfficeSource,
@@ -116,7 +116,7 @@ export function ensureHostedEditorPreconnect(
   doc: Document | null = typeof document === "undefined" ? null : document,
 ): void {
   if (!doc?.head) return;
-  for (const origin of HOSTED_EDITOR_ORIGINS) {
+  for (const origin of hostedEditorOrigins()) {
     const existing = doc.head.querySelector(
       `link[rel="preconnect"][${PRECONNECT_ATTR}="${origin}"]`,
     );

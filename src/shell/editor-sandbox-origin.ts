@@ -16,7 +16,10 @@
 // 编译加载的模块，走 tests/helpers/module-bench.mjs 时相对依赖会被自动解析。
 // **不要**在这里再加别的依赖。
 
-import { HOSTED_EDITOR_ORIGINS } from "./hosted-editor-origins";
+import {
+  HOSTED_EDITOR_ORIGINS,
+  isHostedEditorOrigin,
+} from "./hosted-editor-origins";
 import {
   UNTRUSTED_CONTENT_DOMAINS,
   currentDomainProfile,
@@ -158,19 +161,24 @@ export const HOSTED_EDITOR_EMBED_BASES: readonly string[] = Object.freeze(
   HOSTED_EDITOR_ORIGINS,
 );
 
-const HOSTED_EDITOR_EMBED_BASE_SET = new Set<string>(
-  HOSTED_EDITOR_EMBED_BASES,
-);
-
 /**
  * 这个 base 是不是命名空间 E 的 Hosted 编辑器。
  * 与 `isTrustedEmbedEditorBase()` 分开导出，是因为**沙箱档位不同**：
  * 前者也放行 URL 构造；本函数决定它拿 `HOSTED_EDITOR_SANDBOX`
  * （我方部署、隔离域、同源只给自己），而不是家族第一方那档。
+ *
+ * 运行时按当前家族判（`isHostedEditorOrigin`），不要用模块加载时的快照：
+ * oceanbizs.com 上 PPTist 是 `slides.ws.oceanleo.app`。
  */
 export function isHostedEditorEmbedBase(base: string): boolean {
   const normalized = normalizedEmbedBase(base);
-  return Boolean(normalized) && HOSTED_EDITOR_EMBED_BASE_SET.has(normalized);
+  if (!normalized) return false;
+  try {
+    const origin = new URL(normalized).origin;
+    return origin === normalized && isHostedEditorOrigin(origin);
+  } catch {
+    return false;
+  }
 }
 
 function normalizedEmbedBase(base: string): string {
@@ -189,7 +197,7 @@ export function isTrustedEmbedEditorBase(base: string): boolean {
   // 两张表都放行 URL 构造；沙箱档次的差别在 `embedEditorFrameSandbox()` 里。
   return (
     TRUSTED_EMBED_EDITOR_BASE_SET.has(normalized) ||
-    HOSTED_EDITOR_EMBED_BASE_SET.has(normalized)
+    isHostedEditorEmbedBase(normalized)
   );
 }
 

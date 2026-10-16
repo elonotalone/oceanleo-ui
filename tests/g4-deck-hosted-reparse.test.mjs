@@ -46,7 +46,7 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
   "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
 
   "./mode-switch-gate": dataModule(`
-    export function useModeSwitchFailure() {}
+    export function useModeSwitchFailure() { return () => {}; }
     export function useModeSwitchHandoff() { return globalThis.__g4Handoff || null; }
     export function useModeSwitchReady() {}
   `),
@@ -97,7 +97,10 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
     }
   `),
   "../editor-sandbox-origin": dataModule(`
-    export function isTrustedEmbedEditorBase(value) { return value === "https://slides.oceanleo.app"; }
+    export function isTrustedEmbedEditorBase(value) {
+      const current = globalThis.__g4EmbedBase ?? "https://slides.oceanleo.app";
+      return Boolean(current) && value === current;
+    }
     export function embedEditorFrameSandbox() { return "allow-scripts"; }
   `),
   "../hosted-editor/index": dataModule(`
@@ -107,8 +110,16 @@ const routeUrl = await compileModule("src/shell/advanced-routes/DeckHostedRoute.
     export function buildReviewDecisionMessage(instanceId, proposalId, decision) { return { type: "review-decision", instanceId, proposalId, decision }; }
   `),
   "../hosted-editor-origins": dataModule(`
+    export function hostedEditorOrigin() {
+      return globalThis.__g4EmbedBase ?? "https://slides.oceanleo.app";
+    }
+    export function hostedEditorOrigins() { return [hostedEditorOrigin()].filter(Boolean); }
+    export function isHostedEditorOrigin(origin) {
+      const current = hostedEditorOrigin();
+      return Boolean(current) && origin === current;
+    }
     export const HOSTED_EDITOR_ORIGINS = { find(callback) {
-      const value = globalThis.__g4EmbedBase || "";
+      const value = hostedEditorOrigin();
       return value && callback(value) ? value : undefined;
     } };
   `),

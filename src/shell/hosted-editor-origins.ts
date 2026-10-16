@@ -39,8 +39,6 @@ import { currentDomainProfile } from "../contracts/domain-family";
  * 家族是写死表里的一行，不是 env 里的任意字符串；本表仍是六条全串，
  * 与「是不是 `.oceanleo.app` 后缀」无关。
  */
-const HOSTED_EDITOR_REGISTRABLE_DOMAIN =
-  currentDomainProfile().hostedEditorDomain;
 
 /**
  * 六个子域标签，与 `signals/W18-domains.md` §1 的表逐字对应，
@@ -56,19 +54,34 @@ export const HOSTED_EDITOR_HOST_LABELS = Object.freeze([
   "flow", // Langflow（W15）。W08 后无消费者，待父 agent 清理——本波不删标签。
 ] as const);
 
+export type HostedEditorHostLabel = (typeof HOSTED_EDITOR_HOST_LABELS)[number];
+
 /**
- * 允许作为编辑器 iframe origin 的**全串**清单。
- * 逐条写死 `https://` 前缀与完整主机名：没有端口、没有路径、没有尾斜杠——
- * `URL.origin` 的规范形态就是这个样子，比对时不做任何归一化。
+ * 当前家族的 Hosted 编辑器 origin。必须在调用时取家族，不能在模块加载时钉死：
+ * oceanbizs.com 生产构建常常不带 `NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws`，
+ * 家族要等 `window.location.host` 才是 `ws`，钉死就会把 PPTist 指去
+ * `slides.oceanleo.app`（分身嵌不进去）。
+ *
+ * 拼出来的仍是全串 `https://{label}.{hostedEditorDomain}`：没有端口、没有路径、
+ * 没有尾斜杠，比对仍然是全串相等，不是后缀推断。
+ */
+export function hostedEditorOrigins(): readonly string[] {
+  const domain = currentDomainProfile().hostedEditorDomain;
+  return HOSTED_EDITOR_HOST_LABELS.map((label) => `https://${label}.${domain}`);
+}
+
+export function hostedEditorOrigin(label: HostedEditorHostLabel): string {
+  return `https://${label}.${currentDomainProfile().hostedEditorDomain}`;
+}
+
+/**
+ * 模块加载瞬间的那一份清单。缺省家族（com）与改动前逐字相同；
+ * `NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws` 的子进程（判据）拿到 ws 六条。
+ * 运行时的信任判定走 `hostedEditorOrigins()` / `isHostedEditorOrigin()`，
+ * 不要拿这份快照去嵌 iframe。
  */
 export const HOSTED_EDITOR_ORIGINS: readonly string[] = Object.freeze(
-  HOSTED_EDITOR_HOST_LABELS.map(
-    (label) => `https://${label}.${HOSTED_EDITOR_REGISTRABLE_DOMAIN}`,
-  ),
-);
-
-const HOSTED_EDITOR_ORIGIN_SET: ReadonlySet<string> = new Set(
-  HOSTED_EDITOR_ORIGINS,
+  hostedEditorOrigins(),
 );
 
 /**
@@ -83,5 +96,5 @@ const HOSTED_EDITOR_ORIGIN_SET: ReadonlySet<string> = new Set(
  * （W18 §4 实测），没有任何理由降级到明文。
  */
 export function isHostedEditorOrigin(origin: string): boolean {
-  return HOSTED_EDITOR_ORIGIN_SET.has(origin);
+  return hostedEditorOrigins().includes(origin);
 }

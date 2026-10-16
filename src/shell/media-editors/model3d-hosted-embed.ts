@@ -5,32 +5,25 @@
  * glTF 不放进查询串（可能带能力 URL），只走 init 的自由载荷。
  */
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
-import { HOSTED_EDITOR_ORIGINS } from "../hosted-editor-origins";
+import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 
+/** 缺省家族（com）的 3D origin。运行时嵌 iframe 走 `model3dHostedEmbedBase()`。 */
 export const MODEL3D_HOSTED_EMBED_ORIGIN = "https://3d.oceanleo.app";
 
-const ORIGIN_SET = new Set<string>(
-  HOSTED_EDITOR_ORIGINS.filter(
-    (origin) => origin === MODEL3D_HOSTED_EMBED_ORIGIN,
-  ),
-);
-
 export function model3dHostedEmbedBase(override?: string): string {
-  if (!override) return MODEL3D_HOSTED_EMBED_ORIGIN;
+  const current = hostedEditorOrigin("3d");
+  if (!override) return current;
   try {
     const url = new URL(override);
-    if (!ORIGIN_SET.has(url.origin)) return MODEL3D_HOSTED_EMBED_ORIGIN;
+    if (url.origin !== current) return current;
     if (url.search || url.hash || url.username || url.password) {
-      return MODEL3D_HOSTED_EMBED_ORIGIN;
+      return current;
     }
-    return (
-      `${url.origin}${url.pathname.replace(/\/+$/, "")}` ||
-      MODEL3D_HOSTED_EMBED_ORIGIN
-    );
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}` || current;
   } catch {
-    return MODEL3D_HOSTED_EMBED_ORIGIN;
+    return current;
   }
 }
 

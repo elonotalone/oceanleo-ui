@@ -48,11 +48,15 @@ import {
   type EditorMode,
   type EditorReviewProposal,
 } from "../hosted-editor/index";
-import { HOSTED_EDITOR_ORIGINS } from "../hosted-editor-origins";
+import {
+  hostedEditorOrigin,
+  isHostedEditorOrigin,
+} from "../hosted-editor-origins";
 import { editorToolLabel } from "../workbench-routes";
 
 /**
- * 双核 `next` 分支：幻灯片托管在 `slides.oceanleo.app`。
+ * 双核 `next` 分支：幻灯片托管在当前家族的 `slides.*` Hosted origin
+ * （com：`slides.oceanleo.app`；ws：`slides.ws.oceanleo.app`）。
  *
  * origin 白名单（`hosted-editor-origins.ts`，W01 的面）已经把这一件放进去了，
  * 所以这里挂的是真 iframe，不是说明面。沙箱档次由 `embedEditorFrameSandbox()`
@@ -67,14 +71,12 @@ import { editorToolLabel } from "../workbench-routes";
  * 就是人点的（V3-red-7）。盖章位置见 `signals/W07-request.md` R5。
  */
 
-/** 六件里属于幻灯片的那一条。白名单是事实源，这里只做一次全串挑选。 */
+/** 缺省家族（com）的幻灯片 origin。运行时嵌 iframe 走 `deckHostedEmbedBase()`。 */
 export const DECK_HOSTED_EMBED_ORIGIN = "https://slides.oceanleo.app";
 
 export function deckHostedEmbedBase(): string {
-  return (
-    HOSTED_EDITOR_ORIGINS.find((origin) => origin === DECK_HOSTED_EMBED_ORIGIN) ||
-    ""
-  );
+  const origin = hostedEditorOrigin("slides");
+  return isHostedEditorOrigin(origin) ? origin : "";
 }
 
 export type DeckHostedEmbedSrcInput = {
@@ -361,7 +363,7 @@ export function DeckHostedRoute({
   }, [contentIdentity, resolutionIdentity]);
 
   const embedBase = deckHostedEmbedBase();
-  const editorOrigin = DECK_HOSTED_EMBED_ORIGIN;
+  const editorOrigin = embedBase;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
     return computeDeckHostedEmbedSrc({
@@ -372,6 +374,10 @@ export function DeckHostedRoute({
       assetTitle: item.title,
     });
   }, [embedAssetUrl, embedBase, instanceId, item.title]);
+
+  useEffect(() => {
+    if (!embedBase) reportModeSwitchFailure(DECK_HOSTED_MISSING_EMBED_MESSAGE);
+  }, [embedBase, reportModeSwitchFailure]);
 
   useEffect(() => {
     frameLoadedRef.current = false;

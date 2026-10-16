@@ -6,27 +6,25 @@
  */
 
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
-import { HOSTED_EDITOR_ORIGINS } from "../hosted-editor-origins";
+import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 
+/** 缺省家族（com）的文档 origin。运行时嵌 iframe 走 `richDocHostedEmbedBase()`。 */
 export const RICHDOC_HOSTED_EMBED_ORIGIN = "https://docs.oceanleo.app";
 
-const DOCS_ORIGIN_SET = new Set<string>(
-  HOSTED_EDITOR_ORIGINS.filter((origin) => origin === RICHDOC_HOSTED_EMBED_ORIGIN),
-);
-
 export function richDocHostedEmbedBase(override?: string): string {
-  if (!override) return RICHDOC_HOSTED_EMBED_ORIGIN;
+  const current = hostedEditorOrigin("docs");
+  if (!override) return current;
   try {
     const url = new URL(override);
-    if (!DOCS_ORIGIN_SET.has(url.origin)) return RICHDOC_HOSTED_EMBED_ORIGIN;
+    if (url.origin !== current) return current;
     if (url.search || url.hash || url.username || url.password) {
-      return RICHDOC_HOSTED_EMBED_ORIGIN;
+      return current;
     }
-    return `${url.origin}${url.pathname.replace(/\/+$/, "")}` || RICHDOC_HOSTED_EMBED_ORIGIN;
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}` || current;
   } catch {
-    return RICHDOC_HOSTED_EMBED_ORIGIN;
+    return current;
   }
 }
 

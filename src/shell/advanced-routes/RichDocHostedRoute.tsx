@@ -11,7 +11,6 @@ import { downloadText } from "../doc-editors/doc-io";
 import {
   buildRichDocEmbedUrl,
   buildRichDocInitEnvelope,
-  RICHDOC_HOSTED_EMBED_ORIGIN,
   richDocHostedEmbedBase,
 } from "../doc-editors/rich-doc-hosted-embed";
 import {
@@ -289,7 +288,7 @@ export function RichDocHostedRoute({
   }, [handoff, handoffStatus, item]);
 
   const embedBase = richDocHostedEmbedBase();
-  const editorOrigin = RICHDOC_HOSTED_EMBED_ORIGIN;
+  const editorOrigin = embedBase;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
     return computeRichDocHostedEmbedSrc({
@@ -662,7 +661,7 @@ export function RichDocHostedRoute({
             ) : (
               <div className="flex flex-1 items-center justify-center p-8 text-center text-sm">
                 <p>
-                  无法构造 <code>{RICHDOC_HOSTED_EMBED_ORIGIN}</code> 的嵌入地址。
+                  无法构造 <code>{embedBase || "docs"}</code> 的嵌入地址。
                   把双核 flag 切回 <code>legacy</code> 可继续用现有编辑器。
                 </p>
               </div>

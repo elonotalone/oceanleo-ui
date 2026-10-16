@@ -18,7 +18,6 @@ import {
   type EditorMode,
 } from "../hosted-editor/index";
 import {
-  AUDIO_HOSTED_EMBED_ORIGIN,
   buildAudioEmbedUrl,
   buildAudioInitEnvelope,
   canBuildAudioEmbedUrl,
@@ -49,25 +48,26 @@ export function AudioHostedFrame({
   const innerRef = useRef<HTMLIFrameElement>(null);
   const iframe = iframeRef ?? innerRef;
   const embedBase = audioHostedEmbedBase();
+  const editorOrigin = embedBase;
   const sandbox = embedEditorFrameSandbox(embedBase);
 
   const send = useCallback(
     (data: Record<string, unknown>) => {
       const frame = iframe.current?.contentWindow;
       if (!frame) return false;
-      if (!isValidEditorTargetOrigin(AUDIO_HOSTED_EMBED_ORIGIN)) return false;
+      if (!isValidEditorTargetOrigin(editorOrigin)) return false;
       const checked = asHostToEditorMessage(data, instanceId);
       if (!checked) return false;
-      frame.postMessage(checked, AUDIO_HOSTED_EMBED_ORIGIN);
+      frame.postMessage(checked, editorOrigin);
       return true;
     },
-    [iframe, instanceId],
+    [editorOrigin, iframe, instanceId],
   );
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const accepted = acceptEditorFrameMessage(event, {
-        expectedOrigin: AUDIO_HOSTED_EMBED_ORIGIN,
+        expectedOrigin: editorOrigin,
         frameWindow: iframe.current?.contentWindow,
         instanceId,
       });
@@ -101,7 +101,7 @@ export function AudioHostedFrame({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [iframe, instanceId, onError, onReady, onDirty, onSnapshot]);
+  }, [editorOrigin, iframe, instanceId, onError, onReady, onDirty, onSnapshot]);
 
   void send;
   void hostOrigin;
@@ -124,12 +124,13 @@ export function postAudioInit(
   instanceId: string,
   envelope: ReturnType<typeof buildAudioInitEnvelope>,
 ): boolean {
-  if (!frame || !isValidEditorTargetOrigin(AUDIO_HOSTED_EMBED_ORIGIN)) {
+  const editorOrigin = audioHostedEmbedBase();
+  if (!frame || !isValidEditorTargetOrigin(editorOrigin)) {
     return false;
   }
   const checked = asHostToEditorMessage(envelope, instanceId);
   if (!checked) return false;
-  frame.postMessage(checked, AUDIO_HOSTED_EMBED_ORIGIN);
+  frame.postMessage(checked, editorOrigin);
   return true;
 }
 
@@ -138,9 +139,10 @@ export function postAudioSetMode(
   instanceId: string,
   mode: EditorMode,
 ): boolean {
+  const editorOrigin = audioHostedEmbedBase();
   if (!frame) return false;
   const message = buildSetModeMessage(instanceId, mode);
-  frame.postMessage(message, AUDIO_HOSTED_EMBED_ORIGIN);
+  frame.postMessage(message, editorOrigin);
   return true;
 }
 
@@ -149,6 +151,7 @@ export function postAudioSaveRequest(
   instanceId: string,
   saveId: string,
 ): boolean {
+  const editorOrigin = audioHostedEmbedBase();
   if (!frame) return false;
   const envelope = {
     protocol: EDITOR_PROTOCOL,
@@ -158,7 +161,7 @@ export function postAudioSaveRequest(
   };
   const checked = asHostToEditorMessage(envelope, instanceId);
   if (!checked) return false;
-  frame.postMessage(checked, AUDIO_HOSTED_EMBED_ORIGIN);
+  frame.postMessage(checked, editorOrigin);
   return true;
 }
 

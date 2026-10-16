@@ -297,20 +297,26 @@ export async function captureBeforeEnterPro(
   }
   if (binder) {
     const draftGate = flushAdvancedDraftGate(key);
+    let saveError: string | undefined;
     if (draftGate) {
       const saved = await draftGate;
-      if (!saved.ok) return { ok: false, error: saved.error || ENTER_PRO_NOT_READY };
-      if (saved.item) item = saved.item;
-    }
-    try {
-      if (!draftGate) binder.persistInBackground?.();
-    } catch {
-      /* background save must not block the switch */
+      if (saved.ok) {
+        if (saved.item) item = saved.item;
+      } else {
+        saveError = saved.error || ENTER_PRO_NOT_READY;
+      }
+    } else {
+      try {
+        binder.persistInBackground?.();
+      } catch {
+        /* background save must not block the switch */
+      }
     }
     const handoff = binder.getHandoff();
     if (handoff.kind !== "empty") {
       return { ok: true, handoff, item };
     }
+    if (saveError) return { ok: false, error: saveError };
   }
   if (options?.waitForReady) return { ok: false, error: ENTER_PRO_NOT_READY };
   const resolved = resolveEditorHandoffFromItem(item);
