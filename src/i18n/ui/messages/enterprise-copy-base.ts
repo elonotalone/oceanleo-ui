@@ -130,7 +130,11 @@ export const ENTERPRISE_COPY_SOURCE = {
   // --- W23 OrgPage / PublishToOrgButton ---
   withdrawAsset: "撤回",
   orgLibrary: "团队库",
-  orgLibraryEmpty: "团队库还是空的。成员可以从工作台把成果发布进来。",
+  orgLibraryEmpty: "团队库还是空的。从我的库导入成果，队友就能打开。",
+  importFromMyLibrary: "从我的库导入",
+  importFromMyLibraryEmpty: "我的库是空的。",
+  alreadyInThisTeamLibrary: "已在这个团队库",
+  importSelectedN: "导入 {n} 项",
   publishToOrg: "发布到团队",
   alreadyInNamedOrgLibrary: "已在 {name} 团队库",
   alreadyInNOrgLibraries: "已在 {n} 个团队库",

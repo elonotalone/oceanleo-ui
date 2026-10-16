@@ -16,7 +16,8 @@
 // 时选第一个能进的团队。团队共用的连接器只在这一页出现、也只在这一页设置。
 //
 // 取数只走 `../lib/org-api`（全波唯一的团队 API 出口，`_COMMON §3.8`；本文件里不许出现
-// 网关路径字面量，测试按此断言）。每一块各自
+// 网关路径字面量，测试按此断言）。「从我的库导入」在 `org/OrgLibraryImport.tsx`：
+// 个人库走 artifact-client，挂牌仍走 publishOrgAsset。每一块各自
 // 加载、各自失败：W05 的 overview 没上线时余额那一块说「还没上线」，成员表照常；
 // W09 的充值路由本波没落，充值按钮在没人接 `onTopup` 时显示「充值还没上线」。
 // 失败只显示 `orgErrorCopy(code)` 的人话，不把英文 error 甩到页面上。
@@ -28,7 +29,7 @@
 //   · 通过 / 驳回申请、生成邀请：owner / admin。
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   createInvite,
   decideJoinRequest,
@@ -262,6 +263,15 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
   const [days, setDays] = useState<number>(30);
   const [usage, setUsage] = useState<Loaded<OrgUsage>>({ status: "loading" });
   const [library, setLibrary] = useState<Loaded<OrgLibraryRow[]>>({ status: "loading" });
+  const [importOpen, setImportOpen] = useState(false);
+  const [ImportPanel, setImportPanel] = useState<
+    | ((props: {
+        orgId: string;
+        published: { id: string; url: string }[];
+        onImported: () => void | Promise<void>;
+      }) => ReactNode)
+    | null
+  >(null);
   const [grantAssetId, setGrantAssetId] = useState("");
   const [grants, setGrants] = useState<Loaded<{ userId: string; email: string }[]>>({ status: "loading" });
   const [grantUserId, setGrantUserId] = useState("");
@@ -360,6 +370,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
     setMembers({ status: "loading" });
     setRequests({ status: "loading" });
     setLibrary({ status: "loading" });
+    setImportOpen(false);
     setGrantAssetId("");
     setGrants({ status: "loading" });
     setInvite(null);
@@ -370,6 +381,17 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
     void reloadLibrary(currentId);
     if (manageMembers) void reloadRequests(currentId);
   }, [currentId, allowed, manageMembers, reloadDetail, reloadMembers, reloadRequests, reloadLibrary]);
+
+  useEffect(() => {
+    if (!importOpen) return;
+    let cancelled = false;
+    void import("./org/OrgLibraryImport").then((mod) => {
+      if (!cancelled) setImportPanel(() => mod.OrgLibraryImport);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [importOpen]);
 
   // ④ 用量（窗口切换时重取）
   useEffect(() => {
@@ -781,21 +803,39 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
             )}
           </div>
 
-          {/* 团队库：成员发布进来的成果。发布者或负责人可撤；负责人可授权给成员。 */}
+          {/* 团队库：成员从我的库导入。发布者或负责人可撤；负责人可授权给成员。 */}
           <div className={sectionClass} data-org-section="library">
-            <p className={titleClass}>{tt("团队库")}</p>
-            <span className="sr-only">
-              {tt("发布到团队")}
-              {tt("已在 {name} 团队库")}
-              {tt("已在 {n} 个团队库")}
-            </span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className={titleClass}>{tt("团队库")}</p>
+              <button
+                type="button"
+                className={buttonClass}
+                data-org-library-import="1"
+                aria-expanded={importOpen}
+                onClick={() => setImportOpen((open) => !open)}
+              >
+                {tt("从我的库导入")}
+              </button>
+            </div>
+            {importOpen && ImportPanel ? (
+              <ImportPanel
+                orgId={currentId}
+                published={(library.status === "ok" ? library.data : []).map((row) => ({
+                  id: row.id,
+                  url: row.url,
+                }))}
+                onImported={() => reloadLibrary(currentId)}
+              />
+            ) : importOpen ? (
+              <p className={`mt-2 ${subtleClass}`}>…</p>
+            ) : null}
             {library.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
             {library.status === "error" && (
               <p className={`mt-2 ${subtleClass}`}>{tt(orgErrorCopy(library.code))}</p>
             )}
             {library.status === "ok" && library.data.length === 0 && (
               <p className={`mt-2 ${subtleClass}`} data-org-library-empty="1">
-                {tt("团队库还是空的。成员可以从工作台把成果发布进来。")}
+                {tt("团队库还是空的。从我的库导入成果，队友就能打开。")}
               </p>
             )}
             {library.status === "ok" && library.data.length > 0 && (

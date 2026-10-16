@@ -35,6 +35,7 @@ const TT_PAGES = [
   "src/shell/mcp-apps/ComposerAppsBar.tsx",
   "src/lib/org-api.ts",
   "src/shell/PublishToOrgButton.tsx",
+  "src/pages/org/OrgLibraryImport.tsx",
 ];
 
 /** 七个页面里 `tt("…")` 的双引号字面（含换行折行）。 */

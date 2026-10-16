@@ -1,18 +1,21 @@
-// 组织库（W23，2026-09-20）：工作台/历史「发布到组织」+ 组织页库节。
+// 组织库（W23，2026-09-20；2026-10-16 个人货架发布钮改到团队库导入）。
 //
-// 判四件事：
+// 判：
 //   ① 零组织：PublishToOrgButton 不渲染，且不碰 fetch、不调 publishOrgAsset。
 //   ② 一组织：点按钮 → publishOrgAsset(orgId, { kind, title, url, sourceRef })。
 //   ③ 组织页 `data-org-section="library"` 按 listOrgAssets 的 N 行渲染。
 //   ④ 撤回走 revokeOrgAsset。四类操作都不自己 fetch。
+//   ⑤ 个人库卡片不再挂发布钮；团队库「从我的库导入」走 publishOrgAsset。
 //
 // 跑法（必须带 loader）：
 //   node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
 //        --experimental-loader ./tests/ts-extension-loader.mjs --test tests/org-library.test.mjs
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
@@ -73,6 +76,24 @@ const { OrgPage } = await import(
     "../i18n/ui/useUI": uiStub,
   })
 );
+
+const { OrgLibraryImport } = await import(
+  await compileModule("src/pages/org/OrgLibraryImport.tsx", {
+    "../../lib/org-api": orgApiStub,
+    "../../i18n/ui/useUI": uiStub,
+  })
+);
+
+test("个人库货架不再挂 PublishToOrgButton；团队库才有从我的库导入", () => {
+  const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const shelf = readFileSync(join(repo, "src/shell/workspace-library-view.tsx"), "utf8");
+  const orgPage = readFileSync(join(repo, "src/pages/OrgPage.tsx"), "utf8");
+  assert.doesNotMatch(shelf, /PublishToOrgButton/);
+  assert.doesNotMatch(shelf, /publishToOrg/);
+  assert.match(orgPage, /从我的库导入/);
+  assert.match(orgPage, /OrgLibraryImport/);
+  assert.doesNotMatch(orgPage, /\bfetch\(/);
+});
 
 function org(id, name, role = "member", extra = {}) {
   return { id, name, role, canViewOrgPage: false, canViewAllTasks: false, currency: "CNY", ...extra };
@@ -275,6 +296,7 @@ test("组织页库节渲染 N 行；撤回调用 revokeOrgAsset", async () => {
       await render(React.createElement(OrgPage));
       await settle();
       assert.ok(find('[data-org-section="library"]'), "应有组织库节");
+      assert.ok(find("[data-org-library-import]"), "团队库应有从我的库导入");
       const rows = findAll("[data-org-library-row]");
       assert.equal(rows.length, 3, "库节应按 N 行渲染");
       assert.ok(find('[data-org-library-row="a1"]').textContent.includes("官网"));
@@ -290,6 +312,50 @@ test("组织页库节渲染 N 行；撤回调用 revokeOrgAsset", async () => {
         getOrg: async () => detailOf(org("org-1", "海狮科技", "owner")),
         listOrgAssets: async () => assets,
       },
+    },
+  );
+});
+
+test("团队库从我的库导入：列出个人成果，已在库里的不可再选，确认走 publishOrgAsset", async () => {
+  const mineItems = [
+    { id: "art-new", artifactId: "art-new", title: "新海报", kind: "image", url: "https://x.test/new.png" },
+    { id: "art-old", artifactId: "art-old", title: "旧官网", kind: "website", url: "https://x.test/a" },
+  ];
+  await withDom(
+    async ({ render, find, click, calls, fetchCalls, settle }) => {
+      await render(
+        React.createElement(OrgLibraryImport, {
+          orgId: "org-1",
+          published: [{ id: "a1", url: "https://x.test/a" }],
+          onImported: () => {},
+          listMine: async () => ({ items: mineItems }),
+        }),
+      );
+      await settle();
+      const fresh = find('[data-org-library-import-item="art-new"]');
+      const stale = find('[data-org-library-import-item="art-old"]');
+      assert.ok(fresh, "应列出我的库里未导入的成果");
+      assert.ok(stale, "已在团队库的成果也应列出");
+      const staleBox = stale.querySelector("input");
+      assert.equal(staleBox.disabled, true, "已在团队库的不可再选");
+      await click(fresh.querySelector("input"));
+      await settle();
+      const confirm = find("[data-org-library-import-confirm]");
+      assert.equal(confirm.disabled, false, "选中后应能导入");
+      await click(confirm);
+      await settle();
+      const published = calls().find((c) => c[0] === "publishOrgAsset");
+      assert.deepEqual(published, [
+        "publishOrgAsset",
+        "org-1",
+        {
+          kind: "image",
+          title: "新海报",
+          url: "https://x.test/new.png",
+          sourceRef: "art-new",
+        },
+      ]);
+      assert.equal(fetchCalls(), 0);
     },
   );
 });
