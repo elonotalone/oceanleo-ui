@@ -80,6 +80,8 @@ test("图片件专业页标签是默认「专业编辑」，不再传 proLabel",
   assert.equal(/proLabel/.test(route), false, "ImageRoute 不得再覆盖专业页标签");
 });
 
+// UC-3 §8.3：docs/architecture/oceanleo-untrusted-content-isolation.md
+// 第三方修图站走通用嵌入路径，必须是不可信档，不得 scripts+same-origin。
 test("embedEditorFrameSandbox(photopea.com) 是不可信档，不含 scripts+same-origin", () => {
   const sandbox = embedEditorFrameSandbox("https://www.photopea.com");
   assert.equal(sandbox, UNTRUSTED_FRAME_SANDBOX);
