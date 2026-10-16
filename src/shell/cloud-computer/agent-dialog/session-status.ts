@@ -15,7 +15,7 @@ const INTERRUPTED_ERRORS = new Set([
 
 export type SessionListStatus = "running" | "interrupted" | "unread";
 
-/** Past-sessions: pixel runner while a turn is live; green only for unseen completions. */
+/** Past-sessions: pixel runner only while occupancy confirmed this session working. */
 export function sessionListStatus(
   sessionId: string,
   busySessions?: readonly string[],

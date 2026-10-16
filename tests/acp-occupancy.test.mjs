@@ -1,0 +1,133 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  composerOccupancy,
+  confirmedBusySessions,
+  occupancyBusyAfterFrame,
+  occupancyFresh,
+  OCCUPANCY_STALE_MS,
+} from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
+import { createOccupancyProbe } from "../src/shell/cloud-computer/agent-dialog/occupancy-probe.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { sessionListStatus } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
+
+const PROGRAMS = ["cursor", "claude", "codex", "hermes", "oceanleo"];
+
+test("composerOccupancy：无读数或链路断开是灰的 uncertain", () => {
+  assert.equal(composerOccupancy({
+    linkUp: false, occupancyAt: Date.now(), occupancyBusy: [], sessionId: "s",
+  }), "uncertain");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: null, occupancyBusy: [], sessionId: "s",
+  }), "uncertain");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 1, occupancyBusy: [], sessionId: "s", now: 1 + OCCUPANCY_STALE_MS + 1,
+  }), "uncertain");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", pendingAt: 20, pendingSession: "s", now: 30,
+  }), "uncertain");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "new", pendingAt: 20, pendingSession: "old", now: 30,
+  }), "idle");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "new", pendingAt: 20, now: 30,
+  }), "idle");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", offline: true, now: 11,
+  }), "uncertain");
+});
+
+test("composerOccupancy：确认在干活 / 确认空闲", () => {
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: ["s"], sessionId: "s", now: 11,
+  }), "working");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: ["other"], sessionId: "s", now: 11,
+  }), "idle");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11,
+  }), "idle");
+});
+
+test("后台 session 的 turn_start/done/error 改 occupancy.busy，空数组也要落地", () => {
+  assert.deepEqual(occupancyBusyAfterFrame([], { t: "turn_start", acp_session: "one" }), ["one"]);
+  assert.deepEqual(occupancyBusyAfterFrame(["one", "two"], { t: "done", acp_session: "one" }), ["two"]);
+  assert.deepEqual(occupancyBusyAfterFrame(["one"], { t: "done", acp_session: "one" }), []);
+  assert.deepEqual(occupancyBusyAfterFrame(["one"], { t: "error", acp_session: "one", code: "acp_exited" }), []);
+  assert.equal(occupancyBusyAfterFrame(["one"], { t: "models", acp_session: "one" }), null);
+  assert.equal(occupancyBusyAfterFrame(["one"], { t: "done" }), null);
+});
+
+test("像素图标只在确认 working 的 busy 列表里", () => {
+  assert.deepEqual(confirmedBusySessions(["a"], false), []);
+  assert.deepEqual(confirmedBusySessions(["a", "b"], true), ["a", "b"]);
+  assert.equal(sessionListStatus("a", confirmedBusySessions(["a"], true), [], []), "running");
+  assert.equal(sessionListStatus("a", confirmedBusySessions(["a"], false), [], []), null);
+  assert.equal(occupancyFresh({ linkUp: true, occupancyAt: 1, now: 2 }), true);
+});
+
+test("五个程序的 occupancy 帧都把对应 session 标成 working", () => {
+  for (const program of PROGRAMS) {
+    let state = initialDialogState();
+    state = applyDialog(state, { type: "program", program });
+    state = { ...state, activeSession: "live" };
+    state = applyDialog(state, { type: "occupancy-link", up: true });
+    state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program, busy: ["live"] } });
+    assert.deepEqual(state.occupancyBusy, ["live"], program);
+    assert.equal(composerOccupancy({
+      linkUp: state.occupancyLink,
+      occupancyAt: state.occupancyAt,
+      occupancyBusy: state.occupancyBusy,
+      sessionId: "live",
+    }), "working", program);
+    state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program, busy: [] } });
+    assert.equal(composerOccupancy({
+      linkUp: state.occupancyLink,
+      occupancyAt: state.occupancyAt,
+      occupancyBusy: state.occupancyBusy,
+      sessionId: "live",
+    }), "idle", program);
+  }
+});
+
+test("occupancy-lost 回到 uncertain，像素列表清空", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "codex" });
+  state = { ...state, activeSession: "x" };
+  state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "codex", busy: ["x"] } });
+  state = applyDialog(state, { type: "occupancy-lost" });
+  assert.equal(state.occupancyLink, false);
+  assert.equal(state.occupancyAt, null);
+  assert.deepEqual(state.occupancyBusy, []);
+  assert.equal(composerOccupancy({
+    linkUp: state.occupancyLink,
+    occupancyAt: state.occupancyAt,
+    occupancyBusy: state.occupancyBusy,
+    sessionId: "x",
+  }), "uncertain");
+});
+
+test("occupancy probe：2s 一轮，未应答算 stale", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_000_000 });
+  const sent = [];
+  const probe = createOccupancyProbe({
+    allowed: () => true,
+    send: (program) => {
+      sent.push(program);
+      return true;
+    },
+  });
+  t.after(() => probe.reset());
+  probe.request("cursor");
+  assert.deepEqual(sent, ["cursor"]);
+  probe.request("cursor");
+  assert.equal(sent.length, 1, "in-flight occupancy does not overlap");
+  t.mock.timers.tick(6001);
+  assert.equal(probe.stale("cursor"), true);
+  probe.receive("cursor");
+  assert.equal(probe.stale("cursor"), false);
+  probe.start(() => "hermes");
+  t.mock.timers.tick(2000);
+  assert.ok(sent.includes("hermes"));
+});

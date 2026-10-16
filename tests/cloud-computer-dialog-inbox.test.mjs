@@ -94,7 +94,14 @@ class FakeSocket {
     );
   }
   send(data) {
-    this.sent.push(JSON.parse(data));
+    const frame = JSON.parse(data);
+    this.sent.push(frame);
+    if (frame.t === "occupancy" && this.autoOccupancy !== false) {
+      const busy = this.occupancyBusy?.[frame.program] ?? this.turnBusy?.[frame.program] ?? [];
+      queueMicrotask(() => {
+        if (this.readyState === 1) this.server({ t: "occupancy", program: frame.program, busy });
+      });
+    }
   }
   close() {
     if (this.readyState === 3) return;
@@ -103,6 +110,16 @@ class FakeSocket {
   }
   emit(type, event) {
     for (const fn of [...(this.listeners.get(type) ?? [])]) fn(event);
+  }
+  server(frame) {
+    this.turnBusy ??= {};
+    if (frame.program && frame.acp_session) {
+      const cur = new Set(this.turnBusy[frame.program] ?? []);
+      if (frame.t === "turn_start") cur.add(frame.acp_session);
+      else if (frame.t === "done" || frame.t === "error") cur.delete(frame.acp_session);
+      this.turnBusy[frame.program] = [...cur];
+    }
+    this.emit("message", { data: JSON.stringify(frame) });
   }
 }
 FakeSocket.CONNECTING = 0;
@@ -215,7 +232,7 @@ function bigFile() {
 }
 
 async function until(fn, label) {
-  for (let i = 0; i < 50; i += 1) {
+  for (let i = 0; i < 80; i += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -358,7 +375,9 @@ test("selecting an 8MB+ file uploads immediately; progress updates the chip; sen
   await act(async () => {
     root.render(React.createElement(Probe));
   });
+  try {
   await until(() => FakeSocket.sockets.some((socket) => socket.readyState === 1), "socket open");
+  await until(() => latest.occupancyAt != null, "occupancy idle");
   const file = bigFile();
   await act(async () => {
     latest.addAttachments([file]);
@@ -407,8 +426,10 @@ test("selecting an 8MB+ file uploads immediately; progress updates the chip; sen
     host.querySelector("[data-oceanleo-cc-user-path]").getAttribute("data-oceanleo-cc-user-path"),
     inboxPath,
   );
-  await act(async () => root.unmount());
-  host.remove();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
 });
 
 test.after(() => {

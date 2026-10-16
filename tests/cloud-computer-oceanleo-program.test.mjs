@@ -91,7 +91,14 @@ class FakeSocket {
     );
   }
   send(data) {
-    this.sent.push(JSON.parse(data));
+    const frame = JSON.parse(data);
+    this.sent.push(frame);
+    if (frame.t === "occupancy" && this.autoOccupancy !== false) {
+      const busy = this.occupancyBusy?.[frame.program] ?? this.turnBusy?.[frame.program] ?? [];
+      queueMicrotask(() => {
+        if (this.readyState === 1) this.server({ t: "occupancy", program: frame.program, busy });
+      });
+    }
   }
   close() {
     if (this.readyState === 3) return;
@@ -219,6 +226,10 @@ async function boot() {
   await until(
     () => FakeSocket.sockets.some((socket) => socket.sent.some((frame) => frame.t === "status")),
     "status frame",
+  );
+  await until(
+    () => current && (current.offline || current.occupancyAt != null),
+    "REST occupancy reading",
   );
   return {
     host,
@@ -771,6 +782,8 @@ test("控制器：发送走 agentTurn，轮询到终态，busy 跟着 running �
   const view = await boot();
   try {
     await until(() => globalThis.__oceanApi.calls.includes("state"), "agentState on open");
+    await until(() => view.controller().occupancyAt != null, "REST occupancy reading");
+    assert.equal(view.controller().occupancyBusy.length, 0);
     await act(async () => {
       view.controller().setDraft("你好");
     });
@@ -784,6 +797,7 @@ test("控制器：发送走 agentTurn，轮询到终态，busy 跟着 running �
     // 本地回显立刻上屏，任务还在跑 → busy。
     assert.match(view.host.textContent || "", /你好/);
     assert.equal(view.controller().busy, true);
+    await until(() => view.controller().occupancyBusy.length > 0, "REST occupancy working");
 
     status = "succeeded";
     await until(() => !view.controller().busy, "busy clears at terminal status");

@@ -13,9 +13,11 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { installDirPayload } from "./install-dir";
 import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oceanleo-program";
 import { isWsProgram } from "./parse";
-import { applyDialog, busySessionsFor, initialDialogState } from "./reduce";
+import { applyDialog, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
-import { isCompletedStop, sessionInterrupted, turnStillRunning } from "./session-status";
+import { composerOccupancy, confirmedBusySessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
+import { createOccupancyProbe } from "./occupancy-probe";
+import { isCompletedStop, sessionInterrupted } from "./session-status";
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
@@ -102,6 +104,8 @@ type ViewSnap = {
   selectedMode: string;
   configOptions: ReturnType<typeof initialDialogState>["configOptions"];
   commands: ReturnType<typeof initialDialogState>["commands"];
+  occupancyPendingAt: number | null;
+  occupancyPendingSession: string | null;
 };
 const presentationCache = new Map<string, { programs: Presentation["programs"]; sessions: Map<string, Pick<Presentation, "sessions" | "sessionsSupported">>; views: Map<string, ViewSnap>; last: Map<string, string> }>();
 function presentationFor(id: string) {
@@ -133,6 +137,8 @@ function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
     selectedMode: state.selectedMode,
     configOptions: state.configOptions,
     commands: state.commands,
+    occupancyPendingAt: state.occupancyPendingAt,
+    occupancyPendingSession: state.occupancyPendingSession,
   };
 }
 function hydratePresentation(id: string, state: ReturnType<typeof initialDialogState>) {
@@ -168,7 +174,10 @@ export function useAgentDialog({
   const [state, dispatch] = useReducer(
     (previous: ReturnType<typeof initialDialogState>, event: Parameters<typeof applyDialog>[1]) => {
       const next = applyDialog(previous, event);
-      if (event.type === "reset") next.program = mountProgram;
+      if (event.type === "reset") {
+        next.program = mountProgram;
+        next.draftRef = `new:${mountRef}`;
+      }
       return event.type === "reset" || event.type === "program" ? hydratePresentation(computerId, next) : next;
     }, undefined, () => hydratePresentation(computerId, { ...initialDialogState(), program: mountProgram, draftRef: `new:${mountRef}` }),
   );
@@ -198,6 +207,13 @@ export function useAgentDialog({
       && (typeof document === "undefined" || !document.hidden)
       && (isWsProgram(program) || (program === "oceanleo" && localOceanleoRef.current)),
     send: (program) => sendJson(socketRef.current, { t: "sessions", program }),
+  });
+  const occupancyProbeRef = useRef<ReturnType<typeof createOccupancyProbe> | null>(null);
+  if (!occupancyProbeRef.current) occupancyProbeRef.current = createOccupancyProbe({
+    allowed: (program) => enabledRef.current && activeRef.current
+      && (typeof document === "undefined" || !document.hidden)
+      && (isWsProgram(program) || (program === "oceanleo" && localOceanleoRef.current)),
+    send: (program) => sendJson(socketRef.current, { t: "occupancy", program }),
   });
   const connectGen = useRef(0);
   const delayRef = useRef(1000);
@@ -246,6 +262,14 @@ export function useAgentDialog({
   computerIdRef.current = computerId;
   sessionIdRef.current = sessionId;
   localOceanleoRef.current = localOceanleo;
+
+  const [occupancyClock, setOccupancyClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (state.occupancyAt == null) return;
+    const wait = OCCUPANCY_STALE_MS - (Date.now() - state.occupancyAt) + 25;
+    const timer = setTimeout(() => setOccupancyClock(Date.now()), Math.max(0, wait));
+    return () => clearTimeout(timer);
+  }, [state.occupancyAt]);
 
   const persistUnread = useCallback((program: string, ids: string[]) => {
     writeUnreadSessions(computerIdRef.current, program, ids);
@@ -313,8 +337,12 @@ export function useAgentDialog({
     if (frame.t === "status") delayRef.current = 1000;
     const cached = presentationFor(computerIdRef.current);
     if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
+    if (frame.t === "occupancy" && typeof frame.program === "string") {
+      occupancyProbeRef.current?.receive(frame.program);
+    }
     if (frame.t === "sessions" && typeof frame.program === "string" && (isWsProgram(frame.program) || frame.program === "oceanleo")) {
       sessionsRefreshRef.current?.receive(frame.program, JSON.stringify([frame.sessions, frame.active, frame.busy]), frame.supported !== false);
+      if (Array.isArray(frame.busy)) occupancyProbeRef.current?.receive(frame.program);
       const parsed = applyDialog({ ...stateRef.current, program: frame.program }, { type: "frame", frame });
       cached.sessions.set(frame.program, { sessions: parsed.sessions, sessionsSupported: parsed.sessionsSupported });
     }
@@ -334,10 +362,31 @@ export function useAgentDialog({
       }
       if (pendingKey && frameSession && pendingKey !== key) {
         const snapshot = cached.views.get(pendingKey);
-        if (snapshot) cached.views.set(key, { ...snapshot, activeSession: frameSession, draftRef: undefined });
+        if (snapshot) {
+          const pendingSession = snapshot.occupancyPendingSession
+            && (snapshot.occupancyPendingSession === snapshot.draftRef || snapshot.occupancyPendingSession.startsWith("new:"))
+            ? frameSession
+            : snapshot.occupancyPendingSession;
+          cached.views.set(key, {
+            ...snapshot,
+            activeSession: frameSession,
+            draftRef: undefined,
+            occupancyPendingSession: pendingSession ?? null,
+          });
+        }
         if (viewKeyRef.current === pendingKey) {
           viewKeyRef.current = key;
-          stateRef.current = { ...stateRef.current, activeSession: frameSession, draftRef: undefined };
+          const pendingSession = stateRef.current.occupancyPendingSession
+            && (stateRef.current.occupancyPendingSession === stateRef.current.draftRef
+              || stateRef.current.occupancyPendingSession.startsWith("new:"))
+            ? frameSession
+            : stateRef.current.occupancyPendingSession;
+          stateRef.current = {
+            ...stateRef.current,
+            activeSession: frameSession,
+            draftRef: undefined,
+            occupancyPendingSession: pendingSession ?? null,
+          };
           dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
         }
         cached.views.delete(pendingKey);
@@ -365,6 +414,14 @@ export function useAgentDialog({
       } else {
         stateRef.current = applyDialog(stateRef.current, { type: "set-live-turns", liveTurns: next.liveTurns });
         dispatch({ type: "set-live-turns", liveTurns: next.liveTurns });
+        if (frameProgram === (stateRef.current.program ?? "")) {
+          const busy = occupancyBusyAfterFrame(stateRef.current.occupancyBusy, frame);
+          if (busy !== null) {
+            const occupancy = { t: "occupancy", program: frameProgram, busy };
+            stateRef.current = applyDialog(stateRef.current, { type: "frame", frame: occupancy });
+            dispatch({ type: "frame", frame: occupancy });
+          }
+        }
       }
     } else {
       stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
@@ -480,9 +537,12 @@ export function useAgentDialog({
           }
           sendJson(socket, { t: "status" });
           sessionsRefreshRef.current?.reset();
+          occupancyProbeRef.current?.reset();
+          dispatch({ type: "occupancy-link", up: true });
           const program = stateRef.current.program;
           if (usesDialogSocket(program, localOceanleoRef.current)) {
             sessionsRefreshRef.current?.request(program);
+            occupancyProbeRef.current?.request(program);
             sendJson(socket, { t: "models", program });
           }
           finish(socket);
@@ -502,6 +562,8 @@ export function useAgentDialog({
           return;
         }
         sessionsRefreshRef.current?.reset();
+        occupancyProbeRef.current?.reset();
+        dispatch({ type: "occupancy-lost" });
         finish(null);
         if (!enabledRef.current) return;
         scheduleReconnect();
@@ -540,6 +602,17 @@ export function useAgentDialog({
     [],
   );
 
+  const dispatchOceanOccupancy = useCallback((running: boolean) => {
+    const ids = [...new Set(
+      [stateRef.current.activeSession, stateRef.current.draftRef, oceanTaskRef.current, "oceanleo"]
+        .filter((id): id is string => Boolean(id)),
+    )];
+    dispatch({
+      type: "frame",
+      frame: { t: "occupancy", program: "oceanleo", busy: running ? ids : [] },
+    });
+  }, []);
+
   /** 任务详情 → 消息列表。刚发的那句服务端还没落库时这一轮不替换（本地回显不闪没）。 */
   const applyOceanDetail = useCallback(
     (detail: TaskDetail) => {
@@ -568,9 +641,10 @@ export function useAgentDialog({
         if (running !== stateRef.current.busy) {
           dispatch(running ? { type: "send-began" } : { type: "cancel-local" });
         }
+        dispatchOceanOccupancy(running);
       }
     },
-    [tt],
+    [dispatchOceanOccupancy, tt],
   );
 
   /** 轮询直到任务离开 running；代际变了（重进程序/复位/卸载）立即收手。 */
@@ -596,7 +670,8 @@ export function useAgentDialog({
         const result = await getTask(taskId);
         if (gen !== oceanGen.current) return;
         if (!result.ok || !result.data) {
-          // 网络/权限抖动：不擦列表、不假装结束，按退避节奏再来。
+          // 网络/权限抖动：不擦列表、不假装结束，按退避节奏再来。占用未知。
+          dispatch({ type: "occupancy-lost" });
           const cadence = nextOceanleoPoll({ hidden: false, changed: false, idleStep, waitedMs });
           idleStep = cadence.idleStep;
           waitedMs = cadence.waitedMs;
@@ -629,6 +704,7 @@ export function useAgentDialog({
     if (!result.ok || !result.data) {
       setComputerName("");
       oceanTaskRef.current = "";
+      dispatch({ type: "occupancy-lost" });
       dispatch({
         type: "frame",
         frame: {
@@ -661,22 +737,37 @@ export function useAgentDialog({
       if (stateRef.current.program === "oceanleo") {
         dispatch({ type: "messages-replace", messages: [] });
         dispatch({ type: "cancel-local" });
+        dispatchOceanOccupancy(false);
       }
       return;
     }
     const detail = await getTask(taskId);
     if (gen !== oceanGen.current) return;
-    if (!detail.ok || !detail.data) return;
+    if (!detail.ok || !detail.data) {
+      dispatch({ type: "occupancy-lost" });
+      return;
+    }
     applyOceanDetail(detail.data);
     if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
-  }, [applyOceanDetail, clearOceanWait, pollOcean]);
+  }, [applyOceanDetail, clearOceanWait, dispatchOceanOccupancy, pollOcean]);
 
   refreshOceanRef.current = refreshOcean;
 
   const sendOcean = useCallback(async () => {
     const computerId = computerIdRef.current;
     if (!computerId) return;
-    if (stateRef.current.busy || stateRef.current.offline) return;
+    const ocean = stateRef.current;
+    const oceanMode = composerOccupancy({
+      linkUp: ocean.occupancyLink,
+      occupancyAt: ocean.occupancyAt,
+      occupancyBusy: ocean.occupancyBusy,
+      sessionId: ocean.activeSession || ocean.draftRef || oceanTaskRef.current || "oceanleo",
+      pendingAt: ocean.occupancyPendingAt,
+      pendingSession: ocean.occupancyPendingSession,
+      offline: ocean.offline,
+      sessionLoading: ocean.sessionLoading,
+    });
+    if (oceanMode !== "idle") return;
     if (inboxWaiters.current.size) {
       await Promise.all([...inboxWaiters.current.values()]);
     }
@@ -691,7 +782,8 @@ export function useAgentDialog({
     const gen = (oceanGen.current += 1);
     clearOceanWait();
     // 与 WS send 同款乐观写：dispatch 到重渲染之间再按发送不能发出第二句。
-    stateRef.current = { ...stateRef.current, busy: true };
+    dispatch({ type: "send-began" });
+    stateRef.current = applyDialog(stateRef.current, { type: "send-began" });
     const named = userFileRows(pendingFiles);
     const fileNote = pendingFiles.length
       ? `${text ? "\n\n" : ""}` + pendingFiles.map((item) => `附件：${item.path}`).join("\n")
@@ -881,9 +973,18 @@ export function useAgentDialog({
     }
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
     const current = stateRef.current;
-    const thisBusy = busySessionsFor(current.liveTurns, current.program).includes(current.activeSession || current.draftRef || "")
-      || turnStillRunning(current.messages);
-    if (thisBusy || current.offline || current.sessionLoading) return;
+    const sessionId = current.activeSession || current.draftRef || "";
+    const occupancyMode = composerOccupancy({
+      linkUp: current.occupancyLink,
+      occupancyAt: current.occupancyAt,
+      occupancyBusy: current.occupancyBusy,
+      sessionId,
+      pendingAt: current.occupancyPendingAt,
+      pendingSession: current.occupancyPendingSession,
+      offline: current.offline,
+      sessionLoading: current.sessionLoading,
+    });
+    if (occupancyMode !== "idle") return;
     const text = draftRef.current.trim();
     if (inboxWaiters.current.size) {
       await Promise.all([...inboxWaiters.current.values()]);
@@ -1005,25 +1106,71 @@ export function useAgentDialog({
       timer = undefined;
       if (typeof document !== "undefined" && document.hidden) {
         sessionsRefreshRef.current?.pause();
+        occupancyProbeRef.current?.stop();
         return;
       }
       const program = stateRef.current.program;
       if (usesDialogSocket(program, localOceanleoRef.current)) {
         sessionsRefreshRef.current?.request(program, reason);
+        occupancyProbeRef.current?.request(program);
+        if (occupancyProbeRef.current?.stale(program)) dispatch({ type: "occupancy-lost" });
         timer = setTimeout(() => refresh("poll"), SESSIONS_REFRESH_MS);
       }
     };
     const wake = () => refresh();
     refresh();
+    occupancyProbeRef.current?.start(() => (
+      usesDialogSocket(stateRef.current.program, localOceanleoRef.current) ? stateRef.current.program : null
+    ));
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("focus", wake);
     return () => {
       if (timer) clearTimeout(timer);
       sessionsRefreshRef.current?.pause();
+      occupancyProbeRef.current?.stop();
       document.removeEventListener("visibilitychange", wake);
       window.removeEventListener("focus", wake);
     };
   }, [enabled, active, state.program, localOceanleo]);
+
+  useEffect(() => {
+    if (!enabled || !active || !oceanleoReady) return;
+    if (state.program !== "oceanleo" || localOceanleo) return;
+    let alive = true;
+    const tick = async () => {
+      if (!alive || (typeof document !== "undefined" && document.hidden)) return;
+      const computerId = computerIdRef.current;
+      if (!computerId) return;
+      const result = await agentState(computerId);
+      if (!alive) return;
+      if (!result.ok || !result.data) {
+        dispatch({ type: "occupancy-lost" });
+        return;
+      }
+      if (result.data.computer?.online !== true) {
+        dispatch({ type: "frame", frame: { t: "error", code: "computer_offline", program: "oceanleo" } });
+        return;
+      }
+      const taskId = typeof result.data.task_id === "string" ? result.data.task_id : "";
+      if (!taskId) {
+        dispatchOceanOccupancy(false);
+        return;
+      }
+      const detail = await getTask(taskId);
+      if (!alive) return;
+      if (!detail.ok || !detail.data) {
+        dispatch({ type: "occupancy-lost" });
+        return;
+      }
+      dispatchOceanOccupancy(detail.data.task?.status === "running");
+    };
+    void tick();
+    const timer = setInterval(() => { void tick(); }, 2_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [dispatchOceanOccupancy, enabled, active, oceanleoReady, state.program, localOceanleo]);
 
   const requestSessionPath = useCallback(() => {
     const program = stateRef.current.program;
@@ -1105,6 +1252,8 @@ export function useAgentDialog({
       commands: [],
       busy: false,
       agentBusy: false,
+      occupancyPendingAt: null,
+      occupancyPendingSession: null,
     };
     if (program) {
       newRefs.current.delete(program);
@@ -1394,7 +1543,19 @@ export function useAgentDialog({
     draft,
     setDraft,
     busy: state.busy,
-    busySessions: busySessionsFor(state.liveTurns, state.program),
+    occupancyLink: state.occupancyLink,
+    occupancyAt: state.occupancyAt,
+    occupancyBusy: state.occupancyBusy,
+    occupancyPendingAt: state.occupancyPendingAt,
+    occupancyPendingSession: state.occupancyPendingSession,
+    busySessions: confirmedBusySessions(
+      state.occupancyBusy,
+      occupancyFresh({
+        linkUp: state.occupancyLink,
+        occupancyAt: state.occupancyAt,
+        now: occupancyClock,
+      }),
+    ),
     runningSessions: state.runningSessions,
     interruptedSessions: [...presentationFor(computerId).views.entries()]
       .filter(([key, view]) => key.startsWith(`${state.program}::`) && view.activeSession && sessionInterrupted(view.messages))

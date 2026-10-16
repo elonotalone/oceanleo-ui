@@ -220,6 +220,15 @@ export type DialogState = {
   busy: boolean;
   agentBusy: boolean;
   offline: boolean;
+  /** Last occupancy probe reached the gateway. Not the same as a busy reading. */
+  occupancyLink: boolean;
+  /** Time of the last occupancy snapshot. Null means no confirmed reading. */
+  occupancyAt: number | null;
+  /** Session ids the last occupancy snapshot reported as working. */
+  occupancyBusy: string[];
+  /** Local send waiting for occupancy to confirm that session. */
+  occupancyPendingAt: number | null;
+  occupancyPendingSession: string | null;
   programs: ProgramStatus[];
   models: DialogModel[];
   modelSource: string;
@@ -263,6 +272,11 @@ export type AgentDialogController = {
   draft: string;
   setDraft: (value: string) => void;
   busy: boolean;
+  occupancyLink: boolean;
+  occupancyAt: number | null;
+  occupancyBusy: string[];
+  occupancyPendingAt: number | null;
+  occupancyPendingSession: string | null;
   /** ACP session ids of the current program that still have an open turn. */
   busySessions?: string[];
   /** ACP session ids that still have a process. Not a Past-sessions green dot. */

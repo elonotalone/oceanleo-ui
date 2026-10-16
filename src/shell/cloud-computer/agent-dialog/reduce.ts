@@ -19,7 +19,8 @@ import {
 } from "./parse";
 import { isModelFamilyConfig } from "./notice";
 import { normalizeUserMessage } from "./message-attachments";
-import { hasOpenTurn, turnLooksSettled, turnStillRunning } from "./session-status";
+import { blankOccupancy } from "./occupancy";
+import { hasOpenTurn, turnStillRunning } from "./session-status";
 import type {
   AgentDialogMessage,
   AgentProgram,
@@ -88,7 +89,89 @@ function armTurn(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (!session) return state;
   const key = turnKey(program, session);
   if (state.cancelledTurns?.[key]) return state;
-  return markTurn(state, program, session, true);
+  return noteProbeWorking(markTurn(state, program, session, true), session);
+}
+
+function occupancyIds(busy: unknown): string[] {
+  if (!Array.isArray(busy)) return [];
+  return [...new Set(busy.filter((id): id is string => typeof id === "string" && Boolean(id)))];
+}
+
+function applyOccupancyBusy(state: DialogState, program: string, busyIds: string[]): DialogState {
+  if (program && state.program && program !== state.program) return state;
+  const busySet = new Set(busyIds);
+  const prefix = `${state.program ?? ""}::`;
+  const liveTurns = { ...state.liveTurns };
+  const current = state.activeSession || state.draftRef || "";
+  for (const key of Object.keys(liveTurns)) {
+    if (!key.startsWith(prefix)) continue;
+    const id = key.slice(prefix.length);
+    if (busySet.has(id)) continue;
+    if (id === current && state.occupancyPendingAt != null) continue;
+    if (id === current && state.busy && !hasOpenTurn(state.messages)) continue;
+    delete liveTurns[key];
+  }
+  for (const id of busySet) {
+    const key = turnKey(state.program, id);
+    if (state.cancelledTurns?.[key]) continue;
+    liveTurns[key] = true;
+  }
+  const currentKey = turnKey(state.program, current);
+  const currentLive = Boolean(current && liveTurns[currentKey]);
+  let messages = state.messages;
+  if (current && !busySet.has(current) && state.occupancyPendingAt == null && hasOpenTurn(state.messages)) {
+    messages = stampOpenTurn(state.messages, "end_turn");
+  }
+  return {
+    ...state,
+    messages,
+    liveTurns,
+    occupancyLink: true,
+    occupancyAt: Date.now(),
+    occupancyBusy: [...busySet],
+    occupancyPendingAt: current && busySet.has(current) ? null : state.occupancyPendingAt,
+    occupancyPendingSession: current && busySet.has(current) ? null : state.occupancyPendingSession,
+    busy: currentLive,
+    busySession: currentLive ? current : "",
+  };
+}
+
+function noteProbeWorking(state: DialogState, session: string): DialogState {
+  if (!session) return state;
+  const known = state.occupancyBusy ?? [];
+  const occupancyBusy = known.includes(session) ? known : [...known, session];
+  const current = state.activeSession || state.draftRef || "";
+  return {
+    ...state,
+    occupancyLink: true,
+    occupancyAt: Date.now(),
+    occupancyBusy,
+    occupancyPendingAt: session === current ? null : state.occupancyPendingAt,
+    occupancyPendingSession: session === current ? null : state.occupancyPendingSession,
+  };
+}
+
+function occupancyLost(state: DialogState): DialogState {
+  return {
+    ...state,
+    occupancyLink: false,
+    occupancyAt: null,
+    occupancyBusy: [],
+  };
+}
+
+/** One session ended. This is not a full occupancy snapshot, so other live turns stay. */
+function dropOccupancySession(state: DialogState, session: string): DialogState {
+  if (!session) return state;
+  const current = state.activeSession || state.draftRef || "";
+  return {
+    ...state,
+    occupancyLink: true,
+    occupancyAt: Date.now(),
+    occupancyBusy: (state.occupancyBusy ?? []).filter((id) => id !== session),
+    occupancyPendingAt: session === current ? null : state.occupancyPendingAt,
+    occupancyPendingSession: session === current ? null : state.occupancyPendingSession,
+  };
 }
 
 function markTurn(state: DialogState, program: string | null, session: string, live: boolean): DialogState {
@@ -165,6 +248,7 @@ export function initialDialogState(): DialogState {
     busy: false,
     agentBusy: false,
     offline: false,
+    ...blankOccupancy(),
     programs: [],
     models: [],
     modelSource: "",
@@ -201,6 +285,8 @@ export type DialogEvent =
   | { type: "program"; program: AgentProgram }
   | { type: "send-began" }
   | { type: "send-failed" }
+  | { type: "occupancy-lost" }
+  | { type: "occupancy-link"; up: boolean }
   | { type: "user"; text: string; attachments?: { name: string; mime: string; preview?: string }[] }
   | { type: "cancel-local" }
   | { type: "clear-offline" }
@@ -245,6 +331,8 @@ export type DialogEvent =
       selectedMode: string;
       configOptions: DialogState["configOptions"];
       commands: DialogState["commands"];
+      occupancyPendingAt?: number | null;
+      occupancyPendingSession?: string | null;
     };
 
 function str(value: unknown): string {
@@ -479,7 +567,8 @@ function onDone(state: DialogState, frame: Record<string, unknown>): DialogState
   const messages = stampOpenTurn(state.messages, stop);
   const program = str(frame.program) || state.program;
   const ended = session || state.activeSession || state.draftRef || "";
-  return markTurn({ ...state, messages }, program, ended, false);
+  const next = markTurn({ ...state, messages }, program, ended, false);
+  return dropOccupancySession(next, ended);
 }
 
 function storedNoticeText(message: AgentDialogMessage): string {
@@ -532,7 +621,12 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
     messages: same || !matches ? state.messages : [...state.messages, notice],
   };
   if (endsTurn) {
-    return markTurn(next, program || state.program, session || state.activeSession || state.draftRef || "", false);
+    const ended = session || state.activeSession || state.draftRef || "";
+    const marked = markTurn(next, program || state.program, ended, false);
+    return dropOccupancySession(marked, ended);
+  }
+  if (code === "computer_offline" || code === "computer_reconnecting" || code === "dialog_unreachable") {
+    return occupancyLost(next);
   }
   return next;
 }
@@ -625,65 +719,27 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   // 登录卡的 agent_busy 兜底不挑当前程序（见 finishLoginOnAgentBusy 注释）。
   state = finishLoginOnAgentBusy(state, frame);
   if (!forCurrent(state, frame)) return state;
+  if (kind === "occupancy") {
+    if (!Array.isArray(frame.busy)) return state;
+    return applyOccupancyBusy(state, str(frame.program) || state.program || "", occupancyIds(frame.busy));
+  }
   if (kind === "sessions") {
-    const liveTurns = { ...state.liveTurns };
-    if (Array.isArray(frame.busy)) {
-      const prefix = `${state.program ?? ""}::`;
-      const busy = new Set(
-        frame.busy.filter((id): id is string => typeof id === "string" && Boolean(id)),
-      );
-      const current = state.activeSession || state.draftRef || "";
-      for (const key of Object.keys(liveTurns)) {
-        if (!key.startsWith(prefix)) continue;
-        const id = key.slice(prefix.length);
-        if (busy.has(id)) continue;
-        if (id === current && state.busy && !hasOpenTurn(state.messages)) continue;
-        delete liveTurns[key];
-      }
-      for (const id of busy) {
-        const key = turnKey(state.program, id);
-        if (state.cancelledTurns?.[key]) continue;
-        liveTurns[key] = true;
-      }
-      const currentKey = turnKey(state.program, current);
-      const currentLive = Boolean(current && liveTurns[currentKey]);
-      let messages = state.messages;
-      if (current && !busy.has(current) && turnLooksSettled(state.messages)) {
-        messages = stampOpenTurn(state.messages, "end_turn");
-      }
-      const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
-      const runningSessions = Array.isArray(frame.running)
-        ? frame.running.filter((id): id is string => typeof id === "string" && Boolean(id))
-        : state.runningSessions;
-      return {
-        ...state,
-        messages,
-        liveTurns,
-        runningSessions,
-        sessionsSupported: frame.supported !== false,
-        sessions,
-        serverActiveSession: str(frame.active),
-        sessionPath: listedPath || state.sessionPath,
-        sessionPathResolved: Boolean(listedPath) || state.sessionPathResolved,
-        busy: currentLive,
-        busySession: currentLive ? current : "",
-      };
-    }
+    let next = Array.isArray(frame.busy)
+      ? applyOccupancyBusy(state, str(frame.program) || state.program || "", occupancyIds(frame.busy))
+      : state;
     const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const listedPath = sessions.find((session) => session.id === state.activeSession)?.path || "";
+    const listedPath = sessions.find((session) => session.id === next.activeSession)?.path || "";
     const runningSessions = Array.isArray(frame.running)
       ? frame.running.filter((id): id is string => typeof id === "string" && Boolean(id))
-      : state.runningSessions;
+      : next.runningSessions;
     return {
-      ...state,
-      liveTurns,
+      ...next,
       runningSessions,
       sessionsSupported: frame.supported !== false,
       sessions,
       serverActiveSession: str(frame.active),
-      sessionPath: listedPath || state.sessionPath,
-      sessionPathResolved: Boolean(listedPath) || state.sessionPathResolved,
+      sessionPath: listedPath || next.sessionPath,
+      sessionPathResolved: Boolean(listedPath) || next.sessionPathResolved,
     };
   }
   if (kind === "session_path") {
@@ -743,23 +799,20 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       if (item) next = onFrame(next, item);
     }
     let messages = next.messages;
-    if (frame.live === false && turnLooksSettled(messages)) {
+    const sid = next.activeSession;
+    const program = next.program || "";
+    if (frame.live === false && hasOpenTurn(messages) && next.occupancyPendingAt == null) {
       messages = stampOpenTurn(messages, "end_turn");
     }
-    const running = turnStillRunning(messages);
-    const live = typeof frame.live === "boolean"
-      ? frame.live || running
-      : running || isLiveTurn(keptTurns, next.program, next.activeSession);
-    const liveTurns = { ...keptTurns };
-    if (live) liveTurns[turnKey(next.program, next.activeSession)] = true;
-    else delete liveTurns[turnKey(next.program, next.activeSession)];
-    return rememberSession({
-      ...next,
-      messages,
-      liveTurns,
-      busy: live,
-      busySession: live ? next.activeSession : "",
-    }, frame);
+    let occupied = { ...next, messages, liveTurns: { ...keptTurns } };
+    if (typeof frame.live === "boolean" && sid) {
+      occupied = frame.live
+        ? noteProbeWorking(occupied, sid)
+        : dropOccupancySession(occupied, sid);
+    } else if (sid && isLiveTurn(occupied.liveTurns, occupied.program, sid)) {
+      occupied = noteProbeWorking(occupied, sid);
+    }
+    return rememberSession(occupied, frame);
   }
   if (kind === "session_opened") {
     const session = str(frame.acp_session);
@@ -858,7 +911,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     if (session) next = markTurn(next, program, "", false);
     if (session && started.draftRef) next = markTurn(next, program, started.draftRef, false);
     next = markTurn(next, program, session || next.activeSession, true);
-    return next;
+    return noteProbeWorking(next, session || next.activeSession);
   }
   if (kind === "delta") {
     const text = str(frame.text);
@@ -913,6 +966,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         busy: false,
         agentBusy: false,
         busySession: "",
+        ...blankOccupancy(),
       };
     case "restore-view": {
       const next = {
@@ -936,6 +990,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         selectedMode: event.selectedMode,
         configOptions: event.configOptions,
         commands: event.commands,
+        occupancyPendingAt: event.occupancyPendingAt ?? null,
+        occupancyPendingSession: event.occupancyPendingSession ?? null,
       };
       const id = next.activeSession || next.draftRef || "";
       const live = isLiveTurn(next.liveTurns, next.program, id) || turnStillRunning(next.messages);
@@ -943,18 +999,32 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       if (live && id) liveTurns[turnKey(next.program, id)] = true;
       return { ...next, liveTurns, busy: live, busySession: live ? next.activeSession : "", agentBusy: false };
     }
-    case "send-began":
-      return markTurn(state, state.program, state.activeSession || state.draftRef || "", true);
+    case "send-began": {
+      const pendingSession = state.activeSession || state.draftRef || "";
+      return {
+        ...markTurn(state, state.program, pendingSession, true),
+        occupancyPendingAt: Date.now(),
+        occupancyPendingSession: pendingSession || null,
+      };
+    }
     case "send-failed":
-      return markTurn(
+      return occupancyLost(markTurn(
         {
           ...state,
+          occupancyPendingAt: null,
+          occupancyPendingSession: null,
           messages: pushNotice(state.messages, "dialog_unreachable", state.program ?? ""),
         },
         state.program,
         state.activeSession || state.draftRef || "",
         false,
-      );
+      ));
+    case "occupancy-lost":
+      return occupancyLost(state);
+    case "occupancy-link":
+      return event.up
+        ? { ...state, occupancyLink: true }
+        : occupancyLost(state);
     case "user": {
       const { text, attachments } = normalizeUserMessage(event.text, event.attachments);
       return markTurn(
@@ -979,10 +1049,13 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       let next: DialogState = {
         ...state,
         agentBusy: false,
+        occupancyPendingAt: null,
+        occupancyPendingSession: null,
         cancelledTurns,
         messages: stampOpenTurn(state.messages, "cancelled"),
       };
       for (const id of ids) next = markTurn(next, next.program, id, false);
+      for (const id of ids) next = dropOccupancySession(next, id);
       return next;
     }
     case "clear-offline":
@@ -1102,8 +1175,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
           };
         }),
       };
-    case "close-session":
-      return {
+    case "close-session": {
+      const closed = {
         ...state,
         opened: state.opened.filter((id) => id !== event.program),
         programs: state.programs.map((row) =>
@@ -1115,6 +1188,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         busy: state.program === event.program ? false : state.busy,
         agentBusy: state.program === event.program ? false : state.agentBusy,
       };
+      return state.program === event.program ? occupancyLost(closed) : closed;
+    }
     case "question-submitted":
       return {
         ...state,

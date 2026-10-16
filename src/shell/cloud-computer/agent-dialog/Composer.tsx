@@ -17,7 +17,7 @@ import {
   writeModelParamMemory,
 } from "./model-param-memory";
 import { modelControls } from "./model-controls";
-import { turnStillRunning } from "./session-status";
+import { composerOccupancy, OCCUPANCY_STALE_MS } from "./occupancy";
 import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
@@ -214,6 +214,13 @@ export function Composer({
       document.removeEventListener("keydown", onKey);
     };
   }, [openTuning]);
+  const [occupancyNow, setOccupancyNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (dialog.occupancyAt == null) return;
+    const wait = OCCUPANCY_STALE_MS - (Date.now() - dialog.occupancyAt) + 25;
+    const timer = setTimeout(() => setOccupancyNow(Date.now()), Math.max(0, wait));
+    return () => clearTimeout(timer);
+  }, [dialog.occupancyAt]);
   // 还没选程序时不渲染（合同 I6 起默认选中 OceanLeo agent，正常不会走到这里）。
   if (!dialog.program) return null;
   const lastMessage = dialog.messages[dialog.messages.length - 1];
@@ -223,11 +230,18 @@ export function Composer({
     readModelParamMemory(dialog.computerId || shellInfo.computerId || "", dialog.program));
   const showModels = controls.models.length > 0;
   const thisSessionId = dialog.activeSession || dialog.draftRef || "";
-  const listedBusy = Array.isArray(dialog.busySessions)
-    ? dialog.busySessions.includes(thisSessionId)
-    : Boolean(dialog.busy);
-  const thisSessionBusy = listedBusy || turnStillRunning(dialog.messages);
-  const showStop = thisSessionBusy;
+  const occupancyMode = composerOccupancy({
+    linkUp: dialog.occupancyLink === true,
+    occupancyAt: dialog.occupancyAt ?? null,
+    occupancyBusy: dialog.occupancyBusy ?? [],
+    sessionId: thisSessionId,
+    pendingAt: dialog.occupancyPendingAt ?? null,
+    pendingSession: dialog.occupancyPendingSession ?? null,
+    now: occupancyNow,
+    offline: dialog.offline,
+    sessionLoading: dialog.sessionLoading,
+  });
+  const showStop = occupancyMode === "working";
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
   const showTuning = tuningParams.length > 0 || Boolean(controls.effort) || Boolean(dialog.mode && dialog.mode.options.length > 0);
   const tuningModeName = dialog.mode?.options.find((choice) => choice.value === dialog.selectedMode)?.name || dialog.selectedMode;
@@ -239,6 +253,7 @@ export function Composer({
   const [dragOver, setDragOver] = useState(false);
   const canAttach = typeof dialog.addAttachments === "function";
   const inboxBusy = (dialog.attachments || []).some((item) => item.state === "uploading");
+  const sendEnabled = occupancyMode === "idle" && !inboxBusy;
   const commandMatches = commandQuery === null
     ? []
     : dialog.commands.filter((command) => {
@@ -248,8 +263,10 @@ export function Composer({
   return (
     <form
       className={`relative border-t p-3 ${tone.border}`}
+      data-oceanleo-cc-occupancy={occupancyMode}
       onSubmit={(event) => {
         event.preventDefault();
+        if (!sendEnabled) return;
         void dialog.send();
       }}
       onDragEnter={(event: DragEvent) => {
@@ -342,6 +359,7 @@ export function Composer({
                 !event.nativeEvent.isComposing
               ) {
                 event.preventDefault();
+                if (!sendEnabled) return;
                 void dialog.send();
               }
             }}
@@ -517,10 +535,20 @@ export function Composer({
           >
             {tt("停止")}
           </button>
+        ) : occupancyMode === "uncertain" ? (
+          <button
+            type="submit"
+            disabled
+            data-oceanleo-cc-send="uncertain"
+            className="cursor-not-allowed rounded-lg bg-zinc-300 px-3 py-2 text-[12px] font-medium text-zinc-500 dark:bg-neutral-700 dark:text-neutral-400"
+          >
+            {tt("发送")}
+          </button>
         ) : (
           <button
             type="submit"
-            disabled={dialog.offline || dialog.sessionLoading || inboxBusy}
+            data-oceanleo-cc-send="idle"
+            disabled={!sendEnabled}
             className={`rounded-lg px-3 py-2 text-[12px] font-medium disabled:opacity-40 ${tone.primary}`}
           >
             {tt("发送")}

@@ -88,7 +88,14 @@ class FakeSocket {
     );
   }
   send(data) {
-    this.sent.push(JSON.parse(data));
+    const frame = JSON.parse(data);
+    this.sent.push(frame);
+    if (frame.t === "occupancy" && this.autoOccupancy !== false) {
+      const busy = this.occupancyBusy?.[frame.program] ?? this.turnBusy?.[frame.program] ?? [];
+      queueMicrotask(() => {
+        if (this.readyState === 1) this.server({ t: "occupancy", program: frame.program, busy });
+      });
+    }
   }
   close() {
     if (this.readyState === 3) return;
@@ -100,6 +107,13 @@ class FakeSocket {
   }
   server(frame) {
     // The gateway contract now tags all session frames explicitly.
+    this.turnBusy ??= {};
+    if (frame.program && frame.acp_session) {
+      const cur = new Set(this.turnBusy[frame.program] ?? []);
+      if (frame.t === "turn_start") cur.add(frame.acp_session);
+      else if (frame.t === "done" || frame.t === "error") cur.delete(frame.acp_session);
+      this.turnBusy[frame.program] = [...cur];
+    }
     this.sessionIds ??= new Map();
     if (frame.acp_session && ["session_opened", "turn_start"].includes(frame.t)) this.sessionIds.set(frame.program, frame.acp_session);
     const sessionFrames = new Set(["models", "config", "commands", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "error"]);

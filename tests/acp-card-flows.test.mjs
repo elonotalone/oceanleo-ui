@@ -9,6 +9,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { applyDialog, busySessionsFor, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { composerOccupancy, confirmedBusySessions, occupancyFresh } from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
 import { hasOpenTurn, sessionListStatus, turnLooksSettled, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -89,7 +90,14 @@ class FakeSocket {
     );
   }
   send(data) {
-    this.sent.push(JSON.parse(data));
+    const frame = JSON.parse(data);
+    this.sent.push(frame);
+    if (frame.t === "occupancy" && this.autoOccupancy !== false) {
+      const busy = this.occupancyBusy?.[frame.program] ?? this.turnBusy?.[frame.program] ?? [];
+      queueMicrotask(() => {
+        if (this.readyState === 1) this.server({ t: "occupancy", program: frame.program, busy });
+      });
+    }
   }
   close() {
     if (this.readyState === 3) return;
@@ -101,6 +109,13 @@ class FakeSocket {
   }
   server(frame) {
     // The gateway contract now tags all session frames explicitly.
+    this.turnBusy ??= {};
+    if (frame.program && frame.acp_session) {
+      const cur = new Set(this.turnBusy[frame.program] ?? []);
+      if (frame.t === "turn_start") cur.add(frame.acp_session);
+      else if (frame.t === "done" || frame.t === "error") cur.delete(frame.acp_session);
+      this.turnBusy[frame.program] = [...cur];
+    }
     this.sessionIds ??= new Map();
     if (frame.acp_session && ["session_opened", "turn_start"].includes(frame.t)) this.sessionIds.set(frame.program, frame.acp_session);
     const sessionFrames = new Set(["models", "config", "commands", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "error"]);
@@ -306,6 +321,10 @@ async function boot(props = {}, api = {}) {
   });
   await until(() => sentFrames().some((frame) => frame.t === "status"), "status frame");
   await server(STATUS);
+  if (computer && (props.initialProgram === "cursor" || props.initialProgram === "claude" || props.initialProgram === "codex" || props.initialProgram === "hermes" || api.oceanleo?.installed === true)) {
+    await until(() => sentFrames().some((frame) => frame.t === "occupancy"), "occupancy probe");
+    await act(async () => { await new Promise((resolve) => queueMicrotask(resolve)); });
+  }
   return {
     host,
     computer,
@@ -542,7 +561,7 @@ test("思考展开后点击正文折叠；思考增量把发送换成停止", as
       t: "transcript",
       program: "cursor",
       acp_session: "live",
-      live: false,
+      live: true,
       frames: [
         { t: "user_message", program: "cursor", acp_session: "live", text: "go" },
         { t: "turn_start", program: "cursor", acp_session: "live" },
@@ -550,6 +569,7 @@ test("思考展开后点击正文折叠；思考增量把发送换成停止", as
       ],
     });
     await server({ t: "session_opened", program: "cursor", acp_session: "live", cwd: "/root", replayed: 0 });
+    await server({ t: "occupancy", program: "cursor", busy: ["live"] });
     assert.ok(view.$("[data-oceanleo-cc-stop]"), "open thought with no done keeps Stop");
     assert.equal(view.$("[data-oceanleo-cc-stop]").textContent, "停止");
     const thought = view.$("[data-oceanleo-cc-thought]");
@@ -560,21 +580,23 @@ test("思考展开后点击正文折叠；思考增量把发送换成停止", as
     await click(view.$("[data-oceanleo-cc-thought-expanded] p"));
     assert.equal(view.$("[data-oceanleo-cc-thought-expanded]"), null);
     await server({ t: "done", program: "cursor", acp_session: "live", stop: "end_turn" });
+    await server({ t: "occupancy", program: "cursor", busy: [] });
     assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
     await server({ t: "thought", program: "cursor", acp_session: "live", text: "still going" });
+    await server({ t: "occupancy", program: "cursor", busy: ["live"] });
     assert.ok(view.$("[data-oceanleo-cc-stop]"), "thought after a false done brings Stop back");
   } finally { view.cleanup(); }
 });
 
-test("reduce：思考增量把回合标成进行中；transcript.live=false 但未闭合仍保持进行中", () => {
+test("reduce：思考增量把回合标成进行中；transcript.live=false 是确认空闲", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s" } });
   state = applyDialog(state, { type: "frame", frame: { t: "done", program: "cursor", acp_session: "s", stop: "end_turn" } });
-  assert.equal(state.busy, false);
+  assert.equal(state.occupancyBusy.includes("s"), false);
   assert.equal(hasOpenTurn(state.messages), false);
   state = applyDialog(state, { type: "frame", frame: { t: "thought", program: "cursor", acp_session: "s", text: "hmm" } });
-  assert.equal(state.busy, true);
+  assert.equal(state.occupancyBusy.includes("s"), true);
   assert.equal(state.liveTurns["cursor::s"], true);
   assert.equal(hasOpenTurn(state.messages), true);
   assert.deepEqual(busySessionsFor(state.liveTurns, "cursor"), ["s"]);
@@ -590,8 +612,8 @@ test("reduce：思考增量把回合标成进行中；transcript.live=false 但�
       { t: "thought", program: "cursor", acp_session: "s", text: "plan" },
     ],
   } });
-  assert.equal(state.busy, true);
-  assert.equal(hasOpenTurn(state.messages), true);
+  assert.equal(state.occupancyBusy.includes("s"), false);
+  assert.equal(hasOpenTurn(state.messages), false);
 
   let replayed = initialDialogState();
   replayed = applyDialog(replayed, { type: "program", program: "cursor" });
@@ -609,7 +631,7 @@ test("reduce：思考增量把回合标成进行中；transcript.live=false 但�
   assert.equal(hasOpenTurn(replayed.messages), false);
 });
 
-test("reduce：缺 done 的完结回复在 live=false 或 sessions.busy 清空后收口", () => {
+test("reduce：缺 done 的完结回复在 live=false 或 occupancy 清空后收口", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "frame", frame: {
@@ -623,7 +645,7 @@ test("reduce：缺 done 的完结回复在 live=false 或 sessions.busy 清空�
       { t: "delta", program: "cursor", acp_session: "s", text: "already finished" },
     ],
   } });
-  assert.equal(state.busy, false);
+  assert.equal(state.occupancyBusy.includes("s"), false);
   assert.equal(hasOpenTurn(state.messages), false);
   assert.equal(turnLooksSettled(state.messages), false);
   assert.equal(state.messages.at(-1)?.stop, "end_turn");
@@ -634,38 +656,36 @@ test("reduce：缺 done 的完结回复在 live=false 或 sessions.busy 清空�
   state = applyDialog(state, { type: "send-began" });
   state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s" } });
   state = applyDialog(state, { type: "frame", frame: { t: "delta", program: "cursor", acp_session: "s", text: "reply" } });
-  assert.equal(state.busy, true);
-  assert.equal(turnLooksSettled(state.messages), true);
-  assert.equal(turnStillRunning(state.messages), false);
+  assert.equal(state.occupancyBusy.includes("s"), true);
   state = applyDialog(state, { type: "frame", frame: {
-    t: "sessions",
+    t: "occupancy",
     program: "cursor",
-    supported: true,
-    sessions: [{ id: "s", title: "S" }],
     busy: [],
-    running: ["s"],
   } });
-  assert.equal(state.busy, false);
-  assert.equal(Boolean(state.liveTurns["cursor::s"]), false);
+  assert.equal(state.occupancyBusy.includes("s"), false);
   assert.equal(state.messages.at(-1)?.stop, "end_turn");
 });
 
-test("reduce：刚发出、还没有回合正文时，空的 sessions.busy 不能把 Stop 打掉", () => {
+test("reduce：刚发出时空 occupancy 不能当成确认空闲", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = { ...state, draftRef: "new:draft1" };
   state = applyDialog(state, { type: "send-began" });
-  assert.equal(state.busy, true);
+  assert.ok(state.occupancyPendingAt);
   state = applyDialog(state, { type: "frame", frame: {
-    t: "sessions",
+    t: "occupancy",
     program: "cursor",
-    supported: true,
-    sessions: [],
     busy: [],
-    running: [],
   } });
-  assert.equal(state.busy, true);
-  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), true);
+  assert.ok(state.occupancyPendingAt, "empty occupancy while pending stays pending");
+  assert.equal(composerOccupancy({
+    linkUp: state.occupancyLink,
+    occupancyAt: state.occupancyAt,
+    occupancyBusy: state.occupancyBusy,
+    sessionId: "new:draft1",
+    pendingAt: state.occupancyPendingAt,
+    pendingSession: state.occupancyPendingSession,
+  }), "uncertain");
 });
 
 test("缺 done 的完结回复显示发送，思考未闭合仍显示停止", async () => {
@@ -687,17 +707,10 @@ test("缺 done 的完结回复显示发送，思考未闭合仍显示停止", as
       ],
     });
     await server({ t: "session_opened", program: "cursor", acp_session: "live", cwd: "/root", replayed: 0 });
+    await server({ t: "occupancy", program: "cursor", busy: [] });
     assert.equal(view.$("[data-oceanleo-cc-stop]"), null, "finished text with a missing done shows Send");
-    await server({
-      t: "sessions",
-      program: "cursor",
-      supported: true,
-      sessions: [{ id: "live", title: "Live", cwd: "/root", updated_at: "" }],
-      busy: [],
-      running: ["live"],
-    });
-    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
-    assert.equal(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-session-status="running"]'), null);
+    assert.equal(view.$('[data-oceanleo-cc-send="idle"]')?.textContent, "发送");
+    assert.equal(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-pixel-run]'), null);
   } finally { view.cleanup(); }
 });
 
@@ -1345,15 +1358,15 @@ test("新对话只在第一句创建，ref 把迟到的回复绑回正确视图"
     const first = sentFrames().find(frame => frame.t === "prompt");
     assert.match(first.ref, /^[A-Za-z0-9_-]{1,64}$/);
     assert.equal(first.acp_session, undefined);
-    assert.ok(view.$('[data-oceanleo-cc-stop]'), "pending first prompt can be stopped before a session ID arrives");
+    assert.ok(view.$('[data-oceanleo-cc-send="uncertain"]') || view.$("[data-oceanleo-cc-stop]"), "pending first prompt cannot send again until occupancy");
     await click(view.$('[data-oceanleo-acp-new-session]'));
-    assert.equal(view.$('[data-oceanleo-cc-stop]'), null, "another pending draft does not make this new view busy");
+    await server({ t: "occupancy", program: "cursor", busy: [] });
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null, "another pending draft does not make this new view busy");
     await setValue(view.$('[data-oceanleo-cc-dialog-input]'), "second draft");
     await pressEnter(view.$('[data-oceanleo-cc-dialog-input]'));
     const second = sentFrames().filter(frame => frame.t === "prompt")[1];
     assert.ok(second, "a new draft is not blocked by another pending draft");
     assert.notEqual(second.ref, first.ref);
-    assert.ok(view.$('[data-oceanleo-cc-stop]'));
     await server({ t: "session_opened", program: "cursor", acp_session: "first-real", ref: first.ref });
     await server({ t: "turn_start", program: "cursor", acp_session: "first-real", ref: first.ref });
     await server({ t: "delta", program: "cursor", acp_session: "first-real", text: "first answer" });
@@ -1394,6 +1407,88 @@ test("过去的会话列表自动刷新：新会话开出来、窗口重新获�
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
     await act(async () => window.dispatchEvent(new window.Event("focus")));
     assert.equal(asked(), afterOpen + 1, "窗口重新获得焦点要重新拉列表");
+  } finally {
+    view.cleanup();
+  }
+});
+
+const OCCUPANCY_PROGRAMS = ["cursor", "claude", "codex", "hermes"];
+const READY_STATUS = {
+  t: "status",
+  program: "",
+  programs: OCCUPANCY_PROGRAMS.map((id) => ({
+    id, installed: true, path: `/${id}`, version: "1", logged_in: true, dir_capability: "full", running: false,
+  })),
+};
+
+for (const program of OCCUPANCY_PROGRAMS) {
+  test(`ACP 探针三态：${program} 灰/红停/黑发，像素只在确认干活时出现`, async () => {
+    const view = await boot({ initialProgram: program });
+    try {
+      await server(READY_STATUS);
+      await server({ t: "occupancy", program, busy: [] });
+      assert.equal(view.$("[data-oceanleo-cc-occupancy]")?.getAttribute("data-oceanleo-cc-occupancy"), "idle");
+      assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
+      assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+      await server({
+        t: "sessions",
+        program,
+        supported: true,
+        sessions: [{ id: "live", title: "Live", cwd: "/root", updated_at: "" }],
+        busy: [],
+        running: ["live"],
+      });
+      await click(view.$('[data-oceanleo-acp-session="live"]'));
+      await server({ t: "session_opened", program, acp_session: "live", cwd: "/root", replayed: 0 });
+      await server({ t: "occupancy", program, busy: [] });
+      assert.equal(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-pixel-run]'), null);
+      await server({ t: "occupancy", program, busy: ["live"] });
+      assert.equal(view.$("[data-oceanleo-cc-occupancy]")?.getAttribute("data-oceanleo-cc-occupancy"), "working");
+      assert.ok(view.$("[data-oceanleo-cc-stop]"));
+      assert.equal(view.$("[data-oceanleo-cc-stop]").textContent, "停止");
+      assert.ok(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-pixel-run]'));
+      await server({ t: "occupancy", program, busy: [] });
+      assert.equal(view.$("[data-oceanleo-cc-occupancy]")?.getAttribute("data-oceanleo-cc-occupancy"), "idle");
+      assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
+      assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+      assert.equal(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-pixel-run]'), null);
+      const socket = openSocket();
+      socket.autoOccupancy = false;
+      socket.close();
+      await act(async () => { await new Promise((resolve) => queueMicrotask(resolve)); });
+      assert.equal(view.$("[data-oceanleo-cc-occupancy]")?.getAttribute("data-oceanleo-cc-occupancy"), "uncertain");
+      const grey = view.$('[data-oceanleo-cc-send="uncertain"]');
+      assert.ok(grey);
+      assert.equal(grey.disabled, true);
+      assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+      assert.equal(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-pixel-run]'), null);
+    } finally {
+      view.cleanup();
+    }
+  });
+}
+
+test("ACP 探针三态：本地 OceanLeo agent 与其它程序同一套 occupancy", async () => {
+  const view = await boot({ initialProgram: "oceanleo" }, { oceanleo: { installed: true, version: "0.3.1", token_active: true } });
+  try {
+    await until(() => !view.$("[data-oceanleo-acp-oceanleo-banner]"), "local installed");
+    await server({ t: "occupancy", program: "oceanleo", busy: [] });
+    assert.equal(view.$("[data-oceanleo-cc-occupancy]")?.getAttribute("data-oceanleo-cc-occupancy"), "idle");
+    await server({
+      t: "sessions",
+      program: "oceanleo",
+      supported: true,
+      sessions: [{ id: "live", title: "Live", cwd: "/root", updated_at: "" }],
+      busy: ["live"],
+    });
+    await click(view.$('[data-oceanleo-acp-session="live"]'));
+    await server({ t: "session_opened", program: "oceanleo", acp_session: "live", cwd: "/root", replayed: 0 });
+    await server({ t: "occupancy", program: "oceanleo", busy: ["live"] });
+    assert.ok(view.$("[data-oceanleo-cc-stop]"));
+    assert.ok(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-pixel-run]'));
+    await server({ t: "occupancy", program: "oceanleo", busy: [] });
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
+    assert.equal(view.$('[data-oceanleo-acp-session="live"] [data-oceanleo-acp-pixel-run]'), null);
   } finally {
     view.cleanup();
   }

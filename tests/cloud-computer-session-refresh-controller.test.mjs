@@ -39,7 +39,15 @@ class Socket {
     this.listeners.set(type, handlers);
   }
   emit(type, event) { for (const fn of this.listeners.get(type) ?? []) fn(event); }
-  send(raw) { this.sent.push(JSON.parse(raw)); }
+  send(raw) {
+    const frame = JSON.parse(raw);
+    this.sent.push(frame);
+    if (frame.t === "occupancy") {
+      queueMicrotask(() => {
+        if (this.readyState === 1) this.frame({ t: "occupancy", program: frame.program, busy: [] });
+      });
+    }
+  }
   close() {
     if (this.readyState === 3) return;
     this.readyState = 3;
