@@ -1,4 +1,4 @@
-import { initializeCanvas, readPsd } from "ag-psd";
+import { readPsd } from "ag-psd";
 
 /** 浏览器认 PSD 的三种常见 MIME。 */
 export const PSD_MIMES = [
@@ -11,6 +11,7 @@ export const PSD_NO_COMPOSITE_ZH =
   "这个 PSD 里没有可显示的合成图，请在 Photoshop 里勾选「最大兼容」后重新上传。";
 
 const PSD_MIME_SET = new Set<string>(PSD_MIMES);
+const PIXEL_PROBE = 64;
 
 export class PsdCompositeError extends Error {
   constructor(message = PSD_NO_COMPOSITE_ZH) {
@@ -51,59 +52,7 @@ export function assertFabricImageOpenUrl(url: string): string {
   return url;
 }
 
-let nodeCanvasReady = false;
-
-function ensurePsdCanvas() {
-  if (typeof document !== "undefined" || nodeCanvasReady) return;
-  initializeCanvas(
-    (width, height) => {
-      const pixels = new Uint8ClampedArray(
-        Math.max(1, width) * Math.max(1, height) * 4,
-      );
-      const ctx = {
-        createImageData(w: number, h: number) {
-          return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
-        },
-        getImageData() {
-          return { width, height, data: pixels };
-        },
-        putImageData(image: { data: ArrayLike<number> }) {
-          const src = image.data;
-          for (let i = 0; i < pixels.length && i < src.length; i += 1) {
-            pixels[i] = Number(src[i]) || 0;
-          }
-        },
-        drawImage() {},
-        scale() {},
-        toDataURL() {
-          return "";
-        },
-      };
-      return {
-        width,
-        height,
-        getContext: () => ctx,
-        toDataURL: () =>
-          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-      } as unknown as HTMLCanvasElement;
-    },
-    (width, height) =>
-      ({
-        width,
-        height,
-        data: new Uint8ClampedArray(width * height * 4),
-      }) as ImageData,
-  );
-  nodeCanvasReady = true;
-}
-
-function canvasHasPixels(canvas: HTMLCanvasElement | undefined): boolean {
-  if (!canvas) return false;
-  const width = Math.max(0, Number(canvas.width) || 0);
-  const height = Math.max(0, Number(canvas.height) || 0);
-  if (width < 1 || height < 1) return false;
-  const image = canvas.getContext("2d")?.getImageData(0, 0, width, height);
-  const data = image?.data;
+function hasVisibleAlpha(data: ArrayLike<number>): boolean {
   if (!data || data.length < 4) return true;
   for (let i = 3; i < data.length; i += 4) {
     if (Number(data[i]) > 0) return true;
@@ -111,10 +60,51 @@ function canvasHasPixels(canvas: HTMLCanvasElement | undefined): boolean {
   return false;
 }
 
+function canvasHasPixels(canvas: HTMLCanvasElement | undefined): boolean {
+  if (!canvas) return false;
+  const width = Math.max(0, Number(canvas.width) || 0);
+  const height = Math.max(0, Number(canvas.height) || 0);
+  if (width < 1 || height < 1) return false;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return false;
+  if (width <= PIXEL_PROBE && height <= PIXEL_PROBE) {
+    return hasVisibleAlpha(ctx.getImageData(0, 0, width, height).data);
+  }
+  if (typeof document !== "undefined") {
+    const probe = document.createElement("canvas");
+    probe.width = PIXEL_PROBE;
+    probe.height = PIXEL_PROBE;
+    const probeCtx = probe.getContext("2d");
+    if (probeCtx) {
+      probeCtx.drawImage(
+        canvas,
+        0,
+        0,
+        width,
+        height,
+        0,
+        0,
+        PIXEL_PROBE,
+        PIXEL_PROBE,
+      );
+      return hasVisibleAlpha(
+        probeCtx.getImageData(0, 0, PIXEL_PROBE, PIXEL_PROBE).data,
+      );
+    }
+  }
+  const stepX = Math.max(1, Math.floor(width / PIXEL_PROBE));
+  const stepY = Math.max(1, Math.floor(height / PIXEL_PROBE));
+  for (let y = 0; y < height; y += stepY) {
+    for (let x = 0; x < width; x += stepX) {
+      if (hasVisibleAlpha(ctx.getImageData(x, y, 1, 1).data)) return true;
+    }
+  }
+  return false;
+}
+
 export async function decodePsdCompositeToPng(
   bytes: ArrayBuffer | Uint8Array,
 ): Promise<string> {
-  ensurePsdCanvas();
   const buffer = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const psd = readPsd(buffer, {
     skipLayerImageData: true,

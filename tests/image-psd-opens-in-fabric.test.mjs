@@ -11,6 +11,14 @@ import { initializeCanvas, writePsd } from "ag-psd";
 
 import { FABRIC_IMAGE_REVISION_SOURCE } from "../src/shell/image-editor/editor-persistence.ts";
 import {
+  createImageSceneSource,
+  imageSceneWithResolvedDependencies,
+  parseImageSceneSource,
+  sha256Blob,
+  sha256Bytes,
+} from "../src/shell/image-editor/image-scene-source.ts";
+import { openFabricImagePixels } from "../src/shell/image-editor/fabric-image-open.ts";
+import {
   PSD_MIMES,
   PSD_NO_COMPOSITE_ZH,
   decodePsdCompositeToPng,
@@ -28,6 +36,13 @@ const ROUTE = `${ROOT}/src/shell/advanced-routes/ImageRoute.tsx`;
 
 const TINY_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+globalThis.window ||= {
+  location: {
+    href: "https://image.oceanleo.com/workspace",
+    origin: "https://image.oceanleo.com",
+  },
+};
 
 function installTestCanvas() {
   initializeCanvas(
@@ -163,8 +178,13 @@ test("保存产物锁成 png，不得冒充 psd", () => {
 
 test("打开链先解 PSD 再交给 loadImageObject，面板和路由收 .psd", () => {
   const editor = readFileSync(EDITOR, "utf8");
-  assert.match(editor, /resolvePsdCanvasSource/);
-  assert.match(editor, /assertFabricImageOpenUrl/);
+  const open = readFileSync(
+    `${ROOT}/src/shell/image-editor/fabric-image-open.ts`,
+    "utf8",
+  );
+  assert.match(open, /resolvePsdCanvasSource/);
+  assert.match(open, /assertFabricImageOpenUrl/);
+  assert.match(editor, /openFabricImagePixels/);
   assert.doesNotMatch(
     editor,
     /loadImageObject\(\s*fabric,\s*sourceUrl/,
@@ -183,4 +203,150 @@ test("人话错误在 17 语词典里齐，且没有 Photopea", () => {
     assert.ok(text && text.trim(), locale);
     assert.doesNotMatch(text, /photopea/i);
   }
+});
+
+test("库里打开 PSD：图层依赖是上传后的 PNG，不是 PSD 的 url/digest", async () => {
+  const psdBytes = compositePsdBytes();
+  const psdDigest = await sha256Bytes(psdBytes);
+  const uploaded = [];
+  const opened = await openFabricImagePixels({
+    source: "https://lib.example/a.psd",
+    siteId: "image",
+    title: "海报",
+    evidence: {
+      kind: "image",
+      required: true,
+      url: "https://lib.example/a.psd",
+      digest: psdDigest,
+    },
+    hints: {
+      format: "psd",
+      fetchBytes: async () => psdBytes,
+    },
+    persistPng: async (file) => {
+      uploaded.push(file);
+      return "https://lib.example/a-composite.png";
+    },
+  });
+  assert.equal(uploaded.length, 1);
+  assert.equal(uploaded[0].type, "image/png");
+  assert.ok(opened.dependency);
+  assert.equal(opened.dependency.url, "https://lib.example/a-composite.png");
+  assert.equal(opened.dependency.digest, await sha256Blob(uploaded[0]));
+  assert.notEqual(opened.dependency.url, "https://lib.example/a.psd");
+  assert.notEqual(opened.dependency.digest, psdDigest);
+  assertNotPsdOpenUrl(opened.dependency.url);
+  assertNotPsdOpenUrl(opened.canvasUrl);
+});
+
+test("拖进 PSD：图层依赖同样是合成 PNG，不是原 PSD", async () => {
+  const psdBytes = compositePsdBytes();
+  const psdDigest = await sha256Bytes(psdBytes);
+  const uploaded = [];
+  const opened = await openFabricImagePixels({
+    source: "海报.psd",
+    siteId: "image",
+    title: "海报.psd",
+    evidence: {
+      kind: "image",
+      required: true,
+      url: "https://lib.example/uploads/海报.psd",
+      digest: psdDigest,
+    },
+    hints: {
+      format: "psd",
+      mime: "image/vnd.adobe.photoshop",
+      name: "海报.psd",
+      bytes: psdBytes,
+    },
+    persistPng: async (file) => {
+      uploaded.push(file);
+      return "https://lib.example/uploads/海报-合成图.png";
+    },
+  });
+  assert.equal(uploaded[0].type, "image/png");
+  assert.equal(opened.dependency.url, "https://lib.example/uploads/海报-合成图.png");
+  assert.equal(opened.dependency.digest, await sha256Blob(uploaded[0]));
+  assert.notEqual(opened.dependency.digest, psdDigest);
+  assertNotPsdOpenUrl(opened.dependency.url);
+});
+
+test("存一次再重开：图层 src 指向 PNG，不是 .psd", async () => {
+  const opened = await openFabricImagePixels({
+    source: "https://lib.example/a.psd",
+    siteId: "image",
+    title: "海报",
+    evidence: {
+      kind: "image",
+      required: true,
+      url: "https://lib.example/a.psd",
+      digest: "b".repeat(64),
+    },
+    hints: {
+      format: "psd",
+      fetchBytes: async () => compositePsdBytes(),
+    },
+    persistPng: async () => "https://lib.example/a-composite.png",
+  });
+  const snapshot = {
+    json: {
+      version: "6.0.0",
+      objects: [
+        {
+          type: "FabricImage",
+          oceanleoId: "photo-layer",
+          oceanleoKind: "image",
+          src: opened.canvasUrl,
+          oceanleoDependency: { ...opened.dependency, id: "photo-layer" },
+        },
+      ],
+    },
+    doc: { width: 1080, height: 1080 },
+    canvasBackground: "#ffffff",
+  };
+  const scene = await createImageSceneSource({
+    snapshot,
+    revision: 1,
+    artifactId: "artifact-psd",
+    baseRevisionId: "revision-psd-1",
+  });
+  assert.doesNotMatch(scene.sceneGraph.snapshot.json.objects[0].src, /\.psd/i);
+  assert.match(scene.sceneGraph.snapshot.json.objects[0].src, /\.png(\?|#|$)/i);
+  assert.equal(
+    scene.dependencyClosure.dependencies[0].url,
+    "https://lib.example/a-composite.png",
+  );
+  const parsed = await parseImageSceneSource(scene);
+  const reopened = imageSceneWithResolvedDependencies(
+    parsed,
+    parsed.dependencyClosure.dependencies,
+  );
+  assert.equal(reopened.json.objects[0].src, "https://lib.example/a-composite.png");
+  assert.doesNotMatch(reopened.json.objects[0].src, /\.psd/i);
+});
+
+test("非 PSD 的 data URL 不再被贴上 evidence 依赖", async () => {
+  const opened = await openFabricImagePixels({
+    source: TINY_PNG,
+    siteId: "image",
+    title: "签名",
+    evidence: {
+      kind: "image",
+      required: true,
+      url: "https://lib.example/should-not-attach.psd",
+      digest: "c".repeat(64),
+    },
+  });
+  assert.equal(opened.canvasUrl, TINY_PNG);
+  assert.equal(opened.dependency, null);
+});
+
+test("生产解码不带 Node 假 canvas；打开链不再用 evidence 兜底 PSD", () => {
+  const composite = readFileSync(`${ROOT}/src/shell/image-editor/psd-composite.ts`, "utf8");
+  assert.doesNotMatch(composite, /ensurePsdCanvas/);
+  assert.doesNotMatch(composite, /initializeCanvas/);
+  assert.doesNotMatch(composite, /iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB/);
+  const editor = readFileSync(EDITOR, "utf8");
+  assert.match(editor, /openFabricImagePixels/);
+  assert.doesNotMatch(editor, /\?\?\s*evidence/);
 });

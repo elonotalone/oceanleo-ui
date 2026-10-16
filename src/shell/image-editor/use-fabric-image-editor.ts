@@ -13,7 +13,6 @@ import { uploadFile } from "../../lib/database";
 import {
   canvasSafeUrl,
   fetchMediaBlob,
-  importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { advancedEditorSourceFor } from "../advanced-features";
@@ -57,12 +56,16 @@ import {
   imageDependencyNeedsRefresh,
   imageSceneDependencyRevisionIds,
   imageSceneWithResolvedDependencies,
-  isLikelyExpiringUrl,
   parseImageSceneSource,
   sha256Blob,
   sha256Text,
   type ImageSceneDependency,
 } from "./image-scene-source";
+import {
+  canvasImageSource,
+  openFabricImagePixels,
+  type ImageDependencySeed,
+} from "./fabric-image-open";
 import {
   INITIAL_FILTERS,
   type CanvasClientPoint,
@@ -71,12 +74,7 @@ import {
   type FabricImageSaveResult,
   type FabricImageEditorState,
 } from "./types";
-import {
-  PsdCompositeError,
-  assertFabricImageOpenUrl,
-  isPsdSource,
-  resolvePsdCanvasSource,
-} from "./psd-composite";
+import { PsdCompositeError, isPsdSource } from "./psd-composite";
 
 const INITIAL_VIEW: FabricControllerView = {
   doc: { width: 1080, height: 1080 },
@@ -112,8 +110,6 @@ function imageDocumentSize(image: FabricImage): {
   };
 }
 
-type ImageDependencySeed = Omit<ImageSceneDependency, "id">;
-
 function renditionDependencyFor(
   item: LibraryItem,
   url: string,
@@ -135,106 +131,6 @@ function renditionDependencyFor(
     revisionId: item.revisionId,
     renditionPurpose: rendition.purpose,
     expiresAt: rendition.expiresAt,
-  };
-}
-
-async function canvasImageSource(
-  source: string,
-  siteId: string,
-  title: string,
-  evidence?: ImageDependencySeed | null,
-): Promise<{ canvasUrl: string; dependency: ImageDependencySeed | null }> {
-  if (source.startsWith("data:") || source.startsWith("blob:")) {
-    return { canvasUrl: source, dependency: null };
-  }
-  const shouldImport =
-    !isFirstPartyMediaUrl(source) ||
-    (isLikelyExpiringUrl(source) && !evidence?.artifactId);
-  const durable = !shouldImport
-    ? source
-    : await importMediaUrl(source, {
-        kind: "image",
-        siteId: siteId || "image",
-        title,
-        registerAsset: false,
-      });
-  const digest =
-    evidence?.digest ||
-    (await sha256Blob(
-      await fetchMediaBlob(durable, { maxBytes: 80 * 1024 * 1024 }),
-    ));
-  const dependency: ImageDependencySeed = {
-    kind: "image",
-    required: true,
-    url: durable,
-    digest,
-    ...(evidence?.artifactId && evidence.revisionId
-      ? {
-          artifactId: evidence.artifactId,
-          revisionId: evidence.revisionId,
-        }
-      : {}),
-    ...(evidence?.renditionPurpose
-      ? { renditionPurpose: evidence.renditionPurpose }
-      : {}),
-    ...(evidence?.expiresAt !== undefined
-      ? { expiresAt: evidence.expiresAt }
-      : {}),
-  };
-  return { canvasUrl: canvasSafeUrl(durable), dependency };
-}
-
-const PSD_FETCH_MAX_BYTES = 80 * 1024 * 1024;
-
-async function openImagePixels(
-  source: string,
-  siteId: string,
-  title: string,
-  evidence?: ImageDependencySeed | null,
-  hints?: {
-    format?: string;
-    mime?: string;
-    name?: string;
-    previewUrl?: string;
-    thumbUrl?: string;
-    bytes?: ArrayBuffer;
-    signal?: AbortSignal;
-  },
-): Promise<{ canvasUrl: string; dependency: ImageDependencySeed | null }> {
-  let openUrl = source;
-  if (
-    isPsdSource({
-      url: source,
-      format: hints?.format,
-      mime: hints?.mime,
-      name: hints?.name,
-    })
-  ) {
-    const resolved = await resolvePsdCanvasSource({
-      url: source,
-      format: hints?.format,
-      mime: hints?.mime,
-      name: hints?.name,
-      previewUrl: hints?.previewUrl,
-      thumbUrl: hints?.thumbUrl,
-      bytes: hints?.bytes,
-      fetchBytes: async (url) => {
-        const blob = await fetchMediaBlob(url, {
-          maxBytes: PSD_FETCH_MAX_BYTES,
-          signal: hints?.signal,
-        });
-        return blob.arrayBuffer();
-      },
-    });
-    if (!resolved.ok) throw new PsdCompositeError(resolved.error);
-    openUrl = resolved.canvasUrl;
-  }
-  assertFabricImageOpenUrl(openUrl);
-  const loaded = await canvasImageSource(openUrl, siteId, title, evidence);
-  assertFabricImageOpenUrl(loaded.canvasUrl);
-  return {
-    canvasUrl: loaded.canvasUrl,
-    dependency: loaded.dependency ?? evidence ?? null,
   };
 }
 
@@ -809,12 +705,12 @@ export function useFabricImageEditor(
           return;
         }
         if (!projectLoaded && sourceUrl) {
-          const loadedSource = await openImagePixels(
-            sourceUrl,
+          const loadedSource = await openFabricImagePixels({
+            source: sourceUrl,
             siteId,
-            item.title,
-            renditionDependencyFor(item, sourceUrl),
-            {
+            title: item.title,
+            evidence: renditionDependencyFor(item, sourceUrl),
+            hints: {
               format: editorSource?.format,
               mime: String(
                 item.meta.source_media_type ||
@@ -827,7 +723,7 @@ export function useFabricImageEditor(
               thumbUrl: item.thumbUrl,
               signal: abort.signal,
             },
-          );
+          });
           if (cancelled || abort.signal.aborted) return;
           const image = await loadImageObject(
             fabric,
@@ -921,13 +817,12 @@ export function useFabricImageEditor(
       setError("");
       setNotice("正在导入图片…");
       try {
-        const loadedSource = await openImagePixels(
+        const loadedSource = await openFabricImagePixels({
           source,
           siteId,
-          item.title,
-          undefined,
-          { name: source, signal: abort.signal },
-        );
+          title: item.title,
+          hints: { name: source, signal: abort.signal },
+        });
         if (abort.signal.aborted || controllerRef.current !== controller) return;
         const image = await loadImageObject(
           fabric,
@@ -969,13 +864,12 @@ export function useFabricImageEditor(
       setError("");
       setNotice("正在替换图片…");
       try {
-        const loadedSource = await openImagePixels(
+        const loadedSource = await openFabricImagePixels({
           source,
           siteId,
-          item.title,
-          undefined,
-          { name: source, signal: abort.signal },
-        );
+          title: item.title,
+          hints: { name: source, signal: abort.signal },
+        });
         if (abort.signal.aborted || controllerRef.current !== controller) return;
         const image = await loadImageObject(
           fabric,
@@ -1027,16 +921,20 @@ export function useFabricImageEditor(
       setNotice("正在上传图片；完成后会同时加入画布和文件库…");
       try {
         const psdBytes = psdFile ? await file.arrayBuffer() : undefined;
-        if (psdFile) {
-          const resolved = await resolvePsdCanvasSource({
-            url: fileName,
-            format: "psd",
-            mime: file.type,
-            name: fileName,
-            bytes: psdBytes,
-          });
-          if (!resolved.ok) throw new PsdCompositeError(resolved.error);
-        }
+        const loadedSource = psdFile
+          ? await openFabricImagePixels({
+              source: fileName,
+              siteId,
+              title: fileName,
+              hints: {
+                format: "psd",
+                mime: file.type,
+                name: fileName,
+                bytes: psdBytes,
+                signal: abort.signal,
+              },
+            })
+          : null;
         const uploaded = await uploadFile(file, {
           siteId: siteId || "image",
           title: fileName,
@@ -1046,36 +944,36 @@ export function useFabricImageEditor(
           throw new Error(uploaded.error || "图片上传失败");
         }
         if (abort.signal.aborted || controllerRef.current !== controller) return;
-        const loadedSource = await openImagePixels(
-          durableUrl,
-          siteId,
-          fileName,
-          {
-            kind: "image",
-            required: true,
-            url: durableUrl,
-            digest: await sha256Blob(file),
-          },
-          {
-            format: psdFile ? "psd" : undefined,
-            mime: file.type,
-            name: fileName,
-            bytes: psdBytes,
-            signal: abort.signal,
-          },
-        );
+        const pixels =
+          loadedSource ||
+          (await openFabricImagePixels({
+            source: durableUrl,
+            siteId,
+            title: fileName,
+            evidence: {
+              kind: "image",
+              required: true,
+              url: durableUrl,
+              digest: await sha256Blob(file),
+            },
+            hints: {
+              mime: file.type,
+              name: fileName,
+              signal: abort.signal,
+            },
+          }));
         if (abort.signal.aborted || controllerRef.current !== controller) return;
         const image = await loadImageObject(
           fabric,
-          loadedSource.canvasUrl,
+          pixels.canvasUrl,
           abort.signal,
         );
         if (abort.signal.aborted || controllerRef.current !== controller) {
           image.dispose();
           return;
         }
-        if (loadedSource.dependency) {
-          tagImageDependency(image, loadedSource.dependency);
+        if (pixels.dependency) {
+          tagImageDependency(image, pixels.dependency);
         }
         controller.addImage(image);
         setNotice("图片已加入画布和文件库，并会随工程继续保存");
