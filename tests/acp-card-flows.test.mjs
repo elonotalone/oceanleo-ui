@@ -1026,17 +1026,34 @@ test("会话栏：列表、回放渲染成历史、回放后接着发的 prompt 
     );
 
     await server({ t: "turn_start", program: "cursor", acp_session: "s-old" });
+    for (let index = 0; index < 8; index += 1) {
+      await server({
+        t: "permission",
+        program: "cursor",
+        acp_session: "s-old",
+        id: `p${index}`,
+        auto: true,
+        title: "Run command",
+        tool: { title: `rm -rf /tmp/cache-${index}` },
+        options: [{ id: "allow", name: "Allow", kind: "allow_once" }],
+      });
+    }
     await server({
-      t: "permission",
+      t: "tool",
       program: "cursor",
       acp_session: "s-old",
-      id: "p1",
-      auto: true,
-      title: "Run command",
-      tool: { title: "rm -rf /tmp/cache" },
-      options: [{ id: "allow", name: "Allow", kind: "allow_once" }],
+      id: "t-read",
+      kind: "read",
+      title: "Read material-library-view.tsx",
+      status: "completed",
+      content: [],
+      locations: [],
     });
-    assert.match(view.$('[data-oceanleo-cc-permission-auto="p1"]').textContent, /已自动允许：rm -rf \/tmp\/cache/);
+    await server({ t: "delta", program: "cursor", acp_session: "s-old", text: "W3 is fixing the jump-back." });
+    assert.equal(view.$("[data-oceanleo-cc-permission-auto]"), null);
+    assert.doesNotMatch(view.text(), /rm -rf \/tmp\/cache/);
+    assert.match(view.text(), /W3 is fixing the jump-back/);
+    assert.match(view.text(), /material-library-view/);
     await server({ t: "usage", program: "cursor", used: 1200, size: 200000, cost: { amount: 0.42, currency: "USD" } });
     await server({ t: "done", program: "cursor", stop: "end_turn" });
     assert.doesNotMatch(view.text(), /0\.42|USD|\$/);

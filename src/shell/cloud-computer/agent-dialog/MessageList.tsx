@@ -502,6 +502,10 @@ function isBlockingPrompt(item: TurnItem): boolean {
   return false;
 }
 
+function isAutoAllowedNoise(item: TurnItem): boolean {
+  return item.kind === "permission" && item.auto;
+}
+
 const LAZY_TAIL = 12;
 const LOAD_OLDER_PX = 96;
 
@@ -722,7 +726,7 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
               </span>
               <div className="min-w-0 flex-1 space-y-2 break-words [overflow-wrap:anywhere]">
                 {message.items.map((item) =>
-                  isBlockingPrompt(item) ? null : (
+                  isBlockingPrompt(item) || isAutoAllowedNoise(item) ? null : (
                     <ItemView key={item.id} item={item} dialog={dialog} active={!message.stop && dialog.busy} />
                   ),
                 )}
