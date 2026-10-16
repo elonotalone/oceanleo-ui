@@ -56,6 +56,13 @@ export function stripTerminalAnsi(text: string): string {
     .replace(/\u009b[0-?]*[ -/]*[@-~]/g, "");
 }
 
+/** xterm.js answers OSC/DCS queries on onData. Those are not keystrokes. */
+export function isTerminalProtocolReply(data: string): boolean {
+  if (!data || data.charCodeAt(0) !== 0x1b) return false;
+  const second = data.charAt(1);
+  return second === "]" || second === "P";
+}
+
 function pushPlainTail(current: string, chunk: string): string {
   const plain = stripTerminalAnsi(chunk).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   if (!plain) return current;
@@ -385,6 +392,7 @@ export function useComputerTerminal({
       });
       term.onData((data) => {
         if (readOnlyRef.current) return;
+        if (isTerminalProtocolReply(data)) return;
         sendText(data);
       });
       let pointerAnchor: DOMRect | null = null;
