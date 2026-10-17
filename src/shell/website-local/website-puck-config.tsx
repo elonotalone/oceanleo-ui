@@ -2,11 +2,18 @@
 
 import type { Config } from "@puckeditor/core";
 
-type SectionProps = {
-  id: string;
-  heading: string;
-  subheading: string;
-  body: string;
+/** Puck injects `id` / `puck`; keep fields optional so this is assignable to PuckComponent. */
+type BlockFields = {
+  heading?: string;
+  subheading?: string;
+  body?: string;
+};
+
+type WebsitePuckComponents = {
+  Hero: BlockFields;
+  FeatureGrid: BlockFields;
+  Section: BlockFields;
+  Footer: BlockFields;
 };
 
 const fields = {
@@ -15,11 +22,7 @@ const fields = {
   body: { type: "textarea" as const },
 };
 
-function Block({
-  heading,
-  subheading,
-  body,
-}: SectionProps) {
+function Block({ heading, subheading, body }: BlockFields) {
   return (
     <section className="px-6 py-8">
       {heading ? <h2 className="text-xl font-semibold">{heading}</h2> : null}
@@ -29,11 +32,11 @@ function Block({
   );
 }
 
-export const websitePuckConfig = {
+export const websitePuckConfig: Config<WebsitePuckComponents> = {
   components: {
     Hero: { fields, render: Block },
     FeatureGrid: { fields, render: Block },
     Section: { fields, render: Block },
     Footer: { fields, render: Block },
   },
-} satisfies Config;
+};

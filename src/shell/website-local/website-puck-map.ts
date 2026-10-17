@@ -37,17 +37,32 @@ export function websiteSourceToPuck(source: WebsiteSource): WebsitePuckData {
   };
 }
 
+/** Puck `onChange` data has optional `root.props`; keep mapping tolerant. */
+export type PuckLikeData = {
+  root?: { props?: { title?: string } };
+  content?: Array<{
+    type: string;
+    props: {
+      id?: string;
+      kind?: WebsiteSourceSection["kind"];
+      heading?: string;
+      subheading?: string;
+      body?: string;
+    };
+  }>;
+};
+
 export function puckToWebsiteSource(
-  data: WebsitePuckData,
+  data: PuckLikeData,
   base: WebsiteSource,
 ): WebsiteSource {
   const byId = new Map(base.sections.map((section) => [section.id, section]));
-  const sections = data.content.map((item) => {
-    const previous = byId.get(item.props.id);
+  const sections = (data.content || []).map((item, index) => {
+    const previous = item.props.id ? byId.get(item.props.id) : undefined;
     return {
       ...(previous || {
-        id: item.props.id,
-        kind: item.props.kind,
+        id: item.props.id || `section-${index + 1}`,
+        kind: item.props.kind || "content",
       }),
       heading: item.props.heading,
       subheading: item.props.subheading,
@@ -60,7 +75,7 @@ export function puckToWebsiteSource(
   );
   return {
     ...base,
-    title: data.root.props.title || base.title,
+    title: data.root?.props?.title || base.title,
     sections,
     pages,
   };
