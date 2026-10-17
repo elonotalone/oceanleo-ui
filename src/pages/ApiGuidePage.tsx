@@ -2,13 +2,14 @@
 
 // 旧 /api/guide 子页。厂商逐步教程已撤到帮助中心通用文，这里只指路。
 
+import { runtimePageHost } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { HELP_BYOK_ARTICLE_PATH, helpCenterUrl } from "../lib/help-url";
 
 export function ApiGuidePage({ variant = "page" }: { variant?: "page" | "section" } = {}) {
   const tt = useUI();
   const href = helpCenterUrl({
-    host: typeof window !== "undefined" ? window.location.host : undefined,
+    host: runtimePageHost() || undefined,
     path: HELP_BYOK_ARTICLE_PATH,
     from: "api-guide",
   });

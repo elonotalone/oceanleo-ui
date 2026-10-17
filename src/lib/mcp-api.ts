@@ -7,6 +7,7 @@
 // 凭证只在网关里加密保存，页面永远只拿得到指纹。门户与所有子站只走这一份。
 // ============================================================================
 
+import { runtimePageOrigin } from "../contracts/domain-family";
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 
@@ -89,7 +90,7 @@ export function mcpOauthMessageOrigin(gatewayBase: string = GATEWAY_BASE): strin
  * 通配、缺 scheme、解析失败一律空串——调用方必须把空串当「不要用」。
  */
 export function mcpOauthReturnOrigin(siteOrigin?: string): string {
-  const raw = (siteOrigin ?? (typeof window !== "undefined" ? window.location.origin : "")).trim();
+  const raw = (siteOrigin ?? runtimePageOrigin()).trim();
   if (!raw || raw.includes("*")) return "";
   try {
     const url = new URL(raw.includes("://") ? raw : `https://${raw}`);

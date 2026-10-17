@@ -1,7 +1,13 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  clientHostConfigGeneration,
+  createMemoryAuthStorage,
+  getClientHostConfig,
+} from "../../contracts/client-host-config";
+import { runtimePageOrigin } from "../../contracts/domain-family";
 import { authFetch } from "./auth-fetch";
 import {
   SUPABASE_URL,
@@ -9,6 +15,8 @@ import {
   GATEWAY_BASE,
   cookieOptions,
   configured,
+  currentIdentityAnonKey,
+  currentIdentityUrl,
   isLeoDevPreviewHost,
 } from "./config";
 import { forgetRememberedComputers } from "../cloud-computer-memory";
@@ -29,10 +37,48 @@ import { getCaptchaToken, mapCaptchaError } from "./captcha";
 let _client: SupabaseClient | null = null;
 let _accessToken: string | null = null;
 let _previewJar: ReturnType<typeof createLeoDevPreviewCookieJar> | null = null;
+let _hostClientGeneration = -1;
+
+function attachAuthState(client: SupabaseClient): void {
+  client.auth.onAuthStateChange((_event, session) => {
+    _accessToken = session?.access_token ?? null;
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(AUTH_STATE_EVENT));
+    }
+  });
+}
+
+function hostBrowserClient(): SupabaseClient | null {
+  const hostCfg = getClientHostConfig();
+  if (!hostCfg) return null;
+  const url = currentIdentityUrl();
+  const anonKey = currentIdentityAnonKey();
+  if (!url || !anonKey) return null;
+  const storage = hostCfg.authStorage ?? createMemoryAuthStorage();
+  const client = createClient(url, anonKey, {
+    global: { fetch: authFetch },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage,
+    },
+  });
+  attachAuthState(client);
+  return client;
+}
 
 export function browserClient(): SupabaseClient | null {
   if (!configured()) return null;
-  if (_client) return _client;
+  const generation = clientHostConfigGeneration();
+  if (_client && _hostClientGeneration === generation) return _client;
+  _client = null;
+  _previewJar = null;
+  _hostClientGeneration = generation;
+  if (getClientHostConfig()) {
+    _client = hostBrowserClient();
+    return _client;
+  }
   const host = typeof window !== "undefined" ? window.location.host : "";
   const preview = isLeoDevPreviewHost(host);
   // Preview refreshes in this jar only. @supabase/ssr getItem re-reads
@@ -69,12 +115,7 @@ export function browserClient(): SupabaseClient | null {
         }
       : {}),
   });
-  _client.auth.onAuthStateChange((_event, session) => {
-    _accessToken = session?.access_token ?? null;
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(AUTH_STATE_EVENT));
-    }
-  });
+  attachAuthState(_client);
   return _client;
 }
 
@@ -138,8 +179,7 @@ export async function signUp(email: string, password: string) {
     password,
     options: {
       ...(captcha.captchaToken ? captcha : {}),
-      emailRedirectTo:
-        typeof window !== "undefined" ? window.location.origin : undefined,
+      emailRedirectTo: runtimePageOrigin() || undefined,
     },
   });
   _accessToken = data.session?.access_token ?? null;
@@ -428,7 +468,7 @@ export function isPasswordResetLanding(href: string): boolean {
  * 拿不到 origin 时返回空串，由 Supabase 用它自己配置的 Site URL 兜底。
  */
 export function passwordResetRedirectTo(origin?: string): string {
-  const base = (origin ?? (typeof window !== "undefined" ? window.location.origin : "")).trim();
+  const base = (origin ?? runtimePageOrigin()).trim();
   if (!base) return "";
   return `${base.replace(/\/+$/, "")}${PASSWORD_RESET_PATH}`;
 }

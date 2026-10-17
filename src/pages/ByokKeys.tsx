@@ -19,6 +19,7 @@ import {
   type ByokStatus,
   type ByokCap,
 } from "../lib/auth";
+import { runtimePageHost } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { HELP_BYOK_ARTICLE_PATH, helpCenterUrl } from "../lib/help-url";
 
@@ -289,7 +290,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
           <a
             data-byok-help=""
             href={helpCenterUrl({
-              host: typeof window !== "undefined" ? window.location.host : undefined,
+              host: runtimePageHost() || undefined,
               path: HELP_BYOK_ARTICLE_PATH,
               from: "settings-byok",
             })}

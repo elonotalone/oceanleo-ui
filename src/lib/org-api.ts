@@ -28,6 +28,7 @@
 //    前端不做任何货币换算。
 // ============================================================================
 
+import { runtimePageOrigin } from "../contracts/domain-family";
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 
@@ -653,8 +654,9 @@ export async function createInvite(
 export function inviteUrlFor(code: string): string {
   if (!code) return "";
   const suffix = `${INVITE_LANDING_PATH}?code=${encodeURIComponent(code)}`;
-  if (typeof window === "undefined") return suffix;
-  return `${window.location.origin}${suffix}`;
+  const origin = runtimePageOrigin();
+  if (!origin) return suffix;
+  return `${origin}${suffix}`;
 }
 
 /**

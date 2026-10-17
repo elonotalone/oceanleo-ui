@@ -13,6 +13,16 @@ export {
   type HostSessionPort,
 } from "./host-ports";
 export {
+  CLIENT_HOST_CONFIG_GLOBAL_KEY,
+  configureClientHost,
+  createMemoryAuthStorage,
+  getClientHostConfig,
+  nativeShellFromHostConfig,
+  resetClientHostConfigForTests,
+  type ClientHostAuthStorage,
+  type ClientHostConfig,
+} from "./host-config";
+export {
   ClientHostContext,
   ClientHostProvider,
   useClientHost,

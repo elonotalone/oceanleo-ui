@@ -7,6 +7,9 @@
     "./bay/public": "./src/lib/bay/public.ts",
     "./bay/public-views": "./src/shell/bay/supply/public-views.ts",
     "./browser": "./src/facades/browser.ts",
+    "./client-ui": "./src/client-ui/index.ts",
+    "./client-ui/core": "./src/client-ui/core.ts",
+    "./client-ui/web": "./src/client-ui/web.ts",
     "./contracts": "./src/contracts/index.ts",
     "./facades": "./src/facades/index.ts",
     "./i18n": "./src/i18n/index.ts",
@@ -659,6 +662,471 @@
           "name": "validateCloudBrowserSessionFence",
           "importedName": "validateCloudBrowserSessionFence",
           "source": "../lib/browser"
+        }
+      ]
+    },
+    "./client-ui": {
+      "target": "./src/client-ui/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "CLIENT_HOST_CONFIG_GLOBAL_KEY",
+          "importedName": "CLIENT_HOST_CONFIG_GLOBAL_KEY",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "ClientHostContext",
+          "importedName": "ClientHostContext",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "ClientHostProvider",
+          "importedName": "ClientHostProvider",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "configureClientHost",
+          "importedName": "configureClientHost",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "createMemoryAuthStorage",
+          "importedName": "createMemoryAuthStorage",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "createMemoryPersist",
+          "importedName": "createMemoryPersist",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "DEVELOPMENT_API_ENDPOINT",
+          "importedName": "DEVELOPMENT_API_ENDPOINT",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "getClientHostConfig",
+          "importedName": "getClientHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "hitsInPaths",
+          "importedName": "hitsInPaths",
+          "source": "./scan-host-coupling"
+        },
+        {
+          "kind": "named",
+          "name": "HostLink",
+          "importedName": "HostLink",
+          "source": "./host-link"
+        },
+        {
+          "kind": "named",
+          "name": "inventoryHostCoupling",
+          "importedName": "inventoryHostCoupling",
+          "source": "./scan-host-coupling"
+        },
+        {
+          "kind": "named",
+          "name": "isActivePath",
+          "importedName": "isActivePath",
+          "source": "./navigation"
+        },
+        {
+          "kind": "named",
+          "name": "isModifiedClick",
+          "importedName": "isModifiedClick",
+          "source": "./navigation"
+        },
+        {
+          "kind": "named",
+          "name": "LocalLibraryHost",
+          "importedName": "LocalLibraryHost",
+          "source": "./local/library-host"
+        },
+        {
+          "kind": "named",
+          "name": "MemoryHostProvider",
+          "importedName": "MemoryHostProvider",
+          "source": "./local/memory-host"
+        },
+        {
+          "kind": "named",
+          "name": "nativeShellFromHostConfig",
+          "importedName": "nativeShellFromHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "NOOP_SESSION",
+          "importedName": "NOOP_SESSION",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "pathKey",
+          "importedName": "pathKey",
+          "source": "./navigation"
+        },
+        {
+          "kind": "named",
+          "name": "resetClientHostConfigForTests",
+          "importedName": "resetClientHostConfigForTests",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "SharedLibraryPage",
+          "importedName": "SharedLibraryPage",
+          "source": "./surfaces/library-page"
+        },
+        {
+          "kind": "named",
+          "name": "stripSourceComments",
+          "importedName": "stripSourceComments",
+          "source": "./scan-host-coupling"
+        },
+        {
+          "kind": "named",
+          "name": "useClientHost",
+          "importedName": "useClientHost",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "useOptionalClientHost",
+          "importedName": "useOptionalClientHost",
+          "source": "./host-context"
+        },
+        {
+          "kind": "type",
+          "name": "ArtifactLibraryProps",
+          "importedName": "ArtifactLibraryProps",
+          "source": "./surfaces/library-page"
+        },
+        {
+          "kind": "type",
+          "name": "ClientEnvironment",
+          "importedName": "ClientEnvironment",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHost",
+          "importedName": "ClientHost",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostAuthStorage",
+          "importedName": "ClientHostAuthStorage",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostConfig",
+          "importedName": "ClientHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientPlatform",
+          "importedName": "ClientPlatform",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostApiPort",
+          "importedName": "HostApiPort",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostCouplingFile",
+          "importedName": "HostCouplingFile",
+          "source": "./scan-host-coupling"
+        },
+        {
+          "kind": "type",
+          "name": "HostCouplingHit",
+          "importedName": "HostCouplingHit",
+          "source": "./scan-host-coupling"
+        },
+        {
+          "kind": "type",
+          "name": "HostCouplingKind",
+          "importedName": "HostCouplingKind",
+          "source": "./scan-host-coupling"
+        },
+        {
+          "kind": "type",
+          "name": "HostLinkComponent",
+          "importedName": "HostLinkComponent",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostLinkProps",
+          "importedName": "HostLinkProps",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostNavigationPort",
+          "importedName": "HostNavigationPort",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostPersistPort",
+          "importedName": "HostPersistPort",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostSessionPort",
+          "importedName": "HostSessionPort",
+          "source": "./host-ports"
+        }
+      ]
+    },
+    "./client-ui/core": {
+      "target": "./src/client-ui/core.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "CLIENT_HOST_CONFIG_GLOBAL_KEY",
+          "importedName": "CLIENT_HOST_CONFIG_GLOBAL_KEY",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "ClientHostContext",
+          "importedName": "ClientHostContext",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "ClientHostProvider",
+          "importedName": "ClientHostProvider",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "configureClientHost",
+          "importedName": "configureClientHost",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "createMemoryAuthStorage",
+          "importedName": "createMemoryAuthStorage",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "createMemoryPersist",
+          "importedName": "createMemoryPersist",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "DEVELOPMENT_API_ENDPOINT",
+          "importedName": "DEVELOPMENT_API_ENDPOINT",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "getClientHostConfig",
+          "importedName": "getClientHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "HostLink",
+          "importedName": "HostLink",
+          "source": "./host-link"
+        },
+        {
+          "kind": "named",
+          "name": "isActivePath",
+          "importedName": "isActivePath",
+          "source": "./navigation"
+        },
+        {
+          "kind": "named",
+          "name": "isModifiedClick",
+          "importedName": "isModifiedClick",
+          "source": "./navigation"
+        },
+        {
+          "kind": "named",
+          "name": "MemoryHostProvider",
+          "importedName": "MemoryHostProvider",
+          "source": "./local/memory-host"
+        },
+        {
+          "kind": "named",
+          "name": "nativeShellFromHostConfig",
+          "importedName": "nativeShellFromHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "NOOP_SESSION",
+          "importedName": "NOOP_SESSION",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "pathKey",
+          "importedName": "pathKey",
+          "source": "./navigation"
+        },
+        {
+          "kind": "named",
+          "name": "resetClientHostConfigForTests",
+          "importedName": "resetClientHostConfigForTests",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "useClientHost",
+          "importedName": "useClientHost",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "useOptionalClientHost",
+          "importedName": "useOptionalClientHost",
+          "source": "./host-context"
+        },
+        {
+          "kind": "type",
+          "name": "ClientEnvironment",
+          "importedName": "ClientEnvironment",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHost",
+          "importedName": "ClientHost",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostAuthStorage",
+          "importedName": "ClientHostAuthStorage",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostConfig",
+          "importedName": "ClientHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientPlatform",
+          "importedName": "ClientPlatform",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostApiPort",
+          "importedName": "HostApiPort",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostLinkComponent",
+          "importedName": "HostLinkComponent",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostLinkProps",
+          "importedName": "HostLinkProps",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostNavigationPort",
+          "importedName": "HostNavigationPort",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostPersistPort",
+          "importedName": "HostPersistPort",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "type",
+          "name": "HostSessionPort",
+          "importedName": "HostSessionPort",
+          "source": "./host-ports"
+        }
+      ]
+    },
+    "./client-ui/web": {
+      "target": "./src/client-ui/web.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "ClientEnvironment",
+          "importedName": "ClientEnvironment",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "ClientHost",
+          "importedName": "ClientHost",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "ClientHostProvider",
+          "importedName": "ClientHostProvider",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "createWebPersist",
+          "importedName": "createWebPersist",
+          "source": "./web/web-persist"
+        },
+        {
+          "kind": "named",
+          "name": "HostSessionPort",
+          "importedName": "HostSessionPort",
+          "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "NextWebHostProvider",
+          "importedName": "NextWebHostProvider",
+          "source": "./web/next-web-host"
+        },
+        {
+          "kind": "named",
+          "name": "useClientHost",
+          "importedName": "useClientHost",
+          "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "useOptionalClientHost",
+          "importedName": "useOptionalClientHost",
+          "source": "./host-context"
         }
       ]
     },
@@ -1911,6 +2379,16 @@
         {
           "kind": "named",
           "name": "cookieOptions",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "currentIdentityAnonKey",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "currentIdentityUrl",
           "source": ""
         },
         {

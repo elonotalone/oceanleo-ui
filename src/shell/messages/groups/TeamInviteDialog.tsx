@@ -5,7 +5,7 @@
 // （不用 inviteUrlFor：它在子站上会拼出子站自己的地址，而 /join 在门户上）。
 
 import { useState } from "react";
-import { currentDomainProfile, portalHref } from "../../../contracts/domain-family";
+import { currentDomainProfile, portalHref, runtimePageOrigin } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
 import { createInvite } from "../../../lib/org-api";
 import { copyText } from "../../../lib/im/people-api";
@@ -24,7 +24,7 @@ export function teamInviteUrlOf(url: string, code: string): string {
   if (!code) return "";
   const href = portalHref(`/join?code=${encodeURIComponent(code)}`);
   if (/^https:\/\//i.test(href)) return href;
-  const origin = typeof window !== "undefined" ? window.location.origin : currentDomainProfile().portalOrigin;
+  const origin = runtimePageOrigin() || currentDomainProfile().portalOrigin;
   return `${origin}${href}`;
 }
 

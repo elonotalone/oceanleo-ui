@@ -64,6 +64,7 @@ import {
   fusionMountPrefix,
   withFusionMountPrefix,
 } from "./workspace-route";
+import { nativeShellFromHostConfig } from "../client-ui/host-config";
 import { useOptionalClientHost } from "../client-ui/host-context";
 import { NextWebHostProvider } from "../client-ui/web";
 
@@ -111,13 +112,16 @@ const NATIVE_SHELL_ATTR = "data-leo-native-shell";
 
 function useNativeShellFlag() {
   useLayoutEffect(() => {
+    const fromHost = nativeShellFromHostConfig();
     const host = window as unknown as {
       Capacitor?: { isNativePlatform?: () => boolean };
       __oceanleoNative?: unknown;
     };
     const native =
-      host.Capacitor?.isNativePlatform?.() === true ||
-      Boolean(host.__oceanleoNative);
+      fromHost === true ||
+      (fromHost !== false &&
+        (host.Capacitor?.isNativePlatform?.() === true ||
+          Boolean(host.__oceanleoNative)));
     // 只置不清：这个属性是「宿主是原生」的事实，不是组件状态，卸载时不该抹掉。
     if (native) document.documentElement.setAttribute(NATIVE_SHELL_ATTR, "");
   }, []);

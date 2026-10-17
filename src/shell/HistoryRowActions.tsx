@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { runtimePageOrigin } from "../contracts/domain-family";
 import { browserClient } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import { useToast } from "../ui/Toast";
@@ -51,8 +52,8 @@ export function HistoryRowMenu({
   const tt = useUI();
   const anchorRef = useRef<HTMLButtonElement>(null);
   const toast = useToast();
-  const absoluteHref =
-    typeof window === "undefined" ? href : new URL(href, window.location.origin).toString();
+  const origin = runtimePageOrigin();
+  const absoluteHref = origin ? new URL(href, origin).toString() : href;
   const closeAnd = (action: () => void) => () => {
     onOpenChange(false);
     action();

@@ -3,6 +3,7 @@
 // 「+」→ 分享作品：搜我的作品 → 选一个 → 可勾「让这个会话的人一起改」→ 发出作品卡（card.type="artifact"）。
 // 勾了「一起改」就先走 W11 `grantCoeditToConversation` 把整个会话授为 editor，再发卡。
 import { useEffect, useMemo, useState } from "react";
+import { runtimePageOrigin } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImCard, ImEditorKind } from "../../../lib/im/types";
 import { listMyArtifacts } from "../../artifact-client";
@@ -90,7 +91,7 @@ export function ArtifactPickerDialog({
     if (!selected || busy) return;
     setBusy(true);
     setGrantFailed(false);
-    const origin = window.location.origin;
+    const origin = runtimePageOrigin() || window.location.origin;
     let wantCoedit = coedit && Boolean(selectedKind);
     if (wantCoedit) {
       try {

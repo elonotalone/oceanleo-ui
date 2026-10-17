@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { getClientHostConfig } from "../../contracts/client-host-config";
 import { currentDomainFamily, currentDomainProfile } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import { Switch, useToast } from "../../ui";
@@ -31,6 +32,7 @@ function officialLibrary(): readonly { name: string; content: string }[] {
 }
 
 function isPortalOrigin(): boolean {
+  if (getClientHostConfig()) return true;
   if (typeof window === "undefined") return false;
   return window.location.origin === currentDomainProfile().portalOrigin;
 }

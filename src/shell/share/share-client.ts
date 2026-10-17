@@ -12,6 +12,7 @@
 // 文案，分不出「接口还没上线」和「这段对话不存在」——这两句话对用户完全不同。
 // ============================================================================
 
+import { runtimePageOrigin } from "../../contracts/domain-family";
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
 
@@ -36,9 +37,7 @@ export function isValidShareId(value: unknown): value is string {
 
 /** `https://<当前站点域>/share/<share_id>`。origin 只在测试里显式传。 */
 export function shareUrlFor(shareId: string, origin?: string): string {
-  const base =
-    origin ??
-    (typeof window !== "undefined" ? window.location.origin : "");
+  const base = origin ?? runtimePageOrigin();
   return `${base.replace(/\/+$/, "")}${SHARE_PATH_PREFIX}${shareId}`;
 }
 

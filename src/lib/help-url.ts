@@ -1,3 +1,4 @@
+import { getClientHostConfig } from "../contracts/client-host-config";
 import {
   CONFIGURED_DOMAIN_FAMILY,
   familyForHost,
@@ -33,6 +34,8 @@ export function isHelpCenterHost(host?: string | null): boolean {
  * a cn LeoDev page on `p-<32hex>.dev.oceanleo.com` still opens help.oceanleo.cn.
  */
 function helpFamilyFor(host?: string | null): DomainFamily {
+  const injected = getClientHostConfig();
+  if (injected) return injected.family;
   if (CONFIGURED_DOMAIN_FAMILY) return CONFIGURED_DOMAIN_FAMILY;
   return familyForHost(host) === "cn" ? "cn" : "com";
 }

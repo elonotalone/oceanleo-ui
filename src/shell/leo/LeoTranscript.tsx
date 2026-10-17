@@ -11,7 +11,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { currentDomainProfile } from "../../contracts/domain-family";
+import { currentDomainProfile, runtimePageOrigin } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import {
   leoClear,
@@ -245,7 +245,7 @@ function TranscriptEntryView({ entry }: { entry: LeoTranscriptEntry }) {
   const tt = useUI();
   const isUser = entry.role === "user";
   const task = entry.role === "leo" ? entry.task : null;
-  const origin = typeof window !== "undefined" ? window.location.origin : null;
+  const origin = runtimePageOrigin() || null;
   return (
     <div
       data-leo-turn={entry.role}

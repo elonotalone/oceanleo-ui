@@ -35,6 +35,7 @@
 // 家族之间没有回落分支，所以「.com 的会话落到 .cn」在实现层面无法表达。
 // 用户内容域（oceanleo.app / leoapp.cn）不属于任何家族，一律 host-only。
 
+import { getClientHostConfig } from "../../contracts/client-host-config";
 import {
   CONFIGURED_DOMAIN_FAMILY,
   currentDomainFamily,
@@ -57,20 +58,45 @@ export function resolveSupabaseUrl(raw: string | null | undefined): string {
   return trimmed;
 }
 
-export const SUPABASE_URL = resolveSupabaseUrl(
-  process.env.NEXT_PUBLIC_OCEANLEO_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "",
-);
+function envIdentityUrl(): string {
+  return resolveSupabaseUrl(
+    process.env.NEXT_PUBLIC_OCEANLEO_SUPABASE_URL ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      "",
+  );
+}
 
-export const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_OCEANLEO_ANON_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  "";
+function envAnonKey(): string {
+  return (
+    process.env.NEXT_PUBLIC_OCEANLEO_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ""
+  );
+}
+
+/** Live identity origin. Host injection wins; unconfigured equals process env. */
+export function currentIdentityUrl(): string {
+  const injected = getClientHostConfig();
+  if (injected) return resolveSupabaseUrl(injected.identityOrigin);
+  return envIdentityUrl();
+}
+
+/** Live anon key. Host injection wins; unconfigured equals process env. */
+export function currentIdentityAnonKey(): string {
+  const injected = getClientHostConfig();
+  if (injected) return injected.identityAnonKey;
+  return envAnonKey();
+}
+
+export const SUPABASE_URL = envIdentityUrl();
+
+export const SUPABASE_ANON_KEY = envAnonKey();
 
 // 网关 origin。以当前家族档案为准（含同家族的 LeoDev overlay）。
 // 不能把 NEXT_PUBLIC_OCEANLEO_GATEWAY_URL 无条件叠上去：分身 oceanbizs.com
 // 与正式站共用 Vercel 项目的 production env，那条 env 钉的是 api.oceanleo.com。
+// Unconfigured snapshot at module load (existing importers). Host mode reads
+// `currentDomainProfile().gatewayOrigin` live after configureClientHost.
 export const GATEWAY_BASE = currentDomainProfile().gatewayOrigin;
 
 // 跨子站 cookie 的 Domain。缺省不再是一个写死的字面量，而是**请求 host 所属
@@ -160,7 +186,7 @@ export function cookieOptions(host: string | null | undefined) {
 }
 
 export function configured(): boolean {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+  return Boolean(currentIdentityUrl() && currentIdentityAnonKey());
 }
 
 /**

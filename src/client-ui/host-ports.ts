@@ -10,8 +10,9 @@
  */
 
 import type { ComponentType, MouseEvent, ReactNode } from "react";
+import type { ClientPlatform } from "../contracts/client-host-config";
 
-export type ClientPlatform = "web" | "desktop" | "ios" | "android" | "harmony";
+export type { ClientPlatform };
 
 /** Injected by the host. Never derived from the page hostname. */
 export interface ClientEnvironment {

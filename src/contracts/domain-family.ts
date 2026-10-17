@@ -41,6 +41,9 @@
 // 事实源：oceandino `docs/architecture/oceanleo-workstation.md` §3。
 //
 // 本模块零运行时依赖：iframe 渲染面与安全判定面都要能引它。
+// 宿主注入只读同目录 `client-host-config`（仍是 contracts，不是 lib/shell）。
+
+import { getClientHostConfig } from "./client-host-config";
 
 export type DomainFamily = "com" | "cn" | "ws";
 
@@ -361,12 +364,44 @@ export const CONFIGURED_DOMAIN_FAMILY: DomainFamily | undefined =
 
 /** 当前页面所属家族。认不出来时是缺省家族（`com`）。 */
 export function currentDomainFamily(): DomainFamily {
+  const injected = getClientHostConfig();
+  if (injected) return injected.family;
   if (CONFIGURED_DOMAIN_FAMILY) return CONFIGURED_DOMAIN_FAMILY;
   if (typeof window !== "undefined" && window.location) {
     const fromHost = familyForHost(window.location.host);
     if (fromHost) return fromHost;
   }
   return DEFAULT_DOMAIN_FAMILY;
+}
+
+/**
+ * Current page origin for product URLs. Host mode uses the injected portal
+ * origin so local SPA / RN never treat `tauri.localhost` as a family host.
+ * Unconfigured: `window.location.origin`, else `""` (SSR).
+ */
+export function runtimePageOrigin(): string {
+  const injected = getClientHostConfig();
+  if (injected?.portalOrigin) return injected.portalOrigin;
+  if (typeof window !== "undefined" && window.location) {
+    return window.location.origin;
+  }
+  return "";
+}
+
+/** Current page host. Same injection rule as `runtimePageOrigin()`. */
+export function runtimePageHost(): string {
+  const injected = getClientHostConfig();
+  if (injected?.portalOrigin) {
+    try {
+      return new URL(injected.portalOrigin).host;
+    } catch {
+      return "";
+    }
+  }
+  if (typeof window !== "undefined" && window.location) {
+    return window.location.host;
+  }
+  return "";
 }
 
 /**
@@ -439,6 +474,23 @@ function configuredPortalOrigin(): string | undefined {
 /** 当前家族的档案。运行时 URL（网关、素材、门户链接）从这里取。 */
 export function currentDomainProfile(): DomainFamilyProfile {
   const base = domainFamilyProfile(currentDomainFamily());
+  const injected = getClientHostConfig();
+  if (injected) {
+    const nextGateway =
+      injected.gatewayOrigin !== base.gatewayOrigin
+        ? injected.gatewayOrigin
+        : undefined;
+    const nextPortal =
+      injected.portalOrigin !== base.portalOrigin
+        ? injected.portalOrigin
+        : undefined;
+    if (!nextGateway && !nextPortal) return base;
+    return {
+      ...base,
+      ...(nextGateway ? { gatewayOrigin: nextGateway } : {}),
+      ...(nextPortal ? { portalOrigin: nextPortal } : {}),
+    };
+  }
   const gatewayOrigin = configuredGatewayOrigin();
   const portalOrigin = configuredPortalOrigin();
   const nextGateway =
@@ -458,6 +510,7 @@ export function currentDomainProfile(): DomainFamilyProfile {
  * 没有 window（SSR）时保持相对路径，避免点开进生产站、也避免 hydration 对不上。
  */
 export function portalHref(path: string): string {
+  if (getClientHostConfig()) return path;
   const portalOrigin = currentDomainProfile().portalOrigin;
   if (typeof window === "undefined" || window.location.origin === portalOrigin) {
     return path;

@@ -5,7 +5,7 @@
 // 同站直接走，别的站（OceanLeo 家族）跳过去，家族之外的地址一律不跳。
 // 没权限：打开后服务端返回 no_access 时由目标页提示；卡上「没有权限」来自 W04 presence 接口 403。
 import { useEffect, useState } from "react";
-import { familyForHost } from "../../../contracts/domain-family";
+import { familyForHost, runtimePageOrigin } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ImApiError } from "../../../lib/im/client";
 import { messagesApi } from "../../../lib/im/messages-api";
@@ -73,7 +73,7 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
   }, [roomKey]);
 
   // 服务端渲染时没有 window，也就没有「当前站」可解析：不猜一个本机地址兜底，卡片不给可点的「打开」。
-  const origin = typeof window === "undefined" ? null : window.location.origin;
+  const origin = runtimePageOrigin() || null;
   const target = origin ? resolveCardTarget(card.open_path, origin) : null;
   const thumb = safeMediaUrl(card.thumb_url);
   const kindLabel = card.editor_kind ? tt(EDITOR_KIND_LABEL[card.editor_kind]) : tt("作品");

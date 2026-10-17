@@ -27,7 +27,7 @@ import type { SceneSelection } from "./material-scene-axis";
 import type { WorkspaceLibraryEntry, WorkspaceLibraryProps } from "./WorkspaceLibrary";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { currentDomainProfile } from "../contracts/domain-family";
+import { currentDomainProfile, runtimePageOrigin } from "../contracts/domain-family";
 
 // 给人点的素材库入口走当前站 Bay 素材栏。旧 asset 主机地址只用于识别。
 export const MATERIAL_LIBRARY_BASE = "/bay?kind=asset";
@@ -38,10 +38,7 @@ const RETIRED_ASSET_HOSTS = new Set([
 ]);
 
 function hrefParseBase(): string {
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin;
-  }
-  return "https://oceanleo.invalid";
+  return runtimePageOrigin() || "https://oceanleo.invalid";
 }
 
 function parseLibraryHref(value: string): URL | null {
