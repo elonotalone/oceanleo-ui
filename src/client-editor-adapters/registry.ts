@@ -48,18 +48,18 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
     {
       editorId: "website",
       schema: "website-source@1",
-      core: "remote website embed; Puck not landed",
+      core: "WebsiteLocalRoute (W10)",
       license: "MIT",
-      status: "RED",
-      reason: "Current route loads the remote website site",
+      status: "AMBER",
+      reason: "mountEditor loads WebsiteLocalRoute. Offline proof stays W10.",
     },
     {
       editorId: "design-canvas",
       schema: "oceanleo.design-document.v1",
-      core: "remote design embed",
+      core: "DesignCanvasLocalRoute (W10)",
       license: "MIT",
-      status: "RED",
-      reason: "Current route loads the remote design site",
+      status: "AMBER",
+      reason: "mountEditor loads DesignCanvasLocalRoute. Offline proof stays W10.",
     },
     {
       editorId: "video-timeline",
@@ -112,9 +112,9 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
     {
       editorId: "video-canvas",
       schema: "oceanleo.video-canvas.v1",
-      core: "remote video embed",
+      core: "VideoCanvasRoute local xyflow (W10)",
       license: "MIT",
-      status: "RED",
-      reason: "Current route loads the remote video site",
+      status: "AMBER",
+      reason: "mountEditor loads VideoCanvasRoute. Offline proof stays W10.",
     },
   ]);
