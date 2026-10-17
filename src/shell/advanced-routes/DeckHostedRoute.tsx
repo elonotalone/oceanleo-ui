@@ -53,6 +53,8 @@ import {
   isHostedEditorOrigin,
 } from "../hosted-editor-origins";
 import { editorToolLabel } from "../workbench-routes";
+import { useOptionalClientHost } from "../../client-ui/host-context";
+import { readLocalHostedOrigin } from "../hosted-local-origin";
 
 /**
  * 双核 `next` 分支：幻灯片托管在当前家族的 `slides.*` Hosted origin
@@ -362,7 +364,12 @@ export function DeckHostedRoute({
     };
   }, [contentIdentity, resolutionIdentity]);
 
-  const embedBase = deckHostedEmbedBase();
+  const host = useOptionalClientHost();
+  const localEmbedBase = readLocalHostedOrigin(
+    "slides",
+    host?.environment.capabilities || [],
+  );
+  const embedBase = localEmbedBase || deckHostedEmbedBase();
   const editorOrigin = embedBase;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";

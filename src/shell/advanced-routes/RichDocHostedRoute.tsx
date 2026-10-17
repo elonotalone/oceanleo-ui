@@ -39,6 +39,8 @@ import {
   type EditorReviewProposal,
 } from "../hosted-editor/index";
 import { editorToolLabel } from "../workbench-routes";
+import { useOptionalClientHost } from "../../client-ui/host-context";
+import { readLocalHostedOrigin } from "../hosted-local-origin";
 import {
   bindProFaceHandoff,
   handoffItemKey,
@@ -287,7 +289,12 @@ export function RichDocHostedRoute({
     };
   }, [handoff, handoffStatus, item]);
 
-  const embedBase = richDocHostedEmbedBase();
+  const host = useOptionalClientHost();
+  const localEmbedBase = readLocalHostedOrigin(
+    "docs",
+    host?.environment.capabilities || [],
+  );
+  const embedBase = localEmbedBase || richDocHostedEmbedBase();
   const editorOrigin = embedBase;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";

@@ -78,6 +78,7 @@ import { VectorFrameGuard, VectorNewVersionBar } from "../collab/adapters/Vector
 import { UnsupportedRoute } from "./UnsupportedRoute";
 import { VideoCanvasRoute } from "./VideoCanvasRoute";
 import { DesignCanvasLocalRoute } from "./DesignCanvasLocalRoute";
+import { WebsiteLocalRoute } from "./WebsiteLocalRoute";
 import { usePreferLocalRemoteEditor } from "../use-prefer-local-editors";
 
 interface RemoteChoice {
@@ -448,6 +449,7 @@ export function EmbeddedRoute({
   const { mode: rememberedEditorMode } = usePluginMode(embeddedAdapterId);
   const { pageId: storePageId } = usePluginPage(embeddedAdapterId);
   const preferLocalDesignCanvas = usePreferLocalRemoteEditor("design-canvas");
+  const preferLocalWebsite = usePreferLocalRemoteEditor("website");
   const [editorMode, setEditorMode] = useState<EditorMode>(
     DEFAULT_EDITOR_MODE,
   );
@@ -1521,6 +1523,19 @@ export function EmbeddedRoute({
   if (embeddedAdapterId === "design-canvas" && preferLocalDesignCanvas) {
     return (
       <DesignCanvasLocalRoute
+        item={item}
+        previewContent={previewContent}
+        linkUrl={linkUrl}
+        taskId={taskId}
+        siteId={siteId}
+        accent={accent}
+        onClose={onClose}
+      />
+    );
+  }
+  if (embeddedAdapterId === "website" && preferLocalWebsite) {
+    return (
+      <WebsiteLocalRoute
         item={item}
         previewContent={previewContent}
         linkUrl={linkUrl}

@@ -3,13 +3,14 @@
 /**
  * 工作流叶子：React Flow 画布是唯一编辑面。
  *
- * 本仓没有 React Flow 画布实现（画布在 video 站，经 EmbeddedRoute 注入）。
- * 这里的 stand-in 只把节点和连线画成可断言的 DOM，好让闸锁住
- * 「画布不渲染 / 节点连不上」——不是自研核。
+ * 网页默认仍嵌 video 站（EmbedEditorPane）。本地核（preferLocal）走本仓
+ * `@xyflow/react`，载体仍是 `oceanleo.video-canvas.v1`。没有远程 origin 时
+ * stand-in 只把节点和连线画成可断言的 DOM，不是自研核。
  *
  * 专业编辑页保留，但不可用（点了不动）。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -50,6 +51,15 @@ import {
 import { dispatchWorkflowAgentChip } from "./agent-route";
 import { EmbedEditorPane, embedEditorBase } from "../workbench-embed";
 import type { EmbedEditorPaneProps } from "../workbench-embed-types";
+import { usePreferLocalRemoteEditor } from "../use-prefer-local-editors";
+
+const VideoCanvasLocalCanvas = dynamic(
+  () =>
+    import("./VideoCanvasLocalCanvas").then(
+      (module) => module.VideoCanvasLocalCanvas,
+    ),
+  { ssr: false, loading: () => null },
+);
 
 // 补丁 / 控制消息的载荷是纯 JSON（测试锁住），协议类型的索引签名比我们的接口更严，在这里一处收口。
 type EmbedRecoveryRestore = EmbedEditorPaneProps["recoveryRestore"];
@@ -124,7 +134,8 @@ export function VideoCanvasStage({
     setExternalItem(null);
   }, [item]);
   const shownItem = externalItem ?? item;
-  const liveCanvasBase = shownItem ? embedEditorBase(shownItem) : "";
+  const preferLocal = usePreferLocalRemoteEditor("video-canvas");
+  const liveCanvasBase = preferLocal ? "" : shownItem ? embedEditorBase(shownItem) : "";
   const itemKey = `${shownItem?.key ?? ""}|${shownItem?.revisionId ?? ""}`;
 
   // ---- 多人同改。真实画布在 video 站的 iframe 里，外壳只经 v1 协议已有的 recovery 消息与它交换
@@ -532,7 +543,16 @@ export function VideoCanvasStage({
             data-testid="workflow-react-flow-stage"
             className="flex h-full min-h-0 flex-col"
           >
-            {liveCanvasBase ? (
+            {preferLocal ? (
+              <VideoCanvasLocalCanvas
+                graph={graph}
+                readOnly={!mayWrite}
+                onChange={(next) => {
+                  setGraph(next);
+                  setEditRevision((value) => value + 1);
+                }}
+              />
+            ) : liveCanvasBase ? (
               <div
                 data-testid="workflow-react-flow-canvas"
                 inert={canvasInert || undefined}

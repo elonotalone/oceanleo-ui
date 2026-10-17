@@ -38,5 +38,7 @@ test("EmbeddedRoute still has the live iframe path and only branches locally whe
   assert.match(embedded, /<EmbedEditorPane/);
   assert.match(embedded, /preferLocalDesignCanvas/);
   assert.match(embedded, /DesignCanvasLocalRoute/);
+  assert.match(embedded, /preferLocalWebsite/);
+  assert.match(embedded, /WebsiteLocalRoute/);
   assert.match(embedded, /DESIGN_CANVAS_WORKING_SCHEMA = "oceanleo\.design\.canvas\.v1"/);
 });
