@@ -12,6 +12,7 @@ import {
   exportWebsiteSource,
   removeWebsitePage,
   removeWebsiteSection,
+  setWebsiteSectionHeading,
   setWebsiteTheme,
 } from "../../src/shell/website-local/website-source-session.ts";
 import {
@@ -142,6 +143,21 @@ function WebsiteR2() {
         >
           删末块
         </button>
+        <input
+          data-testid="website-heading"
+          value={
+            currentPage
+              ? source.sections.find((section) => section.id === currentPage.sectionIds[0])?.heading || ""
+              : ""
+          }
+          onChange={(event) => {
+            const first = currentPage?.sectionIds[0];
+            if (!first) return;
+            commit(
+              setWebsiteSectionHeading(source, first, event.target.value),
+            );
+          }}
+        />
         <input
           data-testid="website-theme-accent"
           type="color"

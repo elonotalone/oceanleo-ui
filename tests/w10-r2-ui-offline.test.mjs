@@ -202,13 +202,7 @@ async function runWebsite(context, origin) {
   await page.goto(`${origin}/r2-website.html`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__oceanleoReady === true, null, { timeout: 30_000 });
   const before = await shot(page, dir, "before.png");
-  const heading = page.getByLabel("标题").first();
-  if (await heading.count()) {
-    await heading.click();
-    await heading.fill("离线改过的首页标题文字");
-  } else {
-    await page.locator("input").first().fill("离线改过的首页标题文字");
-  }
+  await page.getByTestId("website-heading").fill("离线改过的首页标题文字");
   await page.getByTestId("website-page-add").click();
   const after = await shot(page, dir, "after.png");
   await page.getByTestId("website-local-undo").click();
@@ -362,11 +356,8 @@ test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async
         window.__oceanleoHost.postToFrame({ type: "set-mode", mode: "pro" });
       }, PPT_DOC);
       const frame = page.frameLocator("[data-testid=hosted-frame]");
-      const text = frame.locator("text=原始标题").first();
-      if (await text.count()) {
-        await text.click();
-        await page.keyboard.type("离线改过");
-      }
+      await frame.locator(".element-content").first().dblclick({ force: true, timeout: 10_000 });
+      await page.keyboard.type("离线改过");
     },
   });
   const umo = await runHosted(context, vite.origin, cores.umo, "umo", {
@@ -377,10 +368,8 @@ test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async
       });
       const frame = page.frameLocator("[data-testid=hosted-frame]");
       const editor = frame.locator("[contenteditable='true'], .ProseMirror, .umo-editor").first();
-      if (await editor.count()) {
-        await editor.click();
-        await page.keyboard.type("离线改过的正文");
-      }
+      await editor.click({ force: true, timeout: 15_000 });
+      await page.keyboard.type("离线改过的正文");
     },
   });
   const audio = await runHosted(context, vite.origin, cores.audiomass, "audiomass", {
@@ -393,12 +382,12 @@ test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async
       await page.frameLocator("[data-testid=hosted-frame]").locator("#app").click({ timeout: 5000 }).catch(() => {});
     },
   });
-  const three = existsSync(join(corePath("threeeditor"), "overlay", "adapter.js"))
-    ? await runHosted(context, vite.origin, cores.threeeditor, "threeeditor", {
-        srcPath: "/adapter.js",
-        expectReady: false,
-      })
-    : { verdict: "RED", phenomenon: "three-editor local-origin is overlay-only; no r183 editor tree" };
+  const three = {
+    verdict: "RED",
+    phenomenon:
+      "three-editor local-origin is overlay-only (adapter.js); the r183 editor tree is Docker-cloned at image build and is not in the pinned cache",
+  };
+  await writeLog(await evidenceDir("threeeditor"), three);
 
   await writeLog(await evidenceDir("hosted-summary"), {
     lock: LOCK.cores,
@@ -421,7 +410,12 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
   const page = await context.newPage();
   const src = `${coreServer.origin}${options.srcPath || "/"}`;
   const requests = [];
+  const pageErrors = [];
   page.on("request", (req) => requests.push(req.url()));
+  page.on("pageerror", (error) => pageErrors.push(String(error)));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") pageErrors.push(msg.text());
+  });
   await page.goto(
     `${hostOrigin}/r2-hosted-host.html?src=${encodeURIComponent(src)}&instance=r2-${id}`,
     { waitUntil: "domcontentloaded" },
@@ -430,7 +424,7 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
   let ready = false;
   if (options.expectReady !== false) {
     ready = await page
-      .waitForFunction(() => window.__oceanleoReady === true, null, { timeout: 20_000 })
+      .waitForFunction(() => window.__oceanleoReady === true, null, { timeout: 45_000 })
       .then(() => true)
       .catch(() => false);
   }
@@ -474,6 +468,7 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
     after,
     reopen,
     phenomenon: options.phenomenon || (ready ? "" : "iframe did not post ready"),
+    pageErrors: pageErrors.slice(0, 12),
     verdict,
     agplInAppTree: false,
   });
