@@ -64,6 +64,8 @@ import {
   fusionMountPrefix,
   withFusionMountPrefix,
 } from "./workspace-route";
+import { useOptionalClientHost } from "../client-ui/host-context";
+import { NextWebHostProvider } from "../client-ui/web";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 可选右上操作区。
@@ -321,12 +323,13 @@ const AppShellPresence = createContext(false);
 // viewport 自己 `pointer-events: none`、`position: fixed`，包在最外面不挡任何点击。
 export function AppShell(props: AppShellProps) {
   const nested = useContext(AppShellPresence);
+  const existingHost = useOptionalClientHost();
   const rawPathname = usePathname() || "/";
   const pathname = props.stripLocale ? props.stripLocale(rawPathname) : rawPathname;
   // 公开对话链接只有一个 id 段；`/share` 本身可能是分站自己的页面，不能一并去壳。
   const publicShare = /^\/share\/[^/]+\/?$/.test(pathname);
   if (nested) return <>{props.children}</>;
-  return (
+  const tree = (
     <ToastProvider>
       <AppShellPresence.Provider value>
         {publicShare ? props.children : (
@@ -337,6 +340,8 @@ export function AppShell(props: AppShellProps) {
       </AppShellPresence.Provider>
     </ToastProvider>
   );
+  if (existingHost) return tree;
+  return <NextWebHostProvider>{tree}</NextWebHostProvider>;
 }
 
 function AppShellInner({

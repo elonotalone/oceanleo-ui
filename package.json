@@ -24,6 +24,9 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./client-ui": "./src/client-ui/index.ts",
+    "./client-ui/core": "./src/client-ui/core.ts",
+    "./client-ui/web": "./src/client-ui/web.ts",
     "./shell": "./src/shell/index.ts",
     "./shell/nav-source": "./src/shell/nav-source/index.ts",
     "./shell/nav-source/use-route-navigation": "./src/shell/nav-source/use-route-navigation.ts",
