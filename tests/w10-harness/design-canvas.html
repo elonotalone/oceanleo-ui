@@ -17,6 +17,14 @@
     </style>
   </head>
   <body>
+    <div class="bar" style="display:flex;gap:8px;padding:8px;background:#1e293b">
+      <input id="title" data-testid="design-title" style="min-width:240px" />
+      <button type="button" data-testid="design-apply">改标题</button>
+      <button type="button" data-testid="design-undo">撤销</button>
+      <button type="button" data-testid="design-redo">重做</button>
+      <button type="button" data-testid="r2-save">保存</button>
+      <button type="button" data-testid="r2-export">导出</button>
+    </div>
     <canvas id="c" width="1080" height="1080"></canvas>
     <script type="module">
       import * as fabric from "/vendor/fabric.min.mjs";
@@ -32,6 +40,19 @@
 
       window.__oceanleoOutbound = outbound;
       window.__oceanleoEditor = session;
+      const title = document.getElementById("title");
+      document.querySelector("[data-testid=design-apply]").onclick = () => {
+        session.setTitle(title.value);
+      };
+      document.querySelector("[data-testid=design-undo]").onclick = () => session.undo();
+      document.querySelector("[data-testid=design-redo]").onclick = () => session.redo();
+      document.querySelector("[data-testid=r2-save]").onclick = () => {
+        sessionStorage.setItem("w10-r2-design", JSON.stringify(session.getState().project || session.getState()));
+        session.requestSave("save-1");
+      };
+      document.querySelector("[data-testid=r2-export]").onclick = () => {
+        outbound.push({ type: "exported", png: session.exportPng() });
+      };
       window.__oceanleoReady = true;
     </script>
   </body>

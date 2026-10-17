@@ -1,0 +1,27 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  font: 13px/1.4 sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+}
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+.stage {
+  height: calc(100% - 48px);
+  min-height: 360px;
+}
+button,
+input,
+select {
+  font: inherit;
+}
