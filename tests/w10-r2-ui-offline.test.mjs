@@ -155,11 +155,23 @@ test("R2/R3 client-web editor.html W10 types", { timeout: 120_000 }, async (t) =
     const rooted = await page.locator("[data-oceanleo-editor-root]").count();
     const png = await shot(page, dir, `${type}.png`);
     const rejected = /不挂载|远程\/AGPL|W04|未知编辑器/.test(body || "");
+    let clicked = "";
+    if (!rejected && rooted > 0 && type === "website") {
+      const add = page.getByTestId("website-page-add");
+      if (await add.count()) {
+        await add.click();
+        await page.getByTestId("website-local-undo").click().catch(() => {});
+        await page.getByTestId("website-local-redo").click().catch(() => {});
+        clicked = "website-page-add+undo+redo";
+        await shot(page, dir, `${type}-after.png`);
+      }
+    }
     entries.push({
       type,
       text: (body || "").slice(0, 400),
       screenshot: png,
       rooted,
+      clicked,
       verdict: rejected ? "RED" : rooted > 0 ? "GREEN" : "AMBER",
     });
     await page.close();
@@ -430,12 +442,12 @@ test("R2 hosted cores load from local-origin cache", { timeout: 240_000 }, async
       await page.waitForTimeout(1500);
       const boxRow = frame.locator("#outliner").getByText("Box", { exact: true }).first();
       await boxRow.click({ timeout: 20_000 });
-      const nameBox = frame.locator("#sidebar input").first();
-      await nameBox.click({ force: true, timeout: 10_000 });
+      const nameBox = frame.locator("#sidebar input[type='text']").first();
+      await nameBox.click({ timeout: 10_000 });
       await nameBox.fill("离线改过的立方体");
       await nameBox.press("Enter");
       await page.waitForTimeout(400);
-      const named = await frame.locator("#outliner").innerText();
+      const named = `${await frame.locator("#outliner").innerText()} ${await nameBox.inputValue()}`;
       if (!named.includes("离线改过的立方体")) {
         throw new Error(`three-editor rename did not stick: ${named.slice(0, 200)}`);
       }
@@ -453,6 +465,7 @@ test("R2 hosted cores load from local-origin cache", { timeout: 240_000 }, async
   });
   assert.equal(typeof deck.verdict, "string");
   assert.equal(deck.verdict, "GREEN");
+  assert.equal(three.verdict, "GREEN");
 });
 
 async function hostedBodyText(page) {
