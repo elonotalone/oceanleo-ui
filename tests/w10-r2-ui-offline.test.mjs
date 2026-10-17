@@ -495,7 +495,13 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
   const afterText = await hostedBodyText(page);
   const after = await shot(page, dir, "after.png");
   await page.getByTestId("hosted-save").click();
-  await page.waitForTimeout(1000);
+  await page
+    .waitForFunction(
+      () => window.__oceanleoSnapshot && window.__oceanleoSnapshot.type === "recovery-snapshot",
+      null,
+      { timeout: 10_000 },
+    )
+    .catch(() => {});
   const saved = await page.evaluate(() => window.__oceanleoSnapshot || null);
   await page.getByTestId("hosted-export").click();
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -514,7 +520,6 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
         snapshot,
       });
     }, saved.snapshot);
-    await page.waitForTimeout(1200);
   } else if (reopenMode === "init-gltf") {
     const payload = saved?.snapshot?.payload || {};
     await page.evaluate((payload) => {
@@ -524,11 +529,20 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
         format: payload.format || "glb",
       });
     }, payload);
-    await page.waitForTimeout(1500);
+  }
+  if (options.requireText) {
+    await page
+      .frameLocator("[data-testid=hosted-frame]")
+      .getByText(options.requireText)
+      .first()
+      .waitFor({ timeout: 15_000 })
+      .catch(() => {});
+  } else {
+    await page.waitForTimeout(800);
   }
   const reopenText = await hostedBodyText(page);
   const reopen = await shot(page, dir, "reopen.png");
-  const snapshot = await page.evaluate(() => window.__oceanleoSnapshot || saved);
+  const snapshot = (await page.evaluate(() => window.__oceanleoSnapshot || null)) || saved;
   const remote = requests.filter((url) => {
     try {
       const parsed = new URL(url);
