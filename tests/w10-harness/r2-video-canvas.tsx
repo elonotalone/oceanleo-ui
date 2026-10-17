@@ -93,6 +93,13 @@ function VideoCanvasR2() {
           导出
         </button>
       </div>
+      <ol data-testid="video-canvas-nodes">
+        {graph.nodes.map((node) => (
+          <li key={node.id}>
+            {node.id}: {node.label}
+          </li>
+        ))}
+      </ol>
       <div className="stage">
         <VideoCanvasLocalCanvas
           graph={graph}
