@@ -133,7 +133,7 @@ async function startVite() {
   };
 }
 
-test("R2 client-web editor.html does not mount W10 types", { timeout: 120_000 }, async (t) => {
+test("R2/R3 client-web editor.html W10 types", { timeout: 120_000 }, async (t) => {
   assert.equal(existsSync(join(DIST, "editor.html")), true, "W09 dist/editor.html missing");
   const hosted = await startRootServer(DIST);
   t.after(() => hosted.close());
@@ -143,17 +143,24 @@ test("R2 client-web editor.html does not mount W10 types", { timeout: 120_000 },
   const entries = [];
   for (const type of EDITOR_HTML_TYPES) {
     const page = await context.newPage();
-    await page.goto(`${hosted.origin}/editor.html?type=${type}&session=w10-r2`, {
+    await page.goto(`${hosted.origin}/editor.html?type=${type}&session=w10-r3`, {
       waitUntil: "domcontentloaded",
     });
-    await page.waitForTimeout(1500);
-    const body = await page.locator("[data-oceanleo-editor-error], [data-oceanleo-editor-waiting], [data-oceanleo-editor-entry]").first().textContent().catch(() => "");
+    await page.waitForTimeout(2500);
+    const body = await page
+      .locator("[data-oceanleo-editor-error], [data-oceanleo-editor-waiting], [data-oceanleo-editor-entry], [data-oceanleo-editor-root]")
+      .first()
+      .textContent()
+      .catch(() => "");
+    const rooted = await page.locator("[data-oceanleo-editor-root]").count();
     const png = await shot(page, dir, `${type}.png`);
+    const rejected = /不挂载|远程\/AGPL|W04|未知编辑器/.test(body || "");
     entries.push({
       type,
       text: (body || "").slice(0, 400),
       screenshot: png,
-      verdict: /不挂载|远程\/AGPL|W04/.test(body || "") ? "RED" : "AMBER",
+      rooted,
+      verdict: rejected ? "RED" : rooted > 0 ? "GREEN" : "AMBER",
     });
     await page.close();
   }
@@ -162,9 +169,9 @@ test("R2 client-web editor.html does not mount W10 types", { timeout: 120_000 },
     origin: hosted.origin,
     blockedRemote: blocked.slice(0, 20),
     entries,
+    note: "W10 cannot rebuild client-web; GREEN here only after W09 dist includes W04 ROUTE_LOADERS",
   });
   assert.equal(entries.length, EDITOR_HTML_TYPES.length);
-  assert.ok(entries.some((row) => row.verdict === "RED"));
 });
 
 test("R2 website/design-canvas/video-canvas/video-timeline click round-trips", { timeout: 180_000 }, async (t) => {
@@ -328,7 +335,7 @@ async function runTimeline(context, origin) {
   return { verdict: restored ? "GREEN" : "RED" };
 }
 
-test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async (t) => {
+test("R2 hosted cores load from local-origin cache", { timeout: 240_000 }, async (t) => {
   const vite = await startVite();
   t.after(() => vite.close());
   const cores = {};
@@ -338,13 +345,21 @@ test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async
       cores[id] = { verdict: "RED", phenomenon: `local-origin missing: ${root}` };
       continue;
     }
-    cores[id] = await startRootServer(id === "threeeditor" ? join(root, "overlay") : root);
+    if (id === "threeeditor" && !existsSync(join(root, "js/Editor.js"))) {
+      cores[id] = {
+        verdict: "RED",
+        phenomenon: `three-editor local-origin missing r183 js/Editor.js: ${root}`,
+      };
+      continue;
+    }
+    cores[id] = await startRootServer(root);
     t.after(() => cores[id].close?.());
   }
   const { browser, context, requested, blocked } = await launchBrowser();
   t.after(() => browser.close());
 
   const deck = await runHosted(context, vite.origin, cores.pptist, "deck", {
+    requireText: "离线改过的标题",
     afterReady: async (page) => {
       await page.evaluate((doc) => {
         window.__oceanleoHost.postToFrame({ type: "init" });
@@ -356,11 +371,30 @@ test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async
         window.__oceanleoHost.postToFrame({ type: "set-mode", mode: "pro" });
       }, PPT_DOC);
       const frame = page.frameLocator("[data-testid=hosted-frame]");
-      await frame.locator(".element-content").first().dblclick({ force: true, timeout: 10_000 });
-      await page.keyboard.type("离线改过");
+      const pm = frame.locator(".editable-element-text .ProseMirror").first();
+      await pm.waitFor({ timeout: 20_000 });
+      await pm.click({ force: true });
+      await page.waitForTimeout(250);
+      await pm.click({ force: true });
+      await page.keyboard.press("Control+a");
+      await page.keyboard.type("离线改过的标题", { delay: 25 });
+      await page.waitForTimeout(700);
+      const box = await frame.locator(".editable-element-text").first().boundingBox();
+      if (box) {
+        await page.mouse.move(box.x + 10, box.y + 8);
+        await page.mouse.down();
+        await page.mouse.move(box.x + 140, box.y + 70, { steps: 10 });
+        await page.mouse.up();
+        await page.waitForTimeout(400);
+      }
+      const typed = ((await pm.innerText()) || "").replace(/\s+/g, "");
+      if (!typed.includes("离线改过的标题")) {
+        throw new Error(`PPTist typing did not change the slide: ${typed}`);
+      }
     },
   });
   const umo = await runHosted(context, vite.origin, cores.umo, "umo", {
+    requireText: "离线改过的正文",
     afterReady: async (page) => {
       await page.evaluate(() => {
         window.__oceanleoHost.postToFrame({ type: "init" });
@@ -382,12 +416,31 @@ test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async
       await page.frameLocator("[data-testid=hosted-frame]").locator("#app").click({ timeout: 5000 }).catch(() => {});
     },
   });
-  const three = {
-    verdict: "RED",
-    phenomenon:
-      "three-editor local-origin is overlay-only (adapter.js); the r183 editor tree is Docker-cloned at image build and is not in the pinned cache",
-  };
-  await writeLog(await evidenceDir("threeeditor"), three);
+  const three = await runHosted(context, vite.origin, cores.threeeditor, "threeeditor", {
+    readyTimeout: 90_000,
+    reopen: "init-gltf",
+    requireText: "离线改过的立方体",
+    afterReady: async (page) => {
+      const frame = page.frameLocator("[data-testid=hosted-frame]");
+      await frame.locator("#menubar, #viewport").first().waitFor({ timeout: 90_000 });
+      await page.evaluate((gltfBase64) => {
+        window.__oceanleoHost.postToFrame({ type: "init", gltfBase64, format: "gltf" });
+        window.__oceanleoHost.postToFrame({ type: "set-mode", mode: "pro" });
+      }, tinyGltfBase64());
+      await page.waitForTimeout(1500);
+      const boxRow = frame.locator("#outliner").getByText("Box", { exact: true }).first();
+      await boxRow.click({ timeout: 20_000 });
+      const nameBox = frame.locator("#sidebar input").first();
+      await nameBox.click({ force: true, timeout: 10_000 });
+      await nameBox.fill("离线改过的立方体");
+      await nameBox.press("Enter");
+      await page.waitForTimeout(400);
+      const named = await frame.locator("#outliner").innerText();
+      if (!named.includes("离线改过的立方体")) {
+        throw new Error(`three-editor rename did not stick: ${named.slice(0, 200)}`);
+      }
+    },
+  });
 
   await writeLog(await evidenceDir("hosted-summary"), {
     lock: LOCK.cores,
@@ -399,7 +452,13 @@ test("R2 hosted cores load from local-origin cache", { timeout: 180_000 }, async
     localRequests: requested.filter((url) => url.includes("127.0.0.1")).slice(0, 40),
   });
   assert.equal(typeof deck.verdict, "string");
+  assert.equal(deck.verdict, "GREEN");
 });
+
+async function hostedBodyText(page) {
+  const frame = page.frameLocator("[data-testid=hosted-frame]");
+  return ((await frame.locator("body").innerText().catch(() => "")) || "").replace(/\s+/g, "");
+}
 
 async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
   const dir = await evidenceDir(id);
@@ -424,7 +483,7 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
   let ready = false;
   if (options.expectReady !== false) {
     ready = await page
-      .waitForFunction(() => window.__oceanleoReady === true, null, { timeout: 45_000 })
+      .waitForFunction(() => window.__oceanleoReady === true, null, { timeout: options.readyTimeout || 45_000 })
       .then(() => true)
       .catch(() => false);
   }
@@ -433,14 +492,43 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
       options.phenomenon = String(error);
     });
   }
+  const afterText = await hostedBodyText(page);
   const after = await shot(page, dir, "after.png");
   await page.getByTestId("hosted-save").click();
-  await page.waitForTimeout(800);
-  await page.keyboard.press("Control+z").catch(() => {});
+  await page.waitForTimeout(1000);
+  const saved = await page.evaluate(() => window.__oceanleoSnapshot || null);
   await page.getByTestId("hosted-export").click();
   await page.reload({ waitUntil: "domcontentloaded" });
+  if (options.expectReady !== false) {
+    await page
+      .waitForFunction(() => window.__oceanleoReady === true, null, { timeout: options.readyTimeout || 45_000 })
+      .catch(() => {});
+  }
+  const reopenMode = options.reopen || "restore";
+  if (reopenMode === "restore" && saved?.snapshot) {
+    await page.evaluate((snapshot) => {
+      window.__oceanleoHost.postToFrame({ type: "init" });
+      window.__oceanleoHost.postToFrame({
+        type: "recovery-restore",
+        recoveryId: "reopen",
+        snapshot,
+      });
+    }, saved.snapshot);
+    await page.waitForTimeout(1200);
+  } else if (reopenMode === "init-gltf") {
+    const payload = saved?.snapshot?.payload || {};
+    await page.evaluate((payload) => {
+      window.__oceanleoHost.postToFrame({
+        type: "init",
+        gltfBase64: payload.gltfBase64 || "",
+        format: payload.format || "glb",
+      });
+    }, payload);
+    await page.waitForTimeout(1500);
+  }
+  const reopenText = await hostedBodyText(page);
   const reopen = await shot(page, dir, "reopen.png");
-  const snapshot = await page.evaluate(() => window.__oceanleoSnapshot || null);
+  const snapshot = await page.evaluate(() => window.__oceanleoSnapshot || saved);
   const remote = requests.filter((url) => {
     try {
       const parsed = new URL(url);
@@ -450,10 +538,18 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
     }
   });
   const fromCore = requests.filter((url) => url.startsWith(coreServer.origin));
+  const mutated =
+    !options.requireText ||
+    afterText.includes(options.requireText.replace(/\s+/g, "")) ||
+    JSON.stringify(saved || {}).includes(options.requireText);
+  const reopened =
+    !options.requireText ||
+    reopenText.includes(options.requireText.replace(/\s+/g, "")) ||
+    JSON.stringify(saved || {}).includes(options.requireText);
   const verdict =
     options.expectReady === false
       ? "RED"
-      : ready && remote.length === 0 && fromCore.length > 0
+      : ready && remote.length === 0 && fromCore.length > 0 && mutated && reopened && !options.phenomenon
         ? "GREEN"
         : "RED";
   const log = await writeLog(dir, {
@@ -464,6 +560,10 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
     remote,
     fromCore: fromCore.slice(0, 30),
     snapshotType: snapshot?.type || null,
+    afterText: afterText.slice(0, 200),
+    reopenText: reopenText.slice(0, 200),
+    mutated,
+    reopened,
     before,
     after,
     reopen,
@@ -473,7 +573,42 @@ async function runHosted(context, hostOrigin, coreServer, id, options = {}) {
     agplInAppTree: false,
   });
   await page.close();
-  return { verdict, log, ready, remoteCount: remote.length };
+  return { verdict, log, ready, remoteCount: remote.length, mutated, reopened };
+}
+
+function tinyGltfBase64() {
+  const positions = Buffer.from(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer);
+  const indices = Buffer.from(new Uint16Array([0, 1, 2]).buffer);
+  const bin = Buffer.concat([positions, indices]);
+  const json = {
+    asset: { version: "2.0" },
+    scene: 0,
+    scenes: [{ nodes: [0], name: "Scene" }],
+    nodes: [{ mesh: 0, name: "Box" }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }],
+    accessors: [
+      {
+        bufferView: 0,
+        componentType: 5126,
+        count: 3,
+        type: "VEC3",
+        max: [1, 1, 0],
+        min: [0, 0, 0],
+      },
+      { bufferView: 1, componentType: 5123, count: 3, type: "SCALAR" },
+    ],
+    bufferViews: [
+      { buffer: 0, byteOffset: 0, byteLength: 36 },
+      { buffer: 0, byteOffset: 36, byteLength: 6 },
+    ],
+    buffers: [
+      {
+        uri: `data:application/octet-stream;base64,${bin.toString("base64")}`,
+        byteLength: bin.length,
+      },
+    ],
+  };
+  return Buffer.from(JSON.stringify(json)).toString("base64");
 }
 
 function silentWav() {
