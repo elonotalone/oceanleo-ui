@@ -442,7 +442,7 @@ test("R2 hosted cores load from local-origin cache", { timeout: 240_000 }, async
       await page.waitForTimeout(1500);
       const boxRow = frame.locator("#outliner").getByText("Box", { exact: true }).first();
       await boxRow.click({ timeout: 20_000 });
-      const nameBox = frame.locator("#sidebar input.Input:not(.Color)").first();
+      const nameBox = frame.locator("#sidebar input.Input:not(.Color):not(.Number)").first();
       await nameBox.click({ timeout: 10_000 });
       await nameBox.fill("离线改过的立方体");
       await nameBox.press("Tab");
