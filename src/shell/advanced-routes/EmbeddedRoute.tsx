@@ -77,6 +77,8 @@ import { useVectorCollab } from "../collab/adapters/use-vector-collab";
 import { VectorFrameGuard, VectorNewVersionBar } from "../collab/adapters/VectorCollabChrome";
 import { UnsupportedRoute } from "./UnsupportedRoute";
 import { VideoCanvasRoute } from "./VideoCanvasRoute";
+import { DesignCanvasLocalRoute } from "./DesignCanvasLocalRoute";
+import { usePreferLocalRemoteEditor } from "../use-prefer-local-editors";
 
 interface RemoteChoice {
   value: Exclude<SelectionCommand["value"], undefined>;
@@ -445,6 +447,7 @@ export function EmbeddedRoute({
         : "design-canvas";
   const { mode: rememberedEditorMode } = usePluginMode(embeddedAdapterId);
   const { pageId: storePageId } = usePluginPage(embeddedAdapterId);
+  const preferLocalDesignCanvas = usePreferLocalRemoteEditor("design-canvas");
   const [editorMode, setEditorMode] = useState<EditorMode>(
     DEFAULT_EDITOR_MODE,
   );
@@ -1505,6 +1508,19 @@ export function EmbeddedRoute({
   if (embeddedAdapterId === "video-canvas") {
     return (
       <VideoCanvasRoute
+        item={item}
+        previewContent={previewContent}
+        linkUrl={linkUrl}
+        taskId={taskId}
+        siteId={siteId}
+        accent={accent}
+        onClose={onClose}
+      />
+    );
+  }
+  if (embeddedAdapterId === "design-canvas" && preferLocalDesignCanvas) {
+    return (
+      <DesignCanvasLocalRoute
         item={item}
         previewContent={previewContent}
         linkUrl={linkUrl}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>W10 local Fabric design canvas</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font: 14px/1.4 sans-serif;
+      }
+      canvas {
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="1080" height="1080"></canvas>
+    <script type="module">
+      import * as fabric from "/vendor/fabric.min.mjs";
+      import { createDesignCanvasSession } from "/w10-harness/design-canvas-session.mjs";
+
+      const outbound = [];
+      const session = createDesignCanvasSession(fabric, document.getElementById("c"), {
+        origin: location.origin,
+        hasIpc: true,
+        transport: "in-process",
+        onMessage: (message) => outbound.push(message),
+      });
+
+      window.__oceanleoOutbound = outbound;
+      window.__oceanleoEditor = session;
+      window.__oceanleoReady = true;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "schema": "oceanleo.design-document.v1",
+  "version": 1,
+  "title": "本地设计稿 W10",
+  "document": {
+    "width": 1080,
+    "height": 1080,
+    "background": "#FFFFFF",
+    "elements": [
+      { "id": "rect0", "type": "rect", "x": 8, "y": 8, "width": 32, "height": 32, "z": 0, "fill": "#1F6FEB" },
+      { "id": "rect1", "type": "rect", "x": 48, "y": 8, "width": 32, "height": 32, "z": 1, "fill": "#1F6FEB" },
+      { "id": "rect2", "type": "rect", "x": 88, "y": 8, "width": 32, "height": 32, "z": 2, "fill": "#1F6FEB" },
+      { "id": "rect3", "type": "rect", "x": 128, "y": 8, "width": 32, "height": 32, "z": 3, "fill": "#1F6FEB" },
+      { "id": "rect4", "type": "rect", "x": 168, "y": 8, "width": 32, "height": 32, "z": 4, "fill": "#1F6FEB" },
+      { "id": "rect5", "type": "rect", "x": 208, "y": 8, "width": 32, "height": 32, "z": 5, "fill": "#1F6FEB" },
+      { "id": "rect6", "type": "rect", "x": 8, "y": 48, "width": 32, "height": 32, "z": 6, "fill": "#1F6FEB" },
+      { "id": "rect7", "type": "rect", "x": 48, "y": 48, "width": 32, "height": 32, "z": 7, "fill": "#1F6FEB" },
+      { "id": "rect8", "type": "rect", "x": 88, "y": 48, "width": 32, "height": 32, "z": 8, "fill": "#1F6FEB" },
+      { "id": "rect9", "type": "rect", "x": 128, "y": 48, "width": 32, "height": 32, "z": 9, "fill": "#1F6FEB" },
+      { "id": "rect10", "type": "rect", "x": 168, "y": 48, "width": 32, "height": 32, "z": 10, "fill": "#1F6FEB" },
+      { "id": "rect11", "type": "rect", "x": 208, "y": 48, "width": 32, "height": 32, "z": 11, "fill": "#1F6FEB" },
+      { "id": "rect12", "type": "rect", "x": 8, "y": 88, "width": 32, "height": 32, "z": 12, "fill": "#1F6FEB" },
+      { "id": "rect13", "type": "rect", "x": 48, "y": 88, "width": 32, "height": 32, "z": 13, "fill": "#1F6FEB" },
+      { "id": "rect14", "type": "rect", "x": 88, "y": 88, "width": 32, "height": 32, "z": 14, "fill": "#1F6FEB" },
+      { "id": "rect15", "type": "rect", "x": 128, "y": 88, "width": 32, "height": 32, "z": 15, "fill": "#1F6FEB" },
+      { "id": "rect16", "type": "rect", "x": 168, "y": 88, "width": 32, "height": 32, "z": 16, "fill": "#1F6FEB" },
+      { "id": "rect17", "type": "rect", "x": 208, "y": 88, "width": 32, "height": 32, "z": 17, "fill": "#1F6FEB" },
+      { "id": "title1", "type": "text", "x": 48, "y": 200, "width": 520, "height": 48, "z": 18, "text": "本地设计稿 W10", "fontSizePx": 28, "fill": "#1F2328" },
+      { "id": "oval1", "type": "ellipse", "x": 480, "y": 200, "width": 80, "height": 80, "z": 19, "fill": "#E5484D" }
+    ]
+  },
+  "palette": ["#FFFFFF", "#1F6FEB", "#1F2328"],
+  "attribution": {
+    "entries": [
+      {
+        "text": "OceanLeo local design fixture",
+        "licenseCode": "CC0",
+        "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/"
+      }
+    ]
+  }
+}
