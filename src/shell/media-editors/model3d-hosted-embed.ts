@@ -4,16 +4,23 @@
  * 默认 origin 是 W18 分给 3D 件的 `https://3d.oceanleo.app`。
  * glTF 不放进查询串（可能带能力 URL），只走 init 的自由载荷。
  */
+import { getClientHostConfig } from "../../contracts/client-host-config";
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
 import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
+import { readLocalHostedOrigin } from "../hosted-local-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 
 /** 缺省家族（com）的 3D origin。运行时嵌 iframe 走 `model3dHostedEmbedBase()`。 */
 export const MODEL3D_HOSTED_EMBED_ORIGIN = "https://3d.oceanleo.app";
 
 export function model3dHostedEmbedBase(override?: string): string {
-  const current = hostedEditorOrigin("3d");
+  const host = getClientHostConfig();
+  const local =
+    host && host.platform !== "web"
+      ? readLocalHostedOrigin("3d", host.capabilities)
+      : "";
+  const current = local || hostedEditorOrigin("3d");
   if (!override) return current;
   try {
     const url = new URL(override);

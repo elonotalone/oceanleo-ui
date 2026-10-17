@@ -4,16 +4,23 @@
  * 默认 origin 是 W18 分给音频件的 `https://audio.oceanleo.app`。
  * 音频字节不放进查询串，只走 init 的自由载荷（ArrayBuffer → base64）。
  */
+import { getClientHostConfig } from "../../contracts/client-host-config";
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
 import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
+import { readLocalHostedOrigin } from "../hosted-local-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 
 /** 缺省家族（com）的音频 origin。运行时嵌 iframe 走 `audioHostedEmbedBase()`。 */
 export const AUDIO_HOSTED_EMBED_ORIGIN = "https://audio.oceanleo.app";
 
 export function audioHostedEmbedBase(override?: string): string {
-  const current = hostedEditorOrigin("audio");
+  const host = getClientHostConfig();
+  const local =
+    host && host.platform !== "web"
+      ? readLocalHostedOrigin("audio", host.capabilities)
+      : "";
+  const current = local || hostedEditorOrigin("audio");
   if (!override) return current;
   try {
     const url = new URL(override);

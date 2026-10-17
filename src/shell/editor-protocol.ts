@@ -10,6 +10,8 @@ import {
 } from "./editor-protocol-types.mjs";
 import { isCurrentFamilyFirstPartyHost } from "../contracts/domain-family";
 import {
+  isInjectedLocalHostedEmbedBase,
+  isNativeClientPageOrigin,
   isTrustedEmbedEditorBase,
   isUntrustedContentHostname,
 } from "./editor-sandbox-origin";
@@ -102,6 +104,15 @@ export function isTrustedEditorOrigin(origin: string): boolean {
     // W18 R1 全串白名单。**必须排在下一行之前**（`*.oceanleo.app` 整域是
     // 不可信内容域，排在后面就永远走不到）。论证见 hosted-editor-origins.ts。
     if (isHostedEditorOrigin(origin)) return true;
+    // UC-3/UC-6: native host-injected loopback origin is trusted for
+    // postMessage. The production loopback-dev-gate below still rejects
+    // guessed localhost on web and in production pages that are not loopback.
+    if (
+      isInjectedLocalHostedEmbedBase(origin) ||
+      isNativeClientPageOrigin(origin)
+    ) {
+      return protocol === "http:" || protocol === "https:";
+    }
     if (isUntrustedContentHostname(hostname)) return false;
     if (isLoopbackHostname(hostname)) {
       return (

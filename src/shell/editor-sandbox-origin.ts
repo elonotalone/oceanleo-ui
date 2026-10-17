@@ -191,13 +191,101 @@ function normalizedEmbedBase(base: string): string {
   }
 }
 
+const CLIENT_HOST_CONFIG_GLOBAL_KEY = "__OCEANLEO_CLIENT_HOST_CONFIG__";
+const LOCAL_HOSTED_CAPABILITY_PREFIX = "local-hosted:";
+const INJECTED_LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function nativeClientPlatform(platform: unknown): boolean {
+  return (
+    platform === "desktop" ||
+    platform === "ios" ||
+    platform === "android" ||
+    platform === "harmony"
+  );
+}
+
+/**
+ * UC-3 / UC-6: loopback embed bases are trusted only when a native client host
+ * injected this exact origin (`local-hosted:<label>=http://127.0.0.1:port`).
+ * Web hosts never take this branch. Arbitrary localhost is not trusted.
+ * Read from the host-config global slot so this module stays import-free.
+ */
+function injectedLocalHostedOrigins(): string[] {
+  const slot = (globalThis as {
+    [CLIENT_HOST_CONFIG_GLOBAL_KEY]?: {
+      platform?: string;
+      capabilities?: readonly string[];
+    };
+  })[CLIENT_HOST_CONFIG_GLOBAL_KEY];
+  if (!slot || !nativeClientPlatform(slot.platform)) return [];
+  const origins: string[] = [];
+  for (const capability of slot.capabilities || []) {
+    if (!capability.startsWith(LOCAL_HOSTED_CAPABILITY_PREFIX)) continue;
+    const eq = capability.indexOf("=", LOCAL_HOSTED_CAPABILITY_PREFIX.length);
+    if (eq < 0) continue;
+    const origin = capability.slice(eq + 1).trim();
+    try {
+      const parsed = new URL(origin);
+      if (parsed.origin !== origin || parsed.username || parsed.password) continue;
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+      const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      if (!INJECTED_LOOPBACK_HOSTS.has(host)) continue;
+      origins.push(origin);
+    } catch {
+      continue;
+    }
+  }
+  return origins;
+}
+
+export function isInjectedLocalHostedEmbedBase(base: string): boolean {
+  const normalized = normalizedEmbedBase(base);
+  if (!normalized) return false;
+  return injectedLocalHostedOrigins().some((allowed) => {
+    if (normalized === allowed) return true;
+    try {
+      const allowedUrl = new URL(allowed);
+      const baseUrl = new URL(normalized);
+      return (
+        allowedUrl.origin === allowed &&
+        baseUrl.origin === allowedUrl.origin &&
+        (baseUrl.pathname === "" || baseUrl.pathname === "/")
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** The native app's own loopback page origin. Not an embed-base allow-list. */
+export function isNativeClientPageOrigin(origin: string): boolean {
+  const slot = (globalThis as {
+    [CLIENT_HOST_CONFIG_GLOBAL_KEY]?: { platform?: string };
+  })[CLIENT_HOST_CONFIG_GLOBAL_KEY];
+  if (!slot || !nativeClientPlatform(slot.platform)) return false;
+  try {
+    const parsed = new URL(origin);
+    if (parsed.origin !== origin || parsed.username || parsed.password) return false;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (!INJECTED_LOOPBACK_HOSTS.has(host)) return false;
+    const pageOrigin =
+      typeof globalThis.location?.origin === "string" ? globalThis.location.origin : "";
+    return pageOrigin === origin;
+  } catch {
+    return false;
+  }
+}
+
 export function isTrustedEmbedEditorBase(base: string): boolean {
   const normalized = normalizedEmbedBase(base);
   if (!normalized) return false;
   // 两张表都放行 URL 构造；沙箱档次的差别在 `embedEditorFrameSandbox()` 里。
+  // UC-3/UC-6：原生宿主注入的精确 loopback origin 也放行 URL 构造，网页永不。
   return (
     TRUSTED_EMBED_EDITOR_BASE_SET.has(normalized) ||
-    isHostedEditorEmbedBase(normalized)
+    isHostedEditorEmbedBase(normalized) ||
+    isInjectedLocalHostedEmbedBase(normalized)
   );
 }
 
@@ -257,6 +345,7 @@ export function embedEditorFrameSandbox(editorBase: string): string {
   // `TRUSTED_EMBED_EDITOR_SANDBOX`——令牌串相同，但语义档位错了
   // （家族第一方 vs 隔离域我方部署）。UGC / 未知 URL 走不可信档。
   if (isHostedEditorEmbedBase(editorBase)) return HOSTED_EDITOR_SANDBOX;
+  if (isInjectedLocalHostedEmbedBase(editorBase)) return HOSTED_EDITOR_SANDBOX;
   return isTrustedEmbedEditorBase(editorBase)
     ? TRUSTED_EMBED_EDITOR_SANDBOX
     : UNTRUSTED_FRAME_SANDBOX;
