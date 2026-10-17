@@ -103,12 +103,15 @@ function applyOccupancyBusy(state: DialogState, program: string, busyIds: string
   const prefix = `${state.program ?? ""}::`;
   const liveTurns = { ...state.liveTurns };
   const current = state.activeSession || state.draftRef || "";
+  const holdCurrent = Boolean(current && turnStillRunning(state.messages));
+  if (holdCurrent) busySet.add(current);
   for (const key of Object.keys(liveTurns)) {
     if (!key.startsWith(prefix)) continue;
     const id = key.slice(prefix.length);
     if (busySet.has(id)) continue;
     if (id === current && state.occupancyPendingAt != null) continue;
     if (id === current && state.busy && !hasOpenTurn(state.messages)) continue;
+    if (id === current && holdCurrent) continue;
     delete liveTurns[key];
   }
   for (const id of busySet) {
@@ -119,7 +122,13 @@ function applyOccupancyBusy(state: DialogState, program: string, busyIds: string
   const currentKey = turnKey(state.program, current);
   const currentLive = Boolean(current && liveTurns[currentKey]);
   let messages = state.messages;
-  if (current && !busySet.has(current) && state.occupancyPendingAt == null && hasOpenTurn(state.messages)) {
+  if (
+    current &&
+    !busyIds.includes(current) &&
+    !holdCurrent &&
+    state.occupancyPendingAt == null &&
+    hasOpenTurn(state.messages)
+  ) {
     messages = stampOpenTurn(state.messages, "end_turn");
   }
   return {

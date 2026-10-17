@@ -17,7 +17,7 @@ import { applyDialog, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
 import { composerOccupancy, confirmedBusySessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
 import { createOccupancyProbe } from "./occupancy-probe";
-import { isCompletedStop, sessionInterrupted } from "./session-status";
+import { isCompletedStop, sessionInterrupted, turnStillRunning } from "./session-status";
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
@@ -766,6 +766,7 @@ export function useAgentDialog({
       pendingSession: ocean.occupancyPendingSession,
       offline: ocean.offline,
       sessionLoading: ocean.sessionLoading,
+      localRunning: turnStillRunning(ocean.messages),
     });
     if (oceanMode !== "idle") return;
     if (inboxWaiters.current.size) {
@@ -983,6 +984,7 @@ export function useAgentDialog({
       pendingSession: current.occupancyPendingSession,
       offline: current.offline,
       sessionLoading: current.sessionLoading,
+      localRunning: turnStillRunning(current.messages),
     });
     if (occupancyMode !== "idle") return;
     const text = draftRef.current.trim();

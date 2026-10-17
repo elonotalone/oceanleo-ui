@@ -18,6 +18,7 @@ import {
 } from "./model-param-memory";
 import { modelControls } from "./model-controls";
 import { composerOccupancy, OCCUPANCY_STALE_MS } from "./occupancy";
+import { turnStillRunning } from "./session-status";
 import { tone } from "../server-page/tone";
 import type { AgentDialogController } from "./types";
 
@@ -240,6 +241,7 @@ export function Composer({
     now: occupancyNow,
     offline: dialog.offline,
     sessionLoading: dialog.sessionLoading,
+    localRunning: turnStillRunning(dialog.messages),
   });
   const showStop = occupancyMode === "working";
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);

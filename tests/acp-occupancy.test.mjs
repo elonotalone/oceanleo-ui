@@ -48,6 +48,16 @@ test("composerOccupancy：确认在干活 / 确认空闲", () => {
   assert.equal(composerOccupancy({
     linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11,
   }), "idle");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11, localRunning: true,
+  }), "working");
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 1, occupancyBusy: [], sessionId: "s",
+    now: 1 + OCCUPANCY_STALE_MS + 1, localRunning: true,
+  }), "working");
+  assert.equal(composerOccupancy({
+    linkUp: false, occupancyAt: null, occupancyBusy: [], sessionId: "s", localRunning: true,
+  }), "working");
 });
 
 test("后台 session 的 turn_start/done/error 改 occupancy.busy，空数组也要落地", () => {
@@ -106,6 +116,13 @@ test("occupancy-lost 回到 uncertain，像素列表清空", () => {
     occupancyBusy: state.occupancyBusy,
     sessionId: "x",
   }), "uncertain");
+  assert.equal(composerOccupancy({
+    linkUp: state.occupancyLink,
+    occupancyAt: state.occupancyAt,
+    occupancyBusy: state.occupancyBusy,
+    sessionId: "x",
+    localRunning: true,
+  }), "working");
 });
 
 test("occupancy probe：2s 一轮，未应答算 stale", (t) => {

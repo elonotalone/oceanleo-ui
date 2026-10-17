@@ -59,8 +59,11 @@ export function composerOccupancy(input: {
   staleMs?: number;
   offline?: boolean;
   sessionLoading?: boolean;
+  /** Open thought/tool/turn on this view. Occupancy empty is not idle then. */
+  localRunning?: boolean;
 }): OccupancyMode {
   if (input.offline) return "uncertain";
+  if (input.localRunning) return "working";
   if (!occupancyFresh(input)) return "uncertain";
   const sessionId = input.sessionId.trim();
   if (sessionId && (input.occupancyBusy ?? []).includes(sessionId)) return "working";

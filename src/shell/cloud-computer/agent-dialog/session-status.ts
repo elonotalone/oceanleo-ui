@@ -60,6 +60,7 @@ export function turnLooksSettled(messages: AgentDialogMessage[]): boolean {
   let spoke = false;
   for (const item of turn.items) {
     if (item.kind === "assistant" && item.text.trim()) spoke = true;
+    if (item.kind === "thought") return false;
     if (item.kind === "tool" && (item.tool.status === "pending" || item.tool.status === "in_progress")) {
       return false;
     }
@@ -69,7 +70,7 @@ export function turnLooksSettled(messages: AgentDialogMessage[]): boolean {
   return spoke;
 }
 
-/** Thoughts or in-flight tools still need Stop. Finished text with a missing done does not. */
+/** Thoughts, tools, or an unstamped turn that has not finished speaking still need Stop. */
 export function turnStillRunning(messages: AgentDialogMessage[]): boolean {
   return hasOpenTurn(messages) && !turnLooksSettled(messages);
 }
