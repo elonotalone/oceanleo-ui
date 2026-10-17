@@ -810,12 +810,17 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     let messages = next.messages;
     const sid = next.activeSession;
     const program = next.program || "";
-    if (frame.live === false && hasOpenTurn(messages) && next.occupancyPendingAt == null) {
+    if (
+      frame.live === false &&
+      hasOpenTurn(messages) &&
+      next.occupancyPendingAt == null &&
+      !turnStillRunning(messages)
+    ) {
       messages = stampOpenTurn(messages, "end_turn");
     }
     let occupied = { ...next, messages, liveTurns: { ...keptTurns } };
     if (typeof frame.live === "boolean" && sid) {
-      occupied = frame.live
+      occupied = frame.live || turnStillRunning(messages)
         ? noteProbeWorking(occupied, sid)
         : dropOccupancySession(occupied, sid);
     } else if (sid && isLiveTurn(occupied.liveTurns, occupied.program, sid)) {

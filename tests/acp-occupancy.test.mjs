@@ -10,7 +10,7 @@ import {
 } from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
 import { createOccupancyProbe } from "../src/shell/cloud-computer/agent-dialog/occupancy-probe.ts";
 import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { sessionListStatus } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
+import { sessionListStatus, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
 
 const PROGRAMS = ["cursor", "claude", "codex", "hermes", "oceanleo"];
 
@@ -99,6 +99,47 @@ test("五个程序的 occupancy 帧都把对应 session 标成 working", () => {
       sessionId: "live",
     }), "idle", program);
   }
+});
+
+test("composerOccupancy：已 stamp 的回合只要工具还在等待就是 working", () => {
+  const messages = [
+    { kind: "user", id: "u", text: "go" },
+    {
+      kind: "turn",
+      id: "t",
+      acpSession: "s",
+      stop: "end_turn",
+      items: [{
+        kind: "tool",
+        id: "i",
+        tool: { id: "wait-1", kind: "execute", title: "python3", status: "pending", content: [], locations: [] },
+      }],
+    },
+  ];
+  assert.equal(turnStillRunning(messages), true);
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11, localRunning: true,
+  }), "working");
+  const inProgress = [
+    messages[0],
+    {
+      ...messages[1],
+      items: [{
+        kind: "tool",
+        id: "i",
+        tool: { id: "run-1", kind: "execute", title: "tsc", status: "in_progress", content: [], locations: [] },
+      }],
+    },
+  ];
+  assert.equal(turnStillRunning(inProgress), true);
+  const cancelled = [
+    messages[0],
+    {
+      ...inProgress[1],
+      stop: "cancelled",
+    },
+  ];
+  assert.equal(turnStillRunning(cancelled), false);
 });
 
 test("occupancy-lost 回到 uncertain，像素列表清空", () => {

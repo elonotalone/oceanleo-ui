@@ -287,6 +287,8 @@ export type AgentDialogController = {
   unreadSessions?: string[];
   send: () => Promise<void>;
   abort: () => void;
+  /** Pointer-down on Stop: ignore the rest of this click so the draft is not sent. */
+  armAbortSendGuard?: () => void;
   programs: ProgramStatus[];
   models: DialogModel[];
   modelSource: string;

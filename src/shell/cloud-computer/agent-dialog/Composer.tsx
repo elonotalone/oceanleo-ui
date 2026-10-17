@@ -222,6 +222,39 @@ export function Composer({
     const timer = setTimeout(() => setOccupancyNow(Date.now()), Math.max(0, wait));
     return () => clearTimeout(timer);
   }, [dialog.occupancyAt]);
+  // Stop → Send swap mid-click submits the draft. Keep Stop under the pointer
+  // until this gesture ends, and ignore that click's submit.
+  const holdStopRef = useRef(false);
+  const suppressSendRef = useRef(false);
+  const [holdStop, setHoldStop] = useState(false);
+  const beginStopGesture = () => {
+    if (holdStopRef.current) return;
+    holdStopRef.current = true;
+    suppressSendRef.current = true;
+    setHoldStop(true);
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      holdStopRef.current = false;
+      suppressSendRef.current = false;
+      setHoldStop(false);
+    };
+    const onClick = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      finish();
+    };
+    const onUp = () => {
+      window.setTimeout(finish, 0);
+    };
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
   // 还没选程序时不渲染（合同 I6 起默认选中 OceanLeo agent，正常不会走到这里）。
   if (!dialog.program) return null;
   const lastMessage = dialog.messages[dialog.messages.length - 1];
@@ -243,7 +276,7 @@ export function Composer({
     sessionLoading: dialog.sessionLoading,
     localRunning: turnStillRunning(dialog.messages),
   });
-  const showStop = occupancyMode === "working";
+  const showStop = occupancyMode === "working" || holdStop;
   const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
   const showTuning = tuningParams.length > 0 || Boolean(controls.effort) || Boolean(dialog.mode && dialog.mode.options.length > 0);
   const tuningModeName = dialog.mode?.options.find((choice) => choice.value === dialog.selectedMode)?.name || dialog.selectedMode;
@@ -255,7 +288,12 @@ export function Composer({
   const [dragOver, setDragOver] = useState(false);
   const canAttach = typeof dialog.addAttachments === "function";
   const inboxBusy = (dialog.attachments || []).some((item) => item.state === "uploading");
-  const sendEnabled = occupancyMode === "idle" && !inboxBusy;
+  const sendEnabled = occupancyMode === "idle" && !inboxBusy && !holdStop;
+  const requestSend = () => {
+    if (suppressSendRef.current || holdStopRef.current) return;
+    if (occupancyMode !== "idle" || inboxBusy) return;
+    void dialog.send();
+  };
   const commandMatches = commandQuery === null
     ? []
     : dialog.commands.filter((command) => {
@@ -268,8 +306,7 @@ export function Composer({
       data-oceanleo-cc-occupancy={occupancyMode}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!sendEnabled) return;
-        void dialog.send();
+        requestSend();
       }}
       onDragEnter={(event: DragEvent) => {
         if (!canAttach || !event.dataTransfer?.types.includes("Files")) return;
@@ -361,8 +398,7 @@ export function Composer({
                 !event.nativeEvent.isComposing
               ) {
                 event.preventDefault();
-                if (!sendEnabled) return;
-                void dialog.send();
+                requestSend();
               }
             }}
             placeholder={tt("输入你想说的话")}
@@ -532,7 +568,19 @@ export function Composer({
           <button
             type="button"
             data-oceanleo-cc-stop=""
-            onClick={dialog.abort}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              beginStopGesture();
+              dialog.armAbortSendGuard?.();
+              dialog.abort();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (holdStopRef.current) return;
+              dialog.abort();
+            }}
             className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
           >
             {tt("停止")}

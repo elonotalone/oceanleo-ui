@@ -965,7 +965,34 @@ export function useAgentDialog({
     [clearOceanWait, refreshOcean],
   );
 
+  const abortSendGuardRef = useRef(false);
+  const armAbortSendGuard = useCallback(() => {
+    if (abortSendGuardRef.current) return;
+    abortSendGuardRef.current = true;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      abortSendGuardRef.current = false;
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    const onClick = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      release();
+    };
+    const onUp = () => {
+      window.setTimeout(release, 0);
+    };
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }, []);
+
   const send = useCallback(async () => {
+    if (abortSendGuardRef.current) return;
     const program = stateRef.current.program;
     // 合同 I6：oceanleo 走 REST turn + 轮询，不碰 WS（P7：不为它等 15s 连接超时）。
     if (program === "oceanleo" && !localOceanleoRef.current) {
@@ -1573,6 +1600,7 @@ export function useAgentDialog({
     unreadSessions,
     send,
     abort,
+    armAbortSendGuard,
     programs: state.programs,
     models: state.models,
     modelSource: state.modelSource,
