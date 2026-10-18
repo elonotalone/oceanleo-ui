@@ -10,10 +10,25 @@ import type { RefObject } from "react";
 
 import type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 import { blankDesignDocument } from "./design-canvas/blank-design-document";
+import { deckDocumentToPptist } from "./doc-editors/deck-pptist-carrier";
+import { normalizeDeckDocument } from "./doc-editors/deck-schema";
+import { UMO_DOC_FORMAT } from "./doc-editors/rich-doc-umo-migration";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import { blankWebsiteSource } from "./website-local/blank-website-source";
 import { emptyVideoCanvasGraph } from "./workflow-carrier/video-canvas-local-session";
 import { VIDEO_CANVAS_PROJECT_SCHEMA } from "./workflow-carrier/video-canvas-schema";
+
+export function w10BlankPptistDocument(title = "本地幻灯片") {
+  return deckDocumentToPptist(normalizeDeckDocument({}, title));
+}
+
+export function w10BlankUmoDocument(title = "本地文档") {
+  return {
+    format: UMO_DOC_FORMAT,
+    title,
+    content: { type: "doc", content: [{ type: "paragraph" }] },
+  };
+}
 
 export const W10_EDITOR_IDS = Object.freeze([
   "website",
@@ -147,6 +162,9 @@ export const W10_EDITOR_MOUNTS: Record<W10EditorId, MountRow> = {
     defaultMeta: () => ({
       editor: "deck",
       editor_project_schema: "pptist.slides.v2",
+      draft: true,
+      blank: true,
+      slides: w10BlankPptistDocument("本地幻灯片"),
     }),
   },
   "umo-hosted": {
@@ -164,6 +182,9 @@ export const W10_EDITOR_MOUNTS: Record<W10EditorId, MountRow> = {
     defaultMeta: () => ({
       editor: "umo-hosted",
       editor_project_schema: "umo-document@1",
+      draft: true,
+      blank: true,
+      project: w10BlankUmoDocument("本地文档"),
     }),
   },
   "audiomass-hosted": {

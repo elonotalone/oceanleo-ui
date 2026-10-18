@@ -5,7 +5,7 @@
  * 沙箱走 W01 的 `embedEditorFrameSandbox`（Hosted 六件不可信档，无 same-origin）。
  * 凭据零进 iframe：glTF 只走 postMessage init / recovery-snapshot。
  */
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import {
   EDITOR_PROTOCOL,
   acceptEditorFrameMessage,
@@ -22,6 +22,7 @@ import {
   buildModel3DInitEnvelope,
   canBuildModel3DEmbedUrl,
   model3dHostedEmbedBase,
+  resolveModel3DHostedFrameSrc,
 } from "./model3d-hosted-embed";
 
 export function Model3DHostedFrame({
@@ -55,6 +56,16 @@ export function Model3DHostedFrame({
   const embedBase = model3dHostedEmbedBase();
   const editorOrigin = embedBase;
   const sandbox = embedEditorFrameSandbox(embedBase);
+  const frameSrc = useMemo(
+    () =>
+      resolveModel3DHostedFrameSrc({
+        src,
+        instanceId,
+        hostOrigin,
+        title,
+      }),
+    [hostOrigin, instanceId, src, title],
+  );
 
   const send = useCallback(
     (data: Record<string, unknown>) => {
@@ -110,13 +121,12 @@ export function Model3DHostedFrame({
   }, [editorOrigin, instanceId, onDirty, onError, onReady, onSnapshot]);
 
   void send;
-  void hostOrigin;
 
   return (
     <iframe
       ref={iframe}
       title={title}
-      src={src}
+      src={frameSrc}
       sandbox={sandbox}
       referrerPolicy="no-referrer"
       data-testid="model3d-hosted-frame"
@@ -196,4 +206,4 @@ export function postModel3DSaveRequest(
   return true;
 }
 
-export { canBuildModel3DEmbedUrl, buildModel3DEmbedUrl };
+export { canBuildModel3DEmbedUrl, buildModel3DEmbedUrl, resolveModel3DHostedFrameSrc };

@@ -54,7 +54,11 @@ import {
 } from "../hosted-editor-origins";
 import { editorToolLabel } from "../workbench-routes";
 import { useOptionalClientHost } from "../../client-ui/host-context";
-import { readLocalHostedOrigin } from "../hosted-local-origin";
+import {
+  clientHostedEmbedContext,
+  hostedEmbedBaseForPlatform,
+  hostedKernelChromeHidden,
+} from "../hosted-local-origin";
 
 /**
  * 双核 `next` 分支：幻灯片托管在当前家族的 `slides.*` Hosted origin
@@ -265,6 +269,8 @@ export function DeckHostedRoute({
   }, []);
   const gateHandoff = useModeSwitchHandoff();
   const reportModeSwitchFailure = useModeSwitchFailure();
+  const host = useOptionalClientHost();
+  const hostedCtx = clientHostedEmbedContext(host);
   const resolved = useEditorHandoffSource(item, gateHandoff);
   // Inline sources stringify the whole deck; PPTist messages re-render this
   // route on every edit, so only recompute when the resolution itself changes.
@@ -312,7 +318,7 @@ export function DeckHostedRoute({
       return;
     }
     if (sameContent) {
-      setStatus(resolved.error || "");
+      if (!sourceRef.current) setStatus(resolved.error || "");
       return;
     }
     if (!sameContent) {
@@ -332,6 +338,17 @@ export function DeckHostedRoute({
           ? resolved.source
           : null;
       if (!sourceHandoff) {
+        const openBlank =
+          Boolean(hostedCtx.platform && hostedCtx.platform !== "web") &&
+          !item.artifactId;
+        if (openBlank) {
+          const blank = toHostedDocument({}, item.title || "演示文稿");
+          loadedContentIdentityRef.current = contentIdentity;
+          setSource(blank);
+          setSourceReady(true);
+          setStatus("");
+          return;
+        }
         if (!cancelled) {
           setStatus(resolved.error || ENTER_PRO_NOT_READY);
         }
@@ -362,14 +379,13 @@ export function DeckHostedRoute({
     return () => {
       cancelled = true;
     };
-  }, [contentIdentity, resolutionIdentity]);
+  }, [contentIdentity, hostedCtx.platform, item.artifactId, item.title, resolutionIdentity]);
 
-  const host = useOptionalClientHost();
-  const localEmbedBase = readLocalHostedOrigin(
+  const embedBase = hostedEmbedBaseForPlatform(
     "slides",
-    host?.environment.capabilities || [],
+    deckHostedEmbedBase(),
+    hostedCtx,
   );
-  const embedBase = localEmbedBase || deckHostedEmbedBase();
   const editorOrigin = embedBase;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -441,10 +457,11 @@ export function DeckHostedRoute({
     openedContentIdentityRef.current = null;
     setDocumentOpened(false);
     const modeSent = sendToEditor(buildSetModeMessage(instanceId, mode));
+    const hideChrome = hostedKernelChromeHidden(mode, hostedCtx.platform);
     const chromeSent = sendToEditor(
       buildHideChromeMessage(instanceId, {
-        toolbar: mode === "normal",
-        panels: mode === "normal",
+        toolbar: mode === "normal" && hideChrome,
+        panels: mode === "normal" && hideChrome,
       }),
     );
     const initSent = sendToEditor({
@@ -460,7 +477,7 @@ export function DeckHostedRoute({
       setStatus(ENTER_PRO_NOT_READY);
       reportModeSwitchFailure(ENTER_PRO_NOT_READY);
     }
-  }, [contentIdentity, instanceId, item.title, mode, reportModeSwitchFailure, sendToEditor, source, sourceReady]);
+  }, [contentIdentity, hostedCtx.platform, instanceId, item.title, mode, reportModeSwitchFailure, sendToEditor, source, sourceReady]);
 
   const reportWorkingHandoff = useCallback(
     (payload: unknown, revision: number) => {
@@ -592,12 +609,12 @@ export function DeckHostedRoute({
       sendToEditor(buildSetModeMessage(instanceId, next));
       sendToEditor(
         buildHideChromeMessage(instanceId, {
-          toolbar: next === "normal",
-          panels: next === "normal",
+          toolbar: next === "normal" && hostedKernelChromeHidden(next, hostedCtx.platform),
+          panels: next === "normal" && hostedKernelChromeHidden(next, hostedCtx.platform),
         }),
       );
     },
-    [instanceId, sendToEditor],
+    [hostedCtx.platform, instanceId, sendToEditor],
   );
 
   const flush = useCallback(() => {

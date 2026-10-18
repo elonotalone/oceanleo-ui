@@ -8,7 +8,7 @@ import { getClientHostConfig } from "../../contracts/client-host-config";
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
 import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
-import { readLocalHostedOrigin } from "../hosted-local-origin";
+import { hostedEmbedBaseForPlatform } from "../hosted-local-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 
 /** 缺省家族（com）的 3D origin。运行时嵌 iframe 走 `model3dHostedEmbedBase()`。 */
@@ -16,11 +16,11 @@ export const MODEL3D_HOSTED_EMBED_ORIGIN = "https://3d.oceanleo.app";
 
 export function model3dHostedEmbedBase(override?: string): string {
   const host = getClientHostConfig();
-  const local =
-    host && host.platform !== "web"
-      ? readLocalHostedOrigin("3d", host.capabilities)
-      : "";
-  const current = local || hostedEditorOrigin("3d");
+  const current = hostedEmbedBaseForPlatform(
+    "3d",
+    hostedEditorOrigin("3d"),
+    { platform: host?.platform, capabilities: host?.capabilities },
+  );
   if (!override) return current;
   try {
     const url = new URL(override);
@@ -56,6 +56,26 @@ export function buildModel3DEmbedUrl(opts: {
     assetKind: "model3d",
     extra: opts.extra,
   });
+}
+
+/** W04 wrapHostedFrame may still pass src:"". Fill from injected local-hosted. */
+export function resolveModel3DHostedFrameSrc(opts: {
+  src?: string;
+  instanceId: string;
+  hostOrigin: string;
+  title?: string;
+}): string {
+  const given = String(opts.src || "").trim();
+  if (given) return given;
+  try {
+    return buildModel3DEmbedUrl({
+      instanceId: opts.instanceId,
+      hostOrigin: opts.hostOrigin,
+      assetTitle: opts.title,
+    });
+  } catch {
+    return "";
+  }
 }
 
 /**

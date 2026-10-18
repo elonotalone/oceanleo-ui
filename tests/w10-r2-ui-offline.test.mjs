@@ -186,6 +186,74 @@ test("R2/R3 client-web editor.html W10 types", { timeout: 120_000 }, async (t) =
   assert.equal(entries.length, EDITOR_HTML_TYPES.length);
 });
 
+test("R4 editor.html injects local-hosted and stays off *.oceanleo.app when dist has W10", { timeout: 180_000 }, async (t) => {
+  assert.equal(existsSync(join(DIST, "editor.html")), true, "W09 dist/editor.html missing");
+  const cores = {};
+  for (const id of ["pptist", "umo", "audiomass", "threeeditor"]) {
+    const root = corePath(id);
+    if (!existsSync(root)) continue;
+    cores[id] = await startRootServer(root);
+    t.after(() => cores[id].close());
+  }
+  const hosted = await startRootServer(DIST);
+  t.after(() => hosted.close());
+  const capabilities = [
+    "native-shell",
+    cores.pptist ? `local-hosted:slides=${cores.pptist.origin}` : "",
+    cores.umo ? `local-hosted:docs=${cores.umo.origin}` : "",
+    cores.audiomass ? `local-hosted:audio=${cores.audiomass.origin}` : "",
+    cores.threeeditor ? `local-hosted:3d=${cores.threeeditor.origin}` : "",
+  ].filter(Boolean);
+  const { browser, context, blocked, requested } = await launchBrowser();
+  t.after(() => browser.close());
+  await context.addInitScript((caps) => {
+    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+      family: "com",
+      portalOrigin: "https://oceanleo.com",
+      gatewayOrigin: "https://api.dev.oceanleo.com",
+      identityOrigin: "https://auth.oceanleo.com",
+      identityAnonKey: "dev-local-anon-placeholder",
+      locale: "zh",
+      platform: "desktop",
+      capabilities: caps,
+    };
+  }, capabilities);
+  const dir = await evidenceDir("editor-html-r4");
+  const types = ["deck", "umo-hosted", "audiomass-hosted", "three-editor"];
+  const entries = [];
+  for (const type of types) {
+    const page = await context.newPage();
+    await page.goto(`${hosted.origin}/editor.html?type=${type}&session=w10-r4`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForTimeout(4000);
+    const body = (await page.locator("body").innerText().catch(() => "")) || "";
+    const iframeSrc = await page
+      .locator("iframe")
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("src") || ""))
+      .catch(() => []);
+    const png = await shot(page, dir, `${type}.png`);
+    entries.push({
+      type,
+      noUrl: body.includes("没有可用 URL"),
+      noFile: body.includes("没有可读取的文件"),
+      iframeSrc,
+      cloud: iframeSrc.some((src) => /oceanleo\.app/.test(src || "")),
+      screenshot: png,
+      body: body.slice(0, 240),
+    });
+    await page.close();
+  }
+  await writeLog(dir, {
+    capabilities,
+    blockedRemote: blocked.slice(0, 30),
+    localRequests: requested.filter((url) => url.includes("127.0.0.1")).slice(0, 40),
+    entries,
+    note: "W10 cannot rebuild client-web. Stale dist may still show the V01 copy until W09 packs this UI.",
+  });
+  assert.equal(entries.length, types.length);
+});
+
 test("R2 website/design-canvas/video-canvas/video-timeline click round-trips", { timeout: 180_000 }, async (t) => {
   const vite = await startVite();
   t.after(() => vite.close());
@@ -390,6 +458,43 @@ test("R2 hosted cores load from local-origin cache", { timeout: 240_000 }, async
       await pm.click({ force: true });
       await page.keyboard.press("Control+a");
       await page.keyboard.type("离线改过的标题", { delay: 25 });
+      const chromeText = await hostedBodyText(page);
+      const addSlideVisible = chromeText.includes("添加幻灯片");
+      if (!addSlideVisible) {
+        throw new Error("PPTist compact/pro chrome missing 添加幻灯片");
+      }
+      await page.evaluate(() => {
+        window.__oceanleoHost.postToFrame({ type: "set-mode", mode: "normal" });
+        window.__oceanleoHost.postToFrame({
+          type: "hide-chrome",
+          toolbar: true,
+          panels: true,
+        });
+      });
+      await page.waitForTimeout(400);
+      const compactText = await hostedBodyText(page);
+      if (!compactText.includes("添加幻灯片")) {
+        throw new Error("website compact mode lost 添加幻灯片");
+      }
+      const addBtn = frame.getByText("添加幻灯片", { exact: false }).first();
+      if (await addBtn.count()) await addBtn.click({ force: true });
+      await page.evaluate(() => {
+        window.__oceanleoHost.postToFrame({ type: "set-mode", mode: "pro" });
+        window.__oceanleoHost.postToFrame({
+          type: "hide-chrome",
+          toolbar: false,
+          panels: false,
+        });
+      });
+      await page.waitForTimeout(500);
+      const proText = await hostedBodyText(page);
+      const textBtn = frame.getByText("文本框", { exact: false }).first();
+      if (await textBtn.count()) await textBtn.click({ force: true });
+      const shapeBtn = frame.getByText("形状", { exact: false }).first();
+      if (await shapeBtn.count()) await shapeBtn.click({ force: true });
+      if (!proText.includes("文本框") && !(await textBtn.count())) {
+        throw new Error("website 专业编辑 / pro mode missing 插入文本框");
+      }
       await page.waitForTimeout(700);
       const box = await frame.locator(".editable-element-text").first().boundingBox();
       if (box) {

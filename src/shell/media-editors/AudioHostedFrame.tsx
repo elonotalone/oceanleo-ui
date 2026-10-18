@@ -5,7 +5,7 @@
  * 沙箱走 W01 的 `embedEditorFrameSandbox`（Hosted 六件不可信档，无 same-origin）。
  * 凭据零进 iframe：音频只走 postMessage init / recovery-snapshot。
  */
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import {
   EDITOR_PROTOCOL,
   acceptEditorFrameMessage,
@@ -22,6 +22,7 @@ import {
   buildAudioInitEnvelope,
   canBuildAudioEmbedUrl,
   audioHostedEmbedBase,
+  resolveAudioHostedFrameSrc,
 } from "./audio-hosted-embed";
 
 export function AudioHostedFrame({
@@ -50,6 +51,16 @@ export function AudioHostedFrame({
   const embedBase = audioHostedEmbedBase();
   const editorOrigin = embedBase;
   const sandbox = embedEditorFrameSandbox(embedBase);
+  const frameSrc = useMemo(
+    () =>
+      resolveAudioHostedFrameSrc({
+        src,
+        instanceId,
+        hostOrigin,
+        title,
+      }),
+    [hostOrigin, instanceId, src, title],
+  );
 
   const send = useCallback(
     (data: Record<string, unknown>) => {
@@ -104,13 +115,12 @@ export function AudioHostedFrame({
   }, [editorOrigin, iframe, instanceId, onError, onReady, onDirty, onSnapshot]);
 
   void send;
-  void hostOrigin;
 
   return (
     <iframe
       ref={iframe}
       title={title}
-      src={src}
+      src={frameSrc}
       sandbox={sandbox}
       referrerPolicy="no-referrer"
       data-testid="audio-hosted-frame"
@@ -165,4 +175,4 @@ export function postAudioSaveRequest(
   return true;
 }
 
-export { canBuildAudioEmbedUrl, buildAudioEmbedUrl };
+export { canBuildAudioEmbedUrl, buildAudioEmbedUrl, resolveAudioHostedFrameSrc };

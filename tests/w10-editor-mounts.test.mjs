@@ -31,6 +31,15 @@ test("W10 mount table covers eight cores with loaders and required props", () =>
       assert.equal(item.key, `w10-${id}`);
       assert.equal(item.favorite, false);
       assert.equal(item.meta.editor, id);
+      if (id === "deck") {
+        assert.equal(item.meta.blank, true);
+        assert.ok(item.meta.slides);
+        assert.notEqual(item.meta.slides.format, undefined);
+      }
+      if (id === "umo-hosted") {
+        assert.equal(item.meta.blank, true);
+        assert.equal(item.meta.project.format, "umo.tiptap.v1");
+      }
     } else {
       assert.ok(row.requiredFrame.includes("src"));
       assert.ok(row.requiredFrame.includes("instanceId"));

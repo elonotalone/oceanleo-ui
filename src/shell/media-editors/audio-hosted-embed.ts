@@ -8,7 +8,7 @@ import { getClientHostConfig } from "../../contracts/client-host-config";
 import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
 import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
-import { readLocalHostedOrigin } from "../hosted-local-origin";
+import { hostedEmbedBaseForPlatform } from "../hosted-local-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
 
 /** 缺省家族（com）的音频 origin。运行时嵌 iframe 走 `audioHostedEmbedBase()`。 */
@@ -16,11 +16,11 @@ export const AUDIO_HOSTED_EMBED_ORIGIN = "https://audio.oceanleo.app";
 
 export function audioHostedEmbedBase(override?: string): string {
   const host = getClientHostConfig();
-  const local =
-    host && host.platform !== "web"
-      ? readLocalHostedOrigin("audio", host.capabilities)
-      : "";
-  const current = local || hostedEditorOrigin("audio");
+  const current = hostedEmbedBaseForPlatform(
+    "audio",
+    hostedEditorOrigin("audio"),
+    { platform: host?.platform, capabilities: host?.capabilities },
+  );
   if (!override) return current;
   try {
     const url = new URL(override);
@@ -62,6 +62,26 @@ export function buildAudioEmbedUrl(opts: {
     assetKind: "audio",
     extra,
   });
+}
+
+/** W04 wrapHostedFrame may still pass src:"". Fill from injected local-hosted. */
+export function resolveAudioHostedFrameSrc(opts: {
+  src?: string;
+  instanceId: string;
+  hostOrigin: string;
+  title?: string;
+}): string {
+  const given = String(opts.src || "").trim();
+  if (given) return given;
+  try {
+    return buildAudioEmbedUrl({
+      instanceId: opts.instanceId,
+      hostOrigin: opts.hostOrigin,
+      assetTitle: opts.title,
+    });
+  } catch {
+    return "";
+  }
 }
 
 /**

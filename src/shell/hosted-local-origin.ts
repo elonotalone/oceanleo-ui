@@ -10,6 +10,8 @@
  * `isTrustedEmbedEditorBase` / `isTrustedEditorOrigin`.
  */
 
+import { getClientHostConfig } from "../contracts/client-host-config";
+
 export type LocalHostedLabel = "slides" | "docs" | "audio" | "3d";
 
 const PREFIX = "local-hosted:";
@@ -38,4 +40,50 @@ export function readLocalHostedOrigin(
     }
   }
   return "";
+}
+
+/**
+ * `editor.html` does not wrap ClientHostProvider. Fall back to the slot
+ * `host-config.js` / W02 writes (`__OCEANLEO_CLIENT_HOST_CONFIG__`).
+ */
+export function clientHostedEmbedContext(host?: {
+  environment?: { platform?: string; capabilities?: readonly string[] };
+} | null): { platform?: string; capabilities: readonly string[] } {
+  const config = getClientHostConfig();
+  return {
+    platform: host?.environment?.platform || config?.platform,
+    capabilities: host?.environment?.capabilities || config?.capabilities || [],
+  };
+}
+
+/**
+ * Web keeps the family origin (D9). Native/desktop never falls back to
+ * `*.oceanleo.app` — missing `local-hosted:*` yields "" so editor.html stays
+ * offline instead of requesting docs/slides.oceanleo.app.
+ */
+export function hostedEmbedBaseForPlatform(
+  label: LocalHostedLabel,
+  familyOrigin: string,
+  options: { platform?: string; capabilities?: readonly string[] } = {},
+): string {
+  const platform = options.platform || "";
+  const capabilities = options.capabilities || [];
+  if (platform && platform !== "web") {
+    return readLocalHostedOrigin(label, capabilities);
+  }
+  return familyOrigin;
+}
+
+/**
+ * Website normal mode hides PPTist header/insert bar (host L1). editor.html
+ * has no host L1, so native/desktop keeps kernel chrome in normal mode.
+ * Pro mode always shows chrome. URL params stay embed=1&editor=1.
+ */
+export function hostedKernelChromeHidden(
+  mode: string,
+  platform?: string,
+): boolean {
+  if (mode !== "normal") return false;
+  if (platform && platform !== "web") return false;
+  return true;
 }

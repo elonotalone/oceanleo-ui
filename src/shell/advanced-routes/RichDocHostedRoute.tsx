@@ -40,7 +40,12 @@ import {
 } from "../hosted-editor/index";
 import { editorToolLabel } from "../workbench-routes";
 import { useOptionalClientHost } from "../../client-ui/host-context";
-import { readLocalHostedOrigin } from "../hosted-local-origin";
+import {
+  clientHostedEmbedContext,
+  hostedEmbedBaseForPlatform,
+  hostedKernelChromeHidden,
+} from "../hosted-local-origin";
+import { UMO_DOC_FORMAT } from "../doc-editors/rich-doc-umo-migration";
 import {
   bindProFaceHandoff,
   handoffItemKey,
@@ -179,6 +184,8 @@ export function RichDocHostedRoute({
     item,
     incomingHandoff,
   );
+  const host = useOptionalClientHost();
+  const hostedCtx = clientHostedEmbedContext(host);
   const saveGateRef = useRef<ReturnType<typeof openHostedSaveGate> | null>(
     null,
   );
@@ -253,6 +260,20 @@ export function RichDocHostedRoute({
           ? handoff.url
           : String(item.meta.editor_project_url || "").trim();
       if (!projectUrl) {
+        const openBlank =
+          Boolean(hostedCtx.platform && hostedCtx.platform !== "web") &&
+          !item.artifactId;
+        if (openBlank) {
+          applyLoaded(
+            hostedStateFromResolvedJson({
+              format: UMO_DOC_FORMAT,
+              title: item.title || "文档",
+              content: { type: "doc", content: [{ type: "paragraph" }] },
+            }),
+          );
+          setStatus("");
+          return;
+        }
         setStatus(`${item.title || "文档"}：没有可读取的文件。`);
         setSource(null);
         setConverted(null);
@@ -287,14 +308,13 @@ export function RichDocHostedRoute({
     return () => {
       cancelled = true;
     };
-  }, [handoff, handoffStatus, item]);
+  }, [handoff, handoffStatus, hostedCtx.platform, item]);
 
-  const host = useOptionalClientHost();
-  const localEmbedBase = readLocalHostedOrigin(
+  const embedBase = hostedEmbedBaseForPlatform(
     "docs",
-    host?.environment.capabilities || [],
+    richDocHostedEmbedBase(),
+    hostedCtx,
   );
-  const embedBase = localEmbedBase || richDocHostedEmbedBase();
   const editorOrigin = embedBase;
   const src = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -346,11 +366,11 @@ export function RichDocHostedRoute({
     sendToEditor(buildSetModeMessage(instanceId, current));
     sendToEditor(
       buildHideChromeMessage(instanceId, {
-        toolbar: current === "normal",
-        panels: current === "normal",
+        toolbar: hostedKernelChromeHidden(current, hostedCtx.platform),
+        panels: hostedKernelChromeHidden(current, hostedCtx.platform),
       }),
     );
-  }, [converted, instanceId, item.title, readOnly, sendToEditor, source]);
+  }, [converted, hostedCtx.platform, instanceId, item.title, readOnly, sendToEditor, source]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -502,12 +522,12 @@ export function RichDocHostedRoute({
       sendToEditor(buildSetModeMessage(instanceId, next));
       sendToEditor(
         buildHideChromeMessage(instanceId, {
-          toolbar: next === "normal",
-          panels: next === "normal",
+          toolbar: hostedKernelChromeHidden(next, hostedCtx.platform),
+          panels: hostedKernelChromeHidden(next, hostedCtx.platform),
         }),
       );
     },
-    [instanceId, sendToEditor],
+    [hostedCtx.platform, instanceId, sendToEditor],
   );
 
   const flush = useCallback(() => {
