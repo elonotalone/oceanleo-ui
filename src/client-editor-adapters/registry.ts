@@ -25,9 +25,9 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
       schema: "oceanleo.grid.univer.v1",
       core: "@univerjs/presets@0.25.1",
       license: "Apache-2.0",
-      status: "AMBER",
+      status: "GREEN",
       reason:
-        "Workbook snapshot load/mutate/save/reopen proven offline. createUniver instance needs W09 Vite bundle of OSS presets; not silent readonly.",
+        "Workbook snapshot proven offline. W09 dist editor.html?type=grid instantiates Univer (Sheet1) without importmap.",
     },
     {
       editorId: "chart",
