@@ -10,7 +10,12 @@
  *
  * 没选的路：只跳过陈列馆的 middleware（Image 工作台照样红字）；伪造 200
  * 会话（会写成登录成功）。
+ *
+ * 宿主模式：走注入的 fetch（Rust / `__OCEANLEO_CLIENT_WEB__.fetch`），
+ * 不再套 2500ms 浏览器超时（CORS 到 auth.oceanleo.com 会误报 401）。
  */
+import { getClientHostConfig, hostInjectedFetch } from "../../contracts/client-host-config";
+
 export const AUTH_FETCH_TIMEOUT_MS = 2500;
 
 const TRANSIENT_AUTH_STATUS = new Set([
@@ -38,6 +43,16 @@ export async function authFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
+  if (getClientHostConfig()) {
+    const doFetch = hostInjectedFetch() ?? fetch;
+    try {
+      const res = await doFetch(input, init);
+      if (isTransientAuthStatus(res.status)) return unavailableResponse();
+      return res;
+    } catch {
+      return unavailableResponse();
+    }
+  }
   const ac = new AbortController();
   const parent = init?.signal;
   if (parent?.aborted) return unavailableResponse();

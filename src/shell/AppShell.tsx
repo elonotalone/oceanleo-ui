@@ -644,7 +644,8 @@ function AppShellInner({
             setMobileOpen(false);
             item.onClick?.();
           }}
-          aria-label={rail ? labelAttr : undefined}
+          aria-label={labelAttr}
+          title={labelAttr}
           data-oceanleo-rail-tip={rail ? labelAttr : undefined}
           className={cls}
           style={style}
@@ -673,7 +674,8 @@ function AppShellInner({
             }
             navigateRoute(navHref, event);
           }}
-          aria-label={rail ? labelAttr : undefined}
+          aria-label={labelAttr}
+          title={labelAttr}
           data-oceanleo-rail-tip={rail ? labelAttr : undefined}
           className={cls}
           style={style}

@@ -2,6 +2,7 @@
 
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
+import { hostAwareLibraryTimeoutMs } from "../contracts/client-host-config";
 import {
   ARTIFACT_TYPES,
   ARTIFACT_CONTEXT_MISSING_MESSAGE,
@@ -683,7 +684,7 @@ async function artifactRequest<T>(
 ): Promise<ArtifactApiResult<T>> {
   const {
     auth = "required",
-    timeoutMs = 20_000,
+    timeoutMs = hostAwareLibraryTimeoutMs(),
     signal: callerSignal,
     ...init
   } = options;

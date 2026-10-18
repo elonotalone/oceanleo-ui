@@ -830,6 +830,7 @@ function EmailForm({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          aria-label={tt("输入你的邮箱地址")}
           className={FIELD_CLASS}
           style={FIELD_STYLE}
           placeholder={tt("输入你的邮箱地址")}
@@ -840,6 +841,7 @@ function EmailForm({
           data-auth-submit
           data-auth-submit-ready={identifyReady ? "true" : "false"}
           disabled={!identifyReady}
+          aria-label={tt("继续")}
           className={SUBMIT_CLASS}
           style={submitStyle(identifyReady)}
         >
@@ -860,6 +862,7 @@ function EmailForm({
         onChange={(e) => setPassword(e.target.value)}
         required
         minLength={6}
+        aria-label={tt("密码")}
         className={FIELD_CLASS}
         style={FIELD_STYLE}
         placeholder={tt("密码")}
@@ -872,6 +875,7 @@ function EmailForm({
         data-auth-submit
         data-auth-submit-ready={passwordReady && !loading ? "true" : "false"}
         disabled={loading || !passwordReady}
+        aria-label={tt("继续")}
         className={SUBMIT_CLASS}
         style={submitStyle(passwordReady)}
       >

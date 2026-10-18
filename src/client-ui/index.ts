@@ -14,13 +14,18 @@ export {
 } from "./host-ports";
 export {
   CLIENT_HOST_CONFIG_GLOBAL_KEY,
+  CLIENT_WEB_BOOT_GLOBAL_KEY,
   configureClientHost,
   createMemoryAuthStorage,
   getClientHostConfig,
   getHostNavItems,
+  HOST_LIBRARY_TIMEOUT_MS,
+  hostAwareLibraryTimeoutMs,
+  hostInjectedFetch,
   nativeShellFromHostConfig,
   onClientHostConfigChange,
   resetClientHostConfigForTests,
+  WEB_LIBRARY_TIMEOUT_MS,
   type ClientHostAuthStorage,
   type ClientHostConfig,
   type ClientHostNavItem,

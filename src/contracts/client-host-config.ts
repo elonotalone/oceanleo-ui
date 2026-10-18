@@ -28,6 +28,7 @@ export interface ClientHostNavItem {
   label: string;
   section: ClientHostNavSection;
   icon?: string;
+  ariaLabel?: string;
 }
 
 export interface ClientHostConfig {
@@ -43,6 +44,8 @@ export interface ClientHostConfig {
   openExternal?: (url: string) => void | Promise<void>;
   /** Host-only sidebar rows. Omitted keeps the previous slot; `[]` clears. */
   navItems?: readonly ClientHostNavItem[];
+  /** Optional host network (Rust/Tauri). Omitted keeps the previous slot. */
+  fetch?: typeof fetch;
 }
 
 type HostConfigSlot = {
@@ -123,6 +126,7 @@ function parseNavItems(raw: unknown): readonly ClientHostNavItem[] {
       label?: unknown;
       section?: unknown;
       icon?: unknown;
+      ariaLabel?: unknown;
     };
     const href = parseNavHref(item.href);
     const label = typeof item.label === "string" ? item.label.trim() : "";
@@ -136,11 +140,16 @@ function parseNavItems(raw: unknown): readonly ClientHostNavItem[] {
       /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(item.icon)
         ? item.icon
         : undefined;
-    out.push(
-      Object.freeze(
-        icon ? { href, label, section, icon } : { href, label, section },
-      ),
-    );
+    const ariaLabel =
+      typeof item.ariaLabel === "string" ? item.ariaLabel.trim() : "";
+    const named = {
+      href,
+      label,
+      section,
+      ...(icon ? { icon } : {}),
+      ...(ariaLabel && ariaLabel.length <= 80 ? { ariaLabel } : {}),
+    };
+    out.push(Object.freeze(named));
   }
   return out.length ? Object.freeze(out) : EMPTY_NAV_ITEMS;
 }
@@ -166,6 +175,8 @@ export function configureClientHost(config: ClientHostConfig): void {
     config.navItems !== undefined
       ? parseNavItems(config.navItems)
       : parseNavItems(previous?.navItems);
+  const hostFetch =
+    config.fetch !== undefined ? config.fetch : previous?.fetch;
   const next: ClientHostConfig = Object.freeze({
     family: config.family,
     portalOrigin: parseOrigin(config.portalOrigin, "portalOrigin"),
@@ -178,6 +189,7 @@ export function configureClientHost(config: ClientHostConfig): void {
     capabilities: Object.freeze([...(config.capabilities || [])]),
     openExternal: config.openExternal,
     navItems,
+    fetch: hostFetch,
   });
   (globalThis as HostConfigSlot)[CLIENT_HOST_CONFIG_GLOBAL_KEY] = next;
   notify();
@@ -253,4 +265,32 @@ export function createMemoryAuthStorage(
       store.delete(key);
     },
   };
+}
+
+export const CLIENT_WEB_BOOT_GLOBAL_KEY = "__OCEANLEO_CLIENT_WEB__";
+export const HOST_LIBRARY_TIMEOUT_MS = 45_000;
+export const WEB_LIBRARY_TIMEOUT_MS = 20_000;
+
+/** 20s on the website; 45s when a host is configured (slow gateway / native hop). */
+export function hostAwareLibraryTimeoutMs(): number {
+  return getClientHostConfig() ? HOST_LIBRARY_TIMEOUT_MS : WEB_LIBRARY_TIMEOUT_MS;
+}
+
+type ClientWebBootSlot = {
+  fetch?: typeof fetch;
+};
+
+/**
+ * Host network for GoTrue / library. Prefers `configureClientHost({ fetch })`,
+ * then the W09 boot object `__OCEANLEO_CLIENT_WEB__.fetch`. Unconfigured: none.
+ */
+export function hostInjectedFetch(): typeof fetch | undefined {
+  if (!getClientHostConfig()) return undefined;
+  const fromSlot = getClientHostConfig()?.fetch;
+  if (typeof fromSlot === "function") return fromSlot;
+  const web = (globalThis as { [CLIENT_WEB_BOOT_GLOBAL_KEY]?: ClientWebBootSlot })[
+    CLIENT_WEB_BOOT_GLOBAL_KEY
+  ];
+  if (typeof web?.fetch === "function") return web.fetch;
+  return undefined;
 }

@@ -13,6 +13,8 @@ import {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
   GATEWAY_BASE,
+  COM_AUTH_COOKIE_KEY,
+  CN_AUTH_COOKIE_KEY,
   cookieOptions,
   configured,
   currentIdentityAnonKey,
@@ -55,6 +57,8 @@ function hostBrowserClient(): SupabaseClient | null {
   const anonKey = currentIdentityAnonKey();
   if (!url || !anonKey) return null;
   const storage = hostCfg.authStorage ?? createMemoryAuthStorage();
+  const storageKey =
+    hostCfg.family === "cn" ? CN_AUTH_COOKIE_KEY : COM_AUTH_COOKIE_KEY;
   const client = createClient(url, anonKey, {
     global: { fetch: authFetch },
     auth: {
@@ -62,6 +66,7 @@ function hostBrowserClient(): SupabaseClient | null {
       autoRefreshToken: true,
       detectSessionInUrl: true,
       storage,
+      storageKey,
     },
   });
   attachAuthState(client);

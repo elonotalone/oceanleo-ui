@@ -676,6 +676,12 @@
         },
         {
           "kind": "named",
+          "name": "CLIENT_WEB_BOOT_GLOBAL_KEY",
+          "importedName": "CLIENT_WEB_BOOT_GLOBAL_KEY",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
           "name": "ClientHostContext",
           "importedName": "ClientHostContext",
           "source": "./host-context"
@@ -727,6 +733,24 @@
           "name": "hitsInPaths",
           "importedName": "hitsInPaths",
           "source": "./scan-host-coupling"
+        },
+        {
+          "kind": "named",
+          "name": "HOST_LIBRARY_TIMEOUT_MS",
+          "importedName": "HOST_LIBRARY_TIMEOUT_MS",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "hostAwareLibraryTimeoutMs",
+          "importedName": "hostAwareLibraryTimeoutMs",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "hostInjectedFetch",
+          "importedName": "hostInjectedFetch",
+          "source": "./host-config"
         },
         {
           "kind": "named",
@@ -817,6 +841,12 @@
           "name": "useOptionalClientHost",
           "importedName": "useOptionalClientHost",
           "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "WEB_LIBRARY_TIMEOUT_MS",
+          "importedName": "WEB_LIBRARY_TIMEOUT_MS",
+          "source": "./host-config"
         },
         {
           "kind": "type",
@@ -933,6 +963,12 @@
         },
         {
           "kind": "named",
+          "name": "CLIENT_WEB_BOOT_GLOBAL_KEY",
+          "importedName": "CLIENT_WEB_BOOT_GLOBAL_KEY",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
           "name": "ClientHostContext",
           "importedName": "ClientHostContext",
           "source": "./host-context"
@@ -977,6 +1013,24 @@
           "kind": "named",
           "name": "getHostNavItems",
           "importedName": "getHostNavItems",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "HOST_LIBRARY_TIMEOUT_MS",
+          "importedName": "HOST_LIBRARY_TIMEOUT_MS",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "hostAwareLibraryTimeoutMs",
+          "importedName": "hostAwareLibraryTimeoutMs",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
+          "name": "hostInjectedFetch",
+          "importedName": "hostInjectedFetch",
           "source": "./host-config"
         },
         {
@@ -1044,6 +1098,12 @@
           "name": "useOptionalClientHost",
           "importedName": "useOptionalClientHost",
           "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "WEB_LIBRARY_TIMEOUT_MS",
+          "importedName": "WEB_LIBRARY_TIMEOUT_MS",
+          "source": "./host-config"
         },
         {
           "kind": "type",
@@ -9189,6 +9249,30 @@
           "kind": "named",
           "name": "isVariantTheme",
           "importedName": "isVariantTheme",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "LIGHT_BASE_CANVAS",
+          "importedName": "LIGHT_BASE_CANVAS",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "LIGHT_BASE_CARD_2",
+          "importedName": "LIGHT_BASE_CARD_2",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "LIGHT_BASE_CARD",
+          "importedName": "LIGHT_BASE_CARD",
+          "source": "./theme-config"
+        },
+        {
+          "kind": "named",
+          "name": "LIGHT_BASE_INK",
+          "importedName": "LIGHT_BASE_INK",
           "source": "./theme-config"
         },
         {
