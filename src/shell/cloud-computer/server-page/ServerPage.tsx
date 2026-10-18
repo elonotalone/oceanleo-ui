@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   cloudComputerApi,
@@ -114,6 +114,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function errorStatus(err: unknown): number {
+  if (!err || typeof err !== "object" || !("status" in err)) return 0;
+  return Number((err as { status: unknown }).status) || 0;
+}
+
+function errorCode(err: unknown): string {
+  if (!err || typeof err !== "object" || !("code" in err)) return "";
+  return String((err as { code: unknown }).code || "");
+}
+
+function isComputerNotFoundError(err: unknown): boolean {
+  return errorStatus(err) === 404 || errorCode(err) === "computer_not_found";
+}
+
 async function waitForNodeUpgrade(
   client: CloudComputerClient,
   computerId: string,
@@ -155,14 +169,19 @@ function ServerPageContent({
   const searchParams = useSearchParams();
   const {
     computers,
-    loading,
+    loading: listLoading,
     refresh,
     setMountedId,
   } = useCloudComputers({ client, computers: computersProp });
-  const computer = useMemo(
+  const listed = useMemo(
     () => computers.find((item) => item.id === computerId) ?? null,
     [computerId, computers],
   );
+  const [held, setHeld] = useState<Computer | null>(null);
+  const [lookup, setLookup] = useState<"idle" | "loading" | "missing">("idle");
+  const heldRef = useRef(held);
+  heldRef.current = held;
+  const computer = listed ?? held;
   const connected = useMemo(
     () => computers.filter(isConnectedComputer),
     [computers],
@@ -192,6 +211,41 @@ function ServerPageContent({
   const isConnected = computer ? isConnectedComputer(computer) : false;
   const nodeVersion = computer?.node_version;
   const nodeOnline = computer?.node_online;
+  useEffect(() => {
+    if (listed?.id !== computerId) return;
+    setHeld(listed);
+    setLookup("idle");
+  }, [computerId, listed]);
+
+  useEffect(() => {
+    if (listed?.id === computerId) return;
+    const getOne = client.getComputer;
+    if (typeof getOne !== "function") {
+      if (!heldRef.current && !listLoading) setLookup("missing");
+      return;
+    }
+    let active = true;
+    if (!heldRef.current) setLookup("loading");
+    void getOne(computerId)
+      .then((row) => {
+        if (!active) return;
+        setHeld(row);
+        setLookup("idle");
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        if (isComputerNotFoundError(err)) {
+          setHeld(null);
+          setLookup("missing");
+          return;
+        }
+        setLookup(heldRef.current ? "idle" : listLoading ? "loading" : "missing");
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, computerId, listLoading, listed]);
+
   useEffect(() => {
     if (isConnected) setMountedId(computerId);
   }, [computerId, isConnected, setMountedId]);
@@ -282,6 +336,10 @@ function ServerPageContent({
     upgradePollIntervalMs,
     upgradeState,
   ]);
+
+  const loading = Boolean(
+    !computer && (listLoading || lookup === "loading"),
+  );
 
   if (loading) {
     return (

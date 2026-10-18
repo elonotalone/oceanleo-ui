@@ -161,6 +161,11 @@ const { ComputerDock } = await import(
     "../../contracts/domain-family": dataModule(`
       export function currentDomainFamily() { return "com"; }
       export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+      export function portalHref(path) {
+        const origin = "https://oceanleo.com";
+        if (typeof window !== "undefined" && window.location.origin === origin) return path;
+        return origin + path;
+      }
     `),
     "./CreateComputerDialog": dialogStub,
     "./ConnectServerDialog": dialogStub,
@@ -183,6 +188,15 @@ const { ServerPage } = await import(
     "../../../lib/cloud-computer-api": apiStub,
     "../../../i18n/ui/useUI": uiStub,
     "../../../ui": confirmStub,
+    "../../../contracts/domain-family": dataModule(`
+      export function currentDomainFamily() { return "com"; }
+      export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+      export function portalHref(path) {
+        const origin = "https://oceanleo.com";
+        if (typeof window !== "undefined" && window.location.origin === origin) return path;
+        return origin + path;
+      }
+    `),
     "../agent-dialog/AcpCard": acpStub,
     "../terminal-card/CliCard": cliStub,
     "../terminal-card/TerminalCard": terminalStub,

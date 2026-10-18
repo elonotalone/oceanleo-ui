@@ -125,6 +125,28 @@ test("unchanged lists and rows retain references; changed rows replace only them
   } finally { view.cleanup(); }
 });
 
+test("a later unsigned poll keeps a list that already loaded", async () => {
+  let fail = false;
+  const client = {
+    async listComputers() {
+      if (fail) {
+        throw Object.assign(new Error("login"), { status: 401, code: "unauthorized" });
+      }
+      return { items: [pc()] };
+    },
+  };
+  const view = await mount(client);
+  try {
+    await act(async () => view.current.refresh());
+    assert.equal(view.current.computers[0].id, "cc_1");
+    fail = true;
+    const pending = view.current.refresh();
+    await act(async () => { await pending; });
+    assert.equal(view.current.computers[0].id, "cc_1");
+    assert.equal(Boolean(view.current.error), true);
+  } finally { view.cleanup(); }
+});
+
 test("unsigned list response forgets the cached computers", async () => {
   window.sessionStorage.setItem(cacheKey, JSON.stringify([pc()]));
   window.localStorage.setItem("oceanleo.cc.mounted", "cc_1");

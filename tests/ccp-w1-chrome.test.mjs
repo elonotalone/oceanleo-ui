@@ -72,6 +72,11 @@ const domainStubUrl = dataModule(`
     if (family === "ws") return { portalOrigin: "https://oceanbizs.com" };
     return { portalOrigin: "https://oceanleo.com" };
   }
+  export function portalHref(path) {
+    const origin = currentDomainProfile().portalOrigin;
+    if (typeof window !== "undefined" && window.location.origin === origin) return path;
+    return origin + path;
+  }
 `);
 const navigationStubUrl = dataModule(`
   export function useRouter() { return globalThis.__serverRouter; }

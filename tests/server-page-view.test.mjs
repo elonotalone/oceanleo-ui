@@ -72,6 +72,11 @@ const domainStubUrl = dataModule(`
     if (family === "ws") return { portalOrigin: "https://oceanbizs.com" };
     return { portalOrigin: "https://oceanleo.com" };
   }
+  export function portalHref(path) {
+    const origin = currentDomainProfile().portalOrigin;
+    if (typeof window !== "undefined" && window.location.origin === origin) return path;
+    return origin + path;
+  }
 `);
 const navigationStubUrl = dataModule(`
   export function useRouter() { return globalThis.__serverRouter; }
@@ -151,6 +156,9 @@ function computer(overrides = {}) {
 
 function client(overrides = {}) {
   return {
+    async getComputer() {
+      throw Object.assign(new Error("missing"), { status: 404, code: "computer_not_found" });
+    },
     async getNodeInfo() {
       return {
         version: "v1",
@@ -221,6 +229,27 @@ async function renderPage({
     host,
     pushes,
     replaces,
+    async rerender(next = {}) {
+      const nextComputers = Object.prototype.hasOwnProperty.call(next, "computers")
+        ? next.computers
+        : computers;
+      const nextApi = next.api ?? api;
+      globalThis.__serverDefaultClient = nextApi;
+      await act(async () => {
+        root.render(
+          React.createElement(ServerPage, {
+            computerId: "cc_1",
+            client: nextApi,
+            computers: nextComputers,
+            upgradePollIntervalMs: 0,
+            upgradePollAttempts: 4,
+            ...props,
+            ...next.props,
+          }),
+        );
+      });
+      await flush();
+    },
     cleanup() {
       act(() => root.unmount());
       host.remove();
@@ -469,6 +498,70 @@ test(".cn 版本仍渲染云电脑页面，不回首页", async () => {
       "cc_1",
     );
     assert.deepEqual(view.replaces, []);
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("名单里暂时没有这台机器时，按 id 再取一次仍打开原页", async () => {
+  const row = computer();
+  const view = await renderPage({
+    computers: [],
+    query: { card: "acp", program: "claude" },
+    api: client({
+      async getComputer(id) {
+        assert.equal(id, "cc_1");
+        return row;
+      },
+    }),
+  });
+  try {
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-server-page]")?.getAttribute(
+        "data-oceanleo-server-page",
+      ),
+      "cc_1",
+    );
+    assert.equal(view.host.querySelector("[data-oceanleo-server-page-missing]"), null);
+    assert.ok(view.host.querySelector("[data-test-acp-card]"));
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("已经打开的服务器页在名单被清空后仍留下，不闪成找不到", async () => {
+  const view = await renderPage({
+    computers: [computer()],
+    query: { card: "acp", program: "claude", session: "s1" },
+  });
+  try {
+    assert.ok(view.host.querySelector("[data-oceanleo-server-page]"));
+    await view.rerender({
+      computers: [],
+      api: client({
+        async getComputer() {
+          throw Object.assign(new Error("net"), { status: 0, code: "client_network_error" });
+        },
+      }),
+    });
+    assert.equal(
+      view.host.querySelector("[data-oceanleo-server-page]")?.getAttribute(
+        "data-oceanleo-server-page",
+      ),
+      "cc_1",
+    );
+    assert.equal(view.host.querySelector("[data-oceanleo-server-page-missing]"), null);
+    assert.ok(view.host.querySelector("[data-test-acp-card]"));
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("按 id 确认这台机器不存在时才显示找不到", async () => {
+  const view = await renderPage({ computers: [] });
+  try {
+    assert.ok(view.host.querySelector("[data-oceanleo-server-page-missing]"));
+    assert.match(view.host.textContent || "", /找不到这台服务器/);
   } finally {
     view.cleanup();
   }

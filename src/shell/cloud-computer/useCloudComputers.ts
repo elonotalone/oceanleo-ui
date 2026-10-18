@@ -178,6 +178,33 @@ export function useCloudComputers(options?: {
     rememberMountedComputerName(chosen?.name ? chosen.name : null);
   }, [client, options?.computers]);
 
+  // A live 200 from this mount is the only proof the list is ours.
+  // A later 401 (token refresh, gateway blip) must not empty the page.
+  // First-load 401 still forgets cache so a signed-out tab cannot show
+  // the previous person's machines.
+  const seenAuthoritativeList = useRef(false);
+  const clientRef = useRef(client);
+  if (clientRef.current !== client) {
+    clientRef.current = client;
+    seenAuthoritativeList.current = false;
+  }
+
+  const applySuccess = useCallback((items: Computer[]) => {
+    seenAuthoritativeList.current = true;
+    setError(null);
+    applyList(items);
+  }, [applyList]);
+
+  const applyFailure = useCallback((err: unknown) => {
+    if (isSignedOutListError(err) && !seenAuthoritativeList.current) {
+      forgetList(client);
+      applyList([]);
+      setError(null);
+      return;
+    }
+    setError(err instanceof Error ? err.message : String(err));
+  }, [applyList, client]);
+
   const refresh = useCallback(async () => {
     if (options?.computers) {
       applyList(options.computers);
@@ -186,20 +213,13 @@ export function useCloudComputers(options?: {
     }
     try {
       const data = await client.listComputers();
-      setError(null);
-      applyList(data.items || []);
+      applySuccess(data.items || []);
     } catch (err) {
-      if (isSignedOutListError(err)) {
-        forgetList(client);
-        applyList([]);
-        setError(null);
-      } else {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+      applyFailure(err);
     } finally {
       setLoading(false);
     }
-  }, [applyList, client, options?.computers]);
+  }, [applyFailure, applyList, applySuccess, client, options?.computers]);
 
   useEffect(() => {
     setRememberedId(readMountedComputerId() || null);
@@ -221,18 +241,11 @@ export function useCloudComputers(options?: {
       .listComputers()
       .then((data) => {
         if (cancelled) return;
-        setError(null);
-        applyList(data.items || []);
+        applySuccess(data.items || []);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        if (isSignedOutListError(err)) {
-          forgetList(client);
-          applyList([]);
-          setError(null);
-          return;
-        }
-        setError(err instanceof Error ? err.message : String(err));
+        applyFailure(err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -240,7 +253,7 @@ export function useCloudComputers(options?: {
     return () => {
       cancelled = true;
     };
-  }, [applyList, client, options?.computers]);
+  }, [applyFailure, applyList, applySuccess, client, options?.computers]);
 
   useEffect(() => {
     if (options?.computers) return;
