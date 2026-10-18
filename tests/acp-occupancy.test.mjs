@@ -4,13 +4,14 @@ import test from "node:test";
 import {
   composerOccupancy,
   confirmedBusySessions,
+  confirmedWaitingSessions,
   occupancyBusyAfterFrame,
   occupancyFresh,
   OCCUPANCY_STALE_MS,
 } from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
 import { createOccupancyProbe } from "../src/shell/cloud-computer/agent-dialog/occupancy-probe.ts";
 import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { sessionListStatus, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
+import { sessionListStatus, sessionWaitingWake, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
 
 const PROGRAMS = ["cursor", "claude", "codex", "hermes", "oceanleo"];
 
@@ -75,6 +76,59 @@ test("像素图标只在确认 working 的 busy 列表里", () => {
   assert.equal(sessionListStatus("a", confirmedBusySessions(["a"], true), [], []), "running");
   assert.equal(sessionListStatus("a", confirmedBusySessions(["a"], false), [], []), null);
   assert.equal(occupancyFresh({ linkUp: true, occupancyAt: 1, now: 2 }), true);
+});
+
+test("后台还在等、之后会自己醒：左侧走动，输入框仍是空闲", () => {
+  assert.deepEqual(confirmedWaitingSessions(["parked"], true), ["parked"]);
+  assert.deepEqual(confirmedWaitingSessions(["parked"], false), []);
+  assert.equal(sessionListStatus("parked", [], [], [], ["parked"]), "running");
+  assert.equal(sessionListStatus("idle", [], [], [], ["parked"]), null);
+  assert.equal(composerOccupancy({
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "parked", now: 11,
+  }), "idle");
+  assert.equal(sessionWaitingWake([
+    { kind: "user", id: "u1", text: "go" },
+    { kind: "turn", id: "t1", acpSession: "s", stop: "end_turn", items: [
+      { kind: "tool", id: "x", tool: { id: "x", kind: "execute", title: "Watch", status: "completed",
+        content: [{ type: "content", text: "Command running in background with ID: btmkyd2nl" }], locations: [] } },
+    ] },
+  ]), true);
+  assert.equal(sessionWaitingWake([
+    { kind: "user", id: "u1", text: "go" },
+    { kind: "turn", id: "t1", acpSession: "s", stop: "end_turn", items: [
+      { kind: "tool", id: "x", tool: { id: "x", kind: "execute", title: "Watch", status: "completed",
+        content: [{ type: "content", text: "Command running in background with ID: btmkyd2nl" }], locations: [] } },
+    ] },
+    { kind: "user", id: "u2", text: "<task-notification><task-id>btmkyd2nl</task-id></task-notification>" },
+  ]), false);
+  assert.equal(sessionWaitingWake([
+    { kind: "user", id: "u1", text: "go" },
+    { kind: "turn", id: "t1", acpSession: "s", stop: "end_turn", items: [
+      { kind: "tool", id: "x", tool: { id: "x", kind: "execute", title: "Watch", status: "completed",
+        content: [{ type: "content", text: "Command running in background with ID: btmkyd2nl" }], locations: [] } },
+    ] },
+    { kind: "user", id: "u2", text: "next" },
+    { kind: "turn", id: "t2", acpSession: "s", stop: "end_turn", items: [
+      { kind: "assistant", id: "a", text: "done" },
+    ] },
+  ]), false);
+});
+
+test("occupancy.waiting 进状态，不把输入框打成 working", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "claude" });
+  state = { ...state, activeSession: "parked" };
+  state = applyDialog(state, { type: "occupancy-link", up: true });
+  state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "claude", busy: [], waiting: ["parked"] } });
+  assert.deepEqual(state.occupancyBusy, []);
+  assert.deepEqual(state.occupancyWaiting, ["parked"]);
+  assert.equal(composerOccupancy({
+    linkUp: state.occupancyLink,
+    occupancyAt: state.occupancyAt,
+    occupancyBusy: state.occupancyBusy,
+    sessionId: "parked",
+    now: state.occupancyAt,
+  }), "idle");
 });
 
 test("五个程序的 occupancy 帧都把对应 session 标成 working", () => {

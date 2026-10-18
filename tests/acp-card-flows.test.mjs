@@ -547,6 +547,14 @@ test("Past sessions 进行中用像素图标，空闲进程不亮；后台结束
     assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
     assert.equal(view.$('[data-oceanleo-acp-session="three"] [data-oceanleo-acp-session-status]'), null);
     await server({
+      t: "occupancy",
+      program: "cursor",
+      busy: [],
+      waiting: ["two"],
+    });
+    assert.ok(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status="running"]'));
+    assert.equal(view.$('[data-oceanleo-acp-session="three"] [data-oceanleo-acp-session-status]'), null);
+    await server({
       t: "sessions",
       program: "cursor",
       supported: true,
@@ -555,6 +563,7 @@ test("Past sessions 进行中用像素图标，空闲进程不亮；后台结束
         { id: "two", title: "Idle", cwd: "/root", updated_at: "" },
       ],
       busy: [],
+      waiting: [],
       running: ["one", "two"],
     });
     assert.equal(view.$('[data-oceanleo-acp-session="one"] [data-oceanleo-acp-session-status]'), null);
@@ -1339,6 +1348,8 @@ test("程序条设置：模型 / 模式 / 其它配置项；危险操作先问�
 
     const confirm = panel.querySelector('[data-oceanleo-acp-setting="confirm_dangerous"]');
     assert.equal(confirm.checked, true, "危险操作先问我默认开");
+    assert.match(confirm.className, /(?:^|\s)size-4(?:\s|$)/);
+    assert.doesNotMatch(confirm.className, /size-11/);
     await click(confirm);
     await until(() => calls("patchAgentSettings").length === 1, "patch confirm_dangerous");
     assert.deepEqual(calls("patchAgentSettings")[0], ["patchAgentSettings", view.computer.id, { confirm_dangerous: false }]);

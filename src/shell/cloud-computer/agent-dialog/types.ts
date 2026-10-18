@@ -226,6 +226,8 @@ export type DialogState = {
   occupancyAt: number | null;
   /** Session ids the last occupancy snapshot reported as working. */
   occupancyBusy: string[];
+  /** Session ids whose turn ended but background work will wake them. */
+  occupancyWaiting: string[];
   /** Local send waiting for occupancy to confirm that session. */
   occupancyPendingAt: number | null;
   occupancyPendingSession: string | null;
@@ -279,6 +281,8 @@ export type AgentDialogController = {
   occupancyPendingSession: string | null;
   /** ACP session ids of the current program that still have an open turn. */
   busySessions?: string[];
+  /** ACP session ids parked on background work that will wake them. */
+  waitingSessions?: string[];
   /** ACP session ids that still have a process. Not a Past-sessions green dot. */
   runningSessions?: string[];
   /** Known interrupted sessions of the current program, without inferring unopened history. */

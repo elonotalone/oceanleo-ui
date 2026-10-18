@@ -354,6 +354,7 @@ export function AcpCard({
                       dialog.busySessions,
                       dialog.interruptedSessions,
                       dialog.unreadSessions,
+                      dialog.waitingSessions,
                     );
                     const statusLabel = status === "running"
                       ? tt("进行中")

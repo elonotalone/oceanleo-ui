@@ -145,6 +145,10 @@ function applyOccupancyBusy(state: DialogState, program: string, busyIds: string
   };
 }
 
+function applyOccupancyWaiting(state: DialogState, waitingIds: string[]): DialogState {
+  return { ...state, occupancyWaiting: [...new Set(waitingIds.filter(Boolean))] };
+}
+
 function noteProbeWorking(state: DialogState, session: string): DialogState {
   if (!session) return state;
   const known = state.occupancyBusy ?? [];
@@ -166,6 +170,7 @@ function occupancyLost(state: DialogState): DialogState {
     occupancyLink: false,
     occupancyAt: null,
     occupancyBusy: [],
+    occupancyWaiting: [],
   };
 }
 
@@ -730,12 +735,15 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (!forCurrent(state, frame)) return state;
   if (kind === "occupancy") {
     if (!Array.isArray(frame.busy)) return state;
-    return applyOccupancyBusy(state, str(frame.program) || state.program || "", occupancyIds(frame.busy));
+    let next = applyOccupancyBusy(state, str(frame.program) || state.program || "", occupancyIds(frame.busy));
+    if (Array.isArray(frame.waiting)) next = applyOccupancyWaiting(next, occupancyIds(frame.waiting));
+    return next;
   }
   if (kind === "sessions") {
     let next = Array.isArray(frame.busy)
       ? applyOccupancyBusy(state, str(frame.program) || state.program || "", occupancyIds(frame.busy))
       : state;
+    if (Array.isArray(frame.waiting)) next = applyOccupancyWaiting(next, occupancyIds(frame.waiting));
     const sessions = frame.supported === false ? [] : parseSessions(frame.sessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     const listedPath = sessions.find((session) => session.id === next.activeSession)?.path || "";
     const runningSessions = Array.isArray(frame.running)

@@ -69,6 +69,7 @@ function ToggleField({
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.currentTarget.checked)}
+        className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
       />
     </label>
   );

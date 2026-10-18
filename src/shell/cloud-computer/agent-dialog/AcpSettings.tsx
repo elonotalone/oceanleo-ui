@@ -39,14 +39,14 @@ function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className={`flex min-h-11 cursor-pointer gap-3 border-b py-2 ${tone.border}`}>
+    <label className={`flex min-h-11 cursor-pointer items-start gap-3 border-b py-2 ${tone.border}`}>
       <input
         type="checkbox"
         checked={checked}
         disabled={disabled}
         data-oceanleo-acp-setting={setting}
         onChange={(event) => onChange(event.currentTarget.checked)}
-        className="mt-0.5 size-11 shrink-0 accent-indigo-600"
+        className="mt-1 size-4 h-4 w-4 shrink-0 accent-indigo-600"
       />
       <span className="min-w-0">
         <span className="block text-[13px] font-medium">{label}</span>
@@ -272,7 +272,7 @@ export function AcpSettings({
             );
           })}
 
-          <div className="space-y-0">
+          <div className="space-y-0 [&_input[type=checkbox]]:size-4 [&_input[type=checkbox]]:h-4 [&_input[type=checkbox]]:w-4">
             <Toggle
               checked={settings.confirm_dangerous}
               disabled={loading || Boolean(saving)}

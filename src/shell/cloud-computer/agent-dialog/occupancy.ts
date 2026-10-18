@@ -80,10 +80,18 @@ export function confirmedBusySessions(
   return fresh ? [...(occupancyBusy ?? [])] : [];
 }
 
+export function confirmedWaitingSessions(
+  occupancyWaiting: readonly string[] | null | undefined,
+  fresh: boolean,
+): string[] {
+  return fresh ? [...(occupancyWaiting ?? [])] : [];
+}
+
 export function blankOccupancy(): {
   occupancyLink: boolean;
   occupancyAt: number | null;
   occupancyBusy: string[];
+  occupancyWaiting: string[];
   occupancyPendingAt: number | null;
   occupancyPendingSession: string | null;
 } {
@@ -91,6 +99,7 @@ export function blankOccupancy(): {
     occupancyLink: false,
     occupancyAt: null,
     occupancyBusy: [],
+    occupancyWaiting: [],
     occupancyPendingAt: null,
     occupancyPendingSession: null,
   };
