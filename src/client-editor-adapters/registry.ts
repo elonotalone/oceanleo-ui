@@ -74,8 +74,8 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
       schema: "oceanleo.deck.v1",
       core: "PPTist in pptist-hosted",
       license: "AGPL-3.0",
-      status: "RED",
-      reason: "AGPL must stay in the public hosted repo",
+      status: "AMBER",
+      reason: "mountEditor uses DeckHostedRoute + local-hosted:slides. AGPL stays out of this tree.",
     },
     {
       editorId: "richdoc",
