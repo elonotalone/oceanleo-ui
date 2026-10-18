@@ -36,6 +36,18 @@ const authFetchSource = readFileSync(
   new URL("../src/lib/auth/auth-fetch.ts", import.meta.url),
   "utf8",
 );
+const appShell = readFileSync(
+  new URL("../src/shell/AppShell.tsx", import.meta.url),
+  "utf8",
+);
+const promptArea = readFileSync(
+  new URL("../src/shell/PromptHighlightArea.tsx", import.meta.url),
+  "utf8",
+);
+const leoComposer = readFileSync(
+  new URL("../src/shell/LeoComposer.tsx", import.meta.url),
+  "utf8",
+);
 
 function hostConfig(overrides = {}) {
   return {
@@ -137,6 +149,11 @@ test("clone-shell names host nav from ariaLabel or label on real links/buttons",
   assert.match(portalShell, /<Link[\s\S]*aria-label=\{accessibleName\}/);
   assert.match(portalShell, /<button[\s\S]*aria-label=\{accessibleName\}/);
   assert.doesNotMatch(portalShell, /__OCEANLEO_ACCEPT_DRIVE__/);
+  const footerStart = portalShell.indexOf("const FOOTER_NAV");
+  assert.ok(footerStart > 0);
+  const footerChunk = portalShell.slice(footerStart, footerStart + 1200);
+  assert.match(footerChunk, /\];\s*const \[userEmail/);
+  assert.doesNotMatch(footerChunk, /\];\}/);
 });
 
 test("login dialog email, password, and continue have accessible names", () => {
@@ -145,4 +162,11 @@ test("login dialog email, password, and continue have accessible names", () => {
   assert.match(authDialog, /id="oceanleo-auth-password"/);
   assert.match(authDialog, /aria-label=\{tt\("密码"\)\}/);
   assert.match(authDialog, /aria-label=\{tt\("继续"\)\}/);
+});
+
+test("search, home task input, and send have accessible names", () => {
+  assert.match(appShell, /<input[\s\S]*aria-label=\{tt\("搜索"\)\}/);
+  assert.match(appShell, /aria-label=\{tt\("搜索"\)\}/);
+  assert.match(promptArea, /"aria-label": placeholder/);
+  assert.match(leoComposer, /aria-label=\{tt\("发送"\)\}/);
 });

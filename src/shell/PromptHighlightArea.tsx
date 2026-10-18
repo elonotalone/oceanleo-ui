@@ -275,6 +275,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           class: "oc-slot-editor",
           role: "textbox",
           "aria-multiline": "true",
+          "aria-label": placeholder || "",
           spellcheck: "false",
         },
         // 点未填荧光块 → 选中整段提示文字（TextSelection 覆盖该 run）。一打字/一拼音 = 原生替换。

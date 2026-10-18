@@ -800,6 +800,7 @@ function AppShellInner({
               type="button"
               onClick={() => setSearchOpen((v) => !v)}
               className="leo-tap-icon rounded-md p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-200/70 active:scale-95"
+              aria-label={tt("搜索")}
               title={tt("搜索")}
             >
               <IconSearch />
@@ -834,6 +835,7 @@ function AppShellInner({
             <input
               className="w-full bg-transparent text-[13px] outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
               placeholder={searchPlaceholder ?? tt("搜索...")}
+              aria-label={tt("搜索")}
               value={term}
               onChange={(e) => {
                 setTerm(e.target.value);
