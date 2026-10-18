@@ -56,6 +56,8 @@ test("hosted routes still default to hostedEditorOrigin and can take a local ove
 });
 
 test("editor.html host context merges injected capabilities over empty React host caps", () => {
+  // UC-3 / UC-6: empty React host caps must not drop the injected loopback
+  // origin used for iframe URL construction and postMessage targetOrigin.
   resetClientHostConfigForTests();
   configureClientHost({
     family: "com",
@@ -77,6 +79,8 @@ test("editor.html host context merges injected capabilities over empty React hos
 });
 
 test("native hosts never fall back to family origins; web keeps family", () => {
+  // UC-3 / UC-6: web still posts to the family hosted origin; native never
+  // falls back to *.oceanleo.app (missing injection yields empty src).
   const family = "https://slides.oceanleo.app";
   const local = ["local-hosted:slides=http://127.0.0.1:4173"];
   assert.equal(
