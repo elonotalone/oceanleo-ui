@@ -9,7 +9,6 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { submitRawReviewProposal } from "../agent-review";
 import { downloadText } from "../doc-editors/doc-io";
 import {
-  buildRichDocEmbedUrl,
   buildRichDocInitEnvelope,
   richDocHostedEmbedBase,
 } from "../doc-editors/rich-doc-hosted-embed";
@@ -25,6 +24,7 @@ import {
   EDITOR_PROTOCOL,
   acceptEditorFrameMessage,
   asHostToEditorMessage,
+  buildEditorEmbedUrl,
   isValidEditorTargetOrigin,
 } from "../editor-protocol";
 import {
@@ -111,12 +111,14 @@ export function computeRichDocHostedEmbedSrc(
 ): string {
   if (!input.embedBase || !isTrustedEmbedEditorBase(input.embedBase)) return "";
   try {
-    return buildRichDocEmbedUrl({
+    // Family helper rewrites any non-docs.oceanleo.app base. Keep the
+    // injected loopback, matching DeckHostedRoute.
+    return buildEditorEmbedUrl(input.embedBase, {
       instanceId: input.instanceId,
       hostOrigin: input.hostOrigin,
       assetUrl: input.assetUrl,
       assetTitle: input.assetTitle,
-      base: input.embedBase,
+      assetKind: "document",
     });
   } catch {
     return "";

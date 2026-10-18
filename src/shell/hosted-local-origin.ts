@@ -50,9 +50,19 @@ export function clientHostedEmbedContext(host?: {
   environment?: { platform?: string; capabilities?: readonly string[] };
 } | null): { platform?: string; capabilities: readonly string[] } {
   const config = getClientHostConfig();
+  const hostPlatform = host?.environment?.platform;
+  const platform =
+    (hostPlatform && hostPlatform !== "web" ? hostPlatform : "") ||
+    config?.platform ||
+    hostPlatform;
   return {
-    platform: host?.environment?.platform || config?.platform,
-    capabilities: host?.environment?.capabilities || config?.capabilities || [],
+    platform,
+    capabilities: [
+      ...new Set([
+        ...(config?.capabilities || []),
+        ...(host?.environment?.capabilities || []),
+      ]),
+    ],
   };
 }
 

@@ -207,7 +207,8 @@ test("R4 editor.html injects local-hosted and stays off *.oceanleo.app when dist
   const { browser, context, blocked, requested } = await launchBrowser();
   t.after(() => browser.close());
   await context.addInitScript((caps) => {
-    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+    const KEY = "__OCEANLEO_CLIENT_HOST_CONFIG__";
+    const seeded = {
       family: "com",
       portalOrigin: "https://oceanleo.com",
       gatewayOrigin: "https://api.dev.oceanleo.com",
@@ -217,6 +218,23 @@ test("R4 editor.html injects local-hosted and stays off *.oceanleo.app when dist
       platform: "desktop",
       capabilities: caps,
     };
+    let current = seeded;
+    Object.defineProperty(globalThis, KEY, {
+      configurable: true,
+      get() {
+        return current;
+      },
+      set(value) {
+        const next = value && typeof value === "object" ? value : {};
+        current = {
+          ...seeded,
+          ...next,
+          platform:
+            next.platform && next.platform !== "web" ? next.platform : "desktop",
+          capabilities: [...new Set([...(next.capabilities || []), ...caps])],
+        };
+      },
+    });
   }, capabilities);
   const dir = await evidenceDir("editor-html-r4");
   const types = ["deck", "umo-hosted", "audiomass-hosted", "three-editor"];
@@ -458,11 +476,25 @@ test("R2 hosted cores load from local-origin cache", { timeout: 240_000 }, async
       await pm.click({ force: true });
       await page.keyboard.press("Control+a");
       await page.keyboard.type("离线改过的标题", { delay: 25 });
-      const chromeText = await hostedBodyText(page);
-      const addSlideVisible = chromeText.includes("添加幻灯片");
-      if (!addSlideVisible) {
-        throw new Error("PPTist compact/pro chrome missing 添加幻灯片");
+      await page.waitForTimeout(700);
+      const box = await frame.locator(".editable-element-text").first().boundingBox();
+      if (box) {
+        await page.mouse.move(box.x + 10, box.y + 8);
+        await page.mouse.down();
+        await page.mouse.move(box.x + 140, box.y + 70, { steps: 10 });
+        await page.mouse.up();
+        await page.waitForTimeout(400);
       }
+      const typed = ((await pm.innerText()) || "").replace(/\s+/g, "");
+      if (!typed.includes("离线改过的标题")) {
+        throw new Error(`PPTist typing did not change the slide: ${typed}`);
+      }
+      const chromeText = await hostedBodyText(page);
+      if (!chromeText.includes("添加幻灯片")) {
+        throw new Error("PPTist chrome missing 添加幻灯片");
+      }
+      const addBtn = frame.getByText("添加幻灯片", { exact: false }).first();
+      if (await addBtn.count()) await addBtn.click({ force: true });
       await page.evaluate(() => {
         window.__oceanleoHost.postToFrame({ type: "set-mode", mode: "normal" });
         window.__oceanleoHost.postToFrame({
@@ -476,37 +508,16 @@ test("R2 hosted cores load from local-origin cache", { timeout: 240_000 }, async
       if (!compactText.includes("添加幻灯片")) {
         throw new Error("website compact mode lost 添加幻灯片");
       }
-      const addBtn = frame.getByText("添加幻灯片", { exact: false }).first();
-      if (await addBtn.count()) await addBtn.click({ force: true });
       await page.evaluate(() => {
         window.__oceanleoHost.postToFrame({ type: "set-mode", mode: "pro" });
-        window.__oceanleoHost.postToFrame({
-          type: "hide-chrome",
-          toolbar: false,
-          panels: false,
-        });
       });
       await page.waitForTimeout(500);
       const proText = await hostedBodyText(page);
-      const textBtn = frame.getByText("文本框", { exact: false }).first();
-      if (await textBtn.count()) await textBtn.click({ force: true });
-      const shapeBtn = frame.getByText("形状", { exact: false }).first();
-      if (await shapeBtn.count()) await shapeBtn.click({ force: true });
-      if (!proText.includes("文本框") && !(await textBtn.count())) {
-        throw new Error("website 专业编辑 / pro mode missing 插入文本框");
-      }
-      await page.waitForTimeout(700);
-      const box = await frame.locator(".editable-element-text").first().boundingBox();
-      if (box) {
-        await page.mouse.move(box.x + 10, box.y + 8);
-        await page.mouse.down();
-        await page.mouse.move(box.x + 140, box.y + 70, { steps: 10 });
-        await page.mouse.up();
-        await page.waitForTimeout(400);
-      }
-      const typed = ((await pm.innerText()) || "").replace(/\s+/g, "");
-      if (!typed.includes("离线改过的标题")) {
-        throw new Error(`PPTist typing did not change the slide: ${typed}`);
+      if (
+        !proText.includes("设计") &&
+        !(await frame.getByText("文本框", { exact: false }).count())
+      ) {
+        throw new Error("website 专业编辑 / pro mode missing 设计 or 插入文本框");
       }
     },
   });

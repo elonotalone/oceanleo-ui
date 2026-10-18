@@ -12,9 +12,11 @@ import {
   resetClientHostConfigForTests,
 } from "../src/contracts/client-host-config.ts";
 import {
+  clientHostedEmbedContext,
   hostedEmbedBaseForPlatform,
   hostedKernelChromeHidden,
 } from "../src/shell/hosted-local-origin.ts";
+import { buildEditorEmbedUrl } from "../src/shell/editor-protocol.ts";
 import {
   audioHostedEmbedBase,
   resolveAudioHostedFrameSrc,
@@ -145,6 +147,35 @@ test("Deck/Umo routes read host-config slot and keep website embed params", () =
   assert.match(deckSrc, /toHostedDocument\(/);
   assert.match(docsSrc, /clientHostedEmbedContext/);
   assert.match(docsSrc, /UMO_DOC_FORMAT/);
+  assert.match(docsSrc, /buildEditorEmbedUrl\(input\.embedBase/);
   assert.equal(hostedKernelChromeHidden("normal", "web"), true);
   assert.equal(hostedKernelChromeHidden("normal", "desktop"), false);
+});
+
+test("umo src keeps injected loopback instead of rewriting to docs.oceanleo.app", () => {
+  configureClientHost(
+    hostConfig({
+      capabilities: ["native-shell", w10LocalHostedCapability("docs", INJECTED)],
+    }),
+  );
+  const fn = docsSrc.slice(
+    docsSrc.indexOf("export function computeRichDocHostedEmbedSrc"),
+    docsSrc.indexOf("export function ingestRichDocReviewProposal"),
+  );
+  assert.match(fn, /buildEditorEmbedUrl\(input\.embedBase/);
+  assert.doesNotMatch(fn, /buildRichDocEmbedUrl/);
+  const src = buildEditorEmbedUrl(INJECTED, {
+    instanceId: "rd-local",
+    hostOrigin: "https://oceanleo.com",
+    assetTitle: "本地文档",
+    assetKind: "document",
+  });
+  assert.match(src, /^http:\/\/127\.0\.0\.1:47831\//);
+  assert.match(src, /embed=1/);
+  assert.doesNotMatch(src, /docs\.oceanleo\.app/);
+  const merged = clientHostedEmbedContext({
+    environment: { platform: "web", capabilities: [] },
+  });
+  assert.equal(merged.platform, "desktop");
+  assert.equal(merged.capabilities.includes(w10LocalHostedCapability("docs", INJECTED)), true);
 });

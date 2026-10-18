@@ -8,6 +8,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  configureClientHost,
+  createMemoryAuthStorage,
+  resetClientHostConfigForTests,
+} from "../src/contracts/client-host-config.ts";
+import {
+  clientHostedEmbedContext,
   hostedEmbedBaseForPlatform,
   hostedKernelChromeHidden,
   readLocalHostedOrigin,
@@ -47,6 +53,27 @@ test("hosted routes still default to hostedEditorOrigin and can take a local ove
   assert.match(deck, /hostedEmbedBaseForPlatform/);
   assert.match(docs, /richDocHostedEmbedBase/);
   assert.match(docs, /hostedEmbedBaseForPlatform/);
+});
+
+test("editor.html host context merges injected capabilities over empty React host caps", () => {
+  resetClientHostConfigForTests();
+  configureClientHost({
+    family: "com",
+    portalOrigin: "https://oceanleo.com",
+    gatewayOrigin: "https://api.dev.oceanleo.com",
+    identityOrigin: "https://auth.oceanleo.com",
+    identityAnonKey: "dev-local-anon-placeholder",
+    authStorage: createMemoryAuthStorage(),
+    locale: "zh",
+    platform: "desktop",
+    capabilities: ["native-shell", "local-hosted:docs=http://127.0.0.1:4173"],
+  });
+  const ctx = clientHostedEmbedContext({
+    environment: { platform: "web", capabilities: [] },
+  });
+  assert.equal(ctx.platform, "desktop");
+  assert.equal(ctx.capabilities.includes("local-hosted:docs=http://127.0.0.1:4173"), true);
+  resetClientHostConfigForTests();
 });
 
 test("native hosts never fall back to family origins; web keeps family", () => {
