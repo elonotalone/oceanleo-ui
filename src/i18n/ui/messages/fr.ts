@@ -6304,6 +6304,7 @@ const fr: Record<string, string> = {
   "薰紫": "Lilas",
   "墨青": "Sarcelle",
   "曜黑": "Noir pur",
+  "奶白": "Lait",
   "宣纸": "Papier",
   "晨雾": "Brume",
   "天青": "Azur",

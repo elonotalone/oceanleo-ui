@@ -6304,6 +6304,7 @@ const tr: Record<string, string> = {
   "薰紫": "Leylak",
   "墨青": "Deniz mavisi",
   "曜黑": "Saf siyah",
+  "奶白": "Süt",
   "宣纸": "Kâğıt",
   "晨雾": "Sis",
   "天青": "Gök mavisi",

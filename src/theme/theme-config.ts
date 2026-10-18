@@ -17,10 +17,11 @@
 //        lilac 薰紫（Catppuccin Mocha）· teal 墨青（Solarized Dark）· oled 曜黑（纯黑）
 //        —— warm/night/lilac/teal 于 2026-07-04 整体加深一档（操作员反馈「不够深」）。
 //   ④ 浅色配色包（生效类名 `<slug>`，不带 .dark）：走浅色基座，覆盖浅色语义令牌 +
-//      浅底渐变。共 4 个：paper 宣纸（暖米黄）· mist 晨雾（冷雾蓝白）·
+//      浅底渐变。共 5 个：cream 奶白（默认浅色，Etsy 活页 #faf8f5）·
+//        paper 宣纸（暖米黄）· mist 晨雾（冷雾蓝白）·
 //        dawn 天青（Solarized Light，呼应深色墨青）· sakura 樱粉（Catppuccin Latte，
-//        呼应深色薰紫）。
-//   ⑤ 每个特色主题都是【显式】主题（不随系统偏好变，auto 只在 light/dark 间解析）。
+//        呼应深色薰紫）。基座 `light` 仍是原来的冷白蓝→淡紫渐变，可选手选。
+//   ⑤ 每个特色主题都是【显式】主题（不随系统偏好变）。auto 在 cream / dark 间解析。
 //   （历史：早先的 9 个「主题盘」ocean…mint 是「同底换色相」的廉价滤镜，已删。）
 
 // ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ export const DARK_VARIANT_THEMES = [
 ] as const;
 
 // 浅色特色主题：生效类名 `<slug>`（浅色基座，不带 .dark）。
-export const LIGHT_VARIANT_THEMES = ["paper", "mist", "dawn", "sakura"] as const;
+export const LIGHT_VARIANT_THEMES = ["cream", "paper", "mist", "dawn", "sakura"] as const;
 
 // 全部特色主题（登记 + 迭代用）。UI 展示顺序 = 暗色组在前、浅色组在后。
 export const VARIANT_THEMES = [
@@ -67,6 +68,7 @@ export const VARIANT_META: Record<
   lilac: { label: "薰紫", swatch: "#cba6f7", swatch2: "#f5c2e7", base: "dark" },
   teal: { label: "墨青", swatch: "#2aa198", swatch2: "#268bd2", base: "dark" },
   oled: { label: "曜黑", swatch: "#e5e7eb", swatch2: "#6b7280", base: "dark" },
+  cream: { label: "奶白", swatch: "#faf8f5", swatch2: "#e7e2d9", base: "light" },
   paper: { label: "宣纸", swatch: "#c8a15a", swatch2: "#a9743a", base: "light" },
   mist: { label: "晨雾", swatch: "#7c93ad", swatch2: "#3b4a5c", base: "light" },
   dawn: { label: "天青", swatch: "#2aa198", swatch2: "#268bd2", base: "light" },
@@ -119,7 +121,7 @@ export function normalizeThemeMode(value: unknown): ThemeMode {
 
 // 把「模式 + 系统偏好」解析成实际生效的外观。
 // 显式 light/dark/特色主题直接返回；auto 模式下 systemPrefersDark=true → dark，
-// 否则 light（auto 永不解析成任何特色主题 —— 它们必须由用户显式选择）。
+// 否则 cream（默认浅色是奶白；原来的 light 只在用户显式选「浅色」时出现）。
 export function resolveThemeClass(
   mode: ThemeMode,
   systemPrefersDark: boolean,
@@ -127,7 +129,7 @@ export function resolveThemeClass(
   if (mode === "dark") return "dark";
   if (mode === "light") return "light";
   if (isVariantTheme(mode)) return mode;
-  return systemPrefersDark ? "dark" : "light";
+  return systemPrefersDark ? "dark" : "cream";
 }
 
 // 外观 → <html> 类名字符串（首帧/客户端共用的单一事实源）。
@@ -385,6 +387,34 @@ export const DARK_THEME_TOKENS: Record<DarkVariantTheme, DarkThemeTokens> = {
 // 呼应深色墨青）/ sakura（Catppuccin Latte 奶油粉彩，呼应深色薰紫）。
 // ---------------------------------------------------------------------------
 export const LIGHT_THEME_TOKENS: Record<LightVariantTheme, LightThemeTokens> = {
+  // 奶白：默认浅色。Etsy 活页实测 #faf8f5，侧栏和主区同一层，不是冷白渐变。
+  cream: {
+    canvas: "#faf8f5",
+    bodyFg: "#292524",
+    bg: "#faf8f5",
+    surface: "#faf8f5",
+    card: "#fffdfb",
+    card2: "#f3f0eb",
+    sidebar: "#faf8f5",
+    chrome: "#faf8f5",
+    cardWhite: "#fffdfb",
+    border: "rgba(41, 37, 36, 0.10)",
+    borderS: "rgba(41, 37, 36, 0.06)",
+    borderStrong: "rgba(41, 37, 36, 0.18)",
+    divider: "rgba(41, 37, 36, 0.08)",
+    ring: "rgba(41, 37, 36, 0.28)",
+    fg: "#292524",
+    fg2: "#57534e",
+    muted: "#78716c",
+    faint: "#a8a29e",
+    btnFrom: "#171717",
+    btnTo: "#262626",
+    btnText: "#fafafa",
+    btnShadow: "0 6px 16px -8px rgba(23,23,23,0.35)",
+    focusBorder: "rgba(41, 37, 36, 0.40)",
+    focusRing: "rgba(41, 37, 36, 0.12)",
+    scrollThumb: "rgba(41, 37, 36, 0.18)",
+  },
   // 宣纸：暖米黄纸感（护眼阅读向）。
   paper: {
     canvas:

@@ -6304,6 +6304,7 @@ const es419: Record<string, string> = {
   "薰紫": "Lila",
   "墨青": "Turquesa",
   "曜黑": "Negro puro",
+  "奶白": "Leche",
   "宣纸": "Papel",
   "晨雾": "Niebla",
   "天青": "Azur",

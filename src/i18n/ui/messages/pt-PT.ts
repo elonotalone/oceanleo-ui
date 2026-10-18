@@ -6304,6 +6304,7 @@ const ptPT: Record<string, string> = {
   "薰紫": "Lilás",
   "墨青": "Turquesa",
   "曜黑": "Preto puro",
+  "奶白": "Leite",
   "宣纸": "Papel",
   "晨雾": "Névoa",
   "天青": "Azul-celeste",
