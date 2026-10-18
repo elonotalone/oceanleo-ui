@@ -1128,7 +1128,7 @@ function AppShellInner({
       <aside
         data-oceanleo-chrome
         data-oceanleo-sidebar-mode={collapsed ? "rail" : "expanded"}
-        className={`hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[var(--sidebar,#faf8f5)]/90 backdrop-blur-sm transition-[width] duration-[var(--leo-dur-5)] ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex ${}
+        className={`hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[var(--sidebar)] backdrop-blur-sm transition-[width] duration-[var(--leo-dur-5)] ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex ${}
           collapsed ? "w-14" : "w-[256px]"
         }`}
       >
@@ -1161,7 +1161,7 @@ function AppShellInner({
           {/* leo-safe-drawer 同时管宽度（`min(280px, 85vw)`，360px 安卓机上留出
               「点旁边关掉」的余地）与三个方向的安全区让位：底部账户行不会被
               手势条盖住，横屏时也不会被刘海切掉。 */}
-          <aside className="leo-safe-drawer absolute left-0 top-0 flex h-full flex-col bg-[var(--sidebar,#faf8f5)] shadow-xl">
+          <aside className="leo-safe-drawer absolute left-0 top-0 flex h-full flex-col bg-[var(--sidebar)] shadow-xl">
             {sidebarBody}
           </aside>
         </div>
