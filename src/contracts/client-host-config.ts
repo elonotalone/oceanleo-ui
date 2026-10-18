@@ -21,6 +21,15 @@ export interface ClientHostAuthStorage {
   removeItem(key: string): void | Promise<void>;
 }
 
+export type ClientHostNavSection = "primary" | "footer";
+
+export interface ClientHostNavItem {
+  href: string;
+  label: string;
+  section: ClientHostNavSection;
+  icon?: string;
+}
+
 export interface ClientHostConfig {
   family: ClientHostFamily;
   portalOrigin: string;
@@ -32,6 +41,8 @@ export interface ClientHostConfig {
   platform: ClientPlatform;
   capabilities: readonly string[];
   openExternal?: (url: string) => void | Promise<void>;
+  /** Host-only sidebar rows. Omitted keeps the previous slot; `[]` clears. */
+  navItems?: readonly ClientHostNavItem[];
 }
 
 type HostConfigSlot = {
@@ -54,6 +65,9 @@ const PLATFORMS: readonly ClientPlatform[] = [
 
 let generation = 0;
 const listeners = new Set<() => void>();
+const EMPTY_NAV_ITEMS: readonly ClientHostNavItem[] = Object.freeze([]);
+let navCacheGen = -1;
+let navCache: readonly ClientHostNavItem[] = EMPTY_NAV_ITEMS;
 
 function isFamily(value: unknown): value is ClientHostFamily {
   return value === "com" || value === "cn" || value === "ws";
@@ -88,6 +102,49 @@ function parseOrigin(raw: string, field: string): string {
   return url.origin;
 }
 
+function parseNavHref(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const href = raw.trim();
+  if (href.length < 2 || href.length > 512) return null;
+  if (!href.startsWith("/") || href.startsWith("//")) return null;
+  if (href.includes("\\") || href.includes("://")) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href.slice(1))) return null;
+  return href;
+}
+
+function parseNavItems(raw: unknown): readonly ClientHostNavItem[] {
+  if (!Array.isArray(raw) || raw.length === 0) return EMPTY_NAV_ITEMS;
+  const seen = new Set<string>();
+  const out: ClientHostNavItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const item = entry as {
+      href?: unknown;
+      label?: unknown;
+      section?: unknown;
+      icon?: unknown;
+    };
+    const href = parseNavHref(item.href);
+    const label = typeof item.label === "string" ? item.label.trim() : "";
+    if (!href || !label || label.length > 80) continue;
+    if (seen.has(href)) continue;
+    seen.add(href);
+    const section: ClientHostNavSection =
+      item.section === "footer" ? "footer" : "primary";
+    const icon =
+      typeof item.icon === "string" &&
+      /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(item.icon)
+        ? item.icon
+        : undefined;
+    out.push(
+      Object.freeze(
+        icon ? { href, label, section, icon } : { href, label, section },
+      ),
+    );
+  }
+  return out.length ? Object.freeze(out) : EMPTY_NAV_ITEMS;
+}
+
 function notify(): void {
   generation += 1;
   for (const listener of listeners) listener();
@@ -104,6 +161,11 @@ export function configureClientHost(config: ClientHostConfig): void {
   if (!identityAnonKey) {
     throw new Error("configureClientHost identityAnonKey is required");
   }
+  const previous = getClientHostConfig();
+  const navItems =
+    config.navItems !== undefined
+      ? parseNavItems(config.navItems)
+      : parseNavItems(previous?.navItems);
   const next: ClientHostConfig = Object.freeze({
     family: config.family,
     portalOrigin: parseOrigin(config.portalOrigin, "portalOrigin"),
@@ -115,6 +177,7 @@ export function configureClientHost(config: ClientHostConfig): void {
     platform: config.platform,
     capabilities: Object.freeze([...(config.capabilities || [])]),
     openExternal: config.openExternal,
+    navItems,
   });
   (globalThis as HostConfigSlot)[CLIENT_HOST_CONFIG_GLOBAL_KEY] = next;
   notify();
@@ -128,6 +191,17 @@ export function getClientHostConfig(): ClientHostConfig | null {
     return null;
   }
   return value;
+}
+
+/**
+ * Host-only sidebar rows from the same slot. Empty when unconfigured.
+ * clone-shell reads this; do not import W09 `getBootExtensions()`.
+ */
+export function getHostNavItems(): readonly ClientHostNavItem[] {
+  if (navCacheGen === generation) return navCache;
+  navCacheGen = generation;
+  navCache = parseNavItems(getClientHostConfig()?.navItems);
+  return navCache;
 }
 
 export function clientHostConfigGeneration(): number {

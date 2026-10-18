@@ -7,6 +7,7 @@ import {
   configureClientHost,
   createMemoryAuthStorage,
   getClientHostConfig,
+  getHostNavItems,
   nativeShellFromHostConfig,
   resetClientHostConfigForTests,
 } from "../src/client-ui/host-config.ts";
@@ -77,6 +78,7 @@ test("unconfigured family/gateway/identity/help/cookies equal live web", () => {
   assert.equal(nativeShellFromHostConfig(), null);
   assert.equal(runtimePageOrigin(), "");
   assert.equal(runtimePageHost(), "");
+  assert.deepEqual(getHostNavItems(), []);
 });
 
 test("host mode family/gateway/identity/storage come from injection", () => {

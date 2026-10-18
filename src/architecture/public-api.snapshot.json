@@ -718,6 +718,12 @@
         },
         {
           "kind": "named",
+          "name": "getHostNavItems",
+          "importedName": "getHostNavItems",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
           "name": "hitsInPaths",
           "importedName": "hitsInPaths",
           "source": "./scan-host-coupling"
@@ -769,6 +775,12 @@
           "name": "NOOP_SESSION",
           "importedName": "NOOP_SESSION",
           "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "onClientHostConfigChange",
+          "importedName": "onClientHostConfigChange",
+          "source": "./host-config"
         },
         {
           "kind": "named",
@@ -834,6 +846,18 @@
           "kind": "type",
           "name": "ClientHostConfig",
           "importedName": "ClientHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostNavItem",
+          "importedName": "ClientHostNavItem",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostNavSection",
+          "importedName": "ClientHostNavSection",
           "source": "./host-config"
         },
         {
@@ -951,6 +975,12 @@
         },
         {
           "kind": "named",
+          "name": "getHostNavItems",
+          "importedName": "getHostNavItems",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
           "name": "HostLink",
           "importedName": "HostLink",
           "source": "./host-link"
@@ -984,6 +1014,12 @@
           "name": "NOOP_SESSION",
           "importedName": "NOOP_SESSION",
           "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "onClientHostConfigChange",
+          "importedName": "onClientHostConfigChange",
+          "source": "./host-config"
         },
         {
           "kind": "named",
@@ -1031,6 +1067,18 @@
           "kind": "type",
           "name": "ClientHostConfig",
           "importedName": "ClientHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostNavItem",
+          "importedName": "ClientHostNavItem",
+          "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostNavSection",
+          "importedName": "ClientHostNavSection",
           "source": "./host-config"
         },
         {
@@ -1106,6 +1154,12 @@
         },
         {
           "kind": "named",
+          "name": "getHostNavItems",
+          "importedName": "getHostNavItems",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
           "name": "HostSessionPort",
           "importedName": "HostSessionPort",
           "source": "./host-ports"
@@ -1118,6 +1172,12 @@
         },
         {
           "kind": "named",
+          "name": "onClientHostConfigChange",
+          "importedName": "onClientHostConfigChange",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
           "name": "useClientHost",
           "importedName": "useClientHost",
           "source": "./host-context"
@@ -1127,6 +1187,12 @@
           "name": "useOptionalClientHost",
           "importedName": "useOptionalClientHost",
           "source": "./host-context"
+        },
+        {
+          "kind": "type",
+          "name": "ClientHostNavItem",
+          "importedName": "ClientHostNavItem",
+          "source": "./host-config"
         }
       ]
     },

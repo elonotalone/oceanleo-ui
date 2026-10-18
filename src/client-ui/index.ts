@@ -17,10 +17,14 @@ export {
   configureClientHost,
   createMemoryAuthStorage,
   getClientHostConfig,
+  getHostNavItems,
   nativeShellFromHostConfig,
+  onClientHostConfigChange,
   resetClientHostConfigForTests,
   type ClientHostAuthStorage,
   type ClientHostConfig,
+  type ClientHostNavItem,
+  type ClientHostNavSection,
 } from "./host-config";
 export {
   ClientHostContext,
