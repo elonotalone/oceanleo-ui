@@ -1113,7 +1113,7 @@ function AppShellInner({
   }
 
   return (
-    /* 根容器透明 → 透出 body 的主题底。侧栏跟 --sidebar，默认奶白，显式浅色仍是冷灰。 */
+    /* 根容器透明 → 透出 body 的主题底。侧栏跟 --sidebar，Light 基座是暖灰米。 */
     <div className="leo-safe-shell flex min-h-screen bg-transparent" data-oceanleo-shell>
       <SidebarRailTipLayer />
       {/* desktop sidebar。固定宽度 256px（2026-07-02 对齐主站 oceanleo.com 侧栏宽，

@@ -27,7 +27,7 @@ import { REGISTRABLE_DOMAINS } from "../contracts/domain-family";
 //   2. auto 时用 matchMedia 取系统偏好。
 //   3. 在 documentElement 上加类名（class 策略，配合 @custom-variant）：
 //        暗色特色主题 → "dark <slug>"；浅色特色主题 → "<slug>"；
-//        auto 浅色 → cream（默认奶白），显式 light 仍是原来的冷白。
+//        auto 浅色 / 显式 light → "light"（暖灰米基座）。旧 cookie cream 当成 light。
 // 之后 <ThemeProvider> 挂载再接管动态切换（含 auto 的系统变化监听）。
 // DV/LV 由 theme-config 的注册表注入，加一个特色主题无需再改本脚本。
 const INLINE = `(function(){try{
@@ -40,6 +40,7 @@ if(fam){try{document.cookie=C+"=; path=/; max-age=0; samesite=lax";}catch(e){}}
 var m=null;
 try{var mt=document.cookie.match(new RegExp("(?:^|; )"+C+"=([^;]*)"));if(mt)m=decodeURIComponent(mt[1]);}catch(e){}
 if(!m){try{m=localStorage.getItem(L);}catch(e){}}
+if(m==="cream")m="light";
 var valid=(m==="light"||m==="dark"||m==="auto"||DV.indexOf(m)>=0||LV.indexOf(m)>=0);
 if(!valid)m=D;
 var cls,light;
@@ -47,9 +48,9 @@ if(DV.indexOf(m)>=0){cls="dark "+m;light=false;}
 else if(LV.indexOf(m)>=0){cls=m;light=true;}
 else if(m==="dark"){cls="dark";light=false;}
 else if(m==="light"){cls="light";light=true;}
-else{var dk=false;try{dk=window.matchMedia("(prefers-color-scheme: dark)").matches;}catch(e){dk=false;}cls=dk?"dark":"cream";light=!dk;}
+else{var dk=false;try{dk=window.matchMedia("(prefers-color-scheme: dark)").matches;}catch(e){dk=false;}cls=dk?"dark":"light";light=!dk;}
 var el=document.documentElement;
-var rm=["dark","light"];DV.forEach(function(p){rm.push(p);});LV.forEach(function(p){rm.push(p);});
+var rm=["dark","light","cream"];DV.forEach(function(p){rm.push(p);});LV.forEach(function(p){rm.push(p);});
 el.classList.remove.apply(el.classList,rm);
 cls.split(" ").forEach(function(c){el.classList.add(c);});
 el.style.colorScheme=light?"light":"dark";

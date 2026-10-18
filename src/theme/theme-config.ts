@@ -17,11 +17,11 @@
 //        lilac 薰紫（Catppuccin Mocha）· teal 墨青（Solarized Dark）· oled 曜黑（纯黑）
 //        —— warm/night/lilac/teal 于 2026-07-04 整体加深一档（操作员反馈「不够深」）。
 //   ④ 浅色配色包（生效类名 `<slug>`，不带 .dark）：走浅色基座，覆盖浅色语义令牌 +
-//      浅底渐变。共 5 个：cream 奶白（默认浅色，Etsy 活页 #faf8f5）·
+//      浅底渐变。共 5 个：cool 冷白（原来的 Light 冷白蓝→淡紫渐变，只在浅色系里）·
 //        paper 宣纸（暖米黄）· mist 晨雾（冷雾蓝白）·
 //        dawn 天青（Solarized Light，呼应深色墨青）· sakura 樱粉（Catppuccin Latte，
-//        呼应深色薰紫）。基座 `light` 仍是原来的冷白蓝→淡紫渐变，可选手选。
-//   ⑤ 每个特色主题都是【显式】主题（不随系统偏好变）。auto 在 cream / dark 间解析。
+//        呼应深色薰紫）。基座 `light` = 暖灰米（Claude 石色 #f0eee6），不是变体名。
+//   ⑤ 每个特色主题都是【显式】主题（不随系统偏好变）。auto 在 light / dark 间解析。
 //   （历史：早先的 9 个「主题盘」ocean…mint 是「同底换色相」的廉价滤镜，已删。）
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ export const DARK_VARIANT_THEMES = [
 ] as const;
 
 // 浅色特色主题：生效类名 `<slug>`（浅色基座，不带 .dark）。
-export const LIGHT_VARIANT_THEMES = ["cream", "paper", "mist", "dawn", "sakura"] as const;
+export const LIGHT_VARIANT_THEMES = ["cool", "paper", "mist", "dawn", "sakura"] as const;
 
 // 全部特色主题（登记 + 迭代用）。UI 展示顺序 = 暗色组在前、浅色组在后。
 export const VARIANT_THEMES = [
@@ -68,7 +68,7 @@ export const VARIANT_META: Record<
   lilac: { label: "薰紫", swatch: "#cba6f7", swatch2: "#f5c2e7", base: "dark" },
   teal: { label: "墨青", swatch: "#2aa198", swatch2: "#268bd2", base: "dark" },
   oled: { label: "曜黑", swatch: "#e5e7eb", swatch2: "#6b7280", base: "dark" },
-  cream: { label: "奶白", swatch: "#faf8f5", swatch2: "#e7e2d9", base: "light" },
+  cool: { label: "冷白", swatch: "#e8edf8", swatch2: "#f2e9f2", base: "light" },
   paper: { label: "宣纸", swatch: "#c8a15a", swatch2: "#a9743a", base: "light" },
   mist: { label: "晨雾", swatch: "#7c93ad", swatch2: "#3b4a5c", base: "light" },
   dawn: { label: "天青", swatch: "#2aa198", swatch2: "#268bd2", base: "light" },
@@ -85,6 +85,12 @@ export const THEME_MODES: readonly ThemeMode[] = [
 ] as const;
 
 export const DEFAULT_THEME_MODE: ThemeMode = "auto";
+
+// Light 基座画布（Claude 石色，比旧 Etsy #faf8f5 暗一档，不是变体）。
+export const LIGHT_BASE_CANVAS = "#f0eee6";
+export const LIGHT_BASE_CARD = "#f5f4ed";
+export const LIGHT_BASE_CARD_2 = "#e8e6dc";
+export const LIGHT_BASE_INK = "#141413";
 
 // 实际生效的外观。light/dark 与各特色主题同名；auto 解析成 light/dark。
 export type ThemeAppearance = "light" | "dark" | VariantTheme;
@@ -116,12 +122,13 @@ export function isThemeMode(value: unknown): value is ThemeMode {
 }
 
 export function normalizeThemeMode(value: unknown): ThemeMode {
+  // 旧 cookie「cream / 奶白」就是现在的 Light 基座。
+  if (value === "cream") return "light";
   return isThemeMode(value) ? value : DEFAULT_THEME_MODE;
 }
 
 // 把「模式 + 系统偏好」解析成实际生效的外观。
-// 显式 light/dark/特色主题直接返回；auto 模式下 systemPrefersDark=true → dark，
-// 否则 cream（默认浅色是奶白；原来的 light 只在用户显式选「浅色」时出现）。
+// 显式 light/dark/特色主题直接返回；auto 浅色 = Light 基座（暖灰米）。
 export function resolveThemeClass(
   mode: ThemeMode,
   systemPrefersDark: boolean,
@@ -129,7 +136,7 @@ export function resolveThemeClass(
   if (mode === "dark") return "dark";
   if (mode === "light") return "light";
   if (isVariantTheme(mode)) return mode;
-  return systemPrefersDark ? "dark" : "cream";
+  return systemPrefersDark ? "dark" : "light";
 }
 
 // 外观 → <html> 类名字符串（首帧/客户端共用的单一事实源）。
@@ -150,7 +157,7 @@ export function isLightAppearance(appearance: ThemeAppearance): boolean {
 
 // 应用/清除类名时要移除的全部主题类（防止切换残留）。
 export function allThemeClassNames(): string[] {
-  return ["light", "dark", ...VARIANT_THEMES];
+  return ["light", "dark", "cream", ...VARIANT_THEMES];
 }
 
 // ===========================================================================
@@ -387,17 +394,20 @@ export const DARK_THEME_TOKENS: Record<DarkVariantTheme, DarkThemeTokens> = {
 // 呼应深色墨青）/ sakura（Catppuccin Latte 奶油粉彩，呼应深色薰紫）。
 // ---------------------------------------------------------------------------
 export const LIGHT_THEME_TOKENS: Record<LightVariantTheme, LightThemeTokens> = {
-  // 奶白：默认浅色。Etsy 活页实测 #faf8f5，侧栏和主区同一层，不是冷白渐变。
-  cream: {
-    canvas: "#faf8f5",
+  // 冷白：原来的 Light 基座（冷白蓝→淡紫渐变）。只在浅色系里，不占顶栏。
+  cool: {
+    canvas:
+      "radial-gradient(120% 120% at 0% 0%, #e8edf8 0%, rgba(232, 237, 248, 0) 45%), " +
+      "radial-gradient(120% 120% at 100% 100%, #f2e9f2 0%, rgba(242, 233, 242, 0) 50%), " +
+      "linear-gradient(135deg, #edf1f8 0%, #f4f3f1 45%, #f3eef3 100%)",
     bodyFg: "#292524",
-    bg: "#faf8f5",
-    surface: "#faf8f5",
-    card: "#fffdfb",
-    card2: "#f3f0eb",
-    sidebar: "#faf8f5",
-    chrome: "#faf8f5",
-    cardWhite: "#fffdfb",
+    bg: "#f4f3f1",
+    surface: "#f4f3f1",
+    card: "#ffffff",
+    card2: "#eceae8",
+    sidebar: "#f7f7f7",
+    chrome: "#f7f7f7",
+    cardWhite: "#ffffff",
     border: "rgba(41, 37, 36, 0.10)",
     borderS: "rgba(41, 37, 36, 0.06)",
     borderStrong: "rgba(41, 37, 36, 0.18)",

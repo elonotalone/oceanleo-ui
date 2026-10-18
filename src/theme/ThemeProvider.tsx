@@ -150,7 +150,7 @@ export interface ThemeProviderProps {
 export function ThemeProvider({ children }: ThemeProviderProps) {
   // 初值只在挂载时读一次；SSR 阶段返回 DEFAULT（不影响首帧，首帧类名由 ThemeScript 定）。
   const [mode, setModeState] = useState<ThemeMode>(DEFAULT_THEME_MODE);
-  const [resolved, setResolved] = useState<ThemeAppearance>("cream");
+  const [resolved, setResolved] = useState<ThemeAppearance>("light");
   // 真实模式的同步镜像。挂载首个 commit 里 state 还是初始值 auto（setState 下一次
   // 渲染才生效），任何在该窗口执行的回调都必须读这个 ref 而不是 state，否则会拿
   // 陈旧的 auto 把用户选的 dark/light 覆盖掉 —— 2026-07-02「深色刷新变亮」的根因

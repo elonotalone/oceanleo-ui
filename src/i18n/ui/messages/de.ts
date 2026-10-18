@@ -6304,6 +6304,7 @@ const de: Record<string, string> = {
   "薰紫": "Flieder",
   "墨青": "Petrol",
   "曜黑": "Reinschwarz",
+  "冷白": "Kühlweiß",
   "奶白": "Milch",
   "宣纸": "Papier",
   "晨雾": "Nebel",

@@ -52,15 +52,15 @@
 
 :root {
   color-scheme: light;
-  /* 默认浅色画布：Etsy 活页奶白色。侧栏 / 主区 / --bg 都走这一层，不是只给 body 刷一层。 */
-  --leo-cream: #faf8f5;
-  --bg: #faf8f5;
-  --surface: #faf8f5;
-  --sidebar: #faf8f5;
-  --sidebar-bg: #faf8f5;
-  --header-bg: #ffffff;
-  --chrome: #faf8f5;
-  --card: #ffffff;
+  /* Light 基座：Claude 石色（#f0eee6），比旧 Etsy #faf8f5 暗一档、更暖。 */
+  --leo-cream: #f0eee6;
+  --bg: #f0eee6;
+  --surface: #f0eee6;
+  --sidebar: #f0eee6;
+  --sidebar-bg: #f0eee6;
+  --header-bg: #f5f4ed;
+  --chrome: #f0eee6;
+  --card: #f5f4ed;
 }
 
 /* ============================================================================
@@ -112,11 +112,10 @@ html,
 body {
   padding: 0;
   margin: 0;
-  /* 默认浅色底：奶白色（对照 Etsy 活页实测 #faf8f5 / #f9f7f4）。
-     不再用冷白蓝→淡紫大渐变。fixed 让底色不随内容滚动。 */
-  background: #faf8f5;
+  /* Light 基座底：Claude 石色。冷白蓝→淡紫大渐变只在 html.cool。 */
+  background: #f0eee6;
   background-attachment: fixed;
-  color: #292524;
+  color: #141413;
   /* 上下滑动到头有「缓冲」而非「硬到底/硬到头」（操作员 2026-07-03）：
      - overscroll-behavior-y: auto → 保留浏览器原生回弹/缓冲（不用 contain 硬截断）。
      - scroll-behavior: smooth → 锚点/程序化滚动带平滑过渡。 */
@@ -124,39 +123,44 @@ body {
   scroll-behavior: smooth;
 }
 
-/* 默认 / 奶白：侧栏跟页底同一层奶白色。显式「浅色」走下面 html.light，把旧冷白渐变还回去。 */
-html.cream [data-oceanleo-chrome][data-oceanleo-sidebar-mode],
-html:not(.dark):not(.light):not(.paper):not(.mist):not(.dawn):not(.sakura) [data-oceanleo-chrome][data-oceanleo-sidebar-mode] {
-  background-color: var(--sidebar, #faf8f5) !important;
+/* Light 基座：侧栏跟页底同一层暖灰米。旧冷白渐变是 html.cool。 */
+html.light [data-oceanleo-chrome][data-oceanleo-sidebar-mode],
+html:not(.dark):not(.cool):not(.paper):not(.mist):not(.dawn):not(.sakura) [data-oceanleo-chrome][data-oceanleo-sidebar-mode] {
+  background-color: var(--sidebar, #f0eee6) !important;
 }
 html:not(.dark) [data-bay-page-paper] {
   background-color: transparent;
 }
 
-/* 原来的 Light：冷白蓝→淡紫渐变。只在用户显式选「浅色」时出现。 */
+/* Light 基座：和 :root 同一套暖灰米。旧冷白渐变已搬到 html.cool。 */
 html.light {
   color-scheme: light;
-  --bg: #f4f3f1;
-  --surface: #f4f3f1;
-  --sidebar: #f7f7f7;
-  --sidebar-bg: #f7f7f7;
-  --header-bg: #ffffff;
-  --chrome: #f7f7f7;
-  --card: #ffffff;
+  --bg: #f0eee6;
+  --surface: #f0eee6;
+  --sidebar: #f0eee6;
+  --sidebar-bg: #f0eee6;
+  --header-bg: #f5f4ed;
+  --chrome: #f0eee6;
+  --card: #f5f4ed;
 }
 html.light,
 html.light body {
-  background:
-    radial-gradient(120% 120% at 0% 0%, #e8edf8 0%, rgba(232, 237, 248, 0) 45%),
-    radial-gradient(120% 120% at 100% 100%, #f2e9f2 0%, rgba(242, 233, 242, 0) 50%),
-    linear-gradient(135deg, #edf1f8 0%, #f4f3f1 45%, #f3eef3 100%);
+  background: #f0eee6;
   background-attachment: fixed;
-  color: #292524;
+  color: #141413;
 }
-html.light [data-oceanleo-chrome][data-oceanleo-sidebar-mode],
-html.light .bg-\[\#f7f7f7\],
-html.light .bg-\[\#f7f7f7\]\/85,
-html.light .bg-\[\#f7f7f7\]\/80 {
+html.light .bg-white,
+html.light .bg-neutral-50,
+html.light .bg-stone-50,
+html.light .bg-slate-50,
+html.light .bg-gray-50 { background-color: #faf9f5 !important; }
+html.light .bg-neutral-100,
+html.light .bg-stone-100,
+html.light .bg-gray-100 { background-color: #e8e6dc !important; }
+html.cool [data-oceanleo-chrome][data-oceanleo-sidebar-mode],
+html.cool .bg-\[\#f7f7f7\],
+html.cool .bg-\[\#f7f7f7\]\/85,
+html.cool .bg-\[\#f7f7f7\]\/80 {
   background-color: #f7f7f7 !important;
 }
 
@@ -1828,21 +1832,21 @@ html.oled .v-scroll { scrollbar-color: var(--border-strong) transparent; }
 
 /* 浅色特色主题（生效类名 <slug>，浅色基座，覆盖浅色语义令牌 + 浅底渐变）。 */
 
-/* ── cream (light) ─────────────────────────────────────────────────────── */
-html.cream { color-scheme: light; }
-html.cream body {
-  background: #faf8f5;
+/* ── cool (light) ─────────────────────────────────────────────────────── */
+html.cool { color-scheme: light; }
+html.cool body {
+  background: radial-gradient(120% 120% at 0% 0%, #e8edf8 0%, rgba(232, 237, 248, 0) 45%), radial-gradient(120% 120% at 100% 100%, #f2e9f2 0%, rgba(242, 233, 242, 0) 50%), linear-gradient(135deg, #edf1f8 0%, #f4f3f1 45%, #f3eef3 100%);
   background-attachment: fixed;
   color: #292524;
 }
-html.cream {
-  --bg: #faf8f5;
-  --surface: #faf8f5;
-  --card: #fffdfb;
-  --card-2: #f3f0eb;
-  --sidebar: #faf8f5;
-  --sidebar-bg: #faf8f5;
-  --header-bg: #faf8f5;
+html.cool {
+  --bg: #f4f3f1;
+  --surface: #f4f3f1;
+  --card: #ffffff;
+  --card-2: #eceae8;
+  --sidebar: #f7f7f7;
+  --sidebar-bg: #f7f7f7;
+  --header-bg: #f7f7f7;
   --border: rgba(41, 37, 36, 0.10);
   --border-2: rgba(41, 37, 36, 0.06);
   --border-strong: rgba(41, 37, 36, 0.18);
@@ -1853,40 +1857,40 @@ html.cream {
   --muted: #78716c;
   --faint: #a8a29e;
 }
-html.cream [data-oceanleo-chrome] {
-  background-color: #faf8f5 !important;
+html.cool [data-oceanleo-chrome] {
+  background-color: #f7f7f7 !important;
   border-color: rgba(41, 37, 36, 0.10) !important;
 }
-html.cream .bg-white,
-html.cream .bg-neutral-50,
-html.cream .bg-stone-50,
-html.cream .bg-slate-50,
-html.cream .bg-gray-50 { background-color: #fffdfb !important; }
-html.cream .bg-neutral-100,
-html.cream .bg-stone-100,
-html.cream .bg-gray-100 { background-color: #f3f0eb !important; }
-html.cream .bg-neutral-900,
-html.cream .bg-neutral-800,
-html.cream .bg-stone-900,
-html.cream .bg-stone-800,
-html.cream .bg-slate-900,
-html.cream .bg-black {
+html.cool .bg-white,
+html.cool .bg-neutral-50,
+html.cool .bg-stone-50,
+html.cool .bg-slate-50,
+html.cool .bg-gray-50 { background-color: #ffffff !important; }
+html.cool .bg-neutral-100,
+html.cool .bg-stone-100,
+html.cool .bg-gray-100 { background-color: #eceae8 !important; }
+html.cool .bg-neutral-900,
+html.cool .bg-neutral-800,
+html.cool .bg-stone-900,
+html.cool .bg-stone-800,
+html.cool .bg-slate-900,
+html.cool .bg-black {
   background: linear-gradient(135deg, #171717 0%, #262626 100%) !important;
   color: #fafafa !important;
   box-shadow: 0 6px 16px -8px rgba(23,23,23,0.35) !important;
 }
-html.cream .bg-neutral-900.text-white,
-html.cream .bg-neutral-800.text-white,
-html.cream .bg-stone-900.text-white,
-html.cream .bg-slate-900.text-white,
-html.cream .bg-black.text-white { color: #fafafa !important; }
-html.cream .focus\:border-neutral-400:focus,
-html.cream .focus-within\:border-neutral-400:focus-within {
+html.cool .bg-neutral-900.text-white,
+html.cool .bg-neutral-800.text-white,
+html.cool .bg-stone-900.text-white,
+html.cool .bg-slate-900.text-white,
+html.cool .bg-black.text-white { color: #fafafa !important; }
+html.cool .focus\:border-neutral-400:focus,
+html.cool .focus-within\:border-neutral-400:focus-within {
   border-color: rgba(41, 37, 36, 0.40) !important;
   box-shadow: 0 0 0 3px rgba(41, 37, 36, 0.12) !important;
 }
-html.cream [data-oceanleo-shell] *::-webkit-scrollbar-thumb,
-html.cream .v-scroll::-webkit-scrollbar-thumb { background: rgba(41, 37, 36, 0.18); }
+html.cool [data-oceanleo-shell] *::-webkit-scrollbar-thumb,
+html.cool .v-scroll::-webkit-scrollbar-thumb { background: rgba(41, 37, 36, 0.18); }
 
 /* ── paper (light) ─────────────────────────────────────────────────────── */
 html.paper { color-scheme: light; }
@@ -2235,9 +2239,9 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   width: 100vw;
   height: 100vh !important;
   max-width: none;
-  background: var(--bg, #faf8f5);
+  background: var(--bg, #f0eee6);
 }
 
 [data-workspace-split]:fullscreen::backdrop {
-  background: var(--bg, #faf8f5);
+  background: var(--bg, #f0eee6);
 }

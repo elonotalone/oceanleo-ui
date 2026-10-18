@@ -36,9 +36,9 @@ const preset: LoosePreset = {
       colors: {
         // 全家桶中性底色（侧栏背景 / 卡片描边等都基于这套灰）
         leo: {
-          bg: "#f7f3eb",
-          fg: "#292524",
-          sidebar: "#f7f7f7",
+          bg: "#f0eee6",
+          fg: "#141413",
+          sidebar: "#f0eee6",
         },
       },
       borderRadius: {

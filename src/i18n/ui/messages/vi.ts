@@ -6304,6 +6304,7 @@ const vi: Record<string, string> = {
   "薰紫": "Tử đinh hương",
   "墨青": "Xanh mực",
   "曜黑": "Đen tuyền",
+  "冷白": "Trắng lạnh",
   "奶白": "Sữa",
   "宣纸": "Giấy",
   "晨雾": "Sương",

@@ -6304,6 +6304,7 @@ const it: Record<string, string> = {
   "薰紫": "Lilla",
   "墨青": "Foglia di tè",
   "曜黑": "Nero puro",
+  "冷白": "Bianco freddo",
   "奶白": "Latte",
   "宣纸": "Carta",
   "晨雾": "Nebbia",

@@ -6349,6 +6349,7 @@ const en: Record<string, string> = {
   "薰紫": "Lilac",
   "墨青": "Teal",
   "曜黑": "True Black",
+  "冷白": "Cool",
   "奶白": "Milk",
   "宣纸": "Paper",
   "晨雾": "Mist",
