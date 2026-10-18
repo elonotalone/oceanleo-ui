@@ -13,8 +13,8 @@ test("auto 浅色解析成奶白，显式浅色仍是原来的 light", () => {
   assert.equal(appearanceToHtmlClass("light"), "light");
 });
 
-test("AppShell 侧栏不用带 hex 兜底的 Tailwind arbitrary，避免 SWC 把 className 模板解析炸", () => {
+test("AppShell 侧栏颜色不放进 className 模板，避免 SWC 把后面的 ${ 当成标签", () => {
   const source = readFileSync(new URL("../src/shell/AppShell.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /bg-\[var\(--sidebar,/);
   assert.match(source, /bg-\[var\(--sidebar\)\]/);
+  assert.doesNotMatch(source, /className=\{`[^`]*bg-\[var\(--sidebar\)\]/s);
 });

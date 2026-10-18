@@ -1128,9 +1128,10 @@ function AppShellInner({
       <aside
         data-oceanleo-chrome
         data-oceanleo-sidebar-mode={collapsed ? "rail" : "expanded"}
-        className={`hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[var(--sidebar)] backdrop-blur-sm transition-[width] duration-[var(--leo-dur-5)] ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex ${}
-          collapsed ? "w-14" : "w-[256px]"
-        }`}
+        className={[
+          "hidden h-screen flex-col overflow-hidden border-r border-neutral-200/70 bg-[var(--sidebar)] backdrop-blur-sm transition-[width] duration-[var(--leo-dur-5)] ease-out md:fixed md:start-0 md:top-0 md:z-30 md:flex",
+          collapsed ? "w-14" : "w-[256px]",
+        ].join(" ")}
       >
         <div
           className={`leo-safe-sidebar flex h-full flex-col ${
