@@ -27,7 +27,7 @@ import { REGISTRABLE_DOMAINS } from "../contracts/domain-family";
 //   2. auto 时用 matchMedia 取系统偏好。
 //   3. 在 documentElement 上加类名（class 策略，配合 @custom-variant）：
 //        暗色特色主题 → "dark <slug>"；浅色特色主题 → "<slug>"；
-//        auto 浅色 / 显式 light → "light"（暖灰米基座）。旧 cookie cream 当成 light。
+//        auto 浅色 / 显式 light → "light"（Etsy 页底）。旧 cookie cream 当成 light。
 // 之后 <ThemeProvider> 挂载再接管动态切换（含 auto 的系统变化监听）。
 // DV/LV 由 theme-config 的注册表注入，加一个特色主题无需再改本脚本。
 const INLINE = `(function(){try{

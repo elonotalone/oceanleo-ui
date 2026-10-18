@@ -52,15 +52,15 @@
 
 :root {
   color-scheme: light;
-  /* Light 基座：Claude 石色（#f0eee6），比旧 Etsy #faf8f5 暗一档、更暖。 */
-  --leo-cream: #f0eee6;
-  --bg: #f0eee6;
-  --surface: #f0eee6;
-  --sidebar: #f0eee6;
-  --sidebar-bg: #f0eee6;
-  --header-bg: #f5f4ed;
-  --chrome: #f0eee6;
-  --card: #f5f4ed;
+  /* Light 基座：Etsy 首页页底实测 #faf8f5。卡片是白，页底是这层奶纸。 */
+  --leo-cream: #faf8f5;
+  --bg: #faf8f5;
+  --surface: #faf8f5;
+  --sidebar: #faf8f5;
+  --sidebar-bg: #faf8f5;
+  --header-bg: #ffffff;
+  --chrome: #faf8f5;
+  --card: #ffffff;
 }
 
 /* ============================================================================
@@ -112,10 +112,10 @@ html,
 body {
   padding: 0;
   margin: 0;
-  /* Light 基座底：Claude 石色。冷白蓝→淡紫大渐变只在 html.cool。 */
-  background: #f0eee6;
+  /* Light 基座底：Etsy #faf8f5。冷白蓝→淡紫大渐变只在 html.cool。 */
+  background: #faf8f5;
   background-attachment: fixed;
-  color: #141413;
+  color: #292524;
   /* 上下滑动到头有「缓冲」而非「硬到底/硬到头」（操作员 2026-07-03）：
      - overscroll-behavior-y: auto → 保留浏览器原生回弹/缓冲（不用 contain 硬截断）。
      - scroll-behavior: smooth → 锚点/程序化滚动带平滑过渡。 */
@@ -123,40 +123,40 @@ body {
   scroll-behavior: smooth;
 }
 
-/* Light 基座：侧栏跟页底同一层暖灰米。旧冷白渐变是 html.cool。 */
+/* Light 基座：侧栏跟页底同一层 Etsy 奶纸。旧冷白渐变是 html.cool。 */
 html.light [data-oceanleo-chrome][data-oceanleo-sidebar-mode],
 html:not(.dark):not(.cool):not(.paper):not(.mist):not(.dawn):not(.sakura) [data-oceanleo-chrome][data-oceanleo-sidebar-mode] {
-  background-color: var(--sidebar, #f0eee6) !important;
+  background-color: var(--sidebar, #faf8f5) !important;
 }
 html:not(.dark) [data-bay-page-paper] {
   background-color: transparent;
 }
 
-/* Light 基座：和 :root 同一套暖灰米。旧冷白渐变已搬到 html.cool。 */
+/* Light 基座：和 :root 同一套 Etsy 页底。旧冷白渐变已搬到 html.cool。 */
 html.light {
   color-scheme: light;
-  --bg: #f0eee6;
-  --surface: #f0eee6;
-  --sidebar: #f0eee6;
-  --sidebar-bg: #f0eee6;
-  --header-bg: #f5f4ed;
-  --chrome: #f0eee6;
-  --card: #f5f4ed;
+  --bg: #faf8f5;
+  --surface: #faf8f5;
+  --sidebar: #faf8f5;
+  --sidebar-bg: #faf8f5;
+  --header-bg: #ffffff;
+  --chrome: #faf8f5;
+  --card: #ffffff;
 }
 html.light,
 html.light body {
-  background: #f0eee6;
+  background: #faf8f5;
   background-attachment: fixed;
-  color: #141413;
+  color: #292524;
 }
 html.light .bg-white,
 html.light .bg-neutral-50,
 html.light .bg-stone-50,
 html.light .bg-slate-50,
-html.light .bg-gray-50 { background-color: #faf9f5 !important; }
+html.light .bg-gray-50 { background-color: #ffffff !important; }
 html.light .bg-neutral-100,
 html.light .bg-stone-100,
-html.light .bg-gray-100 { background-color: #e8e6dc !important; }
+html.light .bg-gray-100 { background-color: #f3f0eb !important; }
 html.cool [data-oceanleo-chrome][data-oceanleo-sidebar-mode],
 html.cool .bg-\[\#f7f7f7\],
 html.cool .bg-\[\#f7f7f7\]\/85,
@@ -2239,9 +2239,9 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   width: 100vw;
   height: 100vh !important;
   max-width: none;
-  background: var(--bg, #f0eee6);
+  background: var(--bg, #faf8f5);
 }
 
 [data-workspace-split]:fullscreen::backdrop {
-  background: var(--bg, #f0eee6);
+  background: var(--bg, #faf8f5);
 }

@@ -20,7 +20,7 @@
 //      浅底渐变。共 5 个：cool 冷白（原来的 Light 冷白蓝→淡紫渐变，只在浅色系里）·
 //        paper 宣纸（暖米黄）· mist 晨雾（冷雾蓝白）·
 //        dawn 天青（Solarized Light，呼应深色墨青）· sakura 樱粉（Catppuccin Latte，
-//        呼应深色薰紫）。基座 `light` = 暖灰米（Claude 石色 #f0eee6），不是变体名。
+//        呼应深色薰紫）。基座 `light` = Etsy 页底 #faf8f5，不是变体名。
 //   ⑤ 每个特色主题都是【显式】主题（不随系统偏好变）。auto 在 light / dark 间解析。
 //   （历史：早先的 9 个「主题盘」ocean…mint 是「同底换色相」的廉价滤镜，已删。）
 
@@ -86,11 +86,11 @@ export const THEME_MODES: readonly ThemeMode[] = [
 
 export const DEFAULT_THEME_MODE: ThemeMode = "auto";
 
-// Light 基座画布（Claude 石色，比旧 Etsy #faf8f5 暗一档，不是变体）。
-export const LIGHT_BASE_CANVAS = "#f0eee6";
-export const LIGHT_BASE_CARD = "#f5f4ed";
-export const LIGHT_BASE_CARD_2 = "#e8e6dc";
-export const LIGHT_BASE_INK = "#141413";
+// Light 基座画布（Etsy 首页页底实测 #faf8f5，不是变体）。
+export const LIGHT_BASE_CANVAS = "#faf8f5";
+export const LIGHT_BASE_CARD = "#ffffff";
+export const LIGHT_BASE_CARD_2 = "#f3f0eb";
+export const LIGHT_BASE_INK = "#292524";
 
 // 实际生效的外观。light/dark 与各特色主题同名；auto 解析成 light/dark。
 export type ThemeAppearance = "light" | "dark" | VariantTheme;
@@ -128,7 +128,7 @@ export function normalizeThemeMode(value: unknown): ThemeMode {
 }
 
 // 把「模式 + 系统偏好」解析成实际生效的外观。
-// 显式 light/dark/特色主题直接返回；auto 浅色 = Light 基座（暖灰米）。
+// 显式 light/dark/特色主题直接返回；auto 浅色 = Light 基座（Etsy 页底）。
 export function resolveThemeClass(
   mode: ThemeMode,
   systemPrefersDark: boolean,

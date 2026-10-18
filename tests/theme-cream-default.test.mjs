@@ -10,7 +10,7 @@ import {
   resolveThemeClass,
 } from "../src/theme/theme-config.ts";
 
-test("Light 就是暖灰米基座；旧冷白是浅色变体；auto 浅色解析成 light", () => {
+test("Light 就是 Etsy 页底基座；旧冷白是浅色变体；auto 浅色解析成 light", () => {
   assert.equal(resolveThemeClass("auto", false), "light");
   assert.equal(resolveThemeClass("auto", true), "dark");
   assert.equal(resolveThemeClass("light", false), "light");
@@ -22,12 +22,12 @@ test("Light 就是暖灰米基座；旧冷白是浅色变体；auto 浅色解析
   assert.equal(LIGHT_VARIANT_THEMES.includes("cream"), false);
 });
 
-test("Light 基座画布是 Claude 石色，比旧 Etsy 奶白暗", () => {
-  assert.equal(LIGHT_BASE_CANVAS, "#f0eee6");
+test("Light 基座画布是 Etsy 页底 #faf8f5", () => {
+  assert.equal(LIGHT_BASE_CANVAS, "#faf8f5");
   const globals = readFileSync(new URL("../src/theme/globals.css", import.meta.url), "utf8");
   const lightBody = globals.match(/html\.light,\s*html\.light body \{[^}]+\}/);
   assert.ok(lightBody, "missing html.light body block");
-  assert.match(lightBody[0], /background: #f0eee6;/);
+  assert.match(lightBody[0], /background: #faf8f5;/);
   assert.doesNotMatch(lightBody[0], /#e8edf8/);
 });
 
