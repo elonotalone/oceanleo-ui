@@ -8,6 +8,7 @@ import { ImApiError } from "../../../lib/im/client";
 import { meetingsApi } from "../../../lib/im/meetings-api";
 import type { ImMeetingSnapshot, ImProfile } from "../../../lib/im/types";
 import { useImEvent } from "../realtime/hooks";
+import { ConfirmDialog } from "../../../ui";
 import { createArtcClient, type ArtcClient } from "./artc-client";
 import { canJoinMeeting, meetingAvailabilityMessage, sdkUserIdForParticipant } from "./meeting-policy";
 
@@ -50,6 +51,7 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   const [sharing, setSharing] = useState(false);
   const [audioSubscriptions, setAudioSubscriptions] = useState<Set<string>>(() => new Set());
   const [subscribed, setSubscribed] = useState<Set<string>>(() => new Set());
+  const [confirmAction, setConfirmAction] = useState<{ action: "end" | "remove"; participantId?: string } | null>(null);
   const clientRef = useRef<ArtcClient | null>(null);
   const leavingRef = useRef(false);
   const activeMeetingIdRef = useRef<string | null>(null);
@@ -275,8 +277,6 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
 
   async function manageMeeting(action: "end" | "remove", participantId?: string) {
     if (!meeting) return;
-    const label = action === "end" ? "结束会议" : "移除该成员";
-    if (typeof window !== "undefined" && !window.confirm(`确定${label}？`)) return;
     await runAction(async () => {
       if (action === "end") {
         leavingRef.current = true;
@@ -351,7 +351,7 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
               <button type="button" onClick={() => void toggleLocalMedia("microphone")} className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm">{microphone ? "关闭麦克风" : "打开麦克风"}</button>
               <button type="button" onClick={() => void toggleLocalMedia("camera")} className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm">{camera ? "关闭摄像头" : "打开摄像头"}</button>
               <button type="button" onClick={() => void toggleLocalMedia("screen")} className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm">{sharing ? "停止共享" : "共享屏幕"}</button>
-              {canManage ? <button type="button" disabled={busy} onClick={() => void manageMeeting("end")} className="min-h-11 rounded-lg border border-rose-300 px-3 text-sm text-rose-700 disabled:opacity-50">结束会议</button> : null}
+              {canManage ? <button type="button" disabled={busy} onClick={() => setConfirmAction({ action: "end" })} className="min-h-11 rounded-lg border border-rose-300 px-3 text-sm text-rose-700 disabled:opacity-50">结束会议</button> : null}
               <button type="button" disabled={busy} onClick={() => void leaveMeeting()} className="min-h-11 rounded-lg bg-rose-700 px-3 text-sm text-white disabled:opacity-50">离开会议</button>
             </div> : null}
 
@@ -370,16 +370,28 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
             </div> : null}
 
             {!connected && meeting.status === "active" ? <div className="mt-4 flex flex-wrap justify-end gap-2">
-              {canManage ? <button type="button" disabled={busy || !online} onClick={() => void manageMeeting("end")} className="min-h-11 rounded-lg border border-rose-300 px-3 text-sm text-rose-700 disabled:opacity-50">结束会议</button> : null}
+              {canManage ? <button type="button" disabled={busy || !online} onClick={() => setConfirmAction({ action: "end" })} className="min-h-11 rounded-lg border border-rose-300 px-3 text-sm text-rose-700 disabled:opacity-50">结束会议</button> : null}
               <button type="button" disabled={!canStart} onClick={() => void joinMeeting()} className="min-h-11 rounded-lg bg-neutral-900 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">{busy ? "连接中…" : "加入会议"}</button>
             </div> : null}
 
             {!connected && meeting.status === "ended" ? <p className="mt-4 text-right text-sm text-neutral-500">本次会议已关闭。</p> : null}
             {canManage && meeting.status === "active" && participants.some((participant) => participant.user_id !== myUserId) ? <div className="mt-4 border-t border-neutral-200 pt-3">
               <h3 className="mb-2 text-xs font-semibold text-neutral-600">主持人操作</h3>
-              {participants.filter((participant) => participant.user_id !== myUserId).map((participant) => <button key={participant.participant_id} type="button" onClick={() => void manageMeeting("remove", participant.participant_id)} className="mr-2 min-h-11 rounded-lg px-2 text-xs text-rose-700 hover:bg-rose-50">移除 {profiles[participant.user_id]?.display_name || "成员"}</button>)}
+              {participants.filter((participant) => participant.user_id !== myUserId).map((participant) => <button key={participant.participant_id} type="button" onClick={() => setConfirmAction({ action: "remove", participantId: participant.participant_id })} className="mr-2 min-h-11 rounded-lg px-2 text-xs text-rose-700 hover:bg-rose-50">移除 {profiles[participant.user_id]?.display_name || "成员"}</button>)}
             </div> : null}
           </> : null}
+          {confirmAction ? <ConfirmDialog
+            title={confirmAction.action === "end" ? "结束会议" : "移除成员"}
+            body={confirmAction.action === "end" ? "结束后，所有成员都将断开，不能继续加入。" : "确定将该成员移出会议吗？"}
+            confirmLabel={confirmAction.action === "end" ? "结束会议" : "移除成员"}
+            danger
+            onCancel={() => setConfirmAction(null)}
+            onConfirm={async () => {
+              const pending = confirmAction;
+              setConfirmAction(null);
+              if (pending) await manageMeeting(pending.action, pending.participantId);
+            }}
+          /> : null}
         </div>
       </section>
     </div>
