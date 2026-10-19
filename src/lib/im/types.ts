@@ -258,6 +258,48 @@ export interface ImUnread {
   by_conversation: Record<string, { unread: number; mentions: number }>;
 }
 
+export type ImMeetingEdition = "cn" | "global";
+export type ImMeetingStatus = "active" | "ended";
+export type ImMeetingParticipantStatus = "joined" | "left" | "removed";
+export type ImMeetingMeteringStatus = "ready" | "unavailable" | "config_missing";
+
+export interface ImMeetingParticipant {
+  participant_id: string;
+  user_id: string;
+  joined_at: string;
+  left_at: string | null;
+  status: ImMeetingParticipantStatus;
+}
+
+export interface ImMeeting {
+  meeting_id: string;
+  conversation_id: string;
+  edition: ImMeetingEdition;
+  channel_id: string;
+  status: ImMeetingStatus;
+  created_by: string;
+  created_at: string;
+  ended_at: string | null;
+  participants: ImMeetingParticipant[];
+}
+
+export interface ImMeetingJoinCredentials {
+  meeting: ImMeeting;
+  participant_id: string;
+  channel_id: string;
+  app_id: string;
+  user_id: string;
+  token: string;
+  expires_at: string;
+}
+
+export interface ImMeetingSnapshot {
+  meeting: ImMeeting | null;
+  artc_configured: boolean;
+  metering_status: ImMeetingMeteringStatus;
+  metering_reason?: string | null;
+}
+
 export interface ImPage<T> {
   items: T[];
   next_cursor: string | null;
@@ -287,4 +329,5 @@ export type ImEvent =
   | { type: "group.invite"; invite: ImGroupInvite }
   | { type: "join.request"; conversation_id: string; request: ImJoinRequest }
   | { type: "unread.changed"; unread: ImUnread }
-  | { type: "replay.consent"; replay_id: string; title: string; from: ImProfile };
+  | { type: "replay.consent"; replay_id: string; title: string; from: ImProfile }
+  | { type: "meeting"; conversation_id: string; meeting: ImMeeting | null };
