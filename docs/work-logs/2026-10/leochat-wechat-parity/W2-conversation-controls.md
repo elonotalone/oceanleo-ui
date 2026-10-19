@@ -1,0 +1,7 @@
+# W2 — Conversation controls and group settings
+
+Owner: one child agent. Work only in `src/shell/messages/Inbox.tsx`, `InboxRow.tsx`, `groups/ConversationInfoPanel.tsx`, `groups/GroupSettingsForm.tsx`, supporting `src/lib/im/groups-api.ts` if needed, and focused tests for these files. Do not edit conversation message files, people files, shared IM types, backend, or translations.
+
+Bootstrap and read the live kernel plus oceanleo and parallel-rollout packs. Preserve all dirty edits. Relevant images: `/root/oceanleo-inbox/20261019T123332Z-image.png`, `20261019T123418Z-image.png`, `20261019T123434Z-image.png`, `20261019T124050Z-image.png`, `20261019T124847Z-image.png` (same directory). Inspect them.
+
+Deliver: group Details shows note and “我在本群的昵称” as display rows with an edit pencil; clicking opens a focused text-entry panel/dialog for each, saving via existing `patchMySettings` API. Keep chat Details limited to conversation settings/history actions: remove the prior `删除联系人` action and avoid opening person-management controls there. Add right-click context menu on normal chat rows with pin/unpin, mark unread, mute/unmute, independent-window option only if a real host action exists, hide and delete semantics backed by real APIs. Do not silently conflate hiding a conversation with erasing history. Coordinate with parent if backend support is missing. Add focused tests where necessary. Report changed files, evidence, missing backend needs. No browser, Playwright, screenshot, production release, push, or shared heavy typecheck.
