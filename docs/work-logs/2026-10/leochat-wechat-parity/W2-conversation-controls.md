@@ -1,6 +1,6 @@
 # W2 — Conversation controls and group settings
 
-Owner: one child agent. Work only in `src/shell/messages/Inbox.tsx`, `InboxRow.tsx`, `groups/ConversationInfoPanel.tsx`, `groups/GroupSettingsForm.tsx`, supporting `src/lib/im/groups-api.ts` if needed, `/root/projects/oceanleo/backend/app/im/conversations.py`, `backend/app/routers/im_conversations_router.py`, a new IM migration numbered after W3's 0277 if required, and focused tests for these files. Do not edit conversation message files, people files, shared IM types, graph backend files, or translations.
+Owner: one child agent. Work only in `src/shell/messages/Inbox.tsx`, `InboxRow.tsx`, `groups/ConversationInfoPanel.tsx`, `groups/GroupSettingsForm.tsx`, supporting `src/lib/im/groups-api.ts` if needed, `/root/projects/oceanleo/backend/app/im/conversations.py`, `backend/app/im/messages.py`, `backend/app/im/search.py`, `backend/app/routers/im_conversations_router.py`, a new IM migration numbered after W3's 0277 if required, and focused tests for these files. Do not edit frontend conversation message files, people files, shared IM types, graph backend files, or translations.
 
 Bootstrap and read the live kernel plus oceanleo and parallel-rollout packs. Preserve all dirty edits. Relevant images: `/root/oceanleo-inbox/20261019T123332Z-image.png`, `20261019T123418Z-image.png`, `20261019T123434Z-image.png`, `20261019T124050Z-image.png`, `20261019T124847Z-image.png` (same directory). Inspect them.
 
