@@ -18,7 +18,7 @@ export class ImApiError extends Error {
   }
 }
 
-/** 境内（域名家族为境内）或未登录 → false。 */
+/** 未登录或无法解析当前域名家族 → false。国内与海外登录态都可用 LeoChat。 */
 export function imEnabledHere(): boolean {
   let family: ReturnType<typeof currentDomainFamily>;
   try {

@@ -1,10 +1,10 @@
 // `imEnabledHere()` 的判定细节（纯函数，无任何运行时依赖，方便单测）。
-// 契约 §9.13：境内版（域名家族 cn）不出现任何消息入口；未登录也不出现。
+// 国内与海外版共用同一 LeoChat 功能；未登录不出现消息入口或启动实时通道。
 import type { DomainFamily } from "../../contracts/domain-family";
 
 /** 这个家族、这个登录状态下，消息板块是否可用。 */
 export function imEnabledFor(family: DomainFamily, signedIn: boolean): boolean {
-  if (family === "cn") return false;
+  void family; // 家族只决定各自网关/账户边界，不屏蔽已登录的国内 LeoChat。
   return signedIn;
 }
 

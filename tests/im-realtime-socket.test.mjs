@@ -306,13 +306,14 @@ test("地址不可用（境内 / 网关地址不合格）→ disabled，不创�
   assert.equal(h.sockets.length, 0);
 });
 
-test("网关地址 → ws 地址；境内与未登录不可用", () => {
+test("网关地址 → ws 地址；境内登录可用，任一家族未登录不可用", () => {
   assert.equal(imSocketUrl("https://api.oceanleo.com"), "wss://api.oceanleo.com/v1/im/ws");
   assert.equal(imSocketUrl("https://api.dev.oceanleo.com/"), "wss://api.dev.oceanleo.com/v1/im/ws");
   assert.equal(imSocketUrl("http://127.0.0.1:8008"), "ws://127.0.0.1:8008/v1/im/ws");
   assert.equal(imSocketUrl(""), null);
   assert.equal(imSocketUrl("ftp://x"), null);
-  assert.equal(imEnabledFor("cn", true), false);
+  assert.equal(imEnabledFor("cn", true), true);
+  assert.equal(imEnabledFor("cn", false), false);
   assert.equal(imEnabledFor("com", false), false);
   assert.equal(imEnabledFor("com", true), true);
   assert.equal(imEnabledFor("ws", true), true);

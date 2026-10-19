@@ -159,9 +159,9 @@ test("17 群头像：字段名 avatar_members；成员头像地址只认 https",
   assert.match(avatar, /AVATAR_MEMBERS_MAX/);
 });
 
-test("11 境内：家族 cn / 未登录不显示消息；界面外壳默认不带消息入口；深链只在 enabled 时生效", () => {
+test("11 境内：已登录 CN 可用消息；未登录隐藏；界面外壳默认不带消息入口；深链只在 enabled 时生效", () => {
   const family = codeOf(join(root, "src/shell/messages/messages-family.ts"));
-  assert.match(family, /family === "cn"\) return false/);
+  assert.match(family, /return signedIn/);
   const host = codeOf(join(root, "src/shell/messages/MessagesHost.tsx"));
   assert.match(host, /useImEnabled\(\)/);
   assert.match(host, /if \(!enabled\) return <BayAuthHost \/>;/);

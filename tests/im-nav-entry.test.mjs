@@ -63,8 +63,8 @@ test("导航里是 bay 和 leochat（紧跟），没有 explore、没有消息�
   assert.ok(!ws.includes("messages"));
 });
 
-test("可见性判定：境内永远没有消息能力；未登录没有；海外与分身站登录后有", () => {
-  assert.equal(imEnabledFor("cn", true), false);
+test("可见性判定：三个独立域名家族的已登录用户均可用 LeoChat；未登录不可用", () => {
+  assert.equal(imEnabledFor("cn", true), true);
   assert.equal(imEnabledFor("cn", false), false);
   assert.equal(imEnabledFor("com", false), false);
   assert.equal(imEnabledFor("com", true), true);
