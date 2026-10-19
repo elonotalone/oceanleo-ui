@@ -19,6 +19,7 @@ import { PinnedBar } from "./PinnedBar";
 import { ThreadPanel } from "./ThreadPanel";
 import { TypingLine, useTypingUsers } from "./TypingLine";
 import { getConversationStore, unreadBoundary, type ConversationStore } from "./conversation-store";
+import { MeetingPanel } from "../meeting/MeetingPanel";
 
 export interface ConversationViewProps {
   conversationId: string;
@@ -159,6 +160,7 @@ function ConversationBody(props: ConversationViewProps & {
   const [editing, setEditing] = useState<ImMessage | null>(null);
   const [threadRoot, setThreadRoot] = useState<ImMessage | null>(null);
   const [reporting, setReporting] = useState<ImMessage | null>(null);
+  const [meetingOpen, setMeetingOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
@@ -340,6 +342,12 @@ function ConversationBody(props: ConversationViewProps & {
               <ImInfoIcon />
             </button>
           ) : null}
+          {conversation && conversation.kind !== "talent" && !dissolved && !notMember ? (
+            <button type="button" data-im-chrome-btn onClick={() => setMeetingOpen(true)} aria-label={tt("会议")} title={tt("会议")}>
+              <span aria-hidden="true">◉</span>
+              <span className="sr-only">{tt("会议")}</span>
+            </button>
+          ) : null}
         </header>
         <PinnedBar
           pins={snapshot.pins}
@@ -419,6 +427,16 @@ function ConversationBody(props: ConversationViewProps & {
             setProfileId(null);
             openMessages({ conversationId: id });
           }}
+        />
+      ) : null}
+      {meetingOpen && conversation ? (
+        <MeetingPanel
+          conversationId={conversationId}
+          conversationTitle={title}
+          myUserId={viewerId}
+          myRole={conversation.my_role}
+          profiles={profiles}
+          onClose={() => setMeetingOpen(false)}
         />
       ) : null}
     </div>
