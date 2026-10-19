@@ -127,9 +127,11 @@ const COOKIE_DOMAIN_ENV_PRESENT = Boolean(COOKIE_DOMAIN_ENV);
 /**
  * Operator LeoDev capability host (`p-<32hex>.dev.oceanleo.com`).
  * It is still first-party `*.oceanleo.com`, so the browser *sends* the
- * family SSO cookie. The preview client/middleware must only *read* that
- * cookie. A failed auth refresh here used to `Set-Cookie` an empty
- * `Domain=.oceanleo.com` session and sign every OceanLeo site out.
+ * family SSO cookie. That is not a preview login: the client jar and
+ * middleware hide inherited `sb-*-auth-token` until someone signs in on
+ * this slot. Never write the cookie back. A failed auth refresh here
+ * used to `Set-Cookie` an empty `Domain=.oceanleo.com` session and sign
+ * every OceanLeo site out.
  */
 export function isLeoDevPreviewHost(
   host: string | null | undefined,

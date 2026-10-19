@@ -102,7 +102,7 @@ export function browserClient(): SupabaseClient | null {
       // Domain=.oceanleo.com — a failed refresh used to sign the operator
       // out of every family site. detectSessionInUrl stays on so Google /
       // Microsoft / Apple / magic-link / password-reset returns on a LeoDev
-      // host can establish a tab session in the overlay jar.
+      // host can establish a device session in the overlay jar.
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },

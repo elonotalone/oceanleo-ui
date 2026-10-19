@@ -11,14 +11,18 @@ import {
 } from "../src/lib/auth/preview-cookies.ts";
 import { isLeoDevPreviewHost } from "../src/lib/auth/config.ts";
 
-test("开发版 setAll 只写内存，不改 document.cookie 原文", () => {
+test("开发版不把家族 cookie 当成已登录，setAll 只写 overlay", () => {
   let documentCookie =
     "sb-example-auth-token=old-access; oceanleo-theme=light";
   const jar = createLeoDevPreviewCookieJar(() => documentCookie, null);
   const before = jar.getAll();
   assert.equal(
-    before.find((entry) => entry.name === "sb-example-auth-token")?.value,
-    "old-access",
+    before.some((entry) => entry.name === "sb-example-auth-token"),
+    false,
+  );
+  assert.equal(
+    before.find((entry) => entry.name === "oceanleo-theme")?.value,
+    "light",
   );
 
   jar.setAll([
@@ -61,13 +65,17 @@ test("浏览器客户端在 preview 开自动刷新但仍禁止写家族 cookie"
   assert.match(clientSource, /createLeoDevPreviewCookieJar/);
   assert.match(clientSource, /never write family SSO from a capability hostname/);
   assert.match(clientSource, /writePreviewGuestLatch/);
+  const jarSource = readFileSync(
+    new URL("../src/lib/auth/preview-cookies.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(jarSource, /return localStorage/);
+  assert.doesNotMatch(jarSource, /return sessionStorage/);
+  assert.match(jarSource, /Inherited family SSO is never a preview login/);
   assert.match(clientSource, /_previewJar\?\.clear\(\)/);
   assert.match(clientSource, /signOut\(\{\s*scope:\s*"local"\s*\}\)/);
   assert.doesNotMatch(clientSource, /document\.cookie\s*=/);
-  assert.match(
-    clientSource,
-    /emailRedirectTo:\s*\n\s*typeof window !== "undefined" \? window\.location\.origin/,
-  );
+  assert.match(clientSource, /emailRedirectTo:\s*runtimePageOrigin\(\)/);
   assert.match(clientSource, /window\.location\.href/);
   assert.match(clientSource, /passwordResetRedirectTo/);
   assert.doesNotMatch(clientSource, /emailRedirectTo:\s*["']https:\/\/oceanleo\.com/);
@@ -110,7 +118,22 @@ test("开发版 guest latch 是 host-only，并挡住家族登录 cookie", () =>
   );
 });
 
-test("开发版 overlay 经 sessionStorage 扛过新 jar（等同刷新）", () => {
+test("没有 guest latch 时家族 cookie 仍不是开发版登录", () => {
+  const jar = createLeoDevPreviewCookieJar(
+    () => "sb-example-auth-token=operator; oceanleo-theme=light",
+    null,
+  );
+  assert.equal(
+    jar.getAll().some((entry) => entry.name === "sb-example-auth-token"),
+    false,
+  );
+  assert.equal(
+    jar.getAll().find((entry) => entry.name === "oceanleo-theme")?.value,
+    "light",
+  );
+});
+
+test("开发版 overlay 经存储扛过新 jar（等同刷新或新标签）", () => {
   const store = new Map();
   const storage = {
     getItem: (key) => store.get(key) ?? null,

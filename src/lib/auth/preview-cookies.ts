@@ -12,15 +12,15 @@ export function previewGuestLatchSetCookie(): string {
   return `${PREVIEW_GUEST_COOKIE}=1; Path=/; Secure; SameSite=Lax; Max-Age=${PREVIEW_GUEST_MAX_AGE}`;
 }
 
-/** Tab-local overlay. Survives reload on this LeoDev origin; never Domain=.oceanleo.com. */
+/** Device-local overlay. Survives reload and new tabs on this LeoDev origin; never Domain=.oceanleo.com. */
 export const PREVIEW_OVERLAY_STORAGE_KEY = "oceanleo-leodev-auth-overlay";
 
 type OverlayStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 function defaultOverlayStorage(): OverlayStorage | null {
   try {
-    if (typeof sessionStorage === "undefined") return null;
-    return sessionStorage;
+    if (typeof localStorage === "undefined") return null;
+    return localStorage;
   } catch {
     return null;
   }
@@ -72,12 +72,6 @@ export function writePreviewGuestLatch(
   clearPreviewAuthOverlay(storage);
 }
 
-function hasPreviewGuestLatch(cookies: CookieNameValue[]): boolean {
-  return cookies.some(
-    (entry) => entry.name === PREVIEW_GUEST_COOKIE && entry.value === "1",
-  );
-}
-
 /** Parse `document.cookie` (or a test double) into name/value pairs. */
 export function parseDocumentCookies(raw: string): CookieNameValue[] {
   return String(raw || "")
@@ -107,10 +101,10 @@ export function parseDocumentCookies(raw: string): CookieNameValue[] {
  * Cookie names are opaque. `@supabase/ssr` derives `sb-<ref>-auth-token` from
  * the identity URL first label, so a cn slot (`id-cn.dev.oceanleo.com`) is
  * `sb-id-cn-auth-token`. The jar reads whatever is already on the host.
- * Host-only `oceanleo-dev-guest=1` hides family auth cookies until the
- * overlay holds a later in-tab sign-in. Overlay is also stored in
- * sessionStorage so a tab reload (settings used to `location.reload` after
- * email login) does not dump the person back on Sign in.
+ * Inherited family SSO is never a preview login: without an overlay the jar
+ * hides `sb-*-auth-token` even if the guest latch is missing. Overlay lives
+ * in localStorage so a new tab on this device keeps the account that signed
+ * in here, without writing Domain=.oceanleo.com.
  */
 export function createLeoDevPreviewCookieJar(
   readRawCookie: () => string,
@@ -120,11 +114,9 @@ export function createLeoDevPreviewCookieJar(
   return {
     getAll(): CookieNameValue[] {
       const fromDoc = parseDocumentCookies(readRawCookie());
-      const guest = hasPreviewGuestLatch(fromDoc);
       if (overlay) {
         return overlay.filter((entry) => entry.name !== PREVIEW_GUEST_COOKIE);
       }
-      if (!guest) return fromDoc;
       return fromDoc.filter(
         (entry) =>
           entry.name !== PREVIEW_GUEST_COOKIE &&
@@ -133,16 +125,13 @@ export function createLeoDevPreviewCookieJar(
     },
     setAll(cookiesToSet: ReadonlyArray<{ name: string; value: string }>): void {
       const fromDoc = parseDocumentCookies(readRawCookie());
-      const guest = hasPreviewGuestLatch(fromDoc);
       const seed =
         overlay ??
-        (guest
-          ? fromDoc.filter(
-              (entry) =>
-                entry.name !== PREVIEW_GUEST_COOKIE &&
-                !isFamilyAuthCookieName(entry.name),
-            )
-          : fromDoc);
+        fromDoc.filter(
+          (entry) =>
+            entry.name !== PREVIEW_GUEST_COOKIE &&
+            !isFamilyAuthCookieName(entry.name),
+        );
       const map = new Map(seed.map((entry) => [entry.name, entry.value]));
       for (const cookie of cookiesToSet) {
         if (cookie.value) map.set(cookie.name, cookie.value);

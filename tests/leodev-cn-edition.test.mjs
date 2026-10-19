@@ -392,8 +392,8 @@ test("UC-7: preview cookie jar is name-agnostic for sb-id-cn-auth-token and neve
   }, null);
   const before = jar.getAll();
   assert.equal(
-    before.some((row) => row.name === "sb-id-cn-auth-token" && row.value === "cn-session"),
-    true,
+    before.some((row) => row.name === "sb-id-cn-auth-token"),
+    false,
   );
   jar.setAll([{ name: "sb-id-cn-auth-token", value: "refreshed" }]);
   const after = jar.getAll();

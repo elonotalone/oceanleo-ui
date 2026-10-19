@@ -8,6 +8,7 @@ import {
   configured,
   isLeoDevPreviewHost,
 } from "./config";
+import { isFamilyAuthCookieName } from "./preview-cookies";
 import { isPrivateWorkspaceRuntime } from "./workspace-privacy";
 
 type CookieToSet = {
@@ -59,7 +60,9 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     global: { fetch: authFetch },
     cookies: {
       getAll() {
-        return request.cookies.getAll();
+        const all = request.cookies.getAll();
+        if (!isLeoDevPreviewHost(host)) return all;
+        return all.filter((cookie) => !isFamilyAuthCookieName(cookie.name));
       },
       setAll(cookiesToSet: CookieToSet[], headers: Record<string, string> = {}) {
         // Preview capability hosts share the family cookie on the wire.

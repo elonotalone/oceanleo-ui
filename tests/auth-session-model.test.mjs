@@ -733,7 +733,7 @@ test("登录服务 5xx 不得经 middleware / 浏览器客户端原样重试 30 
 
 // UC-NONE
 // 判断依据：Set-Cookie 响应缺 no-store 会被 CDN 缓存成别人的会话，属会话缓存污染；UC-1…UC-7 无对应条款。
-test("LeoDev capability host may read family SSO but must never write it", () => {
+test("LeoDev capability host must never write family SSO; inherited cookie is not a login", () => {
   assert.equal(
     isLeoDevPreviewHost("p-9817b57ea19b4977191526fb2ebf774c.dev.oceanleo.com"),
     true,
@@ -743,18 +743,21 @@ test("LeoDev capability host may read family SSO but must never write it", () =>
   assert.equal(
     cookieDomainFor("p-9817b57ea19b4977191526fb2ebf774c.dev.oceanleo.com"),
     ".oceanleo.com",
-    "开发版必须继续读到家族 SSO，不能改成 host-only",
+    "UC-7：开发版域映射仍是家族域，不得改成 host-only",
   );
   assert.match(configSource, /export function isLeoDevPreviewHost/);
   assert.match(
     configSource,
     /\^p-\[0-9a-f\]\{32\}\\.dev\\.oceanleo\\.com\$/,
   );
+  assert.match(configSource, /That is not a preview login/);
   assert.match(middlewareSource, /isLeoDevPreviewHost\(host\)/);
   assert.match(
     middlewareSource,
     /if \(isLeoDevPreviewHost\(host\)\) return;/,
   );
+  assert.match(middlewareSource, /isFamilyAuthCookieName/);
+  assert.match(middlewareSource, /all\.filter/);
   assert.match(clientSource, /isLeoDevPreviewHost/);
   assert.match(clientSource, /autoRefreshToken:\s*true/);
   assert.match(clientSource, /detectSessionInUrl:\s*true/);

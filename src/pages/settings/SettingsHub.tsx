@@ -567,8 +567,7 @@ export function SettingsHub({
   }
 
   function handleSignedIn() {
-    // Never location.reload(): LeoDev keeps the new session in an in-tab overlay.
-    // A reload drops it and the guest latch puts Sign in back on screen.
+    // Never location.reload(): LeoDev keeps the new session in the overlay jar.
     signedInRef.current = true;
     setSignedIn(true);
     setChecked(true);
