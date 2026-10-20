@@ -64,7 +64,7 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
   );
   const imageToolbar = source(
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
   );
   const richToolbar = source(
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",
