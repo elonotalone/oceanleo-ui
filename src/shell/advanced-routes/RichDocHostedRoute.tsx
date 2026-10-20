@@ -9,6 +9,7 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { submitRawReviewProposal } from "../agent-review";
 import { downloadText } from "../doc-editors/doc-io";
 import { RichDocHostedContextToolbar } from "../doc-editors/RichDocHostedContextToolbar";
+import { recordUserMutation } from "../user-edit-session";
 import {
   applySelectionInteractionHold,
   selectionDuringInteraction,
@@ -213,8 +214,11 @@ export function RichDocHostedRoute({
   const appliedHandoffKeyRef = useRef("");
   const mountedRef = useRef(true);
   const persistedItemRef = useRef(item);
+  const sourceRef = useRef<unknown>(null);
   const savedGenerationRef = useRef<number | null>(null);
   const dirtyRef = useRef(false);
+  const applyingInitRef = useRef(false);
+  const [sourceLoadNonce, setSourceLoadNonce] = useState(0);
   const generationRef = useRef(0);
   const revisionRef = useRef<string | number | undefined>(undefined);
   const capturesRef = useRef(new Map<string, { generation: number; revision: string | number | undefined }>());
@@ -238,6 +242,7 @@ export function RichDocHostedRoute({
       inspect: InspectResult;
       readOnly: boolean;
     }) => {
+      sourceRef.current = next.source;
       setSource(next.source);
       setConverted(next.converted);
       setInspect(next.inspect);
@@ -266,6 +271,7 @@ export function RichDocHostedRoute({
       if (!loaded.ok) {
         setStatus(loaded.error);
         setSource(null);
+        sourceRef.current = null;
         setConverted(null);
         setInspect(null);
         setReadOnly(true);
@@ -277,7 +283,7 @@ export function RichDocHostedRoute({
     return () => {
       cancelled = true;
     };
-  }, [handoff, handoffStatus, hostedCtx.platform, item]);
+  }, [handoff, handoffStatus, hostedCtx.platform, item, sourceLoadNonce]);
 
   const embedBase = hostedEmbedBaseForPlatform(
     "docs",
@@ -384,10 +390,13 @@ export function RichDocHostedRoute({
   );
 
   const pushInit = useCallback(() => {
+    // Failed load must not init an empty Umo that looks like a new document.
+    if (source == null && !converted) return;
     // 顺序有讲究：umo-hosted 收到 `init` 会把自己重置回默认普通模式（工具栏收起）。
     // 之前是「set-mode → hide-chrome → init」，且模式写死 DEFAULT，结果用户在
     // 「Umo」专业页看到的是一个没有顶部工具栏的 Umo（V2-P-tabs 第 5 条 FAIL）。
     // 现在先 init，再按宿主当前页的 mode 发 set-mode / hide-chrome。
+    applyingInitRef.current = true;
     const current = modeRef.current;
     sendToEditor(
       buildRichDocInitEnvelope(instanceId, {
@@ -404,6 +413,9 @@ export function RichDocHostedRoute({
         panels: hostedKernelChromeHidden(current, hostedCtx.platform),
       }),
     );
+    queueMicrotask(() => {
+      applyingInitRef.current = false;
+    });
   }, [converted, hostedCtx.platform, instanceId, item.title, readOnly, sendToEditor, source]);
 
   useEffect(() => {
@@ -444,6 +456,8 @@ export function RichDocHostedRoute({
       if (message.type === "dirty") {
         // Editor-local clean is not proof that the server has committed this edit.
         if (message.dirty !== true) return;
+        if (sourceRef.current == null || applyingInitRef.current) return;
+        recordUserMutation(handoffItemKey(item));
         dirtyRef.current = true;
         generationRef.current += 1;
         draftChannelRef.current!.advance(generationRef.current);
@@ -458,11 +472,53 @@ export function RichDocHostedRoute({
       }
       if (message.type === "recovery-snapshot" && message.ok) {
         const recoveryId = String(message.recoveryId || "");
+        const payload = message.snapshot?.payload ?? null;
+        if (String(recoveryId).startsWith("umo-save-")) {
+          if (sourceRef.current == null || payload == null) {
+            sendToEditor({
+              protocol: EDITOR_PROTOCOL,
+              type: "save-result",
+              instanceId,
+              ok: false,
+              saveId: recoveryId,
+              message: "文件还没成功载入，不能保存。",
+            });
+            return;
+          }
+          cachedRef.current = {
+            generation: generationRef.current,
+            payload,
+            recoveryId,
+          };
+          setSnapshot(payload);
+          void persistUmoPayload({
+            item: persistedItemRef.current,
+            siteId,
+            payload,
+          }).then((saved) => {
+            sendToEditor({
+              protocol: EDITOR_PROTOCOL,
+              type: "save-result",
+              instanceId,
+              ok: saved.ok,
+              saveId: recoveryId,
+              message: saved.ok ? "已保存" : saved.error,
+              ...(saved.ok && saved.item.revisionId
+                ? { revision: saved.item.revisionId }
+                : {}),
+            });
+            if (!saved.ok || !mountedRef.current) return;
+            persistedItemRef.current = saved.item;
+            dirtyRef.current = false;
+            setDirty(false);
+            reportProSaved(handoffItemKey(item), saved.item);
+          });
+          return;
+        }
         const requested = capturesRef.current.get(recoveryId);
         if (!requested || requested.generation !== generationRef.current ||
             (requested.revision !== undefined && message.snapshot?.revision !== requested.revision)) return;
         capturesRef.current.delete(recoveryId);
-        const payload = message.snapshot?.payload ?? null;
         if (payload == null) return;
         cachedRef.current = { generation: requested.generation, payload, recoveryId };
         draftChannelRef.current!.accept(requested.generation, payload);
@@ -507,7 +563,7 @@ export function RichDocHostedRoute({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [editRevision, editorOrigin, instanceId, pushInit, sendToEditor]);
+  }, [editRevision, editorOrigin, instanceId, item, pushInit, sendToEditor, siteId]);
 
   // 人在审阅面板上点了接受/拒绝 ⇒ 回一条 `review-decision`。没有这一段，
   // 提案会永远停在「待审」，用户点了也没反应。
@@ -732,7 +788,7 @@ export function RichDocHostedRoute({
           },
         ],
         stage: (
-          <div className="flex h-full min-h-0 flex-col">
+          <div className="relative flex h-full min-h-0 flex-col">
             {status || convertError ? (
               <div className="shrink-0 px-3 py-2 text-xs text-[var(--fg-2,#57534e)]" role="status">
                 {status || convertError}
@@ -759,6 +815,28 @@ export function RichDocHostedRoute({
                 </p>
               </div>
             )}
+            {source == null && status ? (
+              <div
+                role="alert"
+                data-editor-source-failure
+                className="absolute inset-0 z-[25] flex flex-col items-center justify-center gap-3 bg-[var(--card,#fff)]/95 px-6 text-center"
+              >
+                <p className="max-w-md text-[12px] leading-relaxed text-[var(--fg-2,#57534e)]">
+                  {status}
+                </p>
+                <button
+                  type="button"
+                  className="min-h-9 rounded-lg border border-[var(--border,#e7e5e4)] px-3 text-[12px] font-medium text-[var(--fg-2,#57534e)]"
+                  onClick={() => {
+                    appliedHandoffKeyRef.current = "";
+                    setStatus("");
+                    setSourceLoadNonce((value) => value + 1);
+                  }}
+                >
+                  重新载入
+                </button>
+              </div>
+            ) : null}
           </div>
         ),
         status:

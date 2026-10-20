@@ -428,6 +428,15 @@ export function useEditorHandoffSource(
     if (handoff && handoff.kind !== "empty") {
       return { status: "ready" as const, source: handoff };
     }
+    const fromItem = resolveEditorHandoffFromItem(item);
+    const format =
+      fromItem.kind === "url"
+        ? fromItem.format || inferHandoffFormat(item, fromItem.url)
+        : inferHandoffFormat(item, "");
+    const needsOfficeBytes = format === "docx" || format === "pptx";
+    if (!needsOfficeBytes && fromItem.kind !== "empty") {
+      return { status: "ready" as const, source: fromItem };
+    }
     if (office.loading) {
       return { status: "loading" as const, source: null };
     }

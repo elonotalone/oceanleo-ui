@@ -40,7 +40,11 @@ import {
 } from "./doc-editors/office-file";
 import { officeSourceCacheKey } from "./office-editor/office-source-identity";
 import { importPptxDeck } from "./doc-editors/pptx-deck-import";
-import { absoluteMediaUrl, fetchMediaBlob } from "../lib/media-proxy";
+import {
+  absoluteMediaUrl,
+  fetchMediaBlobRefreshing,
+  signedMediaRefreshPurpose,
+} from "../lib/media-proxy";
 import { DeckSlideThumbnail } from "./doc-editors/DeckSlideThumbnail";
 import {
   deckDocumentFromIr,
@@ -1588,7 +1592,31 @@ function DocumentViewer({
     setError("");
     void (async () => {
       try {
-        const blob = await fetchMediaBlob(url, { signal: abort.signal });
+        const blob = await fetchMediaBlobRefreshing(url, {
+          signal: abort.signal,
+          cache: "no-store",
+          refreshGoneUrl: async (goneUrl) => {
+            onResourceError();
+            const artifactId = String(item.artifactId || "");
+            const revisionId = String(
+              item.revisionId || item.artifact?.revisionId || "",
+            );
+            if (!artifactId || !revisionId) return null;
+            const purpose = signedMediaRefreshPurpose({
+              goneUrl,
+              previewUrl:
+                item.artifact?.renditions.preview?.url || item.previewUrl || "",
+              fullUrl: item.artifact?.renditions.full?.url || item.url || "",
+              sourceUrl: item.artifact?.renditions.source?.url || "",
+            });
+            const refreshed = await refreshArtifactRendition(
+              { artifactId, revisionId },
+              purpose,
+              abort.signal,
+            );
+            return refreshed.ok ? refreshed.data?.url || null : null;
+          },
+        });
         const text = await blob.text();
         if (cancelled) return;
         if (!isDisplayableText(text)) {

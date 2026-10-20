@@ -58,6 +58,7 @@ import {
 import { artifactSaveStepMessage } from "./artifact-save-contract";
 import { renderRichDocPreviewPng } from "./editor-preview-raster";
 import { tiptapJsonToDocxBlob } from "./docx-export";
+import { recordUserMutation } from "../user-edit-session";
 import {
   notifyOfficeAccessDenied,
   officePackageKindForItem,
@@ -65,12 +66,14 @@ import {
 import { officeExtensionForItem } from "../workbench-route-formats";
 import {
   countText,
+  createRichDocDeliveryFile,
   fullHtmlDocument,
   htmlToMarkdown,
   loadRichDocFile,
   loadRichDocSource,
   admitRichDocEditorSource,
   richDocHasContent,
+  richDocPersistTarget,
   shouldMarkRichDocSourceReadyFromCollab,
   RichDocTypography,
   type RichDocLoadResult,
@@ -196,7 +199,7 @@ export function richDocSavedItemForHandoff(
       ...base.meta,
       source_format: saved.sourceFormat || RICHDOC_SOURCE_FORMAT,
       source_media_type: saved.sourceMediaType || RICHDOC_SOURCE_MEDIA_TYPE,
-      delivery_format: RICHDOC_SOURCE_FORMAT,
+      delivery_format: saved.sourceFormat || RICHDOC_SOURCE_FORMAT,
       ...(projectUrl
         ? {
             editor_project_url: projectUrl,
@@ -420,13 +423,21 @@ export function useRichDocEditor(
           "aria-label": tt("文档编辑区"),
         },
       },
-      onUpdate: ({ editor: instance }) => {
+      onUpdate: ({ editor: instance, transaction }) => {
         if (!sourceReadyRef.current) {
           // 协同里这条更新多半是别人的内容进来了：绝不能用空白去覆盖共享文档。
           if (collabHandlesRef.current) return;
           instance.commands.setContent("<p></p>", { emitUpdate: false });
           setError(tt("文档源尚未成功载入；已阻止修改空白回退内容"));
           return;
+        }
+        const sync = transaction?.getMeta("y-sync$") as
+          | { isChangeOrigin?: boolean }
+          | undefined;
+        if (!sync?.isChangeOrigin) {
+          recordUserMutation(
+            persistedItemRef.current.key || persistedItemRef.current.id || "",
+          );
         }
         setCounts(countText(instance.getText()));
         revisionRef.current += 1;
@@ -840,22 +851,22 @@ export function useRichDocEditor(
     setError("");
     try {
       const title = `${baseTitle}-${tt("编辑版")}`;
-      const fileStem =
-        title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "document";
+      const persist = richDocPersistTarget(baseItem);
       const result = await saveFileToLibrary({
         item: baseItem,
         siteId,
         fallbackSite: "word",
-        createFile: async () => {
-          const delivery = await tiptapJsonToDocxBlob(baseTitle, deliveryJson);
-          return new File([delivery], `${fileStem}.docx`, {
-            type: RICHDOC_SOURCE_MEDIA_TYPE,
-          });
-        },
-        // docx is never a displayable primary; ship a rendered cover with it.
+        createFile: () =>
+          createRichDocDeliveryFile({
+            item: baseItem,
+            title: baseTitle,
+            html,
+            json: persist.extension === "docx" ? deliveryJson : json,
+          }),
+        // Word is not a displayable primary; markdown/html/text still get a cover.
         createPreview: () => renderRichDocPreviewPng(deliveryJson, baseTitle),
-        sourceFormat: RICHDOC_SOURCE_FORMAT,
-        sourceMediaType: RICHDOC_SOURCE_MEDIA_TYPE,
+        sourceFormat: persist.sourceFormat,
+        sourceMediaType: persist.sourceMediaType,
         title,
         mediaType: "doc",
         kind: "document",
@@ -869,7 +880,7 @@ export function useRichDocEditor(
           editor_capability: RICHDOC_EDITOR_CAPABILITY,
           content_type: "document",
           html: html.slice(0, 10_000),
-          delivery_format: RICHDOC_SOURCE_FORMAT,
+          delivery_format: persist.sourceFormat,
         },
         project: {
           schema: RICHDOC_PROJECT_SCHEMA,
@@ -912,8 +923,8 @@ export function useRichDocEditor(
         versionId: result.versionId,
         projectUrl: result.projectUrl,
         projectSchema: result.projectSchema,
-        sourceFormat: result.sourceFormat || RICHDOC_SOURCE_FORMAT,
-        sourceMediaType: result.sourceMediaType || RICHDOC_SOURCE_MEDIA_TYPE,
+        sourceFormat: result.sourceFormat || persist.sourceFormat,
+        sourceMediaType: result.sourceMediaType || persist.sourceMediaType,
         title: result.title,
         fileName: result.fileName,
         savedAt: result.savedAt,

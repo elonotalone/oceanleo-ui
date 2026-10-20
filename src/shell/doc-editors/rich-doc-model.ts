@@ -9,7 +9,11 @@
 // marked / dompurify / mammoth / turndown 全部动态 import。
 // ============================================================================
 
-import { fetchMediaBlob } from "../../lib/media-proxy";
+import {
+  fetchMediaBlobRefreshing,
+  isGoneMediaError,
+  signedMediaRefreshPurpose,
+} from "../../lib/media-proxy";
 import { isArtifactSourceTreeUrl } from "../artifact-contract";
 import { isDisplayableText, looksLikeHtmlDocument } from "../website-inline-preview";
 import { Extension, type JSONContent } from "@tiptap/core";
@@ -76,6 +80,11 @@ export interface RichDocLoadDeps {
     onAccessDenied?: () => void,
   ) => Promise<ArrayBuffer>;
   loadProject?: (url: string) => Promise<unknown>;
+  /**
+   * Called once when the signed media URL returns HTTP 410. Return a fresh
+   * browser-safe URL to retry; empty/null keeps the 410 as a failed load.
+   */
+  refreshGoneUrl?: (goneUrl: string) => Promise<string | null | undefined>;
   /** Test-only override. Production always uses the fail-closed sanitizer. */
   sanitizeHtml?: (html: string) => Promise<string> | string;
   sanitizer?: RichDocHtmlSanitizer | null;
@@ -563,8 +572,218 @@ export function unwrapNativeRichDocJson(value: unknown): JSONContent | null {
   return null;
 }
 
-async function defaultFetchText(url: string): Promise<string> {
-  return (await fetchMediaBlob(url)).text();
+const WORD_SOURCE_FORMAT = "docx";
+const WORD_SOURCE_MEDIA_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+export type RichDocPersistTarget = {
+  sourceFormat: string;
+  sourceMediaType: string;
+  extension: string;
+};
+
+/**
+ * Save bytes must match the open item. Markdown stays markdown. Untitled new
+ * documents keep Word so existing callers that never set a format stay on
+ * docx. The kind===document markdown guess in `detectRichDocFormat` is load
+ * only — it must not flip a blank draft's delivery MIME.
+ */
+export function richDocPersistTarget(item: LibraryItem): RichDocPersistTarget {
+  const declared = String(
+    item.artifact?.sourceFormat || item.meta.source_format || "",
+  )
+    .trim()
+    .toLowerCase();
+  const media = richDocAuthoritativeMediaType(item);
+  const filename = String(
+    item.meta.filename || item.meta.file_name || item.title || "",
+  ).toLowerCase();
+  const looksMarkdown =
+    declared === "md" ||
+    declared === "markdown" ||
+    media === "text/markdown" ||
+    filename.endsWith(".md") ||
+    filename.endsWith(".markdown");
+  if (looksMarkdown) {
+    return {
+      sourceFormat: "md",
+      sourceMediaType:
+        media === "text/markdown" || media.startsWith("text/")
+          ? media || "text/markdown"
+          : "text/markdown",
+      extension: "md",
+    };
+  }
+  const looksHtml =
+    declared === "html" ||
+    declared === "htm" ||
+    media.includes("html") ||
+    filename.endsWith(".html") ||
+    filename.endsWith(".htm");
+  if (looksHtml) {
+    return {
+      sourceFormat: "html",
+      sourceMediaType: media.includes("html") ? media : "text/html",
+      extension: "html",
+    };
+  }
+  const looksText =
+    declared === "txt" ||
+    declared === "text" ||
+    media === "text/plain" ||
+    filename.endsWith(".txt");
+  if (looksText) {
+    return {
+      sourceFormat: "txt",
+      sourceMediaType: "text/plain",
+      extension: "txt",
+    };
+  }
+  return {
+    sourceFormat: WORD_SOURCE_FORMAT,
+    sourceMediaType: WORD_SOURCE_MEDIA_TYPE,
+    extension: "docx",
+  };
+}
+
+function deliveryFileStem(title: string): string {
+  return title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "document";
+}
+
+function serializeRichDocMarks(text: string, marks: unknown): string {
+  let html = escapeHtml(text);
+  if (!Array.isArray(marks)) return html;
+  for (const mark of marks) {
+    if (!mark || typeof mark !== "object") continue;
+    const type = String((mark as { type?: unknown }).type || "");
+    const attrs = (mark as { attrs?: Record<string, unknown> }).attrs || {};
+    if (type === "bold" || type === "strong") html = `<strong>${html}</strong>`;
+    if (type === "italic" || type === "em") html = `<em>${html}</em>`;
+    if (type === "code") html = `<code>${html}</code>`;
+    if (type === "strike" || type === "strikeThrough") {
+      html = `<s>${html}</s>`;
+    }
+    if (type === "link") {
+      const href = escapeHtml(String(attrs.href || ""));
+      html = href ? `<a href="${href}">${html}</a>` : html;
+    }
+  }
+  return html;
+}
+
+/** Deterministic Tiptap JSON → HTML for markdown/html/text delivery. */
+export function richDocJsonToHtmlFragment(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const record = node as {
+    type?: unknown;
+    text?: unknown;
+    content?: unknown;
+    marks?: unknown;
+    attrs?: Record<string, unknown>;
+  };
+  const children = Array.isArray(record.content)
+    ? record.content.map(richDocJsonToHtmlFragment).join("")
+    : "";
+  const type = String(record.type || "");
+  if (type === "text") {
+    return serializeRichDocMarks(String(record.text || ""), record.marks);
+  }
+  if (type === "hardBreak") return "<br>";
+  if (type === "paragraph") return `<p>${children}</p>`;
+  if (type === "heading") {
+    const level = Math.min(6, Math.max(1, Number(record.attrs?.level) || 1));
+    return `<h${level}>${children}</h${level}>`;
+  }
+  if (type === "blockquote") return `<blockquote>${children}</blockquote>`;
+  if (type === "codeBlock") return `<pre><code>${children}</code></pre>`;
+  if (type === "bulletList") return `<ul>${children}</ul>`;
+  if (type === "orderedList") return `<ol>${children}</ol>`;
+  if (type === "listItem") return `<li>${children}</li>`;
+  if (type === "table") return `<table>${children}</table>`;
+  if (type === "tableRow") return `<tr>${children}</tr>`;
+  if (type === "tableHeader") return `<th>${children}</th>`;
+  if (type === "tableCell") return `<td>${children}</td>`;
+  if (type === "image") {
+    const src = escapeHtml(String(record.attrs?.src || ""));
+    const alt = escapeHtml(String(record.attrs?.alt || ""));
+    return src ? `<img src="${src}" alt="${alt}">` : "";
+  }
+  if (type === "doc" || !type) return children;
+  return children;
+}
+
+export async function createRichDocDeliveryFile(input: {
+  item: LibraryItem;
+  title: string;
+  html: string;
+  json?: JSONContent;
+}): Promise<File> {
+  const target = richDocPersistTarget(input.item);
+  const stem = deliveryFileStem(input.title);
+  if (target.extension === "md") {
+    const markdown = await htmlToMarkdown(
+      input.html || richDocJsonToHtmlFragment(input.json),
+    );
+    return new File([markdown], `${stem}.md`, { type: target.sourceMediaType });
+  }
+  if (target.extension === "html") {
+    const html =
+      input.html ||
+      fullHtmlDocument(
+        input.title,
+        richDocJsonToHtmlFragment(input.json),
+      );
+    return new File([html], `${stem}.html`, { type: target.sourceMediaType });
+  }
+  if (target.extension === "txt") {
+    const text =
+      (input.html || richDocJsonToHtmlFragment(input.json))
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim() || "";
+    return new File([text], `${stem}.txt`, { type: target.sourceMediaType });
+  }
+  const { tiptapJsonToDocxBlob } = await import("./docx-export");
+  const json = input.json || { type: "doc", content: [] };
+  const blob = await tiptapJsonToDocxBlob(input.title, json);
+  return new File([blob], `${stem}.docx`, { type: target.sourceMediaType });
+}
+
+async function defaultRefreshGoneUrl(
+  item: LibraryItem,
+  goneUrl: string,
+): Promise<string | null> {
+  const artifactId = String(item.artifactId || "").trim();
+  const revisionId = String(
+    item.revisionId || item.artifact?.revisionId || "",
+  ).trim();
+  if (!artifactId || !revisionId) return null;
+  const purpose = signedMediaRefreshPurpose({
+    goneUrl,
+    previewUrl:
+      item.artifact?.renditions.preview?.url || item.previewUrl || "",
+    fullUrl: item.artifact?.renditions.full?.url || item.url || "",
+    sourceUrl: item.artifact?.renditions.source?.url || "",
+  });
+  const { refreshArtifactRendition } = await import("../artifact-client");
+  const refreshed = await refreshArtifactRendition(
+    { artifactId, revisionId },
+    purpose,
+  );
+  const next = refreshed.ok ? String(refreshed.data?.url || "").trim() : "";
+  return next && next !== goneUrl ? next : null;
+}
+
+async function defaultFetchText(
+  url: string,
+  refreshGoneUrl?: (goneUrl: string) => Promise<string | null | undefined>,
+): Promise<string> {
+  return (
+    await fetchMediaBlobRefreshing(url, {
+      cache: "no-store",
+      refreshGoneUrl,
+    })
+  ).text();
 }
 
 async function defaultFetchDocx(
@@ -622,7 +841,24 @@ export async function loadRichDocHtml(
     const media = richDocAuthoritativeMediaType(item);
     const ext = richDocFilenameExtension(item, url);
     const format = detectRichDocFormat(item, url);
-    const fetchText = deps.fetchText ?? defaultFetchText;
+    const refreshGoneUrl =
+      deps.refreshGoneUrl ??
+      ((goneUrl: string) => defaultRefreshGoneUrl(item, goneUrl));
+    const rawFetchText =
+      deps.fetchText ??
+      ((targetUrl: string) => defaultFetchText(targetUrl, refreshGoneUrl));
+    const fetchText = async (targetUrl: string) => {
+      try {
+        return await rawFetchText(targetUrl);
+      } catch (caught) {
+        if (!isGoneMediaError(caught)) throw caught;
+        const next = deps.refreshGoneUrl
+          ? String((await deps.refreshGoneUrl(targetUrl)) || "").trim()
+          : targetUrl;
+        if (deps.refreshGoneUrl && (!next || next === targetUrl)) throw caught;
+        return rawFetchText(next);
+      }
+    };
     const fetchDocx = deps.fetchDocx ?? defaultFetchDocx;
 
     const inline = inlineSource(item);

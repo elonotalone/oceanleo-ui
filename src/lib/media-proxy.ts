@@ -136,14 +136,39 @@ export function canvasSafeUrl(url: string): string {
   return `${GATEWAY_BASE}${MEDIA_PROXY_PATH}?url=${encodeURIComponent(absolute)}`;
 }
 
+export type SignedMediaRefreshPurpose = "preview" | "full" | "source";
+
+/**
+ * Pick which artifact rendition to re-sign after a signed media URL returns
+ * HTTP 410. Preview/access URLs are the usual case for documents the library
+ * viewer already shows; source-tree is never selected here.
+ */
+export function signedMediaRefreshPurpose(input: {
+  goneUrl: string;
+  previewUrl?: string;
+  fullUrl?: string;
+  sourceUrl?: string;
+}): SignedMediaRefreshPurpose {
+  const gone = String(input.goneUrl || "").trim();
+  if (gone && gone === String(input.sourceUrl || "").trim()) return "source";
+  if (gone && gone === String(input.fullUrl || "").trim()) return "full";
+  return "preview";
+}
+
+export function isGoneMediaError(error: unknown): boolean {
+  return error instanceof Error && /\bHTTP\s+410\b/i.test(error.message);
+}
+
+type FetchMediaBlobOptions = {
+  maxBytes?: number;
+  signal?: AbortSignal;
+  cache?: RequestCache;
+};
+
 /** fetch 一个素材为 Blob（走代理），供波形解码 / PDF / ffmpeg 抽帧等用。 */
 export async function fetchMediaBlob(
   url: string,
-  options: {
-    maxBytes?: number;
-    signal?: AbortSignal;
-    cache?: RequestCache;
-  } = {},
+  options: FetchMediaBlobOptions = {},
 ): Promise<Blob> {
   const absolute = absoluteMediaUrl(url);
   if (/\/source-tree\/@source\/?$/.test(new URL(absolute).pathname)) {
@@ -165,6 +190,31 @@ export async function fetchMediaBlob(
     throw new Error("素材过大，无法在浏览器内存中安全处理");
   }
   return blob;
+}
+
+/**
+ * Same as `fetchMediaBlob`, but one 410 on a signed URL may mint a fresh
+ * address and retry once. Callers supply `refreshGoneUrl`; this helper never
+ * loosens MIME, origin, or CAS checks.
+ */
+export async function fetchMediaBlobRefreshing(
+  url: string,
+  options: FetchMediaBlobOptions & {
+    refreshGoneUrl?: (
+      goneUrl: string,
+    ) => Promise<string | null | undefined>;
+  } = {},
+): Promise<Blob> {
+  const cache = options.cache ?? "no-store";
+  const { refreshGoneUrl, ...fetchOptions } = options;
+  try {
+    return await fetchMediaBlob(url, { ...fetchOptions, cache });
+  } catch (caught) {
+    if (!isGoneMediaError(caught) || !refreshGoneUrl) throw caught;
+    const next = String((await refreshGoneUrl(url)) || "").trim();
+    if (!next || next === url) throw caught;
+    return fetchMediaBlob(next, { ...fetchOptions, cache: "no-store" });
+  }
 }
 
 /**

@@ -10,11 +10,14 @@ import {
 import { saveFileToLibrary, type SaveToLibraryResult } from "../doc-editors/doc-io";
 import {
   admitRichDocEditorSource,
+  createRichDocDeliveryFile,
   detectRichDocFormat,
   loadRichDocHtml,
   resolveRichDocProjectAgainstOriginal,
   richDocHasContent,
+  richDocJsonToHtmlFragment,
   richDocLoadVerified,
+  richDocPersistTarget,
   richDocResultHasBody,
   selectRichDocSourceUrl,
   unwrapNativeRichDocJson,
@@ -39,9 +42,37 @@ type EditorHandoff =
   | { kind: "url"; url: string; format: string | null; revision: string | null }
   | { kind: "empty" };
 
-const RICHDOC_SOURCE_FORMAT = "docx";
-const RICHDOC_SOURCE_MEDIA_TYPE =
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export const UMO_NATIVE_SAVE_PREFIX = "umo-save-";
+
+export function isUmoNativeSaveId(saveId: string): boolean {
+  return String(saveId || "").startsWith(UMO_NATIVE_SAVE_PREFIX);
+}
+
+export function hostedRichDocOpenState(
+  loaded:
+    | { ok: true; source: unknown }
+    | { ok: false; error: string },
+): {
+  source: unknown | null;
+  saveable: boolean;
+  frameInteractive: boolean;
+  status: string;
+} {
+  if (!loaded.ok) {
+    return {
+      source: null,
+      saveable: false,
+      frameInteractive: false,
+      status: loaded.error,
+    };
+  }
+  return {
+    source: loaded.source,
+    saveable: true,
+    frameInteractive: true,
+    status: "",
+  };
+}
 
 export const RICHDOC_PROJECT_SCHEMA = "tiptap-json@1";
 export const UMO_SAVE_TIMEOUT_MS = 15_000;
@@ -493,26 +524,26 @@ export async function persistUmoPayload(input: {
   }
   const json = reversed.data;
   const title = `${input.item.title || "文档"}-编辑版`;
-  const fileStem =
-    title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "document";
+  const persist = richDocPersistTarget(input.item);
   const save = input.save ?? saveFileToLibrary;
-  const { tiptapJsonToDocxBlob } = await import("../doc-editors/docx-export");
   const { renderRichDocPreviewPng } = await import(
     "../doc-editors/editor-preview-raster"
   );
+  const html = richDocJsonToHtmlFragment(json);
   const result = await save({
     item: input.item,
     siteId: input.siteId || "word",
     fallbackSite: "word",
-    createFile: async () => {
-      const delivery = await tiptapJsonToDocxBlob(input.item.title || "文档", json);
-      return new File([delivery], `${fileStem}.docx`, {
-        type: RICHDOC_SOURCE_MEDIA_TYPE,
-      });
-    },
+    createFile: () =>
+      createRichDocDeliveryFile({
+        item: input.item,
+        title: input.item.title || "文档",
+        html,
+        json,
+      }),
     createPreview: () => renderRichDocPreviewPng(json, input.item.title || "文档"),
-    sourceFormat: RICHDOC_SOURCE_FORMAT,
-    sourceMediaType: RICHDOC_SOURCE_MEDIA_TYPE,
+    sourceFormat: persist.sourceFormat,
+    sourceMediaType: persist.sourceMediaType,
     title,
     mediaType: "doc",
     kind: "document",
@@ -521,7 +552,7 @@ export async function persistUmoPayload(input: {
       editor: "umo-hosted",
       editor_capability: "richdoc",
       content_type: "document",
-      delivery_format: RICHDOC_SOURCE_FORMAT,
+      delivery_format: persist.sourceFormat,
     },
     project: { schema: RICHDOC_PROJECT_SCHEMA, data: json },
     editorManifest: { id: "richdoc", format: RICHDOC_PROJECT_SCHEMA },
@@ -545,9 +576,9 @@ export async function persistUmoPayload(input: {
       revisionId: result.revisionId || base.revisionId,
       meta: {
         ...base.meta,
-        source_format: result.sourceFormat || RICHDOC_SOURCE_FORMAT,
-        source_media_type: result.sourceMediaType || RICHDOC_SOURCE_MEDIA_TYPE,
-        delivery_format: RICHDOC_SOURCE_FORMAT,
+        source_format: result.sourceFormat || persist.sourceFormat,
+        source_media_type: result.sourceMediaType || persist.sourceMediaType,
+        delivery_format: result.sourceFormat || persist.sourceFormat,
         ...(projectUrl
           ? {
               editor_project_url: projectUrl,

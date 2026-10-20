@@ -220,7 +220,7 @@ function RichDocLegacyRoute({
       source_format: saved.sourceFormat || RICHDOC_SOURCE_FORMAT,
       source_media_type: saved.sourceMediaType || RICHDOC_SOURCE_MEDIA_TYPE,
       source_url: saved.url,
-      delivery_format: RICHDOC_SOURCE_FORMAT,
+      delivery_format: saved.sourceFormat || RICHDOC_SOURCE_FORMAT,
       editor_project_url: saved.projectUrl,
       editor_project_schema: saved.projectSchema,
       editor_manifest_url: saved.projectUrl,
