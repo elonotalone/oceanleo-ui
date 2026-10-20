@@ -222,6 +222,19 @@ function stampOpenTurn(messages: DialogState["messages"], stop: string): DialogS
   return next;
 }
 
+function settleStoppingTurn(messages: DialogState["messages"], stop: string, session = ""): DialogState["messages"] {
+  const next = messages.slice();
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    const message = next[index];
+    if (message.kind === "turn" && message.stop === "stopping" && (!session || message.acpSession === session)) {
+      next[index] = { ...message, stop };
+      return next;
+    }
+    if (!session && message.kind === "user") break;
+  }
+  return session ? messages : stampOpenTurn(messages, stop);
+}
+
 function currentTurnIds(state: DialogState): string[] {
   const ids = [state.activeSession || "", state.draftRef || ""];
   return [...new Set(ids)];
@@ -578,7 +591,7 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
 function onDone(state: DialogState, frame: Record<string, unknown>): DialogState {
   const stop = str(frame.stop);
   const session = str(frame.acp_session);
-  const messages = stampOpenTurn(state.messages, stop);
+  const messages = settleStoppingTurn(state.messages, stop, session);
   const program = str(frame.program) || state.program;
   const ended = session || state.activeSession || state.draftRef || "";
   const next = markTurn({ ...state, messages }, program, ended, false);
@@ -636,7 +649,7 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
   };
   if (endsTurn) {
     const ended = session || state.activeSession || state.draftRef || "";
-    const marked = markTurn(next, program || state.program, ended, false);
+    const marked = markTurn({ ...next, messages: settleStoppingTurn(next.messages, code, session) }, program || state.program, ended, false);
     return dropOccupancySession(marked, ended);
   }
   if (code === "computer_offline" || code === "computer_reconnecting" || code === "dialog_unreachable") {
@@ -852,7 +865,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     };
   }
   if (kind === "models") {
-    const models = parseModels(frame.models);
+    const models = parseModels(frame.models, str(frame.program));
     const source = str(frame.source);
     const fallback = models.find((model) => model.default)?.id ?? models[0]?.id ?? "";
     const configModel = state.configOptions.find((option) => option.id === "model" || option.category === "model");
@@ -1074,7 +1087,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         occupancyPendingAt: null,
         occupancyPendingSession: null,
         cancelledTurns,
-        messages: stampOpenTurn(state.messages, "cancelled"),
+        messages: stampOpenTurn(state.messages, "stopping"),
       };
       for (const id of ids) next = markTurn(next, next.program, id, false);
       for (const id of ids) next = dropOccupancySession(next, id);

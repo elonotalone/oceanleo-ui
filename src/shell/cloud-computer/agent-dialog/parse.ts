@@ -121,7 +121,7 @@ export function parsePrograms(raw: unknown): ProgramStatus[] {
   return out;
 }
 
-export function parseModels(raw: unknown): DialogModel[] {
+export function parseModels(raw: unknown, program = ""): DialogModel[] {
   if (!Array.isArray(raw)) return [];
   const out: DialogModel[] = [];
   for (const item of raw) {
@@ -138,7 +138,31 @@ export function parseModels(raw: unknown): DialogModel[] {
       ...(typeof row.reason === "string" ? { reason: row.reason } : {}),
     });
   }
-  return out;
+  if (program !== "hermes") return out;
+  const canonical = new Map<string, DialogModel>();
+  for (const model of out) {
+    const previous = canonical.get(model.id);
+    if (!previous) {
+      canonical.set(model.id, model);
+      continue;
+    }
+    if ([model.name.toLowerCase(), model.name].join("\0") < [previous.name.toLowerCase(), previous.name].join("\0")) {
+      previous.name = model.name;
+    }
+    previous.default = previous.default || model.default;
+    if (previous.usable === false || model.usable === false) previous.usable = false;
+    else if (previous.usable === true || model.usable === true) previous.usable = true;
+    if (!previous.reason && model.reason) previous.reason = model.reason;
+  }
+  return [...canonical.values()].sort((left, right) => {
+    const leftProvider = (left.provider_label || left.provider || left.id.split(":", 1)[0]).toLowerCase();
+    const rightProvider = (right.provider_label || right.provider || right.id.split(":", 1)[0]).toLowerCase();
+    return compareText(leftProvider, rightProvider) || compareText(left.id, right.id);
+  });
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function parseMode(raw: unknown): ModeOption | null {

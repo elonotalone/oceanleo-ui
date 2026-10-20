@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import { lineDiff } from "../src/shell/cloud-computer/agent-dialog/diff-lines.ts";
 import { installDirPayload } from "../src/shell/cloud-computer/agent-dialog/install-dir.ts";
 import { normalizeQuestions } from "../src/shell/cloud-computer/agent-dialog/questions.ts";
+import { parseModels } from "../src/shell/cloud-computer/agent-dialog/parse.ts";
 import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
 import { nextReconnectDelay } from "../src/shell/cloud-computer/agent-dialog/reconnect.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -1042,4 +1043,54 @@ test("Codex模型与推理强度独立选择，设置只使用程序目录里的
     assert.ok(stop.classList.contains("text-red-700"));
     assert.ok(stop.classList.contains("dark:text-red-300"));
   } finally { view.cleanup(); }
+});
+
+test("Stop releases the composer immediately and reports the server's terminal result", () => {
+  let state = applyDialog(initialDialogState(), { type: "program", program: "hermes" });
+  state = applyDialog(state, { type: "frame", frame: { t: "session_opened", program: "hermes", acp_session: "hermes-session" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "hermes", acp_session: "hermes-session" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "delta", program: "hermes", acp_session: "hermes-session", text: "partial answer" } });
+
+  state = applyDialog(state, { type: "cancel-local" });
+  assert.equal(state.busy, false);
+  assert.equal(state.messages.find(message => message.kind === "turn").stop, "stopping");
+
+  state = applyDialog(state, { type: "frame", frame: { t: "done", program: "hermes", acp_session: "hermes-session", stop: "cancelled" } });
+  assert.equal(state.messages.find(message => message.kind === "turn").stop, "cancelled");
+});
+
+test("Hermes catalogs are canonical, preserving a valid explicit selection", () => {
+  let state = applyDialog(initialDialogState(), { type: "program", program: "hermes" });
+  state = applyDialog(state, { type: "frame", frame: { t: "session_opened", program: "hermes", acp_session: "hermes-session" } });
+  state = applyDialog(state, { type: "set-model", id: "deepseek:z" });
+  state = applyDialog(state, { type: "frame", frame: { t: "models", program: "hermes", acp_session: "hermes-session", source: "acp", models: [
+    { id: "deepseek:z", name: "Z", default: false, provider: "deepseek" },
+    { id: "deepseek:a", name: "A", default: true, provider: "deepseek" },
+    { id: "deepseek:a", name: "A model", default: true, provider: "deepseek" },
+  ] } });
+
+  assert.deepEqual(state.models.map(model => model.id), ["deepseek:a", "deepseek:z"]);
+  assert.equal(state.selectedModel, "deepseek:z");
+  assert.deepEqual(state.models.map(model => model.default), [true, false]);
+
+  state = applyDialog(state, { type: "set-model", id: "deepseek:stale" });
+  state = applyDialog(state, { type: "frame", frame: { t: "models", program: "hermes", acp_session: "hermes-session", source: "acp", models: [
+    { id: "deepseek:z", name: "Z", default: false, provider: "deepseek" },
+    { id: "deepseek:a", name: "A", default: true, provider: "deepseek" },
+  ] } });
+  assert.equal(state.selectedModel, "deepseek:a");
+});
+
+test("Hermes screenshot catalogs exclude stale deepseek-v4-flash from the offered list", () => {
+  const offered = [
+    { id: "DeepSeek-V4-Pro", name: "DeepSeek-V4-Pro", default: true, provider: "deepseek" },
+    { id: "DeepSeek-V4.1-Flash", name: "DeepSeek-V4.1-Flash", default: false, provider: "deepseek" },
+  ];
+  const fresh = parseModels(offered, "hermes");
+  const restored = parseModels([
+    { ...offered[1], default: true },
+    { ...offered[0], default: false },
+  ], "hermes");
+  assert.deepEqual(fresh.map(model => model.id), ["DeepSeek-V4-Pro", "DeepSeek-V4.1-Flash"]);
+  assert.deepEqual(restored.map(model => model.id), fresh.map(model => model.id));
 });
