@@ -34,6 +34,7 @@ import {
 } from "./selection-toolbar-measure";
 import { EditBarRowContext } from "./edit-bar-row-context";
 import { SELECTION_TOOLBAR_EXPAND_HYSTERESIS_PX } from "./selection-toolbar-layout";
+import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 
 export { useInsideEditBarRow } from "./edit-bar-row-context";
 
@@ -183,6 +184,7 @@ function DocumentSegmentMore({ children }: { children: ReactNode }) {
         data-edit-bar-interactive
         aria-expanded={open}
         aria-haspopup="dialog"
+        onPointerDown={preserveEditBarSelection}
         onClick={() => setOpen((value) => !value)}
         className={EDIT_BAR_BUTTON_CLASS}
         aria-label={label}
@@ -262,6 +264,7 @@ export function EditBarRow({
       data-edit-bar-agent
       data-edit-bar-interactive
       aria-pressed={agentActive}
+      onPointerDown={preserveEditBarSelection}
       onClick={() =>
         agentActive
           ? layout.closeDrawer()

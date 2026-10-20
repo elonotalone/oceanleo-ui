@@ -46,6 +46,7 @@ import {
 } from "./SelectionToolbarControl";
 import { useSelectionToolbarMeasure } from "./useSelectionToolbarMeasure";
 import { useInsideEditBarRow } from "./edit-bar-row-context";
+import { useEditBarSelectionSession } from "./edit-bar-selection-session";
 import {
   SelectionOverflowGroups,
   SelectionToolbarAgentButton,
@@ -91,7 +92,10 @@ export function SelectionToolbar({
   trailing,
   variant = "bar",
 }: SelectionToolbarProps) {
-  const context = useContentStableSelection(liveContext);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const stableLive = useContentStableSelection(liveContext);
+  const session = useEditBarSelectionSession(stableLive, moreOpen);
+  const context = session.context;
   const layout = useAdvancedLayout();
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -99,7 +103,6 @@ export function SelectionToolbar({
     publishAgentSelection(context);
   }, [context]);
   const toolsLauncher = layout?.toolsLauncher || null;
-  const [moreOpen, setMoreOpen] = useState(false);
   const [moreMounted, setMoreMounted] = useState(false);
   const [availableWidth, setAvailableWidth] = useState(
     Number.POSITIVE_INFINITY,
@@ -406,6 +409,8 @@ export function SelectionToolbar({
       data-selection-kind={context?.kind || "none"}
       data-selection-live-capability={liveCapability?.id || undefined}
       data-selection-id={context?.id || ""}
+      data-edit-bar-selection-session={session.holding ? "held" : undefined}
+      onPointerDownCapture={session.onPointerDownCapture}
       data-selection-anchor-x={liveContext?.anchor?.x}
       data-selection-anchor-y={liveContext?.anchor?.y}
       data-selection-anchor-width={liveContext?.anchor?.width}
@@ -494,6 +499,7 @@ export function SelectionToolbar({
                 aria-expanded={moreOpen}
                 aria-haspopup="dialog"
                 aria-controls={morePanelId}
+                onPointerDown={session.onPointerDownCapture}
                 onClick={() => setMoreOpen((value) => !value)}
                 data-edit-bar-interactive
                 className={EDIT_BAR_BUTTON_CLASS}

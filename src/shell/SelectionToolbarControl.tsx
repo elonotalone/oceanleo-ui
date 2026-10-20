@@ -18,6 +18,7 @@ import {
   selectionControlUsesIconOnly,
 } from "./selection-toolbar-layout";
 import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
+import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 import { SelectionToolbarSelectControl } from "./SelectionToolbarSelectControl";
 
 export function hasCanonicalAlignmentCapability(
@@ -126,6 +127,7 @@ export function SelectionToolbarControl({
         type="button"
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
+        onPointerDown={preserveEditBarSelection}
         onClick={() => {
           if (forMeasurement) return;
           emit(next);

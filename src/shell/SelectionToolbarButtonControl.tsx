@@ -6,6 +6,7 @@ import type {
   SelectionControlValue,
   SelectionPanelAction,
 } from "./selection-context";
+import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 
 export function SelectionToolbarButtonControl({
   control,
@@ -48,6 +49,7 @@ export function SelectionToolbarButtonControl({
         type="button"
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
+        onPointerDown={preserveEditBarSelection}
         onClick={() => {
           if (control.kind === "panel" && onOpenPanel) {
             onOpenPanel(control.panelId || control.id, control.panelAction);
@@ -97,6 +99,7 @@ export function SelectionToolbarButtonControl({
         aria-pressed={active}
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
+        onPointerDown={preserveEditBarSelection}
         onClick={() => {
           emit(!active);
           onActivated?.();
@@ -147,6 +150,7 @@ export function SelectionToolbarButtonControl({
           value={color}
           disabled={control.disabled}
           tabIndex={forMeasurement ? -1 : undefined}
+          onPointerDown={preserveEditBarSelection}
           onChange={(event) => {
             emit(event.target.value);
             onActivated?.();

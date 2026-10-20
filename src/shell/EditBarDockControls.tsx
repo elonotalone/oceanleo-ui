@@ -10,7 +10,13 @@ import type {
   PointerEventHandler,
   MouseEventHandler,
 } from "react";
+import { useEffect } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import {
+  editBarHistoryShortcut,
+  isEditBarSurface,
+  preserveEditBarSelection,
+} from "./edit-bar-selection-preserve";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon";
 import type { EditBarDockMode } from "./edit-bar-dock-state";
 import {
@@ -40,6 +46,25 @@ export function EditBarHistoryControls({
   onRedo: () => void;
 }) {
   const tt = useUI();
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = editBarHistoryShortcut(event);
+      if (!action || !isEditBarSurface(event.target)) return;
+      if (action === "undo") {
+        if (!canUndo) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onUndo();
+        return;
+      }
+      if (!canRedo) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRedo();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [canRedo, canUndo, onRedo, onUndo]);
   return (
     <div
       data-edit-bar-history
@@ -49,6 +74,7 @@ export function EditBarHistoryControls({
         type="button"
         data-edit-bar-interactive
         data-edit-bar-history-undo
+        onPointerDown={preserveEditBarSelection}
         onClick={onUndo}
         disabled={!canUndo}
         className={`${EDIT_BAR_BUTTON_CLASS} disabled:pointer-events-none disabled:opacity-35`}
@@ -61,6 +87,7 @@ export function EditBarHistoryControls({
         type="button"
         data-edit-bar-interactive
         data-edit-bar-history-redo
+        onPointerDown={preserveEditBarSelection}
         onClick={onRedo}
         disabled={!canRedo}
         className={`${EDIT_BAR_BUTTON_CLASS} disabled:pointer-events-none disabled:opacity-35`}

@@ -6,6 +6,7 @@ import type {
   SelectionControlValue,
 } from "./selection-context";
 import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
+import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 
 function asNumber(value: SelectionControlValue | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -68,6 +69,7 @@ export function SelectionToolbarNumberControl({
         type="button"
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
+        onPointerDown={preserveEditBarSelection}
         onClick={() => emit(clamp(value - step))}
         className="grid h-full w-7 place-items-center text-sm text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
         aria-label={namedLabel ? `${namedLabel} -` : undefined}
@@ -114,6 +116,7 @@ export function SelectionToolbarNumberControl({
         type="button"
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
+        onPointerDown={preserveEditBarSelection}
         onClick={() => emit(clamp(value + step))}
         className="grid h-full w-7 place-items-center text-sm text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
         aria-label={namedLabel ? `${namedLabel} +` : undefined}

@@ -17,6 +17,7 @@ import {
   EDIT_BAR_DIVIDER_CLASS,
   EDIT_BAR_TOUCH_EXTEND_CLASS,
 } from "../edit-bar-surface";
+import { preserveEditBarSelection } from "../edit-bar-selection-preserve";
 import { usePluginChromePanelHost } from "./PluginChromeFrame";
 
 export function PluginChromeEditBarButton({
@@ -59,6 +60,7 @@ export function PluginChromeEditBarButton({
         paddingInline: 8,
         fontSize: 12,
       }}
+      onPointerDown={preserveEditBarSelection}
       onClick={() => {
         if (panelId) panels.togglePanel(panelId);
         onTrigger?.();

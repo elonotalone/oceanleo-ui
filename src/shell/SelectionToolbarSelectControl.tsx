@@ -11,6 +11,7 @@ import {
   type SelectionControlValue,
 } from "./selection-context";
 import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
+import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 import { selectionControlUsesIconOnly } from "./selection-toolbar-layout";
 
 export function SelectionToolbarSelectControl({
@@ -86,6 +87,7 @@ export function SelectionToolbarSelectControl({
         type="button"
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
+        onPointerDown={preserveEditBarSelection}
         onClick={() => {
           if (forMeasurement) return;
           setOpen((value) => !value);
@@ -149,6 +151,7 @@ export function SelectionToolbarSelectControl({
               role="option"
               aria-selected={active}
               tabIndex={active ? 0 : -1}
+              onPointerDown={preserveEditBarSelection}
               onClick={() => {
                 emit(option.value);
                 setOpen(false);

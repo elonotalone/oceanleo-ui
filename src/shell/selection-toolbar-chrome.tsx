@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from "react";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import type { ResolvedAdvancedLayoutState } from "./advanced-layout-context";
 import { EDIT_BAR_BUTTON_CLASS } from "./edit-bar-surface";
+import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
 import type { SelectionControl } from "./selection-context";
 import {
@@ -37,6 +38,7 @@ export function SelectionToolbarAgentButton({
       data-edit-bar-agent
       data-edit-bar-interactive
       aria-pressed={active}
+      onPointerDown={preserveEditBarSelection}
       onClick={() =>
         active ? layout.closeDrawer() : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
       }

@@ -128,6 +128,19 @@ export class SelectionCommandGate {
   private readonly settledOrder: string[] = [];
   private readonly seenRequests = new Set<string>();
   private readonly requestOrder: string[] = [];
+  /**
+   * Last non-null selection the gate has seen. Clicking the host edit bar
+   * blurs a hosted iframe and the editor reports `null`; the command still
+   * names this selection. Integrity still rejects a different id/revision.
+   */
+  private lastContext: SelectionContext | null = null;
+
+  private effectiveContext(
+    context: SelectionContext | null,
+  ): SelectionContext | null {
+    if (context) this.lastContext = context;
+    return context ?? this.lastContext;
+  }
 
   accept(command: SelectionCommand, context: SelectionContext | null): boolean {
     if (this.seenRequests.has(command.requestId)) return false;
@@ -167,13 +180,14 @@ export class SelectionCommandGate {
     ) {
       return false;
     }
+    const effective = this.effectiveContext(context);
     if (command.selectionId.startsWith("host:")) {
       // Global editor commands do not target the current selected object.
-    } else if (context) {
+    } else if (effective) {
       if (
-        command.selectionId !== context.id ||
-        !sameRevision(command.selectionRevision, context.revision) ||
-        !sameRevision(command.selectionEpoch, context.epoch)
+        command.selectionId !== effective.id ||
+        !sameRevision(command.selectionRevision, effective.revision) ||
+        !sameRevision(command.selectionEpoch, effective.epoch)
       ) {
         return false;
       }
@@ -196,6 +210,7 @@ export class SelectionCommandGate {
   }
 
   reconcile(context: SelectionContext | null): SelectionCommand[] {
+    if (context) this.lastContext = context;
     const cancellations: SelectionCommand[] = [];
     for (const [id, transaction] of this.transactions) {
       if (
@@ -222,6 +237,7 @@ export class SelectionCommandGate {
     this.settledOrder.length = 0;
     this.seenRequests.clear();
     this.requestOrder.length = 0;
+    this.lastContext = null;
   }
 
   private cancelCommand(

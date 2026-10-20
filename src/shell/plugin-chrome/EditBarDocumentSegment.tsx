@@ -7,6 +7,7 @@ import {
   type AdvancedWorkbenchAction,
 } from "../advanced-workbench-chrome";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { preserveEditBarSelection } from "../edit-bar-selection-preserve";
 
 /**
  * 编辑栏「文档段」（规范 v2 §4）：只画 `group === "edit"` 的成品级编辑动作
@@ -60,6 +61,7 @@ export function EditBarDocumentSegment({
             disabled={action.disabled || action.busy}
             aria-busy={action.busy || undefined}
             aria-label={label || action.id}
+            onPointerDown={preserveEditBarSelection}
             onClick={() => onTrigger(action)}
             variant={action.variant === "danger" ? "danger" : "ghost"}
             selected={action.variant === "primary"}
