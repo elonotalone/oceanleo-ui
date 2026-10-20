@@ -44,7 +44,11 @@ function assertInspectorControls(path, ids) {
           contents,
         )) ||
       (/\.\.\.[a-zA-Z]+Group/.test(block) &&
-        /const [a-zA-Z]+Group = inspector\(/.test(contents));
+        /const [a-zA-Z]+Group = inspector\(/.test(contents)) ||
+      (/\.\.\.(?:geometryInspector|inspector)\b/.test(block) &&
+        /const (?:geometryInspector|inspector) = \{[\s\S]*?slot: "inspector"/.test(
+          contents,
+        ));
     assert.ok(
       inheritedGroup || /slot: "inspector"/.test(block),
       `${id} must be inspector-only`,
@@ -62,7 +66,7 @@ function assertInspectorControls(path, ids) {
 
 test("route toolbars put continuous and long-form controls in semantic inspectors", () => {
   assertInspectorControls(
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
     [
       "crop-ratio",
       "text",
@@ -78,11 +82,16 @@ test("route toolbars put continuous and long-form controls in semantic inspector
       "angle",
     ],
   );
-  // Image X/Y/W/H must stay compact primary for V3 snap-matrix geometry
-  // readback (data-selection-control-id number inputs), not inspector-only.
+  // Compact bar no longer shows X/Y/W/H. Geometry readback is the sr-only
+  // stage probe; inspector keeps the number fields under 位置与尺寸.
   {
     const toolbar = source(
-      "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+      "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
+    );
+    assert.match(
+      toolbar,
+      /const geometryInspector = \{[\s\S]*?placement: "more"[\s\S]*?slot: "inspector"/,
+      "geometry inspector must be overflow + inspector",
     );
     for (const id of [
       "position-x",
@@ -91,15 +100,15 @@ test("route toolbars put continuous and long-form controls in semantic inspector
       "object-height",
     ]) {
       const block = controlBlock(toolbar, id);
-      assert.doesNotMatch(
-        block,
-        /slot:\s*"inspector"/,
-        `${id} must remain compact for geometry readback`,
-      );
       assert.match(
         block,
+        /\.\.\.geometryInspector/,
+        `${id} must inherit inspector geometry, not sit on the compact bar`,
+      );
+      assert.doesNotMatch(
+        block,
         /placement:\s*"primary"/,
-        `${id} must be primary so it is not overflow-only`,
+        `${id} must not be primary`,
       );
     }
   }
@@ -157,12 +166,11 @@ test("route toolbars put continuous and long-form controls in semantic inspector
       "line-start",
       "line-end",
       "alt",
-      "x",
-      "y",
-      "width",
-      "height",
-      "rotation",
     ],
+  );
+  assertInspectorControls(
+    "../src/shell/doc-editors/deck-object-geometry-controls.ts",
+    ["x", "y", "width", "height", "rotation"],
   );
   assertInspectorControls(
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",

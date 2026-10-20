@@ -125,7 +125,7 @@ test("Fabric main image is movable and its image geometry commands are concrete"
   const controller = source("../src/shell/image-editor/fabric-controller.ts");
   const runtime = source("../src/shell/image-editor/editor-runtime.ts");
   const toolbar = source(
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
   );
   const commands = source(
     "../src/shell/image-editor/fabric-image-commands.ts",

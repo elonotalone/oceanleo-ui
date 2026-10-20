@@ -42,6 +42,7 @@ import { useEntityCollab } from "../collab/adapters/use-entity-collab";
 import { useCollabSelections } from "../collab/adapters/visual-selection";
 import {
   VIEW_ONLY_REFUSAL,
+  guardPluginSurface,
   viewOnlyUploadHandler,
 } from "../collab/adapters/visual-readonly";
 import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
@@ -369,8 +370,12 @@ export function ImageRoute({
 
   usePluginCommandSurface(
     useMemo(
-      () => createImageCommandSurface({ editor, deliver }),
-      [deliver, editor],
+      () =>
+        guardPluginSurface(
+          createImageCommandSurface({ editor, deliver }),
+          viewOnly,
+        ),
+      [deliver, editor, viewOnly],
     ),
   );
 

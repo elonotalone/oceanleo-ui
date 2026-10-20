@@ -410,9 +410,9 @@ test("ChartRoute / ImageRoute 接线：工具条、面板、上传、撤销都�
   const image = readFileSync(new URL("../src/shell/advanced-routes/ImageRoute.tsx", import.meta.url), "utf8");
   assert.match(image, /<FabricImageContextToolbar editor=\{editor\} accent=\{accent\} readOnly=\{viewOnly\} \/>/);
   assert.match(image, /viewOnlyUploadHandler\(viewOnly, addLocalImages\)/);
-  assert.match(image, /if \(viewOnly\) return \{ ok: false, message: VIEW_ONLY_REFUSAL \};/);
+  assert.match(image, /guardPluginSurface\(\s*createImageCommandSurface\(\{ editor, deliver \}\),\s*viewOnly/);
   assert.match(image, /if \(viewOnly\) throw new Error\(VIEW_ONLY_REFUSAL\);/);
-  assert.match(image, /<VisualViewOnlyPanel readOnly=\{viewOnly\}><FabricImageAiPanel/);
+  assert.doesNotMatch(image, /FabricImageAiPanel/);
   // 导出面板是查看类，不包
   assert.doesNotMatch(image, /<VisualViewOnlyPanel[^>]*><FabricImageExportPanel/);
   // 内核入口：AI 改图在导出画布、调模型之前就挡住

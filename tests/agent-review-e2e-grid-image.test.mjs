@@ -90,9 +90,9 @@ test("表格 chip 点击带上当前列选区", () => {
   resetAgentReviewInbox();
 });
 
-test("图片·设计：8 个 chips 过校验；选区进 prompt", () => {
+test("图片·设计：chips 过校验；选区进 prompt", () => {
   const entries = imageDesignChipManifestEntries("design");
-  assert.equal(entries.length, 8);
+  assert.equal(entries.length, 5);
   assert.equal(validAgentChips(entries), true);
   const offered = chipsForEditor("image", null);
   assert.ok(offered.length > 0);

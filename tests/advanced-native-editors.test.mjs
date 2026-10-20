@@ -12,7 +12,9 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
   const creationPanels = source(
     "../src/shell/image-editor/FabricImageCreationPanels.tsx",
   );
-  const toolbar = source("../src/shell/image-editor/FabricImageContextToolbar.tsx");
+  const toolbar = source(
+    "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
+  );
   const commands = source("../src/shell/image-editor/fabric-image-commands.ts");
   const stage = source("../src/shell/image-editor/FabricImageStage.tsx");
   const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
