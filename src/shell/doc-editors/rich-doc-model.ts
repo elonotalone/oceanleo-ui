@@ -14,7 +14,7 @@ import { isArtifactSourceTreeUrl } from "../artifact-contract";
 import { isDisplayableText, looksLikeHtmlDocument } from "../website-inline-preview";
 import { Extension, type JSONContent } from "@tiptap/core";
 import type { LibraryItem } from "../library-data";
-import { officeExtensionForItem } from "../workbench-routes";
+import { officeExtensionForItem } from "../workbench-route-formats";
 import { urlExtension } from "./doc-io";
 import {
   fetchValidatedOfficePackage,
@@ -63,15 +63,38 @@ const UNSUPPORTED_DOCUMENT_EXTENSIONS = new Set([
   "mht",
 ]);
 
-async function sanitizeHtml(html: string): Promise<string> {
-  const imported = (await import("dompurify")) as {
-    default?: {
-      sanitize?: (value: string) => string;
-      isSupported?: boolean;
-    };
-    sanitize?: (value: string) => string;
-  };
-  const candidate = imported.default ?? imported;
+export type RichDocHtmlSanitizer = {
+  sanitize?: (value: string) => unknown;
+  isSupported?: boolean;
+};
+
+export interface RichDocLoadDeps {
+  fetchText?: (url: string) => Promise<string>;
+  fetchDocx?: (
+    url: string,
+    item: LibraryItem,
+    onAccessDenied?: () => void,
+  ) => Promise<ArrayBuffer>;
+  loadProject?: (url: string) => Promise<unknown>;
+  /** Test-only override. Production always uses the fail-closed sanitizer. */
+  sanitizeHtml?: (html: string) => Promise<string> | string;
+  sanitizer?: RichDocHtmlSanitizer | null;
+}
+
+const SANITIZER_UNAVAILABLE = "文档安全过滤器暂时不可用，请重试。";
+
+function windowForSanitize(): (Window & { document: Document }) | undefined {
+  const candidate = (globalThis as { window?: Window }).window;
+  if (candidate && candidate.document) {
+    return candidate as Window & { document: Document };
+  }
+  return undefined;
+}
+
+function applyRichDocSanitizer(
+  html: string,
+  candidate: RichDocHtmlSanitizer | null | undefined,
+): string {
   if (
     candidate &&
     typeof candidate.sanitize === "function" &&
@@ -80,10 +103,53 @@ async function sanitizeHtml(html: string): Promise<string> {
     const cleaned = candidate.sanitize(html);
     if (typeof cleaned === "string") return cleaned;
   }
-  throw new Error("文档安全过滤器暂时不可用，请重试。");
+  throw new Error(SANITIZER_UNAVAILABLE);
 }
 
-async function docxToHtml(arrayBuffer: ArrayBuffer): Promise<string> {
+function resolveImportedSanitizer(imported: unknown): RichDocHtmlSanitizer {
+  const module = imported as RichDocHtmlSanitizer & {
+    default?: RichDocHtmlSanitizer | ((window: Window) => RichDocHtmlSanitizer);
+  };
+  const raw = module.default ?? module;
+  const win = windowForSanitize();
+  if (typeof raw === "function" && win) {
+    try {
+      const bound = (
+        raw as (window: Window) => RichDocHtmlSanitizer
+      )(win);
+      if (bound && typeof bound.sanitize === "function") return bound;
+    } catch {
+      /* fall through to the unbound export */
+    }
+  }
+  if (raw && typeof raw === "object") return raw;
+  return {};
+}
+
+/** Fail-closed: never return unsanitized HTML. */
+export async function sanitizeRichDocHtml(
+  html: string,
+  sanitizer?: RichDocHtmlSanitizer | null,
+): Promise<string> {
+  if (sanitizer !== undefined) {
+    return applyRichDocSanitizer(html, sanitizer);
+  }
+  const imported = await import("dompurify");
+  return applyRichDocSanitizer(html, resolveImportedSanitizer(imported));
+}
+
+async function sanitizeHtml(
+  html: string,
+  deps: RichDocLoadDeps = {},
+): Promise<string> {
+  if (deps.sanitizeHtml) return deps.sanitizeHtml(html);
+  return sanitizeRichDocHtml(html, deps.sanitizer);
+}
+
+async function docxToHtml(
+  arrayBuffer: ArrayBuffer,
+  deps: RichDocLoadDeps = {},
+): Promise<string> {
   const mammothModule = (await import("mammoth")) as unknown as {
     convertToHtml?: (input: {
       arrayBuffer: ArrayBuffer;
@@ -98,13 +164,16 @@ async function docxToHtml(arrayBuffer: ArrayBuffer): Promise<string> {
     mammothModule.convertToHtml ?? mammothModule.default?.convertToHtml;
   if (!convertToHtml) throw new Error("mammoth 模块加载失败");
   const { value } = await convertToHtml({ arrayBuffer });
-  return sanitizeHtml(value);
+  return sanitizeHtml(value, deps);
 }
 
-export async function markdownToHtml(markdown: string): Promise<string> {
+export async function markdownToHtml(
+  markdown: string,
+  deps: RichDocLoadDeps = {},
+): Promise<string> {
   const { marked } = await import("marked");
   const html = marked.parse(markdown, { async: false, gfm: true, breaks: true });
-  return sanitizeHtml(html);
+  return sanitizeHtml(String(html), deps);
 }
 
 function escapeHtml(text: string): string {
@@ -397,16 +466,6 @@ export function unwrapNativeRichDocJson(value: unknown): JSONContent | null {
   return null;
 }
 
-export interface RichDocLoadDeps {
-  fetchText?: (url: string) => Promise<string>;
-  fetchDocx?: (
-    url: string,
-    item: LibraryItem,
-    onAccessDenied?: () => void,
-  ) => Promise<ArrayBuffer>;
-  loadProject?: (url: string) => Promise<unknown>;
-}
-
 async function defaultFetchText(url: string): Promise<string> {
   return (await fetchMediaBlob(url)).text();
 }
@@ -427,6 +486,7 @@ async function defaultFetchDocx(
 async function htmlOrTextFromFetched(
   text: string,
   format: RichDocDetectedFormat,
+  deps: RichDocLoadDeps = {},
 ): Promise<RichDocLoadResult> {
   if (!isDisplayableText(text)) {
     return {
@@ -443,16 +503,16 @@ async function htmlOrTextFromFetched(
     return { html: "", json: parsed.json, source: "url-json", error: "" };
   }
   if (format === "html") {
-    return { html: await sanitizeHtml(text), source: "url-html", error: "" };
+    return { html: await sanitizeHtml(text, deps), source: "url-html", error: "" };
   }
   if (format === "text") {
     return {
-      html: await sanitizeHtml(plainTextToHtml(text)),
+      html: await sanitizeHtml(plainTextToHtml(text), deps),
       source: "url-text",
       error: "",
     };
   }
-  return { html: await markdownToHtml(text), source: "url-markdown", error: "" };
+  return { html: await markdownToHtml(text, deps), source: "url-markdown", error: "" };
 }
 
 export async function loadRichDocHtml(
@@ -488,25 +548,25 @@ export async function loadRichDocHtml(
       } else if (format !== "docx") {
         if (format === "html" || looksLikeHtmlDocument(inline)) {
           return {
-            html: await sanitizeHtml(inline),
+            html: await sanitizeHtml(inline, deps),
             source: "inline",
             error: "",
           };
         }
         if (format === "text") {
           return {
-            html: await sanitizeHtml(plainTextToHtml(inline)),
+            html: await sanitizeHtml(plainTextToHtml(inline), deps),
             source: "inline",
             error: "",
           };
         }
-        return { html: await markdownToHtml(inline), source: "inline", error: "" };
+        return { html: await markdownToHtml(inline, deps), source: "inline", error: "" };
       }
     }
 
     if (url && format === "docx") {
       const arrayBuffer = await fetchDocx(url, item, onSourceAccessError);
-      const html = await docxToHtml(arrayBuffer);
+      const html = await docxToHtml(arrayBuffer, deps);
       if (!html.replace(/<[^>]+>/g, "").trim() && itemLooksLikeExistingRichDoc(item)) {
         return emptyExistingRichDocResult(item);
       }
@@ -521,7 +581,11 @@ export async function loadRichDocHtml(
     }
     if (url && (format === "json" || looksLikeTextRichDoc(item, ext, media))) {
       const text = await fetchText(url);
-      const loaded = await htmlOrTextFromFetched(text, format === "json" ? "json" : format);
+      const loaded = await htmlOrTextFromFetched(
+        text,
+        format === "json" ? "json" : format,
+        deps,
+      );
       if (loaded.error) return loaded;
       if (
         itemLooksLikeExistingRichDoc(item) &&
@@ -587,12 +651,15 @@ export function shouldMarkRichDocSourceReadyFromCollab(input: {
 }
 
 /** Import a local Word/HTML/Markdown/text file into the active editor. */
-export async function loadRichDocFile(file: File): Promise<RichDocLoadResult> {
+export async function loadRichDocFile(
+  file: File,
+  deps: RichDocLoadDeps = {},
+): Promise<RichDocLoadResult> {
   try {
     const ext = file.name.toLowerCase().split(".").pop() || "";
     if (ext === "docx") {
       return {
-        html: await docxToHtml(await validateOfficePackageBlob(file, "docx")),
+        html: await docxToHtml(await validateOfficePackageBlob(file, "docx"), deps),
         source: "import-docx",
         error: "",
       };
@@ -614,21 +681,21 @@ export async function loadRichDocFile(file: File): Promise<RichDocLoadResult> {
     }
     if (ext === "md" || ext === "markdown") {
       return {
-        html: await markdownToHtml(text),
+        html: await markdownToHtml(text, deps),
         source: "import-markdown",
         error: "",
       };
     }
     if (ext === "txt") {
       return {
-        html: await sanitizeHtml(plainTextToHtml(text)),
+        html: await sanitizeHtml(plainTextToHtml(text), deps),
         source: "import-text",
         error: "",
       };
     }
     if (["html", "htm", "doc"].includes(ext)) {
       return {
-        html: await sanitizeHtml(text),
+        html: await sanitizeHtml(text, deps),
         source: ext === "doc" ? "import-doc" : "import-html",
         error: "",
       };

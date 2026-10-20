@@ -62,7 +62,7 @@ import {
   notifyOfficeAccessDenied,
   officePackageKindForItem,
 } from "./office-file";
-import { officeExtensionForItem } from "../workbench-routes";
+import { officeExtensionForItem } from "../workbench-route-formats";
 import {
   countText,
   fullHtmlDocument,

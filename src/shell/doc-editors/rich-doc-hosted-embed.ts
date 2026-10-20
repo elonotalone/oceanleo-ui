@@ -9,6 +9,12 @@ import { EDITOR_PROTOCOL, buildEditorEmbedUrl } from "../editor-protocol";
 import { hostedEditorOrigin } from "../hosted-editor-origins";
 import { isTrustedEmbedEditorBase } from "../editor-sandbox-origin";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor/index";
+import {
+  normalizeSelectionCommand,
+  type SelectionCommand,
+  type SelectionContext,
+  type SelectionControl,
+} from "../selection-context";
 
 /** 缺省家族（com）的文档 origin。运行时嵌 iframe 走 `richDocHostedEmbedBase()`。 */
 export const RICHDOC_HOSTED_EMBED_ORIGIN = "https://docs.oceanleo.app";
@@ -88,53 +94,258 @@ export function defaultHostedMode(): EditorMode {
   return DEFAULT_EDITOR_MODE;
 }
 
+/** Closed Umo adapter controls. Unknown ids never count as success. */
+export const RICHDOC_HOSTED_CONTROL_IDS: ReadonlySet<string> = new Set([
+  "bold",
+  "italic",
+  "heading",
+  "list",
+  "link",
+  "color",
+]);
+
+export const RICHDOC_HOSTED_HUMAN_ORIGINS: ReadonlySet<string> = new Set([
+  "user",
+  "human",
+  "l1",
+  "l2",
+]);
+
+export type RichDocHostedCommandOrigin = "user" | "agent";
+
+export interface RichDocHostedSelectionGate {
+  accept(command: SelectionCommand, context: SelectionContext | null): boolean;
+}
+
+export type RichDocHostedSelectionSendResult =
+  | { ok: true; applied: boolean; reviewed: boolean; message: string }
+  | { ok: false; message: string };
+
+const HOSTED_FALLBACK_CONTROLS: SelectionControl[] = [
+  {
+    id: "bold",
+    kind: "toggle",
+    label: "粗体",
+    icon: "bold",
+    semantic: "bold",
+    value: false,
+  },
+  {
+    id: "italic",
+    kind: "toggle",
+    label: "斜体",
+    icon: "italic",
+    semantic: "italic",
+    value: false,
+  },
+  {
+    id: "heading",
+    kind: "select",
+    label: "标题级别",
+    icon: "text",
+    value: "0",
+    options: [
+      { value: "0", label: "正文" },
+      { value: "1", label: "标题 1" },
+      { value: "2", label: "标题 2" },
+      { value: "3", label: "标题 3" },
+      { value: "4", label: "标题 4" },
+      { value: "5", label: "标题 5" },
+      { value: "6", label: "标题 6" },
+    ],
+  },
+  {
+    id: "list",
+    kind: "select",
+    label: "列表",
+    icon: "align-left",
+    options: [
+      { value: "bullet", label: "无序列表" },
+      { value: "ordered", label: "有序列表" },
+      { value: "task", label: "任务列表" },
+      { value: "none", label: "取消列表" },
+    ],
+  },
+  {
+    id: "link",
+    kind: "toggle",
+    label: "链接",
+    icon: "link",
+    value: false,
+  },
+  {
+    id: "color",
+    kind: "color",
+    label: "文字颜色",
+    icon: "color",
+    semantic: "color",
+  },
+];
+
+/** Host edit bar is the L1 path only on the artifact/normal page. */
+export function richDocHostedHostEditBarActive(input: {
+  mode: EditorMode | string;
+  ready: boolean;
+  hasSource: boolean;
+  readOnly: boolean;
+}): boolean {
+  return (
+    input.mode === "normal" &&
+    input.ready &&
+    input.hasSource &&
+    !input.readOnly
+  );
+}
+
+export function richDocHostedFallbackSelection(
+  revision?: number | string,
+): SelectionContext {
+  return {
+    version: 1,
+    kind: "paragraph",
+    id: "richdoc-caret",
+    label: "当前段落",
+    controls: HOSTED_FALLBACK_CONTROLS,
+    ...(revision !== undefined ? { revision } : {}),
+  };
+}
+
+export function hostedSelectionForToolbar(
+  selection: SelectionContext | null,
+  revision?: number | string,
+): SelectionContext {
+  const base = selection ?? richDocHostedFallbackSelection(revision);
+  return {
+    ...base,
+    controls: (base.controls || []).filter((control) =>
+      RICHDOC_HOSTED_CONTROL_IDS.has(control.id),
+    ),
+  };
+}
+
+export function coerceRichDocHostedSelectionCommand(
+  value: unknown,
+): SelectionCommand | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const nested = record.command;
+    const direct = normalizeSelectionCommand(record);
+    if (direct) return adaptHostedLinkCommand(direct);
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      const inner = normalizeSelectionCommand(nested);
+      return inner ? adaptHostedLinkCommand(inner) : null;
+    }
+    if (typeof nested === "string" && nested.trim()) {
+      try {
+        const parsed = JSON.parse(nested) as unknown;
+        const inner = normalizeSelectionCommand(parsed);
+        return inner ? adaptHostedLinkCommand(inner) : null;
+      } catch {
+        return null;
+      }
+    }
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      return coerceRichDocHostedSelectionCommand(JSON.parse(value) as unknown);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function adaptHostedLinkCommand(command: SelectionCommand): SelectionCommand {
+  if (command.controlId !== "link") return command;
+  if (command.value === "unset") return command;
+  if (command.value === false || command.value === "false") {
+    return { ...command, value: "unset" };
+  }
+  return command;
+}
+
 export function buildRichDocHostedSelectionCommand(
   instanceId: string,
-  command: Record<string, unknown>,
+  command: unknown,
+  origin: RichDocHostedCommandOrigin = "user",
 ): Record<string, unknown> {
   if (!instanceId || instanceId.length > 128) {
     throw new TypeError("richdoc hosted: instanceId 必须非空且 ≤128");
+  }
+  const normalized = coerceRichDocHostedSelectionCommand(command);
+  if (!normalized) {
+    throw new TypeError("richdoc hosted: selection-command 不合法");
   }
   return {
     protocol: EDITOR_PROTOCOL,
     type: "selection-command",
     instanceId,
-    command,
+    command: normalized,
+    ...(origin === "user" || RICHDOC_HOSTED_HUMAN_ORIGINS.has(origin)
+      ? { origin: "user" }
+      : {}),
   };
 }
 
-type RichDocHostedCommandSink = (command: Record<string, unknown>) => boolean;
-
-const hostedCommandSinks = new Map<string, RichDocHostedCommandSink>();
-
-export function bindRichDocHostedCommandSink(
-  instanceId: string,
-  sink: RichDocHostedCommandSink,
-): () => void {
-  if (!instanceId) return () => {};
-  hostedCommandSinks.set(instanceId, sink);
-  return () => {
-    if (hostedCommandSinks.get(instanceId) === sink) {
-      hostedCommandSinks.delete(instanceId);
-    }
+export function sendRichDocHostedSelectionCommand(input: {
+  command: unknown;
+  selection: SelectionContext | null;
+  ready: boolean;
+  readOnly: boolean;
+  origin: RichDocHostedCommandOrigin;
+  gate: RichDocHostedSelectionGate;
+  send: (message: Record<string, unknown>) => boolean;
+}): RichDocHostedSelectionSendResult {
+  const normalized = coerceRichDocHostedSelectionCommand(input.command);
+  if (!normalized) {
+    return { ok: false, message: "选区命令不合法。" };
+  }
+  if (!RICHDOC_HOSTED_CONTROL_IDS.has(normalized.controlId)) {
+    return { ok: false, message: "专业编辑没有这条指令。" };
+  }
+  if (normalized.controlId === "link" && normalized.value !== "unset") {
+    return { ok: false, message: "专业编辑没有这条指令。" };
+  }
+  if (!input.ready) {
+    return { ok: false, message: "专业编辑还没载入。" };
+  }
+  if (input.readOnly) {
+    return { ok: false, message: "文档还没载入或正在只读，不能改。" };
+  }
+  if (!input.gate.accept(normalized, input.selection)) {
+    return { ok: false, message: "选择已变化，请重新选择后再编辑。" };
+  }
+  const envelope: Record<string, unknown> = {
+    type: "selection-command",
+    command: normalized,
   };
-}
-
-export function dispatchRichDocHostedCommand(
-  instanceId: string,
-  command: Record<string, unknown>,
-): boolean {
-  return hostedCommandSinks.get(instanceId)?.(command) === true;
-}
-
-export function resetRichDocHostedCommandSinksForTests(): void {
-  hostedCommandSinks.clear();
+  if (input.origin === "user") envelope.origin = "user";
+  const sent = input.send(envelope);
+  if (!sent) {
+    return { ok: false, message: "专业编辑还没握手成功，命令没有送出。" };
+  }
+  if (input.origin === "user") {
+    return {
+      ok: true,
+      applied: true,
+      reviewed: false,
+      message: "已把这条选区命令交给专业编辑。",
+    };
+  }
+  return {
+    ok: true,
+    applied: false,
+    reviewed: true,
+    message: "已提交审阅，接受后才会改动文档",
+  };
 }
 
 export function buildRichDocHostedCommandSurface(input: {
   ready: boolean;
   readOnly: boolean;
   hasSource: boolean;
+  selection: SelectionContext | null;
+  gate: RichDocHostedSelectionGate;
   send: (message: Record<string, unknown>) => boolean;
 }): {
   editorId: "richdoc";
@@ -167,7 +378,7 @@ export function buildRichDocHostedCommandSurface(input: {
               {
                 id: "richdoc.selection-command",
                 label: "转发选区命令",
-                summary: "把编辑栏的一条选区命令交给 Umo。",
+                summary: "把一条已校验的选区命令交给 Umo；代理来源会先审阅。",
                 mutates: true,
                 params: [
                   {
@@ -188,6 +399,12 @@ export function buildRichDocHostedCommandSurface(input: {
         readOnly: input.readOnly,
         hasSource: input.hasSource,
         kernel: "umo-hosted",
+        hostEditBar: richDocHostedHostEditBarActive({
+          mode: "normal",
+          ready: input.ready,
+          hasSource: input.hasSource,
+          readOnly: input.readOnly,
+        }),
       };
     },
     run(id, params) {
@@ -204,26 +421,16 @@ export function buildRichDocHostedCommandSurface(input: {
       if (id !== "richdoc.selection-command") {
         return { ok: false, message: "专业编辑没有这条指令。" };
       }
-      if (!canMutate) {
-        return { ok: false, message: "文档还没载入或正在只读，不能改。" };
-      }
-      let command: Record<string, unknown>;
-      const raw = params?.command;
-      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        command = raw as Record<string, unknown>;
-      } else if (typeof raw === "string" && raw.trim()) {
-        try {
-          command = JSON.parse(raw) as Record<string, unknown>;
-        } catch {
-          return { ok: false, message: "选区命令不是合法 JSON。" };
-        }
-      } else {
-        return { ok: false, message: "缺少选区命令。" };
-      }
-      const sent = input.send({ type: "selection-command", command });
-      return sent
-        ? { ok: true, message: "已把这条选区命令交给专业编辑。" }
-        : { ok: false, message: "专业编辑还没握手成功，命令没有送出。" };
+      const result = sendRichDocHostedSelectionCommand({
+        command: params,
+        selection: input.selection,
+        ready: input.ready,
+        readOnly: input.readOnly,
+        origin: "agent",
+        gate: input.gate,
+        send: input.send,
+      });
+      return { ok: result.ok, message: result.message };
     },
   };
 }

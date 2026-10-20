@@ -20,7 +20,11 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { buildRichDocInitEnvelope } from "../src/shell/doc-editors/rich-doc-hosted-embed.ts";
+import { editBarVisibleOnPage } from "../src/shell/plugin-chrome/plugin-pages.ts";
+import {
+  buildRichDocInitEnvelope,
+  richDocHostedHostEditBarActive,
+} from "../src/shell/doc-editors/rich-doc-hosted-embed.ts";
 
 test("UC-NONE · init 信封带上宿主当前页的 mode；缺省仍是普通", () => {
   const pro = buildRichDocInitEnvelope("inst-1", {
@@ -57,4 +61,34 @@ test("UC-NONE · RichDocHostedRoute.pushInit：init 在前，模式跟当前页�
     !/toolbar:\s*true/.test(body),
     "pushInit 不许无条件藏 Umo 工具栏",
   );
+});
+
+test("UC-NONE · 专业页藏宿主编辑栏，普通托管页才走 L1", () => {
+  assert.equal(editBarVisibleOnPage({ kind: "artifact" }), true);
+  assert.equal(editBarVisibleOnPage({ kind: "pro" }), false);
+  assert.equal(
+    richDocHostedHostEditBarActive({
+      mode: "normal",
+      ready: true,
+      hasSource: true,
+      readOnly: false,
+    }),
+    true,
+  );
+  assert.equal(
+    richDocHostedHostEditBarActive({
+      mode: "pro",
+      ready: true,
+      hasSource: true,
+      readOnly: false,
+    }),
+    false,
+  );
+  const src = readFileSync(
+    new URL("../src/shell/advanced-routes/RichDocHostedRoute.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(src, /RichDocHostedContextToolbar/);
+  assert.match(src, /selection-changed/);
+  assert.match(src, /origin:\s*["']user["']/);
 });

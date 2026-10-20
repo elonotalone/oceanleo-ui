@@ -93,6 +93,10 @@ const shellStubUrl = dataModule(`
 `);
 const routesStubUrl = dataModule(`
   export function editorToolLabel() { return "hosted"; }
+  export function officeExtensionForItem() { return ""; }
+`);
+const hostedToolbarStubUrl = dataModule(`
+  export function RichDocHostedContextToolbar() { return null; }
 `);
 const agentReviewStubUrl = dataModule(`
   export function submitRawReviewProposal() { return "ok"; }
@@ -259,6 +263,7 @@ test("文档专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-ori
       "../AdvancedWorkbenchShell": shellStubUrl,
       "../workbench-routes": routesStubUrl,
       "../agent-review": agentReviewStubUrl,
+      "../doc-editors/RichDocHostedContextToolbar": hostedToolbarStubUrl,
     },
     (mod) =>
       React.createElement(mod.RichDocHostedRoute, {

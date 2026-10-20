@@ -356,7 +356,13 @@ export async function loadRichDocHostedState(
       htmlToJson: deps.htmlToJson,
     });
     if (!loaded.ok) return loaded;
-    return { ok: true, ...loaded, readOnly: false };
+    return {
+      ok: true,
+      source: loaded.source,
+      converted: loaded.converted,
+      inspect: loaded.inspect,
+      readOnly: false,
+    };
   }
 
   const officeItem =

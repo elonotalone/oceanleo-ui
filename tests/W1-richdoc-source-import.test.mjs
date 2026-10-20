@@ -1,3 +1,4 @@
+import "./helpers/w1-jsdom-window.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -9,6 +10,7 @@ import {
   loadRichDocSource,
   parseRichDocNativeJson,
   richDocHasContent,
+  sanitizeRichDocHtml,
   selectRichDocSourceUrl,
   shouldMarkRichDocSourceReadyFromCollab,
 } from "../src/shell/doc-editors/rich-doc-model.ts";
@@ -20,12 +22,6 @@ import {
   loadRichDocHostedState,
 } from "../src/shell/advanced-routes/richdoc-pro-source.ts";
 import { sourceHintForItem } from "../src/shell/office-editor/office-source-cache.ts";
-import {
-  bindRichDocHostedCommandSink,
-  buildRichDocHostedSelectionCommand,
-  dispatchRichDocHostedCommand,
-  resetRichDocHostedCommandSinksForTests,
-} from "../src/shell/doc-editors/rich-doc-hosted-embed.ts";
 
 const ARTIFACT_ID = "21c1e4d9-0818-4bbe-ae33-b4d01a5beafd";
 const REVISION_ID = "568afa53-b506-4492-9b07-bb2ac3729883";
@@ -264,28 +260,48 @@ test("W1 empty collab room cannot mark a failed document ready", () => {
   );
 });
 
-test("W1 Umo bridge forwards selection-command and does not invent a new protocol", () => {
-  resetRichDocHostedCommandSinksForTests();
-  const sent = [];
-  const unbind = bindRichDocHostedCommandSink("rd-w1", (command) => {
-    sent.push(command);
-    return true;
-  });
-  const envelope = buildRichDocHostedSelectionCommand("rd-w1", {
-    requestId: "req-1",
-    selectionId: "sel-1",
-    controlId: "bold",
-  });
-  assert.equal(envelope.type, "selection-command");
-  assert.equal(envelope.protocol, "oceanleo.editor.v1");
-  assert.equal(
-    dispatchRichDocHostedCommand("rd-w1", envelope.command),
-    true,
+test("W1 sanitizer strips script XSS and never returns raw HTML when unavailable", async () => {
+  const dirty = '<p>正文</p><script>alert(1)</script><img src=x onerror="alert(1)">';
+  const cleaned = await sanitizeRichDocHtml(dirty);
+  assert.match(cleaned, /正文/);
+  assert.doesNotMatch(cleaned, /<script/i);
+  assert.doesNotMatch(cleaned, /onerror/i);
+
+  await assert.rejects(
+    () => sanitizeRichDocHtml(dirty, { isSupported: false, sanitize: (html) => html }),
+    /安全过滤器暂时不可用/,
   );
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].controlId, "bold");
-  unbind();
-  resetRichDocHostedCommandSinksForTests();
+  await assert.rejects(
+    () => sanitizeRichDocHtml(dirty, { sanitize: () => ({ not: "string" }) }),
+    /安全过滤器暂时不可用/,
+  );
+  await assert.rejects(
+    () => sanitizeRichDocHtml(dirty, {}),
+    /安全过滤器暂时不可用/,
+  );
+
+  const item = screenshotItem({
+    previewUrl: "https://cdn.example/dirty.html",
+    meta: { ...screenshotItem().meta, source_format: "html", filename: "dirty.html" },
+    artifact: {
+      ...screenshotItem().artifact,
+      sourceFormat: "html",
+      renditions: {
+        preview: {
+          url: "https://cdn.example/dirty.html",
+          mediaType: "text/html",
+          purpose: "preview",
+        },
+      },
+    },
+  });
+  const failed = await loadRichDocHtml(item, undefined, {
+    fetchText: async () => dirty,
+    sanitizer: { isSupported: false, sanitize: (html) => html },
+  });
+  assert.equal(failed.source, "empty");
+  assert.match(failed.error, /安全过滤器暂时不可用/);
+  assert.doesNotMatch(failed.html, /alert\(1\)/);
 });
 
 test("W1 deck handoff format still wins over document suffixes", () => {

@@ -25,7 +25,7 @@ export function sourceHintForItem(item: LibraryItem): { url: string; revision: s
   const renditions = item.artifact?.renditions;
   const purpose = officeRenditionPurposes(item).find((name) => {
     const url = renditions?.[name]?.url;
-    return Boolean(url) && !isArtifactSourceTreeUrl(url);
+    return typeof url === "string" && url.length > 0 && !isArtifactSourceTreeUrl(url);
   });
   const hinted = (purpose && renditions?.[purpose]?.url) || item.url || "";
   const url = hinted && !isArtifactSourceTreeUrl(hinted) ? hinted : "";

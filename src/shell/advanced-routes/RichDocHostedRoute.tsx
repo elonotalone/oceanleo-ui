@@ -8,12 +8,17 @@ import { AdvancedHostedDraftChannel } from "../advanced-draft-hosted";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { submitRawReviewProposal } from "../agent-review";
 import { downloadText } from "../doc-editors/doc-io";
+import { RichDocHostedContextToolbar } from "../doc-editors/RichDocHostedContextToolbar";
 import {
-  bindRichDocHostedCommandSink,
   buildRichDocHostedCommandSurface,
   buildRichDocInitEnvelope,
+  hostedSelectionForToolbar,
   richDocHostedEmbedBase,
+  richDocHostedHostEditBarActive,
+  sendRichDocHostedSelectionCommand,
 } from "../doc-editors/rich-doc-hosted-embed";
+import type { SelectionCommand, SelectionContext } from "../selection-context";
+import { SelectionCommandGate } from "../selection-transactions";
 import {
   convertRichDocToUmo,
   type ConvertFailure,
@@ -171,6 +176,10 @@ export function RichDocHostedRoute({
   const [inspect, setInspect] = useState<InspectResult | null>(null);
   const [source, setSource] = useState<unknown>(null);
   const [readOnly, setReadOnly] = useState(true);
+  const [hostedSelection, setHostedSelection] = useState<SelectionContext | null>(
+    null,
+  );
+  const selectionGateRef = useRef(new SelectionCommandGate());
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
   // 过渡门的 ready 信号（plugin-ui U4）：Umo 的协议 ready 到达即首帧可见。
@@ -300,13 +309,32 @@ export function RichDocHostedRoute({
     [editorOrigin, frameLoaded, instanceId],
   );
 
-  useEffect(
-    () =>
-      bindRichDocHostedCommandSink(instanceId, (command) =>
-        sendToEditor({ type: "selection-command", command }),
-      ),
-    [instanceId, sendToEditor],
+  const toolbarSelection = useMemo(
+    () => hostedSelectionForToolbar(hostedSelection, editRevision),
+    [editRevision, hostedSelection],
   );
+
+  const onHostedSelectionCommand = useCallback(
+    (command: SelectionCommand) => {
+      const result = sendRichDocHostedSelectionCommand({
+        command,
+        selection: toolbarSelection,
+        ready,
+        readOnly,
+        origin: "user",
+        gate: selectionGateRef.current,
+        send: sendToEditor,
+      });
+      if (!result.ok) setStatus(result.message);
+    },
+    [readOnly, ready, sendToEditor, toolbarSelection],
+  );
+
+  useEffect(() => {
+    selectionGateRef.current.clear();
+    setHostedSelection(null);
+  }, [item.key, item.revisionId]);
+
   usePluginCommandSurface(
     useMemo(
       () =>
@@ -314,9 +342,11 @@ export function RichDocHostedRoute({
           ready,
           readOnly,
           hasSource: source != null,
+          selection: toolbarSelection,
+          gate: selectionGateRef.current,
           send: sendToEditor,
         }),
-      [ready, readOnly, sendToEditor, source],
+      [ready, readOnly, sendToEditor, source, toolbarSelection],
     ),
   );
 
@@ -357,6 +387,24 @@ export function RichDocHostedRoute({
         setFrameLoaded(true);
         setReady(true);
         pushInit();
+        return;
+      }
+      if (message.type === "selection-changed") {
+        const selection = message.selection ?? null;
+        for (const cancel of selectionGateRef.current.reconcile(selection)) {
+          sendToEditor({
+            type: "selection-command",
+            command: cancel,
+            origin: "user",
+          });
+        }
+        setHostedSelection(selection);
+        return;
+      }
+      if (message.type === "selection-result") {
+        if (!message.ok && typeof message.message === "string" && message.message) {
+          setStatus(message.message);
+        }
         return;
       }
       if (message.type === "dirty") {
@@ -616,6 +664,18 @@ export function RichDocHostedRoute({
           setMode: applyMode,
         },
         pages: { proLabel: "Umo" },
+        contextToolbar: richDocHostedHostEditBarActive({
+          mode,
+          ready,
+          hasSource: source != null,
+          readOnly,
+        }) ? (
+          <RichDocHostedContextToolbar
+            context={toolbarSelection}
+            onCommand={onHostedSelectionCommand}
+            accent={accent}
+          />
+        ) : null,
         actions: [
           ...(inspect?.kind === "richdoc" &&
           inspect.differences.length > 0 &&
