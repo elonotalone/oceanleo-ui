@@ -78,9 +78,9 @@ async function sanitizeHtml(html: string): Promise<string> {
     candidate.isSupported !== false
   ) {
     const cleaned = candidate.sanitize(html);
-    return typeof cleaned === "string" ? cleaned : html;
+    if (typeof cleaned === "string") return cleaned;
   }
-  return html;
+  throw new Error("文档安全过滤器暂时不可用，请重试。");
 }
 
 async function docxToHtml(arrayBuffer: ArrayBuffer): Promise<string> {
