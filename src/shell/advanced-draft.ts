@@ -86,6 +86,17 @@ export async function uploadAdvancedDraft(input: {
   const upload = dependencies?.upload ?? (await import("../lib/database")).uploadFile;
   const uploaded = await upload(file, { siteId: input.siteId, title: `${input.title}草稿`, registerAsset: false,
     idempotencyKey: `advanced-draft:${digest}` });
+  const receiptDigest = String(
+    uploaded.data?.file?.meta?.content_digest ||
+      uploaded.data?.file?.meta?.sha256 ||
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/^sha256:/, "");
+  if (receiptDigest && receiptDigest !== digest) {
+    throw new Error("草稿上传的校验和与本地文件不一致");
+  }
   const pointer = normalizeAdvancedDraftPointer({ ...input.identity, schema: input.schema, editRevision: input.revision,
     savedAt, url: uploaded.data?.file?.url });
   if (!uploaded.ok || !pointer) throw new Error(uploaded.error || "存储服务没有确认草稿地址");

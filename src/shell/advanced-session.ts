@@ -451,6 +451,53 @@ export async function commitAdvancedSavedRevision(
   );
 }
 
+export async function saveSnapshotWithConflictRetry<
+  T extends {
+    ok: boolean;
+    session?: { id: string; snapshot?: unknown; schema_version?: number };
+    conflict?: {
+      latest?: { id: string; snapshot?: unknown; schema_version?: number };
+    };
+    stale?: boolean;
+    unavailable?: boolean;
+    error?: string;
+  },
+>(input: {
+  saveSnapshot: (
+    snapshot: unknown,
+    schemaVersion: number,
+    options: {
+      expectedSessionId?: string;
+      title?: string;
+      mergeFromLatest?: (latestSnapshot: unknown) => unknown;
+    },
+  ) => Promise<T>;
+  snapshot: unknown;
+  schemaVersion: number;
+  expectedSessionId?: string;
+  title?: string;
+  mergeFromLatest: (latestSnapshot: unknown) => unknown;
+}): Promise<T> {
+  const first = await input.saveSnapshot(input.snapshot, input.schemaVersion, {
+    expectedSessionId: input.expectedSessionId,
+    title: input.title,
+    mergeFromLatest: input.mergeFromLatest,
+  });
+  if (first.ok) return first;
+  if (!(first.conflict?.latest || first.stale)) return first;
+  const latest = first.session || first.conflict?.latest;
+  if (!latest) return first;
+  return input.saveSnapshot(
+    input.mergeFromLatest(latest.snapshot),
+    latest.schema_version || input.schemaVersion,
+    {
+      expectedSessionId: latest.id,
+      title: input.title,
+      mergeFromLatest: input.mergeFromLatest,
+    },
+  );
+}
+
 interface StoredDurableArtifact {
   artifactId: string;
   revisionId: string;

@@ -39,6 +39,7 @@ import {
   advancedSessionAppId,
   advancedSessionSnapshot,
   advancedDraftFromSnapshot,
+  saveSnapshotWithConflictRetry,
   withInlineEditorHistoryEntry,
   withInlineEditorHistoryHead,
 } from "./advanced-session";
@@ -631,21 +632,57 @@ function AdvancedContentWorkbenchRuntime(
         if (editorHost.embedded) {
           const active = previousSession || await workspace.ensureActive({ title: savedItem.title, intent: "output" });
           if (!active) return false;
-          const mergedSnapshot = withInlineEditorHistoryHead(
-            active.snapshot, savedItem, route.type, workspace.taskId, draft,
-          );
-          const stored = await workspace.saveSnapshot(mergedSnapshot, active.schema_version || 1,
-            { expectedSessionId: active.id, title: active.title || savedItem.title });
-          if (!stored.ok) { reportSaveFailure("record-saved-item", true); return false; }
+          const merge = (latest: unknown) =>
+            withInlineEditorHistoryHead(
+              latest, savedItem, route.type, workspace.taskId, draft,
+            );
+          const stored = await saveSnapshotWithConflictRetry({
+            saveSnapshot: (snapshot, schemaVersion, options) =>
+              workspace.saveSnapshot(snapshot, schemaVersion, options),
+            snapshot: merge(active.snapshot),
+            schemaVersion: active.schema_version || 1,
+            expectedSessionId: active.id,
+            title: active.title || savedItem.title,
+            mergeFromLatest: merge,
+          });
+          if (!stored.ok) {
+            const retryable = Boolean(stored.unavailable);
+            reportSaveFailure("record-saved-item", retryable);
+            if (!retryable) {
+              const failure = new Error(stored.error || "session snapshot failed");
+              Object.assign(failure, { retryable: false, code: "session-record-failed" });
+              throw failure;
+            }
+            return false;
+          }
           draftQueueRef.current.accept(stored.session);
         } else {
-          const snapshot = advancedSessionSnapshot(savedItem, route.type, workspace.taskId, draft);
+          const merge = (_latest: unknown) => ({
+            ...advancedSessionSnapshot(savedItem, route.type, workspace.taskId, draft),
+          });
+          const snapshot = merge(undefined);
           const session = previousSession || await workspace.ensureActive({ title: savedItem.title, snapshot,
             schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION, intent: "output" });
           if (!session) return false;
-          const saved = await workspace.saveSnapshot(snapshot, ADVANCED_SESSION_SCHEMA_VERSION,
-            { expectedSessionId: session.id, title: savedItem.title });
-          if (!saved.ok) { reportSaveFailure("record-saved-item", true); return false; }
+          const saved = await saveSnapshotWithConflictRetry({
+            saveSnapshot: (nextSnapshot, schemaVersion, options) =>
+              workspace.saveSnapshot(nextSnapshot, schemaVersion, options),
+            snapshot,
+            schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION,
+            expectedSessionId: session.id,
+            title: savedItem.title,
+            mergeFromLatest: merge,
+          });
+          if (!saved.ok) {
+            const retryable = Boolean(saved.unavailable);
+            reportSaveFailure("record-saved-item", retryable);
+            if (!retryable) {
+              const failure = new Error(saved.error || "session snapshot failed");
+              Object.assign(failure, { retryable: false, code: "session-record-failed" });
+              throw failure;
+            }
+            return false;
+          }
           draftQueueRef.current.accept(saved.session);
           // Draft-enabled editors keep their live document while publishing;
           // replacing the input source here could discard a newer edit.

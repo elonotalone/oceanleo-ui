@@ -67,6 +67,63 @@ export const ARTIFACT_SAVE_STEP_LABEL: Readonly<
 
 const STEP_MESSAGE_PREFIX = "保存失败：「";
 
+/** SHA-256 of zero bytes. Saving this would overwrite existing content with a blank blob. */
+export const EMPTY_BLOB_SHA256 =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+const NON_RETRYABLE_SAVE_CODES = new Set([
+  "integrity-failed",
+  "revision-conflict",
+  "unauthorized",
+  "missing-source",
+  "unsupported-type",
+  "invalid-binding",
+  "license-restricted",
+]);
+
+export function normalizedBlobDigest(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^sha256:/, "");
+}
+
+export function digestIsEmptyBlob(value: unknown): boolean {
+  return normalizedBlobDigest(value) === EMPTY_BLOB_SHA256;
+}
+
+export function artifactSaveFailureRetryable(input: {
+  code?: string;
+  status?: number;
+  error?: string;
+  retryable?: boolean;
+}): boolean {
+  if (input.retryable === false) return false;
+  if (input.retryable === true) return true;
+  const code = String(input.code || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-");
+  if (NON_RETRYABLE_SAVE_CODES.has(code)) return false;
+  if (
+    input.status === 401 ||
+    input.status === 403 ||
+    input.status === 409 ||
+    input.status === 422
+  ) {
+    return false;
+  }
+  const error = String(input.error || "");
+  if (
+    /integrity-failed|保存被拒绝|revision-conflict|只读导入|类型和编辑器对不上|完整性校验|空白内容覆盖/i.test(
+      error,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** 已经带过步骤的文案不再二次包裹，避免「保存失败：「X」…保存失败：「Y」…」。 */
 export function isArtifactSaveStepMessage(value: unknown): boolean {
   return String(value ?? "").trimStart().startsWith(STEP_MESSAGE_PREFIX);
@@ -79,6 +136,8 @@ export function isArtifactSaveStepMessage(value: unknown): boolean {
 export function revisionPublishLocalRefusal(input: {
   sourceUrl?: string;
   renditionUrls?: readonly (string | undefined | null)[];
+  sourceDigest?: string;
+  renditionDigests?: readonly (string | undefined | null)[];
   artifactType?: string;
   itemArtifactType?: string;
   editability?: string;
@@ -110,6 +169,18 @@ export function revisionPublishLocalRefusal(input: {
         ok: false,
         code: "transient-persistence-failed",
         error: refusal,
+      };
+    }
+  }
+  const digests = [input.sourceDigest, ...(input.renditionDigests || [])];
+  for (const digest of digests) {
+    if (!digest) continue;
+    if (digestIsEmptyBlob(digest)) {
+      return {
+        ok: false,
+        code: "integrity-failed",
+        error:
+          "保存被拒绝：不能把空白内容覆盖到已有素材上。请确认文档已载入后再保存。",
       };
     }
   }

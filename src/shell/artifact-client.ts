@@ -29,7 +29,7 @@ import {
   type ArtifactType,
   type TransientGenerationResult,
 } from "./artifact-contract";
-import { publicWireUrlRefusal } from "./editor-working-head";
+import { revisionPublishLocalRefusal } from "./doc-editors/artifact-save-contract";
 import { isHumanReadableMessage } from "./human-error-message";
 import {
   artifactProjectionToLibraryItem,
@@ -2895,16 +2895,18 @@ export async function createArtifactRevision(
   artifactId: string,
   commit: ArtifactRevisionCommit,
 ): Promise<ArtifactApiResult<LibraryItem>> {
-  const urlRefusal =
-    publicWireUrlRefusal(commit.source.url) ||
-    commit.renditions
-      .map((rendition) => publicWireUrlRefusal(rendition.url))
-      .find(Boolean);
-  if (urlRefusal) {
+  const localRefusal = revisionPublishLocalRefusal({
+    sourceUrl: commit.source.url,
+    renditionUrls: commit.renditions.map((rendition) => rendition.url),
+    sourceDigest: commit.source.digest,
+    renditionDigests: commit.renditions.map((rendition) => rendition.digest),
+    artifactType: commit.artifactType,
+  });
+  if (!localRefusal.ok) {
     return {
       ok: false,
-      error: urlRefusal,
-      code: "transient-persistence-failed",
+      error: localRefusal.error,
+      code: localRefusal.code as ArtifactApiErrorCode,
       status: 422,
       retryable: false,
     };

@@ -5,7 +5,65 @@ export type AdvancedEditRevision = string | number;
 
 export type AdvancedPersistenceResult<Item = unknown> =
   | { ok: true; item?: Item }
-  | { ok: false; error?: string };
+  | { ok: false; error?: string; retryable?: boolean; code?: string };
+
+const NON_RETRYABLE_PERSISTENCE_CODES = new Set([
+  "integrity-failed",
+  "revision-conflict",
+  "unauthorized",
+  "missing-source",
+  "unsupported-type",
+  "invalid-binding",
+  "license-restricted",
+  "denied",
+  "session-record-failed",
+]);
+
+/**
+ * Invalid payloads and permission/CAS identity failures must not be masked by
+ * the autosave retry loop. Transient network/session-unavailable failures stay
+ * retryable. Drafts remain until a successful acknowledge.
+ */
+export function persistenceFailureRetryable(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const tagged = error as {
+      retryable?: boolean;
+      code?: string;
+    };
+    if (tagged.retryable === false) return false;
+    if (tagged.retryable === true) return true;
+    const code = String(tagged.code || "")
+      .trim()
+      .toLowerCase()
+      .replaceAll("_", "-");
+    if (NON_RETRYABLE_PERSISTENCE_CODES.has(code)) return false;
+  }
+  const message = errorMessage(error);
+  if (
+    /integrity-failed|保存被拒绝|revision-conflict|只读导入|类型和编辑器对不上|完整性校验|校验和与(?:声明|本地)|空白内容覆盖/i.test(
+      message,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function taggedPersistenceError(
+  error: unknown,
+  fallback: string,
+  extra?: { retryable?: boolean; code?: string },
+): Error {
+  const failure =
+    error instanceof Error
+      ? error
+      : new Error(typeof error === "string" && error ? error : fallback);
+  if (extra?.retryable !== undefined) {
+    Object.assign(failure, { retryable: extra.retryable });
+  }
+  if (extra?.code) Object.assign(failure, { code: extra.code });
+  return failure;
+}
 
 export interface AdvancedPersistenceSnapshot {
   state: AdvancedPersistenceState;
@@ -266,7 +324,14 @@ export class AdvancedPersistenceController<Item = unknown> {
         } else {
           result = await this.flushRevision(targetRevision);
           if (!result.ok) {
-            throw new Error(result.error || "editor revision save failed");
+            throw taggedPersistenceError(
+              result.error || "editor revision save failed",
+              "editor revision save failed",
+              {
+                retryable: result.retryable,
+                code: result.code,
+              },
+            );
           }
         }
 
@@ -277,7 +342,13 @@ export class AdvancedPersistenceController<Item = unknown> {
             result.item,
             targetRevision,
           );
-          if (!recorded) throw new Error("session snapshot failed");
+          if (!recorded) {
+            throw taggedPersistenceError(
+              "session snapshot failed",
+              "session snapshot failed",
+              { retryable: true, code: "session-cas" },
+            );
+          }
         }
 
         this.pendingItem = undefined;
@@ -294,7 +365,8 @@ export class AdvancedPersistenceController<Item = unknown> {
         // alive and serialize the newest revision immediately.
       } catch (error) {
         const message = errorMessage(error);
-        if (this.retryCount < this.maxRetries) {
+        const retryable = persistenceFailureRetryable(error);
+        if (retryable && this.retryCount < this.maxRetries) {
           const delay =
             this.retryDelays[this.retryCount] ??
             this.retryDelays[this.retryDelays.length - 1] ??
@@ -305,7 +377,15 @@ export class AdvancedPersistenceController<Item = unknown> {
         } else {
           this.setState("error");
         }
-        return { ok: false, error: message };
+        return {
+          ok: false,
+          error: message,
+          retryable,
+          code:
+            error && typeof error === "object" && "code" in error
+              ? String((error as { code?: string }).code || "") || undefined
+              : undefined,
+        };
       }
     }
     return { ok: false, error: "persistence disposed" };

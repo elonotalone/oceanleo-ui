@@ -1,9 +1,10 @@
-import type {
-  AdvancedEditRevision as Revision,
-  AdvancedPersistenceControllerOptions as Options,
-  AdvancedPersistenceResult as Result,
-  AdvancedPersistenceSnapshot,
-  AdvancedPersistenceState,
+import {
+  persistenceFailureRetryable,
+  type AdvancedEditRevision as Revision,
+  type AdvancedPersistenceControllerOptions as Options,
+  type AdvancedPersistenceResult as Result,
+  type AdvancedPersistenceSnapshot,
+  type AdvancedPersistenceState,
 } from "./advanced-persistence-controller";
 
 const same = (a: Revision | undefined, b: Revision | undefined) =>
@@ -113,9 +114,12 @@ export class AdvancedDraftController<Item> {
           this.setState("saved");
           if (!same(this.version, revision)) this.scheduleVersion(this.options.versionIdleMs ?? 20_000);
         }
-      } catch {
+      } catch (error) {
         if (this.disposed || !same(this.latest, revision) || same(this.latest, this.acknowledged)) return;
-        if (this.draftRetries < (this.options.maxRetries ?? 3)) {
+        if (
+          persistenceFailureRetryable(error) &&
+          this.draftRetries < (this.options.maxRetries ?? 3)
+        ) {
           this.setState("saving");
           this.scheduleDraft(this.retryDelay(this.draftRetries++));
         } else this.setState("error");
@@ -152,10 +156,21 @@ export class AdvancedDraftController<Item> {
       const record = this.pending?.record ?? this.options.recordSavedItem;
       try {
         result = this.pending ? { ok: true, item: this.pending.item } : await this.options.flushRevision(revision);
-        if (!result.ok) throw new Error(result.error || "editor revision save failed");
+        if (!result.ok) {
+          const failure = new Error(result.error || "editor revision save failed");
+          Object.assign(failure, {
+            retryable: result.retryable,
+            code: result.code,
+          });
+          throw failure;
+        }
         if (result.item !== undefined) {
           this.pending = { item: result.item, revision, record };
-          if (!await record(result.item, revision)) throw new Error("session snapshot failed");
+          if (!await record(result.item, revision)) {
+            const failure = new Error("session snapshot failed");
+            Object.assign(failure, { retryable: true, code: "session-cas" });
+            throw failure;
+          }
         }
         this.pending = undefined;
         this.version = revision;
@@ -173,11 +188,17 @@ export class AdvancedDraftController<Item> {
         if (!this.forceVersion) return result;
       } catch (error) {
         if (this.disposed) return { ok: false, error: "persistence disposed" };
-        const retrying = this.versionRetries < (this.options.maxRetries ?? 3);
+        const retryable = persistenceFailureRetryable(error);
+        const retrying =
+          retryable && this.versionRetries < (this.options.maxRetries ?? 3);
         if (retrying) this.scheduleVersion(this.retryDelay(this.versionRetries++));
         if (!same(this.latest, this.acknowledged)) this.setState(retrying ? "saving" : "error");
         this.forceVersion = false;
-        return { ok: false, error: error instanceof Error ? error.message : "advanced persistence failed" };
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : "advanced persistence failed",
+          retryable,
+        };
       }
     }
     return { ok: false, error: "persistence disposed" };
