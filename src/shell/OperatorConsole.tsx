@@ -456,10 +456,10 @@ export function OperatorConsole({
         onSelect={changeCapability}
         accent={accent}
       />
-      <div className="min-h-0 flex-1">{active?.ops}</div>
+      <div className="flex min-h-0 flex-1 flex-col">{active?.ops}</div>
     </div>
   ) : (
-    <div className="h-full">{active?.ops}</div>
+    <div className="flex h-full min-h-0 flex-col">{active?.ops}</div>
   );
 
   // 宗旨 v11（2026-06-28）：进入某功能区时整块「从上到下」阶梯淡入。

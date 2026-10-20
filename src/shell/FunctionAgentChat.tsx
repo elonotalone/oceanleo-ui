@@ -54,6 +54,11 @@ import { latestTurn, userTurnCount } from "./agent-thread/turn";
 import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
 import { LeoComposer } from "./LeoComposer";
 import {
+  AGENT_COMPOSER_DOCK_CLASS,
+  AGENT_CONVERSATION_COLUMN_CLASS,
+  AGENT_CONVERSATION_SCROLL_CLASS,
+} from "./agent-conversation-layout";
+import {
   useLeftPaneSlot,
   useRegisterConsoleAgentFocus,
 } from "./SplitWorkspace";
@@ -1637,7 +1642,7 @@ export function FunctionAgentChat({
   if (tab === "ops") {
     return (
       <FnAgentBridgeCtx.Provider value={bridge}>
-        <div className="flex h-full flex-col" data-fn-agent-tab="ops">
+        <div className="flex h-full min-h-0 flex-col" data-fn-agent-tab="ops">
           {/* 不在 SplitWorkspace 内（无左栏标题插槽）时，栏体内回退放开关。 */}
           {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
           {/* 操作台形态也要能看到「保存工作流」的提示/报错（如「请先填写」）。 */}
@@ -1675,9 +1680,17 @@ export function FunctionAgentChat({
   // 排版对齐 agent.oceanleo.com 的 AgentChat（操作员 2026-07-01）：字体 15px、对话
   // 与输入框 max-w-2xl 居中、气泡不铺满整栏，读感与主 agent 站一致（不再是 13px + 拉满）。
   return (
-    <div className="flex h-full flex-col" data-fn-agent-tab="agent">
+    <div
+      className={AGENT_CONVERSATION_COLUMN_CLASS}
+      data-fn-agent-tab="agent"
+      data-agent-conversation=""
+    >
       {!slot && toggle && <div className="mb-3 shrink-0 self-start">{toggle}</div>}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
+      <div
+        ref={scrollRef}
+        data-agent-conversation-scroll=""
+        className={`${AGENT_CONVERSATION_SCROLL_CLASS} px-2 py-1`}
+      >
         <div className="mx-auto w-full max-w-2xl space-y-3">
           {appLabel && (
             <div className="flex shrink-0 items-center gap-1.5 text-[12px] text-stone-400">
@@ -1793,7 +1806,10 @@ export function FunctionAgentChat({
           {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
         </div>
       </div>
-      <div className="shrink-0 pt-3">
+      <div
+        data-agent-composer-dock=""
+        className={`${AGENT_COMPOSER_DOCK_CLASS} pt-3`}
+      >
         <div
           ref={composerWrapRef}
           className="mx-auto w-full max-w-2xl space-y-2"

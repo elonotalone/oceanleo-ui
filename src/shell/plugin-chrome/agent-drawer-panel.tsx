@@ -12,6 +12,7 @@
 // （只为取字面量）。一旦它 import `PluginAgentPanel`，edit bar 的模块图就会被
 // 拖进整棵 `FunctionAgentChat`。`agent-drawer.ts:1-4` 的注释写的就是这条约束。
 
+import { AGENT_CONVERSATION_COLUMN_CLASS } from "../agent-conversation-layout";
 import { PLUGIN_AGENT_DRAWER_ID } from "./agent-drawer";
 import { PluginAgentPanel } from "./PluginAgentPanel";
 import type { PluginChromePanel } from "./types";
@@ -46,14 +47,16 @@ export function createPluginAgentDrawer({
     icon: "agent",
     width,
     content: (
-      <PluginAgentPanel
-        editorId={editorId}
-        siteId={siteId}
-        accent={accent}
-        label={translate(PLUGIN_AGENT_DRAWER_LABEL)}
-        taskId={taskId}
-        onTaskIdChange={onTaskIdChange}
-      />
+      <div className={AGENT_CONVERSATION_COLUMN_CLASS}>
+        <PluginAgentPanel
+          editorId={editorId}
+          siteId={siteId}
+          accent={accent}
+          label={translate(PLUGIN_AGENT_DRAWER_LABEL)}
+          taskId={taskId}
+          onTaskIdChange={onTaskIdChange}
+        />
+      </div>
     ),
   };
 }

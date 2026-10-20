@@ -18,6 +18,7 @@
 
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { AGENT_CONVERSATION_COLUMN_CLASS } from "../agent-conversation-layout";
 import { FunctionAgentChat } from "../FunctionAgentChat";
 import type { OpsSchema } from "../../lib/fn-agent";
 
@@ -52,7 +53,7 @@ export function PluginAgentPanel({
   return (
     <div
       data-plugin-agent-panel={editorId}
-      className="flex h-full min-h-0 flex-col"
+      className={AGENT_CONVERSATION_COLUMN_CLASS}
     >
       <FunctionAgentChat
         agentId={agentId}

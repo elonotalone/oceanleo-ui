@@ -34,6 +34,7 @@ import {
   type ReactNode,
 } from "react";
 import { IconLibrary } from "./icons";
+import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
 import { useUI } from "../i18n/ui/useUI";
 import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
 import { useWorkbenchOpenClaim } from "./workbench-open-store";
@@ -719,9 +720,12 @@ export function SplitWorkspace({
             {(effectiveLeftLabel != null) && (
               <PaneHeader label={effectiveLeftLabel} />
             )}
-            <div className={bodyClass}>
+            <div className={`${bodyClass} ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}>
               {soloMaxWidth ? (
-                <div className="mx-auto w-full" style={{ maxWidth: soloMaxWidth }}>
+                <div
+                  className={`mx-auto flex h-full min-h-0 w-full flex-col ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
+                  style={{ maxWidth: soloMaxWidth }}
+                >
                   {left}
                 </div>
               ) : (
@@ -782,13 +786,13 @@ export function SplitWorkspace({
       {detailLabel != null && <PaneHeader label={detailLabel} />}
       <div className={bodyClass}>
         {/* Keep every left-panel runtime mounted while another semantic layer is visible. */}
-        <div className={`${activeLeftPanel ? "hidden" : "flex"} h-full min-h-0 flex-col`}>
+        <div className={`${activeLeftPanel ? "hidden" : "flex"} h-full min-h-0 flex-col ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}>
           {left}
         </div>
-        <div className={`${activeDetail ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
+        <div className={`${activeDetail ? "flex" : "hidden"} h-full min-h-0 flex-col ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}>
           {activeDetail?.content}
         </div>
-        <div className={`${!activeDetail && activeLibraryPanel ? "flex" : "hidden"} h-full min-h-0 flex-col`}>
+        <div className={`${!activeDetail && activeLibraryPanel ? "flex" : "hidden"} h-full min-h-0 flex-col ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}>
           {activeLibraryPanel?.content}
         </div>
       </div>
@@ -870,7 +874,7 @@ export function SplitWorkspace({
       ref={wrapRef}
       data-workspace-split
       data-workspace-maximized={paneMaximized ? "library" : undefined}
-      className={`relative gap-0 bg-[var(--bg,#faf8f5)] p-1.5 ${className} md:flex`}
+      className={`relative flex min-h-0 flex-col gap-0 bg-[var(--bg,#faf8f5)] p-1.5 md:flex-row ${className}`}
       style={{ height: rootHeight, backgroundColor: "var(--bg,#faf8f5)" }}
     >
       {[appPane, divider, libraryPane]}

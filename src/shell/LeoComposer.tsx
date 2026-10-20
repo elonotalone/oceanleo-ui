@@ -457,7 +457,7 @@ export function LeoComposer({
       onDragLeave={dragEnabled ? onDragLeave : undefined}
       onDrop={dragEnabled ? onDrop : undefined}
       onPaste={dragEnabled ? onPaste : undefined}
-      className={`relative rounded-2xl border bg-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] focus-within:border-neutral-300 focus-within:shadow-md ${
+      className={`relative shrink-0 rounded-2xl border bg-white shadow-sm transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] focus-within:border-neutral-300 focus-within:shadow-md ${
  dragOver ? "border-indigo-400 ring-2 ring-indigo-200" : "border-neutral-200"
  } ${className}`}
     >
