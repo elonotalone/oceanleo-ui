@@ -68,7 +68,9 @@ import {
   fullHtmlDocument,
   htmlToMarkdown,
   loadRichDocFile,
-  loadRichDocHtml,
+  loadRichDocSource,
+  richDocHasContent,
+  shouldMarkRichDocSourceReadyFromCollab,
   RichDocTypography,
   type RichDocLoadResult,
   type RichDocSource,
@@ -145,16 +147,6 @@ export interface RichDocEditorState {
 /** 协同接入：房间由路由从 `useCollabRoom` 取来，传 null 就是单人编辑。 */
 export interface RichDocCollabInput {
   room: CollabRoom | null;
-}
-
-/** 外部新版本没有工程档时，按普通文档源读（docx / 文本）；读不出来返回 null。 */
-async function readRichDocRevisionFallback(
-  revision: LibraryItem,
-  onAccessError: () => void,
-): Promise<{ json?: JSONContent; html: string; item: LibraryItem } | null> {
-  const result = await loadRichDocHtml(revision, onAccessError);
-  if (result.error) return null;
-  return { json: result.json, html: result.html, item: revision };
 }
 
 /**
@@ -513,24 +505,32 @@ export function useRichDocEditor(
         "",
     );
     setLoaded(null);
-    const projectUrl = String(source.meta.editor_project_url || "").trim();
-    void (projectUrl
-      ? loadEditorProject<JSONContent>(projectUrl, RICHDOC_PROJECT_SCHEMA).then(
-          (json) => ({
-            html: "",
-            json,
-            source: "project" as const,
-            error: "",
-          }),
-        )
-      : loadRichDocHtml(source, notifySourceAccessError)
-    )
+    void loadRichDocSource(source, notifySourceAccessError, {
+      loadProject: String(source.meta.editor_project_url || "").trim()
+        ? (projectUrl) =>
+            loadEditorProject<JSONContent>(projectUrl, RICHDOC_PROJECT_SCHEMA)
+        : undefined,
+    })
       .then((result) => {
         if (cancelled) return;
         if (result.error) {
           setSourceFailed(true);
           setError(
             richDocSourceFailureMessage(new Error(result.error), translate),
+          );
+          setLoading(false);
+          return;
+        }
+        if (
+          !richDocHasContent(result.json) &&
+          !String(result.html || "").replace(/<[^>]+>/g, "").trim()
+        ) {
+          setSourceFailed(true);
+          setError(
+            richDocSourceFailureMessage(
+              new Error("读到的文档没有正文，编辑器已停下，没有改动被丢失。"),
+              translate,
+            ),
           );
           setLoading(false);
           return;
@@ -622,15 +622,25 @@ export function useRichDocEditor(
     finish();
   }, [collabHandles, collabPhase, collabRoom, editor, hydrateReview, loaded]);
 
-  // 非播种者自己的源读不出来也没关系：文档在房间里，别因此把人挡在外面。
+  // 房间里已经有正文时，自己的源读失败不能把协作者挡在外面。空房间不行。
   useEffect(() => {
-    if (!collabHandles || collabPhase !== "live" || sourceReadyRef.current) return;
+    if (!collabHandles || collabPhase !== "live") return;
+    const roomHasContent = Boolean(editor && richDocHasContent(editor.getJSON()));
+    if (
+      !shouldMarkRichDocSourceReadyFromCollab({
+        sourceReady: sourceReadyRef.current,
+        sourceFailed,
+        roomHasContent,
+      })
+    ) {
+      return;
+    }
     sourceReadyRef.current = true;
     setSourceReady(true);
     setSourceFailed(false);
     setError("");
     setLoading(false);
-  }, [collabHandles, collabPhase]);
+  }, [collabHandles, collabPhase, editor, sourceFailed]);
 
   // 别人（AI / 专业模式）存了新版本：只有保存者收到。读出来整篇换进房间，不再多存一份。
   useEffect(() => {
@@ -649,15 +659,21 @@ export function useRichDocEditor(
         const fetched = await getArtifactItem(artifactId, revisionId);
         if (!fetched.ok || !fetched.data) return null;
         const revision = fetched.data;
-        const projectUrl = String(revision.meta.editor_project_url || "").trim();
-        if (projectUrl) {
-          const json = await loadEditorProject<JSONContent>(
-            projectUrl,
-            RICHDOC_PROJECT_SCHEMA,
-          );
-          return { json, html: "", item: revision };
-        }
-        return readRichDocRevisionFallback(revision, notifySourceAccessError);
+        const loaded = await loadRichDocSource(
+          revision,
+          notifySourceAccessError,
+          {
+            loadProject: String(revision.meta.editor_project_url || "").trim()
+              ? (projectUrl) =>
+                  loadEditorProject<JSONContent>(
+                    projectUrl,
+                    RICHDOC_PROJECT_SCHEMA,
+                  )
+              : undefined,
+          },
+        );
+        if (loaded.error) return null;
+        return { json: loaded.json, html: loaded.html, item: revision };
       },
       apply: (content) => {
         editor.commands.setContent(content.json || content.html, {

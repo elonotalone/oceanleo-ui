@@ -9,12 +9,13 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { submitRawReviewProposal } from "../agent-review";
 import { downloadText } from "../doc-editors/doc-io";
 import {
+  bindRichDocHostedCommandSink,
+  buildRichDocHostedCommandSurface,
   buildRichDocInitEnvelope,
   richDocHostedEmbedBase,
 } from "../doc-editors/rich-doc-hosted-embed";
 import {
   convertRichDocToUmo,
-  inspectRichDocDocument,
   type ConvertFailure,
   type InspectResult,
   type UmoDocument,
@@ -56,11 +57,11 @@ import {
 } from "./editor-handoff";
 import {
   collectRichDocText,
-  handoffLooksLikeDocx,
   hostedStateFromResolvedJson,
+  loadRichDocHostedState,
   persistUmoPayload,
-  umoSourceFromDocxItem,
 } from "./richdoc-pro-source";
+import { usePluginCommandSurface } from "../plugin-command";
 
 function hostedHandoffLoadKey(
   status: string,
@@ -216,7 +217,7 @@ export function RichDocHostedRoute({
     const applyLoaded = (next: {
       source: unknown;
       converted: ReturnType<typeof hostedStateFromResolvedJson>["converted"];
-      inspect: ReturnType<typeof inspectRichDocDocument>;
+      inspect: InspectResult;
       readOnly: boolean;
     }) => {
       setSource(next.source);
@@ -226,33 +227,25 @@ export function RichDocHostedRoute({
     };
     void (async () => {
       if (handoffStatus === "loading") return;
-      if (handoff && handoff.kind === "inline") {
-        applyLoaded(hostedStateFromResolvedJson(handoff.json));
+      const openBlank =
+        Boolean(hostedCtx.platform && hostedCtx.platform !== "web") &&
+        !item.artifactId &&
+        (!handoff || handoff.kind === "empty");
+      if (openBlank) {
+        applyLoaded(
+          hostedStateFromResolvedJson({
+            format: UMO_DOC_FORMAT,
+            title: item.title || "文档",
+            content: { type: "doc", content: [{ type: "paragraph" }] },
+          }),
+        );
+        setStatus("");
         return;
       }
-      const officeItem =
-        handoff?.kind === "url"
-          ? {
-              ...item,
-              url: handoff.url,
-              meta: { ...item.meta, editor_source_url: handoff.url },
-            }
-          : item;
-      if (
-        handoffLooksLikeDocx(handoff, item) ||
-        (handoff?.kind === "url" && handoff.format !== "json")
-      ) {
-        const loaded = await umoSourceFromDocxItem(officeItem);
-        if (cancelled) return;
-        if (loaded.ok) {
-          applyLoaded({
-            source: loaded.source,
-            converted: loaded.converted,
-            inspect: loaded.inspect,
-            readOnly: false,
-          });
-          return;
-        }
+      // Word sources still go through fromDocx inside loadRichDocHostedState.
+      const loaded = await loadRichDocHostedState(item, handoff);
+      if (cancelled) return;
+      if (!loaded.ok) {
         setStatus(loaded.error);
         setSource(null);
         setConverted(null);
@@ -260,55 +253,8 @@ export function RichDocHostedRoute({
         setReadOnly(true);
         return;
       }
-      const projectUrl =
-        handoff?.kind === "url"
-          ? handoff.url
-          : String(item.meta.editor_project_url || "").trim();
-      if (!projectUrl) {
-        const openBlank =
-          Boolean(hostedCtx.platform && hostedCtx.platform !== "web") &&
-          !item.artifactId;
-        if (openBlank) {
-          applyLoaded(
-            hostedStateFromResolvedJson({
-              format: UMO_DOC_FORMAT,
-              title: item.title || "文档",
-              content: { type: "doc", content: [{ type: "paragraph" }] },
-            }),
-          );
-          setStatus("");
-          return;
-        }
-        setStatus(`${item.title || "文档"}：没有可读取的文件。`);
-        setSource(null);
-        setConverted(null);
-        setInspect(null);
-        setReadOnly(true);
-        return;
-      }
-      try {
-        const response = await fetch(projectUrl, {
-          cache: "no-store",
-          headers: { Accept: "application/json" },
-        });
-        if (!response.ok) {
-          throw new Error(`工程档读取失败（HTTP ${response.status}）`);
-        }
-        const json = (await response.json()) as unknown;
-        if (cancelled) return;
-        applyLoaded(hostedStateFromResolvedJson(json));
-      } catch (caught: unknown) {
-        if (cancelled) return;
-        setStatus(
-          caught instanceof Error
-            ? caught.message.replace(/\bHTTP\s+\d{3}\b/gi, "文件服务器暂时无法提供内容")
-            : "工程档读取失败，文件内容读不出来。",
-        );
-        setSource(null);
-        setConverted(null);
-        setInspect(null);
-        setReadOnly(true);
-      }
+      applyLoaded(loaded);
+      setStatus("");
     })();
     return () => {
       cancelled = true;
@@ -352,6 +298,26 @@ export function RichDocHostedRoute({
       }
     },
     [editorOrigin, frameLoaded, instanceId],
+  );
+
+  useEffect(
+    () =>
+      bindRichDocHostedCommandSink(instanceId, (command) =>
+        sendToEditor({ type: "selection-command", command }),
+      ),
+    [instanceId, sendToEditor],
+  );
+  usePluginCommandSurface(
+    useMemo(
+      () =>
+        buildRichDocHostedCommandSurface({
+          ready,
+          readOnly,
+          hasSource: source != null,
+          send: sendToEditor,
+        }),
+      [ready, readOnly, sendToEditor, source],
+    ),
   );
 
   const pushInit = useCallback(() => {

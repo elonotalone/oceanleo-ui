@@ -10,6 +10,7 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "../library-data";
+import { isArtifactSourceTreeUrl } from "../artifact-contract";
 import { officePackageKindForItem, officeRenditionPurposes } from "../doc-editors/office-file";
 import {
   loadOfficeSource,
@@ -27,7 +28,13 @@ export function useOfficeArtifactSource(item: LibraryItem) {
   const acceptedPurpose =
     rendition.purpose === "source" || rendition.purpose === "full";
   const hint = sourceHintForItem(item);
-  const sourceUrl = acceptedPurpose && rendition.url ? rendition.url : hint.url;
+  const resolvedUrl =
+    acceptedPurpose && rendition.url && !isArtifactSourceTreeUrl(rendition.url)
+      ? rendition.url
+      : hint.url && !isArtifactSourceTreeUrl(hint.url)
+        ? hint.url
+        : "";
+  const sourceUrl = resolvedUrl;
   const sourceRevision = item.revisionId || hint.revision;
   const cached = sourceUrl
     ? peekOfficeSource(sourceUrl, sourceRevision)
@@ -58,7 +65,7 @@ export function useOfficeArtifactSource(item: LibraryItem) {
 
   return {
     item: sourceItem,
-    url: acceptedPurpose ? rendition.url : "",
+    url: sourceUrl,
     purpose: acceptedPurpose ? rendition.purpose : null,
     loading: rendition.loading,
     error: rendition.error,

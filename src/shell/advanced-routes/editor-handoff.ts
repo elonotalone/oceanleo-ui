@@ -4,6 +4,7 @@ import { flushAdvancedDraftGate } from "../advanced-draft-gates";
 import { useMemo, useSyncExternalStore } from "react";
 
 import type { LibraryItem } from "../library-data";
+import { isArtifactSourceTreeUrl } from "../artifact-contract";
 import { useOfficeArtifactSource } from "../office-editor/useOfficeArtifactSource";
 
 /**
@@ -149,15 +150,46 @@ function parseJsonish(value: unknown): unknown | null {
   }
 }
 
+function jsonNodeHasContent(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  const record = node as {
+    type?: unknown;
+    text?: unknown;
+    content?: unknown;
+    slides?: unknown;
+    data?: unknown;
+  };
+  if (record.type === "image") return true;
+  if (typeof record.text === "string" && record.text.trim()) return true;
+  if (Array.isArray(record.slides) && record.slides.length > 0) return true;
+  if (Array.isArray(record.content)) {
+    return record.content.some((child) => jsonNodeHasContent(child));
+  }
+  return record.data ? jsonNodeHasContent(record.data) : false;
+}
+
 function firstInlineFromMeta(item: LibraryItem): unknown | null {
   const content = parseJsonish(item.content);
-  if (content) return content;
+  if (content && jsonNodeHasContent(content)) return content;
   const meta = item.meta || {};
-  for (const key of ["deck", "slides", "project", "presentation"] as const) {
+  for (const key of [
+    "deck",
+    "slides",
+    "project",
+    "presentation",
+    "tiptap",
+    "umo",
+  ] as const) {
     const parsed = parseJsonish(meta[key]);
-    if (parsed) return parsed;
+    if (parsed && jsonNodeHasContent(parsed)) return parsed;
   }
   return null;
+}
+
+function browserSafeEditorUrl(url: string): string {
+  const value = String(url || "").trim();
+  if (!value || isArtifactSourceTreeUrl(value)) return "";
+  return value;
 }
 
 export function inferHandoffFormat(
@@ -169,6 +201,7 @@ export function inferHandoffFormat(
     meta.source_format,
     meta.format,
     meta.delivery_format,
+    meta.filename,
     meta.mime,
     meta.editor_working_head_schema,
     meta.editor_project_schema,
@@ -191,10 +224,34 @@ export function inferHandoffFormat(
   ) {
     return "json";
   }
+  if (
+    hints.includes("docx") ||
+    hints.includes("wordprocessingml")
+  ) {
+    return "docx";
+  }
+  if (
+    hints.includes("text/markdown") ||
+    hints.includes(".md") ||
+    /\bmd\b/.test(hints) ||
+    hints.includes("markdown")
+  ) {
+    return "markdown";
+  }
+  if (hints.includes("text/html") || hints.includes(".html") || hints.includes(".htm")) {
+    return "html";
+  }
+  if (hints.includes("text/plain") || hints.includes(".txt")) {
+    return "text";
+  }
   try {
     const path = new URL(url, "https://oceanleo.invalid").pathname.toLowerCase();
     if (path.endsWith(".pptx") || path.endsWith(".pptm")) return "pptx";
     if (path.endsWith(".json")) return "json";
+    if (path.endsWith(".docx")) return "docx";
+    if (path.endsWith(".md") || path.endsWith(".markdown")) return "markdown";
+    if (path.endsWith(".html") || path.endsWith(".htm")) return "html";
+    if (path.endsWith(".txt")) return "text";
   } catch {
     /* keep null */
   }
@@ -209,7 +266,9 @@ export function resolveEditorHandoffFromItem(
   const inline = firstInlineFromMeta(item);
   if (inline) return { kind: "inline", json: inline, revision };
 
-  const working = String(item.meta?.editor_working_head_url || "").trim();
+  const working = browserSafeEditorUrl(
+    String(item.meta?.editor_working_head_url || ""),
+  );
   if (working) {
     return {
       kind: "url",
@@ -219,7 +278,9 @@ export function resolveEditorHandoffFromItem(
     };
   }
 
-  const project = String(item.meta?.editor_project_url || "").trim();
+  const project = browserSafeEditorUrl(
+    String(item.meta?.editor_project_url || ""),
+  );
   if (project) {
     return {
       kind: "url",
@@ -229,14 +290,16 @@ export function resolveEditorHandoffFromItem(
     };
   }
 
-  const officeUrl = String(
-    extras?.officeUrl ||
-      item.url ||
-      item.previewUrl ||
-      item.artifact?.renditions.source?.url ||
-      item.artifact?.renditions.full?.url ||
-      "",
-  ).trim();
+  const officeUrl = browserSafeEditorUrl(
+    String(
+      extras?.officeUrl ||
+        item.url ||
+        item.previewUrl ||
+        item.artifact?.renditions.source?.url ||
+        item.artifact?.renditions.full?.url ||
+        "",
+    ),
+  );
   if (officeUrl) {
     return {
       kind: "url",

@@ -4,6 +4,7 @@ import {
   validateOfficePackageBytes,
   type OfficePackageKind,
 } from "../doc-editors/office-file";
+import { isArtifactSourceTreeUrl } from "../artifact-contract";
 import type { LibraryItem } from "../library-data";
 import { loadOfficeBytes, type OfficeSourceLoadResult } from "./office-byte-store";
 
@@ -22,8 +23,12 @@ export {
 
 export function sourceHintForItem(item: LibraryItem): { url: string; revision: string } {
   const renditions = item.artifact?.renditions;
-  const purpose = officeRenditionPurposes(item).find(p => renditions?.[p]?.url);
-  const url = (purpose && renditions?.[purpose]?.url) || item.url || "";
+  const purpose = officeRenditionPurposes(item).find((name) => {
+    const url = renditions?.[name]?.url;
+    return Boolean(url) && !isArtifactSourceTreeUrl(url);
+  });
+  const hinted = (purpose && renditions?.[purpose]?.url) || item.url || "";
+  const url = hinted && !isArtifactSourceTreeUrl(hinted) ? hinted : "";
   return { url, revision: item.revisionId || item.artifact?.revisionId || "" };
 }
 

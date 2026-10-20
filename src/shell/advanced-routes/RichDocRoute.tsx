@@ -56,6 +56,7 @@ import {
   deriveEditorHandoffFromItem,
   isEmptyRichDoc,
 } from "./richdoc-pro-source";
+import { richDocHasContent } from "../doc-editors/rich-doc-model";
 import { convertUmoToRichDoc } from "../doc-editors/rich-doc-umo-migration";
 
 /**
@@ -266,9 +267,15 @@ function RichDocLegacyRoute({
   persistFlushRef.current = saveBeforeNewConversation;
   useEffect(() => {
     return bindNormalFaceHandoff(handoffItemKey(openedItemRef.current), {
+      status:
+        editor.loading || officeSource.loading
+          ? "loading"
+          : editor.sourceReady
+            ? "ready"
+            : "error",
       getHandoff: () => {
         const live = editor.editor?.getJSON();
-        if (live && !isEmptyRichDoc(live)) {
+        if (live && (richDocHasContent(live) || !isEmptyRichDoc(live))) {
           return {
             kind: "inline",
             json: live,
@@ -278,10 +285,17 @@ function RichDocLegacyRoute({
         return deriveEditorHandoffFromItem(openedItemRef.current);
       },
       persistInBackground: () => {
-        if (editor.dirty) void persistFlushRef.current?.();
+        if (editor.dirty && editor.sourceReady) void persistFlushRef.current?.();
       },
     });
-  }, [editor.dirty, editor.editRevision, editor.editor]);
+  }, [
+    editor.dirty,
+    editor.editRevision,
+    editor.editor,
+    editor.loading,
+    editor.sourceReady,
+    officeSource.loading,
+  ]);
   const restoreWorkingDocument = useCallback(
     (payload: unknown) => {
       const reversed = convertUmoToRichDoc(payload);

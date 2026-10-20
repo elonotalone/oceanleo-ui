@@ -3,15 +3,15 @@
 // ============================================================================
 // @oceanleo/ui — RichDocEditor 数据层（加载 / 导出转换，无 React）
 // ----------------------------------------------------------------------------
-// 加载优先级：inline 字符串（content / meta.markdown|content|text，按 markdown
-// 解析）→ 文本类 URL（扩展名、mediaType，或 document/file 且不是 Office 包；
-// 签名地址可以没有 .md）→ url .docx（mammoth 转 HTML）。所有进编辑器的 HTML
-// 一律先过 DOMPurify。marked / dompurify / mammoth / turndown 全部动态 import，
-// 保证 SSR 与首屏 bundle 干净。
+// 加载优先级：可浏览器直取的正文 URL（与库预览同一条，永不优先
+// source-tree / 封面图）→ inline 字符串或原生 JSON → 文本类 URL → url .docx。
+// 空工程档不得盖住仍有正文的原件。所有进编辑器的 HTML 一律先过 DOMPurify。
+// marked / dompurify / mammoth / turndown 全部动态 import。
 // ============================================================================
 
 import { fetchMediaBlob } from "../../lib/media-proxy";
-import { isDisplayableText } from "../website-inline-preview";
+import { isArtifactSourceTreeUrl } from "../artifact-contract";
+import { isDisplayableText, looksLikeHtmlDocument } from "../website-inline-preview";
 import { Extension, type JSONContent } from "@tiptap/core";
 import type { LibraryItem } from "../library-data";
 import { officeExtensionForItem } from "../workbench-routes";
@@ -25,16 +25,28 @@ import {
 export type RichDocSource =
   | "project"
   | "inline"
+  | "inline-json"
   | "url-markdown"
   | "url-text"
   | "url-html"
+  | "url-json"
   | "url-docx"
   | "import-markdown"
   | "import-text"
   | "import-html"
+  | "import-json"
   | "import-doc"
   | "import-docx"
   | "empty";
+
+export type RichDocDetectedFormat =
+  | "docx"
+  | "json"
+  | "html"
+  | "markdown"
+  | "text"
+  | "unsupported"
+  | null;
 
 export interface RichDocLoadResult {
   html: string;
@@ -52,8 +64,23 @@ const UNSUPPORTED_DOCUMENT_EXTENSIONS = new Set([
 ]);
 
 async function sanitizeHtml(html: string): Promise<string> {
-  const DOMPurify = (await import("dompurify")).default;
-  return DOMPurify.sanitize(html);
+  const imported = (await import("dompurify")) as {
+    default?: {
+      sanitize?: (value: string) => string;
+      isSupported?: boolean;
+    };
+    sanitize?: (value: string) => string;
+  };
+  const candidate = imported.default ?? imported;
+  if (
+    candidate &&
+    typeof candidate.sanitize === "function" &&
+    candidate.isSupported !== false
+  ) {
+    const cleaned = candidate.sanitize(html);
+    return typeof cleaned === "string" ? cleaned : html;
+  }
+  return html;
 }
 
 async function docxToHtml(arrayBuffer: ArrayBuffer): Promise<string> {
@@ -118,24 +145,115 @@ const TEXT_DOCUMENT_EXTENSIONS = new Set([
   "html",
   "htm",
 ]);
+const IMAGE_DOCUMENT_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "svg",
+  "avif",
+]);
 
-function richDocSourceUrl(item: LibraryItem): string {
-  return (
-    String(item.meta.editor_source_url || "").trim() ||
-    item.artifact?.renditions.source?.url ||
-    item.artifact?.renditions.full?.url ||
-    item.url ||
-    item.previewUrl ||
-    item.artifact?.renditions.preview?.url ||
-    ""
+function trimUrl(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function isImageDocumentHint(value: unknown): boolean {
+  const text = String(value || "")
+    .trim()
+    .toLowerCase()
+    .split(";", 1)[0];
+  if (!text) return false;
+  if (text.startsWith("image/")) return true;
+  const ext = urlExtension(text);
+  return IMAGE_DOCUMENT_EXTENSIONS.has(ext);
+}
+
+export function isBrowserSafeRichDocUrl(url: string): boolean {
+  const value = trimUrl(url);
+  return Boolean(value) && !isArtifactSourceTreeUrl(value);
+}
+
+/** Tiptap/Umo JSON that still has words or an image is a real document. */
+export function richDocHasContent(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  const record = node as {
+    type?: unknown;
+    text?: unknown;
+    content?: unknown;
+    data?: unknown;
+  };
+  if (record.type === "image") return true;
+  if (typeof record.text === "string" && record.text.trim()) return true;
+  if (Array.isArray(record.content)) {
+    return record.content.some((child) => richDocHasContent(child));
+  }
+  return record.data ? richDocHasContent(record.data) : false;
+}
+
+export function itemLooksLikeExistingRichDoc(item: LibraryItem): boolean {
+  return Boolean(
+    item.source === "artifact" ||
+      item.artifactId ||
+      trimUrl(item.url) ||
+      trimUrl(item.previewUrl) ||
+      trimUrl(item.meta.editor_source_url) ||
+      trimUrl(item.meta.editor_project_url) ||
+      trimUrl(item.artifact?.renditions.source?.url) ||
+      trimUrl(item.artifact?.renditions.full?.url),
   );
 }
 
-function richDocMediaType(item: LibraryItem): string {
+function existingDocumentMissingSourceMessage(item: LibraryItem): string {
+  if (item.source === "artifact") {
+    return "当前文档 revision 缺少可验证的 source/full 内容；已阻止用空白文档替代。";
+  }
+  return `${item.title || "文档"}：当前文档 revision 缺少可验证的 source/full 内容；已阻止用空白文档替代。`;
+}
+
+export function emptyExistingRichDocResult(item: LibraryItem): RichDocLoadResult {
+  return {
+    html: "<p></p>",
+    source: "empty",
+    error: existingDocumentMissingSourceMessage(item),
+  };
+}
+
+/**
+ * Same address the library preview can fetch: browser-safe delivery, never a
+ * source-tree grant and never a shelf PNG/JPEG cover.
+ */
+export function selectRichDocSourceUrl(item: LibraryItem): string {
+  const candidates = [
+    String(item.meta.editor_source_url || "").trim(),
+    String(item.meta.editor_working_head_url || "").trim(),
+    item.artifact?.renditions.source?.url || "",
+    item.artifact?.renditions.full?.url || "",
+    String(item.url || "").trim(),
+    String(item.previewUrl || "").trim(),
+    item.artifact?.renditions.preview?.url || "",
+  ];
+  for (const url of candidates) {
+    if (!isBrowserSafeRichDocUrl(url) || isImageDocumentHint(url)) continue;
+    return url;
+  }
+  const viewer = trimUrl(item.url) || trimUrl(item.previewUrl);
+  if (isBrowserSafeRichDocUrl(viewer) && !isImageDocumentHint(viewer)) {
+    return viewer;
+  }
+  return "";
+}
+
+function richDocSourceUrl(item: LibraryItem): string {
+  return selectRichDocSourceUrl(item);
+}
+
+function richDocAuthoritativeMediaType(item: LibraryItem): string {
   return String(
     item.artifact?.renditions.source?.mediaType ||
       item.artifact?.renditions.full?.mediaType ||
-      item.artifact?.renditions.preview?.mediaType ||
+      item.meta.source_media_type ||
       item.meta.viewer_media_type ||
       item.meta.content_type ||
       item.meta.mime ||
@@ -148,18 +266,73 @@ function richDocMediaType(item: LibraryItem): string {
 
 function richDocFilenameExtension(item: LibraryItem, url: string): string {
   for (const value of [
-    url,
     item.meta.filename,
     item.meta.file_name,
+    item.meta.source_format,
     item.meta.format,
     item.meta.extension,
+    url,
     item.title,
-    item.previewUrl,
   ]) {
     const ext = urlExtension(String(value || ""));
-    if (ext) return ext;
+    if (ext && !IMAGE_DOCUMENT_EXTENSIONS.has(ext)) return ext;
   }
   return officeExtensionForItem(item);
+}
+
+export function detectRichDocFormat(
+  item: LibraryItem,
+  url = "",
+): RichDocDetectedFormat {
+  const media = richDocAuthoritativeMediaType(item);
+  const ext = richDocFilenameExtension(item, url || selectRichDocSourceUrl(item));
+  const hints = [
+    item.artifact?.sourceFormat,
+    item.meta.source_format,
+    item.meta.format,
+    item.meta.extension,
+    item.meta.filename,
+    media,
+    ext,
+    url,
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+  if (
+    officePackageKindForItem(item) === "docx" ||
+    ext === "docx" ||
+    hints.includes("wordprocessingml") ||
+    hints.includes("docx")
+  ) {
+    return "docx";
+  }
+  if (UNSUPPORTED_DOCUMENT_EXTENSIONS.has(ext)) return "unsupported";
+  if (
+    ext === "json" ||
+    media === "application/json" ||
+    hints.includes("tiptap-json") ||
+    hints.includes("umo.tiptap")
+  ) {
+    return "json";
+  }
+  if (ext === "html" || ext === "htm" || media.includes("html")) return "html";
+  if (ext === "txt" || media === "text/plain") return "text";
+  if (
+    TEXT_DOCUMENT_EXTENSIONS.has(ext) ||
+    media.startsWith("text/") ||
+    media === "text/markdown" ||
+    /\bmd\b|\.md\b|markdown/.test(hints)
+  ) {
+    return "markdown";
+  }
+  if (
+    (item.kind === "document" || item.kind === "file") &&
+    !media &&
+    officePackageKindForItem(item) == null
+  ) {
+    return "markdown";
+  }
+  return null;
 }
 
 function looksLikeTextRichDoc(
@@ -167,6 +340,10 @@ function looksLikeTextRichDoc(
   ext: string,
   media: string,
 ): boolean {
+  const format = detectRichDocFormat(item, "");
+  if (format === "html" || format === "markdown" || format === "text") {
+    return true;
+  }
   if (TEXT_DOCUMENT_EXTENSIONS.has(ext)) return true;
   if (media.startsWith("text/") || media === "application/xhtml+xml") {
     return true;
@@ -178,75 +355,185 @@ function looksLikeTextRichDoc(
   );
 }
 
+const NATIVE_JSON_SCHEMAS = new Set(["tiptap-json@1", "umo.tiptap.v1"]);
+
+export function parseRichDocNativeJson(
+  raw: string,
+): { ok: true; json: JSONContent } | { ok: false; error: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return { ok: false, error: "这份 JSON 不是可编辑的文档。" };
+  }
+  const unwrapped = unwrapNativeRichDocJson(parsed);
+  if (!unwrapped) {
+    return { ok: false, error: "这份 JSON 不是 Tiptap / Umo 文档。" };
+  }
+  return { ok: true, json: unwrapped };
+}
+
+export function unwrapNativeRichDocJson(value: unknown): JSONContent | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.type === "doc") return record as JSONContent;
+  if (
+    (typeof record.schema === "string" &&
+      NATIVE_JSON_SCHEMAS.has(record.schema) &&
+      record.data &&
+      typeof record.data === "object") ||
+    (record.version === 1 && record.data && typeof record.data === "object")
+  ) {
+    return unwrapNativeRichDocJson(record.data);
+  }
+  if (
+    (record.format === "umo.tiptap.v1" ||
+      String(record.schema || "") === "umo.tiptap.v1") &&
+    record.content &&
+    typeof record.content === "object"
+  ) {
+    return unwrapNativeRichDocJson(record.content);
+  }
+  return null;
+}
+
+export interface RichDocLoadDeps {
+  fetchText?: (url: string) => Promise<string>;
+  fetchDocx?: (
+    url: string,
+    item: LibraryItem,
+    onAccessDenied?: () => void,
+  ) => Promise<ArrayBuffer>;
+  loadProject?: (url: string) => Promise<unknown>;
+}
+
+async function defaultFetchText(url: string): Promise<string> {
+  return (await fetchMediaBlob(url)).text();
+}
+
+async function defaultFetchDocx(
+  url: string,
+  item: LibraryItem,
+  onAccessDenied?: () => void,
+): Promise<ArrayBuffer> {
+  const { arrayBuffer } = await fetchValidatedOfficePackage(url, "docx", {
+    item,
+    maxBytes: 64 * 1024 * 1024,
+    onAccessDenied,
+  });
+  return arrayBuffer;
+}
+
+async function htmlOrTextFromFetched(
+  text: string,
+  format: RichDocDetectedFormat,
+): Promise<RichDocLoadResult> {
+  if (!isDisplayableText(text)) {
+    return {
+      html: "<p></p>",
+      source: "empty",
+      error: "这一件存的是文件字节，没有可直接显示的正文。",
+    };
+  }
+  if (format === "json") {
+    const parsed = parseRichDocNativeJson(text);
+    if (!parsed.ok) {
+      return { html: "<p></p>", source: "empty", error: parsed.error };
+    }
+    return { html: "", json: parsed.json, source: "url-json", error: "" };
+  }
+  if (format === "html") {
+    return { html: await sanitizeHtml(text), source: "url-html", error: "" };
+  }
+  if (format === "text") {
+    return {
+      html: await sanitizeHtml(plainTextToHtml(text)),
+      source: "url-text",
+      error: "",
+    };
+  }
+  return { html: await markdownToHtml(text), source: "url-markdown", error: "" };
+}
+
 export async function loadRichDocHtml(
   item: LibraryItem,
   onSourceAccessError?: () => void,
+  deps: RichDocLoadDeps = {},
 ): Promise<RichDocLoadResult> {
   try {
-    const url = richDocSourceUrl(item);
-    const media = richDocMediaType(item);
+    const url = selectRichDocSourceUrl(item);
+    const media = richDocAuthoritativeMediaType(item);
     const ext = richDocFilenameExtension(item, url);
-    const isDocx =
-      officePackageKindForItem(item) === "docx" || ext === "docx";
-    if (url && isDocx) {
-      const { arrayBuffer } = await fetchValidatedOfficePackage(url, "docx", {
-        item,
-        maxBytes: 64 * 1024 * 1024,
-        onAccessDenied: onSourceAccessError,
-      });
-      return {
-        html: await docxToHtml(arrayBuffer),
-        source: "url-docx",
-        error: "",
-      };
-    }
+    const format = detectRichDocFormat(item, url);
+    const fetchText = deps.fetchText ?? defaultFetchText;
+    const fetchDocx = deps.fetchDocx ?? defaultFetchDocx;
+
     const inline = inlineSource(item);
     if (inline) {
-      return { html: await markdownToHtml(inline), source: "inline", error: "" };
+      const native = unwrapNativeRichDocJson(
+        (() => {
+          try {
+            return JSON.parse(inline) as unknown;
+          } catch {
+            return null;
+          }
+        })(),
+      );
+      if (native) {
+        if (!richDocHasContent(native) && itemLooksLikeExistingRichDoc(item) && url) {
+          /* fall through to the original file */
+        } else if (richDocHasContent(native) || !itemLooksLikeExistingRichDoc(item)) {
+          return { html: "", json: native, source: "inline-json", error: "" };
+        }
+      } else if (format !== "docx") {
+        if (format === "html" || looksLikeHtmlDocument(inline)) {
+          return {
+            html: await sanitizeHtml(inline),
+            source: "inline",
+            error: "",
+          };
+        }
+        if (format === "text") {
+          return {
+            html: await sanitizeHtml(plainTextToHtml(inline)),
+            source: "inline",
+            error: "",
+          };
+        }
+        return { html: await markdownToHtml(inline), source: "inline", error: "" };
+      }
     }
-    if (url && UNSUPPORTED_DOCUMENT_EXTENSIONS.has(ext)) {
+
+    if (url && format === "docx") {
+      const arrayBuffer = await fetchDocx(url, item, onSourceAccessError);
+      const html = await docxToHtml(arrayBuffer);
+      if (!html.replace(/<[^>]+>/g, "").trim() && itemLooksLikeExistingRichDoc(item)) {
+        return emptyExistingRichDocResult(item);
+      }
+      return { html, source: "url-docx", error: "" };
+    }
+    if (url && format === "unsupported") {
       return {
         html: "<p></p>",
         source: "empty",
         error: `轻量文档编辑器暂不能解析 .${ext} 源文件；请转换为 DOCX 后重试。`,
       };
     }
-    if (url && looksLikeTextRichDoc(item, ext, media)) {
-      const text = await (await fetchMediaBlob(url)).text();
-      if (!isDisplayableText(text)) {
-        return {
-          html: "<p></p>",
-          source: "empty",
-          error: "这一件存的是文件字节，没有可直接显示的正文。",
-        };
+    if (url && (format === "json" || looksLikeTextRichDoc(item, ext, media))) {
+      const text = await fetchText(url);
+      const loaded = await htmlOrTextFromFetched(text, format === "json" ? "json" : format);
+      if (loaded.error) return loaded;
+      if (
+        itemLooksLikeExistingRichDoc(item) &&
+        !richDocHasContent(loaded.json) &&
+        !String(loaded.html || "").replace(/<[^>]+>/g, "").trim()
+      ) {
+        return emptyExistingRichDocResult(item);
       }
-      if (ext === "html" || ext === "htm" || media.includes("html")) {
-        return {
-          html: await sanitizeHtml(text),
-          source: "url-html",
-          error: "",
-        };
-      }
-      if (ext === "txt" || media === "text/plain") {
-        return {
-          html: await sanitizeHtml(plainTextToHtml(text)),
-          source: "url-text",
-          error: "",
-        };
-      }
-      return {
-        html: await markdownToHtml(text),
-        source: "url-markdown",
-        error: "",
-      };
+      return loaded;
     }
-    if (item.source === "artifact") {
-      return {
-        html: "<p></p>",
-        source: "empty",
-        error:
-          "当前文档 revision 缺少可验证的 source/full 内容；已阻止用空白文档替代。",
-      };
+    if (item.source === "artifact" || itemLooksLikeExistingRichDoc(item)) {
+      return emptyExistingRichDocResult(item);
     }
     return { html: "<p></p>", source: "empty", error: "" };
   } catch (caught) {
@@ -256,6 +543,47 @@ export async function loadRichDocHtml(
       error: caught instanceof Error ? caught.message : "文档加载失败",
     };
   }
+}
+
+export async function loadRichDocSource(
+  item: LibraryItem,
+  onSourceAccessError?: () => void,
+  deps: RichDocLoadDeps = {},
+): Promise<RichDocLoadResult> {
+  const projectUrl = trimUrl(item.meta.editor_project_url);
+  if (projectUrl && isBrowserSafeRichDocUrl(projectUrl) && deps.loadProject) {
+    try {
+      const json = await deps.loadProject(projectUrl);
+      const unwrapped = unwrapNativeRichDocJson(json) || (json as JSONContent);
+      if (richDocHasContent(unwrapped)) {
+        return { html: "", json: unwrapped, source: "project", error: "" };
+      }
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "可编辑工程读取失败";
+      const fallback = await loadRichDocHtml(item, onSourceAccessError, deps);
+      if (!fallback.error && (richDocHasContent(fallback.json) || fallback.html.replace(/<[^>]+>/g, "").trim())) {
+        return fallback;
+      }
+      return {
+        html: "<p></p>",
+        source: "empty",
+        error: message,
+      };
+    }
+  }
+  return loadRichDocHtml(item, onSourceAccessError, deps);
+}
+
+/** Collab may only inherit readiness from a room that already has the document. */
+export function shouldMarkRichDocSourceReadyFromCollab(input: {
+  sourceReady: boolean;
+  sourceFailed: boolean;
+  roomHasContent: boolean;
+}): boolean {
+  if (input.sourceReady) return false;
+  if (input.sourceFailed && !input.roomHasContent) return false;
+  return input.roomHasContent;
 }
 
 /** Import a local Word/HTML/Markdown/text file into the active editor. */
@@ -270,6 +598,20 @@ export async function loadRichDocFile(file: File): Promise<RichDocLoadResult> {
       };
     }
     const text = await file.text();
+    if (ext === "json") {
+      const parsed = parseRichDocNativeJson(text);
+      if (!parsed.ok) {
+        return { html: "<p></p>", source: "empty", error: parsed.error };
+      }
+      if (!richDocHasContent(parsed.json)) {
+        return {
+          html: "<p></p>",
+          source: "empty",
+          error: "这份 JSON 没有可导入的正文。",
+        };
+      }
+      return { html: "", json: parsed.json, source: "import-json", error: "" };
+    }
     if (ext === "md" || ext === "markdown") {
       return {
         html: await markdownToHtml(text),

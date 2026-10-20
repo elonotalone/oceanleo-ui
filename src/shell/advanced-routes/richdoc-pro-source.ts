@@ -1,4 +1,5 @@
 import type { LibraryItem } from "../library-data";
+import { isArtifactSourceTreeUrl } from "../artifact-contract";
 import {
   convertRichDocToUmo,
   convertUmoToRichDoc,
@@ -7,6 +8,13 @@ import {
   type UmoDocument,
 } from "../doc-editors/rich-doc-umo-migration";
 import { saveFileToLibrary, type SaveToLibraryResult } from "../doc-editors/doc-io";
+import {
+  detectRichDocFormat,
+  loadRichDocHtml,
+  richDocHasContent,
+  selectRichDocSourceUrl,
+  type RichDocDetectedFormat,
+} from "../doc-editors/rich-doc-model";
 
 type EditorHandoff =
   | { kind: "inline"; json: unknown; revision: string | null }
@@ -33,7 +41,7 @@ export function collectRichDocText(node: unknown): string {
 }
 
 export function isEmptyRichDoc(node: unknown): boolean {
-  return !collectRichDocText(node).trim();
+  return !richDocHasContent(node) && !collectRichDocText(node).trim();
 }
 
 export function inlineJsonFromItem(item: LibraryItem): unknown | null {
@@ -80,35 +88,62 @@ export function isDocxUrl(url: string, item?: LibraryItem): boolean {
 }
 
 export function isDocxOnlyItem(item: LibraryItem): boolean {
-  if (inlineJsonFromItem(item)) return false;
-  if (String(item.meta.editor_project_url || "").trim()) return false;
-  const url = String(item.meta.editor_source_url || item.url || "").trim();
-  return Boolean(url) && isDocxUrl(url, item);
+  const inline = inlineJsonFromItem(item);
+  if (inline && richDocHasContent(inline)) return false;
+  const project = String(item.meta.editor_project_url || "").trim();
+  if (project && !isArtifactSourceTreeUrl(project)) return false;
+  const url = selectRichDocSourceUrl(item);
+  return Boolean(url) && detectRichDocFormat(item, url) === "docx";
+}
+
+export function inferRichDocHandoffFormat(
+  item: LibraryItem,
+  url: string,
+): string | null {
+  const format = detectRichDocFormat(item, url);
+  return format;
+}
+
+function browserSafeHandoffUrl(url: string): string {
+  const value = String(url || "").trim();
+  if (!value || isArtifactSourceTreeUrl(value)) return "";
+  return value;
 }
 
 export function deriveEditorHandoffFromItem(item: LibraryItem): EditorHandoff {
   const revision = item.revisionId ?? null;
   const inline = inlineJsonFromItem(item);
-  if (inline) return { kind: "inline", json: inline, revision };
-  const working = String(item.meta.editor_working_head_url || "").trim();
+  if (inline && richDocHasContent(inline)) {
+    return { kind: "inline", json: inline, revision };
+  }
+  const working = browserSafeHandoffUrl(
+    String(item.meta.editor_working_head_url || ""),
+  );
   if (working) {
     return {
       kind: "url",
       url: working,
-      format: isDocxUrl(working, item) ? "docx" : "json",
+      format: inferRichDocHandoffFormat(item, working),
       revision,
     };
   }
-  const project = String(item.meta.editor_project_url || "").trim();
+  const project = browserSafeHandoffUrl(
+    String(item.meta.editor_project_url || ""),
+  );
   if (project) {
-    return { kind: "url", url: project, format: "json", revision };
+    return {
+      kind: "url",
+      url: project,
+      format: "json",
+      revision,
+    };
   }
-  const url = String(item.meta.editor_source_url || item.url || "").trim();
+  const url = selectRichDocSourceUrl(item);
   if (url) {
     return {
       kind: "url",
       url,
-      format: isDocxUrl(url, item) ? "docx" : null,
+      format: inferRichDocHandoffFormat(item, url),
       revision,
     };
   }
@@ -121,9 +156,24 @@ export function handoffLooksLikeDocx(
 ): boolean {
   if (handoff?.kind === "url") {
     if (handoff.format === "docx") return true;
-    if (isDocxUrl(handoff.url, item)) return true;
+    if (detectRichDocFormat(item, handoff.url) === "docx") return true;
   }
   return isDocxOnlyItem(item);
+}
+
+export function handoffDocumentFormat(
+  handoff: EditorHandoff | null,
+  item: LibraryItem,
+): RichDocDetectedFormat {
+  if (handoff?.kind === "url") {
+    if (handoff.format === "docx") return "docx";
+    if (handoff.format === "json") return "json";
+    if (handoff.format === "html") return "html";
+    if (handoff.format === "markdown" || handoff.format === "md") return "markdown";
+    if (handoff.format === "text" || handoff.format === "txt") return "text";
+    return detectRichDocFormat(item, handoff.url);
+  }
+  return detectRichDocFormat(item, selectRichDocSourceUrl(item));
 }
 
 export function hostedStateFromResolvedJson(
@@ -220,6 +270,117 @@ export async function umoSourceFromDocxItem(
     converted: next.converted,
     inspect: next.inspect,
   };
+}
+
+export async function loadRichDocHostedState(
+  item: LibraryItem,
+  handoff: EditorHandoff | null,
+  deps: {
+    loadHtml?: (item: LibraryItem) => Promise<{
+      html: string;
+      json?: unknown;
+      error: string;
+    }>;
+    htmlToJson?: (html: string) => Promise<unknown>;
+    fetchJson?: (url: string) => Promise<unknown>;
+  } = {},
+): Promise<
+  | {
+      ok: true;
+      source: unknown;
+      converted: UmoDocument | null;
+      inspect: InspectResult;
+      readOnly: boolean;
+    }
+  | { ok: false; error: string }
+> {
+  if (handoff?.kind === "inline") {
+    if (!richDocHasContent(handoff.json)) {
+      return { ok: false, error: "交接过来的文档是空的，没有打开原件。" };
+    }
+    const next = hostedStateFromResolvedJson(handoff.json);
+    return { ok: true, ...next };
+  }
+
+  const format = handoffDocumentFormat(handoff, item);
+  const url =
+    handoff?.kind === "url"
+      ? browserSafeHandoffUrl(handoff.url) || selectRichDocSourceUrl(item)
+      : selectRichDocSourceUrl(item);
+
+  if (format === "json" && url) {
+    try {
+      const fetchJson =
+        deps.fetchJson ||
+        (async (projectUrl: string) => {
+          const response = await fetch(projectUrl, {
+            cache: "no-store",
+            headers: { Accept: "application/json" },
+          });
+          if (!response.ok) {
+            throw new Error(`工程档读取失败（HTTP ${response.status}）`);
+          }
+          return response.json() as Promise<unknown>;
+        });
+      const json = await fetchJson(url);
+      if (richDocHasContent(json)) {
+        const next = hostedStateFromResolvedJson(json);
+        return { ok: true, ...next };
+      }
+    } catch (caught) {
+      const fallback = await loadRichDocHtml(item);
+      if (
+        !fallback.error &&
+        (richDocHasContent(fallback.json) ||
+          String(fallback.html || "").replace(/<[^>]+>/g, "").trim())
+      ) {
+        const json =
+          fallback.json ??
+          (await htmlToRichDocJson(fallback.html, deps.htmlToJson));
+        const next = hostedStateFromResolvedJson(json);
+        return { ok: true, ...next };
+      }
+      return {
+        ok: false,
+        error:
+          caught instanceof Error
+            ? caught.message.replace(/\bHTTP\s+\d{3}\b/gi, "文件服务器暂时无法提供内容")
+            : "工程档读取失败，文件内容读不出来。",
+      };
+    }
+  }
+
+  if (format === "docx" || handoffLooksLikeDocx(handoff, item)) {
+    const loaded = await umoSourceFromDocxItem(item, {
+      loadHtml: deps.loadHtml,
+      htmlToJson: deps.htmlToJson,
+    });
+    if (!loaded.ok) return loaded;
+    return { ok: true, ...loaded, readOnly: false };
+  }
+
+  const officeItem =
+    url && handoff?.kind === "url" ? { ...item, url, meta: { ...item.meta, editor_source_url: url } } : item;
+  const loaded = await loadRichDocHtml(officeItem, undefined, {
+    fetchText: deps.loadHtml
+      ? async () => {
+          const result = await deps.loadHtml!(officeItem);
+          if (result.error) throw new Error(result.error);
+          return result.html;
+        }
+      : undefined,
+  });
+  if (loaded.error) return { ok: false, error: loaded.error };
+  const json =
+    loaded.json ??
+    (typeof loaded.html === "string" && loaded.html
+      ? await htmlToRichDocJson(loaded.html, deps.htmlToJson)
+      : null);
+  if (!json || (!richDocHasContent(json) && !String(loaded.html || "").replace(/<[^>]+>/g, "").trim())) {
+    return { ok: false, error: `${item.title || "文档"}：没有可读取的文件。` };
+  }
+  const next = hostedStateFromResolvedJson(json);
+  return { ok: true, ...next };
 }
 
 export function createUmoSaveRoundtrip(timeoutMs = UMO_SAVE_TIMEOUT_MS): {
