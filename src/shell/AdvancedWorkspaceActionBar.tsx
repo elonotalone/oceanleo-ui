@@ -10,12 +10,15 @@ import { AnchoredPopover } from "./anchored-popover";
 import { CollabActionSlot } from "./collab/CollabActionSlot";
 import { EditorItemSocialChrome } from "./editor-item-social-chrome";
 import type { LibraryItem } from "./library-data";
+import { downloadIconButtonProps } from "./workspace-download-icon-button";
 import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import {
   useRightPaneSlot,
   type WorkspaceLibraryPanelId,
 } from "./SplitWorkspace";
+
+export { downloadIconButtonProps };
 
 function browserFullscreenAvailable(): boolean {
   if (typeof document === "undefined") return false;
@@ -322,7 +325,7 @@ export function AdvancedWorkspaceActionBar({
             <>
               <IconButton
                 ref={downloadButtonRef}
-                variant="secondary"
+                {...downloadIconButtonProps}
                 data-workspace-download-launcher
                 onClick={() => setDownloadOpen((value) => !value)}
                 label={tt("下载与导出")}

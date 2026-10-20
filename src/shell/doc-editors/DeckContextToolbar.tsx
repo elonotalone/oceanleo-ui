@@ -11,12 +11,15 @@ import type {
 import { deckSlideSelectionContext } from "./deck-slide-selection-context";
 import { applyDeckToolbarCommand } from "./deck-toolbar-command";
 import { deckElementAnimationControls } from "./deck-element-animation-controls";
+import { deckObjectGeometryControls } from "./deck-object-geometry-controls";
 import { deckToolbarControlAllowed } from "./DeckMutationPolicy";
 import { deckElementTextEditability } from "./deck-text-gesture";
 import type { DeckElement } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import { viewOnlyContext } from "../collab/adapters/visual-readonly";
+
+export { deckObjectGeometryControls };
 
 function deckObjectActions(
   element: DeckElement | null,
@@ -504,65 +507,7 @@ export function DeckContextToolbar({
             ]
           : []),
         ...common,
-        {
-          id: "x",
-          kind: "number",
-          label: "X",
-          suffix: "%",
-          value: element.x,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "deck-object-geometry",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
-        },
-        {
-          id: "y",
-          kind: "number",
-          label: "Y",
-          suffix: "%",
-          value: element.y,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "deck-object-geometry",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
-        },
-        {
-          id: "width",
-          kind: "number",
-          label: tt("宽") + " %",
-          value: element.width,
-          suffix: "%",
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "deck-object-geometry",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
-        },
-        {
-          id: "height",
-          kind: "number",
-          label: tt("高") + " %",
-          value: element.height,
-          suffix: "%",
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "deck-object-geometry",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
-        },
-        {
-          id: "rotation",
-          kind: "number",
-          label: tt("旋转"),
-          value: element.rotation,
-          placement: "more",
-          slot: "inspector",
-          inspectorGroup: "deck-object-geometry",
-          inspectorLabel: tt("位置与尺寸"),
-          inspectorIcon: "position",
-        },
+        ...deckObjectGeometryControls(element, tt),
         { id: "layer-up", kind: "action", label: tt("上移一层"), icon: "bring-forward", placement: "more" },
         { id: "layer-down", kind: "action", label: tt("下移一层"), icon: "send-backward", placement: "more" },
       ] as SelectionControl[]).map((control) =>
