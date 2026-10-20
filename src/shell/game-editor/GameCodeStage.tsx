@@ -69,12 +69,55 @@ import {
   peekGameWorkingDocument,
   stashGameWorkingDocument,
 } from "../advanced-routes/GameRoute";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
 
 const GAME_EDITOR_CAPABILITY = "game-editor";
 const EMPTY_DOC =
   "<!doctype html><html><body><script></script></body></html>";
 /** 本端对共享代码文本的程序性写入（agent 改源码、外部版本）的事务来源；bindTextarea 把它当远端处理，会同步到文本框。 */
-const GAME_EXTERNAL_ORIGIN = "oceanleo-game-external";
+export const GAME_EXTERNAL_ORIGIN = "oceanleo-game-external";
+/**
+ * Description of `LOCAL_TEXT_ORIGIN` in `bind-textarea.ts`. That symbol is
+ * not exported; reuse the same stamp, do not invent a second origin.
+ */
+export const BIND_TEXTAREA_LOCAL_ORIGIN_DESCRIPTION =
+  "oceanleo-collab-textarea-local";
+
+export type GameUserEditSource =
+  | { kind: "local-type" }
+  | { kind: "ytext-observe"; origin: unknown }
+  | { kind: "write-through" }
+  | { kind: "restore" }
+  | { kind: "load" };
+
+export function isBindTextareaLocalOrigin(origin: unknown): boolean {
+  return (
+    typeof origin === "symbol" &&
+    origin.description === BIND_TEXTAREA_LOCAL_ORIGIN_DESCRIPTION
+  );
+}
+
+/**
+ * Game person-write choke. Local textarea typing records. Remote Yjs,
+ * agent/external `writeThrough`, recovery restore, and un-evented load
+ * pull must not open autosave.
+ */
+export function applyGameUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  source: GameUserEditSource,
+): number {
+  const key = userEditItemKey(item);
+  const record =
+    source.kind === "local-type" ||
+    (source.kind === "ytext-observe" &&
+      isBindTextareaLocalOrigin(source.origin));
+  if (!record) return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
 const SAFE_PEER_COLOR = /^(#[0-9a-f]{3,8}|hsl\([\d\s.,%]+\))$/i;
 
 interface PeerLine {
@@ -305,6 +348,7 @@ export function GameCodeStage({
     const ytext = current.doc.getText(gameTextName(GAME_MAIN_PAGE));
     const before = ytext.toString();
     if (before === next) return;
+    applyGameUserEditSession(item, { kind: "write-through" });
     let head = 0;
     const max = Math.min(before.length, next.length);
     while (head < max && before.charCodeAt(head) === next.charCodeAt(head)) head += 1;
@@ -321,7 +365,7 @@ export function GameCodeStage({
       const inserted = next.slice(head, next.length - tail);
       if (inserted) ytext.insert(head, inserted);
     }, GAME_EXTERNAL_ORIGIN);
-  }, []);
+  }, [item]);
 
   // 绑定文本框：等房间同步、本端源码载入完。绑定后远端的字会直接进文本框，这里再把它同步回 React 状态。
   useEffect(() => {
@@ -330,10 +374,16 @@ export function GameCodeStage({
     const ytext = room.doc.getText(textName);
     const binding = bindTextarea(room, textName, codeEl);
     boundRef.current = true;
-    const pull = () => {
+    const pull = (event?: { transaction?: { origin?: unknown } }) => {
       const text = ytext.toString();
       if (text === sourceRef.current) return;
       setSource(text);
+      applyGameUserEditSession(
+        item,
+        event
+          ? { kind: "ytext-observe", origin: event.transaction?.origin }
+          : { kind: "load" },
+      );
       bump();
     };
     // 初次：房间里已有代码就以房间为准；房间里还是空的（别人正在种）就不把本地盖掉。
@@ -344,7 +394,7 @@ export function GameCodeStage({
       ytext.unobserve(pull);
       binding.destroy();
     };
-  }, [room, codeEl, synced, sourceReady, bump]);
+  }, [room, codeEl, synced, sourceReady, bump, item]);
 
   // 外部版本（AI 或别人另存的新版）：取来写进共享文本，标记已保存。
   useEffect(() => {
@@ -714,6 +764,7 @@ export function GameCodeStage({
                   value={source}
                   onChange={(event) => {
                     setSource(event.target.value);
+                    applyGameUserEditSession(item, { kind: "local-type" });
                     bump();
                   }}
                   onSelect={onCodeSelect}
@@ -814,6 +865,7 @@ export function GameCodeStage({
                 if (declared) setParamValues(resolveGameParamValues(declared));
               }
               stashGameWorkingDocument(item, next);
+              applyGameUserEditSession(item, { kind: "restore" });
               bump();
               return true;
             },

@@ -84,6 +84,11 @@ import { VideoCanvasRoute } from "./VideoCanvasRoute";
 import { DesignCanvasLocalRoute } from "./DesignCanvasLocalRoute";
 import { WebsiteLocalRoute } from "./WebsiteLocalRoute";
 import { usePreferLocalRemoteEditor } from "../use-prefer-local-editors";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
 
 interface RemoteChoice {
   value: Exclude<SelectionCommand["value"], undefined>;
@@ -121,6 +126,53 @@ function sameStringSet(left: readonly string[], right: readonly string[]): boole
   const a = [...new Set(left)].sort();
   const b = [...new Set(right)].sort();
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+export type EmbeddedUserEditKind =
+  | "person-dirty"
+  | "init"
+  | "handshake"
+  | "restore"
+  | "clean";
+
+/**
+ * Hosted embed person-write choke, matching Umo / hosted deck: dirty after
+ * the core is open and handshake-ready. Init, open handshake echo, and
+ * recovery restore must not open autosave.
+ */
+export function embeddedUserEditKind(input: {
+  dirty?: unknown;
+  handshakeReady?: boolean;
+  hostedOpen?: boolean;
+  restoring?: boolean;
+  initEcho?: boolean;
+}): EmbeddedUserEditKind {
+  if (input.restoring) return "restore";
+  if (input.dirty !== true) return "clean";
+  if (input.initEcho) return "init";
+  if (!input.handshakeReady) return "handshake";
+  if (!input.hostedOpen) return "init";
+  return "person-dirty";
+}
+
+export function applyEmbeddedUserEditSession(input: {
+  item: { key?: string; id?: string } | null | undefined;
+  kind?: EmbeddedUserEditKind;
+  dirty?: unknown;
+  hostedOpen?: boolean;
+  handshakeReady?: boolean;
+  restoring?: boolean;
+  initEcho?: boolean;
+}): number {
+  const key = userEditItemKey(input.item);
+  const kind = input.kind ?? embeddedUserEditKind(input);
+  const personDirty =
+    kind === "person-dirty" &&
+    input.dirty === true &&
+    input.hostedOpen === true &&
+    input.handshakeReady === true;
+  if (!personDirty) return userMutationGeneration(key);
+  return recordUserMutation(key);
 }
 
 function designHandshakeId(): string {
@@ -442,6 +494,12 @@ export function EmbeddedRoute({
     resolve: (restored: boolean) => void;
     timer: number;
   } | null>(null);
+  const itemRef = useRef(item);
+  itemRef.current = item;
+  const handshakeReadyRef = useRef(false);
+  const hostedOpenRef = useRef(false);
+  const seenHostDirtyRef = useRef(false);
+  const restoringRef = useRef(false);
   const [designSourceBinding, setDesignSourceBinding] =
     useState<DesignSourceBinding | null>(null);
   const [designSourceReceipt, setDesignSourceReceipt] =
@@ -476,6 +534,14 @@ export function EmbeddedRoute({
     hostedMediaType === "canvas" &&
     isDurableLibraryItem(item) &&
     item.artifactType === "composite_image";
+  const designHandshakeReady =
+    !designComposite ||
+    Boolean(
+      designSourceBinding &&
+        designSourceReceipt &&
+        designSourceReceipt.handshakeId === designSourceBinding.handshakeId,
+    );
+  handshakeReadyRef.current = designHandshakeReady;
   useEffect(() => {
     setDesignSourceBinding(null);
     setDesignSourceReceipt(null);
@@ -631,6 +697,9 @@ export function EmbeddedRoute({
       settled = true;
       if (timer !== null) window.clearTimeout(timer);
       setDesignHandshakeError("");
+      lastDirtyRevisionRef.current = designSourceBinding.evidence.revision;
+      remoteRevisionRef.current = designSourceBinding.evidence.revision;
+      hostedOpenRef.current = true;
       setDesignSourceReceipt({
         handshakeId: designSourceBinding.handshakeId,
         artifactId: item.artifactId,
@@ -944,6 +1013,9 @@ export function EmbeddedRoute({
     remoteRevisionRef.current = null;
     recoveryGenerationRef.current += 1;
     recoverySnapshotRef.current = null;
+    hostedOpenRef.current = false;
+    seenHostDirtyRef.current = false;
+    restoringRef.current = false;
   }, [item.key]);
   const handleDirtyChange = useCallback(
     (nextDirty: boolean, remoteRevision?: number) => {
@@ -951,6 +1023,25 @@ export function EmbeddedRoute({
       const hasRemoteRevision =
         Number.isSafeInteger(remoteRevision) && Number(remoteRevision) >= 0;
       if (hasRemoteRevision) setEmbeddedRecoveryReady(true);
+      const handshakeReady = handshakeReadyRef.current;
+      const restoring = restoringRef.current;
+      const sameRevisionEcho =
+        nextDirty &&
+        hasRemoteRevision &&
+        Object.is(Number(remoteRevision), lastDirtyRevisionRef.current);
+      const initEcho =
+        (nextDirty && !seenHostDirtyRef.current) || sameRevisionEcho;
+      applyEmbeddedUserEditSession({
+        item: itemRef.current,
+        dirty: nextDirty,
+        handshakeReady,
+        hostedOpen: hostedOpenRef.current,
+        restoring,
+        initEcho,
+      });
+      if (nextDirty) seenHostDirtyRef.current = true;
+      if (hasRemoteRevision) hostedOpenRef.current = true;
+      if (restoring && nextDirty) restoringRef.current = false;
       if (!nextDirty) {
         lastDirtyRevisionRef.current = null;
         recoveryGenerationRef.current += 1;
@@ -980,6 +1071,7 @@ export function EmbeddedRoute({
     if (history.revision !== undefined) {
       remoteRevisionRef.current = history.revision;
     }
+    hostedOpenRef.current = true;
     setRemoteHistoryState(history);
   }, []);
   const handleToolsManifest = useCallback(
@@ -987,12 +1079,14 @@ export function EmbeddedRoute({
       revision: EditorDocumentRevision,
       tools: EditorToolManifestEntry[],
     ) => {
+      hostedOpenRef.current = true;
       setRemoteToolsManifest({ revision, tools });
     },
     [],
   );
   const handleProjectManifest = useCallback(
     (manifest: EditorProjectManifest) => {
+      hostedOpenRef.current = true;
       setProjectManifest(manifest);
     },
     [],
@@ -1020,6 +1114,9 @@ export function EmbeddedRoute({
     setEmbeddedRecoveryReady(false);
     setDesignSourceReceipt(null);
     setDesignHandshakeGeneration((value) => value + 1);
+    hostedOpenRef.current = false;
+    seenHostDirtyRef.current = false;
+    restoringRef.current = false;
     const pendingRestore = recoveryRestoreRef.current;
     if (pendingRestore) {
       window.clearTimeout(pendingRestore.timer);
@@ -1131,6 +1228,7 @@ export function EmbeddedRoute({
       resolve: resolvePromise,
       timer,
     };
+    restoringRef.current = true;
     setRecoveryRestore({ recoveryId, snapshot: payload });
     return promise;
   }, []);
@@ -1159,6 +1257,14 @@ export function EmbeddedRoute({
       recoverySnapshotRef.current = snapshot;
       lastDirtyRevisionRef.current = revision;
       remoteRevisionRef.current = revision;
+      applyEmbeddedUserEditSession({
+        item: itemRef.current,
+        dirty: true,
+        handshakeReady: handshakeReadyRef.current,
+        hostedOpen: hostedOpenRef.current,
+        restoring: true,
+        initEcho: false,
+      });
       setDirty(true);
       setEditRevision((value) => value + 1);
       restored.resolve(true);
@@ -1276,6 +1382,9 @@ export function EmbeddedRoute({
     remoteRevisionRef.current = null;
     recoveryGenerationRef.current += 1;
     recoverySnapshotRef.current = null;
+    hostedOpenRef.current = false;
+    seenHostDirtyRef.current = false;
+    restoringRef.current = false;
   }, [vectorCollab.acceptPendingRevision]);
   const requestEditorClose = useCallback(() => {
     setCloseRequestRevision((value) => value + 1);
@@ -1571,13 +1680,6 @@ export function EmbeddedRoute({
       />
     );
   }
-  const designHandshakeReady =
-    !designComposite ||
-    Boolean(
-      designSourceBinding &&
-        designSourceReceipt &&
-        designSourceReceipt.handshakeId === designSourceBinding.handshakeId,
-    );
 
   return (
     <AdvancedWorkbenchShell

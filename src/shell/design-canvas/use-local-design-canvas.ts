@@ -21,6 +21,27 @@ import {
 } from "./design-canvas-source";
 import { applyDesignDocumentTitle } from "./design-command-surface";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
+
+export type DesignCanvasUserEditKind = "commit" | "undo" | "redo" | "load";
+
+/**
+ * Design-canvas person-write choke. `commit` (applyProject) and person
+ * undo/redo bump revision; the load identity effect that zeros revision
+ * must not open autosave.
+ */
+export function applyDesignCanvasUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  kind: DesignCanvasUserEditKind,
+): number {
+  const key = userEditItemKey(item);
+  if (kind === "load") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
 
 export function useLocalDesignCanvas(
   item: LibraryItem | null,
@@ -78,6 +99,7 @@ export function useLocalDesignCanvas(
       historyRef.current = [cloneDesignDocument(result.project)];
       indexRef.current = 0;
       setRevision(0);
+      applyDesignCanvasUserEditSession(item, "load");
       setSourceReady(true);
       void paint(result.project);
     });
@@ -123,12 +145,13 @@ export function useLocalDesignCanvas(
       historyRef.current.push(cloned);
       indexRef.current = historyRef.current.length - 1;
       dirtyRef.current = true;
+      applyDesignCanvasUserEditSession(item, "commit");
       setProject(cloned);
       setRevision((value) => value + 1);
       void paint(cloned);
       return cloned;
     },
-    [paint, sourceReady],
+    [item, paint, sourceReady],
   );
 
   const captureCanvas = useCallback(() => {
@@ -148,21 +171,23 @@ export function useLocalDesignCanvas(
     if (indexRef.current <= 0) return project;
     indexRef.current -= 1;
     const next = cloneDesignDocument(historyRef.current[indexRef.current]);
+    applyDesignCanvasUserEditSession(item, "undo");
     setProject(next);
     setRevision((value) => value + 1);
     void paint(next);
     return next;
-  }, [paint, project]);
+  }, [item, paint, project]);
 
   const redo = useCallback(() => {
     if (indexRef.current >= historyRef.current.length - 1) return project;
     indexRef.current += 1;
     const next = cloneDesignDocument(historyRef.current[indexRef.current]);
+    applyDesignCanvasUserEditSession(item, "redo");
     setProject(next);
     setRevision((value) => value + 1);
     void paint(next);
     return next;
-  }, [paint, project]);
+  }, [item, paint, project]);
 
   const exportPng = useCallback(async () => {
     const canvas = canvasRef.current;
