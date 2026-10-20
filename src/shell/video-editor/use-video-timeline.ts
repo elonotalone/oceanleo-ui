@@ -25,10 +25,7 @@ import {
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import { useUI, type UITranslate } from "../../i18n/ui/useUI";
-import {
-  isDurableLibraryItem,
-  type LibraryItem,
-} from "../library-data";
+import { type LibraryItem } from "../library-data";
 import {
   guessFileKind,
   guessMediaKind,
@@ -51,7 +48,6 @@ import {
   addTrackTo,
   availableTimelineDurationMs,
   changeClipSpeed,
-  createEmptyDoc,
   cutTimelineRange,
   docDurationMs,
   duplicateClipIn,
@@ -79,11 +75,15 @@ import {
 import { clampTimelinePxPerSecond } from "./timeline-viewport";
 import type { TimelineClip, TimelineDoc, TrackKind } from "./types";
 import {
+  VIDEO_TIMELINE_PLACEHOLDER_DURATION_MS,
+  planVideoTimelineSeed,
+} from "./video-timeline-source";
+import {
   assertBlobSource,
   parseVideoProjectEnvelope,
 } from "../media-editors/source-integrity.mjs";
 
-const PLACEHOLDER_DURATION_MS = 5000;
+const PLACEHOLDER_DURATION_MS = VIDEO_TIMELINE_PLACEHOLDER_DURATION_MS;
 
 export interface VideoTimelineState {
   doc: TimelineDoc;
@@ -261,78 +261,7 @@ function buildInitialDoc(item: LibraryItem): {
   sourceError: string;
   projectExpected: boolean;
 } {
-  const meta = item.meta ?? {};
-  const draft = meta.timeline_doc;
-  if (isTimelineDoc(draft)) {
-    return {
-      doc: normalizeTimelineDoc(draft),
-      seededClipId: "",
-      seededKind: null,
-      sourceReady: true,
-      sourceError: "",
-      projectExpected: false,
-    };
-  }
-  const doc = createEmptyDoc();
-  if (meta.editor_project_schema === "oceanleo.timeline.v1") {
-    const projectUrl = String(meta.editor_project_url || item.url || "").trim();
-    return {
-      doc,
-      seededClipId: "",
-      seededKind: null,
-      sourceReady: false,
-      sourceError: projectUrl
-        ? ""
-        : "当前时间线 revision 缺少工程源；已阻止用空时间线替代。",
-      projectExpected: true,
-    };
-  }
-  const url = item.url || item.previewUrl || "";
-  if (!url) {
-    const sourceError =
-      item.source === "artifact" || isDurableLibraryItem(item)
-        ? "当前视频 revision 缺少可验证的媒体源；已阻止用空时间线替代。"
-        : "";
-    return {
-      doc,
-      seededClipId: "",
-      seededKind: null,
-      sourceReady: !sourceError,
-      sourceError,
-      projectExpected: false,
-    };
-  }
-  const media: "video" | "audio" =
-    item.kind === "audio" ? "audio" : "video";
-  const track = doc.tracks.find((entry) => entry.kind === media);
-  if (!track) {
-    return {
-      doc,
-      seededClipId: "",
-      seededKind: null,
-      sourceReady: false,
-      sourceError: "当前素材没有可用的时间线轨道。",
-      projectExpected: false,
-    };
-  }
-  const clip: TimelineClip = {
-    id: makeId("clip"),
-    start_ms: 0,
-    duration_ms: PLACEHOLDER_DURATION_MS,
-    source_url: url,
-    in_ms: 0,
-    speed: 1,
-    volume: 1,
-  };
-  track.clips.push(clip);
-  return {
-    doc,
-    seededClipId: clip.id,
-    seededKind: media,
-    sourceReady: false,
-    sourceError: "",
-    projectExpected: false,
-  };
+  return planVideoTimelineSeed(item);
 }
 
 export function useVideoTimeline(

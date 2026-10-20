@@ -54,7 +54,7 @@ import {
   hydrateWorkflowGraph,
   planWorkflowGraphFromItem,
 } from "./workflow-graph-source";
-import { addVideoCanvasNode } from "./video-canvas-local-session";
+import { applyVideoCanvasCommand } from "./video-canvas-command-surface";
 
 const VideoCanvasLocalCanvas = dynamic(
   () =>
@@ -478,19 +478,26 @@ export function VideoCanvasStage({
                 };
               }
               if (id === "workflow.add-node") {
-                const next = addVideoCanvasNode(
+                const applied = applyVideoCanvasCommand(
                   graph,
-                  "filter",
-                  `node-${editRevision + 1}`,
-                  String(params?.label || "新节点"),
+                  id,
+                  params || {},
+                  editRevision,
                 );
+                if (!applied.ok) {
+                  return {
+                    ok: false,
+                    message: applied.error,
+                    revision: editRevision,
+                  };
+                }
                 graphDirtyRef.current = true;
-                setGraph(next);
-                setEditRevision((n) => n + 1);
+                setGraph(applied.graph);
+                setEditRevision(applied.revision);
                 return {
                   ok: true,
-                  message: `已加入节点，现在共 ${next.nodes.length} 个。`,
-                  revision: editRevision + 1,
+                  message: applied.message,
+                  revision: applied.revision,
                 };
               }
               const proposed =
@@ -624,15 +631,16 @@ export function VideoCanvasStage({
                     data-testid="workflow-add-node"
                     disabled={!mayWrite || !sourceReady}
                     onClick={() => {
-                      const next = addVideoCanvasNode(
+                      const applied = applyVideoCanvasCommand(
                         graph,
-                        "filter",
-                        `node-${editRevision + 1}`,
-                        "新节点",
+                        "workflow.add-node",
+                        { label: "新节点" },
+                        editRevision,
                       );
+                      if (!applied.ok) return;
                       graphDirtyRef.current = true;
-                      setGraph(next);
-                      setEditRevision((value) => value + 1);
+                      setGraph(applied.graph);
+                      setEditRevision(applied.revision);
                     }}
                   >
                     加节点
@@ -679,15 +687,16 @@ export function VideoCanvasStage({
                     data-testid="workflow-add-node"
                     disabled={!mayWrite || !sourceReady}
                     onClick={() => {
-                      const next = addVideoCanvasNode(
+                      const applied = applyVideoCanvasCommand(
                         graph,
-                        "filter",
-                        `node-${editRevision + 1}`,
-                        "新节点",
+                        "workflow.add-node",
+                        { label: "新节点" },
+                        editRevision,
                       );
+                      if (!applied.ok) return;
                       graphDirtyRef.current = true;
-                      setGraph(next);
-                      setEditRevision((value) => value + 1);
+                      setGraph(applied.graph);
+                      setEditRevision(applied.revision);
                     }}
                   >
                     加节点
