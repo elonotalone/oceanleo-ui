@@ -483,10 +483,11 @@ export async function saveSnapshotWithConflictRetry<
     title: input.title,
     mergeFromLatest: input.mergeFromLatest,
   });
-  if (first.ok) return first;
-  if (!(first.conflict?.latest || first.stale)) return first;
-  const latest = first.session || first.conflict?.latest;
-  if (!latest) return first;
+  if (first.ok || first.stale) return first;
+  const latest = first.conflict?.latest;
+  // A stale response means the user left this session. Never turn that
+  // refusal into permission to write this document into the newly active one.
+  if (!latest || latest.id !== input.expectedSessionId) return first;
   return input.saveSnapshot(
     input.mergeFromLatest(latest.snapshot),
     latest.schema_version || input.schemaVersion,
