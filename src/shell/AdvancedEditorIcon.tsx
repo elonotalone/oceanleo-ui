@@ -28,7 +28,10 @@ export type WorkbenchIconName =
   | "fullscreen-exit"
   | "history"
   | "panel"
-  | "chevron";
+  | "chevron"
+  | "share"
+  | "star"
+  | "back";
 
 const paths: Record<WorkbenchIconName, ReactNode> = {
   add: <path d="M12 5v14M5 12h14" />,
@@ -368,23 +371,35 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
     </>
   ),
   chevron: <path d="M6 9l6 6 6-6" />,
+  share: (
+    <>
+      <path d="M12 16V3M7 8l5-5 5 5" />
+      <path d="M5 13v7h14v-7" />
+    </>
+  ),
+  star: (
+    <path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" />
+  ),
+  back: <path d="M15 6l-6 6 6 6" />,
 };
 
 export function AdvancedEditorIcon({
   name,
   className = "h-4 w-4",
   strokeWidth = 1.8,
+  filled = false,
 }: {
   name: WorkbenchIconName;
   className?: string;
   strokeWidth?: number;
+  filled?: boolean;
 }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? "currentColor" : "none"}
       stroke="currentColor"
-      strokeWidth={strokeWidth}
+      strokeWidth={filled ? 0 : strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}

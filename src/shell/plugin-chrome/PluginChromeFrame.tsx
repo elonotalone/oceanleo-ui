@@ -22,7 +22,10 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { IconButton } from "../../ui/Button";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
+import { EditorItemSocialChrome } from "../editor-item-social-chrome";
+import { InlineEditorMinePanel } from "../inline-editor-mine-panel";
 import { AdvancedLayoutContext } from "../advanced-layout-context";
 import * as SplitWorkspaceMod from "../SplitWorkspace";
 import {
@@ -49,6 +52,7 @@ import {
 import type { EditorMode } from "../hosted-editor";
 import type {
   PluginChromeAction,
+  PluginChromeLibraryChrome,
   PluginChromeNotice,
   PluginChromePanel,
   PluginChromeSaveState,
@@ -150,7 +154,7 @@ const ICON_ACTION_CLASS =
 const AI_ICON_ACTION_CLASS =
   "grid h-7 w-7 shrink-0 place-items-center rounded-xl border border-transparent text-[var(--pchrome-ink-mid)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--pchrome-line)] hover:bg-[var(--pchrome-muted)] hover:text-[var(--pchrome-ink)] disabled:pointer-events-none disabled:opacity-40";
 
-export interface PluginChromeFrameProps {
+export interface PluginChromeFrameProps extends PluginChromeLibraryChrome {
   /** 决定主题档与 accent 身份色。13 件插件都必须有值。 */
   pluginId: PluginThemeId;
   title: string;
@@ -227,6 +231,12 @@ export function PluginChromeFrame({
   notices,
   window: windowActions,
   chrome = "self",
+  item = null,
+  showLibrary = true,
+  showBack = false,
+  activeLibraryPanelId = null,
+  onOpenLibrary,
+  onBack,
   children,
 }: PluginChromeFrameProps) {
   const tt = useUI();
@@ -252,9 +262,19 @@ export function PluginChromeFrame({
   const panelList = useMemo(
     () => [
       ...(panels || []).filter((panel) => panel.id !== PLUGIN_AGENT_DRAWER_ID),
+      ...(chrome !== "host" && showLibrary
+        ? [
+            {
+              id: "mine",
+              label: "我的库",
+              icon: "library" as const,
+              content: <InlineEditorMinePanel siteId={siteId} />,
+            },
+          ]
+        : []),
       agentDrawer,
     ],
-    [agentDrawer, panels],
+    [agentDrawer, chrome, panels, showLibrary, siteId],
   );
   const controller = usePluginChromePanels(panelList);
   const { activePanel, isOpen } = controller;
@@ -264,6 +284,10 @@ export function PluginChromeFrame({
   const rightPaneSlot =
     typeof SplitWorkspaceMod.useRightPaneSlot === "function"
       ? SplitWorkspaceMod.useRightPaneSlot()
+      : null;
+  const workspacePane =
+    typeof SplitWorkspaceMod.useWorkspacePane === "function"
+      ? SplitWorkspaceMod.useWorkspacePane()
       : null;
   const rightMaximized = useSyncExternalStore(
     rightPaneSlot?.subscribeRightMaximized ?? subscribeWithoutPane,
@@ -388,6 +412,18 @@ export function PluginChromeFrame({
           }
         : null;
 
+  const openLibrary = (id: "materials" | "mine") => {
+    if (onOpenLibrary) {
+      onOpenLibrary(id);
+      return;
+    }
+    if (workspacePane?.openLibraryPanel(id)) return;
+    if (id === "mine") hostController.togglePanel("mine");
+  };
+  const libraryPressed =
+    activeLibraryPanelId ||
+    (isOpen("mine") && !transientPanel ? ("mine" as const) : null);
+
   if (chrome === "host") {
     return (
       <AdvancedLayoutContext.Provider value={layout}>
@@ -436,6 +472,41 @@ export function PluginChromeFrame({
           className={`relative z-30 flex ${PLUGIN_CHROME_HEADER_H} shrink-0 items-center gap-3 border-b border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-3`}
         >
           <div className="flex min-w-0 items-center gap-2 pr-1">
+            {showBack && onBack ? (
+              <span data-global-row-slot="back">
+                <IconButton
+                  onClick={onBack}
+                  label={tt("返回库")}
+                  icon={<AdvancedEditorIcon name="back" className="h-4 w-4" />}
+                />
+              </span>
+            ) : null}
+            {showLibrary ? (
+              <span data-global-row-slot="library" className="flex items-center">
+                {onOpenLibrary || workspacePane ? (
+                  <IconButton
+                    selected={libraryPressed === "materials"}
+                    aria-pressed={libraryPressed === "materials"}
+                    data-workspace-library-panel="materials"
+                    onClick={() => openLibrary("materials")}
+                    label={tt("素材库")}
+                    icon={
+                      <AdvancedEditorIcon name="materials" className="h-4 w-4" />
+                    }
+                  />
+                ) : null}
+                <IconButton
+                  selected={libraryPressed === "mine"}
+                  aria-pressed={libraryPressed === "mine"}
+                  data-workspace-library-panel="mine"
+                  onClick={() => openLibrary("mine")}
+                  label={tt("我的库")}
+                  icon={
+                    <AdvancedEditorIcon name="library" className="h-4 w-4" />
+                  }
+                />
+              </span>
+            ) : null}
             {badge && (
               <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[var(--pchrome-accent)] text-[11px] font-black text-[var(--pchrome-on-accent)] shadow-sm">
                 {badge}
@@ -500,6 +571,9 @@ export function PluginChromeFrame({
           {(!views || views.length === 0) && <div className="flex-1" />}
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <span data-global-row-slot="download" className="flex items-center">
+              <EditorItemSocialChrome item={item} />
+            </span>
             {actions?.map((action) => {
               const iconOnly = action.variant === "icon";
               const active = action.panelId

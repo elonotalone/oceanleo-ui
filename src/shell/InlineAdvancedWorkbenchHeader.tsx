@@ -12,6 +12,7 @@ import {
   focusAdvancedToolsTrigger,
   useAdvancedToolsLauncherRegistration,
 } from "./advanced-layout-context";
+import type { LibraryItem } from "./library-data";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import { PluginModeAdapterBridge } from "./plugin-chrome/plugin-mode";
@@ -23,6 +24,7 @@ import type { PluginThemeId } from "./plugin-theme";
 
 export function InlineAdvancedWorkbenchHeader({
   adapter,
+  item = null,
   autoSaveState,
   autoSaveError,
   activeDrawerId,
@@ -43,6 +45,7 @@ export function InlineAdvancedWorkbenchHeader({
   onClose,
 }: {
   adapter: AdvancedEditorAdapter;
+  item?: LibraryItem | null;
   autoSaveState: AdvancedAutoSaveState;
   autoSaveError?: string;
   activeDrawerId: string;
@@ -173,6 +176,7 @@ export function InlineAdvancedWorkbenchHeader({
     >
       <PluginGlobalRow
         adapter={adapter}
+        item={item}
         autoSaveState={autoSaveState}
         autoSaveError={autoSaveError}
         pluginThemeId={pluginThemeId}

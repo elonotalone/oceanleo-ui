@@ -8,6 +8,8 @@ import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { actionGroup } from "./advanced-workbench-chrome";
 import { AnchoredPopover } from "./anchored-popover";
 import { CollabActionSlot } from "./collab/CollabActionSlot";
+import { EditorItemSocialChrome } from "./editor-item-social-chrome";
+import type { LibraryItem } from "./library-data";
 import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import {
@@ -35,6 +37,7 @@ function toggleEditorBrowserFullscreen() {
 
 export function AdvancedWorkspaceActionBar({
   adapter,
+  item = null,
   autoSaveState: observedAutoSaveState,
   autoSaveError,
   activeLibraryPanelId,
@@ -49,6 +52,7 @@ export function AdvancedWorkspaceActionBar({
   onTriggerAction,
 }: {
   adapter: AdvancedEditorAdapter;
+  item?: LibraryItem | null;
   autoSaveState: AdvancedAutoSaveState;
   autoSaveError?: string;
   /** @deprecated The shared selection bar is now the only tools launcher. */
@@ -163,7 +167,7 @@ export function AdvancedWorkspaceActionBar({
             <IconButton
               onClick={onBack}
               label={tt("返回库")}
-              icon={<span className="text-base leading-none">←</span>}
+              icon={<AdvancedEditorIcon name="back" className="h-4 w-4" />}
             />
           ) : null}
         </div>
@@ -171,24 +175,24 @@ export function AdvancedWorkspaceActionBar({
           {showLibrary ? (
             <>
               <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
-              <Button
+              <IconButton
                 variant="ghost"
                 selected={activeLibraryPanelId === "materials"}
                 onClick={() => onOpenLibrary("materials")}
                 aria-pressed={activeLibraryPanelId === "materials"}
-              >
-                <AdvancedEditorIcon name="materials" className="h-4 w-4" />
-                {tt("素材库")}
-              </Button>
-              <Button
+                data-workspace-library-panel="materials"
+                label={tt("素材库")}
+                icon={<AdvancedEditorIcon name="materials" className="h-4 w-4" />}
+              />
+              <IconButton
                 variant="ghost"
                 selected={activeLibraryPanelId === "mine"}
                 onClick={() => onOpenLibrary("mine")}
                 aria-pressed={activeLibraryPanelId === "mine"}
-              >
-                <AdvancedEditorIcon name="library" className="h-4 w-4" />
-                {tt("我的库")}
-              </Button>
+                data-workspace-library-panel="mine"
+                label={tt("我的库")}
+                icon={<AdvancedEditorIcon name="library" className="h-4 w-4" />}
+              />
             </>
           ) : null}
         </div>
@@ -231,9 +235,7 @@ export function AdvancedWorkspaceActionBar({
                 autoSaveState === "saving" ? "animate-pulse" : ""
               }`}
             />
-            <span className="max-w-[9rem] truncate text-[12px]">
-              {saveStateLabel}
-            </span>
+            <span className="sr-only">{saveStateLabel}</span>
             {saveMenuAvailable ? (
               <AdvancedEditorIcon
                 name="chevron"
@@ -314,7 +316,8 @@ export function AdvancedWorkspaceActionBar({
           ) : null}
         </div>
         ) : null}
-        <div data-global-row-slot="download">
+        <div data-global-row-slot="download" className="flex items-center gap-0.5">
+          <EditorItemSocialChrome item={item} />
           {downloadActions.length > 0 ? (
             <>
               <IconButton

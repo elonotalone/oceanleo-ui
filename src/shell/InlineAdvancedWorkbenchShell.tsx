@@ -22,6 +22,7 @@ import {
 } from "./FloatingContextToolbar";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
+import { InlineEditorMinePanel } from "./inline-editor-mine-panel";
 import {
   hasPendingOrFailed,
   leaveAdvancedWorkbench,
@@ -375,20 +376,35 @@ export function InlineAdvancedWorkbenchShell({
       // `/advanced/<featureId>` 与 MaterialCatalog 这类没有 SplitWorkspace 的承载里，
       // 工作区窗格不存在（或没人登记库面板），第一行「素材库」以前点了没反应。
       // 这时退到壳自己的素材抽屉——它的第一项就是「从本地上传」。
+      // 「我的库」同样必须有落点：打开侧栏列表，不卸载当前编辑器，以免丢掉未保存改动。
       if (workspacePane?.openLibraryPanel(id)) return;
-      if (id === "materials") openDrawer("materials");
+      if (id === "materials") {
+        openDrawer("materials");
+        return;
+      }
+      openTransientPanel(
+        "mine",
+        tt("我的库"),
+        <InlineEditorMinePanel siteId={siteId} />,
+      );
     },
-    [closeDetail, openDrawer, workspacePane],
+    [closeDetail, openDrawer, openTransientPanel, siteId, tt, workspacePane],
   );
   const materialsDrawerOpen =
     !transientPanel && activeDrawerId === "materials";
+  const minePanelOpen = transientPanel?.id === "mine" || activeDrawerId === "mine";
   const activeLibraryPanelId =
     workspacePane?.activeLibraryPanelId ||
-    (materialsDrawerOpen ? ("materials" as const) : null);
+    (materialsDrawerOpen
+      ? ("materials" as const)
+      : minePanelOpen
+        ? ("mine" as const)
+        : null);
   const actionBar = useMemo(
     () => (
       <InlineAdvancedWorkbenchHeader
         adapter={adapter}
+        item={item}
         autoSaveState={autoSaveState}
         autoSaveError={autoSaveError}
         activeDrawerId={layoutState.activeDrawerId}
@@ -410,6 +426,7 @@ export function InlineAdvancedWorkbenchShell({
     [
       activeLibraryPanelId,
       adapter,
+      item,
       effectiveAccent,
       pluginThemeId,
       autoSave.retry,
@@ -491,7 +508,7 @@ export function InlineAdvancedWorkbenchShell({
           <aside
             data-workspace-pane="left"
             data-left-panel="tool-detail"
-            className="flex w-80 shrink-0 flex-col border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
+            className="flex h-full min-h-0 w-80 shrink-0 flex-col border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
           >
             <div className="flex h-11 items-center gap-2 border-b border-[var(--awb-border)] px-3">
               <button

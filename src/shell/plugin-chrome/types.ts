@@ -16,6 +16,7 @@
 
 import type { ReactNode } from "react";
 import type { WorkbenchIconName } from "../AdvancedEditorIcon";
+import type { LibraryItem } from "../library-data";
 
 /**
  * 保存状态。改造前三套并存（共享插件自动存 / 网站手动 Save + dirty /
@@ -85,4 +86,18 @@ export interface PluginChromeWindowActions {
   onClose?: () => void;
   onToggleFullscreen?: () => void;
   fullscreen?: boolean;
+}
+
+/**
+ * Self-owned extracted plugins and host chrome share this identity surface.
+ * Share/favorite must receive a real LibraryItem; empty onTrigger is not a
+ * substitute. Parent/W6 should pass `item` from the open artifact.
+ */
+export interface PluginChromeLibraryChrome {
+  item?: LibraryItem | null;
+  showLibrary?: boolean;
+  showBack?: boolean;
+  activeLibraryPanelId?: "materials" | "mine" | null;
+  onOpenLibrary?: (id: "materials" | "mine") => void;
+  onBack?: () => void;
 }

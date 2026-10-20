@@ -2,12 +2,14 @@
 
 import type { AdvancedEditorAdapter } from "../advanced-editor-adapter";
 import { AdvancedWorkspaceActionBar } from "../AdvancedWorkspaceActionBar";
+import type { LibraryItem } from "../library-data";
 import type { PluginThemeId } from "../plugin-theme";
 import type { WorkspaceLibraryPanelId } from "../SplitWorkspace";
 import type { AdvancedAutoSaveState } from "../use-advanced-autosave";
 
 export interface PluginGlobalRowProps {
   adapter: AdvancedEditorAdapter;
+  item?: LibraryItem | null;
   autoSaveState: AdvancedAutoSaveState;
   autoSaveError?: string;
   pluginThemeId: PluginThemeId | null;
@@ -31,6 +33,7 @@ export function PluginGlobalRow(props: PluginGlobalRowProps) {
     <div data-plugin-global-row className="w-full min-w-0">
       <AdvancedWorkspaceActionBar
         adapter={props.adapter}
+        item={props.item}
         autoSaveState={props.autoSaveState}
         autoSaveError={props.autoSaveError}
         activeLibraryPanelId={props.activeLibraryPanelId ?? null}
