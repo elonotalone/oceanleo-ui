@@ -22,4 +22,12 @@ Parent safety corrections committed: 91eb28b4 strict sanitization; bab6aa23 neve
 
 Dev API reload: inspected /opt/multisite-docker/caddy/sites/oceanleo-api.caddy. api.dev.oceanleo.com → local :8008 oceanleo-api; public production is sg-prod. Self-preservation guard passed. Exec 96615 runs guarded docker restart oceanleo-api, currently queued under IO guard; /tmp/editor-repair-dev-api-restart.log. Health was healthy before restart; confirm new StartedAt after completion. No production gateway restart.
 
+## Integration checkpoint 21:37
+
+All r2 owners delivered and committed: W1 c73a7b08, W2 2863881f, W3 97347ee1, W5 5a18771d, W6 466ab3bf. Parent UI typecheck exec 27833 finished exit 0 at this intermediate tree; log /tmp/editor-repair-ui-typecheck-integration.log. Parent r2 focused tests 28 pass (/tmp/editor-repair-parent-r2.log); W6-r2 focused 18 pass (/tmp/editor-repair-parent-W6-r2.log). Parent a190d6d1 fixes readable project URL selection across non-doc cores; positive source-tree/delivery regression included and source lifecycle suite green.
+
+Dev API restart first guard was cancelled ONLY while still queued (specific guard PID 2148909, checked with self-preservation guard); re-enqueued guarded exec 76080. Restart finished: StartedAt 2026-10-20T13:29:20.019927951Z, health healthy, api.dev /health ok:true. No production restart. Logs /tmp/editor-repair-dev-api-restart-r2.log.
+
+Active final integration roles: W5-r3 exec 69185 chat 914d7164-a935-4907-8812-6a97396586f8; W3-r3 exec 76555 chat 59f32dde-474b-4393-b09c-0dd1c82336ea. Tasks committed and explicitly transfer only final interaction bindings / standalone Library receiver + real icon trigger ownership. Logs /tmp/editor-repair-20261020-W5-r3.log and W3-r3.log. V1-r2 still not dispatched; first chat id available in /tmp/editor-repair-20261020-V1.log. Must finish r3, run V1 final, generate CSS and snapshot, full appropriate checks, dev freshness and twin-only sync. Do not final while work remains.
+
 Checkpoint commits: UI 2f1101dc, portal 80ab77c, website 1c4ac9b, oceandino 80f1e1466. Oceandino required checks passed (UI tsc, 456 dev/staff tests, 1325 Lucy tests + 200 subtests, 584 script tests + 6 skips, policy valid); GitHub origin/main verified at 80f1e1466. Secondary origin push target /host/opt/git-mirrors/oceandino.git unavailable from this mount; no mirror configuration changed.
