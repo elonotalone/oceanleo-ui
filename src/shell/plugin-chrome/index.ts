@@ -50,6 +50,7 @@ export {
 } from "./tokens";
 export type {
   PluginChromeAction,
+  PluginChromeLibraryChrome,
   PluginChromeNotice,
   PluginChromePanel,
   PluginChromeSaveState,
