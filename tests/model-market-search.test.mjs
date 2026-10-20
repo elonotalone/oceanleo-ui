@@ -159,6 +159,8 @@ test("canSelect 四种情况", () => {
   assert.equal(canSelect({ selectable: false, status: "unpriced" }, []), false);
   assert.equal(canSelect({ status: "byok_only", provider: "openai" }, ["openai"]), true);
   assert.equal(canSelect({ status: "byok_only", provider: "openai" }, []), false);
+  assert.equal(canSelect({ status: "byok_only", provider: "alibaba_intl" }, ["alibaba_intl"]), true);
+  assert.equal(canSelect({ status: "byok_only", provider: "alibaba_intl" }, []), false);
 });
 
 test("checkedAgo 边界", () => {

@@ -262,10 +262,12 @@ export function ModelGroupManager({
   catalog,
   user,
   initialMarketQuery = "",
+  onSetupByok,
 }: {
   catalog: ModelCatalog | null;
   user: boolean;
   initialMarketQuery?: string;
+  onSetupByok?: () => void;
 }) {
   const tt = useUI();
   const [payload, setPayload] = useState<ModelGroupsPayload | null>(null);
@@ -371,6 +373,12 @@ export function ModelGroupManager({
     .filter((model) => effectiveProvider === ALL_PROVIDERS || model.provider === effectiveProvider)
     .filter((model) => !query.trim() || matchesModel(query, model));
   const offerGroups = groupOffers(allModels, PROVIDER_DISPLAY_ORDER);
+  const needsAlibabaIntlByok =
+    !byokProviders.includes("alibaba_intl")
+    && (effectiveProvider === ALL_PROVIDERS || effectiveProvider === "alibaba_intl")
+    && flatten(capability).some(
+      (model) => model.provider === "alibaba_intl" && model.status === "byok_only",
+    );
   const catalogModels = useMemo(() => allCatalogModels(catalog), [catalog]);
   const marketHits = useMemo(() => {
     const needle = marketQuery.trim();
@@ -884,6 +892,25 @@ export function ModelGroupManager({
                     <button key={item.id} type="button" onClick={() => setProvider(item.id)} className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === item.id ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}>{tt(item.label)}</button>
                   ))}
                 </div>
+                {needsAlibabaIntlByok && (
+                  <div
+                    data-model-byok-required="alibaba_intl"
+                    className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
+                  >
+                    <span className="text-[11px] text-amber-800">
+                      {tt("这一类需自带 Key")}
+                    </span>
+                    {onSetupByok && (
+                      <button
+                        type="button"
+                        onClick={onSetupByok}
+                        className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                      >
+                        {tt("自带 API key（BYOK）")}
+                      </button>
+                    )}
+                  </div>
+                )}
                 <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tt("搜索全部可用模型…")} className="mb-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] outline-none placeholder:text-neutral-400 focus:border-neutral-400" />
                 <div data-model-edit-offers="" className="max-h-[360px] overflow-y-auto rounded-xl border border-neutral-200 bg-white">
                   {offerGroups.map((hit, index) => (

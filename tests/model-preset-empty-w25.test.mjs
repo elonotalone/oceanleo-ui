@@ -191,6 +191,7 @@ async function render(options = {}) {
     root.render(React.createElement(ModelGroupManager, {
       catalog: options.catalog || catalog,
       user: options.user ?? false,
+      onSetupByok: options.onSetupByok,
     }));
   });
   await flush();
@@ -306,5 +307,53 @@ test("填了对应自带 key 后 byok 空类改口为本版暂无", async () => 
   assert.ok(video);
   assert.equal(video.getAttribute("data-empty-reason"), "none");
   assert.equal(video.textContent.trim(), "本版暂无这一类模型");
+  view.cleanup();
+});
+
+test("国际站模型提示缺少 BYOK 并直达 key 设置", async () => {
+  const intlCatalog = structuredClone(catalog);
+  intlCatalog.groups[0].capabilities[0].providers.push({
+    id: "alibaba_intl",
+    label: "阿里云国际站",
+    models: [offer("alibaba_intl", "qwen3.8-max-0902", {
+      label: "Qwen3.8-Max-0902",
+      provider_label: "阿里云国际站",
+      status: "byok_only",
+    })],
+  });
+  const selection = {
+    text: { chat: ["bailian:qwen-plus"] },
+    image: { text_to_image: [] },
+    video: { text_to_video: [] },
+    threed: { general_3d: [] },
+  };
+  let setupClicked = false;
+  const view = await render({
+    catalog: intlCatalog,
+    user: true,
+    active_group_key: "custom:g1",
+    groups: [{
+      key: "custom:g1",
+      id: "g1",
+      kind: "custom",
+      name: "test",
+      editable: true,
+      selection,
+    }],
+    onSetupByok: () => { setupClicked = true; },
+  });
+  await view.click(view.host.querySelector('[data-model-group-menu="custom:g1"]'));
+  const edit = [...view.host.querySelectorAll('[role="menuitem"]')]
+    .find((node) => node.textContent.includes("编辑组合"));
+  assert.ok(edit);
+  await view.click(edit);
+  const prompt = view.host.querySelector('[data-model-byok-required="alibaba_intl"]');
+  assert.ok(prompt);
+  assert.match(prompt.textContent, /需自带 Key/);
+  const setup = [...prompt.querySelectorAll("button")]
+    .find((node) => node.textContent.includes("自带 API key"));
+  assert.ok(setup);
+  await view.click(setup);
+  assert.equal(setupClicked, true);
   view.cleanup();
 });

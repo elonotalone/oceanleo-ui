@@ -199,7 +199,11 @@ export function ApiPage({
   );
   const selection = (
     <div className="space-y-8" data-api-selection="">
-      <ModelGroupManager catalog={catalog} user={!!user} />
+      <ModelGroupManager
+        catalog={catalog}
+        user={!!user}
+        onSetupByok={() => selectApiPane("byok")}
+      />
       <section className="v-fade-up" style={{ animationDelay: "40ms" }}>
         <div className="rounded-2xl border border-neutral-200 p-5">
           <p className="text-[13px] font-semibold text-neutral-900">{tt("价格数据来源")}</p>
