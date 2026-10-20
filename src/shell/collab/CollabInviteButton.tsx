@@ -8,7 +8,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { Modal } from "../../ui";
-import { Button } from "../../ui/Button";
+import { Button, IconButton } from "../../ui/Button";
+import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import { imFetch, useImEnabled } from "../../lib/im/client";
 import { messagesApi } from "../../lib/im/messages-api";
 import type { ImConversationSummary, ImEditorKind } from "../../lib/im/types";
@@ -28,20 +29,33 @@ function newClientId(): string {
 export function CollabInviteButton({
   room,
   artifact,
+  iconOnly = false,
 }: {
   room: CollabRoom | null;
   artifact: { id: string; title: string; editorKind: ImEditorKind };
+  iconOnly?: boolean;
 }) {
   const tt = useUI();
   const enabled = useImEnabled();
   const [open, setOpen] = useState(false);
   if (!enabled) return null;
+  const label = tt("邀请一起改");
   return (
     <>
-      <Button variant="ghost" data-collab-invite onClick={() => setOpen(true)} aria-haspopup="dialog">
-        <span aria-hidden="true" className="text-base leading-none">＋</span>
-        {tt("邀请一起改")}
-      </Button>
+      {iconOnly ? (
+        <IconButton
+          data-collab-invite
+          label={label}
+          icon={<AdvancedEditorIcon name="add" className="h-4 w-4" />}
+          aria-haspopup="dialog"
+          onClick={() => setOpen(true)}
+        />
+      ) : (
+        <Button variant="ghost" data-collab-invite onClick={() => setOpen(true)} aria-haspopup="dialog">
+          <span aria-hidden="true" className="text-base leading-none">＋</span>
+          {label}
+        </Button>
+      )}
       {open ? <InviteDialog room={room} artifact={artifact} onClose={() => setOpen(false)} /> : null}
     </>
   );

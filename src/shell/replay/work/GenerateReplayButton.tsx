@@ -3,13 +3,16 @@
 // 编辑器动作栏上的「生成回放」（W11 挂，契约 §8.2）：选范围——今天 / 最近 7 天 / 自定义，生成后打开播放层。
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { IconButton } from "../../../ui/Button";
 import { useImEnabled } from "../../../lib/im/client";
 import type { ImEditorKind } from "../../../lib/im/types";
+import { AdvancedEditorIcon } from "../../AdvancedEditorIcon";
 import { createWorkReplay } from "./replay-work-api";
 import { openWorkReplay } from "./open-work-replay";
 
 export interface GenerateReplayButtonProps {
   resource: { kind: "artifact"; id: string; title: string; editorKind: ImEditorKind };
+  iconOnly?: boolean;
 }
 
 export type ReplayRangeChoice = "today" | "week" | "custom";
@@ -35,7 +38,10 @@ export function replayRangeFor(
   return { range_from: from.toISOString(), range_to: to.toISOString() };
 }
 
-export function GenerateReplayButton({ resource }: GenerateReplayButtonProps) {
+export function GenerateReplayButton({
+  resource,
+  iconOnly = false,
+}: GenerateReplayButtonProps) {
   const tt = useUI();
   const enabled = useImEnabled();
   const [open, setOpen] = useState(false);
@@ -73,16 +79,28 @@ export function GenerateReplayButton({ resource }: GenerateReplayButtonProps) {
     }
   };
 
+  const label = tt("生成回放");
   return (
     <span className="relative inline-block">
-      <button
-        type="button"
-        data-generate-replay
-        onClick={() => setOpen((value) => !value)}
-        className="rounded-lg px-2.5 py-1 text-[13px] text-stone-600 hover:bg-stone-100"
-      >
-        {tt("生成回放")}
-      </button>
+      {iconOnly ? (
+        <IconButton
+          data-generate-replay
+          label={label}
+          icon={<AdvancedEditorIcon name="history" className="h-4 w-4" />}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          onClick={() => setOpen((value) => !value)}
+        />
+      ) : (
+        <button
+          type="button"
+          data-generate-replay
+          onClick={() => setOpen((value) => !value)}
+          className="rounded-lg px-2.5 py-1 text-[13px] text-stone-600 hover:bg-stone-100"
+        >
+          {label}
+        </button>
+      )}
       {open ? (
         <div
           role="dialog"

@@ -1347,7 +1347,12 @@ export function MyLibrary({
       itemSiteId: standaloneEditorItem.siteId,
     });
     return (
-      <div className={`h-full min-h-0 ${className}`}>
+      <div
+        className={`h-full min-h-0 ${className}`}
+        data-library-standalone-editor={
+          standaloneEditorItem.artifactId || standaloneEditorItem.id
+        }
+      >
         <AdvancedContentWorkbench
           key={`${standaloneEditorItem.artifactId || standaloneEditorItem.id}:${
             standaloneEditorItem.revisionId || "transient"

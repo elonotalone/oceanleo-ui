@@ -5,12 +5,10 @@
  * 头像串、锁提示、邀请一起改、生成回放，以及专业模式锁的接线。
  * `imEnabledHere()` 为 false（境内、未登录）时什么都不渲染、什么都不接。
  */
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { IconButton } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { useImEnabled } from "../../lib/im/client";
-import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
 import type { PluginThemeId } from "../plugin-theme";
 import { GenerateReplayButton } from "../replay/work/GenerateReplayButton";
 import type { EditorCollabBinding } from "./index";
@@ -18,37 +16,6 @@ import { CollabInviteButton } from "./CollabInviteButton";
 import { CollabLockBanner } from "./CollabLockBanner";
 import { CollabPresenceBar } from "./CollabPresenceBar";
 import { attachProModeLock } from "./pro-mode-lock";
-
-function CollabOutlineTrigger({
-  label,
-  icon,
-  selector,
-  children,
-}: {
-  label: string;
-  icon: WorkbenchIconName;
-  selector: string;
-  children: ReactNode;
-}) {
-  const hostRef = useRef<HTMLSpanElement>(null);
-  return (
-    <span className="relative inline-flex">
-      <IconButton
-        label={label}
-        icon={<AdvancedEditorIcon name={icon} className="h-4 w-4" />}
-        onClick={() => {
-          hostRef.current?.querySelector<HTMLElement>(selector)?.click();
-        }}
-      />
-      <span
-        ref={hostRef}
-        className="absolute left-0 top-full z-50 [&_[data-collab-invite]]:sr-only [&_button[data-generate-replay]]:sr-only"
-      >
-        {children}
-      </span>
-    </span>
-  );
-}
 
 export function CollabActionSlotInner({
   collab,
@@ -85,29 +52,18 @@ export function CollabActionSlotInner({
       <CollabPresenceBar room={room} />
       <CollabLockBanner room={room} />
       {artifact ? (
-        <CollabOutlineTrigger
-          label={tt("邀请一起改")}
-          icon="add"
-          selector="[data-collab-invite]"
-        >
-          <CollabInviteButton room={room} artifact={artifact} />
-        </CollabOutlineTrigger>
+        <CollabInviteButton iconOnly room={room} artifact={artifact} />
       ) : null}
       {artifact ? (
-        <CollabOutlineTrigger
-          label={tt("生成回放")}
-          icon="history"
-          selector="[data-generate-replay]"
-        >
-          <GenerateReplayButton
-            resource={{
-              kind: "artifact",
-              id: artifact.id,
-              title: artifact.title,
-              editorKind: artifact.editorKind,
-            }}
-          />
-        </CollabOutlineTrigger>
+        <GenerateReplayButton
+          iconOnly
+          resource={{
+            kind: "artifact",
+            id: artifact.id,
+            title: artifact.title,
+            editorKind: artifact.editorKind,
+          }}
+        />
       ) : null}
     </div>
   );

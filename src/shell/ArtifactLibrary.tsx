@@ -42,6 +42,7 @@ import {
   CollectionInfiniteSentinel,
   type CollectionViewOption,
 } from "./collection-chrome";
+import { useStandaloneMineEditReceipt } from "./inline-editor-mine-activate";
 import { MyLibrary } from "./MyLibrary";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
@@ -232,6 +233,9 @@ const CATEGORY_FILTER: Record<string, ArtifactFilter> = {
  * tab content; ResultCanvas replaces those tabs with MyLibrary centrally.
  */
 export function ArtifactLibrary(props: ArtifactLibraryProps) {
+  const libraryAction = useStandaloneMineEditReceipt({
+    enabled: !props.fill,
+  });
   if (props.fill) return <ArtifactLibraryLegacy {...props} />;
   const filter = props.filter || "all";
   const controlledType =
@@ -243,6 +247,7 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
       <div className="min-h-0 flex-1 overflow-hidden">
         <MyLibrary
           accent={props.accent}
+          action={libraryAction}
           plain
           pageTitle="我的库"
           category={controlledType}

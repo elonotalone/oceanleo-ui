@@ -853,7 +853,7 @@ test("W3-r2: 独立侧栏空对话与长对话走 stretch，控制面板自己�
   });
 });
 
-test("W3-r2: 邀请/回放是同套描边图标，真实动作仍触发", async () => {
+test("W3-r2: 邀请/回放各只有一个可聚焦触发器，真实动作仍触发", async () => {
   const { CollabActionSlotInner } = await import(
     await compileModule("src/shell/collab/CollabActionSlotInner.tsx", {
       "../../i18n/ui/useUI": ttStubUrl,
@@ -869,23 +869,27 @@ test("W3-r2: 邀请/回放是同套描边图标，真实动作仍触发", async 
       `),
       "../replay/work/GenerateReplayButton": dataModule(`
         import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
-        export function GenerateReplayButton() {
+        export function GenerateReplayButton({ iconOnly }) {
           return jsx("button", {
             type: "button",
             "data-generate-replay": true,
+            "aria-label": "生成回放",
+            "data-icon-only": iconOnly ? "true" : "false",
             onClick() { globalThis.__w3Replay = true; },
-            children: "生成回放",
+            children: jsx("span", { "data-icon": "history", "aria-hidden": "true" }),
           });
         }
       `),
       "./CollabInviteButton": dataModule(`
         import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
-        export function CollabInviteButton() {
+        export function CollabInviteButton({ iconOnly }) {
           return jsx("button", {
             type: "button",
             "data-collab-invite": true,
+            "aria-label": "邀请一起改",
+            "data-icon-only": iconOnly ? "true" : "false",
             onClick() { globalThis.__w3Invite = true; },
-            children: "邀请一起改",
+            children: jsx("span", { "data-icon": "add", "aria-hidden": "true" }),
           });
         }
       `),
@@ -917,25 +921,23 @@ test("W3-r2: 邀请/回放是同套描边图标，真实动作仍触发", async 
         },
       }),
     );
-    const invite = [...container.querySelectorAll("button")].find(
-      (node) =>
-        node.getAttribute("aria-label") === "邀请一起改" &&
-        !node.hasAttribute("data-collab-invite"),
-    );
-    const replay = [...container.querySelectorAll("button")].find(
-      (node) =>
-        node.getAttribute("aria-label") === "生成回放" &&
-        !node.hasAttribute("data-generate-replay"),
-    );
-    assert.ok(invite, "邀请没有描边图标按钮");
-    assert.ok(replay, "回放没有描边图标按钮");
+    const invite = find("[data-collab-invite]");
+    const replay = find("[data-generate-replay]");
+    assert.ok(invite, "邀请触发器没画出来");
+    assert.ok(replay, "回放触发器没画出来");
+    assert.equal(container.querySelectorAll("[data-collab-invite]").length, 1);
+    assert.equal(container.querySelectorAll("[data-generate-replay]").length, 1);
+    assert.equal(container.querySelectorAll("button[aria-label='邀请一起改']").length, 1);
+    assert.equal(container.querySelectorAll("button[aria-label='生成回放']").length, 1);
+    assert.equal(invite.getAttribute("aria-label"), "邀请一起改");
+    assert.equal(replay.getAttribute("aria-label"), "生成回放");
+    assert.equal(invite.getAttribute("data-icon-only"), "true");
+    assert.equal(replay.getAttribute("data-icon-only"), "true");
     assert.ok(invite.querySelector('[data-icon="add"]'));
     assert.ok(replay.querySelector('[data-icon="history"]'));
     await click(invite);
     await click(replay);
     assert.equal(globalThis.__w3Invite, true, "邀请图标没点到真实动作");
     assert.equal(globalThis.__w3Replay, true, "回放图标没点到真实动作");
-    assert.ok(find("[data-collab-invite]"));
-    assert.ok(find("[data-generate-replay]"));
   });
 });
