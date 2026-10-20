@@ -2,9 +2,9 @@
 
 Independent behavioral acceptance. No product source edits. No browser, Playwright, screenshots, production, dep installs, service changes, child agents, or full package suite.
 
-**Verdict: not complete.** Non-deck delivered owners are green under focused checks, including committed **W1-r3** `f065cd3a`. Final pass is blocked on uncommitted **W6-r3** (hosted deck toolbar / agent origin) and on W1 typecheck still red after that commit. This report does not mark the wave passing.
+**Verdict: not complete.** W1-r3 `f065cd3a` and W6-r3 `fe970ebe` are on `main` and the matching V1 tests pass on those commits. Final pass is blocked on **two remaining W1 `tsc` errors**. This report does not mark the wave passing.
 
-Measured on oceanleo-ui `f065cd3a` plus **uncommitted W6-r3 worktree**. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
+Measured on oceanleo-ui `fe970ebe` (W6-r3) after W1-r3 `f065cd3a`. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
 
 Round-1 `acceptance.md` overclaimed “13 plugins have load/mutate/save/reopen”. That was registry metadata. This file replaces that claim.
 
@@ -29,7 +29,7 @@ No browser consent, so (d) stays unverified.
 | 4 | Icon-only row + share/favorite | W3 | `f612459c` / `97347ee1` | chrome dedicated slots |
 | 5 | 我的库 without SplitWorkspace | W3 | `97347ee1` / `034f3a22` | chrome + social receiver |
 | 6 | Left AI composer mid-column | W4 | `70380329` + CSS `16494476` | chat-layout; generated CSS now contains `data-agent-conversation` |
-| 7 | Other adapters blank-open / save | W6 | `59e9e746` / `466ab3bf`; **r3 uncommitted** | source-load + round-trip families; deck-hosted (r3 WIP) |
+| 7 | Other adapters blank-open / save | W6 | `59e9e746` / `466ab3bf` / r3 `fe970ebe` | source-load + round-trip families; deck-hosted |
 
 ## (a) Actual positive round-trips (not the 13-plugin matrix)
 
@@ -72,18 +72,11 @@ Not claimed as (a): pdf, audio, video-timeline, threed, game, video-canvas, **de
 
 ## Precise pending gaps (do not mark pass)
 
-### 1. W6-r3 hosted deck — uncommitted
+### 1. W6-r3 hosted deck — committed `fe970ebe`
 
-No `docs/editor-repair-20261020/deliveries/W6-r3.md`. HEAD still has no `DeckHostedContextToolbar.tsx`. Committed `deck-hosted-selection-command.ts` still exports `hostedDeckInsertTextCommand` / `buildDeckHostedCommandSurface` with the r2 `send` stamp path; parent `bf53f828` set planner `origin: null`.
+`deliveries/W6-r3.md` is on `main`. Normal hosted deck renders `DeckHostedContextToolbar` (shared `SelectionToolbarControl` + hold session; it does not import `SelectionToolbar.tsx` because that file publishes to agent-review and poisons G4/D1 hosted-editor stubs). Human fill/lock click stamps `origin: "user"` with the object id/revision. Agent `deck.format-fill` with forged `origin:user` still sends an unstamped envelope (`applied: false`, `reviewed: true`). No object → `请先选中对象再改格式。`, not `slide-1`. `readOnly` comes from artifact `view_only` / `canEdit: false`.
 
-Uncommitted WIP in this worktree (not V1-owned, not in this commit):
-
-- `src/shell/advanced-routes/DeckHostedContextToolbar.tsx`
-- `DeckHostedRoute.tsx` wires `renderContextToolbar` → shared `SelectionToolbar`, `origin: "user"` only from the human callback, `readOnly` from `deckHostedItemReadOnly(item)`
-- Agent `sendDeckHostedAgentSelectionCommand` omits `origin` even when `params.origin === "user"`; `applied: false`, `reviewed: true`
-- Missing object selection is `请先选中对象再改格式。`, not a fake `slide-1`
-
-V1 `tests/editor-repair-acceptance-deck-hosted.test.mjs` is **4/4 on that WIP**. It will fail on clean HEAD until W6-r3 commits. Parent should resume this chat after that commit and rerun that file.
+V1 `tests/editor-repair-acceptance-deck-hosted.test.mjs` **4/4 on `fe970ebe`**. W6-r3 own suite **5/5** in the same batch.
 
 ### 2. W1-r3 committed; typecheck still red on W1 files
 
@@ -138,8 +131,8 @@ bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- \
 | round-trip | 6 | 6 pass | no |
 | social | 2 | 2 pass | no (W3-r3 committed) |
 | richdoc-image | 2 | 2 pass | no (W1-r3 `f065cd3a`) |
-| deck-hosted | 4 | 4 pass | **yes W6-r3 WIP** |
-| **Total this worktree** | **37** | **37 pass** | 4 of those 37 need W6-r3 |
+| deck-hosted | 4 | 4 pass | no (W6-r3 `fe970ebe`) |
+| **Total committed tree** | **37** | **37 pass** | none pending r3 |
 
 ## Focused owner regressions (not full suite)
 
@@ -173,10 +166,8 @@ Generated CSS: `src/theme/ui.css` contains `data-agent-conversation` (`16494476`
 
 ## Parent-only remaining
 
-1. Land **W6-r3** (toolbar + agent unstamped review). Never restore synthetic `origin:user` on the agent surface.
-2. W1 (or parent) fix the two remaining `tsc` errors in `richdoc-pro-source.ts:287` and `rich-doc-model.ts:154`. V1 must not edit those files.
-3. Resume V1 after W6-r3 commits: rerun `editor-repair-acceptance-deck-hosted` and typecheck.
-4. Parent-owned `architecture:check` ComputerDock facade import.
-5. Full package suite once V1 tests are stable on committed W6-r3. LeoDev freshness / twin-only bump. **No 上线. No production. No push by V1.**
+1. W1 (or parent) fix the two remaining `tsc` errors in `richdoc-pro-source.ts:287` and `rich-doc-model.ts:154`. V1 must not edit those files.
+2. Parent-owned `architecture:check` ComputerDock facade import (dirty ComputerDock files in the worktree are not V1 and were not committed here).
+3. Full package suite once typecheck is green. LeoDev freshness / twin-only bump. **No 上线. No production. No push by V1.**
 
 Parent independently reruns required checks per kernel.
