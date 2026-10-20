@@ -11,6 +11,7 @@ import type {
 import type { EditorMode } from "./hosted-editor";
 import type { LibraryItem } from "./library-data";
 import type { SelectionCommand, SelectionContext } from "./selection-context";
+import type { SelectionInteractionHoldRef } from "./edit-bar-hosted-selection-hold";
 
 export interface EmbedEditorPaneProps {
   item: LibraryItem;
@@ -36,6 +37,11 @@ export interface EmbedEditorPaneProps {
   }) => void;
   onProtocolReset?: () => void;
   onSelectionChange?: (selection: SelectionContext | null) => void;
+  /**
+   * Host installs a synchronous hold/release callback here. The shared toolbar
+   * calls it on pointer/keyboard so the gate is held before iframe blur.
+   */
+  selectionInteractionRef?: SelectionInteractionHoldRef;
   onSelectionResult?: (result: {
     requestId: string;
     ok: boolean;

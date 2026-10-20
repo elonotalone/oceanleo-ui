@@ -37,6 +37,10 @@ import {
 import { uploadFile } from "../../lib/database";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { SelectionToolbar } from "../SelectionToolbar";
+import {
+  selectionDuringInteraction,
+  type SelectionInteractionHoldRef,
+} from "../edit-bar-hosted-selection-hold";
 import { EmbedEditorPane } from "../workbench-embed";
 import { embedEditorOriginFor } from "../workbench-embed-base";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -362,6 +366,21 @@ export function EmbeddedRoute({
     manifestRevision: EditorDocumentRevision;
   } | null>(null);
   const [selection, setSelection] = useState<SelectionContext | null>(null);
+  const [heldSelection, setHeldSelection] = useState<SelectionContext | null>(
+    null,
+  );
+  const heldSelectionRef = useRef<SelectionContext | null>(null);
+  const selectionInteractionRef = useRef<
+    SelectionInteractionHoldRef["current"]
+  >(null);
+  const onSelectionInteractionChange = useCallback(
+    (held: SelectionContext | null) => {
+      heldSelectionRef.current = held;
+      setHeldSelection(held);
+      selectionInteractionRef.current?.(held);
+    },
+    [],
+  );
   const [selectionCommand, setSelectionCommand] =
     useState<SelectionCommand | null>(null);
   const [remoteViewport, setRemoteViewport] =
@@ -711,7 +730,7 @@ export function EmbeddedRoute({
   // Canvas/background selections used to be hidden because the leading icon
   // was only a static type badge. It is now the real tools launcher, so keep
   // those selections in the shared edit bar as well.
-  const hostedSelection = selection;
+  const hostedSelection = selectionDuringInteraction(selection, heldSelection);
   const remoteSelectionId =
     hostedSelection?.id || `host:${hostedMediaType || "editor"}`;
   const remoteSelectionRevision =
@@ -898,6 +917,9 @@ export function EmbeddedRoute({
     selectEmbeddedPage(hostActivePageId);
   }, [hostActivePageId, selectEmbeddedPage]);
   useEffect(() => {
+    heldSelectionRef.current = null;
+    setHeldSelection(null);
+    selectionInteractionRef.current?.(null);
     setSelection(null);
     setSelectionCommand(null);
     setMaterialInsertion(null);
@@ -984,6 +1006,9 @@ export function EmbeddedRoute({
     [],
   );
   const handleProtocolReset = useCallback(() => {
+    heldSelectionRef.current = null;
+    setHeldSelection(null);
+    selectionInteractionRef.current?.(null);
     setSelection(null);
     setSelectionCommand(null);
     setRemoteViewport(null);
@@ -1633,6 +1658,7 @@ export function EmbeddedRoute({
                 onProjectResult={handleProjectResult}
                 onProtocolReset={handleProtocolReset}
                 onSelectionChange={setSelection}
+                selectionInteractionRef={selectionInteractionRef}
                 onViewportChange={setRemoteViewport}
                 selectionCommand={selectionCommand}
                 viewportCommand={viewportCommand}
@@ -1696,6 +1722,7 @@ export function EmbeddedRoute({
             <SelectionToolbar
               context={editBarSelection}
               onCommand={setSelectionCommand}
+              onSelectionInteractionChange={onSelectionInteractionChange}
               onOpenPanel={openDrawer}
               accent={accent}
             />

@@ -60,6 +60,7 @@ import {
   hostedKernelChromeHidden,
 } from "../hosted-local-origin";
 import { usePluginCommandSurface } from "../plugin-command";
+import { selectionDuringInteraction } from "../edit-bar-hosted-selection-hold";
 import { normalizeSelectionContext } from "../selection-context";
 import type { SelectionContext } from "../selection-context";
 import {
@@ -258,6 +259,7 @@ export function DeckHostedRoute({
   snapshotRef.current = snapshot;
   sourceRef.current = source;
   const latestSelectionRef = useRef<SelectionContext | null>(null);
+  const heldSelectionRef = useRef<SelectionContext | null>(null);
   const [liveSelectionId, setLiveSelectionId] = useState<string | null>(null);
   const [pending, setPending] = useState<EditorReviewProposal | null>(null);
   const frameLoadedRef = useRef(false);
@@ -314,6 +316,9 @@ export function DeckHostedRoute({
     setEditRevision(0);
     setPending(null);
     setDocumentOpened(false);
+    latestSelectionRef.current = null;
+    heldSelectionRef.current = null;
+    setLiveSelectionId(null);
   }, [contentIdentity]);
 
   useEffect(() => {
@@ -441,13 +446,17 @@ export function DeckHostedRoute({
 
   const sendHostedSelection = useCallback(
     (envelope: HostedDeckSelectionCommandEnvelope) => {
+      const live = selectionDuringInteraction(
+        latestSelectionRef.current,
+        heldSelectionRef.current,
+      );
       const planned = hostedDeckSelectionCommandEnvelope({
         command: envelope.command,
         origin: envelope.origin,
         ready: documentOpened && sourceReady,
         readOnly: false,
-        liveSelectionId: latestSelectionRef.current?.id ?? liveSelectionId,
-        liveSelectionRevision: latestSelectionRef.current?.revision,
+        liveSelectionId: live?.id ?? liveSelectionId,
+        liveSelectionRevision: live?.revision,
       });
       if (!planned.ok) {
         setStatus(planned.error);
@@ -585,8 +594,9 @@ export function DeckHostedRoute({
         const selection = message.selection
           ? normalizeSelectionContext(message.selection)
           : null;
-        latestSelectionRef.current = selection;
-        setLiveSelectionId(selection?.id || null);
+    latestSelectionRef.current = selection;
+    if (selection) heldSelectionRef.current = null;
+    setLiveSelectionId(selection?.id || null);
         return;
       }
       // Core startup may emit its demo content. Only the receipt for this

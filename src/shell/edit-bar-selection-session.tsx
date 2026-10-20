@@ -14,6 +14,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 import type { SelectionContext } from "./selection-context";
+import type { SelectionInteractionChange } from "./edit-bar-hosted-selection-hold";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 
 export const EditBarSelectionSessionContext = createContext<string | null>(
@@ -74,6 +75,7 @@ export function isOwnEditBarSession(
 export function useEditBarSelectionSession(
   liveContext: SelectionContext | null,
   keepAlive = false,
+  onInteractionChange?: SelectionInteractionChange,
 ): {
   context: SelectionContext | null;
   holding: boolean;
@@ -83,6 +85,9 @@ export function useEditBarSelectionSession(
 } {
   const sessionId = `ebs-${useId().replace(/:/g, "")}`;
   const lastRef = useRef<SelectionContext | null>(liveContext);
+  const heldSnapshotRef = useRef<SelectionContext | null>(null);
+  const onInteractionChangeRef = useRef(onInteractionChange);
+  onInteractionChangeRef.current = onInteractionChange;
   const [holding, setHolding] = useState(false);
   const keepAliveRef = useRef(keepAlive);
   const timersRef = useRef(new Set<number>());
@@ -102,14 +107,24 @@ export function useEditBarSelectionSession(
     return Boolean(active && isOwnEditBarSession(active, sessionId));
   }, [sessionId]);
 
+  const notify = useCallback((held: SelectionContext | null) => {
+    onInteractionChangeRef.current?.(held);
+  }, []);
+
   const releaseIfIdle = useCallback(() => {
     if (ownActive()) return;
+    heldSnapshotRef.current = null;
     setHolding(false);
-  }, [ownActive]);
+    notify(null);
+  }, [notify, ownActive]);
 
   const hold = useCallback(() => {
-    if (lastRef.current) setHolding(true);
-  }, []);
+    const next = lastRef.current;
+    if (!next) return;
+    heldSnapshotRef.current = next;
+    setHolding(true);
+    notify(next);
+  }, [notify]);
 
   const onPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -127,7 +142,30 @@ export function useEditBarSelectionSession(
     [hold],
   );
 
-  useEffect(() => () => clearTimers(), [clearTimers]);
+  useEffect(
+    () => () => {
+      clearTimers();
+      heldSnapshotRef.current = null;
+      notify(null);
+    },
+    [clearTimers, notify],
+  );
+
+  useEffect(() => {
+    if (!liveContext || !holding) return;
+    const held = heldSnapshotRef.current;
+    if (!held) return;
+    if (
+      held.id === liveContext.id &&
+      String(held.revision ?? "") === String(liveContext.revision ?? "") &&
+      String(held.epoch ?? "") === String(liveContext.epoch ?? "")
+    ) {
+      return;
+    }
+    heldSnapshotRef.current = null;
+    setHolding(false);
+    notify(null);
+  }, [holding, liveContext, notify]);
 
   useEffect(() => {
     if (!holding && !keepAlive) return;

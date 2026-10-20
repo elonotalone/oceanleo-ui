@@ -21,6 +21,10 @@ import {
   embedFrameSandboxFor,
   resolveEmbedLoadBase,
 } from "./workbench-embed-base";
+import {
+  applySelectionInteractionHold,
+  bindSelectionInteractionRef,
+} from "./edit-bar-hosted-selection-hold";
 import type { SelectionContext } from "./selection-context";
 import { SelectionCommandGate } from "./selection-transactions";
 import type { LibraryItem } from "./library-data";
@@ -53,6 +57,7 @@ export function EmbedEditorPane({
   onProjectResult,
   onProtocolReset,
   onSelectionChange,
+  selectionInteractionRef,
   onSelectionResult,
   onViewportChange,
   onSaveResult,
@@ -175,11 +180,18 @@ export function EmbedEditorPane({
     },
     [editorOrigin, instanceId],
   );
+  bindSelectionInteractionRef(selectionInteractionRef, (held) => {
+    applySelectionInteractionHold(selectionGateRef.current, held);
+  });
   const cancelSelectionTransactions = useCallback(() => {
     for (const command of selectionGateRef.current.cancelAll()) {
       sendToEditor({ type: "selection-command", command });
     }
   }, [sendToEditor]);
+  const cancelSelectionTransactionsIfIdle = useCallback(() => {
+    if (selectionGateRef.current.holding()) return;
+    cancelSelectionTransactions();
+  }, [cancelSelectionTransactions]);
   useEffect(() => {
     cancelSelectionTransactions();
     latestSelectionRef.current = null;
@@ -200,10 +212,10 @@ export function EmbedEditorPane({
     latestProjectManifestRevisionRef.current = null;
   }, [item.key]);
   useEffect(() => {
-    const cancel = () => cancelSelectionTransactions();
+    const cancel = () => cancelSelectionTransactionsIfIdle();
     window.addEventListener("blur", cancel);
     return () => window.removeEventListener("blur", cancel);
-  }, [cancelSelectionTransactions]);
+  }, [cancelSelectionTransactionsIfIdle]);
 
   const sendOpenAsset = useCallback(() => {
     if (isWebsiteBlankDraft(item)) return;
@@ -314,8 +326,9 @@ export function EmbedEditorPane({
         }
       }
       selectionGateRef.current.clear();
+      if (selectionInteractionRef) selectionInteractionRef.current = null;
     };
-  }, [attempt, disposeId, editorOrigin, instanceId]);
+  }, [attempt, disposeId, editorOrigin, instanceId, selectionInteractionRef]);
 
   useEffect(() => {
     if (!saveRequestId || phase !== "ready") return;
@@ -434,7 +447,11 @@ export function EmbedEditorPane({
       });
       return;
     }
-    sendToEditor({ type: "selection-command", command: selectionCommand });
+      sendToEditor({
+        type: "selection-command",
+        command: selectionCommand,
+        origin: "user",
+      });
   }, [onSelectionResult, phase, selectionCommand, sendToEditor]);
 
   useEffect(() => {
@@ -560,7 +577,7 @@ export function EmbedEditorPane({
             setPhase("connecting");
             setFrameLoaded(true);
           }}
-          onBlur={cancelSelectionTransactions}
+          onBlur={cancelSelectionTransactionsIfIdle}
           title={item.title}
           className="h-full w-full border-0"
           sandbox={frameSandbox}

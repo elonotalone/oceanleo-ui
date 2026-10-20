@@ -10,6 +10,10 @@ import { submitRawReviewProposal } from "../agent-review";
 import { downloadText } from "../doc-editors/doc-io";
 import { RichDocHostedContextToolbar } from "../doc-editors/RichDocHostedContextToolbar";
 import {
+  applySelectionInteractionHold,
+  selectionDuringInteraction,
+} from "../edit-bar-hosted-selection-hold";
+import {
   buildRichDocHostedCommandSurface,
   buildRichDocInitEnvelope,
   hostedSelectionForToolbar,
@@ -179,6 +183,11 @@ export function RichDocHostedRoute({
   const [hostedSelection, setHostedSelection] = useState<SelectionContext | null>(
     null,
   );
+  const [heldSelection, setHeldSelection] = useState<SelectionContext | null>(
+    null,
+  );
+  const hostedSelectionRef = useRef<SelectionContext | null>(null);
+  const heldSelectionRef = useRef<SelectionContext | null>(null);
   const selectionGateRef = useRef(new SelectionCommandGate());
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
@@ -309,16 +318,37 @@ export function RichDocHostedRoute({
     [editorOrigin, frameLoaded, instanceId],
   );
 
+  const liveOrHeld = selectionDuringInteraction(hostedSelection, heldSelection);
   const toolbarSelection = useMemo(
-    () => hostedSelectionForToolbar(hostedSelection, editRevision),
-    [editRevision, hostedSelection],
+    () =>
+      hostedSelectionForToolbar(
+        liveOrHeld,
+        liveOrHeld?.revision ?? editRevision,
+      ),
+    [editRevision, liveOrHeld],
+  );
+
+  const onSelectionInteractionChange = useCallback(
+    (held: SelectionContext | null) => {
+      heldSelectionRef.current = held;
+      setHeldSelection(held);
+      applySelectionInteractionHold(selectionGateRef.current, held);
+    },
+    [],
   );
 
   const onHostedSelectionCommand = useCallback(
     (command: SelectionCommand) => {
+      const target = selectionDuringInteraction(
+        hostedSelectionRef.current,
+        heldSelectionRef.current,
+      );
       const result = sendRichDocHostedSelectionCommand({
         command,
-        selection: toolbarSelection,
+        selection: hostedSelectionForToolbar(
+          target,
+          target?.revision ?? editRevision,
+        ),
         ready,
         readOnly,
         origin: "user",
@@ -327,12 +357,15 @@ export function RichDocHostedRoute({
       });
       if (!result.ok) setStatus(result.message);
     },
-    [readOnly, ready, sendToEditor, toolbarSelection],
+    [editRevision, readOnly, ready, sendToEditor],
   );
 
   useEffect(() => {
     selectionGateRef.current.clear();
+    hostedSelectionRef.current = null;
+    heldSelectionRef.current = null;
     setHostedSelection(null);
+    setHeldSelection(null);
   }, [item.key, item.revisionId]);
 
   usePluginCommandSurface(
@@ -398,6 +431,7 @@ export function RichDocHostedRoute({
             origin: "user",
           });
         }
+        hostedSelectionRef.current = selection;
         setHostedSelection(selection);
         return;
       }
@@ -673,6 +707,7 @@ export function RichDocHostedRoute({
           <RichDocHostedContextToolbar
             context={toolbarSelection}
             onCommand={onHostedSelectionCommand}
+            onSelectionInteractionChange={onSelectionInteractionChange}
             accent={accent}
           />
         ) : null,

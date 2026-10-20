@@ -22,6 +22,7 @@ import {
   type SelectionContext,
   type SelectionControl,
 } from "./selection-context";
+import type { SelectionInteractionChange } from "./edit-bar-hosted-selection-hold";
 import {
   DESIGN_TEXT_CONTROL_ORDER,
   groupSelectionOverflowControls,
@@ -77,6 +78,7 @@ function useContentStableSelection(
 export interface SelectionToolbarProps {
   context: SelectionContext | null;
   onCommand: (command: SelectionCommand) => void;
+  onSelectionInteractionChange?: SelectionInteractionChange;
   onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction) => void;
   className?: string;
   accent?: string;
@@ -88,6 +90,7 @@ export interface SelectionToolbarProps {
 export function SelectionToolbar({
   context: liveContext,
   onCommand,
+  onSelectionInteractionChange,
   onOpenPanel,
   className = "",
   accent = "#6d5dfc",
@@ -97,7 +100,11 @@ export function SelectionToolbar({
 }: SelectionToolbarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const stableLive = useContentStableSelection(liveContext);
-  const session = useEditBarSelectionSession(stableLive, moreOpen);
+  const session = useEditBarSelectionSession(
+    stableLive,
+    moreOpen,
+    onSelectionInteractionChange,
+  );
   const context = session.context;
   const layout = useAdvancedLayout();
   const layoutRef = useRef(layout);

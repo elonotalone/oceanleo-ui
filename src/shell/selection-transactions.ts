@@ -151,6 +151,10 @@ export class SelectionCommandGate {
     this.lastContext = null;
   }
 
+  holding(): boolean {
+    return this.interactionHeld;
+  }
+
   private effectiveContext(
     context: SelectionContext | null,
   ): SelectionContext | null {
@@ -227,17 +231,27 @@ export class SelectionCommandGate {
 
   reconcile(context: SelectionContext | null): SelectionCommand[] {
     if (context) {
+      if (
+        this.interactionHeld &&
+        this.lastContext &&
+        (context.id !== this.lastContext.id ||
+          !sameRevision(context.revision, this.lastContext.revision) ||
+          !sameRevision(context.epoch, this.lastContext.epoch))
+      ) {
+        this.interactionHeld = false;
+      }
       this.lastContext = context;
     } else if (!this.interactionHeld) {
       this.lastContext = null;
     }
+    const target = context ?? (this.interactionHeld ? this.lastContext : null);
     const cancellations: SelectionCommand[] = [];
     for (const [id, transaction] of this.transactions) {
       if (
-        context &&
-        transaction.selectionId === context.id &&
-        sameRevision(transaction.selectionRevision, context.revision) &&
-        sameRevision(transaction.selectionEpoch, context.epoch)
+        target &&
+        transaction.selectionId === target.id &&
+        sameRevision(transaction.selectionRevision, target.revision) &&
+        sameRevision(transaction.selectionEpoch, target.epoch)
       ) {
         continue;
       }
