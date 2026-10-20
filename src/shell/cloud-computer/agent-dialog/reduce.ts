@@ -73,6 +73,7 @@ const TURN_END_ERRORS = new Set([
   "node_error",
   "dialog_unreachable",
   "dialog_detached",
+  "invalid_argument",
 ]);
 
 const COMPUTER_WIDE_ERRORS = new Set([
@@ -232,7 +233,15 @@ function settleStoppingTurn(messages: DialogState["messages"], stop: string, ses
     }
     if (!session && message.kind === "user") break;
   }
-  return session ? messages : stampOpenTurn(messages, stop);
+  if (!session) return stampOpenTurn(messages, stop);
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    const message = next[index];
+    if (message.kind === "turn" && !message.stop && (!message.acpSession || message.acpSession === session)) {
+      next[index] = { ...message, stop };
+      return next;
+    }
+  }
+  return messages;
 }
 
 function currentTurnIds(state: DialogState): string[] {
@@ -638,7 +647,9 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
   const session = str(frame.acp_session);
   const matches = session
     ? !state.activeSession || session === state.activeSession
-    : !state.activeSession || COMPUTER_WIDE_ERRORS.has(code);
+    : !state.activeSession
+      || COMPUTER_WIDE_ERRORS.has(code)
+      || (code === "invalid_argument" && program === (state.program ?? ""));
   const endsTurn = matches && TURN_END_ERRORS.has(code);
   const next = {
     ...state,

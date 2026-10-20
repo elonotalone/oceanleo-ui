@@ -194,6 +194,21 @@ test("composerOccupancy：已 stamp 的回合只要工具还在等待就是 work
     },
   ];
   assert.equal(turnStillRunning(cancelled), false);
+  const stopping = [
+    messages[0],
+    {
+      ...inProgress[1],
+      stop: "stopping",
+    },
+  ];
+  assert.equal(turnStillRunning(stopping), false);
+});
+
+test("invalid_argument 从 occupancy busy 列表拿掉该会话", () => {
+  assert.deepEqual(
+    occupancyBusyAfterFrame(["s"], { t: "error", code: "invalid_argument", acp_session: "s" }),
+    [],
+  );
 });
 
 test("occupancy-lost 回到 uncertain，像素列表清空", () => {

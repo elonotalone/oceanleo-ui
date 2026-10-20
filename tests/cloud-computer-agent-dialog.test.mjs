@@ -1093,4 +1093,29 @@ test("Hermes screenshot catalogs exclude stale deepseek-v4-flash from the offere
   ], "hermes");
   assert.deepEqual(fresh.map(model => model.id), ["DeepSeek-V4-Pro", "DeepSeek-V4.1-Flash"]);
   assert.deepEqual(restored.map(model => model.id), fresh.map(model => model.id));
+  const injected = parseModels([
+    { id: "deepseek:deepseek-v4-flash", name: "deepseek-v4-flash", default: true, provider: "deepseek" },
+    { id: "deepseek:deepseek-v4-pro", name: "DeepSeek-V4-Pro", default: false, provider: "deepseek" },
+    { id: "deepseek:deepseek-flash", name: "DeepSeek-V4.1-Flash", default: false, provider: "deepseek" },
+    { id: "openai-api:gpt-4.1", name: "gpt-4.1", default: false, provider: "openai-api" },
+  ], "hermes");
+  assert.deepEqual(injected.map(model => model.id), [
+    "deepseek:deepseek-flash",
+    "deepseek:deepseek-v4-pro",
+    "openai-api:gpt-4.1",
+  ]);
+});
+
+test("invalid_argument ends an optimistic send so Stop does not stick", () => {
+  let state = applyDialog(initialDialogState(), { type: "program", program: "hermes" });
+  state = applyDialog(state, { type: "frame", frame: { t: "session_opened", program: "hermes", acp_session: "s" } });
+  state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "user_message", program: "hermes", acp_session: "s", text: "hi",
+  } });
+  state = applyDialog(state, { type: "frame", frame: { t: "error", code: "invalid_argument", program: "hermes" } });
+  assert.equal(state.busy, false);
+  assert.equal(state.occupancyPendingAt, null);
+  assert.equal((state.occupancyBusy || []).includes("s"), false);
+  assert.equal(state.messages.some((message) => message.kind === "notice" && message.code === "invalid_argument"), true);
 });

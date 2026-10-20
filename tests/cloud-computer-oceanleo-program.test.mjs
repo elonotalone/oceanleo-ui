@@ -605,7 +605,7 @@ test("reducer：turn_start 补上会话 id 后当前轮次仍显示 Stop", () =>
   assert.equal(Boolean(state.liveTurns["cursor::"]), false);
 });
 
-test("reducer：多会话 liveTurns 互不打断；普通错误不把当前轮次打成 Send", () => {
+test("reducer：多会话 liveTurns 互不打断；invalid_argument 只结束当前会话", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "session-loading", id: "s-a" });
@@ -623,8 +623,8 @@ test("reducer：多会话 liveTurns 互不打断；普通错误不把当前轮�
   assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
 
   state = applyDialog(state, { type: "frame", frame: { t: "error", program: "cursor", code: "invalid_argument", acp_session: "s-b" } });
-  assert.equal(state.busy, true);
-  assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
+  assert.equal(state.busy, false);
+  assert.equal(Boolean(state.liveTurns["cursor::s-b"]), false);
 
   state = applyDialog(state, { type: "frame", frame: { t: "done", program: "cursor", stop: "end_turn", acp_session: "s-b" } });
   assert.equal(state.busy, false);

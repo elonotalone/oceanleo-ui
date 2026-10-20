@@ -154,11 +154,28 @@ export function parseModels(raw: unknown, program = ""): DialogModel[] {
     else if (previous.usable === true || model.usable === true) previous.usable = true;
     if (!previous.reason && model.reason) previous.reason = model.reason;
   }
-  return [...canonical.values()].sort((left, right) => {
+  const unlabeled = (model: DialogModel) => {
+    const suffix = model.id.includes(":") ? model.id.slice(model.id.indexOf(":") + 1) : model.id;
+    return model.name === model.id || model.name === suffix;
+  };
+  const providerOf = (model: DialogModel) =>
+    (model.provider || (model.id.includes(":") ? model.id.split(":", 1)[0] : "")).toLowerCase();
+  const rows = [...canonical.values()];
+  const labeledProviders = new Set(
+    rows.filter((model) => providerOf(model) && !unlabeled(model)).map(providerOf),
+  );
+  const filtered = labeledProviders.size
+    ? rows.filter((model) => !labeledProviders.has(providerOf(model)) || !unlabeled(model))
+    : rows;
+  filtered.sort((left, right) => {
     const leftProvider = (left.provider_label || left.provider || left.id.split(":", 1)[0]).toLowerCase();
     const rightProvider = (right.provider_label || right.provider || right.id.split(":", 1)[0]).toLowerCase();
     return compareText(leftProvider, rightProvider) || compareText(left.id, right.id);
   });
+  if (filtered.length && !filtered.some((model) => model.default)) {
+    filtered[0] = { ...filtered[0], default: true };
+  }
+  return filtered;
 }
 
 function compareText(left: string, right: string): number {

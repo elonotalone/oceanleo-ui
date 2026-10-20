@@ -17,6 +17,7 @@ const IDLE_ERRORS = new Set([
   "node_error",
   "dialog_unreachable",
   "dialog_detached",
+  "invalid_argument",
 ]);
 
 /** Patch occupancy.busy from a session frame that is not the open view. */

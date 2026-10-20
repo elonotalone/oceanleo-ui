@@ -4,13 +4,14 @@ export const INTERRUPTED_STOPS = new Set([
   "cancelled",
   "canceled",
   "stopped",
+  "stopping",
   "error",
   "max_tokens",
   "max_turn_requests",
 ]);
 const INTERRUPTED_ERRORS = new Set([
   "acp_exited", "acp_start_failed", "acp_unavailable", "program_missing", "missing_program",
-  "runtime_missing", "not_logged_in", "node_error", "dialog_unreachable",
+  "runtime_missing", "not_logged_in", "node_error", "dialog_unreachable", "invalid_argument",
 ]);
 
 export type SessionListStatus = "running" | "interrupted" | "unread";
