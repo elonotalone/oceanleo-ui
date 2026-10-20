@@ -146,24 +146,43 @@ async function sanitizeHtml(
   return sanitizeRichDocHtml(html, deps.sanitizer);
 }
 
+function officeBytesToArrayBuffer(
+  value: ArrayBuffer | ArrayBufferView,
+): ArrayBuffer {
+  if (value instanceof ArrayBuffer) return value;
+  if (ArrayBuffer.isView(value)) {
+    return value.buffer.slice(
+      value.byteOffset,
+      value.byteOffset + value.byteLength,
+    );
+  }
+  throw new Error("DOCX 字节无法读取");
+}
+
 async function docxToHtml(
-  arrayBuffer: ArrayBuffer,
+  arrayBuffer: ArrayBuffer | ArrayBufferView,
   deps: RichDocLoadDeps = {},
 ): Promise<string> {
   const mammothModule = (await import("mammoth")) as unknown as {
     convertToHtml?: (input: {
-      arrayBuffer: ArrayBuffer;
+      arrayBuffer?: ArrayBuffer;
+      buffer?: Uint8Array;
     }) => Promise<{ value: string }>;
     default?: {
       convertToHtml: (input: {
-        arrayBuffer: ArrayBuffer;
+        arrayBuffer?: ArrayBuffer;
+        buffer?: Uint8Array;
       }) => Promise<{ value: string }>;
     };
   };
   const convertToHtml =
     mammothModule.convertToHtml ?? mammothModule.default?.convertToHtml;
   if (!convertToHtml) throw new Error("mammoth 模块加载失败");
-  const { value } = await convertToHtml({ arrayBuffer });
+  const bytes = officeBytesToArrayBuffer(arrayBuffer);
+  const { value } = await convertToHtml({
+    arrayBuffer: bytes,
+    buffer: new Uint8Array(bytes),
+  });
   return sanitizeHtml(value, deps);
 }
 
@@ -242,6 +261,45 @@ function isImageDocumentHint(value: unknown): boolean {
 export function isBrowserSafeRichDocUrl(url: string): boolean {
   const value = trimUrl(url);
   return Boolean(value) && !isArtifactSourceTreeUrl(value);
+}
+
+const RICHDOC_STRUCTURAL_HTML =
+  /<(?:img|picture|svg|video|audio|canvas|object|embed|figure|table)\b/i;
+
+/** Sanitized HTML has words or a media/table node — not inferred from tag-stripped length alone. */
+export function richDocHtmlHasBody(html: string): boolean {
+  const value = String(html || "");
+  if (!value.trim()) return false;
+  if (RICHDOC_STRUCTURAL_HTML.test(value)) return true;
+  return Boolean(value.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim());
+}
+
+export function richDocResultHasBody(result: {
+  html?: string;
+  json?: unknown;
+}): boolean {
+  return richDocHasContent(result.json) || richDocHtmlHasBody(result.html || "");
+}
+
+/**
+ * A verified parse (url/inline/import/project) is a loaded document even when
+ * the body is image-only or intentionally empty. `source: "empty"` is only a
+ * new blank draft or a failed existing document.
+ */
+export function richDocLoadVerified(
+  result: Pick<RichDocLoadResult, "source" | "error">,
+): boolean {
+  return result.source !== "empty" && !result.error;
+}
+
+export function admitRichDocEditorSource(
+  result: Pick<RichDocLoadResult, "source" | "error" | "html" | "json">,
+  item: LibraryItem,
+): { ok: true } | { ok: false; error: string } {
+  if (result.error) return { ok: false, error: result.error };
+  if (richDocLoadVerified(result)) return { ok: true };
+  if (!itemLooksLikeExistingRichDoc(item)) return { ok: true };
+  return { ok: false, error: existingDocumentMissingSourceMessage(item) };
 }
 
 /** Tiptap/Umo JSON that still has words or an image is a real document. */
@@ -442,6 +500,41 @@ export function parseRichDocNativeJson(
   return { ok: true, json: unwrapped };
 }
 
+/**
+ * Empty or unknown project JSON may not hide a richer original. A verified
+ * empty native document is kept when it is the document, not a stale overlay.
+ */
+export function resolveRichDocProjectAgainstOriginal(
+  projectJson: unknown,
+  original: RichDocLoadResult,
+  item: LibraryItem,
+  projectUrl: string,
+): RichDocLoadResult {
+  const unwrapped = unwrapNativeRichDocJson(projectJson);
+  if (unwrapped && richDocHasContent(unwrapped)) {
+    return { html: "", json: unwrapped, source: "project", error: "" };
+  }
+  if (
+    admitRichDocEditorSource(original, item).ok &&
+    richDocResultHasBody(original)
+  ) {
+    return original;
+  }
+  if (unwrapped) {
+    const originalUrl = selectRichDocSourceUrl(item);
+    if (
+      originalUrl &&
+      originalUrl !== projectUrl &&
+      !richDocLoadVerified(original)
+    ) {
+      return original.error ? original : emptyExistingRichDocResult(item);
+    }
+    return { html: "", json: unwrapped, source: "project", error: "" };
+  }
+  if (admitRichDocEditorSource(original, item).ok) return original;
+  return original.error ? original : emptyExistingRichDocResult(item);
+}
+
 export function unwrapNativeRichDocJson(value: unknown): JSONContent | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -567,9 +660,6 @@ export async function loadRichDocHtml(
     if (url && format === "docx") {
       const arrayBuffer = await fetchDocx(url, item, onSourceAccessError);
       const html = await docxToHtml(arrayBuffer, deps);
-      if (!html.replace(/<[^>]+>/g, "").trim() && itemLooksLikeExistingRichDoc(item)) {
-        return emptyExistingRichDocResult(item);
-      }
       return { html, source: "url-docx", error: "" };
     }
     if (url && format === "unsupported") {
@@ -587,13 +677,6 @@ export async function loadRichDocHtml(
         deps,
       );
       if (loaded.error) return loaded;
-      if (
-        itemLooksLikeExistingRichDoc(item) &&
-        !richDocHasContent(loaded.json) &&
-        !String(loaded.html || "").replace(/<[^>]+>/g, "").trim()
-      ) {
-        return emptyExistingRichDocResult(item);
-      }
       return loaded;
     }
     if (item.source === "artifact" || itemLooksLikeExistingRichDoc(item)) {
@@ -618,15 +701,25 @@ export async function loadRichDocSource(
   if (projectUrl && isBrowserSafeRichDocUrl(projectUrl) && deps.loadProject) {
     try {
       const json = await deps.loadProject(projectUrl);
-      const unwrapped = unwrapNativeRichDocJson(json) || (json as JSONContent);
-      if (richDocHasContent(unwrapped)) {
+      const unwrapped = unwrapNativeRichDocJson(json);
+      if (unwrapped && richDocHasContent(unwrapped)) {
         return { html: "", json: unwrapped, source: "project", error: "" };
       }
+      const original = await loadRichDocHtml(item, onSourceAccessError, deps);
+      return resolveRichDocProjectAgainstOriginal(
+        json,
+        original,
+        item,
+        projectUrl,
+      );
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "可编辑工程读取失败";
       const fallback = await loadRichDocHtml(item, onSourceAccessError, deps);
-      if (!fallback.error && (richDocHasContent(fallback.json) || fallback.html.replace(/<[^>]+>/g, "").trim())) {
+      if (
+        admitRichDocEditorSource(fallback, item).ok &&
+        (richDocResultHasBody(fallback) || richDocLoadVerified(fallback))
+      ) {
         return fallback;
       }
       return {
@@ -669,13 +762,6 @@ export async function loadRichDocFile(
       const parsed = parseRichDocNativeJson(text);
       if (!parsed.ok) {
         return { html: "<p></p>", source: "empty", error: parsed.error };
-      }
-      if (!richDocHasContent(parsed.json)) {
-        return {
-          html: "<p></p>",
-          source: "empty",
-          error: "这份 JSON 没有可导入的正文。",
-        };
       }
       return { html: "", json: parsed.json, source: "import-json", error: "" };
     }

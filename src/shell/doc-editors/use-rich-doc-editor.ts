@@ -69,6 +69,7 @@ import {
   htmlToMarkdown,
   loadRichDocFile,
   loadRichDocSource,
+  admitRichDocEditorSource,
   richDocHasContent,
   shouldMarkRichDocSourceReadyFromCollab,
   RichDocTypography,
@@ -513,24 +514,11 @@ export function useRichDocEditor(
     })
       .then((result) => {
         if (cancelled) return;
-        if (result.error) {
+        const admitted = admitRichDocEditorSource(result, source);
+        if (!admitted.ok) {
           setSourceFailed(true);
           setError(
-            richDocSourceFailureMessage(new Error(result.error), translate),
-          );
-          setLoading(false);
-          return;
-        }
-        if (
-          !richDocHasContent(result.json) &&
-          !String(result.html || "").replace(/<[^>]+>/g, "").trim()
-        ) {
-          setSourceFailed(true);
-          setError(
-            richDocSourceFailureMessage(
-              new Error("读到的文档没有正文，编辑器已停下，没有改动被丢失。"),
-              translate,
-            ),
+            richDocSourceFailureMessage(new Error(admitted.error), translate),
           );
           setLoading(false);
           return;

@@ -9,10 +9,15 @@ import {
 } from "../doc-editors/rich-doc-umo-migration";
 import { saveFileToLibrary, type SaveToLibraryResult } from "../doc-editors/doc-io";
 import {
+  admitRichDocEditorSource,
   detectRichDocFormat,
   loadRichDocHtml,
+  resolveRichDocProjectAgainstOriginal,
   richDocHasContent,
+  richDocLoadVerified,
+  richDocResultHasBody,
   selectRichDocSourceUrl,
+  unwrapNativeRichDocJson,
   type RichDocDetectedFormat,
 } from "../doc-editors/rich-doc-model";
 
@@ -244,6 +249,28 @@ async function defaultLoadRichDocHtml(item: LibraryItem) {
   return loadRichDocHtml(item);
 }
 
+function hostedHtmlFetchDeps(
+  deps: {
+    loadHtml?: (item: LibraryItem) => Promise<{
+      html: string;
+      json?: unknown;
+      error: string;
+    }>;
+  },
+  item: LibraryItem,
+) {
+  if (!deps.loadHtml) return {};
+  return {
+    fetchText: async () => {
+      const result = await deps.loadHtml!(item);
+      if (result.error) throw new Error(result.error);
+      if (typeof result.html === "string" && result.html) return result.html;
+      if (result.json) return JSON.stringify(result.json);
+      return "";
+    },
+  };
+}
+
 export async function umoSourceFromDocxItem(
   item: LibraryItem,
   deps: {
@@ -257,12 +284,11 @@ export async function umoSourceFromDocxItem(
   const loadHtml = deps.loadHtml ?? defaultLoadRichDocHtml;
   const loaded = await loadHtml(item);
   if (loaded.error) return { ok: false, error: loaded.error };
+  const admitted = admitRichDocEditorSource(loaded, item);
+  if (!admitted.ok) return { ok: false, error: admitted.error };
   const json =
     loaded.json ??
-    (await htmlToRichDocJson(loaded.html, deps.htmlToJson));
-  if (isEmptyRichDoc(json) && !String(loaded.html || "").replace(/<[^>]+>/g, "").trim()) {
-    return { ok: false, error: "这份 Word 源文件没有可导入的正文。" };
-  }
+    (await htmlToRichDocJson(loaded.html || "<p></p>", deps.htmlToJson));
   const next = hostedStateFromResolvedJson(json, { fromDocx: true });
   return {
     ok: true,
@@ -294,10 +320,7 @@ export async function loadRichDocHostedState(
     }
   | { ok: false; error: string }
 > {
-  if (handoff?.kind === "inline") {
-    if (!richDocHasContent(handoff.json)) {
-      return { ok: false, error: "交接过来的文档是空的，没有打开原件。" };
-    }
+  if (handoff?.kind === "inline" && richDocHasContent(handoff.json)) {
     const next = hostedStateFromResolvedJson(handoff.json);
     return { ok: true, ...next };
   }
@@ -323,21 +346,42 @@ export async function loadRichDocHostedState(
           return response.json() as Promise<unknown>;
         });
       const json = await fetchJson(url);
-      if (richDocHasContent(json)) {
+      if (unwrapNativeRichDocJson(json) && richDocHasContent(json)) {
         const next = hostedStateFromResolvedJson(json);
         return { ok: true, ...next };
       }
+      const fallback = await loadRichDocHtml(
+        item,
+        undefined,
+        hostedHtmlFetchDeps(deps, item),
+      );
+      const resolved = resolveRichDocProjectAgainstOriginal(
+        json,
+        fallback,
+        item,
+        url,
+      );
+      const admitted = admitRichDocEditorSource(resolved, item);
+      if (!admitted.ok) return { ok: false, error: admitted.error };
+      const next = hostedStateFromResolvedJson(
+        resolved.json ??
+          (await htmlToRichDocJson(resolved.html || "<p></p>", deps.htmlToJson)),
+      );
+      return { ok: true, ...next };
     } catch (caught) {
-      const fallback = await loadRichDocHtml(item);
+      const fallback = await loadRichDocHtml(
+        item,
+        undefined,
+        hostedHtmlFetchDeps(deps, item),
+      );
       if (
-        !fallback.error &&
-        (richDocHasContent(fallback.json) ||
-          String(fallback.html || "").replace(/<[^>]+>/g, "").trim())
+        admitRichDocEditorSource(fallback, item).ok &&
+        (richDocResultHasBody(fallback) || richDocLoadVerified(fallback))
       ) {
-        const json =
+        const next = hostedStateFromResolvedJson(
           fallback.json ??
-          (await htmlToRichDocJson(fallback.html, deps.htmlToJson));
-        const next = hostedStateFromResolvedJson(json);
+            (await htmlToRichDocJson(fallback.html || "<p></p>", deps.htmlToJson)),
+        );
         return { ok: true, ...next };
       }
       return {
@@ -376,15 +420,11 @@ export async function loadRichDocHostedState(
         }
       : undefined,
   });
-  if (loaded.error) return { ok: false, error: loaded.error };
+  const admitted = admitRichDocEditorSource(loaded, officeItem);
+  if (!admitted.ok) return { ok: false, error: admitted.error };
   const json =
     loaded.json ??
-    (typeof loaded.html === "string" && loaded.html
-      ? await htmlToRichDocJson(loaded.html, deps.htmlToJson)
-      : null);
-  if (!json || (!richDocHasContent(json) && !String(loaded.html || "").replace(/<[^>]+>/g, "").trim())) {
-    return { ok: false, error: `${item.title || "文档"}：没有可读取的文件。` };
-  }
+    (await htmlToRichDocJson(loaded.html || "<p></p>", deps.htmlToJson));
   const next = hostedStateFromResolvedJson(json);
   return { ok: true, ...next };
 }

@@ -189,8 +189,9 @@ test("W1 HTML / text / native JSON / docx-shaped import keep their bodies", asyn
       { type: "application/json" },
     ),
   );
-  assert.equal(emptyJson.source, "empty");
-  assert.match(emptyJson.error, /没有可导入的正文/);
+  assert.equal(emptyJson.error, "");
+  assert.equal(emptyJson.source, "import-json");
+  assert.equal(richDocHasContent(emptyJson.json), false);
 });
 
 test("W1 hosted load does not silent-convert markdown and refuses empty handoff", async () => {
@@ -212,13 +213,31 @@ test("W1 hosted load does not silent-convert markdown and refuses empty handoff"
   assert.equal(loaded.converted, null);
   assert.notEqual(loaded.inspect.kind, "umo");
 
-  const emptyInline = await loadRichDocHostedState(item, {
-    kind: "inline",
-    json: { type: "doc", content: [{ type: "paragraph" }] },
-    revision: null,
-  });
-  assert.equal(emptyInline.ok, false);
-  assert.match(emptyInline.error, /空/);
+  const emptyInline = await loadRichDocHostedState(
+    item,
+    {
+      kind: "inline",
+      json: { type: "doc", content: [{ type: "paragraph" }] },
+      revision: null,
+    },
+    {
+      loadHtml: async () => ({
+        html: `<p>${MARKDOWN_BODY.split("\n")[0]}</p>`,
+        error: "",
+      }),
+      htmlToJson: async (html) => ({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: html.replace(/<[^>]+>/g, "") }],
+          },
+        ],
+      }),
+    },
+  );
+  assert.equal(emptyInline.ok, true);
+  assert.equal(isEmptyRichDoc(emptyInline.source), false);
 
   const alreadyUmo = hostedStateFromResolvedJson({
     format: "umo.tiptap.v1",
