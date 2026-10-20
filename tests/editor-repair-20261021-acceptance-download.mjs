@@ -105,23 +105,11 @@ test("download launcher is not IconButton variant=secondary", async () => {
       };
     }
   `);
-  const iconStub = dataModule(`
+  const nullComponent = dataModule(`
     export function AdvancedEditorIcon() { return null; }
-  `);
-  const popoverStub = dataModule(`
-    import { jsx as _jsx } from "react/jsx-runtime";
-    export function AnchoredPopover(props) {
-      if (!props.open) return null;
-      return _jsx("div", { id: props.id, role: props.role, children: props.children });
-    }
-  `);
-  const socialStub = dataModule(`
+    export function AnchoredPopover() { return null; }
     export function EditorItemSocialChrome() { return null; }
-  `);
-  const collabStub = dataModule(`
     export function CollabActionSlot() { return null; }
-  `);
-  const themeStub = dataModule(`
     export function PluginThemeToggle() { return null; }
   `);
   const paneStub = dataModule(`
@@ -134,11 +122,11 @@ test("download launcher is not IconButton variant=secondary", async () => {
     await compileModule("src/shell/AdvancedWorkspaceActionBar.tsx", {
       "../i18n/ui/useUI": uiStub,
       "../ui/Toast": toastStub,
-      "./AdvancedEditorIcon": iconStub,
-      "./anchored-popover": popoverStub,
-      "./editor-item-social-chrome": socialStub,
-      "./collab/CollabActionSlot": collabStub,
-      "./plugin-theme": themeStub,
+      "./AdvancedEditorIcon": nullComponent,
+      "./anchored-popover": nullComponent,
+      "./editor-item-social-chrome": nullComponent,
+      "./collab/CollabActionSlot": nullComponent,
+      "./plugin-theme": nullComponent,
       "./SplitWorkspace": paneStub,
     })
   );

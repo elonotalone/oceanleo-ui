@@ -415,9 +415,6 @@ test("ImageRoute does not mount ImageCanvasViewSwitch or 结构/皮肤", async (
   const authClientStub = dataModule(`
     export async function accessToken() { return "t"; }
   `);
-  const authConfigStub = dataModule(`
-    export const GATEWAY_BASE = "https://api.dev.oceanleo.com";
-  `);
   const imageAiStub = dataModule(`
     export class ImageGatewayError extends Error {}
     export function createOceanLeoImageAiProvider() { return { run() {} }; }
@@ -432,9 +429,16 @@ test("ImageRoute does not mount ImageCanvasViewSwitch or 结构/皮肤", async (
     }
   `);
   const viewOnlyStub = dataModule(`
-    import { jsx as _jsx } from ${JSON.stringify(jsxUrl)};
-    export const VIEW_ONLY_REFUSAL = "你只能查看";
+    export const VIEW_ONLY_HINT = "你只能查看";
+    export const VIEW_ONLY_PANEL_NOTE = "你只能查看，这里的功能暂时不能用。";
+    export const VIEW_ONLY_REFUSAL = "你现在只能查看，不能修改这个作品。";
+    export function viewOnlyContext(context) { return context; }
+    export function guardVisualCommands(commands) { return commands; }
+    export function guardPluginSurface(surface) { return surface; }
     export function viewOnlyUploadHandler(_readOnly, handler) { return handler; }
+  `);
+  const viewOnlyPanelStub = dataModule(`
+    import { jsx as _jsx } from ${JSON.stringify(jsxUrl)};
     export function VisualViewOnlyPanel(props) {
       return _jsx("div", { children: props.children });
     }
@@ -450,12 +454,11 @@ test("ImageRoute does not mount ImageCanvasViewSwitch or 结构/皮肤", async (
       "../plugin-command": pluginStub,
       "../workbench-material-provider": materialStub,
       "../../lib/auth/client": authClientStub,
-      "../../lib/auth/config": authConfigStub,
       "../../lib/image-ai-edit": imageAiStub,
       "../../lib/payer": payerStub,
       "../image-editor/FabricImageStage": stageStub,
       "../collab/adapters/visual-readonly": viewOnlyStub,
-      "../collab/adapters/VisualViewOnlyPanel": viewOnlyStub,
+      "../collab/adapters/VisualViewOnlyPanel": viewOnlyPanelStub,
     })
   );
 
