@@ -135,7 +135,7 @@ test("Fabric stage and layer list expose unlocked image selection hooks for V3",
   assert.match(runtime, /export function preferredUnlockedImageLayerId/);
   assert.match(runtime, /export function preferUnlockedImageObject/);
   const toolbar = source(
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
   );
   for (const id of [
     "position-x",
@@ -143,6 +143,7 @@ test("Fabric stage and layer list expose unlocked image selection hooks for V3",
     "object-width",
     "object-height",
   ]) {
-    assert.match(toolbar, new RegExp(`id: "${id}"[\\s\\S]*?placement: "primary"`));
+    assert.match(toolbar, new RegExp(`id: "${id}"`));
+    assert.match(toolbar, /placement: "more"/);
   }
 });

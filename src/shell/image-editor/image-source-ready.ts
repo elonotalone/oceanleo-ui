@@ -1,3 +1,36 @@
+export interface ImageSourceSession {
+  key: string;
+  nonce: number;
+}
+
+/**
+ * Persist / signed-URL refresh / structured-after-save keep the same item key
+ * and reload nonce. Only a new item or an explicit `reload()` is a new source
+ * load, and only those may `setLoading(true)`.
+ */
+export function isNewImageSourceSession(
+  previous: ImageSourceSession | null,
+  next: ImageSourceSession,
+): boolean {
+  return (
+    previous === null ||
+    previous.key !== next.key ||
+    previous.nonce !== next.nonce
+  );
+}
+
+/**
+ * Stage overlay 「正在载入对象化图片画布…」 is the first source load only.
+ * Persist / autosave may keep `loading` true if a stale effect re-enters;
+ * once `sourceReady` is true the overlay stays off.
+ */
+export function imageStageShowsSourceLoadOverlay(input: {
+  loading: boolean;
+  sourceReady: boolean;
+}): boolean {
+  return Boolean(input.loading) && input.sourceReady !== true;
+}
+
 export function imageSaveAdmitted(input: {
   loading: boolean;
   sourceReady: boolean;

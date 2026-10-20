@@ -1,10 +1,8 @@
 /**
  * L4 quick-action chips for the merged image·design editor (task criterion 7).
  *
- * The eight labels are transcribed verbatim from the five-layer spec §3, row 1
- * ("图片·设计（合并 Fabric）"). They are transcribed rather than paraphrased so
- * that a test can compare them against the spec text; the spec caps chips at 8
- * (§2 table, L4 row) and that cap is asserted too.
+ * Labels that remain after the 2026-10-21 retirement of 抠图 / 扩图 / 超分.
+ * The spec still caps chips at 8 (§2 table, L4 row).
  *
  * `imageDesignChipManifestEntries` emits `EditorAgentChip` values for
  * `tools-manifest` v2, per the contract W01 published in
@@ -42,39 +40,6 @@ export interface L4Chip {
 export const L4_CHIP_LIMIT = 8;
 
 export const IMAGE_DESIGN_L4_CHIPS: readonly L4Chip[] = Object.freeze([
-  {
-    id: "image.chip.replace-background",
-    label: "换背景",
-    summary: "抠出主体后换一张背景，或换成纯色。",
-    commandId: "image.ai.remove-bg",
-    mode: "both",
-    billable: true,
-    kind: "generate",
-    appliesTo: ["*"],
-    prompt: "把 {document} 的主体抠出来，换一张与主体光线一致的新背景。",
-  },
-  {
-    id: "image.chip.outpaint-to-size",
-    label: "扩图到尺寸",
-    summary: "把画面补到目标尺寸，边缘由 AI 生成。",
-    commandId: "image.ai.outpaint",
-    mode: "both",
-    billable: true,
-    kind: "generate",
-    appliesTo: ["*"],
-    prompt: "把 {document} 扩展到目标尺寸，新增区域顺着原画面补齐，主体不要变形。",
-  },
-  {
-    id: "image.chip.upscale",
-    label: "超分",
-    summary: "放大 2–4 倍并补细节。",
-    commandId: "image.ai.upscale",
-    mode: "both",
-    billable: true,
-    kind: "generate",
-    appliesTo: ["*"],
-    prompt: "把 {document} 放大到 2 倍并补足细节，不要改变构图。",
-  },
   {
     id: "image.chip.multi-size",
     label: "一键多尺寸",

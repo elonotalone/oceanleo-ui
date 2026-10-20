@@ -4,10 +4,10 @@
  * 左栏的 agent 靠这里对画布动手：裁剪、缩放、旋转、加一行字、换底色、导出某格式。
  * 会改文档的一律 `mutates: true`——执行前的用户确认在 agent 侧（W4）做，这里不弹框。
  *
- * 四个 AI 能力（抠图 / 局部重绘 / 扩图 / 放大）与「AI 重绘改字」也在这里，
- * 定义在 `design-mode/image-ai-commands.ts`。它们此前只在创作面板里有入口，
- * 编辑栏与 agent 都够不着；进了这张表，同一个动作才是同一条命令、同一条历史
- * （五层规范 §2 第 2 条）。
+ * Remaining optional AI commands (inpaint / rewrite-text) live in
+ * `design-mode/image-ai-commands.ts` and register only when `runAi` is passed.
+ * Retired 2026-10-21 surfaces (抠图 / 放大高清 / 扩图 / 打光 / 人像 / 全景)
+ * are not on this surface.
  */
 
 import type { PluginCommandSurfaceInput } from "../plugin-command/types";
@@ -53,10 +53,8 @@ export interface ImageCommandDeps {
   /** 由路由提供：按格式与质量把当前画布交到用户手上。 */
   deliver: (format: string, quality: number) => Promise<void>;
   /**
-   * 由路由提供：把一次 AI 请求交给已有的能力引擎。
-   * 不给就不注册那五条 AI 命令——没有执行器还把按钮摆出来，
-   * 等于摆一个必然报错的按钮（`IMAGE_AI_PANEL_CAPABILITIES` 的注释里
-   * 记着上一次就是这么踩的）。
+   * Optional remaining AI runner (inpaint / rewrite-text).
+   * Omit it to register no AI commands.
    */
   runAi?: AiCommandRunner;
 }
@@ -320,7 +318,7 @@ export function createImageCommandSurface(
 ): PluginCommandSurfaceInput {
   return createVisualCommandSurface({
     editorId: EDITOR_ID,
-    // 只能查看：会改画布的指令（含四个 AI 能力，Leo 的「帮我改」）在这一层直接拒绝，导出照常
+    // 只能查看：会改画布的指令在这一层直接拒绝，导出照常
     commands: () =>
       guardVisualCommands(
         imageCommandDefinitions(deps),

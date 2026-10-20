@@ -2,13 +2,9 @@
  * The AI capabilities as *commands* — the L1 edit-bar and L2 left-console
  * entry points required by task criterion 4.
  *
- * The engine side already existed: `image-capability-engine.ts` has providers
- * for `inpaint` / `outpaint` / `upscale` and a direct `remove-bg`, and the
- * creation panel renders them. What did not exist was a way to reach them from
- * the edit bar or the agent: `image-command-surface.ts` had no AI command at
- * all, so the only route was knowing which panel to open. These definitions
- * join the same command surface as crop and rotate, which is what makes one
- * action one command with one history entry (five-layer spec §2 rule 2).
+ * Remaining command-surface AI: inpaint and rewrite-text. Retired 2026-10-21
+ * surfaces (remove-bg, upscale, outpaint, relight, portrait, panorama) are
+ * not registered here.
  *
  * Nothing here calls a provider directly. The runner is injected, so the
  * parameter checking, the mask geometry and the refusal paths can be tested
@@ -184,22 +180,6 @@ export function imageAiCommandDefinitions(
 
   definitions.push({
     spec: {
-      id: "image.ai.remove-bg",
-      label: entry("remove-bg").label,
-      summary: entry("remove-bg").summary,
-      mutates: true,
-      params: [],
-    },
-    run: async () => {
-      const blocked = guard();
-      if (blocked) return fail(blocked);
-      const result = await deps.run({ id: "remove-bg" });
-      return result.ok ? ok(result.message, deps.revision()) : fail(result.message);
-    },
-  });
-
-  definitions.push({
-    spec: {
       id: "image.ai.inpaint",
       label: entry("inpaint").label,
       summary: `${entry("inpaint").summary}选中要处理的对象后再执行。`,
@@ -232,87 +212,6 @@ export function imageAiCommandDefinitions(
           : {}),
       });
       return result.ok ? ok(result.message, deps.revision()) : fail(result.message);
-    },
-  });
-
-  definitions.push({
-    spec: {
-      id: "image.ai.outpaint",
-      label: entry("outpaint").label,
-      summary: entry("outpaint").summary,
-      mutates: true,
-      params: [
-        { key: "top", label: "向上扩（像素）", type: "number" },
-        { key: "right", label: "向右扩（像素）", type: "number" },
-        { key: "bottom", label: "向下扩（像素）", type: "number" },
-        { key: "left", label: "向左扩（像素）", type: "number" },
-        {
-          key: "prompt",
-          label: "补出来的部分要有什么",
-          type: "string",
-          hint: `留空就顺着原画面补；最多 ${AI_PROMPT_MAX_LENGTH} 字`,
-        },
-      ],
-    },
-    bounds: {
-      top: { min: 0, max: 4096, integer: true },
-      right: { min: 0, max: 4096, integer: true },
-      bottom: { min: 0, max: 4096, integer: true },
-      left: { min: 0, max: 4096, integer: true },
-      prompt: { maxLength: AI_PROMPT_MAX_LENGTH },
-    },
-    run: async (params) => {
-      const blocked = guard();
-      if (blocked) return fail(blocked);
-      const plan = planOutpaint(deps.doc, {
-        top: Number(params.top ?? 0),
-        right: Number(params.right ?? 0),
-        bottom: Number(params.bottom ?? 0),
-        left: Number(params.left ?? 0),
-      });
-      if (!plan.ok) return fail(plan.reason);
-      const result = await deps.run({
-        id: "outpaint",
-        margins: plan.margins,
-        ...(typeof params.prompt === "string" && params.prompt.trim()
-          ? { prompt: params.prompt.trim() }
-          : {}),
-      });
-      return result.ok
-        ? ok(`${result.message}画布现在是 ${plan.width}×${plan.height} 像素。`, deps.revision())
-        : fail(result.message);
-    },
-  });
-
-  definitions.push({
-    spec: {
-      id: "image.ai.upscale",
-      label: entry("upscale").label,
-      summary: entry("upscale").summary,
-      mutates: true,
-      params: [
-        {
-          key: "scale",
-          label: "放大倍数",
-          type: "enum",
-          required: true,
-          enumValues: [
-            { value: "2", label: "2 倍" },
-            { value: "4", label: "4 倍" },
-          ],
-        },
-      ],
-    },
-    run: async (params) => {
-      const blocked = guard();
-      if (blocked) return fail(blocked);
-      const scale = Number(params.scale) === 4 ? 4 : 2;
-      const plan = planUpscale(deps.doc, scale);
-      if (!plan.ok) return fail(plan.reason!);
-      const result = await deps.run({ id: "upscale", scale });
-      return result.ok
-        ? ok(`${result.message}现在是 ${plan.width}×${plan.height} 像素。`, deps.revision())
-        : fail(result.message);
     },
   });
 

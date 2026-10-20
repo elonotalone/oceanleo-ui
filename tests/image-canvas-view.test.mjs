@@ -67,6 +67,12 @@ test("ImageCanvasViewSwitch 点击只走 applyCanvasViewClick", () => {
   assert.match(switchSrc, /applyCanvasViewClick\(state, choice\.mode, document\)/);
 });
 
+test("ImageRoute does not mount the 结构/皮肤 switch", () => {
+  const route = readFileSync("src/shell/advanced-routes/ImageRoute.tsx", "utf8");
+  assert.doesNotMatch(route, /<ImageCanvasViewSwitch/);
+  assert.match(route, /imageRouteChrome/);
+});
+
 test("切了不得碰文档：交还的必须是进函数时那份文件", () => {
   const document = carrier();
   const before = JSON.parse(JSON.stringify(document));

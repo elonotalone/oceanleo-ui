@@ -8,6 +8,13 @@ import {
 } from "./editor-runtime";
 import type { FabricImageEditorState } from "./types";
 import type { FabricImageCollabHandle } from "./use-fabric-image-editor";
+import { imageStageShowsSourceLoadOverlay } from "./image-source-ready";
+
+export {
+  imageStageShowsSourceLoadOverlay,
+  imageStageShowsSourceLoadOverlay as imageStageShowsLoadingOverlay,
+  imageStageShowsSourceLoadOverlay as shouldShowImageLoadingOverlay,
+} from "./image-source-ready";
 import { safeSelectionColor, type PeerSelection } from "../collab/adapters/visual-selection";
 
 type GeometryProbe = {
@@ -53,6 +60,10 @@ export function FabricImageStage({
   // Keep last finite geometry mounted across reselect / crop enter / zoom flickers
   // so V3 read_geometry never sees all-null mid-matrix.
   const geometryProbe = liveGeometry ?? lastGeometryRef.current;
+  const sourceLoadOverlay = imageStageShowsSourceLoadOverlay({
+    loading: editor.loading,
+    sourceReady: editor.sourceReady,
+  });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -174,7 +185,7 @@ export function FabricImageStage({
       >
         <canvas ref={editor.stageCanvasRef} aria-label={tt("图片编辑画布")} />
         <PeerSelectionBoxes editor={editor} peers={peers} />
-        {editor.loading && (
+        {sourceLoadOverlay && (
             <div className="absolute inset-0 z-20 grid place-items-center bg-[var(--advanced-stage-bg,#f4f1e8)]/90">
             <div className="text-center">
               <div

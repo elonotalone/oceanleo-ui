@@ -1,16 +1,9 @@
 /**
- * Entry points for the four AI capabilities the engine already implements, plus
- * "AI 重绘改字" as a text-object action (task criterion 4).
+ * Remaining AI entry points offered in the image editor after the 2026-10-21
+ * retirement of 抠图 / 放大高清 / 人像精修 / 重新打光 / 扩展画面 / 全景延展.
  *
- * The gap this closes is not the engine — `image-capability-engine.ts` has had
- * `inpaint` / `outpaint` / `upscale` providers and a `remove-bg` direct command
- * for a while, and the creation panel renders them. What was missing is an
- * entry point on L1 (edit bar) and L2 (left console): reaching them meant
- * knowing which panel to open. These definitions are what the command surface
- * turns into commands.
- *
- * Ids are the engine's own ids, not new ones, so one action stays one command
- * with one history entry (five-layer spec §2 rule 2).
+ * `inpaint` stays as a selection-scoped erase (L4 去水印/擦除). `rewrite-text`
+ * stays as a text-object action. Retired ids must not appear here.
  */
 
 import type {
@@ -18,11 +11,6 @@ import type {
   ImageDirectCommandId,
 } from "../image-capability-engine";
 
-/**
- * Rewriting the pixels behind a text object with `qwen-image-edit-plus` is not
- * one of the engine's provider commands: it takes a text object rather than the
- * canvas, so it is named separately here and routed by the command surface.
- */
 export const AI_REWRITE_TEXT_ID = "rewrite-text" as const;
 
 export type AiEntryId =
@@ -48,39 +36,12 @@ export interface AiCapabilityEntry {
 
 export const AI_CAPABILITY_ENTRIES: readonly AiCapabilityEntry[] = Object.freeze([
   {
-    id: "remove-bg",
-    label: "抠图",
-    summary: "去掉背景，只留主体，结果作为新图层放上来。",
-    requiresSelection: false,
-    onEditBar: true,
-    section: "ai",
-    billable: true,
-  },
-  {
     id: "inpaint",
     label: "AI 擦除 / 局部重绘",
     summary: "把选中区域交给 AI 重画，用来去水印、去杂物或换掉一个物件。",
     requiresSelection: true,
     selectionTypes: ["image"],
     onEditBar: true,
-    section: "ai",
-    billable: true,
-  },
-  {
-    id: "outpaint",
-    label: "AI 扩图",
-    summary: "把画面向外补出来，用于换尺寸时补足边缘。",
-    requiresSelection: false,
-    onEditBar: true,
-    section: "ai",
-    billable: true,
-  },
-  {
-    id: "upscale",
-    label: "高清放大",
-    summary: "放大 2 倍或 4 倍并补细节，适合印刷前处理。",
-    requiresSelection: false,
-    onEditBar: false,
     section: "ai",
     billable: true,
   },
@@ -108,9 +69,6 @@ export function applicableAiEntries(
   return AI_CAPABILITY_ENTRIES.filter((entry) => {
     if (entry.requiresSelection && !context.hasSelection) return false;
     if (!entry.selectionTypes) return true;
-    // A selection-typed action with an unknown type stays hidden rather than
-    // being offered on a guess: running inpaint on a text object burns a paid
-    // provider call and returns something the user did not ask for.
     if (!context.selectedType) return false;
     return entry.selectionTypes.includes(context.selectedType);
   });

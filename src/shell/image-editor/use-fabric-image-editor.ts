@@ -75,7 +75,11 @@ import {
   type FabricImageEditorState,
 } from "./types";
 import { PsdCompositeError, isPsdSource } from "./psd-composite";
-import { imageSaveAdmitted } from "./image-source-ready";
+import {
+  imageSaveAdmitted,
+  isNewImageSourceSession,
+} from "./image-source-ready";
+import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 
 const INITIAL_VIEW: FabricControllerView = {
   doc: { width: 1080, height: 1080 },
@@ -513,6 +517,11 @@ export function useFabricImageEditor(
   const [aiPrompt, setAiPrompt] = useState("");
   const [collabTick, setCollabTick] = useState(0);
   const tt = useUI();
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
+  const itemKeyRef = useRef(userEditItemKey(item));
+  itemKeyRef.current = userEditItemKey(item);
+  const sourceSessionRef = useRef<{ key: string; nonce: number } | null>(null);
 
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FabricEditorController | null>(null);
@@ -611,18 +620,28 @@ export function useFabricImageEditor(
     if (!canvasElement || typeof window === "undefined") return;
     let cancelled = false;
     const abort = makeAbort();
-    setLoading(true);
-    setError("");
-    setNotice("");
-    setSceneDiagnostic(null);
-    sceneDiagnosticRef.current = null;
-    sourceReadyRef.current = false;
-    setSourceReady(false);
-    setSavedUrl("");
-    setSavedProjectUrl("");
-    setSavedAt("");
-    updateDirty(false);
-    revisionRef.current = 0;
+    const session = { key: item.key, nonce: reloadNonce };
+    const isNewSourceSession = isNewImageSourceSession(
+      sourceSessionRef.current,
+      session,
+    );
+    sourceSessionRef.current = session;
+    // Persist / reload-after-save must not flip loading. Overlay is first
+    // source load only (`imageStageShowsSourceLoadOverlay`).
+    if (isNewSourceSession) {
+      setLoading(true);
+      setError("");
+      setNotice("");
+      setSceneDiagnostic(null);
+      sceneDiagnosticRef.current = null;
+      sourceReadyRef.current = false;
+      setSourceReady(false);
+      setSavedUrl("");
+      setSavedProjectUrl("");
+      setSavedAt("");
+      updateDirty(false);
+      revisionRef.current = 0;
+    }
     let controller: FabricEditorController | null = null;
     void (async () => {
       try {
@@ -647,6 +666,8 @@ export function useFabricImageEditor(
               setSavedUrl("");
               setSavedProjectUrl("");
               setSavedAt("");
+              const mutationKey = itemKeyRef.current;
+              if (mutationKey) recordUserMutation(mutationKey);
               optionsRef.current.collab?.onLocalChange?.();
             },
             onRemoteApplied: () => {
@@ -772,13 +793,15 @@ export function useFabricImageEditor(
         if (!cancelled && !isAbortError(caught)) {
           const message =
             caught instanceof PsdCompositeError
-              ? tt(caught.message)
+              ? ttRef.current(caught.message)
               : caught instanceof Error
                 ? caught.message
                 : "图片画布初始化失败";
           setError(message);
-          sourceReadyRef.current = false;
-          setSourceReady(false);
+          if (isNewSourceSession) {
+            sourceReadyRef.current = false;
+            setSourceReady(false);
+          }
           if (caught instanceof ImageSceneSourceError) {
             const diagnostic = {
               code: caught.code,
@@ -793,7 +816,7 @@ export function useFabricImageEditor(
         }
       } finally {
         finishAbort(abort);
-        if (!cancelled) setLoading(false);
+        if (!cancelled && isNewSourceSession) setLoading(false);
       }
     })();
     return () => {
@@ -806,14 +829,11 @@ export function useFabricImageEditor(
     };
   }, [
     canvasElement,
-    compositeSourceRequired,
     finishAbort,
     item.key,
     makeAbort,
     reloadNonce,
     siteId,
-    structuredSourceRequired,
-    tt,
     updateDirty,
   ]);
 

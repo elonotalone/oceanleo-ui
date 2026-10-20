@@ -1104,66 +1104,13 @@ export interface ImageAiPanelCapability {
 }
 
 /**
- * 面板真正接出来的能力。刻意不接的两类，理由都写在 `verdicts/W18-delivery.md`：
- *
- * - `multi-angle` / `grid-4` / `grid-9` / `grid-25` / `grid-split`：一次出
- *   2–16 张（`grid-split` 上限 625 张）的拼版图不是办公场景要的东西，
- *   接出来只会烧额度。
- * - `inpaint`（局部重绘）：`validateImageAiCommand()` 要求 `maskUrl` 或二进制
- *   蒙版，而画蒙版的地方在 `FabricImageStage` 与 fabric 控制器里——那是本任务书
- *   的明文禁区。没有蒙版编写面就把按钮摆出来，等于摆一个必然报错的按钮。
- *   已写 `signals/W18-request.md`。
+ * Image editor UI no longer offers the 2026-10-21 retired provider surfaces
+ * (抠图 / 放大高清 / 人像精修 / 重新打光 / 扩展画面 / 全景延展). The engine
+ * registries below stay; this list is what the panel may render.
  */
-export const IMAGE_AI_PANEL_CAPABILITIES = Object.freeze([
-  Object.freeze({
-    id: "remove-bg",
-    label: "抠图",
-    summary: "把主体抠出来，背景变透明。证件照、产品图、PPT 配图都用得上。",
-    kind: "direct",
-    featured: true,
-    needsPrompt: false,
-  }),
-  Object.freeze({
-    id: "upscale",
-    label: "放大高清",
-    summary: "把图放大到 2 倍或 4 倍，同时补回细节。",
-    kind: "semantic",
-    featured: false,
-    needsPrompt: false,
-  }),
-  Object.freeze({
-    id: "portrait-quality",
-    label: "人像精修",
-    summary: "提亮肤色、去噪点，五官和表情保持原样。",
-    kind: "semantic",
-    featured: false,
-    needsPrompt: false,
-  }),
-  Object.freeze({
-    id: "relight",
-    label: "重新打光",
-    summary: "换一个光照方向，物体本身不变。",
-    kind: "semantic",
-    featured: false,
-    needsPrompt: false,
-  }),
-  Object.freeze({
-    id: "outpaint",
-    label: "扩展画面",
-    summary: "往四周补出画面外的内容，原图一个像素都不动。",
-    kind: "semantic",
-    featured: false,
-    needsPrompt: false,
-  }),
-  Object.freeze({
-    id: "panorama",
-    label: "全景延展",
-    summary: "把这一张接成一整幅无缝全景。",
-    kind: "semantic",
-    featured: false,
-    needsPrompt: false,
-  }),
-]) as readonly ImageAiPanelCapability[];
+export const IMAGE_AI_PANEL_CAPABILITIES = Object.freeze(
+  [],
+) as readonly ImageAiPanelCapability[];
 
 export interface ImageUpscalePreflight {
   ok: boolean;

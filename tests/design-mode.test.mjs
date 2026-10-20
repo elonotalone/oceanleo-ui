@@ -799,10 +799,13 @@ test("crop and annotation are photo-mode only; colour work follows both modes", 
 // AI entry points
 // --------------------------------------------------------------------------
 
-test("all four engine capabilities plus text rewrite have an entry point", () => {
+test("remaining AI entry points no longer include retired surfaces", () => {
   const ids = AI_CAPABILITY_ENTRIES.map((entry) => entry.id);
-  for (const required of ["inpaint", "outpaint", "upscale", "remove-bg", "rewrite-text"]) {
+  for (const required of ["inpaint", "rewrite-text"]) {
     assert.ok(ids.includes(required), `${required} has no entry point`);
+  }
+  for (const retired of ["outpaint", "upscale", "remove-bg", "relight", "portrait-quality", "panorama"]) {
+    assert.equal(ids.includes(retired), false, `${retired} must not be offered`);
   }
 });
 
@@ -822,7 +825,7 @@ test("entry ids match the engine's own command ids", () => {
 
 test("selection-typed actions stay hidden unless the type matches", () => {
   const none = applicableAiEntries({ hasSelection: false }).map((entry) => entry.id);
-  assert.deepEqual(none, ["remove-bg", "outpaint", "upscale"]);
+  assert.deepEqual(none, []);
 
   const image = applicableAiEntries({ hasSelection: true, selectedType: "image" }).map((e) => e.id);
   assert.ok(image.includes("inpaint"));
@@ -891,15 +894,18 @@ test("the eight chips match the five-layer spec row for image·design", (t) => {
       `chip 「${chip.label}」 is not in the spec's list: ${chipCell.trim()}`,
     );
   }
-  assert.equal(IMAGE_DESIGN_L4_CHIPS.length, L4_CHIP_LIMIT);
   assert.ok(IMAGE_DESIGN_L4_CHIPS.length <= L4_CHIP_LIMIT, "spec §2 caps chips at 8");
+  assert.ok(IMAGE_DESIGN_L4_CHIPS.length > 0);
 });
 
 test("chip ids and command ids are unique", () => {
-  assert.equal(new Set(IMAGE_DESIGN_L4_CHIPS.map((chip) => chip.id)).size, L4_CHIP_LIMIT);
+  assert.equal(
+    new Set(IMAGE_DESIGN_L4_CHIPS.map((chip) => chip.id)).size,
+    IMAGE_DESIGN_L4_CHIPS.length,
+  );
   assert.equal(
     new Set(IMAGE_DESIGN_L4_CHIPS.map((chip) => chip.commandId)).size,
-    L4_CHIP_LIMIT,
+    IMAGE_DESIGN_L4_CHIPS.length,
     "two chips sharing a command would put two entries in one history slot",
   );
 });
@@ -908,8 +914,9 @@ test("photo mode hides the artboard-only chips", () => {
   const photo = chipsForMode("photo").map((chip) => chip.label);
   assert.equal(photo.includes("一键多尺寸"), false);
   assert.equal(photo.includes("导出全部尺寸"), false);
-  assert.ok(photo.includes("超分"));
-  assert.equal(chipsForMode("design").length, L4_CHIP_LIMIT);
+  assert.equal(photo.includes("超分"), false);
+  assert.ok(photo.includes("去水印/擦除"));
+  assert.ok(chipsForMode("design").length <= L4_CHIP_LIMIT);
 });
 
 test("the manifest payload passes W01's own chip validator", () => {
@@ -926,7 +933,8 @@ test("the manifest payload passes W01's own chip validator", () => {
 
 test("host-side fields stay out of the manifest payload", () => {
   const entries = imageDesignChipManifestEntries("design");
-  assert.equal(entries.length, L4_CHIP_LIMIT);
+  assert.equal(entries.length, IMAGE_DESIGN_L4_CHIPS.length);
+  assert.ok(entries.length <= L4_CHIP_LIMIT);
   for (const entry of entries) {
     const chip = IMAGE_DESIGN_L4_CHIPS.find((candidate) => candidate.id === entry.id);
     assert.equal(entry.label, chip.label);

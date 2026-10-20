@@ -67,10 +67,10 @@ test("专业页与编辑页共用同一份 Fabric 稿，舞台上没有 iframe",
   assert.equal(/<iframe/i.test(route), false);
 });
 
-test("画布内结构/皮肤入口走 applyCanvasViewClick，不占 L0", () => {
-  assert.match(route, /<ImageCanvasViewSwitch/);
-  assert.match(route, /applyCanvasViewClick\(/);
-  assert.match(route, /data-canvas-view=\{designMode\.mode\}/);
+test("画布内结构/皮肤入口已从 ImageRoute 卸下，不占 L0", () => {
+  assert.doesNotMatch(route, /<ImageCanvasViewSwitch/);
+  assert.doesNotMatch(route, /applyCanvasViewClick\(/);
+  assert.match(route, /data-canvas-view-switch=\{imageRouteChrome\.canvasViewSwitch \? "on" : "off"\}/);
   assert.equal(
     /adapter\.mode[\s\S]{0,80}photo|setMode:[\s\S]{0,40}design/.test(route),
     false,
@@ -78,42 +78,21 @@ test("画布内结构/皮肤入口走 applyCanvasViewClick，不占 L0", () => {
   );
 });
 
-test("AI 能力接进命令面：edit bar 与 agent 走同一条命令", () => {
+test("retired AI capabilities are not wired into ImageRoute", () => {
   assert.match(
     route,
-    /createImageCommandSurface\(\{\s*editor,\s*deliver,\s*runAi\s*\}\)/,
-    "不把 runAi 交给命令面，那五条 AI 命令就不会注册（判据 4 的入口又没了）",
+    /createImageCommandSurface\(\{\s*editor,\s*deliver\s*\}\)/,
   );
-  assert.match(route, /const runAi = useMemo<AiCommandRunner>/);
-  assert.ok(
-    route.indexOf("const runAi = useMemo<AiCommandRunner>") <
-      route.indexOf("createImageCommandSurface({ editor, deliver, runAi })"),
-    "runAi 必须先声明再交给命令面；生产包会把「Cannot access 'q' before initialization」打成整页崩溃",
-  );
-});
-
-test("抠图按引擎的两参签名调用，且结果真的放回画布", () => {
-  assert.match(
-    route,
-    /removeBgExecutor\("remove-bg",\s*\{\s*sourceUrl,\s*signal:/,
-    "ImageDirectExecutor 是 (commandId, input) 两参；少一个参数是编译期就能抓到的错",
-  );
-  assert.match(
-    route,
-    /editor\.addImageFromUrl\(resultUrl\)/,
-    "跑完不把结果放回画布，用户看到的是「成功了但什么都没变」",
-  );
-});
-
-test("付费能力不会被同一个动作跑两遍", () => {
-  // 三条 provider 能力交给面板执行（那里有进度/回执/用量），
-  // 路由自己不得再开一条执行路径。
+  assert.doesNotMatch(route, /const runAi = useMemo<AiCommandRunner>/);
+  assert.doesNotMatch(route, /removeBgExecutor/);
+  assert.doesNotMatch(route, /\/v1\/images\/remove-bg/);
+  assert.doesNotMatch(route, /setPendingAiRequest/);
+  assert.doesNotMatch(route, /FabricImageAiPanel/);
   assert.equal(
     /startImageAiCommand|executeImageAiCommand/.test(route),
     false,
     "路由里直接起 provider job 会与面板各跑一次，等于一次动作双重计费",
   );
-  assert.match(route, /setPendingAiRequest\(request\)/);
 });
 
 test("两种模式共用一份文档：L0 不占 photo/design 那条轴", () => {
@@ -126,17 +105,14 @@ test("两种模式共用一份文档：L0 不占 photo/design 那条轴", () => 
   );
 });
 
-test("第二行不覆盖专业页标签、不报 aux；抠图在 adapter.actions 里（编辑栏文档段）", () => {
+test("第二行不覆盖专业页标签、不报 aux；抠图不在 adapter.actions 里", () => {
   assert.equal(/proLabel/.test(route), false);
   assert.doesNotMatch(route, /aux:\s*\[/);
-  assert.match(route, /id:\s*"image-cutout"/);
-  assert.match(route, /label:\s*"抠图（背景变透明）"/);
+  assert.doesNotMatch(route, /id:\s*"image-cutout"/);
+  assert.doesNotMatch(route, /抠图（背景变透明）/);
 });
 
-test("chips 按当前模式产出，不是写死一份", () => {
-  assert.match(
-    route,
-    /imageDesignChipManifestEntries\(designMode\.mode\)|IMAGE_DESIGN_MANIFEST_VERSION/,
-    "chips 要么按模式产出、要么至少把 manifestVersion 引进来备接",
-  );
+test("ImageRoute chrome contract disables 结构/皮肤 and the AI drawer", () => {
+  assert.match(route, /imageRouteChrome/);
+  assert.doesNotMatch(route, /designMode\.mode/);
 });

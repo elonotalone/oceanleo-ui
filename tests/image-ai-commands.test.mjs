@@ -102,20 +102,25 @@ test("upscale refuses a factor that would exceed the ceiling", () => {
 // The commands themselves
 // --------------------------------------------------------------------------
 
-test("all five AI actions are registered as commands", () => {
+test("only remaining AI actions are registered as commands", () => {
   const definitions = imageAiCommandDefinitions(deps().deps);
   assert.deepEqual(
     definitions.map((entry) => entry.spec.id),
-    [
-      "image.ai.remove-bg",
-      "image.ai.inpaint",
-      "image.ai.outpaint",
-      "image.ai.upscale",
-      "image.ai.rewrite-text",
-    ],
+    ["image.ai.inpaint", "image.ai.rewrite-text"],
   );
   for (const definition of definitions) {
     assert.equal(definition.spec.mutates, true, `${definition.spec.id} changes the document`);
+  }
+  for (const retired of [
+    "image.ai.remove-bg",
+    "image.ai.outpaint",
+    "image.ai.upscale",
+  ]) {
+    assert.equal(
+      definitions.some((entry) => entry.spec.id === retired),
+      false,
+      `${retired} was retired from the image editor UI`,
+    );
   }
 });
 
@@ -152,33 +157,6 @@ test("an empty inpaint prompt is omitted rather than sent as a blank string", as
   assert.equal(Object.hasOwn(calls[0], "prompt"), false);
 });
 
-test("outpaint reports the resulting canvas size on success", async () => {
-  const { deps: d, calls } = deps();
-  const result = await byId(imageAiCommandDefinitions(d), "image.ai.outpaint").run({
-    top: 100,
-    bottom: 100,
-  });
-  assert.equal(result.ok, true);
-  assert.match(result.message, /1000×1000/);
-  assert.deepEqual(calls[0].margins, { top: 100, right: 0, bottom: 100, left: 0 });
-});
-
-test("an impossible outpaint is refused before any provider call", async () => {
-  const { deps: d, calls } = deps();
-  const result = await byId(imageAiCommandDefinitions(d), "image.ai.outpaint").run({});
-  assert.equal(result.ok, false);
-  assert.equal(calls.length, 0);
-});
-
-test("upscale defaults to 2× and passes 4× through", async () => {
-  const { deps: d, calls } = deps();
-  const definition = byId(imageAiCommandDefinitions(d), "image.ai.upscale");
-  await definition.run({ scale: "4" });
-  assert.equal(calls[0].scale, 4);
-  await definition.run({ scale: "nonsense" });
-  assert.equal(calls[1].scale, 2);
-});
-
 test("rewrite-text only accepts a text object", async () => {
   const image = deps({ selected: { id: "o", kind: "image", x: 0, y: 0, width: 10, height: 10 } });
   const refused = await byId(
@@ -208,19 +186,19 @@ test("a second action is refused while one is still running", async () => {
 });
 
 test("a provider failure is reported as a failure, not swallowed", async () => {
+  const selected = { id: "o1", kind: "image", x: 10, y: 10, width: 50, height: 50 };
   const { deps: d } = deps({
+    selected,
     run: async () => ({ ok: false, message: "provider 超时。" }),
   });
-  const result = await byId(imageAiCommandDefinitions(d), "image.ai.remove-bg").run({});
+  const result = await byId(imageAiCommandDefinitions(d), "image.ai.inpaint").run({});
   assert.equal(result.ok, false);
   assert.equal(result.message, "provider 超时。");
 });
 
 test("prompt fields are bounded so a brief cannot be pasted in wholesale", () => {
   const definitions = imageAiCommandDefinitions(deps().deps);
-  for (const id of ["image.ai.inpaint", "image.ai.outpaint"]) {
-    assert.equal(byId(definitions, id).bounds.prompt.maxLength, AI_PROMPT_MAX_LENGTH);
-  }
+  assert.equal(byId(definitions, "image.ai.inpaint").bounds.prompt.maxLength, AI_PROMPT_MAX_LENGTH);
 });
 
 // --------------------------------------------------------------------------
@@ -230,6 +208,7 @@ test("prompt fields are bounded so a brief cannot be pasted in wholesale", () =>
 function editorState(overrides = {}) {
   return {
     loading: false,
+    sourceReady: true,
     cropping: false,
     editRevision: 3,
     doc,
@@ -262,14 +241,15 @@ test("the AI commands reach the same surface as crop and rotate", () => {
     runAi: async () => ({ ok: true, message: "ok" }),
   }).map((definition) => definition.spec.id);
 
+  for (const id of ["image.ai.inpaint", "image.ai.rewrite-text"]) {
+    assert.ok(withAi.includes(id), `${id} is missing from the edit bar / agent surface`);
+  }
   for (const id of [
     "image.ai.remove-bg",
-    "image.ai.inpaint",
     "image.ai.outpaint",
     "image.ai.upscale",
-    "image.ai.rewrite-text",
   ]) {
-    assert.ok(withAi.includes(id), `${id} is missing from the edit bar / agent surface`);
+    assert.equal(withAi.includes(id), false, `${id} was retired`);
   }
   // The pre-existing commands are still there.
   assert.ok(withAi.includes("image.crop-to-ratio"));
