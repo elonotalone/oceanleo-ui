@@ -454,6 +454,8 @@ function createUploadProgressReporter(
 type UploadProgressReporter = ReturnType<typeof createUploadProgressReporter>;
 
 export interface UploadFileOptions {
+  /** Owner-only Library storage; never fall back to a public bucket. */
+  privateUpload?: boolean;
   siteId?: string;
   title?: string;
   registerAsset?: boolean;
@@ -495,10 +497,14 @@ export async function uploadFile(
   opts: UploadFileOptions = {},
 ): Promise<Result<{ ok: boolean; file: FileItem }>> {
   const progress = createUploadProgressReporter(file, opts);
+  if (opts.privateUpload && file.size > 20 * 1024 * 1024) {
+    progress.fail();
+    return { ok: false, error: "私有文件上传目前上限 20MB；未转存到公开空间。", status: 413 };
+  }
   // FastAPI's small multipart path intentionally caps at 20 MB and buffers
   // bytes in the gateway. Large editor media goes browser → signed Supabase
   // URL directly, then the gateway verifies size/ownership and registers it.
-  if (file.size > 8 * 1024 * 1024) {
+  if (!opts.privateUpload && file.size > 8 * 1024 * 1024) {
     const extension = (file.name.split(".").pop() || "").toLowerCase();
     const inferredType: Record<string, string> = {
       mp4: "video/mp4",
@@ -733,7 +739,7 @@ export async function uploadFile(
   if (opts.registerAsset === false) fd.append("register_asset", "false");
   if (opts.idempotencyKey) fd.append("idempotency_key", opts.idempotencyKey);
 
-  const uploadUrl = `${GATEWAY_BASE}/v1/database/upload`;
+  const uploadUrl = `${GATEWAY_BASE}/v1/database/${opts.privateUpload ? "private-upload" : "upload"}`;
   // 错误口径与改造前逐字一致：网关的 `detail` 优先，没有就 `HTTP <status>`。
   const gatewayFailure = (
     data: unknown,

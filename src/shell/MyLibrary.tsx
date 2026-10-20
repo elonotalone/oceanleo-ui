@@ -938,6 +938,7 @@ export function MyLibrary({
             siteId: siteId || "home",
             title: file.name,
             idempotencyKey: uploadIdempotencyKey,
+            privateUpload: true,
           });
           if (!result.ok || !result.data?.file) {
             setUploadError(result.error || "文件上传失败，请重试。");
