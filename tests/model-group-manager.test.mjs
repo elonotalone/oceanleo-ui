@@ -109,6 +109,9 @@ const { ModelGroupManager } = await import(
       export async function getModelGroups() {
         return globalThis.__groupsResult;
       }
+      export async function getKeyProviders() {
+        return { ok: true, data: { providers: globalThis.__keyProviders || [] } };
+      }
       export async function setActiveModelGroup(key) {
         globalThis.__activated = key;
         const data = { ...globalThis.__groupsResult.data, active_group_key: key };
@@ -116,7 +119,16 @@ const { ModelGroupManager } = await import(
         return { ok: true, data };
       }
       export async function createModelGroup() { return { ok: false }; }
-      export async function updateModelGroup() { return { ok: false }; }
+      export async function updateModelGroup(id, patch) {
+        globalThis.__savedPatch = { id, patch };
+        if (globalThis.__updateResult) return globalThis.__updateResult;
+        const groups = globalThis.__groupsResult.data.groups.map((group) => (
+          group.id === id ? { ...group, selection: patch.selection || group.selection, name: patch.name || group.name } : group
+        ));
+        const data = { ...globalThis.__groupsResult.data, groups, group: groups.find((group) => group.id === id) };
+        globalThis.__groupsResult = { ok: true, data };
+        return { ok: true, data };
+      }
       export async function deleteModelGroup() { return { ok: false }; }
     `),
     "../lib/money": dataModule(`export function currencySymbol() { return "$"; }`),
@@ -155,6 +167,8 @@ async function flush(count = 8) {
 
 async function render(options = {}) {
   globalThis.__activated = "";
+  globalThis.__savedPatch = null;
+  globalThis.__updateResult = undefined;
   globalThis.__groupsResult = {
     ok: true,
     data: {

@@ -151,6 +151,9 @@ const { ModelGroupManager, emptyCapabilityReason, emptyCategoryReason } = await 
       export async function getModelGroups() {
         return globalThis.__groupsResult;
       }
+      export async function getKeyProviders() {
+        return { ok: true, data: { providers: [] } };
+      }
       export async function setActiveModelGroup() { return { ok: false }; }
       export async function createModelGroup() { return { ok: false }; }
       export async function updateModelGroup() { return { ok: false }; }

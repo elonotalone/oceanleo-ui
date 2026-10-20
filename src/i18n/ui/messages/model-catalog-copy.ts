@@ -86,6 +86,13 @@ const sourceKeys = {
   emptyClassNeedsByok: "这一类需自带 Key",
   emptyClassNoAdapter: "这一类暂不支持调用",
   emptyClassNoneInEdition: "本版暂无这一类模型",
+  statusPlatformNotOpened: "平台暂未开通",
+  addKey: "添加 Key",
+  unavailableCount: "暂不可选 · {n}",
+  emptyNoSelectable: "这一类暂无可选模型",
+  emptyAddKeyHint: "添加 Key 后即可选用。",
+  emptyClassUnpriced: "这一类价未公布",
+  saveOkActivateFailed: "保存已成功，但未能设为全站默认组合",
 } as const;
 
 type MessageName = keyof typeof sourceKeys;
@@ -182,6 +189,13 @@ const en: LocaleMessages = {
   emptyClassNeedsByok: "This category needs your own key",
   emptyClassNoAdapter: "This category cannot be called yet",
   emptyClassNoneInEdition: "This edition has no models in this category",
+  statusPlatformNotOpened: "Not opened on the platform",
+  addKey: "Add a key",
+  unavailableCount: "Unavailable · {n}",
+  emptyNoSelectable: "No selectable models in this category",
+  emptyAddKeyHint: "Add a key to use these models.",
+  emptyClassUnpriced: "This category has no published price",
+  saveOkActivateFailed: "Saved, but this group was not set as the site-wide default",
 };
 
 const ja: LocaleMessages = {
@@ -272,6 +286,13 @@ const ja: LocaleMessages = {
   emptyClassNeedsByok: "この種類は自分のキーが必要です",
   emptyClassNoAdapter: "この種類はまだ呼び出しできません",
   emptyClassNoneInEdition: "この版にはこの種類のモデルがありません",
+  statusPlatformNotOpened: "プラットフォーム未開通",
+  addKey: "キーを追加",
+  unavailableCount: "選択不可 · {n}",
+  emptyNoSelectable: "この種類に選べるモデルがありません",
+  emptyAddKeyHint: "キーを追加すると選べます。",
+  emptyClassUnpriced: "この種類は価格未公開です",
+  saveOkActivateFailed: "保存しましたが、全サイトの既定にはできませんでした",
 };
 
 const ko: LocaleMessages = {
@@ -362,6 +383,13 @@ const ko: LocaleMessages = {
   emptyClassNeedsByok: "이 종류는 직접 키가 필요합니다",
   emptyClassNoAdapter: "이 종류는 아직 호출할 수 없습니다",
   emptyClassNoneInEdition: "이 버전에는 이 종류의 모델이 없습니다",
+  statusPlatformNotOpened: "플랫폼에서 아직 개통되지 않음",
+  addKey: "키 추가",
+  unavailableCount: "선택 불가 · {n}",
+  emptyNoSelectable: "이 종류에 고를 수 있는 모델이 없습니다",
+  emptyAddKeyHint: "키를 추가하면 고를 수 있습니다.",
+  emptyClassUnpriced: "이 종류는 가격이 공개되지 않았습니다",
+  saveOkActivateFailed: "저장됐지만 전체 사이트 기본값으로 설정하지 못했습니다",
 };
 
 const zhTW: LocaleMessages = {
@@ -451,6 +479,13 @@ const zhTW: LocaleMessages = {
   emptyClassNeedsByok: "這一類需自帶 Key",
   emptyClassNoAdapter: "這一類暫不支援呼叫",
   emptyClassNoneInEdition: "本版暫無這一類模型",
+  statusPlatformNotOpened: "平台暫未開通",
+  addKey: "新增 Key",
+  unavailableCount: "暫不可選 · {n}",
+  emptyNoSelectable: "這一類暫無可選模型",
+  emptyAddKeyHint: "新增 Key 後即可選用。",
+  emptyClassUnpriced: "這一類價未公布",
+  saveOkActivateFailed: "已儲存，但未能設為全站預設組合",
 };
 
 const de: LocaleMessages = {

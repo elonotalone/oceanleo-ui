@@ -139,6 +139,9 @@ const { ModelGroupManager, emptyCapabilityReason, emptyCategoryReason } = await 
       export async function getModelGroups() {
         return globalThis.__groupsResult;
       }
+      export async function getKeyProviders() {
+        return { ok: true, data: { providers: globalThis.__keyProviders || [] } };
+      }
       export async function setActiveModelGroup() { return { ok: false }; }
       export async function createModelGroup() { return { ok: false }; }
       export async function updateModelGroup() { return { ok: false }; }
@@ -287,7 +290,7 @@ test("预设空能力写出三种原因，有选中的不写", async () => {
   view.cleanup();
 });
 
-test("填了对应自带 key 后 byok 空类改口为本版暂无", async () => {
+test("填了对应自带 key 后 byok 类不再标成空", async () => {
   const groups = [
     {
       key: "preset:pro",
@@ -303,10 +306,8 @@ test("填了对应自带 key 后 byok 空类改口为本版暂无", async () => 
     groups,
     byok_providers: ["openai"],
   });
-  const video = view.host.querySelector('[data-empty-cat-reason="video"]');
-  assert.ok(video);
-  assert.equal(video.getAttribute("data-empty-reason"), "none");
-  assert.equal(video.textContent.trim(), "本版暂无这一类模型");
+  assert.equal(view.host.querySelector('[data-empty-cat-reason="video"]'), null);
+  assert.ok(view.host.querySelector('[data-empty-cat-reason="image"]'));
   view.cleanup();
 });
 
@@ -351,7 +352,7 @@ test("国际站模型提示缺少 BYOK 并直达 key 设置", async () => {
   assert.ok(prompt);
   assert.match(prompt.textContent, /需自带 Key/);
   const setup = [...prompt.querySelectorAll("button")]
-    .find((node) => node.textContent.includes("自带 API key"));
+    .find((node) => (node.textContent || "").includes("添加 Key"));
   assert.ok(setup);
   await view.click(setup);
   assert.equal(setupClicked, true);

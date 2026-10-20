@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createModelGroup,
   deleteModelGroup,
+  getKeyProviders,
   getModelGroups,
   MODEL_GROUP_CHANGED_EVENT,
   setActiveModelGroup,
@@ -59,61 +60,87 @@ function flatten(block: CatalogCapability) {
   return block.providers.flatMap((provider) => provider.models || []);
 }
 
-export type EmptyCapabilityReason = "not_opened" | "byok_only" | "no_adapter" | "none";
+export type EmptyCapabilityReason =
+  | "not_opened"
+  | "byok_only"
+  | "no_adapter"
+  | "unpriced"
+  | "none";
 
 const EMPTY_REASON_PRIORITY: readonly EmptyCapabilityReason[] = [
   "not_opened",
   "byok_only",
   "no_adapter",
+  "unpriced",
   "none",
 ];
 
-/** Preset empty-row copy: not_opened first, then unpaid BYOK, then no_adapter, else none. */
+function offerStatus(model: { status?: string; unpriced?: boolean }): string {
+  if (model.status) return model.status;
+  return model.unpriced ? "unpriced" : "";
+}
+
+function dominantEmptyReason(
+  models: readonly { status?: string; unpriced?: boolean }[],
+): EmptyCapabilityReason {
+  const counts: Record<EmptyCapabilityReason, number> = {
+    not_opened: 0,
+    byok_only: 0,
+    no_adapter: 0,
+    unpriced: 0,
+    none: 0,
+  };
+  for (const model of models) {
+    const status = offerStatus(model);
+    if (status === "not_opened") counts.not_opened += 1;
+    else if (status === "byok_only") counts.byok_only += 1;
+    else if (status === "no_adapter") counts.no_adapter += 1;
+    else if (status === "unpriced") counts.unpriced += 1;
+  }
+  return EMPTY_REASON_PRIORITY.reduce((best, current) =>
+    counts[current] > counts[best] ? current : best,
+  );
+}
+
+/** Empty only when nothing is selectable; then the dominant unavailable status. */
 export function emptyCapabilityReason(
   capability: CatalogCapability | undefined,
   byokProviders: readonly string[] = [],
 ): EmptyCapabilityReason {
   const models = capability ? flatten(capability) : [];
-  if (models.some((model) => model.status === "not_opened")) return "not_opened";
-  const needsByok = models.some(
-    (model) =>
-      model.status === "byok_only"
-      && !byokProviders.includes(model.provider || ""),
-  );
-  if (needsByok) return "byok_only";
-  if (
-    models.length > 0
-    && models.every((model) => model.status === "no_adapter")
-  ) {
-    return "no_adapter";
-  }
-  return "none";
+  if (models.some((model) => canSelect(model, byokProviders))) return "none";
+  if (!models.length) return "none";
+  return dominantEmptyReason(models);
 }
 
 export function emptyCategoryReason(
   capabilities: CatalogCapability[] | undefined,
   byokProviders: readonly string[] = [],
 ): EmptyCapabilityReason {
-  const reasons = (capabilities || []).map((item) =>
-    emptyCapabilityReason(item, byokProviders),
-  );
-  if (!reasons.length) return "none";
-  const counts: Record<EmptyCapabilityReason, number> = {
-    not_opened: 0,
-    byok_only: 0,
-    no_adapter: 0,
-    none: 0,
-  };
-  for (const reason of reasons) counts[reason] += 1;
-  return EMPTY_REASON_PRIORITY.reduce((best, current) =>
-    counts[current] > counts[best] ? current : best,
-  );
+  const models = (capabilities || []).flatMap((item) => flatten(item));
+  if (models.some((model) => canSelect(model, byokProviders))) return "none";
+  if (!models.length) return "none";
+  return dominantEmptyReason(models);
+}
+
+export function partitionOfferModels<T extends { provider?: string; status?: string; selectable?: boolean }>(
+  models: readonly T[],
+  byokProviders: readonly string[] = [],
+): { selectable: T[]; unavailable: T[] } {
+  const selectable: T[] = [];
+  const unavailable: T[] = [];
+  for (const model of models) {
+    if (canSelect(model, byokProviders)) selectable.push(model);
+    else unavailable.push(model);
+  }
+  return { selectable, unavailable };
 }
 
 function emptyReasonText(reason: EmptyCapabilityReason, tt: UITranslate): string {
   if (reason === "not_opened") return tt("这一类暂未开通");
   if (reason === "byok_only") return tt("这一类需自带 Key");
   if (reason === "no_adapter") return tt("这一类暂不支持调用");
+  if (reason === "unpriced") return tt("这一类价未公布");
   return tt("本版暂无这一类模型");
 }
 
@@ -138,7 +165,7 @@ function allCatalogModels(catalog: ModelCatalog | null): CatalogModel[] {
 
 const DEFAULT_STATUS_LABELS: Record<string, string> = {
   available: "可用",
-  not_opened: "暂未开通",
+  not_opened: "平台暂未开通",
   unpriced: "价未公布",
   byok_only: "需自带 Key",
   no_adapter: "暂不支持调用",
@@ -151,8 +178,61 @@ function statusLabel(
   tt: UITranslate,
 ) {
   if (!status) return "";
-  const raw = catalog?.status_labels?.[status] || DEFAULT_STATUS_LABELS[status] || status;
+  const known = DEFAULT_STATUS_LABELS[status];
+  if (known) return tt(known);
+  const raw = catalog?.status_labels?.[status] || status;
   return tt(raw);
+}
+
+function applyDraftToPayload(
+  payload: ModelGroupsPayload,
+  groupId: string,
+  groupKey: string,
+  draft: CapabilitySelection,
+): ModelGroupsPayload {
+  const saved = (payload as ModelGroupsPayload & { group?: ModelGroup }).group;
+  return {
+    ...payload,
+    groups: (payload.groups || []).map((item) => {
+      if (item.id !== groupId && item.key !== groupKey) return item;
+      const source =
+        saved && (saved.id === item.id || saved.key === item.key) ? saved : item;
+      return {
+        ...source,
+        selection: draft,
+      };
+    }),
+  };
+}
+
+function helpUrlFor(
+  providerId: string,
+  capability: CatalogCapability | undefined,
+  catalog: ModelCatalog | null,
+  keyHelpByProvider: Record<string, string>,
+): string {
+  const block = capability?.providers.find((item) => item.id === providerId) as
+    | (CatalogProviderBlock & { key_help_url?: string })
+    | undefined;
+  if (block?.key_help_url) return block.key_help_url;
+  const meta = (catalog?.providers || []).find((item) => item.id === providerId) as
+    | { key_help_url?: string }
+    | undefined;
+  if (meta?.key_help_url) return meta.key_help_url;
+  return keyHelpByProvider[providerId] || "";
+}
+
+function writeByokPane() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete("guide");
+  url.searchParams.set("pane", "byok");
+  const href = `${url.pathname}${url.search}${url.hash}`;
+  const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (here !== href) {
+    window.history.replaceState(window.history.state, "", href);
+  }
+  window.dispatchEvent(new Event("popstate"));
 }
 
 function checkedAgoText(iso: string | undefined, tt: UITranslate, now?: Date) {
@@ -288,6 +368,8 @@ export function ModelGroupManager({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [menuKey, setMenuKey] = useState("");
   const [pendingDeleteKey, setPendingDeleteKey] = useState("");
+  const [unavailableOpen, setUnavailableOpen] = useState(false);
+  const [keyHelpByProvider, setKeyHelpByProvider] = useState<Record<string, string>>({});
   const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   // 依赖里刻意没有 `tt`：模型组合与语言无关，换语言不该重新拉一次 `getModelGroups()`
@@ -318,6 +400,27 @@ export function ModelGroupManager({
       window.removeEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
     };
   }, [user]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = typeof getKeyProviders === "function" ? getKeyProviders : null;
+    if (!load) return;
+    void load()
+      .then((result) => {
+        if (!alive || !result.ok || !result.data) return;
+        const next: Record<string, string> = {};
+        for (const item of result.data.providers || []) {
+          if (item.id && item.key_help_url) next[item.id] = item.key_help_url;
+        }
+        setKeyHelpByProvider(next);
+      })
+      .catch(() => {
+        /* tests stub auth without this helper; catalog may still carry URLs */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const groups = useMemo(
     () => payload?.groups?.length ? payload.groups : presetGroups(catalog),
@@ -369,25 +472,35 @@ export function ModelGroupManager({
     provider !== ALL_PROVIDERS && !providerIds.includes(provider)
       ? ALL_PROVIDERS
       : provider;
-  const allModels = (capability ? flatten(capability) : [])
+  const capabilityModels = capability ? flatten(capability) : [];
+  const allModels = capabilityModels
     .filter((model) => effectiveProvider === ALL_PROVIDERS || model.provider === effectiveProvider)
     .filter((model) => !query.trim() || matchesModel(query, model));
-  const offerGroups = groupOffers(allModels, PROVIDER_DISPLAY_ORDER);
-  const needsAlibabaIntlByok =
-    !byokProviders.includes("alibaba_intl")
-    && (effectiveProvider === ALL_PROVIDERS || effectiveProvider === "alibaba_intl")
-    && flatten(capability).some(
-      (model) => model.provider === "alibaba_intl" && model.status === "byok_only",
-    );
+  const partitioned = partitionOfferModels(allModels, byokProviders);
+  const offerGroups = groupOffers(partitioned.selectable, PROVIDER_DISPLAY_ORDER);
+  const unavailableGroups = groupOffers(partitioned.unavailable, PROVIDER_DISPLAY_ORDER);
+  const capabilitySelectableCount = capabilityModels.filter((model) =>
+    canSelect(model, byokProviders),
+  ).length;
+  const capabilityEmptyReason =
+    capabilitySelectableCount === 0
+      ? emptyCapabilityReason(capability, byokProviders)
+      : "none";
+  const unavailableReason = partitioned.unavailable.length
+    ? dominantEmptyReason(partitioned.unavailable)
+    : "none";
+  const showUnavailable = unavailableOpen || Boolean(query.trim());
   const catalogModels = useMemo(() => allCatalogModels(catalog), [catalog]);
   const marketHits = useMemo(() => {
     const needle = marketQuery.trim();
-    if (!needle) return [];
-    return groupOffers(
-      catalogModels.filter((model) => matchesModel(needle, model)),
-      PROVIDER_DISPLAY_ORDER,
-    );
-  }, [catalogModels, marketQuery]);
+    if (!needle) return { selectable: [], unavailable: [] };
+    const hits = catalogModels.filter((model) => matchesModel(needle, model));
+    const parts = partitionOfferModels(hits, byokProviders);
+    return {
+      selectable: groupOffers(parts.selectable, PROVIDER_DISPLAY_ORDER),
+      unavailable: groupOffers(parts.unavailable, PROVIDER_DISPLAY_ORDER),
+    };
+  }, [catalogModels, marketQuery, byokProviders]);
   const menuGroup = groups.find((item) => item.key === menuKey);
   const pendingDelete = groups.find((item) => item.key === pendingDeleteKey);
 
@@ -436,6 +549,14 @@ export function ModelGroupManager({
     }));
   }
 
+  function openKeySettings() {
+    if (onSetupByok) {
+      onSetupByok();
+      return;
+    }
+    writeByokPane();
+  }
+
   function toggleModel(key: string) {
     const index = selectedKeys.indexOf(key);
     if (index >= 0) {
@@ -445,6 +566,8 @@ export function ModelGroupManager({
       }
       patchCapability(selectedKeys.filter((item) => item !== key));
     } else {
+      const model = byKey.get(key);
+      if (model && !canSelect(model, byokProviders)) return;
       patchCapability([...selectedKeys, key]);
     }
     setError("");
@@ -463,13 +586,31 @@ export function ModelGroupManager({
     setBusy("save");
     setError("");
     const result = await updateModelGroup(group.id, { selection: draft });
-    setBusy("");
-    if (result.ok && result.data) {
-      setPayload(result.data);
-      setEditing(false);
-    } else {
+    if (!result.ok || !result.data) {
+      setBusy("");
       setError(result.error || tt("保存模型组合失败"));
+      return;
     }
+    const savedKey = group.key;
+    const savedId = group.id;
+    let nextPayload = applyDraftToPayload(result.data, savedId, savedKey, draft);
+    if (nextPayload.active_group_key !== savedKey) {
+      const activated = await setActiveModelGroup(savedKey);
+      if (activated.ok && activated.data) {
+        nextPayload = applyDraftToPayload(activated.data, savedId, savedKey, draft);
+      } else {
+        setBusy("");
+        setPayload(nextPayload);
+        setViewKey(savedKey);
+        setEditing(false);
+        setError(activated.error || tt("保存已成功，但未能设为全站默认组合"));
+        return;
+      }
+    }
+    setBusy("");
+    setPayload(nextPayload);
+    setViewKey(savedKey);
+    setEditing(false);
   }
 
   async function createGroup() {
@@ -565,27 +706,44 @@ export function ModelGroupManager({
           </p>
         ) : (
           <div data-model-price-search-results="" className="mt-3 space-y-2">
-            {marketHits.length === 0 ? (
+            {marketHits.selectable.length + marketHits.unavailable.length === 0 ? (
               <p className="text-[12px] text-neutral-400">{tt("没有匹配的模型。")}</p>
             ) : (
-              marketHits.map((hit) => (
-                <OfferGroupRow
-                  key={hit.canonical}
-                  label={hit.label}
-                  category={hit.category}
-                  offers={hit.offers}
-                  catalog={catalog}
-                  tt={tt}
-                  byokProviders={byokProviders}
-                />
-              ))
+              <>
+                {marketHits.selectable.map((hit) => (
+                  <OfferGroupRow
+                    key={hit.canonical}
+                    label={hit.label}
+                    category={hit.category}
+                    offers={hit.offers}
+                    catalog={catalog}
+                    tt={tt}
+                    byokProviders={byokProviders}
+                    onAddKey={openKeySettings}
+                    keyHelpByProvider={keyHelpByProvider}
+                  />
+                ))}
+                {marketHits.unavailable.map((hit) => (
+                  <OfferGroupRow
+                    key={`unavailable-${hit.canonical}`}
+                    label={hit.label}
+                    category={hit.category}
+                    offers={hit.offers}
+                    catalog={catalog}
+                    tt={tt}
+                    byokProviders={byokProviders}
+                    onAddKey={openKeySettings}
+                    keyHelpByProvider={keyHelpByProvider}
+                  />
+                ))}
+              </>
             )}
           </div>
         )}
       </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-[14px] font-semibold text-neutral-900">{tt("我的模型选择")}</h2>
-        {payload?.active_group_key ? (
+        {payload?.active_group_key === group.key ? (
           <span
             data-model-group-active=""
             className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
@@ -772,10 +930,12 @@ export function ModelGroupManager({
                   0,
                 );
                 const active = item.id === category.id;
-                const emptyReason =
-                  group.kind === "preset" && count === 0
-                    ? emptyCategoryReason(item.capabilities, byokProviders)
-                    : null;
+                const categorySelectable = (item.capabilities || []).some((cap) =>
+                  flatten(cap).some((model) => canSelect(model, byokProviders)),
+                );
+                const emptyReason = categorySelectable
+                  ? null
+                  : emptyCategoryReason(item.capabilities, byokProviders);
                 return (
                   <button
                     key={item.id}
@@ -786,6 +946,7 @@ export function ModelGroupManager({
                       setActiveCapability(item.capabilities[0]?.id || "");
                       setProvider(ALL_PROVIDERS);
                       setQuery("");
+                      setUnavailableOpen(false);
                     }}
                     className={`flex shrink-0 flex-col items-stretch rounded-lg px-3 py-2 text-left text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] sm:w-full ${
  active ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-200/60"
@@ -817,10 +978,12 @@ export function ModelGroupManager({
               {category.capabilities.map((item) => {
                 const active = item.id === capability.id;
                 const count = (selection[category.id]?.[item.id] || []).length;
-                const emptyReason =
-                  group.kind === "preset" && count === 0
-                    ? emptyCapabilityReason(item, byokProviders)
-                    : null;
+                const capSelectable = flatten(item).some((model) =>
+                  canSelect(model, byokProviders),
+                );
+                const emptyReason = capSelectable
+                  ? null
+                  : emptyCapabilityReason(item, byokProviders);
                 return (
                   <button
                     key={item.id}
@@ -830,6 +993,7 @@ export function ModelGroupManager({
                       setActiveCapability(item.id);
                       setProvider(ALL_PROVIDERS);
                       setQuery("");
+                      setUnavailableOpen(false);
                     }}
                     className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-left text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
  active ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
@@ -882,17 +1046,48 @@ export function ModelGroupManager({
                   />
                 )
               ))}
+              {capabilitySelectableCount === 0 ? (
+                <EmptyCapabilityPanel
+                  reason={capabilityEmptyReason}
+                  tt={tt}
+                  onAddKey={openKeySettings}
+                />
+              ) : null}
             </div>
 
             {editing && (
               <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-2.5">
                 <div className="mb-2 flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => setProvider(ALL_PROVIDERS)} className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === ALL_PROVIDERS ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}>{tt("全部供应商")}</button>
-                  {capability.providers.map((item) => (
-                    <button key={item.id} type="button" onClick={() => setProvider(item.id)} className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === item.id ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}>{tt(item.label)}</button>
-                  ))}
+                  <button
+                    type="button"
+                    data-model-provider-chip={ALL_PROVIDERS}
+                    data-model-provider-selectable={capabilitySelectableCount}
+                    onClick={() => setProvider(ALL_PROVIDERS)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === ALL_PROVIDERS ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}
+                  >
+                    {tt("全部供应商")} {capabilitySelectableCount}
+                  </button>
+                  {capability.providers.map((item) => {
+                    const selectableHere = capabilityModels.filter(
+                      (model) => model.provider === item.id && canSelect(model, byokProviders),
+                    ).length;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-model-provider-chip={item.id}
+                        data-model-provider-selectable={selectableHere}
+                        onClick={() => setProvider(item.id)}
+                        className={`rounded-full px-3 py-1 text-[11px] font-medium ${effectiveProvider === item.id ? "bg-neutral-900 text-white" : "bg-white text-neutral-600"}`}
+                      >
+                        {tt(item.label)} {selectableHere}
+                      </button>
+                    );
+                  })}
                 </div>
-                {needsAlibabaIntlByok && (
+                {capabilityModels.some(
+                  (model) => model.provider === "alibaba_intl" && model.status === "byok_only",
+                ) && !byokProviders.includes("alibaba_intl") ? (
                   <div
                     data-model-byok-required="alibaba_intl"
                     className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
@@ -900,69 +1095,95 @@ export function ModelGroupManager({
                     <span className="text-[11px] text-amber-800">
                       {tt("这一类需自带 Key")}
                     </span>
-                    {onSetupByok && (
-                      <button
-                        type="button"
-                        onClick={onSetupByok}
-                        className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
-                      >
-                        {tt("自带 API key（BYOK）")}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      data-model-add-key="alibaba_intl"
+                      onClick={openKeySettings}
+                      className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      {tt("添加 Key")}
+                    </button>
                   </div>
-                )}
+                ) : capabilityEmptyReason === "byok_only" ? (
+                  <div
+                    data-model-byok-required="true"
+                    className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
+                  >
+                    <span className="text-[11px] text-amber-800">
+                      {tt("这一类需自带 Key")}
+                    </span>
+                    <button
+                      type="button"
+                      data-model-add-key=""
+                      onClick={openKeySettings}
+                      className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      {tt("添加 Key")}
+                    </button>
+                  </div>
+                ) : null}
                 <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tt("搜索全部可用模型…")} className="mb-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] outline-none placeholder:text-neutral-400 focus:border-neutral-400" />
                 <div data-model-edit-offers="" className="max-h-[360px] overflow-y-auto rounded-xl border border-neutral-200 bg-white">
                   {offerGroups.map((hit, index) => (
-                    <div
+                    <EditOfferGroup
                       key={hit.canonical}
-                      data-model-edit-row={hit.canonical}
-                      className={`px-3.5 py-2.5 ${index ? "border-t border-neutral-100" : ""}`}
+                      hit={hit}
+                      index={index}
+                      catalogGroups={catalogGroups}
+                      selectedKeys={selectedKeys}
+                      byokProviders={byokProviders}
+                      catalog={catalog}
+                      tt={tt}
+                      onToggle={toggleModel}
+                    />
+                  ))}
+                  {unavailableGroups.length ? (
+                    <div
+                      data-model-unavailable=""
+                      data-model-unavailable-count={partitioned.unavailable.length}
+                      data-empty-reason={unavailableReason}
+                      className={offerGroups.length ? "border-t border-neutral-100" : ""}
                     >
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <span className="truncate text-[13px] font-medium text-neutral-900">{hit.label}</span>
-                        {hit.category ? (
-                          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">
-                            {tt(catalogGroups.find((item) => item.id === hit.category)?.label || hit.category)}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {hit.offers.map((model) => {
-                          const selectedIndex = selectedKeys.indexOf(model.key);
-                          const selectable = canSelect(model, byokProviders);
-                          return (
-                            <button
-                              key={model.key}
-                              type="button"
-                              data-model-offer={model.key}
-                              data-model-offer-disabled={selectable ? undefined : "true"}
-                              disabled={!selectable}
-                              onClick={() => toggleModel(model.key)}
-                              className={`rounded-lg border px-2.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-50 ${
-                                selectedIndex >= 0
-                                  ? "border-neutral-900 bg-neutral-900 text-white"
-                                  : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
-                              }`}
-                            >
-                              <span className="block text-[11px] font-medium">{tt(model.provider_label)}</span>
-                              <span className={`block text-[11px] ${selectedIndex >= 0 ? "text-white/80" : "text-neutral-500"}`}>
-                                {priceText(model, tt)}
-                              </span>
-                              {!selectable ? (
-                                <span data-model-status={model.status || "unavailable"} className="mt-0.5 block text-[10px] text-amber-700">
-                                  {statusLabel(model.status || (model.unpriced ? "unpriced" : ""), catalog, tt)}
-                                </span>
-                              ) : null}
-                              {selectedIndex >= 0 ? (
-                                <span className="mt-0.5 block text-[10px] text-amber-200">{fallbackLabel(selectedIndex, tt)}</span>
-                              ) : null}
-                            </button>
-                          );
-                        })}
+                      <button
+                        type="button"
+                        data-model-unavailable-toggle=""
+                        aria-expanded={showUnavailable ? "true" : "false"}
+                        onClick={() => setUnavailableOpen((open) => !open)}
+                        className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[12px] font-medium text-neutral-600 hover:bg-neutral-50"
+                      >
+                        <span>
+                          {tt("暂不可选 · {n}", { n: partitioned.unavailable.length })}
+                          {unavailableReason !== "none" ? (
+                            <span className="ml-2 font-normal text-amber-700">
+                              {statusLabel(unavailableReason, catalog, tt)}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="text-[11px] text-neutral-400">
+                          {showUnavailable ? tt("收起") : tt("展开")}
+                        </span>
+                      </button>
+                      <div hidden={!showUnavailable} data-model-unavailable-offers="">
+                        {unavailableGroups.map((hit, index) => (
+                          <EditOfferGroup
+                            key={`unavailable-${hit.canonical}`}
+                            hit={hit}
+                            index={index + 1}
+                            catalogGroups={catalogGroups}
+                            selectedKeys={selectedKeys}
+                            byokProviders={byokProviders}
+                            catalog={catalog}
+                            tt={tt}
+                            onToggle={toggleModel}
+                            onAddKey={openKeySettings}
+                            helpUrlFor={(providerId) =>
+                              helpUrlFor(providerId, capability, catalog, keyHelpByProvider)
+                            }
+                          />
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  ) : null}
                 </div>
               </div>
             )}
@@ -992,6 +1213,139 @@ export function ModelGroupManager({
         />
       )}
     </section>
+  );
+}
+
+function EmptyCapabilityPanel({
+  reason,
+  tt,
+  onAddKey,
+}: {
+  reason: EmptyCapabilityReason;
+  tt: UITranslate;
+  onAddKey: () => void;
+}) {
+  return (
+    <div
+      data-model-empty-capability=""
+      data-empty-reason={reason}
+      className="px-3.5 py-3 text-[12px] text-neutral-600"
+    >
+      <p className="font-medium text-neutral-800">{tt("这一类暂无可选模型")}</p>
+      <p className="mt-1 text-[11px] text-neutral-500">{emptyReasonText(reason, tt)}</p>
+      {reason === "byok_only" ? (
+        <>
+          <p className="mt-1 text-[11px] text-neutral-500">{tt("添加 Key 后即可选用。")}</p>
+          <button
+            type="button"
+            data-model-add-key=""
+            onClick={onAddKey}
+            className="mt-2 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
+          >
+            {tt("添加 Key")}
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function EditOfferGroup({
+  hit,
+  index,
+  catalogGroups,
+  selectedKeys,
+  byokProviders,
+  catalog,
+  tt,
+  onToggle,
+  onAddKey,
+  helpUrlFor: helpUrl,
+}: {
+  hit: { canonical: string; label: string; category: string; offers: CatalogModel[] };
+  index: number;
+  catalogGroups: { id: string; label: string }[];
+  selectedKeys: string[];
+  byokProviders: readonly string[];
+  catalog: ModelCatalog | null;
+  tt: UITranslate;
+  onToggle: (key: string) => void;
+  onAddKey?: () => void;
+  helpUrlFor?: (providerId: string) => string;
+}) {
+  return (
+    <div
+      data-model-edit-row={hit.canonical}
+      className={`px-3.5 py-2.5 ${index ? "border-t border-neutral-100" : ""}`}
+    >
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="truncate text-[13px] font-medium text-neutral-900">{hit.label}</span>
+        {hit.category ? (
+          <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">
+            {tt(catalogGroups.find((item) => item.id === hit.category)?.label || hit.category)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {hit.offers.map((model) => {
+          const selectedIndex = selectedKeys.indexOf(model.key);
+          const selectable = canSelect(model, byokProviders);
+          const help = helpUrl?.(model.provider || "") || "";
+          return (
+            <div key={model.key} className="flex flex-col gap-1">
+              <button
+                type="button"
+                data-model-offer={model.key}
+                data-model-offer-disabled={selectable ? undefined : "true"}
+                disabled={!selectable}
+                onClick={() => onToggle(model.key)}
+                className={`rounded-lg border px-2.5 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-50 ${
+                  selectedIndex >= 0
+                    ? "border-neutral-900 bg-neutral-900 text-white"
+                    : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+                }`}
+              >
+                <span className="block text-[11px] font-medium">{tt(model.provider_label)}</span>
+                <span className={`block text-[11px] ${selectedIndex >= 0 ? "text-white/80" : "text-neutral-500"}`}>
+                  {priceText(model, tt)}
+                </span>
+                {!selectable ? (
+                  <span data-model-status={offerStatus(model) || "unavailable"} className="mt-0.5 block text-[10px] text-amber-700">
+                    {statusLabel(offerStatus(model), catalog, tt)}
+                  </span>
+                ) : null}
+                {selectedIndex >= 0 ? (
+                  <span className="mt-0.5 block text-[10px] text-amber-200">{fallbackLabel(selectedIndex, tt)}</span>
+                ) : null}
+              </button>
+              {!selectable && model.status === "byok_only" && onAddKey ? (
+                <div className="flex flex-wrap gap-1 px-0.5">
+                  <button
+                    type="button"
+                    data-model-add-key={model.provider}
+                    onClick={onAddKey}
+                    className="text-[10px] font-medium text-amber-800 underline"
+                  >
+                    {tt("添加 Key")}
+                  </button>
+                  {help ? (
+                    <a
+                      href={help}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-model-key-help={model.provider}
+                      className="text-[10px] text-neutral-500 underline"
+                    >
+                      {tt("去厂商控制台获取 →")}
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1082,6 +1436,8 @@ function OfferGroupRow({
   catalog,
   tt,
   byokProviders,
+  onAddKey,
+  keyHelpByProvider = {},
 }: {
   label: string;
   category: string;
@@ -1089,6 +1445,8 @@ function OfferGroupRow({
   catalog: ModelCatalog | null;
   tt: UITranslate;
   byokProviders: string[];
+  onAddKey?: () => void;
+  keyHelpByProvider?: Record<string, string>;
 }) {
   const categoryLabel =
     catalog?.groups.find((group) => group.id === category)?.label || category;
@@ -1125,8 +1483,8 @@ function OfferGroupRow({
                   {formatRuleLine(rule, currency, tt)}
                 </span>
               ))}
-              <span data-model-status={model.status || ""} className="mt-0.5 block text-[10px] text-neutral-500">
-                {statusLabel(model.status || (model.unpriced ? "unpriced" : "available"), catalog, tt)}
+              <span data-model-status={offerStatus(model) || ""} className="mt-0.5 block text-[10px] text-neutral-500">
+                {statusLabel(offerStatus(model) || "available", catalog, tt)}
               </span>
               {checked ? (
                 <span data-model-checked="" className="block text-[10px] text-neutral-400">{checked}</span>
@@ -1139,6 +1497,27 @@ function OfferGroupRow({
                   className="mt-0.5 block text-[10px] text-neutral-500 underline"
                 >
                   {tt("官方价目")}
+                </a>
+              ) : null}
+              {!selectable && model.status === "byok_only" && onAddKey ? (
+                <button
+                  type="button"
+                  data-model-add-key={model.provider}
+                  onClick={onAddKey}
+                  className="mt-0.5 block text-[10px] font-medium text-amber-800 underline"
+                >
+                  {tt("添加 Key")}
+                </button>
+              ) : null}
+              {!selectable && model.status === "byok_only" && keyHelpByProvider[model.provider] ? (
+                <a
+                  href={keyHelpByProvider[model.provider]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-model-key-help={model.provider}
+                  className="mt-0.5 block text-[10px] text-neutral-500 underline"
+                >
+                  {tt("去厂商控制台获取 →")}
                 </a>
               ) : null}
             </div>

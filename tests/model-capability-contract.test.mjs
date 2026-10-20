@@ -90,7 +90,9 @@ test("每站右上角恢复全局模型组合切换器，不发送一次性模�
 });
 
 test("同名合并行、不可选禁用、已下架灰显、价未公布", () => {
-  assert.match(manager, /groupOffers\(allModels/);
+  assert.match(manager, /partitionOfferModels\(allModels/);
+  assert.match(manager, /groupOffers\(partitioned\.selectable/);
+  assert.match(manager, /groupOffers\(partitioned\.unavailable/);
   assert.match(manager, /data-model-offer-disabled/);
   assert.match(manager, /data-model-delisted/);
   assert.match(manager, /已下架/);
