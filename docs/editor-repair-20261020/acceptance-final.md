@@ -4,7 +4,7 @@ Independent behavioral acceptance after W1-r4, ComputerDock, and W6-r4 landed. N
 
 **Verdict: complete** for V1 host-side acceptance on the commits that landed. `pnpm typecheck` exit 0, `pnpm api:check` pass, `pnpm architecture:check` without the ComputerDock facade import (measured on `a06f249f` after W1-r4; W6-r4 added tests/docs only). W6-r4 `96bf746a` independently rerun **6/6**. Class (a) now covers eleven host-side families. Game is not a document round-trip. Class (d) stays unverified (no browser consent). This is not a 13-plugin metadata pass.
 
-Measured on oceanleo-ui `96bf746a9ce9a5c65e3177d5aa253f3c04f935f2` (W6-r4) after ComputerDock `a06f249f` and W1-r4 `446b5bc6`. Prior V1-r3 report `e9949599` / id record `c3e487d7`. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
+Measured on oceanleo-ui `96bf746a9ce9a5c65e3177d5aa253f3c04f935f2` (W6-r4) after ComputerDock `a06f249f` and W1-r4 `446b5bc6`. Prior V1-r3 report `e9949599` / id record `c3e487d7`. This delta: `8d21fed6c2a8f70d27698d02ffad6b1bc262fe8a`. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
 
 Round-1 `acceptance.md` overclaimed “13 plugins have load/mutate/save/reopen”. That was registry metadata. This file replaces that claim. Do not revive it.
 
