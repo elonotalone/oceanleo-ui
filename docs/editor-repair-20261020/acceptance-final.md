@@ -2,9 +2,9 @@
 
 Independent behavioral acceptance. No product source edits. No browser, Playwright, screenshots, production, dep installs, service changes, child agents, or full package suite.
 
-**Verdict: not complete.** Non-deck delivered owners are green under focused checks. Two ACTIVE r3 slices are still uncommitted (`W6-r3` hosted deck toolbar / agent origin, `W1-r3` image-only and intentional-empty document admission). This report does not mark the wave passing.
+**Verdict: not complete.** Non-deck delivered owners are green under focused checks, including committed **W1-r3** `f065cd3a`. Final pass is blocked on uncommitted **W6-r3** (hosted deck toolbar / agent origin) and on W1 typecheck still red after that commit. This report does not mark the wave passing.
 
-Measured on oceanleo-ui `85895785` plus **uncommitted W6-r3 and W1-r3 worktrees**. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
+Measured on oceanleo-ui `f065cd3a` plus **uncommitted W6-r3 worktree**. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
 
 Round-1 `acceptance.md` overclaimed “13 plugins have load/mutate/save/reopen”. That was registry metadata. This file replaces that claim.
 
@@ -23,7 +23,7 @@ No browser consent, so (d) stays unverified.
 
 | # | Symptom | Owner | Committed? | V1 coverage |
 |---|---|---|---|---|
-| 1 | Preview has body; Edit/Umo blank | W1 | r2 `c73a7b08` + sanitizer `91eb28b4`; **r3 uncommitted** | source-load + richdoc-image (r3 WIP) |
+| 1 | Preview has body; Edit/Umo blank | W1 | r2 `c73a7b08` + sanitizer `91eb28b4` + r3 `f065cd3a` | source-load + richdoc-image |
 | 2 | Autosave `integrity-failed` | W2 | UI `d97ef932` / `2863881f`, gateway `3ace4e8f` | save-integrity |
 | 3 | Shared edit bar | W5 | `c1914a55` / `5a18771d` / `a4916f3d` | edit-bar (live `SelectionCommandGate` + `SelectionToolbar`) |
 | 4 | Icon-only row + share/favorite | W3 | `f612459c` / `97347ee1` | chrome dedicated slots |
@@ -85,22 +85,21 @@ Uncommitted WIP in this worktree (not V1-owned, not in this commit):
 
 V1 `tests/editor-repair-acceptance-deck-hosted.test.mjs` is **4/4 on that WIP**. It will fail on clean HEAD until W6-r3 commits. Parent should resume this chat after that commit and rerun that file.
 
-### 2. W1-r3 image-only / intentional empty — uncommitted
+### 2. W1-r3 committed; typecheck still red on W1 files
 
-Parent `b2974536` / registry `85895785`. HEAD `c73a7b08` treats tag-stripped length as admission, so image-only HTML is `source:empty`.
+W1-r3 `f065cd3a` / `deliveries/W1-r3.md` is on `main`. V1 `tests/editor-repair-acceptance-richdoc-image.test.mjs` is **2/2 on that commit** with the real sanitizer (script stripped, `img` kept). Missing URL still refuse. W1-r3 own suite **5/5** in the same batch.
 
-Uncommitted WIP (not V1-owned): `rich-doc-model.ts`, `richdoc-pro-source.ts`, `use-rich-doc-editor.ts`, W1 tests.
-
-V1 `tests/editor-repair-acceptance-richdoc-image.test.mjs` is **2/2 on that WIP** using the **real sanitizer** (script stripped, `img` kept). Missing URL still refuse. Parent should resume after W1-r3 commits.
-
-Current `pnpm typecheck` on the mixed WIP is red on W1:
+`pnpm typecheck` after `f065cd3a` is still exit 2 on W1-owned files. V1 must not edit them:
 
 ```
 src/shell/advanced-routes/richdoc-pro-source.ts(287,45): error TS2345:
   Property 'source' is missing in type '{ html: string; json?: unknown; error: string; }'
-```
+  (umoSourceFromDocxItem deps.loadHtml return vs admitRichDocEditorSource)
 
-V1 must not edit that file. An earlier typecheck during W6-r3 editing also reported `DeckHostedRoute.tsx` `SelectionRevision` vs `number`; that line later moved and was not in the last tsc output.
+src/shell/doc-editors/rich-doc-model.ts(154,5): error TS2322:
+  Type 'ArrayBuffer | SharedArrayBuffer' is not assignable to type 'ArrayBuffer'
+  (officeBytesToArrayBuffer view.buffer.slice)
+```
 
 ### 3. `pnpm architecture:check` — pre-existing, not this wave
 
@@ -138,15 +137,16 @@ bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- \
 | chat-layout | 2 | 2 pass | no |
 | round-trip | 6 | 6 pass | no |
 | social | 2 | 2 pass | no (W3-r3 committed) |
-| richdoc-image | 2 | 2 pass | **yes W1-r3 WIP** |
+| richdoc-image | 2 | 2 pass | no (W1-r3 `f065cd3a`) |
 | deck-hosted | 4 | 4 pass | **yes W6-r3 WIP** |
-| **Total this worktree** | **37** | **37 pass** | 6 of those 37 need r3 commits |
+| **Total this worktree** | **37** | **37 pass** | 4 of those 37 need W6-r3 |
 
 ## Focused owner regressions (not full suite)
 
 | Suite | Result |
 |---|---|
-| W1 `W1-richdoc-source-import` + `W1-richdoc-hosted-selection` | 13/13 pass (before W1-r3 typecheck red) |
+| W1 `W1-richdoc-image-empty-admission` | 5/5 pass on `f065cd3a` |
+| W1 `W1-richdoc-source-import` + `W1-richdoc-hosted-selection` | 13/13 pass |
 | W2 session/integrity/retry/record-saved-item | 17/17 pass |
 | W3 chrome + W3-r3 receiver + W4 conversation | 18/18 pass |
 | W5-r3 hold + W5-r2 lifetime + W5 effects | 15/15 pass |
@@ -160,7 +160,7 @@ Did not run `tests/W6-r2-commands-hosted-deck.test.mjs` as final deck evidence: 
 
 ```
 bash .../agent-io-guard.sh run-heavy -- pnpm typecheck
-# exit 2 — W1-r3 WIP richdoc-pro-source.ts:287 missing `source` (see gap 2)
+# exit 2 after W1-r3 f065cd3a — two W1 errors (see gap 2)
 
 bash .../agent-io-guard.sh run-light -- pnpm api:check
 # pass (`scripts/public-api-snapshot.mjs --check`)
@@ -173,9 +173,10 @@ Generated CSS: `src/theme/ui.css` contains `data-agent-conversation` (`16494476`
 
 ## Parent-only remaining
 
-1. Land **W6-r3** (toolbar + agent unstamped review) and **W1-r3** (image-only / empty valid docs); keep DOMPurify fail-closed and never restore synthetic `origin:user` on the agent surface.
-2. Resume V1 after those commits: rerun `editor-repair-acceptance-deck-hosted` + `editor-repair-acceptance-richdoc-image` on the committed tree; rerun typecheck.
-3. Parent-owned `architecture:check` ComputerDock facade import.
-4. Full package suite once V1 tests are stable on committed r3. LeoDev freshness / twin-only bump. **No 上线. No production. No push by V1.**
+1. Land **W6-r3** (toolbar + agent unstamped review). Never restore synthetic `origin:user` on the agent surface.
+2. W1 (or parent) fix the two remaining `tsc` errors in `richdoc-pro-source.ts:287` and `rich-doc-model.ts:154`. V1 must not edit those files.
+3. Resume V1 after W6-r3 commits: rerun `editor-repair-acceptance-deck-hosted` and typecheck.
+4. Parent-owned `architecture:check` ComputerDock facade import.
+5. Full package suite once V1 tests are stable on committed W6-r3. LeoDev freshness / twin-only bump. **No 上线. No production. No push by V1.**
 
 Parent independently reruns required checks per kernel.
