@@ -40,6 +40,7 @@ import {
 import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
 import { PluginAgentPanel } from "./plugin-chrome/PluginAgentPanel";
 import { useConsoleAgentFocus } from "./SplitWorkspace";
+import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
 import { PluginThemeScope, type PluginThemeId } from "./plugin-theme";
 import type {
   WorkbenchMaterialAction,
@@ -211,11 +212,18 @@ export function useInlineAdvancedPanels({
   const liveDetailNode = useMemo(
     () =>
       pluginThemeId ? (
-        <PluginThemeScope pluginId={pluginThemeId}>
+        <PluginThemeScope
+          pluginId={pluginThemeId}
+          className={`h-full min-h-0 ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
+        >
           <LiveReactNode store={liveDetailStoreRef.current} />
         </PluginThemeScope>
       ) : (
-        <LiveReactNode store={liveDetailStoreRef.current} />
+        <div
+          className={`h-full min-h-0 ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
+        >
+          <LiveReactNode store={liveDetailStoreRef.current} />
+        </div>
       ),
     [pluginThemeId],
   );

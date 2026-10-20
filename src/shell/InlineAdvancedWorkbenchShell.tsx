@@ -22,6 +22,11 @@ import {
 } from "./FloatingContextToolbar";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
+import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
+import {
+  libraryItemIdentityKey,
+  requestOpenLibraryItemInEditor,
+} from "./inline-editor-mine-activate";
 import { InlineEditorMinePanel } from "./inline-editor-mine-panel";
 import {
   hasPendingOrFailed,
@@ -370,6 +375,31 @@ export function InlineAdvancedWorkbenchShell({
     return () => window.removeEventListener("beforeunload", guard);
   }, [warnBeforeUnload]);
 
+  const activateMineItem = useCallback(
+    (next: LibraryItem) => {
+      const currentId = libraryItemIdentityKey(item);
+      const nextId = libraryItemIdentityKey(next);
+      if (currentId && nextId && currentId === nextId) {
+        closeDetail();
+        return;
+      }
+      // Same leave/save guard as Back: hand off autosave, then typed open path.
+      // Do not call the parent onClose — MyLibrary is still mounted and consumes
+      // the edit intent in place.
+      leaveAdvancedWorkbench({
+        autoSaveEnabled: hostAutoSaveEnabled,
+        handOff: () => autoSave.handOffToBackground?.(),
+        closeDetail,
+        onClose: () => requestOpenLibraryItemInEditor(next),
+      });
+    },
+    [
+      autoSave.handOffToBackground,
+      closeDetail,
+      hostAutoSaveEnabled,
+      item,
+    ],
+  );
   const openLibraryPanel = useCallback(
     (id: "materials" | "mine") => {
       closeDetail();
@@ -385,10 +415,23 @@ export function InlineAdvancedWorkbenchShell({
       openTransientPanel(
         "mine",
         tt("我的库"),
-        <InlineEditorMinePanel siteId={siteId} />,
+        <InlineEditorMinePanel
+          siteId={siteId}
+          currentItem={item}
+          onActivateItem={activateMineItem}
+        />,
       );
     },
-    [closeDetail, openDrawer, openTransientPanel, siteId, tt, workspacePane],
+    [
+      activateMineItem,
+      closeDetail,
+      item,
+      openDrawer,
+      openTransientPanel,
+      siteId,
+      tt,
+      workspacePane,
+    ],
   );
   const materialsDrawerOpen =
     !transientPanel && activeDrawerId === "materials";
@@ -523,7 +566,10 @@ export function InlineAdvancedWorkbenchShell({
                 {fallbackDetail.label}
               </span>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div
+              data-editor-fallback-pane
+              className={`min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&:has([data-agent-conversation])]:overflow-hidden ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
+            >
               {fallbackDetail.content}
             </div>
           </aside>

@@ -81,6 +81,19 @@ function loadHeader() {
     import(
       await compileModule("src/shell/InlineAdvancedWorkbenchHeader.tsx", {
         "../i18n/ui/useUI": ttStubUrl,
+        "../ui/Toast": dataModule(`
+          export function useToast() {
+            return {
+              success() {},
+              error() {},
+              info() {},
+              loading() {},
+              show() { return { id: "t", dismiss() {} }; },
+              dismiss() {},
+              dismissAll() {},
+            };
+          }
+        `),
       })
     ))();
 }

@@ -27,6 +27,19 @@ function loadShell() {
       await compileModule("src/shell/InlineAdvancedWorkbenchShell.tsx", {
       "../i18n/ui/useUI": ttStubUrl,
       "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
+      "../ui/Toast": dataModule(`
+        export function useToast() {
+          return {
+            success() {},
+            error() {},
+            info() {},
+            loading() {},
+            show() { return { id: "t", dismiss() {} }; },
+            dismiss() {},
+            dismissAll() {},
+          };
+        }
+      `),
       "./advanced-layout-context": dataModule(`
         import { createContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);

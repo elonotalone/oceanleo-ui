@@ -1048,6 +1048,19 @@ test("第一行只留 GLOBAL_ROW_SLOTS，非 download 动作不在第一行", as
     {
       react: reactUrl,
       "../i18n/ui/useUI": uiStubUrl,
+      "../ui/Toast": dataModule(`
+        export function useToast() {
+          return {
+            success() {},
+            error() {},
+            info() {},
+            loading() {},
+            show() { return { id: "t", dismiss() {} }; },
+            dismiss() {},
+            dismissAll() {},
+          };
+        }
+      `),
       "./AdvancedEditorIcon": iconStubUrl,
       "./anchored-popover": anchoredPopoverUrl,
     },
@@ -1184,9 +1197,16 @@ test("第一行只留 GLOBAL_ROW_SLOTS，非 download 动作不在第一行", as
       downloadMenu.querySelectorAll('button[role="menuitem"]').length,
       2,
     );
-    const materials = [...mounted.container.querySelectorAll("button")].find(
-      (button) => button.textContent.includes("素材库"),
-    );
+    const materials =
+      mounted.container.querySelector(
+        '[data-workspace-library-panel="materials"]',
+      ) ||
+      [...mounted.container.querySelectorAll("button")].find(
+        (button) =>
+          button.getAttribute("aria-label") === "素材库" ||
+          button.getAttribute("title") === "素材库" ||
+          (button.textContent || "").includes("素材库"),
+      );
     assert.ok(materials);
     await click(materials);
     assert.equal(library, "materials");

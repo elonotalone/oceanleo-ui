@@ -27,10 +27,7 @@ export function CollabActionSlot({
   if (!collab) return null;
   return (
     <Suspense fallback={null}>
-      <div
-        data-collab-icon-chrome
-        className="[&_[data-collab-invite]]:h-11 [&_[data-collab-invite]]:w-11 [&_[data-collab-invite]]:min-w-11 [&_[data-collab-invite]]:overflow-hidden [&_[data-collab-invite]]:px-0 [&_[data-collab-invite]]:text-[0px] [&_[data-collab-invite]_[aria-hidden]]:text-base [&_[data-generate-replay]]:h-11 [&_[data-generate-replay]]:w-11 [&_[data-generate-replay]]:min-w-11 [&_[data-generate-replay]]:overflow-hidden [&_[data-generate-replay]]:px-0 [&_[data-generate-replay]]:text-[0px]"
-      >
+      <div data-collab-icon-chrome>
         <ActionSlotInner collab={collab} pluginThemeId={pluginThemeId} />
       </div>
     </Suspense>

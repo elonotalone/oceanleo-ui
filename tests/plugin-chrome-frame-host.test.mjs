@@ -143,8 +143,23 @@ const pageStoreStubUrl = dataModule(`
   }
 `);
 
+const toastStubUrl = dataModule(`
+  export function useToast() {
+    return {
+      success() {},
+      error() {},
+      info() {},
+      loading() {},
+      show() { return { id: "t", dismiss() {} }; },
+      dismiss() {},
+      dismissAll() {},
+    };
+  }
+`);
+
 const frameStubs = {
   "../../i18n/ui/useUI": uiStubUrl,
+  "../../ui/Toast": toastStubUrl,
   "../AdvancedEditorIcon": iconStubUrl,
   "../plugin-theme": pluginThemeStubUrl,
   "./agent-drawer-panel": agentPanelStubUrl,

@@ -316,8 +316,8 @@ export function AdvancedWorkspaceActionBar({
           ) : null}
         </div>
         ) : null}
+        <EditorItemSocialChrome item={item} />
         <div data-global-row-slot="download" className="flex items-center gap-0.5">
-          <EditorItemSocialChrome item={item} />
           {downloadActions.length > 0 ? (
             <>
               <IconButton

@@ -24,8 +24,14 @@ import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { IconButton } from "../../ui/Button";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
+import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "../agent-conversation-layout";
 import { EditorItemSocialChrome } from "../editor-item-social-chrome";
+import {
+  libraryItemIdentityKey,
+  requestOpenLibraryItemInEditor,
+} from "../inline-editor-mine-activate";
 import { InlineEditorMinePanel } from "../inline-editor-mine-panel";
+import type { LibraryItem } from "../library-data";
 import { AdvancedLayoutContext } from "../advanced-layout-context";
 import * as SplitWorkspaceMod from "../SplitWorkspace";
 import {
@@ -247,6 +253,7 @@ export function PluginChromeFrame({
   // 挂成普通面板，绕开 PLUGIN_AGENT_DRAWER_ID，于是同一个抽屉在两套外壳里
   // 成了两个标识（位置、快捷键、aria-pressed、互斥关系各管各的）。
   // 再来第三件就会有第三种写法，所以这里直接把这个 id 收归外壳。
+  const activateMineItemRef = useRef<(next: LibraryItem) => void>(() => {});
   const agentDrawer = useMemo(
     () =>
       createPluginAgentDrawer({
@@ -268,13 +275,19 @@ export function PluginChromeFrame({
               id: "mine",
               label: "我的库",
               icon: "library" as const,
-              content: <InlineEditorMinePanel siteId={siteId} />,
+              content: (
+                <InlineEditorMinePanel
+                  siteId={siteId}
+                  currentItem={item ?? null}
+                  onActivateItem={(next) => activateMineItemRef.current(next)}
+                />
+              ),
             },
           ]
         : []),
       agentDrawer,
     ],
-    [agentDrawer, chrome, panels, showLibrary, siteId],
+    [agentDrawer, chrome, item, panels, showLibrary, siteId],
   );
   const controller = usePluginChromePanels(panelList);
   const { activePanel, isOpen } = controller;
@@ -411,6 +424,17 @@ export function PluginChromeFrame({
             },
           }
         : null;
+
+  activateMineItemRef.current = (next) => {
+    const currentId = libraryItemIdentityKey(item);
+    const nextId = libraryItemIdentityKey(next);
+    if (currentId && nextId && currentId === nextId) {
+      chromeLayout.closeDrawer();
+      return;
+    }
+    requestOpenLibraryItemInEditor(next);
+    chromeLayout.closeDrawer();
+  };
 
   const openLibrary = (id: "materials" | "mine") => {
     if (onOpenLibrary) {
@@ -571,9 +595,7 @@ export function PluginChromeFrame({
           {(!views || views.length === 0) && <div className="flex-1" />}
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            <span data-global-row-slot="download" className="flex items-center">
-              <EditorItemSocialChrome item={item} />
-            </span>
+            <EditorItemSocialChrome item={item} />
             {actions?.map((action) => {
               const iconOnly = action.variant === "icon";
               const active = action.panelId
@@ -752,7 +774,10 @@ export function PluginChromeFrame({
                   </button>
                 )}
               </div>
-              <div className="min-h-0 flex-1 overflow-auto">
+              <div
+                data-plugin-chrome-panel-body
+                className={`min-h-0 flex-1 overflow-auto [&:has([data-agent-conversation])]:overflow-hidden ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
+              >
                 {sidePanel.content}
               </div>
             </aside>

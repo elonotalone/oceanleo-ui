@@ -51,6 +51,19 @@ function loadShell() {
       await compileModule("src/shell/InlineAdvancedWorkbenchShell.tsx", {
       "../i18n/ui/useUI": ttStubUrl,
       "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
+      "../ui/Toast": dataModule(`
+        export function useToast() {
+          return {
+            success() {},
+            error() {},
+            info() {},
+            loading() {},
+            show() { return { id: "t", dismiss() {} }; },
+            dismiss() {},
+            dismissAll() {},
+          };
+        }
+      `),
       "./advanced-layout-context": dataModule(`
         import { createContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);
@@ -273,7 +286,7 @@ function assertGlobalRowAllowlist(row) {
       `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS（close→maximize）里`,
     );
   }
-  assert.equal(GLOBAL_ROW_SLOTS.length, 7, "第一行槽位数变了");
+  assert.equal(GLOBAL_ROW_SLOTS.length, 9, "第一行槽位数变了");
 }
 
 test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单、upload 不进编辑栏", async () => {

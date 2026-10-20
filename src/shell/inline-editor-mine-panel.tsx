@@ -4,12 +4,17 @@ import { useCallback, useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { Button } from "../ui/Button";
 import { humanErrorMessage } from "./human-error-message";
+import { libraryItemIdentityKey } from "./inline-editor-mine-activate";
 import type { LibraryItem } from "./library-data";
 
 export function InlineEditorMinePanel({
   siteId = "",
+  currentItem = null,
+  onActivateItem,
 }: {
   siteId?: string;
+  currentItem?: LibraryItem | null;
+  onActivateItem: (item: LibraryItem) => void;
 }) {
   const tt = useUI();
   const [items, setItems] = useState<LibraryItem[]>([]);
@@ -41,6 +46,7 @@ export function InlineEditorMinePanel({
   useEffect(() => {
     void load();
   }, [load, siteId]);
+  const currentId = libraryItemIdentityKey(currentItem);
   return (
     <div
       data-inline-editor-mine-panel
@@ -67,16 +73,26 @@ export function InlineEditorMinePanel({
         </p>
       ) : (
         <ul className="min-h-0 flex-1 overflow-y-auto">
-          {items.map((entry) => (
-            <li
-              key={entry.artifactId || entry.id}
-              data-inline-editor-mine-item={entry.artifactId || entry.id}
-              className="truncate rounded-lg px-2 py-1.5 text-[12px] text-[var(--awb-text)]"
-              title={entry.title}
-            >
-              {entry.title}
-            </li>
-          ))}
+          {items.map((entry) => {
+            const id = libraryItemIdentityKey(entry);
+            const current = Boolean(currentId && id && currentId === id);
+            return (
+              <li key={id || entry.title}>
+                <Button
+                  variant="ghost"
+                  block
+                  align="start"
+                  data-inline-editor-mine-item={id}
+                  data-inline-editor-mine-action="edit"
+                  aria-current={current ? "true" : undefined}
+                  title={entry.title}
+                  onClick={() => onActivateItem(entry)}
+                >
+                  <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

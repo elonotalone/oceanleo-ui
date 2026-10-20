@@ -109,6 +109,8 @@ export const GLOBAL_ROW_SLOTS = Object.freeze([
   "library",
   "save-state",
   "download",
+  "share",
+  "favorite",
   "theme",
   "maximize",
   "collab",

@@ -202,6 +202,19 @@ test("global row is icon-only, opens mine, and hosts share/favorite with Library
       "../SplitWorkspace": dataModule(`
         export function useRightPaneSlot() { return null; }
       `),
+      "../../ui/Toast": dataModule(`
+        export function useToast() {
+          return {
+            success() {},
+            error() {},
+            info() {},
+            loading() {},
+            show() { return { id: "t", dismiss() {} }; },
+            dismiss() {},
+            dismissAll() {},
+          };
+        }
+      `),
       "../artifact-client": dataModule(`
         export async function setArtifactFavorite(item, favorite) {
           return { ok: true, data: { ...item, favorite } };
@@ -297,6 +310,19 @@ test("standalone workbench 我的库 still opens the mine panel when SplitWorksp
         "export function useUI(){ return (value) => value; }",
       ),
       "../ui": dataModule("export function ConfirmDialog(){ return null; }"),
+      "../ui/Toast": dataModule(`
+        export function useToast() {
+          return {
+            success() {},
+            error() {},
+            info() {},
+            loading() {},
+            show() { return { id: "t", dismiss() {} }; },
+            dismiss() {},
+            dismissAll() {},
+          };
+        }
+      `),
       "./advanced-layout-context": dataModule(`
         import { createContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);
