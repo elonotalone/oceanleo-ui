@@ -1,10 +1,10 @@
 # V1-r3 final independent acceptance — editor repair 2026-10-20
 
-Independent behavioral acceptance after W1-r4 and ComputerDock landed. No product source edits. No ComputerDock edits. No browser, Playwright, screenshots, production, dep installs, service changes, child agents, LeoDev, or push.
+Independent behavioral acceptance after W1-r4, ComputerDock, and W6-r4 landed. No product source edits. No ComputerDock edits. No browser, Playwright, screenshots, production, dep installs, service changes, child agents, LeoDev, or push.
 
-**Verdict: not complete.** V1-r2 blockers are closed on landed commits: `pnpm typecheck` exit 0, `pnpm api:check` pass, `pnpm architecture:check` without the ComputerDock facade import. The wave still does not pass: **W6-r4 is not on main**, so pdf / audio / video-timeline / threed / game / video-canvas stay outside V1 class (a). Class (d) stays unverified.
+**Verdict: complete** for V1 host-side acceptance on the commits that landed. `pnpm typecheck` exit 0, `pnpm api:check` pass, `pnpm architecture:check` without the ComputerDock facade import (measured on `a06f249f` after W1-r4; W6-r4 added tests/docs only). W6-r4 `96bf746a` independently rerun **6/6**. Class (a) now covers eleven host-side families. Game is not a document round-trip. Class (d) stays unverified (no browser consent). This is not a 13-plugin metadata pass.
 
-Measured on oceanleo-ui `a06f249ffce890f6629307f887b9a02af68d049b` (ComputerDock) after W1-r4 `446b5bc63cc37204e478d716a5530fc1fd1f5e60`. Parent docs record `23a75157ceba9e2e78e996bacb341c302283c33c` followed (PARENT.md only; no product source). This report: `e99495990c91e258f956cafc50d7121e7032750d`. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
+Measured on oceanleo-ui `96bf746a9ce9a5c65e3177d5aa253f3c04f935f2` (W6-r4) after ComputerDock `a06f249f` and W1-r4 `446b5bc6`. Prior V1-r3 report `e9949599` / id record `c3e487d7`. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
 
 Round-1 `acceptance.md` overclaimed “13 plugins have load/mutate/save/reopen”. That was registry metadata. This file replaces that claim. Do not revive it.
 
@@ -19,7 +19,7 @@ Round-1 `acceptance.md` overclaimed “13 plugins have load/mutate/save/reopen�
 
 No browser consent, so (d) stays unverified.
 
-## Operator defects → owners (delivered vs pending)
+## Operator defects → owners
 
 | # | Symptom | Owner | Committed? | V1 coverage |
 |---|---|---|---|---|
@@ -29,11 +29,11 @@ No browser consent, so (d) stays unverified.
 | 4 | Icon-only row + share/favorite | W3 | `f612459c` / `97347ee1` | chrome dedicated slots |
 | 5 | 我的库 without SplitWorkspace | W3 | `97347ee1` / `034f3a22` | chrome + social receiver |
 | 6 | Left AI composer mid-column | W4 | `70380329` + CSS `16494476` | chat-layout; generated CSS contains `data-agent-conversation` |
-| 7 | Other adapters blank-open / save | W6 | `59e9e746` / `466ab3bf` / r3 `fe970ebe` | source-load + six-family (a); deck-hosted. **W6-r4 not landed** |
+| 7 | Other adapters blank-open / save | W6 | `59e9e746` / `466ab3bf` / r3 `fe970ebe` / r4 `96bf746a` | source-load + eleven-family (a); deck-hosted; game not (a) |
 
 ## (a) Actual positive round-trips (not the 13-plugin matrix)
 
-Proven in `tests/editor-repair-acceptance-round-trip.test.mjs` (6/6), rerun on `446b5bc6`:
+V1 file `tests/editor-repair-acceptance-round-trip.test.mjs` (6/6), rerun on `96bf746a`:
 
 | Family | Load | Mutate | Reopen / gate |
 |---|---|---|---|
@@ -44,23 +44,39 @@ Proven in `tests/editor-repair-acceptance-round-trip.test.mjs` (6/6), rerun on `
 | design-canvas | stored design-document | title command (title ≥ 8 chars) | serialized title |
 | image | Fabric project JSON | — | reopen text; `imageSaveAdmitted` refuses until `sourceReady` |
 
-Not claimed as V1 (a): **pdf, audio, video-timeline, threed, game, video-canvas, deck**. Host-side parsers exist for some of those families. That is not a V1 serialize-reopen. W6-r2 owner tests include a constructed timeline mutate/reopen and a workflow-graph add-node path; those stay owner evidence, not this file’s (a) matrix. Game W6-r2 still mixes a preview planner with source-string checks — not (a).
+W6-r4 `tests/W6-r4-remaining-families.test.mjs` independently **6/6** on `96bf746a`. Five of those are host-side (a). Game is not.
+
+| Family | Load | Mutate | Reopen / gate |
+|---|---|---|---|
+| pdf | pdf-lib bytes admitted | `addPdfTextAnnotationAt` 页边批注 | `loadPdfDocument` keeps the note; no-bytes refuse |
+| audio | `inspectAudioProject` next + `hasSource` | `keepWindowsAfterCut` / delete command | serialized cut windows `[0–2],[4–10]`; commands empty while loading |
+| threed | `inspectModel3DProject` stored next | `applyModel3DNextControl` background `#112233` | JSON reopen keeps view; empty model refuse-save |
+| video-timeline | `oceanleo.timeline.v1` envelope | clip text 片头字幕 → 修订后的字幕 | parse/reopen restores text |
+| video-canvas | inline workflow graph | `addVideoCanvasNode` `fx1` | flush/reopen last node `fx1`; `sourceReady: false` refuse blank |
+
+Not claimed as (a):
+
+- **game** — play preview `planGamePreviewControl` does not edit the game document; durable missing envelope is fail-closed **(b)**. Not a document round-trip.
+- **deck** — hosted toolbar + origin gate (command), empty-bytes **(b)**. No host serialize-reopen.
+
+Audio/3D proofs are project/command surfaces, not a browser waveform or model-viewer click.
 
 ## (b) Negative no-blank-save
 
 - Richdoc durable without URL → `source: "empty"` / 缺少可验证的 source/full (`source-load` + `richdoc-image`).
 - Grid durable without source throws.
 - Chart missing inline → `ChartSourceError`.
-- PDF `allowBlank: false` rejects.
+- PDF no bytes / `allowBlank: false` rejects.
 - Deck `deckProjectUrlFor` empty bytes → `""`.
 - Image empty project JSON fetch rejects.
+- Audio capture null refuse; 3D `modelLoaded: false` refuse; video-canvas `sourceReady: false` refuse; game durable missing envelope refuse.
 - Save contracts refuse missing `full`, http, view-only, empty digest (`EMPTY_BLOB_SHA256` local refusal).
 - `artifactSaveFailureRetryable({ code: "integrity-failed" }) === false`.
 - CAS conflict keeps dirty draft (`withRecovery`); integrity-failed is not auto-retried (W2 focused 17/17).
 
 ## (c) Static registration
 
-`plugin-matrix` 3/3: 13 `PLUGIN_THEME_SPECS` ids match registry/theme/save-contract/capability routing. **Not a round-trip.**
+`plugin-matrix` 3/3: 13 `PLUGIN_THEME_SPECS` ids match registry/theme/save-contract/capability routing. **Not a round-trip. Not eleven-plus-two (a).**
 
 ## Live consumers (not deleted helpers)
 
@@ -72,33 +88,17 @@ Not claimed as V1 (a): **pdf, audio, video-timeline, threed, game, video-canvas,
 - **W1-r4:** `loadHtml` stubs without `source` still admit image-only HTML; DOCX `Uint8Array` views copy into a real `ArrayBuffer` (`446b5bc6`, V1 image 2/2 + W1 20/20).
 - **Hosted deck:** human fill stamps `origin: "user"`; forged agent `origin:user` stays unstamped (`fe970ebe`, V1 deck 4/4 + W6-r3 5/5).
 
-## Precise pending gaps (do not mark wave pass)
+## Residual (not V1 blockers)
 
-### 1. W6-r4 not landed
-
-No `deliveries/W6-r4.md`, no `tests/W6-r4-*.test.mjs`, no W6-r4 commit. `signals/W6-r4.md` is an untracked inventory journal only. Parent `signals/PARENT.md` (`23a75157`): do not treat W6-r4 as landed until that delivery exists with a commit id.
-
-Remaining families stay classified:
-
-| Family | Honest class on this tree |
-|---|---|
-| pdf | **(b)** missing-source refuse. Host `loadPdfDocument` / manifest exists. No V1 (a). |
-| audio | **(b)** admission + no mutate until ready. Host parse/serialize exists. No V1 (a). |
-| video-timeline | W6-r2 constructed-doc mutate/reopen (not a stored library item). **Not V1 (a).** |
-| threed | **(b)** persistence admission. No V1 (a). |
-| game | **(b)** durable missing envelope. Play preview non-editable. Code preview planner is not serialize-reopen. **Not V1 (a).** |
-| video-canvas | W6-r2 workflow-graph add-node / flush stub. Persist lives in workflow-carrier. **Not V1 (a).** |
-| deck | Hosted toolbar + origin gate (command), empty-bytes **(b)**. **Not V1 (a)** serialize-reopen. |
-
-### 2. Unverified (d)
+### 1. Unverified (d)
 
 No browser. No LeoDev HTTP. No production. Item `21c1e4d9-0818-4bbe-ae33-b4d01a5beafd` not re-opened. Full package suite is parent-only.
 
-### 3. Closed this round (were V1-r2 blockers)
+### 2. Closed this wave (were V1-r2 / early V1-r3 blockers)
 
-W1 `tsc` errors in `richdoc-pro-source.ts` and `rich-doc-model.ts` are gone on `446b5bc6`. ComputerDock `../../facades/devices` import is gone on `a06f249f` (`../../api/devices` `listDevices`). Independently: `pnpm typecheck` exit 0; `pnpm architecture:check` `domain boundaries ok (7729 import/export edges)`.
+W1 `tsc` errors gone on `446b5bc6`. ComputerDock facade import gone on `a06f249f`. W6-r4 landed `96bf746a` and independently 6/6.
 
-## V1 owned suite
+## V1 owned suite (rerun on `96bf746a`)
 
 Loader (six files together are classified heavy; ran in batches of ≤5):
 
@@ -113,23 +113,34 @@ bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- \
 
 Batch 1 (21/21): plugin-matrix, source-load, save-integrity, edit-bar, chrome.
 Batch 2 (16/16): chat-layout, round-trip, social, richdoc-image, deck-hosted.
-After W1-r4 landed, richdoc-image + source-load + round-trip rerun **16/16**.
 
-| File | Tests | Result | Landed commit |
-|---|---|---|---|
-| plugin-matrix | 3 | 3 pass | registry (c) |
-| source-load | 8 | 8 pass | rerun on `446b5bc6` |
-| save-integrity | 3 | 3 pass | W2 |
-| edit-bar | 5 | 5 pass | W5-r3 |
-| chrome | 2 | 2 pass | W3 |
-| chat-layout | 2 | 2 pass | W4 |
-| round-trip | 6 | 6 pass | rerun on `446b5bc6` |
-| social | 2 | 2 pass | W3-r3 |
-| richdoc-image | 2 | 2 pass | W1-r3 / rerun W1-r4 |
-| deck-hosted | 4 | 4 pass | W6-r3 `fe970ebe` |
-| **Total** | **37** | **37 pass** | no W6-r4 files |
+| File | Tests | Result |
+|---|---|---|
+| plugin-matrix | 3 | 3 pass |
+| source-load | 8 | 8 pass |
+| save-integrity | 3 | 3 pass |
+| edit-bar | 5 | 5 pass |
+| chrome | 2 | 2 pass |
+| chat-layout | 2 | 2 pass |
+| round-trip | 6 | 6 pass |
+| social | 2 | 2 pass |
+| richdoc-image | 2 | 2 pass |
+| deck-hosted | 4 | 4 pass |
+| **Total V1** | **37** | **37 pass** |
 
-## Focused owner regressions (not full suite)
+W6-r4 owner file (not V1-owned; independently rerun):
+
+```
+bash .../agent-io-guard.sh run-light -- \
+  node --import ./tests/helpers/assert-dom-guard.mjs \
+  --experimental-strip-types \
+  --experimental-loader ./tests/ts-extension-loader.mjs \
+  --test --test-concurrency=1 --test-timeout=180000 \
+  tests/W6-r4-remaining-families.test.mjs
+# 6/6 pass on 96bf746a
+```
+
+## Focused owner regressions (earlier this owner, still landed)
 
 | Suite | Result |
 |---|---|
@@ -138,15 +149,17 @@ After W1-r4 landed, richdoc-image + source-load + round-trip rerun **16/16**.
 | W3 chrome + W3-r3 receiver + W4 conversation | 18/18 |
 | W5-r3 hold + W5-r2 lifetime + W5 effects | 15/15 |
 | W6-r2 + W6 source lifecycle + W6-r3 toolbar + iframe sandbox | 24/24 (8+7+5+4) |
+| W6-r4 remaining families | **6/6** on `96bf746a` (this delta) |
 | oceanleo `backend/tests/test_w2_revision_wire_integrity.py` | 11 passed, 1 warning (deprecation). No production DB write. |
 
-Did not run `tests/W6-r2-commands-hosted-deck.test.mjs` as final deck evidence: it still imports r2 helpers. Did not run ComputerDock suites (not V1). Did not treat untracked `signals/W6-r4.md` as delivery.
+Did not run `tests/W6-r2-commands-hosted-deck.test.mjs` as final deck evidence: it still imports r2 helpers. Did not run ComputerDock suites (not V1). Did not commit untracked `signals/W6-r4.md`.
 
 ## Package checks
 
 ```
 bash .../agent-io-guard.sh run-heavy -- pnpm typecheck
 # exit 0 on a06f249f after 446b5bc6 — `tsc --noEmit`, no errors
+# W6-r4 96bf746a is tests + deliveries/W6-r4.md only; no src/ change
 
 bash .../agent-io-guard.sh run-light -- pnpm api:check
 # pass (`scripts/public-api-snapshot.mjs --check`)
@@ -160,8 +173,6 @@ Generated CSS: `src/theme/ui.css` still contains `data-agent-conversation` (`164
 
 ## Parent-only remaining
 
-1. **W6-r4** must land (`deliveries/W6-r4.md` + commit id) with host-model (a) or honest hosted-iframe fail-closed + command-reaches-API tests. Resume V1-r3 for that delta only. V1 must not invent cores or edit W6 product files.
-2. Full package suite. LeoDev freshness / twin-only bump. **No 上线. No production. No push by V1.**
-3. Unverified (d).
+Full package suite. LeoDev freshness / twin-only bump. Unverified (d). **No 上线. No production. No push by V1.**
 
 Parent independently reruns required checks per kernel.
