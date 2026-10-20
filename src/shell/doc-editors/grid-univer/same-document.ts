@@ -125,6 +125,38 @@ export function planGridSameDocumentOpen(input: {
   return { kind: "empty", snapshot: emptyWorkbookSnapshot(title), editable: true };
 }
 
+/**
+ * 打开时有没有「已经存在的源」。新建空白表可以走 `empty`；库里已有的表格
+ * 缺源必须失败，不能灌一张空表再当作可编辑稿保存回去。
+ */
+export function gridExpectedSourcePresent(input: {
+  artifactId?: string | null;
+  url?: string | null;
+  projectUrl?: string | null;
+  officeUrl?: string | null;
+}): boolean {
+  return Boolean(
+    String(input.artifactId || "").trim() ||
+      String(input.url || "").trim() ||
+      String(input.projectUrl || "").trim() ||
+      String(input.officeUrl || "").trim(),
+  );
+}
+
+/**
+ * 取源抛错，或已有源却只规划出空表：失败闭合，禁止把空白工作簿当成成功打开。
+ * 没有既有源时 `empty` 仍是合法的新建。
+ */
+export function gridOpenFailedClosed(input: {
+  expectedSource: boolean;
+  planKind: GridSameDocumentPlan["kind"];
+  loadFailed?: boolean;
+}): boolean {
+  if (input.loadFailed) return true;
+  if (!input.expectedSource) return false;
+  return input.planKind === "empty";
+}
+
 export type UniverSnapshotCell = {
   row: number;
   col: number;

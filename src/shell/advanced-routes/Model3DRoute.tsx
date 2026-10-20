@@ -56,6 +56,7 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import { model3dSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 
 type Model3DEditorState = ReturnType<typeof useModel3DWorkbench>;
 
@@ -431,15 +432,33 @@ function Model3DModelRoute({
       item,
     ],
   );
+  const model3dAdmitted = model3dSourcePersistenceAdmitted({
+    loading: editor.loading,
+    modelLoaded: editor.modelLoaded,
+  });
   const saveBeforeNewConversation = useCallback(async () => {
     // 协同房间里只有存档人落库；其余端的改动已在房间里。
     if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
+    const admitted = model3dSourcePersistenceAdmitted({
+      loading: editor.loading,
+      modelLoaded: editor.modelLoaded,
+    });
+    if (!admitted.ok) return { ok: false as const, error: admitted.error };
     const saved = await editor.saveCopy();
     if (saved?.versionId) collab.markSaved(String(saved.versionId));
     return saved
       ? { ok: true as const, item: buildSavedItem(saved) }
       : { ok: false as const };
-  }, [buildSavedItem, collab.markSaved, collab.saveGate, collabReadOnly, editor.saveCopy, item]);
+  }, [
+    buildSavedItem,
+    collab.markSaved,
+    collab.saveGate,
+    collabReadOnly,
+    editor.loading,
+    editor.modelLoaded,
+    editor.saveCopy,
+    item,
+  ]);
   const [importRejection, setImportRejection] = useState("");
   const importLocalModel = useCallback(
     async (files: File[]) => {
@@ -597,14 +616,17 @@ function Model3DModelRoute({
             ? `正在载入 3D 模型${editor.progress > 0 ? ` ${Math.round(editor.progress * 100)}%` : ""}`
             : ""),
         persistence: {
-          dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,
+          dirty:
+            model3dAdmitted.ok && collab.saveGate && !collabReadOnly
+              ? editor.dirty
+              : false,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.threed.edit.v1",
             key: advancedRecoveryKey("threed", item),
-            ready: !editor.loading,
-            capture: () => history.snapshot,
+            ready: model3dAdmitted.ok,
+            capture: () => (model3dAdmitted.ok ? history.snapshot : null),
             restore: editor.restoreRecovery,
           },
         },

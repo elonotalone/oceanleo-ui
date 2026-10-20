@@ -57,6 +57,7 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import { audioSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 
 /**
  * 新核舞台的懒加载入口。
@@ -267,9 +268,18 @@ function AudioLegacyRoute({
       [collabReadOnly, deliver, view],
     ),
   );
+  const audioAdmitted = audioSourcePersistenceAdmitted({
+    loading: editor.loading,
+    capture: editor.captureRecovery(),
+  });
   const saveBeforeNewConversation = useCallback(async () => {
     // 协同房间里只有存档人落库；其余端的改动已在房间里。
     if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
+    const admitted = audioSourcePersistenceAdmitted({
+      loading: editor.loading,
+      capture: editor.captureRecovery(),
+    });
+    if (!admitted.ok) return { ok: false as const, error: admitted.error };
     const saved = await editor.save();
     if (saved?.versionId) collab.markSaved(String(saved.versionId));
     return saved
@@ -285,7 +295,15 @@ function AudioLegacyRoute({
           }),
         }
       : { ok: false as const };
-  }, [collab.markSaved, collab.saveGate, collabReadOnly, editor.save, item]);
+  }, [
+    collab.markSaved,
+    collab.saveGate,
+    collabReadOnly,
+    editor.captureRecovery,
+    editor.loading,
+    editor.save,
+    item,
+  ]);
   const importLocalAudio = useCallback(
     async (files: File[]) => {
       setDeliverNotice("");
@@ -389,13 +407,16 @@ function AudioLegacyRoute({
           collab.history.notice ||
           (editor.loading ? "正在载入音频" : ""),
         persistence: {
-          dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,
+          dirty:
+            audioAdmitted.ok && collab.saveGate && !collabReadOnly
+              ? editor.dirty
+              : false,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.audio.edit.v1",
             key: advancedRecoveryKey("audio", item),
-            ready: !editor.loading,
+            ready: audioAdmitted.ok,
             capture: editor.captureRecovery,
             restore: editor.restoreRecovery,
           },

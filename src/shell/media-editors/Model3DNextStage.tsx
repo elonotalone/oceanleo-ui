@@ -696,9 +696,9 @@ export function Model3DNextStage({
           (readonly ? MODEL3D_LEGACY_READONLY_NOTICE : "") ||
           (showHosted && !ready ? "正在连接 3D 专业内核" : ""),
         persistence: {
-          dirty: view.revision > savedEditRevision,
+          dirty: Boolean(gltfBytes) && view.revision > savedEditRevision,
           editRevision: view.revision,
-          autoSave: !readonly,
+          autoSave: Boolean(gltfBytes) && !readonly,
           flush: proFlush,
           recovery: {
             draftSchema: "oceanleo.threed.edit.v1",

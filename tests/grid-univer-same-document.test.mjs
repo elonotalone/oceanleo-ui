@@ -17,6 +17,8 @@ import {
 import {
   GRID_PRO_LABEL,
   GRID_UNIVER_RECOVERY_EDITOR_ID,
+  gridExpectedSourcePresent,
+  gridOpenFailedClosed,
   isUniverWorkbookSnapshot,
   paintUniverWorkbookFromSnapshot,
   planGridSameDocumentOpen,
@@ -83,6 +85,21 @@ test("Univer 工程档优先于 office xlsx", () => {
   assert.equal(plan.kind, "univer");
   assert.equal(plan.editable, true);
   assert.equal(plan.snapshot.id, "wb-univer");
+});
+
+test("库里已有的表规划出空簿必须失败闭合，新建空表仍合法", () => {
+  assert.equal(
+    gridExpectedSourcePresent({ artifactId: "art", url: "" }),
+    true,
+  );
+  assert.equal(
+    gridOpenFailedClosed({ expectedSource: true, planKind: "empty" }),
+    true,
+  );
+  assert.equal(
+    gridOpenFailedClosed({ expectedSource: false, planKind: "empty" }),
+    false,
+  );
 });
 
 test("office xlsx 可编辑打开；什么都没有就是空表", () => {

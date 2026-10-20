@@ -5,6 +5,7 @@ import { Puck } from "@puckeditor/core";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { parseWebsiteSource } from "../website-source-carrier/website-source-validate";
 import {
   WEBSITE_SECTION_KINDS,
@@ -26,6 +27,9 @@ import {
   puckToWebsiteSource,
   websiteSourceToPuck,
 } from "../website-local/website-puck-map";
+import { websiteLocalSourceFromItem } from "./non-richdoc-source-gate";
+
+export { websiteLocalSourceFromItem };
 
 export function WebsiteLocalRoute({
   item,
@@ -34,17 +38,16 @@ export function WebsiteLocalRoute({
   accent = "#1F6FEB",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const initial = useMemo(() => {
-    const raw = item?.meta && typeof item.meta === "object" ? item.meta.websiteSource : undefined;
-    if (raw && typeof raw === "object") {
-      try {
-        return parseWebsiteSource(JSON.stringify(raw));
-      } catch {
-        /* blank */
-      }
-    }
-    return blankWebsiteSource(item?.title || "本地可编辑的网站工程");
-  }, [item]);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const admitted = useMemo(
+    () => websiteLocalSourceFromItem(item || { title: "本地可编辑的网站工程" }),
+    [item, reloadNonce],
+  );
+  const initial = admitted.ok
+    ? admitted.source
+    : blankWebsiteSource(item?.title || "本地可编辑的网站工程");
+  const sourceFailed = !admitted.ok;
+  const sourceFailureReason = admitted.ok ? "" : admitted.error;
   const history = useMemo(() => createWebsiteSourceHistory(initial), [initial]);
   const [source, setSource] = useState(initial);
   const [pageId, setPageId] = useState(initial.pages[0]?.id || "home");
@@ -64,6 +67,7 @@ export function WebsiteLocalRoute({
 
   const commit = useCallback(
     (next: typeof source) => {
+      if (sourceFailed) return;
       const stored = history.commit(next);
       setSource(stored);
       setRevision((value) => value + 1);
@@ -73,7 +77,7 @@ export function WebsiteLocalRoute({
       }
       syncHistory();
     },
-    [history, pageId, syncHistory],
+    [history, pageId, sourceFailed, syncHistory],
   );
 
   if (!item) {
@@ -100,7 +104,13 @@ export function WebsiteLocalRoute({
       adapter={{
         id: "website",
         label: "网站",
-        stage: (
+        stage: sourceFailed ? (
+          <EditorSourceFailurePanel
+            message={sourceFailureReason}
+            onReload={() => setReloadNonce((value) => value + 1)}
+            variant="surface"
+          />
+        ) : (
           <div className="flex h-full min-h-0 flex-col" data-testid="website-local-stage">
             {preview.available ? null : (
               <p
@@ -263,15 +273,18 @@ export function WebsiteLocalRoute({
           </div>
         ),
         persistence: {
-          dirty: revision > 0,
+          dirty: !sourceFailed && revision > 0,
           editRevision: revision,
           autoSave: false,
-          flush: () => ({ ok: true as const, item: savedItem }),
+          flush: () =>
+            sourceFailed
+              ? { ok: false as const, error: sourceFailureReason }
+              : { ok: true as const, item: savedItem },
           recovery: {
             draftSchema: WEBSITE_SOURCE_FORMAT,
             key: advancedRecoveryKey("website", item),
-            ready: true,
-            capture: () => source,
+            ready: !sourceFailed,
+            capture: () => (sourceFailed ? null : source),
             restore: (payload) => {
               try {
                 setSource(parseWebsiteSource(JSON.stringify(payload)));

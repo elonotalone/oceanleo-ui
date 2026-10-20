@@ -473,14 +473,17 @@ function VideoTimelineLegacyBody({
           editor.notice ||
           (sourcePending ? "正在验证时间线工程与媒体源…" : ""),
         persistence: {
-          dirty: collab.saveGate && !collabReadOnly ? editor.dirty : false,
+          dirty:
+            collab.saveGate && !collabReadOnly && editor.sourceReady
+              ? editor.dirty
+              : false,
           editRevision: editor.editRevision,
-          autoSave: collab.saveGate && !collabReadOnly,
+          autoSave: collab.saveGate && !collabReadOnly && editor.sourceReady,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.video-timeline.edit.v1",
             key: advancedRecoveryKey("video-timeline", item),
-            ready: !editor.loadingSource,
+            ready: !editor.loadingSource && editor.sourceReady,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.doc) : null,
             restore: (payload: unknown) => editor.restoreRecovery(payload),

@@ -31,6 +31,7 @@ import type { EditorMode } from "../hosted-editor/index";
 import { ChartContextToolbar } from "./ChartContextToolbar";
 import { ChartControls } from "./ChartControls";
 import { ChartStage } from "./ChartStage";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { ChartOptionCodePanel } from "./ChartOptionCodePanel";
 import { chartExportOption } from "./chart-render";
 import { chartDocumentToJson, type ChartOption } from "./chart-schema";
@@ -519,22 +520,17 @@ export function ChartNextStage({
         },
         stage:
           !editor.loading && !editor.sourceReady ? (
+            editor.carrierState === "legacy-render-only" ? (
             <div
               role="alert"
               className="mx-auto flex h-full max-w-xl flex-col items-center justify-center gap-2 bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-danger,#be123c)]"
             >
               <p className="font-semibold">
-                {editor.carrierState === "legacy-render-only"
-                  ? "此历史图表只有渲染产物，不能编辑"
-                  : "图表源未成功载入，编辑器已停止"}
+                  此历史图表只有渲染产物，不能编辑
               </p>
               <p className="text-xs leading-relaxed text-[var(--awb-muted,#57534e)]">
-                {editor.error ||
-                  (editor.carrierState === "legacy-render-only"
-                    ? CHART_LEGACY_READONLY_NOTICE
-                    : "未取得 oceanleo.chart.v1 结构化源；不会从 HTML、脚本或 PNG 逆向伪恢复。")}
+                  {editor.error || CHART_LEGACY_READONLY_NOTICE}
               </p>
-              {editor.carrierState === "legacy-render-only" ? (
                 <button
                   type="button"
                   onClick={convertLegacy}
@@ -542,8 +538,17 @@ export function ChartNextStage({
                 >
                   转换为新图表
                 </button>
-              ) : null}
             </div>
+            ) : (
+              <EditorSourceFailurePanel
+                message={`${
+                  editor.error ||
+                  "未取得 oceanleo.chart.v1 结构化源；不会从 HTML、脚本或 PNG 逆向伪恢复。"
+                }`}
+                onReload={editor.reload}
+                variant="surface"
+              />
+            )
           ) : (
             <div
               className="flex h-full min-h-[420px] w-full"
@@ -583,14 +588,21 @@ export function ChartNextStage({
             : "") ||
           (editor.loading ? "正在载入结构化图表…" : ""),
         persistence: {
-          dirty: editor.dirty,
+          dirty: editor.dirty && editor.sourceReady,
           editRevision: editor.editRevision,
-          autoSave: true,
-          flush: proFlush,
+          autoSave: editor.sourceReady,
+          flush: editor.sourceReady
+            ? proFlush
+            : async () => ({
+                ok: false as const,
+                error:
+                  editor.error ||
+                  "图表源未成功载入，未保存示例回退内容。",
+              }),
           recovery: {
             key: advancedRecoveryKey("chart-editor@1", item),
             draftSchema: "oceanleo.chart.edit.v1",
-            ready: !editor.loading,
+            ready: !editor.loading && editor.sourceReady,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.document) : null,
             restore: editor.restoreRecovery,

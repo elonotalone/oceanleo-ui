@@ -759,14 +759,14 @@ export function AudioPlaylistStage({
           (loading ? "正在载入音频" : "") ||
           (showHosted && !ready ? "正在连接音频专业内核" : ""),
         persistence: {
-          dirty,
+          dirty: dirty && !loading && Boolean(bufferRef.current),
           editRevision,
-          autoSave: !readonly,
+          autoSave: !readonly && !loading && Boolean(bufferRef.current),
           flush: proFlush,
           recovery: {
             draftSchema: "oceanleo.audio.edit.v1",
             key: advancedRecoveryKey("audio", item),
-            ready: Boolean(bufferRef.current),
+            ready: !loading && Boolean(bufferRef.current),
             capture: () => {
               const url = String(
                 saveItemRef.current.url || item.url || "",

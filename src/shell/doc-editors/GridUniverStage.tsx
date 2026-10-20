@@ -159,12 +159,15 @@ import {
 import {
   GRID_PRO_LABEL,
   GRID_UNIVER_RECOVERY_EDITOR_ID,
+  gridExpectedSourcePresent,
+  gridOpenFailedClosed,
   isUniverWorkbookSnapshot,
   listUniverSnapshotValues,
   planGridSameDocumentOpen,
   replaceUniverWorkbookWithSnapshot,
   sheetsFromLegacyProjectData,
 } from "./grid-univer/same-document";
+import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
 
 type UniverHandle = {
   univer: { dispose: () => void };
@@ -205,6 +208,7 @@ async function readGridRevisionSnapshot(
     legacySheets: null,
     officeSheets,
   });
+  if (planned.kind === "empty") return null;
   return planned.snapshot || null;
 }
 
@@ -238,10 +242,14 @@ export function GridUniverStage({
   const modeRef = useRef<EditorMode>(mode);
   modeRef.current = mode;
   const [snapshotReady, setSnapshotReady] = useState(false);
+  const [sourceFailed, setSourceFailed] = useState(false);
+  const [sourceFailureReason, setSourceFailureReason] = useState("");
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [conversion, setConversion] = useState<GridConversionState>("converted");
   const [conversionNotice, setConversionNotice] = useState("");
   const [editRevision, setEditRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const sourceFailedRef = useRef(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [status, setStatus] = useState("");
@@ -321,6 +329,8 @@ export function GridUniverStage({
   officeItemRef.current = officeSource.item;
   const resourceFailedRef = useRef(officeSource.resourceFailed);
   resourceFailedRef.current = officeSource.resourceFailed;
+  const officeErrorRef = useRef(officeSource.error);
+  officeErrorRef.current = officeSource.error;
   const projectSchema = String(item.meta.editor_project_schema || "");
   const projectUrl = String(item.meta.editor_project_url || "");
   // 长期库件还在解析签名源（rendition 转圈、url 还是空）时不要先开一张空表：
@@ -335,6 +345,7 @@ export function GridUniverStage({
     officeSource.url || "",
     String(officeSource.version ?? ""),
     waitingForSource ? "wait" : "go",
+    String(reloadNonce),
   ].join("\u0000");
 
   useEffect(() => {
@@ -346,7 +357,20 @@ export function GridUniverStage({
     let cancelled = false;
     const title = item.title || ttRef.current("工作簿");
     setLoading(true);
+    setSourceFailed(false);
+    sourceFailedRef.current = false;
+    setSourceFailureReason("");
+    setDirty(false);
     setStatus(ttRef.current("正在载入表格"));
+    const failClosed = (reason: string) => {
+      snapshotRef.current = null;
+      sourceFailedRef.current = true;
+      setSourceFailed(true);
+      setSourceFailureReason(reason);
+      setSnapshotReady(false);
+      setDirty(false);
+      setStatus(reason);
+    };
     (async () => {
       try {
         const schema = projectSchema;
@@ -389,6 +413,23 @@ export function GridUniverStage({
           legacySheets,
           officeSheets,
         });
+        const expectedSource = gridExpectedSourcePresent({
+          artifactId: item.artifactId,
+          url: item.url,
+          projectUrl,
+          officeUrl: officeItemRef.current.url || officeSource.url,
+        });
+        if (
+          gridOpenFailedClosed({
+            expectedSource,
+            planKind: planned.kind,
+          })
+        ) {
+          failClosed(
+            gridSourceFailureMessage(officeErrorRef.current || "", ttRef.current),
+          );
+          return;
+        }
         snapshotRef.current = planned.snapshot || emptySnapshot(title);
         // 实例已在（源晚到、或换了签名版本）：就地重画，不重建 Univer。
         if (handleRef.current) {
@@ -413,14 +454,14 @@ export function GridUniverStage({
         setSnapshotReady(true);
       } catch (caught) {
         if (cancelled) return;
-        snapshotRef.current = emptySnapshot(title);
-        setConversion("converted");
-        setConversionNotice(
-          caught instanceof Error
-            ? caught.message
-            : ttRef.current("表格载入失败。"),
+        failClosed(
+          gridSourceFailureMessage(
+            caught instanceof Error
+              ? caught.message
+              : ttRef.current("表格载入失败。"),
+            ttRef.current,
+          ),
         );
-        setSnapshotReady(true);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -686,6 +727,10 @@ export function GridUniverStage({
 
   const runControl = useCallback(
     (command: SelectionCommand) => {
+      if (sourceFailedRef.current) {
+        setStatus(sourceFailureReason || tt("表格源尚未成功载入，不能改。"));
+        return;
+      }
       if (readonly) {
         setStatus(tt(GRID_LEGACY_READONLY_NOTICE));
         return;
@@ -715,7 +760,7 @@ export function GridUniverStage({
       setCanUndo(true);
       setCanRedo(false);
     },
-    [bumpHistory, collabBlocked, collabPhase, livePort, readonly, tt],
+    [bumpHistory, collabBlocked, collabPhase, livePort, readonly, sourceFailureReason, tt],
   );
 
   const undo = useCallback(() => {
@@ -796,6 +841,10 @@ export function GridUniverStage({
   );
 
   const save = useCallback(async () => {
+    if (sourceFailedRef.current) {
+      setStatus(sourceFailureReason || tt("表格源尚未成功载入，未保存空白表。"));
+      return null;
+    }
     if (readonly) {
       setStatus(tt(GRID_LEGACY_READONLY_NOTICE));
       return null;
@@ -881,6 +930,7 @@ export function GridUniverStage({
     item,
     readonly,
     siteId,
+    sourceFailureReason,
     tt,
   ]);
 
@@ -937,8 +987,11 @@ export function GridUniverStage({
           recalculate,
           loading: loading || !snapshotReady,
           readonly: editBlocked,
-          sourceFailed: Boolean(officeSource.error),
-          reload: officeSource.retry,
+          sourceFailed: sourceFailed || Boolean(officeSource.error),
+          reload: () => {
+            officeSource.retry();
+            setReloadNonce((value) => value + 1);
+          },
         },
         tt,
       ),
@@ -949,6 +1002,7 @@ export function GridUniverStage({
       editBlocked,
       recalculate,
       snapshotReady,
+      sourceFailed,
       tt,
     ],
   );
@@ -1035,18 +1089,23 @@ export function GridUniverStage({
       chipCount: GRID_AGENT_CHIPS.length,
     }),
     run: (id, params) =>
-      runGridAgentCommand({
-        id,
-        params,
-        port: livePort(),
-        revision: editRevision,
-        readonly: editBlocked,
-        readonlyNotice: tt(
-          readonly ? GRID_LEGACY_READONLY_NOTICE : "现在是只读状态，不能修改。",
-        ),
-        submit: submitAgentReviewProposal,
-        onWrite: bumpHistory,
-      }),
+      sourceFailedRef.current
+        ? {
+            ok: false,
+            message: sourceFailureReason || "表格源尚未成功载入，指令没有执行。",
+          }
+        : runGridAgentCommand({
+            id,
+            params,
+            port: livePort(),
+            revision: editRevision,
+            readonly: editBlocked,
+            readonlyNotice: tt(
+              readonly ? GRID_LEGACY_READONLY_NOTICE : "现在是只读状态，不能修改。",
+            ),
+            submit: submitAgentReviewProposal,
+            onWrite: bumpHistory,
+          }),
   });
 
   const selectionContext = useMemo(
@@ -1147,7 +1206,16 @@ export function GridUniverStage({
               {...{ [GRID_UNIVER_STAGE_ATTR]: "true" }}
               {...{ [GRID_UNIVER_MODE_ATTR]: mode }}
             />
-            {!snapshotReady && (
+            {sourceFailed ? (
+              <EditorSourceFailurePanel
+                message={sourceFailureReason || gridSourceFailureMessage("", tt)}
+                onReload={() => {
+                  officeSource.retry();
+                  setReloadNonce((value) => value + 1);
+                }}
+                variant="overlay"
+              />
+            ) : !snapshotReady ? (
               // 首次载入（读工程档 / xlsx、建实例之前）舞台不留白。
               <div
                 className="absolute inset-0"
@@ -1155,28 +1223,32 @@ export function GridUniverStage({
               >
                 <WorkbenchRouteLoading />
               </div>
-            )}
+            ) : null}
           </div>
         ),
         status:
           conversionNotice ||
           (collabPhase === "waiting" ? tt("正在与协作者同步…") : "") ||
+          sourceFailureReason ||
           (officeSource.error
             ? gridSourceFailureMessage(officeSource.error, tt)
             : "") ||
           status ||
           (loading || officeSource.loading ? tt("正在载入表格") : ""),
         persistence: {
-          dirty,
+          dirty: dirty && !sourceFailed && snapshotReady,
           editRevision,
           // 协同里只有保存者自动存版本；别人的改动由它存。
-          autoSave: !readonly && collabSaveGate,
+          autoSave: !readonly && collabSaveGate && !sourceFailed && snapshotReady,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.grid.univer.v1",
             key: advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item),
-            ready: snapshotReady && !loading,
-            capture: () => currentSnapshot(),
+            ready: snapshotReady && !loading && !sourceFailed,
+            capture: () =>
+              sourceFailedRef.current || !snapshotReady
+                ? null
+                : currentSnapshot(),
             restore: (payload) => {
               // 只认 Univer 工作簿快照：旧核写下的 `{sheets:[…]}` 草稿被拒，不灌进 Univer。
               if (!isUniverWorkbookSnapshot(payload)) return false;

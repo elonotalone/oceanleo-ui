@@ -77,6 +77,7 @@ import {
   handoffItemKey,
   handoffRevisionOf,
 } from "./editor-handoff";
+import { imageSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 import {
   IMAGE_DESIGN_MANIFEST_VERSION,
   imageDesignChipManifestEntries,
@@ -259,7 +260,18 @@ export function ImageRoute({
     [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl, viewOnly],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
+  const imageAdmitted = imageSourcePersistenceAdmitted({
+    loading: editor.loading,
+    sceneDiagnostic: editor.sceneDiagnostic,
+  });
   const saveBeforeNewConversation = useCallback(async () => {
+    const admitted = imageSourcePersistenceAdmitted({
+      loading: editor.loading,
+      sceneDiagnostic: editor.sceneDiagnostic,
+    });
+    if (!admitted.ok) {
+      return { ok: false as const, error: admitted.error };
+    }
     const saved = await editor.save();
     if (!saved) {
       return {
@@ -298,13 +310,24 @@ export function ImageRoute({
             : "图片 revision 回执无法固定到当前 artifact head。",
       };
     }
-  }, [activeItem, editor.error, editor.save]);
+  }, [
+    activeItem,
+    editor.error,
+    editor.loading,
+    editor.save,
+    editor.sceneDiagnostic,
+  ]);
   useEffect(() => {
     return bindProFaceHandoff(handoffItemKey(activeItem), {
-      hasUnsavedChanges: () => editor.dirty,
+      hasUnsavedChanges: () => editor.dirty && imageAdmitted.ok,
       flush: async () => (await saveBeforeNewConversation()).ok,
     });
-  }, [activeItem, editor.dirty, saveBeforeNewConversation]);
+  }, [
+    activeItem,
+    editor.dirty,
+    imageAdmitted.ok,
+    saveBeforeNewConversation,
+  ]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
       setImportNotice("");
@@ -392,6 +415,13 @@ export function ImageRoute({
   // （能导出的都在 `use-fabric-image-editor.ts` 内部，本波不改那个文件）。
   // 所以「冻结画布」用状态面上已有的 durable 地址：脏了先存一次，干净就用上次那张。
   const frozenCanvasUrl = useCallback(async () => {
+    const admitted = imageSourcePersistenceAdmitted({
+      loading: editor.loading,
+      sceneDiagnostic: editor.sceneDiagnostic,
+    });
+    if (!admitted.ok) {
+      throw new ImageGatewayError("image-source-unavailable", admitted.error);
+    }
     if (editor.dirty) {
       const saved = await editor.save();
       if (saved?.url) return saved.url;
@@ -404,7 +434,15 @@ export function ImageRoute({
       "image-source-unavailable",
       editor.error || "这张画布还没有 AI 取得到的地址；先保存一次，再用 AI 能力。",
     );
-  }, [activeItem, editor.dirty, editor.error, editor.save, editor.savedUrl]);
+  }, [
+    activeItem,
+    editor.dirty,
+    editor.error,
+    editor.loading,
+    editor.save,
+    editor.savedUrl,
+    editor.sceneDiagnostic,
+  ]);
 
   useEffect(() => {
     return bindNormalFaceHandoff(handoffItemKey(activeItem), {
@@ -426,10 +464,26 @@ export function ImageRoute({
         };
       },
       persistInBackground: () => {
+        if (
+          !imageSourcePersistenceAdmitted({
+            loading: editor.loading,
+            sceneDiagnostic: editor.sceneDiagnostic,
+          }).ok
+        ) {
+          return;
+        }
         if (editor.dirty && collab.saveGate) void editor.save();
       },
     });
-  }, [activeItem, collab.saveGate, editor.dirty, editor.save, editor.savedUrl]);
+  }, [
+    activeItem,
+    collab.saveGate,
+    editor.dirty,
+    editor.loading,
+    editor.save,
+    editor.savedUrl,
+    editor.sceneDiagnostic,
+  ]);
 
   const setEditorMode = useCallback((mode: EditorMode) => {
     setPluginModeState(applyImageL0Mode(mode).mode);
@@ -729,7 +783,7 @@ export function ImageRoute({
         collab: collab.collab,
         persistence: {
           autoSave: true,
-          dirty: editor.dirty && collab.saveGate,
+          dirty: editor.dirty && collab.saveGate && imageAdmitted.ok,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
         },

@@ -685,14 +685,16 @@ function DeckLegacyRoute({
         collab: collab.collab,
         persistence: {
           // 房间里只有存档人自动保存；别的人改了也由存档人那边存
-          dirty: editor.dirty && collab.saveGate,
+          dirty: editor.dirty && collab.saveGate && !editor.sourceFailed,
           editRevision: editor.editRevision,
+          autoSave: collab.saveGate && !editor.sourceFailed,
           flush: saveBeforeNewConversation,
           draft: editor.draft,
           recovery: {
             key: advancedRecoveryKey("deck", item),
-            ready: !editor.loading,
-            capture: () => structuredClone(editor.deck),
+            ready: !editor.loading && !editor.sourceFailed,
+            capture: () =>
+              editor.sourceFailed ? null : structuredClone(editor.deck),
             restore: editor.restoreRecovery,
           },
         },

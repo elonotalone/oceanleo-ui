@@ -154,6 +154,7 @@ export interface ChartWorkbenchState {
   undo: () => void;
   redo: () => void;
   save: () => Promise<ChartSaveResult | null>;
+  reload: () => void;
   restoreRecovery: (payload: unknown) => boolean;
   /** 多人同改：浏览者、或别人在专业模式编辑——一切改文档的入口都不动作。 */
   readOnly: boolean;
@@ -232,6 +233,7 @@ export function useChartWorkbench(
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [sourceReady, setSourceReady] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [carrierState, setCarrierStateValue] = useState<ChartCarrierState>("empty");
   const carrierStateRef = useRef<ChartCarrierState>("empty");
   const setCarrierState = useCallback((next: ChartCarrierState) => {
@@ -317,6 +319,7 @@ export function useChartWorkbench(
     return () => controller.abort();
   }, [
     nextInputIdentity,
+    reloadNonce,
     setCarrierState,
     translate,
     updateDirty,
@@ -658,6 +661,7 @@ export function useChartWorkbench(
     undo,
     redo,
     save,
+    reload: () => setReloadNonce((value) => value + 1),
     restoreRecovery,
     readOnly: Boolean(collab?.readOnly),
     applyRemoteDocument,

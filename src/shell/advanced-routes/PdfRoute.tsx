@@ -49,6 +49,7 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import { pdfSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 
 /**
  * 新核舞台的懒加载入口。
@@ -158,9 +159,20 @@ export function PdfRoute({
     [collabReadOnly, collabEditor.mergePdf],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
+  const pdfAdmitted = pdfSourcePersistenceAdmitted({
+    loading: editor.loading,
+    failure: editor.failure,
+    hasBytes: editor.pageCount > 0 && Boolean(editor.currentBytes()),
+  });
   const saveBeforeNewConversation = useCallback(async () => {
     // 只读（别人持锁）或不是该存档的一端：不落库，别人保存后这里会自动更新。
     if (!collab.mayWrite) return { ok: true as const, item };
+    const admitted = pdfSourcePersistenceAdmitted({
+      loading: editor.loading,
+      failure: editor.failure,
+      hasBytes: editor.pageCount > 0 && Boolean(editor.currentBytes()),
+    });
+    if (!admitted.ok) return { ok: false as const, error: admitted.error };
     const copied = await editor.saveCopy();
     if (!copied) return { ok: false as const };
     if (copied.versionId) collab.markSaved(String(copied.versionId));
@@ -175,7 +187,16 @@ export function PdfRoute({
     });
     reportW19ProSaved(w19ItemKey("pdf", item), next);
     return { ok: true as const, item: next };
-  }, [editor.saveCopy, item, collab.markSaved, collab.mayWrite]);
+  }, [
+    collab.markSaved,
+    collab.mayWrite,
+    editor.currentBytes,
+    editor.failure,
+    editor.loading,
+    editor.pageCount,
+    editor.saveCopy,
+    item,
+  ]);
   const enterPdfPro = useCallback(async () => {
     const bytes = editor.currentBytes();
     const handoff = bytes
@@ -359,13 +380,13 @@ export function PdfRoute({
           editor.notice ||
           (editor.loading ? "正在载入 PDF" : ""),
         persistence: {
-          dirty: collab.mayWrite ? editor.dirty : false,
+          dirty: pdfAdmitted.ok && collab.mayWrite ? editor.dirty : false,
           editRevision: editor.editRevision,
-          autoSave: collab.mayWrite,
+          autoSave: pdfAdmitted.ok && collab.mayWrite,
           flush: saveBeforeNewConversation,
           recovery: {
             key: advancedRecoveryKey("pdf", item),
-            ready: !editor.loading && !editor.processing,
+            ready: pdfAdmitted.ok && !editor.processing,
             capture: editor.captureRecovery,
             restore: editor.restoreRecovery,
           },

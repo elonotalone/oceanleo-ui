@@ -27,6 +27,7 @@ import {
 import { useAdvancedSession } from "../advanced-session-context";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
 import {
@@ -42,8 +43,9 @@ import {
   gameModeUnavailable,
   gamePagesAdapter,
 } from "../game-editor/game-pages";
+import { gameSourceAdmission } from "./non-richdoc-source-gate";
 
-export { GAME_DUAL_ENGINE_HANDOFF, gameLeavePolicy };
+export { GAME_DUAL_ENGINE_HANDOFF, gameLeavePolicy, gameSourceAdmission };
 import type { AdvancedEditorPagesAdapter } from "../plugin-chrome/plugin-pages";
 
 export type { GameBundleFormat, GamePreviewHost, GamePreviewHostProps };
@@ -289,6 +291,7 @@ function GameLegacyRoute({
   pages?: AdvancedEditorPagesAdapter;
 }) {
   const session = useAdvancedSession();
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [history, setHistory] = useState<GameBundleDocument[]>(() => {
     const stashed = peekGameWorkingDocument(item);
     if (stashed?.envelopeUrl && stashed.envelopeDigest) {
@@ -307,6 +310,22 @@ function GameLegacyRoute({
 
   const document_ = history[cursor] || null;
   const editRevision = `${cursor}:${document_?.envelopeDigest || "empty"}`;
+  const admitted = gameSourceAdmission(item);
+  const sourceFailed = !admitted.ok && !document_;
+
+  useEffect(() => {
+    const stashed = peekGameWorkingDocument(item);
+    if (stashed?.envelopeUrl && stashed.envelopeDigest) {
+      setHistory([stashed]);
+      setCursor(0);
+      setError("");
+      return;
+    }
+    const initial = documentFromItem(item);
+    setHistory(initial ? [initial] : []);
+    setCursor(0);
+    setError("");
+  }, [item.artifactId, item.id, item.key, reloadNonce]);
 
   useEffect(() => {
     if (!document_) return;
@@ -323,6 +342,10 @@ function GameLegacyRoute({
   const iterate = useCallback(async () => {
     const draft = prompt.trim();
     if (busyRef.current || !draft) return;
+    if (sourceFailed) {
+      setError(admitted.error);
+      return;
+    }
     if (!isDurableLibraryItem(item)) {
       setError("这个条目没有 durable artifact identity，无法迭代。");
       return;
@@ -370,7 +393,15 @@ function GameLegacyRoute({
       busyRef.current = false;
       setBusy(false);
     }
-  }, [cursor, document_?.engineApiVersion, history.length, item, prompt]);
+  }, [
+    admitted.error,
+    cursor,
+    document_?.engineApiVersion,
+    history.length,
+    item,
+    prompt,
+    sourceFailed,
+  ]);
 
   const flush = useCallback(async () => {
     if (!document_) {
@@ -556,7 +587,7 @@ function GameLegacyRoute({
         <button
           type="button"
           onClick={iterate}
-          disabled={busy || !prompt.trim()}
+          disabled={busy || sourceFailed || !prompt.trim()}
           className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--awb-on-accent,#fff)] disabled:opacity-50"
           style={{ background: accent }}
         >
@@ -584,7 +615,7 @@ function GameLegacyRoute({
         ) : null}
       </div>
     ),
-    [accent, busy, cursor, document_, history, iterate, prompt],
+    [accent, busy, cursor, document_, history, iterate, prompt, sourceFailed],
   );
 
   return (
@@ -622,16 +653,24 @@ function GameLegacyRoute({
           },
         ],
         // `upload` 刻意缺席：game 站全站不提供上传/导入入口（D8）。
-        stage,
+        stage: sourceFailed ? (
+          <EditorSourceFailurePanel
+            message={admitted.error}
+            onReload={() => setReloadNonce((value) => value + 1)}
+            variant="surface"
+          />
+        ) : (
+          stage
+        ),
         status: error || notice,
         persistence: {
-          dirty,
+          dirty: Boolean(document_) && dirty,
           editRevision,
           flush,
           recovery: {
             draftSchema: GAME_WORKING_DOCUMENT_SCHEMA,
             key: advancedRecoveryKey("game", item),
-            ready: !busy,
+            ready: Boolean(document_) && !busy,
             capture: () => {
               if (!document_) return null;
               const stashed = peekGameWorkingDocument(item);

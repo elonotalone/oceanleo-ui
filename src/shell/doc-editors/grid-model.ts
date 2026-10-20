@@ -606,7 +606,14 @@ export async function loadGridSheets(
       item.kind === "sheet");
   const hasCsvContent =
     typeof item.content === "string" && item.content.length > 0;
-  if (!hasWorkbookUrl && !hasCsvContent) return [emptyGridSheet()];
+  if (!hasWorkbookUrl && !hasCsvContent) {
+    if (item.artifactId) {
+      throw new Error(
+        "当前表格 revision 缺少可验证的 source/full 内容；已阻止用空白工作簿替代。",
+      );
+    }
+    return [];
+  }
 
   const sheets = hasWorkbookUrl
     ? await readWorkbook(
@@ -618,7 +625,13 @@ export async function loadGridSheets(
         "array",
       )
     : await readWorkbook(item.content || "", "string");
-  return sheets.length > 0 ? sheets : [emptyGridSheet()];
+  if (sheets.length > 0) return sheets;
+  if (item.artifactId) {
+    throw new Error(
+      "表格源没有可读的工作表，未改用空白表覆盖原件。",
+    );
+  }
+  return [];
 }
 
 /**

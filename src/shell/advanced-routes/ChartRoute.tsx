@@ -18,6 +18,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { ChartContextToolbar } from "../chart-editor/ChartContextToolbar";
 import { ChartControls } from "../chart-editor/ChartControls";
 import { ChartStage } from "../chart-editor/ChartStage";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { chartExportOption } from "../chart-editor/chart-render";
 import { chartDocumentToJson } from "../chart-editor/chart-schema";
 import {
@@ -450,20 +451,18 @@ function ChartLegacyBody({
         },
         stage:
           !editor.loading && !editor.sourceReady ? (
-            <div
-              role="alert"
-              className="mx-auto flex h-full max-w-xl flex-col items-center justify-center gap-2 bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-danger,#be123c)]"
-            >
-              <p className="font-semibold">
-                {editor.carrierState === "legacy-render-only"
-                  ? "此历史图表只有渲染产物，不能编辑"
-                  : "图表源未成功载入，编辑器已停止"}
-              </p>
-              <p className="text-xs leading-relaxed text-[var(--awb-muted,#57534e)]">
-                {editor.error ||
-                  "未取得 oceanleo.chart.v1 结构化源；不会从 HTML、脚本或 PNG 逆向伪恢复。"}
-              </p>
-            </div>
+            <EditorSourceFailurePanel
+              message={`${
+                editor.carrierState === "legacy-render-only"
+                  ? "此历史图表只有渲染产物，不能编辑。"
+                  : "图表源未成功载入，编辑器已停止。"
+              } ${
+                editor.error ||
+                "未取得 oceanleo.chart.v1 结构化源；不会从 HTML、脚本或 PNG 逆向伪恢复。"
+              }`}
+              onReload={editor.reload}
+              variant="surface"
+            />
           ) : (
             <div className="relative h-full min-h-0">
               <ChartStage editor={editor} />
@@ -478,14 +477,14 @@ function ChartLegacyBody({
         collab: collab.collab,
         persistence: {
           // 房间里只有存档人自动保存；别的人改了也由存档人那边存
-          dirty: editor.dirty && collab.saveGate,
+          dirty: editor.dirty && collab.saveGate && editor.sourceReady,
           editRevision: editor.editRevision,
-          autoSave: true,
+          autoSave: editor.sourceReady,
           flush: saveBeforeNewConversation,
           recovery: {
             draftSchema: "oceanleo.chart.edit.v1",
             key: advancedRecoveryKey("chart-editor@1", item),
-            ready: !editor.loading,
+            ready: !editor.loading && editor.sourceReady,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.document) : null,
             restore: editor.restoreRecovery,
