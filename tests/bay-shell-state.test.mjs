@@ -293,6 +293,10 @@ test("信息流请求：参数白名单、匿名可调；待办数要登录", as
     "/v1/talent/bay/feed?kind=service&category=design&q=%E6%B5%B7%E6%8A%A5&cursor=c1&limit=40",
   );
   assert.equal(feed.bayFeedPath({ kind: "nope", category: "DROP TABLE" }), "/v1/talent/bay/feed?kind=all");
+  assert.equal(
+    feed.bayFeedPath({ kind: "needs", listing_kind: "app" }),
+    "/v1/talent/bay/feed?kind=needs&listing_kind=app",
+  );
   const page = await feed.fetchBayFeed({ kind: "demand" });
   assert.deepEqual(page.items.map((item) => item.id), ["d1"]);
   assert.equal(page.next_cursor, null);

@@ -1,19 +1,14 @@
 "use client";
 
-// 悬停 / 长按出现的操作条：回应、引用回复、开线程、更多（复制文字、复制链接、置顶、编辑、撤回、举报）。
-import { useState } from "react";
+// 消息上下文菜单：复制、翻译、转发、多选、引用、删除。
+import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImMessage } from "../../../lib/im/types";
-import { EmojiPicker } from "../composer/EmojiPicker";
-import { ImEmojiIcon, ImMoreIcon, ImQuoteIcon, ImThreadIcon } from "../messages-surface";
-import { QUICK_REACTIONS } from "./ReactionBar";
+import { ImMoreIcon } from "../messages-surface";
 
 export interface MessageActionPermissions {
-  canEdit: boolean;
-  canRecall: boolean;
-  canReact: boolean;
-  canThread: boolean;
-  canPin: boolean;
+  canQuote: boolean;
+  canDelete: boolean;
 }
 
 /** 哪些操作对这条消息可用（纯函数，便于测试）。 */
@@ -21,30 +16,23 @@ export function actionPermissions(input: {
   message: ImMessage;
   viewerId: string | null;
   isAdmin: boolean;
-  inThread: boolean;
 }): MessageActionPermissions {
-  const { message, viewerId, isAdmin, inThread } = input;
+  const { message, viewerId, isAdmin } = input;
   const alive = !message.recalled_at && message.hidden_reason !== "moderation" && message.seq > 0;
   const mine = Boolean(viewerId) && message.sender_id === viewerId && message.sender_kind === "user";
   return {
-    canEdit: alive && mine && message.kind === "text",
-    canRecall: alive && (mine || isAdmin) && message.sender_kind !== "system",
-    canReact: alive,
-    canThread: alive && !inThread && message.sender_kind !== "system",
-    canPin: alive,
+    canQuote: alive,
+    canDelete: alive && (mine || isAdmin) && message.sender_kind !== "system",
   };
 }
 
 export interface MessageActionHandlers {
-  onReact: (emoji: string) => void;
   onQuote: () => void;
-  onThread: () => void;
+  onTranslate: () => void;
+  onForward: () => void;
+  onMultiSelect: () => void;
   onCopyText: () => void;
-  onCopyLink: () => void;
-  onTogglePin: () => void;
-  onEdit: () => void;
   onRecall: () => void;
-  onReport: () => void;
 }
 
 const buttonClass =
@@ -54,18 +42,17 @@ export function MessageActions({
   message,
   permissions,
   handlers,
-  canReportOthers,
+  open = false,
 }: {
   message: ImMessage;
   permissions: MessageActionPermissions;
   handlers: MessageActionHandlers;
-  canReportOthers: boolean;
+  open?: boolean;
 }) {
   const tt = useUI();
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => { if (open) setMenuOpen(true); }, [open]);
   const close = () => {
-    setPickerOpen(false);
     setMenuOpen(false);
   };
   const item = (label: string, run: () => void, danger = false) => (
@@ -91,50 +78,6 @@ export function MessageActions({
       className="relative flex items-center gap-0.5"
       data-message-actions=""
     >
-      {permissions.canReact
-        ? QUICK_REACTIONS.slice(0, 3).map((emoji) => (
-            <button key={emoji} type="button" className={buttonClass} onClick={() => handlers.onReact(emoji)} aria-label={tt("回应 {emoji}", { emoji })}>
-              {emoji}
-            </button>
-          ))
-        : null}
-      {permissions.canReact ? (
-        <div className="relative">
-          <button
-            type="button"
-            className={buttonClass}
-            aria-label={tt("更多表情")}
-            aria-expanded={pickerOpen}
-            onClick={() => {
-              setMenuOpen(false);
-              setPickerOpen((value) => !value);
-            }}
-          >
-            <ImEmojiIcon />
-          </button>
-          {pickerOpen ? (
-            <div className="absolute right-0 top-8">
-              <EmojiPicker
-                onClose={() => setPickerOpen(false)}
-                onPick={(emoji) => {
-                  close();
-                  handlers.onReact(emoji);
-                }}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-      {permissions.canReact ? (
-        <button type="button" className={buttonClass} onClick={handlers.onQuote} aria-label={tt("引用")} title={tt("引用")}>
-          <ImQuoteIcon />
-        </button>
-      ) : null}
-      {permissions.canThread ? (
-        <button type="button" className={buttonClass} onClick={handlers.onThread} aria-label={tt("线程")} title={tt("线程")}>
-          <ImThreadIcon />
-        </button>
-      ) : null}
       <div className="relative">
         <button
           type="button"
@@ -143,7 +86,6 @@ export function MessageActions({
           aria-expanded={menuOpen}
           aria-label={tt("更多操作")}
           onClick={() => {
-            setPickerOpen(false);
             setMenuOpen((value) => !value);
           }}
         >
@@ -151,12 +93,12 @@ export function MessageActions({
         </button>
         {menuOpen ? (
           <div role="menu" className="absolute right-0 top-8 z-30 min-w-[132px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
-            {message.body ? item(tt("复制文字"), handlers.onCopyText) : null}
-            {message.seq > 0 ? item(tt("复制链接"), handlers.onCopyLink) : null}
-            {permissions.canPin ? item(message.pinned ? tt("取消置顶") : tt("置顶"), handlers.onTogglePin) : null}
-            {permissions.canEdit ? item(tt("编辑"), handlers.onEdit) : null}
-            {permissions.canRecall ? item(tt("撤回"), handlers.onRecall, true) : null}
-            {canReportOthers ? item(tt("举报"), handlers.onReport, true) : null}
+            {message.body ? item(tt("复制"), handlers.onCopyText) : null}
+            {message.body ? item(tt("翻译"), handlers.onTranslate) : null}
+            {item(tt("转发"), handlers.onForward)}
+            {item(tt("多选"), handlers.onMultiSelect)}
+            {permissions.canQuote ? item(tt("引用"), handlers.onQuote) : null}
+            {permissions.canDelete ? item(tt("删除"), handlers.onRecall, true) : null}
           </div>
         ) : null}
       </div>

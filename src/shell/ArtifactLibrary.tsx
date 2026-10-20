@@ -4,8 +4,8 @@
 // @oceanleo/ui — 统一文件库 ArtifactLibrary（单一事实源，2026-07-02）
 // ----------------------------------------------------------------------------
 // 操作员拍板：27 个功能子站的「文件库」必须与主站 oceanleo.com/library **完完全全
-// 一样**——同一套页面顶部横排分区（全部 / 图片 / 文档 / 幻灯片 / 视频 / 音频 /
-// 3D / 我的收藏）、同一套主区（搜索 + 网格/列表视图 + 预览弹窗 +
+// 一样**——同一套页面顶部类型筛选（全部 / 图片 / 文档 / 幻灯片 / 视频 / 音频 /
+// 3D）、同一套主区（搜索 + 查看选项「仅看收藏」+ 网格/列表视图 + 预览弹窗 +
 // 收藏）。数据 = `agent_artifacts` 表（全系列共用一个 Supabase 项目 + 跨站登录
 // cookie + RLS owner-only），天然「全 OceanLeo 打通」：任何站产出的作品在所有站
 // 的文件库可见。
@@ -32,7 +32,16 @@ import {
 import { Markdown } from "./Markdown";
 import { Modal, SkeletonCard, EmptyState, timeAgo } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
-import { LibraryToolbar, LibraryChips } from "./LibraryLayout";
+import { LibraryToolbar } from "./LibraryLayout";
+import {
+  COLLECTION_CARD_GRID_CLASS,
+  COLLECTION_CARD_GRID_STYLE,
+  CollectionCardGrid,
+  CollectionFilterRow,
+  CollectionFilterSelect,
+  CollectionInfiniteSentinel,
+  type CollectionViewOption,
+} from "./collection-chrome";
 import { MyLibrary } from "./MyLibrary";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
@@ -56,7 +65,6 @@ export const ARTIFACT_FILTERS: { id: string; label: string }[] = [
   { id: "videos", label: "视频" },
   { id: "audio", label: "音频" },
   { id: "threed", label: "3D" },
-  { id: "favorites", label: "我的收藏" },
 ];
 
 export type ArtifactFilter =
@@ -85,8 +93,8 @@ const KIND_SETS: Record<string, string[]> = {
  * 库一大，首屏就要等一份几 MB 的响应，拿回来之后再全量渲染成 DOM。
  * 只做虚拟化不改拉取，等于把浪费从渲染挪到网络（任务书 W06 §P2）。
  *
- * 60 是一屏 3 列 × 约 5 行的两倍多：第一页一定填满视口且还有富余，
- * 用户不会一进来就看见「继续加载」。
+ * 60 是一屏 3 列 × 约 5 行的两倍多：第一页填满视口后还有富余，
+ * 更多内容靠滑到底接下页，工具条上不再出现加载按键。
  */
 const ARTIFACT_PAGE_SIZE = 60;
 
@@ -226,6 +234,10 @@ const CATEGORY_FILTER: Record<string, ArtifactFilter> = {
 export function ArtifactLibrary(props: ArtifactLibraryProps) {
   if (props.fill) return <ArtifactLibraryLegacy {...props} />;
   const filter = props.filter || "all";
+  const controlledType =
+    props.filter && props.filter !== "all" && props.filter !== "favorites"
+      ? FILTER_CATEGORY[props.filter]
+      : undefined;
   return (
     <div className={`${APP_PAGE_FRAME_CLASS} h-[100dvh]`}>
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -233,7 +245,7 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
           accent={props.accent}
           plain
           pageTitle="我的库"
-          category={FILTER_CATEGORY[filter]}
+          category={controlledType}
           onlyFavorites={filter === "favorites"}
           onCategoryChange={(category) =>
             props.onFilterChange?.(CATEGORY_FILTER[category] || "all")
@@ -265,32 +277,25 @@ function VirtualArtifactGrid({
   renderCard: (item: ArtifactItem, index: number) => ReactNode;
 }) {
   const gridRef = useRef<HTMLDivElement>(null);
-  const rule = useMemo<GridColumnRule>(
-    () => ({
-      // `gap-4` = 1rem。这**不是** `auto-fill` 网格：`grid-cols-2 sm:grid-cols-3`
-      // 的列数由视口断点决定，光看容器宽度算不出来，所以不给 `minTrackPx`。
-      // 真列数由原语直接问 `getComputedStyle().gridTemplateColumns` 拿；
-      // 2 只是问不到时的保守底（宁可记少、多挂几行，不能记多、漏挂）。
-      gapPx: pixelsPerRem(),
-      fallbackColumnCount: 2,
-    }),
-    [],
-  );
+  const rule = useMemo<GridColumnRule>(() => {
+    const rem = pixelsPerRem();
+    return { minTrackPx: 12 * rem, gapPx: 0.625 * rem, narrowDivisor: 2 };
+  }, []);
   const grid = useVirtualGrid({
     itemCount: items.length,
     containerRef: gridRef,
     // 刻意**不传** `scrollRef`：本组件绝不自带 `overflow-y-auto`（双滚动条的病根，
     // 见根容器那段注释），滚动容器是外层 ResultCanvas body，让原语自己往上找。
     rule,
-    // `aspect-video` 缩略图（宽 × 9/16）+ `p-3` 里的标题与副标题两行 ≈ 56，
-    // 再加一个 16px 行间距。只是量到真高之前的乐观估值，量到就回填。
-    estimatedRowHeight: (columnWidth) => columnWidth * 0.5625 + 72,
+    estimatedRowHeight: (columnWidth) => columnWidth * 0.75 + 46,
   });
 
   return (
     <div
       ref={gridRef}
-      className="v-fade-in mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3"
+      className={`v-fade-in mt-5 ${COLLECTION_CARD_GRID_CLASS}`}
+      data-collection-card-grid=""
+      style={COLLECTION_CARD_GRID_STYLE}
       {...grid.containerProps}
     >
       {grid.spacerTop > 0 && (
@@ -323,11 +328,31 @@ function ArtifactLibraryLegacy({
 }: ArtifactLibraryProps) {
   const tt = useUI();
   const [internalFilter, setInternalFilter] = useState<ArtifactFilter>("all");
-  const filter = controlledFilter ?? internalFilter;
+  const [internalOnlyFavorites, setInternalOnlyFavorites] = useState(
+    controlledFilter === "favorites",
+  );
+  const rawFilter = controlledFilter ?? internalFilter;
+  const typeFilter: ArtifactFilter = rawFilter === "favorites" ? "all" : rawFilter;
+  const onlyFavorites = controlledFilter === "favorites" || internalOnlyFavorites;
   const setFilter = (f: ArtifactFilter) => {
     if (controlledFilter === undefined) setInternalFilter(f);
     onFilterChange?.(f);
   };
+  const favoriteViewOptions: CollectionViewOption[] = [
+    {
+      id: "favorites",
+      label: tt("仅看收藏"),
+      checked: onlyFavorites,
+      onSelect: () => {
+        if (controlledFilter === "favorites") {
+          onFilterChange?.("all");
+          setInternalOnlyFavorites(false);
+          return;
+        }
+        setInternalOnlyFavorites((value) => !value);
+      },
+    },
+  ];
 
   const [artifacts, setArtifacts] = useState<ArtifactItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -357,8 +382,8 @@ function ArtifactLibraryLegacy({
       const supabase = browserClient();
       if (!supabase) return null;
       let query = supabase.from("agent_artifacts").select("*");
-      if (filter === "favorites") query = query.eq("favorite", true);
-      else if (KIND_SETS[filter]) query = query.in("kind", KIND_SETS[filter]);
+      if (onlyFavorites) query = query.eq("favorite", true);
+      if (KIND_SETS[typeFilter]) query = query.in("kind", KIND_SETS[typeFilter]);
       const trimmed = debounced.trim();
       if (trimmed) query = query.ilike("title", `%${escapeLikePattern(trimmed)}%`);
       const { data } = await query
@@ -370,10 +395,10 @@ function ArtifactLibraryLegacy({
         hasMore: rows.length > ARTIFACT_PAGE_SIZE,
       };
     },
-    [debounced, filter],
+    [debounced, onlyFavorites, typeFilter],
   );
 
-  // 依赖只有 `loadPage`（= `filter` + `debounced`）。`tt` 曾经也在这里，于是每次
+  // 依赖只有 `loadPage`（= `typeFilter` + `onlyFavorites` + `debounced`）。`tt` 曾经也在这里，于是每次
   // locale provider 换身份就重新向 Supabase 拉一整份 `agent_artifacts`——而 `tt` 在
   // 这里只用来拼一句未登录提示。语言切换**不应该**重新拉库存：库存与语言无关。
   // 所以提示只存中文原文（= 词典 key），渲染时才翻译；换语言时这句话照样跟着变，
@@ -622,18 +647,24 @@ function ArtifactLibraryLegacy({
         setView={setView}
         placeholder={tt("搜索文件")}
         tt={tt}
+        viewOptions={favoriteViewOptions}
       />
 
-      {/* v5：文件类型永远在右侧页面顶部横排；不得再移到任何侧栏。
-          宗旨 v22：hideChips（跨站只读库标签）时不渲染——标签本身即类型。 */}
+      {/* v5：文件类型在页面顶部；收藏只走查看选项「仅看收藏」。 */}
       {!hideChips && (
-        <LibraryChips
-          chips={ARTIFACT_FILTERS}
-          active={filter}
-          onChange={(id) => setFilter(id as ArtifactFilter)}
-          accent={accent}
-          tt={tt}
-        />
+        <CollectionFilterRow>
+          <CollectionFilterSelect
+            label={tt("类型")}
+            name="type"
+            value={typeFilter === "all" ? "" : typeFilter}
+            options={ARTIFACT_FILTERS.filter((item) => item.id !== "all").map((item) => ({
+              value: item.id,
+              label: tt(item.label),
+            }))}
+            onChange={(id) => setFilter((id || "all") as ArtifactFilter)}
+            allLabel={tt("全部")}
+          />
+        </CollectionFilterRow>
       )}
 
       {/* 容量条（2026-08-19）：上限一直都在，用户以前只能靠「传不上去」发现它。
@@ -650,18 +681,18 @@ function ArtifactLibraryLegacy({
         // 卡片保持原来的小尺寸（固定列，随容器宽自然多列）——操作员 2026-07-07 明确：**不许
         // 靠放大卡片填满右侧空白**。右侧空白的真因是双滚动条（已在根容器去掉本层 overflow 修
         // 掉），与卡片尺寸无关。故这里回到原来的 2/3 列小卡片版式。
-        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <CollectionCardGrid className="mt-5">
           {Array.from({ length: 6 }).map((_, i) => (
             <SkeletonCard key={i} className="h-40" />
           ))}
-        </div>
+        </CollectionCardGrid>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={<BoxIcon />}
           title={
             debounced
               ? tt("未找到匹配的内容")
-              : filter === "favorites"
+              : onlyFavorites
                 ? tt("还没有收藏")
                 : tt("库中还没有内容")
           }
@@ -720,20 +751,13 @@ function ArtifactLibraryLegacy({
         />
       )}
 
-      {/* 一页 60 件之后的入口。放在网格/列表**下方**（而不是 MyLibrary 那样放工具条）：
-          这里的滚动容器是外层 ResultCanvas body，看完一页往下滚，手已经在底部了。 */}
-      {!authMsg && !loading && hasMore && filtered.length > 0 && (
-        <div className="mt-4 flex justify-center">
-          <button
-            type="button"
-            onClick={() => void loadMore()}
-            disabled={loadingMore}
-            className="inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-neutral-200 px-3 text-[12px] font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
-          >
-            {tt(loadingMore ? "加载中…" : "继续加载")}
-          </button>
-        </div>
-      )}
+      {!authMsg && !loading && (hasMore || loadingMore) && filtered.length > 0 ? (
+        <CollectionInfiniteSentinel
+          active={hasMore && !loadingMore}
+          loading={loadingMore}
+          onLoadMore={loadMore}
+        />
+      ) : null}
         </>
       )}
     </div>

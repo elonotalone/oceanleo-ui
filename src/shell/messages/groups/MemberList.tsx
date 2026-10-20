@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
 import { memberActionsFor, removeMember, setMemberRole } from "../../../lib/im/groups-api";
-import { reasonOf } from "../../../lib/im/people-api";
+import { reasonOf, visiblePersonName } from "../../../lib/im/people-api";
 import type { ImConversationDetail, ImMember, ImRole } from "../../../lib/im/types";
 import { usePresence } from "../realtime/hooks";
 import { PersonAvatar, PresenceDot } from "./GroupAvatar";
@@ -36,7 +36,15 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
     () =>
       detail.members
         .slice()
-        .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.profile.display_name.localeCompare(b.profile.display_name)),
+        .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || visiblePersonName({
+          display_name: a.profile.display_name,
+          remark: a.profile.remark,
+          nickname: a.nickname ?? a.profile.nickname,
+        }).localeCompare(visiblePersonName({
+          display_name: b.profile.display_name,
+          remark: b.profile.remark,
+          nickname: b.nickname ?? b.profile.nickname,
+        }))),
     [detail.members],
   );
   const shown = showAll ? members : members.slice(0, PAGE);
@@ -74,13 +82,21 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
           const actions = memberActionsFor(detail, m, myUserId);
           const state = presence[m.user_id] ?? "offline";
           const roleText = ROLE_COPY[m.role];
+          const shown = visiblePersonName(
+            {
+              display_name: m.profile.display_name,
+              remark: m.profile.remark,
+              nickname: m.nickname ?? m.profile.nickname,
+            },
+            { showNickname: detail.show_member_nicknames !== false },
+          );
           return (
             <li key={m.user_id} data-member={m.user_id} data-role={m.role} className="flex items-center gap-2 px-3 py-1.5 hover:bg-neutral-50">
               <button type="button" onClick={() => onOpenProfile(m.user_id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <PersonAvatar name={m.profile.display_name} src={m.profile.avatar_url} seed={m.user_id} size={32} />
+                <PersonAvatar name={shown} src={m.profile.avatar_url} seed={m.user_id} size={32} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
-                    <span className="truncate text-[13px] text-neutral-900">{m.profile.display_name}</span>
+                    <span className="truncate text-[13px] text-neutral-900">{shown}</span>
                     {m.user_id === myUserId && <span className="text-[11px] text-neutral-400">{tt("我")}</span>}
                     {roleText && (
                       <span data-role-badge className="rounded bg-neutral-100 px-1.5 text-[10px] leading-4 text-neutral-600">

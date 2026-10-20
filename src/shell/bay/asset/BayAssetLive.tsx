@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { CollectionCardGrid } from "../../collection-chrome";
 import { BayAssetCard } from "./BayAssetCard";
 import { searchBayLive, type BayAsset, type BayAssetType } from "./library-client";
 
@@ -109,24 +110,19 @@ export function BayAssetLive({
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>
       ) : null}
       {loading && items.length === 0 ? (
-        <div
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
-          role="status"
-          aria-label={tt("正在加载…")}
-          data-bay-asset-loading
-        >
+        <CollectionCardGrid role="status" aria-label={tt("正在加载…")} data-bay-asset-loading="">
           {Array.from({ length: 8 }).map((_, index) => (
-            <div key={index} className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+            <div key={index} className="aspect-[4/3] animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
           ))}
-        </div>
+        </CollectionCardGrid>
       ) : items.length === 0 && !error ? (
         <div data-bay-asset-empty />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" data-bay-asset-grid>
+        <CollectionCardGrid data-bay-asset-grid="">
           {items.map((asset) => (
             <BayAssetCard key={asset.id} asset={asset} onOpen={onOpen} />
           ))}
-        </div>
+        </CollectionCardGrid>
       )}
       {loading && items.length > 0 ? (
         <div className="py-8 text-center text-[13px] text-stone-400">{tt("加载中…")}</div>

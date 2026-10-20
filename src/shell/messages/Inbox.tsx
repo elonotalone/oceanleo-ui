@@ -1,12 +1,15 @@
 "use client";
 
-// 聊天列表：搜索、筛选、会话（按最近活动倒序，事件实时更新）、新建聊天。
+// 聊天列表：搜索、全部会话（按最近活动倒序，事件实时更新）、新建聊天。
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { fetchDraftConversationIds, type InboxFilter } from "../../lib/im/inbox-api";
+import { fetchDraftConversationIds } from "../../lib/im/inbox-api";
+import { clearConversationHistory, markConversationUnread, patchMySettings } from "../../lib/im/groups-api";
+import { ConfirmDialog } from "../../ui";
+import { reasonOf } from "../../lib/im/people-api";
+import type { ImConversationSummary } from "../../lib/im/types";
 import { searchQueryReady } from "../../lib/im/search-api";
 import { PanelToolbar } from "../leochat/PanelToolbar";
-import { InboxFilters } from "./InboxFilters";
 import { InboxRow } from "./InboxRow";
 import { InviteLinkDialog } from "./people/InviteLinkDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
@@ -14,9 +17,7 @@ import { SearchView } from "./search/SearchView";
 
 export interface InboxProps {
   activeConversationId: string | null;
-  initialFilter?: string;
   onOpenConversation: (conversationId: string, seq?: number) => void;
-  onFilterChange?: (filter: string) => void;
   onNew: () => void;
 }
 
@@ -27,16 +28,17 @@ export function Inbox(props: InboxProps) {
   const [drafts, setDrafts] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
   const [inviting, setInviting] = useState(false);
-  const filter = inbox.filter;
+  const [menu, setMenu] = useState<{ item: ImConversationSummary; x: number; y: number } | null>(null);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [menuBusy, setMenuBusy] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const filter = "all";
   const searching = searchQueryReady(search);
 
   useEffect(() => {
     const store = imStore();
-    const want = props.initialFilter || "all";
-    if (!store.inbox().loaded || store.inbox().filter !== want) void store.loadInbox(want);
-    // 外部（如 talent 的「在全部消息里查看」）带着新的 filter 再次打开时，也要切过去。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.initialFilter]);
+    if (!store.inbox().loaded || store.inbox().filter !== "all") void store.loadInbox("all");
+  }, []);
 
   // 打开 / 切回聊天列表、重连之后，各取一次草稿。
   useEffect(() => {
@@ -52,12 +54,37 @@ export function Inbox(props: InboxProps) {
     void fetchDraftConversationIds().then(setDrafts);
   });
 
-  const changeFilter = (next: InboxFilter) => {
-    props.onFilterChange?.(next);
-    void imStore().loadInbox(next);
-  };
-
   const rows = useMemo(() => inbox.items, [inbox.items]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", escape);
+      window.removeEventListener("resize", close);
+    };
+  }, [menu]);
+
+  async function updateConversation(patch: Parameters<typeof patchMySettings>[1] | "unread") {
+    if (!menu || menuBusy) return;
+    setMenuBusy(true);
+    setMenuError(null);
+    try {
+      if (patch === "unread") await markConversationUnread(menu.item.id);
+      else await patchMySettings(menu.item.id, patch);
+      setMenu(null);
+      await imStore().loadInbox("all");
+    } catch (error) {
+      setMenuError(reasonOf(error, tt("没成功，请稍后再试。")));
+    } finally {
+      setMenuBusy(false);
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="messages-inbox">
@@ -81,7 +108,6 @@ export function Inbox(props: InboxProps) {
         />
       ) : (
       <>
-      <InboxFilters value={filter} onChange={changeFilter} />
       <div
         className="min-h-0 flex-1 overflow-y-auto"
         onScroll={(event) => {
@@ -101,11 +127,17 @@ export function Inbox(props: InboxProps) {
             active={item.id === props.activeConversationId}
             hasDraft={drafts.has(item.id) && item.id !== props.activeConversationId}
             onOpen={props.onOpenConversation}
+            onContextMenu={(event, item) => {
+              if (item.kind === "talent") return;
+              event.preventDefault();
+              setMenuError(null);
+              setMenu({ item, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 184)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 336)) });
+            }}
           />
         ))}
         {rows.length === 0 && inbox.loaded && !inbox.loading ? (
           <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45">
-            {filter === "all" ? tt("还没有会话") : tt("这个分类下没有会话")}
+            {tt("还没有会话")}
           </div>
         ) : null}
         {inbox.loading && rows.length === 0 ? (
@@ -136,6 +168,37 @@ export function Inbox(props: InboxProps) {
       </>
       )}
       {inviting ? <InviteLinkDialog onClose={() => setInviting(false)} /> : null}
+      {menu && <div role="menu" aria-label={tt("会话设置")} data-inbox-context-menu className="fixed z-[100] max-h-[min(20rem,calc(100vh-1rem))] w-[min(11rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-1 text-[12px] text-neutral-800 shadow-xl ring-1 ring-black/5 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        event.preventDefault();
+        const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]'));
+        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        buttons[(index + (event.key === "ArrowDown" ? 1 : buttons.length - 1) + buttons.length) % buttons.length]?.focus();
+      }}>
+        <button autoFocus role="menuitem" type="button" disabled={menuBusy} data-inbox-action="pin" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation({ pinned: !menu.item.pinned })}>{menu.item.pinned ? tt("取消置顶") : tt("置顶")}</button>
+        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="unread" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation("unread")}>{tt("标为未读")}</button>
+        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="mute" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation({ muted: !menu.item.muted })}>{menu.item.muted ? tt("取消消息免打扰") : tt("消息免打扰")}</button>
+        <div role="separator" className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
+        <button role="menuitem" type="button" data-inbox-action="window" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => {
+          window.open(`/leochat?im=${encodeURIComponent(menu.item.id)}`, "_blank", "noopener,noreferrer,popup,width=1000,height=760");
+          setMenu(null);
+        }}>{tt("独立窗口显示")}</button>
+        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="hide" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation({ hidden: true })}>{tt("不显示")}</button>
+        <div role="separator" className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
+        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="delete" className="min-h-8 w-full rounded-md px-2.5 text-left text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 dark:hover:bg-red-950/40" onClick={() => { setDeleting(menu.item.id); setMenu(null); }}>{tt("删除")}</button>
+        {menuError && <p role="alert" className="px-3 py-2 text-red-600">{menuError}</p>}
+      </div>}
+      {deleting && <ConfirmDialog title={tt("删除聊天")} body={tt("删除此聊天及你自己的聊天记录，其他成员的记录不受影响。新消息到来时会话会重新显示。")} confirmLabel={tt("删除")} danger onCancel={() => setDeleting(null)} onConfirm={async () => {
+        try {
+          await clearConversationHistory(deleting, true);
+          setDeleting(null);
+          await imStore().loadInbox("all");
+        } catch (error) {
+          setMenuError(reasonOf(error, tt("没成功，请稍后再试。")));
+          setDeleting(null);
+        }
+      }} />}
+      {menuError && !menu && <p role="alert" className="px-3 py-2 text-[12px] text-red-600">{menuError}</p>}
     </div>
   );
 }

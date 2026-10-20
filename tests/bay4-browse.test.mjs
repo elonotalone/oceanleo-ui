@@ -147,7 +147,7 @@ const stubs = {
 };
 
 const { LeoBayPage } = await import(await compileModule("src/shell/bay/shell/LeoBayPage.tsx", stubs));
-const { BayViewSwitch } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", stubs));
+const { BayViewSwitch, BayFeed } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", stubs));
 
 globalThis.__bay4FeedCalls = [];
 const { useBayFeed } = await import(
@@ -211,7 +211,15 @@ test("逛页顶栏是卖/买两档，卖的种类在下拉里", async () => {
   assert.equal(intentTabs[1].getAttribute("data-bay-browse-intent"), "buy");
   const kind = tabs.querySelector("[data-bay-browse-kind]");
   assert.ok(kind);
-  const views = [...kind.querySelectorAll("[data-view]")].map((node) => node.getAttribute("data-view"));
+  assert.ok(kind.querySelector('[data-bay-filter="kind"]'));
+  assert.equal(kind.querySelector("select"), null);
+  const trigger = kind.querySelector('[data-bay-filter="kind"]');
+  await act(async () => {
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  const menu = document.querySelector('[data-bay-filter-menu="kind"]');
+  assert.ok(menu);
+  const views = [...menu.querySelectorAll("[data-view]")].map((node) => node.getAttribute("data-view"));
   assert.deepEqual(views, ["service", "asset", "app", "lesson"]);
   await view.unmount();
 });
@@ -241,31 +249,55 @@ test("点买落到 request；点卖从 request 回到上次卖的种类，没有
   const sell = view.host.querySelector('[data-bay-browse-intent="sell"]');
   await act(() => buy.click());
   assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "request");
-  assert.equal(view.host.querySelector("[data-bay-browse-kind]"), null);
+  assert.equal(globalThis.__bay4Filters.at(-1)?.offer, "asset");
+  assert.ok(view.host.querySelector("[data-bay-browse-kind]"));
   await act(() => sell.click());
   assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "asset");
+  await view.unmount();
+});
+
+test("求购改种类只改 offer，不离开 request", async () => {
+  reset();
+  const view = await mount(React.createElement(SwitchProbe, { initialKind: "request" }));
+  assert.ok(view.host.querySelector("[data-bay-browse-kind]"));
+  const trigger = view.host.querySelector('[data-bay-filter="kind"]');
+  assert.ok(trigger);
+  await act(async () => {
+    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  const option = document.querySelector('[data-bay-filter-menu="kind"] [data-value="app"]');
+  assert.ok(option);
+  await act(async () => {
+    option.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  const last = globalThis.__bay4Filters.at(-1);
+  assert.equal(last?.kind, "request");
+  assert.equal(last?.offer, "app");
   await view.unmount();
 });
 
 test("种类下拉仍能切到素材 / 作品 / 课程", async () => {
   reset();
   const view = await mount(React.createElement(SwitchProbe, { initialKind: "service" }));
-  const select = view.host.querySelector("[data-bay-browse-kind] select");
-  assert.ok(select);
-  select.value = "app";
-  await act(() => {
-    select.dispatchEvent(new window.Event("change", { bubbles: true }));
-  });
+  const trigger = view.host.querySelector('[data-bay-filter="kind"]');
+  assert.ok(trigger);
+  async function pickKind(kind) {
+    if (!document.querySelector('[data-bay-filter-menu="kind"]')) {
+      await act(async () => {
+        trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+    }
+    const option = document.querySelector(`[data-bay-filter-menu="kind"] [data-value="${kind}"]`);
+    assert.ok(option, `种类选项 ${kind} 应在菜单里`);
+    await act(async () => {
+      option.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+  }
+  await pickKind("app");
   assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "app");
-  select.value = "lesson";
-  await act(() => {
-    select.dispatchEvent(new window.Event("change", { bubbles: true }));
-  });
+  await pickKind("lesson");
   assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "lesson");
-  select.value = "asset";
-  await act(() => {
-    select.dispatchEvent(new window.Event("change", { bubbles: true }));
-  });
+  await pickKind("asset");
   assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "asset");
   await view.unmount();
 });
@@ -311,6 +343,7 @@ test("需求视图请求 kind=needs，服务视图请求 kind=supply", async () 
   globalThis.__bay4FeedCalls = [];
   const demand = await mount(React.createElement(Probe, { filter: { kind: "request" } }));
   assert.ok(globalThis.__bay4FeedCalls.some((call) => call.kind === "needs"));
+  assert.ok(globalThis.__bay4FeedCalls.some((call) => call.listing_kind === "service"));
   assert.equal(
     globalThis.__bay4FeedCalls.some((call) => call.kind === "demand" || call.kind === "request"),
     false,
@@ -318,9 +351,37 @@ test("需求视图请求 kind=needs，服务视图请求 kind=supply", async () 
   await demand.unmount();
 
   globalThis.__bay4FeedCalls = [];
+  const wantedApp = await mount(React.createElement(Probe, { filter: { kind: "request", offer: "app" } }));
+  assert.ok(globalThis.__bay4FeedCalls.some((call) => call.kind === "needs" && call.listing_kind === "app"));
+  await wantedApp.unmount();
+
+  globalThis.__bay4FeedCalls = [];
+  const wantedAsset = await mount(React.createElement(Probe, { filter: { kind: "request", offer: "asset" } }));
+  assert.ok(globalThis.__bay4FeedCalls.some((call) => call.listing_kind === "digital"));
+  await wantedAsset.unmount();
+
+  globalThis.__bay4FeedCalls = [];
   const asset = await mount(React.createElement(Probe, { filter: { kind: "asset" } }));
   assert.equal(globalThis.__bay4FeedCalls.length, 0);
   await asset.unmount();
+});
+
+test("清除筛选停在当前出售或求购，不把求购改回出售", async () => {
+  reset({ filter: { kind: "request", category: "ppt" } });
+  const wanted = await mount(React.createElement(BayFeed, { filter: { kind: "request", category: "ppt" }, activeKey: null }));
+  const clearWanted = wanted.host.querySelector("[data-bay-clear-filters]");
+  assert.ok(clearWanted);
+  await act(() => clearWanted.click());
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "request");
+  await wanted.unmount();
+
+  reset({ filter: { kind: "app", q: "logo" } });
+  const selling = await mount(React.createElement(BayFeed, { filter: { kind: "app", q: "logo" }, activeKey: null }));
+  const clearSell = selling.host.querySelector("[data-bay-clear-filters]");
+  assert.ok(clearSell);
+  await act(() => clearSell.click());
+  assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "service");
+  await selling.unmount();
 });
 
 test("kind=asset 时有素材库和三类切换，没有返回键，页面没有官方素材横幅", async () => {

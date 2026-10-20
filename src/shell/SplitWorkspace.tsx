@@ -870,8 +870,8 @@ export function SplitWorkspace({
       ref={wrapRef}
       data-workspace-split
       data-workspace-maximized={paneMaximized ? "library" : undefined}
-      className={`relative gap-0 bg-[var(--bg,#f7f7f5)] p-1.5 ${className} md:flex`}
-      style={{ height: rootHeight, backgroundColor: "var(--bg,#f7f7f5)" }}
+      className={`relative gap-0 bg-[var(--bg,#faf8f5)] p-1.5 ${className} md:flex`}
+      style={{ height: rootHeight, backgroundColor: "var(--bg,#faf8f5)" }}
     >
       {[appPane, divider, libraryPane]}
     </div>

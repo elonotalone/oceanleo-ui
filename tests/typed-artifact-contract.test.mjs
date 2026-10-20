@@ -554,9 +554,9 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.doesNotMatch(materialView, /primaryCategoryIds/);
   assert.match(workspace, /hideCategoryChips/);
   assert.match(workspace, /!hideCategoryChips && categories\.length > 1/);
-  // Other libraries keep chips when they omit hideCategoryChips.
+  // Full-page 我的库 uses CollectionFilterSelect, so it hides the chip row.
   const mineSource = mine;
-  assert.doesNotMatch(mineSource, /hideCategoryChips/);
+  assert.match(mineSource, /hideCategoryChips=\{Boolean\(pageTitle\)\}/);
   // 这份查询形状搬进了 `material-library-cache.ts`（控制器只消费它）。判据跟着搬：
   // 要的是「taxonomy 只能取 ArtifactType 或空」这条不变量，不是它住在哪个文件。
   assert.match(
@@ -576,9 +576,14 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.match(catalog, /taxonomy/);
   assert.match(explore, /<MaterialLibrary/);
   assert.doesNotMatch(explore, /\/v1\/assets\/library\/search/);
-  assert.match(layout, /aria-pressed=\{view === "grid"\}/);
-  assert.match(layout, /aria-label=\{tt\("清除搜索"\)\}/);
-  assert.match(layout, /type="search"/);
+  assert.match(layout, /CollectionSearchField/);
+  assert.match(layout, /CollectionViewToggle/);
+  const collectionChrome = readFileSync(
+    new URL("../src/shell/collection-chrome.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(collectionChrome, /aria-pressed=\{props.view === "grid"\}/);
+  assert.match(collectionChrome, /type="search"/);
   assert.match(mine, /listMyArtifacts/);
   assert.match(mine, /listFavoriteArtifacts/);
   assert.match(mine, /AdvancedContentWorkbench/);
@@ -671,7 +676,6 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
     /fetch\([^)]*\)\.then\([^)]*arrayBuffer|window\.open/,
   );
   assert.match(actions, /prepareArtifactForAction\(action, item\)/);
-  assert.match(library, /Primary card activation is quiet preview/);
   assert.match(library, /application\/x-oceanleo-material\+json/);
   assert.match(library, /id: item\?\.key \|\| entry\.id/);
   assert.doesNotMatch(
@@ -686,8 +690,8 @@ test("shared cards keep explicit mutations and pinned download/favorite controls
 /**
  * 货架卡片上允许出现的动作接线**只有一处**：`actions={entryActions?.(entry)}`。
  *
- * 合同 §8.9 只为「下载」这一个动作放宽了 shelf-quiet 契约，其余四个（编辑 / 收藏 /
- * 全屏 / 链接）仍然只许出现在安静预览详情的头部。所以这里不是简单地把老断言删掉换成
+ * 合同 §8.9 只为「下载」这一个动作放宽了 shelf-quiet 契约，其余四个（分享 / 编辑 /
+ * 收藏 / 全屏）仍然只许出现在安静预览详情的头部。所以这里不是简单地把老断言删掉换成
  * 一条宽泛的白名单，而是同时钉死三件事：
  *   ① 五连动作条 `actionButtonsFor` 一个字都不许进 grid/list；
  *   ② 那四个动作的任何接线标识（`onEdit` / `onFavorite` / `onFullscreen` /
@@ -804,19 +808,20 @@ test("library shelf cards stay quiet; detail header keeps Edit/Download/Favorite
   assert.match(actions, /onFullscreen/);
   assert.match(actions, /linkUrl/);
   assert.match(actions, /tt\("全屏"\)/);
-  assert.match(actions, /tt\("链接"\)/);
+  assert.match(actions, /tt\("分享"\)/);
   assert.match(
     actions,
-    /Library material order: 编辑 → 下载 → 收藏 → 全屏 → 链接/,
+    /Library material order: 分享 → 下载 → 收藏 → 编辑/,
   );
-  // Card activation opens quiet preview detail, never Edit-only open.
+  // Card click stays on quiet preview; Edit lives in the detail header.
   const activate = library.slice(
     library.indexOf("const activateEntry"),
     library.indexOf("const dragPropsFor"),
   );
-  assert.match(activate, /openEntry\(entry\)/);
-  assert.doesNotMatch(activate, /onOpenItem/);
+  assert.match(activate, /onOpenEntry\) onOpenEntry\(entry\)/);
+  assert.match(activate, /else openEntry\(entry\)/);
   assert.doesNotMatch(activate, /prepareArtifactForAction/);
+  assert.doesNotMatch(activate, /kind !== "website"/);
   // Machine role names never become card descriptions.
   assert.doesNotMatch(controller, /roles\.join/);
   // Drag-to-canvas and one-click primary actions survive the cleanup.

@@ -254,8 +254,13 @@ const layoutStubUrl = dataModule(`
 `);
 
 const { WorkspaceLibrary } = await import(
-  await compileModule("src/shell/WorkspaceLibrary.tsx", {
+    await compileModule("src/shell/WorkspaceLibrary.tsx", {
     "../i18n/ui/useUI": uiStubUrl,
+    "./artifact-client": dataModule(`
+      export async function prepareArtifactForAction(action, item) {
+        return { ok: true, data: item };
+      }
+    `),
     "./workspace-library-view": viewStubUrl,
     "./ArtifactActions": actionsStubUrl,
     "./library-detail-app-actions": detailStubUrl,

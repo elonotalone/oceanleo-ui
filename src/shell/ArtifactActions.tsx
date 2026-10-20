@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import {
+  FloatingMenu,
+  FloatingMenuItem,
+} from "../ui/menu/FloatingMenu";
 import {
   isEnsureableTransient,
   type ArtifactCardAction,
@@ -20,7 +24,45 @@ import {
   isTemplateMaterialDetailItem,
   type LibraryItem,
 } from "./library-data";
+import {
+  LIBRARY_DOCUMENT_DOWNLOAD_FORMATS,
+  libraryItemOffersDocumentFormats,
+} from "./library-document-export";
 import { editorCapabilityFor } from "./workbench-routes";
+
+const ACTION_ICON_PATHS = {
+  share: "M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7",
+  download: "M12 3v12m-5-5 5 5 5-5M5 21h14",
+  star: "m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z",
+  edit: "M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z",
+  preview: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 12a2 2 0 1 0 .001-3.999A2 2 0 0 0 12 12z",
+  fullscreen: "M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5",
+  insert: "M12 5v14M5 12h14",
+  replace: "M4 7h11M4 12h7M4 17h11M16 8l4 4-4 4",
+} as const;
+
+function ActionIcon({
+  name,
+  filled = false,
+}: {
+  name: keyof typeof ACTION_ICON_PATHS;
+  filled?: boolean;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={filled ? "0" : "1.8"}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+    >
+      <path d={ACTION_ICON_PATHS[name]} />
+    </svg>
+  );
+}
 
 export interface ArtifactActionState {
   action: ArtifactCardAction;
@@ -446,6 +488,8 @@ export function ArtifactActionButtons({
   const [favorite, setFavorite] = useState(item.favorite);
   const [liveStatus, setLiveStatus] = useState("");
   const [failure, setFailure] = useState("");
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     setFavorite(item.favorite);
   }, [item.artifactId, item.favorite, item.revisionId]);
@@ -574,7 +618,35 @@ export function ArtifactActionButtons({
     fullscreenEvidence.visible &&
     fullscreenContentPresent !== false;
   const retryVisible = identityFailed && typeof identity?.onRetry === "function";
-  const linkVisible = Boolean(linkUrl);
+  const shareUrl =
+    (typeof window !== "undefined" && window.location.href) || linkUrl || "";
+  const shareVisible =
+    Boolean(shareUrl) &&
+    (downloadVisible ||
+      favoriteVisible ||
+      matrix.edit.visible ||
+      matrix.preview.visible);
+  const documentFormats = libraryItemOffersDocumentFormats(item);
+  const runShare = async () => {
+    if (!shareUrl || isBusy("share")) return;
+    beginBusy("share");
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: item.title, url: shareUrl });
+        return;
+      }
+      if (!navigator.clipboard) {
+        throw new Error("下载没能开始，请稍后重试。");
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      report("已复制");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      fail(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
+    } finally {
+      endBusy("share");
+    }
+  };
   const runDownload = async () => {
     if (!downloadAvailable || isBusy("download")) {
       if (!downloadAvailable) {
@@ -605,6 +677,27 @@ export function ArtifactActionButtons({
       document.body.append(link);
       link.click();
       link.remove();
+      report("下载已开始。");
+    } catch (error) {
+      fail(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
+    } finally {
+      endBusy("download");
+    }
+  };
+  const runFormatDownload = async (extension: "md" | "docx" | "pdf") => {
+    if (!downloadAvailable || isBusy("download")) {
+      if (!downloadAvailable) report(downloadReason);
+      return;
+    }
+    setDownloadMenuOpen(false);
+    beginBusy("download");
+    report(`正在准备 ${extension.toUpperCase()}…`);
+    try {
+      const { downloadLibraryDocument } = await import(
+        "./library-document-export"
+      );
+      const failureMessage = await downloadLibraryDocument(item, extension);
+      if (failureMessage) throw new Error(failureMessage);
       report("下载已开始。");
     } catch (error) {
       fail(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
@@ -663,7 +756,7 @@ export function ArtifactActionButtons({
     report("正在重新取这份素材的当前版本…");
     identity?.onRetry?.();
   };
-  // Library material order: 编辑 → 下载 → 收藏 → 全屏 → 链接.
+  // Library material order: 分享 → 下载 → 收藏 → 编辑.
   // 「网页版」紧跟在下载后面，只在 deck 条目上出现（`deckHtmlEvidence` 自己判可见性）。
   // Insert/Replace follow when an editor host registers them.
   // Preview is hidden for library materials via matrix.hidePreview.
@@ -695,6 +788,8 @@ export function ArtifactActionButtons({
       ],
     ),
   ].join(" · ");
+  const iconBtnClass =
+    "inline-flex h-8 w-8 items-center justify-center rounded-md bg-transparent text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#1c1917)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45";
   const chipClass = `inline-flex min-h-8 min-w-11 items-center justify-center rounded-lg border font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45 ${
  compact ? "px-1.5 text-[10px]" : "px-2.5 text-[11px]"
  }`;
@@ -703,15 +798,30 @@ export function ArtifactActionButtons({
     color: enabled ? accent : "var(--muted,#a8a29e)",
     outlineColor: accent,
   });
+  const iconStyle = (enabled: boolean) => ({
+    color: enabled ? "var(--fg-2,#57534e)" : "var(--muted,#a8a29e)",
+    outlineColor: accent,
+  });
+  const actionIconName = (
+    action: ArtifactCardAction,
+  ): keyof typeof ACTION_ICON_PATHS | null => {
+    if (action === "edit" || action === "preview" || action === "insert" || action === "replace") {
+      return action;
+    }
+    return null;
+  };
   const renderAction = (action: ArtifactCardAction) => {
     const state = matrix[action];
     const label = actionLabel(action);
     const disabled =
       !state.available || !handlers[action] || isBusy(action);
+    const iconName = actionIconName(action);
+    const useIcon = iconName === "edit" || iconName === "preview";
     return (
       <button
         key={action}
         type="button"
+        data-artifact-action={action}
         onClick={() => void run(action)}
         disabled={disabled}
         aria-disabled={disabled}
@@ -724,17 +834,16 @@ export function ArtifactActionButtons({
           }`,
         )}
         title={tt(state.reason || label)}
-        className={chipClass}
-        style={chipStyle(state.available)}
+        className={useIcon ? iconBtnClass : chipClass}
+        style={useIcon ? iconStyle(state.available) : chipStyle(state.available)}
       >
         {isBusy(action) ? (
-          <span className="inline-flex items-center gap-1">
-            <span
-              aria-hidden="true"
-              className="h-3 w-3 animate-spin rounded-full border border-current/30 border-t-current"
-            />
-            {tt("处理中")}
-          </span>
+          <span
+            aria-hidden="true"
+            className="h-3 w-3 animate-spin rounded-full border border-current/30 border-t-current"
+          />
+        ) : useIcon && iconName ? (
+          <ActionIcon name={iconName} />
         ) : (
           tt(label)
         )}
@@ -748,6 +857,112 @@ export function ArtifactActionButtons({
         role="group"
         aria-label={tt("素材操作")}
       >
+        {shareVisible && (
+          <button
+            type="button"
+            data-artifact-action="share"
+            onClick={() => void runShare()}
+            disabled={isBusy("share")}
+            aria-label={tt(`分享「${item.title}」`)}
+            title={tt("分享")}
+            className={iconBtnClass}
+            style={iconStyle(true)}
+          >
+            {isBusy("share") ? (
+              <span
+                aria-hidden="true"
+                className="h-3 w-3 animate-spin rounded-full border border-current/30 border-t-current"
+              />
+            ) : (
+              <ActionIcon name="share" />
+            )}
+          </button>
+        )}
+        {downloadVisible && (
+          <div className="relative">
+            <button
+              ref={downloadButtonRef}
+              type="button"
+              data-artifact-action="download"
+              onClick={() =>
+                documentFormats
+                  ? setDownloadMenuOpen((open) => !open)
+                  : void runDownload()
+              }
+              disabled={!downloadAvailable || isBusy("download")}
+              aria-disabled={!downloadAvailable || isBusy("download")}
+              aria-haspopup={documentFormats ? "menu" : undefined}
+              aria-expanded={documentFormats ? downloadMenuOpen : undefined}
+              aria-describedby={!downloadAvailable ? reasonId : undefined}
+              aria-label={tt(
+                `下载「${item.title}」revision ${durableItem?.revisionId || ""}`,
+              )}
+              title={tt(downloadAvailable ? "下载" : downloadReason)}
+              className={iconBtnClass}
+              style={iconStyle(downloadAvailable)}
+            >
+              {isBusy("download") ? (
+                <span
+                  aria-hidden="true"
+                  className="h-3 w-3 animate-spin rounded-full border border-current/30 border-t-current"
+                />
+              ) : (
+                <ActionIcon name="download" />
+              )}
+            </button>
+            {documentFormats && (
+              <FloatingMenu
+                open={downloadMenuOpen}
+                anchorRef={downloadButtonRef}
+                onClose={() => setDownloadMenuOpen(false)}
+                align="end"
+                preferredPlacement="below"
+                ariaLabel={tt("下载")}
+                width={176}
+              >
+                {LIBRARY_DOCUMENT_DOWNLOAD_FORMATS.map((format) => (
+                  <FloatingMenuItem
+                    key={format.id}
+                    label={tt(format.label)}
+                    onSelect={() => void runFormatDownload(format.extension)}
+                  />
+                ))}
+              </FloatingMenu>
+            )}
+          </div>
+        )}
+        {favoriteVisible && (
+          <button
+            type="button"
+            data-artifact-action="favorite"
+            onClick={() => void toggleFavorite()}
+            disabled={!favoriteAvailable || isBusy("favorite")}
+            aria-disabled={!favoriteAvailable || isBusy("favorite")}
+            aria-describedby={!favoriteAvailable ? reasonId : undefined}
+            aria-pressed={favorite}
+            aria-label={tt(
+              `${favorite ? "取消收藏" : "收藏"}「${item.title}」revision ${item.revisionId}`,
+            )}
+            title={tt(
+              favoriteAvailable
+                ? favorite
+                  ? "已收藏"
+                  : "收藏"
+                : favoriteReason,
+            )}
+            className={iconBtnClass}
+            style={iconStyle(favoriteAvailable)}
+          >
+            {isBusy("favorite") ? (
+              <span
+                aria-hidden="true"
+                className="h-3 w-3 animate-spin rounded-full border border-current/30 border-t-current"
+              />
+            ) : (
+              <ActionIcon name="star" filled={favorite} />
+            )}
+          </button>
+        )}
         {primaryActions.map(renderAction)}
         {deckHtmlView.visible && (
           <a
@@ -764,27 +979,6 @@ export function ArtifactActionButtons({
             {tt("查看")}
           </a>
         )}
-        {downloadVisible && (
-          <button
-            type="button"
-            onClick={() => void runDownload()}
-            disabled={!downloadAvailable || isBusy("download")}
-            aria-disabled={!downloadAvailable || isBusy("download")}
-            aria-describedby={!downloadAvailable ? reasonId : undefined}
-            aria-label={tt(
-              `下载「${item.title}」revision ${durableItem?.revisionId || ""}`,
-            )}
-            title={tt(
-              downloadAvailable
-                ? "下载"
-                : downloadReason,
-            )}
-            className={chipClass}
-            style={chipStyle(downloadAvailable)}
-          >
-            {isBusy("download") ? tt("处理中…") : tt("下载")}
-          </button>
-        )}
         <DeckHtmlActionButton
           item={item}
           evidence={deckHtml}
@@ -794,44 +988,26 @@ export function ArtifactActionButtons({
           className={chipClass}
           style={chipStyle(deckHtml.available)}
         />
-        {favoriteVisible && (
-          <button
-            type="button"
-            onClick={() => void toggleFavorite()}
-            disabled={!favoriteAvailable || isBusy("favorite")}
-            aria-disabled={!favoriteAvailable || isBusy("favorite")}
-            aria-describedby={!favoriteAvailable ? reasonId : undefined}
-            aria-pressed={favorite}
-            aria-label={tt(
-              `${favorite ? "取消收藏" : "收藏"}「${item.title}」revision ${item.revisionId}`,
-            )}
-            title={tt(
-              favoriteAvailable
-                ? favorite
-                  ? "已收藏"
-                  : "收藏"
-                : favoriteReason,
-            )}
-            className={chipClass}
-            style={chipStyle(favoriteAvailable)}
-          >
-            {isBusy("favorite")
-              ? tt("处理中…")
-              : tt(favorite ? "已收藏" : "收藏")}
-          </button>
-        )}
         {fullscreenVisible && (
           <button
             type="button"
+            data-artifact-action="fullscreen"
             onClick={() => void runFullscreen()}
             disabled={isBusy("fullscreen")}
             aria-disabled={isBusy("fullscreen")}
             aria-label={tt(`全屏「${item.title}」`)}
             title={tt("全屏")}
-            className={chipClass}
-            style={chipStyle(true)}
+            className={iconBtnClass}
+            style={iconStyle(true)}
           >
-            {isBusy("fullscreen") ? tt("处理中…") : tt("全屏")}
+            {isBusy("fullscreen") ? (
+              <span
+                aria-hidden="true"
+                className="h-3 w-3 animate-spin rounded-full border border-current/30 border-t-current"
+              />
+            ) : (
+              <ActionIcon name="fullscreen" />
+            )}
           </button>
         )}
         {retryVisible && (
@@ -846,19 +1022,6 @@ export function ArtifactActionButtons({
           >
             {tt("重试")}
           </button>
-        )}
-        {linkVisible && (
-          <a
-            href={linkUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={tt(`链接「${item.title}」`)}
-            title={tt("链接")}
-            className={chipClass}
-            style={chipStyle(true)}
-          >
-            {tt("链接")}
-          </a>
         )}
         {mutationActions.map(renderAction)}
       </div>

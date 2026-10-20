@@ -12,6 +12,10 @@ import {
   type LibraryKind,
 } from "./library-data";
 import {
+  DocumentShelfCover,
+  itemUsesDocumentShelfCover,
+} from "./document-shelf-cover";
+import {
   WorkspaceCoverResource,
   coverEvidenceOf,
   coverEvidenceReportOf,
@@ -216,6 +220,10 @@ export function WorkspaceThumbnail({
     url,
     visible,
   ]);
+  const documentShelfCover =
+    Boolean(item) &&
+    itemUsesDocumentShelfCover(item, kind) &&
+    (noDisplayableCover || generationError);
   const displayUrl =
     noDisplayableCover || solidRejected
       ? ""
@@ -255,7 +263,7 @@ export function WorkspaceThumbnail({
       rendition && coverEvidenceOf(rendition) === "proven-placeholder",
   );
   const failureMessage =
-    artifactRendition.loading || awaitingGeneratedThumbnail
+    artifactRendition.loading || awaitingGeneratedThumbnail || documentShelfCover
       ? ""
       : noDisplayableCover
         ? coverEvidenceReportOf(provenRendition).reason ||
@@ -287,6 +295,7 @@ export function WorkspaceThumbnail({
   const loading =
     !failureMessage &&
     !noDisplayableCover &&
+    !documentShelfCover &&
     (artifactRendition.loading ||
       awaitingGeneratedThumbnail ||
       (plan.renderer !== "unavailable" && !ready));
@@ -294,7 +303,7 @@ export function WorkspaceThumbnail({
     ? "error"
     : loading
       ? "loading"
-      : ready
+      : ready || documentShelfCover
         ? "ready"
         : "error";
   /**
@@ -343,7 +352,20 @@ export function WorkspaceThumbnail({
           : { backgroundColor: coverGeometry.lqipColor }),
       }}
     >
-      {!failureMessage && plan.renderer !== "unavailable" && (
+      {documentShelfCover && item ? (
+        <DocumentShelfCover
+          item={item}
+          kind={kind}
+          alt={alt}
+          compact={compact}
+          visible={visible}
+          onReady={() => {
+            setFailed(false);
+            setSolidRejected(false);
+            setReady(true);
+          }}
+        />
+      ) : !failureMessage && plan.renderer !== "unavailable" ? (
         <WorkspaceCoverResource
           plan={plan}
           alt={alt}
@@ -370,7 +392,7 @@ export function WorkspaceThumbnail({
             setFailed(true);
           }}
         />
-      )}
+      ) : null}
       {metadataIncomplete && (
         // 弱化角标只用内联样式：它是本轮新增的形状，`ui.css` 要等父任务 build:css
         // 重建才会有对应工具类，靠 class 会在 36 个 consumer 上渲染成不可见的空元素。

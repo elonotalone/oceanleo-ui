@@ -123,6 +123,14 @@ const stubs = {
     const createElement = (...args) => globalThis.__bayToolbarReact.createElement(...args);
     export function BayAssetLibrary(){ return createElement("div", { "data-bay-asset-library": "1" }); }
   `),
+  "../apps/BayAppShelf": dataModule(`
+    const createElement = (...args) => globalThis.__bayToolbarReact.createElement(...args);
+    export function BayAppShelf(){ return createElement("div", { "data-bay-app-shelf": "1" }); }
+  `),
+  "../lessons/BayLessonShelf": dataModule(`
+    const createElement = (...args) => globalThis.__bayToolbarReact.createElement(...args);
+    export function BayLessonShelf(){ return createElement("div", { "data-bay-lesson-shelf": "1" }); }
+  `),
   "../needs/LibraryWorkPicker": dataModule(`export function LibraryWorkPickerHost(){ return null; }`),
   "./bay-auth-host": dataModule(`export function BayAuthHost(){ return null; }`),
   "./bay-state": stateStub,
@@ -162,13 +170,25 @@ async function mount(element) {
 const html = (node) => renderToStaticMarkup(node);
 
 test("工具条容器是 flex-nowrap 且没有 flex-wrap", async () => {
+  // 搜索贴在标题右侧；第二行 toolbar 仍 nowrap，不含搜索。
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const toolbar = view.host.querySelector("[data-bay-page-toolbar]");
   assert.ok(toolbar);
   assert.match(toolbar.className, /\bflex-nowrap\b/);
   assert.doesNotMatch(toolbar.className, /\bflex-wrap\b/);
-  assert.ok(toolbar.querySelector("[data-bay-page-search]"));
+  const search = view.host.querySelector("[data-bay-page-search]");
+  assert.ok(search);
+  assert.equal(toolbar.contains(search), false);
+  const hero = view.host.querySelector("[data-bay-page-hero]");
+  assert.ok(hero);
+  assert.ok(hero.contains(search));
+  const markup = view.host.innerHTML;
+  const titleAt = markup.indexOf("LeoBay");
+  const searchAt = markup.indexOf("data-bay-page-search");
+  const actionsAt = markup.indexOf("data-bay-page-actions");
+  assert.ok(titleAt >= 0 && searchAt > titleAt, "标题必须出现在搜索框之前");
+  assert.ok(actionsAt > searchAt, "我的/发布必须排在搜索和查看键右侧");
   await view.unmount();
 });
 
@@ -176,6 +196,8 @@ test("服务栏渲染出站点下拉 data-bay-filter=category", async () => {
   reset({ filter: { kind: "service" } });
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.ok(view.host.querySelector('[data-bay-filter="category"]'));
+  assert.ok(view.host.querySelector('[data-bay-filter="kind"]'));
+  assert.equal(view.host.querySelector("[data-bay-browse-kind] select"), null);
   assert.equal(view.host.querySelector("[data-bay-toolbar-slot]"), null);
   await view.unmount();
 });

@@ -214,6 +214,10 @@ test("新草稿直接出表单，顶上是卖买和分类，默认打开封面",
   assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);
   assert.equal(view.find("[data-bay-how-you-deliver]").tagName, "DIV");
   assert.equal(view.find("[data-bay-how-you-deliver]").getAttribute("data-bay-publish-category"), "digital");
+  assert.ok(view.host.querySelector('[data-bay-listing-layout="split"]'));
+  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
+    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
+  }
   assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="digital"]'));
   assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="service"]'));
   assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="app"]'));
@@ -224,10 +228,11 @@ test("新草稿直接出表单，顶上是卖买和分类，默认打开封面",
   assert.ok(view.host.querySelector('[data-bay-kind="lesson"]'));
   assert.ok(view.host.querySelector('[data-bay-kind="need"]'));
   assert.equal(view.host.querySelector('[data-bay-kind="consult"]'), null);
-  assert.equal(view.host.querySelector('[data-bay-publish="form"] [data-bay-reveal-open]')?.getAttribute("data-bay-reveal-item"), "how-you-deliver");
+  assert.equal(view.host.querySelector('[data-bay-listing-fields] [data-bay-reveal-open]')?.getAttribute("data-bay-reveal-item"), "how-you-deliver");
+  assert.equal(view.host.querySelector("[data-bay-listing-stage] [data-bay-reveal-item]")?.getAttribute("data-bay-reveal-item"), "cover");
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["how-you-deliver", "cover", "title", "description", "files"],
+    ["how-you-deliver", "title", "description", "files"],
   );
   assert.equal(view.find('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
   assert.deepEqual(
@@ -310,7 +315,7 @@ test("选服务后价格组只有价格框（计费方式由卡片选，不再�
   assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-reveal-item="revisions"]'));
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-    ["how-you-deliver", "cover", "title", "description", "files"],
+    ["how-you-deliver", "title", "description", "files"],
   );
   assert.doesNotMatch(view.find('[data-bay-section="product"]').textContent, /领域/);
   assert.equal(view.host.querySelector("[data-bay-domains]"), null);

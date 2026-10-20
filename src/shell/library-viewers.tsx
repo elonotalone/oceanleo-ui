@@ -40,7 +40,7 @@ import {
 } from "./doc-editors/office-file";
 import { officeSourceCacheKey } from "./office-editor/office-source-identity";
 import { importPptxDeck } from "./doc-editors/pptx-deck-import";
-import { absoluteMediaUrl } from "../lib/media-proxy";
+import { absoluteMediaUrl, fetchMediaBlob } from "../lib/media-proxy";
 import { DeckSlideThumbnail } from "./doc-editors/DeckSlideThumbnail";
 import {
   deckDocumentFromIr,
@@ -1463,6 +1463,24 @@ function SpreadsheetViewer({
   );
 }
 
+function documentSourceUrl(item: LibraryItem): string {
+  return item.url || item.previewUrl || "";
+}
+
+function documentViewerMediaType(item: LibraryItem): string {
+  return String(
+    item.artifact?.renditions.source?.mediaType ||
+      item.artifact?.renditions.full?.mediaType ||
+      item.meta.viewer_media_type ||
+      item.meta.content_type ||
+      item.meta.mime ||
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .split(";", 1)[0];
+}
+
 function DocumentViewer({
   item,
   onResourceError,
@@ -1471,28 +1489,41 @@ function DocumentViewer({
   onResourceError?: () => void;
 }) {
   const tt = useUI();
-  const ext = extension(item.url);
+  const sourceUrl = documentSourceUrl(item);
+  const ext = extension(sourceUrl) || extension(String(item.meta.filename || ""));
   const packageKind = officePackageKindForItem(item);
-  const isDocx = packageKind === "docx" || ext === "docx";
-  const isPdf = item.artifactType === "pdf" || ext === "pdf";
-  const viewerMediaType = String(
-    item.meta.viewer_media_type || item.meta.content_type || "",
-  ).toLowerCase();
+  const viewerMediaType = documentViewerMediaType(item);
+  const isDocx =
+    packageKind === "docx" ||
+    ext === "docx" ||
+    viewerMediaType.includes("wordprocessingml");
+  const isPdf =
+    item.artifactType === "pdf" ||
+    ext === "pdf" ||
+    viewerMediaType === "application/pdf";
+  const isText =
+    !isDocx &&
+    !isPdf &&
+    (["md", "markdown", "txt", "html", "htm"].includes(ext) ||
+      viewerMediaType.startsWith("text/") ||
+      viewerMediaType === "application/xhtml+xml" ||
+      ((item.kind === "document" || item.kind === "file") && !viewerMediaType));
   const [html, setHtml] = useState("");
+  const [textBody, setTextBody] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(isDocx);
+  const [loading, setLoading] = useState(isDocx || (isText && !item.content));
   const [attempt, setAttempt] = useState(0);
 
   const sourceRef = useRef({ item, onResourceError });
   sourceRef.current = { item, onResourceError };
   const failedSourceRef = useRef({ url: "", retry: 0 });
-  if (failedSourceRef.current.url && failedSourceRef.current.url !== item.url) {
+  if (failedSourceRef.current.url && failedSourceRef.current.url !== sourceUrl) {
     failedSourceRef.current.url = "";
     failedSourceRef.current.retry++;
   }
   const accessRetry = failedSourceRef.current.retry;
   const sourceIdentity = officeSourceCacheKey(
-    item.url || "",
+    sourceUrl,
     item.revisionId || item.artifact?.revisionId || "",
     item,
   );
@@ -1500,26 +1531,23 @@ function DocumentViewer({
   useEffect(() => {
     const { item } = sourceRef.current;
     const onResourceError = () => {
-      failedSourceRef.current.url = item.url || "";
+      failedSourceRef.current.url = documentSourceUrl(item);
       sourceRef.current.onResourceError?.();
     };
-    if (!item.url || !isDocx) return;
+    const url = documentSourceUrl(item);
+    if (!url || !isDocx) return;
     let cancelled = false;
     const abort = new AbortController();
     setLoading(true);
     setError("");
     void (async () => {
       try {
-        const { arrayBuffer } = await fetchValidatedOfficePackage(
-          item.url!,
-          "docx",
-          {
-            item,
-            signal: abort.signal,
-            maxBytes: 64 * 1024 * 1024,
-            onAccessDenied: onResourceError,
-          },
-        );
+        const { arrayBuffer } = await fetchValidatedOfficePackage(url, "docx", {
+          item,
+          signal: abort.signal,
+          maxBytes: 64 * 1024 * 1024,
+          onAccessDenied: onResourceError,
+        });
         if (cancelled) return;
         const module = await import("mammoth");
         if (cancelled) return;
@@ -1542,15 +1570,56 @@ function DocumentViewer({
   }, [attempt, accessRetry, isDocx, sourceIdentity]);
 
   useEffect(() => {
+    const { item } = sourceRef.current;
+    const url = documentSourceUrl(item);
+    if (!isText || isDocx) return;
+    if (item.content && isDisplayableText(item.content)) {
+      setTextBody(item.content);
+      setLoading(false);
+      return;
+    }
+    if (!url) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const abort = new AbortController();
+    setLoading(true);
+    setError("");
+    void (async () => {
+      try {
+        const blob = await fetchMediaBlob(url, { signal: abort.signal });
+        const text = await blob.text();
+        if (cancelled) return;
+        if (!isDisplayableText(text)) {
+          throw new Error("这一件存的是文件字节，没有可直接显示的正文。");
+        }
+        setTextBody(text);
+      } catch (reason) {
+        if (!cancelled)
+          setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      abort.abort();
+    };
+  }, [attempt, accessRetry, isDocx, isText, sourceIdentity]);
+
+  useEffect(() => {
     if (!isDocx) {
       setHtml("");
-      setError("");
-      setLoading(false);
+      if (!isText) {
+        setError("");
+        setLoading(false);
+      }
     }
-  }, [isDocx]);
+  }, [isDocx, isText]);
 
-  if (isPdf && item.url && viewerMediaType.startsWith("image/")) {
-    const geometry = libraryMediaGeometry(item, item.url);
+  if (isPdf && sourceUrl && viewerMediaType.startsWith("image/")) {
+    const geometry = libraryMediaGeometry(item, sourceUrl);
     return (
       <Center>
         <div
@@ -1560,7 +1629,7 @@ function DocumentViewer({
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={item.url}
+            src={sourceUrl}
             alt={item.title}
             referrerPolicy="no-referrer"
             className="rounded-xl"
@@ -1570,8 +1639,8 @@ function DocumentViewer({
       </Center>
     );
   }
-  if (isPdf && item.url) {
-    if (!isSandboxExemptPdfFrameUrl(item.url)) {
+  if (isPdf && sourceUrl) {
+    if (!isSandboxExemptPdfFrameUrl(sourceUrl)) {
       // 拒绝时不给「打开原文件」链接：顶层导航到 *.oceanleo.com 上的敌手页面是
       // 隔离文档 §4.3 点名的最危险形态，比免沙箱 frame 更糟。
       return (
@@ -1586,14 +1655,20 @@ function DocumentViewer({
       // sandbox-exempt: pdf-plugin —— 见 editor-sandbox-origin 的豁免说明。
       // 免沙箱成立的前提由上面的 isSandboxExemptPdfFrameUrl() 主机白名单提供。
       <iframe
-        src={item.url}
+        src={sourceUrl}
         title={item.title}
         referrerPolicy="no-referrer"
         className="h-full min-h-[560px] w-full border-0 bg-stone-100"
       />
     );
   }
-  if (loading) return <LoadingView label={tt("正在读取 Word 文档…")} />;
+  if (loading) {
+    return (
+      <LoadingView
+        label={tt(isDocx ? "正在读取 Word 文档…" : "正在打开这份素材…")}
+      />
+    );
+  }
   if (html) {
     return (
       <article
@@ -1606,29 +1681,34 @@ function DocumentViewer({
    * `item.content` 是「正文」的最后一条来路，而它也可能是被按文本读出来的二进制
    * （docx/pdf 字节）。那种内容进 `Markdown` 就是一屏乱码，所以先判它是不是文字。
    */
-  if (item.content && !isDocx && isDisplayableText(item.content)) {
+  const readableText =
+    (textBody && isDisplayableText(textBody) && textBody) ||
+    (item.content && !isDocx && isDisplayableText(item.content)
+      ? item.content
+      : "");
+  if (readableText) {
     return (
       <article className="mx-auto min-h-[520px] max-w-3xl bg-white px-8 py-10 shadow-sm">
-        <Markdown>{item.content}</Markdown>
+        <Markdown>{readableText}</Markdown>
       </article>
     );
   }
-  if (item.content && !isDocx) {
+  if ((item.content || textBody) && !isDocx) {
     return (
       <ErrorView
         message={tt(
           "这一件存的是文件字节，没有可直接显示的正文；下载原文件可以用对应的软件打开。",
         )}
-        url={item.url}
+        url={sourceUrl}
       />
     );
   }
   return (
     <ErrorView
       message={`${tt("没有可显示的文档正文。")}${error ? `（${error}）` : ""}`}
-      url={item.url}
+      url={sourceUrl}
       onRetry={
-        isDocx
+        isDocx || isText
           ? () => {
               onResourceError?.();
               setAttempt((value) => value + 1);
@@ -2086,7 +2166,11 @@ function LibraryItemViewerBody({
   if (resolvedItem.kind === "document" || resolvedItem.kind === "file")
     return (
       <DocumentViewer
-        item={resolvedItem}
+        item={{
+          ...resolvedItem,
+          url: url || resolvedItem.url,
+          previewUrl: resolvedItem.previewUrl || url,
+        }}
         onResourceError={rendition.resourceFailed}
       />
     );

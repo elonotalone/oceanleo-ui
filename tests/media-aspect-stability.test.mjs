@@ -18,12 +18,12 @@
 // ④ 为什么必须有：first-paint 对 `./library-data` 只能有**类型依赖**。改成值依赖
 // 会让 `material-cover-rendering` / `artifact-surface-rendered` / `material-library-scope`
 // 三份测试在加载期整例炸掉——它们一边编译 `workspace-library-thumbnail.tsx`、
-// 一边把 `"./library-data"` 换成只导出 `isDurableLibraryItem` 的桩，新增的那条值边
+// 一边把 `"./library-data"` 换成只导出 thumbnail 真用到的名字的桩，新增的那条值边
 // 会去桩里找一个它没有的导出。那三份不在 W07 的独占面上，不许改它们的桩，
 // 于是 first-paint 里留了一份副本，一致性由这里锁死。
 //
 // 顺带一层保险：下面 ③ 用的就是**同一副桩**（`./library-data` 只有
-// `isDurableLibraryItem`），所以值依赖一旦被重新引入，本文件自己也会红。
+// `isDurableLibraryItem` 和 `cacheableRenditionTwin`），所以值依赖一旦被重新引入，本文件自己也会红。
 // 那颗地雷因此在 W07 自己的面上有了引信，而不是只有别人的文件会炸。
 //
 // ⚠️ jsdom 的 CSSOM 实测（本波，`cssstyle`）：
@@ -621,10 +621,10 @@ function normalizedItem(artifactType, renditionOverrides) {
 /**
  * `WorkspaceThumbnail` 的挂载台。
  *
- * `./library-data` 的桩**只导出 `isDurableLibraryItem`**，与
- * `material-cover-rendering` / `artifact-surface-rendered` 完全一致。这是刻意的：
- * `library-viewer-first-paint.tsx` 一旦对 `./library-data` 加回值依赖，
- * 这个桩里找不到那个导出，本文件会和那两份一起红。
+ * `./library-data` 的桩只导出 thumbnail 真用到的名字，与
+ * `material-cover-rendering` 完全一致。这是刻意的：
+ * `library-viewer-first-paint.tsx` 一旦对 `./library-data` 加回新的值依赖，
+ * 这个桩里找不到那个导出，本文件会和封面测试一起红。
  */
 async function bootstrapThumbnailDom() {
   const dom = await bootstrapDom();
@@ -651,6 +651,17 @@ async function bootstrapThumbnailDom() {
       "./library-data": dataModule(`
         export function isDurableLibraryItem(item) {
           return Boolean(item?.artifactId && item?.revisionId && item?.artifact);
+        }
+        export function cacheableRenditionTwin() {
+          return null;
+        }
+      `),
+      "./document-shelf-cover": dataModule(`
+        export function itemUsesDocumentShelfCover() {
+          return false;
+        }
+        export function DocumentShelfCover() {
+          return null;
         }
       `),
       "./workspace-library-cover": coverModuleUrl,

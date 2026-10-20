@@ -230,6 +230,7 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
       alwaysOpen: true,
       children: (
         <BayImageGallery
+          variant="listing"
           urls={draft.galleryUrls.length ? draft.galleryUrls : draft.coverUrl ? [draft.coverUrl] : []}
           onUrls={(urls) => patch({ coverUrl: urls[0] || "", galleryUrls: urls })}
           disabled={locked}
@@ -374,19 +375,24 @@ export function LessonEditorPane(props: BayPaneProps): ReactElement | null {
       }
     >
     <section data-bay-pane="lesson-editor" className={narrow ? "flex flex-col gap-6 p-4" : BAY_FORM_PAGE_CLASS}>
-      {creating ? (
-        <BayPublishKindPair
-          listing="lesson"
-          siteCategory={filter.category && filter.category !== BAY_ADVICE_ZONE ? filter.category : undefined}
-          subcategory={
-            <>
-              <BayPublishSubcategoryLabel />
-              {subcategorySelect}
-            </>
-          }
-        />
-      ) : null}
-      <BayRevealForm groups={groups} />
+      <BayRevealForm
+        layout="listing"
+        lead={
+          creating ? (
+            <BayPublishKindPair
+              listing="lesson"
+              siteCategory={filter.category && filter.category !== BAY_ADVICE_ZONE ? filter.category : undefined}
+              subcategory={
+                <>
+                  <BayPublishSubcategoryLabel />
+                  {subcategorySelect}
+                </>
+              }
+            />
+          ) : null
+        }
+        groups={groups}
+      />
       {lesson ? (
         <SellerCard title={tt("章节")}>
           <ChapterList

@@ -89,9 +89,10 @@ function isScroller(element) {
   return (element.getAttribute?.("class") || "").includes("overflow-y-auto");
 }
 
-/** 两张网格：货架的 auto-fill，素材库 legacy 的 `grid-cols-2 sm:grid-cols-3`。 */
+/** 两张网格：货架与素材库都走 collection 四列等宽。 */
 function isGrid(element) {
   if (element.hasAttribute?.("data-workspace-card-grid")) return true;
+  if (element.hasAttribute?.("data-collection-card-grid")) return true;
   return (element.getAttribute?.("class") || "").includes("grid-cols-2");
 }
 
@@ -453,10 +454,10 @@ test("货架外观与改造前逐字相同：class、data 属性、行内 gridTe
     assert.ok(grid, "货架网格没渲染出来");
     // 这三行就是「外观不许变」本身：31 个租户站的排版全靠它。
     assert.equal(grid.getAttribute("class"), "grid gap-2.5");
-    assert.equal(grid.getAttribute("data-workspace-card-grid"), "auto-fill");
+    assert.equal(grid.getAttribute("data-workspace-card-grid"), "four");
     assert.equal(
       grid.style.gridTemplateColumns,
-      "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
+      "repeat(4, minmax(0, 1fr))",
     );
     // 条目少到一屏装得下时，DOM 与改造前逐字相同：四张卡，且**没有占位块**。
     assert.equal(view.cardIds().length, 4);
@@ -482,7 +483,7 @@ test("货架 600 件：视口内的卡片一定已挂载，挂载总数远小于
       1,
       "没有下方占位块 ⇒ 没有窗口化，这条判据是空的",
     );
-    // 900px / `min(12rem,…)`=192px 轨道 + 10px gap ⇒ 4 列，与 CSS 算出来的一致。
+    // 四列等宽；窗口化按 4 列记账。
     const columnCount = 4;
     const ids = view.cardIds();
     assert.ok(ids.length <= 60, `挂了 ${ids.length} 张卡，上界是 60`);
@@ -613,7 +614,7 @@ test("素材库 legacy：一次只拉一页 60 行（不再是 500），网格�
       `首屏取数不是一页 60 行（实际 ${JSON.stringify(ranges[0])}）`,
     );
 
-    const grid = view.host.querySelector(".grid-cols-2");
+    const grid = view.host.querySelector("[data-collection-card-grid]");
     assert.ok(grid, "素材库网格没渲染出来");
     const cards = grid.children.length;
     // 一页 60 件、2 列 ⇒ 30 行 × 180px = 5,400px，600px 视口装不下 ⇒ 必须窗口化。

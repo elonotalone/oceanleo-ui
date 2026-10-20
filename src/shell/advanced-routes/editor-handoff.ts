@@ -229,7 +229,14 @@ export function resolveEditorHandoffFromItem(
     };
   }
 
-  const officeUrl = String(extras?.officeUrl || item.url || "").trim();
+  const officeUrl = String(
+    extras?.officeUrl ||
+      item.url ||
+      item.previewUrl ||
+      item.artifact?.renditions.source?.url ||
+      item.artifact?.renditions.full?.url ||
+      "",
+  ).trim();
   if (officeUrl) {
     return {
       kind: "url",

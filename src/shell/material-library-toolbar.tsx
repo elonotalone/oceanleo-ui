@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * 素材货架工具条：层级标签、分区轴、`?app=` 锚点、次级类型筛选、继续加载与重试。
+ * 素材货架工具条：层级标签、分区轴、`?app=` 锚点、次级类型筛选与重试。
  *
  * 纯展示 —— 所有状态都由 `material-library-view.tsx` 传进来。拆出来的唯一原因是
  * 那个文件贴着 800 行硬顶（`material-library-scope.test.mjs` 在管），而分区轴换掉
@@ -91,9 +91,6 @@ export interface MaterialShelfToolbarProps {
   onApplyTypes: (types: ArtifactType[]) => void;
   /** Website 官方模板的增量 facet 控件；其它站不传，工具条逐字不变。 */
   facetControl?: ReactNode;
-  canLoadMore: boolean;
-  loadingMore: boolean;
-  onLoadMore: () => void;
   retryable: boolean;
   onRetry: () => void;
   /** 已经有卡片时错误降级成一行提示，不抢占整块货架。 */
@@ -120,9 +117,6 @@ export function MaterialShelfToolbar({
   availableTypes,
   onApplyTypes,
   facetControl,
-  canLoadMore,
-  loadingMore,
-  onLoadMore,
   retryable,
   onRetry,
   inlineFailure,
@@ -204,16 +198,6 @@ export function MaterialShelfToolbar({
         />
       )}
       {facetControl}
-      {canLoadMore && (
-        <button
-          type="button"
-          onClick={onLoadMore}
-          disabled={loadingMore}
-          className={`${TOOLBAR_BUTTON} ${TOOLBAR_BUTTON_OFF} disabled:opacity-50`}
-        >
-          {tt(loadingMore ? "加载中…" : "继续加载")}
-        </button>
-      )}
       {retryable && (
         <button
           type="button"

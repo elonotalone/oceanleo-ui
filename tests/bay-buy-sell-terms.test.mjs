@@ -292,11 +292,16 @@ test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格�
     assert.equal(view.find('[data-bay-section="price"] [data-bay-section-title]').textContent.trim(), "价格");
     assert.match(view.find('[data-bay-section="audience"] [data-bay-section-title]').textContent, /向谁展示/);
     assert.equal(view.find('[data-bay-section="terms"]').getAttribute("data-bay-section-collapsed"), "");
+    assert.ok(view.host.querySelector('[data-bay-listing-layout="split"]'));
+    assert.equal(view.host.querySelector("[data-bay-listing-stage] [data-bay-reveal-item]")?.getAttribute("data-bay-reveal-item"), "cover");
     assert.deepEqual(
       [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-      ["how-you-deliver", "cover", "title", "description", "files"],
+      ["how-you-deliver", "title", "description", "files"],
     );
     assert.ok(view.host.querySelector('[data-bay-section="product"] [data-bay-how-you-deliver]'));
+    if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
+      await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
+    }
     for (const kind of ["digital", "service", "app", "lesson", "other"]) {
       assert.ok(view.host.querySelector(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`), `缺交付内容 ${kind}`);
     }
@@ -348,8 +353,14 @@ test("点 service：卖的价格组只有 price，买的需求单仍有 billing 
   await pickHowYouDeliver(sell, "service");
   await assertKind("service", buy, sell, EXPECTED.service);
 
+  if (buy.host.querySelector('[data-bay-section="price"] [data-bay-choice-collapsed]')) {
+    await buy.click('[data-bay-section="price"] [data-bay-choice-collapsed] [data-bay-choice-option]');
+  }
   await buy.click('[data-bay-section="price"] [data-bay-billing="session"]');
   assert.ok(buy.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-rounds"]'));
+  if (buy.host.querySelector('[data-bay-section="price"] [data-bay-choice-collapsed]')) {
+    await buy.click('[data-bay-section="price"] [data-bay-choice-collapsed] [data-bay-choice-option]');
+  }
   await buy.click('[data-bay-section="price"] [data-bay-billing="hour"]');
   assert.ok(buy.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-minutes"]'));
   await buy.unmount();

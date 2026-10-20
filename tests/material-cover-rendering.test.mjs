@@ -860,6 +860,17 @@ async function bootstrapThumbnailDom() {
     export function isDurableLibraryItem(item) {
       return Boolean(item?.artifactId && item?.revisionId && item?.artifact);
     }
+    export function cacheableRenditionTwin() {
+      return null;
+    }
+  `);
+  const documentCoverStubUrl = dataModule(`
+    export function itemUsesDocumentShelfCover() {
+      return false;
+    }
+    export function DocumentShelfCover() {
+      return null;
+    }
   `);
   const modelStubUrl = dataModule(`
     export const WORKSPACE_KIND_LABELS = {
@@ -875,6 +886,7 @@ async function bootstrapThumbnailDom() {
       "./advanced-features": advancedStubUrl,
       "./ArtifactRendition": renditionStubUrl,
       "./library-data": dataStubUrl,
+      "./document-shelf-cover": documentCoverStubUrl,
       "./workspace-library-cover": coverModuleUrl,
       "./workspace-library-model": modelStubUrl,
     },

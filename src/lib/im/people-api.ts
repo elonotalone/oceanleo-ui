@@ -6,9 +6,11 @@ import { imFetch } from "./client";
 import type {
   ImContact,
   ImContactRequest,
+  ImConversationSummary,
   ImGroupInvite,
   ImInviteLink,
   ImInvitePreview,
+  ImPage,
   ImPresence,
   ImProfile,
 } from "./types";
@@ -21,21 +23,71 @@ export function presenceRank(presence: ImPresence | undefined): number {
   return PRESENCE_ORDER[presence ?? "offline"] ?? 2;
 }
 
-/** 联系人排序：在线 → 离开 → 离线；同状态按名字；`query` 按名字包含过滤（不分大小写）。 */
+/** 联系人排序：在线 → 离开 → 离线；同状态按名字；`query` 按名字或备注包含过滤（不分大小写）。 */
 export function sortContacts(
   contacts: readonly ImContact[],
   presence: Readonly<Record<string, ImPresence>>,
   query = "",
 ): ImContact[] {
-  const needle = query.trim().toLocaleLowerCase();
   return contacts
-    .filter((c) => !needle || c.profile.display_name.toLocaleLowerCase().includes(needle))
+    .filter((c) => nameQueryHit(c.profile, query))
     .slice()
     .sort((a, b) => {
       const byPresence = presenceRank(presence[a.user_id]) - presenceRank(presence[b.user_id]);
       if (byPresence !== 0) return byPresence;
-      return a.profile.display_name.localeCompare(b.profile.display_name);
+      return visiblePersonName(a.profile).localeCompare(visiblePersonName(b.profile), "zh");
     });
+}
+
+/** 我对这个人看到的名字：备注优先，其次群昵称（可选），再是对方自己的名字。 */
+export function visiblePersonName(
+  profile: { display_name: string; remark?: string | null; nickname?: string | null },
+  opts?: { showNickname?: boolean },
+): string {
+  const remark = (profile.remark || "").trim();
+  if (remark) return remark;
+  if (opts?.showNickname) {
+    const nick = (profile.nickname || "").trim();
+    if (nick) return nick;
+  }
+  return profile.display_name;
+}
+
+/** 会话标题：我对群/人的备注优先。 */
+export function conversationDisplayTitle(item: {
+  title: string;
+  remark?: string | null;
+  peer?: { display_name: string; remark?: string | null } | null;
+}): string {
+  const remark = (item.remark || "").trim();
+  if (remark) return remark;
+  if (item.peer) {
+    const peerRemark = (item.peer.remark || "").trim();
+    if (peerRemark) return peerRemark;
+    if (item.peer.display_name) return item.peer.display_name;
+  }
+  return item.title || "";
+}
+
+export function nameQueryHit(
+  profile: { display_name: string; remark?: string | null; nickname?: string | null },
+  query = "",
+): boolean {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return true;
+  const hay = [profile.display_name, profile.remark, profile.nickname]
+    .filter((part): part is string => Boolean(part && part.trim()))
+    .join(" ")
+    .toLocaleLowerCase();
+  return hay.includes(needle);
+}
+
+/** A–Z；拉丁字母按首字母，其余进 #。 */
+export function sectionLetter(name: string): string {
+  const ch = Array.from(name.trim())[0] ?? "";
+  if (!ch) return "#";
+  if (/[A-Za-z]/.test(ch)) return ch.toUpperCase();
+  return "#";
 }
 
 /**
@@ -174,6 +226,14 @@ export async function removeContact(userId: string): Promise<void> {
   await imFetch(`/v1/im/contacts/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }
 
+export async function starContact(userId: string, starred: boolean): Promise<void> {
+  await imFetch(`/v1/im/contacts/${encodeURIComponent(userId)}/star`, { method: "PUT", body: JSON.stringify({ starred }) });
+}
+
+export async function deleteContactRequestHistory(id: string): Promise<void> {
+  await imFetch(`/v1/im/contact-requests/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function listContactRequests(box: "in" | "out"): Promise<ImContactRequest[]> {
   return itemsOf(await imFetch<Items<ImContactRequest>>(`/v1/im/contact-requests?box=${box}`));
 }
@@ -248,6 +308,19 @@ export async function blockUser(userId: string): Promise<void> {
 
 export async function unblockUser(userId: string): Promise<void> {
   await imFetch(`/v1/im/blocks/${encodeURIComponent(userId)}`, { method: "DELETE" });
+}
+
+export async function setUserRemark(userId: string, remark: string): Promise<{ user_id: string; remark: string }> {
+  return imFetch<{ user_id: string; remark: string }>(`/v1/im/remarks/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    json: { remark },
+  });
+}
+
+/** 已勾选「保存到通讯录」的群 / Team 群 / 项目群。 */
+export async function listSavedGroups(): Promise<ImConversationSummary[]> {
+  const page = await imFetch<ImPage<ImConversationSummary>>("/v1/im/conversations?filter=contacts&limit=100");
+  return (page.items ?? []).filter((item) => item.kind !== "dm" && item.kind !== "talent");
 }
 
 export async function openDm(userId: string): Promise<string> {

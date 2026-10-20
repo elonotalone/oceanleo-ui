@@ -20,6 +20,14 @@ export interface ImProfile {
   avatar_url: string | null;
   relation?: ImRelation;
   presence?: ImPresence;
+  /** 我对这个人的备注，只我自己看见。 */
+  remark?: string;
+  /** 对方在当前群里的群昵称。 */
+  nickname?: string;
+  contact_source?: string | null;
+  contact_created_at?: string | null;
+  contact_starred?: boolean;
+  mutual_group_count?: number;
 }
 
 export interface ImMember {
@@ -28,6 +36,8 @@ export interface ImMember {
   external: boolean;
   joined_at: string;
   profile: ImProfile;
+  /** 这个人在本群的群昵称。 */
+  nickname?: string;
 }
 
 export interface ImLastMessage {
@@ -102,6 +112,11 @@ export interface ImConversationSummary {
   has_external: boolean;
   my_role: ImRole | null;
   dissolved: boolean;
+  /** 我对这个会话的备注，只我自己看见。 */
+  remark?: string;
+  pinned?: boolean;
+  in_contacts?: boolean;
+  show_member_nicknames?: boolean;
 }
 
 export interface ImConversationDetail extends ImConversationSummary {
@@ -116,6 +131,8 @@ export interface ImConversationDetail extends ImConversationSummary {
   /** 当前查看者自己读到的位置（未读分隔线用）。 */
   last_read_seq?: number;
   created_at: string;
+  /** 我在这个群里的群昵称。 */
+  nickname?: string;
 }
 
 export interface ImAttachment {
@@ -147,13 +164,6 @@ export interface ImQuote {
   recalled: boolean;
 }
 
-export interface ImReactionSummary {
-  emoji: string;
-  count: number;
-  mine: boolean;
-  user_ids: string[];
-}
-
 export interface ImMessage {
   id: string;
   conversation_id: string;
@@ -171,7 +181,6 @@ export interface ImMessage {
   attachments: ImAttachment[];
   card: ImCard | null;
   transcript: { status: "pending" | "done" | "failed" | "skipped"; text: string } | null;
-  reactions: ImReactionSummary[];
   pinned: boolean;
   edited_at: string | null;
   recalled_at: string | null;
@@ -195,7 +204,7 @@ export interface ImContactRequest {
   from: ImProfile;
   to: ImProfile;
   message: string;
-  status: "pending" | "accepted" | "declined" | "cancelled";
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
   created_at: string;
 }
 
@@ -316,13 +325,12 @@ export type ImEvent =
   | { type: "leo.delta"; conversation_id: string; message_id: string; text: string }
   | { type: "leo.notice"; conversation_id: string; trigger_message_id: string;
       code: "insufficient_balance" | "disabled" | "queued" | "failed" }
-  | { type: "reaction.changed"; conversation_id: string; message_id: string; reactions: ImReactionSummary[] }
   | { type: "pin.changed"; conversation_id: string; message_id: string; pinned: boolean }
   | { type: "read.updated"; conversation_id: string; user_id: string; last_read_seq: number }
   | { type: "typing"; conversation_id: string; user_id: string; thread_root_id: string | null }
   | { type: "presence.changed"; user_id: string; presence: ImPresence }
   | { type: "conversation.updated"; conversation: ImConversationSummary }
-  | { type: "conversation.removed"; conversation_id: string; reason: "left" | "kicked" | "dissolved" }
+  | { type: "conversation.removed"; conversation_id: string; reason: "left" | "kicked" | "dissolved" | "hidden" }
   | { type: "member.changed"; conversation_id: string }
   | { type: "contact.request"; request: ImContactRequest }
   | { type: "contact.changed"; user_id: string }

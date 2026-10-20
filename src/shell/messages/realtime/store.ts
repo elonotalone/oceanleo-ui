@@ -99,15 +99,17 @@ export function emptyInbox(filter = "all"): InboxState {
 export function sortInbox(items: ImConversationSummary[]): ImConversationSummary[] {
   return items
     .slice()
-    .sort((a, b) =>
-      a.last_activity_at === b.last_activity_at
+    .sort((a, b) => {
+      const pinned = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+      if (pinned !== 0) return pinned;
+      return a.last_activity_at === b.last_activity_at
         ? a.id < b.id
           ? 1
           : -1
         : a.last_activity_at < b.last_activity_at
           ? 1
-          : -1,
-    );
+          : -1;
+    });
 }
 
 export function isMentioned(message: ImMessage, selfId: string | null): boolean {

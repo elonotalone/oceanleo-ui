@@ -1,20 +1,21 @@
 "use client";
 
 // 一条消息：头像、名字、「外部」标记、时间、正文 / 附件 / 卡片、已编辑、撤回与隐藏占位、
-// 表情回应、线程摘要、读状态；系统消息单独一行；leo 的消息用 W06 的 LeoMessageBody。
+// 引用、读状态；系统消息单独一行；leo 的消息用 W06 的 LeoMessageBody。
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
 import { useToast } from "../../../ui/Toast";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
+import { imFetch } from "../../../lib/im/client";
+import { visiblePersonName } from "../../../lib/im/people-api";
 import { LeoMessageBody, LeoNoticeLine } from "../leo/LeoMessageBody";
 import { ArtifactCardView } from "./ArtifactCardView";
 import { AttachmentView, safeMediaUrl } from "./AttachmentView";
 import { MessageActions, actionPermissions, type MessageActionHandlers } from "./MessageActions";
 import { MessageBody } from "./MessageBody";
 import { DmReadReceipt, MentionReadReceipt } from "./ReadReceipt";
-import { ReactionBar } from "./ReactionBar";
 import { BayOrderCard } from "../../bay/orders/BayOrderCard";
 import { ReplayCardView } from "./ReplayCardView";
 import { SystemLine } from "./SystemLine";
@@ -59,7 +60,7 @@ export function Avatar({
   );
   if (!onClick) return <span className="shrink-0">{inner}</span>;
   return (
-    <button type="button" onClick={onClick} aria-label={name} className="shrink-0 rounded-full">
+    <button type="button" onClick={onClick} aria-label={name} className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
       {inner}
     </button>
   );
@@ -67,14 +68,15 @@ export function Avatar({
 
 export interface MessageItemHandlers {
   onQuote: (message: ImMessage) => void;
-  onThread: (message: ImMessage) => void;
+  onForward: (message: ImMessage) => void;
+  onMultiSelect: (message: ImMessage) => void;
   onEdit: (message: ImMessage) => void;
   onRecall: (message: ImMessage) => void;
-  onReact: (message: ImMessage, emoji: string) => void;
   onTogglePin: (message: ImMessage) => void;
   onReport: (message: ImMessage) => void;
   onCopyText: (message: ImMessage) => void;
   onCopyLink: (message: ImMessage) => void;
+  onTranslate: (message: ImMessage) => Promise<string>;
   onOpenProfile: (userId: string) => void;
   onJumpToMessage: (messageId: string) => void;
   onRetry: (clientId: string) => void;
@@ -89,13 +91,15 @@ export interface MessageItemProps {
   profiles: Record<string, ImProfile | undefined>;
   conversation: ImConversationDetail | null;
   isAdmin: boolean;
-  inThread?: boolean;
   streamingText?: string;
   notice?: LeoNoticeCode;
   /** 私聊：我的最后一条上显示已读/已送达。 */
   dmRead?: "read" | "sent" | null;
   highlighted?: boolean;
   handlers: MessageItemHandlers;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelected?: (message: ImMessage) => void;
 }
 
 export function MessageItem(props: MessageItemProps) {
@@ -107,17 +111,21 @@ export function MessageItem(props: MessageItemProps) {
     profiles,
     conversation,
     isAdmin,
-    inThread = false,
     streamingText,
     notice,
     dmRead,
     highlighted,
     handlers,
+    selectionMode = false,
+    selected = false,
+    onToggleSelected,
   } = props;
   const tt = useUI();
   const locale = useLocale();
   const [touchOpen, setTouchOpen] = useState(false);
   const [recallOpen, setRecallOpen] = useState(false);
+  const [translation, setTranslation] = useState("");
+  const [translationError, setTranslationError] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enterRef = useRef<"" | "own" | "peer" | null>(null);
 
@@ -127,7 +135,9 @@ export function MessageItem(props: MessageItemProps) {
 
   const senderProfile = message.sender_id ? profiles[message.sender_id] : undefined;
   const isLeo = message.sender_kind === "leo";
-  const senderName = isLeo ? "leo" : (senderProfile?.display_name ?? tt("已退出的成员"));
+  const senderName = isLeo ? "leo" : senderProfile ? visiblePersonName(senderProfile, {
+    showNickname: conversation?.kind !== "dm" && conversation?.show_member_nicknames !== false,
+  }) : tt("已退出的成员");
   const external = Boolean(
     conversation?.members.find((member) => member.user_id === message.sender_id)?.external,
   );
@@ -143,20 +153,20 @@ export function MessageItem(props: MessageItemProps) {
   const hidden = message.hidden_reason === "moderation";
   const blockedHidden = message.hidden_reason === "blocked";
   const isPlaceholder = recalled || hidden || blockedHidden;
-  const permissions = actionPermissions({ message, viewerId, isAdmin, inThread });
+  const permissions = actionPermissions({ message, viewerId, isAdmin });
   const nameOf = (userId: string) => profiles[userId]?.display_name ?? tt("已退出的成员");
 
   const actionHandlers: MessageActionHandlers = {
-    onReact: (emoji) => handlers.onReact(message, emoji),
     onQuote: () => handlers.onQuote(message),
-    onThread: () => handlers.onThread(message),
+    onForward: () => handlers.onForward(message),
+    onMultiSelect: () => handlers.onMultiSelect(message),
+    onTranslate: () => {
+      setTranslationError(false);
+      void handlers.onTranslate(message).then(setTranslation).catch(() => setTranslationError(true));
+    },
     onCopyText: () => handlers.onCopyText(message),
-    onCopyLink: () => handlers.onCopyLink(message),
-    onTogglePin: () => handlers.onTogglePin(message),
-    onEdit: () => handlers.onEdit(message),
     // 撤回先在站内确认框里确认，确认后才真正撤回（不用浏览器原生弹窗：手机上难看，嵌入环境里还会被拦掉）。
     onRecall: () => setRecallOpen(true),
-    onReport: () => handlers.onReport(message),
   };
 
   const startPress = (event: React.PointerEvent) => {
@@ -256,71 +266,65 @@ export function MessageItem(props: MessageItemProps) {
       onPointerUp={endPress}
       onPointerCancel={endPress}
       onPointerMove={endPress}
+      onContextMenu={(event) => {
+        if (isPlaceholder || pending) return;
+        event.preventDefault();
+        setTouchOpen(true);
+      }}
       onMouseLeave={() => setTouchOpen(false)}
       data-sending={pending?.status === "sending" ? "" : undefined}
       data-im-enter={enterRef.current || undefined}
+      data-message-row={mine ? "own" : "incoming"}
       className={
-        "group relative flex gap-2.5 px-4 " +
-        (showHeader ? "pt-2 " : "pt-0.5 ") +
+        "group relative flex w-full min-w-0 items-start gap-2.5 px-4 " +
+        (showHeader ? "pt-4 " : "pt-2 ") +
         (highlighted ? "bg-neutral-100/80 dark:bg-white/5 " : "")
       }
+      style={{ flexDirection: mine ? "row-reverse" : "row" }}
     >
       <div className="w-9 shrink-0">
-        {showHeader ? (
           <Avatar
             profile={isLeo ? { user_id: "leo", display_name: "leo", avatar_url: null } : senderProfile}
             onClick={!isLeo && message.sender_id ? () => handlers.onOpenProfile(message.sender_id!) : undefined}
           />
-        ) : (
-          <span
-            className="hidden pt-1.5 text-center text-[10.5px] text-neutral-300 group-hover:block"
-            title={fullTime}
-          >
-            {timeLabel}
-          </span>
-        )}
       </div>
-      <div className="min-w-0 flex-1 pb-0.5">
+      <div className={"flex min-w-0 flex-col pb-0.5 " + (mine ? "items-end" : "items-start")} style={{ maxWidth: "min(78%, 680px)" }}>
+        {selectionMode ? (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={selected ? tt("取消选择") : tt("选择消息")}
+            onClick={() => onToggleSelected?.(message)}
+            className="mb-1 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 text-xs"
+          >{selected ? "✓" : ""}</button>
+        ) : null}
         {showHeader ? (
           <div className="flex items-baseline gap-2">
-            <button
-              type="button"
-              disabled={isLeo || !message.sender_id}
-              onClick={() => message.sender_id && handlers.onOpenProfile(message.sender_id)}
-              className="truncate text-[13px] font-semibold tracking-tight text-neutral-900 enabled:hover:underline"
-            >
-              {senderName}
-            </button>
-            {isLeo ? <span className="text-[11px] text-neutral-400">leo</span> : null}
+            {!mine && conversation?.kind !== "dm" ? (
+              <span data-sender-name="" className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{senderName}</span>
+            ) : null}
             {external ? <span className="text-[11px] text-neutral-400">{tt("外部")}</span> : null}
             <time dateTime={message.created_at} title={fullTime} className="text-[12px] text-neutral-400">
               {timeLabel}
             </time>
           </div>
         ) : null}
-        {content}
+        <div
+          data-message-bubble={mine ? "own" : "incoming"}
+          className={"min-w-0 max-w-full rounded-xl px-3 py-2 text-left " +
+            (mine ? "rounded-tr-sm bg-emerald-100 text-neutral-900 dark:bg-emerald-900 dark:text-neutral-100" : "rounded-tl-sm bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100")}
+          style={{ overflowWrap: "anywhere" }}
+        >
+          {content}
+        </div>
         {!isPlaceholder && message.edited_at ? (
           <span className="ml-1.5 text-[11px] text-neutral-400">{tt("已编辑")}</span>
         ) : null}
-        {!isPlaceholder ? (
-          <ReactionBar reactions={message.reactions} nameOf={nameOf} onToggle={(emoji) => handlers.onReact(message, emoji)} />
-        ) : null}
-        {!isPlaceholder && !inThread && message.thread && message.thread.reply_count > 0 ? (
-          <button
-            type="button"
-            onClick={() => handlers.onThread(message)}
-            className="mt-1 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[12px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-white/5"
-            data-thread-summary=""
-          >
-            <span className="flex -space-x-1">
-              {message.thread.participant_ids.slice(0, 3).map((id) => (
-                <span key={id} className="rounded-full ring-2 ring-white">
-                  <Avatar profile={profiles[id]} size={16} />
-                </span>
-              ))}
-            </span>
-            {tt("{n} 条回复", { n: message.thread.reply_count })}
-          </button>
+        {translation || translationError ? (
+          <div className="mt-2 max-w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200" data-message-translation="">
+            {translationError ? tt("翻译失败，请稍后重试。") : translation}
+          </div>
         ) : null}
         {pending?.status === "failed" ? (
           <div className="mt-1 flex items-center gap-2 text-[12px] text-red-600" data-send-failed="">
@@ -357,14 +361,14 @@ export function MessageItem(props: MessageItemProps) {
             message={message}
             permissions={permissions}
             handlers={actionHandlers}
-            canReportOthers={!mine && message.sender_kind === "user"}
+            open={touchOpen}
           />
         </div>
       ) : null}
       {recallOpen ? (
         <ConfirmDialog
-          title={tt("撤回这条消息？撤回后所有人都看不到内容。")}
-          confirmLabel={tt("撤回")}
+          title={tt("删除这条消息？删除后所有人都看不到内容。")}
+          confirmLabel={tt("删除")}
           danger
           onConfirm={() => {
             setRecallOpen(false);
@@ -387,12 +391,13 @@ export function messageLink(href: string, conversationId: string, seq: number): 
   return url.toString();
 }
 
-/** 一组操作的默认实现；各视图只需给出「引用 / 开线程 / 编辑 / 举报 / 资料卡 / 跳转」这几个界面回调。 */
+/** 一组消息操作的默认实现。 */
 export function useMessageHandlers(options: {
   store: ConversationStore;
   conversationId: string;
   onQuote: (message: ImMessage) => void;
-  onThread: (message: ImMessage) => void;
+  onForward: (message: ImMessage) => void;
+  onMultiSelect: (message: ImMessage) => void;
   onEdit: (message: ImMessage) => void;
   onReport: (message: ImMessage) => void;
   onOpenProfile: (userId: string) => void;
@@ -401,7 +406,8 @@ export function useMessageHandlers(options: {
   const tt = useUI();
   const toast = useToast();
   const { store, conversationId } = options;
-  const { onQuote, onThread, onEdit, onReport, onOpenProfile, onJumpToMessage } = options;
+  const { onQuote, onForward, onMultiSelect, onEdit, onReport, onOpenProfile, onJumpToMessage } = options;
+  const locale = useLocale();
 
   const copy = useCallback(
     async (value: string, done: string) => {
@@ -418,21 +424,29 @@ export function useMessageHandlers(options: {
   return useMemo<MessageItemHandlers>(
     () => ({
       onQuote,
-      onThread,
+      onForward,
+      onMultiSelect,
       onEdit,
       onReport,
       onOpenProfile,
       onJumpToMessage,
-      onReact: (message, emoji) => void store.toggleReaction(message.id, emoji),
       onTogglePin: (message) => void store.togglePin(message.id, message.pinned),
       // 确认由 MessageItem 的 ConfirmDialog 负责；走到这里就是已经确认过了。
       onRecall: (message) => void store.recall(message.id),
       onCopyText: (message) => void copy(message.body, tt("已复制")),
       onCopyLink: (message) =>
         void copy(messageLink(window.location.href, conversationId, message.seq), tt("已复制链接")),
+      onTranslate: async (message) => {
+        const target_lang = locale.toLowerCase().startsWith("zh") ? "en" : "zh";
+        const result = await imFetch<{ result: string }>("/v1/assistant/transform", {
+          method: "POST",
+          json: { action: "translate", text: plainTextOf(message.body), target_lang },
+        });
+        return result.result;
+      },
       onRetry: (clientId) => void store.retry(clientId),
       onDiscard: (clientId) => store.discardPending(clientId),
     }),
-    [store, conversationId, copy, tt, onQuote, onThread, onEdit, onReport, onOpenProfile, onJumpToMessage],
+    [store, conversationId, copy, tt, locale, onQuote, onForward, onMultiSelect, onEdit, onReport, onOpenProfile, onJumpToMessage],
   );
 }

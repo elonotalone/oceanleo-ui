@@ -126,18 +126,6 @@ export function createMessagesApi(fetcher: ImFetcher) {
     recallMessage(messageId: string): Promise<ImMessage> {
       return fetcher(`/v1/im/messages/${encodeURIComponent(messageId)}/recall`, { method: "POST" });
     },
-    addReaction(messageId: string, emoji: string): Promise<unknown> {
-      return fetcher(`/v1/im/messages/${encodeURIComponent(messageId)}/reactions`, {
-        method: "POST",
-        json: { emoji },
-      });
-    },
-    removeReaction(messageId: string, emoji: string): Promise<unknown> {
-      return fetcher(
-        `/v1/im/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`,
-        { method: "DELETE" },
-      );
-    },
     async listPins(conversationId: string): Promise<ImMessage[]> {
       const result = await fetcher<ImMessage[] | { items: ImMessage[] }>(
         `/v1/im/conversations/${encodeURIComponent(conversationId)}/pins`,
@@ -161,9 +149,6 @@ export function createMessagesApi(fetcher: ImFetcher) {
         method: "POST",
         json: { seq },
       });
-    },
-    getThread(messageId: string): Promise<{ root: ImMessage; items: ImMessage[] }> {
-      return fetcher(`/v1/im/messages/${encodeURIComponent(messageId)}/thread`);
     },
     async listDrafts(): Promise<Array<{ conversation_id: string; thread_root_id: string | null; body: string }>> {
       const result = await fetcher<

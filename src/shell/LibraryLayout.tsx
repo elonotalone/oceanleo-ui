@@ -7,7 +7,7 @@
 // 从上到下 = 搜索框 → 分类 chips → 各种卡片。为避免三处各写一份、日后漂移，把这两段
 // 公共版式抽成积木，三个分区（NavigatorGuide / MaterialLibrary / ArtifactLibrary）全部
 // 复用它们：
-//   - <LibraryToolbar>：一行 = 右对齐的窄搜索框 + 网格/列表切换。
+//   - <LibraryToolbar>：一行 = 标题在左，右侧 = 搜索 + 查看选项 + 网格/列表 + 页面动作。
 //   - <LibraryChips>：一排分类 chips（选中态用站点 accent 高亮）。
 // 这样「搜索框大小 / 左右留白 / 分类样式 / 间距」三分区天然统一，改一处全同步。
 // ============================================================================
@@ -18,6 +18,12 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import {
+  CollectionSearchField,
+  CollectionViewOptions,
+  CollectionViewToggle,
+  type CollectionViewOption,
+} from "./collection-chrome";
 
 type TT = (s: string, vars?: Record<string, string | number>) => string;
 
@@ -32,12 +38,12 @@ export interface LibraryToolbarProps {
   leading?: ReactNode;
   /** 不要网格/列表切换（市场、任务列表这种本来就只有一种排布）。 */
   hideView?: boolean;
+  /** 有就画在搜索和网格/列表之间（Manus「查看选项」）。 */
+  viewOptions?: CollectionViewOption[];
 }
 
 /**
- * 统一「搜索行」：右对齐的窄搜索框 + 网格/列表切换。三分区共用 → 搜索框大小/位置一致。
- * 搜索框固定窄宽（w-40），左侧留白由外层容器 padding 决定
- * （右栏统一 p-4），因此三分区左右留白也一致。
+ * 统一「搜索行」：标题在左；右侧一组 = 搜索 + 查看选项 + 网格/列表 + 页面动作（上传等）。
  */
 export function LibraryToolbar({
   search,
@@ -45,111 +51,37 @@ export function LibraryToolbar({
   view,
   setView,
   placeholder,
-  tt,
   actions,
   leading,
   hideView = false,
+  viewOptions,
 }: LibraryToolbarProps) {
   const searchId = useId();
-  const rest = (
-    <>
-      {actions}
-      <label className="sr-only" htmlFor={searchId}>
-        {placeholder}
-      </label>
-      <div className="flex min-w-40 flex-1 items-center gap-2 rounded-lg border border-[var(--border,#e5e7eb)] bg-[var(--card,#fff)] px-3 py-1.5 text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-within:border-[var(--border-strong,#a3a3a3)] focus-within:shadow-sm sm:max-w-64">
-        <svg
-          className="h-3.5 w-3.5 shrink-0 text-[var(--muted,#a3a3a3)]"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <circle cx="11" cy="11" r="7" />
-          <path d="M21 21l-4.3-4.3" strokeLinecap="round" />
-        </svg>
-        <input
-          id={searchId}
-          type="search"
-          aria-label={placeholder}
-          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--muted,#a3a3a3)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {search && (
-          <button
-            type="button"
-            onClick={() => setSearch("")}
-            aria-label={tt("清除搜索")}
-            title={tt("清除搜索")}
-            className="shrink-0 text-[var(--muted,#a3a3a3)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-[var(--fg-2,#525252)]"
-          >
-            ✕
-          </button>
-        )}
-      </div>
+  const chrome = (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <CollectionSearchField
+        id={searchId}
+        value={search}
+        onChange={(value) => setSearch(value)}
+        placeholder={placeholder}
+      />
+      {viewOptions ? <CollectionViewOptions options={viewOptions} /> : null}
       {hideView ? null : (
-      <div
-        className="flex shrink-0 items-center rounded-lg bg-[var(--surface,#f5f5f5)] p-0.5"
-        role="group"
-        aria-label={tt("素材视图")}
-      >
-        <button
-          type="button"
-          onClick={() => setView("grid")}
-          className={`rounded-md p-1.5 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- view === "grid"
- ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
- : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
- }`}
-          title={tt("网格视图")}
-          aria-label={tt("网格视图")}
-          aria-pressed={view === "grid"}
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={() => setView("list")}
-          className={`rounded-md p-1.5 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- view === "list"
- ? "bg-[var(--card,#fff)] text-[var(--fg,#404040)] shadow-sm"
- : "text-[var(--muted,#a3a3a3)] hover:text-[var(--fg-2,#525252)]"
- }`}
-          title={tt("列表视图")}
-          aria-label={tt("列表视图")}
-          aria-pressed={view === "list"}
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
+        <CollectionViewToggle view={view} onChange={(next) => setView(next)} />
       )}
-    </>
+      {actions}
+    </div>
   );
   return (
     <div
       className={
         leading
-          ? "flex flex-wrap items-center gap-2"
+          ? "flex flex-wrap items-center justify-between gap-2"
           : "flex flex-wrap items-center justify-end gap-2"
       }
     >
       {leading}
-      {leading ? (
-        <div className="ml-auto flex flex-wrap items-center gap-2">{rest}</div>
-      ) : (
-        rest
-      )}
+      {leading ? <div className="ml-auto min-w-0">{chrome}</div> : chrome}
     </div>
   );
 }

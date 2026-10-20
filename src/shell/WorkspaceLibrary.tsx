@@ -22,6 +22,14 @@ import {
   type LibraryItem,
 } from "./library-data";
 import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
+import {
+  COLLECTION_CARD_GRID_CLASS,
+  COLLECTION_CARD_GRID_STYLE,
+  CollectionFilterRow,
+  CollectionFilterSelect,
+  CollectionInfiniteSentinel,
+  type CollectionViewOption,
+} from "./collection-chrome";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import {
   consumeWorkspaceAction,
@@ -84,15 +92,19 @@ export interface WorkspaceLibraryProps {
   primaryCategoryIds?: string[];
   /**
    * Material library uses the toolbar taxonomy `<select>` as the sole type
-   * shelf. Hide the overlapping horizontal LibraryChips row there without
-   * affecting 我的库 / Navigator surfaces that still need chips.
+   * shelf. Full-page 我的库 also hides this row and uses CollectionFilterSelect.
+   * Embedded workspace slots (hideToolbar / fill) may still show chips.
    */
   hideCategoryChips?: boolean;
   /** Same-row title for full-page libraries; omitted in embedded shelves. */
   pageTitle?: ReactNode;
   /** Skip the search/view toolbar (host already rendered AppPageHeader). */
   hideToolbar?: boolean;
+  /** Hosts that keep chrome outside this component hide it while a file is open. */
+  onDetailOpenChange?: (open: boolean) => void;
   toolbarActions?: ReactNode;
+  /** Manus view-options menu (e.g. 仅看收藏). Rendered by LibraryToolbar. */
+  viewOptions?: CollectionViewOption[];
   /** Current Agent task is reused by the advanced workbench. */
   taskId?: string | null;
   siteId?: string;
@@ -133,7 +145,7 @@ export interface WorkspaceLibraryProps {
    * 货架卡片上的动作插槽——**只给「下载」用**（合同 §0.6「每张素材卡带下载」、
    * §8.9 仲裁）。
    *
-   * 另外四个动作（编辑 / 收藏 / 全屏 / 链接）仍然只许出现在安静预览详情的头部：
+   * 另外四个动作（分享 / 编辑 / 收藏 / 全屏）仍然只许出现在安静预览详情的头部：
    * 货架的视觉安静是既定契约。`tests/typed-artifact-contract.test.mjs` 的
    * 「library shelf cards stay quiet」用 `shelfCardActionViolations()` 挡住把它们
    * 塞回卡片，那条断言同时带反向用例，改成摆设会被测出来。
@@ -147,6 +159,10 @@ export interface WorkspaceLibraryProps {
    * 该做的是换关键词，不是新建）。**可选**，不传时空态与今天逐字相同。
    */
   emptyCta?: ReactNode;
+  /** Silent next-page fetch as the list is scrolled. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   className?: string;
   /** Full-page libraries render directly on the page instead of inside a white panel. */
   plain?: boolean;
@@ -190,27 +206,17 @@ function isOfficialWebsiteTemplate(item: LibraryItem): boolean {
 }
 
 /**
- * 货架网格的列宽规则。**这一行就是外观本身**：探索页整幅、编辑器窄抽屉、31 个
- * 租户站的货架全靠它排版，所以它逐字不许动（下面 `VirtualCardGrid` 只往里塞
- * 占位块，不碰它）。
+ * 货架网格的列宽规则。**这一行就是外观本身**：工作台 / 项目 / 我的库 / LeoBay
+ * 四页共用 `COLLECTION_CARD_GRID_STYLE`（永远四列等宽）。`VirtualCardGrid`
+ * 只往里塞占位块，不另写一套列宽。
  *
- * 列数跟着**容器**宽度走，不跟视口断点走：同一个货架既铺在探索页整幅上，也铺在
- * 编辑器的窄抽屉里，而抽屉再窄时视口仍然是宽的，`xl:` 那类断点在抽屉里会判错。
- * `min(12rem, (100% - gap) / 2)` 保证两件事：宽容器上按 12rem 起排（探索页因此从
- * 写死的 3 列涨到 5 列以上，卡片不再被撑大），窄容器上列宽自动缩到半幅，
- * **永远至少两列**，抽屉里的观感与过去一致。
- * 用行内 style 而不是 Tailwind 任意值：本包发到 36 个消费站，行内 CSS 不依赖
+ * 用行内 style 而不是 Tailwind 任意值：本包发到各消费站，行内 CSS 不依赖
  * 任何一站的 Tailwind 版本或 CSS 重新生成。
  */
-const CARD_GRID_STYLE = {
-  gridTemplateColumns:
-    "repeat(auto-fill, minmax(min(12rem, calc((100% - 0.625rem) / 2)), 1fr))",
-} as const;
+const CARD_GRID_STYLE = COLLECTION_CARD_GRID_STYLE;
 
-/** `min(12rem, …)` 与 `gap-2.5`（0.625rem）换成像素，供列数公式回落时用。 */
 function cardGridRule(): GridColumnRule {
-  const rem = pixelsPerRem();
-  return { minTrackPx: 12 * rem, gapPx: 0.625 * rem, narrowDivisor: 2 };
+  return { gapPx: 0.625 * pixelsPerRem(), fallbackColumnCount: 4 };
 }
 
 /**
@@ -266,8 +272,9 @@ function VirtualCardGrid({
   return (
     <div
       ref={gridRef}
-      className="grid gap-2.5"
-      data-workspace-card-grid="auto-fill"
+      className={COLLECTION_CARD_GRID_CLASS}
+      data-workspace-card-grid="four"
+      data-collection-card-grid=""
       style={CARD_GRID_STYLE}
       {...grid.containerProps}
     >
@@ -295,10 +302,9 @@ function VirtualCardGrid({
  * Those three areas intentionally share the exact same search, categories,
  * card density, detail header and viewer dispatch. Shelf cards show thumbnail,
  * title, and — only where the host opts in through `entryActions` — a single
- * 下载 button; the other four artifact actions live on the quiet preview detail
- * header. Editable items are handed to the workspace-level host through the
- * detail-header Edit action via onOpenItem; this component never nests a full
- * editor inside a library detail.
+ * 下载 button; share / download / favorite / edit live on the detail header.
+ * Card click always opens quiet preview; Edit lives on that detail header.
+ * This component never nests a full editor inside a library detail.
  */
 export function WorkspaceLibrary({
   entries,
@@ -314,7 +320,9 @@ export function WorkspaceLibrary({
   hideCategoryChips = false,
   pageTitle,
   hideToolbar = false,
+  onDetailOpenChange,
   toolbarActions,
+  viewOptions,
   siteId = "",
   appId = "",
   materialActions = [],
@@ -334,6 +342,9 @@ export function WorkspaceLibrary({
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
   emptyCta,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   className = "",
   plain = false,
   packAppIdForEntry,
@@ -361,6 +372,13 @@ export function WorkspaceLibrary({
     onCategoryChange?.(next);
   };
   const [selectedId, setSelectedId] = useState("");
+  const setDetailSelection = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      onDetailOpenChange?.(Boolean(id));
+    },
+    [onDetailOpenChange],
+  );
   const [viewerNonce, setViewerNonce] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   /** 详情返回后要滚回哪一张（虚拟化之后滚动位置不再由浏览器自己保住）。 */
@@ -384,6 +402,9 @@ export function WorkspaceLibrary({
    */
   const [viewerHasZoomableContent, setViewerHasZoomableContent] =
     useState(false);
+  useEffect(() => {
+    onDetailOpenChange?.(Boolean(selectedId));
+  }, [onDetailOpenChange, selectedId]);
 
   const clearRestoreEntry = useCallback(() => setRestoreEntryId(""), []);
 
@@ -398,9 +419,9 @@ export function WorkspaceLibrary({
         onOpenEntry(entry);
         return;
       }
-      setSelectedId(entry.id);
+      setDetailSelection(entry.id);
     },
-    [allowHostRestore, onOpenEntry],
+    [allowHostRestore, onOpenEntry, setDetailSelection],
   );
 
   const applyMaterialAction = async (
@@ -512,8 +533,6 @@ export function WorkspaceLibrary({
   };
 
   const activateEntry = (entry: WorkspaceLibraryEntry) => {
-    // Primary card activation is quiet preview detail. Edit lives on the
-    // detail header and must not be the card-click primary path.
     // 记下这一张：详情占满整个组件，返回时货架是重新挂载的，不记就回到顶部。
     setRestoreEntryId(entry.id);
     const item = entry.libraryItem;
@@ -524,7 +543,6 @@ export function WorkspaceLibrary({
         entryId: entry.id,
       });
     }
-    // A card click is an explicit navigation request, even in an editor drawer.
     if (onOpenEntry) onOpenEntry(entry);
     else openEntry(entry);
   };
@@ -623,8 +641,8 @@ export function WorkspaceLibrary({
 
   useEffect(() => {
     if (!selectedId) return;
-    if (!entries.some((entry) => entry.id === selectedId)) setSelectedId("");
-  }, [entries, selectedId]);
+    if (!entries.some((entry) => entry.id === selectedId)) setDetailSelection("");
+  }, [entries, selectedId, setDetailSelection]);
 
   useEffect(() => {
     setDetailIdentityFailed(false);
@@ -856,7 +874,7 @@ export function WorkspaceLibrary({
               ) {
                 void document.exitFullscreen();
               }
-              setSelectedId("");
+              setDetailSelection("");
             }}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]"
             aria-label={tt("返回列表")}
@@ -937,6 +955,7 @@ export function WorkspaceLibrary({
       actions={toolbarActions}
       placeholder={tt(searchPlaceholder)}
       tt={tt}
+      viewOptions={viewOptions}
       leading={
         pageTitle ? (
           <h1 className={APP_PAGE_TITLE_CLASS}>
@@ -991,7 +1010,27 @@ export function WorkspaceLibrary({
     >
       {shelfToolbar}
       <div ref={shelfScrollRef} className="min-h-0 flex-1 overflow-y-auto pt-3">
-        {!hideCategoryChips && categories.length > 1 && (
+        {!hideCategoryChips &&
+        !hideToolbar &&
+        (pageTitle || plain) &&
+        categories.length > 1 ? (
+          <CollectionFilterRow>
+            <CollectionFilterSelect
+              label={tt("类型")}
+              name="type"
+              value={category === "all" ? "" : category}
+              options={categories
+                .filter((item) => item.id !== "all")
+                .map((item) => ({
+                  value: item.id,
+                  label: tt(item.label),
+                }))}
+              onChange={(value) => setCategory(value || "all")}
+              allLabel={tt("全部")}
+              searchable={categories.length > 8}
+            />
+          </CollectionFilterRow>
+        ) : !hideCategoryChips && categories.length > 1 ? (
           <LibraryChips
             chips={visibleCategories}
             active={category}
@@ -1013,7 +1052,7 @@ export function WorkspaceLibrary({
               ) : undefined
             }
           />
-        )}
+        ) : null}
         {filtered.length === 0 ? (
           <WorkspaceLibraryEmpty
             title={tt(search ? "没有匹配内容" : emptyTitle)}
@@ -1051,6 +1090,14 @@ export function WorkspaceLibrary({
         ) : (
           renderEntries(filtered)
         )}
+        {onLoadMore && (hasMore || loadingMore) ? (
+          <CollectionInfiniteSentinel
+            active={hasMore && !loadingMore}
+            loading={loadingMore}
+            onLoadMore={onLoadMore}
+            rootRef={shelfScrollRef}
+          />
+        ) : null}
       </div>
     </div>
   );

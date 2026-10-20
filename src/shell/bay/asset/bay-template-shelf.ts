@@ -27,7 +27,7 @@ import {
 import type { BayAsset, BayAssetLicense, BayAssetType } from "./library-client";
 
 export const OFFICIAL_TEMPLATE_CATEGORY = "official-templates";
-export const BAY_OFFICIAL_PREVIEW_COUNT = 6;
+export const BAY_OFFICIAL_PREVIEW_COUNT = 4;
 export const BAY_TEMPLATE_PAGE_SIZE = 30;
 
 const OFFICIAL_LICENSE: BayAssetLicense = {

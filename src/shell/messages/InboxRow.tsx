@@ -1,6 +1,8 @@
 "use client";
 
 // 收件箱的一行：头像（群为拼图）、标题、「外部」标记、最后一条、时间、未读与 @ 角标、免打扰图标、草稿提示。
+import type { MouseEvent } from "react";
+import { conversationDisplayTitle } from "../../lib/im/people-api";
 import { avatarMembersOf } from "../../lib/im/types";
 import type { ImConversationSummary } from "../../lib/im/types";
 import { useUI } from "../../i18n/ui/useUI";
@@ -19,7 +21,7 @@ function hashOf(text: string): number {
 }
 
 export function conversationTitle(item: ImConversationSummary): string {
-  return item.title || item.peer?.display_name || "";
+  return conversationDisplayTitle(item) || item.title || item.peer?.display_name || "";
 }
 
 /** 没有头像图时：私聊 = 单个字母块；群 = 2×2 拼图（取标题前四个字符各占一格）。 */
@@ -102,11 +104,13 @@ export function InboxRow({
   active,
   hasDraft,
   onOpen,
+  onContextMenu,
 }: {
   item: ImConversationSummary;
   active: boolean;
   hasDraft: boolean;
   onOpen: (id: string) => void;
+  onContextMenu?: (event: MouseEvent<HTMLButtonElement>, item: ImConversationSummary) => void;
 }) {
   const tt = useUI();
   const title = conversationTitle(item);
@@ -121,14 +125,38 @@ export function InboxRow({
       type="button"
       data-testid="inbox-row"
       data-conversation-id={item.id}
+      data-pinned={item.pinned ? "true" : undefined}
       aria-current={active ? "true" : undefined}
       onClick={() => onOpen(item.id)}
+      onContextMenu={onContextMenu ? (event) => onContextMenu(event, item) : undefined}
       className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
     >
-      <Avatar item={item} />
+      <span className="relative shrink-0">
+        <Avatar item={item} />
+        {unread ? (
+          <span
+            data-im-unread=""
+            data-im-unread-count={unread === "1" ? undefined : unread}
+            aria-label={tt("未读 {count} 条", { count: unread })}
+            className={`absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white ${item.muted ? "opacity-40" : ""}`}
+          >
+            {unread === "1" ? "" : unread}
+          </span>
+        ) : null}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-semibold tracking-tight">{title}</span>
+          {mention ? (
+            <span className="shrink-0 text-[11px] font-semibold text-orange-500" aria-label={tt("有人@你")}>
+              @
+            </span>
+          ) : null}
+          {item.pinned ? (
+            <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35" title={tt("置顶")}>
+              {tt("置顶")}
+            </span>
+          ) : null}
           {item.has_external ? (
             <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
               {tt("外部")}
@@ -148,22 +176,6 @@ export function InboxRow({
       <span className="flex shrink-0 flex-col items-end gap-1">
         <span className="text-[12px] text-black/35 dark:text-white/35">
           {item.last_activity_at ? formatRowTime(item.last_activity_at, new Date(), tt("昨天")) : ""}
-        </span>
-        <span className="flex items-center gap-1">
-          {mention ? (
-            <span className="text-[11px] font-semibold text-black/70 dark:text-white/70" aria-label={tt("有人@你")}>
-              @
-            </span>
-          ) : null}
-          {unread ? (
-            <span
-              data-im-unread=""
-              data-im-unread-count={unread === "1" ? undefined : unread}
-              className={`rounded-full ${item.muted ? "opacity-40" : ""}`}
-            >
-              {unread}
-            </span>
-          ) : null}
         </span>
       </span>
     </button>

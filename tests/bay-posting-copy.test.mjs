@@ -16,7 +16,9 @@ const REQUIRED = [
   "按约定交付",
   "人工服务",
   "种类",
-  "看别人在卖还是在买",
+  "出售",
+  "求购",
+  "出售还是求购",
   "公开征集",
   "尽快接手",
   "指定某人",
@@ -61,6 +63,9 @@ test("bay-posting 文案 17 语齐全、占位符不丢、非中日韩不含汉�
   assert.equal(BAY_POSTING_MESSAGES.en["人工服务"], "Human service");
   assert.equal(BAY_POSTING_MESSAGES.en["放文件"], "Put files");
   assert.equal(BAY_POSTING_MESSAGES.en["选日期"], "Date");
+  assert.equal(BAY_POSTING_MESSAGES.en["出售"], "For sale");
+  assert.equal(BAY_POSTING_MESSAGES.en["求购"], "Wanted");
+  assert.equal(BAY_POSTING_MESSAGES.en["出售还是求购"], "For sale or Wanted");
   assert.equal(BAY_POSTING_MESSAGES["zh-TW"]["价格条款"], "價格條款");
   assert.equal(BAY_POSTING_MESSAGES["zh-TW"]["放文件"], "放檔案");
   for (const locale of LOCALES) {

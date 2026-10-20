@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useLocale } from "next-intl";
 import { normalizeLocale, type Locale } from "../../../i18n/config";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -19,7 +19,7 @@ import {
   zonedToInstant,
   type ZonedParts,
 } from "./bay-deadline";
-import { BAY_FORM_CHIP_BUTTON_CLASS, BAY_FORM_HELP_CLASS, BAY_FORM_PRIMARY_BUTTON_CLASS } from "./form-ui";
+import { BAY_FORM_CHIP_BUTTON_CLASS, BAY_FORM_HELP_CLASS, BAY_FORM_PRIMARY_BUTTON_CLASS, BAY_FORM_SELECT_CLASS } from "./form-ui";
 
 type Time = { hour: number; minute: number; second: number };
 const END_OF_DAY: Time = { hour: 23, minute: 59, second: 59 };
@@ -85,14 +85,14 @@ function TimeBox(props: {
           props.onChange(next);
         }
       }}
-      className="h-10 w-14 rounded-full border-0 bg-neutral-200/80 text-center text-[14px] tabular-nums text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50"
+      className="h-10 w-14 rounded-md border border-neutral-300 bg-white text-center text-[14px] tabular-nums text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50"
     />
   );
 }
 
 /**
  * 截止时间：点开是一张日历 + 时分秒 + 时区。库里只存一个绝对时刻；
- * 默认按「我设备的时间」填，面板里同时写出设备时间和 UTC，方便核对；别人看到时按他们自己的时区换算。
+ * 默认按「我设备的时间」填，面板里同时写出设备时间和 UTC，方便核对。
  */
 export function BayDeadlineField(props: {
   value: string;
@@ -108,7 +108,28 @@ export function BayDeadlineField(props: {
   }
   const [open, setOpen] = useState(false);
   const [zone, setZone] = useState<string>(DEVICE_ZONE);
+  const boxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => setZone(readStoredZone()), []);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && boxRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   const tz = resolveZone(zone);
   const at = deadlineMs(props.value);
@@ -173,7 +194,7 @@ export function BayDeadlineField(props: {
   const device = deviceTimeZone();
 
   return (
-    <div data-bay-deadline-field="" data-bay-deadline-open={open ? "" : undefined} className={props.disabled ? "opacity-50" : undefined}>
+    <div ref={boxRef} data-bay-deadline-field="" data-bay-deadline-open={open ? "" : undefined} className={`${open ? "relative z-30" : "relative"} ${props.disabled ? "opacity-50" : ""}`}>
       <button
         type="button"
         disabled={props.disabled}
@@ -181,7 +202,7 @@ export function BayDeadlineField(props: {
         data-bay-deadline-trigger=""
         data-bay-field="deadline"
         onClick={() => setOpen((current) => !current)}
-        className="flex h-11 w-full max-w-sm items-center gap-2 rounded-full border-0 bg-neutral-200/80 px-4 text-left text-[13px] tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+        className={`${BAY_FORM_SELECT_CLASS} max-w-sm tabular-nums`}
       >
         <svg className="h-4 w-4 shrink-0 text-neutral-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
           <rect x="4" y="6" width="16" height="14" rx="2" />
@@ -196,7 +217,7 @@ export function BayDeadlineField(props: {
       </button>
 
       {open ? (
-        <fieldset disabled={props.disabled} data-bay-deadline-panel="" className="mt-3 w-full max-w-sm rounded-3xl border border-neutral-200 bg-white p-4">
+        <fieldset disabled={props.disabled} data-bay-deadline-panel="" className="absolute left-0 top-full z-30 mt-1 w-full max-w-sm rounded-md border border-neutral-300 bg-white p-4 shadow-lg">
           <div className="flex items-center justify-between">
             <button type="button" aria-label={tt("上个月")} onClick={() => shiftMonth(-1)} className="flex h-9 w-9 items-center justify-center rounded-full text-neutral-700 hover:bg-neutral-100">
               <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -258,7 +279,7 @@ export function BayDeadlineField(props: {
               data-bay-deadline-zone=""
               value={zone}
               onChange={(event) => changeZone(event.target.value)}
-              className="h-11 w-full rounded-full border-0 bg-neutral-200/80 px-4 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+              className="h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
             >
               <option value={DEVICE_ZONE}>{`${tt("按我设备的时间")} · ${device} (${offsetLabel(at ?? Date.now(), device)})`}</option>
               {zones
@@ -271,12 +292,11 @@ export function BayDeadlineField(props: {
           </label>
 
           {at != null ? (
-            <div className={`mt-4 space-y-1 rounded-2xl bg-neutral-100 px-4 py-3 tabular-nums ${BAY_FORM_HELP_CLASS}`} data-bay-deadline-check="">
+            <div className={`mt-4 space-y-1 tabular-nums ${BAY_FORM_HELP_CLASS}`} data-bay-deadline-check="">
               <p>
                 {tt("你设备的时间")}：{wallClockText(at, device)} {offsetLabel(at, device)}
               </p>
               <p>UTC：{wallClockText(at, "UTC")}</p>
-              <p>{tt("其他人会按他们自己的时区看到同一时刻。")}</p>
             </div>
           ) : null}
 

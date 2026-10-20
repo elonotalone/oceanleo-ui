@@ -15,7 +15,13 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import type { ModelCategory } from "./ModelPicker";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
-import { LibraryToolbar } from "./LibraryLayout";
+import {
+  CollectionFilterRow,
+  CollectionFilterSelect,
+  CollectionPageToolbar,
+  type CollectionView,
+  type CollectionViewOption,
+} from "./collection-chrome";
 import {
   BackButton,
   WORKSPACE_EMBED_SANDBOX,
@@ -49,26 +55,28 @@ function EmptyDirectoryChrome({
   tabsBar,
   children,
   tt,
+  viewOptions = [],
 }: {
   pageTitle: ReactNode;
   tabsBar: ReactNode;
   children: ReactNode;
   tt: (s: string, vars?: Record<string, string | number>) => string;
+  viewOptions?: CollectionViewOption[];
 }) {
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<CollectionView>("grid");
   return (
     <>
-      <LibraryToolbar
+      <CollectionPageToolbar
+        title={pageTitle}
         search={search}
-        setSearch={setSearch}
-        view="grid"
-        setView={() => {}}
-        placeholder={tt("按名称筛选…")}
-        tt={tt}
-        leading={pageTitle}
-        hideView
+        onSearch={setSearch}
+        searchPlaceholder={tt("按名称筛选…")}
+        view={view}
+        onViewChange={setView}
+        viewOptions={viewOptions}
       />
-      <div className="mb-6 mt-3">{tabsBar}</div>
+      <CollectionFilterRow>{tabsBar}</CollectionFilterRow>
       {children}
     </>
   );
@@ -374,7 +382,7 @@ export interface WorkspaceSiteItem {
 // doctrine v9（2026-06-24）：workspace 也加 organization / workflow（与 playground 同
 // 一块编排画布，由消费端 renderBoard 注入，避免 @xyflow/react 进 @oceanleo/ui）。
 // 「skill」面向用户的标签正名为「agent」（内部值仍叫 skill，不破坏技术标识层）。
-type WorkspaceTab = "site" | "app" | "skill" | "organization" | "workflow";
+type WorkspaceTab = "site" | "app" | "skill";
 
 export function WorkspaceDetail({
   siteOrigin,
@@ -382,9 +390,8 @@ export function WorkspaceDetail({
   homeSiteId = "",
   addAgentHref = "/workspace?pile=all",
   sites = [],
-  renderBoard,
+  renderBoard: _renderBoard,
   renderSites,
-  pileSwitch,
   onShowAll,
 }: {
   siteOrigin: Record<string, string>;
@@ -413,17 +420,18 @@ export function WorkspaceDetail({
   renderSites?: (chrome: {
     toolbarLeading?: ReactNode;
     belowToolbar?: ReactNode;
+    viewOptions?: CollectionViewOption[];
   }) => ReactNode;
-  /** 门户工作台「全部 | 我的」开关；嵌在标题旁。 */
+  /** 门户工作台旧「全部 | 我的」开关；不再渲染。 */
   pileSwitch?: ReactNode;
   /** 空的「我的」切到全部堆。门户 WorkspaceDesk 传入；各站不传。 */
   onShowAll?: () => void;
 }) {
+  void _renderBoard;
   const tt = useUI();
   const { apps: workspaceApps, mine, loading, needsLogin, removeApp } = useWorkspaceApps(siteOrigin);
   const [sel, setSel] = useWorkspaceSelection("workspace");
   const [tab, setTab] = useState<WorkspaceTab>("app");
-  const [boardEditing, setBoardEditing] = useState(false);
 
   const mySkills = useMemo(() => mine.filter((a) => (a.site_id || "") === SKILL_SITE_ID), [mine]);
 
@@ -439,23 +447,8 @@ export function WorkspaceDetail({
     [active, siteOrigin],
   );
 
-  // 顶部 tab 条（目录页 + organization/workflow 早返回共用）。「skill」标签正名为「agent」。
-  const TABS: { id: WorkspaceTab; label: string }[] = [
-    { id: "site", label: tt("网站") },
-    { id: "app", label: "app" },
-    { id: "skill", label: "agent" },
-    ...(renderBoard
-      ? ([
-          { id: "organization", label: "organization" },
-          { id: "workflow", label: "workflow" },
-        ] as { id: WorkspaceTab; label: string }[])
-      : []),
-  ];
   const pageTitle = (
-    <div className="flex min-w-0 flex-wrap items-center gap-3">
-      <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
-      {pileSwitch}
-    </div>
+    <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
   );
   const addClassName =
     "text-[13px] font-medium text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:text-sky-600";
@@ -470,22 +463,20 @@ export function WorkspaceDetail({
   );
   const tabsBar = (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="inline-flex rounded-xl bg-neutral-100 p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-lg px-5 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- tab === t.id
- ? "bg-white text-neutral-900 shadow-sm"
- : "text-neutral-500 hover:text-neutral-700"
- }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <CollectionFilterSelect
+        label={tt("分区")}
+        name="section"
+        value={tab}
+        options={[
+          { value: "site", label: tt("网站") },
+          { value: "app", label: "app" },
+          { value: "skill", label: "agent" },
+        ]}
+        onChange={(value) => {
+          if (value === "site" || value === "app" || value === "skill") setTab(value);
+        }}
+        accent={accent}
+      />
       {addControl}
     </div>
   );
@@ -525,36 +516,6 @@ export function WorkspaceDetail({
     );
   }
 
-  // ── organization / workflow 分区：与「网站/app/agent」目录同一套外层版式（不上移）。
-  //   编辑器由消费端 EditorInner 以 `fixed inset-0` 全屏覆盖在上层；board 始终挂在
-  //   同一树位置（不 remount）。
-  if (renderBoard && (tab === "organization" || tab === "workflow")) {
-    // 关键修（2026-07-09）：进入 board **编辑器**（boardEditing）时，编辑器以
-    // absolute inset-0 铺满内容区，此时这段「工作台」标题 + 顶部 tab 条
-    // 若仍渲染就会残留在编辑器上方（操作员截图 2b38a316 的 bug）。boardEditing 之前
-    // 被 set 了却从不读——现在读它：编辑器打开就隐藏标题+tabs，只留全屏编辑器；回到
-    // 目录（boardEditing=false）再显示。
-    return (
-      <div
-        className={
-          boardEditing
-            ? "relative w-full"
-            : APP_PAGE_FRAME_CLASS
-        }
-        style={boardEditing ? { height: "calc(100dvh - 1px)" } : undefined}
-      >
-        {!boardEditing && (
-          <>
-            <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
-            <div className="mb-6">{tabsBar}</div>
-          </>
-        )}
-        {/* doctrine v10：工作台只列「我的」organization/workflow（隐藏预设模板）。 */}
-        {renderBoard({ kind: tab, onEditingChange: setBoardEditing, mineOnly: true })}
-      </div>
-    );
-  }
-
   // ── 目录页：网站 / app / agent 三分区（同 all-sites），选择全在主区 ──
   // app / 网站 卡片优先用主站移植来的彩色几何站点图标 + 品牌色（按 site_id / s.key），
   // 替代 emoji/占位符；无对应站点图标的条目走原图标 + DirectoryCard 内置稳定色回退。
@@ -576,6 +537,7 @@ export function WorkspaceDetail({
   const skillItems: DirectoryItem[] = mySkills.map((a) => ({
     id: a.agent_id, name: a.name, tagline: a.tagline, capabilities: a.capabilities,
     icon: a.icon, accent, site_id: a.site_id, category: a.category, added: true,
+    deletable: true,
   }));
   const siteItems: DirectoryItem[] = sites.map((s) => ({
     id: s.key, name: s.name, tagline: s.tagline,
@@ -692,6 +654,9 @@ export function WorkspaceDetail({
           accent={accent}
           openLabel={tt("打开")}
           onOpen={(it) => setSel(it.id)}
+          onDelete={(it) => {
+            void removeApp(it.id, "agent");
+          }}
         />
       )}
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ReactElement, type ReactNode } from "react";
-import { BAY_FORM_HELP_CLASS } from "./form-ui";
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { BAY_FORM_HELP_CLASS, BAY_FORM_SELECT_CLASS } from "./form-ui";
 
 export type BayChoiceOption<T extends string> = {
   value: T;
@@ -10,21 +10,14 @@ export type BayChoiceOption<T extends string> = {
   disabled?: boolean;
 };
 
-const COLUMNS = {
-  1: "grid gap-3",
-  2: "grid gap-3 sm:grid-cols-2",
-  3: "grid gap-3 sm:grid-cols-2 lg:grid-cols-3",
-} as const;
-
-const TILE = "flex w-full items-start gap-3 rounded-xl border bg-white px-3.5 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-const TILE_ON = "border-neutral-900 ring-1 ring-neutral-900";
-const TILE_OFF = "border-neutral-200 hover:border-neutral-300";
+const TILE =
+  "flex w-full items-start gap-3 border-0 bg-white px-3.5 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+const TILE_ON = "bg-neutral-900 text-white";
+const TILE_OFF = "text-neutral-900 hover:bg-neutral-50";
 
 /**
- * 几选一：每个选项一块白底圆角小块，标题加一行说明。选中的那块是深色边框加勾，
- * 没选的是浅边框加空圈——一眼看出有几个选项、现在选的是哪个。
- * 调用方的文案已经 tt()。`optionProps` 用来挂各页自己的 data- 属性。
- * `collapsible`：一开始全部展开；选定之后只留被选中的那一块，右侧是展开的小箭头，点这一块就重新展开、可以改选。
+ * 几选一。默认同屏列出选项；`collapsible` 时收成一条选择条，点开的清单用绝对定位
+ * 盖住下面的字段——一次只填一项，页面高度不跟着弹开。
  */
 export function BayChoice<T extends string>(props: {
   label?: string;
@@ -36,68 +29,137 @@ export function BayChoice<T extends string>(props: {
   collapsible?: boolean;
   optionProps?: (value: T) => Record<string, string | undefined>;
 }): ReactElement {
-  const [expanded, setExpanded] = useState(true);
-  const columns = props.columns ?? (props.options.length >= 3 ? 3 : 2);
   const hasSelection = props.options.some((option) => option.value === props.value);
+  const [expanded, setExpanded] = useState(() => !(props.collapsible && hasSelection));
+  const boxRef = useRef<HTMLDivElement | null>(null);
   const collapsed = Boolean(props.collapsible) && hasSelection && !expanded;
-  const shown = collapsed ? props.options.filter((option) => option.value === props.value) : props.options;
+  const current = props.options.find((option) => option.value === props.value);
+
+  useEffect(() => {
+    if (collapsed || !props.collapsible) return;
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && boxRef.current?.contains(target)) return;
+      setExpanded(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setExpanded(false);
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [collapsed, props.collapsible]);
+
+  function optionButton(option: BayChoiceOption<T>, selected: boolean, stacked = false): ReactElement {
+    if (stacked) {
+      return (
+        <button
+          key={option.value}
+          type="button"
+          role="option"
+          aria-selected={selected}
+          aria-pressed={selected}
+          data-bay-choice-option={option.value}
+          data-bay-choice-selected={selected ? "" : undefined}
+          disabled={props.disabled || option.disabled}
+          onClick={() => {
+            props.onChange(option.value);
+            setExpanded(false);
+          }}
+          className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] disabled:cursor-not-allowed disabled:opacity-50 ${
+            selected ? "bg-neutral-900 font-medium text-white" : "text-neutral-800 hover:bg-neutral-50"
+          }`}
+          {...props.optionProps?.(option.value)}
+        >
+          <span className="min-w-0 truncate">{option.title}</span>
+          {selected ? (
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4 shrink-0" aria-hidden="true">
+              <path d="m3.5 8.5 3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : null}
+        </button>
+      );
+    }
+    const shape = selected
+      ? "rounded-xl border border-neutral-900"
+      : "rounded-xl border border-neutral-200 hover:border-neutral-300";
+    return (
+      <button
+        key={option.value}
+        type="button"
+        aria-pressed={selected}
+        data-bay-choice-option={option.value}
+        data-bay-choice-selected={selected ? "" : undefined}
+        disabled={props.disabled || option.disabled}
+        onClick={() => props.onChange(option.value)}
+        className={`${TILE} ${shape} ${selected ? TILE_ON : TILE_OFF}`}
+        {...props.optionProps?.(option.value)}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] font-semibold">{option.title}</span>
+          {option.detail ? <span className={`mt-0.5 block ${selected ? "text-white/80" : BAY_FORM_HELP_CLASS}`}>{option.detail}</span> : null}
+        </span>
+        <span
+          aria-hidden="true"
+          className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${
+            selected ? "border-white bg-white text-neutral-900" : "border-neutral-300 bg-white"
+          }`}
+        >
+          {selected ? (
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+              <path d="m3.5 8.5 3 3 6-7" />
+            </svg>
+          ) : null}
+        </span>
+      </button>
+    );
+  }
+
+  if (!props.collapsible) {
+    const cols = props.columns === 3 ? "grid-cols-3" : props.columns === 2 ? "grid-cols-2" : "grid-cols-1";
+    const gap = props.columns && props.columns > 1 ? "gap-3" : "gap-0";
+    return (
+      <div role="group" aria-label={props.label} data-bay-choice="" className={`grid ${cols} ${gap}`}>
+        {props.options.map((option) => optionButton(option, option.value === props.value, false))}
+      </div>
+    );
+  }
+
   return (
-    <div
-      role="group"
-      aria-label={props.label}
-      data-bay-choice=""
-      data-bay-choice-collapsed={collapsed ? "" : undefined}
-      className={collapsed ? COLUMNS[1] : COLUMNS[columns]}
-    >
-      {shown.map((option) => {
-        const selected = option.value === props.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={selected}
-            data-bay-choice-option={option.value}
-            data-bay-choice-selected={selected ? "" : undefined}
-            disabled={props.disabled || option.disabled}
-            aria-expanded={collapsed ? false : undefined}
-            onClick={() => {
-              if (collapsed) {
-                setExpanded(true);
-                return;
-              }
-              props.onChange(option.value);
-              if (props.collapsible) setExpanded(false);
-            }}
-            className={`${TILE} ${selected ? TILE_ON : TILE_OFF}`}
-            {...props.optionProps?.(option.value)}
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold text-neutral-900">{option.title}</span>
-              {option.detail ? <span className={`mt-0.5 block ${BAY_FORM_HELP_CLASS}`}>{option.detail}</span> : null}
-            </span>
-            {collapsed ? (
-              <span aria-hidden="true" data-bay-choice-chevron="" className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center text-neutral-600">
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                  <path d="m4 6 4 4 4-4" />
-                </svg>
-              </span>
-            ) : (
-              <span
-                aria-hidden="true"
-                className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${
-                  selected ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 bg-white"
-                }`}
-              >
-                {selected ? (
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-                    <path d="m3.5 8.5 3 3 6-7" />
-                  </svg>
-                ) : null}
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div ref={boxRef} role="group" aria-label={props.label} data-bay-choice="" data-bay-choice-collapsed={collapsed ? "" : undefined} className={collapsed ? "relative" : "relative z-30"}>
+      <button
+        type="button"
+        disabled={props.disabled}
+        aria-expanded={!collapsed}
+        aria-haspopup="listbox"
+        data-bay-choice-option={collapsed ? current?.value : undefined}
+        data-bay-choice-selected={collapsed && current ? "" : undefined}
+        onClick={() => setExpanded((open) => !open)}
+        className={BAY_FORM_SELECT_CLASS}
+        {...(collapsed && current ? props.optionProps?.(current.value) : {})}
+      >
+        <span className={`min-w-0 truncate ${current ? "text-neutral-900" : "text-neutral-400"}`}>{current?.title || props.label || ""}</span>
+        <span aria-hidden="true" data-bay-choice-chevron="" className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center text-neutral-600 ${collapsed ? "" : "rotate-180"}`}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <path d="m4 6 4 4 4-4" />
+          </svg>
+        </span>
+      </button>
+      {collapsed ? null : (
+        <div
+          role="listbox"
+          data-bay-choice-menu=""
+          className="absolute inset-x-0 top-full z-30 overflow-hidden rounded-md border border-neutral-300 bg-white shadow-lg"
+        >
+          <div className="flex flex-col">{props.options.map((option) => optionButton(option, option.value === props.value, true))}</div>
+        </div>
+      )}
     </div>
   );
 }

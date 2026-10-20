@@ -186,7 +186,7 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
       done: coverUrls.length > 0,
       alwaysOpen: true,
       summary: coverUrls.length ? tt("已填好") : undefined,
-      children: <BayImageGallery urls={coverUrls} onUrls={setCoverUrls} />,
+      children: <BayImageGallery variant="listing" urls={coverUrls} onUrls={setCoverUrls} />,
     },
     {
       id: "title",
@@ -305,10 +305,9 @@ export function DemandEditor({ siteKey, initial, presetCategory, onDone, onCance
     >
       <div className={BAY_FORM_PAGE_CLASS} data-bay-demand-editor={editing ? "edit" : "create"}>
         <LibraryWorkPickerHost />
-        {editing ? null : (
-          <BayPublishKindPair listing="need" siteCategory={presetCategory} subcategory={subcategoryField} />
-        )}
         <BayRevealForm
+          layout="listing"
+          lead={editing ? null : <BayPublishKindPair listing="need" siteCategory={presetCategory} subcategory={subcategoryField} />}
           groups={listingSectionGroups({
             tt,
             intent: "buy",

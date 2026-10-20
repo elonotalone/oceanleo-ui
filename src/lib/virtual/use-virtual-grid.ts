@@ -6,7 +6,7 @@
 // 在 `useVirtualList` 之上加三件事：列数换算、二维键盘导航、行/列 ↔ 条目下标。
 //
 // **本原语不接管布局。** 列宽仍然由消费方那一行 CSS
-// `repeat(auto-fill, minmax(min(12rem, calc((100% - gap) / 2)), 1fr))` 决定，
+// `repeat(auto-fill, minmax(min(12rem, calc((100% - gap) / 2)), 12rem))` 决定，
 // 这里只做两件事：算出「CSS 这一刻排了几列」，以及往网格里塞两个跨列占位块
 // 把没挂载的行的高度顶起来。所以**外观不可能变**——真正排版的还是原来那行 CSS，
 // 算错列数最多让窗口选得不准，不会让卡片长得不一样。
@@ -30,7 +30,7 @@ import {
   type VirtualListResult,
 } from "./use-virtual-list";
 
-/** CSS `repeat(auto-fill, minmax(min(minTrack, (100% - gap) / divisor), 1fr))`。 */
+/** CSS `repeat(auto-fill, minmax(min(minTrack, (100% - gap) / divisor), 12rem))`。 */
 export interface GridColumnRule {
   /** 列间距，像素。 */
   readonly gapPx: number;

@@ -7,8 +7,8 @@
 /** 发帖（服务/素材/作品/课程/套餐/需求）、我的、数据面板正文：白底圆角板。返回和标题不进板。板上不出滚动条；正文不够高时板铺满页里剩下的一截，避免页底露出一条空白。 */
 export const BAY_FORM_PAPER_CLASS = "relative z-10 flex min-h-0 flex-1 flex-col rounded-3xl bg-white p-6";
 
-/** 填写页的一列。页标题行和表单都用它，左边缘才对得齐。 */
-export const BAY_FORM_COLUMN_CLASS = "mx-auto w-full max-w-3xl px-4";
+/** 填写页的一列。左右分栏的商品页用满纸宽。 */
+export const BAY_FORM_COLUMN_CLASS = "mx-auto w-full max-w-6xl px-4";
 
 /** 填写页正文：一列，页内各大块之间 24px。上下空白由外层白板的 p-6 出，这里不再垫一层。 */
 export const BAY_FORM_PAGE_CLASS = `${BAY_FORM_COLUMN_CLASS} flex flex-col gap-6`;
@@ -24,6 +24,10 @@ export const BAY_FORM_HELP_CLASS = "text-[13px] leading-5 text-neutral-600";
 
 /** 两个短字段并排。 */
 export const BAY_FORM_PAIR_CLASS = "grid gap-4 sm:grid-cols-2";
+
+/** 下拉触发条：白底细边，打开时菜单盖住下面的字段。 */
+export const BAY_FORM_SELECT_CLASS =
+  "flex h-11 w-full items-center justify-between gap-2 rounded-md border border-neutral-300 bg-white px-3 text-left text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50";
 
 /** 单行输入：浅灰槽、无描边、两头圆。比 100 深一点，不到实心 200。 */
 export const BAY_FORM_INPUT_CLASS =

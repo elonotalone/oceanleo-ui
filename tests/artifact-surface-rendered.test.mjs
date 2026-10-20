@@ -16,6 +16,7 @@ import {
   artifactProjectionToLibraryItem,
 } from "../src/shell/library-data.ts";
 import { advancedEditorSourceFor } from "../src/shell/advanced-features.ts";
+import { resetLibraryCurrentIdentityForTests } from "../src/shell/library-current-identity.ts";
 import { editorCapabilityFor } from "../src/shell/workbench-routes.ts";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -218,6 +219,18 @@ const workspaceLibraryStubUrl = dataModule(`
             "p",
             { "data-empty-description": "true" },
             props.emptyDescription,
+          )
+        : null,
+      props.entries.length === 0 && props.emptyCta ? props.emptyCta : null,
+      props.hasMore
+        ? createElement(
+            "button",
+            {
+              type: "button",
+              "data-collection-load-more": "",
+              onClick: props.onLoadMore,
+            },
+            "继续加载",
           )
         : null,
     );
@@ -570,13 +583,38 @@ const materialProviderModule = await import(
     "./workbench-material-registry": materialRegistryUrl,
   }),
 );
+const floatingMenuStubUrl = dataModule(`
+  import { createElement } from ${JSON.stringify(reactUrl)};
+  export function FloatingMenu(props) {
+    return props.open ? createElement("div", { role: "menu" }, props.children) : null;
+  }
+  export function FloatingMenuItem(props) {
+    return createElement(
+      "button",
+      { type: "button", role: "menuitem", onClick: props.onSelect },
+      props.label,
+    );
+  }
+`);
+const documentExportStubUrl = dataModule(`
+  export const LIBRARY_DOCUMENT_DOWNLOAD_FORMATS = [
+    { id: "md", label: "Markdown", extension: "md" },
+    { id: "docx", label: "Word", extension: "docx" },
+    { id: "pdf", label: "PDF", extension: "pdf" },
+  ];
+  export function libraryItemOffersDocumentFormats() {
+    return false;
+  }
+`);
 const actionModuleUrl = await compileModule(
   "src/shell/ArtifactActions.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,
+    "../ui/menu/FloatingMenu": floatingMenuStubUrl,
     "./artifact-contract": contractUrl,
     "./artifact-client": actionClientStubUrl,
     "./library-data": libraryDataUrl,
+    "./library-document-export": documentExportStubUrl,
     "./workbench-routes": routesStubUrl,
   },
 );
@@ -618,6 +656,7 @@ const RenderedWorkspaceLibrary = (
   await import(
     await compileModule("src/shell/WorkspaceLibrary.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
+      "./artifact-client": actionClientStubUrl,
       "./library-data": libraryDataUrl,
       "./LibraryLayout": libraryLayoutStubUrl,
       "./ArtifactActions": actionModuleUrl,
@@ -2942,9 +2981,15 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
   });
   try {
     await settle();
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0].pathname, "/v1/library/mine");
-    assert.equal(calls[1].pathname, "/v1/library/favorites");
+    assert.deepEqual(
+      calls.map((url) => [url.pathname, url.searchParams.get("artifactType")]),
+      [
+        ["/v1/library/mine", "document"],
+        ["/v1/library/mine", "pdf"],
+        ["/v1/library/mine", null],
+        ["/v1/library/favorites", null],
+      ],
+    );
     assert.equal(
       mounted.container.querySelectorAll(
         '[data-entry-title="Owned across sites"]',
@@ -3000,10 +3045,11 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
       ),
     );
     libraryMode = "favorites-unavailable";
-    const refresh = [...mounted.container.querySelectorAll("button")].find(
-      (button) => button.textContent.trim() === "刷新",
-    );
-    await click(refresh);
+    await act(async () => {
+      window.dispatchEvent(
+        new window.CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, { detail: {} }),
+      );
+    });
     await settle();
     assert.ok(
       mounted.container.querySelector(
@@ -3019,7 +3065,11 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
       false,
     );
     libraryMode = "owner-mismatch";
-    await click(refresh);
+    await act(async () => {
+      window.dispatchEvent(
+        new window.CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, { detail: {} }),
+      );
+    });
     await settle();
     assert.equal(
       mounted.container.querySelector(
@@ -3031,6 +3081,91 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
       mounted.container.querySelector("[data-empty-description]")
         ?.textContent || "",
       /ownerPrincipalId 不一致/,
+    );
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("rendered My Library pins owned documents above the mixed mine page", async () => {
+  const game = projection({
+    id: "newest-game",
+    title: "Newest game",
+    ownerPrincipalId: "owner-a",
+    artifactType: "game",
+    editable: true,
+  });
+  const documentItem = projection({
+    id: "pinned-document",
+    title: "Pinned document",
+    ownerPrincipalId: "owner-a",
+    artifactType: "document",
+    editable: true,
+  });
+  const pdfItem = projection({
+    id: "pinned-pdf",
+    title: "Pinned PDF",
+    ownerPrincipalId: "owner-a",
+    artifactType: "pdf",
+    editable: true,
+  });
+  documentItem.created_at = "2026-10-01T00:00:00Z";
+  pdfItem.created_at = "2026-10-16T00:00:00Z";
+  const mineCalls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/v1/library/favorites") {
+      return jsonResponse({
+        scope: "favorites",
+        ownerPrincipalId: "owner-a",
+        total: 0,
+        invalidCount: 0,
+        items: [],
+      });
+    }
+    const artifactType = url.searchParams.get("artifactType");
+    mineCalls.push(artifactType);
+    if (artifactType === "document") {
+      return jsonResponse({
+        scope: "mine",
+        ownerPrincipalId: "owner-a",
+        total: 1,
+        invalidCount: 0,
+        items: [documentItem],
+      });
+    }
+    if (artifactType === "pdf") {
+      return jsonResponse({
+        scope: "mine",
+        ownerPrincipalId: "owner-a",
+        total: 1,
+        invalidCount: 0,
+        items: [pdfItem],
+      });
+    }
+    return jsonResponse({
+      scope: "mine",
+      ownerPrincipalId: "owner-a",
+      total: 1,
+      invalidCount: 0,
+      items: [game],
+    });
+  };
+  const mounted = await createMounted(MyLibrary, {});
+  try {
+    await settle();
+    assert.deepEqual(mineCalls, ["document", "pdf", null]);
+    assert.deepEqual(
+      [...mounted.container.querySelectorAll("[data-entry-title]")].map(
+        (node) => node.getAttribute("data-entry-title"),
+      ),
+      ["Pinned PDF", "Pinned document", "Newest game"],
+    );
+    assert.equal(
+      mounted.container
+        .querySelector('[data-entry-title="Pinned PDF"]')
+        ?.getAttribute("data-entry-category"),
+      "文档",
     );
   } finally {
     await mounted.unmount();
@@ -3090,10 +3225,11 @@ test("initial favorites outage preserves healthy mine authority and recovers", a
     );
 
     favoritesUnavailable = false;
-    const refresh = [...mounted.container.querySelectorAll("button")].find(
-      (button) => button.textContent.trim() === "刷新",
-    );
-    await click(refresh);
+    await act(async () => {
+      window.dispatchEvent(
+        new window.CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, { detail: {} }),
+      );
+    });
     await settle();
     assert.ok(
       mounted.container.querySelector(
@@ -3568,36 +3704,35 @@ test("rendered artifact actions keep Edit primary and dispatch Edit/Insert/Repla
     linkUrl: "https://example.com/action-source",
   });
   try {
-    const button = (label) =>
-      [...mounted.container.querySelectorAll("button, a")].find(
-        (entry) => entry.textContent.trim() === label,
-      );
-    assert.equal(button("预览"), undefined);
-    assert.equal(button("下载")?.getAttribute("type"), "button");
-    assert.equal(button("收藏")?.getAttribute("aria-pressed"), "false");
-    assert.equal(button("全屏")?.getAttribute("type"), "button");
-    assert.equal(button("链接")?.getAttribute("href"), "https://example.com/action-source");
-    const labels = [...mounted.container.querySelectorAll("button, a")]
-      .map((entry) => entry.textContent.trim())
+    const actionButton = (name) =>
+      mounted.container.querySelector(`[data-artifact-action="${name}"]`);
+    assert.equal(actionButton("preview"), null);
+    assert.equal(actionButton("download")?.getAttribute("type"), "button");
+    assert.equal(actionButton("favorite")?.getAttribute("aria-pressed"), "false");
+    assert.equal(actionButton("fullscreen")?.getAttribute("type"), "button");
+    assert.equal(actionButton("share")?.getAttribute("type"), "button");
+    assert.equal(mounted.container.querySelector('[title="链接"]'), null);
+    const order = [
+      ...mounted.container.querySelectorAll("[data-artifact-action]"),
+    ]
+      .map((entry) => entry.getAttribute("data-artifact-action"))
       .filter((label) =>
-        ["编辑", "下载", "收藏", "全屏", "链接", "插入", "替换"].includes(label),
+        ["share", "download", "favorite", "edit", "fullscreen", "insert", "replace"].includes(
+          label,
+        ),
       );
-    assert.deepEqual(labels, [
-      "编辑",
-      "下载",
-      "收藏",
-      "全屏",
-      "链接",
-      "插入",
-      "替换",
+    assert.deepEqual(order, [
+      "share",
+      "download",
+      "favorite",
+      "edit",
+      "fullscreen",
+      "insert",
+      "replace",
     ]);
 
-    for (const [label, action] of [
-      ["编辑", "edit"],
-      ["插入", "insert"],
-      ["替换", "replace"],
-    ]) {
-      await click(button(label));
+    for (const action of ["edit", "insert", "replace"]) {
+      await click(actionButton(action));
       await settle();
       assert.equal(dispatched.at(-1)[0], action);
       assert.equal(dispatched.at(-1)[1].preparedAction, action);
@@ -3607,12 +3742,12 @@ test("rendered artifact actions keep Edit primary and dispatch Edit/Insert/Repla
       "insert",
       "replace",
     ]);
-    await click(button("全屏"));
+    await click(actionButton("fullscreen"));
     await settle();
     assert.equal(dispatched.at(-1)[0], "fullscreen");
-    await click(button("收藏"));
+    await click(actionButton("favorite"));
     await settle();
-    assert.equal(button("已收藏")?.getAttribute("aria-pressed"), "true");
+    assert.equal(actionButton("favorite")?.getAttribute("aria-pressed"), "true");
   } finally {
     await mounted.unmount();
   }
@@ -3648,51 +3783,33 @@ test("rendered artifact actions keep Edit primary and dispatch Edit/Insert/Repla
 });
 
 test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
-  const artifact = normalizeArtifactProjection(
-    projection({
-      id: "workspace-edit",
-      title: "Workspace edit",
-      editable: true,
-    }),
-  );
-  assert.ok(artifact);
-  const item = artifactProjectionToLibraryItem(artifact);
+  const editableItem = (id, title) => {
+    const artifact = normalizeArtifactProjection(
+      projection({ id, title, editable: true }),
+    );
+    assert.ok(artifact);
+    return artifactProjectionToLibraryItem(artifact);
+  };
+
   const opened = [];
   globalThis.__artifactPreparedActions = [];
-  const mounted = await createMounted(RenderedWorkspaceLibrary, {
-    entries: [artifactEntry(item)],
-    // `artifactEntry()` 标的是**素材货架**那一面，而货架上的「编辑」按归属 app
-    // 分派（D3 §4，`library-detail-app-actions.tsx:130-142`）：宿主不说自己锚在
-    // 哪个 app 上时，那颗不指名 app 的「编辑」会被藏掉，换成「编辑 · <app名>」
-    // 的深链。本用例要钉的是「卡片点击只开预览、编辑必须走 prepared 交接」，
-    // 所以把宿主锚在这份素材自己的 app 上，让它落在就地编辑那一支。
-    // 跨 app 的那一支在下面单独钉一遍。
+  const sameApp = await createMounted(RenderedWorkspaceLibrary, {
+    entries: [artifactEntry(editableItem("workspace-edit", "Workspace edit"))],
     siteId: "image",
     appId: "poster",
     onOpenItem: (prepared) => opened.push(prepared),
   });
   try {
-    await openWorkspaceCard(mounted.container, "Workspace edit");
+    await openWorkspaceCard(sameApp.container, "Workspace edit");
     assert.equal(opened.length, 0, "card click only opens preview detail");
-
-    // 2026-08-13 改判回来（`40e191e`）。8-07 那一版把同 app 也定成预览深链，操作员
-    // 在 slide 站实地报回来的结果是「点编辑重复跳到同一个页面，什么都没发生」——
-    // `?app=<归属>` 指回的正是用户此刻就站着的页面。所以现在按落点分两档：同 app
-    // 就地打开这个类型的编辑插件，跨 app 才是纯读深链（下面单独钉）。
-    //
-    // 本用例钉的东西一字未动：卡片点击只开预览，编辑必须走 prepared 交接。变的只是
-    // 同 app 这一档该出哪颗按钮。
-    const editButtons = [
-      ...mounted.container.querySelectorAll("button"),
-    ].filter((button) => button.textContent.trim() === "编辑");
-    // 断言只拿数量和字符串，永远不把 DOM 节点交给 assert：这一行原先是
-    // `assert.equal(plainEdit, undefined)`，红的时候 assert 会用 depth:1000 展开那颗
-    // jsdom 按钮，顺着 ownerDocument / parentNode 把整张文档图铺开，几秒钟吃掉数 GiB。
-    // 2026-08-13 整台机器就是这样被一个红用例的**失败信息**拖进 swap 并卡死数小时的。
-    assert.equal(editButtons.length, 1, "同 app 就地编辑只出一颗「编辑」");
-    // 深链是跨 app 才有的东西；同 app 再出一颗就又是原地打转。
     assert.equal(
-      mounted.container.querySelectorAll('[data-material-edit-single="true"]')
+      sameApp.container.querySelectorAll('[data-artifact-action="edit"]')
+        .length,
+      1,
+      "同 app 就地编辑只出一颗「编辑」",
+    );
+    assert.equal(
+      sameApp.container.querySelectorAll('[data-material-edit-single="true"]')
         .length,
       0,
       "同 app 不该再出归属深链",
@@ -3702,52 +3819,54 @@ test("Workspace card preview cannot bypass prepared Edit handoff", async () => {
       [],
       "点开卡片没有把任何人交接进编辑器",
     );
-    assert.equal(opened.length, 0);
 
-    // 那颗「编辑」必须经 prepared 交接才把素材递给宿主，不许把货架上的原始行直接塞过去。
-    await click(editButtons[0]);
+    await click(
+      sameApp.container.querySelector('[data-artifact-action="edit"]'),
+    );
     await settle();
     assert.deepEqual(globalThis.__artifactPreparedActions, ["edit"]);
     assert.equal(opened.length, 1, "编辑走的是 typed Edit 交接");
     assert.equal(opened[0]?.preparedAction, "edit");
   } finally {
-    await mounted.unmount();
+    await sameApp.unmount();
+    resetLibraryCurrentIdentityForTests();
   }
 
-  // 反面：宿主锚在别的 app 上时，那颗不指名 app 的「编辑」不许还在——同一个浮层里
-  // 两个说法不一样的编辑入口，用户点哪个都不知道会去哪。
+  opened.length = 0;
+  globalThis.__artifactPreparedActions = [];
   const crossApp = await createMounted(RenderedWorkspaceLibrary, {
-    entries: [artifactEntry(item)],
+    entries: [
+      artifactEntry(
+        editableItem("workspace-edit-cross", "Workspace edit cross"),
+      ),
+    ],
     siteId: "image",
     appId: "collage",
     onOpenItem: (prepared) => opened.push(prepared),
   });
   try {
-    await openWorkspaceCard(crossApp.container, "Workspace edit");
-    const buttons = [...crossApp.container.querySelectorAll("button")].map(
-      (button) => button.textContent.trim(),
+    await openWorkspaceCard(crossApp.container, "Workspace edit cross");
+    assert.equal(opened.length, 0, "跨 app 卡片点击也只开预览");
+    assert.equal(
+      crossApp.container.querySelectorAll('[data-artifact-action="edit"]')
+        .length,
+      1,
     );
     assert.equal(
-      buttons.includes("编辑"),
-      false,
-      "跨 app 时还留着一颗不指名 app 的「编辑」",
+      crossApp.container.querySelectorAll('[data-material-edit-single="true"]')
+        .length,
+      0,
+      "跨 app 不再出归属深链",
     );
-    // 该出的是那唯一一颗按归属 app 走的深链，而且落在预览态。
-    const singles = [
-      ...crossApp.container.querySelectorAll(
-        '[data-material-edit-single="true"]',
-      ),
-    ];
-    assert.equal(singles.length, 1, "一件素材只出一颗编辑入口");
-    assert.equal(singles[0].getAttribute("data-material-edit-app"), "poster");
-    // app 身份在路径段；query 只剩 tab / item / mode。
-    const href = singles[0].getAttribute("href") || "";
-    assert.ok(href.includes("/workspace/poster"), `落点必须指名归属 app：${href}`);
-    assert.ok(href.includes("mode=preview"), `落点必须是预览态：${href}`);
-    assert.ok(href.includes("tab=materials"), `落点必须是素材库标签页：${href}`);
-    assert.ok(!/[?&]app=/.test(href), `新深链不得再写 ?app=：${href}`);
+    await click(
+      crossApp.container.querySelector('[data-artifact-action="edit"]'),
+    );
+    await settle();
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0]?.preparedAction, "edit");
   } finally {
     await crossApp.unmount();
+    resetLibraryCurrentIdentityForTests();
   }
 });
 

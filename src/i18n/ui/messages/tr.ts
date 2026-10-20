@@ -878,6 +878,8 @@ const tr: Record<string, string> = {
   "保存为我的卡片": "Kartım olarak kaydet",
   "分类（如「工作」）": "Kategori (örn. \\\"İş\\\")",
   "列表视图": "Liste görünümü",
+  "查看选项": "Görünüm seçenekleri",
+  "仅看收藏": "Yalnızca favoriler",
   "创建 prompt": "Prompt oluştur",
   "删除卡片": "Kartı sil",
   "前往 Cost 页 →": "Cost sayfasına git →",

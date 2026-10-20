@@ -306,7 +306,8 @@ test("搜索与横排场景标签会真的缩小卡片结果", async () => {
     assert.doesNotMatch(container.textContent, /营销海报/);
 
     await input(container.querySelector('input[type="search"]'), "");
-    const scene = [...container.querySelectorAll("[data-app-market-scenes] button")]
+    await click(container.querySelector('[data-collection-filter="scene"]'));
+    const scene = [...document.querySelectorAll("[data-collection-filter-menu='scene'] button")]
       .find((button) => button.textContent.includes("营销"));
     await click(scene);
     assert.equal(container.querySelectorAll("[data-market-app]").length, 1);

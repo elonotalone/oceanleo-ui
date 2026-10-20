@@ -230,6 +230,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
       alwaysOpen: true,
       children: (
         <BayImageGallery
+          variant="listing"
           urls={draft.galleryUrls.length ? draft.galleryUrls : draft.coverUrl ? [draft.coverUrl] : []}
           onUrls={(urls) => patch({ coverUrl: urls[0] || "", galleryUrls: urls })}
           disabled={Boolean(busy)}
@@ -294,6 +295,8 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
       summary: priceModel === "free" ? tt("免费") : priceModel === "subscription" ? tt("按月") : tt("一次买断"),
       children: (
         <BayChoice
+          columns={1}
+          collapsible
           options={[
             { value: "free", title: tt("免费") },
             { value: "one_time", title: tt("一次买断") },
@@ -432,20 +435,24 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
       }
     >
     <section data-bay-pane="app-editor" data-bay-reveal className={narrow ? "flex flex-col gap-6 p-4" : BAY_FORM_PAGE_CLASS}>
-      {creating ? (
-        <BayPublishKindPair
-          listing="app"
-          siteCategory={filter.category && filter.category !== BAY_ADVICE_ZONE ? filter.category : undefined}
-          subcategory={
-            <>
-              <BayPublishSubcategoryLabel />
-              {subcategorySelect}
-            </>
-          }
-        />
-      ) : null}
-
-      <BayRevealForm groups={groups} />
+      <BayRevealForm
+        layout="listing"
+        lead={
+          creating ? (
+            <BayPublishKindPair
+              listing="app"
+              siteCategory={filter.category && filter.category !== BAY_ADVICE_ZONE ? filter.category : undefined}
+              subcategory={
+                <>
+                  <BayPublishSubcategoryLabel />
+                  {subcategorySelect}
+                </>
+              }
+            />
+          ) : null
+        }
+        groups={groups}
+      />
 
       {attempted && localProblems.length ? (
         <p className="text-[12.5px] text-rose-600">{localProblems.map((item) => tt(item)).join("、")}</p>

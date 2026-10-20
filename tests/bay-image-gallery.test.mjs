@@ -108,6 +108,7 @@ async function mount(props = {}) {
           urls = value;
         },
         disabled: props.disabled,
+        variant: props.variant,
       }),
     );
   }
@@ -234,6 +235,32 @@ test("方格上的叉可以去掉一张", async () => {
   });
   await flush();
   assert.deepEqual(lists.at(-1), ["https://cdn.example/1.png", "https://cdn.example/3.png"]);
+  await unmount();
+});
+
+test("发帖 listing 空着也有缩略图轨和大主图", async () => {
+  const { host, unmount } = await mount({ urls: [], variant: "listing" });
+  assert.equal(host.querySelector("[data-bay-gallery-editor]").getAttribute("data-bay-gallery-editor"), "listing");
+  assert.ok(host.querySelector("[data-bay-gallery-rail]"));
+  assert.ok(host.querySelector("[data-bay-gallery-main]"));
+  assert.ok(host.querySelector("[data-bay-gallery-add]"));
+  assert.equal(host.querySelector("[data-bay-gallery-main] img"), null);
+  await unmount();
+});
+
+test("发帖 listing 变体：左侧缩略图轨，右侧主图，原生文件框藏着", async () => {
+  const { host, unmount } = await mount({
+    urls: ["https://cdn.example/1.png", "https://cdn.example/2.png"],
+    variant: "listing",
+  });
+  assert.equal(host.querySelector("[data-bay-gallery-editor]").getAttribute("data-bay-gallery-editor"), "listing");
+  assert.ok(host.querySelector("[data-bay-gallery-rail]"));
+  assert.ok(host.querySelector("[data-bay-gallery-main] img"));
+  assert.equal(host.querySelectorAll("[data-bay-gallery-thumb]").length, 2);
+  assert.ok(host.querySelector("[data-bay-gallery-add]"));
+  const input = host.querySelector("input[type=file]");
+  assert.equal(input.hidden, true);
+  assert.match(input.className, /\bhidden\b/);
   await unmount();
 });
 

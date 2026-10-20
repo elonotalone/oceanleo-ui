@@ -35,6 +35,14 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
   const kind = canonicalBayFeedKind(filter.kind) === "request" ? "needs" : "supply";
   const category = filter.category ?? "";
   const q = filter.q ?? "";
+  const listingKind =
+    kind === "needs"
+      ? filter.offer === "asset"
+        ? "digital"
+        : filter.offer === "app" || filter.offer === "lesson"
+          ? filter.offer
+          : "service"
+      : "";
 
   const load = useCallback(
     async (from: string | null) => {
@@ -58,7 +66,11 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
       }
       try {
         // 页面 service / 缺省 → 接口 supply；request → needs。asset 不走人才信息流。
-        const page = await fetchBayFeed({ kind, category, q }, from, { signal: controller?.signal });
+        const page = await fetchBayFeed(
+          { kind, category, q, listing_kind: listingKind || undefined },
+          from,
+          { signal: controller?.signal },
+        );
         if (request !== requestRef.current) return;
         setItems((prev) => (from ? mergeItems(prev, page.items) : page.items));
         setCursor(page.next_cursor);
@@ -81,7 +93,7 @@ export function useBayFeed(filter: BayFeedFilter, signedIn: boolean): BayFeedVie
         }
       }
     },
-    [kind, category, q, skipFeed],
+    [kind, category, q, listingKind, skipFeed],
   );
 
   useEffect(() => {

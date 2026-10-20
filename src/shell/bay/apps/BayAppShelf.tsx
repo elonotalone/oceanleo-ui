@@ -1,8 +1,9 @@
 "use client";
 
 // LeoBay「作品」栏的货架：卡片网格。本文件归 U1 单元；组件名与 props 是合同，不许改。
-import { useEffect, useRef, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { CollectionCardGrid, CollectionInfiniteSentinel } from "../../collection-chrome";
 import { rememberBayAppEntry } from "../appinsights/app-source";
 import { shelfOpenEntry } from "../appinsights/insights-model";
 import { BayAppCard } from "./BayAppCard";
@@ -15,13 +16,12 @@ export interface BayAppShelfProps {
   accent: string;
 }
 
-const GRID = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
 const QUIET_BUTTON =
   "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
 function ShelfSkeleton(): ReactElement {
   const tt = useUI();
   return (
-    <div className={GRID} role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-app-loading>
+    <CollectionCardGrid role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-app-loading>
       {Array.from({ length: 6 }).map((_, index) => (
         <div key={index} aria-hidden="true" className="h-44 animate-pulse rounded-xl border border-stone-200 bg-white p-4">
           <div className="h-4 w-14 rounded bg-stone-100" />
@@ -30,24 +30,13 @@ function ShelfSkeleton(): ReactElement {
           <div className="mt-2 h-3 w-4/5 rounded bg-stone-100" />
         </div>
       ))}
-    </div>
+    </CollectionCardGrid>
   );
 }
 
 export function BayAppShelf({ filter, siteKey }: BayAppShelfProps): ReactElement {
   const tt = useUI();
   const feed = useBayApps(filter, siteKey);
-  const sentinel = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el || !feed.hasMore || typeof IntersectionObserver === "undefined") return undefined;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) feed.loadMore();
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [feed.hasMore, feed.loadMore]);
 
   const firstLoad = feed.loading && feed.items.length === 0;
   const empty = !feed.loading && !feed.error && feed.items.length === 0;
@@ -55,7 +44,7 @@ export function BayAppShelf({ filter, siteKey }: BayAppShelfProps): ReactElement
   return (
     <div data-bay-app-shelf>
       {feed.items.length > 0 ? (
-        <div className={GRID}>
+        <CollectionCardGrid>
           {feed.items.map((app) => (
             <div
               key={app.id}
@@ -65,7 +54,7 @@ export function BayAppShelf({ filter, siteKey }: BayAppShelfProps): ReactElement
               <BayAppCard app={app} />
             </div>
           ))}
-        </div>
+        </CollectionCardGrid>
       ) : null}
       {firstLoad ? <ShelfSkeleton /> : null}
       {feed.error ? (
@@ -77,11 +66,13 @@ export function BayAppShelf({ filter, siteKey }: BayAppShelfProps): ReactElement
         </div>
       ) : null}
       {empty ? <div data-bay-app-empty /> : null}
-      {feed.hasMore ? (
-        <div ref={sentinel} className="mt-3 flex justify-center">
-          <button type="button" onClick={feed.loadMore} data-bay-app-more className={QUIET_BUTTON}>
-            {feed.loading ? tt("正在加载…") : tt("加载更多")}
-          </button>
+      {feed.hasMore || (feed.loading && feed.items.length > 0) ? (
+        <div data-bay-app-more="" className="mt-3">
+          <CollectionInfiniteSentinel
+            active={feed.hasMore && !feed.loading}
+            loading={feed.loading && feed.items.length > 0}
+            onLoadMore={feed.loadMore}
+          />
         </div>
       ) : null}
     </div>

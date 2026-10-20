@@ -526,11 +526,36 @@ const viewStubUrl = dataModule(`
     );
   }
 `);
+const floatingMenuStubUrl = dataModule(`
+  import { createElement } from ${JSON.stringify(reactUrl)};
+  export function FloatingMenu(props) {
+    return props.open ? createElement("div", { role: "menu" }, props.children) : null;
+  }
+  export function FloatingMenuItem(props) {
+    return createElement(
+      "button",
+      { type: "button", role: "menuitem", onClick: props.onSelect },
+      props.label,
+    );
+  }
+`);
+const documentExportStubUrl = dataModule(`
+  export const LIBRARY_DOCUMENT_DOWNLOAD_FORMATS = [
+    { id: "md", label: "Markdown", extension: "md" },
+    { id: "docx", label: "Word", extension: "docx" },
+    { id: "pdf", label: "PDF", extension: "pdf" },
+  ];
+  export function libraryItemOffersDocumentFormats() {
+    return false;
+  }
+`);
 const actionModuleUrl = await compileModule("src/shell/ArtifactActions.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
+  "../ui/menu/FloatingMenu": floatingMenuStubUrl,
   "./artifact-contract": contractStubUrl,
   "./artifact-client": clientStubUrl,
   "./library-data": libraryDataStubUrl,
+  "./library-document-export": documentExportStubUrl,
   "./workbench-routes": routesStubUrl,
 });
 const detailAppActionsUrl = await compileModule(
@@ -645,7 +670,9 @@ async function createMounted(props) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(React.createElement(WorkspaceLibrary, props));
+    root.render(
+      React.createElement(WorkspaceLibrary, props),
+    );
   });
   return {
     container,
@@ -672,7 +699,28 @@ async function settle() {
   });
 }
 
+const ARTIFACT_ACTION_BY_LABEL = {
+  分享: "share",
+  下载: "download",
+  收藏: "favorite",
+  已收藏: "favorite",
+  编辑: "edit",
+  全屏: "fullscreen",
+};
+
 function action(container, label) {
+  const name = ARTIFACT_ACTION_BY_LABEL[label];
+  if (name) {
+    const node = container.querySelector(`[data-artifact-action="${name}"]`);
+    if (!node) return undefined;
+    if (label === "已收藏" && node.getAttribute("aria-pressed") !== "true") {
+      return undefined;
+    }
+    if (label === "收藏" && node.getAttribute("aria-pressed") === "true") {
+      return undefined;
+    }
+    return node;
+  }
   return [...container.querySelectorAll("button, a")].find(
     (node) => node.textContent.trim() === label,
   );
@@ -757,7 +805,7 @@ test("下载在跑的时候收藏仍然按得动：两个入口各自独立", as
     await openDetail(mounted, item);
     await click(action(mounted.container, "下载"));
     assert.equal(
-      action(mounted.container, "处理中…")?.disabled,
+      action(mounted.container, "下载")?.disabled,
       true,
       "下载自己在忙",
     );

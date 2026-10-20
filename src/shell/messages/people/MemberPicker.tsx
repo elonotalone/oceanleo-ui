@@ -5,11 +5,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
-  classifyCandidate,
-  getProfiles,
-  listBlocks,
-  searchDirectory,
-  type CandidateStatus,
+    classifyCandidate,
+    getProfiles,
+    listBlocks,
+    nameQueryHit,
+    searchDirectory,
+    visiblePersonName,
+    type CandidateStatus,
 } from "../../../lib/im/people-api";
 import type { ImProfile } from "../../../lib/im/types";
 import { PersonAvatar } from "../groups/GroupAvatar";
@@ -104,7 +106,7 @@ export function MemberPicker({
     for (const p of directory) byId.set(p.user_id, p);
     for (const p of extras) {
       if (byId.has(p.user_id)) continue;
-      if (needle && !p.display_name.toLocaleLowerCase().includes(needle)) continue;
+      if (needle && !nameQueryHit(p, query)) continue;
       byId.set(p.user_id, p);
     }
     for (const p of byId.values()) known.current.set(p.user_id, p);
@@ -175,7 +177,7 @@ export function MemberPicker({
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <PersonAvatar name={p.display_name} src={p.avatar_url} seed={p.user_id} size={28} />
-                <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-900">{p.display_name}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-900">{visiblePersonName(p)}</span>
                 {label && (
                   <span
                     className={`shrink-0 text-[11px] ${status === "direct" ? "text-neutral-700" : status === "consent" ? "text-neutral-500" : "text-neutral-400"}`}

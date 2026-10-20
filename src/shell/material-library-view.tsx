@@ -680,11 +680,6 @@ export function MaterialLibrary({
       availableTypes={availableTypes}
       onApplyTypes={applyTypes}
       facetControl={facetShelf.control}
-      canLoadMore={Boolean(
-        nextCursor && level !== "primary" && levelFetchEnabled,
-      )}
-      loadingMore={loadingMore}
-      onLoadMore={() => void loadMore()}
       retryable={Boolean(
         effectiveError &&
           effectiveErrorStatus !== 401 &&
@@ -792,6 +787,9 @@ export function MaterialLibrary({
       // 其余那几版的唯一入口。其它卡片这里返回 null，货架照旧安静。
       entryActions={facetShelf.entryActions}
       onOpenItem={openPreparedItem}
+      hasMore={Boolean(nextCursor && level !== "primary" && levelFetchEnabled)}
+      loadingMore={loadingMore}
+      onLoadMore={() => void loadMore()}
       className={className}
       pageTitle={pageTitle}
     />

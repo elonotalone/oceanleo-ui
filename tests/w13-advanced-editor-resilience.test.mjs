@@ -52,6 +52,8 @@ test("rich-doc source failures cannot become saveable blank documents", async ()
     model,
     /item\.source === "artifact"[\s\S]*缺少可验证的 source\/full 内容/,
   );
+  assert.match(model, /looksLikeTextRichDoc/);
+  assert.match(model, /richDocSourceUrl/);
   assert.match(hook, /if \(result\.error\) \{[\s\S]*setLoading\(false\);[\s\S]*return;/);
   assert.doesNotMatch(
     hook,
@@ -319,8 +321,7 @@ test("W13 V7 product gates: PDF page count, audio project key, mute chrome, rich
     toolbar,
     /id:\s*"muted"[\s\S]*icon:\s*"effects"[\s\S]*value:\s*clip\.muted === true/,
   );
-  assert.match(
-    richdoc,
-    /item\.meta\.editor_source_url \|\| ""\)\.trim\(\) \|\| item\.url/,
-  );
+  assert.match(richdoc, /function richDocSourceUrl/);
+  assert.match(richdoc, /item\.meta\.editor_source_url \|\| ""\)\.trim\(\)/);
+  assert.match(richdoc, /item\.artifact\?\.renditions\.source\?\.url/);
 });

@@ -435,7 +435,7 @@ export function SelectionInspectorPanel({
       data-selection-inspector
       role="group"
       aria-label={context.label || "所选对象属性"}
-      className="h-full min-h-0 overflow-y-auto bg-[var(--awb-shell-bg,var(--bg,#f7f7f5))] p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="h-full min-h-0 overflow-y-auto bg-[var(--awb-shell-bg,var(--bg,#faf8f5))] p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       style={{ "--accent": accent } as CSSProperties}
     >
       <div className="space-y-3">

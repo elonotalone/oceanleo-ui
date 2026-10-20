@@ -44,6 +44,8 @@ test("full-page library drops the intro and 22px title; search sits in LibrarySc
   assert.match(mine, /leading=/);
   assert.match(mine, /hideToolbar/);
   assert.match(mine, /APP_PAGE_TITLE_CLASS/);
+  assert.match(mine, /detailOpen \? null/);
+  assert.match(mine, /onDetailOpenChange=\{setDetailOpen\}/);
   assert.match(scope, /header\?:/);
   assert.match(scope, /\{header\}/);
   assert.doesNotMatch(scope, /云端库/);

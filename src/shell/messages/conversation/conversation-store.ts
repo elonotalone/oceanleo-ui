@@ -1,6 +1,6 @@
 // 按会话缓存消息：乐观发送、同 client_id 去重、补缺口、事件增量、撤回/编辑/隐藏。
 // 纯逻辑，不依赖 React；界面用 `useConversation(store)`（ConversationView 里）订阅。
-// 每个会话（以及每个线程）一个 store，关掉再打开还在，打开时 `catchUp()` 补上期间漏掉的。
+// 每个会话一个 store，关掉再打开还在，打开时 `catchUp()` 补上期间漏掉的。
 
 import type { MessagesApi, MessagePage, SendMessageInput } from "../../../lib/im/messages-api";
 import type {
@@ -8,7 +8,6 @@ import type {
   ImCard,
   ImEvent,
   ImMessage,
-  ImReactionSummary,
 } from "../../../lib/im/types";
 
 export const PAGE_SIZE = 50;
@@ -27,7 +26,6 @@ export interface PendingMessage {
 
 export interface ConversationSnapshot {
   conversationId: string;
-  threadRootId: string | null;
   /** 服务端确认过的消息，seq 升序。 */
   messages: ImMessage[];
   /** 还没被服务端确认的（发送中 / 失败），按发出顺序。 */
@@ -43,8 +41,6 @@ export interface ConversationSnapshot {
   streaming: Record<string, string>;
   /** 只给触发人看的 leo 提示，按触发消息 id；只在本地，不存。 */
   notices: Record<string, LeoNoticeCode>;
-  /** 线程里的根消息（线程 store 才有）。 */
-  root: ImMessage | null;
   /** 置顶的消息（主线 store 才有）。 */
   pins: ImMessage[];
   /** 当前已经载入的最大 seq（0 = 没有）。 */
@@ -58,17 +54,12 @@ export interface ConversationStoreOptions {
     | "sendMessage"
     | "editMessage"
     | "recallMessage"
-    | "addReaction"
-    | "removeReaction"
     | "listPins"
     | "pin"
     | "unpin"
-    | "getThread"
   >;
   conversationId: string;
   viewerId: string;
-  /** 线程 store：只装这条根消息下的回帖。 */
-  threadRootId?: string | null;
   now?: () => string;
   newId?: () => string;
 }
@@ -100,40 +91,25 @@ export function mergeMessages(existing: ImMessage[], incoming: ImMessage[]): ImM
   return Array.from(byId.values()).sort((a, b) => a.seq - b.seq || (a.id < b.id ? -1 : 1));
 }
 
-/** 反应摘要里的「我」按 viewer 重新算：事件是广播给所有人的，`mine` 对别人没有意义。 */
-export function withMine(reactions: ImReactionSummary[], viewerId: string): ImReactionSummary[] {
-  return reactions.map((reaction) => ({
-    ...reaction,
-    mine: Array.isArray(reaction.user_ids) && reaction.user_ids.length > 0
-      ? reaction.user_ids.includes(viewerId)
-      : reaction.mine,
-  }));
-}
-
 export class ConversationStore {
   readonly conversationId: string;
-  readonly threadRootId: string | null;
   private readonly api: ConversationStoreOptions["api"];
   private readonly viewerId: string;
   private readonly now: () => string;
   private readonly newId: () => string;
   private listeners = new Set<() => void>();
   private state: ConversationSnapshot;
-  /** 在本地见过的回帖 id（按根消息），用来判断根消息的回帖摘要要不要刷新。 */
-  private refreshingRoots = new Set<string>();
-  /** 见过的最大 seq（含线程回帖的事件），判断跳号用。 */
+  /** 见过的最大 seq，判断跳号用。 */
   private seenSeq = 0;
 
   constructor(options: ConversationStoreOptions) {
     this.conversationId = options.conversationId;
-    this.threadRootId = options.threadRootId ?? null;
     this.api = options.api;
     this.viewerId = options.viewerId;
     this.now = options.now ?? (() => new Date().toISOString());
     this.newId = options.newId ?? defaultNewId;
     this.state = {
       conversationId: this.conversationId,
-      threadRootId: this.threadRootId,
       messages: [],
       pending: [],
       hasMoreBefore: false,
@@ -145,7 +121,6 @@ export class ConversationStore {
       peerLastReadSeq: 0,
       streaming: {},
       notices: {},
-      root: null,
       pins: [],
       lastSeq: 0,
     };
@@ -177,7 +152,7 @@ export class ConversationStore {
   }
 
   private baseParams() {
-    return this.threadRootId ? { thread_root_id: this.threadRootId } : {};
+    return {};
   }
 
   private async fetchPage(params: Parameters<MessagesApi["listMessages"]>[1]): Promise<MessagePage> {
@@ -185,27 +160,12 @@ export class ConversationStore {
   }
 
   private ownMain(items: ImMessage[]): ImMessage[] {
-    if (this.threadRootId) return items.filter((m) => m.thread_root_id === this.threadRootId);
-    // 主线只显示根消息与非回帖；线程回帖不进来。
-    return items.filter((m) => !m.thread_root_id);
+    return items;
   }
 
   /** 打开会话：取最新一页（替换当前窗口）。 */
   async loadLatest(): Promise<void> {
     try {
-      if (this.threadRootId) {
-        const thread = await this.api.getThread(this.threadRootId);
-        const items = this.ownMain(thread.items ?? []);
-        this.set({
-          root: thread.root,
-          messages: mergeMessages([], items),
-          hasMoreBefore: false,
-          hasMoreAfter: false,
-          loaded: true,
-          error: null,
-        });
-        return;
-      }
       const page = await this.fetchPage({ limit: PAGE_SIZE });
       this.set({
         messages: mergeMessages([], this.ownMain(page.items)),
@@ -240,7 +200,7 @@ export class ConversationStore {
   /** 往上滚：加载更早的。 */
   async loadBefore(): Promise<void> {
     const { messages, hasMoreBefore, loadingBefore } = this.state;
-    if (this.threadRootId || !hasMoreBefore || loadingBefore || messages.length === 0) return;
+    if (!hasMoreBefore || loadingBefore || messages.length === 0) return;
     this.set({ loadingBefore: true });
     try {
       const page = await this.fetchPage({ before_seq: messages[0].seq, limit: PAGE_SIZE });
@@ -257,7 +217,7 @@ export class ConversationStore {
   /** 定位后往下滚：加载更晚的。 */
   async loadAfter(): Promise<void> {
     const { messages, hasMoreAfter, loadingAfter } = this.state;
-    if (this.threadRootId || !hasMoreAfter || loadingAfter || messages.length === 0) return;
+    if (!hasMoreAfter || loadingAfter || messages.length === 0) return;
     this.set({ loadingAfter: true });
     try {
       const page = await this.fetchPage({
@@ -280,10 +240,6 @@ export class ConversationStore {
    */
   async catchUp(afterSeq?: number): Promise<void> {
     if (!this.state.loaded) {
-      await this.loadLatest();
-      return;
-    }
-    if (this.threadRootId) {
       await this.loadLatest();
       return;
     }
@@ -313,7 +269,6 @@ export class ConversationStore {
   }
 
   async refreshPins(): Promise<void> {
-    if (this.threadRootId) return;
     try {
       this.set({ pins: await this.api.listPins(this.conversationId) });
     } catch {
@@ -340,7 +295,6 @@ export class ConversationStore {
       attachments: input.attachments ?? [],
       card: (input.card as ImCard | null | undefined) ?? null,
       transcript: null,
-      reactions: [],
       pinned: false,
       edited_at: null,
       recalled_at: null,
@@ -358,7 +312,7 @@ export class ConversationStore {
     const full: SendMessageInput = {
       ...input,
       client_id: input.client_id ?? this.newId(),
-      thread_root_id: input.thread_root_id ?? this.threadRootId ?? null,
+      thread_root_id: null,
     };
     const existing = this.state.pending.find((p) => p.clientId === full.client_id);
     const entry: PendingMessage = {
@@ -444,22 +398,6 @@ export class ConversationStore {
     }
   }
 
-  /** 点表情：已回应过就取消，否则加上；先本地改，失败回滚。 */
-  async toggleReaction(messageId: string, emoji: string): Promise<void> {
-    const message = this.find(messageId);
-    if (!message) return;
-    const before = message.reactions;
-    const mine = before.some((r) => r.emoji === emoji && r.mine);
-    const optimistic = applyReactionLocal(before, emoji, this.viewerId, !mine);
-    this.patchMessage(messageId, { reactions: optimistic });
-    try {
-      if (mine) await this.api.removeReaction(messageId, emoji);
-      else await this.api.addReaction(messageId, emoji);
-    } catch {
-      this.patchMessage(messageId, { reactions: before });
-    }
-  }
-
   async togglePin(messageId: string, pinned: boolean): Promise<void> {
     try {
       if (pinned) await this.api.unpin(this.conversationId, messageId);
@@ -472,26 +410,18 @@ export class ConversationStore {
   }
 
   find(messageId: string): ImMessage | null {
-    return (
-      this.state.messages.find((m) => m.id === messageId) ??
-      (this.state.root?.id === messageId ? this.state.root : null)
-    );
+    return this.state.messages.find((m) => m.id === messageId) ?? null;
   }
 
   private patchMessage(messageId: string, patch: Partial<ImMessage>): void {
     const messages = this.state.messages.map((m) => (m.id === messageId ? { ...m, ...patch } : m));
-    const root = this.state.root?.id === messageId ? { ...this.state.root, ...patch } : this.state.root;
-    this.set({ messages, root });
+    this.set({ messages });
   }
 
   // ── 事件增量 ───────────────────────────────────────────────────────────
   /** 收下一条服务端的消息（发送响应、事件、补缺口共用）：去重、替换乐观条、必要时补缺口。 */
   ingestMessage(message: ImMessage, source: "response" | "event" = "response"): void {
     if (message.conversation_id !== this.conversationId) return;
-    const belongsHere = this.threadRootId
-      ? message.thread_root_id === this.threadRootId || message.id === this.threadRootId
-      : !message.thread_root_id;
-
     // 乐观条：同 client_id、且是我发的 → 去掉
     const clientId = message.client_id;
     const pending =
@@ -499,19 +429,6 @@ export class ConversationStore {
         ? this.state.pending.filter((p) => p.clientId !== clientId)
         : this.state.pending;
     const pendingChanged = pending.length !== this.state.pending.length;
-
-    if (!belongsHere) {
-      if (source === "event") this.noteSeq(message.seq);
-      // 回帖：主线不显示，但根消息的「N 条回复」要刷新。
-      if (!this.threadRootId && message.thread_root_id) this.refreshRoot(message.thread_root_id);
-      if (pendingChanged) this.set({ pending });
-      return;
-    }
-
-    if (this.threadRootId && message.id === this.threadRootId) {
-      this.set({ root: message, ...(pendingChanged ? { pending } : {}) });
-      return;
-    }
 
     const known = this.state.messages.some((m) => m.id === message.id);
     const seen = this.seenSeq;
@@ -523,7 +440,6 @@ export class ConversationStore {
     const gap =
       source === "event" &&
       !known &&
-      !this.threadRootId &&
       this.state.loaded &&
       seen > 0 &&
       message.seq > seen + 1;
@@ -537,21 +453,6 @@ export class ConversationStore {
       ...(pendingChanged ? { pending } : {}),
     });
     if (gap) void this.catchUp(seen);
-  }
-
-  private refreshRoot(rootId: string): void {
-    if (this.refreshingRoots.has(rootId)) return;
-    if (!this.state.messages.some((m) => m.id === rootId)) return;
-    this.refreshingRoots.add(rootId);
-    void this.api
-      .getThread(rootId)
-      .then((thread) => {
-        if (thread?.root) this.patchMessage(rootId, thread.root);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        this.refreshingRoots.delete(rootId);
-      });
   }
 
   /** 实时事件入口（ConversationView 用 useImEvent 把相关事件转进来）。 */
@@ -574,9 +475,6 @@ export class ConversationStore {
         break;
       case "leo.notice":
         this.set({ notices: { ...this.state.notices, [event.trigger_message_id]: event.code } });
-        break;
-      case "reaction.changed":
-        this.patchMessage(event.message_id, { reactions: withMine(event.reactions, this.viewerId) });
         break;
       case "pin.changed":
         this.patchMessage(event.message_id, { pinned: event.pinned });
@@ -613,38 +511,11 @@ export class ConversationStore {
   }
 }
 
-/** 本地先把表情改了（乐观），服务端事件回来会整体覆盖。 */
-export function applyReactionLocal(
-  reactions: ImReactionSummary[],
-  emoji: string,
-  userId: string,
-  add: boolean,
-): ImReactionSummary[] {
-  const next = reactions.map((r) => ({ ...r, user_ids: [...r.user_ids] }));
-  const index = next.findIndex((r) => r.emoji === emoji);
-  if (add) {
-    if (index === -1) return [...next, { emoji, count: 1, mine: true, user_ids: [userId] }];
-    const item = next[index];
-    if (item.mine) return next;
-    item.count += 1;
-    item.mine = true;
-    item.user_ids.push(userId);
-    return next;
-  }
-  if (index === -1) return next;
-  const item = next[index];
-  item.count = Math.max(0, item.count - 1);
-  item.mine = false;
-  item.user_ids = item.user_ids.filter((id) => id !== userId);
-  return item.count === 0 ? next.filter((_, i) => i !== index) : next;
-}
-
 // ── 进程内缓存 ─────────────────────────────────────────────────────────────
 const cache = new Map<string, ConversationStore>();
 
 /** 取（或建）某会话的 store；最近用过的留 12 个。线程 store 不进缓存（短命）。 */
 export function getConversationStore(options: ConversationStoreOptions): ConversationStore {
-  if (options.threadRootId) return new ConversationStore(options);
   const key = `${options.viewerId}:${options.conversationId}`;
   const hit = cache.get(key);
   if (hit) {

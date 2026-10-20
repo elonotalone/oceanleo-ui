@@ -85,6 +85,9 @@ test("calendar leap days and year navigation preserve seconds; timezone switchin
     assert.equal(changes.length, 1, "zone is a viewing/editing preference, not a new instant");
     assert.match(m.host.querySelector("[data-bay-deadline-trigger]").textContent, /2028-02-29 20:34:56 UTC\+8/);
     assert.match(m.host.querySelector("[data-bay-deadline-check]").textContent, /UTC：2028-02-29 12:34:56/);
+    assert.doesNotMatch(m.host.querySelector("[data-bay-deadline-check]").textContent, /Everyone else|其他人会按/);
+    assert.doesNotMatch(m.host.querySelector("[data-bay-deadline-trigger]").className, /bg-neutral-200/);
+    assert.doesNotMatch(m.host.querySelector("[data-bay-deadline-check]").className, /bg-neutral-100/);
     assert.equal(localStorage.getItem("oceanleo.bay.deadline-zone"), "Asia/Shanghai");
     // Explicit selection of the device's zone must still exist in the dropdown.
     const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -130,7 +133,7 @@ test("HH:MM:SS accepts successive digits, clamps ranges, wraps arrows and pads o
   } finally { await m.close(); }
 });
 
-test("choices start expanded, collapse after selection and reopen without firing a change", async () => {
+test("choices start collapsed when selected; open menu overlays and does not fire a change", async () => {
   const changes = [];
   function Choice() {
     const [value, setValue] = useState("a");
@@ -139,12 +142,20 @@ test("choices start expanded, collapse after selection and reopen without firing
   }
   const m = await mount(Choice, {});
   try {
-    assert.equal(m.host.querySelectorAll("button").length, 2);
-    await click(m.host.querySelector('[data-bay-choice-option="b"]'));
-    assert.equal(m.host.querySelectorAll("button").length, 1);
+    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 1);
+    assert.ok(m.host.querySelector("[data-bay-choice-collapsed]"));
     assert.ok(m.host.querySelector("[data-bay-choice-chevron]"));
     await click(m.host.querySelector("button"));
-    assert.equal(m.host.querySelectorAll("button").length, 2);
+    const menu = m.host.querySelector("[data-bay-choice-menu]");
+    assert.ok(menu);
+    assert.match(menu.className, /\babsolute\b/);
+    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 2);
+    assert.deepEqual(changes, []);
+    await click(m.host.querySelector('[data-bay-choice-option="b"]'));
+    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 1);
+    assert.deepEqual(changes, ["b"]);
+    await click(m.host.querySelector("button"));
+    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 2);
     assert.deepEqual(changes, ["b"]);
     await click(m.host.querySelector('[data-bay-choice-option="a"]'));
     assert.deepEqual(changes, ["b", "a"]);

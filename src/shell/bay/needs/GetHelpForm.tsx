@@ -257,7 +257,7 @@ export function GetHelpForm(props: GetHelpFormProps) {
       optional: !showListingPicker,
       alwaysOpen: true,
       summary: coverUrls.length ? tt("已填好") : undefined,
-      children: <BayImageGallery urls={coverUrls} onUrls={setCoverUrls} />,
+      children: <BayImageGallery variant="listing" urls={coverUrls} onUrls={setCoverUrls} />,
     },
     {
       id: "title",
@@ -384,12 +384,13 @@ export function GetHelpForm(props: GetHelpFormProps) {
     >
       <div className={BAY_FORM_PAGE_CLASS} data-bay-get-help>
         <LibraryWorkPickerHost />
-        {showListingPicker ? (
-          <BayPublishKindPair listing="need" siteCategory={presetCategory} subcategory={subcategoryField} />
-        ) : null}
         {!signedIn ? <LoginPrompt message={tt("登录后才能找人帮忙。")} /> : null}
 
-        <BayRevealForm groups={groups} />
+        <BayRevealForm
+          layout="listing"
+          lead={showListingPicker ? <BayPublishKindPair listing="need" siteCategory={presetCategory} subcategory={subcategoryField} /> : null}
+          groups={groups}
+        />
 
         {error ? <PaneNotice tone="error">{error}</PaneNotice> : null}
 

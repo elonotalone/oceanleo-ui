@@ -6,7 +6,7 @@
 // 不引虚拟化库。理由不是「能自己写」，是这三条：
 //
 // 1. 网格要与统一 UI 的卡片尺寸/间距规则**逐字一致**。本包发到 31 个租户站，
-//    货架的列宽规则是 `WorkspaceLibrary` 里那一行 `auto-fill` + `minmax`，
+//    货架的列宽规则是 `WorkspaceLibrary` 里那一行四列等宽，
 //    无头库照样要写同样多的适配代码去复刻它。
 // 2. 本仓的滚动容器**不归网格所有**：`WorkspaceLibrary` 的滚动区里还坐着分类
 //    chips 与分节小标题，`ArtifactLibrary` 的 legacy 分支更是刻意不带

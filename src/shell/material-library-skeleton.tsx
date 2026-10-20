@@ -14,6 +14,7 @@
 import type { ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
+import { CollectionCardGrid } from "./collection-chrome";
 
 const SKELETON_CARDS = 6;
 
@@ -52,7 +53,7 @@ export function MaterialShelfSkeleton({
       ) : null}
       {toolbar}
       <div className="min-h-0 flex-1 overflow-hidden pt-3">
-        <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">
+        <CollectionCardGrid>
           {Array.from({ length: Math.max(1, cards) }, (_, index) => (
             <div
               key={index}
@@ -66,7 +67,7 @@ export function MaterialShelfSkeleton({
               </div>
             </div>
           ))}
-        </div>
+        </CollectionCardGrid>
       </div>
     </div>
   );

@@ -29,7 +29,7 @@ const { document } = window;
 for (const [name, value] of Object.entries({
   window, document, navigator: window.navigator, HTMLElement: window.HTMLElement,
   HTMLInputElement: window.HTMLInputElement, HTMLSelectElement: window.HTMLSelectElement,
-  Element: window.Element, Node: window.Node, Event: window.Event, MouseEvent: window.MouseEvent, InputEvent: window.InputEvent,
+  Element: window.Element, Node: window.Node, Event: window.Event, CustomEvent: window.CustomEvent, MouseEvent: window.MouseEvent, InputEvent: window.InputEvent,
 })) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
@@ -73,6 +73,10 @@ const imHooksStub = dataModule(`
   export function useImEvent(type, handler) { globalThis.__IM.handlers[type] = handler; }
   export function usePresence() { return globalThis.__IM.presence; }
   export function useImUnread() { return null; }
+  export function useImInbox() { return { items: globalThis.__INBOX_ITEMS ?? [], loaded: true, loading: false }; }
+  export function useImConnection() { return "open"; }
+  export function useImResync() {}
+  export function imStore() { return { inbox: () => ({ loaded: true, filter: "all" }), loadInbox: async () => {}, loadMoreInbox: async () => {} }; }
 `);
 
 const nullComponentStub = (name) => dataModule(`export function ${name}() { return null; }`);
@@ -158,6 +162,17 @@ const STUBS = {
 
 const { ConversationInfoPanel } = await import(await compileModule("src/shell/messages/groups/ConversationInfoPanel.tsx", STUBS));
 const { conversationCaps, memberActionsFor } = await import(await compileModule("src/lib/im/groups-api.ts", STUBS));
+const { Inbox } = await import(await compileModule("src/shell/messages/Inbox.tsx", {
+  ...STUBS,
+  "../../ui": uiPrimitivesStub,
+  "../../i18n/ui/useUI": uiHookStub,
+  "./realtime/hooks": imHooksStub,
+  "./realtime/store": dataModule('export function formatBadge(n) { return n > 0 ? String(n) : ""; }'),
+  "../../lib/im/client": imClientStub,
+  "../leochat/PanelToolbar": nullComponentStub("PanelToolbar"),
+  "./search/SearchView": nullComponentStub("SearchView"),
+  "./people/InviteLinkDialog": nullComponentStub("InviteLinkDialog"),
+}));
 
 const profile = (id, name) => ({ user_id: id, display_name: name, avatar_url: null });
 const member = (id, name, role, external = false) => ({ user_id: id, role, external, joined_at: "2026-10-01T00:00:00Z", profile: profile(id, name) });
@@ -230,7 +245,8 @@ test("owner：改资料、加人、邀请链接、升级成 Team、解散；成�
     assert.ok(!a.has("leave"), "owner 退出前必须先转让");
     assert.ok(view.q("[data-leave-hint]"));
     assert.ok(view.q('[data-group-settings="editable"]'));
-    assert.equal(view.qa('[role="switch"]').length, 3, "入群审批、成员能否拉人、leo 三个开关");
+    assert.equal(view.qa('[data-group-settings] [role="switch"]').length, 3, "入群审批、成员能否拉人、leo 三个开关");
+    assert.equal(view.qa('[data-pref] [role="switch"]').length, 4, "免打扰、置顶、保存到通讯录、显示群成员昵称");
     assert.deepEqual([...rowActions(view, "u-mem1")].sort(), ["remove", "set-admin", "transfer"]);
     assert.deepEqual([...rowActions(view, "u-admin")].sort(), ["remove", "revoke-admin", "transfer"]);
     assert.deepEqual([...rowActions(view, "u-owner")], [], "自己那一行没有操作");
@@ -262,7 +278,8 @@ test("member：只读群资料、没有成员操作；成员能拉人时有「�
     try {
       const a = actions(view);
       assert.ok(view.q('[data-group-settings="readonly"]'));
-      assert.equal(view.qa('[role="switch"]').length, 0);
+      assert.equal(view.qa('[data-group-settings] [role="switch"]').length, 0);
+      assert.equal(view.qa('[data-pref] [role="switch"]').length, 4, "普通成员也能改自己的免打扰 / 置顶 / 通讯录 / 昵称显示");
       for (const x of ["save-profile", "invite-link", "dissolve", "upgrade-team", "remove", "set-admin", "transfer"]) assert.ok(!a.has(x), "member 不应有 " + x);
       for (const x of ["add-members", "leave", "report"]) assert.ok(a.has(x), "member 应有 " + x);
     } finally {
@@ -308,7 +325,10 @@ test("Team 群：不能手动拉人或移人，提示跟 Team 同步；私聊：
     const { view } = await open("member", { kind: "dm", title: "", peer: profile("u-peer", "对方"), member_count: 2, members: [] });
     try {
       const a = actions(view);
-      assert.ok(a.has("hide") && a.has("open-peer"));
+      assert.ok(a.has("hide"));
+      assert.ok(!a.has("open-peer") && !a.has("remove-contact"));
+      assert.ok(view.q('[data-action="clear-history"]'), "Details exposes conversation history controls");
+      assert.equal(view.q('[data-action="delete-contact"]'), null, "Details must not delete a contact");
       assert.ok(!a.has("add-members") && !a.has("leave") && !a.has("dissolve"));
       assert.equal(view.q("[data-info-title]").textContent, "对方");
     } finally {
@@ -383,6 +403,32 @@ test("退出与解散：都要二次确认，成功后关闭面板", async () =>
   assert.equal(closed, 2);
 });
 
+test("我的设置：免打扰 / 置顶 / 保存到通讯录 / 显示群成员昵称，以及群备注", async () => {
+  const { view, im } = await open("member", {}, { "PATCH /v1/im/conversations/c1/me": {} });
+  try {
+    assert.ok(view.q('[data-edit-setting="remark"]'));
+    assert.ok(view.q('[data-edit-setting="nickname"]'));
+    assert.equal(view.q('[data-field="remark"]'), null, "备注先显示为文字行");
+    await view.click(view.q('[data-edit-setting="remark"]'));
+    assert.ok(view.q('[data-field="remark"]'));
+    await view.click(view.q('[data-action="save-personal-setting"]'));
+    await view.click(view.q('[data-field="mute"]'));
+    await view.click(view.q('[data-field="pin"]'));
+    await view.click(view.q('[data-field="in-contacts"]'));
+    await view.click(view.q('[data-field="show-nicknames"]'));
+    const patches = im.fetch.calls.filter((c) => c.method === "PATCH" && c.path.endsWith("/me")).map((c) => c.json);
+    assert.deepEqual(patches, [
+      { remark: "" },
+      { muted: true },
+      { pinned: true },
+      { in_contacts: true },
+      { show_member_nicknames: false },
+    ]);
+  } finally {
+    view.cleanup();
+  }
+});
+
 test("换头像：走 W09 的上传，拿到地址后写进群资料；上传失败显示原因，不改群资料", async () => {
   const pick = async (view, file) => {
     const input = view.q('[data-field="avatar-file"]');
@@ -424,4 +470,55 @@ test("换头像：走 W09 的上传，拿到地址后写进群资料；上传失
       view.cleanup();
     }
   }
+});
+
+test("群备注和群昵称点击铅笔后编辑，保存明确提交对应字段", async () => {
+  const { view, im } = await open("member", { remark: "设计团队", nickname: "小海" }, { "PATCH /v1/im/conversations/c1/me": {} });
+  try {
+    assert.equal(view.q('[data-field="nickname"]'), null);
+    await view.click(view.q('[data-edit-setting="nickname"]'));
+    await view.type(view.q('[data-field="nickname"]'), "海洋");
+    await act(async () => view.q('[data-action="save-personal-setting"]').closest("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+    await settle();
+    assert.deepEqual(im.fetch.calls.find((call) => call.method === "PATCH").json, { nickname: "海洋" });
+    assert.equal(view.q('[data-field="nickname"]'), null);
+  } finally { view.cleanup(); }
+});
+
+test("聊天列表右键：置顶、未读、免打扰、隐藏分别调用对应接口；删除需确认并清理自己的历史", async () => {
+  globalThis.__INBOX_ITEMS = [detailFor("member")];
+  const im = { fetch: router({
+    "GET /v1/im/drafts": { items: [] },
+    "PATCH /v1/im/conversations/c1/me": {},
+    "POST /v1/im/conversations/c1/unread": {},
+    "DELETE /v1/im/conversations/c1/history": {},
+  }) };
+  const view = await mount(React.createElement(Inbox, { activeConversationId: null, onOpenConversation() {}, onNew() {} }), im);
+  const context = async () => {
+    await act(async () => view.q('[data-testid="inbox-row"]').dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 30 })));
+    await settle();
+  };
+  try {
+    const opened = [];
+    const previousOpen = window.open;
+    window.open = (...args) => { opened.push(args); return null; };
+    try {
+      await context();
+      await view.click(view.q('[data-inbox-action="window"]'));
+      assert.deepEqual(opened, [["/leochat?im=c1", "_blank", "noopener,noreferrer,popup,width=1000,height=760"]]);
+    } finally { window.open = previousOpen; }
+    for (const action of ["pin", "unread", "mute", "hide"]) {
+      await context();
+      assert.ok(view.q("[data-inbox-context-menu]"));
+      assert.equal(view.qa('[data-inbox-context-menu] [role="separator"]').length, 2, "conversation actions are grouped, with deletion visually separated");
+      await view.click(view.q(`[data-inbox-action="${action}"]`));
+    }
+    assert.deepEqual(im.fetch.calls.filter((call) => call.method === "PATCH").map((call) => call.json), [{ pinned: true }, { muted: true }, { hidden: true }]);
+    assert.ok(im.fetch.calls.some((call) => call.path.endsWith("/unread") && call.method === "POST"));
+    await context();
+    await view.click(view.q('[data-inbox-action="delete"]'));
+    assert.ok(!im.fetch.calls.some((call) => call.method === "DELETE"));
+    await view.click(view.q("[data-confirm-ok]"));
+    assert.ok(im.fetch.calls.some((call) => call.path.endsWith("/history?hide=true") && call.method === "DELETE"));
+  } finally { view.cleanup(); delete globalThis.__INBOX_ITEMS; }
 });

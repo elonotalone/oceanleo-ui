@@ -181,13 +181,38 @@ const routesStubUrl = dataModule(`
         };
   }
 `);
+const floatingMenuStubUrl = dataModule(`
+  import { createElement } from ${JSON.stringify(reactUrl)};
+  export function FloatingMenu(props) {
+    return props.open ? createElement("div", { role: "menu" }, props.children) : null;
+  }
+  export function FloatingMenuItem(props) {
+    return createElement(
+      "button",
+      { type: "button", role: "menuitem", onClick: props.onSelect },
+      props.label,
+    );
+  }
+`);
+const documentExportStubUrl = dataModule(`
+  export const LIBRARY_DOCUMENT_DOWNLOAD_FORMATS = [
+    { id: "md", label: "Markdown", extension: "md" },
+    { id: "docx", label: "Word", extension: "docx" },
+    { id: "pdf", label: "PDF", extension: "pdf" },
+  ];
+  export function libraryItemOffersDocumentFormats() {
+    return false;
+  }
+`);
 const actionModuleUrl = await compileModule(
   "src/shell/ArtifactActions.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,
+    "../ui/menu/FloatingMenu": floatingMenuStubUrl,
     "./artifact-contract": contractStubUrl,
     "./artifact-client": clientStubUrl,
     "./library-data": libraryDataStubUrl,
+    "./library-document-export": documentExportStubUrl,
     "./workbench-routes": routesStubUrl,
   },
 );
@@ -296,6 +321,7 @@ const WorkspaceLibrary = (
   await import(
     await compileModule("src/shell/WorkspaceLibrary.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
+      "./artifact-client": clientStubUrl,
       "./library-data": libraryDataStubUrl,
       "./LibraryLayout": layoutStubUrl,
       "./ArtifactActions": actionModuleUrl,
@@ -404,13 +430,40 @@ async function settle() {
   });
 }
 
+const ARTIFACT_ACTION_BY_LABEL = {
+  分享: "share",
+  下载: "download",
+  收藏: "favorite",
+  已收藏: "favorite",
+  编辑: "edit",
+  全屏: "fullscreen",
+};
+
 function action(container, label) {
+  const name = ARTIFACT_ACTION_BY_LABEL[label];
+  if (name) {
+    const node = container.querySelector(`[data-artifact-action="${name}"]`);
+    if (!node) return undefined;
+    if (label === "已收藏" && node.getAttribute("aria-pressed") !== "true") {
+      return undefined;
+    }
+    if (label === "收藏" && node.getAttribute("aria-pressed") === "true") {
+      return undefined;
+    }
+    return node;
+  }
   return [...container.querySelectorAll("button, a")].find(
     (node) => node.textContent.trim() === label,
   );
 }
 
-const expectedDetailActionOrder = ["编辑", "下载", "收藏", "全屏", "链接"];
+const expectedDetailActionOrder = [
+  "share",
+  "download",
+  "favorite",
+  "edit",
+  "fullscreen",
+];
 
 test("Current App, More, and My Library cards share quiet detail actions and return", async () => {
   for (const shelf of ["Current App", "More", "My Library"]) {
@@ -435,14 +488,13 @@ test("Current App, More, and My Library cards share quiet detail actions and ret
         mounted.container.querySelector(`[data-library-viewer="${item.title}"]`),
       );
 
-      const labels = [...mounted.container.querySelectorAll("button, a")]
-        .map((node) => node.textContent.trim())
+      const labels = [
+        ...mounted.container.querySelectorAll("[data-artifact-action]"),
+      ]
+        .map((node) => node.getAttribute("data-artifact-action"))
         .filter((label) => expectedDetailActionOrder.includes(label));
       assert.deepEqual(labels, expectedDetailActionOrder, shelf);
-      assert.equal(
-        action(mounted.container, "链接")?.getAttribute("href"),
-        item.meta.asset_page_url,
-      );
+      assert.ok(action(mounted.container, "分享"), `${shelf} 必须有分享`);
 
       await click(action(mounted.container, "收藏"));
       await settle();
@@ -586,12 +638,6 @@ function editEntries(container) {
   return [...container.querySelectorAll("[data-material-edit-app]")];
 }
 
-function previewHref(artifactId, appId) {
-  return `/workspace/${appId}?tab=materials&item=${encodeURIComponent(
-    artifactId,
-  )}&mode=preview`;
-}
-
 test("跨 app 素材的浮层只出一颗编辑入口，不是一排", async () => {
   globalThis.__previewHrefCalls = [];
   const item = materialItem("Cross app material", [
@@ -616,62 +662,18 @@ test("跨 app 素材的浮层只出一颗编辑入口，不是一排", async () 
       "avatar-removebg,inpaint",
     );
 
-    // 绑了两个 app，但入口只有一颗。这是操作员点名的那件事（「太杂了」）。
-    const entries = editEntries(mounted.container);
-    assert.equal(entries.length, 1, "一件素材只许有一颗编辑入口");
-    // 当前锚定的 `expand` 不是这份素材的归属，所以落点退到主归属。
+    assert.deepEqual(editEntries(mounted.container), []);
+    const edit = action(mounted.container, "编辑");
+    assert.ok(edit, "一件素材只许有一颗编辑入口");
+    assert.equal(edit.tagName, "BUTTON", "跨 app 也是就地打开类型编辑器");
     assert.equal(
-      entries[0].getAttribute("data-material-edit-app"),
-      "avatar-removebg",
+      mounted.container.querySelectorAll('[data-artifact-action="edit"]').length,
+      1,
     );
-    // 按钮上不再挂 app 名：落哪个 app 已由素材包答完，不需要用户再选一次。
-    assert.equal(entries[0].textContent.trim(), "编辑");
-    // 归属自己出入口时，不再另挂一颗不指名 app 的「编辑」。
-    //
-    // 这一档（宿主锚在 `expand`，素材归属 avatar-removebg/inpaint）是**跨 app**，
-    // `40e191e`（2026-08-13）只改了同 app 那一档，跨 app 一字未动：仍是纯读深链。
-    // 但同一笔提交把按钮上的 app 名去掉了，深链那一颗自己的文案从此就是「编辑」，
-    // 于是旧写法 `assert.equal(action(container, "编辑"), undefined)` 变成了在要求
-    // 「按文案取不到那颗唯一的编辑入口」——它取到的正是入口自己。按父 agent 本波裁定
-    // 改判据（实现是对的、判据钉着「按钮挂 app 名」那个时代的形状）：比数量与标签名。
-    const editLabelled = [
-      ...mounted.container.querySelectorAll("button, a"),
-    ].filter((node) => node.textContent.trim() === "编辑");
-    assert.equal(editLabelled.length, 1, "「编辑」这个文案在浮层里只许出现一次");
-    assert.equal(editLabelled[0].tagName, "A", "跨 app 那一颗是一次「去别处」");
-    assert.equal(
-      editLabelled[0].getAttribute("data-material-edit-single"),
-      "true",
-    );
-    // 就地开插件那颗 <button> 只属于同 app 那一档（见本文件 706 行那条）。
-    assert.equal(
-      [...mounted.container.querySelectorAll("button")].filter(
-        (node) => node.textContent.trim() === "编辑",
-      ).length,
-      0,
-      "跨 app 不许出就地编辑那颗按钮",
-    );
-    // 另外四项照旧齐全。
-    for (const label of ["下载", "收藏", "全屏", "链接"]) {
+    for (const label of ["分享", "下载", "收藏", "全屏"]) {
       assert.ok(action(mounted.container, label), label);
     }
-
-    // 落点 = 那个 app 的工作台 + 它库里这份素材的**预览**。
-    assert.equal(
-      entries[0].getAttribute("href"),
-      previewHref(item.artifactId, "avatar-removebg"),
-    );
-    // href 在 render 里算，重渲染会重复调用；断言看的是**问过哪些 app**。
-    assert.deepEqual(
-      [...new Set(globalThis.__previewHrefCalls.map((call) => call.appId))],
-      ["avatar-removebg"],
-    );
-    assert.ok(
-      globalThis.__previewHrefCalls.every(
-        (call) => call.artifactId === item.artifactId,
-      ),
-    );
-    assert.equal(opened.length, 0, "深链落点是那个 app 的库预览，不是就地开编辑器");
+    assert.equal(opened.length, 0, "点开详情本身不进编辑器");
   } finally {
     await mounted.unmount();
   }
@@ -694,15 +696,14 @@ test("素材在哪个素材包里被点开，那一颗编辑就落哪个包的 a
   });
   try {
     await openDetail(mounted, item);
-    const entries = editEntries(mounted.container);
-    assert.equal(entries.length, 1);
-    // 主归属是 avatar-removebg，但包上下文优先：上下文自洽正是这条路的理由。
-    assert.equal(entries[0].getAttribute("data-material-edit-app"), "inpaint");
-    assert.equal(
-      entries[0].getAttribute("href"),
-      previewHref(item.artifactId, "inpaint"),
-    );
-    assert.equal(opened.length, 0);
+    assert.deepEqual(editEntries(mounted.container), []);
+    const packedEdit = action(mounted.container, "编辑");
+    assert.ok(packedEdit);
+    assert.equal(packedEdit.tagName, "BUTTON");
+    await click(packedEdit);
+    await settle();
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].preparedAction, "edit");
   } finally {
     await mounted.unmount();
   }
@@ -713,19 +714,22 @@ test("包上下文给的 app 不是这份素材的归属时，落点退回主归
   const item = materialItem("Mismatched pack", [
     attribution("avatar-removebg", "人像去背", 0),
   ]);
+  const opened = [];
   const mounted = await createMounted({
     entries: [entryFor(item)],
     siteId: "image",
     packAppIdForEntry: () => "not-an-owner",
+    onOpenItem: (prepared) => opened.push(prepared),
   });
   try {
     await openDetail(mounted, item);
-    const entries = editEntries(mounted.container);
-    assert.equal(entries.length, 1);
-    assert.equal(
-      entries[0].getAttribute("data-material-edit-app"),
-      "avatar-removebg",
-    );
+    assert.deepEqual(editEntries(mounted.container), []);
+    const fallbackEdit = action(mounted.container, "编辑");
+    assert.ok(fallbackEdit);
+    await click(fallbackEdit);
+    await settle();
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].preparedAction, "edit");
   } finally {
     await mounted.unmount();
   }
@@ -766,12 +770,12 @@ test("素材就在当前 app 名下时，编辑就地打开编辑插件，不再
       "同 app 不许再算一次深链地址",
     );
 
-    const edit = action(mounted.container, "编辑");
-    assert.ok(edit, "同 app 且这一类打得开时，编辑必须在");
-    assert.equal(edit.tagName, "BUTTON", "就地动作，不是一次「去别处」");
-    assert.equal(edit.disabled, false);
+    const sameAppEdit = action(mounted.container, "编辑");
+    assert.ok(sameAppEdit, "同 app 且这一类打得开时，编辑必须在");
+    assert.equal(sameAppEdit.tagName, "BUTTON", "就地动作，不是一次「去别处」");
+    assert.equal(sameAppEdit.disabled, false);
 
-    await click(edit);
+    await click(sameAppEdit);
     await settle();
     assert.deepEqual(globalThis.__libraryPreparedActions, ["edit"]);
     assert.equal(opened.length, 1, "点下去要真的把素材交给编辑插件");
@@ -809,7 +813,7 @@ test("同 app 但这一类打不开时，编辑这颗按钮根本不出现", asy
       "按钮都不出现了，就不该再挂一条「为什么不能编辑」的理由",
     );
     // 其余动作一个不少：不能编辑不等于这份素材没用。
-    for (const label of ["下载", "收藏", "链接"]) {
+    for (const label of ["分享", "下载", "收藏"]) {
       assert.ok(action(mounted.container, label), label);
     }
     assert.equal(opened.length, 0);
@@ -881,8 +885,10 @@ test("官方模板目录行先取回 durable 投影，五项动作才都是真�
   try {
     await openDetail(mounted, catalogRow);
     assert.deepEqual(globalThis.__currentArtifactReads, [durable.artifactId]);
-    const labels = [...mounted.container.querySelectorAll("button, a")]
-      .map((node) => node.textContent.trim())
+    const labels = [
+      ...mounted.container.querySelectorAll("[data-artifact-action]"),
+    ]
+      .map((node) => node.getAttribute("data-artifact-action"))
       .filter((label) => expectedDetailActionOrder.includes(label));
     assert.deepEqual(labels, expectedDetailActionOrder);
   } finally {

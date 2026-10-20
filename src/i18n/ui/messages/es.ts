@@ -878,6 +878,8 @@ const es: Record<string, string> = {
   "保存为我的卡片": "Guardar como mi tarjeta",
   "分类（如「工作」）": "Categoría (p. ej. \\\"Trabajo\\\")",
   "列表视图": "Vista de lista",
+  "查看选项": "Opciones de vista",
+  "仅看收藏": "Solo favoritos",
   "创建 prompt": "Crear prompt",
   "删除卡片": "Eliminar tarjeta",
   "前往 Cost 页 →": "Ir a la página Cost →",

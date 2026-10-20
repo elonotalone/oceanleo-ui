@@ -1,4 +1,4 @@
-// 工作台两堆：页顶开关是「全部」「我的」，pile 只有 all|mine，侧栏不再画 playground。
+// 工作台货架：没有 All/Mine 开关，pile 默认 all，?pile=mine 仅看收藏。
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -25,20 +25,36 @@ function withoutComments(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
-test("WorkspaceDesk 开关文案是「全部」「我的」，没有 My workspace", () => {
-  assert.match(desk, /tt\("全部"\)/);
-  assert.match(desk, /tt\("我的"\)/);
+test("WorkspaceDesk 没有 All/Mine 开关，parseWorkspacePile 默认 all", () => {
+  assert.doesNotMatch(desk, /WorkspacePileSwitch/);
+  assert.doesNotMatch(desk, /tt\("全部"\)/);
+  assert.doesNotMatch(desk, /tt\("我的"\)/);
   assert.match(desk, /export type WorkspacePile = "all" \| "mine"/);
-  assert.match(desk, /value === "all" \? "all" : "mine"/);
+  assert.match(desk, /value === "mine" \? "mine" : "all"/);
+  assert.match(desk, /favoritesOnly/);
   assert.doesNotMatch(withoutComments(desk), /My workspace/i);
   assert.doesNotMatch(withoutComments(desk), /tt\("Playground"\)/);
 });
 
-test("WorkspaceDesk 挂 PlaygroundDetail / WorkspaceDetail，并导出", () => {
+test("WorkspaceDesk 只挂 PlaygroundDetail，并导出", () => {
   assert.match(desk, /<PlaygroundDetail/);
-  assert.match(desk, /<WorkspaceDetail/);
-  assert.match(desk, /pile === "all"|resolved === "all"/);
+  assert.doesNotMatch(withoutComments(desk), /<WorkspaceDetail/);
   assert.match(index, /export \{ WorkspaceDesk, parseWorkspacePile \} from "\.\/WorkspaceDesk"/);
+});
+
+test("查看选项有仅看收藏；Playground / Workspace 源码无 organization/workflow 分区按钮", () => {
+  assert.match(playground, /仅看收藏|favoritesOnly/);
+  assert.match(playground, /CollectionFilterSelect/);
+  assert.match(workspace, /CollectionFilterSelect/);
+  assert.match(playground, /name="section"/);
+  assert.match(workspace, /name="section"/);
+  assert.doesNotMatch(withoutComments(playground), /label: "organization"/);
+  assert.doesNotMatch(withoutComments(playground), /label: "workflow"/);
+  assert.doesNotMatch(withoutComments(workspace), /label: "organization"/);
+  assert.doesNotMatch(withoutComments(workspace), /label: "workflow"/);
+  assert.doesNotMatch(withoutComments(playground), /hasBoard/);
+  assert.doesNotMatch(withoutComments(workspace), /id: "organization"/);
+  assert.doesNotMatch(withoutComments(workspace), /id: "workflow"/);
 });
 
 test("两份 detail 页标题是工作台，不再自称 Playground", () => {

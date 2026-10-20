@@ -34,7 +34,9 @@ export function useOfficeArtifactSource(item: LibraryItem) {
     : null;
   const sourceItem = useMemo<LibraryItem>(() => {
     if (!acceptedPurpose || !rendition.url) {
-      return isDurableLibraryItem(item)
+      // Office packages must not fall back to a preview PNG. Markdown / plain
+      // text documents keep their existing url — that IS the editable source.
+      return isDurableLibraryItem(item) && officePackageKindForItem(item)
         ? { ...item, url: undefined }
         : item;
     }

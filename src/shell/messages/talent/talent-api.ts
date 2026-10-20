@@ -238,7 +238,6 @@ export function toImMessage(row: TalentMessageRow, offersById: Record<string, Ta
     attachments,
     card,
     transcript: null,
-    reactions: [],
     pinned: false,
     edited_at: null,
     recalled_at: null,

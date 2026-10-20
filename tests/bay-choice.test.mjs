@@ -119,3 +119,30 @@ test("optionProps 把各页自己的 data- 属性挂到选项上；disabled 的�
   assert.deepEqual(picked, []);
   await unmount();
 });
+
+test("可折叠时选定后只留一条，点开的清单上下紧贴、盖住后面的字段", async () => {
+  const picked = [];
+  const { host, unmount } = await mount({
+    collapsible: true,
+    options: OPTIONS,
+    value: "service",
+    onChange: (value) => picked.push(value),
+  });
+  assert.ok(host.querySelector("[data-bay-choice-collapsed]"));
+  assert.equal(host.querySelectorAll("[data-bay-choice-option]").length, 1);
+  assert.equal(host.querySelector("[data-bay-choice-menu]"), null);
+  await act(async () => {
+    host.querySelector("button").click();
+  });
+  const menu = host.querySelector("[data-bay-choice-menu]");
+  assert.ok(menu);
+  assert.match(menu.className, /\babsolute\b/);
+  assert.match(menu.className, /top-full/);
+  assert.equal(host.querySelectorAll("[data-bay-choice-option]").length, 2);
+  assert.match(host.querySelector("[data-bay-choice]").className, /\bz-30\b/);
+  await act(async () => {
+    host.querySelector('[data-bay-choice-option="consult"]').click();
+  });
+  assert.deepEqual(picked, ["consult"]);
+  await unmount();
+});

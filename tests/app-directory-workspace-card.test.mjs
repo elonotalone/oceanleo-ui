@@ -1,17 +1,12 @@
-// 工作台目录卡的行为契约（大工程 2026-07-27 合同 §0.3 / §4-W2）。
-//
-// 操作员原话：「各个网站的 workspace 页面中的 app 卡片没有更新为这种格式，我觉得也需要
-// 改为这种格式，完完全全一样的格式，只不过与 homepage 不同的地方在于，workspace 页面中
-// 的卡片点开后，直接到对应的 app 页面中，而不是先呈现模板。」
+// 工作台目录卡的行为契约（2026-10-19：与我的库同一套四列等宽卡）。
 //
 // 覆盖：
-//   ① 网格卡走 W1 的 `AppCardShell`（`variant="workspace"`），版式 class 与首页同源；
+//   ① 网格走 `CollectionCardGrid`（四列等宽），卡面是 4:3 封面 + 一行标题；
 //   ② 缩略图取 `capabilityImage` 并**拼成绝对 URL**——废弃的 `thumb` 渲染路径彻底消失；
 //   ③ 点卡片主体 = 直接进该 app 操作台（onOpen），**不开大卡片**（无 TemplateShowcase）；
-//   ④ hover 主按钮 =「打开」，触屏 `@media (hover:none)` 常驻可见，且与点卡同一落点；
-//   ⑤ 列表视图保留，缩略图同样换成 capabilityImage 的 `.thumb.webp`；
-//   ⑥ 自建 / 无图 app 卡不是死卡（emoji tint 占满同一方块，主动作照常在）；
-//   ⑦ 三个文件的数据链：SiteCatalogConsole → ConsoleFunction → DirectoryItem 全程带
+//   ④ 列表视图保留，缩略图同样换成 capabilityImage 的 `.thumb.webp`；
+//   ⑤ 自建 / 无图 app 卡不是死卡（emoji tint 占满同一 4:3 封面）；
+//   ⑥ 三个文件的数据链：SiteCatalogConsole → ConsoleFunction → DirectoryItem 全程带
 //      `capabilityImage`，且源码里再没有 `.thumb` 的读取点。
 //
 // 组件源码经 typescript.transpileModule 编译成 data: 模块后导入，所以本文件可以直接
@@ -42,38 +37,7 @@ const uiStubUrl = dataModule("export function useUI(){ return (zh) => zh; }");
 const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl, "react-dom": reactDomUrl };
 
 const appDirectoryUrl = await compileModule("src/shell/AppDirectory.tsx", OVERRIDES);
-const cardShellUrl = await compileModule("src/shell/app-card-shell.tsx", OVERRIDES);
-
 const { AppDirectory } = await import(appDirectoryUrl);
-const { APP_CARD_GRID_CLASS, APP_CARD_FRAME_CLASS } = await import(cardShellUrl);
-
-// 首页那侧只在「逐字符一致」那条用例里用到，替身与 home-app-cards.test.mjs 一致：两个弹窗
-// 和 supabase 客户端在 data: 模块里解析不了，且与卡片 DOM 无关。
-const homeAppCardsUrl = await compileModule("src/shell/HomeAppCards.tsx", {
-  ...OVERRIDES,
-  "./HomePromptModals": dataModule(
-    "export function AddPromptModal(){ return null; }\nexport function PromptCardModal(){ return null; }\n",
-  ),
-  "../lib/auth/client": dataModule(
-    "export async function isSignedIn(){ return false; }\nexport async function accessToken(){ return \"\"; }\n",
-  ),
-  "./library-data": dataModule(
-    "export function libraryKindForArtifactType(t){ return t === 'single_file_image' ? 'image' : undefined; }",
-  ),
-  // 大卡片的网站类主预览（裁定 A11）会把整站预览那棵树拉进图，上面那个 `library-data`
-  // 最小替身供不上它要的导出。本文件断言的是卡片 DOM，网站类主预览由
-  // `tests/home-showcase-website-preview-w04.test.mjs` 用真件钉住。
-  "./WebsiteArtifactViewer": dataModule(
-    "export function TemplateMaterialPreview(){ return null; }\nexport function WebsiteArtifactViewer(){ return null; }",
-  ),
-  // 同一条边的另一半：真目录源会把 `deck-delivery-family` → `library-data` 那条链拉进来。
-  "./material-library-template-source": dataModule(
-    "export function isWebsiteTemplateMaterial(t){ return t === 'website'; }\n" +
-      "export function templateMaterialIdForArtifact(){ return ''; }\n" +
-      "export async function listTemplateMaterials(){ return { ok: true, data: [] }; }",
-  ),
-});
-const { HomeAppCards } = await import(homeAppCardsUrl);
 
 const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image";
 // 站点 catalog 里的 `capabilityImage` 存的是**纯 key**（合同 §3）。
@@ -105,94 +69,25 @@ function renderDirectory(props = {}) {
   );
 }
 
-/** 从一段 HTML 里取出第一张卡（`data-app-card` 根）的 outerHTML。 */
-async function firstCardHtml(markup) {
-  const fabricRequire = createRequire(require.resolve("fabric/node"));
-  const canvasEntry = fabricRequire.resolve("canvas");
-  const previous = require.cache[canvasEntry];
-  require.cache[canvasEntry] = { id: canvasEntry, filename: canvasEntry, loaded: true, exports: {} };
-  const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
-  if (previous) require.cache[canvasEntry] = previous;
-  else delete require.cache[canvasEntry];
-  const dom = new JSDOM(`<!doctype html><html><body>${markup}</body></html>`);
-  const card = dom.window.document.querySelector("[data-app-card]");
-  const html = card ? card.outerHTML : null;
-  dom.window.close();
-  return html;
-}
-
-test("操作员判据：首页卡与工作台卡 DOM 逐字符一致，只差落点与主按钮文案", async () => {
-  // 操作员原话：「完完全全一样的格式，只不过与 homepage 不同的地方在于，workspace 页面中
-  // 的卡片点开后，直接到对应的 app 页面中，而不是先呈现模板。」
-  //
-  // 这条用例把「一样」和「只差那一处」**同时**钉死：先归一化掉**允许**存在的三处差异
-  // （variant 标记、首页专属的 `data-home-app-card*` 验收钩子、主按钮文案与无障碍名），
-  // 剩下的 HTML 必须逐字符相同。任何一方以后偷偷改一个 class、加一层 div、动一下间距，
-  // 这里立刻变红——这正是操作员抱怨「工作台没跟上首页」的那类漂移。
-  const app = { ...POSTER, preset: { prompt: "生成一张 [活动] 宣传海报。" } };
-
-  const homeCard = await firstCardHtml(
-    renderToStaticMarkup(
-      React.createElement(HomeAppCards, { apps: [app], siteId: "image", accent: "#6366f1", onPick() {} }),
-    ),
-  );
-  const workspaceCard = await firstCardHtml(renderDirectory({ items: [app] }));
-  assert.ok(homeCard && workspaceCard, "两侧都应渲染出卡片");
-
-  const normalize = (html) =>
-    html
-      // 允许的差异 ①：variant 标记本身。
-      .replace(/ data-app-card-variant="[^"]*"/g, "")
-      // 允许的差异 ②：首页保留的既有验收钩子（V1 与 30 站回归在扫，抽壳时逐字保留）。
-      .replace(/ data-home-app-card[a-z-]*="true"/g, "")
-      // 允许的差异 ③：主按钮文案（首页 `prompt` / 工作台 `打开`）与覆盖按钮无障碍名。
-      .replace(/aria-label="[^"]*"/g, 'aria-label="§"')
-      .replace(/(data-app-card-primary[^>]*>)[^<]*/g, "$1§");
-
-  assert.equal(
-    normalize(workspaceCard),
-    normalize(homeCard),
-    "首页卡与工作台卡的 DOM 出现了归一化后仍存在的差异——两页版式已经漂了",
-  );
-
-  // 归一化不能把话说尽：确认被归一化掉的那三处**确实是**预期的那三处，别拿正则把真差异也抹了。
-  assert.match(homeCard, /data-app-card-variant="home"/);
-  assert.match(workspaceCard, /data-app-card-variant="workspace"/);
-  assert.match(homeCard, /data-app-card-primary[^>]*>prompt</);
-  assert.match(workspaceCard, /data-app-card-primary[^>]*>打开</);
-  // 几何/描边/阴影这一串一个字都不许差（它就是「完完全全一样」的物理载体）。
-  assert.ok(homeCard.includes(APP_CARD_FRAME_CLASS));
-  assert.ok(workspaceCard.includes(APP_CARD_FRAME_CLASS));
-});
-
-test("网格卡走 W1 的 AppCardShell（variant=workspace），版式与首页同源", () => {
+test("网格卡走我的库四列等宽，卡面是 4:3 封面加标题", () => {
   const markup = renderDirectory();
 
-  // 卡片确实由共享外壳渲染，且带的是 workspace 变体。
-  assert.match(markup, /data-app-card-variant="workspace"/);
-  assert.equal(markup.match(/data-app-card-variant="workspace"/g).length, 2);
-  // 工作台卡**不得**带首页那组钩子（首页与工作台的验收面各自独立，串了 V1 会假绿）。
+  assert.match(markup, /data-collection-card-grid/);
+  assert.match(markup, /repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(markup, /aspect-\[4\/3\]/);
+  assert.match(markup, /data-collection-card="poster"/);
+  assert.match(markup, /data-collection-card-main/);
+  assert.doesNotMatch(markup, /data-app-card-variant/);
   assert.doesNotMatch(markup, /data-home-app-card/);
-
-  // 几何/hover 不是抄来的字符串，而是共享外壳导出的同一个常量。抄一份就会漂。
-  assert.ok(markup.includes(APP_CARD_FRAME_CLASS));
-  assert.ok(markup.includes(APP_CARD_GRID_CLASS));
-  // 旧版式（16:10 顶部大图卡 + xl 四列）必须彻底消失。
-  assert.doesNotMatch(markup, /aspect-ratio/);
   assert.doesNotMatch(markup, /xl:grid-cols-4/);
-  // 首页那套关键几何逐条在场：96px 见方图块、整卡放大 + z-10、hover 铺满层。
-  assert.match(markup, /aspect-square w-\[96px\]/);
-  assert.match(markup, /hover:scale-105/);
-  assert.match(markup, /hover:z-10/);
-  assert.match(markup, /data-app-card-fill/);
+  assert.doesNotMatch(markup, /lg:grid-cols-3/);
 });
 
 test("缩略图取 capabilityImage 并拼成绝对 URL；废弃的 thumb 一次都不渲染", () => {
   const markup = renderDirectory({ items: [{ ...POSTER, thumb: DEPRECATED_THUMB }] });
 
   const srcs = [...markup.matchAll(/<img[^>]*\bsrc="([^"]*)"/g)].map((m) => m[1]);
-  // 卡面 96px 方块 + hover 铺满层共用同一条 thumb 直链（同一 URL 只发一次请求）。
-  assert.deepEqual(srcs, [CAPABILITY_THUMB, CAPABILITY_THUMB]);
+  assert.deepEqual(srcs, [CAPABILITY_THUMB]);
   for (const src of srcs) {
     // 咬人点①：绝不允许原样 key 落进 src（浏览器会当相对路径请求 → 30 站卡片图全 404）。
     assert.notEqual(src, CAPABILITY_KEY);
@@ -205,7 +100,6 @@ test("缩略图取 capabilityImage 并拼成绝对 URL；废弃的 thumb 一次�
   assert.doesNotMatch(markup, /src="\/?cap-app\//);
 
   // 咬人点④：同一条 item 上同时挂了废弃的 `thumb`，渲染结果里**一次都不许出现**。
-  // 这正是操作员看到的「工作台卡片没跟上首页」的根因，回退即变红。
   assert.ok(!markup.includes(DEPRECATED_THUMB));
   assert.ok(!markup.includes("cover-app"));
 
@@ -215,49 +109,33 @@ test("缩略图取 capabilityImage 并拼成绝对 URL；废弃的 thumb 一次�
   assert.doesNotMatch(legacy, /src="[^"]*assets\/image\/https/);
 });
 
-test("hover 主按钮常驻可见；无图 app 不是死卡", () => {
+test("整卡可点；无图 app 不是死卡", () => {
   const markup = renderDirectory();
+  assert.match(markup, /aria-label="打开 海报生成"/);
+  assert.match(renderDirectory({ openLabel: "开聊" }), /aria-label="开聊 海报生成"/);
 
-  // 主按钮条在场，且有一条非空文案（具体用哪条词条由下一个用例按不变量校验）。
-  assert.match(markup, /data-app-card-actions/);
-  assert.match(markup, /data-app-card-primary[^>]*>[^<]+</);
-  // 触屏没有 hover：按钮条必须常驻，且去掉压暗渐变；文字块让出一条别被压住。
-  assert.ok(markup.includes("[@media(hover:none)]:translate-y-0"));
-  assert.ok(markup.includes("[@media(hover:none)]:bg-none"));
-  assert.ok(markup.includes("[@media(hover:none)]:pb-8"));
-  // 调用方仍可覆盖文案（SiteSkillDirectory 传「开聊」）。
-  assert.match(renderDirectory({ openLabel: "开聊" }), /data-app-card-primary[^>]*>开聊</);
-
-  // 无功能图的 app：emoji 占满同一个 96px 方块（不留白），主动作按钮照常在 → 不是死卡。
   const noImage = renderDirectory({ items: [AMBIENT] });
   assert.doesNotMatch(noImage, /<img/);
-  assert.match(noImage, /aspect-square w-\[96px\]/);
+  assert.match(noImage, /aspect-\[4\/3\]/);
   assert.match(noImage, /🎵/);
-  assert.match(noImage, /data-app-card-main/);
-  assert.match(noImage, /data-app-card-primary/);
+  assert.match(noImage, /data-collection-card-main/);
+  assert.match(noImage, /aria-label="打开 氛围音乐"/);
 });
 
-test("消费 W1 闭合的三条外壳能力：虚线入口卡 / 落点可选 / app 类型放宽", async () => {
-  const { APP_CARD_DASHED_CLASS } = await import(cardShellUrl);
-
-  // W1-1：「＋ 新建」首卡恢复虚线描边。它走 leadingCards，且**不受分类筛选影响**。
+test("虚线入口卡 / 落点可选 / 不再为 scenes 造空数组", async () => {
   const withNew = renderDirectory({
     leadingCards: [{ id: "new", name: "新建 agent", tagline: "创建一个属于你自己的 agent", icon: "＋" }],
   });
-  assert.ok(withNew.includes(APP_CARD_DASHED_CLASS), "入口卡应带虚线描边");
-  // 只有入口卡是虚线，普通内容卡不受影响（同一张网格里不能一半虚线）。
-  assert.equal(withNew.split(APP_CARD_DASHED_CLASS).length - 1, 1);
-  // 入口卡不借用别人的功能图，且仍是活卡（有主动作）。
+  assert.match(withNew, /border-dashed/);
+  assert.equal(withNew.split("border-dashed").length - 1, 1);
   assert.match(withNew, /＋/);
-  assert.equal(renderDirectory().includes(APP_CARD_DASHED_CLASS), false);
+  assert.doesNotMatch(renderDirectory(), /border-dashed/);
 
-  // W1-2：没有 `onOpen` 时不渲染那枚点了没反应的覆盖按钮，但卡片本身照常渲染。
   const noOpen = renderDirectory({ onOpen: undefined });
-  assert.match(noOpen, /data-app-card-variant="workspace"/);
-  assert.doesNotMatch(noOpen, /data-app-card-main/);
-  assert.doesNotMatch(noOpen, /data-app-card-primary/);
+  assert.match(noOpen, /data-collection-card="poster"/);
+  assert.match(noOpen, /disabled=""/);
+  assert.doesNotMatch(noOpen, /aria-label="打开 /);
 
-  // W1-3：`AppCardApp` 放宽后，调用侧不再需要为 `scenes` 造空数组。
   const source = await readFile(resolve("src/shell/AppDirectory.tsx"), "utf8");
   assert.doesNotMatch(source, /scenes: item\.scenes \?\? \[\]/);
 });
@@ -273,28 +151,19 @@ async function dictionary(locale) {
   );
 }
 
-test("工作台主按钮的文案词条：17 语齐备，且不是被占用的一整句话", async () => {
-  // 这条钉的是**不变量**，不是某个具体词。背景：合同 §0.3 要的「打开」一度被
-  // `Open openrouter.ai/keys and click "Create Key".` 占用（父任务裁定 §3.5b A-1，修词典归
-  // W3），期间本文件用「使用」兜底；W3 修好后切了回去，本用例全程不需要改。
-  // 谁要是把主按钮接到一条没进词典、或已被长句占用的 key 上，它立刻变红。
+test("默认打开词条：17 语齐备，且不是被占用的一整句话", async () => {
   const markup = renderDirectory();
-  const label = markup.match(/data-app-card-primary[^>]*>([^<]+)</)?.[1];
-  assert.ok(label, "主按钮应渲染出文案");
+  assert.match(markup, /aria-label="打开 海报生成"/);
+  const label = "打开";
 
   const broken = [];
   for (const locale of LOCALES) {
     const value = (await dictionary(locale))[label];
     if (value === undefined) broken.push(`${locale}: 缺词条`);
-    // 主按钮是一颗 12px 的小胶囊，任何译文长成一句话都说明这条 key 被别的文案占用了。
     else if (value.length > 24) broken.push(`${locale}: 译文疑似被占用 → ${value.slice(0, 60)}`);
   }
-  assert.deepEqual(broken, [], `主按钮文案「${label}」在这些语种上不可用：\n${broken.join("\n")}`);
-  // W3 已修好词典，主按钮回到合同 §0.3 原定的「打开」。
-  assert.equal(label, "打开");
+  assert.deepEqual(broken, [], `打开文案「${label}」在这些语种上不可用：\n${broken.join("\n")}`);
 
-  // 同一类事故的第二处：分类器 tab「按行业」也曾被一整句 Console 说明占用，而它同样由本
-  // 文件渲染。一并钉住，避免只盯着主按钮、让邻座的 tab 悄悄退化。
   const industry = await dictionary("en");
   assert.equal(industry["按行业"], "By industry");
 });
@@ -420,13 +289,13 @@ test("点卡片主体 = 直接进该 app 操作台，不弹大卡片", async () 
       ),
     );
 
-    const cards = [...container.querySelectorAll("[data-app-card]")];
+    const cards = [...container.querySelectorAll("[data-collection-card]")];
     assert.equal(cards.length, 2);
     const click = (el) =>
       act(async () => el.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
 
-    // ① 点卡片主体（那枚覆盖式 <button>）= 直接进该 app 操作台。
-    await click(cards[0].querySelector("[data-app-card-main]"));
+    // ① 点卡片主体 = 直接进该 app 操作台。
+    await click(cards[0].querySelector("[data-collection-card-main]"));
     assert.deepEqual(opened, ["poster"]);
     // 且**没有**打开大卡片：工作台这条链上根本不存在 TemplateShowcase 浮层。
     // 查整份 document 而不是 container：大卡片 mount 后会 portal 到 `document.body`
@@ -434,14 +303,13 @@ test("点卡片主体 = 直接进该 app 操作台，不弹大卡片", async () 
     assert.equal(window.document.querySelector("[data-template-showcase]"), null);
     assert.equal(window.document.querySelector("[data-template-thumb]"), null);
 
-    // ② hover 主按钮「打开」= 同一个落点（不是另开一条路）。
-    await click(cards[1].querySelector("[data-app-card-primary]"));
+    await click(cards[1].querySelector("[data-collection-card-main]"));
     assert.deepEqual(opened, ["poster", "ambient"]);
     assert.equal(window.document.querySelector("[data-template-showcase]"), null);
 
-    // ③ 「加入工作台」是卡上的独立动作，**不得**顺带触发进入操作台。
+    // ② 「加入工作台」是卡上的独立动作，**不得**顺带触发进入操作台。
     const addBtn = [...cards[0].querySelectorAll("button")].find((b) =>
-      b.textContent.includes("加入工作台"),
+      (b.getAttribute("aria-label") || "").includes("加入工作台"),
     );
     assert.ok(addBtn, "「＋ 加入工作台」按钮应仍在卡上");
     await click(addBtn);

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
-import type { ImConversationDetail, ImProfile } from "../../../lib/im/types";
+import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { MessageItem, type MessageItemHandlers } from "./MessageItem";
 import { dmReadState } from "./ReadReceipt";
 import { useImEvent } from "../realtime/hooks";
@@ -46,12 +46,14 @@ export interface MessageListProps {
   isAdmin: boolean;
   unreadAfterSeq: number | null;
   highlightSeq?: number | null;
-  inThread?: boolean;
   handlers: MessageItemHandlers;
   /** 滚到底（看到最新一条）时调用，参数是当时最新的 seq。 */
   onReachBottom?: (seq: number) => void;
   /** 滚到某条 id 的请求（引用跳转、置顶跳转）。 */
   scrollToMessageId?: { id: string; nonce: number } | null;
+  selectionMode?: boolean;
+  selectedMessageIds?: ReadonlySet<string>;
+  onToggleSelected?: (message: ImMessage) => void;
 }
 
 export function MessageList(props: MessageListProps) {
@@ -64,10 +66,12 @@ export function MessageList(props: MessageListProps) {
     isAdmin,
     unreadAfterSeq,
     highlightSeq,
-    inThread = false,
     handlers,
     onReachBottom,
     scrollToMessageId,
+    selectionMode = false,
+    selectedMessageIds = new Set<string>(),
+    onToggleSelected,
   } = props;
   const tt = useUI();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -203,7 +207,7 @@ export function MessageList(props: MessageListProps) {
         {snapshot.loadingBefore ? (
           <div className="py-2 text-center text-[12px] text-neutral-400">{tt("正在加载更早的消息…")}</div>
         ) : null}
-        {!snapshot.hasMoreBefore && snapshot.loaded && snapshot.messages.length > 0 && !inThread ? (
+        {!snapshot.hasMoreBefore && snapshot.loaded && snapshot.messages.length > 0 ? (
           <div className="py-3 text-center text-[12px] text-neutral-300">{tt("这是会话的开头")}</div>
         ) : null}
         {snapshot.loaded && snapshot.messages.length === 0 && snapshot.pending.length === 0 ? (
@@ -231,12 +235,14 @@ export function MessageList(props: MessageListProps) {
               profiles={profiles}
               conversation={conversation}
               isAdmin={isAdmin}
-              inThread={inThread}
               streamingText={snapshot.streaming[message.id]}
               notice={snapshot.notices[message.id]}
               dmRead={isDm && !pending ? dmReadState(message, lastOwnSeq, snapshot.peerLastReadSeq) : null}
               highlighted={flashSeq !== null && message.seq === flashSeq}
               handlers={handlers}
+              selectionMode={selectionMode}
+              selected={selectedMessageIds.has(message.id)}
+              onToggleSelected={onToggleSelected}
             />
           );
         })}
@@ -267,7 +273,6 @@ export function useStoreEvents(store: ConversationStore): void {
   useImEvent("message.updated", (event) => store.applyEvent(event));
   useImEvent("leo.delta", (event) => store.applyEvent(event));
   useImEvent("leo.notice", (event) => store.applyEvent(event));
-  useImEvent("reaction.changed", (event) => store.applyEvent(event));
   useImEvent("pin.changed", (event) => store.applyEvent(event));
   useImEvent("read.updated", (event) => store.applyEvent(event));
 }

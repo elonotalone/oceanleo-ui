@@ -708,6 +708,7 @@ export function MediaStep({
     );
     return (
       <BayImageGallery
+        variant="listing"
         urls={urls}
         onUrls={(next) => {
           if (onUrls) onUrls(next);

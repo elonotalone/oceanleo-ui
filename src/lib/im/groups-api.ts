@@ -210,13 +210,33 @@ export async function decideJoinRequest(id: string, requestId: string, action: "
 
 export async function patchMySettings(
   id: string,
-  patch: Partial<{ notify_level: ImNotifyLevel; muted_until: string | null; hidden: boolean }>,
+  patch: Partial<{
+    notify_level: ImNotifyLevel;
+    muted_until: string | null;
+    hidden: boolean;
+    muted: boolean;
+    remark: string;
+    nickname: string;
+    pinned: boolean;
+    in_contacts: boolean;
+    show_member_nicknames: boolean;
+  }>,
 ): Promise<void> {
   await imFetch(`/v1/im/conversations/${encodeURIComponent(id)}/me`, { method: "PATCH", json: patch });
 }
 
 export async function dissolveConversation(id: string): Promise<void> {
   await imFetch(`/v1/im/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function markConversationUnread(id: string): Promise<void> {
+  await imFetch(`/v1/im/conversations/${encodeURIComponent(id)}/unread`, { method: "POST" });
+}
+
+/** Clears only this member's history; hide also removes the row until new activity. */
+export async function clearConversationHistory(id: string, hide = false): Promise<void> {
+  await imFetch(`/v1/im/conversations/${encodeURIComponent(id)}/history${hide ? "?hide=true" : ""}`, { method: "DELETE" });
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("leo:im-history-cleared", { detail: { conversationId: id } }));
 }
 
 export async function upgradeToTeam(id: string, teamName: string): Promise<{ org_id: string }> {

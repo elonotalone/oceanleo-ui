@@ -41,6 +41,8 @@ export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = 
  * 老值 `supply`/`all`/`consult` → service，`demand`/`help` → request，`material` → asset。
  */
 export const BAY_KIND_PARAM = "kind";
+/** 求购栏的种类。只在 `kind=request` 且不是服务时写入地址。 */
+export const BAY_OFFER_PARAM = "offer";
 export const BAY_FEED_KINDS = ["service", "asset", "app", "lesson", "request"] as const;
 export type BayFeedKind = (typeof BAY_FEED_KINDS)[number];
 export const DEFAULT_BAY_FEED_KIND: BayFeedKind = "service";
@@ -372,7 +374,12 @@ export function sameBayTarget(a: BayTarget, b: BayTarget): boolean {
   if (a.kind === "feed" && b.kind === "feed") {
     const fa = a.filter ?? {};
     const fb = b.filter ?? {};
-    return (fa.kind ?? DEFAULT_BAY_FEED_KIND) === (fb.kind ?? DEFAULT_BAY_FEED_KIND) && (fa.category ?? "") === (fb.category ?? "") && (fa.q ?? "") === (fb.q ?? "");
+    return (
+      (fa.kind ?? DEFAULT_BAY_FEED_KIND) === (fb.kind ?? DEFAULT_BAY_FEED_KIND) &&
+      (fa.category ?? "") === (fb.category ?? "") &&
+      (fa.q ?? "") === (fb.q ?? "") &&
+      (fa.offer ?? "service") === (fb.offer ?? "service")
+    );
   }
   return formatBayParam(a) === formatBayParam(b);
 }

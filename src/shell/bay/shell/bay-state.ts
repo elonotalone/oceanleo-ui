@@ -14,7 +14,7 @@ import {
 import { isLeoDevPreviewHost } from "../../../lib/auth/config";
 import { AUTH_STATE_EVENT, accessToken, cachedAccessToken } from "../../../lib/auth/client";
 import { hostState } from "../../messages/host-state";
-import { BAY_ADVICE_ZONE, BAY_KIND_PARAM, DEFAULT_BAY_FEED_KIND, normalizeBayFeedKind, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget, type BayFeedKind } from "./bay-links";
+import { BAY_ADVICE_ZONE, BAY_KIND_PARAM, BAY_OFFER_PARAM, DEFAULT_BAY_FEED_KIND, normalizeBayFeedKind, bayHrefWith, buildBaySearch, isBayCategorySlug, isBaySiteKey, parseBayDeepLink, sameBayTarget, type BayFeedKind } from "./bay-links";
 
 export type BayLayout = "docked" | "full" | "mobile" | "page";
 
@@ -25,6 +25,8 @@ export type BayMineTab = "published" | "sold" | "bought" | "favorites" | "page" 
 export const BAY_APP_MANAGE_TABS = ["feedback", "login", "pricing", "releases", "errors", "sources", "endpoint"] as const;
 export type BayAppManageTab = (typeof BAY_APP_MANAGE_TABS)[number];
 
+export type BayOfferKind = Exclude<BayFeedKind, "request">;
+
 export type BayFeedFilter = {
   /**
    * `service`（默认）= 服务（含答疑）；`asset` = 素材库（不走人才信息流）；
@@ -33,6 +35,8 @@ export type BayFeedFilter = {
   kind?: BayFeedKind;
   category?: string;
   q?: string;
+  /** 求购栏的种类。出售栏用 `kind`。 */
+  offer?: BayOfferKind;
 };
 
 export type BayTarget =
@@ -200,6 +204,10 @@ function normalizeFilter(filter: BayFeedFilter | undefined): BayFeedFilter {
   if ((out.kind === "app" || out.kind === "lesson") && out.category === BAY_ADVICE_ZONE) delete out.category;
   const q = typeof filter.q === "string" ? filter.q.trim().slice(0, 60) : "";
   if (q) out.q = q;
+  if (out.kind === "request") {
+    const offer = filter.offer;
+    if (offer === "service" || offer === "asset" || offer === "app" || offer === "lesson") out.offer = offer;
+  }
   return out;
 }
 
@@ -263,8 +271,7 @@ export function setBayNavigator(navigate: ((href: string) => void) | null): void
 /** 当前目标与筛选对应的 `/bay` 地址（站内相对地址）。 */
 export function bayPageHrefNow(): string {
   const params = new URLSearchParams(buildBaySearch("", view.canGoBack ? view.current : null));
-  const kind = store.filter.kind;
-  if (kind && kind !== DEFAULT_BAY_FEED_KIND) params.set(BAY_KIND_PARAM, kind);
+  writeFilterParams(params, store.filter);
   const text = params.toString().replace(/%3A/gi, ":");
   return text ? `/bay?${text}` : "/bay";
 }
@@ -432,16 +439,23 @@ export function setBayFilter(filter: BayFeedFilter): void {
   const next = normalizeFilter(filter);
   if (sameBayTarget({ kind: "feed", filter: next }, { kind: "feed", filter: store.filter })) return;
   commit({ filter: next });
-  if (onBayPage()) writePageKind(next.kind);
+  if (onBayPage()) writePageFilter(next);
 }
 
-/** 把当前种类写进 `/bay` 页的地址（`?kind=asset` / `?kind=app` / `?kind=request`），刷新或把链接发给别人时停在同一栏。 */
-function writePageKind(kind: BayFeedFilter["kind"]): void {
+function writeFilterParams(params: URLSearchParams, filter: BayFeedFilter): void {
+  const kind = filter.kind;
+  if (kind && kind !== DEFAULT_BAY_FEED_KIND) params.set(BAY_KIND_PARAM, kind);
+  else params.delete(BAY_KIND_PARAM);
+  if (kind === "request" && filter.offer && filter.offer !== "service") params.set(BAY_OFFER_PARAM, filter.offer);
+  else params.delete(BAY_OFFER_PARAM);
+}
+
+/** 把当前种类写进 `/bay` 页的地址（`?kind=asset` / `?kind=request&offer=app`），刷新或把链接发给别人时停在同一栏。 */
+function writePageFilter(filter: BayFeedFilter): void {
   const w = win();
   if (!w) return;
   const params = new URLSearchParams(w.location.search);
-  if (kind && kind !== DEFAULT_BAY_FEED_KIND) params.set(BAY_KIND_PARAM, kind);
-  else params.delete(BAY_KIND_PARAM);
+  writeFilterParams(params, filter);
   const text = params.toString().replace(/%3A/gi, ":");
   const next = `${w.location.pathname}${text ? `?${text}` : ""}${w.location.hash || ""}`;
   if (next === `${w.location.pathname}${w.location.search}${w.location.hash || ""}`) return;
@@ -455,6 +469,25 @@ function writePageKind(kind: BayFeedFilter["kind"]): void {
 function readPageKind(search: string): BayFeedFilter["kind"] | null {
   const raw = new URLSearchParams(search || "").get(BAY_KIND_PARAM);
   return normalizeBayFeedKind(raw);
+}
+
+function readPageOffer(search: string): BayOfferKind | undefined {
+  const raw = new URLSearchParams(search || "").get(BAY_OFFER_PARAM);
+  if (raw === "service" || raw === "asset" || raw === "app" || raw === "lesson") return raw;
+  return undefined;
+}
+
+function applyPageFilter(search: string): void {
+  const kind = readPageKind(search);
+  const offer = readPageOffer(search);
+  if (!kind && !offer) return;
+  const next = normalizeFilter({
+    ...store.filter,
+    kind: kind ?? store.filter.kind,
+    offer,
+  });
+  if (sameBayTarget({ kind: "feed", filter: next }, { kind: "feed", filter: store.filter })) return;
+  commit({ filter: next });
 }
 
 export function bayStateSnapshot(): { current: BayTarget; canGoBack: boolean } {
@@ -644,8 +677,7 @@ function onSamePageLinkClick(event: MouseEvent): void {
     return;
   }
   if (url.origin !== w.location.origin || url.pathname !== w.location.pathname) return;
-  const kind = readPageKind(url.search);
-  if (kind && kind !== store.filter.kind) commit({ filter: normalizeFilter({ ...store.filter, kind }) });
+  applyPageFilter(url.search);
   applyPageTarget(parseBayDeepLink(url.search));
 }
 
@@ -654,14 +686,10 @@ export function registerBayPage(): () => void {
   const w = win();
   commit({ pageCount: store.pageCount + 1 });
   if (w && store.pageCount === 1) {
-    const applyKind = () => {
-      const kind = readPageKind(w.location.search);
-      if (kind && kind !== store.filter.kind) commit({ filter: normalizeFilter({ ...store.filter, kind }) });
-    };
-    applyKind();
+    applyPageFilter(w.location.search);
     applyPageTarget(parseBayDeepLink(w.location.search));
     const onPop = () => {
-      applyKind();
+      applyPageFilter(w.location.search);
       applyPageTarget(parseBayDeepLink(w.location.search));
     };
     w.addEventListener("popstate", onPop);

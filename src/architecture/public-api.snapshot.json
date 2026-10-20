@@ -4315,6 +4315,78 @@
         },
         {
           "kind": "named",
+          "name": "COLLECTION_CARD_GRID_CLASS",
+          "importedName": "COLLECTION_CARD_GRID_CLASS",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "COLLECTION_CARD_GRID_STYLE",
+          "importedName": "COLLECTION_CARD_GRID_STYLE",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionCardGrid",
+          "importedName": "CollectionCardGrid",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionFilterOption",
+          "importedName": "CollectionFilterOption",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionFilterSelect",
+          "importedName": "CollectionFilterSelect",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionInfiniteSentinel",
+          "importedName": "CollectionInfiniteSentinel",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionPageToolbar",
+          "importedName": "CollectionPageToolbar",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionSearchField",
+          "importedName": "CollectionSearchField",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionView",
+          "importedName": "CollectionView",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionViewOption",
+          "importedName": "CollectionViewOption",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionViewOptions",
+          "importedName": "CollectionViewOptions",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionViewToggle",
+          "importedName": "CollectionViewToggle",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
           "name": "ComposerAttachment",
           "importedName": "ComposerAttachment",
           "source": "./LeoComposer"

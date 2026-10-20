@@ -3,25 +3,24 @@
 // 会话信息：群资料、成员与角色、加人、入群申请、邀请链接、我的通知设置、退出 / 解散 / 升级成 Team / 举报。
 // 哪些按钮出现由 conversationCaps（契约 §9.3 / §9.4）按我的角色决定；后端拒绝时显示后端给的原因。
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { portalHref } from "../../../contracts/domain-family";
-import { ConfirmDialog } from "../../../ui";
+import { ConfirmDialog, Modal } from "../../../ui";
 import { ImCloseIcon } from "../messages-surface";
 import { listMyOrgs } from "../../../lib/org-api";
 import {
-  MUTE_CHOICES,
   NOTIFY_CHOICES,
   addMembers,
   conversationCaps,
   dissolveConversation,
   getConversationDetail,
   isTeamAdminOf,
-  mutedUntilFromHours,
   patchMySettings,
+  clearConversationHistory,
   removeMember,
 } from "../../../lib/im/groups-api";
-import { getMe, reasonOf, useLoader } from "../../../lib/im/people-api";
+import { conversationDisplayTitle, getMe, reasonOf, useLoader } from "../../../lib/im/people-api";
 import type { ImConversationDetail, ImNotifyLevel } from "../../../lib/im/types";
 import { useImEvent } from "../realtime/hooks";
 import { ReportDialog } from "../report/ReportDialog";
@@ -67,9 +66,12 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [teamInviteOpen, setTeamInviteOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [confirm, setConfirm] = useState<"leave" | "dissolve" | null>(null);
+  const [confirm, setConfirm] = useState<"leave" | "dissolve" | "clear-history" | null>(null);
+  const [editing, setEditing] = useState<"remark" | "nickname" | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [remark, setRemark] = useState("");
+  const [nickname, setNickname] = useState("");
 
   const detail: ImConversationDetail | null = detailLoader.data;
   const myUserId = me.data?.user_id ?? null;
@@ -78,6 +80,13 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
   // Team 群：我在这个 Team 里是不是 owner / admin（决定直接邀请同事，还是请管理员邀请）。
   const teamOrgId = detail?.kind === "team" ? (detail.org_id ?? null) : null;
   const myOrgs = useLoader(() => (teamOrgId ? listMyOrgs() : Promise.resolve(null)), [teamOrgId]);
+
+  useEffect(() => {
+    const d = detailLoader.data;
+    if (!d) return;
+    setRemark(d.remark ?? "");
+    setNickname(d.nickname ?? "");
+  }, [detailLoader.data]);
 
   if (!detail || !caps) {
     return (
@@ -92,7 +101,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
 
   const isDm = detail.kind === "dm";
   const peer = detail.peer;
-  const title = isDm ? (peer?.display_name ?? detail.title) : detail.title;
+  const title = conversationDisplayTitle(detail);
 
   async function run(action: () => Promise<void>, after?: () => void) {
     setBusy(true);
@@ -127,8 +136,6 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
     }
   }
 
-  const muteValue = detail.muted ? -1 : 0;
-
   return (
     <aside className="flex h-full min-h-0 flex-col" data-info-panel data-state="ready" data-kind={detail.kind} data-my-role={detail.my_role ?? "none"}>
       <PanelHeader title={tt("会话信息")} onClose={onClose} closeLabel={tt("关闭")} />
@@ -153,12 +160,6 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
             {detail.dissolved && <p className="text-[12px] text-red-600">{tt("群已解散")}</p>}
           </div>
         </div>
-
-        {isDm && peer && (
-          <button type="button" onClick={() => setProfileId(peer.user_id)} data-action="open-peer" className={`${rowBtn} text-neutral-700`}>
-            {tt("查看对方资料")}
-          </button>
-        )}
 
         {caps.isGroupLike && (
           <>
@@ -252,7 +253,45 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
         {!detail.dissolved && (
           <>
             <h4 className={sectionTitle}>{tt("我的设置")}</h4>
-            <div className="flex flex-col gap-3 px-3 py-1 text-[12px] text-neutral-600">
+            <div className="flex flex-col px-1" data-pref>
+              <PrefSwitch
+                label={tt("消息免打扰")}
+                checked={Boolean(detail.muted)}
+                disabled={busy}
+                field="mute"
+                onChange={(v) => run(() => patchMySettings(detail.id, { muted: v }), reload)}
+              />
+              <PrefSwitch
+                label={tt("置顶聊天")}
+                checked={Boolean(detail.pinned)}
+                disabled={busy}
+                field="pin"
+                onChange={(v) => run(() => patchMySettings(detail.id, { pinned: v }), reload)}
+              />
+              {caps.isGroupLike && (
+                <>
+                  <PrefSwitch
+                    label={tt("保存到通讯录")}
+                    checked={Boolean(detail.in_contacts)}
+                    disabled={busy}
+                    field="in-contacts"
+                    onChange={(v) => run(() => patchMySettings(detail.id, { in_contacts: v }), reload)}
+                  />
+                  <PrefSwitch
+                    label={tt("显示群成员昵称")}
+                    checked={detail.show_member_nicknames !== false}
+                    disabled={busy}
+                    field="show-nicknames"
+                    onChange={(v) => run(() => patchMySettings(detail.id, { show_member_nicknames: v }), reload)}
+                  />
+                </>
+              )}
+            </div>
+            <div className="flex flex-col gap-3 px-3 py-2 text-[12px] text-neutral-600">
+              {caps.isGroupLike && <SettingTextRow label={tt("备注")} value={detail.remark ?? ""} placeholder={tt("群聊的备注仅自己可见")} field="remark" onEdit={() => { setRemark(detail.remark ?? ""); setEditing("remark"); }} />}
+              {caps.isGroupLike && (
+                <SettingTextRow label={tt("我在本群的昵称")} value={detail.nickname ?? ""} placeholder={me.data?.display_name ?? ""} field="nickname" onEdit={() => { setNickname(detail.nickname ?? ""); setEditing("nickname"); }} />
+              )}
               <label className="flex items-center justify-between gap-3">
                 {tt("通知")}
                 <select
@@ -264,31 +303,6 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
                 >
                   {NOTIFY_CHOICES.map((c) => (
                     <option key={c.level} value={c.level}>
-                      {tt(c.label)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center justify-between gap-3">
-                {tt("免打扰")}
-                <select
-                  data-field="mute"
-                  defaultValue={muteValue}
-                  disabled={busy}
-                  className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[12px] text-neutral-800"
-                  onChange={(e) => {
-                    const idx = Number(e.target.value);
-                    const choice = MUTE_CHOICES[idx];
-                    if (choice) void run(() => patchMySettings(detail.id, { muted_until: mutedUntilFromHours(choice.hours) }));
-                  }}
-                >
-                  {detail.muted && (
-                    <option value={-1} disabled>
-                      {tt("当前已免打扰")}
-                    </option>
-                  )}
-                  {MUTE_CHOICES.map((c, i) => (
-                    <option key={c.label} value={i}>
                       {tt(c.label)}
                     </option>
                   ))}
@@ -310,6 +324,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
         )}
 
         <div className="mt-4 border-t border-neutral-100 pt-2">
+          <button type="button" disabled={busy} onClick={() => setConfirm("clear-history")} data-action="clear-history" className={`${rowBtn} text-red-600`}>{tt("清空聊天记录")}</button>
           {caps.canUpgradeToTeam && (
             <button type="button" onClick={() => setUpgradeOpen(true)} data-action="upgrade-team" className={`${rowBtn} text-neutral-700`}>
               {tt("升级成 Team")}
@@ -383,6 +398,10 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
           }}
         />
       )}
+      {confirm === "clear-history" && <ConfirmDialog title={tt("清空聊天记录")} body={tt("只清空你自己的聊天记录，其他成员的记录不受影响。这一步不能撤销。")} confirmLabel={tt("清空")} danger onCancel={() => setConfirm(null)} onConfirm={async () => {
+        setConfirm(null);
+        await run(() => clearConversationHistory(detail.id), onClose);
+      }} />}
       {confirm === "dissolve" && (
         <ConfirmDialog
           title="解散群聊"
@@ -396,7 +415,67 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
           }}
         />
       )}
+      {editing && (
+        <Modal labelledBy="conversation-personal-setting-title" onClose={() => { if (!busy) setEditing(null); }}>
+          <form className="flex flex-col gap-4 p-4" onSubmit={(event) => {
+            event.preventDefault();
+            void run(() => patchMySettings(detail.id, editing === "remark" ? { remark: remark.trim() } : { nickname: nickname.trim() }), () => { setEditing(null); reload(); });
+          }}>
+            <h3 id="conversation-personal-setting-title" className="text-[16px] font-semibold">{editing === "remark" ? tt("备注") : tt("我在本群的昵称")}</h3>
+            <label className="flex flex-col gap-2 text-[13px]">
+              {editing === "remark" ? tt("备注") : tt("我在本群的昵称")}
+              <input autoFocus data-field={editing} maxLength={editing === "remark" ? 80 : 32} value={editing === "remark" ? remark : nickname} disabled={busy} onChange={(event) => editing === "remark" ? setRemark(event.target.value) : setNickname(event.target.value)} className="w-full rounded-lg border border-neutral-200 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400" />
+            </label>
+            {note && <p role="alert" className="text-[12px] text-red-600">{note}</p>}
+            <div className="flex justify-end gap-3">
+              <button type="button" disabled={busy} onClick={() => setEditing(null)}>{tt("取消")}</button>
+              <button type="submit" disabled={busy} data-action="save-personal-setting" className={pillBtn}>{tt("保存")}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </aside>
+  );
+}
+
+function SettingTextRow({ label, value, placeholder, field, onEdit }: { label: string; value: string; placeholder: string; field: string; onEdit: () => void }) {
+  return <button type="button" data-edit-setting={field} onClick={onEdit} className="group flex min-h-14 flex-col items-start justify-center gap-1 rounded-md py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400">
+    <span className="text-[11px] leading-4 text-neutral-400">{label}</span>
+    <span className="flex items-center gap-1.5 text-[13px] leading-5 text-neutral-600 group-hover:text-neutral-900"><span className="whitespace-pre-wrap break-all">{value || placeholder}</span><svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5" /></svg></span>
+  </button>;
+}
+
+function PrefSwitch({
+  label,
+  checked,
+  disabled,
+  field,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  field: string;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      data-field={field}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] text-neutral-800 disabled:opacity-50"
+    >
+      <span>{label}</span>
+      <span
+        aria-hidden="true"
+        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-emerald-500" : "bg-neutral-300"}`}
+      >
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${checked ? "left-5" : "left-0.5"}`} />
+      </span>
+    </button>
   );
 }
 

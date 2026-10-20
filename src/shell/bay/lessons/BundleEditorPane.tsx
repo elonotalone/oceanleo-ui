@@ -236,6 +236,7 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
       alwaysOpen: true,
       children: (
         <BayImageGallery
+          variant="listing"
           urls={draft.galleryUrls.length ? draft.galleryUrls : draft.coverUrl ? [draft.coverUrl] : []}
           onUrls={(urls) => patch({ coverUrl: urls[0] || "", galleryUrls: urls })}
           disabled={locked}
@@ -341,7 +342,7 @@ export function BundleEditorPane(props: BayPaneProps): ReactElement | null {
       }
     >
     <section data-bay-pane="bundle-editor" className={narrow ? "flex flex-col gap-6 p-4" : BAY_FORM_PAGE_CLASS}>
-      <BayRevealForm items={items} />
+      <BayRevealForm layout="listing" items={items} />
       {showProblems && localProblems.length ? (
         <p className="text-[12.5px] text-stone-500">{localProblems.map((item) => tt(item)).join("、")}</p>
       ) : null}

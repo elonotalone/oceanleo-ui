@@ -12,6 +12,12 @@ import { useUI } from "../i18n/ui/useUI";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
 import {
+  COLLECTION_ACTION_BTN_PRIMARY,
+  CollectionFilterRow,
+  CollectionFilterSelect,
+  type CollectionViewOption,
+} from "./collection-chrome";
+import {
   uploadFile,
   type AssetItem,
   type Creation,
@@ -59,6 +65,16 @@ import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+
+/** Full-page /library type shelf. Values match `toEntry` / KIND_CATEGORY. */
+const LIBRARY_PAGE_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "图片", label: "图片" },
+  { value: "文档", label: "文档" },
+  { value: "PPT", label: "幻灯片" },
+  { value: "视频", label: "视频" },
+  { value: "音频", label: "音频" },
+  { value: "3D", label: "3D" },
+];
 
 const KIND_CATEGORY: Record<LibraryKind, string> = {
   website: "网站",
@@ -160,6 +176,83 @@ function rejectedLibraryPage(reason: unknown): LibraryPageResult {
     status: 0,
     retryable: true,
   };
+}
+
+function libraryPageFromSettled(
+  settled: PromiseSettledResult<LibraryPageResult | null>,
+): LibraryPageResult | null {
+  if (settled.status === "fulfilled") return settled.value;
+  return rejectedLibraryPage(settled.reason);
+}
+
+/** Mixed `/v1/library/mine` is newest-first across all kinds, so the first
+ * page is almost all games. Documents have to be fetched by type and pinned. */
+type PinnedMineType = "document" | "pdf";
+
+type PinnedMineCursors = Record<PinnedMineType, string | null>;
+
+const EMPTY_PINNED_MINE_CURSORS: PinnedMineCursors = {
+  document: null,
+  pdf: null,
+};
+
+function isOwnedDocumentLibraryItem(item: LibraryItem): boolean {
+  return (
+    item.kind === "document" &&
+    (!isDurableLibraryItem(item) ||
+      item.artifact.owner.visibility !== "public")
+  );
+}
+
+function documentsFirstItems(items: readonly LibraryItem[]): LibraryItem[] {
+  const documents: LibraryItem[] = [];
+  const rest: LibraryItem[] = [];
+  for (const item of items) {
+    if (isOwnedDocumentLibraryItem(item)) documents.push(item);
+    else rest.push(item);
+  }
+  documents.sort((left, right) =>
+    String(right.createdAt || "").localeCompare(String(left.createdAt || "")),
+  );
+  return [...documents, ...rest];
+}
+
+function pinnedMineItemsFromPage(
+  result: LibraryPageResult | null,
+  ownerPrincipalId: string,
+  previousCursor: string | null = null,
+): { items: LibraryItem[]; nextCursor: string | null } {
+  if (
+    !result?.ok ||
+    !result.data ||
+    !ownerPrincipalId ||
+    result.data.ownerPrincipalId !== ownerPrincipalId
+  ) {
+    return { items: [], nextCursor: previousCursor };
+  }
+  return {
+    items: result.data.items,
+    nextCursor: result.data.nextCursor,
+  };
+}
+
+function libraryPageAuthorityError(
+  result: LibraryPageResult | null,
+  ownerPrincipalId: string,
+): boolean {
+  return Boolean(
+    result &&
+      ((result.ok && !result.data) ||
+        (!result.ok && libraryAuthorityLost(result)) ||
+        (result.data && result.data.ownerPrincipalId !== ownerPrincipalId)),
+  );
+}
+
+function mergeOwnedMineItems(
+  pinned: readonly LibraryItem[],
+  mine: readonly LibraryItem[],
+): LibraryItem[] {
+  return documentsFirstItems(dedupeDurableItems([...pinned, ...mine]));
 }
 
 function favoriteRefreshWarning(result: LibraryPageResult): string {
@@ -426,6 +519,16 @@ export function MyLibrary({
   const tt = useUI();
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
+  const [detailOpen, setDetailOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return Boolean(new URLSearchParams(window.location.search).get("item"));
+    } catch {
+      return false;
+    }
+  });
+  const [internalCategory, setInternalCategory] = useState(category ?? "all");
+  const [favoritesOnly, setFavoritesOnly] = useState(onlyFavorites);
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -435,6 +538,8 @@ export function MyLibrary({
   const [failureMessage, setFailureMessage] = useState("");
   const [ownerPrincipalId, setOwnerPrincipalId] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [pinnedNextCursors, setPinnedNextCursors] =
+    useState<PinnedMineCursors>(EMPTY_PINNED_MINE_CURSORS);
   const [favoriteNextCursor, setFavoriteNextCursor] =
     useState<string | null>(null);
   const [favoriteWarning, setFavoriteWarning] = useState("");
@@ -449,6 +554,26 @@ export function MyLibrary({
   const [previewIntentItem, setPreviewIntentItem] =
     useState<LibraryItem | null>(null);
 
+  useEffect(() => {
+    if (category !== undefined) setInternalCategory(category);
+  }, [category]);
+  useEffect(() => {
+    setFavoritesOnly(onlyFavorites);
+  }, [onlyFavorites]);
+  const activeCategory = category ?? internalCategory;
+  const changeCategory = (next: string) => {
+    if (category === undefined) setInternalCategory(next);
+    onCategoryChange?.(next);
+  };
+  const favoriteViewOptions: CollectionViewOption[] = [
+    {
+      id: "favorites",
+      label: tt("仅看收藏"),
+      checked: favoritesOnly,
+      onSelect: () => setFavoritesOnly((value) => !value),
+    },
+  ];
+
   const requestEpochRef = useRef(0);
   const loadAbortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
@@ -457,14 +582,16 @@ export function MyLibrary({
     const favoriteIdentity = new Set(
       favoriteItems.map(libraryItemIdentityKey),
     );
-    return dedupeDurableItems([
-      ...ownedItems.map((item) =>
-        favoriteIdentity.has(libraryItemIdentityKey(item))
-          ? withFavoriteState(item, true)
-          : item,
-      ),
-      ...favoriteItems,
-    ]);
+    return documentsFirstItems(
+      dedupeDurableItems([
+        ...ownedItems.map((item) =>
+          favoriteIdentity.has(libraryItemIdentityKey(item))
+            ? withFavoriteState(item, true)
+            : item,
+        ),
+        ...favoriteItems,
+      ]),
+    );
   }, [favoriteItems, ownedItems]);
 
   const clearLibraryAuthority = useCallback(() => {
@@ -472,6 +599,7 @@ export function MyLibrary({
     setFavoriteItems([]);
     setOwnerPrincipalId("");
     setNextCursor(null);
+    setPinnedNextCursors(EMPTY_PINNED_MINE_CURSORS);
     setFavoriteNextCursor(null);
     setStandaloneEditorItem(null);
     setPreviewIntentItem(null);
@@ -490,7 +618,18 @@ export function MyLibrary({
     setFavoriteWarning("");
     setLoading(true);
     setLoadingMore(false);
-    const [mineSettled, favoritesSettled] = await Promise.allSettled([
+    const [documentSettled, pdfSettled, mineSettled, favoritesSettled] =
+      await Promise.allSettled([
+        listMyArtifacts({
+          artifactType: "document",
+          limit: 100,
+          signal: controller.signal,
+        }),
+        listMyArtifacts({
+          artifactType: "pdf",
+          limit: 100,
+          signal: controller.signal,
+        }),
         listMyArtifacts({
           limit: 100,
           signal: controller.signal,
@@ -504,13 +643,11 @@ export function MyLibrary({
       return;
     }
     const mineResult =
-      mineSettled.status === "fulfilled"
-        ? mineSettled.value
-        : rejectedLibraryPage(mineSettled.reason);
+      libraryPageFromSettled(mineSettled) ??
+      rejectedLibraryPage(undefined);
     const favoritesResult =
-      favoritesSettled.status === "fulfilled"
-        ? favoritesSettled.value
-        : rejectedLibraryPage(favoritesSettled.reason);
+      libraryPageFromSettled(favoritesSettled) ??
+      rejectedLibraryPage(undefined);
     if (!mineResult.ok || !mineResult.data) {
       if (libraryAuthorityLost(mineResult)) {
         clearLibraryAuthority();
@@ -546,9 +683,26 @@ export function MyLibrary({
         setLoading(false);
         return;
       }
-      setOwnedItems(dedupeDurableItems(mineResult.data.items));
+      const documentPage = pinnedMineItemsFromPage(
+        libraryPageFromSettled(documentSettled),
+        mineOwnerPrincipalId,
+      );
+      const pdfPage = pinnedMineItemsFromPage(
+        libraryPageFromSettled(pdfSettled),
+        mineOwnerPrincipalId,
+      );
+      setOwnedItems(
+        mergeOwnedMineItems(
+          [...documentPage.items, ...pdfPage.items],
+          mineResult.data.items,
+        ),
+      );
       setOwnerPrincipalId(mineOwnerPrincipalId);
       setNextCursor(mineResult.data.nextCursor);
+      setPinnedNextCursors({
+        document: documentPage.nextCursor,
+        pdf: pdfPage.nextCursor,
+      });
       if (favoritesOwnerRef.current !== mineOwnerPrincipalId) {
         setFavoriteItems([]);
         setFavoriteNextCursor(null);
@@ -581,10 +735,27 @@ export function MyLibrary({
     setFailureStatus(undefined);
     setFailureMessage("");
     setFavoriteWarning("");
+    const documentPage = pinnedMineItemsFromPage(
+      libraryPageFromSettled(documentSettled),
+      mineOwnerPrincipalId,
+    );
+    const pdfPage = pinnedMineItemsFromPage(
+      libraryPageFromSettled(pdfSettled),
+      mineOwnerPrincipalId,
+    );
     setOwnerPrincipalId(mineOwnerPrincipalId);
-    setOwnedItems(dedupeDurableItems(mineResult.data.items));
+    setOwnedItems(
+      mergeOwnedMineItems(
+        [...documentPage.items, ...pdfPage.items],
+        mineResult.data.items,
+      ),
+    );
     setFavoriteItems(dedupeDurableItems(favoritesResult.data.items));
     setNextCursor(mineResult.data.nextCursor);
+    setPinnedNextCursors({
+      document: documentPage.nextCursor,
+      pdf: pdfPage.nextCursor,
+    });
     setFavoriteNextCursor(favoritesResult.data.nextCursor);
     favoritesOwnerRef.current = mineOwnerPrincipalId;
     setLoading(false);
@@ -756,8 +927,13 @@ export function MyLibrary({
   });
 
   const loadMore = useCallback(async () => {
+    const documentCursor = pinnedNextCursors.document;
+    const pdfCursor = pinnedNextCursors.pdf;
     if (
-      (!nextCursor && !favoriteNextCursor) ||
+      (!nextCursor &&
+        !favoriteNextCursor &&
+        !documentCursor &&
+        !pdfCursor) ||
       loadingMore ||
       loading
     ) {
@@ -770,55 +946,78 @@ export function MyLibrary({
     loadMoreAbortRef.current = controller;
     const epoch = requestEpochRef.current;
     setLoadingMore(true);
-    const [mineSettled, favoritesSettled] = await Promise.allSettled([
-      mineCursor
-        ? listMyArtifacts({
-            cursor: mineCursor,
-            limit: 100,
-            signal: controller.signal,
-          })
-        : Promise.resolve(null),
-      favoritesCursor
-        ? listFavoriteArtifacts({
-            cursor: favoritesCursor,
-            limit: 100,
-            signal: controller.signal,
-          })
-        : Promise.resolve(null),
-    ]);
+    const [documentSettled, pdfSettled, mineSettled, favoritesSettled] =
+      await Promise.allSettled([
+        documentCursor
+          ? listMyArtifacts({
+              artifactType: "document",
+              cursor: documentCursor,
+              limit: 100,
+              signal: controller.signal,
+            })
+          : Promise.resolve(null),
+        pdfCursor
+          ? listMyArtifacts({
+              artifactType: "pdf",
+              cursor: pdfCursor,
+              limit: 100,
+              signal: controller.signal,
+            })
+          : Promise.resolve(null),
+        mineCursor
+          ? listMyArtifacts({
+              cursor: mineCursor,
+              limit: 100,
+              signal: controller.signal,
+            })
+          : Promise.resolve(null),
+        favoritesCursor
+          ? listFavoriteArtifacts({
+              cursor: favoritesCursor,
+              limit: 100,
+              signal: controller.signal,
+            })
+          : Promise.resolve(null),
+      ]);
     if (
       controller.signal.aborted ||
       epoch !== requestEpochRef.current
     ) {
       return;
     }
-    const mineResult: LibraryPageResult | null =
-      mineSettled.status === "fulfilled"
-        ? mineSettled.value
-        : rejectedLibraryPage(mineSettled.reason);
-    const favoritesResult: LibraryPageResult | null =
-      favoritesSettled.status === "fulfilled"
-        ? favoritesSettled.value
-        : rejectedLibraryPage(favoritesSettled.reason);
-    const mineAuthorityError = Boolean(
-      mineResult &&
-        ((mineResult.ok && !mineResult.data) ||
-          (!mineResult.ok && libraryAuthorityLost(mineResult)) ||
-          (mineResult.data &&
-            mineResult.data.ownerPrincipalId !== ownerPrincipalId)),
+    const documentResult = libraryPageFromSettled(documentSettled);
+    const pdfResult = libraryPageFromSettled(pdfSettled);
+    const mineResult = libraryPageFromSettled(mineSettled);
+    const favoritesResult = libraryPageFromSettled(favoritesSettled);
+    const mineAuthorityError = libraryPageAuthorityError(
+      mineResult,
+      ownerPrincipalId,
     );
-    const favoritesAuthorityError = Boolean(
-      favoritesResult &&
-        ((favoritesResult.ok && !favoritesResult.data) ||
-          (!favoritesResult.ok &&
-            libraryAuthorityLost(favoritesResult)) ||
-          (favoritesResult.data &&
-            favoritesResult.data.ownerPrincipalId !== ownerPrincipalId)),
+    const favoritesAuthorityError = libraryPageAuthorityError(
+      favoritesResult,
+      ownerPrincipalId,
     );
-    if (mineAuthorityError || favoritesAuthorityError) {
+    const documentAuthorityError = libraryPageAuthorityError(
+      documentResult,
+      ownerPrincipalId,
+    );
+    const pdfAuthorityError = libraryPageAuthorityError(
+      pdfResult,
+      ownerPrincipalId,
+    );
+    if (
+      mineAuthorityError ||
+      favoritesAuthorityError ||
+      documentAuthorityError ||
+      pdfAuthorityError
+    ) {
       const result = mineAuthorityError
         ? mineResult!
-        : favoritesResult!;
+        : favoritesAuthorityError
+          ? favoritesResult!
+          : documentAuthorityError
+            ? documentResult!
+            : pdfResult!;
       clearLibraryAuthority();
       setFavoriteWarning("");
       setFailed(true);
@@ -839,11 +1038,34 @@ export function MyLibrary({
       setLoadingMore(false);
       return;
     }
-    if (mineResult?.data) {
+    const documentPage = pinnedMineItemsFromPage(
+      documentResult,
+      ownerPrincipalId,
+      documentCursor,
+    );
+    const pdfPage = pinnedMineItemsFromPage(
+      pdfResult,
+      ownerPrincipalId,
+      pdfCursor,
+    );
+    setPinnedNextCursors({
+      document: documentPage.nextCursor,
+      pdf: pdfPage.nextCursor,
+    });
+    if (
+      mineResult?.data ||
+      documentPage.items.length > 0 ||
+      pdfPage.items.length > 0
+    ) {
       setOwnedItems((current) =>
-        dedupeDurableItems([...current, ...mineResult.data!.items]),
+        mergeOwnedMineItems(
+          [...current, ...documentPage.items, ...pdfPage.items],
+          mineResult?.data?.items || [],
+        ),
       );
-      setNextCursor(mineResult.data.nextCursor);
+      if (mineResult?.data) {
+        setNextCursor(mineResult.data.nextCursor);
+      }
     }
     if (
       favoritesResult &&
@@ -885,6 +1107,7 @@ export function MyLibrary({
     loadingMore,
     nextCursor,
     ownerPrincipalId,
+    pinnedNextCursors,
   ]);
 
   const removeItem = useCallback(async (item: LibraryItem) => {
@@ -1033,7 +1256,7 @@ export function MyLibrary({
         ...items
           .filter(
             (item) =>
-              (!onlyFavorites || item.favorite) &&
+              (!favoritesOnly || item.favorite) &&
               (!itemFilter || itemFilter(item)),
           )
           .map((item) => {
@@ -1046,7 +1269,7 @@ export function MyLibrary({
               owned ? () => removeItem(item) : undefined,
             );
           }),
-        ...(onlyFavorites
+        ...(favoritesOnly
           ? []
           : featuredEntries.filter(
               (entry) =>
@@ -1070,7 +1293,7 @@ export function MyLibrary({
       featuredEntries,
       itemFilter,
       items,
-      onlyFavorites,
+      favoritesOnly,
       ownerPrincipalId,
       previewIntentItem,
       removeItem,
@@ -1079,7 +1302,13 @@ export function MyLibrary({
   const failureCopy = myLibraryFailure(failureStatus, failureMessage);
   const toolbar = (
     <div className="flex shrink-0 flex-wrap items-center gap-2">
-      <label className="inline-flex h-8 shrink-0 cursor-pointer items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)]">
+      <label
+        className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
+          uploading || loading || authRequired || failed || !ownerPrincipalId
+            ? "pointer-events-none opacity-50"
+            : ""
+        }`}
+      >
         <input
           type="file"
           multiple
@@ -1098,25 +1327,18 @@ export function MyLibrary({
         />
         {tt(uploading ? "上传中…" : "上传文件")}
       </label>
-      <button
-        type="button"
-        onClick={() => void load()}
-        disabled={loading || uploading}
-        className="inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
-      >
-        {tt(loading ? "加载中…" : "刷新")}
-      </button>
-      {(nextCursor || favoriteNextCursor) && (
-        <button
-          type="button"
-          onClick={() => void loadMore()}
-          disabled={loadingMore || loading}
-          className="inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] disabled:opacity-50"
-        >
-          {tt(loadingMore ? "加载中…" : "继续加载")}
-        </button>
-      )}
     </div>
+  );
+  const retryControl = (
+    <button
+      type="button"
+      data-library-retry=""
+      onClick={() => void load()}
+      disabled={loading || uploading}
+      className="shrink-0 font-medium underline underline-offset-2 disabled:opacity-50"
+    >
+      {tt("重试")}
+    </button>
   );
 
   if (standaloneEditorItem) {
@@ -1151,7 +1373,8 @@ export function MyLibrary({
     <LibraryScope
       {...libraryScope}
       header={
-        <div className="mb-3 shrink-0">
+        detailOpen ? null : (
+        <div className="mb-3 shrink-0" data-library-collection-chrome="">
           <LibraryToolbar
             search={libraryQuery}
             setSearch={setLibraryQuery}
@@ -1160,6 +1383,7 @@ export function MyLibrary({
             actions={toolbar}
             placeholder="搜索我的作品、收藏素材、网站、交付物和上传文件"
             tt={tt}
+            viewOptions={favoriteViewOptions}
             leading={
               pageTitle ? (
                 <h1 className={APP_PAGE_TITLE_CLASS}>
@@ -1168,7 +1392,23 @@ export function MyLibrary({
               ) : undefined
             }
           />
+          {pageTitle ? (
+            <CollectionFilterRow>
+              <CollectionFilterSelect
+                label={tt("类型")}
+                name="type"
+                value={activeCategory === "all" ? "" : activeCategory}
+                options={LIBRARY_PAGE_TYPE_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: tt(option.label),
+                }))}
+                onChange={(value) => changeCategory(value || "all")}
+                allLabel={tt("全部")}
+              />
+            </CollectionFilterRow>
+          ) : null}
         </div>
+        )
       }
     >
       <div className="relative h-full min-h-0">
@@ -1181,8 +1421,10 @@ export function MyLibrary({
           view={libraryView}
           onViewChange={setLibraryView}
           hideToolbar
-          category={category}
-          onCategoryChange={onCategoryChange}
+          hideCategoryChips={Boolean(pageTitle)}
+          onDetailOpenChange={setDetailOpen}
+          category={activeCategory}
+          onCategoryChange={changeCategory}
           taskId={taskId}
           siteId={siteId}
           onOpenItem={onOpenItem || setStandaloneEditorItem}
@@ -1209,23 +1451,37 @@ export function MyLibrary({
               ? failureCopy.description
               : "生成作品、收藏公共素材或上传文件后，它们会自动出现在这里。"
           }
+          emptyCta={failed && !authRequired ? retryControl : undefined}
+          hasMore={Boolean(
+            !loading &&
+              (nextCursor ||
+                favoriteNextCursor ||
+                pinnedNextCursors.document ||
+                pinnedNextCursors.pdf),
+          )}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
           className={className}
           plain={plain}
         />
         {failed && entries.length > 0 && (
           <div
             role="alert"
-            className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-rose-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-rose-700 shadow-sm"
+            className="absolute left-3 right-3 top-3 z-30 flex items-center justify-between gap-3 rounded-lg border border-rose-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-rose-700 shadow-sm"
           >
-            {tt(failureCopy.title)}：{tt(failureCopy.description)}
+            <span>
+              {tt(failureCopy.title)}：{tt(failureCopy.description)}
+            </span>
+            {retryControl}
           </div>
         )}
         {favoriteWarning && !authRequired && !failed && (
           <div
             role="alert"
-            className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-amber-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
+            className="absolute left-3 right-3 top-3 z-30 flex items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
           >
-            {tt(favoriteWarning)}
+            <span>{tt(favoriteWarning)}</span>
+            {retryControl}
           </div>
         )}
         {(uploadProgress || uploadError) && (

@@ -1,11 +1,14 @@
 "use client";
 
-// 会话：消息流、输入框、线程、置顶条、「正在输入」。导出名与 props 不变（契约 §8.2）。
+// 会话：消息流、输入框、置顶条、「正在输入」。导出名与 props 不变（契约 §8.2）。
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ImApiError } from "../../../lib/im/client";
+import { conversationDisplayTitle, visiblePersonName } from "../../../lib/im/people-api";
 import { messagesApi } from "../../../lib/im/messages-api";
-import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
+import { fetchConversations } from "../../../lib/im/inbox-api";
+import type { ImConversationDetail, ImConversationSummary, ImMessage, ImProfile } from "../../../lib/im/types";
+import { ConfirmDialog } from "../../../ui";
 import { Composer } from "../composer/Composer";
 import { openMessages } from "../host-state";
 import { ImBackIcon, ImInfoIcon, ImSearchIcon } from "../messages-surface";
@@ -16,9 +19,9 @@ import { ReportDialog } from "../report/ReportDialog";
 import { MessageList, useStoreEvents } from "./MessageList";
 import { useMessageHandlers } from "./MessageItem";
 import { PinnedBar } from "./PinnedBar";
-import { ThreadPanel } from "./ThreadPanel";
 import { TypingLine, useTypingUsers } from "./TypingLine";
 import { getConversationStore, unreadBoundary, type ConversationStore } from "./conversation-store";
+import { historyEventTargetsConversation, subscribeHistoryCleared } from "./history-events";
 import { MeetingPanel } from "../meeting/MeetingPanel";
 
 export interface ConversationViewProps {
@@ -100,7 +103,12 @@ function useProfileMap(
   const requested = useRef(new Set<string>());
   const base = useMemo(() => {
     const map: Record<string, ImProfile | undefined> = {};
-    for (const member of conversation?.members ?? []) map[member.user_id] = member.profile;
+    for (const member of conversation?.members ?? []) {
+      map[member.user_id] = {
+        ...member.profile,
+        nickname: member.nickname || member.profile.nickname,
+      };
+    }
     return map;
   }, [conversation]);
 
@@ -158,7 +166,13 @@ function ConversationBody(props: ConversationViewProps & {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [quote, setQuote] = useState<ImMessage | null>(null);
   const [editing, setEditing] = useState<ImMessage | null>(null);
-  const [threadRoot, setThreadRoot] = useState<ImMessage | null>(null);
+  const [forwardMessages, setForwardMessages] = useState<ImMessage[] | null>(null);
+  const [forwardTargets, setForwardTargets] = useState<ImConversationSummary[]>([]);
+  const [forwardError, setForwardError] = useState("");
+  const [forwarding, setForwarding] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(() => new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [reporting, setReporting] = useState<ImMessage | null>(null);
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
@@ -169,6 +183,34 @@ function ConversationBody(props: ConversationViewProps & {
   const readState = useRef({ last: 0, at: 0, pending: 0, timer: null as ReturnType<typeof setTimeout> | null });
 
   useStoreEvents(store);
+
+  const reloadHistory = useCallback(() => {
+    setQuote(null);
+    setEditing(null);
+    setScrollTarget(null);
+    setUnreadAfterSeq(null);
+    // Reload replaces the transcript; catchUp would retain locally cached history.
+    void store.loadLatest();
+    void store.refreshPins();
+  }, [store]);
+
+  useEffect(() => {
+    if (!forwardMessages) return;
+    let alive = true;
+    void fetchConversations("all").then((page) => {
+      if (alive) setForwardTargets(page.items.filter((item) => item.id !== conversationId));
+    }).catch(() => {
+      if (alive) setForwardError(tt("暂时无法加载会话列表。"));
+    });
+    return () => { alive = false; };
+  }, [forwardMessages, conversationId, tt]);
+  useEffect(() => subscribeHistoryCleared(window, conversationId, reloadHistory), [conversationId, reloadHistory]);
+  useImEvent("conversation.updated", (event) => {
+    if (historyEventTargetsConversation(event, conversationId)) reloadHistory();
+  });
+  useImEvent("conversation.removed", (event) => {
+    if (historyEventTargetsConversation(event, conversationId)) reloadHistory();
+  });
 
   // 打开：定位到高亮那条，或补到最新
   useEffect(() => {
@@ -238,7 +280,6 @@ function ConversationBody(props: ConversationViewProps & {
       for (const id of m.mentions) ids.add(id);
       if (m.quote?.sender_id) ids.add(m.quote.sender_id);
       for (const id of m.thread?.participant_ids ?? []) ids.add(id);
-      for (const r of m.reactions) for (const id of r.user_ids) ids.add(id);
       for (const id of Object.keys(m.mention_reads ?? {})) ids.add(id);
     }
     for (const p of snapshot.pins) if (p.sender_id) ids.add(p.sender_id);
@@ -247,9 +288,18 @@ function ConversationBody(props: ConversationViewProps & {
   const profiles = useProfileMap(conversation, referencedIds);
 
   const isAdmin = conversation?.my_role === "owner" || conversation?.my_role === "admin";
+  const selectedMessages = snapshot.messages.filter((message) => selectedMessageIds.has(message.id));
+  const canDeleteSelection = selectedMessages.length > 0 && (Boolean(isAdmin) || selectedMessages.every((message) => message.sender_kind === "user" && message.sender_id === viewerId));
   const nameOf = useCallback(
-    (id: string | null) => (id ? (profiles[id]?.display_name ?? tt("已退出的成员")) : "leo"),
-    [profiles, tt],
+    (id: string | null) => {
+      if (!id) return "leo";
+      const profile = profiles[id];
+      if (!profile) return tt("已退出的成员");
+      return visiblePersonName(profile, {
+        showNickname: conversation?.kind !== "dm" && conversation?.show_member_nicknames !== false,
+      });
+    },
+    [profiles, tt, conversation?.kind, conversation?.show_member_nicknames],
   );
 
   const typing = useTypingUsers({ conversationId, threadRootId: null, viewerId });
@@ -274,7 +324,14 @@ function ConversationBody(props: ConversationViewProps & {
     store,
     conversationId,
     onQuote: setQuote,
-    onThread: (message) => setThreadRoot(message),
+    onForward: (message) => {
+      setForwardError("");
+      setForwardMessages([message]);
+    },
+    onMultiSelect: (message) => {
+      setSelectionMode(true);
+      setSelectedMessageIds(new Set([message.id]));
+    },
     onEdit: (message) => {
       setQuote(null);
       setEditing(message);
@@ -289,10 +346,7 @@ function ConversationBody(props: ConversationViewProps & {
     [snapshot.messages, viewerId],
   );
 
-  const title =
-    conversation?.kind === "dm"
-      ? (conversation.peer?.display_name ?? conversation.title)
-      : (conversation?.title ?? "");
+  const title = conversation ? conversationDisplayTitle(conversation) : "";
   const dissolved = Boolean(conversation?.dissolved);
   const notMember = conversation !== null && conversation.my_role === null && conversation.kind !== "dm";
   const disabledReason = dissolved ? tt("这个群已解散，历史消息只读。") : notMember ? tt("你已不在这个会话里。") : undefined;
@@ -375,6 +429,14 @@ function ConversationBody(props: ConversationViewProps & {
               unreadAfterSeq={unreadAfterSeq}
               highlightSeq={highlightSeq}
               handlers={handlers}
+              selectionMode={selectionMode}
+              selectedMessageIds={selectedMessageIds}
+              onToggleSelected={(message) => setSelectedMessageIds((current) => {
+                const next = new Set(current);
+                if (next.has(message.id)) next.delete(message.id);
+                else next.add(message.id);
+                return next;
+              })}
               onReachBottom={reportRead}
               scrollToMessageId={scrollTarget}
             />
@@ -397,20 +459,53 @@ function ConversationBody(props: ConversationViewProps & {
           disabledReason={disabledReason}
         />
       </div>
-      {threadRoot ? (
-        <ThreadPanel
-          conversationId={conversationId}
-          root={threadRoot}
-          conversation={conversation}
-          viewerId={viewerId}
-          profiles={profiles}
-          layout={layout}
-          isAdmin={Boolean(isAdmin)}
-          disabledReason={disabledReason}
-          onClose={() => setThreadRoot(null)}
-          onOpenProfile={setProfileId}
-          onReport={setReporting}
+      {selectionMode ? (
+        <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900" data-message-selection-toolbar="">
+          <span className="mr-auto text-sm">{tt("已选择 {n} 条", { n: selectedMessageIds.size })}</span>
+          <button type="button" disabled={!selectedMessageIds.size} onClick={() => setForwardMessages(snapshot.messages.filter((message) => selectedMessageIds.has(message.id)))}>{tt("转发")}</button>
+          <button type="button" disabled={!canDeleteSelection} onClick={() => setBulkDeleteOpen(true)} className="text-red-600 disabled:opacity-40">{tt("删除")}</button>
+          <button type="button" onClick={() => { setSelectionMode(false); setSelectedMessageIds(new Set()); }}>{tt("完成")}</button>
+        </div>
+      ) : null}
+      {bulkDeleteOpen ? (
+        <ConfirmDialog
+          title={tt("删除所选消息？删除后所有人都看不到内容。")}
+          confirmLabel={tt("删除")}
+          danger
+          onConfirm={() => {
+            setBulkDeleteOpen(false);
+            for (const message of selectedMessages) void store.recall(message.id);
+            setSelectedMessageIds(new Set());
+            setSelectionMode(false);
+          }}
+          onCancel={() => setBulkDeleteOpen(false)}
         />
+      ) : null}
+      {forwardMessages ? (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setForwardMessages(null); }}>
+          <section role="dialog" aria-modal="true" aria-label={tt("转发到会话")} className="max-h-[80%] w-full max-w-sm overflow-auto rounded-xl bg-white p-4 shadow-xl dark:bg-neutral-900">
+            <h3 className="mb-3 text-sm font-semibold">{tt("转发到会话")}</h3>
+            {forwardError ? <p className="mb-2 text-sm text-red-600">{forwardError}</p> : null}
+            {!forwardTargets.length && !forwardError ? <p className="py-4 text-center text-sm text-neutral-500">{tt("正在加载会话…")}</p> : null}
+            {forwardTargets.map((target) => (
+              <button key={target.id} type="button" disabled={forwarding} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-100 disabled:opacity-50 dark:hover:bg-white/10" onClick={() => {
+                setForwarding(true);
+                void Promise.all(forwardMessages.map((message) => messagesApi.sendMessage(target.id, {
+                  client_id: crypto.randomUUID(),
+                  kind: ["text", "file", "image", "video", "audio", "voice", "artifact", "replay"].includes(message.kind) ? message.kind as "text" : "text",
+                  body: message.body,
+                  attachments: message.attachments,
+                  card: message.card,
+                }))).then(() => {
+                  setForwardMessages(null);
+                  setSelectedMessageIds(new Set());
+                  setSelectionMode(false);
+                }).catch(() => setForwardError(tt("转发失败，请稍后重试。"))).finally(() => setForwarding(false));
+              }}>{conversationDisplayTitle(target)}</button>
+            ))}
+            <button type="button" className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" onClick={() => setForwardMessages(null)}>{tt("取消")}</button>
+          </section>
+        </div>
       ) : null}
       {reporting ? (
         <ReportDialog

@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
-import { BAY_FORM_LABEL_CLASS } from "./form-ui";
+import { BAY_FORM_LABEL_CLASS, BAY_FORM_SELECT_CLASS } from "./form-ui";
 
 export type BayMenuOption = {
   value: string;
@@ -130,7 +130,7 @@ export function BayMenuSelect(props: {
           aria-controls={open ? listId : undefined}
           data-bay-menu-trigger=""
           onClick={() => setOpen((currentOpen) => !currentOpen)}
-          className="flex h-11 w-full items-center justify-between gap-2 rounded-full border-0 bg-neutral-200/80 px-4 text-left text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50"
+          className={BAY_FORM_SELECT_CLASS}
         >
           <span className={`min-w-0 truncate ${current ? "text-neutral-900" : "text-neutral-500"}`}>
             {current?.label || props.emptyLabel || props.placeholder || ""}

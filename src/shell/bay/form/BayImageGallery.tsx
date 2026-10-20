@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * 卖家填表（BayImageGallery）：闲鱼「发闲置 / 宝贝图片」——横排方格，角上叉掉，
- * 格子右侧永远留着「+ 添加细节图」，一次能选多张，最多 9 张。
- * 买家看帖（BayImageStage）：左侧缩略图 + 主图。填写页不要用 Stage。
+ * 卖家填表（BayImageGallery）：默认闲鱼「发闲置」横排方格；`variant="listing"` 是
+ * Etsy 商品页那种左侧缩略图轨 + 大主图，给发帖左右分栏用。
+ * 买家看帖（BayImageStage）：只看不改。
  */
 
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { uploadFile } from "../../../lib/database";
 import { BAY_GALLERY_MAX, cleanGalleryUrls, isGalleryImageFile } from "./bay-gallery";
+import { humanUploadError, safeIdempotencyKey } from "./bay-upload";
 
 const TILE_PX = 88;
 const TILE: CSSProperties = {
@@ -42,16 +43,14 @@ const ADD: CSSProperties = {
   cursor: "pointer",
   textAlign: "center",
 };
-const FILE: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: "hidden",
-  clip: "rect(0, 0, 0, 0)",
-  whiteSpace: "nowrap",
-  border: 0,
+const ADD_RAIL: CSSProperties = {
+  ...ADD,
+  width: 72,
+  height: 72,
+  gap: 2,
+  padding: 4,
+  background: "#fff",
+  border: "1px solid #e5e5e5",
 };
 const STAGE: CSSProperties = { display: "flex", gap: 8, alignItems: "stretch", width: "100%" };
 const RAIL: CSSProperties = {
@@ -82,6 +81,37 @@ const MAIN: CSSProperties = {
   borderRadius: 12,
   overflow: "hidden",
   background: "#f5f5f5",
+};
+const LISTING_STAGE: CSSProperties = { display: "flex", gap: 12, alignItems: "flex-start", width: "100%" };
+const LISTING_RAIL: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  width: 72,
+  flexShrink: 0,
+  maxHeight: "min(36rem, 72vh)",
+  overflowY: "auto",
+};
+const LISTING_THUMB: CSSProperties = {
+  position: "relative",
+  width: 72,
+  height: 72,
+  padding: 0,
+  borderRadius: 2,
+  overflow: "hidden",
+  background: "#ffffff",
+  flexShrink: 0,
+  cursor: "pointer",
+};
+const LISTING_MAIN: CSSProperties = {
+  position: "relative",
+  flex: 1,
+  minWidth: 0,
+  minHeight: 448,
+  aspectRatio: "1 / 1",
+  borderRadius: 2,
+  overflow: "hidden",
+  background: "#ffffff",
 };
 const EMPTY: CSSProperties = {
   position: "relative",
@@ -169,9 +199,14 @@ export function BayImageGallery(props: {
   onUrls: (urls: string[]) => void;
   disabled?: boolean;
   max?: number;
+  /** listing：左侧大图 + 缩略图，给发帖左右分栏用。默认仍是闲鱼方格。 */
+  variant?: "grid" | "listing";
 }): ReactElement {
   const tt = useUI();
+  const siteId = "oceanleo";
   const inputRef = useRef<HTMLInputElement>(null);
+  const listing = props.variant === "listing";
+  const [active, setActive] = useState(0);
   const urlsRef = useRef<string[]>(cleanGalleryUrls(props.urls));
   const pushedRef = useRef<string[] | null>(null);
   const pendingRef = useRef<PendingSlot[]>([]);
@@ -239,10 +274,14 @@ export function BayImageGallery(props: {
 
     for (const slot of newcomers) {
       try {
-        const uploaded = await uploadFile(slot.file, { siteId: "home", title: slot.file.name });
+        const uploaded = await uploadFile(slot.file, {
+          siteId,
+          title: slot.file.name,
+          idempotencyKey: safeIdempotencyKey(["bay-gallery-v1", siteId, slot.file.name, slot.file.size, slot.file.lastModified]),
+        });
         const url = uploadedHttps(uploaded);
         if (!url) {
-          setError(uploaded.ok === false ? uploaded.error || tt("图片没传上去") : tt("图片没传上去"));
+          setError(uploaded.ok === false ? tt(humanUploadError(uploaded.error, uploaded.status)) : tt("图片没传上去"));
           continue;
         }
         const current = urlsRef.current;
@@ -283,16 +322,73 @@ export function BayImageGallery(props: {
       type="file"
       accept="image/*"
       multiple
-      style={FILE}
+      hidden
+      className="hidden"
       disabled={disabled || room <= 0}
       onChange={(event) => void addFiles(event.target.files)}
     />
   );
+  const addTile = room > 0 ? (
+    <button
+      type="button"
+      data-bay-cover-pick=""
+      data-bay-gallery-add=""
+      data-bay-gallery-empty={urls.length || pending.length ? undefined : ""}
+      aria-label={`${tt("添加细节图")} · ${tt("最多 {n} 张", { n: max })}`}
+      disabled={disabled}
+      onClick={() => inputRef.current?.click()}
+      style={{
+        ...(listing ? ADD_RAIL : ADD),
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={listing ? "h-4 w-4" : "h-5 w-5"} aria-hidden="true">
+        <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+      </svg>
+      {listing ? null : <span className="text-[11px] leading-tight">{tt("添加细节图")}</span>}
+    </button>
+  ) : null;
+  const tiles = (
+    <>
+      {urls.map((url, index) => (
+        <div key={`${index}-${url}`} data-bay-gallery-tile={index} style={TILE}>
+          {listing ? (
+            <button type="button" onClick={() => setActive(index)} className="h-full w-full" aria-pressed={active === index} aria-label={tt("第 {n} 张", { n: index + 1 })}>
+              <img src={url} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+            </button>
+          ) : (
+            <img src={url} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+          )}
+          <button
+            type="button"
+            data-bay-gallery-remove={index}
+            aria-label={tt("去掉这张")}
+            disabled={disabled}
+            onClick={() => removeAt(index)}
+            className="absolute right-1 top-1 grid h-[18px] w-[18px] place-items-center rounded-full bg-black/70 text-[11px] leading-none text-white disabled:opacity-40"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      {pending.map((slot) => (
+        <div key={slot.id} data-bay-gallery-pending="" style={TILE}>
+          {slot.preview ? (
+            <img src={slot.preview} alt="" className="h-full w-full object-cover opacity-60" />
+          ) : null}
+          <span className="absolute inset-0 grid place-items-center text-[11px] text-neutral-600">{tt("上传中")}</span>
+        </div>
+      ))}
+      {addTile}
+    </>
+  );
+  const current = urls[Math.min(Math.max(active, 0), Math.max(urls.length - 1, 0))] || pending[0]?.preview || "";
 
   return (
     <div
       data-bay-image-gallery=""
-      data-bay-gallery-editor="grid"
+      data-bay-gallery-editor={listing ? "listing" : "grid"}
       data-bay-gallery-count={urls.length}
       data-bay-cover-drop=""
       data-bay-cover-state={urls.length || pending.length ? "filled" : "empty"}
@@ -301,46 +397,66 @@ export function BayImageGallery(props: {
       onDrop={onDrop}
       style={{ outline: dragging ? "1px dashed #a3a3a3" : undefined, outlineOffset: 2 }}
     >
-      <div data-bay-gallery-grid="" style={GRID}>
-        {urls.map((url, index) => (
-          <div key={`${index}-${url}`} data-bay-gallery-tile={index} style={TILE}>
-            <img src={url} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-            <button
-              type="button"
-              data-bay-gallery-remove={index}
-              aria-label={tt("去掉这张")}
-              disabled={disabled}
-              onClick={() => removeAt(index)}
-              className="absolute right-1 top-1 grid h-[18px] w-[18px] place-items-center rounded-full bg-black/70 text-[11px] leading-none text-white disabled:opacity-40"
-            >
-              ×
-            </button>
+      {pick}
+      {listing ? (
+        <div data-bay-gallery-stage="" style={LISTING_STAGE}>
+          <div data-bay-gallery-rail="" style={LISTING_RAIL}>
+            {urls.map((url, index) => (
+              <div key={`${index}-${url}`} data-bay-gallery-tile={index} style={{ ...LISTING_THUMB, border: active === index ? "2px solid #171717" : "1px solid #e5e5e5" }}>
+                <button
+                  type="button"
+                  data-bay-gallery-thumb={index}
+                  aria-pressed={active === index}
+                  aria-label={tt("第 {n} 张", { n: index + 1 })}
+                  onClick={() => setActive(index)}
+                  className="h-full w-full"
+                >
+                  <img src={url} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                </button>
+                <button
+                  type="button"
+                  data-bay-gallery-remove={index}
+                  aria-label={tt("去掉这张")}
+                  disabled={disabled}
+                  onClick={() => removeAt(index)}
+                  className="absolute right-1 top-1 grid h-4 w-4 place-items-center rounded-full bg-black/70 text-[11px] leading-none text-white disabled:opacity-40"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {pending.map((slot) => (
+              <div key={slot.id} data-bay-gallery-pending="" style={LISTING_THUMB}>
+                {slot.preview ? (
+                  <img src={slot.preview} alt="" className="h-full w-full object-cover opacity-60" />
+                ) : null}
+                <span className="absolute inset-0 grid place-items-center text-[11px] text-neutral-600">{tt("上传中")}</span>
+              </div>
+            ))}
+            {addTile}
           </div>
-        ))}
-        {pending.map((slot) => (
-          <div key={slot.id} data-bay-gallery-pending="" style={TILE}>
-            {slot.preview ? (
-              <img src={slot.preview} alt="" className="h-full w-full object-cover opacity-60" />
-            ) : null}
-            <span className="absolute inset-0 grid place-items-center text-[11px] text-neutral-600">{tt("上传中")}</span>
-          </div>
-        ))}
-        {room > 0 ? (
-          <label
-            data-bay-cover-pick=""
-            data-bay-gallery-add=""
-            data-bay-gallery-empty={urls.length || pending.length ? undefined : ""}
-            aria-label={`${tt("添加细节图")} · ${tt("最多 {n} 张", { n: max })}`}
-            style={{ ...ADD, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}
+          <div
+            data-bay-gallery-main=""
+            role={current ? undefined : "button"}
+            tabIndex={current || disabled ? undefined : 0}
+            onClick={current || disabled || room <= 0 ? undefined : () => inputRef.current?.click()}
+            style={{ ...LISTING_MAIN, cursor: current || disabled ? undefined : "pointer" }}
+            className="border border-neutral-200"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-            </svg>
-            <span className="text-[11px] leading-tight">{tt("添加细节图")}</span>
-            {pick}
-          </label>
-        ) : null}
-      </div>
+            {current ? (
+              <img src={current} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+            ) : (
+              <span className="grid h-full w-full place-items-center px-3 text-center text-[13px] text-neutral-400">
+                {tt("添加细节图")}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div data-bay-gallery-grid="" style={GRID}>
+          {tiles}
+        </div>
+      )}
       <p data-bay-cover-hint="" className="hidden">
         {tt("把图片拖到这里")}
       </p>

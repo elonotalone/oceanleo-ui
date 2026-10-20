@@ -914,6 +914,8 @@ const en: Record<string, string> = {
   "用量柱状图与每次调用的真实计费记录，已统一搬到「Cost」页。": "Usage charts and per-call billing records have moved to the Cost page.",
   "登录后即可查看文件库。": "Sign in to view your file library.",
   "网格视图": "Grid view",
+  "查看选项": "View options",
+  "仅看收藏": "Favorites only",
   "让 agent 帮你做「{title}」": "Let an agent do \\\"{title}\\\" for you",
   "让 agent 帮你做「{x}」": "Let an agent do \\\"{x}\\\" for you",
   "请填写标题与 prompt": "Please fill in a title and prompt",

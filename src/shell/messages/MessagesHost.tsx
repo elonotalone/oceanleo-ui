@@ -168,8 +168,6 @@ function MessagesOverlay() {
     list = (
       <Inbox
         activeConversationId={state.conversationId}
-        initialFilter={state.filter}
-        onFilterChange={(next) => host.setFilter(next)}
         onOpenConversation={(id, seq) => host.showConversation(id, seq ?? null)}
         onNew={() => setNewOpen(true)}
       />

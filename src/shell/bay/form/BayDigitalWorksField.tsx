@@ -8,6 +8,7 @@ import { getCurrentArtifactItem } from "../../artifact-client";
 import type { LibraryItem } from "../../library-data";
 import { pickLibraryWork } from "../needs/LibraryWorkPicker";
 import { BAY_FORM_CHIP_BUTTON_CLASS } from "./form-ui";
+import { humanUploadError, safeIdempotencyKey } from "./bay-upload";
 import { BayWorkShowcase } from "./BayWorkShowcase";
 import { kindFromUrl, type PreviewFileKind } from "./bay-typed-preview";
 import {
@@ -35,18 +36,6 @@ const GRID: CSSProperties = {
   gap: 8,
   width: "100%",
 };
-const FILE: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: "hidden",
-  clip: "rect(0, 0, 0, 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
-
 const KIND_LABEL: Record<PreviewFileKind, string> = {
   image: "图片",
   video: "视频",
@@ -88,15 +77,15 @@ function refFromLibraryItem(item: LibraryItem, file?: File, uploaded?: FileItem)
   };
 }
 
-async function libraryItemFromLocalFile(file: File): Promise<{ ok: true; item: LibraryItem; uploaded: FileItem } | { ok: false; error: string }> {
-  const uploadIdempotencyKey = ["library-upload-v1", "home", file.name, file.size, file.lastModified].join(":");
+async function libraryItemFromLocalFile(file: File, siteId: string): Promise<{ ok: true; item: LibraryItem; uploaded: FileItem } | { ok: false; error: string }> {
+  const uploadIdempotencyKey = safeIdempotencyKey(["library-upload-v1", siteId, file.name, file.size, file.lastModified]);
   const result = await uploadFile(file, {
-    siteId: "home",
+    siteId,
     title: file.name,
     idempotencyKey: uploadIdempotencyKey,
   });
   if (!result.ok || !result.data?.file) {
-    return { ok: false, error: result.error || "文件上传失败，请重试。" };
+    return { ok: false, error: humanUploadError(result.error, result.status) };
   }
   const uploaded = result.data.file;
   const hasCanonicalContract = uploaded.artifact !== undefined || Boolean(uploaded.artifact_id) || Boolean(uploaded.revision_id);
@@ -109,7 +98,7 @@ async function libraryItemFromLocalFile(file: File): Promise<{ ok: true; item: L
     if (!canonical.ok) return { ok: false, error: canonical.error };
     return { ok: true, item: canonical.item, uploaded };
   }
-  const legacy = legacyUploadTransient(uploaded, file, "home");
+  const legacy = legacyUploadTransient(uploaded, file, siteId);
   if (!legacy.ok) return { ok: false, error: legacy.error };
   const ensured = await ensureArtifact(legacy.transient);
   if (!ensured.ok || !ensured.data) {
@@ -138,6 +127,7 @@ export function BayDigitalWorksField(props: {
   disabled?: boolean;
 }): ReactElement {
   const tt = useUI();
+  const siteId = "oceanleo";
   const inputRef = useRef<HTMLInputElement>(null);
   const works = normalizeDigitalWorks(props.works);
   const [pending, setPending] = useState<PendingTile[]>([]);
@@ -201,10 +191,10 @@ export function BayDigitalWorksField(props: {
           dropPending(tile.key);
           continue;
         }
-        const uploaded = await libraryItemFromLocalFile(file);
+        const uploaded = await libraryItemFromLocalFile(file, siteId);
         dropPending(tile.key);
         if (!uploaded.ok) {
-          setError(tt(uploaded.error) || tt("上传失败"));
+          setError(tt(humanUploadError(uploaded.error)));
           continue;
         }
         const ref = refFromLibraryItem(uploaded.item, file, uploaded.uploaded);
@@ -305,10 +295,12 @@ export function BayDigitalWorksField(props: {
         ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <label
+        <button
+          type="button"
           data-bay-work-upload=""
           className={BAY_FORM_CHIP_BUTTON_CLASS}
-          style={{ cursor: disabled || busy ? "not-allowed" : "pointer", opacity: disabled || busy ? 0.4 : 1 }}
+          disabled={disabled || busy}
+          onClick={() => inputRef.current?.click()}
         >
           {busy ? (
             <span className="inline-flex items-center gap-2">
@@ -318,15 +310,16 @@ export function BayDigitalWorksField(props: {
           ) : (
             tt("上传文件")
           )}
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            style={FILE}
-            disabled={disabled || busy}
-            onChange={(event) => void addFiles(event.target.files)}
-          />
-        </label>
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          hidden
+          className="hidden"
+          disabled={disabled || busy}
+          onChange={(event) => void addFiles(event.target.files)}
+        />
         <button
           type="button"
           data-bay-work-library=""

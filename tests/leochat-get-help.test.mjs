@@ -307,6 +307,9 @@ test("标题、分类、价格、向谁展示一次看见，没有更多选项",
   assert.ok(view.host.querySelector("[data-bay-submit]"));
   assert.equal(view.host.querySelector("[data-bay-help-more]"), null);
   assert.ok(view.host.querySelector("[data-bay-help-mode]"));
+  if (view.host.querySelector("[data-bay-audience] [data-bay-choice-collapsed]")) {
+    await view.click("[data-bay-audience] [data-bay-choice-option]");
+  }
   assert.ok(view.host.querySelector('[data-bay-help-mode="group"]'));
   assert.equal(view.host.querySelector('[data-bay-reveal-item="budget"]'), null);
   assert.equal(view.host.querySelector('[data-bay-help-mode="open"]'), null);
@@ -321,6 +324,9 @@ test("所有人走 demands；指定某人没选好友不发", async () => {
   await publicView.type("[data-bay-help-text]", "演示稿");
   await publicView.type('[data-bay-field="description"]', `${longLine}需要十五页含财务预测和英文版说明。`);
   await publicView.click('[data-bay-reveal-item="who"]');
+  if (publicView.host.querySelector("[data-bay-audience] [data-bay-choice-collapsed]")) {
+    await publicView.click("[data-bay-audience] [data-bay-choice-option]");
+  }
   assert.ok(publicView.host.querySelector('[data-bay-help-mode="public"]'));
   assert.ok(publicView.host.querySelector('[data-bay-help-mode="invited"]'));
   assert.ok(publicView.host.querySelector('[data-bay-help-mode="group"]'));
@@ -339,6 +345,9 @@ test("所有人走 demands；指定某人没选好友不发", async () => {
   const invited = await mount(React.createElement(GetHelpForm, { siteKey: "ppt", defaultMode: "public" }));
   await invited.type("[data-bay-help-text]", "海报改一下层次和字号再压一压");
   await invited.click('[data-bay-reveal-item="who"]');
+  if (invited.host.querySelector("[data-bay-audience] [data-bay-choice-collapsed]")) {
+    await invited.click("[data-bay-audience] [data-bay-choice-option]");
+  }
   await invited.click('[data-bay-help-mode="invited"]');
   await invited.click("[data-bay-submit]");
   assert.match(invited.host.textContent, /请选择要给谁看/);

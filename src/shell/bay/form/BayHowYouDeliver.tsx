@@ -29,7 +29,7 @@ export function BayHowYouDeliver(props: {
         }))}
         value={props.value}
         onChange={props.onChange}
-        columns={2}
+        columns={1}
         collapsible
         disabled={props.disabled}
         optionProps={(id) => ({

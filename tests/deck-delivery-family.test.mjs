@@ -603,7 +603,7 @@ test("没有 HTML 交付时布局不变：不分板块，仍是今天那张平�
     }),
   );
   assert.doesNotMatch(html, /data-library-section=/);
-  assert.match(html, /data-workspace-card-grid="auto-fill"/);
+  assert.match(html, /data-workspace-card-grid="four"/);
 
   // 非 deck 素材同样不分板块。
   const images = [

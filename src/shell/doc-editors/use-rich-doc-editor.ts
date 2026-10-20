@@ -255,6 +255,12 @@ export function richDocSourceLoadKey(item: LibraryItem): string {
     meta.markdown ?? "",
     meta.content ?? "",
     meta.text ?? "",
+    meta.filename ?? "",
+    meta.mime ?? "",
+    item.artifact?.renditions.source?.url ?? "",
+    item.artifact?.renditions.full?.url ?? "",
+    item.artifact?.renditions.preview?.url ?? "",
+    item.artifact?.renditions.source?.mediaType ?? "",
     // `loadRichDocHtml` decides docx-vs-text by these, so they are load inputs
     // too: leaving them out turns "reloads too often" into "never reloads when
     // the same address is re-typed as another format".

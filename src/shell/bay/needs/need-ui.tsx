@@ -30,7 +30,8 @@ export const TEXT_LINK = "font-medium text-stone-900 underline underline-offset-
 /** 后端的中文 `detail.message` 原样过 tt()；没有就用兜底句。 */
 export function errorText(tt: UITranslate, error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message.trim() : "";
-  return message ? tt(message) : fallback;
+  if (!message || /^HTTP\s*\d+$/i.test(message) || /idempotency/i.test(message)) return fallback;
+  return tt(message);
 }
 
 export function errorStatus(error: unknown): number {

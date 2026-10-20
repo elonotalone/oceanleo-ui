@@ -44,7 +44,7 @@ export function actionGroup(
 
 export function advancedWorkbenchStyle(accent: string): CSSProperties {
   return {
-    "--awb-shell-bg": "var(--bg,#f7f7f5)",
+    "--awb-shell-bg": "var(--bg,#faf8f5)",
     "--awb-chrome-bg": "var(--card,#fff)",
     "--awb-stage-bg": "var(--surface,#f2f3f5)",
     "--advanced-stage-bg": "var(--awb-stage-bg)",

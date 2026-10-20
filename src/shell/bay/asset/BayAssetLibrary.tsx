@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { COLLECTION_CARD_GRID_CLASS, COLLECTION_CARD_GRID_STYLE } from "../../collection-chrome";
 import { useBaySignedIn, type BayFeedFilter } from "../shell/bay-state";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { BayFilterSelect, BayToolbarFilters, type BayFilterOption } from "../shell/BayFilterSelect";
@@ -58,7 +59,7 @@ import {
   type TypeZone,
 } from "./origin-index";
 
-const PREVIEW_PER_ROW = 6;
+const PREVIEW_PER_ROW = 4;
 
 function readSearch(): string {
   if (typeof window === "undefined") return "";
@@ -706,7 +707,6 @@ export function BayAssetLibrary({
           value={type}
           options={typeOptions}
           onChange={changeType}
-          accent={accent}
         />
         <BayFilterSelect
           name="view"
@@ -714,7 +714,6 @@ export function BayAssetLibrary({
           value={zone}
           options={originOptions}
           onChange={changeZone}
-          accent={accent}
         />
         {showCategory ? (
           <BayFilterSelect
@@ -725,7 +724,6 @@ export function BayAssetLibrary({
             onChange={changeCat}
             allLabel={tt("全部")}
             searchable={catOptions.length > 12}
-            accent={accent}
           />
         ) : null}
         {showIndustry ? (
@@ -736,7 +734,6 @@ export function BayAssetLibrary({
             options={PPT_INDUSTRIES.map((item) => ({ value: item.key, label: tt(item.label) }))}
             onChange={setIndustry}
             allLabel={tt("全部行业")}
-            accent={accent}
           />
         ) : null}
         {showSeries ? (
@@ -747,7 +744,6 @@ export function BayAssetLibrary({
             options={[{ value: "1", label: tt("只看成套") }]}
             onChange={(value) => setSeriesOn(value === "1")}
             allLabel={tt("全部（含单件）")}
-            accent={accent}
           />
         ) : null}
         <button
@@ -783,16 +779,16 @@ export function BayAssetLibrary({
               </button>
             </div>
           ) : !mineGrid || (mineGrid.loading && mineGrid.items.length === 0) ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+            <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
               {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} aria-hidden="true" className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+                <div key={index} aria-hidden="true" className="aspect-[4/3] animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
               ))}
             </div>
           ) : mineGrid.items.length === 0 ? (
             <div data-bay-asset-empty />
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" data-bay-asset-grid>
+              <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
                 {mineGrid?.items.map((asset) => (
                   <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
                 ))}
@@ -841,9 +837,9 @@ export function BayAssetLibrary({
           <p className="mt-5 text-[12px] text-stone-500">{tt("此类型没有实时开源上游。")}</p>
         )
       ) : !index && !(official && (official.items.length > 0 || official.total > 0)) ? (
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+        <div className={`mt-5 ${COLLECTION_CARD_GRID_CLASS}`} style={COLLECTION_CARD_GRID_STYLE} role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
           {Array.from({ length: 8 }).map((_, index) => (
-            <div key={index} aria-hidden="true" className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+            <div key={index} aria-hidden="true" className="aspect-[4/3] animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
           ))}
         </div>
       ) : (
@@ -926,7 +922,7 @@ export function BayAssetLibrary({
                         {tt("查看全部")}
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                    <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
                       {official.items.slice(0, BAY_OFFICIAL_PREVIEW_COUNT).map((asset) => (
                         <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
                       ))}
@@ -954,7 +950,7 @@ export function BayAssetLibrary({
                           {tt("查看全部")}
                         </button>
                       </div>
-                      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                      <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
                         {preview.items.map((asset) => (
                           <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
                         ))}
@@ -969,9 +965,9 @@ export function BayAssetLibrary({
           {mode !== "browse" ? (
             <>
               {loading && items.length === 0 ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+                <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
                   {Array.from({ length: 8 }).map((_, index) => (
-                    <div key={index} aria-hidden="true" className="aspect-square animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+                    <div key={index} aria-hidden="true" className="aspect-[4/3] animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
                   ))}
                 </div>
               ) : items.length === 0 && !error ? (
@@ -993,7 +989,7 @@ export function BayAssetLibrary({
                   />
                 )
               ) : items.length > 0 ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6" data-bay-asset-grid>
+                <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
                   {items.map((asset) => (
                     <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
                   ))}

@@ -10,6 +10,8 @@ export interface BayFeedQuery {
   kind?: BayFeedKindFilter;
   category?: string | null;
   q?: string | null;
+  /** 求购栏的交付种类：service / digital / app / lesson。只在 kind=needs 时有效。 */
+  listing_kind?: "service" | "digital" | "app" | "lesson" | null;
   limit?: number;
 }
 
@@ -65,6 +67,10 @@ export function bayFeedPath(filter: BayFeedQuery = {}, cursor?: string | null): 
   if (SLUG.test(category)) params.set("category", category);
   const q = typeof filter.q === "string" ? filter.q.trim().slice(0, MAX_Q) : "";
   if (q) params.set("q", q);
+  const listing = filter.listing_kind;
+  if (listing === "service" || listing === "digital" || listing === "app" || listing === "lesson") {
+    params.set("listing_kind", listing);
+  }
   if (typeof cursor === "string" && cursor) params.set("cursor", cursor.slice(0, 400));
   if (typeof filter.limit === "number" && Number.isFinite(filter.limit)) {
     params.set("limit", String(Math.min(40, Math.max(1, Math.round(filter.limit)))));

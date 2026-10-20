@@ -21,6 +21,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../../../i18n/ui/useUI";
+import { CollectionFilterChevron, CollectionMenuSearchField } from "../../collection-chrome";
 
 export interface BayFilterOption {
   value: string;
@@ -85,7 +86,7 @@ function firstEnabled(rows: readonly BayFilterOption[], from: number, step: numb
   return from;
 }
 
-export function BayFilterSelect({ label, value, options, onChange, allLabel, searchable, accent, name }: BayFilterSelectProps): ReactElement {
+export function BayFilterSelect({ label, value, options, onChange, allLabel, searchable, name }: BayFilterSelectProps): ReactElement {
   const tt = useUI();
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -224,6 +225,7 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
         aria-disabled={option.disabled || undefined}
         title={option.disabled ? option.hint : undefined}
         data-value={option.value}
+        data-view={option.value}
         data-highlight={active ? "true" : undefined}
         onMouseEnter={() => setHighlight(index)}
         onClick={() => (option.disabled ? undefined : pick(option.value))}
@@ -267,14 +269,11 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
             onMenuKeyDown(event);
           }
         }}
-        style={picked && accent ? { borderColor: accent, color: accent } : undefined}
         className={`${TRIGGER} ${picked ? "border-neutral-900 bg-white font-medium text-neutral-900" : "border-neutral-900 bg-white text-neutral-700 hover:text-neutral-900"}`}
       >
         <span className={picked ? "opacity-70" : undefined}>{label}</span>
         {picked || allLabel ? <span className="max-w-[10rem] truncate">{picked ? current?.label : allLabel}</span> : null}
-        <svg className="h-3.5 w-3.5 shrink-0 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-          <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <CollectionFilterChevron open={open} />
       </button>
       {open && place && typeof document !== "undefined"
         ? createPortal(
@@ -291,17 +290,15 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
               className="z-50 flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white p-1 shadow-lg"
             >
               {searchable ? (
-                <input
-                  type="search"
+                <CollectionMenuSearchField
                   autoFocus
                   value={needle}
                   placeholder={tt("搜索")}
                   aria-label={tt("搜索")}
                   aria-controls={listId}
                   aria-activedescendant={activeId}
-                  onChange={(event) => setNeedle(event.target.value)}
+                  onChange={setNeedle}
                   onKeyDown={onMenuKeyDown}
-                  className="mb-1 w-full rounded-full border-0 bg-neutral-200 px-4 py-2 text-[13px] outline-none placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-300"
                 />
               ) : null}
               <div className="min-h-0 flex-1 overflow-y-auto">

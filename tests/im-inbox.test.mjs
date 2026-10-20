@@ -348,6 +348,15 @@ test("状态仓：分页追加不重复；断开后清空", async () => {
   assert.equal(t.store.unread(), null);
 });
 
+test("置顶会话排在最前，其余仍按最近活动", () => {
+  const items = sortInbox([
+    conv("old", { last_activity_at: "2026-10-05T09:00:00Z" }),
+    conv("fresh", { last_activity_at: "2026-10-05T12:00:00Z" }),
+    conv("pin", { last_activity_at: "2026-10-05T08:00:00Z", pinned: true }),
+  ]);
+  assert.deepEqual(items.map((i) => i.id), ["pin", "fresh", "old"]);
+});
+
 test("角标数字与列表接口路径", () => {
   assert.equal(formatBadge(0), "");
   assert.equal(formatBadge(7), "7");

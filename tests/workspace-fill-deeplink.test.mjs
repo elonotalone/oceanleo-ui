@@ -499,7 +499,7 @@ test("open=advanced 的口径仍是「默认产物类型的库分类」，不指
   assert.ok(plan.action.category);
 
   // 不带 intent 的 action 落点仍是 openEntry（安静预览），不是 onOpenItem（编辑器）：
-  // `openAdvancedOnSelect` 只是「详情页头部可以给 Edit」的开关。这条老语义不得被
+  // `openAdvancedOnSelect` 只打开详情头的 Edit。这条老语义不得被
   // 「编辑模板」的新分支顺手改掉。
   assert.match(
     workspaceLibrarySource,

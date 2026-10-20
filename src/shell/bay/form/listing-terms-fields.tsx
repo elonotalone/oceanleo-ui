@@ -117,6 +117,8 @@ export function listingPriceItems(
           true,
           <div data-bay-service-form>
             <BayChoice
+              columns={1}
+              collapsible
               options={[
                 { value: "service", title: tt("按约定时间交付") },
                 { value: "session", title: tt("按次") },

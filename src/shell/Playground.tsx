@@ -24,7 +24,14 @@ import { CreateSkillModal } from "./CreateSkillModal";
 import { SkillPromptPanel } from "./SkillPromptPanel";
 import { PromptCardModal, AddPromptModal } from "./HomeCards";
 import { AppMarket } from "./AppMarket";
-import { LibraryToolbar } from "./LibraryLayout";
+import {
+  CollectionCardGrid,
+  CollectionFilterRow,
+  CollectionFilterSelect,
+  CollectionPageToolbar,
+  type CollectionView,
+  type CollectionViewOption,
+} from "./collection-chrome";
 import {
   GENERIC_PROMPTS,
   PROMPT_LIBRARY,
@@ -33,7 +40,7 @@ import {
   loadAllCustomPromptCards,
   type PromptCard,
 } from "./home-cards";
-import { listAgents, saveAgent, type AgentDef } from "../lib/agent";
+import { listAgents, saveAgent, unsaveAgent, type AgentDef } from "../lib/agent";
 import {
   listMarketApps,
   listMarketScenes,
@@ -44,7 +51,6 @@ import { siteIconFor, siteBrandColorFor } from "./site-icons";
 import { useUI } from "../i18n/ui/useUI";
 import {
   APP_PAGE_FRAME_CLASS,
-  APP_PAGE_HEADER_ROW_CLASS,
   APP_PAGE_TITLE_CLASS,
 } from "./AppPageHeader";
 import {
@@ -274,7 +280,7 @@ function useMarketApps(): MarketController {
 // 2026-07-02（操作员）：新增「prompt」专区 tab——全家桶 prompt 卡片库（分类 + 搜索 +
 //   「创建 prompt」首卡 + 每张卡片右上角预览/编辑/保存）。用户自建 prompt 持久化
 //   （localStorage，与子站首页「工作内容」卡片同一套 PromptCardModal / 存取助手）。
-type Tab = "site" | "app" | "skill" | "prompt" | "organization" | "workflow";
+type Tab = "site" | "app" | "skill" | "prompt";
 
 export type PlaygroundBoardKind = "organization" | "workflow";
 
@@ -294,46 +300,54 @@ export interface PlaygroundBoardCtx {
 export function PlaygroundDetail({
   siteOrigin,
   accent = "#0ea5e9",
-  renderBoard,
+  renderBoard: _renderBoard,
   renderSites,
   onRequestLogin,
-  pileSwitch,
+  favoritesOnly = false,
+  onFavoritesOnlyChange,
 }: {
   /** site_id → 子站 origin（拼 iframe src 用）。 */
   siteOrigin: Record<string, string>;
   accent?: string;
   /**
-   * 渲染 organization / workflow 编排画布。由消费端注入（持有 React Flow 依赖）。
-   * 不传 → 这两个分区显示「即将开放」占位。
+   * 渲染 organization / workflow 编排画布。保留 prop 以免炸消费端，本页不再渲染。
    */
   renderBoard?: (ctx: PlaygroundBoardCtx) => ReactNode;
   /**
    * 渲染「网站」分区（全家桶站卡片 + 加入工作台）。由消费端注入
-   * （持有 lib/sites 站点清单）。不传 → 不显示「网站」tab。
+   * （持有 lib/sites 站点清单）。不传 → 不显示「网站」分区。
    * 外壳把标题|搜索行交给注入面：消费端把 toolbarLeading / belowToolbar 传给
-   * 第一份 AppDirectory，这样网站 tab 与 app/agent 同一套页头。
+   * 第一份 AppDirectory，这样网站分区与 app/agent 同一套页头。
    */
   renderSites?: (chrome: {
     toolbarLeading?: ReactNode;
     belowToolbar?: ReactNode;
+    viewOptions?: CollectionViewOption[];
   }) => ReactNode;
   /** 市场里未登录用户点「加入工作台」时打开消费端自己的登录入口。 */
   onRequestLogin?: () => void;
-  /** 门户工作台「全部 | 我的」开关；嵌在标题旁。不传则只显示「工作台」。 */
-  pileSwitch?: ReactNode;
+  /** 仅看已加入 / 已收藏。`?pile=mine` 经 WorkspaceDesk 传入。 */
+  favoritesOnly?: boolean;
+  onFavoritesOnlyChange?: (value: boolean) => void;
 }) {
+  void _renderBoard;
   const tt = useUI();
+  const [localFav, setLocalFav] = useState(false);
+  const onlyFav = onFavoritesOnlyChange ? Boolean(favoritesOnly) : localFav;
+  function toggleFav() {
+    const next = !onlyFav;
+    if (onFavoritesOnlyChange) onFavoritesOnlyChange(next);
+    else setLocalFav(next);
+  }
   const [refreshKey, setRefreshKey] = useState(0);
   const { agents, loading } = useAgents(refreshKey);
   const market = useMarketApps();
-  // 有「网站」分区时默认落在它（它是第一个 tab）；否则落 app。
+  // 有「网站」分区时默认落在它（它是第一个分区）；否则落 app。
   const [tab, setTab] = useState<Tab>(renderSites ? "site" : "app");
   const [activeId, setActiveId] = useState<string>("");
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
-  // organization/workflow 画布是否进了编辑器（进了就隐藏标题+tab，全屏编辑）。
-  const [boardEditing, setBoardEditing] = useState(false);
   // doctrine v11：点卡片先弹详情弹窗（WorkBuddy 式），点「召唤」才进内嵌功能区。
   const [detailId, setDetailId] = useState<string>("");
   // 2026-07-02：卡片右上角「查看/编辑 prompt」→ SkillPromptPanel（modal 形态）。
@@ -354,7 +368,15 @@ export function PlaygroundDetail({
     () => mineFirst(agents.filter((a) => (a.site_id || "") === SKILL_APP_ID)),
     [agents, mineFirst],
   );
-  const list = tab === "app" ? appAgents : skillAgents;
+  const favorited = (a: AgentDef) => Boolean(a.saved || a.owner_id);
+  const list = useMemo(() => {
+    const raw = tab === "app" ? appAgents : skillAgents;
+    return onlyFav ? raw.filter(favorited) : raw;
+  }, [tab, appAgents, skillAgents, onlyFav]);
+  const marketItems = useMemo(
+    () => (onlyFav ? market.items.filter((app) => app.installed) : market.items),
+    [onlyFav, market.items],
+  );
 
   const items: DirectoryItem[] = useMemo(() => {
     // 宗旨 v13（2026-07-02）：不再让每张卡强制取分区色，改为按 agent_id 稳定生成
@@ -374,9 +396,10 @@ export function PlaygroundDetail({
           : brandColorFor(a.agent_id),
       site_id: a.site_id,
       category: a.category,
+      added: favorited(a),
     }));
     return base;
-  }, [list, tab, accent]);
+  }, [list, tab]);
 
   const detailAgent = useMemo(
     () => agents.find((a) => a.agent_id === detailId) || null,
@@ -414,20 +437,39 @@ export function PlaygroundDetail({
   );
 
   const pageTitle = (
-    <div className="flex min-w-0 flex-wrap items-center gap-3">
-      <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
-      {pileSwitch}
-    </div>
+    <h1 className={APP_PAGE_TITLE_CLASS}>{tt("工作台")}</h1>
   );
+  const favoriteViewOptions: CollectionViewOption[] = [
+    {
+      id: "favorites",
+      label: tt("仅看收藏"),
+      checked: onlyFav,
+      onSelect: toggleFav,
+    },
+  ];
+  const sectionOptions = [
+    ...(renderSites ? [{ value: "site", label: tt("网站") }] : []),
+    { value: "app", label: "app" },
+    { value: "skill", label: "agent" },
+    { value: "prompt", label: "prompt" },
+  ];
   const tabsBar = (
-    <PlaygroundTabs
-      tab={tab}
-      setTab={setTab}
-      hasSites={!!renderSites}
-      hasBoard={!!renderBoard}
+    <CollectionFilterSelect
+      label={tt("分区")}
+      name="section"
+      value={tab}
+      options={sectionOptions}
+      onChange={(value) => {
+        if (value) setTab(value as Tab);
+      }}
+      accent={accent}
     />
   );
-  const listChrome = { toolbarLeading: pageTitle, belowToolbar: tabsBar };
+  const listChrome = {
+    toolbarLeading: pageTitle,
+    belowToolbar: tabsBar,
+    viewOptions: favoriteViewOptions,
+  };
 
   async function addToWorkspace() {
     if (!active || saving) return;
@@ -506,59 +548,12 @@ export function PlaygroundDetail({
   if (tab === "prompt") {
     return (
       <div className={APP_PAGE_FRAME_CLASS}>
-        <PromptZone accent={accent} {...listChrome} />
-      </div>
-    );
-  }
-
-  // ── organization / workflow 分区 ──
-  //   目录页（boardEditing=false）：与 app/agent **完全同一套外层版式**
-  //     （APP_PAGE_FRAME_CLASS + 标题 + tab），切 tab 时位置纹丝不动。
-  //   编辑器（boardEditing=true）：换成**全宽满高**外层（h-[calc(100dvh-1px)]，无
-  //     max-w / padding / 标题 / tab），编辑器铺满 <main> 区。<main> 本身就在侧栏
-  //     右侧，所以左侧侧栏始终在。
-  //
-  //   关键（2026-06-25 修「点卡片闪一下打不开」）：**board 必须挂在同一棵树的同一
-  //   位置、同一 key**，否则 boardEditing 翻转时整段 <OrgWorkflowBoard> 会 unmount /
-  //   remount——它内部刚 setOpenOrg(card) 的状态被清回 null，于是「打开编辑器 →
-  //   立刻被重挂回目录」造成闪烁、永远打不开。之前用两个 early-return 返回**结构
-  //   不同**的两棵树（目录页 board 在第 3 个子节点，编辑页 board 在唯一子节点），
-  //   React 按位置 diff 判定类型变化 → 强制 remount。现在统一成**一棵树**：外层 div
-  //   的 className 随 boardEditing 切换，标题 + tab 仅在非编辑态渲染，board 永远是
-  //   最后一个子节点、位置恒定，从而不再 remount。
-  if (tab === "organization" || tab === "workflow") {
-    if (!renderBoard) {
-      return (
-        <div className={APP_PAGE_FRAME_CLASS}>
-          <header className={APP_PAGE_HEADER_ROW_CLASS}>{pageTitle}</header>
-          <div className="mb-6">{tabsBar}</div>
-          <div className="grid place-items-center p-8 text-center text-[13px] text-neutral-400">
-            {tab === "organization" ? tt("组织编排") : tt("流程编排")}画布即将开放。
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div
-        className={
-          boardEditing
-            ? "h-[calc(100dvh-1px)] w-full"
-            : APP_PAGE_FRAME_CLASS
-        }
-      >
-        {!boardEditing && (
-          <>
-            <header className={APP_PAGE_HEADER_ROW_CLASS}>
-              {pageTitle}
-            </header>
-            <div className="mb-6">{tabsBar}</div>
-          </>
-        )}
-        {/* board 永远是该 div 的最后一个子节点：boardEditing 翻转时它的相对位置不变，
-            React 复用同一实例（不 remount），编辑器内部 openOrg 状态得以保留。 */}
-        <div key={`board-${tab}`} className={boardEditing ? "h-full" : ""}>
-          {renderBoard({ kind: tab, onEditingChange: setBoardEditing })}
-        </div>
+        <PromptZone
+          accent={accent}
+          toolbarLeading={pageTitle}
+          belowToolbar={tabsBar}
+          viewOptions={favoriteViewOptions}
+        />
       </div>
     );
   }
@@ -570,7 +565,8 @@ export function PlaygroundDetail({
         <AppMarket
           toolbarLeading={pageTitle}
           belowToolbar={tabsBar}
-          items={market.items}
+          viewOptions={favoriteViewOptions}
+          items={marketItems}
           total={market.total}
           scenes={market.scenes}
           siteIds={market.siteIds}
@@ -597,12 +593,23 @@ export function PlaygroundDetail({
       <AppDirectory
         toolbarLeading={pageTitle}
         belowToolbar={tabsBar}
+        viewOptions={favoriteViewOptions}
+        favoritesOnly={onlyFav}
         items={items}
-        leadingCards={agentLeadingCards}
+        leadingCards={onlyFav ? [] : agentLeadingCards}
         accent={accent}
         loading={loading}
         openLabel={tt("试玩")}
         emptyText={tt("暂无可试玩的 agent。")}
+        onAdd={(it) => {
+          const a = agents.find((x) => x.agent_id === it.id);
+          if (!a) return;
+          void (async () => {
+            const r = a.saved ? await unsaveAgent(a.agent_id) : await saveAgent(a.agent_id);
+            if (!a.saved && r.status === 401) onRequestLogin?.();
+            setRefreshKey((k) => k + 1);
+          })();
+        }}
         onOpen={(it) => {
           if (it.id === NEW_CARD_ID) setShowCreateAgent(true);
           else setDetailId(it.id); // 先弹详情弹窗，点「召唤」才进入内嵌功能区
@@ -678,50 +685,6 @@ export function PlaygroundDetail({
   );
 }
 
-// Playground 分区 tab。目录页、prompt、organization / workflow 共用；标题走
-// pageTitle + LibraryToolbar.leading，和组织编排画布打开时隐藏的是这一整段 chrome。
-function PlaygroundTabs({
-  tab,
-  setTab,
-  hasSites,
-  hasBoard,
-}: {
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  hasSites?: boolean;
-  hasBoard?: boolean;
-}) {
-  const tt = useUI();
-  const tabs = [
-    ...(hasSites ? [{ id: "site" as Tab, label: tt("网站") }] : []),
-    { id: "app" as Tab, label: "app" },
-    // 宗旨 v12（2026-07-04）：删除 playground「agent」分区（与首页删 agent 卡片一致）。
-    { id: "prompt" as Tab, label: "prompt" },
-    ...(hasBoard
-      ? [
-          { id: "organization" as Tab, label: "organization" },
-          { id: "workflow" as Tab, label: "workflow" },
-        ]
-      : []),
-  ];
-  return (
-    <div className="inline-flex rounded-xl bg-neutral-100 p-1">
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          onClick={() => setTab(t.id)}
-          className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- tab === t.id ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
- }`}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // prompt 专区（2026-07-02，操作员）：全家桶 prompt 卡片库。
 //   - 内容 = home-cards 的 PROMPT_LIBRARY（全部站的内置卡去重）+ 用户自建
@@ -736,12 +699,15 @@ function PromptZone({
   accent,
   toolbarLeading,
   belowToolbar,
+  viewOptions,
 }: {
   accent: string;
   toolbarLeading?: ReactNode;
   belowToolbar?: ReactNode;
+  viewOptions?: CollectionViewOption[];
 }) {
   const tt = useUI();
+  const [view, setView] = useState<CollectionView>("grid");
   // playground 自己 scope 的自建卡（可编辑/删除）。
   const [custom, setCustom] = useState<PromptCard[]>([]);
   // 宗旨 v12（2026-07-04）：并入【当前 origin 下所有站首页】新建的自建卡（只读展示），
@@ -840,42 +806,38 @@ function PromptZone({
 
   return (
     <section>
-      <LibraryToolbar
+      <CollectionPageToolbar
+        title={toolbarLeading ?? ""}
         search={filter}
-        setSearch={setFilter}
-        view="grid"
-        setView={() => {}}
-        placeholder={tt("按名称筛选…")}
-        tt={tt}
-        leading={toolbarLeading}
-        hideView
+        onSearch={setFilter}
+        searchPlaceholder={tt("按名称筛选…")}
+        view={view}
+        onViewChange={setView}
+        viewOptions={viewOptions ?? []}
       />
-      {belowToolbar ? <div className="mb-4 mt-3">{belowToolbar}</div> : null}
-      {/* 分类 chips 在标题|搜索和分区 tab 之下 */}
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          {["__all__", ...categories].map((c) => {
-            const on = cat === c;
-            return (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCat(c)}
-                className={`rounded-full px-3 py-1.5 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- on ? "font-medium text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
- }`}
-                style={on ? { background: accent } : undefined}
-              >
-                {c === "__all__" ? tt("全部") : c}
-              </button>
-            );
-          })}
-      </div>
+      <CollectionFilterRow>
+        {belowToolbar}
+        {categories.length > 0 ? (
+          <CollectionFilterSelect
+            label={tt("类型")}
+            name="category"
+            value={cat === "__all__" ? "" : cat}
+            options={categories.map((item) => ({ value: item, label: item }))}
+            onChange={(next) => setCat(next || "__all__")}
+            allLabel={tt("全部")}
+            searchable={categories.length > 8}
+          />
+        ) : null}
+      </CollectionFilterRow>
 
       {copied && (
         <p className="mb-3 text-[12px] text-emerald-600">{tt("已复制到剪贴板 ✓")}</p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {(() => {
+        const PromptShelf = view === "list" ? "div" : CollectionCardGrid;
+        return (
+      <PromptShelf className={view === "list" ? "mt-5 space-y-2" : "mt-5"}>
         {/* 「添加 prompt」板块（第一张）：预制库选择 + 新建 二合一（宗旨 v12）。 */}
         <button
           type="button"
@@ -939,7 +901,9 @@ function PromptZone({
           </div>
         );
         })}
-      </div>
+      </PromptShelf>
+        );
+      })()}
 
       {shown.length === 0 && (
         <p className="py-12 text-center text-sm text-stone-400">{tt("没有匹配的 prompt。")}</p>

@@ -4,12 +4,14 @@
 // @oceanleo/ui — RichDocEditor 数据层（加载 / 导出转换，无 React）
 // ----------------------------------------------------------------------------
 // 加载优先级：inline 字符串（content / meta.markdown|content|text，按 markdown
-// 解析）→ url .md/.txt/.html 文本 → url .docx（mammoth 转 HTML）。所有进编辑器
-// 的 HTML 一律先过 DOMPurify。marked / dompurify / mammoth / turndown 全部动态
-// import，保证 SSR 与首屏 bundle 干净。
+// 解析）→ 文本类 URL（扩展名、mediaType，或 document/file 且不是 Office 包；
+// 签名地址可以没有 .md）→ url .docx（mammoth 转 HTML）。所有进编辑器的 HTML
+// 一律先过 DOMPurify。marked / dompurify / mammoth / turndown 全部动态 import，
+// 保证 SSR 与首屏 bundle 干净。
 // ============================================================================
 
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { isDisplayableText } from "../website-inline-preview";
 import { Extension, type JSONContent } from "@tiptap/core";
 import type { LibraryItem } from "../library-data";
 import { officeExtensionForItem } from "../workbench-routes";
@@ -109,14 +111,81 @@ function inlineSource(item: LibraryItem): string {
   return "";
 }
 
+const TEXT_DOCUMENT_EXTENSIONS = new Set([
+  "md",
+  "markdown",
+  "txt",
+  "html",
+  "htm",
+]);
+
+function richDocSourceUrl(item: LibraryItem): string {
+  return (
+    String(item.meta.editor_source_url || "").trim() ||
+    item.artifact?.renditions.source?.url ||
+    item.artifact?.renditions.full?.url ||
+    item.url ||
+    item.previewUrl ||
+    item.artifact?.renditions.preview?.url ||
+    ""
+  );
+}
+
+function richDocMediaType(item: LibraryItem): string {
+  return String(
+    item.artifact?.renditions.source?.mediaType ||
+      item.artifact?.renditions.full?.mediaType ||
+      item.artifact?.renditions.preview?.mediaType ||
+      item.meta.viewer_media_type ||
+      item.meta.content_type ||
+      item.meta.mime ||
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .split(";", 1)[0];
+}
+
+function richDocFilenameExtension(item: LibraryItem, url: string): string {
+  for (const value of [
+    url,
+    item.meta.filename,
+    item.meta.file_name,
+    item.meta.format,
+    item.meta.extension,
+    item.title,
+    item.previewUrl,
+  ]) {
+    const ext = urlExtension(String(value || ""));
+    if (ext) return ext;
+  }
+  return officeExtensionForItem(item);
+}
+
+function looksLikeTextRichDoc(
+  item: LibraryItem,
+  ext: string,
+  media: string,
+): boolean {
+  if (TEXT_DOCUMENT_EXTENSIONS.has(ext)) return true;
+  if (media.startsWith("text/") || media === "application/xhtml+xml") {
+    return true;
+  }
+  return (
+    (item.kind === "document" || item.kind === "file") &&
+    !media &&
+    officePackageKindForItem(item) == null
+  );
+}
+
 export async function loadRichDocHtml(
   item: LibraryItem,
   onSourceAccessError?: () => void,
 ): Promise<RichDocLoadResult> {
   try {
-    const url =
-      String(item.meta.editor_source_url || "").trim() || item.url || "";
-    const ext = urlExtension(url) || officeExtensionForItem(item);
+    const url = richDocSourceUrl(item);
+    const media = richDocMediaType(item);
+    const ext = richDocFilenameExtension(item, url);
     const isDocx =
       officePackageKindForItem(item) === "docx" || ext === "docx";
     if (url && isDocx) {
@@ -142,23 +211,34 @@ export async function loadRichDocHtml(
         error: `轻量文档编辑器暂不能解析 .${ext} 源文件；请转换为 DOCX 后重试。`,
       };
     }
-    if (url && ["md", "markdown", "txt", "html", "htm"].includes(ext)) {
+    if (url && looksLikeTextRichDoc(item, ext, media)) {
       const text = await (await fetchMediaBlob(url)).text();
-      if (ext === "md" || ext === "markdown") {
+      if (!isDisplayableText(text)) {
         return {
-          html: await markdownToHtml(text),
-          source: "url-markdown",
+          html: "<p></p>",
+          source: "empty",
+          error: "这一件存的是文件字节，没有可直接显示的正文。",
+        };
+      }
+      if (ext === "html" || ext === "htm" || media.includes("html")) {
+        return {
+          html: await sanitizeHtml(text),
+          source: "url-html",
           error: "",
         };
       }
-      if (ext === "txt") {
+      if (ext === "txt" || media === "text/plain") {
         return {
           html: await sanitizeHtml(plainTextToHtml(text)),
           source: "url-text",
           error: "",
         };
       }
-      return { html: await sanitizeHtml(text), source: "url-html", error: "" };
+      return {
+        html: await markdownToHtml(text),
+        source: "url-markdown",
+        error: "",
+      };
     }
     if (item.source === "artifact") {
       return {

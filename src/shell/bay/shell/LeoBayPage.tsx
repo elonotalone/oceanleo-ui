@@ -2,8 +2,18 @@
 
 // LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按服务 / 素材 / 作品 / 课程 / 需求五栏逛。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import {
+  COLLECTION_ACTION_BTN_GHOST,
+  COLLECTION_ACTION_BTN_PRIMARY,
+  CollectionFilterRow,
+  CollectionSearchField,
+  CollectionViewOptions,
+  CollectionViewToggle,
+  type CollectionView,
+  type CollectionViewOption,
+} from "../../collection-chrome";
 import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS } from "../../AppPageHeader";
 import type { ExplorePageProps } from "../../ExplorePage";
 import { BayAppShelf } from "../apps/BayAppShelf";
@@ -27,7 +37,15 @@ import {
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
 import { BayToolbarFilterSlot, BayToolbarSlotProvider } from "./BayFilterSelect";
-import { BayCategorySelect, BayFeed, BayViewSwitch, openMine, startPublish, useBaySearchText } from "./BayList";
+import {
+  BayCategorySelect,
+  BayFeed,
+  BayListingChromeContext,
+  BayViewSwitch,
+  openMine,
+  startPublish,
+  useBaySearchText,
+} from "./BayList";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -39,7 +57,7 @@ export type LeoBayMaterialProps = Pick<
 
 export interface LeoBayPageProps {
   siteKey: string;
-  /** 站点主色：页头、选中的切换与类目用它。不传用天蓝。 */
+  /** 站点主色：货架卡仍可读。筛选行不用它。不传用天蓝。 */
   accent?: string;
   /** 素材货架的可选接线。 */
   materials?: LeoBayMaterialProps;
@@ -59,72 +77,77 @@ const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`;
 /** 有白板的详情：左右露出页底渐变，上下贴齐，不再垫 pt-3 / pb-5。页框、滚动区、返回行都不铺白，圆角白板才看得见。 */
 const PAPER_FRAME_CLASS = "mx-auto flex h-[calc(100dvh-1px)] min-h-0 w-full max-w-6xl flex-col px-4";
 const PAPER_HEADER_CLASS = "sticky top-0 z-0 flex min-h-14 shrink-0 items-center justify-between gap-3";
-const BTN =
-  "inline-flex shrink-0 items-center justify-center rounded-full px-4 py-2 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const BTN_GHOST = `${BTN} border border-neutral-900 bg-white text-neutral-900`;
+const BTN_GHOST = COLLECTION_ACTION_BTN_GHOST;
 /** 详情页「返回」：无描边，左缘不留键内边距，贴着页框左边。 */
 const BTN_BACK =
   "inline-flex shrink-0 items-center justify-center gap-1 rounded-full py-2 pr-4 text-[13px] font-medium text-neutral-900";
-const BTN_PRIMARY = `${BTN} bg-neutral-900 text-white`;
+const BTN_PRIMARY = COLLECTION_ACTION_BTN_PRIMARY;
 
-/** 页头：标题、两个按键。搜索在下面那一行工具条里。 */
-function Hero({ filter }: { filter: BayFeedFilter }) {
+/** 页头：左 LeoBay；右侧 = 搜索 + 查看选项 + 网格/列表 + 我的/发布。 */
+function Hero({
+  filter,
+  search,
+  view,
+  onViewChange,
+  favoritesOnly,
+  onFavoritesOnly,
+}: {
+  filter: BayFeedFilter;
+  search: { text: string; change: (value: string) => void; commit: (value: string) => void };
+  view: CollectionView;
+  onViewChange: (view: CollectionView) => void;
+  favoritesOnly: boolean;
+  onFavoritesOnly: (value: boolean) => void;
+}) {
   const tt = useUI();
+  const viewOptions: CollectionViewOption[] = [
+    {
+      id: "favorites",
+      label: "仅看收藏",
+      checked: favoritesOnly,
+      onSelect: () => onFavoritesOnly(!favoritesOnly),
+    },
+  ];
   return (
     <section data-bay-page-hero className="shrink-0">
-      <header className={APP_PAGE_HEADER_ROW_CLASS}>
+      <header className={APP_PAGE_HEADER_ROW_CLASS} data-collection-toolbar="">
         <h1 className={APP_PAGE_TITLE_CLASS}>LeoBay</h1>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2" data-bay-page-actions>
-          <button type="button" onClick={openMine} data-bay-action="mine" className={BTN_GHOST}>
-            {tt("我的")}
-          </button>
-          <button
-            type="button"
-            onClick={() => startPublish(filter.category, filter.kind)}
-            data-bay-action="publish"
-            className={BTN_PRIMARY}
-          >
-            {tt("发布")}
-          </button>
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          <div data-bay-page-search>
+            <CollectionSearchField
+              value={search.text}
+              onChange={search.change}
+              onCommit={search.commit}
+              placeholder={tt("搜素材、服务、作品、课程、需求…")}
+            />
+          </div>
+          <CollectionViewOptions options={viewOptions} />
+          <CollectionViewToggle view={view} onChange={onViewChange} />
+          <div className="flex shrink-0 items-center gap-2" data-bay-page-actions>
+            <button type="button" onClick={openMine} data-bay-action="mine" className={BTN_GHOST}>
+              {tt("我的")}
+            </button>
+            <button
+              type="button"
+              onClick={() => startPublish(filter.category, filter.kind)}
+              data-bay-action="publish"
+              className={BTN_PRIMARY}
+            >
+              {tt("发布")}
+            </button>
+          </div>
         </div>
       </header>
     </section>
   );
 }
 
-/** 工具条右侧的搜索：逻辑仍是 `useBaySearchText`。 */
-function BayPageSearch({ filter }: { filter: BayFeedFilter }) {
-  const tt = useUI();
-  const search = useBaySearchText(filter);
-  return (
-    <label
-      className="flex min-w-0 flex-1 max-w-sm items-center gap-2 rounded-full border-0 bg-neutral-200 px-4 py-2 text-neutral-900"
-      data-bay-page-search
-    >
-      <BayGlyph name="search" className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-      <input
-        type="search"
-        value={search.text}
-        maxLength={60}
-        placeholder={tt("搜素材、服务、作品、课程、需求…")}
-        aria-label={tt("搜索")}
-        onChange={(event) => search.change(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) search.commit(event.currentTarget.value);
-        }}
-        className="min-w-0 flex-1 border-0 bg-transparent text-[13px] outline-none placeholder:text-neutral-400"
-      />
-    </label>
-  );
-}
-
 /**
- * 逛 LeoBay：页头、一行工具条（种类 / 站点或素材筛选槽 / 搜索）、卡片网格或素材库。
+ * 逛 LeoBay：页头（搜索 / 查看选项 / 网格列表）、第二行是出售/求购、种类、站点/素材筛选。
  * 看详情时这一整块只是藏起来（`visible` 为 false）；回来时把信息流滚回离开时的位置。
  * 工具条和素材库包在同一个 `BayToolbarSlotProvider` 里，素材筛选才能送到那一行。
  */
 function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; accent: string; visible: boolean; siteKey: string }) {
-  const tt = useUI();
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const savedTop = useRef(0);
   const visibleRef = useRef(visible);
@@ -134,10 +157,38 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   const app = kind === "app";
   const lesson = kind === "lesson";
   const [assetVisited, setAssetVisited] = useState(asset);
+  const [view, setView] = useState<CollectionView>("grid");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favoriteKeys, setFavoriteKeys] = useState<ReadonlySet<string> | null>(null);
+  const search = useBaySearchText(filter);
+  const listingChrome = useMemo(() => ({ view, favoritesOnly }), [favoritesOnly, view]);
+  const listShelves =
+    view === "list"
+      ? "[&_[data-bay-app-shelf]>div]:!grid-cols-1 [&_[data-bay-app-shelf]>div]:sm:!grid-cols-1 [&_[data-bay-app-shelf]>div]:lg:!grid-cols-1 [&_[data-bay-app-shelf]>div]:2xl:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:sm:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:lg:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:2xl:!grid-cols-1 [&_[data-bay-asset-grid]]:!grid-cols-1 [&_[data-bay-asset-grid]]:sm:!grid-cols-1 [&_[data-bay-asset-grid]]:lg:!grid-cols-1 [&_[data-bay-asset-grid]]:2xl:!grid-cols-1"
+      : "";
 
   useEffect(() => {
     if (asset) setAssetVisited(true);
   }, [asset]);
+
+  useEffect(() => {
+    if (!favoritesOnly) {
+      setFavoriteKeys(null);
+      return;
+    }
+    let cancelled = false;
+    void import("../../../lib/bay/favorites").then(({ listBayFavorites }) =>
+      listBayFavorites().then((data) => {
+        if (cancelled) return;
+        setFavoriteKeys(new Set((data?.items || []).map((item) => `${item.target_kind}:${item.target_ref}`)));
+      }),
+    ).catch(() => {
+      if (!cancelled) setFavoriteKeys(new Set());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [favoritesOnly]);
 
   useIsoLayoutEffect(() => {
     if (visible && scrollRef.current) scrollRef.current.scrollTop = savedTop.current;
@@ -145,43 +196,55 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
 
   return (
     <BayToolbarSlotProvider>
-      <div
-        ref={scrollRef}
-        onScroll={(event) => {
-          if (visibleRef.current) savedTop.current = event.currentTarget.scrollTop;
-        }}
-        className="-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4"
-        data-bay-page-feed
-      >
-        <Hero filter={filter} />
+      <BayListingChromeContext.Provider value={listingChrome}>
         <div
-          className="mt-5 flex shrink-0 flex-nowrap items-center gap-2 overflow-x-auto"
-          data-bay-page-toolbar
-          data-bay-page-filters
+          ref={scrollRef}
+          onScroll={(event) => {
+            if (visibleRef.current) savedTop.current = event.currentTarget.scrollTop;
+          }}
+          className={`-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4 ${listShelves}`}
+          data-bay-page-feed
+          data-bay-listing-view={view}
         >
-          <BayViewSwitch filter={filter} accent={accent} />
-          {asset ? <BayToolbarFilterSlot /> : <BayCategorySelect filter={filter} accent={accent} />}
-          <BayPageSearch filter={filter} />
+          <Hero
+            filter={filter}
+            search={search}
+            view={view}
+            onViewChange={setView}
+            favoritesOnly={favoritesOnly}
+            onFavoritesOnly={setFavoritesOnly}
+          />
+          <CollectionFilterRow data-bay-page-toolbar="" data-bay-page-filters="">
+            <BayViewSwitch filter={filter} />
+            {asset ? <BayToolbarFilterSlot /> : <BayCategorySelect filter={filter} />}
+          </CollectionFilterRow>
+          {assetVisited ? (
+            <div className={asset ? "flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
+              <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} />
+            </div>
+          ) : null}
+          {asset ? null : app ? (
+            <div className="mt-5">
+              <BayAppShelf filter={filter} siteKey={siteKey} accent={accent} />
+            </div>
+          ) : lesson ? (
+            <div className="mt-5">
+              <BayLessonShelf filter={filter} siteKey={siteKey} accent={accent} />
+            </div>
+          ) : (
+            <div className="mt-5">
+              <BayFeed
+                filter={filter}
+                activeKey={null}
+                variant={view}
+                favoritesOnly={favoritesOnly}
+                favoriteKeys={favoriteKeys}
+                onClearFavorites={() => setFavoritesOnly(false)}
+              />
+            </div>
+          )}
         </div>
-        {assetVisited ? (
-          <div className={asset ? "flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
-            <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} />
-          </div>
-        ) : null}
-        {asset ? null : app ? (
-          <div className="mt-5">
-            <BayAppShelf filter={filter} siteKey={siteKey} accent={accent} />
-          </div>
-        ) : lesson ? (
-          <div className="mt-5">
-            <BayLessonShelf filter={filter} siteKey={siteKey} accent={accent} />
-          </div>
-        ) : (
-          <div className="mt-5">
-            <BayFeed filter={filter} activeKey={null} variant="grid" />
-          </div>
-        )}
-      </div>
+      </BayListingChromeContext.Provider>
     </BayToolbarSlotProvider>
   );
 }

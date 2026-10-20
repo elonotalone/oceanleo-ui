@@ -481,8 +481,7 @@ test("发布表：三块在一张常开表单里，标签和输入都看得见",
   assert.match(view.host.textContent, /标题/);
   assert.match(view.host.textContent, /分类/);
   assert.doesNotMatch(view.host.textContent, /所属分类/);
-  assert.match(view.host.textContent, /作品图/);
-  assert.ok(view.host.querySelector("[data-bay-cover-drop]"), "作品图一直看得见");
+  assert.ok(view.host.querySelector("[data-bay-listing-stage] [data-bay-cover-drop]"), "作品图在左侧大图栏");
   assert.ok(view.host.querySelector('[data-bay-reveal-item="cover"][data-bay-reveal-pinned]'));
   assert.ok(view.host.querySelector("[data-bay-publish-subcategory] [data-bay-category-select]"), "分类一直开着");
   assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);

@@ -2245,3 +2245,13 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 [data-workspace-split]:fullscreen::backdrop {
   background: var(--bg, #faf8f5);
 }
+
+/* 列表页搜索框：关掉 WebKit 自带放大镜，只留我们画的那一枚，避免压住 placeholder。 */
+[data-collection-search]::-webkit-search-decoration,
+[data-collection-search]::-webkit-search-cancel-button,
+[data-collection-search]::-webkit-search-results-button,
+[data-collection-search]::-webkit-search-results-decoration {
+  display: none;
+  appearance: none;
+  -webkit-appearance: none;
+}

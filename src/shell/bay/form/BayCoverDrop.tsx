@@ -3,6 +3,7 @@
 import { useRef, useState, type DragEvent, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { uploadFile } from "../../../lib/database";
+import { humanUploadError, safeIdempotencyKey } from "./bay-upload";
 
 export function BayCoverDrop(props: {
   url: string;
@@ -12,6 +13,7 @@ export function BayCoverDrop(props: {
   variant?: "tile" | "avatar";
 }): ReactElement {
   const tt = useUI();
+  const siteId = "oceanleo";
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -28,10 +30,14 @@ export function BayCoverDrop(props: {
     }
     setBusy(true);
     try {
-      const uploaded = await uploadFile(file, { siteId: "home", title: file.name });
+      const uploaded = await uploadFile(file, {
+        siteId,
+        title: file.name,
+        idempotencyKey: safeIdempotencyKey(["bay-cover-v1", siteId, file.name, file.size, file.lastModified]),
+      });
       const url = uploaded.ok ? uploaded.data?.file?.url : "";
       if (!uploaded.ok || !url) {
-        setError(uploaded.ok === false ? uploaded.error || tt("图片没传上去") : tt("图片没传上去"));
+        setError(uploaded.ok === false ? tt(humanUploadError(uploaded.error, uploaded.status)) : tt("图片没传上去"));
         return;
       }
       if (!url.startsWith("https://")) {

@@ -878,6 +878,8 @@ const ptPT: Record<string, string> = {
   "保存为我的卡片": "Guardar como meu cartão",
   "分类（如「工作」）": "Categoria (ex.: \\\"Trabalho\\\")",
   "列表视图": "Visão em lista",
+  "查看选项": "Opções de visualização",
+  "仅看收藏": "Só favoritos",
   "创建 prompt": "Criar prompt",
   "删除卡片": "Eliminar cartão",
   "前往 Cost 页 →": "Ir para a página Cost →",

@@ -230,7 +230,7 @@ test("切换是「服务 / 素材 / 需求」", async () => {
   const tabs = view.host.querySelector("[data-bay-view]");
   assert.ok(tabs);
   const labels = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.textContent.replace(/\s+/g, ""));
-  assert.deepEqual(labels, ["我想要卖", "我想要买"]);
+  assert.deepEqual(labels, ["出售", "求购"]);
   await view.unmount();
 });
 
@@ -332,7 +332,7 @@ function feedItems() {
   ];
 }
 
-test("信息流：首屏骨架、出错给重试、加载更多是一个键", () => {
+test("信息流：首屏骨架、出错给重试、滑到底接下页", () => {
   reset({ feed: feedOf({ loading: true, loaded: false }) });
   assert.match(html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null, variant: "grid" })), /data-bay-feed-loading/);
   reset({ feed: feedOf({ error: "加载失败，请稍后再试。" }) });
@@ -340,7 +340,9 @@ test("信息流：首屏骨架、出错给重试、加载更多是一个键", ()
   assert.match(failed, /data-bay-feed-error/);
   assert.match(failed, />重试</);
   reset({ feed: feedOf({ items: feedItems(), hasMore: true }) });
-  assert.equal(count(html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null, variant: "grid" })), />加载更多</g), 1);
+  const more = html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null, variant: "grid" }));
+  assert.match(more, /data-collection-infinite-sentinel/);
+  assert.doesNotMatch(more, />加载更多</);
 });
 
 test("服务/素材/需求切换连成一组，自身不换行", () => {
@@ -349,6 +351,12 @@ test("服务/素材/需求切换连成一组，自身不换行", () => {
   assert.match(out, /inline-flex/);
   assert.doesNotMatch(out, /overflow-x-auto/);
   assert.equal(count(out, /role="tab"/g), 2);
+  assert.match(out, />出售</);
+  assert.match(out, />求购</);
+  assert.doesNotMatch(out, /#0ea5e9/);
+  assert.doesNotMatch(out, /bg-stone-100/);
+  assert.match(out, /data-bay-filter="kind"/);
+  assert.doesNotMatch(out, /<select/);
 });
 
 const DISPLAY = new Set(["block", "inline-block", "inline", "flex", "inline-flex", "grid", "inline-grid", "hidden", "contents"]);
@@ -402,7 +410,8 @@ test("自检：打架比对器认得出截断遇上块级、两个上边距，�
 test("源码是服务/素材/需求切换，没有五种种类标签", () => {
   const list = src("shell/bay/shell/BayList.tsx");
   assert.match(list, /data-bay-view/);
-  assert.match(list, /data-view=\{kind\}/);
+  assert.match(list, /data-bay-browse-kind/);
+  assert.match(list, /name="kind"/);
   assert.match(list, /专业咨询/);
   assert.doesNotMatch(list, /KIND_TABS/);
   assert.doesNotMatch(list, /data-bay-kinds/);

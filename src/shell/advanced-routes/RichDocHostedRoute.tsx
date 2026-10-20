@@ -230,15 +230,18 @@ export function RichDocHostedRoute({
         applyLoaded(hostedStateFromResolvedJson(handoff.json));
         return;
       }
-      if (handoffLooksLikeDocx(handoff, item)) {
-        const officeItem =
-          handoff?.kind === "url"
-            ? {
-                ...item,
-                url: handoff.url,
-                meta: { ...item.meta, editor_source_url: handoff.url },
-              }
-            : item;
+      const officeItem =
+        handoff?.kind === "url"
+          ? {
+              ...item,
+              url: handoff.url,
+              meta: { ...item.meta, editor_source_url: handoff.url },
+            }
+          : item;
+      if (
+        handoffLooksLikeDocx(handoff, item) ||
+        (handoff?.kind === "url" && handoff.format !== "json")
+      ) {
         const loaded = await umoSourceFromDocxItem(officeItem);
         if (cancelled) return;
         if (loaded.ok) {

@@ -764,31 +764,33 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   return (
     <BayPublishShell kind={listingKind} snapshot={snapshot} onApply={applySnapshot}>
     <section ref={formEl} data-bay-pane="service-editor" data-bay-publish="form" className={narrow ? "flex flex-col gap-6 p-4" : BAY_FORM_PAGE_CLASS}>
-      {draft.serviceId ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-600" data-bay-editor-status={draft.status}>
-            <span className="rounded-md bg-stone-900 px-2 py-0.5 text-[12px] font-medium text-white">{tt(PUBLISH_KIND_LABELS[publishKind])}</span>
-            <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[12px] font-medium text-stone-600">{statusLabel}</span>
-            {dirty ? <span className="text-[12px] text-amber-600">{tt("有没保存的修改")}</span> : null}
-          </p>
-        </div>
-      ) : (
-        <BayPublishKindPair
-          listing={offerKind === "service" || offerKind === "other" ? "service" : offerKind === "app" ? "app" : offerKind === "lesson" ? "lesson" : "digital"}
-          siteCategory={presetCategory}
-          subcategory={
-            <>
-              <BayPublishSubcategoryLabel required invalid={invalidItems.has("category")} />
-              <CategorySelect categories={visibleCategories} value={draft.category} onChange={changeCategory} />
-            </>
-          }
-        />
-      )}
-
       {draft.moderationHidden ? <HiddenByPlatformNotice what="service" caseRow={hiddenCase} /> : null}
       {hiddenMessage && !hiddenCase ? <SellerNotice tone="warn">{hiddenMessage}</SellerNotice> : null}
 
       <BayRevealForm
+        layout="listing"
+        lead={
+          draft.serviceId ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-600" data-bay-editor-status={draft.status}>
+                <span className="rounded-md bg-stone-900 px-2 py-0.5 text-[12px] font-medium text-white">{tt(PUBLISH_KIND_LABELS[publishKind])}</span>
+                <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[12px] font-medium text-stone-600">{statusLabel}</span>
+                {dirty ? <span className="text-[12px] text-amber-600">{tt("有没保存的修改")}</span> : null}
+              </p>
+            </div>
+          ) : (
+            <BayPublishKindPair
+              listing={offerKind === "service" || offerKind === "other" ? "service" : offerKind === "app" ? "app" : offerKind === "lesson" ? "lesson" : "digital"}
+              siteCategory={presetCategory}
+              subcategory={
+                <>
+                  <BayPublishSubcategoryLabel required invalid={invalidItems.has("category")} />
+                  <CategorySelect categories={visibleCategories} value={draft.category} onChange={changeCategory} />
+                </>
+              }
+            />
+          )
+        }
         groups={listingSectionGroups({
           tt,
           intent: "sell",

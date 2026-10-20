@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { CollectionCardGrid } from "../../collection-chrome";
 import { BayAssetCard } from "./BayAssetCard";
 import {
   listBaySeries,
@@ -133,17 +134,17 @@ export function BayAssetSeries({
           </p>
         </header>
         {loadingItems && items.length === 0 ? (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6" role="status" aria-label={tt("正在加载…")}>
-            {Array.from({ length: 12 }).map((_, index) => (
+          <CollectionCardGrid role="status" aria-label={tt("正在加载…")}>
+            {Array.from({ length: 8 }).map((_, index) => (
               <div key={index} className="aspect-square animate-pulse rounded-xl bg-stone-100" />
             ))}
-          </div>
+          </CollectionCardGrid>
         ) : (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6" data-bay-asset-grid>
+          <CollectionCardGrid data-bay-asset-grid>
             {items.map((asset) => (
               <BayAssetCard key={asset.id} asset={asset} onOpen={onOpen} />
             ))}
-          </div>
+          </CollectionCardGrid>
         )}
         {loadingItems && items.length > 0 ? (
           <div className="py-8 text-center text-[13px] text-stone-400">{tt("加载中…")}</div>
@@ -169,7 +170,7 @@ export function BayAssetSeries({
         <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{listError}</div>
       ) : null}
       {loadingList ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4" role="status" aria-label={tt("正在加载…")}>
+        <CollectionCardGrid role="status" aria-label={tt("正在加载…")}>
           {Array.from({ length: 8 }).map((_, index) => (
             <div key={index} className="overflow-hidden rounded-xl border border-stone-200 bg-white">
               <div className="aspect-[4/3] w-full animate-pulse bg-stone-100" />
@@ -178,13 +179,13 @@ export function BayAssetSeries({
               </div>
             </div>
           ))}
-        </div>
+        </CollectionCardGrid>
       ) : series.length === 0 ? (
         <div className="rounded-xl border border-dashed border-stone-300 py-16 text-center text-[13px] text-stone-400">
           {tt("暂无成套素材。")}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <CollectionCardGrid>
           {series.map((item) => (
             <button
               key={item.series_id}
@@ -201,7 +202,7 @@ export function BayAssetSeries({
               </div>
             </button>
           ))}
-        </div>
+        </CollectionCardGrid>
       )}
     </div>
   );

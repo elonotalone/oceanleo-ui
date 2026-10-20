@@ -8,6 +8,7 @@ export { BayPublishShell } from "./BayPublishShell";
 export { BayListingPreview } from "./BayListingPreview";
 export { BayTypedPreview } from "./BayTypedPreview";
 export { BayDigitalWorksField } from "./BayDigitalWorksField";
+export { humanUploadError, safeIdempotencyKey } from "./bay-upload";
 export { BayWorkShowcase } from "./BayWorkShowcase";
 export {
   applyDigitalWorks,
@@ -32,6 +33,7 @@ export {
   BAY_FORM_PRIMARY_BUTTON_CLASS,
   BAY_FORM_SECONDARY_BUTTON_CLASS,
   BAY_FORM_SECTION_TITLE_CLASS,
+  BAY_FORM_SELECT_CLASS,
   BAY_FORM_TEXTAREA_CLASS,
 } from "./form-ui";
 export { PublishCategoryPicker, type PublishCategoryId, type PublishDeliveryId, type PublishIntentId } from "./PublishCategoryPicker";

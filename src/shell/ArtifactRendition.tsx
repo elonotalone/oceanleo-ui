@@ -450,7 +450,11 @@ export function withResolvedRendition(
      * 若这里只写 `previewUrl`，那次改选就落不到查看器手上——`url` 仍是旧的
      * 不可缓存地址，等于白改。所以 office 包的 `preview` 两个字段都写。
      */
-    if (officePackageKindForItem(item)) {
+    if (
+      officePackageKindForItem(item) ||
+      item.kind === "document" ||
+      item.kind === "file"
+    ) {
       return { ...item, url: state.url, previewUrl: state.url };
     }
     return { ...item, previewUrl: state.url };

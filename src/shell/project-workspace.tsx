@@ -144,7 +144,7 @@ export function ProjectWorkspaceFrame({
     <div
       data-project-workspace-frame
       className={classNames(
-        "flex min-h-0 min-w-0 flex-col bg-[var(--bg,#f7f7f5)] text-[var(--fg,#292524)]",
+        "flex min-h-0 min-w-0 flex-col bg-[var(--bg,#faf8f5)] text-[var(--fg,#292524)]",
         className,
       )}
     >

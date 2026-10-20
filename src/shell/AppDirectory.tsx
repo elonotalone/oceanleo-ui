@@ -4,14 +4,12 @@
 // @oceanleo/ui — 统一「应用目录」AppDirectory（单一事实源，doctrine v7 2026-06-24）
 // ----------------------------------------------------------------------------
 // 操作员要求统一全家桶的「选东西」体验：
-//   - 不再把分类塞进左侧窄侧边栏（太挤、难选）。分类**横排在右侧主区顶部**。
-//   - 二元分类器：顶部先选「分类方式」= 按行业 / 按内容类型；下面再出对应分类 chips。
+//   - 不再把分类塞进左侧窄侧边栏（太挤、难选）。分类在页头下一行，和 LeoBay 种类 / 站点同一位置。
+//   - 二元分类器：分区、分类方式、类型都是胶囊下拉，不跟搜索挤在同一行。
 //
-// 卡片版式（合同 2026-07-27 §0.3）：网格卡直接消费 W1 的 `app-card-shell.tsx`，与首页
-// 是**同一份代码**而不是「长得像」；栅格也引同一个 `APP_CARD_GRID_CLASS`。与首页**唯一**
-// 的差异是落点：点卡片主体 = 直接进该 app 操作台（不先弹模板大卡片），hover 主按钮 =
-// 「打开」（同落点，触屏常驻）。缩略图取 `capabilityImage`（功能图）；旧的 `thumb` 已废弃
-// 且本文件不再读取——工作台卡显示不对的根因正是它（上一轮换字段时只改了首页）。
+// 卡片版式（2026-10-19）：网格与我的库同一套四列等宽（`CollectionCardGrid`），
+// 卡面是 4:3 封面 + 一行标题。点卡片主体 = 直接进该 app 操作台（不先弹模板大卡片）。
+// 缩略图取 `capabilityImage`（功能图）；旧的 `thumb` 已废弃且本文件不再读取。
 //
 // 复用处：all-sites（app / skill / 网站）、playground（app / skill）、workspace
 // 选择页（app / skill / 网站）。各处只是 items 不同、onOpen/onAdd 行为不同。
@@ -26,9 +24,15 @@ import {
 } from "../lib/taxonomy";
 import { brandColorFor, tintOf } from "../lib/brand-color";
 import { capabilityImageThumbSrc } from "../lib/app-capability-image";
-import { APP_CARD_GRID_CLASS, AppCardShell } from "./app-card-shell";
 import { useUI } from "../i18n/ui/useUI";
-import { LibraryChips, LibraryToolbar } from "./LibraryLayout";
+import {
+  CollectionCardGrid,
+  CollectionFilterRow,
+  CollectionFilterSelect,
+  CollectionPageToolbar,
+  type CollectionView,
+  type CollectionViewOption,
+} from "./collection-chrome";
 
 export interface DirectoryItem {
   /** 唯一 id（agent_id / site key）。 */
@@ -127,10 +131,14 @@ export interface AppDirectoryProps {
    */
   toolbarLeading?: ReactNode;
   /**
-   * 搜索行下方、分类 chips 上方。工作台 / Playground 把分区 tab 放这里，
-   * 这样 DOM 顺序是：标题|搜索 → 分区 tab → 分类 chips / 卡片。
+   * 搜索行下方、分类 chips 上方。工作台 / Playground 把分区筛选放这里，
+   * 这样 DOM 顺序是：标题|搜索 → 分区 CollectionFilterSelect → 分类 chips / 卡片。
    */
   belowToolbar?: ReactNode;
+  /** Manus「查看选项」（工作台传「仅看收藏」）。 */
+  viewOptions?: CollectionViewOption[];
+  /** 为真时只保留 `added` 条目（已加入 / 已收藏）。 */
+  favoritesOnly?: boolean;
   /** compact：不渲染分类器工具条 + chips，只渲染卡片网格（用于「推荐」这种小列表）。 */
   compact?: boolean;
   /**
@@ -191,6 +199,8 @@ export function AppDirectory({
   toolbarExtra,
   toolbarLeading,
   belowToolbar,
+  viewOptions,
+  favoritesOnly = false,
   compact = false,
   nativeFirst = false,
   nativeLabel,
@@ -211,7 +221,11 @@ export function AppDirectory({
   const [mode, setMode] = useState<TaxonomyMode>(nativeFirst ? "native" : "industry");
   const [cat, setCat] = useState<string>("all");
   const [filter, setFilter] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [view, setView] = useState<CollectionView>("grid");
+  const catalog = useMemo(
+    () => (favoritesOnly ? items.filter((it) => it.added) : items),
+    [favoritesOnly, items],
+  );
   // ── 第一层：能力大板块（宗旨 v21）。groups 存在才启用；"all" = 全部板块 ──
   const groupMode = Boolean(groups && groups.length > 0);
   const [grp, setGrp] = useState<string>("all");
@@ -220,11 +234,11 @@ export function AppDirectory({
   const groupCounts = useMemo(() => {
     const m = new Map<string, number>();
     if (!groupMode) return m;
-    for (const it of items) {
+    for (const it of catalog) {
       if (it.group) m.set(it.group, (m.get(it.group) || 0) + 1);
     }
     return m;
-  }, [items, groupMode]);
+  }, [catalog, groupMode]);
 
   // 大板块 tab（「全部」恒在最前；其余按 groups 声明顺序，仅显示有条目的板块）。
   const groupTabs = useMemo(() => {
@@ -235,9 +249,9 @@ export function AppDirectory({
 
   // 选了某板块后，卡片与第二层场景 chips 都只在【该板块条目】上计算。
   const groupItems = useMemo(() => {
-    if (!groupMode || grp === "all") return items;
-    return items.filter((it) => it.group === grp);
-  }, [items, groupMode, grp]);
+    if (!groupMode || grp === "all") return catalog;
+    return catalog.filter((it) => it.group === grp);
+  }, [catalog, groupMode, grp]);
 
   // 分类方式切换器的选项（nativeFirst 时把「按分类」排首位并默认）。
   const modeTabs = useMemo(
@@ -258,12 +272,12 @@ export function AppDirectory({
   // 当前维度下，每个分类的条目数（只统计实际出现的分类）。
   const counts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const it of items) {
+    for (const it of catalog) {
       const id = classify(it, mode);
       m.set(id, (m.get(id) || 0) + 1);
     }
     return m;
-  }, [items, mode]);
+  }, [catalog, mode]);
 
   // ── 场景模式（宗旨 v14）：横排 chips = 各站自定义场景词（数据驱动，多值） ──
   // 宗旨 v21：第二层场景只在【当前大板块条目 groupItems】上统计（选了板块即动态收窄）。
@@ -289,13 +303,13 @@ export function AppDirectory({
   // 当前维度可见的分类 chips（「全部」恒在最前；其余仅显示有条目的）。
   // native 维度的可选分类是数据驱动的（从条目集合现算），其余维度用固定枚举。
   const chips = useMemo(() => {
-    const opts = mode === "native" ? nativeOptions(items) : optionsFor(mode);
+    const opts = mode === "native" ? nativeOptions(catalog) : optionsFor(mode);
     return opts.filter((o) => o.id === "all" || (counts.get(o.id) || 0) > 0);
-  }, [mode, counts, items]);
+  }, [mode, counts, catalog]);
 
   const normFilter = filter.trim().toLowerCase();
   const visible = useMemo(() => {
-    if (compact) return items;
+    if (compact) return catalog;
     // 宗旨 v21：先按大板块收窄（groupItems），再叠加第二层（场景 / 二元分类）+ 关键词。
     return groupItems.filter((it) => {
       if (sceneMode) {
@@ -313,7 +327,7 @@ export function AppDirectory({
         (it.capabilities || "").toLowerCase().includes(normFilter)
       );
     });
-  }, [groupItems, items, cat, mode, normFilter, compact, sceneMode]);
+  }, [groupItems, catalog, cat, mode, normFilter, compact, sceneMode]);
 
   // 切换分类方式时，把选中分类重置回「全部」（避免残留另一维度的 id）。
   function switchMode(next: TaxonomyMode) {
@@ -329,97 +343,79 @@ export function AppDirectory({
     setCat("all");
   }
 
+  const categoryChips = sceneMode ? sceneChips : chips;
+  const categoryOptions = categoryChips
+    .filter((item) => item.id !== "all")
+    .map((item) => ({ value: item.id, label: tt(item.label) }));
+
   return (
-    <div className="space-y-5">
+    <div>
       {!compact && (
       <>
-      {/* ── 顶部工具条：有 toolbarLeading 时标题在左、搜索在右（同一行）──
-          场景模式（宗旨 v14）不显示「按行业/按内容」切换器，横排 chips 直接是场景词。 */}
-      <LibraryToolbar
+      <CollectionPageToolbar
+        title={toolbarLeading ?? ""}
         search={filter}
-        setSearch={setFilter}
+        onSearch={setFilter}
+        searchPlaceholder={tt("按名称筛选…")}
         view={view}
-        setView={setView}
-        placeholder={tt("按名称筛选…")}
-        tt={tt}
-        leading={toolbarLeading}
-        actions={
-          <>
-          {!sceneMode && (
-          <div className="inline-flex rounded-xl bg-stone-100 p-1">
-            {modeTabs.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => switchMode(m.id)}
-                className={`rounded-lg px-4 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- mode === m.id
- ? "bg-white text-stone-900 shadow-sm"
- : "text-stone-500 hover:text-stone-700"
- }`}
-              >
-                {tt(m.label)}
-              </button>
-            ))}
-          </div>
-          )}
-          {toolbarExtra}
-          </>
-        }
+        onViewChange={setView}
+        viewOptions={viewOptions ?? []}
+        extraActions={toolbarExtra}
       />
 
-      {belowToolbar}
-
-      {/* ── 第一层：能力大板块 tab（宗旨 v21）。在标题|搜索和分区 tab 之下。 ── */}
-      {groupMode && groupTabs.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-stone-200/70 pb-3">
-          {groupTabs.map((g) => {
-            const on = g.id === grp;
-            const n = g.id === "all" ? items.length : groupCounts.get(g.id) || 0;
-            return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => switchGroup(g.id)}
-                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[14px] font-semibold transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- on
- ? "text-white shadow-sm"
- : "bg-stone-100 text-stone-600 hover:bg-stone-200/70 hover:text-stone-800"
- }`}
-                style={on ? { background: accent } : undefined}
-              >
-                {g.icon && <span className="text-[16px] leading-none">{g.icon}</span>}
-                <span>{tt(g.label)}</span>
-                <span className={`text-[11px] font-normal ${on ? "text-white/75" : "text-stone-400"}`}>{n}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── 分类 chips（横排在右侧主区顶部，替代左侧窄侧栏）──
-          场景模式用 sceneChips（各站自定义场景词）；否则用全局二元分类 chips。 */}
-      <LibraryChips
-        chips={(sceneMode ? sceneChips : chips).map((c) => ({ id: c.id, label: c.label }))}
-        active={cat}
-        onChange={setCat}
-        accent={accent}
-        tt={tt}
-        className=""
-      />
+      <CollectionFilterRow>
+        {belowToolbar}
+        {!sceneMode && modeTabs.length > 1 ? (
+          <CollectionFilterSelect
+            label={tt("分类")}
+            name="taxonomy"
+            value={mode}
+            options={modeTabs.map((item) => ({ value: item.id, label: item.label }))}
+            onChange={(next) => {
+              if (next === "native" || next === "industry" || next === "content") switchMode(next);
+            }}
+          />
+        ) : null}
+        {groupMode && groupTabs.length > 1 ? (
+          <CollectionFilterSelect
+            label={tt("板块")}
+            name="group"
+            value={grp === "all" ? "" : grp}
+            options={groupTabs
+              .filter((item) => item.id !== "all")
+              .map((item) => ({
+                value: item.id,
+                label: tt(item.label),
+                count: groupCounts.get(item.id),
+              }))}
+            onChange={(next) => switchGroup(next || "all")}
+            allLabel={groupAllText}
+            searchable={groupTabs.length > 8}
+          />
+        ) : null}
+        {categoryOptions.length > 0 ? (
+          <CollectionFilterSelect
+            label={tt("类型")}
+            name="category"
+            value={cat === "all" ? "" : cat}
+            options={categoryOptions}
+            onChange={(next) => setCat(next || "all")}
+            allLabel={sceneMode ? sceneAllText : tt("全部")}
+            searchable={categoryOptions.length > 8}
+          />
+        ) : null}
+      </CollectionFilterRow>
       </>
       )}
 
-      {/* ── 卡片网格：栅格引首页同一个常量 `APP_CARD_GRID_CLASS`，两页列数与沟槽才不会漂
-          （旧的 `xl:grid-cols-4 gap-4` 会让同一张卡在工作台上比首页窄一截）── */}
+      <div className={compact ? undefined : "mt-5"}>
       {loading ? (
         <CardGridSkeleton />
       ) : visible.length === 0 && leadingCards.length === 0 ? (
         <p className="py-12 text-center text-sm text-stone-400">{emptyTextText}</p>
-      ) : (
-        <div className={view === "grid" ? APP_CARD_GRID_CLASS : "space-y-2"}>
-          {[...leadingCards, ...visible].map((it, index) =>
-            view === "grid" ? (
+      ) : view === "grid" ? (
+        <CollectionCardGrid>
+          {[...leadingCards, ...visible].map((it, index) => (
               <DirectoryCard
                 key={it.id}
                 item={it}
@@ -432,7 +428,11 @@ export function AppDirectory({
                 adding={addingId === it.id}
                 variant={index < leadingCards.length ? "new" : "default"}
               />
-            ) : (
+          ))}
+        </CollectionCardGrid>
+      ) : (
+        <div className="space-y-2">
+          {[...leadingCards, ...visible].map((it, index) => (
               <DirectoryListRow
                 key={it.id}
                 item={it}
@@ -443,10 +443,10 @@ export function AppDirectory({
                 onPrompt={index < leadingCards.length ? undefined : onPrompt}
                 adding={addingId === it.id}
               />
-            ),
-          )}
+          ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -464,7 +464,7 @@ function DirectoryCard({
 }: {
   item: DirectoryItem;
   accent: string;
-  /** hover 主按钮文案（默认「打开」，SiteSkillDirectory 传「开聊」）。 */
+  /** 打开动作的无障碍名（默认「打开」）。 */
   openLabel: string;
   onOpen?: (item: DirectoryItem) => void;
   onAdd?: (item: DirectoryItem) => void;
@@ -476,12 +476,11 @@ function DirectoryCard({
   const tt = useUI();
   const isNew = variant === "new";
   const canDelete = Boolean(onDelete && item.deletable);
-  // 合同 §0.3 D4：工作台卡与首页卡同一个外壳，唯一差异是点卡主体的落点——首页开大卡片
-  // （模板浮层），工作台**直接进该 app 操作台**、不先呈现模板。落点沿用调用方给的
-  // `onOpen`（OperatorConsole → openFn → SiteCatalogConsole 的 `/workspace/<appId>`）。
   const open = () => onOpen?.(item);
-  // 右上角小按钮。`AppCardShell.extraActions` 是主按钮条的**兄弟**，所以这一组自己定位，
-  // 并且必须自带 pointer-events-auto（父层是 pointer-events-none 的装饰带之外的一层）。
+  const image = isNew ? undefined : capabilityImageThumbSrc(item.capabilityImage);
+  const iconColor = item.logoColor || item.accent || brandColorFor(item.id || item.name);
+  const starred = Boolean(item.added);
+  const canStar = !isNew && (Boolean(onAdd) || (canDelete && starred));
   const corners: { key: string; label: string; danger: boolean; path: string; run: () => void }[] = [];
   if (onPrompt && !isNew) {
     corners.push({ key: "prompt", label: tt("查看 / 编辑 prompt"), danger: false, run: () => onPrompt(item),
@@ -492,60 +491,93 @@ function DirectoryCard({
       path: "M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" });
   }
   return (
-    <AppCardShell
-      variant="workspace"
-      accent={accent}
-      // 文案由 `AppCardShell` 内部过 tt()（W1 的契约：调用方**不要**先翻一遍再传，否则
-      // 两侧各翻一套）。宗旨 v13：item.accent 是 logoColor 的向后兼容回退（等价语义）。
-      // 不传 `scenes`：外壳一条都不读，`AppCardApp` 放宽后也不再逼这里造空数组（W1-3）。
-      app={{
-        id: item.id,
-        name: item.name,
-        tagline: item.tagline || item.capabilities,
-        icon: item.icon,
-        badge: item.badge,
-        logoColor: item.logoColor || item.accent,
-      }}
-      // 「＋ 新建」首卡没有功能图，也不该借用别人的图 → 虚线描边 + emoji tint 版式（W1-1）。
-      dashed={isNew}
-      plainThumb={item.plainThumb}
-      image={isNew ? undefined : capabilityImageThumbSrc(item.capabilityImage)}
-      // 落点本身可选：没有 `onOpen` 时整枚覆盖按钮不渲染，而不是渲染一枚点了没反应、却能
-      // 抢走焦点的按钮（W1-2）。卡片本体与右上角按钮照常在，不是死卡。
-      onCardClick={onOpen ? open : undefined}
-      cardActionLabel={`${openLabel} ${tt(item.name)}`}
-      primaryAction={onOpen ? { label: openLabel, onClick: open } : null}
-      extraActions={
-        (onAdd || corners.length > 0) && (
-          <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
-            {onAdd && (
-              <button
-                type="button"
-                onClick={() => onAdd(item)}
-                disabled={adding}
-                className={`pointer-events-auto rounded-md px-2 py-1 text-[11px] font-medium opacity-0 shadow-sm backdrop-blur-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 disabled:opacity-50 [@media(hover:none)]:opacity-100 ${item.added ? "border border-stone-300 bg-white/90 text-stone-500" : "bg-white/90 text-stone-700 hover:bg-white"}`}
-              >
-                {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
-              </button>
-            )}
-            {corners.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                onClick={c.run}
-                title={c.label}
-                aria-label={c.label}
-                className={`pointer-events-auto grid h-6 w-6 place-items-center rounded-md bg-white/80 text-stone-400 opacity-0 shadow-sm backdrop-blur-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${c.danger ? "hover:bg-rose-50 hover:text-rose-600" : "hover:bg-white hover:text-stone-600"}`}
-              >
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d={c.path} strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            ))}
-          </div>
-        )
-      }
-    />
+    <article
+      data-collection-card={item.id}
+      className={`group relative overflow-hidden rounded-xl border bg-[var(--card,#fff)] text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+        isNew
+          ? "border-dashed border-neutral-300"
+          : "border-[var(--border,#e7e5e4)] hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm"
+      }`}
+    >
+      <button
+        type="button"
+        data-collection-card-main=""
+        onClick={onOpen ? open : undefined}
+        disabled={!onOpen}
+        className={`block w-full text-left ${onOpen ? "cursor-pointer" : "cursor-default"}`}
+        aria-label={onOpen ? `${openLabel} ${tt(item.name)}` : undefined}
+      >
+        <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
+          {image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={image}
+              alt=""
+              className="h-full w-full object-cover transition duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.02]"
+              loading="lazy"
+            />
+          ) : (
+            <span
+              className="grid h-full w-full place-items-center text-3xl"
+              style={
+                item.plainThumb
+                  ? { color: iconColor }
+                  : { background: tintOf(iconColor, 0.14), color: iconColor }
+              }
+            >
+              {item.icon || "✦"}
+            </span>
+          )}
+        </div>
+        <div className="p-2.5">
+          <p className="line-clamp-1 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
+            {tt(item.name)}
+          </p>
+        </div>
+      </button>
+      {(canStar || corners.length > 0) && (
+        <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+          {canStar && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (onAdd) onAdd(item);
+                else onDelete?.(item);
+              }}
+              disabled={adding}
+              aria-pressed={starred}
+              aria-label={starred ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
+              title={starred ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
+              className={`pointer-events-auto grid h-7 w-7 place-items-center rounded-md bg-white/90 shadow-sm backdrop-blur-sm disabled:opacity-50 ${
+                starred ? "text-amber-500" : "text-stone-400 hover:text-amber-500"
+              }`}
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill={starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
+          {corners.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                c.run();
+              }}
+              title={c.label}
+              aria-label={c.label}
+              className={`pointer-events-auto grid h-7 w-7 place-items-center rounded-md bg-white/90 text-stone-400 shadow-sm backdrop-blur-sm ${c.danger ? "hover:bg-rose-50 hover:text-rose-600" : "hover:text-stone-600"}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d={c.path} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          ))}
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -569,8 +601,11 @@ function DirectoryListRow({
   const tt = useUI();
   const iconColor =
     item.logoColor || item.accent || brandColorFor(item.id || item.name);
-  // 列表行同样改吃功能图。96×64 的位置用 `.thumb.webp`（512²）绰绰有余，绝不拉全尺寸图。
   const rowImage = capabilityImageThumbSrc(item.capabilityImage);
+  const starred = Boolean(item.added);
+  const canDelete = Boolean(onDelete && item.deletable);
+  const canStar = Boolean(onAdd) || (canDelete && starred);
+  const showDescription = Boolean(item.tagline || item.capabilities);
   const stop =
     (action: (entry: DirectoryItem) => void) =>
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -579,91 +614,95 @@ function DirectoryListRow({
     };
   return (
     <div
-      role={onOpen ? "button" : undefined}
-      tabIndex={onOpen ? 0 : undefined}
-      onClick={() => onOpen?.(item)}
-      onKeyDown={(event) => {
-        if (onOpen && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          onOpen(item);
-        }
-      }}
-      className={`group flex min-h-20 items-center gap-3 rounded-xl border border-stone-200/80 bg-white/80 p-3 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-white ${
- onOpen ? "cursor-pointer" : ""
- }`}
+      className={`flex w-full flex-wrap items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
+        onOpen ? "cursor-pointer" : ""
+      }`}
     >
-      {rowImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={rowImage}
-          alt=""
-          className="h-16 w-24 shrink-0 rounded-lg object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <span
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xl"
-          style={
-            item.plainThumb
-              ? { color: iconColor }
-              : { background: tintOf(iconColor, 0.14), color: iconColor }
-          }
-        >
-          {item.icon || "✦"}
-        </span>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-[14px] font-semibold text-stone-900">
+      <button
+        type="button"
+        onClick={() => onOpen?.(item)}
+        disabled={!onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
+        aria-label={onOpen ? tt(item.name) : undefined}
+      >
+        {rowImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={rowImage}
+            alt=""
+            className="h-12 w-16 shrink-0 rounded-lg object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <span
+            className="grid h-12 w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--surface,#f5f5f4)] text-xl"
+            style={
+              item.plainThumb
+                ? { color: iconColor }
+                : { background: tintOf(iconColor, 0.14), color: iconColor }
+            }
+          >
+            {item.icon || "✦"}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[12px] font-semibold text-[var(--fg,#292524)]">
             {tt(item.name)}
           </p>
-          {item.badge && (
-            <span
-              className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-              style={{ background: accent }}
-            >
-              {tt(item.badge)}
-            </span>
+          {showDescription && (
+            <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
+              {tt(item.tagline || item.capabilities || "")}
+            </p>
           )}
         </div>
-        {(item.tagline || item.capabilities) && (
-          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-stone-500">
-            {tt(item.tagline || item.capabilities || "")}
-          </p>
+        {item.badge && (
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+            style={{ background: accent }}
+          >
+            {tt(item.badge)}
+          </span>
         )}
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+        <svg
+          className="h-4 w-4 shrink-0 text-[var(--border-strong,#d6d3d1)]"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        >
+          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <div className="flex shrink-0 items-center gap-1.5 px-2 py-2" onClick={(event) => event.stopPropagation()}>
+        {canStar && (
+          <button
+            type="button"
+            disabled={adding}
+            onClick={stop(onAdd ?? ((entry) => onDelete?.(entry)))}
+            aria-pressed={starred}
+            aria-label={starred ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
+            className={`grid h-7 w-7 place-items-center rounded-md ${
+              starred ? "text-amber-500" : "text-stone-400 hover:text-amber-500"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill={starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
         {onPrompt && (
           <button
             type="button"
             onClick={stop(onPrompt)}
             className="rounded-lg border border-stone-200 px-2.5 py-1.5 text-[11px] text-stone-500 hover:bg-stone-50"
           >
-            {/* 与网格卡共用同一批词条：列表以前另写了「编辑 prompt」「加入工作台」「已加入」
-                三条**没进 17 语词典**的字面量，于是 16 个非中文语种在列表视图下露中文。
-                网格用的那三条本来就是齐的，直接复用即可，不必等 W3 补词条。 */}
             {tt("查看 / 编辑 prompt")}
           </button>
         )}
-        {onAdd && (
+        {canDelete && onAdd && (
           <button
             type="button"
-            disabled={adding}
-            onClick={stop(onAdd)}
-            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${
-              item.added
-                ? "border border-stone-200 text-stone-500"
-                : "text-white"
-            }`}
-            style={item.added ? undefined : { background: accent }}
-          >
-            {adding ? "…" : item.added ? tt("已在工作台 ✓") : tt("＋ 加入工作台")}
-          </button>
-        )}
-        {onDelete && item.deletable && (
-          <button
-            type="button"
-            onClick={stop(onDelete)}
+            onClick={stop(onDelete!)}
             className="rounded-lg px-2 py-1.5 text-[11px] text-stone-400 hover:bg-rose-50 hover:text-rose-600"
           >
             {tt("删除")}
@@ -674,25 +713,21 @@ function DirectoryListRow({
   );
 }
 
-/** 骨架屏跟着卡片一起换版式（左 96px 方图 + 右两行文字），否则加载完会「跳版」。 */
+/** 骨架屏跟着 Library 4:3 卡，否则加载完会跳版。 */
 function CardGridSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <CollectionCardGrid>
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="flex min-h-[100px] overflow-hidden rounded-xl border border-stone-200 bg-white/60 shadow-sm"
+          className="overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]"
         >
-          <div className="aspect-square w-[96px] shrink-0 animate-pulse bg-stone-200/70" />
-          <div className="flex min-w-0 flex-1 flex-col justify-between px-3 py-2.5">
-            <div className="h-3.5 w-2/3 animate-pulse rounded bg-stone-200/70" />
-            <div className="space-y-1.5">
-              <div className="h-3 w-full animate-pulse rounded bg-stone-200/50" />
-              <div className="h-3 w-4/5 animate-pulse rounded bg-stone-200/50" />
-            </div>
+          <div className="aspect-[4/3] animate-pulse bg-stone-200/70" />
+          <div className="p-2.5">
+            <div className="h-3 w-2/3 animate-pulse rounded bg-stone-200/70" />
           </div>
         </div>
       ))}
-    </div>
+    </CollectionCardGrid>
   );
 }

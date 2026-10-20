@@ -163,7 +163,8 @@ test("点选本地文件后走 uploadFile 桩，成功则 onUrl(https) 并显示
   });
   await flush();
   assert.equal(globalThis.__bayCoverUploads.length, 1);
-  assert.equal(globalThis.__bayCoverUploads[0].opts.siteId, "home");
+  assert.equal(globalThis.__bayCoverUploads[0].opts.siteId, "oceanleo");
+  assert.equal(String(globalThis.__bayCoverUploads[0].opts.idempotencyKey || "").includes(" "), false);
   assert.deepEqual(urls, ["https://cdn.example/cover.png"]);
   await rerender({ url: urls[0] });
   assert.ok(host.querySelector("img[src='https://cdn.example/cover.png']"));

@@ -94,6 +94,11 @@ test("BayDigitalWorksField 源码可多选任意类型，含上传和从库选",
   assert.match(source, /flushSync/);
   assert.match(source, /data-bay-work-spin/);
   assert.match(source, /animateTransform/);
+  assert.match(source, /safeIdempotencyKey/);
+  assert.match(source, /humanUploadError/);
+  assert.match(source, /className="hidden"/);
+  assert.doesNotMatch(source, /clip:\s*"rect/);
+  assert.doesNotMatch(source, /siteId:\s*"home"/);
   assert.doesNotMatch(source, /DIGITAL_WORKS_MAX/);
 });
 
@@ -128,4 +133,15 @@ test("listingPayload 仍只输出第一份 digital_work", () => {
   const input = model.serviceInput(draft);
   assert.deepEqual(input.digital_work, { kind: "artifact", id: "art-1" });
   assert.equal("digital_works" in input, false);
+});
+
+test("幂等键去掉空格，HTTP 400 不摆给用户", async () => {
+  const { safeIdempotencyKey, humanUploadError } = await import("../src/shell/bay/form/bay-upload.ts");
+  const key = safeIdempotencyKey(["library-upload-v1", "oceanleo", "my file.png", 12, 1]);
+  assert.equal(key.includes(" "), false);
+  assert.equal([...key].every((ch) => ch.charCodeAt(0) >= 33), true);
+  assert.ok(key.length >= 8 && key.length <= 200);
+  assert.equal(humanUploadError("HTTP 400", 400), "文件没传上去，请稍后再试。");
+  assert.equal(humanUploadError("invalid idempotency key", 400), "文件没传上去，请稍后再试。");
+  assert.equal(humanUploadError("这个文件太大，送不过去。", 413), "这个文件太大，送不过去。");
 });

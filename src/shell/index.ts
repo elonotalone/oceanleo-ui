@@ -268,8 +268,8 @@ export type {
 // 在此之前它只能手抄一份清单，而那份清单抄错了问题（见函数自身的注释）。
 export { artifactTypeHasRoutableEditor } from "./workbench-capability-registry";
 // 固定五槽位中「预览 / 素材库 / 我的库」共用的搜索、分类和 master/detail 原语。
-export { LibraryToolbar, LibraryChips } from "./LibraryLayout";
-export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout";
+export { LibraryToolbar, LibraryChips } from "./LibraryLayout"; export { CollectionSearchField, CollectionViewOptions, CollectionViewToggle, CollectionPageToolbar, CollectionFilterSelect, CollectionFilterRow, CollectionFilterChevron, CollectionInfiniteSentinel, CollectionCardGrid, COLLECTION_ACTION_BTN, COLLECTION_ACTION_BTN_GHOST, COLLECTION_ACTION_BTN_PRIMARY, COLLECTION_CARD_GRID_CLASS, COLLECTION_CARD_GRID_COLUMNS, COLLECTION_CARD_GRID_STYLE, COLLECTION_FILTER_ROW_CLASS } from "./collection-chrome";
+export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout"; export type { CollectionView, CollectionViewOption, CollectionFilterOption } from "./collection-chrome";
 export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibrary";
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { PublishToOrgButton } from "./PublishToOrgButton";
