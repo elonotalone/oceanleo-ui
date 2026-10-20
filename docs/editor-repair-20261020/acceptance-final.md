@@ -4,7 +4,7 @@ Independent behavioral acceptance after W1-r4 and ComputerDock landed. No produc
 
 **Verdict: not complete.** V1-r2 blockers are closed on landed commits: `pnpm typecheck` exit 0, `pnpm api:check` pass, `pnpm architecture:check` without the ComputerDock facade import. The wave still does not pass: **W6-r4 is not on main**, so pdf / audio / video-timeline / threed / game / video-canvas stay outside V1 class (a). Class (d) stays unverified.
 
-Measured on oceanleo-ui `a06f249ffce890f6629307f887b9a02af68d049b` (ComputerDock) after W1-r4 `446b5bc63cc37204e478d716a5530fc1fd1f5e60`. Parent docs record `23a75157ceba9e2e78e996bacb341c302283c33c` followed (PARENT.md only; no product source). Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
+Measured on oceanleo-ui `a06f249ffce890f6629307f887b9a02af68d049b` (ComputerDock) after W1-r4 `446b5bc63cc37204e478d716a5530fc1fd1f5e60`. Parent docs record `23a75157ceba9e2e78e996bacb341c302283c33c` followed (PARENT.md only; no product source). This report: `e99495990c91e258f956cafc50d7121e7032750d`. Integrity / CAS / origin / permission checks were not loosened. Pass here is never from source-string greps.
 
 Round-1 `acceptance.md` overclaimed “13 plugins have load/mutate/save/reopen”. That was registry metadata. This file replaces that claim. Do not revive it.
 
