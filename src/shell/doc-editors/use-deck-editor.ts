@@ -14,6 +14,11 @@ import { officeExtensionForItem } from "../workbench-routes";
 import { deckRebase } from "../collab/adapters/deck";
 import { getArtifactItem } from "../artifact-client";
 import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
+import {
   centeredDeckPlacement,
   clientPointToDeckPercent,
 } from "./deck-geometry";
@@ -1644,6 +1649,33 @@ export function deckSourceLoadKey(
  * (`DeckRoute.tsx`) and silently skips a PPTX the user picks, and naming an
  * action the UI refuses is the same defect as naming a button that does not exist.
  */
+export type DeckUserEditOrigin = "local-history" | "remote-collab" | "load";
+
+/**
+ * Native-deck person-write choke. History commit / gesture / undo / redo
+ * record; remote collab merge and load do not.
+ */
+export function applyDeckUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: DeckUserEditOrigin,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "local-history") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
+
+/** Same helper `commit` / `endGesture` call after a real document inequality. */
+export function applyDeckHistoryWriteIfChanged(
+  item: { key?: string; id?: string } | null | undefined,
+  before: DeckDocument,
+  after: DeckDocument,
+): number {
+  if (deckDocumentsEqual(after, before)) {
+    return userMutationGeneration(userEditItemKey(item));
+  }
+  return applyDeckUserEditSession(item, "local-history");
+}
+
 export function deckSourceFailureMessage(
   caught: unknown,
   translate: (value: string) => string,
@@ -1789,6 +1821,7 @@ export function useDeckEditor(
         if (loaded.serverDraft) {
           revisionRef.current = typeof loaded.serverDraft.editRevision === "number" ? loaded.serverDraft.editRevision : 1;
           setDirty(true);
+          applyDeckUserEditSession(source, "load");
         }
         deckRef.current = next;
         activeRef.current = next.slides[0].id;
@@ -1870,6 +1903,7 @@ export function useDeckEditor(
       setNotice("");
       revisionRef.current += 1;
       setDirty(true);
+      applyDeckHistoryWriteIfChanged(persistedItemRef.current, base.deck, next);
       setHistoryRevision((value) => value + 1);
       return true;
     },
@@ -1903,6 +1937,11 @@ export function useDeckEditor(
     redoRef.current = [];
     revisionRef.current += 1;
     setDirty(true);
+    applyDeckHistoryWriteIfChanged(
+      persistedItemRef.current,
+      base.deck,
+      deckRef.current,
+    );
     setSavedUrl("");
     setNotice("");
     setHistoryRevision((value) => value + 1);
@@ -2494,6 +2533,7 @@ export function useDeckEditor(
     // 别人的改动让这份文稿和库里最近一版不同：存档人要存，所以记一次未保存（只在存档人那里真的会存）。
     revisionRef.current += 1;
     setDirty(true);
+    applyDeckUserEditSession(persistedItemRef.current, "remote-collab");
     setHistoryRevision((value) => value + 1);
   }, []);
 
@@ -2528,6 +2568,7 @@ export function useDeckEditor(
     applySnapshot(previous);
     revisionRef.current += 1;
     setDirty(true);
+    applyDeckUserEditSession(persistedItemRef.current, "local-history");
     setSavedUrl("");
   }, [applySnapshot, snapshot]);
 
@@ -2539,6 +2580,7 @@ export function useDeckEditor(
     applySnapshot(next);
     revisionRef.current += 1;
     setDirty(true);
+    applyDeckUserEditSession(persistedItemRef.current, "local-history");
     setSavedUrl("");
   }, [applySnapshot, snapshot]);
 

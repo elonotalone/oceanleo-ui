@@ -168,6 +168,11 @@ import {
   sheetsFromLegacyProjectData,
 } from "./grid-univer/same-document";
 import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
 
 type UniverHandle = {
   univer: { dispose: () => void };
@@ -185,6 +190,21 @@ type ParkedUniver = {
   handle: UniverHandle;
   timer: ReturnType<typeof setTimeout>;
 };
+
+export type GridUserEditOrigin = "person-write" | "collab-activity" | "load";
+
+/**
+ * Grid person-write choke used by `bumpHistory`. Collab activity and load
+ * may mark dirty in the binder, but they must not open autosave.
+ */
+export function applyGridUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: GridUserEditOrigin,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "person-write") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
 
 function emptySnapshot(title: string): Partial<IWorkbookData> {
   return gridSheetsToUniverSnapshot([emptyGridSheet()], { name: title }).data;
@@ -310,8 +330,11 @@ export function GridUniverStage({
     () => univerFacadePortFromLive(handleRef.current?.api),
     [],
   );
+  const liveItemRef = useRef(item);
+  liveItemRef.current = item;
 
   const bumpHistory = useCallback(() => {
+    applyGridUserEditSession(liveItemRef.current, "person-write");
     setEditRevision((value) => value + 1);
     setDirty(true);
     setToolbarEpoch((value) => value + 1);
@@ -638,6 +661,7 @@ export function GridUniverStage({
       }),
       onFullReplace: () => setStatus(ttRef.current("别人调整了表格的一部分设置，表格已重新载入。")),
       onActivity: () => {
+        applyGridUserEditSession(liveItemRef.current, "collab-activity");
         setEditRevision((value) => value + 1);
         setDirty(true);
       },

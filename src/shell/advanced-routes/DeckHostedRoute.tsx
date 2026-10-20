@@ -75,6 +75,10 @@ import {
   hostedDeckSelectionForToolbar,
   sendDeckHostedHumanSelectionCommand,
 } from "./deck-hosted-selection-command";
+import {
+  recordUserMutation,
+  userMutationGeneration,
+} from "../user-edit-session";
 
 /**
  * 双核 `next` 分支：幻灯片托管在当前家族的 `slides.*` Hosted origin
@@ -197,6 +201,39 @@ function deckHostedResolutionIdentity(
 
 export const DECK_HOSTED_MISSING_EMBED_MESSAGE =
   "专业编辑器暂时打不开，普通编辑仍可继续使用。";
+
+export type HostedDeckUserEditKind = "dirty" | "restore" | "init";
+
+/**
+ * Hosted PPT person-write choke, matching Umo: a `dirty === true` message
+ * after opened-content identity matches and init is applied. Recovery restore
+ * that only marks dirty must not open autosave.
+ */
+export function applyHostedDeckUserEditSession(input: {
+  item: { key?: string; id?: string } | null | undefined;
+  kind: HostedDeckUserEditKind;
+  dirty?: unknown;
+  openedContentIdentity: string | null | undefined;
+  contentIdentity: string;
+  source?: unknown;
+  applyingInit?: boolean;
+}): number {
+  const key = handoffItemKey({
+    key: String(input.item?.key || ""),
+    id: String(input.item?.id || ""),
+  });
+  const opened =
+    Boolean(input.openedContentIdentity) &&
+    input.openedContentIdentity === input.contentIdentity;
+  const personDirty =
+    input.kind === "dirty" &&
+    input.dirty === true &&
+    opened &&
+    input.source != null &&
+    !input.applyingInit;
+  if (!personDirty) return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
 
 /**
  * 存量 deck IR 与已经是托管格式的工程档都要能打开。
@@ -663,6 +700,15 @@ export function DeckHostedRoute({
         const revision = typeof message.revision === "number"
           ? message.revision : editRevisionRef.current + 1;
         if (revision <= editRevisionRef.current) return;
+        applyHostedDeckUserEditSession({
+          item,
+          kind: "dirty",
+          dirty: message.dirty,
+          openedContentIdentity: openedContentIdentityRef.current,
+          contentIdentity,
+          source: sourceRef.current,
+          applyingInit: false,
+        });
         setDirty(true);
         editRevisionRef.current = revision;
         draftChannelRef.current!.advance(revision);
@@ -951,6 +997,15 @@ export function DeckHostedRoute({
               snapshotRef.current = payload;
               setSnapshot(payload);
               setEditRevision(restored);
+              applyHostedDeckUserEditSession({
+                item: persistedItemRef.current,
+                kind: "restore",
+                dirty: true,
+                openedContentIdentity: openedContentIdentityRef.current,
+                contentIdentity,
+                source: sourceRef.current,
+                applyingInit: false,
+              });
               setDirty(true);
               return true;
             },
