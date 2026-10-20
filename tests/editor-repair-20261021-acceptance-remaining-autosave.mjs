@@ -298,6 +298,27 @@ test("video canvas: person command records; hydrate does not", async () => {
   const item = itemFor("video-canvas");
   assertRecords("video-canvas", callPair, fn, item, "person-command");
   assertDoesNotRecord("video-canvas", callPair, fn, item, ["hydrate", "load"]);
+  if (typeof mod.applyVideoCanvasPersonCommand === "function") {
+    resetUserEditSession();
+    const applied = mod.applyVideoCanvasPersonCommand(
+      item,
+      { nodes: [], edges: [] },
+      "workflow.add-node",
+      {},
+      0,
+    );
+    assert.equal(applied.ok, true, "live person command must apply");
+    assert.equal(generationOf(item), 1, "live person command must record");
+    const again = mod.applyVideoCanvasPersonCommand(
+      item,
+      { nodes: [], edges: [] },
+      "workflow.not-a-command",
+      {},
+      0,
+    );
+    assert.equal(again.ok, false);
+    assert.equal(generationOf(item), 1, "unknown command must not record");
+  }
 });
 
 test("audio: local mutation records; remote apply does not", async () => {
@@ -456,13 +477,52 @@ test("embedded: post-handshake person dirty records; restore / handshake do not"
   ]);
   const item = itemFor("embedded");
   const person = {
-    kind: "dirty",
+    kind: "person-dirty",
     dirty: true,
+    hostedOpen: true,
     handshakeReady: true,
   };
   assertRecords("embedded", callBag, fn, item, person);
+  resetUserEditSession();
+  callBag(fn, item, {
+    dirty: true,
+    hostedOpen: true,
+    handshakeReady: true,
+  });
+  assert.equal(
+    generationOf(item),
+    1,
+    "embedded derived post-handshake dirty (no explicit kind) must record",
+  );
   assertDoesNotRecord("embedded", callBag, fn, item, [
-    { kind: "restore", dirty: true, handshakeReady: true },
-    { kind: "handshake", dirty: true, handshakeReady: false },
+    {
+      kind: "restore",
+      dirty: true,
+      hostedOpen: true,
+      handshakeReady: true,
+    },
+    {
+      kind: "handshake",
+      dirty: true,
+      hostedOpen: true,
+      handshakeReady: false,
+    },
+    {
+      dirty: true,
+      hostedOpen: false,
+      handshakeReady: true,
+    },
+    {
+      dirty: true,
+      hostedOpen: true,
+      handshakeReady: true,
+      restoring: true,
+    },
+    {
+      dirty: true,
+      hostedOpen: true,
+      handshakeReady: true,
+      initEcho: true,
+    },
   ]);
 });
