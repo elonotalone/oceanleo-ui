@@ -3,8 +3,11 @@
  * authorized artifact or media URL instead of inline meta.
  */
 
+import { isArtifactSourceTreeUrl } from "../artifact-contract";
+
 export type StoredProjectItem = {
   url?: string | null;
+  previewUrl?: string | null;
   content?: string | null;
   artifactId?: string | null;
   meta?: Record<string, unknown> | null;
@@ -19,15 +22,21 @@ export type StoredProjectItem = {
 export function storedEditorProjectUrl(item: StoredProjectItem | null | undefined): string {
   if (!item) return "";
   const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
-  for (const key of ["editor_project_url", "fabric_document_url"] as const) {
-    const value = String(meta[key] || "").trim();
-    if (value) return value;
+  const candidates = [
+    meta.editor_project_url,
+    meta.fabric_document_url,
+    item.artifact?.renditions?.source?.url,
+    item.artifact?.renditions?.full?.url,
+    item.url,
+    item.previewUrl,
+  ];
+  for (const candidate of candidates) {
+    const value = typeof candidate === "string" ? candidate.trim() : "";
+    // Source-tree is a credentialed API descriptor, not media fetch input.
+    // Keep looking for the same browser-readable delivery used by preview.
+    if (value && !isArtifactSourceTreeUrl(value)) return value;
   }
-  const source = String(item.artifact?.renditions?.source?.url || "").trim();
-  if (source) return source;
-  const full = String(item.artifact?.renditions?.full?.url || "").trim();
-  if (full) return full;
-  return String(item.url || "").trim();
+  return "";
 }
 
 export function unwrapStoredEditorProject(text: string): unknown {

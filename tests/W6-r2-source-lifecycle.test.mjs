@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { preferLocalRemoteEditor } from "../src/shell/client-local-editors.ts";
 import {
   localRemoteEditorWorkbenchChoice,
+  storedEditorProjectUrl,
 } from "../src/shell/advanced-routes/stored-editor-project.ts";
 import {
   hydrateWebsiteLocalSource,
@@ -56,6 +57,27 @@ const embedded = readFileSync(
 function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
 }
+
+test("stored projects skip credentialed source-tree descriptors for readable delivery bytes", async () => {
+  const sourceTree = "/v1/artifacts/00000000-0000-4000-8000-000000000001/revisions/00000000-0000-4000-8000-000000000002/source-tree/@source";
+  const project = blankDesignDocument("已有设计稿的完整工程标题");
+  const deliveryUrl = "https://files.example.test/design.json";
+  const item = {
+    artifactId: "design-root",
+    meta: { editor_project_url: sourceTree },
+    artifact: { renditions: { source: { url: sourceTree } } },
+    url: deliveryUrl,
+  };
+  assert.equal(storedEditorProjectUrl(item), deliveryUrl);
+  let fetched = "";
+  const result = await hydrateDesignCanvasSource(planDesignCanvasSource(item), async (url) => {
+    fetched = url;
+    return serializeDesignCanvasSource(project);
+  });
+  assert.equal(result.ok, true);
+  assert.equal(fetched, deliveryUrl);
+  assert.equal(storedEditorProjectUrl({ artifact: item.artifact }), "");
+});
 
 test("web default dispatches website/design remotes to hosted embed, not the inline-only local core", () => {
   assert.equal(preferLocalRemoteEditor("website"), false);
