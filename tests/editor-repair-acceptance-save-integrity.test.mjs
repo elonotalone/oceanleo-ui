@@ -7,7 +7,9 @@ import test from "node:test";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
+  EMPTY_BLOB_SHA256,
   artifactSaveContractFor,
+  artifactSaveFailureRetryable,
   planArtifactSaveRenditions,
   revisionPublishLocalRefusal,
 } from "../src/shell/doc-editors/artifact-save-contract.ts";
@@ -51,6 +53,20 @@ test("every save contract refuses a payload that cannot pass integrity", () => {
     editorManifest: HTTPS,
   });
   assert.equal(chartMissing.ok, false);
+
+  const emptyBlob = revisionPublishLocalRefusal({
+    artifactType: "document",
+    itemArtifactType: "document",
+    editability: "native",
+    sourceUrl: "https://cdn.oceanleo.com/doc.md",
+    sourceDigest: EMPTY_BLOB_SHA256,
+  });
+  assert.equal(emptyBlob.ok, false);
+  assert.equal(emptyBlob.code, "integrity-failed");
+  assert.equal(
+    artifactSaveFailureRetryable({ code: "integrity-failed" }),
+    false,
+  );
 });
 
 test("createArtifactRevision keeps integrity-failed as a hard failure", async () => {

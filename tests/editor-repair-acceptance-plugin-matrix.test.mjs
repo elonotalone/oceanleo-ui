@@ -1,7 +1,7 @@
 /**
- * V1 acceptance: every plugin type shares load/save/theme/round-trip routing.
- * Calls the live registry, save contract, and capability functions — not source
- * strings. A hole here is a shared failure, not a per-plugin cosmetic miss.
+ * V1 acceptance: static registration / save-contract / capability routing.
+ * Passing here is NOT a source→edit→save→reopen round trip. That evidence
+ * lives in editor-repair-acceptance-round-trip.test.mjs and owner suites.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -214,7 +214,7 @@ function libraryItem(plugin, extra = {}) {
   };
 }
 
-test("13 plugins are registered for theme, round-trip, and save contract", () => {
+test("13 plugins have static theme, registry roundTrip labels, and save contracts", () => {
   assert.equal(PLUGINS.length, 13);
   assert.deepEqual(Object.keys(PLUGIN_THEME_SPECS).sort(), [
     ...new Set(PLUGINS.map((plugin) => plugin.themeId)),

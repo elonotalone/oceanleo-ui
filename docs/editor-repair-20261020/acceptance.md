@@ -1,5 +1,7 @@
 # V1 acceptance — editor repair 2026-10-20
 
+**Superseded by** `docs/editor-repair-20261020/acceptance-final.md` (V1-r2). Round-1 “13 plugins have load/mutate/save/reopen” was registry metadata, not a source→edit→save→reopen proof. Do not treat the matrix below as final.
+
 Independent behavioral acceptance. No product source edits. No browser, Playwright, screenshots, production, dep installs, or service changes.
 
 Measured on oceanleo-ui `11271d9d` plus **uncommitted W3 chrome** (`AdvancedWorkspaceActionBar`, `PluginGlobalRow`, `InlineAdvancedWorkbenchShell`, `editor-item-social-chrome`, `inline-editor-mine-panel`, related icons/collab/header/frame). W1 `0ce86530` / `91eb28b4`, W2 `d97ef932`, W4 `70380329`, W5 `c1914a55`, W6 `59e9e746` are on local `main`.

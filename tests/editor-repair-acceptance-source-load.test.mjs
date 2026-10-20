@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import "./helpers/w1-jsdom-window.mjs";
 
 if (!globalThis.File) globalThis.File = NodeFile;
 
@@ -130,6 +131,31 @@ test("richdoc hydrates markdown/html/text and refuses a blank artifact substitut
   assert.equal(missing.source, "empty");
   assert.match(missing.error, /缺少可验证的 source\/full 内容/);
   assert.equal(missing.html, "<p></p>");
+});
+
+test("richdoc sanitizer strips XSS and never returns raw HTML when unavailable", async () => {
+  const { sanitizeRichDocHtml } = await import(
+    "../src/shell/doc-editors/rich-doc-model.ts"
+  );
+  const dirty =
+    '<p>需签字盖章页清单</p><script>alert(1)</script><img src=x onerror="alert(1)">';
+  const cleaned = await sanitizeRichDocHtml(dirty);
+  assert.match(cleaned, /需签字盖章页清单/);
+  assert.doesNotMatch(cleaned, /<script/i);
+  assert.doesNotMatch(cleaned, /onerror/i);
+  await assert.rejects(
+    () =>
+      sanitizeRichDocHtml(dirty, {
+        isSupported: false,
+        sanitize: (html) => html,
+      }),
+    /安全过滤器暂时不可用/,
+  );
+  await assert.rejects(
+    () => sanitizeRichDocHtml(dirty, { sanitize: () => ({ not: "string" }) }),
+    /安全过滤器暂时不可用/,
+  );
+  await assert.rejects(() => sanitizeRichDocHtml(dirty, {}), /安全过滤器暂时不可用/);
 });
 
 test("grid csv hydrates cells from existing content", async () => {

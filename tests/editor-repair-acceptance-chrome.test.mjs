@@ -298,6 +298,14 @@ test("global row is icon-only, opens mine, and hosts share/favorite with Library
     assert.ok(social, "share/favorite must bind to the LibraryItem identity");
     assert.equal(social.getAttribute("data-artifact-id"), item.artifactId);
     assert.equal(social.getAttribute("data-revision-id"), item.revisionId);
+    assert.equal(
+      share.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
+      "share",
+    );
+    assert.equal(
+      favorite.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
+      "favorite",
+    );
   });
 });
 

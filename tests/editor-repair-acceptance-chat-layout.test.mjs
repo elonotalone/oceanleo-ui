@@ -288,6 +288,7 @@ test("PluginAgentPanel + chrome aside form a min-h-0 flex column around the comp
       `),
       "../plugin-theme": dataModule(`
         export function usePluginTheme() { return { theme: "light", accent: "#4f46e5" }; }
+        export function usePluginThemePortal() { return null; }
         export function PluginThemeToggle() { return null; }
         export function pluginWorkbenchStyle() { return {}; }
       `),
