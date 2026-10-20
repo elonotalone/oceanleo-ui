@@ -27,7 +27,7 @@ const { ComputerDock } = await import(await compileModule("src/shell/cloud-compu
   "../../lib/cloud-computer-api": apiStub,
   "../../i18n/ui/useUI": dataModule("export function useUI() { return value => value; }"),
   "../../contracts/domain-family": dataModule('export function currentDomainFamily() { return "com"; }'),
-  "../../facades/devices": dataModule("export const devicesFacade = { listDevices: async () => ({ ok: true, data: [] }) };"),
+  "../../api/devices": dataModule("export const listDevices = async () => ({ ok: true, data: [] });"),
   "../account/SettingsModalHost": dataModule("export function openSettingsModal() {}"),
   "./server-page/href": dataModule('export function devicesCloudHref() { return "/settings/devices"; } export function serverPageHref(id) { return "/server/" + id; }'),
   "next/navigation": dataModule("export function useRouter() { return { push() {} }; }"),

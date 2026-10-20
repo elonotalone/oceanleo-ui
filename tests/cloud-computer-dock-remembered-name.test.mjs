@@ -61,6 +61,7 @@ const uiStub = dataModule(`
 const domainStub = dataModule(`
   export function currentDomainFamily() { return "com"; }
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+  export function portalHref(path) { return window.location.origin === "https://oceanleo.com" ? path : "https://oceanleo.com" + path; }
 `);
 const dialogStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -106,7 +107,7 @@ const { ComputerDock } = await import(
     "../../i18n/ui/useUI": uiStub,
     "../../contracts/domain-family": domainStub,
     "../../lib/cloud-computer-api": apiStub,
-    "../../facades/devices": dataModule(`export const devicesFacade = { listDevices: async () => ({ ok: true, data: [] }) };`),
+    "../../api/devices": dataModule(`export const listDevices = async () => ({ ok: true, data: [] });`),
     "../account/SettingsModalHost": dataModule(`export function openSettingsModal() {}`),
     "./CreateComputerDialog": dialogStub,
     "./ConnectServerDialog": dialogStub,

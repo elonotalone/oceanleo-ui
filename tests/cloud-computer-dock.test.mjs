@@ -59,6 +59,7 @@ const uiTextStubUrl = dataModule(`
 const domainStubUrl = dataModule(`
   export function currentDomainFamily() { return globalThis.__ccDomainFamily || "com"; }
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
+  export function portalHref(path) { return window.location.origin === "https://oceanleo.com" ? path : "https://oceanleo.com" + path; }
 `);
 const dialogStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -93,10 +94,8 @@ const { ComputerDock } = await import(
     "../../i18n/ui/useUI": uiTextStubUrl,
     "../../contracts/domain-family": domainStubUrl,
     "../../lib/cloud-computer-api": apiStubUrl,
-    "../../facades/devices": dataModule(`
-      export const devicesFacade = {
-        listDevices() { return Promise.resolve({ ok: true, data: globalThis.__ccDevices || [] }); }
-      };
+    "../../api/devices": dataModule(`
+      export function listDevices() { return Promise.resolve({ ok: true, data: globalThis.__ccDevices || [] }); }
     `),
     "../account/SettingsModalHost": dataModule(`export function openSettingsModal(tab) { globalThis.__openSettingsTab = tab; }`),
     "./CreateComputerDialog": dialogStubUrl,

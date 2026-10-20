@@ -40,6 +40,8 @@ ACTIVE W1-r3 exec 86448, same chat d14705ef-34ce-44d6-8b0c-2f54e98a96cc: parent 
 
 ACTIVE V1-r2 exec 84813, chat a643ad05-dcad-42ed-9c12-8e06933062da; owns acceptance tests/docs only, currently rewrites old bus tests and runs focused final checks. Task file includes W6-r3 pending; W1-r3 was discovered afterwards, so parent must make final acceptance include that delta if V1 returns early. Source fixtures/test changes under V1 ownership must not be committed by parent until it delivers.
 
-Still required: collect W1/W6 r3, independently inspect and rerun named tests/typecheck, V1 final evidence, full UI suite once its tests stable, regenerate CSS/API if needed, source security assertions (full security gate already has unrelated live DB grant drift), dev-slot freshness and dev HTTP check; bump UI patch (candidate v0.233.72 was absent on GitHub), tag/push and twin-only --only oceanleo bump per kernel, portal main push/twin status. No production release. Check current worktrees before any commit/push.
+Resume 23:00 parent (this session): leftover V1-r2 blockers were two W1 `tsc` errors and ComputerDock facade import. Parent took W1-r4 residue and ComputerDock. Dispatched Cursor W6-r4 `396679d7-0fdc-405a-be2d-4f7cd32755a7` and V1-r3 `e4c2e1a0-5600-477c-b7d7-5242eb99d42a` on cursor-grok-4.6-xhigh-fast. Task books `377e836a`.
+
+Still required after those owners deliver: parent independently reruns named tests/typecheck, LeoDev freshness, twin-only `--only oceanleo` bump, portal main push. No production release.
 
 Checkpoint commits: UI 2f1101dc, portal 80ab77c, website 1c4ac9b, oceandino 80f1e1466. Oceandino required checks passed (UI tsc, 456 dev/staff tests, 1325 Lucy tests + 200 subtests, 584 script tests + 6 skips, policy valid); GitHub origin/main verified at 80f1e1466. Secondary origin push target /host/opt/git-mirrors/oceandino.git unavailable from this mount; no mirror configuration changed.

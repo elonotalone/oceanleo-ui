@@ -8,7 +8,7 @@ import {
   type Computer,
 } from "../../lib/cloud-computer-api";
 import { currentDomainFamily } from "../../contracts/domain-family";
-import { devicesFacade, type Device } from "../../facades/devices";
+import { listDevices, type Device } from "../../api/devices";
 import { useUI } from "../../i18n/ui/useUI";
 import { AnchoredPopover } from "../anchored-popover";
 import { openSettingsModal } from "../account/SettingsModalHost";
@@ -67,7 +67,7 @@ export function ComputerDock({
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    void devicesFacade.listDevices().then((result) => {
+    void listDevices().then((result) => {
       if (!alive) return;
       setDevices(result.ok && result.data ? result.data : []);
     });

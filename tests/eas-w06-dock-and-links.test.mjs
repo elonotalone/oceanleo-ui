@@ -154,8 +154,8 @@ const { ComputerDock } = await import(
   await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
     "../../i18n/ui/useUI": uiStub,
     "../../lib/cloud-computer-api": apiStub,
-    "../../facades/devices": dataModule(`
-      export const devicesFacade = { listDevices: async () => ({ ok: true, data: [] }) };
+    "../../api/devices": dataModule(`
+      export const listDevices = async () => ({ ok: true, data: [] });
     `),
     "../account/SettingsModalHost": dataModule(`export function openSettingsModal() {}`),
     "../../contracts/domain-family": dataModule(`
