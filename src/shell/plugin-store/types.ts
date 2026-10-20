@@ -16,15 +16,13 @@
 //      没有 CAS 就别假装乐观锁成功——降级要说出口（对应 plugin-chrome 的
 //      local-only / notice）。
 //
-// artifact revision CAS adapter 已落地（`adapters/artifact-revision-store.ts`）：
-//   read() → 取 pinned revision 的 source 字节，doc.revisionId = revisionId；
-//   write() → `expectedRevision` 直接就是 `If-Match` / `expected_revision_id`，
-//   回执 revisionId 填新 revision。
-//   409 / revision-conflict → conflict；integrity-failed → failed（不是
-//   conflict：完整性失败重放同一份字节没有意义，也不能当成别人先改了去覆盖）；
-//   access.canEdit 为假 → denied。
-//   capabilities = { revisions: true, cas: true, multiFile: false, watch: false }。
-// 未落地的 adapter（本次只保证接口能表达，不实现）：
+// 未落地的两个 adapter（本次只保证接口能表达，不实现）：
+//   · artifact revision CAS（artifact-client.ts `createArtifactRevision`）
+//     read() → 取 pinned revision 的 source 字节，doc.revisionId = revisionId；
+//     write() → `expectedRevision` 直接就是 `If-Match` / `expected_revision_id`，
+//     回执 revisionId 填新 revision；服务端 409 / integrity-failed 映射成
+//     disposition "conflict"，access.canEdit 为假映射成 "denied"。
+//     capabilities = { revisions: true, cas: true, multiFile: false, watch: false }。
 //   · Website Project API（website 仓 project-api.ts）
 //     它是八条路里唯一的多文件源码树：read() → `readSourceTree` 折成
 //     PluginDocument 的 tree 形态；write() → `transactSource` 提交文件级事务，

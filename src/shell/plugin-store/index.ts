@@ -32,14 +32,6 @@ export {
 } from "./adapters/host-doc-store";
 
 export {
-  createArtifactRevisionStore,
-  type ArtifactRevisionStoreHost,
-  type ArtifactRevisionStoreItem,
-  type ArtifactRevisionStoreOptions,
-  type ArtifactRevisionStoreResult,
-} from "./adapters/artifact-revision-store";
-
-export {
   createMemoryStore,
   type MemoryDocumentStore,
   type MemoryStoreOptions,

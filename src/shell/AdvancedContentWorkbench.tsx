@@ -39,7 +39,8 @@ import {
   advancedSessionAppId,
   advancedSessionSnapshot,
   advancedDraftFromSnapshot,
-  saveSnapshotWithConflictRetry,
+  mergeAdvancedSessionSnapshot,
+  saveOwnedWorkspaceSnapshot,
   withInlineEditorHistoryEntry,
   withInlineEditorHistoryHead,
 } from "./advanced-session";
@@ -542,32 +543,17 @@ function AdvancedContentWorkbenchRuntime(
         currentWorkspace.taskId,
         draft,
       );
-    const stored = await currentWorkspace.saveSnapshot(
-      merge(live.snapshot),
-      live.schema_version || 1,
-      {
-        expectedSessionId: live.id,
-        title: live.title || item.title,
-        mergeFromLatest: merge,
-      },
-    );
+    const stored = await saveOwnedWorkspaceSnapshot({
+      saveSnapshot: (snapshot, schemaVersion, options) =>
+        currentWorkspace.saveSnapshot(snapshot, schemaVersion, options),
+      snapshot: merge(live.snapshot),
+      schemaVersion: live.schema_version || 1,
+      expectedSessionId: live.id,
+      title: live.title || item.title,
+      mergeFromLatest: merge,
+    });
     if (stored.ok) {
       draftQueueRef.current.accept(stored.session);
-      return true;
-    }
-    if (stored.conflict?.latest || stored.stale) {
-      const latest = stored.session || currentWorkspace.session;
-      if (!latest) return true;
-      const retried = await currentWorkspace.saveSnapshot(
-        merge(latest.snapshot),
-        latest.schema_version || 1,
-        {
-          expectedSessionId: latest.id,
-          title: latest.title || item.title,
-          mergeFromLatest: merge,
-        },
-      );
-      if (retried.ok) draftQueueRef.current.accept(retried.session);
     }
     return true;
   };
@@ -592,12 +578,34 @@ function AdvancedContentWorkbenchRuntime(
         if (!active || active.id !== expectedSessionId || draft.rootId !== identity.rootId) return false;
         if (versionSchemaRef.current === draft.schema && advancedDraftCovers(versionCoveredRef.current, draft.editRevision)) return true;
         const pointer = { ...draft, baseRevisionId: identity.baseRevisionId };
-        const snapshot = editorHost.embedded
-          ? withInlineEditorHistoryHead(active.snapshot, material, route.type, currentWorkspace.taskId, pointer)
-          : advancedSessionSnapshot(material, route.type, currentWorkspace.taskId, pointer);
-        const stored = await currentWorkspace.saveSnapshot(snapshot,
-          editorHost.embedded ? active.schema_version || 1 : ADVANCED_SESSION_SCHEMA_VERSION,
-          { expectedSessionId: active.id, title: active.title || material.title });
+        const merge = editorHost.embedded
+          ? (latest: unknown) =>
+              withInlineEditorHistoryHead(
+                latest,
+                material,
+                route.type,
+                currentWorkspace.taskId,
+                pointer,
+              )
+          : (latest: unknown) =>
+              mergeAdvancedSessionSnapshot(
+                latest,
+                material,
+                route.type,
+                currentWorkspace.taskId,
+                pointer,
+              );
+        const stored = await saveOwnedWorkspaceSnapshot({
+          saveSnapshot: (snapshot, schemaVersion, options) =>
+            currentWorkspace.saveSnapshot(snapshot, schemaVersion, options),
+          snapshot: merge(active.snapshot),
+          schemaVersion: editorHost.embedded
+            ? active.schema_version || 1
+            : ADVANCED_SESSION_SCHEMA_VERSION,
+          expectedSessionId: active.id,
+          title: active.title || material.title,
+          mergeFromLatest: merge,
+        });
         if (!stored.ok) reportSaveFailure("record-draft", true);
         else draftQueueRef.current.accept(stored.session);
         return stored.ok;
@@ -636,7 +644,7 @@ function AdvancedContentWorkbenchRuntime(
             withInlineEditorHistoryHead(
               latest, savedItem, route.type, workspace.taskId, draft,
             );
-          const stored = await saveSnapshotWithConflictRetry({
+          const stored = await saveOwnedWorkspaceSnapshot({
             saveSnapshot: (snapshot, schemaVersion, options) =>
               workspace.saveSnapshot(snapshot, schemaVersion, options),
             snapshot: merge(active.snapshot),
@@ -657,14 +665,15 @@ function AdvancedContentWorkbenchRuntime(
           }
           draftQueueRef.current.accept(stored.session);
         } else {
-          const merge = (_latest: unknown) => ({
-            ...advancedSessionSnapshot(savedItem, route.type, workspace.taskId, draft),
-          });
-          const snapshot = merge(undefined);
+          const merge = (latest: unknown) =>
+            mergeAdvancedSessionSnapshot(
+              latest, savedItem, route.type, workspace.taskId, draft,
+            );
+          const snapshot = merge(previousSession?.snapshot);
           const session = previousSession || await workspace.ensureActive({ title: savedItem.title, snapshot,
             schemaVersion: ADVANCED_SESSION_SCHEMA_VERSION, intent: "output" });
           if (!session) return false;
-          const saved = await saveSnapshotWithConflictRetry({
+          const saved = await saveOwnedWorkspaceSnapshot({
             saveSnapshot: (nextSnapshot, schemaVersion, options) =>
               workspace.saveSnapshot(nextSnapshot, schemaVersion, options),
             snapshot,

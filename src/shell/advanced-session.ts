@@ -451,17 +451,50 @@ export async function commitAdvancedSavedRevision(
   );
 }
 
-export async function saveSnapshotWithConflictRetry<
-  T extends {
-    ok: boolean;
-    session?: { id: string; snapshot?: unknown; schema_version?: number };
-    conflict?: {
-      latest?: { id: string; snapshot?: unknown; schema_version?: number };
-    };
-    stale?: boolean;
-    unavailable?: boolean;
-    error?: string;
-  },
+/**
+ * Overlay this editor's advanced-session fields onto the latest snapshot so
+ * concurrent unrelated keys survive. `WorkspaceSession.saveSnapshot` already
+ * merges and retries its own same-session 409 when `mergeFromLatest` is
+ * passed; callers must not add a second write that can adopt another session.
+ */
+export function mergeAdvancedSessionSnapshot(
+  currentSnapshot: unknown,
+  item: LibraryItem,
+  route: EditorRoute["type"],
+  taskId?: string | null,
+  draft?: AdvancedDraftPointer | null,
+): Record<string, unknown> {
+  const base =
+    currentSnapshot &&
+    typeof currentSnapshot === "object" &&
+    !Array.isArray(currentSnapshot)
+      ? (currentSnapshot as Record<string, unknown>)
+      : {};
+  return {
+    ...base,
+    ...advancedSessionSnapshot(item, route, taskId, draft),
+  };
+}
+
+export interface OwnedWorkspaceSnapshotSaveResult {
+  ok: boolean;
+  session?: { id: string; snapshot?: unknown; schema_version?: number };
+  conflict?: {
+    latest?: { id: string; snapshot?: unknown; schema_version?: number };
+  };
+  stale?: boolean;
+  readOnly?: boolean;
+  unavailable?: boolean;
+  error?: string;
+}
+
+/**
+ * One owned `saveSnapshot` call. Same-session 409 merge/retry stays inside
+ * `WorkspaceSession.saveSnapshot`. Stale, read-only, and another session's
+ * `conflict.latest` must not be turned into a second write here.
+ */
+export async function saveOwnedWorkspaceSnapshot<
+  T extends OwnedWorkspaceSnapshotSaveResult,
 >(input: {
   saveSnapshot: (
     snapshot: unknown,
@@ -469,34 +502,20 @@ export async function saveSnapshotWithConflictRetry<
     options: {
       expectedSessionId?: string;
       title?: string;
-      mergeFromLatest?: (latestSnapshot: unknown) => unknown;
+      mergeFromLatest?: (latestSnapshot: unknown) => Record<string, unknown>;
     },
   ) => Promise<T>;
   snapshot: unknown;
   schemaVersion: number;
   expectedSessionId?: string;
   title?: string;
-  mergeFromLatest: (latestSnapshot: unknown) => unknown;
+  mergeFromLatest: (latestSnapshot: unknown) => Record<string, unknown>;
 }): Promise<T> {
-  const first = await input.saveSnapshot(input.snapshot, input.schemaVersion, {
+  return input.saveSnapshot(input.snapshot, input.schemaVersion, {
     expectedSessionId: input.expectedSessionId,
     title: input.title,
     mergeFromLatest: input.mergeFromLatest,
   });
-  if (first.ok || first.stale) return first;
-  const latest = first.conflict?.latest;
-  // A stale response means the user left this session. Never turn that
-  // refusal into permission to write this document into the newly active one.
-  if (!latest || latest.id !== input.expectedSessionId) return first;
-  return input.saveSnapshot(
-    input.mergeFromLatest(latest.snapshot),
-    latest.schema_version || input.schemaVersion,
-    {
-      expectedSessionId: latest.id,
-      title: input.title,
-      mergeFromLatest: input.mergeFromLatest,
-    },
-  );
 }
 
 interface StoredDurableArtifact {

@@ -140,3 +140,25 @@ test("W2: a later explicit retry can reuse a committed item after session CAS", 
   assert.equal(recordAttempts, 2);
   assert.equal(fixture.controller.snapshot().acknowledgedRevision, 1);
 });
+
+test("W2-r2: a committed artifact is not uploaded again when only the record step retries", async () => {
+  let recordAttempts = 0;
+  const fixture = controllerFixture({
+    recordSavedItem: async (item, revision) => {
+      fixture.records.push([item.id, revision]);
+      recordAttempts += 1;
+      if (recordAttempts === 1) return false;
+      return true;
+    },
+  });
+  fixture.controller.observe({ revision: 0, dirty: false });
+  fixture.controller.observe({ revision: 1, dirty: true });
+  assert.equal((await fixture.controller.flushLatest()).ok, false);
+  assert.deepEqual(fixture.flushes, [1]);
+  await fixture.clock.advance(1_000);
+  await fixture.controller.whenIdle();
+  assert.deepEqual(fixture.flushes, [1], "record retry must reuse the committed item");
+  assert.equal(recordAttempts, 2);
+  assert.equal(fixture.controller.snapshot().acknowledgedRevision, 1);
+  assert.equal(fixture.controller.snapshot().state, "saved");
+});
