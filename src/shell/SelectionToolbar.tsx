@@ -46,7 +46,10 @@ import {
 } from "./SelectionToolbarControl";
 import { useSelectionToolbarMeasure } from "./useSelectionToolbarMeasure";
 import { useInsideEditBarRow } from "./edit-bar-row-context";
-import { useEditBarSelectionSession } from "./edit-bar-selection-session";
+import {
+  EditBarSelectionSessionContext,
+  useEditBarSelectionSession,
+} from "./edit-bar-selection-session";
 import {
   SelectionOverflowGroups,
   SelectionToolbarAgentButton,
@@ -404,13 +407,16 @@ export function SelectionToolbar({
   const liveCapability = selectionLiveCapability(context?.kind);
   const moreDialogLabel = selectionMoreDialogLabel(context?.kind);
   return (
+    <EditBarSelectionSessionContext.Provider value={session.sessionId}>
     <div
       ref={toolbarRef}
       data-selection-kind={context?.kind || "none"}
       data-selection-live-capability={liveCapability?.id || undefined}
       data-selection-id={context?.id || ""}
+      data-edit-bar-session={session.sessionId}
       data-edit-bar-selection-session={session.holding ? "held" : undefined}
       onPointerDownCapture={session.onPointerDownCapture}
+      onKeyDownCapture={session.onKeyDownCapture}
       data-selection-anchor-x={liveContext?.anchor?.x}
       data-selection-anchor-y={liveContext?.anchor?.y}
       data-selection-anchor-width={liveContext?.anchor?.width}
@@ -526,6 +532,7 @@ export function SelectionToolbar({
                   align="end"
                   maxHeight={512}
                   attributes={{
+                    "data-edit-bar-session": session.sessionId,
                     "data-selection-overflow-live-capability":
                       liveCapability?.id || undefined,
                   }}
@@ -579,5 +586,6 @@ export function SelectionToolbar({
       )}
       {fallbackPanel}
     </div>
+    </EditBarSelectionSessionContext.Provider>
   );
 }

@@ -77,11 +77,3 @@ export function editBarHistoryShortcut(event: {
   return null;
 }
 
-export function editBarPopoverOpen(root: ParentNode | null = null): boolean {
-  const scope = root || (typeof document === "undefined" ? null : document);
-  return Boolean(
-    scope?.querySelector?.(
-      '[data-anchored-popover][data-leo-overlay-state="open"]',
-    ),
-  );
-}

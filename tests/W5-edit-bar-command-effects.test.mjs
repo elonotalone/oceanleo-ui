@@ -90,6 +90,9 @@ const stubs = {
 };
 const load = async (path) => import(await compileModule(path, stubs));
 const { SelectionToolbar } = await load("src/shell/SelectionToolbar.tsx");
+const { isOwnEditBarSession, ownEditBarSessionOpen } = await load(
+  "src/shell/edit-bar-selection-session.tsx",
+);
 const { EditBarHistoryControls } = await load("src/shell/EditBarDockControls.tsx");
 const { EditBarDocumentSegment } = await load(
   "src/shell/plugin-chrome/EditBarDocumentSegment.tsx",
@@ -287,6 +290,19 @@ test("W5-history Ctrl+Z from the bar undoes the Fabric document, not a no-op", a
     await act(async () => root.unmount());
     container.remove();
   }
+});
+
+test("W5-r2-session helpers ignore a foreign overlay", () => {
+  document.body.innerHTML = `
+    <div data-edit-bar-session="mine" data-anchored-popover data-leo-overlay-state="closed"></div>
+    <div data-edit-bar-session="other" data-anchored-popover data-leo-overlay-state="open"></div>
+  `;
+  assert.equal(ownEditBarSessionOpen("mine"), false);
+  assert.equal(ownEditBarSessionOpen("other"), true);
+  const foreign = document.querySelector('[data-edit-bar-session="other"]');
+  assert.equal(isOwnEditBarSession(foreign, "mine"), false);
+  assert.equal(isOwnEditBarSession(foreign, "other"), true);
+  document.body.innerHTML = "";
 });
 
 test("W5-document segment trigger stays a real action", async () => {

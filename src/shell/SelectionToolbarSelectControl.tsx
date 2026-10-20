@@ -12,6 +12,7 @@ import {
 } from "./selection-context";
 import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
+import { useEditBarSessionId } from "./edit-bar-selection-session";
 import { selectionControlUsesIconOnly } from "./selection-toolbar-layout";
 
 export function SelectionToolbarSelectControl({
@@ -35,6 +36,7 @@ export function SelectionToolbarSelectControl({
   onActivated?: () => void;
   forMeasurement?: boolean;
 }) {
+  const sessionId = useEditBarSessionId();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -134,6 +136,9 @@ export function SelectionToolbarSelectControl({
         ariaLabel={control.label}
         align="start"
         maxHeight={288}
+        attributes={
+          sessionId ? { "data-edit-bar-session": sessionId } : undefined
+        }
         className="z-[2147483500] overflow-x-hidden overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={{
           width: Math.max(

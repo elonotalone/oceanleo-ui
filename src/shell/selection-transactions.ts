@@ -129,17 +129,33 @@ export class SelectionCommandGate {
   private readonly seenRequests = new Set<string>();
   private readonly requestOrder: string[] = [];
   /**
-   * Last non-null selection the gate has seen. Clicking the host edit bar
-   * blurs a hosted iframe and the editor reports `null`; the command still
-   * names this selection. Integrity still rejects a different id/revision.
+   * Last live selection. Used as the accept target only while a toolbar
+   * interaction is held. reconcile(null) / cancelAll / releaseInteraction
+   * clear it so a later matching command cannot retarget a deselected object.
    */
   private lastContext: SelectionContext | null = null;
+  private interactionHeld = false;
+
+  /**
+   * Narrow toolbar press/keyboard hold. Established accept/reconcile/cancelAll
+   * signatures stay the same. workbench-embed does not call this yet; without
+   * it, a genuine `selection-changed(null)` invalidates lastContext.
+   */
+  holdInteraction(context?: SelectionContext | null): void {
+    if (context) this.lastContext = context;
+    this.interactionHeld = true;
+  }
+
+  releaseInteraction(): void {
+    this.interactionHeld = false;
+    this.lastContext = null;
+  }
 
   private effectiveContext(
     context: SelectionContext | null,
   ): SelectionContext | null {
     if (context) this.lastContext = context;
-    return context ?? this.lastContext;
+    return context ?? (this.interactionHeld ? this.lastContext : null);
   }
 
   accept(command: SelectionCommand, context: SelectionContext | null): boolean {
@@ -210,7 +226,11 @@ export class SelectionCommandGate {
   }
 
   reconcile(context: SelectionContext | null): SelectionCommand[] {
-    if (context) this.lastContext = context;
+    if (context) {
+      this.lastContext = context;
+    } else if (!this.interactionHeld) {
+      this.lastContext = null;
+    }
     const cancellations: SelectionCommand[] = [];
     for (const [id, transaction] of this.transactions) {
       if (
@@ -228,6 +248,8 @@ export class SelectionCommandGate {
   }
 
   cancelAll(): SelectionCommand[] {
+    this.interactionHeld = false;
+    this.lastContext = null;
     return this.reconcile(null);
   }
 
@@ -237,6 +259,7 @@ export class SelectionCommandGate {
     this.settledOrder.length = 0;
     this.seenRequests.clear();
     this.requestOrder.length = 0;
+    this.interactionHeld = false;
     this.lastContext = null;
   }
 
