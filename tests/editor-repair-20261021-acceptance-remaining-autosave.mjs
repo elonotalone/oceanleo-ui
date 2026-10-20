@@ -115,11 +115,12 @@ function requireLiveHelper(mod, sourcePath, names) {
   );
 }
 
-function invokeHelper(fn, item, spec) {
-  if (spec !== null && typeof spec === "object" && !Array.isArray(spec)) {
-    return fn({ item, ...spec });
-  }
+function callPair(fn, item, spec) {
   return fn(item, spec);
+}
+
+function callBag(fn, item, spec) {
+  return fn({ item, ...spec });
 }
 
 function itemFor(id) {
@@ -130,35 +131,35 @@ function generationOf(item) {
   return userMutationGeneration(userEditItemKey(item));
 }
 
-function assertRecords(label, fn, item, personSpec) {
+function assertRecords(label, call, fn, item, personSpec) {
   resetUserEditSession();
   assert.equal(generationOf(item), 0, `${label} starts at generation 0`);
-  invokeHelper(fn, item, personSpec);
+  call(fn, item, personSpec);
   assert.equal(generationOf(item), 1, `${label} person path must increment userMutationGeneration`);
-  invokeHelper(fn, item, personSpec);
+  call(fn, item, personSpec);
   assert.equal(generationOf(item), 2, `${label} second person path must increment again`);
 }
 
-function assertDoesNotRecord(label, fn, item, specs) {
+function assertDoesNotRecord(label, call, fn, item, specs) {
   resetUserEditSession();
   for (const spec of specs) {
-    invokeHelper(fn, item, spec);
+    call(fn, item, spec);
     assert.equal(
       generationOf(item),
       0,
       `${label} must not record for ${JSON.stringify(spec)}`,
     );
   }
-  invokeHelper(fn, item, specs[0]);
+  call(fn, item, specs[0]);
   assert.equal(generationOf(item), 0, `${label} still 0 after repeated non-person calls`);
 }
 
-function assertNonPersonAfterPerson(label, fn, item, personSpec, nonPersonSpecs) {
+function assertNonPersonAfterPerson(label, call, fn, item, personSpec, nonPersonSpecs) {
   resetUserEditSession();
-  invokeHelper(fn, item, personSpec);
+  call(fn, item, personSpec);
   assert.equal(generationOf(item), 1);
   for (const spec of nonPersonSpecs) {
-    invokeHelper(fn, item, spec);
+    call(fn, item, spec);
     assert.equal(
       generationOf(item),
       1,
@@ -178,9 +179,9 @@ test("grid: local bumpHistory records; collab onActivity / load do not", async (
     "applyGridUserEditSession",
   ]);
   const item = itemFor("grid");
-  assertRecords("grid", fn, item, "person-write");
-  assertDoesNotRecord("grid", fn, item, ["collab-activity", "load"]);
-  assertNonPersonAfterPerson("grid", fn, item, "person-write", [
+  assertRecords("grid", callPair, fn, item, "person-write");
+  assertDoesNotRecord("grid", callPair, fn, item, ["collab-activity", "load"]);
+  assertNonPersonAfterPerson("grid", callPair, fn, item, "person-write", [
     "collab-activity",
     "load",
   ]);
@@ -198,9 +199,12 @@ test("native deck: local apply / endGesture / undo record; remote collab / load 
     "applyDeckHistoryWriteIfChanged",
   ]).fn;
   const item = itemFor("deck");
-  assertRecords("native-deck", fn, item, "local-history");
-  assertDoesNotRecord("native-deck", fn, item, ["remote-collab", "load"]);
-  assertNonPersonAfterPerson("native-deck", fn, item, "local-history", [
+  assertRecords("native-deck", callPair, fn, item, "local-history");
+  assertDoesNotRecord("native-deck", callPair, fn, item, [
+    "remote-collab",
+    "load",
+  ]);
+  assertNonPersonAfterPerson("native-deck", callPair, fn, item, "local-history", [
     "remote-collab",
     "load",
   ]);
@@ -236,8 +240,8 @@ test("hosted deck: post-open dirty:true records; restore-only dirty does not", a
     source: { slides: [{ id: "s1" }] },
     applyingInit: false,
   };
-  assertRecords("hosted-deck", fn, item, opened);
-  assertDoesNotRecord("hosted-deck", fn, item, [
+  assertRecords("hosted-deck", callBag, fn, item, opened);
+  assertDoesNotRecord("hosted-deck", callBag, fn, item, [
     { ...opened, kind: "restore", dirty: true },
     { ...opened, kind: "init" },
     { ...opened, dirty: false },
@@ -246,7 +250,7 @@ test("hosted deck: post-open dirty:true records; restore-only dirty does not", a
     { ...opened, source: null },
     { ...opened, applyingInit: true },
   ]);
-  assertNonPersonAfterPerson("hosted-deck", fn, item, opened, [
+  assertNonPersonAfterPerson("hosted-deck", callBag, fn, item, opened, [
     { ...opened, kind: "restore", dirty: true },
     { ...opened, kind: "init" },
   ]);
@@ -264,8 +268,8 @@ test("video timeline: person commit records; load hydrate does not", async () =>
     "applyVideoUserEditSession",
   ]);
   const item = itemFor("video-timeline");
-  assertRecords("video-timeline", fn, item, "person-commit");
-  assertDoesNotRecord("video-timeline", fn, item, ["hydrate", "load"]);
+  assertRecords("video-timeline", callPair, fn, item, "person-commit");
+  assertDoesNotRecord("video-timeline", callPair, fn, item, ["hydrate", "load"]);
 });
 
 test("video designcombo: person commit records; load does not", async () => {
@@ -278,8 +282,8 @@ test("video designcombo: person commit records; load does not", async () => {
     "applyVideoUserEditSession",
   ]);
   const item = itemFor("video-designcombo");
-  assertRecords("video-designcombo", fn, item, "commit");
-  assertDoesNotRecord("video-designcombo", fn, item, ["load"]);
+  assertRecords("video-designcombo", callPair, fn, item, "commit");
+  assertDoesNotRecord("video-designcombo", callPair, fn, item, ["load"]);
 });
 
 test("video canvas: person command records; hydrate does not", async () => {
@@ -292,8 +296,8 @@ test("video canvas: person command records; hydrate does not", async () => {
     "applyVideoUserEditSession",
   ]);
   const item = itemFor("video-canvas");
-  assertRecords("video-canvas", fn, item, "person-command");
-  assertDoesNotRecord("video-canvas", fn, item, ["hydrate", "load"]);
+  assertRecords("video-canvas", callPair, fn, item, "person-command");
+  assertDoesNotRecord("video-canvas", callPair, fn, item, ["hydrate", "load"]);
 });
 
 test("audio: local mutation records; remote apply does not", async () => {
@@ -323,8 +327,8 @@ test("audio: local mutation records; remote apply does not", async () => {
     }
   })();
   const item = itemFor("audio");
-  assertRecords("audio", fn, item, "local-mutation");
-  assertDoesNotRecord("audio", fn, item, ["remote-apply"]);
+  assertRecords("audio", callPair, fn, item, "local-mutation");
+  assertDoesNotRecord("audio", callPair, fn, item, ["remote-apply"]);
 });
 
 test("pdf: local annotation engine records; silent source replace / collab do not", async () => {
@@ -354,8 +358,8 @@ test("pdf: local annotation engine records; silent source replace / collab do no
     }
   })();
   const item = itemFor("pdf");
-  assertRecords("pdf", fn, item, "local-annotation");
-  assertDoesNotRecord("pdf", fn, item, ["silent-replace", "collab"]);
+  assertRecords("pdf", callPair, fn, item, "local-annotation");
+  assertDoesNotRecord("pdf", callPair, fn, item, ["silent-replace", "collab"]);
 });
 
 test("chart: mutate / history record; applyRemoteDocument does not", async () => {
@@ -367,11 +371,14 @@ test("chart: mutate / history record; applyRemoteDocument does not", async () =>
     "applyChartUserEditSession",
   ]);
   const item = itemFor("chart");
-  assertRecords("chart", fn, item, "mutate");
+  assertRecords("chart", callPair, fn, item, "mutate");
   resetUserEditSession();
-  invokeHelper(fn, item, "history");
+  callPair(fn, item, "history");
   assert.equal(generationOf(item), 1, "chart history (undo/redo) is a person path");
-  assertDoesNotRecord("chart", fn, item, ["remote-document", "applyRemoteDocument"]);
+  assertDoesNotRecord("chart", callPair, fn, item, [
+    "remote-document",
+    "applyRemoteDocument",
+  ]);
 });
 
 test("3d: local markDirty records; bootstrap does not", async () => {
@@ -384,8 +391,8 @@ test("3d: local markDirty records; bootstrap does not", async () => {
     "applyModel3DUserEditSession",
   ]);
   const item = itemFor("model3d");
-  assertRecords("3d", fn, item, "local-dirty");
-  assertDoesNotRecord("3d", fn, item, ["bootstrap"]);
+  assertRecords("3d", callPair, fn, item, "local-dirty");
+  assertDoesNotRecord("3d", callPair, fn, item, ["bootstrap"]);
 });
 
 /* --------------------------------- W7 --------------------------------- */
@@ -400,8 +407,17 @@ test("design canvas: commit records; load setRevision(0) does not", async () => 
     "applyLocalDesignCanvasUserEditSession",
   ]);
   const item = itemFor("design-canvas");
-  assertRecords("design-canvas", fn, item, "commit");
-  assertDoesNotRecord("design-canvas", fn, item, ["load"]);
+  assertRecords("design-canvas", callPair, fn, item, "commit");
+  resetUserEditSession();
+  callPair(fn, item, "undo");
+  assert.equal(generationOf(item), 1, "design undo is a person path");
+  resetUserEditSession();
+  callPair(fn, item, "redo");
+  assert.equal(generationOf(item), 1, "design redo is a person path");
+  assertDoesNotRecord("design-canvas", callPair, fn, item, ["load"]);
+  assertNonPersonAfterPerson("design-canvas", callPair, fn, item, "commit", [
+    "load",
+  ]);
 });
 
 test("game: local textarea origin records; remote Yjs / writeThrough do not", async () => {
@@ -412,9 +428,22 @@ test("game: local textarea origin records; remote Yjs / writeThrough do not", as
   const { fn } = requireLiveHelper(mod, "GameCodeStage.tsx", [
     "applyGameUserEditSession",
   ]);
+  const localOrigin = Symbol("oceanleo-collab-textarea-local");
   const item = itemFor("game");
-  assertRecords("game", fn, item, "local-textarea");
-  assertDoesNotRecord("game", fn, item, ["remote-yjs", "writeThrough"]);
+  assertRecords("game", callPair, fn, item, { kind: "local-type" });
+  resetUserEditSession();
+  callPair(fn, item, { kind: "ytext-observe", origin: localOrigin });
+  assert.equal(
+    generationOf(item),
+    1,
+    "game ytext-observe with bind-textarea local origin must record",
+  );
+  assertDoesNotRecord("game", callPair, fn, item, [
+    { kind: "ytext-observe", origin: "remote" },
+    { kind: "write-through" },
+    { kind: "restore" },
+    { kind: "load" },
+  ]);
 });
 
 test("embedded: post-handshake person dirty records; restore / handshake do not", async () => {
@@ -431,11 +460,9 @@ test("embedded: post-handshake person dirty records; restore / handshake do not"
     dirty: true,
     handshakeReady: true,
   };
-  assertRecords("embedded", fn, item, person);
-  assertDoesNotRecord("embedded", fn, item, [
+  assertRecords("embedded", callBag, fn, item, person);
+  assertDoesNotRecord("embedded", callBag, fn, item, [
     { kind: "restore", dirty: true, handshakeReady: true },
-    { kind: "handshake", dirty: true },
-    "restore",
-    "handshake",
+    { kind: "handshake", dirty: true, handshakeReady: false },
   ]);
 });
