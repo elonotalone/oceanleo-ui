@@ -99,6 +99,7 @@ export function AcpCard({
   const [oceanleoInstalling, setOceanleoInstalling] = useState(false);
   const [oceanleoError, setOceanleoError] = useState("");
   const [copiedLink, setCopiedLink] = useState("");
+  const [copiedPath, setCopiedPath] = useState("");
   const [pendingCopy, setPendingCopy] = useState("");
   const initialSessionApplied = useRef("");
 
@@ -164,16 +165,21 @@ export function AcpCard({
     if (!write) {
       setPendingCopy("");
       setCopiedLink("");
+      setCopiedPath("");
       return;
     }
     void write.call(navigator.clipboard, path).then(
       () => {
         setPendingCopy("");
         setCopiedLink(target);
+        // Cursor/Claude show the location they copied; the operator has to be
+        // able to read the path, not just trust that something was copied.
+        setCopiedPath(path);
       },
       () => {
         setPendingCopy("");
         setCopiedLink("");
+        setCopiedPath("");
       },
     );
   }
@@ -182,6 +188,7 @@ export function AcpCard({
     const target = `${computer.id}:${selected}:${dialog.activeSession || ""}`;
     const path = conversationFilePath();
     setCopiedLink("");
+    setCopiedPath("");
     if (path) {
       copyConversationPath(path, target);
       return;
@@ -210,12 +217,16 @@ export function AcpCard({
 
   useEffect(() => {
     if (!copiedLink) return;
-    const timer = window.setTimeout(() => setCopiedLink(""), COPY_FEEDBACK_MS);
+    const timer = window.setTimeout(() => {
+      setCopiedLink("");
+      setCopiedPath("");
+    }, COPY_FEEDBACK_MS);
     return () => window.clearTimeout(timer);
   }, [copiedLink]);
 
   useEffect(() => {
     setPendingCopy("");
+    setCopiedPath("");
   }, [computer.id, selected]);
 
   useEffect(() => {
@@ -421,6 +432,15 @@ export function AcpCard({
                   <span>{copyLabel}</span>
                 </button>
               </header>
+              {copiedPath ? (
+                <p
+                  className={`shrink-0 truncate border-b px-3 py-1 font-mono text-[11px] ${tone.border} ${tone.muted}`}
+                  title={copiedPath}
+                  data-oceanleo-acp-copy-path=""
+                >
+                  {copiedPath}
+                </p>
+              ) : null}
               {selected === "oceanleo" && !oceanleoStatus?.installed ? (
                 <p className={`mx-3 mt-3 shrink-0 text-xs ${tone.muted}`} data-oceanleo-acp-oceanleo-banner="">
                   {tt("当前使用云端 OceanLeo agent；也可以安装到这台服务器本地运行。")}

@@ -1096,10 +1096,20 @@ export function useAgentDialog({
       const frame: Record<string, unknown> = { t: "cancel", program };
       if (stateRef.current.activeSession) frame.acp_session = stateRef.current.activeSession;
       else frame.ref = newRefs.current.get(program);
-      sendJson(socketRef.current, frame);
+      // Stop must never be dropped just because the socket happened to be
+      // reconnecting when it was pressed: retry on a fresh connection.
+      if (!sendJson(socketRef.current, frame)) {
+        void (async () => {
+          try {
+            sendJson(await ensureOpen(), frame);
+          } catch {
+            // Offline: the local cancel below still ends the turn in the UI.
+          }
+        })();
+      }
     }
     dispatch({ type: "cancel-local" });
-  }, [applyOceanDetail, clearOceanWait]);
+  }, [applyOceanDetail, clearOceanWait, ensureOpen]);
 
   const closeProgram = useCallback((program: WsProgram) => {
     const sent = sendJson(socketRef.current, { t: "close", program });

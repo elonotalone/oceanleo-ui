@@ -410,10 +410,13 @@ test("新对话在过去的对话上方，标题旁复制服务器上的对话�
     assert.equal(copied.at(-1), cursorPath);
     assert.equal(copied.at(-1).startsWith("https://"), false);
     assert.equal(button.getAttribute("aria-label"), "已复制对话位置");
+    // 复制完要把路径显示出来，像 Cursor / Claude Code 一样能看见复制了什么
+    assert.equal(view.$("[data-oceanleo-acp-copy-path]").textContent, cursorPath);
 
     await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
     assert.equal(button.parentElement.firstElementChild.textContent, "Claude Code");
     assert.equal(button.getAttribute("aria-label"), "复制对话位置");
+    assert.equal(view.$("[data-oceanleo-acp-copy-path]"), null);
     await server({ t: "session_opened", program: "claude", acp_session: "claude-recent", cwd: "/root", replayed: 0 });
     const beforeLookup = copied.length;
     await click(button);
