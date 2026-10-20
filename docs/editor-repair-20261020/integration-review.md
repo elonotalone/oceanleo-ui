@@ -15,3 +15,9 @@ useEditBarSelectionSession schedules a self-repeating 50 ms timer while any anch
 ## Security gate during active changes
 
 Untrusted embed render test failed on a test stub missing officeExtensionForItem export, not an origin weakening (W1 dependency). Fix test compilation while retaining all sandbox/origin assertions. Full gate also reports pre-existing live DB grant drift involving im remarks and tmp_seed_operator_library_batch; no DB authorization modifications made in this task. Full log /tmp/oceanleo-security-gate-rJeBEW.
+
+## W1 delivered: source tests green, hosted command integration incomplete
+
+Parent reran W1 source tests: 8 passed. RichDocHostedRoute has no selection-changed listener, no SelectionToolbar binding in its adapter, and its added singleton dispatchRichDocHostedCommand has no production caller. A new raw-JSON agent command surface is not a substitute for a working edit-bar path. W1 must either wire the existing typed hosted selection protocol end to end (compare established hosted routes/bridge) with real representative Umo command effects, or remove unused speculative dispatch helpers and explain the actual supported normal/pro chrome path. Generic W5 bus is likewise unused. No new parallel command system.
+
+The new agent raw JSON command forwarding must normalize and validate a SelectionCommand before send; do not treat arbitrary parsed JSON as a valid typed command. Prefer existing typed plugin-command surfaces and review gates. Tests must prove malformed and stale commands are rejected, not only that a sink receives a message.
