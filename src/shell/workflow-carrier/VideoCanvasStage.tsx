@@ -16,11 +16,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { usePluginCommandSurface } from "../plugin-command";
 import { rememberEditorChips } from "../agent-review/inbox";
 import type { LibraryItem } from "../library-data";
-import type {
-  VideoCanvasEdge,
-  VideoCanvasGraph,
-  VideoCanvasNode,
-} from "./video-canvas-schema";
+import type { VideoCanvasGraph } from "./video-canvas-schema";
 import { flushVideoCanvasGraph } from "./video-canvas-leave";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { useUI } from "../../i18n/ui/useUI";
@@ -52,6 +48,13 @@ import { dispatchWorkflowAgentChip } from "./agent-route";
 import { EmbedEditorPane, embedEditorBase } from "../workbench-embed";
 import type { EmbedEditorPaneProps } from "../workbench-embed-types";
 import { usePreferLocalRemoteEditor } from "../use-prefer-local-editors";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
+import { fetchMediaBlob } from "../../lib/media-proxy";
+import {
+  hydrateWorkflowGraph,
+  planWorkflowGraphFromItem,
+} from "./workflow-graph-source";
+import { addVideoCanvasNode } from "./video-canvas-local-session";
 
 const VideoCanvasLocalCanvas = dynamic(
   () =>
@@ -71,20 +74,6 @@ export const WORKFLOW_PRO_UNAVAILABLE = "专业编辑即将到来";
 
 function emptyGraph(): VideoCanvasGraph {
   return { nodes: [], edges: [] };
-}
-
-function graphFromItem(item: LibraryItem | null | undefined): VideoCanvasGraph {
-  if (!item) return emptyGraph();
-  const meta = item.meta as { graph?: unknown } | undefined;
-  const raw = meta?.graph;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return emptyGraph();
-  const nodes = (raw as { nodes?: unknown }).nodes;
-  const edges = (raw as { edges?: unknown }).edges;
-  if (!Array.isArray(nodes) || !Array.isArray(edges)) return emptyGraph();
-  return {
-    nodes: nodes as VideoCanvasNode[],
-    edges: edges as VideoCanvasEdge[],
-  };
 }
 
 function WorkflowCanvasStandIn({ graph }: { graph: VideoCanvasGraph }) {
@@ -389,13 +378,56 @@ export function VideoCanvasStage({
     },
     [link, realign, scheduleCapture, syncHead],
   );
-  const [graph, setGraph] = useState<VideoCanvasGraph>(() => graphFromItem(item));
+  const [graph, setGraph] = useState<VideoCanvasGraph>(() => emptyGraph());
   const [editRevision, setEditRevision] = useState(0);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [sourceReady, setSourceReady] = useState(false);
+  const [sourceError, setSourceError] = useState("");
+  const graphDirtyRef = useRef(false);
+  const loadedGraphKeyRef = useRef("");
   const chipsManifest = useMemo(() => workflowToolsManifestChips(), []);
+  const graphItemKey = `${shownItem?.key ?? ""}|${shownItem?.revisionId ?? ""}|${reloadNonce}`;
 
   useEffect(() => {
-    setGraph(graphFromItem(shownItem));
-  }, [shownItem]);
+    if (
+      graphDirtyRef.current &&
+      loadedGraphKeyRef.current.split("|")[0] === String(shownItem?.key ?? "") &&
+      reloadNonce === 0
+    ) {
+      return;
+    }
+    const plan = planWorkflowGraphFromItem(shownItem);
+    let cancelled = false;
+    const abort = new AbortController();
+    setSourceReady(false);
+    setSourceError("");
+    void hydrateWorkflowGraph(plan, async (url) => {
+      const blob = await fetchMediaBlob(url, {
+        cache: "no-store",
+        maxBytes: 20_000_000,
+        signal: abort.signal,
+      });
+      return blob.text();
+    }).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        setSourceError(result.error);
+        setSourceReady(false);
+        return;
+      }
+      loadedGraphKeyRef.current = graphItemKey;
+      graphDirtyRef.current = false;
+      setGraph(result.graph);
+      setEditRevision(0);
+      setSourceReady(true);
+    });
+    return () => {
+      cancelled = true;
+      abort.abort();
+    };
+    // graphItemKey already pins the shown item; skip object-identity churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphItemKey, reloadNonce]);
 
   useEffect(() => {
     rememberEditorChips("workflow", chipsManifest.chips);
@@ -412,13 +444,24 @@ export function VideoCanvasStage({
         guardPluginSurface(
           {
             editorId: WORKFLOW_EDITOR_ID,
-            describe: () =>
-              WORKFLOW_AGENT_CHIPS.map((chip) => ({
+            describe: () => [
+              ...(sourceReady
+                ? [
+                    {
+                      id: "workflow.add-node",
+                      label: "加节点",
+                      summary: "在流程图上加入一个处理节点。",
+                      mutates: true,
+                    },
+                  ]
+                : []),
+              ...WORKFLOW_AGENT_CHIPS.map((chip) => ({
                 id: chip.id,
                 label: chip.label,
                 summary: chip.prompt.slice(0, 120),
                 mutates: true,
               })),
+            ],
             state: () => ({
               mode: "normal",
               revision: editRevision,
@@ -427,6 +470,29 @@ export function VideoCanvasStage({
               chips: chipsManifest.chips.map((chip) => chip.id),
             }),
             run: (id, params) => {
+              if (!sourceReady) {
+                return {
+                  ok: false,
+                  message: sourceError || "工作流源还没载入，图一个节点都没改。",
+                  revision: editRevision,
+                };
+              }
+              if (id === "workflow.add-node") {
+                const next = addVideoCanvasNode(
+                  graph,
+                  "filter",
+                  `node-${editRevision + 1}`,
+                  String(params?.label || "新节点"),
+                );
+                graphDirtyRef.current = true;
+                setGraph(next);
+                setEditRevision((n) => n + 1);
+                return {
+                  ok: true,
+                  message: `已加入节点，现在共 ${next.nodes.length} 个。`,
+                  revision: editRevision + 1,
+                };
+              }
               const proposed =
                 params && typeof params.proposedGraph === "object"
                   ? (params.proposedGraph as VideoCanvasGraph)
@@ -453,6 +519,7 @@ export function VideoCanvasStage({
                 };
               }
               if (dispatched.graph !== graph) {
+                graphDirtyRef.current = true;
                 setGraph(dispatched.graph);
                 setEditRevision((n) => n + 1);
                 return {
@@ -470,7 +537,7 @@ export function VideoCanvasStage({
           },
           collabReadOnly,
         ),
-      [chipsManifest.chips, editRevision, graph, collabReadOnly],
+      [chipsManifest.chips, collabReadOnly, editRevision, graph, sourceError, sourceReady],
     ),
   );
 
@@ -543,15 +610,44 @@ export function VideoCanvasStage({
             data-testid="workflow-react-flow-stage"
             className="flex h-full min-h-0 flex-col"
           >
-            {preferLocal ? (
-              <VideoCanvasLocalCanvas
-                graph={graph}
-                readOnly={!mayWrite}
-                onChange={(next) => {
-                  setGraph(next);
-                  setEditRevision((value) => value + 1);
-                }}
+            {sourceError ? (
+              <EditorSourceFailurePanel
+                message={sourceError}
+                onReload={() => setReloadNonce((value) => value + 1)}
+                variant="surface"
               />
+            ) : preferLocal ? (
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="flex gap-2 border-b px-3 py-2">
+                  <button
+                    type="button"
+                    data-testid="workflow-add-node"
+                    disabled={!mayWrite || !sourceReady}
+                    onClick={() => {
+                      const next = addVideoCanvasNode(
+                        graph,
+                        "filter",
+                        `node-${editRevision + 1}`,
+                        "新节点",
+                      );
+                      graphDirtyRef.current = true;
+                      setGraph(next);
+                      setEditRevision((value) => value + 1);
+                    }}
+                  >
+                    加节点
+                  </button>
+                </div>
+                <VideoCanvasLocalCanvas
+                  graph={graph}
+                  readOnly={!mayWrite}
+                  onChange={(next) => {
+                    graphDirtyRef.current = true;
+                    setGraph(next);
+                    setEditRevision((value) => value + 1);
+                  }}
+                />
+              </div>
             ) : liveCanvasBase ? (
               <div
                 data-testid="workflow-react-flow-canvas"
@@ -576,31 +672,58 @@ export function VideoCanvasStage({
                 />
               </div>
             ) : (
-              <WorkflowCanvasStandIn graph={graph} />
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="flex gap-2 border-b px-3 py-2">
+                  <button
+                    type="button"
+                    data-testid="workflow-add-node"
+                    disabled={!mayWrite || !sourceReady}
+                    onClick={() => {
+                      const next = addVideoCanvasNode(
+                        graph,
+                        "filter",
+                        `node-${editRevision + 1}`,
+                        "新节点",
+                      );
+                      graphDirtyRef.current = true;
+                      setGraph(next);
+                      setEditRevision((value) => value + 1);
+                    }}
+                  >
+                    加节点
+                  </button>
+                </div>
+                <WorkflowCanvasStandIn graph={graph} />
+              </div>
             )}
           </div>
         ),
         status: statusText,
         persistence: {
-          dirty: mayWrite ? editRevision > 0 : false,
+          dirty: sourceReady && mayWrite ? editRevision > 0 : false,
           editRevision,
           // 保持 true：只读端 dirty 恒为 false 且 flush 不落库，自动保存不会产生任何写入。
           autoSave: true,
           flush: () => {
             // 只读（别人持锁）时不落库；别人保存后这里会自动更新。
             if (!mayWrite) return { ok: true as const, item };
-            const saved = flushVideoCanvasGraph(item, graph);
+            const saved = flushVideoCanvasGraph(item, graph, {
+              sourceReady,
+              error: sourceError,
+            });
+            if (!saved.ok) return saved;
             if (saved.item.revisionId) markSaved(String(saved.item.revisionId));
             return saved;
           },
           recovery: {
             draftSchema: liveCanvasBase ? undefined : "oceanleo.workflow.graph.v1",
             key: advancedRecoveryKey("video-canvas", item),
-            ready: !liveCanvasBase,
-            capture: () => liveCanvasBase ? null : graph,
+            ready: !liveCanvasBase && sourceReady,
+            capture: () => liveCanvasBase || !sourceReady ? null : graph,
             restore: (payload) => {
               const restored = payload as VideoCanvasGraph | null;
-              if (!restored || !Array.isArray(restored.nodes) || !Array.isArray(restored.edges)) return false;
+              if (!sourceReady || !restored || !Array.isArray(restored.nodes) || !Array.isArray(restored.edges)) return false;
+              graphDirtyRef.current = true;
               setGraph(restored);
               setEditRevision(value => value + 1);
               return true;

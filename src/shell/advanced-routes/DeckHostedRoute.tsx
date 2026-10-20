@@ -59,6 +59,14 @@ import {
   hostedEmbedBaseForPlatform,
   hostedKernelChromeHidden,
 } from "../hosted-local-origin";
+import { usePluginCommandSurface } from "../plugin-command";
+import { normalizeSelectionContext } from "../selection-context";
+import type { SelectionContext } from "../selection-context";
+import {
+  buildDeckHostedCommandSurface,
+  hostedDeckSelectionCommandEnvelope,
+  type HostedDeckSelectionCommandEnvelope,
+} from "./deck-hosted-selection-command";
 
 /**
  * 双核 `next` 分支：幻灯片托管在当前家族的 `slides.*` Hosted origin
@@ -72,7 +80,7 @@ import {
  * agent 的改动不直接落地，编辑器先发 `review-proposal`，用户在本页点了才回
  * `review-decision: accept`（契约 v2 §3.3）。
  *
- * 本路由今天不发 `selection-command`。哪天接 L1 点击，必须在信封顶层盖
+ * 选区命令走已有 `selection-command` 协议，信封顶层盖
  * `origin: "user"`（或 human/l1/l2）。编辑器侧缺章一律送审，不能假定裸 id
  * 就是人点的（V3-red-7）。盖章位置见 `signals/W07-request.md` R5。
  */
@@ -249,6 +257,8 @@ export function DeckHostedRoute({
   const initializedSourceRef = useRef<unknown>(null);
   snapshotRef.current = snapshot;
   sourceRef.current = source;
+  const latestSelectionRef = useRef<SelectionContext | null>(null);
+  const [liveSelectionId, setLiveSelectionId] = useState<string | null>(null);
   const [pending, setPending] = useState<EditorReviewProposal | null>(null);
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
@@ -429,6 +439,43 @@ export function DeckHostedRoute({
     [editorOrigin, frameLoaded, instanceId],
   );
 
+  const sendHostedSelection = useCallback(
+    (envelope: HostedDeckSelectionCommandEnvelope) => {
+      const planned = hostedDeckSelectionCommandEnvelope({
+        command: envelope.command,
+        origin: envelope.origin,
+        ready: documentOpened && sourceReady,
+        readOnly: false,
+        liveSelectionId: latestSelectionRef.current?.id ?? liveSelectionId,
+        liveSelectionRevision: latestSelectionRef.current?.revision,
+      });
+      if (!planned.ok) {
+        setStatus(planned.error);
+        return false;
+      }
+      return sendToEditor({
+        type: "selection-command",
+        command: planned.envelope.command,
+        origin: "user",
+      });
+    },
+    [documentOpened, liveSelectionId, sendToEditor, sourceReady],
+  );
+
+  usePluginCommandSurface(
+    useMemo(
+      () =>
+        buildDeckHostedCommandSurface({
+          ready: documentOpened && sourceReady,
+          readOnly: false,
+          hasSource: source != null,
+          liveSelectionId,
+          send: sendHostedSelection,
+        }),
+      [documentOpened, liveSelectionId, sendHostedSelection, source, sourceReady],
+    ),
+  );
+
   const pushInit = useCallback(() => {
     if (!sourceReady || loadedContentIdentityRef.current !== contentIdentity) return;
     if (source == null || initializedSourceRef.current === source) return;
@@ -532,6 +579,14 @@ export function DeckHostedRoute({
       if (message.type === "error" && typeof message.message === "string") {
         setStatus(message.message);
         reportModeSwitchFailure(message.message);
+        return;
+      }
+      if (message.type === "selection-changed") {
+        const selection = message.selection
+          ? normalizeSelectionContext(message.selection)
+          : null;
+        latestSelectionRef.current = selection;
+        setLiveSelectionId(selection?.id || null);
         return;
       }
       // Core startup may emit its demo content. Only the receipt for this

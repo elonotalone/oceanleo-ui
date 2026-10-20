@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Puck } from "@puckeditor/core";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -11,6 +11,7 @@ import {
   WEBSITE_SECTION_KINDS,
   WEBSITE_SOURCE_FORMAT,
   type WebsiteSectionKind,
+  type WebsiteSource,
 } from "../website-source-carrier/website-source-schema";
 import { blankWebsiteSource } from "../website-local/blank-website-source";
 import { websitePuckConfig } from "../website-local/website-puck-config";
@@ -27,9 +28,16 @@ import {
   puckToWebsiteSource,
   websiteSourceToPuck,
 } from "../website-local/website-puck-map";
-import { websiteLocalSourceFromItem } from "./non-richdoc-source-gate";
+import { createWebsiteCommandSurface } from "../website-local/website-command-surface";
+import {
+  hydrateWebsiteLocalSource,
+  planWebsiteLocalSource,
+  websiteLocalSourceFromItem,
+} from "./non-richdoc-source-gate";
+import { usePluginCommandSurface } from "../plugin-command";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 
-export { websiteLocalSourceFromItem };
+export { websiteLocalSourceFromItem, planWebsiteLocalSource, hydrateWebsiteLocalSource };
 
 export function WebsiteLocalRoute({
   item,
@@ -39,10 +47,68 @@ export function WebsiteLocalRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const [reloadNonce, setReloadNonce] = useState(0);
-  const admitted = useMemo(
-    () => websiteLocalSourceFromItem(item || { title: "本地可编辑的网站工程" }),
-    [item, reloadNonce],
+  const itemIdentity = `${item?.key || item?.id || ""}:${item?.revisionId || ""}:${item?.artifactId || ""}:${reloadNonce}`;
+  const plan = useMemo(
+    () => planWebsiteLocalSource(item || { title: "本地可编辑的网站工程" }),
+    // itemIdentity pins key/revision/retry; avoid parent object-identity churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [itemIdentity],
   );
+  const [remoteSource, setRemoteSource] = useState<WebsiteSource | null>(null);
+  const [remoteError, setRemoteError] = useState("");
+  const [remoteLoading, setRemoteLoading] = useState(plan.kind === "remote");
+  const loadedIdentityRef = useRef("");
+
+  useEffect(() => {
+    if (plan.kind !== "remote") {
+      setRemoteSource(null);
+      setRemoteError("");
+      setRemoteLoading(false);
+      return;
+    }
+    if (loadedIdentityRef.current === itemIdentity) return;
+    let cancelled = false;
+    const abort = new AbortController();
+    setRemoteLoading(true);
+    setRemoteError("");
+    setRemoteSource(null);
+    void hydrateWebsiteLocalSource(plan, async (url) => {
+      const blob = await fetchMediaBlob(url, {
+        cache: "no-store",
+        maxBytes: 20_000_000,
+        signal: abort.signal,
+      });
+      return blob.text();
+    }).then((result) => {
+      if (cancelled) return;
+      setRemoteLoading(false);
+      if (result.ok) {
+        loadedIdentityRef.current = itemIdentity;
+        setRemoteSource(result.source);
+      } else {
+        setRemoteError(result.error);
+      }
+    });
+    return () => {
+      cancelled = true;
+      abort.abort();
+    };
+    // plan.kind/url are derived from itemIdentity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemIdentity, plan]);
+
+  const admitted =
+    plan.kind === "ready" || plan.kind === "blank"
+      ? { ok: true as const, source: plan.source }
+      : plan.kind === "remote" && remoteSource
+        ? { ok: true as const, source: remoteSource }
+        : {
+            ok: false as const,
+            error:
+              plan.kind === "fail"
+                ? plan.error
+                : remoteError || "正在读取远程网站工程，未改用空白稿覆盖原件。",
+          };
   const initial = admitted.ok
     ? admitted.source
     : blankWebsiteSource(item?.title || "本地可编辑的网站工程");
@@ -59,6 +125,16 @@ export function WebsiteLocalRoute({
   const online = typeof navigator === "undefined" ? false : navigator.onLine !== false;
   const preview = cloudBuildPreviewAvailable(online);
   const currentPage = source.pages.find((page) => page.id === pageId) || source.pages[0];
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+  const revisionRef = useRef(revision);
+  revisionRef.current = revision;
+
+  useEffect(() => {
+    if (sourceFailed || revision > 0) return;
+    setSource(initial);
+    setPageId(initial.pages[0]?.id || "home");
+  }, [initial, revision, sourceFailed]);
 
   const syncHistory = useCallback(() => {
     setCanUndo(history.canUndo());
@@ -66,7 +142,7 @@ export function WebsiteLocalRoute({
   }, [history]);
 
   const commit = useCallback(
-    (next: typeof source) => {
+    (next: WebsiteSource) => {
       if (sourceFailed) return;
       const stored = history.commit(next);
       setSource(stored);
@@ -78,6 +154,19 @@ export function WebsiteLocalRoute({
       syncHistory();
     },
     [history, pageId, sourceFailed, syncHistory],
+  );
+
+  usePluginCommandSurface(
+    useMemo(
+      () =>
+        createWebsiteCommandSurface({
+          source: () => sourceRef.current,
+          revision: () => revisionRef.current,
+          sourceReady: () => !sourceFailed && !remoteLoading,
+          apply: (next) => commit(next),
+        }),
+      [commit, remoteLoading, sourceFailed],
+    ),
   );
 
   if (!item) {
@@ -104,10 +193,18 @@ export function WebsiteLocalRoute({
       adapter={{
         id: "website",
         label: "网站",
-        stage: sourceFailed ? (
+        stage: remoteLoading ? (
+          <div className="flex h-full items-center justify-center p-8 text-sm" data-testid="website-remote-loading">
+            正在读取远程网站工程。
+          </div>
+        ) : sourceFailed ? (
           <EditorSourceFailurePanel
             message={sourceFailureReason}
-            onReload={() => setReloadNonce((value) => value + 1)}
+            onReload={() => {
+              loadedIdentityRef.current = "";
+              setRemoteSource(null);
+              setReloadNonce((value) => value + 1);
+            }}
             variant="surface"
           />
         ) : (
@@ -273,18 +370,18 @@ export function WebsiteLocalRoute({
           </div>
         ),
         persistence: {
-          dirty: !sourceFailed && revision > 0,
+          dirty: !sourceFailed && !remoteLoading && revision > 0,
           editRevision: revision,
           autoSave: false,
           flush: () =>
-            sourceFailed
-              ? { ok: false as const, error: sourceFailureReason }
+            sourceFailed || remoteLoading
+              ? { ok: false as const, error: sourceFailureReason || "网站工程尚未载入完成。" }
               : { ok: true as const, item: savedItem },
           recovery: {
             draftSchema: WEBSITE_SOURCE_FORMAT,
             key: advancedRecoveryKey("website", item),
-            ready: !sourceFailed,
-            capture: () => (sourceFailed ? null : source),
+            ready: !sourceFailed && !remoteLoading,
+            capture: () => (sourceFailed || remoteLoading ? null : source),
             restore: (payload) => {
               try {
                 setSource(parseWebsiteSource(JSON.stringify(payload)));

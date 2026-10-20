@@ -4,11 +4,23 @@
  * are the shared refuse/admit answers tests can call without mounting React.
  */
 
-import { parseDesignDocumentProject } from "../image-editor/design-document-schema";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
-import { blankWebsiteSource } from "../website-local/blank-website-source";
-import { parseWebsiteSource } from "../website-source-carrier/website-source-validate";
+import { planWebsiteLocalSource } from "../website-local/website-local-source";
+import { planDesignCanvasSource } from "../design-canvas/design-canvas-source";
 import type { WebsiteSource } from "../website-source-carrier/website-source-schema";
+
+export {
+  localRemoteEditorWorkbenchChoice,
+  storedEditorProjectUrl,
+} from "./stored-editor-project";
+export {
+  hydrateWebsiteLocalSource,
+  planWebsiteLocalSource,
+} from "../website-local/website-local-source";
+export {
+  hydrateDesignCanvasSource,
+  planDesignCanvasSource,
+} from "../design-canvas/design-canvas-source";
 
 export type NonRichdocSourceAdmission =
   | { ok: true }
@@ -28,11 +40,18 @@ function diagnosticMessage(value: unknown, fallback: string): string {
 export function imageSourcePersistenceAdmitted(input: {
   loading: boolean;
   sceneDiagnostic: unknown;
+  sourceReady?: boolean;
 }): NonRichdocSourceAdmission {
   if (input.loading) {
     return {
       ok: false,
       error: "图片源尚未载入完成，未把空白画布当作可保存稿。",
+    };
+  }
+  if (input.sourceReady === false) {
+    return {
+      ok: false,
+      error: "图片源未成功载入，拒绝把空白画布写回原件。",
     };
   }
   if (input.sceneDiagnostic) {
@@ -119,84 +138,46 @@ export function websiteLocalSourceFromItem(item: {
   content?: string | null;
   artifactId?: string;
   meta?: Record<string, unknown>;
+  url?: string | null;
+  artifact?: {
+    renditions?: {
+      source?: { url?: string | null } | null;
+      full?: { url?: string | null } | null;
+    };
+  };
 }): { ok: true; source: WebsiteSource } | { ok: false; error: string } {
-  const raw =
-    item.meta && typeof item.meta === "object"
-      ? item.meta.websiteSource
-      : undefined;
-  if (raw && typeof raw === "object") {
-    try {
-      return { ok: true, source: parseWebsiteSource(JSON.stringify(raw)) };
-    } catch (caught) {
-      const detail =
-        caught instanceof Error && caught.message.trim()
-          ? caught.message.trim()
-          : "网站工程源无法解析";
-      return {
-        ok: false,
-        error: `${detail}，未改用空白稿覆盖原件。`,
-      };
-    }
+  const plan = planWebsiteLocalSource(item);
+  if (plan.kind === "ready" || plan.kind === "blank") {
+    return { ok: true, source: plan.source };
   }
-  const content = typeof item.content === "string" ? item.content.trim() : "";
-  if (content.startsWith("{")) {
-    try {
-      return { ok: true, source: parseWebsiteSource(content) };
-    } catch (caught) {
-      const detail =
-        caught instanceof Error && caught.message.trim()
-          ? caught.message.trim()
-          : "网站工程源无法解析";
-      return {
-        ok: false,
-        error: `${detail}，未改用空白稿覆盖原件。`,
-      };
-    }
-  }
-  if (item.artifactId) {
+  if (plan.kind === "remote") {
     return {
       ok: false,
       error:
-        "这份网站没有可在本地打开的 website-source@1 工程，未改用空白稿覆盖原件。",
+        "这份网站的工程源在远程，需经授权加载后打开，未改用空白稿覆盖原件。",
     };
   }
-  return {
-    ok: true,
-    source: blankWebsiteSource(item.title || "本地可编辑的网站工程"),
-  };
+  return { ok: false, error: plan.error };
 }
 
 export function designCanvasLocalSourceAdmission(item: {
   title?: string;
   artifactId?: string;
   meta?: Record<string, unknown>;
-}): NonRichdocSourceAdmission {
-  const raw =
-    item.meta && typeof item.meta === "object"
-      ? item.meta.designDocument
-      : undefined;
-  if (raw && typeof raw === "object") {
-    try {
-      parseDesignDocumentProject(JSON.stringify(raw));
-      return { ok: true };
-    } catch (caught) {
-      return {
-        ok: false,
-        error:
-          caught instanceof Error
-            ? caught.message
-            : "设计稿源无法解析，未改用空白画布覆盖原件。",
-      };
-    }
-  }
-  if (item.artifactId) {
-    return {
-      ok: false,
-      error:
-        "这份设计稿没有可在本地打开的工程源，未改用空白画布覆盖原件。",
+  url?: string | null;
+  content?: string | null;
+  artifact?: {
+    renditions?: {
+      source?: { url?: string | null } | null;
+      full?: { url?: string | null } | null;
     };
+  };
+}): NonRichdocSourceAdmission {
+  const plan = planDesignCanvasSource(item);
+  if (plan.kind === "ready" || plan.kind === "blank" || plan.kind === "remote") {
+    return { ok: true };
   }
-  return { ok: true };
+  return { ok: false, error: plan.error };
 }
 
 function gameEnvelopePresent(item: LibraryItem): boolean {

@@ -250,6 +250,8 @@ export interface FabricImageEditorState {
     message: string;
     dependencyId?: string;
   } | null;
+  sourceReady: boolean;
+  reload: () => void;
   savedUrl: string;
   savedProjectUrl: string;
   savedAt: string;

@@ -201,6 +201,14 @@ test("image / pdf / audio / 3d persistence admission refuses load failure", () =
     false,
   );
   assert.equal(
+    imageSourcePersistenceAdmitted({
+      loading: false,
+      sceneDiagnostic: null,
+      sourceReady: false,
+    }).ok,
+    false,
+  );
+  assert.equal(
     imageSourcePersistenceAdmitted({ loading: false, sceneDiagnostic: null })
       .ok,
     true,

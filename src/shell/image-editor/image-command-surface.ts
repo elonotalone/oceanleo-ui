@@ -65,7 +65,7 @@ export function imageCommandDefinitions(
   deps: ImageCommandDeps,
 ): VisualCommandDefinition[] {
   const { editor } = deps;
-  if (editor.loading) return [];
+  if (editor.loading || editor.sourceReady === false) return [];
   const revision = () => editor.editRevision;
   const definitions: VisualCommandDefinition[] = [];
 

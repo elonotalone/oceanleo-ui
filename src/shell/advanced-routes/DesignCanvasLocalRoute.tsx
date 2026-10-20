@@ -8,7 +8,9 @@ import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePane
 import { DESIGN_DOCUMENT_PROJECT_SCHEMA } from "../image-editor/design-document-schema";
 import { parseDesignDocumentProject } from "../image-editor/design-document-schema";
 import { useLocalDesignCanvas } from "../design-canvas/use-local-design-canvas";
+import { createDesignCommandSurface } from "../design-canvas/design-command-surface";
 import { designCanvasLocalSourceAdmission } from "./non-richdoc-source-gate";
+import { usePluginCommandSurface } from "../plugin-command";
 
 export { designCanvasLocalSourceAdmission };
 
@@ -20,13 +22,24 @@ export function DesignCanvasLocalRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const [reloadNonce, setReloadNonce] = useState(0);
-  const admitted = useMemo(
-    () => designCanvasLocalSourceAdmission(item || {}),
-    [item, reloadNonce],
+  const editor = useLocalDesignCanvas(item, { reloadNonce });
+  const sourceFailed = editor.sourceFailed;
+  const sourceFailureReason = editor.sourceError;
+
+  usePluginCommandSurface(
+    useMemo(
+      () =>
+        createDesignCommandSurface({
+          project: () => editor.project,
+          revision: () => editor.revision,
+          sourceReady: () => editor.sourceReady,
+          apply: (next) => {
+            editor.applyProject(next);
+          },
+        }),
+      [editor],
+    ),
   );
-  const sourceFailed = !admitted.ok;
-  const sourceFailureReason = admitted.ok ? "" : admitted.error;
-  const editor = useLocalDesignCanvas(item);
 
   const savedItem = useMemo(() => {
     if (!item) return item;
@@ -55,7 +68,11 @@ export function DesignCanvasLocalRoute({
       adapter={{
         id: "design-canvas",
         label: "设计画布",
-        stage: sourceFailed ? (
+        stage: !editor.sourceReady && !sourceFailed ? (
+          <div className="flex h-full items-center justify-center p-8 text-sm" data-testid="design-canvas-loading">
+            正在读取设计稿。
+          </div>
+        ) : sourceFailed ? (
           <EditorSourceFailurePanel
             message={sourceFailureReason}
             onReload={() => setReloadNonce((value) => value + 1)}
@@ -76,7 +93,7 @@ export function DesignCanvasLocalRoute({
         persistence: {
           dirty: !sourceFailed && editor.dirty,
           editRevision: editor.revision,
-          autoSave: !sourceFailed && editor.ready,
+          autoSave: !sourceFailed && editor.ready && editor.sourceReady,
           flush: () =>
             sourceFailed
               ? { ok: false as const, error: sourceFailureReason }
@@ -84,7 +101,7 @@ export function DesignCanvasLocalRoute({
           recovery: {
             draftSchema: DESIGN_DOCUMENT_PROJECT_SCHEMA,
             key: advancedRecoveryKey("design-canvas", item),
-            ready: !sourceFailed && editor.ready,
+            ready: !sourceFailed && editor.ready && editor.sourceReady,
             capture: () => (sourceFailed ? null : editor.project),
             restore: (payload) => {
               try {

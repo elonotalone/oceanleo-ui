@@ -77,6 +77,7 @@ import {
   handoffItemKey,
   handoffRevisionOf,
 } from "./editor-handoff";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { imageSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 import {
   IMAGE_DESIGN_MANIFEST_VERSION,
@@ -263,11 +264,13 @@ export function ImageRoute({
   const imageAdmitted = imageSourcePersistenceAdmitted({
     loading: editor.loading,
     sceneDiagnostic: editor.sceneDiagnostic,
+    sourceReady: editor.sourceReady,
   });
   const saveBeforeNewConversation = useCallback(async () => {
     const admitted = imageSourcePersistenceAdmitted({
       loading: editor.loading,
       sceneDiagnostic: editor.sceneDiagnostic,
+      sourceReady: editor.sourceReady,
     });
     if (!admitted.ok) {
       return { ok: false as const, error: admitted.error };
@@ -316,6 +319,7 @@ export function ImageRoute({
     editor.loading,
     editor.save,
     editor.sceneDiagnostic,
+    editor.sourceReady,
   ]);
   useEffect(() => {
     return bindProFaceHandoff(handoffItemKey(activeItem), {
@@ -418,6 +422,7 @@ export function ImageRoute({
     const admitted = imageSourcePersistenceAdmitted({
       loading: editor.loading,
       sceneDiagnostic: editor.sceneDiagnostic,
+      sourceReady: editor.sourceReady,
     });
     if (!admitted.ok) {
       throw new ImageGatewayError("image-source-unavailable", admitted.error);
@@ -442,6 +447,7 @@ export function ImageRoute({
     editor.save,
     editor.savedUrl,
     editor.sceneDiagnostic,
+    editor.sourceReady,
   ]);
 
   useEffect(() => {
@@ -468,6 +474,7 @@ export function ImageRoute({
           !imageSourcePersistenceAdmitted({
             loading: editor.loading,
             sceneDiagnostic: editor.sceneDiagnostic,
+            sourceReady: editor.sourceReady,
           }).ok
         ) {
           return;
@@ -483,6 +490,7 @@ export function ImageRoute({
     editor.save,
     editor.savedUrl,
     editor.sceneDiagnostic,
+    editor.sourceReady,
   ]);
 
   const setEditorMode = useCallback((mode: EditorMode) => {
@@ -757,7 +765,19 @@ export function ImageRoute({
             data-canvas-view={designMode.mode}
           >
             <div className="relative min-h-0 flex-1">
-              <FabricImageStage editor={editor} accent={accent} peers={peerSelections} />
+              {!editor.loading && !editor.sourceReady ? (
+                <EditorSourceFailurePanel
+                  message={
+                    imageAdmitted.ok
+                      ? editor.error || "图片源未成功载入，未改用空白画布覆盖原件。"
+                      : imageAdmitted.error
+                  }
+                  onReload={editor.reload}
+                  variant="surface"
+                />
+              ) : (
+                <FabricImageStage editor={editor} accent={accent} peers={peerSelections} />
+              )}
             </div>
             {/* 结构 / 皮肤：画布右下角、与宿主缩放控件同组（规范 v2 §1），
                 顶部不再画通栏。 */}

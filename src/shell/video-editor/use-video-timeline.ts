@@ -110,6 +110,7 @@ export interface VideoTimelineState {
   notice: string;
   dirty: boolean;
   sourceReady: boolean;
+  reload: () => void;
   editRevision: number;
   canvasRef: (canvas: HTMLCanvasElement | null) => void;
   previewCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
@@ -378,6 +379,7 @@ export function useVideoTimeline(
   const [sourceReady, setSourceReady] = useState(
     seedRef.current.sourceReady,
   );
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const engineRef = useRef<TimelinePreviewEngine | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -605,6 +607,7 @@ export function useVideoTimeline(
     item.title,
     item.url,
     markSourceReady,
+    reloadNonce,
     siteId,
     translate,
   ]);
@@ -1465,6 +1468,7 @@ export function useVideoTimeline(
     notice,
     dirty,
     sourceReady,
+    reload: () => setReloadNonce((value) => value + 1),
     editRevision: revisionRef.current,
     canvasRef,
     previewCanvasRef,

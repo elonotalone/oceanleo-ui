@@ -23,6 +23,7 @@ import {
 } from "./w19-handoff-store";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
+import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -456,13 +457,14 @@ function VideoTimelineLegacyBody({
             正在验证时间线工程与媒体源…
           </div>
         ) : sourceStopped ? (
-          <div
-            role="alert"
-            className="flex h-full items-center justify-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-danger,#be123c)]"
-          >
-            {editor.error ||
-              "时间线源未成功载入，空回退工程已停止编辑与导出。可导入经过验证的媒体或恢复本地草稿。"}
-          </div>
+          <EditorSourceFailurePanel
+            message={
+              editor.error ||
+              "时间线源未成功载入，空回退工程已停止编辑与导出。可导入经过验证的媒体或恢复本地草稿。"
+            }
+            onReload={editor.reload}
+            variant="surface"
+          />
         ) : (
           <VideoTimelineStage state={view} accent={accent} readOnly={collabReadOnly} />
         ),

@@ -343,7 +343,7 @@ function GameLegacyRoute({
     const draft = prompt.trim();
     if (busyRef.current || !draft) return;
     if (sourceFailed) {
-      setError(admitted.error);
+      setError(admitted.ok ? "" : admitted.error);
       return;
     }
     if (!isDurableLibraryItem(item)) {
@@ -394,7 +394,7 @@ function GameLegacyRoute({
       setBusy(false);
     }
   }, [
-    admitted.error,
+    admitted,
     cursor,
     document_?.engineApiVersion,
     history.length,

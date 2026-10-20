@@ -11,7 +11,16 @@ export function videoCanvasLeavePolicy() {
 export function flushVideoCanvasGraph(
   item: LibraryItem,
   graph: VideoCanvasGraph,
-): { ok: true; item: LibraryItem } {
+  admission?: { sourceReady?: boolean; error?: string },
+): { ok: true; item: LibraryItem } | { ok: false; error: string } {
+  if (admission && admission.sourceReady === false) {
+    return {
+      ok: false,
+      error:
+        admission.error ||
+        "工作流源未成功载入，未改用空白图画覆盖原件。",
+    };
+  }
   return {
     ok: true,
     item: {

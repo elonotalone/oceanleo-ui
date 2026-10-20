@@ -75,6 +75,7 @@ import {
   type FabricImageEditorState,
 } from "./types";
 import { PsdCompositeError, isPsdSource } from "./psd-composite";
+import { imageSaveAdmitted } from "./image-source-ready";
 
 const INITIAL_VIEW: FabricControllerView = {
   doc: { width: 1080, height: 1080 },
@@ -497,6 +498,8 @@ export function useFabricImageEditor(
   const [notice, setNotice] = useState("");
   const [sceneDiagnostic, setSceneDiagnostic] =
     useState<FabricImageEditorState["sceneDiagnostic"]>(null);
+  const [sourceReady, setSourceReady] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [savedUrl, setSavedUrl] = useState("");
   const [savedProjectUrl, setSavedProjectUrl] = useState("");
   const [savedAt, setSavedAt] = useState("");
@@ -519,6 +522,8 @@ export function useFabricImageEditor(
   const aliveRef = useRef(true);
   const savingRef = useRef(false);
   const dirtyRef = useRef(false);
+  const sourceReadyRef = useRef(false);
+  const sceneDiagnosticRef = useRef<FabricImageEditorState["sceneDiagnostic"]>(null);
   const revisionRef = useRef(0);
   const aiBusyRef = useRef(false);
   const workingHeadUrlRef = useRef(
@@ -535,6 +540,7 @@ export function useFabricImageEditor(
   const pendingAborts = useRef(new Set<AbortController>());
   optionsRef.current = options;
   viewRef.current = view;
+  sceneDiagnosticRef.current = sceneDiagnostic;
   const updateDirty = useCallback((value: boolean) => {
     dirtyRef.current = value;
     setDirty(value);
@@ -609,6 +615,9 @@ export function useFabricImageEditor(
     setError("");
     setNotice("");
     setSceneDiagnostic(null);
+    sceneDiagnosticRef.current = null;
+    sourceReadyRef.current = false;
+    setSourceReady(false);
     setSavedUrl("");
     setSavedProjectUrl("");
     setSavedAt("");
@@ -755,6 +764,10 @@ export function useFabricImageEditor(
             setNotice("已恢复这台设备上尚未同步的修改，正在继续自动保存");
           }
         }
+        if (!cancelled) {
+          sourceReadyRef.current = true;
+          setSourceReady(true);
+        }
       } catch (caught) {
         if (!cancelled && !isAbortError(caught)) {
           const message =
@@ -764,14 +777,18 @@ export function useFabricImageEditor(
                 ? caught.message
                 : "图片画布初始化失败";
           setError(message);
+          sourceReadyRef.current = false;
+          setSourceReady(false);
           if (caught instanceof ImageSceneSourceError) {
-            setSceneDiagnostic({
+            const diagnostic = {
               code: caught.code,
               message,
               ...(caught.dependencyId
                 ? { dependencyId: caught.dependencyId }
                 : {}),
-            });
+            };
+            sceneDiagnosticRef.current = diagnostic;
+            setSceneDiagnostic(diagnostic);
           }
         }
       } finally {
@@ -792,19 +809,12 @@ export function useFabricImageEditor(
     compositeSourceRequired,
     finishAbort,
     item.key,
-    item.revisionId,
-    item.title,
     makeAbort,
-    projectSavedAt,
-    projectUrl,
+    reloadNonce,
     siteId,
-    sourceUrl,
     structuredSourceRequired,
     tt,
     updateDirty,
-    editorSource?.format,
-    item.previewUrl,
-    item.thumbUrl,
   ]);
 
   const addImageFromUrl = useCallback(
@@ -1100,6 +1110,15 @@ export function useFabricImageEditor(
 
   const save = useCallback(async (): Promise<FabricImageSaveResult | null> => {
     if (savingRef.current) return null;
+    const admitted = imageSaveAdmitted({
+      loading,
+      sourceReady: sourceReadyRef.current,
+      sceneDiagnostic: sceneDiagnosticRef.current,
+    });
+    if (!admitted.ok) {
+      setError(admitted.error);
+      return null;
+    }
     if (
       artifactHeadRef.current.artifactType === "composite_image" &&
       !dirtyRef.current
@@ -1110,7 +1129,6 @@ export function useFabricImageEditor(
     savingRef.current = true;
     setSaving(true);
     setError("");
-    setSceneDiagnostic(null);
     try {
       const controller = controllerRef.current;
       if (!controller) throw new Error("图片画布尚未就绪");
@@ -1193,7 +1211,7 @@ export function useFabricImageEditor(
       savingRef.current = false;
       if (aliveRef.current) setSaving(false);
     }
-  }, [item, makeStaticPreviewBlob, siteId, updateDirty]);
+  }, [item, loading, makeStaticPreviewBlob, siteId, updateDirty]);
 
   const runAiEdit = useCallback(async () => {
     if (aiBusyRef.current || !aiPrompt.trim()) return;
@@ -1326,6 +1344,8 @@ export function useFabricImageEditor(
     error,
     notice,
     sceneDiagnostic,
+    sourceReady,
+    reload: () => setReloadNonce((value) => value + 1),
     savedUrl,
     savedProjectUrl,
     savedAt,

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Canvas } from "fabric";
 import type { LibraryItem } from "../library-data";
 import {
-  parseDesignDocumentProject,
   serializeDesignDocumentProject,
   type DesignDocumentProject,
 } from "../image-editor/design-document-schema";
@@ -16,28 +15,32 @@ import {
   designDocumentTitleOf,
   mergeCanvasIntoDesignDocument,
 } from "./design-document-fabric";
+import {
+  hydrateDesignCanvasSource,
+  planDesignCanvasSource,
+} from "./design-canvas-source";
+import { applyDesignDocumentTitle } from "./design-command-surface";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 
-function projectFromItem(item: LibraryItem | null | undefined): DesignDocumentProject {
-  const raw = item?.meta && typeof item.meta === "object" ? item.meta.designDocument : undefined;
-  if (raw && typeof raw === "object") {
-    try {
-      return parseDesignDocumentProject(JSON.stringify(raw));
-    } catch {
-      /* fall through to blank */
-    }
-  }
-  return blankDesignDocument(item?.title || "本地设计稿 W10");
-}
-
-export function useLocalDesignCanvas(item: LibraryItem | null) {
+export function useLocalDesignCanvas(
+  item: LibraryItem | null,
+  options: { reloadNonce?: number } = {},
+) {
   const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<FabricNS | null>(null);
   const canvasRef = useRef<Canvas | null>(null);
   const historyRef = useRef<DesignDocumentProject[]>([]);
   const indexRef = useRef(0);
+  const loadedIdentityRef = useRef("");
+  const dirtyRef = useRef(false);
   const [revision, setRevision] = useState(0);
-  const [project, setProject] = useState<DesignDocumentProject>(() => projectFromItem(item));
+  const [project, setProject] = useState<DesignDocumentProject>(() =>
+    blankDesignDocument(item?.title || "本地设计稿 W10"),
+  );
   const [ready, setReady] = useState(false);
+  const [sourceReady, setSourceReady] = useState(false);
+  const [sourceError, setSourceError] = useState("");
+  const identity = `${item?.key || item?.id || ""}:${item?.revisionId || ""}:${options.reloadNonce || 0}`;
 
   const paint = useCallback(async (next: DesignDocumentProject) => {
     const fabric = fabricRef.current;
@@ -47,12 +50,45 @@ export function useLocalDesignCanvas(item: LibraryItem | null) {
   }, []);
 
   useEffect(() => {
-    const next = projectFromItem(item);
-    setProject(next);
-    historyRef.current = [cloneDesignDocument(next)];
-    indexRef.current = 0;
-    void paint(next);
-  }, [item, paint]);
+    if (dirtyRef.current && loadedIdentityRef.current.split(":")[0] === String(item?.key || item?.id || "") && !options.reloadNonce) {
+      return;
+    }
+    const plan = planDesignCanvasSource(item || { title: "本地设计稿 W10" });
+    let cancelled = false;
+    const abort = new AbortController();
+    setSourceReady(false);
+    setSourceError("");
+    void hydrateDesignCanvasSource(plan, async (url) => {
+      const blob = await fetchMediaBlob(url, {
+        cache: "no-store",
+        maxBytes: 20_000_000,
+        signal: abort.signal,
+      });
+      return blob.text();
+    }).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) {
+        setSourceError(result.error);
+        setSourceReady(false);
+        return;
+      }
+      loadedIdentityRef.current = identity;
+      dirtyRef.current = false;
+      setProject(result.project);
+      historyRef.current = [cloneDesignDocument(result.project)];
+      indexRef.current = 0;
+      setRevision(0);
+      setSourceReady(true);
+      void paint(result.project);
+    });
+    return () => {
+      cancelled = true;
+      abort.abort();
+    };
+    // identity already pins key/revision/retry; do not also depend on `item`
+    // object identity or a parent re-render would refetch and wipe edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identity, options.reloadNonce, paint]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,16 +117,18 @@ export function useLocalDesignCanvas(item: LibraryItem | null) {
 
   const commit = useCallback(
     (next: DesignDocumentProject) => {
+      if (!sourceReady) return next;
       const cloned = cloneDesignDocument(next);
       historyRef.current = historyRef.current.slice(0, indexRef.current + 1);
       historyRef.current.push(cloned);
       indexRef.current = historyRef.current.length - 1;
+      dirtyRef.current = true;
       setProject(cloned);
       setRevision((value) => value + 1);
       void paint(cloned);
       return cloned;
     },
-    [paint],
+    [paint, sourceReady],
   );
 
   const captureCanvas = useCallback(() => {
@@ -101,15 +139,7 @@ export function useLocalDesignCanvas(item: LibraryItem | null) {
 
   const setTitle = useCallback(
     (text: string) => {
-      const current = captureCanvas();
-      const elements = current.document.elements.map((element) =>
-        element.id === "title1" ? { ...element, text } : element,
-      );
-      return commit({
-        ...current,
-        title: text.length >= 8 ? text : current.title,
-        document: { ...current.document, elements },
-      });
+      return commit(applyDesignDocumentTitle(captureCanvas(), text));
     },
     [captureCanvas, commit],
   );
@@ -150,7 +180,10 @@ export function useLocalDesignCanvas(item: LibraryItem | null) {
     ready,
     project,
     revision,
-    dirty: revision > 0,
+    dirty: sourceReady && revision > 0,
+    sourceReady,
+    sourceFailed: Boolean(sourceError),
+    sourceError,
     title: designDocumentTitleOf(project),
     canUndo: indexRef.current > 0,
     canRedo: indexRef.current < historyRef.current.length - 1,
@@ -158,6 +191,7 @@ export function useLocalDesignCanvas(item: LibraryItem | null) {
     undo,
     redo,
     captureCanvas,
+    applyProject: commit,
     serialize: () => serializeDesignDocumentProject(captureCanvas()),
     exportPng,
   };
