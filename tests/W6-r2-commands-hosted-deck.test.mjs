@@ -1,7 +1,7 @@
 /**
- * W6-r2: hosted deck selection-command carries a human origin stamp;
- * format/insert reaches the adopted postMessage envelope; stale/read-only
- * stay rejected. Puck/Fabric/workflow command helpers actually mutate.
+ * W6-r2: hosted deck selection-command carries a human origin stamp on the
+ * human planner; agent surface never mints that stamp. Stale/read-only stay
+ * rejected. Puck/Fabric/workflow command helpers actually mutate.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -11,7 +11,6 @@ import {
   buildDeckHostedCommandSurface,
   hostedDeckFormatFillCommand,
   hostedDeckHumanOrigin,
-  hostedDeckInsertTextCommand,
   hostedDeckSelectionCommandEnvelope,
 } from "../src/shell/advanced-routes/deck-hosted-selection-command.ts";
 import { applyWebsiteCommand } from "../src/shell/website-local/website-command-surface.ts";
@@ -34,13 +33,9 @@ test("DeckHostedRoute sends selection-command with a human origin stamp", () => 
   assert.equal(hostedDeckHumanOrigin("user"), "user");
 });
 
-test("hosted deck insert/format commands reach the adopted envelope; stale and read-only stay rejected", () => {
-  const insert = hostedDeckInsertTextCommand({
-    selectionId: "slide-1",
-    text: "新标题",
-  });
+test("hosted deck format commands park without a human stamp; stale and read-only stay rejected", () => {
   const format = hostedDeckFormatFillCommand({
-    selectionId: "slide-1",
+    selectionId: "shape-hero",
     color: "#ff00aa",
   });
   const sent = [];
@@ -48,25 +43,23 @@ test("hosted deck insert/format commands reach the adopted envelope; stale and r
     ready: true,
     readOnly: false,
     hasSource: true,
-    liveSelectionId: "slide-1",
-    send: (envelope) => {
+    liveSelectionId: "shape-hero",
+    sendAgent: (envelope) => {
       sent.push(envelope);
       return true;
     },
   });
-  const inserted = surface.run("deck.insert-text", { text: "新标题", origin: "user" });
-  assert.equal(inserted.ok, true);
-  assert.equal(sent[0].type, "selection-command");
-  assert.equal(sent[0].origin, "user");
-  assert.equal(sent[0].command.controlId, "edit-text");
-  const filled = surface.run("deck.format-fill", { color: "#ff00aa", origin: "l1" });
+  const filled = surface.run("deck.format-fill", { color: "#ff00aa", origin: "user" });
   assert.equal(filled.ok, true);
-  assert.equal(sent[1].command.controlId, "fill");
-  assert.ok(insert);
+  assert.equal(filled.applied, false);
+  assert.equal(filled.reviewed, true);
+  assert.equal(sent[0].type, "selection-command");
+  assert.equal(sent[0].origin, undefined);
+  assert.equal(sent[0].command.controlId, "shape-fill");
   assert.ok(format);
 
   const stale = hostedDeckSelectionCommandEnvelope({
-    command: insert,
+    command: format,
     origin: "user",
     ready: true,
     readOnly: false,
@@ -76,21 +69,21 @@ test("hosted deck insert/format commands reach the adopted envelope; stale and r
   assert.match(stale.error, /选择已变化/);
 
   const readOnly = hostedDeckSelectionCommandEnvelope({
-    command: insert,
+    command: format,
     origin: "user",
     ready: true,
     readOnly: true,
-    liveSelectionId: "slide-1",
+    liveSelectionId: "shape-hero",
   });
   assert.equal(readOnly.ok, false);
   assert.match(readOnly.error, /只读/);
 
   const noStamp = hostedDeckSelectionCommandEnvelope({
-    command: insert,
+    command: format,
     origin: "agent",
     ready: true,
     readOnly: false,
-    liveSelectionId: "slide-1",
+    liveSelectionId: "shape-hero",
   });
   assert.equal(noStamp.ok, false);
   assert.match(noStamp.error, /人类来源章/);

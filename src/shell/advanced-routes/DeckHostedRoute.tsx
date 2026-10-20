@@ -60,13 +60,20 @@ import {
   hostedKernelChromeHidden,
 } from "../hosted-local-origin";
 import { usePluginCommandSurface } from "../plugin-command";
-import { selectionDuringInteraction } from "../edit-bar-hosted-selection-hold";
+import {
+  applySelectionInteractionHold,
+  selectionDuringInteraction,
+} from "../edit-bar-hosted-selection-hold";
 import { normalizeSelectionContext } from "../selection-context";
-import type { SelectionContext } from "../selection-context";
+import type { SelectionCommand, SelectionContext } from "../selection-context";
+import { SelectionCommandGate } from "../selection-transactions";
+import { DeckHostedContextToolbar } from "./DeckHostedContextToolbar";
 import {
   buildDeckHostedCommandSurface,
-  hostedDeckSelectionCommandEnvelope,
-  type HostedDeckSelectionCommandEnvelope,
+  deckHostedItemReadOnly,
+  hostedDeckHostEditBarActive,
+  hostedDeckSelectionForToolbar,
+  sendDeckHostedHumanSelectionCommand,
 } from "./deck-hosted-selection-command";
 
 /**
@@ -81,9 +88,9 @@ import {
  * agent 的改动不直接落地，编辑器先发 `review-proposal`，用户在本页点了才回
  * `review-decision: accept`（契约 v2 §3.3）。
  *
- * 选区命令走已有 `selection-command` 协议，信封顶层盖
- * `origin: "user"`（或 human/l1/l2）。编辑器侧缺章一律送审，不能假定裸 id
- * 就是人点的（V3-red-7）。盖章位置见 `signals/W07-request.md` R5。
+ * 选区命令走已有 `selection-command` 协议。人类章只由普通页共享编辑栏的
+ * 点击回调盖在信封顶层（`origin: "user"`）；agent 指令面永不盖章，缺章由
+ * PPTist 送审。不能假定裸 id 就是人点的（V3-red-7）。
  */
 
 /** 缺省家族（com）的幻灯片 origin。运行时嵌 iframe 走 `deckHostedEmbedBase()`。 */
@@ -260,7 +267,15 @@ export function DeckHostedRoute({
   sourceRef.current = source;
   const latestSelectionRef = useRef<SelectionContext | null>(null);
   const heldSelectionRef = useRef<SelectionContext | null>(null);
+  const selectionGateRef = useRef(new SelectionCommandGate());
+  const [hostedSelection, setHostedSelection] = useState<SelectionContext | null>(
+    null,
+  );
+  const [heldSelection, setHeldSelection] = useState<SelectionContext | null>(
+    null,
+  );
   const [liveSelectionId, setLiveSelectionId] = useState<string | null>(null);
+  const readOnly = deckHostedItemReadOnly(item);
   const [pending, setPending] = useState<EditorReviewProposal | null>(null);
   const frameLoadedRef = useRef(false);
   const [frameLoaded, setFrameLoaded] = useState(false);
@@ -318,6 +333,9 @@ export function DeckHostedRoute({
     setDocumentOpened(false);
     latestSelectionRef.current = null;
     heldSelectionRef.current = null;
+    selectionGateRef.current.clear();
+    setHostedSelection(null);
+    setHeldSelection(null);
     setLiveSelectionId(null);
   }, [contentIdentity]);
 
@@ -444,31 +462,47 @@ export function DeckHostedRoute({
     [editorOrigin, frameLoaded, instanceId],
   );
 
-  const sendHostedSelection = useCallback(
-    (envelope: HostedDeckSelectionCommandEnvelope) => {
-      const live = selectionDuringInteraction(
+  const liveOrHeld = selectionDuringInteraction(hostedSelection, heldSelection);
+  const toolbarSelection = hostedDeckSelectionForToolbar(liveOrHeld);
+  const hostEditBarActive = hostedDeckHostEditBarActive({
+    mode,
+    ready: documentOpened && sourceReady,
+    hasSource: source != null,
+    readOnly,
+  });
+
+  const onSelectionInteractionChange = useCallback(
+    (held: SelectionContext | null) => {
+      heldSelectionRef.current = held;
+      setHeldSelection(held);
+      applySelectionInteractionHold(selectionGateRef.current, held);
+    },
+    [],
+  );
+
+  const onHostedSelectionCommand = useCallback(
+    (command: SelectionCommand) => {
+      const target = selectionDuringInteraction(
         latestSelectionRef.current,
         heldSelectionRef.current,
       );
-      const planned = hostedDeckSelectionCommandEnvelope({
-        command: envelope.command,
-        origin: envelope.origin,
+      const result = sendDeckHostedHumanSelectionCommand({
+        command,
+        selection: hostedDeckSelectionForToolbar(target),
         ready: documentOpened && sourceReady,
-        readOnly: false,
-        liveSelectionId: live?.id ?? liveSelectionId,
-        liveSelectionRevision: live?.revision,
-      });
-      if (!planned.ok) {
-        setStatus(planned.error);
-        return false;
-      }
-      return sendToEditor({
-        type: "selection-command",
-        command: planned.envelope.command,
+        readOnly,
         origin: "user",
+        gate: selectionGateRef.current,
+        send: sendToEditor,
       });
+      if (!result.ok) setStatus(result.message);
     },
-    [documentOpened, liveSelectionId, sendToEditor, sourceReady],
+    [documentOpened, readOnly, sendToEditor, sourceReady],
+  );
+
+  const sendAgentSelection = useCallback(
+    (message: Record<string, unknown>) => sendToEditor(message),
+    [sendToEditor],
   );
 
   usePluginCommandSurface(
@@ -476,12 +510,21 @@ export function DeckHostedRoute({
       () =>
         buildDeckHostedCommandSurface({
           ready: documentOpened && sourceReady,
-          readOnly: false,
+          readOnly,
           hasSource: source != null,
           liveSelectionId,
-          send: sendHostedSelection,
+          liveSelectionRevision: liveOrHeld?.revision,
+          sendAgent: sendAgentSelection,
         }),
-      [documentOpened, liveSelectionId, sendHostedSelection, source, sourceReady],
+      [
+        documentOpened,
+        liveOrHeld?.revision,
+        liveSelectionId,
+        readOnly,
+        sendAgentSelection,
+        source,
+        sourceReady,
+      ],
     ),
   );
 
@@ -594,9 +637,20 @@ export function DeckHostedRoute({
         const selection = message.selection
           ? normalizeSelectionContext(message.selection)
           : null;
-    latestSelectionRef.current = selection;
-    if (selection) heldSelectionRef.current = null;
-    setLiveSelectionId(selection?.id || null);
+        for (const cancel of selectionGateRef.current.reconcile(selection)) {
+          sendToEditor({
+            type: "selection-command",
+            command: cancel,
+            origin: "user",
+          });
+        }
+        latestSelectionRef.current = selection;
+        if (selection) {
+          heldSelectionRef.current = null;
+          setHeldSelection(null);
+        }
+        setHostedSelection(selection);
+        setLiveSelectionId(selection?.id || null);
         return;
       }
       // Core startup may emit its demo content. Only the receipt for this
@@ -645,7 +699,7 @@ export function DeckHostedRoute({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [contentIdentity, editRevision, editorOrigin, instanceId, pushInit, reportModeSwitchFailure, reportWorkingHandoff]);
+  }, [contentIdentity, editRevision, editorOrigin, instanceId, pushInit, reportModeSwitchFailure, reportWorkingHandoff, sendToEditor]);
 
   useEffect(() => {
     if (!ready) return;
@@ -796,6 +850,19 @@ export function DeckHostedRoute({
           setMode: applyMode,
         },
         pages: { proLabel: "PPTist" },
+        ...(hostEditBarActive
+          ? {
+              renderContextToolbar: () => (
+                <DeckHostedContextToolbar
+                  context={toolbarSelection}
+                  onCommand={onHostedSelectionCommand}
+                  onSelectionInteractionChange={onSelectionInteractionChange}
+                  accent={accent}
+                  readOnly={readOnly}
+                />
+              ),
+            }
+          : {}),
         stage: (
           <div className="flex h-full min-h-0 flex-col">
             {pending ? (
@@ -862,8 +929,8 @@ export function DeckHostedRoute({
                 ? ""
                 : "正在连接幻灯片内核"),
         persistence: {
-          autoSave: documentOpened && sourceReady,
-          dirty: documentOpened && dirty,
+          autoSave: documentOpened && sourceReady && !readOnly,
+          dirty: documentOpened && dirty && !readOnly,
           editRevision,
           flush,
           draft: { schema: DECK_DRAFT_SCHEMA, capture: () => null, captureRevision: captureDraftRevision },
