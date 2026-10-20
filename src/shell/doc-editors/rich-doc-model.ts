@@ -151,10 +151,14 @@ function officeBytesToArrayBuffer(
 ): ArrayBuffer {
   if (value instanceof ArrayBuffer) return value;
   if (ArrayBuffer.isView(value)) {
-    return value.buffer.slice(
+    const view = new Uint8Array(
+      value.buffer,
       value.byteOffset,
-      value.byteOffset + value.byteLength,
+      value.byteLength,
     );
+    const copy = new ArrayBuffer(view.byteLength);
+    new Uint8Array(copy).set(view);
+    return copy;
   }
   throw new Error("DOCX 字节无法读取");
 }
@@ -289,11 +293,11 @@ export function richDocResultHasBody(result: {
 export function richDocLoadVerified(
   result: Pick<RichDocLoadResult, "source" | "error">,
 ): boolean {
-  return result.source !== "empty" && !result.error;
+  return typeof result.source === "string" && result.source !== "empty" && !result.error;
 }
 
 export function admitRichDocEditorSource(
-  result: Pick<RichDocLoadResult, "source" | "error" | "html" | "json">,
+  result: Pick<RichDocLoadResult, "source" | "error">,
   item: LibraryItem,
 ): { ok: true } | { ok: false; error: string } {
   if (result.error) return { ok: false, error: result.error };

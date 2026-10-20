@@ -19,7 +19,20 @@ import {
   selectRichDocSourceUrl,
   unwrapNativeRichDocJson,
   type RichDocDetectedFormat,
+  type RichDocSource,
 } from "../doc-editors/rich-doc-model";
+
+type LoadedHtml = {
+  html: string;
+  json?: unknown;
+  error: string;
+  source?: RichDocSource;
+};
+
+function sourceFromLoadedHtml(loaded: LoadedHtml): RichDocSource {
+  if (typeof loaded.source === "string") return loaded.source;
+  return richDocResultHasBody(loaded) ? "url-docx" : "empty";
+}
 
 type EditorHandoff =
   | { kind: "inline"; json: unknown; revision: string | null }
@@ -251,11 +264,7 @@ async function defaultLoadRichDocHtml(item: LibraryItem) {
 
 function hostedHtmlFetchDeps(
   deps: {
-    loadHtml?: (item: LibraryItem) => Promise<{
-      html: string;
-      json?: unknown;
-      error: string;
-    }>;
+    loadHtml?: (item: LibraryItem) => Promise<LoadedHtml>;
   },
   item: LibraryItem,
 ) {
@@ -274,7 +283,7 @@ function hostedHtmlFetchDeps(
 export async function umoSourceFromDocxItem(
   item: LibraryItem,
   deps: {
-    loadHtml?: (item: LibraryItem) => Promise<{ html: string; json?: unknown; error: string }>;
+    loadHtml?: (item: LibraryItem) => Promise<LoadedHtml>;
     htmlToJson?: (html: string) => Promise<unknown>;
   } = {},
 ): Promise<
@@ -284,7 +293,10 @@ export async function umoSourceFromDocxItem(
   const loadHtml = deps.loadHtml ?? defaultLoadRichDocHtml;
   const loaded = await loadHtml(item);
   if (loaded.error) return { ok: false, error: loaded.error };
-  const admitted = admitRichDocEditorSource(loaded, item);
+  const admitted = admitRichDocEditorSource({
+    source: sourceFromLoadedHtml(loaded),
+    error: loaded.error,
+  }, item);
   if (!admitted.ok) return { ok: false, error: admitted.error };
   const json =
     loaded.json ??
@@ -302,11 +314,7 @@ export async function loadRichDocHostedState(
   item: LibraryItem,
   handoff: EditorHandoff | null,
   deps: {
-    loadHtml?: (item: LibraryItem) => Promise<{
-      html: string;
-      json?: unknown;
-      error: string;
-    }>;
+    loadHtml?: (item: LibraryItem) => Promise<LoadedHtml>;
     htmlToJson?: (html: string) => Promise<unknown>;
     fetchJson?: (url: string) => Promise<unknown>;
   } = {},
