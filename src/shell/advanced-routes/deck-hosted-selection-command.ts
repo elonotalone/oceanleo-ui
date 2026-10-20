@@ -192,7 +192,9 @@ export function buildDeckHostedCommandSurface(input: {
             : null;
       const planned = hostedDeckSelectionCommandEnvelope({
         command,
-        origin: hostedDeckHumanOrigin(params?.origin) || "user",
+        // This is the agent command surface, not a human toolbar callback.
+        // Never mint a human-origin stamp from model-provided parameters.
+        origin: null,
         ready: input.ready,
         readOnly: input.readOnly,
         liveSelectionId: input.liveSelectionId,
