@@ -30,4 +30,16 @@ Dev API restart first guard was cancelled ONLY while still queued (specific guar
 
 Active final integration roles: W5-r3 exec 69185 chat 914d7164-a935-4907-8812-6a97396586f8; W3-r3 exec 76555 chat 59f32dde-474b-4393-b09c-0dd1c82336ea. Tasks committed and explicitly transfer only final interaction bindings / standalone Library receiver + real icon trigger ownership. Logs /tmp/editor-repair-20261020-W5-r3.log and W3-r3.log. V1-r2 still not dispatched; first chat id available in /tmp/editor-repair-20261020-V1.log. Must finish r3, run V1 final, generate CSS and snapshot, full appropriate checks, dev freshness and twin-only sync. Do not final while work remains.
 
+## Final verification checkpoint 21:50
+
+W5-r3 a4916f3d and W3-r3 034f3a22 delivered; parent reran their actual-consumer suites: 7/7 pass (/tmp/editor-repair-parent-r3.log). Generated CSS/API snapshot committed 16494476; ui.css contains 12 occurrences of data-agent-conversation. Barrel type exported e836ab9a.
+
+ACTIVE W6-r3 exec 81318, same chat be23663a-f88d-4284-8521-69dbf05cf32d: parent found agent surface minted origin:user while route had no actual shared toolbar. Parent blocked forged human origin bf53f828; W6 now wiring actual normal-mode toolbar and agent review separately. Need verify its eventual delivery/tests and keep security boundary.
+
+ACTIVE W1-r3 exec 86448, same chat d14705ef-34ce-44d6-8b0c-2f54e98a96cc: parent reproduced valid image-only HTML rejected as empty via loadRichDocHtml. Task b2974536 requires successful parsed source/load proof distinguished from text length, preserving image-only/intentional blank existing docs and missing-source protection.
+
+ACTIVE V1-r2 exec 84813, chat a643ad05-dcad-42ed-9c12-8e06933062da; owns acceptance tests/docs only, currently rewrites old bus tests and runs focused final checks. Task file includes W6-r3 pending; W1-r3 was discovered afterwards, so parent must make final acceptance include that delta if V1 returns early. Source fixtures/test changes under V1 ownership must not be committed by parent until it delivers.
+
+Still required: collect W1/W6 r3, independently inspect and rerun named tests/typecheck, V1 final evidence, full UI suite once its tests stable, regenerate CSS/API if needed, source security assertions (full security gate already has unrelated live DB grant drift), dev-slot freshness and dev HTTP check; bump UI patch (candidate v0.233.72 was absent on GitHub), tag/push and twin-only --only oceanleo bump per kernel, portal main push/twin status. No production release. Check current worktrees before any commit/push.
+
 Checkpoint commits: UI 2f1101dc, portal 80ab77c, website 1c4ac9b, oceandino 80f1e1466. Oceandino required checks passed (UI tsc, 456 dev/staff tests, 1325 Lucy tests + 200 subtests, 584 script tests + 6 skips, policy valid); GitHub origin/main verified at 80f1e1466. Secondary origin push target /host/opt/git-mirrors/oceandino.git unavailable from this mount; no mirror configuration changed.
