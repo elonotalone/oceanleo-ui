@@ -4315,8 +4315,32 @@
         },
         {
           "kind": "named",
+          "name": "COLLECTION_ACTION_BTN_GHOST",
+          "importedName": "COLLECTION_ACTION_BTN_GHOST",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "COLLECTION_ACTION_BTN_PRIMARY",
+          "importedName": "COLLECTION_ACTION_BTN_PRIMARY",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "COLLECTION_ACTION_BTN",
+          "importedName": "COLLECTION_ACTION_BTN",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
           "name": "COLLECTION_CARD_GRID_CLASS",
           "importedName": "COLLECTION_CARD_GRID_CLASS",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "COLLECTION_CARD_GRID_COLUMNS",
+          "importedName": "COLLECTION_CARD_GRID_COLUMNS",
           "source": "./collection-chrome"
         },
         {
@@ -4327,14 +4351,32 @@
         },
         {
           "kind": "named",
+          "name": "COLLECTION_FILTER_ROW_CLASS",
+          "importedName": "COLLECTION_FILTER_ROW_CLASS",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
           "name": "CollectionCardGrid",
           "importedName": "CollectionCardGrid",
           "source": "./collection-chrome"
         },
         {
           "kind": "named",
+          "name": "CollectionFilterChevron",
+          "importedName": "CollectionFilterChevron",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
           "name": "CollectionFilterOption",
           "importedName": "CollectionFilterOption",
+          "source": "./collection-chrome"
+        },
+        {
+          "kind": "named",
+          "name": "CollectionFilterRow",
+          "importedName": "CollectionFilterRow",
           "source": "./collection-chrome"
         },
         {
@@ -7538,6 +7580,12 @@
         },
         {
           "kind": "named",
+          "name": "gameSourceAdmission",
+          "importedName": "gameSourceAdmission",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "gameWorkingHeadKey",
           "source": ""
         },
@@ -8370,6 +8418,12 @@
           "name": "PluginChromeFrame",
           "importedName": "PluginChromeFrame",
           "source": "./PluginChromeFrame"
+        },
+        {
+          "kind": "named",
+          "name": "PluginChromeLibraryChrome",
+          "importedName": "PluginChromeLibraryChrome",
+          "source": "./types"
         },
         {
           "kind": "named",
