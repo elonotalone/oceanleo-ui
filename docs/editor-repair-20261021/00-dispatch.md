@@ -49,22 +49,39 @@ See `tasks/W4.md`.
 
 ### V1
 
-See `tasks/V1.md`. Wait marker: `deliveries/W1.md` … `W4.md` exist and are non-empty. No product `src/` edits.
+See `tasks/V1.md`. Wait marker: `deliveries/W1.md` … `W4.md` exist and are non-empty. No product `src/` edits. Landed: verdict complete on W1–W4.
+
+## Remaining wave (after W1–W4)
+
+W2 left a documented gap: editors that never call `recordUserMutation` never autosave after a real edit. Operator rule still binds: every editor.
+
+| ID | User-visible defect | Primary files (exclusive) | Owner |
+|---|---|---|---|
+| 5 | Grid / native deck / hosted PPT edits never autosave | GridUniverStage, use-deck-editor, DeckHostedRoute | W5 |
+| 6 | Video / audio / PDF / chart / 3D edits never autosave | video-editor, VideoCanvasStage, audio mutations, pdf engine, chart workbench, model3d workbench | W6 |
+| 7 | Design canvas / game / embedded edits never autosave | use-local-design-canvas, GameCodeStage, EmbeddedRoute | W7 |
+| V2 | Independent acceptance of 5–7 | tests/editor-repair-20261021-acceptance-remaining-autosave.mjs, acceptance-remaining.md | V2 |
+
+Website local stays `autoSave: false`. Do not change it.
+
+See `tasks/W5.md`, `tasks/W6.md`, `tasks/W7.md`, `tasks/V2.md`.
 
 ## Parent allowlist
 
-Dispatch contract; launch/resume; cross-owner arbitration after delivery; generated CSS; `pnpm typecheck` / `api:check` / `architecture:check`; LeoDev freshness; twin pin `--only oceanleo` + portal `main` after verification. No product implementation while owners are live.
+Dispatch contract; launch/resume; cross-owner arbitration after delivery; leftover grep-test rewrites; ImageRoute `guardPluginSurface` restore after W3 deleted the AI `runAi` viewOnly return; generated CSS; `pnpm typecheck` / `api:check` / `architecture:check`; LeoDev freshness; twin pin `--only oceanleo` + portal `main` after verification. No product implementation while owners are live.
 
 ## IO budget
 
-- Task books this wave: N = 5 (W1 W2 W3 W4 V1)
-- Concurrent owners: 5
+- Task books first wave: N = 5 (W1 W2 W3 W4 V1) — landed
+- Task books remaining: N = 4 (W5 W6 W7 V2)
+- Concurrent remaining owners: 4
 - Full-tree-scan directives in books: 0
 - `_COMMON.md` full-tree-scan directives: 0
 - Density = 0
 
 ## Launch self-check
 
-- [x] All W* and V* launched in one parent message
+- [x] All W* and V* launched in one parent message (first wave)
 - [x] Model `cursor-grok-4.6-xhigh` named on every child
 - [x] Task books committed before dispatch
+- [ ] Remaining W5 W6 W7 V2 launched in one parent message after their task books are committed
