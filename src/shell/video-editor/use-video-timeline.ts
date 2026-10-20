@@ -82,8 +82,42 @@ import {
   assertBlobSource,
   parseVideoProjectEnvelope,
 } from "../media-editors/source-integrity.mjs";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
 
 const PLACEHOLDER_DURATION_MS = VIDEO_TIMELINE_PLACEHOLDER_DURATION_MS;
+
+export type VideoTimelineUserEditOrigin =
+  | "person-commit"
+  | "hydrate"
+  | "load";
+
+/**
+ * Video-timeline person-write choke. History commit / gesture / undo / redo
+ * record; load, hydrate, source-byte recovery, and remote apply do not.
+ */
+export function applyVideoTimelineUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: VideoTimelineUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "person-commit") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
+
+/** Same helper `applyEdit` calls after a real document inequality. */
+export function applyVideoTimelineHistoryWriteIfChanged(
+  item: { key?: string; id?: string } | null | undefined,
+  before: TimelineDoc,
+  after: TimelineDoc,
+  origin: VideoTimelineUserEditOrigin | string = "person-commit",
+): number {
+  if (before === after) return userMutationGeneration(userEditItemKey(item));
+  return applyVideoTimelineUserEditSession(item, origin);
+}
 
 export interface VideoTimelineState {
   doc: TimelineDoc;
@@ -319,6 +353,8 @@ export function useVideoTimeline(
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   const sourceProbeKeysRef = useRef(new Set<string>());
   const mountedRef = useRef(true);
+  const itemRef = useRef(item);
+  itemRef.current = item;
 
   // `tt` 是 provider 所有的函数。今天 I18nProvider 已 useMemo，所以它身份稳定；但只要
   // 有一个站不记忆化 messages，把它放进 effect 依赖就会重新点燃 W13 修掉的那条加载死
@@ -515,6 +551,7 @@ export function useVideoTimeline(
         setDirty(false);
         revisionRef.current = 0;
         markSourceReady(true);
+        applyVideoTimelineUserEditSession(itemRef.current, "load");
       })
       .catch((caught) => {
         if (!controller.signal.aborted) {
@@ -637,6 +674,12 @@ export function useVideoTimeline(
       setDirty(true);
       setDraftSavedUrl("");
       setHistoryVersion((value) => value + 1);
+      applyVideoTimelineHistoryWriteIfChanged(
+        itemRef.current,
+        current,
+        next,
+        verifiedSourceRecovery ? "hydrate" : "person-commit",
+      );
       return true;
     },
     [requireSourceReady],
@@ -684,6 +727,9 @@ export function useVideoTimeline(
     setDirty(committed.dirty);
     setDraftSavedUrl("");
     setHistoryVersion((value) => value + 1);
+    if (committed.dirty) {
+      applyVideoTimelineUserEditSession(itemRef.current, "person-commit");
+    }
   }, []);
 
   const cancelGesture = useCallback(() => {
@@ -707,6 +753,7 @@ export function useVideoTimeline(
     setDirty(true);
     setDraftSavedUrl("");
     setHistoryVersion((value) => value + 1);
+    applyVideoTimelineUserEditSession(itemRef.current, "person-commit");
   }, []);
 
   const redo = useCallback(() => {
@@ -719,6 +766,7 @@ export function useVideoTimeline(
     setDirty(true);
     setDraftSavedUrl("");
     setHistoryVersion((value) => value + 1);
+    applyVideoTimelineUserEditSession(itemRef.current, "person-commit");
   }, []);
 
   // ----------------------------------------------------------- transport
@@ -1268,6 +1316,7 @@ export function useVideoTimeline(
           revisionRef.current += 1;
           setDirty(true);
           setDraftSavedUrl("");
+          applyVideoTimelineUserEditSession(itemRef.current, "hydrate");
         }
       }
       const url = await renderTimeline(
@@ -1330,6 +1379,7 @@ export function useVideoTimeline(
       setDraftSavedUrl("");
       setError("");
       setNotice(tt("已恢复上次未同步的本地草稿"));
+      applyVideoTimelineUserEditSession(itemRef.current, "hydrate");
       return true;
     },
     [markSourceReady, tt],
@@ -1345,6 +1395,7 @@ export function useVideoTimeline(
       gestureState.current = { ...gestureState.current, document: next };
     }
     setSelectedClipId((current) => (current && findClip(next, current) ? current : ""));
+    applyVideoTimelineUserEditSession(itemRef.current, "hydrate");
     return true;
   }, []);
 
@@ -1358,6 +1409,7 @@ export function useVideoTimeline(
     setDirty(true);
     setDraftSavedUrl("");
     setHistoryVersion((value) => value + 1);
+    applyVideoTimelineUserEditSession(itemRef.current, "person-commit");
     return true;
   }, []);
 

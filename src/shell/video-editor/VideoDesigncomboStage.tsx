@@ -86,6 +86,26 @@ import {
 import { DesigncomboTimelineHost } from "./designcombo/timeline-host";
 import { DesigncomboInspectorHost } from "./designcombo/inspector-host";
 import { isTimelineDoc } from "./timeline-model";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
+
+export type VideoDesigncomboUserEditOrigin = "commit" | "load";
+
+/**
+ * Designcombo person-write choke. `commit` / convert / toolbar writes record;
+ * the load effect does not.
+ */
+export function applyVideoDesigncomboUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: VideoDesigncomboUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "commit") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
 
 function parseEnvelope(text: string): unknown {
   const parsed = JSON.parse(text) as { data?: unknown; schema?: string };
@@ -121,6 +141,8 @@ export function VideoDesigncomboStage({
   const [dirty, setDirty] = useState(false);
   const editRevisionRef = useRef(0);
   const saveItemRef = useRef(item);
+  const itemRef = useRef(item);
+  itemRef.current = item;
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -142,7 +164,10 @@ export function VideoDesigncomboStage({
     conversion === "failed";
 
   const commit = useCallback(
-    (next: OpenVideoProject) => {
+    (
+      next: OpenVideoProject,
+      origin: VideoDesigncomboUserEditOrigin | string = "commit",
+    ) => {
       undoRef.current.push(cloneOpenVideoProject(projectRef.current));
       redoRef.current = [];
       const normalized = normalizeOpenVideoProject(next);
@@ -151,6 +176,7 @@ export function VideoDesigncomboStage({
       setEditRevision(++editRevisionRef.current);
       setDirty(true);
       engineRef.current?.setDoc(openVideoToTimelineDoc(normalized));
+      applyVideoDesigncomboUserEditSession(itemRef.current, origin);
     },
     [],
   );
@@ -174,6 +200,7 @@ export function VideoDesigncomboStage({
     }
     let cancelled = false;
     setLoading(true);
+    applyVideoDesigncomboUserEditSession(itemRef.current, "load");
     (async () => {
       try {
         const source = resolveW19Handoff(
@@ -371,6 +398,7 @@ export function VideoDesigncomboStage({
     setConversionNotice(planned.summary);
     setDirty(true);
     setEditRevision(++editRevisionRef.current);
+    applyVideoDesigncomboUserEditSession(itemRef.current, "commit");
   }, [conversion, item.title, legacyDoc]);
 
   const selected = selectedClipId ? project.clips[selectedClipId] || null : null;
@@ -615,6 +643,8 @@ export function VideoDesigncomboStage({
             projectRef.current = previous;
             setProject(previous);
             setEditRevision(++editRevisionRef.current);
+            setDirty(true);
+            applyVideoDesigncomboUserEditSession(itemRef.current, "commit");
           },
           redo: () => {
             const following = redoRef.current.pop();
@@ -623,6 +653,8 @@ export function VideoDesigncomboStage({
             projectRef.current = following;
             setProject(following);
             setEditRevision(++editRevisionRef.current);
+            setDirty(true);
+            applyVideoDesigncomboUserEditSession(itemRef.current, "commit");
           },
         },
         mode: {
@@ -756,7 +788,7 @@ export function VideoDesigncomboStage({
             capture: () => (readonly ? null : cloneOpenVideoProject(projectRef.current)),
             restore: (payload) => {
               if (!isOpenVideoProject(payload)) return false;
-              commit(payload);
+              commit(payload, "load");
               return true;
             },
           },

@@ -27,6 +27,7 @@ import { usePdfOffice } from "./pdf-form/use-pdf-office";
 import type { PdfOfficeWorkbenchState } from "./pdf-form/types";
 export type { PdfOfficeWorkbenchState } from "./pdf-form/types";
 import {
+  applyPdfUserEditSession,
   usePdfMutationRunner,
   usePdfSnapshotRestore,
 } from "./use-pdf-edit-engine";
@@ -38,6 +39,11 @@ import {
   type PdfWorkbenchCollabHooks,
 } from "./use-pdf-workbench-collab";
 export type { PdfWorkbenchCollabHooks } from "./use-pdf-workbench-collab";
+export {
+  applyPdfUserEditSession,
+  applyPdfEditEngineUserEditSession,
+} from "./use-pdf-edit-engine";
+export const applyPdfWorkbenchUserEditSession = applyPdfUserEditSession;
 
 export function usePdfWorkbench(
   item: LibraryItem,
@@ -276,6 +282,7 @@ export function usePdfWorkbench(
     setPageNumber,
     setProcessing,
     setSavedUrl,
+    item,
     tt,
   });
   const annotation = usePdfAnnotations({
@@ -317,6 +324,7 @@ export function usePdfWorkbench(
     setPageCount,
     setPageNumber,
     setSavedUrl,
+    item,
   });
 
   const { undo, redo, restoreRecovery } = usePdfWorkbenchCollab({
@@ -351,7 +359,7 @@ export function usePdfWorkbench(
   const replaceBytesSilently = useCallback(
     async (
       transform: (current: Uint8Array) => Promise<Uint8Array | null>,
-      replaceOptions?: { markDirty?: boolean },
+      replaceOptions?: { markDirty?: boolean; personEdit?: boolean },
     ): Promise<"applied" | "unchanged" | "busy"> => {
       const current = bytesRef.current;
       if (!current || processingRef.current) return "busy";
@@ -370,10 +378,18 @@ export function usePdfWorkbench(
         setDirty(true);
         setSavedUrl("");
       }
+      applyPdfUserEditSession(
+        item,
+        replaceOptions?.markDirty !== false && replaceOptions?.personEdit
+          ? "local-annotation"
+          : replaceOptions?.markDirty === false
+            ? "collab"
+            : "silent-replace",
+      );
       setDocumentRevision((value) => value + 1);
       return "applied";
     },
-    [],
+    [item],
   );
 
   const goToPage = useCallback(

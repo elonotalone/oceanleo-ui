@@ -55,6 +55,42 @@ import {
   planWorkflowGraphFromItem,
 } from "./workflow-graph-source";
 import { applyVideoCanvasCommand } from "./video-canvas-command-surface";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
+
+export type VideoCanvasUserEditOrigin =
+  | "person-command"
+  | "hydrate"
+  | "load";
+
+/**
+ * Video-canvas person-write choke. 「加节点」 and other local graph writes
+ * record; hydrating the graph does not.
+ */
+export function applyVideoCanvasUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: VideoCanvasUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "person-command") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
+
+/** Same helper the 「加节点」 button and `workflow.add-node` command call. */
+export function applyVideoCanvasPersonCommand(
+  item: { key?: string; id?: string } | null | undefined,
+  graph: VideoCanvasGraph,
+  id: string,
+  params: Record<string, unknown> = {},
+  revision = 0,
+): ReturnType<typeof applyVideoCanvasCommand> {
+  const applied = applyVideoCanvasCommand(graph, id, params, revision);
+  if (applied.ok) applyVideoCanvasUserEditSession(item, "person-command");
+  return applied;
+}
 
 const VideoCanvasLocalCanvas = dynamic(
   () =>
@@ -420,6 +456,7 @@ export function VideoCanvasStage({
       setGraph(result.graph);
       setEditRevision(0);
       setSourceReady(true);
+      applyVideoCanvasUserEditSession(shownItem, "hydrate");
     });
     return () => {
       cancelled = true;
@@ -478,7 +515,8 @@ export function VideoCanvasStage({
                 };
               }
               if (id === "workflow.add-node") {
-                const applied = applyVideoCanvasCommand(
+                const applied = applyVideoCanvasPersonCommand(
+                  shownItem,
                   graph,
                   id,
                   params || {},
@@ -529,6 +567,7 @@ export function VideoCanvasStage({
                 graphDirtyRef.current = true;
                 setGraph(dispatched.graph);
                 setEditRevision((n) => n + 1);
+                applyVideoCanvasUserEditSession(shownItem, "person-command");
                 return {
                   ok: true,
                   message: "改动已写入画布。",
@@ -544,7 +583,7 @@ export function VideoCanvasStage({
           },
           collabReadOnly,
         ),
-      [chipsManifest.chips, collabReadOnly, editRevision, graph, sourceError, sourceReady],
+      [chipsManifest.chips, collabReadOnly, editRevision, graph, shownItem, sourceError, sourceReady],
     ),
   );
 
@@ -631,7 +670,8 @@ export function VideoCanvasStage({
                     data-testid="workflow-add-node"
                     disabled={!mayWrite || !sourceReady}
                     onClick={() => {
-                      const applied = applyVideoCanvasCommand(
+                      const applied = applyVideoCanvasPersonCommand(
+                        shownItem,
                         graph,
                         "workflow.add-node",
                         { label: "新节点" },
@@ -653,6 +693,7 @@ export function VideoCanvasStage({
                     graphDirtyRef.current = true;
                     setGraph(next);
                     setEditRevision((value) => value + 1);
+                    applyVideoCanvasUserEditSession(shownItem, "person-command");
                   }}
                 />
               </div>
@@ -687,7 +728,8 @@ export function VideoCanvasStage({
                     data-testid="workflow-add-node"
                     disabled={!mayWrite || !sourceReady}
                     onClick={() => {
-                      const applied = applyVideoCanvasCommand(
+                      const applied = applyVideoCanvasPersonCommand(
+                        shownItem,
                         graph,
                         "workflow.add-node",
                         { label: "新节点" },
@@ -735,6 +777,7 @@ export function VideoCanvasStage({
               graphDirtyRef.current = true;
               setGraph(restored);
               setEditRevision(value => value + 1);
+              applyVideoCanvasUserEditSession(shownItem, "hydrate");
               return true;
             },
           },

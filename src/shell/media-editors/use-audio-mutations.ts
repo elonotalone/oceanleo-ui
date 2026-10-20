@@ -25,6 +25,28 @@ import {
   MAX_AUDIO_FILE_BYTES,
   MAX_DECODED_AUDIO_BYTES,
 } from "./audio-workbench-utils";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
+
+export type AudioMutationUserEditOrigin = "local-mutation" | "remote-apply";
+
+/**
+ * Audio workbench person-write choke. A successful local operation records;
+ * remote-apply must not call this with `local-mutation`.
+ */
+export function applyAudioMutationUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: AudioMutationUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "local-mutation") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
+
+export const applyAudioUserEditSession = applyAudioMutationUserEditSession;
 
 interface AudioMutationOptions {
   item: LibraryItem;
@@ -191,6 +213,7 @@ export function useAudioMutations({
         setCanRedo(false);
         setDirty(true);
         setSavedUrl("");
+        applyAudioMutationUserEditSession(item, "local-mutation");
         try {
           await reloadWaveform(prepared.source);
         } catch (caught) {

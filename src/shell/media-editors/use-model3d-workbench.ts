@@ -29,8 +29,33 @@ import { useModel3DSave } from "./use-model3d-save";
 import { useModel3DSidecar } from "./use-model3d-sidecar";
 import { useModel3DSourceActions } from "./use-model3d-source-actions";
 import { useModel3DSourceLoader } from "./use-model3d-source-loader";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
 
 export type { Model3DWorkbenchState } from "./model3d-workbench-state";
+
+export type Model3dUserEditOrigin =
+  | "local-dirty"
+  | "bootstrap"
+  | "recovery-restore";
+
+/**
+ * 3D person-write choke. Local gizmo / sidecar `markDirty` records;
+ * bootstrap and draft restore do not.
+ */
+export function applyModel3dUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: Model3dUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "local-dirty") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
+
+export const applyModel3DUserEditSession = applyModel3dUserEditSession;
 
 export function useModel3DWorkbench(
   item: LibraryItem,
@@ -84,10 +109,17 @@ export function useModel3DWorkbench(
   const [view, setView] = useState<Model3DViewProject>(DEFAULT_MODEL3D_VIEW);
   const viewRef = useRef(view);
   viewRef.current = view;
+  const itemRef = useRef(item);
+  itemRef.current = item;
   const markDirty = useCallback(() => {
     revisionRef.current += 1;
     setDirty(true);
     setSavedUrl("");
+    applyModel3dUserEditSession(itemRef.current, "local-dirty");
+  }, []);
+  const setBootstrapDirty = useCallback((value: boolean) => {
+    setDirty(value);
+    applyModel3dUserEditSession(itemRef.current, "bootstrap");
   }, []);
 
   const sidecar = useModel3DSidecar({
@@ -154,7 +186,7 @@ export function useModel3DWorkbench(
     setProgress,
     setRuntimeState,
     setSavedUrl,
-    setDirty,
+    setDirty: setBootstrapDirty,
     setNotice,
     setError,
     setSourceProvenance,
@@ -290,10 +322,13 @@ export function useModel3DWorkbench(
     setSourceUrl(recovered.checkpointUrl);
     setReloadToken((current) => current + 1);
     applyView(recovered.view);
-    markDirty();
+    revisionRef.current += 1;
+    setDirty(true);
+    setSavedUrl("");
+    applyModel3dUserEditSession(itemRef.current, "recovery-restore");
     setNotice(tt("已恢复上次未同步的本地草稿"));
     return true;
-  }, [applyView, markDirty, sidecar.annotations, sourceUrl, tt]);
+  }, [applyView, sidecar.annotations, sourceUrl, tt]);
 
   /**
    * 多人同改：套用一份新的场景状态（检查点 + 操作日志 + 视图 + 批注）。

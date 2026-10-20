@@ -51,7 +51,35 @@ import {
   type ChartSaveResult,
 } from "./chart-persistence";
 import { renderChartPreviewBlob } from "./chart-render";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
 export type { ChartSaveResult } from "./chart-persistence";
+
+export type ChartUserEditOrigin =
+  | "mutate"
+  | "history"
+  | "remote-document"
+  | "applyRemoteDocument"
+  | "load"
+  | "recovery";
+
+/**
+ * Chart person-write choke. `mutate` and undo/redo history record;
+ * `applyRemoteDocument` does not.
+ */
+export function applyChartUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: ChartUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "mutate" && origin !== "history") {
+    return userMutationGeneration(key);
+  }
+  return recordUserMutation(key);
+}
 
 const EMPTY_DOCUMENT = normalizeChartDocument({
   title: { text: "新图表" },
@@ -300,6 +328,7 @@ export function useChartWorkbench(
         setSourceReady(true);
         // §3.2 `option-linked → ready`:全部序列可绑定到数据维度。
         setCarrierState("ready");
+        applyChartUserEditSession(artifactHeadRef.current, "load");
       })
       .catch((caught) => {
         if (!controller.signal.aborted) {
@@ -326,7 +355,10 @@ export function useChartWorkbench(
   ]);
 
   const mutate = useCallback(
-    (producer: (value: ChartDocumentV1) => ChartDocumentV1) => {
+    (
+      producer: (value: ChartDocumentV1) => ChartDocumentV1,
+      origin: ChartUserEditOrigin | string = "mutate",
+    ) => {
       if (readOnlyRef.current) return;
       if (!sourceReadyRef.current) {
         setError(tt("图表源尚未成功载入；已阻止修改示例回退内容"));
@@ -345,6 +377,7 @@ export function useChartWorkbench(
         setSaved(null);
         setNotice("");
         setError("");
+        applyChartUserEditSession(artifactHeadRef.current, origin);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "图表修改失败");
       }
@@ -369,6 +402,7 @@ export function useChartWorkbench(
     setSaved(null);
     setNotice("");
     setError("");
+    applyChartUserEditSession(artifactHeadRef.current, "history");
   }, [setCarrierState, updateDirty]);
 
   const applyRemoteDocument = useCallback(
@@ -389,6 +423,7 @@ export function useChartWorkbench(
       // 别人的改动让这份图表和库里最近一版不同：存档人要存
       updateDirty(true);
       setCarrierState("dirty");
+      applyChartUserEditSession(artifactHeadRef.current, "remote-document");
     },
     [setCarrierState, updateDirty],
   );
@@ -552,7 +587,7 @@ export function useChartWorkbench(
       }
       sourceReadyRef.current = true;
       setSourceReady(true);
-      mutate(() => recovered);
+      mutate(() => recovered, "recovery");
       setNotice(tt("已恢复上次未同步的本地草稿"));
       return true;
     },

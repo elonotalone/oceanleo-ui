@@ -87,6 +87,32 @@ import {
   submitBailianAsr,
   type AudioTranscriptSentence,
 } from "./audio-transcript";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
+
+export type AudioPlaylistUserEditOrigin =
+  | "local-mutation"
+  | "remote-apply"
+  | "load"
+  | "recovery-restore";
+
+/**
+ * Audio playlist person-write choke. Trim / delete / gain / hosted dirty
+ * record; recovery restore and load do not.
+ */
+export function applyAudioPlaylistUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: AudioPlaylistUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "local-mutation") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
+
+export const applyAudioUserEditSession = applyAudioPlaylistUserEditSession;
 
 function hostOriginNow(): string {
   if (typeof window === "undefined") return "https://oceanleo.com";
@@ -287,10 +313,14 @@ export function AudioPlaylistStage({
     });
   }, [applied.showHostedEditor, instanceId, item.title, ready, readonly]);
 
-  const bump = useCallback(() => {
-    setEditRevision(++editRevisionRef.current);
-    setDirty(true);
-  }, []);
+  const bump = useCallback(
+    (origin: AudioPlaylistUserEditOrigin | string = "local-mutation") => {
+      setEditRevision(++editRevisionRef.current);
+      setDirty(true);
+      applyAudioPlaylistUserEditSession(item, origin);
+    },
+    [item],
+  );
 
   const applyDeleteRange = useCallback(
     async (start: number, end: number) => {
@@ -791,7 +821,7 @@ export function AudioPlaylistStage({
                 bufferRef.current = decoded;
                 setSourceBlob(encodeWav(decoded));
                 setDuration(decoded.duration);
-                bump();
+                bump("recovery-restore");
                 return true;
               } catch {
                 return false;

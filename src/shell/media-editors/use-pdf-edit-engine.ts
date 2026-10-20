@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import { inspectPdf } from "./pdf-operations";
 import type { PdfMutationResult } from "./use-pdf-annotations";
@@ -11,6 +11,31 @@ import {
   pdfErrorMessage,
   type PdfSnapshot,
 } from "./pdf-workbench-utils";
+import {
+  recordUserMutation,
+  userEditItemKey,
+  userMutationGeneration,
+} from "../user-edit-session";
+
+export type PdfUserEditOrigin =
+  | "local-annotation"
+  | "silent-replace"
+  | "collab";
+
+/**
+ * PDF person-write choke. Local annotation / mutation and undo/redo of the
+ * person's history record; silent source replace and collab do not.
+ */
+export function applyPdfUserEditSession(
+  item: { key?: string; id?: string } | null | undefined,
+  origin: PdfUserEditOrigin | string,
+): number {
+  const key = userEditItemKey(item);
+  if (origin !== "local-annotation") return userMutationGeneration(key);
+  return recordUserMutation(key);
+}
+
+export const applyPdfEditEngineUserEditSession = applyPdfUserEditSession;
 
 export type PdfMutation = (bytes: Uint8Array) => Promise<PdfMutationResult>;
 
@@ -42,6 +67,7 @@ export function usePdfMutationRunner({
   pageCount,
   pageNumber,
   advance,
+  item,
   setCanRedo,
   setCanUndo,
   setDirty,
@@ -65,6 +91,7 @@ export function usePdfMutationRunner({
   pageCount: number;
   pageNumber: number;
   advance: PdfReaderMachine["advance"];
+  item?: { key?: string; id?: string } | null;
   setCanRedo: Dispatch<SetStateAction<boolean>>;
   setCanUndo: Dispatch<SetStateAction<boolean>>;
   setDirty: Dispatch<SetStateAction<boolean>>;
@@ -77,6 +104,8 @@ export function usePdfMutationRunner({
   setSavedUrl: Dispatch<SetStateAction<string>>;
   tt: UITranslate;
 }) {
+  const itemRef = useRef(item);
+  itemRef.current = item;
   return useCallback(
     async (
       mutation: PdfMutation,
@@ -123,6 +152,7 @@ export function usePdfMutationRunner({
         setCanRedo(false);
         setSavedUrl("");
         setNotice(result.notice);
+        applyPdfUserEditSession(itemRef.current, "local-annotation");
         advance("annotation-edited");
         setDocumentRevision((value) => value + 1);
         return result;
@@ -154,6 +184,7 @@ export function usePdfSnapshotRestore({
   redoRef,
   revisionRef,
   undoRef,
+  item,
   setCanRedo,
   setCanUndo,
   setDirty,
@@ -169,6 +200,7 @@ export function usePdfSnapshotRestore({
   redoRef: MutableRefObject<PdfSnapshot[]>;
   revisionRef: MutableRefObject<number>;
   undoRef: MutableRefObject<PdfSnapshot[]>;
+  item?: { key?: string; id?: string } | null;
   setCanRedo: Dispatch<SetStateAction<boolean>>;
   setCanUndo: Dispatch<SetStateAction<boolean>>;
   setDirty: Dispatch<SetStateAction<boolean>>;
@@ -179,6 +211,8 @@ export function usePdfSnapshotRestore({
   setPageNumber: Dispatch<SetStateAction<number>>;
   setSavedUrl: Dispatch<SetStateAction<string>>;
 }) {
+  const itemRef = useRef(item);
+  itemRef.current = item;
   return useCallback((snapshot: PdfSnapshot, noticeText: string) => {
     bytesRef.current = snapshot.bytes;
     revisionRef.current += 1;
@@ -192,6 +226,7 @@ export function usePdfSnapshotRestore({
     setCanUndo(undoRef.current.length > 0);
     setCanRedo(redoRef.current.length > 0);
     setDocumentRevision((value) => value + 1);
+    applyPdfUserEditSession(itemRef.current, "local-annotation");
     // Everything else in here is a ref or a `useState` setter, so `annotation`
     // is the only identity that can move.
   }, [annotation]);
