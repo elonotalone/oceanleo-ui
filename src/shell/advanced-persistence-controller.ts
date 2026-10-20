@@ -73,6 +73,36 @@ export interface AdvancedPersistenceSnapshot {
   running: boolean;
 }
 
+export interface AdvancedPersistenceObserveInput {
+  revision: AdvancedEditRevision;
+  dirty: boolean;
+  restoredDraft?: boolean;
+  /**
+   * True only after a person changed this open item. Omitted defaults to
+   * false: load/hydrate dirty+revision must not schedule autosave.
+   */
+  userEdited?: boolean;
+  /** Alternative to `userEdited: true` when the shared generation is > 0. */
+  userMutationGeneration?: number;
+  itemKey?: string;
+}
+
+/**
+ * Autosave may schedule only after an explicit user edit. `userEdited: false`
+ * wins even if a generation is also passed. Omitted `userEdited` is false
+ * unless `userMutationGeneration > 0`.
+ */
+export function persistenceObserveAllowsAutosave(
+  input: Pick<
+    AdvancedPersistenceObserveInput,
+    "userEdited" | "userMutationGeneration"
+  >,
+): boolean {
+  if (input.userEdited === false) return false;
+  if (input.userEdited === true) return true;
+  return (input.userMutationGeneration ?? 0) > 0;
+}
+
 export interface AdvancedPersistenceControllerOptions<Item> {
   draft?: { saveRevision: (revision: AdvancedEditRevision) => Promise<boolean | "full-save"> | boolean | "full-save" };
   draftDebounceMs?: number;
@@ -154,11 +184,7 @@ export class AdvancedPersistenceController<Item = unknown> {
       ((timer) => globalThis.clearTimeout(timer as ReturnType<typeof setTimeout>));
   }
 
-  observe(input: {
-    revision: AdvancedEditRevision;
-    dirty: boolean;
-    restoredDraft?: boolean;
-  }): void {
+  observe(input: AdvancedPersistenceObserveInput): void {
     if (this.draftController) return this.draftController.observe(input);
     if (this.disposed) return;
     const changed =
@@ -166,12 +192,13 @@ export class AdvancedPersistenceController<Item = unknown> {
     this.observed = true;
     this.latestRevision = input.revision;
     this.dirty = input.dirty;
+    const allowsAutosave = persistenceObserveAllowsAutosave(input);
 
     if (!input.dirty && this.acknowledgedRevision === undefined) {
       this.acknowledgedRevision = input.revision;
     }
 
-    if (input.dirty && changed) {
+    if (input.dirty && changed && allowsAutosave) {
       this.retryCount = 0;
       this.setState("saving");
       if (!this.drainPromise) this.schedule(this.debounceMs);
@@ -191,10 +218,13 @@ export class AdvancedPersistenceController<Item = unknown> {
     }
 
     if (
+      allowsAutosave &&
+      this.dirty &&
       !this.drainPromise &&
       !this.pendingItem &&
       !sameRevision(this.latestRevision, this.acknowledgedRevision)
     ) {
+      this.retryCount = 0;
       this.setState("saving");
       this.schedule(this.debounceMs);
     }

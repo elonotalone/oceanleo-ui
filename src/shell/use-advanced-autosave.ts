@@ -6,7 +6,11 @@ import { ADVANCED_DRAFT_META_KEY, advancedDraftIdentity, normalizeAdvancedDraftP
 import { bindAdvancedDraftGate } from "./advanced-draft-gates";
 import { DRAFT_OTHER_FACE } from "./advanced-draft-restore";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  subscribeUserEditSession,
+  userMutationGeneration,
+} from "./user-edit-session";
 import type { AdvancedEditorDraftAdapter, AdvancedEditorRecoveryAdapter } from "./advanced-editor-adapter";
 import { uploadAdvancedDraft, type AdvancedDraftPointer } from "./advanced-draft";
 import { mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
@@ -127,6 +131,13 @@ export function useAdvancedAutoSave({
 }) {
   const draft = explicitDraft ?? draftFromRecovery(recovery);
   const key = materialKey && draft ? `${materialKey}:${draft.schema}` : materialKey;
+  const userEditKey = materialKey || "";
+  const userMutationGen = useSyncExternalStore(
+    subscribeUserEditSession,
+    () => userMutationGeneration(userEditKey),
+    () => 0,
+  );
+  const userEdited = userMutationGen > 0;
   const restoration = useAdvancedDraftRestore({ item, schema: draft?.schema, recovery, revision });
   const blockedRef = useRef(restoration.paused);
   blockedRef.current = restoration.paused;
@@ -159,6 +170,10 @@ export function useAdvancedAutoSave({
   sessionRef.current = session;
   latestRevisionRef.current = revision;
   dirtyRef.current = dirty;
+  const userEditedRef = useRef(userEdited);
+  userEditedRef.current = userEdited;
+  const userMutationGenRef = useRef(userMutationGen);
+  userMutationGenRef.current = userMutationGen;
 
   const rememberFlush = useCallback((result: AdvancedFlushResult) => {
     const next = withErrorMessage(result);
@@ -271,6 +286,9 @@ export function useAdvancedAutoSave({
         revision: latestRevisionRef.current,
         dirty: dirtyRef.current,
         restoredDraft: draftEnabled && sameRevision(restoredRevision, latestRevisionRef.current),
+        userEdited: userEditedRef.current,
+        userMutationGeneration: userMutationGenRef.current,
+        itemKey: userEditKey || undefined,
       });
     }
     return () => {
@@ -288,15 +306,22 @@ export function useAdvancedAutoSave({
   }, [bindController, draftEnabled, key, makeController]);
 
   const wasDirtyRef = useRef(dirty);
+  const wasUserEditedRef = useRef(userEdited);
   useEffect(() => {
-    // 干净 → 脏 = 用户真的又改了；上一轮成功覆盖到的 revision 不再作数。
-    if (dirty && !wasDirtyRef.current) ledgerRef.current?.forgetCovered();
+    // Generation 0 → >0 is the person changing the work. Load also flips
+    // dirty, so dirty-alone must not clear the flush ledger.
+    if (userEdited && !wasUserEditedRef.current) ledgerRef.current?.forgetCovered();
+    if (dirty && !wasDirtyRef.current && userEdited) ledgerRef.current?.forgetCovered();
     wasDirtyRef.current = dirty;
+    wasUserEditedRef.current = userEdited;
     if (blockedRef.current) return;
     controllerRef.current?.observe({ revision, dirty,
       restoredDraft: draftEnabled && sameRevision(restoredRevision, revision),
+      userEdited,
+      userMutationGeneration: userMutationGen,
+      itemKey: userEditKey || undefined,
     });
-  }, [dirty, restoredRevision, draftEnabled, revision, restoration.paused]);
+  }, [dirty, restoredRevision, draftEnabled, revision, restoration.paused, userEdited, userMutationGen, userEditKey]);
 
   const flushLatest = useCallback(
     async (): Promise<AdvancedFlushResult> =>

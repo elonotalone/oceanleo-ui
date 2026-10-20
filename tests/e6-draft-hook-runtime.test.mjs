@@ -4,6 +4,10 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import {
+  recordUserMutation,
+  resetUserEditSession,
+} from "../src/shell/user-edit-session.ts";
 
 /* --------------------------------- jsdom --------------------------------- */
 
@@ -79,7 +83,8 @@ await compileModule("src/shell/advanced-draft.ts", transportStubs);
 const { useAdvancedAutoSave } = await import(await compileModule("src/shell/use-advanced-autosave.ts", transportStubs));
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { resolve, promise }; };
 function bed() {
-  const b = { revision: 0, uploads: [], records: [], versions: [], hooks: null, setInput: null, boundFlush: null };
+  resetUserEditSession();
+  const b = { revision: 0, itemKey: "artifact:e6-draft", uploads: [], records: [], versions: [], hooks: null, setInput: null, boundFlush: null };
   globalThis.__e6Upload = async (file, options) => {
     b.uploads.push(JSON.parse(await file.text()));
     assert.equal(options.registerAsset, false);
@@ -94,10 +99,13 @@ function bed() {
 function Probe({ b, session = b.session, draft = b.draft }) {
   const [input, setInput] = React.useState({ revision: 0, dirty: false });
   b.setInput = setInput; b.revision = input.revision;
-  b.hooks = useAdvancedAutoSave({ ...input, session, draft, flush: b.flush });
+  b.hooks = useAdvancedAutoSave({ ...input, key: b.itemKey, session, draft, flush: b.flush });
   return null;
 }
-async function edit(b, revision) { await act(async () => b.setInput({ revision, dirty: true })); }
+async function edit(b, revision) {
+  recordUserMutation(b.itemKey);
+  await act(async () => b.setInput({ revision, dirty: true }));
+}
 async function waitDraft() { await act(async () => { await sleep(500); }); }
 
 test('real hook only reports saved after upload AND session acknowledgement, then export binding forces a version', async () => {

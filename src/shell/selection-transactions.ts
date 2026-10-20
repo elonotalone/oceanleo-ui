@@ -5,6 +5,21 @@ import type {
   SelectionControlValue,
   SelectionRevision,
 } from "./selection-context";
+import {
+  activeUserEditItemKey,
+  recordUserMutation,
+} from "./user-edit-session";
+
+type SelectionCommandOrigin = string;
+
+function commandOrigin(
+  command: SelectionCommand,
+  explicit?: SelectionCommandOrigin,
+): string {
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  const stamped = (command as SelectionCommand & { origin?: unknown }).origin;
+  return typeof stamped === "string" && stamped.trim() ? stamped.trim() : "user";
+}
 
 interface ActiveSelectionGesture {
   id: string;
@@ -120,6 +135,7 @@ export class SelectionGestureTransaction {
 }
 
 export class SelectionCommandGate {
+  private itemKey?: string;
   private readonly transactions = new Map<string, SelectionTransactionIdentity>();
   private readonly settledTransactions = new Map<
     string,
@@ -135,6 +151,16 @@ export class SelectionCommandGate {
    */
   private lastContext: SelectionContext | null = null;
   private interactionHeld = false;
+
+  constructor(itemKey?: string) {
+    const key = String(itemKey || "").trim();
+    if (key) this.itemKey = key;
+  }
+
+  setItemKey(itemKey: string | null): void {
+    const key = String(itemKey || "").trim();
+    this.itemKey = key || undefined;
+  }
 
   /**
    * Narrow toolbar press/keyboard hold. Established accept/reconcile/cancelAll
@@ -162,7 +188,20 @@ export class SelectionCommandGate {
     return context ?? (this.interactionHeld ? this.lastContext : null);
   }
 
-  accept(command: SelectionCommand, context: SelectionContext | null): boolean {
+  accept(
+    command: SelectionCommand,
+    context: SelectionContext | null,
+    origin?: string,
+  ): boolean {
+    const accepted = this.evaluateAccept(command, context);
+    if (accepted) this.noteUserMutation(command, origin);
+    return accepted;
+  }
+
+  private evaluateAccept(
+    command: SelectionCommand,
+    context: SelectionContext | null,
+  ): boolean {
     if (this.seenRequests.has(command.requestId)) return false;
     const transactionId = command.transactionId;
     const transaction = transactionId
@@ -227,6 +266,16 @@ export class SelectionCommandGate {
     }
     this.remember(command.requestId);
     return true;
+  }
+
+  private noteUserMutation(
+    command: SelectionCommand,
+    origin?: string,
+  ): void {
+    if (command.phase === "cancel" || command.phase === "start") return;
+    if (commandOrigin(command, origin) !== "user") return;
+    const key = this.itemKey || activeUserEditItemKey();
+    if (key) recordUserMutation(key);
   }
 
   reconcile(context: SelectionContext | null): SelectionCommand[] {

@@ -45,6 +45,13 @@ import {
   withInlineEditorHistoryHead,
 } from "./advanced-session";
 import {
+  activeUserEditItemKey,
+  bindActiveUserEditItem,
+  resetUserMutation,
+  syncOpenUserEditItem,
+  userEditItemKey,
+} from "./user-edit-session";
+import {
   advancedFeatureForItem,
   advancedFeatureHref,
 } from "./advanced-features";
@@ -445,6 +452,14 @@ function AdvancedContentWorkbenchRuntime(
   const routeItem = useMemo(() => openingDraft
     ? { ...baseRouteItem, meta: { ...baseRouteItem.meta, [ADVANCED_DRAFT_META_KEY]: openingDraft } }
     : baseRouteItem, [baseRouteItem, openingDraft]);
+  const userEditKey = userEditItemKey(routeItem);
+  useLayoutEffect(() => {
+    syncOpenUserEditItem(userEditKey);
+    return () => {
+      resetUserMutation(userEditKey);
+      if (activeUserEditItemKey() === userEditKey) bindActiveUserEditItem(null);
+    };
+  }, [userEditKey]);
   const makeSnapshot = useCallback(
     (taskId?: string | null) =>
       advancedSessionSnapshot(

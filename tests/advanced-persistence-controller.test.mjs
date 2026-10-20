@@ -75,9 +75,9 @@ function controllerFixture(overrides = {}) {
 test("debounce is measured from the latest edit revision", async () => {
   const fixture = controllerFixture();
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   await fixture.clock.advance(1_000);
-  fixture.controller.observe({ revision: 2, dirty: true });
+  fixture.controller.observe({ revision: 2, dirty: true, userEdited: true });
   await fixture.clock.advance(1_599);
   assert.deepEqual(fixture.flushes, []);
   await fixture.clock.advance(1);
@@ -104,10 +104,10 @@ test("an edit during upload is serialized into the next save", async () => {
     },
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   const draining = fixture.controller.flushLatest();
   await Promise.resolve();
-  fixture.controller.observe({ revision: 2, dirty: true });
+  fixture.controller.observe({ revision: 2, dirty: true, userEdited: true });
   first.resolve({ ok: true, item: { id: "version-1" } });
   const result = await draining;
   assert.equal(result.ok, true);
@@ -124,7 +124,7 @@ test("a failed session CAS never reports the revision as saved", async () => {
     recordSavedItem: async () => false,
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   const result = await fixture.controller.flushLatest();
   assert.equal(result.ok, false);
   assert.equal(fixture.controller.snapshot().state, "error");
@@ -141,7 +141,7 @@ test("retry after a lost session response reuses the uploaded item", async () =>
     },
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   assert.equal((await fixture.controller.flushLatest()).ok, false);
   assert.equal((await fixture.controller.retry()).ok, true);
   assert.deepEqual(fixture.flushes, [1]);
@@ -158,7 +158,7 @@ test("concurrent flush gates share one serialized drain", async () => {
     },
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   const first = fixture.controller.flushLatest();
   const second = fixture.controller.flushLatest();
   assert.strictEqual(first, second);

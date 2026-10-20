@@ -4,6 +4,10 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import {
+  recordUserMutation,
+  resetUserEditSession,
+} from "../src/shell/user-edit-session.ts";
 
 /* --------------------------------- jsdom --------------------------------- */
 
@@ -84,7 +88,8 @@ const { useAdvancedRecovery } = await import(await compileModule("src/shell/use-
 const { flushAdvancedDraftGate } = await import(await compileModule("src/shell/advanced-draft-gates.ts", stubs));
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { resolve, promise }; };
 function bed() {
-  const b = { revision: 0, payload: { text: 'initial' }, uploads: [], records: [], versions: [], restores: [], deleted: [], local: null };
+  resetUserEditSession();
+  const b = { revision: 0, key: 'artifact:e9-draft', payload: { text: 'initial' }, uploads: [], records: [], versions: [], restores: [], deleted: [], local: null };
   b.item = { id: 'root-123', revisionId: 'base-1', versionId: 'base-1', title: 'Document', siteId: 'doc', meta: {} };
   b.upload = async (file) => { b.uploads.push(JSON.parse(await file.text())); return { ok: true, data: { file: { url: 'https://files.example/draft.json' } } }; };
   b.session = { sessionId: 'session-1', snapshot: () => ({ item: b.item }),
@@ -106,6 +111,7 @@ function Probe({ b }) {
 }
 async function edit(b, revision, payload = { text: 'edit-' + revision }) {
   b.payload = payload;
+  recordUserMutation(b.key);
   await act(async () => b.setInput({ revision, dirty: true }));
 }
 async function tick(ms = 500) { await act(async () => { await sleep(ms); }); }
@@ -190,7 +196,7 @@ for (const newer of [true, false]) test('local draft ' + (newer ? 'newer' : 'old
   const tree = await mount(React.createElement(Probe, { b }));
   try {
     await tick(); assert.equal(b.restores.length, 1); assert.equal(b.restores[0].payload.text, newer ? 'local' : 'server');
-    assert.equal(b.uploads.length, newer ? 1 : 0);
+    assert.equal(b.uploads.length, 0);
     if (!newer) assert.equal(b.deleted.length, 1);
   } finally { await tree.unmount(); }
 });
@@ -249,6 +255,6 @@ test('a pre-schema local recovery is still considered when it is newer than the 
   const b = bed(), p = server(b);
   b.local = { key: b.recovery.key, revision: 8, updatedAt: Date.parse(p.savedAt) + 1000, payload: { text: 'legacy-local-newer' } };
   const tree = await mount(React.createElement(Probe, { b }));
-  try { await tick(); assert.equal(b.restores[0].payload.text, 'legacy-local-newer'); assert.equal(b.uploads.length, 1); }
+  try { await tick(); assert.equal(b.restores[0].payload.text, 'legacy-local-newer'); assert.equal(b.uploads.length, 0); }
   finally { await tree.unmount(); }
 });

@@ -1,6 +1,8 @@
 import {
   persistenceFailureRetryable,
+  persistenceObserveAllowsAutosave,
   type AdvancedEditRevision as Revision,
+  type AdvancedPersistenceObserveInput,
   type AdvancedPersistenceControllerOptions as Options,
   type AdvancedPersistenceResult as Result,
   type AdvancedPersistenceSnapshot,
@@ -32,27 +34,32 @@ export class AdvancedDraftController<Item> {
 
   constructor(options: Options<Item>) { this.options = options; }
 
-  observe(input: { revision: Revision; dirty: boolean; restoredDraft?: boolean }): void {
+  observe(input: AdvancedPersistenceObserveInput): void {
     if (this.disposed) return;
     const changed = !same(this.latest, input.revision);
     this.latest = input.revision;
+    const allowsAutosave = persistenceObserveAllowsAutosave(input);
     if (input.restoredDraft && !same(this.restored, input.revision)) {
       this.restored = input.revision;
       this.acknowledged = input.revision;
       this.setState("saved");
-      this.scheduleVersion(this.options.versionIdleMs ?? 20_000);
+      // A restored draft is prior work, not a change in this visit. Publishing
+      // a version on idle would autosave without the person editing.
+      if (allowsAutosave) this.scheduleVersion(this.options.versionIdleMs ?? 20_000);
       return;
     }
     if (!input.dirty && this.acknowledged === undefined) {
       this.acknowledged = input.revision;
       this.version = input.revision;
     }
-    if (changed && !same(this.latest, this.acknowledged)) {
+    if (allowsAutosave && !same(this.latest, this.acknowledged)) {
       this.draftRetries = 0;
       this.versionRetries = 0;
       this.clear("version");
       this.setState("saving");
-      this.scheduleDraft(this.options.draftDebounceMs ?? 400);
+      if (changed || (this.draftTimer === undefined && !this.draftRunning)) {
+        this.scheduleDraft(this.options.draftDebounceMs ?? 400);
+      }
     }
   }
 

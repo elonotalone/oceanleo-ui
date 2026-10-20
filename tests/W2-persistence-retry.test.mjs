@@ -86,7 +86,7 @@ test("W2: integrity-failed is not auto-retried and the draft stays unacknowledge
     },
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   const result = await fixture.controller.flushLatest();
   assert.equal(result.ok, false);
   assert.equal(result.retryable, false);
@@ -112,7 +112,7 @@ test("W2: transient network failures still retry", async () => {
     },
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   assert.equal((await fixture.controller.flushLatest()).ok, false);
   assert.deepEqual(fixture.flushes, [1]);
   await fixture.clock.advance(1_000);
@@ -132,7 +132,7 @@ test("W2: a later explicit retry can reuse a committed item after session CAS", 
     },
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   assert.equal((await fixture.controller.flushLatest()).ok, false);
   assert.deepEqual(fixture.flushes, [1]);
   assert.equal((await fixture.controller.retry()).ok, true);
@@ -152,7 +152,7 @@ test("W2-r2: a committed artifact is not uploaded again when only the record ste
     },
   });
   fixture.controller.observe({ revision: 0, dirty: false });
-  fixture.controller.observe({ revision: 1, dirty: true });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
   assert.equal((await fixture.controller.flushLatest()).ok, false);
   assert.deepEqual(fixture.flushes, [1]);
   await fixture.clock.advance(1_000);

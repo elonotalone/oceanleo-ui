@@ -24,6 +24,10 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { useAdvancedAutoSave } from "../src/shell/use-advanced-autosave.ts";
+import {
+  recordUserMutation,
+  resetUserEditSession,
+} from "../src/shell/user-edit-session.ts";
 
 /* --------------------------------- jsdom --------------------------------- */
 
@@ -147,6 +151,7 @@ function Probe({ bed, initial }) {
   const [input, setInput] = React.useState(initial);
   bed.setInput = setInput;
   bed.hook = useAdvancedAutoSave({
+    key: "artifact:sheet",
     dirty: input.dirty,
     revision: input.revision,
     flush: bed.flush,
@@ -156,6 +161,7 @@ function Probe({ bed, initial }) {
 }
 
 async function drive(bed, tree, patch) {
+  if (patch.dirty) recordUserMutation("artifact:sheet");
   await act(async () => {
     bed.setInput((current) => ({ ...current, ...patch }));
   });
@@ -165,6 +171,7 @@ async function drive(bed, tree, patch) {
 /* --------------------------------- 判据 ---------------------------------- */
 
 test("5 次快速 dirty/revision 连打只产生 1 次 flush、1 次 recordSavedItem", async () => {
+  resetUserEditSession();
   const bed = createBed();
   const tree = await mount(
     React.createElement(Probe, { bed, initial: { dirty: false, revision: 0 } }),
@@ -191,6 +198,7 @@ test("5 次快速 dirty/revision 连打只产生 1 次 flush、1 次 recordSaved
 });
 
 test("在途 flush 期间再改两次：总 flush 2 次，第二次是最新 revision，不是 3 次", async () => {
+  resetUserEditSession();
   const bed = createBed({ flushDelayMs: 400 });
   const tree = await mount(
     React.createElement(Probe, { bed, initial: { dirty: false, revision: 0 } }),
@@ -223,6 +231,7 @@ test("在途 flush 期间再改两次：总 flush 2 次，第二次是最新 rev
 });
 
 test("同一 revision 并发调 flushLatest ×3 只发 1 次 flush，三方拿到同一份结果", async () => {
+  resetUserEditSession();
   const bed = createBed({ flushDelayMs: 300 });
   const tree = await mount(
     React.createElement(Probe, { bed, initial: { dirty: false, revision: 0 } }),
@@ -243,6 +252,7 @@ test("同一 revision 并发调 flushLatest ×3 只发 1 次 flush，三方拿�
 });
 
 test("同一 revision 在途时控制器被重建（dispose + new）不再补发第二份 flush", async () => {
+  resetUserEditSession();
   const bed = createBed({ flushDelayMs: 500 });
   const tree = await mount(
     React.createElement(Probe, { bed, initial: { dirty: true, revision: 11 } }),
