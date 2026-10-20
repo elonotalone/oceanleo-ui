@@ -1,6 +1,6 @@
 # V1 acceptance — editor repair 2026-10-20
 
-**Superseded by** `docs/editor-repair-20261020/acceptance-final.md` (V1-r2). Round-1 “13 plugins have load/mutate/save/reopen” was registry metadata, not a source→edit→save→reopen proof. Do not treat the matrix below as final.
+**Superseded by** `docs/editor-repair-20261020/acceptance-final.md` (V1-r3). Round-1 “13 plugins have load/mutate/save/reopen” was registry metadata, not a source→edit→save→reopen proof. Do not treat the matrix below as final.
 
 Independent behavioral acceptance. No product source edits. No browser, Playwright, screenshots, production, dep installs, or service changes.
 
