@@ -24,8 +24,15 @@
 - Focused test result after implementation: 4/4 passed with `run-light`. It covers exact handle ID/direction/ARIA/top position against all actual source nodes and edges, param visibility, hostile markup as text, title/position/trim edits and project JSON round-trip, stale/read-only/out-of-range negatives, no legacy video or Run adapter calls, native v2 video generation through a stub adapter, unchanged native v2 `in-media`/`out-media`, and legacy selection-toolbar filtering.
 - The test runner prints the existing `react-test-renderer` deprecation warning; no failures or unexpected provider calls occurred.
 
+## 2026-10-22 — actual view projection verification
+
+- W04 landed the `CanvasNodeViewData.legacySourceNode` field and copied the retained source in `projectToFlow` in its owned `project-model.ts` worktree change.
+- Updated the W06 test to leave `legacySourceNode` out of its `makeViewData` callback and instead obtain all rendered source nodes through the real `projectToFlow`; each projected view is asserted equal to its original retained node data. The edit and native-v2 controls also render through that projection helper.
+- Reran `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --experimental-strip-types --test tests/legacy-workflow-node.test.mjs`: 4/4 passed. An initial rerun failed because the renderer test used a different command environment instance; the test helper was corrected to share the caller's environment, then all four tests passed.
+- W06 source/test commits are `cf00d30` and `c71a559`; UI evidence commits are `411377a2` and the final W06 delivery record.
+
 ## Current boundary
 
-- W04 has confirmed but not yet committed the view-data source copy. The test directly supplies that view field while rendering; app wiring depends on W04's pending `use-canvas-workflow.ts` change and must be rechecked after W04 lands.
+- W04's source copy is in its owned `project-model.ts` worktree change and is verified by W06's focused actual projection test. W04 owns its commit and the associated save/dependency wiring.
 - No browser, production path, install, full typecheck, full suite, build, or deployment was run. Parent owns shared/video typechecks and integration acceptance.
 - The focused test reads the exact source fixture at `/tmp/w04-video-source.bin`; this is intentional for the current actual-source acceptance run and is recorded with its pinned SHA.
