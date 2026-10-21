@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { acceptMediaStreamIfCurrent, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, pcmSamplesPerFrame, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../src/lib/realtime-audio.ts";
+import { acceptMediaStreamIfCurrent, applyForCurrentSession, dispatchForCurrentCallSocket, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, pcmSamplesPerFrame, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../src/lib/realtime-audio.ts";
 import { appendFinalUserTranscript, upsertFinalAssistantTranscript } from "../src/lib/realtime-transcript.ts";
 import { callStatusLabel, formatConnectedTime, tokenUsageRows } from "../src/lib/call-billing-display.ts";
 import { createArtcClient } from "../src/shell/messages/meeting/artc-client.ts";
@@ -64,6 +64,39 @@ test("late socket close from attempt A cannot end attempt B", async () => {
   await pendingClose;
   assert.equal(endCallCount, 0);
   assert.equal(isCurrentCallSocket(2, attempt, activeSocket, activeSocket), true);
+});
+
+test("late queued websocket messages from attempt A cannot mutate attempt B", async () => {
+  let deliverMessageA;
+  let attempt = 1;
+  let socket = { name: "A" };
+  const accepted = [];
+  const pendingA = new Promise((resolve) => { deliverMessageA = resolve; }).then((data) => {
+    dispatchForCurrentCallSocket(1, attempt, socketA, socket, () => accepted.push(data));
+  });
+  const socketA = socket;
+  attempt = 2;
+  socket = { name: "B" };
+  deliverMessageA({ type: "session.closed" });
+  await pendingA;
+  assert.deepEqual(accepted, []);
+  assert.equal(dispatchForCurrentCallSocket(2, attempt, socket, socket, () => accepted.push("B event")), true);
+  assert.deepEqual(accepted, ["B event"]);
+});
+
+test("late bill response from session A cannot overwrite the receipt for session B", async () => {
+  let resolveA;
+  let currentSessionId = "A";
+  let displayed = null;
+  const billA = new Promise((resolve) => { resolveA = resolve; }).then((result) => {
+    applyForCurrentSession("A", currentSessionId, result, (value) => { displayed = value; });
+  });
+  currentSessionId = "B";
+  resolveA({ session_id: "A", net: 0.01 });
+  await billA;
+  assert.equal(displayed, null);
+  assert.equal(applyForCurrentSession("B", currentSessionId, { session_id: "B", net: 0.02 }, (value) => { displayed = value; }), true);
+  assert.deepEqual(displayed, { session_id: "B", net: 0.02 });
 });
 
 test("call claims are generation-owned and old release cannot unlock a remounted same-owner call", () => {

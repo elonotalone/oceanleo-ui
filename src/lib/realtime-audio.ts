@@ -45,8 +45,22 @@ export function isCurrentCallSocket<T>(attempt: number, currentAttempt: number, 
   return isCurrentCallAttempt(attempt, currentAttempt) && socket === currentSocket;
 }
 
+export function dispatchForCurrentCallSocket<T>(
+  attempt: number, currentAttempt: number, socket: T, currentSocket: T | null, dispatch: () => void,
+): boolean {
+  if (!isCurrentCallSocket(attempt, currentAttempt, socket, currentSocket)) return false;
+  dispatch();
+  return true;
+}
+
 export function shouldRefreshRealtimeBill(lastFetchAt: number, now = Date.now(), intervalMs = 15_000): boolean {
   return now - lastFetchAt >= intervalMs;
+}
+
+export function applyForCurrentSession<T>(sessionId: string, currentSessionId: string | null | undefined, value: T, apply: (value: T) => void): boolean {
+  if (!currentSessionId || sessionId !== currentSessionId) return false;
+  apply(value);
+  return true;
 }
 
 export async function acceptMediaStreamIfCurrent<T extends { getTracks(): Array<{ stop(): void }> }>(

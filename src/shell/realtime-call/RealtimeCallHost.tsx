@@ -5,7 +5,7 @@ import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
 import { formatMoney } from "../../lib/money";
 import { callStatusLabel, formatConnectedTime, tokenUsageRows } from "../../lib/call-billing-display";
-import { acceptMediaStreamIfCurrent, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../../lib/realtime-audio";
+import { acceptMediaStreamIfCurrent, applyForCurrentSession, dispatchForCurrentCallSocket, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../../lib/realtime-audio";
 import { appendFinalUserTranscript, upsertFinalAssistantTranscript } from "../../lib/realtime-transcript";
 import { claimCall, releaseCall } from "../messages/meeting/meeting-host-state";
 import {
@@ -87,8 +87,8 @@ export function RealtimeCallHost() {
   const mountedRef = useRef(false);
   const frameEdgeRef = useRef(512);
   const frameQualityRef = useRef(0.7);
-  const billFetchRef = useRef<Promise<LeoRealtimeBill | null> | null>(null);
-  const lastBillFetchRef = useRef(0);
+  const billFetchRef = useRef<{ sessionId: string; promise: Promise<LeoRealtimeBill | null> } | null>(null);
+  const lastBillFetchRef = useRef<{ sessionId: string; fetchedAt: number } | null>(null);
   mutedRef.current = muted;
   stateRef.current = state;
   sessionRef.current = session;
@@ -232,8 +232,12 @@ export function RealtimeCallHost() {
   }
 
   async function loadBill(id: string): Promise<LeoRealtimeBill | null> {
-    if (billFetchRef.current) return billFetchRef.current;
-    const fetchPromise = (async () => {
+    if (billFetchRef.current?.sessionId === id) return billFetchRef.current.promise;
+    const entry: { sessionId: string; promise: Promise<LeoRealtimeBill | null> } = {
+      sessionId: id,
+      promise: Promise.resolve(null),
+    };
+    entry.promise = Promise.resolve().then(async () => {
       const token = await accessToken();
       if (!token) return null;
       const base = (GATEWAY_BASE || "").replace(/\/+$/, "");
@@ -242,12 +246,12 @@ export function RealtimeCallHost() {
       });
       if (!response.ok) return null;
       const result = await response.json() as LeoRealtimeBill;
-      lastBillFetchRef.current = Date.now();
-      if (mountedRef.current) setBill(result);
+      lastBillFetchRef.current = { sessionId: id, fetchedAt: Date.now() };
+      if (mountedRef.current) applyForCurrentSession(id, sessionRef.current?.session_id, result, setBill);
       return result;
-    })().finally(() => { billFetchRef.current = null; });
-    billFetchRef.current = fetchPromise;
-    return fetchPromise;
+    }).finally(() => { if (billFetchRef.current === entry) billFetchRef.current = null; });
+    billFetchRef.current = entry;
+    return entry.promise;
   }
 
   async function refreshFinalBill(id: string): Promise<void> {
@@ -297,6 +301,10 @@ export function RealtimeCallHost() {
     if (claim === null) { setMessage("另一个通话正在进行，请先结束它再开始 Leo 实时通话。"); return; }
     callClaimRef.current = claim;
     const attempt = ++attemptRef.current;
+    sessionRef.current = null;
+    lastBillFetchRef.current = null;
+    setSession(null);
+    setBill(null);
     const abortController = new AbortController();
     abortRef.current = abortController;
     responseTextRef.current = "";
@@ -328,8 +336,12 @@ export function RealtimeCallHost() {
         return;
       }
       socketRef.current = socket;
-      socket.onmessage = (event) => acceptServerText(String(event.data));
-      for (const pending of takeRealtimeMessages(socket)) acceptServerText(pending);
+      socket.onmessage = (event) => {
+        dispatchForCurrentCallSocket(attempt, attemptRef.current, socket, socketRef.current, () => acceptServerText(String(event.data)));
+      };
+      for (const pending of takeRealtimeMessages(socket)) {
+        dispatchForCurrentCallSocket(attempt, attemptRef.current, socket, socketRef.current, () => acceptServerText(pending));
+      }
       socket.onclose = () => {
         if (!isCurrentCallSocket(attempt, attemptRef.current, socket, socketRef.current)) return;
         if (stateRef.current === "starting" || stateRef.current === "connected") {
@@ -408,7 +420,8 @@ export function RealtimeCallHost() {
     if (state !== "connected" || !session?.session_id) return;
     const sessionId = session.session_id;
     const timer = window.setInterval(() => {
-      if (shouldRefreshRealtimeBill(lastBillFetchRef.current)) void loadBill(sessionId).catch(() => undefined);
+      const last = lastBillFetchRef.current;
+      if (last?.sessionId !== sessionId || shouldRefreshRealtimeBill(last.fetchedAt)) void loadBill(sessionId).catch(() => undefined);
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [state, session?.session_id]);
