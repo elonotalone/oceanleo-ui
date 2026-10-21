@@ -8,7 +8,7 @@ Updated: 2026-10-22
 - Write scope is limited to V01 evidence files in this work-log directory.
 - No browser, UI automation, production request, deployment, install, or full suite.
 - Parent owns shared/typecheck and named-test reruns plus isolated dev API receipt checks; V01 avoids duplicating those commands.
-- UI worktree is on `main`, `HEAD=dfeec117`; W04 state/journal remain untracked and are not V01-owned. Video repository is on `main`, `HEAD=ad654c7`. Review is pinned to delivered commits below; parent owns any further shared tests/typecheck.
+- UI worktree is on `main`, `HEAD=411377a2`; W04 state/journal and current W04 implementation files remain untracked and are not V01-owned. Video repository is on `main`, `HEAD=ad654c7`. Parent owns any further shared tests/typecheck.
 
 ## Delivered set under review
 
@@ -16,6 +16,7 @@ Updated: 2026-10-22
 - W02 shared UI: `7d3945a2`, `c5e2ffc7`, `dfeec117`.
 - W03 shared UI: `54c4b6fd`, `9b938cd3`; parent integration/evidence: `4e29e328`.
 - W03 design repository: `3150851c8eddb2f5f7d8552ad6f0859ae33f6139`.
+- W06 legacy-node follow-up scope: `a87cb309`; documentation-only W06 status: `411377a2`.
 - Freeze marker: `35190d79`.
 
 ## Current findings
@@ -23,6 +24,7 @@ Updated: 2026-10-22
 - Required bootstrap passed. Read the live safety kernel, workstation guidance, OceanLeo/parallel-rollout/architecture-debug packs, code map, editor shell and adopted-core plans, and the `typed-artifact-editing` / `plugin-unified-chrome` navigation slices.
 - Parent reports W03 synthetic and actual-source checks and named tests complete. V01 is independently reviewing changed source, compatibility fidelity, failure controls, and evidence limits.
 - No V01 verdict is ready yet. W02's reproduced cross-item host/native save writes are closed by the committed scope fix and positive-path replay. W04 active node/port/parameter/asset projection and durable save receipt integration remain open.
+- Parent's backend video-dependency hardening is under read-only V01 review in `/root/projects/oceanleo` (local uncommitted patch at review time). The three targeted regressions for runtime/capability URLs, pinned locator rejection, and conflicting MIME aliasing pass; this is not a commit-pinned final integration result.
 
 ## Independent checks completed so far
 
@@ -32,6 +34,7 @@ Updated: 2026-10-22
 - W03: parent source/revision/closure evidence and named test results were reviewed. An independent `run-light` inline normalization/field comparison against the exact pinned `/tmp/library-repair-20261021/design_canvas/source.bin` found 51/51 layers (rect20/ellipse5/text26), 0 field mismatches for ID/order, geometry, z, effective opacity, shape kind/fill/stroke/radius, and text/text color/font family/size/weight; `sourceCarrier` compared equal. Source has 0 assets and 0 decorative flags, text family `Noto Sans CJK SC`. Thus actual asset resolution, accessibility decoration, align/lineHeight overrides, and browser/pixel/font availability are not established by this file. The synthetic handshake tests directly assert only some of these mapped style fields; the remaining adapter mappings are source-reviewed.
 - W05 commit `2b4252be` and delivery `88726358` were reviewed read-only. Parent reports 58/58 focused grid cases. Source mapping covers all generated runnable L1/L2 controls and shared-control SSR asserts non-empty SVGs for cell/range toolbar controls; the unknown-icon fallback has a negative control. Residual quality note: sort asc/desc share the same list glyph and number-format variants share font-size; labels remain exposed, so the blank-glyph issue is fixed but glyph-only semantics are not fully distinct.
 - W04 load commit `ad654c7` was reviewed read-only; the save-path delivery remains active and whole-task acceptance is not ready. Against the exact actual source `/tmp/w04-video-source.bin` (SHA `a9cf73ccd3ac858cdac83e09d7b616e8ebabfd715b65563dfb5c28c72fcd8b31`), an independent direct `migrateV1Workflow` projection returns 9 nodes/9 edges/3 assets, but active semantic fidelity is not established by sidecar round-trip alone. All three mapped assets have no `url` or `previewUrl`; only `legacySourceAsset` is present. Active node properties promote generic kinds/positions/asset IDs, title text and durations, while actual trim start/end, branch mode, title style/timing, overlay logo/opacity, mix gain/fades, and output width/height/fps/format remain only under `legacySourceNode`. Edge handle strings (`main`, `titles`, `base`, `logo`, `video`, `music`) are copied unchanged, while shipped `LeoNode.Ports` emits fixed `in-media` / `out-media` handles. Parent independently verified the three exact private media dependencies by owner-bound dev API (HTTP 200, MIME/size/hash matched); byte availability is not yet proof those references reach active core assets. W04 must close or explicitly bound these gaps and complete durable save receipt wiring.
+- Parent backend stable-reference review: current `backend/app/typed_artifact_wire.py` fails closed on `blob:`/`data:` URL schemes case-insensitively, percent-decoded gateway-access paths, Supabase `storage/v1/object/sign` and `storage/v1/render/image/sign` URLs, and any nonempty `url`/`previewUrl` accompanying a pinned `sourceDependency`. It also rejects same-digest conflicting media evidence before a second storage read. Targeted runtime tests passed via `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- python3 -m unittest tests.test_editor_video_dependency_revision.VideoDependencyRevisionTest.test_preview_blob_data_and_capability_urls_cannot_be_persisted tests.test_editor_video_dependency_revision.VideoDependencyRevisionTest.test_pinned_references_reject_even_otherwise_durable_runtime_urls tests.test_editor_video_dependency_revision.VideoDependencyRevisionTest.test_same_digest_cannot_overwrite_an_already_verified_media_type` (3/3, 0.046s). The tests mock the owner repository/storage hasher and cover the previously reported cases at the staging-function boundary; they are not a live-storage or browser-auth end-to-end check. The patch/test were uncommitted in the backend worktree during this check, so parent must pin the eventual delivered commit.
 
 ## Next
 
