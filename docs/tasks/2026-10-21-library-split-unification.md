@@ -16,3 +16,6 @@ Own cross-owner arbitration, verification/typecheck, architecture/navigation doc
 
 ## Save owner follow-up: crash reproduction
 After save delivery, own independent crash diagnostic with real ResultCanvas/MyLibrary/WorkspaceLibrary mounted under JSDOM at task/history query item URLs. Initial write boundary new regression test only; negotiate any fix in existing files. Do not duplicate conversation owner's current streaming investigation. Exact origin remains unknown; generic boundary stack alone is not proof. Parent scan found direct render-phase setters only in guarded advancedRootItemId sync, useMaterialShelfSettle scope string sync, and AnchoredPopover boolean sync. Check unstable URL/item/model hooks and failure transport. Respect I/O guard pressure; no browser.
+
+## Conversation owner containment follow-up
+Own a minimal right-pane error boundary module integrated in AgentChat plus runtime regression. Existing advanced editor boundaries do not cover ResultCanvas/Library hooks before the editor mounts. A right-pane render failure must retain left conversation/composer and permit local right-pane retry, without resetting task or page. This bounds the observed full-page failure independently of the still-unproven historical render-loop origin. Do not claim containment alone proves that origin fixed.
