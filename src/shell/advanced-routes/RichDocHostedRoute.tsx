@@ -221,7 +221,14 @@ export function RichDocHostedRoute({
   const itemKey = handoffItemKey(item);
   const activeItemKeyRef = useRef(itemKey);
   const scopeItemKeyRef = useRef(itemKey);
-  if (activeItemKeyRef.current !== itemKey) activeItemKeyRef.current = itemKey;
+  const captureScopeRef = useRef(0);
+  const captureSequenceRef = useRef(0);
+  if (activeItemKeyRef.current !== itemKey) {
+    activeItemKeyRef.current = itemKey;
+    // The iframe instance survives item switches; generation/revision may restart at 1.
+    // Scope every host request so a late prior-document response cannot alias a new capture.
+    captureScopeRef.current += 1;
+  }
   const sourceRef = useRef<unknown>(null);
   const savedGenerationRef = useRef<number | null>(null);
   const dirtyRef = useRef(false);
@@ -533,7 +540,7 @@ export function RichDocHostedRoute({
         revisionRef.current = message.revision;
         setDirty(true);
         setEditRevision(generationRef.current);
-        const recoveryId = `rd-cache-${instanceId}-${generationRef.current}`;
+        const recoveryId = `rd-cache-${instanceId}-${captureScopeRef.current}-${generationRef.current}-${++captureSequenceRef.current}`;
         for (const [captureId, capture] of capturesRef.current) {
           if (capture.purpose !== "save") capturesRef.current.delete(captureId);
         }
@@ -859,7 +866,9 @@ export function RichDocHostedRoute({
           payload = cachedRef.current.payload;
           saveId = cachedRef.current.recoveryId;
         } else {
-          const gate = openHostedSaveGate();
+          const gate = openHostedSaveGate({
+            saveId: `save-${instanceId}-${captureScopeRef.current}-${generation}-${++captureSequenceRef.current}`,
+          });
           saveId = gate.saveId;
           saveGateRef.current = gate;
           capturesRef.current.set(gate.saveId, {
@@ -976,7 +985,7 @@ export function RichDocHostedRoute({
     const cached = cachedRef.current;
     if (cached?.generation === revision) return { revision, payload: cached.payload };
     return draftChannelRef.current!.capture(revision, () => {
-      const recoveryId = `rd-draft-${instanceId}-${generationRef.current}-${Date.now().toString(36)}`;
+      const recoveryId = `rd-draft-${instanceId}-${captureScopeRef.current}-${generationRef.current}-${++captureSequenceRef.current}`;
       capturesRef.current.set(recoveryId, {
         generation: generationRef.current,
         revision: revisionRef.current,

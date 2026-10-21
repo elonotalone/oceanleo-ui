@@ -253,6 +253,44 @@ test('RichDoc cancels a pending save capture on document switch without persisti
   } finally { host.unmount(); }
 });
 
+test('RichDoc ignores a late cache snapshot from the prior document when generation resets', async () => {
+  const saveCalls = [];
+  const host = await hostReady(async ({ item, payload }) => {
+    saveCalls.push({ itemKey: item.key, payload });
+    return saveReceipt(payload, 'rev-b2');
+  });
+  const payloadA = { type: 'doc', text: 'A-payload' };
+  const payloadB = { type: 'doc', text: 'B-payload' };
+  try {
+    await edit(host, 1);
+    const captureA = host.posted.findLast(m => m.type === 'recovery-capture' && m.recoveryId.startsWith('rd-cache-'));
+    assert.ok(captureA);
+
+    host.setItem({ key: 'document-B', id: 'document-B', title: 'Document B' });
+    host.render();
+    await new Promise(resolve => setImmediate(resolve));
+    host.message({ type: 'ready' });
+    host.render();
+    await Promise.resolve();
+    await edit(host, 1);
+    const captureB = host.posted.findLast(m => m.type === 'recovery-capture' && m.recoveryId.startsWith('rd-cache-'));
+    assert.ok(captureB);
+    assert.notEqual(captureA.recoveryId, captureB.recoveryId, 'recovery IDs must distinguish document scopes even when instance and revision are reused');
+
+    // Delayed A data uses the same editor revision as B but must not satisfy B's cache request.
+    host.message({ type: 'recovery-snapshot', ok: true, recoveryId: captureA.recoveryId, snapshot: { revision: 1, payload: payloadA } });
+    const saving = host.adapter().persistence.flush();
+    const saveCapture = host.posted.findLast(m => m.type === 'recovery-capture' && m.recoveryId.startsWith('save-'));
+    assert.ok(saveCapture, 'A late cache response must not make B look already captured');
+    host.message({ type: 'recovery-snapshot', ok: true, recoveryId: saveCapture.recoveryId, snapshot: { revision: 1, payload: payloadB } });
+
+    const result = await saving;
+    assert.equal(result.ok, true, result.error);
+    assert.deepEqual(saveCalls.map(call => call.itemKey), ['document-B']);
+    assert.deepEqual(JSON.parse(JSON.stringify(saveCalls.map(call => call.payload))), [payloadB]);
+  } finally { host.unmount(); }
+});
+
 test('RichDoc unmount cancels the gate and never reports an unconfirmed write', async () => {
   const savedPayloads = [];
   const host = await hostReady(async ({ payload }) => {
