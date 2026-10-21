@@ -37,3 +37,11 @@ Baseline command: `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.
 - The initial one-task loader composition exposed Node's CommonJS `react-dom/index.js` fallback error. With the narrowly scoped helper fallback above, the same canonical command passed 4/4; no assertion was disabled. The two initial chrome failures were brittle static-source expectations (a 160-character window and pre-toggle optional-chain spelling); those checks now express the marker/class structure and current focus call, and all 40 tests pass.
 
 Parent owns the shared typecheck and dev-slot freshness checks; no browser or full suite is authorized.
+
+## Acceptance follow-up — source isolation and editability no-op
+
+- Fixture contamination was traced to a shared `activeProjection` and a revision mock that ignored artifact identity and always returned r2. The one-task acceptance mock now stores immutable heads by artifact ID, applies `If-Match`/`expected_revision_id` CAS, and assigns distinct sequential revisions per accepted write. Independent reopen/switch cases reset only their intended canonical fixture and wait for background saves before restoring it.
+- The standalone untouched-open acceptance now strictly requires zero uploads and zero revisions before the first user action. The accepted marker edit/save is also constrained to exactly one unique r1→r2 revision, with the precise editor-project URL/bytes containing the marker and the saved Task/history head pointing at that receipt.
+- The zero-write assertion initially exposed a real cause: Tiptap `Editor.setEditable` emitted `update` with `docChanged=false`, no steps or metadata; `use-rich-doc-editor` counted it as a user edit. Parent owns the product correction. This process-only trace was removed from the test after attribution.
+- Current focused verification: complete canonical one-task acceptance **8/8** and four Library/chrome semantic acceptance files **15/15**. The Mammoth loader now follows its declared browser-entry map in the Node-only source loader, preserving the actual DOCX parser without browser launch or parser mock.
+- W01 follow-up test commits: `f6d5e38c` (loader and semantic chrome tests), `3ef9f69a` (strict per-artifact save fixture and full one-task acceptance). Parent retains ownership of shared typecheck and integration checks.
