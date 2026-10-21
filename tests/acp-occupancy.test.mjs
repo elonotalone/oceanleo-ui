@@ -78,11 +78,12 @@ test("像素图标只在确认 working 的 busy 列表里", () => {
   assert.equal(occupancyFresh({ linkUp: true, occupancyAt: 1, now: 2 }), true);
 });
 
-test("后台还在等、之后会自己醒：左侧走动，输入框仍是空闲", () => {
+test("后台等待仍可识别，但不会让左侧图标走动或占用输入框", () => {
   assert.deepEqual(confirmedWaitingSessions(["parked"], true), ["parked"]);
   assert.deepEqual(confirmedWaitingSessions(["parked"], false), []);
-  assert.equal(sessionListStatus("parked", [], [], [], ["parked"]), "running");
-  assert.equal(sessionListStatus("idle", [], [], [], ["parked"]), null);
+  assert.equal(sessionListStatus("parked", [], [], []), null);
+  assert.equal(sessionListStatus("parked", ["parked"], [], []), "running");
+  assert.equal(sessionListStatus("idle", [], [], []), null);
   assert.equal(composerOccupancy({
     linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "parked", now: 11,
   }), "idle");

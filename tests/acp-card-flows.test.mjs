@@ -555,7 +555,7 @@ test("Past sessions 进行中用像素图标，空闲进程不亮；后台结束
       busy: [],
       waiting: ["two"],
     });
-    assert.ok(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status="running"]'));
+    assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-pixel-run]'), null);
     assert.equal(view.$('[data-oceanleo-acp-session="three"] [data-oceanleo-acp-session-status]'), null);
     await server({
       t: "sessions",
@@ -577,6 +577,54 @@ test("Past sessions 进行中用像素图标，空闲进程不亮；后台结束
     assert.match(unread.className, /bg-emerald-500/);
     assert.doesNotMatch(unread.className, /animate-pulse/);
     assert.equal(view.$('[data-oceanleo-acp-session="two"] [data-oceanleo-acp-session-status]'), null);
+  } finally { view.cleanup(); }
+});
+
+test("会话图标只跟随服务端 busy：等待、旧后台记录和切换会话都不能让它复活", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  const pixel = (id) => view.$(`[data-oceanleo-acp-session="${id}"] [data-oceanleo-acp-pixel-run]`);
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [
+      { id: "one", title: "Background", cwd: "/root", updated_at: "" },
+      { id: "two", title: "Sibling", cwd: "/root", updated_at: "" },
+    ], busy: ["one"], waiting: ["two"], running: ["one", "two"] });
+    assert.ok(pixel("one"));
+    assert.equal(pixel("two"), null);
+
+    await click(view.$('[data-oceanleo-acp-session="one"]'));
+    await server({ t: "transcript", program: "cursor", acp_session: "one", live: false, frames: [
+      { t: "user_message", program: "cursor", acp_session: "one", text: "start" },
+      { t: "turn_start", program: "cursor", acp_session: "one" },
+      { t: "tool", program: "cursor", acp_session: "one", id: "background", kind: "execute",
+        title: "Watch", status: "completed", content: [
+          { type: "content", text: "Command running in background with ID: btmkyd2nl" },
+        ], locations: [] },
+      { t: "done", program: "cursor", acp_session: "one", stop: "end_turn" },
+    ] });
+    await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", replayed: 4 });
+    await server({ t: "occupancy", program: "cursor", busy: [], waiting: ["one", "two"] });
+    assert.equal(pixel("one"), null, "done plus a waiting background job is idle");
+    assert.equal(pixel("two"), null, "a waiting sibling is idle");
+
+    await click(view.$('[data-oceanleo-acp-session="two"]'));
+    await server({ t: "session_opened", program: "cursor", acp_session: "two", cwd: "/root", replayed: 0 });
+    assert.equal(pixel("one"), null, "switching away does not revive old background text");
+    await server({ t: "occupancy", program: "cursor", busy: ["two"], waiting: ["one"] });
+    assert.equal(pixel("one"), null);
+    assert.ok(pixel("two"), "a busy sibling keeps its own animation");
+
+    await server({ t: "occupancy", program: "cursor", busy: [], waiting: ["one", "two"] });
+    assert.equal(pixel("one"), null);
+    assert.equal(pixel("two"), null);
+    await click(view.$('[data-oceanleo-acp-session="one"]'));
+    await server({ t: "session_opened", program: "cursor", acp_session: "one", cwd: "/root", replayed: 0 });
+    assert.equal(pixel("one"), null, "switching back does not revive old background text");
+
+    await server({ t: "occupancy", program: "cursor", busy: ["one"], waiting: ["two"] });
+    assert.ok(pixel("one"), "a new confirmed busy reading reactivates the icon");
+    assert.equal(pixel("two"), null);
+    await server({ t: "done", program: "cursor", acp_session: "one", stop: "end_turn" });
+    assert.equal(pixel("one"), null, "done immediately clears the icon");
   } finally { view.cleanup(); }
 });
 
