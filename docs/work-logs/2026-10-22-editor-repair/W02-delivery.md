@@ -13,7 +13,7 @@ Date: 2026-10-22
 
 - `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/e9-hosted-draft-runtime.test.mjs` — 14/14 pass.
 - V01 independent native stale/current response repro — pass: A's old instance caused no save result/persistence; B's current native request returned `ok:true`, and only B's content was persisted under B.
-- `oceanleo-security-gate.sh` after the final route change — UI/embed/origin checks pass; backend UC-5 RLS/quota and live security-definer grant-surface assertions remain red as on baseline. Final gate result is pending.
+- `oceanleo-security-gate.sh` after the final route change — 23 pass, 2 fail, 1 skip. OceanLeo UI sandbox/origin and embed checks passed; the same backend UC-5 RLS/quota and live security-definer grant-surface assertions remain red as on baseline. The `oceanleo.app` apex-cookie check was skipped because DNS resolution failed.
 - Parent's isolated durable storage acceptance (commit `ff0541dd`) — native DOCX and manifest reread with expected text/bold 28px, new same-root head, same-request idempotency, distinct stale expected-head 409. It used private machine HTTP create/download plus an in-process revision write with verified owner identity; this is not browser-auth end-to-end. The original screenshot's cause remains unconfirmed because the historical API log shows no save request reached the gateway.
 
 ## Remaining limits
