@@ -23,17 +23,12 @@ import {
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
 import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
-import {
-  libraryItemIdentityKey,
-  requestOpenLibraryItemInEditor,
-} from "./inline-editor-mine-activate";
 import { InlineEditorMinePanel } from "./inline-editor-mine-panel";
 import {
   hasPendingOrFailed,
-  leaveAdvancedWorkbench,
-  shouldWarnBeforeUnload,
   subscribe as subscribeBackgroundSaves,
 } from "./advanced-background-saver";
+import { useInlineWorkbenchLeave } from "./use-inline-workbench-leave";
 import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
 import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
 import {
@@ -149,9 +144,6 @@ export function InlineAdvancedWorkbenchShell({
     () => <div ref={setHeaderHost} className="w-full min-w-0" />,
     [],
   );
-  const closingRef = useRef(false);
-  const [leavingMountedEditor, setLeavingMountedEditor] = useState(false);
-  const handledCloseRequestRef = useRef(adapter.closeRequestRevision || 0);
   const dirtyRecordedRef = useRef(false);
   // 隐藏的 <input type=file>：素材库抽屉第一项「从本地上传」与画布拖放共用同一条上传路径。
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -318,45 +310,13 @@ export function InlineAdvancedWorkbenchShell({
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
 
-  const requestLeave = useCallback((finish: () => void) => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    const requiresMountedFlush = adapter.persistence?.requiresMountedFlush === true;
-    if (requiresMountedFlush) setLeavingMountedEditor(true);
-    const completion = leaveAdvancedWorkbench({
-      autoSaveEnabled: hostAutoSaveEnabled,
-      handOff: () => autoSave.handOffToBackground?.(),
-      closeDetail,
-      onClose: finish,
-      ...(requiresMountedFlush ? { flushMounted: autoSave.flushLatest } : {}),
-    });
-    if (completion) {
-      void completion.finally(() => {
-        closingRef.current = false;
-        setLeavingMountedEditor(false);
-      });
-    } else {
-      closingRef.current = false;
-    }
-  }, [
-    adapter.persistence?.requiresMountedFlush,
-    autoSave.flushLatest,
-    autoSave.handOffToBackground,
-    closeDetail,
-    hostAutoSaveEnabled,
-  ]);
-  const requestClose = useCallback(() => requestLeave(onClose), [onClose, requestLeave]);
-  const requestPaneClose = useCallback(
-    () => requestLeave(rightPaneSlot?.closeRightPane || onClose),
-    [onClose, requestLeave, rightPaneSlot],
-  );
-
-  useEffect(() => {
-    const revision = adapter.closeRequestRevision || 0;
-    if (revision <= handledCloseRequestRef.current) return;
-    handledCloseRequestRef.current = revision;
-    requestClose();
-  }, [adapter.closeRequestRevision, requestClose]);
+  const { leavingMountedEditor, requestClose, requestPaneClose, activateMineItem } = useInlineWorkbenchLeave({
+    item, onClose, onPaneClose: rightPaneSlot?.closeRightPane, closeDetail, autoSave,
+    autoSaveEnabled: hostAutoSaveEnabled,
+    requiresMountedFlush: adapter.persistence?.requiresMountedFlush,
+    closeRequestRevision: adapter.closeRequestRevision,
+    editorUnconfirmed: hostAutoSaveEnabled ? editorDirty || autoSave.state !== "saved" : editorDirty,
+  });
 
   useEffect(
     () => () => clearWorkspaceDetail?.(ownerIdRef.current),
@@ -386,40 +346,7 @@ export function InlineAdvancedWorkbenchShell({
     return () => advancedSession.registerFlush(null);
   }, [advancedSession, flushForExplicitSave]);
 
-  const editorUnconfirmed = hostAutoSaveEnabled
-    ? editorDirty || autoSave.state !== "saved"
-    : editorDirty;
-  const warnBeforeUnload = shouldWarnBeforeUnload(editorUnconfirmed);
   void backgroundBusy;
-  useEffect(() => {
-    if (!warnBeforeUnload) return;
-    const guard = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", guard);
-    return () => window.removeEventListener("beforeunload", guard);
-  }, [warnBeforeUnload]);
-
-  const activateMineItem = useCallback(
-    (next: LibraryItem) => {
-      const currentId = libraryItemIdentityKey(item);
-      const nextId = libraryItemIdentityKey(next);
-      if (currentId && nextId && currentId === nextId) {
-        closeDetail();
-        return;
-      }
-      // Same leave/save guard as Back: hand off autosave, then typed open path.
-      // Do not call the parent onClose — MyLibrary is still mounted and consumes
-      // the edit intent in place.
-      requestLeave(() => requestOpenLibraryItemInEditor(next));
-    },
-    [
-      closeDetail,
-      item,
-      requestLeave,
-    ],
-  );
   const openLibraryPanel = useCallback(
     (id: "materials" | "mine") => {
       closeDetail();

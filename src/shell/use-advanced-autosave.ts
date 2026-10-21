@@ -130,6 +130,15 @@ class RevisionFlushLedger {
   }
 }
 
+interface ControllerSourceLifetime { key: string | undefined; current: boolean }
+
+/** Background callbacks keep the refs of their source, not the next render. */
+function useSourceRef<T>(lifetime: ControllerSourceLifetime, initial: T) {
+  const slot = useRef({ lifetime, ref: { current: initial } });
+  if (slot.current.lifetime !== lifetime) slot.current = { lifetime, ref: { current: initial } };
+  return slot.current.ref;
+}
+
 export function useAdvancedAutoSave({
   key: materialKey,
   dirty,
@@ -170,6 +179,12 @@ export function useAdvancedAutoSave({
         itemMeta.version_id,
       ])}`
     : key;
+  const sourceLifetimeRef = useRef<ControllerSourceLifetime>({ key: controllerKey, current: true });
+  if (sourceLifetimeRef.current.key !== controllerKey) {
+    sourceLifetimeRef.current.current = false;
+    sourceLifetimeRef.current = { key: controllerKey, current: true };
+  }
+  const sourceLifetime = sourceLifetimeRef.current;
   const userEditKey = materialKey || "";
   const userMutationGen = useSyncExternalStore(
     subscribeUserEditSession,
@@ -199,21 +214,21 @@ export function useAdvancedAutoSave({
     subscribedLocalPromotion.token > recoveryPromotionBaselineRef.current.token
     ? subscribedLocalPromotion
     : undefined;
-  const registeredLocalPromotionRef = useRef<AdvancedLocalRecoveryPromotion | undefined>(subscribedLocalPromotion);
+  const registeredLocalPromotionRef = useSourceRef<AdvancedLocalRecoveryPromotion | undefined>(sourceLifetime, subscribedLocalPromotion);
   registeredLocalPromotionRef.current = subscribedLocalPromotion;
   const recoveredLocalDraft = Boolean(
     dirty && localPromotion && Object.is(localPromotion.revision, revision),
   );
   const restoration = useAdvancedDraftRestore({ item, schema: draft?.schema, recovery, revision });
-  const blockedRef = useRef(restoration.paused);
+  const blockedRef = useSourceRef(sourceLifetime, restoration.paused);
   blockedRef.current = restoration.paused;
   const restoredRevision = restoration.restoredRevision ?? draft?.restoredRevision;
-  const restoredPointerRef = useRef(restoration.restoredPointer);
+  const restoredPointerRef = useSourceRef(sourceLifetime, restoration.restoredPointer);
   restoredPointerRef.current = restoration.restoredPointer;
-  const openingPointerRef = useRef<AdvancedDraftPointer | null>(null);
+  const openingPointerRef = useSourceRef<AdvancedDraftPointer | null>(sourceLifetime, null);
   openingPointerRef.current = item ? normalizeAdvancedDraftPointer(item.meta[ADVANCED_DRAFT_META_KEY], advancedDraftIdentity(item)) : null;
-  const lastVersionItemRef = useRef<LibraryItem | undefined>(undefined);
-  const draftRef = useRef(draft);
+  const lastVersionItemRef = useSourceRef<LibraryItem | undefined>(sourceLifetime, undefined);
+  const draftRef = useSourceRef(sourceLifetime, draft);
   draftRef.current = draft;
   const controllerRef = useRef<AdvancedPersistenceController<LibraryItem> | null>(null);
   // A session can be created by the first dirty edit. Let that already-running
@@ -221,42 +236,67 @@ export function useAdvancedAutoSave({
   const currentController = controllerRef.current;
   const draftEnabled = Boolean(draft && session?.sessionId && session.recordDraft &&
     (!currentController || currentController.hasDraftTier() || !currentController.hasUnconfirmedWork()));
-  const uploadedDraftRef = useRef<{ revision: AdvancedEditRevision; sessionId: string; pointer: AdvancedDraftPointer } | null>(null);
-  const flushRef = useRef(flush);
-  const sessionRef = useRef(session);
-  const versionSessionsRef = useRef(new Map<AdvancedEditRevision, AdvancedSessionActions | null>());
+  const uploadedDraftRef = useSourceRef<{ revision: AdvancedEditRevision; sessionId: string; pointer: AdvancedDraftPointer } | null>(sourceLifetime, null);
+  const flushRef = useSourceRef(sourceLifetime, flush);
+  const sessionRef = useSourceRef(sourceLifetime, session);
+  const versionSessionsRef = useSourceRef(sourceLifetime, new Map<AdvancedEditRevision, AdvancedSessionActions | null>());
   // Pin the exact emergency-restore marker at the beginning of a full save.
   // A later restore with the same stable-root key must not be cleared by this
   // operation's receipt, even if its editor revision has reset.
-  const versionRecoveryReceiptsRef = useRef(
+  const versionRecoveryReceiptsRef = useSourceRef(sourceLifetime,
     new Map<AdvancedEditRevision, {
       promotion?: AdvancedLocalRecoveryPromotion;
       startedAt: number;
     }>(),
   );
   const mountedRef = useRef(true);
-  const latestRevisionRef = useRef(revision);
-  const dirtyRef = useRef(dirty);
-  const ledgerRef = useRef<RevisionFlushLedger | null>(null);
+  const latestRevisionRef = useSourceRef(sourceLifetime, revision);
+  const ledgerRef = useSourceRef<RevisionFlushLedger | null>(sourceLifetime, null);
   if (!ledgerRef.current) ledgerRef.current = new RevisionFlushLedger();
   const [state, setState] = useState<AdvancedAutoSaveState>("saved");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   flushRef.current = flush;
   sessionRef.current = session;
   latestRevisionRef.current = revision;
-  dirtyRef.current = dirty;
-  const userEditedRef = useRef(userEdited);
-  userEditedRef.current = userEdited;
-  const userMutationGenRef = useRef(userMutationGen);
-  userMutationGenRef.current = userMutationGen;
+  const observationRef = useRef({ controllerKey, input: {
+    revision, dirty, restoredDraft: draftEnabled && sameRevision(restoredRevision, revision),
+    userEdited, userMutationGeneration: userMutationGen, recoveredLocalDraft,
+    itemKey: userEditKey || undefined,
+  } });
+  observationRef.current = { controllerKey, input: {
+    revision, dirty, restoredDraft: draftEnabled && sameRevision(restoredRevision, revision),
+    userEdited, userMutationGeneration: userMutationGen, recoveredLocalDraft,
+    itemKey: userEditKey || undefined,
+  } };
+  const activeControllerKeyRef = useRef(controllerKey);
+  const wasDirtyRef = useSourceRef(sourceLifetime, dirty);
+  const wasUserEditedRef = useSourceRef(sourceLifetime, userEdited);
+
+  const observeLatestController = useCallback(() => {
+    const latest = observationRef.current;
+    // Before the lifetime effect has switched sources, the old controller must
+    // never observe or flush the newly rendered document's revision/closure.
+    if (!sourceLifetime.current || blockedRef.current || activeControllerKeyRef.current !== latest.controllerKey) return null;
+    const controller = controllerRef.current;
+    if (!controller) return null;
+    const input = latest.input;
+    // Use this same boundary for passive autosave and explicit close/send gates.
+    // A layout/event gate can run before React's passive observe effect.
+    if (input.userEdited && !wasUserEditedRef.current) ledgerRef.current?.forgetCovered();
+    if (input.dirty && !wasDirtyRef.current && input.userEdited) ledgerRef.current?.forgetCovered();
+    wasDirtyRef.current = input.dirty;
+    wasUserEditedRef.current = input.userEdited;
+    controller.observe(input);
+    return controller;
+  }, [sourceLifetime]);
 
   const rememberFlush = useCallback((result: AdvancedFlushResult) => {
     const next = withErrorMessage(result);
-    if (mountedRef.current) {
+    if (mountedRef.current && sourceLifetime.current) {
       setErrorMessage(next.ok ? undefined : next.errorMessage);
     }
     return next;
-  }, []);
+  }, [sourceLifetime]);
 
   const saveDraft = useCallback(async (targetRevision: AdvancedEditRevision): Promise<boolean | "full-save"> => {
     if (blockedRef.current) return false;
@@ -297,7 +337,7 @@ export function useAdvancedAutoSave({
       });
     }
     return recorded;
-  }, []);
+  }, [sourceLifetime]);
 
   const bindController = useCallback(
     (controller: AdvancedPersistenceController<LibraryItem>) => {
@@ -371,13 +411,13 @@ export function useAdvancedAutoSave({
           return recorded;
         },
         onStateChange: (next) => {
-          if (!mountedRef.current) return;
+          if (!mountedRef.current || !sourceLifetime.current) return;
           setState(next);
           if (next === "saved") setErrorMessage(undefined);
         },
       });
     },
-    [draftEnabled, rememberFlush, saveDraft],
+    [draftEnabled, rememberFlush, saveDraft, sourceLifetime],
   );
 
   const makeController = useCallback(() => {
@@ -405,17 +445,10 @@ export function useAdvancedAutoSave({
     }
     const controller = controllerRef.current;
     if (controller) {
+      activeControllerKeyRef.current = controllerKey;
       bindController(controller);
       setState(controller.snapshot().state);
-      if (!blockedRef.current) controller.observe({
-        revision: latestRevisionRef.current,
-        dirty: dirtyRef.current,
-        restoredDraft: draftEnabled && sameRevision(restoredRevision, latestRevisionRef.current),
-        userEdited: userEditedRef.current,
-        userMutationGeneration: userMutationGenRef.current,
-        recoveredLocalDraft,
-        itemKey: userEditKey || undefined,
-      });
+      observeLatestController();
     }
     return () => {
       mountedRef.current = false;
@@ -429,55 +462,47 @@ export function useAdvancedAutoSave({
       }
       active.dispose();
     };
-  }, [bindController, controllerKey, draftEnabled, makeController]);
+  }, [bindController, controllerKey, draftEnabled, makeController, observeLatestController]);
 
-  const wasDirtyRef = useRef(dirty);
-  const wasUserEditedRef = useRef(userEdited);
   useEffect(() => {
-    // Generation 0 → >0 is the person changing the work. Load also flips
-    // dirty, so dirty-alone must not clear the flush ledger.
-    if (userEdited && !wasUserEditedRef.current) ledgerRef.current?.forgetCovered();
-    if (dirty && !wasDirtyRef.current && userEdited) ledgerRef.current?.forgetCovered();
-    wasDirtyRef.current = dirty;
-    wasUserEditedRef.current = userEdited;
-    if (blockedRef.current) return;
-    controllerRef.current?.observe({ revision, dirty,
-      restoredDraft: draftEnabled && sameRevision(restoredRevision, revision),
-      userEdited,
-      userMutationGeneration: userMutationGen,
-      recoveredLocalDraft,
-      itemKey: userEditKey || undefined,
-    });
-  }, [dirty, restoredRevision, draftEnabled, revision, restoration.paused, userEdited, userMutationGen, userEditKey, recoveredLocalDraft]);
+    observeLatestController();
+  }, [dirty, restoredRevision, draftEnabled, revision, restoration.paused, userEdited, userMutationGen, userEditKey, recoveredLocalDraft, observeLatestController]);
+
+  const drainLatest = useCallback(async (retrying = false): Promise<AdvancedFlushResult> => {
+    for (;;) {
+      const controller = observeLatestController();
+      if (!controller) return { ok: false, error: "自动保存控制器不可用" };
+      const captured = observationRef.current;
+      const result = await (retrying ? controller.retry() : controller.flushLatest());
+      if (!result.ok) return result;
+      // A newer render can land while the previous receipt is completing but
+      // before its passive effect. Do not let that receipt close over new work.
+      if (observeLatestController() !== controller || captured.controllerKey !== observationRef.current.controllerKey) {
+        return { ok: false, error: "编辑文档已切换，请重试保存" };
+      }
+      if (sameRevision(captured.input.revision, observationRef.current.input.revision)) return result;
+      retrying = false;
+    }
+  }, [observeLatestController]);
 
   const flushLatest = useCallback(
     async (): Promise<AdvancedFlushResult> =>
       blockedRef.current ? { ok: false, error: restoration.error || DRAFT_READ_FAILED } :
-      rememberFlush(
-        (await controllerRef.current?.flushLatest()) ?? {
-          ok: false,
-          error: "自动保存控制器不可用",
-        },
-      ),
-    [rememberFlush, restoration.error],
+      rememberFlush(await drainLatest()),
+    [drainLatest, rememberFlush, restoration.error],
   );
   const retry = useCallback(
     async (): Promise<AdvancedFlushResult> =>
       blockedRef.current ? restoration.retry() :
-      rememberFlush(
-        (await controllerRef.current?.retry()) ?? {
-          ok: false,
-          error: "自动保存控制器不可用",
-        },
-      ),
-    [rememberFlush, restoration.retry],
+      rememberFlush(await drainLatest(true)),
+    [drainLatest, rememberFlush, restoration.retry],
   );
   const handOffToBackground = useCallback(() => {
-    const controller = controllerRef.current;
+    const controller = observeLatestController();
     if (!controllerKey || !controller || !controller.hasUnconfirmedWork() || blockedRef.current) return;
     controller.markHandedOff();
     handOff(controllerKey, controller);
-  }, [controllerKey]);
+  }, [controllerKey, observeLatestController]);
 
   useEffect(() => {
     if (!draftEnabled || !draft?.bindFlush) return;
@@ -509,10 +534,10 @@ export function useAdvancedAutoSave({
 
   useEffect(() => {
     if (!draftEnabled) return;
-    const onPageHide = () => { if (!blockedRef.current) void controllerRef.current?.flushLatest(); };
+    const onPageHide = () => { if (!blockedRef.current) void flushLatest(); };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
-  }, [draftEnabled]);
+  }, [draftEnabled, flushLatest]);
 
   return { state: restoration.error ? "error" as const : restoration.paused ? "saving" as const : state,
     errorMessage: restoration.error || errorMessage, flushLatest, retry, handOffToBackground };

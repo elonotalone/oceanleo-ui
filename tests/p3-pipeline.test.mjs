@@ -228,12 +228,14 @@ test("flush 失败时云朵进入 error，切模式返回值仍是 true", async 
 
 test("壳：默认后台离开，只有 mounted iframe 等待 flush；confirmation 只接重试", () => {
   const shell = readFileSync(SHELL_SRC, "utf8");
-  assert.match(shell, /leaveAdvancedWorkbench\(/);
+  const leave = readFileSync(new URL("../src/shell/use-inline-workbench-leave.ts", import.meta.url), "utf8");
+  assert.match(shell, /useInlineWorkbenchLeave\(/);
+  assert.match(leave, /leaveAdvancedWorkbench\(/);
   assert.doesNotMatch(shell, /onSaveNow\s*=/);
   assert.doesNotMatch(shell, /const saveNow\s*=/);
-  const closeFn = shell.slice(
-    shell.indexOf("const requestLeave"),
-    shell.indexOf("useEffect(() => {\n    const revision = adapter.closeRequestRevision"),
+  const closeFn = leave.slice(
+    leave.indexOf("const requestLeave"),
+    leave.indexOf("const requestClose"),
   );
   assert.match(closeFn, /leaveAdvancedWorkbench/);
   assert.doesNotMatch(closeFn, /confirmation/);

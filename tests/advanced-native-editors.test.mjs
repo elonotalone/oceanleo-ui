@@ -138,6 +138,7 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   // use-inline-advanced-panels；保存与恢复仍在壳里。
   const shell =
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
+    source("../src/shell/use-inline-workbench-leave.ts") +
     source("../src/shell/use-inline-advanced-panels.tsx");
   const leaveNotice =
     source("../src/shell/advanced-background-save-notice.ts") +

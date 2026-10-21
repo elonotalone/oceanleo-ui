@@ -24,6 +24,8 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { useAdvancedAutoSave } from "../src/shell/use-advanced-autosave.ts";
+import { AdvancedPersistenceController } from "../src/shell/advanced-persistence-controller.ts";
+import { resetBackgroundSaverForTests } from "../src/shell/advanced-background-saver.ts";
 import {
   recordUserMutation,
   resetUserEditSession,
@@ -283,3 +285,90 @@ test("同一 revision 在途时控制器被重建（dispose + new）不再补发
   await tree2.unmount();
   await tree.unmount();
 });
+
+test("layout close observes the newly rendered revision before passive effects and drains both edits", async () => {
+  resetUserEditSession();
+  const key = "artifact:layout-close-isolated";
+  const bed = createBed();
+  const pending = [];
+  const observed = [];
+  const originalObserve = AdvancedPersistenceController.prototype.observe;
+  AdvancedPersistenceController.prototype.observe = function (input) {
+    observed.push(input.revision);
+    return originalObserve.call(this, input);
+  };
+  bed.flush = () => {
+    bed.flushCalls.push({ revision: bed.renderedRevision });
+    return new Promise((resolve) => pending.push(resolve));
+  };
+  function LayoutCloseProbe() {
+    const [input, setInput] = React.useState({ dirty: false, revision: 0, close: false });
+    bed.setInput = setInput;
+    bed.renderedRevision = input.revision;
+    bed.hook = useAdvancedAutoSave({ key, dirty: input.dirty,
+      revision: input.revision, flush: bed.flush, session: bed.session });
+    React.useLayoutEffect(() => {
+      if (!input.close) return;
+      bed.closePromise = bed.hook.flushLatest().then((result) => { bed.closed = result.ok; return result; });
+      // This is intentionally read before this commit's passive observe effect.
+      bed.observedAtClose = observed.at(-1);
+    }, [input.close]);
+    return null;
+  }
+  let tree;
+  const mutate = async (patch) => act(async () => {
+    recordUserMutation(key);
+    bed.setInput((current) => ({ ...current, ...patch }));
+  });
+  try {
+    tree = await mount(React.createElement(LayoutCloseProbe));
+    await mutate({ dirty: true, revision: 1 });
+    await act(async () => { void bed.hook.flushLatest(); });
+    assert.equal(pending.length, 1);
+    await mutate({ dirty: true, revision: 2, close: true });
+    assert.equal(bed.observedAtClose, 2, "close must synchronously observe revision 2, not wait for passive effects");
+    await act(async () => pending.shift()({ ok: true }));
+    assert.deepEqual(bed.flushCalls.map((call) => call.revision), [1, 2]);
+    assert.notEqual(bed.closed, true, "the first receipt cannot close over the second edit");
+    await act(async () => pending.shift()({ ok: true }));
+    assert.equal((await bed.closePromise).ok, true);
+    assert.equal(bed.closed, true);
+  } finally {
+    AdvancedPersistenceController.prototype.observe = originalObserve;
+    while (pending.length) pending.shift()({ ok: false, retryable: false });
+    if (tree) await tree.unmount();
+    resetUserEditSession();
+  }
+});
+
+for (const startSaved of [true, false]) {
+  test(startSaved ? "source B cannot reuse source A's covered numeric revision" : "scheduled A handoff keeps A's serializer and never flushes clean B", async () => {
+    resetUserEditSession(); resetBackgroundSaverForTests();
+    const keyA = `artifact:source-lifetime-${startSaved}-A`;
+    const keyB = `artifact:source-lifetime-${startSaved}-B`;
+    const bed = { calls: [] };
+    const flushA = async () => { bed.calls.push("A"); return { ok: true }; };
+    const flushB = async () => { bed.calls.push("B"); return { ok: true }; };
+    function SourceProbe() {
+      const [input, setInput] = React.useState({ key: keyA, revision: 0, dirty: false });
+      bed.setInput = setInput;
+      bed.hook = useAdvancedAutoSave({ ...input, session: null, flush: input.key === keyA ? flushA : flushB });
+      return null;
+    }
+    const tree = await mount(React.createElement(SourceProbe));
+    try {
+      await act(async () => { recordUserMutation(keyA); bed.setInput({ key: keyA, revision: 1, dirty: true }); });
+      if (startSaved) await act(async () => { assert.equal((await bed.hook.flushLatest()).ok, true); });
+      else await act(async () => { await sleep(30); });
+      await act(async () => {
+        if (startSaved) recordUserMutation(keyB);
+        bed.setInput({ key: keyB, revision: startSaved ? 1 : 0, dirty: startSaved });
+      });
+      if (startSaved) await act(async () => { assert.equal((await bed.hook.flushLatest()).ok, true); });
+      else await act(async () => { await sleep(50); });
+      assert.deepEqual(bed.calls, startSaved ? ["A", "B"] : ["A"]);
+    } finally {
+      await tree.unmount(); resetBackgroundSaverForTests(); resetUserEditSession();
+    }
+  });
+}

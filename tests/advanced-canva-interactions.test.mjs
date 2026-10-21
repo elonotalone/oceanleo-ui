@@ -122,8 +122,9 @@ test("advanced editors autosave projects and reserve header actions for delivery
     /<CloudAutoSaveIcon[\s\S]{0,200}\{autoSaveState ===/,
   );
   assert.match(autosave, /AdvancedPersistenceController/);
-  assert.match(autosave, /controllerRef\.current\?\.observe/);
-  assert.match(autosave, /controllerRef\.current\?\.flushLatest/);
+  assert.match(autosave, /const controller = observeLatestController\(\)/);
+  assert.match(autosave, /controller\.observe\(input\)/);
+  assert.match(autosave, /controller\.flushLatest\(\)/);
   assert.doesNotMatch(autosave, /pendingItemRef|runningRef|queuedRef/);
   assert.match(imagePersistence, /persistImageProject/);
   assert.match(imagePersistence, /saveProjectWorkingHead/);
