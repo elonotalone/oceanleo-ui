@@ -40,6 +40,8 @@ export interface AdvancedEditorPersistenceAdapter {
    * explicit Apply before Save; host autosave must not consume Apply.
    */
   autoSave?: boolean;
+  /** Hosted frames must stay mounted until a durable flush receipt arrives. */
+  requiresMountedFlush?: boolean;
   /** Serializes and persists the revision current when this function starts. */
   flush: () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
   recovery?: AdvancedEditorRecoveryAdapter;

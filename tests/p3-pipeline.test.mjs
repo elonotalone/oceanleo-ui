@@ -226,18 +226,20 @@ test("flush 失败时云朵进入 error，切模式返回值仍是 true", async 
   }
 });
 
-test("壳：关闭立刻 leaveAdvancedWorkbench；confirmation 只接重试；不再传 onSaveNow", () => {
+test("壳：默认后台离开，只有 mounted iframe 等待 flush；confirmation 只接重试", () => {
   const shell = readFileSync(SHELL_SRC, "utf8");
   assert.match(shell, /leaveAdvancedWorkbench\(/);
   assert.doesNotMatch(shell, /onSaveNow\s*=/);
   assert.doesNotMatch(shell, /const saveNow\s*=/);
   const closeFn = shell.slice(
-    shell.indexOf("const requestClose"),
+    shell.indexOf("const requestLeave"),
     shell.indexOf("useEffect(() => {\n    const revision = adapter.closeRequestRevision"),
   );
   assert.match(closeFn, /leaveAdvancedWorkbench/);
   assert.doesNotMatch(closeFn, /confirmation/);
-  assert.doesNotMatch(closeFn, /flushForExplicitSave|flushLatest|await /);
+  assert.doesNotMatch(closeFn, /flushForExplicitSave/);
+  assert.match(closeFn, /requiresMountedFlush/);
+  assert.match(closeFn, /flushMounted: autoSave\.flushLatest/);
   assert.match(
     shell,
     /onRetrySave=\{\(\) => void \(adapter\.persistence\?\.confirmation \? flushForExplicitSave\(\) : autoSave\.retry\(\)\)\}/,

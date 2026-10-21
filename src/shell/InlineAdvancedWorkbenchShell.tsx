@@ -150,6 +150,7 @@ export function InlineAdvancedWorkbenchShell({
     [],
   );
   const closingRef = useRef(false);
+  const [leavingMountedEditor, setLeavingMountedEditor] = useState(false);
   const handledCloseRequestRef = useRef(adapter.closeRequestRevision || 0);
   const dirtyRecordedRef = useRef(false);
   // 隐藏的 <input type=file>：素材库抽屉第一项「从本地上传」与画布拖放共用同一条上传路径。
@@ -317,24 +318,38 @@ export function InlineAdvancedWorkbenchShell({
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
 
-  const requestClose = useCallback(() => {
+  const requestLeave = useCallback((finish: () => void) => {
     if (closingRef.current) return;
     closingRef.current = true;
-    // 不能在这里 dispose 保存控制器：排队里的修订会丢。先交给模块级后台
-    // 保存器，再同步关编辑器。
-    leaveAdvancedWorkbench({
+    const requiresMountedFlush = adapter.persistence?.requiresMountedFlush === true;
+    if (requiresMountedFlush) setLeavingMountedEditor(true);
+    const completion = leaveAdvancedWorkbench({
       autoSaveEnabled: hostAutoSaveEnabled,
       handOff: () => autoSave.handOffToBackground?.(),
       closeDetail,
-      onClose,
+      onClose: finish,
+      ...(requiresMountedFlush ? { flushMounted: autoSave.flushLatest } : {}),
     });
-    closingRef.current = false;
+    if (completion) {
+      void completion.finally(() => {
+        closingRef.current = false;
+        setLeavingMountedEditor(false);
+      });
+    } else {
+      closingRef.current = false;
+    }
   }, [
+    adapter.persistence?.requiresMountedFlush,
+    autoSave.flushLatest,
     autoSave.handOffToBackground,
     closeDetail,
     hostAutoSaveEnabled,
-    onClose,
   ]);
+  const requestClose = useCallback(() => requestLeave(onClose), [onClose, requestLeave]);
+  const requestPaneClose = useCallback(
+    () => requestLeave(rightPaneSlot?.closeRightPane || onClose),
+    [onClose, requestLeave, rightPaneSlot],
+  );
 
   useEffect(() => {
     const revision = adapter.closeRequestRevision || 0;
@@ -360,8 +375,8 @@ export function InlineAdvancedWorkbenchShell({
     });
   }, [advancedSession, editorDirty]);
 
-  // confirmation 只影响显式重试（云朵「保存失败，点击重试」），不影响关闭。
-  // 关闭永远走 leaveAdvancedWorkbench，不等待 flush。
+  // confirmation 只影响显式重试。Hosted iframe 的 mounted-flush 关闭闸单独声明；
+  // 其余编辑器仍同步交给后台保存器，不因云朵状态阻塞离开。
   const flushForExplicitSave = adapter.persistence?.confirmation
     ? adapter.persistence.flush
     : autoSave.flushLatest;
@@ -397,18 +412,12 @@ export function InlineAdvancedWorkbenchShell({
       // Same leave/save guard as Back: hand off autosave, then typed open path.
       // Do not call the parent onClose — MyLibrary is still mounted and consumes
       // the edit intent in place.
-      leaveAdvancedWorkbench({
-        autoSaveEnabled: hostAutoSaveEnabled,
-        handOff: () => autoSave.handOffToBackground?.(),
-        closeDetail,
-        onClose: () => requestOpenLibraryItemInEditor(next),
-      });
+      requestLeave(() => requestOpenLibraryItemInEditor(next));
     },
     [
-      autoSave.handOffToBackground,
       closeDetail,
-      hostAutoSaveEnabled,
       item,
+      requestLeave,
     ],
   );
   const openLibraryPanel = useCallback(
@@ -469,7 +478,7 @@ export function InlineAdvancedWorkbenchShell({
         showLibrary={siteId !== "plugin-gallery"}
         showBack={siteId !== "plugin-gallery"}
         onBack={requestClose}
-        onClose={rightPaneSlot?.closeRightPane || requestClose}
+        onClose={requestPaneClose}
         onOpenDrawer={openDrawer}
         onCloseDrawer={closeDetail}
         onOpenTransientPanel={openTransientPanel}
@@ -496,6 +505,7 @@ export function InlineAdvancedWorkbenchShell({
       openTransientPanel,
       performUpload,
       requestClose,
+      requestPaneClose,
       rightPaneSlot,
       siteId,
     ],
@@ -620,6 +630,9 @@ export function InlineAdvancedWorkbenchShell({
           )}
           <div
             ref={stageRef}
+            inert={leavingMountedEditor || undefined}
+            aria-busy={leavingMountedEditor || undefined}
+            data-editor-leave-pending={leavingMountedEditor || undefined}
             className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
           >
             <div

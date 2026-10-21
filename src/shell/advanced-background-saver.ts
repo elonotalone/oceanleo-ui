@@ -188,7 +188,17 @@ export function leaveAdvancedWorkbench(input: {
   handOff: () => void;
   closeDetail: () => void;
   onClose: () => void;
-}): void {
+  /** Opt-in only for editors whose serializer lives in the mounted iframe. */
+  flushMounted?: () => Promise<{ ok: boolean }>;
+}): void | Promise<boolean> {
+  if (input.flushMounted) {
+    return input.flushMounted().then((result) => {
+      if (!result.ok) return false;
+      input.closeDetail();
+      input.onClose();
+      return true;
+    }).catch(() => false);
+  }
   if (input.autoSaveEnabled) input.handOff();
   input.closeDetail();
   input.onClose();

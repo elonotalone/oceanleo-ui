@@ -38,3 +38,26 @@ test("网站关闭自动保存时不接手，仍然立刻离开", () => {
   assert.equal(handed, false);
   assert.equal(closed, true);
 });
+
+test("hosted editor remains open until the mounted flush confirms durability", async () => {
+  const order = [];
+  let finish;
+  const pending = leaveAdvancedWorkbench({
+    autoSaveEnabled: true,
+    handOff: () => order.push("handoff-must-not-run"),
+    closeDetail: () => order.push("close-detail"),
+    onClose: () => order.push("unmount"),
+    flushMounted: () => new Promise((resolve) => { finish = resolve; }),
+  });
+  assert.deepEqual(order, []);
+  finish({ ok: true });
+  assert.equal(await pending, true);
+  assert.deepEqual(order, ["close-detail", "unmount"]);
+});
+
+test("hosted failed flush never unmounts the only unsaved frame", async () => {
+  let closed = false;
+  const pending = leaveAdvancedWorkbench({ autoSaveEnabled: true, handOff() {}, closeDetail() {}, onClose: () => { closed = true; }, flushMounted: async () => ({ ok: false }) });
+  assert.equal(await pending, false);
+  assert.equal(closed, false);
+});
