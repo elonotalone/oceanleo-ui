@@ -424,7 +424,10 @@ export function useRichDocEditor(
           "aria-label": tt("文档编辑区"),
         },
       },
-      onUpdate: ({ editor: instance, transaction }) => {
+      onUpdate: ({ editor: instance, transaction, appendedTransactions }) => {
+        // Tiptap also emits update for setEditable, with no document steps.
+        // Permission/hydration transitions must not dirty or publish a file.
+        if (!transaction.docChanged && !appendedTransactions.some((next) => next.docChanged)) return;
         if (!sourceReadyRef.current) {
           // 协同里这条更新多半是别人的内容进来了：绝不能用空白去覆盖共享文档。
           if (collabHandlesRef.current) return;
@@ -582,7 +585,7 @@ export function useRichDocEditor(
 
   useEffect(() => {
     if (!editor || !collabRoom) return;
-    editor.setEditable(richDocEditable(collabPhase, collabReadOnly));
+    editor.setEditable(richDocEditable(collabPhase, collabReadOnly), false);
   }, [editor, collabRoom, collabPhase, collabReadOnly]);
 
   useEffect(() => {

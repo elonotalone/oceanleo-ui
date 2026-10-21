@@ -23,6 +23,8 @@ W02's late host-cache/native-Umo A→B counterexamples are fixed; valid current 
 
 Latest full UI typecheck after`16f9b5e7` is exit0. All four post-correction portal/Design/Video/API dev HTTP probes return200. Remaining active check is W01's strict per-artifact full acceptance fixture, not a claimed green broad sweep.
 
+The strict W01 zero-write assertion then exposed an additional real pre-edit save, independently traced by W01/V01 to Tiptap's synthetic `setEditable` update events. Parent red`393eedac` and source correction distinguish no-step notifications from root/appended document changes; real Tiptap loading/permission/selection/append/edit/save runtime is green. Strict full-chain and latest UI typecheck are rerunning before final acceptance. This is not dismissed as fake-server contamination.
+
 See [P-verification.md](./P-verification.md) and [P-received-video-backend.md](./P-received-video-backend.md) for independent evidence and the two retained private test fixtures.
 
 The parent backend commit `053f825` repairs canonical video revision closure staging. Its final focused backend group passed 70/70. The local dev gateway was safely refreshed only after the self-preservation guard, zero active ACP turns and route/DNS isolation checks; `api.dev.oceanleo.com/health` returned 200 and ready/vault/supabase true afterwards. Protected terminal relay/Cursor processes and production/twin distribution were untouched.

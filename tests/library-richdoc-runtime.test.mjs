@@ -298,6 +298,23 @@ test("screenshot Markdown loads, edits and retains the canonical save receipt wi
       `selection transaction caused ${renderCount - beforeSelection} renders`,
     );
 
+    const { Plugin } = await import("@tiptap/pm/state");
+    const mutationCountBeforeAppend = globalThis.__richdocMutationKeys.length;
+    latest.editor.registerPlugin(new Plugin({
+      appendTransaction(transactions, _previous, state) {
+        return transactions.some((transaction) => transaction.getMeta("richdoc-runtime-append"))
+          ? state.tr.insertText("附加事务正文", 1)
+          : null;
+      },
+    }));
+    await act(async () => {
+      latest.editor.view.dispatch(latest.editor.state.tr.setMeta("richdoc-runtime-append", true));
+    });
+    assert.equal(latest.editor.getText().includes("附加事务正文"), true);
+    assert.equal(latest.dirty, true, "a document-changing appended transaction still marks dirty");
+    assert.equal(globalThis.__richdocMutationKeys.length, mutationCountBeforeAppend + 1,
+      "a real appended content change authorizes autosave exactly once even when the initial transaction has no steps");
+
     const beforeEdit = renderCount;
     await act(async () => {
       latest.editor.commands.insertContentAt(1, "用例追加");
