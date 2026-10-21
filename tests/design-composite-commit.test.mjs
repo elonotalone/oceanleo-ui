@@ -13,6 +13,10 @@ import {
   validateDesignCompositeSource,
   verifyDesignCompositeSourceDigest,
 } from "../src/shell/design-composite-commit.ts";
+import {
+  parseDesignDocumentProject,
+  serializeDesignDocumentProject,
+} from "../src/shell/image-editor/design-document-schema.ts";
 
 globalThis.window ||= {
   location: { href: "https://design.oceanleo.com/", origin: "https://design.oceanleo.com" },
@@ -159,6 +163,90 @@ function project(overrides = {}) {
   };
 }
 
+function publishedDesignDocumentCarrier() {
+  const rects = Array.from({ length: 20 }, (_, index) => ({
+    id: `rect-${index}`,
+    type: "rect",
+    x: index * 3,
+    y: index * 4,
+    width: 240 + index,
+    height: 80 + index,
+    z: index,
+    fill: "#1F6FEB",
+    ...(index === 0 ? { radius: 8 } : {}),
+  }));
+  const ellipses = Array.from({ length: 5 }, (_, index) => ({
+    id: `ellipse-${index}`,
+    type: "ellipse",
+    x: 64 + index * 18,
+    y: 100 + index * 22,
+    width: 40 + index,
+    height: 40 + index,
+    z: 20 + index,
+    fill: "#E5484D",
+  }));
+  const textElements = Array.from({ length: 26 }, (_, index) => ({
+    id: `text-${index}`,
+    type: "text",
+    x: 48 + index * 2,
+    y: 200 + index * 20,
+    width: 420,
+    height: 48,
+    z: 25 + index,
+    fill: "#1F2328",
+    text: `Synthetic text ${index}`,
+    fontFamily: "Noto Sans SC",
+    fontSizePx: 24,
+    fontWeight: 400,
+  }));
+  return {
+    schema: "oceanleo.design-document.v1",
+    version: 1,
+    title: "Synthetic city event poster",
+    document: {
+      width: 1200,
+      height: 1500,
+      dpi: 96,
+      background: "#F5F2E9",
+      elements: [...rects, ...ellipses, ...textElements],
+    },
+    palette: ["#F5F2E9", "#FFFFFF", "#1F2328", "#1F6FEB", "#E5484D"],
+    fonts: [{ family: "Noto Sans SC", weights: [400], licenseCode: "OFL" }],
+    assets: [],
+    attribution: {
+      entries: [
+        {
+          text: "Synthetic fixture",
+          licenseCode: "CC0",
+          licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+        },
+      ],
+    },
+  };
+}
+
+function sourceClosureItem(sourceText) {
+  const sourceDigest = createHash("sha256").update(sourceText).digest("hex");
+  const closureDigest = "d".repeat(64);
+  return {
+    sourceDigest,
+    closureDigest,
+    item: item({
+      sourceDigest,
+      closureDigest,
+      sourceClosure: {
+        revisionId,
+        status: "complete",
+        digest: closureDigest,
+        sourceDigest,
+        dependencyDigests: [sourceDigest],
+        dependencyRevisionIds: [dependencyRevisionId],
+        firstParty: true,
+      },
+    }),
+  };
+}
+
 function pngBlob() {
   return new Blob(
     [
@@ -282,6 +370,70 @@ test("published package with embedded data: image opens without a separate SHA-2
   );
   assert.equal(evidence.sourceKind, "published-package");
   assert.equal(evidence.sourceDigest, sourceDigest);
+});
+
+test("published design-document carrier opens and preserves all 51 flat layers", async () => {
+  const carrier = publishedDesignDocumentCarrier();
+  const sourceText = `${JSON.stringify(carrier)}\n`;
+  const { sourceDigest, item: sourceItem } = sourceClosureItem(sourceText);
+  const loaded = parseDesignDocumentProject(sourceText);
+  const serialized = JSON.parse(serializeDesignDocumentProject(loaded));
+
+  assert.equal(carrier.document.elements.length, 51);
+  assert.deepEqual(
+    loaded.document.elements,
+    carrier.document.elements,
+    "the local canvas schema keeps each flat element field",
+  );
+  assert.deepEqual(serialized.document.elements, carrier.document.elements);
+  assert.deepEqual(serialized.palette, carrier.palette);
+  assert.deepEqual(serialized.fonts, carrier.fonts);
+  assert.deepEqual(serialized.attribution, carrier.attribution);
+
+  const evidence = await validateDesignCompositeSource(
+    new Blob([sourceText], { type: "application/json" }),
+    sourceItem,
+    {
+      requireBaseIdentity: false,
+      requireBaseRevision: false,
+      validation: "open",
+    },
+  );
+  assert.equal(evidence.sourceKind, "published-package");
+  assert.equal(evidence.sourceDigest, sourceDigest);
+  assert.equal(evidence.revision, 0);
+  assert.equal(evidence.sourceMode, "layered");
+  assert.equal(evidence.closureEvidence, "source-closure");
+});
+
+test("published design-document carrier rejects duplicate IDs and non-finite geometry", async () => {
+  for (const mutate of [
+    (carrier) => {
+      carrier.document.elements[1].id = carrier.document.elements[0].id;
+    },
+    (carrier) => {
+      carrier.document.elements[0].x = Number.NaN;
+    },
+  ]) {
+    const carrier = publishedDesignDocumentCarrier();
+    mutate(carrier);
+    const sourceText = `${JSON.stringify(carrier)}\n`;
+    const { item: sourceItem } = sourceClosureItem(sourceText);
+    await assert.rejects(
+      validateDesignCompositeSource(
+        new Blob([sourceText], { type: "application/json" }),
+        sourceItem,
+        {
+          requireBaseIdentity: false,
+          requireBaseRevision: false,
+          validation: "open",
+        },
+      ),
+      (error) =>
+        error instanceof DesignCompositeCommitError &&
+        error.code === "design-source-invalid-structure",
+    );
+  }
 });
 
 test("published flat Design template normalizes structurally without weakening digest pin", async () => {
