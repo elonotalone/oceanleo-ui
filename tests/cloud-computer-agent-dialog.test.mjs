@@ -770,8 +770,45 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
     assert.equal(FakeSocket.sockets.length, count);
-    await click(view.host.querySelector("[data-oceanleo-cc-retry]"));
-    await until(() => FakeSocket.sockets.length > count, "retry opens a socket");
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-retry]"), null);
+    const loading = view.host.querySelector("[data-oceanleo-cc-reconnecting]");
+    assert.ok(loading.querySelector(".animate-spin"));
+    assert.equal(loading.className.includes("amber"), false);
+    // No user click: repeated offline responses must continue scheduling
+    // connections, even after several failed attempts.
+    for (const wait of [1100, 2100, 4100]) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      });
+      assert.ok(view.socket(), "automatic reconnect opens another socket");
+      if (wait !== 4100) await act(async () => {
+        view.socket().server({ t: "error", code: "computer_offline", program: "" });
+      });
+    }
+    assert.ok(FakeSocket.sockets.length >= count + 3);
+    assert.ok(view.socket().sent.some((frame) => frame.t === "open_session" && frame.acp_session === "s1"), "restores the existing session subscription");
+    await act(async () => { view.socket().server(STATUS); });
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-reconnecting]"), null);
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-retry]"), null);
+    assert.equal(view.socket().sent.some((frame) => frame.t === "prompt"), false, "recovery never resends a prompt");
+    await act(async () => {
+      view.socket().server({ t: "turn_start", program: "cursor", acp_session: "s1" });
+      view.socket().server({ t: "delta", program: "cursor", acp_session: "s1", text: "still working" });
+    });
+    await fillText(input, "keep my draft");
+    await act(async () => {
+      view.socket().server({ t: "error", program: "cursor", acp_session: "s1", code: "dialog_unreachable" });
+    });
+    assert.match(view.host.textContent, /still working/);
+    assert.equal(input.value, "keep my draft");
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-stop]"), "transport failure preserves the running turn");
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-reconnecting]"));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
+    assert.ok(view.socket().sent.some((frame) => frame.t === "open_session" && frame.acp_session === "s1"));
+    await act(async () => { view.socket().server(STATUS); });
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-reconnecting]"), null);
+    assert.equal(input.value, "keep my draft");
+    assert.equal(view.socket().sent.some((frame) => frame.t === "prompt"), false);
   } finally {
     view.cleanup();
   }

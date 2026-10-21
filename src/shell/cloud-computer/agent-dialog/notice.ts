@@ -3,6 +3,10 @@ import type { DialogConfigOption, DialogModel } from "./types";
 
 export type Translate = (zh: string, vars?: Record<string, string | number>) => string;
 
+export function isReconnectingNotice(code: string): boolean {
+  return code === "computer_offline" || code === "computer_reconnecting" || code === "dialog_unreachable";
+}
+
 const SESSION_NOT_OPENED = "程序没能开新会话。";
 const SESSION_UNAVAILABLE = "这个程序现在开不了会话。";
 const OPAQUE_DIALOG_DID_NOT_START = new Set([
@@ -45,6 +49,7 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
       return tt("上一轮还在跑，等它结束或先停止。");
     case "computer_offline":
     case "computer_reconnecting":
+    case "dialog_unreachable":
       return tt("正在重新连接这台电脑。");
     case "dialog_detached":
       return tt("对话连接断了，进程还在。再发一句会接上。");
@@ -94,7 +99,6 @@ export function noticeAction(
   if (code === "program_missing" || code === "missing_program" || code === "runtime_missing") {
     return "install";
   }
-  if (code === "computer_offline" || code === "computer_reconnecting" || code === "dialog_unreachable") return "retry";
   return null;
 }
 

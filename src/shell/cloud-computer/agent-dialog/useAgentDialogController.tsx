@@ -15,6 +15,7 @@ import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oc
 import { isWsProgram } from "./parse";
 import { applyDialog, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
+import { isReconnectingNotice } from "./notice";
 import { composerOccupancy, confirmedBusySessions, confirmedWaitingSessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
 import { createOccupancyProbe } from "./occupancy-probe";
 import { isCompletedStop, sessionInterrupted, sessionWaitingWake, turnStillRunning } from "./session-status";
@@ -321,17 +322,23 @@ export function useAgentDialog({
         : null;
     if (!frame) {
       dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
+      socketRef.current?.close();
       return;
     }
     const viewingSession = stateRef.current.activeSession;
-    if (frame.t === "error" && (frame.code === "computer_offline" || frame.code === "computer_reconnecting")) {
+    if (frame.t === "error" && isReconnectingNotice(String(frame.code))) {
       // A node reconnects after gateway replacement. Treat offline as a
       // retryable connection loss, not a permanent stop requiring a click.
-      socketRef.current?.close();
       // Offline belongs to the computer, including when the focused view is
       // an existing session and the gateway error carries no session id.
-      stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
-      dispatch({ type: "frame", frame });
+      // A transport failure must not settle the running turn as a program
+      // failure. Keep the current view while the socket reconnects.
+      const event = frame.code === "dialog_unreachable"
+        ? { type: "notice" as const, code: "dialog_unreachable", program: stateRef.current.program ?? "" }
+        : { type: "frame" as const, frame };
+      stateRef.current = applyDialog(stateRef.current, event);
+      dispatch(event);
+      socketRef.current?.close();
       return;
     }
     if (frame.t === "status") delayRef.current = 1000;
@@ -544,6 +551,10 @@ export function useAgentDialog({
             sessionsRefreshRef.current?.request(program);
             occupancyProbeRef.current?.request(program);
             sendJson(socket, { t: "models", program });
+            const acpSession = stateRef.current.activeSession;
+            // The initial openSession caller sends its own request once the
+            // first socket resolves. Only reattach on subsequent connections.
+            if (gen > 1 && acpSession) sendJson(socket, { t: "open_session", program, acp_session: acpSession });
           }
           finish(socket);
         },
@@ -564,6 +575,9 @@ export function useAgentDialog({
         sessionsRefreshRef.current?.reset();
         occupancyProbeRef.current?.reset();
         dispatch({ type: "occupancy-lost" });
+        if (!stateRef.current.messages.some((message) => message.kind === "notice" && isReconnectingNotice(message.code))) {
+          dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
+        }
         finish(null);
         if (!enabledRef.current) return;
         scheduleReconnect();

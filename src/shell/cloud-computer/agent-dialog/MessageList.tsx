@@ -5,7 +5,7 @@ import { TypewriterMarkdown } from "../../Markdown";
 import { useUI } from "../../../i18n/ui/useUI";
 import { tone } from "../server-page/tone";
 import { lineDiff } from "./diff-lines";
-import { noticeAction, visibleNoticeCopy } from "./notice";
+import { isReconnectingNotice, noticeAction, visibleNoticeCopy } from "./notice";
 import { isWsProgram } from "./parse";
 import { normalizeQuestions } from "./questions";
 import { normalizeUserMessage } from "./message-attachments";
@@ -447,6 +447,12 @@ function NoticeView({
     dialog.install.failedText === "";
   const row = program ? dialog.programs.find((item) => item.id === program) : undefined;
   const installed = finishedHere ? true : row ? row.installed : null;
+  if (isReconnectingNotice(message.code)) return (
+    <div data-oceanleo-cc-notice={message.code} data-oceanleo-cc-reconnecting="" role="status" className="flex items-center gap-2 text-[12px] text-zinc-500 dark:text-neutral-400">
+      <span aria-hidden="true" className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      <span>{tt("正在重新连接这台电脑。")}</span>
+    </div>
+  );
   const action = noticeAction(message.code, installed);
   const spoken = noticeFrameText(message);
   // oceanleo 程序的离线行在这里说人话；其余 code 全站一份文案，走 notice.ts 词典。
