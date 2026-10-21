@@ -277,6 +277,17 @@ test("screenshot Markdown loads, edits and retains the canonical save receipt wi
     assert.deepEqual(globalThis.__richdocMutationKeys, [], "loading the source must not authorize autosave");
     assert.deepEqual(loopErrors, []);
 
+    const cleanRevision = latest.editRevision;
+    await act(async () => {
+      // Tiptap emits an update event by default even though these permission
+      // changes contain no document steps. They must not authorize a save.
+      latest.editor.setEditable(false);
+      latest.editor.setEditable(true);
+    });
+    assert.deepEqual(globalThis.__richdocMutationKeys, [], "editable-state notifications are not user document edits");
+    assert.equal(latest.dirty, false, "permission changes keep an untouched document clean");
+    assert.equal(latest.editRevision, cleanRevision, "permission changes do not advance the content revision");
+
     const beforeSelection = renderCount;
     await act(async () => {
       latest.editor.commands.setTextSelection({ from: 2, to: 8 });
