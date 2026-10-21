@@ -8,6 +8,7 @@ import type {
   PluginCommandResult,
   PluginCommandSpec,
   PluginCommandSurface,
+  PluginCommandTarget,
 } from "../plugin-command/types";
 import {
   validReviewProposal,
@@ -351,11 +352,19 @@ export function parkedFromMutatingRun(
     revision,
   } as EditorReviewProposal;
   if (!validReviewProposal(proposal)) return null;
+  let target: PluginCommandTarget | undefined;
+  try {
+    target = surface.target?.() || undefined;
+  } catch {
+    return null;
+  }
+  if (surface.target && !target) return null;
   return {
     proposal,
     params: withApplyToken({ ...(params || {}) }, proposal.proposalId, id),
     inverseParams: { ...(params || {}) },
     editorId: surface.editorId,
+    ...(target ? { target } : {}),
   };
 }
 
@@ -383,8 +392,13 @@ export function gateSurfaceForAgent(
   if (isAgentGatedSurface(surface, session)) return surface;
   const gated: PluginCommandSurface = {
     editorId: surface.editorId,
+    workspaceScopeId: surface.workspaceScopeId,
     describe: () => surface.describe(),
     state: () => stateForAgent(surface),
+    ...(surface.target ? { target: () => surface.target?.() || null } : {}),
+    ...(surface.agentContext
+      ? { agentContext: () => surface.agentContext?.() || { ready: false, reason: "这个编辑器没有提供可读取的当前文件内容。" } }
+      : {}),
     async run(id, params) {
       const spec = specOf(surface, id);
       const route = routeAgentCommandRun({
@@ -427,6 +441,35 @@ export async function applyParkedReview(
   surface: PluginCommandSurface,
   parked: ParkedReview,
 ): Promise<PluginCommandResult> {
+  if (parked.target) {
+    let current: PluginCommandTarget | null = null;
+    try {
+      current = surface.target?.() || null;
+    } catch {
+      current = null;
+    }
+    const sameTarget = Boolean(
+      current &&
+        current.workspaceScopeId === parked.target.workspaceScopeId &&
+        current.editorId === parked.target.editorId &&
+        current.artifactId === parked.target.artifactId &&
+        current.revisionId === parked.target.revisionId &&
+        current.artifactType === parked.target.artifactType &&
+        String(current.editRevision) === String(parked.target.editRevision) &&
+        current.surfaceInstanceId === parked.target.surfaceInstanceId,
+    );
+    if (!sameTarget) {
+      return {
+        ok: false,
+        message: "右侧文件或版本已变化；这份旧提案不能应用到新目标，文件没有改动。",
+      };
+    }
+  } else if (surface.target && !surface.target()) {
+    return {
+      ok: false,
+      message: "右侧编辑器尚未绑定到确切文件；这份提案没有应用。",
+    };
+  }
   const hold: ReviewApplyHold = {
     editorId: parked.editorId,
     commandId: parked.proposal.commandId,

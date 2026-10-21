@@ -36,6 +36,7 @@ import {
 } from "./non-richdoc-source-gate";
 import { usePluginCommandSurface } from "../plugin-command";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 
 export { websiteLocalSourceFromItem, planWebsiteLocalSource, hydrateWebsiteLocalSource };
 
@@ -164,8 +165,10 @@ export function WebsiteLocalRoute({
           revision: () => revisionRef.current,
           sourceReady: () => !sourceFailed && !remoteLoading,
           apply: (next) => commit(next),
+          pageId: () => pageId,
+          target: () => pluginTargetForLibraryItem(item, "website", revisionRef.current),
         }),
-      [commit, remoteLoading, sourceFailed],
+      [commit, item, pageId, remoteLoading, sourceFailed],
     ),
   );
 

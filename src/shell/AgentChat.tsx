@@ -59,16 +59,17 @@ import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
 import { currentPluginCommandSurface } from "./plugin-command";
 import {
   AgentReviewPanel,
-  assembleAgentEditorContext,
   createReviewGatedReader,
   hostReviewSession,
   installAgentReviewGate,
   installSelectionBridge,
-  readAgentSelection,
-  readMentionCatalog,
-  refreshAgentSelectionFromDom,
   useHostReviewActions,
 } from "./agent-review";
+import {
+  activeAgentFilePin,
+  persistActiveAgentFile,
+  readActiveAgentFileContext,
+} from "./active-agent-file";
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
 import { CallHumanIcon } from "./bay/shell/bay-icons";
@@ -657,21 +658,9 @@ function AgentChatInner({
     surfaceReader: gatedSurfaceReader,
     taskId,
     readOnly,
+    activeFileScopeId: workspace?.activeFileScopeId,
   });
-  const bridgeContextFor = editorCommands.contextFor;
-  const editorContextFor = useCallback(
-    (prompt: string) => {
-      refreshAgentSelectionFromDom();
-      const commandCtx = bridgeContextFor(prompt);
-      return assembleAgentEditorContext(
-        commandCtx,
-        prompt,
-        readAgentSelection(),
-        readMentionCatalog(),
-      );
-    },
-    [bridgeContextFor],
-  );
+  const captureEditorTurn = editorCommands.captureContext;
   const confirmHostRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!editorCommands.pending || editorCommands.busy) return;
@@ -993,14 +982,23 @@ function AgentChatInner({
   // 旧对话（刷新、切页签回来）时那会凭空 ensure 出一条没人干活的新会话。
 
   const start = useCallback(
-    async (prompt: string, uploaded?: AgentAttachment[], orgId?: string) => {
+    async (
+      prompt: string,
+      uploaded?: AgentAttachment[],
+      orgId?: string,
+      capturedTurn?: { context: string; filePin: string | null },
+    ) => {
       if (readOnly) {
         setError(tt("当前会话为只读状态。"));
         return false;
       }
+      // Freeze both the model-visible file contents and exact target before the
+      // first await. A file switch while a new session is being prepared must not
+      // silently change which file this user turn refers to.
+      const turn = capturedTurn || captureEditorTurn(prompt);
       setBusy(true);
       setError(null);
-      noteUserTurn();
+      noteUserTurn(turn.filePin);
       beginUserTurn();
       setMessages([
         {
@@ -1045,10 +1043,34 @@ function AgentChatInner({
         linkedSessionId = active?.id || workspace.sessionId || "";
       }
 
+      const liveFileContext = readActiveAgentFileContext(workspace?.activeFileScopeId);
+      if (activeAgentFilePin(liveFileContext) !== turn.filePin) {
+        setBusy(false);
+        setMessages((current) => current.filter((message) => message.id !== -1));
+        setError("右侧 Library 文件在准备会话时已切换；这条消息未创建任务，请检查当前文件后重试。");
+        return false;
+      }
+      const filePersistence = await persistActiveAgentFile(
+        workspace?.activeFileScopeId,
+        null,
+      );
+      if (!filePersistence.ok) {
+        setBusy(false);
+        setMessages((current) => current.filter((message) => message.id !== -1));
+        setError(filePersistence.error || "当前文件关联尚未保存，任务没有创建。");
+        return false;
+      }
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+        setBusy(false);
+        setMessages((current) => current.filter((message) => message.id !== -1));
+        setError("保存文件关联期间右侧 Library 文件已切换；没有创建任务，请检查当前文件后重试。");
+        return false;
+      }
+
       const result = await createTask({
         prompt,
         // 让模型看见右边现在开着什么、能做什么（只给模型看；没开编辑器时为空）。
-        hiddenContext: editorContextFor(prompt) || undefined,
+        hiddenContext: turn.context || undefined,
         mode,
         siteId,
         agentId,
@@ -1084,6 +1106,15 @@ function AgentChatInner({
         const bound = await workspace.bindTask(createdTaskId, prompt);
         createdSessionId = bound?.id || linkedSessionId;
       }
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) === turn.filePin) {
+        const taskPersistence = await persistActiveAgentFile(
+          workspace?.activeFileScopeId,
+          createdTaskId,
+        );
+        if (!taskPersistence.ok) {
+          setError("任务已创建，但当前文件关联的任务快照更新失败；已保留创建前的文件快照，请不要重复发送同一条创建请求。");
+        }
+      }
       onTaskCreated?.(createdTaskId, createdSessionId || undefined);
       markSend(createdTaskId, 1);
       void refresh(createdTaskId);
@@ -1092,7 +1123,7 @@ function AgentChatInner({
     [
       agentId,
       beginUserTurn,
-      editorContextFor,
+      captureEditorTurn,
       mode,
       noteOwnEditorTask,
       noteUserTurn,
@@ -1121,9 +1152,9 @@ function AgentChatInner({
       }
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
       const optimisticMessageId = Date.now();
-      noteUserTurn();
+      const turn = captureEditorTurn(effectivePrompt);
+      noteUserTurn(turn.filePin);
       beginUserTurn();
-      const editorContext = editorContextFor(effectivePrompt);
       setBusy(true);
       setError(null);
       setMessages((current) => [
@@ -1140,7 +1171,29 @@ function AgentChatInner({
         },
       ]);
       noteOutgoingTurn(id, userTurnCount(messages) + 1);
-      const result = await followUp(id, effectivePrompt, uploaded, editorContext);
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+        setBusy(false);
+        setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
+        setError("右侧 Library 文件已切换；这条消息没有发送，请针对当前文件重试。");
+        return;
+      }
+      const filePersistence = await persistActiveAgentFile(
+        workspace?.activeFileScopeId,
+        id,
+      );
+      if (!filePersistence.ok) {
+        setBusy(false);
+        setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
+        setError(filePersistence.error || "当前文件关联尚未保存；这条消息没有发送。");
+        return;
+      }
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+        setBusy(false);
+        setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
+        setError("保存文件关联期间右侧 Library 文件已切换；这条消息没有发送。");
+        return;
+      }
+      const result = await followUp(id, effectivePrompt, uploaded, turn.context);
       setBusy(false);
       if (!result.ok) {
         setMessages((current) =>
@@ -1156,7 +1209,7 @@ function AgentChatInner({
     },
     [
       beginUserTurn,
-      editorContextFor,
+      captureEditorTurn,
       kickAfterFollowUp,
       messages,
       noteOutgoingTurn,
@@ -1165,6 +1218,7 @@ function AgentChatInner({
       readOnly,
       refresh,
       tt,
+      workspace,
     ],
   );
 
@@ -1222,16 +1276,38 @@ function AgentChatInner({
     setInput("");
     atts.clear();
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
-    noteUserTurn();
+    const turn = captureEditorTurn(effectivePrompt);
+    noteUserTurn(turn.filePin);
     beginUserTurn();
-    const editorContext = editorContextFor(effectivePrompt);
     if (!taskId) {
-      const started = await start(effectivePrompt, uploaded, orgId);
+      const started = await start(effectivePrompt, uploaded, orgId, turn);
       if (!started) restoreSubmission();
       return;
     }
     setBusy(true);
     if (branchFromMessageId) {
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+        setBusy(false);
+        restoreSubmission();
+        setError("右侧 Library 文件已切换；没有创建分支任务，请重新发送。");
+        return;
+      }
+      const filePersistence = await persistActiveAgentFile(
+        workspace?.activeFileScopeId,
+        taskId,
+      );
+      if (!filePersistence.ok) {
+        setBusy(false);
+        restoreSubmission();
+        setError(filePersistence.error || "当前文件关联尚未保存；没有创建分支任务。");
+        return;
+      }
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+        setBusy(false);
+        restoreSubmission();
+        setError("保存文件关联期间右侧 Library 文件已切换；没有创建分支任务。");
+        return;
+      }
       const result = await branchTask(
         taskId,
         branchFromMessageId,
@@ -1289,7 +1365,32 @@ function AgentChatInner({
         meta: uploaded.length ? { attachments: uploaded } : undefined },
     ]);
     noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
-    const r = await followUp(taskId, effectivePrompt, uploaded, editorContext, orgId);
+    if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+      setBusy(false);
+      setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
+      restoreSubmission();
+      setError("右侧 Library 文件已切换；这条消息没有发送，请针对当前文件重试。");
+      return;
+    }
+    const filePersistence = await persistActiveAgentFile(
+      workspace?.activeFileScopeId,
+      taskId,
+    );
+    if (!filePersistence.ok) {
+      setBusy(false);
+      setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
+      restoreSubmission();
+      setError(filePersistence.error || "当前文件关联尚未保存；这条消息没有发送。");
+      return;
+    }
+    if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+      setBusy(false);
+      setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
+      restoreSubmission();
+      setError("保存文件关联期间右侧 Library 文件已切换；这条消息没有发送。");
+      return;
+    }
+    const r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId);
     setBusy(false);
     if (r.ok) kickAfterFollowUp(taskId);
     else {
@@ -1365,16 +1466,35 @@ function AgentChatInner({
   const sendSuggestion = useCallback(
     async (text: string) => {
       if (!taskId || busy || readOnly) return;
-      noteUserTurn();
+      const turn = captureEditorTurn(text);
+      noteUserTurn(turn.filePin);
       beginUserTurn();
-      const editorContext = editorContextFor(text);
       setBusy(true);
       setMessages((m) => [
         ...m,
         { id: Date.now(), role: "user", kind: "text", content: text },
       ]);
       noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
-      const r = await followUp(taskId, text, undefined, editorContext);
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+        setBusy(false);
+        setError("右侧 Library 文件已切换；这条追问没有发送，请针对当前文件重试。");
+        return;
+      }
+      const filePersistence = await persistActiveAgentFile(
+        workspace?.activeFileScopeId,
+        taskId,
+      );
+      if (!filePersistence.ok) {
+        setBusy(false);
+        setError(filePersistence.error || "当前文件关联尚未保存；这条追问没有发送。");
+        return;
+      }
+      if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
+        setBusy(false);
+        setError("保存文件关联期间右侧 Library 文件已切换；这条追问没有发送。");
+        return;
+      }
+      const r = await followUp(taskId, text, undefined, turn.context);
       setBusy(false);
       if (r.ok) kickAfterFollowUp(taskId);
       else setError(r.error || tt("发送失败"));
@@ -1388,8 +1508,9 @@ function AgentChatInner({
       noteOutgoingTurn,
       readOnly,
       tt,
-      editorContextFor,
+      captureEditorTurn,
       noteUserTurn,
+      workspace,
     ],
   );
 

@@ -7,6 +7,7 @@
  */
 
 import type { PluginCommandSurfaceInput } from "../plugin-command/types";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import {
   createVisualCommandSurface,
   fail,
@@ -408,11 +409,24 @@ export function chartCommandState(
 export function createChartCommandSurface(
   deps: ChartCommandDeps,
 ): PluginCommandSurfaceInput {
-  return createVisualCommandSurface({
-    editorId: EDITOR_ID,
-    // 只能查看：会改图表的指令（Leo 的「帮我改」）在这一层直接拒绝，导出等查看类照常
-    commands: () =>
-      guardVisualCommands(chartCommandDefinitions(deps), deps.editor.readOnly),
-    state: () => chartCommandState(deps.editor),
-  });
+  return {
+    ...createVisualCommandSurface({
+      editorId: EDITOR_ID,
+      // 只能查看：会改图表的指令（Leo 的「帮我改」）在这一层直接拒绝，导出等查看类照常
+      commands: () =>
+        guardVisualCommands(chartCommandDefinitions(deps), deps.editor.readOnly),
+      state: () => chartCommandState(deps.editor),
+    }),
+    agentContext: () => deps.editor.loading || !deps.editor.sourceReady
+      ? { ready: false, reason: "图表源尚未加载完成。" }
+      : boundedAgentContent({
+          activeSeriesId: deps.editor.activeSeriesId,
+          selectedSeries: deps.editor.document.option.series.find(
+            (series) => series.id === deps.editor.activeSeriesId,
+          ),
+          categories: deps.editor.document.option.xAxis?.data,
+          series: deps.editor.document.option.series,
+          document: deps.editor.document,
+        }),
+  };
 }

@@ -445,6 +445,21 @@ test("跨路由的 id 不许串台：grid 的指令下给 richdoc 一律被拒",
   assert.equal(result.ok, false);
 });
 
+test("Agent save uses the host persistence receipt and cannot report success after Task snapshot failure", async () => {
+  let nativeSaves = 0;
+  let hostSaves = 0;
+  const editor = richDocDouble({ save: async () => { nativeSaves++; return {}; } }).editor;
+  const surface = buildRichDocCommandSurface(editor, {
+    ...noopDownload,
+    save: async () => { hostSaves++; return { ok: false, message: "任务文件记录更新失败" }; },
+  });
+  const result = await surface.run("richdoc.save", {});
+  assert.equal(hostSaves, 1);
+  assert.equal(nativeSaves, 0, "native bytes-only save must not bypass the host ledger");
+  assert.equal(result.ok, false);
+  assert.match(result.message, /任务文件记录更新失败/);
+});
+
 test("未声明的参数、缺必填、非法枚举、超长参数一律被拒", async () => {
   const surface = buildRichDocCommandSurface(richDocDouble().editor, noopDownload);
   const unknownParam = await surface.run("richdoc.insert-heading", {
@@ -750,8 +765,10 @@ test("四条路由源码真的把指令面挂上去了", () => {
     join(REPO, "src", "shell", "doc-editors", "GridUniverStage.tsx"),
     "utf8",
   );
-  assert.match(leaf, /usePluginCommandSurface\(\{\s*editorId:\s*"grid",\s*describe:\s*gridAgentCommandSpecs,/);
-  assert.match(leaf, /run:\s*\(id, params\) =>\s*runGridAgentCommand\(/);
+  assert.match(leaf, /usePluginCommandSurface\(\{\s*editorId:\s*"grid",/);
+  assert.match(leaf, /describe:\s*gridAgentCommandSpecs,/);
+  assert.match(leaf, /run:\s*\(id, params\) =>\s*sourceFailedRef\.current/);
+  assert.match(leaf, /:\s*runGridAgentCommand\(/);
 });
 
 // ---------------------------------------------------------------------------

@@ -157,6 +157,8 @@ export interface SaveWorkspaceSnapshotOptions {
 }
 
 export interface WorkspaceSessionContextValue {
+  /** Stable identity for this mounted workspace runtime; unlike taskId/sessionId it survives first-task creation. */
+  activeFileScopeId: string;
   sessionId: string | null;
   siteId: string;
   appId: string;

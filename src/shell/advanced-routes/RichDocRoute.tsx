@@ -1,8 +1,9 @@
 "use client";
 
-import { afterAdvancedDraftExport, ensureAdvancedDraftExport } from "../advanced-draft-gates";
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useAdvancedSession } from "../advanced-session-context";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
@@ -106,6 +107,7 @@ function RichDocLegacyRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const advancedSession = useAdvancedSession();
   // A successful commit updates `item` to the new pinned revision. Keep the
   // loaded bytes stable so that parent identity updates cannot discard edits
   // that landed while the save request was in flight.
@@ -440,10 +442,15 @@ function RichDocLegacyRoute({
     useMemo(
       () =>
         guardPluginSurface(
-          buildRichDocCommandSurface(editor, { download: downloadAs }),
+          buildRichDocCommandSurface(editor, {
+            download: downloadAs,
+            // Use the SAME flush + recordSavedItem ledger as the workbench.
+            // editor.save() alone commits bytes but leaves Task History on r1.
+            save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush),
+          }),
           editor.collabReadOnly,
         ),
-      [editor, downloadAs],
+      [editor, downloadAs, item, advancedSession?.flush],
     ),
   );
   const downloadDisabled =

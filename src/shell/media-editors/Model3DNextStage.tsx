@@ -7,7 +7,7 @@
  * L1 SelectionToolbar：相机/曝光/背景/材质色/可见性 + 自转
  * L2 Model3DNextDirector：出图 / 自转（旧核 Model3DDirectorPanel 不删）
  * L3 专业模式才露 three.js editor iframe；普通模式不挂
- * L4 chips + review-proposal（只造消息）
+ * L4 chips + 共享审阅闸后的原生模型指令
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
@@ -30,6 +30,9 @@ import { advancedCommittedRevisionItem, advancedSavedItem } from "../advanced-se
 import { saveFileToLibrary } from "../doc-editors/doc-io";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
+import { model3dAgentSource, recolorModel3DMaterial } from "./model3d-agent-source";
+import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 import { createVisualCommandSurface, fail, ok } from "./visual-command-kit";
 import {
   DEFAULT_EDITOR_MODE,
@@ -51,7 +54,6 @@ import {
 } from "./model3d-next-conversion";
 import {
   MODEL3D_AGENT_CHIPS,
-  buildModel3DReviewProposal,
   model3dToolsManifestChips,
 } from "./model3d-next-l4-chips";
 import {
@@ -167,6 +169,8 @@ export function Model3DNextStage({
     peekW19EnterHandoff(w19ItemKey("threed", item)) ?? gateHandoff;
   const editorSource = useEditorHandoffSource(item, pendingHandoff);
   const readonly = conversion === "readonly" || conversion === "converting";
+  const readOnlyRef = useRef(readonly);
+  readOnlyRef.current = readonly;
   const applied = applyModel3DNextMode(instanceId, mode);
   const showHosted = applied.showHostedEditor && Boolean(hostedSrc) && frameMounted;
   // 过渡门的 ready 信号（plugin-ui U4）：专业面等 three.js editor 的协议 ready，普通面等模型 URL 就位。
@@ -483,8 +487,8 @@ export function Model3DNextStage({
 
   usePluginCommandSurface(
     useMemo(
-      () =>
-        createVisualCommandSurface({
+      () => ({
+        ...createVisualCommandSurface({
           editorId: "threed",
           state: () => ({
             mode,
@@ -494,33 +498,61 @@ export function Model3DNextStage({
           commands: () => [
             {
               spec: {
-                id: "threed.propose-material",
-                label: "提案：改材质色",
-                summary: "只造审阅提案，不写进模型。",
+                id: "threed.set-material-color",
+                label: "改模型材质色",
+                summary: "通过共享审阅后，修改当前模型指定材质的基础色。",
                 mutates: true,
+                params: [
+                  { key: "materialIndex", label: "材质索引", type: "number", required: true },
+                  { key: "color", label: "颜色（#RRGGBB）", type: "string", required: true },
+                ],
               },
-              run: () => {
-                const proposal = buildModel3DReviewProposal({
-                  proposalId: `p-${view.revision}`,
-                  commandId: "threed.chip.generate-material",
-                  revision: view.revision,
-                  changes: [
-                    {
-                      id: "material-0",
-                      label: "基础色",
-                      before: view.materialColor,
-                      after: "#ff0000",
-                    },
-                  ],
-                });
-                return proposal
-                  ? ok("已送审阅，尚未写进模型。", view.revision)
-                  : fail("提案不合法。");
+              run: async (params) => {
+                if (readonly) return fail("当前模型只能查看，材质未修改。");
+                const generation = hostedGenerationRef.current;
+                const revision = viewRef.current.revision;
+                let source = gltfBytes;
+                let sourceFormat = format;
+                if (mode === "pro" || generation > 0) {
+                  await cacheHosted();
+                  source = hostedCacheRef.current?.generation === generation ? hostedCacheRef.current.bytes : null;
+                  sourceFormat = "glb";
+                }
+                if (!mountedRef.current || readOnlyRef.current || hostedGenerationRef.current !== generation || viewRef.current.revision !== revision) {
+                  return fail("模型已切换或更新，这条旧指令没有应用。");
+                }
+                if (!source) return fail("专业内核尚未同步当前模型，材质未修改。");
+                const changed = recolorModel3DMaterial(source, sourceFormat, Number(params.materialIndex), String(params.color || ""));
+                if (!changed.ok) return fail(changed.reason);
+                // Existing init/export protocol carries the same changed native
+                // document back to the hosted editor and durable save path.
+                hostedInitedRef.current = false;
+                recordUserMutation(userEditItemKey(saveItemRef.current));
+                if (sourceFormat === "glb") hostedCacheRef.current = { generation, bytes: changed.bytes };
+                applyGltfBytes(changed.bytes, sourceFormat);
+                const nextRevision = revision + 1;
+                viewRef.current = { ...viewRef.current, revision: nextRevision };
+                setView(viewRef.current);
+                return ok("已修改当前模型材质。", nextRevision);
               },
             },
           ],
+      }),
+        target: () => pluginTargetForLibraryItem(saveItemRef.current, "threed", `${view.revision}:${hostedGenerationRef.current}`),
+        agentContext: () => {
+          if (mode === "pro" && hostedGenerationRef.current > 0 &&
+              hostedCacheRef.current?.generation !== hostedGenerationRef.current) {
+            return { ready: false, reason: "专业内核正在同步当前模型，旧模型不会被当作当前模型。" };
+          }
+          return model3dAgentSource(
+            hostedCacheRef.current?.generation === hostedGenerationRef.current
+              ? hostedCacheRef.current.bytes : gltfBytes,
+            hostedCacheRef.current?.generation === hostedGenerationRef.current ? "glb" : format,
+            view,
+          );
+        },
         }),
-      [chipsManifest.chips, mode, view.materialColor, view.revision],
+      [applyGltfBytes, cacheHosted, chipsManifest.chips, format, gltfBytes, mode, readonly, view],
     ),
   );
 

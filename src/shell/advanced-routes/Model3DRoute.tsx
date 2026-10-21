@@ -39,6 +39,7 @@ import {
 } from "../media-editors/Model3DRouteHistory";
 import { isModel3DSourceItem } from "../media-editors/model3d-workbench-defaults";
 import { usePluginCommandSurface } from "../plugin-command";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { createModel3DCommandSurface } from "../media-editors/model3d-command-surface";
 import { visualImportPlan } from "../media-editors/visual-formats";
@@ -341,10 +342,13 @@ function Model3DModelRoute({
     useMemo(
       () =>
         guardPluginSurface(
-          createModel3DCommandSurface({ editor: view, deliver }),
+          {
+            ...createModel3DCommandSurface({ editor: view, deliver }),
+            target: () => pluginTargetForLibraryItem(saved ?? item, "threed", view.editRevision),
+          },
           collabReadOnly,
         ),
-      [collabReadOnly, deliver, view],
+      [collabReadOnly, deliver, item, saved, view],
     ),
   );
   const buildSavedItem = useCallback(

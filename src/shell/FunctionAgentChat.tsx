@@ -97,6 +97,11 @@ import { assembleAgentEditorContext } from "./agent-review/selection-bridge";
 import { readAgentSelection, readMentionCatalog } from "./agent-review/inbox";
 import { refreshAgentSelectionFromDom } from "./agent-review/selection-live";
 import {
+  activeAgentFilePin,
+  formatActiveAgentFileContext,
+  readActiveAgentFileContext,
+} from "./active-agent-file";
+import {
   installAgentReviewGate,
   installSelectionBridge,
 } from "./agent-review/install";
@@ -162,10 +167,12 @@ export interface EditorCommandNote {
 export interface EditorCommandBridge {
   /** 发消息时塞进 hiddenContext 的那段「右边现在开着什么、能做什么」；没开编辑器时为空串。 */
   contextFor: (prompt: string) => string;
+  /** Freeze the exact per-turn payload and active-file target before any async task/session work. */
+  captureContext: (prompt: string) => { context: string; filePin: string | null };
   /** 每次轮询拿到消息后调一次；同一条消息只会被处理一次，历史消息不会被重放。 */
   ingest: (messages: AgentMessage[], taskKey: string) => void;
   /** 用户刚发出一句话 → 解除「上一条被拒就停」，拒绝回喂计数归零。 */
-  noteUserTurn: () => void;
+  noteUserTurn: (filePin?: string | null) => void;
   /**
    * 刚替用户新建了一段对话（`createTask` 回来的那个 id）。
    * 这段对话里不可能躺着历史，所以它的第一份消息里如果已经带了指令，也照样算数。 */
@@ -190,8 +197,16 @@ export function useEditorCommandBridge(opts: {
   taskId?: string | null;
   /** 只读会话不执行任何改动。 */
   readOnly?: boolean;
+  /** Per WorkspaceSession scope that owns the right-hand Library editor. */
+  activeFileScopeId?: string | null;
 }): EditorCommandBridge {
-  const { enabled = true, surfaceReader, taskId, readOnly = false } = opts;
+  const {
+    enabled = true,
+    surfaceReader,
+    taskId,
+    readOnly = false,
+    activeFileScopeId,
+  } = opts;
   const sessionRef = useRef(createEditorCommandSession());
   const [pending, setPending] = useState<EditorCommandPending | null>(null);
   const [notes, setNotes] = useState<EditorCommandNote[]>([]);
@@ -204,10 +219,11 @@ export function useEditorCommandBridge(opts: {
   // 连着被拒几次就不再把拒绝理由喂回给模型：每喂一次都是一轮真实花费，
   // 不能让「模型乱下 id → 我告诉它不行 → 它再乱下」自己转起来。
   const rejectReportsRef = useRef(0);
-  const liveRef = useRef({ enabled, surfaceReader, taskId, readOnly });
+  const liveRef = useRef({ enabled, surfaceReader, taskId, readOnly, activeFileScopeId });
   useEffect(() => {
-    liveRef.current = { enabled, surfaceReader, taskId, readOnly };
+    liveRef.current = { enabled, surfaceReader, taskId, readOnly, activeFileScopeId };
   });
+  const activeTurnPinRef = useRef<string | null>(null);
 
   const pushNote = useCallback((text: string, ok: boolean) => {
     noteSeqRef.current += 1;
@@ -227,6 +243,26 @@ export function useEditorCommandBridge(opts: {
   const handleMessage = useCallback(
     async (messageId: number, content: string) => {
       const session = sessionRef.current;
+      const fileContext = readActiveAgentFileContext(liveRef.current.activeFileScopeId);
+      const livePin = activeAgentFilePin(fileContext);
+      if (activeTurnPinRef.current !== livePin) {
+        const note = "右侧 Library 文件在你发出这轮消息后已切换；这条旧回复不会作用于新文件。请针对当前文件重新发送指令。";
+        pushNote(note, false);
+        if (rejectReportsRef.current < 2) {
+          rejectReportsRef.current += 1;
+          report(note, { ok: false, rejected: true, staleTarget: true });
+        }
+        return;
+      }
+      if (fileContext && !fileContext.ready) {
+        const note = `右侧 Library 文件当前不可读取（${fileContext.reason}）；为了避免基于猜测修改，指令已拒绝。`;
+        pushNote(note, false);
+        if (rejectReportsRef.current < 2) {
+          rejectReportsRef.current += 1;
+          report(note, { ok: false, rejected: true, sourceUnavailable: true });
+        }
+        return;
+      }
       // 拿不到面就是拿不到（`offer` 会告诉用户右边没开编辑器）；绝不回落到没包闸的原始面。
       const surface = readAgentCommandSurface(liveRef.current.surfaceReader);
       const offer = await session.offer({ messageId, content, surface });
@@ -280,6 +316,19 @@ export function useEditorCommandBridge(opts: {
   const confirm = useCallback(
     async (always: boolean) => {
       const session = sessionRef.current;
+      const fileContext = readActiveAgentFileContext(liveRef.current.activeFileScopeId);
+      if (
+        activeTurnPinRef.current !== activeAgentFilePin(fileContext) ||
+        (fileContext && !fileContext.ready)
+      ) {
+        session.decline();
+        setPending(null);
+        pushNote(
+          "右侧 Library 文件在确认前已切换或不可读取；这条待确认指令已拒绝，没有改动文件。",
+          false,
+        );
+        return;
+      }
       if (always) session.allowAlways();
       setBusy(true);
       const outcome = await session.confirm();
@@ -305,25 +354,49 @@ export function useEditorCommandBridge(opts: {
     if (declined) pushNote(declined.note, false);
   }, [pushNote]);
 
-  const contextFor = useCallback(
+  const captureContext = useCallback(
     (prompt: string) => {
-      if (!liveRef.current.enabled) return "";
+      if (!liveRef.current.enabled) {
+        activeTurnPinRef.current = null;
+        return { context: "", filePin: null };
+      }
       refreshAgentSelectionFromDom();
+      const fileContext = readActiveAgentFileContext(liveRef.current.activeFileScopeId);
+      const filePin = activeAgentFilePin(fileContext);
+      activeTurnPinRef.current = filePin;
       const commandCtx = buildEditorCommandContext(
         readAgentCommandSurface(liveRef.current.surfaceReader),
-        { query: prompt },
+        { query: prompt, limit: 8, includeState: false },
       );
-      return assembleAgentEditorContext(
+      const selectionAndCommands = assembleAgentEditorContext(
         commandCtx,
         prompt,
         readAgentSelection(),
         readMentionCatalog(),
       );
+      const activeFile = formatActiveAgentFileContext(fileContext, 7_400);
+      return {
+        context: assembleAgentEditorContext(
+          selectionAndCommands,
+          "",
+          null,
+          [],
+          activeFile,
+          11_500,
+        ),
+        filePin,
+      };
     },
     [],
   );
 
-  const noteUserTurn = useCallback(() => {
+  const contextFor = useCallback(
+    (prompt: string) => captureContext(prompt).context,
+    [captureContext],
+  );
+
+  const noteUserTurn = useCallback((filePin?: string | null) => {
+    if (filePin !== undefined) activeTurnPinRef.current = filePin;
     sessionRef.current.resume();
     rejectReportsRef.current = 0;
   }, []);
@@ -341,7 +414,7 @@ export function useEditorCommandBridge(opts: {
     />
   ) : null;
 
-  return { contextFor, ingest, noteUserTurn, noteOwnTask, pending, notes, busy, card };
+  return { contextFor, captureContext, ingest, noteUserTurn, noteOwnTask, pending, notes, busy, card };
 }
 
 /** 改动前的确认卡：人话写清要做什么、改哪里、填了什么。不显示 id，也不显示 JSON。 */

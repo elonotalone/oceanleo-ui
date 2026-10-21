@@ -74,18 +74,16 @@ export function libraryEditLanding(
 
 /**
  * 全页库就地编辑器用的会话身份。app 固定为 library，不用宿主 siteId 冒充 app。
- * site 只用清册里能挂工作台的子站 key；项目 UUID / 门户宿主键不用。
+ * 新任务归当前宿主，不归素材的原始站点。全局 Library 默认属于门户；
+ * HistoryDetail 直接复用 TaskFileWorkspace 恢复 library session，不依赖子站 iframe。
  */
 export function libraryStandaloneEditorBinding(input: {
   hostSiteId?: string;
   itemSiteId?: string;
 }): { siteId: string; appId: "library" } {
   const host = String(input.hostSiteId || "").trim();
-  const item = String(input.itemSiteId || "").trim();
-  for (const candidate of [host, item]) {
-    if (candidate && !isUnmountablePortalHistorySiteId(candidate)) {
-      return { siteId: candidate, appId: "library" };
-    }
+  if (host === "oceanleo" || (host && !isUnmountablePortalHistorySiteId(host))) {
+    return { siteId: host, appId: "library" };
   }
-  return { siteId: "library", appId: "library" };
+  return { siteId: "oceanleo", appId: "library" };
 }

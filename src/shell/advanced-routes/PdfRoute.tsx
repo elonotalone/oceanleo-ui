@@ -1,6 +1,7 @@
 "use client";
 
-import { afterAdvancedDraftExport, ensureAdvancedDraftExport } from "../advanced-draft-gates";
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
+import { useAdvancedSession } from "../advanced-session-context";
 import { useCallback, useMemo, useState } from "react";
 import { useEditorHandoffSource } from "./editor-handoff";
 import {
@@ -87,6 +88,7 @@ export function PdfRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const advancedSession = useAdvancedSession();
   const pendingHandoff = peekW19EnterHandoff(w19ItemKey("pdf", item));
   const editorSource = useEditorHandoffSource(item, pendingHandoff);
   const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("pdf", item));
@@ -244,10 +246,10 @@ export function PdfRoute({
     useMemo(
       () =>
         guardPluginSurface(
-          buildPdfCommandSurface(nextCoreEditor, { download: downloadAs }),
+          buildPdfCommandSurface(nextCoreEditor, { download: downloadAs, item, save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush) }),
           collabReadOnly,
         ),
-      [nextCoreEditor, downloadAs, collabReadOnly],
+      [nextCoreEditor, downloadAs, collabReadOnly, item, advancedSession?.flush],
     ),
   );
   return (

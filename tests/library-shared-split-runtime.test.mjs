@@ -36,19 +36,22 @@ const editorUrl = dataModule(`
     const focus = useConsoleAgentFocus();
     const [text,setText] = useState('unsaved draft');
     useEffect(()=>{globalThis.__splitEditorMounts++;},[]);
-    return React.createElement('div',{'data-editor':props.item.id},
+    return React.createElement('div',{'data-editor':props.item.id,'data-task-id':props.taskId || ''},
       React.createElement('input',{'data-draft':true,defaultValue:text}),
       React.createElement('button',{'data-ai':true,onClick:()=>focus.focusAgent()},'AI'),
       React.createElement('button',{'data-save':true,onClick:()=>props.onSavedItem({...props.item, revisionId:'revision-2'})},'save'));
   }
 `);
-// Only conversation transport is stubbed; both paths below use the real split
-// and its real focus context, visibility, chrome and mounted pane lifecycle.
+// Isolated split lifecycle test: AgentChat and the native editor are fixtures.
+// This proves shared SplitWorkspace behavior, NOT the full editing runtime.
+// The real composition is covered by one-task-library-agent-acceptance.test.mjs.
 const agentUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   import { SplitWorkspace } from ${JSON.stringify(splitUrl)};
   export function AgentChat(p){ return React.createElement(SplitWorkspace,{
-    left:React.createElement('div',{'data-conversation':true},p.taskId),
+    left:React.createElement(React.Fragment,null,
+      React.createElement('div',{'data-conversation':true,'data-task-id':p.taskId || ''},p.taskId || 'new task'),
+      React.createElement('button',{type:'button','data-create-task':true,onClick:()=>p.onTaskCreated?.('task-created','session-created')},'create task')),
     right:p.workspaceContent,leftHidden:!p.workspaceAgentVisible,
     onAgentFocus:p.onWorkspaceAgentFocus,fillParent:true,
     library:{open:p.workspaceOpen,onOpenChange:p.onWorkspaceOpenChange}
@@ -56,7 +59,7 @@ const agentUrl = dataModule(`
 `);
 const { MaterialStandaloneEditor } = await import(await compileModule("src/shell/material-library-standalone.tsx", {
   "./AdvancedContentWorkbench": editorUrl, "./SplitWorkspace": splitUrl, "./AgentChat": agentUrl,
-  "./WorkspaceSession": dataModule(`export function useOptionalWorkspaceSession(){return null;} export function WorkspaceSessionProvider({children}){return children;}`),
+  "./WorkspaceSession": dataModule(`export function WorkspaceSessionProvider(p){globalThis.__standaloneWorkspaceProviderProps={siteId:p.siteId,appId:p.appId,title:p.title,resumeLatest:p.resumeLatest};return p.children;}`),
 }));
 const inlinePanelsUrl = await compileModule("src/shell/use-inline-advanced-panels.tsx", {
   "../i18n/ui/useUI": dataModule(`export function useUI(){return value=>value;}`),
@@ -134,7 +137,7 @@ test("full-page Library drops collection max-width only while an editor is open"
   } finally {await m.destroy();}
 });
 
-test("standalone Library editor opens with the existing Agent visible and preserves editor state", async()=>{
+test("standalone Library editor opens with a fresh Agent task and preserves editor state", async()=>{
   globalThis.__splitEditorMounts = 0;
   function Host(){const [item,setItem]=React.useState(base.item); return React.createElement(MaterialStandaloneEditor,{...base,item,onSavedItem:setItem});}
   const m = await mount(React.createElement(Host));
@@ -144,7 +147,8 @@ test("standalone Library editor opens with the existing Agent visible and preser
     const input=m.container.querySelector("input"); input.value="local edit";
     const left=m.container.querySelector('[data-workspace-pane="left"]');
     assert.equal(left.classList.contains("hidden"),false,"Library editor must show the Agent on its first frame");
-    assert.equal(m.container.querySelector("[data-conversation]").textContent,"task-preserved");
+    assert.equal(m.container.querySelector("[data-conversation]").dataset.taskId,"","full-page Library must not inherit a route's unrelated task");
+    assert.equal(globalThis.__standaloneWorkspaceProviderProps.resumeLatest,false,"standalone Library starts from a fresh session");
     assert.ok(left.classList.contains("rounded-2xl"),"Agent island must keep Task's rounded frame");
     const right=m.container.querySelector('[data-workspace-pane="main"]');
     assert.ok(right.classList.contains("rounded-2xl"),"editor island must keep Task's rounded frame");
@@ -153,11 +157,15 @@ test("standalone Library editor opens with the existing Agent visible and preser
     const split=m.container.querySelector("[data-workspace-split]");
     split.getBoundingClientRect=()=>({left:0,top:0,right:1000,bottom:700,width:1000,height:700,x:0,y:0,toJSON(){}});
     await act(async()=>divider.dispatchEvent(new dom.window.MouseEvent("pointerdown",{bubbles:true,clientX:330})));
+    assert.match(left.className,/transition-none/,"divider dragging should not animate every ratio update");
     await act(async()=>window.dispatchEvent(new dom.window.MouseEvent("pointermove",{clientX:600})));
     assert.equal(left.style.flexBasis,"60%","dragging the shared divider must move the left island");
     await act(async()=>window.dispatchEvent(new dom.window.MouseEvent("pointerup",{bubbles:true})));
     await click(m.container.querySelector("[data-ai]"));
-    assert.equal(m.container.querySelector("[data-conversation]").textContent,"task-preserved");
+    assert.equal(m.container.querySelector("[data-conversation]").textContent,"new task");
+    await click(m.container.querySelector("[data-create-task]"));
+    assert.equal(m.container.querySelector("[data-editor]"),editor,"task creation must keep the same editor instance mounted");
+    assert.equal(editor.dataset.taskId,"task-created","the existing editor receives the newly created task id");
     await click(m.container.querySelector("[data-save]"));
     assert.equal(m.container.querySelector("[data-editor]"),editor);
     assert.equal(m.container.querySelector("input"),input);
@@ -165,10 +173,15 @@ test("standalone Library editor opens with the existing Agent visible and preser
     assert.equal(globalThis.__splitEditorMounts,1);
     const conversation=m.container.querySelector("[data-conversation]");
     await click(m.container.querySelector('[aria-label="关闭右侧面板"]'));
-    assert.equal(m.container.querySelector('[data-workspace-pane="main"]').classList.contains("hidden"),true);
+    const pane=m.container.querySelector('[data-workspace-pane="main"]');
+    assert.equal(pane.dataset.workspacePaneState,"closed");
+    assert.equal(pane.hasAttribute("inert"),true);
+    assert.equal(pane.getAttribute("aria-hidden"),"true");
     assert.equal(m.container.querySelector("[data-conversation]"),conversation);
     await click(m.container.querySelector('[aria-label="展开"]'));
-    assert.equal(m.container.querySelector('[data-workspace-pane="main"]').classList.contains("hidden"),false);
+    assert.equal(pane.dataset.workspacePaneState,"open");
+    assert.equal(pane.hasAttribute("inert"),false);
+    assert.equal(pane.getAttribute("aria-hidden"),null);
     assert.equal(m.container.querySelector("input"),input);
     assert.equal(globalThis.__splitEditorMounts,1);
   } finally {await m.destroy();}
@@ -181,6 +194,7 @@ test("task Library reuses its current split and conversation", async()=>{
     assert.equal(m.container.querySelectorAll("[data-workspace-split]").length,1);
     assert.equal(m.container.querySelector("[data-library-editor-host]").dataset.libraryEditorHost,"existing-workspace");
     assert.equal(m.container.querySelector('[data-workspace-pane="left"]').classList.contains("hidden"),false);
+    assert.equal(m.container.querySelector("[data-editor]").dataset.taskId,"task-preserved","Task→Library keeps the inherited task binding");
     await click(m.container.querySelector("[data-ai]"));
     assert.equal(m.container.querySelector("[data-task-chat]").textContent,"existing task");
     assert.equal(globalThis.__splitEditorMounts,1);
@@ -223,10 +237,23 @@ test("common right chrome maximizes, restores and closes while preserving mounte
   try {
     const chat=m.container.querySelector("[data-chat]"); const editor=m.container.querySelector("input");
     await click(m.container.querySelector('[aria-label="右侧全屏"]'));
-    assert.equal(m.container.querySelector('[data-workspace-pane="left"]').classList.contains("hidden"),true);
+    const left=m.container.querySelector('[data-workspace-pane="left"]');
+    assert.equal(left.dataset.workspacePaneState,"closed");
+    assert.equal(left.hasAttribute("inert"),true);
+    assert.equal(left.getAttribute("aria-hidden"),"true");
+    assert.equal(left.classList.contains("hidden"),false,"maximized panes slide instead of switching to display:none");
     await click(m.container.querySelector('[aria-label="退出右侧全屏"]'));
     await click(m.container.querySelector('[aria-label="关闭右侧面板"]'));
-    assert.equal(m.container.querySelector('[data-workspace-pane="main"]').classList.contains("hidden"),true);
+    const pane=m.container.querySelector('[data-workspace-pane="main"]');
+    assert.equal(pane.dataset.workspacePaneState,"closed");
+    assert.equal(pane.hasAttribute("inert"),true);
+    assert.equal(pane.getAttribute("aria-hidden"),"true");
+    assert.equal(pane.classList.contains("hidden"),false,"closed pane remains mounted through its exit transition");
+    assert.match(pane.className,/transition-\[flex-basis,opacity,margin\]/);
+    assert.match(pane.className,/motion-reduce:transition-none/);
+    assert.equal(pane.style.flexBasis,"0%");
+    assert.equal(pane.style.borderWidth,"0px");
+    assert.equal(m.container.ownerDocument.activeElement?.getAttribute("aria-label"),"展开","focus returns to the Library toggle after close");
     assert.equal(m.container.querySelector("[data-chat]"),chat);
     assert.equal(m.container.querySelector("input"),editor);
   } finally {await m.destroy();}
@@ -239,7 +266,7 @@ test("Library home retains window actions when content requests a frameless pane
   try {
     assert.equal(m.container.querySelectorAll("[data-right-pane-actions]").length,1);
     await click(m.container.querySelector('[aria-label="右侧全屏"]'));
-    assert.equal(m.container.querySelector('[data-workspace-pane="left"]').classList.contains("hidden"),true);
+    assert.equal(m.container.querySelector('[data-workspace-pane="left"]').dataset.workspacePaneState,"closed");
     await click(m.container.querySelector('[aria-label="关闭右侧面板"]'));
     assert.equal(closed,true);
   } finally {await m.destroy();}

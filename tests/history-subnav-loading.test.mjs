@@ -95,6 +95,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export function useWorkspaceSelection(){ return globalThis.React.useState(null); }
   `),
   "./AgentChat": dataModule(`export function AgentChat(){ return null; }`),
+  "./library-task-history": dataModule(`export function LibraryTaskHistoryWorkspace(){return null;}`),
   "./WorkspaceSession": dataModule(
     `export function WorkspaceSessionProvider({ children }){ return children; }`,
   ),

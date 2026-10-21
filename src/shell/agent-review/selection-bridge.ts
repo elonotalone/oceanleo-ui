@@ -150,9 +150,41 @@ export function assembleAgentEditorContext(
   prompt: string,
   selection: AgentSelection | null,
   catalog: readonly AgentSelection[] = [],
+  activeFileContext = "",
+  maxChars = 11_500,
 ): string {
   const selectionCtx = buildAgentSelectionBlock(selection, prompt, catalog);
-  return [commandContext, selectionCtx].filter(Boolean).join("\n\n");
+  const file = String(activeFileContext || "");
+  const budget = Math.max(1_000, Math.min(11_500, Math.floor(maxChars)));
+  const fileBlock = file.length > budget ? "" : file;
+  let remaining = budget - fileBlock.length - (fileBlock ? 2 : 0);
+  const other = [commandContext, selectionCtx].filter(Boolean);
+  const fitted: string[] = [];
+  for (const section of other) {
+    if (remaining <= 0) break;
+    if (section.length <= remaining) {
+      fitted.push(section);
+      remaining -= section.length + 2;
+      continue;
+    }
+    // These are human-readable command/selection sections, not source JSON. Keep whole
+    // lines only so a command block or a serialized file body is never cut in half.
+    const lines: string[] = [];
+    let used = 0;
+    for (const line of section.split("\n")) {
+      const cost = line.length + (lines.length ? 1 : 0);
+      if (used + cost > remaining - 80) break;
+      lines.push(line);
+      used += cost;
+    }
+    if (lines.length) {
+      lines.push("（上下文预算已满；未列出的命令/选区不代表不存在。）");
+      fitted.push(lines.join("\n"));
+    }
+    break;
+  }
+  const result = [fileBlock, ...fitted].filter(Boolean).join("\n\n");
+  return result.length <= budget ? result : "";
 }
 
 export function buildAgentSelectionBlock(

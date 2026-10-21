@@ -11,6 +11,7 @@ import { useLocalDesignCanvas } from "../design-canvas/use-local-design-canvas";
 import { createDesignCommandSurface } from "../design-canvas/design-command-surface";
 import { designCanvasLocalSourceAdmission } from "./non-richdoc-source-gate";
 import { usePluginCommandSurface } from "../plugin-command";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 
 export { designCanvasLocalSourceAdmission };
 
@@ -33,11 +34,12 @@ export function DesignCanvasLocalRoute({
           project: () => editor.project,
           revision: () => editor.revision,
           sourceReady: () => editor.sourceReady,
+          target: () => pluginTargetForLibraryItem(item, "design-canvas", editor.revision),
           apply: (next) => {
             editor.applyProject(next);
           },
         }),
-      [editor],
+      [editor, item],
     ),
   );
 

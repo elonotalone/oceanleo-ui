@@ -6,6 +6,7 @@
  */
 
 import type { PluginCommandSurfaceInput } from "../plugin-command/types";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import {
   createVisualCommandSurface,
   fail,
@@ -329,9 +330,19 @@ export function videoCommandState(
 export function createVideoCommandSurface(
   deps: VideoCommandDeps,
 ): PluginCommandSurfaceInput {
-  return createVisualCommandSurface({
-    editorId: EDITOR_ID,
-    commands: () => videoCommandDefinitions(deps),
-    state: () => videoCommandState(deps.editor),
-  });
+  return {
+    ...createVisualCommandSurface({
+      editorId: EDITOR_ID,
+      commands: () => videoCommandDefinitions(deps),
+      state: () => videoCommandState(deps.editor),
+    }),
+    agentContext: () => deps.editor.loadingSource || !deps.editor.sourceReady
+      ? { ready: false, reason: "视频时间线源尚未加载完成。" }
+      : boundedAgentContent({
+          selectedClip: deps.editor.selected,
+          selectedClipId: deps.editor.selectedClipId,
+          playheadMs: deps.editor.playheadMs,
+          timeline: deps.editor.doc,
+        }, "提供当前时间线、片段和文字；不能据此声称看过未提供的视频画面或听过音轨。"),
+  };
 }

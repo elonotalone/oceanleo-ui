@@ -95,6 +95,7 @@ export interface EmbedEditorPaneProps {
     recoveryId: string;
     ok: boolean;
     revision?: EditorDocumentRevision;
+    expectedNativeRevision?: number;
     message?: string;
   }) => void;
 }

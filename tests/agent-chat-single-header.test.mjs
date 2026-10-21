@@ -169,6 +169,7 @@ const OVERRIDES = {
     export function useEditorCommandBridge(){
       return {
         contextFor: () => "",
+        captureContext: () => ({context:"",filePin:null}),
         pending: null,
         busy: false,
         notes: [],

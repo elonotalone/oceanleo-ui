@@ -25,6 +25,7 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { usePluginCommandSurface } from "../plugin-command";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { createAudioCommandSurface } from "../media-editors/audio-command-surface";
 import {
@@ -262,10 +263,15 @@ function AudioLegacyRoute({
     useMemo(
       () =>
         guardPluginSurface(
-          createAudioCommandSurface({ editor: view, deliver }),
+          {
+            ...createAudioCommandSurface({ editor: view, deliver }),
+            target: () => pluginTargetForLibraryItem(
+              saved ?? item, "audio", `${view.editRevision}:${view.contentVersion}`,
+            ),
+          },
           collabReadOnly,
         ),
-      [collabReadOnly, deliver, view],
+      [collabReadOnly, deliver, item, saved, view],
     ),
   );
   const audioAdmitted = audioSourcePersistenceAdmitted({

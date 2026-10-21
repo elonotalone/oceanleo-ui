@@ -321,7 +321,7 @@ const OVERRIDES = {
   "./FunctionAgentChat": dataModule(`
     export function EditorCommandNotes(){ return null; }
     export function useEditorCommandBridge(){
-      return { contextFor: () => "", pending: null, busy: false, notes: [], card: null, noteUserTurn(){}, noteOwnTask(){}, ingest(){} };
+      return { contextFor: () => "", captureContext: () => ({context:"",filePin:null}), pending: null, busy: false, notes: [], card: null, noteUserTurn(){}, noteOwnTask(){}, ingest(){} };
     }
   `),
   "./agent-review": dataModule(`
@@ -612,10 +612,12 @@ test("Library editor uses real AgentChat split and survives opening and closing 
     await act(async () => root.render(React.createElement(View)));
     const input = host.querySelector("[data-existing-editor]");
     assert.ok(input);
-    assert.equal(host.querySelector('[data-workspace-pane="left"]').classList.contains("hidden"), true);
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').getAttribute("data-workspace-pane-state"), "closed");
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').hasAttribute("inert"), true);
     await act(async () => host.querySelector('[data-editor-ai]').click());
     assert.equal(agentVisible, true);
-    assert.equal(host.querySelector('[data-workspace-pane="left"]').classList.contains("hidden"), false);
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').getAttribute("data-workspace-pane-state"), "open");
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').hasAttribute("inert"), false);
     const maximize = host.querySelector('button[title="右侧全屏"]');
     assert.ok(maximize);
     await act(async () => maximize.click());

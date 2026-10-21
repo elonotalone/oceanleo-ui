@@ -122,7 +122,9 @@ export interface PdfSearchHit {
 export interface PdfWorkbenchState {
   readerState: PdfReaderState;
   failure: PdfReaderFailure | null;
-  textLayer: PdfTextLayerSummary;
+  textLayer: PdfTextLayerSummary & {
+    readText?: () => Array<{ pageNumber: number; text: string }>;
+  };
   manifest: PdfBinaryManifest | null;
   searchFullText: (query: string) => PdfSearchHit[];
   renderPageThumbnail: (

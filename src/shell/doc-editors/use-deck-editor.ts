@@ -103,6 +103,7 @@ interface Snapshot {
 }
 
 export interface DeckEditorState {
+  item: LibraryItem;
   deck: DeckDocument;
   activeSlide: DeckSlide;
   activeIndex: number;
@@ -2835,6 +2836,7 @@ export function useDeckEditor(
   );
 
   return {
+    item,
     deck,
     activeSlide,
     activeIndex,

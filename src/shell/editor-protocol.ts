@@ -237,6 +237,10 @@ export function asEditorToHostMessage(
       !boundedString(record.recoveryId, 128, true) ||
       typeof record.ok !== "boolean" ||
       (record.revision !== undefined && !validRevision(record.revision)) ||
+      (record.expectedNativeRevision !== undefined &&
+        (typeof record.expectedNativeRevision !== "number" ||
+          !Number.isSafeInteger(record.expectedNativeRevision) ||
+          record.expectedNativeRevision < 0)) ||
       !boundedString(record.message, 1_000) ||
       !validIssueMetadata(record) ||
       (record.ok === false && !boundedString(record.message, 1_000, true))

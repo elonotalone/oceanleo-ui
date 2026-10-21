@@ -1,13 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
-import { AgentChat } from "./AgentChat";
+import { TaskFileWorkspace } from "./task-file-workspace";
 import { useRightPaneSlot } from "./SplitWorkspace";
-import {
-  WorkspaceSessionProvider,
-  useOptionalWorkspaceSession,
-} from "./WorkspaceSession";
+import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import type { LibraryItem } from "./library-data";
 
 export function MaterialStandaloneEditor({
@@ -30,12 +26,9 @@ export function MaterialStandaloneEditor({
   onClose: () => void;
 }) {
   const existingPane = useRightPaneSlot();
-  const inheritedWorkspace = useOptionalWorkspaceSession();
   // Library editing is a Task-shaped workspace: keep the existing conversation
   // visible beside the editor from the first frame. Task hosts already provide
   // this SplitWorkspace and take the `existingPane` branch below.
-  const [agentVisible, setAgentVisible] = useState(true);
-  const [workspaceOpen, setWorkspaceOpen] = useState(true);
   const editor = (
     <AdvancedContentWorkbench
       key={item.artifactId || item.id}
@@ -50,18 +43,13 @@ export function MaterialStandaloneEditor({
     />
   );
   const workspace = existingPane ? editor : (
-    <AgentChat
+    <TaskFileWorkspace
+      item={item}
       siteId={siteId || item.siteId}
-      taskId={taskId}
+      appId={appId}
       accent={accent}
-      workspaceContent={editor}
-      workspaceOpen={workspaceOpen}
-      onWorkspaceOpenChange={(open) => {
-        setWorkspaceOpen(open);
-        if (!open) setAgentVisible(true);
-      }}
-      workspaceAgentVisible={agentVisible}
-      onWorkspaceAgentFocus={() => setAgentVisible(true)}
+      onSavedItem={onSavedItem}
+      onClose={onClose}
     />
   );
   return (
@@ -69,7 +57,7 @@ export function MaterialStandaloneEditor({
       className={`h-full min-h-0 ${className}`}
       data-library-editor-host={existingPane ? "existing-workspace" : "agent-workspace"}
     >
-      {inheritedWorkspace ? workspace : (
+      {existingPane ? workspace : (
         <WorkspaceSessionProvider
           siteId={siteId || item.siteId || "oceanleo"}
           appId={appId}

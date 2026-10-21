@@ -906,6 +906,8 @@ test("详情的类型标签跟着真实类型走，不照抄卡片那枚刻意�
   const durable = libraryItem("Playable game");
   durable.kind = "game";
   durable.artifactType = "game";
+  durable.artifact.artifactType = "game";
+  durable.artifact.editorCapability = "game-editor";
   const catalogRow = {
     key: "template-material:tpl-game",
     source: "artifact",

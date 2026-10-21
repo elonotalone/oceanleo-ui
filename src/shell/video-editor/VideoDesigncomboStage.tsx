@@ -32,6 +32,8 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
+import { createVideoDesigncomboAgentSurface } from "./designcombo/agent-command-surface";
 import { SelectionToolbar } from "../SelectionToolbar";
 import {
   DEFAULT_EDITOR_MODE,
@@ -60,7 +62,6 @@ import {
 } from "./designcombo/facade-commands";
 import {
   VIDEO_AGENT_CHIPS,
-  buildVideoReviewProposal,
   videoToolsManifestChips,
 } from "./designcombo/l4-chips";
 import {
@@ -525,53 +526,20 @@ export function VideoDesigncomboStage({
   usePluginCommandSurface(
     useMemo(
       () => ({
-        editorId: "video-timeline",
-        describe: () =>
-          VIDEO_AGENT_CHIPS.map((chip) => ({
-            id: chip.id,
-            label: chip.label,
-            summary: chip.prompt.slice(0, 80),
-            mutates: true,
-          })),
-        state: () => ({
-          mode,
-          conversion,
-          revision: editRevision,
-          chips: chipsManifest.chips.map((chip) => chip.id),
+        ...createVideoDesigncomboAgentSurface({
+          project: () => projectRef.current,
+          revision: () => editRevisionRef.current,
+          ready: () => !loading,
+          readOnly: () => readonly,
+          selectedClipId: () => selectedClipId,
+          commit,
         }),
-        run: (id, params) => {
-          const after = String(params?.text || params?.value || id || "改动");
-          const proposal = buildVideoReviewProposal({
-            proposalId: `video-review-${editRevision}-${id}`.slice(0, 128),
-            commandId: id,
-            summaryBefore: selected?.text || selectedClipId || "(时间线)",
-            summaryAfter: after,
-            objects: [
-              {
-                id: selectedClipId || "timeline",
-                op: selectedClipId ? "update" : "add",
-                label: id,
-                before: selected?.text || "",
-                after,
-              },
-            ],
-            revision: editRevision,
-          });
-          return {
-            ok: Boolean(proposal),
-            message: proposal
-              ? "改动已送审阅，接受前不会写入时间线。"
-              : "审阅提案没有通过契约校验，时间线未改。",
-            revision: editRevision,
-          };
-        },
+        target: () => pluginTargetForLibraryItem(saveItemRef.current, "video-timeline", editRevisionRef.current),
       }),
       [
-        chipsManifest.chips,
-        conversion,
-        editRevision,
-        mode,
-        selected?.text,
+        commit,
+        loading,
+        readonly,
         selectedClipId,
       ],
     ),

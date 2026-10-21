@@ -305,6 +305,9 @@ export function useEmbedEditorMessages({
           recoveryId: message.recoveryId,
           ok: message.ok,
           revision: message.revision,
+          ...(message.expectedNativeRevision === undefined
+            ? {}
+            : { expectedNativeRevision: message.expectedNativeRevision }),
           message: message.message,
         });
       } else if (message.type === "error") {

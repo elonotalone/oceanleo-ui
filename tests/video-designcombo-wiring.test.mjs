@@ -111,13 +111,15 @@ test("tools-manifest v2 exposes eight chips", () => {
   assert.equal(manifest.chips.length, 8);
 });
 
-test("agent command surface proposes review and never commits", () => {
-  const runStart = leaf.indexOf("run: (id, params)");
-  assert.ok(runStart >= 0);
-  const chunk = leaf.slice(runStart, runStart + 1600);
-  assert.match(chunk, /buildVideoReviewProposal/);
-  assert.doesNotMatch(chunk, /\bcommit\(/);
-  assert.match(chunk, /接受前不会写入时间线/);
+test("agent command surface uses real native operations behind the shared review gate", () => {
+  assert.match(leaf, /usePluginCommandSurface\(/);
+  assert.match(leaf, /createVideoDesigncomboAgentSurface\(\{/);
+  assert.match(leaf, /project: \(\) => projectRef\.current/);
+  assert.match(leaf, /selectedClipId: \(\) => selectedClipId,\s*commit,/);
+  const surface = readFileSync(new URL("../src/shell/video-editor/designcombo/agent-command-surface.ts", import.meta.url), "utf8");
+  assert.match(surface, /mutates: true/);
+  assert.match(surface, /runVideoDesigncomboCommand\(/);
+  assert.match(surface, /port\.commit\(result\.project\)/);
 });
 
 test("the next-core leaf has no static openvideo or remotion imports", () => {

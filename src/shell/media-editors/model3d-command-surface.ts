@@ -10,6 +10,7 @@
  */
 
 import type { PluginCommandSurfaceInput } from "../plugin-command/types";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import type { Model3DWorkbenchState } from "./model3d-workbench-state";
 import {
   createVisualCommandSurface,
@@ -277,9 +278,25 @@ export function model3dCommandState(
 export function createModel3DCommandSurface(
   deps: Model3DCommandDeps,
 ): PluginCommandSurfaceInput {
-  return createVisualCommandSurface({
-    editorId: EDITOR_ID,
-    commands: () => model3dCommandDefinitions(deps),
-    state: () => model3dCommandState(deps.editor),
-  });
+  return {
+    ...createVisualCommandSurface({
+      editorId: EDITOR_ID,
+      commands: () => model3dCommandDefinitions(deps),
+      state: () => model3dCommandState(deps.editor),
+    }),
+    agentContext: () => !deps.editor.modelLoaded || deps.editor.loading
+      ? { ready: false, reason: "3D 模型源尚未加载完成。" }
+      : boundedAgentContent({
+          selectedNode: deps.editor.selectedNode,
+          selectedMaterialIndex: deps.editor.selectedMaterialIndex,
+          selectedMaterial: deps.editor.materials?.[deps.editor.selectedMaterialIndex],
+          sceneNodes: deps.editor.sceneNodes,
+          materials: deps.editor.materials,
+          annotations: deps.editor.annotations,
+          animations: deps.editor.animations,
+          animationName: deps.editor.animationName,
+          operationJournal: deps.editor.operationJournal,
+          director: deps.editor.director,
+        }, "提供当前场景节点、材质和编辑操作；不把场景数据冒充已渲染的视觉观察。"),
+  };
 }

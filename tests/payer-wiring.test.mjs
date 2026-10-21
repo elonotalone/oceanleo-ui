@@ -313,7 +313,7 @@ const OVERRIDES = {
   "./FunctionAgentChat": dataModule(`
     export function EditorCommandNotes(){ return null; }
     export function useEditorCommandBridge(){
-      return { contextFor: () => "", pending: null, busy: false, notes: [], card: null, noteUserTurn(){}, noteOwnTask(){}, ingest(){} };
+      return { contextFor: () => "", captureContext: () => ({context:"",filePin:null}), pending: null, busy: false, notes: [], card: null, noteUserTurn(){}, noteOwnTask(){}, ingest(){} };
     }
   `),
   "./agent-review": dataModule(`

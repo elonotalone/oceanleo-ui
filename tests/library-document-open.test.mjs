@@ -142,7 +142,8 @@ test("点开文件后库页 chrome 收起，文档 preview 写进查看器 url",
     resolve("src/shell/document-shelf-cover.tsx"),
     "utf8",
   );
-  assert.match(cover, /data-document-cover="paper"/);
+  assert.match(cover, /data-document-cover=\{excerpt \? "excerpt" : "unavailable"\}/);
+  assert.match(cover, /extractDocumentCoverExcerpt/);
   assert.match(cover, /data-document-cover="embedded-thumbnail"/);
   assert.match(cover, /extractOoxmlEmbeddedThumbnail/);
 

@@ -221,7 +221,8 @@ test("操作台需真实 snapshot；标准 agent 可用真实 task thread 恢复
 
 test("完整 session 交给站点 runtime，旧任务直接回到可续聊对话", () => {
   assert.match(historySource, /withLinkedAgentTask\(/);
-  assert.match(historySource, /renderWorkspace\(currentSession\)/);
+  assert.match(historySource, /renderWorkspace\?\.\(currentSession\)/);
+  assert.match(historySource, /currentSession\.app_id === "library"[\s\S]*?<LibraryTaskHistoryWorkspace/);
   assert.match(historySource, /<WorkspaceSessionProvider/);
   assert.doesNotMatch(historySource, /旧记录信息不完整/);
   assert.match(historySource, /<AgentChat/);

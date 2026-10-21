@@ -9,6 +9,7 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { createEmptyDoc } from "../src/shell/video-editor/timeline-model.ts";
 import {
   resetUserEditSession,
+  userEditItemKey,
   userMutationGeneration,
 } from "../src/shell/user-edit-session.ts";
 
@@ -47,22 +48,26 @@ function videoItem(id) {
   return { key: `artifact:${id}:r1`, id };
 }
 
+function generationOf(item) {
+  return userMutationGeneration(userEditItemKey(item));
+}
+
 test("video timeline person-commit increments userMutationGeneration", () => {
   resetUserEditSession();
   const item = videoItem("video-timeline-w6");
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(generationOf(item), 0);
   assert.equal(
     timeline.applyVideoTimelineUserEditSession(item, "person-commit"),
     1,
   );
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(generationOf(item), 1);
   const before = createEmptyDoc();
   const after = { ...before, fps: before.fps + 1 };
   assert.equal(
     timeline.applyVideoTimelineHistoryWriteIfChanged(item, before, after),
     2,
   );
-  assert.equal(userMutationGeneration(item.key), 2);
+  assert.equal(generationOf(item), 2);
 });
 
 test("video timeline load, hydrate, and equal documents do not record", () => {
@@ -79,7 +84,7 @@ test("video timeline load, hydrate, and equal documents do not record", () => {
     timeline.applyVideoTimelineHistoryWriteIfChanged(item, doc, { ...doc }, "hydrate"),
     0,
   );
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(generationOf(item), 0);
   timeline.applyVideoTimelineUserEditSession(item, "person-commit");
   assert.equal(timeline.applyVideoTimelineUserEditSession(item, "load"), 1);
   assert.equal(timeline.applyVideoTimelineUserEditSession(item, "hydrate"), 1);
@@ -92,7 +97,7 @@ test("video designcombo commit records; load does not", () => {
     designcombo.applyVideoDesigncomboUserEditSession(item, "commit"),
     1,
   );
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(generationOf(item), 1);
   assert.equal(
     designcombo.applyVideoDesigncomboUserEditSession(item, "load"),
     1,
@@ -102,7 +107,7 @@ test("video designcombo commit records; load does not", () => {
     designcombo.applyVideoDesigncomboUserEditSession(item, "load"),
     0,
   );
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(generationOf(item), 0);
 });
 
 test("video canvas person-command and add-node record; hydrate does not", () => {
@@ -115,12 +120,12 @@ test("video canvas person-command and add-node record; hydrate does not", () => 
     item,
     empty,
     "workflow.add-node",
-    { label: "新节点" },
+    { kind: "filter", label: "新节点" },
     0,
   );
   assert.equal(applied.ok, true);
   assert.equal(applied.graph.nodes.length, 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(generationOf(item), 1);
   assert.equal(
     canvas.applyVideoCanvasUserEditSession(item, "person-command"),
     2,

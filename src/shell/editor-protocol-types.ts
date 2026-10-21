@@ -210,6 +210,8 @@ export type EditorReviewDecision = "accept" | "reject";
 export interface EditorRecoverySnapshot {
   revision: EditorDocumentRevision;
   confirmedRevision?: EditorDocumentRevision;
+  /** Optional native-engine compare-and-swap guard; unrelated recovery formats omit it. */
+  expectedNativeRevision?: number;
   payload: EditorRecoveryValue;
 }
 
@@ -410,6 +412,8 @@ export type EditorToHostMessage =
       recoveryId: string;
       ok: boolean;
       revision?: EditorDocumentRevision;
+      /** Echoed only when the native editor actually checked the requested CAS revision. */
+      expectedNativeRevision?: number;
       message?: string;
       code?: string;
       severity?: EditorMessageSeverity;

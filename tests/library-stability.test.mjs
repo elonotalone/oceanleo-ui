@@ -417,6 +417,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     export function artifactIsVisible(){ return true; }
     export function isEnsureableTransient(){ return false; }
     export function normalizeArtifactProjectionResult(){ return {ok:false}; }
+    export const ADVANCED_CAPABILITY_MATRIX = [];
   `),
   "./editor-preload": editorPreloadUrl,
   "./WorkspaceLibrary": dataModule(`

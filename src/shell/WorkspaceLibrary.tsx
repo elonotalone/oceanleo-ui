@@ -831,6 +831,7 @@ export function WorkspaceLibrary({
     // 详情插槽解析出来的 durable 投影带的才是真类型，有就用它。
     // 只换这枚标签：下面的 `refreshable` 仍用 `kind`，那是另一条判据，不在本条范围内。
     const detailKind = detailAppPlan.item?.kind || kind;
+    const detailLabelItem = detailAppPlan.item || selected.libraryItem;
     const externalUrl =
       selected.externalUrl ||
       selected.libraryItem?.url ||
@@ -892,7 +893,9 @@ export function WorkspaceLibrary({
               </h3>
               {detailKind && (
                 <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
-                  {tt(selected.libraryItem ? libraryEditorLabel(selected.libraryItem) : WORKSPACE_KIND_LABELS[detailKind] || "内容")}
+                  {tt(detailLabelItem
+                    ? libraryEditorLabel(detailLabelItem)
+                    : WORKSPACE_KIND_LABELS[detailKind] || "内容")}
                 </span>
               )}
             </div>

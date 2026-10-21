@@ -377,10 +377,15 @@ export function ImageRoute({
     useMemo(
       () =>
         guardPluginSurface(
-          createImageCommandSurface({ editor, deliver }),
+          createImageCommandSurface({
+            editor,
+            deliver,
+            item: activeItem,
+            visionSourceUrls: [advancedEditorSourceFor(activeItem)?.url],
+          }),
           viewOnly,
         ),
-      [deliver, editor, viewOnly],
+      [activeItem, deliver, editor, viewOnly],
     ),
   );
 

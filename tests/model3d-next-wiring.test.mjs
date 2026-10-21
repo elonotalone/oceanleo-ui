@@ -127,7 +127,8 @@ test("hosted iframe sandbox is HOSTED_EDITOR_SANDBOX; UGC / cover stay locked", 
 test("L4 chips are wired into the next leaf", () => {
   assert.equal(model3dToolsManifestChips().chips.length, 8);
   assert.match(leaf, /model3dToolsManifestChips/);
-  assert.match(leaf, /buildModel3DReviewProposal/);
+  assert.match(leaf, /recolorModel3DMaterial/);
+  assert.match(leaf, /id: "threed\.set-material-color"/);
   assert.match(leaf, /rememberEditorChips\("threed"/);
   assert.match(leaf, /rememberEditorChips\("model3d"/);
 });

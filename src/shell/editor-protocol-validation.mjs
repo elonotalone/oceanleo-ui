@@ -443,6 +443,10 @@ export function isEditorRecoverySnapshot(value) {
     !validRevision(snapshot.revision) ||
     (snapshot.confirmedRevision !== undefined &&
       !validRevision(snapshot.confirmedRevision)) ||
+    (snapshot.expectedNativeRevision !== undefined &&
+      (typeof snapshot.expectedNativeRevision !== "number" ||
+        !Number.isSafeInteger(snapshot.expectedNativeRevision) ||
+        snapshot.expectedNativeRevision < 0)) ||
     (typeof snapshot.revision === "number" &&
       typeof snapshot.confirmedRevision === "number" &&
       snapshot.confirmedRevision > snapshot.revision) ||

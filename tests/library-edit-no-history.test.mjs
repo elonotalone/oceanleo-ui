@@ -68,7 +68,7 @@ test("explore 无 app 时同样收成就地编辑，不深链走", () => {
   assert.equal(resolveLibraryEditRoute("deep-link", explore), "in-place");
 });
 
-test("门户库就地编辑不绑对不上清册的 site_id", () => {
+test("全局 Library 新任务归门户，不归素材原站点或项目 UUID", () => {
   assert.equal(isUnmountablePortalHistorySiteId(""), true);
   assert.equal(isUnmountablePortalHistorySiteId("oceanleo"), true);
   assert.equal(isUnmountablePortalHistorySiteId("library"), true);
@@ -84,14 +84,16 @@ test("门户库就地编辑不绑对不上清册的 site_id", () => {
     itemSiteId: "c19785ed-aaaa-4bbb-8ccc-ddddeeeeffff",
   });
   assert.equal(fromProject.appId, "library");
-  assert.equal(fromProject.siteId, "library");
+  assert.equal(fromProject.siteId, "oceanleo");
   assert.notEqual(fromProject.siteId, "c19785ed-aaaa-4bbb-8ccc-ddddeeeeffff");
 
   const fromWebsite = libraryStandaloneEditorBinding({
     hostSiteId: "",
     itemSiteId: "website",
   });
-  assert.deepEqual(fromWebsite, { siteId: "website", appId: "library" });
+  assert.deepEqual(fromWebsite, { siteId: "oceanleo", appId: "library" });
+  assert.deepEqual(libraryStandaloneEditorBinding({ hostSiteId: "website", itemSiteId: "word" }),
+    { siteId: "website", appId: "library" });
 });
 
 test("MyLibrary 全页库编辑走 libraryStandaloneEditorBinding，不再用 siteId 冒充 app", () => {

@@ -4,7 +4,8 @@ import type {
 } from "../plugin-command/types";
 import { WORKFLOW_EDITOR_ID } from "./l4-chips";
 import { addVideoCanvasNode } from "./video-canvas-local-session";
-import type { VideoCanvasGraph } from "./video-canvas-schema";
+import { VIDEO_CANVAS_NODE_KINDS, type VideoCanvasGraph } from "./video-canvas-schema";
+import { validateLocalWorkflowAddNodeParams } from "./agent-write-bridge";
 
 export interface VideoCanvasCommandPort {
   graph(): VideoCanvasGraph;
@@ -41,11 +42,17 @@ export function applyVideoCanvasCommand(
   if (id !== "workflow.add-node") {
     return { ok: false, error: `工作流编辑器没有「${id}」这条指令。` };
   }
+  const normalized = validateLocalWorkflowAddNodeParams(params);
+  if (!normalized.ok) return normalized;
+  const nodeId = `node-${revision + 1}`;
+  if (graph.nodes.some((node) => node.id === nodeId)) {
+    return { ok: false, error: "新节点身份已存在；没有修改工作流。" };
+  }
   const next = addVideoCanvasNode(
     graph,
-    "filter",
-    `node-${revision + 1}`,
-    String(params.label || "新节点"),
+    normalized.kind,
+    nodeId,
+    normalized.label,
   );
   return {
     ok: true,
@@ -67,6 +74,25 @@ export function createVideoCanvasCommandSurface(
           id: "workflow.add-node",
           label: "加节点",
           summary: "在流程图上加入一个处理节点。",
+          params: [
+            {
+              key: "kind",
+              label: "节点类型",
+              type: "enum",
+              required: true,
+              enumValues: VIDEO_CANVAS_NODE_KINDS.map((value) => ({
+                value,
+                label: value,
+              })),
+            },
+            {
+              key: "label",
+              label: "节点名称",
+              type: "string",
+              required: true,
+              hint: "最多 80 个字符",
+            },
+          ],
           mutates: true,
         },
       ];

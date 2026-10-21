@@ -67,6 +67,12 @@ import {
   useAdvancedEditorHost,
 } from "./advanced-editor-host-context";
 import {
+  pluginEditorIdForLibraryItem,
+  pluginTargetForLibraryItem,
+  registerActiveAgentFile,
+} from "./active-agent-file";
+import { useWorkspacePane } from "./SplitWorkspace";
+import {
   editorOpenSessionId,
   markEditorOpen,
 } from "./editor-open-timing";
@@ -356,6 +362,8 @@ function AdvancedContentWorkbenchRuntime(
   const router = useRouter();
   const workspace = useWorkspaceSession();
   const editorHost = useAdvancedEditorHost();
+  const workspacePane = useWorkspacePane();
+  const libraryPaneOpen = workspacePane?.libraryOpen !== false;
   const restoredItem = editorHost.embedded
     ? null
     : advancedItemFromSession(workspace.session);
@@ -526,6 +534,81 @@ function AdvancedContentWorkbenchRuntime(
     },
     [editorHost.embedded, makeSnapshot, workspace],
   );
+  const persistActiveFileAssociation = useCallback(
+    async (taskId?: string | null): Promise<boolean> => {
+      if (!libraryPaneOpen) return false;
+      const targetItem = materialRef.current;
+      const sameItem = () =>
+        materialRef.current.artifactId === targetItem.artifactId &&
+        materialRef.current.revisionId === targetItem.revisionId &&
+        materialRef.current.artifactType === targetItem.artifactType;
+      const active = await ensure(taskId);
+      if (!active || !sameItem()) return false;
+      if (!editorHost.embedded) return true;
+      return draftQueueRef.current.run(async () => {
+        const currentWorkspace = workspaceRef.current;
+        const live =
+          draftQueueRef.current.current(currentWorkspace.session) ||
+          currentWorkspace.session ||
+          active;
+        if (!live || !sameItem()) return false;
+        const draft = advancedDraftFromSnapshot(live.snapshot, targetItem);
+        const merge = (latest: unknown) =>
+          withInlineEditorHistoryHead(
+            latest,
+            targetItem,
+            route.type,
+            taskId === undefined ? currentWorkspace.taskId : taskId,
+            draft,
+          );
+        const stored = await saveOwnedWorkspaceSnapshot({
+          saveSnapshot: (snapshot, schemaVersion, options) =>
+            currentWorkspace.saveSnapshot(snapshot, schemaVersion, options),
+          snapshot: merge(live.snapshot),
+          schemaVersion: live.schema_version || 1,
+          expectedSessionId: live.id,
+          title: live.title || targetItem.title,
+          mergeFromLatest: merge,
+        });
+        if (stored.ok) draftQueueRef.current.accept(stored.session);
+        else reportSaveFailure("active-file-association", true);
+        return stored.ok;
+      });
+    },
+    [editorHost.embedded, ensure, libraryPaneOpen, route.type],
+  );
+  useLayoutEffect(() => {
+    const item = materialRef.current;
+    const editorId = pluginEditorIdForLibraryItem(item, capability.adapter);
+    if (!editorId) return;
+    const target = pluginTargetForLibraryItem(item, editorId, 0);
+    if (!libraryPaneOpen || !target) {
+      return;
+    }
+    return registerActiveAgentFile({
+      scopeId: workspace.activeFileScopeId,
+      identity: {
+        artifactId: target.artifactId,
+        revisionId: target.revisionId,
+        artifactType: target.artifactType,
+        title: item.title,
+        editorId,
+      },
+      snapshot: (taskId) => makeSnapshot(taskId),
+      persist: (taskId) => persistActiveFileAssociation(taskId),
+    });
+  }, [
+    libraryPaneOpen,
+    makeSnapshot,
+    persistActiveFileAssociation,
+    capability.adapter,
+    route,
+    routeItem.artifactId,
+    routeItem.revisionId,
+    routeItem.artifactType,
+    routeItem.title,
+    workspace.activeFileScopeId,
+  ]);
   const hostItemRef = useRef(props.item);
   hostItemRef.current = props.item;
   const saveBelongsToCurrentStage = (candidate: LibraryItem) => {
@@ -794,6 +877,9 @@ function AdvancedContentWorkbenchRuntime(
       recordSavedItem,
       recordDraft,
       registerFlush,
+      flush: async (): Promise<AdvancedFlushResult> => flushRef.current
+        ? await flushRef.current()
+        : { ok: false, error: "当前工作区的保存通道尚未就绪。" },
     }),
     [
       ensure,

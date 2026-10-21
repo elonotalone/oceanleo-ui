@@ -249,6 +249,7 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
     >
       <div className="min-h-0 flex-1 overflow-hidden">
         <MyLibrary
+          siteId="oceanleo"
           accent={props.accent}
           action={libraryAction}
           plain

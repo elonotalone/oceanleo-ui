@@ -38,6 +38,7 @@ import { ConfirmDialog } from "../ui";
 import { browserClient } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
+import { LibraryTaskHistoryWorkspace } from "./library-task-history";
 import { ShellTaskView } from "./cloud-computer/ShellTaskView";
 import {
   canDeleteHistoryEntry,
@@ -852,7 +853,8 @@ export function HistoryDetail({
           setDetailLoading(false);
           return;
         }
-        if (siteId && session.site_id !== siteId) {
+        if (siteId && session.site_id !== siteId &&
+            !(siteId === "oceanleo" && session.app_id === "library")) {
           setDetailLoading(false);
           setDetailError("这条工作会话不属于当前网站。");
           return;
@@ -1028,7 +1030,7 @@ export function HistoryDetail({
   );
   if (runtimeSession && isRestorableAppSession(runtimeSession)) {
     const currentSession = runtimeSession;
-    if (!renderWorkspace) {
+    if (!renderWorkspace && currentSession.app_id !== "library") {
       return (
         <div className="grid h-[calc(100dvh-1px)] place-items-center bg-stone-50/60 p-8">
           <div className="w-full max-w-xl rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
@@ -1058,7 +1060,9 @@ export function HistoryDetail({
             mode="history"
             resumeLatest={false}
           >
-            {renderWorkspace(currentSession)}
+            {currentSession.app_id === "library"
+              ? <LibraryTaskHistoryWorkspace session={currentSession} accent={accent} />
+              : renderWorkspace?.(currentSession)}
           </WorkspaceSessionProvider>
         </div>
       </div>

@@ -57,6 +57,10 @@ export function QuickActionChips({
   useEffect(() => {
     const a = subscribeAgentSelection(() => bump((n) => n + 1));
     const b = subscribeEditorChips(() => bump((n) => n + 1));
+    // DOM fallback may publish to our own subscription. Never perform that
+    // write during render: an already-mounted toolbar would cause an infinite
+    // render → publish → bump loop. Native toolbar publications stay primary.
+    if (!readAgentSelection()) refreshAgentSelectionFromDom();
     return () => {
       a();
       b();
@@ -64,7 +68,6 @@ export function QuickActionChips({
   }, []);
   const surface = currentPluginCommandSurface();
   const resolved = editorId || surface?.editorId || "";
-  refreshAgentSelectionFromDom();
   const selection = readAgentSelection();
   const chips = chipsForEditor(resolved, selection?.kind ?? null);
   return (
@@ -72,8 +75,9 @@ export function QuickActionChips({
       title={tt("快捷动作")}
       chips={chips}
       onPick={(chip) => {
+        const latestSelection = readAgentSelection() || refreshAgentSelectionFromDom();
         const prompt = promptForChip(chip, {
-          selection: selection?.summary || "",
+          selection: latestSelection?.summary || "",
           document: "",
         });
         onFire(prompt, chip);

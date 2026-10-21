@@ -510,12 +510,13 @@ test("video-canvas: graph hydrates, add-node command mutates, flush reopens", as
     },
   });
   assert.ok(surface.describe().some((spec) => spec.id === "workflow.add-node"));
-  const ran = await surface.run("workflow.add-node", { label: "滤镜" });
+  const ran = await surface.run("workflow.add-node", { kind: "filter", label: "滤镜" });
   assert.equal(ran.ok, true);
   assert.equal(current.nodes.length, 2);
   assert.equal(current.nodes.at(-1).label, "滤镜");
 
   const applied = applyVideoCanvasCommand(current, "workflow.add-node", {
+    kind: "filter",
     label: "第二节点",
   }, revision);
   assert.equal(applied.ok, true);

@@ -19,12 +19,16 @@
 import type { Editor } from "@tiptap/core";
 import type {
   PluginCommandParam,
+  PluginAgentContext,
   PluginCommandResult,
   PluginCommandSpec,
   PluginCommandSurfaceInput,
 } from "../plugin-command/types";
 import { PLUGIN_COMMAND_PARAM_MAX_BYTES } from "../plugin-command/types";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 import type { PdfWorkbenchState } from "../media-editors/pdf-workbench-state";
+import type { LibraryItem } from "../library-data";
 import { DECK_IR_LAYOUTS } from "./deck-layout-grid";
 import type { DeckEditorState } from "./use-deck-editor";
 import type { GridCommandEditorState } from "./grid-shared";
@@ -43,6 +47,10 @@ export interface DocFamilyCommandDeps {
    * 返回空串表示成功，返回非空就是要显示给用户的那句原因。
    */
   download: (extension: string) => Promise<string>;
+  /** Host persistence includes its Task snapshot receipt, not just native bytes. */
+  save?: () => Promise<PluginCommandResult>;
+  /** Present for Library surfaces that need an exact artifact/revision pin. */
+  item?: LibraryItem;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,10 +199,14 @@ function surfaceOf(
   >,
   readState: () => Record<string, unknown>,
   revision: () => number,
+  agentContext?: () => PluginAgentContext,
+  target?: () => ReturnType<typeof pluginTargetForLibraryItem>,
 ): PluginCommandSurfaceInput {
   const describe = () => specs.filter((spec) => Boolean(handlers[spec.id]));
   return {
     editorId,
+    ...(target ? { target } : {}),
+    ...(agentContext ? { agentContext } : {}),
     describe,
     state: () => boundedCommandState(readState()),
     run: async (id, params) => {
@@ -223,6 +235,26 @@ function surfaceOf(
       }
     },
   };
+}
+
+function textChunks(value: string): string[] {
+  const chunks: string[] = [];
+  for (let index = 0; index < value.length; index += 1_000) {
+    chunks.push(value.slice(index, index + 1_000));
+  }
+  return chunks;
+}
+
+function boundedTextContext(
+  text: string,
+  extra: Record<string, unknown> = {},
+  note?: string,
+): PluginAgentContext {
+  const bounded = boundedAgentContent(
+    { ...extra, textChunks: textChunks(text), totalCharacters: text.length },
+    note,
+  );
+  return bounded.ready ? { ...bounded, kind: "text" } : bounded;
 }
 
 function downloadParam(editorId: DocFamilyEditorId): PluginCommandParam {
@@ -539,6 +571,7 @@ export function buildRichDocCommandSurface(
       };
     };
     handlers["richdoc.save"] = async () => {
+      if (deps.save) return deps.save();
       const saved = await editor.save();
       return saved
         ? { ok: true, message: "已保存成素材库里的新版本。" }
@@ -567,6 +600,23 @@ export function buildRichDocCommandSurface(
       error: clip(editor.error || "", 120),
     }),
     () => editor.editRevision,
+    () => {
+      if (!ready || !instance) {
+        return { ready: false, reason: "RichDoc 文档正文尚未成功载入。" };
+      }
+      return boundedTextContext(instance.getText(), {
+        sourceFormat: editor.source,
+        outline: richDocOutline(instance),
+        selection: instance.state.selection.empty
+          ? null
+          : instance.state.doc.textBetween(
+              instance.state.selection.from,
+              instance.state.selection.to,
+              "\n",
+            ),
+      });
+    },
+    () => pluginTargetForLibraryItem(editor.item, "richdoc", editor.editRevision),
   );
 }
 
@@ -779,6 +829,7 @@ export function buildGridCommandSurface(
       return { ok: true, message: `已选中第 ${row} 行第 ${column} 列。` };
     };
     handlers["grid.save"] = async () => {
+      if (deps.save) return deps.save();
       const saved = await editor.save();
       return saved
         ? { ok: true, message: "已保存成素材库里的新版本。" }
@@ -810,6 +861,25 @@ export function buildGridCommandSurface(
       error: clip(editor.error || "", 120),
     }),
     () => editor.editRevision,
+    () => {
+      if (!ready || !editor.activeSheet) {
+        return { ready: false, reason: "表格工作簿尚未成功载入。" };
+      }
+      return boundedAgentContent({
+        workbookTitle: editor.item.title,
+        activeSheet: editor.activeSheet.name,
+        sheets: editor.sheets.map((sheet) => ({
+          name: sheet.name,
+          rows: sheet.rows,
+        })),
+        selection: {
+          row: editor.selection.focus.row + 1,
+          column: editor.selection.focus.col + 1,
+          value: editor.selectedValue,
+        },
+      }, "这是当前工作簿的真实单元格值；若标为截断，仅能依据已提供的格子作答。");
+    },
+    () => pluginTargetForLibraryItem(editor.item, "grid", editor.editRevision),
   );
 }
 
@@ -998,6 +1068,7 @@ export function buildDeckCommandSurface(
         : "这份演示文稿还没有任何页。",
     });
     handlers["deck.save"] = async () => {
+      if (deps.save) return deps.save();
       const saved = await editor.save();
       return saved
         ? { ok: true, message: "已保存成素材库里的新版本。" }
@@ -1029,6 +1100,46 @@ export function buildDeckCommandSurface(
       error: clip(editor.error || "", 120),
     }),
     () => editor.editRevision,
+    () => {
+      if (!ready || !editor.deck) {
+        return { ready: false, reason: "演示文稿尚未成功载入。" };
+      }
+      const slides = editor.deck.slides.map((slide, index) => ({
+        index: index + 1,
+        id: slide.id,
+        title: slide.title,
+        body: slide.body,
+        bullets: slide.bullets,
+        notes: slide.notes,
+        layout: slide.layout,
+        background: slide.background,
+        elements: slide.elements.map((element) => ({
+          id: element.id,
+          type: element.type,
+          x: element.x,
+          y: element.y,
+          width: element.width,
+          height: element.height,
+          text: element.text,
+          alt: element.alt,
+          shape: element.shape,
+          fill: element.fill,
+          color: element.color,
+          fontSize: element.fontSize,
+          bold: element.bold,
+          align: element.align,
+          rows: element.rows,
+        })),
+      }));
+      return boundedAgentContent({
+        title: editor.deck.title,
+        aspect: editor.deck.aspect,
+        theme: editor.deck.theme,
+        activeSlide: editor.activeIndex + 1,
+        slides,
+      }, "演示稿文字、版式和可见元素结构来自当前未保存编辑器；图片像素未做视觉识别，图像文字仅能依据 alt/其他已提供字段。");
+    },
+    () => pluginTargetForLibraryItem(editor.item, "deck", editor.editRevision),
   );
 }
 
@@ -1232,6 +1343,7 @@ export function buildPdfCommandSurface(
       return { ok: true, message: `已把第 ${from} 页移到第 ${to} 页。` };
     };
     handlers["pdf.save"] = async () => {
+      if (deps.save) return deps.save();
       const saved = await editor.saveCopy();
       return saved
         ? { ok: true, message: "已另存成素材库里的一份新 PDF。" }
@@ -1262,6 +1374,40 @@ export function buildPdfCommandSurface(
       error: clip(editor.error || editor.failure?.message || "", 120),
     }),
     () => editor.editRevision,
+    () => {
+      if (!ready || !editor.textLayer.present || !editor.textLayer.readText) {
+        return {
+          ready: false,
+          reason: editor.textLayer.status !== "ready"
+            ? "PDF 文字层尚未完成读取。"
+            : "这是一份扫描/图片型 PDF，目前没有 OCR 结果，不能声称读到了页面文字。",
+        };
+      }
+      const pages = editor.textLayer.readText().map((page) => ({
+        pageNumber: page.pageNumber,
+        textChunks: textChunks(page.text),
+      })).sort((left, right) =>
+        (left.pageNumber === editor.pageNumber ? -1 : 0) -
+        (right.pageNumber === editor.pageNumber ? -1 : 0) ||
+        left.pageNumber - right.pageNumber,
+      );
+      return boundedAgentContent({
+        pageCount: editor.pageCount,
+        currentPage: editor.pageNumber,
+        selectedAnnotation: editor.selectedAnnotation
+          ? { pageNumber: editor.pageNumber, ...editor.selectedAnnotation }
+          : null,
+        annotations: editor.annotations.map((annotation) => ({
+          id: annotation.id,
+          pageNumber: editor.pageNumber,
+          contents: annotation.contents,
+          kind: annotation.kind,
+          rect: annotation.rect,
+        })),
+        pages,
+      }, "内容来自当前 PDF 文字层和编辑器批注；扫描页像素未做 OCR/视觉识别，不能假定图片页文字已读取。");
+    },
+    () => deps.item ? pluginTargetForLibraryItem(deps.item, "pdf", editor.editRevision) : null,
   );
 }
 

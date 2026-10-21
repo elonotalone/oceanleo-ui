@@ -18,6 +18,7 @@ import {
   richDocJsonToHtmlFragment,
   richDocLoadVerified,
   richDocPersistTarget,
+  richDocProjectUrl,
   richDocResultHasBody,
   selectRichDocSourceUrl,
   unwrapNativeRichDocJson,
@@ -139,7 +140,7 @@ export function isDocxUrl(url: string, item?: LibraryItem): boolean {
 export function isDocxOnlyItem(item: LibraryItem): boolean {
   const inline = inlineJsonFromItem(item);
   if (inline && richDocHasContent(inline)) return false;
-  const project = String(item.meta.editor_project_url || "").trim();
+  const project = richDocProjectUrl(item);
   if (project && !isArtifactSourceTreeUrl(project)) return false;
   const url = selectRichDocSourceUrl(item);
   return Boolean(url) && detectRichDocFormat(item, url) === "docx";
@@ -149,6 +150,10 @@ export function inferRichDocHandoffFormat(
   item: LibraryItem,
   url: string,
 ): string | null {
+  // The delivery may be DOCX while its editable manifest is native JSON.
+  // Do not let source_format=docx send project bytes through the DOCX parser.
+  if (url && (url === richDocProjectUrl(item) ||
+      url === String(item.meta.editor_working_head_project_url || ""))) return "json";
   const format = detectRichDocFormat(item, url);
   return format;
 }
@@ -177,7 +182,7 @@ export function deriveEditorHandoffFromItem(item: LibraryItem): EditorHandoff {
     };
   }
   const project = browserSafeHandoffUrl(
-    String(item.meta.editor_project_url || ""),
+    richDocProjectUrl(item),
   );
   if (project) {
     return {
@@ -359,6 +364,9 @@ export async function loadRichDocHostedState(
     }
   | { ok: false; error: string }
 > {
+  // A freshly listed Library item has no in-memory handoff; use its canonical
+  // editable project rather than silently reopening the delivery copy.
+  if (!handoff) handoff = deriveEditorHandoffFromItem(item);
   if (handoff?.kind === "inline" && richDocHasContent(handoff.json)) {
     const next = hostedStateFromResolvedJson(handoff.json);
     return { ok: true, ...next };

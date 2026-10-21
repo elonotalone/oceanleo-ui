@@ -11,6 +11,9 @@
  */
 
 import type { PluginCommandSurfaceInput } from "../plugin-command/types";
+import type { LibraryItem } from "../library-data";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 import {
   createVisualCommandSurface,
   fail,
@@ -52,11 +55,41 @@ export interface ImageCommandDeps {
   editor: FabricImageEditorState & { collab?: { readOnly: boolean } };
   /** 由路由提供：按格式与质量把当前画布交到用户手上。 */
   deliver: (format: string, quality: number) => Promise<void>;
+  item?: LibraryItem;
+  /** Candidate public, credential-free source renditions, in preferred order. */
+  visionSourceUrls?: readonly unknown[];
   /**
    * Optional remaining AI runner (inpaint / rewrite-text).
    * Omit it to register no AI commands.
    */
   runAi?: AiCommandRunner;
+}
+
+/** Pick a fetchable source for the backend vision tool without exposing URL credentials. */
+export function usableImageVisionSource(candidates: readonly unknown[]): string {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+    try {
+      const parsed = new URL(candidate.trim());
+      const host = parsed.hostname.toLowerCase();
+      if (
+        parsed.protocol === "https:" &&
+        !parsed.username &&
+        !parsed.password &&
+        !parsed.search &&
+        !parsed.hash &&
+        host !== "localhost" &&
+        !host.endsWith(".localhost") &&
+        !host.endsWith(".local") &&
+        !host.endsWith(".internal") &&
+        !/^\d+(?:\.\d+){3}$/.test(host) &&
+        !host.includes(":")
+      ) return parsed.toString();
+    } catch {
+      // Relative/private source paths are not fetchable by the server vision tool.
+    }
+  }
+  return "";
 }
 
 export function imageCommandDefinitions(
@@ -316,7 +349,7 @@ export function imageCommandState(
 export function createImageCommandSurface(
   deps: ImageCommandDeps,
 ): PluginCommandSurfaceInput {
-  return createVisualCommandSurface({
+  const surface = createVisualCommandSurface({
     editorId: EDITOR_ID,
     // 只能查看：会改画布的指令在这一层直接拒绝，导出照常
     commands: () =>
@@ -326,4 +359,68 @@ export function createImageCommandSurface(
       ),
     state: () => imageCommandState(deps.editor),
   });
+  return {
+    ...surface,
+    target: () => deps.item
+      ? pluginTargetForLibraryItem(deps.item, EDITOR_ID, deps.editor.editRevision)
+      : null,
+    agentContext: () => {
+      const editor = deps.editor;
+      if (editor.loading || !editor.sourceReady) {
+        return { ready: false, reason: "图片源或当前 Fabric 场景尚未成功载入。" };
+      }
+      const raw = editor.captureRecovery() as {
+        snapshot?: { json?: { objects?: unknown[] }; doc?: unknown; canvasBackground?: unknown };
+      } | null;
+      if (!raw?.snapshot || !Array.isArray(raw.snapshot.json?.objects)) {
+        return { ready: false, reason: "当前图片编辑器还没有可读取的实时场景快照。" };
+      }
+      const visionSource = usableImageVisionSource([
+        editor.savedUrl,
+        ...(deps.visionSourceUrls || []),
+        deps.item?.previewUrl,
+        deps.item?.url,
+      ]);
+      const objects = raw.snapshot.json.objects.map((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+        const object = value as Record<string, unknown>;
+        return {
+          id: object.oceanleoId || object.id,
+          type: object.type,
+          x: object.left,
+          y: object.top,
+          width: object.width,
+          height: object.height,
+          scaleX: object.scaleX,
+          scaleY: object.scaleY,
+          angle: object.angle,
+          visible: object.visible,
+          opacity: object.opacity,
+          fill: object.fill,
+          stroke: object.stroke,
+          text: object.text,
+          alt: object.alt,
+          hasImageSource: typeof object.src === "string" || typeof object.data === "string",
+        };
+      }).filter(Boolean);
+      return boundedAgentContent({
+        visionSource: visionSource || undefined,
+        pixelInspectionAvailable: Boolean(visionSource),
+        scene: {
+          documentSize: raw.snapshot.doc,
+          canvasBackground: raw.snapshot.canvasBackground,
+          objects,
+          layerOrder: editor.layers,
+          selected: editor.selected,
+          tool: editor.activeTool,
+          cropping: editor.cropping,
+          dirty: editor.dirty,
+          editRevision: editor.editRevision,
+        },
+      }, visionSource
+        ? "像素判断必须调用 read_image，并把 visionSource 作为 image_url；这只是已保存/公开源图，未保存的 scene overlay 以 scene 数据为准。若来源不可访问，不得声称看见像素。"
+        : "已提供当前画布尺寸、图层、选中对象和实时 scene 对象数据，但没有不含凭据且可由服务端读取的像素源；不能声称已视觉检查像素。图片对象本身的 src/data 已省略。",
+      );
+    },
+  };
 }

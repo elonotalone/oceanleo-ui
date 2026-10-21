@@ -58,7 +58,7 @@ import {
 import { artifactSaveStepMessage } from "./artifact-save-contract";
 import { renderRichDocPreviewPng } from "./editor-preview-raster";
 import { tiptapJsonToDocxBlob } from "./docx-export";
-import { recordUserMutation } from "../user-edit-session";
+import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 import {
   notifyOfficeAccessDenied,
   officePackageKindForItem,
@@ -74,6 +74,7 @@ import {
   admitRichDocEditorSource,
   richDocHasContent,
   richDocPersistTarget,
+  richDocProjectUrl,
   shouldMarkRichDocSourceReadyFromCollab,
   RichDocTypography,
   type RichDocLoadResult,
@@ -245,7 +246,7 @@ export function richDocSourceLoadKey(item: LibraryItem): string {
     item.url || "",
     item.previewUrl || "",
     item.content || "",
-    meta.editor_project_url ?? "",
+    richDocProjectUrl(item),
     meta.editor_source_url ?? "",
     meta.editor_working_head_url ?? "",
     meta.markdown ?? "",
@@ -435,9 +436,7 @@ export function useRichDocEditor(
           | { isChangeOrigin?: boolean }
           | undefined;
         if (!sync?.isChangeOrigin) {
-          recordUserMutation(
-            persistedItemRef.current.key || persistedItemRef.current.id || "",
-          );
+          recordUserMutation(userEditItemKey(persistedItemRef.current));
         }
         setCounts(countText(instance.getText()));
         revisionRef.current += 1;
@@ -512,13 +511,14 @@ export function useRichDocEditor(
     preparedSaveRef.current = null;
     workingHeadUrlRef.current = String(
       source.meta.editor_working_head_url ||
+        richDocProjectUrl(source) ||
         source.url ||
         source.previewUrl ||
         "",
     );
     setLoaded(null);
     void loadRichDocSource(source, notifySourceAccessError, {
-      loadProject: String(source.meta.editor_project_url || "").trim()
+      loadProject: richDocProjectUrl(source)
         ? (projectUrl) =>
             loadEditorProject<JSONContent>(projectUrl, RICHDOC_PROJECT_SCHEMA)
         : undefined,
@@ -662,7 +662,7 @@ export function useRichDocEditor(
           revision,
           notifySourceAccessError,
           {
-            loadProject: String(revision.meta.editor_project_url || "").trim()
+            loadProject: richDocProjectUrl(revision)
               ? (projectUrl) =>
                   loadEditorProject<JSONContent>(
                     projectUrl,
@@ -931,6 +931,10 @@ export function useRichDocEditor(
         artifactId: result.artifactId,
         revisionId: result.revisionId,
         previousRevisionId: result.previousRevisionId,
+        // Keep the canonical projection as well as its scalar IDs. Otherwise
+        // handoff combines revisionId=r2 with artifact.revisionId=r1, and the
+        // workbench correctly refuses to record that inconsistent receipt.
+        item: result.item,
         preparedProject: result.preparedProject,
         preparedDelivery: result.preparedDelivery,
       };

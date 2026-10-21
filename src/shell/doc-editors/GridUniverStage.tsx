@@ -101,6 +101,8 @@ import { createGridLayoutStore } from "./grid-univer/collab-layout-store";
 import { useUI } from "../../i18n/ui/useUI";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -1104,6 +1106,49 @@ export function GridUniverStage({
   // `tests/grid-univer-agent-review-gate.test.mjs` 会扫这段源码把它钉住。
   usePluginCommandSurface({
     editorId: "grid",
+    target: () => pluginTargetForLibraryItem(item, "grid", editRevision),
+    agentContext: () => {
+      if (loading || !snapshotReady || sourceFailedRef.current) {
+        return { ready: false, reason: sourceFailureReason || "Univer 工作簿当前源尚未就绪。" };
+      }
+      const snapshot = currentSnapshot();
+      const rawSheets = snapshot.sheets && typeof snapshot.sheets === "object"
+        ? snapshot.sheets as Record<string, unknown>
+        : {};
+      const sheets = Object.entries(rawSheets).map(([sheetId, value]) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          return { sheetId, cells: [] };
+        }
+        const sheet = value as Record<string, unknown>;
+        const cellData = sheet.cellData && typeof sheet.cellData === "object"
+          ? sheet.cellData as Record<string, unknown>
+          : {};
+        const cells = Object.entries(cellData).flatMap(([rowKey, rowValue]) => {
+          if (!rowValue || typeof rowValue !== "object" || Array.isArray(rowValue)) return [];
+          return Object.entries(rowValue as Record<string, unknown>).flatMap(([columnKey, cellValue]) => {
+            if (!cellValue || typeof cellValue !== "object" || Array.isArray(cellValue)) return [];
+            const cell = cellValue as Record<string, unknown>;
+            return cell.v === undefined && cell.f === undefined ? [] : [{
+              row: Number(rowKey) + 1,
+              column: Number(columnKey) + 1,
+              value: cell.v,
+              formula: cell.f,
+            }];
+          });
+        });
+        return {
+          sheetId,
+          name: sheet.name,
+          cells,
+        };
+      });
+      return boundedAgentContent({
+        title: item.title,
+        revision: editRevision,
+        sheets,
+        currentNonEmptyCells: listUniverSnapshotValues(snapshot),
+      }, "这是 Univer 当前实时工作簿快照中的真实单元格值和公式，不是行列计数；只依据已提供的格子修改。");
+    },
     describe: gridAgentCommandSpecs,
     state: () => ({
       mode,

@@ -28,6 +28,7 @@ import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { createVideoCommandSurface } from "../video-editor/video-command-surface";
 import { downloadConvertedFromUrl } from "../media-editors/visual-convert-client";
@@ -298,10 +299,13 @@ function VideoTimelineLegacyBody({
     useMemo(
       () =>
         guardPluginSurface(
-          createVideoCommandSurface({ editor: view, deliver }),
+          {
+            ...createVideoCommandSurface({ editor: view, deliver }),
+            target: () => pluginTargetForLibraryItem(item, "video-timeline", view.editRevision),
+          },
           collabReadOnly,
         ),
-      [collabReadOnly, deliver, view],
+      [collabReadOnly, deliver, item, view],
     ),
   );
   const saveBeforeNewConversation = useCallback(async () => {

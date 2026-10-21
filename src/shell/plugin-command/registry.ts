@@ -21,6 +21,7 @@ import {
   type PluginCommandStateSnapshot,
   type PluginCommandSurface,
   type PluginCommandSurfaceInput,
+  type PluginCommandTarget,
 } from "./types";
 
 const encoder = new TextEncoder();
@@ -328,10 +329,38 @@ async function guardedRun(
 }
 
 function guarded(surface: PluginCommandSurfaceInput): PluginCommandSurface {
+  const target = (): PluginCommandTarget | null => {
+    if (!surface.target) return null;
+    try {
+      const value = surface.target();
+      if (
+        !value ||
+        !("workspaceScopeId" in value) ||
+        !("surfaceInstanceId" in value) ||
+        !String(value.workspaceScopeId || "").trim() ||
+        !String(value.editorId || "").trim() ||
+        value.editorId !== surface.editorId ||
+        !String(value.artifactId || "").trim() ||
+        !String(value.revisionId || "").trim() ||
+        !String(value.artifactType || "").trim() ||
+        !String(value.surfaceInstanceId || "").trim() ||
+        value.editRevision === undefined ||
+        value.editRevision === null
+      ) return null;
+      return value as PluginCommandTarget;
+    } catch {
+      return null;
+    }
+  };
   return {
     editorId: String(surface.editorId || "").trim(),
+    workspaceScopeId: surface.workspaceScopeId,
     describe: () => specsOf(surface),
     state: () => stateSnapshotOf(surface).state,
+    ...(surface.target ? { target } : {}),
+    ...(surface.agentContext
+      ? { agentContext: () => surface.agentContext?.() || { ready: false, reason: "这个编辑器没有提供可读取的当前文件内容。" } }
+      : {}),
     run: (id, params) => guardedRun(surface, id, params),
   };
 }

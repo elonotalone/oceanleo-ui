@@ -304,7 +304,7 @@ test("video canvas: person command records; hydrate does not", async () => {
       item,
       { nodes: [], edges: [] },
       "workflow.add-node",
-      {},
+      { kind: "filter", label: "自动化测试节点" },
       0,
     );
     assert.equal(applied.ok, true, "live person command must apply");

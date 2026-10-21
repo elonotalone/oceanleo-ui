@@ -74,6 +74,14 @@ const WorkspaceSessionSchemaContext = createContext<
   ((version: number) => () => void) | null
 >(null);
 
+let workspaceScopeSequence = 0;
+
+function createWorkspaceScopeId(): string {
+  workspaceScopeSequence += 1;
+  const nonce = Math.random().toString(36).slice(2, 10);
+  return `workspace-${workspaceScopeSequence}-${nonce}`;
+}
+
 /** The console owns the app snapshot format, even when another surface saves first. */
 export function useRegisterWorkspaceSessionSchemaVersion(version?: number) {
   const register = useContext(WorkspaceSessionSchemaContext);
@@ -97,6 +105,10 @@ export function WorkspaceSessionProvider({
 }: WorkspaceSessionProviderProps) {
   const site = (siteId || "").trim();
   const app = (appId || "").trim();
+  const activeFileScopeRef = useRef("");
+  if (!activeFileScopeRef.current) {
+    activeFileScopeRef.current = createWorkspaceScopeId();
+  }
   const sessionSurface = surface === "advanced" ? "advanced" : "app";
   const appTitle = (sessionTitle || "").trim();
   // A new identity gets its own registrations before any child effects run.
@@ -1079,6 +1091,7 @@ export function WorkspaceSessionProvider({
 
   const value = useMemo<WorkspaceSessionContextValue>(
     () => ({
+      activeFileScopeId: activeFileScopeRef.current,
       sessionId: session?.id ?? effectiveSessionId,
       siteId: site,
       appId: app,

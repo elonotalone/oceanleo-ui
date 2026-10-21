@@ -28,6 +28,8 @@ export interface AdvancedSessionActions {
   renameTitle: (title: string) => Promise<boolean>;
   recordSavedItem: (item: LibraryItem, coveredRevision?: AdvancedEditRevision, coverage?: AdvancedDraftVersionCoverage) => Promise<boolean>;
   recordDraft?: (draft: AdvancedDraftPointer) => Promise<boolean>;
+  /** Flush only this mounted workbench; never another workspace's global gate. */
+  flush?: () => Promise<AdvancedFlushResult>;
   registerFlush: (
     flush: (() => Promise<AdvancedFlushResult> | AdvancedFlushResult) | null,
   ) => void;

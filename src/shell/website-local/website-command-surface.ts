@@ -1,7 +1,10 @@
 import type {
   PluginCommandResult,
+  PluginAgentContext,
   PluginCommandSurfaceInput,
 } from "../plugin-command/types";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
+import type { PluginCommandTarget } from "../plugin-command/types";
 import type { WebsiteSectionKind, WebsiteSource } from "../website-source-carrier/website-source-schema";
 import { WEBSITE_SECTION_KINDS } from "../website-source-carrier/website-source-schema";
 import {
@@ -16,6 +19,8 @@ export interface WebsiteCommandPort {
   revision(): number;
   sourceReady(): boolean;
   apply(next: WebsiteSource): void;
+  pageId?(): string;
+  target?(): Omit<PluginCommandTarget, "workspaceScopeId" | "surfaceInstanceId"> | PluginCommandTarget | null;
 }
 
 function ok(message: string, revision?: number): PluginCommandResult {
@@ -80,6 +85,23 @@ export function createWebsiteCommandSurface(
 ): PluginCommandSurfaceInput {
   return {
     editorId: "website",
+    ...(port.target ? { target: () => port.target?.() || null } : {}),
+    agentContext: (): PluginAgentContext => {
+      if (!port.sourceReady()) {
+        return { ready: false, reason: "网站工程源尚未成功载入，当前页面结构不可读取。" };
+      }
+      const source = port.source();
+      const selectedPageId = port.pageId?.() || source.pages[0]?.id || "";
+      const selectedPage = source.pages.find((page) => page.id === selectedPageId) || null;
+      return boundedAgentContent({
+        selectedPageId,
+        selectedPage,
+        revision: port.revision(),
+        // Keep the selected page before the whole site source so bounded
+        // serialization cannot spend its budget on unrelated pages first.
+        source,
+      }, "这是当前 website-source 工程与所选页面的真实结构数据；没有打开或抓取站点预览，不能声称看见页面像素或运行时行为。");
+    },
     describe() {
       if (!port.sourceReady()) return [];
       return [

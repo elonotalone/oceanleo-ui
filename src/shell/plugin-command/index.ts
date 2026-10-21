@@ -2,10 +2,21 @@
 
 import { useEffect, useRef } from "react";
 import { registerPluginCommandSurface } from "./registry";
+import { useOptionalWorkspaceSession } from "../workspace-session-context";
+import { useWorkspacePane } from "../SplitWorkspace";
 import type {
   PluginCommandSurface,
   PluginCommandSurfaceInput,
+  PluginAgentContext,
+  PluginCommandTarget,
 } from "./types";
+
+let surfaceSequence = 0;
+
+function createSurfaceInstanceId(): string {
+  surfaceSequence += 1;
+  return `editor-surface-${surfaceSequence}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 export type {
   PluginCommandParam,
@@ -14,6 +25,8 @@ export type {
   PluginCommandStateSnapshot,
   PluginCommandSurface,
   PluginCommandSurfaceInput,
+  PluginAgentContext,
+  PluginCommandTarget,
 } from "./types";
 export {
   PLUGIN_COMMAND_PARAM_MAX_BYTES,
@@ -40,16 +53,43 @@ export {
 export function usePluginCommandSurface(
   surface: PluginCommandSurfaceInput | null | undefined,
 ): void {
+  const workspace = useOptionalWorkspaceSession();
+  const workspaceScopeId = workspace?.activeFileScopeId || "";
+  // Some Task workspaces keep the right editor mounted behind the left/chat
+  // panel. It is not the active Library target while that pane is closed.
+  const workspacePane = useWorkspacePane();
+  const libraryOpen = workspacePane?.libraryOpen !== false;
+  const libraryOpenRef = useRef(libraryOpen);
+  libraryOpenRef.current = libraryOpen;
   const latest = useRef(surface);
   latest.current = surface;
   const editorId = String(surface?.editorId || "").trim();
   useEffect(() => {
-    if (!editorId) return;
+    if (!editorId || !libraryOpen) return;
+    const surfaceInstanceId = createSurfaceInstanceId();
     const delegate: PluginCommandSurface = {
       editorId,
-      describe: () => latest.current?.describe() || [],
-      state: () => latest.current?.state() || {},
+      workspaceScopeId,
+      describe: () => libraryOpenRef.current ? latest.current?.describe() || [] : [],
+      state: () => libraryOpenRef.current ? latest.current?.state() || {} : {},
+      target: () => {
+        if (!libraryOpenRef.current) return null;
+        const target = latest.current?.target?.();
+        if (!target || !workspaceScopeId) return null;
+        return { ...target, workspaceScopeId, editorId, surfaceInstanceId };
+      },
+      agentContext: () =>
+        !libraryOpenRef.current
+          ? { ready: false, reason: "右侧 Library 已关闭；隐藏保留的编辑器不是当前目标文件。" }
+          :
+        latest.current?.agentContext?.() || {
+          ready: false,
+          reason: "这个编辑器没有提供可读取的当前文件内容。",
+        },
       run: async (id, params) => {
+        if (!libraryOpenRef.current) {
+          return { ok: false, message: "右侧 Library 已关闭；隐藏编辑器不会接收 Agent 指令。" };
+        }
         const current = latest.current;
         if (!current) {
           return {
@@ -61,5 +101,5 @@ export function usePluginCommandSurface(
       },
     };
     return registerPluginCommandSurface(delegate);
-  }, [editorId]);
+  }, [editorId, libraryOpen, workspaceScopeId]);
 }

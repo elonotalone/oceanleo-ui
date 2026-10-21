@@ -932,12 +932,19 @@ export async function loadRichDocHtml(
   }
 }
 
+/** Canonical Library projections expose editor_manifest, not legacy project metadata. */
+export function richDocProjectUrl(item: LibraryItem): string {
+  return trimUrl(item.artifact?.renditions.editor_manifest?.url) ||
+    trimUrl(item.meta.editor_project_url) ||
+    trimUrl(item.meta.editor_manifest_url);
+}
+
 export async function loadRichDocSource(
   item: LibraryItem,
   onSourceAccessError?: () => void,
   deps: RichDocLoadDeps = {},
 ): Promise<RichDocLoadResult> {
-  const projectUrl = trimUrl(item.meta.editor_project_url);
+  const projectUrl = richDocProjectUrl(item);
   if (projectUrl && isBrowserSafeRichDocUrl(projectUrl) && deps.loadProject) {
     try {
       const json = await deps.loadProject(projectUrl);

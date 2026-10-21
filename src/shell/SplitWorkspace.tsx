@@ -306,11 +306,18 @@ export function SplitWorkspace({
   // 用户点开「库」它让位，点左栏标题里的开关收起它回来。
   useWorkbenchOpenClaim(hasRight);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const appPaneRef = useRef<HTMLElement>(null);
+  const libraryToggleRef = useRef<HTMLButtonElement>(null);
+  const restoreAppFocusRef = useRef(false);
   const agentFocusRef = useRef(onAgentFocus);
   agentFocusRef.current = onAgentFocus;
   const closeRightPaneRef = useRef<(() => void) | undefined>(undefined);
   closeRightPaneRef.current = library ? () => setLibraryOpen(false) : undefined;
-  const closeRightPane = useCallback(() => closeRightPaneRef.current?.(), []);
+  const closeRightPane = useCallback(() => {
+    if (!closeRightPaneRef.current) return;
+    restoreAppFocusRef.current = true;
+    closeRightPaneRef.current();
+  }, []);
   const [ratio, setRatio] = useState(defaultRatio);
   const [dragging, setDragging] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -393,6 +400,7 @@ export function SplitWorkspace({
   const libraryToggle =
     library && !library.hideToggle ? (
       <button
+        ref={libraryToggleRef}
         type="button"
         onClick={() => setLibraryOpen(!libraryOpen)}
         title={libraryOpen ? tt("收起") : tt("展开")}
@@ -523,6 +531,12 @@ export function SplitWorkspace({
       setActiveLibraryPanelId(null);
       setRightMaximizedState(false);
     }
+  }, [hasRight]);
+  useEffect(() => {
+    if (hasRight || !restoreAppFocusRef.current) return;
+    restoreAppFocusRef.current = false;
+    const target = libraryToggleRef.current || appPaneRef.current;
+    target?.focus({ preventScroll: true });
   }, [hasRight]);
   useEffect(() => {
     // The workspace owns fullscreen lifetime, including self-chromed plugin
@@ -704,6 +718,11 @@ export function SplitWorkspace({
   // Ratio always means the physical left semantic pane.
   const appBasis = !hasRight ? "100%" : `${ratio * 100}%`;
   const libraryBasis = !hasRight ? "0%" : `${(1 - ratio) * 100}%`;
+  // Split resizing is pointer-driven; do not animate every intermediate ratio.
+  // Visibility/maximize changes still share the same reduced-motion-aware slide.
+  const paneTransitionClass = dragging
+    ? "transition-none"
+    : "transition-[flex-basis,opacity,margin] duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] motion-reduce:transition-none";
 
   // The pane body fills remaining height as a flex column and forces its single
   // child to fill + manage its own overflow. This lets BOTH usage shapes work
@@ -783,16 +802,26 @@ export function SplitWorkspace({
   const appPane = (
     <section
       key="app-pane"
+      ref={appPaneRef}
       data-workspace-pane="left"
       data-left-panel={
         activeDetail ? "tool-detail" : activeLibraryPanel ? "library" : "app"
       }
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70${
-        paneMaximized ? " hidden" : ""
+      data-workspace-pane-state={paneMaximized ? "closed" : "open"}
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${paneTransitionClass} ${
+        paneMaximized ? "pointer-events-none border-0 opacity-0" : "pointer-events-auto opacity-100"
       }`}
+      tabIndex={-1}
+      aria-hidden={paneMaximized ? "true" : undefined}
+      inert={paneMaximized || undefined}
       style={
         hydrated || !hasRight
-          ? { flexBasis: appBasis, flexGrow: 0, flexShrink: 0 }
+          ? {
+              flexBasis: paneMaximized ? "0%" : appBasis,
+              flexGrow: 0,
+              flexShrink: 0,
+              borderWidth: paneMaximized ? 0 : undefined,
+            }
           : {
               flexBasis: `${defaultRatio * 100}%`,
               flexGrow: 0,
@@ -822,16 +851,22 @@ export function SplitWorkspace({
       ref={editBarLayerRef}
       data-edit-bar-layer-root
       data-workspace-pane="main"
+      data-workspace-pane-state={hasRight ? "open" : "closed"}
       data-library-dock="right"
-      className={`relative mt-1.5 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 md:mt-0 ${
-        !hasRight ? "hidden" : "flex"
+      aria-hidden={hasRight ? undefined : "true"}
+      inert={!hasRight || undefined}
+      className={`relative mt-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${paneTransitionClass} md:mt-0 ${
+        hasRight
+          ? "pointer-events-auto opacity-100"
+          : "pointer-events-none mt-0 border-0 opacity-0"
       }`}
       style={
         hydrated || !hasRight
           ? {
               flexBasis: paneMaximized ? "100%" : libraryBasis,
-              flexGrow: 1,
-              flexShrink: 1,
+              flexGrow: hasRight ? 1 : 0,
+              flexShrink: hasRight ? 1 : 0,
+              borderWidth: hasRight ? undefined : 0,
             }
           : {
               flexBasis: `${(1 - defaultRatio) * 100}%`,
@@ -842,7 +877,7 @@ export function SplitWorkspace({
     >
       {rightFrameless && !rightEditorHeader && (
         <div data-pane-header data-right-pane-window-header className="relative z-40 flex min-h-10 shrink-0 items-center justify-end border-b border-stone-100 px-3 py-1">
-          <RightPaneActions maximized={rightMaximized} onMaximize={toggleRightMaximized} onClose={library ? () => setLibraryOpen(false) : undefined} />
+          <RightPaneActions maximized={rightMaximized} onMaximize={toggleRightMaximized} onClose={library ? closeRightPane : undefined} />
         </div>
       )}
       {!rightFrameless && (library ? (
@@ -859,7 +894,7 @@ export function SplitWorkspace({
               </span>
             )}
           </div>
-          {!rightEditorHeader && <RightPaneActions maximized={rightMaximized} onMaximize={toggleRightMaximized} onClose={library ? () => setLibraryOpen(false) : undefined} />}
+          {!rightEditorHeader && <RightPaneActions maximized={rightMaximized} onMaximize={toggleRightMaximized} onClose={library ? closeRightPane : undefined} />}
         </div>
       ) : (
         <PaneHeader label={effectiveRightLabel}>

@@ -1,12 +1,43 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
-import { afterAdvancedDraftExport, bindAdvancedDraftGate } from '../src/shell/advanced-draft-gates.ts';
+import { afterAdvancedDraftExport, bindAdvancedDraftGate, saveAdvancedEditorFromAgent } from '../src/shell/advanced-draft-gates.ts';
 import { advancedDraftAfterVersion } from '../src/shell/advanced-draft.ts';
 
 const handoff = await import(await compileModule('src/shell/advanced-routes/editor-handoff.ts', {
   '../office-editor/useOfficeArtifactSource': dataModule('export function useOfficeArtifactSource() { return {}; }'),
 }));
+
+test('agent save waits for the stable artifact gate and fails closed without a Task receipt', async () => {
+  const item = { artifactId: 'agent-gate-root', id: 'legacy-version', key: 'artifact:agent-gate-root:r1' };
+  assert.equal((await saveAdvancedEditorFromAgent(item)).ok, false);
+  let release;
+  const unbind = bindAdvancedDraftGate(item.artifactId, reason => {
+    assert.equal(reason, 'export');
+    return new Promise(resolve => { release = resolve; });
+  });
+  try {
+    let done = false;
+    const saving = saveAdvancedEditorFromAgent(item).then(result => { done = true; return result; });
+    await Promise.resolve();
+    assert.equal(done, false);
+    release({ ok: false, error: 'Task snapshot rejected' });
+    assert.deepEqual(await saving, { ok: false, message: 'Task snapshot rejected' });
+    const retry = saveAdvancedEditorFromAgent(item);
+    release({ ok: true, item: { ...item, revisionId: 'r2' } });
+    assert.equal((await retry).ok, true);
+  } finally { unbind(); }
+});
+
+test('agent save uses its local workbench even when another workspace owns the same artifact gate', async () => {
+  let wrongWorkspaceCalls = 0;
+  const unbind = bindAdvancedDraftGate('same-root', async () => { wrongWorkspaceCalls++; return { ok: true }; });
+  try {
+    const result = await saveAdvancedEditorFromAgent({ artifactId: 'same-root' }, async () => ({ ok: false, error: 'local snapshot failed' }));
+    assert.equal(wrongWorkspaceCalls, 0);
+    assert.deepEqual(result, { ok: false, message: 'local snapshot failed' });
+  } finally { unbind(); }
+});
 
 test('mode entry awaits version/session gate and does not bypass it through legacy background save', async () => {
   let release, legacy = 0;

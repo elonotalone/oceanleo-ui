@@ -35,6 +35,30 @@ export interface PluginCommandResult {
   revision?: number;
 }
 
+/** Identity of the exact right-hand editor target. URLs are intentionally absent. */
+export interface PluginCommandTarget {
+  workspaceScopeId: string;
+  editorId: string;
+  artifactId: string;
+  revisionId: string;
+  artifactType: string;
+  /** Native unsaved editor revision, used to refuse responses based on stale content. */
+  editRevision: string | number;
+  /** Unique per mounted native command surface; same artifact reopened is still a new target. */
+  surfaceInstanceId: string;
+}
+
+/** Source-derived live content; adapters must fail closed instead of returning labels only. */
+export type PluginAgentContext =
+  | { ready: false; reason: string }
+  | {
+      ready: true;
+      kind: "text" | "structured" | "visual";
+      content: unknown;
+      truncated?: boolean;
+      note?: string;
+    };
+
 export interface PluginCommandSurface {
   /** 与编辑栏适配器 id 逐字相同（richdoc/grid/deck/pdf/image/…）。 */
   editorId: string;
@@ -42,6 +66,12 @@ export interface PluginCommandSurface {
   describe(): PluginCommandSpec[];
   /** 有界摘要，序列化后 ≤ 4096 字节。 */
   state(): Record<string, unknown>;
+  /** Optional exact-file identity, populated by native Library editor adapters. */
+  target?(): PluginCommandTarget | null;
+  /** Optional actual current document / scene data, never a URL-only placeholder. */
+  agentContext?(): PluginAgentContext;
+  /** Per-WorkspaceSession scope propagated by `usePluginCommandSurface`. */
+  workspaceScopeId?: string;
   run(
     id: string,
     params?: Record<string, unknown>,
@@ -58,6 +88,9 @@ export interface PluginCommandSurfaceInput {
   editorId: string;
   describe(): PluginCommandSpec[];
   state(): Record<string, unknown>;
+  target?(): Omit<PluginCommandTarget, "workspaceScopeId" | "surfaceInstanceId"> | PluginCommandTarget | null;
+  agentContext?(): PluginAgentContext;
+  workspaceScopeId?: string;
   run(
     id: string,
     params?: Record<string, unknown>,

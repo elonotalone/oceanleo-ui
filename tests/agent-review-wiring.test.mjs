@@ -86,7 +86,8 @@ test("AgentChat 挂了审阅面板、chips、选区拼装与 agent 闸", () => {
   assert.match(chat, /installAgentReviewGate\(\)/);
   assert.match(chat, /AgentReviewPanel/);
   assert.match(chat, /QuickActionChips/);
-  assert.match(chat, /assembleAgentEditorContext\(/);
+  assert.match(chat, /captureEditorTurn\(/);
+  assert.match(fnChat, /assembleAgentEditorContext\(/);
   assert.match(chat, /useHostReviewActions\(\)/);
   assert.match(dock, /applyParkedReview\(surface, snap\.parked\)/);
   assert.match(dock, /applyParkedReview\(surface, inverse\)/);

@@ -44,6 +44,7 @@ import { downloadText } from "../doc-editors/doc-io";
 import { libraryContentDescriptor, type LibraryItem } from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
+import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { createChartCommandSurface } from "./chart-command-surface";
 import { visualImportPlan } from "../media-editors/visual-formats";
 import {
@@ -361,8 +362,11 @@ export function ChartNextStage({
   );
   usePluginCommandSurface(
     useMemo(
-      () => createChartCommandSurface({ editor, deliver }),
-      [deliver, editor],
+      () => ({
+        ...createChartCommandSurface({ editor, deliver }),
+        target: () => pluginTargetForLibraryItem(item, "chart-editor@1", editor.editRevision),
+      }),
+      [deliver, editor, item],
     ),
   );
 

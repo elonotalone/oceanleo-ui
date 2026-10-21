@@ -17,6 +17,7 @@ import type {
   PluginCommandResult,
   PluginCommandSpec,
   PluginCommandSurface,
+  PluginCommandTarget,
 } from "../shell/plugin-command/types";
 
 export type OpsFieldType =
@@ -323,7 +324,7 @@ function paramLine(p: PluginCommandParam): string {
  */
 export function buildEditorCommandContext(
   surface: PluginCommandSurface | null | undefined,
-  opts?: { query?: string; limit?: number },
+  opts?: { query?: string; limit?: number; includeState?: boolean },
 ): string {
   if (!surface) return "";
   const editorId = String(surface.editorId || "").trim();
@@ -359,14 +360,16 @@ export function buildEditorCommandContext(
     }
     lines.push(parts.join(" "));
   }
-  let state = "";
-  try {
-    state = JSON.stringify(surface.state() ?? {});
-  } catch {
-    state = "";
-  }
-  if (state && state !== "{}" && state.length <= EDITOR_COMMAND_STATE_LIMIT) {
-    lines.push(`它当前的状态摘要：${state}`);
+  if (opts?.includeState !== false) {
+    let state = "";
+    try {
+      state = JSON.stringify(surface.state() ?? {});
+    } catch {
+      state = "";
+    }
+    if (state && state !== "{}" && state.length <= EDITOR_COMMAND_STATE_LIMIT) {
+      lines.push(`它当前的状态摘要：${state}`);
+    }
   }
   lines.push(
     "要动手时，在回答里附一段这样的块，一次只写一条指令：",
@@ -788,6 +791,30 @@ export interface EditorCommandSession {
   runCount(): number;
 }
 
+function commandTarget(surface: PluginCommandSurface): PluginCommandTarget | null {
+  try {
+    return surface.target?.() || null;
+  } catch {
+    return null;
+  }
+}
+
+function sameCommandTarget(
+  expected: PluginCommandTarget,
+  actual: PluginCommandTarget | null,
+): boolean {
+  return Boolean(
+    actual &&
+      expected.workspaceScopeId === actual.workspaceScopeId &&
+      expected.editorId === actual.editorId &&
+      expected.artifactId === actual.artifactId &&
+      expected.revisionId === actual.revisionId &&
+      expected.artifactType === actual.artifactType &&
+      String(expected.editRevision) === String(actual.editRevision) &&
+      expected.surfaceInstanceId === actual.surfaceInstanceId,
+  );
+}
+
 /**
  * 一次对话里的指令执行器。硬规则都在这里：
  *   - 同一条 assistant 消息只处理一次；**一次只执行一条**（正在执行时不接新的）。
@@ -800,6 +827,7 @@ export function createEditorCommandSession(): EditorCommandSession {
   let waiting: {
     pending: EditorCommandPending;
     surface: PluginCommandSurface;
+    target: PluginCommandTarget | null;
   } | null = null;
   let halted = false;
   let busy = false;
@@ -810,10 +838,18 @@ export function createEditorCommandSession(): EditorCommandSession {
     editorId: string,
     spec: PluginCommandSpec,
     params: Record<string, unknown>,
+    target: PluginCommandTarget | null,
   ): Promise<EditorCommandOutcome> {
     busy = true;
     runs += 1;
     try {
+      if (
+        (target && !sameCommandTarget(target, commandTarget(surface))) ||
+        (!target && surface.target && !commandTarget(surface))
+      ) {
+        const result = { ok: false, message: "右侧文件/编辑器已变化；旧回复不会作用于新目标，请重新发送指令。" };
+        return { editorId, spec, params, result, note: editorCommandResultNote(spec, result) };
+      }
       const result = await runEditorCommand(surface, spec, params);
       return {
         editorId,
@@ -846,6 +882,10 @@ export function createEditorCommandSession(): EditorCommandSession {
           note: "我刚才那条指令写坏了，没有执行任何改动。我重说一遍。",
         };
       }
+      const target = surface ? commandTarget(surface) : null;
+      if (surface?.target && !target) {
+        return { kind: "reject", note: "当前 Library 编辑器尚未绑定到确切文件或版本；没有执行任何指令。" };
+      }
       const extra = parsed.requests.length - 1;
       const suffix =
         extra > 0
@@ -856,7 +896,7 @@ export function createEditorCommandSession(): EditorCommandSession {
         return { kind: "reject", note: `${plan.reason}${suffix}` };
       }
       if (plan.kind === "confirm") {
-        waiting = { pending: plan.pending, surface: surface! };
+        waiting = { pending: plan.pending, surface: surface!, target };
         return {
           kind: "confirm",
           pending: plan.pending,
@@ -868,6 +908,7 @@ export function createEditorCommandSession(): EditorCommandSession {
         plan.editorId,
         plan.spec,
         plan.params,
+        target,
       );
       return {
         kind: "ran",
@@ -878,9 +919,9 @@ export function createEditorCommandSession(): EditorCommandSession {
     },
     async confirm() {
       if (!waiting || busy) return null;
-      const { pending, surface } = waiting;
+      const { pending, surface, target } = waiting;
       waiting = null;
-      return execute(surface, pending.editorId, pending.spec, pending.params);
+      return execute(surface, pending.editorId, pending.spec, pending.params, target);
     },
     decline() {
       if (!waiting) return null;

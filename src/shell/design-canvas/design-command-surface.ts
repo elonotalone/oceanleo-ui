@@ -1,7 +1,10 @@
 import type {
+  PluginAgentContext,
   PluginCommandResult,
   PluginCommandSurfaceInput,
+  PluginCommandTarget,
 } from "../plugin-command/types";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import type { DesignDocumentProject } from "../image-editor/design-document-schema";
 import { cloneDesignDocument } from "./design-document-fabric";
 
@@ -10,6 +13,7 @@ export interface DesignCommandPort {
   revision(): number;
   sourceReady(): boolean;
   apply(next: DesignDocumentProject): void;
+  target?(): Omit<PluginCommandTarget, "workspaceScopeId" | "surfaceInstanceId"> | PluginCommandTarget | null;
 }
 
 function ok(message: string, revision?: number): PluginCommandResult {
@@ -68,6 +72,14 @@ export function createDesignCommandSurface(
 ): PluginCommandSurfaceInput {
   return {
     editorId: "design-canvas",
+    ...(port.target ? { target: () => port.target?.() || null } : {}),
+    agentContext: (): PluginAgentContext => {
+      if (!port.sourceReady()) {
+        return { ready: false, reason: "设计画布源尚未成功载入，当前对象结构不可读取。" };
+      }
+      return boundedAgentContent({ project: port.project(), revision: port.revision() },
+        "这是当前未保存设计画布项目的真实对象/文字/坐标/样式结构；没有读取合成像素预览，不能声称做过视觉检查。");
+    },
     describe() {
       if (!port.sourceReady()) return [];
       return [

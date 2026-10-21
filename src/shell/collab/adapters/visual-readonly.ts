@@ -67,9 +67,7 @@ export function guardPluginSurface(
 ): PluginCommandSurfaceInput {
   if (!readOnly) return surface;
   return {
-    editorId: surface.editorId,
-    describe: () => surface.describe(),
-    state: () => surface.state(),
+    ...surface,
     run: (id, params) => {
       const spec = surface.describe().find((entry) => entry.id === String(id || "").trim());
       if (spec?.mutates) return fail(VIEW_ONLY_REFUSAL);

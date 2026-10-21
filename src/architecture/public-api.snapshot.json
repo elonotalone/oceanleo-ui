@@ -8653,6 +8653,12 @@
         },
         {
           "kind": "named",
+          "name": "PluginAgentContext",
+          "importedName": "PluginAgentContext",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
           "name": "PluginCommandParam",
           "importedName": "PluginCommandParam",
           "source": "./types"
@@ -8685,6 +8691,12 @@
           "kind": "named",
           "name": "PluginCommandSurfaceInput",
           "importedName": "PluginCommandSurfaceInput",
+          "source": "./types"
+        },
+        {
+          "kind": "named",
+          "name": "PluginCommandTarget",
+          "importedName": "PluginCommandTarget",
           "source": "./types"
         },
         {

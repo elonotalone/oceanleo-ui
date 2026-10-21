@@ -24,6 +24,7 @@ export interface PdfTextLayerProbe extends PdfTextLayerSummary {
   /** §3.1 `pages[]` — collected in the same walk that counts characters. */
   pages: PdfManifestPage[];
   searchFullText: (query: string) => PdfSearchHit[];
+  readText: () => Array<{ pageNumber: number; text: string }>;
 }
 
 function manifestRotation(value: number): 0 | 90 | 180 | 270 {
@@ -171,5 +172,12 @@ export function usePdfTextLayer({
     return hits;
   }, []);
 
-  return { ...summary, pageCharacters, pages, searchFullText };
+  const readText = useCallback(
+    () => pageTextRef.current.flatMap((text, index) => text
+      ? [{ pageNumber: index + 1, text }]
+      : []),
+    [],
+  );
+
+  return { ...summary, pageCharacters, pages, searchFullText, readText };
 }

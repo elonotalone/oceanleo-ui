@@ -8,6 +8,7 @@ import {
   type EditorReviewObjectChange,
   type EditorReviewProposal,
 } from "../hosted-editor/index";
+import type { PluginCommandTarget } from "../plugin-command/types";
 
 export type ItemDecision = "pending" | "accept" | "reject";
 
@@ -18,6 +19,8 @@ export interface ParkedReview {
   params: Record<string, unknown>;
   inverseParams: Record<string, unknown>;
   editorId: string;
+  /** Exact artifact/revision/native surface that received this proposal. */
+  target?: PluginCommandTarget;
 }
 
 export interface RevisionFrame {

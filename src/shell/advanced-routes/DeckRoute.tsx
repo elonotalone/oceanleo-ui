@@ -10,6 +10,8 @@ import {
   useState,
 } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import { useAdvancedSession } from "../advanced-session-context";
+import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { resolveEditorCore } from "../editor-core-flags";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
 import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
@@ -152,6 +154,7 @@ function DeckLegacyRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const advancedSession = useAdvancedSession();
   const proSaved = useProSavedRevision(item.key || item.id);
   const workingItem = proSaved ?? item;
   const officeSource = useOfficeArtifactSource(workingItem);
@@ -465,7 +468,7 @@ function DeckLegacyRoute({
   );
   // 只能查看：Leo 的「帮我改」从指令面进来，会改作品的指令在这一层直接拒绝
   usePluginCommandSurface(
-    buildDeckCommandSurface(editor, { download: downloadAs }, viewOnly),
+    buildDeckCommandSurface(editor, { download: downloadAs, save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush) }, viewOnly),
   );
   return (
     <AdvancedWorkbenchShell

@@ -297,7 +297,12 @@ function imageEditorWith() {
     cropping: false,
     doc,
     layers: [{ id: "l1", locked: false, selected: true, kind: "text" }],
-    selected: { id: "l1", kind: "text", locked: false, type: "text", text: "你好", fill: "#111111", opacity: 1, shadow: { enabled: false } },
+    // Match the native ImageSelectedInfo text shape; it is not a bare string.
+    selected: { id: "l1", kind: "text", locked: false, type: "text",
+      text: { value: "你好", fontFamily: "Arial", fontSize: 24, fill: "#111111",
+        bold: false, italic: false, underline: false, linethrough: false,
+        align: "left", lineHeight: 1.2, charSpacing: 0 },
+      fill: "#111111", opacity: 1, shadow: { enabled: false } },
     filterInfo: null,
     transformInfo: null,
     canvasBackground: "#ffffff",
@@ -393,7 +398,7 @@ test("PPT 指令面：只读时（经 DeckRoute 的闸）mutates 指令全部拒
 
 test("DeckRoute 接线：指令面经只读闸、工具条 / 面板 / 上传 / 撤销都吃同一个 viewOnly", () => {
   const src = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
-  assert.match(src, /usePluginCommandSurface\(\s*buildDeckCommandSurface\(editor, \{ download: downloadAs \}, viewOnly\)/);
+  assert.match(src, /usePluginCommandSurface\(\s*buildDeckCommandSurface\(editor, \{ download: downloadAs, save: \(\) => saveAdvancedEditorFromAgent\(item, advancedSession\?\.flush\) \}, viewOnly\)/);
   assert.match(src, /guardPluginSurface\(buildRawDeckCommandSurface\(editor, deps\), readOnly\)/);
   assert.match(src, /<DeckContextToolbar[\s\S]*?readOnly=\{viewOnly\}/);
   assert.match(src, /viewOnlyUploadHandler\(viewOnly, addLocalFiles\)/);
@@ -410,7 +415,7 @@ test("ChartRoute / ImageRoute 接线：工具条、面板、上传、撤销都�
   const image = readFileSync(new URL("../src/shell/advanced-routes/ImageRoute.tsx", import.meta.url), "utf8");
   assert.match(image, /<FabricImageContextToolbar editor=\{editor\} accent=\{accent\} readOnly=\{viewOnly\} \/>/);
   assert.match(image, /viewOnlyUploadHandler\(viewOnly, addLocalImages\)/);
-  assert.match(image, /guardPluginSurface\(\s*createImageCommandSurface\(\{ editor, deliver \}\),\s*viewOnly/);
+  assert.match(image, /guardPluginSurface\(\s*createImageCommandSurface\(\{\s*editor,\s*deliver,\s*item: activeItem,[\s\S]*?\}\),\s*viewOnly/);
   assert.match(image, /if \(viewOnly\) throw new Error\(VIEW_ONLY_REFUSAL\);/);
   assert.doesNotMatch(image, /FabricImageAiPanel/);
   // 导出面板是查看类，不包

@@ -6,6 +6,7 @@
  */
 
 import type { PluginCommandSurfaceInput } from "../plugin-command/types";
+import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import type { AudioWorkbenchState } from "./audio-workbench-state";
 import {
   createVisualCommandSurface,
@@ -272,9 +273,26 @@ export function audioCommandState(
 export function createAudioCommandSurface(
   deps: AudioCommandDeps,
 ): PluginCommandSurfaceInput {
-  return createVisualCommandSurface({
-    editorId: EDITOR_ID,
-    commands: () => audioCommandDefinitions(deps),
-    state: () => audioCommandState(deps.editor),
-  });
+  return {
+    ...createVisualCommandSurface({
+      editorId: EDITOR_ID,
+      commands: () => audioCommandDefinitions(deps),
+      state: () => audioCommandState(deps.editor),
+    }),
+    agentContext: () => {
+      if (deps.editor.loading || deps.editor.duration <= 0) {
+        return { ready: false, reason: "音频源和当前编辑工程尚未就绪。" };
+      }
+      const project = deps.editor.captureRecovery();
+      if (!project) {
+        return { ready: false, reason: "音频源和当前编辑工程尚未就绪。" };
+      }
+      return boundedAgentContent({
+        selection: deps.editor.selection,
+        durationSeconds: deps.editor.duration,
+        currentTimeSeconds: deps.editor.currentTime,
+        project,
+      }, "提供的是当前音频工程和真实编辑操作，不是语音转写；不能据此声称听到了声音或识别了说话内容。");
+    },
+  };
 }
