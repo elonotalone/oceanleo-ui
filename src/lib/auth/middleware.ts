@@ -69,6 +69,17 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
         // Never write it back: a 401/timeout refresh here would sign the
         // operator out of every *.oceanleo.com site.
         if (isLeoDevPreviewHost(host)) return;
+        const incoming = request.cookies.getAll();
+        const hasSession = incoming.some(
+          (cookie) => isFamilyAuthCookieName(cookie.name) && Boolean(cookie.value),
+        );
+        const authWrites = cookiesToSet.filter((cookie) => isFamilyAuthCookieName(cookie.name));
+        const replacing = authWrites.some((cookie) => Boolean(cookie.value));
+        const wiping = authWrites.some((cookie) => !cookie.value);
+        // Transient JWKS/refresh failure must not Set-Cookie an empty session
+        // over a cookie that is still on the request. A real refresh still
+        // writes a new token (and may clear leftover chunk cookies).
+        if (hasSession && wiping && !replacing) return;
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, { ...options, ...opts });

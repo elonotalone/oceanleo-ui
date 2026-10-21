@@ -175,7 +175,7 @@ export type UserMessageAttachment = {
 
 export type AgentDialogMessage =
   | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: UserMessageAttachment[] }
-  | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[] }
+  | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[]; live?: boolean }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
   | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string };
 

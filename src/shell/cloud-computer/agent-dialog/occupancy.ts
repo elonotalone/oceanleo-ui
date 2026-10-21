@@ -1,3 +1,5 @@
+import { isRetriableStreamCancelText } from "./session-status";
+
 /** Probe of whether this ACP session is working. Absence of a reading is not idle. */
 
 export type OccupancyMode = "uncertain" | "working" | "idle";
@@ -23,13 +25,20 @@ const IDLE_ERRORS = new Set([
 /** Patch occupancy.busy from a session frame that is not the open view. */
 export function occupancyBusyAfterFrame(
   busy: readonly string[] | null | undefined,
-  frame: { t?: unknown; acp_session?: unknown; code?: unknown },
+  frame: { t?: unknown; acp_session?: unknown; code?: unknown; text?: unknown },
 ): string[] | null {
   const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
   if (!session) return null;
   const kind = String(frame.t || "");
   const current = [...(busy ?? [])];
   if (WORKING_HINTS.has(kind)) return [...new Set([...current, session])];
+  if (
+    kind === "error" &&
+    (isRetriableStreamCancelText(String(frame.text || "")) ||
+      isRetriableStreamCancelText(String(frame.code || "")))
+  ) {
+    return [...new Set([...current, session])];
+  }
   if (kind === "done" || (kind === "error" && IDLE_ERRORS.has(String(frame.code || "")))) {
     return current.filter((id) => id !== session);
   }

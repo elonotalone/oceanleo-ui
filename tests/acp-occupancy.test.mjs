@@ -11,7 +11,7 @@ import {
 } from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
 import { createOccupancyProbe } from "../src/shell/cloud-computer/agent-dialog/occupancy-probe.ts";
 import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { sessionListStatus, sessionWaitingWake, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
+import { hasOpenTurn, isRetriableStreamCancelText, sessionListStatus, sessionWaitingWake, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
 
 const PROGRAMS = ["cursor", "claude", "codex", "hermes", "oceanleo"];
 
@@ -204,10 +204,63 @@ test("composerOccupancy：已 stamp 的回合只要工具还在等待就是 work
   assert.equal(turnStillRunning(stopping), false);
 });
 
+test("open turn stays working after occupancy empties", () => {
+  const messages = [
+    { kind: "user", id: "u", text: "go" },
+    {
+      kind: "turn",
+      id: "t",
+      acpSession: "s",
+      stop: "",
+      items: [{ kind: "assistant", id: "a", text: "working" }],
+    },
+  ];
+  assert.equal(turnStillRunning(messages), true);
+  assert.equal(isRetriableStreamCancelText("Error: RetriableError: [canceled] http/2 stream closed with error code CANCEL (0x8)"), true);
+  assert.equal(isRetriableStreamCancelText("already finished"), false);
+});
+
+test("replayed user plus live-armed thought stays working after occupancy empties", () => {
+  const messages = [
+    { kind: "user", id: "u", text: "go", replay: true },
+    {
+      kind: "turn",
+      id: "t",
+      acpSession: "s",
+      stop: "",
+      live: true,
+      items: [{ kind: "thought", id: "h", text: "plan" }],
+    },
+  ];
+  assert.equal(hasOpenTurn(messages), true);
+  assert.equal(turnStillRunning(messages), true);
+  const historyOnly = [
+    { kind: "user", id: "u", text: "old", replay: true },
+    {
+      kind: "turn",
+      id: "t",
+      acpSession: "s",
+      stop: "",
+      items: [{ kind: "thought", id: "h", text: "old plan" }],
+    },
+  ];
+  assert.equal(hasOpenTurn(historyOnly), false);
+  assert.equal(turnStillRunning(historyOnly), false);
+});
+
 test("invalid_argument 从 occupancy busy 列表拿掉该会话", () => {
   assert.deepEqual(
     occupancyBusyAfterFrame(["s"], { t: "error", code: "invalid_argument", acp_session: "s" }),
     [],
+  );
+  assert.deepEqual(
+    occupancyBusyAfterFrame(["s"], {
+      t: "error",
+      code: "acp_start_failed",
+      acp_session: "s",
+      text: "Error: RetriableError: [canceled] http/2 stream closed with error code CANCEL (0x8)",
+    }),
+    ["s"],
   );
 });
 

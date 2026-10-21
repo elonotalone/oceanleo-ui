@@ -107,6 +107,8 @@ function latestTurn(messages: AgentDialogMessage[]): AgentDialogMessage | null {
 function openTurn(messages: AgentDialogMessage[]): AgentDialogMessage | null {
   const turn = latestTurn(messages);
   if (!turn || turn.kind !== "turn" || turn.stop) return null;
+  // Live stream after a replayed user still needs Stop. History replay never arms.
+  if (turn.live) return turn;
   for (let prior = messages.length - 1; prior >= 0; prior -= 1) {
     const prev = messages[prior];
     if (prev === turn) continue;
@@ -148,10 +150,22 @@ export function turnLooksSettled(messages: AgentDialogMessage[]): boolean {
   return spoke;
 }
 
-/** Thoughts, unfinished tools, or an unstamped turn that has not finished speaking still need Stop. */
+/** Cursor cancelled one HTTP/2 attempt. The turn is still live. */
+export function isRetriableStreamCancelText(text: string | null | undefined): boolean {
+  const raw = String(text || "");
+  if (!raw) return false;
+  const low = raw.toLowerCase();
+  return (
+    low.includes("retriableerror") ||
+    low.includes("http/2 stream closed") ||
+    /error code cancel\s*\(0x8\)/.test(low)
+  );
+}
+
+/** Open turn, unfinished tool, or thought still needs Stop. Occupancy empty is not idle. */
 export function turnStillRunning(messages: AgentDialogMessage[]): boolean {
   if (turnHasUnfinishedWork(messages)) return true;
-  return hasOpenTurn(messages) && !turnLooksSettled(messages);
+  return hasOpenTurn(messages);
 }
 
 /** Only known outcomes count; unopened history rows have no inferred status. */

@@ -20,7 +20,13 @@ import {
 import { isModelFamilyConfig } from "./notice";
 import { normalizeUserMessage } from "./message-attachments";
 import { blankOccupancy } from "./occupancy";
-import { hasOpenTurn, turnStillRunning } from "./session-status";
+import {
+  hasOpenTurn,
+  isRetriableStreamCancelText,
+  turnHasUnfinishedWork,
+  turnLooksSettled,
+  turnStillRunning,
+} from "./session-status";
 import type {
   AgentDialogMessage,
   AgentProgram,
@@ -83,6 +89,20 @@ const COMPUTER_WIDE_ERRORS = new Set([
   "acp_exited",
 ]);
 
+function markLatestTurnLive(messages: DialogState["messages"]): DialogState["messages"] {
+  const next = messages.slice();
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    const message = next[index];
+    if (message.kind === "user") break;
+    if (message.kind === "turn" && !message.stop) {
+      if (message.live) return messages;
+      next[index] = { ...message, live: true };
+      return next;
+    }
+  }
+  return messages;
+}
+
 function armTurn(state: DialogState, frame: Record<string, unknown>): DialogState {
   if (frame.replay === true) return state;
   const program = str(frame.program) || state.program;
@@ -90,7 +110,8 @@ function armTurn(state: DialogState, frame: Record<string, unknown>): DialogStat
   if (!session) return state;
   const key = turnKey(program, session);
   if (state.cancelledTurns?.[key]) return state;
-  return noteProbeWorking(markTurn(state, program, session, true), session);
+  const messages = markLatestTurnLive(state.messages);
+  return noteProbeWorking(markTurn({ ...state, messages }, program, session, true), session);
 }
 
 function occupancyIds(busy: unknown): string[] {
@@ -122,19 +143,8 @@ function applyOccupancyBusy(state: DialogState, program: string, busyIds: string
   }
   const currentKey = turnKey(state.program, current);
   const currentLive = Boolean(current && liveTurns[currentKey]);
-  let messages = state.messages;
-  if (
-    current &&
-    !busyIds.includes(current) &&
-    !holdCurrent &&
-    state.occupancyPendingAt == null &&
-    hasOpenTurn(state.messages)
-  ) {
-    messages = stampOpenTurn(state.messages, "end_turn");
-  }
   return {
     ...state,
-    messages,
     liveTurns,
     occupancyLink: true,
     occupancyAt: Date.now(),
@@ -632,6 +642,10 @@ function onError(state: DialogState, frame: Record<string, unknown>): DialogStat
   const code = str(frame.code) || "node_error";
   const program = str(frame.program);
   const text = str(frame.text).trim();
+  if (isRetriableStreamCancelText(text) || isRetriableStreamCancelText(code)) {
+    const session = str(frame.acp_session) || state.activeSession || state.draftRef || "";
+    return session ? noteProbeWorking(state, session) : state;
+  }
   const last = state.messages[state.messages.length - 1];
   const same =
     last !== undefined &&
@@ -846,7 +860,8 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       frame.live === false &&
       hasOpenTurn(messages) &&
       next.occupancyPendingAt == null &&
-      !turnStillRunning(messages)
+      turnLooksSettled(messages) &&
+      !turnHasUnfinishedWork(messages)
     ) {
       messages = stampOpenTurn(messages, "end_turn");
     }
@@ -961,6 +976,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   }
   if (kind === "delta") {
     const text = str(frame.text);
+    if (isRetriableStreamCancelText(text)) return armTurn(state, frame);
     return text ? armTurn(appendText(state, "assistant", text), frame) : state;
   }
   if (kind === "thought") {

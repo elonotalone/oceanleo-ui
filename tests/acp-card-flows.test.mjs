@@ -635,6 +635,11 @@ test("思考还在时 occupancy 清空不能把停止换成可点的发送", asy
     assert.ok(view.$("[data-oceanleo-cc-stop]"), "open thought keeps Stop after empty occupancy");
     assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
     assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]'), null);
+    await server({ t: "occupancy", program: "cursor", busy: [] });
+    await server({ t: "thought", program: "cursor", acp_session: "live", text: " still" });
+    await server({ t: "occupancy", program: "cursor", busy: [] });
+    assert.ok(view.$("[data-oceanleo-cc-stop]"), "later thought after empty occupancy stays Stop");
+    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
     const socket = openSocket();
     socket.autoOccupancy = false;
     socket.close();
@@ -692,6 +697,38 @@ test("思考还在时 live=false 不能把停止换成可点的发送", async ()
     await server({ t: "session_opened", program: "cursor", acp_session: "live", cwd: "/root", replayed: 0 });
     await server({ t: "occupancy", program: "cursor", busy: [] });
     assert.ok(view.$("[data-oceanleo-cc-stop]"), "open thought keeps Stop after live=false occupancy");
+    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+  } finally { view.cleanup(); }
+});
+
+test("回放用户后的现场思考，occupancy 清空不能把停止换成可点的发送", async () => {
+  const view = await boot({ initialProgram: "cursor" });
+  try {
+    await server({ t: "sessions", program: "cursor", supported: true, sessions: [
+      { id: "live", title: "Live", cwd: "/root", updated_at: "" },
+    ] });
+    await click(view.$('[data-oceanleo-acp-session="live"]'));
+    await server({
+      t: "transcript",
+      program: "cursor",
+      acp_session: "live",
+      live: true,
+      frames: [
+        { t: "user_message", program: "cursor", acp_session: "live", replay: true, text: "go" },
+      ],
+    });
+    await server({ t: "session_opened", program: "cursor", acp_session: "live", cwd: "/root", replayed: 1 });
+    await server({ t: "turn_start", program: "cursor", acp_session: "live" });
+    await server({ t: "thought", program: "cursor", acp_session: "live", text: "plan" });
+    await server({ t: "occupancy", program: "cursor", busy: ["live"] });
+    assert.ok(view.$("[data-oceanleo-cc-stop]"));
+    await server({ t: "occupancy", program: "cursor", busy: [] });
+    assert.ok(view.$("[data-oceanleo-cc-stop]"), "replayed user plus live thought stays Stop");
+    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+    await server({ t: "occupancy", program: "cursor", busy: [] });
+    await server({ t: "thought", program: "cursor", acp_session: "live", text: " more" });
+    await server({ t: "occupancy", program: "cursor", busy: [] });
+    assert.ok(view.$("[data-oceanleo-cc-stop]"), "repeated empty occupancy cannot flip to Send");
     assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
   } finally { view.cleanup(); }
 });
@@ -787,7 +824,7 @@ test("reduce：思考增量把回合标成进行中；历史回放 live=false �
   assert.equal(hasOpenTurn(replayed.messages), false);
 });
 
-test("reduce：缺 done 的完结回复在 live=false 或 occupancy 清空后收口", () => {
+test("reduce：缺 done 的完结回复只在 live=false 收口；occupancy 清空不能收成 Send", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "frame", frame: {
@@ -818,8 +855,37 @@ test("reduce：缺 done 的完结回复在 live=false 或 occupancy 清空后收
     program: "cursor",
     busy: [],
   } });
-  assert.equal(state.occupancyBusy.includes("s"), false);
-  assert.equal(state.messages.at(-1)?.stop, "end_turn");
+  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.messages.at(-1)?.stop, "");
+  assert.equal(turnStillRunning(state.messages), true);
+});
+
+test("reduce：HTTP/2 CANCEL 字不进对话，也不把 Stop 收成 Send", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "thought", program: "cursor", acp_session: "s", text: "plan" } });
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "delta",
+    program: "cursor",
+    acp_session: "s",
+    text: "Error: RetriableError: [canceled] http/2 stream closed with error code CANCEL (0x8)",
+  } });
+  const last = state.messages.at(-1);
+  assert.equal(last?.kind, "turn");
+  assert.equal(last?.items?.some((item) => item.kind === "assistant" && /RetriableError/.test(item.text || "")), false);
+  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(turnStillRunning(state.messages), true);
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "error",
+    program: "cursor",
+    acp_session: "s",
+    code: "acp_start_failed",
+    text: "Error: RetriableError: [canceled] http/2 stream closed with error code CANCEL (0x8)",
+  } });
+  assert.equal(state.messages.some((message) => message.kind === "notice"), false);
+  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.messages.at(-1)?.stop, "");
 });
 
 test("reduce：思考还在时 occupancy 清空不能收成 Send", () => {
@@ -833,6 +899,37 @@ test("reduce：思考还在时 occupancy 清空不能收成 Send", () => {
   assert.equal(turnStillRunning(state.messages), true);
   state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: [] } });
   assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.messages.at(-1)?.stop, "");
+  assert.equal(composerOccupancy({
+    linkUp: state.occupancyLink,
+    occupancyAt: state.occupancyAt,
+    occupancyBusy: state.occupancyBusy,
+    sessionId: "s",
+    localRunning: turnStillRunning(state.messages),
+  }), "working");
+});
+
+test("reduce：回放用户后的现场思考，occupancy 清空不能收成 Send", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "transcript",
+    program: "cursor",
+    acp_session: "s",
+    live: true,
+    frames: [
+      { t: "user_message", program: "cursor", acp_session: "s", replay: true, text: "go" },
+    ],
+  } });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "thought", program: "cursor", acp_session: "s", text: "plan" } });
+  assert.equal(state.busy, true);
+  assert.equal(state.messages.at(-1)?.live, true);
+  assert.equal(hasOpenTurn(state.messages), true);
+  assert.equal(turnStillRunning(state.messages), true);
+  state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: [] } });
+  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.busy, true);
   assert.equal(state.messages.at(-1)?.stop, "");
   assert.equal(composerOccupancy({
     linkUp: state.occupancyLink,
