@@ -26,8 +26,8 @@
 
 ## Next
 
-1. Record final commit IDs and parent-owned typecheck/HTTP acceptance results after the W04 exact-path commits.
-2. Hand V01 the frozen file list and both repo commits for independent read-only review; parent retains ownership of shared typecheck and dev HTTP acceptance.
+1. Parent owns the final independent actual-source/hook rerun and dev HTTP acceptance. The UI interim typecheck completed with exit 0 and no diagnostics.
+2. V01 has the frozen exact-path commits for read-only review.
 
 ## Update 2026-10-22 — current implementation
 
@@ -39,3 +39,4 @@
 - Stage accepts a commit only for an exact correlated host save ID, same root, unseen new revision, and `meta.previous_revision_id === expectedRevisionId`. It keeps a bounded 32-entry one-shot correlation for timed-out requests, so a late genuine durable receipt can update the current pin; unknown IDs and stale/seen revisions cannot. Only a matching edit revision clears dirty. Clean flush returns the latest verified Library item, not the original pin.
 - `onVersionSaved` is handled separately from a host flush: it can advance the clean pin only for a complete same-root unseen typed workflow revision whose previous revision matches the current pin; it never resolves a flush or clears pending dirty work. The receipt validator is total for malformed items, including a missing rendition map, so malformed `ok: true` cannot strand the mounted-close waiter.
 - Focused runtime evidence: Stage/receipt/native-v2 UI suite with `/tmp/w04-video-source.bin` passed 9/9; video migration/dependency/private-staging suite with the same source passed 26/26; actual core hook runtime passed 2/2. Exact source SHA remains `a9cf73ccd3ac858cdac83e09d7b616e8ebabfd715b65563dfb5c28c72fcd8b31`.
+- Exact-path commits: video `38379dc` (`fix: persist hosted video canvas revisions durably`); UI `e2c62ee2` (`fix(ui): preserve durable video canvas load and save`). The only remaining UI worktree change is parent-owned `P-private-video-decision.md`.
