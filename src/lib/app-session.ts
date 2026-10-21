@@ -167,11 +167,23 @@ function jsonMutation(
 function unwrapSession(
   result: AgentApiResult<SessionEnvelope>,
 ): AgentApiResult<AppSession> {
-  if (!result.ok || !result.data) return result as AgentApiResult<AppSession>;
-  const data = result.data;
-  const session =
-    "session" in data && data.session ? data.session : (data as AppSession);
-  return { ...result, data: session };
+  if (!result.ok) return result as AgentApiResult<AppSession>;
+  const data: unknown = result.data;
+  const record = data && typeof data === "object" && !Array.isArray(data)
+    ? data as Record<string, unknown> : null;
+  const session = record && "session" in record ? record.session : record;
+  // An HTTP 200 can still arrive without a readable JSON receipt (interrupted
+  // response, proxy HTML, or a malformed envelope). It must not acknowledge a
+  // snapshot or turn a temporary protocol failure into a permanent save error.
+  // Only enforce the identity/CAS fields here; older receipts may omit optional
+  // metadata, and their original shape must remain available to callers.
+  if (!session || typeof session !== "object" || Array.isArray(session) ||
+    !("id" in session) || typeof session.id !== "string" || !session.id.trim() ||
+    !("revision" in session) || !Number.isSafeInteger(session.revision) ||
+    (session.revision as number) < 0) {
+    return { ok: false, status: 502, error: "工作会话响应不完整，请重试。" };
+  }
+  return { ...result, data: session as AppSession };
 }
 
 export function normalizeAppSessionArtifactPins(

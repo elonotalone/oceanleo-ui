@@ -10,6 +10,8 @@ Active received replies reveal Unicode graphemes progressively, with a bounded c
 
 Save registration retains transport status and retries temporary failures using the already committed artifact/revision. Failed history registration no longer falsely acknowledges success. Explicit CAS conflicts remain protected.
 
+Final receipt-validation follow-up: the session API now rejects HTTP200 responses with unreadable/missing/malformed session receipts as retryable 502. A valid nonempty id and safe nonnegative integer revision are required; optional legacy fields stay compatible. Actual authed()/get/ensure/update tests cover bare/wrapped receipts, interrupted JSON, malformed identity/revision and preserved explicit API errors (12/12).
+
 Right-pane render failures are contained locally with retry/close and originating component-stack logging; real injected React render-loop coverage proves the left composer remains mounted.
 
 ## Parent verification
