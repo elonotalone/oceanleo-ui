@@ -55,3 +55,16 @@
   ```
 
 - Committed as video `2573f3e test: cover hosted video save lifecycle`, containing only `tests/canvas-workflow.test.mjs` and `tests/workflow-history-hook.test.tsx`. No product source, package/lock, browser, full suite, typecheck, build, install, production path, deploy, or push was touched.
+
+## 2026-10-22 — test-only TypeScript diagnostics
+
+- Parent's final video typecheck surfaced test-only diagnostics. Replaced the broad `Uint8Array` response body with an explicitly allocated/copied `ArrayBuffer`; gave staged test attempts a named element type including the optional private-stage result; and used mounted-hook accessors plus explicit artifact receipt/source dependency assertions and blob-URL assertions.
+- Removed all non-null assertions from the hook test rather than suppressing the type errors. No `ts-ignore`, `skipLibCheck` change, or test exclusion was added.
+- Reran the focused hook test with `run-light`: 2/2 passed.
+- Ran a scoped direct-file compiler check through the guard's heavy lane:
+
+  ```text
+  bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-heavy -- ./node_modules/.bin/tsc --noEmit --pretty false --skipLibCheck --strict --target es2017 --lib dom,dom.iterable,esnext --module esnext --moduleResolution bundler --jsx react-jsx --esModuleInterop tests/workflow-history-hook.test.tsx
+  ```
+
+  It emitted no diagnostic for `tests/workflow-history-hook.test.tsx`, but returned 2 because transitive OceanLeo UI sources have duplicate React `ref` type incompatibilities and `TerminalPanel.tsx` lacks an `@xterm/xterm/css/xterm.css` declaration. This was not the full video project typecheck; the parent owns the converged full check.

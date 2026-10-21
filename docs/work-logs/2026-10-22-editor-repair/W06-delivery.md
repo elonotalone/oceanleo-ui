@@ -47,3 +47,9 @@ bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- nod
 ```
 
 No full suite, full typecheck, build, browser/Playwright, install, production path, deployment, or push was run. Parent owns remaining integration acceptance.
+
+## Test typing correction
+
+After the parent identified test-only TypeScript errors, W06 updated only `tests/workflow-history-hook.test.tsx`: media responses now use a concrete copied `ArrayBuffer`, save-stage attempts have an explicit shape, and hook/receipt/dependency/runtime-URL access uses guarded assertions. No non-null assertion or compiler suppression was added. The focused hook test passes 2/2.
+
+A guarded scoped direct-file TypeScript check returned 2 due only to transitive OceanLeo UI errors (duplicate React `ref` types and missing `@xterm/xterm/css/xterm.css` declaration); there was no diagnostic for the hook test itself. It was not the full video project check, which remains with the parent after W04 convergence.

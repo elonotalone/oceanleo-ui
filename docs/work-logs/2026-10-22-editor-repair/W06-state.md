@@ -36,3 +36,8 @@ Updated: 2026-10-22 (Asia/Shanghai)
 - The same hook harness exercises A-slow/B-fast dependency loading: A has one completed media URL and one delayed dependency, B opens and wins, then A's late completion is discarded and the old URL is revoked without replacing B's project or asset projection.
 - Focused final results: `tests/workflow-history-hook.test.tsx` 2/2 pass; `tests/canvas-workflow.test.mjs` 18 pass, 0 fail, 1 opt-in actual-source skip. Exact commands are recorded in the journal and delivery.
 - No browser/Playwright, full suite, full typecheck, build, install, production path, deployment, or push was run. Parent retains shared/full integration verification.
+
+## Test typing follow-up
+
+- Parent's final video typecheck identified test-only type errors in `workflow-history-hook.test.tsx`. W06 corrected the `Response` body to an owned `ArrayBuffer`, explicitly typed staged attempts, and replaced uninitialized hook access/optional-field assumptions with guarded accessors and assertions. No `ts-ignore`, non-null assertion, or skipped check was added.
+- Focused hook runtime remains 2/2 pass. A scoped direct-file TypeScript check produced no diagnostic for this test file; it exited with errors in imported OceanLeo UI code (duplicate React ref types and a missing xterm CSS declaration). The full project typecheck remains with the parent after W04 convergence.
