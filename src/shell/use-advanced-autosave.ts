@@ -485,7 +485,7 @@ export function useAdvancedAutoSave({
         // A flush may adopt its own receipt before resolving. That exact new
         // pin is safe only when it is the same root/tier and already clean.
         // A different file, different receipt or newer dirty edit still fails.
-        if (saved && (saved.revisionId || saved.meta?.revision_id || saved.versionId) &&
+        if (saved && (saved.revisionId || saved.meta?.revision_id || saved.meta?.version_id) &&
             !latest.paused && !latest.input.dirty && captured.root &&
             captured.root === sourceItemRoot(saved) &&
             captured.persistenceKey === latest.persistenceKey &&
