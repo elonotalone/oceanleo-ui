@@ -1413,21 +1413,31 @@ export function VideoCanvasStage({
         status: statusText,
         persistence: {
           requiresMountedFlush: Boolean(liveCanvasBase),
-          dirty: sourceReady && mayWrite
-            ? liveCanvasBase ? embeddedDirty : !nativeV2ReadOnlyProjection && editRevision > 0
-            : false,
+          // The hosted frame is the source of truth for whether it has edits.
+          // A later room-role/save-gate change must not hide dirty work and let
+          // the mounted-close guard treat the now-read-only frame as clean.
+          dirty: liveCanvasBase
+            ? embeddedDirty
+            : sourceReady && mayWrite && !nativeV2ReadOnlyProjection && editRevision > 0,
           editRevision: liveCanvasBase ? embeddedRevision : editRevision,
           // 保持 true：只读端 dirty 恒为 false 且 flush 不落库，自动保存不会产生任何写入。
           autoSave: true,
           flush: async () => {
-            // 只读（别人持锁）时不落库；别人保存后这里会自动更新。
-            if (!mayWrite) return { ok: true as const, item };
             if (liveCanvasBase) {
               if (!embeddedDirty) {
                 return { ok: true as const, item: lastSavedItemRef.current ?? item };
               }
+              if (!mayWrite) {
+                return {
+                  ok: false as const,
+                  error: "视频画布已变为只读；未保存改动仍保留，恢复编辑权限后再试。",
+                };
+              }
               return requestHostedSave();
             }
+            // A read-only local stand-in has no embedded edit state of its own.
+            // Keep its clean no-write behavior while refusing native-v2 projection saves below.
+            if (!mayWrite) return { ok: true as const, item };
             if (nativeV2ReadOnlyProjection) {
               return {
                 ok: false as const,

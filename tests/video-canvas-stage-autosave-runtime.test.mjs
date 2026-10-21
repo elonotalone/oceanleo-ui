@@ -59,7 +59,13 @@ const frameStub = dataModule(`
 `);
 const collabStub = dataModule(`
   export function useEntityCollab(){
-    return {readOnly:false, saveGate:true, room:null, collab:null, markSaved(){}};
+    return {
+      readOnly: globalThis.__videoCanvasEntityReadOnly === true,
+      saveGate: globalThis.__videoCanvasEntitySaveGate !== false,
+      room:null,
+      collab:null,
+      markSaved(){},
+    };
   }
   export function useLockedEditCollab(){
     return {readOnly:false, mayWrite:true, collab:null, markSaved(){}};
@@ -193,6 +199,8 @@ async function waitFor(predicate, message, timeout = 2_500) {
 async function mountStage() {
   globalThis.__videoCanvasStageAdapter = null;
   globalThis.__videoCanvasFrameProps = null;
+  globalThis.__videoCanvasEntityReadOnly = false;
+  globalThis.__videoCanvasEntitySaveGate = true;
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -221,6 +229,29 @@ async function mountStage() {
       globalThis.__videoCanvasFrameProps = null;
     },
   };
+}
+
+async function enterCollabMode() {
+  await act(async () => frameProps().onProjectManifest?.({}));
+  const captureId = await waitFor(
+    () => frameProps().recoveryCaptureRequestId,
+    "host did not request a recovery snapshot to establish collaboration mode",
+  );
+  await act(async () => frameProps().onRecoverySnapshot({
+    recoveryId: captureId,
+    ok: true,
+    snapshot: {
+      revision: 1,
+      payload: {
+        schema: "oceanleo.canvas.collab.v1",
+        op: "state",
+        loaded: true,
+        nodes: [],
+        edges: [],
+      },
+    },
+  }));
+  await waitFor(() => typeof frameProps().onVersionSaved === "function", "collaboration mode did not expose version-save callback");
 }
 
 function controllerForStage(clock) {
@@ -393,26 +424,7 @@ test("a late correlated durable receipt after timeout updates the current head b
 test("an authoritative core version event advances the clean pin without acknowledging an unknown flush", async () => {
   const mounted = await mountStage();
   try {
-    await act(async () => frameProps().onProjectManifest?.({}));
-    const captureId = await waitFor(
-      () => frameProps().recoveryCaptureRequestId,
-      "host did not request a recovery snapshot to establish collaboration mode",
-    );
-    await act(async () => frameProps().onRecoverySnapshot({
-      recoveryId: captureId,
-      ok: true,
-      snapshot: {
-        revision: 1,
-        payload: {
-          schema: "oceanleo.canvas.collab.v1",
-          op: "state",
-          loaded: true,
-          nodes: [],
-          edges: [],
-        },
-      },
-    }));
-    await waitFor(() => typeof frameProps().onVersionSaved === "function", "collaboration mode did not expose version-save callback");
+    await enterCollabMode();
 
     const initialPin = await stageAdapter().persistence.flush();
     assert.equal(initialPin.item.revisionId, INITIAL_REVISION);
@@ -428,6 +440,57 @@ test("an authoritative core version event advances the clean pin without acknowl
     }));
     const unchangedPin = await stageAdapter().persistence.flush();
     assert.equal(unchangedPin.item.revisionId, NEXT_REVISION, "unknown save IDs cannot mutate the clean flush pin");
+  } finally {
+    await mounted.cleanup();
+  }
+});
+
+test("dirty hosted canvas stays protected when collaboration save permission is revoked", async () => {
+  const mounted = await mountStage();
+  const clock = new FakeClock();
+  const { controller } = controllerForStage(clock);
+  try {
+    await enterCollabMode();
+    await act(async () => frameProps().onDirtyChange(true, 1));
+    await waitFor(() => stageAdapter().persistence.dirty, "Stage did not expose the iframe's dirty state");
+
+    globalThis.__videoCanvasEntitySaveGate = false;
+    await act(async () => frameProps().onHistoryChange({
+      revision: 2,
+      canUndo: true,
+      canRedo: false,
+    }));
+    await waitFor(() => frameProps().onHistoryChange === undefined, "save-gate transition did not rerender the host adapter");
+
+    assert.equal(stageAdapter().persistence.dirty, true, "losing write permission cannot mask the already-dirty hosted frame");
+    controller.observe({ revision: 1, dirty: true, userEdited: true, itemKey: "video-stage-autosave-item" });
+    let result;
+    await act(async () => { result = await controller.flushLatest(); });
+    assert.equal(result.ok, false, "mounted close must not receive a fake success while dirty work is read-only");
+    assert.match(result.error, /只读|未保存改动/);
+    assert.equal(controller.hasUnconfirmedWork(), true);
+    assert.equal(stageAdapter().persistence.dirty, true);
+  } finally {
+    controller.dispose();
+    await mounted.cleanup();
+  }
+});
+
+test("a clean hosted frame remains a successful no-write flush after save permission is revoked", async () => {
+  const mounted = await mountStage();
+  try {
+    await enterCollabMode();
+    globalThis.__videoCanvasEntitySaveGate = false;
+    await act(async () => frameProps().onHistoryChange({
+      revision: 2,
+      canUndo: true,
+      canRedo: false,
+    }));
+    await waitFor(() => frameProps().onHistoryChange === undefined, "save-gate transition did not rerender the host adapter");
+    assert.equal(stageAdapter().persistence.dirty, false);
+    const result = await stageAdapter().persistence.flush();
+    assert.equal(result.ok, true, "clean read-only state keeps its existing no-write success behavior");
+    assert.equal(result.item.revisionId, INITIAL_REVISION);
   } finally {
     await mounted.cleanup();
   }
