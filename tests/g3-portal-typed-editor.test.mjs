@@ -64,7 +64,9 @@ const view = dataModule(`import React from ${JSON.stringify(reactUrl)};
 const stubs = {
   '../i18n/ui/useUI': ui,
   './artifact-client': client,
-  '../lib/database': dataModule(`export async function uploadFile() { throw new Error('unexpected upload'); }`),
+  '../lib/database': dataModule(`export async function uploadFile() { throw new Error('unexpected upload'); }
+    export async function normalizeUploadIdempotencyKey(parts) { return parts.map(String).join(":"); }
+    export function humanLibraryUploadError(error) { return String(error || "unexpected upload"); }`),
   './WorkspaceSession': session,
   './workbench-material-provider': pass,
   './workbench-open-store': pass,
@@ -81,7 +83,8 @@ const stubs = {
       return props => React.createElement(Suspense, { fallback: '正在打开' }, React.createElement(Component, props)); }`),
   '../lib/lazy-with-retry': dataModule(`export const chunkRetryLoader = (id, load) => load; export const withChunkRetry = (id, Component) => Component;`),
   './advanced-routes/WorkbenchRouteLoading': dataModule(`export function WorkbenchRouteLoading() { return null; } export function WorkbenchRouteChunkError() { return null; }`),
-  '../lib/auth/client': dataModule(`export function browserClient() { throw new Error('unexpected auth access'); }`),
+  '../lib/auth/client': dataModule(`export function browserClient() { throw new Error('unexpected auth access'); }
+    export async function accessToken() { return null; }`),
   '../ui': dataModule(`export function Modal() { return null; } export function SkeletonCard() { return null; } export function EmptyState() { return null; } export function timeAgo() { return ''; }`),
   './StorageCapacityStrip': dataModule(`export function StorageCapacityStrip() { return null; }`),
 };

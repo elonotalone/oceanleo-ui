@@ -728,6 +728,8 @@ test("登录服务 5xx 不得经 middleware / 浏览器客户端原样重试 30 
   assert.match(middlewareSource, /from "\.\/auth-fetch"/);
   assert.match(middlewareSource, /fetch:\s*authFetch/);
   assert.match(clientSource, /from "\.\/auth-fetch"/);
+  assert.match(clientSource, /from "\.\/refresh-lock"/);
+  assert.match(clientSource, /lock:\s*browserAuthLock/);
   assert.match(clientSource, /fetch:\s*authFetch/);
 });
 
@@ -761,6 +763,7 @@ test("LeoDev capability host must never write family SSO; inherited cookie is no
   assert.match(clientSource, /isLeoDevPreviewHost/);
   assert.match(clientSource, /autoRefreshToken:\s*true/);
   assert.match(clientSource, /detectSessionInUrl:\s*true/);
+  assert.match(clientSource, /lock:\s*browserAuthLock/);
   assert.doesNotMatch(clientSource, /detectSessionInUrl:\s*!preview/);
   assert.match(clientSource, /createLeoDevPreviewCookieJar/);
   assert.match(clientSource, /never write family SSO from a capability hostname/);

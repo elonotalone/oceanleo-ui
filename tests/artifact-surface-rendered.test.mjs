@@ -480,6 +480,12 @@ const databaseStubUrl = dataModule(`
   export async function uploadFile() {
     return { ok: false, error: "upload not used in this test" };
   }
+  export async function normalizeUploadIdempotencyKey(parts) {
+    return parts.map(String).join(":");
+  }
+  export function humanLibraryUploadError(error) {
+    return String(error || "upload not used in this test");
+  }
 `);
 const myLibraryModule = (
   await import(

@@ -14,7 +14,7 @@ const moduleUrl = await compileModule("src/lib/database.ts", {
     export async function deleteResumeTicket(){}
   `),
 });
-const { uploadFile } = await import(moduleUrl);
+const { uploadFile, gatewayErrorMessage } = await import(moduleUrl);
 
 async function withFetch(status, run) {
   const previous = globalThis.fetch;
@@ -49,6 +49,37 @@ test("private upload failure never falls back to a public route", async () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "https://gateway.test/v1/database/private-upload");
   });
+});
+
+test("catalog 400 envelope is the upload error, not HTTP 400", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        code: "invalid-request",
+        message: "invalid idempotency key",
+        details: {},
+        requestId: "req-1",
+      }),
+      { status: 400 },
+    );
+  try {
+    const result = await uploadFile(new File(["private"], "my file.md"), {
+      privateUpload: true,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 400);
+    assert.equal(result.error, "invalid idempotency key");
+    assert.equal(
+      gatewayErrorMessage(
+        { code: "invalid-request", message: "invalid idempotency key" },
+        400,
+      ),
+      "invalid idempotency key",
+    );
+  } finally {
+    globalThis.fetch = previous;
+  }
 });
 
 test("private files exceeding 20 MiB fail before a network request", async () => {

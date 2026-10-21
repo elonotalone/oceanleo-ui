@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   authFetch,
+  isAuthJwksRequest,
   isAuthRefreshRequest,
+  isAuthUserRequest,
   isTransientAuthStatus,
 } from "../src/lib/auth/auth-fetch.ts";
 
@@ -20,6 +22,9 @@ test("isAuthRefreshRequest only matches the token grant", () => {
   assert.equal(isAuthRefreshRequest("https://auth.oceanleo.com/auth/v1/token"), true);
   assert.equal(isAuthRefreshRequest("https://auth.oceanleo.com/auth/v1/.well-known/jwks.json"), false);
   assert.equal(isAuthRefreshRequest("https://auth.oceanleo.com/auth/v1/user"), false);
+  assert.equal(isAuthJwksRequest("https://auth.oceanleo.com/auth/v1/.well-known/jwks.json"), true);
+  assert.equal(isAuthUserRequest("https://auth.oceanleo.com/auth/v1/user"), true);
+  assert.equal(isAuthUserRequest("https://auth.oceanleo.com/auth/v1/token"), false);
 });
 
 test("503 on JWKS becomes 401 so getClaims will not retry a full refresh tick", async () => {
@@ -97,6 +102,20 @@ test("refresh network failure is 503, not a fake signed-out 401", async () => {
     assert.equal(refresh.status, 503);
     const jwks = await authFetch("https://example.invalid/auth/v1/.well-known/jwks.json");
     assert.equal(jwks.status, 401);
+    const user = await authFetch("https://auth.oceanleo.com/auth/v1/user");
+    assert.equal(user.status, 503);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("503 on getUser stays 503 so supabase-js does not SIGNED_OUT", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("upstream connect error", { status: 503 });
+  try {
+    const res = await authFetch("https://auth.oceanleo.com/auth/v1/user");
+    assert.equal(res.status, 503);
   } finally {
     globalThis.fetch = original;
   }

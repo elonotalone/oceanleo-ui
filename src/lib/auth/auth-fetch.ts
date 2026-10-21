@@ -1,10 +1,10 @@
 /**
  * JWKS / getClaims 遇到 5xx 时，@supabase/auth-js 会按可重试错误在
  * AUTO_REFRESH_TICK_DURATION_MS（30 秒）里退避，中间件每个导航都卡住。
- * 那一类请求改写成 401：getClaims 当「这次验不了」处理，不重试、不 overlay。
+ * 只有 JWKS 改写成 401：getClaims 当「这次验不了」处理，不重试、不 overlay。
  *
- * Token 续期绝对不能走这条路。401 会被当成 refresh token 作废，cookie 清空，
- * 人就退出登录。续期的 5xx / 网络抖动原样返回（或 503），让上游重试并保留会话。
+ * /user 和 token 续期绝对不能走这条路。401 会被当成会话作废，cookie 清空，
+ * 人就退出登录。那两条的 5xx / 网络抖动原样返回（或 503）。
  *
  * 浏览器路径不再套 2500ms 超时：CORS 到 auth.oceanleo.com 慢一拍就会误报 401，
  * 宿主模式早就因此去掉了超时，oceanbizs.com 网页之前漏了。
@@ -28,6 +28,16 @@ export function isAuthRefreshRequest(input: RequestInfo | URL): boolean {
   return /\/token(?:\?|$)/i.test(url) || /grant_type=refresh_token/i.test(url);
 }
 
+/** GET /auth/v1/user. supabase-js treats 401 here as SIGNED_OUT. */
+export function isAuthUserRequest(input: RequestInfo | URL): boolean {
+  return /\/auth\/v1\/user(?:\?|$)/i.test(authRequestUrl(input));
+}
+
+/** Cached JWKS. 401 here only fails this getClaims tick. */
+export function isAuthJwksRequest(input: RequestInfo | URL): boolean {
+  return /\/\.well-known\/jwks\.json(?:\?|$)/i.test(authRequestUrl(input));
+}
+
 function unavailableResponse(status = 401): Response {
   return new Response(
     JSON.stringify({
@@ -47,12 +57,12 @@ export function isTransientAuthStatus(status: number): boolean {
 
 function softenTransient(input: RequestInfo | URL, res: Response): Response {
   if (!isTransientAuthStatus(res.status)) return res;
-  if (isAuthRefreshRequest(input)) return res;
-  return unavailableResponse(401);
+  if (isAuthJwksRequest(input)) return unavailableResponse(401);
+  return res;
 }
 
 function transientFailure(input: RequestInfo | URL): Response {
-  return isAuthRefreshRequest(input) ? unavailableResponse(503) : unavailableResponse(401);
+  return isAuthJwksRequest(input) ? unavailableResponse(401) : unavailableResponse(503);
 }
 
 export async function authFetch(

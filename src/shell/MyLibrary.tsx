@@ -18,6 +18,8 @@ import {
   type CollectionViewOption,
 } from "./collection-chrome";
 import {
+  humanLibraryUploadError,
+  normalizeUploadIdempotencyKey,
   uploadFile,
   type AssetItem,
   type Creation,
@@ -1150,13 +1152,13 @@ export function MyLibrary({
         for (let index = 0; index < queue.length; index += 1) {
           const file = queue[index];
           setUploadProgress(`${index + 1}/${queue.length} · ${file.name}`);
-          const uploadIdempotencyKey = [
+          const uploadIdempotencyKey = await normalizeUploadIdempotencyKey([
             "library-upload-v1",
             siteId || "home",
             file.name,
             file.size,
             file.lastModified,
-          ].join(":");
+          ]);
           const result = await uploadFile(file, {
             siteId: siteId || "home",
             title: file.name,
@@ -1164,7 +1166,9 @@ export function MyLibrary({
             privateUpload: true,
           });
           if (!result.ok || !result.data?.file) {
-            setUploadError(result.error || "文件上传失败，请重试。");
+            setUploadError(
+              humanLibraryUploadError(result.error, result.status),
+            );
             continue;
           }
           const uploaded = result.data.file;

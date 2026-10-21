@@ -18,6 +18,7 @@ import { useUI } from "../i18n/ui/useUI";
 import {
   listFiles,
   uploadFile,
+  humanLibraryUploadError,
   deleteFile,
   getDatabaseOverview,
   deleteCreation,
@@ -231,7 +232,7 @@ function FilesPanel({
     for (const f of Array.from(files)) {
       const r = await uploadFile(f, { siteId });
       if (!r.ok) {
-        setError(r.error || tt("上传失败：{name}", { name: f.name }));
+        setError(humanLibraryUploadError(r.error, r.status) || tt("上传失败：{name}", { name: f.name }));
         break;
       }
     }

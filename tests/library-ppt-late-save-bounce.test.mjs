@@ -444,6 +444,8 @@ const uiStubUrl = dataModule(`
 `);
 const databaseStubUrl = dataModule(`
   export async function uploadFile() { return { ok: false, error: "unused" }; }
+  export async function normalizeUploadIdempotencyKey(parts) { return parts.map(String).join(":"); }
+  export function humanLibraryUploadError(error) { return String(error || "unused"); }
 `);
 const libraryGridStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};

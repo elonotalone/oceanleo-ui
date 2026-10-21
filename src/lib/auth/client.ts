@@ -9,6 +9,7 @@ import {
 } from "../../contracts/client-host-config";
 import { runtimePageOrigin } from "../../contracts/domain-family";
 import { authFetch } from "./auth-fetch";
+import { browserAuthLock } from "./refresh-lock";
 import {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
@@ -65,6 +66,7 @@ function hostBrowserClient(): SupabaseClient | null {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      lock: browserAuthLock,
       storage,
       storageKey,
     },
@@ -105,6 +107,7 @@ export function browserClient(): SupabaseClient | null {
       // host can establish a device session in the overlay jar.
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      lock: browserAuthLock,
     },
     ...(previewCookies
       ? {

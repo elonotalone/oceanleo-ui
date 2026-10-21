@@ -31,6 +31,13 @@ import {
   writeResumeTicket,
   type UploadResumeTicket,
 } from "./upload/chunked";
+import { gatewayErrorMessage } from "./upload/idempotency";
+
+export {
+  gatewayErrorMessage,
+  humanLibraryUploadError,
+  normalizeUploadIdempotencyKey,
+} from "./upload/idempotency";
 
 export type MediaType =
   | "image"
@@ -164,7 +171,7 @@ async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
   if (!res.ok) {
     return {
       ok: false,
-      error: (data as { detail?: string } | null)?.detail || `HTTP ${res.status}`,
+      error: gatewayErrorMessage(data, res.status),
       status: res.status,
     };
   }
@@ -746,7 +753,7 @@ export async function uploadFile(
     status: number,
   ): Result<{ ok: boolean; file: FileItem }> => ({
     ok: false,
-    error: (data as { detail?: string } | null)?.detail || `HTTP ${status}`,
+    error: gatewayErrorMessage(data, status),
     status,
   });
 
