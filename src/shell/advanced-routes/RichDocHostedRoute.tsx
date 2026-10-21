@@ -164,10 +164,12 @@ export function RichDocHostedRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const itemKey = handoffItemKey(item);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const instanceId = useRef(
-    `rd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-  ).current;
+  const instanceId = useMemo(
+    () => `rd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    [itemKey],
+  );
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   // pushInit 读 ref 而不是 state：init 会把正文整份重发，绝不能因为切页签就重跑。
   const modeRef = useRef<EditorMode>(DEFAULT_EDITOR_MODE);
@@ -218,15 +220,13 @@ export function RichDocHostedRoute({
   const appliedHandoffKeyRef = useRef("");
   const mountedRef = useRef(true);
   const persistedItemRef = useRef(item);
-  const itemKey = handoffItemKey(item);
   const activeItemKeyRef = useRef(itemKey);
   const scopeItemKeyRef = useRef(itemKey);
   const captureScopeRef = useRef(0);
   const captureSequenceRef = useRef(0);
   if (activeItemKeyRef.current !== itemKey) {
     activeItemKeyRef.current = itemKey;
-    // The iframe instance survives item switches; generation/revision may restart at 1.
-    // Scope every host request so a late prior-document response cannot alias a new capture.
+    // Editor revisions may restart at 1 after a scope switch; keep request correlation unique.
     captureScopeRef.current += 1;
   }
   const sourceRef = useRef<unknown>(null);
@@ -356,10 +356,12 @@ export function RichDocHostedRoute({
   useEffect(() => {
     frameLoadedRef.current = false;
     setFrameLoaded(false);
+    setReady(false);
   }, [src]);
 
   const sendToEditor = useCallback(
     (message: Record<string, unknown>) => {
+      if (activeItemKeyRef.current !== itemKey) return false;
       if (!hostedIframeReadyToPost(frameLoadedRef.current)) return false;
       const frame = iframeRef.current?.contentWindow;
       if (!frame || !isValidEditorTargetOrigin(editorOrigin)) return false;
@@ -372,7 +374,7 @@ export function RichDocHostedRoute({
         return false;
       }
     },
-    [editorOrigin, frameLoaded, instanceId],
+    [editorOrigin, frameLoaded, instanceId, itemKey],
   );
 
   const liveOrHeld = selectionDuringInteraction(hostedSelection, heldSelection);
@@ -496,6 +498,9 @@ export function RichDocHostedRoute({
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
+      // The old listener can still run between a new-item render and effect cleanup.
+      // Do not let a trusted message from the previous iframe instance cross scopes.
+      if (activeItemKeyRef.current !== itemKey) return;
       const message = acceptEditorFrameMessage(event, {
         expectedOrigin: editorOrigin,
         frameWindow: iframeRef.current?.contentWindow,
@@ -736,7 +741,7 @@ export function RichDocHostedRoute({
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [editRevision, editorOrigin, instanceId, item, pushInit, sendToEditor, siteId]);
+  }, [editRevision, editorOrigin, instanceId, item, itemKey, pushInit, sendToEditor, siteId]);
 
   // 人在审阅面板上点了接受/拒绝 ⇒ 回一条 `review-decision`。没有这一段，
   // 提案会永远停在「待审」，用户点了也没反应。

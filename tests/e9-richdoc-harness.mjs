@@ -80,19 +80,20 @@ export function mountRoute(saveOverride) {
   let item = {key:'doc',id:'doc',title:'doc',meta:{}};
   // Inline source keeps loading deterministic while exercising the real route effects.
   mocks['./richdoc-pro-source'].hostedStateFromResolvedJson = json => ({source:json,converted:null,inspect:null,readOnly:false});
-  function attach(node) { if (!node || typeof node !== 'object') return; if (node.type === 'iframe') { node.props.ref.current={contentWindow:frame}; node.props.onLoad(); } const children=node.props?.children; for (const child of Array.isArray(children)?children:[children]) attach(child); }
+  function attach(node) { if (!node || typeof node !== 'object') return; if (node.type === 'iframe') { node.props.ref.current={contentWindow:frame}; attachedInstanceId=new URL(node.props.src).searchParams.get('instanceId') || ''; node.props.onLoad(); } const children=node.props?.children; for (const child of Array.isArray(children)?children:[children]) attach(child); }
   let tree;
+  let attachedInstanceId = '';
   function render() { cursor=0; tree=exports.RichDocHostedRoute({item}); attach(tree.props.adapter.stage); const jobs=pending;pending=[]; jobs.forEach(fn=>fn()); return tree.props.adapter; }
   render(); render();
   return {
     render, posted, saved, reports, frame, editorOrigin,
     currentItem: () => item,
-    instanceId: () => slots[1]?.current,
+    instanceId: () => attachedInstanceId,
     hide() { document.visibilityState='hidden'; document.emit('visibilitychange'); },
     pagehide() { windowEvents.emit('pagehide'); },
     setItem(next) { item = { ...item, ...next }; },
     message(data, event = {}) {
-      const signed = { protocol: 'p', instanceId: slots[1]?.current, ...data };
+      const signed = { protocol: 'p', instanceId: attachedInstanceId, ...data };
       for (const fn of [...listeners]) fn({ data: signed, origin: editorOrigin, source: frame, ...event });
     },
     unmount() { cleanups.forEach(fn=>fn?.()); for(const slot of slots) if(slot?.current?.contentWindow) slot.current=null; },

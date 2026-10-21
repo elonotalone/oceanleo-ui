@@ -291,6 +291,58 @@ test('RichDoc ignores a late cache snapshot from the prior document when generat
   } finally { host.unmount(); }
 });
 
+test('RichDoc rejects a late native Umo save from the prior document but accepts the current one', async () => {
+  const saveCalls = [];
+  const host = await hostReady(async ({ item, payload }) => {
+    saveCalls.push({ itemKey: item.key, payload });
+    return saveReceipt(payload, 'rev-b2');
+  });
+  const initialInstance = host.instanceId();
+  host.adapter().mode.setMode('pro');
+  host.render();
+  const instanceA = host.instanceId();
+  assert.equal(instanceA, initialInstance, 'ordinary mode changes must keep the editor instance continuous');
+  const payloadA = { type: 'doc', text: 'delayed-native-A' };
+  const payloadB = { type: 'doc', text: 'current-native-B' };
+  try {
+    host.setItem({ key: 'document-B', id: 'document-B', title: 'Document B' });
+    host.render();
+    await new Promise(resolve => setImmediate(resolve));
+    host.message({ type: 'ready' });
+    host.render();
+    await Promise.resolve();
+    await edit(host, 1);
+    const instanceB = host.instanceId();
+
+    // Trusted origin/source but A's former protocol instance: this is a delayed
+    // native save response already in flight when the route switched documents.
+    host.message({
+      type: 'recovery-snapshot', ok: true, recoveryId: 'umo-save-origin-A-7',
+      snapshot: { revision: 1, payload: payloadA },
+    }, { data: { protocol: 'p', instanceId: instanceA, type: 'recovery-snapshot', ok: true, recoveryId: 'umo-save-origin-A-7', snapshot: { revision: 1, payload: payloadA } } });
+    for (let i = 0; i < 20 && saveCalls.length === 0; i += 1) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.deepEqual(saveCalls, [], 'late native response from A must not persist content under B');
+    assert.notEqual(instanceA, instanceB, 'protocol instance must rotate when the item scope changes');
+    assert.equal(host.posted.some(m => m.type === 'save-result' && m.saveId === 'umo-save-origin-A-7'), false);
+
+    const nativeSaveB = 'umo-save-current-B-8';
+    host.message({
+      type: 'recovery-snapshot', ok: true, recoveryId: nativeSaveB,
+      snapshot: { revision: 1, payload: payloadB },
+    });
+    for (let i = 0; i < 30 && !host.posted.some(m => m.type === 'save-result' && m.saveId === nativeSaveB); i += 1) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    const resultB = host.posted.findLast(m => m.type === 'save-result' && m.saveId === nativeSaveB);
+    assert.ok(resultB);
+    assert.equal(resultB.ok, true, resultB.message);
+    assert.deepEqual(saveCalls.map(call => call.itemKey), ['document-B']);
+    assert.deepEqual(JSON.parse(JSON.stringify(saveCalls.map(call => call.payload))), [payloadB]);
+  } finally { host.unmount(); }
+});
+
 test('RichDoc unmount cancels the gate and never reports an unconfirmed write', async () => {
   const savedPayloads = [];
   const host = await hostReady(async ({ payload }) => {
