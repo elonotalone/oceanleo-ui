@@ -1,0 +1,7 @@
+# Global history and save chrome rebuild
+
+Owner: chrome. Operator requests GPT-6 Luna, no fast mode. Bootstrap/read live kernel/oceanleo pack. Repo /root/projects/oceanleo-ui main; no commits, installs, browser or publishing. Existing dirty prior attempt is rejected; replace within ownership, preserve unrelated work.
+
+Own exclusively: src/shell/AdvancedWorkspaceActionBar.tsx, EditBarDockControls.tsx, FloatingContextToolbar.tsx, InlineAdvancedWorkbenchShell.tsx, inline-advanced-shell-parts.tsx, edit-bar-selection-preserve.ts, editor-protocol-validation.mjs, plugin-chrome/plugin-pages.ts. Own tests/rebuild-global-history.test.mjs. Other files read only; request interface changes from relevant owner.
+
+Rebuild global undo/redo: topmost page row same row as download/share/favorite, at left of those actions; all plugin edit bars omit history. Audit actual render paths including self chrome/native/plugin modes and library/workbench. Global commands must reach active editor, keyboard undo works outside edit bar but doesn't steal undo from text inputs/editable editor content. Save icon goes yellow promptly after edit incl debounce and remains until latest edits durably saved, green only then. No canvas changes from save UI. Inspect existing tests honestly; add behavior/render/command tests rather than source assertions. Run focused tests via agent-io-guard run-light; parent owns heavy/typecheck. Return exact paths verified, missing integrations, evidence.

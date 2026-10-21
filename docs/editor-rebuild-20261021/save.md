@@ -1,0 +1,7 @@
+# Save and history rebuild
+
+Owner: save. Operator explicitly requests GPT-6 Luna, no fast mode. Bootstrap and read live kernel, oceanleo pack. Repo /root/projects/oceanleo-ui on main; do not commit product code, install, run browser, or publish. Existing dirty changes are the rejected prior attempt; replace within your ownership as needed, preserve unrelated work.
+
+Own exclusively: src/shell/image-editor/use-fabric-image-editor.ts, image-source-ready.ts, fabric-controller-core.ts, editor-runtime.ts, editor-persistence.ts; src/shell/AdvancedContentWorkbench.tsx, user-edit-session.ts, advanced-routes/ImageRoute.tsx. Own tests/rebuild-image-save-history.test.mjs. No other edits.
+
+Rebuild reliable autosave and history. Investigate full mount/source/persist chain; save receipts must not reload canvas, reset history, move selection, or lose edits made during an in-flight save. Deleting a layer then autosaving must still undo; undo/redo themselves must persist. Do not mask loading bugs with saving predicates. Stable editor identity must survive first fork/artifact save, revision and URL updates but correctly load a genuinely different item. Remove redundant prior workaround logic when safe. Add meaningful behavioral regression tests using actual runtime/controller/hook as practical, not source substring checks or fake duplicate helpers. Run focused tests through agent-io-guard run-light; parent owns typecheck/heavy tests. Return exact changed files, verified behavior, limits and remaining integration needs.
