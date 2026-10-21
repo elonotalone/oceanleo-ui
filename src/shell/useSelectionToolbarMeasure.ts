@@ -42,7 +42,7 @@ function floatingCapacityBoundary(toolbar: HTMLDivElement): HTMLElement | null {
 
 /**
  * 单行编辑栏（`[data-workspace-edit-bar]`）里，SelectionToolbar 只是其中一段：
- * 撤销重做 / 文档段 / AI 与固定柄都是它的兄弟。这些兄弟的宽度由各自内容决定，
+ * 撤销重做 / 文档段 / AI 都是它的兄弟。这些兄弟的宽度由各自内容决定，
  * 与本栏无关，所以从容量里扣掉它们不会形成反馈。
  */
 function rowSiblingsInlineSize(
@@ -259,7 +259,7 @@ export function useSelectionToolbarMeasure({
     measurementRef.current
       ?.querySelectorAll<HTMLElement>("[data-selection-measure-control-id]")
       .forEach((node) => observer?.observe(node));
-    // 行里的兄弟节点增减（文档段折进/展开、固定柄出现）改变可用宽度。
+    // 行里的兄弟节点增减（文档段折进/展开、agent 控件出现）改变可用宽度。
     const rowObserver =
       row && typeof MutationObserver !== "undefined"
         ? new MutationObserver(() => {

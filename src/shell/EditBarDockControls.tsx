@@ -2,7 +2,7 @@
 
 // 左右两个 ⠿ 拖拽手柄已移除：它们占掉两个控件位，且把「怎么移动这条」变成
 // 需要瞄准的操作。展开胶囊：先单击一下，再按住拖动；收起成圆时按住即可拖。
-// 见 edit-bar-dock-controller。这里只剩两个常驻控件：固定、以及收起后的圆。
+// 见 edit-bar-dock-controller。固定不再有常驻按钮；这里只保留收起后的圆。
 // 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）；收起走 Ctrl/⌘+. 。
 
 import type {
@@ -18,9 +18,7 @@ import {
   isTypingTarget,
 } from "./edit-bar-selection-preserve";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon";
-import type { EditBarDockMode } from "./edit-bar-dock-state";
 import {
-  EDIT_BAR_BUTTON_CLASS,
   EDIT_BAR_COLLAPSED_TOUCH_EXTEND_CLASS,
   editBarCollapsedStyle,
 } from "./edit-bar-surface";
@@ -82,45 +80,6 @@ export function GlobalRowHistoryControls({
         icon={<AdvancedEditorIcon name="redo" className="h-4 w-4" />}
       />
     </div>
-  );
-}
-
-export function EditBarPinButton({
-  mode,
-  onToggle,
-}: {
-  mode: EditBarDockMode;
-  onToggle: () => void;
-}) {
-  const tt = useUI();
-  const label = tt(mode === "docked" ? "取消固定编辑栏" : "固定编辑栏到库");
-  return (
-    <button
-      type="button"
-      data-edit-bar-pin
-      data-edit-bar-interactive
-      data-edit-bar-mode={mode}
-      onClick={onToggle}
-      className={EDIT_BAR_BUTTON_CLASS}
-      aria-label={label}
-      aria-pressed={mode === "docked"}
-      title={label}
-    >
-      <svg
-        className="h-4 w-4"
-        viewBox="0 0 24 24"
-        fill={mode === "docked" ? "currentColor" : "none"}
-        stroke="currentColor"
-        strokeWidth="1.8"
-        aria-hidden="true"
-      >
-        <path
-          d="m8 4 8 0-1 6 3 3H6l3-3-1-6Zm4 9v7"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </button>
   );
 }
 

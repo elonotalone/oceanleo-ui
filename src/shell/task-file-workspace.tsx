@@ -60,6 +60,7 @@ export function TaskFileWorkspace({
       }}
       workspaceAgentVisible={agentVisible}
       onWorkspaceAgentFocus={() => setAgentVisible(true)}
+      onWorkspaceAgentClose={() => setAgentVisible(false)}
     />
   );
 }

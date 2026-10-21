@@ -730,6 +730,13 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     const rightPane = mounted.container.querySelector('[data-workspace-pane="main"]');
     assert.ok(rightPane && leftPane, "the real Task chat and file editor occupy the two shared panes");
     assert.equal(leftPane.dataset.workspacePaneState, "open", "the explicit edit-bar action reveals the existing Task conversation");
+    assert.equal(editBarAgent.getAttribute("aria-pressed"), "true", "the edit-bar agent action reflects the opened conversation");
+    await click(editBarAgent);
+    assert.equal(leftPane.dataset.workspacePaneState, "closed", "the same explicit agent action closes the standalone conversation again");
+    assert.equal(editBarAgent.getAttribute("aria-pressed"), "false");
+    await click(editBarAgent);
+    assert.equal(leftPane.dataset.workspacePaneState, "open", "the edit-bar agent action can reopen the same mounted conversation");
+    assert.equal(editBarAgent.getAttribute("aria-pressed"), "true");
     assert.equal(mounted.container.querySelectorAll("[data-workspace-split]").length, 1, "no nested/fallback split is mounted");
     assert.equal(mounted.container.querySelectorAll('[data-workspace-pane="main"]').length, 1);
     assert.equal(mounted.container.querySelectorAll('[data-workspace-pane="left"]').length, 1);
@@ -873,6 +880,55 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
       reviewInstall.uninstallSelectionBridge();
       reviewInbox.resetAgentReviewInbox();
     });
+  }
+});
+
+test("standalone Library editor keeps its Task conversation hidden after reopen and artifact switch", { timeout: 35000 }, async () => {
+  assert.ok(actualArtifactLibraryComponent, "the production Library graph was loaded by the first composition test");
+  const priorProjection = activeProjection;
+  const createdTasksBeforeEditorCycle = createdTaskRequests.length;
+  activeProjection = structuredClone(activeDocumentProjection);
+  includeSecondLibraryItem = true;
+  trackedRequests.length = 0;
+  window.history.replaceState(null, "", "/library?item=one-task-library-document");
+
+  const projectRoot = resolve(new URL("..", import.meta.url).pathname);
+  const { resetLibraryCurrentIdentityForTests } = await import(pathToFileURL(resolve(projectRoot, "src/shell/library-current-identity.ts")).href);
+  resetLibraryCurrentIdentityForTests();
+  const renderErrors = [];
+  const mounted = await mount(React.createElement(
+    OneTaskLibraryRenderErrorBoundary,
+    { onError: (error, info) => renderErrors.push({ error, componentStack: info?.componentStack || "" }) },
+    React.createElement(actualArtifactLibraryComponent, { accent: "#0ea5e9" }),
+  ));
+  const assertStandaloneAgentClosed = async (label) => {
+    const pane = await waitFor(mounted, '[data-workspace-pane="left"]', label);
+    assert.equal(pane.dataset.workspacePaneState, "closed", `${label}: no chat is implicitly exposed`);
+    assert.equal(pane.getAttribute("aria-hidden"), "true", `${label}: hidden chat is inaccessible`);
+  };
+  try {
+    await click(await waitFor(mounted, '[data-artifact-action="edit"]', "first Library item Edit action"));
+    await waitFor(mounted, '[data-library-editor-host="agent-workspace"]', "first standalone Task-shaped editor host");
+    await assertStandaloneAgentClosed("first standalone editor");
+
+    await click(await waitFor(mounted, '[aria-label="返回库"]', "standalone editor return-to-Library action"));
+    await click(await waitFor(mounted, '[data-artifact-action="edit"]', "reopened first Library item Edit action"));
+    await waitFor(mounted, '[data-library-editor-host="agent-workspace"]', "reopened standalone Task-shaped editor host");
+    await assertStandaloneAgentClosed("reopened standalone editor");
+
+    await click(await waitFor(mounted, '[aria-label="返回库"]', "reopened editor return-to-Library action"));
+    await click(await waitFor(mounted, '[aria-label="返回列表"]', "Library detail return-to-list action"));
+    await click(await waitFor(mounted, 'button[aria-label="预览「Second canonical Library document」"]', "second canonical Library artifact"));
+    await click(await waitFor(mounted, '[data-artifact-action="edit"]', "second Library item Edit action"));
+    await waitFor(mounted, '[data-library-editor-host="agent-workspace"]', "second standalone Task-shaped editor host");
+    await assertStandaloneAgentClosed("standalone editor after switching artifacts");
+    assert.equal(createdTaskRequests.length, createdTasksBeforeEditorCycle, "opening, closing, reopening, and switching Library files does not create a Task");
+    assert.deepEqual(renderErrors, [], renderErrors.map((error) => error.stack || error.message).join("\n"));
+    assert.equal(mounted.container.querySelector("[data-render-error]"), null);
+  } finally {
+    await mounted.destroy();
+    activeProjection = priorProjection;
+    includeSecondLibraryItem = false;
   }
 });
 

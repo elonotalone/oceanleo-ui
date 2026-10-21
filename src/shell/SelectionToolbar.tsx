@@ -310,7 +310,7 @@ export function SelectionToolbar({
 
   const effectiveVariant = layout ? "floating" : variant;
   // 在单行编辑栏（FloatingContextToolbar 的 EditBarRow）里，撤销重做 / 宿主后缀 /
-  // AI 助手 / 固定柄全部由行来画，本组件只剩「选中对象工具」这一段：不画胶囊、
+  // AI 助手全部由行来画，本组件只剩「选中对象工具」这一段：不画胶囊、
   // 不画自己的前后缀 chrome，否则同一行出现两个 AI 键、两层胶囊。
   const insideRow = useInsideEditBarRow();
   const contextLeading = insideRow ? undefined : layout?.contextBarLeading;

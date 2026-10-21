@@ -168,6 +168,7 @@ export function InlineAdvancedWorkbenchShell({
     openTransientPanel,
     updateTransientPanel,
     closeDetail,
+    closeDrawer,
   } = useInlineAdvancedPanels({
     adapter,
     item,
@@ -279,10 +280,8 @@ export function InlineAdvancedWorkbenchShell({
       hostPanelVisible: panelVisible,
       editorToolActive: panelVisible,
       activeDrawerId: showWorkspaceDetail
-        ? ownedDetail?.id || ""
-        : fallbackDetail
-          ? activeDrawerId
-          : "",
+        ? ownedDetail?.id || activeDrawerId
+        : activeDrawerId,
       activeTransientPanelId:
         transientPanel &&
         (showWorkspaceDetail
@@ -291,13 +290,12 @@ export function InlineAdvancedWorkbenchShell({
           ? transientPanel.id
           : "",
       contextBarLeading: floatingToolbar.leading,
-      // 固定柄由 FloatingContextToolbar 的单行容器自己画（controller.canDock），
-      // 这里不再透传，否则同一行出现两个固定键。
+      // trailing 控件由 FloatingContextToolbar 的单行容器自己画。
       contextBarTrailing: undefined,
       openDrawer,
       openTransientPanel,
       updateTransientPanel,
-      closeDrawer: closeDetail,
+      closeDrawer,
     }),
     [
       activeDrawerId,
@@ -305,6 +303,7 @@ export function InlineAdvancedWorkbenchShell({
       floatingToolbar.trailing,
       fallbackDetail,
       closeDetail,
+      closeDrawer,
       openDrawer,
       openTransientPanel,
       updateTransientPanel,
@@ -531,7 +530,7 @@ export function InlineAdvancedWorkbenchShell({
           theme={pluginTheme.theme}
           // 单行容器 `[data-workspace-edit-bar]` 由 FloatingContextToolbar 自己画
           // （signals/X2-interface.md）：撤销重做在第一行 history 槽，
-          // 文档段走 documentSegment，AI 助手与固定柄由容器最右段统一画。
+          // 文档段走 documentSegment，AI 助手由容器最右段统一画。
           documentSegment={
             documentActions.length > 0 ? (
               <EditBarDocumentSegment

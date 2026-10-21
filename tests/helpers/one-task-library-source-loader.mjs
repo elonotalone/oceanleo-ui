@@ -15,6 +15,28 @@ function isFile(path) {
   }
 }
 
+function packageModuleFormat(path) {
+  if (path.endsWith(".mjs")) return "module";
+  if (path.endsWith(".cjs")) return "commonjs";
+  if (!path.endsWith(".js") || !path.includes("/node_modules/")) return null;
+  let directory = dirname(path);
+  while (directory && directory !== dirname(directory)) {
+    const manifest = resolve(directory, "package.json");
+    if (isFile(manifest)) {
+      try {
+        return JSON.parse(readFileSync(manifest, "utf8")).type === "module"
+          ? "module"
+          : "commonjs";
+      } catch {
+        return null;
+      }
+    }
+    if (directory.endsWith("/node_modules")) break;
+    directory = dirname(directory);
+  }
+  return "commonjs";
+}
+
 function candidates(base) {
   const suffix = extname(base);
   if (suffix) {
@@ -95,7 +117,21 @@ export function installOneTaskLibrarySourceLoader({
       if (!url.startsWith("file:")) return nextLoad(url, context);
       const path = fileURLToPath(url);
       if (!path.startsWith(`${REPO_ROOT}/src/`) || !/\.tsx?$/.test(path)) {
-        return nextLoad(url, context);
+        try {
+          return nextLoad(url, context);
+        } catch (error) {
+          // Node 22 returns source:null for CommonJS when an async custom
+          // loader is layered under this sync test hook. Preserve package
+          // semantics while providing the source explicitly for that case.
+          const format = packageModuleFormat(path);
+          if (
+            error?.code === "ERR_INVALID_RETURN_PROPERTY_VALUE" &&
+            format
+          ) {
+            return { format, source: readFileSync(path, "utf8"), shortCircuit: true };
+          }
+          throw error;
+        }
       }
       const source = readFileSync(path, "utf8");
       const output = ts.transpileModule(source, {

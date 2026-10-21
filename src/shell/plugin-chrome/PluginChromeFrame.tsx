@@ -24,6 +24,7 @@ import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { IconButton } from "../../ui/Button";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
+import { EditBarAgentIcon } from "../EditBarAgentIcon";
 import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "../agent-conversation-layout";
 import { EditorItemSocialChrome } from "../editor-item-social-chrome";
 import {
@@ -332,7 +333,9 @@ export function PluginChromeFrame({
   // 控制器与 10 件共享插件用的是同一份。为什么走这条路而不是把
   // `contextBarLeading/Trailing` 填上，见 use-plugin-chrome-layout.tsx 那段注释。
   const editBarGestures = usePluginChromeEditBarGestures(pluginId);
-  const agentActive = layout.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
+  const agentActive =
+    consoleAgentFocus?.agentVisible ??
+    (layout.activeDrawerId === PLUGIN_AGENT_DRAWER_ID);
   const editBarAgentButton = (
     <button
       type="button"
@@ -342,18 +345,21 @@ export function PluginChromeFrame({
       aria-pressed={agentActive}
       aria-label={tt("AI 助手")}
       title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
-      onClick={() =>
-        agentActive
-          ? layout.closeDrawer()
-          : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
-      }
+      onClick={() => {
+        if (consoleAgentFocus?.agentVisible === true) {
+          consoleAgentFocus.hideAgent();
+          return;
+        }
+        if (agentActive) layout.closeDrawer();
+        else layout.openDrawer(PLUGIN_AGENT_DRAWER_ID);
+      }}
       className={`${AI_ICON_ACTION_CLASS} ${
         agentActive
           ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent)] text-[var(--pchrome-on-accent)] hover:bg-[var(--pchrome-accent)] hover:text-[var(--pchrome-on-accent)]"
           : ""
       }`}
     >
-      <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
+      <EditBarAgentIcon className="h-[18px] w-[18px]" />
     </button>
   );
   const chromeRowsRef = useRef<HTMLDivElement>(null);
@@ -738,7 +744,7 @@ export function PluginChromeFrame({
                 aria-live="polite"
                 className="pointer-events-none absolute inset-x-0 top-0 z-40 flex h-10 items-center justify-center truncate border border-dashed border-[var(--pchrome-line)] bg-[var(--pchrome-accent-soft)] text-[11px] font-medium text-[var(--pchrome-accent)] ring-2 ring-inset ring-[var(--pchrome-accent)]"
               >
-                {tt("松开以固定编辑栏")}
+                {tt("松开以停靠编辑栏")}
               </span>
             )}
           {/* 手势层把内容交给共享浮层；初始化期间 inline fallback 溢出显示，

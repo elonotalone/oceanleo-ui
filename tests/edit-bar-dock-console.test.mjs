@@ -598,7 +598,7 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
   );
   assert.match(
     splitSource,
-    /data-edit-bar-layer-root[\s\S]{0,160}relative[\s\S]{0,160}overflow-hidden/,
+    /data-edit-bar-layer-root[\s\S]{0,400}className=\{`relative[^`]*overflow-hidden/,
   );
 });
 
@@ -741,10 +741,9 @@ test("第一次按下进入移动模式：拖出、回停靠、Esc 取消、键�
     );
 
     assert.equal(
-      mounted.container
-        .querySelector("[data-edit-bar-pin]")
-        .getAttribute("aria-pressed"),
-      "true",
+      mounted.container.querySelector("[data-edit-bar-pin]"),
+      null,
+      "dock/float gesture and keyboard behavior no longer expose a pin button",
     );
 
     const initialScrollExtent = {
@@ -848,23 +847,16 @@ test("第一次按下进入移动模式：拖出、回停靠、Esc 取消、键�
     });
     assert.equal(bar().style.transform, beforeCancel);
 
-    await click(mounted.container.querySelector("[data-edit-bar-pin]"));
+    await altKey(bar(), "Enter");
     assert.ok(
       mounted.container.querySelector("[data-workspace-floating-toolbar]"),
-    );
-    assert.equal(
-      mounted.container
-        .querySelector("[data-edit-bar-pin]")
-        .getAttribute("aria-pressed"),
-      "false",
     );
     await altKey(bar(), "Enter");
     assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
     );
 
-    // 手柄取消后键盘仍要能移动：焦点在条内时 Alt+方向键生效。
-    await click(mounted.container.querySelector("[data-edit-bar-pin]"));
+    // 无 pin 按钮时，焦点在条内仍可用 Alt+方向键移动。
     await altKey(bar(), "ArrowRight");
     assert.notDeepEqual(
       parseEditBarDockState(window.localStorage.getItem(storageKey)).offset,
@@ -1481,7 +1473,7 @@ test("docked website bar overlays stage top without reserving a host band", asyn
   }
 });
 
-test("standalone local dock host pins under the action row without SplitWorkspace", async () => {
+test("standalone local dock host stays under the action row without a pin button or SplitWorkspace", async () => {
   window.localStorage.clear();
   const storageKey = "test:edit-bar:standalone-local-dock";
   const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
@@ -1601,33 +1593,27 @@ test("standalone local dock host pins under the action row without SplitWorkspac
         .parentElement,
       mounted.container.querySelector("[data-edit-bar-test-root]"),
     );
-    const pin = mounted.container.querySelector("[data-edit-bar-pin]");
-    assert.ok(pin);
-    assert.equal(pin.getAttribute("data-edit-bar-mode"), "docked");
-    await click(pin);
-    assert.equal(
-      mounted.container
-        .querySelector("[data-edit-bar-pin]")
-        .getAttribute("data-edit-bar-mode"),
-      "floating",
-    );
-    assert.ok(
-      mounted.container.querySelector("[data-workspace-floating-toolbar]"),
-    );
+    const bar = mounted.container.querySelector("[data-workspace-edit-bar-toolbar]");
+    assert.equal(mounted.container.querySelector("[data-edit-bar-pin]"), null);
+    await altKey(bar, "Enter");
     assert.equal(
       mounted.container.querySelector("[data-workspace-edit-bar-dock]")
         .dataset.editBarDockState,
       "floating",
-    );
-    await click(mounted.container.querySelector("[data-edit-bar-pin]"));
-    assert.equal(
-      mounted.container
-        .querySelector("[data-edit-bar-pin]")
-        .getAttribute("data-edit-bar-mode"),
-      "docked",
+      "Alt+Enter still undocks when the redundant control is removed",
     );
     assert.ok(
+      mounted.container.querySelector("[data-workspace-floating-toolbar]"),
+    );
+    await altKey(bar, "Enter");
+    assert.ok(
       mounted.container.querySelector("[data-workspace-docked-toolbar]"),
+    );
+    assert.equal(
+      mounted.container.querySelector("[data-workspace-edit-bar-dock]")
+        .dataset.editBarDockState,
+      "docked",
+      "Alt+Enter still docks without a pin button",
     );
   } finally {
     window.HTMLElement.prototype.getBoundingClientRect = originalRect;

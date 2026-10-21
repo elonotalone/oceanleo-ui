@@ -336,6 +336,7 @@ test("frame edit bar 右段恒渲染 data-edit-bar-agent", async () => {
   });
   const agentBtn = container.querySelector("[data-edit-bar-agent]");
   assert.ok(agentBtn, "AI 键必须存在");
+  assert.ok(agentBtn.querySelector("[data-edit-bar-agent-icon]"), "插件 chrome 使用共享会话 glyph");
   assert.equal(agentBtn.getAttribute("aria-pressed"), "false");
   await unmount();
 });
@@ -776,7 +777,7 @@ test("反面 Canary：无 data-edit-bar-agent 时必须红", () => {
   assert.match(frameSrc, /AdvancedLayoutContext\.Provider value=\{layout\}/);
   assert.match(frameSrc, /useConsoleAgentFocus/);
   const panelsSrc = source("src/shell/use-inline-advanced-panels.tsx");
-  assert.match(panelsSrc, /consoleAgentFocus\?\.focusAgent\(\)/);
+  assert.match(panelsSrc, /consoleAgentFocus\.focusAgent\(\)/);
 });
 
 test("反面 Canary：允许插件 override agent 面板时必须红", () => {

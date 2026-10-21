@@ -194,9 +194,8 @@ export interface EditBarMorphBox {
 export interface EditBarDockController {
   leading: ReactNode;
   /**
-   * 恒为 null（保留字段只为兼容旧宿主的 `{controller.trailing}`）。固定柄由
-   * `FloatingContextToolbar` 的单行容器按 `canDock` 自己画在最右段；曾经通过
-   * `contextBarTrailing` 传给 SelectionToolbar 的那条路已收回，避免两个固定键。
+   * 恒为 null（保留字段只为兼容旧宿主的 `{controller.trailing}`）。停靠仅通过
+   * 编辑栏手势和键盘操作，不再提供单独的 pin/unpin 按钮。
    */
   trailing: ReactNode;
   /** 有停靠位（传了 dockRootRef）。 */
@@ -1645,7 +1644,7 @@ export function useEditBarDockController({
   const leading = null;
   // 「收起编辑栏」按钮已删（规范 v2 §4：编辑栏里只放编辑）。收起为圆仍可用
   // `Ctrl/⌘ + .`（onRootKeyDown → toggleCollapsed），圆本身点一下展开。
-  // 固定柄由 FloatingContextToolbar 的单行容器按 canDock 自己画，这里不再给。
+  // 编辑栏不再提供固定/取消固定按钮；拖动、键盘移动与收起仍保留。
   const trailing: ReactNode = null;
 
   useLayoutEffect(() => {

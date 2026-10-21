@@ -1279,10 +1279,7 @@ test("每个插件的 edit bar 最右侧都是 AI，点击切到左侧 agent 抽
       agent,
       "AI 必须是右段最后一个：插件把自己的按钮塞到它右边，用户就得在每个插件里重新找它",
     );
-    assert.equal(
-      agent.querySelector("[data-icon]")?.getAttribute("data-icon"),
-      "agent",
-    );
+    assert.ok(agent.querySelector("[data-edit-bar-agent-icon]"), "the shared agent action uses the conversation glyph");
     assert.equal(agent.getAttribute("aria-pressed"), "false");
     // 按下即拖不能被 AI 按钮吞掉，所以它必须自报是可交互控件。
     assert.ok(agent.hasAttribute("data-edit-bar-interactive"));

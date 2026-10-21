@@ -72,8 +72,12 @@ export function useLeftPaneSlot(): LeftPaneSlot | null {
 export type ConsoleAgentFocusHandler = () => void;
 
 export interface ConsoleAgentFocusApi {
+  /** Explicit visibility is exposed only when the host opts into agent close controls. */
+  agentVisible: boolean | null;
   /** 左栏有可切的操控台则切到 agent 并返回 true；否则 false。 */
   focusAgent: () => boolean;
+  /** Hide a host-managed conversation; returns false when the host is not closable. */
+  hideAgent: () => boolean;
 }
 
 interface ConsoleAgentFocusSlot extends ConsoleAgentFocusApi {
@@ -192,6 +196,8 @@ export interface SplitWorkspaceProps {
   leftHidden?: boolean;
   /** Focus the existing conversation instead of creating a second editor assistant. */
   onAgentFocus?: () => void;
+  /** Optional host-controlled close action for a conversation exposed by the edit bar. */
+  onAgentClose?: () => void;
   /** 左栏内容（AI 推导 / 模板操控）。 */
   left: ReactNode;
   /** 右栏内容（格式化结果）。不传 / null → 单栏（只显示左栏，无竖线）。 */
@@ -278,6 +284,7 @@ export function SplitWorkspace({
   library,
   leftHidden = false,
   onAgentFocus,
+  onAgentClose,
 }: SplitWorkspaceProps) {
   // 高度：fillParent → 填满已受限的父容器（100%）；否则相对视口 100dvh 减 header（旧行为）。
   const rootHeight = fillParent ? "100%" : `calc(100dvh - ${headerHeight}px)`;
@@ -311,6 +318,9 @@ export function SplitWorkspace({
   const restoreAppFocusRef = useRef(false);
   const agentFocusRef = useRef(onAgentFocus);
   agentFocusRef.current = onAgentFocus;
+  const agentCloseRef = useRef(onAgentClose);
+  agentCloseRef.current = onAgentClose;
+  const hasAgentClose = onAgentClose != null;
   const closeRightPaneRef = useRef<(() => void) | undefined>(undefined);
   closeRightPaneRef.current = library ? () => setLibraryOpen(false) : undefined;
   const closeRightPane = useCallback(() => {
@@ -345,6 +355,9 @@ export function SplitWorkspace({
   } | null>(null);
   const consoleAgentFocus = useMemo<ConsoleAgentFocusSlot>(
     () => ({
+      // Existing Task/history hosts retain their prior button semantics unless
+      // they explicitly opt into a controllable, closable agent pane.
+      agentVisible: hasAgentClose ? !leftHidden : null,
       register(owner, handler) {
         if (handler) {
           consoleAgentFocusHandlerRef.current = { owner, handler };
@@ -365,8 +378,14 @@ export function SplitWorkspace({
         if (current) current.handler();
         return true;
       },
+      hideAgent() {
+        const close = agentCloseRef.current;
+        if (!close) return false;
+        close();
+        return true;
+      },
     }),
-    [],
+    [hasAgentClose, leftHidden],
   );
   const leftLabelIsPlain =
     typeof leftLabel === "string" || typeof leftLabel === "number";

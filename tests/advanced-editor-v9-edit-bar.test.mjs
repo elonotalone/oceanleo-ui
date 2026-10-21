@@ -374,8 +374,8 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
     /GlobalRowHistoryControls|EditBarHistoryControls/,
     "壳不得再自己画一份撤销；只走第一行那一处装配",
   );
-  // 固定柄由 FloatingContextToolbar 的单行容器自己画（controller.canDock），
-  // 壳不再把 controller.trailing 透传进 contextBarTrailing——否则同一行两个固定键。
+  // 固定/停靠由编辑栏手势与键盘负责；壳不再把 controller.trailing
+  // 透传进 contextBarTrailing。
   assert.match(shell, /contextBarTrailing:\s*undefined/);
   assert.doesNotMatch(shell, /contextBarTrailing:\s*floatingToolbar\.trailing/);
   assert.equal((shell.match(/<FloatingContextToolbar/g) || []).length, 1);

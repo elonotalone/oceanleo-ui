@@ -304,6 +304,7 @@ export interface AgentChatProps {
   onWorkspaceOpenChange?: (open: boolean) => void;
   workspaceAgentVisible?: boolean;
   onWorkspaceAgentFocus?: () => void;
+  onWorkspaceAgentClose?: () => void;
   projectId?: string;
   /** A portal host may keep this live instance and own its canonical task URL. */
   navigateToSessionOnCreate?: boolean;
@@ -524,6 +525,7 @@ function AgentChatInner({
   onWorkspaceOpenChange,
   workspaceAgentVisible = true,
   onWorkspaceAgentFocus,
+  onWorkspaceAgentClose,
   projectId,
   siteId = "",
   initialPrompt,
@@ -2264,6 +2266,7 @@ function AgentChatInner({
       }
       leftHidden={!workspaceAgentVisible}
       onAgentFocus={() => onWorkspaceAgentFocus?.()}
+      onAgentClose={onWorkspaceAgentClose}
       leftLabel={headerNode}
       rightLabel={tt("预览")}
       defaultRatio={0.46}

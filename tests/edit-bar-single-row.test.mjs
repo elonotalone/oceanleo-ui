@@ -1,6 +1,6 @@
 // 规范 v2 §4：编辑栏严格单行（plugin-chrome X2）。
 //
-//   [选中对象工具…] | [documentSegment] | [trailing] [AI 助手] [固定柄]
+//   [选中对象工具…] | [documentSegment] | [trailing] [AI 助手]
 //   撤销 / 重做在第一行 history 槽（操作员 2026-10-21），不在编辑栏。
 //
 // 全部内联在 FloatingContextToolbar 自己画的 `[data-workspace-edit-bar]` 一行里，
@@ -269,7 +269,7 @@ const documentSegment = React.createElement(
 
 /* -------------------------------------------------------------------- 用例 */
 
-test("一行三段：容器由 FloatingContextToolbar 自己画，顺序固定，AI 与固定柄各一个，无收起键", async () => {
+test("一行三段：容器由 FloatingContextToolbar 自己画，顺序固定，AI 键唯一且无固定柄/收起键", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   geometry.overlayWidth = 1000;
@@ -304,12 +304,12 @@ test("一行三段：容器由 FloatingContextToolbar 自己画，顺序固定�
     const trailingLabels = Array.from(trailingSlot.querySelectorAll("button")).map(
       (button) => button.getAttribute("aria-label"),
     );
-    assert.equal(trailingLabels.length, 3, "右段：trailing、AI 助手、固定柄");
+    assert.equal(trailingLabels.length, 2, "右段：trailing、AI 助手");
     assert.equal(trailingLabels[0], "附加", "trailing 排最前");
     assert.equal(trailingLabels[1], "AI 助手", "AI 助手在 trailing 之后");
-    assert.match(trailingLabels[2], /固定编辑栏/, "固定柄在最右");
     assert.equal(row.querySelectorAll("[data-edit-bar-agent]").length, 1, "AI 键恰一个");
-    assert.equal(row.querySelectorAll("[data-edit-bar-pin]").length, 1, "固定柄恰一个");
+    assert.equal(row.querySelectorAll("[data-edit-bar-agent-icon]").length, 1, "AI 键使用新的共享会话 glyph");
+    assert.equal(row.querySelectorAll("[data-edit-bar-pin]").length, 0, "共同编辑栏不再渲染固定/取消固定按钮");
     assert.equal(
       mounted.container.querySelector("[data-edit-bar-collapse]"),
       null,
@@ -327,7 +327,7 @@ test("一行三段：容器由 FloatingContextToolbar 自己画，顺序固定�
   }
 });
 
-test("没选中也没有文档动作：栏仍在，data-empty 为真，右段照常有 AI 与固定柄", async () => {
+test("没选中也没有文档动作：栏仍在，data-empty 为真，右段照常有 AI 键且没有固定柄", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   geometry.overlayWidth = 1000;
@@ -341,7 +341,8 @@ test("没选中也没有文档动作：栏仍在，data-empty 为真，右段照
     assert.ok(row, "没选中时编辑栏也不许消失");
     assert.ok(row.hasAttribute("data-empty"), "没内容时 data-empty 应为真");
     assert.ok(row.querySelector("[data-edit-bar-agent]"), "AI 键恒在");
-    assert.ok(row.querySelector("[data-edit-bar-pin]"), "固定柄恒在");
+    assert.ok(row.querySelector("[data-edit-bar-agent-icon]"), "AI 键使用共享 glyph");
+    assert.equal(row.querySelector("[data-edit-bar-pin]"), null, "固定柄不再占编辑栏控件位");
   } finally {
     await mounted.unmount();
     restoreRect();
@@ -413,7 +414,7 @@ test("宽度不足：文档段折进「更多选项」，只在有选中工具�
   }
 });
 
-test("源码闸：prop 名、收起键已删、SelectionToolbar 在行里不画第二个 AI 键", () => {
+test("源码闸：prop 名、收起/固定键已删、所有 edit bar 共用新 agent glyph", () => {
   const floating = readFileSync(resolve("src/shell/FloatingContextToolbar.tsx"), "utf8");
   assert.match(floating, /documentSegment\?: ReactNode;/);
   assert.match(floating, /trailing\?: ReactNode;/);
@@ -429,6 +430,8 @@ test("源码闸：prop 名、收起键已删、SelectionToolbar 在行里不画�
   const controls = readFileSync(resolve("src/shell/EditBarDockControls.tsx"), "utf8");
   assert.doesNotMatch(controls, /data-edit-bar-collapse(?![-\w])/, "收起键不许长回来");
   assert.doesNotMatch(controls, /EditBarCollapseButton/);
+  assert.doesNotMatch(controls, /EditBarPinButton|data-edit-bar-pin/, "固定/取消固定键不许长回来");
+  assert.doesNotMatch(floating, /EditBarPinButton|data-edit-bar-pin/);
 
   const selection = readFileSync(resolve("src/shell/SelectionToolbar.tsx"), "utf8");
   assert.match(selection, /useInsideEditBarRow\(\)/);
@@ -437,6 +440,14 @@ test("源码闸：prop 名、收起键已删、SelectionToolbar 在行里不画�
     /const agentButton =\s*layout && !insideRow/,
     "行里 SelectionToolbar 不许再画自己的 AI 键",
   );
+
+  const selectionChrome = readFileSync(resolve("src/shell/selection-toolbar-chrome.tsx"), "utf8");
+  const pluginFrame = readFileSync(resolve("src/shell/plugin-chrome/PluginChromeFrame.tsx"), "utf8");
+  const agentGlyph = readFileSync(resolve("src/shell/EditBarAgentIcon.tsx"), "utf8");
+  assert.match(floating, /<EditBarAgentIcon/);
+  assert.match(selectionChrome, /<EditBarAgentIcon/);
+  assert.match(pluginFrame, /<EditBarAgentIcon/);
+  assert.match(agentGlyph, /data-edit-bar-agent-icon/);
 
   const shell = readFileSync(resolve("src/shell/InlineAdvancedWorkbenchShell.tsx"), "utf8");
   assert.doesNotMatch(

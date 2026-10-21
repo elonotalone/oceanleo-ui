@@ -242,7 +242,7 @@ const stubs = {
   "./plugin-chrome/plugin-page-store": dataModule(`import { useState } from ${JSON.stringify(reactUrl)}; export function usePluginPage(){ const [pageId,setPage]=useState("normal"); return {pageId,setPage}; }`),
   "./advanced-background-saver": dataModule(`export function hasPendingOrFailed(){ return false; } export function leaveAdvancedWorkbench({onClose}){ onClose?.(); } export function shouldWarnBeforeUnload(){ return false; } export function subscribe(){ return ()=>{}; }`),
   "./advanced-workbench-chrome": dataModule(`export function advancedWorkbenchStyle(){ return {}; } export function actionGroup(action){ return action.group || "edit"; }`),
-  "./EditBarDockControls": dataModule(`${jsx} export function EditBarDockHost(){ return null; } export function GlobalRowHistoryControls(){ return null; } export function EditBarCollapsedPill(){ return null; } export function EditBarPinButton(){ return null; }`),
+  "./EditBarDockControls": dataModule(`${jsx} export function EditBarDockHost(){ return null; } export function GlobalRowHistoryControls(){ return null; } export function EditBarCollapsedPill(){ return null; }`),
   "./anchored-popover": dataModule(`${jsx} export function AnchoredPopover({open,children}){ return open ? _jsx("div", {children}) : null; } export function runAfterOverlayExit(_node, callback){ return ()=>callback?.(); }`),
   "./edit-bar-dock-controller": dataModule(`
     import { useMemo, useRef } from ${JSON.stringify(reactUrl)};

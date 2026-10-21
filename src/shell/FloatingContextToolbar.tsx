@@ -14,7 +14,7 @@ import {
   useEditBarDockController,
   type EditBarDockController,
 } from "./edit-bar-dock-controller";
-import { EditBarCollapsedPill, EditBarPinButton } from "./EditBarDockControls";
+import { EditBarCollapsedPill } from "./EditBarDockControls";
 import { editBarDockStorageKey } from "./edit-bar-dock-state";
 import {
   EDIT_BAR_BUTTON_CLASS,
@@ -24,6 +24,7 @@ import {
 } from "./edit-bar-surface";
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import { EditBarAgentIcon } from "./EditBarAgentIcon";
 import { AnchoredPopover, runAfterOverlayExit } from "./anchored-popover";
 import { useAdvancedLayout } from "./advanced-layout-context";
 import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
@@ -220,7 +221,7 @@ function DocumentSegmentMore({ children }: { children: ReactNode }) {
 
 /**
  * 单行编辑栏本体（规范 v2 §4，2026-10-21：撤销重做已离开编辑栏）：
- * `[选中对象工具…] | [编辑类文档动作] | [trailing] [AI 助手] [固定柄]`
+ * `[选中对象工具…] | [编辑类文档动作] | [trailing] [AI 助手]`
  * 全部内联在一个 `inline-flex flex-nowrap` 里，永不换行；宽度不足先由
  * SelectionToolbar 把选中工具折进它的 More，再由这里把文档段折进「更多选项」。
  */
@@ -277,14 +278,11 @@ export function EditBarRow({
       aria-label={tt("AI 助手")}
       title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
     >
-      <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
+      <EditBarAgentIcon className="h-[18px] w-[18px]" />
     </button>
   ) : null;
-  const pinButton = controller.canDock ? (
-    <EditBarPinButton mode={controller.mode} onToggle={controller.toggleDock} />
-  ) : null;
   const trailingVisible = Boolean(
-    trailing || hostTrailing || agentButton || pinButton,
+    trailing || hostTrailing || agentButton,
   );
   const body = hasSelection || hasDocument;
   return (
@@ -344,7 +342,6 @@ export function EditBarRow({
           {trailing}
           {hostTrailing}
           {agentButton}
-          {pinButton}
         </div>
       )}
       {hasDocument && (
