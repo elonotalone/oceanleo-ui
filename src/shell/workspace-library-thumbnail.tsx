@@ -23,6 +23,7 @@ import {
   workspaceCoverRenditionPurposes,
 } from "./workspace-library-cover";
 import { WORKSPACE_KIND_LABELS } from "./workspace-library-model";
+import { libraryEditorLabel } from "./library-editor-category";
 
 const generatedThumbnailCache = new Map<string, string>();
 const generatedThumbnailPending = new Map<string, Promise<string>>();
@@ -42,9 +43,11 @@ const EMPTY_THUMBNAIL_ITEM: LibraryItem = {
 export function WorkspaceKindIcon({
   kind,
   accent,
+  label,
 }: {
   kind: LibraryKind;
   accent: string;
+  label?: string;
 }) {
   const tt = useUI();
   return (
@@ -53,7 +56,7 @@ export function WorkspaceKindIcon({
       style={{ borderColor: `${accent}33`, color: accent }}
       aria-hidden="true"
     >
-      {tt(WORKSPACE_KIND_LABELS[kind] || "内容")}
+      {tt(label || WORKSPACE_KIND_LABELS[kind] || "内容")}
     </div>
   );
 }
@@ -91,6 +94,7 @@ export function WorkspaceThumbnail({
   const [solidRejected, setSolidRejected] = useState(false);
   const [generationError, setGenerationError] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const lastFailedUrlRef = useRef("");
   const solidRejectedKeysRef = useRef(new Set<string>());
@@ -223,7 +227,7 @@ export function WorkspaceThumbnail({
   const documentShelfCover =
     Boolean(item) &&
     itemUsesDocumentShelfCover(item, kind) &&
-    (noDisplayableCover || generationError);
+    (noDisplayableCover || generationError || failed || timedOut);
   const displayUrl =
     noDisplayableCover || solidRejected
       ? ""
@@ -247,7 +251,15 @@ export function WorkspaceThumbnail({
   ].join(":");
   useEffect(() => {
     setReady(false);
+    setTimedOut(false);
   }, [resourceKey]);
+  // A network request or embedded PDF viewer may never fire load/error.
+  // Bound the visible loading state and keep the material itself openable.
+  useEffect(() => {
+    if (!visible || ready || documentShelfCover) return;
+    const timer = setTimeout(() => setTimedOut(true), 15_000);
+    return () => clearTimeout(timer);
+  }, [visible, ready, documentShelfCover, resourceKey]);
   const awaitingGeneratedThumbnail = Boolean(
     referenceKey &&
       visible &&
@@ -263,8 +275,12 @@ export function WorkspaceThumbnail({
       rendition && coverEvidenceOf(rendition) === "proven-placeholder",
   );
   const failureMessage =
-    artifactRendition.loading || awaitingGeneratedThumbnail || documentShelfCover
+    documentShelfCover
       ? ""
+      : timedOut
+        ? "预览加载超时，打开查看素材"
+      : artifactRendition.loading || awaitingGeneratedThumbnail
+        ? ""
       : noDisplayableCover
         ? coverEvidenceReportOf(provenRendition).reason ||
           "当前 revision 没有可显示的真实封面。"
@@ -434,13 +450,13 @@ export function WorkspaceThumbnail({
           data-cover-failure={provenPlaceholder ? "placeholder" : "true"}
           title={failureMessage}
         >
-          {!compact && <WorkspaceKindIcon kind={kind} accent={accent} />}
+          {!compact && <WorkspaceKindIcon kind={kind} accent={accent} label={item ? libraryEditorLabel(item) : undefined} />}
           <span className="text-[10px] font-semibold text-[var(--fg-2,#57534e)]">
             {provenPlaceholder ? tt("占位图") : tt("封面不可用")}
           </span>
           <span className="line-clamp-2 text-[9px] leading-tight text-[var(--muted,#a8a29e)]">
             {compact
-              ? tt(WORKSPACE_KIND_LABELS[kind] || "内容")
+              ? tt(item ? libraryEditorLabel(item) : WORKSPACE_KIND_LABELS[kind] || "内容")
               : tt(failureMessage)}
           </span>
         </div>

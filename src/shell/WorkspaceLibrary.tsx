@@ -49,6 +49,7 @@ import {
   type ArtifactTargetActionEvidence,
 } from "./ArtifactActions";
 import { humanErrorMessage } from "./human-error-message";
+import { libraryEditorLabel, normalizeLibraryCategory } from "./library-editor-category";
 import {
   WORKSPACE_KIND_LABELS,
   filterWorkspaceLibraryEntries,
@@ -369,7 +370,7 @@ export function WorkspaceLibrary({
     onViewChange?.(next);
   };
   const [internalCategory, setInternalCategory] = useState("all");
-  const category = controlledCategory ?? internalCategory;
+  const category = normalizeLibraryCategory(controlledCategory ?? internalCategory);
   const setCategory = (next: string) => {
     if (controlledCategory === undefined) setInternalCategory(next);
     onCategoryChange?.(next);
@@ -596,10 +597,8 @@ export function WorkspaceLibrary({
     [categories, categoriesExpanded, category, primaryCategoryIds],
   );
 
-  useEffect(() => {
-    if (categories.some((item) => item.id === category)) return;
-    setCategory("all");
-  }, [categories, category]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A selected type may have no entries, including while a refresh is pending.
+  // Keep the selection so the empty state describes the requested category.
 
   const filtered = useMemo(
     () => filterWorkspaceLibraryEntries(entries, search, category),
@@ -708,11 +707,7 @@ export function WorkspaceLibrary({
     const next = action.action;
     if (next.query !== undefined) setSearch(next.query);
     if (next.category !== undefined) {
-      setCategory(
-        categories.some((item) => item.id === next.category)
-          ? next.category
-          : "all",
-      );
+      setCategory(next.category);
     }
     // `intent:"edit"` 已经由宿主直接送进 typed 编辑器，这里不要再抢着开一份安静
     // 预览详情——否则用户会看到编辑器背后还压着一层列表详情。
@@ -897,7 +892,7 @@ export function WorkspaceLibrary({
               </h3>
               {detailKind && (
                 <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
-                  {tt(WORKSPACE_KIND_LABELS[detailKind] || "内容")}
+                  {tt(selected.libraryItem ? libraryEditorLabel(selected.libraryItem) : WORKSPACE_KIND_LABELS[detailKind] || "内容")}
                 </span>
               )}
             </div>

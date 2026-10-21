@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { LibraryItem, LibraryKind } from "./library-data";
+import { libraryEditorCategory, libraryCategoryLabel, normalizeLibraryCategory } from "./library-editor-category";
 
 export interface WorkspaceLibraryEntry {
   id: string;
@@ -76,7 +77,7 @@ export function workspaceEntryFromLibraryItem(
     id: item.key,
     title: item.title,
     description: item.siteId || item.source || "",
-    category: WORKSPACE_KIND_LABELS[item.kind] || "内容",
+    category: libraryEditorCategory(item),
     keywords: [item.kind, item.siteId || "", item.source || ""].filter(Boolean),
     thumbUrl: item.thumbUrl || item.previewUrl,
     kind: item.kind,
@@ -103,7 +104,7 @@ export function workspaceLibraryCategories(
   }
   return [
     { id: "all", label: "全部" },
-    ...[...seen].map((value) => ({ id: value, label: value })),
+    ...[...seen].map((value) => ({ id: value, label: libraryCategoryLabel(value) })),
   ];
 }
 
@@ -149,12 +150,13 @@ export function filterWorkspaceLibraryEntries(
 ): WorkspaceLibraryEntry[] {
   const needle = search.trim().toLocaleLowerCase();
   return entries.filter((entry) => {
-    if (category !== "all" && entry.category !== category) return false;
+    if (category !== "all" && normalizeLibraryCategory(entry.category || "") !== normalizeLibraryCategory(category)) return false;
     if (!needle || entry.trustedSearchMatch) return true;
     return [
       entry.title,
       entry.description,
       entry.category,
+      libraryCategoryLabel(entry.category || ""),
       ...(entry.keywords || []),
     ]
       .filter(Boolean)

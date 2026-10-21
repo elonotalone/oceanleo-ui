@@ -39,7 +39,6 @@ import {
   sortLibraryItems,
   type LibrarySort,
   type LibraryItem,
-  type LibraryKind,
 } from "./library-data";
 import {
   LibraryScope,
@@ -64,6 +63,7 @@ import {
   normalizeArtifactProjectionResult,
   type TransientGenerationResult,
 } from "./artifact-contract";
+import { LIBRARY_EDITOR_CATEGORIES, libraryEditorCategory, normalizeLibraryCategory } from "./library-editor-category";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
@@ -76,33 +76,7 @@ import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 
-/** Full-page /library type shelf. Values match `toEntry` / KIND_CATEGORY. */
-const LIBRARY_PAGE_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: "图片", label: "图片" },
-  { value: "文档", label: "文档" },
-  { value: "PPT", label: "幻灯片" },
-  { value: "视频", label: "视频" },
-  { value: "音频", label: "音频" },
-  { value: "3D", label: "3D" },
-];
-
-const KIND_CATEGORY: Record<LibraryKind, string> = {
-  website: "网站",
-  canvas: "画布",
-  ppt: "PPT",
-  sheet: "表格",
-  document: "文档",
-  image: "图片",
-  video: "视频",
-  video_canvas: "视频工作流",
-  audio: "音频",
-  xhs: "小红书",
-  threed: "3D",
-  game: "游戏",
-  geo_map: "地图",
-  interactive_doc: "交互文档",
-  file: "文件",
-};
+const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 
 // 服务端的库结果就是用户实际拥有的内容。这里只去掉非持久项和重复项，不再用
 // 一张固定 artifact type 清单替用户决定哪些内容有资格出现。
@@ -584,13 +558,7 @@ function toEntry(
     item.favorite &&
     item.artifact.owner.visibility === "public";
   return workspaceEntryFromLibraryItem(item, {
-    category: publicFavorite
-      ? "收藏素材"
-      : uploaded
-        ? "上传文件"
-        : userAsset
-          ? "我的素材"
-          : KIND_CATEGORY[item.kind],
+    category: libraryEditorCategory(item),
     description:
       (publicFavorite
         ? "公共收藏"
@@ -797,7 +765,7 @@ export function MyLibrary({
   useEffect(() => {
     setFavoritesOnly(onlyFavorites);
   }, [onlyFavorites]);
-  const activeCategory = category ?? internalCategory;
+  const activeCategory = normalizeLibraryCategory(category ?? internalCategory);
   const changeCategory = (next: string) => {
     if (category === undefined) setInternalCategory(next);
     onCategoryChange?.(next);

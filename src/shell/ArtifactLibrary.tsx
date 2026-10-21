@@ -4,8 +4,8 @@
 // @oceanleo/ui — 统一文件库 ArtifactLibrary（单一事实源，2026-07-02）
 // ----------------------------------------------------------------------------
 // 操作员拍板：27 个功能子站的「文件库」必须与主站 oceanleo.com/library **完完全全
-// 一样**——同一套页面顶部类型筛选（全部 / 图片 / 文档 / 幻灯片 / 视频 / 音频 /
-// 3D）、同一套主区（搜索 + 查看选项「仅看收藏」+ 网格/列表视图 + 预览弹窗 +
+// 一样**——同一套页面顶部类型筛选（全部 + 13 类编辑器）、同一套主区
+// （搜索 + 查看选项「仅看收藏」+ 网格/列表视图 + 预览弹窗 +
 // 收藏）。数据 = `agent_artifacts` 表（全系列共用一个 Supabase 项目 + 跨站登录
 // cookie + RLS owner-only），天然「全 OceanLeo 打通」：任何站产出的作品在所有站
 // 的文件库可见。
@@ -44,6 +44,7 @@ import {
 } from "./collection-chrome";
 import { useStandaloneMineEditReceipt } from "./inline-editor-mine-activate";
 import { MyLibrary } from "./MyLibrary";
+import { LIBRARY_EDITOR_CATEGORIES, normalizeLibraryCategory } from "./library-editor-category";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
@@ -57,34 +58,45 @@ export interface ArtifactItem {
   created_at: string;
 }
 
-/** 文件库筛选分区（= 主站侧栏内容 + 2026-07-02 新增音频 / 3D）。 */
+/** 文件库筛选分区：与主站一致，直接暴露 13 类编辑器。 */
 export const ARTIFACT_FILTERS: { id: string; label: string }[] = [
   { id: "all", label: "全部" },
-  { id: "images", label: "图片" },
-  { id: "documents", label: "文档" },
-  { id: "slides", label: "幻灯片" },
-  { id: "videos", label: "视频" },
-  { id: "audio", label: "音频" },
-  { id: "threed", label: "3D" },
+  ...LIBRARY_EDITOR_CATEGORIES.map((row) => ({ id: row.filter, label: row.label })),
 ];
 
 export type ArtifactFilter =
   | "all"
+  | "website"
+  | "design"
+  | "presentations"
   | "images"
   | "documents"
+  | "spreadsheets"
+  | "pdf"
   | "slides"
   | "videos"
   | "audio"
+  | "charts"
+  | "video-canvas"
   | "threed"
+  | "game"
   | "favorites";
 
 const KIND_SETS: Record<string, string[]> = {
+  website: ["website"],
+  design: ["canvas", "design"],
+  presentations: ["slides", "slide", "presentation", "ppt"],
+  slides: ["slides", "slide", "presentation", "ppt"],
   images: ["image"],
   documents: ["markdown", "document", "text"],
-  slides: ["slides", "slide", "presentation"],
+  spreadsheets: ["sheet", "spreadsheet", "grid", "xlsx"],
+  pdf: ["pdf"],
   videos: ["video"],
   audio: ["audio", "music", "voice"],
+  charts: ["chart"],
+  "video-canvas": ["video_canvas"],
   threed: ["3d", "threed", "model", "mesh"],
+  game: ["game"],
 };
 
 /**
@@ -206,26 +218,9 @@ export interface ArtifactLibraryProps {
   hideChips?: boolean;
 }
 
-const FILTER_CATEGORY: Record<ArtifactFilter, string> = {
-  all: "all",
-  images: "图片",
-  documents: "文档",
-  slides: "PPT",
-  videos: "视频",
-  audio: "音频",
-  threed: "3D",
-  favorites: "all",
-};
-
-const CATEGORY_FILTER: Record<string, ArtifactFilter> = {
-  all: "all",
-  图片: "images",
-  文档: "documents",
-  PPT: "slides",
-  视频: "videos",
-  音频: "audio",
-  "3D": "threed",
-};
+const CATEGORY_FILTER = Object.fromEntries(
+  LIBRARY_EDITOR_CATEGORIES.map((row) => [row.value, row.filter as ArtifactFilter]),
+);
 
 /**
  * Full-page /library is now the same heterogeneous My Library used by the
@@ -241,7 +236,7 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
   const filter = props.filter || "all";
   const controlledType =
     props.filter && props.filter !== "all" && props.filter !== "favorites"
-      ? FILTER_CATEGORY[props.filter]
+      ? normalizeLibraryCategory(props.filter)
       : undefined;
   return (
     <div

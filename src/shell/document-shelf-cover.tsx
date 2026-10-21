@@ -8,11 +8,11 @@ import {
   officePackageKindForItem,
 } from "./doc-editors/office-file";
 import {
-  isDurableLibraryItem,
   type LibraryItem,
   type LibraryKind,
 } from "./library-data";
-import { WORKSPACE_KIND_LABELS } from "./workspace-library-model";
+import { libraryEditorLabel } from "./library-editor-category";
+import { extractDocumentCoverExcerpt } from "./document-cover-excerpt";
 import {
   extractOoxmlEmbeddedThumbnail,
   ooxmlThumbnailObjectUrl,
@@ -57,8 +57,9 @@ function looksLikeTextDocument(item: LibraryItem): boolean {
   const name = String(
     item.meta.filename || item.meta.format || item.url || item.title || "",
   ).toLowerCase();
-  if (media.startsWith("text/")) return true;
-  return /\.(md|markdown|txt|html|htm)(?:$|[?#])/i.test(name);
+  if (item.artifactType && item.artifactType !== "document") return false;
+  if (media === "text/plain" || media === "text/markdown") return true;
+  return /\.(md|markdown|txt)(?:$|[?#])/i.test(name);
 }
 
 function excerptFromText(text: string): string {
@@ -115,9 +116,11 @@ export function DocumentShelfCover({
     () => thumbnailUrlCache.get(key) || "",
   );
   const [excerpt, setExcerpt] = useState(() => excerptCache.get(key) || "");
+  const [settled, setSettled] = useState(false);
   useEffect(() => {
     setThumbnailUrl(thumbnailUrlCache.get(key) || "");
     setExcerpt(excerptCache.get(key) || "");
+    setSettled(false);
   }, [key]);
   useEffect(() => {
     if (thumbnailUrl) onReadyRef.current?.();
@@ -125,11 +128,19 @@ export function DocumentShelfCover({
   useEffect(() => {
     if (!visible) return;
     if (!sourceUrl) {
+      setSettled(true);
       onReadyRef.current?.();
       return;
     }
     let alive = true;
     const abort = new AbortController();
+    const timeout = setTimeout(() => {
+      abort.abort();
+      if (alive) {
+        setSettled(true);
+        onReadyRef.current?.();
+      }
+    }, 12_000);
     void (async () => {
       try {
         if (officeKind && !thumbnailUrlCache.get(key)) {
@@ -142,7 +153,7 @@ export function DocumentShelfCover({
               maxBytes: 64 * 1024 * 1024,
             },
           );
-          if (!alive) return;
+          if (!alive || abort.signal.aborted) return;
           const embedded = extractOoxmlEmbeddedThumbnail(arrayBuffer);
           if (embedded) {
             const objectUrl = ooxmlThumbnailObjectUrl(embedded);
@@ -150,25 +161,35 @@ export function DocumentShelfCover({
             setThumbnailUrl(objectUrl);
             return;
           }
+          const next = extractDocumentCoverExcerpt(arrayBuffer);
+          if (next) {
+            excerptCache.set(key, next);
+            setExcerpt(next);
+          }
         }
         if (textDocument && !excerptCache.get(key)) {
           const blob = await fetchMediaBlob(sourceUrl, {
             maxBytes: 64 * 1024,
             signal: abort.signal,
           });
-          if (!alive) return;
+          if (!alive || abort.signal.aborted) return;
           const next = excerptFromText(await blob.text());
           excerptCache.set(key, next);
           setExcerpt(next);
         }
       } catch {
-        // 纸面封面已经在第一帧画出来了；取不到内嵌图或摘录就维持标题页。
+        // Missing previews stay explicitly unavailable; never fabricate document content.
       } finally {
-        if (alive) onReadyRef.current?.();
+        clearTimeout(timeout);
+        if (alive) {
+          setSettled(true);
+          onReadyRef.current?.();
+        }
       }
     })();
     return () => {
       alive = false;
+      clearTimeout(timeout);
       abort.abort();
     };
   }, [key, officeKind, sourceUrl, textDocument, visible]);
@@ -181,15 +202,20 @@ export function DocumentShelfCover({
         alt={alt}
         className="h-full w-full object-cover object-top"
         data-document-cover="embedded-thumbnail"
+        onError={() => {
+          thumbnailUrlCache.delete(key);
+          setThumbnailUrl("");
+          setSettled(true);
+        }}
       />
     );
   }
 
-  const kindLabel = tt(WORKSPACE_KIND_LABELS[kind] || "文档");
+  const kindLabel = tt(libraryEditorLabel(item));
   return (
     <div
       className="flex h-full w-full flex-col bg-white px-3 py-3 text-left shadow-[inset_0_0_0_1px_rgba(28,25,23,0.06)]"
-      data-document-cover="paper"
+      data-document-cover={excerpt ? "excerpt" : "unavailable"}
       aria-label={alt}
     >
       <p className="text-[9px] font-medium uppercase tracking-wide text-stone-400">
@@ -206,13 +232,10 @@ export function DocumentShelfCover({
         <p className="mt-2 line-clamp-6 whitespace-pre-line text-[9px] leading-relaxed text-stone-500">
           {excerpt}
         </p>
-      ) : !compact && isDurableLibraryItem(item) ? (
-        <div className="mt-3 space-y-1.5" aria-hidden="true">
-          <div className="h-1.5 w-full rounded bg-stone-100" />
-          <div className="h-1.5 w-11/12 rounded bg-stone-100" />
-          <div className="h-1.5 w-10/12 rounded bg-stone-100" />
-          <div className="h-1.5 w-8/12 rounded bg-stone-100" />
-        </div>
+      ) : !compact ? (
+        <p className="mt-2 text-[9px] leading-relaxed text-stone-500">
+          {tt(settled ? "暂无内容预览，打开查看素材" : "正在读取内容预览")}
+        </p>
       ) : null}
     </div>
   );
