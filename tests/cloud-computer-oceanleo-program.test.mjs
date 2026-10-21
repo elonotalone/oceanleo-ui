@@ -640,7 +640,7 @@ test("reducer：多会话 liveTurns 互不打断；invalid_argument 只结束当
   assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
 });
 
-test("reducer：Stop 清掉当前轮次，后到的 sessions.busy 不能把按钮打回 Stop", () => {
+test("reducer：Stop 请求保留忙碌，直到 sessions.busy 确认停止", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = { ...state, draftRef: "new:draft1" };
@@ -649,8 +649,8 @@ test("reducer：Stop 清掉当前轮次，后到的 sessions.busy 不能把按�
   assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), true);
 
   state = applyDialog(state, { type: "cancel-local" });
-  assert.equal(state.busy, false);
-  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), false);
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), true);
 
   state = applyDialog(state, {
     type: "frame",
@@ -663,13 +663,13 @@ test("reducer：Stop 清掉当前轮次，后到的 sessions.busy 不能把按�
       running: [],
     },
   });
-  assert.equal(state.busy, false);
-  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), false);
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), true);
 
   state = applyDialog(state, { type: "session-loading", id: "s-a" });
   state = applyDialog(state, { type: "send-began" });
   state = applyDialog(state, { type: "cancel-local" });
-  assert.equal(state.busy, false);
+  assert.equal(state.busy, true);
   state = applyDialog(state, {
     type: "frame",
     frame: {
@@ -681,8 +681,14 @@ test("reducer：Stop 清掉当前轮次，后到的 sessions.busy 不能把按�
       running: ["s-a"],
     },
   });
+  assert.equal(state.busy, true);
+  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
+  state = applyDialog(state, { type: "frame", frame: { t: "sessions", program: "cursor", supported: true, sessions: [], busy: [] } });
+  assert.equal(state.busy, false, "a prior busy reading followed by idle confirms termination");
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s-a" } });
+  assert.equal(state.busy, true, "a new live frame can begin later work");
+  state = applyDialog(state, { type: "frame", frame: { t: "sessions", program: "cursor", supported: true, sessions: [], busy: [] } });
   assert.equal(state.busy, false);
-  assert.equal(Boolean(state.liveTurns["cursor::s-a"]), false);
 });
 
 test("reducer：sessions.busy 清掉已结束的回合，不把空闲 running 当成进行中", () => {
@@ -883,7 +889,7 @@ test("控制器：电脑不在线——一行实话、输入禁用语义、发�
   const view = await boot();
   try {
     await until(() => view.controller().offline === true, "offline flag");
-    assert.match(view.host.textContent || "", /这台电脑不在线/);
+    assert.match(view.host.textContent || "", /正在重新连接这台电脑/);
     assert.ok(view.host.querySelector('[data-oceanleo-cc-notice="computer_offline"]'));
     assert.equal(view.controller().computerName, "卧室电脑");
     await act(async () => {

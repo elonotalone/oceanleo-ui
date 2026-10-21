@@ -5,7 +5,6 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { getTask, stopTask, type TaskDetail } from "../../../lib/agent";
-import { resolveTaskStatus } from "../../agent-thread/rules";
 import { agentDialogWsUrl } from "../../../lib/cloud-computer-api";
 import * as computerApi from "../../../lib/cloud-computer-api";
 import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
@@ -18,7 +17,7 @@ import { nextReconnectDelay } from "./reconnect";
 import { isReconnectingNotice } from "./notice";
 import { composerOccupancy, confirmedBusySessions, confirmedWaitingSessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
 import { createOccupancyProbe } from "./occupancy-probe";
-import { isCompletedStop, sessionInterrupted, sessionWaitingWake, turnStillRunning } from "./session-status";
+import { isCompletedStop, sessionInterrupted, sessionWaitingWake } from "./session-status";
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
@@ -227,7 +226,6 @@ export function useAgentDialog({
   // OceanLeo agent 程序（合同 I6）：任务指针、刚发出去那句的落地判定基线、
   // 轮询代际与可取消的等待器。代际一升，所有在飞的轮询/回放立即作废。
   const oceanTaskRef = useRef("");
-  const stoppedOceanTaskRef = useRef("");
   const oceanSendRef = useRef<{ baseUsers: number } | null>(null);
   const oceanGen = useRef(0);
   const oceanWaiterRef = useRef<{
@@ -630,11 +628,7 @@ export function useAgentDialog({
   /** 任务详情 → 消息列表。刚发的那句服务端还没落库时这一轮不替换（本地回显不闪没）。 */
   const applyOceanDetail = useCallback(
     (detail: TaskDetail) => {
-      const status = resolveTaskStatus({
-        serverStatus: detail.task?.status || "",
-        taskId: oceanTaskRef.current,
-        stoppedTaskId: stoppedOceanTaskRef.current,
-      });
+      const status = detail.task?.status || "";
       const mapped = mapTaskMessages({ ...detail, task: { ...detail.task, status } }, { step: tt("步骤"), error: tt("出错") });
       const pending = oceanSendRef.current;
       if (pending) {
@@ -652,9 +646,8 @@ export function useAgentDialog({
       if (stateRef.current.program === "oceanleo") {
         dispatch({ type: "messages-replace", messages: mapped });
         const running = status === "running";
-        if (running !== stateRef.current.busy) {
-          dispatch(running ? { type: "send-began" } : { type: "cancel-local" });
-        }
+        if (running && !stateRef.current.busy) dispatch({ type: "send-began" });
+        if (!running) dispatch({ type: "server-settled" });
         dispatchOceanOccupancy(running);
       }
     },
@@ -738,7 +731,6 @@ export function useAgentDialog({
       messagesCacheRef.current.set("oceanleo", []);
       if (stateRef.current.program === "oceanleo") {
         dispatch({ type: "messages-replace", messages: [] });
-        dispatch({ type: "cancel-local" });
       }
       dispatch({ type: "frame", frame: { t: "error", code: "computer_offline", program: "oceanleo" } });
       return;
@@ -750,7 +742,7 @@ export function useAgentDialog({
       messagesCacheRef.current.set("oceanleo", []);
       if (stateRef.current.program === "oceanleo") {
         dispatch({ type: "messages-replace", messages: [] });
-        dispatch({ type: "cancel-local" });
+        dispatch({ type: "server-settled" });
         dispatchOceanOccupancy(false);
       }
       return;
@@ -780,7 +772,6 @@ export function useAgentDialog({
       pendingSession: ocean.occupancyPendingSession,
       offline: ocean.offline,
       sessionLoading: ocean.sessionLoading,
-      localRunning: turnStillRunning(ocean.messages),
     });
     if (oceanMode !== "idle") return;
     if (inboxWaiters.current.size) {
@@ -840,7 +831,6 @@ export function useAgentDialog({
       return;
     }
     oceanTaskRef.current = result.data.task_id;
-    stoppedOceanTaskRef.current = "";
     void pollOcean(result.data.task_id, gen);
   }, [clearOceanWait, pollOcean]);
 
@@ -851,7 +841,6 @@ export function useAgentDialog({
     setComputerName("");
     oceanGen.current += 1;
     oceanTaskRef.current = "";
-    stoppedOceanTaskRef.current = "";
     oceanSendRef.current = null;
     messagesCacheRef.current.clear();
     clearOceanWait();
@@ -1025,7 +1014,6 @@ export function useAgentDialog({
       pendingSession: current.occupancyPendingSession,
       offline: current.offline,
       sessionLoading: current.sessionLoading,
-      localRunning: turnStillRunning(current.messages),
     });
     if (occupancyMode !== "idle") return;
     const text = draftRef.current.trim();
@@ -1087,21 +1075,33 @@ export function useAgentDialog({
 
   const abort = useCallback(() => {
     const program = stateRef.current.program;
+    // Persist the requested state before a program/session switch can snapshot
+    // this view. The request itself does not prove that the turn has ended.
+    stateRef.current = applyDialog(stateRef.current, { type: "cancel-local" });
+    dispatch({ type: "cancel-local" });
     if (program === "oceanleo" && !localOceanleoRef.current) {
       // 「停止」真的停：停轮询、停服务端任务，再拉一次终态消息。
       oceanGen.current += 1;
       clearOceanWait();
       oceanSendRef.current = null;
       const taskId = oceanTaskRef.current;
-      stoppedOceanTaskRef.current = taskId;
-      dispatch({ type: "cancel-local" });
       if (taskId) {
         const gen = oceanGen.current;
         void stopTask(taskId).then(async () => {
           if (gen !== oceanGen.current) return;
           const detail = await getTask(taskId);
-          if (gen !== oceanGen.current || !detail.ok || !detail.data) return;
+          if (gen !== oceanGen.current) return;
+          if (!detail.ok || !detail.data) {
+            dispatch({ type: "occupancy-lost" });
+            void pollOcean(taskId, gen);
+            return;
+          }
           applyOceanDetail(detail.data);
+          if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
+        }).catch(() => {
+          if (gen !== oceanGen.current) return;
+          dispatch({ type: "occupancy-lost" });
+          void pollOcean(taskId, gen);
         });
       }
       return;
@@ -1115,15 +1115,14 @@ export function useAgentDialog({
       if (!sendJson(socketRef.current, frame)) {
         void (async () => {
           try {
-            sendJson(await ensureOpen(), frame);
+            if (!sendJson(await ensureOpen(), frame)) dispatch({ type: "occupancy-lost" });
           } catch {
-            // Offline: the local cancel below still ends the turn in the UI.
+            dispatch({ type: "occupancy-lost" });
           }
         })();
       }
     }
-    dispatch({ type: "cancel-local" });
-  }, [applyOceanDetail, clearOceanWait, ensureOpen]);
+  }, [applyOceanDetail, clearOceanWait, ensureOpen, pollOcean]);
 
   const closeProgram = useCallback((program: WsProgram) => {
     const sent = sendJson(socketRef.current, { t: "close", program });

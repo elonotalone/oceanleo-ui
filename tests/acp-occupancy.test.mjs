@@ -50,15 +50,15 @@ test("composerOccupancy：确认在干活 / 确认空闲", () => {
     linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11,
   }), "idle");
   assert.equal(composerOccupancy({
-    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11, localRunning: true,
-  }), "working");
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11,
+  }), "idle", "fresh server idle outranks stale transcript work");
   assert.equal(composerOccupancy({
     linkUp: true, occupancyAt: 1, occupancyBusy: [], sessionId: "s",
-    now: 1 + OCCUPANCY_STALE_MS + 1, localRunning: true,
-  }), "working");
+    now: 1 + OCCUPANCY_STALE_MS + 1,
+  }), "uncertain");
   assert.equal(composerOccupancy({
-    linkUp: false, occupancyAt: null, occupancyBusy: [], sessionId: "s", localRunning: true,
-  }), "working");
+    linkUp: false, occupancyAt: null, occupancyBusy: [], sessionId: "s",
+  }), "uncertain");
 });
 
 test("后台 session 的 turn_start/done/error 改 occupancy.busy，空数组也要落地", () => {
@@ -155,7 +155,7 @@ test("五个程序的 occupancy 帧都把对应 session 标成 working", () => {
   }
 });
 
-test("composerOccupancy：已 stamp 的回合只要工具还在等待就是 working", () => {
+test("composerOccupancy：旧工具状态不能覆盖服务端空闲", () => {
   const messages = [
     { kind: "user", id: "u", text: "go" },
     {
@@ -172,8 +172,8 @@ test("composerOccupancy：已 stamp 的回合只要工具还在等待就是 work
   ];
   assert.equal(turnStillRunning(messages), true);
   assert.equal(composerOccupancy({
-    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11, localRunning: true,
-  }), "working");
+    linkUp: true, occupancyAt: 10, occupancyBusy: [], sessionId: "s", now: 11,
+  }), "idle");
   const inProgress = [
     messages[0],
     {
@@ -284,8 +284,59 @@ test("occupancy-lost 回到 uncertain，像素列表清空", () => {
     occupancyAt: state.occupancyAt,
     occupancyBusy: state.occupancyBusy,
     sessionId: "x",
-    localRunning: true,
-  }), "working");
+  }), "uncertain");
+});
+
+test("cancel request waits for server termination and survives view restoration", () => {
+  for (const program of PROGRAMS) {
+    let state = initialDialogState();
+    state = applyDialog(state, { type: "program", program });
+    state = applyDialog(state, { type: "session-loading", id: "s" });
+    state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program, acp_session: "s" } });
+    state = applyDialog(state, { type: "frame", frame: { t: "thought", program, acp_session: "s", text: "working" } });
+    state = applyDialog(state, { type: "cancel-local" });
+    assert.equal(state.messages.at(-1)?.stop, "stopping", program);
+    assert.equal(state.busy, true, program);
+    assert.deepEqual(state.occupancyBusy, ["s"], program);
+    state = applyDialog(state, { type: "program", program: "claude" });
+    state = applyDialog(state, { type: "program", program });
+    state = applyDialog(state, { type: "restore-view", messages: [{ kind: "turn", id: "t", acpSession: "s", stop: "stopping", items: [] }], activeSession: "s", sessions: [], sessionsSupported: true, sessionLoading: false, models: [], modelSource: "", selectedModel: "", mode: null, selectedMode: "", configOptions: [], commands: [] });
+    assert.equal(state.busy, true, program);
+    state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program, busy: [] } });
+    assert.equal(state.busy, false, program);
+    assert.equal(state.messages.at(-1)?.stop, "stopped", program);
+    assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s" }), "idle", program);
+    state = applyDialog(state, { type: "frame", frame: { t: "done", program, acp_session: "s", stop: "cancelled" } });
+    assert.equal(state.messages.at(-1)?.stop, "cancelled", program);
+  }
+});
+
+test("cancel delivery uncertainty resolves on reconnect reading", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "cursor" });
+  state = applyDialog(state, { type: "session-loading", id: "s" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s" } });
+  state = applyDialog(state, { type: "cancel-local" });
+  state = applyDialog(state, { type: "occupancy-lost" });
+  assert.equal(state.messages.at(-1)?.stop, "stopping");
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s" }), "uncertain");
+  state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: ["s"] } });
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s" }), "working");
+  state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: [] } });
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s" }), "idle");
+});
+
+test("remote task terminal detail clears a send pending before any running reading", () => {
+  let state = initialDialogState();
+  state = applyDialog(state, { type: "program", program: "oceanleo" });
+  state = { ...state, draftRef: "oceanleo" };
+  state = applyDialog(state, { type: "send-began" });
+  assert.ok(state.occupancyPendingAt);
+  state = applyDialog(state, { type: "server-settled" });
+  state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "oceanleo", busy: [] } });
+  assert.equal(state.busy, false);
+  assert.equal(state.occupancyPendingAt, null);
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "oceanleo", pendingAt: state.occupancyPendingAt, pendingSession: state.occupancyPendingSession }), "idle");
 });
 
 test("occupancy probe：2s 一轮，未应答算 stale", (t) => {

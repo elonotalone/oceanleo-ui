@@ -25,7 +25,6 @@ import {
   isRetriableStreamCancelText,
   turnHasUnfinishedWork,
   turnLooksSettled,
-  turnStillRunning,
 } from "./session-status";
 import type {
   AgentDialogMessage,
@@ -108,8 +107,6 @@ function armTurn(state: DialogState, frame: Record<string, unknown>): DialogStat
   const program = str(frame.program) || state.program;
   const session = str(frame.acp_session) || state.activeSession || state.draftRef || "";
   if (!session) return state;
-  const key = turnKey(program, session);
-  if (state.cancelledTurns?.[key]) return state;
   const messages = markLatestTurnLive(state.messages);
   return noteProbeWorking(markTurn({ ...state, messages }, program, session, true), session);
 }
@@ -125,26 +122,25 @@ function applyOccupancyBusy(state: DialogState, program: string, busyIds: string
   const prefix = `${state.program ?? ""}::`;
   const liveTurns = { ...state.liveTurns };
   const current = state.activeSession || state.draftRef || "";
-  const holdCurrent = Boolean(current && turnStillRunning(state.messages));
-  if (holdCurrent) busySet.add(current);
   for (const key of Object.keys(liveTurns)) {
     if (!key.startsWith(prefix)) continue;
     const id = key.slice(prefix.length);
     if (busySet.has(id)) continue;
     if (id === current && state.occupancyPendingAt != null) continue;
-    if (id === current && state.busy && !hasOpenTurn(state.messages)) continue;
-    if (id === current && holdCurrent) continue;
     delete liveTurns[key];
   }
   for (const id of busySet) {
     const key = turnKey(state.program, id);
-    if (state.cancelledTurns?.[key]) continue;
     liveTurns[key] = true;
   }
   const currentKey = turnKey(state.program, current);
   const currentLive = Boolean(current && liveTurns[currentKey]);
+  const terminated = Boolean(current && !busySet.has(current) && state.occupancyPendingAt == null &&
+    state.messages.some((message) => message.kind === "turn" && message.stop === "stopping" &&
+      (!message.acpSession || message.acpSession === current)));
   return {
     ...state,
+    messages: terminated ? settleStoppingTurn(state.messages, "stopped", current) : state.messages,
     liveTurns,
     occupancyLink: true,
     occupancyAt: Date.now(),
@@ -204,17 +200,11 @@ function markTurn(state: DialogState, program: string | null, session: string, l
   const liveTurns = { ...state.liveTurns };
   if (live) liveTurns[key] = true;
   else delete liveTurns[key];
-  let cancelledTurns = state.cancelledTurns ?? {};
-  if (live && cancelledTurns[key]) {
-    cancelledTurns = { ...cancelledTurns };
-    delete cancelledTurns[key];
-  }
   const currentKey = turnKey(state.program, state.activeSession || state.draftRef || "");
   const busy = Boolean(liveTurns[currentKey]);
   return {
     ...state,
     liveTurns,
-    cancelledTurns,
     busy,
     busySession: busy ? state.activeSession : "",
     agentBusy: live ? state.agentBusy : state.agentBusy && busy,
@@ -237,7 +227,7 @@ function settleStoppingTurn(messages: DialogState["messages"], stop: string, ses
   const next = messages.slice();
   for (let index = next.length - 1; index >= 0; index -= 1) {
     const message = next[index];
-    if (message.kind === "turn" && message.stop === "stopping" && (!session || message.acpSession === session)) {
+    if (message.kind === "turn" && (message.stop === "stopping" || message.stop === "stopped") && (!session || message.acpSession === session)) {
       next[index] = { ...message, stop };
       return next;
     }
@@ -252,11 +242,6 @@ function settleStoppingTurn(messages: DialogState["messages"], stop: string, ses
     }
   }
   return messages;
-}
-
-function currentTurnIds(state: DialogState): string[] {
-  const ids = [state.activeSession || "", state.draftRef || ""];
-  return [...new Set(ids)];
 }
 
 function blankInstall(): InstallState {
@@ -311,7 +296,6 @@ export function initialDialogState(): DialogState {
     serverActiveSession: "",
     busySession: "",
     liveTurns: {},
-    cancelledTurns: {},
     runningSessions: [],
     sessionLoading: false,
     historyOffset: 0,
@@ -335,6 +319,7 @@ export type DialogEvent =
   | { type: "occupancy-link"; up: boolean }
   | { type: "user"; text: string; attachments?: { name: string; mime: string; preview?: string }[] }
   | { type: "cancel-local" }
+  | { type: "server-settled" }
   | { type: "clear-offline" }
   | { type: "set-model"; id: string }
   | { type: "set-mode"; value: string }
@@ -865,11 +850,16 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     ) {
       messages = stampOpenTurn(messages, "end_turn");
     }
+    if (frame.live === false && state.messages.some((message) => message.kind === "turn" && message.stop === "stopping")) {
+      messages = settleStoppingTurn(messages, "stopped", sid);
+    }
     let occupied = { ...next, messages, liveTurns: { ...keptTurns } };
     if (typeof frame.live === "boolean" && sid) {
-      occupied = frame.live || turnStillRunning(messages)
-        ? noteProbeWorking(occupied, sid)
-        : dropOccupancySession(occupied, sid);
+      if (frame.live) {
+        occupied = noteProbeWorking(markTurn(occupied, program, sid, true), sid);
+      } else if (occupied.occupancyPendingAt == null) {
+        occupied = dropOccupancySession(markTurn(occupied, program, sid, false), sid);
+      }
     } else if (sid && isLiveTurn(occupied.liveTurns, occupied.program, sid)) {
       occupied = noteProbeWorking(occupied, sid);
     }
@@ -1056,10 +1046,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         occupancyPendingSession: event.occupancyPendingSession ?? null,
       };
       const id = next.activeSession || next.draftRef || "";
-      const live = isLiveTurn(next.liveTurns, next.program, id) || turnStillRunning(next.messages);
-      const liveTurns = { ...next.liveTurns };
-      if (live && id) liveTurns[turnKey(next.program, id)] = true;
-      return { ...next, liveTurns, busy: live, busySession: live ? next.activeSession : "", agentBusy: false };
+      const live = isLiveTurn(next.liveTurns, next.program, id);
+      return { ...next, busy: live, busySession: live ? next.activeSession : "", agentBusy: false };
     }
     case "send-began": {
       const pendingSession = state.activeSession || state.draftRef || "";
@@ -1105,20 +1093,22 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       );
     }
     case "cancel-local": {
-      const ids = currentTurnIds(state);
-      const cancelledTurns = { ...(state.cancelledTurns ?? {}) };
-      for (const id of ids) cancelledTurns[turnKey(state.program, id)] = true;
-      let next: DialogState = {
+      return {
         ...state,
-        agentBusy: false,
-        occupancyPendingAt: null,
-        occupancyPendingSession: null,
-        cancelledTurns,
+        // A cancel request is not a terminal frame. Keep server-confirmed busy
+        // and pending-send state until done, transcript, or occupancy resolves it.
         messages: stampOpenTurn(state.messages, "stopping"),
       };
-      for (const id of ids) next = markTurn(next, next.program, id, false);
-      for (const id of ids) next = dropOccupancySession(next, id);
-      return next;
+    }
+    case "server-settled": {
+      const session = state.activeSession || state.draftRef || "";
+      return markTurn({
+        ...state,
+        occupancyPendingAt: null,
+        occupancyPendingSession: null,
+        messages: state.messages.some((message) => message.kind === "turn" && message.stop === "stopping")
+          ? settleStoppingTurn(state.messages, "stopped", session) : state.messages,
+      }, state.program, session, false);
     }
     case "clear-offline":
       // 已不在离线就原样返回：调用方可能在 effect 里每次挂载都发，别白造一帧渲染。

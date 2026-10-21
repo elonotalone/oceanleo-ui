@@ -618,7 +618,7 @@ test("思考展开后点击正文折叠；思考增量把发送换成停止", as
   } finally { view.cleanup(); }
 });
 
-test("思考还在时 occupancy 清空不能把停止换成可点的发送", async () => {
+test("思考回放残留时 occupancy 确认空闲，输入框恢复发送", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await server({ t: "sessions", program: "cursor", supported: true, sessions: [
@@ -632,24 +632,24 @@ test("思考还在时 occupancy 清空不能把停止换成可点的发送", asy
     await server({ t: "occupancy", program: "cursor", busy: ["live"] });
     assert.ok(view.$("[data-oceanleo-cc-stop]"));
     await server({ t: "occupancy", program: "cursor", busy: [] });
-    assert.ok(view.$("[data-oceanleo-cc-stop]"), "open thought keeps Stop after empty occupancy");
-    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
     assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]'), null);
     await server({ t: "occupancy", program: "cursor", busy: [] });
     await server({ t: "thought", program: "cursor", acp_session: "live", text: " still" });
     await server({ t: "occupancy", program: "cursor", busy: [] });
-    assert.ok(view.$("[data-oceanleo-cc-stop]"), "later thought after empty occupancy stays Stop");
-    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
     const socket = openSocket();
     socket.autoOccupancy = false;
     socket.close();
     await act(async () => { await new Promise((resolve) => queueMicrotask(resolve)); });
-    assert.ok(view.$("[data-oceanleo-cc-stop]"), "thought still Stop after occupancy-lost");
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null, "lost server reading leaves Send disabled");
     assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
   } finally { view.cleanup(); }
 });
 
-test("末条工具还在等待时 occupancy 空闲或 live=false 不能把停止换成可点的发送", async () => {
+test("末条工具仍写等待但服务端 live=false、occupancy 空闲时可发送", async () => {
   const view = await boot({ initialProgram: "claude" });
   try {
     await server({ t: "sessions", program: "claude", supported: true, sessions: [
@@ -670,12 +670,12 @@ test("末条工具还在等待时 occupancy 空闲或 live=false 不能把停止
     });
     await server({ t: "session_opened", program: "claude", acp_session: "live", cwd: "/root", replayed: 0 });
     await server({ t: "occupancy", program: "claude", busy: [] });
-    assert.ok(view.$("[data-oceanleo-cc-stop]"), "waiting tool keeps Stop after live=false occupancy");
-    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
   } finally { view.cleanup(); }
 });
 
-test("思考还在时 live=false 不能把停止换成可点的发送", async () => {
+test("思考回放仍展开但服务端 live=false 时可发送", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await server({ t: "sessions", program: "cursor", supported: true, sessions: [
@@ -696,12 +696,12 @@ test("思考还在时 live=false 不能把停止换成可点的发送", async ()
     });
     await server({ t: "session_opened", program: "cursor", acp_session: "live", cwd: "/root", replayed: 0 });
     await server({ t: "occupancy", program: "cursor", busy: [] });
-    assert.ok(view.$("[data-oceanleo-cc-stop]"), "open thought keeps Stop after live=false occupancy");
-    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
   } finally { view.cleanup(); }
 });
 
-test("回放用户后的现场思考，occupancy 清空不能把停止换成可点的发送", async () => {
+test("回放用户后的思考也服从新 occupancy 空闲读数", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await server({ t: "sessions", program: "cursor", supported: true, sessions: [
@@ -723,13 +723,13 @@ test("回放用户后的现场思考，occupancy 清空不能把停止换成可�
     await server({ t: "occupancy", program: "cursor", busy: ["live"] });
     assert.ok(view.$("[data-oceanleo-cc-stop]"));
     await server({ t: "occupancy", program: "cursor", busy: [] });
-    assert.ok(view.$("[data-oceanleo-cc-stop]"), "replayed user plus live thought stays Stop");
-    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
     await server({ t: "occupancy", program: "cursor", busy: [] });
     await server({ t: "thought", program: "cursor", acp_session: "live", text: " more" });
     await server({ t: "occupancy", program: "cursor", busy: [] });
-    assert.ok(view.$("[data-oceanleo-cc-stop]"), "repeated empty occupancy cannot flip to Send");
-    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
   } finally { view.cleanup(); }
 });
 
@@ -750,6 +750,12 @@ test("停止时输入框草稿不能当成发送", async () => {
     assert.equal(view.$("[data-oceanleo-cc-dialog-input]").value, "should stay in the box");
     assert.equal(sentFrames().filter((frame) => frame.t === "prompt").length, before);
     assert.ok(sentFrames().some((frame) => frame.t === "cancel"));
+    assert.ok(view.$("[data-oceanleo-cc-stop]"), "cancel dispatch alone does not finish the turn");
+    await click(view.$('[data-oceanleo-program-strip-item="claude"]'));
+    await click(view.$('[data-oceanleo-program-strip-item="cursor"]'));
+    assert.ok(view.$("[data-oceanleo-cc-stop]"), "switching away and back retains the pending stop");
+    await server({ t: "occupancy", program: "cursor", busy: [] });
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null, "server idle confirms termination");
     await click(view.$('[data-oceanleo-cc-send="idle"]'));
     const prompts = sentFrames().filter((frame) => frame.t === "prompt");
     assert.equal(prompts.length, before + 1);
@@ -803,7 +809,7 @@ test("reduce：思考增量把回合标成进行中；历史回放 live=false �
       { t: "thought", program: "cursor", acp_session: "s", text: "plan" },
     ],
   } });
-  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.occupancyBusy.includes("s"), false, "live=false closes stale replay");
   assert.equal(hasOpenTurn(state.messages), true);
   assert.equal(state.messages.at(-1)?.stop, "");
   assert.equal(turnStillRunning(state.messages), true);
@@ -824,7 +830,7 @@ test("reduce：思考增量把回合标成进行中；历史回放 live=false �
   assert.equal(hasOpenTurn(replayed.messages), false);
 });
 
-test("reduce：缺 done 的完结回复只在 live=false 收口；occupancy 清空不能收成 Send", () => {
+test("reduce：缺 done 的回复按 live=false 或 fresh occupancy 收口", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "frame", frame: {
@@ -855,7 +861,7 @@ test("reduce：缺 done 的完结回复只在 live=false 收口；occupancy 清�
     program: "cursor",
     busy: [],
   } });
-  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.occupancyBusy.includes("s"), false);
   assert.equal(state.messages.at(-1)?.stop, "");
   assert.equal(turnStillRunning(state.messages), true);
 });
@@ -888,7 +894,7 @@ test("reduce：HTTP/2 CANCEL 字不进对话，也不把 Stop 收成 Send", () =
   assert.equal(state.messages.at(-1)?.stop, "");
 });
 
-test("reduce：思考还在时 occupancy 清空不能收成 Send", () => {
+test("reduce：occupancy 清空后旧思考不能占用输入框", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "session-loading", id: "s" });
@@ -898,18 +904,17 @@ test("reduce：思考还在时 occupancy 清空不能收成 Send", () => {
   state = applyDialog(state, { type: "frame", frame: { t: "delta", program: "cursor", acp_session: "s", text: "reply" } });
   assert.equal(turnStillRunning(state.messages), true);
   state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: [] } });
-  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.occupancyBusy.includes("s"), false);
   assert.equal(state.messages.at(-1)?.stop, "");
   assert.equal(composerOccupancy({
     linkUp: state.occupancyLink,
     occupancyAt: state.occupancyAt,
     occupancyBusy: state.occupancyBusy,
     sessionId: "s",
-    localRunning: turnStillRunning(state.messages),
-  }), "working");
+  }), "idle");
 });
 
-test("reduce：回放用户后的现场思考，occupancy 清空不能收成 Send", () => {
+test("reduce：回放用户后的思考由新 occupancy 空闲读数收口", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "frame", frame: {
@@ -928,19 +933,18 @@ test("reduce：回放用户后的现场思考，occupancy 清空不能收成 Sen
   assert.equal(hasOpenTurn(state.messages), true);
   assert.equal(turnStillRunning(state.messages), true);
   state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: [] } });
-  assert.equal(state.occupancyBusy.includes("s"), true);
-  assert.equal(state.busy, true);
+  assert.equal(state.occupancyBusy.includes("s"), false);
+  assert.equal(state.busy, false);
   assert.equal(state.messages.at(-1)?.stop, "");
   assert.equal(composerOccupancy({
     linkUp: state.occupancyLink,
     occupancyAt: state.occupancyAt,
     occupancyBusy: state.occupancyBusy,
     sessionId: "s",
-    localRunning: turnStillRunning(state.messages),
-  }), "working");
+  }), "idle");
 });
 
-test("reduce：末条工具还在等待时 live=false 不能收成 Send", () => {
+test("reduce：末条工具仍在等待但 live=false 可恢复 Send", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "claude" });
   state = applyDialog(state, { type: "frame", frame: {
@@ -958,16 +962,15 @@ test("reduce：末条工具还在等待时 live=false 不能收成 Send", () => 
   assert.equal(turnHasUnfinishedWork(state.messages), true);
   assert.equal(turnStillRunning(state.messages), true);
   assert.equal(state.messages.at(-1)?.stop, "");
-  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.occupancyBusy.includes("s"), false);
   state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "claude", busy: [] } });
-  assert.equal(state.occupancyBusy.includes("s"), true);
+  assert.equal(state.occupancyBusy.includes("s"), false);
   assert.equal(composerOccupancy({
     linkUp: state.occupancyLink,
     occupancyAt: state.occupancyAt,
     occupancyBusy: state.occupancyBusy,
     sessionId: "s",
-    localRunning: turnStillRunning(state.messages),
-  }), "working");
+  }), "idle");
 });
 
 test("reduce：刚发出时空 occupancy 不能当成确认空闲", () => {

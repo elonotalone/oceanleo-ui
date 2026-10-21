@@ -801,12 +801,15 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     });
     assert.match(view.host.textContent, /still working/);
     assert.equal(input.value, "keep my draft");
-    assert.ok(view.host.querySelector("[data-oceanleo-cc-stop]"), "transport failure preserves the running turn");
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-stop]"), null, "without a server reading the turn is uncertain");
+    assert.ok(view.host.querySelector('[data-oceanleo-cc-send="uncertain"]'));
     assert.ok(view.host.querySelector("[data-oceanleo-cc-reconnecting]"));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
     assert.ok(view.socket().sent.some((frame) => frame.t === "open_session" && frame.acp_session === "s1"));
     await act(async () => { view.socket().server(STATUS); });
     assert.equal(view.host.querySelector("[data-oceanleo-cc-reconnecting]"), null);
+    await act(async () => { view.socket().server({ t: "occupancy", program: "cursor", busy: ["s1"] }); });
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-stop]"), "fresh working confirmation restores Stop");
     assert.equal(input.value, "keep my draft");
     assert.equal(view.socket().sent.some((frame) => frame.t === "prompt"), false);
   } finally {
@@ -1082,17 +1085,18 @@ test("Codex模型与推理强度独立选择，设置只使用程序目录里的
   } finally { view.cleanup(); }
 });
 
-test("Stop releases the composer immediately and reports the server's terminal result", () => {
+test("Stop waits for the server's terminal result before releasing the composer", () => {
   let state = applyDialog(initialDialogState(), { type: "program", program: "hermes" });
   state = applyDialog(state, { type: "frame", frame: { t: "session_opened", program: "hermes", acp_session: "hermes-session" } });
   state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "hermes", acp_session: "hermes-session" } });
   state = applyDialog(state, { type: "frame", frame: { t: "delta", program: "hermes", acp_session: "hermes-session", text: "partial answer" } });
 
   state = applyDialog(state, { type: "cancel-local" });
-  assert.equal(state.busy, false);
+  assert.equal(state.busy, true);
   assert.equal(state.messages.find(message => message.kind === "turn").stop, "stopping");
 
   state = applyDialog(state, { type: "frame", frame: { t: "done", program: "hermes", acp_session: "hermes-session", stop: "cancelled" } });
+  assert.equal(state.busy, false);
   assert.equal(state.messages.find(message => message.kind === "turn").stop, "cancelled");
 });
 
