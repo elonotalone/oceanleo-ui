@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { acceptMediaStreamIfCurrent, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, pcm16LEToFloat, pcmSamplesPerFrame, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../src/lib/realtime-audio.ts";
+import { acceptMediaStreamIfCurrent, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, pcmSamplesPerFrame, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../src/lib/realtime-audio.ts";
 import { appendFinalUserTranscript, upsertFinalAssistantTranscript } from "../src/lib/realtime-transcript.ts";
 import { callStatusLabel, formatConnectedTime, tokenUsageRows } from "../src/lib/call-billing-display.ts";
 import { createArtcClient } from "../src/shell/messages/meeting/artc-client.ts";
@@ -47,6 +47,23 @@ test("late failed realtime attempt cannot clean up resources owned by a newer st
   await attemptA;
   assert.equal(cleanupCount, 0);
   assert.equal(isCurrentCallAttempt(2, currentAttempt), true);
+});
+
+test("late socket close from attempt A cannot end attempt B", async () => {
+  let deliverCloseA;
+  let attempt = 1;
+  let activeSocket = { name: "A" };
+  let endCallCount = 0;
+  const pendingClose = new Promise((resolve) => { deliverCloseA = resolve; }).then(() => {
+    if (isCurrentCallSocket(1, attempt, socketA, activeSocket)) endCallCount += 1;
+  });
+  const socketA = activeSocket;
+  attempt = 2;
+  activeSocket = { name: "B" };
+  deliverCloseA();
+  await pendingClose;
+  assert.equal(endCallCount, 0);
+  assert.equal(isCurrentCallSocket(2, attempt, activeSocket, activeSocket), true);
 });
 
 test("call claims are generation-owned and old release cannot unlock a remounted same-owner call", () => {

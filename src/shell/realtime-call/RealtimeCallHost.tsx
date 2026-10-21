@@ -5,7 +5,7 @@ import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
 import { formatMoney } from "../../lib/money";
 import { callStatusLabel, formatConnectedTime, tokenUsageRows } from "../../lib/call-billing-display";
-import { acceptMediaStreamIfCurrent, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, pcm16LEToFloat, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../../lib/realtime-audio";
+import { acceptMediaStreamIfCurrent, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../../lib/realtime-audio";
 import { appendFinalUserTranscript, upsertFinalAssistantTranscript } from "../../lib/realtime-transcript";
 import { claimCall, releaseCall } from "../messages/meeting/meeting-host-state";
 import {
@@ -331,6 +331,7 @@ export function RealtimeCallHost() {
       socket.onmessage = (event) => acceptServerText(String(event.data));
       for (const pending of takeRealtimeMessages(socket)) acceptServerText(pending);
       socket.onclose = () => {
+        if (!isCurrentCallSocket(attempt, attemptRef.current, socket, socketRef.current)) return;
         if (stateRef.current === "starting" || stateRef.current === "connected") {
           setMessage("连接已中断；媒体已停止。重新连接会创建一笔新的服务端计量会话。");
           void endCall(false);

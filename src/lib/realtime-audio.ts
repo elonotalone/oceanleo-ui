@@ -41,6 +41,10 @@ export function isCurrentCallAttempt(attempt: number, currentAttempt: number): b
   return attempt === currentAttempt;
 }
 
+export function isCurrentCallSocket<T>(attempt: number, currentAttempt: number, socket: T, currentSocket: T | null): boolean {
+  return isCurrentCallAttempt(attempt, currentAttempt) && socket === currentSocket;
+}
+
 export function shouldRefreshRealtimeBill(lastFetchAt: number, now = Date.now(), intervalMs = 15_000): boolean {
   return now - lastFetchAt >= intervalMs;
 }
