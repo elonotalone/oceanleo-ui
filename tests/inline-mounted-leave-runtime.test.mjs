@@ -78,3 +78,40 @@ test("real Inline keeps hosted iframe alive through failed close, retry and corr
     await act(async () => root.unmount()); container.remove(); resetUserEditSession(item.key);
   }
 });
+
+test("real Inline closes after its own durable receipt updates the mounted source pin", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const initialItem = { id: "mounted-receipt-fixture", key: "mounted-receipt-fixture", title: "Hosted video", kind: "video_canvas", meta: {}, revisionId: "base" };
+  resetUserEditSession(initialItem.key);
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  let complete;
+  let calls = 0;
+  function Host() {
+    const [opened, setOpened] = React.useState(true);
+    const [item, setItem] = React.useState(initialItem);
+    const [revision, setRevision] = React.useState(0);
+    if (!opened) return React.createElement("div", { "data-editor-closed": true });
+    return React.createElement(React.Fragment, null,
+      React.createElement("button", { "data-edit": true, onClick() { recordUserMutation(item.key); setRevision((v) => v + 1); } }, "edit"),
+      React.createElement(InlineAdvancedWorkbenchShell, { item, onClose: () => setOpened(false), adapter: { id: "video-canvas", label: "Video", stage: React.createElement("iframe", { "data-only-serializer": true }), persistence: { userEditKey: initialItem.key, dirty: revision > 0, editRevision: revision, autoSave: true, requiresMountedFlush: true, flush: async () => {
+        calls += 1;
+        const saved = await new Promise((resolve) => { complete = resolve; });
+        if (saved.ok) { setItem(saved.item); setRevision(0); }
+        return saved;
+      } } } }),
+    );
+  }
+  await act(async () => root.render(React.createElement(Host)));
+  try {
+    await act(async () => container.querySelector("[data-edit]").click());
+    await act(async () => container.querySelector("[data-close-editor]").click());
+    assert.equal(calls, 1);
+    assert.ok(container.querySelector("[data-only-serializer]"));
+    await act(async () => complete({ ok: true, item: { ...initialItem, revisionId: "durable-new" } }));
+    assert.ok(container.querySelector("[data-editor-closed]"), "a correlated save's own new source pin must not look like unrelated navigation");
+    assert.equal(calls, 1, "receipt adoption must not publish a second revision");
+  } finally {
+    await act(async () => root.unmount()); container.remove(); resetUserEditSession(initialItem.key);
+  }
+});

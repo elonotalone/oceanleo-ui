@@ -81,7 +81,10 @@ const collabStub = dataModule(`
   }
 `);
 const uiStub = dataModule("export function useUI(){ return (message) => message; }");
-const mediaStub = dataModule("export async function fetchMediaBlob(){ throw new Error('unexpected remote source read'); }");
+const mediaStub = dataModule(`
+  export { isFirstPartyMediaUrl } from ${JSON.stringify(pathToFileURL(require.resolve("../src/lib/media-proxy.ts")).href)};
+  export async function fetchMediaBlob(){ throw new Error('unexpected remote source read'); }
+`);
 const dynamicStub = dataModule("export default function dynamic(){ return function DynamicPlaceholder(){ return null; }; }");
 const failurePanelStub = dataModule("export function EditorSourceFailurePanel(){ return null; }");
 const useImStub = dataModule("export function useImEnabled(){ return false; }");
