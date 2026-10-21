@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { AUTH_STATE_EVENT, getUserId } from "../lib/auth/client";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
 import {
@@ -124,7 +125,7 @@ function dedupeWorkspaceEntries(
   });
 }
 
-function myLibraryFailure(status: number | undefined, error = ""): {
+function myLibraryFailure(status: number | undefined): {
   title: string;
   description: string;
 } {
@@ -137,7 +138,7 @@ function myLibraryFailure(status: number | undefined, error = ""): {
   if (status === 403) {
     return {
       title: "当前账号无权访问我的库",
-      description: "服务端拒绝了 owner-scoped 我的库请求，请确认账号权限。",
+      description: "当前账号暂时无法读取这里的作品，请确认登录的是保存作品的账号。",
     };
   }
   if (status === 503) {
@@ -147,8 +148,8 @@ function myLibraryFailure(status: number | undefined, error = ""): {
     };
   }
   return {
-    title: "我的库响应无效",
-    description: error || "服务端没有返回完整、可验证的 rich artifact 列表。",
+    title: "暂时无法加载我的库",
+    description: "请稍后重试。已保存作品链接仍可单独打开。",
   };
 }
 
@@ -165,6 +166,32 @@ function libraryAuthorityLost(result: {
   );
 }
 
+function retainableLibraryReadFailure(result: {
+  status?: number;
+  code?: string;
+  error?: string;
+}): boolean {
+  if (
+    result.status === 401 ||
+    result.status === 403 ||
+    result.code === "unauthorized" ||
+    result.code === "forbidden"
+  ) {
+    return false;
+  }
+  if (
+    result.code === "network-error" ||
+    result.status === 0 ||
+    (result.status ?? 0) >= 500
+  ) {
+    return true;
+  }
+  return (
+    result.code === "invalid-response" &&
+    /items envelope|暂时无法读取这份响应/.test(result.error || "")
+  );
+}
+
 type LibraryPageResult = Awaited<ReturnType<typeof listMyArtifacts>>;
 
 function rejectedLibraryPage(reason: unknown): LibraryPageResult {
@@ -178,6 +205,13 @@ function rejectedLibraryPage(reason: unknown): LibraryPageResult {
     status: 0,
     retryable: true,
   };
+}
+
+function libraryFailureDiagnostic(result: {
+  error?: string;
+  diagnostic?: string;
+}): string {
+  return [result.error, result.diagnostic].filter(Boolean).join(" | ");
 }
 
 function libraryPageFromSettled(
@@ -539,6 +573,10 @@ export function MyLibrary({
   const [failureStatus, setFailureStatus] = useState<number | undefined>();
   const [failureMessage, setFailureMessage] = useState("");
   const [ownerPrincipalId, setOwnerPrincipalId] = useState("");
+  const ownerPrincipalIdRef = useRef("");
+  const [restoreGeneration, setRestoreGeneration] = useState(0);
+  const authUserIdRef = useRef<string | null | undefined>(undefined);
+  const authSyncEpochRef = useRef(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [pinnedNextCursors, setPinnedNextCursors] =
     useState<PinnedMineCursors>(EMPTY_PINNED_MINE_CURSORS);
@@ -555,6 +593,55 @@ export function MyLibrary({
   // 里，所以按 id 取回来后要自己挂上去，右栏才有东西可选中（详见 library-edit-intent）。
   const [previewIntentItem, setPreviewIntentItem] =
     useState<LibraryItem | null>(null);
+  const previewRestoreRef = useRef<{
+    item: LibraryItem;
+    principalId: string;
+  } | null>(null);
+
+  const clearPreviewIntent = useCallback(() => {
+    previewRestoreRef.current = null;
+    setPreviewIntentItem(null);
+  }, []);
+
+  const rememberPreviewIntent = useCallback(
+    (item: LibraryItem) => {
+      previewRestoreRef.current = {
+        item,
+        // Only the current auth snapshot can authorize retention across a
+        // transient list failure. The API owner id is not an auth snapshot.
+        principalId: authUserIdRef.current || "",
+      };
+      setPreviewIntentItem(item);
+    },
+    [],
+  );
+
+  const reconcilePreviewPrincipal = useCallback((principalId: string) => {
+    const restored = previewRestoreRef.current;
+    const currentAuthUserId = authUserIdRef.current;
+    if (!restored || !currentAuthUserId || restored.principalId === currentAuthUserId) return;
+    if (
+      !restored.principalId &&
+      isDurableLibraryItem(restored.item) &&
+      (restored.item.artifact.owner.visibility === "public" ||
+        restored.item.artifact.owner.principalId === principalId)
+    ) {
+      previewRestoreRef.current = { ...restored, principalId: currentAuthUserId };
+      return;
+    }
+    previewRestoreRef.current = null;
+    setPreviewIntentItem(null);
+  }, []);
+
+  useEffect(() => {
+    if (!failed || !failureMessage) return;
+    // Keep the response detail for diagnosis without showing transport/schema
+    // terminology in the library's user-facing failure state.
+    console.warn("[OceanLeo Library] list request failed", {
+      status: failureStatus,
+      message: failureMessage,
+    });
+  }, [failed, failureMessage, failureStatus]);
 
   useEffect(() => {
     if (category !== undefined) setInternalCategory(category);
@@ -596,17 +683,24 @@ export function MyLibrary({
     );
   }, [favoriteItems, ownedItems]);
 
-  const clearLibraryAuthority = useCallback(() => {
+  const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     setOwnedItems([]);
     setFavoriteItems([]);
     setOwnerPrincipalId("");
+    ownerPrincipalIdRef.current = "";
     setNextCursor(null);
     setPinnedNextCursors(EMPTY_PINNED_MINE_CURSORS);
     setFavoriteNextCursor(null);
     setStandaloneEditorItem(null);
-    setPreviewIntentItem(null);
+    if (!preservePreviewForPrincipal ||
+        previewRestoreRef.current?.principalId !== preservePreviewForPrincipal) {
+      clearPreviewIntent();
+    }
+    // Also abort a delayed direct-item GET even when this same principal may
+    // keep the already-restored item during a list transport/schema failure.
+    setRestoreGeneration((current) => current + 1);
     favoritesOwnerRef.current = "";
-  }, []);
+  }, [clearPreviewIntent]);
 
   const load = useCallback(async () => {
     loadAbortRef.current?.abort();
@@ -650,14 +744,23 @@ export function MyLibrary({
     const favoritesResult =
       libraryPageFromSettled(favoritesSettled) ??
       rejectedLibraryPage(undefined);
+    const verifiedAuthUserId = authUserIdRef.current;
     if (!mineResult.ok || !mineResult.data) {
+      const mayRetainPreview = Boolean(
+        retainableLibraryReadFailure(mineResult) &&
+          verifiedAuthUserId &&
+          previewRestoreRef.current?.principalId === verifiedAuthUserId,
+      );
       if (libraryAuthorityLost(mineResult)) {
-        clearLibraryAuthority();
+        clearLibraryAuthority(mayRetainPreview ? verifiedAuthUserId! : "");
+      } else if (!mayRetainPreview) {
+        clearPreviewIntent();
+        setRestoreGeneration((current) => current + 1);
       }
       setAuthRequired(mineResult.status === 401);
       setFailed(mineResult.status !== 401);
       setFailureStatus(mineResult.status);
-      setFailureMessage(mineResult.error || "");
+      setFailureMessage(libraryFailureDiagnostic(mineResult));
       setFavoriteWarning("");
       setLoading(false);
       return;
@@ -675,13 +778,19 @@ export function MyLibrary({
       setLoading(false);
       return;
     }
+    reconcilePreviewPrincipal(mineOwnerPrincipalId);
     if (!favoritesResult.ok || !favoritesResult.data) {
       if (libraryAuthorityLost(favoritesResult)) {
-        clearLibraryAuthority();
+        clearLibraryAuthority(
+          retainableLibraryReadFailure(favoritesResult) && verifiedAuthUserId &&
+            previewRestoreRef.current?.principalId === verifiedAuthUserId
+            ? verifiedAuthUserId
+            : "",
+        );
         setAuthRequired(favoritesResult.status === 401);
         setFailed(favoritesResult.status !== 401);
         setFailureStatus(favoritesResult.status);
-        setFailureMessage(favoritesResult.error || "");
+        setFailureMessage(libraryFailureDiagnostic(favoritesResult));
         setLoading(false);
         return;
       }
@@ -700,6 +809,7 @@ export function MyLibrary({
         ),
       );
       setOwnerPrincipalId(mineOwnerPrincipalId);
+      ownerPrincipalIdRef.current = mineOwnerPrincipalId;
       setNextCursor(mineResult.data.nextCursor);
       setPinnedNextCursors({
         document: documentPage.nextCursor,
@@ -746,6 +856,7 @@ export function MyLibrary({
       mineOwnerPrincipalId,
     );
     setOwnerPrincipalId(mineOwnerPrincipalId);
+    ownerPrincipalIdRef.current = mineOwnerPrincipalId;
     setOwnedItems(
       mergeOwnedMineItems(
         [...documentPage.items, ...pdfPage.items],
@@ -761,11 +872,49 @@ export function MyLibrary({
     setFavoriteNextCursor(favoritesResult.data.nextCursor);
     favoritesOwnerRef.current = mineOwnerPrincipalId;
     setLoading(false);
-  }, [clearLibraryAuthority]);
+  }, [clearLibraryAuthority, reconcilePreviewPrincipal]);
 
   useEffect(() => {
     void load();
   }, [load, refreshNonce]);
+
+  useEffect(() => {
+    let active = true;
+    const syncAuth = async (boundary: boolean) => {
+      const syncEpoch = ++authSyncEpochRef.current;
+      if (boundary) {
+        // Clear synchronously before looking up the new identity. This also
+        // bumps restoreGeneration, so a prior user's delayed detail GET cannot
+        // repopulate the preview after an account switch or logout.
+        loadAbortRef.current?.abort();
+        loadMoreAbortRef.current?.abort();
+        requestEpochRef.current += 1;
+        clearLibraryAuthority();
+        authUserIdRef.current = undefined;
+      }
+      const nextUserId = await getUserId().catch(() => null);
+      if (!active || syncEpoch !== authSyncEpochRef.current) return;
+      const previousUserId = authUserIdRef.current;
+      if (previousUserId !== undefined && previousUserId !== nextUserId) {
+        loadAbortRef.current?.abort();
+        loadMoreAbortRef.current?.abort();
+        requestEpochRef.current += 1;
+        clearLibraryAuthority();
+      }
+      authUserIdRef.current = nextUserId;
+      if (ownerPrincipalIdRef.current) {
+        reconcilePreviewPrincipal(ownerPrincipalIdRef.current);
+      }
+      if (boundary) void load();
+    };
+    const onAuthState = () => void syncAuth(true);
+    window.addEventListener(AUTH_STATE_EVENT, onAuthState);
+    void syncAuth(false);
+    return () => {
+      active = false;
+      window.removeEventListener(AUTH_STATE_EVENT, onAuthState);
+    };
+  }, [clearLibraryAuthority, load, reconcilePreviewPrincipal]);
 
   useEffect(
     () => () => {
@@ -909,8 +1058,8 @@ export function MyLibrary({
       (item) =>
         isDurableLibraryItem(item) && item.artifactId === identity.artifactId,
     );
-    if (known) setPreviewIntentItem(known);
-  }, [items, previewIntentItem]);
+    if (known) rememberPreviewIntent(known);
+  }, [items, previewIntentItem, rememberPreviewIntent]);
 
   // 指名了一份具体 artifact 的深链：`intent: "open"` 走只读预览，旧的模板直编深链
   // （`intent: "edit"`）直接进 typed 编辑器（时序与兜底取数见 `library-edit-intent.ts`）。
@@ -920,7 +1069,8 @@ export function MyLibrary({
     items,
     onOpenItem: openLibraryItem,
     // 只读预览落点：纯读取回投影 + 挂进 entries，不碰任何写端点、不 fork。
-    onPreviewItem: setPreviewIntentItem,
+    onPreviewItem: rememberPreviewIntent,
+    restoreGeneration,
     onFailure: ({ status, message }) => {
       setFailed(true);
       setFailureStatus(status);
@@ -1036,7 +1186,9 @@ export function MyLibrary({
       setAuthRequired(false);
       setFailed(true);
       setFailureStatus(mineResult.status);
-      setFailureMessage(mineResult.error || "我的库继续加载失败。");
+      setFailureMessage(
+        libraryFailureDiagnostic(mineResult) || "我的库继续加载失败。",
+      );
       setLoadingMore(false);
       return;
     }
@@ -1104,12 +1256,14 @@ export function MyLibrary({
     setLoadingMore(false);
   }, [
     clearLibraryAuthority,
+    clearPreviewIntent,
     favoriteNextCursor,
     loading,
     loadingMore,
     nextCursor,
     ownerPrincipalId,
     pinnedNextCursors,
+    reconcilePreviewPrincipal,
   ]);
 
   const removeItem = useCallback(async (item: LibraryItem) => {
@@ -1303,7 +1457,7 @@ export function MyLibrary({
       removeItem,
     ],
   );
-  const failureCopy = myLibraryFailure(failureStatus, failureMessage);
+  const failureCopy = myLibraryFailure(failureStatus);
   const toolbar = (
     <div className="flex shrink-0 flex-wrap items-center gap-2">
       <label

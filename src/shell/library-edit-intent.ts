@@ -16,7 +16,10 @@
 
 import { useEffect, useRef } from "react";
 import { getCurrentArtifactItem } from "./artifact-client";
-import { setLibraryCurrentIdentity } from "./library-current-identity";
+import {
+  libraryCurrentIdentityFromSearch,
+  setLibraryCurrentIdentity,
+} from "./library-current-identity";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import {
   consumeWorkspaceAction,
@@ -44,6 +47,8 @@ export interface LibraryEditIntentInput {
    * 绝不能因为「打开了预览页」就发生（合同 §0.5）。
    */
   onPreviewItem?: (item: LibraryItem) => void;
+  /** Changes at auth boundaries abort any in-flight direct detail restoration. */
+  restoreGeneration?: number;
   /** 取不到时给可见失败态——绝不留一块空白面板。 */
   onFailure: (failure: LibraryEditIntentFailure) => void;
 }
@@ -194,6 +199,7 @@ export function useLibraryEditIntent({
   onOpenItem,
   onPreviewItem,
   onFailure,
+  restoreGeneration,
 }: LibraryEditIntentInput): void {
   // 效果只以 nonce 为键：同一条 action 的重渲染不得重复取数，晚到的 `items` 也不得
   // 在用户背后再开一次编辑器。可变入参走 ref，避免为此把它们放进依赖数组。
@@ -206,14 +212,27 @@ export function useLibraryEditIntent({
   const previewArtifactId = onPreviewItem
     ? libraryPreviewIntentArtifactId(action)
     : "";
-  const artifactId = editArtifactId || previewArtifactId;
+  // A bookmarked /library?item=<artifactId> has no action envelope. Restore it
+  // through the same read-only detail route; list membership is only a fast path.
+  const bareUrlArtifactId =
+    !nonce && onPreviewItem && typeof window !== "undefined"
+      ? libraryCurrentIdentityFromSearch(window.location.search)?.artifactId || ""
+      : "";
+  const artifactId = editArtifactId || previewArtifactId || bareUrlArtifactId;
   const mode: "edit" | "preview" = editArtifactId ? "edit" : "preview";
+  // Explicit action nonces remain single-use across auth changes. A bare URL,
+  // however, must be retried after its prior request is aborted at an auth
+  // boundary, so its handled key includes the restoration generation.
+  const handledKey = nonce ||
+    (bareUrlArtifactId
+      ? `url:${bareUrlArtifactId}:restore:${restoreGeneration ?? 0}`
+      : "");
   const handledNonceRef = useRef("");
 
   useEffect(() => {
-    if (!artifactId || handledNonceRef.current === nonce) return;
+    if (!artifactId || handledNonceRef.current === handledKey) return;
     if (nonce && !consumeWorkspaceAction(nonce, "library-edit-intent")) return;
-    handledNonceRef.current = nonce;
+    handledNonceRef.current = handledKey;
     const deliver = (item: LibraryItem) => {
       setLibraryCurrentIdentity({ artifactId, entryId: "" });
       if (mode === "preview") {
@@ -246,7 +265,7 @@ export function useLibraryEditIntent({
       deliver(result.data);
     })();
     return () => controller.abort();
-    // `mode` 与 `artifactId` 都是从同一条 action 推出来的，不用再进依赖数组。
+    // `mode` 与 `artifactId` 都来自 action 或当前 URL，不用再进依赖数组。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nonce, artifactId]);
+  }, [handledKey, artifactId, restoreGeneration]);
 }

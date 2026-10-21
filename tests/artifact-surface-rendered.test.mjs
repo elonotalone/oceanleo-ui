@@ -97,6 +97,10 @@ const pluginExportContractUrl = pathToFileURL(
 ).href;
 
 const authStubUrl = dataModule(`
+  export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+  export async function getUserId() {
+    return globalThis.__libraryAuthUserId ?? null;
+  }
   export async function accessToken() {
     return "artifact-render-test-token";
   }
@@ -491,6 +495,7 @@ const myLibraryModule = (
   await import(
     await compileModule("src/shell/MyLibrary.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
+      "../lib/auth/client": authStubUrl,
       "../lib/database": databaseStubUrl,
       "./AdvancedContentWorkbench": advancedWorkbenchStubUrl,
       "./artifact-client": artifactClientUrl,
@@ -560,6 +565,11 @@ const actionClientStubUrl = dataModule(`
     return { ok: true, data: { ...item, favorite } };
   }
   export async function getCurrentArtifactItem(artifactId) {
+    const pending = globalThis.__currentArtifactItemPromises?.[artifactId];
+    if (pending) {
+      globalThis.__currentArtifactItemStarted?.(artifactId);
+      return await pending;
+    }
     const resolved = globalThis.__currentArtifactItems?.[artifactId];
     return resolved
       ? { ok: true, data: resolved }
@@ -693,6 +703,11 @@ async function createMounted(Component, props) {
   });
   return {
     container,
+    async rerender(nextProps) {
+      await act(async () => {
+        root.render(React.createElement(Component, nextProps));
+      });
+    },
     async unmount() {
       await act(async () => root.unmount());
       container.remove();
@@ -3086,7 +3101,7 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
     assert.match(
       mounted.container.querySelector("[data-empty-description]")
         ?.textContent || "",
-      /ownerPrincipalId 不一致/,
+      /请稍后重试/,
     );
   } finally {
     await mounted.unmount();
@@ -3364,7 +3379,7 @@ test("favorites pagination fails closed when a later page changes owner", async 
     assert.match(
       mounted.container.querySelector("[data-empty-description]")
         ?.textContent || "",
-      /owner\/scope/,
+      /请稍后重试/,
     );
   } finally {
     await mounted.unmount();
@@ -3385,7 +3400,7 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
       /生成作品/,
     ],
     [401, { detail: "login" }, /登录任意 OceanLeo/],
-    [403, { detail: "denied" }, /拒绝了 owner-scoped/],
+    [403, { detail: "denied" }, /当前账号暂时无法读取/],
     [503, { detail: "offline" }, /维护或过载/],
   ];
   for (const [status, payload, expected] of cases) {
@@ -3416,6 +3431,173 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
     } finally {
       await mounted.unmount();
     }
+  }
+});
+
+test("rendered bare item stays visible through same-account list failure", async () => {
+  const rawItem = projection({
+    id: "direct-restored-item",
+    title: "Direct restored file",
+    ownerPrincipalId: "owner-a",
+    editable: true,
+  });
+  const item = artifactProjectionToLibraryItem(normalizeArtifactProjection(rawItem));
+  globalThis.__libraryAuthUserId = "owner-a";
+  globalThis.__currentArtifactItems = { [item.artifactId]: item };
+  window.history.replaceState({}, "", `/library?item=${item.artifactId}`);
+  let resolveLists;
+  const pendingLists = new Promise((resolvePromise) => {
+    resolveLists = resolvePromise;
+  });
+  let resolveDetail;
+  const pendingDetail = new Promise((resolvePromise) => {
+    resolveDetail = resolvePromise;
+  });
+  let markDetailStarted;
+  const detailStarted = new Promise((resolvePromise) => {
+    markDetailStarted = resolvePromise;
+  });
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith(`/items/${item.artifactId}`)) {
+      markDetailStarted();
+      return await pendingDetail;
+    }
+    return await pendingLists;
+  };
+  const mounted = await createMounted(MyLibrary, { refreshNonce: 0 });
+  try {
+    await detailStarted;
+    await settle(); // Let the current authenticated-principal snapshot settle first.
+    resolveDetail(jsonResponse(rawItem));
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Direct restored file"]',
+      ),
+      "direct detail should render independently of list membership",
+    );
+    resolveLists(jsonResponse({ detail: "malformed first-load response" }));
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Direct restored file"]',
+      ),
+      "the item must survive a malformed list response on the initial load for the same auth snapshot",
+    );
+    assert.match(
+      mounted.container.querySelector('[role="alert"]')?.textContent || "",
+      /暂时无法加载我的库/,
+      "the initial list request should actually fail while the direct item remains visible",
+    );
+  } finally {
+    await mounted.unmount();
+    resetLibraryCurrentIdentityForTests();
+    window.history.replaceState({}, "", "/workspace");
+    delete globalThis.__libraryAuthUserId;
+    delete globalThis.__currentArtifactItems;
+  }
+});
+
+test("account switch ignores delayed old detail then restores bare URL for new account", async () => {
+  const rawOldItem = projection({
+    id: "delayed-owner-a-item",
+    title: "Old account delayed file",
+    ownerPrincipalId: "owner-a",
+    editable: true,
+  });
+  const rawNewItem = projection({
+    id: "delayed-owner-a-item",
+    title: "Reauthorized account file",
+    ownerPrincipalId: "owner-b",
+    editable: true,
+  });
+  const item = artifactProjectionToLibraryItem(normalizeArtifactProjection(rawOldItem));
+  globalThis.__libraryAuthUserId = "owner-a";
+  window.history.replaceState({}, "", `/library?item=${item.artifactId}`);
+  let resolveDetail;
+  let markDetailStarted;
+  let resolveReauthorizedDetail;
+  let markReauthorizedDetailStarted;
+  const detailStarted = new Promise((resolvePromise) => {
+    markDetailStarted = resolvePromise;
+  });
+  const reauthorizedDetailStarted = new Promise((resolvePromise) => {
+    markReauthorizedDetailStarted = resolvePromise;
+  });
+  const oldDetailResponse = new Promise((resolvePromise) => {
+    resolveDetail = resolvePromise;
+  });
+  const reauthorizedDetailResponse = new Promise((resolvePromise) => {
+    resolveReauthorizedDetail = resolvePromise;
+  });
+  let detailRequestCount = 0;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith(`/items/${item.artifactId}`)) {
+      detailRequestCount += 1;
+      if (detailRequestCount === 1) {
+        markDetailStarted();
+        return await oldDetailResponse;
+      }
+      markReauthorizedDetailStarted();
+      return await reauthorizedDetailResponse;
+    }
+    const ownerPrincipalId = globalThis.__libraryAuthUserId;
+    return jsonResponse({
+      scope: url.pathname.endsWith("favorites") ? "favorites" : "mine",
+      ownerPrincipalId,
+      total: 0,
+      invalidCount: 0,
+      items: [],
+    });
+  };
+  const mounted = await createMounted(MyLibrary, {});
+  try {
+    await detailStarted;
+    await settle();
+    assert.equal(
+      mounted.container.querySelector(
+        '[data-entry-title="Old account delayed file"]',
+      ),
+      null,
+      "detail must not appear before its read resolves",
+    );
+    globalThis.__libraryAuthUserId = "owner-b";
+    await act(async () => {
+      window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state"));
+    });
+    await reauthorizedDetailStarted;
+    await settle();
+    resolveDetail(jsonResponse(rawOldItem));
+    await settle();
+    assert.equal(
+      mounted.container.querySelector(
+        '[data-entry-title="Old account delayed file"]',
+      ),
+      null,
+      "old-account detail response must not repopulate after auth boundary",
+    );
+    assert.equal(
+      detailRequestCount,
+      2,
+      "the same bare URL must be retried after auth changes",
+    );
+    resolveReauthorizedDetail(jsonResponse(rawNewItem));
+    await settle();
+    assert.ok(
+      mounted.container.querySelector(
+        '[data-entry-title="Reauthorized account file"]',
+      ),
+      "the unchanged bare URL should restore successfully for the new authenticated account",
+    );
+  } finally {
+    await mounted.unmount();
+    resetLibraryCurrentIdentityForTests();
+    window.history.replaceState({}, "", "/workspace");
+    delete globalThis.__libraryAuthUserId;
+    delete globalThis.__currentArtifactItemPromises;
+    delete globalThis.__currentArtifactItemStarted;
   }
 });
 

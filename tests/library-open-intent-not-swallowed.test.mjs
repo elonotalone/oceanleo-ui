@@ -186,10 +186,12 @@ test("同一条编辑意图重渲染不得再打开一次", async () => {
   resetCase();
   const opened = [];
   const action = envelope(ITEM_X.artifactId, "edit-x-once", "edit");
+  let restoreGeneration = 0;
   function Host() {
     useLibraryEditIntent({
       action,
       items: [ITEM_Y, ITEM_X],
+      restoreGeneration,
       onOpenItem: (item) => opened.push(item.artifactId),
       onFailure: () => {},
     });
@@ -199,12 +201,64 @@ test("同一条编辑意图重渲染不得再打开一次", async () => {
     await act(async () => {
       root.render(React.createElement(Host));
     });
+    restoreGeneration = 1;
     await act(async () => {
       root.render(React.createElement(Host));
     });
     await act(async () => {});
   });
   assert.deepEqual(opened, [ITEM_X.artifactId]);
+});
+
+test("bare ?item 在列表未载入该素材时独立读取并走只读预览", async () => {
+  const requested = [];
+  const identityWrites = [];
+  const identityStub = dataModule(`
+    export function libraryCurrentIdentityFromSearch(search) {
+      const params = new URLSearchParams(String(search || "").replace(/^\\?/, ""));
+      const artifactId = (params.get("item") || "").trim();
+      return artifactId ? { artifactId, entryId: "" } : null;
+    }
+    export function setLibraryCurrentIdentity(identity) {
+      globalThis.__libraryIdentityWrites.push(identity);
+    }
+  `);
+  globalThis.__libraryIdentityWrites = identityWrites;
+  const standaloneIntent = await import(
+    await compileModule("src/shell/library-edit-intent.ts", {
+      "./artifact-client": dataModule(`
+        export async function getCurrentArtifactItem(artifactId) {
+          globalThis.__libraryDetailRequests.push(artifactId);
+          return { ok: true, data: globalThis.__libraryDetailItem };
+        }
+      `),
+      "./library-current-identity": identityStub,
+    })
+  );
+  globalThis.__libraryDetailRequests = requested;
+  globalThis.__libraryDetailItem = ITEM_X;
+  window.history.replaceState({}, "", `/library?item=${ITEM_X.artifactId}`);
+  const previewed = [];
+  function Host() {
+    standaloneIntent.useLibraryEditIntent({
+      action: null,
+      items: [], // a failed list or a later page cannot satisfy this link
+      onOpenItem: () => assert.fail("a bare item URL must remain read-only"),
+      onPreviewItem: (item) => previewed.push(item.artifactId),
+      onFailure: (failure) => assert.fail(failure.message),
+    });
+    return null;
+  }
+  await mounted(async (root) => {
+    await act(async () => root.render(React.createElement(Host)));
+    await act(async () => {});
+  });
+  assert.deepEqual(requested, [ITEM_X.artifactId]);
+  assert.deepEqual(previewed, [ITEM_X.artifactId]);
+  assert.deepEqual(identityWrites, [{ artifactId: ITEM_X.artifactId, entryId: "" }]);
+  delete globalThis.__libraryIdentityWrites;
+  delete globalThis.__libraryDetailRequests;
+  delete globalThis.__libraryDetailItem;
 });
 
 const uiStubUrl = dataModule(`export function useUI() { return (value) => value; }`);

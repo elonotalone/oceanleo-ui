@@ -161,6 +161,39 @@ test("库里有一份真实官方素材的 fork 副本时，listMyArtifacts 仍�
   assert.equal(result.data.items[0].artifact.integrity.ok, true);
 });
 
+test("list payload 缺少 items envelope 时保留明确失败，不伪装成空库", async () => {
+  globalThis.fetch = async () =>
+    jsonResponse([
+      { artifact_id: "artifact-1", revision_id: "revision-1" },
+    ]);
+
+  const result = await listMyArtifacts();
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "invalid-response");
+  assert.match(result.error || "", /items envelope/);
+  assert.equal(result.data, undefined);
+});
+
+test("200 响应体不是 JSON 时保留解析诊断且不报成缺少 items", async () => {
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError("Unexpected token '<', HTML response");
+    },
+  });
+
+  const result = await listMyArtifacts();
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "invalid-response");
+  assert.match(result.error || "", /暂时无法读取这份响应/);
+  assert.doesNotMatch(result.error || "", /SyntaxError|Unexpected token|HTML/);
+  assert.match(result.diagnostic || "", /SyntaxError: Unexpected token/);
+  assert.doesNotMatch(result.error || "", /items envelope/);
+});
+
 test("一份 fork 副本不得连坐同页其它条目", async () => {
   // V5 的原话：「不是只隐藏那一份」。同页放一份普通自有作品，两份都要在。
   const copy = realForkCopyProjection();

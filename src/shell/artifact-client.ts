@@ -739,10 +739,12 @@ async function artifactRequest<T>(
       credentials: "include",
     });
     let payload: unknown = null;
+    let payloadParseError: unknown;
     try {
       payload = qualifyArtifactAccessUrls(await response.json());
     } catch (error) {
       if (controller.signal.aborted) throw error;
+      payloadParseError = error;
       payload = null;
     }
     if (!response.ok) {
@@ -762,6 +764,19 @@ async function artifactRequest<T>(
           response.status === 425 ||
           response.status === 429 ||
           response.status >= 500,
+      };
+    }
+    if (payloadParseError) {
+      return {
+        ok: false,
+        error: "素材服务暂时无法读取这份响应，请刷新后重试。",
+        diagnostic:
+          payloadParseError instanceof Error
+            ? `${payloadParseError.name}: ${payloadParseError.message}`
+            : String(payloadParseError),
+        code: "invalid-response",
+        status: response.status,
+        retryable: true,
       };
     }
     return { ok: true, data: payload as T, status: response.status };
