@@ -627,6 +627,8 @@ export interface MyLibraryProps {
   plain?: boolean;
   itemFilter?: (item: LibraryItem) => boolean;
   onOpenItem?: (item: LibraryItem) => void;
+  /** Lets the full-page host expand its editor canvas without changing collection layout. */
+  onEditorOpenChange?: (open: boolean) => void;
   openAdvancedOnSelect?: boolean;
   materialActions?: readonly WorkbenchMaterialAction[];
   onMaterialAction?: (
@@ -669,6 +671,7 @@ export function MyLibrary({
   plain = false,
   itemFilter,
   onOpenItem,
+  onEditorOpenChange,
   openAdvancedOnSelect = true,
   materialActions,
   onMaterialAction,
@@ -731,6 +734,9 @@ export function MyLibrary({
   const [retryableUploadFiles, setRetryableUploadFiles] = useState<File[]>([]);
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
+  useEffect(() => {
+    onEditorOpenChange?.(Boolean(standaloneEditorItem));
+  }, [onEditorOpenChange, standaloneEditorItem]);
   // 「预览&编辑」深链指名的那一份。官方模板素材不属于当前用户，不会出现在 `items`
   // 里，所以按 id 取回来后要自己挂上去，右栏才有东西可选中（详见 library-edit-intent）。
   const [previewIntentItem, setPreviewIntentItem] =

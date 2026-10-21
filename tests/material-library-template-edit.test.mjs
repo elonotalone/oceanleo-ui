@@ -50,11 +50,13 @@ const uiStubUrl = dataModule(`
   }
 `);
 const contractStubUrl = dataModule(`
+  export * from ${JSON.stringify(new URL("../src/shell/artifact-contract.ts", import.meta.url).href)};
   export function isEnsureableTransient(value) {
     return Boolean(value?.idempotencyKey && value?.resultId);
   }
 `);
 const libraryDataStubUrl = dataModule(`
+  export * from ${JSON.stringify(new URL("../src/shell/library-data.ts", import.meta.url).href)};
   export function isDurableLibraryItem(item) {
     return Boolean(
       item?.artifactId &&

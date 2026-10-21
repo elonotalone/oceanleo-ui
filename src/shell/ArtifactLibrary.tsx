@@ -236,6 +236,7 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
   const libraryAction = useStandaloneMineEditReceipt({
     enabled: !props.fill,
   });
+  const [editorOpen, setEditorOpen] = useState(false);
   if (props.fill) return <ArtifactLibraryLegacy {...props} />;
   const filter = props.filter || "all";
   const controlledType =
@@ -243,7 +244,14 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
       ? FILTER_CATEGORY[props.filter]
       : undefined;
   return (
-    <div className={`${APP_PAGE_FRAME_CLASS} h-[100dvh]`}>
+    <div
+      className={
+        editorOpen
+          ? "flex h-[100dvh] min-h-0 w-full flex-col"
+          : `${APP_PAGE_FRAME_CLASS} h-[100dvh]`
+      }
+      data-library-layout={editorOpen ? "editor" : "collection"}
+    >
       <div className="min-h-0 flex-1 overflow-hidden">
         <MyLibrary
           accent={props.accent}
@@ -251,6 +259,8 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
           plain
           pageTitle="我的库"
           category={controlledType}
+          className={editorOpen ? "h-full min-h-0 w-full min-w-0" : ""}
+          onEditorOpenChange={setEditorOpen}
           onlyFavorites={filter === "favorites"}
           onCategoryChange={(category) =>
             props.onFilterChange?.(CATEGORY_FILTER[category] || "all")

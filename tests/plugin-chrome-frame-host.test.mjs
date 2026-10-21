@@ -161,12 +161,15 @@ const frameStubs = {
   "../../i18n/ui/useUI": uiStubUrl,
   "../../ui/Toast": toastStubUrl,
   "../AdvancedEditorIcon": iconStubUrl,
+  "../editor-item-social-chrome": dataModule(`export function EditorItemSocialChrome(){return null;}`),
   "../plugin-theme": pluginThemeStubUrl,
   "./agent-drawer-panel": agentPanelStubUrl,
   "./PluginAgentPanel": agentPanelStubUrl,
   "../SplitWorkspace": splitWorkspaceStubUrl,
   "../PluginChromeEditBarGestureLayer": gestureLayerStubUrl,
   "../FloatingContextToolbar": floatingToolbarStubUrl,
+  "../inline-editor-mine-activate": dataModule(`export function libraryItemIdentityKey(){return "";} export function requestOpenLibraryItemInEditor(){}`),
+  "../inline-editor-mine-panel": dataModule(`export function InlineEditorMinePanel(){return null;}`),
   "./PluginGlobalRow": globalRowStubUrl,
   "./PluginPageRow": pageRowStubUrl,
   "./plugin-page-store": pageStoreStubUrl,
@@ -289,10 +292,21 @@ test('chrome="host" 渲染结果里没有顶栏、页签、主题、全屏、编
   await unmount();
 });
 
-test("chrome 缺省仍自画顶栏（self 兼容；W01 行换不了，见 Frame 文件头）", async () => {
-  const { container, unmount } = await mountFrame({});
+test("self 顶栏同时提供工作区全屏与关闭右侧窗格", async () => {
+  let closeCount = 0;
+  const { container, unmount } = await mountFrame({
+    window: {
+      onToggleFullscreen() {},
+      onClose() { closeCount += 1; },
+    },
+  });
   assert.ok(container.querySelector("header"));
   assert.ok(container.querySelector("[role=toolbar]"));
+  assert.ok(container.querySelector('button[data-global-row-slot="maximize"]'));
+  const close = container.querySelector('button[data-global-row-slot="close"]');
+  assert.ok(close, "独立 editor chrome 需要可见的 × 关闭控件");
+  await act(async () => close.click());
+  assert.equal(closeCount, 1);
   await unmount();
 });
 

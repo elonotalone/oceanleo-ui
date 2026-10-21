@@ -463,6 +463,7 @@ export function PluginChromeFrame({
             },
           }
         : null;
+  const closeWindow = rightPaneSlot?.closeRightPane || windowActions?.onClose;
 
   activateMineItemRef.current = (next) => {
     const currentId = libraryItemIdentityKey(item);
@@ -696,6 +697,18 @@ export function PluginChromeFrame({
                   name={maximize.pressed ? "fullscreen-exit" : "fullscreen"}
                   className="h-4 w-4"
                 />
+              </button>
+            ) : null}
+            {closeWindow ? (
+              <button
+                type="button"
+                data-global-row-slot="close"
+                onClick={closeWindow}
+                className={ICON_ACTION_CLASS}
+                aria-label={tt("关闭右侧面板")}
+                title={tt("关闭右侧面板")}
+              >
+                <span aria-hidden="true" className="text-xl leading-none">×</span>
               </button>
             ) : null}
           </div>

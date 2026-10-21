@@ -31,7 +31,10 @@ export function MaterialStandaloneEditor({
 }) {
   const existingPane = useRightPaneSlot();
   const inheritedWorkspace = useOptionalWorkspaceSession();
-  const [agentVisible, setAgentVisible] = useState(false);
+  // Library editing is a Task-shaped workspace: keep the existing conversation
+  // visible beside the editor from the first frame. Task hosts already provide
+  // this SplitWorkspace and take the `existingPane` branch below.
+  const [agentVisible, setAgentVisible] = useState(true);
   const [workspaceOpen, setWorkspaceOpen] = useState(true);
   const editor = (
     <AdvancedContentWorkbench

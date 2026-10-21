@@ -51,7 +51,7 @@ test("AppSession client 使用现有 agent REST 资源", () => {
   );
 });
 
-test("snapshot revision 冲突只重读最新版，不自动覆盖重试", () => {
+test("snapshot revision 冲突先重读，只允许调用方显式合并后重试", () => {
   assert.match(
     providerSource,
     /blockedSnapshotSave\(conflictRef\.current\)/,
@@ -73,7 +73,11 @@ test("snapshot revision 冲突只重读最新版，不自动覆盖重试", () =>
     conflictBranch,
     /getAppSession\(active\.id, sessionSurface\)/,
   );
-  assert.doesNotMatch(conflictBranch, /updateAppSession\(/);
+  assert.match(
+    conflictBranch,
+    /typeof options\.mergeFromLatest === "function"[\s\S]*?options\.mergeFromLatest\([\s\S]*?const retried = await updateAppSession\(/,
+  );
+  assert.match(conflictBranch, /revision: latestResult\.data\.revision/);
 });
 
 test("降级路径没有生成本地 session UUID", () => {

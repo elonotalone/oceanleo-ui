@@ -677,10 +677,7 @@ export type { LibraryPreviewIntent } from "./library-edit-intent";
 // **登出流程必须能清掉它**——不清的话换账号后会拿上一个人的身份去判 owner，那正是本轮
 // 要根治的「改到官方原件」那类事故。`primeCurrentPrincipalId` 给已经拿到主体 id 的宿主
 // 预热，省掉首屏那次探测。
-export {
-  primeCurrentPrincipalId,
-  resetCurrentPrincipalId,
-} from "./artifact-client";
+export { primeCurrentPrincipalId, resetCurrentPrincipalId } from "./artifact-client";
 // 合同 §3.1 / §3.2：素材作用域。`MATERIAL_SCOPE_PARAM_NAMES` 是与后端逐字对齐的
 // query 参数名，两侧改名必须先改合同 §3.2。
 //
@@ -694,23 +691,13 @@ export {
   libraryItemAppAttributions,
   materialScopeViolation,
 } from "./material-library-scope";
-export type {
-  MaterialAppAttribution,
-  MaterialLibraryLevel,
-  MaterialScope,
-} from "./material-library-scope";
+export type { MaterialAppAttribution, MaterialLibraryLevel, MaterialScope } from "./material-library-scope";
 // 「下载」的渲染函数。**不再挂在网格卡上**（`01-decisions.md` D4：下载只在详情浮层里），
 // 所以包内没有 import 点；导出保留是为了浮层那一侧（W5）与既有宿主能继续拿到它。
-export {
-  isMaterialDownloadEntry,
-  materialEntryDownloadAction,
-} from "./material-library-download";
+export { isMaterialDownloadEntry, materialEntryDownloadAction } from "./material-library-download";
 // 「下载」的真实执行（W4）。W7 的端点强制登录（配额要计费主体），`<a download>` 带不了
 // Bearer 头，所以按钮必须调这个函数，不能拿 href 去纯导航。失败 throw，401 与 429 可区分。
-export {
-  TemplateDownloadError,
-  downloadTemplateMaterial,
-} from "./template-download";
+export { TemplateDownloadError, downloadTemplateMaterial } from "./template-download";
 export type { TemplateDownloadErrorCode } from "./template-download";
 // 封面图 key/URL 约定（合同 §3，W5 产出）走 `@oceanleo/ui/lib`（见 `src/lib/index.ts`），
 // shell 这层不再重复暴露，避免同一符号两条导入路径。
