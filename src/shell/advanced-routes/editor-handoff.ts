@@ -473,6 +473,7 @@ export function openHostedSaveGate(options?: {
   wait: () => Promise<HostedSaveWaitResult>;
   acceptSnapshot: (snapshot: unknown) => void;
   acceptSaveResult: () => void;
+  rejectSaveResult: (error: string) => void;
 } {
   const timeoutMs = options?.timeoutMs ?? PRO_FLUSH_TIMEOUT_MS;
   const saveId =
@@ -500,6 +501,15 @@ export function openHostedSaveGate(options?: {
       settled = true;
       clearTimeout(timer);
       resolveWait({ ok: true, snapshot });
+    },
+    rejectSaveResult(error: string) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveWait({
+        ok: false,
+        error: error.trim() || PRO_SAVE_UNCONFIRMED,
+      });
     },
   };
 }

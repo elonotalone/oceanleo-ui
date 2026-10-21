@@ -71,6 +71,7 @@ import {
 import {
   collectRichDocText,
   hostedStateFromResolvedJson,
+  isUmoNativeSaveId,
   loadRichDocHostedState,
   persistUmoPayload,
 } from "./richdoc-pro-source";
@@ -217,6 +218,10 @@ export function RichDocHostedRoute({
   const appliedHandoffKeyRef = useRef("");
   const mountedRef = useRef(true);
   const persistedItemRef = useRef(item);
+  const itemKey = handoffItemKey(item);
+  const activeItemKeyRef = useRef(itemKey);
+  const scopeItemKeyRef = useRef(itemKey);
+  if (activeItemKeyRef.current !== itemKey) activeItemKeyRef.current = itemKey;
   const sourceRef = useRef<unknown>(null);
   const savedGenerationRef = useRef<number | null>(null);
   const dirtyRef = useRef(false);
@@ -224,13 +229,49 @@ export function RichDocHostedRoute({
   const [sourceLoadNonce, setSourceLoadNonce] = useState(0);
   const generationRef = useRef(0);
   const revisionRef = useRef<string | number | undefined>(undefined);
-  const capturesRef = useRef(new Map<string, { generation: number; revision: string | number | undefined }>());
+  const capturesRef = useRef(new Map<string, {
+    generation: number;
+    revision: string | number | undefined;
+    purpose: "cache" | "draft" | "save";
+  }>());
   const cachedRef = useRef<{ generation: number; payload: unknown; recoveryId: string } | null>(null);
   const flightRef = useRef<ReturnType<typeof persistUmoPayload> | null>(null);
+  const flushRef = useRef<((initialCapture?: {
+    generation: number;
+    revision: string | number | undefined;
+    payload: unknown;
+    recoveryId: string;
+  }) => ReturnType<typeof persistUmoPayload>) | null>(null);
+  const nativeSaveIdsRef = useRef(new Set<string>());
+  const nativeSaveIdOrderRef = useRef<string[]>([]);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      saveGateRef.current?.rejectSaveResult("文档已关闭，保存捕获已取消。");
+      saveGateRef.current = null;
+      capturesRef.current.clear();
+    };
   }, []);
+
+  useEffect(() => {
+    if (scopeItemKeyRef.current === itemKey) return;
+    scopeItemKeyRef.current = itemKey;
+    persistedItemRef.current = item;
+    saveGateRef.current?.rejectSaveResult("文档已切换，保存捕获已取消。");
+    saveGateRef.current = null;
+    capturesRef.current.clear();
+    nativeSaveIdsRef.current.clear();
+    nativeSaveIdOrderRef.current = [];
+    cachedRef.current = null;
+    savedGenerationRef.current = null;
+    dirtyRef.current = false;
+    generationRef.current = 0;
+    revisionRef.current = undefined;
+    setDirty(false);
+    setEditRevision(0);
+    setSnapshot(null);
+  }, [item, itemKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -493,15 +534,64 @@ export function RichDocHostedRoute({
         setDirty(true);
         setEditRevision(generationRef.current);
         const recoveryId = `rd-cache-${instanceId}-${generationRef.current}`;
-        capturesRef.current.clear();
-        capturesRef.current.set(recoveryId, { generation: generationRef.current, revision: message.revision });
+        for (const [captureId, capture] of capturesRef.current) {
+          if (capture.purpose !== "save") capturesRef.current.delete(captureId);
+        }
+        if (cachedRef.current?.generation !== generationRef.current) {
+          cachedRef.current = null;
+        }
+        capturesRef.current.set(recoveryId, {
+          generation: generationRef.current,
+          revision: message.revision,
+          purpose: "cache",
+        });
         sendToEditor({ type: "recovery-capture", recoveryId });
         return;
       }
-      if (message.type === "recovery-snapshot" && message.ok) {
+      if (message.type === "recovery-snapshot") {
         const recoveryId = String(message.recoveryId || "");
+        if (!message.ok) {
+          const reason =
+            typeof message.message === "string" && message.message.trim()
+              ? message.message
+              : "编辑器无法捕获当前文档。";
+          const requested = capturesRef.current.get(recoveryId);
+          if (requested) {
+            capturesRef.current.delete(recoveryId);
+            if (requested.purpose === "save" && saveGateRef.current?.saveId === recoveryId) {
+              saveGateRef.current.rejectSaveResult(reason);
+              saveGateRef.current = null;
+            }
+            return;
+          }
+          if (!isUmoNativeSaveId(recoveryId)) return;
+          if (nativeSaveIdsRef.current.has(recoveryId)) return;
+          nativeSaveIdsRef.current.add(recoveryId);
+          nativeSaveIdOrderRef.current.push(recoveryId);
+          if (nativeSaveIdOrderRef.current.length > 64) {
+            const expired = nativeSaveIdOrderRef.current.shift();
+            if (expired) nativeSaveIdsRef.current.delete(expired);
+          }
+          sendToEditor({
+            protocol: EDITOR_PROTOCOL,
+            type: "save-result",
+            instanceId,
+            ok: false,
+            saveId: recoveryId,
+            message: reason,
+          });
+          setStatus(reason);
+          return;
+        }
         const payload = message.snapshot?.payload ?? null;
-        if (String(recoveryId).startsWith("umo-save-")) {
+        if (isUmoNativeSaveId(recoveryId)) {
+          if (nativeSaveIdsRef.current.has(recoveryId)) return;
+          nativeSaveIdsRef.current.add(recoveryId);
+          nativeSaveIdOrderRef.current.push(recoveryId);
+          if (nativeSaveIdOrderRef.current.length > 64) {
+            const expired = nativeSaveIdOrderRef.current.shift();
+            if (expired) nativeSaveIdsRef.current.delete(expired);
+          }
           if (sourceRef.current == null || payload == null) {
             sendToEditor({
               protocol: EDITOR_PROTOCOL,
@@ -513,17 +603,43 @@ export function RichDocHostedRoute({
             });
             return;
           }
+          const snapshotRevision = message.snapshot?.revision;
+          if (
+            revisionRef.current !== undefined &&
+            snapshotRevision !== revisionRef.current
+          ) {
+            sendToEditor({
+              protocol: EDITOR_PROTOCOL,
+              type: "save-result",
+              instanceId,
+              ok: false,
+              saveId: recoveryId,
+              message: "编辑器返回的是较早版本；最新修改仍未保存，请重试。",
+            });
+            return;
+          }
+          const generation = generationRef.current;
           cachedRef.current = {
-            generation: generationRef.current,
+            generation,
             payload,
             recoveryId,
           };
           setSnapshot(payload);
-          void persistUmoPayload({
-            item: persistedItemRef.current,
-            siteId,
-            payload,
-          }).then((saved) => {
+          if (revisionRef.current === undefined) revisionRef.current = snapshotRevision;
+          draftChannelRef.current!.accept(generation, payload);
+          const startSave = flushRef.current;
+          if (!startSave) {
+            sendToEditor({
+              protocol: EDITOR_PROTOCOL,
+              type: "save-result",
+              instanceId,
+              ok: false,
+              saveId: recoveryId,
+              message: "保存尚未就绪，请重试。",
+            });
+            return;
+          }
+          void startSave({ generation, revision: snapshotRevision, payload, recoveryId }).then((saved) => {
             sendToEditor({
               protocol: EDITOR_PROTOCOL,
               type: "save-result",
@@ -535,26 +651,48 @@ export function RichDocHostedRoute({
                 ? { revision: saved.item.revisionId }
                 : {}),
             });
-            if (!saved.ok || !mountedRef.current) return;
-            persistedItemRef.current = saved.item;
-            dirtyRef.current = false;
-            setDirty(false);
-            reportProSaved(handoffItemKey(item), saved.item);
           });
           return;
         }
         const requested = capturesRef.current.get(recoveryId);
-        if (!requested || requested.generation !== generationRef.current ||
-            (requested.revision !== undefined && message.snapshot?.revision !== requested.revision)) return;
+        if (!requested) return;
+        if (
+          requested.purpose !== "save" &&
+          requested.generation !== generationRef.current
+        ) {
+          capturesRef.current.delete(recoveryId);
+          return;
+        }
+        if (
+          requested.revision !== undefined &&
+          message.snapshot?.revision !== requested.revision
+        ) {
+          if (requested.purpose === "save" && saveGateRef.current?.saveId === recoveryId) {
+            capturesRef.current.delete(recoveryId);
+            saveGateRef.current.rejectSaveResult("编辑器返回了不匹配的保存版本。");
+            saveGateRef.current = null;
+          }
+          return;
+        }
+        if (payload == null) {
+          if (requested.purpose === "save" && saveGateRef.current?.saveId === recoveryId) {
+            capturesRef.current.delete(recoveryId);
+            saveGateRef.current.rejectSaveResult("编辑器没有返回可保存的文档快照。");
+            saveGateRef.current = null;
+          }
+          return;
+        }
         capturesRef.current.delete(recoveryId);
-        if (payload == null) return;
-        cachedRef.current = { generation: requested.generation, payload, recoveryId };
-        draftChannelRef.current!.accept(requested.generation, payload);
-        setSnapshot(payload);
+        if (requested.generation === generationRef.current) {
+          cachedRef.current = { generation: requested.generation, payload, recoveryId };
+          draftChannelRef.current!.accept(requested.generation, payload);
+          setSnapshot(payload);
+        }
         const gate = saveGateRef.current;
-        if (gate && recoveryId === gate.saveId) {
+        if (requested.purpose === "save" && gate && recoveryId === gate.saveId) {
           gate.acceptSnapshot(payload);
           gate.acceptSaveResult();
+          saveGateRef.current = null;
         }
         return;
       }
@@ -667,69 +805,146 @@ export function RichDocHostedRoute({
     [hostedCtx.platform, instanceId, sendToEditor],
   );
 
-  const flush = useCallback(() => {
+  const flush = useCallback((initialCapture?: {
+    generation: number;
+    revision: string | number | undefined;
+    payload: unknown;
+    recoveryId: string;
+  }) => {
+    if (initialCapture) {
+      if (
+        initialCapture.generation !== generationRef.current ||
+        (initialCapture.revision !== undefined &&
+          initialCapture.revision !== revisionRef.current)
+      ) {
+        return Promise.resolve({
+          ok: false as const,
+          error: "编辑器返回的是较早版本；最新修改仍未保存，请重试。",
+        });
+      }
+      cachedRef.current = {
+        generation: initialCapture.generation,
+        payload: initialCapture.payload,
+        recoveryId: initialCapture.recoveryId,
+      };
+    }
     if (flightRef.current) return flightRef.current;
+    const scopeKey = activeItemKeyRef.current;
     const run = async () => {
-      if (savedGenerationRef.current === generationRef.current && !dirtyRef.current) {
-        return { ok: true as const, item: persistedItemRef.current };
+      const maxPasses = 5;
+      let seed = initialCapture;
+      for (let pass = 0; pass < maxPasses; pass += 1) {
+        if (!mountedRef.current || activeItemKeyRef.current !== scopeKey) {
+          return { ok: false as const, error: "文档已关闭或切换，保存已取消。" };
+        }
+        if (!source) {
+          return { ok: false as const, error: "文件还没成功载入，不能保存。" };
+        }
+        const generation = generationRef.current;
+        const revision = revisionRef.current;
+        if (
+          !seed &&
+          savedGenerationRef.current === generation &&
+          !dirtyRef.current
+        ) {
+          return { ok: true as const, item: persistedItemRef.current };
+        }
+        let payload: unknown = null;
+        let saveId = "";
+        if (seed && seed.generation === generation) {
+          payload = seed.payload;
+          saveId = seed.recoveryId;
+          seed = undefined;
+        } else if (cachedRef.current?.generation === generation) {
+          payload = cachedRef.current.payload;
+          saveId = cachedRef.current.recoveryId;
+        } else {
+          const gate = openHostedSaveGate();
+          saveId = gate.saveId;
+          saveGateRef.current = gate;
+          capturesRef.current.set(gate.saveId, {
+            generation,
+            revision,
+            purpose: "save",
+          });
+          const sent = sendToEditor({ type: "recovery-capture", recoveryId: gate.saveId });
+          if (!sent) {
+            capturesRef.current.delete(gate.saveId);
+            if (saveGateRef.current === gate) saveGateRef.current = null;
+            gate.rejectSaveResult("编辑器还没握手成功，不能保存。");
+            return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
+          }
+          const waited = await gate.wait();
+          capturesRef.current.delete(gate.saveId);
+          if (saveGateRef.current === gate) saveGateRef.current = null;
+          if (!mountedRef.current || activeItemKeyRef.current !== scopeKey) {
+            return { ok: false as const, error: "文档已关闭或切换，保存已取消。" };
+          }
+          if (!waited.ok) return { ok: false as const, error: waited.error };
+          if (generationRef.current !== generation) continue;
+          const latest = cachedRef.current;
+          if (latest?.generation === generation) {
+            payload = latest.payload;
+            saveId = latest.recoveryId;
+          } else {
+            payload = waited.snapshot;
+          }
+        }
+        if (generationRef.current !== generation) continue;
+        if (payload == null) {
+          return { ok: false as const, error: "编辑器没有返回可保存的文档快照。" };
+        }
+        let saved: Awaited<ReturnType<typeof persistUmoPayload>>;
+        try {
+          saved = await persistUmoPayload({
+            item: persistedItemRef.current,
+            siteId,
+            payload,
+          });
+        } catch (caught) {
+          saved = {
+            ok: false,
+            error: caught instanceof Error ? caught.message : "文档保存失败。",
+          };
+        }
+        if (!saved.ok) return saved;
+        persistedItemRef.current = saved.item;
+        if (!mountedRef.current || activeItemKeyRef.current !== scopeKey) {
+          return { ok: false as const, error: "文档已关闭或切换；保存收据未应用到当前文档。" };
+        }
+        if (generationRef.current !== generation) continue;
+        savedGenerationRef.current = generation;
+        dirtyRef.current = false;
+        setDirty(false);
+        if (!isUmoNativeSaveId(saveId)) {
+          sendToEditor({
+            protocol: EDITOR_PROTOCOL,
+            type: "save-result",
+            instanceId,
+            ok: true,
+            message: "已保存",
+            saveId,
+            ...(saved.item.url && /^https:/i.test(saved.item.url)
+              ? { url: saved.item.url }
+              : {}),
+            ...(saved.item.artifactId ? { artifactId: saved.item.artifactId } : {}),
+            ...(saved.item.revisionId ? { revisionId: saved.item.revisionId } : {}),
+          });
+        }
+        reportProSaved(handoffItemKey(item), saved.item);
+        return { ok: true as const, item: saved.item };
       }
-      if (!source) {
-        return { ok: false as const, error: "文件还没成功载入，不能保存。" };
-      }
-      const generation = generationRef.current;
-      let payload: unknown;
-      let saveId = "";
-      if (cachedRef.current?.generation === generation) {
-        payload = cachedRef.current.payload;
-        saveId = cachedRef.current.recoveryId;
-      } else {
-        if (!mountedRef.current) return { ok: false as const, error: "最新修改还没取得快照，不能确认已保存。" };
-        const gate = openHostedSaveGate();
-        saveId = gate.saveId;
-        saveGateRef.current = gate;
-        capturesRef.current.set(gate.saveId, { generation, revision: revisionRef.current });
-        const sent = sendToEditor({ type: "recovery-capture", recoveryId: gate.saveId });
-        if (!sent) return { ok: false as const, error: "编辑器还没握手成功，不能保存。" };
-        const waited = await gate.wait();
-        if (!waited.ok) return { ok: false as const, error: waited.error };
-        payload = waited.snapshot;
-      }
-      const saved = await persistUmoPayload({
-        item: persistedItemRef.current,
-        siteId,
-        payload,
-      });
-      if (!saved.ok) return saved;
-      persistedItemRef.current = saved.item;
-      if (generationRef.current !== generation) return { ok: false as const, error: "还有更新的修改尚未保存。" };
-      savedGenerationRef.current = generation;
-      dirtyRef.current = false;
-      if (mountedRef.current) setDirty(false);
-      sendToEditor({
-        protocol: EDITOR_PROTOCOL,
-        type: "save-result",
-        instanceId,
-        ok: saved.ok,
-        message: "已保存",
-        saveId,
-        ...(saved.ok && saved.item.url && /^https:/i.test(saved.item.url)
-          ? { url: saved.item.url }
-          : {}),
-        ...(saved.ok && saved.item.artifactId
-          ? { artifactId: saved.item.artifactId }
-          : {}),
-        ...(saved.ok && saved.item.revisionId
-          ? { revisionId: saved.item.revisionId }
-          : {}),
-      });
-      reportProSaved(handoffItemKey(item), saved.item);
-      return { ok: true as const, item: saved.item };
+      return {
+        ok: false as const,
+        error: "文档一直有新的修改；已保留未保存状态，请稍后重试。",
+      };
     };
     const flight = run();
     flightRef.current = flight;
     void flight.finally(() => { if (flightRef.current === flight) flightRef.current = null; }).catch(() => {});
     return flight;
   }, [instanceId, item, sendToEditor, siteId, source]);
+  flushRef.current = flush;
 
   useEffect(() => bindProFaceHandoff(handoffItemKey(item), {
     hasUnsavedChanges: () => dirtyRef.current,
@@ -762,7 +977,11 @@ export function RichDocHostedRoute({
     if (cached?.generation === revision) return { revision, payload: cached.payload };
     return draftChannelRef.current!.capture(revision, () => {
       const recoveryId = `rd-draft-${instanceId}-${generationRef.current}-${Date.now().toString(36)}`;
-      capturesRef.current.set(recoveryId, { generation: generationRef.current, revision: revisionRef.current });
+      capturesRef.current.set(recoveryId, {
+        generation: generationRef.current,
+        revision: revisionRef.current,
+        purpose: "draft",
+      });
       return sendToEditor({ type: "recovery-capture", recoveryId });
     });
   }, [instanceId, ready, sendToEditor, source]);
