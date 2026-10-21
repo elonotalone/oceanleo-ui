@@ -1,0 +1,11 @@
+# Library stability owner
+
+User requests full repair: Library sometimes shows only one of many files plus a spurious error; switching browser tabs drops preview/editor to Loading My Library; uploads report AI gateway/network errors. Add sorting by favorite, time, size; placeholder exactly `search`; optimize preview-to-editor delay. Screenshots in /root/oceanleo-inbox/20261021T091323Z-image.png and 091918Z-image.png.
+
+Model explicitly authorized by operator: gpt-6-luna, reasoning max. Run agent-bootstrap first. Read /opt/cursor-workspaces/oceandino/AGENTS.md, applicable oceanleo pack. No browser/Playwright, no production, no installs. Use apply_patch. Main only. Other owners edit toolbars and editor layout/save; do not touch their files.
+
+Own: MyLibrary.tsx, library-* modules, library-data.ts, collection sorting/types as necessary, artifact-client.ts, gateway request transport/auth including src/lib/auth/* and auth consumers if necessary, backend library route only if evidence requires. You own library tests. Avoid editing InlineAdvancedWorkbenchShell.tsx, SelectionToolbar*, FloatingContextToolbar*, edit-bar*, plugin-chrome/*, image-editor/*, use-advanced-autosave.ts. Coordinate interface needs with parent.
+
+Investigate from code-map chain typed-artifact-editing and stable-artifact-context. Parent saw dev logs `AbortError: Lock broken by another request with the 'steal' option`, MyLibrary list request failed reading auth, followed by Failed to fetch. Determine actual causes, preserve loaded list and active editor during token refresh/transient errors; distinguish full list cache from individual artifact. Do not simply hide all real failures or fake saving success. Ensure complete listing/pagination, bounded retry, upload recoverability. Preserve revision/security isolation.
+
+Verify with meaningful focused state/request tests including many items, transient auth/focus changes, preserved active item and cache, sort directions. Heavy work only through agent-io-guard; coordinate full typecheck with parent (parent owns full typecheck). No git push, no commit product changes; parent integrates. Return changed files, causes, tests and remaining concerns. Journal progress in docs/tasks/2026-10-21-library-stability-result.md with apply_patch.
