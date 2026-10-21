@@ -22,3 +22,6 @@ Own a minimal right-pane error boundary module integrated in AgentChat plus runt
 
 ## Split owner slot contract follow-up
 Parent broader regression found GLOBAL_ROW_SLOTS still aliases close to maximize, rejecting simultaneous close and maximize required by operator. Split owner additionally owns canonical plugin-chrome slot definition and exact allowlist/save-menu contract tests. Add close alongside maximize without weakening allowlist; test both controls accepted. No other files beyond original split boundary.
+
+## Save owner response validation follow-up
+Parent found authed() catches res.json() failure and returns ok:true,data:null for HTTP200. Session unwrapSession then forwards this success-without-session; WorkspaceSession falls through with missing failure status, so classification remains permanent. Own src/lib/app-session.ts unwrapSession validation and focused new response test only. Fail missing/malformed success receipt as retryable transport/protocol failure (e.g.502), never acknowledge a snapshot without valid session id/revision. Keep general authed() untouched to avoid broad unrelated behavior changes. This is directly part of original save refusal chain.
