@@ -823,8 +823,15 @@ export function RichDocHostedRoute({
     payload: unknown;
     recoveryId: string;
   }) => {
+    if (activeItemKeyRef.current !== itemKey) {
+      return Promise.resolve({
+        ok: false as const,
+        error: "文档已关闭或切换，保存已取消。",
+      });
+    }
     if (initialCapture) {
       if (
+        initialCapture.payload == null ||
         initialCapture.generation !== generationRef.current ||
         (initialCapture.revision !== undefined &&
           initialCapture.revision !== revisionRef.current)
@@ -841,19 +848,15 @@ export function RichDocHostedRoute({
       };
     }
     if (flightRef.current) return flightRef.current;
-    const scopeKey = activeItemKeyRef.current;
+    const scopeKey = itemKey;
     const run = async () => {
       const maxPasses = 5;
       let seed = initialCapture;
       for (let pass = 0; pass < maxPasses; pass += 1) {
-        if (!mountedRef.current || activeItemKeyRef.current !== scopeKey) {
+        if (activeItemKeyRef.current !== scopeKey) {
           return { ok: false as const, error: "文档已关闭或切换，保存已取消。" };
         }
-        if (!source) {
-          return { ok: false as const, error: "文件还没成功载入，不能保存。" };
-        }
         const generation = generationRef.current;
-        const revision = revisionRef.current;
         if (
           !seed &&
           savedGenerationRef.current === generation &&
@@ -861,16 +864,35 @@ export function RichDocHostedRoute({
         ) {
           return { ok: true as const, item: persistedItemRef.current };
         }
+        if (!source) {
+          return { ok: false as const, error: "文件还没成功载入，不能保存。" };
+        }
+        const revision = revisionRef.current;
+        const cached = cachedRef.current;
+        const hasCurrentSeed = seed?.generation === generation;
+        const hasCurrentCache = cached?.generation === generation;
+        if (!mountedRef.current && !hasCurrentSeed && !hasCurrentCache) {
+          return {
+            ok: false as const,
+            error: "最新修改还没取得当前快照，不能确认已保存。",
+          };
+        }
         let payload: unknown = null;
         let saveId = "";
         if (seed && seed.generation === generation) {
           payload = seed.payload;
           saveId = seed.recoveryId;
           seed = undefined;
-        } else if (cachedRef.current?.generation === generation) {
-          payload = cachedRef.current.payload;
-          saveId = cachedRef.current.recoveryId;
+        } else if (cached?.generation === generation) {
+          payload = cached.payload;
+          saveId = cached.recoveryId;
         } else {
+          if (!mountedRef.current) {
+            return {
+              ok: false as const,
+              error: "最新修改还没取得当前快照，不能确认已保存。",
+            };
+          }
           const gate = openHostedSaveGate({
             saveId: `save-${instanceId}-${captureScopeRef.current}-${generation}-${++captureSequenceRef.current}`,
           });
@@ -891,7 +913,7 @@ export function RichDocHostedRoute({
           const waited = await gate.wait();
           capturesRef.current.delete(gate.saveId);
           if (saveGateRef.current === gate) saveGateRef.current = null;
-          if (!mountedRef.current || activeItemKeyRef.current !== scopeKey) {
+          if (activeItemKeyRef.current !== scopeKey) {
             return { ok: false as const, error: "文档已关闭或切换，保存已取消。" };
           }
           if (!waited.ok) return { ok: false as const, error: waited.error };
@@ -923,14 +945,14 @@ export function RichDocHostedRoute({
         }
         if (!saved.ok) return saved;
         persistedItemRef.current = saved.item;
-        if (!mountedRef.current || activeItemKeyRef.current !== scopeKey) {
-          return { ok: false as const, error: "文档已关闭或切换；保存收据未应用到当前文档。" };
+        if (activeItemKeyRef.current !== scopeKey) {
+          return { ok: false as const, error: "文档已切换；保存收据未应用到当前文档。" };
         }
         if (generationRef.current !== generation) continue;
         savedGenerationRef.current = generation;
         dirtyRef.current = false;
-        setDirty(false);
-        if (!isUmoNativeSaveId(saveId)) {
+        if (mountedRef.current) setDirty(false);
+        if (mountedRef.current && !isUmoNativeSaveId(saveId)) {
           sendToEditor({
             protocol: EDITOR_PROTOCOL,
             type: "save-result",
@@ -957,7 +979,7 @@ export function RichDocHostedRoute({
     flightRef.current = flight;
     void flight.finally(() => { if (flightRef.current === flight) flightRef.current = null; }).catch(() => {});
     return flight;
-  }, [instanceId, item, sendToEditor, siteId, source]);
+  }, [instanceId, item, itemKey, sendToEditor, siteId, source]);
   flushRef.current = flush;
 
   useEffect(() => bindProFaceHandoff(handoffItemKey(item), {
