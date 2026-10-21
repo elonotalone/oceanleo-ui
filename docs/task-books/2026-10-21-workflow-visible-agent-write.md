@@ -1,0 +1,13 @@
+# W2 follow-up — the visible workflow must receive Agent edits
+
+Operator's binding requirement remains one Task UI and an Agent that reads and changes the SAME visible right file. Model explicitly authorized: gpt-6-luna, max reasoning, no fast. Read/bootstrap live kernel/task packs. Main only, no commit/push/release. No browser. Parent owns integration and final tests.
+
+Ownership: workflow-carrier/VideoCanvasStage.tsx and workflow-carrier native command helpers/related focused tests. Do not edit parent-owned save gates, RichDoc/Deck/PDF routes, session/bridge/selection/review shared code, V1 acceptance, generated CSS or manifests. Existing source edits in VideoCanvasStage are your previous W2 work, preserve them. Coordinate before any other file edit. Parent is fixing local workspace save ownership; V1 owns History/native-richdoc acceptance.
+
+Read-only audit found context reads live captured `local` on embedded default web canvas, but commands mutate old `graph` and commitGraph only changes host state; visible iframe receives no change. `workflow.add-node` declares no params, chips cannot receive meaningful proposed structure. Do NOT report a host state update as a visible canvas edit.
+
+Investigate the existing authenticated EmbedEditorPane recovery/restore/selection protocol and native workflow endpoint. Use an already validated protocol/ack path to deliver a native graph change, based on the exact CURRENT captured graph and expected revision. Do not loosen origin/source/sandbox/credential checks; run oceanleo-security-gate before touching any message/sink code. A new trust surface requires parent decision; do not invent an unvalidated postMessage shortcut. Native command params must be declared/bounded/validated; no silent ignored user params or fixed dummy node. Existing shared review acceptance and active-file identity checks must remain in force.
+
+Required: context and edit target refer to same live state; accepted command changes visible editor via native protocol; pending restore/capture/read-only/lock refuses edits; asynchronous acknowledgement cannot land on switched file or changed instance; user mutation/save/history capture follows native committed document, not stale host source. Local ReactFlow path still works. Add focused tests proving actual bridge delivery+ack/failure/stale guards, explicitly marking engine/transport leaves; report untestable gaps. If native protocol cannot support writes safely, report exact missing capability, not fake success. No weakening assertions or changing preferred editor solely to bypass a broken path.
+
+Stop for parent review after implementation + focused test results; parent independently runs them. No browser/pixel claims.
