@@ -1,0 +1,7 @@
+# Library Task layout owner
+
+User requires every Library split editing/agent entry to use exactly the normal Task UI: Agent left, editor right, draggable middle divider, rounded islands, close/maximize controls. Existing standalone defaults hide Agent and users see Assets list instead. Fix real composition, not cosmetic imitation.
+
+Run bootstrap and read kernel/workstation/oceanleo/parallel-rollout packs. Work on main. Model operator override: gpt-6-luna max, no fast. No browser/Playwright unless user approves separately. No pushes/deploys/version bumps. Preserve portal dirty manifests.
+
+Ownership: oceanleo-ui src/shell/material-library-standalone.tsx, MyLibrary.tsx, MaterialLibrary.tsx, SplitWorkspace.tsx, AdvancedContentWorkbench.tsx, plugin-chrome files, and related layout tests. Do not edit AgentChat.tsx, WorkspaceSession.tsx or portal history files; coordinate interface requests with parent. Investigate all Library split entry paths, remove independent competing split compositions, reuse Task shell and ensure default visible Agent, shared drag/rounded frames and controls. Preserve task context and avoid nested chat/sidebar duplicates. Verify meaningful runtime rendering/interaction with existing non-browser harness plus focused tests. Report files, mechanism, test commands/results and remaining gaps. Do not commit implementation; parent integrates. Parent owns generated CSS/full typecheck.
