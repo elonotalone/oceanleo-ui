@@ -132,6 +132,17 @@ class RevisionFlushLedger {
 
 interface ControllerSourceLifetime { key: string | undefined; current: boolean }
 
+function sourceItemIdentity(item: LibraryItem): string {
+  const meta = item.meta || {};
+  return JSON.stringify([item.source, item.key, item.id, item.url,
+    item.revisionId, meta.revision_id, meta.version_id]);
+}
+
+function sourceItemRoot(item: LibraryItem | undefined): string {
+  return String(item?.artifactId || item?.meta?.root_asset_id ||
+    item?.meta?.parent_asset_id || item?.id || item?.key || "");
+}
+
 /** Background callbacks keep the refs of their source, not the next render. */
 function useSourceRef<T>(lifetime: ControllerSourceLifetime, initial: T) {
   const slot = useRef({ lifetime, ref: { current: initial } });
@@ -167,17 +178,8 @@ export function useAdvancedAutoSave({
   // take that controller back: its revision number and flush closure belong to
   // the previous source document, and observing the new lifetime's revision 0
   // would make the old drain publish the same document a second time.
-  const itemMeta = (item?.meta || {}) as Record<string, unknown>;
   const controllerKey = key && item
-    ? `${key}:${JSON.stringify([
-        item.source,
-        item.key,
-        item.id,
-        item.url,
-        item.revisionId,
-        itemMeta.revision_id,
-        itemMeta.version_id,
-      ])}`
+    ? `${key}:${sourceItemIdentity(item)}`
     : key;
   const sourceLifetimeRef = useRef<ControllerSourceLifetime>({ key: controllerKey, current: true });
   if (sourceLifetimeRef.current.key !== controllerKey) {
@@ -258,16 +260,15 @@ export function useAdvancedAutoSave({
   flushRef.current = flush;
   sessionRef.current = session;
   latestRevisionRef.current = revision;
-  const observationRef = useRef({ controllerKey, input: {
-    revision, dirty, restoredDraft: draftEnabled && sameRevision(restoredRevision, revision),
-    userEdited, userMutationGeneration: userMutationGen, recoveredLocalDraft,
-    itemKey: userEditKey || undefined,
-  } });
-  observationRef.current = { controllerKey, input: {
+  const observation = { controllerKey, persistenceKey: key,
+    itemIdentity: item ? sourceItemIdentity(item) : "", root: sourceItemRoot(item),
+    paused: restoration.paused, input: {
     revision, dirty, restoredDraft: draftEnabled && sameRevision(restoredRevision, revision),
     userEdited, userMutationGeneration: userMutationGen, recoveredLocalDraft,
     itemKey: userEditKey || undefined,
   } };
+  const observationRef = useRef(observation);
+  observationRef.current = observation;
   const activeControllerKeyRef = useRef(controllerKey);
   const wasDirtyRef = useSourceRef(sourceLifetime, dirty);
   const wasUserEditedRef = useSourceRef(sourceLifetime, userEdited);
@@ -477,8 +478,18 @@ export function useAdvancedAutoSave({
       if (!result.ok) return result;
       // A newer render can land while the previous receipt is completing but
       // before its passive effect. Do not let that receipt close over new work.
+      const latest = observationRef.current;
       if (!sourceLifetime.current || blockedRef.current || controllerRef.current !== controller ||
-          captured.controllerKey !== observationRef.current.controllerKey) {
+          captured.controllerKey !== latest.controllerKey) {
+        const saved = result.item;
+        // A flush may adopt its own receipt before resolving. That exact new
+        // pin is safe only when it is the same root/tier and already clean.
+        // A different file, different receipt or newer dirty edit still fails.
+        if (saved && (saved.revisionId || saved.meta?.revision_id || saved.versionId) &&
+            !latest.paused && !latest.input.dirty && captured.root &&
+            captured.root === sourceItemRoot(saved) &&
+            captured.persistenceKey === latest.persistenceKey &&
+            latest.itemIdentity === sourceItemIdentity(saved)) return result;
         return { ok: false, error: "编辑文档已切换，请重试保存" };
       }
       // Do not reassert a same-revision dirty prop after the controller just
