@@ -176,8 +176,9 @@ function createBed({ flushDelayMs = 0, failTimes = 0 } = {}) {
   return bed;
 }
 
-test("离开路径不再等待、不再弹确认框", () => {
+test("普通编辑器离开不等待、不弹确认框；mounted iframe 单独声明保存闸", () => {
   const shell = readFileSync(SHELL_SRC, "utf8");
+  const leave = readFileSync(new URL("../src/shell/use-inline-workbench-leave.ts", import.meta.url), "utf8");
   const parts = readFileSync(PARTS_SRC, "utf8");
   assert.doesNotMatch(
     shell,
@@ -185,7 +186,9 @@ test("离开路径不再等待、不再弹确认框", () => {
     "壳里不得再走等待冲刷或确认离开",
   );
   assert.doesNotMatch(parts, /export function useLeaveGate/);
-  assert.match(shell, /handOffToBackground/);
+  assert.match(shell, /useInlineWorkbenchLeave\(/);
+  assert.match(leave, /handOffToBackground/);
+  assert.match(leave, /requiresMountedFlush \? \{ flushMounted: autoSave\.flushLatest \} : \{\}/);
   assert.doesNotMatch(
     shell,
     /showClose[\s\S]*onClose=\{requestClose\}|onClose=\{requestClose\}/,

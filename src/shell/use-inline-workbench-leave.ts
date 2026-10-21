@@ -30,7 +30,7 @@ export function useInlineWorkbenchLeave({
     if (requiresMountedFlush) setLeavingMountedEditor(true);
     const completion = leaveAdvancedWorkbench({
       autoSaveEnabled,
-      handOff: () => autoSave.handOffToBackground(),
+      handOff: () => autoSave.handOffToBackground?.(),
       closeDetail,
       onClose: finish,
       ...(requiresMountedFlush ? { flushMounted: autoSave.flushLatest } : {}),

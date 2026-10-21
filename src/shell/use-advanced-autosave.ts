@@ -477,13 +477,17 @@ export function useAdvancedAutoSave({
       if (!result.ok) return result;
       // A newer render can land while the previous receipt is completing but
       // before its passive effect. Do not let that receipt close over new work.
-      if (observeLatestController() !== controller || captured.controllerKey !== observationRef.current.controllerKey) {
+      if (!sourceLifetime.current || blockedRef.current || controllerRef.current !== controller ||
+          captured.controllerKey !== observationRef.current.controllerKey) {
         return { ok: false, error: "编辑文档已切换，请重试保存" };
       }
+      // Do not reassert a same-revision dirty prop after the controller just
+      // acknowledged it. Editors may clear that prop one render later; doing
+      // so would leave false unconfirmed work and prevent draft-tier admission.
       if (sameRevision(captured.input.revision, observationRef.current.input.revision)) return result;
       retrying = false;
     }
-  }, [observeLatestController]);
+  }, [observeLatestController, sourceLifetime]);
 
   const flushLatest = useCallback(
     async (): Promise<AdvancedFlushResult> =>

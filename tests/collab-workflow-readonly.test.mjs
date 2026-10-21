@@ -47,10 +47,12 @@ test("VideoCanvasStage 把流程图指令面交给 guardPluginSurface(collabRead
     src,
     /guardPluginSurface\(\s*\{[\s\S]*editorId:\s*WORKFLOW_EDITOR_ID[\s\S]*\},\s*collabReadOnly,/,
   );
-  assert.match(
-    src,
-    /\[chipsManifest\.chips,\s*editRevision,\s*graph,\s*collabReadOnly\]/,
-  );
+  const dependencies = src.match(/collabReadOnly,\s*\),\s*\[([^\]]+)\],\s*\),\s*\);/);
+  assert.ok(dependencies, "the guarded surface must retain its own memo dependency list");
+  const names = dependencies[1].split(",").map((name) => name.trim()).filter(Boolean);
+  for (const name of ["chipsManifest.chips", "editRevision", "graph", "collabReadOnly", "commitGraph", "executeNativeWorkflowAddNode"]) {
+    assert.ok(names.includes(name), `guarded surface must refresh when ${name} changes`);
+  }
 });
 
 test("只读：mutates 指令被拒且不调用原 run；非只读原样转发", async () => {
