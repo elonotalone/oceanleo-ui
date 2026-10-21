@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { acceptMediaStreamIfCurrent, applyForCurrentSession, dispatchForCurrentCallSocket, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, pcmSamplesPerFrame, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../src/lib/realtime-audio.ts";
 import { appendFinalUserTranscript, upsertFinalAssistantTranscript } from "../src/lib/realtime-transcript.ts";
 import { callStatusLabel, formatConnectedTime, tokenUsageRows } from "../src/lib/call-billing-display.ts";
@@ -126,6 +127,17 @@ test("meeting leave/end response normalizes the server bill field to the UI rece
   const bill = { meeting_id: "m1", participant_id: "p1", currency: "CNY", raw_usage: {}, gross: 0, discount: 0, net: 0, status: "closed" };
   assert.equal(normalizeMeetingBillResponse({ ok: true, bill }).billing, bill);
   assert.equal(normalizeMeetingBillResponse({ ok: true, billing: bill }).billing, bill);
+});
+
+test("ARTC receipt displays only verified provider pass-through cost and keeps unresolved cost pending", async () => {
+  const source = await readFile(new URL("../src/shell/messages/meeting/MeetingPanel.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /per_user_minute|资费/);
+  assert.match(source, /provider_cost_nano/);
+  assert.match(source, /provider_cost_status/);
+  assert.match(source, /providerCostVerified \? formatMoney\(providerCostNano/);
+  assert.match(source, /待服务商核验，不显示估算/);
+  assert.match(source, /receipt\.pending_reconciliation \? "待核对" : "待核验"/);
+  assert.match(source, /已预留余额：/);
 });
 
 test("final provider transcripts refresh canonical Leo history without duplicating streamed assistant text", () => {

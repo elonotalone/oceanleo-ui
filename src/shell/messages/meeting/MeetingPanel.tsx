@@ -26,6 +26,18 @@ interface MeetingPanelProps {
   onClose: () => void;
 }
 
+type ProviderCostReceipt = ImMeetingBill & {
+  customer_nano?: number | null;
+  provider_cost_nano?: number | null;
+  provider_cost_currency?: string | null;
+  provider_cost_status?: string | null;
+  pricing_snapshot?: unknown;
+};
+
+function isVerifiedProviderCost(status: string | null | undefined, amount: number | null | undefined): amount is number {
+  return (status === "settled" || status === "reported") && typeof amount === "number" && Number.isFinite(amount) && amount >= 0;
+}
+
 function messageForError(error: unknown, fallback: string): string {
   if (error instanceof ImApiError) {
     if (error.code === "artc_not_configured") return "本版 ARTC 尚未配置，会议暂时无法连接。";
@@ -542,26 +554,32 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
               {meeting?.status === "active" ? <span className="text-xs text-neutral-500">{participants.length} 位成员在线</span> : null}
             </div>
             <p className="mt-2 text-xs leading-5 text-neutral-600">{readyLabel}</p>
-            <p className="mt-2 text-xs leading-5 text-neutral-600">参会者各自使用自己的余额。静音或只听也可能计费；只有服务端核验的用量会结算，此处不按通话时长估算费用。远端已发布的音频和视频会自动订阅。</p>
+            <p className="mt-2 text-xs leading-5 text-neutral-600">费用按服务商核验的音频、视频和屏幕共享用量原价结算，不加客户费率或加价。发起人和受邀者各自使用自己的余额；静音或只听也可能计费。远端已发布的音频和视频会自动订阅。</p>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600">
               <span>本人余额：{wallet ? formatMoney(wallet.balance, wallet.currency, 2) : "暂不可读取"}</span>
               {wallet && wallet.balance <= 0 ? <span className="font-medium text-rose-700">余额不足，无法加入</span> : null}
             </div>
           </div>
-          {bill ? <div className="mt-3 rounded-lg border border-neutral-200 p-3 text-xs" aria-live="polite">
+          {bill ? (() => {
+            const receipt = bill as ProviderCostReceipt;
+            const providerCostNano = receipt.provider_cost_nano;
+            const providerCostVerified = isVerifiedProviderCost(receipt.provider_cost_status, providerCostNano);
+            const providerCostCurrency = receipt.provider_cost_currency || receipt.currency;
+            const snapshot = receipt.pricing_snapshot ?? receipt.tariff_snapshot;
+            return <div className="mt-3 rounded-lg border border-neutral-200 p-3 text-xs" aria-live="polite">
             <p className="font-medium text-neutral-800">计费状态：{callStatusLabel(bill.status, bill.pending_reconciliation)}</p>
             <dl className="mt-2 grid grid-cols-2 gap-y-1.5 text-neutral-600">
               <dt>本人已连接</dt><dd className="text-right">{formatConnectedTime(bill.connected_seconds)}</dd>
-              <dt>资费</dt><dd className="text-right">{bill.tariff_snapshot && typeof bill.tariff_snapshot === "object" && "per_user_minute" in bill.tariff_snapshot ? `${formatMoney(Number((bill.tariff_snapshot as { per_user_minute: unknown }).per_user_minute), bill.currency, 6)} / 人·分钟` : "暂不可读取"}</dd>
-              <dt>包含媒体</dt><dd className="text-right">{bill.tariff_snapshot && typeof bill.tariff_snapshot === "object" && Array.isArray((bill.tariff_snapshot as { modalities_included?: unknown }).modalities_included) ? (bill.tariff_snapshot as { modalities_included: string[] }).modalities_included.map((item) => item === "audio" ? "音频" : item === "video" ? "视频" : item === "screen" ? "屏幕共享" : item).join("、") : "暂不可读取"}</dd>
-              <dt>原价 / 优惠</dt><dd className="text-right">{formatMoney(bill.gross, bill.currency, 6)} / {formatMoney(bill.discount, bill.currency, 6)}</dd>
-              <dt>已结算费用</dt><dd className="text-right font-medium">{formatMoney((bill.settled_nano ?? bill.net_nano ?? Math.round(bill.net * 1e9)) / 1e9, bill.currency, 9)}</dd>
+              <dt>服务商核验用量</dt><dd className="text-right">{providerCostVerified ? "已核验" : receipt.pending_reconciliation ? "待核对" : "待核验"}</dd>
+              <dt>服务商成本（原价转付）</dt><dd className="text-right font-medium">{providerCostVerified ? formatMoney(providerCostNano / 1e9, providerCostCurrency, 9) : "待服务商核验，不显示估算"}</dd>
+              <dt>本人承担金额</dt><dd className="text-right">{providerCostVerified ? formatMoney(((receipt.customer_nano ?? bill.net_nano) ?? Math.round(bill.net * 1e9)) / 1e9, bill.currency, 9) : "待核验"}</dd>
               <dt>当前预留（可退/待核对）</dt><dd className="text-right">{formatMoney((bill.currently_held_nano ?? bill.pending_release_nano ?? 0) / 1e9, bill.currency, 9)}</dd>
               {bill.unresolved_held_nano ? <><dt>待核对预留</dt><dd className="text-right">{formatMoney(bill.unresolved_held_nano / 1e9, bill.currency, 9)}</dd></> : null}
               {bill.refunded_nano ? <><dt>已释放预留</dt><dd className="text-right">{formatMoney(bill.refunded_nano / 1e9, bill.currency, 9)}</dd></> : null}
             </dl>
-            <details className="mt-2"><summary className="min-h-8 cursor-pointer py-1">高级核对：原始事件与资费快照</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ raw_usage: bill.raw_usage, modality_events: bill.modality_events, tariff_snapshot: bill.tariff_snapshot }, null, 2)}</pre></details>
-          </div> : null}
+            <details className="mt-2"><summary className="min-h-8 cursor-pointer py-1">高级核对：服务商用量与成本依据</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ raw_usage: bill.raw_usage, modality_events: bill.modality_events, pricing_snapshot: snapshot }, null, 2)}</pre></details>
+          </div>;
+          })() : null}
           {reservation ? <p className="mt-2 text-xs text-neutral-600">已预留余额：{formatMoney((reservation.reserved_nano ?? 0) / 1e9, reservation.currency, 9)}。这是临时预授权，不代表最终费用；结束后按服务端确认用量结算，余额余量会释放。</p> : null}
 
           {loading ? <p className="py-8 text-center text-sm text-neutral-500">正在加载…</p> : null}

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import { canJoinMeeting, meetingAvailabilityMessage, sdkUserIdForParticipant } from "../src/shell/messages/meeting/meeting-policy.ts";
 
 const baseSnapshot = {
@@ -31,6 +32,13 @@ test("meeting readiness copy distinguishes missing provider config from unavaila
   assert.match(meetingAvailabilityMessage({ ...baseSnapshot, artc_configured: false }), /尚未开通或配置/);
   assert.equal(meetingAvailabilityMessage({ ...baseSnapshot, metering_status: "unavailable", metering_reason: "核验暂不可用" }), "核验暂不可用");
   assert.match(meetingAvailabilityMessage(baseSnapshot), /静音或只听也可能计费/);
+});
+
+test("meeting pre-join billing copy explains provider-cost pass-through for every participant", async () => {
+  const source = await readFile(new URL("../src/shell/messages/meeting/MeetingPanel.tsx", import.meta.url), "utf8");
+  assert.match(source, /服务商核验的音频、视频和屏幕共享用量原价结算，不加客户费率或加价/);
+  assert.match(source, /发起人和受邀者各自使用自己的余额；静音或只听也可能计费/);
+  assert.doesNotMatch(source, /per_user_minute|资费/);
 });
 
 test("server participant UUID maps to the ARTC string identity without separators", () => {
