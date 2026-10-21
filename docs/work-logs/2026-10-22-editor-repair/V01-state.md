@@ -61,3 +61,9 @@ Updated: 2026-10-22
 - Accepted commits at UI `77a5d91f`: RichDoc no-op update fix `35c41e6d`; strict W01 fixture `3ef9f69a`. Source skips update callbacks only when neither the main transaction nor appended transactions changed the document; permission-only `setEditable` suppresses its update event.
 - Independent red→green: current and pre-`895ae82c` autosave-hook variants both failed untouched-open zero-write, with revision r1→r2 and uploads; instrumentation showed generation 1 came from Tiptap `Editor.setEditable` and `transaction.docChanged=false`. The candidate passed the selected strict pattern 2/2, and the committed full canonical W01 acceptance passed 8/8 at `77a5d91f`, including the 650 ms no-write open followed by an intentional accepted save.
 - Exact reproduction and commands are in the latest V01-journal entries. This acceptance is runtime component/mock persistence evidence, not a browser/API-auth claim.
+
+## Final status (supersedes the earlier pending W04 items above)
+
+- W01–W06 and the private-video staging/typed-revision chain have received the commit-pinned review and acceptance recorded in `V01-verdict.md`.
+- Parent's final focused set is 196/196 across 34 files with zero skips; shared UI, Video, and Design typechecks exit 0. The broad Node-only sweep remains 7,238/7,380 pass, 141 fail, 1 skip, and the security gate remains 23 pass, 2 fail, 1 skip. These residual gates are recorded without attributing all failures to baseline.
+- No further V01 product/test work is authorized or required. Browser/API-auth and production-release acceptance were not performed.
