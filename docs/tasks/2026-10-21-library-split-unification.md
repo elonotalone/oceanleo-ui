@@ -19,3 +19,6 @@ After save delivery, own independent crash diagnostic with real ResultCanvas/MyL
 
 ## Conversation owner containment follow-up
 Own a minimal right-pane error boundary module integrated in AgentChat plus runtime regression. Existing advanced editor boundaries do not cover ResultCanvas/Library hooks before the editor mounts. A right-pane render failure must retain left conversation/composer and permit local right-pane retry, without resetting task or page. This bounds the observed full-page failure independently of the still-unproven historical render-loop origin. Do not claim containment alone proves that origin fixed.
+
+## Split owner slot contract follow-up
+Parent broader regression found GLOBAL_ROW_SLOTS still aliases close to maximize, rejecting simultaneous close and maximize required by operator. Split owner additionally owns canonical plugin-chrome slot definition and exact allowlist/save-menu contract tests. Add close alongside maximize without weakening allowlist; test both controls accepted. No other files beyond original split boundary.
