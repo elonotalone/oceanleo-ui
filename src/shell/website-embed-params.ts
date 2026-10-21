@@ -3,6 +3,7 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "./library-data";
+import type { VideoCanvasDependencyGrantOpenMetadata } from "./workbench-embed-types";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -249,7 +250,70 @@ function verifiedVideoProjectSource(item: LibraryItem): {
   return { url, digest };
 }
 
-export function buildOpenAssetPayload(item: LibraryItem): {
+function freshVideoCanvasGrants(
+  item: LibraryItem,
+  identity: StableArtifactIdentity | null,
+  supplied?: VideoCanvasDependencyGrantOpenMetadata,
+): VideoCanvasDependencyGrantOpenMetadata["video_canvas_dependency_grants"] | null {
+  const canonicalId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (
+    !supplied ||
+    !identity ||
+    !canonicalId.test(identity.artifactId) ||
+    !canonicalId.test(identity.revisionId) ||
+    !isDurableLibraryItem(item) ||
+    !isVideoCanvasProject(item)
+  ) {
+    return null;
+  }
+  const grants = supplied.video_canvas_dependency_grants;
+  if (!Array.isArray(grants) || grants.length > 4_999) return null;
+  const seenAssetIds = new Set<string>();
+  const seenPaths = new Set<string>();
+  const valid = grants.every((grant) => {
+    let url: URL;
+    let gateway: URL;
+    try {
+      url = new URL(grant.accessUrl);
+      gateway = new URL(grant.gatewayOrigin);
+    } catch {
+      return false;
+    }
+    const validGrant = (
+      grant.artifactId === identity.artifactId &&
+      grant.revisionId === identity.revisionId &&
+      typeof grant.assetId === "string" && grant.assetId.length > 0 && grant.assetId.length <= 256 &&
+      typeof grant.path === "string" && grant.path.length <= 1_024 &&
+      grant.path.startsWith("assets/") && !/[?#%\\\0]/.test(grant.path) &&
+      grant.path.split("/").every((part) => part && part !== "." && part !== "..") &&
+      /^[a-f0-9]{64}$/i.test(grant.sha256) &&
+      /^(?:image|video|audio)\/[a-z0-9.+-]+$/i.test(grant.mediaType) &&
+      Number.isSafeInteger(grant.byteSize) && grant.byteSize > 0 && grant.byteSize <= 20_000_000 &&
+      gateway.origin === grant.gatewayOrigin &&
+      url.protocol === "https:" && url.origin === gateway.origin &&
+      isFirstPartyMediaUrl(url.href) &&
+      /^\/v1\/artifact-renditions\/access\/[^/?#]+$/.test(url.pathname) &&
+      !url.search && !url.hash && !url.username && !url.password &&
+      Number.isFinite(Date.parse(grant.expiresAt)) && Date.parse(grant.expiresAt) > Date.now() + 1_000
+    );
+    if (
+      !validGrant ||
+      seenAssetIds.has(grant.assetId) ||
+      seenPaths.has(grant.path)
+    ) {
+      return false;
+    }
+    seenAssetIds.add(grant.assetId);
+    seenPaths.add(grant.path);
+    return true;
+  });
+  return valid ? grants : null;
+}
+
+export function buildOpenAssetPayload(
+  item: LibraryItem,
+  openAssetMeta?: VideoCanvasDependencyGrantOpenMetadata,
+): {
   id: string;
   kind: string;
   title: string;
@@ -267,6 +331,9 @@ export function buildOpenAssetPayload(item: LibraryItem): {
     80,
   );
   const meta: Record<string, unknown> = { ...item.meta };
+  // This reserved capability is never replayed from Library metadata. Only a
+  // freshly validated W04 host prop can cross the existing open-asset channel.
+  delete meta.video_canvas_dependency_grants;
   const websiteArtifactSignal =
     isWebsiteEmbedItem(item) && hasArtifactIdentitySignal(item);
   if (websiteArtifactSignal) {
@@ -316,6 +383,12 @@ export function buildOpenAssetPayload(item: LibraryItem): {
     // than a stale inline compatibility copy.
     delete meta.workflow_json;
     delete meta.project_json;
+  }
+  const freshGrants = verifiedSource
+    ? freshVideoCanvasGrants(item, identity, openAssetMeta)
+    : null;
+  if (freshGrants?.length) {
+    meta.video_canvas_dependency_grants = freshGrants;
   }
   if (verifiedSource) {
     meta.verified = true;

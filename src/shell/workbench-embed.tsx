@@ -48,6 +48,7 @@ export function EmbedEditorPane({
   siteId = "",
   accent = "#4f46e5",
   extraParams,
+  openAssetMeta,
   onVersionSaved,
   onCloseRequest,
   onDirtyChange,
@@ -221,9 +222,9 @@ export function EmbedEditorPane({
     if (isWebsiteBlankDraft(item)) return;
     sendToEditor({
       type: "open-asset",
-      asset: buildOpenAssetPayload(item),
+      asset: buildOpenAssetPayload(item, openAssetMeta),
     });
-  }, [item, sendToEditor]);
+  }, [item, openAssetMeta, sendToEditor]);
 
   useEmbedEditorMessages({
     iframeRef,

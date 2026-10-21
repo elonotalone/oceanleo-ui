@@ -17,7 +17,10 @@ import { usePluginCommandSurface } from "../plugin-command";
 import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { rememberEditorChips } from "../agent-review/inbox";
-import type { LibraryItem } from "../library-data";
+import {
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "../library-data";
 import type { VideoCanvasGraph } from "./video-canvas-schema";
 import { flushVideoCanvasGraph } from "./video-canvas-leave";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -48,10 +51,14 @@ import {
 import { EmbedEditorPane, embedEditorBase } from "../workbench-embed";
 import type { EmbedEditorPaneProps } from "../workbench-embed-types";
 import type { EditorHistorySnapshot } from "../editor-protocol";
+import type { AdvancedFlushResult } from "../advanced-session-context";
 import { selectionRequestId, type SelectionCommand } from "../selection-context";
 import { usePreferLocalRemoteEditor } from "../use-prefer-local-editors";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { prepareVideoCanvasDependencyGrants } from "./video-canvas-dependencies";
+import type { FreshVideoCanvasDependencyGrant } from "./video-canvas-dependencies";
+import { durableVideoSaveReceipt } from "./video-canvas-save-receipt";
 import {
   hydrateWorkflowGraph,
   planWorkflowGraphFromItem,
@@ -131,6 +138,29 @@ interface PendingWorkflowAgentWrite {
   resolve: (result: { ok: boolean; message: string; revision?: number }) => void;
 }
 
+interface PendingHostedVideoSave {
+  saveId: string;
+  artifactId: string;
+  expectedRevisionId: string;
+  editRevision: number;
+  timer: number;
+  resolve: (result: AdvancedFlushResult) => void;
+}
+
+type HostedVideoSaveCorrelation = Pick<
+  PendingHostedVideoSave,
+  "saveId" | "artifactId" | "expectedRevisionId" | "editRevision"
+>;
+
+function videoArtifactRoot(item: LibraryItem | null | undefined): string {
+  return String(
+    item?.artifactId ||
+      item?.artifact?.artifactId ||
+      item?.meta?.artifact_id ||
+      "",
+  ).trim();
+}
+
 export const WORKFLOW_STAGE_ATTR = "data-workflow-stage";
 export const WORKFLOW_MODE_ATTR = "data-workflow-mode";
 export const WORKFLOW_CANVAS_ATTR = "data-workflow-canvas-visible";
@@ -193,6 +223,35 @@ export function VideoCanvasStage({
   const sourceRootId = String(shownItem?.key || shownItem?.id || "");
   const sourceRevisionId = String(
     shownItem?.revisionId || shownItem?.meta?.revision_id || "",
+  );
+  const [dependencyGrants, setDependencyGrants] =
+    useState<FreshVideoCanvasDependencyGrant[] | null>(null);
+  const [dependencyError, setDependencyError] = useState("");
+  const [embeddedDirty, setEmbeddedDirty] = useState(false);
+  const [embeddedRevision, setEmbeddedRevision] = useState(0);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const embeddedRevisionRef = useRef(0);
+  const latestSavedRevisionRef = useRef(sourceRevisionId);
+  const lastSavedItemRef = useRef<LibraryItem | null>(shownItem);
+  const seenDurableHeadsRef = useRef(new Map<string, Set<string>>());
+  const rememberDurableHead = useCallback((rootId: string, revisionId: string) => {
+    if (!rootId || !revisionId) return;
+    let seen = seenDurableHeadsRef.current.get(rootId);
+    if (!seen) {
+      seen = new Set<string>();
+      seenDurableHeadsRef.current.set(rootId, seen);
+    }
+    seen.add(revisionId);
+  }, []);
+  const [saveRequestId, setSaveRequestId] = useState("");
+  const pendingHostedSavesRef = useRef(new Map<string, PendingHostedVideoSave>());
+  const timedOutHostedSavesRef = useRef(new Map<string, HostedVideoSaveCorrelation>());
+  const saveSequenceRef = useRef(0);
+  const openAssetMeta = useMemo(
+    () => dependencyGrants?.length
+      ? { video_canvas_dependency_grants: dependencyGrants }
+      : undefined,
+    [dependencyGrants],
   );
 
   // ---- 多人同改。真实画布在 video 站的 iframe 里，外壳只经 v1 协议已有的 recovery 消息与它交换
@@ -344,9 +403,46 @@ export function VideoCanvasStage({
   useEffect(() => {
     resetCanvasState();
     setMode(liveCanvasBase ? "detect" : "lock");
+    rememberDurableHead(videoArtifactRoot(shownItem), sourceRevisionId);
+    latestSavedRevisionRef.current = sourceRevisionId;
+    lastSavedItemRef.current = shownItem;
+    embeddedRevisionRef.current = 0;
+    setEmbeddedRevision(0);
+    setEmbeddedDirty(false);
+    setSaveRequestId("");
+    for (const pending of pendingHostedSavesRef.current.values()) {
+      window.clearTimeout(pending.timer);
+      pending.resolve({ ok: false, error: "工作流条目已切换；待确认保存已取消。" });
+    }
+    pendingHostedSavesRef.current.clear();
+    timedOutHostedSavesRef.current.clear();
     // 只在换了条目或版本时重来；liveCanvasBase 随条目走。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey]);
+  useEffect(() => {
+    if (!liveCanvasBase || !shownItem || !isDurableLibraryItem(shownItem)) {
+      setDependencyGrants([]);
+      setDependencyError("");
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    setDependencyGrants(null);
+    setDependencyError("");
+    void prepareVideoCanvasDependencyGrants(shownItem, controller.signal)
+      .then((grants) => {
+        if (active && !controller.signal.aborted) setDependencyGrants(grants);
+      })
+      .catch(() => {
+        if (active && !controller.signal.aborted) {
+          setDependencyError("当前视频版本的素材闭包无法安全打开；没有开放空白编辑面。");
+        }
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [liveCanvasBase, reloadNonce, shownItem]);
   useEffect(() => {
     if (mode !== "detect" || !liveCanvasBase) return undefined;
     // 画布一直没有任何动静：按旧画布处理。
@@ -369,6 +465,11 @@ export function VideoCanvasStage({
           message: "工作流编辑器已关闭；尚未确认的 Agent 原生写入已取消。",
         });
       }
+      for (const pendingSave of pendingHostedSavesRef.current.values()) {
+        window.clearTimeout(pendingSave.timer);
+        pendingSave.resolve({ ok: false, error: "视频编辑器已关闭；保存回执尚未确认。" });
+      }
+      pendingHostedSavesRef.current.clear();
     };
   }, []);
 
@@ -595,8 +696,8 @@ export function VideoCanvasStage({
   const [remoteHistoryCommand, setRemoteHistoryCommand] =
     useState<SelectionCommand | null>(null);
   const [editRevision, setEditRevision] = useState(0);
-  const [reloadNonce, setReloadNonce] = useState(0);
   const [sourceReady, setSourceReady] = useState(false);
+  const [nativeV2ReadOnlyProjection, setNativeV2ReadOnlyProjection] = useState(false);
   const [sourceError, setSourceError] = useState("");
   const graphDirtyRef = useRef(false);
   const loadedGraphIdentityRef = useRef({ rootId: "", revisionId: "" });
@@ -641,7 +742,7 @@ export function VideoCanvasStage({
   }, []);
   const commitGraph = useCallback(
     (nextGraph: VideoCanvasGraph, nextRevision?: number, noteUserEdit = true) => {
-      if (!sourceReady || !mayWrite) return false;
+      if (!sourceReady || !mayWrite || nativeV2ReadOnlyProjection) return false;
       const previous = graphRef.current;
       if (videoCanvasGraphsEqual(previous, nextGraph)) return false;
       graphHistoryRef.current!.record(nextGraph);
@@ -656,10 +757,10 @@ export function VideoCanvasStage({
       }
       return true;
     },
-    [mayWrite, refreshHistoryAvailability, shownItem, sourceReady],
+    [mayWrite, nativeV2ReadOnlyProjection, refreshHistoryAvailability, shownItem, sourceReady],
   );
   const undoGraph = useCallback(() => {
-    if (!sourceReady || !mayWrite) return;
+    if (!sourceReady || !mayWrite || nativeV2ReadOnlyProjection) return;
     const previous = graphHistoryRef.current!.undo();
     if (!previous) return;
     graphRef.current = previous;
@@ -668,9 +769,9 @@ export function VideoCanvasStage({
     setEditRevision((value) => value + 1);
     refreshHistoryAvailability();
     applyVideoCanvasUserEditSession(shownItem, "person-command");
-  }, [mayWrite, refreshHistoryAvailability, shownItem, sourceReady]);
+  }, [mayWrite, nativeV2ReadOnlyProjection, refreshHistoryAvailability, shownItem, sourceReady]);
   const redoGraph = useCallback(() => {
-    if (!sourceReady || !mayWrite) return;
+    if (!sourceReady || !mayWrite || nativeV2ReadOnlyProjection) return;
     const next = graphHistoryRef.current!.redo();
     if (!next) return;
     graphRef.current = next;
@@ -679,13 +780,14 @@ export function VideoCanvasStage({
     setEditRevision((value) => value + 1);
     refreshHistoryAvailability();
     applyVideoCanvasUserEditSession(shownItem, "person-command");
-  }, [mayWrite, refreshHistoryAvailability, shownItem, sourceReady]);
+  }, [mayWrite, nativeV2ReadOnlyProjection, refreshHistoryAvailability, shownItem, sourceReady]);
   const chipsManifest = useMemo(() => workflowToolsManifestChips(), []);
   const graphItemKey = `${shownItem?.key ?? ""}|${shownItem?.revisionId ?? ""}|${reloadNonce}`;
 
   const canOfferWorkflowAddNode =
     sourceReady &&
     mayWrite &&
+    (liveCanvasBase || !nativeV2ReadOnlyProjection) &&
     (liveCanvasBase
       ? mode === "collab" &&
         controlReady &&
@@ -807,6 +909,7 @@ export function VideoCanvasStage({
     setGraph(clearedGraph);
     setEditRevision(0);
     setSourceReady(false);
+    setNativeV2ReadOnlyProjection(false);
     setSourceError("");
     void hydrateWorkflowGraph(plan, async (url) => {
       const blob = await fetchMediaBlob(url, {
@@ -833,6 +936,9 @@ export function VideoCanvasStage({
       refreshHistoryAvailability();
       setGraph(result.graph);
       setEditRevision(0);
+      setNativeV2ReadOnlyProjection(Boolean(
+        (result.graph as VideoCanvasGraph & { readOnlyNativeV2?: boolean }).readOnlyNativeV2,
+      ));
       setSourceReady(true);
       applyVideoCanvasUserEditSession(shownItem, "hydrate");
     });
@@ -932,6 +1038,13 @@ export function VideoCanvasStage({
                   revision: editRevision,
                 };
               }
+              if (nativeV2ReadOnlyProjection && !liveCanvasBase) {
+                return {
+                  ok: false,
+                  message: "Canonical video v2 is a read-only host projection; reopen it in the native editor to make changes.",
+                  revision: editRevision,
+                };
+              }
               if (id === "workflow.add-node") {
                 if (liveCanvasBase) {
                   return executeNativeWorkflowAddNode(params || {});
@@ -979,6 +1092,7 @@ export function VideoCanvasStage({
           liveCanvasBase,
           local,
           mode,
+          nativeV2ReadOnlyProjection,
           nativeRevision,
           shownItem,
           sourceError,
@@ -989,7 +1103,15 @@ export function VideoCanvasStage({
 
   const onCanvasChanged = useCallback(() => scheduleCapture(), [scheduleCapture]);
   const onCanvasDirty = useCallback(
-    (dirty: boolean) => {
+    (dirty: boolean, revision?: number) => {
+      if (typeof revision === "number" && Number.isSafeInteger(revision) && revision >= 0) {
+        embeddedRevisionRef.current = revision;
+        setEmbeddedRevision(revision);
+      } else if (dirty) {
+        embeddedRevisionRef.current += 1;
+        setEmbeddedRevision(embeddedRevisionRef.current);
+      }
+      setEmbeddedDirty(dirty);
       dirtyRef.current = dirty;
       scheduleCapture();
     },
@@ -997,10 +1119,129 @@ export function VideoCanvasStage({
   );
   const markSavedRef = useRef(markSaved);
   markSavedRef.current = markSaved;
+  const onHostedSaveResult = useCallback((result: {
+    ok: boolean;
+    saveId?: string;
+    item?: LibraryItem;
+  }) => {
+    const saveId = result.saveId || "";
+    const pending = pendingHostedSavesRef.current.get(saveId);
+    const timedOut = pending ? undefined : timedOutHostedSavesRef.current.get(saveId);
+    if (!pending && !timedOut) return;
+    if (pending) {
+      pendingHostedSavesRef.current.delete(saveId);
+      window.clearTimeout(pending.timer);
+      setSaveRequestId("");
+    } else {
+      // A timed-out request can still finish durably. Keep its correlation one-shot;
+      // only its exact save id and unchanged expected head may advance our local pin.
+      timedOutHostedSavesRef.current.delete(saveId);
+    }
+    const correlation = pending ?? timedOut!;
+    const fail = (error: string) => {
+      pending?.resolve({ ok: false, error });
+    };
+    if (!result.ok) {
+      fail("视频工程未收到耐久 Library revision 回执；改动仍保留为待保存。");
+      return;
+    }
+    if (
+      videoArtifactRoot(shownItem) !== correlation.artifactId ||
+      latestSavedRevisionRef.current !== correlation.expectedRevisionId
+    ) {
+      fail("视频工程保存回执已过期；当前 Library head 未改变，改动仍保留为待保存。");
+      return;
+    }
+    const seenRevisionIds = seenDurableHeadsRef.current.get(correlation.artifactId);
+    if (!durableVideoSaveReceipt(result.item, {
+      artifactId: correlation.artifactId,
+      expectedRevisionId: correlation.expectedRevisionId,
+      seenRevisionIds,
+    })) {
+      fail("视频工程回执不是同 root 的新完整版本；改动仍保留为待保存。");
+      return;
+    }
+    rememberDurableHead(correlation.artifactId, result.item.revisionId);
+    latestSavedRevisionRef.current = result.item.revisionId;
+    lastSavedItemRef.current = result.item;
+    ownSaveReceiptRef.current = {
+      rootId: correlation.artifactId,
+      revisionId: result.item.revisionId,
+    };
+    markSavedRef.current(String(result.item.revisionId));
+    if (embeddedRevisionRef.current === correlation.editRevision) {
+      setEmbeddedDirty(false);
+      dirtyRef.current = false;
+    }
+    pending?.resolve({ ok: true, item: result.item });
+  }, [rememberDurableHead, shownItem]);
   const onCanvasSaved = useCallback((saved: LibraryItem) => {
-    dirtyRef.current = false;
-    if (saved.revisionId) markSavedRef.current(String(saved.revisionId));
-  }, []);
+    const artifactId = videoArtifactRoot(saved);
+    const expectedRevisionId = latestSavedRevisionRef.current;
+    if (
+      artifactId !== videoArtifactRoot(shownItem) ||
+      !expectedRevisionId ||
+      !durableVideoSaveReceipt(saved, {
+        artifactId,
+        expectedRevisionId,
+        seenRevisionIds: seenDurableHeadsRef.current.get(artifactId),
+      })
+    ) return;
+    rememberDurableHead(artifactId, saved.revisionId);
+    latestSavedRevisionRef.current = saved.revisionId;
+    lastSavedItemRef.current = saved;
+    ownSaveReceiptRef.current = { rootId: artifactId, revisionId: saved.revisionId };
+    // Native core project-action saves are authoritative for the returned head, but
+    // this uncorrelated event must not resolve a host flush or clear newer dirty work.
+    markSavedRef.current(String(saved.revisionId));
+  }, [rememberDurableHead, shownItem]);
+  const requestHostedSave = useCallback((): Promise<AdvancedFlushResult> => {
+    const artifactId = videoArtifactRoot(shownItem);
+    const expectedRevisionId = latestSavedRevisionRef.current;
+    if (
+      !mayWrite ||
+      !isDurableLibraryItem(shownItem) ||
+      shownItem.artifact.access?.canEdit !== true ||
+      !artifactId ||
+      !expectedRevisionId
+    ) {
+      return Promise.resolve({ ok: false, error: "当前视频版本没有同 root 可编辑 CAS 权限；没有报告保存成功。" });
+    }
+    if (pendingHostedSavesRef.current.size > 0) {
+      return Promise.resolve({ ok: false, error: "已有视频保存仍在等待耐久回执。" });
+    }
+    const saveId = `video-canvas-${Date.now().toString(36)}-${(++saveSequenceRef.current).toString(36)}`;
+    const editRevision = embeddedRevisionRef.current;
+    return new Promise((resolve) => {
+      const timer = window.setTimeout(() => {
+        const pending = pendingHostedSavesRef.current.get(saveId);
+        if (!pending) return;
+        pendingHostedSavesRef.current.delete(saveId);
+        setSaveRequestId("");
+        timedOutHostedSavesRef.current.set(saveId, {
+          saveId: pending.saveId,
+          artifactId: pending.artifactId,
+          expectedRevisionId: pending.expectedRevisionId,
+          editRevision: pending.editRevision,
+        });
+        while (timedOutHostedSavesRef.current.size > 32) {
+          const oldest = timedOutHostedSavesRef.current.keys().next().value;
+          if (oldest === undefined) break;
+          timedOutHostedSavesRef.current.delete(oldest);
+        }
+        resolve({ ok: false, error: "视频保存回执超时；改动仍保留为待保存。" });
+      }, 45_000);
+      pendingHostedSavesRef.current.set(saveId, {
+        saveId,
+        artifactId,
+        expectedRevisionId,
+        editRevision,
+        timer,
+        resolve,
+      });
+      setSaveRequestId(saveId);
+    });
+  }, [mayWrite, shownItem]);
   const onProtocolReset = useCallback(() => {
     // 画布重新载入过：它里头的只读 / 保存闸回到默认，基线作废；已经在房间里就再对齐一次（重载的画布可能比房间旧）。
     resetRemoteHistory();
@@ -1043,7 +1284,7 @@ export function VideoCanvasStage({
         collab: activeCollab,
         id: "video-canvas",
         label: "工作流",
-        history: !mayWrite
+        history: !mayWrite || nativeV2ReadOnlyProjection
           ? undefined
           : preferLocal
             ? {
@@ -1074,19 +1315,23 @@ export function VideoCanvasStage({
             data-testid="workflow-react-flow-stage"
             className="flex h-full min-h-0 flex-col"
           >
-            {sourceError ? (
+            {sourceError || dependencyError ? (
               <EditorSourceFailurePanel
-                message={sourceError}
+                message={sourceError || dependencyError}
                 onReload={() => setReloadNonce((value) => value + 1)}
                 variant="surface"
               />
+            ) : liveCanvasBase && dependencyGrants === null ? (
+              <div data-testid="workflow-dependency-loading" className="p-4 text-sm text-slate-500">
+                正在验证此视频版本的素材闭包…
+              </div>
             ) : preferLocal ? (
               <div className="flex h-full min-h-0 flex-col">
                 <div className="flex gap-2 border-b px-3 py-2">
                   <button
                     type="button"
                     data-testid="workflow-add-node"
-                    disabled={!mayWrite || !sourceReady}
+                    disabled={!mayWrite || !sourceReady || nativeV2ReadOnlyProjection}
                     onClick={() => {
                       const applied = applyVideoCanvasPersonCommand(
                         shownItem,
@@ -1104,7 +1349,7 @@ export function VideoCanvasStage({
                 </div>
                 <VideoCanvasLocalCanvas
                   graph={graph}
-                  readOnly={!mayWrite}
+                  readOnly={!mayWrite || nativeV2ReadOnlyProjection}
                   onChange={(next) => {
                     commitGraph(next);
                   }}
@@ -1120,6 +1365,7 @@ export function VideoCanvasStage({
               >
                 <EmbedEditorPane
                   item={shownItem}
+                  openAssetMeta={openAssetMeta}
                   editorBase={liveCanvasBase}
                   mediaType="video_canvas"
                   siteId={siteId}
@@ -1129,6 +1375,8 @@ export function VideoCanvasStage({
                   onRecoveryResult={mode === "lock" ? undefined : onRecoveryResult}
                   onProjectManifest={mode === "lock" ? undefined : onCanvasChanged}
                   onDirtyChange={mode === "lock" ? undefined : onCanvasDirty}
+                  onSaveResult={mode === "lock" ? undefined : onHostedSaveResult}
+                  saveRequestId={mode === "lock" ? "" : saveRequestId}
                   onHistoryChange={mode === "lock" || !mayWrite ? undefined : handleRemoteHistoryChange}
                   selectionCommand={mode === "lock" || !mayWrite ? null : remoteHistoryCommand}
                   onVersionSaved={collabMode ? onCanvasSaved : undefined}
@@ -1141,7 +1389,7 @@ export function VideoCanvasStage({
                   <button
                     type="button"
                     data-testid="workflow-add-node"
-                    disabled={!mayWrite || !sourceReady}
+                    disabled={!mayWrite || !sourceReady || nativeV2ReadOnlyProjection}
                     onClick={() => {
                       const applied = applyVideoCanvasPersonCommand(
                         shownItem,
@@ -1164,13 +1412,28 @@ export function VideoCanvasStage({
         ),
         status: statusText,
         persistence: {
-          dirty: sourceReady && mayWrite ? editRevision > 0 : false,
-          editRevision,
+          requiresMountedFlush: Boolean(liveCanvasBase),
+          dirty: sourceReady && mayWrite
+            ? liveCanvasBase ? embeddedDirty : !nativeV2ReadOnlyProjection && editRevision > 0
+            : false,
+          editRevision: liveCanvasBase ? embeddedRevision : editRevision,
           // 保持 true：只读端 dirty 恒为 false 且 flush 不落库，自动保存不会产生任何写入。
           autoSave: true,
-          flush: () => {
+          flush: async () => {
             // 只读（别人持锁）时不落库；别人保存后这里会自动更新。
             if (!mayWrite) return { ok: true as const, item };
+            if (liveCanvasBase) {
+              if (!embeddedDirty) {
+                return { ok: true as const, item: lastSavedItemRef.current ?? item };
+              }
+              return requestHostedSave();
+            }
+            if (nativeV2ReadOnlyProjection) {
+              return {
+                ok: false as const,
+                error: "Canonical video v2 is shown through a read-only host projection; only the native editor may commit it.",
+              };
+            }
             const saved = flushVideoCanvasGraph(item, graph, {
               sourceReady,
               error: sourceError,
@@ -1193,11 +1456,11 @@ export function VideoCanvasStage({
           recovery: {
             draftSchema: liveCanvasBase ? undefined : "oceanleo.workflow.graph.v1",
             key: advancedRecoveryKey("video-canvas", item),
-            ready: !liveCanvasBase && sourceReady,
-            capture: () => liveCanvasBase || !sourceReady ? null : graph,
+            ready: !liveCanvasBase && sourceReady && !nativeV2ReadOnlyProjection,
+            capture: () => liveCanvasBase || !sourceReady || nativeV2ReadOnlyProjection ? null : graph,
             restore: (payload) => {
               const restored = payload as VideoCanvasGraph | null;
-              if (!sourceReady || !restored || !Array.isArray(restored.nodes) || !Array.isArray(restored.edges)) return false;
+              if (!sourceReady || nativeV2ReadOnlyProjection || !restored || !Array.isArray(restored.nodes) || !Array.isArray(restored.edges)) return false;
               graphDirtyRef.current = true;
               graphRef.current = restored;
               graphHistoryRef.current!.reset(restored);

@@ -13,6 +13,21 @@ import type { LibraryItem } from "./library-data";
 import type { SelectionCommand, SelectionContext } from "./selection-context";
 import type { SelectionInteractionHoldRef } from "./edit-bar-hosted-selection-hold";
 
+export interface VideoCanvasDependencyGrantOpenMetadata {
+  video_canvas_dependency_grants: Array<{
+    assetId: string;
+    artifactId: string;
+    revisionId: string;
+    path: string;
+    sha256: string;
+    mediaType: string;
+    byteSize: number;
+    accessUrl: string;
+    expiresAt: string;
+    gatewayOrigin: string;
+  }>;
+}
+
 export interface EmbedEditorPaneProps {
   item: LibraryItem;
   editorBase: string;
@@ -20,6 +35,8 @@ export interface EmbedEditorPaneProps {
   siteId?: string;
   accent?: string;
   extraParams?: Record<string, string>;
+  /** Fresh W04 grants sent only on open-asset; never merged into the Library item/save context. */
+  openAssetMeta?: VideoCanvasDependencyGrantOpenMetadata;
   onVersionSaved?: (item: LibraryItem) => void;
   onCloseRequest?: () => void;
   onDirtyChange?: (dirty: boolean, revision?: number) => void;

@@ -260,6 +260,45 @@ test("video project open asserts verification only for the exact fixed source re
   assert.equal("workflow_json" in payload.meta, false);
 });
 
+test("video dependency grants are stripped from stored metadata and only current-revision host grants cross open-asset", () => {
+  const item = videoProjectItem();
+  const artifactId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const revisionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const oldRevisionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  item.artifactId = artifactId;
+  item.revisionId = revisionId;
+  item.artifact.artifactId = artifactId;
+  item.artifact.revisionId = revisionId;
+  item.artifact.renditions.source.revisionId = revisionId;
+  const gatewayOrigin = new URL(item.artifact.renditions.source.url).origin;
+  const grant = {
+    assetId: "coffee",
+    artifactId,
+    revisionId,
+    path: "assets/coffee.webp",
+    sha256: "d".repeat(64),
+    mediaType: "image/webp",
+    byteSize: 34_480,
+    accessUrl: `${gatewayOrigin}/v1/artifact-renditions/access/opaque-grant`,
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    gatewayOrigin,
+  };
+
+  item.meta.video_canvas_dependency_grants = [{ ...grant, revisionId: oldRevisionId }];
+  const withoutFreshHostGrant = buildOpenAssetPayload(item);
+  assert.equal("video_canvas_dependency_grants" in withoutFreshHostGrant.meta, false);
+
+  const currentRevision = buildOpenAssetPayload(item, {
+    video_canvas_dependency_grants: [grant],
+  });
+  assert.deepEqual(currentRevision.meta.video_canvas_dependency_grants, [grant]);
+
+  const staleSameRootRevision = buildOpenAssetPayload(item, {
+    video_canvas_dependency_grants: [{ ...grant, revisionId: oldRevisionId }],
+  });
+  assert.equal("video_canvas_dependency_grants" in staleSameRootRevision.meta, false);
+});
+
 test("video project open strips spoofed verification when integrity, ACL, pin, digest or URL is not verified", () => {
   const variants = [
     (item) => {
@@ -267,6 +306,13 @@ test("video project open strips spoofed verification when integrity, ACL, pin, d
     },
     (item) => {
       item.artifact.access.canRead = false;
+    },
+    (item) => {
+      item.artifact.access.canEdit = false;
+      item.artifact.access.canFork = false;
+    },
+    (item) => {
+      item.artifact.editability = "view_only";
     },
     (item) => {
       item.artifact.renditions.source.revisionId = "another-revision";
