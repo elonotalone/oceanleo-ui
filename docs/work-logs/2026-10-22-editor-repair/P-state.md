@@ -21,6 +21,12 @@ Browser acceptance permission was requested asynchronously while code/interface 
 
 Dispatch W04 then W05 when slots become available. Read exact diffs and artifacts; run each delivered named regression independently. Run serialized shared/design/video typechecks as affected. Check every promise for actual durable persistence and reject schema weakening/empty placeholders. Refresh generated shared CSS if class changes require it; no version bump/distribution.
 
+## Incremental parent verification
+
+- W01 host slice `cae64416`: parent read all four product/test diffs and checked the six-file commit. Independent runtime re-run **2/2 passed**, using `node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --test --test-name-pattern='real Library→MyLibrary→MaterialStandaloneEditor|real Library Edit keeps Task chat closed' tests/one-task-library-agent-acceptance.test.mjs` via run-light. Checks hidden/inaccessible left pane before click, visible existing conversation after edit-bar agent click, same editor/workspace and exactly one live file-context send. Bar cleanup and generic loader-chain compatibility remain W01 work; this is not whole-W01 acceptance.
+- W03 regression commits `644627e1` UI / `4d37b4a` design exist and are nonempty. Implementation still active; no final parent acceptance yet.
+- W02 saving attribution remains unconfirmed. Owner has identified pre-network capture/request-generation invalidation and ignored explicit failure handling, is constructing guarded runtime regressions and preserves source/origin/instance checks. Do not call a failure-feedback-only change a completed save repair.
+
 ## Acceptance commands
 
 `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-heavy -- ./node_modules/.bin/tsc --noEmit` (in oceanleo-ui, and affected extracted repos).
