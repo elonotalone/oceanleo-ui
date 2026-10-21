@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { ImMember, ImProfile } from "../../../lib/im/types";
+import type { ImMeetingInvitation, ImMember, ImProfile } from "../../../lib/im/types";
 
 export interface MeetingHostRequest {
   conversationId: string;
@@ -14,6 +14,7 @@ export interface MeetingHostRequest {
 
 let request: MeetingHostRequest | null = null;
 let callOwner: "meeting" | "leo-realtime" | null = null;
+let callClaim = 0;
 const listeners = new Set<() => void>();
 function emit() { for (const listener of [...listeners]) listener(); }
 
@@ -33,18 +34,48 @@ export function meetingHostRequestSnapshot(): MeetingHostRequest | null {
   return request;
 }
 
-export function claimCall(owner: "meeting" | "leo-realtime"): boolean {
-  if (callOwner && callOwner !== owner) return false;
+export function claimCall(owner: "meeting" | "leo-realtime"): number | null {
+  if (callOwner) return null;
   callOwner = owner;
-  return true;
+  callClaim += 1;
+  return callClaim;
 }
 
-export function releaseCall(owner: "meeting" | "leo-realtime"): void {
-  if (callOwner === owner) callOwner = null;
+export function releaseCall(owner: "meeting" | "leo-realtime", claim: number | null | undefined): void {
+  if (claim !== null && claim !== undefined && callOwner === owner && claim === callClaim) callOwner = null;
 }
 
 export function activeCallOwner(): "meeting" | "leo-realtime" | null {
   return callOwner;
+}
+
+export function createMeetingInvitationHandler(
+  currentUserId: () => Promise<string | null>,
+  show: (request: MeetingHostRequest) => void = openMeeting,
+) {
+  let generation = 0;
+  return {
+    async handle(conversationId: string, invitation: ImMeetingInvitation): Promise<boolean> {
+      if (invitation.status !== "pending") return false;
+      const attempt = ++generation;
+      try {
+        const userId = await currentUserId();
+        if (attempt !== generation || !userId || invitation.invitee_id !== userId) return false;
+        show({
+          conversationId,
+          conversationTitle: "会议邀请",
+          myUserId: userId,
+          myRole: null,
+          profiles: {},
+          members: [],
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    cancel() { generation += 1; },
+  };
 }
 
 export function useMeetingHostRequest(): MeetingHostRequest | null {

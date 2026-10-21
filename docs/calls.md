@@ -9,17 +9,22 @@ ending, leaving, page unload, and a failed join stop local media and release
 the server participant.
 
 The panel loads the server's ARTC and metering readiness before enabling join.
+Before joining, the caller can select the microphone and camera; those choices
+are applied with the ARTC SDK's documented device enumeration/switch methods
+([AliRtc device management](https://help.aliyun.com/zh/live/audio-and-video-equipment-management)).
 Microphone permission is checked before joining. The SDK joins with microphone,
 camera, and screen publication disabled; each control changes local UI state
 only after the SDK promise settles. Remote audio and video subscriptions are
 enabled independently, and the client preserves the other modality when one
 changes. Invitations remain unbilled until accepted and joined.
 
-Bills shown in the panel come from the meeting bill endpoint and include the
-server's raw usage, gross amount, discount, net amount, currency, and tariff
-snapshot. Wallet balance is only a prejoin hint; server admission and service
-side stop remain authoritative. The UI never estimates a charge from call
-duration.
+Bills shown in the panel come from the meeting bill endpoint. They show
+server-measured connected time, per-participant per-minute tariff, included
+audio/video/screen modalities, settled amount, refundable/held reserve, and
+whether reconciliation is pending. Raw provider events and the tariff snapshot
+remain available as an advanced audit view. A reserve is not described as a
+charge, and pending reconciliation is not described as final. Wallet balance is
+only a prejoin hint; server admission and provider events remain authoritative.
 
 ## Leo realtime conversations
 
@@ -40,8 +45,10 @@ events are shown in the call panel.
 Minimizing keeps the global call host and media session alive. End, remote
 close, connection loss, and host unload stop local tracks and close the socket.
 Reconnect creates a new admitted session. The end receipt is fetched from the
-server ledger and displays raw usage, gross, discount, net, currency, and
-status. The page does not infer cost from elapsed time or client usage.
+server ledger and separates settled charges from refundable/held reserves,
+shows server usage and recognized token counts, and labels unresolved
+reconciliation as pending. The page does not infer cost from elapsed time or
+client usage.
 
 Provider keys, exact supported tariffs, and real microphone/camera/screen
 provider operation must be verified in the configured LeoDev environment.

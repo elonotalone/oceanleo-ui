@@ -20,6 +20,7 @@ export interface LeoRealtimeAudioContract {
 
 export interface LeoRealtimeSession {
   session_id: string;
+  leo_session_id?: string;
   ready: boolean;
   code?: string;
   message?: string;
@@ -39,6 +40,14 @@ export interface LeoRealtimeBill {
   net?: number;
   status?: string;
   tariff_snapshot?: unknown;
+  connected_seconds?: number;
+  reserve_nano?: number;
+  currently_held_nano?: number;
+  unresolved_held_nano?: number;
+  pending_release_nano?: number;
+  settled_nano?: number;
+  refunded_nano?: number;
+  pending_reconciliation?: boolean;
   admitted?: boolean;
   available_credits?: number;
   reserved_credits?: number;
@@ -49,6 +58,8 @@ export type LeoRealtimeServerEvent =
   | { type: "audio.output"; audio: string }
   | { type: "text.delta"; text?: string; delta?: string }
   | { type: "transcript"; text?: string; role?: string }
+  | { type: "transcript.final"; text?: string; role?: "user" | "assistant" | "leo"; item_id?: string }
+  | { type: "usage.settled"; provider_event_id?: string; bill?: { gross?: number; discount?: number; net?: number; currency?: string } }
   | { type: "speech.started" }
   | { type: "response.started"; response_id?: string }
   | { type: "response.finished"; response_id?: string }
@@ -56,6 +67,7 @@ export type LeoRealtimeServerEvent =
   | { type: "error"; code?: string; message?: string };
 
 export const START_LEO_REALTIME_EVENT = "oceanleo:start-realtime-call";
+export const LEO_TRANSCRIPT_UPDATED_EVENT = "oceanleo:leo-transcript-updated";
 
 export function realtimeSessionRequestBody(sessionId: string, context?: LeoRealtimeContext) {
   return { session_id: sessionId, ...(context ? { context } : {}) };
@@ -135,12 +147,12 @@ export async function realtimeSocket(session: LeoRealtimeSession, signal?: Abort
       if (error) reject(error); else resolve();
     };
     timeout = setTimer(() => {
-      socket.close(1000, "provider readiness timeout");
       finish(new Error("realtime_socket_timeout"));
+      socket.close(1000, "provider readiness timeout");
     }, 30_000);
     const onAbort = () => {
-      socket.close(1000, "call cancelled");
       finish(new Error("call_cancelled"));
+      socket.close(1000, "call cancelled");
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     socket.onopen = () => {

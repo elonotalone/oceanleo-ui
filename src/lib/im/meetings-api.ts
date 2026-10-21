@@ -6,6 +6,10 @@ const conversationMeetingPath = (conversationId: string) =>
   `/v1/im/conversations/${encodeURIComponent(conversationId)}/meeting`;
 const meetingPath = (meetingId: string) => `/v1/im/meetings/${encodeURIComponent(meetingId)}`;
 
+export function normalizeMeetingBillResponse<T extends { ok: boolean; bill?: ImMeetingBill; billing?: ImMeetingBill }>(response: T): T & { billing?: ImMeetingBill } {
+  return { ...response, billing: response.bill ?? response.billing };
+}
+
 export const meetingsApi = {
   get(conversationId: string): Promise<ImMeetingSnapshot> {
     return imFetch<ImMeetingSnapshot>(conversationMeetingPath(conversationId));
@@ -34,10 +38,10 @@ export const meetingsApi = {
     return imFetch<{ invitation: ImMeetingInvitation; meeting: ImMeeting }>(`${meetingPath(meetingId)}/invitations/${encodeURIComponent(invitationId)}/reject`, { method: "POST" });
   },
   leave(meetingId: string): Promise<{ ok: boolean; billing?: ImMeetingBill }> {
-    return imFetch<{ ok: boolean; billing?: ImMeetingBill }>(`${meetingPath(meetingId)}/leave`, { method: "POST" });
+    return imFetch<{ ok: boolean; bill?: ImMeetingBill; billing?: ImMeetingBill }>(`${meetingPath(meetingId)}/leave`, { method: "POST" }).then(normalizeMeetingBillResponse);
   },
   end(meetingId: string): Promise<{ ok: boolean; billing?: ImMeetingBill }> {
-    return imFetch<{ ok: boolean; billing?: ImMeetingBill }>(`${meetingPath(meetingId)}/end`, { method: "POST" });
+    return imFetch<{ ok: boolean; bill?: ImMeetingBill; billing?: ImMeetingBill }>(`${meetingPath(meetingId)}/end`, { method: "POST" }).then(normalizeMeetingBillResponse);
   },
   remove(meetingId: string, participantId: string): Promise<void> {
     return imFetch<void>(`${meetingPath(meetingId)}/participants/${encodeURIComponent(participantId)}`, { method: "DELETE" });

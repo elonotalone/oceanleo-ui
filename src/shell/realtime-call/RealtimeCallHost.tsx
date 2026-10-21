@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
 import { formatMoney } from "../../lib/money";
-import { floatToPcm16LE, pcm16LEToFloat, stopMediaStreams, videoFrameEnvelope } from "../../lib/realtime-audio";
+import { callStatusLabel, formatConnectedTime, tokenRateRows, tokenUsageRows } from "../../lib/call-billing-display";
+import { acceptMediaStreamIfCurrent, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, pcm16LEToFloat, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../../lib/realtime-audio";
+import { appendFinalUserTranscript, upsertFinalAssistantTranscript } from "../../lib/realtime-transcript";
 import { claimCall, releaseCall } from "../messages/meeting/meeting-host-state";
 import {
   base64ToBytes, bytesToBase64, closeLeoRealtimeSession, createLeoRealtimeSession, realtimeSocket, takeRealtimeMessages,
-  START_LEO_REALTIME_EVENT, type LeoRealtimeBill, type LeoRealtimeContext,
+  LEO_TRANSCRIPT_UPDATED_EVENT, START_LEO_REALTIME_EVENT, type LeoRealtimeBill, type LeoRealtimeContext,
   type LeoRealtimeServerEvent, type LeoRealtimeSession,
 } from "../../lib/leo-realtime";
 
@@ -75,11 +77,18 @@ export function RealtimeCallHost() {
   const stateRef = useRef<CallState>(state);
   const sessionRef = useRef<LeoRealtimeSession | null>(session);
   const attemptRef = useRef(0);
+  const callClaimRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const cameraGenerationRef = useRef(0);
+  const screenGenerationRef = useRef(0);
+  const microphoneGenerationRef = useRef(0);
   const responseTextRef = useRef("");
   const responseActiveRef = useRef(false);
+  const mountedRef = useRef(false);
   const frameEdgeRef = useRef(512);
   const frameQualityRef = useRef(0.7);
+  const billFetchRef = useRef<Promise<LeoRealtimeBill | null> | null>(null);
+  const lastBillFetchRef = useRef(0);
   mutedRef.current = muted;
   stateRef.current = state;
   sessionRef.current = session;
@@ -149,8 +158,20 @@ export function RealtimeCallHost() {
       responseActiveRef.current = false;
       if (!responseTextRef.current) setTranscript((rows) => rows.at(-1) === "Leo：" ? rows.slice(0, -1) : rows);
     }
-    else if (data.type === "transcript" && data.text) {
+    else if (data.type === "transcript.final" && data.text) {
+      window.dispatchEvent(new CustomEvent(LEO_TRANSCRIPT_UPDATED_EVENT, { detail: { sessionId: sessionRef.current?.leo_session_id ?? request?.sessionId } }));
+      if (data.role === "user") {
+        setTranscript((rows) => appendFinalUserTranscript(rows, data.text!));
+      } else {
+        responseTextRef.current = data.text;
+        responseActiveRef.current = false;
+        setTranscript((rows) => upsertFinalAssistantTranscript(rows, data.text!));
+      }
+    } else if (data.type === "transcript" && data.text) {
       setTranscript((rows) => [...rows.slice(-99), (data.role === "user" ? "我：" : "Leo：") + data.text]);
+    } else if (data.type === "usage.settled") {
+      const id = sessionRef.current?.session_id;
+      if (id) void loadBill(id);
     } else if (data.type === "session.closed") void endCall(false);
     else if (data.type === "error") {
       const code = data.code || "";
@@ -163,11 +184,7 @@ export function RealtimeCallHost() {
   }
 
   function flushAudio(): void {
-    for (const item of playback.current.splice(0)) {
-      try { item.stop(); } catch { /* already ended */ }
-      item.disconnect();
-    }
-    playbackAt.current = audioContextRef.current?.currentTime ?? 0;
+    flushPlaybackQueue(playback.current, audioContextRef.current?.currentTime ?? 0, (time) => { playbackAt.current = time; });
   }
 
   function playAudio(encoded: string): void {
@@ -175,7 +192,9 @@ export function RealtimeCallHost() {
     const currentSession = sessionRef.current;
     if (!context || !currentSession) return;
     const bytes = base64ToBytes(encoded);
-    const data = pcm16LEToFloat(bytes);
+    const decoded = pcm16LEToFloat(bytes);
+    const data = new Float32Array(new ArrayBuffer(decoded.byteLength));
+    data.set(decoded);
     const buffer = context.createBuffer(1, data.length, currentSession.audio.output_sample_rate_hz);
     buffer.copyToChannel(data, 0);
     const node = context.createBufferSource();
@@ -189,6 +208,9 @@ export function RealtimeCallHost() {
   }
 
   function cleanupMedia(): void {
+    cameraGenerationRef.current += 1;
+    screenGenerationRef.current += 1;
+    microphoneGenerationRef.current += 1;
     if (frameTimer.current !== null) window.clearInterval(frameTimer.current);
     frameTimer.current = null;
     workletRef.current?.disconnect();
@@ -199,28 +221,54 @@ export function RealtimeCallHost() {
     micRef.current = null;
     cameraRef.current = null;
     screenRef.current = null;
-    setCameraOn(false);
-    setSharing(false);
-    setMuted(false);
+    if (mountedRef.current) {
+      setCameraOn(false);
+      setSharing(false);
+      setMuted(false);
+    }
     flushAudio();
     void audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
   }
 
-  async function loadBill(id: string): Promise<void> {
-    const token = await accessToken();
-    if (!token) return;
-    const base = (GATEWAY_BASE || "").replace(/\/+$/, "");
-    const response = await fetch(base + "/v1/leo/realtime/sessions/" + encodeURIComponent(id) + "/bill", {
-      headers: { Authorization: "Bearer " + token },
-    });
-    if (response.ok) setBill(await response.json() as LeoRealtimeBill);
+  async function loadBill(id: string): Promise<LeoRealtimeBill | null> {
+    if (billFetchRef.current) return billFetchRef.current;
+    const fetchPromise = (async () => {
+      const token = await accessToken();
+      if (!token) return null;
+      const base = (GATEWAY_BASE || "").replace(/\/+$/, "");
+      const response = await fetch(base + "/v1/leo/realtime/sessions/" + encodeURIComponent(id) + "/bill", {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!response.ok) return null;
+      const result = await response.json() as LeoRealtimeBill;
+      lastBillFetchRef.current = Date.now();
+      if (mountedRef.current) setBill(result);
+      return result;
+    })().finally(() => { billFetchRef.current = null; });
+    billFetchRef.current = fetchPromise;
+    return fetchPromise;
+  }
+
+  async function refreshFinalBill(id: string): Promise<void> {
+    // Provider settlement can trail websocket close. Bound the wait, and leave
+    // the UI pending if the authoritative ledger has not reconciled yet.
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const result = await loadBill(id).catch(() => null);
+      if (result?.pending_reconciliation || result?.status === "closed" || result?.status === "settled") return;
+      if (attempt < 5) await new Promise((resolve) => window.setTimeout(resolve, 500));
+    }
   }
 
   async function endCall(sendClose = true): Promise<void> {
     if (stateRef.current === "idle" || stateRef.current === "ended" || stateRef.current === "ending") return;
+    if (stateRef.current === "starting") {
+      attemptRef.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    }
     stateRef.current = "ending";
-    setState("ending");
+    if (mountedRef.current) setState("ending");
     const current = sessionRef.current;
     const socket = socketRef.current;
     if (sendClose && socket?.readyState === WebSocket.OPEN) {
@@ -234,16 +282,20 @@ export function RealtimeCallHost() {
     socketRef.current = null;
     cleanupMedia();
     if (current) {
-      try { await loadBill(current.session_id); } catch { /* a later bill refresh may succeed */ }
+      try { await refreshFinalBill(current.session_id); } catch { /* a later bill refresh may succeed */ }
+      window.dispatchEvent(new CustomEvent(LEO_TRANSCRIPT_UPDATED_EVENT, { detail: { sessionId: current.leo_session_id ?? request?.sessionId } }));
     }
-    setState("ended");
+    if (mountedRef.current) setState("ended");
     stateRef.current = "ended";
-    releaseCall("leo-realtime");
+    releaseCall("leo-realtime", callClaimRef.current);
+    callClaimRef.current = null;
   }
 
   async function startCall(): Promise<void> {
     if (!request || stateRef.current === "starting" || stateRef.current === "connected") return;
-    if (!claimCall("leo-realtime")) { setMessage("另一个通话正在进行，请先结束它再开始 Leo 实时通话。"); return; }
+    const claim = claimCall("leo-realtime");
+    if (claim === null) { setMessage("另一个通话正在进行，请先结束它再开始 Leo 实时通话。"); return; }
+    callClaimRef.current = claim;
     const attempt = ++attemptRef.current;
     const abortController = new AbortController();
     abortRef.current = abortController;
@@ -254,6 +306,7 @@ export function RealtimeCallHost() {
     setMessage("");
     let stream: MediaStream | null = null;
     let admittedSessionId: string | null = null;
+    let localSocket: WebSocket | null = null;
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("media_devices_unavailable");
       stream = await navigator.mediaDevices.getUserMedia({ audio: selectedMic ? { deviceId: { exact: selectedMic } } : true });
@@ -268,7 +321,12 @@ export function RealtimeCallHost() {
       sessionRef.current = created;
       setSession(created);
       const socket = await realtimeSocket(created, abortController.signal);
-      if (attempt !== attemptRef.current || abortController.signal.aborted) { socket.close(1000, "call cancelled"); return; }
+      localSocket = socket;
+      if (attempt !== attemptRef.current || abortController.signal.aborted) {
+        socket.close(1000, "call cancelled");
+        void closeLeoRealtimeSession(created.session_id).catch(() => undefined);
+        return;
+      }
       socketRef.current = socket;
       socket.onmessage = (event) => acceptServerText(String(event.data));
       for (const pending of takeRealtimeMessages(socket)) acceptServerText(pending);
@@ -303,18 +361,30 @@ export function RealtimeCallHost() {
       setMinimized(false);
       abortRef.current = null;
     } catch (error) {
+      const cancelled = attempt !== attemptRef.current || abortController.signal.aborted;
+      if (!isCurrentCallAttempt(attempt, attemptRef.current)) {
+        // A newer attempt may already own every shared ref. Tear down only this
+        // attempt's local resources; never reset or clean up the newer call.
+        stream?.getTracks().forEach((track) => track.stop());
+        if (localSocket && localSocket.readyState < WebSocket.CLOSING) localSocket.close(1000, "stale call attempt");
+        if (admittedSessionId) void closeLeoRealtimeSession(admittedSessionId).catch(() => undefined);
+        return;
+      }
       stateRef.current = "ending";
-      abortRef.current = null;
+      if (abortRef.current === abortController) abortRef.current = null;
       stream?.getTracks().forEach((track) => track.stop());
       micRef.current = null;
-      socketRef.current?.close();
+      if (localSocket && localSocket.readyState < WebSocket.CLOSING) localSocket.close();
       socketRef.current = null;
       cleanupMedia();
       if (admittedSessionId) void closeLeoRealtimeSession(admittedSessionId).catch(() => undefined);
-      setMessage(copyError(error));
-      setState("idle");
-      stateRef.current = "idle";
-      releaseCall("leo-realtime");
+      if (!cancelled) {
+        if (mountedRef.current) setMessage(copyError(error));
+        if (mountedRef.current) setState("idle");
+        stateRef.current = "idle";
+        releaseCall("leo-realtime", claim);
+        if (callClaimRef.current === claim) callClaimRef.current = null;
+      }
     }
   }
 
@@ -329,27 +399,51 @@ export function RealtimeCallHost() {
     setState("idle");
     stateRef.current = "idle";
     setMessage(errorCopy.call_cancelled);
-    releaseCall("leo-realtime");
+    releaseCall("leo-realtime", callClaimRef.current);
+    callClaimRef.current = null;
   }
+
+  useEffect(() => {
+    if (state !== "connected" || !session?.session_id) return;
+    const sessionId = session.session_id;
+    const timer = window.setInterval(() => {
+      if (shouldRefreshRealtimeBill(lastBillFetchRef.current)) void loadBill(sessionId).catch(() => undefined);
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [state, session?.session_id]);
 
   async function toggleCamera(): Promise<void> {
     if (cameraRef.current) {
+      cameraGenerationRef.current += 1;
       cameraRef.current.getTracks().forEach((track) => track.stop());
       cameraRef.current = null;
       setCameraOn(false);
       return;
     }
+    const generation = ++cameraGenerationRef.current;
     try {
-      cameraRef.current = await navigator.mediaDevices.getUserMedia({ video: selectedCamera ? { deviceId: { exact: selectedCamera } } : true, audio: false });
+      const stream = await acceptMediaStreamIfCurrent(
+        navigator.mediaDevices.getUserMedia({ video: selectedCamera ? { deviceId: { exact: selectedCamera } } : true, audio: false }),
+        () => generation === cameraGenerationRef.current && stateRef.current === "connected",
+      );
+      if (!stream) return;
+      cameraRef.current = stream;
       setCameraOn(true);
-    } catch (error) { setMessage(copyError(error)); }
+    } catch (error) { if (generation === cameraGenerationRef.current && stateRef.current === "connected") setMessage(copyError(error)); }
   }
 
   async function switchMicrophone(deviceId: string): Promise<void> {
-    setSelectedMic(deviceId);
-    if (stateRef.current !== "connected" || !audioContextRef.current || !workletRef.current) return;
+    if (stateRef.current !== "connected" || !audioContextRef.current || !workletRef.current) {
+      setSelectedMic(deviceId);
+      return;
+    }
+    const generation = ++microphoneGenerationRef.current;
     try {
-      const next = await navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true });
+      const next = await acceptMediaStreamIfCurrent(
+        navigator.mediaDevices.getUserMedia({ audio: deviceId ? { deviceId: { exact: deviceId } } : true }),
+        () => generation === microphoneGenerationRef.current && stateRef.current === "connected",
+      );
+      if (!next) return;
       if (mutedRef.current) next.getAudioTracks().forEach((track) => { track.enabled = false; });
       const source = audioContextRef.current.createMediaStreamSource(next);
       source.connect(workletRef.current);
@@ -359,34 +453,52 @@ export function RealtimeCallHost() {
       micRef.current = next;
       previous?.disconnect();
       previousStream?.getTracks().forEach((track) => track.stop());
-    } catch (error) { setMessage(copyError(error)); }
+      setSelectedMic(deviceId);
+    } catch (error) { if (generation === microphoneGenerationRef.current && stateRef.current === "connected") setMessage(copyError(error)); }
   }
 
   async function switchCamera(deviceId: string): Promise<void> {
-    setSelectedCamera(deviceId);
-    if (!cameraRef.current) return;
+    if (!cameraRef.current) { setSelectedCamera(deviceId); return; }
+    const generation = ++cameraGenerationRef.current;
     try {
-      const next = await navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true, audio: false });
+      const next = await acceptMediaStreamIfCurrent(
+        navigator.mediaDevices.getUserMedia({ video: deviceId ? { deviceId: { exact: deviceId } } : true, audio: false }),
+        () => generation === cameraGenerationRef.current && stateRef.current === "connected",
+      );
+      if (!next) return;
       const previous = cameraRef.current;
       cameraRef.current = next;
       if (cameraVideo.current) cameraVideo.current.srcObject = next;
       previous?.getTracks().forEach((track) => track.stop());
-    } catch (error) { setMessage(copyError(error)); }
+      setSelectedCamera(deviceId);
+    } catch (error) { if (generation === cameraGenerationRef.current && stateRef.current === "connected") setMessage(copyError(error)); }
   }
 
   async function toggleScreen(): Promise<void> {
     if (screenRef.current) {
+      screenGenerationRef.current += 1;
       screenRef.current.getTracks().forEach((track) => track.stop());
       screenRef.current = null;
       setSharing(false);
       return;
     }
     if (!navigator.mediaDevices?.getDisplayMedia) { setMessage("此浏览器不支持屏幕共享。"); return; }
+    const generation = ++screenGenerationRef.current;
     try {
-      screenRef.current = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 2, max: 4 } }, audio: false });
-      screenRef.current.getVideoTracks()[0]?.addEventListener("ended", () => { screenRef.current = null; setSharing(false); });
+      const stream = await acceptMediaStreamIfCurrent(
+        navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 2, max: 4 } }, audio: false }),
+        () => generation === screenGenerationRef.current && stateRef.current === "connected",
+      );
+      if (!stream) return;
+      screenRef.current = stream;
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        if (screenRef.current !== stream) return;
+        screenRef.current = null;
+        screenGenerationRef.current += 1;
+        setSharing(false);
+      });
       setSharing(true);
-    } catch (error) { setMessage(copyError(error)); }
+    } catch (error) { if (generation === screenGenerationRef.current && stateRef.current === "connected") setMessage(copyError(error)); }
   }
 
   useEffect(() => {
@@ -416,15 +528,26 @@ export function RealtimeCallHost() {
     return () => { if (frameTimer.current !== null) window.clearInterval(frameTimer.current); frameTimer.current = null; };
   }, [cameraOn, sharing, state]);
 
-  useEffect(() => () => {
-    stateRef.current = "ending";
-    socketRef.current?.close(1000, "host unmounted");
-    cleanupMedia();
-    releaseCall("leo-realtime");
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      attemptRef.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      stateRef.current = "ending";
+      socketRef.current?.close(1000, "host unmounted");
+      cleanupMedia();
+      releaseCall("leo-realtime", callClaimRef.current);
+      callClaimRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
     const onPageHide = () => {
+      attemptRef.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
       stateRef.current = "ending";
       send({ type: "control.close" });
       socketRef.current?.close(1000, "page hidden");
@@ -432,7 +555,8 @@ export function RealtimeCallHost() {
       cleanupMedia();
       stateRef.current = "ended";
       setState("ended");
-      releaseCall("leo-realtime");
+      releaseCall("leo-realtime", callClaimRef.current);
+      callClaimRef.current = null;
     };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
@@ -488,7 +612,7 @@ export function RealtimeCallHost() {
               {state === "ending" ? <p role="status" className="py-8 text-center text-sm">正在停止媒体并读取服务端账单……</p> : null}
               {state === "ended" ? <div className="mt-4 rounded-xl border p-4" role="status">
                 <h3 className="font-semibold">服务端用量回执</h3>
-                {bill ? <><dl className="mt-2 grid grid-cols-2 gap-y-2 text-sm"><dt>原始用量</dt><dd className="text-right break-all">{JSON.stringify(bill.raw_usage ?? "—")}</dd><dt>原价</dt><dd className="text-right">{bill.gross != null ? formatMoney(bill.gross, bill.currency, 6) : "—"}</dd><dt>优惠</dt><dd className="text-right">{bill.discount != null ? formatMoney(bill.discount, bill.currency, 6) : "—"}</dd><dt>实扣</dt><dd className="text-right font-semibold">{bill.net != null ? formatMoney(bill.net, bill.currency, 6) : "—"}</dd><dt>状态</dt><dd className="text-right">{bill.status || "处理中"}</dd></dl><details className="mt-3 text-xs"><summary className="min-h-8 cursor-pointer">查看计费快照</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(bill.tariff_snapshot ?? "—", null, 2)}</pre></details></> : <p className="mt-2 text-sm text-amber-800">账单暂不可读取，请稍后查看；不会用页面时长估算费用。</p>}
+                {bill ? <><p className="mt-2 text-xs font-medium">{callStatusLabel(bill.status, bill.pending_reconciliation)}</p><dl className="mt-2 grid grid-cols-2 gap-y-2 text-sm"><dt>服务端计量时长</dt><dd className="text-right">{formatConnectedTime(bill.connected_seconds)}</dd><dt>原价</dt><dd className="text-right">{bill.gross != null ? formatMoney(bill.gross, bill.currency, 9) : "—"}</dd><dt>优惠</dt><dd className="text-right">{bill.discount != null ? formatMoney(bill.discount, bill.currency, 9) : "—"}</dd><dt>已结算费用</dt><dd className="text-right font-semibold">{formatMoney((bill.settled_nano ?? (bill.net != null ? Math.round(bill.net * 1e9) : 0)) / 1e9, bill.currency, 9)}</dd><dt>当前预留（待结算/可能释放）</dt><dd className="text-right">{formatMoney((bill.currently_held_nano ?? bill.pending_release_nano ?? 0) / 1e9, bill.currency, 9)}</dd>{bill.unresolved_held_nano ? <><dt>待核对预留</dt><dd className="text-right">{formatMoney(bill.unresolved_held_nano / 1e9, bill.currency, 9)}</dd></> : null}{tokenUsageRows(bill.raw_usage).map((row) => <Fragment key={row.label}><dt>{row.label}</dt><dd className="text-right">{row.value.toLocaleString()}</dd></Fragment>)}</dl><p className="mt-2 text-xs text-neutral-600">模型 token 计价（每百万 token）：{tokenRateRows(bill.tariff_snapshot).map((row) => `${row.label} ${formatMoney(Number(row.rate), bill.currency, 6)}`).join(" · ") || "费率快照暂不可读"}。预留额不是最终费用，若服务端核对未完成会明确保持待核对状态。</p><details className="mt-3 text-xs"><summary className="min-h-8 cursor-pointer">高级核对：原始用量与资费快照</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ raw_usage: bill.raw_usage ?? "—", tariff_snapshot: bill.tariff_snapshot ?? "—" }, null, 2)}</pre></details></> : <p className="mt-2 text-sm text-amber-800">账单暂不可读取，请稍后查看；不会用页面时长估算费用。</p>}
                 <button type="button" className="mt-4 min-h-11 rounded-lg border px-4 text-sm" onClick={() => { setState("idle"); setSession(null); setBill(null); setMessage(""); }}>重新连接</button>
               </div> : null}
             </div>

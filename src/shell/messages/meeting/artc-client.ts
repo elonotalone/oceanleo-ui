@@ -18,11 +18,17 @@ interface AliRtcEngineLike {
   setLocalViewConfig(view: HTMLVideoElement | string | null, track: number): void;
   startPreview(): Promise<void>;
   stopPreview(): Promise<void>;
+  switchMicrophone(deviceId: string): void | Promise<void>;
+  switchCamera(deviceId: string): void | Promise<void>;
 }
+
+export interface ArtcDevice { deviceId: string; label: string }
 
 interface AliRtcNamespace {
   isSupported(): Promise<{ support: boolean }>;
   getInstance(): AliRtcEngineLike;
+  getMicrophoneList(): Promise<ArtcDevice[]>;
+  getCameraList(): Promise<ArtcDevice[]>;
   AliRtcVideoTrack?: { AliRtcVideoTrackBoth?: number };
 }
 
@@ -56,9 +62,17 @@ export interface ArtcClient {
   setMicrophone(enabled: boolean): Promise<void>;
   setCamera(enabled: boolean): Promise<void>;
   setScreenShare(enabled: boolean): Promise<void>;
+  switchMicrophone(deviceId: string): Promise<void>;
+  switchCamera(deviceId: string): Promise<void>;
   subscribeAudio(userId: string, enabled: boolean): Promise<void>;
   subscribeVideo(userId: string, enabled: boolean): Promise<void>;
   destroy(): Promise<void>;
+}
+
+export async function getArtcDevices(): Promise<{ microphones: ArtcDevice[]; cameras: ArtcDevice[] }> {
+  const sdk = await loadAliRtc();
+  const [microphones, cameras] = await Promise.all([sdk.getMicrophoneList(), sdk.getCameraList()]);
+  return { microphones, cameras };
 }
 
 /** Creates an SDK engine only after server join credentials are present. */
@@ -72,6 +86,7 @@ export async function createArtcClient(credentials: ImMeetingJoinCredentials, di
   const engine = sdk.getInstance();
   const audioSubscriptions = new Set<string>();
   const videoSubscriptions = new Set<string>();
+  const subscriptionQueues = new Map<string, Promise<void>>();
   // Aliyun's SDK defaults to subscribing to all remote streams; disable before join.
   engine.setDefaultSubscribeAllRemoteAudioStreams(false);
   engine.setDefaultSubscribeAllRemoteVideoStreams(false);
@@ -103,17 +118,29 @@ export async function createArtcClient(credentials: ImMeetingJoinCredentials, di
     setMicrophone: async (enabled) => { await engine.publishLocalAudioStream(enabled); },
     setCamera: async (enabled) => { await engine.publishLocalVideoStream(enabled); },
     setScreenShare: async (enabled) => { await engine.publishLocalScreenShareStream(enabled); },
+    switchMicrophone: async (deviceId) => { await engine.switchMicrophone(deviceId); },
+    switchCamera: async (deviceId) => { await engine.switchCamera(deviceId); },
     subscribeAudio: async (userId, enabled) => {
       const track = sdk.AliRtcVideoTrack?.AliRtcVideoTrackBoth;
       if (typeof track !== "number") throw new Error("artc_video_track_unavailable");
-      await engine.subscribeRemoteMediaStream(userId, track, enabled, videoSubscriptions.has(userId));
-      if (enabled) audioSubscriptions.add(userId); else audioSubscriptions.delete(userId);
+      const previous = subscriptionQueues.get(userId) ?? Promise.resolve();
+      const operation = previous.catch(() => undefined).then(async () => {
+        await engine.subscribeRemoteMediaStream(userId, track, enabled, videoSubscriptions.has(userId));
+        if (enabled) audioSubscriptions.add(userId); else audioSubscriptions.delete(userId);
+      });
+      subscriptionQueues.set(userId, operation);
+      try { await operation; } finally { if (subscriptionQueues.get(userId) === operation) subscriptionQueues.delete(userId); }
     },
     subscribeVideo: async (userId, enabled) => {
       const track = sdk.AliRtcVideoTrack?.AliRtcVideoTrackBoth;
       if (typeof track !== "number") throw new Error("artc_video_track_unavailable");
-      await engine.subscribeRemoteMediaStream(userId, track, audioSubscriptions.has(userId), enabled);
-      if (enabled) videoSubscriptions.add(userId); else videoSubscriptions.delete(userId);
+      const previous = subscriptionQueues.get(userId) ?? Promise.resolve();
+      const operation = previous.catch(() => undefined).then(async () => {
+        await engine.subscribeRemoteMediaStream(userId, track, audioSubscriptions.has(userId), enabled);
+        if (enabled) videoSubscriptions.add(userId); else videoSubscriptions.delete(userId);
+      });
+      subscriptionQueues.set(userId, operation);
+      try { await operation; } finally { if (subscriptionQueues.get(userId) === operation) subscriptionQueues.delete(userId); }
     },
     destroy: async () => {
       try { await engine.stopPreview(); } catch { /* preview may never have started */ }

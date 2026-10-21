@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { currentDomainProfile, runtimePageOrigin } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
+import { LEO_TRANSCRIPT_UPDATED_EVENT } from "../../lib/leo-realtime";
 import {
   leoClear,
   leoTranscript,
@@ -109,6 +110,15 @@ export function useLeoTranscript({ open, sessionId }: { open: boolean; sessionId
     if (open) reload();
     return () => { loadSeq.current += 1; };
   }, [open, reload]);
+
+  useEffect(() => {
+    const onTranscriptUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string }>).detail;
+      if (open && (!detail?.sessionId || detail.sessionId === sessionId)) reload();
+    };
+    window.addEventListener(LEO_TRANSCRIPT_UPDATED_EVENT, onTranscriptUpdated);
+    return () => window.removeEventListener(LEO_TRANSCRIPT_UPDATED_EVENT, onTranscriptUpdated);
+  }, [open, reload, sessionId]);
 
   const clear = useCallback(() => {
     setClearing(true);

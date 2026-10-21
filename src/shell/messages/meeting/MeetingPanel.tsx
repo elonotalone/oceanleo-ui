@@ -4,12 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getCredits } from "../../../lib/auth/account";
 import { formatMoney } from "../../../lib/money";
+import { callStatusLabel, formatConnectedTime } from "../../../lib/call-billing-display";
+import { acceptMediaStreamIfCurrent } from "../../../lib/realtime-audio";
 import { ImApiError } from "../../../lib/im/client";
 import { meetingsApi } from "../../../lib/im/meetings-api";
 import type { ImMeetingBill, ImMeetingInvitation, ImMember, ImMeetingJoinCredentials, ImMeetingSnapshot, ImProfile } from "../../../lib/im/types";
 import { useImEvent } from "../realtime/hooks";
 import { ConfirmDialog } from "../../../ui";
-import { createArtcClient, type ArtcClient } from "./artc-client";
+import { createArtcClient, getArtcDevices, type ArtcClient, type ArtcDevice } from "./artc-client";
+import { admitMeetingClient } from "./meeting-admission";
 import { canJoinMeeting, meetingAvailabilityMessage, sdkUserIdForParticipant } from "./meeting-policy";
 import { claimCall, releaseCall } from "./meeting-host-state";
 
@@ -53,18 +56,25 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   const [sharing, setSharing] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [deviceChecked, setDeviceChecked] = useState(false);
+  const [microphoneDevices, setMicrophoneDevices] = useState<ArtcDevice[]>([]);
+  const [cameraDevices, setCameraDevices] = useState<ArtcDevice[]>([]);
+  const [selectedMicrophone, setSelectedMicrophone] = useState("");
+  const [selectedCamera, setSelectedCamera] = useState("");
   const [inviting, setInviting] = useState(false);
   const [invitations, setInvitations] = useState<ImMeetingInvitation[]>([]);
   const [inviteIds, setInviteIds] = useState<Set<string>>(() => new Set());
   const [bill, setBill] = useState<ImMeetingBill | null>(null);
-  const [reservation, setReservation] = useState<ImMeetingJoinCredentials["billing"]>(null);
+  const [reservation, setReservation] = useState<ImMeetingJoinCredentials["billing"] | null>(null);
   const [audioSubscriptions, setAudioSubscriptions] = useState<Set<string>>(() => new Set());
   const [subscribed, setSubscribed] = useState<Set<string>>(() => new Set());
   const [confirmAction, setConfirmAction] = useState<{ action: "end" | "remove"; participantId?: string } | null>(null);
   const clientRef = useRef<ArtcClient | null>(null);
+  const mountedRef = useRef(false);
+  const joinGenerationRef = useRef(0);
+  const deviceGenerationRef = useRef(0);
   const leavingRef = useRef(false);
   const activeMeetingIdRef = useRef<string | null>(null);
-  const ownsCallLockRef = useRef(false);
+  const callClaimRef = useRef<number | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideos = useRef(new Map<string, HTMLVideoElement>());
 
@@ -115,14 +125,80 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
-  useEffect(() => () => {
-    leavingRef.current = true;
-    void clientRef.current?.destroy();
-    clientRef.current = null;
-    if (activeMeetingIdRef.current) void meetingsApi.leave(activeMeetingIdRef.current).catch(() => undefined);
-    if (ownsCallLockRef.current) releaseCall("meeting");
-    ownsCallLockRef.current = false;
-    activeMeetingIdRef.current = null;
+  useEffect(() => {
+    let alive = true;
+    const refreshDevices = async () => {
+      try {
+        const next = await getArtcDevices();
+        if (!alive) return;
+        setMicrophoneDevices(next.microphones);
+        setCameraDevices(next.cameras);
+        if (selectedMicrophone && !next.microphones.some((device) => device.deviceId === selectedMicrophone)) {
+          const fallback = next.microphones[0];
+          if (fallback && clientRef.current) {
+            try {
+              await clientRef.current.switchMicrophone(fallback.deviceId);
+              if (alive) {
+                setSelectedMicrophone(fallback.deviceId);
+                setNote(`麦克风已断开，已切换至${fallback.label || "备用麦克风"}。`);
+              }
+            } catch {
+              if (alive) setNote("所选麦克风已断开，切换备用设备失败；请重新选择设备。");
+            }
+          } else if (alive) {
+            setSelectedMicrophone("");
+            if (clientRef.current && microphone) {
+              await clientRef.current.setMicrophone(false).catch(() => undefined);
+              setMicrophone(false);
+            }
+            setNote("所选麦克风已断开。请连接设备并重新选择后再发言。");
+          }
+        }
+        if (selectedCamera && !next.cameras.some((device) => device.deviceId === selectedCamera)) {
+          const fallback = next.cameras[0];
+          if (fallback && clientRef.current) {
+            try {
+              await clientRef.current.switchCamera(fallback.deviceId);
+              if (alive) {
+                setSelectedCamera(fallback.deviceId);
+                setNote(`摄像头已断开，已切换至${fallback.label || "备用摄像头"}。`);
+              }
+            } catch {
+              if (alive) setNote("所选摄像头已断开，切换备用设备失败；请重新选择设备。");
+            }
+          } else if (alive) {
+            setSelectedCamera("");
+            if (clientRef.current && camera) {
+              await clientRef.current.setCamera(false).catch(() => undefined);
+              setCamera(false);
+            }
+            setNote("所选摄像头已断开。请连接设备并重新选择后再开启摄像头。");
+          }
+        }
+      } catch {
+        if (alive) setNote("无法读取 ARTC 设备列表；当前不会伪称已切换设备。");
+      }
+    };
+    navigator.mediaDevices?.addEventListener?.("devicechange", refreshDevices);
+    return () => {
+      alive = false;
+      navigator.mediaDevices?.removeEventListener?.("devicechange", refreshDevices);
+    };
+  }, [selectedMicrophone, selectedCamera, microphone, camera]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      joinGenerationRef.current += 1;
+      deviceGenerationRef.current += 1;
+      leavingRef.current = true;
+      void clientRef.current?.destroy();
+      clientRef.current = null;
+      if (activeMeetingIdRef.current) void meetingsApi.leave(activeMeetingIdRef.current).catch(() => undefined);
+      releaseCall("meeting", callClaimRef.current);
+      callClaimRef.current = null;
+      activeMeetingIdRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -178,34 +254,56 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   async function checkDevices() {
     setBusy(true);
     setNote("");
+    const generation = ++deviceGenerationRef.current;
+    const isCurrent = () => mountedRef.current && deviceGenerationRef.current === generation;
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error("artc_browser_unsupported");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await acceptMediaStreamIfCurrent(navigator.mediaDevices.getUserMedia({ audio: true }), isCurrent);
+      if (!stream) return;
       stream.getTracks().forEach((track) => track.stop());
+      const devices = await getArtcDevices();
+      if (!isCurrent()) return;
+      setMicrophoneDevices(devices.microphones);
+      setCameraDevices(devices.cameras);
       setDeviceChecked(true);
       setNote("麦克风已就绪。加入前不会发布媒体，加入后仍需手动打开设备。");
-    } catch (error) { setNote(messageForError(error, "麦克风检查失败，请检查设备和浏览器权限。")); }
-    finally { setBusy(false); }
+    } catch (error) { if (isCurrent()) setNote(messageForError(error, "麦克风检查失败，请检查设备和浏览器权限。")); }
+    finally { if (isCurrent()) setBusy(false); }
   }
 
   async function joinMeeting() {
     if (!meeting || !canStart) return;
-    if (!claimCall("meeting")) { setNote("另一个通话正在进行，请先结束它再加入此会议。"); return; }
-    ownsCallLockRef.current = true;
+    const claim = claimCall("meeting");
+    if (claim === null) { setNote("另一个通话正在进行，请先结束它再加入此会议。"); return; }
+    callClaimRef.current = claim;
     setBusy(true);
     setNote("");
+    const attempt = ++joinGenerationRef.current;
+    const stillCurrent = () => mountedRef.current && joinGenerationRef.current === attempt;
     let joinedMeetingId: string | null = null;
     try {
-      const credentials = await meetingsApi.join(meeting.meeting_id);
-      joinedMeetingId = credentials.meeting.meeting_id;
       const displayName = myUserId ? (profiles[myUserId]?.display_name || "OceanLeo 成员") : "OceanLeo 成员";
-      const client = await createArtcClient(credentials, displayName);
+      const admission = await admitMeetingClient({
+        join: () => meetingsApi.join(meeting.meeting_id),
+        createClient: (credentials) => createArtcClient(credentials, displayName),
+        isCurrent: stillCurrent,
+        leave: (meetingId) => meetingsApi.leave(meetingId),
+        destroy: (client) => client.destroy(),
+      });
+      if (!admission) {
+        releaseCall("meeting", claim);
+        if (callClaimRef.current === claim) callClaimRef.current = null;
+        return;
+      }
+      const { credentials, client } = admission;
+      joinedMeetingId = credentials.meeting.meeting_id;
       clientRef.current = client;
       activeMeetingIdRef.current = credentials.meeting.meeting_id;
-      client.engine.on("localDeviceException", () => {
-        setMicrophone(false);
-        setCamera(false);
-        setNote("麦克风或摄像头不可用，请检查设备连接和浏览器权限。未启用的设备不会发布媒体。");
+      client.engine.on("localDeviceException", (...values) => {
+        const detail = values.map(String).join(" ").toLowerCase();
+        if (mountedRef.current && (detail.includes("mic") || detail.includes("audio"))) setMicrophone(false);
+        if (mountedRef.current && (detail.includes("camera") || detail.includes("video"))) setCamera(false);
+        if (mountedRef.current) setNote("输入设备发生异常，请检查设备连接和浏览器权限；未启用的媒体不会发布。");
       });
       client.engine.on("connectionStatusChange", (...values) => {
         const status = values.map(String).join(" ").toLowerCase();
@@ -216,22 +314,42 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
       client.engine.on("bye", () => {
         if (!leavingRef.current) void leaveMeeting("已与会议断开连接。请刷新会议状态后重试。");
       });
+      const subscribeRemote = (remoteUserId: unknown) => {
+        const id = String(remoteUserId || "");
+        if (!id || id === credentials.user_id) return;
+        void client.subscribeAudio(id, true).catch(() => { if (mountedRef.current) setNote("无法自动接收远端音频，请检查网络后重试。"); });
+        void client.subscribeVideo(id, true).catch(() => { if (mountedRef.current) setNote("无法自动接收远端视频，请检查网络后重试。"); });
+      };
+      client.engine.on("remoteUserOnLineNotify", (remoteUserId) => {
+        subscribeRemote(remoteUserId);
+        void reload();
+      });
+      client.engine.on("remoteTrackAvailableNotify", (remoteUserId) => subscribeRemote(remoteUserId));
+      client.engine.on("remoteUserOffLineNotify", (remoteUserId) => {
+        const id = String(remoteUserId || "");
+        client.engine.setRemoteViewConfig(null, id, 1);
+        void client.subscribeAudio(id, false).catch(() => undefined);
+        void client.subscribeVideo(id, false).catch(() => undefined);
+      });
       setConnected(true);
       setMicrophone(false);
       setCamera(false);
       await reload();
+      if (!stillCurrent()) return;
       setReservation(credentials.billing ?? null);
     } catch (error) {
       await clientRef.current?.destroy().catch(() => undefined);
       clientRef.current = null;
       if (joinedMeetingId) await meetingsApi.leave(joinedMeetingId).catch(() => undefined);
-      releaseCall("meeting");
-      ownsCallLockRef.current = false;
+      releaseCall("meeting", claim);
+      if (callClaimRef.current === claim) callClaimRef.current = null;
       activeMeetingIdRef.current = null;
-      setConnected(false);
-      setNote(messageForError(error, "会议连接失败；媒体未启动。"));
+      if (mountedRef.current) {
+        setConnected(false);
+        setNote(messageForError(error, "会议连接失败；媒体未启动。"));
+      }
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   }
 
@@ -255,8 +373,8 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
         const response = await meetingsApi.leave(meeting.meeting_id);
         setBill(response.billing ?? null);
       }
-      releaseCall("meeting");
-      ownsCallLockRef.current = false;
+      releaseCall("meeting", callClaimRef.current);
+      callClaimRef.current = null;
       await reload();
       if (exitNotice) setNote(exitNotice);
     } catch (error) {
@@ -332,10 +450,12 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
     try {
       if (kind === "microphone") {
         const next = !microphone;
+        if (next && selectedMicrophone) await client.switchMicrophone(selectedMicrophone);
         await client.setMicrophone(next);
         setMicrophone(next);
       } else if (kind === "camera") {
         const next = !camera;
+        if (next && selectedCamera) await client.switchCamera(selectedCamera);
         await client.setCamera(next);
         if (!next) client.engine.setLocalViewConfig(null, 1);
         setCamera(next);
@@ -347,6 +467,24 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
     } catch (error) {
       setNote(messageForError(error, "设备暂不可用，请检查浏览器权限设置。"));
     }
+  }
+
+  async function changeInputDevice(kind: "microphone" | "camera", deviceId: string) {
+    const client = clientRef.current;
+    if (client && deviceId) {
+      try {
+        if (kind === "microphone") await client.switchMicrophone(deviceId);
+        else await client.switchCamera(deviceId);
+      } catch (error) {
+        setNote(messageForError(error, `无法切换${kind === "microphone" ? "麦克风" : "摄像头"}，原设备保持不变。`));
+        return;
+      }
+    }
+    if (kind === "microphone") setSelectedMicrophone(deviceId);
+    else setSelectedCamera(deviceId);
+    setNote(client
+      ? (kind === "microphone" ? "麦克风设备已切换。" : "摄像头设备已切换。摄像头仍保持关闭，直到你主动开启。")
+      : `已选择${kind === "microphone" ? "麦克风" : "摄像头"}；加入会议时将切换到该设备。`);
   }
 
   async function manageMeeting(action: "end" | "remove", participantId?: string) {
@@ -366,8 +504,8 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
           setAudioSubscriptions(new Set());
           const response = await meetingsApi.end(meeting.meeting_id);
           setBill(response.billing ?? null);
-          releaseCall("meeting");
-          ownsCallLockRef.current = false;
+          releaseCall("meeting", callClaimRef.current);
+          callClaimRef.current = null;
         } finally { leavingRef.current = false; }
       }
       else if (participantId) await meetingsApi.remove(meeting.meeting_id, participantId);
@@ -404,22 +542,36 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
               {meeting?.status === "active" ? <span className="text-xs text-neutral-500">{participants.length} 位成员在线</span> : null}
             </div>
             <p className="mt-2 text-xs leading-5 text-neutral-600">{readyLabel}</p>
-            <p className="mt-2 text-xs leading-5 text-neutral-600">参会者各自使用自己的余额。静音或只听也可能计费；只有服务端核验的用量会结算，此处不按通话时长估算费用。</p>
+            <p className="mt-2 text-xs leading-5 text-neutral-600">参会者各自使用自己的余额。静音或只听也可能计费；只有服务端核验的用量会结算，此处不按通话时长估算费用。远端已发布的音频和视频会自动订阅。</p>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600">
               <span>本人余额：{wallet ? formatMoney(wallet.balance, wallet.currency, 2) : "暂不可读取"}</span>
               {wallet && wallet.balance <= 0 ? <span className="font-medium text-rose-700">余额不足，无法加入</span> : null}
             </div>
           </div>
           {bill ? <div className="mt-3 rounded-lg border border-neutral-200 p-3 text-xs" aria-live="polite">
-            服务端计费状态：原价 {formatMoney(bill.gross, bill.currency, 6)} · 优惠 {formatMoney(bill.discount, bill.currency, 6)} · 实扣 {formatMoney(bill.net, bill.currency, 6)} · {bill.status}
-            <details className="mt-2"><summary className="min-h-8 cursor-pointer py-1">核对原始用量与资费快照</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ raw_usage: bill.raw_usage, tariff_snapshot: bill.tariff_snapshot }, null, 2)}</pre></details>
+            <p className="font-medium text-neutral-800">计费状态：{callStatusLabel(bill.status, bill.pending_reconciliation)}</p>
+            <dl className="mt-2 grid grid-cols-2 gap-y-1.5 text-neutral-600">
+              <dt>本人已连接</dt><dd className="text-right">{formatConnectedTime(bill.connected_seconds)}</dd>
+              <dt>资费</dt><dd className="text-right">{bill.tariff_snapshot && typeof bill.tariff_snapshot === "object" && "per_user_minute" in bill.tariff_snapshot ? `${formatMoney(Number((bill.tariff_snapshot as { per_user_minute: unknown }).per_user_minute), bill.currency, 6)} / 人·分钟` : "暂不可读取"}</dd>
+              <dt>包含媒体</dt><dd className="text-right">{bill.tariff_snapshot && typeof bill.tariff_snapshot === "object" && Array.isArray((bill.tariff_snapshot as { modalities_included?: unknown }).modalities_included) ? (bill.tariff_snapshot as { modalities_included: string[] }).modalities_included.map((item) => item === "audio" ? "音频" : item === "video" ? "视频" : item === "screen" ? "屏幕共享" : item).join("、") : "暂不可读取"}</dd>
+              <dt>原价 / 优惠</dt><dd className="text-right">{formatMoney(bill.gross, bill.currency, 6)} / {formatMoney(bill.discount, bill.currency, 6)}</dd>
+              <dt>已结算费用</dt><dd className="text-right font-medium">{formatMoney((bill.settled_nano ?? bill.net_nano ?? Math.round(bill.net * 1e9)) / 1e9, bill.currency, 9)}</dd>
+              <dt>当前预留（可退/待核对）</dt><dd className="text-right">{formatMoney((bill.currently_held_nano ?? bill.pending_release_nano ?? 0) / 1e9, bill.currency, 9)}</dd>
+              {bill.unresolved_held_nano ? <><dt>待核对预留</dt><dd className="text-right">{formatMoney(bill.unresolved_held_nano / 1e9, bill.currency, 9)}</dd></> : null}
+              {bill.refunded_nano ? <><dt>已释放预留</dt><dd className="text-right">{formatMoney(bill.refunded_nano / 1e9, bill.currency, 9)}</dd></> : null}
+            </dl>
+            <details className="mt-2"><summary className="min-h-8 cursor-pointer py-1">高级核对：原始事件与资费快照</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ raw_usage: bill.raw_usage, modality_events: bill.modality_events, tariff_snapshot: bill.tariff_snapshot }, null, 2)}</pre></details>
           </div> : null}
-          {reservation ? <p className="mt-2 text-xs text-neutral-500">服务端预留：{reservation.reserved_nano ?? "—"} nano · {reservation.currency} · {reservation.status}</p> : null}
+          {reservation ? <p className="mt-2 text-xs text-neutral-600">已预留余额：{formatMoney((reservation.reserved_nano ?? 0) / 1e9, reservation.currency, 9)}。这是临时预授权，不代表最终费用；结束后按服务端确认用量结算，余额余量会释放。</p> : null}
 
           {loading ? <p className="py-8 text-center text-sm text-neutral-500">正在加载…</p> : null}
           {!loading && !meeting ? <div className="mt-4 flex justify-end"><button type="button" disabled={!canCreate} onClick={() => void createMeeting()} className="min-h-11 rounded-lg bg-neutral-900 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">发起会议</button></div> : null}
 
           {meeting ? <>
+            {!connected ? <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="flex min-h-11 items-center gap-2 text-xs">麦克风设备<select aria-label="会议麦克风设备" value={selectedMicrophone} disabled={!deviceChecked || busy} onChange={(event) => void changeInputDevice("microphone", event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border px-2"><option value="">系统默认</option>{microphoneDevices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `麦克风 ${index + 1}`}</option>)}</select></label>
+              <label className="flex min-h-11 items-center gap-2 text-xs">摄像头设备<select aria-label="会议摄像头设备" value={selectedCamera} disabled={!deviceChecked || busy} onChange={(event) => void changeInputDevice("camera", event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border px-2"><option value="">系统默认</option>{cameraDevices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `摄像头 ${index + 1}`}</option>)}</select></label>
+            </div> : null}
             {incomingInvitations.map((invitation) => <div key={invitation.invitation_id} className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
               <span>{profiles[invitation.inviter_id]?.display_name || "成员"} 邀请你加入会议</span>
               <span className="flex gap-2"><button type="button" disabled={busy} onClick={() => void respondToInvitation(invitation, false)} className="min-h-11 rounded-lg border px-3">拒绝</button><button type="button" disabled={busy} onClick={() => void respondToInvitation(invitation, true)} className="min-h-11 rounded-lg bg-neutral-900 px-3 text-white">接受</button></span>
@@ -443,6 +595,8 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
             </div>
 
             {connected ? <div className="mt-3 flex flex-wrap gap-2">
+              <label className="flex min-h-11 items-center gap-2 text-xs">麦克风<select aria-label="切换会议麦克风" value={selectedMicrophone} disabled={busy} onChange={(event) => void changeInputDevice("microphone", event.target.value)} className="min-h-11 max-w-48 rounded-lg border px-2"><option value="" disabled={Boolean(selectedMicrophone)}>系统默认</option>{microphoneDevices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `麦克风 ${index + 1}`}</option>)}</select></label>
+              <label className="flex min-h-11 items-center gap-2 text-xs">摄像头<select aria-label="切换会议摄像头" value={selectedCamera} disabled={busy} onChange={(event) => void changeInputDevice("camera", event.target.value)} className="min-h-11 max-w-48 rounded-lg border px-2"><option value="" disabled={Boolean(selectedCamera)}>系统默认</option>{cameraDevices.map((device, index) => <option key={device.deviceId || index} value={device.deviceId}>{device.label || `摄像头 ${index + 1}`}</option>)}</select></label>
               <button type="button" onClick={() => void toggleLocalMedia("microphone")} className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm">{microphone ? "关闭麦克风" : "打开麦克风"}</button>
               <button type="button" onClick={() => void toggleLocalMedia("camera")} className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm">{camera ? "关闭摄像头" : "打开摄像头"}</button>
               <button type="button" onClick={() => void toggleLocalMedia("screen")} className="min-h-11 rounded-lg border border-neutral-300 px-3 text-sm">{sharing ? "停止共享" : "共享屏幕"}</button>

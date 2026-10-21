@@ -311,9 +311,21 @@ export interface ImMeetingBill {
   gross: number;
   discount: number;
   net: number;
+  gross_nano?: number;
+  discount_nano?: number;
+  net_nano?: number;
   status: string;
   tariff_snapshot?: unknown;
   events?: unknown[];
+  connected_seconds?: number;
+  reserve_nano?: number;
+  currently_held_nano?: number;
+  unresolved_held_nano?: number;
+  pending_release_nano?: number;
+  settled_nano?: number;
+  refunded_nano?: number;
+  pending_reconciliation?: boolean;
+  modality_events?: Array<{ at?: string; modalities?: string[]; event_type?: string }>;
 }
 
 export interface ImMeetingInvitation {

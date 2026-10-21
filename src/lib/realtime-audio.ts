@@ -27,6 +27,34 @@ export function stopMediaStreams(streams: Array<MediaStream | null | undefined>)
   for (const stream of streams) stream?.getTracks().forEach((track) => track.stop());
 }
 
+export function flushPlaybackQueue<T extends { stop(): void; disconnect(): void }>(
+  queue: T[], currentTime: number, setCursor: (time: number) => void,
+): void {
+  for (const source of queue.splice(0)) {
+    try { source.stop(); } catch { /* already ended */ }
+    source.disconnect();
+  }
+  setCursor(currentTime);
+}
+
+export function isCurrentCallAttempt(attempt: number, currentAttempt: number): boolean {
+  return attempt === currentAttempt;
+}
+
+export function shouldRefreshRealtimeBill(lastFetchAt: number, now = Date.now(), intervalMs = 15_000): boolean {
+  return now - lastFetchAt >= intervalMs;
+}
+
+export async function acceptMediaStreamIfCurrent<T extends { getTracks(): Array<{ stop(): void }> }>(
+  pending: Promise<T>,
+  isCurrent: () => boolean,
+): Promise<T | null> {
+  const stream = await pending;
+  if (isCurrent()) return stream;
+  for (const track of stream.getTracks()) track.stop();
+  return null;
+}
+
 export function videoFrameEnvelope(source: "camera" | "screen", data: string) {
   return { type: "video.frame" as const, source, mime_type: "image/jpeg" as const, data };
 }

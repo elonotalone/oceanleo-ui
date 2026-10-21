@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { canJoinMeeting, meetingAvailabilityMessage, sdkUserIdForParticipant } from "../src/shell/messages/meeting/meeting-policy.ts";
 
@@ -39,16 +38,33 @@ test("server participant UUID maps to the ARTC string identity without separator
 });
 
 test("ARTC client requires server credentials and turns off automatic subscriptions before channel join", async () => {
-  const source = await readFile(new URL("../src/shell/messages/meeting/artc-client.ts", import.meta.url), "utf8");
-  const credentialGuard = source.indexOf("if (!credentials.app_id || !credentials.token");
-  const sdkLoad = source.indexOf("const sdk = await loadAliRtc()");
-  const disableAudio = source.indexOf("setDefaultSubscribeAllRemoteAudioStreams(false)");
-  const disableVideo = source.indexOf("setDefaultSubscribeAllRemoteVideoStreams(false)");
-  const join = source.indexOf("await engine.joinChannel(");
-  assert.ok(credentialGuard >= 0 && credentialGuard < sdkLoad);
-  assert.ok(disableAudio >= 0 && disableAudio < join);
-  assert.ok(disableVideo >= 0 && disableVideo < join);
-  assert.ok(source.includes("publishLocalAudioStream(false)"));
-  assert.ok(source.includes("publishLocalVideoStream(false)"));
-  assert.ok(source.includes("publishLocalScreenShareStream(false)"));
+  const operations = [];
+  let instanceCount = 0;
+  const engine = {
+    setDefaultSubscribeAllRemoteAudioStreams(value) { operations.push(["default-audio", value]); },
+    setDefaultSubscribeAllRemoteVideoStreams(value) { operations.push(["default-video", value]); },
+    publishLocalAudioStream(value) { operations.push(["publish-audio", value]); },
+    publishLocalVideoStream(value) { operations.push(["publish-video", value]); },
+    publishLocalScreenShareStream(value) { operations.push(["publish-screen", value]); },
+    setChannelProfile(value) { operations.push(["profile", value]); },
+    async joinChannel() { operations.push(["join"]); },
+    async leaveChannel() {}, destroy() {}, on() {}, async subscribeRemoteMediaStream() {},
+    setRemoteViewConfig() {}, setLocalViewConfig() {}, async startPreview() {}, async stopPreview() {},
+    async switchMicrophone() {}, async switchCamera() {},
+  };
+  globalThis.window = { AliRtcEngine: { async isSupported() { return { support: true }; }, getInstance() { instanceCount += 1; return engine; }, AliRtcVideoTrack: { AliRtcVideoTrackBoth: 1 } } };
+  try {
+    const { createArtcClient } = await import("../src/shell/messages/meeting/artc-client.ts");
+    await assert.rejects(createArtcClient({ app_id: "", token: "", channel_id: "", user_id: "", expires_at: "" }, "name"), /meeting_credentials_incomplete/);
+    assert.equal(instanceCount, 0, "incomplete server credentials must not create a media engine");
+    const credentials = { app_id: "app", token: "server-token", channel_id: "room", user_id: "member", expires_at: new Date(Date.now() + 60_000).toISOString(), meeting: { meeting_id: "m", conversation_id: "c", edition: "global", channel_id: "room", status: "active", created_by: "u", created_at: "", ended_at: null, participants: [] } };
+    const client = await createArtcClient(credentials, "name");
+    const joinIndex = operations.findIndex(([name]) => name === "join");
+    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "default-audio" && value === false));
+    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "default-video" && value === false));
+    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "publish-audio" && value === false));
+    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "publish-video" && value === false));
+    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "publish-screen" && value === false));
+    await client.destroy();
+  } finally { delete globalThis.window; }
 });
