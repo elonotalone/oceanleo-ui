@@ -28,6 +28,7 @@
     "./client-ui/core": "./src/client-ui/core.ts",
     "./client-ui/web": "./src/client-ui/web.ts",
     "./shell": "./src/shell/index.ts",
+    "./shell/design-document": "./src/shell/design-document-schema-public.ts",
     "./shell/nav-source": "./src/shell/nav-source/index.ts",
     "./shell/nav-source/use-route-navigation": "./src/shell/nav-source/use-route-navigation.ts",
     "./shell/nav-source/route-transition.css": "./src/shell/nav-source/route-transition.css",

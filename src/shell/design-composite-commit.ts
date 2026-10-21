@@ -849,6 +849,102 @@ function publishedPackageEvidence(source: JsonRecord): {
 }
 
 /**
+ * Evidence for the strict flat `oceanleo.design-document.v1` carrier. This
+ * validates the carrier's declared JSON schema rather than adapting it
+ * through the older editor-package `props` shape. Publication quality gates
+ * (byte floor, raster and licence completeness) are not open gates; source
+ * digest, closure, element identity and asset integrity remain enforced.
+ */
+function publishedCarrierEvidence(source: JsonRecord): {
+  dependencyDigests: string[];
+  revision: number;
+  sourceMode: DesignCompositeSourceMode;
+} {
+  const validation = validateDesignDocumentProject(source);
+  if (!validation.ok) {
+    throw new DesignCompositeCommitError(
+      `published design carrier 未通过 §3.1 schema 校验：${validation.errors
+        .slice(0, 4)
+        .map((error) => `${error.path || "<root>"} ${error.message}`)
+        .join("；")}`,
+      "design-source-invalid-structure",
+    );
+  }
+  const project = validation.project;
+  const layerIds = new Set<string>();
+  for (const [index, element] of project.document.elements.entries()) {
+    if (layerIds.has(element.id)) {
+      throw new DesignCompositeCommitError(
+        `published design carrier element[${index}] 重复 identity。`,
+        "design-source-invalid-structure",
+      );
+    }
+    layerIds.add(element.id);
+  }
+
+  const assetDigests = new Map<string, string>();
+  for (const [index, asset] of (project.assets ?? []).entries()) {
+    if (assetDigests.has(asset.id)) {
+      throw new DesignCompositeCommitError(
+        `published design carrier asset[${index}] 重复 identity。`,
+        "invalid-dependency",
+      );
+    }
+    assetDigests.set(asset.id, normalizedDigest(asset.sha256));
+  }
+  const referencedAssetIds = [
+    ...project.document.elements.flatMap((element) =>
+      element.assetId ? [element.assetId] : [],
+    ),
+    ...(project.fonts ?? []).flatMap((font) =>
+      font.assetId ? [font.assetId] : [],
+    ),
+    ...project.attribution.entries.flatMap((entry) =>
+      entry.assetId ? [entry.assetId] : [],
+    ),
+  ];
+  const unresolvedAssetId = referencedAssetIds.find(
+    (assetId) => !assetDigests.has(assetId),
+  );
+  if (unresolvedAssetId) {
+    throw new DesignCompositeCommitError(
+      `published design carrier 引用了未声明 asset ${unresolvedAssetId}。`,
+      "invalid-dependency",
+    );
+  }
+  const dependencyDigests = [...new Set(assetDigests.values())];
+  if (dependencyDigests.length > MAX_DEPENDENCIES) {
+    throw new DesignCompositeCommitError(
+      "published design carrier dependency 超过安全上限。",
+      "invalid-dependency",
+    );
+  }
+  const document = record(source.document);
+  if (!document) {
+    throw new DesignCompositeCommitError(
+      "published design carrier 缺少 document。",
+      "design-source-invalid-structure",
+    );
+  }
+  return {
+    dependencyDigests,
+    revision: flatDesignRevision(source, document),
+    sourceMode: "layered",
+  };
+}
+
+function hasFlatCarrierLayerShape(source: JsonRecord): boolean {
+  const document = record(source.document);
+  return Boolean(
+    Array.isArray(document?.elements) &&
+      document.elements.some((raw) => {
+        const element = record(raw);
+        return Boolean(element && "width" in element && !("w" in element));
+      }),
+  );
+}
+
+/**
  * `oceanleo.design-document.v1` carrier form (design-document.md §3.1): the
  * flat, `additionalProperties: false` document with `palette` and
  * `attribution`. It is distinguishable from the editor envelope, which always
@@ -1111,6 +1207,31 @@ export async function validateDesignCompositeSource(
     );
   }
   const sourceDigest = normalizedDigest(await sha256Hex(sourceBlob));
+  if (
+    options.validation === "open" &&
+    parsedSource.schema === DESIGN_SOURCE_FORMAT &&
+    parsedSource.sceneGraph === undefined &&
+    (isDesignDocumentCarrierSource(parsedSource) ||
+      hasFlatCarrierLayerShape(parsedSource))
+  ) {
+    const published = publishedCarrierEvidence(parsedSource);
+    const closure = projectedDesignOpenClosure(
+      item,
+      sourceDigest,
+      [],
+      published.dependencyDigests,
+      true,
+    );
+    return {
+      sourceDigest,
+      ...closure,
+      sourceFormat: DESIGN_SOURCE_FORMAT,
+      sceneSchema: DESIGN_SOURCE_FORMAT,
+      revision: published.revision,
+      sourceKind: "carrier-document",
+      sourceMode: published.sourceMode,
+    };
+  }
   if (
     options.validation === "open" &&
     parsedSource.schema === DESIGN_SOURCE_FORMAT &&

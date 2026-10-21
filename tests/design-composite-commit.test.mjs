@@ -212,7 +212,15 @@ function publishedDesignDocumentCarrier() {
     },
     palette: ["#F5F2E9", "#FFFFFF", "#1F2328", "#1F6FEB", "#E5484D"],
     fonts: [{ family: "Noto Sans SC", weights: [400], licenseCode: "OFL" }],
-    assets: [],
+    assets: [
+      {
+        id: "unused-source-asset",
+        sha256: "a".repeat(64),
+        mediaType: "image/png",
+        byteSize: 512,
+        licenseCode: "CC0",
+      },
+    ],
     attribution: {
       entries: [
         {
@@ -225,9 +233,10 @@ function publishedDesignDocumentCarrier() {
   };
 }
 
-function sourceClosureItem(sourceText) {
+function sourceClosureItem(sourceText, assetDigests = []) {
   const sourceDigest = createHash("sha256").update(sourceText).digest("hex");
   const closureDigest = "d".repeat(64);
+  const dependencyDigests = [...new Set([sourceDigest, ...assetDigests])];
   return {
     sourceDigest,
     closureDigest,
@@ -239,7 +248,7 @@ function sourceClosureItem(sourceText) {
         status: "complete",
         digest: closureDigest,
         sourceDigest,
-        dependencyDigests: [sourceDigest],
+        dependencyDigests,
         dependencyRevisionIds: [dependencyRevisionId],
         firstParty: true,
       },
@@ -375,7 +384,10 @@ test("published package with embedded data: image opens without a separate SHA-2
 test("published design-document carrier opens and preserves all 51 flat layers", async () => {
   const carrier = publishedDesignDocumentCarrier();
   const sourceText = `${JSON.stringify(carrier)}\n`;
-  const { sourceDigest, item: sourceItem } = sourceClosureItem(sourceText);
+  const { sourceDigest, item: sourceItem } = sourceClosureItem(
+    sourceText,
+    carrier.assets.map((asset) => asset.sha256),
+  );
   const loaded = parseDesignDocumentProject(sourceText);
   const serialized = JSON.parse(serializeDesignDocumentProject(loaded));
 
@@ -399,7 +411,7 @@ test("published design-document carrier opens and preserves all 51 flat layers",
       validation: "open",
     },
   );
-  assert.equal(evidence.sourceKind, "published-package");
+  assert.equal(evidence.sourceKind, "carrier-document");
   assert.equal(evidence.sourceDigest, sourceDigest);
   assert.equal(evidence.revision, 0);
   assert.equal(evidence.sourceMode, "layered");
@@ -432,6 +444,48 @@ test("published design-document carrier rejects duplicate IDs and non-finite geo
       (error) =>
         error instanceof DesignCompositeCommitError &&
         error.code === "design-source-invalid-structure",
+    );
+  }
+});
+
+test("published design-document carrier rejects duplicate assets and dangling references", async () => {
+  for (const mutate of [
+    (carrier) => carrier.assets.push({ ...carrier.assets[0] }),
+    (carrier) => {
+      carrier.document.elements[0] = {
+        id: "image-missing-asset",
+        type: "image",
+        x: 1,
+        y: 2,
+        width: 100,
+        height: 80,
+        z: 0,
+        assetId: "missing-asset",
+      };
+    },
+  ]) {
+    const carrier = publishedDesignDocumentCarrier();
+    mutate(carrier);
+    const sourceText = `${JSON.stringify(carrier)}\n`;
+    const { item: sourceItem } = sourceClosureItem(
+      sourceText,
+      carrier.assets.map((asset) => asset.sha256),
+    );
+    await assert.rejects(
+      validateDesignCompositeSource(
+        new Blob([sourceText], { type: "application/json" }),
+        sourceItem,
+        {
+          requireBaseIdentity: false,
+          requireBaseRevision: false,
+          validation: "open",
+        },
+      ),
+      (error) =>
+        error instanceof DesignCompositeCommitError &&
+        ["invalid-dependency", "design-source-invalid-structure"].includes(
+          error.code,
+        ),
     );
   }
 });
