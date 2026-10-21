@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useImEnabled } from "../../lib/im/client";
+import { getUserId } from "../../lib/auth/client";
 import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/notify-api";
 import { DealConversationView } from "../bay/deal";
 import { BayAuthHost } from "../bay/shell/bay-auth-host";
@@ -24,8 +25,11 @@ import { MessagesLayout } from "./MessagesLayout";
 import { attachMessageSound, createBrowserMessageSound } from "./notify/sound";
 import { attachBrowserTitleBadge } from "./notify/title-badge";
 import { PeopleView } from "./people/PeopleView";
+import { MeetingPanel } from "./meeting/MeetingPanel";
+import { closeMeeting, openMeeting, useMeetingHostRequest } from "./meeting/meeting-host-state";
+import { RealtimeCallHost } from "../realtime-call/RealtimeCallHost";
 import { PrivacyNotice } from "./PrivacyNotice";
-import { attachImRealtime, imStore, publishImDisabled, useImUnread } from "./realtime/hooks";
+import { attachImRealtime, imStore, publishImDisabled, useImEvent, useImUnread } from "./realtime/hooks";
 
 export function isTalentConversationId(id: string): boolean {
   return id.startsWith("talent:");
@@ -37,6 +41,19 @@ export function MessagesHost() {
   const pathname = usePathname() || "/";
   const pathRef = useRef(pathname);
   const router = useRouter();
+  const meetingRequest = useMeetingHostRequest();
+
+  useImEvent("meeting_invitation", (event) => {
+    if (event.invitation.status !== "pending" || event.invitation.invitee_id !== getUserId()) return;
+    openMeeting({
+      conversationId: event.conversation_id,
+      conversationTitle: "会议邀请",
+      myUserId: getUserId(),
+      myRole: null,
+      profiles: {},
+      members: [],
+    });
+  });
 
   // 别的页面上「去 LeoBay」的动作（任务页的找人帮忙、旧的 ?bay= 链接）= 站内跳到 /bay，不整页刷新。
   // 这个宿主每个站都挂一次，所以在这里把站内跳转交给 LeoBay。
@@ -122,12 +139,14 @@ export function MessagesHost() {
   }, [enabled, state.open, state.view, state.conversationId]);
 
   // 登录框宿主：别的页面上点了要登录的 LeoBay 动作时由它弹（/bay 页自己也挂一份，只有最先挂上的渲染）。
-  if (!enabled) return <BayAuthHost />;
+  if (!enabled) return <><BayAuthHost /><RealtimeCallHost /></>;
   return (
     <>
       <MessagesOverlay />
       <WorkReplayHost />
       <BayAuthHost />
+      {meetingRequest ? <MeetingPanel {...meetingRequest} onClose={closeMeeting} /> : null}
+      <RealtimeCallHost />
     </>
   );
 }

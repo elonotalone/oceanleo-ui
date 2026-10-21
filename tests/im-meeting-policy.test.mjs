@@ -31,7 +31,7 @@ test("meeting readiness copy distinguishes missing provider config from unavaila
   assert.match(meetingAvailabilityMessage(null), /读取会议状态/);
   assert.match(meetingAvailabilityMessage({ ...baseSnapshot, artc_configured: false }), /尚未开通或配置/);
   assert.equal(meetingAvailabilityMessage({ ...baseSnapshot, metering_status: "unavailable", metering_reason: "核验暂不可用" }), "核验暂不可用");
-  assert.match(meetingAvailabilityMessage(baseSnapshot), /实际接收的媒体资源/);
+  assert.match(meetingAvailabilityMessage(baseSnapshot), /静音或只听也可能计费/);
 });
 
 test("server participant UUID maps to the ARTC string identity without separators", () => {

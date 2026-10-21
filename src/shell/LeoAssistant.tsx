@@ -3,6 +3,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { notifyHistoryChanged } from "../lib/history-events";
+import { START_LEO_REALTIME_EVENT, type LeoRealtimeContext } from "../lib/leo-realtime";
 import {
   LeoBoard,
   leoTypedWorkStaysInPanel,
@@ -506,6 +507,23 @@ function LeoAssistantPanel({
             <DragDots />
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              data-leo-no-drag
+              type="button"
+              disabled={!sessions.selected || sessions.loading || sessions.busy}
+              aria-label={tt("开始 Leo 实时通话")}
+              title={!sessions.selected ? tt("会话记录加载后可开始实时通话") : tt("开始 Leo 实时通话")}
+              onClick={() => {
+                if (!sessions.selected) return;
+                const context = toWireContext(pageContextRef.current) as LeoRealtimeContext | undefined;
+                window.dispatchEvent(new CustomEvent(START_LEO_REALTIME_EVENT, {
+                  detail: { sessionId: sessions.selected, ...(context ? { context } : {}) },
+                }));
+              }}
+              className="min-h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+            >
+              {tt("实时通话")}
+            </button>
             <button data-leo-no-drag type="button" disabled={sessionDisabled || !sessions.supported} aria-label={tt("新会话")} title={sessionBlockedReason || tt("新会话")} onClick={() => { void sessions.create(); }} className="rounded-md px-1.5 disabled:opacity-50">+</button>
             <button
               data-leo-no-drag

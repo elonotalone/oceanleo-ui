@@ -6,11 +6,12 @@ import { getCredits } from "../../../lib/auth/account";
 import { formatMoney } from "../../../lib/money";
 import { ImApiError } from "../../../lib/im/client";
 import { meetingsApi } from "../../../lib/im/meetings-api";
-import type { ImMeetingSnapshot, ImProfile } from "../../../lib/im/types";
+import type { ImMeetingBill, ImMeetingInvitation, ImMember, ImMeetingJoinCredentials, ImMeetingSnapshot, ImProfile } from "../../../lib/im/types";
 import { useImEvent } from "../realtime/hooks";
 import { ConfirmDialog } from "../../../ui";
 import { createArtcClient, type ArtcClient } from "./artc-client";
 import { canJoinMeeting, meetingAvailabilityMessage, sdkUserIdForParticipant } from "./meeting-policy";
+import { claimCall, releaseCall } from "./meeting-host-state";
 
 interface MeetingPanelProps {
   conversationId: string;
@@ -18,6 +19,7 @@ interface MeetingPanelProps {
   myUserId: string | null;
   myRole: "owner" | "admin" | "member" | null;
   profiles: Record<string, ImProfile | undefined>;
+  members: ImMember[];
   onClose: () => void;
 }
 
@@ -37,7 +39,7 @@ function messageForError(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRole, profiles, onClose }: MeetingPanelProps) {
+export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRole, profiles, members, onClose }: MeetingPanelProps) {
   const tt = useUI();
   const [snapshot, setSnapshot] = useState<ImMeetingSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,19 +51,32 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   const [microphone, setMicrophone] = useState(false);
   const [camera, setCamera] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [deviceChecked, setDeviceChecked] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [invitations, setInvitations] = useState<ImMeetingInvitation[]>([]);
+  const [inviteIds, setInviteIds] = useState<Set<string>>(() => new Set());
+  const [bill, setBill] = useState<ImMeetingBill | null>(null);
+  const [reservation, setReservation] = useState<ImMeetingJoinCredentials["billing"]>(null);
   const [audioSubscriptions, setAudioSubscriptions] = useState<Set<string>>(() => new Set());
   const [subscribed, setSubscribed] = useState<Set<string>>(() => new Set());
   const [confirmAction, setConfirmAction] = useState<{ action: "end" | "remove"; participantId?: string } | null>(null);
   const clientRef = useRef<ArtcClient | null>(null);
   const leavingRef = useRef(false);
   const activeMeetingIdRef = useRef<string | null>(null);
+  const ownsCallLockRef = useRef(false);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideos = useRef(new Map<string, HTMLVideoElement>());
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      setSnapshot(await meetingsApi.get(conversationId));
+      const next = await meetingsApi.get(conversationId);
+      setSnapshot(next);
+      if (next.meeting) {
+        const rows = await meetingsApi.invitations(next.meeting.meeting_id).catch(() => []);
+        setInvitations(rows);
+      } else setInvitations([]);
       setNote("");
     } catch (error) {
       setNote(messageForError(error, "会议状态加载失败，请稍后重试。"));
@@ -69,6 +84,12 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
       setLoading(false);
     }
   }, [conversationId]);
+
+  const meeting = snapshot?.meeting ?? null;
+  const participants = meeting?.participants?.filter((participant) => participant.status === "joined") ?? [];
+  const canManage = myRole === "owner" || myRole === "admin";
+  const canStart = canJoinMeeting({ snapshot, wallet, online, busy, connected }) && deviceChecked;
+  const canCreate = !meeting && !loading && online && !busy;
 
   useEffect(() => { void reload(); }, [reload]);
   useImEvent("meeting", (event) => {
@@ -99,6 +120,8 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
     void clientRef.current?.destroy();
     clientRef.current = null;
     if (activeMeetingIdRef.current) void meetingsApi.leave(activeMeetingIdRef.current).catch(() => undefined);
+    if (ownsCallLockRef.current) releaseCall("meeting");
+    ownsCallLockRef.current = false;
     activeMeetingIdRef.current = null;
   }, []);
 
@@ -112,15 +135,27 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   }, [subscribed]);
 
   useEffect(() => {
+    const client = clientRef.current;
+    if (!connected || !client || !myUserId) return;
+    const remotes = participants.filter((participant) => participant.user_id !== myUserId);
+    for (const participant of remotes) {
+      if (!audioSubscriptions.has(participant.participant_id)) {
+        void client.subscribeAudio(sdkUserIdForParticipant(participant.participant_id), true).then(() => {
+          setAudioSubscriptions((current) => new Set(current).add(participant.participant_id));
+        }).catch(() => setNote("无法启用远端音频，请检查网络后重试。"));
+      }
+      if (!subscribed.has(participant.participant_id)) {
+        void client.subscribeVideo(sdkUserIdForParticipant(participant.participant_id), true).then(() => {
+          setSubscribed((current) => new Set(current).add(participant.participant_id));
+        }).catch(() => setNote("无法启用远端视频，请检查网络后重试。"));
+      }
+    }
+  }, [connected, participants, myUserId, audioSubscriptions, subscribed]);
+
+  useEffect(() => {
     const video = localVideoRef.current;
     if (connected && camera && video) clientRef.current?.engine.setLocalViewConfig(video, 1);
   }, [connected, camera]);
-
-  const meeting = snapshot?.meeting ?? null;
-  const participants = meeting?.participants?.filter((participant) => participant.status === "joined") ?? [];
-  const canManage = myRole === "owner" || myRole === "admin";
-  const canStart = canJoinMeeting({ snapshot, wallet, online, busy, connected });
-  const canCreate = !meeting && !loading && online && !busy;
 
   const runAction = useCallback(async (action: () => Promise<void>, success?: string) => {
     setBusy(true);
@@ -137,11 +172,26 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   }, [reload]);
 
   async function createMeeting() {
-    await runAction(async () => { await meetingsApi.create(conversationId); }, "会议已创建。计费核验未就绪时，成员仍无法入会。");
+    await runAction(async () => { await meetingsApi.create(conversationId); }, "会议已创建。成员可以在接受邀请后加入。");
+  }
+
+  async function checkDevices() {
+    setBusy(true);
+    setNote("");
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("artc_browser_unsupported");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setDeviceChecked(true);
+      setNote("麦克风已就绪。加入前不会发布媒体，加入后仍需手动打开设备。");
+    } catch (error) { setNote(messageForError(error, "麦克风检查失败，请检查设备和浏览器权限。")); }
+    finally { setBusy(false); }
   }
 
   async function joinMeeting() {
     if (!meeting || !canStart) return;
+    if (!claimCall("meeting")) { setNote("另一个通话正在进行，请先结束它再加入此会议。"); return; }
+    ownsCallLockRef.current = true;
     setBusy(true);
     setNote("");
     let joinedMeetingId: string | null = null;
@@ -170,10 +220,13 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
       setMicrophone(false);
       setCamera(false);
       await reload();
+      setReservation(credentials.billing ?? null);
     } catch (error) {
       await clientRef.current?.destroy().catch(() => undefined);
       clientRef.current = null;
       if (joinedMeetingId) await meetingsApi.leave(joinedMeetingId).catch(() => undefined);
+      releaseCall("meeting");
+      ownsCallLockRef.current = false;
       activeMeetingIdRef.current = null;
       setConnected(false);
       setNote(messageForError(error, "会议连接失败；媒体未启动。"));
@@ -198,7 +251,12 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
       setSharing(false);
       setAudioSubscriptions(new Set());
       setSubscribed(new Set());
-      if (meeting) await meetingsApi.leave(meeting.meeting_id);
+      if (meeting) {
+        const response = await meetingsApi.leave(meeting.meeting_id);
+        setBill(response.billing ?? null);
+      }
+      releaseCall("meeting");
+      ownsCallLockRef.current = false;
       await reload();
       if (exitNotice) setNote(exitNotice);
     } catch (error) {
@@ -210,26 +268,42 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   }
 
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !meeting) return;
     const timer = window.setInterval(() => {
-      void getCredits().then((result) => {
-        if (!result.ok || result.data.balance <= 0) {
-          void leaveMeeting(result.ok ? "余额已用尽，媒体已停止并退出会议。" : "暂时无法核对本人余额，媒体已停止并退出会议。请重新连接网络后查看账单状态。");
-        } else setWallet({ balance: result.data.balance, currency: result.data.currency });
-      }).catch(() => {
-        void leaveMeeting("无法核对本人余额，媒体已停止并退出会议。");
-      });
+      void meetingsApi.bill(meeting.meeting_id).then(setBill).catch(() => undefined);
     }, 15_000);
     return () => window.clearInterval(timer);
-    // The interval should be recreated only when the active call state changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected]);
+  }, [connected, meeting?.meeting_id]);
 
-  function toggleVideoSubscription(participantId: string) {
+  async function sendInvitations() {
+    if (!meeting || inviteIds.size === 0 || inviting) return;
+    setInviting(true);
+    setNote("");
+    try {
+      await meetingsApi.invite(meeting.meeting_id, [...inviteIds]);
+      setInviteIds(new Set());
+      await reload();
+      setNote("邀请已发送；受邀成员接受前不会加入会议或产生会议用量。");
+    } catch (error) { setNote(messageForError(error, "发送邀请失败，请稍后重试。")); }
+    finally { setInviting(false); }
+  }
+
+  async function respondToInvitation(invitation: ImMeetingInvitation, accept: boolean) {
+    setBusy(true);
+    try {
+      if (accept) await meetingsApi.acceptInvitation(invitation.meeting_id, invitation.invitation_id);
+      else await meetingsApi.rejectInvitation(invitation.meeting_id, invitation.invitation_id);
+      await reload();
+      setNote(accept ? "已接受邀请。请完成设备检查后加入。" : "已拒绝邀请。");
+    } catch (error) { setNote(messageForError(error, "处理邀请失败，请刷新后重试。")); }
+    finally { setBusy(false); }
+  }
+
+  async function toggleVideoSubscription(participantId: string) {
     const remoteId = sdkUserIdForParticipant(participantId);
     const next = !subscribed.has(participantId);
     try {
-      clientRef.current?.subscribeVideo(remoteId, next);
+      await clientRef.current?.subscribeVideo(remoteId, next);
       if (!next) clientRef.current?.engine.setRemoteViewConfig(null, remoteId, 1);
       setSubscribed((current) => {
         const updated = new Set(current);
@@ -239,11 +313,11 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
     } catch (error) { setNote(messageForError(error, "无法更改视频订阅。")); }
   }
 
-  function toggleAudioSubscription(participantId: string) {
+  async function toggleAudioSubscription(participantId: string) {
     const remoteId = sdkUserIdForParticipant(participantId);
     const next = !audioSubscriptions.has(participantId);
     try {
-      clientRef.current?.subscribeAudio(remoteId, next);
+      await clientRef.current?.subscribeAudio(remoteId, next);
       setAudioSubscriptions((current) => {
         const updated = new Set(current);
         if (next) updated.add(participantId); else updated.delete(participantId);
@@ -258,16 +332,16 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
     try {
       if (kind === "microphone") {
         const next = !microphone;
-        client.setMicrophone(next);
+        await client.setMicrophone(next);
         setMicrophone(next);
       } else if (kind === "camera") {
         const next = !camera;
-        client.setCamera(next);
+        await client.setCamera(next);
         if (!next) client.engine.setLocalViewConfig(null, 1);
         setCamera(next);
       } else {
         const next = !sharing;
-        client.setScreenShare(next);
+        await client.setScreenShare(next);
         setSharing(next);
       }
     } catch (error) {
@@ -290,7 +364,10 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
           setSharing(false);
           setSubscribed(new Set());
           setAudioSubscriptions(new Set());
-          await meetingsApi.end(meeting.meeting_id);
+          const response = await meetingsApi.end(meeting.meeting_id);
+          setBill(response.billing ?? null);
+          releaseCall("meeting");
+          ownsCallLockRef.current = false;
         } finally { leavingRef.current = false; }
       }
       else if (participantId) await meetingsApi.remove(meeting.meeting_id, participantId);
@@ -298,16 +375,25 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   }
 
   const readyLabel = meetingAvailabilityMessage(snapshot);
+  const pendingInvitations = invitations.filter((invitation) => invitation.status === "pending");
+  const incomingInvitations = pendingInvitations.filter((invitation) => invitation.invitee_id === myUserId);
+  const inviteableMembers = members.filter((member) =>
+    member.user_id !== myUserId &&
+    !participants.some((participant) => participant.user_id === member.user_id) &&
+    !pendingInvitations.some((invitation) => invitation.invitee_id === member.user_id),
+  );
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/35 p-0 sm:items-center sm:p-4" data-meeting-panel>
+    <>
+    {minimized && connected ? <button type="button" onClick={() => setMinimized(false)} className="fixed bottom-4 right-4 z-[91] min-h-12 rounded-full bg-neutral-900 px-5 text-sm text-white shadow-xl">会议进行中 · 返回</button> : null}
+    <div hidden={minimized} className="fixed inset-0 z-[90] flex items-end justify-center bg-black/35 p-0 sm:items-center sm:p-4" data-meeting-panel>
       <section role="dialog" aria-modal="true" aria-labelledby="meeting-title" className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-neutral-200 bg-white shadow-2xl sm:rounded-2xl">
         <header className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
           <div className="min-w-0">
             <h2 id="meeting-title" className="truncate text-[15px] font-semibold text-neutral-900">{tt("会话会议")}</h2>
             <p className="truncate text-xs text-neutral-500">{conversationTitle}</p>
           </div>
-          <button type="button" onClick={onClose} className="min-h-11 rounded-lg px-3 text-sm text-neutral-600 hover:bg-neutral-100">{tt("关闭")}</button>
+          <button type="button" onClick={() => connected ? setMinimized(true) : onClose()} className="min-h-11 rounded-lg px-3 text-sm text-neutral-600 hover:bg-neutral-100">{connected ? "最小化" : tt("关闭")}</button>
         </header>
         <div className="min-h-0 overflow-y-auto p-4">
           {!online ? <p role="status" className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">网络已断开。恢复网络后请刷新会议状态。</p> : null}
@@ -318,17 +404,26 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
               {meeting?.status === "active" ? <span className="text-xs text-neutral-500">{participants.length} 位成员在线</span> : null}
             </div>
             <p className="mt-2 text-xs leading-5 text-neutral-600">{readyLabel}</p>
-            <p className="mt-2 text-xs leading-5 text-neutral-600">参会者各自使用自己的余额。音频可能在独自参会或静音时产生费用；视频费用取决于本人实际订阅的远端视频。此处不提供未经核验的实时费用估算。</p>
+            <p className="mt-2 text-xs leading-5 text-neutral-600">参会者各自使用自己的余额。静音或只听也可能计费；只有服务端核验的用量会结算，此处不按通话时长估算费用。</p>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600">
               <span>本人余额：{wallet ? formatMoney(wallet.balance, wallet.currency, 2) : "暂不可读取"}</span>
               {wallet && wallet.balance <= 0 ? <span className="font-medium text-rose-700">余额不足，无法加入</span> : null}
             </div>
           </div>
+          {bill ? <div className="mt-3 rounded-lg border border-neutral-200 p-3 text-xs" aria-live="polite">
+            服务端计费状态：原价 {formatMoney(bill.gross, bill.currency, 6)} · 优惠 {formatMoney(bill.discount, bill.currency, 6)} · 实扣 {formatMoney(bill.net, bill.currency, 6)} · {bill.status}
+            <details className="mt-2"><summary className="min-h-8 cursor-pointer py-1">核对原始用量与资费快照</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ raw_usage: bill.raw_usage, tariff_snapshot: bill.tariff_snapshot }, null, 2)}</pre></details>
+          </div> : null}
+          {reservation ? <p className="mt-2 text-xs text-neutral-500">服务端预留：{reservation.reserved_nano ?? "—"} nano · {reservation.currency} · {reservation.status}</p> : null}
 
           {loading ? <p className="py-8 text-center text-sm text-neutral-500">正在加载…</p> : null}
           {!loading && !meeting ? <div className="mt-4 flex justify-end"><button type="button" disabled={!canCreate} onClick={() => void createMeeting()} className="min-h-11 rounded-lg bg-neutral-900 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">发起会议</button></div> : null}
 
           {meeting ? <>
+            {incomingInvitations.map((invitation) => <div key={invitation.invitation_id} className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+              <span>{profiles[invitation.inviter_id]?.display_name || "成员"} 邀请你加入会议</span>
+              <span className="flex gap-2"><button type="button" disabled={busy} onClick={() => void respondToInvitation(invitation, false)} className="min-h-11 rounded-lg border px-3">拒绝</button><button type="button" disabled={busy} onClick={() => void respondToInvitation(invitation, true)} className="min-h-11 rounded-lg bg-neutral-900 px-3 text-white">接受</button></span>
+            </div>)}
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2" data-meeting-stage>
               {participants.length ? participants.map((participant) => {
                 const profile = profiles[participant.user_id];
@@ -369,9 +464,15 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
               })}</div>
             </div> : null}
 
-            {!connected && meeting.status === "active" ? <div className="mt-4 flex flex-wrap justify-end gap-2">
+            {!connected && meeting.status === "active" ? <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               {canManage ? <button type="button" disabled={busy || !online} onClick={() => setConfirmAction({ action: "end" })} className="min-h-11 rounded-lg border border-rose-300 px-3 text-sm text-rose-700 disabled:opacity-50">结束会议</button> : null}
+              <button type="button" disabled={busy || !online || !meeting || connected} onClick={() => void checkDevices()} className="min-h-11 rounded-lg border px-3 text-sm">{deviceChecked ? "麦克风已检查" : "检查麦克风"}</button>
               <button type="button" disabled={!canStart} onClick={() => void joinMeeting()} className="min-h-11 rounded-lg bg-neutral-900 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">{busy ? "连接中…" : "加入会议"}</button>
+            </div> : null}
+            {canManage && meeting.status === "active" && inviteableMembers.length ? <div className="mt-4 border-t border-neutral-200 pt-3">
+              <h3 className="mb-2 text-xs font-semibold text-neutral-700">邀请成员</h3>
+              <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">{inviteableMembers.map((member) => <label key={member.user_id} className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-xs"><input type="checkbox" checked={inviteIds.has(member.user_id)} onChange={(event) => setInviteIds((current) => { const next = new Set(current); if (event.target.checked) next.add(member.user_id); else next.delete(member.user_id); return next; })} />{member.nickname || member.profile.display_name || "成员"}</label>)}</div>
+              <button type="button" disabled={inviting || inviteIds.size === 0 || !online} onClick={() => void sendInvitations()} className="mt-2 min-h-11 rounded-lg border px-3 text-sm disabled:opacity-50">{inviting ? "发送中…" : "发送邀请"}</button>
             </div> : null}
 
             {!connected && meeting.status === "ended" ? <p className="mt-4 text-right text-sm text-neutral-500">本次会议已关闭。</p> : null}
@@ -395,5 +496,6 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
         </div>
       </section>
     </div>
+    </>
   );
 }

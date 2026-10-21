@@ -32,5 +32,5 @@ export function meetingAvailabilityMessage(snapshot: ImMeetingSnapshot | null): 
   if (snapshot.metering_status !== "ready") {
     return snapshot.metering_reason || "计费核验尚不可用，暂时不能加入会议。";
   }
-  return "计费核验已就绪。费用按本人实际接收的媒体资源计入本人余额。";
+  return "计费核验已就绪。静音或只听也可能计费；费用按服务端核验的本人实际用量计入本人余额。";
 }

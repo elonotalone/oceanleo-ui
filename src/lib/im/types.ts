@@ -300,6 +300,30 @@ export interface ImMeetingJoinCredentials {
   user_id: string;
   token: string;
   expires_at: string;
+  billing?: { status: string; currency: string; reserved_nano?: number; tariff_snapshot?: unknown };
+}
+
+export interface ImMeetingBill {
+  meeting_id: string;
+  participant_id: string;
+  currency: string;
+  raw_usage: unknown;
+  gross: number;
+  discount: number;
+  net: number;
+  status: string;
+  tariff_snapshot?: unknown;
+  events?: unknown[];
+}
+
+export interface ImMeetingInvitation {
+  invitation_id: string;
+  meeting_id: string;
+  inviter_id: string;
+  invitee_id: string;
+  status: "pending" | "accepted" | "rejected" | "expired";
+  created_at: string;
+  expires_at: string;
 }
 
 export interface ImMeetingSnapshot {
@@ -307,6 +331,7 @@ export interface ImMeetingSnapshot {
   artc_configured: boolean;
   metering_status: ImMeetingMeteringStatus;
   metering_reason?: string | null;
+  invitations?: ImMeetingInvitation[];
 }
 
 export interface ImPage<T> {
@@ -332,6 +357,7 @@ export type ImEvent =
   | { type: "conversation.updated"; conversation: ImConversationSummary }
   | { type: "conversation.removed"; conversation_id: string; reason: "left" | "kicked" | "dissolved" | "hidden" }
   | { type: "member.changed"; conversation_id: string }
+  | { type: "meeting_invitation"; conversation_id: string; invitation: ImMeetingInvitation }
   | { type: "contact.request"; request: ImContactRequest }
   | { type: "contact.changed"; user_id: string }
   | { type: "group.invite"; invite: ImGroupInvite }

@@ -1,6 +1,6 @@
 // Meeting lifecycle adapter. Provider credentials only arrive from authenticated join.
 import { imFetch } from "./client";
-import type { ImMeeting, ImMeetingJoinCredentials, ImMeetingSnapshot } from "./types";
+import type { ImMeeting, ImMeetingBill, ImMeetingInvitation, ImMeetingJoinCredentials, ImMeetingSnapshot } from "./types";
 
 const conversationMeetingPath = (conversationId: string) =>
   `/v1/im/conversations/${encodeURIComponent(conversationId)}/meeting`;
@@ -16,11 +16,28 @@ export const meetingsApi = {
   join(meetingId: string): Promise<ImMeetingJoinCredentials> {
     return imFetch<ImMeetingJoinCredentials>(`${meetingPath(meetingId)}/join`, { method: "POST" });
   },
-  leave(meetingId: string): Promise<void> {
-    return imFetch<void>(`${meetingPath(meetingId)}/leave`, { method: "POST" });
+  bill(meetingId: string): Promise<ImMeetingBill> {
+    return imFetch<ImMeetingBill>(`${meetingPath(meetingId)}/bill`);
   },
-  end(meetingId: string): Promise<void> {
-    return imFetch<void>(`${meetingPath(meetingId)}/end`, { method: "POST" });
+  invitations(meetingId: string): Promise<ImMeetingInvitation[]> {
+    return imFetch<{ invitations: ImMeetingInvitation[] }>(`${meetingPath(meetingId)}/invitations`).then((r) => r.invitations);
+  },
+  invite(meetingId: string, recipientIds: string[]): Promise<{ meeting: ImMeeting; invitations: ImMeetingInvitation[] }> {
+    return imFetch<{ meeting: ImMeeting; invitations: ImMeetingInvitation[] }>(`${meetingPath(meetingId)}/invitations`, {
+      method: "POST", json: { recipient_ids: recipientIds },
+    });
+  },
+  acceptInvitation(meetingId: string, invitationId: string): Promise<{ invitation: ImMeetingInvitation; meeting: ImMeeting }> {
+    return imFetch<{ invitation: ImMeetingInvitation; meeting: ImMeeting }>(`${meetingPath(meetingId)}/invitations/${encodeURIComponent(invitationId)}/accept`, { method: "POST" });
+  },
+  rejectInvitation(meetingId: string, invitationId: string): Promise<{ invitation: ImMeetingInvitation; meeting: ImMeeting }> {
+    return imFetch<{ invitation: ImMeetingInvitation; meeting: ImMeeting }>(`${meetingPath(meetingId)}/invitations/${encodeURIComponent(invitationId)}/reject`, { method: "POST" });
+  },
+  leave(meetingId: string): Promise<{ ok: boolean; billing?: ImMeetingBill }> {
+    return imFetch<{ ok: boolean; billing?: ImMeetingBill }>(`${meetingPath(meetingId)}/leave`, { method: "POST" });
+  },
+  end(meetingId: string): Promise<{ ok: boolean; billing?: ImMeetingBill }> {
+    return imFetch<{ ok: boolean; billing?: ImMeetingBill }>(`${meetingPath(meetingId)}/end`, { method: "POST" });
   },
   remove(meetingId: string, participantId: string): Promise<void> {
     return imFetch<void>(`${meetingPath(meetingId)}/participants/${encodeURIComponent(participantId)}`, { method: "DELETE" });

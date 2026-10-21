@@ -5,15 +5,15 @@ const SDK_URL = "https://g.alicdn.com/apsara-media-box/imp-web-rtc/7.3.4/aliyun-
 interface AliRtcEngineLike {
   setDefaultSubscribeAllRemoteAudioStreams(enabled: boolean): void;
   setDefaultSubscribeAllRemoteVideoStreams(enabled: boolean): void;
-  publishLocalAudioStream(enabled: boolean): void;
-  publishLocalVideoStream(enabled: boolean): void;
-  publishLocalScreenShareStream(enabled: boolean): void;
+  publishLocalAudioStream(enabled: boolean): void | Promise<void>;
+  publishLocalVideoStream(enabled: boolean): void | Promise<void>;
+  publishLocalScreenShareStream(enabled: boolean): void | Promise<void>;
   setChannelProfile(profile: string): void;
   joinChannel(auth: { channelId: string; userId: string; appId: string; token: string; timestamp: number }, name: string): Promise<void>;
   leaveChannel(): Promise<void>;
   destroy(): void;
   on(event: string, callback: (...args: unknown[]) => void): void;
-  subscribeRemoteMediaStream(userId: string, track: number, subscribeAudio: boolean, subscribeVideo: boolean): void;
+  subscribeRemoteMediaStream(userId: string, track: number, subscribeAudio: boolean, subscribeVideo: boolean): void | Promise<void>;
   setRemoteViewConfig(view: HTMLVideoElement | null, userId: string, track: number): void;
   setLocalViewConfig(view: HTMLVideoElement | string | null, track: number): void;
   startPreview(): Promise<void>;
@@ -53,11 +53,11 @@ function loadAliRtc(): Promise<AliRtcNamespace> {
 export interface ArtcClient {
   engine: AliRtcEngineLike;
   leave(): Promise<void>;
-  setMicrophone(enabled: boolean): void;
-  setCamera(enabled: boolean): void;
-  setScreenShare(enabled: boolean): void;
-  subscribeAudio(userId: string, enabled: boolean): void;
-  subscribeVideo(userId: string, enabled: boolean): void;
+  setMicrophone(enabled: boolean): Promise<void>;
+  setCamera(enabled: boolean): Promise<void>;
+  setScreenShare(enabled: boolean): Promise<void>;
+  subscribeAudio(userId: string, enabled: boolean): Promise<void>;
+  subscribeVideo(userId: string, enabled: boolean): Promise<void>;
   destroy(): Promise<void>;
 }
 
@@ -70,6 +70,8 @@ export async function createArtcClient(credentials: ImMeetingJoinCredentials, di
   const support = await sdk.isSupported();
   if (!support.support) throw new Error("artc_browser_unsupported");
   const engine = sdk.getInstance();
+  const audioSubscriptions = new Set<string>();
+  const videoSubscriptions = new Set<string>();
   // Aliyun's SDK defaults to subscribing to all remote streams; disable before join.
   engine.setDefaultSubscribeAllRemoteAudioStreams(false);
   engine.setDefaultSubscribeAllRemoteVideoStreams(false);
@@ -98,18 +100,20 @@ export async function createArtcClient(credentials: ImMeetingJoinCredentials, di
   return {
     engine,
     leave: () => engine.leaveChannel(),
-    setMicrophone: (enabled) => engine.publishLocalAudioStream(enabled),
-    setCamera: (enabled) => engine.publishLocalVideoStream(enabled),
-    setScreenShare: (enabled) => engine.publishLocalScreenShareStream(enabled),
-    subscribeAudio: (userId, enabled) => {
+    setMicrophone: async (enabled) => { await engine.publishLocalAudioStream(enabled); },
+    setCamera: async (enabled) => { await engine.publishLocalVideoStream(enabled); },
+    setScreenShare: async (enabled) => { await engine.publishLocalScreenShareStream(enabled); },
+    subscribeAudio: async (userId, enabled) => {
       const track = sdk.AliRtcVideoTrack?.AliRtcVideoTrackBoth;
       if (typeof track !== "number") throw new Error("artc_video_track_unavailable");
-      engine.subscribeRemoteMediaStream(userId, track, enabled, false);
+      await engine.subscribeRemoteMediaStream(userId, track, enabled, videoSubscriptions.has(userId));
+      if (enabled) audioSubscriptions.add(userId); else audioSubscriptions.delete(userId);
     },
-    subscribeVideo: (userId, enabled) => {
+    subscribeVideo: async (userId, enabled) => {
       const track = sdk.AliRtcVideoTrack?.AliRtcVideoTrackBoth;
       if (typeof track !== "number") throw new Error("artc_video_track_unavailable");
-      engine.subscribeRemoteMediaStream(userId, track, false, enabled);
+      await engine.subscribeRemoteMediaStream(userId, track, audioSubscriptions.has(userId), enabled);
+      if (enabled) videoSubscriptions.add(userId); else videoSubscriptions.delete(userId);
     },
     destroy: async () => {
       try { await engine.stopPreview(); } catch { /* preview may never have started */ }
