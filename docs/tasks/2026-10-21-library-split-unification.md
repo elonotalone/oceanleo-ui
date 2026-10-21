@@ -13,3 +13,6 @@ Own AdvancedContentWorkbench.tsx, WorkspaceSession.tsx, related persistence/sess
 
 ## Parent
 Own cross-owner arbitration, verification/typecheck, architecture/navigation docs as needed, task journal, dev slot freshness, commit and twin package pin/sync only after verification. Do not alter production release. Heavy checks through agent-io-guard; child checks focused run-light only. Three disjoint units launched together before product edits.
+
+## Save owner follow-up: crash reproduction
+After save delivery, own independent crash diagnostic with real ResultCanvas/MyLibrary/WorkspaceLibrary mounted under JSDOM at task/history query item URLs. Initial write boundary new regression test only; negotiate any fix in existing files. Do not duplicate conversation owner's current streaming investigation. Exact origin remains unknown; generic boundary stack alone is not proof. Parent scan found direct render-phase setters only in guarded advancedRootItemId sync, useMaterialShelfSettle scope string sync, and AnchoredPopover boolean sync. Check unstable URL/item/model hooks and failure transport. Respect I/O guard pressure; no browser.
