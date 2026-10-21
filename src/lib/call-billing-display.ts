@@ -35,18 +35,3 @@ export function tokenUsageRows(value: unknown): Array<{ label: string; value: nu
   visit(value, 0);
   return [...found].map(([label, count]) => ({ label, value: count }));
 }
-
-export function tokenRateRows(value: unknown): Array<{ label: string; rate: string }> {
-  if (!value || typeof value !== "object") return [];
-  const rates = (value as { rates_per_million_tokens?: unknown }).rates_per_million_tokens;
-  if (!rates || typeof rates !== "object") return [];
-  const labels: Record<string, string> = {
-    input_audio: "音频输入", input_text: "文本输入", input_image: "图像输入",
-    cached_input_audio: "缓存音频输入", cached_input_text: "缓存文本输入", cached_input_image: "缓存图像输入",
-    output_audio: "音频输出", output_text: "文本输出",
-  };
-  return Object.entries(rates).flatMap(([key, rate]) => {
-    const numeric = Number(rate);
-    return labels[key] && Number.isFinite(numeric) ? [{ label: labels[key], rate: String(rate) }] : [];
-  });
-}
