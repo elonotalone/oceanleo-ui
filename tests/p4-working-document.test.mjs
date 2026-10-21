@@ -54,6 +54,25 @@ function sampleDeck() {
   });
 }
 
+async function mountReadyRoute(saveOverride) {
+  const host = mountRoute(saveOverride);
+  // Loading the inline handoff still crosses the route's async source boundary.
+  // Wait for it before the iframe's ready/init handshake, matching the E7 route tests.
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  host.render();
+  host.message({ type: "ready" });
+  host.render();
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  host.render();
+  assert.ok(
+    host.posted.some((message) => message.type === "init"),
+    "RichDoc must finish init before this test sends a dirty edit",
+  );
+  return host;
+}
+
 test("P4: owned routes share one working-document schema and drop .pro.v1 destinations", () => {
   const deckHosted = source("../src/shell/advanced-routes/DeckHostedRoute.tsx");
   const deckDraft = source("../src/shell/advanced-draft-deck.ts");
@@ -132,11 +151,11 @@ test("P4: server draft loader reads a PPTist working document under the shared s
 });
 
 test("P4: RichDoc pro face uses the same schema and applyMode still switches when flush would fail", async () => {
-  const host = mountRoute(async () => ({ ok: false, error: "save failed" }));
+  const host = await mountReadyRoute(async () => ({ ok: false, error: "save failed" }));
   try {
-    host.message({ type: "ready" });
     host.message({ type: "dirty", dirty: true, revision: 1 });
     const capture = host.posted.findLast((message) => message.type === "recovery-capture");
+    assert.ok(capture, "a ready RichDoc editor must capture the dirty document");
     host.message({
       type: "recovery-snapshot",
       ok: true,
