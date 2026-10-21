@@ -8,6 +8,8 @@ Known introduced issues corrected: same-revision stale dirty blocked draft-tier 
 
 Subsequent final bounded integration run:147/147, zero skips, with the exact actual video source enabled. Parent also corrected the newly reproduced own-durable-receipt pin adoption close barrier (real Inline6/6, independent V01 repeated) and made the native Stage test use the real first-party URL predicate so its four runtime cases register. P4's local readiness fixture now awaits real init/source handshake rather than injecting dirty while no source exists. Relevant semantic chrome/Mammoth/per-artifact fixture acceptance is still being finalized. None of these later results rewrites the historical broad-run141 count or claims all remaining failures are baseline.
 
+Final superseding bounded result: **196/196, zero skips**,34 test files on frozen final product code. Includes semantic chrome, strict per-artifact Library8/8 and the separately discovered native RichDoc synthetic-permission-update fix (`35c41e6d`). No-step Tiptap editability notifications no longer authorize a write; genuine root/appended content edits still do. Parent and V01 independently pass strict untouched-open zero writes, exactly one accepted revision, exact source bytes/Task snapshot/reopen/stale replies. This final bounded result does not alter the historical full sweep's failures or claim a green all-repository regression.
+
 ## Failed test files reported by the broad run
 
 - `tests/W3-r3-library-receiver-collab-triggers.test.mjs`
