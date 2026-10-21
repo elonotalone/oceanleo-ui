@@ -9,7 +9,8 @@ Operator asks to fix: design load error, widespread saving failures, Library edi
 - W03 design: shared design-composite-commit + DesignCanvasLocalRoute and design repo loading/conversion/save-handshake implementation. Does not own shared chrome, generic persistence or grid/video code.
 - W04 video: workflow-carrier + VideoCanvasRoute and video repo gallery-editor/canvas load/migration/autosave. Does not own generic persistence, shared chrome, design/grid code.
 - W05 sheet: grid-univer/GridUniverStage and AdvancedEditorIcon icon coverage/geometry. Does not own agent glyph (W01 new component), shared SelectionToolbar/chrome or persistence.
-- V-parent: independently inspect artifacts, run shared typecheck and relevant tests, exercise safe dev HTTP/API paths, start/rebuild dev slots and check freshness. Can arbitrate interfaces, cannot duplicate a live owner's implementation/investigation.
+- V01: independent delivered-change review and regression acceptance across the five clusters, queued after implementation dependencies at the three-child limit. Own evidence only; no product modifications. Parent additionally checks artifacts/typecheck/named tests in its own shell as the authoritative kernel explicitly requires (`subagents.verify-before-trust` takes precedence over the playbook's parent-verification prohibition).
+- V-parent: kernel-required artifact/type/test checks, safe dev HTTP/API paths, start/rebuild dev slots and freshness; arbitrate interfaces without duplicating a live implementation owner.
 
 ## Decision and proof
 
@@ -31,4 +32,6 @@ Five implementation books, three concurrent children, zero all-project scans; se
 
 ## Queue and handoff
 
-Initial W01/W02/W03; then W04/W05 as slots free. Each unit has its own journal/state/delivery, commits only explicit owned files on main and returns exact file list, commit, tests, remaining uncertainty. Parent collects all units before final response.
+Initial W01/W02/W03; then W04/W05 as slots free; V01 after implementation delivery so it has concrete results to verify. Each unit has its own journal/state/delivery, commits only explicit owned files on main and returns exact file list, commit, tests, remaining uncertainty. Parent collects all units before final response.
+
+Boundary clarifications: W01 also owns `material-library-standalone.tsx` and its host-specific tests (automatic chat source found there). W02 may change RichDocHostedRoute/EmbeddedRoute save/recovery handshake and focused tests; generic save source trace remains its exclusive responsibility.

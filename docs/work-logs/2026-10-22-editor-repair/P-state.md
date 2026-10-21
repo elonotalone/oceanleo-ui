@@ -12,6 +12,8 @@
 
 Collect causal reproductions and disjoint deliveries; parent owns shared typecheck, independent verification, dev HTTP routes and final freshness. Do not duplicate active investigation or run any browser/production deployment.
 
+[Measured runtime logs] Caddy routes api.dev.oceanleo.com to local oceanleo-api port8008. Its bounded 2026-10-21T16:27Z–16:32Z access log shows screenshot document item/edit-capability GET 200 and only two write-method access requests, both POST /v1/collab/tickets 200; no upload/revision save reached gateway during that interval. Command: `docker logs --since 2026-10-21T16:27:00Z --until 2026-10-21T16:32:00Z oceanleo-api 2>&1 | rg '^INFO: +[0-9].*"(POST|PUT|PATCH) /'`. This narrows the observed failure to the client/host side without establishing the exact cause. Unrelated catalog-count SQL timeout also occurred and is not attributed to saving.
+
 ## Next
 
 Dispatch W04 then W05 when slots become available. Read exact diffs and artifacts; run each delivered named regression independently. Run serialized shared/design/video typechecks as affected. Check every promise for actual durable persistence and reject schema weakening/empty placeholders. Refresh generated shared CSS if class changes require it; no version bump/distribution.
