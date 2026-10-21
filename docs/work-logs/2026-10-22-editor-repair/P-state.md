@@ -11,7 +11,7 @@
 
 ## Current step
 
-W01/W02/W03/W05/W06 are delivered and independently checked. W04 is closing the hosted video dependency/open/save protocol; parent owns final shared typecheck, independent verification, dev HTTP routes and final freshness. Do not duplicate active investigation or run any browser/production deployment.
+All six implementation units are committed and independently checked. W04 finished source migration, private dependency load, durable autosave/receipts, canonical-v2 reopen and dirty protection across permission loss. Parent additionally repaired mounted-close observation and cross-source background callback/ledger races (`895ae82c`). Shared UI and Video final full typechecks pass. Final full UI/security sweep and freshness are being recorded; no browser/production/twin operation is authorized.
 
 [Measured runtime logs] Caddy routes api.dev.oceanleo.com to local oceanleo-api port8008. Its bounded 2026-10-21T16:27Z–16:32Z access log shows screenshot document item/edit-capability GET 200 and only two write-method access requests, both POST /v1/collab/tickets 200; no upload/revision save reached gateway during that interval. Command: `docker logs --since 2026-10-21T16:27:00Z --until 2026-10-21T16:32:00Z oceanleo-api 2>&1 | rg '^INFO: +[0-9].*"(POST|PUT|PATCH) /'`. This narrows the observed failure to the client/host side without establishing the exact cause. Unrelated catalog-count SQL timeout also occurred and is not attributed to saving.
 
@@ -19,7 +19,7 @@ Browser acceptance permission was requested asynchronously while code/interface 
 
 ## Next
 
-W02's late host-cache/native-Umo A→B counterexamples are fixed and the final hosted runtime passed 14/14. W04 is implementing receipt-backed autosave and current-revision media grants. V01 reviews without product writes. Parent finished the named W01/W02/W05 suites, Design source tests/typecheck, W06 actual legacy-node projection tests and real private document/video storage acceptances. Interim shared typecheck and CSS generation passed before the last W04 changes; final shared/video typechecks, W04 regressions, generated CSS and dev-route/freshness acceptance remain. No browser permission or production distribution.
+W02's late host-cache/native-Umo A→B counterexamples are fixed; hosted runtime14/14. Parent final mounted-close/native/pipeline/Image group19/19 and autosave/recovery/draft/session group36/36 pass after source-lifetime isolation. UI/Video full typechecks exit0, CSS generation and public API checks pass. Portal Library/Design embed/Video canvas embed return HTTP200. Real private staging→typed video revision→exact source/media reread passed on the same private fixture after backend`725424c` (111/111 focused tests), without changing originals. The remaining sweep distinguishes unrelated repository failures from repaired editor regressions. No browser consent or production distribution.
 
 See [P-verification.md](./P-verification.md) and [P-received-video-backend.md](./P-received-video-backend.md) for independent evidence and the two retained private test fixtures.
 

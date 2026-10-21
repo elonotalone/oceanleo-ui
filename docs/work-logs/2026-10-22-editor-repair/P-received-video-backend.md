@@ -42,6 +42,8 @@ Result: **70 tests passed**, including V01's conflicting same-hash MIME and enco
 
 No cleanup/deletion was performed. This private fixture and the separate synthetic document fixture remain recoverable in Library.
 
+Final real private-staging acceptance reused that same root after the lifecycle/quota-floor backend commit`725424c`: new revision`e7c9b7e2-74b3-4276-8fc1-b5e10998a75c`, exact JSON reread, closure4, all three media exact, previous pinned revision and original unchanged. Staged source/preview use the reserved server-day namespace and final receipts name immutable private CAS. Simulated expiry dry-run saw6 aliases and removed0. Expanded staging/upload/closure/dependency/save/wire/integrity tests passed111/111. See [P-private-video-decision.md](./P-private-video-decision.md) for the bounded lifecycle, owner quota floor and explicit accounting limitation.
+
 ## Dev-only runtime refresh
 
 The dev API container mounts this backend. Before refreshing it, the parent verified the self-preservation guard, zero active ACP turns, current Caddy upstream and authoritative DNS separation (dev and production API resolve to different hosts). Only local `oceanleo-api` was restarted; protected relay/Cursor processes were untouched. Afterwards `https://api.dev.oceanleo.com/health` returned HTTP200 with ready/vault/supabase true. No production/twin push or deployment occurred.
