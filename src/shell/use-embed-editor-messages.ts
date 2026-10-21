@@ -311,6 +311,11 @@ export function useEmbedEditorMessages({
           message: message.message,
         });
       } else if (message.type === "error") {
+        // A private snapshot can fail before artifact-updated exists. Let the
+        // stage release only its exactly correlated waiter, keeping it dirty.
+        if (message.code === "VIDEO_SAVE_FAILED" && message.saveId) {
+          onSaveResult?.({ ok: false, saveId: message.saveId });
+        }
         setStatus(
           editorStatus(
             message.message || tt("编辑器发生错误"),

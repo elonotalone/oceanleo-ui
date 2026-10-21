@@ -7,6 +7,7 @@ import {
   recordValue,
   validAssetUrl,
 } from "./editor-protocol-validation.mjs";
+import { privateVideoBlobCommit } from "./editor-private-video-commit";
 
 const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
 const EDITOR_MESSAGE_SEVERITIES = new Set(["fatal", "warning", "info"]);
@@ -64,6 +65,9 @@ function validCompositeCommitMeta(
 function validEmbeddedTypedCommitMeta(
   meta: Record<string, unknown>,
 ): boolean {
+  if (meta.private_blob_commit !== undefined) {
+    return privateVideoBlobCommit(meta) !== null;
+  }
   return Boolean(
     EMBEDDED_TYPED_COMMIT_ARTIFACT_TYPES.has(String(meta.artifact_type)) &&
       boundedString(meta.source_format, 120, true) &&

@@ -391,6 +391,8 @@ export function artifactSaveContractFor(
 export interface ArtifactSaveBlobRef {
   url: string;
   digest: string;
+  /** Owner-private staged bytes. Mutually exclusive with a nonempty URL. */
+  blobId?: string;
 }
 
 export interface ArtifactSaveRenditionSources {
@@ -408,6 +410,7 @@ export interface ArtifactSaveRenditionPlan {
     purpose: ArtifactSaveRenditionPurpose;
     url: string;
     digest: string;
+    blobId?: string;
   }[];
   /** 契约要求但本次拿不出来的 rendition。 */
   missing: ArtifactSaveRenditionPurpose[];
@@ -422,11 +425,14 @@ function usableBlob(
   value: ArtifactSaveBlobRef | null | undefined,
 ): ArtifactSaveBlobRef | null {
   const url = String(value?.url || "").trim();
+  const blobId = String(value?.blobId || "").trim();
   const digest = String(value?.digest || "")
     .trim()
     .toLowerCase()
     .replace(/^sha256:/, "");
-  return url && digest ? { url, digest } : null;
+  return digest && Boolean(url) !== Boolean(blobId)
+    ? { url, digest, ...(blobId ? { blobId } : {}) }
+    : null;
 }
 
 /**
@@ -510,6 +516,7 @@ export function planArtifactSaveRenditions(
         purpose,
         url: available[purpose]!.url,
         digest: available[purpose]!.digest,
+        ...(available[purpose]!.blobId ? { blobId: available[purpose]!.blobId } : {}),
       })),
     missing: [],
     // cover 解析顺序是 preview → full →（原生类型再回落到）source。

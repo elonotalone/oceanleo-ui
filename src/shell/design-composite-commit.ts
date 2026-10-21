@@ -11,6 +11,7 @@ import {
   unwrapMediaProxyUrl,
 } from "../lib/media-proxy";
 import { uploadFile } from "../lib/database";
+import { privateVideoBlobCommit } from "./editor-private-video-commit";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -1688,6 +1689,7 @@ export async function persistEmbeddedTypedCommit(
   const declaredType = text(meta.artifact_type, 60);
   const sourceFormat = text(meta.source_format, 120);
   const expectedRevisionId = text(meta.expected_artifact_revision_id, 300);
+  const privateCommit = privateVideoBlobCommit(meta);
 
   if (
     !isDurableLibraryItem(item) ||
@@ -1696,10 +1698,12 @@ export async function persistEmbeddedTypedCommit(
     declaredType !== item.artifactType ||
     text(meta.artifact_id, 300) !== item.artifactId ||
     expectedRevisionId !== item.revisionId ||
-    !sourceUrl ||
-    !previewUrl ||
-    !isFirstPartyHttpsMediaUrl(sourceUrl) ||
-    !isFirstPartyHttpsMediaUrl(previewUrl)
+    (meta.private_blob_commit !== undefined && !privateCommit) ||
+    (!privateCommit && (
+      !sourceUrl || !previewUrl ||
+      !isFirstPartyHttpsMediaUrl(sourceUrl) ||
+      !isFirstPartyHttpsMediaUrl(previewUrl)
+    ))
   ) {
     throw new DesignCompositeCommitError(
       "嵌入式保存缺少受控 source/preview URL、精确 base identity 或 typed commit 声明。",
@@ -1722,14 +1726,15 @@ export async function persistEmbeddedTypedCommit(
     );
   }
 
-  const [sourceBlob, previewBlob] = await Promise.all([
-    dependencies.fetchBlob(sourceUrl, { maxBytes: 20_000_000 }),
-    dependencies.fetchBlob(previewUrl, { maxBytes: 32_000_000 }),
-  ]);
-  const [sourceDigest, previewDigest] = await Promise.all([
-    sha256Blob(sourceBlob),
-    sha256Blob(previewBlob),
-  ]);
+  // Private staging already holds the exact immutable uploaded bytes. Never
+  // fetch/rehost the envelope's old compatibility URL; the revision adapter
+  // independently resolves owner + private bucket and re-hashes both blobs.
+  const [sourceDigest, previewDigest] = privateCommit
+    ? [privateCommit.source.digest, privateCommit.preview.digest]
+    : await Promise.all([
+        dependencies.fetchBlob(sourceUrl, { maxBytes: 20_000_000 }).then(sha256Blob),
+        dependencies.fetchBlob(previewUrl, { maxBytes: 32_000_000 }).then(sha256Blob),
+      ]);
 
   let target = item;
   if (
@@ -1759,8 +1764,12 @@ export async function persistEmbeddedTypedCommit(
   }
 
   const plan = planArtifactSaveRenditions(target.artifactType, {
-    delivery: { url: sourceUrl, digest: sourceDigest },
-    previewBitmap: { url: previewUrl, digest: previewDigest },
+    delivery: privateCommit
+      ? { url: "", blobId: privateCommit.source.blobId, digest: sourceDigest }
+      : { url: sourceUrl, digest: sourceDigest },
+    previewBitmap: privateCommit
+      ? { url: "", blobId: privateCommit.preview.blobId, digest: previewDigest }
+      : { url: previewUrl, digest: previewDigest },
   });
   if (!plan.ok) {
     throw new DesignCompositeCommitError(
@@ -1776,7 +1785,7 @@ export async function persistEmbeddedTypedCommit(
     artifactType: target.artifactType,
     source: {
       format: sourceFormat,
-      url: sourceUrl,
+      ...(privateCommit ? { blobId: privateCommit.source.blobId } : { url: sourceUrl }),
       digest: sourceDigest,
     },
     renditions: plan.renditions,

@@ -461,6 +461,8 @@ export type EditorToHostMessage =
       type: "error";
       instanceId: string;
       message: string;
+      /** Correlates a failed hosted save before any artifact-updated commit. */
+      saveId?: string;
       code?: string;
       severity?: EditorMessageSeverity;
       retryable?: boolean;
