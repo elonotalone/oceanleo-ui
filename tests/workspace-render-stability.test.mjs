@@ -33,10 +33,17 @@ test("one app-level owner controls entrance animation without nested remounts", 
 
 test("configured library visibility never swaps out the left runtime tree", () => {
   assert.match(splitWorkspace, /if \(!hasRight && !library\)/);
-  // 2026-09-07 全屏键（maxed）已删：右版面只按 hasRight 显隐。
-  assert.match(splitWorkspace, /!hasRight \? "hidden" : "flex"/);
-  assert.match(splitWorkspace, /Keep every left-panel runtime mounted/);
-  assert.match(splitWorkspace, /\{left\}/);
+  assert.match(splitWorkspace, /const paneMaximized = hasRight && \(rightMaximized \|\| leftHidden\)/);
+  const leftStart = splitWorkspace.indexOf('data-workspace-pane="left"');
+  const rightStart = splitWorkspace.indexOf('data-workspace-pane="main"', leftStart);
+  assert.ok(leftStart >= 0 && rightStart > leftStart);
+  const leftPane = splitWorkspace.slice(leftStart, rightStart);
+  assert.match(leftPane, /data-workspace-pane-state=\{paneMaximized \? "closed" : "open"\}/);
+  assert.match(leftPane, /aria-hidden=\{paneMaximized \? "true" : undefined\}/);
+  assert.match(leftPane, /inert=\{paneMaximized \|\| undefined\}/);
+  assert.match(leftPane, /flexBasis: paneMaximized \? "0%" : appBasis/);
+  assert.match(leftPane, /Keep every left-panel runtime mounted/);
+  assert.match(leftPane, /\{left\}/);
 });
 
 test("remembered split ratio is restored before paint with SSR-stable markup", () => {

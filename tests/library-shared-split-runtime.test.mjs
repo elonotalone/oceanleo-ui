@@ -137,7 +137,7 @@ test("full-page Library drops collection max-width only while an editor is open"
   } finally {await m.destroy();}
 });
 
-test("standalone Library editor opens with a fresh Agent task and preserves editor state", async()=>{
+test("standalone Library editor keeps a fresh Agent task hidden until requested and preserves editor state", async()=>{
   globalThis.__splitEditorMounts = 0;
   function Host(){const [item,setItem]=React.useState(base.item); return React.createElement(MaterialStandaloneEditor,{...base,item,onSavedItem:setItem});}
   const m = await mount(React.createElement(Host));
@@ -146,12 +146,21 @@ test("standalone Library editor opens with a fresh Agent task and preserves edit
     const editor=m.container.querySelector("[data-editor]");
     const input=m.container.querySelector("input"); input.value="local edit";
     const left=m.container.querySelector('[data-workspace-pane="left"]');
-    assert.equal(left.classList.contains("hidden"),false,"Library editor must show the Agent on its first frame");
+    assert.equal(left.dataset.workspacePaneState,"closed","a Library file opens editor-only, not an implicit chat");
+    assert.equal(left.getAttribute("aria-hidden"),"true");
+    assert.equal(left.hasAttribute("inert"),true);
+    assert.equal(left.style.flexBasis,"0%","the closed Agent must not take split width");
+    assert.equal(m.container.querySelector('[role="separator"]'),null,"no divider is shown until the Agent is requested");
     assert.equal(m.container.querySelector("[data-conversation]").dataset.taskId,"","full-page Library must not inherit a route's unrelated task");
     assert.equal(globalThis.__standaloneWorkspaceProviderProps.resumeLatest,false,"standalone Library starts from a fresh session");
     assert.ok(left.classList.contains("rounded-2xl"),"Agent island must keep Task's rounded frame");
     const right=m.container.querySelector('[data-workspace-pane="main"]');
     assert.ok(right.classList.contains("rounded-2xl"),"editor island must keep Task's rounded frame");
+    await click(m.container.querySelector("[data-ai]"));
+    assert.equal(left.dataset.workspacePaneState,"open","the edit-bar Agent action reveals the existing conversation");
+    assert.equal(left.hasAttribute("inert"),false);
+    assert.equal(left.getAttribute("aria-hidden"),null);
+    assert.equal(m.container.querySelector("[data-conversation]").textContent,"new task");
     const divider=m.container.querySelector('[role="separator"][aria-orientation="vertical"]');
     assert.ok(divider,"Library editor must reuse Task's draggable divider");
     const split=m.container.querySelector("[data-workspace-split]");
@@ -161,8 +170,6 @@ test("standalone Library editor opens with a fresh Agent task and preserves edit
     await act(async()=>window.dispatchEvent(new dom.window.MouseEvent("pointermove",{clientX:600})));
     assert.equal(left.style.flexBasis,"60%","dragging the shared divider must move the left island");
     await act(async()=>window.dispatchEvent(new dom.window.MouseEvent("pointerup",{bubbles:true})));
-    await click(m.container.querySelector("[data-ai]"));
-    assert.equal(m.container.querySelector("[data-conversation]").textContent,"new task");
     await click(m.container.querySelector("[data-create-task]"));
     assert.equal(m.container.querySelector("[data-editor]"),editor,"task creation must keep the same editor instance mounted");
     assert.equal(editor.dataset.taskId,"task-created","the existing editor receives the newly created task id");

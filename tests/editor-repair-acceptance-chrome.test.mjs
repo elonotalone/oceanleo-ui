@@ -390,6 +390,11 @@ test("standalone workbench 我的库 still opens the mine panel when SplitWorksp
       "./advanced-session-context": dataModule(
         "export function useAdvancedSession() { return null; }",
       ),
+      "./advanced-session": dataModule(`
+        export function advancedRootItemId(item) {
+          return item.meta.root_asset_id || item.meta.parent_asset_id || item.id || item.key;
+        }
+      `),
       "./workbench-material-provider": dataModule(
         "export function useWorkbenchMaterials() { return null; }",
       ),

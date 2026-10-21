@@ -319,7 +319,10 @@ test("PluginAgentPanel + chrome aside form a min-h-0 flex column around the comp
         export function useWorkspacePane() { return null; }
       `),
       "../PluginChromeEditBarGestureLayer": dataModule(`
-        export function PluginChromeEditBarGestureLayer({ children }) { return children; }
+        import { Fragment, jsxs } from ${JSON.stringify(pathToFileURL(require.resolve("react/jsx-runtime")).href)};
+        export function PluginChromeEditBarGestureLayer({ children, trailing }) {
+          return jsxs(Fragment, { children: [children, trailing] });
+        }
       `),
       "../FloatingContextToolbar": dataModule(`
         export function useFloatingContextToolbar() {
@@ -365,8 +368,8 @@ test("PluginAgentPanel + chrome aside form a min-h-0 flex column around the comp
       ),
     );
   });
-  const agentButton = host.querySelector("[data-plugin-chrome-agent]");
-  assert.ok(agentButton, "AI 助手 button missing");
+  const agentButton = host.querySelector("button[data-edit-bar-agent]");
+  assert.ok(agentButton, "direct edit-bar agent button missing");
   await act(async () => agentButton.click());
   const aside = host.querySelector("[data-plugin-chrome-panel]");
   assert.ok(aside, "agent aside missing");

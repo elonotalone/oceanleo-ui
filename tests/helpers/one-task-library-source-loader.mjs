@@ -1,11 +1,22 @@
 import { readFileSync, statSync } from "node:fs";
-import { registerHooks } from "node:module";
+import { createRequire, registerHooks } from "node:module";
 import { resolve, dirname, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const TS_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
+const require = createRequire(import.meta.url);
+const mammothPackageRoot = dirname(require.resolve("mammoth/package.json"));
+const mammothManifest = JSON.parse(
+  readFileSync(resolve(mammothPackageRoot, "package.json"), "utf8"),
+);
+const mammothBrowserFiles = new Map(
+  Object.entries(mammothManifest.browser || {}).map(([source, browser]) => [
+    resolve(mammothPackageRoot, source),
+    resolve(mammothPackageRoot, browser),
+  ]),
+);
 
 function isFile(path) {
   try {
@@ -87,6 +98,12 @@ export function installOneTaskLibrarySourceLoader({
 
       try {
         const result = nextResolve(specifier, context);
+        if (result.url.startsWith("file:") && !new URL(result.url).search) {
+          const browserFile = mammothBrowserFiles.get(fileURLToPath(result.url));
+          if (browserFile) {
+            return { url: pathToFileURL(browserFile).href, shortCircuit: true };
+          }
+        }
         const mapped = replaceResolvedFile(result.url);
         return mapped ? { url: mapped, shortCircuit: true } : result;
       } catch (error) {
@@ -105,6 +122,10 @@ export function installOneTaskLibrarySourceLoader({
           : resolve(parentPath, specifier);
         for (const candidate of candidates(base)) {
           if (isFile(candidate)) {
+            const browserFile = mammothBrowserFiles.get(candidate);
+            if (browserFile) {
+              return { url: pathToFileURL(browserFile).href, shortCircuit: true };
+            }
             const mapped = replacedFiles.get(candidate);
             if (mapped) return { url: mapped, shortCircuit: true };
             return { url: pathToFileURL(candidate).href, shortCircuit: true };
