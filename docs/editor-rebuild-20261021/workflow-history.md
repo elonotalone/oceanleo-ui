@@ -1,0 +1,5 @@
+# Workflow global history integration
+
+Owner: chrome, follow-up to chrome.md. Same GPT-6 Luna/high, no fast, bootstrap/kernel constraints. Additional exclusive files: src/shell/workflow-carrier/VideoCanvasStage.tsx; a small local workflow history module if needed; tests/rebuild-workflow-history.test.mjs. Do not overlap save/actions owners or change other repos.
+
+Parent audit found the workflow adapter lacks history although user requires global undo across editors. Wire real local ReactFlow graph history to adapter.history, covering person commands and drag edits, undo/redo dirty generation, preserving history on autosave receipts, resetting only genuine item switch/hydration. Do not add fake unavailable buttons. For embedded workflow use existing EmbedEditorPane history callbacks/command plumbing if supported; do not invent protocol or edit security sinks (run security gate before any such changes and request parent decision). Verify meaningful runtime tests. Do not run heavy tests or publish/commit. Return exact evidence and limits.
