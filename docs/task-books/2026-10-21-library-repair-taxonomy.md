@@ -1,0 +1,9 @@
+# Library repair — taxonomy owner
+
+User: fully repair Library after previous agent uploaded fake/empty samples and only expanded dropdown. Account elonlee63@gmail.com.
+
+Own only src/shell/MyLibrary.tsx, src/shell/ArtifactLibrary.tsx, src/shell/library-editor-category.ts (new if useful), src/shell/workspace-library-model.ts, src/shell/WorkspaceLibrary.tsx, relevant focused taxonomy tests and i18n dictionary files if needed. Other owners handle cover components and backend sample repair. Preserve all existing unrelated dirty edits; diff contains previous own category changes plus other agent edits.
+
+Read kernel/bootstrap and oceanleo pack first. Inspect mapped chain before changing stable files. Fix real filtering across all 13 registered editor features. Prefer canonical contract feature ids; do not rely on editor availability to classify a document. Keep legacy slides filter compatible. Prevent WorkspaceLibrary resetting valid empty selected categories to all. Avoid duplicate manually diverging enumerations. Card classification from declared artifact type/capability only; never infer from filename/title. Preserve generic files not matching 13. Expose a pure classifier for cover owner if useful and communicate exact interface. Cover owner owns document-shelf-cover.tsx/workspace-library-thumbnail.tsx/workspace-library-cover.tsx/view.tsx and new cover files exclusively.
+
+Deliver implementation with meaningful focused tests validating actual entry filtering, PDF vs document, chart vs image, composite/design, video canvas, and empty categories. Run focused tests; parent runs aggregate typecheck. No heavy builds, no installs, no production/twin pushes. Do not commit yet; parent integrates exact file list. Return changes, commands, and any known limitations. Do not touch Library data or source material scripts.

@@ -1,0 +1,9 @@
+# Library repair — cover owner
+
+User: fully fix Library wrong Document cards and blank previews. Current screenshot shows website-starter/video-canvas-project/game-document/design-canvas/chart-sample as Document paper placeholder title + fake gray lines; PDF spinner. Previous samples are malformed, another owner replaces them with validated genuine materials.
+
+Own src/shell/document-shelf-cover.tsx, src/shell/workspace-library-thumbnail.tsx, src/shell/workspace-library-cover.tsx, src/shell/workspace-library-view.tsx and new cover-specific modules/tests only. Taxonomy owner owns MyLibrary/ArtifactLibrary/workspace-library-model/WorkspaceLibrary and will provide classification helper if needed. Backend material owner handles 13 actual examples and their real thumbnails.
+
+Bootstrap/read kernel, oceanleo pack, map first. Inspect full cover behavior: remove fake document skeleton gray lines as final ready cover; render actual document excerpt/embedded thumbnails when available; absent cover must have honest useful finite fallback state rather than endless spinner or decorative fake preview. Don't render JSON/editor sources as image/HTML, don't weaken sandbox/CORS or inject user content. Types displayed should use declared artifact type where PDF and chart differ from LibraryKind. Existing document-shelf cover has title label from LibraryKind causing PDF->Document. May use taxonomy helper by agreement but no overlapping edits. Preserve real image/video/3D handling, cache/revision pinning, do not turn all cards into generic placeholders.
+
+Meaningful focused tests for fallback, errors, finite loading and actual text excerpts. Parent aggregate typechecks. No browser/screenshot without consent (user images can be read); no builds/installs/push. Do not commit yet. Return exact files and test commands. Preserve unrelated dirty work.
