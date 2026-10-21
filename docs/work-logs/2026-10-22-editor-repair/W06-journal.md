@@ -36,3 +36,22 @@
 - W04's source copy is in its owned `project-model.ts` worktree change and is verified by W06's focused actual projection test. W04 owns its commit and the associated save/dependency wiring.
 - No browser, production path, install, full typecheck, full suite, build, or deployment was run. Parent owns shared/video typechecks and integration acceptance.
 - The focused test reads the exact source fixture at `/tmp/w04-video-source.bin`; this is intentional for the current actual-source acceptance run and is recorded with its pinned SHA.
+
+## 2026-10-22 — private staging and actual-hook integration follow-up
+
+- Parent assigned a test-only extension and exclusive ownership of `tests/workflow-history-hook.test.tsx` plus the `tests/canvas-workflow.test.mjs` loader repair. W04 retained all product files. The existing canvas test's earlier W04 migration/save assertions were preserved in the same assigned test file.
+- The command-registry VM loader in the two affected test contexts now supplies the actual `legacy-workflow-node.ts` module, fixing the new `require("./legacy-workflow-node")` failure without product changes.
+- Extended the real `useCanvasWorkflow` React hook harness with an in-memory host and open-asset messages. It verifies private source/preview descriptors and metadata, exact serialized edits, absence of public `writeDoc`/export calls, correlated failure code/save ID, same-revision and cross-root rejection, rejection of a newly correlated receipt that returns already-seen REV2 after REV3, preservation of newer dirty edits until a matching receipt, and reopen against fresh REV4 grants without persisting access URLs, grants, receipts, or blob URLs.
+- Added a hook-level race: A's first source dependency materializes while its second is held, B opens and becomes current, then A resumes. The test asserts A cannot overwrite B's project or runtime asset projection and that A's discarded object URL is revoked.
+- W04 added the seen-revision guard in its owned `use-canvas-workflow.ts` path; after that change, the focused hook runtime test passed 2/2.
+- Final focused commands and results:
+
+  ```text
+  bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- ./node_modules/.bin/tsx --require ./tests/css-stub-loader.cjs --test --test-force-exit tests/workflow-history-hook.test.tsx
+  2 tests passed, 0 failed
+
+  bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --experimental-strip-types --test tests/canvas-workflow.test.mjs
+  18 passed, 0 failed, 1 opt-in actual-source test skipped
+  ```
+
+- Committed as video `2573f3e test: cover hosted video save lifecycle`, containing only `tests/canvas-workflow.test.mjs` and `tests/workflow-history-hook.test.tsx`. No product source, package/lock, browser, full suite, typecheck, build, install, production path, deploy, or push was touched.

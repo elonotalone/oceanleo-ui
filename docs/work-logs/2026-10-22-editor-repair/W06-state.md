@@ -27,3 +27,12 @@ Updated: 2026-10-22 (Asia/Shanghai)
 - Added real legacy renderer handles/params, safe bounded local edits, no-cost provider/run rejection, normal-v2 regression controls, and legacy selection action filtering.
 - Focused actual-source runtime test: 4/4 pass via `run-light`, including exact `legacySourceNode` equality through `projectToFlow`; see W06 journal for command and coverage.
 - W06 delivery is recorded in `W06-delivery.md`; W06 state, journal, and delivery are committed separately from W04 evidence.
+
+## Test-only integration follow-up
+
+- Parent authorized W06 to own `tests/workflow-history-hook.test.tsx` and the narrow loader adaptation in `tests/canvas-workflow.test.mjs`; W04 retained all product paths. No video product files were staged in this follow-up.
+- Follow-up commit `2573f3e` contains only those two test files. The canvas test file also preserves W04's earlier migration/save assertions, as W04 requested; no W04 source file is part of the commit.
+- The actual `useCanvasWorkflow` test now covers a clean hosted load, edit-to-dirty, private source/preview staging only, failure correlation (`VIDEO_SAVE_FAILED` plus save ID), same/wrong/seen-old revision receipt rejection, newer edits staying dirty until matching receipt, and reopen with current revision grants but no persisted runtime locator.
+- The same hook harness exercises A-slow/B-fast dependency loading: A has one completed media URL and one delayed dependency, B opens and wins, then A's late completion is discarded and the old URL is revoked without replacing B's project or asset projection.
+- Focused final results: `tests/workflow-history-hook.test.tsx` 2/2 pass; `tests/canvas-workflow.test.mjs` 18 pass, 0 fail, 1 opt-in actual-source skip. Exact commands are recorded in the journal and delivery.
+- No browser/Playwright, full suite, full typecheck, build, install, production path, deployment, or push was run. Parent retains shared/full integration verification.

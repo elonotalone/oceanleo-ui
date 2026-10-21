@@ -26,3 +26,24 @@ UI evidence commits:
 
 - `411377a2 docs: record W06 legacy video repair` — initial W06 state and journal.
 - This delivery record is committed with the updated state and journal in a dedicated W06 evidence commit.
+
+## Test-only hosted-save integration follow-up
+
+Parent later authorized W06 to take exclusive ownership of the actual hook runtime test and narrowly repair the test loader. Commit `2573f3e test: cover hosted video save lifecycle` contains only:
+
+- `tests/workflow-history-hook.test.tsx`
+- `tests/canvas-workflow.test.mjs`
+
+The hook test drives real `useCanvasWorkflow` behavior through hosted open/save messages. It verifies private source/preview staging (and no public write/export), correlated `VIDEO_SAVE_FAILED` errors, same/wrong/already-seen old revision receipt rejection, newer-edit dirty retention, and a fresh-grant reopen where source edits persist but runtime locators do not. It also exercises A-slow/B-fast load ordering and verifies that the late A continuation cannot replace B and that A's discarded runtime URL is revoked. The canvas test loader supplies the actual legacy helper module required by the command registry. That canvas test file also retains adjacent W04 assertions already present and explicitly requested to be preserved; no W04 product file was included in this test commit.
+
+Focused verification after W04's seen-revision guard landed:
+
+```text
+bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- ./node_modules/.bin/tsx --require ./tests/css-stub-loader.cjs --test --test-force-exit tests/workflow-history-hook.test.tsx
+2 tests passed, 0 failed
+
+bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --experimental-strip-types --test tests/canvas-workflow.test.mjs
+18 passed, 0 failed, 1 opt-in actual-source test skipped
+```
+
+No full suite, full typecheck, build, browser/Playwright, install, production path, deployment, or push was run. Parent owns remaining integration acceptance.
