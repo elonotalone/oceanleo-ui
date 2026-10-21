@@ -121,11 +121,18 @@ export const TEXT_ALIGNMENT_CYCLE = [
 
 export type TextAlignment = (typeof TEXT_ALIGNMENT_CYCLE)[number];
 
-export function nextTextAlignment(current: unknown): TextAlignment {
-  const index = TEXT_ALIGNMENT_CYCLE.indexOf(current as TextAlignment);
+export function nextTextAlignment(
+  current: unknown,
+  available?: readonly string[],
+): TextAlignment {
+  const cycle = available?.length
+    ? TEXT_ALIGNMENT_CYCLE.filter((value) => available.includes(value))
+    : TEXT_ALIGNMENT_CYCLE;
+  const usable = cycle.length > 0 ? cycle : TEXT_ALIGNMENT_CYCLE;
+  const index = usable.indexOf(current as TextAlignment);
   return index < 0
-    ? TEXT_ALIGNMENT_CYCLE[0]
-    : TEXT_ALIGNMENT_CYCLE[(index + 1) % TEXT_ALIGNMENT_CYCLE.length];
+    ? usable[0]
+    : usable[(index + 1) % usable.length];
 }
 
 export interface SelectionOverflowGroup {

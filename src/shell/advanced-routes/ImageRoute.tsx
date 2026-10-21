@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import {
-  advancedCommittedRevisionItem,
-  advancedSavedItem,
-} from "../advanced-session";
+import { imageSaveReceiptItem } from "../image-editor/image-save-receipt";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedEditorSourceFor } from "../advanced-features";
 import { usePluginCommandSurface } from "../plugin-command";
@@ -64,7 +61,9 @@ import {
 } from "./editor-handoff";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { imageSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
-import { imageStageShowsSourceLoadOverlay } from "../image-editor/image-source-ready";
+import {
+  imageStageShowsSourceLoadOverlay,
+} from "../image-editor/image-source-ready";
 import { imageRouteChrome } from "../image-editor/image-editor-ui-offerings";
 import type { EditorMode } from "../editor-protocol-types";
 
@@ -79,8 +78,10 @@ export function ImageRoute({
 }: AdvancedContentWorkbenchProps) {
   const [activeItem, setActiveItem] = useState(item);
   useEffect(() => {
+    // Same picture, new revision / preview URL: adopt the receipt in place.
+    // A different picture still replaces the open.
     setActiveItem(item);
-  }, [item.id, item.key]);
+  }, [item.id, item.key, item.revisionId]);
   // 多人同改：画布编辑器先创建（房间要读画布），所以「只读」「存成功」「本地多了一步」走 state / ref 回填。
   const [collabReadOnly, setCollabReadOnly] = useState<boolean>(false);
   const [localSnapshot, setLocalSnapshot] = useState<ImageSnapshot | null>(null);
@@ -152,13 +153,13 @@ export function ImageRoute({
   const [pluginMode, setPluginModeState] = useState<EditorMode>(
     () => rememberedImagePluginMode(),
   );
-  const openedItemKey = useRef(handoffItemKey(item));
+  const openedItemKey = useRef(editor.openIdentity);
   useEffect(() => {
-    const nextKey = handoffItemKey(item);
+    const nextKey = editor.openIdentity;
     if (openedItemKey.current === nextKey) return;
     openedItemKey.current = nextKey;
     setPluginModeState("normal");
-  }, [item]);
+  }, [editor.openIdentity]);
   const sourceLoadOverlay = imageStageShowsSourceLoadOverlay({
     loading: editor.loading,
     sourceReady: editor.sourceReady,
@@ -262,11 +263,13 @@ export function ImageRoute({
       return {
         ok: true as const,
         item: saved.item
-          ? advancedCommittedRevisionItem(activeItem, saved.item, meta)
-          : advancedSavedItem(activeItem, {
+          ? imageSaveReceiptItem(saved.baseItem || activeItem, saved.item, meta, {
               url: saved.url,
               versionId: saved.versionId,
-              meta,
+            })
+          : imageSaveReceiptItem(saved.baseItem || activeItem, undefined, meta, {
+              url: saved.url,
+              versionId: saved.versionId,
             }),
       };
     } catch (caught) {
@@ -571,6 +574,7 @@ export function ImageRoute({
         collab: collab.collab,
         persistence: {
           autoSave: true,
+          userEditKey: editor.openIdentity,
           dirty: editor.dirty && collab.saveGate && imageAdmitted.ok,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,

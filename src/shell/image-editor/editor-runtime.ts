@@ -455,8 +455,14 @@ export function captureSnapshot(
   doc: DocSize,
   canvasBackground: string,
 ): EditorSnapshot {
+  const json = canvas.toObject(SNAPSHOT_PROPS) as Record<string, unknown>;
+  if (Array.isArray(json.objects)) {
+    json.objects = json.objects.filter(
+      (object) => roleOf(object as FabricObject) !== "crop",
+    );
+  }
   return {
-    json: canvas.toObject(SNAPSHOT_PROPS) as Record<string, unknown>,
+    json,
     doc: { ...doc },
     canvasBackground,
   };
@@ -642,16 +648,23 @@ export function cropBounds(
 }
 
 export function constrainCropToDoc(crop: FabricObject, doc: DocSize): void {
+  constrainCropToRect(crop, { left: 0, top: 0, width: doc.width, height: doc.height });
+}
+
+export function constrainCropToRect(
+  crop: FabricObject,
+  host: { left: number; top: number; width: number; height: number },
+): void {
   const bounds = crop.getBoundingRect();
   let dx = 0;
   let dy = 0;
-  if (bounds.left < 0) dx = -bounds.left;
-  if (bounds.top < 0) dy = -bounds.top;
-  if (bounds.left + bounds.width > doc.width) {
-    dx = doc.width - (bounds.left + bounds.width);
+  if (bounds.left < host.left) dx = host.left - bounds.left;
+  if (bounds.top < host.top) dy = host.top - bounds.top;
+  if (bounds.left + bounds.width > host.left + host.width) {
+    dx = host.left + host.width - (bounds.left + bounds.width);
   }
-  if (bounds.top + bounds.height > doc.height) {
-    dy = doc.height - (bounds.top + bounds.height);
+  if (bounds.top + bounds.height > host.top + host.height) {
+    dy = host.top + host.height - (bounds.top + bounds.height);
   }
   if (dx || dy) {
     crop.set({
@@ -660,6 +673,159 @@ export function constrainCropToDoc(crop: FabricObject, doc: DocSize): void {
     });
     crop.setCoords();
   }
+}
+
+export function constrainCropToObject(crop: FabricObject, host: FabricObject): void {
+  const cropCenter = crop.getCenterPoint();
+  const hostCenter = host.getCenterPoint();
+  const radians = ((host.angle ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const dx = cropCenter.x - hostCenter.x;
+  const dy = cropCenter.y - hostCenter.y;
+  const localX = dx * cos + dy * sin;
+  const localY = -dx * sin + dy * cos;
+  const maxX = Math.max(
+    0,
+    (host.getScaledWidth() - crop.getScaledWidth()) / 2,
+  );
+  const maxY = Math.max(
+    0,
+    (host.getScaledHeight() - crop.getScaledHeight()) / 2,
+  );
+  const nextX = Math.max(-maxX, Math.min(maxX, localX));
+  const nextY = Math.max(-maxY, Math.min(maxY, localY));
+  if (nextX === localX && nextY === localY) return;
+  crop.set({
+    left: hostCenter.x + nextX * cos - nextY * sin,
+    top: hostCenter.y + nextX * sin + nextY * cos,
+  });
+  crop.setCoords();
+}
+
+/** Source-pixel crop for a selected Fabric image. Does not resize the document. */
+export function fabricImageCropPatch(
+  image: {
+    getBoundingRect(): { left: number; top: number; width: number; height: number };
+    getCenterPoint?(): { x: number; y: number };
+    angle?: number | null;
+    flipX?: boolean;
+    flipY?: boolean;
+    width?: number;
+    height?: number;
+    scaleX?: number | null;
+    scaleY?: number | null;
+    cropX?: number | null;
+    cropY?: number | null;
+  },
+  region: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    getCenterPoint?(): { x: number; y: number };
+    angle?: number | null;
+    scaleX?: number | null;
+    scaleY?: number | null;
+  },
+): {
+  cropX: number;
+  cropY: number;
+  width: number;
+  height: number;
+  originX: "center";
+  originY: "center";
+  left: number;
+  top: number;
+} | null {
+  const imgRect = image.getBoundingRect();
+  const scaleX = Math.max(0.0001, Math.abs(image.scaleX || 1));
+  const scaleY = Math.max(0.0001, Math.abs(image.scaleY || 1));
+  const imageCenter = image.getCenterPoint?.() ?? {
+    x: imgRect.left + imgRect.width / 2,
+    y: imgRect.top + imgRect.height / 2,
+  };
+  const imageAngle = ((image.angle ?? 0) * Math.PI) / 180;
+  const regionCenter = region.getCenterPoint?.() ?? {
+    x: region.left + region.width / 2,
+    y: region.top + region.height / 2,
+  };
+  const regionScaleX = Math.max(0.0001, Math.abs(region.scaleX || 1));
+  const regionScaleY = Math.max(0.0001, Math.abs(region.scaleY || 1));
+  const regionAngle = ((region.angle ?? 0) * Math.PI) / 180;
+  const regionCos = Math.cos(regionAngle);
+  const regionSin = Math.sin(regionAngle);
+  const imageCos = Math.cos(imageAngle);
+  const imageSin = Math.sin(imageAngle);
+  const halfWidth = (region.width * regionScaleX) / 2;
+  const halfHeight = (region.height * regionScaleY) / 2;
+  const localCorners = [
+    [-halfWidth, -halfHeight],
+    [halfWidth, -halfHeight],
+    [halfWidth, halfHeight],
+    [-halfWidth, halfHeight],
+  ].map(([cornerX, cornerY]) => {
+    const worldX = cornerX * regionCos - cornerY * regionSin;
+    const worldY = cornerX * regionSin + cornerY * regionCos;
+    const dx = regionCenter.x + worldX - imageCenter.x;
+    const dy = regionCenter.y + worldY - imageCenter.y;
+    return {
+      x: dx * imageCos + dy * imageSin,
+      y: -dx * imageSin + dy * imageCos,
+    };
+  });
+  const imageWidth = image.width ?? imgRect.width / scaleX;
+  const imageHeight = image.height ?? imgRect.height / scaleY;
+  const visibleWidth = imageWidth * scaleX;
+  const visibleHeight = imageHeight * scaleY;
+  const localLeft = Math.max(
+    -visibleWidth / 2,
+    Math.min(...localCorners.map((point) => point.x)),
+  );
+  const localRight = Math.min(
+    visibleWidth / 2,
+    Math.max(...localCorners.map((point) => point.x)),
+  );
+  const localTop = Math.max(
+    -visibleHeight / 2,
+    Math.min(...localCorners.map((point) => point.y)),
+  );
+  const localBottom = Math.min(
+    visibleHeight / 2,
+    Math.max(...localCorners.map((point) => point.y)),
+  );
+  const width = localRight - localLeft;
+  const height = localBottom - localTop;
+  if (width < 2 || height < 2) return null;
+  const sourceLeft = localLeft + visibleWidth / 2;
+  const sourceTop = localTop + visibleHeight / 2;
+  const sourceWidth = width / scaleX;
+  const sourceHeight = height / scaleY;
+  const sourceX = image.flipX ? imageWidth - sourceLeft / scaleX - sourceWidth : sourceLeft / scaleX;
+  const sourceY = image.flipY ? imageHeight - sourceTop / scaleY - sourceHeight : sourceTop / scaleY;
+  const centerLocalX = (localLeft + localRight) / 2;
+  const centerLocalY = (localTop + localBottom) / 2;
+  return {
+    cropX: (image.cropX || 0) + sourceX,
+    cropY: (image.cropY || 0) + sourceY,
+    width: sourceWidth,
+    height: sourceHeight,
+    originX: "center",
+    originY: "center",
+    left: imageCenter.x + centerLocalX * imageCos - centerLocalY * imageSin,
+    top: imageCenter.y + centerLocalX * imageSin + centerLocalY * imageCos,
+  };
+}
+
+export function applyFabricImageCrop(
+  image: FabricImage,
+  region: FabricObject,
+): boolean {
+  const patch = fabricImageCropPatch(image, region);
+  if (!patch) return false;
+  image.set(patch);
+  image.setCoords();
+  return true;
 }
 
 export function removeEditableObjects(canvas: Canvas): void {

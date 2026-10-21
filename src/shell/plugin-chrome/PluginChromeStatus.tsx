@@ -30,7 +30,7 @@ export function PluginChromeStatus({ state }: { state: PluginChromeSaveState }) 
       text = tt("有未保存改动");
       break;
     case "saving":
-      tone = "busy";
+      tone = "warn";
       text = tt("保存中…");
       break;
     case "saved":

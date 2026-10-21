@@ -14,6 +14,10 @@ export interface FabricImageToolbarBuildInput {
   cropping: boolean;
   cropRatio: CropRatio;
   loading: boolean;
+  /** First source load. Save must not send false. */
+  sourceReady?: boolean;
+  /** Persist in flight. Must not disable the bar. */
+  saving?: boolean;
   transformInfo: TransformInfo | null;
   filters: FilterSettings | null | undefined;
   layers: readonly { locked: boolean }[];
@@ -25,6 +29,8 @@ type EditorToolbarBag = {
   cropping?: boolean;
   cropRatio?: CropRatio;
   loading?: boolean;
+  sourceReady?: boolean;
+  saving?: boolean;
   transformInfo?: TransformInfo | null;
   filterInfo?: { settings?: FilterSettings | null } | null;
   layers?: readonly { locked: boolean }[];
@@ -40,6 +46,8 @@ function normalizeToolbarInput(
       cropping: Boolean(editor.cropping),
       cropRatio: editor.cropRatio || "free",
       loading: Boolean(editor.loading),
+      sourceReady: editor.sourceReady !== false,
+      saving: Boolean(editor.saving),
       transformInfo: editor.transformInfo ?? null,
       filters: editor.filterInfo?.settings ?? null,
       layers: editor.layers ?? [],
@@ -80,8 +88,51 @@ export function buildFabricImageToolbarControls(
   const selectedIsLineLike = LINE_KINDS.has(selected.kind);
   const selectedIsImage =
     selected.kind === "image" || selected.kind === "background";
-  const hasLockedLayers = fields.layers.some((layer) => layer.locked);
   const controls: SelectionControl[] = [];
+
+  // During crop the active Fabric object is the temporary crop rectangle,
+  // whose kind is `rect`. Keep the crop session's controls independent of
+  // the selected snapshot kind so Apply, Cancel and ratio remain reachable.
+  if (fields.cropping) {
+    controls.push(
+      {
+        id: "crop-apply",
+        kind: "action",
+        label: tt("应用裁剪"),
+        icon: "crop",
+        group: "image",
+      },
+      {
+        id: "crop-ratio",
+        kind: "select",
+        label: tt("裁剪比例"),
+        value: fields.cropRatio,
+        options: [
+          { value: "free", label: tt("自由") },
+          { value: "1:1", label: "1:1" },
+          { value: "4:3", label: "4:3" },
+          { value: "16:9", label: "16:9" },
+          { value: "9:16", label: "9:16" },
+        ],
+        placement: "more",
+        slot: "inspector",
+        inspectorGroup: "image-crop",
+        inspectorLabel: tt("裁剪设置"),
+        inspectorIcon: "crop",
+      },
+      {
+        id: "crop-cancel",
+        kind: "action",
+        label: tt("取消裁剪"),
+        group: "image",
+        placement: "more",
+      },
+    );
+    if (fields.sourceReady === false || selected.locked) {
+      for (const control of controls) control.disabled = true;
+    }
+    return controls;
+  }
 
   if (selectedIsImage) {
     controls.push(
@@ -147,6 +198,7 @@ export function buildFabricImageToolbarControls(
               kind: "action" as const,
               label: tt("取消"),
               group: "image",
+              placement: "more" as const,
             },
           ]
         : []),
@@ -160,6 +212,7 @@ export function buildFabricImageToolbarControls(
         kind: "text",
         label: tt("文字内容"),
         value: selected.text.value,
+        placement: "more",
         slot: "inspector",
         inspectorGroup: "image-text-content",
         inspectorLabel: tt("文字内容"),
@@ -177,34 +230,30 @@ export function buildFabricImageToolbarControls(
         id: "font-size",
         kind: "number",
         label: tt("字号"),
+        icon: "font-size",
+        semantic: "font-size",
         group: "type",
         value: selected.text.fontSize,
         min: 6,
         max: 320,
-        step: 1,
-        slot: "inspector",
-        inspectorGroup: "image-text-typography",
-        inspectorLabel: tt("文字排版"),
-        inspectorIcon: "font",
+        step: 0.1,
       },
       {
         id: "text-color",
         kind: "color",
         label: tt("文字色"),
-        icon: "font",
+        icon: "underline-color",
+        semantic: "color",
         iconOnly: true,
         group: "type",
         value: selected.text.fill || "#000000",
-        slot: "inspector",
-        inspectorGroup: "image-text-color",
-        inspectorLabel: tt("文字颜色"),
-        inspectorIcon: "text",
       },
       {
         id: "bold",
         kind: "toggle",
         label: tt("粗体"),
         icon: "bold",
+        semantic: "bold",
         iconOnly: true,
         group: "style",
         value: selected.text.bold,
@@ -214,6 +263,7 @@ export function buildFabricImageToolbarControls(
         kind: "toggle",
         label: tt("斜体"),
         icon: "italic",
+        semantic: "italic",
         iconOnly: true,
         group: "style",
         value: selected.text.italic,
@@ -223,6 +273,7 @@ export function buildFabricImageToolbarControls(
         kind: "toggle",
         label: tt("下划线"),
         icon: "underline",
+        semantic: "underline",
         iconOnly: true,
         group: "style",
         value: selected.text.underline,
@@ -231,15 +282,26 @@ export function buildFabricImageToolbarControls(
         id: "linethrough",
         kind: "toggle",
         label: tt("删除线"),
+        icon: "strike",
+        semantic: "strike",
+        iconOnly: true,
         group: "style",
         value: selected.text.linethrough,
-        placement: "more",
+      },
+      {
+        id: "text-case",
+        kind: "action",
+        label: tt("更改大小写"),
+        icon: "case",
+        semantic: "case",
+        iconOnly: true,
       },
       {
         id: "align",
         kind: "select",
         label: tt("对齐"),
         icon: "align-left",
+        semantic: "alignment",
         group: "paragraph",
         value: selected.text.align,
         options: [
@@ -249,19 +311,26 @@ export function buildFabricImageToolbarControls(
         ],
       },
       {
+        id: "list",
+        kind: "toggle",
+        label: tt("项目符号列表"),
+        icon: "list",
+        iconOnly: true,
+        value: selected.text.value
+          .split("\n")
+          .every((line) => line.startsWith("• ")),
+      },
+      {
         id: "line-height",
         kind: "number",
         label: tt("行距"),
         icon: "spacing",
+        semantic: "spacing",
+        iconOnly: true,
         value: selected.text.lineHeight,
         min: 0.5,
         max: 4,
         step: 0.05,
-        placement: "more",
-        slot: "inspector",
-        inspectorGroup: "image-text-spacing",
-        inspectorLabel: tt("间距"),
-        inspectorIcon: "spacing",
       },
       {
         id: "char-spacing",
@@ -273,7 +342,7 @@ export function buildFabricImageToolbarControls(
         step: 10,
         placement: "more",
         slot: "inspector",
-        inspectorGroup: "image-text-spacing",
+        inspectorGroup: "text-spacing",
         inspectorLabel: tt("间距"),
         inspectorIcon: "spacing",
       },
@@ -387,7 +456,8 @@ export function buildFabricImageToolbarControls(
       id: "opacity",
       kind: "range",
       label: tt("透明度"),
-      icon: "opacity",
+      icon: selected.text ? "transparency" : "opacity",
+      iconOnly: true,
       group: "appearance",
       value: selected.opacity,
       min: 0,
@@ -395,8 +465,8 @@ export function buildFabricImageToolbarControls(
       step: 1,
       slot: "inspector",
       inspectorGroup: "image-appearance",
-      inspectorLabel: tt("外观"),
-      inspectorIcon: "opacity",
+      inspectorLabel: selected.text ? tt("透明度") : tt("外观"),
+      inspectorIcon: selected.text ? "transparency" : "opacity",
     },
     ...(!selected.table && !selectedIsLineLike
       ? [
@@ -448,10 +518,12 @@ export function buildFabricImageToolbarControls(
     {
       id: "shadow",
       kind: "toggle",
-      label: tt("投影"),
+      label: selected.text ? tt("效果") : tt("投影"),
       icon: "effects",
+      iconOnly: selected.text ? false : true,
+      semantic: "effects",
       value: selected.shadow.enabled,
-      placement: selectedIsImage ? undefined : "more",
+      placement: selected.text || selectedIsImage ? undefined : "more",
     },
   );
 
@@ -460,14 +532,14 @@ export function buildFabricImageToolbarControls(
       {
         id: "rotate-left",
         kind: "action",
-        label: "↶ 90°",
+        label: tt("向左旋转 90°"),
         icon: "rotate",
         placement: "more",
       },
       {
         id: "rotate-right",
         kind: "action",
-        label: "↷ 90°",
+        label: tt("向右旋转 90°"),
         icon: "rotate",
         placement: "more",
       },
@@ -496,7 +568,8 @@ export function buildFabricImageToolbarControls(
         placement: "more",
         slot: "inspector",
         inspectorGroup: "image-transform",
-        inspectorLabel: tt("位置与尺寸"),
+        semantic: "position",
+        inspectorLabel: tt("位置"),
         inspectorIcon: "position",
       },
     );
@@ -510,7 +583,7 @@ export function buildFabricImageToolbarControls(
     placement: "more" as const,
     slot: "inspector" as const,
     inspectorGroup: "image-transform",
-    inspectorLabel: tt("位置与尺寸"),
+    inspectorLabel: tt("位置"),
     inspectorIcon: "position" as const,
   };
   controls.push(
@@ -564,14 +637,14 @@ export function buildFabricImageToolbarControls(
       id: "layer-up",
       kind: "action",
       label: tt("上移一层"),
-      icon: "layers",
+      icon: "bring-forward",
       placement: "more",
     },
     {
       id: "layer-down",
       kind: "action",
       label: tt("下移一层"),
-      icon: "layers",
+      icon: "send-backward",
       placement: "more",
     },
     {
@@ -591,12 +664,11 @@ export function buildFabricImageToolbarControls(
     },
   );
 
+  const sourceNotReady = fields.sourceReady === false;
   for (const control of controls) {
     if (
-      fields.loading ||
-      (selected.locked && !imageToolbarCommandAllowed(true, control.id)) ||
-      (hasLockedLayers &&
-        ["crop-start", "crop-apply", "crop-ratio"].includes(control.id))
+      sourceNotReady ||
+      (selected.locked && !imageToolbarCommandAllowed(true, control.id))
     ) {
       control.disabled = true;
     }

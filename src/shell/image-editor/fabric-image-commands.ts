@@ -14,9 +14,25 @@ export function dispatchFabricImageCommand(
   editor: FabricImageEditorState,
   message: SelectionCommand,
 ): void {
-  const selected = editor.selected;
+  const targetId = String(message.selectionId || editor.selected?.id || "");
+  let selected = editor.selected;
+  const targetLayer = targetId
+    ? editor.layers.find((layer) => layer.id === targetId)
+    : undefined;
+  const cropControl = ["crop-apply", "crop-cancel", "crop-ratio"].includes(
+    message.controlId,
+  );
+  // A command belongs to the selection that rendered its control. Ignore it
+  // if another object has replaced it. Inspector focus can temporarily clear
+  // the live selection; restore that known object before applying the command.
+  if (targetId && selected?.id && selected.id !== targetId) return;
+  if (targetId && !targetLayer && !cropControl) return;
+  if (targetId && targetLayer) {
+    editor.selectLayer(targetId);
+    selected = editor.selected;
+  }
   if (
-    selected?.locked &&
+    (targetLayer?.locked ?? selected?.locked) &&
     !imageToolbarCommandAllowed(true, message.controlId)
   ) {
     return;
@@ -48,6 +64,12 @@ export function dispatchFabricImageCommand(
       break;
     case "text-color":
       editor.setSelectedText({ fill: String(message.value || "#000000") });
+      break;
+    case "text-case":
+      editor.toggleSelectedTextCase();
+      break;
+    case "list":
+      editor.toggleSelectedTextList();
       break;
     case "bold":
       editor.setSelectedText({ bold: message.value === true });
@@ -162,6 +184,10 @@ export function dispatchFabricImageCommand(
         borderWidth: numeric(message.value, 1),
       });
       break;
+    case "replace-panel":
+    case "filter-panel":
+    case "font-panel":
+      break;
     case "crop-start":
       editor.startCrop();
       break;
@@ -204,23 +230,27 @@ export function dispatchFabricImageCommand(
     case "filter-reset":
       editor.resetFilters();
       break;
-    case "lock":
-      if (selected && message.value !== selected.locked) {
-        editor.toggleLayerLock(selected.id);
-      }
+    case "lock": {
+      if (!targetId) break;
+      if (selected && message.value === selected.locked) break;
+      editor.toggleLayerLock(targetId);
       break;
-    case "layer-up":
-      if (selected) editor.moveLayer(selected.id, "up");
+    }
+    case "layer-up": {
+      if (targetId) editor.moveLayer(targetId, "up");
       break;
-    case "layer-down":
-      if (selected) editor.moveLayer(selected.id, "down");
+    }
+    case "layer-down": {
+      if (targetId) editor.moveLayer(targetId, "down");
       break;
+    }
     case "duplicate":
       void editor.duplicateSelected();
       break;
-    case "delete":
-      editor.deleteSelected();
+    case "delete": {
+      if (selected) editor.deleteSelected();
+      else if (targetId) editor.removeLayer(targetId);
       break;
+    }
   }
 }
-

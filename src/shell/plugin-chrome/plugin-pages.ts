@@ -2,7 +2,7 @@
 // 只有 W01 可按任务书扩展）。
 //
 // 产品规则（见 docs/architecture/oceanleo-plugin-chrome-pages-spec.md）：
-//   第一行 = 全局行：返回 / 素材库 / 保存状态 / 下载 / 主题 / 关闭。13 件插件一个样。
+//   第一行 = 全局行：返回 / 素材库 / 撤销重做 / 保存状态 / 下载 / 主题 / 关闭。13 件插件一个样。
 //   第二行 = 页面行：「编辑」（成品页）永远第一；「专业编辑」是一个页面，不再是开关；
 //            其余页面（Code / Database / …）由插件按需申报。
 //   编辑栏（edit bar）只在 kind === "artifact" 的页面出现。
@@ -107,6 +107,7 @@ export function editorModeToPage(mode: EditorMode | null | undefined): string {
 export const GLOBAL_ROW_SLOTS = Object.freeze([
   "back",
   "library",
+  "history",
   "save-state",
   "download",
   "share",

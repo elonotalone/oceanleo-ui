@@ -1,6 +1,7 @@
 // 规范 v2 §4：编辑栏严格单行（plugin-chrome X2）。
 //
-//   [撤销 重做] | [选中对象工具…] | [documentSegment] | [trailing] [AI 助手] [固定柄]
+//   [选中对象工具…] | [documentSegment] | [trailing] [AI 助手] [固定柄]
+//   撤销 / 重做在第一行 history 槽（操作员 2026-10-21），不在编辑栏。
 //
 // 全部内联在 FloatingContextToolbar 自己画的 `[data-workspace-edit-bar]` 一行里，
 // 永不换行；宽度不足先由 SelectionToolbar 把选中工具折进它的 More，再由行把
@@ -149,7 +150,6 @@ const { AdvancedLayoutContext } = await import(layoutContextStubUrl);
 // 行的容量只看外部边界（overlay）；各段宽度由桩给定，栏自身宽度**不参与**。
 const geometry = { overlayWidth: 1000 };
 const SEGMENT_WIDTHS = [
-  ["data-edit-bar-history-slot", 96],
   ["data-edit-bar-trailing-slot", 100],
   ["data-edit-bar-document-measure", 200],
   ["data-edit-bar-document-slot", 200],
@@ -192,12 +192,7 @@ function fakeLayout(overrides = {}) {
     activeDrawerId: "",
     openDrawer() {},
     closeDrawer() {},
-    contextBarLeading: React.createElement(
-      React.Fragment,
-      null,
-      React.createElement("button", { type: "button", "aria-label": "撤销" }, "↶"),
-      React.createElement("button", { type: "button", "aria-label": "重做" }, "↷"),
-    ),
+    contextBarLeading: null,
     ...overrides,
   };
 }
@@ -274,7 +269,7 @@ const documentSegment = React.createElement(
 
 /* -------------------------------------------------------------------- 用例 */
 
-test("一行四段：容器由 FloatingContextToolbar 自己画，顺序固定，AI 与固定柄各一个，无收起键", async () => {
+test("一行三段：容器由 FloatingContextToolbar 自己画，顺序固定，AI 与固定柄各一个，无收起键", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   geometry.overlayWidth = 1000;
@@ -295,14 +290,14 @@ test("一行四段：容器由 FloatingContextToolbar 自己画，顺序固定�
     const slots = Array.from(row.children)
       .filter((child) => child.getAttribute("aria-hidden") !== "true")
       .map((child) =>
-        ["history", "selection", "document", "trailing"].find((name) =>
+        ["selection", "document", "trailing"].find((name) =>
           child.hasAttribute(`data-edit-bar-${name}-slot`),
         ) || (child.tagName === "SPAN" ? "|" : child.tagName),
       );
     assert.deepEqual(
       slots,
-      ["history", "|", "selection", "|", "document", "trailing"],
-      "四段顺序：[撤销 重做] | [选中工具] | [文档段] [右段]",
+      ["selection", "|", "document", "trailing"],
+      "三段顺序：[选中工具] | [文档段] [右段]；撤销不在编辑栏",
     );
 
     const trailingSlot = row.querySelector("[data-edit-bar-trailing-slot]");
@@ -370,9 +365,10 @@ test("宽度不足：文档段折进「更多选项」，只在有选中工具�
     );
     assert.equal(row().querySelector("[data-edit-bar-document-more]"), null);
 
-    // 容量 = 380 − 16（两侧保留）= 364；固定段 96 + 100 + 分隔线，文档 200，
+    // 容量 = 280 − 16（两侧保留）= 264；固定段 trailing 100 + 分隔线，文档 200，
     // 选中段至少保 52 → 装不下，文档段折进「更多选项」。
-    await resizeOverlay(380);
+    // 撤销已离开编辑栏，不再占 96px history 槽。
+    await resizeOverlay(280);
     const more = row().querySelector("[data-edit-bar-document-more]");
     assert.ok(more, "宽度不足时文档段应折进「更多选项」");
     assert.equal(

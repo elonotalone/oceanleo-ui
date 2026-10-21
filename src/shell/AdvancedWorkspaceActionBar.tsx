@@ -5,6 +5,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { Button, IconButton } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import { GlobalRowHistoryControls } from "./EditBarDockControls";
 import { actionGroup } from "./advanced-workbench-chrome";
 import { AnchoredPopover } from "./anchored-popover";
 import { CollabActionSlot } from "./collab/CollabActionSlot";
@@ -202,6 +203,14 @@ export function AdvancedWorkspaceActionBar({
         <span className="min-w-4 flex-1" />
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        {adapter.history ? (
+          <GlobalRowHistoryControls
+            canUndo={adapter.history.canUndo}
+            canRedo={adapter.history.canRedo}
+            onUndo={adapter.history.undo}
+            onRedo={adapter.history.redo}
+          />
+        ) : null}
         <CollabActionSlot collab={adapter.collab} pluginThemeId={pluginThemeId} />
         {adapter.persistence?.recovery?.ready !== false ? (
         <div data-global-row-slot="save-state">
@@ -224,19 +233,17 @@ export function AdvancedWorkspaceActionBar({
             style={{
               color:
                 autoSaveState === "error"
-                  ? "var(--awb-danger,#dc2626)"
+                  ? "#dc2626"
                   : autoSaveState === "saving"
-                    ? "var(--awb-warn,#d97706)"
+                    ? "#d97706"
                     : autoSaveState === "unconfirmed"
-                      ? "var(--awb-muted,#737373)"
-                      : "var(--awb-ok,#059669)",
+                      ? "#737373"
+                      : "#059669",
             }}
           >
             <CloudAutoSaveIcon
               state={autoSaveState}
-              className={`h-4 w-4 shrink-0 ${
-                autoSaveState === "saving" ? "animate-pulse" : ""
-              }`}
+              className="h-4 w-4 shrink-0"
             />
             <span className="sr-only">{saveStateLabel}</span>
             {saveMenuAvailable ? (
@@ -421,6 +428,13 @@ export function AdvancedWorkspaceActionBar({
   );
 }
 
+function cloudSaveColor(state: AdvancedAutoSaveState | "unconfirmed"): string {
+  if (state === "error") return "#dc2626";
+  if (state === "saving") return "#d97706";
+  if (state === "unconfirmed") return "#737373";
+  return "#059669";
+}
+
 function CloudAutoSaveIcon({
   state,
   className = "",
@@ -438,6 +452,7 @@ function CloudAutoSaveIcon({
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
+      style={{ color: cloudSaveColor(state) }}
     >
       <path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.2 8.5 4.5 4.5 0 0 0 7 18Z" />
       {state === "saved" && <path d="m9.5 13 1.7 1.7 3.5-3.7" />}

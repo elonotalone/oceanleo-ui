@@ -8,6 +8,13 @@ import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { GLOBAL_ROW_SLOTS } from "../src/shell/plugin-chrome/plugin-pages.ts";
 
+test("history 槽在 save-state 之前", () => {
+  const historyAt = GLOBAL_ROW_SLOTS.indexOf("history");
+  const saveAt = GLOBAL_ROW_SLOTS.indexOf("save-state");
+  assert.ok(historyAt >= 0, "GLOBAL_ROW_SLOTS 缺少 history");
+  assert.ok(historyAt < saveAt, "history 必须排在 save-state 左边");
+});
+
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
@@ -110,9 +117,6 @@ function loadShell() {
         }
       `),
       "./use-advanced-recovery": dataModule(`export function useAdvancedRecovery() {}`),
-      "./workbench-routes": dataModule(`
-        export function editBarOwnershipForItem() { return "host"; }
-      `),
     })
     ))();
 }
@@ -211,7 +215,7 @@ test("第一行可点击元素全部落在 GLOBAL_ROW_SLOTS；非 download 动�
           kind: "document",
           siteId: "study",
           favorite: false,
-          meta: {},
+          meta: { rows: [["表格"]] },
         },
         adapter: {
           id: "grid",

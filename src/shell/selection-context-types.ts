@@ -30,11 +30,12 @@ export type SelectionControlIcon =
   | "align-right" | "animate" | "background" | "bold" | "border"
   | "bring-forward" | "crop" | "color" | "case" | "delete" | "download"
   | "draw" | "duplicate" | "effects" | "elements" | "filter"
-  | "flip-horizontal" | "flip-vertical" | "font" | "image" | "italic"
-  | "layers" | "line" | "link" | "lock" | "more" | "materials" | "note"
-  | "opacity" | "pages" | "position" | "redo" | "rotate" | "save"
+  | "flip-horizontal" | "flip-vertical" | "font" | "font-size" | "image" | "italic"
+  | "layers" | "line" | "link" | "list" | "lock" | "more" | "materials" | "note"
+  | "opacity" | "pages" | "position" | "transparency" | "redo" | "rotate" | "save"
   | "select" | "send-backward" | "shape" | "signature" | "spacing"
-  | "strike" | "table" | "text" | "templates" | "underline" | "undo"
+  | "strike" | "table" | "text" | "templates" | "underline" | "underline-color"
+  | "undo"
   | "unlock" | "vertical-text";
 
 export type SelectionControlValue = string | number | boolean | null;

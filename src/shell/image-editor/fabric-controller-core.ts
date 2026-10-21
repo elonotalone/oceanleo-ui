@@ -13,6 +13,7 @@ import {
 } from "./types";
 import {
   buildSelectedSnapshot,
+  findById,
   findByRole,
   kindOf,
   makeId,
@@ -28,6 +29,7 @@ import { imageFitScales } from "./fabric-geometry";
 import {
   captureSnapshot,
   constrainCropToDoc,
+  constrainCropToObject,
   createDocBackground,
   ensureLayerOrder,
   canvasElementCssScales,
@@ -58,7 +60,6 @@ import {
   imageObjectMutationAllowed,
   type ImageObjectMutationIntent,
 } from "./image-mutation-policy";
-
 export interface FabricControllerView {
   doc: DocSize;
   canvasBackground: string;
@@ -115,6 +116,7 @@ export class FabricEditorCore {
   protected brush: BrushSettings = { ...DEFAULT_BRUSH };
   protected cropping = false;
   protected cropRatio: CropRatio = "free";
+  protected cropTargetId = "";
   protected currentSnapshot: EditorSnapshot;
   protected undoStack: EditorSnapshot[] = [];
   protected redoStack: EditorSnapshot[] = [];
@@ -384,7 +386,7 @@ export class FabricEditorCore {
         if (target) this.finalizeImageEdgeSnap(target, e);
         this.resetImageEdgeSnap();
         if (roleOf(target) === "crop") {
-          constrainCropToDoc(target, this.doc);
+          this.constrainActiveCrop();
           this.canvas.requestRenderAll();
           return;
         }
@@ -401,7 +403,7 @@ export class FabricEditorCore {
         this.imageEdgeSnapScaleTransform = null;
         target.setCoords();
         if (roleOf(target) === "crop") {
-          constrainCropToDoc(target, this.doc);
+          this.constrainActiveCrop();
         }
         this.snapImageMoveEdges(target, e);
         // Keep V3 geometry probe live across the gesture (no null mid-drag).
@@ -425,7 +427,7 @@ export class FabricEditorCore {
             });
           }
           target.setCoords();
-          constrainCropToDoc(target, this.doc);
+          this.constrainActiveCrop();
         }
         this.snapImageScaleEdges(target, e, transform);
         this.emit();
@@ -591,6 +593,19 @@ export class FabricEditorCore {
     this.updateBrush();
     if (this.activeTool !== "select") this.canvas.discardActiveObject();
     this.canvas.requestRenderAll();
+  }
+
+  protected constrainActiveCrop(): void {
+    const crop = findByRole(this.canvas, "crop");
+    if (!crop) return;
+    if (this.cropTargetId) {
+      const host = findById(this.canvas, this.cropTargetId);
+      if (host) {
+        constrainCropToObject(crop, host);
+        return;
+      }
+    }
+    constrainCropToDoc(crop, this.doc);
   }
 
   protected target(): EditorObject | null {
@@ -939,6 +954,7 @@ export class FabricEditorCore {
       }
       this.cropping = false;
       this.cropRatio = "free";
+      this.cropTargetId = "";
       this.zoom = fitViewport(this.canvas, this.doc, this.container);
       this.selectPreferredUnlockedImage();
       this.canvas.requestRenderAll();
@@ -963,6 +979,7 @@ export class FabricEditorCore {
             this.currentSnapshot = fallback;
             this.cropping = false;
             this.cropRatio = "free";
+            this.cropTargetId = "";
             this.zoom = fitViewport(this.canvas, this.doc, this.container);
             this.selectPreferredUnlockedImage();
             this.canvas.requestRenderAll();
@@ -1052,6 +1069,8 @@ export class FabricEditorCore {
    * 不重建整张画布；你当前的选中、正在拖动 / 编辑文字的那个对象、撤销栈都留着
    * （别人的改动同时套进撤销栈里的旧快照，你的撤销不会把他的改动一并撤掉）。
    * 连着来的多次状态只处理最新一份。
+   * Never reset local history, including when the payload is this client's
+   * just-saved snapshot echoed back through collab.
    */
   applyRemote(remote: EditorSnapshot): Promise<boolean> {
     if (this.destroyed) return Promise.resolve(false);

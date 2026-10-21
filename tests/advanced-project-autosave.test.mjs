@@ -228,6 +228,15 @@ test("non-Office autosave blocks never invoke delivery renderers", () => {
 
 test("Office saves persist a real delivery package plus exact project sidecar", () => {
   assertDeckDeliveryReachesRenderers();
+  // Rich documents preserve their original format through the shared delivery
+  // builder. Follow the builder to the actual DOCX renderer and packaged file.
+  const richDocDelivery = section(
+    "../src/shell/doc-editors/rich-doc-model.ts",
+    "export async function createRichDocDeliveryFile",
+    "async function defaultRefreshGoneUrl",
+  );
+  assert.match(richDocDelivery, /await tiptapJsonToDocxBlob\(input\.title, json\)/);
+  assert.match(richDocDelivery, /new File\(\[blob\], `\$\{stem\}\.docx`/);
   for (const [path, end, exporter, extension] of [
     [
       DECK_EDITOR,
@@ -245,18 +254,22 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
     [
       "../src/shell/doc-editors/use-rich-doc-editor.ts",
       "const uploadImage = useCallback",
-      "tiptapJsonToDocxBlob",
+      "createRichDocDeliveryFile",
       "docx",
     ],
   ]) {
     const save = section(path, "const save = useCallback", end);
     assert.match(save, new RegExp(exporter), path);
     assert.match(save, /saveFileToLibrary/, path);
-    assert.match(
-      save,
-      new RegExp(`new File\\(\\[delivery\\].*\\.${extension}`, "s"),
-      path,
-    );
+    if (extension === "docx") {
+      assert.match(save, /createFile: \(\) =>\s*createRichDocDeliveryFile\(/, path);
+    } else {
+      assert.match(
+        save,
+        new RegExp(`new File\\(\\[delivery\\].*\\.${extension}`, "s"),
+        path,
+      );
+    }
     assert.match(save, /project: \{/, path);
   }
 });

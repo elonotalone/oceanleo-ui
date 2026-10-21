@@ -40,7 +40,7 @@ import {
   type EditorObjectProps,
 } from "./editor-objects";
 import {
-  cropBounds,
+  applyFabricImageCrop,
   ensureLayerOrder,
   fitViewport,
   objectIsEditable,
@@ -60,6 +60,35 @@ function normalizeAngle(angle: number): number {
 }
 
 export class FabricEditorController extends FabricEditorCore {
+  private cropUniformScalingRestore: boolean | null = null;
+  private readonly textCaseRestore = new Map<
+    string,
+    { original: string; transformed: string }
+  >();
+
+  private beginFreeCropInteraction(): void {
+    if (this.cropUniformScalingRestore === null) {
+      this.cropUniformScalingRestore = this.canvas.uniformScaling !== false;
+    }
+    this.canvas.uniformScaling = false;
+  }
+
+  private endFreeCropInteraction(): void {
+    if (this.cropUniformScalingRestore === null) return;
+    this.canvas.uniformScaling = this.cropUniformScalingRestore;
+    this.cropUniformScalingRestore = null;
+  }
+
+  override undo(): void {
+    if (this.cropping) this.cancelCrop();
+    super.undo();
+  }
+
+  override redo(): void {
+    if (this.cropping) this.cancelCrop();
+    super.redo();
+  }
+
   private commitAndSelect(object: EditorObject): void {
     this.commit();
     this.canvas.setActiveObject(object);
@@ -548,6 +577,17 @@ export class FabricEditorController extends FabricEditorCore {
   }
 
   setSelectedText(patch: Partial<TextSettings>): void {
+    const active = this.canvas.getActiveObject();
+    if (
+      patch.value != null &&
+      active instanceof this.fabric.IText
+    ) {
+      const id = (active as EditorObject).oceanleoId || "";
+      const saved = this.textCaseRestore.get(id);
+      if (saved && patch.value !== saved.transformed) {
+        this.textCaseRestore.delete(id);
+      }
+    }
     this.mutateSelected((object) => {
       if (!(object instanceof this.fabric.IText)) return;
       const text = object as IText;
@@ -576,6 +616,36 @@ export class FabricEditorController extends FabricEditorCore {
       }
       text.set(props);
     }, "content");
+  }
+
+  toggleSelectedTextCase(): void {
+    const active = this.canvas.getActiveObject();
+    if (!(active instanceof this.fabric.IText)) return;
+    const text = active as IText & EditorObjectProps;
+    const id = text.oceanleoId || "";
+    const value = String(text.text || "");
+    const saved = this.textCaseRestore.get(id);
+    if (saved && value === saved.transformed) {
+      this.textCaseRestore.delete(id);
+      this.setSelectedText({ value: saved.original });
+      return;
+    }
+    const transformed = value === value.toUpperCase()
+      ? value.toLowerCase()
+      : value.toUpperCase();
+    this.textCaseRestore.set(id, { original: value, transformed });
+    this.setSelectedText({ value: transformed });
+  }
+
+  toggleSelectedTextList(): void {
+    const active = this.canvas.getActiveObject();
+    if (!(active instanceof this.fabric.IText)) return;
+    const value = String((active as IText).text || "");
+    const lines = value.split("\n");
+    const isBulleted = lines.every((line) => line.startsWith("• "));
+    this.setSelectedText({
+      value: lines.map((line) => isBulleted ? line.slice(2) : `• ${line}`).join("\n"),
+    });
   }
 
   deleteSelected(): void {
@@ -646,31 +716,63 @@ export class FabricEditorController extends FabricEditorCore {
 
   startCrop(): void {
     if (this.cropping) return;
-    if (this.hasLockedEditableObjects()) {
-      this.callbacks.onError("请先解锁图层，再裁剪画布");
+    const image = this.imageTarget();
+    if (
+      !image ||
+      !this.canMutateObject(image as EditorObject, "geometry")
+    ) {
+      this.callbacks.onError("请先选中未锁定的图片，再裁剪");
       return;
     }
-    const inset = 0.1;
+    const center = image.getCenterPoint();
+    this.cropTargetId = (image as EditorObject).oceanleoId ?? "";
     const crop = new this.fabric.Rect({
-      left: this.doc.width * inset,
-      top: this.doc.height * inset,
-      width: this.doc.width * (1 - inset * 2),
-      height: this.doc.height * (1 - inset * 2),
+      left: center.x,
+      top: center.y,
+      width: Math.max(8, image.width * 0.88),
+      height: Math.max(8, image.height * 0.88),
+      scaleX: Math.abs(image.scaleX || 1),
+      scaleY: Math.abs(image.scaleY || 1),
+      angle: image.angle || 0,
       fill: "rgba(255,255,255,.08)",
       stroke: "#6d5dfc",
       strokeWidth: Math.max(2, 2 / this.zoom),
       strokeDashArray: [10, 6],
+      originX: "center",
+      originY: "center",
       lockRotation: true,
+      lockMovementX: false,
+      lockMovementY: false,
+      lockScalingX: false,
+      lockScalingY: false,
+      lockSkewingX: true,
+      lockSkewingY: true,
+      hasControls: true,
+      hasBorders: true,
+      selectable: true,
+      evented: true,
       transparentCorners: false,
       cornerColor: "#ffffff",
       cornerStrokeColor: "#6d5dfc",
       cornerStyle: "circle",
     }) as EditorObject;
+    crop.setControlsVisibility({
+      tl: true,
+      tr: true,
+      bl: true,
+      br: true,
+      ml: true,
+      mt: true,
+      mr: true,
+      mb: true,
+      mtr: false,
+    });
     crop.oceanleoId = makeId();
     crop.oceanleoRole = "crop";
     crop.oceanleoKind = "rect";
     this.cropping = true;
     this.cropRatio = "free";
+    this.beginFreeCropInteraction();
     this.activeTool = "select";
     this.applyTool();
     this.canvas.add(crop);
@@ -681,55 +783,85 @@ export class FabricEditorController extends FabricEditorCore {
 
   setCropRatio(ratio: CropRatio): void {
     this.cropRatio = ratio;
+    if (ratio === "free") this.beginFreeCropInteraction();
     const crop = findByRole(this.canvas, "crop");
     const targetRatio = cropRatioNumber(ratio);
+    const host = this.cropTargetId
+      ? findById(this.canvas, this.cropTargetId)
+      : this.imageTarget();
+    const frame = host?.getBoundingRect() ?? {
+      left: 0,
+      top: 0,
+      width: this.doc.width,
+      height: this.doc.height,
+    };
     if (crop && targetRatio) {
-      const width = this.doc.width * 0.8;
-      const height = width / targetRatio;
-      const scale = Math.min(1, (this.doc.height * 0.8) / height);
-      crop.set({
-        left: this.doc.width / 2,
-        top: this.doc.height / 2,
-        originX: "center",
-        originY: "center",
-        width: width * scale,
-        height: height * scale,
-        scaleX: 1,
-        scaleY: 1,
-      });
+      if (host) {
+        const center = host.getCenterPoint();
+        const scaleX = Math.abs(host.scaleX || 1);
+        const scaleY = Math.abs(host.scaleY || 1);
+        const width = host.width * 0.8;
+        const height = Math.max(8, width / targetRatio);
+        crop.set({
+          left: center.x,
+          top: center.y,
+          originX: "center",
+          originY: "center",
+          width,
+          height,
+          scaleX,
+          scaleY,
+          angle: host.angle || 0,
+        });
+      } else {
+        const width = frame.width * 0.8;
+        const height = width / targetRatio;
+        const scale = Math.min(1, (frame.height * 0.8) / height);
+        crop.set({
+          left: frame.left + frame.width / 2,
+          top: frame.top + frame.height / 2,
+          originX: "center",
+          originY: "center",
+          width: width * scale,
+          height: height * scale,
+          scaleX: 1,
+          scaleY: 1,
+        });
+      }
       crop.setCoords();
+      this.constrainActiveCrop();
       this.canvas.requestRenderAll();
     }
     this.emit();
   }
 
   async confirmCrop(): Promise<void> {
-    if (this.hasLockedEditableObjects()) {
-      this.callbacks.onError("请先解锁图层，再裁剪画布");
-      return;
-    }
     const crop = findByRole(this.canvas, "crop");
-    const bounds = crop ? cropBounds(crop, this.doc) : null;
-    if (!crop || !bounds) {
+    const image = this.cropTargetId
+      ? findById(this.canvas, this.cropTargetId)
+      : this.imageTarget();
+    if (!crop || !image || !(image instanceof this.fabric.FabricImage)) {
       this.callbacks.onError("裁剪区域无效");
       return;
     }
+    if (!this.canMutateObject(image as EditorObject, "geometry")) {
+      this.callbacks.onError("请先解锁图层，再裁剪");
+      return;
+    }
+    const cropApplied = applyFabricImageCrop(image, crop);
     this.canvas.remove(crop);
     crop.dispose();
-    this.canvas.getObjects().forEach((object) => {
-      if (roleOf(object) === "docbg") return;
-      object.set({
-        left: (object.left ?? 0) - bounds.left,
-        top: (object.top ?? 0) - bounds.top,
-      });
-      object.setCoords();
-    });
-    this.doc = { width: bounds.width, height: bounds.height };
-    updateDocBackground(this.canvas, this.doc, this.canvasBackground);
     this.cropping = false;
     this.cropRatio = "free";
-    this.canvas.discardActiveObject();
-    this.zoom = fitViewport(this.canvas, this.doc, this.container);
+    this.cropTargetId = "";
+    this.endFreeCropInteraction();
+    if (!cropApplied) {
+      this.callbacks.onError("裁剪区域无效");
+      this.canvas.setActiveObject(image);
+      this.emit();
+      return;
+    }
+    this.canvas.setActiveObject(image);
     this.commit();
   }
 
@@ -741,7 +873,11 @@ export class FabricEditorController extends FabricEditorCore {
     }
     this.cropping = false;
     this.cropRatio = "free";
-    this.canvas.discardActiveObject();
+    const target = this.cropTargetId ? findById(this.canvas, this.cropTargetId) : null;
+    this.cropTargetId = "";
+    this.endFreeCropInteraction();
+    if (target && objectIsEditable(target)) this.canvas.setActiveObject(target);
+    else this.canvas.discardActiveObject();
     this.canvas.requestRenderAll();
     this.emit();
   }

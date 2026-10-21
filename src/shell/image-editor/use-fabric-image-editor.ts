@@ -76,10 +76,12 @@ import {
 } from "./types";
 import { PsdCompositeError, isPsdSource } from "./psd-composite";
 import {
+  firstForkReceiptMatches,
+  imageEditorOpenIdentity,
   imageSaveAdmitted,
   isNewImageSourceSession,
 } from "./image-source-ready";
-import { recordUserMutation, userEditItemKey } from "../user-edit-session";
+import { recordUserMutation, resetUserMutation } from "../user-edit-session";
 
 const INITIAL_VIEW: FabricControllerView = {
   doc: { width: 1080, height: 1080 },
@@ -519,9 +521,68 @@ export function useFabricImageEditor(
   const tt = useUI();
   const ttRef = useRef(tt);
   ttRef.current = tt;
-  const itemKeyRef = useRef(userEditItemKey(item));
-  itemKeyRef.current = userEditItemKey(item);
-  const sourceSessionRef = useRef<{ key: string; nonce: number } | null>(null);
+  const sourceSessionRef = useRef<{
+    key: string;
+    nonce: number;
+    artifactId?: string;
+    rootAssetId?: string;
+  } | null>(null);
+  const firstForkReceiptRef = useRef<{
+    rootAssetId: string;
+    artifactId: string;
+  } | null>(null);
+  const legacyReceiptAliasRef = useRef<{
+    rootAssetId: string;
+    itemIdentities: Set<string>;
+    openIdentity: string;
+    nonce: number;
+  } | null>(null);
+  const openIdentityRef = useRef("");
+  const candidateOpenIdentity = imageEditorOpenIdentity(item);
+  const currentSourceSession = sourceSessionRef.current;
+  const currentArtifactId =
+    isDurableLibraryItem(item) ? item.artifactId : undefined;
+  const currentRootAssetId = String(
+    item.meta.root_asset_id || item.meta.parent_asset_id || item.id,
+  );
+  const currentInputIdentity = imageArtifactInputIdentity(item);
+  // Keep the component identity through a first fork only after this hook has
+  // received that fork's save receipt. Other artifacts with the same root are
+  // separate opens.
+  let openIdentity = candidateOpenIdentity;
+  if (
+    currentSourceSession &&
+    currentSourceSession.nonce === reloadNonce &&
+    currentSourceSession.artifactId === currentArtifactId &&
+    currentArtifactId
+  ) {
+    openIdentity = currentSourceSession.key;
+  } else if (
+    firstForkReceiptMatches({
+      current: currentSourceSession,
+      nonce: reloadNonce,
+      rootAssetId: currentRootAssetId,
+      artifactId: currentArtifactId || "",
+      receipt: firstForkReceiptRef.current,
+    }) &&
+    currentArtifactId &&
+    currentSourceSession
+  ) {
+    currentSourceSession.artifactId = currentArtifactId;
+    openIdentity = currentSourceSession.key;
+    firstForkReceiptRef.current = null;
+  } else if (
+    !currentArtifactId &&
+    currentSourceSession &&
+    currentSourceSession.nonce === reloadNonce &&
+    currentSourceSession.rootAssetId === currentRootAssetId &&
+    legacyReceiptAliasRef.current?.nonce === reloadNonce &&
+    legacyReceiptAliasRef.current.rootAssetId === currentRootAssetId &&
+    legacyReceiptAliasRef.current.itemIdentities.has(currentInputIdentity)
+  ) {
+    openIdentity = legacyReceiptAliasRef.current.openIdentity;
+  }
+  openIdentityRef.current = openIdentity;
 
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FabricEditorController | null>(null);
@@ -546,6 +607,7 @@ export function useFabricImageEditor(
   );
   const artifactHeadRef = useRef(item);
   const artifactInputIdentityRef = useRef(imageArtifactInputIdentity(item));
+  const supersededArtifactRevisionsRef = useRef(new Map<string, Set<string>>());
   const pendingAborts = useRef(new Set<AbortController>());
   optionsRef.current = options;
   viewRef.current = view;
@@ -557,14 +619,18 @@ export function useFabricImageEditor(
   const nextArtifactInputIdentity = imageArtifactInputIdentity(item);
   if (artifactInputIdentityRef.current !== nextArtifactInputIdentity) {
     artifactInputIdentityRef.current = nextArtifactInputIdentity;
-    artifactHeadRef.current = item;
-    workingHeadUrlRef.current = String(
-      item.meta.editor_working_head_url ||
-        advancedEditorSourceFor(item)?.url ||
-        item.url ||
-        item.previewUrl ||
-        "",
-    );
+    const superseded = isDurableLibraryItem(item) &&
+      supersededArtifactRevisionsRef.current.get(item.artifactId)?.has(item.revisionId);
+    if (!superseded) {
+      artifactHeadRef.current = item;
+      workingHeadUrlRef.current = String(
+        item.meta.editor_working_head_url ||
+          advancedEditorSourceFor(item)?.url ||
+          item.url ||
+          item.previewUrl ||
+          "",
+      );
+    }
   }
 
   const stageCanvasRef = useCallback((element: HTMLCanvasElement | null) => {
@@ -620,15 +686,21 @@ export function useFabricImageEditor(
     if (!canvasElement || typeof window === "undefined") return;
     let cancelled = false;
     const abort = makeAbort();
-    const session = { key: item.key, nonce: reloadNonce };
+    const session = {
+      key: openIdentity,
+      nonce: reloadNonce,
+      artifactId: isDurableLibraryItem(item) ? item.artifactId : undefined,
+      rootAssetId: String(
+        item.meta.root_asset_id || item.meta.parent_asset_id || item.id,
+      ),
+    };
     const isNewSourceSession = isNewImageSourceSession(
       sourceSessionRef.current,
       session,
     );
     sourceSessionRef.current = session;
-    // Persist / reload-after-save must not flip loading. Overlay is first
-    // source load only (`imageStageShowsSourceLoadOverlay`).
     if (isNewSourceSession) {
+      resetUserMutation(openIdentity);
       setLoading(true);
       setError("");
       setNotice("");
@@ -666,7 +738,7 @@ export function useFabricImageEditor(
               setSavedUrl("");
               setSavedProjectUrl("");
               setSavedAt("");
-              const mutationKey = itemKeyRef.current;
+              const mutationKey = openIdentityRef.current;
               if (mutationKey) recordUserMutation(mutationKey);
               optionsRef.current.collab?.onLocalChange?.();
             },
@@ -788,6 +860,7 @@ export function useFabricImageEditor(
         if (!cancelled) {
           sourceReadyRef.current = true;
           setSourceReady(true);
+          setLoading(false);
         }
       } catch (caught) {
         if (!cancelled && !isAbortError(caught)) {
@@ -816,7 +889,7 @@ export function useFabricImageEditor(
         }
       } finally {
         finishAbort(abort);
-        if (!cancelled && isNewSourceSession) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -830,7 +903,7 @@ export function useFabricImageEditor(
   }, [
     canvasElement,
     finishAbort,
-    item.key,
+    openIdentity,
     makeAbort,
     reloadNonce,
     siteId,
@@ -1146,20 +1219,28 @@ export function useFabricImageEditor(
       return null;
     }
     const savingRevision = revisionRef.current;
+    const savingIdentity = openIdentityRef.current;
+    const savingController = controllerRef.current;
+    const sourceItem = artifactHeadRef.current;
+    const head = sourceItem;
+    const workingHeadUrl = workingHeadUrlRef.current;
     savingRef.current = true;
     setSaving(true);
     setError("");
     try {
-      const controller = controllerRef.current;
+      const controller = savingController;
       if (!controller) throw new Error("图片画布尚未就绪");
       const snapshot = controller.getSnapshot();
-      const head = artifactHeadRef.current;
-      const compositePreview =
-        head.artifactType === "composite_image"
-          ? await makeStaticPreviewBlob()
-          : null;
+      const previewBlob = await makeStaticPreviewBlob();
+      // The static preview is rasterized from the live canvas. If a newer edit
+      // lands before it is captured, retry so the persisted project and preview
+      // stay paired. Edits after upload starts remain dirty for the next save.
+      if (
+        openIdentityRef.current !== savingIdentity ||
+        controllerRef.current !== savingController
+      ) return null;
       if (revisionRef.current !== savingRevision) {
-        throw new Error("保存期间画布已变化，本次旧快照未提交");
+        throw new Error("保存快照生成期间画布已变化，本次未提交，修改仍保留。");
       }
       const saved =
         head.artifactType === "composite_image"
@@ -1169,14 +1250,14 @@ export function useFabricImageEditor(
               siteId,
               `image-scene:${head.id}:${head.revisionId}:${savingRevision}`,
               savingRevision,
-              compositePreview!,
+              previewBlob,
             )
           : await persistImageProject(
               snapshot,
-              item,
+              sourceItem,
               siteId,
-              `image:${item.id}:${savingRevision}`,
-              workingHeadUrlRef.current,
+              `image:${sourceItem.artifactId || sourceItem.id}:${sourceItem.revisionId || "source"}:${savingRevision}`,
+              workingHeadUrl,
               {
                 uploadFailed: artifactSaveStepMessage("delivery-upload", ""),
                 registerFailed: artifactSaveStepMessage(
@@ -1184,23 +1265,81 @@ export function useFabricImageEditor(
                   "图片工程已上传，但没有登记成功",
                 ),
               },
-              makeStaticPreviewBlob,
+              async () => previewBlob,
             );
-      if (!aliveRef.current) return null;
-      if (saved.item) artifactHeadRef.current = saved.item;
+      if (
+        !aliveRef.current ||
+        openIdentityRef.current !== savingIdentity ||
+        controllerRef.current !== savingController
+      ) return null;
+      if (
+        saved.item &&
+        !isDurableLibraryItem(sourceItem) &&
+        isDurableLibraryItem(saved.item)
+      ) {
+        const rootAssetId = String(
+          sourceItem.meta.root_asset_id ||
+            sourceItem.meta.parent_asset_id ||
+            sourceItem.id,
+        );
+        firstForkReceiptRef.current = {
+          rootAssetId,
+          artifactId: saved.item.artifactId,
+        };
+      }
+      if (
+        saved.item &&
+        !isDurableLibraryItem(sourceItem) &&
+        !isDurableLibraryItem(saved.item)
+      ) {
+        const rootAssetId = String(
+          sourceItem.meta.root_asset_id ||
+            sourceItem.meta.parent_asset_id ||
+            sourceItem.id,
+        );
+        const priorAlias = legacyReceiptAliasRef.current;
+        const itemIdentities =
+          priorAlias?.rootAssetId === rootAssetId &&
+          priorAlias.openIdentity === savingIdentity &&
+          priorAlias.nonce === reloadNonce
+            ? priorAlias.itemIdentities
+            : new Set<string>();
+        itemIdentities.add(imageArtifactInputIdentity(saved.item));
+        legacyReceiptAliasRef.current = {
+          rootAssetId,
+          itemIdentities,
+          openIdentity: savingIdentity,
+          nonce: reloadNonce,
+        };
+      }
+      if (saved.item) {
+        if (isDurableLibraryItem(saved.item)) {
+          const superseded = supersededArtifactRevisionsRef.current.get(saved.item.artifactId) || new Set<string>();
+          if (
+            isDurableLibraryItem(sourceItem) &&
+            sourceItem.artifactId === saved.item.artifactId &&
+            sourceItem.revisionId !== saved.item.revisionId
+          ) superseded.add(sourceItem.revisionId);
+          const previousRevisionId = String(saved.item.meta.previous_revision_id || "").trim();
+          if (previousRevisionId) superseded.add(previousRevisionId);
+          supersededArtifactRevisionsRef.current.set(saved.item.artifactId, superseded);
+        }
+        artifactHeadRef.current = saved.item;
+      }
       workingHeadUrlRef.current = saved.previewUrl;
       setSavedUrl(saved.previewUrl);
       setSavedProjectUrl(saved.projectUrl);
       setSavedAt(saved.savedAt);
       if (revisionRef.current === savingRevision) {
         updateDirty(false);
-        clearLocalImageDraft(item);
+        clearLocalImageDraft(sourceItem);
       }
       setNotice("");
       optionsRef.current.onSaved?.(saved.previewUrl);
       const savedRevisionId = String(saved.item?.revisionId || saved.versionId || "");
       if (savedRevisionId) optionsRef.current.collab?.onSavedRevision?.(savedRevisionId);
       return {
+        baseItem: sourceItem,
         url: saved.previewUrl,
         projectUrl: saved.projectUrl,
         savedAt: saved.savedAt,
@@ -1358,6 +1497,7 @@ export function useFabricImageEditor(
 
   return {
     collab: collabHandle,
+    openIdentity,
     loading,
     saving,
     aiBusy,
@@ -1416,6 +1556,8 @@ export function useFabricImageEditor(
     setSelectedGeometry: (patch) => controller()?.setSelectedGeometry(patch),
     setSelectedImageFit: (mode) => controller()?.setSelectedImageFit(mode),
     setSelectedText: (patch) => controller()?.setSelectedText(patch),
+    toggleSelectedTextCase: () => controller()?.toggleSelectedTextCase(),
+    toggleSelectedTextList: () => controller()?.toggleSelectedTextList(),
     setSelectedTableStyle: (patch) =>
       controller()?.setSelectedTableStyle(patch),
     resizeSelectedTable: (rows, columns) =>

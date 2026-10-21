@@ -24,11 +24,11 @@ import { SelectionToolbarSelectControl } from "./SelectionToolbarSelectControl";
 export function hasCanonicalAlignmentCapability(
   control: SelectionControl,
 ): boolean {
-  if (control.kind !== "select") return false;
+  if (control.kind !== "select" && control.kind !== "action") return false;
   const declaredValues = new Set(
     (control.options || []).map((option) => option.value),
   );
-  return ["left", "center", "right", "justify"].every((value) =>
+  return ["left", "center", "right"].every((value) =>
     declaredValues.has(value),
   );
 }
@@ -41,7 +41,7 @@ export function SelectionToolbarControl({
   onCommand,
   onOpenPanel,
   accent,
-  canonicalDesignText = false,
+  canonicalDesignText: _canonicalDesignText = false,
   activePanel = false,
   presentation = "compact",
   onActivated,
@@ -99,14 +99,14 @@ export function SelectionToolbarControl({
   }
 
   if (
-    canonicalDesignText &&
     selectionControlSemantic(control) === "alignment" &&
-    (control.kind === "select" || control.kind === "action")
+    (control.kind === "select" || control.kind === "action") &&
+    hasCanonicalAlignmentCapability(control)
   ) {
-    if (!hasCanonicalAlignmentCapability(control)) return null;
     const current =
       typeof control.value === "string" ? control.value : undefined;
-    const next = nextTextAlignment(current);
+    const available = (control.options || []).map((option) => option.value);
+    const next = nextTextAlignment(current, available);
     const alignmentLabel =
       control.disabled && control.unavailableReason
         ? `${control.label}：${control.unavailableReason}`
@@ -135,7 +135,7 @@ export function SelectionToolbarControl({
         }}
         className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""}`}
         title={namedAlignmentLabel}
-        aria-label={namedAlignmentLabel}
+        aria-label={forMeasurement ? undefined : alignmentLabel}
         aria-pressed={current !== undefined}
         data-selection-alignment={current || "unset"}
       >

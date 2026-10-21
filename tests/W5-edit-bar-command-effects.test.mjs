@@ -85,7 +85,7 @@ const stubs = {
     "export function SelectionAnimationGallery() { return null; }",
   ),
   "../ui/Button": dataModule(
-    `import { jsx } from ${JSON.stringify(jsxUrl)}; export function Button({children, ...props}) { return jsx("button", props, children); }`,
+    `import { jsx } from ${JSON.stringify(jsxUrl)}; export function Button({children, ...props}) { return jsx("button", props, children); } export function IconButton({icon, label, ...props}) { return jsx("button", { ...props, "aria-label": label, title: label }, icon); }`,
   ),
 };
 const load = async (path) => import(await compileModule(path, stubs));
@@ -93,7 +93,7 @@ const { SelectionToolbar } = await load("src/shell/SelectionToolbar.tsx");
 const { isOwnEditBarSession, ownEditBarSessionOpen } = await load(
   "src/shell/edit-bar-selection-session.tsx",
 );
-const { EditBarHistoryControls } = await load("src/shell/EditBarDockControls.tsx");
+const { GlobalRowHistoryControls } = await load("src/shell/EditBarDockControls.tsx");
 const { EditBarDocumentSegment } = await load(
   "src/shell/plugin-chrome/EditBarDocumentSegment.tsx",
 );
@@ -104,6 +104,10 @@ function makeImageEditor(initial = { value: "Hello", bold: false, fontSize: 24 }
   const stack = [{ ...text }];
   return {
     selected: { locked: false, kind: "text", id: "text:hero" },
+    layers: [{ id: "text:hero", kind: "text", locked: false }],
+    selectLayer(id) {
+      assert.equal(id, "text:hero");
+    },
     text,
     stack,
     setSelectedText(patch) {
@@ -267,7 +271,7 @@ test("W5-history Ctrl+Z from the bar undoes the Fabric document, not a no-op", a
   const root = createRoot(container);
   await act(async () =>
     root.render(
-      React.createElement(EditBarHistoryControls, {
+      React.createElement(GlobalRowHistoryControls, {
         canUndo: true,
         canRedo: false,
         onUndo: () => editor.undo(),
@@ -275,20 +279,25 @@ test("W5-history Ctrl+Z from the bar undoes the Fabric document, not a no-op", a
       }),
     ),
   );
+  const canvas = document.createElement("canvas");
+  document.body.append(canvas);
   try {
-    const undo = container.querySelector("[data-edit-bar-history-undo]");
+    const undo = container.querySelector("[data-global-history-undo]");
+    assert.ok(undo, "history 控件必须挂在第一行，不在编辑栏");
+    assert.equal(container.querySelector("[data-edit-bar-history]"), null);
     const key = new window.KeyboardEvent("keydown", {
       key: "z",
       ctrlKey: true,
       bubbles: true,
       cancelable: true,
     });
-    undo.dispatchEvent(key);
+    canvas.dispatchEvent(key);
     assert.equal(key.defaultPrevented, true);
     assert.equal(editor.text.bold, false);
   } finally {
     await act(async () => root.unmount());
     container.remove();
+    canvas.remove();
   }
 });
 

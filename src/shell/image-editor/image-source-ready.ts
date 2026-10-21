@@ -1,29 +1,79 @@
 export interface ImageSourceSession {
+  /** Identity of the currently open picture, independent of revision URLs. */
   key: string;
   nonce: number;
+  artifactId?: string;
+  rootAssetId?: string;
+}
+
+function trimmed(value: unknown): string {
+  return String(value || "").trim();
 }
 
 /**
- * Persist / signed-URL refresh / structured-after-save keep the same item key
- * and reload nonce. Only a new item or an explicit `reload()` is a new source
- * load, and only those may `setLoading(true)`.
+ * Identity for one selected image. Artifact IDs distinguish durable forks;
+ * non-artifact inputs use their namespaced source ID so two legacy copies that
+ * share a root are still separate opens. The root is used to correlate save
+ * receipts, not to guess that two items are the same session.
+ */
+export function imageEditorOpenIdentity(item: {
+  artifactId?: string;
+  id?: string;
+  key?: string;
+  meta?: { root_asset_id?: unknown; parent_asset_id?: unknown } | Record<string, unknown>;
+}): string {
+  const artifactId = trimmed(item.artifactId);
+  if (artifactId) return `artifact:${artifactId}`;
+  const meta = item.meta && typeof item.meta === "object" ? item.meta : {};
+  const root = trimmed(
+    (meta as { root_asset_id?: unknown; parent_asset_id?: unknown }).root_asset_id ||
+      (meta as { parent_asset_id?: unknown }).parent_asset_id,
+  );
+  const sourceId = trimmed(item.id || item.key);
+  return sourceId ? `source:${sourceId}` : root ? `root:${root}` : "";
+}
+
+export function imageSourceStableIdentity(session: ImageSourceSession): string {
+  const artifactId = trimmed(session.artifactId);
+  if (artifactId) return `artifact:${artifactId}`;
+  const key = trimmed(session.key);
+  if (key) return key;
+  const root = trimmed(session.rootAssetId);
+  return root ? `root:${root}` : "";
+}
+
+/**
+ * Revisions and signed URLs are receipts for the open picture, not a new open.
+ * The source-to-first-fork transition with the same root also remains mounted;
+ * a later selection of another artifact with that root is a genuine change.
  */
 export function isNewImageSourceSession(
   previous: ImageSourceSession | null,
   next: ImageSourceSession,
 ): boolean {
-  return (
-    previous === null ||
-    previous.key !== next.key ||
-    previous.nonce !== next.nonce
+  if (previous === null || previous.nonce !== next.nonce) return true;
+  return imageSourceStableIdentity(previous) !== imageSourceStableIdentity(next);
+}
+
+export function firstForkReceiptMatches(input: {
+  current: ImageSourceSession | null;
+  nonce: number;
+  rootAssetId: string;
+  artifactId: string;
+  receipt: { rootAssetId: string; artifactId: string } | null;
+}): boolean {
+  return Boolean(
+    input.current &&
+      !input.current.artifactId &&
+      input.current.nonce === input.nonce &&
+      input.current.rootAssetId &&
+      input.current.rootAssetId === input.rootAssetId &&
+      input.receipt?.rootAssetId === input.rootAssetId &&
+      input.receipt.artifactId === input.artifactId,
   );
 }
 
-/**
- * Stage overlay 「正在载入对象化图片画布…」 is the first source load only.
- * Persist / autosave may keep `loading` true if a stale effect re-enters;
- * once `sourceReady` is true the overlay stays off.
- */
+/** First source load / explicit reload only. */
 export function imageStageShowsSourceLoadOverlay(input: {
   loading: boolean;
   sourceReady: boolean;

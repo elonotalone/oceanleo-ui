@@ -16,6 +16,7 @@ interface SelectionInspectorGroupPresentation {
   label: string;
   icon: SelectionControlIcon;
   placement: "primary" | "more";
+  iconOnly?: boolean;
   overflowGroup?: string;
 }
 
@@ -27,6 +28,12 @@ interface SelectionInspectorGroupPresentation {
 const INSPECTOR_GROUP_PRESENTATIONS: Readonly<
   Record<string, SelectionInspectorGroupPresentation>
 > = {
+  "image-transform": {
+    label: "位置",
+    icon: "position",
+    placement: "primary",
+    iconOnly: false,
+  },
   "grid-number-format": {
     label: "数字格式",
     icon: "font",
@@ -198,7 +205,7 @@ export function partitionSelectionInspectorControls(
         kind: "panel",
         label: group.label,
         icon: group.icon,
-        iconOnly: true,
+        iconOnly: presentation?.iconOnly ?? true,
         panelId: group.panelId,
         placement: presentation?.placement || "primary",
         slot: "compact",

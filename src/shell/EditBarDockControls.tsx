@@ -12,10 +12,10 @@ import type {
 } from "react";
 import { useEffect } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { IconButton } from "../ui/Button";
 import {
   editBarHistoryShortcut,
-  isEditBarSurface,
-  preserveEditBarSelection,
+  isTypingTarget,
 } from "./edit-bar-selection-preserve";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon";
 import type { EditBarDockMode } from "./edit-bar-dock-state";
@@ -26,15 +26,12 @@ import {
 } from "./edit-bar-surface";
 
 /**
- * 撤销 / 重做，编辑栏最左段。
+ * 撤销 / 重做，第一行右侧簇最左（保存 / 下载 / 分享 / 收藏左边）。
  *
- * 它们原先在顶栏最左（返回箭头旁边），那是位置放错了：顶栏管的是**这份文档**
- * ——回到库、素材、保存、导出、全屏；编辑栏管的是**这次改动**。撤销重做显然是
- * 后者，放在顶栏意味着用户的视线要在「改内容的地方」和「撤销的地方」之间来回
- * 跳，而且十三件插件里只有带 history 的那几件顶栏才多出两个按钮，顶栏因此长得
- * 各不一样。搬进编辑栏之后，顶栏在所有插件里一致，撤销就在手边。
+ * 2026-10-21 操作员改口：不再放编辑栏。十三件插件共用这一处，快捷键在画布上
+ * 就能用；输入框 / textarea / contenteditable 里不抢原生撤销。
  */
-export function EditBarHistoryControls({
+export function GlobalRowHistoryControls({
   canUndo,
   canRedo,
   onUndo,
@@ -49,7 +46,7 @@ export function EditBarHistoryControls({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const action = editBarHistoryShortcut(event);
-      if (!action || !isEditBarSurface(event.target)) return;
+      if (!action || isTypingTarget(event.target)) return;
       if (action === "undo") {
         if (!canUndo) return;
         event.preventDefault();
@@ -67,35 +64,23 @@ export function EditBarHistoryControls({
   }, [canRedo, canUndo, onRedo, onUndo]);
   return (
     <div
-      data-edit-bar-history
+      data-global-row-slot="history"
       className="flex shrink-0 items-center gap-0.5"
     >
-      <button
-        type="button"
-        data-edit-bar-interactive
-        data-edit-bar-history-undo
-        onPointerDown={preserveEditBarSelection}
+      <IconButton
+        data-global-history-undo
         onClick={onUndo}
         disabled={!canUndo}
-        className={`${EDIT_BAR_BUTTON_CLASS} disabled:pointer-events-none disabled:opacity-35`}
-        aria-label={tt("撤销")}
-        title={tt("撤销")}
-      >
-        <AdvancedEditorIcon name="undo" className="h-4 w-4" />
-      </button>
-      <button
-        type="button"
-        data-edit-bar-interactive
-        data-edit-bar-history-redo
-        onPointerDown={preserveEditBarSelection}
+        label={tt("撤销")}
+        icon={<AdvancedEditorIcon name="undo" className="h-4 w-4" />}
+      />
+      <IconButton
+        data-global-history-redo
         onClick={onRedo}
         disabled={!canRedo}
-        className={`${EDIT_BAR_BUTTON_CLASS} disabled:pointer-events-none disabled:opacity-35`}
-        aria-label={tt("重做")}
-        title={tt("重做")}
-      >
-        <AdvancedEditorIcon name="redo" className="h-4 w-4" />
-      </button>
+        label={tt("重做")}
+        icon={<AdvancedEditorIcon name="redo" className="h-4 w-4" />}
+      />
     </div>
   );
 }

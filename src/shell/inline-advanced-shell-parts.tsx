@@ -3,14 +3,12 @@
 import {
   useLayoutEffect,
   useMemo,
-  type ReactNode,
   type RefObject,
 } from "react";
 import type {
   AdvancedEditorAdapter,
   AdvancedEditorNotice,
 } from "./advanced-editor-adapter";
-import { EditBarHistoryControls } from "./EditBarDockControls";
 import type { EditBarDockPresentation } from "./EditBarDockHost";
 import type { RightPaneSlot } from "./SplitWorkspace";
 import type { PluginThemeMode } from "./plugin-theme";
@@ -83,24 +81,6 @@ export function useEditBarDockPresentation({
     return () => rightPaneSlot.clearEditBarDockPresentation(ownerId);
   }, [accent, dropActive, mode, ownerId, rightPaneSlot, showEditBar, theme]);
   return localDockPresentation;
-}
-
-/** 撤销/重做从顶栏搬到编辑栏最左段（见 EditBarHistoryControls 的注释）。 */
-export function useHistoryControls(
-  history: AdvancedEditorAdapter["history"],
-): ReactNode {
-  return useMemo(
-    () =>
-      history ? (
-        <EditBarHistoryControls
-          canUndo={history.canUndo}
-          canRedo={history.canRedo}
-          onUndo={history.undo}
-          onRedo={history.redo}
-        />
-      ) : null,
-    [history],
-  );
 }
 
 /**

@@ -24,6 +24,8 @@ export interface AdvancedWorkbenchDrawer {
 }
 
 export interface AdvancedEditorPersistenceAdapter {
+  /** Editor-owned open-session key shared by its mutation feed and autosave. */
+  userEditKey?: string;
   /** Monotonic editor mutation revision, never a saved URL or timestamp. */
   editRevision: string | number;
   dirty: boolean;

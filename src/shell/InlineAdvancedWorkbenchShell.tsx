@@ -40,10 +40,10 @@ import {
   HiddenUploadInput,
   StageNoticeCorner,
   useEditBarDockPresentation,
-  useHistoryControls,
   usePluginPagesForAdapter,
 } from "./inline-advanced-shell-parts";
 import { useAdvancedSession } from "./advanced-session-context";
+import { advancedRootItemId } from "./advanced-session";
 import {
   actionGroup,
   advancedWorkbenchStyle,
@@ -118,7 +118,7 @@ export function InlineAdvancedWorkbenchShell({
     workspaceRootRef: editBarLayerRef,
     stageRef,
     dockRootRef: editBarDockRef,
-    resetKey: `${adapter.id}:${item.key || item.id}`,
+    resetKey: `${adapter.id}:${advancedRootItemId(item)}`,
   });
   const instanceId = useId();
   const ownerIdRef = useRef(`inline-editor:${instanceId}`);
@@ -185,7 +185,8 @@ export function InlineAdvancedWorkbenchShell({
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
   const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false;
-  const materialKey = item.key || item.id;
+  const materialKey =
+    adapter.persistence?.userEditKey || advancedRootItemId(item) || item.id;
   const autoSave = useAdvancedAutoSave({
     // Website keeps dirty for close guards but disables observe-autosave so a
     // pending visual draft is not save→auto-Applied out from under Apply.
@@ -251,9 +252,6 @@ export function InlineAdvancedWorkbenchShell({
     workspaceDetail?.ownerId === ownerIdRef.current ? workspaceDetail : null;
   const panelVisible = Boolean(ownedDetail || fallbackDetail);
 
-  // 撤销/重做从顶栏搬到编辑栏最左段（见 EditBarHistoryControls 的注释）。
-  const historyControls = useHistoryControls(adapter.history);
-
   const layoutState = useMemo(
     () => ({
       hostPanelVisible: panelVisible,
@@ -270,14 +268,7 @@ export function InlineAdvancedWorkbenchShell({
           : Boolean(fallbackDetail))
           ? transientPanel.id
           : "",
-      contextBarLeading: historyControls ? (
-        <>
-          {historyControls}
-          {floatingToolbar.leading}
-        </>
-      ) : (
-        floatingToolbar.leading
-      ),
+      contextBarLeading: floatingToolbar.leading,
       // 固定柄由 FloatingContextToolbar 的单行容器自己画（controller.canDock），
       // 这里不再透传，否则同一行出现两个固定键。
       contextBarTrailing: undefined,
@@ -290,7 +281,6 @@ export function InlineAdvancedWorkbenchShell({
       activeDrawerId,
       floatingToolbar.leading,
       floatingToolbar.trailing,
-      historyControls,
       fallbackDetail,
       closeDetail,
       openDrawer,
@@ -516,7 +506,7 @@ export function InlineAdvancedWorkbenchShell({
           accent={effectiveAccent}
           theme={pluginTheme.theme}
           // 单行容器 `[data-workspace-edit-bar]` 由 FloatingContextToolbar 自己画
-          // （signals/X2-interface.md）：撤销重做来自 layout.contextBarLeading，
+          // （signals/X2-interface.md）：撤销重做在第一行 history 槽，
           // 文档段走 documentSegment，AI 助手与固定柄由容器最右段统一画。
           documentSegment={
             documentActions.length > 0 ? (

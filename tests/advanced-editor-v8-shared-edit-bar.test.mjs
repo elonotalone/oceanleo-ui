@@ -1302,29 +1302,40 @@ test("每个插件的 edit bar 最右侧都是 AI，点击切到左侧 agent 抽
   }
 });
 
-// 顶栏与编辑栏的分工：顶栏管「这份文档」（返回/素材库/保存导出/全屏），
-// 编辑栏管「这次改动」（撤销重做/工具/选区控件/AI）。撤销重做原先在顶栏最左，
-// 于是带 history 的插件顶栏比别的插件多两个按钮——13 件插件顶栏长得不一样就是
-// 这么来的。这条测试锁住它们**只在编辑栏出现一次**。
-test("撤销重做归编辑栏，顶栏不再有第二份", async () => {
+// 2026-10-21 操作员改口：撤销 / 重做回到第一行右侧簇最左（保存/下载/分享/收藏
+// 左边）。编辑栏不再出现那两个弯箭头。这条测试锁住它们**只在顶栏 history 槽
+// 出现一次**。
+test("撤销重做归第一行 history 槽，编辑栏不再有第二份", async () => {
   const actionBarSource = await readFile(
     new URL("../src/shell/AdvancedWorkspaceActionBar.tsx", import.meta.url),
     "utf8",
   );
-  assert.ok(
-    !/AdvancedEditorIcon\s+name="undo"/.test(actionBarSource),
-    "顶栏又长出了撤销按钮：它属于编辑栏（EditBarHistoryControls）",
+  const editBarSource = await readFile(
+    new URL("../src/shell/FloatingContextToolbar.tsx", import.meta.url),
+    "utf8",
   );
-  assert.ok(
-    !/AdvancedEditorIcon\s+name="redo"/.test(actionBarSource),
-    "顶栏又长出了重做按钮：它属于编辑栏（EditBarHistoryControls）",
+  assert.match(
+    actionBarSource,
+    /GlobalRowHistoryControls/,
+    "第一行丢了统一的撤销重做装配",
   );
-  assert.ok(
-    !/adapter\.history\.(undo|redo)/.test(actionBarSource),
-    "顶栏不该直接调 adapter.history",
+  assert.match(
+    actionBarSource,
+    /adapter\.history/,
+    "第一行必须从 adapter.history 接线，不许各插件自己画",
+  );
+  assert.doesNotMatch(
+    actionBarSource,
+    /data-edit-bar-history/,
+    "第一行不该再带编辑栏 history 标记",
+  );
+  assert.doesNotMatch(
+    editBarSource,
+    /data-edit-bar-history/,
+    "编辑栏 DOM 不得再有 data-edit-bar-history",
   );
 
-  const { EditBarHistoryControls } = await loadTsx(
+  const { GlobalRowHistoryControls } = await loadTsx(
     "src/shell/EditBarDockControls.tsx",
     {
       react: reactUrl,
@@ -1333,19 +1344,23 @@ test("撤销重做归编辑栏，顶栏不再有第二份", async () => {
     },
   );
   const calls = [];
-  const mounted = await createMounted(EditBarHistoryControls, {
+  const mounted = await createMounted(GlobalRowHistoryControls, {
     canUndo: true,
     canRedo: false,
     onUndo: () => calls.push("undo"),
     onRedo: () => calls.push("redo"),
   });
   try {
-    const undo = mounted.container.querySelector("[data-edit-bar-history-undo]");
-    const redo = mounted.container.querySelector("[data-edit-bar-history-redo]");
-    assert.ok(undo && redo);
-    // 按下即拖不能被这两个按钮吞掉，所以它们必须自报可交互。
-    assert.ok(undo.hasAttribute("data-edit-bar-interactive"));
-    assert.ok(redo.hasAttribute("data-edit-bar-interactive"));
+    const slot = mounted.container.querySelector(
+      '[data-global-row-slot="history"]',
+    );
+    const undo = mounted.container.querySelector("[data-global-history-undo]");
+    const redo = mounted.container.querySelector("[data-global-history-redo]");
+    assert.ok(slot && undo && redo);
+    assert.equal(slot.contains(undo), true);
+    assert.equal(mounted.container.querySelector("[data-edit-bar-history]"), null);
+    assert.equal(undo.hasAttribute("data-edit-bar-interactive"), false);
+    assert.equal(redo.hasAttribute("data-edit-bar-interactive"), false);
     // 不可用时是禁用，不是消失：按钮位置恒定，用户才不用每次重新找。
     assert.equal(undo.disabled, false);
     assert.equal(redo.disabled, true);

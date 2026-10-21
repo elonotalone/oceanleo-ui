@@ -20,10 +20,12 @@ function normalizeKey(itemKey: string | null | undefined): string {
 }
 
 export function userEditItemKey(
-  item: { key?: string; id?: string } | null | undefined,
+  item: { key?: string; id?: string; artifactId?: string } | null | undefined,
 ): string {
   if (!item) return "";
-  return normalizeKey(item.key || item.id);
+  // `item.key` is `artifact:<id>:<revision>` and changes on every persist.
+  // Mutation generation must stay on the open picture, not the revision.
+  return normalizeKey(item.artifactId || item.id || item.key);
 }
 
 export function subscribeUserEditSession(onStoreChange: () => void): () => void {

@@ -357,18 +357,22 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
     assert.match(source(path), /SelectionToolbar/, path);
   }
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
-  // 最左段现在是「撤销重做 + dock 控件」：撤销重做从顶栏搬进了编辑栏
-  // （见 EditBarHistoryControls 的注释）。dock 控件仍必须从同一处进来——
-  // 允许在它前面拼东西，但不允许另起一条来源。
+  // 2026-10-21 操作员改口：撤销重做回到第一行 history 槽，不再注入编辑栏。
+  // dock 控件仍必须从同一处进来——不允许另起一条来源。
   assert.match(
     shell,
     /contextBarLeading:[\s\S]{0,240}floatingToolbar\.leading/,
     "编辑栏最左段丢了 dock 控件来源",
   );
-  assert.match(
+  assert.doesNotMatch(
     shell,
     /historyControls/,
-    "撤销重做要由壳统一注入编辑栏，不许各插件自己画",
+    "撤销重做不得再注入编辑栏",
+  );
+  assert.doesNotMatch(
+    shell,
+    /GlobalRowHistoryControls|EditBarHistoryControls/,
+    "壳不得再自己画一份撤销；只走第一行那一处装配",
   );
   // 固定柄由 FloatingContextToolbar 的单行容器自己画（controller.canDock），
   // 壳不再把 controller.trailing 透传进 contextBarTrailing——否则同一行两个固定键。

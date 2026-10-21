@@ -47,6 +47,8 @@ import {
 import { dispatchWorkflowAgentChip } from "./agent-route";
 import { EmbedEditorPane, embedEditorBase } from "../workbench-embed";
 import type { EmbedEditorPaneProps } from "../workbench-embed-types";
+import type { EditorHistorySnapshot } from "../editor-protocol";
+import { selectionRequestId, type SelectionCommand } from "../selection-context";
 import { usePreferLocalRemoteEditor } from "../use-prefer-local-editors";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { fetchMediaBlob } from "../../lib/media-proxy";
@@ -54,6 +56,11 @@ import {
   hydrateWorkflowGraph,
   planWorkflowGraphFromItem,
 } from "./workflow-graph-source";
+import {
+  VideoCanvasGraphHistory,
+  shouldPreserveDirtyWorkflowGraph,
+  videoCanvasGraphsEqual,
+} from "./video-canvas-history";
 import { applyVideoCanvasCommand } from "./video-canvas-command-surface";
 import {
   recordUserMutation,
@@ -162,6 +169,10 @@ export function VideoCanvasStage({
   const preferLocal = usePreferLocalRemoteEditor("video-canvas");
   const liveCanvasBase = preferLocal ? "" : shownItem ? embedEditorBase(shownItem) : "";
   const itemKey = `${shownItem?.key ?? ""}|${shownItem?.revisionId ?? ""}`;
+  const sourceRootId = String(shownItem?.key || shownItem?.id || "");
+  const sourceRevisionId = String(
+    shownItem?.revisionId || shownItem?.meta?.revision_id || "",
+  );
 
   // ---- 多人同改。真实画布在 video 站的 iframe 里，外壳只经 v1 协议已有的 recovery 消息与它交换
   // 「节点 / 连线」：本端状态靠 recovery-capture 抓回来，别人的改动按字段打成补丁用 recovery-restore 交给画布。
@@ -415,26 +426,135 @@ export function VideoCanvasStage({
     [link, realign, scheduleCapture, syncHead],
   );
   const [graph, setGraph] = useState<VideoCanvasGraph>(() => emptyGraph());
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
+  const graphHistoryRef = useRef<VideoCanvasGraphHistory | null>(null);
+  if (!graphHistoryRef.current) graphHistoryRef.current = new VideoCanvasGraphHistory();
+  const [historyAvailability, setHistoryAvailability] = useState({
+    canUndo: false,
+    canRedo: false,
+  });
+  const [remoteHistoryState, setRemoteHistoryState] =
+    useState<EditorHistorySnapshot | null>(null);
+  const remoteHistoryRef = useRef<EditorHistorySnapshot | null>(null);
+  const [remoteHistoryCommand, setRemoteHistoryCommand] =
+    useState<SelectionCommand | null>(null);
   const [editRevision, setEditRevision] = useState(0);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [sourceReady, setSourceReady] = useState(false);
   const [sourceError, setSourceError] = useState("");
   const graphDirtyRef = useRef(false);
-  const loadedGraphKeyRef = useRef("");
+  const loadedGraphIdentityRef = useRef({ rootId: "", revisionId: "" });
+  const loadedGraphReloadNonceRef = useRef(0);
+  const ownSaveReceiptRef = useRef({ rootId: "", revisionId: "" });
+  const refreshHistoryAvailability = useCallback(() => {
+    const history = graphHistoryRef.current!;
+    setHistoryAvailability({ canUndo: history.canUndo, canRedo: history.canRedo });
+  }, []);
+  const handleRemoteHistoryChange = useCallback((snapshot: EditorHistorySnapshot) => {
+    remoteHistoryRef.current = snapshot;
+    setRemoteHistoryState(snapshot);
+  }, []);
+  const sendRemoteHistoryCommand = useCallback(
+    (controlId: "undo" | "redo") => {
+      if (!mayWrite) return;
+      const snapshot = remoteHistoryRef.current;
+      if (!snapshot || (controlId === "undo" ? !snapshot.canUndo : !snapshot.canRedo)) return;
+      setRemoteHistoryCommand({
+        requestId: selectionRequestId(),
+        selectionId: "host:video-canvas",
+        controlId,
+        ...(snapshot.revision !== undefined
+          ? { selectionRevision: snapshot.revision }
+          : {}),
+      });
+    },
+    [mayWrite],
+  );
+  const undoRemoteGraph = useCallback(
+    () => sendRemoteHistoryCommand("undo"),
+    [sendRemoteHistoryCommand],
+  );
+  const redoRemoteGraph = useCallback(
+    () => sendRemoteHistoryCommand("redo"),
+    [sendRemoteHistoryCommand],
+  );
+  const resetRemoteHistory = useCallback(() => {
+    remoteHistoryRef.current = null;
+    setRemoteHistoryState(null);
+    setRemoteHistoryCommand(null);
+  }, []);
+  const commitGraph = useCallback(
+    (nextGraph: VideoCanvasGraph, nextRevision?: number, noteUserEdit = true) => {
+      if (!sourceReady || !mayWrite) return false;
+      const previous = graphRef.current;
+      if (videoCanvasGraphsEqual(previous, nextGraph)) return false;
+      graphHistoryRef.current!.record(nextGraph);
+      graphRef.current = nextGraph;
+      graphDirtyRef.current = true;
+      setGraph(nextGraph);
+      if (typeof nextRevision === "number") setEditRevision(nextRevision);
+      else setEditRevision((value) => value + 1);
+      refreshHistoryAvailability();
+      if (noteUserEdit) {
+        applyVideoCanvasUserEditSession(shownItem, "person-command");
+      }
+      return true;
+    },
+    [mayWrite, refreshHistoryAvailability, shownItem, sourceReady],
+  );
+  const undoGraph = useCallback(() => {
+    if (!sourceReady || !mayWrite) return;
+    const previous = graphHistoryRef.current!.undo();
+    if (!previous) return;
+    graphRef.current = previous;
+    graphDirtyRef.current = true;
+    setGraph(previous);
+    setEditRevision((value) => value + 1);
+    refreshHistoryAvailability();
+    applyVideoCanvasUserEditSession(shownItem, "person-command");
+  }, [mayWrite, refreshHistoryAvailability, shownItem, sourceReady]);
+  const redoGraph = useCallback(() => {
+    if (!sourceReady || !mayWrite) return;
+    const next = graphHistoryRef.current!.redo();
+    if (!next) return;
+    graphRef.current = next;
+    graphDirtyRef.current = true;
+    setGraph(next);
+    setEditRevision((value) => value + 1);
+    refreshHistoryAvailability();
+    applyVideoCanvasUserEditSession(shownItem, "person-command");
+  }, [mayWrite, refreshHistoryAvailability, shownItem, sourceReady]);
   const chipsManifest = useMemo(() => workflowToolsManifestChips(), []);
   const graphItemKey = `${shownItem?.key ?? ""}|${shownItem?.revisionId ?? ""}|${reloadNonce}`;
 
   useEffect(() => {
-    if (
-      graphDirtyRef.current &&
-      loadedGraphKeyRef.current.split("|")[0] === String(shownItem?.key ?? "") &&
-      reloadNonce === 0
-    ) {
+    const loaded = loadedGraphIdentityRef.current;
+    const ownReceipt = ownSaveReceiptRef.current;
+    if (shouldPreserveDirtyWorkflowGraph({
+      dirty: graphDirtyRef.current,
+      loadedReloadNonce: loadedGraphReloadNonceRef.current,
+      reloadNonce,
+      loadedRootId: loaded.rootId,
+      sourceRootId,
+      loadedRevisionId: loaded.revisionId,
+      sourceRevisionId,
+      ownSaveRevisionId:
+        ownReceipt.rootId === sourceRootId ? ownReceipt.revisionId : "",
+    })) {
       return;
     }
     const plan = planWorkflowGraphFromItem(shownItem);
     let cancelled = false;
     const abort = new AbortController();
+    ownSaveReceiptRef.current = { rootId: "", revisionId: "" };
+    resetRemoteHistory();
+    const clearedGraph = emptyGraph();
+    graphRef.current = clearedGraph;
+    graphHistoryRef.current!.reset(clearedGraph);
+    refreshHistoryAvailability();
+    setGraph(clearedGraph);
+    setEditRevision(0);
     setSourceReady(false);
     setSourceError("");
     void hydrateWorkflowGraph(plan, async (url) => {
@@ -451,8 +571,15 @@ export function VideoCanvasStage({
         setSourceReady(false);
         return;
       }
-      loadedGraphKeyRef.current = graphItemKey;
+      loadedGraphIdentityRef.current = {
+        rootId: sourceRootId,
+        revisionId: sourceRevisionId,
+      };
+      loadedGraphReloadNonceRef.current = reloadNonce;
       graphDirtyRef.current = false;
+      graphRef.current = result.graph;
+      graphHistoryRef.current!.reset(result.graph);
+      refreshHistoryAvailability();
       setGraph(result.graph);
       setEditRevision(0);
       setSourceReady(true);
@@ -464,7 +591,7 @@ export function VideoCanvasStage({
     };
     // graphItemKey already pins the shown item; skip object-identity churn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphItemKey, reloadNonce]);
+  }, [graphItemKey, refreshHistoryAvailability, reloadNonce, resetRemoteHistory, sourceRevisionId, sourceRootId]);
 
   useEffect(() => {
     rememberEditorChips("workflow", chipsManifest.chips);
@@ -529,9 +656,7 @@ export function VideoCanvasStage({
                     revision: editRevision,
                   };
                 }
-                graphDirtyRef.current = true;
-                setGraph(applied.graph);
-                setEditRevision(applied.revision);
+                commitGraph(applied.graph, applied.revision, false);
                 return {
                   ok: true,
                   message: applied.message,
@@ -564,10 +689,7 @@ export function VideoCanvasStage({
                 };
               }
               if (dispatched.graph !== graph) {
-                graphDirtyRef.current = true;
-                setGraph(dispatched.graph);
-                setEditRevision((n) => n + 1);
-                applyVideoCanvasUserEditSession(shownItem, "person-command");
+                commitGraph(dispatched.graph);
                 return {
                   ok: true,
                   message: "改动已写入画布。",
@@ -583,7 +705,7 @@ export function VideoCanvasStage({
           },
           collabReadOnly,
         ),
-      [chipsManifest.chips, collabReadOnly, editRevision, graph, shownItem, sourceError, sourceReady],
+        [chipsManifest.chips, collabReadOnly, commitGraph, editRevision, graph, shownItem, sourceError, sourceReady],
     ),
   );
 
@@ -603,10 +725,11 @@ export function VideoCanvasStage({
   }, []);
   const onProtocolReset = useCallback(() => {
     // 画布重新载入过：它里头的只读 / 保存闸回到默认，基线作废；已经在房间里就再对齐一次（重载的画布可能比房间旧）。
+    resetRemoteHistory();
     const wasCollab = modeRef.current === "collab";
     resetCanvasState();
     if (wasCollab) realign();
-  }, [realign, resetCanvasState]);
+  }, [realign, resetCanvasState, resetRemoteHistory]);
   // 旧画布不认协同消息，只能整块锁住；新画布的只读由它自己守，仍可平移缩放、打开节点看参数。
   const canvasInert =
     mode === "detect" ? true : mode === "collab" ? !controlReady : lockedEdit.readOnly;
@@ -642,6 +765,23 @@ export function VideoCanvasStage({
         collab: activeCollab,
         id: "video-canvas",
         label: "工作流",
+        history: !mayWrite
+          ? undefined
+          : preferLocal
+            ? {
+                canUndo: historyAvailability.canUndo,
+                canRedo: historyAvailability.canRedo,
+                undo: undoGraph,
+                redo: redoGraph,
+              }
+            : remoteHistoryState
+              ? {
+                  canUndo: remoteHistoryState.canUndo,
+                  canRedo: remoteHistoryState.canRedo,
+                  undo: undoRemoteGraph,
+                  redo: redoRemoteGraph,
+                }
+              : undefined,
         mode: {
           current: "normal",
           setMode: () => {},
@@ -678,9 +818,7 @@ export function VideoCanvasStage({
                         editRevision,
                       );
                       if (!applied.ok) return;
-                      graphDirtyRef.current = true;
-                      setGraph(applied.graph);
-                      setEditRevision(applied.revision);
+                      commitGraph(applied.graph, applied.revision, false);
                     }}
                   >
                     加节点
@@ -690,10 +828,7 @@ export function VideoCanvasStage({
                   graph={graph}
                   readOnly={!mayWrite}
                   onChange={(next) => {
-                    graphDirtyRef.current = true;
-                    setGraph(next);
-                    setEditRevision((value) => value + 1);
-                    applyVideoCanvasUserEditSession(shownItem, "person-command");
+                    commitGraph(next);
                   }}
                 />
               </div>
@@ -716,6 +851,8 @@ export function VideoCanvasStage({
                   onRecoveryResult={mode === "lock" ? undefined : onRecoveryResult}
                   onProjectManifest={mode === "lock" ? undefined : onCanvasChanged}
                   onDirtyChange={mode === "lock" ? undefined : onCanvasDirty}
+                  onHistoryChange={mode === "lock" || !mayWrite ? undefined : handleRemoteHistoryChange}
+                  selectionCommand={mode === "lock" || !mayWrite ? null : remoteHistoryCommand}
                   onVersionSaved={collabMode ? onCanvasSaved : undefined}
                   onProtocolReset={mode === "lock" ? undefined : onProtocolReset}
                 />
@@ -736,9 +873,7 @@ export function VideoCanvasStage({
                         editRevision,
                       );
                       if (!applied.ok) return;
-                      graphDirtyRef.current = true;
-                      setGraph(applied.graph);
-                      setEditRevision(applied.revision);
+                      commitGraph(applied.graph, applied.revision, false);
                     }}
                   >
                     加节点
@@ -763,7 +898,18 @@ export function VideoCanvasStage({
               error: sourceError,
             });
             if (!saved.ok) return saved;
-            if (saved.item.revisionId) markSaved(String(saved.item.revisionId));
+            const savedRevisionId = String(
+              saved.item.revisionId ||
+                saved.item.meta?.revision_id ||
+                "",
+            );
+            if (savedRevisionId) {
+              ownSaveReceiptRef.current = {
+                rootId: sourceRootId,
+                revisionId: savedRevisionId,
+              };
+              markSaved(savedRevisionId);
+            }
             return saved;
           },
           recovery: {
@@ -775,6 +921,9 @@ export function VideoCanvasStage({
               const restored = payload as VideoCanvasGraph | null;
               if (!sourceReady || !restored || !Array.isArray(restored.nodes) || !Array.isArray(restored.edges)) return false;
               graphDirtyRef.current = true;
+              graphRef.current = restored;
+              graphHistoryRef.current!.reset(restored);
+              refreshHistoryAvailability();
               setGraph(restored);
               setEditRevision(value => value + 1);
               applyVideoCanvasUserEditSession(shownItem, "hydrate");

@@ -39,6 +39,8 @@ export const IMAGE_OBJECT_MUTATION_CONTROLS = [
   "text",
   "font-size",
   "text-color",
+  "text-case",
+  "list",
   "bold",
   "italic",
   "underline",

@@ -227,6 +227,8 @@ export interface FabricImageEditorOptions {
 }
 
 export interface FabricImageSaveResult {
+  /** Exact source revision captured for this save, before any async work. */
+  baseItem?: LibraryItem;
   url: string;
   projectUrl: string;
   savedAt: string;
@@ -239,6 +241,8 @@ export interface FabricImageSaveResult {
 }
 
 export interface FabricImageEditorState {
+  /** Current open session; save receipts preserve this identity. */
+  openIdentity: string;
   // ---- 状态 ----
   loading: boolean;
   saving: boolean;
@@ -318,6 +322,8 @@ export interface FabricImageEditorState {
   ) => void;
   setSelectedImageFit: (mode: ImageFitMode) => void;
   setSelectedText: (patch: Partial<TextSettings>) => void;
+  toggleSelectedTextCase: () => void;
+  toggleSelectedTextList: () => void;
   setSelectedTableStyle: (patch: Partial<TableSettings>) => void;
   resizeSelectedTable: (rows: number, columns: number) => void;
   deleteSelected: () => void;

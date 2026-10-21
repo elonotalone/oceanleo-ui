@@ -31,9 +31,42 @@ export type WorkbenchIconName =
   | "chevron"
   | "share"
   | "star"
-  | "back";
+  | "back"
+  | "list"
+  | "font-size"
+  | "underline-color"
+  | "linethrough";
 
-const paths: Record<WorkbenchIconName, ReactNode> = {
+/** Shared 24×24 text-tool glyphs. */
+const paths: Record<string, string> = {
+  bold: "M7.5 4.5V19.5M7.5 4.5H13.1C16.2 4.5 16.2 11.1 13.1 11.1H7.5M7.5 11.1H13.7C17.2 11.1 17.2 19.5 13.7 19.5H7.5",
+  italic: "M10 4.5H18M6 19.5H14M15.4 4.5L8.6 19.5",
+  underline: "M6.8 4.5V12C6.8 15.9 9.4 18.4 12 18.4C14.6 18.4 17.2 15.9 17.2 12V4.5M5 20.8H19",
+  strike:
+    "M16.8 7C15.8 5.4 14 4.5 11.7 4.5C8.7 4.5 6.7 6.1 6.7 8.2C6.7 10.4 8.5 11.4 12 12.2C15.5 13 17.3 14 17.3 16.2C17.3 18.5 15.1 19.7 11.8 19.7C9.3 19.7 7.3 18.7 6.4 17.2M4.5 12H19.5",
+  linethrough:
+    "M16.8 7C15.8 5.4 14 4.5 11.7 4.5C8.7 4.5 6.7 6.1 6.7 8.2C6.7 10.4 8.5 11.4 12 12.2C15.5 13 17.3 14 17.3 16.2C17.3 18.5 15.1 19.7 11.8 19.7C9.3 19.7 7.3 18.7 6.4 17.2M4.5 12H19.5",
+  "align-left": "M4 5.5H20M4 9.5H14.5M4 13.5H20M4 17.5H12.5",
+  "align-center": "M4 5.5H20M6.5 9.5H17.5M4 13.5H20M8 17.5H16",
+  "align-right": "M4 5.5H20M9.5 9.5H20M4 13.5H20M11.5 17.5H20",
+  "align-justify": "M4 5.5H20M4 9.5H20M4 13.5H20M4 17.5H20",
+  font: "M5 19L12 4L19 19M7.6 13.6H16.4",
+  case: "M4 18.5L8.2 5.5H9.6L13.8 18.5M5.6 13.7H12.2M19.2 12.8V18.8M19.2 15C15.6 15 15.6 18.2 19.2 18.2",
+  "font-size":
+    "M6 16L9.5 6H11L14.5 16M7.4 12.2H13.1M17 5V10M15.2 7L17 5L18.8 7M17 19V14M15.2 17L17 19L18.8 17",
+  "underline-color": "M6 17L12 4.5L18 17M8.1 12.8H15.9M5.5 20.5H18.5",
+  spacing:
+    "M3.5 6H14M3.5 12H14M3.5 18H14M18.5 4V20M16 6.8L18.5 4L21 6.8M16 17.2L18.5 20L21 17.2",
+  effects:
+    "M12 5.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6M17 10.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6M12 15.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6M7 10.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6",
+  animate: "M8.5 6.8L8.5 17.2L18.2 12Z M4.8 8.8A8 8 0 0 0 4.8 15.2",
+  position:
+    "M12 3.2V20.8M3.2 12H20.8M8.8 6.6L12 3.2L15.2 6.6M17.4 8.8L20.8 12L17.4 15.2M15.2 17.4L12 20.8L8.8 17.4M6.6 15.2L3.2 12L6.6 8.8",
+  more: "M5 10.6A1.4 1.4 0 1 1 5 13.4A1.4 1.4 0 1 1 5 10.6M12 10.6A1.4 1.4 0 1 1 12 13.4A1.4 1.4 0 1 1 12 10.6M19 10.6A1.4 1.4 0 1 1 19 13.4A1.4 1.4 0 1 1 19 10.6",
+  list: "M5 5.4A1.1 1.1 0 1 1 5 7.6A1.1 1.1 0 1 1 5 5.4M5 10.9A1.1 1.1 0 1 1 5 13.1A1.1 1.1 0 1 1 5 10.9M5 16.4A1.1 1.1 0 1 1 5 18.6A1.1 1.1 0 1 1 5 16.4M9 6.5H20M9 12H20M9 17.5H20",
+};
+
+const glyphs: Record<WorkbenchIconName, ReactNode> = {
   add: <path d="M12 5v14M5 12h14" />,
   ai: (
     <>
@@ -42,23 +75,18 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M9.5 13h.01M14.5 13h.01M9.5 16h5" />
     </>
   ),
-  "align-center": <path d="M5 6h14M7 10h10M5 14h14M8 18h8" />,
-  "align-justify": <path d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
-  "align-left": <path d="M4 6h16M4 10h11M4 14h16M4 18h9" />,
-  "align-right": <path d="M4 6h16M9 10h11M4 14h16M11 18h9" />,
-  animate: (
-    <>
-      <path d="M4 12h4l3-7 3 14 3-7h3" />
-      <path d="M3 3v18h18" />
-    </>
-  ),
+  "align-center": <path d={paths["align-center"]} />,
+  "align-justify": <path d={paths["align-justify"]} />,
+  "align-left": <path d={paths["align-left"]} />,
+  "align-right": <path d={paths["align-right"]} />,
+  animate: <path d={paths.animate} />,
   background: (
     <>
       <rect x="4" y="4" width="16" height="16" rx="3" />
       <path d="M4 15l4-4 3 3 3-4 6 6" />
     </>
   ),
-  bold: <path d="M8 5h5.2a3.3 3.3 0 010 6.6H8zm0 6.6h6a3.7 3.7 0 010 7.4H8z" />,
+  bold: <path d={paths.bold} />,
   border: (
     <>
       <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -71,12 +99,7 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M4 8v10a2 2 0 002 2h10" />
     </>
   ),
-  case: (
-    <>
-      <path d="M4 18l4.5-12L13 18M5.5 14h6" />
-      <path d="M15 11.5c1.2-.8 4-.7 4 1.5v5M19 15c-3.5-1.2-5 .2-4.5 1.8.4 1.4 3.2 1.5 4.5-.3" />
-    </>
-  ),
+  case: <path d={paths.case} />,
   crop: (
     <>
       <path d="M7 3v14a2 2 0 002 2h12M3 7h14a2 2 0 012 2v12" />
@@ -112,11 +135,7 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
     </>
   ),
-  effects: (
-    <>
-      <path d="M12 3l1.8 4.8L19 9.5l-4.1 3.1L15 18l-3-2-3 2 .1-5.4L5 9.5l5.2-1.7L12 3z" />
-    </>
-  ),
+  effects: <path d={paths.effects} />,
   filter: (
     <>
       <path d="M4 6h10M18 6h2M4 12h3M11 12h9M4 18h8M16 18h4" />
@@ -137,7 +156,7 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M7 4l-3 6h16l-3-6zM7 20l-3-6h16l-3 6z" />
     </>
   ),
-  font: <path d="M5 19L11 5h2l6 14M7.5 14h9" />,
+  font: <path d={paths.font} />,
   image: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -145,13 +164,15 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M3 17l5-5 4 4 3-3 6 5" />
     </>
   ),
-  italic: <path d="M10 5h8M6 19h8M14 5L10 19" />,
+  italic: <path d={paths.italic} />,
+  "font-size": <path d={paths["font-size"]} />,
   layers: (
     <>
       <path d="M12 3L3 8l9 5 9-5-9-5z" />
       <path d="M3 12l9 5 9-5M3 16l9 5 9-5" />
     </>
   ),
+  linethrough: <path d={paths.linethrough} />,
   line: (
     <>
       <path d="M5 18L19 6" />
@@ -159,6 +180,7 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <circle cx="19" cy="6" r="2" />
     </>
   ),
+  list: <path d={paths.list} />,
   link: (
     <>
       <path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1" />
@@ -171,13 +193,7 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M8 10V7a4 4 0 018 0v3" />
     </>
   ),
-  more: (
-    <>
-      <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
-    </>
-  ),
+  more: <path d={paths.more} />,
   note: (
     <>
       <path d="M5 3h14a2 2 0 012 2v10l-6 6H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
@@ -190,12 +206,7 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M8 15c2.5-1.2 5.5-1.2 8 0" />
     </>
   ),
-  position: (
-    <>
-      <path d="M12 3v18M3 12h18" />
-      <path d="M9 6l3-3 3 3M18 9l3 3-3 3M9 18l3 3 3-3M6 9l-3 3 3 3" />
-    </>
-  ),
+  position: <path d={paths.position} />,
   redo: <path d="M18 8l3 3-3 3M21 11h-8a7 7 0 00-7 7M6 5v4H2" />,
   rotate: (
     <>
@@ -232,13 +243,8 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
       <path d="M3 21h18" />
     </>
   ),
-  spacing: <path d="M4 7h16M4 17h16M8 10l4 4 4-4M12 14v-4" />,
-  strike: (
-    <>
-      <path d="M7 7.5C7 5.8 8.7 5 11 5c2.5 0 4 .9 4 2.5M9 16.8c.7.2 1.5.3 2.4.3 2.5 0 4.1-1 4.1-2.7 0-.6-.2-1.1-.7-1.5" />
-      <path d="M4 11.5h16" />
-    </>
-  ),
+  spacing: <path d={paths.spacing} />,
+  strike: <path d={paths.strike} />,
   table: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -246,7 +252,14 @@ const paths: Record<WorkbenchIconName, ReactNode> = {
     </>
   ),
   text: <path d="M4 5h16M12 5v14M8 19h8" />,
-  underline: <path d="M7 4v7a5 5 0 0010 0V4M5 21h14" />,
+  transparency: (
+    <>
+      <path d="M4 4h16v16H4zM12 4v16M4 12h16" />
+      <path d="M4 4h8v8H4zM12 12h8v8h-8z" fill="currentColor" stroke="none" opacity=".28" />
+    </>
+  ),
+  "underline-color": <path d={paths["underline-color"]} />,
+  underline: <path d={paths.underline} />,
   undo: <path d="M6 8l-3 3 3 3M3 11h8a7 7 0 017 7M18 5v4h4" />,
   unlock: (
     <>
@@ -405,7 +418,7 @@ export function AdvancedEditorIcon({
       className={className}
       aria-hidden="true"
     >
-      {paths[name]}
+      {glyphs[name]}
     </svg>
   );
 }

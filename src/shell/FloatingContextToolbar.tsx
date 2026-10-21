@@ -73,7 +73,7 @@ export function useFloatingContextToolbar({
 const SELECTION_SEGMENT_MIN_PX = 36;
 
 /**
- * 行里宽度与本判定无关的「固定段」：撤销重做、分隔线、右段。选中段、文档段
+ * 行里宽度与本判定无关的「固定段」：分隔线、右段。选中段、文档段
  * （含它的 More 键）与不可见的量宽克隆都不算——前两者是本判定的输出。
  */
 function isFixedRowSegment(child: HTMLElement): boolean {
@@ -88,7 +88,7 @@ function isFixedRowSegment(child: HTMLElement): boolean {
 
 /**
  * 文档段要不要折进「更多」。判据全部来自与栏自身宽度无关的量：
- * 容量（外部边界）、撤销重做段、右段、文档段克隆的自然宽度、选中段的最小保留。
+ * 容量（外部边界）、右段、文档段克隆的自然宽度、选中段的最小保留。
  * 所以它不会与 SelectionToolbar 的 More 分区互相追赶。
  */
 function useDocumentSegmentFold({
@@ -219,8 +219,8 @@ function DocumentSegmentMore({ children }: { children: ReactNode }) {
 }
 
 /**
- * 单行编辑栏本体（规范 v2 §4）：
- * `[撤销 重做] | [选中对象工具…] | [编辑类文档动作] | [trailing] [AI 助手] [固定柄]`
+ * 单行编辑栏本体（规范 v2 §4，2026-10-21：撤销重做已离开编辑栏）：
+ * `[选中对象工具…] | [编辑类文档动作] | [trailing] [AI 助手] [固定柄]`
  * 全部内联在一个 `inline-flex flex-nowrap` 里，永不换行；宽度不足先由
  * SelectionToolbar 把选中工具折进它的 More，再由这里把文档段折进「更多选项」。
  */
@@ -243,7 +243,6 @@ export function EditBarRow({
   const layout = useAdvancedLayout();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const documentMeasureRef = useRef<HTMLDivElement | null>(null);
-  const history = layout?.contextBarLeading ?? null;
   const hostTrailing = layout?.contextBarTrailing ?? null;
   const hasSelection = Boolean(children);
   const hasDocument = Boolean(documentSegment);
@@ -298,17 +297,6 @@ export function EditBarRow({
       className="pointer-events-auto relative inline-flex max-w-full flex-nowrap items-center gap-1 overflow-hidden whitespace-nowrap"
       style={editBarPillStyle(Boolean(controller.lifted || controller.moveMode || controller.dragging))}
     >
-      {history && (
-        <div
-          data-edit-bar-history-slot
-          className="flex shrink-0 items-center gap-1"
-        >
-          {history}
-        </div>
-      )}
-      {history && (body || emptyHint) && (
-        <span className={EDIT_BAR_DIVIDER_CLASS} />
-      )}
       {!body && emptyHint && (
         <span
           data-edit-bar-empty-hint
@@ -336,7 +324,7 @@ export function EditBarRow({
         (documentVisible ? (
           <div
             data-edit-bar-document-slot
-            // 文档段按键统一 28px 高：与撤销重做 / AI 同一条 y 带，探针按 y 聚类才是 1 行。
+            // 文档段按键统一 28px 高：与 AI 同一条 y 带，探针按 y 聚类才是 1 行。
             className="flex shrink-0 items-center gap-0.5 [&_button]:h-7 [&_button]:min-h-7"
           >
             {documentSegment}
@@ -348,7 +336,7 @@ export function EditBarRow({
         <div
           data-edit-bar-trailing-slot
           className={`flex shrink-0 items-center gap-1 ${
-            body || history || emptyHint
+            body || emptyHint
               ? "ml-1 border-l border-[var(--pchrome-line,var(--divider,#e7e5e4))]/60 pl-2"
               : ""
           }`}

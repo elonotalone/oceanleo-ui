@@ -16,7 +16,6 @@ const EDIT_BAR_SURFACE_SELECTOR = [
   "[data-anchored-popover]",
   "[data-edit-bar-document-segment]",
   "[data-edit-bar-document-more]",
-  "[data-edit-bar-history]",
   "[data-edit-bar-agent]",
   "[data-plugin-chrome-edit-button]",
   "[data-edit-bar-interactive]",
@@ -32,6 +31,37 @@ function eventElement(target: EventTarget | null): Element | null {
 
 export function isEditBarSurface(target: EventTarget | null): boolean {
   return Boolean(eventElement(target)?.closest(EDIT_BAR_SURFACE_SELECTOR));
+}
+
+/** Ctrl/⌘+Z 在输入框里让给原生撤销；画布 / 空白处才走编辑器撤销。 */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  if (!target || typeof target !== "object") return false;
+  const node = target as {
+    tagName?: string;
+    isContentEditable?: boolean;
+    parentElement?: {
+      tagName?: string;
+      isContentEditable?: boolean;
+      closest?: (selector: string) => Element | null;
+    } | null;
+    closest?: (selector: string) => Element | null;
+  };
+  const el = typeof node.tagName === "string" ? node : node.parentElement;
+  if (!el || typeof el.tagName !== "string") return false;
+  if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") return true;
+  const editableAttr =
+    typeof (el as { getAttribute?: (name: string) => string | null }).getAttribute ===
+    "function"
+      ? (el as { getAttribute: (name: string) => string | null }).getAttribute(
+          "contenteditable",
+        )
+      : null;
+  if (el.isContentEditable || (editableAttr != null && editableAttr !== "false")) {
+    return true;
+  }
+  return typeof el.closest === "function"
+    ? Boolean(el.closest("[contenteditable]:not([contenteditable='false'])"))
+    : false;
 }
 
 export function preserveEditBarSelection(event: {

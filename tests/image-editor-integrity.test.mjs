@@ -238,7 +238,8 @@ test("composite autosave commits scene source with a revision-matched static pre
     hook.indexOf("const runAiEdit = useCallback"),
   );
   assert.match(saveBlock, /persistCompositeImageProject/);
-  assert.match(saveBlock, /const head = artifactHeadRef\.current/);
+  assert.match(saveBlock, /const sourceItem = artifactHeadRef\.current/);
+  assert.match(saveBlock, /const head = sourceItem/);
   assert.match(saveBlock, /artifactHeadRef\.current = saved\.item/);
   assert.match(saveBlock, /makeStaticPreviewBlob/);
   assert.doesNotMatch(saveBlock, /makeExportBlob|toBlob|toDataURL/);
@@ -269,7 +270,8 @@ test("composite autosave commits scene source with a revision-matched static pre
     ),
     "utf8",
   );
-  assert.match(route, /saved\.item[\s\S]*advancedCommittedRevisionItem/);
+  assert.match(route, /imageSaveReceiptItem/);
+  assert.match(route, /saved\.baseItem \|\| activeItem/);
   assert.match(route, /画布仍保持未保存状态/);
 });
 

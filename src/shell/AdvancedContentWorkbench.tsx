@@ -807,10 +807,10 @@ function AdvancedContentWorkbenchRuntime(
     linkUrl: routeItem.url || routeItem.previewUrl || props.linkUrl,
     taskId: workspace.taskId,
   };
-  const routeKey =
-    editorHost.embedded && route.type === "richdoc"
-      ? `${capability.adapter}:${routeItem.kind}:${advancedRootItemId(routeItem)}`
-      : `${capability.adapter}:${activeItem.kind}:${activeItem.id}:${activeItem.url || activeItem.previewUrl || ""}`;
+  // Persist / signed preview URL / revision must not remount the editor.
+  // URL in this key was the autosave overlay + undo wipe: save minted a new
+  // preview, React tore down ImageRoute, Fabric reloaded from scratch.
+  const routeKey = `${capability.adapter}:${routeItem.kind}:${advancedRootItemId(routeItem)}`;
   let editor: ReactNode;
   if (capability.adapter === "video-canvas") {
     editor = <VideoCanvasRoute {...activeProps} />;
