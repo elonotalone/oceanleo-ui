@@ -124,6 +124,32 @@ test('real hook only reports saved after upload AND session acknowledgement, the
     assert.deepEqual(b.versions, [1]);
   } finally { await tree.unmount(); }
 });
+test('image edits turn green on the durable image-draft receipt without creating a published version', async () => {
+  const b = bed(), ack = deferred();
+  const imageProject = {
+    schema: 'oceanleo.fabric-image.v1',
+    version: 1,
+    updatedAt: '2026-10-21T00:00:00.000Z',
+    snapshot: { doc: { width: 1080, height: 1080 }, json: { objects: [{ type: 'textbox', text: 'saved edit' }] } },
+  };
+  b.draft.schema = 'oceanleo.fabric-image.edit.v1';
+  b.draft.captureRevision = revision => ({ revision, payload: imageProject });
+  b.session.recordDraft = async p => { b.records.push(p); return ack.promise; };
+  const tree = await mount(React.createElement(Probe, { b }));
+  try {
+    await edit(b, 1); await waitDraft();
+    assert.equal(b.uploads.length, 1);
+    assert.equal(b.uploads[0].schema, 'oceanleo.fabric-image.edit.v1');
+    assert.equal(b.uploads[0].data.schema, 'oceanleo.fabric-image.v1');
+    assert.equal(b.uploads[0].data.snapshot.json.objects[0].text, 'saved edit');
+    assert.equal(b.records.length, 1);
+    assert.equal(b.hooks.state, 'saving', 'upload alone is not a durable receipt');
+    assert.deepEqual(b.versions, [], 'draft saves must not create a published document version');
+    await act(async () => { ack.resolve(true); await sleep(0); });
+    assert.equal(b.hooks.state, 'saved');
+    assert.deepEqual(b.versions, []);
+  } finally { await tree.unmount(); }
+});
 test('real hook reuses uploaded draft on failed CAS; pagehide forces the complete version', async () => {
   const b = bed(); let attempts = 0;
   b.session.recordDraft = async p => { b.records.push(p); return ++attempts > 1; };
@@ -149,14 +175,18 @@ test('a captured server draft destination cannot drift to another session during
     assert.equal(b.records.length, 1); assert.deepEqual(nextRecords, []);
   } finally { await tree.unmount(); }
 });
-test('a session without draft persistence retains the original 1600ms full-save path', async () => {
+test('a session without draft persistence uses the 500ms full-save path', async () => {
   const b = bed(); delete b.session.recordDraft;
   const tree = await mount(React.createElement(Probe, { b }));
   try {
-    await edit(b, 1); await waitDraft();
+    const startedAt = Date.now();
+    await edit(b, 1);
+    await act(async () => { await sleep(350); });
     assert.deepEqual(b.uploads, []); assert.deepEqual(b.versions, []);
-    await act(async () => { await sleep(1200); });
+    await act(async () => { await sleep(250); });
+    const elapsedMs = Date.now() - startedAt;
     assert.deepEqual(b.versions, [1]); assert.equal(b.hooks.state, 'saved');
+    assert.ok(elapsedMs >= 450 && elapsedMs < 1300, `500ms debounce measured ${elapsedMs}ms`);
     assert.equal(b.boundFlush, null);
   } finally { await tree.unmount(); }
 });

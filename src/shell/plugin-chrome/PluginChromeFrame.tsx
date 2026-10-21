@@ -50,7 +50,6 @@ import {
 import { PluginChromeNotices } from "./PluginChromeNotices";
 import { PluginChromeStatus } from "./PluginChromeStatus";
 import {
-  PLUGIN_CHROME_EDITBAR_MIN_H,
   PLUGIN_CHROME_HEADER_H,
   PLUGIN_CHROME_PANEL_DEFAULT_W,
   pluginChromeStyle,
@@ -333,6 +332,30 @@ export function PluginChromeFrame({
   // 控制器与 10 件共享插件用的是同一份。为什么走这条路而不是把
   // `contextBarLeading/Trailing` 填上，见 use-plugin-chrome-layout.tsx 那段注释。
   const editBarGestures = usePluginChromeEditBarGestures(pluginId);
+  const agentActive = layout.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
+  const editBarAgentButton = (
+    <button
+      type="button"
+      data-edit-bar-agent
+      data-edit-bar-interactive
+      data-plugin-chrome-agent={pluginId}
+      aria-pressed={agentActive}
+      aria-label={tt("AI 助手")}
+      title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
+      onClick={() =>
+        agentActive
+          ? layout.closeDrawer()
+          : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
+      }
+      className={`${AI_ICON_ACTION_CLASS} ${
+        agentActive
+          ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent)] text-[var(--pchrome-on-accent)] hover:bg-[var(--pchrome-accent)] hover:text-[var(--pchrome-on-accent)]"
+          : ""
+      }`}
+    >
+      <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
+    </button>
+  );
   const chromeRowsRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = chromeRowsRef.current;
@@ -362,14 +385,14 @@ export function PluginChromeFrame({
 
   // transient 面板（`layout.openTransientPanel`）顶掉常规面板占住左栏，
   // 与基准一致（use-inline-advanced-panels.tsx:156-162）。
-  const sidePanel: {
+  const sidePanel = useMemo((): {
     id: string;
     label: ReactNode;
     icon?: WorkbenchIconName;
     content: ReactNode;
     pinned: boolean;
     width?: number;
-  } | null = transientPanel
+  } | null => transientPanel
     ? {
         id: transientPanel.id,
         label: transientPanel.label,
@@ -385,14 +408,30 @@ export function PluginChromeFrame({
           pinned: Boolean(activePanel.pinned),
           width: activePanel.width,
         }
-      : null;
-  const panelWidth = sidePanel?.width || PLUGIN_CHROME_PANEL_DEFAULT_W;
+      : null, [activePanel, transientPanel, tt]);
+  const [closingPanel, setClosingPanel] = useState<typeof sidePanel>(null);
+  const lastOpenPanelRef = useRef<typeof sidePanel>(sidePanel);
+  if (sidePanel) lastOpenPanelRef.current = sidePanel;
+  useEffect(() => {
+    if (sidePanel) {
+      lastOpenPanelRef.current = sidePanel;
+      setClosingPanel(null);
+      return;
+    }
+    const previous = lastOpenPanelRef.current;
+    if (!previous) return;
+    lastOpenPanelRef.current = null;
+    setClosingPanel(previous);
+    const timer = globalThis.setTimeout(() => setClosingPanel(null), 300);
+    return () => globalThis.clearTimeout(timer);
+  }, [sidePanel]);
+  const displayedPanel = sidePanel || closingPanel || lastOpenPanelRef.current;
+  const panelWidth = displayedPanel?.width || PLUGIN_CHROME_PANEL_DEFAULT_W;
 
   // AI 键：语义逐字对齐 SelectionToolbar.tsx:248-270 那块样板——同一个
   // data 属性、同一个 aria-pressed 取值、同一条「开着再点就关」的分支。
   // 差别只在挂载点：那里由选区工具条长出来，这里由外壳恒定出一个，
   // 所以没有选中对象时 AI 键也在。
-  const agentActive = layout.activeDrawerId === PLUGIN_AGENT_DRAWER_ID;
   const maximize = rightPaneSlot
     ? {
         pressed: rightMaximized,
@@ -663,12 +702,8 @@ export function PluginChromeFrame({
         </header>
         </div>
 
-        {/* ---------------------------------------------- 行 2：edit bar */}
-        {/*
-          这一行**恒存在**，editBarHidden 只收起插件填的那段内容。
-          改造前 editBarHidden 会把整行删掉，于是网站编辑切到 Code/Dashboard
-          视图时 AI 键跟着消失——那正是本轮要修的缺陷本身，不能按视图复发。
-        */}
+        {/* ---------------------------------------------- 行 2：zero-height dock host */}
+        {/* 这个 ref 是共享控制器的 dock host；绝对 sentinel 不参与行高。 */}
         <div
           ref={editBarGestures.dockRef}
           data-plugin-chrome-edit-bar
@@ -676,21 +711,39 @@ export function PluginChromeFrame({
           data-edit-bar-content-hidden={editBarHidden || undefined}
           role="toolbar"
           aria-label={tt("编辑栏")}
-          className={`flex ${PLUGIN_CHROME_EDITBAR_MIN_H} shrink-0 items-center gap-1.5 border-b border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] px-2 py-1`}
+          className="relative h-0 min-h-0 shrink-0 overflow-visible border-0 bg-transparent p-0"
         >
-          {/*
-            手势层（W31 / W4）。有可挂的宿主时这一行的内容整体交给共享浮层，
-            行本身降级成停靠带（与 10 件共享插件那侧 EditBarDockHost 的分工相同），
-            于是「点一下，再按住拖 / 收起为圆 / 拖圆」三条在这三件插件上也成立。
-            还没有宿主时内容原样留在行里——AI 键不许因为动效起不来而消失。
-            宿主晚一拍挂上必须补装，不能把控制器 portalRoot 的空快照当成没有宿主。
-          */}
+          <span
+            data-edit-bar-dock-sentinel
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-0 h-10"
+          />
+          {editBarGestures.controller.mode === "floating" &&
+            editBarGestures.controller.dropActive && (
+              <span
+                data-edit-bar-dock-placeholder
+                aria-live="polite"
+                className="pointer-events-none absolute inset-x-0 top-0 z-40 flex h-10 items-center justify-center truncate border border-dashed border-[var(--pchrome-line)] bg-[var(--pchrome-accent-soft)] text-[11px] font-medium text-[var(--pchrome-accent)] ring-2 ring-inset ring-[var(--pchrome-accent)]"
+              >
+                {tt("松开以固定编辑栏")}
+              </span>
+            )}
+          {/* 手势层把内容交给共享浮层；初始化期间 inline fallback 溢出显示，
+              既不增高舞台，也不丢 AI 键。 */}
           <PluginChromeEditBarGestureLayer
             bridge={editBarGestures}
             accent={accent || "#4f46e5"}
             theme={theme}
-            // AI 键由 frame 自己画（下方，tests/plugin-chrome-agent-drawer 钉死），
-            // 共享单行容器不再画第二个；固定柄由容器最右段统一画。
+            trailing={
+              <>
+                <span
+                  aria-hidden="true"
+                  className="mx-0.5 h-5 w-px shrink-0 bg-[var(--pchrome-line)]"
+                />
+                {editBarAgentButton}
+              </>
+            }
+            // AI 键仍由 frame 提供，但跟随共享胶囊，inline fallback 也会保留它。
             assistant={null}
           >
           {/*
@@ -715,54 +768,38 @@ export function PluginChromeFrame({
             </div>
           </AdvancedLayoutContext.Provider>
 
-          <span
-            aria-hidden="true"
-            className="mx-0.5 h-5 w-px shrink-0 bg-[var(--pchrome-line)]"
-          />
-          <button
-            type="button"
-            data-edit-bar-agent
-            data-edit-bar-interactive
-            data-plugin-chrome-agent={pluginId}
-            aria-pressed={agentActive}
-            aria-label={tt("AI 助手")}
-            title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
-            onClick={() =>
-              agentActive
-                ? layout.closeDrawer()
-                : layout.openDrawer(PLUGIN_AGENT_DRAWER_ID)
-            }
-            className={`${AI_ICON_ACTION_CLASS} ${
-              agentActive
-                ? "border-[var(--pchrome-accent)] bg-[var(--pchrome-accent)] text-[var(--pchrome-on-accent)] hover:bg-[var(--pchrome-accent)] hover:text-[var(--pchrome-on-accent)]"
-                : ""
-            }`}
-          >
-            <AdvancedEditorIcon name="agent" className="h-[18px] w-[18px]" />
-          </button>
           </PluginChromeEditBarGestureLayer>
         </div>
 
         {/* ---------------------------------------------- 行 3：左栏 + 舞台 */}
-        <div className="flex min-h-0 flex-1">
-          {sidePanel && (
-            <aside
-              data-plugin-chrome-panel={sidePanel.id}
-              style={{ width: panelWidth }}
-              className="flex min-h-0 shrink-0 flex-col border-r border-[var(--pchrome-line)] bg-[var(--pchrome-surface)]"
-            >
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <aside
+            data-plugin-chrome-panel={sidePanel?.id}
+            aria-hidden={!sidePanel}
+            inert={!sidePanel}
+            style={{
+              width: sidePanel ? panelWidth : 0,
+              flexBasis: sidePanel ? panelWidth : 0,
+              opacity: sidePanel ? 1 : 0,
+              pointerEvents: sidePanel ? "auto" : "none",
+              borderRightWidth: sidePanel ? undefined : 0,
+            }}
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--pchrome-line)] bg-[var(--pchrome-surface)] transition-[width,flex-basis,opacity] duration-300 ease-out motion-reduce:transition-none"
+          >
+            {displayedPanel && (
+              <>
               <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--pchrome-line)] px-3">
-                {sidePanel.icon && (
+                {displayedPanel.icon && (
                   <AdvancedEditorIcon
-                    name={sidePanel.icon}
+                    name={displayedPanel.icon}
                     className="h-4 w-4 text-[var(--pchrome-ink-mid)]"
                   />
                 )}
                 <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
-                  {sidePanel.label}
+                  {displayedPanel.label}
                 </span>
                 {/* pinned 面板是主入口，不给关闭按钮，避免用户误关后找不回来。 */}
-                {!sidePanel.pinned && (
+                {!displayedPanel.pinned && (
                   <button
                     type="button"
                     onClick={layout.closeDrawer}
@@ -778,10 +815,11 @@ export function PluginChromeFrame({
                 data-plugin-chrome-panel-body
                 className={`min-h-0 flex-1 overflow-auto [&:has([data-agent-conversation])]:overflow-hidden ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
               >
-                {sidePanel.content}
+                {displayedPanel.content}
               </div>
-            </aside>
-          )}
+              </>
+            )}
+          </aside>
 
           {/*
             舞台与左栏是 flex 兄弟：没有遮罩、不设 inert、不关 pointer-events。

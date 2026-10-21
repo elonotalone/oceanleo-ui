@@ -136,14 +136,13 @@ test('restored server draft starts saved and does not publish until the person e
   f.controller.observe({ revision: 8, dirty: true, userEdited: true }); await f.clock.advance(400);
   assert.deepEqual(f.drafts, [8]); f.controller.dispose();
 });
-test('no draft adapter retains legacy debounce, state sequence and error/retry behavior', async () => {
+test('no draft adapter uses the 500ms debounce and retains state/error/retry behavior', async () => {
   let succeeds = false;
   const f = fixture({ draft: undefined, maxRetries: 0, flushRevision: async r => {
     f.versions.push(r); return succeeds ? { ok: true, item: { id: 'v1' } } : { ok: false, error: 'network' };
   } });
   f.controller.observe({ revision: 1, dirty: true, userEdited: true });
-  await f.clock.advance(400); assert.deepEqual(f.versions, []);
-  await f.clock.advance(1199); assert.deepEqual(f.versions, []);
+  await f.clock.advance(499); assert.deepEqual(f.versions, []);
   await f.clock.advance(1); assert.equal(f.controller.snapshot().state, 'error');
   succeeds = true; await f.controller.retry();
   assert.deepEqual(f.states, ['saving', 'error', 'saving', 'saved']);

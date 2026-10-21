@@ -2323,6 +2323,11 @@
         },
         {
           "kind": "named",
+          "name": "getUserIdSnapshot",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "isPasswordResetLanding",
           "source": ""
         },
@@ -2445,6 +2450,11 @@
         {
           "kind": "type",
           "name": "AuthPhoneUser",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AuthStateEventDetail",
           "source": ""
         },
         {
@@ -7814,6 +7824,11 @@
         },
         {
           "kind": "named",
+          "name": "libraryItemSourceBytes",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "libraryKindForArtifactType",
           "source": ""
         },
@@ -7830,6 +7845,11 @@
         {
           "kind": "named",
           "name": "normalizeWork",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "sortLibraryItems",
           "source": ""
         },
         {
@@ -7885,6 +7905,21 @@
         {
           "kind": "type",
           "name": "LibraryKind",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibrarySort",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibrarySortBy",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LibrarySortDirection",
           "source": ""
         },
         {

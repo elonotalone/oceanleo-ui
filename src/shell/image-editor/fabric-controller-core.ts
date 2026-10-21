@@ -44,6 +44,7 @@ import {
   normalizeEditorSnapshot,
   objectIsEditable,
   panViewport,
+  resizeViewportPreservingView,
   preferUnlockedImageObject,
   removeEditableObjects,
   resolveImageEdgeSnap,
@@ -112,6 +113,7 @@ export class FabricEditorCore {
   protected doc: DocSize = { ...DEFAULT_DOC };
   protected canvasBackground = "#ffffff";
   protected zoom = 1;
+  protected viewportMode: "fit" | "custom" = "fit";
   protected activeTool: ToolId = "select";
   protected brush: BrushSettings = { ...DEFAULT_BRUSH };
   protected cropping = false;
@@ -176,6 +178,19 @@ export class FabricEditorCore {
       this.canvasBackground,
     );
     this.emit();
+  }
+
+  protected resizeViewportForContainer(): void {
+    if (this.viewportMode === "fit") {
+      this.zoom = fitViewport(this.canvas, this.doc, this.container);
+      return;
+    }
+    resizeViewportPreservingView(this.canvas, this.container);
+  }
+
+  protected panViewportBy(dx: number, dy: number): void {
+    this.viewportMode = "custom";
+    panViewport(this.canvas, dx, dy);
   }
 
   private resetImageEdgeSnap(target: FabricObject | null = null): void {
@@ -490,6 +505,7 @@ export class FabricEditorCore {
         event.e.preventDefault();
         event.e.stopPropagation();
         if (event.e.ctrlKey || event.e.metaKey) {
+          this.viewportMode = "custom";
           const next = Math.max(
             0.05,
             Math.min(8, this.zoom * Math.pow(0.999, event.e.deltaY)),
@@ -497,7 +513,7 @@ export class FabricEditorCore {
           this.canvas.zoomToPoint(event.viewportPoint, next);
           this.zoom = next;
         } else {
-          panViewport(this.canvas, -event.e.deltaX, -event.e.deltaY);
+          this.panViewportBy(-event.e.deltaX, -event.e.deltaY);
         }
         this.canvas.requestRenderAll();
         this.emit();
@@ -509,13 +525,14 @@ export class FabricEditorCore {
         const altPan = e.altKey && !snapBypassTarget;
         if (e.button !== 1 && !altPan) return;
         this.panning = true;
+        this.viewportMode = "custom";
         this.canvas.isDrawingMode = false;
         this.canvas.selection = false;
         this.canvas.defaultCursor = "grabbing";
       }),
       this.canvas.on("mouse:move", ({ e }) => {
         if (!this.panning || !(e instanceof MouseEvent)) return;
-        panViewport(this.canvas, e.movementX, e.movementY);
+        this.panViewportBy(e.movementX, e.movementY);
       }),
       this.canvas.on("mouse:up", ({ target, e }) => {
         // Only when object:modified did not already finalize+reset this gesture.
@@ -541,7 +558,7 @@ export class FabricEditorCore {
         cancelAnimationFrame(this.resizeFrame);
         this.resizeFrame = requestAnimationFrame(() => {
           if (this.destroyed) return;
-          this.zoom = fitViewport(this.canvas, this.doc, this.container);
+          this.resizeViewportForContainer();
           this.emit();
         });
       });
@@ -845,6 +862,7 @@ export class FabricEditorCore {
     this.canvas.setActiveObject(background);
     ensureLayerOrder(this.canvas);
     this.resetHistory();
+    this.viewportMode = "fit";
     this.zoom = fitViewport(this.canvas, this.doc, this.container);
     this.emit();
   }
@@ -955,7 +973,7 @@ export class FabricEditorCore {
       this.cropping = false;
       this.cropRatio = "free";
       this.cropTargetId = "";
-      this.zoom = fitViewport(this.canvas, this.doc, this.container);
+      this.resizeViewportForContainer();
       this.selectPreferredUnlockedImage();
       this.canvas.requestRenderAll();
       restored = true;
@@ -980,7 +998,7 @@ export class FabricEditorCore {
             this.cropping = false;
             this.cropRatio = "free";
             this.cropTargetId = "";
-            this.zoom = fitViewport(this.canvas, this.doc, this.container);
+            this.resizeViewportForContainer();
             this.selectPreferredUnlockedImage();
             this.canvas.requestRenderAll();
           }
@@ -1179,6 +1197,7 @@ export class FabricEditorCore {
       if (docChanged) {
         this.doc = clampDocument(remote.doc.width, remote.doc.height);
         this.canvasBackground = remote.canvasBackground;
+        this.viewportMode = "fit";
         this.zoom = fitViewport(canvas, this.doc, this.container);
       }
       restoreLockFlags(canvas);

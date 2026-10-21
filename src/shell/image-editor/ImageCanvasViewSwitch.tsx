@@ -6,7 +6,7 @@
  *
  * 规范 v2 §1（plugin-chrome X3）：画布顶部不许再画通栏。这组分段控件挪到
  * 画布**右下角**，与宿主的缩放控件（`[data-advanced-viewport-controls]`）
- * 同一条基线、同一套胶囊几何（h-14 / rounded-2xl / 同色边框与阴影），
+ * 同一条基线、同一套扁平几何（h-12 / rounded-xl / 轻阴影），
  * 排在缩放控件左侧。缩放控件的宽度由宿主决定，这里量它的实际宽度来定
  * 右侧留白；量不到（测试 / 首帧）时用一个够宽的保底值。
  */
@@ -76,7 +76,7 @@ export function ImageCanvasViewSwitch<TDocument>({
       data-testid="image-canvas-view-switch"
       data-canvas-view={state.mode}
       data-canvas-view-switch-placement="stage-bottom-right"
-      className="pointer-events-auto absolute bottom-3 flex h-14 shrink-0 items-center gap-1 rounded-2xl border border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-popover-bg,var(--card,#fff))] px-2 shadow-[var(--awb-shadow-floating,0_8px_28px_rgba(15,23,42,.12))]"
+      className="pointer-events-auto absolute bottom-3 flex h-10 shrink-0 items-center gap-1 rounded-xl border border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-popover-bg,var(--card,#fff))] px-1.5 shadow-sm"
       style={{ right: `${right}px`, zIndex: 2_147_483_010 }}
     >
       {choices.map((choice) => (

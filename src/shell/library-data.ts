@@ -120,6 +120,80 @@ export interface LibraryCloudReference {
   bytes?: number;
 }
 
+export type LibrarySortBy = "favorite" | "time" | "size";
+export type LibrarySortDirection = "asc" | "desc";
+export interface LibrarySort {
+  by: LibrarySortBy | "none";
+  direction: LibrarySortDirection;
+}
+
+/**
+ * Size for sorting comes only from the original/source payload declaration.
+ * Preview, full-viewer and thumbnail rendition sizes are deliberately excluded:
+ * they may be tiny posters or cached derivatives rather than the saved file.
+ */
+export function libraryItemSourceBytes(item: LibraryItem): number | null {
+  const meta = item.meta || {};
+  const candidates = [
+    meta.source_bytes,
+    meta.sourceByteSize,
+    meta.source_byte_size,
+    meta.source_size,
+    meta.original_bytes,
+    meta.originalByteSize,
+    meta.original_byte_size,
+    meta.original_size,
+    meta.file_bytes,
+    meta.uploaded_file_size,
+    meta.uploadedFileSize,
+    meta.file_size,
+    meta.fileSize,
+    item.artifact?.renditions.source?.byteSize,
+    meta.bytes,
+    meta.size,
+  ];
+  for (const candidate of candidates) {
+    if (
+      typeof candidate === "number" &&
+      Number.isFinite(candidate) &&
+      candidate >= 0
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/** Stable sort shared by Library's favorite/time/size controls. */
+export function sortLibraryItems(
+  items: readonly LibraryItem[],
+  sort: LibrarySort,
+): LibraryItem[] {
+  if (sort.by === "none") return [...items];
+  const sign = sort.direction === "asc" ? 1 : -1;
+  const value = (item: LibraryItem): number | null => {
+    if (sort.by === "favorite") return item.favorite ? 1 : 0;
+    if (sort.by === "size") return libraryItemSourceBytes(item);
+    const parsed = item.createdAt ? Date.parse(item.createdAt) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return [...items].sort((left, right) => {
+    const leftValue = value(left);
+    const rightValue = value(right);
+    if (leftValue === null || rightValue === null) {
+      if (leftValue === null && rightValue !== null) return 1;
+      if (rightValue === null && leftValue !== null) return -1;
+    } else if (leftValue !== rightValue) {
+      return (leftValue < rightValue ? -1 : 1) * sign;
+    }
+    const titleOrder = left.title.localeCompare(right.title);
+    if (titleOrder) return titleOrder;
+    return libraryItemIdentityKey(left).localeCompare(
+      libraryItemIdentityKey(right),
+    );
+  });
+}
+
 /**
  * A local fs.list summary has no cloud identity, so duplicate recognition is
  * deliberately limited to stable metadata already present in the cloud row:

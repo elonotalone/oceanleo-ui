@@ -1,3 +1,5 @@
+import { NavigatorLockAcquireTimeoutError } from "@supabase/supabase-js";
+
 /**
  * Serialize GoTrue refresh across tabs on the same device.
  *
@@ -14,24 +16,46 @@ export async function browserAuthLock<R>(
   const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
   if (!locks?.request) return fn();
 
-  const exclusive = { mode: "exclusive" as const };
-  if (acquireTimeout <= 0) {
-    return locks.request(name, exclusive, () => fn());
-  }
-
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), acquireTimeout);
+  const abort = acquireTimeout > 0 ? new AbortController() : null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  if (abort) timer = setTimeout(() => abort.abort(), acquireTimeout);
   try {
     return await locks.request(
       name,
-      { ...exclusive, signal: abort.signal },
-      () => fn(),
+      {
+        mode: "exclusive",
+        ...(acquireTimeout === 0 ? { ifAvailable: true } : {}),
+        ...(abort ? { signal: abort.signal } : {}),
+      },
+      (lock) => {
+        if (!lock) {
+          throw new NavigatorLockAcquireTimeoutError(
+            `Could not acquire auth refresh lock "${name}" immediately.`,
+          );
+        }
+        // The timeout limits acquisition only. Once this callback starts we
+        // own the lock, so aborting its signal could make another caller
+        // mistake a slow refresh for a stuck lock and run concurrently.
+        if (timer !== undefined) clearTimeout(timer);
+        return fn();
+      },
     );
-  } catch {
-    // Timed out or the previous holder vanished. Steal rather than refresh
-    // unlocked — unlocked is the multi-tab race that signs the person out.
-    return locks.request(name, { ...exclusive, steal: true }, () => fn());
+  } catch (caught) {
+    // Supabase's auto-refresh loop treats only this SDK error as an
+    // acquisition timeout. Keep callback/refresh failures untouched so they
+    // cannot be mistaken for lock contention or replayed.
+    const isAbortError =
+      caught !== null &&
+      typeof caught === "object" &&
+      "name" in caught &&
+      caught.name === "AbortError";
+    if (abort?.signal.aborted && isAbortError) {
+      throw new NavigatorLockAcquireTimeoutError(
+        `Acquiring auth refresh lock "${name}" timed out after ${acquireTimeout}ms.`,
+      );
+    }
+    throw caught;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }

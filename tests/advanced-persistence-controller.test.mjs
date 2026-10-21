@@ -54,7 +54,6 @@ function controllerFixture(overrides = {}) {
   const flushes = [];
   const records = [];
   const controller = new AdvancedPersistenceController({
-    debounceMs: 1_600,
     maxRetries: 0,
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
@@ -72,19 +71,66 @@ function controllerFixture(overrides = {}) {
   return { clock, controller, flushes, records, states };
 }
 
-test("debounce is measured from the latest edit revision", async () => {
+test("the default edit wait turns yellow immediately and flushes 500ms after the latest revision", async () => {
   const fixture = controllerFixture();
   fixture.controller.observe({ revision: 0, dirty: false });
   fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
-  await fixture.clock.advance(1_000);
+  assert.equal(fixture.controller.snapshot().state, "saving");
+  await fixture.clock.advance(300);
   fixture.controller.observe({ revision: 2, dirty: true, userEdited: true });
-  await fixture.clock.advance(1_599);
+  await fixture.clock.advance(499);
   assert.deepEqual(fixture.flushes, []);
   await fixture.clock.advance(1);
   await fixture.controller.whenIdle();
   assert.deepEqual(fixture.flushes, [2]);
   assert.deepEqual(fixture.records, [["version-2", 2]]);
   assert.equal(fixture.controller.snapshot().acknowledgedRevision, 2);
+  assert.equal(fixture.controller.snapshot().state, "saved");
+});
+
+test("dirty hydration without a person edit never schedules a save", async () => {
+  const fixture = controllerFixture();
+  fixture.controller.observe({ revision: 3, dirty: true });
+  assert.equal(fixture.controller.snapshot().state, "saved");
+  assert.equal(fixture.controller.hasScheduledWork(), false);
+  await fixture.clock.advance(5_000);
+  assert.deepEqual(fixture.flushes, []);
+  assert.equal(fixture.controller.snapshot().state, "saved");
+});
+
+test("only an exact local emergency restore can open the autosave gate without a person edit", async () => {
+  const fixture = controllerFixture();
+  fixture.controller.observe({ revision: 3, dirty: true, recoveredLocalDraft: true });
+  assert.equal(fixture.controller.snapshot().state, "saving");
+  await fixture.clock.advance(499);
+  assert.deepEqual(fixture.flushes, []);
+  await fixture.clock.advance(1);
+  await fixture.controller.whenIdle();
+  assert.deepEqual(fixture.flushes, [3]);
+  assert.equal(fixture.controller.snapshot().state, "saved");
+});
+
+test("saving stays yellow through the upload and session receipt", async () => {
+  const upload = deferred();
+  const sessionReceipt = deferred();
+  const fixture = controllerFixture({
+    flushRevision: async (revision) => {
+      fixture.flushes.push(revision);
+      return upload.promise;
+    },
+    recordSavedItem: async () => sessionReceipt.promise,
+  });
+  fixture.controller.observe({ revision: 0, dirty: false });
+  fixture.controller.observe({ revision: 1, dirty: true, userEdited: true });
+  await fixture.clock.advance(500);
+  await Promise.resolve();
+  assert.equal(fixture.controller.snapshot().state, "saving");
+  upload.resolve({ ok: true, item: { id: "saved-version" } });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(fixture.controller.snapshot().state, "saving");
+  sessionReceipt.resolve(true);
+  await fixture.controller.whenIdle();
   assert.equal(fixture.controller.snapshot().state, "saved");
 });
 

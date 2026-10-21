@@ -22,6 +22,7 @@ import {
   CollectionSearchField,
   CollectionViewOptions,
   CollectionViewToggle,
+  type CollectionSort,
   type CollectionViewOption,
 } from "./collection-chrome";
 
@@ -40,6 +41,9 @@ export interface LibraryToolbarProps {
   hideView?: boolean;
   /** 有就画在搜索和网格/列表之间（Manus「查看选项」）。 */
   viewOptions?: CollectionViewOption[];
+  sort?: CollectionSort;
+  onSortChange?: (sort: CollectionSort) => void;
+  sortBusy?: boolean;
 }
 
 /**
@@ -55,6 +59,9 @@ export function LibraryToolbar({
   leading,
   hideView = false,
   viewOptions,
+  sort,
+  onSortChange,
+  sortBusy,
 }: LibraryToolbarProps) {
   const searchId = useId();
   const chrome = (
@@ -65,7 +72,14 @@ export function LibraryToolbar({
         onChange={(value) => setSearch(value)}
         placeholder={placeholder}
       />
-      {viewOptions ? <CollectionViewOptions options={viewOptions} /> : null}
+      {viewOptions ? (
+        <CollectionViewOptions
+          options={viewOptions}
+          sort={sort}
+          onSortChange={onSortChange}
+          sortBusy={sortBusy}
+        />
+      ) : null}
       {hideView ? null : (
         <CollectionViewToggle view={view} onChange={(next) => setView(next)} />
       )}

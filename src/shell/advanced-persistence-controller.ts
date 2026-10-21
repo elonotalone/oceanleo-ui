@@ -84,20 +84,22 @@ export interface AdvancedPersistenceObserveInput {
   userEdited?: boolean;
   /** Alternative to `userEdited: true` when the shared generation is > 0. */
   userMutationGeneration?: number;
+  /** One exact revision restored from local emergency recovery, not server draft. */
+  recoveredLocalDraft?: boolean;
   itemKey?: string;
 }
 
 /**
- * Autosave may schedule only after an explicit user edit. `userEdited: false`
- * wins even if a generation is also passed. Omitted `userEdited` is false
- * unless `userMutationGeneration > 0`.
+ * Autosave may schedule only after an explicit user edit or an exact local
+ * emergency-recovery receipt. Generic load/hydration stays excluded.
  */
 export function persistenceObserveAllowsAutosave(
   input: Pick<
     AdvancedPersistenceObserveInput,
-    "userEdited" | "userMutationGeneration"
+    "userEdited" | "userMutationGeneration" | "recoveredLocalDraft"
   >,
 ): boolean {
+  if (input.recoveredLocalDraft === true) return true;
   if (input.userEdited === false) return false;
   if (input.userEdited === true) return true;
   return (input.userMutationGeneration ?? 0) > 0;
@@ -170,7 +172,10 @@ export class AdvancedPersistenceController<Item = unknown> {
 
   constructor(options: AdvancedPersistenceControllerOptions<Item>) {
     if (options.draft) this.draftController = new AdvancedDraftController(options);
-    this.debounceMs = Math.max(0, options.debounceMs ?? 1_600);
+    // Keep keyboard-heavy editors responsive without turning every keystroke
+    // into a save request. The editor already reports `saving` immediately;
+    // this is only the quiet window before the serialized flush starts.
+    this.debounceMs = Math.max(0, options.debounceMs ?? 500);
     this.maxRetries = Math.max(0, options.maxRetries ?? 3);
     this.retryDelays = options.retryDelays ?? [1_500, 4_000, 9_000];
     this.flushRevision = options.flushRevision;

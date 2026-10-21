@@ -206,8 +206,10 @@ const splitWorkspaceStubUrl = dataModule(`
 `);
 
 const gestureLayerStubUrl = dataModule(`
-  export function PluginChromeEditBarGestureLayer({ children }) {
-    return children;
+  import { Fragment, jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function PluginChromeEditBarGestureLayer({ children, documentSegment, trailing }) {
+    return jsxs(Fragment, { children: [children, documentSegment,
+      jsx("span", {"data-test-gesture-trailing": "", children: trailing})] });
   }
 `);
 const floatingToolbarStubUrl = dataModule(`
@@ -336,6 +338,51 @@ test("frame edit bar 右段恒渲染 data-edit-bar-agent", async () => {
   assert.ok(agentBtn, "AI 键必须存在");
   assert.equal(agentBtn.getAttribute("aria-pressed"), "false");
   await unmount();
+});
+
+test("chrome dock host reserves no row, keeps its sentinel, and carries AI in the shared trailing slot", async () => {
+  const { container, unmount } = await mountFrame({
+    children: React.createElement("div", { "data-test-stage": true }),
+  });
+  try {
+    const row = container.querySelector("[data-plugin-chrome-edit-bar]");
+    assert.ok(row);
+    assert.match(String(row.className), /h-0/);
+    assert.match(String(row.className), /min-h-0/);
+    assert.doesNotMatch(String(row.className), /border-b|bg-\[var\(--pchrome-surface\)\]|min-h-10/);
+    assert.equal(row.querySelectorAll("[data-edit-bar-dock-sentinel]").length, 1);
+    assert.equal(container.querySelectorAll("[data-edit-bar-agent]").length, 1);
+    assert.ok(container.querySelector("[data-edit-bar-agent]").closest("[data-test-gesture-trailing]"),
+      "frame must pass AI through the gesture layer trailing slot; this inline stub does not simulate a portal");
+  } finally {
+    await unmount();
+  }
+});
+
+test("panel close retains the same content through the exit interval instead of blanking then remounting", async () => {
+  const { container, unmount } = await mountFrame({
+    children: React.createElement("div", { "data-test-stage": true }),
+  });
+  try {
+    const agentBtn = container.querySelector("[data-edit-bar-agent]");
+    await act(async () => agentBtn.click());
+    const panel = container.querySelector("[data-plugin-chrome-panel='agent']");
+    const content = panel.querySelector("[data-test-agent-stub]");
+    assert.ok(panel && content);
+    await act(async () => agentBtn.click());
+    const closingPanel = container.querySelector("aside");
+    assert.ok(closingPanel);
+    assert.equal(closingPanel.querySelector("[data-test-agent-stub]"), content,
+      "the original content node must survive the first closed render");
+    assert.equal(closingPanel.getAttribute("data-plugin-chrome-panel"), null);
+    assert.equal(closingPanel.style.width, "0px");
+    assert.ok(closingPanel.className.includes("transition-[width,flex-basis,opacity]"));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+    assert.equal(closingPanel.querySelector("[data-test-agent-stub]"), null,
+      "content should unmount only after the exit interval");
+  } finally {
+    await unmount();
+  }
 });
 
 test("没有 agent-focus handler 时，点击 AI 键仍给出可用的 AI 面板（兜底）", async () => {
@@ -712,13 +759,12 @@ test("agent 抽屉的注册点全仓恰好两处，都在外壳侧", () => {
 
 test("stage 不许加 inert 或 pointer-events-none（P3 结构性承诺）", () => {
   const frameSrc = source("src/shell/plugin-chrome/PluginChromeFrame.tsx");
-  const stageBlock = frameSrc.slice(
-    frameSrc.indexOf("data-plugin-chrome-stage"),
-    frameSrc.indexOf("</main>", frameSrc.indexOf("data-plugin-chrome-stage")),
-  );
-  assert.doesNotMatch(stageBlock, /\binert\b/);
-  assert.doesNotMatch(stageBlock, /pointer-events-none/);
-  assert.doesNotMatch(stageBlock, /aria-hidden/);
+  const stages = [...frameSrc.matchAll(/<main\b[\s\S]*?<\/main>/g)]
+    .map(([stage]) => stage).filter((stage) => stage.includes("data-plugin-chrome-stage"));
+  assert.equal(stages.length, 2, "both hosted and standalone stages must stay interactive");
+  for (const stage of stages) {
+    assert.doesNotMatch(stage, /\binert\b|pointer-events-none|aria-hidden/);
+  }
 });
 
 // ── 反面 Canary：摘掉下列任一实现，对应断言必须红 ─────────────────
@@ -740,8 +786,8 @@ test("反面 Canary：允许插件 override agent 面板时必须红", () => {
 
 test("反面 Canary：stage 加遮挡时必须红", () => {
   const frameSrc = source("src/shell/plugin-chrome/PluginChromeFrame.tsx");
-  assert.doesNotMatch(
-    source("src/shell/plugin-chrome/PluginChromeFrame.tsx"),
-    /data-plugin-chrome-stage[\s\S]*pointer-events-none/,
-  );
+  const stages = [...frameSrc.matchAll(/<main\b[\s\S]*?<\/main>/g)]
+    .map(([stage]) => stage).filter((stage) => stage.includes("data-plugin-chrome-stage"));
+  assert.equal(stages.length, 2);
+  for (const stage of stages) assert.doesNotMatch(stage, /pointer-events-none/);
 });

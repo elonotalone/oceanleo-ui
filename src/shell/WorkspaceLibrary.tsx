@@ -102,6 +102,8 @@ export interface WorkspaceLibraryProps {
   hideToolbar?: boolean;
   /** Hosts that keep chrome outside this component hide it while a file is open. */
   onDetailOpenChange?: (open: boolean) => void;
+  /** Warm the typed editor route/source while its read-only preview is visible. */
+  onDetailItemChange?: (item: LibraryItem | null) => void;
   toolbarActions?: ReactNode;
   /** Manus view-options menu (e.g. 仅看收藏). Rendered by LibraryToolbar. */
   viewOptions?: CollectionViewOption[];
@@ -321,6 +323,7 @@ export function WorkspaceLibrary({
   pageTitle,
   hideToolbar = false,
   onDetailOpenChange,
+  onDetailItemChange,
   toolbarActions,
   viewOptions,
   siteId = "",
@@ -404,7 +407,10 @@ export function WorkspaceLibrary({
     useState(false);
   useEffect(() => {
     onDetailOpenChange?.(Boolean(selectedId));
-  }, [onDetailOpenChange, selectedId]);
+    const selectedItem = entries.find((entry) => entry.id === selectedId)
+      ?.libraryItem || null;
+    onDetailItemChange?.(selectedItem);
+  }, [entries, onDetailItemChange, onDetailOpenChange, selectedId]);
 
   const clearRestoreEntry = useCallback(() => setRestoreEntryId(""), []);
 

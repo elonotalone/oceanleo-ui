@@ -20,7 +20,6 @@ import {
   serializeEditBarDockState,
 } from "../src/shell/edit-bar-dock-state.ts";
 import {
-  DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX,
   clampFloatingToolbarToBounds,
   dockedFloatingToolbarPosition,
   isFloatingToolbarDockIntent,
@@ -526,22 +525,15 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     false,
     "overshoot alone must not dock while the toolbar is still below the band",
   );
-  // V5 website: short 56px dock + ~59px floating chrome → gap=-3 overlap.
-  // Docked placement must anchor above the stage with a small non-negative gap.
+  // Docked placement sits at the stage top; the sentinel is an overlay, not a
+  // reserved band that moves the editor frame.
   const docked = dockedFloatingToolbarPosition({
     layerLeft: 0,
     layerTop: 0,
-    dock: { left: 40, top: 52, right: 960, bottom: 108 },
-    stageTop: 108,
+    dock: { left: 40, top: 108, right: 960, bottom: 148 },
     toolbar: { width: 320, height: 59 },
   });
-  assert.equal(DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX, 2);
-  assert.equal(docked.y, 108 - 59 - DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX);
-  assert.equal(108 - (docked.y + 59), DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX);
-  assert.ok(
-    108 - (docked.y + 59) >= 0 && 108 - (docked.y + 59) <= 8,
-    "website edit-bar clearance must stay a few non-negative px above the frame",
-  );
+  assert.equal(docked.y, 108);
   const [floatingSource, controllerSource, inlineSource, splitSource, dockHostSource] =
     await Promise.all([
       readFile(
@@ -596,8 +588,9 @@ test("floating geometry is shell-bounded inside a clipped non-layout overlay", a
     ),
     /export function dockedFloatingToolbarPosition/,
   );
-  // 条总高 38，停靠带 min-h-10 / 哨兵 h-10。旧断言 min-h-16 锁的是 64px 旧带。
-  assert.match(dockHostSource, /min-h-10/);
+  // The host is a zero-height overlay; the absolute sentinel retains a 40px drop target.
+  assert.match(dockHostSource, /h-0 min-h-0/);
+  assert.doesNotMatch(dockHostSource, /min-h-10 border-b px-2 py-1/);
   assert.match(dockHostSource, /data-edit-bar-dock-sentinel[\s\S]{0,120}h-10/);
   assert.match(
     inlineSource,
@@ -618,19 +611,22 @@ function installDockHarnessRects() {
         width: 1000, height: 600, toJSON() {},
       };
     }
-    if (
-      this.hasAttribute("data-workspace-edit-bar-dock") ||
-      this.hasAttribute("data-edit-bar-dock-sentinel")
-    ) {
+    if (this.hasAttribute("data-edit-bar-dock-sentinel")) {
       return {
-        x: 100, y: 40, left: 100, top: 40, right: 900, bottom: 104,
-        width: 800, height: 64, toJSON() {},
+        x: 100, y: 40, left: 100, top: 40, right: 900, bottom: 80,
+        width: 800, height: 40, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-workspace-edit-bar-dock")) {
+      return {
+        x: 100, y: 40, left: 100, top: 40, right: 900, bottom: 40,
+        width: 800, height: 0, toJSON() {},
       };
     }
     if (this.hasAttribute("data-edit-bar-test-stage")) {
       return {
-        x: 0, y: 110, left: 0, top: 110, right: 1000, bottom: 600,
-        width: 1000, height: 490, toJSON() {},
+        x: 0, y: 40, left: 0, top: 40, right: 1000, bottom: 600,
+        width: 1000, height: 560, toJSON() {},
       };
     }
     if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
@@ -785,7 +781,9 @@ test("第一次按下进入移动模式：拖出、回停靠、Esc 取消、键�
     assert.equal(dock().dataset.dropHighlight, "true");
     assert.equal(dock().dataset.editBarDockCollapsed, "false");
     const crossingRect = bar().getBoundingClientRect();
-    const dockRect = dock().getBoundingClientRect();
+    const dockRect = dock()
+      .querySelector("[data-edit-bar-dock-sentinel]")
+      .getBoundingClientRect();
     assert.ok(
       crossingRect.top < dockRect.bottom && crossingRect.bottom > dockRect.top,
       "the moving bar must visibly cross the dock target",
@@ -1065,23 +1063,23 @@ test("discrete overshoot past the dock band still flies open and redocks", async
         width: 1350, height: 890, toJSON() {},
       };
     }
-    if (
-      this.hasAttribute("data-workspace-edit-bar-dock") ||
-      this.hasAttribute("data-edit-bar-dock-sentinel")
-    ) {
-      const collapsed =
-        this.getAttribute?.("data-edit-bar-dock-collapsed") === "true";
+    if (this.hasAttribute("data-edit-bar-dock-sentinel")) {
       const top = 201;
-      const height = collapsed ? 0 : 56;
       return {
-        x: 293, y: top, left: 293, top, right: 1643, bottom: top + (height || 56),
-        width: 1350, height: height || 56, toJSON() {},
+        x: 293, y: top, left: 293, top, right: 1643, bottom: top + 40,
+        width: 1350, height: 40, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-workspace-edit-bar-dock")) {
+      return {
+        x: 293, y: 201, left: 293, top: 201, right: 1643, bottom: 201,
+        width: 1350, height: 0, toJSON() {},
       };
     }
     if (this.hasAttribute("data-edit-bar-test-stage")) {
       return {
-        x: 293, y: 257, left: 293, top: 257, right: 1643, bottom: 1050,
-        width: 1350, height: 793, toJSON() {},
+        x: 293, y: 201, left: 293, top: 201, right: 1643, bottom: 1050,
+        width: 1350, height: 849, toJSON() {},
       };
     }
     if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
@@ -1286,7 +1284,10 @@ test("dock follows the action row and showDetail reveals console without exiting
     const dock = rightPane.querySelector("[data-workspace-edit-bar-dock]");
     assert.equal(header.nextElementSibling, dock);
     assert.equal(dock.parentElement, rightPane);
-    assert.equal(dock.getAttribute("aria-label"), "编辑栏停靠区");
+    assert.equal(dock.getAttribute("aria-label"), null);
+    assert.equal(dock.getAttribute("aria-hidden"), "true");
+    assert.equal(dock.getBoundingClientRect().height, 0);
+    assert.ok(dock.querySelector("[data-edit-bar-dock-sentinel]"));
     assert.equal(dock.dataset.editBarDockState, "docked");
     assert.equal(dock.hidden, false);
     // 2026-09-07 操作员：两栏标题上的「这一栏切大屏 / 恢复双栏」全屏键已删，
@@ -1297,6 +1298,8 @@ test("dock follows the action row and showDetail reveals console without exiting
     await click(rightPane.querySelector("[data-highlight-dock]"));
     assert.equal(dock.dataset.editBarDockState, "floating");
     assert.equal(dock.dataset.dropHighlight, "true");
+    assert.equal(dock.getAttribute("role"), "region");
+    assert.equal(dock.getAttribute("aria-label"), "编辑栏停靠区");
     assert.equal(
       dock.querySelector("[data-edit-bar-dock-placeholder]").textContent,
       "松开以固定编辑栏",
@@ -1354,16 +1357,16 @@ test("dock follows the action row and showDetail reveals console without exiting
   );
   assert.match(
     inline,
-    /data-workspace-pane=\"left\"[\s\S]*data-left-panel=\"tool-detail\"/,
+    /data-workspace-pane=\{fallbackDetail \? "left" : undefined\}[\s\S]*data-left-panel=\{fallbackDetail \? "tool-detail" : undefined\}/,
   );
 });
 
-test("docked website bar clears the stage/iframe by a few non-negative px", async () => {
+test("docked website bar overlays stage top without reserving a host band", async () => {
   window.localStorage.clear();
   const storageKey = "test:edit-bar:website-adjacency";
   const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
-  // Reproduce V5 geometry: short dock band under taller floating chrome, with
-  // the website iframe flush to the stage top (viewportTop === frameTop).
+  // The zero-height host's sentinel is flush with the stage top and retains a
+  // 40px drop target without pushing the iframe or changing page geometry.
   window.HTMLElement.prototype.getBoundingClientRect = function getRect() {
     if (this.hasAttribute("data-edit-bar-test-root")) {
       return {
@@ -1371,13 +1374,16 @@ test("docked website bar clears the stage/iframe by a few non-negative px", asyn
         width: 1000, height: 600, toJSON() {},
       };
     }
-    if (
-      this.hasAttribute("data-workspace-edit-bar-dock") ||
-      this.hasAttribute("data-edit-bar-dock-sentinel")
-    ) {
+    if (this.hasAttribute("data-edit-bar-dock-sentinel")) {
       return {
-        x: 40, y: 52, left: 40, top: 52, right: 960, bottom: 108,
-        width: 920, height: 56, toJSON() {},
+        x: 40, y: 108, left: 40, top: 108, right: 960, bottom: 148,
+        width: 920, height: 40, toJSON() {},
+      };
+    }
+    if (this.hasAttribute("data-workspace-edit-bar-dock")) {
+      return {
+        x: 40, y: 108, left: 40, top: 108, right: 960, bottom: 108,
+        width: 920, height: 0, toJSON() {},
       };
     }
     if (this.hasAttribute("data-edit-bar-test-stage")) {
@@ -1459,14 +1465,16 @@ test("docked website bar clears the stage/iframe by a few non-negative px", asyn
     const match = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(transform);
     assert.ok(match, `expected docked translate, got ${transform}`);
     const barTop = Number(match[2]);
-    const barBottom = barTop + 59;
     const frameTop = 108;
-    const gap = frameTop - barBottom;
-    assert.ok(
-      gap >= 0 && gap <= 8,
-      `expected website bar clearance 0–8px, got gap=${gap} (barBottom=${barBottom})`,
+    assert.equal(barTop, frameTop);
+    assert.equal(
+      mounted.container.querySelector("[data-workspace-edit-bar-dock]").getBoundingClientRect().height,
+      0,
     );
-    assert.equal(gap, DOCKED_EDIT_BAR_STAGE_CLEARANCE_PX);
+    assert.equal(
+      mounted.container.querySelector("[data-edit-bar-dock-sentinel]").getBoundingClientRect().height,
+      40,
+    );
   } finally {
     window.HTMLElement.prototype.getBoundingClientRect = originalRect;
     await mounted.unmount();
@@ -1484,16 +1492,22 @@ test("standalone local dock host pins under the action row without SplitWorkspac
         width: 1000, height: 600, toJSON() {},
       };
     }
+    if (this.hasAttribute("data-edit-bar-dock-sentinel")) {
+      return {
+        x: 40, y: 40, left: 40, top: 40, right: 960, bottom: 80,
+        width: 920, height: 40, toJSON() {},
+      };
+    }
     if (this.hasAttribute("data-workspace-edit-bar-dock")) {
       return {
-        x: 40, y: 40, left: 40, top: 40, right: 960, bottom: 100,
-        width: 920, height: 60, toJSON() {},
+        x: 40, y: 40, left: 40, top: 40, right: 960, bottom: 40,
+        width: 920, height: 0, toJSON() {},
       };
     }
     if (this.hasAttribute("data-edit-bar-test-stage")) {
       return {
-        x: 40, y: 120, left: 40, top: 120, right: 960, bottom: 560,
-        width: 920, height: 440, toJSON() {},
+        x: 40, y: 40, left: 40, top: 40, right: 960, bottom: 560,
+        width: 920, height: 520, toJSON() {},
       };
     }
     if (this.hasAttribute("data-workspace-edit-bar-toolbar")) {
@@ -1537,11 +1551,17 @@ test("standalone local dock host pins under the action row without SplitWorkspac
         { "data-advanced-action-row": true },
         "action row",
       ),
-      React.createElement("div", {
-        ref: dockRef,
-        "data-workspace-edit-bar-dock": true,
-        "data-edit-bar-dock-state": controller.mode,
-      }),
+      React.createElement(
+        "div",
+        {
+          ref: dockRef,
+          "data-workspace-edit-bar-dock": true,
+          "data-edit-bar-dock-state": controller.mode,
+        },
+        React.createElement("span", {
+          "data-edit-bar-dock-sentinel": true,
+        }),
+      ),
       React.createElement("div", {
         ref: stageRef,
         "data-edit-bar-test-stage": true,
@@ -1567,6 +1587,11 @@ test("standalone local dock host pins under the action row without SplitWorkspac
     );
     assert.ok(dock);
     assert.equal(dock.dataset.editBarDockState, "docked");
+    assert.equal(dock.getBoundingClientRect().height, 0);
+    assert.equal(
+      dock.querySelector("[data-edit-bar-dock-sentinel]").getBoundingClientRect().height,
+      40,
+    );
     const dockedToolbar = mounted.container.querySelector(
       "[data-workspace-docked-toolbar]",
     );

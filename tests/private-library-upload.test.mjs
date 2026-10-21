@@ -46,8 +46,12 @@ test("private upload failure never falls back to a public route", async () => {
     const result = await uploadFile(new File(["private"], "filing.md"), { privateUpload: true });
     assert.equal(result.ok, false);
     assert.equal(result.status, 502);
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "https://gateway.test/v1/database/private-upload");
+    assert.equal(result.retryable, true);
+    assert.equal(calls.length, 3, "bounded transient retries use the same private route");
+    assert.ok(
+      calls.every((call) => call.url === "https://gateway.test/v1/database/private-upload"),
+      "a private upload must never fall back to the public route",
+    );
   });
 });
 

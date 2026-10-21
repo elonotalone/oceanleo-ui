@@ -558,6 +558,7 @@ test("素材库 legacy：一次只拉一页 60 行（不再是 500），网格�
       ...SHELL_OVERRIDES,
       "./artifact-client": dataModule(ARTIFACT_CLIENT_SOURCE),
       "../lib/auth/client": dataModule(`
+        export const AUTH_STATE_EVENT = "oceanleo:auth-state";
         const ROWS = Array.from({ length: 400 }, (_, index) => ({
           id: "art-" + index,
           title: "素材 " + index,
@@ -591,6 +592,7 @@ test("素材库 legacy：一次只拉一页 60 行（不再是 500），网格�
         export function cachedAccessToken(){ return "t"; }
         export async function isSignedIn(){ return true; }
         export async function getUserId(){ return "u1"; }
+        export async function getUserIdSnapshot(){ return { available: true, userId: "u1" }; }
         export async function getUserEmail(){ return "u@example.com"; }
         export const oceanleoConfigured = true;
       `),

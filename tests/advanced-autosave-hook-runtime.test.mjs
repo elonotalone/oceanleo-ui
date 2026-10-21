@@ -9,7 +9,7 @@
 // 是串行的；hook 这一层——把 React 的 dirty/revision 变化、控制器重建（StrictMode /
 // 依赖变化会 dispose 再 new 一个）、直接调 `flushLatest` 的关闭闸——从来没有运行时判据。
 //
-// 这里用真 React 树 + 真控制器（不注 fake timer，等真实 1.6 s 防抖）读三件事：
+// 这里用真 React 树 + 真控制器（不注 fake timer，等真实 500 ms 防抖）读三件事：
 //   1. 快速连打 5 次 dirty/revision → `flush` 只被叫 1 次，`recordSavedItem` 只 1 次；
 //   2. 在途期间再 dirty 两次 → 总 flush 2 次（不是 3 次），第二次拿到的是最新 revision；
 //   3. 同一 revision 的第二个控制器（依赖抖动导致 dispose + 重建）不再发第二份 flush；
@@ -93,8 +93,8 @@ async function mount(element) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** 真控制器的防抖是 1 600 ms；多留 400 ms 给 flush 的 promise 链。 */
-const DEBOUNCE_SETTLE_MS = 2_000;
+/** 真控制器默认防抖是 500 ms；多留 300 ms 给 flush 的 promise 链。 */
+const DEBOUNCE_SETTLE_MS = 800;
 
 /* --------------------------------- 台架 ---------------------------------- */
 
@@ -204,9 +204,9 @@ test("在途 flush 期间再改两次：总 flush 2 次，第二次是最新 rev
     React.createElement(Probe, { bed, initial: { dirty: false, revision: 0 } }),
   );
   await drive(bed, tree, { dirty: true, revision: 1 });
-  // 等第一次 flush 真正起飞（防抖 1.6 s）……
+  // 等第一次 flush 真正起飞（防抖 500 ms）……
   await act(async () => {
-    await sleep(1_700);
+    await sleep(650);
   });
   assert.equal(bed.flushCalls.length, 1, "第一次 flush 应已在途");
   // ……在它还在网络上时再落两笔。

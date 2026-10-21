@@ -65,6 +65,8 @@ import {
   imageStageShowsSourceLoadOverlay,
 } from "../image-editor/image-source-ready";
 import { imageRouteChrome } from "../image-editor/image-editor-ui-offerings";
+import { IMAGE_EDIT_DRAFT_SCHEMA } from "../image-editor/editor-persistence";
+import { advancedRecoveryKey } from "../advanced-recovery-store";
 import type { EditorMode } from "../editor-protocol-types";
 
 export function ImageRoute({
@@ -578,6 +580,14 @@ export function ImageRoute({
           dirty: editor.dirty && collab.saveGate && imageAdmitted.ok,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
+          recovery: {
+            draftSchema: IMAGE_EDIT_DRAFT_SCHEMA,
+            key: advancedRecoveryKey("image", activeItem),
+            ready: imageAdmitted.ok && editor.sourceReady,
+            capture: editor.captureRecovery,
+            captureRevision: editor.captureRecoveryRevision,
+            restore: editor.restoreRecovery,
+          },
         },
       }}
       onClose={onClose}

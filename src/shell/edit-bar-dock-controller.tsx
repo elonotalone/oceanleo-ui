@@ -75,6 +75,23 @@ function eventElement(target: EventTarget | null): Element | null {
   return element?.closest("button, [role='button']") || element;
 }
 
+function isToolbarPortalTarget(
+  target: EventTarget | null,
+  toolbar: HTMLElement | null,
+): boolean {
+  const element = target instanceof Element
+    ? target
+    : target instanceof Node ? target.parentElement : null;
+  if (!element) return false;
+  // React portal events bubble through their logical toolbar parent despite
+  // living outside it in the DOM. Exclude only those outside targets and the
+  // explicitly marked menu surfaces; ordinary pill controls remain handles.
+  return Boolean(
+    element.closest("[data-anchored-popover], [data-selection-overflow-control]") ||
+      (toolbar && !toolbar.contains(element)),
+  );
+}
+
 function dragStartThreshold(pointerType: string): number {
   return pointerType === "touch" ? DRAG_START_TOUCH_PX : DRAG_START_PX;
 }
@@ -661,16 +678,14 @@ export function useEditBarDockController({
       const stage = stageRef.current?.getBoundingClientRect();
       const dockBounds = readDockTargetBounds();
       if (targetMode === "docked" && dockBounds && stage && layer && toolbar) {
-        // Sit immediately above the stage/iframe. Vertical centering inside a
-        // short dock sentinel let a taller SelectionToolbar chrome overlap the
-        // website frame (V5 WEBSITE_EDIT_BAR_MISPLACED gap=-3).
-        // Chrome clamp still wins: a 102px bar must not cover the page row.
+        // The dock host is a zero-height overlay at the stage top, not a
+        // reserved strip. Place the bar on that edge; clamp still keeps it
+        // below any plugin page/header rows.
         return finalize(
           dockedFloatingToolbarPosition({
             layerLeft: layer.left,
             layerTop: layer.top,
             dock: dockBounds,
-            stageTop: stage.top,
             toolbar: { width: toolbar.width, height: toolbar.height },
           }),
         );
@@ -1459,6 +1474,12 @@ export function useEditBarDockController({
       if (event.pointerType === "mouse" && event.button !== 0) return;
       if (presentationRef.current === "collapsed") return;
       if (dragRef.current) return;
+      // SelectionToolbar's overflow is a React portal. Its pointer events still
+      // bubble through this toolbar in the React tree even though the popover
+      // lives outside toolbarRef in the DOM. Capturing those external menu
+      // presses retargets their click and can swallow the command. Keep the
+      // established gesture policy for controls physically inside the pill.
+      if (isToolbarPortalTarget(event.target, toolbarRef.current)) return;
       const now = eventNow(event);
       event.stopPropagation();
       attachArmedSession(

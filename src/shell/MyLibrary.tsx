@@ -9,7 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { AUTH_STATE_EVENT, getUserId } from "../lib/auth/client";
+import {
+  AUTH_STATE_EVENT,
+  getUserIdSnapshot,
+  type AuthStateEventDetail,
+} from "../lib/auth/client";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
 import {
@@ -32,6 +36,8 @@ import {
   inferLibraryKind,
   isDurableLibraryItem,
   libraryItemIdentityKey,
+  sortLibraryItems,
+  type LibrarySort,
   type LibraryItem,
   type LibraryKind,
 } from "./library-data";
@@ -65,6 +71,7 @@ import {
 } from "./WorkspaceLibrary";
 import { adoptSavedEditorItem } from "./advanced-session";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
@@ -194,6 +201,12 @@ function retainableLibraryReadFailure(result: {
 
 type LibraryPageResult = Awaited<ReturnType<typeof listMyArtifacts>>;
 
+const DEFAULT_LIBRARY_SORT: LibrarySort = { by: "none", direction: "desc" };
+const LIBRARY_SORT_PAGE_SIZE = 100;
+const MAX_LIBRARY_SORT_ROWS_PER_SCOPE = 10_000;
+const MAX_LIBRARY_SORT_PAGES =
+  MAX_LIBRARY_SORT_ROWS_PER_SCOPE / LIBRARY_SORT_PAGE_SIZE;
+
 function rejectedLibraryPage(reason: unknown): LibraryPageResult {
   return {
     ok: false,
@@ -219,6 +232,134 @@ function libraryPageFromSettled(
 ): LibraryPageResult | null {
   if (settled.status === "fulfilled") return settled.value;
   return rejectedLibraryPage(settled.reason);
+}
+
+async function collectCompleteLibraryPages(
+  firstPage: LibraryPageResult,
+  fetchPage: (offset: number, signal: AbortSignal) => Promise<LibraryPageResult>,
+  ownerPrincipalId: string,
+  signal: AbortSignal,
+): Promise<LibraryItem[]> {
+  if (!firstPage.ok || !firstPage.data) {
+    throw new Error(libraryFailureDiagnostic(firstPage) || "我的库暂时无法读取。");
+  }
+  if (firstPage.data.ownerPrincipalId !== ownerPrincipalId) {
+    throw new Error("列表归属与当前账号不一致；未对结果排序。");
+  }
+  const expectedTotal = firstPage.data.total;
+  if (
+    typeof expectedTotal !== "number" ||
+    expectedTotal < 0 ||
+    expectedTotal > MAX_LIBRARY_SORT_ROWS_PER_SCOPE
+  ) {
+    throw new Error("列表规模超过完整排序上限；未对部分结果排序。");
+  }
+
+  const items: LibraryItem[] = [];
+  const seenArtifactIds = new Set<string>();
+  const accountPage = (data: NonNullable<LibraryPageResult["data"]>) => {
+    const rawRows =
+      data.items.length +
+      (data.invalidItems?.length || 0) +
+      (data.diagnostics?.omittedCount || 0);
+    for (const item of data.items) {
+      if (!isDurableLibraryItem(item)) {
+        throw new Error("完整排序页含非 durable 条目；未对部分结果排序。");
+      }
+      const identity = `artifact:${item.artifactId}`;
+      if (seenArtifactIds.has(identity)) {
+        throw new Error("列表分页出现重叠条目；未对部分结果排序。");
+      }
+      seenArtifactIds.add(identity);
+      items.push(item);
+    }
+    for (const invalid of data.invalidItems || []) {
+      const identity = `artifact:${invalid.artifactId}`;
+      if (seenArtifactIds.has(identity)) {
+        throw new Error("列表分页出现重叠坏条目；未对部分结果排序。");
+      }
+      seenArtifactIds.add(identity);
+    }
+    if (!Number.isSafeInteger(rawRows) || rawRows < 0) {
+      throw new Error("列表页行数无效；未对部分结果排序。");
+    }
+    return rawRows;
+  };
+  let observedRows = accountPage(firstPage.data);
+  let page = firstPage;
+  let offset = 0;
+  let pages = 1;
+  while (page.data && page.data.nextCursor !== null) {
+    if (signal.aborted) throw new Error("列表排序已取消。");
+    if (pages >= MAX_LIBRARY_SORT_PAGES) {
+      throw new Error("列表页数超过完整排序上限；未对部分结果排序。");
+    }
+    const pageRows =
+      page.data.items.length +
+      (page.data.invalidItems?.length || 0) +
+      (page.data.diagnostics?.omittedCount || 0);
+    const expectedNextOffset = offset + pageRows;
+    const nextOffset = Number(page.data.nextCursor);
+    if (
+      !Number.isSafeInteger(nextOffset) ||
+      pageRows <= 0 ||
+      nextOffset !== expectedNextOffset ||
+      nextOffset >= expectedTotal
+    ) {
+      throw new Error("列表分页游标或行数不连续；未对部分结果排序。");
+    }
+    const next = await fetchPage(nextOffset, signal);
+    if (!next.ok || !next.data) {
+      throw new Error(libraryFailureDiagnostic(next) || "列表分页未能完整读取。");
+    }
+    if (
+      next.data.ownerPrincipalId !== ownerPrincipalId ||
+      next.data.total !== expectedTotal
+    ) {
+      throw new Error("排序期间列表归属或总数发生变化；未合并部分结果。");
+    }
+    observedRows += accountPage(next.data);
+    offset = nextOffset;
+    page = next;
+    pages += 1;
+  }
+  if (observedRows !== expectedTotal) {
+    throw new Error("列表分页提前结束；未对部分结果排序。");
+  }
+  return items;
+}
+
+async function collectCompleteLibrarySnapshot(
+  mineFirst: LibraryPageResult,
+  favoritesFirst: LibraryPageResult,
+  ownerPrincipalId: string,
+  signal: AbortSignal,
+): Promise<{ mine: LibraryItem[]; favorites: LibraryItem[] }> {
+  if (
+    !mineFirst.data ||
+    !favoritesFirst.data ||
+    mineFirst.data.ownerPrincipalId !== ownerPrincipalId ||
+    favoritesFirst.data.ownerPrincipalId !== ownerPrincipalId
+  ) {
+    throw new Error("列表归属与当前账号不一致；未对结果排序。");
+  }
+  const [mine, favorites] = await Promise.all([
+    collectCompleteLibraryPages(
+      mineFirst,
+      (offset, pageSignal) =>
+        listMyArtifacts({ offset, limit: LIBRARY_SORT_PAGE_SIZE, signal: pageSignal }),
+      ownerPrincipalId,
+      signal,
+    ),
+    collectCompleteLibraryPages(
+      favoritesFirst,
+      (offset, pageSignal) =>
+        listFavoriteArtifacts({ offset, limit: LIBRARY_SORT_PAGE_SIZE, signal: pageSignal }),
+      ownerPrincipalId,
+      signal,
+    ),
+  ]);
+  return { mine, favorites };
 }
 
 /** Mixed `/v1/library/mine` is newest-first across all kinds, so the first
@@ -270,18 +411,6 @@ function pinnedMineItemsFromPage(
     items: result.data.items,
     nextCursor: result.data.nextCursor,
   };
-}
-
-function libraryPageAuthorityError(
-  result: LibraryPageResult | null,
-  ownerPrincipalId: string,
-): boolean {
-  return Boolean(
-    result &&
-      ((result.ok && !result.data) ||
-        (!result.ok && libraryAuthorityLost(result)) ||
-        (result.data && result.data.ownerPrincipalId !== ownerPrincipalId)),
-  );
 }
 
 function mergeOwnedMineItems(
@@ -568,6 +697,18 @@ export function MyLibrary({
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasUsableLibrarySnapshot, setHasUsableLibrarySnapshot] =
+    useState(false);
+  const hasUsableLibrarySnapshotRef = useRef(false);
+  const [librarySort, setLibrarySort] =
+    useState<LibrarySort>(DEFAULT_LIBRARY_SORT);
+  const librarySortRef = useRef(librarySort);
+  const updateLibrarySort = useCallback((nextSort: LibrarySort) => {
+    librarySortRef.current = nextSort;
+    setLibrarySort(nextSort);
+  }, []);
+  const [sortLoading, setSortLoading] = useState(false);
+  const [sortWarning, setSortWarning] = useState("");
   const [authRequired, setAuthRequired] = useState(false);
   const [failed, setFailed] = useState(false);
   const [failureStatus, setFailureStatus] = useState<number | undefined>();
@@ -587,6 +728,7 @@ export function MyLibrary({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [retryableUploadFiles, setRetryableUploadFiles] = useState<File[]>([]);
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
   // 「预览&编辑」深链指名的那一份。官方模板素材不属于当前用户，不会出现在 `items`
@@ -664,6 +806,9 @@ export function MyLibrary({
   ];
 
   const requestEpochRef = useRef(0);
+  const sortEpochRef = useRef(0);
+  const sortAbortRef = useRef<AbortController | null>(null);
+  const completeSortOwnerRef = useRef("");
   const loadAbortRef = useRef<AbortController | null>(null);
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const favoritesOwnerRef = useRef("");
@@ -684,8 +829,17 @@ export function MyLibrary({
   }, [favoriteItems, ownedItems]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
+    sortAbortRef.current?.abort();
+    sortAbortRef.current = null;
+    sortEpochRef.current += 1;
+    completeSortOwnerRef.current = "";
     setOwnedItems([]);
     setFavoriteItems([]);
+    hasUsableLibrarySnapshotRef.current = false;
+    setHasUsableLibrarySnapshot(false);
+    updateLibrarySort(DEFAULT_LIBRARY_SORT);
+    setSortLoading(false);
+    setSortWarning("");
     setOwnerPrincipalId("");
     ownerPrincipalIdRef.current = "";
     setNextCursor(null);
@@ -700,9 +854,15 @@ export function MyLibrary({
     // keep the already-restored item during a list transport/schema failure.
     setRestoreGeneration((current) => current + 1);
     favoritesOwnerRef.current = "";
-  }, [clearPreviewIntent]);
+  }, [clearPreviewIntent, updateLibrarySort]);
 
   const load = useCallback(async () => {
+    sortAbortRef.current?.abort();
+    sortAbortRef.current = null;
+    sortEpochRef.current += 1;
+    let requestedSort = librarySortRef.current;
+    setSortLoading(requestedSort.by !== "none");
+    setSortWarning("");
     loadAbortRef.current?.abort();
     loadMoreAbortRef.current?.abort();
     const controller = new AbortController();
@@ -746,22 +906,46 @@ export function MyLibrary({
       rejectedLibraryPage(undefined);
     const verifiedAuthUserId = authUserIdRef.current;
     if (!mineResult.ok || !mineResult.data) {
+      let sameVerifiedAccount = hasUsableLibrarySnapshotRef.current;
+      if (hasUsableLibrarySnapshotRef.current) {
+        const currentSnapshot = await getUserIdSnapshot();
+        if (controller.signal.aborted || epoch !== requestEpochRef.current) {
+          return;
+        }
+        if (currentSnapshot.available) {
+          if (verifiedAuthUserId) {
+            sameVerifiedAccount =
+              currentSnapshot.userId === verifiedAuthUserId;
+          } else {
+            sameVerifiedAccount = currentSnapshot.userId !== null;
+          }
+          authUserIdRef.current = currentSnapshot.userId;
+        }
+      }
       const mayRetainPreview = Boolean(
-        retainableLibraryReadFailure(mineResult) &&
+        sameVerifiedAccount &&
+          retainableLibraryReadFailure(mineResult) &&
           verifiedAuthUserId &&
           previewRestoreRef.current?.principalId === verifiedAuthUserId,
       );
-      if (libraryAuthorityLost(mineResult)) {
+      const keepVerifiedCache = Boolean(
+        sameVerifiedAccount &&
+          hasUsableLibrarySnapshotRef.current &&
+          (mineResult.status === 401 ||
+            retainableLibraryReadFailure(mineResult)),
+      );
+      if (libraryAuthorityLost(mineResult) && !keepVerifiedCache) {
         clearLibraryAuthority(mayRetainPreview ? verifiedAuthUserId! : "");
-      } else if (!mayRetainPreview) {
+      } else if (!mayRetainPreview && !keepVerifiedCache) {
         clearPreviewIntent();
         setRestoreGeneration((current) => current + 1);
       }
-      setAuthRequired(mineResult.status === 401);
-      setFailed(mineResult.status !== 401);
+      setAuthRequired(mineResult.status === 401 && !keepVerifiedCache);
+      setFailed(keepVerifiedCache || mineResult.status !== 401);
       setFailureStatus(mineResult.status);
       setFailureMessage(libraryFailureDiagnostic(mineResult));
       setFavoriteWarning("");
+      setSortLoading(false);
       setLoading(false);
       return;
     }
@@ -778,19 +962,36 @@ export function MyLibrary({
       setLoading(false);
       return;
     }
+    const priorOwnerPrincipalId = ownerPrincipalIdRef.current;
+    if (
+      priorOwnerPrincipalId &&
+      priorOwnerPrincipalId !== mineOwnerPrincipalId
+    ) {
+      // The authoritative API owner changed without an auth event. Treat it as
+      // an account boundary before adopting any rows from the new principal.
+      clearLibraryAuthority();
+      requestedSort = DEFAULT_LIBRARY_SORT;
+    }
+    // A successful, owner-verified /mine page is a usable list snapshot. A
+    // transient refresh failure may keep it visible, but a category-only
+    // recovery page is never promoted to a complete Library cache.
+    hasUsableLibrarySnapshotRef.current = true;
+    setHasUsableLibrarySnapshot(true);
     reconcilePreviewPrincipal(mineOwnerPrincipalId);
     if (!favoritesResult.ok || !favoritesResult.data) {
-      if (libraryAuthorityLost(favoritesResult)) {
-        clearLibraryAuthority(
-          retainableLibraryReadFailure(favoritesResult) && verifiedAuthUserId &&
-            previewRestoreRef.current?.principalId === verifiedAuthUserId
-            ? verifiedAuthUserId
-            : "",
-        );
-        setAuthRequired(favoritesResult.status === 401);
-        setFailed(favoritesResult.status !== 401);
-        setFailureStatus(favoritesResult.status);
+      if (
+        requestedSort.by !== "none" &&
+        hasUsableLibrarySnapshotRef.current &&
+        priorOwnerPrincipalId === mineOwnerPrincipalId
+      ) {
+        // A failed auxiliary favorites request must not replace a previously
+        // complete same-owner snapshot with only the first page.
+        setAuthRequired(false);
+        setFailed(true);
+        setFailureStatus(favoritesResult.status || 503);
         setFailureMessage(libraryFailureDiagnostic(favoritesResult));
+        setFavoriteWarning(favoriteRefreshWarning(favoritesResult));
+        setSortLoading(false);
         setLoading(false);
         return;
       }
@@ -825,6 +1026,7 @@ export function MyLibrary({
       setFailureStatus(undefined);
       setFailureMessage("");
       setFavoriteWarning(favoriteRefreshWarning(favoritesResult));
+      setSortLoading(false);
       setLoading(false);
       return;
     }
@@ -842,6 +1044,41 @@ export function MyLibrary({
       setLoading(false);
       return;
     }
+    let completePages: { mine: LibraryItem[]; favorites: LibraryItem[] } | null = null;
+    if (requestedSort.by !== "none") {
+      try {
+        completePages = await collectCompleteLibrarySnapshot(
+          mineResult,
+          favoritesResult,
+          mineOwnerPrincipalId,
+          controller.signal,
+        );
+      } catch (caught) {
+        if (controller.signal.aborted || epoch !== requestEpochRef.current) {
+          return;
+        }
+        // Keep the prior list and sort intact. A refresh is not allowed to
+        // downgrade an established full snapshot to its newest page.
+        setFailed(true);
+        setFailureStatus(502);
+        setFailureMessage(
+          caught instanceof Error
+            ? caught.message
+            : "未能完整刷新列表。",
+        );
+        setSortWarning(
+          caught instanceof Error
+            ? caught.message
+            : "未能完整刷新列表；保留上次成功的排序快照。",
+        );
+        setSortLoading(false);
+        setLoading(false);
+        return;
+      }
+      if (controller.signal.aborted || epoch !== requestEpochRef.current) {
+        return;
+      }
+    }
     setAuthRequired(false);
     setFailed(false);
     setFailureStatus(undefined);
@@ -857,22 +1094,47 @@ export function MyLibrary({
     );
     setOwnerPrincipalId(mineOwnerPrincipalId);
     ownerPrincipalIdRef.current = mineOwnerPrincipalId;
-    setOwnedItems(
-      mergeOwnedMineItems(
-        [...documentPage.items, ...pdfPage.items],
-        mineResult.data.items,
-      ),
-    );
-    setFavoriteItems(dedupeDurableItems(favoritesResult.data.items));
-    setNextCursor(mineResult.data.nextCursor);
-    setPinnedNextCursors({
-      document: documentPage.nextCursor,
-      pdf: pdfPage.nextCursor,
-    });
-    setFavoriteNextCursor(favoritesResult.data.nextCursor);
+    if (completePages) {
+      const favoriteKeys = new Set(
+        completePages.favorites.map(libraryItemIdentityKey),
+      );
+      setOwnedItems(
+        dedupeDurableItems(
+          completePages.mine.map((item) =>
+            favoriteKeys.has(libraryItemIdentityKey(item))
+              ? withFavoriteState(item, true)
+              : item,
+          ),
+        ),
+      );
+      setFavoriteItems(dedupeDurableItems(completePages.favorites));
+      setNextCursor(null);
+      setPinnedNextCursors(EMPTY_PINNED_MINE_CURSORS);
+      setFavoriteNextCursor(null);
+      completeSortOwnerRef.current = mineOwnerPrincipalId;
+    } else {
+      setOwnedItems(
+        mergeOwnedMineItems(
+          [...documentPage.items, ...pdfPage.items],
+          mineResult.data.items,
+        ),
+      );
+      setFavoriteItems(dedupeDurableItems(favoritesResult.data.items));
+      setNextCursor(mineResult.data.nextCursor);
+      setPinnedNextCursors({
+        document: documentPage.nextCursor,
+        pdf: pdfPage.nextCursor,
+      });
+      setFavoriteNextCursor(favoritesResult.data.nextCursor);
+      completeSortOwnerRef.current = "";
+    }
     favoritesOwnerRef.current = mineOwnerPrincipalId;
+    setSortLoading(false);
     setLoading(false);
-  }, [clearLibraryAuthority, reconcilePreviewPrincipal]);
+  }, [
+    clearLibraryAuthority,
+    reconcilePreviewPrincipal,
+  ]);
 
   useEffect(() => {
     void load();
@@ -880,22 +1142,17 @@ export function MyLibrary({
 
   useEffect(() => {
     let active = true;
-    const syncAuth = async (boundary: boolean) => {
-      const syncEpoch = ++authSyncEpochRef.current;
-      if (boundary) {
-        // Clear synchronously before looking up the new identity. This also
-        // bumps restoreGeneration, so a prior user's delayed detail GET cannot
-        // repopulate the preview after an account switch or logout.
-        loadAbortRef.current?.abort();
-        loadMoreAbortRef.current?.abort();
-        requestEpochRef.current += 1;
-        clearLibraryAuthority();
-        authUserIdRef.current = undefined;
-      }
-      const nextUserId = await getUserId().catch(() => null);
-      if (!active || syncEpoch !== authSyncEpochRef.current) return;
+    const applyAuthIdentity = (
+      nextUserId: string | null,
+      eventName?: string,
+    ) => {
       const previousUserId = authUserIdRef.current;
-      if (previousUserId !== undefined && previousUserId !== nextUserId) {
+      const boundary =
+        (previousUserId !== undefined && previousUserId !== nextUserId) ||
+        eventName === "SIGNED_OUT";
+      if (boundary) {
+        // A confirmed sign-out/account switch is an authority boundary. Clear
+        // synchronously so stale private content cannot survive the next read.
         loadAbortRef.current?.abort();
         loadMoreAbortRef.current?.abort();
         requestEpochRef.current += 1;
@@ -907,9 +1164,32 @@ export function MyLibrary({
       }
       if (boundary) void load();
     };
-    const onAuthState = () => void syncAuth(true);
+    const syncAuth = async (detail?: AuthStateEventDetail) => {
+      const syncEpoch = ++authSyncEpochRef.current;
+      if (
+        detail &&
+        Object.prototype.hasOwnProperty.call(detail, "userId") &&
+        detail.userId !== undefined
+      ) {
+        if (active && syncEpoch === authSyncEpochRef.current) {
+          applyAuthIdentity(detail.userId ?? null, detail.event);
+        }
+        return;
+      }
+      // Legacy announcements (e.g. account-profile updates) do not carry an
+      // identity. Resolve them first; an unavailable auth read is not proof of
+      // sign-out and must not evict the active editor or private list.
+      const snapshot = await getUserIdSnapshot();
+      if (!active || syncEpoch !== authSyncEpochRef.current) return;
+      if (!snapshot.available) return;
+      applyAuthIdentity(snapshot.userId, detail?.event);
+    };
+    const onAuthState = (event: Event) => {
+      const detail = (event as CustomEvent<AuthStateEventDetail>).detail;
+      void syncAuth(detail);
+    };
     window.addEventListener(AUTH_STATE_EVENT, onAuthState);
-    void syncAuth(false);
+    void syncAuth();
     return () => {
       active = false;
       window.removeEventListener(AUTH_STATE_EVENT, onAuthState);
@@ -1049,6 +1329,9 @@ export function MyLibrary({
     },
     [action?.nonce, onOpenItem],
   );
+  const preloadPreviewEditor = useCallback((item: LibraryItem | null) => {
+    if (item) void preloadEditorFor(item);
+  }, []);
 
   useEffect(() => {
     if (previewIntentItem) return;
@@ -1141,35 +1424,19 @@ export function MyLibrary({
     const pdfResult = libraryPageFromSettled(pdfSettled);
     const mineResult = libraryPageFromSettled(mineSettled);
     const favoritesResult = libraryPageFromSettled(favoritesSettled);
-    const mineAuthorityError = libraryPageAuthorityError(
-      mineResult,
-      ownerPrincipalId,
+    const mineScopeMismatch = Boolean(
+      mineResult?.ok &&
+        (!mineResult.data ||
+          mineResult.data.ownerPrincipalId !== ownerPrincipalId),
     );
-    const favoritesAuthorityError = libraryPageAuthorityError(
-      favoritesResult,
-      ownerPrincipalId,
+    const mineConfirmedForbidden = Boolean(
+      mineResult &&
+        !mineResult.ok &&
+        mineResult.status !== 401 &&
+        libraryAuthorityLost(mineResult),
     );
-    const documentAuthorityError = libraryPageAuthorityError(
-      documentResult,
-      ownerPrincipalId,
-    );
-    const pdfAuthorityError = libraryPageAuthorityError(
-      pdfResult,
-      ownerPrincipalId,
-    );
-    if (
-      mineAuthorityError ||
-      favoritesAuthorityError ||
-      documentAuthorityError ||
-      pdfAuthorityError
-    ) {
-      const result = mineAuthorityError
-        ? mineResult!
-        : favoritesAuthorityError
-          ? favoritesResult!
-          : documentAuthorityError
-            ? documentResult!
-            : pdfResult!;
+    if (mineScopeMismatch || mineConfirmedForbidden) {
+      const result = mineResult!;
       clearLibraryAuthority();
       setFavoriteWarning("");
       setFailed(true);
@@ -1183,6 +1450,22 @@ export function MyLibrary({
       return;
     }
     if (mineResult && (!mineResult.ok || !mineResult.data)) {
+      if (
+        mineResult.status === 401 &&
+        authUserIdRef.current &&
+        hasUsableLibrarySnapshotRef.current
+      ) {
+        const currentSnapshot = await getUserIdSnapshot();
+        if (controller.signal.aborted || epoch !== requestEpochRef.current) {
+          return;
+        }
+        if (
+          currentSnapshot.available &&
+          currentSnapshot.userId !== authUserIdRef.current
+        ) {
+          clearLibraryAuthority();
+        }
+      }
       setAuthRequired(false);
       setFailed(true);
       setFailureStatus(mineResult.status);
@@ -1221,10 +1504,29 @@ export function MyLibrary({
         setNextCursor(mineResult.data.nextCursor);
       }
     }
-    if (
-      favoritesResult &&
-      (!favoritesResult.ok || !favoritesResult.data)
-    ) {
+    const favoritesOwnerMismatch = Boolean(
+      favoritesResult?.ok &&
+        favoritesResult.data &&
+        favoritesResult.data.ownerPrincipalId !== ownerPrincipalId,
+    );
+    if (favoritesOwnerMismatch) {
+      // A successful later page with a different principal is an authority
+      // boundary, not a transient auxiliary outage. Drop the old favorite
+      // cache/cursor, but retain the separately owner-verified /mine rows.
+      setFavoriteItems([]);
+      setFavoriteNextCursor(null);
+      favoritesOwnerRef.current = "";
+      setAuthRequired(false);
+      setFailed(false);
+      setFailureStatus(undefined);
+      setFailureMessage("");
+      setFavoriteWarning(
+        "收藏列表归属与当前账号不一致，已拒绝显示；请稍后重试。",
+      );
+      setLoadingMore(false);
+      return;
+    }
+    if (favoritesResult && (!favoritesResult.ok || !favoritesResult.data)) {
       if (favoritesOwnerRef.current !== ownerPrincipalId) {
         setFavoriteItems([]);
         setFavoriteNextCursor(null);
@@ -1266,6 +1568,110 @@ export function MyLibrary({
     reconcilePreviewPrincipal,
   ]);
 
+  const changeLibrarySort = useCallback(
+    (nextSort: LibrarySort) => {
+      sortAbortRef.current?.abort();
+      sortAbortRef.current = null;
+      const epoch = ++sortEpochRef.current;
+      setSortWarning("");
+      if (nextSort.by === "none") {
+        updateLibrarySort(nextSort);
+        setSortLoading(false);
+        return;
+      }
+      const expectedOwner = ownerPrincipalIdRef.current;
+      if (!expectedOwner || loading) return;
+      if (completeSortOwnerRef.current === expectedOwner) {
+        updateLibrarySort(nextSort);
+        setSortLoading(false);
+        return;
+      }
+
+      const controller = new AbortController();
+      sortAbortRef.current = controller;
+      setSortLoading(true);
+      void (async () => {
+        try {
+          const [mineFirst, favoritesFirst] = await Promise.all([
+            listMyArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
+            listFavoriteArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
+          ]);
+          if (
+            controller.signal.aborted ||
+            epoch !== sortEpochRef.current ||
+            expectedOwner !== ownerPrincipalIdRef.current
+          ) {
+            return;
+          }
+          if (!mineFirst.ok || !mineFirst.data) {
+            throw new Error(libraryFailureDiagnostic(mineFirst) || "我的库暂时无法完整读取。");
+          }
+          if (!favoritesFirst.ok || !favoritesFirst.data) {
+            throw new Error(libraryFailureDiagnostic(favoritesFirst) || "收藏列表暂时无法完整读取。");
+          }
+          if (
+            mineFirst.data.ownerPrincipalId !== expectedOwner ||
+            favoritesFirst.data.ownerPrincipalId !== expectedOwner
+          ) {
+            throw new Error("列表归属与当前账号不一致；已取消完整排序。");
+          }
+          const { mine: allMineItems, favorites: allFavoriteItems } =
+            await collectCompleteLibrarySnapshot(
+              mineFirst,
+              favoritesFirst,
+              expectedOwner,
+              controller.signal,
+            );
+          if (
+            controller.signal.aborted ||
+            epoch !== sortEpochRef.current ||
+            expectedOwner !== ownerPrincipalIdRef.current
+          ) {
+            return;
+          }
+          const favoriteKeys = new Set(allFavoriteItems.map(libraryItemIdentityKey));
+          setOwnedItems(
+            dedupeDurableItems(
+              allMineItems.map((item) =>
+                favoriteKeys.has(libraryItemIdentityKey(item))
+                  ? withFavoriteState(item, true)
+                  : item,
+              ),
+            ),
+          );
+          setFavoriteItems(dedupeDurableItems(allFavoriteItems));
+          setNextCursor(null);
+          setPinnedNextCursors(EMPTY_PINNED_MINE_CURSORS);
+          setFavoriteNextCursor(null);
+          favoritesOwnerRef.current = expectedOwner;
+          completeSortOwnerRef.current = expectedOwner;
+          hasUsableLibrarySnapshotRef.current = true;
+          setHasUsableLibrarySnapshot(true);
+          updateLibrarySort(nextSort);
+          setSortLoading(false);
+        } catch (caught) {
+          if (
+            controller.signal.aborted ||
+            epoch !== sortEpochRef.current
+          ) {
+            return;
+          }
+          setSortLoading(false);
+          setSortWarning(
+            caught instanceof Error
+              ? caught.message
+              : "未能完整读取列表；没有对部分结果排序。",
+          );
+        } finally {
+          if (sortAbortRef.current === controller) {
+            sortAbortRef.current = null;
+          }
+        }
+      })();
+    },
+    [loading, updateLibrarySort],
+  );
+
   const removeItem = useCallback(async (item: LibraryItem) => {
     if (!isDurableLibraryItem(item)) {
       throw new Error("缺少 durable artifact identity，不能按 URL 猜测删除对象。");
@@ -1291,7 +1697,7 @@ export function MyLibrary({
   }, []);
 
   const handleUpload = useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | readonly File[] | null, retrying = false) => {
       const queue = Array.from(files || []);
       if (!queue.length || uploading) return;
       if (!ownerPrincipalId) {
@@ -1302,6 +1708,12 @@ export function MyLibrary({
       }
       setUploading(true);
       setUploadError("");
+      if (retrying) {
+        setRetryableUploadFiles((current) =>
+          current.filter((file) => !queue.includes(file)),
+        );
+      }
+      const retryableFailures: File[] = [];
       try {
         for (let index = 0; index < queue.length; index += 1) {
           const file = queue[index];
@@ -1320,6 +1732,7 @@ export function MyLibrary({
             privateUpload: true,
           });
           if (!result.ok || !result.data?.file) {
+            if (result.retryable) retryableFailures.push(file);
             setUploadError(
               humanLibraryUploadError(result.error, result.status),
             );
@@ -1350,6 +1763,7 @@ export function MyLibrary({
             }
             const ensured = await ensureArtifact(legacy.transient);
             if (!ensured.ok || !ensured.data) {
+              if (ensured.retryable) retryableFailures.push(file);
               setUploadError(
                 ensured.error ||
                   "旧上传文件已落盘，但 durable artifact ensure 失败。",
@@ -1401,17 +1815,29 @@ export function MyLibrary({
             : "上传处理失败，请重试。",
         );
       } finally {
+        if (retryableFailures.length) {
+          setRetryableUploadFiles((current) =>
+            [...current, ...retryableFailures.filter((file) => !current.includes(file))],
+          );
+        }
         setUploading(false);
         setUploadProgress("");
       }
     },
     [ownerPrincipalId, siteId, uploading],
   );
+  const retryFailedUploads = useCallback(() => {
+    void handleUpload(retryableUploadFiles, true);
+  }, [handleUpload, retryableUploadFiles]);
 
+  const orderedItems = useMemo(
+    () => sortLibraryItems(items, librarySort),
+    [items, librarySort],
+  );
   const entries = useMemo(
     () =>
       dedupeWorkspaceEntries([
-        ...items
+        ...orderedItems
           .filter(
             (item) =>
               (!favoritesOnly || item.favorite) &&
@@ -1437,7 +1863,7 @@ export function MyLibrary({
                 Boolean(ownerPrincipalId) &&
                 entry.libraryItem.artifact.owner.principalId ===
                   ownerPrincipalId &&
-                items.some(
+                orderedItems.some(
                   (item) =>
                     libraryItemIdentityKey(item) ===
                     libraryItemIdentityKey(entry.libraryItem!),
@@ -1450,7 +1876,7 @@ export function MyLibrary({
     [
       featuredEntries,
       itemFilter,
-      items,
+      orderedItems,
       favoritesOnly,
       ownerPrincipalId,
       previewIntentItem,
@@ -1544,9 +1970,12 @@ export function MyLibrary({
             view={libraryView}
             setView={setLibraryView}
             actions={toolbar}
-            placeholder="搜索我的作品、收藏素材、网站、交付物和上传文件"
+            placeholder="search"
             tt={tt}
             viewOptions={favoriteViewOptions}
+            sort={librarySort}
+            onSortChange={changeLibrarySort}
+            sortBusy={sortLoading || loading}
             leading={
               pageTitle ? (
                 <h1 className={APP_PAGE_TITLE_CLASS}>
@@ -1586,6 +2015,7 @@ export function MyLibrary({
           hideToolbar
           hideCategoryChips={Boolean(pageTitle)}
           onDetailOpenChange={setDetailOpen}
+          onDetailItemChange={preloadPreviewEditor}
           category={activeCategory}
           onCategoryChange={changeCategory}
           taskId={taskId}
@@ -1601,7 +2031,7 @@ export function MyLibrary({
           onMaterialDragStart={onMaterialDragStart}
           onMaterialDragEnd={onMaterialDragEnd}
           toolbarActions={toolbar}
-          searchPlaceholder="搜索我的作品、收藏素材、网站、交付物和上传文件"
+          searchPlaceholder="search"
           emptyTitle={
             loading
               ? "正在加载我的库…"
@@ -1627,7 +2057,16 @@ export function MyLibrary({
           className={className}
           plain={plain}
         />
-        {failed && entries.length > 0 && (
+        {failed && entries.length > 0 && hasUsableLibrarySnapshot && (
+          <div
+            role="status"
+            className="absolute left-3 top-3 z-30 flex max-w-[min(32rem,calc(100%-1.5rem))] items-center gap-3 rounded-lg border border-amber-500/20 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
+          >
+            <span>{tt("显示上次成功加载的作品；列表暂未刷新。")}</span>
+            {retryControl}
+          </div>
+        )}
+        {failed && entries.length > 0 && !hasUsableLibrarySnapshot && (
           <div
             role="alert"
             className="absolute left-3 right-3 top-3 z-30 flex items-center justify-between gap-3 rounded-lg border border-rose-500/25 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-rose-700 shadow-sm"
@@ -1647,13 +2086,32 @@ export function MyLibrary({
             {retryControl}
           </div>
         )}
+        {sortWarning && !failed && (
+          <div
+            role="status"
+            className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-amber-500/20 bg-[var(--card,#fff)] px-3 py-2 text-[11px] text-amber-700 shadow-sm"
+          >
+            {tt(sortWarning)}
+          </div>
+        )}
         {(uploadProgress || uploadError) && (
           <div
             role={uploadError ? "alert" : "status"}
             aria-live="polite"
-            className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-lg bg-[var(--fg,#1c1917)] px-3 py-2 text-[11px] text-[var(--card,#fff)] shadow-lg"
+            className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-[var(--fg,#1c1917)] px-3 py-2 text-[11px] text-[var(--card,#fff)] shadow-lg"
           >
             {uploadError || uploadProgress}
+            {retryableUploadFiles.length > 0 ? (
+              <button
+                type="button"
+                data-library-upload-retry=""
+                disabled={uploading}
+                onClick={retryFailedUploads}
+                className="shrink-0 font-medium underline underline-offset-2 disabled:opacity-50"
+              >
+                {tt(`重试失败文件 (${retryableUploadFiles.length})`)}
+              </button>
+            ) : null}
           </div>
         )}
       </div>

@@ -140,11 +140,11 @@ function clearResumeRows() {
   resumeRows().clear();
 }
 
-const jsonResponse = (body, status = 200) => ({
-  ok: status >= 200 && status < 300,
-  status,
-  json: async () => body,
-});
+const jsonResponse = (body, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 
 /**
  * 假网关。只认 `init` 与 `finalize` 两个端点，其余一律炸——测试里出现第三个

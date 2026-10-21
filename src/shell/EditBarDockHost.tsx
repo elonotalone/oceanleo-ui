@@ -25,7 +25,7 @@ export function EditBarDockHost({
   const tt = useUI();
   const floating = presentation?.mode === "floating";
   const highlighted = Boolean(floating && presentation?.dropActive);
-  const collapsed = Boolean(floating && !highlighted);
+  const collapsed = !highlighted;
   return (
     <div
       ref={hostRef}
@@ -47,23 +47,7 @@ export function EditBarDockHost({
       }
       className={`relative min-w-0 max-w-full shrink-0 items-center justify-center ${
         presentation ? "flex" : "hidden"
-      } ${
-        collapsed
-          ? "h-0 min-h-0 overflow-hidden border-0 p-0"
-          : // 2.5rem fits the 38px pill (p-1 + h-7 + border) plus a couple px
-            // so the reserved band is not shorter than the bar.
-            "min-h-10 border-b px-2 py-1"
-      } ${
-        highlighted
-          ? "border-dashed border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
-          : collapsed
-            ? "bg-transparent"
-            : "border-[var(--divider,#f5f5f4)] bg-transparent"
-      } ${
-        highlighted
-          ? "ring-2 ring-inset ring-[var(--awb-accent)] bg-[var(--awb-accent-soft)]"
-          : ""
-      }`}
+      } h-0 min-h-0 overflow-visible border-0 bg-transparent p-0`}
     >
       {presentation && (
         <span
@@ -76,17 +60,9 @@ export function EditBarDockHost({
         <span
           data-edit-bar-dock-placeholder
           aria-live="polite"
-          className={`pointer-events-none truncate text-[11px] font-medium ${
-            highlighted
-              ? "text-[var(--awb-accent)]"
-              : "text-[var(--awb-muted)]"
-          }`}
+          className="pointer-events-none absolute inset-x-0 top-0 z-40 flex h-10 items-center justify-center truncate border border-dashed border-[var(--awb-border)] bg-[var(--awb-accent-soft)] text-[11px] font-medium text-[var(--awb-accent)] ring-2 ring-inset ring-[var(--awb-accent)]"
         >
-          {tt(
-            highlighted
-              ? "松开以固定编辑栏"
-              : "将编辑栏拖到这里固定",
-          )}
+          {tt("松开以固定编辑栏")}
         </span>
       )}
     </div>

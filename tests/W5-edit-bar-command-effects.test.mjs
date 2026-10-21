@@ -29,6 +29,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://website.oceanleo.com/workspace/w5-edit-bar",
 });
 const { window } = dom;
+window.scrollTo = () => {};
 for (const [name, value] of Object.entries({
   window,
   document: window.document,
@@ -81,6 +82,21 @@ const stubs = {
   "./plugin-theme": dataModule(
     'export function pluginWorkbenchStyle() { return {}; } export function usePluginTheme() { return { theme: "light", accent: "#6d5dfc" }; } export function usePluginThemePortal() { return null; } export function PluginThemeScope({children}) { return children; }',
   ),
+  "./advanced-workbench-chrome": dataModule(
+    'export function advancedWorkbenchStyle(accent) { return { "--awb-accent": accent }; } export function actionGroup(action) { return action.group || "edit"; }',
+  ),
+  "./advanced-layout-context": dataModule(
+    'export function useAdvancedLayout() { return null; } export function registerAdvancedToolsTrigger() { return () => {}; }',
+  ),
+  "./plugin-chrome/agent-drawer": dataModule(
+    'export const PLUGIN_AGENT_DRAWER_ID = "agent-drawer";',
+  ),
+  "../collab/adapters/visual-readonly": dataModule(
+    "export function viewOnlyContext(context) { return context; }",
+  ),
+  "./timeline-model": dataModule(
+    "export const MIN_CLIP_MS = 100; export function availableTimelineDurationMs() { return 10000; }",
+  ),
   "./SelectionAnimationGallery": dataModule(
     "export function SelectionAnimationGallery() { return null; }",
   ),
@@ -90,6 +106,15 @@ const stubs = {
 };
 const load = async (path) => import(await compileModule(path, stubs));
 const { SelectionToolbar } = await load("src/shell/SelectionToolbar.tsx");
+const { FloatingContextToolbar, useFloatingContextToolbar } = await load(
+  "src/shell/FloatingContextToolbar.tsx",
+);
+const { FabricImageContextToolbar } = await load(
+  "src/shell/image-editor/FabricImageContextToolbar.tsx",
+);
+const { VideoTimelineContextToolbar } = await load(
+  "src/shell/video-editor/VideoTimelineContextToolbar.tsx",
+);
 const { isOwnEditBarSession, ownEditBarSessionOpen } = await load(
   "src/shell/edit-bar-selection-session.tsx",
 );
@@ -145,16 +170,174 @@ class TestPointerEvent extends window.MouseEvent {
 window.PointerEvent = TestPointerEvent;
 globalThis.PointerEvent = TestPointerEvent;
 
-function firePointer(target, type) {
+function firePointer(target, type, init = {}) {
   const event = new TestPointerEvent(type, {
     bubbles: true,
     cancelable: true,
-    pointerId: 1,
-    pointerType: "mouse",
-    button: 0,
+    pointerId: init.pointerId ?? 1,
+    pointerType: init.pointerType ?? "mouse",
+    button: init.button ?? 0,
+    ...init,
   });
   target.dispatchEvent(event);
   return event;
+}
+
+let floatingToolbarSequence = 0;
+
+function makeImageCommandEditor() {
+  const selected = {
+    id: "image:hero",
+    kind: "image",
+    isBackground: false,
+    opacity: 100,
+    angle: 0,
+    flipX: false,
+    flipY: false,
+    x: 12,
+    y: 18,
+    width: 240,
+    height: 160,
+    locked: false,
+    imageFit: "contain",
+    fill: "#ffffff",
+    stroke: "#000000",
+    strokeWidth: 0,
+    shadow: { enabled: false },
+    radius: null,
+    text: null,
+    table: null,
+  };
+  const layers = [
+    {
+      id: "image:backdrop",
+      kind: "image",
+      locked: false,
+      visible: true,
+      isBackground: true,
+      selected: false,
+    },
+    {
+      id: selected.id,
+      kind: "image",
+      locked: false,
+      visible: true,
+      isBackground: false,
+      selected: true,
+    },
+  ];
+  const effects = [];
+  return {
+    selected,
+    layers,
+    effects,
+    cropping: false,
+    cropRatio: "free",
+    loading: false,
+    sourceReady: true,
+    saving: false,
+    transformInfo: null,
+    filterInfo: null,
+    selectLayer(id) {
+      assert.equal(id, selected.id, "the command should keep its rendered selection");
+      this.selected = selected;
+    },
+    rotateTarget(degrees) {
+      effects.push({ action: "rotate", degrees });
+      selected.angle += degrees;
+    },
+    toggleLayerLock(id) {
+      effects.push({ action: "lock", id });
+      const layer = layers.find((candidate) => candidate.id === id);
+      assert.ok(layer, "lock should target the selected layer");
+      layer.locked = !layer.locked;
+      selected.locked = layer.locked;
+    },
+    moveLayer(id, direction) {
+      effects.push({ action: "layer", id, direction });
+      const index = layers.findIndex((candidate) => candidate.id === id);
+      const nextIndex = direction === "up" ? index - 1 : index + 1;
+      if (index >= 0 && nextIndex >= 0 && nextIndex < layers.length) {
+        [layers[index], layers[nextIndex]] = [layers[nextIndex], layers[index]];
+      }
+    },
+    duplicateSelected() {
+      effects.push({ action: "duplicate", id: selected.id });
+      layers.push({ ...layers.find((candidate) => candidate.id === selected.id), id: "image:hero-copy" });
+    },
+    deleteSelected() {
+      effects.push({ action: "delete", id: selected.id });
+      this.layers = this.layers.filter((candidate) => candidate.id !== selected.id);
+      this.selected = null;
+    },
+    removeLayer(id) {
+      effects.push({ action: "delete", id });
+      this.layers = this.layers.filter((candidate) => candidate.id !== id);
+    },
+  };
+}
+
+async function mountFloatingImageToolbar(editor) {
+  return mountFloatingToolbar(
+    React.createElement(FabricImageContextToolbar, { editor }),
+  );
+}
+
+async function mountFloatingToolbar(contextToolbar) {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const storageKey = `test:edit-bar-overflow:${++floatingToolbarSequence}`;
+  function Host() {
+    const workspaceRootRef = React.useRef(null);
+    const stageRef = React.useRef(null);
+    const controller = useFloatingContextToolbar({
+      workspaceRootRef,
+      stageRef,
+      resetKey: storageKey,
+      storageKey,
+    });
+    return React.createElement(
+      "div",
+      { ref: workspaceRootRef, "data-edit-bar-test-workspace": true },
+      React.createElement("div", { ref: stageRef, "data-edit-bar-test-stage": true }),
+      React.createElement(
+        FloatingContextToolbar,
+        { controller, accent: "#6d5dfc" },
+        contextToolbar,
+      ),
+    );
+  }
+  await act(async () => root.render(React.createElement(Host)));
+  return {
+    container,
+    async unmount() {
+      await act(async () => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+function makeVideoCommandEditor() {
+  const effects = [];
+  return {
+    selected: {
+      clip: {
+        id: "clip:video-1",
+        start_ms: 0,
+        duration_ms: 1_000,
+        style: {},
+      },
+      track: { id: "track:video-1", kind: "image" },
+    },
+    effects,
+    duplicateSelectedClip() {
+      effects.push({ action: "duplicate", id: this.selected.clip.id });
+    },
+    deleteSelectedClip() {
+      effects.push({ action: "delete", id: this.selected.clip.id });
+    },
+  };
 }
 
 async function mountToolbar(editor, live = context) {
@@ -344,5 +527,231 @@ test("W5-document segment trigger stays a real action", async () => {
   } finally {
     await act(async () => root.unmount());
     container.remove();
+  }
+});
+
+test("W5-image overflow actions work through the floating toolbar without arming its drag root", async () => {
+  const cases = [
+    {
+      controlId: "rotate-left",
+      pointerType: "mouse",
+      verify(editor) {
+        assert.deepEqual(editor.effects, [{ action: "rotate", degrees: -90 }]);
+        assert.equal(editor.selected.angle, -90);
+      },
+    },
+    {
+      controlId: "lock",
+      pointerType: "touch",
+      verify(editor) {
+        assert.deepEqual(editor.effects, [{ action: "lock", id: "image:hero" }]);
+        assert.equal(editor.selected.locked, true);
+      },
+    },
+    {
+      controlId: "layer-up",
+      pointerType: "mouse",
+      verify(editor) {
+        assert.deepEqual(editor.effects, [
+          { action: "layer", id: "image:hero", direction: "up" },
+        ]);
+        assert.equal(editor.layers[0].id, "image:hero");
+      },
+    },
+    {
+      controlId: "duplicate",
+      pointerType: "touch",
+      verify(editor) {
+        assert.deepEqual(editor.effects, [
+          { action: "duplicate", id: "image:hero" },
+        ]);
+        assert.equal(editor.layers.some((layer) => layer.id === "image:hero-copy"), true);
+      },
+    },
+    {
+      controlId: "delete",
+      pointerType: "mouse",
+      verify(editor) {
+        assert.deepEqual(editor.effects, [{ action: "delete", id: "image:hero" }]);
+        assert.equal(editor.layers.some((layer) => layer.id === "image:hero"), false);
+      },
+    },
+  ];
+
+  for (const { controlId, pointerType, verify } of cases) {
+    const editor = makeImageCommandEditor();
+    const mounted = await mountFloatingImageToolbar(editor);
+    try {
+      const more = mounted.container.querySelector(
+        'button[aria-controls^="selection-more-"]',
+      );
+      assert.ok(more, "the shared toolbar should expose its overflow trigger");
+      await act(async () => more.click());
+
+      const action = document.body.querySelector(
+        `[data-selection-control-id="${controlId}"] button`,
+      );
+      assert.ok(action, `${controlId} should be rendered in the overflow panel`);
+      assert.equal(action.type, "button", "overflow actions stay keyboard-focusable buttons");
+
+      let down;
+      await act(async () => {
+        down = firePointer(action, "pointerdown", { pointerType });
+      });
+      assert.equal(down.defaultPrevented, true, "the press should preserve the editor selection");
+      assert.equal(
+        mounted.container.querySelector("[data-edit-bar-move-mode]"),
+        null,
+        `${controlId} must not arm toolbar movement from a ${pointerType} press`,
+      );
+      assert.equal(mounted.container.querySelector("[data-edit-bar-dragging]"), null);
+
+      await act(async () => {
+        window.dispatchEvent(firePointer(window, "pointerup", { pointerType }));
+      });
+      await act(async () => action.click());
+      assert.equal(editor.effects.length, 1, `${controlId} should dispatch exactly once`);
+      verify(editor);
+    } finally {
+      await mounted.unmount();
+    }
+  }
+});
+
+test("W5-image overflow action remains keyboard reachable and dispatches from focus", async () => {
+  const editor = makeImageCommandEditor();
+  const mounted = await mountFloatingImageToolbar(editor);
+  try {
+    const more = mounted.container.querySelector(
+      'button[aria-controls^="selection-more-"]',
+    );
+    assert.ok(more);
+    await act(async () => more.click());
+
+    const action = document.body.querySelector(
+      '[data-selection-control-id="rotate-right"] button',
+    );
+    assert.ok(action);
+    action.focus();
+    assert.equal(document.activeElement, action);
+    assert.equal(action.disabled, false);
+
+    // jsdom does not synthesize the browser's native Enter/Space activation;
+    // focus plus the button's native click path exercises that activation target.
+    const enter = new window.KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => action.dispatchEvent(enter));
+    assert.equal(enter.defaultPrevented, false);
+    await act(async () => action.click());
+
+    assert.deepEqual(editor.effects, [{ action: "rotate", degrees: 90 }]);
+    assert.equal(editor.selected.angle, 90);
+    assert.equal(mounted.container.querySelector("[data-edit-bar-move-mode]"), null);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("W5-image More trigger keeps the main-pill drag press and click replay", async () => {
+  const editor = makeImageCommandEditor();
+  const mounted = await mountFloatingImageToolbar(editor);
+  try {
+    const more = mounted.container.querySelector(
+      'button[aria-controls^="selection-more-"]',
+    );
+    assert.ok(more);
+
+    await act(async () => {
+      firePointer(more, "pointerdown", {
+        pointerType: "mouse",
+        clientX: 36,
+        clientY: 24,
+      });
+    });
+    assert.ok(
+      mounted.container.querySelector("[data-edit-bar-move-mode]"),
+      "the main pill's established press/hold policy still arms from its More button",
+    );
+    assert.equal(mounted.container.querySelector("[data-edit-bar-dragging]"), null);
+
+    await act(async () => {
+      window.dispatchEvent(
+        firePointer(window, "pointerup", {
+          pointerType: "mouse",
+          clientX: 36,
+          clientY: 24,
+        }),
+      );
+    });
+    assert.equal(more.getAttribute("aria-expanded"), "true");
+    assert.equal(mounted.container.querySelector("[data-edit-bar-move-mode]"), null);
+
+    // Browsers follow pointerup with a native click. The controller replays the
+    // quick press once and suppresses that follow-up instead of toggling twice.
+    await act(async () => {
+      more.dispatchEvent(
+        new window.MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 36,
+          clientY: 24,
+        }),
+      );
+    });
+    assert.equal(more.getAttribute("aria-expanded"), "true");
+    assert.equal(document.body.querySelector("[data-anchored-popover][data-leo-overlay-state='open']") != null, true);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("W5-video More actions keep their real commands across the floating ancestor", async () => {
+  const editor = makeVideoCommandEditor();
+  const mounted = await mountFloatingToolbar(
+    React.createElement(VideoTimelineContextToolbar, { state: editor }),
+  );
+  try {
+    const more = mounted.container.querySelector(
+      'button[aria-controls^="selection-more-"]',
+    );
+    assert.ok(more, "the video editor should expose the shared overflow trigger");
+    const expected = [
+      { controlId: "duplicate", pointerType: "touch", action: "duplicate" },
+      { controlId: "delete", pointerType: "mouse", action: "delete" },
+    ];
+    for (const [index, item] of expected.entries()) {
+      if (more.getAttribute("aria-expanded") !== "true") {
+        await act(async () => more.click());
+      }
+      const button = document.body.querySelector(
+        `[data-selection-control-id="${item.controlId}"] button`,
+      );
+      assert.ok(button, `${item.controlId} should appear in the video More panel`);
+      await act(async () => {
+        firePointer(button, "pointerdown", { pointerType: item.pointerType });
+      });
+      assert.equal(
+        mounted.container.querySelector("[data-edit-bar-move-mode]"),
+        null,
+        `${item.controlId} must not arm toolbar movement`,
+      );
+      await act(async () => {
+        window.dispatchEvent(
+          firePointer(window, "pointerup", { pointerType: item.pointerType }),
+        );
+      });
+      await act(async () => button.click());
+      assert.deepEqual(editor.effects[index], {
+        action: item.action,
+        id: "clip:video-1",
+      });
+      assert.equal(mounted.container.querySelector("[data-edit-bar-dragging]"), null);
+    }
+    assert.equal(editor.effects.length, expected.length);
+  } finally {
+    await mounted.unmount();
   }
 });

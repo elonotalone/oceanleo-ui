@@ -10,7 +10,7 @@
 // 旧实例永远到不了 `saved` 那一帧去删草稿。
 //
 // 这里把「宿主换素材就重挂」的形状照搬进一棵真 React 树（真 hook、真控制器、
-// 真 1.6 s 防抖；只有 IndexedDB 换成内存表），判三件事：
+// 真 500 ms 防抖；只有 IndexedDB 换成内存表），判三件事：
 //   1. 一次编辑 → 恰好 1 份 creation，重挂后**不**恢复已入云的草稿，草稿被删；
 //   2. flush 在途时又改一笔 → 那一笔必须被恢复并存进第 2 份，之后停在 2，不是 3、4…；
 //   3. 没有任何成功保存（真崩溃）时，草稿照旧恢复——登记表不许误伤真正的恢复。
@@ -24,6 +24,15 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import {
+  recordUserMutation,
+  resetUserEditSession,
+} from "../src/shell/user-edit-session.ts";
+import {
+  advancedLocalRecoveryPromotion,
+  clearAdvancedLocalRecoveryPromotion,
+  noteAdvancedLocalRecoveryRestored,
+} from "../src/shell/advanced-draft-recovery.ts";
 
 /* --------------------------------- jsdom --------------------------------- */
 
@@ -108,7 +117,7 @@ const { useAdvancedRecovery, resetAdvancedSaveLedgerForTests } = await import(
 const { advancedRecoveryKey } = await import(STORE_STUB);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-/** 真控制器防抖 1 600 ms + flush + 重挂 + 恢复读盘，一圈留 2.6 s。 */
+/** 真控制器防抖 500 ms + flush + 重挂 + 恢复读盘，一圈留 2.6 s。 */
 const CYCLE_MS = 2_600;
 
 async function mount(element) {
@@ -169,13 +178,16 @@ function EditorInstance({ item, cloud, session, bed }) {
   revisionRef.current = revision;
 
   const edit = React.useCallback((cell, value) => {
+    // Match Grid's person-write path: dirty/revision alone is not proof of a
+    // user edit and must not open the shared autosave gate.
+    recordUserMutation(item.id);
     setDoc((current) => ({ cells: { ...current.cells, [cell]: value } }));
     setDirty(true);
     setRevision((value) => value + 1);
-  }, []);
+  }, [item.id]);
 
   const flush = React.useCallback(async () => {
-    cloud.flushStarts.push(Date.now());
+    cloud.flushStarts.push({ at: Date.now(), itemUrl: item.url, revision: revisionRef.current, dirty: dirty, state: bed.current?.state });
     const snapshot = structuredClone(docRef.current);
     const flushedRevision = revisionRef.current;
     if (cloud.flushDelayMs) await sleep(cloud.flushDelayMs);
@@ -188,7 +200,6 @@ function EditorInstance({ item, cloud, session, bed }) {
     return { ok: true, item: { ...item, url, meta: { ...item.meta } } };
   }, [cloud, item]);
 
-  const autoSave = useAdvancedAutoSave({ dirty, revision, flush, session });
   const recovery = React.useMemo(
     () => ({
       key: advancedRecoveryKey("grid", item),
@@ -204,6 +215,7 @@ function EditorInstance({ item, cloud, session, bed }) {
     }),
     [bed, item],
   );
+  const autoSave = useAdvancedAutoSave({ key: item.id, dirty, revision, flush, recovery, item, session });
   useAdvancedRecovery({
     editorId: "grid",
     revision,
@@ -216,7 +228,7 @@ function EditorInstance({ item, cloud, session, bed }) {
 }
 
 /** 宿主：`recordSavedItem` 一到就换素材 → `key` 变 → 编辑器整棵重挂。 */
-function Host({ cloud, bed }) {
+function Host({ cloud, bed, remountOnSave = true }) {
   const [item, setItem] = React.useState(initialItem);
   const session = React.useMemo(
     () => ({
@@ -229,12 +241,12 @@ function Host({ cloud, bed }) {
       renameTitle: async () => true,
       recordSavedItem: async (saved) => {
         bed.recorded.push(saved.url);
-        setItem(saved);
+        if (remountOnSave) setItem(saved);
         return true;
       },
       registerFlush: () => {},
     }),
-    [bed],
+    [bed, remountOnSave],
   );
   bed.mounts = (bed.mounts || 0);
   return React.createElement(EditorInstance, {
@@ -261,6 +273,7 @@ async function settle(ms) {
 test("一次编辑 → 1 份 creation；重挂后不恢复已入云的草稿，草稿被删", async () => {
   globalThis.__x7RecoveryStore.reset();
   resetAdvancedSaveLedgerForTests();
+  resetUserEditSession();
   const cloud = createCloud();
   const bed = createBed();
   const tree = await mount(React.createElement(Host, { cloud, bed }));
@@ -292,13 +305,14 @@ test("一次编辑 → 1 份 creation；重挂后不恢复已入云的草稿，�
 test("flush 在途时又改一笔：那一笔被恢复并存进第 2 份，然后停在 2", async () => {
   globalThis.__x7RecoveryStore.reset();
   resetAdvancedSaveLedgerForTests();
+  resetUserEditSession();
   const cloud = createCloud({ flushDelayMs: 500 });
   const bed = createBed();
   const tree = await mount(React.createElement(Host, { cloud, bed }));
   await act(async () => {
     bed.current.edit("B1", "first");
   });
-  // 防抖 1.6 s 后 flush 起飞；在它 500 ms 的飞行里落第二笔。
+  // 防抖 500 ms 后 flush 起飞；在它 500 ms 的飞行里落第二笔。
   await settle(1_750);
   assert.equal(cloud.flushStarts.length, 1, "第一次 flush 应已在途");
   await act(async () => {
@@ -317,9 +331,10 @@ test("flush 在途时又改一笔：那一笔被恢复并存进第 2 份，然�
   await tree.unmount();
 });
 
-test("没有成功保存过（真崩溃）时草稿照旧恢复", async () => {
+test("真崩溃草稿恢复后自动晋升一次；保存重挂后不重复恢复", async () => {
   globalThis.__x7RecoveryStore.reset();
   resetAdvancedSaveLedgerForTests();
+  resetUserEditSession();
   const cloud = createCloud();
   const bed = createBed();
   const item = initialItem();
@@ -335,9 +350,70 @@ test("没有成功保存过（真崩溃）时草稿照旧恢复", async () => {
   assert.equal(bed.restores.length, 1, "崩溃草稿应被恢复");
   assert.deepEqual(bed.current.doc.cells, { A1: "from-crash" });
   assert.equal(bed.current.dirty, true);
-  // 恢复出来的内容会被存一次，然后收口——不是再转起环。
+  // The exact successfully restored emergency revision is promoted once.
   await settle(CYCLE_MS * 2);
+  assert.equal(
+    cloud.creations.length,
+    1,
+    `恢复本身应经完整保存 receipt 晋升一次; flushes=${JSON.stringify(cloud.flushStarts)}, creations=${JSON.stringify(cloud.creations.map(({ url, snapshot }) => ({ url, cells: snapshot.cells })))}, restores=${JSON.stringify(bed.restores)}, current=${JSON.stringify({ itemUrl: bed.current?.itemUrl, dirty: bed.current?.dirty, state: bed.current?.state })}, records=${JSON.stringify([...globalThis.__x7RecoveryStore.records.values()])}`,
+  );
+  const recoveryKey = advancedRecoveryKey("grid", item);
+  assert.equal(advancedLocalRecoveryPromotion(recoveryKey), undefined, "完整保存 receipt 应清理 marker");
+  assert.equal(bed.restores.length, 1);
+  await settle(CYCLE_MS * 2);
+  assert.equal(cloud.creations.length, 1, "保存重挂后不能再次晋升已保存恢复");
+  assert.equal(bed.restores.length, 1, "已保存的崩溃记录不能重挂恢复");
+  await tree.unmount();
+});
+
+test("恢复 revision 1 后在途新编辑 revision 2 由第二个 receipt 收口", async () => {
+  globalThis.__x7RecoveryStore.reset();
+  resetAdvancedSaveLedgerForTests();
+  resetUserEditSession();
+  const cloud = createCloud({ flushDelayMs: 500 });
+  const bed = createBed();
+  const item = initialItem();
+  const key = advancedRecoveryKey("grid", item);
+  globalThis.__x7RecoveryStore.records.set(key, {
+    key,
+    editorId: "grid",
+    revision: 3,
+    updatedAt: Date.now() - 60_000,
+    payload: { cells: { A1: "from-crash" } },
+  });
+  const tree = await mount(React.createElement(Host, { cloud, bed, remountOnSave: false }));
+  await settle(50);
+  assert.equal(bed.restores.length, 1);
+  await settle(650);
+  assert.equal(cloud.flushStarts.length, 1, "exact local recovery promotion starts revision 1");
+  const restoredMarker = advancedLocalRecoveryPromotion(key);
+  assert.equal(restoredMarker?.revision, 1);
+  await act(async () => bed.current.edit("B1", "during-save"));
+  await settle(550);
   assert.equal(cloud.creations.length, 1);
+  assert.equal(cloud.flushStarts.length, 2, "revision 2 is serialized after revision 1");
+  assert.equal(
+    advancedLocalRecoveryPromotion(key)?.token,
+    restoredMarker?.token,
+    "receipt 1 cannot clear the marker while revision 2 is still pending",
+  );
+  await settle(CYCLE_MS * 2);
+  assert.equal(cloud.creations.length, 2);
+  assert.deepEqual(cloud.creations[0].snapshot.cells, { A1: "from-crash" });
+  assert.deepEqual(cloud.creations[1].snapshot.cells, { A1: "from-crash", B1: "during-save" });
+  assert.equal(advancedLocalRecoveryPromotion(key), undefined, "revision 2 receipt clears the revision 1 marker");
+  await settle(CYCLE_MS);
+  assert.equal(cloud.creations.length, 2, "receipt 2 closes the recovery loop");
   assert.equal(bed.restores.length, 1);
   await tree.unmount();
+});
+
+test("a receipt pinned to an older recovery lifetime cannot clear a newer marker", () => {
+  const key = "grid:root-sheet-1:sheet-1";
+  resetAdvancedSaveLedgerForTests();
+  const earlier = noteAdvancedLocalRecoveryRestored(key, 1, 100);
+  const newer = noteAdvancedLocalRecoveryRestored(key, 0, 200);
+  clearAdvancedLocalRecoveryPromotion(key, earlier);
+  assert.equal(advancedLocalRecoveryPromotion(key)?.token, newer?.token);
+  resetAdvancedSaveLedgerForTests();
 });

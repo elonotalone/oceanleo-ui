@@ -101,6 +101,12 @@ const authStubUrl = dataModule(`
   export async function getUserId() {
     return globalThis.__libraryAuthUserId ?? null;
   }
+  export async function getUserIdSnapshot() {
+    return {
+      available: true,
+      userId: globalThis.__libraryAuthUserId ?? null,
+    };
+  }
   export async function accessToken() {
     return "artifact-render-test-token";
   }
@@ -3324,6 +3330,13 @@ test("My Library deterministically paginates favorites beyond one hundred", asyn
 });
 
 test("favorites pagination fails closed when a later page changes owner", async () => {
+  const owned = projection({
+    id: "owned-owner-a",
+    title: "Owned owner A",
+    ownerPrincipalId: "owner-a",
+    visibility: "private",
+    editable: true,
+  });
   const first = projection({
     id: "favorite-owner-a",
     title: "Favorite owner A",
@@ -3357,9 +3370,9 @@ test("favorites pagination fails closed when a later page changes owner", async 
     return jsonResponse({
       scope: "mine",
       ownerPrincipalId: "owner-a",
-      total: 0,
+      total: 1,
       invalidCount: 0,
-      items: [],
+      items: [owned],
     });
   };
   const mounted = await createMounted(MyLibrary, {});
@@ -3376,10 +3389,13 @@ test("favorites pagination fails closed when a later page changes owner", async 
       ),
       null,
     );
+    assert.ok(
+      mounted.container.querySelector('[data-entry-title="Owned owner A"]'),
+      "a favorite-page authority mismatch must not discard valid owned rows",
+    );
     assert.match(
-      mounted.container.querySelector("[data-empty-description]")
-        ?.textContent || "",
-      /请稍后重试/,
+      mounted.container.querySelector('[role="alert"]')?.textContent || "",
+      /归属与当前账号不一致.*请稍后重试/,
     );
   } finally {
     await mounted.unmount();

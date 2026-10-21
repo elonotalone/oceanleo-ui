@@ -5,7 +5,55 @@ import type { AdvancedDraftPointer } from "./advanced-draft";
 export const ADVANCED_PORTABLE_DRAFT_MAX_BYTES = 5_000_000;
 const restoredEdits = new Map<string, { revision: AdvancedEditRevision; updatedAt: number }>();
 const publishedDrafts = new Set<string>();
+export interface AdvancedLocalRecoveryPromotion {
+  key: string;
+  revision: AdvancedEditRevision;
+  updatedAt: number;
+  /** Distinguishes a later recovery lifetime even if the editor revision resets. */
+  token: number;
+}
+const localRecoveryPromotions = new Map<string, AdvancedLocalRecoveryPromotion>();
+const localRecoveryListeners = new Set<() => void>();
+let localRecoveryToken = 0;
 const receiptKey = (pointer: AdvancedDraftPointer) => JSON.stringify([pointer.rootId, pointer.baseRevisionId, pointer.schema, pointer.url, pointer.editRevision, pointer.savedAt]);
+function emitLocalRecoveryChange(): void { for (const listener of [...localRecoveryListeners]) listener(); }
+export function subscribeAdvancedLocalRecovery(onChange: () => void): () => void {
+  localRecoveryListeners.add(onChange);
+  return () => localRecoveryListeners.delete(onChange);
+}
+export function advancedLocalRecoveryPromotion(key: string): AdvancedLocalRecoveryPromotion | undefined {
+  return localRecoveryPromotions.get(key);
+}
+export function noteAdvancedLocalRecoveryRestored(
+  key: string,
+  revision: AdvancedEditRevision,
+  updatedAt: number,
+): AdvancedLocalRecoveryPromotion | undefined {
+  if (!key || !Number.isFinite(updatedAt)) return undefined;
+  const promotion = { key, revision, updatedAt, token: ++localRecoveryToken };
+  localRecoveryPromotions.set(key, promotion);
+  if (localRecoveryPromotions.size > 256) localRecoveryPromotions.delete(localRecoveryPromotions.keys().next().value!);
+  emitLocalRecoveryChange();
+  return promotion;
+}
+export function clearAdvancedLocalRecoveryPromotion(
+  key: string,
+  expected?: Partial<Pick<AdvancedLocalRecoveryPromotion, "updatedAt" | "token">>,
+): void {
+  const current = localRecoveryPromotions.get(key);
+  if (
+    !current ||
+    (expected?.token !== undefined && current.token !== expected.token) ||
+    (expected?.updatedAt !== undefined && current.updatedAt !== expected.updatedAt)
+  ) return;
+  localRecoveryPromotions.delete(key);
+  emitLocalRecoveryChange();
+}
+export function resetAdvancedLocalRecoveryPromotionsForTests(): void {
+  localRecoveryPromotions.clear();
+  localRecoveryToken = 0;
+  emitLocalRecoveryChange();
+}
 export function noteAdvancedDraftPublished(pointer: AdvancedDraftPointer): void {
   publishedDrafts.add(receiptKey(pointer));
   if (publishedDrafts.size > 256) publishedDrafts.delete(publishedDrafts.values().next().value!);

@@ -28,6 +28,7 @@ import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import {
   CompressionNote,
+  UploadProgressList,
 } from "../lib/upload/progress-view";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
@@ -497,6 +498,12 @@ export function LeoComposer({
         onRemove={onRemoveAttachment}
         className="px-4 pb-1"
       />
+
+      {intake.inFlight.length > 0 ? (
+        <div className="px-4 pb-2">
+          <UploadProgressList entries={intake.inFlight} accent={accentColor} tt={tt} />
+        </div>
+      ) : null}
 
       {intake.compressing && (
         <p className="px-4 pb-2 text-[11px] text-neutral-500">

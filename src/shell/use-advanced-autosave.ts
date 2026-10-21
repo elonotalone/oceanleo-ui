@@ -1,6 +1,14 @@
 "use client";
 
-import { capturePortableAdvancedDraft, draftFromRecovery, noteAdvancedDraftPublished } from "./advanced-draft-recovery";
+import {
+  advancedLocalRecoveryPromotion,
+  capturePortableAdvancedDraft,
+  clearAdvancedLocalRecoveryPromotion,
+  draftFromRecovery,
+  noteAdvancedDraftPublished,
+  subscribeAdvancedLocalRecovery,
+  type AdvancedLocalRecoveryPromotion,
+} from "./advanced-draft-recovery";
 import { DRAFT_READ_FAILED, useAdvancedDraftRestore } from "./advanced-draft-restore";
 import { ADVANCED_DRAFT_META_KEY, advancedDraftIdentity, normalizeAdvancedDraftPointer } from "./advanced-draft";
 import { bindAdvancedDraftGate } from "./advanced-draft-gates";
@@ -42,6 +50,20 @@ function sameRevision(
   right: AdvancedEditRevision | undefined,
 ): boolean {
   return left !== undefined && right !== undefined && Object.is(left, right);
+}
+
+function localRecoveryReceiptCovers(
+  receiptRevision: AdvancedEditRevision,
+  restoredRevision: AdvancedEditRevision,
+): boolean {
+  if (Object.is(receiptRevision, restoredRevision)) return true;
+  // Numeric editor revisions are monotonic within one editor lifetime. For
+  // opaque string revisions, equality is the only safe coverage proof.
+  return typeof receiptRevision === "number" &&
+    typeof restoredRevision === "number" &&
+    Number.isFinite(receiptRevision) &&
+    Number.isFinite(restoredRevision) &&
+    receiptRevision > restoredRevision;
 }
 
 /**
@@ -131,6 +153,23 @@ export function useAdvancedAutoSave({
 }) {
   const draft = explicitDraft ?? draftFromRecovery(recovery);
   const key = materialKey && draft ? `${materialKey}:${draft.schema}` : materialKey;
+  // A saved-item receipt can replace the current item while its old controller
+  // is still completing the same drain. Do not let the next item lifetime
+  // take that controller back: its revision number and flush closure belong to
+  // the previous source document, and observing the new lifetime's revision 0
+  // would make the old drain publish the same document a second time.
+  const itemMeta = (item?.meta || {}) as Record<string, unknown>;
+  const controllerKey = key && item
+    ? `${key}:${JSON.stringify([
+        item.source,
+        item.key,
+        item.id,
+        item.url,
+        item.revisionId,
+        itemMeta.revision_id,
+        itemMeta.version_id,
+      ])}`
+    : key;
   const userEditKey = materialKey || "";
   const userMutationGen = useSyncExternalStore(
     subscribeUserEditSession,
@@ -138,6 +177,33 @@ export function useAdvancedAutoSave({
     () => 0,
   );
   const userEdited = userMutationGen > 0;
+  const localRecoveryKey = recovery && !recovery.draftSchema ? recovery.key : "";
+  const subscribedLocalPromotion = useSyncExternalStore(
+    subscribeAdvancedLocalRecovery,
+    () => localRecoveryKey ? advancedLocalRecoveryPromotion(localRecoveryKey) : undefined,
+    () => undefined,
+  );
+  const recoveryPromotionBaselineRef = useRef({
+    key: localRecoveryKey,
+    token: subscribedLocalPromotion?.token ?? 0,
+  });
+  if (recoveryPromotionBaselineRef.current.key !== localRecoveryKey) {
+    recoveryPromotionBaselineRef.current = {
+      key: localRecoveryKey,
+      token: subscribedLocalPromotion?.token ?? 0,
+    };
+  }
+  // A promotion already present when this editor lifetime mounted belongs to
+  // an earlier lifetime. A new restore publishes a larger token after mount.
+  const localPromotion = subscribedLocalPromotion &&
+    subscribedLocalPromotion.token > recoveryPromotionBaselineRef.current.token
+    ? subscribedLocalPromotion
+    : undefined;
+  const registeredLocalPromotionRef = useRef<AdvancedLocalRecoveryPromotion | undefined>(subscribedLocalPromotion);
+  registeredLocalPromotionRef.current = subscribedLocalPromotion;
+  const recoveredLocalDraft = Boolean(
+    dirty && localPromotion && Object.is(localPromotion.revision, revision),
+  );
   const restoration = useAdvancedDraftRestore({ item, schema: draft?.schema, recovery, revision });
   const blockedRef = useRef(restoration.paused);
   blockedRef.current = restoration.paused;
@@ -159,6 +225,15 @@ export function useAdvancedAutoSave({
   const flushRef = useRef(flush);
   const sessionRef = useRef(session);
   const versionSessionsRef = useRef(new Map<AdvancedEditRevision, AdvancedSessionActions | null>());
+  // Pin the exact emergency-restore marker at the beginning of a full save.
+  // A later restore with the same stable-root key must not be cleared by this
+  // operation's receipt, even if its editor revision has reset.
+  const versionRecoveryReceiptsRef = useRef(
+    new Map<AdvancedEditRevision, {
+      promotion?: AdvancedLocalRecoveryPromotion;
+      startedAt: number;
+    }>(),
+  );
   const mountedRef = useRef(true);
   const latestRevisionRef = useRef(revision);
   const dirtyRef = useRef(dirty);
@@ -188,6 +263,11 @@ export function useAdvancedAutoSave({
     const activeDraft = draftRef.current;
     const activeSession = sessionRef.current;
     if (!activeDraft || !activeSession?.sessionId || !activeSession.recordDraft) return false;
+    const promotion = registeredLocalPromotionRef.current;
+    const recoveryReceiptStartedAt = Date.now();
+    const recoveryReceipt = promotion && localRecoveryReceiptCovers(targetRevision, promotion.revision)
+      ? promotion
+      : undefined;
     let uploaded = uploadedDraftRef.current;
     if (!uploaded || !sameRevision(uploaded.revision, targetRevision) || uploaded.sessionId !== activeSession.sessionId) {
       const item = activeSession.snapshot().item;
@@ -204,7 +284,19 @@ export function useAdvancedAutoSave({
     }
     // Pin the destination captured before upload; a navigation must never move
     // this receipt into the next session through a mutable React ref.
-    return activeSession.recordDraft(uploaded.pointer);
+    const recorded = await activeSession.recordDraft(uploaded.pointer);
+    if (
+      recorded &&
+      recoveryReceipt &&
+      recoveryReceiptStartedAt >= recoveryReceipt.updatedAt &&
+      sameRevision(targetRevision, latestRevisionRef.current)
+    ) {
+      clearAdvancedLocalRecoveryPromotion(recoveryReceipt.key, {
+        updatedAt: recoveryReceipt.updatedAt,
+        token: recoveryReceipt.token,
+      });
+    }
+    return recorded;
   }, []);
 
   const bindController = useCallback(
@@ -229,6 +321,19 @@ export function useAdvancedAutoSave({
           // 编辑器的 flush 存的是「此刻」的文档，不是控制器点名的那个 revision；
           // 记下此刻的 revision 作为这次成功能覆盖到的范围。
           const captured = latestRevisionRef.current;
+          const promotion = registeredLocalPromotionRef.current;
+          const recoveryReceiptStartedAt = Date.now();
+          const pinnedReceipt = {
+            promotion: promotion && recoveryReceiptStartedAt >= promotion.updatedAt
+              ? promotion
+              : undefined,
+            startedAt: recoveryReceiptStartedAt,
+          };
+          // The persistence controller records its requested revision, while
+          // the editor flush can cover the latest captured revision. Keep the
+          // same pinned marker reachable by either receipt identity.
+          versionRecoveryReceiptsRef.current.set(targetRevision, pinnedReceipt);
+          versionRecoveryReceiptsRef.current.set(captured, pinnedReceipt);
           return ledger.track(targetRevision, captured, async () =>
             rememberFlush(await activeFlush()),
           );
@@ -240,6 +345,26 @@ export function useAdvancedAutoSave({
             : activeSession.recordSavedItem(item)) : true;
           if (recorded) versionSessionsRef.current.delete(coveredRevision);
           if (recorded) lastVersionItemRef.current = item;
+          if (recorded) {
+            const pinnedRecoveryReceipt = versionRecoveryReceiptsRef.current.get(coveredRevision);
+            if (
+              pinnedRecoveryReceipt?.promotion &&
+              pinnedRecoveryReceipt.startedAt >= pinnedRecoveryReceipt.promotion.updatedAt &&
+              sameRevision(coveredRevision, latestRevisionRef.current)
+            ) {
+              clearAdvancedLocalRecoveryPromotion(pinnedRecoveryReceipt.promotion.key, {
+                updatedAt: pinnedRecoveryReceipt.promotion.updatedAt,
+                token: pinnedRecoveryReceipt.promotion.token,
+              });
+            }
+            if (pinnedRecoveryReceipt) {
+              for (const [revision, receipt] of versionRecoveryReceiptsRef.current) {
+                if (receipt === pinnedRecoveryReceipt) versionRecoveryReceiptsRef.current.delete(revision);
+              }
+            } else {
+              versionRecoveryReceiptsRef.current.delete(coveredRevision);
+            }
+          }
           const opening = openingPointerRef.current;
           if (recorded && opening && opening.schema === draftRef.current?.schema &&
               opening.baseRevisionId !== advancedDraftIdentity(item).baseRevisionId) noteAdvancedDraftPublished(opening);
@@ -271,7 +396,7 @@ export function useAdvancedAutoSave({
 
   useEffect(() => {
     mountedRef.current = true;
-    const taken = key ? takeBack(key, draftEnabled) : null;
+    const taken = controllerKey ? takeBack(controllerKey, draftEnabled) : null;
     if (taken && taken !== controllerRef.current) {
       controllerRef.current?.dispose();
       controllerRef.current = taken;
@@ -288,6 +413,7 @@ export function useAdvancedAutoSave({
         restoredDraft: draftEnabled && sameRevision(restoredRevision, latestRevisionRef.current),
         userEdited: userEditedRef.current,
         userMutationGeneration: userMutationGenRef.current,
+        recoveredLocalDraft,
         itemKey: userEditKey || undefined,
       });
     }
@@ -297,13 +423,13 @@ export function useAdvancedAutoSave({
       controllerRef.current = null;
       if (!active) return;
       if (active.isHandedOff()) return;
-      if (key && active.hasUnconfirmedWork() && !blockedRef.current) {
-        handOff(key, active);
+      if (controllerKey && active.hasUnconfirmedWork() && !blockedRef.current) {
+        handOff(controllerKey, active);
         return;
       }
       active.dispose();
     };
-  }, [bindController, draftEnabled, key, makeController]);
+  }, [bindController, controllerKey, draftEnabled, makeController]);
 
   const wasDirtyRef = useRef(dirty);
   const wasUserEditedRef = useRef(userEdited);
@@ -319,9 +445,10 @@ export function useAdvancedAutoSave({
       restoredDraft: draftEnabled && sameRevision(restoredRevision, revision),
       userEdited,
       userMutationGeneration: userMutationGen,
+      recoveredLocalDraft,
       itemKey: userEditKey || undefined,
     });
-  }, [dirty, restoredRevision, draftEnabled, revision, restoration.paused, userEdited, userMutationGen, userEditKey]);
+  }, [dirty, restoredRevision, draftEnabled, revision, restoration.paused, userEdited, userMutationGen, userEditKey, recoveredLocalDraft]);
 
   const flushLatest = useCallback(
     async (): Promise<AdvancedFlushResult> =>
@@ -347,10 +474,10 @@ export function useAdvancedAutoSave({
   );
   const handOffToBackground = useCallback(() => {
     const controller = controllerRef.current;
-    if (!key || !controller || !controller.hasUnconfirmedWork() || blockedRef.current) return;
+    if (!controllerKey || !controller || !controller.hasUnconfirmedWork() || blockedRef.current) return;
     controller.markHandedOff();
-    handOff(key, controller);
-  }, [key]);
+    handOff(controllerKey, controller);
+  }, [controllerKey]);
 
   useEffect(() => {
     if (!draftEnabled || !draft?.bindFlush) return;

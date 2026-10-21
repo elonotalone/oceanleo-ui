@@ -43,10 +43,17 @@ let _previewJar: ReturnType<typeof createLeoDevPreviewCookieJar> | null = null;
 let _hostClientGeneration = -1;
 
 function attachAuthState(client: SupabaseClient): void {
-  client.auth.onAuthStateChange((_event, session) => {
+  client.auth.onAuthStateChange((event, session) => {
     _accessToken = session?.access_token ?? null;
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent(AUTH_STATE_EVENT));
+      window.dispatchEvent(
+        new CustomEvent<AuthStateEventDetail>(AUTH_STATE_EVENT, {
+          detail: {
+            event,
+            userId: session?.user?.id ?? null,
+          },
+        }),
+      );
     }
   });
 }
@@ -158,6 +165,34 @@ export async function getUserId(): Promise<string | null> {
   if (!c) return null;
   const { data } = await c.auth.getSession();
   return data.session?.user?.id ?? null;
+}
+
+export interface AuthStateEventDetail {
+  event?: string;
+  userId?: string | null;
+}
+
+/**
+ * A verified local auth snapshot for legacy auth-state announcements that do
+ * not carry event detail. `available: false` is deliberately distinct from a
+ * confirmed signed-out state so a transient session read cannot clear a
+ * mounted user's private Library/editor.
+ */
+export async function getUserIdSnapshot(): Promise<{
+  available: boolean;
+  userId: string | null;
+}> {
+  const c = browserClient();
+  if (!c) return { available: false, userId: null };
+  try {
+    const { data, error } = await c.auth.getSession();
+    return {
+      available: !error,
+      userId: data.session?.user?.id ?? null,
+    };
+  } catch {
+    return { available: false, userId: null };
+  }
 }
 
 async function captchaOptions(): Promise<{ captchaToken?: string }> {

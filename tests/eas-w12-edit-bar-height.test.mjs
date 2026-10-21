@@ -1,6 +1,6 @@
 /**
- * W12 源码门禁：编辑栏 58 px → 38 px。
- * 控件 28、内边距 4、边框 1+1、总高 38；停靠带 min-h-10；条上不再写 h-11。
+ * W12 源码门禁：编辑栏 58 px → 38 px.
+ * 控件 28、内边距 4、边框 1+1、总高 38；dock host is zero-height with an h-10 overlay sentinel.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -70,10 +70,12 @@ test("pill style plus compact class derive the measured 38 px bar root", () => {
   assert.match(surface.EDIT_BAR_BUTTON_CLASS, /pointer:coarse/);
 });
 
-test("dock band reserves min-h-10 / h-10, not the old 64 px strip", () => {
+test("dock host reserves no height but keeps an h-10 overlay target", () => {
   const host = slotSource("src/shell/EditBarDockHost.tsx");
-  assert.match(host, /\bmin-h-10\b/);
-  assert.match(host, /\bh-10\b/);
+  assert.match(host, /\bh-0 min-h-0\b/);
+  assert.match(host, /data-edit-bar-dock-sentinel[\s\S]{0,140}\bh-10\b/);
+  assert.match(host, /data-edit-bar-dock-placeholder[\s\S]{0,160}absolute[\s\S]{0,160}\bh-10\b/);
+  assert.doesNotMatch(host, /min-h-10 border-b px-2 py-1/);
   assert.doesNotMatch(host, /\bmin-h-16\b/);
   assert.doesNotMatch(host, /(?<![-\w])h-16(?![-\w])/);
 });

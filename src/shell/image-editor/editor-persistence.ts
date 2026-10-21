@@ -35,6 +35,8 @@ import {
 import type { ExportFormat } from "./types";
 
 export const IMAGE_PROJECT_SCHEMA = "oceanleo.fabric-image.v1";
+/** Durable working copy schema; distinct from the published image project. */
+export const IMAGE_EDIT_DRAFT_SCHEMA = "oceanleo.fabric-image.edit.v1";
 /** Fabric 保存的新版本永远是 PNG，不得把原 PSD 格式写回去。 */
 export const FABRIC_IMAGE_REVISION_SOURCE = {
   sourceFormat: "png",

@@ -895,11 +895,13 @@ export class FabricEditorController extends FabricEditorCore {
     }
     this.doc = clampDocument(width, height);
     updateDocBackground(this.canvas, this.doc, this.canvasBackground);
+    this.viewportMode = "fit";
     this.zoom = fitViewport(this.canvas, this.doc, this.container);
     this.commit();
   }
 
   zoomBy(factor: number): void {
+    this.viewportMode = "custom";
     this.zoom = zoomViewport(
       this.fabric,
       this.canvas,
@@ -910,6 +912,7 @@ export class FabricEditorController extends FabricEditorCore {
   }
 
   setZoom(value: number): void {
+    this.viewportMode = "custom";
     this.zoom = zoomViewport(
       this.fabric,
       this.canvas,
@@ -920,11 +923,13 @@ export class FabricEditorController extends FabricEditorCore {
   }
 
   zoomFit(): void {
+    this.viewportMode = "fit";
     this.zoom = fitViewport(this.canvas, this.doc, this.container);
     this.emit();
   }
 
   zoomTo100(): void {
+    this.viewportMode = "custom";
     this.zoom = viewportAt100(this.canvas, this.doc);
     this.emit();
   }

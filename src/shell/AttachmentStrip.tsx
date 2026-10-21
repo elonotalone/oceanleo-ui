@@ -4,11 +4,13 @@
 // 输入框附件缩略条 + 右侧预览面板（LeoComposer / InputCard 共用）
 // ----------------------------------------------------------------------------
 // - 点击缩略卡 → 右侧展开预览面板（图片 / 文本 / PDF / 音视频，其余给文件名 + 打开）。
-// - 上传中：缩略图上盖一圈转动圈（不用进度条，也不在文件右侧显示百分比 / 序号）。
+// - 上传中：未接进度读数时显示转圈；有真读数时用统一的百分比进度 chip。
 // - 删除键附着在卡片右上角。
 // ============================================================================
 
 import { useEffect, useState } from "react";
+import type { UploadProgressSnapshot } from "../lib/upload/progress";
+import { AttachmentProgressChip, liveProgress } from "../lib/upload/progress-view";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface StripAttachment {
@@ -19,6 +21,8 @@ export interface StripAttachment {
   url?: string;
   mime?: string;
   uploading?: boolean;
+  /** 真上传读数；缺省时仍显示既有的不确定态转圈。 */
+  progress?: UploadProgressSnapshot | null;
 }
 
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|log|xml|ya?ml|html?|css|js|jsx|ts|tsx|py|sh|sql|ini|toml)$/i;
@@ -165,44 +169,50 @@ export function AttachmentStrip({
   return (
     <>
       <div className={`flex flex-wrap gap-2 ${className}`} data-oceanleo-attachments="">
-        {attachments.map((a) => (
-          <div key={a.id} className="group relative">
-            <button
-              type="button"
-              disabled={a.uploading}
-              aria-label={a.name || tt("附件")}
-              onClick={() => setOpenId((current) => (current === a.id ? null : a.id))}
-              className={`flex items-center gap-1.5 rounded-lg border bg-white px-1 py-1 pr-2 text-left text-[11px] text-neutral-600 shadow-sm transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:cursor-default dark:bg-neutral-900 dark:text-neutral-300 ${
-                openId === a.id ? "border-neutral-400" : "border-neutral-200 dark:border-neutral-800"
-              }`}
-            >
-              <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800">
-                {a.previewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.previewUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <FileGlyph />
-                )}
-                {a.uploading ? (
-                  <span className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-black/50">
-                    <Spinner className="h-4 w-4" />
-                  </span>
-                ) : null}
-              </span>
-              <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
-            </button>
-            {onRemove && !a.uploading ? (
+        {attachments.map((a) => {
+          const progress = liveProgress(a.progress) ? a.progress : null;
+          return (
+            <div key={a.id} className="group relative">
               <button
                 type="button"
-                aria-label={tt("移除")}
-                onClick={() => onRemove(a.id)}
-                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[11px] leading-none text-white shadow hover:bg-neutral-900"
+                disabled={a.uploading}
+                aria-label={a.name || tt("附件")}
+                onClick={() => setOpenId((current) => (current === a.id ? null : a.id))}
+                className={`flex items-center gap-1.5 rounded-lg border bg-white px-1 py-1 pr-2 text-left text-[11px] text-neutral-600 shadow-sm transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:cursor-default dark:bg-neutral-900 dark:text-neutral-300 ${
+                  openId === a.id ? "border-neutral-400" : "border-neutral-200 dark:border-neutral-800"
+                }`}
               >
-                ×
+                <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800">
+                  {a.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.previewUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <FileGlyph />
+                  )}
+                  {a.uploading && !a.progress ? (
+                    <span className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-black/50">
+                      <Spinner className="h-4 w-4" />
+                    </span>
+                  ) : null}
+                </span>
+                <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
+                {a.uploading && progress ? (
+                  <AttachmentProgressChip snapshot={progress} tt={tt} />
+                ) : null}
               </button>
-            ) : null}
-          </div>
-        ))}
+              {onRemove && !a.uploading ? (
+                <button
+                  type="button"
+                  aria-label={tt("移除")}
+                  onClick={() => onRemove(a.id)}
+                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[11px] leading-none text-white shadow hover:bg-neutral-900"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
       {opened ? <PreviewPanel item={opened} onClose={() => setOpenId(null)} /> : null}
     </>

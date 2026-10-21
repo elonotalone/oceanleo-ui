@@ -200,10 +200,13 @@ export function useInlineAdvancedPanels({
     [activeDrawerId, panelFor, requestedMaterialAction, transientPanel],
   );
   useLayoutEffect(() => {
-    if (transientPanel) return;
+    // Keep the last detail subtree available while InlineAdvancedWorkbenchShell
+    // animates its fallback pane closed. The next open publishes its new node;
+    // clearing here would blank the panel before its 300ms exit finishes.
+    if (transientPanel || !liveDrawerDetail) return;
     publishLiveReactNode(
       liveDetailStoreRef.current,
-      liveDrawerDetail?.content || null,
+      liveDrawerDetail.content,
     );
   }, [liveDrawerDetail?.content, transientPanel]);
 
@@ -294,7 +297,6 @@ export function useInlineAdvancedPanels({
     transientPanelRef.current = null;
     setTransientPanel(null);
     setRequestedMaterialAction(undefined);
-    publishLiveReactNode(liveDetailStoreRef.current, null);
   }, [clearWorkspaceDetail, ownerId]);
 
   return {

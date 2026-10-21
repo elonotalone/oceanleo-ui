@@ -45,7 +45,7 @@ const stubs = {
     export function useAdvancedAutoSave() { return result; }
   `),
   './use-advanced-recovery': dataModule('export function useAdvancedRecovery() {}'),
-  './workbench-routes': dataModule('export function editBarOwnershipForItem() { return "host"; }'),
+  './workbench-routes': dataModule('export function editBarOwnershipForItem() { return "host"; } export function editorCapabilityFor() { return "host"; } export function editorRouteFor() { return {type:"image"}; }'),
 };
 const load = async (path) => import(await compileModule(path, stubs));
 const { InlineAdvancedWorkbenchShell } = await load('src/shell/InlineAdvancedWorkbenchShell.tsx');
@@ -111,6 +111,58 @@ test('host-reported design page switches settle in the workspace header slot', a
     assert.ok(container.querySelector('[data-design-content]'));
     assert.deepEqual(errors,[]);
     assert.ok(commits < 20, `expected bounded commits, got ${commits}`);
+  } finally {
+    await act(async()=>root.unmount());
+    dom.window.close();
+    for(const undo of restore.reverse())undo();
+  }
+});
+
+test('inline fallback tool panel expands and contracts without blanking its content', async () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', {pretendToBeVisual: true, url: 'https://test.dev.oceanleo.com/'});
+  const {window} = dom;
+  const restore = [];
+  for (const [key,value] of Object.entries({window, document:window.document, navigator:window.navigator, HTMLElement:window.HTMLElement, Element:window.Element, Node:window.Node, Event:window.Event, MouseEvent:window.MouseEvent, requestAnimationFrame:window.requestAnimationFrame.bind(window), cancelAnimationFrame:window.cancelAnimationFrame.bind(window), IS_REACT_ACT_ENVIRONMENT:true})) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis,key);
+    restore.push(() => descriptor ? Object.defineProperty(globalThis,key,descriptor) : delete globalThis[key]);
+    Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
+  }
+  const {createRoot} = await import('react-dom/client');
+  const container = window.document.createElement('div'); window.document.body.append(container);
+  const root = createRoot(container,{onCaughtError() {}});
+  const h = React.createElement;
+  const item = {id:'d4-inline-panel',key:'artifact:d4-inline-panel',title:'image',kind:'image',meta:{}};
+  const adapter = {
+    id:'image', label:'图片编辑',
+    stage:h('div',{'data-inline-stage':true},'canvas'),
+    drawers:[{id:'tools',label:'额外功能',content:h('div',{'data-inline-panel-content':true},'tools')}],
+    renderContextToolbar:(layout)=>h('button',{
+      'data-open-inline-panel':true,
+      onClick:()=>layout.openDrawer('tools'),
+    },'tools'),
+  };
+  try {
+    await act(async()=>root.render(h(InlineAdvancedWorkbenchShell,{item,siteId:'image',onClose(){},adapter})));
+    const open = container.querySelector('[data-open-inline-panel]');
+    assert.ok(open);
+    await act(async()=>open.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
+    const aside = container.querySelector('[data-left-panel="tool-detail"]');
+    const content = aside?.querySelector('[data-inline-panel-content]');
+    assert.ok(aside && content);
+    assert.equal(aside.style.width,'320px');
+    assert.ok(aside.className.includes('transition-[width,flex-basis,opacity]'));
+    await act(async()=>aside.querySelector('button').dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
+    assert.equal(container.querySelector('[data-left-panel="tool-detail"]'),null);
+    assert.equal(aside.getAttribute('aria-hidden'),'true');
+    assert.equal(aside.style.width,'0px');
+    assert.equal(aside.querySelector('span')?.textContent,'额外功能',
+      'the exiting header label remains available until the pane finishes closing');
+    assert.equal(aside.querySelector('[data-inline-panel-content]'),content,
+      'the same content node remains mounted during the exit transition');
+    assert.ok(container.querySelector('[data-inline-stage]'), 'the editor stage stays mounted as the pane contracts');
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,350));});
+    assert.equal(aside.querySelector('[data-inline-panel-content]'),null,
+      'content is released after the exit transition, not on the first close render');
   } finally {
     await act(async()=>root.unmount());
     dom.window.close();

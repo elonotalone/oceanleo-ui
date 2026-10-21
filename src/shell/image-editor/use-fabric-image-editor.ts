@@ -1162,6 +1162,61 @@ export function useFabricImageEditor(
     return blob;
   }, []);
 
+  const captureRecovery = useCallback(() => {
+    const controller = controllerRef.current;
+    if (!controller || loading || !sourceReadyRef.current) return null;
+    return createFabricImageProject(controller.getSnapshot());
+  }, [loading]);
+
+  const captureRecoveryRevision = useCallback((revision: string | number) => {
+    const controller = controllerRef.current;
+    if (
+      !controller ||
+      !sourceReadyRef.current ||
+      !Object.is(revisionRef.current, revision)
+    ) return null;
+    const payload = createFabricImageProject(controller.getSnapshot());
+    // Keep the receipt tied to the exact bytes and monotonic revision that the
+    // shared draft controller asked for. Selection-only changes do not advance
+    // this revision and never schedule this capture themselves.
+    if (!Object.is(revisionRef.current, revision)) return null;
+    return { revision, payload };
+  }, []);
+
+  const restoreRecovery = useCallback(async (payload: unknown) => {
+    const project = parseFabricImageProject(payload);
+    const controller = controllerRef.current;
+    if (!project || !controller || !sourceReadyRef.current) return false;
+    const identity = openIdentityRef.current;
+    const startingRevision = revisionRef.current;
+    // Server draft reads happen after the source is ready. Freeze edits while
+    // Fabric resolves the snapshot so a late restore cannot overwrite a new
+    // gesture; restore the collaboration permission that is current at finish.
+    controller.setReadOnly(true);
+    try {
+      const restored = await controller.loadSnapshot(project.snapshot);
+      if (
+        !restored ||
+        !aliveRef.current ||
+        controllerRef.current !== controller ||
+        openIdentityRef.current !== identity ||
+        revisionRef.current !== startingRevision
+      ) return false;
+      revisionRef.current = startingRevision + 1;
+      updateDirty(true);
+      setSavedUrl("");
+      setSavedProjectUrl("");
+      setSavedAt("");
+      setNotice("已恢复服务器工作草稿");
+      optionsRef.current.collab?.onLocalChange?.();
+      return true;
+    } finally {
+      if (controllerRef.current === controller) {
+        controller.setReadOnly(Boolean(optionsRef.current.collab?.readOnly));
+      }
+    }
+  }, [updateDirty]);
+
   const download = useCallback(() => {
     void makeExportBlob()
       .then((blob) => downloadImageBlob(blob, item.title, exportFormat))
@@ -1511,6 +1566,9 @@ export function useFabricImageEditor(
     savedAt,
     dirty,
     editRevision: revisionRef.current,
+    captureRecovery,
+    captureRecoveryRevision,
+    restoreRecovery,
     stageCanvasRef,
     stageContainerRef,
     doc: view.doc,

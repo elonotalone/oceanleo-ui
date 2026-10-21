@@ -1789,6 +1789,7 @@ export async function listFavoriteArtifacts(options: {
       nextCursor: normalized.nextCursor,
       total: normalized.total,
       ownerPrincipalId,
+      invalidItems: invalidItemsFromPayload(result.data),
     },
   };
 }

@@ -68,6 +68,8 @@ function makeControllerForHistory(initialObjects) {
     width: 800,
     height: 600,
     getObjects() { return this.objects; },
+    getWidth() { return this.width; },
+    getHeight() { return this.height; },
     toObject() { return { objects: structuredClone(this.objects) }; },
     loadFromJSON(snapshot) {
       this.objects = structuredClone(snapshot.objects || []);
@@ -85,6 +87,7 @@ function makeControllerForHistory(initialObjects) {
     container: null,
     doc: { width: 100, height: 80 },
     canvasBackground: "#ffffff",
+    viewportMode: "fit",
     currentSnapshot: makeSnapshot(initialObjects),
     undoStack: [],
     redoStack: [],
@@ -328,9 +331,12 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
       isPsdSource: () => false,
     }],
     ["./advanced-draft-recovery", {
+      advancedLocalRecoveryPromotion: () => undefined,
       capturePortableAdvancedDraft: async () => null,
+      clearAdvancedLocalRecoveryPromotion() {},
       draftFromRecovery: () => null,
       noteAdvancedDraftPublished() {},
+      subscribeAdvancedLocalRecovery: () => () => {},
     }],
     ["./advanced-draft-restore", {
       DRAFT_READ_FAILED: "draft read failed",
@@ -501,6 +507,9 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
     "namespaced image edits survive the workbench's first-fork bucket cleanup");
 
   await act(async () => controller.undo());
+  // undo starts an asynchronous Fabric restore; wait for loadFromJSON's
+  // promise continuation before checking the restored object list.
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
   await act(async () => new Promise((resolve) => setTimeout(resolve, 1_750)));
   assert.deepEqual(controller.canvas.objects, []);
   assert.equal(pendingSaves.length, 3, "undo after the fork auto-flushes without a manual save call");

@@ -581,6 +581,42 @@ export function resizeViewportToContainer(
   return { width, height };
 }
 
+/**
+ * Resize Fabric's bitmap while preserving the current viewport transform and
+ * the scene point under the viewport center.  This keeps a user's zoom/pan
+ * through side-panel animations without introducing independent x/y scaling.
+ */
+export function resizeViewportPreservingView(
+  canvas: Canvas,
+  container: HTMLDivElement | null,
+): void {
+  const previous = [...canvas.viewportTransform] as TMat2D;
+  const oldWidth = Math.max(1, canvas.getWidth());
+  const oldHeight = Math.max(1, canvas.getHeight());
+  const [a, b, c, d, e, f] = previous;
+  const determinant = a * d - b * c;
+  const oldCenterX = oldWidth / 2;
+  const oldCenterY = oldHeight / 2;
+  let sceneCenterX = oldCenterX;
+  let sceneCenterY = oldCenterY;
+  if (Number.isFinite(determinant) && Math.abs(determinant) > 1e-8) {
+    const viewX = oldCenterX - e;
+    const viewY = oldCenterY - f;
+    sceneCenterX = (d * viewX - c * viewY) / determinant;
+    sceneCenterY = (-b * viewX + a * viewY) / determinant;
+  }
+  const nextSize = resizeViewportToContainer(canvas, container);
+  canvas.setViewportTransform([
+    a,
+    b,
+    c,
+    d,
+    nextSize.width / 2 - (a * sceneCenterX + c * sceneCenterY),
+    nextSize.height / 2 - (b * sceneCenterX + d * sceneCenterY),
+  ]);
+  canvas.requestRenderAll();
+}
+
 export function fitViewport(
   canvas: Canvas,
   doc: DocSize,

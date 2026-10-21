@@ -22,6 +22,10 @@ import { useUI } from "../i18n/ui/useUI";
 import { APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 
 export type CollectionView = "grid" | "list";
+export type CollectionSort = {
+  by: "none" | "favorite" | "time" | "size";
+  direction: "asc" | "desc";
+};
 
 export type CollectionViewOption = {
   id: string;
@@ -224,6 +228,9 @@ export function CollectionMenuSearchField(props: {
 
 export function CollectionViewOptions(props: {
   options: CollectionViewOption[];
+  sort?: CollectionSort;
+  onSortChange?: (sort: CollectionSort) => void;
+  sortBusy?: boolean;
   label?: string; // default tt("查看选项")
 }): ReactElement {
   const tt = useUI();
@@ -287,6 +294,59 @@ export function CollectionViewOptions(props: {
               {option.checked ? <CheckIcon /> : <span className="inline-block h-3.5 w-3.5 shrink-0" />}
             </button>
           ))}
+          {props.sort && props.onSortChange ? (
+            <div
+              className="mt-1 border-t border-neutral-100 px-2.5 py-2"
+              role="group"
+              aria-label={tt("排序")}
+              data-collection-sort-controls=""
+            >
+              <label className="flex items-center justify-between gap-2 text-[12px] text-neutral-500">
+                <span>{tt("排序")}</span>
+                <select
+                  aria-label={tt("排序方式")}
+                  data-collection-sort=""
+                  value={props.sort.by}
+                  disabled={props.sortBusy}
+                  onChange={(event) =>
+                    props.onSortChange?.({
+                      ...props.sort!,
+                      by: event.currentTarget.value as CollectionSort["by"],
+                    })
+                  }
+                  className="max-w-32 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[12px] text-neutral-700"
+                >
+                  <option value="none">{tt("默认顺序")}</option>
+                  <option value="favorite">{tt("收藏")}</option>
+                  <option value="time">{tt("时间")}</option>
+                  <option value="size">{tt("大小")}</option>
+                </select>
+              </label>
+              {props.sort.by !== "none" ? (
+                <button
+                  type="button"
+                  data-collection-sort-direction=""
+                  aria-label={tt("切换排序方向")}
+                  disabled={props.sortBusy}
+                  onClick={() =>
+                    props.onSortChange?.({
+                      ...props.sort!,
+                      direction:
+                        props.sort!.direction === "asc" ? "desc" : "asc",
+                    })
+                  }
+                  className="mt-1.5 w-full rounded-md px-2 py-1 text-left text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  {tt(props.sort.direction === "asc" ? "升序" : "降序")}
+                </button>
+              ) : null}
+              {props.sortBusy ? (
+                <span role="status" className="mt-1 block text-[11px] text-neutral-500">
+                  {tt("正在加载完整列表以排序…")}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

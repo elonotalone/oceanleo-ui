@@ -116,3 +116,23 @@ test("ImageRoute chrome contract disables 结构/皮肤 and the AI drawer", () =
   assert.match(route, /imageRouteChrome/);
   assert.doesNotMatch(route, /designMode\.mode/);
 });
+
+test("ImageRoute persists recoverable Fabric edits through the server draft receipt tier", () => {
+  assert.match(route, /draftSchema:\s*IMAGE_EDIT_DRAFT_SCHEMA/);
+  assert.match(route, /captureRevision:\s*editor\.captureRecoveryRevision/);
+  assert.match(route, /restore:\s*editor\.restoreRecovery/);
+  assert.match(route, /ready:\s*imageAdmitted\.ok\s*&&\s*editor\.sourceReady/);
+  const editor = readFileSync(
+    new URL("../src/shell/image-editor/use-fabric-image-editor.ts", import.meta.url),
+    "utf8",
+  );
+  const persistence = readFileSync(
+    new URL("../src/shell/image-editor/editor-persistence.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(editor, /captureRecoveryRevision = useCallback/);
+  assert.match(editor, /restoreRecovery = useCallback/);
+  assert.match(editor, /parseFabricImageProject\(payload\)/);
+  assert.match(editor, /controller\.loadSnapshot\(project\.snapshot\)/);
+  assert.match(persistence, /IMAGE_EDIT_DRAFT_SCHEMA\s*=\s*"oceanleo\.fabric-image\.edit\.v1"/);
+});

@@ -110,6 +110,8 @@ function loadShell() {
       "./use-advanced-recovery": dataModule(`export function useAdvancedRecovery() {}`),
       "./workbench-routes": dataModule(`
         export function editBarOwnershipForItem() { return "host"; }
+        export function editorCapabilityFor() { return { available: false }; }
+        export function editorRouteFor() { return { type: "unsupported" }; }
       `),
     })
     ))();

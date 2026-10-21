@@ -181,6 +181,28 @@ export function InlineAdvancedWorkbenchShell({
     clearWorkspaceDetail,
     onLocalUpload: openLocalUpload,
   });
+  const [closingFallbackDetail, setClosingFallbackDetail] =
+    useState<typeof fallbackDetail>(null);
+  const lastFallbackDetailRef = useRef<typeof fallbackDetail>(fallbackDetail);
+  if (fallbackDetail) lastFallbackDetailRef.current = fallbackDetail;
+  useEffect(() => {
+    if (fallbackDetail) {
+      lastFallbackDetailRef.current = fallbackDetail;
+      setClosingFallbackDetail(null);
+      return;
+    }
+    const previous = lastFallbackDetailRef.current;
+    if (!previous) return;
+    lastFallbackDetailRef.current = null;
+    setClosingFallbackDetail(previous);
+    const timer = globalThis.setTimeout(
+      () => setClosingFallbackDetail(null),
+      300,
+    );
+    return () => globalThis.clearTimeout(timer);
+  }, [fallbackDetail]);
+  const displayedFallbackDetail =
+    fallbackDetail || closingFallbackDetail || lastFallbackDetailRef.current;
 
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
@@ -537,12 +559,22 @@ export function InlineAdvancedWorkbenchShell({
           upload={adapter.upload}
           onFiles={(files) => void performUpload(files)}
         />
-        {fallbackDetail && (
-          <aside
-            data-workspace-pane="left"
-            data-left-panel="tool-detail"
-            className="flex h-full min-h-0 w-80 shrink-0 flex-col border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
-          >
+        <aside
+          data-workspace-pane={fallbackDetail ? "left" : undefined}
+          data-left-panel={fallbackDetail ? "tool-detail" : undefined}
+          aria-hidden={!fallbackDetail}
+          inert={!fallbackDetail}
+          style={{
+            width: fallbackDetail ? 320 : 0,
+            flexBasis: fallbackDetail ? 320 : 0,
+            opacity: fallbackDetail ? 1 : 0,
+            pointerEvents: fallbackDetail ? "auto" : "none",
+            borderRightWidth: fallbackDetail ? undefined : 0,
+          }}
+          className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] transition-[width,flex-basis,opacity] duration-300 ease-out motion-reduce:transition-none"
+        >
+          {displayedFallbackDetail && (
+            <>
             <div className="flex h-11 items-center gap-2 border-b border-[var(--awb-border)] px-3">
               <button
                 type="button"
@@ -553,17 +585,18 @@ export function InlineAdvancedWorkbenchShell({
                 ←
               </button>
               <span className="truncate text-[12px] font-semibold">
-                {fallbackDetail.label}
+                {displayedFallbackDetail.label}
               </span>
             </div>
             <div
               data-editor-fallback-pane
               className={`min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&:has([data-agent-conversation])]:overflow-hidden ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
             >
-              {fallbackDetail.content}
+              {displayedFallbackDetail.content}
             </div>
-          </aside>
-        )}
+            </>
+          )}
+        </aside>
         <div
           ref={localEditBarLayerRef}
           data-edit-bar-layer-root={!rightPaneSlot || undefined}

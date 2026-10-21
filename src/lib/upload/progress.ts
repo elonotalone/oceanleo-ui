@@ -282,6 +282,8 @@ export interface XhrUploadResult {
   aborted: boolean;
   /** 传输层失败（连不上、被墙、CORS）。HTTP 错误码不算，那种 `ok:false` + status。 */
   networkError: boolean;
+  /** Request timeout is distinct from an explicit user cancellation. */
+  timedOut: boolean;
 }
 
 /** `XMLHttpRequest` 在不在（SSR 与 node 测试环境里没有）。 */
@@ -319,6 +321,7 @@ export function xhrUpload(options: XhrUploadOptions): Promise<XhrUploadResult> {
         responseText: "",
         aborted: true,
         networkError: false,
+        timedOut: false,
       });
     };
 
@@ -353,7 +356,8 @@ export function xhrUpload(options: XhrUploadOptions): Promise<XhrUploadResult> {
         status: request.status,
         responseText: request.responseText || "",
         aborted: false,
-        networkError: false,
+        networkError: request.status === 0,
+        timedOut: false,
       });
     };
     request.onerror = () => {
@@ -363,6 +367,7 @@ export function xhrUpload(options: XhrUploadOptions): Promise<XhrUploadResult> {
         responseText: "",
         aborted: false,
         networkError: true,
+        timedOut: false,
       });
     };
     request.ontimeout = () => {
@@ -371,7 +376,8 @@ export function xhrUpload(options: XhrUploadOptions): Promise<XhrUploadResult> {
         status: 0,
         responseText: "",
         aborted: false,
-        networkError: true,
+        networkError: false,
+        timedOut: true,
       });
     };
     request.onabort = () => {
@@ -381,6 +387,7 @@ export function xhrUpload(options: XhrUploadOptions): Promise<XhrUploadResult> {
         responseText: "",
         aborted: true,
         networkError: false,
+        timedOut: false,
       });
     };
 

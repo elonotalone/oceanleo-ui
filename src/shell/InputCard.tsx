@@ -39,7 +39,7 @@ import {
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import { persistedPayerOrgId } from "../lib/payer";
-import { CompressionNote } from "../lib/upload/progress-view";
+import { CompressionNote, UploadProgressList } from "../lib/upload/progress-view";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
@@ -208,6 +208,10 @@ export function InputCard({
       />
 
       <AttachmentStrip attachments={attachments ?? []} onRemove={onRemoveAttachment} />
+
+      {intake.inFlight.length > 0 ? (
+        <UploadProgressList entries={intake.inFlight} accent={accent} tt={tt} />
+      ) : null}
 
       {intake.compressing && (
         <p className="text-[11px] text-stone-500">{tt("正在压缩图片…")}</p>

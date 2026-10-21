@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { advancedDraftRestoredAt, draftRecoveryKey } from "./advanced-draft-recovery";
+import { useEffect, useRef, useState } from "react";
+import {
+  advancedLocalRecoveryPromotion,
+  advancedDraftRestoredAt,
+  clearAdvancedLocalRecoveryPromotion,
+  draftRecoveryKey,
+  noteAdvancedLocalRecoveryRestored,
+  resetAdvancedLocalRecoveryPromotionsForTests,
+  type AdvancedLocalRecoveryPromotion,
+} from "./advanced-draft-recovery";
 import type {
   AdvancedEditRevision,
   AdvancedPersistenceState,
@@ -89,6 +97,7 @@ export function advancedRecoverySupersededBySave(
 /** 只给测试用：清空登记，避免用例之间串味。 */
 export function resetAdvancedSaveLedgerForTests(): void {
   RECENT_SAVES.clear();
+  resetAdvancedLocalRecoveryPromotionsForTests();
 }
 
 export function useAdvancedRecovery({
@@ -105,33 +114,72 @@ export function useAdvancedRecovery({
   recovery?: AdvancedEditorRecoveryAdapter;
 }): void {
   const recoveryRef = useRef(recovery);
+  const revisionRef = useRef(revision);
   const restoredKeyRef = useRef("");
   const hadDirtyRef = useRef(false);
+  const pendingLocalRestoreRef = useRef<{
+    key: string;
+    updatedAt: number;
+    startRevision: AdvancedEditRevision;
+  } | null>(null);
+  const localPromotionRef = useRef<AdvancedLocalRecoveryPromotion | null>(null);
+  const [restoreCommitVersion, setRestoreCommitVersion] = useState(0);
   // 草稿的时间戳记「最后一次编辑」而不是「落盘那一刻」：卸载时的兜底写盘发生在
   // 保存成功之后，若记落盘时刻，它会把已入云的内容伪装成比保存更新的改动。
   const lastEditAtRef = useRef(0);
   recoveryRef.current = recovery;
+  revisionRef.current = revision;
 
   useEffect(() => {
     if (dirty) lastEditAtRef.current = Date.now();
-  }, [dirty, revision]);
+    const pending = pendingLocalRestoreRef.current;
+    if (!pending || !dirty || Object.is(revision, pending.startRevision)) return;
+    // Promote only the exact post-restore editor revision. A generic dirty
+    // hydration or a server-durable draft never enters this path.
+    localPromotionRef.current = noteAdvancedLocalRecoveryRestored(
+      pending.key,
+      revision,
+      pending.updatedAt,
+    ) ?? null;
+    pendingLocalRestoreRef.current = null;
+  }, [dirty, revision, restoreCommitVersion]);
 
   useEffect(() => {
     const active = recoveryRef.current;
     if (!active?.ready || active.draftSchema || restoredKeyRef.current === active.key) return;
     let cancelled = false;
     restoredKeyRef.current = active.key;
+    const promotionAtRead =
+      advancedLocalRecoveryPromotion(active.key);
     void readAdvancedRecovery(active.key)
       .then(async (record) => {
         if (cancelled || !record) return;
         const latest = recoveryRef.current;
         if (!latest || latest.key !== record.key || !latest.ready) return;
         if (advancedRecoverySupersededBySave(record.key, record.updatedAt)) {
+          if (promotionAtRead?.updatedAt === record.updatedAt) {
+            clearAdvancedLocalRecoveryPromotion(record.key, {
+              updatedAt: promotionAtRead.updatedAt,
+              token: promotionAtRead.token,
+            });
+          }
           await deleteAdvancedRecovery(record.key).catch(() => undefined);
           return;
         }
+        const startRevision = revisionRef.current;
         const restored = await latest.restore(record.payload, record.updatedAt);
-        if (restored !== false) hadDirtyRef.current = true;
+        if (cancelled) return;
+        if (restored !== false) {
+          hadDirtyRef.current = true;
+          pendingLocalRestoreRef.current = {
+            key: record.key,
+            updatedAt: record.updatedAt,
+            startRevision,
+          };
+          // The editor owns its revision state. This rerender lets the exact
+          // post-restore revision commit before the promotion is published.
+          setRestoreCommitVersion((value) => value + 1);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -177,6 +225,12 @@ export function useAdvancedRecovery({
       return;
     }
     hadDirtyRef.current = false;
-    void deleteAdvancedRecovery(draftRecoveryKey(active)).catch(() => undefined);
+    const key = draftRecoveryKey(active);
+    const promotion = localPromotionRef.current;
+    if (promotion?.key === key) {
+      clearAdvancedLocalRecoveryPromotion(key, promotion);
+      localPromotionRef.current = null;
+    }
+    void deleteAdvancedRecovery(key).catch(() => undefined);
   }, [dirty, persistenceState, recovery?.key]);
 }

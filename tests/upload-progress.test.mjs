@@ -54,6 +54,7 @@ const STUBS = {
     export async function getUserEmail(){ return "test@example.com"; }
     export async function getUserId(){ return "user-test"; }
     export async function signIn(){ return {}; }
+    export async function signUp(){ return {}; }
     export function normalizeCnPhone(raw){ return String(raw); }
     export async function sendPhoneOtp(){ return {}; }
     export async function verifyPhoneOtp(){ return {}; }
@@ -85,6 +86,7 @@ const STUBS = {
     export const GATEWAY_BASE = "https://gateway.test";
     export const SUPABASE_URL = "https://supabase.test";
     export const SUPABASE_ANON_KEY = "anon-test";
+    export function isLeoDevPreviewHost(){ return false; }
     export function configured(){ return true; }
     export function cookieDomainFor(){ return undefined; }
     export function cookieOptions(){ return {}; }
@@ -479,6 +481,20 @@ for (const [label, Component, baseProps, target] of [
         publishUploadProgress(emitted[0], tracker.finish());
       });
       assert.equal(/data-upload-progress/.test(html()), false, "done 之后进度行没撤掉");
+
+      const failedFile = smallFile("上传失败.pdf", 4096);
+      await paste(target, [failedFile]);
+      assert.equal(emitted[1], failedFile, "失败样本也必须保留原 File 身份");
+      await act(async () => {
+        publishUploadProgress(failedFile, halfwaySnapshot(4096));
+      });
+      assert.match(html(), /data-upload-progress/, "失败前真进度行没有显示");
+      const failure = createProgressTracker(4096, () => 0);
+      failure.report(2048);
+      await act(async () => {
+        publishUploadProgress(failedFile, failure.fail());
+      });
+      assert.equal(/data-upload-progress/.test(html()), false, "failed 之后进度行没撤掉");
     });
   });
 
@@ -486,7 +502,7 @@ for (const [label, Component, baseProps, target] of [
     await withDom(async ({ render, html }) => {
       const spinnerOnly = { id: "a1", name: "报表.xlsx", uploading: true };
       await render(Component(), { ...baseProps, attachments: [spinnerOnly] });
-      assert.match(html(), /v-spinner/, "不传 progress 时应逐字维持今天的转圈");
+      assert.match(html(), /data-attachment-spinner/, "不传 progress 时应维持今天的不确定态转圈");
       assert.equal(/data-attachment-progress/.test(html()), false);
 
       await render(Component(), {
@@ -496,7 +512,7 @@ for (const [label, Component, baseProps, target] of [
       const shown = html();
       assert.match(shown, /data-attachment-progress="50"/, "缩略条没换成真进度");
       assert.match(shown, /4\.0 KB \/ 8\.0 KB/, "title 里应有已传/总计");
-      assert.equal(/v-spinner/.test(shown), false, "有真读数时不该再转圈");
+      assert.equal(/data-attachment-spinner/.test(shown), false, "有真读数时不该再转圈");
     });
   });
 

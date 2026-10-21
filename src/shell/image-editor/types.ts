@@ -262,6 +262,15 @@ export interface FabricImageEditorState {
   dirty: boolean;
   /** Monotonic document mutation revision used by the shared save queue. */
   editRevision: number;
+  /** JSON-safe in-memory recovery snapshot; does not mark a user mutation. */
+  captureRecovery: () => unknown | null;
+  /** Captures only the exact requested edit revision for the server draft tier. */
+  captureRecoveryRevision: (revision: string | number) => {
+    revision: string | number;
+    payload: unknown;
+  } | null;
+  /** Applies a validated recovery snapshot without recording a user edit. */
+  restoreRecovery: (payload: unknown) => Promise<boolean>;
   // ---- 画布挂载 ----
   stageCanvasRef: (element: HTMLCanvasElement | null) => void;
   stageContainerRef: MutableRefObject<HTMLDivElement | null>;

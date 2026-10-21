@@ -81,15 +81,14 @@ export function AdvancedStageControls({
     if (pending !== null) setZoom(pending);
   };
 
-  // 条高 40 → 56：内含控件从 28/32 提到 44（W04）。56 = 44 + 2×6，与
-  // `edit-bar-surface.ts` 的胶囊几何（EDIT_BAR_CONTROL_SIZE_PX + 2×PADDING）
-  // 同一套算术，两条浮动条因此看起来是一家的。挤不下不要把尺寸调回去。
+  // 44px 命中区保留，视觉外壳压到 40px 并降低阴影；按钮垂直溢出 2px，
+  // 触控面积不缩小。图片结构/皮肤开关与这里保持同一基线。
   return (
     <div
       data-advanced-viewport-controls
       role="group"
       aria-label={tt("画布视图")}
-      className="pointer-events-auto flex h-14 items-center gap-1 rounded-2xl border border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-popover-bg,var(--card,#fff))] px-2 text-[var(--awb-muted,var(--fg-2,#57534e))] shadow-[var(--awb-shadow-floating,0_8px_28px_rgba(15,23,42,.12))]"
+      className="pointer-events-auto flex h-10 items-center gap-1 rounded-xl border border-[var(--awb-border,var(--border,#e7e5e4))] bg-[var(--awb-popover-bg,var(--card,#fff))] px-1.5 text-[var(--awb-muted,var(--fg-2,#57534e))] shadow-sm"
     >
       {viewport && (
         <>

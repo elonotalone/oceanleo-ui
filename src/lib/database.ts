@@ -142,7 +142,296 @@ export interface ResolvedDatabaseItem {
   item: Record<string, unknown>;
 }
 
-type Result<T> = { ok: boolean; data?: T; error?: string; status?: number };
+type Result<T> = {
+  ok: boolean;
+  data?: T;
+  error?: string;
+  status?: number;
+  /** Set on upload failures when replaying the same input remains safe. */
+  retryable?: boolean;
+};
+
+interface UploadTransportResult {
+  ok: boolean;
+  status: number;
+  responseText: string;
+  aborted: boolean;
+  networkError: boolean;
+  timedOut: boolean;
+  error?: string;
+  retryable?: boolean;
+}
+
+const UPLOAD_MAX_ATTEMPTS = 3;
+
+function transientUploadFailure(result: UploadTransportResult): boolean {
+  return (
+    !result.aborted &&
+    (result.networkError || result.timedOut || result.status === 0 || result.status >= 500)
+  );
+}
+
+function abortedUploadResult(): UploadTransportResult {
+  return {
+    ok: false,
+    status: 0,
+    responseText: "",
+    aborted: true,
+    networkError: false,
+    timedOut: false,
+    retryable: false,
+  };
+}
+
+async function waitForUploadRetry(
+  retryNumber: number,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) return false;
+  const delayMs = retryNumber === 1 ? 120 : 360;
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const finish = (continueRetrying: boolean) => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      resolve(continueRetrying);
+    };
+    const onAbort = () => finish(false);
+    timer = setTimeout(() => finish(true), delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function fetchUploadAttempt(options: {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: BodyInit | null;
+  signal?: AbortSignal;
+  withCredentials?: boolean;
+}): Promise<UploadTransportResult> {
+  let response: Response;
+  try {
+    response = await fetch(options.url, {
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+      signal: options.signal,
+      cache: "no-store",
+      credentials: options.withCredentials ? "include" : "same-origin",
+    });
+  } catch (error) {
+    const timedOut =
+      error !== null &&
+      typeof error === "object" &&
+      "name" in error &&
+      error.name === "TimeoutError";
+    const aborted = Boolean(options.signal?.aborted) || (!timedOut &&
+      error !== null &&
+      typeof error === "object" &&
+      "name" in error &&
+      error.name === "AbortError");
+    return {
+      ok: false,
+      status: 0,
+      responseText: "",
+      aborted,
+      networkError: !aborted && !timedOut,
+      timedOut,
+    };
+  }
+
+  try {
+    return {
+      ok: response.ok,
+      status: response.status,
+      responseText: await response.text(),
+      aborted: false,
+      networkError: response.status === 0,
+      timedOut: false,
+    };
+  } catch (error) {
+    const aborted = Boolean(options.signal?.aborted);
+    return {
+      ok: false,
+      status: 0,
+      responseText: "",
+      aborted,
+      networkError: !aborted,
+      timedOut: false,
+    };
+  }
+}
+
+/**
+ * Retry only upload requests with a stable identity. 401 gets one fresh
+ * access-token read; status 0/timeouts/5xx use a small bounded backoff.
+ */
+async function uploadRequest(options: {
+  url: string;
+  method: "POST" | "PUT";
+  headers?: Record<string, string>;
+  body?: BodyInit | null;
+  signal?: AbortSignal;
+  withCredentials?: boolean;
+  authenticated?: boolean;
+  replaySafe: boolean;
+  automaticRetry?: boolean;
+  useXhr?: boolean;
+  onProgress?: (loaded: number, total: number) => void;
+}): Promise<UploadTransportResult> {
+  const canAutomaticallyRetry =
+    options.replaySafe && options.automaticRetry !== false;
+  const maxAttempts = canAutomaticallyRetry ? UPLOAD_MAX_ATTEMPTS : 1;
+  let attemptNumber = 0;
+  let authRetried = false;
+
+  while (attemptNumber < maxAttempts) {
+    if (options.signal?.aborted) return abortedUploadResult();
+    const headers = { ...(options.headers || {}) };
+    if (options.authenticated) {
+      let token: string | null;
+      try {
+        token = await accessToken();
+      } catch {
+        attemptNumber += 1;
+        const authTransportFailure: UploadTransportResult = {
+          ok: false,
+          status: 0,
+          responseText: "",
+          aborted: Boolean(options.signal?.aborted),
+          networkError: !options.signal?.aborted,
+          timedOut: false,
+        };
+        if (options.signal?.aborted) return abortedUploadResult();
+        if (!canAutomaticallyRetry || attemptNumber >= maxAttempts) {
+          return {
+            ...authTransportFailure,
+            retryable: options.replaySafe && transientUploadFailure(authTransportFailure),
+          };
+        }
+        if (!(await waitForUploadRetry(attemptNumber, options.signal))) {
+          return options.signal?.aborted
+            ? abortedUploadResult()
+            : {
+                ...authTransportFailure,
+                retryable:
+                  options.replaySafe && transientUploadFailure(authTransportFailure),
+              };
+        }
+        continue;
+      }
+      if (!token) {
+        return {
+          ok: false,
+          status: 401,
+          responseText: "",
+          error: "未登录",
+          aborted: false,
+          networkError: false,
+          timedOut: false,
+          retryable: false,
+        };
+      }
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const result =
+      options.useXhr !== false && xhrUploadAvailable()
+        ? await xhrUpload({
+            url: options.url,
+            method: options.method,
+            headers,
+            body: options.body as XMLHttpRequestBodyInit,
+            onProgress: options.onProgress,
+            signal: options.signal,
+            withCredentials: options.withCredentials,
+          })
+        : await fetchUploadAttempt({
+            url: options.url,
+            method: options.method,
+            headers,
+            body: options.body,
+            signal: options.signal,
+            withCredentials: options.withCredentials,
+          });
+    attemptNumber += 1;
+    if (result.aborted) return abortedUploadResult();
+
+    const shouldRetryAuth =
+      options.authenticated &&
+      options.replaySafe &&
+      !authRetried &&
+      result.status === 401;
+    const shouldRetryTransport =
+      options.replaySafe && transientUploadFailure(result);
+    if (
+      canAutomaticallyRetry &&
+      attemptNumber < maxAttempts &&
+      (shouldRetryAuth || shouldRetryTransport)
+    ) {
+      if (shouldRetryAuth) authRetried = true;
+      if (!(await waitForUploadRetry(attemptNumber, options.signal))) {
+        return abortedUploadResult();
+      }
+      continue;
+    }
+
+    return {
+      ...result,
+      retryable: options.replaySafe && transientUploadFailure(result),
+    };
+  }
+
+  return abortedUploadResult();
+}
+
+function parseUploadResponse(responseText: string): unknown {
+  if (!responseText) return null;
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    return null;
+  }
+}
+
+async function authedUpload<T>(
+  path: string,
+  init: RequestInit,
+  replaySafe: boolean,
+): Promise<Result<T>> {
+  const sent = await uploadRequest({
+    url: `${GATEWAY_BASE}${path}`,
+    method: (init.method || "POST") as "POST" | "PUT",
+    headers: {
+      ...((init.headers || {}) as Record<string, string>),
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: init.body as BodyInit | null | undefined,
+    signal: init.signal || undefined,
+    withCredentials: true,
+    authenticated: true,
+    replaySafe,
+    useXhr: false,
+  });
+  if (sent.aborted) {
+    return { ok: false, error: "上传已取消", status: 0, retryable: false };
+  }
+  const data = parseUploadResponse(sent.responseText);
+  if (!sent.ok) {
+    return {
+      ok: false,
+      error:
+        sent.error ||
+        (sent.status === 0
+          ? "文件上传服务暂时无法连接，请重试"
+          : gatewayErrorMessage(data, sent.status)),
+      status: sent.status,
+      retryable: sent.retryable,
+    };
+  }
+  return { ok: true, data: data as T };
+}
 
 async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
   const token = await accessToken();
@@ -594,7 +883,7 @@ export async function uploadFile(
       register_asset: registerAsset,
       idempotency_key: idempotencyKey,
     };
-    const initialized = await authed<{
+    const initialized = await authedUpload<{
       ok: boolean;
       path: string;
       signed_url?: string;
@@ -604,7 +893,8 @@ export async function uploadFile(
     }>("/v1/media/upload/init", {
       method: "POST",
       body: JSON.stringify(common),
-    });
+      signal: opts.signal,
+    }, Boolean(idempotencyKey));
     if (
       initialized.ok &&
       initialized.data?.already_finalized &&
@@ -626,8 +916,13 @@ export async function uploadFile(
       progress.fail();
       return {
         ok: false,
-        error: initialized.error || "创建大文件上传通道失败",
+        error:
+          initialized.error ||
+          (initialized.status === 0
+            ? "文件上传服务暂时无法连接，请重试"
+            : "创建大文件上传通道失败"),
         status: initialized.status,
+        retryable: initialized.retryable,
       };
     }
     if (initialized.data.upload_complete) {
@@ -653,61 +948,37 @@ export async function uploadFile(
       if (resumeKey) await writeResumeTicket(ticketFor(false));
       // 直传这一段是大文件的全部耗时所在，也是唯一值得报进度的一段。
       // 走 XHR 而不是 fetch：理由见 `upload/progress.ts` 文件头。
-      if (xhrUploadAvailable()) {
-        const uploaded = await xhrUpload({
-          url: signedUrl,
-          method: "PUT",
-          headers: { "Content-Type": common.content_type },
-          body: file,
-          onProgress: (loaded) => progress.report(loaded),
-          signal: opts.signal,
-        });
-        if (uploaded.aborted) {
-          progress.fail();
-          return { ok: false, error: "上传已取消", status: 0 };
-        }
-        if (uploaded.networkError) {
-          progress.fail();
-          return {
-            ok: false,
-            error: "大文件直传失败：无法连接对象存储",
-            status: 0,
-          };
-        }
-        if (!uploaded.ok) {
-          progress.fail();
-          return {
-            ok: false,
-            error: `大文件直传失败 HTTP ${uploaded.status}`,
-            status: uploaded.status,
-          };
-        }
-      } else {
-        // SSR / 没有 XHR 的运行时：保留原来的 fetch 路径，只是没有进度。
-        let uploaded: Response;
-        try {
-          uploaded = await fetch(signedUrl, {
-            method: "PUT",
-            headers: { "Content-Type": common.content_type },
-            body: file,
-            signal: opts.signal,
-          });
-        } catch {
-          progress.fail();
-          return {
-            ok: false,
-            error: "大文件直传失败：无法连接对象存储",
-            status: 0,
-          };
-        }
-        if (!uploaded.ok) {
-          progress.fail();
-          return {
-            ok: false,
-            error: `大文件直传失败 HTTP ${uploaded.status}`,
-            status: uploaded.status,
-          };
-        }
+      // The signed URL is one-use. Do not replay the PUT itself; a transient
+      // failure is retryable at the uploadFile level, where init either finds
+      // the completed object or issues a fresh signed URL for the same key.
+      const uploaded = await uploadRequest({
+        url: signedUrl,
+        method: "PUT",
+        headers: { "Content-Type": common.content_type },
+        body: file,
+        onProgress: (loaded) => progress.report(loaded),
+        signal: opts.signal,
+        replaySafe: Boolean(idempotencyKey),
+        automaticRetry: false,
+      });
+      if (uploaded.aborted) {
+        progress.fail();
+        return { ok: false, error: "上传已取消", status: 0, retryable: false };
+      }
+      if (!uploaded.ok) {
+        progress.fail();
+        const error =
+          uploaded.status === 0
+            ? uploaded.timedOut
+              ? "大文件直传超时，请重试"
+              : "大文件直传失败：无法连接对象存储"
+            : `大文件直传失败 HTTP ${uploaded.status}`;
+        return {
+          ok: false,
+          error,
+          status: uploaded.status,
+          retryable: uploaded.retryable,
+        };
       }
       progress.finish();
       // 字节已经进桶了。**这一条落盘是整个续传里最值钱的一次写**：
@@ -717,12 +988,14 @@ export async function uploadFile(
       // SHA-256，在 200MB 文件上是白花的钱，而身份在这一次上传里不会变。
       if (resumeKey) await writeResumeTicket(ticketFor(true));
     }
-    const finalized = await authed<{ ok: boolean; file: FileItem }>(
+    const finalized = await authedUpload<{ ok: boolean; file: FileItem }>(
       "/v1/media/upload/finalize",
       {
         method: "POST",
         body: JSON.stringify({ ...common, path: initialized.data.path }),
+        signal: opts.signal,
       },
+      Boolean(idempotencyKey),
     );
     // 登记成了，凭据没用了。留着只会在库里躺到 7 天 TTL 到期。
     // 失败则**刻意留着**：那正是下一次要续的那个断点。
@@ -734,11 +1007,6 @@ export async function uploadFile(
   // 这条路**没有续传**：网关收的是一次 multipart POST，中断了就没有断点可言
   // （对比直传路的整文件级续传，见上）。但它照样要报进度——小文件也不都是小的，
   // 8MB 在慢网上要走十几秒，今天那十几秒里界面上什么都没有。
-  const token = await accessToken();
-  if (!token) {
-    progress.fail();
-    return { ok: false, error: "未登录", status: 401 };
-  }
   const fd = new FormData();
   fd.append("file", file);
   if (opts.siteId) fd.append("site_id", opts.siteId);
@@ -747,75 +1015,41 @@ export async function uploadFile(
   if (opts.idempotencyKey) fd.append("idempotency_key", opts.idempotencyKey);
 
   const uploadUrl = `${GATEWAY_BASE}/v1/database/${opts.privateUpload ? "private-upload" : "upload"}`;
-  // 错误口径与改造前逐字一致：网关的 `detail` 优先，没有就 `HTTP <status>`。
-  const gatewayFailure = (
-    data: unknown,
-    status: number,
-  ): Result<{ ok: boolean; file: FileItem }> => ({
-    ok: false,
-    error: gatewayErrorMessage(data, status),
-    status,
+  // Multipart mutations replay only with a stable identity: the private
+  // endpoint derives one from content when omitted; public retries require an
+  // explicit caller key. The request stays on the selected route for every
+  // attempt, and FormData's boundary remains browser-generated.
+  const replaySafe = opts.privateUpload === true || Boolean(opts.idempotencyKey);
+  const sent = await uploadRequest({
+    url: uploadUrl,
+    method: "POST",
+    headers: {},
+    body: fd,
+    withCredentials: true,
+    authenticated: true,
+    replaySafe,
+    onProgress: (loaded) => progress.report(loaded),
+    signal: opts.signal,
   });
-
-  if (xhrUploadAvailable()) {
-    const sent = await xhrUpload({
-      url: uploadUrl,
-      method: "POST",
-      // 只有 Authorization。**不许手写 `Content-Type`**：multipart 的 boundary
-      // 由浏览器在 send(FormData) 时生成，手写一个 header 会覆盖掉它，
-      // 网关拿不到 boundary，整个请求体解不出来（表现是 422，很难查）。
-      headers: { Authorization: `Bearer ${token}` },
-      body: fd,
-      withCredentials: true,
-      onProgress: (loaded) => progress.report(loaded),
-      signal: opts.signal,
-    });
-    if (sent.aborted) {
-      progress.fail();
-      return { ok: false, error: "上传已取消", status: 0 };
-    }
-    if (sent.networkError) {
-      progress.fail();
-      return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
-    }
-    let data: unknown = null;
-    try {
-      data = JSON.parse(sent.responseText);
-    } catch {
-      /* non-JSON */
-    }
-    if (!sent.ok) {
-      progress.fail();
-      return gatewayFailure(data, sent.status);
-    }
-    progress.finish();
-    return { ok: true, data: data as { ok: boolean; file: FileItem } };
-  }
-
-  // 没有 XHR 的运行时（SSR / node）：原来的 fetch 路径原样保留，只是没有进度。
-  let res: Response;
-  try {
-    res = await fetch(uploadUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: fd,
-      cache: "no-store",
-      signal: opts.signal,
-      credentials: "include",
-    });
-  } catch {
+  if (sent.aborted) {
     progress.fail();
-    return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
+    return { ok: false, error: "上传已取消", status: 0, retryable: false };
   }
-  let data: unknown = null;
-  try {
-    data = await res.json();
-  } catch {
-    /* non-JSON */
-  }
-  if (!res.ok) {
+  const data = parseUploadResponse(sent.responseText);
+  if (!sent.ok) {
     progress.fail();
-    return gatewayFailure(data, res.status);
+    return {
+      ok: false,
+      error:
+        sent.error ||
+        (sent.status === 0
+          ? sent.timedOut
+            ? "上传超时，请稍后重试。"
+            : "文件上传服务暂时无法连接，请重试"
+          : gatewayErrorMessage(data, sent.status)),
+      status: sent.status,
+      retryable: sent.retryable,
+    };
   }
   progress.finish();
   return { ok: true, data: data as { ok: boolean; file: FileItem } };
