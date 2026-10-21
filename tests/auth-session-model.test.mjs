@@ -776,6 +776,8 @@ test("中间件不得把瞬时鉴权失败写成空会话 cookie", () => {
   assert.match(middlewareSource, /isFamilyAuthCookieName/);
 });
 
+// UC-NONE：此断言保护刷新会话响应的 CDN 缓存隔离，不改变共享 cookie 的域范围。
+// 判断依据：防止带会话 cookie 的响应被另一访客复用；UC-1…UC-7 未规定缓存头，不能冒记为 UC-7 域边界覆盖。
 test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头", () => {
   // 忽略 setAll 的第二个参数 = 刷新 token 的响应可能被 CDN 缓存，
   // 下一个访客拿到别人的 session。
