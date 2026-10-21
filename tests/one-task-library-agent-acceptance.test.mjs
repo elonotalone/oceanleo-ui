@@ -687,7 +687,7 @@ test("real Library→MyLibrary→MaterialStandaloneEditor composition renders wi
   }
 });
 
-test("real Library Edit opens Task chat beside same editor and sends its live file context exactly once", { timeout: 35000 }, async () => {
+test("real Library Edit keeps Task chat closed until the edit-bar agent action and sends live file context exactly once", { timeout: 35000 }, async () => {
   assert.ok(actualArtifactLibraryComponent, "first composition test imports the production Library graph");
   activeProjection = activeDocumentProjection;
   trackedRequests.length = 0;
@@ -720,11 +720,16 @@ test("real Library Edit opens Task chat beside same editor and sends its live fi
     await click(edit);
     const editorHost = await waitFor(mounted, '[data-library-editor-host="agent-workspace"]', "standalone Task-shaped editor host");
     const split = await waitFor(mounted, "[data-workspace-split]", "real shared split workspace");
+    const leftPane = await waitFor(mounted, '[data-workspace-pane="left"]', "hidden Task conversation pane");
+    assert.equal(leftPane.dataset.workspacePaneState, "closed", "opening a standalone Library file keeps its Task conversation closed");
+    assert.equal(leftPane.getAttribute("aria-hidden"), "true", "the unopened conversation is inaccessible until explicitly requested");
+    const editBarAgent = await waitFor(mounted, '[data-edit-bar-agent]', "explicit edit-bar agent action");
+    await click(editBarAgent);
     const agentHeader = await waitFor(mounted, "[data-agent-chat-header]", "normal Agent Task header");
     const workbenchHeader = await waitFor(mounted, "[data-advanced-workbench-header]", "real AdvancedContentWorkbench header");
     const rightPane = mounted.container.querySelector('[data-workspace-pane="main"]');
-    const leftPane = mounted.container.querySelector('[data-workspace-pane="left"]');
     assert.ok(rightPane && leftPane, "the real Task chat and file editor occupy the two shared panes");
+    assert.equal(leftPane.dataset.workspacePaneState, "open", "the explicit edit-bar action reveals the existing Task conversation");
     assert.equal(mounted.container.querySelectorAll("[data-workspace-split]").length, 1, "no nested/fallback split is mounted");
     assert.equal(mounted.container.querySelectorAll('[data-workspace-pane="main"]').length, 1);
     assert.equal(mounted.container.querySelectorAll('[data-workspace-pane="left"]').length, 1);

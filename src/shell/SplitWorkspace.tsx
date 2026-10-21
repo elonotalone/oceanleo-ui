@@ -358,8 +358,11 @@ export function SplitWorkspace({
         const current = consoleAgentFocusHandlerRef.current;
         if (!current && !agentFocusRef.current) return false;
         setRightMaximizedState(false);
+        // An embedded conversation may be intentionally hidden (for example,
+        // while a standalone Library file opens). Reveal its pane before
+        // switching the already-mounted console to agent mode.
+        agentFocusRef.current?.();
         if (current) current.handler();
-        else agentFocusRef.current?.();
         return true;
       },
     }),

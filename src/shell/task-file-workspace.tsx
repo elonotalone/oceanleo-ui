@@ -8,17 +8,20 @@ import type { LibraryItem } from "./library-data";
 /** One Task/editor composition for a new Library thread AND its history replay. */
 export function TaskFileWorkspace({
   item, taskId, siteId, appId, accent, onSavedItem, onClose,
+  agentInitiallyVisible = true,
 }: {
   item: LibraryItem | null;
   taskId?: string | null;
   siteId: string;
   appId: string;
   accent: string;
+  /** Standalone Library editors keep the Task conversation hidden until requested. */
+  agentInitiallyVisible?: boolean;
   onSavedItem: (item: LibraryItem) => void;
   onClose?: () => void;
 }) {
   const [boundTaskId, setBoundTaskId] = useState(taskId);
-  const [agentVisible, setAgentVisible] = useState(true);
+  const [agentVisible, setAgentVisible] = useState(agentInitiallyVisible);
   const [workspaceOpen, setWorkspaceOpen] = useState(true);
   useEffect(() => { setBoundTaskId(taskId); }, [taskId]);
   const handleTaskCreated = useCallback((id: string) => setBoundTaskId(id), []);

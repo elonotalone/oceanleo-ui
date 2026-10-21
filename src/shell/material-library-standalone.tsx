@@ -26,9 +26,10 @@ export function MaterialStandaloneEditor({
   onClose: () => void;
 }) {
   const existingPane = useRightPaneSlot();
-  // Library editing is a Task-shaped workspace: keep the existing conversation
-  // visible beside the editor from the first frame. Task hosts already provide
-  // this SplitWorkspace and take the `existingPane` branch below.
+  // A Library file is the canvas, not an implicit request to start a chat.
+  // Keep the Task conversation available in the same workspace, but hidden
+  // until the edit-bar agent action explicitly focuses it. Task hosts already
+  // provide their own SplitWorkspace and take the `existingPane` branch below.
   const editor = (
     <AdvancedContentWorkbench
       key={item.artifactId || item.id}
@@ -48,6 +49,7 @@ export function MaterialStandaloneEditor({
       siteId={siteId || item.siteId}
       appId={appId}
       accent={accent}
+      agentInitiallyVisible={false}
       onSavedItem={onSavedItem}
       onClose={onClose}
     />
