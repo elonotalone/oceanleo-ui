@@ -257,13 +257,21 @@ secondDocumentProjection.renditions.preview.url = "https://signed.one-task-libra
 secondDocumentProjection.renditions.source.revision_id = "one-task-library-second-document-r1";
 secondDocumentProjection.renditions.source.url = "https://signed.one-task-library.test/second-document-source.json";
 secondDocumentProjection.renditions.source.digest = "sha256:one-task-library-second-document-r1";
+const initialSecondDocumentProjection = structuredClone(secondDocumentProjection);
+
+const artifactRevisionHeads = new Map([
+  [activeImageProjection.artifact_id, structuredClone(activeImageProjection)],
+  [activeDocumentProjection.artifact_id, structuredClone(activeDocumentProjection)],
+  [secondDocumentProjection.artifact_id, structuredClone(secondDocumentProjection)],
+]);
 
 const trackedRequests = [];
 const createdTaskRequests = [];
 const followUpTaskRequests = [];
 const existingTaskFollowups = [];
 let historyBackendFetchCount = 0;
-let activeProjection = activeImageProjection;
+let activeProjection = structuredClone(activeImageProjection);
+let acceptedDocumentRevisionProjection = null;
 let includeSecondLibraryItem = false;
 let actualArtifactLibraryComponent;
 let nextSessionRevision = 1;
@@ -281,6 +289,60 @@ const uploadedLibraryFiles = [];
 const artifactRevisionCommits = [];
 let nextLibraryUploadId = 1;
 let r2ProjectUrl = null;
+let acceptedDocumentRevisionId = "";
+
+function selectActiveProjection(projection) {
+  activeProjection = structuredClone(projection);
+  artifactRevisionHeads.set(
+    activeProjection.artifact_id,
+    structuredClone(activeProjection),
+  );
+}
+
+function resetSecondDocumentProjection() {
+  Object.assign(
+    secondDocumentProjection,
+    structuredClone(initialSecondDocumentProjection),
+  );
+  artifactRevisionHeads.set(
+    secondDocumentProjection.artifact_id,
+    structuredClone(secondDocumentProjection),
+  );
+}
+
+function editorProjectForCommit(commitRecord) {
+  const url = commitRecord?.commit?.renditions?.find(
+    (rendition) => rendition.purpose === "editor_manifest",
+  )?.url;
+  return uploadedLibraryFiles.find((upload) => upload.url === url) || null;
+}
+
+function latestArtifactRevisionCommit(artifactId) {
+  return artifactRevisionCommits
+    .slice()
+    .reverse()
+    .find((commit) => commit.artifactId === artifactId) || null;
+}
+
+async function waitForBackgroundSavesToSettle(label, timeoutMs = 10000) {
+  const saver = await import(
+    pathToFileURL(resolve(projectRoot, "src/shell/advanced-background-saver.ts")).href
+  );
+  const deadline = Date.now() + timeoutMs;
+  while (saver.hasPendingOrFailed() && Date.now() < deadline) {
+    if (saver.failedBackgroundSaveCount() > 0) {
+      assert.fail(
+        `${label}: background save failed instead of settling; jobs=${JSON.stringify(saver.snapshotBackgroundSaves())}; revisionRequests=${JSON.stringify(trackedRequests.filter((request) => request.path.includes("/revisions")))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
+      );
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50));
+  }
+  assert.equal(
+    saver.hasPendingOrFailed(),
+    false,
+    `${label}: background saves must settle before their fixture projection is restored; jobs=${JSON.stringify(saver.snapshotBackgroundSaves())}; revisionRequests=${JSON.stringify(trackedRequests.filter((request) => request.path.includes("/revisions")))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
+  );
+}
 function persistedInlineEditorHead(rootId = "one-task-library-document") {
   return Object.values(sessionSnapshot.oceanleo_inline_editor?.heads || {})
     .map((entry) => entry?.head)
@@ -406,7 +468,10 @@ async function libraryFetch(input, init = {}) {
   }
   if (url.pathname === "/v1/library/mine") {
     const requestedType = url.searchParams.get("artifactType");
-    const projections = [activeProjection, ...(includeSecondLibraryItem ? [secondDocumentProjection] : [])];
+    const candidates = [activeProjection, ...(includeSecondLibraryItem ? [secondDocumentProjection] : [])];
+    const projections = candidates.map((item) =>
+      artifactRevisionHeads.get(item.artifact_id) || item,
+    );
     const items = projections.filter((item) => !requestedType || requestedType === item.artifact_type);
     return Promise.resolve(jsonResponse({
       schema: "oceanleo.library.v1",
@@ -422,11 +487,13 @@ async function libraryFetch(input, init = {}) {
     return Promise.resolve(jsonResponse(emptyMineEnvelope()));
   }
   const libraryItem = [activeProjection, secondDocumentProjection]
+    .map((item) => artifactRevisionHeads.get(item.artifact_id) || item)
     .find((item) => url.pathname === `/v1/library/items/${item.artifact_id}`);
   if (libraryItem) {
     return Promise.resolve(jsonResponse(libraryItem));
   }
   const editCapabilityItem = [activeProjection, secondDocumentProjection]
+    .map((item) => artifactRevisionHeads.get(item.artifact_id) || item)
     .find((item) => url.pathname === `/v1/artifacts/${item.artifact_id}/edit-capability`);
   if (editCapabilityItem) {
     return Promise.resolve(jsonResponse({
@@ -536,10 +603,25 @@ async function libraryFetch(input, init = {}) {
   }
   const revisionMatch = url.pathname.match(/^\/v1\/artifacts\/([^/]+)\/revisions$/);
   if (revisionMatch && method === "POST") {
+    const artifactId = decodeURIComponent(revisionMatch[1]);
     const commit = JSON.parse(body);
-    artifactRevisionCommits.push({ artifactId: decodeURIComponent(revisionMatch[1]), commit, headers: Object.fromEntries(new Headers(init.headers || {}).entries()) });
-    const revisionId = "one-task-library-document-r2";
-    const next = structuredClone(activeProjection);
+    const headers = Object.fromEntries(new Headers(init.headers || {}).entries());
+    const current = artifactRevisionHeads.get(artifactId);
+    if (!current) {
+      return jsonResponse({ error: `unknown artifact ${artifactId}` }, 404);
+    }
+    if (
+      commit.expected_revision_id !== current.revision_id ||
+      headers["if-match"] !== current.revision_id
+    ) {
+      return jsonResponse({
+        error: "artifact revision conflict",
+        current_revision_id: current.revision_id,
+      }, 412);
+    }
+    const revisionNumber = Number(current.revision_id.match(/-r(\d+)$/)?.[1] || 1) + 1;
+    const revisionId = `${artifactId}-r${revisionNumber}`;
+    const next = structuredClone(current);
     next.revision_id = revisionId;
     next.source_format = commit.source?.format;
     next.renditions.source = {
@@ -561,7 +643,14 @@ async function libraryFetch(input, init = {}) {
       };
     }
     next.provenance = { ...(next.provenance || {}), previous_revision_id: commit.expected_revision_id };
-    activeProjection = next;
+    artifactRevisionCommits.push({ artifactId, commit, headers, revisionId });
+    artifactRevisionHeads.set(artifactId, structuredClone(next));
+    if (activeProjection.artifact_id === artifactId) {
+      activeProjection = structuredClone(next);
+    }
+    if (secondDocumentProjection.artifact_id === artifactId) {
+      Object.assign(secondDocumentProjection, structuredClone(next));
+    }
     return jsonResponse(next);
   }
   if (url.pathname === "/v1/agent/sessions/one-task-library-session/snapshot" && method === "PUT") {
@@ -689,7 +778,8 @@ test("real Library→MyLibrary→MaterialStandaloneEditor composition renders wi
 
 test("real Library Edit keeps Task chat closed until the edit-bar agent action and sends live file context exactly once", { timeout: 35000 }, async () => {
   assert.ok(actualArtifactLibraryComponent, "first composition test imports the production Library graph");
-  activeProjection = activeDocumentProjection;
+  selectActiveProjection(activeDocumentProjection);
+  resetSecondDocumentProjection();
   trackedRequests.length = 0;
   historyBackendFetchCount = 0;
   createdTaskRequests.length = 0;
@@ -703,6 +793,8 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
   uploadedLibraryFiles.length = 0;
   artifactRevisionCommits.length = 0;
   r2ProjectUrl = null;
+  acceptedDocumentRevisionId = "";
+  acceptedDocumentRevisionProjection = null;
   window.history.replaceState(null, "", "/library?item=one-task-library-document");
 
   const renderErrors = [];
@@ -749,6 +841,20 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
       12000,
     );
     assert.match(documentEditor.textContent || "", /Initial real content/);
+    await act(async () => new Promise((resolveWait) => setTimeout(resolveWait, 650)));
+    const userEditSession = await import(
+      pathToFileURL(resolve(projectRoot, "src/shell/user-edit-session.ts")).href
+    );
+    const editSessionState = {
+      activeItemKey: userEditSession.activeUserEditItemKey(),
+      documentMutationGeneration: userEditSession.userMutationGeneration("one-task-library-document"),
+    };
+    assert.equal(
+      artifactRevisionCommits.length,
+      0,
+      `opening and hydrating the typed editor without a user edit must not publish an artifact revision; editSession=${JSON.stringify(editSessionState)}; commits=${JSON.stringify(artifactRevisionCommits.map(({ artifactId, commit, revisionId }) => ({ artifactId, expected: commit.expected_revision_id, revisionId, project: editorProjectForCommit({ commit })?.url, hasMarker: editorProjectForCommit({ commit })?.content.includes("Agent accepted marker") })))}; posts=${JSON.stringify(trackedRequests.filter((request) => request.path.includes("/revisions")))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
+    );
+    assert.equal(uploadedLibraryFiles.length, 0, "hydration alone must not upload a replacement project or delivery file");
     const composer = await waitFor(
       mounted,
       '[data-workspace-pane="left"] [contenteditable="true"].oc-slot-editor',
@@ -837,25 +943,74 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     );
     await click(saveAccept);
     const commitDeadline = Date.now() + 10000;
-    while (artifactRevisionCommits.length === 0 && Date.now() < commitDeadline) {
+    let stableCommitCount = -1;
+    let stableSince = 0;
+    while (Date.now() < commitDeadline) {
+      const latestCommit = latestArtifactRevisionCommit("one-task-library-document");
+      const latestProject = editorProjectForCommit(latestCommit);
+      const latestHead = persistedInlineEditorHead();
+      const latestIsFullyPinned = Boolean(
+        latestCommit &&
+        latestProject?.content.includes("Agent accepted marker") &&
+        activeProjection.revision_id === latestCommit.revisionId &&
+        latestHead?.item?.revisionId === latestCommit.revisionId &&
+        latestHead?.item?.meta?.editor_project_url === latestProject.url
+      );
+      if (latestIsFullyPinned) {
+        if (artifactRevisionCommits.length !== stableCommitCount) {
+          stableCommitCount = artifactRevisionCommits.length;
+          stableSince = Date.now();
+        } else if (Date.now() - stableSince >= 700) {
+          break;
+        }
+      } else {
+        stableCommitCount = -1;
+        stableSince = 0;
+      }
       await act(async () => new Promise((resolveWait) => setTimeout(resolveWait, 50)));
     }
-    assert.equal(artifactRevisionCommits.length, 1, `accepted agent content is committed through the existing typed artifact revision producer; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content }) => ({ filename, content: content.slice(0, 220) })))}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 180)}` : ""}`))}; ui=${(mounted.container.textContent || "").slice(-600)}`);
-    const revisionCommit = artifactRevisionCommits[0];
+    const documentCommits = artifactRevisionCommits.filter(
+      (commit) => commit.artifactId === "one-task-library-document",
+    );
+    assert.ok(
+      documentCommits.length > 0,
+      `accepted agent content is committed through the existing typed artifact revision producer; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content }) => ({ filename, content: content.slice(0, 220) })))}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 180)}` : ""}`))}; ui=${(mounted.container.textContent || "").slice(-600)}`,
+    );
+    assert.equal(
+      documentCommits.length,
+      1,
+      `the single accepted marker mutation and explicit save must settle as one distinct artifact revision; commits=${JSON.stringify(documentCommits.map(({ commit, revisionId }) => ({ expected: commit.expected_revision_id, revisionId, hasMarker: editorProjectForCommit({ commit })?.content.includes("Agent accepted marker") })))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
+    );
+    assert.equal(documentCommits[0].commit.expected_revision_id, "one-task-library-document-r1", "the first accepted receipt uses the exact opened Library revision as its CAS base");
+    for (let index = 1; index < documentCommits.length; index += 1) {
+      assert.equal(
+        documentCommits[index].commit.expected_revision_id,
+        documentCommits[index - 1].revisionId,
+        "each later receipt CASes against the preceding returned revision rather than reusing a stale head",
+      );
+    }
+    assert.equal(new Set(documentCommits.map((commit) => commit.revisionId)).size, documentCommits.length, "every accepted write receives a distinct revision head");
+    assert.ok(
+      documentCommits.every((commit) => editorProjectForCommit(commit)?.content.includes("Agent accepted marker")),
+      "hydration or an older in-flight snapshot must not overwrite the accepted marker in a later revision",
+    );
+    const revisionCommit = latestArtifactRevisionCommit("one-task-library-document");
+    assert.ok(revisionCommit, "the latest first-document save receipt is available");
     assert.equal(revisionCommit.artifactId, "one-task-library-document");
-    assert.equal(revisionCommit.commit.expected_revision_id, "one-task-library-document-r1", "revision commit uses the exact opened Library revision as its CAS base");
-    assert.equal(revisionCommit.headers["if-match"], "one-task-library-document-r1");
-    assert.equal(activeProjection.revision_id, "one-task-library-document-r2", "the accepted edit returns a new revision of the same artifact root");
+    assert.equal(revisionCommit.headers["if-match"], revisionCommit.commit.expected_revision_id);
+    assert.equal(activeProjection.revision_id, revisionCommit.revisionId, "the latest accepted edit receipt is the current head of the same artifact root");
     const projectRendition = revisionCommit.commit.renditions?.find((rendition) => rendition.purpose === "editor_manifest");
-    assert.ok(projectRendition?.url, "the r2 revision must point at its exact editor-project rendition");
-    const projectUpload = uploadedLibraryFiles.find((upload) => upload.url === projectRendition.url);
-    assert.ok(projectUpload, `the editor-project bytes referenced by r2 were uploaded; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content, url }) => ({ filename, url, hasAcceptedMarker: content.includes("Agent accepted marker") })))}; r2 project URL=${projectRendition.url}`);
-    assert.match(projectUpload.content, /Agent accepted marker/, `the editor project referenced by r2 contains the accepted text; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content }) => ({ filename, hasAcceptedMarker: content.includes("Agent accepted marker") })))}; r2 project URL=${projectRendition.url}`);
+    assert.ok(projectRendition?.url, "the latest revision must point at its exact editor-project rendition");
+    const projectUpload = editorProjectForCommit(revisionCommit);
+    assert.ok(projectUpload, `the exact editor-project bytes referenced by the latest revision were uploaded; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content, url }) => ({ filename, url, hasAcceptedMarker: content.includes("Agent accepted marker") })))}; latest project URL=${projectRendition.url}`);
+    assert.match(projectUpload.content, /Agent accepted marker/, `the latest editor project contains the accepted text; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content }) => ({ filename, hasAcceptedMarker: content.includes("Agent accepted marker") })))}; latest project URL=${projectRendition.url}`);
     r2ProjectUrl = projectRendition.url;
+    acceptedDocumentRevisionId = revisionCommit.revisionId;
+    acceptedDocumentRevisionProjection = structuredClone(activeProjection);
     assert.equal(sessionTaskId, "one-task-library-created-task", "the real Workbench snapshot remains linked to the newly created Task");
     assert.ok(persistedInlineEditorTaskIds.includes("one-task-library-created-task"), "the task-linked file head was written through the real WorkspaceSession snapshot API");
     const historyDeadline = Date.now() + 7000;
-    while (persistedInlineEditorHead()?.item?.revisionId !== "one-task-library-document-r2" && Date.now() < historyDeadline) {
+    while (persistedInlineEditorHead()?.item?.revisionId !== acceptedDocumentRevisionId && Date.now() < historyDeadline) {
       await act(async () => new Promise((resolveWait) => setTimeout(resolveWait, 40)));
     }
     const persistedHead = persistedInlineEditorHead();
@@ -863,7 +1018,7 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     assert.equal(persistedHead?.task_id, "one-task-library-created-task");
     assert.equal(
       persistedHead?.item?.revisionId,
-      "one-task-library-document-r2",
+      acceptedDocumentRevisionId,
       `the Task snapshot advances to the revision returned by the accepted save command; snapshot=${JSON.stringify(sessionSnapshot)}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 320)}` : ""}`))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasAcceptedMarker: content.includes("Agent accepted marker") })))}; UI=${(mounted.container.textContent || "").slice(-1200)}`,
     );
     assert.equal(persistedHead?.item?.meta?.editor_project_url, projectRendition.url);
@@ -887,7 +1042,10 @@ test("standalone Library editor keeps its Task conversation hidden after reopen 
   assert.ok(actualArtifactLibraryComponent, "the production Library graph was loaded by the first composition test");
   const priorProjection = activeProjection;
   const createdTasksBeforeEditorCycle = createdTaskRequests.length;
-  activeProjection = structuredClone(activeDocumentProjection);
+  const revisionCommitsBeforeEditorCycle = artifactRevisionCommits.length;
+  const uploadsBeforeEditorCycle = uploadedLibraryFiles.length;
+  selectActiveProjection(activeDocumentProjection);
+  resetSecondDocumentProjection();
   includeSecondLibraryItem = true;
   trackedRequests.length = 0;
   window.history.replaceState(null, "", "/library?item=one-task-library-document");
@@ -896,6 +1054,8 @@ test("standalone Library editor keeps its Task conversation hidden after reopen 
   const { resetLibraryCurrentIdentityForTests } = await import(pathToFileURL(resolve(projectRoot, "src/shell/library-current-identity.ts")).href);
   resetLibraryCurrentIdentityForTests();
   const renderErrors = [];
+  let revisionCommitsAfterEditorCycle = revisionCommitsBeforeEditorCycle;
+  let uploadsAfterEditorCycle = uploadsBeforeEditorCycle;
   const mounted = await mount(React.createElement(
     OneTaskLibraryRenderErrorBoundary,
     { onError: (error, info) => renderErrors.push({ error, componentStack: info?.componentStack || "" }) },
@@ -927,16 +1087,33 @@ test("standalone Library editor keeps its Task conversation hidden after reopen 
     assert.equal(mounted.container.querySelector("[data-render-error]"), null);
   } finally {
     await mounted.destroy();
-    activeProjection = priorProjection;
+    await waitForBackgroundSavesToSettle("standalone reopen/switch editor cycle");
+    revisionCommitsAfterEditorCycle = artifactRevisionCommits.length;
+    uploadsAfterEditorCycle = uploadedLibraryFiles.length;
+    activeProjection = structuredClone(priorProjection);
+    artifactRevisionHeads.set(
+      activeProjection.artifact_id,
+      structuredClone(activeProjection),
+    );
     includeSecondLibraryItem = false;
   }
+  assert.equal(
+    revisionCommitsAfterEditorCycle,
+    revisionCommitsBeforeEditorCycle,
+    "opening, closing, reopening, or switching an unchanged Library file does not autosave a hydration snapshot",
+  );
+  assert.equal(
+    uploadsAfterEditorCycle,
+    uploadsBeforeEditorCycle,
+    "opening, closing, reopening, or switching an unchanged Library file does not upload replacement bytes",
+  );
 });
 
 test("real Task history reopens the saved Library revision and follows up on that same Task", { timeout: 35000 }, async () => {
-  assert.equal(activeProjection.revision_id, "one-task-library-document-r2", "the prior test must have received the committed revision receipt");
+  assert.equal(activeProjection.revision_id, acceptedDocumentRevisionId, "the prior test must have received the committed revision receipt");
   const savedHead = persistedInlineEditorHead();
   assert.equal(savedHead?.task_id, "one-task-library-created-task");
-  assert.equal(savedHead?.item?.revisionId, "one-task-library-document-r2");
+  assert.equal(savedHead?.item?.revisionId, acceptedDocumentRevisionId);
   const uploadCountBeforeHistoryOpen = uploadedLibraryFiles.length;
   const revisionCommitCountBeforeHistoryOpen = artifactRevisionCommits.length;
   commandResponseEnabled = false;
@@ -983,8 +1160,8 @@ test("real Task history reopens the saved Library revision and follows up on tha
     assert.match(editor.textContent || "", /Initial real content/);
     assert.match(editor.textContent || "", /Agent accepted marker/, "history reopens the uploaded saved project JSON, not the original r1 source");
     assert.equal((editor.textContent.match(/Agent accepted marker/g) || []).length, 1, "history restores the saved marker exactly once rather than replaying a command");
-    assert.ok(r2ProjectUrl, "the prior r2 save identifies the exact uploaded editor-project URL");
-    assert.ok(trackedRequests.some((request) => request.method === "GET" && request.url === r2ProjectUrl), "history actually fetches the exact project rendition referenced by the r2 revision");
+    assert.ok(r2ProjectUrl, "the prior accepted save identifies the exact uploaded editor-project URL");
+    assert.ok(trackedRequests.some((request) => request.method === "GET" && request.url === r2ProjectUrl), "history actually fetches the exact project rendition referenced by the accepted revision");
     assert.equal(mounted.container.querySelector("[data-agent-review-action]"), null, "History does not replay the prior assistant command into a new review card");
     assert.equal(uploadedLibraryFiles.length, uploadCountBeforeHistoryOpen, "reopening History does not upload another copy of the document");
     assert.equal(artifactRevisionCommits.length, revisionCommitCountBeforeHistoryOpen, "reopening History does not commit another Library revision");
@@ -1013,7 +1190,7 @@ test("real Task history reopens the saved Library revision and follows up on tha
     assert.equal(followUpTaskRequests.length, 1, "history sends the next user turn through the existing Task follow-up endpoint");
     assert.equal(followUpTaskRequests[0].prompt, prompt);
     assert.match(followUpTaskRequests[0].hidden_context || "", /artifactId=one-task-library-document/);
-    assert.match(followUpTaskRequests[0].hidden_context || "", /revisionId=one-task-library-document-r2/);
+    assert.match(followUpTaskRequests[0].hidden_context || "", new RegExp(`revisionId=${acceptedDocumentRevisionId}`));
     assert.match(followUpTaskRequests[0].hidden_context || "", /Agent accepted marker/);
     assert.equal(createdTaskRequests.length, createdBeforeHistoryTurn, "reopening and sending from Task history never creates another Task");
     assert.deepEqual(renderErrors, [], renderErrors.map((error) => error.stack || error.message).join("\n"));
@@ -1037,8 +1214,9 @@ test("an existing Task keeps its original chat when ResultCanvas My Library open
   // Exercise the committed Library revision through the real Task → ResultCanvas
   // → MyLibrary → Edit branch; this must resolve the saved native project, not
   // silently fall back to the original delivery document.
-  activeProjection = structuredClone(activeProjection);
-  assert.equal(activeProjection.revision_id, "one-task-library-document-r2");
+  assert.ok(acceptedDocumentRevisionProjection, "the accepted standalone save captured an immutable Library head");
+  selectActiveProjection(acceptedDocumentRevisionProjection);
+  assert.equal(activeProjection.revision_id, acceptedDocumentRevisionId);
   assert.ok(actualArtifactLibraryComponent, "the real Library module graph has been loaded by the route acceptance");
   trackedRequests.length = 0;
   createdTaskRequests.length = 0;
@@ -1120,7 +1298,7 @@ test("an existing Task keeps its original chat when ResultCanvas My Library open
     assert.equal(existingTaskFollowups.length, 1, "the next message is delivered to the original Task follow-up route");
     assert.equal(existingTaskFollowups[0].prompt, prompt);
     assert.match(existingTaskFollowups[0].hidden_context || "", /artifactId=one-task-library-document/);
-    assert.match(existingTaskFollowups[0].hidden_context || "", /revisionId=one-task-library-document-r2/);
+    assert.match(existingTaskFollowups[0].hidden_context || "", new RegExp(`revisionId=${acceptedDocumentRevisionId}`));
     assert.match(existingTaskFollowups[0].hidden_context || "", /Agent accepted marker/);
     assert.equal(trackedRequests.some((request) => request.method === "POST" && request.path === "/v1/agent/tasks"), false);
     assert.equal(createdTaskRequests.length, 0);
@@ -1140,8 +1318,9 @@ test("an existing Task keeps its original chat when ResultCanvas My Library open
 });
 
 test("MaterialStandaloneEditor existingPane retains the Task chat and rejects a stale in-flight reply", { timeout: 35000 }, async () => {
-  activeProjection = structuredClone(activeProjection);
-  assert.equal(activeProjection.revision_id, "one-task-library-document-r2");
+  assert.ok(acceptedDocumentRevisionProjection, "the accepted standalone save captured an immutable Library head");
+  selectActiveProjection(acceptedDocumentRevisionProjection);
+  assert.equal(activeProjection.revision_id, acceptedDocumentRevisionId);
   assert.ok(actualArtifactLibraryComponent);
   trackedRequests.length = 0;
   createdTaskRequests.length = 0;
@@ -1221,7 +1400,7 @@ test("MaterialStandaloneEditor existingPane retains the Task chat and rejects a 
     }
     assert.equal(existingTaskFollowups.length, 1, "the existing Task accepts a normal follow-up before the stale-response case");
     assert.match(existingTaskFollowups[0].hidden_context || "", /artifactId=one-task-library-document/);
-    assert.match(existingTaskFollowups[0].hidden_context || "", /revisionId=one-task-library-document-r2/);
+    assert.match(existingTaskFollowups[0].hidden_context || "", new RegExp(`revisionId=${acceptedDocumentRevisionId}`));
     assert.match(existingTaskFollowups[0].hidden_context || "", /Agent accepted marker/);
     assert.equal(createdTaskRequests.length, 0);
 
@@ -1279,8 +1458,10 @@ test("MaterialStandaloneEditor existingPane retains the Task chat and rejects a 
 });
 
 test("switching an existing Task's native workbench to another Library root rejects the old reply", { timeout: 35000 }, async () => {
-  activeProjection = structuredClone(activeProjection);
-  assert.equal(activeProjection.revision_id, "one-task-library-document-r2");
+  assert.ok(acceptedDocumentRevisionProjection, "the accepted standalone save captured an immutable Library head");
+  selectActiveProjection(acceptedDocumentRevisionProjection);
+  resetSecondDocumentProjection();
+  assert.equal(activeProjection.revision_id, acceptedDocumentRevisionId);
   includeSecondLibraryItem = true;
   trackedRequests.length = 0;
   createdTaskRequests.length = 0;
@@ -1353,7 +1534,7 @@ test("switching an existing Task's native workbench to another Library root reje
     }
     assert.equal(existingTaskFollowups.length, 1, "the original Task has a real follow-up in flight against the first file");
     assert.match(existingTaskFollowups[0].hidden_context || "", /artifactId=one-task-library-document/);
-    assert.match(existingTaskFollowups[0].hidden_context || "", /revisionId=one-task-library-document-r2/);
+    assert.match(existingTaskFollowups[0].hidden_context || "", new RegExp(`revisionId=${acceptedDocumentRevisionId}`));
     assert.match(existingTaskFollowups[0].hidden_context || "", /Agent accepted marker/);
     assert.equal(typeof pendingExistingTaskFollowup, "function");
 
