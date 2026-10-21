@@ -11,7 +11,7 @@
 
 ## Current step
 
-Collect causal reproductions and disjoint deliveries; parent owns shared typecheck, independent verification, dev HTTP routes and final freshness. Do not duplicate active investigation or run any browser/production deployment.
+W01/W02/W03/W05/W06 are delivered and independently checked. W04 is closing the hosted video dependency/open/save protocol; parent owns final shared typecheck, independent verification, dev HTTP routes and final freshness. Do not duplicate active investigation or run any browser/production deployment.
 
 [Measured runtime logs] Caddy routes api.dev.oceanleo.com to local oceanleo-api port8008. Its bounded 2026-10-21T16:27Z–16:32Z access log shows screenshot document item/edit-capability GET 200 and only two write-method access requests, both POST /v1/collab/tickets 200; no upload/revision save reached gateway during that interval. Command: `docker logs --since 2026-10-21T16:27:00Z --until 2026-10-21T16:32:00Z oceanleo-api 2>&1 | rg '^INFO: +[0-9].*"(POST|PUT|PATCH) /'`. This narrows the observed failure to the client/host side without establishing the exact cause. Unrelated catalog-count SQL timeout also occurred and is not attributed to saving.
 
@@ -19,9 +19,11 @@ Browser acceptance permission was requested asynchronously while code/interface 
 
 ## Next
 
-W01/W03/W05 delivered. W02 reopened for V01's independently reproduced late-cache cross-document counterexample; W04 implementing migration and receipt-backed autosave. V01 reviews without product writes. Parent finished the named W01/W02/W05 suites, Design source tests/typecheck and real private-storage acceptance; final shared/video typechecks, new W02/W04 regressions, generated CSS and dev-route/freshness acceptance remain. No browser permission or production distribution.
+W02's late host-cache/native-Umo A→B counterexamples are fixed and the final hosted runtime passed 14/14. W04 is implementing receipt-backed autosave and current-revision media grants. V01 reviews without product writes. Parent finished the named W01/W02/W05 suites, Design source tests/typecheck, W06 actual legacy-node projection tests and real private document/video storage acceptances. Interim shared typecheck and CSS generation passed before the last W04 changes; final shared/video typechecks, W04 regressions, generated CSS and dev-route/freshness acceptance remain. No browser permission or production distribution.
 
-See [P-verification.md](./P-verification.md) for current independent evidence and the retained synthetic fixture.
+See [P-verification.md](./P-verification.md) and [P-received-video-backend.md](./P-received-video-backend.md) for independent evidence and the two retained private test fixtures.
+
+The parent backend commit `053f825` repairs canonical video revision closure staging. Its final focused backend group passed 70/70. The local dev gateway was safely refreshed only after the self-preservation guard, zero active ACP turns and route/DNS isolation checks; `api.dev.oceanleo.com/health` returned 200 and ready/vault/supabase true afterwards. Protected terminal relay/Cursor processes and production/twin distribution were untouched.
 
 ## Incremental parent verification
 
