@@ -19,7 +19,9 @@ Browser acceptance permission was requested asynchronously while code/interface 
 
 ## Next
 
-Dispatch W04 then W05 when slots become available. Read exact diffs and artifacts; run each delivered named regression independently. Run serialized shared/design/video typechecks as affected. Check every promise for actual durable persistence and reject schema weakening/empty placeholders. Refresh generated shared CSS if class changes require it; no version bump/distribution.
+W01/W03/W05 delivered. W02 reopened for V01's independently reproduced late-cache cross-document counterexample; W04 implementing migration and receipt-backed autosave. V01 reviews without product writes. Parent finished the named W01/W02/W05 suites, Design source tests/typecheck and real private-storage acceptance; final shared/video typechecks, new W02/W04 regressions, generated CSS and dev-route/freshness acceptance remain. No browser permission or production distribution.
+
+See [P-verification.md](./P-verification.md) for current independent evidence and the retained synthetic fixture.
 
 ## Incremental parent verification
 
