@@ -1,0 +1,11 @@
+# W03 received and parent verification
+
+Received child delivery: design `3150851c8eddb2f5f7d8552ad6f0859ae33f6139`; shared UI `54c4b6fd` + inspector `9b938cd3`. Earlier red regressions `4d37b4a` / `644627e1`. W03 did not create its promised delivery file; this parent receipt records the actual received report without inventing an owner signature.
+
+Parent inspected the commits, nonempty source/public-entry modules and test artifacts. Parent reran shared validation **15/15**, Design source/persistence **18/18**, and Design `tsc --noEmit` **exit 0** on delivered source. Narrow public schema entry in package.json is additive and required by the consumer; parent owns its generated API snapshot/navigation integration.
+
+Actual source `/tmp/library-repair-20261021/design_canvas/source.bin`, SHA256 `5bbf4a776be490a5cc9e86c834dede56b63ade9bdad527bbdf565531f7c80e99`, pinned artifact `cbf7147b-9c6c-4a62-a833-accff1e12ae8`, revision `754ff828-32fb-423c-9f5a-576e875a9ef0`. Child inspectors used local closure projection; parent will additionally verify with real owner-checked detail metadata and keep this distinction explicit.
+
+Parent additional real-data verification passed: gateway's existing operator helper guard verified the paired computer, operator account and private bucket, then `artifact_catalog_query.detail` read that exact owner/root/revision. Its actual projection was piped directly (no token/URL logging or file) to `tests/helpers/inspect-pinned-design-open.mjs`. Normalization, source digest and real source-closure validation passed: `carrier-document`, layered, **51 layers**, counts rect20/ellipse5/text26. No locally invented closure was used in this parent check. The Design normalizer inspector independently returned the same SHA/pinned identity, 51/51 elements and `sourceCarrierPreserved=true`.
+
+Delivered compatibility: text, rect, ellipse, line, image/asset-backed icon with pinned HTTPS mapping, simple native one-level group membership. Unsupported path/chart-embed/pathData-only icon, unresolved assets/fonts, non-fill image fitting and invalid/nested/multi-owner groups fail explicitly. Existing canonical documents stay on their separate path. This is compatibility with adopted core semantics, not a new editor core. Independent V01 must check geometry/style mappings, not just retained sidecar bytes and element counts.

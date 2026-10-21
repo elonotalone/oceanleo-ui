@@ -33,6 +33,7 @@
     "./shell/advanced-routes/GameRoute": "./src/shell/advanced-routes/GameRoute.tsx",
     "./shell/AdvancedContentWorkbench": "./src/shell/AdvancedContentWorkbench.tsx",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
+    "./shell/design-document": "./src/shell/design-document-schema-public.ts",
     "./shell/EmbedChrome": "./src/shell/EmbedChrome.tsx",
     "./shell/FloatingContextToolbar": "./src/shell/FloatingContextToolbar.tsx",
     "./shell/library-data.js": "./src/shell/library-data.ts",
@@ -7710,6 +7711,59 @@
           "kind": "type",
           "name": "ArtifactTargetActionEvidence",
           "source": ""
+        }
+      ]
+    },
+    "./shell/design-document": {
+      "target": "./src/shell/design-document-schema-public.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "DESIGN_DOCUMENT_JSON_SCHEMA",
+          "importedName": "DESIGN_DOCUMENT_JSON_SCHEMA",
+          "source": "./image-editor/design-document-schema"
+        },
+        {
+          "kind": "named",
+          "name": "DESIGN_DOCUMENT_PROJECT_SCHEMA",
+          "importedName": "DESIGN_DOCUMENT_PROJECT_SCHEMA",
+          "source": "./image-editor/design-document-schema"
+        },
+        {
+          "kind": "named",
+          "name": "DesignDocumentElement",
+          "importedName": "DesignDocumentElement",
+          "source": "./image-editor/design-document-schema"
+        },
+        {
+          "kind": "named",
+          "name": "DesignDocumentProject",
+          "importedName": "DesignDocumentProject",
+          "source": "./image-editor/design-document-schema"
+        },
+        {
+          "kind": "named",
+          "name": "DesignDocumentValidation",
+          "importedName": "DesignDocumentValidation",
+          "source": "./image-editor/design-document-schema"
+        },
+        {
+          "kind": "named",
+          "name": "DesignDocumentValidationError",
+          "importedName": "DesignDocumentValidationError",
+          "source": "./image-editor/design-document-schema"
+        },
+        {
+          "kind": "named",
+          "name": "parseDesignDocumentProject",
+          "importedName": "parseDesignDocumentProject",
+          "source": "./image-editor/design-document-schema"
+        },
+        {
+          "kind": "named",
+          "name": "validateDesignDocumentProject",
+          "importedName": "validateDesignDocumentProject",
+          "source": "./image-editor/design-document-schema"
         }
       ]
     },
