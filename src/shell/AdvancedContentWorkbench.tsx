@@ -3,6 +3,7 @@
 import { ADVANCED_DRAFT_META_KEY, AdvancedDraftSnapshotQueue, advancedDraftIdentity,
   advancedDraftAfterVersion, advancedDraftCovers, type AdvancedDraftPointer, type AdvancedDraftVersionCoverage } from "./advanced-draft";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
+import { workspaceSnapshotFailureRetryable } from "./workspace-session-model";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -569,8 +570,16 @@ function AdvancedContentWorkbenchRuntime(
     });
     if (stored.ok) {
       draftQueueRef.current.accept(stored.session);
+    } else {
+      const retryable = workspaceSnapshotFailureRetryable(stored);
+      reportSaveFailure("record-history-entry", retryable);
+      if (!retryable) {
+        const failure = new Error(stored.error || "session snapshot failed");
+        Object.assign(failure, { retryable: false, code: "session-record-failed" });
+        throw failure;
+      }
     }
-    return true;
+    return stored.ok;
   };
   const recordDraft = useCallback(
     async (draft: AdvancedDraftPointer): Promise<boolean> => {
@@ -669,7 +678,7 @@ function AdvancedContentWorkbenchRuntime(
             mergeFromLatest: merge,
           });
           if (!stored.ok) {
-            const retryable = Boolean(stored.unavailable);
+            const retryable = workspaceSnapshotFailureRetryable(stored);
             reportSaveFailure("record-saved-item", retryable);
             if (!retryable) {
               const failure = new Error(stored.error || "session snapshot failed");
@@ -698,7 +707,7 @@ function AdvancedContentWorkbenchRuntime(
             mergeFromLatest: merge,
           });
           if (!saved.ok) {
-            const retryable = Boolean(saved.unavailable);
+            const retryable = workspaceSnapshotFailureRetryable(saved);
             reportSaveFailure("record-saved-item", retryable);
             if (!retryable) {
               const failure = new Error(saved.error || "session snapshot failed");

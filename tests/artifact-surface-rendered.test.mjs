@@ -156,6 +156,7 @@ const uiStubUrl = dataModule(`
   }
 `);
 const sessionStubUrl = dataModule(`
+  export function WorkspaceSessionProvider({children}) { return children; }
   export function useOptionalWorkspaceSession() {
     return null;
   }
@@ -438,6 +439,7 @@ function level(name) {
 const MaterialLibrary = (
   await import(
     await compileModule("src/shell/material-library-view.tsx", {
+      "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
       "../i18n/ui/useUI": uiStubUrl,
       "./artifact-client": artifactClientUrl,
       "./library-data": libraryDataUrl,
@@ -500,6 +502,8 @@ const databaseStubUrl = dataModule(`
 const myLibraryModule = (
   await import(
     await compileModule("src/shell/MyLibrary.tsx", {
+      "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
+      "./WorkspaceSession": sessionStubUrl,
       "../i18n/ui/useUI": uiStubUrl,
       "../lib/auth/client": authStubUrl,
       "../lib/database": databaseStubUrl,

@@ -16,8 +16,8 @@
 // - 默认左 1/3、右 2/3；拖动竖线改比例，按 storageKey 记进 localStorage。
 // - 移动端（< md）：上下堆叠，竖线/拖动隐藏。
 // - 框架无关：左右内容都由消费端传入。
-// - 右版面的显隐由左栏标题右侧的 IconRightPanelToggle 负责。编辑器顶栏最右是
-//   「右侧全屏」（rightMaximized）：左栏 CSS 隐藏但保持挂载，不写 URL。
+// - 左栏 IconRightPanelToggle 与右栏 × 共用同一个显隐状态。右栏统一提供全屏：
+//   左栏 CSS 隐藏但保持挂载，不写 URL；编辑器认领顶栏后在同一行提供这些控件。
 // ============================================================================
 
 import {
@@ -34,6 +34,7 @@ import {
   type ReactNode,
 } from "react";
 import { IconLibrary } from "./icons";
+import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
 import { useUI } from "../i18n/ui/useUI";
 import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
@@ -141,6 +142,7 @@ export interface RightPaneSlot {
   subscribeRightMaximized: (listener: () => void) => () => void;
   toggleRightMaximized: () => void;
   setRightMaximized: (value: boolean) => void;
+  closeRightPane?: () => void;
 }
 const RightPaneCtx = createContext<RightPaneSlot | null>(null);
 /** 供 ResultCanvas 等右栏 body 后代使用：把标签条装到右栏标题位（去框中框）。 */
@@ -186,6 +188,10 @@ export function useWorkspacePane(): WorkspacePaneController | null {
 }
 
 export interface SplitWorkspaceProps {
+  /** Keep the conversation mounted while a Library editor initially fills the workspace. */
+  leftHidden?: boolean;
+  /** Focus the existing conversation instead of creating a second editor assistant. */
+  onAgentFocus?: () => void;
   /** 左栏内容（AI 推导 / 模板操控）。 */
   left: ReactNode;
   /** 右栏内容（格式化结果）。不传 / null → 单栏（只显示左栏，无竖线）。 */
@@ -226,7 +232,7 @@ export interface SplitWorkspaceProps {
    *
    * 给了 library：
    *   - 关（默认）：右版面不渲染 → 单栏（左栏占满）。左栏标题右侧出现「库」按钮（黑/accent）。
-   *   - 开：右版面渲染 `right`，其顶栏只有标题（显隐只走左栏标题里的开关）。
+   *   - 开：右版面渲染 `right`，顶栏提供标题、全屏与关闭。
    * 不传 library：右版面按 `right` 是否为 null 决定单/双栏（旧行为，无「库」按钮）。 */
   library?: SplitLibraryConfig;
 }
@@ -270,6 +276,8 @@ export function SplitWorkspace({
   className = "",
   soloMaxWidth = "48rem",
   library,
+  leftHidden = false,
+  onAgentFocus,
 }: SplitWorkspaceProps) {
   // 高度：fillParent → 填满已受限的父容器（100%）；否则相对视口 100dvh 减 header（旧行为）。
   const rootHeight = fillParent ? "100%" : `calc(100dvh - ${headerHeight}px)`;
@@ -298,6 +306,11 @@ export function SplitWorkspace({
   // 用户点开「库」它让位，点左栏标题里的开关收起它回来。
   useWorkbenchOpenClaim(hasRight);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const agentFocusRef = useRef(onAgentFocus);
+  agentFocusRef.current = onAgentFocus;
+  const closeRightPaneRef = useRef<(() => void) | undefined>(undefined);
+  closeRightPaneRef.current = library ? () => setLibraryOpen(false) : undefined;
+  const closeRightPane = useCallback(() => closeRightPaneRef.current?.(), []);
   const [ratio, setRatio] = useState(defaultRatio);
   const [dragging, setDragging] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -336,9 +349,10 @@ export function SplitWorkspace({
       },
       focusAgent() {
         const current = consoleAgentFocusHandlerRef.current;
-        if (!current) return false;
+        if (!current && !agentFocusRef.current) return false;
         setRightMaximizedState(false);
-        current.handler();
+        if (current) current.handler();
+        else agentFocusRef.current?.();
         return true;
       },
     }),
@@ -485,8 +499,11 @@ export function SplitWorkspace({
       },
       toggleRightMaximized,
       setRightMaximized,
+      get closeRightPane() {
+        return closeRightPaneRef.current ? closeRightPane : undefined;
+      },
     }),
-    [setRightMaximized, toggleRightMaximized],
+    [closeRightPane, setRightMaximized, toggleRightMaximized],
   );
   const effectiveRightLabel = rightLabelOverride ?? rightLabel;
   const [detail, setDetail] = useState<WorkspacePaneDetail | null>(null);
@@ -740,7 +757,7 @@ export function SplitWorkspace({
     );
   }
 
-  const paneMaximized = hasRight && rightMaximized;
+  const paneMaximized = hasRight && (rightMaximized || leftHidden);
   const activeLeftPanel = activeDetail || activeLibraryPanel;
   const presentedLeftPanel = activeDetail || activeLibraryPanel;
   const detailLabel = presentedLeftPanel ? (
@@ -823,6 +840,11 @@ export function SplitWorkspace({
             }
       }
     >
+      {rightFrameless && !rightEditorHeader && (
+        <div data-pane-header data-right-pane-window-header className="relative z-40 flex min-h-10 shrink-0 items-center justify-end border-b border-stone-100 px-3 py-1">
+          <RightPaneActions maximized={rightMaximized} onMaximize={toggleRightMaximized} onClose={library ? () => setLibraryOpen(false) : undefined} />
+        </div>
+      )}
       {!rightFrameless && (library ? (
         <div
           data-pane-header
@@ -837,9 +859,12 @@ export function SplitWorkspace({
               </span>
             )}
           </div>
+          {!rightEditorHeader && <RightPaneActions maximized={rightMaximized} onMaximize={toggleRightMaximized} onClose={library ? () => setLibraryOpen(false) : undefined} />}
         </div>
       ) : (
-        <PaneHeader label={effectiveRightLabel} />
+        <PaneHeader label={effectiveRightLabel}>
+          {!rightEditorHeader && <RightPaneActions maximized={rightMaximized} onMaximize={toggleRightMaximized} />}
+        </PaneHeader>
       ))}
       <EditBarDockHost
         hostRef={editBarDockRef}
@@ -884,6 +909,23 @@ export function SplitWorkspace({
     </LeftPaneCtx.Provider>
     </WorkspacePaneCtx.Provider>
   );
+}
+
+function RightPaneActions({ maximized, onMaximize, onClose }: {
+  maximized: boolean;
+  onMaximize: () => void;
+  onClose?: () => void;
+}) {
+  const tt = useUI();
+  const buttonClass = "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-stone-400";
+  return <div data-right-pane-actions className="flex shrink-0 items-center gap-1">
+    <button type="button" className={buttonClass} onClick={onMaximize} aria-pressed={maximized} aria-label={tt(maximized ? "退出右侧全屏" : "右侧全屏")} title={tt(maximized ? "退出右侧全屏" : "右侧全屏")}>
+      <AdvancedEditorIcon name={maximized ? "fullscreen-exit" : "fullscreen"} className="h-4 w-4" />
+    </button>
+    {onClose && <button type="button" className={buttonClass} onClick={onClose} aria-label={tt("关闭右侧面板")} title={tt("关闭右侧面板")}>
+      <span aria-hidden="true" className="text-xl leading-none">×</span>
+    </button>}
+  </div>;
 }
 
 function PaneHeader({ label, children }: { label?: ReactNode; children?: ReactNode }) {

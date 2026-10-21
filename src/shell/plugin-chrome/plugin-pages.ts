@@ -114,6 +114,7 @@ export const GLOBAL_ROW_SLOTS = Object.freeze([
   "favorite",
   "theme",
   "maximize",
+  "close",
   "collab",
 ] as const);
 

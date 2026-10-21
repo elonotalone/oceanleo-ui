@@ -423,6 +423,12 @@ export function AdvancedWorkspaceActionBar({
             />
           ) : null}
         </div>
+        {showClose && onClose && (
+          <div data-global-row-slot="close">
+            <IconButton onClick={onClose} label={tt("关闭右侧面板")}
+              icon={<span aria-hidden="true" className="text-xl leading-none">×</span>} />
+          </div>
+        )}
       </div>
     </div>
   );

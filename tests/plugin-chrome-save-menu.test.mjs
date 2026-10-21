@@ -7,7 +7,7 @@
 //     没有 save 组时云朵只是状态，不弹只含「立即保存」的菜单。
 //   · 素材库抽屉（use-inline-advanced-panels 的 materials 面板）第一项是「从本地上传」，
 //     点它触发壳里那个隐藏 <input type=file>。
-//   · 第一行可点击元素仍然全部落在 GLOBAL_ROW_SLOTS（10 槽；close 已换成 maximize）。
+//   · 第一行可点击元素仍然全部落在 GLOBAL_ROW_SLOTS（全屏与关闭各有独立槽位）。
 // ============================================================================
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -280,15 +280,12 @@ function assertGlobalRowAllowlist(row) {
     const slot = node.closest("[data-global-row-slot]");
     assert.ok(slot, `第一行有一个没有槽位的可点击元素：${visibleLabel(node)}`);
     const value = slot.getAttribute("data-global-row-slot");
-    const allowed = GLOBAL_ROW_SLOTS.map((name) =>
-      name === "close" ? "maximize" : name,
-    );
     assert.ok(
-      allowed.includes(value),
-      `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS（close→maximize）里`,
+      GLOBAL_ROW_SLOTS.includes(value),
+      `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS 里`,
     );
   }
-  assert.equal(GLOBAL_ROW_SLOTS.length, 10, "第一行槽位数变了");
+  assert.equal(GLOBAL_ROW_SLOTS.length, 11, "第一行槽位数变了");
 }
 
 test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单、upload 不进编辑栏", async () => {

@@ -64,6 +64,54 @@ const { Markdown, TypewriterMarkdown, splitStreamingMarkdown } = await import(
   await compileModule("src/shell/Markdown.tsx")
 );
 
+test("live smooth renderer reveals characters between frames and completes immediately on stop", async () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  const text = "逐字连续显示这段内容";
+  try {
+    await act(async () => root.render(React.createElement(TypewriterMarkdown, { content: "", active: true, smooth: true })));
+    await act(async () => root.render(React.createElement(TypewriterMarkdown, { content: text, active: true, smooth: true })));
+    assert.equal(host.textContent, "逐");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    assert.ok(host.textContent.length > 1 && host.textContent.length < text.length, host.textContent);
+    await act(async () => root.render(React.createElement(TypewriterMarkdown, { content: text, active: false, smooth: true })));
+    assert.equal(host.textContent, text);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 40)); });
+    assert.equal(host.textContent, text);
+  } finally {
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+test("reduced motion displays live frames immediately", async () => {
+  const previous = window.matchMedia;
+  window.matchMedia = () => ({ matches: true });
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(TypewriterMarkdown, { content: "直接显示完整内容", active: true, smooth: true })));
+    assert.equal(host.textContent, "直接显示完整内容");
+  } finally {
+    await act(async () => root.unmount()); window.matchMedia = previous;
+  }
+});
+
+test("restoring a running reply never replays its existing text", async () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    const existing = "这段是恢复任务时已经存在的回答。";
+    await act(async () => root.render(React.createElement(TypewriterMarkdown, { content: existing, active: true, smooth: true })));
+    assert.equal(host.textContent, existing);
+    await act(async () => root.render(React.createElement(TypewriterMarkdown, { content: existing + "随后新生成的文字", active: true, smooth: true })));
+    assert.ok(host.textContent.startsWith(existing));
+    assert.ok(host.textContent.length < (existing + "随后新生成的文字").length);
+    await act(async () => root.render(React.createElement(TypewriterMarkdown, { content: existing + "随后新生成的文字", active: false, smooth: true })));
+    assert.equal(host.textContent, existing + "随后新生成的文字");
+  } finally { await act(async () => root.unmount()); }
+});
+
 // ---------------------------------------------------------------------------
 // 语料：一段同时含标题 / 段落 / 列表 / 表格 / 代码围栏的回答。
 // ---------------------------------------------------------------------------

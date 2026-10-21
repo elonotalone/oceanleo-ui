@@ -343,13 +343,14 @@ function artifactClientWithMine(count) {
 }
 
 const SHELL_OVERRIDES = {
+  "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
   "../i18n/ui/useUI": UI,
   "./workspace-library-view": WORKSPACE_LIBRARY_VIEW,
   "./AdvancedContentWorkbench": dataModule(
     "export function AdvancedContentWorkbench(){ return null; }",
   ),
   "./WorkspaceSession": dataModule(
-    "export function useOptionalWorkspaceSession(){ return null; }",
+    "export function useOptionalWorkspaceSession(){ return null; } export function WorkspaceSessionProvider({children}){return children;}",
   ),
   "./workbench-material-registry": dataModule(`
     export function materialScopeKey(siteId, appId){ return siteId + ":" + appId; }

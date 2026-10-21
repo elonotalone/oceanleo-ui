@@ -28,6 +28,7 @@ import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { IconSearch } from "./icons";
 import { CollabTaskPresence } from "./collab/CollabActionSlot";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
+import { WorkspacePaneErrorBoundary } from "./WorkspacePaneErrorBoundary";
 import { type MaterialItem } from "./MaterialLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
 import {
@@ -116,7 +117,7 @@ import { createAgentThreadSync } from "./agent-thread/sync";
 import { thinkingLabel, useThinkingSeconds } from "./agent-thread/thinking-label";
 import { markSend, noteFirstVisibleReply, sentAtFor } from "./agent-thread/ttfv";
 import { latestTurn, userTurnCount } from "./agent-thread/turn";
-import { useAgentThreadPolling } from "./agent-thread/useAgentThreadPolling";
+import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
@@ -145,12 +146,6 @@ export function orgStatusFromMessages(
 export { nextPollCadence } from "./agent-thread/cadence";
 export type { PollCadenceInput, PollCadence } from "./agent-thread/cadence";
 export { resolveTaskStatus } from "./agent-thread/rules";
-
-interface TaskPollResult {
-  status: string;
-  /** 这一轮有没有拿到服务端的新消息。 */
-  changed: boolean;
-}
 
 const IDLE_POLL_RESULT: TaskPollResult = { status: "", changed: false };
 
@@ -302,6 +297,15 @@ export function streamedBubbleContent(input: {
 }
 
 export interface AgentChatProps {
+  /** Optional existing editor hosted in the same conversation split. */
+  workspaceContent?: ReactNode;
+  workspaceOpen?: boolean;
+  onWorkspaceOpenChange?: (open: boolean) => void;
+  workspaceAgentVisible?: boolean;
+  onWorkspaceAgentFocus?: () => void;
+  projectId?: string;
+  /** A portal host may keep this live instance and own its canonical task URL. */
+  navigateToSessionOnCreate?: boolean;
   /** 站点 id（驱动 per-site 工具 md + 计量）。 */
   siteId?: string;
   /** 初次提交的内容（从首页输入框带进来）；传了会自动创建任务。 */
@@ -484,11 +488,11 @@ export function AgentChat(props: AgentChatProps) {
   const onTaskCreated = useCallback(
     (taskId: string, sessionId?: string) => {
       props.onTaskCreated?.(taskId, sessionId);
-      if (startsFromHome && sessionId) {
+      if (startsFromHome && sessionId && props.navigateToSessionOnCreate !== false) {
         router.replace(historySessionHref(sessionId, undefined, pathname));
       }
     },
-    [props.onTaskCreated, router, startsFromHome, pathname],
+    [props.onTaskCreated, props.navigateToSessionOnCreate, router, startsFromHome, pathname],
   );
   if (!startsFromHome) {
     return <AgentChatInner {...props} />;
@@ -514,6 +518,12 @@ export function AgentChat(props: AgentChatProps) {
 }
 
 function AgentChatInner({
+  workspaceContent,
+  workspaceOpen,
+  onWorkspaceOpenChange,
+  workspaceAgentVisible = true,
+  onWorkspaceAgentFocus,
+  projectId,
   siteId = "",
   initialPrompt,
   initialAttachments,
@@ -741,7 +751,9 @@ function AgentChatInner({
       if (r.data.task?.site_id) setTaskSiteId(r.data.task.site_id);
       // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
       if (r.data.task?.title) setTaskTitle(r.data.task.title);
-      return { status, changed };
+      return { status, changed, streaming: status === "running" && settled.some(
+        (message) => message.role === "assistant" && message.meta?.streaming === true,
+      ) };
     }
     return IDLE_POLL_RESULT;
   }, []);
@@ -1045,6 +1057,7 @@ function AgentChatInner({
         promptOverride: promptOverride || undefined,
         sessionId: linkedSessionId || undefined,
         orgId,
+        projectId,
       });
       setBusy(false);
       if (!result.ok || !result.data) {
@@ -1085,6 +1098,7 @@ function AgentChatInner({
       noteUserTurn,
       onTaskCreated,
       promptOverride,
+      projectId,
       readOnly,
       refresh,
       siteId,
@@ -1321,6 +1335,7 @@ function AgentChatInner({
   // 消息上的 suggestions；一旦用户继续输入 / 任务重新 running 就消失。
   // 同时记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
   let lastAssistantIdx = -1;
+  const lastUserIdx = messages.findLastIndex((message) => message.role === "user");
   for (let i = messages.length - 1; i >= 0; i--) {
     if (
       messages[i].role === "assistant" &&
@@ -1606,6 +1621,10 @@ function AgentChatInner({
           paneTitle: tt("预览"),
           buttonClassName: HEADER_ICON_BUTTON_CLASS,
           ...(library || {}),
+          ...(workspaceOpen !== undefined ? {
+            open: workspaceOpen,
+            onOpenChange: onWorkspaceOpenChange || setRightOpen,
+          } : {}),
         };
 
   // 「所属 app」展示名：prop > appNames[site] > site_id 本身。空则不显示标签。
@@ -1887,7 +1906,9 @@ function AgentChatInner({
               <AgentTranscriptBubble
                 key={item.key}
                 message={messageForBubble(item)}
-                streaming={running && item.index === lastAssistantIdx}
+                streaming={presentation.working && item.index === lastAssistantIdx &&
+                  item.index > lastUserIdx && item.message.meta?.done !== true &&
+                  item.message.meta?.final !== true && item.message.meta?.stopped !== true}
                 stopped={
                   item.message.meta?.stopped === true ||
                   ((Boolean(stoppedTaskId) && stoppedTaskId === (taskId || "")) &&
@@ -2108,7 +2129,20 @@ function AgentChatInner({
   const split = (
     <SplitWorkspace
       left={stream}
-      right={right}
+      right={
+        <WorkspacePaneErrorBoundary
+          recoveryKey={`${taskId || ""}:${libTab}:${workspaceAction?.nonce || ""}:${workspaceOpen ?? rightOpen}`}
+          title={tt("右侧工作区暂时无法显示，对话仍可继续。")}
+          retryLabel={tt("重试")}
+          closeLabel={tt("关闭")}
+          detailsLabel={tt("技术详情")}
+          onClose={() => (onWorkspaceOpenChange || setRightOpen)(false)}
+        >
+          {workspaceContent ?? right}
+        </WorkspacePaneErrorBoundary>
+      }
+      leftHidden={!workspaceAgentVisible}
+      onAgentFocus={() => onWorkspaceAgentFocus?.()}
       leftLabel={headerNode}
       rightLabel={tt("预览")}
       defaultRatio={0.46}

@@ -70,7 +70,7 @@ import {
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
 import { adoptSavedEditorItem } from "./advanced-session";
-import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
+import { MaterialStandaloneEditor } from "./material-library-standalone";
 import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
@@ -1937,16 +1937,13 @@ export function MyLibrary({
           standaloneEditorItem.artifactId || standaloneEditorItem.id
         }
       >
-        <AdvancedContentWorkbench
-          key={`${standaloneEditorItem.artifactId || standaloneEditorItem.id}:${
-            standaloneEditorItem.revisionId || "transient"
-          }`}
+        <MaterialStandaloneEditor
+          key={standaloneEditorItem.artifactId || standaloneEditorItem.id}
           item={standaloneEditorItem}
           taskId={taskId}
           siteId={editorBinding.siteId}
           appId={editorBinding.appId}
           accent={accent}
-          embedded
           onSavedItem={(saved) =>
             setStandaloneEditorItem((current) =>
               adoptSavedEditorItem(current, saved),

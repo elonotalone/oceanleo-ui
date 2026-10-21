@@ -299,6 +299,18 @@ test("W3: share URL 带上 LibraryItem 身份", () => {
   }
 });
 
+test("shared editor top row restores its close control and invokes the host close", async () => {
+  let closed = 0;
+  await withDom(async ({ render, find, click }) => {
+    await render(React.createElement(AdvancedWorkspaceActionBar, actionBarProps({
+      showClose: true,
+      onClose() { closed += 1; },
+    })));
+    await click(find('[data-global-row-slot="close"] button'));
+    assert.equal(closed, 1);
+  });
+});
+
 test("W3: 分享把当前条目 URL 交给剪贴板；收藏走 setArtifactFavorite 且核对身份", async () => {
   globalThis.__w3Favorites = [];
   globalThis.__w3Toasts = [];
@@ -358,6 +370,8 @@ test("W3: 分享把当前条目 URL 交给剪贴板；收藏走 setArtifactFavor
 test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
   const { InlineAdvancedWorkbenchShell } = await import(
     await compileModule("src/shell/InlineAdvancedWorkbenchShell.tsx", {
+      "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
+      "./WorkspaceSession": dataModule(`export function useOptionalWorkspaceSession(){return null;} export function WorkspaceSessionProvider({children}){return children;}`),
       "../i18n/ui/useUI": ttStubUrl,
       "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
       "./advanced-layout-context": dataModule(`
@@ -450,6 +464,7 @@ test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
         `export function useAdvancedRecovery() {}`,
       ),
       "./workbench-routes": dataModule(`
+        export * from ${JSON.stringify(new URL("../src/shell/workbench-routes.ts", import.meta.url).href)};
         export function editBarOwnershipForItem() { return "host"; }
       `),
       "../ui/Toast": toastStubUrl,
@@ -734,6 +749,8 @@ test("W3-r2: 收藏过期请求不得改新打开条目的图标", async () => {
 test("W3-r2: 独立侧栏空对话与长对话走 stretch，控制面板自己滚", async () => {
   const { InlineAdvancedWorkbenchShell } = await import(
     await compileModule("src/shell/InlineAdvancedWorkbenchShell.tsx", {
+      "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
+      "./WorkspaceSession": dataModule(`export function useOptionalWorkspaceSession(){return null;} export function WorkspaceSessionProvider({children}){return children;}`),
       "../i18n/ui/useUI": ttStubUrl,
       "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
       "../ui/Toast": toastStubUrl,
@@ -821,6 +838,7 @@ test("W3-r2: 独立侧栏空对话与长对话走 stretch，控制面板自己�
         `export function useAdvancedRecovery() {}`,
       ),
       "./workbench-routes": dataModule(`
+        export * from ${JSON.stringify(new URL("../src/shell/workbench-routes.ts", import.meta.url).href)};
         export function editBarOwnershipForItem() { return "host"; }
       `),
       "./advanced-leave-flush": dataModule(`

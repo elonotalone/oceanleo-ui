@@ -355,6 +355,7 @@ function TranscriptBody({
       <TypewriterMarkdown
         content={message.content}
         active={streaming}
+        smooth={streaming}
         highlightQuery={highlightQuery}
       />
       {stopped && (

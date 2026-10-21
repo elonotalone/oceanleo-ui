@@ -1,4 +1,5 @@
 "use client";
+import { useStreamingText } from "./agent-thread/useStreamingText";
 
 import {
   Fragment,
@@ -598,16 +599,20 @@ export function Markdown({
 export function TypewriterMarkdown({
   content,
   active,
+  smooth = false,
   className = "text-[15px] leading-relaxed",
   highlightQuery,
 }: {
   content: string;
   active: boolean;
+  /** Enable only for a live reply, never a restored completed message. */
+  smooth?: boolean;
   className?: string;
   /** 对话内搜索的当前搜索词；每处命中包成 `<mark data-leo-search-hit>`。 */
   highlightQuery?: string;
 }) {
-  const math = useMathPlugins(content);
+  const displayContent = useStreamingText(content, active && smooth);
+  const math = useMathPlugins(displayContent);
   // 当初 `void active;` 关掉打字机是对的：那时的做法是逐帧把**整段**重切片重解析，
   // 一段文字在到齐之前会被解析成不同的东西，标题/表格/代码块于是反复重排、肉眼可见地闪。
   //
@@ -625,8 +630,8 @@ export function TypewriterMarkdown({
   // 收流时（`active === false`）走 `complete` 切分：内容全部进块、尾巴为空，
   // 组件树与流式态**同构**，所以最后一个 token 落地不会引发整段重建。
   const { blocks, open } = useMemo(
-    () => splitStreamingMarkdown(content, !active),
-    [active, content],
+    () => splitStreamingMarkdown(displayContent, !active),
+    [active, displayContent],
   );
   // 尾巴只是过渡态的显示，去掉首尾空行免得它顶出一行空白；
   // 纯函数那边的 `closed + open === source` 不受影响。

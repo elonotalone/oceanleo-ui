@@ -204,7 +204,8 @@ test("第一行可点击元素全部落在 GLOBAL_ROW_SLOTS；非 download 动�
   resetPluginModeCache();
   resetPluginPageCache();
 
-  await withDom(async ({ render, find, findAll }) => {
+  await withDom(async ({ window, render, find, findAll }) => {
+    window.document.documentElement.requestFullscreen = async () => {};
     await render(
       React.createElement(InlineAdvancedWorkbenchShell, {
         item: {
@@ -240,6 +241,8 @@ test("第一行可点击元素全部落在 GLOBAL_ROW_SLOTS；非 download 动�
       find("[data-plugin-global-row]") ||
       find("[data-advanced-workspace-actions]");
     assert.ok(row, "第一行没渲染出来");
+    assert.ok(row.querySelector('[data-global-row-slot="maximize"] button'), "全屏按钮必须与关闭同时存在");
+    assert.ok(row.querySelector('[data-global-row-slot="close"] button'), "关闭按钮必须与全屏同时存在");
     const clickables = [
       ...row.querySelectorAll("button, a, [role=button]"),
     ];
@@ -251,12 +254,9 @@ test("第一行可点击元素全部落在 GLOBAL_ROW_SLOTS；非 download 动�
         `第一行有一个没有槽位的可点击元素：${node.getAttribute("aria-label") || node.textContent}`,
       );
       const value = slot.getAttribute("data-global-row-slot");
-      const allowed = GLOBAL_ROW_SLOTS.map((name) =>
-        name === "close" ? "maximize" : name,
-      );
       assert.ok(
-        allowed.includes(value),
-        `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS（close→maximize）里`,
+        GLOBAL_ROW_SLOTS.includes(value),
+        `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS 里`,
       );
     }
     assert.equal(

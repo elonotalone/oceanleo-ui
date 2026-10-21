@@ -17,7 +17,7 @@ import { nextReconnectDelay } from "./reconnect";
 import { isReconnectingNotice } from "./notice";
 import { composerOccupancy, confirmedBusySessions, confirmedWaitingSessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
 import { createOccupancyProbe } from "./occupancy-probe";
-import { isCompletedStop, sessionInterrupted, sessionWaitingWake } from "./session-status";
+import { isCompletedStop, sessionInterrupted } from "./session-status";
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
@@ -1616,19 +1616,14 @@ export function useAgentDialog({
         now: occupancyClock,
       }),
     ),
-    waitingSessions: [
-      ...new Set([
-        ...confirmedWaitingSessions(
-          state.occupancyWaiting,
-          occupancyFresh({
-            linkUp: state.occupancyLink,
-            occupancyAt: state.occupancyAt,
-            now: occupancyClock,
-          }),
-        ),
-        ...(state.activeSession && sessionWaitingWake(state.messages) ? [state.activeSession] : []),
-      ]),
-    ],
+    waitingSessions: confirmedWaitingSessions(
+      state.occupancyWaiting,
+      occupancyFresh({
+        linkUp: state.occupancyLink,
+        occupancyAt: state.occupancyAt,
+        now: occupancyClock,
+      }),
+    ),
     runningSessions: state.runningSessions,
     interruptedSessions: [...presentationFor(computerId).views.entries()]
       .filter(([key, view]) => key.startsWith(`${state.program}::`) && view.activeSession && sessionInterrupted(view.messages))

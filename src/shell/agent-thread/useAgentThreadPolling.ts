@@ -4,6 +4,8 @@ import { nextPollCadence, POLL_FIRST_MS } from "./cadence";
 export interface TaskPollResult {
   status: string;
   changed: boolean;
+  /** An open assistant row must retain the active polling cadence. */
+  streaming?: boolean;
 }
 
 export function useAgentThreadPolling(
@@ -27,7 +29,7 @@ export function useAgentThreadPolling(
       const isHidden = hidden();
       const result = isHidden ? { status: "", changed: false } : await refresh(taskId);
       if (cancelled || (result.status && result.status !== "running")) return;
-      const cadence = nextPollCadence({ hidden: isHidden, changed: result.changed, idleStep, waitedMs });
+      const cadence = nextPollCadence({ hidden: isHidden, changed: result.changed || result.streaming === true, idleStep, waitedMs });
       idleStep = cadence.idleStep;
       waitedMs = cadence.waitedMs;
       arm(cadence.delayMs);

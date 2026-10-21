@@ -470,6 +470,7 @@ export function InlineAdvancedWorkbenchShell({
         showLibrary={siteId !== "plugin-gallery"}
         showBack={siteId !== "plugin-gallery"}
         onBack={requestClose}
+        onClose={rightPaneSlot?.closeRightPane || requestClose}
         onOpenDrawer={openDrawer}
         onCloseDrawer={closeDetail}
         onOpenTransientPanel={openTransientPanel}
@@ -496,6 +497,7 @@ export function InlineAdvancedWorkbenchShell({
       openTransientPanel,
       performUpload,
       requestClose,
+      rightPaneSlot,
       siteId,
     ],
   );

@@ -163,6 +163,7 @@ export function WorkspaceSessionProvider({
   availabilityRef.current = availability;
   const errorRef = useRef(error);
   errorRef.current = error;
+  const failureStatusRef = useRef<number | undefined>(undefined);
   const conflictRef = useRef<WorkspaceSessionConflict | null>(conflict);
   conflictRef.current = conflict;
   const identityRef = useRef(`${sessionSurface}:${site}:${app}`);
@@ -190,6 +191,7 @@ export function WorkspaceSessionProvider({
       }
       availabilityRef.current = "ready";
       errorRef.current = null;
+      failureStatusRef.current = undefined;
       setAvailability("ready");
       setError(null);
       if (effectiveSessionId !== next.id) publishSessionId(next.id);
@@ -206,6 +208,7 @@ export function WorkspaceSessionProvider({
     setConflict(null);
     availabilityRef.current = "ready";
     errorRef.current = null;
+    failureStatusRef.current = undefined;
     setAvailability("ready");
     setError(null);
     publishSessionId(null);
@@ -213,6 +216,7 @@ export function WorkspaceSessionProvider({
 
   const reportFailure = useCallback(
     (status?: number, message?: string) => {
+      failureStatusRef.current = status;
       const nextAvailability = availabilityForSessionFailure(status);
       const nextError = message || "工作会话暂不可用";
       availabilityRef.current = nextAvailability;
@@ -598,6 +602,7 @@ export function WorkspaceSessionProvider({
         if (!active) {
           return {
             ok: false,
+            status: failureStatusRef.current,
             unavailable:
               availabilityRef.current === "signed-out" ||
               availabilityRef.current === "unsupported",
@@ -668,6 +673,11 @@ export function WorkspaceSessionProvider({
         if (result.status === 409) {
           // 冲突后只重新读取，不拿新 revision 偷偷覆盖。站点可据 conflict 显式合并/重试。
           const latestResult = await getAppSession(active.id, sessionSurface);
+          if (!latestResult.ok) {
+            reportFailure(latestResult.status, latestResult.error);
+            return { ok: false, status: latestResult.status,
+              error: latestResult.error || "读取工作会话最新版失败" };
+          }
           if (
             latestResult.ok &&
             latestResult.data &&
@@ -698,6 +708,14 @@ export function WorkspaceSessionProvider({
                 setConflict(null);
                 return { ok: true, session: retried.data };
               }
+              // A merge request that failed in transit is still retryable.
+              // Do not latch a CAS conflict and permanently block later saves.
+              if (retried.status !== 409) {
+                applySession(latestResult.data);
+                reportFailure(retried.status, retried.error);
+                return { ok: false, status: retried.status,
+                  error: retried.error || "保存工作会话失败" };
+              }
             }
           }
           if (latestResult.ok && latestResult.data) {
@@ -723,6 +741,7 @@ export function WorkspaceSessionProvider({
         reportFailure(result.status, result.error);
         return {
           ok: false,
+          status: result.status,
           unavailable:
             result.status === 401 ||
             result.status === 404 ||

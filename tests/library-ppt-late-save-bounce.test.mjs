@@ -509,6 +509,8 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
   "../lib/database": databaseStubUrl,
   "./AdvancedContentWorkbench": workbenchUrl,
+  "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
+  "./WorkspaceSession": workspaceStubUrl,
   "./artifact-client": artifactClientStubUrl,
   "./WorkspaceLibrary": libraryGridStubUrl,
   "./library-scope": libraryScopeStubUrl,

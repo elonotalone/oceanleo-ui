@@ -77,10 +77,8 @@ export function sessionListStatus(
   busySessions?: readonly string[],
   interruptedSessions?: readonly string[],
   unreadSessions?: readonly string[],
-  waitingSessions?: readonly string[],
 ): SessionListStatus | null {
   if (busySessions?.includes(sessionId)) return "running";
-  if (waitingSessions?.includes(sessionId)) return "running";
   if (interruptedSessions?.includes(sessionId)) return "interrupted";
   if (unreadSessions?.includes(sessionId)) return "unread";
   return null;

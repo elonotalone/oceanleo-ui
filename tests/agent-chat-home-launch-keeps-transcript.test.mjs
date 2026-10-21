@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { existsSync } from "node:fs";
 
 import React, { act } from "react";
 
@@ -61,6 +62,7 @@ for (const [name, value] of Object.entries({
   MouseEvent: window.MouseEvent,
   PointerEvent: window.PointerEvent || window.MouseEvent,
   localStorage: window.localStorage,
+  sessionStorage: window.sessionStorage,
 })) {
   Object.defineProperty(globalThis, name, {
     configurable: true,
@@ -292,7 +294,7 @@ const OVERRIDES = {
   "next/navigation": dataModule(
     "export function useRouter(){ return { push(){}, replace(){ globalThis.__routerReplace = (globalThis.__routerReplace||0)+1; }, refresh(){}, back(){} }; }\n" +
       "export function useSearchParams(){ return new URLSearchParams(); }\n" +
-      "export function usePathname(){ return '/'; }",
+      "export function usePathname(){ return globalThis.__pathname || '/'; }",
   ),
   "../lib/agent": agentLibStub,
   "../lib/app-session": appSessionStub,
@@ -347,10 +349,10 @@ const OVERRIDES = {
   `),
 };
 
-const { AgentChat } = await import(
-  await compileModule("src/shell/AgentChat.tsx", OVERRIDES, {
-    missingPackageStub: lazyStub,
-  })
+const agentChatUrl = await compileModule("src/shell/AgentChat.tsx", OVERRIDES, { missingPackageStub: lazyStub });
+const { AgentChat } = await import(agentChatUrl);
+const { useConsoleAgentFocus } = await import(
+  await compileModule("src/shell/SplitWorkspace.tsx", OVERRIDES, { missingPackageStub: lazyStub })
 );
 
 async function settle(ms = 40) {
@@ -554,5 +556,181 @@ test("点「新建」重挂载对话后，不会把首页的 initialPrompt 自�
     assert.ok(!view.text().includes(ANSWER), "「新建」后对话应清空");
   } finally {
     await view.unmount();
+  }
+});
+
+test("portal host owns task navigation and preserves project context", async () => {
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__routerReplace = 0;
+  let created = "";
+  const originalCreate = backend.api.createTask;
+  let submittedProject;
+  backend.api.createTask = async (body) => {
+    submittedProject = body.projectId;
+    return originalCreate(body);
+  };
+  const view = await mountHome({
+    projectId: "project-123",
+    navigateToSessionOnCreate: false,
+    onTaskCreated: (id) => { created = id; },
+  });
+  try {
+    for (let i = 0; i < 30 && !created; i++) await settle(20);
+    assert.ok(created);
+    assert.equal(submittedProject, "project-123");
+    assert.equal(globalThis.__routerReplace, 0, "host-owned live view must not route to a second session page");
+    assert.ok(view.text().includes("hi"));
+  } finally { await view.unmount(); }
+});
+
+test("Library editor uses real AgentChat split and survives opening and closing the agent", async () => {
+  globalThis.__backend = makeBackend();
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  let mounts = 0;
+  let unmounts = 0;
+  function Editor() {
+    const focus = useConsoleAgentFocus();
+    React.useEffect(() => { mounts++; return () => { unmounts++; }; }, []);
+    return React.createElement("div", null,
+      React.createElement("input", { "data-existing-editor": "", defaultValue: "unsaved work" }),
+      React.createElement("button", { "data-editor-ai": "", onClick: () => { assert.equal(focus?.focusAgent(), true); } }, "AI"),
+    );
+  }
+  let agentVisible = false;
+  function View() {
+    const [visible, setVisible] = React.useState(agentVisible);
+    return React.createElement(AgentChat, {
+      siteId: "excel", taskId: null,
+      workspaceContent: React.createElement(Editor), workspaceOpen: true,
+      workspaceAgentVisible: visible,
+      onWorkspaceAgentFocus: () => { agentVisible = true; setVisible(true); },
+    });
+  }
+  try {
+    await act(async () => root.render(React.createElement(View)));
+    const input = host.querySelector("[data-existing-editor]");
+    assert.ok(input);
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').classList.contains("hidden"), true);
+    await act(async () => host.querySelector('[data-editor-ai]').click());
+    assert.equal(agentVisible, true);
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').classList.contains("hidden"), false);
+    const maximize = host.querySelector('button[title="右侧全屏"]');
+    assert.ok(maximize);
+    await act(async () => maximize.click());
+    assert.equal(host.querySelector("[data-existing-editor]"), input);
+    assert.equal(mounts, 1);
+    assert.equal(unmounts, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("a right-pane render loop stays contained and retry preserves the live conversation", async () => {
+  globalThis.__backend = makeBackend();
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host, { onCaughtError() {} });
+  let broken = true;
+  function Editor() {
+    const [value, setValue] = React.useState(0);
+    if (broken) setValue(value + 1);
+    return React.createElement("div", { "data-recovered-editor": "" }, "material restored");
+  }
+  const previousError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args);
+  try {
+    await act(async () => root.render(React.createElement(AgentChat, {
+      siteId: "excel", taskId: null, workspaceOpen: true,
+      workspaceContent: React.createElement(Editor), emptyHint: "conversation intact",
+    })));
+    assert.ok(host.querySelector("[data-workspace-pane-error]"));
+    assert.ok(host.textContent.includes("conversation intact"));
+    const composer = host.querySelector("[data-composer]");
+    assert.ok(composer);
+    assert.ok(errors.some(args => String(args[1]).includes("Too many re-renders")));
+    broken = false;
+    const retry = [...host.querySelectorAll("button")].find(button => button.textContent === "重试");
+    assert.ok(retry);
+    await act(async () => retry.click());
+    assert.ok(host.querySelector("[data-recovered-editor]"));
+    assert.equal(host.querySelector("[data-composer]"), composer);
+    assert.ok(host.textContent.includes("conversation intact"));
+  } finally {
+    console.error = previousError;
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+test("portal homepage shows the real conversation before create settles and resets on New Task", {
+  skip: !existsSync(new URL("../../oceanleo/app/_components/home-content.tsx", import.meta.url)),
+}, async () => {
+  const portalShell = dataModule(`
+    import { createElement } from ${JSON.stringify(reactUrl)};
+    export { AgentChat } from ${JSON.stringify(agentChatUrl)};
+    export function LeoComposer(props) {
+      globalThis.__portalComposer = props;
+      return createElement("div", { "data-home-composer": "" }, props.value);
+    }
+    export function HomeAppCards(){ return null; }
+  `);
+  const portalOverrides = {
+    ...OVERRIDES,
+    "@oceanleo/ui/shell": portalShell,
+    "@oceanleo/ui/lib": dataModule("export async function uploadFile(){return {ok:false};} export async function listFiles(){return {ok:true,data:{items:[]}};}"),
+    "@oceanleo/ui/i18n": dataModule("const tr = (text) => text; export function useT(){return tr;} export function useUI(){return tr;}"),
+    "@/lib/oceanleo-ai": dataModule("export async function isSignedIn(){return true;} export async function createAgentTask(){throw new Error('must use real AgentChat');} export async function transcribeAudioUrl(){return {};}"),
+    "@/lib/app-catalog": dataModule("export const OCEANLEO_APPS = [];"),
+    "./auth-modal": dataModule("export function AuthModal(){return null;}"),
+    "sonner": dataModule("export const toast = {error(){},loading(){},success(){}};"),
+  };
+  const { HomeContent } = await import(await compileModule("../oceanleo/app/_components/home-content.tsx", portalOverrides, { missingPackageStub: lazyStub }));
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  window.history.replaceState(null, "", "/");
+  let release;
+  const delayed = new Promise(resolve => { release = resolve; });
+  const originalEnsure = backend.api.ensureSession;
+  backend.api.ensureSession = async input => { await delayed; return originalEnsure(input); };
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(HomeContent)));
+    await act(async () => { await globalThis.__portalComposer.onSubmit("马上开始分析"); });
+    assert.ok(host.textContent.includes("马上开始分析"), "submitted user message is visible while session creation is deferred");
+    assert.equal(host.querySelector("[data-home-composer]"), null);
+    assert.ok(!host.textContent.includes("正在打开任务"));
+    assert.equal(backend.log.some(line => line.startsWith("create-task")), false);
+    const liveComposer = host.querySelector("[data-composer]");
+    release();
+    for (let i = 0; i < 40 && !window.location.pathname.startsWith("/tasks/"); i++) await settle(20);
+    assert.match(window.location.pathname, /^\/tasks\/t\d+$/);
+    const firstTaskPath = window.location.pathname;
+    globalThis.__pathname = window.location.pathname;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(host.querySelector("[data-composer]"), liveComposer, "canonical URL did not remount the conversation");
+    globalThis.__pathname = "/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.ok(host.querySelector("[data-home-composer]"), "New Task returns to the homepage composer");
+    assert.ok(!host.querySelector("[data-composer]"));
+    assert.equal(globalThis.__portalComposer.loading, false);
+    assert.equal(globalThis.__portalComposer.value, "");
+    assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 1);
+    globalThis.__pathname = firstTaskPath;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    await settle(40);
+    assert.ok(host.querySelector("[data-composer]"), "Back to shallow task history restores an existing conversation");
+    assert.ok(host.textContent.includes("马上开始分析"));
+    assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 1);
+    globalThis.__pathname = "/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    await act(async () => { await globalThis.__portalComposer.onSubmit("第二个新任务"); });
+    for (let i = 0; i < 40 && backend.log.filter(line => line.startsWith("create-task")).length < 2; i++) await settle(20);
+    assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 2);
+    assert.ok(host.textContent.includes("第二个新任务"));
+  } finally {
+    release();
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
   }
 });
