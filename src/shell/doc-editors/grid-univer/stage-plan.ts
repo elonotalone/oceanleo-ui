@@ -384,6 +384,46 @@ function inspectorGroupForStructureCommand(
   return { id: "grid-data", label: tt("排序与筛选") };
 }
 
+/**
+ * Every compact grid action is icon-only, so omitting one glyph creates a blank
+ * hit target with only an aria-label. Keep names beside the grid command layer
+ * and give future commands a recognizable table fallback until they are mapped.
+ */
+const GRID_CONTROL_ICONS: Record<
+  string,
+  NonNullable<SelectionControl["icon"]>
+> = {
+  bold: "bold",
+  align: "align-left",
+  color: "color",
+  background: "background",
+  type: "table",
+  decimals: "font-size",
+  "numfmt-preset": "font-size",
+  "numfmt-pattern": "font-size",
+  "merge-cells": "border",
+  "split-cells": "border",
+  "row-before": "add",
+  "row-after": "add",
+  "row-delete": "delete",
+  "column-before": "add",
+  "column-after": "add",
+  "column-delete": "delete",
+  "sort-asc": "list",
+  "sort-desc": "list",
+  "header-row": "table",
+  "filter-query": "filter",
+  "condition-apply": "effects",
+  "condition-clear": "delete",
+  "validation-check": "select",
+};
+
+function gridCommandIcon(
+  id: string,
+): NonNullable<SelectionControl["icon"]> {
+  return GRID_CONTROL_ICONS[id] || "table";
+}
+
 function controlForCommand(
   id: string,
   label: string,
@@ -395,7 +435,7 @@ function controlForCommand(
       id,
       kind: "toggle",
       label,
-      icon: "bold",
+      icon: gridCommandIcon(id),
       iconOnly: true,
       group: "format",
       value: false,
@@ -406,7 +446,7 @@ function controlForCommand(
       id,
       kind: "select",
       label,
-      icon: id === "align" ? "align-left" : "table",
+      icon: gridCommandIcon(id),
       iconOnly: true,
       group: "format",
       value: id === "align" ? "left" : "auto",
@@ -421,7 +461,7 @@ function controlForCommand(
       id,
       kind: "color",
       label,
-      icon: id === "color" ? "color" : "background",
+      icon: gridCommandIcon(id),
       iconOnly: true,
       group: "format",
       value: id === "color" ? "#292524" : "#ffffff",
@@ -432,6 +472,7 @@ function controlForCommand(
       id,
       kind: "number",
       label,
+      icon: gridCommandIcon(id),
       value: 2,
       min: 0,
       max: 8,
@@ -448,6 +489,7 @@ function controlForCommand(
       id,
       kind: "action",
       label,
+      icon: gridCommandIcon(id),
       iconOnly: true,
       group: "structure",
       slot: "inspector",
@@ -460,6 +502,7 @@ function controlForCommand(
     id,
     kind: "action",
     label,
+    icon: gridCommandIcon(id),
     iconOnly: true,
     group: "format",
   };

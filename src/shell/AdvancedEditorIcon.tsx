@@ -396,6 +396,14 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
   back: <path d="M15 6l-6 6 6 6" />,
 };
 
+const unknownGlyph = (
+  <>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M9.7 9.3a2.45 2.45 0 1 1 4.4 1.5c-.8.9-2.1 1.3-2.1 2.7" />
+    <path d="M12 16.8h.01" />
+  </>
+);
+
 export function AdvancedEditorIcon({
   name,
   className = "h-4 w-4",
@@ -407,6 +415,7 @@ export function AdvancedEditorIcon({
   strokeWidth?: number;
   filled?: boolean;
 }) {
+  const hasGlyph = Object.prototype.hasOwnProperty.call(glyphs, name);
   return (
     <svg
       viewBox="0 0 24 24"
@@ -417,8 +426,9 @@ export function AdvancedEditorIcon({
       strokeLinejoin="round"
       className={className}
       aria-hidden="true"
+      data-icon-fallback={hasGlyph ? undefined : "true"}
     >
-      {glyphs[name]}
+      {hasGlyph ? glyphs[name] : unknownGlyph}
     </svg>
   );
 }
