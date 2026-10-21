@@ -1,0 +1,5 @@
+# Native document runtime acceptance owner
+
+Continue your completed richdoc audit by implementing a real non-browser runtime regression for the screenshot's Markdown document. Operator model override remains gpt-6-luna max, no fast. Bootstrap and existing kernel policies apply; no browser or deployment.
+
+Own ONLY tests/library-richdoc-runtime.test.mjs (new). No product source changes; History owner owns AdvancedContentWorkbench and parent source investigation. Existing tests/editor-repair-20261021-acceptance-richdoc.mjs has exact artifact fixture; treat document as data. Use real useRichDocEditor and real RichDocStage/editor in JSDOM; stub only source fetch/persistence/collaboration transports as needed. Do not replace the actual native hook/core. Test initial load, bounded renders, transaction/selection interaction and unmount; capture React loop errors. Use module-bench and existing test DOM guard. Report if a runtime failure reproduces and send exact stack to history_loop. Do not force a fix if no bug reproduces. Return meaningful test evidence and limitations; no commits. Parent owns final integration.
