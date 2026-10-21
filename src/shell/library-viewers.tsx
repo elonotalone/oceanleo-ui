@@ -1575,6 +1575,10 @@ function DocumentViewer({
 
   useEffect(() => {
     const { item } = sourceRef.current;
+    const onResourceError = () => {
+      failedSourceRef.current.url = documentSourceUrl(item);
+      sourceRef.current.onResourceError?.();
+    };
     const url = documentSourceUrl(item);
     if (!isText || isDocx) return;
     if (item.content && isDisplayableText(item.content)) {

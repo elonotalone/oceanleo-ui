@@ -33,7 +33,7 @@ type EditorToolbarBag = {
 function normalizeToolbarInput(
   input: FabricImageToolbarBuildInput | { editor: EditorToolbarBag; tt: UITranslate },
 ): FabricImageToolbarBuildInput {
-  if ("editor" in input && input.editor) {
+  if ("editor" in input) {
     const editor = input.editor;
     return {
       selected: editor.selected ?? null,

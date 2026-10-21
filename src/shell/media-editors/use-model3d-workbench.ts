@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import type { Model3DPrevisAdapter } from "./model3d-director";
@@ -117,10 +125,13 @@ export function useModel3DWorkbench(
     setSavedUrl("");
     applyModel3dUserEditSession(itemRef.current, "local-dirty");
   }, []);
-  const setBootstrapDirty = useCallback((value: boolean) => {
-    setDirty(value);
-    applyModel3dUserEditSession(itemRef.current, "bootstrap");
-  }, []);
+  const setBootstrapDirty = useCallback<Dispatch<SetStateAction<boolean>>>(
+    (value) => {
+      setDirty(value);
+      applyModel3dUserEditSession(itemRef.current, "bootstrap");
+    },
+    [],
+  );
 
   const sidecar = useModel3DSidecar({
     runtimeRef,
