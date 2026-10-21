@@ -242,6 +242,12 @@ const { MessagesHost } = await import(
     "./Inbox": viewStub("Inbox"),
     "./invite/InviteAcceptDialog": dialogStub("InviteAcceptDialog"),
     "./host-state": hostStub,
+    "./meeting/MeetingPanel": dataModule(`export function MeetingPanel(){ return null; }`),
+    "./meeting/meeting-host-state": dataModule(`
+      export function closeMeeting(){}
+      export function createMeetingInvitationHandler(){ return { handle: async () => false, cancel(){} }; }
+      export function useMeetingHostRequest(){ return null; }
+    `),
     "./MessagesLayout": dataModule(`
       import React from ${JSON.stringify(reactUrl)};
       export function MessagesLayout(){
@@ -255,6 +261,7 @@ const { MessagesHost } = await import(
     "./notify/title-badge": dataModule(`export function attachBrowserTitleBadge(){ return null; }`),
     "./people/PeopleView": viewStub("PeopleView"),
     "./PrivacyNotice": dataModule(`export function PrivacyNotice(){ return null; }`),
+    "../realtime-call/RealtimeCallHost": dataModule(`export function RealtimeCallHost(){ return null; }`),
     "./realtime/hooks": dataModule(`
       export function attachImRealtime(){ return () => {}; }
       export function imStore(){
@@ -266,6 +273,7 @@ const { MessagesHost } = await import(
         };
       }
       export function publishImDisabled(){}
+      export function useImEvent(){}
       export function useImUnread(){ return { total: 0, requests: 0 }; }
     `),
   })
