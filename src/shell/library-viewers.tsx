@@ -2029,6 +2029,21 @@ function LibraryItemDetailTarget({
   return <LibraryItemViewerBody item={target.item} accent={accent} />;
 }
 
+/**
+ * 这份 rendition 能不能交给 `<audio>` / `<video>`。mediaType 缺席时不拦（旧数据、
+ * 本地条目没有这一列）；只拦明确不是音视频的几类。
+ */
+export function renditionIsPlayableMedia(mediaType?: string | null): boolean {
+  const type = String(mediaType || "").trim().toLowerCase();
+  if (!type) return true;
+  return !(
+    type.startsWith("image/") ||
+    type.startsWith("text/") ||
+    type === "application/json" ||
+    type.endsWith("+json")
+  );
+}
+
 function LibraryItemViewerBody({
   item,
 }: {
@@ -2224,6 +2239,41 @@ function LibraryItemViewerBody({
           onError={rendition.resourceFailed}
           className="max-h-[70vh] max-w-full rounded-lg bg-black"
         />
+      </Center>
+    );
+  }
+  if (
+    resolvedItem.kind === "audio" &&
+    url &&
+    !renditionIsPlayableMedia(rendition.rendition?.mediaType)
+  ) {
+    /**
+     * 音频编辑器保存出的新 revision 只带「工程源 + 位图预览」，没有 `full` 音频
+     * rendition；查看器顺位落到 `preview`（image/png）。把一张 PNG 喂给 `<audio>` 必然
+     * 解码失败，旧路径于是走完「重签→再失败」后报「资源本身取不到」，把一个
+     * 「这一版没有可播放音频」的事实说成了网络故障。直接按真实情况说，并把预览图摆出来。
+     */
+    const previewIsImage = String(rendition.rendition?.mediaType || "")
+      .toLowerCase()
+      .startsWith("image/");
+    return (
+      <Center>
+        {previewIsImage ? (
+          <ProgressiveArtifactImage
+            thumbUrl={resolvedItem.thumbUrl || ""}
+            fullUrl={url}
+            alt={resolvedItem.title}
+            geometry={libraryMediaGeometry(resolvedItem, url)}
+          />
+        ) : null}
+        <p
+          role="status"
+          data-audio-no-playable-rendition=""
+          className="max-w-md text-center text-[13px] leading-relaxed text-stone-500"
+        >
+          这一版是编辑器保存的音频工程，没有可直接播放的音频文件；上面是保存时的预览图。
+          打开编辑器即可试听和继续编辑。
+        </p>
       </Center>
     );
   }
