@@ -693,6 +693,28 @@ test("limits: the 26th camera is refused with video_full; call_full on join is a
   assert.equal(full.mutex.owner, null);
 });
 
+test("an SDK join failure leaves the server participant and shows our wording, not the SDK's", async () => {
+  const t = setup();
+  t.sdk.createEngine = () => {
+    const engine = new FakeEngine(t.engines);
+    engine.failJoin = Object.assign(new Error("join failed: ERR_JOIN_BAD_TOKEN"), { code: 33620485 });
+    return engine;
+  };
+  await t.actions.startOrJoin("conv-1");
+  await settle();
+  const s = t.snap();
+  assert.equal(s.phase, "error");
+  assert.deepEqual(s.error, { code: "artc_join_failed", message: "加入通话失败" });
+  assert.deepEqual(t.api.calls.filter((c) => c[0] === "leave"), [["leave", "call-1", null]]);
+  assert.deepEqual(t.engines[0].calls.slice(-2), [["leaveChannel"], ["destroy"]]);
+  assert.equal(t.mutex.owner, null);
+  const gateway = setup();
+  gateway.api.failStart = apiError(403, "talent_not_supported", "交易会话不支持通话（服务端原文）");
+  await gateway.actions.startOrJoin("conv-1");
+  await settle();
+  assert.deepEqual(gateway.snap().error, { code: "talent_not_supported", message: "交易会话不支持通话（服务端原文）" });
+});
+
 test("a person-to-person call cannot start during a Leo realtime call", async () => {
   const t = setup({ busy: true });
   await t.actions.startOrJoin("conv-1");

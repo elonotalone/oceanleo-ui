@@ -169,12 +169,14 @@ function statusOf(error: unknown): number | null {
   return typeof row.status === "number" ? row.status : null;
 }
 
+/** 错误 → `{code, message}`。只有网关错误（字符串错误码）的说明原样给人看；SDK 等其它错误一律用本表文案。 */
 export function callErrorOf(error: unknown, fallbackCode = "unknown"): { code: string; message: string } {
   let code = codeOf(error);
   if (code === "unknown") code = fallbackCode;
-  const row = (error ?? {}) as { message?: unknown };
+  const row = (error ?? {}) as { code?: unknown; message?: unknown };
+  const fromGateway = typeof row.code === "string" && row.code.length > 0;
   const text = typeof row.message === "string" ? row.message.trim() : "";
-  const serverText = text && text !== code && !/^[a-z][a-z0-9_]*$/.test(text) ? text : "";
+  const serverText = fromGateway && text && text !== code ? text : "";
   return { code, message: serverText || CALL_ERROR_MESSAGES[code] || "通话出错了，请稍后再试" };
 }
 
