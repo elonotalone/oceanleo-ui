@@ -348,3 +348,44 @@ test("缩略图显示稿：日期按格式串渲染、公式取缓存值，不�
   assert.equal(sheet.rows[0][1], "2026-08-15");
   assert.equal(sheet.rows[0][2], "文本");
 });
+
+test("定义名称写进工作簿；写不进去的会报，不吞", async () => {
+  const { workbook, dropped } = await roundTrip(
+    snapshot({ cellData: { 0: { 0: { v: 1, t: 2 } } } }, [
+      res("SHEET_DEFINED_NAME_PLUGIN", {
+        n1: { id: "n1", name: "Total", formulaOrRefString: "Data!$A$1:$A$3" },
+      }),
+    ]),
+  );
+  assert.ok(workbook.definedNames.getRanges("Total").ranges.length >= 1);
+  assert.deepEqual(dropped, []);
+});
+
+test("exceljs 没有的比较 / 文本运算符改写成等价公式规则", async () => {
+  const hl = (cfId, rule) => ({
+    cfId,
+    ranges: [{ startRow: 1, endRow: 5, startColumn: 2, endColumn: 2 }],
+    stopIfTrue: false,
+    rule: { type: "highlightCell", style: { bg: { rgb: "#ffff00" } }, ...rule },
+  });
+  const { workbook, dropped } = await roundTrip(
+    snapshot({ cellData: { 1: { 2: { v: 1, t: 2 } } } }, [
+      res("SHEET_CONDITIONAL_FORMATTING_PLUGIN", {
+        s1: [
+          hl("a", { subType: "number", operator: "greaterThanOrEqual", value: 5 }),
+          hl("b", { subType: "number", operator: "notBetween", value: [1, 3] }),
+          hl("c", { subType: "text", operator: "beginsWith", value: "ab" }),
+          hl("d", { subType: "text", operator: "notContainsText", value: "x" }),
+        ],
+      }),
+    ]),
+  );
+  const rules = workbook.getWorksheet("Data").conditionalFormattings.flatMap((cf) => cf.rules);
+  assert.equal(rules.length, 4);
+  assert.ok(rules.every((r) => r.type === "expression"));
+  const formulas = rules.map((r) => r.formulae[0]);
+  assert.ok(formulas.includes("C2>=5"));
+  assert.ok(formulas.includes("OR(C2<1,C2>3)"));
+  assert.ok(formulas.includes('LEFT(C2,2)="ab"'));
+  assert.deepEqual(dropped, []);
+});

@@ -469,16 +469,31 @@ function cfStyle(style: unknown): Partial<import("exceljs").Style> {
   return out;
 }
 
+/** exceljs `CellIsOperators` only has these four; the rest become expression rules. */
 const CF_CELLIS: Record<string, import("exceljs").CellIsOperators> = {
   greaterThan: "greaterThan",
-  greaterThanOrEqual: "greaterThanOrEqual",
   lessThan: "lessThan",
-  lessThanOrEqual: "lessThanOrEqual",
   between: "between",
-  notBetween: "notBetween",
   equal: "equal",
-  notEqual: "notEqual",
 };
+
+/** Number operators exceljs cannot name: written as an equivalent formula on the top-left cell. */
+function numberExpression(operator: string, origin: string, values: string[]): string | null {
+  const [first, second] = values;
+  switch (operator) {
+    case "greaterThanOrEqual":
+      return first ? `${origin}>=${first}` : null;
+    case "lessThanOrEqual":
+      return first ? `${origin}<=${first}` : null;
+    case "notEqual":
+      return first ? `${origin}<>${first}` : null;
+    case "notBetween":
+      return first && second ? `OR(${origin}<${first},${origin}>${second})` : null;
+    default:
+      return null;
+  }
+}
+
 
 function cfvo(value: unknown): import("exceljs").Cvfo {
   const v = isObject(value) ? value : {};
@@ -494,6 +509,10 @@ function literal(value: unknown): string {
   if (typeof value === "number") return String(value);
   const text = String(value ?? "");
   return /^[+-]?\d+(?:\.\d+)?$/.test(text) ? text : `"${text.replace(/"/g, '""')}"`;
+}
+
+function textLiteral(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function applyConditionalFormats(
@@ -561,36 +580,43 @@ function applyConditionalFormats(
         } as import("exceljs").ConditionalFormattingRule;
       }
     } else if (type === "highlightCell") {
-      if (subType === "number" && CF_CELLIS[operator]) {
+      if (subType === "number" && (CF_CELLIS[operator] || numberExpression(operator, origin, ["0", "0"]))) {
         const value = rule.value;
         const formulae = Array.isArray(value)
           ? value.map(literal)
           : value === undefined || value === null
             ? []
             : [literal(value)];
-        if (formulae.length > 0) {
-          built = {
-            type: "cellIs",
-            operator: CF_CELLIS[operator],
-            formulae,
-            priority,
-            style,
-          };
+        const direct = CF_CELLIS[operator];
+        const expression = direct ? null : numberExpression(operator, origin, formulae);
+        if (formulae.length > 0 && direct) {
+          built = { type: "cellIs", operator: direct, formulae, priority, style };
+        } else if (expression) {
+          built = { type: "expression", formulae: [expression], priority, style };
         }
       } else if (subType === "text") {
         const text = String(rule.value ?? "");
         if (operator === "containsText") {
           built = { type: "containsText", operator: "containsText", text, priority, style };
         } else if (operator === "notContainsText") {
-          built = { type: "containsText", operator: "notContains", text, priority, style } as import("exceljs").ConditionalFormattingRule;
-        } else if (operator === "beginsWith") {
-          built = { type: "containsText", operator: "beginsWith", text, priority, style };
-        } else if (operator === "endsWith") {
-          built = { type: "containsText", operator: "endsWith", text, priority, style };
+          built = {
+            type: "expression",
+            formulae: [`ISERROR(SEARCH(${textLiteral(text)},${origin}))`],
+            priority,
+            style,
+          };
+        } else if (operator === "beginsWith" || operator === "endsWith") {
+          const fn = operator === "beginsWith" ? "LEFT" : "RIGHT";
+          built = {
+            type: "expression",
+            formulae: [`${fn}(${origin},${text.length})=${textLiteral(text)}`],
+            priority,
+            style,
+          };
         } else if (operator === "equal" || operator === "notEqual") {
           built = {
             type: "expression",
-            formulae: [`${origin}${operator === "equal" ? "=" : "<>"}${literal(text)}`],
+            formulae: [`${origin}${operator === "equal" ? "=" : "<>"}${textLiteral(text)}`],
             priority,
             style,
           };
