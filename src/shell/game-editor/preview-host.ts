@@ -29,10 +29,18 @@ export interface GamePreviewHostProps {
   revisionId: string;
   /**
    * `oceanleo.game-document.v1` 信封的签名 URL（`full` rendition，application/json）。
-   * 宿主必须让沙箱域去取它并在那边装载完整文档，**不得**塞进 iframe 的 `srcdoc`
-   * —— `srcdoc` 文档继承父页面 origin，会让整个域隔离方案失效。
+   * 仅为兼容保留：**永远不得**把它当 iframe 的 `src`。
+   * 2026-10-16 决定：宿主把已保存 / 草稿文档组装成 `srcDoc`，装进**不透明 origin** 的
+   * iframe（sandbox 不含 `allow-same-origin`），因此 `srcDoc` 不再继承父页面 origin，
+   * 域隔离靠 sandbox 属性成立。
    */
   envelopeUrl: string;
+  /**
+   * 未保存草稿的完整 HTML 文档，**作为数据**交给宿主。缺省时宿主播放
+   * `artifactId` / `revisionId` 指向的已保存版本。编辑器只在「运行 / 重载 / 载入」时
+   * 换这个值（绝不随按键变化）；值一变，宿主就以它重新启动。
+   */
+  source?: string;
   bundleFormat: GameBundleFormat;
   engineApiVersion: string;
   title: string;

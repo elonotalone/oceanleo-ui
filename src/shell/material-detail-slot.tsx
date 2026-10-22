@@ -18,12 +18,14 @@
  * `docs/work-logs/2026-08/explore-inplace-preview/tasks/W1-viewer-slot.md`。
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useGamePreviewHost } from "./game-editor/preview-host";
 import { useUI } from "../i18n/ui/useUI";
 import { getCurrentArtifactItem } from "./artifact-client";
 import {
   ARTIFACT_PLAY_ORIGIN,
   artifactPlayHref,
+  isPlayableGameLibraryItem,
   safeArtifactPlayHref,
 } from "./explore-artifact-class";
 import {
@@ -308,13 +310,95 @@ export function gamePlayEmbedHref(item: LibraryItem): string {
  */
 export function GamePlayDetail({ item }: { item: LibraryItem }) {
   const tt = useUI();
+  const PreviewHost = useGamePreviewHost();
+  const [playing, setPlaying] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [error, setError] = useState("");
+  const frame = useRef<HTMLDivElement>(null);
   const href = artifactPlayHref(item);
+  const envelopeUrl = isDurableLibraryItem(item)
+    ? (item.artifact.renditions.full || item.artifact.renditions.source)?.url ||
+      ""
+    : String(item.url || "");
+  // 已注册宿主 = 主站：就地开玩。没有宿主（其余站点）= 老行为：交给既有的开玩链接。
+  const inPlace = Boolean(
+    PreviewHost && item.artifactId && item.revisionId && isPlayableGameLibraryItem(item),
+  );
   const cover = libraryItemPosterUrl(item);
+  useEffect(() => {
+    setPlaying(false);
+    setError("");
+    setReloadKey(0);
+  }, [item.artifactId, item.revisionId, item.key]);
+  const enterFullscreen = useCallback(() => {
+    const node = frame.current;
+    if (!node || typeof node.requestFullscreen !== "function") {
+      setError(tt("当前环境无法进入全屏。"));
+      return;
+    }
+    try {
+      void Promise.resolve(node.requestFullscreen()).catch(() =>
+        setError(tt("当前环境无法进入全屏。")),
+      );
+    } catch {
+      setError(tt("当前环境无法进入全屏。"));
+    }
+  }, [tt]);
+  if (playing && PreviewHost && inPlace) {
+    const barButton =
+      "rounded-md border border-stone-300 bg-white px-3 py-1 text-[13px] text-stone-800 hover:bg-stone-100";
+    return (
+      <div
+        ref={frame}
+        data-game-play-container
+        className="flex h-full min-h-[520px] flex-col bg-stone-950"
+      >
+        <div className="flex items-center gap-3 bg-stone-50 p-3 text-sm">
+          <button type="button" className={barButton} onClick={() => setPlaying(false)}>
+            {tt("返回")}
+          </button>
+          <span className="min-w-0 flex-1 truncate font-medium text-stone-800">
+            {item.title}
+          </span>
+          <button
+            type="button"
+            className={barButton}
+            onClick={() => {
+              setError("");
+              setReloadKey((key) => key + 1);
+            }}
+          >
+            {tt("重新开始")}
+          </button>
+          <button type="button" className={barButton} onClick={enterFullscreen}>
+            {tt("全屏")}
+          </button>
+        </div>
+        {error ? (
+          <p role="alert" className="bg-amber-50 p-3 text-sm text-amber-900">
+            {error}
+          </p>
+        ) : null}
+        <div className="min-h-[440px] flex-1">
+          <PreviewHost
+            artifactId={item.artifactId || ""}
+            revisionId={item.revisionId || ""}
+            envelopeUrl={envelopeUrl}
+            bundleFormat="html"
+            engineApiVersion={String(item.meta?.engine_api_version || "")}
+            title={item.title}
+            reloadKey={reloadKey}
+            onRuntimeError={setError}
+          />
+        </div>
+      </div>
+    );
+  }
+  const playable = inPlace || Boolean(href);
   return (
     <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-5 bg-stone-50 p-6">
       {cover && (
-        // 这张是封面，不是游戏本身——真东西在隔离域的播放页上。标成 exempt，
-        // 动作条那颗「全屏」就不会为了放大一张封面而亮起来。
+        // 这张是封面，不是游戏本身。标成 exempt，动作条那颗「全屏」就不会为了放大一张封面而亮起来。
         <div data-fullscreen-exempt>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -328,12 +412,20 @@ export function GamePlayDetail({ item }: { item: LibraryItem }) {
       <div className="flex flex-col items-center gap-2">
         <p className="text-[15px] font-semibold text-stone-800">{item.title}</p>
         <p className="max-w-md text-center text-[13px] leading-relaxed text-stone-500">
-          {href
+          {playable
             ? tt("这是一款可以直接玩的游戏，不用下载，也不用进编辑器。")
             : tt("这款游戏暂时算不出可玩地址，所以现在还打不开。")}
         </p>
       </div>
-      {href && (
+      {inPlace ? (
+        <button
+          type="button"
+          onClick={() => setPlaying(true)}
+          className="rounded-lg bg-stone-800 px-5 py-2.5 text-[14px] font-medium text-white hover:bg-stone-700"
+        >
+          {tt("开始游玩")}
+        </button>
+      ) : href ? (
         <a
           href={href}
           target="_blank"
@@ -342,7 +434,7 @@ export function GamePlayDetail({ item }: { item: LibraryItem }) {
         >
           {tt("开始游玩")}
         </a>
-      )}
+      ) : null}
     </div>
   );
 }

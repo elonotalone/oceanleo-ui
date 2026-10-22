@@ -396,9 +396,11 @@ export async function saveFileToLibraryWithDependencies(
   let sourceMediaType = boundedText(input.sourceMediaType, 300).toLowerCase();
   let fileName = "";
   let projectSchema = boundedText(input.deliveryProjectSchema, 120);
-  let preparedProject: PreparedProjectUpload | undefined;
-  let preparedDelivery: PreparedDeliveryUpload | undefined;
-  let preparedPreview: PreparedPreviewUpload | undefined;
+  // Cast keeps the declared union: these are assigned from the overlapped
+  // upload tasks below, which control-flow narrowing cannot see.
+  let preparedProject = undefined as PreparedProjectUpload | undefined;
+  let preparedDelivery = undefined as PreparedDeliveryUpload | undefined;
+  let preparedPreview = undefined as PreparedPreviewUpload | undefined;
   let previewWarning = "";
   let savedAt = dependencies.now().toISOString();
   let projectUrl = "";
@@ -439,6 +441,42 @@ export async function saveFileToLibraryWithDependencies(
       failedStep: step,
       error: artifactSaveStepMessage(step, detail),
     });
+
+  /**
+   * Overlapped uploads never reject: each task settles to its own failure
+   * (or null) and the main flow reads them in pipeline order, so an earlier
+   * step always wins over a later one that happened to fail first.
+   */
+  type StepFailure = { step: ArtifactSaveStep; detail: unknown };
+  let projectTask: Promise<StepFailure | null> | null = null;
+  const failAfterProject = async (
+    step: ArtifactSaveStep,
+    detail: unknown,
+  ): Promise<SaveToLibraryResult> => {
+    const earlier = projectTask ? await projectTask : null;
+    return earlier ? fail(earlier.step, earlier.detail) : fail(step, detail);
+  };
+
+  const hasTypedIdentity = Boolean(identity.artifactId || identity.revisionId);
+  const typedIdentityFailure = (): string | null => {
+    if (!input.artifactRevision || !hasTypedIdentity) return null;
+    if (!identity.artifactId || !identity.revisionId) {
+      return "typed artifact 保存缺少完整 artifact/revision identity";
+    }
+    if (
+      identity.artifactType &&
+      identity.artifactType !== input.artifactRevision.artifactType
+    ) {
+      return `这份素材在库里是「${identity.artifactType}」，编辑器按「${input.artifactRevision.artifactType}」保存对不上。请另存为可编辑副本。`;
+    }
+    const editability = String(
+      input.item.artifact?.editability || input.item.meta.editability || "",
+    );
+    if (editability === "view_only") {
+      return "这份素材是只读导入件，不能直接覆盖保存。请先转成可编辑副本。";
+    }
+    return null;
+  };
 
   if (
     input.project &&
@@ -493,65 +531,60 @@ export async function saveFileToLibraryWithDependencies(
       } catch (caught) {
         return fail("project-build", resultError(caught));
       }
-      let projectUpload: Awaited<ReturnType<typeof uploadFile>>;
-      try {
-        projectUpload = await dependencies.uploadFile(projectFile, {
-          siteId: site,
-          title: `${input.title}工程`,
-          registerAsset: false,
-          idempotencyKey: uploadIdempotencyKey(
-            input.idempotencyKey,
-            "project",
-            digest,
-          ),
-        });
-      } catch (caught) {
-        return fail("project-upload", resultError(caught));
-      }
-      projectUrl = safePreparedUrl(projectUpload.data?.file?.url);
-      if (!projectUpload.ok || !projectUrl) {
-        return fail(
-          "project-upload",
-          projectUpload.error || "存储服务没有返回可编辑工程地址",
-        );
-      }
-      try {
-        preparedProject = {
-          ...preparedUploadFrom(projectUpload.data?.file, projectUrl, digest),
-          schema: projectSchema,
-          savedAt,
-        };
-      } catch (caught) {
-        return fail("project-upload", resultError(caught));
-      }
+      projectTask = (async (): Promise<StepFailure | null> => {
+        let projectUpload: Awaited<ReturnType<typeof uploadFile>>;
+        try {
+          projectUpload = await dependencies.uploadFile(projectFile, {
+            siteId: site,
+            title: `${input.title}工程`,
+            registerAsset: false,
+            idempotencyKey: uploadIdempotencyKey(
+              input.idempotencyKey,
+              "project",
+              digest,
+            ),
+          });
+        } catch (caught) {
+          return { step: "project-upload", detail: resultError(caught) };
+        }
+        const uploadedUrl = safePreparedUrl(projectUpload.data?.file?.url);
+        if (!projectUpload.ok || !uploadedUrl) {
+          return {
+            step: "project-upload",
+            detail: projectUpload.error || "存储服务没有返回可编辑工程地址",
+          };
+        }
+        try {
+          preparedProject = {
+            ...preparedUploadFrom(
+              projectUpload.data?.file,
+              uploadedUrl,
+              digest,
+            ),
+            schema: projectSchema,
+            savedAt,
+          };
+        } catch (caught) {
+          return { step: "project-upload", detail: resultError(caught) };
+        }
+        projectUrl = uploadedUrl;
+        return null;
+      })();
     }
-    projectUrl = preparedProject.url;
+    if (preparedProject) projectUrl = preparedProject.url;
   }
 
   const existingWorkingHead = editorWorkingHeadUrl(
     input.item,
     input.workingHeadUrl,
   );
-  if (input.projectOnly) {
-    // Shelf/public binary sources are not creation keys. Reusing them as the
-    // project-only working head makes /v1/creations return HTTP 409. Only reuse
-    // a prior editor working head / project URL once the row already carries
-    // editor persistence metadata from a successful save.
-    const reuseEditorWorkingHead = Boolean(
-      input.item.meta.editor_working_head_url ||
-        input.item.meta.editor_working_head_uses_project_url ||
-        input.item.meta.editor_project_url,
-    );
-    url = reuseEditorWorkingHead
-      ? editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl)
-      : safePreparedUrl(projectUrl) ||
-        editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl);
-  } else {
+  let deliveryTask: Promise<StepFailure | null> | null = null;
+  if (!input.projectOnly) {
     const requestedDeliveryUrl = boundedText(input.deliveryUrl);
     if (requestedDeliveryUrl) {
       url = safePreparedUrl(requestedDeliveryUrl);
       if (!url) {
-        return fail("delivery-build", "现有交付地址无效");
+        return failAfterProject("delivery-build", "现有交付地址无效");
       }
     }
     const reusable = input.preparedDelivery;
@@ -579,11 +612,11 @@ export async function saveFileToLibraryWithDependencies(
         try {
           deliveryFile = await input.createFile();
         } catch (caught) {
-          return fail("delivery-build", resultError(caught));
+          return failAfterProject("delivery-build", resultError(caught));
         }
       }
       if (!deliveryFile) {
-        return fail("delivery-build", "缺少可保存的交付文件");
+        return failAfterProject("delivery-build", "缺少可保存的交付文件");
       }
       fileName = deliveryFile.name;
       const extension = urlExtension(deliveryFile.name);
@@ -593,7 +626,7 @@ export async function saveFileToLibraryWithDependencies(
         ["docx", "pdf", "pptx", "xlsx"].includes(sourceFormat) &&
         extension !== sourceFormat
       ) {
-        return fail(
+        return failAfterProject(
           "delivery-build",
           `交付文件扩展名必须是 .${sourceFormat}`,
         );
@@ -603,42 +636,183 @@ export async function saveFileToLibraryWithDependencies(
         deliveryFile.type &&
         deliveryFile.type.toLowerCase() !== sourceMediaType
       ) {
-        return fail("delivery-build", "交付文件 MIME 与 source 合同不一致");
-      }
-      const digest = await sha256Blob(deliveryFile);
-      let uploaded: Awaited<ReturnType<typeof uploadFile>>;
-      try {
-        uploaded = await dependencies.uploadFile(deliveryFile, {
-          siteId: site,
-          title: input.title,
-          registerAsset: false,
-          idempotencyKey: uploadIdempotencyKey(
-            input.idempotencyKey,
-            "delivery",
-            digest,
-          ),
-        });
-      } catch (caught) {
-        return fail("delivery-upload", resultError(caught));
-      }
-      url = safePreparedUrl(uploaded.data?.file?.url);
-      if (!uploaded.ok || !url) {
-        return fail(
-          "delivery-upload",
-          uploaded.error || "存储服务没有返回交付文件地址",
+        return failAfterProject(
+          "delivery-build",
+          "交付文件 MIME 与 source 合同不一致",
         );
       }
+      let digest: string;
       try {
-        preparedDelivery = {
-          ...preparedUploadFrom(uploaded.data?.file, url, digest),
-          format: sourceFormat,
-          mediaType: sourceMediaType,
-          fileName,
-        };
+        digest = await sha256Blob(deliveryFile);
       } catch (caught) {
-        return fail("delivery-upload", resultError(caught));
+        // Unclassified throw, as before; an earlier project failure still wins.
+        const earlier = projectTask ? await projectTask : null;
+        if (earlier) return fail(earlier.step, earlier.detail);
+        throw caught;
       }
+      const uploadedFile = deliveryFile;
+      const uploadedFormat = sourceFormat;
+      const uploadedMediaType = sourceMediaType;
+      deliveryTask = (async (): Promise<StepFailure | null> => {
+        let uploaded: Awaited<ReturnType<typeof uploadFile>>;
+        try {
+          uploaded = await dependencies.uploadFile(uploadedFile, {
+            siteId: site,
+            title: input.title,
+            registerAsset: false,
+            idempotencyKey: uploadIdempotencyKey(
+              input.idempotencyKey,
+              "delivery",
+              digest,
+            ),
+          });
+        } catch (caught) {
+          return { step: "delivery-upload", detail: resultError(caught) };
+        }
+        const uploadedUrl = safePreparedUrl(uploaded.data?.file?.url);
+        if (!uploaded.ok || !uploadedUrl) {
+          return {
+            step: "delivery-upload",
+            detail: uploaded.error || "存储服务没有返回交付文件地址",
+          };
+        }
+        try {
+          preparedDelivery = {
+            ...preparedUploadFrom(uploaded.data?.file, uploadedUrl, digest),
+            format: uploadedFormat,
+            mediaType: uploadedMediaType,
+            fileName: uploadedFile.name,
+          };
+        } catch (caught) {
+          return { step: "delivery-upload", detail: resultError(caught) };
+        }
+        url = uploadedUrl;
+        return null;
+      })();
     }
+  }
+
+  // Cover: render, hash and upload while the project/delivery uploads are
+  // still in flight. Only pure input checks gate it; the receipt-dependent
+  // checks and the failure ordering still run at the original join below.
+  type PreviewOutcome = {
+    warning: string;
+    prepared?: PreparedPreviewUpload;
+    failure?: StepFailure;
+    crashed?: { error: unknown };
+  };
+  const reusablePreview =
+    input.preparedPreview && safePreparedUrl(input.preparedPreview.url);
+  let previewTask: Promise<PreviewOutcome> | null = null;
+  if (
+    input.artifactRevision &&
+    hasTypedIdentity &&
+    !reusablePreview &&
+    input.createPreview &&
+    !typedIdentityFailure()
+  ) {
+    const createPreview = input.createPreview;
+    previewTask = (async (): Promise<PreviewOutcome> => {
+      let warning = "";
+      try {
+        let previewBlob: Blob | null = null;
+        try {
+          previewBlob = await createPreview();
+        } catch (caught) {
+          warning = artifactSaveStepMessage(
+            "preview-render",
+            resultError(caught),
+          );
+        }
+        if (previewBlob && previewBlob.size > 0) {
+          const previewFile = new File(
+            [previewBlob],
+            `${input.title}.preview.png`,
+            { type: EDITOR_PREVIEW_MEDIA_TYPE },
+          );
+          const previewDigest = await sha256Blob(previewFile);
+          let previewUpload: Awaited<ReturnType<typeof uploadFile>>;
+          try {
+            previewUpload = await dependencies.uploadFile(previewFile, {
+              siteId: site,
+              title: `${input.title}封面`,
+              registerAsset: false,
+              idempotencyKey: uploadIdempotencyKey(
+                input.idempotencyKey,
+                "preview",
+                previewDigest,
+              ),
+            });
+          } catch (caught) {
+            return {
+              warning,
+              failure: { step: "preview-upload", detail: resultError(caught) },
+            };
+          }
+          const previewUrl = safePreparedUrl(previewUpload.data?.file?.url);
+          if (!previewUpload.ok || !previewUrl) {
+            return {
+              warning,
+              failure: {
+                step: "preview-upload",
+                detail:
+                  previewUpload.error || "存储服务没有返回封面预览图地址",
+              },
+            };
+          }
+          try {
+            return {
+              warning,
+              prepared: {
+                ...preparedUploadFrom(
+                  previewUpload.data?.file,
+                  previewUrl,
+                  previewDigest,
+                ),
+                mediaType: EDITOR_PREVIEW_MEDIA_TYPE,
+              },
+            };
+          } catch (caught) {
+            return {
+              warning,
+              failure: { step: "preview-upload", detail: resultError(caught) },
+            };
+          }
+        }
+        if (!warning) {
+          warning = artifactSaveStepMessage(
+            "preview-render",
+            "当前环境画不出封面位图（缺少 canvas 或内容为空）",
+          );
+        }
+        return { warning };
+      } catch (error) {
+        return { warning, crashed: { error } };
+      }
+    })();
+  }
+
+  // Join in pipeline order: the earliest failing step is the one reported.
+  const projectFailure = projectTask ? await projectTask : null;
+  if (projectFailure) return fail(projectFailure.step, projectFailure.detail);
+  const deliveryFailure = deliveryTask ? await deliveryTask : null;
+  if (deliveryFailure) {
+    return fail(deliveryFailure.step, deliveryFailure.detail);
+  }
+  if (input.projectOnly) {
+    // Shelf/public binary sources are not creation keys. Reusing them as the
+    // project-only working head makes /v1/creations return HTTP 409. Only reuse
+    // a prior editor working head / project URL once the row already carries
+    // editor persistence metadata from a successful save.
+    const reuseEditorWorkingHead = Boolean(
+      input.item.meta.editor_working_head_url ||
+        input.item.meta.editor_working_head_uses_project_url ||
+        input.item.meta.editor_project_url,
+    );
+    url = reuseEditorWorkingHead
+      ? editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl)
+      : safePreparedUrl(projectUrl) ||
+        editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl);
   }
 
   if (!projectUrl && projectSchema) projectUrl = url;
@@ -747,32 +921,12 @@ export async function saveFileToLibraryWithDependencies(
       : {}),
   };
 
-  const hasTypedIdentity = Boolean(identity.artifactId || identity.revisionId);
   if (input.artifactRevision && hasTypedIdentity) {
-    if (!identity.artifactId || !identity.revisionId) {
-      return fail(
-        "identity",
-        "typed artifact 保存缺少完整 artifact/revision identity",
-      );
-    }
-    if (
-      identity.artifactType &&
-      identity.artifactType !== input.artifactRevision.artifactType
-    ) {
-      return fail(
-        "identity",
-        `这份素材在库里是「${identity.artifactType}」，编辑器按「${input.artifactRevision.artifactType}」保存对不上。请另存为可编辑副本。`,
-      );
-    }
+    const identityFailure = typedIdentityFailure();
+    if (identityFailure) return fail("identity", identityFailure);
     const editability = String(
       input.item.artifact?.editability || input.item.meta.editability || "",
     );
-    if (editability === "view_only") {
-      return fail(
-        "identity",
-        "这份素材是只读导入件，不能直接覆盖保存。请先转成可编辑副本。",
-      );
-    }
     /**
      * 这次 revision 的 `source` 用哪份字节。
      *
@@ -811,69 +965,20 @@ export async function saveFileToLibraryWithDependencies(
     // Cover bitmap: the only rendition the office three can offer the backend's
     // displayable-primary assertion. Reuse a receipt from a previous attempt so
     // a retry never re-renders and re-uploads the same bytes.
-    if (input.preparedPreview && safePreparedUrl(input.preparedPreview.url)) {
+    if (input.preparedPreview && reusablePreview) {
       preparedPreview = {
         ...input.preparedPreview,
         url: safePreparedUrl(input.preparedPreview.url),
         digest: normalizedDigest(input.preparedPreview.digest),
       };
-    } else if (input.createPreview) {
-      let previewBlob: Blob | null = null;
-      try {
-        previewBlob = await input.createPreview();
-      } catch (caught) {
-        previewWarning = artifactSaveStepMessage(
-          "preview-render",
-          resultError(caught),
-        );
+    } else if (previewTask) {
+      const outcome = await previewTask;
+      previewWarning = outcome.warning;
+      if (outcome.crashed) throw outcome.crashed.error;
+      if (outcome.failure) {
+        return fail(outcome.failure.step, outcome.failure.detail);
       }
-      if (previewBlob && previewBlob.size > 0) {
-        const previewFile = new File(
-          [previewBlob],
-          `${input.title}.preview.png`,
-          { type: EDITOR_PREVIEW_MEDIA_TYPE },
-        );
-        const previewDigest = await sha256Blob(previewFile);
-        let previewUpload: Awaited<ReturnType<typeof uploadFile>> | null = null;
-        try {
-          previewUpload = await dependencies.uploadFile(previewFile, {
-            siteId: site,
-            title: `${input.title}封面`,
-            registerAsset: false,
-            idempotencyKey: uploadIdempotencyKey(
-              input.idempotencyKey,
-              "preview",
-              previewDigest,
-            ),
-          });
-        } catch (caught) {
-          return fail("preview-upload", resultError(caught));
-        }
-        const previewUrl = safePreparedUrl(previewUpload.data?.file?.url);
-        if (!previewUpload.ok || !previewUrl) {
-          return fail(
-            "preview-upload",
-            previewUpload.error || "存储服务没有返回封面预览图地址",
-          );
-        }
-        try {
-          preparedPreview = {
-            ...preparedUploadFrom(
-              previewUpload.data?.file,
-              previewUrl,
-              previewDigest,
-            ),
-            mediaType: EDITOR_PREVIEW_MEDIA_TYPE,
-          };
-        } catch (caught) {
-          return fail("preview-upload", resultError(caught));
-        }
-      } else if (!previewWarning) {
-        previewWarning = artifactSaveStepMessage(
-          "preview-render",
-          "当前环境画不出封面位图（缺少 canvas 或内容为空）",
-        );
-      }
+      preparedPreview = outcome.prepared;
     }
 
     const plan = planArtifactSaveRenditions(

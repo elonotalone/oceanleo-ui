@@ -11,9 +11,13 @@ const NON_RETRYABLE_PERSISTENCE_CODES = new Set([
   "integrity-failed",
   "revision-conflict",
   "unauthorized",
+  "authentication-failed",
+  "forbidden",
+  "permission-denied",
   "missing-source",
   "unsupported-type",
   "invalid-binding",
+  "invalid-payload",
   "license-restricted",
   "denied",
   "session-record-failed",
@@ -40,7 +44,7 @@ export function persistenceFailureRetryable(error: unknown): boolean {
   }
   const message = errorMessage(error);
   if (
-    /integrity-failed|保存被拒绝|revision-conflict|只读导入|类型和编辑器对不上|完整性校验|校验和与(?:声明|本地)|空白内容覆盖/i.test(
+    /(?:\b401\b|\b403\b|unauthorized|authentication failed|forbidden|permission denied|登录过期|未授权|无权|权限不足|需要登录|认证失败)|integrity-failed|保存被拒绝|revision-conflict|只读导入|类型和编辑器对不上|完整性校验|校验和与(?:声明|本地)|空白内容覆盖/i.test(
       message,
     )
   ) {
@@ -65,8 +69,51 @@ function taggedPersistenceError(
   return failure;
 }
 
+export type AdvancedPersistenceNudgeReason = "online" | "visible" | "auth";
+
+/** Why the newest attempt failed; lets the background saver tell people the truth. */
+export interface AdvancedPersistenceFailure {
+  message: string;
+  code?: string;
+  retryable: boolean;
+  /** Needs a (re-)sign-in; resumes by itself once the session is back. */
+  auth: boolean;
+}
+
+/** Capped exponential backoff; the last entry repeats for as long as the page lives. */
+export const AUTOSAVE_RETRY_DELAYS: readonly number[] = [1_500, 4_000, 9_000, 20_000, 30_000];
+export const AUTOSAVE_BACKGROUND_RETRY_DELAYS: readonly number[] = [5_000, 10_000, 15_000, 30_000, 60_000];
+/** Ignore nudges closer together than this so online/visible bursts cannot storm. */
+export const AUTOSAVE_NUDGE_MIN_GAP_MS = 1_000;
+
+const AUTH_CODES = new Set(["unauthorized", "authentication-failed"]);
+const AUTH_MESSAGE = /\b401\b|unauthorized|authentication failed|登录过期|登录已过期|未授权|需要登录|认证失败|未登录/i;
+
+export function persistenceFailureNeedsSignIn(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const code = String((error as { code?: string }).code || "")
+      .trim().toLowerCase().replaceAll("_", "-");
+    if (AUTH_CODES.has(code)) return true;
+  }
+  return AUTH_MESSAGE.test(errorMessage(error));
+}
+
+export function describePersistenceFailure(error: unknown): AdvancedPersistenceFailure {
+  const code = error && typeof error === "object" && "code" in error
+    ? String((error as { code?: string }).code || "") || undefined
+    : undefined;
+  const auth = persistenceFailureNeedsSignIn(error);
+  return {
+    message: errorMessage(error),
+    code,
+    retryable: auth ? false : persistenceFailureRetryable(error),
+    auth,
+  };
+}
+
 export interface AdvancedPersistenceSnapshot {
   state: AdvancedPersistenceState;
+  failure?: AdvancedPersistenceFailure;
   latestRevision?: AdvancedEditRevision;
   acknowledgedRevision?: AdvancedEditRevision;
   pendingSessionRevision?: AdvancedEditRevision;
@@ -122,6 +169,8 @@ export interface AdvancedPersistenceControllerOptions<Item> {
   onStateChange?: (state: AdvancedPersistenceState) => void;
   setTimeout?: (callback: () => void, delay: number) => unknown;
   clearTimeout?: (timer: unknown) => void;
+  /** Injected clock for nudge rate limiting (tests). */
+  now?: () => number;
 }
 
 function sameRevision(
@@ -160,6 +209,7 @@ export class AdvancedPersistenceController<Item = unknown> {
   private state: AdvancedPersistenceState = "saved";
   private observed = false;
   private dirty = false;
+  private autosaveEligible = false;
   private latestRevision?: AdvancedEditRevision;
   private acknowledgedRevision?: AdvancedEditRevision;
   private pendingItem?: Item;
@@ -169,6 +219,9 @@ export class AdvancedPersistenceController<Item = unknown> {
   private retryCount = 0;
   private disposed = false;
   private handedOff = false;
+  private failure?: AdvancedPersistenceFailure;
+  private lastAttemptAt = Number.NEGATIVE_INFINITY;
+  private readonly clock: () => number;
 
   constructor(options: AdvancedPersistenceControllerOptions<Item>) {
     if (options.draft) this.draftController = new AdvancedDraftController(options);
@@ -176,8 +229,12 @@ export class AdvancedPersistenceController<Item = unknown> {
     // into a save request. The editor already reports `saving` immediately;
     // this is only the quiet window before the serialized flush starts.
     this.debounceMs = Math.max(0, options.debounceMs ?? 500);
-    this.maxRetries = Math.max(0, options.maxRetries ?? 3);
-    this.retryDelays = options.retryDelays ?? [1_500, 4_000, 9_000];
+    // Transient failures stay queued until the server confirms the draft. A
+    // supplied finite limit remains available for controlled/test callers;
+    // production defaults to the capped delay sequence indefinitely.
+    this.maxRetries = Math.max(0, options.maxRetries ?? Number.POSITIVE_INFINITY);
+    this.retryDelays = options.retryDelays ?? AUTOSAVE_RETRY_DELAYS;
+    this.clock = options.now ?? Date.now;
     this.flushRevision = options.flushRevision;
     this.recordSavedItem = options.recordSavedItem;
     this.onStateChange = options.onStateChange;
@@ -198,6 +255,7 @@ export class AdvancedPersistenceController<Item = unknown> {
     this.latestRevision = input.revision;
     this.dirty = input.dirty;
     const allowsAutosave = persistenceObserveAllowsAutosave(input);
+    if (input.dirty && allowsAutosave) this.autosaveEligible = true;
 
     if (!input.dirty && this.acknowledgedRevision === undefined) {
       this.acknowledgedRevision = input.revision;
@@ -219,6 +277,7 @@ export class AdvancedPersistenceController<Item = unknown> {
       this.clearTimer();
       this.retryCount = 0;
       this.setState("saved");
+      this.autosaveEligible = false;
       return;
     }
 
@@ -240,6 +299,7 @@ export class AdvancedPersistenceController<Item = unknown> {
     if (this.disposed) {
       return Promise.resolve({ ok: false, error: "persistence disposed" });
     }
+    if (this.dirty) this.autosaveEligible = true;
     this.clearTimer();
     if (this.drainPromise) return this.drainPromise;
     this.setState("saving");
@@ -259,14 +319,12 @@ export class AdvancedPersistenceController<Item = unknown> {
   hasUnconfirmedWork(): boolean {
     if (this.draftController) return this.draftController.hasUnconfirmedWork();
     if (this.disposed) return false;
-    if (this.dirty) return true;
     if (this.state === "saving" || this.state === "error") return true;
     if (this.drainPromise) return true;
     if (this.pendingItem !== undefined) return true;
-    return (
+    return this.autosaveEligible &&
       this.latestRevision !== undefined &&
-      !sameRevision(this.latestRevision, this.acknowledgedRevision)
-    );
+      !sameRevision(this.latestRevision, this.acknowledgedRevision);
   }
 
   hasDraftTier(): boolean { return Boolean(this.draftController); }
@@ -294,7 +352,23 @@ export class AdvancedPersistenceController<Item = unknown> {
     if (this.draftController) return this.draftController.prepareBackgroundRetries();
     if (this.maxRetries === 0) return;
     this.maxRetries = Math.max(this.maxRetries, 3);
-    this.retryDelays = [5_000, 10_000, 15_000];
+    this.retryDelays = AUTOSAVE_BACKGROUND_RETRY_DELAYS;
+  }
+
+  /**
+   * Connectivity/visibility/sign-in came back: do not wait out the backoff.
+   * Permanent failures (conflict, permission) are never re-run from here.
+   */
+  nudge(reason: AdvancedPersistenceNudgeReason): void {
+    if (this.draftController) return this.draftController.nudge(reason);
+    if (this.disposed || this.drainPromise) return;
+    if (this.clock() - this.lastAttemptAt < AUTOSAVE_NUDGE_MIN_GAP_MS) return;
+    const waiting = this.timer !== undefined && this.retryCount > 0;
+    const authBlocked = this.state === "error" && this.failure?.auth === true && reason !== "visible";
+    const exhausted = this.state === "error" && this.failure?.retryable === true;
+    if (!waiting && !authBlocked && !exhausted) return;
+    this.retryCount = 0;
+    void this.flushLatest();
   }
 
   rebind(
@@ -324,6 +398,7 @@ export class AdvancedPersistenceController<Item = unknown> {
       acknowledgedRevision: this.acknowledgedRevision,
       pendingSessionRevision: this.pendingSessionRevision,
       running: Boolean(this.drainPromise),
+      failure: this.failure,
     };
   }
 
@@ -345,6 +420,7 @@ export class AdvancedPersistenceController<Item = unknown> {
 
   private async drain(): Promise<AdvancedPersistenceResult<Item>> {
     while (!this.disposed) {
+      this.lastAttemptAt = this.clock();
       const targetRevision =
         this.pendingSessionRevision ?? this.latestRevision;
       if (targetRevision === undefined) {
@@ -390,17 +466,21 @@ export class AdvancedPersistenceController<Item = unknown> {
         this.pendingSessionRevision = undefined;
         this.acknowledgedRevision = targetRevision;
         this.retryCount = 0;
+        this.failure = undefined;
 
         if (sameRevision(targetRevision, this.latestRevision)) {
           this.dirty = false;
+          this.autosaveEligible = false;
           this.setState("saved");
           return result;
         }
         // A newer edit landed during upload/session CAS. Keep this same drain
         // alive and serialize the newest revision immediately.
       } catch (error) {
-        const message = errorMessage(error);
-        const retryable = persistenceFailureRetryable(error);
+        const failure = describePersistenceFailure(error);
+        this.failure = failure;
+        const message = failure.message;
+        const retryable = failure.retryable;
         if (retryable && this.retryCount < this.maxRetries) {
           const delay =
             this.retryDelays[this.retryCount] ??
@@ -416,10 +496,7 @@ export class AdvancedPersistenceController<Item = unknown> {
           ok: false,
           error: message,
           retryable,
-          code:
-            error && typeof error === "object" && "code" in error
-              ? String((error as { code?: string }).code || "") || undefined
-              : undefined,
+          code: failure.code,
         };
       }
     }

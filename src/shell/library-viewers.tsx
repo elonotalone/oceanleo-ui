@@ -80,7 +80,6 @@ import {
 import {
   GamePlayDetail,
   MaterialDetailUnavailable,
-  gamePlayEmbedHref,
   useMaterialDetailTarget,
 } from "./material-detail-slot";
 
@@ -1982,7 +1981,7 @@ function VideoCanvasViewer({ item }: { item: LibraryItem }) {
     !["mp4", "webm", "mov", "m4v", "mkv"].includes(extension(item.url))
   ) {
     // 域名后缀不构成信任依据：预览/UGC 主机（oceanleo.app 全域与迁移期残留的
-    // *.website.oceanleo.com 预览域）跑的是用户代码，绝不授予 allow-same-origin。
+    // *.website.oceanleo.com 预览域）跑的是用户代码，绝不授予脚本同源能力。
     const trustedInteractive =
       item.siteId === "asset" &&
       item.meta.asset_type === "video_workflow" &&
@@ -2149,18 +2148,13 @@ function LibraryItemViewerBody({
    * 游戏走独立的「开玩」通路，不进任何文档/图片查看器：它的 `full` rendition 是
    * game-bundle JSON，喂给下面任何一支都只会渲出一坨源码或一句失败。
    *
-   * 默认给落点面板（跳 W7 的 `/play/artifact/…`）；只有 game 站显式声明了可内嵌的
-   * 播放地址时才就地内嵌，沙箱一律走 `SandboxedWebViewer` 的不可信档
-   * （`webViewerFrameSandbox(false)`，不含同源授权）——用户自制游戏的隔离域判定在
-   * 播放页自己那一层，这里不新增也不放松任何一项授权。
+   * `GamePlayDetail` 在站点注册了游戏宿主时（主站）就地开玩：宿主把已存产物组装成
+   * 不透明 origin 的 `srcDoc` 帧（sandbox 只允许脚本、没有同源能力，见
+   * oceandino `docs/architecture/oceanleo-library-game-play.md`）；没有宿主的站点
+   * 仍给 `/play/artifact/…` 落点。这里不新增也不放松任何一项授权。
    */
   if (resolvedItem.kind === "game") {
-    const embed = gamePlayEmbedHref(resolvedItem);
-    return embed ? (
-      <SandboxedWebViewer url={embed} title={resolvedItem.title} />
-    ) : (
-      <GamePlayDetail item={resolvedItem} />
-    );
+    return <GamePlayDetail item={resolvedItem} />;
   }
   if (resolvedItem.kind === "website") {
     // 网站详情要的是页面本身，不是卡片那张封面 webp，所以承载自己按

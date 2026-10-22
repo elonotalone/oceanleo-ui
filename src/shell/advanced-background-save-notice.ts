@@ -4,13 +4,12 @@ import { createElement, useSyncExternalStore } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { DEFAULT_LOCALE, isLocale } from "../i18n/config";
 import { EAS_W14_MESSAGES } from "../i18n/ui/messages/eas-w14-copy";
-import {
-  noticeSnapshot,
-  retryAllFailed,
-  subscribe,
-} from "./advanced-background-saver";
+import { noticeSnapshot, subscribe } from "./advanced-background-saver";
 
-const UNSAVED_KEY = "有 {n} 份修改还没保存上";
+// Shown only for failures that retrying cannot fix. Transient failures are
+// retried automatically and never surface here; there is no button.
+const BLOCKED_KEY = "有 {n} 份修改暂时无法保存，草稿已保留";
+const AUTH_KEY = "登录已过期，重新登录后会自动保存 {n} 份修改";
 
 function currentLocale() {
   if (typeof document === "undefined") return DEFAULT_LOCALE;
@@ -39,25 +38,13 @@ function NoticeBody() {
         "pointer-events-auto fixed bottom-4 right-4 z-[200] flex max-w-sm items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-[13px] text-neutral-900 shadow-lg",
     },
     view.failed > 0
-      ? [
-          createElement(
-            "span",
-            { key: "msg" },
-            noticeCopy(UNSAVED_KEY, { n: view.failed }),
-          ),
-          createElement(
-            "button",
-            {
-              key: "retry",
-              type: "button",
-              "data-advanced-background-save-retry": true,
-              className:
-                "shrink-0 rounded-md bg-neutral-900 px-2 py-1 text-[12px] text-white",
-              onClick: () => void retryAllFailed(),
-            },
-            noticeCopy("重试"),
-          ),
-        ]
+      ? createElement(
+          "span",
+          { key: "msg" },
+          view.auth >= view.failed
+            ? noticeCopy(AUTH_KEY, { n: view.failed })
+            : noticeCopy(BLOCKED_KEY, { n: view.failed }),
+        )
       : createElement("span", { key: "saved" }, noticeCopy("已保存")),
   );
 }

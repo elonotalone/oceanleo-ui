@@ -520,6 +520,17 @@ export function createUmoSaveRoundtrip(timeoutMs = UMO_SAVE_TIMEOUT_MS): {
   };
 }
 
+function contentFingerprint(text: string): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    a = Math.imul(a ^ code, 0x01000193) >>> 0;
+    b = Math.imul(b + code, 0x85ebca6b) >>> 0;
+  }
+  return `${a.toString(36)}${b.toString(36)}${text.length.toString(36)}`;
+}
+
 export async function persistUmoPayload(input: {
   item: LibraryItem;
   siteId: string;
@@ -534,28 +545,36 @@ export async function persistUmoPayload(input: {
   const title = `${input.item.title || "文档"}-编辑版`;
   const persist = richDocPersistTarget(input.item);
   const save = input.save ?? saveFileToLibrary;
-  const { renderRichDocPreviewPng } = await import(
-    "../doc-editors/editor-preview-raster"
-  );
   const html = richDocJsonToHtmlFragment(json);
+  const documentTitle = input.item.title || "文档";
+  // The delivery file and the cover bitmap are pure functions of `json`. Start
+  // both now so they build while the (serial) project upload runs instead of
+  // after it. Errors surface where the save pipeline already awaits them.
+  const deliveryFile = createRichDocDeliveryFile({
+    item: input.item,
+    title: documentTitle,
+    html,
+    json,
+  });
+  const previewBlob = import("../doc-editors/editor-preview-raster").then(
+    ({ renderRichDocPreviewPng }) => renderRichDocPreviewPng(json, documentTitle),
+  );
+  void Promise.resolve(deliveryFile).catch(() => undefined);
+  void previewBlob.catch(() => undefined);
   const result = await save({
     item: input.item,
     siteId: input.siteId || "word",
     fallbackSite: "word",
-    createFile: () =>
-      createRichDocDeliveryFile({
-        item: input.item,
-        title: input.item.title || "文档",
-        html,
-        json,
-      }),
-    createPreview: () => renderRichDocPreviewPng(json, input.item.title || "文档"),
+    createFile: () => Promise.resolve(deliveryFile),
+    createPreview: () => previewBlob,
     sourceFormat: persist.sourceFormat,
     sourceMediaType: persist.sourceMediaType,
     title,
     mediaType: "doc",
     kind: "document",
-    idempotencyKey: `umo:${input.item.revisionId || input.item.id}:${Date.now().toString(36)}`,
+    // Stable per (base revision, content): an automatic retry after a lost
+    // response replays the same commit instead of publishing a duplicate.
+    idempotencyKey: `umo:${input.item.revisionId || input.item.id}:${contentFingerprint(JSON.stringify(json))}`,
     meta: {
       editor: "umo-hosted",
       editor_capability: "richdoc",

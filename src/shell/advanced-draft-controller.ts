@@ -1,5 +1,10 @@
 import {
-  persistenceFailureRetryable,
+  AUTOSAVE_BACKGROUND_RETRY_DELAYS,
+  AUTOSAVE_NUDGE_MIN_GAP_MS,
+  AUTOSAVE_RETRY_DELAYS,
+  describePersistenceFailure,
+  type AdvancedPersistenceFailure,
+  type AdvancedPersistenceNudgeReason,
   persistenceObserveAllowsAutosave,
   type AdvancedEditRevision as Revision,
   type AdvancedPersistenceObserveInput,
@@ -31,6 +36,10 @@ export class AdvancedDraftController<Item> {
   private handedOff = false;
   private forceVersion = false;
   private restored?: Revision;
+  private autosaveEligible = false;
+  private failure?: AdvancedPersistenceFailure;
+  private failureTier?: "draft" | "version";
+  private lastAttemptAt = Number.NEGATIVE_INFINITY;
 
   constructor(options: Options<Item>) { this.options = options; }
 
@@ -39,9 +48,15 @@ export class AdvancedDraftController<Item> {
     const changed = !same(this.latest, input.revision);
     this.latest = input.revision;
     const allowsAutosave = persistenceObserveAllowsAutosave(input);
+    if (input.dirty && allowsAutosave) this.autosaveEligible = true;
     if (input.restoredDraft && !same(this.restored, input.revision)) {
       this.restored = input.revision;
       this.acknowledged = input.revision;
+      // A server-restored draft is durable (acknowledged) but still unpublished:
+      // explicit gates (leave face, send to agent) must be able to publish it,
+      // so `version` stays behind. It is not "unconfirmed work" for background
+      // hand-off until this visit has an exact user/local-recovery edit
+      // (`autosaveEligible`).
       this.setState("saved");
       // A restored draft is prior work, not a change in this visit. Publishing
       // a version on idle would autosave without the person editing.
@@ -65,6 +80,7 @@ export class AdvancedDraftController<Item> {
 
   flushLatest(): Promise<Result<Item>> {
     if (this.disposed) return Promise.resolve({ ok: false, error: "persistence disposed" });
+    if (this.latest !== undefined && !same(this.latest, this.version)) this.autosaveEligible = true;
     this.forceVersion = true;
     this.clear("version");
     return this.runVersion();
@@ -73,19 +89,39 @@ export class AdvancedDraftController<Item> {
   retry(): Promise<Result<Item>> {
     this.draftRetries = 0;
     this.versionRetries = 0;
+    if (this.latest !== undefined && !same(this.latest, this.version)) this.autosaveEligible = true;
     if (!same(this.latest, this.acknowledged)) this.scheduleDraft(0);
     return this.flushLatest();
   }
   hasUnconfirmedWork(): boolean {
     return !this.disposed && (Boolean(this.pending || this.versionRunning || this.draftRunning) ||
-      (this.latest !== undefined && !same(this.latest, this.version)));
+      (this.autosaveEligible && this.latest !== undefined && !same(this.latest, this.version)));
   }
   markHandedOff(): void { this.handedOff = true; }
   clearHandedOff(): void { this.handedOff = false; }
   isHandedOff(): boolean { return this.handedOff; }
   prepareBackgroundRetries(): void {
     if (this.options.maxRetries === 0) return;
-    this.options = { ...this.options, maxRetries: Math.max(this.options.maxRetries ?? 3, 3), retryDelays: [5_000, 10_000, 15_000] };
+    this.options = {
+      ...this.options,
+      maxRetries: Math.max(this.maxRetries(), 3),
+      retryDelays: AUTOSAVE_BACKGROUND_RETRY_DELAYS,
+    };
+  }
+
+  nudge(reason: AdvancedPersistenceNudgeReason): void {
+    if (this.disposed || this.draftRunning || this.versionRunning) return;
+    if (this.now() - this.lastAttemptAt < AUTOSAVE_NUDGE_MIN_GAP_MS) return;
+    const waiting = (this.draftTimer !== undefined && this.draftRetries > 0) ||
+      (this.versionTimer !== undefined && this.versionRetries > 0);
+    const blocked = this.failure?.retryable === false
+      ? this.failure.auth && reason !== "visible"
+      : this.failure?.retryable === true && this.state === "error";
+    if (!waiting && !blocked) return;
+    this.draftRetries = 0;
+    this.versionRetries = 0;
+    if (!same(this.latest, this.acknowledged)) this.scheduleDraft(0);
+    else if (!same(this.latest, this.version)) this.scheduleVersion(0);
   }
   rebind(next: Partial<Options<Item>>): void { this.options = { ...this.options, ...next }; }
   whenIdle(): Promise<unknown> {
@@ -93,7 +129,7 @@ export class AdvancedDraftController<Item> {
   }
   snapshot(): AdvancedPersistenceSnapshot {
     return { state: this.state, latestRevision: this.latest, acknowledgedRevision: this.acknowledged,
-      pendingSessionRevision: this.pending?.revision, running: Boolean(this.draftRunning || this.versionRunning) };
+      pendingSessionRevision: this.pending?.revision, failure: this.failure, running: Boolean(this.draftRunning || this.versionRunning) };
   }
   hasScheduledWork(): boolean { return this.draftTimer !== undefined || this.versionTimer !== undefined; }
   isBusy(): boolean { return this.hasScheduledWork() || Boolean(this.draftRunning || this.versionRunning); }
@@ -104,6 +140,7 @@ export class AdvancedDraftController<Item> {
     if (this.disposed || this.latest === undefined || same(this.latest, this.acknowledged)) return Promise.resolve();
     const revision = this.latest;
     const run = (async () => {
+      this.lastAttemptAt = this.now();
       try {
         const saved = await this.options.draft!.saveRevision(revision);
         if (saved === "full-save") {
@@ -118,15 +155,16 @@ export class AdvancedDraftController<Item> {
         if (same(this.latest, revision)) {
           this.acknowledged = revision;
           this.draftRetries = 0;
+          if (this.failureTier === "draft") this.failure = undefined;
           this.setState("saved");
           if (!same(this.version, revision)) this.scheduleVersion(this.options.versionIdleMs ?? 20_000);
         }
       } catch (error) {
         if (this.disposed || !same(this.latest, revision) || same(this.latest, this.acknowledged)) return;
-        if (
-          persistenceFailureRetryable(error) &&
-          this.draftRetries < (this.options.maxRetries ?? 3)
-        ) {
+        const failure = describePersistenceFailure(error);
+        this.failure = failure;
+        this.failureTier = "draft";
+        if (failure.retryable && this.draftRetries < this.maxRetries()) {
           this.setState("saving");
           this.scheduleDraft(this.retryDelay(this.draftRetries++));
         } else this.setState("error");
@@ -155,6 +193,7 @@ export class AdvancedDraftController<Item> {
   private async drainVersion(): Promise<Result<Item>> {
     let result: Result<Item> = { ok: true };
     while (!this.disposed) {
+      this.lastAttemptAt = this.now();
       const revision = this.pending?.revision ?? this.latest;
       if (revision === undefined || (!this.pending && same(revision, this.version))) {
         this.forceVersion = false;
@@ -182,10 +221,12 @@ export class AdvancedDraftController<Item> {
         this.pending = undefined;
         this.version = revision;
         this.versionRetries = 0;
+        this.failure = undefined;
         if (same(this.latest, revision)) {
           this.acknowledged = revision;
           this.clear("draft");
           this.clear("version");
+          this.autosaveEligible = false;
           this.setState("saved");
           this.forceVersion = false;
           return result;
@@ -195,9 +236,11 @@ export class AdvancedDraftController<Item> {
         if (!this.forceVersion) return result;
       } catch (error) {
         if (this.disposed) return { ok: false, error: "persistence disposed" };
-        const retryable = persistenceFailureRetryable(error);
-        const retrying =
-          retryable && this.versionRetries < (this.options.maxRetries ?? 3);
+        const failure = describePersistenceFailure(error);
+        this.failure = failure;
+        this.failureTier = "version";
+        const retryable = failure.retryable;
+        const retrying = retryable && this.versionRetries < this.maxRetries();
         if (retrying) this.scheduleVersion(this.retryDelay(this.versionRetries++));
         if (!same(this.latest, this.acknowledged)) this.setState(retrying ? "saving" : "error");
         this.forceVersion = false;
@@ -211,9 +254,14 @@ export class AdvancedDraftController<Item> {
     return { ok: false, error: "persistence disposed" };
   }
 
+  private now(): number { return (this.options.now ?? Date.now)(); }
   private retryDelay(attempt: number): number {
-    const delays = this.options.retryDelays ?? [1_500, 4_000, 9_000];
-    return delays[attempt] ?? delays[delays.length - 1] ?? 9_000;
+    const delays = this.options.retryDelays ?? AUTOSAVE_RETRY_DELAYS;
+    return delays[attempt] ?? delays[delays.length - 1] ?? 30_000;
+  }
+  /** Transient failures retry for as long as the page lives unless a caller caps them. */
+  private maxRetries(): number {
+    return this.options.maxRetries ?? Number.POSITIVE_INFINITY;
   }
   private scheduleDraft(delay: number): void {
     this.clear("draft");

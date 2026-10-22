@@ -26,6 +26,7 @@ import type {
   AdvancedFlushResult,
   AdvancedSessionActions,
 } from "./advanced-session-context";
+import { subscribeAutosaveNudges } from "./advanced-autosave-nudge";
 import { handOff, takeBack } from "./advanced-background-saver";
 import {
   AdvancedPersistenceController,
@@ -464,6 +465,14 @@ export function useAdvancedAutoSave({
       active.dispose();
     };
   }, [bindController, controllerKey, draftEnabled, makeController, observeLatestController]);
+
+  // Back online / tab visible / signed in again: skip the remaining backoff.
+  useEffect(
+    () => subscribeAutosaveNudges((reason) => {
+      if (!blockedRef.current) controllerRef.current?.nudge(reason);
+    }),
+    [],
+  );
 
   useEffect(() => {
     observeLatestController();

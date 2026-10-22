@@ -162,9 +162,9 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   // W14 拆掉「仍要离开?」确认框。后台冲刷失败时人必须仍知道
   // 改动在本机、还没同步到云端：钉新提示的文案 + DOM 钩子，壳必须接上离开。
   assert.match(shell, /leaveAdvancedWorkbench/);
-  assert.match(leaveNotice, /有 \{n\} 份修改还没保存上/);
+  assert.match(leaveNotice, /有 \{n\} 份修改暂时无法保存，草稿已保留/);
   assert.match(leaveNotice, /data-advanced-background-save-notice/);
-  assert.match(leaveNotice, /data-advanced-background-save-retry/);
+  assert.doesNotMatch(leaveNotice, /data-advanced-background-save-retry|retryAllFailed/);
   assert.match(shell, /useAdvancedRecovery/);
   for (const [name, editor] of [
     ["richdoc", rich],

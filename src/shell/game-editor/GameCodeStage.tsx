@@ -20,7 +20,13 @@ import {
   advancedSavedItem,
   commitAdvancedSavedRevision,
 } from "../advanced-session";
-import { createArtifactRevision } from "../artifact-client";
+import { createArtifactRevision, forkArtifact } from "../artifact-client";
+import {
+  ensureOwnGameCopy,
+  gameEditAccess,
+  GAME_FORK_ON_SAVE_NOTICE,
+  GAME_VIEW_ONLY_MESSAGE,
+} from "./game-edit-access";
 import { GAME_DOCUMENT_SOURCE_FORMAT } from "../artifact-contract";
 import { rememberEditorChips, publishAgentSelection } from "../agent-review";
 import { uploadFile } from "../../lib/database";
@@ -201,6 +207,16 @@ export function GameCodeStage({
 }) {
   const tt = useUI();
   const [source, setSource] = useState(EMPTY_DOC);
+  const currentItem = useRef(item);
+  const [head, setHead] = useState(item);
+  // 预览快照：只在载入 / 运行 / 重载 / 保存时变化，绝不随按键变化；
+  // undefined 表示宿主播放已保存的那一版。
+  const [runSnapshot, setRunSnapshot] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    currentItem.current = item;
+    setHead(item);
+  }, [item]);
+  const editAccess = gameEditAccess(head);
   const [sourceReady, setSourceReady] = useState(false);
   const [codeEl, setCodeEl] = useState<HTMLTextAreaElement | null>(null);
   const [peerLines, setPeerLines] = useState<PeerLine[]>([]);
@@ -217,6 +233,8 @@ export function GameCodeStage({
   const [editRevision, setEditRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState("");
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
   const chipsManifest = useMemo(() => gameToolsManifestChips(), []);
   const PreviewHost = useGamePreviewHost();
   const inspection = useMemo(() => inspectGameDraft(source), [source]);
@@ -257,9 +275,12 @@ export function GameCodeStage({
 
   useEffect(() => {
     setSourceReady(false);
+    setRunSnapshot(undefined);
     const stashed = peekGameWorkingDocument(item);
     if (stashed?.source?.trim()) {
       setSource(stashed.source);
+      setDirty(stashed.sourceDirty === true);
+      setRunSnapshot(stashed.sourceDirty === true ? stashed.source : undefined);
       setSourceReady(true);
       if (stashed.origin) setOrigin(stashed.origin);
       if (typeof stashed.prompt === "string") setPrompt(stashed.prompt);
@@ -269,9 +290,10 @@ export function GameCodeStage({
       if (typeof stashed.engineApiVersion === "string") {
         setEngineApiVersion(stashed.engineApiVersion);
       }
-      if (stashed.paramDeclarations !== undefined) {
+      {
         const declared = readGameParamDeclarations({
-          paramDeclarations: stashed.paramDeclarations,
+          paramDeclarations:
+            stashed.paramDeclarations ?? item.meta.paramDeclarations,
         });
         setParamDeclarations(declared);
         if (declared) setParamValues(resolveGameParamValues(declared));
@@ -295,7 +317,7 @@ export function GameCodeStage({
       return;
     }
     if (!url) {
-      setSourceReady(true);
+      setStatus("这个游戏没有可编辑的源码，目前只能试玩。可以回到「编辑」页用描述修改玩法，或打开带源码的副本。");
       return;
     }
     let cancelled = false;
@@ -305,7 +327,7 @@ export function GameCodeStage({
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`工程档读取失败（HTTP ${response.status}）`);
+          throw new Error(`游戏源码读取失败（HTTP ${response.status}）`);
         }
         return response.json() as Promise<unknown>;
       })
@@ -326,7 +348,7 @@ export function GameCodeStage({
       .catch((caught: unknown) => {
         if (!cancelled) {
           setStatus(
-            caught instanceof Error ? caught.message : "工程档读取失败。",
+            caught instanceof Error ? caught.message : "游戏源码读取失败。",
           );
         }
       });
@@ -448,16 +470,17 @@ export function GameCodeStage({
   }, [room]);
 
   useEffect(() => {
+    if (!sourceReady) return;
     stashGameWorkingDocument(
       item,
-      workingDocumentFromCode(item, {
+      { ...workingDocumentFromCode(item, {
         source,
         origin,
         prompt,
         skeletonVersion,
         engineApiVersion,
         paramDeclarations,
-      }),
+      }), sourceDirty: dirty },
     );
   }, [
     engineApiVersion,
@@ -467,11 +490,20 @@ export function GameCodeStage({
     prompt,
     skeletonVersion,
     source,
+    sourceReady,
+    dirty,
   ]);
 
-  const runControl = useCallback((action: "run" | "stop" | "reload") => {
-    setPlayback((current) => planGamePreviewControl(current, action));
-  }, []);
+  const runControl = useCallback(
+    (action: "run" | "stop" | "reload") => {
+      if (action !== "stop") {
+        // 运行 / 重载：以此刻的草稿为准；没改过就直接播放已保存的那一版。
+        setRunSnapshot(dirtyRef.current ? sourceRef.current : undefined);
+      }
+      setPlayback((current) => planGamePreviewControl(current, action));
+    },
+    [],
+  );
 
   const agentPort = useMemo<GameAgentEditorPort>(
     () => ({
@@ -553,9 +585,17 @@ export function GameCodeStage({
       };
     }
     if (origin !== "ai" && origin !== "remix") {
-      return { ok: false as const, error: "产物来源不合法，拒绝提交 revision。" };
+      return { ok: false as const, error: "游戏来源不被接受，已取消保存。" };
     }
-    const cover = coverOf(item);
+    // 不是自己的作品：保存前先落成自己的二创副本，之后一切只作用在副本上。
+    const own = await ensureOwnGameCopy(currentItem.current, forkArtifact);
+    if (!own.ok) return { ok: false as const, error: own.error };
+    const base = own.item;
+    if (own.forked) {
+      currentItem.current = base;
+      setHead(base);
+    }
+    const cover = coverOf(base);
     const saved = await saveGameDraft(
       {
         source,
@@ -586,8 +626,8 @@ export function GameCodeStage({
           return { url, digest };
         },
         commit: async (input) => {
-          if (!isDurableLibraryItem(item)) {
-            return advancedSavedItem(item, {
+          if (!isDurableLibraryItem(base)) {
+            return advancedSavedItem(base, {
               url: input.envelopeUrl,
               versionId: input.envelopeDigest,
               meta: {
@@ -598,10 +638,10 @@ export function GameCodeStage({
           }
           if (!cover.url || !cover.digest) {
             throw new Error(
-              "缺少封面位图（preview rendition），游戏 revision 无法保存。",
+              "这个游戏缺少封面，暂时无法保存。",
             );
           }
-          return commitAdvancedSavedRevision(item, {
+          return commitAdvancedSavedRevision(base, {
             publish: createArtifactRevision,
             commit: {
               source: {
@@ -633,7 +673,7 @@ export function GameCodeStage({
                 skeletonVersion,
                 editor: GAME_EDITOR_CAPABILITY,
                 editorProjectSchema: GAME_DOCUMENT_SOURCE_FORMAT,
-                previousRevisionId: item.revisionId,
+                previousRevisionId: base.revisionId,
               },
             },
             meta: {
@@ -650,6 +690,10 @@ export function GameCodeStage({
     );
     if (!saved.ok) return { ok: false as const, error: saved.error };
     setDirty(false);
+    currentItem.current = saved.item;
+    setHead(saved.item);
+    setRunSnapshot(undefined);
+    setPlayback((current) => planGamePreviewControl(current, "reload"));
     if (room && saved.item.revisionId) room.markSaved(String(saved.item.revisionId));
     stashGameWorkingDocument(
       saved.item,
@@ -775,12 +819,24 @@ export function GameCodeStage({
                 {status}
               </div>
             ) : null}
+            {editAccess !== "own" ? (
+              <div
+                role="status"
+                data-testid="game-access-notice"
+                className="border-b bg-[var(--awb-stage-bg,#fafaf9)] px-3 py-1.5 text-[12px] leading-4 text-[var(--awb-muted,#57534e)]"
+              >
+                {editAccess === "fork"
+                  ? GAME_FORK_ON_SAVE_NOTICE
+                  : GAME_VIEW_ONLY_MESSAGE}
+              </div>
+            ) : null}
             <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
               <div className="flex min-h-0 flex-col border-r">
                 <textarea
                   ref={setCodeEl}
                   data-testid="game-code-editor"
                   value={source}
+                  disabled={!sourceReady || collabReadOnly || editAccess === "view-only"}
                   onChange={(event) => {
                     setSource(event.target.value);
                     applyGameUserEditSession(item, { kind: "local-type" });
@@ -811,9 +867,10 @@ export function GameCodeStage({
               <div data-testid="game-preview-slot" className="min-h-[240px]">
                 {PreviewHost ? (
                   <PreviewHost
-                    artifactId={item.artifactId || ""}
-                    revisionId={item.revisionId || ""}
-                    envelopeUrl={envelopeUrlOf(item)}
+                    artifactId={head.artifactId || ""}
+                    revisionId={head.revisionId || ""}
+                    envelopeUrl={envelopeUrlOf(head)}
+                    source={runSnapshot}
                     bundleFormat="html"
                     engineApiVersion={engineApiVersion}
                     title={item.title}
@@ -828,7 +885,7 @@ export function GameCodeStage({
                     role="alert"
                     className="grid h-full place-items-center p-8 text-center text-sm"
                   >
-                    可玩预览需要宿主站注册沙箱容器（registerGamePreviewHost）。
+                    {tt("当前站点暂不支持试玩，请在 OceanLeo 主站打开")}
                   </div>
                 )}
               </div>

@@ -96,16 +96,24 @@ test('explicit version gate drains edits made during export', async () => {
   assert.equal((await gate).ok, true); assert.deepEqual(versions, [1,2]);
   assert.equal(f.controller.hasUnconfirmedWork(), false); f.controller.dispose();
 });
-test('draft failure never acknowledges saved and exhausts 1.5/4/9 second retries into error', async () => {
+test('draft failure never acknowledges saved and keeps retrying on a capped backoff instead of exhausting', async () => {
   const attempts = [];
   const f = fixture({ draft: { saveRevision: async r => { attempts.push([r, f.clock.now]); return false; } } });
   f.controller.observe({ revision: 1, dirty: true, userEdited: true });
   await f.clock.advance(400); assert.equal(f.controller.snapshot().state, 'saving');
-  await f.clock.advance(1_500 + 4_000 + 9_000);
-  assert.deepEqual(attempts, [[1,400],[1,1900],[1,5900],[1,14900]]);
-  assert.equal(f.controller.snapshot().state, 'error');
+  await f.clock.advance(1_500 + 4_000 + 9_000 + 20_000 + 30_000 + 30_000);
+  assert.deepEqual(attempts.map(a => a[1]), [400, 1900, 5900, 14900, 34900, 64900, 94900]);
+  assert.equal(f.controller.snapshot().state, 'saving');
   assert.equal(f.controller.snapshot().acknowledgedRevision, 0);
   assert.deepEqual(f.versions, []); f.controller.dispose();
+});
+test('a finite maxRetries is still honoured and ends in a truthful error', async () => {
+  const attempts = [];
+  const f = fixture({ maxRetries: 3, draft: { saveRevision: async r => { attempts.push([r, f.clock.now]); return false; } } });
+  f.controller.observe({ revision: 1, dirty: true, userEdited: true });
+  await f.clock.advance(400 + 1_500 + 4_000 + 9_000);
+  assert.deepEqual(attempts.map(a => a[1]), [400, 1900, 5900, 14900]);
+  assert.equal(f.controller.snapshot().state, 'error'); f.controller.dispose();
 });
 test('version failure preserves saved and retries in the background', async () => {
   let attempts = 0;

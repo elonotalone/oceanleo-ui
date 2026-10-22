@@ -60,6 +60,7 @@ import { MCP_CATALOG_MESSAGES } from "./mcp-catalog-copy";
 import { ACCOUNT_LAYOUT_MESSAGES } from "./account-layout-copy";
 import { MAIL_BOT_MESSAGES } from "./mail-bot-copy";
 import { FOLLOW_THROUGH_MESSAGES } from "./follow-through-copy";
+import { GAME_PLAY_MESSAGES } from "./game-play-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -120,6 +121,7 @@ const PARTS = [
   APPROVAL_CARD_MESSAGES,
   ACCOUNT_DELIVERY_MESSAGES,
   FOLLOW_THROUGH_MESSAGES,
+  GAME_PLAY_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =

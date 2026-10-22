@@ -2,33 +2,51 @@ import {
   ensureBackgroundSaveNoticeMounted,
   unmountBackgroundSaveNoticeForTests,
 } from "./advanced-background-save-notice";
-import type { AdvancedPersistenceController } from "./advanced-persistence-controller";
+import { subscribeAutosaveNudges } from "./advanced-autosave-nudge";
+import {
+  AUTOSAVE_BACKGROUND_RETRY_DELAYS,
+  type AdvancedPersistenceController,
+  type AdvancedPersistenceNudgeReason,
+} from "./advanced-persistence-controller";
 import type { LibraryItem } from "./library-data";
 
 type BackgroundController = AdvancedPersistenceController<LibraryItem>;
 
+/**
+ * "saving": the job is saving or waiting for an automatic retry (transient
+ * failures never leave this state). "failed": a permanent failure that retrying
+ * cannot fix; the draft is kept and `reason` says why ("auth" resumes by itself
+ * after sign-in).
+ */
 export type BackgroundSaveStatus = "saving" | "failed";
+export type BackgroundSaveFailureReason = "auth" | "blocked";
 
 export interface BackgroundSaveJobView {
   key: string;
   status: BackgroundSaveStatus;
+  reason?: BackgroundSaveFailureReason;
 }
 
 interface BackgroundSaveJob extends BackgroundSaveJobView {
   controller: BackgroundController;
+  retryTimer?: ReturnType<typeof setTimeout>;
+  retryAttempt: number;
 }
 
 const jobs = new Map<string, BackgroundSaveJob>();
 const listeners = new Set<() => void>();
 let justSavedUntil = 0;
 let justSavedTimer: ReturnType<typeof setTimeout> | undefined;
-let noticeView = { failed: 0, saved: false };
+let noticeView = { failed: 0, auth: 0, saved: false };
+let unsubscribeNudges: (() => void) | undefined;
 
 function emit(): void {
   const failed = failedBackgroundSaveCount();
+  let auth = 0;
+  for (const job of jobs.values()) if (job.status === "failed" && job.reason === "auth") auth += 1;
   const saved = Date.now() < justSavedUntil && failed === 0;
-  if (noticeView.failed !== failed || noticeView.saved !== saved) {
-    noticeView = { failed, saved };
+  if (noticeView.failed !== failed || noticeView.saved !== saved || noticeView.auth !== auth) {
+    noticeView = { failed, auth, saved };
   }
   for (const listener of [...listeners]) listener();
 }
@@ -64,6 +82,23 @@ async function waitForQuiet(
   }
 }
 
+function clearJobTimer(job: BackgroundSaveJob): void {
+  if (job.retryTimer !== undefined) clearTimeout(job.retryTimer);
+  job.retryTimer = undefined;
+}
+
+function scheduleOwnRetry(job: BackgroundSaveJob): void {
+  clearJobTimer(job);
+  const delays = AUTOSAVE_BACKGROUND_RETRY_DELAYS;
+  const delay = delays[Math.min(job.retryAttempt, delays.length - 1)] ?? 60_000;
+  job.retryAttempt += 1;
+  job.retryTimer = setTimeout(() => {
+    job.retryTimer = undefined;
+    if (jobs.get(job.key) !== job) return;
+    void finish(job.key, job.controller, job.controller.retry());
+  }, delay);
+}
+
 async function finish(
   key: string,
   controller: BackgroundController,
@@ -74,6 +109,7 @@ async function finish(
   if (!job || job.controller !== controller) return;
   if (controller.isBusy()) {
     job.status = "saving";
+    job.reason = undefined;
     emit();
     void waitForQuiet(key, controller).then(() =>
       finish(key, controller, Promise.resolve()),
@@ -81,14 +117,53 @@ async function finish(
     return;
   }
   if (!controller.hasUnconfirmedWork()) {
+    clearJobTimer(job);
     jobs.delete(key);
     controller.dispose();
     markJustSaved();
     emit();
     return;
   }
-  job.status = "failed";
+  const failure = controller.snapshot().failure;
+  if (failure && !failure.retryable) {
+    // Retrying cannot help (sign-in needed, conflict, permission, integrity).
+    // The draft stays; sign-in resumes automatically through the nudges.
+    clearJobTimer(job);
+    job.status = "failed";
+    job.reason = failure.auth ? "auth" : "blocked";
+    emit();
+    return;
+  }
+  // Transient (or a controller that gave up on a caller-set retry cap): the
+  // saver keeps retrying on a capped backoff, never leaving it to the person.
+  job.status = "saving";
+  job.reason = undefined;
   emit();
+  scheduleOwnRetry(job);
+}
+
+function nudgeAll(reason: AdvancedPersistenceNudgeReason): void {
+  for (const job of [...jobs.values()]) {
+    if (job.status === "failed") {
+      if (job.reason === "auth" && reason !== "visible") {
+        job.status = "saving";
+        job.reason = undefined;
+        emit();
+        void finish(job.key, job.controller, job.controller.retry());
+      }
+      continue;
+    }
+    if (job.retryTimer !== undefined) {
+      clearJobTimer(job);
+      void finish(job.key, job.controller, job.controller.retry());
+      continue;
+    }
+    job.controller.nudge(reason);
+  }
+}
+
+function ensureNudges(): void {
+  if (!unsubscribeNudges) unsubscribeNudges = subscribeAutosaveNudges(nudgeAll);
 }
 
 export function subscribe(listener: () => void): () => void {
@@ -115,10 +190,14 @@ export function failedBackgroundSaveCount(): number {
 }
 
 export function snapshotBackgroundSaves(): readonly BackgroundSaveJobView[] {
-  return [...jobs.values()].map(({ key, status }) => ({ key, status }));
+  return [...jobs.values()].map(({ key, status, reason }) => ({
+    key,
+    status,
+    ...(reason ? { reason } : {}),
+  }));
 }
 
-export function noticeSnapshot(): { failed: number; saved: boolean } {
+export function noticeSnapshot(): { failed: number; auth: number; saved: boolean } {
   return noticeView;
 }
 
@@ -133,10 +212,12 @@ export function handOff(
   if (!key) return;
   controller.markHandedOff();
   controller.prepareBackgroundRetries();
+  ensureNudges();
   const existing = jobs.get(key);
   if (existing?.controller === controller) {
     if (existing.status !== "saving") {
       existing.status = "saving";
+      existing.reason = undefined;
       emit();
       void finish(key, controller, controller.retry());
     }
@@ -145,7 +226,7 @@ export function handOff(
   if (existing && existing.status === "saving") {
     return;
   }
-  jobs.set(key, { key, controller, status: "saving" });
+  jobs.set(key, { key, controller, status: "saving", retryAttempt: 0 });
   ensureNotice();
   emit();
   void finish(key, controller, controller.retry());
@@ -161,6 +242,7 @@ export function takeBack(
   // Normal PPT and hosted PPTist have different document/revision sources.
   // Keep the originating controller until it publishes its captured version.
   if (draftTier !== undefined && job.controller.hasDraftTier() !== draftTier) return null;
+  clearJobTimer(job);
   jobs.delete(key);
   job.controller.clearHandedOff();
   emit();
@@ -171,6 +253,8 @@ export function retry(key: string): Promise<void> {
   const job = jobs.get(key);
   if (!job) return Promise.resolve();
   job.status = "saving";
+  job.reason = undefined;
+  clearJobTimer(job);
   emit();
   return finish(key, job.controller, job.controller.retry());
 }
@@ -205,7 +289,10 @@ export function leaveAdvancedWorkbench(input: {
 }
 
 export function resetBackgroundSaverForTests(): void {
+  unsubscribeNudges?.();
+  unsubscribeNudges = undefined;
   for (const job of [...jobs.values()]) {
+    clearJobTimer(job);
     try {
       job.controller.dispose();
     } catch {
@@ -216,7 +303,7 @@ export function resetBackgroundSaverForTests(): void {
   justSavedUntil = 0;
   if (justSavedTimer !== undefined) clearTimeout(justSavedTimer);
   justSavedTimer = undefined;
-  noticeView = { failed: 0, saved: false };
+  noticeView = { failed: 0, auth: 0, saved: false };
   emit();
   unmountBackgroundSaveNoticeForTests();
 }

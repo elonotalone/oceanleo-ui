@@ -12,6 +12,7 @@ import React, { act } from "react";
 
 import { useAdvancedAutoSave } from "../src/shell/use-advanced-autosave.ts";
 import { resetBackgroundSaverForTests } from "../src/shell/advanced-background-saver.ts";
+import { recordUserMutation, resetUserEditSession } from "../src/shell/user-edit-session.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -197,6 +198,8 @@ test("普通编辑器离开不等待、不弹确认框；mounted iframe 单独�
 
 test("保存进行中点返回：同一拍卸载，没有对话框，卸载后那份修订仍被写入", async () => {
   resetBackgroundSaverForTests();
+  resetUserEditSession();
+  recordUserMutation(ITEM.key); // a real person edit; hydration-only dirt is never written
   const bed = createBed({ flushDelayMs: 80 });
   const tree = await mount(
     React.createElement(LeaveHost, {
@@ -225,12 +228,11 @@ test("保存进行中点返回：同一拍卸载，没有对话框，卸载后�
   await tree.unmount();
 });
 
-test("最终失败出提示，点重试会再写一次", async () => {
+test("暂时性失败不出提示，联网后自动再写；永久失败才保留并如实标记（无重试按钮）", async () => {
   const {
     failedBackgroundSaveCount,
     handOff,
     hasPendingOrFailed,
-    retry,
     snapshotBackgroundSaves,
   } = await import("../src/shell/advanced-background-saver.ts");
   const { AdvancedPersistenceController } = await import(
@@ -238,37 +240,55 @@ test("最终失败出提示，点重试会再写一次", async () => {
   );
   resetBackgroundSaverForTests();
   const writes = [];
-  let fail = true;
+  let mode = "transient";
   const controller = new AdvancedPersistenceController({
     debounceMs: 0,
     maxRetries: 0,
     flushRevision: async (revision) => {
       writes.push(revision);
-      if (fail) return { ok: false, error: "w14-final-fail" };
+      if (mode === "transient") return { ok: false, error: "w14-final-fail" };
+      if (mode === "conflict") return { ok: false, error: "conflict", code: "revision-conflict", retryable: false };
       return { ok: true, item: ITEM };
     },
     recordSavedItem: async () => true,
   });
-  controller.observe({ revision: 1, dirty: true });
+  controller.observe({ revision: 1, dirty: true, userEdited: true });
   handOff(ITEM.key, controller);
   await act(async () => {
     await sleep(50);
   });
   assert.equal(hasPendingOrFailed(), true);
-  assert.ok(failedBackgroundSaveCount() >= 1);
-  assert.ok(snapshotBackgroundSaves().some((job) => job.status === "failed"));
-  fail = false;
-  await retry(ITEM.key);
+  assert.equal(failedBackgroundSaveCount(), 0, "暂时性失败不得出现「没保存上」提示");
+  assert.ok(snapshotBackgroundSaves().every((job) => job.status === "saving"));
+  mode = "ok";
+  window.dispatchEvent(new window.Event("online"));
   await act(async () => {
     await sleep(50);
   });
-  assert.ok(writes.length >= 2, "点重试必须再写一次");
+  assert.ok(writes.length >= 2, "联网后必须自动再写一次");
   assert.equal(hasPendingOrFailed(), false);
+
+  resetBackgroundSaverForTests();
+  mode = "conflict";
+  const blocked = new AdvancedPersistenceController({
+    debounceMs: 0,
+    flushRevision: async () => ({ ok: false, error: "conflict", code: "revision-conflict", retryable: false }),
+    recordSavedItem: async () => true,
+  });
+  blocked.observe({ revision: 1, dirty: true, userEdited: true });
+  handOff(ITEM.key, blocked);
+  await act(async () => {
+    await sleep(50);
+  });
+  assert.equal(failedBackgroundSaveCount(), 1);
+  assert.equal(snapshotBackgroundSaves()[0].reason, "blocked");
   resetBackgroundSaverForTests();
 });
 
 test("失败后重开同一素材：内容从恢复快照回来，且不会两个控制器并发写", async () => {
   resetBackgroundSaverForTests();
+  resetUserEditSession();
+  recordUserMutation(ITEM.key);
   globalThis.__w14RecoveryStore = new Map();
   const storeStub = dataModule(`
     export function advancedRecoveryKey(editorId, item) {

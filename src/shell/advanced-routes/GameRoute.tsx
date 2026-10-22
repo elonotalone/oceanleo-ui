@@ -17,9 +17,15 @@ import {
   useState,
 } from "react";
 import dynamic from "next/dynamic";
+import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { createArtifactRevision, forkArtifact } from "../artifact-client";
-import { GAME_DOCUMENT_SOURCE_FORMAT } from "../artifact-contract";
+import {
+  ensureOwnGameCopy,
+  gameEditAccess,
+  GAME_VIEW_ONLY_MESSAGE,
+} from "../game-editor/game-edit-access";
+import { GAME_DOCUMENT_SOURCE_FORMAT, type ArtifactProjection } from "../artifact-contract";
 import {
   advancedSavedItem,
   commitAdvancedSavedRevision,
@@ -28,7 +34,11 @@ import { useAdvancedSession } from "../advanced-session-context";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
-import { isDurableLibraryItem, type LibraryItem } from "../library-data";
+import {
+  artifactProjectionToLibraryItem,
+  isDurableLibraryItem,
+  type LibraryItem,
+} from "../library-data";
 import { editorToolLabel } from "../workbench-routes";
 import {
   registerGamePreviewHost,
@@ -108,6 +118,7 @@ export const GAME_WORKING_DOCUMENT_SCHEMA = "oceanleo.game.edit.v1";
 
 export type GameWorkingDocument = GameBundleDocument & {
   source?: string;
+  sourceDirty?: boolean;
   paramDeclarations?: Record<string, unknown> | null;
 };
 
@@ -165,6 +176,7 @@ export function asGameWorkingDocument(
     prompt: String(value.prompt || ""),
     origin: isAllowedGameRevisionOrigin(origin) ? origin : "ai",
     ...(source ? { source } : {}),
+    sourceDirty: value.sourceDirty === true,
     ...(value.paramDeclarations !== undefined
       ? {
           paramDeclarations:
@@ -192,7 +204,7 @@ export interface GameIterationRequest {
 }
 
 export type GameIterationResult =
-  | { ok: true; document: GameBundleDocument }
+  | { ok: true; document: GameBundleDocument; artifact?: ArtifactProjection }
   | { ok: false; error: string };
 
 export type GameIterationRunner = (
@@ -291,8 +303,16 @@ function GameLegacyRoute({
   pages?: AdvancedEditorPagesAdapter;
 }) {
   const session = useAdvancedSession();
+  const tt = useUI();
   const [reloadNonce, setReloadNonce] = useState(0);
-  const [history, setHistory] = useState<GameBundleDocument[]>(() => {
+  const currentItem = useRef(item);
+  const [head, setHead] = useState(item);
+  const [previewKey, setPreviewKey] = useState(0);
+  useEffect(() => {
+    currentItem.current = item;
+    setHead(item);
+  }, [item]);
+  const [history, setHistory] = useState<GameWorkingDocument[]>(() => {
     const stashed = peekGameWorkingDocument(item);
     if (stashed?.envelopeUrl && stashed.envelopeDigest) {
       return [stashed];
@@ -310,6 +330,7 @@ function GameLegacyRoute({
 
   const document_ = history[cursor] || null;
   const editRevision = `${cursor}:${document_?.envelopeDigest || "empty"}`;
+  const viewOnly = gameEditAccess(head) === "view-only";
   const admitted = gameSourceAdmission(item);
   const sourceFailed = !admitted.ok && !document_;
 
@@ -332,7 +353,7 @@ function GameLegacyRoute({
     const stashed = peekGameWorkingDocument(item);
     stashGameWorkingDocument(item, {
       ...document_,
-      ...(stashed?.source ? { source: stashed.source } : {}),
+      ...(stashed?.source && stashed.envelopeDigest === document_.envelopeDigest ? { source: stashed.source, sourceDirty: stashed.sourceDirty } : {}),
       ...(stashed?.paramDeclarations !== undefined
         ? { paramDeclarations: stashed.paramDeclarations }
         : {}),
@@ -342,18 +363,20 @@ function GameLegacyRoute({
   const iterate = useCallback(async () => {
     const draft = prompt.trim();
     if (busyRef.current || !draft) return;
+    if (document_?.sourceDirty) {
+      setError("代码页还有未保存的修改，请先保存，再继续描述玩法改动。");
+      return;
+    }
     if (sourceFailed) {
       setError(admitted.ok ? "" : admitted.error);
       return;
     }
     if (!isDurableLibraryItem(item)) {
-      setError("这个条目没有 durable artifact identity，无法迭代。");
+      setError("这个条目还没有保存到你的库，暂时无法用描述来修改。");
       return;
     }
     if (!gameIterationRunner) {
-      setError(
-        "生成链尚未接入本站（未注册 game iteration runner），无法迭代玩法。",
-      );
+      setError("当前站点暂不支持用描述修改玩法，请在 OceanLeo 主站打开。");
       return;
     }
     busyRef.current = true;
@@ -361,9 +384,21 @@ function GameLegacyRoute({
     setError("");
     setNotice("");
     try {
+      // 不是自己的作品：先落成自己的二创副本，再在副本上修改。
+      const own = await ensureOwnGameCopy(currentItem.current, forkArtifact);
+      if (!own.ok) {
+        setError(own.error);
+        return;
+      }
+      const base = own.item;
+      if (own.forked) {
+        currentItem.current = base;
+        setHead(base);
+        await session?.recordSavedItem(base);
+      }
       const result = await gameIterationRunner({
-        artifactId: item.artifactId,
-        revisionId: item.revisionId,
+        artifactId: base.artifactId || "",
+        revisionId: base.revisionId || "",
         prompt: draft,
         engineApiVersion: document_?.engineApiVersion || "",
       });
@@ -373,7 +408,7 @@ function GameLegacyRoute({
       }
       if (!isAllowedGameRevisionOrigin(result.document.origin)) {
         setError(
-          `生成链回报了不允许的产物来源 ${result.document.origin}；本站不接受上传或导入的游戏。`,
+          "这一版的来源不被接受（本站不接受上传或导入的游戏），游戏保持上一版。",
         );
         return;
       }
@@ -383,8 +418,19 @@ function GameLegacyRoute({
       ]);
       setCursor((value) => (history.length === 0 ? 0 : value + 1));
       setPrompt("");
-      setDirty(true);
-      setNotice("新玩法已生成，先试玩再保存。");
+      if (result.artifact) {
+        const saved = artifactProjectionToLibraryItem(result.artifact);
+        currentItem.current = saved;
+        setHead(saved);
+        setPreviewKey((value) => value + 1);
+        stashGameWorkingDocument(saved, result.document);
+        await session?.recordSavedItem(saved);
+        setDirty(false);
+        setNotice("新玩法已生成并保存，可以直接试玩。");
+      } else {
+        setDirty(true);
+        setNotice("新玩法已生成，先试玩再保存。");
+      }
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "这一轮生成失败。",
@@ -400,17 +446,19 @@ function GameLegacyRoute({
     history.length,
     item,
     prompt,
+    session,
     sourceFailed,
   ]);
 
   const flush = useCallback(async () => {
+    if (document_?.sourceDirty) return { ok: false as const, error: "代码页还有未保存的修改，请先在代码页保存。" };
     if (!document_) {
       return { ok: false as const, error: "还没有可保存的可玩产物。" };
     }
     if (!isAllowedGameRevisionOrigin(document_.origin)) {
       return {
         ok: false as const,
-        error: "产物来源不合法，拒绝提交 revision。",
+        error: "游戏来源不被接受，已取消保存。",
       };
     }
     if (!isDurableLibraryItem(item)) {
@@ -433,18 +481,21 @@ function GameLegacyRoute({
     if (!document_.coverUrl || !document_.coverDigest) {
       return {
         ok: false as const,
-        error: "缺少封面位图（preview rendition），游戏 revision 无法保存。",
+        error: "这个游戏缺少封面，暂时无法保存。",
       };
     }
     if (!document_.manifestUrl || !document_.manifestDigest) {
       return {
         ok: false as const,
         error:
-          "缺少 editor manifest（生成 prompt / 骨架版本 / engine API 版本），游戏 revision 无法保存。",
+          "这个游戏缺少保存所需的信息，暂时无法保存。",
       };
     }
     try {
-      const committed = await commitAdvancedSavedRevision(item, {
+      const own = await ensureOwnGameCopy(currentItem.current, forkArtifact);
+      if (!own.ok) return { ok: false as const, error: own.error };
+      currentItem.current = own.item;
+      const committed = await commitAdvancedSavedRevision(own.item, {
         publish: createArtifactRevision,
         commit: {
           source: {
@@ -489,11 +540,9 @@ function GameLegacyRoute({
         },
       });
       setDirty(false);
+      currentItem.current = committed;
       stashGameWorkingDocument(committed, {
         ...document_,
-        envelopeUrl: committed.url || document_.envelopeUrl,
-        envelopeDigest:
-          committed.revisionId || document_.envelopeDigest,
       });
       return { ok: true as const, item: committed };
     } catch (caught) {
@@ -502,7 +551,7 @@ function GameLegacyRoute({
         error:
           caught instanceof Error
             ? caught.message
-            : "游戏 artifact revision 保存失败。",
+            : "游戏保存失败，请稍后重试。",
       };
     }
   }, [document_, item]);
@@ -548,23 +597,24 @@ function GameLegacyRoute({
           role="alert"
           className="grid h-full place-items-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-warn,#b45309)]"
         >
-          可玩预览需要宿主站注册沙箱容器（registerGamePreviewHost）。
-          共享包不会自行渲染游戏 iframe，以免绕过沙箱域隔离。
+          {tt("当前站点暂不支持试玩，请在 OceanLeo 主站打开")}
         </div>
       );
     }
     return (
       <PreviewHost
-        artifactId={item.artifactId || ""}
-        revisionId={item.revisionId || ""}
+        artifactId={head.artifactId || ""}
+        revisionId={head.revisionId || ""}
         envelopeUrl={document_.envelopeUrl}
+        source={document_.sourceDirty ? document_.source : undefined}
+        reloadKey={previewKey}
         bundleFormat={document_.bundleFormat}
         engineApiVersion={document_.engineApiVersion}
         title={item.title}
         onRuntimeError={setError}
       />
     );
-  }, [PreviewHost, document_, item.artifactId, item.revisionId, item.title]);
+  }, [PreviewHost, document_, head.artifactId, head.revisionId, item.title, previewKey, tt]);
 
   const toolbox = useMemo(
     () => (
@@ -587,12 +637,17 @@ function GameLegacyRoute({
         <button
           type="button"
           onClick={iterate}
-          disabled={busy || sourceFailed || !prompt.trim()}
+          disabled={busy || sourceFailed || viewOnly || !prompt.trim()}
           className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--awb-on-accent,#fff)] disabled:opacity-50"
           style={{ background: accent }}
         >
           {busy ? "生成中…" : document_ ? "迭代这一版" : "生成第一版"}
         </button>
+        {viewOnly ? (
+          <p role="status" className="text-xs text-[var(--awb-muted,#57534e)]">
+            {GAME_VIEW_ONLY_MESSAGE}
+          </p>
+        ) : null}
         {history.length > 0 ? (
           <ol className="flex flex-col gap-1 text-xs text-[var(--awb-muted,#57534e)]">
             {history.map((entry, index) => (
@@ -615,7 +670,7 @@ function GameLegacyRoute({
         ) : null}
       </div>
     ),
-    [accent, busy, cursor, document_, history, iterate, prompt, sourceFailed],
+    [accent, busy, cursor, document_, history, iterate, prompt, sourceFailed, viewOnly],
   );
 
   return (

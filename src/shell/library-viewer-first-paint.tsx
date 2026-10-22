@@ -30,10 +30,10 @@ const HEAVY_LIBRARY_VIEWER_KINDS: readonly LibraryItem["kind"][] = [
   /**
    * 可玩 bundle 是这张表上最重的一件，此前却漏在闸门外。
    *
-   * `LibraryItemViewerBody` 的 game 分支把 `gamePlayEmbedHref(item)` 送进
-   * `SandboxedWebViewer`，那是一个装载整份自包含 HTML 文档的沙箱 iframe——
-   * 它会在容器还没进视口时就开始下载并执行整个游戏。ppt/xlsx/docx/3d/pdf 五类
-   * 早就在闸门里（pdf 走 `document` / `file` 两个 kind），只有它没有。
+   * `LibraryItemViewerBody` 的 game 分支渲染 `GamePlayDetail`：主站上它在原地挂
+   * 宿主注册的游戏帧，装载整份自包含 HTML 文档——不能在容器还没进视口时就开始
+   * 下载并执行整个游戏。ppt/xlsx/docx/3d/pdf 五类早就在闸门里（pdf 走
+   * `document` / `file` 两个 kind），只有它曾经漏掉。
    */
   "game",
 ];
