@@ -73,7 +73,6 @@ test("取源失败时顶掉舞台的路由，必须自己带上重试入口", ()
   for (const [name, routePath, hookPath] of [
     ["rich-doc", "../src/shell/advanced-routes/RichDocRoute.tsx", "../src/shell/doc-editors/use-rich-doc-editor.ts"],
     ["deck", "../src/shell/advanced-routes/DeckRoute.tsx", "../src/shell/doc-editors/use-deck-editor.ts"],
-    ["chart", "../src/shell/advanced-routes/ChartRoute.tsx", "../src/shell/chart-editor/use-chart-workbench.ts"],
   ]) {
     const route = source(routePath);
     const hook = source(hookPath);

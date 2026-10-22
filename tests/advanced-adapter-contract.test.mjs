@@ -74,11 +74,10 @@ test("all route components use the single typed adapter prop", () => {
     "AudioRoute",
     "PdfRoute",
     "Model3DRoute",
-    "ChartRoute",
     "GridRoute",
     "RichDocRoute",
     "DeckRoute",
-    "EmbeddedRoute",
+    "WebsiteLocalRoute",
     "GameRoute",
     "UnsupportedRoute",
   ];
@@ -196,7 +195,6 @@ test("mutable native editors keep an independent local recovery log", () => {
   assert.match(store, /MAX_DRAFT_AGE_MS/);
   for (const route of [
     "AudioRoute",
-    "ChartRoute",
     "DeckRoute",
     "GridRoute",
     "Model3DRoute",

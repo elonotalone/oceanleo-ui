@@ -10,7 +10,6 @@ import {
 } from "./editor-protocol-types.mjs";
 import { isCurrentFamilyFirstPartyHost } from "../contracts/domain-family";
 import {
-  isInjectedLocalHostedEmbedBase,
   isNativeClientPageOrigin,
   isTrustedEmbedEditorBase,
   isUntrustedContentHostname,
@@ -21,7 +20,6 @@ import {
 } from "./editor-protocol-commit-meta";
 import { canLoadFamilyEmbedBase } from "./family-embed-origin";
 import { privateVideoBlobCommit } from "./editor-private-video-commit";
-import { isHostedEditorOrigin } from "./hosted-editor-origins";
 import {
   boundedRecord,
   boundedString,
@@ -102,16 +100,12 @@ export function isTrustedEditorOrigin(origin: string): boolean {
     if (parsed.origin !== origin || parsed.username || parsed.password) {
       return false;
     }
-    // W18 R1 全串白名单。**必须排在下一行之前**（`*.oceanleo.app` 整域是
-    // 不可信内容域，排在后面就永远走不到）。论证见 hosted-editor-origins.ts。
-    if (isHostedEditorOrigin(origin)) return true;
-    // UC-3/UC-6: native host-injected loopback origin is trusted for
-    // postMessage. The production loopback-dev-gate below still rejects
-    // guessed localhost on web and in production pages that are not loopback.
-    if (
-      isInjectedLocalHostedEmbedBase(origin) ||
-      isNativeClientPageOrigin(origin)
-    ) {
+    // 2026-10-22：Hosted 编辑器（slides./docs./audio./3d.）整套下线，白名单与
+    // 原生宿主注入的 `local-hosted:*` loopback 都已删除——只会更严。
+    // UC-3/UC-6: the native app's own page origin is trusted for postMessage.
+    // The production loopback-dev-gate below still rejects guessed loopback
+    // hosts on web and in production pages that are not loopback.
+    if (isNativeClientPageOrigin(origin)) {
       return protocol === "http:" || protocol === "https:";
     }
     if (isUntrustedContentHostname(hostname)) return false;

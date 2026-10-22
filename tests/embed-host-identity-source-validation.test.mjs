@@ -381,16 +381,3 @@ test("website embed keeps canonical artifact, revision and project identity and 
   );
 });
 
-test("embedded design handshake explicitly uses read/open validation", async () => {
-  const route = await readFile(
-    new URL(
-      "../src/shell/advanced-routes/EmbeddedRoute.tsx",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  assert.match(
-    route,
-    /validateDesignCompositeSource\(blob, item, \{[\s\S]*?validation: "open"/,
-  );
-});

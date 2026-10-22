@@ -26,12 +26,6 @@ import {
   imageToEntities,
 } from "../src/shell/collab/adapters/image.ts";
 import {
-  CHART_COLLAB_ROOT,
-  chartFromEntities,
-  chartToEntities,
-} from "../src/shell/collab/adapters/chart.ts";
-import { normalizeChartDocument } from "../src/shell/chart-editor/chart-schema.ts";
-import {
   GAME_ROOT,
   gameFromEntities,
   gameTextName,
@@ -315,29 +309,6 @@ test("image：200 轮两人并发后两边一致", (t) => {
   });
 });
 
-test("chart：200 轮两人并发后两边一致", (t) => {
-  runEntityFamily(t, {
-    name: "chart",
-    root: CHART_COLLAB_ROOT,
-    toEntities: chartToEntities,
-    fromEntities: chartFromEntities,
-    seed: normalizeChartDocument({
-      schema: "oceanleo.chart.v1",
-      version: 1,
-      title: "销量",
-      option: {
-        title: { text: "季度" },
-        xAxis: { type: "category", data: ["Q1", "Q2"] },
-        yAxis: { type: "value" },
-        series: [
-          { id: "s-a", name: "华东", type: "bar", data: [10, 20] },
-          { id: "s-b", name: "华南", type: "line", data: [5, 15] },
-        ],
-      },
-    }),
-  });
-});
-
 test("game：200 轮页表+代码并发后两边一致", () => {
   const a = new Y.Doc();
   const b = new Y.Doc();
@@ -552,7 +523,6 @@ import {
 } from "../src/shell/collab/adapters/visual-readonly.ts";
 import { buildDeckCommandSurface, buildPdfCommandSurface, buildRichDocCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
-import { createChartCommandSurface } from "../src/shell/chart-editor/chart-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
 import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
 import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
@@ -700,18 +670,15 @@ test("[F07] 视频/音频/3D：只读不再整块 inert；撤销栈按自己的�
 });
 
 // ------------------------------------------------------------------ F08 PPT、图表、图片、矢量图
-test("[F08] PPT/图表/图片：浮条与面板拿到只读；矢量图只读 inert、未保存时外部新版本出提示", () => {
+test("[F08] PPT/图片：浮条与面板拿到只读（图表编辑器与嵌入矢量画布已删除）", () => {
   for (const [name, rel, tag] of [
     ["deck", "advanced-routes/DeckRoute.tsx", "DeckContextToolbar"],
-    ["chart", "advanced-routes/ChartRoute.tsx", "ChartContextToolbar"],
     ["image", "advanced-routes/ImageRoute.tsx", "FabricImageContextToolbar"],
   ]) {
     const m = new RegExp(`<${tag}\\b([\\s\\S]*?)/>`).exec(src(rel));
     assert.ok(m, `${name}: 找不到 <${tag}>`);
     assert.match(m[1], /readOnly=/, `${name}: <${tag}> 没拿到 readOnly`);
   }
-  const embedded = src("advanced-routes/EmbeddedRoute.tsx");
-  assert.match(embedded, /inert/, "矢量图只读时 iframe 要 inert");
   const copy = readFileSync(join(UI_ROOT, "src/i18n/ui/messages/collab-visual-copy.ts"), "utf8");
   for (const phrase of ["保存我的", "看新版本"]) assert.ok(copy.includes(phrase), `collab-visual-copy.ts 缺「${phrase}」`);
 });
@@ -752,7 +719,6 @@ const SURFACE_FILES = {
   grid: "doc-editors/GridUniverStage.tsx",
   deck: "advanced-routes/DeckRoute.tsx",
   image: "advanced-routes/ImageRoute.tsx",
-  chart: "advanced-routes/ChartRoute.tsx",
   game: "game-editor/GameCodeStage.tsx",
   model3d: "advanced-routes/Model3DRoute.tsx",
   audio: "advanced-routes/AudioRoute.tsx",
@@ -765,7 +731,6 @@ const SURFACE_FILES = {
 const SURFACE_BUILDERS = {
   richdoc: ["doc-editors/doc-family-commands.ts"],
   pdf: ["doc-editors/doc-family-commands.ts"],
-  chart: ["chart-editor/chart-command-surface.ts"],
   image: ["image-editor/image-command-surface.ts"],
   model3d: ["media-editors/model3d-command-surface.ts"],
   audio: ["media-editors/audio-command-surface.ts", "media-editors/visual-command-kit.ts"],
@@ -793,7 +758,7 @@ for (const [family, rel] of Object.entries(SURFACE_FILES)) {
 }
 
 test("[只读/16] 浮条：每个 *ContextToolbar 拿到只读状态（传 prop，或组件自己读 editor 里的 collabReadOnly）", () => {
-  const files = ["RichDocRoute", "DeckRoute", "ChartRoute", "ImageRoute", "GridRoute", "GameRoute", "PdfRoute", "AudioRoute", "Model3DRoute", "VideoTimelineRoute"];
+  const files = ["RichDocRoute", "DeckRoute", "ImageRoute", "GridRoute", "GameRoute", "PdfRoute", "AudioRoute", "Model3DRoute", "VideoTimelineRoute"];
   const bad = [];
   for (const name of files) {
     const rel = `advanced-routes/${name}.tsx`;
@@ -988,42 +953,6 @@ test("[只读/16] 能拿到构造函数的指令面：只读时改动指令被�
     assert.deepEqual(image.calls, [], "image: 画布不得被改");
   }
   conclusions.push("image: 行为（createImageCommandSurface 内置 guardVisualCommands）");
-
-  const chart = recordCalls();
-  const chartEditor = {
-    loading: false,
-    sourceReady: true,
-    carrierState: "ready",
-    error: "",
-    dirty: false,
-    editRevision: 1,
-    readOnly: true,
-    activeSeriesId: "series-1",
-    document: {
-      option: {
-        title: { text: "t" },
-        legend: { show: true },
-        xAxis: { data: ["a"] },
-        series: [{ id: "series-1", name: "N", type: "bar", data: [1] }],
-      },
-    },
-    patchSeries: chart.record("patchSeries"),
-    setTitle: chart.record("setTitle"),
-    setLegend: chart.record("setLegend"),
-    addSeries: chart.record("addSeries"),
-    removeSeries: chart.record("removeSeries"),
-  };
-  const chartSurface = createChartCommandSurface({ editor: chartEditor, deliver: async () => undefined });
-  {
-    const mutating = chartSurface.describe().filter((spec) => spec.mutates);
-    assert.ok(mutating.length >= 1, "chart: 应有会改作品的指令");
-    const spec = mutating[0];
-    const result = await chartSurface.run(spec.id, dummyCommandParams(spec));
-    assert.equal(result.ok, false, `chart: ${spec.id}`);
-    assert.equal(result.message, VIEW_ONLY_REFUSAL);
-    assert.deepEqual(chart.calls, [], "chart: 文档不得被改");
-  }
-  conclusions.push("chart: 行为（createChartCommandSurface 内置 guardVisualCommands）");
 
   const video = recordCalls();
   const videoEditor = {

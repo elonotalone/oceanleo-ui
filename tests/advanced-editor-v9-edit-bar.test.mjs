@@ -285,11 +285,8 @@ test("route capability ownership is artifact-based, including edu website artifa
   assert.deepEqual(editorCapabilityFor(eduWebsite), {
     available: true,
     adapter: "website",
-    route: {
-      type: "embed",
-      base: "https://website.oceanleo.com/embed/site-editor",
-      mediaType: "website",
-    },
+    // Website always opens in the local Puck route (no sub-site iframe).
+    route: { type: "website" },
     manifest: null,
     unavailableReason: "",
   });
@@ -333,11 +330,6 @@ test("route capability ownership is artifact-based, including edu website artifa
     }).adapter,
     "video-canvas",
   );
-  // embedEditorBase 已从 workbench-embed.tsx 拆到 workbench-embed-base.ts（前者只剩转出）。
-  const embed = source("../src/shell/workbench-embed-base.ts");
-  assert.match(source("../src/shell/workbench-embed.tsx"), /export \{ embedEditorBase \} from "\.\/workbench-embed-base"/);
-  assert.match(embed, /editorRouteFor\(item\)/);
-  assert.doesNotMatch(embed, /item\.siteId\s*===\s*"video"/);
   assert.doesNotMatch(source("../src/shell/workbench-routes.ts"), /siteKey/);
 });
 
@@ -350,9 +342,7 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
     "../src/shell/media-editors/PdfContextToolbar.tsx",
     "../src/shell/media-editors/AudioContextToolbar.tsx",
     "../src/shell/video-editor/VideoTimelineContextToolbar.tsx",
-    "../src/shell/chart-editor/ChartContextToolbar.tsx",
     "../src/shell/media-editors/Model3DContextToolbar.tsx",
-    "../src/shell/advanced-routes/EmbeddedRoute.tsx",
   ]) {
     assert.match(source(path), /SelectionToolbar/, path);
   }

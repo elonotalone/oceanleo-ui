@@ -11,7 +11,10 @@ import type {
 } from "./advanced-editor-adapter";
 import type { EditBarDockPresentation } from "./EditBarDockHost";
 import type { RightPaneSlot } from "./SplitWorkspace";
-import type { PluginThemeMode } from "./plugin-theme";
+import {
+  pluginThemeIdForAdapter,
+  type PluginThemeMode,
+} from "./plugin-theme";
 import { PluginChromeNotices } from "./plugin-chrome/PluginChromeNotices";
 import { buildPluginPages } from "./plugin-chrome/plugin-pages";
 
@@ -22,9 +25,11 @@ import { buildPluginPages } from "./plugin-chrome/plugin-pages";
 
 /** 页签行的页面清单：完全由 adapter.pages / adapter.mode 推出。 */
 export function usePluginPagesForAdapter(adapter: AdvancedEditorAdapter) {
+  const pluginId = pluginThemeIdForAdapter(adapter.id) ?? adapter.id.split("@")[0];
   return useMemo(
     () =>
       buildPluginPages({
+        pluginId,
         proLabel: adapter.pages?.proLabel,
         proUnavailableReason:
           adapter.pages?.proUnavailableReason ??
@@ -32,6 +37,7 @@ export function usePluginPagesForAdapter(adapter: AdvancedEditorAdapter) {
         aux: adapter.pages?.aux,
       }),
     [
+      pluginId,
       adapter.mode?.unavailableReason,
       adapter.pages?.aux,
       adapter.pages?.proLabel,

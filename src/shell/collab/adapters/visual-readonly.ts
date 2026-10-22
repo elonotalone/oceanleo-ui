@@ -1,7 +1,7 @@
 /**
  * PPT / 图表 / 图片「只能看」的共用判断（work-chat 第二轮 F08）。纯函数：不碰 DOM、不引 React，node --test 直接读。
  *
- * 只能看 = 浏览者，或别人正占着编辑。编辑内核（use-deck-editor / use-chart-workbench / 画布控制器）本来就拒绝改动，
+ * 只能看 = 浏览者，或别人正占着编辑。编辑内核（use-deck-editor / 画布控制器）本来就拒绝改动，
  * 但工具条、浮条、侧边面板的按钮之前看起来能点，点了没反应。这里把「灰掉并说清楚为什么」收成一处：
  *   viewOnlyContext        —— 选择工具条的 SelectionContext：改动类控件 disabled + unavailableReason（悬停提示「你只能查看」）。
  *   guardVisualCommands    —— 指令面（Leo 的「帮我改」入口）：会改作品的指令在这一层直接拒绝，不管它是从哪个入口来的。

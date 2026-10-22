@@ -514,7 +514,6 @@ test("A9-1: blocked types are not faked into committing", () => {
   // corruption, so no call site may declare them.
   const shell = [
     "../src/shell/design-composite-commit.ts",
-    "../src/shell/advanced-routes/EmbeddedRoute.tsx",
     "../src/shell/image-editor/editor-persistence.ts",
     "../src/shell/video-editor/persistence.ts",
   ].map(source).join("\n");

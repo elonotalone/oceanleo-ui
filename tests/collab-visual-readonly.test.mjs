@@ -7,7 +7,6 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
-import { normalizeChartDocument } from "../src/shell/chart-editor/chart-schema.ts";
 import {
   guardPluginSurface,
   guardVisualCommands,
@@ -16,7 +15,6 @@ import {
   VIEW_ONLY_HINT,
   VIEW_ONLY_REFUSAL,
 } from "../src/shell/collab/adapters/visual-readonly.ts";
-import { createChartCommandSurface } from "../src/shell/chart-editor/chart-command-surface.ts";
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
 import { buildDeckCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
 import { readFileSync } from "node:fs";
@@ -200,94 +198,6 @@ test("PPT 工具条：可写时控件不被只读灰掉（至少有一个可用�
   assert.ok(lockedProps.context.controls.every((control) => control.disabled === true));
 });
 
-// ---------------------------------------------------------------- 图表工具条与指令面
-
-function chartDocument() {
-  return normalizeChartDocument({
-    schema: "oceanleo.chart.v1",
-    version: 1,
-    title: "销量",
-    option: {
-      title: { text: "季度销量" },
-      xAxis: { type: "category", data: ["Q1", "Q2", "Q3"] },
-      yAxis: { type: "value" },
-      series: [
-        { id: "a", name: "A", type: "bar", data: [1, 2, 3] },
-        { id: "b", name: "B", type: "line", data: [3, 2, 1] },
-      ],
-    },
-  });
-}
-
-function chartEditorWith(readOnly) {
-  return fakeEditor({
-    document: chartDocument(),
-    activeSeriesId: "a",
-    editRevision: 3,
-    loading: false,
-    sourceReady: true,
-    carrierState: "ready",
-    dirty: false,
-    readOnly,
-  });
-}
-
-test("图表工具条：只读时改动类全灰，只有「切换当前系列」可用；命令不改图表", async () => {
-  const { ChartContextToolbar } = await import(
-    await compileModule("src/shell/chart-editor/ChartContextToolbar.tsx", {
-      "../../i18n/ui/useUI": useUiStub,
-      "../SelectionToolbar": toolbarStub,
-    })
-  );
-  const { editor, calls } = chartEditorWith(false);
-  const props = renderToolbar(ChartContextToolbar, { editor, readOnly: true });
-  assert.ok(props?.context);
-  const enabled = props.context.controls.filter((control) => !control.disabled).map((control) => control.id);
-  assert.deepEqual(enabled, ["series-selector"]);
-  for (const control of props.context.controls.filter((c) => c.disabled)) {
-    assert.equal(control.unavailableReason, "你只能查看");
-  }
-  for (const control of props.context.controls) {
-    if (control.id === "series-selector") continue;
-    props.onCommand({
-      selectionId: props.context.id,
-      selectionRevision: 3,
-      controlId: control.id,
-      value: control.kind === "toggle" ? true : "新值",
-    });
-  }
-  assert.deepEqual(calls, [], "只读时不应调用任何编辑器方法");
-  // 可写时同样的命令是会生效的（证明上面的 [] 不是因为命令本身无效）
-  const writable = chartEditorWith(false);
-  const writableProps = renderToolbar(ChartContextToolbar, { editor: writable.editor, readOnly: false });
-  writableProps.onCommand({
-    selectionId: writableProps.context.id,
-    selectionRevision: 3,
-    controlId: "title",
-    value: "新标题",
-  });
-  assert.ok(writable.calls.length > 0, "可写时改标题应调用编辑器");
-});
-
-test("图表指令面（Leo 帮我改）：只读时 mutates 指令拒绝且不碰编辑器，导出照常；可写时照改", async () => {
-  const deliveries = [];
-  const locked = chartEditorWith(true);
-  const surface = createChartCommandSurface({ editor: locked.editor, deliver: async (format) => void deliveries.push(format) });
-  const denied = await surface.run("chart-editor@1.set-title", { title: "偷改" });
-  assert.equal(denied.ok, false);
-  assert.equal(denied.message, VIEW_ONLY_REFUSAL);
-  assert.deepEqual(locked.calls, []);
-  const exported = await surface.run("chart-editor@1.export", { format: "png" });
-  assert.equal(exported.ok, true);
-  assert.deepEqual(deliveries, ["png"]);
-
-  const open = chartEditorWith(false);
-  const openSurface = createChartCommandSurface({ editor: open.editor, deliver: async () => undefined });
-  const allowed = await openSurface.run("chart-editor@1.set-title", { title: "新标题" });
-  assert.equal(allowed.ok, true);
-  assert.deepEqual(open.calls[0], ["setTitle", "新标题"]);
-});
-
 // ---------------------------------------------------------------- 图片工具条与指令面
 
 function imageEditorWith() {
@@ -406,12 +316,7 @@ test("DeckRoute 接线：指令面经只读闸、工具条 / 面板 / 上传 / �
   assert.equal((src.match(/<VisualViewOnlyPanel readOnly=\{viewOnly\}>/g) || []).length, 12, "十二个面板都包了只读外壳");
 });
 
-test("ChartRoute / ImageRoute 接线：工具条、面板、上传、撤销都吃同一个 viewOnly；图片素材与 AI 入口各挡一次", () => {
-  const chart = readFileSync(new URL("../src/shell/advanced-routes/ChartRoute.tsx", import.meta.url), "utf8");
-  assert.match(chart, /<ChartContextToolbar editor=\{editor\} accent=\{accent\} readOnly=\{viewOnly\} \/>/);
-  assert.match(chart, /<VisualViewOnlyPanel readOnly=\{viewOnly\}>\s*<ChartControls/);
-  assert.match(chart, /viewOnlyUploadHandler\(viewOnly, importLocalData\)/);
-  assert.match(chart, /canUndo: editor\.canUndo && !viewOnly/);
+test("ImageRoute 接线：工具条、面板、上传、撤销都吃同一个 viewOnly；图片素材与 AI 入口各挡一次", () => {
   const image = readFileSync(new URL("../src/shell/advanced-routes/ImageRoute.tsx", import.meta.url), "utf8");
   assert.match(image, /<FabricImageContextToolbar editor=\{editor\} accent=\{accent\} readOnly=\{viewOnly\} \/>/);
   assert.match(image, /viewOnlyUploadHandler\(viewOnly, addLocalImages\)/);
@@ -470,24 +375,6 @@ function enabledMutatingTags(html, allowLabels = []) {
     return true;
   });
 }
-
-test("真渲染：图表浮条只读时，除「切换当前系列」与打开面板的入口外没有可点的改动按钮；可写时有", async () => {
-  const { ChartContextToolbar } = await import(
-    await compileModule("src/shell/chart-editor/ChartContextToolbar.tsx", { "../../i18n/ui/useUI": useUiStub })
-  );
-  const locked = renderToStaticMarkup(
-    React.createElement(ChartContextToolbar, { editor: chartEditorWith(false).editor, readOnly: true }),
-  );
-  assert.match(locked, /disabled=""/);
-  assert.match(locked, /title="图例：你只能查看"/);
-  assert.deepEqual(enabledMutatingTags(locked, ["当前系列（单选）"]), []);
-  assert.match(locked, /aria-label="当前系列（单选）"/, "查看类控件仍在");
-  const open = renderToStaticMarkup(
-    React.createElement(ChartContextToolbar, { editor: chartEditorWith(false).editor, readOnly: false }),
-  );
-  assert.ok(enabledMutatingTags(open, ["当前系列（单选）"]).length > 0, "可写时应有可点的改动按钮（证明上面的空数组不是渲染不出东西）");
-  assert.doesNotMatch(open, /你只能查看/);
-});
 
 for (const selectedType of ["text", "shape", "image"]) {
   test(`真渲染：PPT 浮条（选中${selectedType}）只读时没有可点的改动按钮；可写时有`, async () => {

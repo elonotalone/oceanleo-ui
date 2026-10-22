@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { buildEditorEmbedUrl } from "../src/shell/editor-protocol.ts";
-import { HOSTED_EDITOR_ORIGINS } from "../src/shell/hosted-editor-origins.ts";
 import { TRUSTED_EMBED_EDITOR_SANDBOX, UNTRUSTED_FRAME_SANDBOX } from "../src/shell/editor-sandbox-origin.ts";
 import { isLeoDevPreviewHost } from "../src/lib/auth/config.ts";
 import {
@@ -68,12 +67,14 @@ test("LeoDev 宿主判定与 isLeoDevPreviewHost 同一条正则", () => {
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：按 `*.oceanleo.app` 后缀授信会把用户站和 UGC 预览当成可嵌编辑器。
-test("覆盖目标只接受 LeoDev 槽或 Hosted 编辑器全串，拒绝 UGC 与后缀猜测", () => {
+test("覆盖目标只接受 LeoDev 槽，拒绝 UGC、前 Hosted 编辑器 origin 与后缀猜测", () => {
   assert.equal(isAllowedFamilyEmbedOverrideOrigin(SLOT_ORIGIN), true);
-  for (const origin of HOSTED_EDITOR_ORIGINS) {
-    assert.equal(isAllowedFamilyEmbedOverrideOrigin(origin), true, origin);
-  }
   for (const origin of [
+    // 2026-10-22：前 Hosted 编辑器 origin 不再被接受。
+    "https://slides.oceanleo.app",
+    "https://docs.oceanleo.app",
+    "https://audio.oceanleo.app",
+    "https://3d.oceanleo.app",
     "https://p1--base.oceanleo.app",
     "https://game-42.oceanleo.app",
     "https://user.oceanleo.app",
@@ -159,7 +160,7 @@ test("LeoDev 宿主拒绝攻击者 origin，包括带凭据、端口、http、UG
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：通用 query 压过分子站参数时，design/video 会被指到错误 origin。
-test("分站 query 优先于通用 embed_origin；Hosted 编辑器 origin 可被接受", () => {
+test("分站 query 优先于通用 embed_origin；前 Hosted 编辑器 origin 被拒绝", () => {
   assert.equal(
     apply(WEBSITE_BASE, SLOT, {
       search: `?embed_origin=${encodeURIComponent("https://evil.com")}&website_embed_origin=${encodeURIComponent(SLOT_ORIGIN)}`,
@@ -168,9 +169,9 @@ test("分站 query 优先于通用 embed_origin；Hosted 编辑器 origin 可被
   );
   assert.equal(
     apply(WEBSITE_BASE, SLOT, {
-      search: `?embed_origin=${encodeURIComponent(HOSTED_EDITOR_ORIGINS[0])}`,
+      search: `?embed_origin=${encodeURIComponent("https://slides.oceanleo.app")}`,
     }),
-    `${HOSTED_EDITOR_ORIGINS[0]}/embed/site-editor`,
+    WEBSITE_BASE,
   );
 });
 
@@ -249,10 +250,10 @@ test("env 映射：非法目标逐条丢弃，不拖累合法条目；未知键�
   ]) {
     assert.equal(apply(WEBSITE_BASE, SLOT, { envValue: bad }), WEBSITE_BASE, bad);
   }
-  // Hosted 编辑器 origin 在映射里同样可接受
+  // 前 Hosted 编辑器 origin 在映射里同样被拒绝
   assert.equal(
-    apply(WEBSITE_BASE, SLOT, { envValue: `website=${HOSTED_EDITOR_ORIGINS[0]}` }),
-    `${HOSTED_EDITOR_ORIGINS[0]}/embed/site-editor`,
+    apply(WEBSITE_BASE, SLOT, { envValue: "website=https://slides.oceanleo.app" }),
+    WEBSITE_BASE,
   );
 });
 
@@ -273,7 +274,8 @@ test("LeoDev 家族路径才给同源沙箱；UGC 与生产宿主上的槽位 UR
   assert.equal(isLeoDevFamilyEmbedBase(SLOT_WEBSITE), true);
   assert.equal(isLeoDevFamilyEmbedBase(`${SLOT_ORIGIN}/embed/attacker`), false);
   assert.equal(canLoadFamilyEmbedBase(SLOT_WEBSITE, SLOT), true);
-  assert.equal(canLoadFamilyEmbedBase(WEBSITE_BASE, SLOT), true);
+  // 2026-10-22：生产子站 base 不再在白名单里，所以 LeoDev 槽上也不再放行它。
+  assert.equal(canLoadFamilyEmbedBase(WEBSITE_BASE, SLOT), false);
   assert.equal(
     familyEmbedFrameSandbox(SLOT_WEBSITE, SLOT),
     TRUSTED_EMBED_EDITOR_SANDBOX,

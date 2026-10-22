@@ -77,7 +77,6 @@ import {
   markEditorOpen,
 } from "./editor-open-timing";
 import {
-  ensureHostedEditorPreconnect,
   installEditorHoverPreload,
   loadEditorModuleWithRetry,
   preloadEditorFor,
@@ -169,16 +168,10 @@ const GridRoute = lazyRoute("grid", () =>
 const DeckRoute = lazyRoute("deck", () =>
   import("./advanced-routes/DeckRoute").then((module) => module.DeckRoute),
 );
-const EmbeddedRoute = lazyRoute("embed", () =>
-  import("./advanced-routes/EmbeddedRoute").then(
-    (module) => module.EmbeddedRoute,
+const WebsiteLocalRoute = lazyRoute("website", () =>
+  import("./advanced-routes/WebsiteLocalRoute").then(
+    (module) => module.WebsiteLocalRoute,
   ),
-);
-const ChartRoute = lazyRoute("chart", () =>
-  import("./advanced-routes/ChartRoute").then((module) => module.ChartRoute),
-);
-registerEditorRouteLoader("chart-editor@1", () =>
-  import("./advanced-routes/ChartRoute").then((module) => module.ChartRoute),
 );
 const GameRoute = lazyRoute("game", () =>
   import("./advanced-routes/GameRoute").then((module) => module.GameRoute),
@@ -264,7 +257,6 @@ export function AdvancedContentWorkbench(
   useWorkbenchOpenClaim(true);
   useEffect(() => {
     const stopHover = installEditorHoverPreload();
-    ensureHostedEditorPreconnect();
     const stopIdle = scheduleSiteHomeEditorPreload();
     return () => {
       stopHover();
@@ -907,11 +899,7 @@ function AdvancedContentWorkbenchRuntime(
   // preview, React tore down ImageRoute, Fabric reloaded from scratch.
   const routeKey = `${capability.adapter}:${routeItem.kind}:${advancedRootItemId(routeItem)}`;
   let editor: ReactNode;
-  if (capability.adapter === "video-canvas") {
-    editor = <VideoCanvasRoute {...activeProps} />;
-  } else if (capability.adapter === "chart-editor@1") {
-    editor = <ChartRoute {...activeProps} />;
-  } else switch (route.type) {
+  switch (route.type) {
     case "video-timeline":
       editor = <VideoTimelineRoute {...activeProps} />;
       break;
@@ -939,8 +927,11 @@ function AdvancedContentWorkbenchRuntime(
     case "game":
       editor = <GameRoute {...activeProps} />;
       break;
-    case "embed":
-      editor = <EmbeddedRoute {...activeProps} />;
+    case "website":
+      editor = <WebsiteLocalRoute {...activeProps} />;
+      break;
+    case "video-canvas":
+      editor = <VideoCanvasRoute {...activeProps} />;
       break;
     case "none":
     default:

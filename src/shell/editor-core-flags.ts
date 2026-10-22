@@ -67,19 +67,15 @@ export const EDITOR_CORE_SPECS: Record<EditorCoreId, EditorCoreSpec> = {
     hosting: "native",
     defaultChoice: "next",
   },
+  // 图片与设计画布合并为一个编辑器（Fabric 6），设计画布不再有独立台账行。
   image: { nextCore: "Fabric 6（图片·设计合并）", owner: "W04", hosting: "native" },
-  "design-canvas": { nextCore: "Fabric 6（同上）", owner: "W05", hosting: "native" },
   pdf: { nextCore: "EmbedPDF", owner: "W06", hosting: "native" },
-  deck: { nextCore: "PPTist", owner: "W07", hosting: "hosted" },
-  richdoc: { nextCore: "Umo Editor", owner: "W08", hosting: "hosted" },
-  "video-timeline": {
-    nextCore: "designcombo/react-video-editor",
-    owner: "W09",
-    hosting: "native",
-  },
-  audio: { nextCore: "waveform-playlist + AudioMass", owner: "W10", hosting: "hosted" },
-  threed: { nextCore: "three.js editor", owner: "W11", hosting: "hosted" },
-  "chart-editor": { nextCore: "ECharts 6 + @antv/ava", owner: "W12", hosting: "native" },
+  // 2026-10-22：不再有 Hosted 编辑器。deck / richdoc / audio / threed 都是原生单模式。
+  deck: { nextCore: null, owner: "W07", hosting: "none" },
+  richdoc: { nextCore: "Tiptap", owner: "W08", hosting: "native" },
+  "video-timeline": { nextCore: null, owner: "W09", hosting: "none" },
+  audio: { nextCore: "wavesurfer.js", owner: "W10", hosting: "native" },
+  threed: { nextCore: null, owner: "W11", hosting: "none" },
   website: { nextCore: "Puck", owner: "W13", hosting: "native" },
   game: { nextCore: null, owner: "W14", hosting: "none" },
   // 视频画布：React Flow 是唯一编辑面；专业编辑不可用。

@@ -7,9 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-import { preferLocalRemoteEditor } from "../src/shell/client-local-editors.ts";
 import {
-  localRemoteEditorWorkbenchChoice,
   storedEditorProjectUrl,
 } from "../src/shell/advanced-routes/stored-editor-project.ts";
 import {
@@ -48,11 +46,6 @@ import {
 } from "../src/shell/video-editor/timeline-model.ts";
 import { planGamePreviewControl } from "../src/shell/game-editor/game-preview-controls.ts";
 
-const embedded = readFileSync(
-  "src/shell/advanced-routes/EmbeddedRoute.tsx",
-  "utf8",
-);
-
 function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
 }
@@ -76,18 +69,6 @@ test("stored projects skip credentialed source-tree descriptors for readable del
   assert.equal(result.ok, true);
   assert.equal(fetched, deliveryUrl);
   assert.equal(storedEditorProjectUrl({ artifact: item.artifact }), "");
-});
-
-test("web default dispatches website/design remotes to hosted embed, not the inline-only local core", () => {
-  assert.equal(preferLocalRemoteEditor("website"), false);
-  assert.equal(preferLocalRemoteEditor("design-canvas"), false);
-  assert.equal(localRemoteEditorWorkbenchChoice(false), "hosted-embed");
-  assert.equal(localRemoteEditorWorkbenchChoice(true), "local-core");
-  assert.match(embedded, /preferLocalWebsite/);
-  assert.match(embedded, /WebsiteLocalRoute/);
-  assert.match(embedded, /preferLocalDesignCanvas/);
-  assert.match(embedded, /DesignCanvasLocalRoute/);
-  assert.match(embedded, /<EmbedEditorPane/);
 });
 
 test("website: durable without inline meta loads a valid remote website-source@1; malformed stays fail-closed", async () => {

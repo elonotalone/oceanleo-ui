@@ -70,28 +70,6 @@ test("rich-doc source failures cannot become saveable blank documents", async ()
   assert.match(route, /editor\.sourceReady[\s\S]*capture:/);
 });
 
-test("chart load failure hides and fences the sample fallback", async () => {
-  const [hook, route] = await Promise.all([
-    source("src/shell/chart-editor/use-chart-workbench.ts"),
-    source("src/shell/advanced-routes/ChartRoute.tsx"),
-  ]);
-
-  assert.match(hook, /sourceReadyRef\.current = false;[\s\S]*setSourceReady\(false\);/);
-  assert.match(
-    hook,
-    /if \(!sourceReadyRef\.current\) \{[\s\S]*已阻止修改示例回退内容/,
-  );
-  assert.match(
-    hook,
-    /if \(!sourceReadyRef\.current\) \{[\s\S]*已阻止保存示例回退内容/,
-  );
-  assert.match(route, /!editor\.loading && !editor\.sourceReady/);
-  assert.match(
-    route,
-    /capture:\s*\(\) =>[\s\S]*editor\.sourceReady\s*\?\s*structuredClone\(editor\.document\)\s*:\s*null/,
-  );
-});
-
 test("PDF blank creation is explicit and disposed page loads release resources", async () => {
   const { loadInitialPdfSource } = await import(
     "../src/shell/media-editors/pdf-source.ts"

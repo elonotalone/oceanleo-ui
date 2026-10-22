@@ -1,282 +1,67 @@
 /**
- * A-92 / A-95 第二条闸：托管编辑器 iframe 渲染层的 sandbox。
+ * UC-3 gate file (kept at this path because oceanleo-security-gate.sh runs it).
  *
- * UC-3 修订（2026-09-06 操作员裁定）：
- * docs/architecture/oceanleo-untrusted-content-isolation.md 「UC-3 修订」
- *
- * 既有那条（`hosted-editor-contract-v2`「A-24 的要害」）是单元层：
- * 调 `embedEditorFrameSandbox()` 看返回字符串。函数返回对，不等于
- * 画出来的 iframe 上挂的就是那个值——中间还有一段传递。
- *
- * 本文件锁的事实：仍在的四件专业模式（音频 / 3D / 幻灯 / 文档）真挂起来
- * 之后，DOM 上那个 iframe 的 sandbox 属性里**有** allow-same-origin
- * （HOSTED_EDITOR_SANDBOX）。
- * 不拿 `embedEditorFrameSandbox()` 的返回值当期望：函数和消费组件一起
- * 被改坏时，对返回值的相等断言会双双变绿，本闸必须仍红。
- *
- * 2026-09-06 W12：删除「游戏 / 工作流专业模式」两条。W08 已拆掉
- * `GameHostedFrame.tsx` 与 `langflow-hosted-frame.tsx`，再挂这两件是
- * 在断言一个已经不存在的产品面。
+ * 2026-10-22 native-editors wave: the hosted editors (slides./docs./audio./3d.
+ * on oceanleo.app) are gone. The positive "hosted frame gets allow-same-origin"
+ * assertions went with them. What stays is the negative half, which is the part
+ * that protects users: no former hosted origin, no injected loopback origin and
+ * no UGC domain may ever be trusted as an editor, receive a same-origin
+ * sandbox, or be accepted as a postMessage origin.
  */
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import test from "node:test";
-import { pathToFileURL } from "node:url";
 
-import React, { act } from "react";
+import {
+  isTrustedEditorOrigin,
+  isValidEditorTargetOrigin,
+} from "../src/shell/editor-protocol.ts";
+import {
+  UNTRUSTED_FRAME_SANDBOX,
+  embedEditorFrameSandbox,
+  isTrustedEmbedEditorBase,
+  sandboxGrantsScriptedSameOrigin,
+} from "../src/shell/editor-sandbox-origin.ts";
+import { isAllowedFamilyEmbedOverrideOrigin } from "../src/shell/family-embed-origin.ts";
 
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+const FORMER_HOSTED = [
+  "https://slides.oceanleo.app",
+  "https://docs.oceanleo.app",
+  "https://audio.oceanleo.app",
+  "https://3d.oceanleo.app",
+  "https://game-ide.oceanleo.app",
+  "https://flow.oceanleo.app",
+  "https://slides.ws.oceanleo.app",
+];
 
-const require = createRequire(import.meta.url);
-const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
-const fabricRequire = createRequire(require.resolve("fabric/node"));
-const canvasEntry = fabricRequire.resolve("canvas");
-const previousCanvasModule = require.cache[canvasEntry];
-require.cache[canvasEntry] = {
-  id: canvasEntry,
-  filename: canvasEntry,
-  loaded: true,
-  exports: {},
-};
-const { JSDOM } = await import(
-  pathToFileURL(fabricRequire.resolve("jsdom")).href
-);
-if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
-else delete require.cache[canvasEntry];
-
-const HOST_PAGE = "https://oceanleo.com/workspace";
-const AUDIO_ORIGIN = "https://audio.oceanleo.app";
-const MODEL3D_ORIGIN = "https://3d.oceanleo.app";
-
-const dom = new JSDOM("<!doctype html><html><body></body></html>", {
-  pretendToBeVisual: true,
-  url: HOST_PAGE,
-});
-const { window } = dom;
-for (const [name, value] of Object.entries({
-  window,
-  document: window.document,
-  navigator: window.navigator,
-  HTMLElement: window.HTMLElement,
-  HTMLIFrameElement: window.HTMLIFrameElement,
-  Element: window.Element,
-  Node: window.Node,
-  Event: window.Event,
-  CustomEvent: window.CustomEvent,
-  MouseEvent: window.MouseEvent,
-  localStorage: window.localStorage,
-  sessionStorage: window.sessionStorage,
-})) {
-  Object.defineProperty(globalThis, name, {
-    configurable: true,
-    writable: true,
-    value,
-  });
-}
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
-globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
-
-const shellStubUrl = dataModule(`
-  import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
-  export function AdvancedWorkbenchShell({ adapter }) {
-    return jsxs("div", {
-      "data-role": "hosted-editor-shell",
-      children: [
-        adapter && adapter.stage ? adapter.stage : null,
-        adapter && adapter.status
-          ? jsx("div", { "data-role": "hosted-editor-status", children: adapter.status })
-          : null,
-      ],
-    });
+test("UC-3: former hosted-editor origins are no longer trusted anywhere", () => {
+  for (const origin of FORMER_HOSTED) {
+    assert.equal(isTrustedEditorOrigin(origin), false, origin);
+    assert.equal(isValidEditorTargetOrigin(origin), false, origin);
+    assert.equal(isTrustedEmbedEditorBase(origin), false, origin);
+    assert.equal(isAllowedFamilyEmbedOverrideOrigin(origin), false, origin);
   }
-`);
-const routesStubUrl = dataModule(`
-  export function editorToolLabel() { return "hosted"; }
-  export function officeExtensionForItem() { return ""; }
-`);
-const hostedToolbarStubUrl = dataModule(`
-  export function RichDocHostedContextToolbar() { return null; }
-`);
-const agentReviewStubUrl = dataModule(`
-  export function submitRawReviewProposal() { return "ok"; }
-`);
+});
 
-function sandboxTokens(sandbox) {
-  return new Set(String(sandbox).toLowerCase().split(/\s+/).filter(Boolean));
-}
+test("UC-3: former hosted-editor origins get the untrusted sandbox (no scripted same-origin)", () => {
+  for (const origin of [...FORMER_HOSTED, "https://slides.oceanleo.app/"]) {
+    const sandbox = embedEditorFrameSandbox(origin);
+    assert.equal(sandbox, UNTRUSTED_FRAME_SANDBOX, origin);
+    assert.equal(sandboxGrantsScriptedSameOrigin(sandbox), false, origin);
+  }
+});
 
-function assertIframeGrantsHostedSameOrigin(iframe, label) {
-  assert.ok(iframe, `${label}：专业模式挂起来之后没有 iframe 节点`);
-  assert.equal(
-    iframe.tagName,
-    "IFRAME",
-    `${label}：画布节点不是 iframe`,
-  );
-  assert.equal(
-    iframe.hasAttribute("sandbox"),
-    true,
-    `${label}：iframe 上没有 sandbox 属性，等于沙箱不存在`,
-  );
-  const sandbox = iframe.getAttribute("sandbox") || "";
-  const tokens = sandboxTokens(sandbox);
-  // 字面量令牌，不拿 embedEditorFrameSandbox() 返回值当期望。
-  assert.equal(
-    tokens.has("allow-same-origin"),
-    true,
-    `${label}专业模式的 iframe 上，实际挂的 sandbox 必须有 allow-same-origin`,
-  );
-  assert.equal(
-    tokens.has("allow-scripts"),
-    true,
-    `${label}专业模式的 iframe 上，实际挂的 sandbox 必须有 allow-scripts`,
-  );
-  assert.equal(
-    sandbox,
-    "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals",
-    `${label}：DOM sandbox 必须是 HOSTED_EDITOR_SANDBOX 令牌串`,
-  );
-}
-
-async function mountCompiled(entry, stubs, element) {
-  const url = await compileModule(entry, {
-  "./deck-hosted-save": dataModule(`export async function saveHostedDeck() { throw new Error("unexpected durable save in an opening test"); }`),
-    ...stubs,
-  });
-  const mod = await import(url);
-  const { createRoot } = await import("react-dom/client");
-  const container = window.document.createElement("div");
-  window.document.body.append(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(element(mod));
-  });
-  await act(async () => {});
-  return {
-    container,
-    async unmount() {
-      await act(async () => root.unmount());
-      container.remove();
-    },
+test("UC-6: injected local-hosted loopback origins are not trusted (feature removed)", () => {
+  globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+    platform: "desktop",
+    capabilities: ["local-hosted:slides=http://127.0.0.1:4173"],
   };
-}
-
-function workbenchItem(kind, id) {
-  return {
-    key: id,
-    source: "artifact",
-    id,
-    title: "闸",
-    kind,
-    siteId: "website",
-    favorite: false,
-    meta: {},
-  };
-}
-
-// UC-3 修订（2026-09-06）：我方部署的 AudioMass 拿隔离域同源沙箱。
-test("音频专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
-  const mounted = await mountCompiled(
-    "src/shell/media-editors/AudioHostedFrame.tsx",
-    {},
-    (mod) =>
-      React.createElement(mod.AudioHostedFrame, {
-        instanceId: "w30-audio",
-        hostOrigin: "https://oceanleo.com",
-        src: `${AUDIO_ORIGIN}/?embed=1`,
-        title: "AudioMass",
-        onReady() {},
-        onSnapshot() {},
-        onError() {},
-      }),
-  );
   try {
-    assertIframeGrantsHostedSameOrigin(
-      mounted.container.querySelector("[data-testid=audio-hosted-frame]"),
-      "音频",
+    assert.equal(isTrustedEmbedEditorBase("http://127.0.0.1:4173"), false);
+    assert.equal(
+      sandboxGrantsScriptedSameOrigin(embedEditorFrameSandbox("http://127.0.0.1:4173")),
+      false,
     );
   } finally {
-    await mounted.unmount();
-  }
-});
-
-// UC-3 修订（2026-09-06）：我方部署的 three.js editor 拿隔离域同源沙箱。
-test("3D 专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
-  const mounted = await mountCompiled(
-    "src/shell/media-editors/Model3DHostedFrame.tsx",
-    {},
-    (mod) =>
-      React.createElement(mod.Model3DHostedFrame, {
-        instanceId: "w30-model3d",
-        hostOrigin: "https://oceanleo.com",
-        src: `${MODEL3D_ORIGIN}/?embed=1`,
-        title: "three.js editor",
-        onReady() {},
-        onSnapshot() {},
-        onError() {},
-      }),
-  );
-  try {
-    assertIframeGrantsHostedSameOrigin(
-      mounted.container.querySelector("[data-testid=model3d-hosted-frame]"),
-      "3D",
-    );
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-// UC-3 修订（2026-09-06）：我方部署的 PPTist 拿隔离域同源沙箱。
-// PPTist 要等稿件读出来才挂（G4），所以这里给一份内嵌稿，走真实的读稿与 sandbox 模块。
-test("幻灯片专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
-  const mounted = await mountCompiled(
-    "src/shell/advanced-routes/DeckHostedRoute.tsx",
-    {
-      "../AdvancedWorkbenchShell": shellStubUrl,
-      "../workbench-routes": routesStubUrl,
-    },
-    (mod) =>
-      React.createElement(mod.DeckHostedRoute, {
-        item: {
-          ...workbenchItem("ppt", "w30-slides"),
-          meta: { deck: { format: "pptist", slides: [{ id: "s1", elements: [] }] } },
-        },
-        onClose() {},
-      }),
-  );
-  await act(async () => {});
-  try {
-    assertIframeGrantsHostedSameOrigin(
-      mounted.container.querySelector("iframe"),
-      "幻灯片",
-    );
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-// UC-3 修订（2026-09-06）：我方部署的 Umo 拿隔离域同源沙箱。
-test("文档专业模式的 iframe 上，实际挂的 sandbox 含 allow-same-origin", async () => {
-  const mounted = await mountCompiled(
-    "src/shell/advanced-routes/RichDocHostedRoute.tsx",
-    {
-      "../AdvancedWorkbenchShell": shellStubUrl,
-      "../workbench-routes": routesStubUrl,
-      "../agent-review": agentReviewStubUrl,
-      "../doc-editors/RichDocHostedContextToolbar": hostedToolbarStubUrl,
-    },
-    (mod) =>
-      React.createElement(mod.RichDocHostedRoute, {
-        item: workbenchItem("document", "w30-docs"),
-        onClose() {},
-      }),
-  );
-  try {
-    assertIframeGrantsHostedSameOrigin(
-      mounted.container.querySelector("iframe"),
-      "文档",
-    );
-  } finally {
-    await mounted.unmount();
+    delete globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__;
   }
 });

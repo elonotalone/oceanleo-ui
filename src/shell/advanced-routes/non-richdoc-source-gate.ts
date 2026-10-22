@@ -9,10 +9,7 @@ import { planWebsiteLocalSource } from "../website-local/website-local-source";
 import { planDesignCanvasSource } from "../design-canvas/design-canvas-source";
 import type { WebsiteSource } from "../website-source-carrier/website-source-schema";
 
-export {
-  localRemoteEditorWorkbenchChoice,
-  storedEditorProjectUrl,
-} from "./stored-editor-project";
+export { storedEditorProjectUrl } from "./stored-editor-project";
 export {
   hydrateWebsiteLocalSource,
   planWebsiteLocalSource,

@@ -149,23 +149,17 @@ test("opaque URLs and blob uploads still identify every PPTX as a native deck", 
   assert.deepEqual(byFilename.route, { type: "deck" });
 });
 
-test("video canvas uses the typed node-canvas embed", () => {
-  // C5 家族化：base 不再是写死字面量，而是写死的「子站标签 + 路径」按当前家族
-  // 拼 origin。这里锁路由表条目形态，并用行为断言把默认家族（com）下拼出来的
-  // 完整 base 逐字钉死 —— 与家族化前的旧字面量断言等价。
-  assert.match(
-    routes,
-    /subsite: "video",\s*path: "\/canvas-board",\s*mediaType: "video_canvas"/,
-  );
-  const capability = editorCapabilityFor({
-    id: "vc",
-    title: "vc",
-    kind: "video_canvas",
-    meta: { advanced_editor_route: "embed" },
-  });
-  assert.deepEqual(capability.route, {
-    type: "embed",
-    base: "https://video.oceanleo.com/canvas-board",
-    mediaType: "video_canvas",
-  });
+test("video canvas opens the local node canvas (no sub-site embed)", () => {
+  // Legacy items pinned "embed" are aliased at read time, never rewritten.
+  for (const meta of [{ advanced_editor_route: "embed" }, {}]) {
+    const capability = editorCapabilityFor({
+      id: "vc",
+      title: "vc",
+      kind: "video_canvas",
+      meta,
+    });
+    assert.equal(capability.available, true);
+    assert.equal(capability.adapter, "video-canvas");
+    assert.deepEqual(capability.route, { type: "video-canvas" });
+  }
 });

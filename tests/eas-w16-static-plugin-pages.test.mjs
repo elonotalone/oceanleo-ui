@@ -8,11 +8,6 @@ import test from "node:test";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import {
-  PLUGIN_AUX_PENDING_REASON,
-  WEBSITE_AUX_PAGE_IDS,
-  mergePluginAuxPages,
-} from "../src/shell/plugin-chrome/plugin-page-registry.ts";
 import { buildPluginPages } from "../src/shell/plugin-chrome/plugin-pages.ts";
 
 const require = createRequire(import.meta.url);
@@ -30,8 +25,24 @@ const { PluginPageRow } = await import(
   })
 );
 
+// 2026-10-22：网站不再嵌子站，宿主不再有静态附加页登记表。这里只验证页签行
+// 对「置灰 / 就绪」附加页的渲染与点击行为（任何编辑器申报的 aux 页都一样）。
+const PLUGIN_AUX_PENDING_REASON = "编辑器还在加载";
+const WEBSITE_AUX_PAGE_IDS = ["code", "dashboard", "database", "storage"];
+const AUX_LABELS = { code: "源码", dashboard: "仪表盘", database: "数据库", storage: "文件存储" };
+
+function pendingAux() {
+  return WEBSITE_AUX_PAGE_IDS.map((id) => ({
+    id,
+    label: AUX_LABELS[id],
+    kind: "aux",
+    disabled: true,
+    unavailableReason: PLUGIN_AUX_PENDING_REASON,
+  }));
+}
+
 function websiteFirstFrame() {
-  return buildPluginPages({ pluginId: "website" });
+  return buildPluginPages({ pluginId: "website", aux: pendingAux() });
 }
 
 test("网站首帧六个页签，四个附加页置灰", () => {
@@ -83,7 +94,7 @@ test("manifest 到达后同 id 可点；表外 id 追加", () => {
   ];
   const pages = buildPluginPages({
     pluginId: "website",
-    aux: mergePluginAuxPages("website", remote),
+    aux: remote,
   });
   assert.deepEqual(
     pages.map((page) => page.id),
@@ -97,15 +108,6 @@ test("manifest 到达后同 id 可点；表外 id 追加", () => {
   const extra = pages.find((page) => page.id === "analytics");
   assert.equal(extra.kind, "aux");
   assert.equal(extra.disabled, false);
-});
-
-test("EmbeddedRoute 首帧就把静态表交给页签行", () => {
-  const route = readFileSync(
-    new URL("../src/shell/advanced-routes/EmbeddedRoute.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(route, /mergePluginAuxPages\(\s*embeddedAdapterId/);
-  assert.match(route, /aux: remoteAuxPages/);
 });
 
 async function withPageRowDom(run) {
@@ -190,22 +192,12 @@ async function withPageRowDom(run) {
 function readyWebsitePages() {
   return buildPluginPages({
     pluginId: "website",
-    aux: mergePluginAuxPages(
-      "website",
-      WEBSITE_AUX_PAGE_IDS.map((id) => ({
-        id,
-        label:
-          id === "code"
-            ? "源码"
-            : id === "dashboard"
-              ? "仪表盘"
-              : id === "database"
-                ? "数据库"
-                : "文件存储",
-        kind: "aux",
-        disabled: false,
-      })),
-    ),
+    aux: WEBSITE_AUX_PAGE_IDS.map((id) => ({
+      id,
+      label: AUX_LABELS[id],
+      kind: "aux",
+      disabled: false,
+    })),
   });
 }
 

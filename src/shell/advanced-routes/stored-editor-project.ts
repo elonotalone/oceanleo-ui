@@ -55,10 +55,4 @@ export function unwrapStoredEditorProject(text: string): unknown {
   return parsed;
 }
 
-export function localRemoteEditorWorkbenchChoice(
-  preferLocal: boolean,
-): "local-core" | "hosted-embed" {
-  return preferLocal ? "local-core" : "hosted-embed";
-}
-
 export type TextLoader = (url: string) => Promise<string>;

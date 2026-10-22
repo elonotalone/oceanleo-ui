@@ -79,7 +79,6 @@ test("tool bars stay single-line and keep viewport overflow reachable", () => {
     source("../src/shell/SelectionToolbarSelectControl.tsx") +
     source("../src/shell/selection-inspector-host.tsx") +
     source("../src/shell/anchored-popover.tsx");
-  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const image = source(
     "../src/shell/image-editor/FabricImageContextToolbar.tsx",
   );
@@ -96,9 +95,6 @@ test("tool bars stay single-line and keep viewport overflow reachable", () => {
   assert.match(image, /if \(!selected\) return null/);
   assert.match(image, /kind: selected\.kind/);
   assert.doesNotMatch(image, /tt\("创建与编辑"\)/);
-  assert.match(embedded, /hostedMediaType === "canvas"/);
-  assert.match(embedded, /hostedMediaType === "video_canvas"/);
-  assert.doesNotMatch(embedded, /selection\.id === "design-canvas"/);
 });
 
 test("normal apps call the result area generation and no advanced task surface remains", () => {

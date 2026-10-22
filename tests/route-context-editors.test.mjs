@@ -116,20 +116,6 @@ test("route toolbars put continuous and long-form controls in semantic inspector
     "../src/shell/image-editor/fabric-image-filter-controls.ts",
     ["brightness", "contrast", "saturation", "grayscale", "filter-reset"],
   );
-  assertInspectorControls(
-    "../src/shell/chart-editor/ChartContextToolbar.tsx",
-    [
-      "title",
-      "legend-color",
-      "legend-font-size",
-      "x-name",
-      "y-name",
-      "x-show",
-      "y-show",
-      "x-type",
-      "y-type",
-    ],
-  );
   // 表格只剩 Univer 舞台（core-swap:delete grid）：选区控件不是 JSX 字面量，
   // 而是 `gridUniverSelectionContext()` 从命令表算出来的，直接对着运行期结果判。
   const gridControls = gridUniverSelectionContext().controls;
@@ -276,17 +262,6 @@ test("route toolbar controls are backed by concrete persistent editor commands",
   assert.match(imageToolbar, /editor\.beginGesture\(\)/);
   assert.match(imageToolbar, /editor\.endGesture\(\)/);
   assert.match(imageToolbar, /editor\.cancelGesture\(\)/);
-
-  const chart = source("../src/shell/chart-editor/ChartContextToolbar.tsx");
-  assert.match(chart, /editor\.setAxis/);
-  assert.match(chart, /editor\.setLegend/);
-  assert.match(chart, /editor\.patchSeries/);
-  assert.match(chart, /legend-font-size/);
-  assert.match(chart, /textStyle:/);
-  assert.match(
-    source("../src/shell/chart-editor/ChartControls.tsx"),
-    /editor\.importCsv\(csv\)/,
-  );
 
   // 表格：每个浮条控件都要有一条真的进 Univer Facade 的命令（`run`），
   // 不许只有一个 id 摆在那里。旧核的 editor.xxx() 那套已随 core-swap:delete grid 删除。

@@ -17,10 +17,6 @@
 // **不要**在这里再加别的依赖。
 
 import {
-  HOSTED_EDITOR_ORIGINS,
-  isHostedEditorOrigin,
-} from "./hosted-editor-origins";
-import {
   UNTRUSTED_CONTENT_DOMAINS,
   currentDomainProfile,
   currentFamilyHasSubsite,
@@ -90,9 +86,9 @@ export function isUntrustedContentUrl(value: string): boolean {
 }
 
 /**
- * 协议嵌入编辑器的写死白名单，与 `workbench-routes.ts` 的 `route.base` 字面量
- * 一一对应。只有命中本表的 base 才允许 allow-same-origin 沙箱；任何用户可控
- * URL 接进这条路径时会自动降级为不可信沙箱并拒绝加载。
+ * 协议嵌入编辑器的写死白名单。只有命中本表的 base 才允许 allow-same-origin 沙箱；
+ * 任何用户可控 URL 接进这条路径时会自动降级为不可信沙箱并拒绝加载。
+ * 2026-10-22 起本表为空（见下方常量上的说明）：没有任何编辑器再是嵌入子站。
  *
  * 路由（子站标签 + 路径）是写死的；域名按**当前家族**拼，而且只有该家族**确实
  * 存在这个子站**时才进表：
@@ -107,11 +103,11 @@ export function isUntrustedContentUrl(value: string): boolean {
  *     fail closed（拿不到 same-origin，也构造不出 URL）。宁可暂时没有内嵌
  *     编辑器，也不能让境内或分身页面去嵌一个 `.com` 主机。
  */
-const EMBED_EDITOR_ROUTES = [
-  { subsite: "website", path: "/embed/site-editor" },
-  { subsite: "design", path: "/embed/editor" },
-  { subsite: "video", path: "/canvas-board" },
-] as const;
+const EMBED_EDITOR_ROUTES: readonly { subsite: string; path: string }[] = [
+  // 2026-10-22：website / design / video 子站不再作为编辑器被嵌入
+  // （网站 = 本地 Puck，设计画布 = 图片编辑器，视频画布 = 本地节点画布）。
+  // 表清空 ⇒ 任何 base 都拿不到 same-origin 沙箱，嵌入路径整条 fail closed。
+];
 
 export const TRUSTED_EMBED_EDITOR_BASES: readonly string[] = Object.freeze(
   EMBED_EDITOR_ROUTES.filter(({ subsite }) =>
@@ -126,61 +122,6 @@ const TRUSTED_EMBED_EDITOR_BASE_SET = new Set<string>(
   TRUSTED_EMBED_EDITOR_BASES,
 );
 
-/**
- * 命名空间 E 的六件 Hosted 编辑器 base（W01 判据 3 / 仲裁 A-24 /
- * 2026-09-06 操作员裁定 · plugin-chrome W07）。
- *
- * **与上面那张表并列，且刻意不合并**——两张表的语义不同：
- *   · `TRUSTED_EMBED_EDITOR_BASES` = 家族内第一方子站（`.com` / `.cn`），
- *     拿 `TRUSTED_EMBED_EDITOR_SANDBOX`（同源，因为它们本就在 SSO cookie 域）；
- *   · 本表 = 我方部署、写死白名单的独立可注册域 `*.oceanleo.app` 编辑器，
- *     拿 `HOSTED_EDITOR_SANDBOX`（同源只给它们自己的 origin）。
- *
- * 为什么现在给同源（2026-09-06 操作员裁定）：这些 origin 是我方部署、
- * 可控代码的独立可注册域。iframe 拿到 `allow-same-origin` 后 origin 是
- * `https://slides.oceanleo.app` 自己，不是 `null`。宿主才能把
- * `postMessage(envelope, "https://slides.oceanleo.app")` 投进去，静态资源
- * 也不再以 `null` origin 撞 CORS。它们**拿不到**家族 cookie：
- * `Domain=.oceanleo.com` 过不了 eTLD+1 边界（见 isolation 文档 UC-3 修订）。
- *
- * 真正的用户生成内容**不走本函数的 hosted 分支**：
- *   · website 预览 `p*--base.oceanleo.app` / `p<port>-<hex>.website.oceanleo.com`
- *   · game 运行时
- *   · cover frame
- * 这些继续 `UNTRUSTED_FRAME_SANDBOX` / `COVER_FRAME_SANDBOX`（无同源）。
- *
- * **cn 家族仍然 fail closed**（A-24 明写）：本表是六条写死的 `.app` 全串，
- * 与家族无关，也**不随当前家族变化**——境内没有对应部署（`W18-domains.md` §2：
- * `leoapp.cn` 无 ICP 备案、`*.oceanleo.cn` 无泛解析），所以境内页面拿到的是
- * 同样六条 `.app` base，而它们在境内是否可达由网关决定，不由本表放宽。
- *
- * ⚠️ 往这张表加一行 = 允许宿主给那个 origin 拼 embed URL，并且给同源沙箱。
- * 加之前先问：那个 origin 上跑的是不是我方可控代码？
- */
-export const HOSTED_EDITOR_EMBED_BASES: readonly string[] = Object.freeze(
-  HOSTED_EDITOR_ORIGINS,
-);
-
-/**
- * 这个 base 是不是命名空间 E 的 Hosted 编辑器。
- * 与 `isTrustedEmbedEditorBase()` 分开导出，是因为**沙箱档位不同**：
- * 前者也放行 URL 构造；本函数决定它拿 `HOSTED_EDITOR_SANDBOX`
- * （我方部署、隔离域、同源只给自己），而不是家族第一方那档。
- *
- * 运行时按当前家族判（`isHostedEditorOrigin`），不要用模块加载时的快照：
- * oceanbizs.com 上 PPTist 是 `slides.ws.oceanleo.app`。
- */
-export function isHostedEditorEmbedBase(base: string): boolean {
-  const normalized = normalizedEmbedBase(base);
-  if (!normalized) return false;
-  try {
-    const origin = new URL(normalized).origin;
-    return origin === normalized && isHostedEditorOrigin(origin);
-  } catch {
-    return false;
-  }
-}
-
 function normalizedEmbedBase(base: string): string {
   try {
     const url = new URL(base);
@@ -192,7 +133,6 @@ function normalizedEmbedBase(base: string): string {
 }
 
 const CLIENT_HOST_CONFIG_GLOBAL_KEY = "__OCEANLEO_CLIENT_HOST_CONFIG__";
-const LOCAL_HOSTED_CAPABILITY_PREFIX = "local-hosted:";
 const INJECTED_LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function nativeClientPlatform(platform: unknown): boolean {
@@ -202,59 +142,6 @@ function nativeClientPlatform(platform: unknown): boolean {
     platform === "android" ||
     platform === "harmony"
   );
-}
-
-/**
- * UC-3 / UC-6: loopback embed bases are trusted only when a native client host
- * injected this exact origin (`local-hosted:<label>=http://127.0.0.1:port`).
- * Web hosts never take this branch. Arbitrary localhost is not trusted.
- * Read from the host-config global slot so this module stays import-free.
- */
-function injectedLocalHostedOrigins(): string[] {
-  const slot = (globalThis as {
-    [CLIENT_HOST_CONFIG_GLOBAL_KEY]?: {
-      platform?: string;
-      capabilities?: readonly string[];
-    };
-  })[CLIENT_HOST_CONFIG_GLOBAL_KEY];
-  if (!slot || !nativeClientPlatform(slot.platform)) return [];
-  const origins: string[] = [];
-  for (const capability of slot.capabilities || []) {
-    if (!capability.startsWith(LOCAL_HOSTED_CAPABILITY_PREFIX)) continue;
-    const eq = capability.indexOf("=", LOCAL_HOSTED_CAPABILITY_PREFIX.length);
-    if (eq < 0) continue;
-    const origin = capability.slice(eq + 1).trim();
-    try {
-      const parsed = new URL(origin);
-      if (parsed.origin !== origin || parsed.username || parsed.password) continue;
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
-      const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-      if (!INJECTED_LOOPBACK_HOSTS.has(host)) continue;
-      origins.push(origin);
-    } catch {
-      continue;
-    }
-  }
-  return origins;
-}
-
-export function isInjectedLocalHostedEmbedBase(base: string): boolean {
-  const normalized = normalizedEmbedBase(base);
-  if (!normalized) return false;
-  return injectedLocalHostedOrigins().some((allowed) => {
-    if (normalized === allowed) return true;
-    try {
-      const allowedUrl = new URL(allowed);
-      const baseUrl = new URL(normalized);
-      return (
-        allowedUrl.origin === allowed &&
-        baseUrl.origin === allowedUrl.origin &&
-        (baseUrl.pathname === "" || baseUrl.pathname === "/")
-      );
-    } catch {
-      return false;
-    }
-  });
 }
 
 /** The native app's own loopback page origin. Not an embed-base allow-list. */
@@ -280,13 +167,7 @@ export function isNativeClientPageOrigin(origin: string): boolean {
 export function isTrustedEmbedEditorBase(base: string): boolean {
   const normalized = normalizedEmbedBase(base);
   if (!normalized) return false;
-  // 两张表都放行 URL 构造；沙箱档次的差别在 `embedEditorFrameSandbox()` 里。
-  // UC-3/UC-6：原生宿主注入的精确 loopback origin 也放行 URL 构造，网页永不。
-  return (
-    TRUSTED_EMBED_EDITOR_BASE_SET.has(normalized) ||
-    isHostedEditorEmbedBase(normalized) ||
-    isInjectedLocalHostedEmbedBase(normalized)
-  );
+  return TRUSTED_EMBED_EDITOR_BASE_SET.has(normalized);
 }
 
 /** 允许作为 postMessage targetOrigin / event.origin 的编辑器 origin。 */
@@ -316,15 +197,6 @@ export const PDF_FRAME_SANDBOX_EXEMPTION = "sandbox-exempt: pdf-plugin";
 export const TRUSTED_EMBED_EDITOR_SANDBOX =
   "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals";
 
-/**
- * 我方部署在隔离域 `*.oceanleo.app` 上的 Hosted 编辑器沙箱。
- * 令牌串与 `TRUSTED_EMBED_EDITOR_SANDBOX` 相同，但**单独命名**：
- * 语义是「隔离域上的可控代码，同源只给它自己的 origin，拿不到家族 cookie」，
- * 不是「家族第一方子站」。UGC 预览 / game 运行时不得引用本常量。
- */
-export const HOSTED_EDITOR_SANDBOX =
-  "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals";
-
 /** 第一方交互式产物（video_workflow HTML）。 */
 export const TRUSTED_INTERACTIVE_VIEWER_SANDBOX =
   "allow-scripts allow-forms allow-popups allow-downloads allow-same-origin";
@@ -340,12 +212,7 @@ export function sandboxGrantsScriptedSameOrigin(sandbox: string): boolean {
 }
 
 export function embedEditorFrameSandbox(editorBase: string): string {
-  // Hosted 六件**先判**：命中白名单才给 `HOSTED_EDITOR_SANDBOX`。
-  // 顺序反过来会让 `isTrustedEmbedEditorBase()` 先命中并发出
-  // `TRUSTED_EMBED_EDITOR_SANDBOX`——令牌串相同，但语义档位错了
-  // （家族第一方 vs 隔离域我方部署）。UGC / 未知 URL 走不可信档。
-  if (isHostedEditorEmbedBase(editorBase)) return HOSTED_EDITOR_SANDBOX;
-  if (isInjectedLocalHostedEmbedBase(editorBase)) return HOSTED_EDITOR_SANDBOX;
+  // UGC / 未知 URL 走不可信档（无 allow-same-origin）。
   return isTrustedEmbedEditorBase(editorBase)
     ? TRUSTED_EMBED_EDITOR_SANDBOX
     : UNTRUSTED_FRAME_SANDBOX;

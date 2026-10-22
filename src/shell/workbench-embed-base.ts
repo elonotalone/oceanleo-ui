@@ -16,16 +16,15 @@ import {
   familyEmbedOverrideInputFromWindow,
 } from "./family-embed-origin";
 import type { LibraryItem } from "./library-data";
-import { editorRouteFor } from "./workbench-routes";
 
 /**
- * 每类嵌入编辑器的写死白名单 base；只列已实现 editor.v1 接收端的页面。
- * 不得在这里套 LeoDev 覆盖：EmbedEditorPane 第一道闸只认白名单 base，
- * 覆盖由 pane 内的 `resolveEmbedLoadBase` 做。
+ * 2026-10-22：不再有任何编辑器路由是「嵌入子站」，所以恒为空串 = 没有可嵌的 base，
+ * EmbedEditorPane 第一道闸直接拒绝。保留导出只因 `VideoCanvasStage`（W07 的文件）
+ * 里那条已不可达的回落分支还在引用；W07 删掉它之后，本文件与 `workbench-embed.tsx`
+ * 一并删除。
  */
-export function embedEditorBase(item: LibraryItem): string {
-  const route = editorRouteFor(item);
-  return route.type === "embed" ? route.base : "";
+export function embedEditorBase(_item: LibraryItem): string {
+  return "";
 }
 
 export function resolveEmbedLoadBase(editorBase: string): {

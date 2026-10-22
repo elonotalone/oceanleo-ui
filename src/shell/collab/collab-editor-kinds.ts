@@ -11,7 +11,6 @@ const BY_ADAPTER: Readonly<Record<string, ImEditorKind | null>> = {
   image: "image",
   // design-canvas 一个适配器托三种作品：合成图（默认）、矢量图、流程图；见下方 artifactType 细分。
   "design-canvas": "image",
-  "chart-editor@1": "chart",
   game: "game",
   threed: "model3d",
   audio: "audio",

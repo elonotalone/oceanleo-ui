@@ -47,7 +47,6 @@ const FAMILY_URL = new URL("../src/contracts/domain-family.ts", import.meta.url)
 const CONFIG_URL = new URL("../src/lib/auth/config.ts", import.meta.url).href;
 const SANDBOX_URL = new URL("../src/shell/editor-sandbox-origin.ts", import.meta.url).href;
 const PROTOCOL_URL = new URL("../src/shell/editor-protocol.ts", import.meta.url).href;
-const HOSTED_URL = new URL("../src/shell/hosted-editor-origins.ts", import.meta.url).href;
 const MCP_URL = new URL("../src/shell/mcp-apps/protocol.ts", import.meta.url).href;
 const DECK_URL = new URL("../src/shell/deck-delivery-family.ts", import.meta.url).href;
 
@@ -119,7 +118,6 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
     const cfg = await import(${JSON.stringify(CONFIG_URL)});
     const sandbox = await import(${JSON.stringify(SANDBOX_URL)});
     const protocol = await import(${JSON.stringify(PROTOCOL_URL)});
-    const hosted = await import(${JSON.stringify(HOSTED_URL)});
     const mcp = await import(${JSON.stringify(MCP_URL)});
     const deck = await import(${JSON.stringify(DECK_URL)});
     const comBase = "https://website.oceanleo.com/embed/site-editor";
@@ -142,13 +140,6 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
       subsiteOrigin: family.currentFamilySubsiteOrigin("design") ?? null,
       excelOrigin: family.currentFamilySubsiteOrigin("excel") ?? null,
       slideOrigin: family.currentFamilySubsiteOrigin("slide") ?? null,
-      hostedOrigins: [...hosted.HOSTED_EDITOR_ORIGINS],
-      slidesOrigin: hosted.hostedEditorOrigin("slides"),
-      docsOrigin: hosted.hostedEditorOrigin("docs"),
-      audioOrigin: hosted.hostedEditorOrigin("audio"),
-      model3dOrigin: hosted.hostedEditorOrigin("3d"),
-      hostedProd: hosted.isHostedEditorOrigin("https://slides.oceanleo.app"),
-      hostedWs: hosted.isHostedEditorOrigin("https://slides.ws.oceanleo.app"),
       hostedSandbox: sandbox.embedEditorFrameSandbox("https://slides.ws.oceanleo.app"),
       hostedProdSandbox: sandbox.embedEditorFrameSandbox("https://slides.oceanleo.app"),
       mcpOrigins: [...mcp.MCP_APPS_SANDBOX_ORIGINS],
@@ -190,41 +181,17 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
   assert.equal(ws.profileGateway, "https://api.oceanbizs.com");
   // 分身内嵌三件：白名单按 EMBED_EDITOR_ROUTES（website → design → video）。
   // UC-3：`.com` 编辑器 origin 在 ws 进程里仍不可信，仍不得 build 到 `.com`。
-  assert.deepEqual(ws.bases, [
-    "https://website.oceanbizs.com/embed/site-editor",
-    "https://design.oceanbizs.com/embed/editor",
-    "https://video.oceanbizs.com/canvas-board",
-  ]);
-  assert.deepEqual(ws.origins, [
-    "https://website.oceanbizs.com",
-    "https://design.oceanbizs.com",
-    "https://video.oceanbizs.com",
-  ]);
+  // 2026-10-22：子站不再作为编辑器被嵌入，白名单为空（所有家族）。
+  assert.deepEqual(ws.bases, []);
+  assert.deepEqual(ws.origins, []);
   assert.equal(ws.comBaseTrusted, false);
   assert.equal(ws.comBaseGrantsSameOrigin, false);
   assert.equal(ws.buildThrew, true, "ws 不得构造出指向 .com 编辑器的 embed URL");
   assert.equal(ws.subsiteOrigin, "https://design.oceanbizs.com");
   assert.equal(ws.excelOrigin, null);
   assert.equal(ws.slideOrigin, null);
-  // Hosted 六件 / MCP App 承载面：ws 自己的隔离区，生产的 .app 全串在 ws 页面上不在表里。
-  assert.deepEqual(
-    [...ws.hostedOrigins].sort(),
-    [
-      "https://3d.ws.oceanleo.app",
-      "https://audio.ws.oceanleo.app",
-      "https://docs.ws.oceanleo.app",
-      "https://flow.ws.oceanleo.app",
-      "https://game-ide.ws.oceanleo.app",
-      "https://slides.ws.oceanleo.app",
-    ],
-  );
-  assert.equal(ws.slidesOrigin, "https://slides.ws.oceanleo.app");
-  assert.equal(ws.docsOrigin, "https://docs.ws.oceanleo.app");
-  assert.equal(ws.audioOrigin, "https://audio.ws.oceanleo.app");
-  assert.equal(ws.model3dOrigin, "https://3d.ws.oceanleo.app");
-  assert.equal(ws.hostedWs, true);
-  assert.equal(ws.hostedProd, false);
-  assert.equal(ws.hostedSandbox, sandboxConst("HOSTED_EDITOR_SANDBOX"));
+  // Hosted 六件已下线：ws 的 slides.ws.oceanleo.app 与生产的 .app 全串一样不可信。
+  assert.equal(ws.hostedSandbox, sandboxConst("UNTRUSTED_FRAME_SANDBOX"));
   assert.equal(ws.hostedProdSandbox, sandboxConst("UNTRUSTED_FRAME_SANDBOX"));
   assert.deepEqual(ws.mcpOrigins, ["https://mcp-apps.ws.oceanleo.app"]);
   assert.equal(ws.mcpWsValid, true);
@@ -240,7 +207,7 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
   assert.equal(ws.wsAppViewer, false);
   assert.equal(ws.wsEditorOrigin, true);
   assert.equal(ws.comEditorOrigin, false);
-  assert.equal(ws.wsHostedEditorOrigin, true, "白名单成员资格给出的信任");
+  assert.equal(ws.wsHostedEditorOrigin, false, "Hosted 编辑器白名单已删除");
   assert.equal(ws.prodHostedEditorOrigin, false);
   assert.deepEqual(ws.untrusted, {
     app: true,
@@ -257,17 +224,16 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
 
 // UC-3 §8.3
 // 违反后果：加第三个家族让缺省（com）进程的白名单变了，就是把生产的信任面改了。
-test("ws/3 缺省家族（com）进程：Hosted 六件与 MCP 承载面逐字不变", () => {
+test("ws/3 缺省家族（com）进程：MCP 承载面逐字不变，ws 编辑器 origin 不被信任", () => {
   const probe = `
-    const hosted = await import(${JSON.stringify(HOSTED_URL)});
     const mcp = await import(${JSON.stringify(MCP_URL)});
     const deck = await import(${JSON.stringify(DECK_URL)});
     const family = await import(${JSON.stringify(FAMILY_URL)});
+    const protocol = await import(${JSON.stringify(PROTOCOL_URL)});
     process.stdout.write(JSON.stringify({
       family: family.currentDomainFamily(),
-      hostedOrigins: [...hosted.HOSTED_EDITOR_ORIGINS],
       mcpOrigins: [...mcp.MCP_APPS_SANDBOX_ORIGINS],
-      hostedWs: hosted.isHostedEditorOrigin("https://slides.ws.oceanleo.app"),
+      hostedWs: protocol.isTrustedEditorOrigin("https://slides.ws.oceanleo.app"),
       mcpWs: mcp.isValidAppSandboxOrigin("https://mcp-apps.ws.oceanleo.app"),
       deckWs: deck.DECK_HTML_RUNTIME_HOST.test("s-" + "a".repeat(32) + ".ws.oceanleo.app"),
       deckProd: deck.DECK_HTML_RUNTIME_HOST.test("s-" + "a".repeat(32) + ".oceanleo.app"),
@@ -275,17 +241,6 @@ test("ws/3 缺省家族（com）进程：Hosted 六件与 MCP 承载面逐字不
   `;
   const com = runProbe(probe, { NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY: "" });
   assert.equal(com.family, "com");
-  assert.deepEqual(
-    [...com.hostedOrigins].sort(),
-    [
-      "https://3d.oceanleo.app",
-      "https://audio.oceanleo.app",
-      "https://docs.oceanleo.app",
-      "https://flow.oceanleo.app",
-      "https://game-ide.oceanleo.app",
-      "https://slides.oceanleo.app",
-    ],
-  );
   assert.deepEqual(com.mcpOrigins, ["https://mcp-apps.oceanleo.app"]);
   assert.equal(com.hostedWs, false, "生产页面不得信任 ws 的编辑器 origin");
   assert.equal(com.mcpWs, false);
@@ -354,8 +309,6 @@ function sandboxConst(name) {
   if (!sandboxConsts) {
     // 同步读取常量：两个字符串在 editor-sandbox-origin.ts 里是字面量。
     sandboxConsts = {
-      HOSTED_EDITOR_SANDBOX:
-        "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals",
       UNTRUSTED_FRAME_SANDBOX:
         "allow-scripts allow-forms allow-popups allow-downloads",
     };

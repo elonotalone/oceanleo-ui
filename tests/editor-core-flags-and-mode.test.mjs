@@ -20,6 +20,7 @@ import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
+import { PRO_PAGE_EDITORS } from "../src/shell/plugin-chrome/plugin-pages.ts";
 import {
   DEFAULT_EDITOR_CORE,
   EDITOR_CORE_IDS,
@@ -50,16 +51,16 @@ beforeEach(() => {
 
 // ─── 判据 4：双核 flag ──────────────────────────────────────────────────────
 
-test("13 件编辑器每件一个 flag；grid 已翻成 next，其余 12 件默认 legacy", () => {
+test("11 件编辑器每件一个 flag；grid 已翻成 next，其余 10 件默认 legacy", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy", "全局默认档仍是 legacy");
-  assert.equal(EDITOR_CORE_IDS.length, 13, "13 件，一件不少");
+  assert.equal(EDITOR_CORE_IDS.length, 11, "11 件，一件不少（图表已删，设计画布并入图片）");
   // 2026-09-07 core-swap:delete grid：自研旧表格已删，grid 无覆盖时必须是 next——
   // 默认 legacy 就是渲染一个不存在的组件。签字写在台账那一行，不是改全局常量。
   assert.equal(EDITOR_CORE_SPECS.grid.defaultChoice, "next", "台账 grid 行没写 defaultChoice");
   assert.equal(editorCoreDefault("grid"), "next");
   assert.equal(resolveEditorCore("grid"), "next", "grid 无覆盖时必须是 next");
   const others = EDITOR_CORE_IDS.filter((id) => id !== "grid");
-  assert.equal(others.length, 12);
+  assert.equal(others.length, 10);
   for (const id of others) {
     assert.equal(EDITOR_CORE_SPECS[id].defaultChoice, undefined, `${id} 不该翻 flag`);
     assert.equal(resolveEditorCore(id), "legacy", id);
@@ -108,7 +109,7 @@ test("本波不换核的件恒为 legacy —— 翻 flag 也没用", () => {
 
 test("换核的件：显式入参 > 本地覆盖 > 默认", () => {
   const swap = EDITOR_CORE_IDS.filter((id) => editorSwapsCore(id));
-  assert.ok(swap.length >= 11, "本波换核的件应有 11 件（game 不再换核）");
+  assert.ok(swap.length >= 6, "仍换核的件应有 6 件（grid/image/pdf/richdoc/audio/website）");
   // 取一件台账默认仍是 legacy 的（grid 已翻 next，另有专门一例）。
   const id = swap.find((each) => editorCoreDefault(each) === "legacy");
   assert.ok(id, "换核且默认 legacy 的件一件都没有，这条在空转");
@@ -361,6 +362,8 @@ function loadShell() {
     `);
     const routesStubUrl = dataModule(`
       export function editBarOwnershipForItem() { return "host"; }
+      export function editorCapabilityFor() { return { available: false, adapter: "none", route: { type: "none" }, manifest: null, unavailableReason: "" }; }
+      export function editorRouteFor() { return { type: "none" }; }
     `);
     const stageStubUrl = dataModule(`
       import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
@@ -532,7 +535,7 @@ function modeHost(Header, pluginId, calls, extraProps = {}) {
   return React.createElement(ModeHost);
 }
 
-test("共用顶栏第二行有专业编辑页，每一件都有；第一行不再挂开关", async () => {
+test("共用顶栏第二行：只有 grid / pdf / website 有专业编辑页；第一行不再挂开关", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   const pluginIds = await loadPluginThemeIds();
   assert.ok(
@@ -559,17 +562,21 @@ test("共用顶栏第二行有专业编辑页，每一件都有；第一行不�
         `${pluginId}：第一行还挂着专业模式开关。产品规则已改成第二行「专业编辑」页。`,
       );
       const pro = find('[data-plugin-page="pro"]');
-      assert.ok(
-        pro,
-        `${pluginId}：第二行没有「专业编辑」页签。` +
-          "页签只画在 PluginChromeFrame 里、而这条壳不走 Frame，就是同一类漏接。",
-      );
-      assert.equal(pro.tagName, "BUTTON", `${pluginId}：页签不是可点的按钮`);
-      assert.match(
-        pro.getAttribute("aria-label") || pro.textContent || "",
-        /专业编辑/,
-        `${pluginId}：页签没有可读的名字`,
-      );
+      if (PRO_PAGE_EDITORS.includes(pluginId)) {
+        assert.ok(
+          pro,
+          `${pluginId}：第二行没有「专业编辑」页签。` +
+            "页签只画在 PluginChromeFrame 里、而这条壳不走 Frame，就是同一类漏接。",
+        );
+        assert.equal(pro.tagName, "BUTTON", `${pluginId}：页签不是可点的按钮`);
+        assert.match(
+          pro.getAttribute("aria-label") || pro.textContent || "",
+          /专业编辑/,
+          `${pluginId}：页签没有可读的名字`,
+        );
+      } else {
+        assert.equal(pro, null, `${pluginId}：不在 PRO_PAGE_EDITORS 里，不该有专业编辑页签`);
+      }
 
       const actionRow = find("[data-advanced-workspace-actions]");
       const pageRow = find("[data-plugin-page-row]");
@@ -677,8 +684,8 @@ test("编辑器没声明 mode：开关仍能点，点了就切档", async () => 
       React.createElement(
         InlineAdvancedWorkbenchHeader,
         headerProps({
-          pluginThemeId: "game",
-          adapter: { id: "game", label: "游戏", stage: null },
+          pluginThemeId: "grid",
+          adapter: { id: "grid", label: "表格", stage: null },
         }),
       ),
     );
@@ -688,7 +695,7 @@ test("编辑器没声明 mode：开关仍能点，点了就切档", async () => 
 
     await click(pro);
     assert.equal(
-      currentPluginMode("game"),
+      currentPluginMode("grid"),
       "pro",
       "点了专业编辑，档位没有切到 pro",
     );
@@ -832,6 +839,10 @@ function assertShellChromeVisible(find, adapterId, expectedThemeId) {
       `预期主题键 id=${expectedThemeId}。`,
   );
   const pro = find('[data-plugin-page="pro"]');
+  if (!PRO_PAGE_EDITORS.includes(expectedThemeId)) {
+    assert.equal(pro, null, `${adapterId}：不在 PRO_PAGE_EDITORS 里，壳上不该有专业编辑页签`);
+    return;
+  }
   assert.ok(pro, `${adapterId}：壳上没有专业编辑页签`);
   const concealed = concealmentOnAncestors(pro, header);
   assert.equal(
@@ -848,8 +859,9 @@ test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏", async (
   const pluginIds = await loadPluginThemeIds();
   assert.ok(pluginIds.length >= 10, "主题表缩到 10 以下，这条会空转");
 
-  // 带版本后缀的 adapter id 必须归一化（生产函数的契约），不许只测裸名。
-  const adapterIds = [...pluginIds, "chart-editor@1"];
+  // 带版本后缀的 adapter id 必须归一化（生产函数的契约），不许只测裸名；
+  // 旧的 design-canvas adapter id 读时别名到 image。
+  const adapterIds = [...pluginIds, "image@1", "design-canvas"];
 
   await withDom(async ({ render, find }) => {
     const { resetPluginModeCache } = await import(

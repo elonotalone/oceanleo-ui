@@ -49,31 +49,6 @@ const PLUGINS = [
     },
   },
   {
-    adapter: "chart-editor@1",
-    themeId: "chart-editor",
-    artifactType: "chart",
-    capability: "chart-editor",
-    item: {
-      kind: "image",
-      title: "chart",
-      url: "https://files.test/chart.json",
-      content: JSON.stringify({
-        title: { text: "收入" },
-        series: [{ type: "bar", data: [1, 2] }],
-      }),
-      meta: {
-        content_type: "chart",
-        editor: {
-          schema: "oceanleo.editor-manifest.v1",
-          id: "chart-editor",
-          version: 1,
-          capabilities: ["load", "mutate", "save", "reopen"],
-          source: { kind: "inline", format: "echarts-option+json" },
-        },
-      },
-    },
-  },
-  {
     adapter: "deck",
     themeId: "deck",
     artifactType: "deck",
@@ -166,7 +141,8 @@ const PLUGINS = [
   },
   {
     adapter: "design-canvas",
-    themeId: "design-canvas",
+    // Design canvas merged into the image editor: one theme id, read-time alias.
+    themeId: "image",
     artifactType: "composite_image",
     capability: "design-canvas-editor",
     item: {
@@ -214,8 +190,8 @@ function libraryItem(plugin, extra = {}) {
   };
 }
 
-test("13 plugins have static theme, registry roundTrip labels, and save contracts", () => {
-  assert.equal(PLUGINS.length, 13);
+test("12 plugin adapters have static theme, registry roundTrip labels, and save contracts", () => {
+  assert.equal(PLUGINS.length, 12);
   assert.deepEqual(Object.keys(PLUGIN_THEME_SPECS).sort(), [
     ...new Set(PLUGINS.map((plugin) => plugin.themeId)),
   ].sort());
@@ -275,4 +251,21 @@ test("capability routing does not send typed documents to the retired office ada
     assert.notEqual(capability.route?.type, "none");
   }
   assert.equal(editorAdapterForArtifactCapability("office-editor"), null);
+});
+
+test("deleted chart editor: no routable editor, chart items resolve read-only", () => {
+  assert.equal(artifactTypeHasRoutableEditor("chart"), false);
+  const capability = editorCapabilityFor({
+    key: "accept:chart",
+    source: "creation",
+    id: "chart",
+    title: "chart",
+    kind: "image",
+    siteId: "word",
+    favorite: false,
+    meta: { content_type: "chart" },
+  });
+  assert.equal(capability.available, false);
+  assert.equal(capability.route.type, "none");
+  assert.ok(capability.unavailableReason.length > 0);
 });

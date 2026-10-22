@@ -31,7 +31,6 @@ export type PluginThemeMode = "dark" | "light";
 export type PluginThemeId =
   | "richdoc"
   | "grid"
-  | "chart-editor"
   | "deck"
   | "image"
   | "pdf"
@@ -42,7 +41,6 @@ export type PluginThemeId =
   // 2026-08-30：三件 extracted 插件并入同一套主题。此前它们走站点主题别名，
   // 于是同一个陈列馆里并存三套 token（--awb-* / --wb-* / 站点语义变量），
   // 切插件会跳色。统一外壳要求 13 件同源，所以补进本表。
-  | "design-canvas"
   | "website"
   | "video-canvas";
 
@@ -56,7 +54,7 @@ export interface PluginThemeSpec {
 /**
  * 每件插件的本命默认与 accent 身份色（结构统一、风格各表）。
  * 默认档裁定见任务书：dark = threed / video-timeline / game / audio；
- * light = richdoc / grid / chart-editor / deck / image / pdf。
+ * light = richdoc / grid / deck / image / pdf。
  */
 export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
   richdoc: {
@@ -66,10 +64,6 @@ export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
   grid: {
     defaultTheme: "light",
     accent: { light: "#059669", dark: "#34d399" },
-  },
-  "chart-editor": {
-    defaultTheme: "light",
-    accent: { light: "#0284c7", dark: "#38bdf8" },
   },
   deck: {
     defaultTheme: "light",
@@ -98,10 +92,6 @@ export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
   game: {
     defaultTheme: "dark",
     accent: { light: "#16a34a", dark: "#4ade80" },
-  },
-  "design-canvas": {
-    defaultTheme: "light",
-    accent: { light: "#7c3aed", dark: "#a78bfa" },
   },
   website: {
     // 本命默认 dark，两档 accent 抄 website 仓 globals.css 的 --wb-accent。
@@ -154,14 +144,15 @@ function themeSpec(pluginId: PluginThemeId): PluginThemeSpec {
 }
 
 /**
- * adapter id → pluginId 归一化：注册表里 chart 的 adapter 是 "chart-editor@1"，
- * 契约 pluginId 用不带版本的 "chart-editor"。其余（website / design-canvas /
- * video-canvas / office 遗留）不属于本 10 件，返回 null 走原站点主题别名。
+ * adapter id → pluginId 归一化（去掉 `@版本`）。设计画布已并入图片编辑器，
+ * 旧的 "design-canvas" adapter id 读时别名到 "image"（不改写存量）。
+ * office 遗留等不在表里的返回 null，走原站点主题别名。
  */
 export function pluginThemeIdForAdapter(
   adapterId: string,
 ): PluginThemeId | null {
-  const bare = adapterId.split("@")[0];
+  const raw = adapterId.split("@")[0];
+  const bare = raw === "design-canvas" ? "image" : raw;
   return Object.prototype.hasOwnProperty.call(PLUGIN_THEME_SPECS, bare)
     ? (bare as PluginThemeId)
     : null;

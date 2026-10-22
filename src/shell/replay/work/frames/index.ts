@@ -6,13 +6,13 @@ import type { ReplayFrameRenderer } from "../frame-types";
 type FrameModule = { default: ReplayFrameRenderer | null };
 type FrameLoader = () => Promise<FrameModule>;
 
-export const FRAME_LOADERS: Record<ImEditorKind, FrameLoader> = {
+// chart 没有画法：图表编辑器已删除，存量图表回放走通用 fallback。
+export const FRAME_LOADERS: Partial<Record<ImEditorKind, FrameLoader>> = {
   richdoc: () => import("./richdoc"),
   grid: () => import("./grid"),
   deck: () => import("./deck"),
   image: () => import("./image"),
   vector: () => import("./vector"),
-  chart: () => import("./chart"),
   game: () => import("./game"),
   model3d: () => import("./model3d"),
   audio: () => import("./audio"),

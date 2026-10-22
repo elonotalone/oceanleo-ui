@@ -34,7 +34,6 @@ const REPO = resolve(HERE, "..");
  * 谁把其中一份的包装退回单参数形，这里立刻红。
  */
 const W25_WRAPPER_FILES = [
-  "src/shell/chart-editor/use-chart-workbench.ts",
   "src/shell/media-editors/use-audio-wave-loader.ts",
   "src/shell/media-editors/use-model3d-director.ts",
   "src/shell/media-editors/use-model3d-project-bootstrap.ts",

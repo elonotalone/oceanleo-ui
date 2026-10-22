@@ -24,7 +24,6 @@ import {
   planGridSameDocumentOpen,
 } from "../src/shell/doc-editors/grid-univer/same-document.ts";
 import { loadGridSheets } from "../src/shell/doc-editors/grid-model.ts";
-import { chartCommandDefinitions } from "../src/shell/chart-editor/chart-command-surface.ts";
 import { audioCommandDefinitions } from "../src/shell/media-editors/audio-command-surface.ts";
 
 function persistFromAdmission(admitted, item) {
@@ -295,19 +294,7 @@ test("game: durable envelope missing is fail-closed; a new local draft is not", 
   assert.equal(fresh.ok, true);
 });
 
-test("chart and audio command surfaces list no mutate commands until source is ready", () => {
-  const chart = chartCommandDefinitions({
-    editor: { loading: false, sourceReady: false },
-    deliver: async () => undefined,
-  });
-  assert.equal(chart.length, 0);
-
-  const chartLoading = chartCommandDefinitions({
-    editor: { loading: true, sourceReady: false },
-    deliver: async () => undefined,
-  });
-  assert.equal(chartLoading.length, 0);
-
+test("audio command surface lists no mutate commands until source is ready", () => {
   const audio = audioCommandDefinitions({
     editor: { loading: false, duration: 0, editRevision: 0 },
     deliver: async () => undefined,

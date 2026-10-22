@@ -9,7 +9,6 @@ const contentPaths = [
   "media-editors",
   "image-editor",
   "video-editor",
-  "chart-editor",
   "AdvancedWorkbenchStage.tsx",
   "library-viewers.tsx",
   "cloud-computer/TerminalPanel.tsx",

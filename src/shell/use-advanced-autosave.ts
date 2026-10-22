@@ -550,7 +550,7 @@ export function useAdvancedAutoSave({
     };
     const unbind = bindAdvancedDraftGate(materialKey, gate);
     // The five media mode gates use their established plugin:artifact key.
-    const plugin = editorId === "chart-editor@1" ? "chart-editor" : editorId;
+    const plugin = editorId;
     const mediaKey = plugin && item ? `${plugin}:${item.artifactId || item.id}` : undefined;
     const unbindMedia = mediaKey && mediaKey !== materialKey ? bindAdvancedDraftGate(mediaKey, gate) : undefined;
     return () => { unbind(); unbindMedia?.(); };

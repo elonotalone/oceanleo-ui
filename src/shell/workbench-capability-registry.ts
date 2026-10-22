@@ -1,4 +1,3 @@
-import type { MediaType } from "../lib/database";
 import {
   ADVANCED_CAPABILITY_MATRIX,
   ARTIFACT_EDITOR_CAPABILITIES,
@@ -15,7 +14,7 @@ export type EditorRoute =
   | { type: "image" }
   | { type: "pdf" }
   | { type: "richdoc" }
-  | { type: "grid"; adapter?: "chart-editor@1" }
+  | { type: "grid" }
   | { type: "deck" }
   | { type: "threed" }
   | { type: "game" }
@@ -23,7 +22,10 @@ export type EditorRoute =
   // historical route labels. No adapter or workbench route is registered here.
   | { type: "geo-map" }
   | { type: "interactive-doc" }
-  | { type: "embed"; base: string; mediaType: MediaType }
+  // 网站 / 视频画布都是本地原生路由（WebsiteLocalRoute / VideoCanvasRoute）；
+  // 设计画布并入图片编辑器，走 `image`。不再有「整站嵌入」型路由。
+  | { type: "website" }
+  | { type: "video-canvas" }
   | { type: "none" };
 
 export type EditorAdapterId = AdvancedEditorAdapterId | "none";
@@ -155,8 +157,11 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     toolbarOwnership: "shared",
     persistence: "project",
   },
+  // 图表编辑器已删除（2026-10-22 native-editors）。服务端合同矩阵里这一行还在，
+  // 所以注册表保留一个墓碑：`routeType: "none"` ⇒ 任何图表素材都解析为只读/不可编辑，
+  // 且 `artifactTypeHasRoutableEditor("chart")` 为 false。合同行删除后这里一并删。
   "chart-editor@1": {
-    routeType: "grid",
+    routeType: "none",
     roundTrip: ROUND_TRIP,
     projectSchema: "oceanleo.chart.v1",
     viewportOwnership: "content",
@@ -180,8 +185,7 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     persistence: "project",
   },
   /**
-   * 游戏走本地 route 而不是 `embed`：`embed` 会把整块视口交给一个外站编辑器
-   * （website/design/video 三家），而完整游戏文档的可玩预览必须留在受控沙箱宿主里。
+   * 游戏走本地 route：完整游戏文档的可玩预览必须留在受控沙箱宿主里。
    */
   game: {
     routeType: "game",
@@ -192,27 +196,28 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     persistence: "project",
   },
   website: {
-    routeType: "embed",
+    routeType: "website",
     roundTrip: ROUND_TRIP,
     projectSchema: "website-source@1",
-    viewportOwnership: "native",
-    toolbarOwnership: "native",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
     persistence: "project",
   },
+  // 设计画布与图片合并为一个编辑器：同一个 `image` 路由。
   "design-canvas": {
-    routeType: "embed",
+    routeType: "image",
     roundTrip: ROUND_TRIP,
     projectSchema: "oceanleo.design-document.v1",
-    viewportOwnership: "native",
-    toolbarOwnership: "native",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
     persistence: "project",
   },
   "video-canvas": {
-    routeType: "embed",
+    routeType: "video-canvas",
     roundTrip: ROUND_TRIP,
     projectSchema: "oceanleo.video-canvas.v1",
-    viewportOwnership: "native",
-    toolbarOwnership: "native",
+    viewportOwnership: "content",
+    toolbarOwnership: "shared",
     persistence: "project",
   },
 };
@@ -392,9 +397,8 @@ export function editorRouteHintForArtifactCapability(
  * 「用户能不能编辑这件东西」是另一件事，答案在这里：适配器注册表里
  * `routable` 为真、且承接了这一类声明的某个编辑能力。
  *
- * 注意 `route: "embed"` 同样算数。`website` / `design-canvas` / `video-canvas`
- * 走的是嵌入路由——共享工作台把站点自己的编辑器嵌进来——那是**一种落点，不是没有
- * 落点**。把 embed 排除掉会重蹈这个函数要修的那个错。
+ * 注意 `website` / `video-canvas` 路由同样算数（它们是本地原生路由）。
+ * 图表（`chart-editor@1`）已无编辑器：注册表里是 `none` 墓碑，所以不算。
  *
  * 判据是推导出来的，不是又一份手抄清单：新增一个可路由适配器，这里自动跟上。
  */

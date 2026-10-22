@@ -1,6 +1,6 @@
 /**
- * W6: chart mutate / history and 3D local markDirty increment the shared
- * user-edit generation. Remote chart apply and 3D bootstrap do not.
+ * W6: 3D local markDirty increments the shared user-edit generation.
+ * 3D bootstrap does not. (The chart editor was deleted 2026-10-22.)
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -20,12 +20,6 @@ function lightStubs(extra = {}) {
   };
 }
 
-const chart = await import(
-  await compileModule(
-    "src/shell/chart-editor/use-chart-workbench.ts",
-    lightStubs(),
-  )
-);
 const model3d = await import(
   await compileModule(
     "src/shell/media-editors/use-model3d-workbench.ts",
@@ -36,27 +30,6 @@ const model3d = await import(
 function itemFor(id) {
   return { key: `artifact:${id}:r1`, id };
 }
-
-test("chart mutate and history increment userMutationGeneration", () => {
-  resetUserEditSession();
-  const item = itemFor("chart-w6");
-  assert.equal(userMutationGeneration(item.key), 0);
-  assert.equal(chart.applyChartUserEditSession(item, "mutate"), 1);
-  assert.equal(chart.applyChartUserEditSession(item, "history"), 2);
-  assert.equal(userMutationGeneration(item.key), 2);
-});
-
-test("chart applyRemoteDocument / load / recovery do not record", () => {
-  resetUserEditSession();
-  const item = itemFor("chart-w6-remote");
-  assert.equal(chart.applyChartUserEditSession(item, "remote-document"), 0);
-  assert.equal(chart.applyChartUserEditSession(item, "applyRemoteDocument"), 0);
-  assert.equal(chart.applyChartUserEditSession(item, "load"), 0);
-  assert.equal(chart.applyChartUserEditSession(item, "recovery"), 0);
-  chart.applyChartUserEditSession(item, "mutate");
-  assert.equal(chart.applyChartUserEditSession(item, "remote-document"), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
-});
 
 test("3d local markDirty increments; bootstrap and recovery do not", () => {
   resetUserEditSession();

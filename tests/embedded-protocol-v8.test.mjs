@@ -76,14 +76,10 @@ test("history changes round-trip and embedded undo/redo consume child truth", ()
     null,
   );
 
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const host =
     source("../src/shell/workbench-embed.tsx") +
     source("../src/shell/use-embed-editor-messages.ts");
   assert.match(host, /message\.type === "history-changed"/);
-  assert.match(route, /canUndo: remoteHistoryState\.canUndo/);
-  assert.match(route, /canRedo: remoteHistoryState\.canRedo/);
-  assert.doesNotMatch(route, /canUndo:\s*true[\s\S]{0,80}canRedo:\s*true/);
 });
 
 test("tools and six project views are validated and commandable both ways", () => {
@@ -177,19 +173,10 @@ test("tools and six project views are validated and commandable both ways", () =
     "multiple active views must fail closed",
   );
 
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const host =
     source("../src/shell/workbench-embed.tsx") +
     source("../src/shell/use-embed-editor-messages.ts");
-  assert.match(route, /EMBEDDED_TOOLS_MANIFEST/);
-  assert.match(route, /value: "tablet", label: "平板"/);
-  assert.match(route, /remoteSelectionRevision/);
-  assert.doesNotMatch(route, /selection\.id === "design-canvas"/);
-  assert.match(route, /classifyProjectManifest/);
-  assert.match(route, /aux: remoteAuxPages/);
-  assert.doesNotMatch(route, /project-view:/);
   assert.match(host, /onProtocolReset\?\.\(\)/);
-  assert.doesNotMatch(route, /nativeChrome:\s*\{\s*toolbar:\s*true/);
 });
 
 test("manifest role/placement split pages.aux from document actions; first row has no project-view buttons", () => {
@@ -257,15 +244,7 @@ test("manifest role/placement split pages.aux from document actions; first row h
   assert.equal(accepted?.manifest.views[0].role, "artifact");
   assert.equal(accepted?.manifest.actions[1].placement, "download");
 
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const host = source("../src/shell/workbench-embed.tsx");
-  assert.match(route, /pages:\s*\{/);
-  assert.match(route, /aux: remoteAuxPages/);
-  assert.match(route, /onSelectPage: selectEmbeddedPage/);
-  assert.match(route, /group: projectActionGroup\(action\)/);
-  assert.doesNotMatch(route, /project-view:/);
-  assert.doesNotMatch(route, /website-refresh/);
-  assert.match(route, /sendProjectCommand\(\s*"view"/);
   assert.match(host, /chrome: "host"/);
   assert.match(host, /type: "set-mode"/);
 });
@@ -345,10 +324,6 @@ test("manifest action.group splits edit / save / download; save never reaches th
 
   // EmbeddedRoute 把三组都交给宿主，并把 group 写进每条 AdvancedWorkbenchAction；
   // video_canvas 的「运行全部」显式 edit。
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  assert.match(route, /\.\.\.classifiedManifest\.saveActions/);
-  assert.match(route, /group: projectActionGroup\(action\)/);
-  assert.match(route, /id: "video-run-all",[\s\S]{0,120}group: "edit"/);
 });
 
 test("recovery capture and restore preserve a real unconfirmed revision", () => {
@@ -412,28 +387,7 @@ test("recovery capture and restore preserve a real unconfirmed revision", () => 
     false,
   );
 
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const pane = source("../src/shell/workbench-embed.tsx");
-  assert.match(route, /recovery:\s*\{/);
-  assert.match(route, /advancedRecoveryKey\(embeddedAdapterId, item\)/);
-  assert.match(route, /capture: captureEmbeddedRecovery/);
-  assert.match(route, /restore: restoreEmbeddedRecovery/);
-  assert.match(route, /recoveryGenerationRef\.current \+= 1/);
-  assert.match(
-    route,
-    /handleRecoveryResult[\s\S]*?recoverySnapshotRef\.current = snapshot[\s\S]*?setDirty\(true\)/,
-  );
-  assert.match(route, /restoreEmbeddedRecovery[\s\S]*?return promise/);
-  assert.match(route, /restored\.resolve\(true\)/);
-  assert.match(
-    route,
-    /hostedMediaType !== "website" \|\| embeddedRecoveryReady/,
-  );
-  assert.match(
-    route,
-    /if \(hasRemoteRevision\) setEmbeddedRecoveryReady\(true\)[\s\S]*if \(!nextDirty\)/,
-    "a clean website session must unlock recovery after publishing its revision",
-  );
   assert.match(
     pane,
     /if \(phase !== "ready" \|\| !recoveryRestore\) return/,
@@ -581,73 +535,12 @@ test("protocol remains fail-closed and save/export/dispose carry idempotency key
   const host =
     source("../src/shell/workbench-embed.tsx") +
     source("../src/shell/use-embed-editor-messages.ts");
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   assert.match(host, /event\.source !== iframeRef\.current\?\.contentWindow/);
   assert.match(host, /event\.origin !== editorOrigin/);
   assert.match(host, /sentSaveRequestsRef/);
   assert.match(host, /sentExportRequestsRef/);
   assert.match(host, /disposeId/);
   assert.match(host, /artifactSaveOperationsRef/);
-  assert.match(route, /return savePromiseRef\.current/);
-  assert.match(route, /return exportResolverRef\.current\.promise/);
-});
-
-test("design composite handshake binds one scene source revision before open", () => {
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  const validator = source("../src/shell/design-composite-commit.ts");
-  const host =
-    source("../src/shell/workbench-embed.tsx") +
-    source("../src/shell/use-embed-editor-messages.ts");
-
-  assert.match(route, /item\.artifactType === "composite_image"/);
-  assert.match(route, /source\.revisionId !== item\.revisionId/);
-  assert.match(route, /item\.artifact\.sourceFormat !== DESIGN_SOURCE_FORMAT/);
-  assert.match(route, /item\.artifact\.scene\.closureStatus !== "complete"/);
-  assert.match(route, /refreshArtifactRendition/);
-  assert.match(
-    route,
-    /verifyDesignCompositeSource\(\s*item,\s*binding,\s*abort\.signal,\s*\)/,
-  );
-  assert.match(route, /evidence\.sourceDigest !== normalizedDigest\(rendition\.digest\)/);
-  assert.match(route, /validateDesignCompositeSource\(blob, item/);
-  assert.match(validator, /design dependency closure 缺少图层资源/);
-  assert.match(validator, /manifest\?\.schema !== DESIGN_DEPENDENCY_SCHEMA/);
-  assert.match(
-    route,
-    /evidence\.closureDigest !== normalizedDigest\(item\.artifact\.scene\.closureDigest\)/,
-  );
-  assert.match(
-    route,
-    /normalizedDigest\(refreshed\.digest\) !== normalizedDigest\(source\.digest\)/,
-  );
-  assert.match(route, /url: undefined,[\s\S]*previewUrl: undefined/);
-  assert.match(route, /design_document_url: source\.url/);
-  assert.match(route, /source_digest: source\.digest/);
-  assert.match(route, /source_handshake_id: designSourceBinding\.handshakeId/);
-  assert.match(
-    route,
-    /source_project_revision: designSourceBinding\.evidence\.revision/,
-  );
-  assert.match(route, /dependency_closure_digest: scene\?\.closureDigest/);
-  assert.match(route, /requires_typed_artifact_commit: true/);
-  assert.match(route, /data-design-handshake=/);
-  assert.match(route, /DESIGN_SOURCE_ACK_TYPE = "design-source-ack"/);
-  assert.match(route, /event\.source !== frame\.contentWindow/);
-  assert.match(route, /data\.instanceId !== frameInstanceId/);
-  assert.match(route, /data\.artifactRevisionId !== item\.revisionId/);
-  assert.match(route, /design-handshake-receipt-mismatch/);
-  assert.match(route, /design-handshake-timeout/);
-  assert.match(route, /designHandshakeReady/);
-  assert.match(
-    host,
-    /message\.type === "ready"[\s\S]*?readyHandledRef\.current[\s\S]*?sendOpenAsset\(\)/,
-  );
-  assert.match(host, /event\.source !== iframeRef\.current\?\.contentWindow/);
-  assert.match(host, /event\.origin !== editorOrigin/);
-  assert.match(host, /typedCommitQueueRef\.current\.then/);
-  assert.match(host, /artifactHeadRef\.current = committed/);
-  assert.match(host, /artifactId: outcome\.artifactId/);
-  assert.match(host, /revisionId: outcome\.revisionId/);
 });
 
 test("selection and project failures become host-visible errors", () => {
@@ -669,10 +562,3 @@ test("selection and project failures become host-visible errors", () => {
   assert.match(host, /status\.severity === "fatal" \? "alert" : "status"/);
 });
 
-test("内嵌编辑器专业模式经 set-mode 交给 iframe", () => {
-  const host = source("../src/shell/workbench-embed.tsx");
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  assert.match(host, /type: "set-mode"/);
-  assert.match(route, /setMode: applyEditorMode/);
-  assert.match(route, /editorMode=\{editorMode\}/);
-});

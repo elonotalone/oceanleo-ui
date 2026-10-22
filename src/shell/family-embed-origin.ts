@@ -5,7 +5,6 @@
  * （`https://website.oceanleo.com` 等），query / cookie / env 一律不看。
  * 只有 LeoDev 槽 `p-<32hex>.dev.oceanleo.com` 才读覆盖，且目标只许是：
  *   · 另一个 LeoDev 槽（`p-<32hex>.dev.oceanleo.com`）
- *   · 写死的 Hosted 编辑器 origin（`hosted-editor-origins.ts` 六条全串）
  *
  * 不按 `*.oceanleo.app` / `*.dev.oceanleo.com` 后缀推断：用户站、
  * `p*--base.oceanleo.app`、`evil.dev.oceanleo.com` 都进不来。
@@ -13,7 +12,6 @@
  * UC-3: docs/architecture/oceanleo-untrusted-content-isolation.md §8.3
  */
 
-import { isHostedEditorOrigin } from "./hosted-editor-origins";
 import {
   TRUSTED_EMBED_EDITOR_SANDBOX,
   UNTRUSTED_FRAME_SANDBOX,
@@ -97,12 +95,11 @@ function hostnameOfOrigin(origin: string): string {
 
 /**
  * 覆盖目标是否可被 LeoDev 宿主接受。
- * `*.oceanleo.app` 只认 Hosted 编辑器全串，不认用户站 / UGC 预览。
+ * `*.oceanleo.app`（用户站 / UGC 预览）一律不认。
  */
 export function isAllowedFamilyEmbedOverrideOrigin(origin: string): boolean {
   const parsed = parseHttpsOrigin(origin);
   if (!parsed || parsed !== origin) return false;
-  if (isHostedEditorOrigin(parsed)) return true;
   return isFamilyEmbedOverrideHost(hostnameOfOrigin(parsed));
 }
 

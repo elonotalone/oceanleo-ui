@@ -7,7 +7,9 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { PluginThemeId } from "../plugin-theme";
 import {
   ARTIFACT_PAGE_ID,
+  PRO_PAGE_ID,
   editorModeToPage,
+  hasProPage,
   pageToEditorMode,
 } from "./plugin-pages";
 import {
@@ -45,8 +47,13 @@ export function currentPluginPage(pluginId: PluginThemeId): string {
   return editorModeToPage(currentPluginMode(pluginId));
 }
 
-export function setPluginPage(pluginId: PluginThemeId, pageId: string): void {
+export function setPluginPage(pluginId: PluginThemeId, rawPageId: string): void {
   ensureModeBridge(pluginId);
+  // 没有专业页的编辑器：「pro」回落到成品页，不留下悬空页签。
+  const pageId =
+    rawPageId === PRO_PAGE_ID && !hasProPage(pluginId)
+      ? ARTIFACT_PAGE_ID
+      : rawPageId;
   const prev = currentPluginPage(pluginId);
   if (prev !== pageId) {
     pageCache.set(pluginId, pageId);

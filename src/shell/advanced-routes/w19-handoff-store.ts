@@ -62,7 +62,7 @@ export function resetW19HandoffStore(): void {
 }
 
 export function w19ItemKey(
-  plugin: "audio" | "threed" | "video-timeline" | "chart-editor" | "pdf",
+  plugin: "audio" | "threed" | "video-timeline" | "pdf",
   item: { id?: string; artifactId?: string },
 ): string {
   return `${plugin}:${item.artifactId || item.id || ""}`;

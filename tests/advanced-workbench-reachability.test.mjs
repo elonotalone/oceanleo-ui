@@ -189,22 +189,6 @@ function namedRouteStub(exportName, editorId, title, src) {
   `);
 }
 
-const embeddedRouteStubUrl = dataModule(`
-  import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
-  export function EmbeddedRoute(props) {
-    const kind = props && props.item && props.item.kind;
-    const editorId =
-      kind === "website" ? "website" : kind === "canvas" ? "design-canvas" : "embed";
-    const title =
-      editorId === "website" ? "网站编辑" : editorId === "design-canvas" ? "画布编辑" : "嵌入式编辑器";
-    return jsx("iframe", {
-      title,
-      src: "https://website.oceanleo.com/embed/site-editor",
-      "data-workbench-editor": editorId,
-    });
-  }
-`);
-
 const workbenchStubs = {
   "next/dynamic": dynamicStubUrl,
   "next/navigation": navigationStubUrl,
@@ -267,18 +251,17 @@ const workbenchStubs = {
     "游戏编辑",
     "about:blank",
   ),
-  "./advanced-routes/ChartRoute": namedRouteStub(
-    "ChartRoute",
-    "chart-editor@1",
-    "图表编辑",
+  "./advanced-routes/WebsiteLocalRoute": namedRouteStub(
+    "WebsiteLocalRoute",
+    "website",
+    "网站编辑",
     "about:blank",
   ),
-  "./advanced-routes/EmbeddedRoute": embeddedRouteStubUrl,
   "./advanced-routes/VideoCanvasRoute": namedRouteStub(
     "VideoCanvasRoute",
     "video-canvas",
     "节点画布",
-    "https://flow.oceanleo.app/",
+    "about:blank",
   ),
 };
 
@@ -417,27 +400,6 @@ const CASES = [
     }),
   },
   {
-    id: "chart",
-    userName: "图表",
-    adapter: "chart-editor@1",
-    editorId: "chart-editor@1",
-    item: libraryItem({
-      id: "wb-chart",
-      kind: "image",
-      meta: {
-        content_type: "chart",
-        chart_option: { series: [] },
-        editor: {
-          schema: "oceanleo.editor-manifest.v1",
-          id: "chart-editor",
-          version: 1,
-          capabilities: ["load", "mutate", "save", "reopen"],
-          source: { kind: "inline", format: "oceanleo.chart.v1" },
-        },
-      },
-    }),
-  },
-  {
     id: "website",
     userName: "网站",
     adapter: "website",
@@ -451,8 +413,9 @@ const CASES = [
   {
     id: "design",
     userName: "设计稿",
+    // 设计画布并入图片编辑器：adapter 仍记 design-canvas，落点是 ImageRoute。
     adapter: "design-canvas",
-    editorId: "design-canvas",
+    editorId: "image",
     item: libraryItem({
       id: "wb-design",
       kind: "canvas",
@@ -470,12 +433,13 @@ const CASES = [
   },
 ];
 
-test("清单自检：CASES 覆盖 13 件插件——表变空或漏件时下面那批表驱动用例会静默不注册", () => {
+test("清单自检：CASES 覆盖 12 件插件——表变空或漏件时下面那批表驱动用例会静默不注册", () => {
   // `table-driven-registration-guard` 判据 2：按命名表 for-of 注册的用例必须配长度正对照。
-  // 13 = ADVANCED_PLUGIN_FEATURE_IDS 的件数（advanced-plugin-open.test.mjs 钉的同一个数）。
-  assert.equal(CASES.length, 13, `CASES 夹具应覆盖 13 件插件，实测 ${CASES.length} 件`);
+  // 12 = ADVANCED_PLUGIN_FEATURE_IDS 的件数（图表编辑器 2026-10-22 已删）（advanced-plugin-open.test.mjs 钉的同一个数）。
+  assert.equal(CASES.length, 12, `CASES 夹具应覆盖 12 件插件，实测 ${CASES.length} 件`);
   const editorIds = CASES.map((spec) => spec.editorId);
-  assert.equal(new Set(editorIds).size, editorIds.length, `CASES 里有重复的 editorId：${editorIds}`);
+  // design 夹具与 image 夹具落在同一个编辑器（ImageRoute），editorId 允许重复一次。
+  assert.equal(new Set(editorIds).size, editorIds.length - 1, `CASES 里有重复的 editorId：${editorIds}`);
 });
 
 function concealmentReason(node) {

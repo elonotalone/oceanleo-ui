@@ -76,6 +76,7 @@ export function InlineAdvancedWorkbenchHeader({
   const pages = useMemo(
     () =>
       buildPluginPages({
+        pluginId: pagePluginId,
         proLabel: adapter.pages?.proLabel,
         proUnavailableReason:
           adapter.pages?.proUnavailableReason ??
@@ -83,6 +84,7 @@ export function InlineAdvancedWorkbenchHeader({
         aux: adapter.pages?.aux,
       }),
     [
+      pagePluginId,
       adapter.mode?.unavailableReason,
       adapter.pages?.aux,
       adapter.pages?.proLabel,

@@ -158,12 +158,6 @@ test("non-Office autosave blocks never invoke delivery renderers", () => {
       end: "const exportVideo = useCallback",
       forbidden: /renderTimeline|uploadCoverPng|toBlob/,
     },
-    {
-      path: "../src/shell/chart-editor/use-chart-workbench.ts",
-      start: "const save = useCallback",
-      end: "const table = useMemo",
-      forbidden: /canvas|toDataURL|toBlob|new File/,
-    },
   ];
   for (const entry of cases) {
     const autosave = section(entry.path, entry.start, entry.end);

@@ -12,6 +12,7 @@ import type { AdvancedEditorModeAdapter } from "../advanced-editor-adapter";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import type { EditorMode } from "../hosted-editor";
 import type { PluginThemeId } from "../plugin-theme";
+import { hasProPage } from "./plugin-pages";
 import {
   DEFAULT_PLUGIN_MODE,
   currentPluginMode,
@@ -71,6 +72,8 @@ export function PluginModeToggle({
 }: PluginModeToggleProps) {
   const tt = useUI();
   const { pro } = usePluginMode(pluginId);
+  // 只有 PRO_PAGE_EDITORS 有专业模式；其余编辑器不出开关。
+  if (!hasProPage(pluginId)) return null;
   const label = unavailableReason
     ? `${tt(pro ? "退出专业模式" : "专业模式")}：${unavailableReason}`
     : tt(pro ? "退出专业模式" : "专业模式");

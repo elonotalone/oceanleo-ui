@@ -24,18 +24,9 @@ import {
   isTrustedEditorOrigin,
 } from "../src/shell/editor-protocol.ts";
 import {
-  HOSTED_EDITOR_HOST_LABELS,
-  HOSTED_EDITOR_ORIGINS,
-  isHostedEditorOrigin,
-} from "../src/shell/hosted-editor-origins.ts";
-import {
   COVER_FRAME_SANDBOX,
-  HOSTED_EDITOR_EMBED_BASES,
-  HOSTED_EDITOR_SANDBOX,
-  TRUSTED_EMBED_EDITOR_SANDBOX,
   UNTRUSTED_FRAME_SANDBOX,
   embedEditorFrameSandbox,
-  isHostedEditorEmbedBase,
   isTrustedEmbedEditorBase,
   sandboxGrantsScriptedSameOrigin,
 } from "../src/shell/editor-sandbox-origin.ts";
@@ -564,113 +555,50 @@ test("builder 产出的消息一定能过校验；instanceId 非法当场抛", (
   );
 });
 
-// ─── 6. W18 R1：Hosted 编辑器 origin 全串白名单 ────────────────────────────
+// ─── 6. Hosted 编辑器 origin 白名单已删除（2026-10-22 native-editors） ───────
+// 负面守卫：前 Hosted 六件的 origin 不再被信任，也拼不出 embed URL，沙箱不含同源。
+// 其余 origin 判定一字未松：家族第一方仍可信，UGC 域仍不可信。
 
-test("W18 R1：六个 Hosted origin 被信任", () => {
-  assert.equal(HOSTED_EDITOR_ORIGINS.length, 6);
-  assert.deepEqual([...HOSTED_EDITOR_HOST_LABELS], [
-    "slides",
-    "docs",
-    "audio",
-    "3d",
-    "game-ide",
-    "flow",
-  ]);
-  for (const origin of HOSTED_EDITOR_ORIGINS) {
-    assert.equal(isHostedEditorOrigin(origin), true, origin);
-    assert.equal(isTrustedEditorOrigin(origin), true, origin);
-  }
-});
+const FORMER_HOSTED_ORIGINS = [
+  "https://slides.oceanleo.app",
+  "https://docs.oceanleo.app",
+  "https://audio.oceanleo.app",
+  "https://3d.oceanleo.app",
+  "https://game-ide.oceanleo.app",
+  "https://flow.oceanleo.app",
+];
 
-// UC-3 / UC-6：宿主只对 HOSTED_EDITOR_ORIGINS 全串匹配放行同源沙箱与 postMessage 目标，近似 origin 一律拒绝。
-test("W18 R1：四类近似 origin 一律拒绝（全串匹配，不做后缀推断）", () => {
+// UC-3 / UC-6：前 Hosted origin 与其近似形状都不再通过 postMessage 闸门。
+test("UC-3 UC-6：前 Hosted origin 及近似形状一律不被信任", () => {
   for (const origin of [
-    // ① 后缀挂靠：攻击者自己的可注册域，尾部长得像我们的主机
+    ...FORMER_HOSTED_ORIGINS,
     "https://slides.oceanleo.app.evil.com",
-    // ② 前缀粘连：多一个字母就是另一台主机
     "https://xslides.oceanleo.app",
-    "https://slides.oceanleo.appx",
-    // ③ 明文降级：六个主机都在通配证书后面，没有任何理由收 http
     "http://slides.oceanleo.app",
-    // ④ UGC 主机：同一个可注册域上跑用户代码的那一类，正是白名单要挡的
     "https://s-0123456789abcdef0123456789abcdef.oceanleo.app",
-    "https://p1-aaaabbbbccccddddeeeeffff00001111.oceanleo.app",
-    // 另加几种形状：带端口、带路径、带凭据、大小写、子域再套一层
     "https://slides.oceanleo.app:8443",
-    "https://slides.oceanleo.app/",
     "https://user:pw@slides.oceanleo.app",
-    "https://deep.slides.oceanleo.app",
     "https://oceanleo.app",
   ]) {
-    assert.equal(isHostedEditorOrigin(origin), false, `allowlist: ${origin}`);
     assert.equal(isTrustedEditorOrigin(origin), false, `gate: ${origin}`);
+    assert.equal(isTrustedEmbedEditorBase(origin), false, `base: ${origin}`);
   }
 });
 
-test("W18 R1：白名单没有放宽别的 origin 判定", () => {
-  // 白名单是**并列**分支，不是替换。既有结论必须逐字不变：
-  // 家族第一方仍然可信，别的 UGC 域仍然不可信。
+test("UC-3：删除白名单没有放宽别的 origin 判定", () => {
   assert.equal(isTrustedEditorOrigin("https://design.oceanleo.com"), true);
   assert.equal(isTrustedEditorOrigin("https://preview.oceanleo.com"), false);
   assert.equal(isTrustedEditorOrigin("https://anything.leoapp.cn"), false);
   assert.equal(isTrustedEditorOrigin("https://evil.com"), false);
 });
 
-// ─── 7. A-24 / W07：embed base 放行；隔离域我方编辑器拿 HOSTED_EDITOR_SANDBOX ─
-
-test("A-24：六件的 embed base 能拼出 URL", () => {
-  assert.equal(HOSTED_EDITOR_EMBED_BASES.length, 6);
-  for (const base of HOSTED_EDITOR_EMBED_BASES) {
-    assert.equal(isHostedEditorEmbedBase(base), true, base);
-    assert.equal(isTrustedEmbedEditorBase(base), true, base);
-    const url = buildEditorEmbedUrl(base, {
-      instanceId: "instance-1",
-      hostOrigin: "https://oceanleo.com",
-    });
-    assert.equal(new URL(url).origin, base, base);
-    assert.equal(new URL(url).searchParams.get("embed"), "1");
-  }
-});
-
-test("A-24 的要害：六件拿 HOSTED_EDITOR_SANDBOX；UGC / cover 仍无同源", () => {
-  // UC-3 §8.3.1（2026-09-06）：隔离域上我方部署的编辑器允许同源通信。
-  for (const base of HOSTED_EDITOR_EMBED_BASES) {
-    const sandbox = embedEditorFrameSandbox(base);
-    assert.equal(sandbox, HOSTED_EDITOR_SANDBOX, base);
-    assert.equal(
-      sandboxGrantsScriptedSameOrigin(sandbox),
-      true,
-      `${base} 必须拿到隔离域同源沙箱`,
-    );
-  }
-  const ugc = embedEditorFrameSandbox("https://p1--base.oceanleo.app/");
-  assert.equal(ugc, UNTRUSTED_FRAME_SANDBOX);
-  assert.equal(
-    ugc.includes("allow-same-origin"),
-    false,
-    "UGC 预览主机不得同源",
-  );
-  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
-  assert.equal(sandboxGrantsScriptedSameOrigin(COVER_FRAME_SANDBOX), false);
-  // 反过来，家族内第一方仍然拿同源——本条改动不许把既有能力也一起收走。
-  const firstParty = "https://design.oceanleo.com/embed/editor";
-  assert.equal(
-    embedEditorFrameSandbox(firstParty),
-    TRUSTED_EMBED_EDITOR_SANDBOX,
-  );
-  assert.equal(sandboxGrantsScriptedSameOrigin(TRUSTED_EMBED_EDITOR_SANDBOX), true);
-});
-
-// UC-3：嵌入地址只能由受信 base 拼出，近似 base 不得进入 iframe src。
-test("A-24：近似 base 仍然拼不出 URL（全串，不做后缀推断）", () => {
+// UC-3：前 Hosted base 拼不出 embed URL，沙箱不含 scripts+same-origin；UGC / cover 同样没有。
+test("UC-3：前 Hosted base 拼不出 URL，沙箱无同源", () => {
   for (const base of [
+    ...FORMER_HOSTED_ORIGINS,
     "https://slides.oceanleo.app/embed/attacker",
-    "https://slides.oceanleo.app.evil.com",
-    "https://xslides.oceanleo.app",
-    "http://slides.oceanleo.app",
     "https://s-0123456789abcdef0123456789abcdef.oceanleo.app",
   ]) {
-    assert.equal(isHostedEditorEmbedBase(base), false, base);
     assert.throws(
       () =>
         buildEditorEmbedUrl(base, {
@@ -680,5 +608,16 @@ test("A-24：近似 base 仍然拼不出 URL（全串，不做后缀推断）", 
       TypeError,
       base,
     );
+    assert.equal(embedEditorFrameSandbox(base), UNTRUSTED_FRAME_SANDBOX, base);
   }
+  const ugc = embedEditorFrameSandbox("https://p1--base.oceanleo.app/");
+  assert.equal(ugc, UNTRUSTED_FRAME_SANDBOX);
+  assert.equal(ugc.includes("allow-same-origin"), false, "UGC 预览主机不得同源");
+  assert.equal(COVER_FRAME_SANDBOX.includes("allow-same-origin"), false);
+  assert.equal(sandboxGrantsScriptedSameOrigin(COVER_FRAME_SANDBOX), false);
+  // 子站嵌入白名单同样为空：第一方 base 现在也拿不到同源沙箱。
+  assert.equal(
+    embedEditorFrameSandbox("https://design.oceanleo.com/embed/editor"),
+    UNTRUSTED_FRAME_SANDBOX,
+  );
 });

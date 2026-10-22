@@ -28,8 +28,6 @@ import {
   COVER_FRAME_SANDBOX,
   PDF_FRAME_SANDBOX_EXEMPTION,
   SANDBOX_ORIGIN_CONTRACT,
-  HOSTED_EDITOR_EMBED_BASES,
-  HOSTED_EDITOR_SANDBOX,
   TRUSTED_EMBED_EDITOR_BASES,
   TRUSTED_EMBED_EDITOR_ORIGINS,
   TRUSTED_EMBED_EDITOR_SANDBOX,
@@ -93,12 +91,7 @@ test("W8/1 沙箱组合：不可信来源永不同时拿到 allow-scripts 与 al
     sandboxGrantsScriptedSameOrigin(TRUSTED_INTERACTIVE_VIEWER_SANDBOX),
     true,
   );
-  // 2026-09-06 操作员裁定：隔离域我方部署编辑器单独命名，令牌串与第一方档相同。
-  assert.equal(
-    sandboxGrantsScriptedSameOrigin(HOSTED_EDITOR_SANDBOX),
-    true,
-  );
-  assert.equal(HOSTED_EDITOR_SANDBOX, TRUSTED_EMBED_EDITOR_SANDBOX);
+  // 2026-10-22：隔离域上的 Hosted 编辑器整套下线，HOSTED_EDITOR_SANDBOX 常量已删除。
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -129,25 +122,21 @@ test("W8/1 workbench 嵌入：白名单 base 保留同源，任何其他 URL 立
   }
 });
 
-// UC-3 修订（2026-09-06 操作员裁定，见 isolation 文档「UC-3 修订」）：
-// 托管六件是我方部署在隔离域上的可控代码，拿 HOSTED_EDITOR_SANDBOX（含同源）。
-// 期望值是常量 HOSTED_EDITOR_SANDBOX，不许再调一次 embedEditorFrameSandbox()
-// 当期望——函数改坏时期望会跟着坏。真正的 UGC（p*--base.oceanleo.app、
-// cover frame、UNTRUSTED_FRAME_SANDBOX）仍不得脚本加同源。
-test("UC-3 托管六件每一条都拿 HOSTED_EDITOR_SANDBOX（隔离域同源）", () => {
-  assert.equal(HOSTED_EDITOR_EMBED_BASES.length, 6);
-  assert.equal(
-    HOSTED_EDITOR_SANDBOX,
-    "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals",
-  );
-  for (const base of HOSTED_EDITOR_EMBED_BASES) {
-    const sandbox = embedEditorFrameSandbox(base);
-    assert.equal(sandbox, HOSTED_EDITOR_SANDBOX, base);
-    assert.equal(
-      sandboxGrantsScriptedSameOrigin(sandbox),
-      true,
-      `${base} 必须拿到隔离域同源沙箱`,
-    );
+// UC-3：2026-10-22 起 Hosted 六件（slides./docs./audio./3d./game-ide./flow.）下线。
+// 这些 origin 不再有任何同源沙箱资格——回落到不可信档，与任何 UGC 一样。
+test("UC-3 前 Hosted 编辑器 origin 一律降为不可信沙箱（无脚本+同源）", () => {
+  for (const base of [
+    "https://slides.oceanleo.app",
+    "https://docs.oceanleo.app",
+    "https://audio.oceanleo.app",
+    "https://3d.oceanleo.app",
+    "https://game-ide.oceanleo.app",
+    "https://flow.oceanleo.app",
+    "https://slides.ws.oceanleo.app",
+  ]) {
+    assert.equal(isTrustedEmbedEditorBase(base), false, base);
+    assert.equal(embedEditorFrameSandbox(base), UNTRUSTED_FRAME_SANDBOX, base);
+    assert.equal(isTrustedEditorOrigin(base), false, base);
   }
   const ugcPreviewBases = [
     "https://p1--base.oceanleo.app",
@@ -172,36 +161,21 @@ test("UC-3 托管六件每一条都拿 HOSTED_EDITOR_SANDBOX（隔离域同源�
 // C5：域名不再写死（`.com` / `.cn` 按家族解析），但「路由表写死 + 两侧一一对应」这条
 // 性质一个字都没松：现在锁的是 subsite + path 这张表，且额外禁止任何 base 字面量 ——
 // 留一条写死的 base 就等于留一条在境内仍指向 `.com` 主机的嵌入路由。
-test("W8/1 白名单 base 与 workbench-routes.ts 的路由表保持一一对应", () => {
+test("UC-3 W8/1 子站嵌入白名单已清空：workbench-routes.ts 不再有任何嵌入路由", () => {
   const routes = source("../src/shell/workbench-routes.ts");
   assert.deepEqual(
     [...routes.matchAll(/base:\s*"(https:\/\/[^"]+)"/g)].map((m) => m[1]),
     [],
-    "workbench-routes.ts 不得再写死 embed base：域名必须按家族解析",
+    "workbench-routes.ts 不得写死 embed base",
   );
-  const { registrableDomain } = currentDomainProfile();
-  const declared = [
-    ...routes.matchAll(/subsite:\s*"([a-z0-9-]+)",\s*path:\s*"(\/[^"]*)"/g),
-  ].map(([, subsite, path]) => `https://${subsite}.${registrableDomain}${path}`);
   assert.equal(
-    declared.length,
-    3,
-    "workbench-routes.ts 必须写死三条嵌入路由（子站标签 + 路径）",
+    /subsite:\s*"/.test(routes),
+    false,
+    "workbench-routes.ts 不得再声明子站嵌入路由（subsite + path）",
   );
-  for (const base of declared) {
-    assert.equal(
-      isTrustedEmbedEditorBase(base),
-      true,
-      `${base} 不在 TRUSTED_EMBED_EDITOR_BASES 中；新增嵌入路由必须同步白名单`,
-    );
-  }
-  for (const base of TRUSTED_EMBED_EDITOR_BASES) {
-    assert.ok(
-      declared.includes(base),
-      `${base} 已从 workbench-routes.ts 消失，白名单必须收窄`,
-    );
-  }
-  // 源码比对之外再走一次真路由：三类内嵌产物**实际解析出来**的 base 也必须命中白名单。
+  // 白名单跟着路由表一起收窄到空：没有任何 base 能拿到同源沙箱。
+  assert.deepEqual([...TRUSTED_EMBED_EDITOR_BASES], []);
+  assert.deepEqual([...TRUSTED_EMBED_EDITOR_ORIGINS], []);
   const item = (kind, meta) => ({
     key: "k",
     source: "creation",
@@ -212,24 +186,24 @@ test("W8/1 白名单 base 与 workbench-routes.ts 的路由表保持一一对应
     kind,
     meta,
   });
-  const routed = [
-    item("website", { draft: true }),
-    item("canvas", { blank: true }),
-    item("video_canvas", {}),
-  ].map((value) => editorCapabilityFor(value));
-  for (const capability of routed) {
-    assert.equal(capability.route.type, "embed", capability.unavailableReason);
-    assert.equal(
-      isTrustedEmbedEditorBase(capability.route.base),
-      true,
-      capability.route.base,
-    );
+  const expected = [
+    [item("website", { draft: true }), "website"],
+    [item("canvas", { blank: true }), "image"],
+    [item("video_canvas", {}), "video-canvas"],
+  ];
+  for (const [value, type] of expected) {
+    const capability = editorCapabilityFor(value);
+    assert.equal(capability.route.type, type, capability.unavailableReason);
+    assert.equal("base" in capability.route, false);
   }
-  assert.deepEqual(
-    [...new Set(routed.map((c) => c.route.base))].sort(),
-    [...declared].sort(),
-    "解析出来的 base 集合必须与路由表逐字相等",
-  );
+  for (const base of [
+    "https://website.oceanleo.com/embed/site-editor",
+    "https://design.oceanleo.com/embed/editor",
+    "https://video.oceanleo.com/canvas-board",
+  ]) {
+    assert.equal(isTrustedEmbedEditorBase(base), false, base);
+    assert.equal(embedEditorFrameSandbox(base), UNTRUSTED_FRAME_SANDBOX, base);
+  }
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -253,9 +227,10 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
       exemptions: 0,
       sandbox: ["{frameSandbox}"],
     },
+    // PDF 不再有 frame（自家 EmbedPDF 阅读器），只剩 SandboxedWebViewer 一个。
     "library-viewers.tsx": {
-      iframes: 2,
-      exemptions: 1,
+      iframes: 1,
+      exemptions: 0,
       sandbox: ["{webViewerFrameSandbox(trustedInteractive)}"],
     },
     // 网站素材的就地预览承载（W3）：只允许最严的那一档，`false` 是写死的，
@@ -296,15 +271,14 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
     "封面字面量必须与 COVER_FRAME_SANDBOX 同义",
   );
   assert.equal(COVER_FRAME_SANDBOX, "allow-scripts");
-  // 豁免只允许存在于两处 PDF frame（封面 + 文档查看器），且必须写明理由。
-  assert.equal(exemptions, 2, "sandbox 豁免数量变化必须重新评审");
+  // 豁免只允许存在于封面这一处 PDF frame，且必须写明理由。
+  assert.equal(exemptions, 1, "sandbox 豁免数量变化必须重新评审");
   assert.ok(
       PDF_FRAME_SANDBOX_EXEMPTION === "sandbox-exempt: pdf-plugin" &&
       source("../src/shell/editor-sandbox-origin.ts").includes("crbug 413851"),
     "PDF 豁免必须保留其浏览器约束依据",
   );
   for (const name of [
-    "library-viewers.tsx",
     "WebsiteArtifactViewer.tsx",
     "workspace-library-cover.tsx",
   ]) {
@@ -512,25 +486,10 @@ test("C5 境内家族：内嵌编辑器白名单为空，整条嵌入路径 fail
   assert.equal(child.status, 0, child.stderr);
   const cn = JSON.parse(child.stdout);
 
-  // 境内三个编辑器子站 2026-08-13 全量上线后，白名单是**三条 .cn**，
-  // 而且只可能是 .cn：域名由当前家族的可注册域拼出来，不存在跨族回落。
-  assert.deepEqual([...cn.bases].sort(), [
-    "https://design.oceanleo.cn/embed/editor",
-    "https://video.oceanleo.cn/canvas-board",
-    "https://website.oceanleo.cn/embed/site-editor",
-  ]);
-  assert.deepEqual([...cn.origins].sort(), [
-    "https://design.oceanleo.cn",
-    "https://video.oceanleo.cn",
-    "https://website.oceanleo.cn",
-  ]);
-  for (const base of cn.bases) {
-    assert.equal(
-      new URL(base).hostname.endsWith(".oceanleo.cn"),
-      true,
-      `境内白名单出现了非 .cn 主机：${base}`,
-    );
-  }
+  // 2026-10-22：子站不再作为编辑器被嵌入，白名单在所有家族里都是空表
+  // （不存在任何一个 base 能拿到同源沙箱）。
+  assert.deepEqual([...cn.bases], []);
+  assert.deepEqual([...cn.origins], []);
   // .com 的 base 在境内既不可信，也拿不到 same-origin，且构造器直接拒绝。
   assert.equal(cn.comBaseTrusted, false);
   assert.equal(cn.comBaseSandbox, UNTRUSTED_FRAME_SANDBOX);
@@ -565,11 +524,7 @@ test("W8/2 library-viewers 的 trustedInteractive 只由共享判定授予", () 
 // UC-6 §8.6（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：投递侧写 '*' 等于把宿主消息广播给当前占据该 frame 的任何 origin。
 test("W8/3 targetOrigin 不得为 `*`，且只允许白名单编辑器 origin", () => {
-  assert.deepEqual([...TRUSTED_EMBED_EDITOR_ORIGINS].sort(), [
-    "https://design.oceanleo.com",
-    "https://video.oceanleo.com",
-    "https://website.oceanleo.com",
-  ]);
+  assert.deepEqual([...TRUSTED_EMBED_EDITOR_ORIGINS], []);
   assert.equal(isValidEditorTargetOrigin("*"), false);
   assert.equal(isValidEditorTargetOrigin(""), false);
   assert.equal(isValidEditorTargetOrigin("https://oceanleo.app"), false);
@@ -757,29 +712,13 @@ test("W8/3 协议指令集保持最小闭集", () => {
 
 // UC-3 §8.3 + UC-6 §8.6（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：构造器若接受任意 base，白名单 sandbox 组合与白名单 targetOrigin 都会被绕开。
-test("W8/3 嵌入 URL 构造只接受白名单 base", () => {
-  const url = buildEditorEmbedUrl(
-    "https://design.oceanleo.com/embed/editor",
-    { instanceId: "instance-1", hostOrigin: "https://oceanleo.com" },
-  );
-  assert.equal(new URL(url).origin, "https://design.oceanleo.com");
+test("W8/3 嵌入 URL 构造：白名单为空，任何 base 都被拒绝（含曾经的子站与 LeoDev 覆盖）", () => {
   const leoDevHost = "p-07e5e1a19413945e8eecf1fec4877269.dev.oceanleo.com";
-  const leoDevBase = `https://${leoDevHost}/embed/site-editor`;
-  assert.throws(
-    () =>
-      buildEditorEmbedUrl(leoDevBase, {
-        instanceId: "instance-1",
-        hostOrigin: "https://website.oceanleo.com",
-      }),
-    /Untrusted/,
-    "生产宿主不得构造 LeoDev 覆盖 URL",
-  );
-  const leoDevUrl = buildEditorEmbedUrl(leoDevBase, {
-    instanceId: "instance-1",
-    hostOrigin: `https://${leoDevHost}`,
-  });
-  assert.equal(new URL(leoDevUrl).origin, `https://${leoDevHost}`);
   for (const base of [
+    "https://design.oceanleo.com/embed/editor",
+    "https://website.oceanleo.com/embed/site-editor",
+    "https://video.oceanleo.com/canvas-board",
+    `https://${leoDevHost}/embed/site-editor`,
     "https://website.oceanleo.com/embed/attacker",
     "https://p1-aaaa.oceanleo.app/embed/editor",
     `https://${PREVIEW_HOST}/embed/site-editor`,

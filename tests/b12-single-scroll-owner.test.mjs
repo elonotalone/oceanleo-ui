@@ -28,7 +28,6 @@ test("各编辑器同位置左栏面板不再自建滚动、也不再撑满父�
     ["shell/doc-editors/RichDocControls.tsx", "RichDocControls"],
     ["shell/image-editor/FabricImageControls.tsx", "FabricImageControls"],
     ["shell/image-editor/FabricImageControls.tsx", "FabricImageFilterPanel"],
-    ["shell/chart-editor/ChartControls.tsx", "ChartControls"],
     ["shell/media-editors/PdfControls.tsx", "PdfControls"],
     ["shell/media-editors/Model3DControls.tsx", "Model3DControls"],
     ["shell/media-editors/AudioWorkbenchView.tsx", "AudioControls"],

@@ -4,7 +4,7 @@
 // 下载菜单条目齐全且写的是人话、有损格式的默认画质是 90 不是 100。
 //
 // 用假的编辑器状态跑：这里判的是指令面的契约，不是画布本身。画布行为由
-// advanced-editor-v8-*、chart-editor-*、audio-editor-v8 等既有用例覆盖。
+// advanced-editor-v8-*、audio-editor-v8 等既有用例覆盖。
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -29,10 +29,8 @@ import { visualCommandIdErrors } from "../src/shell/media-editors/visual-command
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
 import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
-import { createChartCommandSurface } from "../src/shell/chart-editor/chart-command-surface.ts";
 import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
 import { cutTimelineRange } from "../src/shell/video-editor/timeline-model.ts";
-import { parseChartValues } from "../src/shell/chart-editor/chart-command-surface.ts";
 
 // --------------------------------------------------------------------------
 // 假编辑器
@@ -154,39 +152,6 @@ function fakeAudioEditor(overrides = {}) {
   };
 }
 
-function fakeChartEditor(overrides = {}) {
-  const { log, record } = calls();
-  return {
-    log,
-    editor: {
-      loading: false,
-      sourceReady: true,
-      carrierState: "ready",
-      error: "",
-      dirty: false,
-      editRevision: 5,
-      activeSeriesId: "series-1",
-      document: {
-        option: {
-          title: { text: "季度营收" },
-          legend: { show: true },
-          xAxis: { data: ["一季", "二季", "三季"] },
-          series: [
-            { id: "series-1", name: "营收", type: "bar", data: [1, 2, 3] },
-            { id: "series-2", name: "成本", type: "line", data: [1, 1, 1] },
-          ],
-        },
-      },
-      patchSeries: record("patchSeries"),
-      setTitle: record("setTitle"),
-      setLegend: record("setLegend"),
-      addSeries: record("addSeries"),
-      removeSeries: record("removeSeries"),
-      ...overrides,
-    },
-  };
-}
-
 function fakeModel3DEditor(overrides = {}) {
   const { log, record } = calls();
   return {
@@ -256,13 +221,6 @@ function allSurfaces() {
       }),
     },
     {
-      editorId: "chart-editor@1",
-      surface: createChartCommandSurface({
-        editor: fakeChartEditor().editor,
-        deliver: deliverSpy().deliver,
-      }),
-    },
-    {
       editorId: "threed",
       surface: createModel3DCommandSurface({
         editor: fakeModel3DEditor().editor,
@@ -321,17 +279,6 @@ test("会改文档的标 mutates:true，只读的标 false", () => {
     "audio.fade": true,
     "audio.seek": false,
     "audio.export": false,
-    "chart-editor@1.set-chart-type": true,
-    "chart-editor@1.set-title": true,
-    "chart-editor@1.set-series-values": true,
-    "chart-editor@1.toggle-legend": true,
-    "chart-editor@1.add-series": true,
-    "chart-editor@1.remove-series": true,
-    // 从表格选区快照整份换文档（editor.loadDocument）——改的是当前图表文档，mutates:true。
-    "chart-editor@1.create-from-range": true,
-    // 单轴 ↔ 双 Y 轴（editor.setYAxisCount），切回单轴还会清副轴绑定——改文档，mutates:true。
-    "chart-editor@1.set-y-axis-count": true,
-    "chart-editor@1.export": false,
     "threed.describe-formats": false,
     "threed.set-view": true,
     "threed.zoom": true,
@@ -471,17 +418,6 @@ test("合法参数真的落到编辑器上", async () => {
   assert.equal(cut.ok, true);
   assert.deepEqual(audio.log[0], ["editRange", "delete", 2, 5]);
 
-  const chart = fakeChartEditor();
-  const chartSurface = createChartCommandSurface({
-    editor: chart.editor,
-    deliver: deliverSpy().deliver,
-  });
-  const typed = await chartSurface.run("chart-editor@1.set-chart-type", {
-    type: "line",
-  });
-  assert.equal(typed.ok, true);
-  assert.deepEqual(chart.log[0], ["patchSeries", "series-1", { type: "line" }]);
-
   const model = fakeModel3DEditor();
   const modelSurface = createModel3DCommandSurface({
     editor: model.editor,
@@ -549,19 +485,6 @@ test("状态变了，能做的事就跟着变；消失的指令再调就是失�
   });
   assert.deepEqual(stopped.describe(), [], "源没验过时不该列出任何指令");
 
-  const singleSeries = fakeChartEditor();
-  singleSeries.editor.document.option.series =
-    singleSeries.editor.document.option.series.slice(0, 1);
-  const chart = createChartCommandSurface({
-    editor: singleSeries.editor,
-    deliver: deliverSpy().deliver,
-  });
-  assert.equal(
-    chart.describe().some((spec) => spec.id === "chart-editor@1.remove-series"),
-    false,
-    "只剩一个系列时不该列出删除系列",
-  );
-
   const noModel = createModel3DCommandSurface({
     editor: fakeModel3DEditor({ modelLoaded: false }).editor,
     deliver: deliverSpy().deliver,
@@ -621,7 +544,6 @@ test("五类的下载条目齐全，每条都写清格式名与后缀", () => {
     image: ["png", "jpg", "webp"],
     "video-timeline": ["mp4", "webm"],
     audio: ["wav", "mp3", "m4a"],
-    "chart-editor@1": ["png", "svg", "json"],
     threed: ["glb", "png"],
   };
   for (const [editorId, formats] of Object.entries(expected)) {
@@ -832,13 +754,6 @@ test("3D 只认 GLB 与 glTF，别的格式明说打不开且不假装能转", (
   assert.ok(accept.includes(".glb"));
 });
 
-test("图表只读 CSV / TSV，xlsx 给的是「另存为 CSV」而不是沉默", () => {
-  assert.equal(visualImportPlan("chart-editor@1", "数据.csv").action, "accept");
-  const xlsx = visualImportPlan("chart-editor@1", "台账.xlsx");
-  assert.equal(xlsx.action, "reject");
-  assert.match(xlsx.message, /CSV/);
-});
-
 test("没有后缀、认不出的文件都有明确交代", () => {
   const noExtension = visualImportPlan("image", "剪贴板粘的东西");
   assert.equal(noExtension.action, "reject");
@@ -914,45 +829,6 @@ test("剪口太窄、或范围内没内容时，时间线原样不动", () => {
   };
   assert.equal(cutTimelineRange(doc, 1000, 1050), doc, "不足 100ms 不该动");
   assert.equal(cutTimelineRange(doc, 9000, 9000), doc);
-});
-
-test("图表数据串解析：有一格不是数字就整条不收", () => {
-  assert.deepEqual(parseChartValues("12, 20,16"), {
-    ok: true,
-    values: [12, 20, 16],
-  });
-  const bad = parseChartValues("12, 二十, 16");
-  assert.equal(bad.ok, false);
-  assert.match(bad.message, /第 2 个值/);
-  assert.equal(parseChartValues("   ").ok, false);
-  assert.equal(
-    parseChartValues(Array.from({ length: 201 }, () => "1").join(",")).ok,
-    false,
-  );
-});
-
-test("图表改数据时分类数对不上就拒绝，不许把空位当 0 补齐", async () => {
-  const chart = fakeChartEditor();
-  const surface = createChartCommandSurface({
-    editor: chart.editor,
-    deliver: deliverSpy().deliver,
-  });
-  const wrongCount = await surface.run("chart-editor@1.set-series-values", {
-    values: "1,2",
-  });
-  assert.equal(wrongCount.ok, false);
-  assert.match(wrongCount.message, /3 个/);
-  assert.deepEqual(chart.log, []);
-  const right = await surface.run("chart-editor@1.set-series-values", {
-    values: "4,5,6",
-    seriesId: "series-2",
-  });
-  assert.equal(right.ok, true);
-  assert.deepEqual(chart.log[0], [
-    "patchSeries",
-    "series-2",
-    { data: [4, 5, 6] },
-  ]);
 });
 
 test("3D 能力探测照实报，不给「传上来试试」的暗示", async () => {

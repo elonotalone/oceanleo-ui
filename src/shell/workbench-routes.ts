@@ -5,19 +5,13 @@
 
 import {
   isDurableLibraryItem,
-  type EditorCapabilityName,
-  type EditorManifestV1,
   type LibraryItem,
 } from "./library-data";
-import {
-  currentDomainProfile,
-  currentFamilySubsiteOrigin,
-} from "../contracts/domain-family";
+import { currentDomainProfile } from "../contracts/domain-family";
 import {
   advancedCapabilityForArtifactFields,
   artifactEditorCapabilityIsCompatible,
   artifactSourceFormatIsCompatible,
-  chartOptionEvidenceIsPresent,
   type AdvancedEditorAdapterId,
 } from "./artifact-contract";
 import {
@@ -37,7 +31,6 @@ import {
   NATIVE_DECK_EXT,
   NATIVE_GRID_EXT,
   NATIVE_RICHDOC_EXT,
-  ROUND_TRIP,
   VIDEO_EXT,
   extOf,
   officeExtensionForItem,
@@ -87,94 +80,8 @@ function hasLegacyOfficeMetadata(item: LibraryItem): boolean {
   ].some(isLegacyOfficeMetadata);
 }
 
-function editorManifestFor(item: LibraryItem): EditorManifestV1 | null {
-  const value =
-    item.descriptor?.editor || item.meta.editor_manifest || item.meta.editor;
-  const record = asRecord(value);
-  const source = asRecord(record?.source);
-  if (
-    !record ||
-    record.schema !== "oceanleo.editor-manifest.v1" ||
-    record.id !== "chart-editor" ||
-    record.version !== 1 ||
-    !source ||
-    (source.kind !== "inline" && source.kind !== "url") ||
-    typeof source.format !== "string" ||
-    !Array.isArray(record.capabilities)
-  ) {
-    return null;
-  }
-  const capabilities = [
-    ...new Set(
-      record.capabilities.filter(
-        (value): value is EditorCapabilityName =>
-          value === "load" ||
-          value === "mutate" ||
-          value === "save" ||
-          value === "reopen",
-      ),
-    ),
-  ];
-  const sourceUrl =
-    typeof source.url === "string" && source.url.length <= 2_000
-      ? source.url.trim()
-      : "";
-  if (source.kind === "url" && !trustedChartSourceUrl(sourceUrl)) return null;
-  return {
-    schema: "oceanleo.editor-manifest.v1",
-    id: "chart-editor",
-    version: 1,
-    capabilities,
-    source: {
-      kind: source.kind,
-      format: source.format.slice(0, 80),
-      ...(sourceUrl ? { url: sourceUrl } : {}),
-    },
-  };
-}
-
-function trustedChartSourceUrl(url: string): boolean {
-  if (/^\/v1\/assets\/library\/[a-z0-9-]+\/editor-source$/i.test(url)) {
-    return true;
-  }
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname.toLowerCase();
-    return (
-      parsed.protocol === "https:" &&
-      // 网关主机取**当前家族**的那一个（`.com` 站解析出来的仍是 api.oceanleo.com，
-      // 逐字不变）：境内页面没有理由去信境外网关签发的源地址。
-      // 素材桶是阿里云广州 OSS，本来就在境内，两族共用（台账 §E）。
-      (host === new URL(currentDomainProfile().gatewayOrigin).hostname ||
-        host === "oceanleo-assets.oss-cn-guangzhou.aliyuncs.com") &&
-      (parsed.pathname.endsWith(".json") ||
-        /\/v1\/assets\/library\/[a-z0-9-]+\/editor-source$/i.test(
-          parsed.pathname,
-        ))
-    );
-  } catch {
-    return false;
-  }
-}
-
-function hasRoundTrip(manifest: EditorManifestV1): boolean {
-  return ROUND_TRIP.every((capability) =>
-    manifest.capabilities.includes(capability),
-  );
-}
-
-function chartSourceIsPresent(
-  item: LibraryItem,
-  manifest: EditorManifestV1,
-): boolean {
-  if (manifest.source.kind === "url") {
-    return Boolean(manifest.source.url);
-  }
-  return Boolean(
-    item.content?.trim() ||
-      asRecord(item.meta.chart_document) ||
-      asRecord(item.meta.chart_option),
-  );
+function isChartEditorMetadata(value: unknown): boolean {
+  return asRecord(value)?.id === "chart-editor";
 }
 
 function contentTypeFor(item: LibraryItem): string {
@@ -215,7 +122,6 @@ function threeDSubtypeFor(item: LibraryItem): "model" | "hdri" | "texture" | "un
 function available(
   adapter: Exclude<EditorAdapterId, "none">,
   route: EditorRoute,
-  manifest: EditorManifestV1 | null = null,
 ): EditorCapability {
   if (TRUSTED_EDITOR_REGISTRY[adapter].routeType !== route.type) {
     return unavailable("编辑器注册信息与路由不一致。");
@@ -224,7 +130,7 @@ function available(
     available: true,
     adapter,
     route,
-    manifest,
+    manifest: null,
     unavailableReason: "",
   };
 }
@@ -238,35 +144,6 @@ function unavailable(reason: string): EditorCapability {
     unavailableReason: reason,
   };
 }
-
-/**
- * 三个内嵌编辑器子站的路由。子站标签与路径写死，域名按**当前家族**拼
- * （contracts/domain-family.ts），拼出来的 base 与
- * `editor-sandbox-origin.ts` 的 `TRUSTED_EMBED_EDITOR_BASES` 逐字对应 ——
- * 那张表是「谁能拿 allow-same-origin」的白名单，两边必须同源同规则。
- *
- * ws 只开放 design / website / video；`currentFamilySubsiteOrigin()` 对这三
- * 个给分身子站 origin，其余（excel / slide 等）给 undefined，这里就返回
- * unavailable。**不许回落到 `.com` 的 base**：那会把分身页面嵌到生产编辑器，
- * 既跨族串门，也违反 UC-3。缺 origin 才写「暂未开放」。
- */
-const EMBED_EDITOR_SUBSITES = {
-  website: {
-    subsite: "website",
-    path: "/embed/site-editor",
-    mediaType: "website",
-  },
-  "design-canvas": {
-    subsite: "design",
-    path: "/embed/editor",
-    mediaType: "canvas",
-  },
-  "video-canvas": {
-    subsite: "video",
-    path: "/canvas-board",
-    mediaType: "video_canvas",
-  },
-} as const;
 
 const DESIGN_TEMPLATE_DOC_PATH =
   /^\/design-templates\/doc\/[a-z0-9-]+\.json$/i;
@@ -295,20 +172,24 @@ function isFamilyDesignTemplateDocUrl(value: string): boolean {
   }
 }
 
-function embedEditor(
-  adapter: keyof typeof EMBED_EDITOR_SUBSITES,
-): EditorCapability {
-  const { subsite, path, mediaType } = EMBED_EDITOR_SUBSITES[adapter];
-  const origin = currentFamilySubsiteOrigin(subsite);
-  if (!origin) {
-    return unavailable(`${subsite} 编辑器在当前版本暂未开放。`);
-  }
-  return available(adapter, {
-    type: "embed",
-    base: `${origin}${path}`,
-    mediaType,
-  });
+/** 网站 → 本地 Puck 路由；视频画布 → 本地节点画布；设计画布 → 图片编辑器。 */
+function websiteEditor(): EditorCapability {
+  return available("website", { type: "website" });
 }
+
+function videoCanvasEditor(): EditorCapability {
+  return available("video-canvas", { type: "video-canvas" });
+}
+
+function designCanvasEditor(): EditorCapability {
+  return available("design-canvas", { type: "image" });
+}
+
+const CHART_EDITOR_REMOVED_REASON =
+  "图表编辑器已下线，这份图表目前只读：可以查看和下载，不能在线修改。";
+
+const VECTOR_IMAGE_READ_ONLY_REASON =
+  "矢量图（SVG）暂不支持在线编辑，目前可以查看和下载。";
 
 function hasInlineText(item: LibraryItem): boolean {
   if (item.content?.trim()) return true;
@@ -395,16 +276,13 @@ function durableEditorCapabilityFor(
   ) {
     return unavailable("复合图片缺少当前 revision 的完整 scene 依赖闭包。");
   }
-  if (
-    artifact.artifactType === "chart" &&
-    !chartOptionEvidenceIsPresent({
-      sourceFormat: artifact.sourceFormat,
-      editorManifest: artifact.renditions.editor_manifest,
-    })
-  ) {
-    return unavailable(
-      "图表缺少 oceanleo.chart.v1 option 源或带摘要的 editor manifest。",
-    );
+  if (artifact.artifactType === "chart") {
+    return unavailable(CHART_EDITOR_REMOVED_REASON);
+  }
+  // 矢量图原先在整站嵌入的设计子站里编辑；本地图片编辑器不改写 SVG 源，
+  // 所以只读打开，绝不静默改写已存文档。
+  if (artifact.artifactType === "vector_image") {
+    return unavailable(VECTOR_IMAGE_READ_ONLY_REASON);
   }
   const advancedContract = advancedCapabilityForArtifactFields({
     artifactType: artifact.artifactType,
@@ -431,10 +309,7 @@ function durableEditorCapabilityFor(
     case "grid":
       return available(adapter, { type: "grid" });
     case "chart-editor@1":
-      return available(adapter, {
-        type: "grid",
-        adapter: "chart-editor@1",
-      });
+      return unavailable(CHART_EDITOR_REMOVED_REASON);
     case "deck":
       return available(adapter, { type: "deck" });
     case "threed":
@@ -442,11 +317,11 @@ function durableEditorCapabilityFor(
     case "game":
       return available(adapter, { type: "game" });
     case "website":
-      return embedEditor(adapter);
+      return websiteEditor();
     case "design-canvas":
-      return embedEditor(adapter);
+      return designCanvasEditor();
     case "video-canvas":
-      return embedEditor(adapter);
+      return videoCanvasEditor();
   }
   return unavailable("没有匹配的受信任 typed editor adapter。");
 }
@@ -462,34 +337,16 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   const officeExt = officeExtensionForItem(item);
   const isPdf = mime === "application/pdf" || ext === "pdf";
   const contentType = contentTypeFor(item);
-  const chartManifest = editorManifestFor(item);
 
-  if (contentType === "chart" || chartManifest?.id === "chart-editor") {
-    if (
-      chartManifest &&
-      hasRoundTrip(chartManifest) &&
-      chartSourceIsPresent(item, chartManifest)
-    ) {
-      return available(
-        "chart-editor@1",
-        { type: "grid", adapter: "chart-editor@1" },
-        chartManifest,
-      );
-    }
-    /**
-     * `chart.md` R6：这处历史文案只讲了「只有渲染 HTML/封面」一种坏法，
-     * 但落到这里的其实是三种不同的 `legacy-render-only` 成因（§3.2 状态机），
-     * 用同一句话回答会让「有 option 但 manifest 不支持回写」的素材看起来像
-     * 一份 HTML 截图。逐因给话，`html = 不可编辑` 的边界一条都不放宽。
-     */
-    const chartRejection = !chartManifest
-      ? "此历史图表只有渲染 HTML/封面，没有 ECharts option 源；需补录 oceanleo.chart.v1 结构化源后才能编辑。"
-      : !hasRoundTrip(chartManifest)
-        ? "此图表的 editor manifest 没有声明 load/mutate/save/reopen 全套回写能力；补齐 chart-editor@1 的回写声明后才能编辑。"
-        : "此图表声明了 chart-editor@1，但当前版本取不到 option 源字节（manifest 指向的 url 或内联 option 缺失）；补录 oceanleo.chart.v1 源后才能编辑。";
+  if (
+    contentType === "chart" ||
+    isChartEditorMetadata(item.descriptor?.editor) ||
+    isChartEditorMetadata(item.meta.editor_manifest) ||
+    isChartEditorMetadata(item.meta.editor)
+  ) {
     return unavailable(
       String(item.descriptor?.unavailableReason || item.meta.unavailable_reason || "") ||
-        chartRejection,
+        CHART_EDITOR_REMOVED_REASON,
     );
   }
 
@@ -544,28 +401,39 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       "Legacy Office metadata requires a typed document, grid, or deck source.",
     );
   }
-  if (pinnedRoute === "embed") {
+  // 历史会话把网站 / 视频画布 / 设计画布都记成 "embed"。读时别名到本地编辑器，
+  // 不改写存量；新写入用各自的真实路由名。
+  if (
+    pinnedRoute === "embed" ||
+    pinnedRoute === "website" ||
+    pinnedRoute === "video-canvas"
+  ) {
     const pinnedEditor = String(item.meta.editor || "").toLowerCase();
-    if (item.kind === "website" || pinnedEditor === "website") {
-      return embedEditor("website");
+    if (
+      pinnedRoute === "website" ||
+      item.kind === "website" ||
+      pinnedEditor === "website"
+    ) {
+      return websiteEditor();
     }
     if (
+      pinnedRoute === "video-canvas" ||
       item.kind === "video_canvas" ||
       pinnedEditor === "video-canvas"
     ) {
-      return embedEditor("video-canvas");
+      return videoCanvasEditor();
     }
     if (
       templateDocumentUrl ||
       item.kind === "canvas" ||
       pinnedEditor === "design-canvas"
     ) {
-      return embedEditor("design-canvas");
+      return designCanvasEditor();
     }
   }
   // 素材域按**当前家族**取，正则不再写死 `.com`。`.com` 站的判定逐字不变。
   if (isFamilyDesignTemplateDocUrl(templateDocumentUrl)) {
-    return embedEditor("design-canvas");
+    return designCanvasEditor();
   }
 
   if (item.kind === "website" || contentType === "website") {
@@ -576,7 +444,7 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       !item.url &&
       !item.previewUrl
     ) {
-      return embedEditor("website");
+      return websiteEditor();
     }
     const projectId =
       item.meta.website_id ||
@@ -590,19 +458,19 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
         "这个网站条目只有预览，没有可恢复的项目、模板或 GitHub 源码。",
       );
     }
-    return embedEditor("website");
+    return websiteEditor();
   }
 
   if (
     item.kind === "video_canvas" ||
     (item.kind === "canvas" && item.meta.editor === "video-canvas")
   ) {
-    return embedEditor("video-canvas");
+    return videoCanvasEditor();
   }
   // A canvas is an editable project capability in its own right. Blank drafts
   // intentionally have no URL/nodes yet and must work from every hosting site.
   if (item.kind === "canvas") {
-    return embedEditor("design-canvas");
+    return designCanvasEditor();
   }
 
   if (NATIVE_DECK_EXT.has(officeExt)) {
@@ -700,19 +568,17 @@ export function editorToolLabel(route: EditorRoute): string {
     case "richdoc":
       return "文档编辑";
     case "grid":
-      return route.adapter === "chart-editor@1" ? "图表编辑" : "表格编辑";
+      return "表格编辑";
     case "deck":
       return "幻灯片编辑";
     case "threed":
       return "3D 场景与视图";
     case "game":
       return "游戏编辑";
-    case "embed":
-      return route.mediaType === "website"
-        ? "网站编辑"
-        : route.mediaType === "video_canvas"
-          ? "节点画布"
-          : "画布编辑";
+    case "website":
+      return "网站编辑";
+    case "video-canvas":
+      return "节点画布";
     default:
       return "编辑";
   }

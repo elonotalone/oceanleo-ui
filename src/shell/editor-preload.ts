@@ -1,4 +1,3 @@
-import { hostedEditorOrigins } from "./hosted-editor-origins";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import {
   prefetchOfficeSource,
@@ -110,28 +109,9 @@ export async function preloadEditorFor(
   };
 }
 
-const PRECONNECT_ATTR = "data-oleo-editor-preconnect";
-
-export function ensureHostedEditorPreconnect(
-  doc: Document | null = typeof document === "undefined" ? null : document,
-): void {
-  if (!doc?.head) return;
-  for (const origin of hostedEditorOrigins()) {
-    const existing = doc.head.querySelector(
-      `link[rel="preconnect"][${PRECONNECT_ATTR}="${origin}"]`,
-    );
-    if (existing) continue;
-    const link = doc.createElement("link");
-    link.rel = "preconnect";
-    link.href = origin;
-    link.setAttribute(PRECONNECT_ATTR, origin);
-    doc.head.append(link);
-  }
-}
-
 const SITE_HOME_ROUTE: Record<string, string> = {
-  website: "embed",
-  design: "embed",
+  website: "website",
+  design: "image",
   video: "video-timeline",
   image: "image",
   audio: "audio",
@@ -145,7 +125,6 @@ const SITE_HOME_ROUTE: Record<string, string> = {
   sheet: "grid",
   excel: "grid",
   grid: "grid",
-  chart: "chart-editor@1",
   "3d": "threed",
   threed: "threed",
   game: "game",
@@ -153,8 +132,8 @@ const SITE_HOME_ROUTE: Record<string, string> = {
 
 const FEATURE_HOME_ROUTE: Record<string, string> = {
   video_editing: "video-timeline",
-  website_finetuning: "embed",
-  design_canvas: "embed",
+  website_finetuning: "website",
+  design_canvas: "image",
   presentation_editing: "deck",
   document_editing: "richdoc",
   spreadsheet_editing: "grid",

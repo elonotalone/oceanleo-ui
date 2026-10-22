@@ -11,12 +11,28 @@
 
 import type { EditorMode } from "../hosted-editor";
 import type { WorkbenchIconName } from "../AdvancedEditorIcon";
-import { mergePluginAuxPages } from "./plugin-page-registry";
 
 /** 成品页（编辑）：唯一一个显示编辑栏的页面。 */
 export const ARTIFACT_PAGE_ID = "artifact";
 /** 专业编辑页：等价于旧的 L3 `mode === "pro"`。 */
 export const PRO_PAGE_ID = "pro";
+
+/**
+ * 只有这三件编辑器有「专业编辑」页：同一内核自带官方完整 UI，且跑在同一个实例上
+ * （grid = Univer ribbon，pdf = EmbedPDF 官方 viewer，website = Puck 默认完整 UI）。
+ * 其余编辑器只有一个模式。单一来源——不要在别处再列一遍。
+ */
+export const PRO_PAGE_EDITORS = Object.freeze([
+  "grid",
+  "pdf",
+  "website",
+] as const);
+
+export function hasProPage(pluginId: string | null | undefined): boolean {
+  return (
+    !!pluginId && (PRO_PAGE_EDITORS as readonly string[]).includes(pluginId)
+  );
+}
 
 export type PluginPageKind = "artifact" | "pro" | "aux";
 
@@ -50,7 +66,10 @@ export interface AdvancedEditorPagesAdapter {
 }
 
 export interface BuildPluginPagesOptions {
-  /** 有登记时首帧就拼上静态附加页；iframe 的 aux 只更新可用状态。 */
+  /**
+   * 编辑器 id。只有 `PRO_PAGE_EDITORS` 里的编辑器才会拿到「专业编辑」页；
+   * 缺省 / 其他 id 一律只有「编辑」页（fail closed）。
+   */
   pluginId?: string;
   proLabel?: string;
   proUnavailableReason?: string;
@@ -66,20 +85,24 @@ const RESERVED_PAGE_IDS: ReadonlySet<string> = new Set([
 export function buildPluginPages(
   options: BuildPluginPagesOptions = {},
 ): PluginPage[] {
-  const aux = mergePluginAuxPages(options.pluginId, options.aux).filter(
+  const aux = [...(options.aux ?? [])].filter(
     (page) => page.kind === "aux" && !RESERVED_PAGE_IDS.has(page.id),
   );
   return [
     { id: ARTIFACT_PAGE_ID, label: "编辑", kind: "artifact", icon: "preview" },
-    {
-      id: PRO_PAGE_ID,
-      label: options.proLabel ?? "专业编辑",
-      kind: "pro",
-      icon: "settings",
-      ...(options.proUnavailableReason
-        ? { unavailableReason: options.proUnavailableReason }
-        : {}),
-    },
+    ...(hasProPage(options.pluginId)
+      ? [
+          {
+            id: PRO_PAGE_ID,
+            label: options.proLabel ?? "专业编辑",
+            kind: "pro" as const,
+            icon: "settings" as const,
+            ...(options.proUnavailableReason
+              ? { unavailableReason: options.proUnavailableReason }
+              : {}),
+          },
+        ]
+      : []),
     ...aux,
   ];
 }

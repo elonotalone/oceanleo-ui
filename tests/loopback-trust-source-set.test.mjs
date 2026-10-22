@@ -21,9 +21,8 @@ import test from "node:test";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// chart 的网关是模块级常量，必须在 import 之前钉成 loopback：
-// 「网关解析到本机」正是 V1 给的证伪场景，钉不成就测不到那条分支。
-process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL = "http://localhost:8000";
+// 2026-10-22：图表编辑器（chart-source 网关解析）已删除，本机网关那条分支随之消失，
+// 剩下三份硬门文件。
 
 const { isTrustedEditorOrigin } = await import(
   pathToFileURL(join(REPO, "src/shell/editor-protocol.ts")).href
@@ -33,9 +32,6 @@ const { validAssetUrl } = await import(
 );
 const { trustedArtifactMediaUrl } = await import(
   pathToFileURL(join(REPO, "src/shell/image-editor/editor-persistence.ts")).href
-);
-const { ChartSourceError, resolveChartSource } = await import(
-  pathToFileURL(join(REPO, "src/shell/chart-editor/chart-source.ts")).href
 );
 
 // ---------------------------------------------------------------------------
@@ -58,41 +54,12 @@ function setBuild(mode) {
   process.env.NODE_ENV = mode;
 }
 
-const CHART_ITEM = {
-  id: "w12-loopback-fixture",
-  key: "w12-loopback-fixture",
-  title: "loopback fixture",
-  meta: {
-    editor_manifest: {
-      schema: "oceanleo.editor-manifest.v1",
-      id: "chart-editor",
-      version: 1,
-      capabilities: ["load", "mutate", "save", "reopen"],
-      source: {
-        kind: "url",
-        format: "echarts-option+json",
-        url: "/v1/assets/library/w12-loopback-fixture/editor-source",
-      },
-    },
-  },
-};
-
 const LOOPBACK_ORIGINS = [
   "http://localhost",
   "http://localhost:8000",
   "http://127.0.0.1",
   "http://127.0.0.1:3000",
 ];
-
-function chartResolvesToLoopback() {
-  try {
-    const source = resolveChartSource(CHART_ITEM);
-    return source.kind === "url" && /^http:\/\/localhost:8000\//.test(source.requestUrl);
-  } catch (caught) {
-    if (caught instanceof ChartSourceError) return false;
-    throw caught;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 1 生产语义：本机地址一律拒绝
@@ -120,11 +87,6 @@ test("生产构建里没有任何一条通往本机的信任分支", () => {
       `生产构建仍把 ${origin}/upload.png 当作已托管 URL`,
     );
   }
-  assert.equal(
-    chartResolvesToLoopback(),
-    false,
-    "生产构建仍能把 chart source 解析到本机网关并发出请求",
-  );
 });
 
 // ---------------------------------------------------------------------------
@@ -140,11 +102,6 @@ test("NODE_ENV 被翻成非 production，线上页面依然到不了本机", () 
     assert.equal(validAssetUrl(`${origin}/asset.png`), false, `${origin} 资产 URL 被接受了`);
     assert.equal(trustedArtifactMediaUrl(`${origin}/upload.png`), false, `${origin} 回执被接受了`);
   }
-  assert.equal(
-    chartResolvesToLoopback(),
-    false,
-    "oceanleo.com 页面仍能把 chart source 解析到本机网关",
-  );
 });
 
 test("第一方与不可信 origin 的既有判定没有被这道门改坏", () => {
@@ -167,7 +124,6 @@ test("本机开发（页面自身在 loopback、非 production 构建）仍然�
   assert.equal(isTrustedEditorOrigin("http://localhost"), true);
   assert.equal(validAssetUrl("http://localhost/asset.png"), true);
   assert.equal(trustedArtifactMediaUrl("http://localhost/upload.png"), true);
-  assert.equal(chartResolvesToLoopback(), true);
 });
 
 // ---------------------------------------------------------------------------
@@ -190,7 +146,6 @@ const LOOPBACK_PATTERN =
 const GATED_FILES = [
   "src/shell/editor-protocol.ts",
   "src/shell/editor-protocol-validation.mjs",
-  "src/shell/chart-editor/chart-source.ts",
   "src/shell/image-editor/editor-persistence.ts",
 ];
 
@@ -210,12 +165,6 @@ const ALLOWLIST = [
     commentOnly: true,
     reason:
       "文档注释，说明 localhost 与预览域的 cookie 一律 host-only，是拒绝语义的说明，不是代码分支。",
-  },
-  {
-    file: "src/shell/chart-editor/chart-source.ts",
-    fn: "privateNetworkHostname",
-    reason:
-      "拒绝逻辑（V1 判定不算残留）：命中即判为私网/本机地址并拒绝，与放行无关。",
   },
 ];
 
@@ -306,7 +255,7 @@ test("五个目录里的每一处本机命中，都要么在硬门里、要么�
   );
 });
 
-test("四份文件的硬门确实是硬门，白名单也没有整体豁免", () => {
+test("三份文件的硬门确实是硬门，白名单也没有整体豁免", () => {
   for (const rel of GATED_FILES) {
     const text = readFileSync(join(REPO, rel), "utf8");
     const gates = gateRanges(text.split("\n"));
@@ -326,7 +275,7 @@ test("四份文件的硬门确实是硬门，白名单也没有整体豁免", ()
     );
     assert.ok(entry.reason && entry.reason.length > 20, `白名单条目 ${entry.file} 没写清理由`);
     assert.ok(
-      !GATED_FILES.includes(entry.file) || entry.fn === "privateNetworkHostname",
+      !GATED_FILES.includes(entry.file),
       `白名单不许覆盖硬门文件 ${entry.file} 的允许分支`,
     );
   }

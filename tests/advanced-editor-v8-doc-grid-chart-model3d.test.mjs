@@ -1,22 +1,10 @@
+// NOTE: file name kept for history; the chart editor was deleted 2026-10-22, only doc/grid/3D cases remain.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { register } from "node:module";
 import test from "node:test";
 import { unzipSync } from "fflate";
 
-import {
-  chartDocumentFromCsv,
-  chartDocumentFromJson,
-  chartDocumentToJson,
-  normalizeChartDocument,
-  patchChartSeries,
-  replaceChartData,
-} from "../src/shell/chart-editor/chart-schema.ts";
-import { ChartDocumentHistory } from "../src/shell/chart-editor/chart-history.ts";
-import {
-  chartExportOption,
-  chartRenderOption,
-} from "../src/shell/chart-editor/chart-render.ts";
 import { tiptapJsonToDocxBlob } from "../src/shell/doc-editors/docx-export.ts";
 import {
   Model3DRouteHistory,
@@ -34,19 +22,15 @@ test("v8 routes expose one real global history and semantic compact controls", (
   const richRoute = source("../src/shell/advanced-routes/RichDocRoute.tsx");
   // 表格只剩 Univer 舞台（core-swap:delete grid）：adapter 长在懒加载叶子里。
   const gridRoute = source("../src/shell/doc-editors/GridUniverStage.tsx");
-  const chartRoute = source("../src/shell/advanced-routes/ChartRoute.tsx");
   const modelRoute = source("../src/shell/advanced-routes/Model3DRoute.tsx");
   const richToolbar = source(
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",
-  );
-  const chartToolbar = source(
-    "../src/shell/chart-editor/ChartContextToolbar.tsx",
   );
   const modelToolbar = source(
     "../src/shell/media-editors/Model3DContextToolbar.tsx",
   );
 
-  for (const route of [richRoute, gridRoute, chartRoute, modelRoute]) {
+  for (const route of [richRoute, gridRoute, modelRoute]) {
     assert.match(route, /history: \{/);
     assert.match(route, /recovery: \{/);
     assert.match(route, /directDownload: \{/);
@@ -68,7 +52,7 @@ test("v8 routes expose one real global history and semantic compact controls", (
 
   // grid 的浮条控件由 `gridUniverSelectionContext` 从命令表算出（stage-plan.ts），
   // 不是 JSX 字面量；它的 iconOnly / revision 语义由 grid-univer-wiring 判据钉住。
-  for (const toolbar of [richToolbar, chartToolbar, modelToolbar]) {
+  for (const toolbar of [richToolbar, modelToolbar]) {
     assert.match(toolbar, /iconOnly: true/);
     assert.match(toolbar, /selectionRevision/);
     assert.match(toolbar, /editRevision/);
@@ -76,86 +60,7 @@ test("v8 routes expose one real global history and semantic compact controls", (
   assert.match(richToolbar, /"embedded-object"/);
   assert.match(richToolbar, /id: "link"/);
   assert.match(richToolbar, /id: "row-add"/);
-  assert.match(chartToolbar, /"chart-series"/);
   assert.match(modelToolbar, /placement: "more"/);
-});
-
-test("Chart data, stable series, legend, history and export projection roundtrip", () => {
-  const initial = normalizeChartDocument({
-    title: { text: "季度收入" },
-    legend: { show: true, position: "bottom", data: ["过期名称"] },
-    xAxis: { type: "category", data: ["Q1", "Q2"] },
-    yAxis: { type: "value" },
-    series: [
-      {
-        id: "revenue",
-        name: "收入",
-        type: "bar",
-        data: [120, 180],
-        label: { show: false },
-      },
-    ],
-  });
-  assert.deepEqual(initial.option.legend.data, ["收入"]);
-
-  const renamed = patchChartSeries(initial, "revenue", {
-    name: "营业收入",
-    color: "#7c3aed",
-    label: { show: true },
-  });
-  const normalized = chartDocumentFromJson(chartDocumentToJson(renamed));
-  assert.deepEqual(normalized.option.legend.data, ["营业收入"]);
-  assert.equal(normalized.option.series[0].id, "revenue");
-
-  const render = chartRenderOption(normalized.option);
-  const exported = chartExportOption(normalized.option);
-  assert.equal(render.legend.bottom, 8);
-  assert.equal("position" in render.legend, false);
-  assert.equal(exported.animation, false);
-  assert.deepEqual(exported.series, render.series);
-  assert.deepEqual(exported.legend, render.legend);
-
-  const history = new ChartDocumentHistory();
-  history.record(initial, normalized);
-  assert.equal(history.canUndo, true);
-  const undone = history.undo(normalized);
-  assert.equal(undone.option.series[0].name, "收入");
-  assert.equal(history.canRedo, true);
-  const redone = history.redo(undone);
-  assert.equal(redone.option.series[0].name, "营业收入");
-
-  const csv = chartDocumentFromCsv(
-    '季度,"营业收入,含税",利润\r\nQ1,130,40\r\n"Q2,调整",210,70',
-  );
-  assert.deepEqual(csv[0], ["季度", "营业收入,含税", "利润"]);
-  assert.deepEqual(csv[2], ["Q2,调整", 210, 70]);
-  const tsv = chartDocumentFromCsv("季度\t收入\nQ1\t120\nQ2\t180");
-  assert.deepEqual(tsv[2], ["Q2", 180]);
-  assert.throws(() => chartDocumentFromCsv('季度,"收入\nQ1,120'), /引号/);
-
-  const replaced = replaceChartData(normalized, csv);
-  assert.deepEqual(replaced.option.xAxis.data, ["Q1", "Q2,调整"]);
-  assert.deepEqual(
-    replaced.option.legend.data,
-    replaced.option.series.map((series) => series.name),
-  );
-
-  const duplicateIds = normalizeChartDocument({
-    xAxis: { type: "category", data: ["Q1"] },
-    yAxis: { type: "value" },
-    series: [
-      { id: "revenue", name: "收入", type: "bar", data: [120] },
-      { id: "revenue", name: "利润", type: "line", data: [40] },
-    ],
-  });
-  assert.deepEqual(
-    duplicateIds.option.series.map((series) => series.id),
-    ["revenue", "revenue-2"],
-  );
-  assert.deepEqual(chartDocumentFromCsv('名称,值\n"""含引号""",1')[1], [
-    '"含引号"',
-    1,
-  ]);
 });
 
 test("RichDoc table, link and inline formats survive a real DOCX package", async () => {

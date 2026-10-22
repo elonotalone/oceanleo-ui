@@ -146,41 +146,6 @@ test("video-timeline: pro save confirmation → quick face sees new revision", (
   );
 });
 
-test("chart-editor: quick-face document is the inline handoff pro receives", () => {
-  resetW19HandoffStore();
-  const item = durableItem({ content: "" });
-  const document = {
-    title: { text: "改过的标题" },
-    series: [{ id: "s1", data: [1, 2, 9] }],
-  };
-  const key = w19ItemKey("chart-editor", item);
-  stashW19EnterHandoff(key, {
-    kind: "inline",
-    json: document,
-    revision: "8",
-  });
-  const sourceForPro = resolveW19Handoff(item, peekW19EnterHandoff(key));
-  const patched = applyW19HandoffToItem(item, sourceForPro);
-  assert.match(String(patched.content), /改过的标题/);
-  assert.match(String(patched.content), /"s1"/);
-});
-
-test("chart-editor: pro save confirmation → quick face sees new revision", () => {
-  resetW19HandoffStore();
-  const item = durableItem({ content: "{}" });
-  const key = w19ItemKey("chart-editor", item);
-  reportW19ProSaved(key, {
-    ...item,
-    content: '{"title":{"text":"专业面改的"}}',
-    versionId: "ver-2",
-    revisionId: "rev-new",
-    meta: { editor_revision_id: "rev-new" },
-  });
-  const saved = peekW19ProSaved(key);
-  assert.equal(saved?.revisionId, "rev-new");
-  assert.match(String(saved?.content), /专业面改的/);
-});
-
 test("pdf: durable empty url stays empty without rendition; inline bytes reach pro", () => {
   resetW19HandoffStore();
   const item = durableItem();
@@ -229,47 +194,13 @@ test("non-durable items may use previewUrl when url is empty", () => {
   assert.equal(sourceForPro.url, "https://cdn.example/clip.mp4");
 });
 
-test("routes pass beforeEnterPro and stages do not lead with item.url || previewUrl", () => {
-  const audioRoute = source("src/shell/advanced-routes/AudioRoute.tsx");
-  const audioStage = source("src/shell/media-editors/AudioPlaylistStage.tsx");
-  const modelRoute = source("src/shell/advanced-routes/Model3DRoute.tsx");
-  const modelStage = source("src/shell/media-editors/Model3DNextStage.tsx");
-  const videoRoute = source("src/shell/advanced-routes/VideoTimelineRoute.tsx");
-  const videoStage = source("src/shell/video-editor/VideoDesigncomboStage.tsx");
-  const chartRoute = source("src/shell/advanced-routes/ChartRoute.tsx");
-  const chartStage = source("src/shell/chart-editor/ChartNextStage.tsx");
+// 2026-10-22：只有 grid / pdf / website 还有专业页；音频、3D、视频、图表的专业面已删除。
+// 这里只剩 PDF 的交接接线。
+test("pdf route passes beforeEnterPro and keeps the handoff wiring", () => {
   const pdfRoute = source("src/shell/advanced-routes/PdfRoute.tsx");
   const pdfStage = source("src/shell/media-editors/PdfNextStage.tsx");
-
-  assert.match(audioRoute, /beforeEnterPro=/);
-  assert.match(modelRoute, /beforeEnterPro=/);
-  assert.match(videoRoute, /beforeEnterPro=/);
-  assert.match(chartRoute, /beforeEnterPro=/);
   assert.match(pdfRoute, /beforeEnterPro=/);
-
-  assert.match(audioStage, /resolveW19Handoff/);
-  assert.match(modelStage, /resolveW19Handoff/);
-  assert.match(videoStage, /resolveW19Handoff/);
-  assert.match(chartStage, /resolveW19Handoff/);
   assert.match(pdfStage, /w19PdfBytesFromHandoff|peekW19EnterHandoff/);
-  assert.match(audioStage, /useEditorHandoffSource/);
-  assert.match(modelStage, /useEditorHandoffSource/);
-  assert.match(videoStage, /useEditorHandoffSource/);
-  assert.match(chartStage, /useEditorHandoffSource/);
   assert.match(pdfRoute, /useEditorHandoffSource/);
-
-  assert.match(audioStage, /reportW19ProSaved/);
-  assert.match(modelStage, /reportW19ProSaved/);
-  assert.match(videoStage, /reportW19ProSaved/);
-  assert.match(chartStage, /reportW19ProSaved/);
   assert.match(pdfRoute, /reportW19ProSaved/);
-
-  assert.doesNotMatch(
-    audioStage,
-    /const url = item\.url \|\| item\.previewUrl/,
-  );
-  assert.doesNotMatch(
-    modelStage,
-    /const url = item\.url \|\| item\.previewUrl/,
-  );
 });

@@ -23,6 +23,7 @@
 
 import type { EditorMode } from "../hosted-editor";
 import type { PluginThemeId } from "../plugin-theme";
+import { hasProPage } from "./plugin-pages";
 
 const STORAGE_PREFIX = "oceanleo.editor-mode.";
 
@@ -63,6 +64,8 @@ function ensureStorageListener() {
 }
 
 export function currentPluginMode(pluginId: PluginThemeId): EditorMode {
+  // 非 Pro 编辑器恒为普通模式：忽略 localStorage 里遗留的 "pro"。
+  if (!hasProPage(pluginId)) return DEFAULT_PLUGIN_MODE;
   const cached = modeCache.get(pluginId);
   if (cached) return cached;
   let stored: EditorMode | null = null;
@@ -106,6 +109,7 @@ function applyPluginMode(pluginId: PluginThemeId, mode: EditorMode) {
 
 /** 所有「普通 ⇄ 专业」切换（顶栏开关、页签、PDF 的重试……）最终都走这里，所以锁只加在这一处。 */
 export function setPluginMode(pluginId: PluginThemeId, mode: EditorMode) {
+  if (!hasProPage(pluginId)) return;
   const guard = mode === "pro" && currentPluginMode(pluginId) !== "pro" ? proModeGuards.get(pluginId) : undefined;
   if (guard) {
     const verdict = guard();

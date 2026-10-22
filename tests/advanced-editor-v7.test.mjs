@@ -295,7 +295,6 @@ test("advanced first row is PluginGlobalRow chrome with fixed direct download", 
 
   for (const route of [
     "AudioRoute",
-    "ChartRoute",
     "DeckRoute",
     "GridRoute",
     "ImageRoute",
@@ -303,7 +302,6 @@ test("advanced first row is PluginGlobalRow chrome with fixed direct download", 
     "PdfRoute",
     "RichDocRoute",
     "VideoTimelineRoute",
-    "EmbeddedRoute",
   ]) {
     // grid 的 adapter 长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）。
     const path =
@@ -343,10 +341,8 @@ test("embedded direct export is a validated request/result protocol, never fake 
     )?.type,
     "export-result",
   );
-  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  assert.match(embedded, /嵌入编辑器未响应导出协议/);
-  assert.match(embedded, /onExportResult=\{handleExportResult\}/);
-  assert.doesNotMatch(embedded, /requestRemoteExport[\s\S]*?Promise\.resolve/);
+  // EmbeddedRoute (sub-site iframe host) was deleted 2026-10-22; the protocol
+  // validators above stay for the remaining protocol consumers.
 });
 
 test("embedded viewport protocol exposes one shared bottom-right zoom control", () => {
@@ -376,11 +372,7 @@ test("embedded viewport protocol exposes one shared bottom-right zoom control", 
     )?.type,
     "viewport-command",
   );
-  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   const controls = source("../src/shell/AdvancedStageControls.tsx");
-  assert.match(embedded, /onViewportChange=\{setRemoteViewport\}/);
-  assert.match(embedded, /setValue: \(value\) => sendViewportCommand/);
-  assert.doesNotMatch(embedded, /nativeChrome: \{ toolbar: true, viewport: true \}/);
   assert.match(controls, /scheduleZoom/);
   assert.match(controls, /viewport\.fit/);
   assert.match(controls, /<output/);
@@ -445,7 +437,6 @@ test("normal autosave progress is icon-only while actionable errors remain visib
     ["../src/shell/media-editors/use-pdf-workbench.ts", /setNotice\(tt\("已保存到我的库"\)\)|已保存一个版本；之后的修改仍未保存/],
     ["../src/shell/media-editors/use-model3d-save.ts", /3D 视图副本已保存|已保存一个视图副本/],
     ["../src/shell/video-editor/use-video-timeline.ts", /草稿已保存到我的库|已保存一个草稿版本/],
-    ["../src/shell/chart-editor/use-chart-workbench.ts", /图表新版本已保存|已保存一个版本；之后的修改仍未保存/],
   ]) {
     assert.doesNotMatch(source(path), message, path);
   }

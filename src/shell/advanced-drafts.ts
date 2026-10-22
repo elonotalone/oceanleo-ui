@@ -2,42 +2,9 @@ import type {
   AdvancedFeatureDefinition,
   AdvancedFeatureId,
 } from "./advanced-features";
-import type { EditorManifestV1, LibraryItem } from "./library-data";
+import type { LibraryItem } from "./library-data";
 
-const BLANK_CHART_MANIFEST: EditorManifestV1 = {
-  schema: "oceanleo.editor-manifest.v1",
-  id: "chart-editor",
-  version: 1,
-  capabilities: ["load", "mutate", "save", "reopen"],
-  source: { kind: "inline", format: "echarts-option+json" },
-};
-
-const BLANK_CHART_DOCUMENT = JSON.stringify({
-  schema: "oceanleo.chart.v1",
-  option: {
-    title: { text: "新图表" },
-    color: ["#2563eb", "#f97316", "#16a34a"],
-    legend: { show: true, position: "top" },
-    xAxis: {
-      type: "category",
-      name: "",
-      show: true,
-      data: ["A", "B", "C"],
-    },
-    yAxis: { type: "value", name: "", show: true, data: [] },
-    series: [
-      {
-        id: "series-1",
-        name: "系列 1",
-        type: "bar",
-        data: [12, 20, 16],
-        label: { show: false },
-      },
-    ],
-  },
-});
-
-/** Operator /dev and `/advanced/<featureId>` open these 13 canvases. */
+/** Operator /dev and `/advanced/<featureId>` open these canvases (chart editor deleted 2026-10-22). */
 export const ADVANCED_PLUGIN_FEATURE_IDS = [
   "image_editing",
   "design_canvas",
@@ -49,7 +16,6 @@ export const ADVANCED_PLUGIN_FEATURE_IDS = [
   "pdf_editing",
   "audio_editing",
   "model_3d",
-  "chart_editing",
   "video_canvas",
   "game_editing",
 ] as const satisfies readonly AdvancedFeatureId[];
@@ -115,35 +81,15 @@ export function blankAdvancedFeatureItem(
         mime: "application/pdf",
         format: "pdf",
       });
-    case "chart_editing":
-      return {
-        ...base,
-        kind: "image",
-        content: BLANK_CHART_DOCUMENT,
-        meta: {
-          ...base.meta,
-          content_type: "chart",
-          representation: "echarts-option",
-          editor: BLANK_CHART_MANIFEST,
-        },
-        descriptor: {
-          contentType: "chart",
-          representation: "echarts_option",
-          subtype: "",
-          editor: BLANK_CHART_MANIFEST,
-          capabilities: ["load", "mutate", "save", "reopen"],
-          unavailableReason: "",
-        },
-      };
     case "website_finetuning":
-      return routed("website", "embed", { editor_target: "website" });
+      return routed("website", "website", { editor_target: "website" });
     case "design_canvas":
-      return routed("canvas", "embed", {
+      return routed("canvas", "image", {
         editor_target: "design",
         nodes: [],
       });
     case "video_canvas":
-      return routed("video_canvas", "embed", {
+      return routed("video_canvas", "video-canvas", {
         editor_target: "video",
         nodes: [],
       });

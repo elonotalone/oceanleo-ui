@@ -38,7 +38,6 @@ import {
   WEBSITE_SOURCE_FORMAT,
 } from "../src/shell/website-source-carrier/website-source-schema.ts";
 
-const embedded = readFileSync("src/shell/advanced-routes/EmbeddedRoute.tsx", "utf8");
 const localRoute = readFileSync(
   "src/shell/advanced-routes/WebsiteLocalRoute.tsx",
   "utf8",
@@ -50,10 +49,10 @@ const puckConfig = readFileSync(
 const EVIDENCE_DIR =
   "/root/projects/oceanleo-app/docs/react-client-rebuild/evidence/W10/website";
 
-test("EmbeddedRoute keeps the remote website iframe and branches to Puck only when local", () => {
-  assert.match(embedded, /<EmbedEditorPane/);
-  assert.match(embedded, /WebsiteLocalRoute/);
-  assert.match(embedded, /preferLocalWebsite/);
+test("website always opens in the local Puck route; no remote website iframe", () => {
+  const workbench = readFileSync("src/shell/AdvancedContentWorkbench.tsx", "utf8");
+  assert.match(workbench, /case "website":\s*editor = <WebsiteLocalRoute/);
+  assert.equal(/EmbedEditorPane|<iframe/i.test(localRoute), false);
   // Undo/redo live in the OceanLeo top bar (adapter.history), not inside the stage.
   assert.match(localRoute, /history: \{ canUndo, canRedo, undo, redo \}/);
   assert.doesNotMatch(localRoute, /website-local-undo|website-local-redo/);

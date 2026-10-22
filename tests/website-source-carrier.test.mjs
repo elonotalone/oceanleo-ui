@@ -5,7 +5,7 @@
 //   §2 设计 token/栅格/字号 · §3 Schema · §3.2 物化与载入状态机
 //   §3.3 452 份未物化模板的处置 · §4 常量 C1–C43 · §5.4 安全性 · §6 · §8
 //
-// 本文件同时是 §1.3 的「一行未动」凭据:断言两个载体目录与 EmbeddedRoute
+// 本文件同时是 §1.3 的「一行未动」凭据:断言两个载体目录
 // 都不触碰 sandbox 属性、postMessage target origin、CORS 正则与 cookie 域。
 
 import assert from "node:assert/strict";
@@ -385,46 +385,6 @@ test("W14/ws §1.3 + §9 C-9:两个载体目录不触碰任何隔离面", () => 
       );
     }
   }
-
-  // EmbeddedRoute 的宿主侧闸门也不许碰隔离面:既有 origin 校验保持原样,
-  // 且本 owner 没有新增 iframe、sandbox 或 postMessage 投递。
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  assert.equal(route.includes("<iframe"), false);
-  assert.equal(/sandbox\s*=/.test(route), false);
-  assert.equal(route.includes("postMessage("), false);
-  assert.equal(route.includes("allow-same-origin"), false);
-  // 既有的收信 origin 闸门必须仍在(exact-origin + source + instance)。
-  assert.ok(route.includes("isTrustedEditorOrigin(editorOrigin)"));
-  assert.ok(route.includes("if (event.origin !== editorOrigin) return;"));
-  assert.ok(route.includes("event.source !== frame.contentWindow"));
-});
-
-test("W14/ws §1.2:EmbeddedRoute 在挂载 embed 之前就拒掉 html 站点素材", () => {
-  const route = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
-  assert.ok(
-    route.includes(
-      'import { websiteSourceFormatAdmission } from "../website-source-carrier/website-source-validate";',
-    ),
-    "宿主侧闸门必须复用载体的唯一判定入口",
-  );
-  assert.match(
-    route,
-    /carrierOpenRejection[\s\S]{0,600}website-source-html-forbidden/,
-    "html 拒绝路径必须落在 open 闸门上",
-  );
-  // 拒绝态 MUST 不渲染 EmbedEditorPane,而是给出可读的 alert 面板。
-  assert.match(
-    route,
-    /stage: carrierOpenRejection \? \([\s\S]{0,400}data-carrier-admission="rejected"/,
-  );
-  // 拒绝态同时封住导出与 flush(保存)两条出口。
-  assert.match(route, /disabled:[\s\S]{0,120}Boolean\(carrierOpenRejection\)/);
-  assert.match(
-    route,
-    /flush:\s*\n?\s*carrierOpenRejection \|\| carrierSaveRejection/,
-  );
-  // workflow 侧:legacy 格式封的是保存(新产出),不是打开(存量迁移不归本 owner)。
-  assert.ok(route.includes("workflow-legacy-source-format"));
 });
 
 // ---------------------------------------------------------------------------
