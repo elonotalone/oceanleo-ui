@@ -51,6 +51,7 @@ import {
   GAME_DUAL_ENGINE_HANDOFF,
   gameLeavePolicy,
   gamePagesAdapter,
+  useGamePages,
 } from "../game-editor/game-pages";
 import { gameSourceAdmission } from "./non-richdoc-source-gate";
 
@@ -237,11 +238,7 @@ export function GameRoute(props: AdvancedContentWorkbenchProps) {
 }
 
 function GamePagesGate(props: AdvancedContentWorkbenchProps) {
-  const [activePageId, setActivePageId] = useState("artifact");
-  const pages = useMemo(
-    () => gamePagesAdapter(activePageId, setActivePageId),
-    [activePageId],
-  );
+  const { activePageId, pages } = useGamePages();
   if (activePageId === "code") {
     return <GameCodeStage {...props} pages={pages} />;
   }
