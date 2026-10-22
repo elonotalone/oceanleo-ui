@@ -475,6 +475,8 @@ test("ImageRoute does not mount ImageCanvasViewSwitch or 结构/皮肤", async (
           kind: "image",
           siteId: "image",
           favorite: false,
+          // LibraryItem.meta is required; ImageRoute reads meta.source_format to pick the source.
+          meta: {},
         },
         onClose() {},
       }),
