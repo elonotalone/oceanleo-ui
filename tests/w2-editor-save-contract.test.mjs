@@ -480,7 +480,8 @@ test("doc-io publishes the contract renditions and verifies them on the way back
 
 test("A9-1: the five reachable types now declare a typed revision", () => {
   for (const [path, artifactType] of [
-    ["../src/shell/media-editors/use-pdf-workbench.ts", "pdf"],
+    // The Library write moved out of use-pdf-workbench.ts into its own module (W06 split).
+    ["../src/shell/media-editors/pdf-library-save.ts", "pdf"],
     ["../src/shell/media-editors/model3d-project.ts", "model_3d"],
     ["../src/shell/media-editors/use-audio-persistence.ts", "audio"],
     ["../src/shell/video-editor/persistence.ts", "video"],

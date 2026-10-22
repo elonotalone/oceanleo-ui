@@ -26,7 +26,9 @@ test("三个编辑器都保留 restoreRecovery 原行为，另有各自的远端
   assert.match(video, /applyRemoteDoc/);
   assert.match(source("media-editors/use-audio-persistence.ts"), /restoreRecovery/);
   assert.match(source("media-editors/use-audio-remote-apply.ts"), /applyRemoteProject/);
-  const model = source("media-editors/use-model3d-workbench.ts");
+  // Whole-scene restore/apply moved into its own hook (W03 split); the workbench still wires it.
+  assert.match(source("media-editors/use-model3d-workbench.ts"), /useModel3DSceneRestore|restoreRecovery, applyRemoteScene/);
+  const model = source("media-editors/use-model3d-scene-restore.ts");
   assert.match(model, /restoreRecovery/);
   assert.match(model, /已恢复上次未同步的本地草稿/);
   assert.match(model, /applyRemoteScene/);
