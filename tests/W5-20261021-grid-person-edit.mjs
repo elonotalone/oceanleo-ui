@@ -8,6 +8,7 @@ import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   resetUserEditSession,
+  userEditItemKey,
   userMutationGeneration,
 } from "../src/shell/user-edit-session.ts";
 
@@ -70,11 +71,11 @@ function gridItem() {
 test("grid person-write increments userMutationGeneration", () => {
   resetUserEditSession();
   const item = gridItem();
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   assert.equal(applyGridUserEditSession(item, "person-write"), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
   assert.equal(applyGridUserEditSession(item, "person-write"), 2);
-  assert.equal(userMutationGeneration(item.key), 2);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 2);
   assert.equal(userMutationGeneration("artifact:other:r1"), 0);
 });
 
@@ -82,11 +83,11 @@ test("grid load and collab activity do not record a person mutation", () => {
   resetUserEditSession();
   const item = gridItem();
   assert.equal(applyGridUserEditSession(item, "load"), 0);
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   assert.equal(applyGridUserEditSession(item, "collab-activity"), 0);
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   applyGridUserEditSession(item, "person-write");
   assert.equal(applyGridUserEditSession(item, "collab-activity"), 1);
   assert.equal(applyGridUserEditSession(item, "load"), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
 });

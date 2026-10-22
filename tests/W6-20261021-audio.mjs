@@ -8,6 +8,7 @@ import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   resetUserEditSession,
+  userEditItemKey,
   userMutationGeneration,
 } from "../src/shell/user-edit-session.ts";
 
@@ -36,7 +37,7 @@ function audioItem(id) {
 test("audio local mutation increments userMutationGeneration", () => {
   resetUserEditSession();
   const item = audioItem("audio-w6");
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   assert.equal(
     mutations.applyAudioMutationUserEditSession(item, "local-mutation"),
     1,
@@ -45,7 +46,7 @@ test("audio local mutation increments userMutationGeneration", () => {
     mutations.applyAudioUserEditSession(item, "local-mutation"),
     2,
   );
-  assert.equal(userMutationGeneration(item.key), 2);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 2);
 });
 
 test("audio remote-apply does not record a person mutation", () => {
@@ -60,5 +61,5 @@ test("audio remote-apply does not record a person mutation", () => {
     mutations.applyAudioMutationUserEditSession(item, "remote-apply"),
     1,
   );
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
 });

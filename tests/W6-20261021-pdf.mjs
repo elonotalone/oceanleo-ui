@@ -12,6 +12,7 @@ import {
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   resetUserEditSession,
+  userEditItemKey,
   userMutationGeneration,
 } from "../src/shell/user-edit-session.ts";
 
@@ -30,10 +31,10 @@ function pdfItem(id) {
 test("pdf local-annotation increments userMutationGeneration", () => {
   resetUserEditSession();
   const item = pdfItem("pdf-w6");
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   assert.equal(applyPdfUserEditSession(item, "local-annotation"), 1);
   assert.equal(applyPdfEditEngineUserEditSession(item, "local-annotation"), 2);
-  assert.equal(userMutationGeneration(item.key), 2);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 2);
 });
 
 test("pdf silent-replace and collab do not record a person mutation", () => {
@@ -44,7 +45,7 @@ test("pdf silent-replace and collab do not record a person mutation", () => {
   applyPdfUserEditSession(item, "local-annotation");
   assert.equal(applyPdfUserEditSession(item, "silent-replace"), 1);
   assert.equal(applyPdfUserEditSession(item, "collab"), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
 });
 
 test("pdf workbench re-exports the same live helper", () => {
@@ -55,5 +56,5 @@ test("pdf workbench re-exports the same live helper", () => {
     1,
   );
   assert.equal(workbench.applyPdfUserEditSession(item, "silent-replace"), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
 });

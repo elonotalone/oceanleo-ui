@@ -8,6 +8,7 @@ import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   resetUserEditSession,
+  userEditItemKey,
   userMutationGeneration,
 } from "../src/shell/user-edit-session.ts";
 
@@ -42,5 +43,5 @@ test("3d local markDirty increments; bootstrap and recovery do not", () => {
   assert.equal(model3d.applyModel3dUserEditSession(item, "local-dirty"), 1);
   assert.equal(model3d.applyModel3DUserEditSession(item, "local-dirty"), 2);
   assert.equal(model3d.applyModel3dUserEditSession(item, "bootstrap"), 2);
-  assert.equal(userMutationGeneration(item.key), 2);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 2);
 });

@@ -12,6 +12,7 @@ import {
 } from "../src/shell/doc-editors/deck-schema.ts";
 import {
   resetUserEditSession,
+  userEditItemKey,
   userMutationGeneration,
 } from "../src/shell/user-edit-session.ts";
 
@@ -43,11 +44,11 @@ test("native deck local history write increments userMutationGeneration", () => 
   const before = sampleDeck();
   const after = cloneDeckDocument(before);
   after.slides[0].title = "改过的一页";
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   assert.equal(applyDeckHistoryWriteIfChanged(item, before, after), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
   assert.equal(applyDeckUserEditSession(item, "local-history"), 2);
-  assert.equal(userMutationGeneration(item.key), 2);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 2);
 });
 
 test("native deck equal documents do not record a person mutation", () => {
@@ -56,7 +57,7 @@ test("native deck equal documents do not record a person mutation", () => {
   const before = sampleDeck();
   const after = cloneDeckDocument(before);
   assert.equal(applyDeckHistoryWriteIfChanged(item, before, after), 0);
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
 });
 
 test("native deck load and remote collab do not record a person mutation", () => {
@@ -64,9 +65,9 @@ test("native deck load and remote collab do not record a person mutation", () =>
   const item = deckItem();
   assert.equal(applyDeckUserEditSession(item, "load"), 0);
   assert.equal(applyDeckUserEditSession(item, "remote-collab"), 0);
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   applyDeckUserEditSession(item, "local-history");
   assert.equal(applyDeckUserEditSession(item, "remote-collab"), 1);
   assert.equal(applyDeckUserEditSession(item, "load"), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
 });

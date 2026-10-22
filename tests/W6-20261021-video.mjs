@@ -1,5 +1,5 @@
 /**
- * W6: person writes in video timeline / designcombo / canvas increment the
+ * W6: person writes in video timeline / canvas increment the
  * shared user-edit generation. Load, hydrate, and recovery do not.
  */
 import assert from "node:assert/strict";
@@ -30,12 +30,6 @@ function lightStubs(extra = {}) {
 
 const timeline = await import(
   await compileModule("src/shell/video-editor/use-video-timeline.ts", lightStubs())
-);
-const designcombo = await import(
-  await compileModule(
-    "src/shell/video-editor/VideoDesigncomboStage.tsx",
-    lightStubs(),
-  )
 );
 const canvas = await import(
   await compileModule(
@@ -88,26 +82,6 @@ test("video timeline load, hydrate, and equal documents do not record", () => {
   timeline.applyVideoTimelineUserEditSession(item, "person-commit");
   assert.equal(timeline.applyVideoTimelineUserEditSession(item, "load"), 1);
   assert.equal(timeline.applyVideoTimelineUserEditSession(item, "hydrate"), 1);
-});
-
-test("video designcombo commit records; load does not", () => {
-  resetUserEditSession();
-  const item = videoItem("video-designcombo-w6");
-  assert.equal(
-    designcombo.applyVideoDesigncomboUserEditSession(item, "commit"),
-    1,
-  );
-  assert.equal(generationOf(item), 1);
-  assert.equal(
-    designcombo.applyVideoDesigncomboUserEditSession(item, "load"),
-    1,
-  );
-  resetUserEditSession();
-  assert.equal(
-    designcombo.applyVideoDesigncomboUserEditSession(item, "load"),
-    0,
-  );
-  assert.equal(generationOf(item), 0);
 });
 
 test("video canvas person-command and add-node record; hydrate does not", () => {

@@ -8,6 +8,7 @@ import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
   resetUserEditSession,
+  userEditItemKey,
   userMutationGeneration,
 } from "../src/shell/user-edit-session.ts";
 
@@ -29,11 +30,11 @@ function gameItem() {
 test("game local textarea typing increments userMutationGeneration", () => {
   resetUserEditSession();
   const item = gameItem();
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   assert.equal(applyGameUserEditSession(item, { kind: "local-type" }), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
   assert.equal(applyGameUserEditSession(item, { kind: "local-type" }), 2);
-  assert.equal(userMutationGeneration(item.key), 2);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 2);
 });
 
 test("game ytext observe records only the bind-textarea local origin", () => {
@@ -47,7 +48,7 @@ test("game ytext observe records only the bind-textarea local origin", () => {
     }),
     1,
   );
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
   assert.equal(
     applyGameUserEditSession(item, {
       kind: "ytext-observe",
@@ -69,7 +70,7 @@ test("game ytext observe records only the bind-textarea local origin", () => {
     }),
     1,
   );
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
 });
 
 test("game writeThrough, restore, and load pull do not record", () => {
@@ -81,7 +82,7 @@ test("game writeThrough, restore, and load pull do not record", () => {
   );
   assert.equal(applyGameUserEditSession(item, { kind: "restore" }), 0);
   assert.equal(applyGameUserEditSession(item, { kind: "load" }), 0);
-  assert.equal(userMutationGeneration(item.key), 0);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 0);
   applyGameUserEditSession(item, { kind: "local-type" });
   assert.equal(
     applyGameUserEditSession(item, { kind: "write-through" }),
@@ -89,5 +90,5 @@ test("game writeThrough, restore, and load pull do not record", () => {
   );
   assert.equal(applyGameUserEditSession(item, { kind: "restore" }), 1);
   assert.equal(applyGameUserEditSession(item, { kind: "load" }), 1);
-  assert.equal(userMutationGeneration(item.key), 1);
+  assert.equal(userMutationGeneration(userEditItemKey(item)), 1);
 });
