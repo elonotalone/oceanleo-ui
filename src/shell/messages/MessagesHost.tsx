@@ -5,10 +5,12 @@
 // 浮层里：聊天 / 联系人两个栏目 + 会话（交易会话也在这里）；放大后左列表、右对话。LeoBay 不在小窗里，它是 `/bay` 那张页。
 // LeoChat 还能在整页和右侧栏里显示，一次只显示一处，见 host-state.ts。小窗只在 surface === "window" 时画。
 // 聊天搜索在聊天列表和已打开的对话里。提醒与拉黑在设置中心「消息」栏。同时挂工作回放播放层与邀请对话框。
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+// 通话 v2（calls-v2 合同 §3.9）：消息可用时挂通话小窗 / 放大视图（W07 CallHost）、来电浮层（W08 IncomingCallHost）、
+// 远程控制被控方处理（W09 CallControlHost）。旧的会话会议弹窗与「会议邀请」处理已移除（A20）。
+// Leo 实时通话（RealtimeCallHost）不依赖消息是否可用，挂在最外层，两种状态下是同一个实例。
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useImEnabled } from "../../lib/im/client";
-import { getUserId } from "../../lib/auth/client";
 import { cachedImSettings, refreshImSettingsInBackground } from "../../lib/im/notify-api";
 import { DealConversationView } from "../bay/deal";
 import { BayAuthHost } from "../bay/shell/bay-auth-host";
@@ -25,29 +27,32 @@ import { MessagesLayout } from "./MessagesLayout";
 import { attachMessageSound, createBrowserMessageSound } from "./notify/sound";
 import { attachBrowserTitleBadge } from "./notify/title-badge";
 import { PeopleView } from "./people/PeopleView";
-import { MeetingPanel } from "./meeting/MeetingPanel";
-import { closeMeeting, createMeetingInvitationHandler, useMeetingHostRequest } from "./meeting/meeting-host-state";
+import { CallHost } from "./call/ui";
+import { IncomingCallHost } from "./call/incoming";
+import { CallControlHost } from "./call/control";
 import { RealtimeCallHost } from "../realtime-call/RealtimeCallHost";
 import { PrivacyNotice } from "./PrivacyNotice";
-import { attachImRealtime, imStore, publishImDisabled, useImEvent, useImUnread } from "./realtime/hooks";
+import { attachImRealtime, imStore, publishImDisabled, useImUnread } from "./realtime/hooks";
 
 export function isTalentConversationId(id: string): boolean {
   return id.startsWith("talent:");
 }
 
 export function MessagesHost() {
+  return (
+    <>
+      <MessagesHostBody />
+      <RealtimeCallHost />
+    </>
+  );
+}
+
+function MessagesHostBody() {
   const enabled = useImEnabled();
   const state = useMessagesHost();
   const pathname = usePathname() || "/";
   const pathRef = useRef(pathname);
   const router = useRouter();
-  const meetingRequest = useMeetingHostRequest();
-  const invitationHandler = useMemo(() => createMeetingInvitationHandler(getUserId), []);
-
-  useImEvent("meeting_invitation", (event) => {
-    void invitationHandler.handle(event.conversation_id, event.invitation);
-  });
-  useEffect(() => () => invitationHandler.cancel(), [invitationHandler]);
 
   // 别的页面上「去 LeoBay」的动作（任务页的找人帮忙、旧的 ?bay= 链接）= 站内跳到 /bay，不整页刷新。
   // 这个宿主每个站都挂一次，所以在这里把站内跳转交给 LeoBay。
@@ -133,14 +138,15 @@ export function MessagesHost() {
   }, [enabled, state.open, state.view, state.conversationId]);
 
   // 登录框宿主：别的页面上点了要登录的 LeoBay 动作时由它弹（/bay 页自己也挂一份，只有最先挂上的渲染）。
-  if (!enabled) return <><BayAuthHost /><RealtimeCallHost /></>;
+  if (!enabled) return <BayAuthHost />;
   return (
     <>
       <MessagesOverlay />
       <WorkReplayHost />
       <BayAuthHost />
-      {meetingRequest ? <MeetingPanel {...meetingRequest} onClose={closeMeeting} /> : null}
-      <RealtimeCallHost />
+      <CallHost />
+      <IncomingCallHost />
+      <CallControlHost />
     </>
   );
 }
