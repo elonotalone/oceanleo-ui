@@ -25,6 +25,12 @@ const mod = await import(await compileModule("src/shell/library-viewers.tsx", {
   "./WebsiteArtifactViewer": dataModule("export function WebsiteArtifactViewer(){ return null; }"),
   "./artifact-client": dataModule("export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }"),
   "./material-detail-slot": dataModule('export function useMaterialDetailTarget(item){ return {status:"passthrough",item}; } export function MaterialDetailUnavailable(){return null;} export function GamePlayDetail(){return null;} export function gamePlayEmbedHref(){return "";}'),
+  "./media-editors/use-audio-project-playback": dataModule(`
+    export function useAudioProjectPlayback(item, enabled){
+      globalThis.__projectPlaybackCalls.push(enabled);
+      return enabled ? globalThis.__projectPlayback : {status:"idle",src:"",error:""};
+    }
+  `),
   "./ArtifactRendition": dataModule(`
     export function useArtifactRendition(item){
       const mediaType = globalThis.__renditionMediaType;
@@ -46,7 +52,7 @@ test("renditionIsPlayableMedia: only explicit non-media types are refused", () =
   assert.equal(renditionIsPlayableMedia("text/html"), false);
 });
 
-async function mount(mediaType) {
+async function mount(mediaType, { kind = "audio", playback = { status: "failed", src: "", error: "x" } } = {}) {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", { pretendToBeVisual: true, url: "https://p-test.dev.oceanleo.com/library" });
   const originals = new Map();
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true })) {
@@ -54,6 +60,8 @@ async function mount(mediaType) {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   globalThis.__renditionMediaType = mediaType;
+  globalThis.__projectPlayback = playback;
+  globalThis.__projectPlaybackCalls = [];
   globalThis.__mediaErrors = 0;
   dom.window.HTMLMediaElement.prototype.load = function () {};
   dom.window.HTMLMediaElement.prototype.pause = function () {};
@@ -61,16 +69,19 @@ async function mount(mediaType) {
   dom.window.document.body.append(host);
   const { createRoot } = await import("react-dom/client");
   const root = createRoot(host);
-  const item = { key: "a-1", id: "a-1", source: "artifact", title: "The Accident", kind: "audio", url: "https://asset.oceanleo.com/preview.png", meta: {}, favorite: false };
+  const item = { key: "a-1", id: "a-1", source: "artifact", title: "The Accident", kind, url: "https://asset.oceanleo.com/preview.png", meta: {}, favorite: false };
   await act(async () => root.render(React.createElement(LibraryItemViewer, { item })));
   return {
     host,
+    calls: () => globalThis.__projectPlaybackCalls,
     async close() {
       await act(async () => root.unmount());
       dom.window.close();
       for (const [key, d] of originals) { if (d) Object.defineProperty(globalThis, key, d); else delete globalThis[key]; }
       delete globalThis.__renditionMediaType;
       delete globalThis.__mediaErrors;
+      delete globalThis.__projectPlayback;
+      delete globalThis.__projectPlaybackCalls;
     },
   };
 }
@@ -92,5 +103,50 @@ test("audio item with an audio/mpeg rendition still gets the player", async () =
   try {
     assert.ok(f.host.querySelector("audio"));
     assert.equal(f.host.querySelector("[data-audio-no-playable-rendition]"), null);
+  } finally { await f.close(); }
+});
+
+test("project-only audio revision plays the audio its project references", async () => {
+  const f = await mount("image/png", { playback: { status: "ready", src: "blob:https://p-test/restored-audio", error: "" } });
+  try {
+    assert.ok(f.calls().includes(true), "必须按工程还原音频");
+    const audio = f.host.querySelector("audio");
+    assert.ok(audio, "工程引用的音频还原成功后要给播放器");
+    assert.equal(audio.getAttribute("src"), "blob:https://p-test/restored-audio");
+    assert.equal(f.host.querySelector("[data-audio-no-playable-rendition]"), null);
+  } finally { await f.close(); }
+});
+
+test("project audio still restoring shows progress, not the failure note", async () => {
+  const f = await mount("image/png", { playback: { status: "loading", src: "", error: "" } });
+  try {
+    assert.equal(f.host.querySelector("audio"), null);
+    assert.equal(f.host.querySelector("[data-audio-no-playable-rendition]"), null);
+    assert.match(f.host.textContent, /正在按工程还原音频/);
+  } finally { await f.close(); }
+});
+
+test("an audio rendition that is already playable never touches the project path", async () => {
+  const f = await mount("audio/mpeg");
+  try {
+    assert.deepEqual([...new Set(f.calls())], [false]);
+    assert.ok(f.host.querySelector("audio"));
+  } finally { await f.close(); }
+});
+
+test("video item whose selected rendition is image/png never mounts <video>", async () => {
+  const f = await mount("image/png", { kind: "video" });
+  try {
+    assert.equal(f.host.querySelector("video"), null, "PNG 不能喂给 <video>");
+    const note = f.host.querySelector("[data-video-no-playable-rendition]");
+    assert.ok(note);
+    assert.doesNotMatch(note.textContent, /取不到|打不开/);
+  } finally { await f.close(); }
+});
+
+test("video item with a video/mp4 rendition still gets the player", async () => {
+  const f = await mount("video/mp4", { kind: "video" });
+  try {
+    assert.ok(f.host.querySelector("video"));
   } finally { await f.close(); }
 });

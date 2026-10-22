@@ -51,7 +51,12 @@ const stubs = {
   "./source-integrity.mjs": dataModule(`export const assertBlobSource = async () => "wav";`),
   "../doc-editors/doc-io": dataModule(`
     export const saveProjectWorkingHead = async () => { globalThis.__audioSaves = (globalThis.__audioSaves || 0) + 1; return null; };
+    export const saveFileToLibrary = async () => null;
   `),
+  // Saves in this test are project-only (non-durable item): no delivery is built.
+  "../library-data": dataModule(`export const isDurableLibraryItem = () => false;`),
+  "./audio-delivery": dataModule(`export const buildAudioDelivery = async () => null;`),
+  "./audio-project-source": dataModule(`export const fetchAudioProjectSourceBlob = async () => new Blob([new Uint8Array(16)], { type: "audio/wav" });`),
   "../doc-editors/artifact-save-contract": dataModule(`export const artifactSaveStepMessage = () => "";`),
   "../doc-editors/editor-preview-raster": dataModule(`export const renderAudioWaveformPng = async () => null;`),
 };

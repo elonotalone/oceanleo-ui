@@ -14,6 +14,7 @@ import {
 import DOMPurify from "dompurify";
 import { Markdown } from "./Markdown";
 import { LibraryMediaPreview } from "./LibraryMediaPreview";
+import { useAudioProjectPlayback } from "./media-editors/use-audio-project-playback";
 import { useUI } from "../i18n/ui/useUI";
 import {
   isDurableLibraryItem,
@@ -2044,6 +2045,84 @@ export function renditionIsPlayableMedia(mediaType?: string | null): boolean {
   );
 }
 
+function AudioPlayerPanel({
+  itemKey,
+  title,
+  src,
+  onError,
+}: {
+  itemKey: string;
+  title: string;
+  src: string;
+  onError: () => void;
+}) {
+  return (
+    <Center>
+      <div className="grid h-20 w-20 place-items-center rounded-3xl bg-stone-100 text-stone-400">
+        <svg
+          className="h-9 w-9"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+        >
+          <path d="M9 18V6l11-2v12M9 8l11-2" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="17" cy="16" r="3" />
+        </svg>
+      </div>
+      <p className="text-sm font-medium text-stone-700">{title}</p>
+      <LibraryMediaPreview
+        key={itemKey}
+        kind="audio"
+        src={src}
+        onError={onError}
+        className="w-full max-w-md"
+      />
+    </Center>
+  );
+}
+
+/** 选中的 rendition 不是音视频（多半是位图预览）时的诚实说明，不挂 `<audio>`/`<video>`。 */
+function NoPlayableMediaView({
+  item,
+  url,
+  mediaType,
+  message,
+  marker,
+}: {
+  item: LibraryItem;
+  url?: string;
+  mediaType?: string | null;
+  message: string;
+  marker: string;
+}) {
+  const previewIsImage =
+    Boolean(url) &&
+    String(mediaType || "")
+      .toLowerCase()
+      .startsWith("image/");
+  return (
+    <Center>
+      {previewIsImage && url ? (
+        <ProgressiveArtifactImage
+          thumbUrl={item.thumbUrl || ""}
+          fullUrl={url}
+          alt={item.title}
+          geometry={libraryMediaGeometry(item, url)}
+        />
+      ) : null}
+      <p
+        role="status"
+        {...{ [marker]: "" }}
+        className="max-w-md text-center text-[13px] leading-relaxed text-stone-500"
+      >
+        {message}
+      </p>
+    </Center>
+  );
+}
+
 function LibraryItemViewerBody({
   item,
 }: {
@@ -2071,6 +2150,12 @@ function LibraryItemViewerBody({
     : resolved;
   const url =
     rendition.url || resolvedItem.previewUrl || resolvedItem.url;
+  const selectedMediaType = rendition.rendition?.mediaType;
+  const audioNeedsProject =
+    resolvedItem.kind === "audio" &&
+    Boolean(url) &&
+    !renditionIsPlayableMedia(selectedMediaType);
+  const audioProject = useAudioProjectPlayback(viewerItem, audioNeedsProject);
   if (preparedOffice.loading) {
     return (
       <ArtifactRenditionFailure
@@ -2229,6 +2314,23 @@ function LibraryItemViewerBody({
       </Center>
     );
   }
+  if (
+    resolvedItem.kind === "video" &&
+    url &&
+    !renditionIsPlayableMedia(selectedMediaType)
+  ) {
+    // Same hazard as audio: a video project saved without a rendered `full`
+    // falls back to its image preview, which `<video>` can never decode.
+    return (
+      <NoPlayableMediaView
+        item={resolvedItem}
+        url={url}
+        mediaType={selectedMediaType}
+        message="这一版是时间线工程，还没有渲染成可播放的视频文件；上面是保存时的封面预览图。打开视频编辑器可以继续编辑并导出。"
+        marker="data-video-no-playable-rendition"
+      />
+    );
+  }
   if (resolvedItem.kind === "video" && url) {
     return (
       <Center>
@@ -2242,68 +2344,46 @@ function LibraryItemViewerBody({
       </Center>
     );
   }
-  if (
-    resolvedItem.kind === "audio" &&
-    url &&
-    !renditionIsPlayableMedia(rendition.rendition?.mediaType)
-  ) {
+  if (audioNeedsProject) {
     /**
-     * 音频编辑器保存出的新 revision 只带「工程源 + 位图预览」，没有 `full` 音频
+     * 音频编辑器保存出的 revision 只带「工程源 + 位图预览」，没有 `full` 音频
      * rendition；查看器顺位落到 `preview`（image/png）。把一张 PNG 喂给 `<audio>` 必然
      * 解码失败，旧路径于是走完「重签→再失败」后报「资源本身取不到」，把一个
-     * 「这一版没有可播放音频」的事实说成了网络故障。直接按真实情况说，并把预览图摆出来。
+     * 「这一版没有可播放音频」的事实说成了网络故障。
+     *
+     * 先按工程引用的基础音频把它还原出来播放；还原不了才如实说明并摆出预览图。
      */
-    const previewIsImage = String(rendition.rendition?.mediaType || "")
-      .toLowerCase()
-      .startsWith("image/");
+    if (audioProject.status === "loading") {
+      return <LoadingView label="正在按工程还原音频…" />;
+    }
+    if (audioProject.status === "ready") {
+      return (
+        <AudioPlayerPanel
+          itemKey={resolvedItem.key}
+          title={resolvedItem.title}
+          src={audioProject.src}
+          onError={() => undefined}
+        />
+      );
+    }
     return (
-      <Center>
-        {previewIsImage ? (
-          <ProgressiveArtifactImage
-            thumbUrl={resolvedItem.thumbUrl || ""}
-            fullUrl={url}
-            alt={resolvedItem.title}
-            geometry={libraryMediaGeometry(resolvedItem, url)}
-          />
-        ) : null}
-        <p
-          role="status"
-          data-audio-no-playable-rendition=""
-          className="max-w-md text-center text-[13px] leading-relaxed text-stone-500"
-        >
-          这一版是编辑器保存的音频工程，没有可直接播放的音频文件；上面是保存时的预览图。
-          打开编辑器即可试听和继续编辑。
-        </p>
-      </Center>
+      <NoPlayableMediaView
+        item={resolvedItem}
+        url={url}
+        mediaType={selectedMediaType}
+        message="这一版是编辑器保存的音频工程，没有可直接播放的音频文件，工程引用的原始音频这次也没能取回；上面是保存时的预览图。打开编辑器即可试听和继续编辑。"
+        marker="data-audio-no-playable-rendition"
+      />
     );
   }
   if (resolvedItem.kind === "audio" && url) {
     return (
-      <Center>
-        <div className="grid h-20 w-20 place-items-center rounded-3xl bg-stone-100 text-stone-400">
-          <svg
-            className="h-9 w-9"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-          >
-            <path d="M9 18V6l11-2v12M9 8l11-2" />
-            <circle cx="6" cy="18" r="3" />
-            <circle cx="17" cy="16" r="3" />
-          </svg>
-        </div>
-        <p className="text-sm font-medium text-stone-700">
-          {resolvedItem.title}
-        </p>
-        <LibraryMediaPreview
-          key={resolvedItem.key}
-          kind="audio"
-          src={url}
-          onError={rendition.resourceFailed}
-          className="w-full max-w-md"
-        />
-      </Center>
+      <AudioPlayerPanel
+        itemKey={resolvedItem.key}
+        title={resolvedItem.title}
+        src={url}
+        onError={rendition.resourceFailed}
+      />
     );
   }
   return (

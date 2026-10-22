@@ -146,12 +146,10 @@ test("non-Office autosave blocks never invoke delivery renderers", () => {
       end: "const runAiEdit = useCallback",
       forbidden: /makeExportBlob|toDataURL|toBlob/,
     },
-    {
-      path: "../src/shell/media-editors/use-audio-persistence.ts",
-      start: "const save = useCallback",
-      end: "const captureRecovery = useCallback",
-      forbidden: /encodeWav|audio\/wav|new File/,
-    },
+    // Audio is deliberately absent (U5, 2026-10-22): a saved audio revision must
+    // carry a playable `full` rendition, so its save builds the delivery through
+    // `buildAudioDelivery` (original bytes when unedited, otherwise a WAV render).
+    // tests/audio-playable-revision.test.mjs pins that contract.
     {
       path: "../src/shell/video-editor/use-video-timeline.ts",
       start: "const saveDraft = useCallback",

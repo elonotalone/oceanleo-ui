@@ -15,7 +15,6 @@ import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 
 import type { UITranslate } from "../../i18n/ui/useUI";
 import {
-  fetchMediaBlob,
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
@@ -35,11 +34,11 @@ import {
   applyAudioOperation,
   audioBufferBytes,
   encodeWav,
-  MAX_AUDIO_FILE_BYTES,
   MAX_COMPRESSED_AUDIO_BYTES,
   MAX_DECODED_AUDIO_BYTES,
   validAudioProject,
 } from "./audio-workbench-utils";
+import { fetchAudioProjectSourceBlob } from "./audio-project-source";
 import { assertBlobSource } from "./source-integrity.mjs";
 
 interface AudioWaveLoaderOptions {
@@ -180,10 +179,7 @@ export function useAudioWaveLoader({
             import("wavesurfer.js/dist/plugins/regions.js"),
           ]);
         const blob = durableUrl
-          ? await fetchMediaBlob(durableUrl, {
-              maxBytes: MAX_AUDIO_FILE_BYTES,
-              signal: controller.signal,
-            })
+          ? await fetchAudioProjectSourceBlob(durableUrl, controller.signal)
           : encodeWav(
               new AudioBuffer({
                 length: 44_100,

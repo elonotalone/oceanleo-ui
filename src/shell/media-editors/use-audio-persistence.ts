@@ -2,16 +2,18 @@ import { useCallback, type MutableRefObject } from "react";
 
 import { uploadFile } from "../../lib/database";
 import {
-  fetchMediaBlob,
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
 import type { UITranslate } from "../../i18n/ui/useUI";
-import type { LibraryItem } from "../library-data";
 import {
+  saveFileToLibrary,
   saveProjectWorkingHead,
   type PersistedEditorVersion,
 } from "../doc-editors/doc-io";
+import { isDurableLibraryItem, type LibraryItem } from "../library-data";
+import { buildAudioDelivery } from "./audio-delivery";
+import { fetchAudioProjectSourceBlob } from "./audio-project-source";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { renderAudioWaveformPng } from "../doc-editors/editor-preview-raster";
 import type { AudioEditOperation } from "./audio-operations";
@@ -147,12 +149,12 @@ export function useAudioPersistence({
         );
       }
       const licenseMeta = audioLicenseMetadata(project);
-      const saved = await saveProjectWorkingHead({
+      const saveInput = {
         item,
         siteId,
         fallbackSite: "audio",
         title,
-        mediaType: "audio",
+        mediaType: "audio" as const,
         kind: "audio",
         idempotencyKey: `audio:${item.id}:${savingRevision}`,
         workingHeadUrl: workingHeadUrlRef.current,
@@ -177,8 +179,8 @@ export function useAudioPersistence({
           id: "audio-editor",
           format: AUDIO_PROJECT_SCHEMA,
         },
-        // No product bytes exist at save time (source URL + operation journal),
-        // so the waveform is this type's only displayable primary.
+        // The waveform is the displayable cover; the playable audio travels as
+        // the `full` delivery (see `buildAudioDelivery`) whenever one can be built.
         createPreview: () => renderAudioWaveformPng(bufferRef.current),
         /**
          * `oceanleo.audio-project.v1` is itself an accepted `source.format`
@@ -194,7 +196,34 @@ export function useAudioPersistence({
             operationCount: project.operations.length,
           },
         },
-      });
+      };
+      /**
+       * 已有 typed identity 的音频 revision 必须带一个能播、能下载的 `full`
+       * 交付物：未编辑就原样带上原始音频，有编辑就把当前混音渲成 WAV。只存
+       * 工程 JSON 的 revision（6cf6ec0a rev 2）在查看器里没有任何音频可放。
+       * 渲出来过大（见 buildAudioDelivery）时退回只存工程，不让保存失败。
+       */
+      const delivery =
+        isDurableLibraryItem(item) && item.artifactType === "audio"
+          ? await buildAudioDelivery({
+              title,
+              buffer: source,
+              operationCount: project.operations.length,
+              sourceUrl: project.sourceUrl,
+            })
+          : null;
+      const saved = delivery
+        ? await saveFileToLibrary({
+            ...saveInput,
+            file: delivery.file,
+            sourceFormat: delivery.sourceFormat,
+            sourceMediaType: delivery.sourceMediaType,
+            meta: {
+              ...saveInput.meta,
+              audio_delivery_origin: delivery.origin,
+            },
+          })
+        : await saveProjectWorkingHead(saveInput);
       if (!saved.ok) {
         throw new Error(
           saved.error || artifactSaveStepMessage("revision-publish", ""),
@@ -306,9 +335,7 @@ export function useAudioPersistence({
               })
           : "";
         const blob = durableUrl
-          ? await fetchMediaBlob(durableUrl, {
-              maxBytes: MAX_AUDIO_FILE_BYTES,
-            })
+          ? await fetchAudioProjectSourceBlob(durableUrl)
           : encodeWav(
               new AudioBuffer({
                 length: 44_100,
