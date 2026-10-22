@@ -627,8 +627,11 @@ export function createCallController(deps: CallControllerDeps): CallController {
     const s = session;
     const engine = s?.engine;
     if (!s || !engine || !s.joined) return;
-    const viewIds = new Set<string>(viewport?.mode === "stage" ? viewport.ids : [...(viewport?.ids ?? []), ...ordering.visible]);
-    const sharer = currentRemoteSharer();
+    // 小窗：界面给的格子 ∪ 引擎算的可见格（界面晚一拍时也不漏订）；放大视图：只认界面给的本页。
+    // 屏幕画面只在放大视图里挂（signals/W07-to-W05.md 第 4 条），小窗模式不收屏幕流。
+    const stage = viewport?.mode === "stage";
+    const viewIds = new Set<string>(stage ? viewport?.ids ?? [] : [...(viewport?.ids ?? []), ...ordering.visible]);
+    const sharer = stage ? currentRemoteSharer() : null;
     for (const r of remotes.values()) {
       if (!r.online) continue;
       const next: VideoWant = {
@@ -1678,6 +1681,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
     setViewport(mode, visibleIds) {
       viewport = { mode: mode === "stage" ? "stage" : "dock", ids: Array.isArray(visibleIds) ? visibleIds.filter((id) => typeof id === "string") : [] };
       syncSubscriptions();
+      commit();
     },
     attachVideo(el, participantId, track) {
       if (!participantId || (track !== "camera" && track !== "screen")) return;
