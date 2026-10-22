@@ -5,6 +5,7 @@ import {
   encodeWav,
   MAX_COMPRESSED_AUDIO_BYTES,
 } from "./audio-workbench-utils";
+import type { AudioSourceRef } from "./audio-workbench-state";
 import { assertBlobSource } from "./source-integrity.mjs";
 
 export interface AudioDelivery {
@@ -49,18 +50,24 @@ export async function buildAudioDelivery({
   buffer,
   operationCount,
   sourceUrl,
+  sourceRef,
   signal,
+  isSuperseded,
 }: {
   title: string;
   buffer: AudioBuffer;
   operationCount: number;
   sourceUrl: string;
+  sourceRef?: AudioSourceRef | null;
   signal?: AbortSignal;
+  /** 编辑又往前走了：这次渲染已经没人要，立刻放弃（返回 null）。 */
+  isSuperseded?: () => boolean;
 }): Promise<AudioDelivery | null> {
   const stem = fileStem(title);
   if (operationCount === 0 && sourceUrl) {
     try {
-      const blob = await fetchAudioProjectSourceBlob(sourceUrl, signal);
+      const blob = await fetchAudioProjectSourceBlob(sourceUrl, signal, sourceRef);
+      if (isSuperseded?.()) return null;
       const format = await assertBlobSource(blob, "audio");
       const mediaType = MEDIA_TYPE_BY_FORMAT[format] || "";
       if (mediaType && blob.size <= MAX_COMPRESSED_AUDIO_BYTES) {
@@ -77,8 +84,9 @@ export async function buildAudioDelivery({
       // is the same audio, so render it instead of failing the save.
     }
   }
+  if (isSuperseded?.()) return null;
   const wav = encodeWav(buffer);
-  if (wav.size > MAX_COMPRESSED_AUDIO_BYTES) return null;
+  if (isSuperseded?.() || wav.size > MAX_COMPRESSED_AUDIO_BYTES) return null;
   return {
     file: new File([wav], `${stem}.wav`, { type: "audio/wav" }),
     sourceFormat: "wav",

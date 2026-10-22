@@ -175,16 +175,26 @@ const persistenceStubs = {
 };
 persistenceStubs["./audio-project-source"] = dataModule(`
   export async function fetchAudioProjectSourceBlob() { return globalThis.__sourceBlob(); }
+  export function artifactAccessIdentity(url) {
+    const m = /access\\/([^/?#.]+)/.exec(url);
+    if (!m) return null;
+    const p = JSON.parse(Buffer.from(m[1], "base64url").toString());
+    return { artifactId: p.artifact, revisionId: p.revision, purpose: p.purpose };
+  }
 `);
 globalThis.__saves = calls;
 const { useAudioPersistence } = await import(
   await compileModule("src/shell/media-editors/use-audio-persistence.ts", persistenceStubs)
 );
 
-async function runSave(item, operations) {
+/**
+ * Mounts the real hook once and hands back its `save` plus the refs/spies, so a
+ * test can drive "autosave, then idle, then autosave again" like the controller.
+ */
+async function harness(item, operations, { idleMs = 15 } = {}) {
   calls.file.length = 0;
   calls.projectOnly.length = 0;
-  let saved;
+  const state = { dirty: [], api: null, supersede: false };
   const refs = {
     buffer: { current: decodedBuffer() },
     sourceUrl: { current: SIGNED },
@@ -198,10 +208,11 @@ async function runSave(item, operations) {
     saving: { current: false },
   };
   function Probe() {
-    const api = useAudioPersistence({
+    state.api = useAudioPersistence({
       item,
       siteId: "audio",
       requiresExistingSource: true,
+      deliveryIdleMs: idleMs,
       bufferRef: refs.buffer,
       sourceUrlRef: refs.sourceUrl,
       operationsRef: refs.operations,
@@ -213,53 +224,144 @@ async function runSave(item, operations) {
       revisionRef: refs.revision,
       savingRef: refs.saving,
       reloadWaveform: async () => undefined,
-      setSaving() {}, setError(e) { if (e) throw new Error(e); }, setSavedUrl() {}, setDirty() {},
+      setSaving() {}, setError(e) { if (e) throw new Error(e); }, setSavedUrl() {},
+      setDirty(value) { state.dirty.push(value); },
       setCanUndo() {}, setCanRedo() {},
       tt: (t) => String(t),
     });
-    React.useEffect(() => { void api.save().then((r) => { saved = r; }); }, []);
     return null;
   }
   const mounted = await mount(React.createElement(Probe));
-  for (let i = 0; i < 20 && saved === undefined; i += 1) {
-    await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
-  }
-  await mounted.unmount();
-  return saved;
+  const save = async () => {
+    let result;
+    await act(async () => { result = await state.api.save(); });
+    return result;
+  };
+  const wait = (ms) => act(async () => { await new Promise((r) => setTimeout(r, ms)); });
+  return { state, refs, save, wait, unmount: () => mounted.unmount() };
 }
 
 const durableAudio = {
   id: ARTIFACT, key: `artifact:${ARTIFACT}:${REV1}`, title: "The Accident", kind: "audio", source: "artifact",
   artifactId: ARTIFACT, revisionId: REV1, artifactType: "audio", artifact: {}, url: SIGNED, meta: {},
 };
+const CROP = [{ type: "crop", start: 1, end: 2 }];
 
-test("saving a durable audio item commits a playable delivery next to the project", async () => {
-  const saved = await runSave(durableAudio, [{ type: "crop", start: 1, end: 2 }]);
-  assert.ok(saved, "保存必须成功");
-  assert.equal(calls.projectOnly.length, 0, "不能再退回只存工程");
-  assert.equal(calls.file.length, 1);
-  const input = calls.file[0];
-  assert.equal(input.file.type, "audio/wav");
-  assert.equal(input.sourceFormat, "wav");
-  assert.equal(input.sourceMediaType, "audio/wav");
-  assert.equal(input.artifactRevision.artifactType, "audio");
-  assert.equal(input.project.schema, "oceanleo.audio-project.v1");
-  assert.equal(input.editorManifest.id, "audio-editor");
-  assert.equal(typeof input.createPreview, "function");
+test("autosave of an edited durable item is project-only and stores a stable base-clip reference", async () => {
+  const h = await harness(durableAudio, CROP, { idleMs: 10_000 });
+  try {
+    assert.ok(await h.save());
+    assert.equal(calls.file.length, 0, "自动保存不能渲 WAV");
+    assert.equal(calls.projectOnly.length, 1);
+    const project = calls.projectOnly[0].project;
+    assert.deepEqual(project.data.sourceRef, { artifactId: ARTIFACT, revisionId: REV1, purpose: "source" });
+    assert.equal(project.data.sourceUrl, SIGNED, "签名地址继续保留作兼容");
+  } finally { await h.unmount(); }
 });
 
-test("saving an unedited durable audio item keeps the original mp3 as the delivery", async () => {
-  const saved = await runSave(durableAudio, []);
-  assert.ok(saved);
-  assert.equal(calls.file.length, 1);
-  assert.equal(calls.file[0].sourceFormat, "mp3");
-  assert.equal(calls.file[0].file.type, "audio/mpeg");
-  assert.equal(calls.file[0].meta.audio_delivery_origin, "original");
+test("the full WAV is rendered once, after the edits go quiet, through the normal autosave path", async () => {
+  const h = await harness(durableAudio, CROP, { idleMs: 15 });
+  try {
+    await h.save();
+    assert.equal(calls.file.length, 0);
+    const revisionBefore = h.refs.revision.current;
+    await h.wait(60);
+    assert.equal(h.refs.revision.current, revisionBefore + 1, "空闲后要让自动保存再来一次");
+    assert.equal(h.state.dirty.at(-1), true);
+    assert.equal(calls.file.length, 0, "计时器本身不渲染，只请求一次保存");
+    await h.save();
+    assert.equal(calls.file.length, 1);
+    assert.equal(calls.file[0].file.type, "audio/wav");
+    assert.equal(calls.file[0].sourceFormat, "wav");
+    assert.equal(calls.file[0].artifactRevision.artifactType, "audio");
+    assert.equal(calls.file[0].project.schema, "oceanleo.audio-project.v1");
+    // Delivered once: no further idle round is scheduled.
+    const after = h.refs.revision.current;
+    await h.wait(60);
+    assert.equal(h.refs.revision.current, after);
+    assert.equal(calls.file.length, 1);
+  } finally { await h.unmount(); }
 });
 
-test("a non-durable audio draft still autosaves project-only", async () => {
-  const saved = await runSave({ id: "d1", key: "d1", title: "draft", kind: "audio", source: "local", url: "", meta: {} }, []);
-  assert.ok(saved);
-  assert.equal(calls.file.length, 0);
-  assert.equal(calls.projectOnly.length, 1);
+test("a new edit during the quiet window cancels the pending render", async () => {
+  const h = await harness(durableAudio, CROP, { idleMs: 30 });
+  try {
+    await h.save();
+    h.refs.revision.current += 1; // user keeps editing
+    await h.wait(80);
+    assert.equal(h.refs.revision.current, 4, "不能再被计时器改写 revision");
+    assert.equal(calls.file.length, 0);
+    // the next autosave simply reschedules
+    await h.save();
+    assert.equal(calls.file.length, 0);
+    assert.equal(calls.projectOnly.length, 2);
+  } finally { await h.unmount(); }
+});
+
+test("unmounting the editor cancels the pending render", async () => {
+  const h = await harness(durableAudio, CROP, { idleMs: 30 });
+  await h.save();
+  const revision = h.refs.revision.current;
+  await h.unmount();
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(h.refs.revision.current, revision);
+});
+
+test("a render superseded by an edit mid-flight is dropped and saved project-only", async () => {
+  const h = await harness(durableAudio, CROP, { idleMs: 10 });
+  try {
+    await h.save();
+    await h.wait(40);
+    // An edit lands while the WAV is being encoded (encodeWav reads the channel data).
+    h.refs.buffer.current = new Proxy(h.refs.buffer.current, {
+      get(target, prop, receiver) {
+        if (prop === "getChannelData") h.refs.revision.current += 1;
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    calls.file.length = 0;
+    await h.save();
+    assert.equal(calls.file.length, 0, "已经过时的渲染不能上传");
+    assert.equal(calls.projectOnly.length, 2);
+  } finally { await h.unmount(); }
+});
+
+test("an unedited durable item keeps the original mp3 as the delivery right away", async () => {
+  const h = await harness(durableAudio, [], { idleMs: 10_000 });
+  try {
+    assert.ok(await h.save());
+    assert.equal(calls.file.length, 1);
+    assert.equal(calls.file[0].sourceFormat, "mp3");
+    assert.equal(calls.file[0].file.type, "audio/mpeg");
+    assert.equal(calls.file[0].meta.audio_delivery_origin, "original");
+  } finally { await h.unmount(); }
+});
+
+test("a non-durable audio draft autosaves project-only and never schedules a render", async () => {
+  const h = await harness({ id: "d1", key: "d1", title: "draft", kind: "audio", source: "local", url: "", meta: {} }, CROP, { idleMs: 10 });
+  try {
+    assert.ok(await h.save());
+    const revision = h.refs.revision.current;
+    await h.wait(50);
+    assert.equal(h.refs.revision.current, revision);
+    assert.equal(calls.file.length, 0);
+    assert.equal(calls.projectOnly.length, 1);
+  } finally { await h.unmount(); }
+});
+
+// ---- stable reference ------------------------------------------------------
+
+test("expiry is read from the token; sourceRef re-issues a clip whose URL carries no token", async () => {
+  globalThis.__fetches = [];
+  globalThis.__refreshes = [];
+  const ref = { artifactId: ARTIFACT, revisionId: REV1, purpose: "source" };
+  // The token in SIGNED carries exp 1792649584 (2026-10-22); pretend it is long past.
+  assert.equal(source.artifactAccessUrlExpired(SIGNED, 1792649584 * 1000 + 1), true);
+  assert.equal(source.artifactAccessUrlExpired(SIGNED, 1792649584 * 1000 - 1000), false);
+  assert.deepEqual(source.normalizeAudioSourceRef(ref), ref);
+  assert.equal(source.normalizeAudioSourceRef({ artifactId: "a" }), null);
+  assert.equal(source.normalizeAudioSourceRef("x"), null);
+  await source.renderAudioProjectPlayable({ sourceUrl: "https://api.dev.oceanleo.com/v1/artifact-renditions/access/opaque", sourceRef: ref, operations: [] });
+  assert.deepEqual(globalThis.__refreshes, [{ artifactId: ARTIFACT, revisionId: REV1, purpose: "source" }], "没有 token 的地址 410 后按 sourceRef 换发");
 });

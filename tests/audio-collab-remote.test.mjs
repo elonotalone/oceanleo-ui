@@ -56,7 +56,7 @@ const stubs = {
   // Saves in this test are project-only (non-durable item): no delivery is built.
   "../library-data": dataModule(`export const isDurableLibraryItem = () => false;`),
   "./audio-delivery": dataModule(`export const buildAudioDelivery = async () => null;`),
-  "./audio-project-source": dataModule(`export const fetchAudioProjectSourceBlob = async () => new Blob([new Uint8Array(16)], { type: "audio/wav" });`),
+  "./audio-project-source": dataModule(`export const fetchAudioProjectSourceBlob = async () => new Blob([new Uint8Array(16)], { type: "audio/wav" }); export const artifactAccessIdentity = () => null;`),
   "../doc-editors/artifact-save-contract": dataModule(`export const artifactSaveStepMessage = () => "";`),
   "../doc-editors/editor-preview-raster": dataModule(`export const renderAudioWaveformPng = async () => null;`),
 };

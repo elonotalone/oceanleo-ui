@@ -38,7 +38,10 @@ import {
   MAX_DECODED_AUDIO_BYTES,
   validAudioProject,
 } from "./audio-workbench-utils";
-import { fetchAudioProjectSourceBlob } from "./audio-project-source";
+import {
+  fetchAudioProjectSourceBlob,
+  normalizeAudioSourceRef,
+} from "./audio-project-source";
 import { assertBlobSource } from "./source-integrity.mjs";
 
 interface AudioWaveLoaderOptions {
@@ -179,7 +182,13 @@ export function useAudioWaveLoader({
             import("wavesurfer.js/dist/plugins/regions.js"),
           ]);
         const blob = durableUrl
-          ? await fetchAudioProjectSourceBlob(durableUrl, controller.signal)
+          ? await fetchAudioProjectSourceBlob(
+              durableUrl,
+              controller.signal,
+              project && durableUrl === project.sourceUrl
+                ? normalizeAudioSourceRef(project.sourceRef)
+                : null,
+            )
           : encodeWav(
               new AudioBuffer({
                 length: 44_100,

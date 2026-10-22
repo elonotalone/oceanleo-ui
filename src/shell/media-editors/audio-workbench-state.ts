@@ -14,8 +14,21 @@ export interface AudioSelection {
   end: number;
 }
 
+/**
+ * 基础素材的稳定引用（artifact + revision + purpose）。`sourceUrl` 只是一个 300 秒
+ * 的签名访问地址，过期后靠这份引用重新换发；缺席时按 `sourceUrl` token 里的同一
+ * 份身份兜底（存量工程）。
+ */
+export interface AudioSourceRef {
+  artifactId: string;
+  revisionId: string;
+  purpose: "source" | "full" | "preview" | "thumbnail" | "editor_manifest";
+}
+
 export interface AudioProjectData {
   sourceUrl: string;
+  /** 新保存的工程一律带；见 `AudioSourceRef`。 */
+  sourceRef?: AudioSourceRef;
   operations: AudioEditOperation[];
   /**
    * audio-project.md §1.3 许可锁的编辑器侧承载。署名与许可义务必须随工程走，

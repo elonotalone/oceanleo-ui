@@ -1,7 +1,7 @@
 import { fetchMediaBlobRefreshing } from "../../lib/media-proxy";
 import { refreshArtifactRendition } from "../artifact-client";
 import type { ArtifactRenditionPurpose } from "../artifact-contract";
-import type { AudioProjectData } from "./audio-workbench-state";
+import type { AudioProjectData, AudioSourceRef } from "./audio-workbench-state";
 import {
   applyAudioOperation,
   audioBufferBytes,
@@ -38,6 +38,17 @@ const ACCESS_PURPOSES = new Set<string>([
   "editor_manifest",
 ]);
 
+/** 工程 JSON 里读出来的 `sourceRef` 不可信：形状不对一律当它不存在。 */
+export function normalizeAudioSourceRef(value: unknown): AudioSourceRef | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const artifactId = String(record.artifactId || "").trim();
+  const revisionId = String(record.revisionId || "").trim();
+  const purpose = String(record.purpose || "").trim();
+  if (!artifactId || !revisionId || !ACCESS_PURPOSES.has(purpose)) return null;
+  return { artifactId, revisionId, purpose: purpose as AudioSourceRef["purpose"] };
+}
+
 function decodeBase64UrlJson(segment: string): Record<string, unknown> | null {
   try {
     const padded = segment
@@ -73,15 +84,25 @@ export function artifactAccessIdentity(
   };
 }
 
+/** token 载荷里的 `exp`（秒）已过——不必再白跑一次注定 410 的请求。 */
+export function artifactAccessUrlExpired(url: string, now = Date.now()): boolean {
+  const match = ACCESS_PATH.exec(String(url || ""));
+  if (!match) return false;
+  const exp = Number(decodeBase64UrlJson(match[1].split(".")[0] || "")?.exp);
+  return Number.isFinite(exp) && exp * 1000 <= now;
+}
+
 /**
- * 给一个（可能已过期的）签名访问地址换发新地址。认不出身份或换发失败返回 null，
+ * 给一个（可能已过期的）签名访问地址换发新地址。`ref` 是工程里存的稳定引用，
+ * 有它就用它；没有就用地址 token 里的身份。认不出身份或换发失败返回 null，
  * 调用方此时只剩原地址可试。
  */
 export async function refreshedArtifactAccessUrl(
   url: string,
   signal?: AbortSignal,
+  ref?: AudioSourceRef | null,
 ): Promise<string | null> {
-  const identity = artifactAccessIdentity(url);
+  const identity = ref || artifactAccessIdentity(url);
   if (!identity) return null;
   const order: ArtifactRenditionPurpose[] = [
     identity.purpose,
@@ -129,11 +150,16 @@ export async function loadAudioProjectFromUrl(
 export async function fetchAudioProjectSourceBlob(
   sourceUrl: string,
   signal?: AbortSignal,
+  ref?: AudioSourceRef | null,
 ): Promise<Blob> {
-  return fetchMediaBlobRefreshing(sourceUrl, {
+  // A signed URL whose own `exp` has passed is re-issued up front.
+  const first = artifactAccessUrlExpired(sourceUrl)
+    ? (await refreshedArtifactAccessUrl(sourceUrl, signal, ref)) || sourceUrl
+    : sourceUrl;
+  return fetchMediaBlobRefreshing(first, {
     maxBytes: MAX_AUDIO_FILE_BYTES,
     signal,
-    refreshGoneUrl: (gone) => refreshedArtifactAccessUrl(gone, signal),
+    refreshGoneUrl: (gone) => refreshedArtifactAccessUrl(gone, signal, ref),
   });
 }
 
@@ -148,7 +174,11 @@ export async function renderAudioProjectPlayable(
   if (!project.sourceUrl.trim()) {
     throw new Error("这份音频工程没有引用任何基础音频");
   }
-  const blob = await fetchAudioProjectSourceBlob(project.sourceUrl, signal);
+  const blob = await fetchAudioProjectSourceBlob(
+    project.sourceUrl,
+    signal,
+    normalizeAudioSourceRef(project.sourceRef),
+  );
   const format = await assertBlobSource(blob, "audio");
   if (!project.operations.length) return blob;
   if (
