@@ -125,9 +125,15 @@ export function CloudBrowserPanel({
       { operation, ...result },
       fallback,
     );
+    // A stopped executor host is not a transient "busy" — show a plain,
+    // non-misleading reason instead of the raw code or a retry hint.
+    const message =
+      issue.code === "EXECUTOR_UNREACHABLE"
+        ? tt("云浏览器服务器未启动，请稍后重试或联系管理员启动")
+        : issue.message;
     setLifecycleIssue(issue);
-    setError(issue.message);
-    return issue;
+    setError(message);
+    return { ...issue, message };
   }
 
   async function startBrowser() {

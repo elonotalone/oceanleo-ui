@@ -13,6 +13,7 @@ export const CLOUD_BROWSER_KEYS = [
   "首帧解码失败，仍显示最后截图",
   "5 秒内未收到可绘制首帧，仍显示最后截图",
   "云端浏览器启动失败",
+  "云浏览器服务器未启动，请稍后重试或联系管理员启动",
   "恢复上次浏览失败",
   "保存并关机失败",
   "删除浏览记录失败",
@@ -192,6 +193,8 @@ export const CLOUD_BROWSER_EN: CloudBrowserDictionary = {
   "5 秒内未收到可绘制首帧，仍显示最后截图":
     "No drawable first frame arrived within 5 seconds; the last screenshot remains visible",
   "云端浏览器启动失败": "Failed to start the cloud browser",
+  "云浏览器服务器未启动，请稍后重试或联系管理员启动":
+    "The cloud-browser server is not running. Please try again later or ask an administrator to start it.",
   "恢复上次浏览失败": "Failed to restore the previous browsing session",
   "保存并关机失败": "Failed to save and shut down",
   "删除浏览记录失败": "Failed to delete the browsing record",
