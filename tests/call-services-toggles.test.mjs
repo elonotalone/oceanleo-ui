@@ -371,21 +371,18 @@ test("文案：本表 17 语齐全、不把中文抄进非中日韩语种、日�
   assert.equal(Object.hasOwn(source, "我"), false, "「我」用基础词典，不在本表重复");
 });
 
-test("文案：其他通话分表若用了同一条中文原文，译文必须一致（聚合时后者会悄悄覆盖前者）", async () => {
+test("文案：W06 的键只在本表定义（仲裁 A-19：同一中文键只在一张通话分表里定义；聚合时后者会悄悄覆盖前者）", async () => {
   const others = ["call-ui-copy", "call-chat-copy", "call-control-copy", "call-diagnostics-copy"];
-  const conflicts = [];
+  const duplicated = [];
   for (const name of others) {
     const mod = await import(`../src/i18n/ui/messages/${name}.ts`);
-    const table = Object.values(mod).find((value) => value && typeof value === "object" && value.en);
+    const table = Object.values(mod).find((value) => value && typeof value === "object" && value.zh);
     if (!table) continue;
     for (const key of Object.keys(CALL_SERVICES_MESSAGES.zh)) {
-      for (const locale of TRANSLATED) {
-        const theirs = table[locale]?.[key];
-        if (theirs && theirs !== CALL_SERVICES_MESSAGES[locale][key]) conflicts.push(`${name} ${locale} ${key}`);
-      }
+      if (Object.hasOwn(table.zh, key)) duplicated.push(`${name}: ${key}`);
     }
   }
-  assert.deepEqual(conflicts, []);
+  assert.deepEqual(duplicated, [], "别的通话分表要用这些原文直接 tt() 即可，不要重复定义");
 });
 
 // ---------------------------------------------------------------------------
