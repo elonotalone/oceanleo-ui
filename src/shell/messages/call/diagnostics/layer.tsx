@@ -1,7 +1,7 @@
 "use client";
 
 // 诊断浮层的层级与「通话检测」对话框外壳。
-// 通话小窗/放大视图/通话菜单的层级（W07 ui/layout.ts）是 1050/1100/1150，共享 `Modal` 只有 z-[1000]，
+// 通话小窗/放大视图/通话菜单/举报框的层级（W07 ui/layout.ts）是 1050/1100/1150/1200，共享 `Modal` 只有 z-[1000]，
 // 会被压在放大视图下面；所以这里自己做一个同样行为的对话框（portal、遮罩、Esc 关、Tab 循环、锁滚动、还焦点），层级更高。
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -12,7 +12,7 @@ export const DIAG_POPOVER_Z = 1160;
 /** 问题浮层里再打开的设备菜单。 */
 export const DIAG_MENU_Z = 1170;
 /** 「通话检测」对话框。 */
-export const DIAG_DIALOG_Z = 1200;
+export const DIAG_DIALOG_Z = 1210;
 
 const FOCUSABLE = 'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
