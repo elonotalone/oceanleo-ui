@@ -221,8 +221,9 @@ test("三个编辑器的加载 effect 都不再依赖调用方递进来的对象
   // `tt` belongs on this list too: it is provider-owned, and an unmemoized
   // locale provider re-arms exactly the same loop as an unmemoized callback.
   //
-  // grid 行是 Univer 舞台：它没有 `reloadNonce`，显式重试走 `officeSource.retry`
-  // → rendition 换版 → `officeSource.version` 进 `loadKey` → effect 再跑一次。
+  // grid 行是 Univer 舞台：显式重试 = `officeSource.retry()`（rendition 换版 →
+  // `officeSource.version` 进 `loadKey`）加 `setReloadNonce`（`reloadNonce` 同样进 `loadKey`），
+  // effect 只依赖 `loadKey` 这一个值。
   for (const [path, marker, forbidden, refPattern, retryKey] of [
     [
       "src/shell/doc-editors/GridUniverStage.tsx",
@@ -247,7 +248,9 @@ test("三个编辑器的加载 effect 都不再依赖调用方递进来的对象
     ],
     [
       "src/shell/doc-editors/use-rich-doc-editor.ts",
-      "loadRichDocHtml(",
+      // 2026-10：加载入口由 `loadRichDocHtml` 重构成 `loadRichDocSource`（先分流工程档 / office 源再转 HTML）；
+      // 不变量没变：只按 loadKey / reloadNonce 起跑，回调走 ref。marker 跟着真实入口走。
+      "loadRichDocSource(source, notifySourceAccessError",
       ["item", "onSourceAccessError", "tt"],
       /sourceAccessErrorRef\.current\?\.\(\)/,
       "reloadNonce",
@@ -401,6 +404,10 @@ function routeTakesDocumentUpload(route) {
   return /editor\.importSource/.test(route);
 }
 
+/** 表格「重新载入」的真实接线：先换一版 rendition，再 +1 reloadNonce 强制重跑加载 effect。 */
+const GRID_RELOAD_WIRING =
+  /reload:\s*\(\)\s*=>\s*\{\s*officeSource\.retry\(\);\s*setReloadNonce\(/;
+
 /**
  * 文案里允许出现的承诺，**每一条都要有对应的界面能力做后盾**。
  * 只按字面匹配某几个字挡不住这类缺陷：上一轮「点「重新载入」」被换成
@@ -415,9 +422,11 @@ const PROMISED_WAYS_OUT = [
     available: ({ stage, route }) =>
       /editor\.reload/.test(stage) ||
       /editor\.reload/.test(route) ||
-      // Univer 舞台：按钮由 buildGridDocumentActions 造，reload 接 officeSource.retry。
-      (/reload:\s*officeSource\.retry/.test(stage) &&
-        /sourceFailed:\s*Boolean\(officeSource\.error\)/.test(stage)),
+      // Univer 舞台：按钮由 buildGridDocumentActions 造，reload 先 officeSource.retry()
+      // 再 setReloadNonce（换版 + 强制重载，两者都进 loadKey）。
+      (GRID_RELOAD_WIRING.test(stage) &&
+        // 舞台自己的 sourceFailed（读取失败）或 rendition 解析出错，任一为真都摆按钮。
+        /sourceFailed:\s*sourceFailed\s*\|\|\s*Boolean\(officeSource\.error\)/.test(stage)),
     missing:
       "文案让用户点「重新载入」，但 stage / route 既没渲染 editor.reload，" +
       "也没把 officeSource.retry 接进 buildGridDocumentActions",
@@ -511,7 +520,9 @@ test("grid 的失败态是本波真正交付的那一份：文案与按钮两边
   assert.match(actions, /label: tt\("重新载入表格"\)/);
   // 舞台真把失败文案送上状态栏、把 retry 接到按钮。
   assert.match(stage, /gridSourceFailureMessage\(officeSource\.error, tt\)/);
-  assert.match(stage, /reload: officeSource\.retry/);
+  assert.match(stage, GRID_RELOAD_WIRING);
+  // 失败遮罩上的按钮走同一条 retry + nonce。
+  assert.match(stage, /onReload=\{\(\) => \{\s*officeSource\.retry\(\);\s*setReloadNonce\(/);
 
   const { buildGridDocumentActions, gridSourceFailureMessage } = await import(
     pathToFileURL(
