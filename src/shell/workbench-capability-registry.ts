@@ -323,14 +323,12 @@ if (
 }
 
 /**
- * 没有本地编辑器的存量 artifact 类型：只读打开，原因写在 `workbench-routes.ts`。
+ * 没有本地编辑器的存量 artifact 类型（矢量图 2026-10-22 起由图片编辑器打开，不在此列）：只读打开，原因写在 `workbench-routes.ts`。
  * - chart：图表编辑器已删除（2026-10-22）。
- * - vector_image：原先在整站嵌入的设计子站里编辑；本地图片编辑器不改写 SVG 源。
  * 单一来源——路由层与「有没有编辑器」的类型判据都读这里。
  */
 export const READ_ONLY_ARTIFACT_TYPES: ReadonlySet<string> = new Set([
   "chart",
-  "vector_image",
 ]);
 
 export function registryEntryForAdvancedFeature(

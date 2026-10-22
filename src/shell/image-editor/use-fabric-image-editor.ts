@@ -76,6 +76,12 @@ import {
 } from "./types";
 import { PsdCompositeError, isPsdSource } from "./psd-composite";
 import {
+  exportVectorSvg,
+  isVectorImageItem,
+  vectorSvgToSnapshot,
+  VectorSvgError,
+} from "./vector-svg-scene";
+import {
   designAssetRefs,
   designAssetUrl,
   designDocumentToSnapshot,
@@ -672,6 +678,9 @@ export function useFabricImageEditor(
   // as a design-document and converted to a scene at read time; the stored
   // revision is not rewritten.
   const designDocumentSource = isDesignDocumentItem(item);
+  // A stored vector_image is read as SVG (sanitized) unless a Fabric project
+  // from an earlier save of this editor already exists for the revision.
+  const vectorImageItem = isVectorImageItem(item);
   const compositeSourceRequired =
     isDurableLibraryItem(item) &&
     item.artifactType === "composite_image" &&
@@ -679,6 +688,7 @@ export function useFabricImageEditor(
   const structuredSourceRequired =
     compositeSourceRequired ||
     designDocumentSource ||
+    vectorImageItem ||
     Boolean(item.artifact && editorSource?.structured);
   const sourceUrl =
     item.kind === "image" || item.kind === "xhs" || item.kind === "file"
@@ -829,6 +839,32 @@ export function useFabricImageEditor(
               caught instanceof Error
                 ? caught.message
                 : "设计稿暂时无法读取，请重试。";
+            setError(message);
+            setSceneDiagnostic({ code: "invalid-scene", message });
+            return;
+          }
+        } else if (vectorImageItem && !projectUrl) {
+          try {
+            const svgUrl = editorSource?.url || item.url || item.previewUrl || "";
+            if (!svgUrl) throw new VectorSvgError("这份矢量图没有可读取的 SVG 源。");
+            const svgBlob = await fetchMediaBlob(svgUrl, {
+              cache: "no-store",
+              maxBytes: 8 * 1024 * 1024,
+              signal: abort.signal,
+            });
+            const svgText = await svgBlob.text();
+            if (cancelled || abort.signal.aborted) return;
+            const scene = await vectorSvgToSnapshot(fabric, svgText);
+            if (cancelled || abort.signal.aborted) return;
+            projectLoaded = await controller.loadSnapshot(scene.snapshot);
+            if (!projectLoaded) throw new VectorSvgError("矢量图无法载入到画布。");
+            if (scene.removed > 0) {
+              setNotice(`已清除 ${scene.removed} 处不安全内容（脚本、外部引用等）。`);
+            }
+          } catch (caught) {
+            if (cancelled || isAbortError(caught)) return;
+            const message =
+              caught instanceof Error ? caught.message : "矢量图暂时无法读取，请重试。";
             setError(message);
             setSceneDiagnostic({ code: "invalid-scene", message });
             return;
@@ -1397,6 +1433,15 @@ export function useFabricImageEditor(
                 ),
               },
               async () => previewBlob,
+              isVectorImageItem(sourceItem)
+                ? {
+                    createSvg: () => {
+                      const { canvas, doc } = controller.getDocument();
+                      return exportVectorSvg(canvas, doc);
+                    },
+                    createPreview: async () => previewBlob,
+                  }
+                : undefined,
             );
       if (
         !aliveRef.current ||

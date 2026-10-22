@@ -27,12 +27,12 @@ const PACKS_NOT_EDITORS = [
   "interactive_doc",
 ];
 
-test("每一种 artifact 类型都有一个到得了的编辑器（图表与矢量图除外：只读）", () => {
+test("每一种 artifact 类型都有一个到得了的编辑器（图表除外：只读）", () => {
   // 后端 `_EDITOR_CAPABILITIES` 给 16 种类型都声明了编辑能力，而共享工作台
   // 为每一种能力都备了可路由的适配器。所以正确答案是「全是 true」——
   // 这正是那份六项清单错得有多远的度量。
-  // 2026-10-22：图表编辑器已删除、矢量图不再有本地编辑器，二者只读（READ_ONLY_ARTIFACT_TYPES）。
-  assert.deepEqual([...READ_ONLY_ARTIFACT_TYPES].sort(), ["chart", "vector_image"]);
+  // 2026-10-22：图表编辑器已删除，只读（READ_ONLY_ARTIFACT_TYPES）。矢量图由合并后的图片编辑器打开。
+  assert.deepEqual([...READ_ONLY_ARTIFACT_TYPES].sort(), ["chart"]);
   for (const artifactType of ARTIFACT_TYPES) {
     assert.equal(
       artifactTypeHasRoutableEditor(artifactType),
@@ -70,7 +70,7 @@ test("旧的六项清单是真子集，说明这次是放宽而不是改判", ()
   const gained = ARTIFACT_TYPES.filter(
     (t) => !PACKS_NOT_EDITORS.includes(t) && !READ_ONLY_ARTIFACT_TYPES.has(t),
   );
-  assert.equal(gained.length, 9, "应当恰好恢复 9 类（vector_image 只读）");
+  assert.equal(gained.length, 10, "应当恰好恢复 10 类（chart 只读）");
   assert.ok(gained.includes("website"), "网站必须在恢复之列");
 });
 

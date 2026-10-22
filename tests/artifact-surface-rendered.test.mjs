@@ -849,14 +849,15 @@ const TEST_SOURCE_FORMAT = {
   interactive_doc: "oceanleo.interactive-doc.v1",
 };
 
-const READ_ONLY_ARTIFACT_TYPES = new Set(["vector_image", "chart"]);
+const READ_ONLY_ARTIFACT_TYPES = new Set(["chart"]);
 
 const EXPECTED_EDITOR_ROUTE = {
   single_file_image: ["image", "image"],
   composite_image: ["image", "image"],
   // 矢量走图层工程适配器：svg 被位图适配器打开时拿不到锚点/配色/图形替换。
-  // 2026-10-22：矢量图与图表没有本地编辑器，只读（见 READ_ONLY_ARTIFACT_TYPES）。
-  vector_image: ["none", "none"],
+  // 2026-10-22：图表没有本地编辑器，只读（见 READ_ONLY_ARTIFACT_TYPES）；
+  // 矢量图由合并后的图片编辑器打开（适配器仍是 design-canvas，路由落点 image）。
+  vector_image: ["design-canvas", "image"],
   chart: ["none", "none"],
   document: ["richdoc", "richdoc"],
   grid: ["grid", "grid"],

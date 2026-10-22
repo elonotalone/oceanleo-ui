@@ -509,15 +509,15 @@ test("A9-1: autosave input can carry a typed revision at the type level", () => 
 });
 
 test("A9-1: blocked types are not faked into committing", () => {
-  // vector_image / website / workflow have no accepted source format coming out
-  // of their editors today. Inventing one would trade a 422 for silent
+  // website / workflow have no accepted source format coming out of their
+  // editors today. (vector_image now does: the image editor delivers svg.) Inventing one would trade a 422 for silent
   // corruption, so no call site may declare them.
   const shell = [
     "../src/shell/design-composite-commit.ts",
     "../src/shell/image-editor/editor-persistence.ts",
     "../src/shell/video-editor/persistence.ts",
   ].map(source).join("\n");
-  for (const artifactType of ["vector_image", "website", "workflow"]) {
+  for (const artifactType of ["website", "workflow"]) {
     assert.doesNotMatch(
       shell,
       new RegExp(`artifactRevision:[\\s\\S]{0,120}artifactType: "${artifactType}"`),

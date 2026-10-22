@@ -364,6 +364,21 @@ function dangerousScheme(value: string): boolean {
   );
 }
 
+/**
+ * A `style` attribute is a CSS declaration list (`fill: red; stroke: #000`), so
+ * its `property:` colons are not URL schemes. Only a `url(...)` pointing outside
+ * the document, or an `@import`, is an external reference. (Treating the whole
+ * attribute as a URL stripped every inline style, losing fills and strokes.)
+ */
+function styleExternalReference(value: string): boolean {
+  const css = schemeProbe(value);
+  if (css.includes("@import")) return true;
+  for (const match of css.matchAll(/url\(\s*(['"]?)([^)'"]*)\1\s*\)/g)) {
+    if (externalReference(match[2])) return true;
+  }
+  return false;
+}
+
 function externalReference(value: string): boolean {
   const probe = schemeProbe(value);
   if (!probe) return false;
@@ -526,7 +541,11 @@ export function sanitizeSvg(input: string): SvgSanitizeReport {
             );
             continue;
           }
-          if (externalReference(value)) {
+          if (
+            attributeLocal === "style"
+              ? styleExternalReference(value)
+              : externalReference(value)
+          ) {
             record(
               "external-href",
               `${node.name}@${attribute.name}`,

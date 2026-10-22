@@ -189,9 +189,6 @@ function designCanvasEditor(): EditorCapability {
 const CHART_EDITOR_REMOVED_REASON =
   "图表编辑器已下线，这份图表目前只读：可以查看和下载，不能在线修改。";
 
-const VECTOR_IMAGE_READ_ONLY_REASON =
-  "矢量图（SVG）暂不支持在线编辑，目前可以查看和下载。";
-
 function hasInlineText(item: LibraryItem): boolean {
   if (item.content?.trim()) return true;
   return ["content", "text", "markdown", "source"].some(
@@ -278,13 +275,9 @@ function durableEditorCapabilityFor(
     return unavailable("复合图片缺少当前 revision 的完整 scene 依赖闭包。");
   }
   if (READ_ONLY_ARTIFACT_TYPES.has(artifact.artifactType)) {
-    // 图表编辑器已删除；矢量图原先在整站嵌入的设计子站里编辑，本地图片编辑器
-    // 不改写 SVG 源。都只读打开，绝不静默改写已存文档。
-    return unavailable(
-      artifact.artifactType === "chart"
-        ? CHART_EDITOR_REMOVED_REASON
-        : VECTOR_IMAGE_READ_ONLY_REASON,
-    );
+    // 图表编辑器已删除，只读打开，绝不静默改写已存文档。
+    // 矢量图（vector_image）走下面的 design-canvas 适配器 → 合并后的图片编辑器。
+    return unavailable(CHART_EDITOR_REMOVED_REASON);
   }
   const advancedContract = advancedCapabilityForArtifactFields({
     artifactType: artifact.artifactType,

@@ -252,6 +252,12 @@ export async function persistImageProject(
    * be. Without a rasteriser the save stays on the legacy project-only path.
    */
   createRaster?: () => Promise<Blob>,
+  /**
+   * A stored `vector_image` stays a vector image: the delivery bytes are the
+   * canvas exported as SVG (`source_format` svg), the Fabric project rides along
+   * as the editor project, and a PNG preview is the displayable cover.
+   */
+  vector?: { createSvg: () => string; createPreview: () => Promise<Blob> },
 ): Promise<PersistedImageProject> {
   const targetSite = siteId || "design";
   const title = `${item.title || "图片"}-编辑版`;
@@ -265,6 +271,10 @@ export async function persistImageProject(
   if (byteLength(projectJson) > MAX_PROJECT_BYTES) {
     throw new Error("图片工程超过 5MB，暂时无法自动保存");
   }
+  const editorCapability =
+    vector && isDurableLibraryItem(item) && item.artifactType === "vector_image"
+      ? "vector-editor"
+      : "image-editor";
   const sharedInput = {
     item,
     siteId: targetSite,
@@ -277,17 +287,37 @@ export async function persistImageProject(
     meta: {
       parent_asset_id: rootId,
       editor: "fabric-v3",
-      editor_capability: "image-editor",
+      editor_capability: editorCapability,
       fabric_saved_at: savedAt,
     },
     project: { schema: IMAGE_PROJECT_SCHEMA, data: snapshot },
-    editorManifest: { id: "image-editor", format: IMAGE_PROJECT_SCHEMA },
+    editorManifest: { id: editorCapability, format: IMAGE_PROJECT_SCHEMA },
   };
   const commitsTypedRevision =
     Boolean(createRaster) &&
     isDurableLibraryItem(item) &&
     item.artifactType === "single_file_image";
-  const saved = commitsTypedRevision
+  const commitsVectorRevision =
+    Boolean(vector) &&
+    isDurableLibraryItem(item) &&
+    item.artifactType === "vector_image";
+  const saved = commitsVectorRevision
+    ? await saveFileToLibrary({
+        ...sharedInput,
+        createFile: async () =>
+          new File([vector!.createSvg()], `${safeImageFileStem(title)}.svg`, {
+            type: "image/svg+xml",
+          }),
+        createPreview: async () => vector!.createPreview(),
+        sourceFormat: "svg",
+        sourceMediaType: "image/svg+xml",
+        artifactRevision: {
+          artifactType: "vector_image",
+          editor: "fabric-v3",
+          provenance: { editorSavedAt: savedAt },
+        },
+      })
+    : commitsTypedRevision
     ? await saveFileToLibrary({
         ...sharedInput,
         createFile: async () => {
