@@ -19,6 +19,7 @@ import {
   GRID_UNIVER_RECOVERY_EDITOR_ID,
   gridExpectedSourcePresent,
   gridOpenFailedClosed,
+  gridShouldSkipSourceReload,
   isUniverWorkbookSnapshot,
   paintUniverWorkbookFromSnapshot,
   planGridSameDocumentOpen,
@@ -265,6 +266,31 @@ test("同 id 重建失败时用旧簿存档建回来，不留空窗", () => {
     /boom/,
   );
   assert.equal(created[0].name, "old");
+});
+
+test("签名地址换发（同 artifact / revision）不重载；重新载入、换版本、上次失败照常重载", () => {
+  const id = (revisionId, nonce = 0, artifactId = "a1") => ({ artifactId, revisionId, nonce });
+  const skip = (loaded, next, dirty = false) =>
+    gridShouldSkipSourceReload({ loaded, next, dirty });
+  assert.equal(skip(id("r1"), id("r1")), true);
+  assert.equal(skip(id("r1"), id("r1"), true), true);
+  // 没有 revision：干净时无法证明同一份，重载；有未保存编辑时绝不覆盖
+  assert.equal(skip(id(""), id("")), false);
+  assert.equal(skip(id(""), id(""), true), true);
+  // 用户点了重新载入
+  assert.equal(skip(id("r1", 0), id("r1", 1)), false);
+  // 别处存了新版本
+  assert.equal(skip(id("r1"), id("r2")), false);
+  // 换了文档、上次没成功载入、非库件
+  assert.equal(skip(id("r1"), id("r1", 0, "a2")), false);
+  assert.equal(skip(null, id("r1")), false);
+  assert.equal(skip(id("", 0, ""), id("", 0, ""), true), false);
+});
+
+test("舞台加载 effect 用 gridShouldSkipSourceReload 拦签名地址换发，成功才记身份", () => {
+  assert.match(leaf, /gridShouldSkipSourceReload\(\{[\s\S]*loaded: loadedIdentityRef\.current[\s\S]*dirty: dirtyRef\.current/);
+  assert.match(leaf, /loadedIdentityRef\.current = identity;\s*setSnapshotReady\(true\)/);
+  assert.match(leaf, /failClosed = \(reason: string\) => \{\s*loadedIdentityRef\.current = null/);
 });
 
 // ---- 崩溃恢复（父 agent 收尾 W13 时补，浏览器实测：同键互灌导致 Univer 白画布） ----

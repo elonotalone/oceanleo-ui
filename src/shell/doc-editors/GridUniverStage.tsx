@@ -164,11 +164,13 @@ import {
 import {
   GRID_PRO_LABEL,
   GRID_UNIVER_RECOVERY_EDITOR_ID,
+  type GridLoadIdentity,
   gridExpectedSourcePresent,
   gridOpenFailedClosed,
   isUniverWorkbookSnapshot,
   listUniverSnapshotValues,
   planGridSameDocumentOpen,
+  gridShouldSkipSourceReload,
   replaceUniverWorkbookWithSnapshot,
   sheetsFromLegacyProjectData,
 } from "./grid-univer/same-document";
@@ -274,6 +276,10 @@ export function GridUniverStage({
   const [conversionNotice, setConversionNotice] = useState("");
   const [editRevision, setEditRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  /** 上一次成功载入的文档身份；见 gridShouldSkipSourceReload。 */
+  const loadedIdentityRef = useRef<GridLoadIdentity | null>(null);
   const sourceFailedRef = useRef(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -382,6 +388,22 @@ export function GridUniverStage({
       setStatus(ttRef.current("正在载入表格"));
       return;
     }
+    // 只是签名地址换发（同一 artifact / revision）：不重载、不清未保存的编辑。
+    const identity: GridLoadIdentity = {
+      artifactId: item.artifactId ? String(item.artifactId) : "",
+      revisionId: item.revisionId ? String(item.revisionId) : "",
+      nonce: reloadNonce,
+    };
+    if (
+      gridShouldSkipSourceReload({
+        loaded: loadedIdentityRef.current,
+        next: identity,
+        dirty: dirtyRef.current,
+      })
+    ) {
+      return;
+    }
+    loadedIdentityRef.current = null;
     let cancelled = false;
     const title = item.title || ttRef.current("工作簿");
     setLoading(true);
@@ -391,6 +413,7 @@ export function GridUniverStage({
     setDirty(false);
     setStatus(ttRef.current("正在载入表格"));
     const failClosed = (reason: string) => {
+      loadedIdentityRef.current = null;
       snapshotRef.current = null;
       sourceFailedRef.current = true;
       setSourceFailed(true);
@@ -479,6 +502,7 @@ export function GridUniverStage({
           setConversion("converted");
           setConversionNotice("");
         }
+        loadedIdentityRef.current = identity;
         setSnapshotReady(true);
       } catch (caught) {
         if (cancelled) return;

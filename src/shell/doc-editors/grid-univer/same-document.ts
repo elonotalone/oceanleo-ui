@@ -285,6 +285,36 @@ export function enrichUniverSnapshotPlainText(snapshot: unknown): unknown {
   return { ...snapshot, sheets: nextSheets };
 }
 
+export type GridLoadIdentity = {
+  artifactId: string;
+  revisionId: string;
+  /** 用户点「重新载入」才 +1；签名地址换发不动它。 */
+  nonce: number;
+};
+
+/**
+ * 加载 effect 按值 key 起跑，key 里带着会过期的签名地址（item.url / 工程档 url /
+ * rendition url），300 s 换发一次就会让同一份文档整本重载，并把未保存的编辑清掉。
+ *
+ * 这里按文档身份判断「这次起跑是不是只是地址换了」：
+ * - 上一次已成功载入，用户没点重新载入（nonce 相同），artifact 相同，且
+ *   revision 相同（内容同一份）→ 跳过；
+ * - artifact 相同但拿不到 revision 时，只要画布有未保存编辑就跳过——
+ *   绝不为了地址换发覆盖用户的改动。
+ * 上一次失败（loaded 为空）、换了 revision（别处存了新版本）、点了重新载入：照常重载。
+ */
+export function gridShouldSkipSourceReload(input: {
+  loaded: GridLoadIdentity | null;
+  next: GridLoadIdentity;
+  dirty: boolean;
+}): boolean {
+  const { loaded, next, dirty } = input;
+  if (!loaded || loaded.nonce !== next.nonce) return false;
+  if (!next.artifactId || loaded.artifactId !== next.artifactId) return false;
+  if (next.revisionId && loaded.revisionId === next.revisionId) return true;
+  return dirty && (!next.revisionId || !loaded.revisionId);
+}
+
 /** 快照自带的工作簿 id（Univer 用它当 unit id）。没有 id 时 Univer 会自己发一个，不会撞。 */
 function snapshotUnitId(snapshot: unknown): string {
   if (!snapshot || typeof snapshot !== "object") return "";
