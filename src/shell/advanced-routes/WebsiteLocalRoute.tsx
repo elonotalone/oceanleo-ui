@@ -39,6 +39,7 @@ import {
 } from "./non-richdoc-source-gate";
 import { usePluginCommandSurface } from "../plugin-command";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { refreshArtifactRendition } from "../artifact-client";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
 
 export { websiteLocalSourceFromItem, planWebsiteLocalSource, hydrateWebsiteLocalSource };
@@ -76,14 +77,38 @@ export function WebsiteLocalRoute({
     setRemoteLoading(true);
     setRemoteError("");
     setRemoteSource(null);
-    void hydrateWebsiteLocalSource(plan, async (url) => {
-      const blob = await fetchMediaBlob(url, {
-        cache: "no-store",
-        maxBytes: 20_000_000,
+    // The source URL is a 300 s signed grant and the gateway can restart under
+    // an open editor: re-sign through the gateway on 410, retry transient
+    // network failures, never fall back to a blank draft.
+    const artifactId = String(item?.artifactId || "");
+    const revisionId = String(
+      item?.revisionId || item?.artifact?.revisionId || "",
+    );
+    void hydrateWebsiteLocalSource(
+      plan,
+      async (url) => {
+        const blob = await fetchMediaBlob(url, {
+          cache: "no-store",
+          maxBytes: 20_000_000,
+          signal: abort.signal,
+        });
+        return blob.text();
+      },
+      {
         signal: abort.signal,
-      });
-      return blob.text();
-    }).then((result) => {
+        refreshUrl:
+          artifactId && revisionId
+            ? async () => {
+                const refreshed = await refreshArtifactRendition(
+                  { artifactId, revisionId },
+                  "source",
+                  abort.signal,
+                );
+                return refreshed.ok ? refreshed.data?.url || null : null;
+              }
+            : undefined,
+      },
+    ).then((result) => {
       if (cancelled) return;
       setRemoteLoading(false);
       if (result.ok) {
