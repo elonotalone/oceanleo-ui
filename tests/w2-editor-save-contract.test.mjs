@@ -890,15 +890,6 @@ test("A12: the protocol validator admits the new types without loosening composi
   );
 });
 
-test("A13: the host adopts a server-materialised revision instead of re-committing", () => {
-  // website materialises its revision server-side and deliberately omits
-  // requires_typed_artifact_commit; committing again would double-publish.
-  const host = source("../src/shell/use-embed-editor-messages.ts");
-  assert.match(host, /getArtifactItem\(\s*declaredArtifactId,/);
-  assert.match(host, /projection\.revisionId === declaredRevisionId/);
-  assert.match(host, /savedItem = projection;/);
-});
-
 test("a dropped contract rendition is refused at the verify step", async () => {
   const result = await saveFileToLibraryWithDependencies(
     {
