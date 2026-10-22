@@ -152,6 +152,9 @@ class FakeSocket {
   drop() {
     this.onclose?.({ code: 1006 });
   }
+  serverClose(code, reason = "") {
+    this.onclose?.({ code, reason });
+  }
   texts() {
     return this.sent.filter((item) => typeof item === "string").map((item) => JSON.parse(item));
   }
@@ -425,6 +428,75 @@ test("服务端 error：transcription_off 不立刻重连（等状态变或 60 �
     h.last().serverText({ type: "error", code: "auth_failed" });
     assert.equal(h.uplink.status().error, "auth_failed");
     assert.deepEqual(h.pendingDelays(), [1000]);
+  }
+});
+
+test("服务端说 not_participant（W03：4403，不重连）：不立刻重连，60 秒后再核一次；换了参与者（重新入会）立刻连", async () => {
+  const h = harness();
+  const socket = await connected(h);
+  socket.serverText({ type: "error", code: "not_participant" });
+  assert.equal(socket.closed, 1000);
+  assert.equal(h.uplink.status().error, "not_participant");
+  assert.equal(h.uplink.capturing(), false);
+  h.uplink.update(LIVE);
+  await flush();
+  assert.equal(h.sockets.length, 1);
+  assert.deepEqual(h.pendingDelays(), [60_000]);
+  h.uplink.update({ ...LIVE, participantId: "22222222-2222-3333-4444-555555555555" });
+  await flush();
+  assert.equal(h.sockets.length, 2, "新的参会行 = 新会话，立刻连");
+});
+
+test("服务端主动结束（W03 约定）：1000 replaced/call_ended、4429、1008、1009 → 不自动重连（不和新连接来回抢）；转写先关再开才再连", async () => {
+  for (const [code, reason] of [[1000, "replaced"], [1000, "call_ended"], [4429, "quota_exceeded"], [1008, "policy"], [1009, ""]]) {
+    const h = harness();
+    const socket = await connected(h);
+    socket.serverClose(code, reason);
+    assert.equal(h.uplink.status().state, "stopped", `${code} ${reason}`);
+    assert.equal(h.uplink.status().error, reason || `closed_${code}`);
+    assert.equal(h.uplink.capturing(), false);
+    await h.advance(10 * 60_000);
+    h.uplink.update(LIVE);
+    h.uplink.update({ ...LIVE, mic: false });
+    h.uplink.update(LIVE);
+    await flush();
+    assert.equal(h.sockets.length, 1, `${code} ${reason} 之后不该自己重连`);
+    h.uplink.update({ ...LIVE, transcription: false });
+    h.uplink.update(LIVE);
+    await flush();
+    assert.equal(h.sockets.length, 2, "转写先关再开 → 重新连");
+  }
+});
+
+test("4408 空闲/满 2 小时：开麦就重连（稳定连接从 1 秒退避起），静音等开麦；1013 没有 error 帧（忙/连太勤）→ 至少 15 秒后", async () => {
+  {
+    const h = harness();
+    const socket = await connected(h);
+    await h.advance(11_000);
+    socket.serverClose(4408, "max_duration");
+    assert.deepEqual(h.pendingDelays(), [1000]);
+    await h.advance(1000);
+    assert.equal(h.sockets.length, 2);
+  }
+  {
+    const h = harness();
+    const socket = await connected(h);
+    h.uplink.update({ ...LIVE, mic: false });
+    socket.serverClose(4408, "idle_timeout");
+    assert.equal(h.uplink.status().state, "paused");
+    assert.deepEqual(h.pendingDelays(), []);
+    h.uplink.update(LIVE);
+    await flush();
+    assert.equal(h.sockets.length, 2);
+  }
+  {
+    const h = harness();
+    h.uplink.update(LIVE);
+    await flush();
+    h.last().open();
+    h.last().serverClose(1013, "rate_limited");
+    assert.equal(h.uplink.status().error, "rate_limited");
+    assert.ok(h.pendingDelays()[0] >= 15_000);
   }
 });
 

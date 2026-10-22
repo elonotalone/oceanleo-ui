@@ -7,14 +7,21 @@
 // 静音：已连上就发 `{"type":"pause"}`，开麦发 `{"type":"resume"}`；还没连就先不连（静音时本来就没有声音要传）。
 // 何时停：转写关了 / 离开 / 通话结束 / 换了通话 → 关掉连接，不重连。
 // 断线：开麦时指数退避重连（1 s → 30 s，带抖动，与 IM 实时通道同一条退避曲线）；静音时不重连，等开麦再连。
-// 服务端 error（随后服务端会关连接）：
-//   transcription_off → 我们的状态旧了：等服务端状态（`call` 事件）再变回开着，或 60 秒后再试；
-//   auth_failed / not_participant → 退避重试（刚入会时参与者行可能还没就绪；token 会重新取）；
-//   asr_unavailable → 至少 15 秒后重试，界面据 `status().error` 提示「实时转写暂不可用」。
+//
+// 服务端怎么关、我们怎么办（照 W03 `backend/app/im/call_captions.py` 头注释的约定表）：
+//   error 帧 transcription_off（4409）/ not_participant（4403）→ 不立刻重连：等服务端转写状态先关再开、
+//     换了参与者（重新入会），或 60 秒后再核一次（防我们看到的状态是旧的）；
+//   error 帧 auth_failed（4401）→ 退避重试（token 会重新取）；
+//   error 帧 asr_unavailable（1013）→ 至少 15 秒后重试，界面据 `status().error` 提示「实时转写暂不可用」；
+//   无 error 帧 1000（call_ended / replaced）、4429（quota_exceeded）、1008（policy）、1009（帧太大）、4403/4409
+//     → 服务端主动结束：不自动重连，直到换了参与者或转写先关再开（replaced 时绝不来回抢连接）；
+//   无 error 帧 1013（rate_limited / busy）→ 至少 15 秒后重试；
+//   4408（idle_timeout / max_duration）与网络断开 → 开麦就退避重连，静音就等开麦。
 import { backoffDelay } from "../../realtime/socket";
 import { CAPTIONS_SAMPLE_RATE } from "./pcm";
 
-export type UplinkState = "idle" | "connecting" | "streaming" | "paused" | "retrying";
+/** stopped = 服务端主动结束了这条连接，等状态变化（换参与者 / 转写先关再开）才会再连。 */
+export type UplinkState = "idle" | "connecting" | "streaming" | "paused" | "retrying" | "stopped";
 
 export interface UplinkTarget {
   callId: string | null;
@@ -59,10 +66,14 @@ export interface UplinkDeps {
 }
 
 export const UPLINK_AUTH_TIMEOUT_MS = 10_000;
-/** asr_unavailable 之后至少等这么久再试。 */
+/** asr_unavailable / 1013（服务端忙、连接太频繁）之后至少等这么久再试。 */
 export const UPLINK_ASR_RETRY_MIN_MS = 15_000;
-/** 服务端说转写已关、而我们看到的状态还是开着：最多等这么久再核一次。 */
+/** 服务端说转写已关 / 不是在场参与者、而我们看到的状态还是能连：最多等这么久再核一次。 */
 export const UPLINK_OFF_RETRY_MS = 60_000;
+/** 服务端主动结束、不该自动重连的关闭码（无 error 帧时）：1000 call_ended/replaced、1008、1009、4403、4409、4429。 */
+export const UPLINK_FINAL_CLOSE_CODES: readonly number[] = [1000, 1008, 1009, 4403, 4409, 4429];
+/** 服务端「稍后再试」的关闭码。 */
+export const UPLINK_TRY_LATER_CLOSE_CODE = 1013;
 /** 连上后撑过这么久才算「稳定」，断了从最短退避重来；否则退避继续加长（防服务端一连就断的快速循环）。 */
 export const UPLINK_STABLE_MS = 10_000;
 /** 发送缓冲超过这么多字节（16 kHz s16le 约 2 秒）就丢帧，不让网络慢时内存无限涨。 */
@@ -103,7 +114,8 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
   let attempt = 0;
   let retryTimer: unknown = null;
   let authTimer: unknown = null;
-  let blocked = false; // 服务端说 transcription_off
+  /** soft = 服务端说转写已关 / 不是在场参与者（60 秒后再核）；hard = 服务端主动结束（等状态变化）。 */
+  let blocked: "soft" | "hard" | null = null;
   let pendingConnect = false; // 正在取 token / 建连接（同一代只发起一次）
   let status: UplinkStatus = { state: "idle", sampleRate: CAPTIONS_SAMPLE_RATE, error: null };
   let framesSent = 0;
@@ -175,6 +187,7 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
       if (!socketReady) return "connecting";
       return paused ? "paused" : "streaming";
     }
+    if (blocked === "hard") return "stopped";
     if (retryTimer !== null || blocked) return "retrying";
     return target.mic ? "connecting" : "paused";
   }
@@ -185,7 +198,7 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
     attempt += 1;
     retryTimer = deps.setTimer(() => {
       retryTimer = null;
-      blocked = false;
+      blocked = null;
       reconcile();
     }, delay);
     setStatus({ state: "retrying" });
@@ -193,12 +206,12 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
 
   function onServerError(code: string): void {
     dropSocket(1000);
-    if (code === "transcription_off") {
-      blocked = true;
+    if (code === "transcription_off" || code === "not_participant") {
+      blocked = "soft";
       clearRetry();
       retryTimer = deps.setTimer(() => {
         retryTimer = null;
-        blocked = false;
+        blocked = null;
         reconcile();
       }, UPLINK_OFF_RETRY_MS);
       setStatus({ state: "retrying", error: code });
@@ -208,7 +221,9 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
     scheduleRetry(code === "asr_unavailable" ? UPLINK_ASR_RETRY_MIN_MS : 0);
   }
 
-  function onUnexpectedClose(): void {
+  function onUnexpectedClose(ev?: { code?: number; reason?: string }): void {
+    const code = typeof ev?.code === "number" ? ev.code : 0;
+    const reason = typeof ev?.reason === "string" ? ev.reason : "";
     const wasReady = socketReady;
     const stable = wasReady && deps.now() - readyAt >= UPLINK_STABLE_MS;
     dropSocket(1000);
@@ -216,14 +231,22 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
       setStatus({ state: "idle" });
       return;
     }
+    if (UPLINK_FINAL_CLOSE_CODES.includes(code)) {
+      // 服务端主动结束（通话结束、被同一参会者的新连接替换、配额、策略…）：不自动重连。
+      blocked = "hard";
+      clearRetry();
+      setStatus({ state: "stopped", error: reason || `closed_${code}` });
+      return;
+    }
     if (stable) attempt = 0;
-    if (!wasReady) setStatus({ error: status.error ?? "connect_failed" });
+    if (code === UPLINK_TRY_LATER_CLOSE_CODE) setStatus({ error: reason || "busy" });
+    else if (!wasReady) setStatus({ error: status.error ?? "connect_failed" });
     if (!target.mic) {
       // 静音时不重连：开麦时 reconcile 会立刻再连。
       setStatus({ state: "paused" });
       return;
     }
-    scheduleRetry();
+    scheduleRetry(code === UPLINK_TRY_LATER_CLOSE_CODE ? UPLINK_ASR_RETRY_MIN_MS : 0);
   }
 
   async function connect(): Promise<void> {
@@ -327,9 +350,9 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
     ws.onerror = () => {
       /* 紧跟着会有 onclose */
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (myGeneration !== generation) return;
-      onUnexpectedClose();
+      onUnexpectedClose(ev);
     };
   }
 
@@ -339,7 +362,7 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
       clearRetry();
       sessionKey = null;
       attempt = 0;
-      blocked = false;
+      blocked = null;
       setStatus({ state: "idle", error: null });
       return;
     }
@@ -349,7 +372,7 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
       clearRetry();
       sessionKey = key;
       attempt = 0;
-      blocked = false;
+      blocked = null;
       setStatus({ error: null });
     }
     if (socket) {
@@ -374,8 +397,8 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
     update(next) {
       const before = target;
       target = { ...next };
-      // 服务端把转写关掉（我们看到 false）→ 解除 transcription_off 的阻塞；再开时立刻重连。
-      if (!next.transcription && before.transcription) blocked = false;
+      // 服务端把转写关掉（我们看到 false）→ 解除阻塞（soft 与 hard 都解）；再开时立刻重连。
+      if (!next.transcription && before.transcription) blocked = null;
       reconcile();
     },
     sendFrame(frame) {
@@ -392,7 +415,7 @@ export function createCaptionsUplink(deps: UplinkDeps): CaptionsUplink {
       framesSent += 1;
       return true;
     },
-    capturing: () => uplinkWanted(target) && target.mic && !blocked,
+    capturing: () => uplinkWanted(target) && target.mic && blocked === null,
     status: () => status,
     stats: () => ({ framesSent, framesDropped, connects }),
     subscribe(listener) {
