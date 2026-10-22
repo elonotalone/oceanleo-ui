@@ -182,7 +182,6 @@ test("已有编辑器仍有路由能力，未知类型无需先登记 matrix", (
   for (const artifactType of [
     "deck",
     "grid",
-    "chart",
     "video",
     "audio",
     "pdf",
@@ -193,6 +192,8 @@ test("已有编辑器仍有路由能力，未知类型无需先登记 matrix", (
       artifactType,
     );
   }
+  // 图表编辑器已删除：合同矩阵里没有图表行，存量图表只读。
+  assert.equal(ARTIFACT_EDITOR_CAPABILITIES.chart, undefined);
   assert.deepEqual([...ARTIFACT_EDITOR_CAPABILITIES.vector_image].sort(), [
     "vector-editor",
   ]);

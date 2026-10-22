@@ -182,9 +182,9 @@ test("structured projects export a rendered deliverable and never editor state",
   const raw = projection({
     id: "layered-poster",
     title: "Layered poster",
-    artifactType: "chart",
-    editorCapability: "chart-editor",
-    sourceFormat: "oceanleo.chart.v1",
+    artifactType: "workflow",
+    editorCapability: "video-canvas",
+    sourceFormat: "oceanleo.video.project.v2",
     sourceMediaType: "application/json",
     editorManifest: true,
   });
@@ -431,13 +431,13 @@ test("proprietary rendition MIME never becomes a fabricated extension", async ()
 
 test("structured project JSON full falls back to a rendered preview", () => {
   const raw = projection({
-    id: "chart-project",
-    artifactType: "chart",
-    editorCapability: "chart-editor",
-    sourceFormat: "oceanleo.chart.v1",
+    id: "video-canvas-project",
+    artifactType: "workflow",
+    editorCapability: "video-canvas",
+    sourceFormat: "oceanleo.video.project.v2",
     sourceMediaType: "application/json",
-    fullFormat: "oceanleo.chart.v1",
-    fullMediaType: "application/vnd.oceanleo.chart+json",
+    fullFormat: "oceanleo.video.project.v2",
+    fullMediaType: "application/vnd.oceanleo.video-project+json",
   });
   const item = itemFrom(raw);
 
@@ -552,34 +552,6 @@ test("proprietary deck working state never substitutes for pptx source", async (
     calls.some((url) => url.pathname.includes("/renditions/")),
     false,
   );
-});
-
-test("chart shelf hint is a rendered image type never oceanleo.chart.v1", async () => {
-  const { artifactUserFacingDownloadHint } = await import(
-    "../src/shell/artifact-contract.ts"
-  );
-  const raw = projection({
-    id: "chart-hint",
-    title: "Quarter chart",
-    artifactType: "chart",
-    editorCapability: "chart-editor",
-    sourceFormat: "oceanleo.chart.v1",
-    sourceMediaType: "application/json",
-    fullFormat: "png",
-    fullMediaType: "image/png",
-  });
-  const item = itemFrom(raw);
-  const hint = artifactUserFacingDownloadHint({
-    artifactType: item.artifact.artifactType,
-    sourceFormat: item.artifact.sourceFormat,
-    editorCapability: item.artifact.editorCapability,
-    title: item.artifact.title,
-    renditions: item.artifact.renditions,
-  });
-  assert.equal(hint?.mediaType, "image/png");
-  assert.equal(hint?.extension, "png");
-  assert.match(hint?.filename || "", /\.png$/);
-  assert.doesNotMatch(hint?.mediaType || "", /oceanleo\.chart/);
 });
 
 test("deck shelf hint stays pptx even when only editor JSON source exists", async () => {

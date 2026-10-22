@@ -17,9 +17,9 @@ const itemFor = (row, overrides = {}) => ({
   ...overrides,
 });
 
-test("13 declared editor families each select exactly their own actual workspace entry", () => {
+test("12 declared editor families each select exactly their own actual workspace entry", () => {
   const rows = contract.ADVANCED_CAPABILITY_MATRIX;
-  assert.equal(rows.length, 13);
+  assert.equal(rows.length, 12);
   const entries = rows.map((row) => model.workspaceEntryFromLibraryItem(itemFor(row)));
   for (const row of rows) {
     const matches = model.filterWorkspaceLibraryEntries(entries, "", row.featureId);

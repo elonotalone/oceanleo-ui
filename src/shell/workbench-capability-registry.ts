@@ -157,17 +157,6 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     toolbarOwnership: "shared",
     persistence: "project",
   },
-  // 图表编辑器已删除（2026-10-22 native-editors）。服务端合同矩阵里这一行还在，
-  // 所以注册表保留一个墓碑：`routeType: "none"` ⇒ 任何图表素材都解析为只读/不可编辑，
-  // 且 `artifactTypeHasRoutableEditor("chart")` 为 false。合同行删除后这里一并删。
-  "chart-editor@1": {
-    routeType: "none",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.chart.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
   deck: {
     routeType: "deck",
     roundTrip: ROUND_TRIP,
@@ -407,7 +396,7 @@ export function editorRouteHintForArtifactCapability(
  * `routable` 为真、且承接了这一类声明的某个编辑能力。
  *
  * 注意 `website` / `video-canvas` 路由同样算数（它们是本地原生路由）。
- * 图表（`chart-editor@1`）已无编辑器：注册表里是 `none` 墓碑，所以不算。
+ * 图表已无编辑器：合同矩阵与注册表都没有图表行，所以不算。
  *
  * 判据是推导出来的，不是又一份手抄清单：新增一个可路由适配器，这里自动跟上。
  */

@@ -18,7 +18,7 @@ const ROUTE_LEAF = {
 const routeSource = (route) =>
   source(ROUTE_LEAF[route] || `../src/shell/advanced-routes/${route}.tsx`);
 
-// 已发货的适配器实得 14 条：13 个可路由适配器 + `office` 拒收哨兵。
+// 已发货的适配器实得 13 条：12 个可路由适配器 + `office` 拒收哨兵（图表墓碑 2026-10-22 已删）。
 //
 // 这两个数原来钉的是 16 / 15，多出来的那两条是 `geo-map` 与 `interactive-doc`：
 // `7bee5da`（2026-07-30 的保护性提交「13 份载体契约的编辑器与 geo-map/interactive-doc
@@ -29,7 +29,7 @@ const routeSource = (route) =>
 //
 // **编辑器落地时把 14 / 13 翻回 16 / 15**：下面那条缺席断言会先红出来提醒。
 test("every trusted editor declares project, viewport, toolbar and persistence ownership", () => {
-  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 14);
+  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 13);
   for (const unshipped of ["geo-map", "interactive-doc"]) {
     assert.equal(
       Object.hasOwn(TRUSTED_EDITOR_REGISTRY, unshipped),
@@ -51,7 +51,7 @@ test("every trusted editor declares project, viewport, toolbar and persistence o
   assert.equal(
     Object.values(TRUSTED_EDITOR_REGISTRY).filter((entry) => entry.routable)
       .length,
-    13,
+    12,
   );
   for (const [id, contract] of Object.entries(TRUSTED_EDITOR_REGISTRY)) {
     if (!contract.routable) continue;

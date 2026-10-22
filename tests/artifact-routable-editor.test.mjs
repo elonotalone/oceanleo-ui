@@ -108,7 +108,7 @@ test("大小写与首尾空白是容错的，那是有意的", () => {
 test("判据是推导的，不是又一份手抄清单", () => {
   // 若有人把某个适配器改成不可路由，这里必须立刻反映出来，而不是继续报 true。
   for (const artifactType of ARTIFACT_TYPES) {
-    const capabilities = [...ARTIFACT_EDITOR_CAPABILITIES[artifactType]];
+    const capabilities = [...(ARTIFACT_EDITOR_CAPABILITIES[artifactType] ?? [])];
     const routable =
       !READ_ONLY_ARTIFACT_TYPES.has(artifactType) &&
       capabilities.some((capability) =>

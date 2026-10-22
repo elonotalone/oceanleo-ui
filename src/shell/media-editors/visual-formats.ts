@@ -11,14 +11,12 @@ export type VisualEditorId =
   | "image"
   | "video-timeline"
   | "audio"
-  | "chart-editor@1"
   | "threed";
 
 export const VISUAL_EDITOR_IDS: readonly VisualEditorId[] = [
   "image",
   "video-timeline",
   "audio",
-  "chart-editor@1",
   "threed",
 ];
 
@@ -115,33 +113,6 @@ const AUDIO_DOWNLOADS: readonly VisualDownloadFormat[] = [
   },
 ];
 
-const CHART_DOWNLOADS: readonly VisualDownloadFormat[] = [
-  {
-    id: "chart-download-png",
-    format: "png",
-    label: "PNG 图片 (.png)",
-    lossy: false,
-    via: "local",
-    hint: "两倍清晰度位图，贴进文档或幻灯片。",
-  },
-  {
-    id: "chart-download-svg",
-    format: "svg",
-    label: "SVG 矢量图 (.svg)",
-    lossy: false,
-    via: "local",
-    hint: "放多大都不糊，适合印刷和再排版。",
-  },
-  {
-    id: "chart-download-json",
-    format: "json",
-    label: "图表数据 (.json)",
-    lossy: false,
-    via: "local",
-    hint: "结构化数据本身，导回来还能继续改。",
-  },
-];
-
 const THREED_DOWNLOADS: readonly VisualDownloadFormat[] = [
   {
     id: "model3d-download-glb",
@@ -165,7 +136,6 @@ const DOWNLOADS: Record<VisualEditorId, readonly VisualDownloadFormat[]> = {
   image: IMAGE_DOWNLOADS,
   "video-timeline": VIDEO_DOWNLOADS,
   audio: AUDIO_DOWNLOADS,
-  "chart-editor@1": CHART_DOWNLOADS,
   threed: THREED_DOWNLOADS,
 };
 
@@ -247,7 +217,6 @@ const NATIVE: Record<VisualEditorId, readonly string[]> = {
     "gif",
   ],
   audio: ["mp3", "wav", "m4a", "aac"],
-  "chart-editor@1": ["csv", "tsv"],
   threed: ["glb", "gltf"],
 };
 
@@ -294,7 +263,6 @@ const RULES: Record<VisualEditorId, readonly VisualImportRule[]> = {
       failure: "从这个视频里抽声音失败了，可以先单独导出音轨再传。",
     },
   ],
-  "chart-editor@1": [],
   threed: [],
 };
 
@@ -329,11 +297,6 @@ const REJECTIONS: Record<VisualEditorId, Record<string, string>> = {
   ),
   "video-timeline": {},
   audio: {},
-  "chart-editor@1": {
-    xlsx: "图表现在只读 CSV / TSV 数据；请在表格软件里另存为 CSV 再传。",
-    xls: "图表现在只读 CSV / TSV 数据；请在表格软件里另存为 CSV 再传。",
-    json: "这个 JSON 不是图表工程文件；要恢复图表请用「导出图表数据」存下来的那份。",
-  },
   threed: {
     obj:
       "3D 编辑器这个入口只直接打开 GLB 和 glTF；OBJ 请从工作台的上传入口拖进来，" +
@@ -362,7 +325,6 @@ const PICKABLE_BUT_REFUSED: Record<VisualEditorId, readonly string[]> = {
   image: ["heic", "heif", ...RAW_PHOTO_EXT],
   "video-timeline": ["heic", "heif"],
   audio: [],
-  "chart-editor@1": [],
   threed: [],
 };
 
@@ -370,7 +332,6 @@ const FAMILY_NAME: Record<VisualEditorId, string> = {
   image: "图片",
   "video-timeline": "视频",
   audio: "音频",
-  "chart-editor@1": "图表",
   threed: "3D 模型",
 };
 

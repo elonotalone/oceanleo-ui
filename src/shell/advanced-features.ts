@@ -100,13 +100,6 @@ const ADVANCED_FEATURE_PRESENTATION: Readonly<
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "MP3 · WAV · M4A",
   },
-  chart_editing: {
-    title: "图表编辑",
-    eyebrow: "Chart editing",
-    description: "调整数据、图形编码、标注与导出样式。",
-    accent: ADVANCED_PRODUCT_ACCENT,
-    examples: "Chart · JSON",
-  },
   video_canvas: {
     title: "视频画布",
     eyebrow: "Video canvas",
@@ -171,8 +164,6 @@ function advancedFeatureForAdapterId(
       return advancedFeatureById("document_editing");
     case "grid":
       return advancedFeatureById("spreadsheet_editing");
-    case "chart-editor@1":
-      return advancedFeatureById("chart_editing");
     case "deck":
       return advancedFeatureById("presentation_editing");
     case "threed":

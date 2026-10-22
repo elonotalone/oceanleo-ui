@@ -97,6 +97,7 @@ test("editor_capability 非空会解析适配器，退役 game bundle 与未发�
   const wrongPresent = [];
   const legacyReadOnly = [];
   const unshippedEditor = [];
+  const retiredChart = [];
   for (const triple of triples) {
     const entry = resolve(triple);
     const label = `${triple.artifactType}|${triple.sourceFormat}|${triple.editorCapability || "∅"}`;
@@ -107,6 +108,10 @@ test("editor_capability 非空会解析适配器，退役 game bundle 与未发�
       ) {
         legacyReadOnly.push(label);
         if (entry) wrongPresent.push(`${label}（退役载体仍可编辑）`);
+      } else if (triple.artifactType === "chart") {
+        // 图表编辑器已删除（2026-10-22）：合同矩阵不再有图表行，存量图表只读，不解析适配器。
+        retiredChart.push(label);
+        if (entry) wrongPresent.push(`${label}（已删除的图表编辑器仍解析出适配器）`);
       } else if (VIEW_ONLY_TYPES.has(triple.artifactType)) {
         unshippedEditor.push(label);
         if (entry) wrongPresent.push(`${label}（浏览侧类型却解析出了编辑器）`);
@@ -119,6 +124,9 @@ test("editor_capability 非空会解析适配器，退役 game bundle 与未发�
   }
   assert.deepEqual(legacyReadOnly, [
     "game|oceanleo.game-bundle.v1|game-editor",
+  ]);
+  assert.deepEqual(retiredChart, [
+    "chart|oceanleo.chart.v1|chart-editor",
   ]);
   assert.deepEqual(unshippedEditor, [
     "interactive_doc|oceanleo.interactive-doc.v1|interactive-doc-editor",

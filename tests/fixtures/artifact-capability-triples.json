@@ -52,10 +52,7 @@
       "sourceFormat": "oceanleo.chart.v1",
       "editorCapability": "chart-editor",
       "liveRows": 91,
-      "expect": {
-        "featureId": "chart_editing",
-        "adapter": "chart-editor@1"
-      }
+      "expect": null
     },
     {
       "artifactType": "composite_image",

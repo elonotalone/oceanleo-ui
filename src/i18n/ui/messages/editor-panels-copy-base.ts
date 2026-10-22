@@ -254,34 +254,6 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   pdfOfficeTools: "PDF 办公工具",
 
   // ==========================================================================
-  // 图表编辑器（chart-advanced-controls / ChartContextToolbar）
-  // 系列画法与双 Y 轴、堆叠与面积填充、平均线／目标线／高亮区间三种标注，
-  // 以及三个图表类型名与「不可发布」这个后缀。
-  // `平均` 是画在标注线上的**标签**（average mark line 的文字），是名词不是动词；
-  // `热力`/`箱线`/`K 线` 是图表类型名，按各语的统计学惯用名译，不逐字直译；
-  // `不可发布` 出现在类型名后的括号里（`散点（不可发布）`）——它说的是
-  // 这个系列类型不在可发布的图表规格里，不是「按钮不可用」。
-  // ==========================================================================
-  markLineAverageLabel: "平均",
-  seriesHowToDraw: "这条系列怎么画",
-  whichYAxisToDrawOn: "画在哪条 Y 轴",
-  primaryAxisLeft: "主轴（左）",
-  secondaryAxisRight: "副轴（右）",
-  stackWithSameGroup: "与同组系列堆叠",
-  fillBelowLine: "折线下方填充",
-  marksAndThresholdLines: "标注与阈值线",
-  averageLine: "平均线",
-  targetLineValue: "目标线数值（留空不画）",
-  highlightBandStart: "高亮区间起点（留空不画）",
-  highlightBandEnd: "高亮区间终点",
-  highlightBand: "高亮区间",
-  chartTypeHeatmap: "热力",
-  chartTypeBoxplot: "箱线",
-  chartTypeCandlestick: "K 线",
-  primaryYAxisLeft: "主 Y 轴（左）",
-  notPublishable: "不可发布",
-
-  // ==========================================================================
   // 上传进度与三条零散回执（progress-view / AdvancedWorkbenchStage / AgentChat / route-boundary）
   // 上传进度那一行是拼出来的（`4.2 MB / 18.6 MB · 已用 0:12 · 剩余约 0:35`），
   // 所以 `已用 {elapsed}` / `剩余约 {remaining}` 两条必须是能并排读的短片段，不要写成整句。

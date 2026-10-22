@@ -11,7 +11,6 @@ const PRESENTATION: Record<AdvancedFeatureId, [string, string, string]> = {
   image_editing: ["图片", "图片编辑", "images"],
   pdf_editing: ["PDF", "PDF 编辑", "pdf"],
   audio_editing: ["音频", "音频编辑", "audio"],
-  chart_editing: ["图表", "图表编辑", "charts"],
   video_canvas: ["视频画布", "视频画布", "video-canvas"],
   model_3d: ["3D", "3D 模型", "threed"],
   game_editing: ["游戏", "游戏创作", "game"],
@@ -51,7 +50,10 @@ export function libraryEditorFeatureId(item: LibraryItem): AdvancedFeatureId | n
 
 export function libraryEditorLabel(item: LibraryItem): string {
   const feature = libraryEditorFeatureId(item);
-  return feature ? PRESENTATION[feature][0] : OTHER_LABELS[item.kind] || "文件";
+  if (feature) return PRESENTATION[feature][0];
+  // 图表编辑器已删除；存量图表仍按「图表」归类（只读）。
+  if ((item.artifact?.artifactType || item.artifactType) === "chart") return "图表";
+  return OTHER_LABELS[item.kind] || "文件";
 }
 
 export function libraryEditorCategory(item: LibraryItem): string {

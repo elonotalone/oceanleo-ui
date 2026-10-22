@@ -303,8 +303,6 @@ function durableEditorCapabilityFor(
       return available(adapter, { type: "richdoc" });
     case "grid":
       return available(adapter, { type: "grid" });
-    case "chart-editor@1":
-      return unavailable(CHART_EDITOR_REMOVED_REASON);
     case "deck":
       return available(adapter, { type: "deck" });
     case "threed":

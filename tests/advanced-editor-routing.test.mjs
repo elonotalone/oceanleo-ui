@@ -41,7 +41,6 @@ test("advanced editor routing covers every durable material family", () => {
     Object.keys(TRUSTED_EDITOR_REGISTRY).sort(),
     [
       "audio",
-      "chart-editor@1",
       "deck",
       "design-canvas",
       "game",

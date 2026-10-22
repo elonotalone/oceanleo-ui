@@ -45,30 +45,11 @@ function scanTemplates() {
   return [...found].sort();
 }
 
-// 图表编辑器与它的回放画法已删除（2026-10-22）。这些词条还留在 i18n 的
-// work-replay-copy.ts 里（i18n 文件归父 agent）；父 agent 清掉词条后删除本集合。
-const DELETED_CHART_NOTE_TEMPLATES = new Set([
-  "创建了图表",
-  "新增了系列「{name}」",
-  "删除了系列「{name}」",
-  "改了系列「{name}」的数据",
-  "给系列改了名「{name}」",
-  "改了系列「{name}」的样式",
-  "调整了系列顺序",
-  "改了图表标题",
-  "改了坐标轴",
-  "改了图例",
-  "改了数据表",
-  "改了配色或提示框",
-  "改了图表说明",
-]);
-
 test("说明模板：这次新增的模板都登记进 REPLAY_NOTE_TEMPLATES，且都是源码里真在用的", () => {
   const found = new Set(scanTemplates());
   assert.ok(found.size >= 60, `扫到的模板数太少（${found.size}），扫描规则可能失效`);
   const replayUi = read("src/shell/replay/work/WorkReplayTimeline.tsx") + read("src/shell/replay/work/WorkReplayPlayer.tsx") + read("src/shell/replay/work/fork-artifact.ts");
   for (const template of REPLAY_NOTE_TEMPLATES) {
-    if (DELETED_CHART_NOTE_TEMPLATES.has(template)) continue;
     assert.ok(found.has(template) || replayUi.includes(`"${template}"`), `登记了但源码里没用：${template}`);
   }
   assert.equal(new Set(REPLAY_NOTE_TEMPLATES).size, REPLAY_NOTE_TEMPLATES.length, "不重复登记");
