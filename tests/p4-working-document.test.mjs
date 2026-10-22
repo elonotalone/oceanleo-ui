@@ -7,7 +7,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -54,13 +54,17 @@ function sampleDeck() {
 }
 
 test("P4: owned routes share one working-document schema and drop .pro.v1 destinations", () => {
-  const deckHosted = source("../src/shell/advanced-routes/DeckHostedRoute.tsx");
+  const deckEditor = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckDraft = source("../src/shell/advanced-draft-deck.ts");
   const richNormal = source("../src/shell/advanced-routes/RichDocRoute.tsx");
   const grid = source("../src/shell/doc-editors/GridUniverStage.tsx");
   assert.match(deckDraft, new RegExp(DECK_DRAFT_SCHEMA.replace(/\./g, "\\.")));
-  assert.match(deckHosted, /DECK_DRAFT_SCHEMA/);
-  assert.doesNotMatch(deckHosted, /oceanleo\.deck\.pro\.v1/);
+  assert.match(deckEditor, /DECK_DRAFT_SCHEMA/);
+  assert.doesNotMatch(deckEditor, /oceanleo\.deck\.pro\.v1/);
+  assert.equal(
+    existsSync(new URL("../src/shell/advanced-routes/DeckHostedRoute.tsx", import.meta.url)),
+    false,
+  );
   assert.match(richNormal, new RegExp(RICHDOC_DRAFT_SCHEMA.replace(/\./g, "\\.")));
   assert.doesNotMatch(richNormal, /oceanleo\.richdoc\.pro\.v1/);
   assert.match(grid, new RegExp(GRID_DRAFT_SCHEMA.replace(/\./g, "\\.")));
@@ -69,7 +73,6 @@ test("P4: owned routes share one working-document schema and drop .pro.v1 destin
 
 test("P4: applyMode in owned faces never waits on saveBeforeLeavePro", () => {
   for (const rel of [
-    "../src/shell/advanced-routes/DeckHostedRoute.tsx",
     "../src/shell/advanced-routes/DeckRoute.tsx",
     "../src/shell/advanced-routes/RichDocRoute.tsx",
     "../src/shell/doc-editors/GridUniverStage.tsx",
