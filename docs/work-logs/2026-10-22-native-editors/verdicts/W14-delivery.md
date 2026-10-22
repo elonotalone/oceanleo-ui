@@ -54,3 +54,6 @@ None.
 
 ## Limitations
 Two files stay red for reasons outside my files (above). Test retargeting follows the current source shapes; if W03/W06/W08 refactor again the regexes (PDF disposed guard, video-timeline-source, Deck ready/capture) need the same update.
+
+## Follow-up: w10-r2-ui-offline (parent request)
+Deleted `tests/w10-r2-ui-offline.test.mjs` and the harness files only it used: `r2-hosted-host.html`, `r2-serve.mjs`, `r2-website.{html,tsx}`, `r2-video-canvas.{html,tsx}`, `r2-video-timeline.{html,tsx}`, `r2-chrome.css`, `vite.config.mjs`. All four of its tests launch Playwright chromium (via `launchBrowser`) against the `oceanleo-app` dist and the hosted PPTist/Umo/AudioMass/three.js cores; its website/video cases also need a browser, so nothing could be kept without one. Not run (no browser); the replaced browser coverage is gone, not moved. Kept (still used by `w10-design-canvas-offline.test.mjs`): `serve.mjs`, `design-canvas.html`, `design-canvas-session.mjs`, `design-document.blank.v1.json`. Checked with `node --check` on those and the remaining test, and a grep showing no other reference to the deleted files. This also removes some of the absolute-path offenders in `w25-tests-out-of-repo-paths` (the `w10-r2-ui-offline`, `vite.config.mjs`, `serve.mjs` ones that came from deleted files).
