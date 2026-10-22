@@ -39,6 +39,8 @@ const PDF_URLS = [
 ];
 
 // UC-3：封面的 PDF 不得再进 frame —— 无论地址落在哪个域。
+// UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：PDF 重新走 iframe / 免沙箱或放宽来源假设，会把不可信字节放进可读 SSO cookie 的 origin。
 test("W19/1 PDF 封面 plan 走 pdf 位图渲染器，不再按主机白名单降级", async () => {
   const { workspaceCoverPlan } = await loadCoverModule();
   for (const url of PDF_URLS) {
@@ -79,6 +81,8 @@ test("W19/1 手工构造的 pdf plan 也渲染不出 iframe / embed / object", a
   }
 });
 
+// UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：PDF 重新走 iframe / 免沙箱或放宽来源假设，会把不可信字节放进可读 SSO cookie 的 origin。
 test("W19/2 源码里不再有免沙箱 PDF frame 的豁免、白名单与判定函数", () => {
   for (const file of [
     "../src/shell/workspace-library-cover.tsx",
@@ -106,6 +110,8 @@ test("W19/2 源码里不再有免沙箱 PDF frame 的豁免、白名单与判定
 
 // UC-1 §8.1：这条记录的是事实 —— url 零校验且仅凭 .pdf 后缀路由。封面 / 阅读器因此只经媒体代理取字节、
 // 在 wasm 里渲染，绝不把这个地址交给浏览器当文档加载。
+// UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：PDF 重新走 iframe / 免沙箱或放宽来源假设，会把不可信字节放进可读 SSO cookie 的 origin。
 test("W19/3 前提：item.url 由调用方给定，本包不做来源校验；PDF 只经 fetchMediaBlob 取字节", () => {
   const hostile = "https://p8080-aaa.website.oceanleo.com/steal.pdf";
   const item = normalizeWork({ id: "w1", url: hostile, site_id: "asset" });
