@@ -1,26 +1,14 @@
 "use client";
 
-import { ensureAdvancedDraftExport, flushAdvancedDraftGate } from "../advanced-draft-gates";
+import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
-import dynamic from "next/dynamic";
-import { resolveEditorCore } from "../editor-core-flags";
-import { usePluginMode } from "../plugin-chrome/plugin-mode";
-import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
-import {
-  resolveW19Handoff,
-  stashW19EnterHandoff,
-  useW19ProSavedRevision,
-  w19ItemKey,
-  w19RemountKey,
-  W19_PRO_SAVED_AS_NEW_VERSION,
-} from "./w19-handoff-store";
+  OPENVIDEO_PROJECT_SCHEMA,
+  OPENVIDEO_READONLY_NOTICE,
+  openVideoToTimeline,
+  parseOpenVideoStoredProject,
+} from "../video-editor/openvideo-reader";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
@@ -60,18 +48,6 @@ import {
   videoTrackKey,
 } from "../collab/adapters/video";
 
-/**
- * Next-core leaf. The import() literal must stay in this file so the bundler
- * splits OpenVideo/preview off the legacy route. ssr:false — canvas + media.
- */
-const VideoDesigncomboStage = dynamic(
-  () =>
-    import("../video-editor/VideoDesigncomboStage").then(
-      (module) => module.VideoDesigncomboStage,
-    ),
-  { ssr: false, loading: () => null },
-);
-
 function timelineInsertionMs(
   placement: WorkbenchMaterialPlacement | undefined,
   fallback: number,
@@ -106,71 +82,121 @@ function timelineInsertionMs(
   );
 }
 
+/**
+ * 视频时间线只有一种编辑面：我们自己的时间线（VideoTimelineStage）。
+ * 旧版「专业时间线」存的工程（oceanleo.video.openvideo.v1）只做读取：
+ * 先只读打开，用户点「转换为可编辑时间线」之后才能改，保存另存为新版本。
+ */
 export function VideoTimelineRoute(props: AdvancedContentWorkbenchProps) {
-  if (resolveEditorCore("video-timeline") === "next") {
-    return <VideoDesigncomboStage {...props} />;
+  if (
+    String(props.item.meta?.editor_project_schema || "") ===
+    OPENVIDEO_PROJECT_SCHEMA
+  ) {
+    return <OpenVideoStoredRoute {...props} />;
   }
-  // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
-  return <VideoTimelineGated {...props} />;
+  return <VideoTimelineBody {...props} />;
 }
 
-function VideoTimelineGated(props: AdvancedContentWorkbenchProps) {
-  const enterProRef = useRef<(() => Promise<unknown>) | null>(null);
+type OpenVideoLoad =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; doc: TimelineDoc; dropped: string[] };
+
+function OpenVideoStoredRoute(props: AdvancedContentWorkbenchProps) {
+  const { item } = props;
+  const [load, setLoad] = useState<OpenVideoLoad>({ status: "loading" });
+  const [converted, setConverted] = useState(false);
+  const [nonce, setNonce] = useState(0);
+  const projectUrl = String(item.meta?.editor_project_url || item.url || "").trim();
+  useEffect(() => {
+    setConverted(false);
+    if (!projectUrl) {
+      setLoad({
+        status: "error",
+        message: "旧版时间线工程缺少工程源；已阻止用空时间线替代。",
+      });
+      return;
+    }
+    const controller = new AbortController();
+    setLoad({ status: "loading" });
+    void fetchMediaBlob(projectUrl, {
+      maxBytes: 20 * 1024 * 1024,
+      signal: controller.signal,
+    })
+      .then((blob) => blob.text())
+      .then((text) => {
+        if (controller.signal.aborted) return;
+        const result = openVideoToTimeline(parseOpenVideoStoredProject(text));
+        setLoad({ status: "ready", doc: result.doc, dropped: result.dropped });
+      })
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        setLoad({
+          status: "error",
+          message:
+            caught instanceof Error && caught.message
+              ? caught.message
+              : "旧版时间线工程读取失败",
+        });
+      });
+    return () => controller.abort();
+  }, [item.id, projectUrl, nonce]);
+  // 已读出的时间线当作草稿交给编辑器；不改库里的原文件。
+  const derived = useMemo(() => {
+    if (load.status !== "ready") return null;
+    const meta = { ...(item.meta ?? {}), timeline_doc: load.doc };
+    delete (meta as Record<string, unknown>).editor_project_schema;
+    delete (meta as Record<string, unknown>).editor_project_url;
+    return { ...item, meta };
+  }, [item, load]);
+  if (load.status === "loading" || !derived) {
+    if (load.status === "error") {
+      return (
+        <EditorSourceFailurePanel
+          message={load.message}
+          onReload={() => setNonce((value) => value + 1)}
+          variant="surface"
+        />
+      );
+    }
+    return (
+      <div
+        role="status"
+        className="flex h-full items-center justify-center p-8 text-center text-sm text-[var(--awb-muted,#57534e)]"
+      >
+        正在读取旧版时间线工程…
+      </div>
+    );
+  }
+  const droppedNote =
+    load.status === "ready" && load.dropped.length
+      ? `转换后不保留：${load.dropped.join("、")}。`
+      : "";
   return (
-    <PluginModeSwitchGate
-      pluginId="video-timeline"
-      beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
-      renderNormal={() => (
-        <VideoTimelineLegacyRoute {...props} enterProRef={enterProRef} />
-      )}
-      renderPro={() => <VideoDesigncomboStage {...props} />}
+    <VideoTimelineBody
+      {...props}
+      item={derived}
+      storedReadOnly={!converted}
+      storedNotice={`${OPENVIDEO_READONLY_NOTICE}${droppedNote}`}
+      onConvertStored={() => setConverted(true)}
     />
   );
 }
 
-function VideoTimelineLegacyRoute({
+function VideoTimelineBody({
   item,
-  previewContent,
-  linkUrl,
   taskId,
   siteId = "",
   accent = "#4f46e5",
   onClose,
-  enterProRef,
+  storedReadOnly = false,
+  storedNotice = "",
+  onConvertStored,
 }: AdvancedContentWorkbenchProps & {
-  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
-}) {
-  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("video-timeline", item));
-  const liveItem = saved ?? item;
-  return (
-    <VideoTimelineLegacyBody
-      key={w19RemountKey(liveItem)}
-      item={liveItem}
-      previewContent={previewContent}
-      linkUrl={linkUrl}
-      taskId={taskId}
-      siteId={siteId}
-      accent={accent}
-      onClose={onClose}
-      enterProRef={enterProRef}
-      sourceItem={item}
-    />
-  );
-}
-
-function VideoTimelineLegacyBody({
-  item,
-  previewContent,
-  linkUrl,
-  taskId,
-  siteId = "",
-  accent = "#4f46e5",
-  onClose,
-  enterProRef,
-  sourceItem,
-}: AdvancedContentWorkbenchProps & {
-  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
-  sourceItem: AdvancedContentWorkbenchProps["item"];
+  /** 旧版工程只读打开：转换前不能改、不进协同房间、不保存。 */
+  storedReadOnly?: boolean;
+  storedNotice?: string;
+  onConvertStored?: () => void;
 }) {
   const editor = useVideoTimeline(item, siteId);
   const editorRef = useRef(editor);
@@ -203,13 +229,13 @@ function VideoTimelineLegacyBody({
     rootName: VIDEO_ROOT,
     toEntities: videoToEntities,
     fromEntities: (input, prev) => videoFromEntities(input, prev),
-    local: editor.sourceReady ? editor.doc : null,
+    local: editor.sourceReady && !storedReadOnly ? editor.doc : null,
     applyRemote,
     applyLocal,
     canRestoreEntity,
     loadRevision,
   });
-  const collabReadOnly = collab.readOnly;
+  const collabReadOnly = collab.readOnly || storedReadOnly;
   // 房间里撤销 / 重做只撤我自己的改动：舞台、工具栏、快捷键、指令面都拿这份覆盖了历史入口的编辑器视图。
   const view: VideoTimelineState = collab.history.active
     ? {
@@ -309,6 +335,7 @@ function VideoTimelineLegacyBody({
     ),
   );
   const saveBeforeNewConversation = useCallback(async () => {
+    if (storedReadOnly) return { ok: true as const, item };
     // 协同房间里只有存档人落库；其余端的改动已在房间里，保存交给存档人。
     if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
     const saved = await editor.saveDraft();
@@ -333,7 +360,7 @@ function VideoTimelineLegacyBody({
               ? "时间线源未成功载入，未保存空回退工程。"
               : "时间线草稿保存失败"),
         };
-  }, [collab.markSaved, collab.saveGate, collabReadOnly, editor.error, editor.saveDraft, editor.sourceReady, item]);
+  }, [collab.markSaved, collab.saveGate, collabReadOnly, editor.error, editor.saveDraft, editor.sourceReady, item, storedReadOnly]);
   const addLocalMedia = useCallback(
     async (files: File[]) => {
       setDeliverNotice("");
@@ -344,28 +371,6 @@ function VideoTimelineLegacyBody({
     },
     [editor.addMediaFile],
   );
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂新核。
-  const { setMode: setEditorMode } = usePluginMode("video-timeline");
-  // 切回「编辑」时的 ready 信号：源素材载入结束（成功或停下）就算首帧可见。
-  useModeSwitchReady(!editor.loadingSource);
-  useEffect(() => {
-    enterProRef.current = async () => {
-      const gate = await flushAdvancedDraftGate(item.key || item.id);
-      if (gate && !gate.ok) return gate;
-      const handoff = editor.sourceReady
-        ? {
-            kind: "inline" as const,
-            json: structuredClone(editor.doc),
-            revision: String(editor.editRevision),
-          }
-        : resolveW19Handoff(item, null);
-      stashW19EnterHandoff(w19ItemKey("video-timeline", sourceItem), handoff);
-      return { ok: true, handoff, item: gate?.item ?? item };
-    };
-    return () => {
-      enterProRef.current = null;
-    };
-  }, [editor, enterProRef, item, sourceItem]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -396,17 +401,9 @@ function VideoTimelineLegacyBody({
             if (editor.sourceReady && !collabReadOnly) view.redo();
           },
         },
-        mode: {
-          current: "normal",
-          setMode: setEditorMode,
-        },
-        notices: [
-          {
-            id: "w19-pro-saved-as-new-version",
-            text: W19_PRO_SAVED_AS_NEW_VERSION,
-            severity: "info" as const,
-          },
-        ],
+        notices: storedReadOnly
+          ? [{ id: "video-stored-readonly", text: storedNotice, severity: "info" as const }]
+          : [],
         pages: {},
         directDownload: {
           id: "video-download-mp4",
@@ -435,6 +432,15 @@ function VideoTimelineLegacyBody({
                 busy || editor.loadingSource || !editor.sourceReady,
               onTrigger: () => deliver(entry.format).catch(() => undefined),
             })),
+          ...(storedReadOnly && onConvertStored
+            ? [
+                {
+                  id: "video-convert-stored",
+                  label: "转换为可编辑时间线",
+                  onTrigger: onConvertStored,
+                },
+              ]
+            : []),
           ...(editor.exporting
             ? [
                 {

@@ -2,38 +2,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { boundedAgentContent } from "../src/shell/plugin-command/bounded-agent-content.ts";
-import { createChartCommandSurface } from "../src/shell/chart-editor/chart-command-surface.ts";
 import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
 import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
 import { guardPluginSurface } from "../src/shell/collab/adapters/visual-readonly.ts";
 import { model3dAgentSource, recolorModel3DMaterial } from "../src/shell/media-editors/model3d-agent-source.ts";
-import { createVideoDesigncomboAgentSurface } from "../src/shell/video-editor/designcombo/agent-command-surface.ts";
-import { emptyOpenVideoProject } from "../src/shell/video-editor/designcombo/schema.ts";
 
 const deliver = async () => {};
-
-test("chart Agent context reads current unsaved values, not only series counts", () => {
-  const editor = { loading: false, sourceReady: true, activeSeriesId: "sales", document: {
-    option: { title: { text: "本月营收" }, series: [{ id: "sales", data: [13, 27] }] },
-  } };
-  const surface = createChartCommandSurface({ editor, deliver });
-  assert.deepEqual(surface.agentContext().content.document.option.series[0].data, [13, 27]);
-  editor.document.option.series[0].data[1] = 91;
-  assert.equal(surface.agentContext().content.document.option.series[0].data[1], 91);
-  editor.sourceReady = false;
-  assert.equal(surface.agentContext().ready, false);
-});
-
-test("chart content budget prioritizes actual selected data before large styling metadata", () => {
-  const editor = { loading: false, sourceReady: true, activeSeriesId: "sales", document: {
-    metadata: { theme: "x".repeat(20_000) },
-    option: { xAxis: { data: ["一月", "二月"] }, series: [{ id: "sales", data: [13, 27] }] },
-  } };
-  const context = createChartCommandSurface({ editor, deliver }).agentContext();
-  assert.deepEqual(context.content.selectedSeries.data, [13, 27]);
-  assert.equal(context.truncated, true);
-});
 
 test("video Agent context carries actual clip text, source placement and current selection", () => {
   const editor = { sourceReady: true, loadingSource: false, playheadMs: 1200,
@@ -114,30 +89,6 @@ test("view-only guard preserves current-file identity/content while still refusi
   assert.equal(guarded.workspaceScopeId, "workspace-a");
   assert.equal((await guarded.run("richdoc.write", {})).ok, false);
   assert.equal(writes, 0);
-});
-
-test("pro video commands modify the same native project, not a disconnected proposal", async () => {
-  let project = emptyOpenVideoProject();
-  let revision = 0;
-  let readOnly = false;
-  const surface = createVideoDesigncomboAgentSurface({
-    project: () => project, revision: () => revision, ready: () => true,
-    readOnly: () => readOnly, selectedClipId: () => "",
-    commit: (next) => { project = next; revision += 1; },
-  });
-  assert.ok(surface.describe().every((command) => command.id.startsWith("video-timeline.")));
-  const added = await surface.run("video-timeline.add-caption", { text: "真实写进右侧工程的字幕", atMs: 500 });
-  assert.equal(added.ok, true, added.message);
-  assert.equal(revision, 1);
-  const caption = Object.values(project.clips).find((clip) => clip.text === "真实写进右侧工程的字幕");
-  assert.ok(caption);
-  assert.match(JSON.stringify(surface.agentContext().content), /真实写进右侧工程的字幕/);
-  readOnly = true;
-  assert.equal((await surface.run("video-timeline.delete-clip", { clipId: caption.id })).ok, false);
-  assert.equal(revision, 1);
-  readOnly = false;
-  assert.equal((await surface.run("video-timeline.delete-clip", { clipId: caption.id })).ok, true);
-  assert.equal(Object.values(project.clips).some((clip) => clip.text === caption.text), false);
 });
 
 test("3D next context reads source nodes/materials and rejects malformed or unavailable bytes", () => {

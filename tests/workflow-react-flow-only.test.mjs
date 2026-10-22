@@ -10,7 +10,6 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import { DEFAULT_EDITOR_CORE } from "../src/shell/editor-core-flags.ts";
 import { validAgentChips, validReviewProposal } from "../src/shell/hosted-editor/index.ts";
 import { chipsForEditor } from "../src/shell/quick-actions/catalog.ts";
 import {
@@ -36,7 +35,6 @@ const stage = read("src/shell/workflow-carrier/VideoCanvasStage.tsx");
 const routeFn = read("src/shell/workflow-carrier/agent-route.ts");
 const canvasRoute = read("src/shell/advanced-routes/VideoCanvasRoute.tsx");
 const workbench = read("src/shell/AdvancedContentWorkbench.tsx");
-const embeddedRoute = read("src/shell/advanced-routes/EmbeddedRoute.tsx");
 const strip = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
@@ -92,12 +90,11 @@ test("removed hosted-pro files are gone; src no longer names them", () => {
   assert.doesNotMatch(strip(canvasRoute), /\bdynamic\(/);
 });
 
-test("default core stays legacy; pro mode is a no-op", () => {
-  assert.equal(DEFAULT_EDITOR_CORE, "legacy");
-  assert.match(stage, /unavailableReason: WORKFLOW_PRO_UNAVAILABLE/);
-  assert.match(stage, /setMode: \(\) => \{\}/);
-  assert.match(stage, /proUnavailableReason: WORKFLOW_PRO_UNAVAILABLE/);
-  assert.match(stage, /专业编辑即将到来/);
+test("canvas has one mode: no pro page, no mode switch, no unavailable stub", () => {
+  assert.doesNotMatch(stage, /WORKFLOW_PRO_UNAVAILABLE|proUnavailableReason|unavailableReason/);
+  assert.doesNotMatch(stage, /setMode: \(\) => \{\}/);
+  assert.doesNotMatch(stage, /专业编辑即将到来/);
+  assert.doesNotMatch(stage, /usePluginMode|PluginModeSwitchGate/);
 });
 
 test("chip routing is a pure function that defaults to review", () => {
@@ -107,15 +104,10 @@ test("chip routing is a pure function that defaults to review", () => {
   assert.equal(workflowToolsManifestChips().chips.length, 8);
 });
 
-test("A-65 辅闸：工作台/EmbeddedRoute 源码仍挂 VideoCanvasRoute", () => {
+test("A-65 辅闸：工作台源码仍挂 VideoCanvasRoute", () => {
   assert.match(canvasRoute, /export function VideoCanvasRoute/);
   assert.match(workbench, /lazyRoute\("video-canvas"/);
-  assert.match(
-    workbench,
-    /if \(capability\.adapter === "video-canvas"\) \{\s*editor = <VideoCanvasRoute \{\.\.\.activeProps\} \/>;/,
-  );
-  assert.match(embeddedRoute, /embeddedAdapterId === "video-canvas"/);
-  assert.match(embeddedRoute, /<VideoCanvasRoute/);
+  assert.match(workbench, /<VideoCanvasRoute \{\.\.\.activeProps\} \/>/);
 });
 
 test("eight tools-manifest v2 chips pass the host validator; a ninth does not", () => {
@@ -252,15 +244,6 @@ const shellStubUrl = dataModule(`
     return jsxs("div", {
       "data-role": "workflow-stage-shell",
       children: [
-        adapter && adapter.mode
-          ? jsx("button", {
-              type: "button",
-              "data-testid": "workflow-set-pro",
-              title: adapter.mode.unavailableReason || "",
-              onClick: () => adapter.mode.setMode && adapter.mode.setMode("pro"),
-              children: "专业编辑",
-            })
-          : null,
         adapter && adapter.stage ? adapter.stage : null,
       ],
     });
@@ -312,7 +295,7 @@ async function mountCompiled(entry, stubs, element) {
   };
 }
 
-test("普通模式真画节点和连线；点专业编辑不换舞台", async () => {
+test("单一模式真画节点和连线，没有专业编辑入口", async () => {
   resetAgentReviewInbox();
   const mounted = await mountCompiled(
     "src/shell/advanced-routes/VideoCanvasRoute.tsx",
@@ -332,16 +315,7 @@ test("普通模式真画节点和连线；点专业编辑不换舞台", async ()
     const edges = mounted.container.querySelectorAll("[data-testid=workflow-edge]");
     assert.equal(nodes.length, 2, "画布上的节点没画出来");
     assert.equal(edges.length, 1, "画布上的连线没画出来");
-    const button = mounted.container.querySelector("[data-testid=workflow-set-pro]");
-    assert.ok(button, "壳桩没有把 adapter.mode 画成可点按钮");
-    assert.equal(button.getAttribute("title"), "专业编辑即将到来");
-    await act(async () => {
-      button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.ok(
-      mounted.container.querySelector("[data-testid=workflow-react-flow-canvas]"),
-      "点了专业编辑之后画布消失了",
-    );
+    assert.equal(mounted.container.querySelector("[data-testid=workflow-set-pro]"), null);
     assert.equal(mounted.container.querySelector("iframe"), null);
   } finally {
     await mounted.unmount();

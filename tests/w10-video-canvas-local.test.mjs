@@ -23,7 +23,7 @@ test("web path still embeds the video site; local React Flow is opt-in", () => {
   assert.match(stage, /preferLocal/);
   assert.match(stage, /VideoCanvasLocalCanvas/);
   assert.match(stage, /liveCanvasBase \? undefined : "oceanleo.workflow.graph.v1"/);
-  assert.match(stage, /capture: \(\) => liveCanvasBase \? null : graph/);
+  assert.match(stage, /capture: \(\) => liveCanvasBase \|\| !sourceReady \|\| nativeV2ReadOnlyProjection \? null : graph/);
   assert.match(stage, /preferLocal \? "" : shownItem \? embedEditorBase\(shownItem\) : ""/);
   assert.doesNotMatch(stage, /<iframe/);
   assert.doesNotMatch(stage, /\.postMessage\(/);

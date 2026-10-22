@@ -1,0 +1,3 @@
+- 10:12:37 started
+- removed vendor/designcombo/stage (staged git rm); route rewritten
+- focused video tests 70/70 pass; running tsc + canvas tests

@@ -7,7 +7,7 @@
  * `@xyflow/react`，载体仍是 `oceanleo.video-canvas.v1`。没有远程 origin 时
  * stand-in 只把节点和连线画成可断言的 DOM，不是自研核。
  *
- * 专业编辑页保留，但不可用（点了不动）。
+ * 只有一种编辑面，没有专业编辑页。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -164,7 +164,6 @@ function videoArtifactRoot(item: LibraryItem | null | undefined): string {
 export const WORKFLOW_STAGE_ATTR = "data-workflow-stage";
 export const WORKFLOW_MODE_ATTR = "data-workflow-mode";
 export const WORKFLOW_CANVAS_ATTR = "data-workflow-canvas-visible";
-export const WORKFLOW_PRO_UNAVAILABLE = "专业编辑即将到来";
 
 function emptyGraph(): VideoCanvasGraph {
   return { nodes: [], edges: [] };
@@ -1301,12 +1300,6 @@ export function VideoCanvasStage({
                   redo: redoRemoteGraph,
                 }
               : undefined,
-        mode: {
-          current: "normal",
-          setMode: () => {},
-          unavailableReason: WORKFLOW_PRO_UNAVAILABLE,
-        },
-        pages: { proUnavailableReason: WORKFLOW_PRO_UNAVAILABLE },
         stage: (
           <div
             {...{ [WORKFLOW_STAGE_ATTR]: "true" }}

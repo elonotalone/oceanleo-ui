@@ -18,9 +18,9 @@ const hook = readFileSync("src/shell/video-editor/use-video-timeline.ts", "utf8"
 const EVIDENCE_DIR =
   "/root/projects/oceanleo-app/docs/react-client-rebuild/evidence/W10/video-timeline";
 
-test("legacy VideoTimelineRoute stays the default local editor", () => {
-  assert.match(route, /resolveEditorCore\("video-timeline"\) === "next"/);
-  assert.match(route, /VideoTimelineGated/);
+test("VideoTimelineRoute is the single local editor", () => {
+  assert.doesNotMatch(route, /resolveEditorCore/);
+  assert.match(route, /VideoTimelineBody/);
   assert.match(route, /useVideoTimeline/);
   assert.match(hook, /cutRange/);
   assert.match(hook, /addTrack/);
