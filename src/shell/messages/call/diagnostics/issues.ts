@@ -208,7 +208,7 @@ export function describeIssue(issue: CallIssue, env: IssueEnvironment): IssueDes
       return {
         ...base,
         text: "没有找到麦克风。插上耳机或麦克风后再试。",
-        action: { kind: "retry_devices", label: "重新检测" },
+        action: { kind: "retry_devices", label: "重新检测麦克风" },
         help: [],
       };
     case "mic_silent":

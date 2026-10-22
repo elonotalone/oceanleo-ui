@@ -8,6 +8,7 @@ import {
   connectionTestErrorCode,
   connectionTestErrorText,
   gradeConnection,
+  gradeLabel,
   joinLevel,
   runConnectionTest,
   summarizeSamples,
@@ -120,6 +121,7 @@ test("grading uses loss/RTT and join time, worst wins", () => {
   assert.equal(gradeConnection({ ...base, rttMs: 420, joinMs: 500 }).grade, "fair");
   assert.equal(gradeConnection({ ...base, rttMs: 900, joinMs: 500 }).grade, "poor");
   assert.equal(gradeConnection({ ...base, downLossPct: 30, joinMs: 500 }).grade, "poor");
+  assert.deepEqual(["good", "fair", "poor"].map(gradeLabel), ["连接：好", "连接：一般", "连接：差"]);
 });
 
 test("samples are summarised robustly: median for RTT/bitrate, max for loss, null when never measured", () => {

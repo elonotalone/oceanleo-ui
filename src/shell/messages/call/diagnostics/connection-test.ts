@@ -112,6 +112,16 @@ export function gradeConnection(numbers: ConnectionTestNumbers): { grade: "good"
   return { grade: "fair", level: 3 };
 }
 
+/**
+ * 结果的可读名。用整句「连接：好」做词典 key，不用单字「好」：单字「好」在别的分表里已经是「OK」，
+ * 词典按中文原文合并，单字 key 会互相覆盖。
+ */
+export function gradeLabel(grade: "good" | "fair" | "poor"): string {
+  if (grade === "good") return "连接：好";
+  if (grade === "fair") return "连接：一般";
+  return "连接：差";
+}
+
 interface ErrorLike {
   status?: unknown;
   code?: unknown;

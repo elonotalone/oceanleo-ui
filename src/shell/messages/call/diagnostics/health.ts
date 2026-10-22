@@ -105,20 +105,6 @@ export function netLevelLabel(level: NetLevel): string {
   }
 }
 
-/** 好/一般/差 的短名（检测面板与诊断信息用）。 */
-export function qualityLabel(quality: NetworkQuality): string {
-  switch (quality) {
-    case "good":
-      return "好";
-    case "fair":
-      return "一般";
-    case "poor":
-      return "差";
-    default:
-      return "未知";
-  }
-}
-
 export interface HealthState {
   level: NetLevel;
   quality: NetworkQuality;

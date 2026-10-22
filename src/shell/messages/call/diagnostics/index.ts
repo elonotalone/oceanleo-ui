@@ -1,46 +1,15 @@
 // W14 · 网络检测与通话检测（合同 §3.9；A-7 追加无 props 的 CallDiagnosticsHost，由 W07 在 CallHost 里无条件挂一次）。
-// 桩阶段：组件先 return null；NetLevel 取自 W05 引擎。
-import type { NetLevel } from "../engine";
-
+//
+// - NetworkBars { level }：五格信号，0 = 灰色问号；带可读名「网络：好」。
+// - useNetworkHealth()：每 2 秒取一次 callActions.getStats()（全页面一个采样器），好/一般/差 + 持续变差时的建议（仅语音）。
+// - CallIssueButton：issues 非空或网络持续差时出现的警告图标，点开逐条说明 + 一个办法按钮。
+// - CallTestPanel { open, onClose }：通话检测（麦克风音量条、扬声器试音、摄像头预览、连接测试、复制诊断信息）。
+// - CallTestMenuItem { onSelect? }：菜单里的「通话检测」入口；CallDiagnosticsHost：渲染由入口打开的面板。
 export type { NetLevel } from "../engine";
-
-export type NetworkQuality = "unknown" | "good" | "fair" | "poor";
-
-export interface NetworkHealth {
-  /** 当前等级（0 未知）。 */
-  level: NetLevel;
-  quality: NetworkQuality;
-  /** 持续变差（连续多次采样为差）。 */
-  sustainedPoor: boolean;
-  /** 持续变差且未开仅语音时建议切换为仅语音。 */
-  suggestAudioOnly: boolean;
-}
-
-export interface NetworkBarsProps { level: NetLevel }
-export interface CallTestPanelProps { open: boolean; onClose(): void }
-export interface CallTestMenuItemProps { onSelect?(): void }
-
-export function NetworkBars(_props: NetworkBarsProps): null {
-  return null;
-}
-
-export function CallIssueButton(): null {
-  return null;
-}
-
-export function CallTestPanel(_props: CallTestPanelProps): null {
-  return null;
-}
-
-export function CallTestMenuItem(_props: CallTestMenuItemProps = {}): null {
-  return null;
-}
-
-/** 全局宿主（A-7）：渲染由 `CallTestMenuItem` 打开的「通话检测」面板，活得比菜单久，不在通话中也能用。 */
-export function CallDiagnosticsHost(): null {
-  return null;
-}
-
-export function useNetworkHealth(): NetworkHealth {
-  return { level: 0, quality: "unknown", sustainedPoor: false, suggestAudioOnly: false };
-}
+export { NetworkBars, type NetworkBarsProps } from "./NetworkBars";
+export { CallIssueButton } from "./CallIssueButton";
+export { CallTestPanel, type CallTestPanelProps } from "./CallTestPanel";
+export { CallDiagnosticsHost, CallTestMenuItem, type CallTestMenuItemProps } from "./CallTestMenuItem";
+export { useNetworkHealth } from "./use-network-health";
+export type { NetworkHealth, NetworkQuality, NetworkSuggestion } from "./health";
+export { openCallTest } from "./diagnostics-store";

@@ -13,7 +13,6 @@ import {
   lossLevel,
   netLevelLabel,
   qualityFromLevel,
-  qualityLabel,
   reduceHealth,
   rttLevel,
   suggestionFor,
@@ -68,7 +67,6 @@ test("quality buckets and readable names", () => {
     "网络：好",
     "网络：很好",
   ]);
-  assert.deepEqual(["good", "fair", "poor", "unknown"].map(qualityLabel), ["好", "一般", "差", "未知"]);
   assert.equal(formatStat(null, "ms"), "—");
   assert.equal(formatStat(84.6, "ms"), "85 ms");
   assert.equal(formatStat(2.345, "%"), "2.3%");
