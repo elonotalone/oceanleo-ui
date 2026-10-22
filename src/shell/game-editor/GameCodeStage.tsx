@@ -58,7 +58,7 @@ import {
   type GamePreviewPlayback,
 } from "./game-preview-controls";
 import { useGamePreviewHost } from "./preview-host";
-import { gameModeUnavailable, gamePagesAdapter } from "./game-pages";
+import { gamePagesAdapter } from "./game-pages";
 import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import {
@@ -740,7 +740,6 @@ export function GameCodeStage({
           : undefined,
         id: "game",
         label: editorToolLabel({ type: "game" }),
-        mode: gameModeUnavailable(),
         pages: chromePages,
         toolbox: {
           label: "运行",

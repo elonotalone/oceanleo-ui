@@ -3,7 +3,7 @@
 // LeoPlay 的游戏编辑器 route。
 //
 // 编辑页：prompt 迭代、可玩预览、保存 revision。Code 页另挂代码舞台。
-// 专业编辑不可用。没有上传入口（D8）：adapter 不声明 `upload`。
+// 单一模式：没有专业编辑页、没有模式切换。没有上传入口（D8）：adapter 不声明 `upload`。
 //
 // 沙箱宿主与生成链都不住在这个包里：宿主是 game 仓的 `components/UgcGameFrame.tsx`
 // （沙箱域 + iframe sandbox 属性由那边负责），生成链是 game 仓 + 后端 router。
@@ -50,7 +50,6 @@ import {
 import {
   GAME_DUAL_ENGINE_HANDOFF,
   gameLeavePolicy,
-  gameModeUnavailable,
   gamePagesAdapter,
 } from "../game-editor/game-pages";
 import { gameSourceAdmission } from "./non-richdoc-source-gate";
@@ -230,7 +229,7 @@ const GameCodeStage = dynamic(
 );
 
 /**
- * 页面分发口。第二行：编辑 / 专业编辑（不可用）/ Code。
+ * 页面分发口。第二行：编辑 / Code（没有专业编辑页）。
  * Code 页挂代码舞台；编辑页是可玩预览 + 轻编辑。
  */
 export function GameRoute(props: AdvancedContentWorkbenchProps) {
@@ -682,7 +681,6 @@ function GameLegacyRoute({
       adapter={{
         id: "game",
         label: editorToolLabel({ type: "game" }),
-        mode: gameModeUnavailable(),
         pages: pages ?? gamePagesAdapter("artifact", () => {}),
         toolbox: {
           label: "玩法",

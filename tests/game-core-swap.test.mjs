@@ -1,4 +1,4 @@
-// 游戏接线闸（W08）：Code 页 + 可玩预览；专业编辑不可用。
+// 游戏接线闸（W08）：Code 页 + 可玩预览；单一模式，无专业页。
 //
 // 源码正则是辅闸。A-48：产品被破坏成用户可感知的样子时闸必须红。
 
@@ -12,11 +12,6 @@ import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { DEFAULT_EDITOR_CORE } from "../src/shell/editor-core-flags.ts";
-import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
-import {
-  GAME_NEXT_DEFAULT_MODE,
-  applyGameNextMode,
-} from "../src/shell/game-editor/game-next-mode.ts";
 import {
   planGamePreviewControl,
   isGamePreviewRunning,
@@ -46,7 +41,6 @@ import { resetAgentReviewInbox } from "../src/shell/agent-review/inbox.ts";
 import { registerGamePreviewHost } from "../src/shell/game-editor/preview-host.ts";
 import {
   GAME_CODE_PAGE,
-  GAME_PRO_UNAVAILABLE,
   gamePagesAdapter,
 } from "../src/shell/game-editor/game-pages.ts";
 
@@ -88,7 +82,7 @@ test("hosted-pro files are gone; route declares Code page", () => {
   assert.doesNotMatch(routeCode, /<iframe/i);
   assert.doesNotMatch(routeCode, /srcdoc/i);
   const pages = gamePagesAdapter("artifact", () => {});
-  assert.equal(pages.proUnavailableReason, GAME_PRO_UNAVAILABLE);
+  assert.equal("proUnavailableReason" in pages, false);
   assert.deepEqual(pages.aux, [GAME_CODE_PAGE]);
   assert.equal(GAME_CODE_PAGE.id, "code");
   assert.equal(GAME_CODE_PAGE.label, "Code");
@@ -103,15 +97,25 @@ test("remix action is declared as group save, never an edit-bar action", () => {
   );
 });
 
-test("professional editor never mounts a hosted frame", () => {
-  assert.equal(GAME_NEXT_DEFAULT_MODE, "normal");
-  assert.equal(DEFAULT_EDITOR_MODE, "normal");
-  const normal = applyGameNextMode("oceanleo-game-next", "normal");
-  assert.equal(normal.showHostedEditor, false);
-  const pro = applyGameNextMode("oceanleo-game-next", "pro");
-  assert.equal(pro.showHostedEditor, false);
-  assert.match(leaf, /gameModeUnavailable/);
+test("game editor is single-mode: no Pro page, no mode adapter, no pro code path", async () => {
+  const pagesSource = read("src/shell/game-editor/game-pages.ts");
+  const modeSource = read("src/shell/game-editor/game-next-mode.ts");
+  for (const [name, source] of [
+    ["GameRoute", routeCode],
+    ["GameCodeStage", leaf],
+    ["game-pages", pagesSource],
+    ["game-next-mode", modeSource],
+  ]) {
+    assert.doesNotMatch(source, /gameModeUnavailable|GAME_PRO_UNAVAILABLE|proUnavailableReason/, name);
+    assert.doesNotMatch(source, /mode\s*===\s*["']pro["']|applyGameNextMode|isGameNextPro|hosted-editor/, name);
+    assert.doesNotMatch(source, /专业编辑即将到来/, name);
+  }
+  assert.doesNotMatch(routeCode, /\bmode:\s/, "GameRoute adapter must not declare a mode");
+  assert.doesNotMatch(leaf, /^\s*mode:\s/m, "GameCodeStage adapter must not declare a mode");
   assert.match(leaf, /data-testid="game-code-editor"/);
+  const { buildPluginPages } = await import("../src/shell/plugin-chrome/plugin-pages.ts");
+  const rows = buildPluginPages({ pluginId: "game", aux: [GAME_CODE_PAGE], staticAux: false });
+  assert.equal(rows.some((page) => page.kind === "pro"), false);
 });
 
 test("the eight game chips include CC0 reskin sources and pass the contract", () => {
@@ -475,8 +479,7 @@ test("Code 页有代码编辑器与预览槽；运行/停止/重载改预览宿�
     );
     assert.equal(after, before + 1);
     const reason = mounted.container.querySelector("[data-testid=game-pro-unavailable]");
-    assert.ok(reason);
-    assert.equal(reason.getAttribute("title"), "专业编辑即将到来");
+    assert.equal(reason, null, "游戏编辑器不再申报专业编辑模式");
   } finally {
     registerGamePreviewHost(null);
     await mounted.unmount();
@@ -538,8 +541,7 @@ test("GameRoute 点 Code 页真的交出 GameCodeStage 并带上 item", async ()
   );
   try {
     const reason = mounted.container.querySelector("[data-testid=game-pro-unavailable]");
-    assert.ok(reason, "编辑页没有申报专业编辑不可用");
-    assert.equal(reason.getAttribute("title"), "专业编辑即将到来");
+    assert.equal(reason, null, "游戏编辑器不再申报专业编辑模式");
     const button = mounted.container.querySelector("[data-testid=game-select-code]");
     assert.ok(button, "编辑页没有 Code 页签动作");
     await act(async () => {

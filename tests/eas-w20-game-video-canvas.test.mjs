@@ -37,7 +37,7 @@ test("GameRoute has no close button, no leave block, and no dual-engine handoff"
   assert.doesNotMatch(gameRoute, /beforeunload/);
   assert.doesNotMatch(gameRoute, /confirm\(/);
   assert.doesNotMatch(gameRoute, /data-global-row-slot="close"/);
-  assert.match(gameRoute, /gameModeUnavailable\(\)/);
+  assert.doesNotMatch(gameRoute, /gameModeUnavailable/);
   assert.match(gameRoute, /GAME_DUAL_ENGINE_HANDOFF/);
   assert.doesNotMatch(gameRoute, /beforeEnterPro/);
 });
