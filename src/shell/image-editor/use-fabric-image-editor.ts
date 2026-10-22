@@ -524,6 +524,13 @@ export function useFabricImageEditor(
     useState<FabricImageEditorState["sceneDiagnostic"]>(null);
   const [sourceReady, setSourceReady] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
+  // SVG features Fabric cannot carry: the item opens view-only until the user
+  // explicitly converts (the stored original is never touched either way).
+  const [vectorLosses, setVectorLosses] = useState<string[]>([]);
+  const [vectorConverted, setVectorConverted] = useState(false);
+  const conversionPending = vectorLosses.length > 0 && !vectorConverted;
+  const conversionPendingRef = useRef(false);
+  conversionPendingRef.current = conversionPending;
   const [savedUrl, setSavedUrl] = useState("");
   const [savedProjectUrl, setSavedProjectUrl] = useState("");
   const [savedAt, setSavedAt] = useState("");
@@ -740,6 +747,8 @@ export function useFabricImageEditor(
       setSavedUrl("");
       setSavedProjectUrl("");
       setSavedAt("");
+      setVectorLosses([]);
+      setVectorConverted(false);
       updateDirty(false);
       revisionRef.current = 0;
     }
@@ -858,8 +867,11 @@ export function useFabricImageEditor(
             if (cancelled || abort.signal.aborted) return;
             projectLoaded = await controller.loadSnapshot(scene.snapshot);
             if (!projectLoaded) throw new VectorSvgError("矢量图无法载入到画布。");
-            if (scene.removed > 0) {
-              setNotice(`已清除 ${scene.removed} 处不安全内容（脚本、外部引用等）。`);
+            if (scene.losses.length > 0) {
+              setVectorLosses(scene.losses);
+              setVectorConverted(false);
+            } else if (scene.removed > 0) {
+              setNotice(`已清除 ${scene.removed} 处不安全内容（脚本、事件属性等），不影响显示。`);
             }
           } catch (caught) {
             if (cancelled || isAbortError(caught)) return;
@@ -1324,7 +1336,9 @@ export function useFabricImageEditor(
       return true;
     } finally {
       if (controllerRef.current === controller) {
-        controller.setReadOnly(Boolean(optionsRef.current.collab?.readOnly));
+        controller.setReadOnly(
+          Boolean(optionsRef.current.collab?.readOnly) || conversionPendingRef.current,
+        );
       }
     }
   }, [updateDirty]);
@@ -1623,8 +1637,8 @@ export function useFabricImageEditor(
 
   const collabReadOnly = Boolean(options.collab?.readOnly);
   useEffect(() => {
-    controllerRef.current?.setReadOnly(collabReadOnly);
-  }, [collabReadOnly, loading]);
+    controllerRef.current?.setReadOnly(collabReadOnly || conversionPending);
+  }, [collabReadOnly, conversionPending, loading]);
   const collabHandle: FabricImageCollabHandle = {
     readOnly: collabReadOnly,
     tick: collabTick,
@@ -1673,6 +1687,10 @@ export function useFabricImageEditor(
 
   return {
     collab: collabHandle,
+    vectorConversion: vectorLosses.length
+      ? { pending: conversionPending, losses: vectorLosses }
+      : null,
+    confirmVectorConversion: () => setVectorConverted(true),
     openIdentity,
     loading,
     saving,

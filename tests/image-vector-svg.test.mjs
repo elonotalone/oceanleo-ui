@@ -37,6 +37,7 @@ for (const name of ["XMLSerializer", "SVGElement", "getComputedStyle", "HTMLCanv
 
 const fabric = await import("../node_modules/fabric/dist/index.mjs");
 const {
+  detectVectorLosses,
   exportVectorSvg,
   isVectorImageItem,
   sanitizeVectorSource,
@@ -207,4 +208,75 @@ test("routing: vector_image is no longer read-only and goes to the image editor"
   const capability = editorCapabilityFor(item);
   assert.equal(capability.available, true, capability.reason || "");
   assert.equal(capability.route.type, "image");
+});
+
+const svgOf = (inner, defs = "") =>
+  `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100" width="100" height="100">${defs}${inner}</svg>`;
+
+const LOSSY = {
+  "蒙版": svgOf('<rect mask="url(#m)" width="10" height="10" fill="red"/>', '<defs><mask id="m"><rect width="5" height="5" fill="#fff"/></mask></defs>'),
+  "滤镜": svgOf('<rect filter="url(#f)" width="10" height="10" fill="red"/>', '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>'),
+  "图案填充": svgOf('<rect fill="url(#p)" width="10" height="10"/>', '<defs><pattern id="p" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="2" height="2" fill="blue"/></pattern></defs>'),
+  "线端标记": svgOf('<path d="M0 0 L50 50" stroke="black" marker-end="url(#mk)"/>', '<defs><marker id="mk" markerWidth="4" markerHeight="4"><circle r="2"/></marker></defs>'),
+  "动画": svgOf('<rect width="10" height="10" fill="red"><animate attributeName="x" from="0" to="50" dur="1s"/></rect>'),
+  "路径文字": svgOf('<text><textPath xlink:href="#tp">hi</textPath></text>', '<defs><path id="tp" d="M0 50 L100 50"/></defs>'),
+  "混合模式": svgOf('<rect style="mix-blend-mode:multiply" width="10" height="10" fill="red"/>'),
+  "复杂 CSS 选择器": svgOf('<g><rect class="b" width="10" height="10"/></g>', "<style>.a .b{fill:blue}</style>"),
+  "CSS 规则": svgOf('<rect width="10" height="10"/>', "<style>@media print{rect{fill:red}}</style>"),
+  "嵌入的网页内容": svgOf('<foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml">x</div></foreignObject><rect width="5" height="5"/>'),
+  "外部引用的图片": svgOf('<image href="https://evil.test/a.png" width="5" height="5"/><rect width="5" height="5"/>'),
+};
+
+const LOSSLESS = {
+  gradient: svgOf('<rect fill="url(#g)" width="10" height="10"/>', '<defs><linearGradient id="g"><stop offset="0" stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs>'),
+  clipPath: svgOf('<g clip-path="url(#c)"><rect width="10" height="10" fill="red"/></g>', '<defs><clipPath id="c"><rect width="5" height="5"/></clipPath></defs>'),
+  use: svgOf('<use xlink:href="#r" x="20"/>', '<defs><rect id="r" width="5" height="5" fill="green"/></defs>'),
+  simpleClassStyle: svgOf('<rect class="a" width="10" height="10"/>', "<style>.a{fill:red}</style>"),
+  inlineStyle: svgOf('<rect style="fill: red; stroke: #000" width="10" height="10"/>'),
+  nestedSvg: svgOf('<svg x="10" y="10" width="20" height="20"><rect width="10" height="10" fill="red"/></svg>'),
+  scriptOnly: svgOf('<script>alert(1)</script><rect onclick="x()" width="10" height="10" fill="red"/>'),
+};
+
+test("features Fabric will not carry are named before editing is allowed", async () => {
+  for (const [label, svg] of Object.entries(LOSSY)) {
+    const { svg: clean, rules } = sanitizeVectorSource(svg);
+    const losses = detectVectorLosses(clean, rules);
+    assert.ok(
+      losses.some((entry) => entry.includes(label)),
+      `${label} must be reported, got ${JSON.stringify(losses)}`,
+    );
+    const scene = await vectorSvgToSnapshot(fabric, svg);
+    assert.ok(scene.losses.length > 0, label);
+  }
+});
+
+test("features Fabric keeps open editable directly (no conversion gate)", async () => {
+  for (const [label, svg] of Object.entries(LOSSLESS)) {
+    const scene = await vectorSvgToSnapshot(fabric, svg);
+    assert.deepEqual(scene.losses, [], `${label} should be lossless, got ${JSON.stringify(scene.losses)}`);
+    assert.ok(scene.layerCount > 0, label);
+  }
+});
+
+test("lossy SVG opens view-only until the explicit convert action; the original is untouched", () => {
+  const hook = read("src/shell/image-editor/use-fabric-image-editor.ts");
+  assert.match(hook, /const conversionPending = vectorLosses\.length > 0 && !vectorConverted/);
+  assert.match(hook, /setReadOnly\(collabReadOnly \|\| conversionPending\)/);
+  assert.match(hook, /confirmVectorConversion: \(\) => setVectorConverted\(true\)/);
+  // a gated open never marks the document dirty, so nothing autosaves
+  assert.match(hook, /setVectorLosses\(scene\.losses\)/);
+  const route = read("src/shell/advanced-routes/ImageRoute.tsx");
+  assert.match(route, /Boolean\(editor\.vectorConversion\?\.pending\)/);
+  assert.match(route, /转换为可编辑图层/);
+  assert.match(route, /editor\.vectorConversion\.losses\.join/);
+});
+
+test("the project schema sent with a vector revision is the fabric-image project", () => {
+  const persistence = read("src/shell/image-editor/editor-persistence.ts");
+  assert.match(persistence, /export const IMAGE_PROJECT_SCHEMA\s*=\s*"oceanleo\.fabric-image\.v1"/);
+  assert.match(persistence, /project: \{ schema: IMAGE_PROJECT_SCHEMA, data: snapshot \}/);
+  assert.match(persistence, /editorManifest: \{ id: editorCapability, format: IMAGE_PROJECT_SCHEMA \}/);
+  assert.match(persistence, /"vector-editor"/);
+  const project = createFabricImageProject({ json: { objects: [] }, doc: { width: 1, height: 1 }, canvasBackground: "#fff" });
+  assert.equal(project.schema, "oceanleo.fabric-image.v1");
 });

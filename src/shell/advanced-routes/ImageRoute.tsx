@@ -127,7 +127,10 @@ export function ImageRoute({
     setCollabReadOnly(collab.readOnly);
   }, [collab.readOnly]);
   // 工具条、侧边面板、素材入口、AI 入口、上传都按这一个值灰掉（画布控制器与指令面另有同一条拒绝）
-  const viewOnly = collab.readOnly || editor.collab.readOnly;
+  const viewOnly =
+    collab.readOnly ||
+    editor.collab.readOnly ||
+    Boolean(editor.vectorConversion?.pending);
   const selectedLayerIds = useMemo(
     () => editor.layers.filter((layer) => layer.selected).map((layer) => layer.id),
     [editor.layers],
@@ -463,6 +466,26 @@ export function ImageRoute({
             data-image-ai-drawer={imageRouteChrome.aiDrawer ? "on" : "off"}
             data-image-cutout-action={imageRouteChrome.cutoutAction ? "on" : "off"}
           >
+            {editor.vectorConversion?.pending ? (
+              <div
+                role="alert"
+                data-testid="vector-conversion-notice"
+                className="flex flex-wrap items-center gap-2 border-b border-[var(--border,#e7e5e4)] bg-[var(--surface-hover,rgba(0,0,0,.04))] px-3 py-2 text-xs"
+              >
+                <span className="min-w-0 flex-1">
+                  这份矢量图含有图层编辑器无法保留的内容：{editor.vectorConversion.losses.join("、")}。
+                  现在只能查看，原件不会改动；转换后这些内容在编辑版本里会丢失或变形。
+                </span>
+                <button
+                  type="button"
+                  data-testid="vector-convert-button"
+                  className="rounded-lg border border-[var(--border,#e7e5e4)] px-3 py-1"
+                  onClick={editor.confirmVectorConversion}
+                >
+                  转换为可编辑图层
+                </button>
+              </div>
+            ) : null}
             <div className="relative min-h-0 flex-1">
               {!editor.loading && !editor.sourceReady ? (
                 <EditorSourceFailurePanel

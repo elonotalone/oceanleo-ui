@@ -245,6 +245,13 @@ export interface FabricImageSaveResult {
 export interface FabricImageEditorState {
   /** Current open session; save receipts preserve this identity. */
   openIdentity: string;
+  /**
+   * Set when an opened SVG has features the Fabric scene cannot carry. While
+   * `pending` the canvas is view-only; `confirmVectorConversion` is the explicit
+   * "转换为可编辑图层" action.
+   */
+  vectorConversion: { pending: boolean; losses: string[] } | null;
+  confirmVectorConversion(): void;
   // ---- 状态 ----
   loading: boolean;
   saving: boolean;
