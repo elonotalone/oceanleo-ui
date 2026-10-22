@@ -30,7 +30,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
 
 /**
- * W25 本轮改掉的 10 处。清单写死是有意的：这道闸罩的就是这一批，
+ * W25 本轮改掉的处（`use-embed-editor-messages.ts` 随嵌入式编辑器一起删除，清单只剩仍在的文件）。清单写死是有意的：这道闸罩的就是这一批，
  * 谁把其中一份的包装退回单参数形，这里立刻红。
  */
 const W25_WRAPPER_FILES = [
@@ -42,7 +42,6 @@ const W25_WRAPPER_FILES = [
   "src/shell/media-editors/use-pdf-document.ts",
   "src/shell/media-editors/use-pdf-preview-render.ts",
   "src/shell/media-editors/use-pdf-workbench.ts",
-  "src/shell/use-embed-editor-messages.ts",
 ];
 
 /**
