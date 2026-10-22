@@ -1,5 +1,6 @@
 // 站内消息 / 多人同改 / 工作回放的共享数据形状。
 // 唯一口径：oceandino docs/work-logs/2026-10/work-chat/01-interfaces.md §5；改这里先改契约。
+import type { CallHubEvent } from "./call-types";
 
 export type ImConversationKind = "dm" | "group" | "team" | "project" | "talent";
 export type ImRole = "owner" | "admin" | "member";
@@ -190,6 +191,8 @@ export interface ImMessage {
   mention_reads: Record<string, boolean> | null;
   client_id: string | null;
   created_at: string;
+  /** 通话系统消息的白名单 meta（calls-v2 仲裁 A-4；`meta.kind` 以 `call_` 开头，其余消息为 null 或缺省）。 */
+  meta?: { kind: string; [key: string]: unknown } | null;
 }
 
 export interface ImContact {
@@ -378,4 +381,7 @@ export type ImEvent =
   | { type: "join.request"; conversation_id: string; request: ImJoinRequest }
   | { type: "unread.changed"; unread: ImUnread }
   | { type: "replay.consent"; replay_id: string; title: string; from: ImProfile }
-  | { type: "meeting"; conversation_id: string; meeting: ImMeeting | null };
+  | { type: "meeting"; conversation_id: string; meeting: ImMeeting | null }
+  // 通话 v2（calls-v2 合同 §3.3）：call / call_ring / call_ring_end / call_kicked / call_caption /
+  // call_control_request / call_control。
+  | CallHubEvent;

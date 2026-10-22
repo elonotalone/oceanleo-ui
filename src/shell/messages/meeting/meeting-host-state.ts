@@ -12,9 +12,10 @@ export interface MeetingHostRequest {
   members: ImMember[];
 }
 
+// 与 Leo 实时通话的互斥已迁到通话引擎（calls-v2 合同 §3.9）；这里只再导出，状态只有一份。
+export { activeCallOwner, claimCall, releaseCall } from "../call/engine/mutex";
+
 let request: MeetingHostRequest | null = null;
-let callOwner: "meeting" | "leo-realtime" | null = null;
-let callClaim = 0;
 const listeners = new Set<() => void>();
 function emit() { for (const listener of [...listeners]) listener(); }
 
@@ -32,21 +33,6 @@ export function closeMeeting(): void {
 
 export function meetingHostRequestSnapshot(): MeetingHostRequest | null {
   return request;
-}
-
-export function claimCall(owner: "meeting" | "leo-realtime"): number | null {
-  if (callOwner) return null;
-  callOwner = owner;
-  callClaim += 1;
-  return callClaim;
-}
-
-export function releaseCall(owner: "meeting" | "leo-realtime", claim: number | null | undefined): void {
-  if (claim !== null && claim !== undefined && callOwner === owner && claim === callClaim) callOwner = null;
-}
-
-export function activeCallOwner(): "meeting" | "leo-realtime" | null {
-  return callOwner;
 }
 
 export function createMeetingInvitationHandler(
