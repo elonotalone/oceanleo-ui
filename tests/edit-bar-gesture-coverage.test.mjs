@@ -62,7 +62,10 @@ const TOOLBAR_HEIGHT =
  * 两表差集在 HEAD 上变成空集，而 `a498867` 那棵树上差集仍是三件
  * ⇒ 清单清空必须与这个 commit 同一笔改，否则末尾那条自检当场红。
  */
-const BASELINE_COMMIT = "c672108e829df2ae0a5b4510269dd1a7323827f7";
+const BASELINE_COMMIT = "6bee8857775266835976d1f14019511cd9b37e18";
+// 2026-10-22 native-editors（W14）：12 件 = 13 件减去已删的图表编辑器（墓碑不计），
+// 设计画布并入 image 不再有自己的主题条目（THEME_SPEC_PENDING 登记它）。
+// 冻结点换成 W08 之后的干净 commit，数字与 BASELINE_COMMIT 是一组。
 
 function read(relPath) {
   return readFileSync(resolve(relPath), "utf8");
@@ -127,6 +130,24 @@ function tableKeys(source, declaration) {
   return { keys, body };
 }
 
+/**
+ * 注册表里 `routeType: "none"` 的行是**墓碑**（图表编辑器 2026-10-22 已删，合同矩阵里那行
+ * 还在）。墓碑没有舞台，也就没有编辑栏可拖；把它算进「逐件」只会让清单数字跟着墓碑漂。
+ * 墓碑哪天被删，这里什么都不用改。
+ */
+function routableAdapterKeys(source) {
+  const { keys, body } = tableKeys(source, "const EDITOR_ADAPTER_RUNTIME");
+  return keys.filter((adapter) => {
+    const entry = body.match(
+      new RegExp(
+        `^ {2}"?${adapter.replace(/[@.]/g, "\\$&")}"?:\\s*\\{([\\s\\S]*?)^ {2}\\},`,
+        "m",
+      ),
+    );
+    return !(entry && /routeType:\s*"none"/.test(entry[1]));
+  });
+}
+
 const themeTable = code(`${SHELL}/plugin-theme.tsx`);
 const registry = code(`${SHELL}/workbench-capability-registry.ts`);
 
@@ -142,10 +163,8 @@ const registry = code(`${SHELL}/workbench-capability-registry.ts`);
  * 它在干净 HEAD 上已经是 13 件且三件 extracted 的 ownership 已是 `native`。
  * 主题表管的是插件内主题配色，与手势可达性无关——接错表，不是产品缺口。
  */
-const { body: registryBody, keys: adapters } = tableKeys(
-  registry,
-  "const EDITOR_ADAPTER_RUNTIME",
-);
+const { body: registryBody } = tableKeys(registry, "const EDITOR_ADAPTER_RUNTIME");
+const adapters = routableAdapterKeys(registry);
 /** 适配器键可能带版本后缀（`chart-editor@1`），插件 id 取 `@` 之前那一段。 */
 const PLUGIN_IDS = adapters.map((adapter) => adapter.split("@")[0]);
 const THEME_SPEC_IDS = tableKeys(themeTable, "export const PLUGIN_THEME_SPECS").keys;
@@ -177,9 +196,13 @@ for (const adapter of adapters) {
  * 都是闸假绿、靠人翻出来的；这一次因为反向断言真的存在，债一还完它立刻就红。
  * ⇒ 结论不是「清单危险」，而是**清单必须配一条反向断言**。
  *
+ * 2026-10-22 重新登记一件：`design-canvas` 并入 `image` 编辑器，主题表不再有它的条目
+ * （`pluginThemeIdForAdapter("design-canvas")` 读时别名到 `image`）。适配器表还留着它的行，
+ * 因为存量设计画布素材仍按这个 id 解析。
+ *
  * ⚠️ 这是**清单，不是豁免**：留着不清的清单会把下一次真回归静静放过去。
  */
-const THEME_SPEC_PENDING = Object.freeze([]);
+const THEME_SPEC_PENDING = Object.freeze(["design-canvas"]);
 
 /** 两张表的路径，`git archive` 只解这两个文件，不解整棵树。 */
 const TABLE_PATHS = [
@@ -187,11 +210,11 @@ const TABLE_PATHS = [
   `${SHELL}/workbench-capability-registry.ts`,
 ];
 
-test("清单本身：13 件，10 件走共享外壳、3 件走 chrome", () => {
+test("清单本身：12 件，全部走共享外壳，没有任何一件还走 chrome 那条路径", () => {
   assert.equal(
     PLUGIN_IDS.length,
-    13,
-    `插件数从 13 变成了 ${PLUGIN_IDS.length}。新插件也要能拖、能收成圆、能拖圆；` +
+    12,
+    `插件数从 12 变成了 ${PLUGIN_IDS.length}。新插件也要能拖、能收成圆、能拖圆；` +
       "改这个数字之前先确认新那件落在下面两条路径的哪一条",
   );
   assert.equal(
@@ -201,24 +224,21 @@ test("清单本身：13 件，10 件走共享外壳、3 件走 chrome", () => {
       "版本后缀被剥掉之后撞了名，逐件断言会有一件跑两遍、另一件不跑",
   );
   const native = PLUGIN_IDS.filter((id) => OWNERSHIP.get(id) === "native");
-  assert.deepEqual(
-    native.sort(),
-    ["design-canvas", "video-canvas", "website"],
-    "走 chrome 的必须正好是三件 extracted 插件",
-  );
+  // native-editors 波：website / video-canvas / design-canvas 都已是本地原生编辑器，
+  // 手势一律由共享外壳给；不许再有哪件悄悄改回 chrome 路径而没人登记。
+  assert.deepEqual(native, [], "不应再有走 chrome 的插件");
   assert.equal(
     PLUGIN_IDS.filter((id) => OWNERSHIP.get(id) === "shared").length,
-    10,
-    "走共享外壳的必须是那十件",
+    12,
+    "走共享外壳的必须是这十二件",
   );
 });
 
 /** 从一棵树的根上把两张表都读出来。工作树、任意 commit 的树，用的是同一段代码。 */
 function readTables(root) {
-  const adapterKeys = tableKeys(
+  const adapterKeys = routableAdapterKeys(
     codeAt(root, `${SHELL}/workbench-capability-registry.ts`),
-    "const EDITOR_ADAPTER_RUNTIME",
-  ).keys;
+  );
   return {
     pluginIds: adapterKeys.map((a) => a.split("@")[0]),
     themeIds: tableKeys(
@@ -242,13 +262,13 @@ test("两表对齐：主题表不许出现适配器表没有的插件，缺的�
   // 所以先证明「我确实读到了两张有内容的表」，再谈差集。
   assert.equal(
     pluginIds.length,
-    13,
-    `HEAD 上适配器表读出来 ${pluginIds.length} 件（期望 13）。` +
+    12,
+    `HEAD 上适配器表读出来 ${pluginIds.length} 件（期望 12）。` +
       "读不出内容时下面的差集判据会空转全绿，这条正对照就是为了让它当场露出来",
   );
   assert.ok(
-    themeIds.length >= 13,
-    `HEAD 上主题表只读出来 ${themeIds.length} 件（至少 13）。理由同上`,
+    themeIds.length >= 11,
+    `HEAD 上主题表只读出来 ${themeIds.length} 件（至少 11）。理由同上`,
   );
 
   // 方向一（硬红）：主题表里冒出来一个适配器表没有的 id，说明它问不出归哪条外壳路径
@@ -702,7 +722,7 @@ function translateOf(element) {
 }
 
 /** 三件 extracted 插件走的是同一个 frame，逐件跑一遍才是「逐件可达」。 */
-for (const pluginId of ["design-canvas", "website", "video-canvas"]) {
+for (const pluginId of ["image", "website", "video-canvas"]) {
   test(`真渲染 · ${pluginId}：第一次按下拖得动、点得出圆、圆也拖得动`, async () => {
     window.localStorage.clear();
     const restoreRect = installRectStub();
@@ -1126,7 +1146,7 @@ test("整名匹配器本身：改名必须判成没了，同前缀的别名不�
  * 脏工作树上量出来的数字过不了这一关，因为那棵树 git 里没有。
  * ========================================================================= */
 
-test("基线自检：13 件与两表差集，都与 BASELINE_COMMIT 那棵干净树对得上", () => {
+test("基线自检：12 件与两表差集，都与 BASELINE_COMMIT 那棵干净树对得上", () => {
   const probe = measureOnCommittedTree({
     repo: REPO,
     commit: BASELINE_COMMIT,
@@ -1137,11 +1157,11 @@ test("基线自检：13 件与两表差集，都与 BASELINE_COMMIT 那棵干净
   assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
 
   const short = BASELINE_COMMIT.slice(0, 7);
-  // 冻的是「13 件」这个数，所以自检也判这个数——判在**一棵 git 里真的存在的树**上。
+  // 冻的是「12 件」这个数，所以自检也判这个数——判在**一棵 git 里真的存在的树**上。
   assert.equal(
     probe.value.pluginIds.length,
-    13,
-    `「13 件」这个数在 ${short} 的干净检出上量出来是 ${probe.value.pluginIds.length}` +
+    12,
+    `「12 件」这个数在 ${short} 的干净检出上量出来是 ${probe.value.pluginIds.length}` +
       `（${probe.value.pluginIds.join(", ")}）。\n` +
       "`W31` 原先的 13 取自主题表、且量在脏工作树上，干净检出只有 10 ⇒ 闸必红。\n" +
       "改冻结数字要连 BASELINE_COMMIT 一起改，两个是一组。",
