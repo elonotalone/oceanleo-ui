@@ -242,7 +242,7 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
       // 表格只剩 Univer 舞台（core-swap:delete grid）。
       "../src/shell/doc-editors/GridUniverStage.tsx",
       "const saveBeforeNewConversation = useCallback",
-      "buildGridRouteWorkbookBlob",
+      "buildGridXlsxFromUniverSnapshot",
       "xlsx",
     ],
     [
@@ -258,9 +258,11 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
     if (extension === "docx") {
       assert.match(save, /createFile: \(\) =>\s*createRichDocDeliveryFile\(/, path);
     } else {
+      // Deck wraps `delivery`; Grid wraps the blob built straight from the Univer snapshot.
+      const wrapped = extension === "xlsx" ? "built\\.blob" : "delivery";
       assert.match(
         save,
-        new RegExp(`new File\\(\\[delivery\\].*\\.${extension}`, "s"),
+        new RegExp(`new File\\(\\[${wrapped}\\].*\\.${extension}`, "s"),
         path,
       );
     }
@@ -304,7 +306,7 @@ test("delivery renderers remain attached to explicit export and download actions
       "const workbookBlob = useCallback",
       "const save = useCallback",
     ),
-    /buildGridRouteWorkbookBlob/,
+    /buildGridXlsxFromUniverSnapshot/,
   );
   assert.match(
     section(
