@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 function source(path) {
@@ -164,7 +164,7 @@ test("first inline edit ensures App history and every mutable route can flush", 
   assert.match(model, /flush: saveBeforeNewConversation/);
 });
 
-test("library panels are static while embedded editors stay isolated", () => {
+test("library panels are static and no editor is a hosted shell website", () => {
   const shell = [
     source("../src/shell/SplitWorkspace.tsx"),
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx"),
@@ -173,23 +173,25 @@ test("library panels are static while embedded editors stay isolated", () => {
     source("../src/shell/editor-protocol.ts") +
     source("../src/shell/editor-protocol-types.ts") +
     source("../src/shell/editor-protocol-message-types.ts");
-  const embed =
-    source("../src/shell/workbench-embed.tsx") +
-    source("../src/shell/use-embed-editor-messages.ts");
   assert.match(shell, /registerLibraryPanel/);
   assert.match(shell, /openLibraryPanel/);
   assert.doesNotMatch(shell, /libraryDockDragging|libraryDockStartXRef/);
   assert.match(shell, /adapter\.nativeChrome\?\.viewport/);
   assert.match(shell, /clearDetail/);
   assert.match(protocol, /set-host-layout/);
-  assert.match(embed, /sidePanelVisible/);
-  assert.match(embed, /hostOwnsChrome: true/);
-  assert.match(embed, /saveId: saveRequestId/);
+  // Native-editors wave: the embed iframe host and its params are deleted;
+  // a regression that brings a hosted editor pane back must fail here.
+  for (const gone of [
+    "../src/shell/workbench-embed.tsx",
+    "../src/shell/use-embed-editor-messages.ts",
+    "../src/shell/website-embed-params.ts",
+  ]) {
+    assert.equal(existsSync(new URL(gone, import.meta.url)), false, gone);
+  }
 });
 
 test("code-backed website starters reach the visual editor without a fake project id", () => {
   const routes = source("../src/shell/workbench-routes.ts");
-  const embedParams = source("../src/shell/website-embed-params.ts");
   const materials =
     source("../src/shell/MaterialLibrary.tsx") +
     source("../src/shell/material-library-controller.ts") +
@@ -198,11 +200,6 @@ test("code-backed website starters reach the visual editor without a fake projec
     routes,
     /if \(!projectId && !starterId && !githubRepo\) \{[\s\S]*?return unavailable\(/,
   );
-  assert.match(embedParams, /params\.starterId = starterId/);
-  assert.match(embedParams, /params\.githubRepo = githubRepo/);
-  assert.match(embedParams, /const identity = stableArtifactIdentity\(item\)/);
-  assert.match(embedParams, /params\.artifactId = identity\.artifactId/);
-  assert.match(embedParams, /params\.revisionId = identity\.revisionId/);
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
   assert.match(materials, /library\/starters\/\$\{encodeURIComponent\(starterId\)\}\/view/);
@@ -326,16 +323,15 @@ test("late catalog categories stay behind More and native Office routes use the 
         ? "../src/shell/doc-editors/GridUniverStage.tsx"
         : `../src/shell/advanced-routes/${route}.tsx`,
     );
-    // Deck 快速面在专业面回写后改读 workingItem（proSaved ?? item），
-    // 仍必须走同一条可刷新 Office 源，不能换成别的取源。
+    // 各原生路由必须走同一条可刷新 Office 源，不能换成别的取源。
     assert.match(
       contents,
       /useOfficeArtifactSource\((?:item|openedItemRef\.current|workingItem)\)/,
       route,
     );
     if (route === "DeckRoute") {
-      assert.match(contents, /useProSavedRevision\(/, route);
-      assert.match(contents, /const workingItem = proSaved \?\? item/, route);
+      // Single mode: no hosted Pro face, so no pro-saved revision overlay.
+      assert.doesNotMatch(contents, /useProSavedRevision|proSaved/, route);
     }
     assert.doesNotMatch(contents, /nativeChrome/, route);
   }
@@ -346,14 +342,11 @@ test("late catalog categories stay behind More and native Office routes use the 
   assert.match(actionBar, /adapter\.directDownload/);
 });
 
-test("specialist embeds require a trusted origin, frame and instance handshake", () => {
+test("editor protocol keeps the trusted origin and instance handshake; shell chrome stays host-owned", () => {
   const protocol =
     source("../src/shell/editor-protocol.ts") +
     source("../src/shell/editor-protocol-types.ts") +
     source("../src/shell/editor-protocol-message-types.ts");
-  const embed =
-    source("../src/shell/workbench-embed.tsx") +
-    source("../src/shell/use-embed-editor-messages.ts");
   const shell =
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
     source("../src/shell/FloatingContextToolbar.tsx");
@@ -363,33 +356,11 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   //（含 .cn 家族；形似域与 UGC 域在判定层 fail closed）。
   assert.match(protocol, /isCurrentFamilyFirstPartyHost\(hostname\)/);
   assert.doesNotMatch(protocol, /endsWith\(["'`]\.oceanleo\.(com|cn)["'`]\)/);
-  assert.match(embed, /event\.source !== iframeRef\.current\?\.contentWindow/);
-  assert.match(embed, /event\.origin !== editorOrigin/);
-  assert.match(embed, /\{ \.\.\.message, protocol: EDITOR_PROTOCOL, instanceId \}/);
-  assert.match(embed, /asHostToEditorMessage\(envelope, instanceId\)/);
-  assert.match(embed, /selectionGateRef\.current\.accept/);
-  // Blank/draft website embeds gate on draft|blank with no durable URL yet
-  // (website-embed-params + workbench-routes), not only meta.draft.
-  const embedGate =
-    source("../src/shell/website-embed-params.ts") +
-    source("../src/shell/workbench-routes.ts");
+  // Blank/draft website gate lives in the route resolver (no embed params any more).
   assert.match(
-    embedGate,
+    source("../src/shell/workbench-routes.ts"),
     /\(item\.meta\.draft === true \|\| item\.meta\.blank === true\) &&\s*!item\.url &&\s*!item\.previewUrl/,
   );
-  assert.match(embed, /type: "open-asset"/);
-  assert.match(embed, /type: "save-request"/);
-  assert.match(embed, /type: "save-result"/);
-  assert.match(embed, /type: "selection-command"/);
-  assert.match(embed, /type: "material-insert"/);
-  assert.match(embed, /message\.type === "material-result"/);
-  assert.match(embed, /message\.type === "selection-changed"/);
-  assert.match(embed, /getBoundingClientRect/);
-  assert.match(embed, /frameLoaded/);
-  assert.match(embed, /setAttempt\(\(value\) => value \+ 1\)/);
-  assert.match(embed, /重新加载编辑器/);
-  assert.doesNotMatch(embed, /在新窗口打开编辑器/);
-  assert.doesNotMatch(embed, /target="_blank"/);
   assert.match(shell, /data-advanced-context-row/);
   assert.match(shell, /adapter\.renderContextToolbar\(layoutState\)/);
   assert.match(shell, /\{contextToolbar\}/);
@@ -406,7 +377,6 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
     /\(\) => \(\) => workspacePane\?\.clearDetail\(ownerIdRef\.current\)/,
   );
   assert.doesNotMatch(shell, /-translate-y-full/);
-  assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });
 
 test("editor protocol rejects malformed artifacts and uncorrelated saves", async () => {
