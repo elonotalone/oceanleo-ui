@@ -3,7 +3,8 @@
 //
 // 采集只在 uplink.capturing() 为真时跑（要转写、在通话里、开着麦、服务端没说转写已关）：
 // 静音即停采集（不在用户静音时占着麦克风），开麦重开；换麦克风设备重开；
-// 采集失败（权限、设备忙、这台设备不支持另开采集）不原地死循环：等下一次开麦或换设备再试。
+// 采集失败（权限、设备忙、这台设备不支持另开采集）不原地死循环：等下一次开麦或换设备再试；
+// 采集轨道自己结束（引擎换轨道、拔设备）先立刻再开一次，再结束才判失败。
 import { createCaptionsPcmPipeline, type CaptionsPcmPipeline } from "./pcm";
 import type { CaptionsCaptureState } from "./types";
 import type { CaptionsUplink, UplinkStatus, UplinkTarget } from "./uplink";
@@ -65,6 +66,8 @@ export function createCaptionsController(deps: CaptionsControllerDeps): Captions
   let captureGeneration = 0;
   let starting = false;
   let failedKey: string | null = null;
+  /** 这个 key 的采集自己结束过一次（允许立刻再开一次）。 */
+  let endedKey: string | null = null;
   let pipeline: CaptionsPcmPipeline | null = null;
   let captureState: CaptionsCaptureState = "off";
   let disposed = false;
@@ -114,9 +117,17 @@ export function createCaptionsController(deps: CaptionsControllerDeps): Captions
 
   function onEnded(generation: number): void {
     if (generation !== captureGeneration) return;
-    // 轨道没了（拔设备）：停掉；引擎会换设备 → micDeviceId 变 → 重开。同一个 key 不原地重试。
-    failedKey = captureKey;
+    const key = captureKey;
     stopCapture();
+    // 轨道自己结束了：引擎可能刚换了轨道（clone 的源没了）→ 同一个 key 立刻再开一次（拿引擎的新轨道）；
+    // 再结束就判失败，不原地死循环（拔设备时引擎会换设备 → micDeviceId 变 → 新 key 会重开）。
+    if (key && endedKey !== key) {
+      endedKey = key;
+      setCaptureState("off");
+      syncCapture();
+      return;
+    }
+    failedKey = key;
     setCaptureState("failed");
   }
 
@@ -158,6 +169,7 @@ export function createCaptionsController(deps: CaptionsControllerDeps): Captions
     if (!deps.uplink.capturing()) {
       stopCapture();
       failedKey = null; // 停过一次（静音/关转写）之后，下次开麦可以重试
+      endedKey = null;
       setCaptureState("off");
       return;
     }

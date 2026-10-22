@@ -644,7 +644,7 @@ test("编排：没开转写 / 静音 / 不在通话 → 不采集；静音后开
   assert.equal(h.captures[1].stopped, false);
 });
 
-test("编排：换麦克风设备 → 停旧采集、按新设备重开；设备拔出 → 停、同一设备不原地重试", async () => {
+test("编排：换麦克风设备 → 停旧采集、按新设备重开；轨道自己结束 → 立刻再开一次，再结束才判失败、同一设备不死循环", async () => {
   const h = controllerHarness();
   h.controller.update(TARGET);
   await flush();
@@ -652,15 +652,20 @@ test("编排：换麦克风设备 → 停旧采集、按新设备重开；设备
   await flush();
   assert.equal(h.captures[0].stopped, true);
   assert.equal(h.captures[1].request.deviceId, "mic-2");
-  h.captures[1].request.onEnded();
+  h.captures[1].request.onEnded(); // 引擎换了轨道：clone 的源没了
+  await flush();
   assert.equal(h.captures[1].stopped, true);
+  assert.equal(h.captures.length, 3, "同一设备立刻再开一次（拿引擎的新轨道）");
+  assert.equal(h.controller.captureState(), "running");
+  h.captures[2].request.onEnded(); // 又结束：真没了
+  await flush();
   assert.equal(h.controller.captureState(), "failed");
   h.controller.update({ ...TARGET, micDeviceId: "mic-2" });
   await flush();
-  assert.equal(h.captures.length, 2, "同一设备不原地重试");
+  assert.equal(h.captures.length, 3, "同一设备不原地死循环");
   h.controller.update({ ...TARGET, micDeviceId: "mic-3" });
   await flush();
-  assert.equal(h.captures.length, 3, "引擎换了设备 → 重开");
+  assert.equal(h.captures.length, 4, "引擎换了设备 → 重开");
 });
 
 test("编排：采集失败不死循环；这台设备不另开采集 = unsupported；静音再开麦会再试一次", async () => {
