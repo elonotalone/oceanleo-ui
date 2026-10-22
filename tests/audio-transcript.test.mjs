@@ -2,45 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  AUDIO_NEXT_PROJECT_SCHEMA,
-  inspectAudioProject,
-  nextAudioConversionState,
-  planAudioLegacyConversion,
-} from "../src/shell/media-editors/audio-next-conversion.ts";
-import { AUDIO_PROJECT_SCHEMA_ID } from "../src/shell/media-editors/audio-project-carrier.ts";
-import {
   cutPlanForSentence,
+  keepWindowsAfterCut,
   sentencesFromAsrStatus,
   submitBailianAsr,
 } from "../src/shell/media-editors/audio-transcript.ts";
-import { buildAudioReviewProposal } from "../src/shell/media-editors/audio-next-l4-chips.ts";
-
-test("legacy audio-project is readonly until convert, and convert does not rewrite bytes", () => {
-  const looked = inspectAudioProject({
-    schema: AUDIO_PROJECT_SCHEMA_ID,
-    sourceUrl: "https://example.invalid/a.wav",
-    operations: [{ type: "effects", speed: 1, lowGainDb: 0, midGainDb: 0, highGainDb: 0 }],
-  });
-  assert.equal(looked.kind, "legacy");
-  assert.ok(looked.differences.length >= 1);
-  assert.equal(nextAudioConversionState("readonly", { type: "request" }), "converting");
-  assert.equal(nextAudioConversionState("converting", { type: "resolve" }), "converted");
-  const planned = planAudioLegacyConversion({
-    schema: AUDIO_PROJECT_SCHEMA_ID,
-    sourceUrl: "https://example.invalid/a.wav",
-    operations: [{ type: "crop", start: 0, end: 1 }],
-  });
-  assert.equal(planned.ok, true);
-  assert.equal(planned.nextSchema, AUDIO_NEXT_PROJECT_SCHEMA);
-  assert.ok(planned.dropped.some((row) => row.feature.includes("操作日志")));
-  const next = inspectAudioProject({ schema: AUDIO_NEXT_PROJECT_SCHEMA, sourceUrl: "x" });
-  assert.equal(next.kind, "next");
-});
-
-test("opening does not skip readonly: request is the only path out", () => {
-  assert.equal(nextAudioConversionState("readonly", { type: "resolve" }), "readonly");
-  assert.equal(nextAudioConversionState("readonly", { type: "reject" }), "readonly");
-});
 
 test("bailian transcript sentences drive cut-by-text windows", () => {
   const timed = sentencesFromAsrStatus(
@@ -157,21 +123,12 @@ test("asr submit uses the existing gateway path and never a raw key", () => {
   });
 });
 
-test("agent cut-by-text only builds a review proposal", () => {
-  const proposal = buildAudioReviewProposal({
-    proposalId: "p-1",
-    commandId: "audio.chip.cut-by-text",
-    revision: 3,
-    changes: [
-      {
-        id: "s-0",
-        label: "删句",
-        before: "0s–1s 保留",
-        after: "0s–1s 将删除",
-      },
-    ],
-  });
-  assert.ok(proposal);
-  assert.equal(proposal.revision, 3);
-  assert.equal(proposal.objects.length, 1);
+test("keepWindowsAfterCut returns the surviving windows and rejects bad ranges", () => {
+  assert.deepEqual(keepWindowsAfterCut(10, 2, 4), [
+    { start: 0, end: 2 },
+    { start: 4, end: 10 },
+  ]);
+  assert.deepEqual(keepWindowsAfterCut(10, 0, 3), [{ start: 3, end: 10 }]);
+  assert.deepEqual(keepWindowsAfterCut(10, 5, 5), []);
+  assert.deepEqual(keepWindowsAfterCut(0, 0, 1), []);
 });

@@ -21,12 +21,8 @@ import {
   model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
 } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
-import { AUDIO_NEXT_PROJECT_SCHEMA, inspectAudioProject } from "../src/shell/media-editors/audio-next-conversion.ts";
 import { audioCommandDefinitions } from "../src/shell/media-editors/audio-command-surface.ts";
-import {
-  keepWindowsAfterCut,
-  runAudioPlaylistCommand,
-} from "../src/shell/media-editors/audio-playlist-engine.ts";
+import { keepWindowsAfterCut } from "../src/shell/media-editors/audio-transcript.ts";
 import {
   applyModel3DNextControl,
   defaultModel3DNextView,
@@ -83,15 +79,12 @@ test("pdf: stored bytes load, text annotation mutates, reopen keeps the note", a
   assert.equal(notes.some((note) => note.contents.includes("页边批注")), true);
 });
 
-test("audio: next project with source hydrates; cut windows serialize; no commands while loading", () => {
+test("audio: stored project with source is admitted; cut windows serialize; no commands while loading", () => {
   const project = {
-    schema: AUDIO_NEXT_PROJECT_SCHEMA,
+    schema: "oceanleo.audio-project.v1",
     sourceUrl: "https://files.example.test/clip.wav",
     operations: [{ type: "gain", value: 0.8 }],
   };
-  const loaded = inspectAudioProject(project);
-  assert.equal(loaded.kind, "next");
-  assert.equal(loaded.hasSource, true);
   assert.equal(
     audioSourcePersistenceAdmitted({ loading: false, capture: project }).ok,
     true,
@@ -107,29 +100,14 @@ test("audio: next project with source hydrates; cut windows serialize; no comman
     }).length,
     0,
   );
-
-  const events = [];
-  const cut = runAudioPlaylistCommand(
-    {
-      emit: (event, ...args) => events.push({ event, args }),
-      getDuration: () => 10,
-      getCurrentTime: () => 0,
-      getTimeSelection: () => ({ start: 2, end: 4 }),
-      trackCount: () => 1,
-    },
-    "delete",
-    { startSeconds: 2, endSeconds: 4 },
-  );
-  assert.equal(cut.ok, true);
   const windows = keepWindowsAfterCut(10, 2, 4);
   const edited = {
     ...project,
     operations: [...project.operations, { type: "cut", start: 2, end: 4, keep: windows }],
   };
-  const committed = stubCommit(JSON.stringify(edited));
-  const reopened = inspectAudioProject(JSON.parse(committed.payload));
-  assert.equal(reopened.kind, "next");
-  assert.deepEqual(reopened.hasSource && windows, [
+  const reopened = JSON.parse(stubCommit(JSON.stringify(edited)).payload);
+  assert.equal(reopened.sourceUrl, project.sourceUrl);
+  assert.deepEqual(reopened.operations[1].keep, [
     { start: 0, end: 2 },
     { start: 4, end: 10 },
   ]);

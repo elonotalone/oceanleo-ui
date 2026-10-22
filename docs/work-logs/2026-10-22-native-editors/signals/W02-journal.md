@@ -1,0 +1,2 @@
+- 2026-10-22T18:12:20+08:00 start: inventory done
+- deleted pro files, rewrote AudioRoute, added AudioTranscriptSection

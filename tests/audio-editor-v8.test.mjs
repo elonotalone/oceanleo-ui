@@ -49,8 +49,8 @@ test("Audio actions are icon controls while host owns export and history", async
   assert.match(toolbar, /iconOnly:\s*true/g);
   assert.match(toolbar, /id:\s*"crop"[\s\S]*icon:\s*"crop"/);
   assert.match(toolbar, /id:\s*"delete"[\s\S]*icon:\s*"delete"/);
-  assert.match(route, /history:\s*\{[\s\S]*undo:\s*editor\.undo/);
-  assert.match(route, /directDownload:[\s\S]*onTrigger:\s*editor\.download/);
+  assert.match(route, /history:\s*\{[\s\S]*undo:\s*view\.undo/);
+  assert.match(route, /directDownload:[\s\S]*onTrigger:[\s\S]*editor\.download/);
   assert.match(route, /capture:\s*editor\.captureRecovery/);
   assert.match(route, /restore:\s*editor\.restoreRecovery/);
   assert.match(workbench, /encodeWav\(source\)/);

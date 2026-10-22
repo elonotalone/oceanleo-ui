@@ -5,7 +5,29 @@
  * 本模块不读、不写、不缓存任何 API key。
  */
 import { payerRequestFields } from "../../lib/payer";
-import { keepWindowsAfterCut } from "./audio-playlist-engine";
+
+/** 删掉 [start, end) 之后要保留的窗口。 */
+export function keepWindowsAfterCut(
+  duration: number,
+  start: number,
+  end: number,
+): { start: number; end: number }[] {
+  if (
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start
+  ) {
+    return [];
+  }
+  const from = Math.max(0, Math.min(start, duration));
+  const to = Math.max(0, Math.min(end, duration));
+  const keep: { start: number; end: number }[] = [];
+  if (from > 0) keep.push({ start: 0, end: from });
+  if (to < duration) keep.push({ start: to, end: duration });
+  return keep;
+}
 
 export interface AudioTranscriptSentence {
   id: string;

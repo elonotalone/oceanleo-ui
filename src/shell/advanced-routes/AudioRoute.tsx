@@ -1,25 +1,8 @@
 "use client";
 
-import { afterAdvancedDraftExport, ensureAdvancedDraftExport, flushAdvancedDraftGate } from "../advanced-draft-gates";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
-import dynamic from "next/dynamic";
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport } from "../advanced-draft-gates";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { resolveEditorCore } from "../editor-core-flags";
-import { usePluginMode } from "../plugin-chrome/plugin-mode";
-import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
-import {
-  resolveW19Handoff,
-  stashW19EnterHandoff,
-  useW19ProSavedRevision,
-  w19ItemKey,
-} from "./w19-handoff-store";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -38,6 +21,7 @@ import {
   visualDownloadFormats,
   visualUploadAccept,
 } from "../media-editors/visual-formats";
+import { AudioTranscriptSection } from "../media-editors/AudioTranscriptSection";
 import { AudioContextToolbar } from "../media-editors/AudioContextToolbar";
 import {
   AudioControls,
@@ -60,48 +44,6 @@ import {
 } from "../workbench-material-provider";
 import { audioSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 
-/**
- * 新核舞台的懒加载入口。
- *
- * `import()` 的字面量必须写在这一层：它是打包器切 chunk 的唯一依据。
- * `ssr: false` 是硬要求——waveform-playlist 碰 AudioContext / canvas。
- */
-const AudioPlaylistStage = dynamic(
-  () =>
-    import("../media-editors/AudioPlaylistStage").then(
-      (module) => module.AudioPlaylistStage,
-    ),
-  { ssr: false, loading: () => null },
-);
-
-/**
- * 双核分发口。flag 只在这里判一次，判完各走各的组件。
- *
- * 默认 `legacy`（`_COMMON.md` §10 第 3 条）。验收绿之后才翻 flag，
- * 删除旧核要单独成一个 commit，message 以 core-swap:delete 开头。
- */
-export function AudioRoute(props: AdvancedContentWorkbenchProps) {
-  if (resolveEditorCore("audio") === "next") {
-    return <AudioPlaylistStage {...props} />;
-  }
-  // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
-  return <AudioGated {...props} />;
-}
-
-function AudioGated(props: AdvancedContentWorkbenchProps) {
-  const enterProRef = useRef<(() => Promise<unknown>) | null>(null);
-  return (
-    <PluginModeSwitchGate
-      pluginId="audio"
-      beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
-      renderNormal={() => (
-        <AudioLegacyRoute {...props} enterProRef={enterProRef} />
-      )}
-      renderPro={() => <AudioPlaylistStage {...props} />}
-    />
-  );
-}
-
 /** 协同只读时覆盖撤销/重做：不可用且点了不动。 */
 const COLLAB_READONLY_HISTORY = {
   canUndo: false,
@@ -110,7 +52,8 @@ const COLLAB_READONLY_HISTORY = {
   redo: () => {},
 };
 
-function AudioLegacyRoute({
+/** 音频编辑器：wavesurfer.js 单一模式，没有 Pro 页。 */
+export function AudioRoute({
   item,
   previewContent,
   linkUrl,
@@ -118,12 +61,8 @@ function AudioLegacyRoute({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-  enterProRef,
-}: AdvancedContentWorkbenchProps & {
-  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
-}) {
-  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("audio", item));
-  const editor = useAudioWorkbench(saved ?? item, siteId);
+}: AdvancedContentWorkbenchProps) {
+  const editor = useAudioWorkbench(item, siteId);
   const [deliverBusy, setDeliverBusy] = useState(false);
   const [deliverNotice, setDeliverNotice] = useState("");
   // ---- 多人同改（W14 / F07）：合并粒度 = 一条编辑操作。对方的改动经 applyRemoteProject 重放上来：
@@ -266,12 +205,12 @@ function AudioLegacyRoute({
           {
             ...createAudioCommandSurface({ editor: view, deliver }),
             target: () => pluginTargetForLibraryItem(
-              saved ?? item, "audio", `${view.editRevision}:${view.contentVersion}`,
+              item, "audio", `${view.editRevision}:${view.contentVersion}`,
             ),
           },
           collabReadOnly,
         ),
-      [collabReadOnly, deliver, item, saved, view],
+      [collabReadOnly, deliver, item, view],
     ),
   );
   const audioAdmitted = audioSourcePersistenceAdmitted({
@@ -321,30 +260,6 @@ function AudioLegacyRoute({
     },
     [editor.importSource],
   );
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂新核。
-  const { setMode: setEditorMode } = usePluginMode("audio");
-  // 切回「编辑」时的 ready 信号：音频载入完就算首帧可见。
-  useModeSwitchReady(!editor.loading);
-  useEffect(() => {
-    enterProRef.current = async () => {
-      const gate = await flushAdvancedDraftGate(item.key || item.id);
-      if (gate && !gate.ok) return gate;
-      const blob = editor.wavBlob();
-      const handoff = blob
-        ? {
-            kind: "url" as const,
-            url: URL.createObjectURL(blob),
-            format: "wav",
-            revision: String(editor.editRevision),
-          }
-        : resolveW19Handoff(item, null);
-      stashW19EnterHandoff(w19ItemKey("audio", item), handoff);
-      return { ok: true, handoff, item: gate?.item ?? saved ?? item };
-    };
-    return () => {
-      enterProRef.current = null;
-    };
-  }, [editor, enterProRef, item, saved]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -358,7 +273,17 @@ function AudioLegacyRoute({
         toolbox: {
           label: "音轨工具",
           icon: "timeline",
-          content: <AudioControls editor={view} accent={accent} readOnly={collabReadOnly} />,
+          content: (
+            <>
+              <AudioControls editor={view} accent={accent} readOnly={collabReadOnly} />
+              <AudioTranscriptSection
+                editor={view}
+                title={item.title || "audio"}
+                siteId={siteId}
+                readOnly={collabReadOnly}
+              />
+            </>
+          ),
         },
         contextToolbar: <AudioContextToolbar editor={view} accent={accent} readOnly={collabReadOnly} />,
         history: {
@@ -376,11 +301,6 @@ function AudioLegacyRoute({
           setValue: (value) => editor.setWaveformZoom((value / 100) * 30),
           fit: () => editor.setWaveformZoom(30),
         },
-        mode: {
-          current: "normal",
-          setMode: setEditorMode,
-        },
-        pages: {},
         directDownload: {
           id: "audio-download-wav",
           label: visualDownloadFormats("audio")[0].label,
