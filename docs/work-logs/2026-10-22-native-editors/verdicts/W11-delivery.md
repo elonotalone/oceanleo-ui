@@ -46,7 +46,7 @@
   (`test_game_iteration_preflight.py` and `test_game_generate_router_document.py` fail at collection in this environment on a pre-existing
   fastapi/pydantic `PYDANTIC_V2` import error, unrelated; not run.)
 - oceanleo-ui: `run-light ... --test tests/game-core-swap.test.mjs tests/eas-w20-game-video-canvas.test.mjs` -> 12 pass, 0 fail.
-- oceanleo-ui `tsc --noEmit` NOT completed: the run-heavy disk lane stayed queued behind another owner (10+ min). The UI edits only delete code; parent should typecheck GameRoute/GameCodeStage/game-pages/game-next-mode. Game `three-runtime.ts` was checked with a standalone strict tsc (clean).
+- oceanleo-ui `run-heavy -- npx tsc --noEmit -p .` (after all edits): 8 errors, none in W11 files (VideoTimelineRoute `useRef`, grid-univer `xlsx-export.ts` operator types belong to other owners).
 - `collab/adapters/game.ts` needed no change (no mode code).
 
 ## Now live: runtime travels inside the stored document (parent follow-up)
@@ -67,14 +67,26 @@ dirty game-repo host file is needed.
 - Verification: `cd backend && python3 -m pytest -q tests/test_game_three_runtime.py tests/test_game_generation_chain.py` -> 23 passed;
   `cd /root/projects/game && node --import ./tests/register-tsx.mjs --test tests/ugc-three-runtime.test.ts tests/ugc-engine-runtime.test.ts` -> 12 pass.
 
+## Hidden from the user, normalized on every save (second parent follow-up)
+- Display: `game-source.ts` `splitGameRuntime/joinGameRuntime`; `readGameEnvelope` strips the marked script (returns `hiddenRuntime`), size
+  (`gameSourceByteLength`, `inspectGameDraft`, envelope `sizeBytes`) excludes it; `GameCodeStage` routes every source entry through a stripping
+  setter (shared text, agent port, stash/recovery all see the stripped source). Unsaved-draft preview re-attaches the runtime (only while THREE
+  is still used). `buildGameEnvelope` never sends a runtime.
+- Save paths found: (a) Code page and (b) Edit-page prompt iteration/remix both end in `POST .../revisions` -> `typed_artifact_wire.adapt_deployed_revision`
+  (client uploads envelope bytes, commits by URL+digest); (c) backend generate/official/iterate go through `run_generation_chain`. (a)/(b-commit)
+  now pass `_normalize_game_blob` / `normalize_game_envelope`: the envelope is read, `inject_three_runtime` re-run (3D -> exactly one backend runtime, any
+  client-supplied/forged one replaced, 2D -> none, `sizeBytes` recomputed, over-2MB refused), the rewritten JSON is re-persisted and used for both `source`
+  and `full` renditions (one write). Fork copies a stored (already normalized) document. No other game-document write endpoint exists (D8: no upload).
+- Tests: backend `test_game_three_runtime.py` (18 incl. 5 save-normalization tests); `test_typed_artifact_save_contract.py` harness now supplies a
+  2D envelope for game commits (52 pass; 1 pre-existing unrelated PYDANTIC_V2 import failure `test_wire_error_for_zip_cover_speaks_chinese`);
+  oceanleo-ui `tests/game-runtime-hidden.test.mjs` (5 tests: strip, size, 2D untouched, join, save never sends runtime, stage wiring).
+  `tests/W6-r2-source-lifecycle.test.mjs` fails on a missing `client-local-editors.ts` removed by another owner (not W11).
+
 ## Remaining
-- Documents stored before this change that already use THREE have no runtime until regenerated/iterated; the host-side wiring in
-  dirty game files (`UgcGameFrame.tsx` etc., `composeEngineRuntime` + `fetchThreeRuntime` with `public/leoplay-three.js`) is optional
-  and now only covers those; not applied.
-- Code page (`GameCodeStage`, not wired for this) shows the full stored source including the ~700KB inlined runtime script and counts it
-  toward size; a UI that hides/re-attaches the marked script is a follow-up (the strip/inject functions make it simple). Saves from the Code
-  page keep the script verbatim, so nothing is lost.
-- `public/leoplay-three.js` and `fetchThreeRuntime` remain only for the optional host path above.
+- Documents stored before this change that already use THREE have no runtime until next generate/iterate/save.
+- Edit-page preview of an unsaved Code-page draft (GameRoute passes the stripped `document_.source`) has no runtime for 3D games; the Code page's own
+  preview is correct. Fix needs the hidden runtime carried in the working document; not done.
+- Host-side optional wiring (`fetchThreeRuntime`, `public/leoplay-three.js`) in dirty game files not applied.
 
 ## Honest limitations
 - WebGL inside the sandboxed frame was not verified (no browser allowed); `allow-scripts` iframes normally get WebGL, and the stage
