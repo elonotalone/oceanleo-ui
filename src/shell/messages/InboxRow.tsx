@@ -1,6 +1,8 @@
 "use client";
 
 // 收件箱的一行：头像（群为拼图）、标题、「外部」标记、最后一条、时间、未读与 @ 角标、免打扰图标、草稿提示。
+// 会话里正在通话：右列时间下方是耳机 + 人数的标记（calls-v2 W08），点标记直接加入。整行是 <button>，
+// 标记也是按钮，不能套在里面——画在行外、叠在右列预留的位置上。
 import type { MouseEvent } from "react";
 import { conversationDisplayTitle } from "../../lib/im/people-api";
 import { avatarMembersOf } from "../../lib/im/types";
@@ -8,6 +10,8 @@ import type { ImConversationSummary } from "../../lib/im/types";
 import { useUI } from "../../i18n/ui/useUI";
 import { formatBadge } from "./realtime/store";
 import { GroupAvatar } from "./groups/GroupAvatar";
+import { InboxCallBadge } from "./call/chat/InboxCallBadge";
+import { useActiveCallSummary } from "./call/chat/use-conversation-call";
 
 const TILE_COLORS = ["#38bdf8", "#818cf8", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#2dd4bf"];
 
@@ -114,6 +118,11 @@ export function InboxRow({
 }) {
   const tt = useUI();
   const title = conversationTitle(item);
+  // 列表接口的 `active_call`（calls-v2 §3.2）+ 实时 `call` 事件；交易会话没有通话。
+  const activeCall = useActiveCallSummary(
+    item.kind === "talent" ? null : item.id,
+    (item as ImConversationSummary & { active_call?: unknown }).active_call,
+  );
   const unread = formatBadge(item.unread_count);
   const mention = item.mention_count > 0;
   const last = item.last_message;
@@ -121,63 +130,71 @@ export function InboxRow({
   if (item.dissolved) preview = tt("群已解散");
   else if (last) preview = tt(last.preview);
   return (
-    <button
-      type="button"
-      data-testid="inbox-row"
-      data-conversation-id={item.id}
-      data-pinned={item.pinned ? "true" : undefined}
-      aria-current={active ? "true" : undefined}
-      onClick={() => onOpen(item.id)}
-      onContextMenu={onContextMenu ? (event) => onContextMenu(event, item) : undefined}
-      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-    >
-      <span className="relative shrink-0">
-        <Avatar item={item} />
-        {unread ? (
-          <span
-            data-im-unread=""
-            data-im-unread-count={unread === "1" ? undefined : unread}
-            aria-label={tt("未读 {count} 条", { count: unread })}
-            className={`absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white ${item.muted ? "opacity-40" : ""}`}
-          >
-            {unread === "1" ? "" : unread}
+    <div className="relative" data-inbox-row-wrap="">
+      <button
+        type="button"
+        data-testid="inbox-row"
+        data-conversation-id={item.id}
+        data-pinned={item.pinned ? "true" : undefined}
+        aria-current={active ? "true" : undefined}
+        onClick={() => onOpen(item.id)}
+        onContextMenu={onContextMenu ? (event) => onContextMenu(event, item) : undefined}
+        className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+      >
+        <span className="relative shrink-0">
+          <Avatar item={item} />
+          {unread ? (
+            <span
+              data-im-unread=""
+              data-im-unread-count={unread === "1" ? undefined : unread}
+              aria-label={tt("未读 {count} 条", { count: unread })}
+              className={`absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white ${item.muted ? "opacity-40" : ""}`}
+            >
+              {unread === "1" ? "" : unread}
+            </span>
+          ) : null}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-[13px] font-semibold tracking-tight">{title}</span>
+            {mention ? (
+              <span className="shrink-0 text-[11px] font-semibold text-orange-500" aria-label={tt("有人@你")}>
+                @
+              </span>
+            ) : null}
+            {item.pinned ? (
+              <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35" title={tt("置顶")}>
+                {tt("置顶")}
+              </span>
+            ) : null}
+            {item.has_external ? (
+              <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
+                {tt("外部")}
+              </span>
+            ) : null}
+            {item.muted ? (
+              <span className="shrink-0 text-black/35 dark:text-white/35" title={tt("消息免打扰")}>
+                <MutedIcon />
+              </span>
+            ) : null}
           </span>
-        ) : null}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-[13px] font-semibold tracking-tight">{title}</span>
-          {mention ? (
-            <span className="shrink-0 text-[11px] font-semibold text-orange-500" aria-label={tt("有人@你")}>
-              @
-            </span>
-          ) : null}
-          {item.pinned ? (
-            <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35" title={tt("置顶")}>
-              {tt("置顶")}
-            </span>
-          ) : null}
-          {item.has_external ? (
-            <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
-              {tt("外部")}
-            </span>
-          ) : null}
-          {item.muted ? (
-            <span className="shrink-0 text-black/35 dark:text-white/35" title={tt("消息免打扰")}>
-              <MutedIcon />
-            </span>
-          ) : null}
+          <span className="mt-0.5 flex items-center gap-1 text-[12px] text-black/40 dark:text-white/40">
+            {hasDraft ? <span className="shrink-0 text-red-500">{tt("[草稿]")}</span> : null}
+            <span className="truncate">{preview}</span>
+          </span>
         </span>
-        <span className="mt-0.5 flex items-center gap-1 text-[12px] text-black/40 dark:text-white/40">
-          {hasDraft ? <span className="shrink-0 text-red-500">{tt("[草稿]")}</span> : null}
-          <span className="truncate">{preview}</span>
+        <span className="flex shrink-0 flex-col items-end gap-1">
+          <span className="text-[12px] text-black/35 dark:text-white/35">
+            {item.last_activity_at ? formatRowTime(item.last_activity_at, new Date(), tt("昨天")) : ""}
+          </span>
+          {activeCall ? <span aria-hidden="true" className="block h-5 w-11" data-inbox-call-slot="" /> : null}
         </span>
-      </span>
-      <span className="flex shrink-0 flex-col items-end gap-1">
-        <span className="text-[12px] text-black/35 dark:text-white/35">
-          {item.last_activity_at ? formatRowTime(item.last_activity_at, new Date(), tt("昨天")) : ""}
+      </button>
+      {activeCall ? (
+        <span className="absolute bottom-2.5 right-3">
+          <InboxCallBadge conversationId={item.id} activeCall={activeCall} />
         </span>
-      </span>
-    </button>
+      ) : null}
+    </div>
   );
 }

@@ -22,7 +22,14 @@ import { PinnedBar } from "./PinnedBar";
 import { TypingLine, useTypingUsers } from "./TypingLine";
 import { getConversationStore, unreadBoundary, type ConversationStore } from "./conversation-store";
 import { historyEventTargetsConversation, subscribeHistoryCleared } from "./history-events";
-import { openMeeting } from "../meeting/meeting-host-state";
+import {
+  CallButton,
+  CallChatProvider,
+  callMetaOf,
+  callMetaUserIds,
+  useEndedCallIndex,
+  type CallChatContextValue,
+} from "../call/chat";
 
 export interface ConversationViewProps {
   conversationId: string;
@@ -272,8 +279,13 @@ function ConversationBody(props: ConversationViewProps & {
     [],
   );
 
+  // 通话系统消息（calls-v2 §3.4）的 meta：卡片要用的名字 / 头像，以及「这通已结束」的时长与参与者。
+  const callMetas = useMemo(() => snapshot.messages.map((m) => callMetaOf(m)), [snapshot.messages]);
+  const endedMetaOf = useEndedCallIndex(callMetas);
+
   const referencedIds = useMemo(() => {
     const ids = new Set<string>();
+    for (const meta of callMetas) for (const id of callMetaUserIds(meta)) ids.add(id);
     for (const m of snapshot.messages) {
       if (m.sender_id) ids.add(m.sender_id);
       for (const id of m.mentions) ids.add(id);
@@ -283,7 +295,7 @@ function ConversationBody(props: ConversationViewProps & {
     }
     for (const p of snapshot.pins) if (p.sender_id) ids.add(p.sender_id);
     return Array.from(ids);
-  }, [snapshot.messages, snapshot.pins]);
+  }, [snapshot.messages, snapshot.pins, callMetas]);
   const profiles = useProfileMap(conversation, referencedIds);
 
   const isAdmin = conversation?.my_role === "owner" || conversation?.my_role === "admin";
@@ -350,6 +362,26 @@ function ConversationBody(props: ConversationViewProps & {
   const notMember = conversation !== null && conversation.my_role === null && conversation.kind !== "dm";
   const disabledReason = dissolved ? tt("这个群已解散，历史消息只读。") : notMember ? tt("你已不在这个会话里。") : undefined;
   const peerPresence = peerId ? presence[peerId] : undefined;
+  const showCallButton = Boolean(conversation) && conversation?.kind !== "talent" && !dissolved && !notMember;
+
+  const callChat = useMemo<CallChatContextValue>(
+    () => ({
+      viewerId,
+      conversationId,
+      conversationKind: conversation?.kind ?? null,
+      conversationTitle: title,
+      profileOf: (userId) => (userId ? profiles[userId] : undefined),
+      nameOf: (userId) => {
+        const profile = userId ? profiles[userId] : undefined;
+        if (!profile) return "";
+        return visiblePersonName(profile, {
+          showNickname: conversation?.kind !== "dm" && conversation?.show_member_nicknames !== false,
+        });
+      },
+      endedMetaOf,
+    }),
+    [viewerId, conversationId, conversation?.kind, conversation?.show_member_nicknames, title, profiles, endedMetaOf],
+  );
 
   return (
     <div className="relative flex h-full min-h-0" data-conversation-view={conversationId}>
@@ -395,14 +427,8 @@ function ConversationBody(props: ConversationViewProps & {
               <ImInfoIcon />
             </button>
           ) : null}
-          {conversation && conversation.kind !== "talent" && !dissolved && !notMember ? (
-            <button type="button" data-im-chrome-btn onClick={() => conversation && openMeeting({
-              conversationId, conversationTitle: title, myUserId: viewerId, myRole: conversation.my_role,
-              profiles, members: conversation.members,
-            })} aria-label={tt("会议")} title={tt("会议")}>
-              <span aria-hidden="true">◉</span>
-              <span className="sr-only">{tt("会议")}</span>
-            </button>
+          {showCallButton && conversation ? (
+            <CallButton conversationId={conversationId} title={title} kind={conversation.kind} />
           ) : null}
         </header>
         <PinnedBar
@@ -420,7 +446,7 @@ function ConversationBody(props: ConversationViewProps & {
             }}
           />
         ) : (
-          <>
+          <CallChatProvider value={callChat}>
             <MessageList
               store={store}
               snapshot={snapshot}
@@ -443,7 +469,7 @@ function ConversationBody(props: ConversationViewProps & {
               scrollToMessageId={scrollTarget}
             />
             <TypingLine names={typing.map((id) => nameOf(id))} />
-          </>
+          </CallChatProvider>
         )}
         <Composer
           store={store}

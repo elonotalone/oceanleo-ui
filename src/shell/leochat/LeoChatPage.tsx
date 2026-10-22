@@ -11,6 +11,7 @@ import { bayEnabledHere, setBaySiteKey } from "../bay/shell/bay-state";
 import { hostState, useMessagesHost } from "../messages/host-state";
 import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
 import { useImUnread } from "../messages/realtime/hooks";
+import { consumeCallDeepLink } from "../messages/call/incoming/deep-link";
 import { LeoChatBody } from "./leochat-body";
 import { LeoChatTabs } from "./LeoChatTabs";
 
@@ -95,6 +96,11 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
 
   const pageState =
     availability === "off" ? "unavailable" : availability === "pending" ? "pending" : imOn ? "ready" : authReady ? "signin" : "pending";
+
+  // 通话推送深链 `/leochat?c=<会话>&call=<通话>`（calls-v2 §3.3）：打开该会话，通话仍在进行就弹接听卡片。
+  useEffect(() => {
+    if (pageState === "ready") consumeCallDeepLink();
+  }, [pageState]);
 
   return (
     <div className={FRAME_CLASS} data-leochat-page={pageState}>

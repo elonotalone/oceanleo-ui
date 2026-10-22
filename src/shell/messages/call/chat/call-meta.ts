@@ -3,7 +3,13 @@
 // 一律防御：meta 缺省、为 null、字段类型不对、id 形状不对 → 当没有；认不出的 kind → 返回 null（退回普通系统行）。
 import type { CallMessageKind } from "../../../../lib/im/call-types";
 
-export const CALL_MESSAGE_KINDS: readonly CallMessageKind[] = [
+/**
+ * 卡片认的 kind：合同 §3.4 的十种，加仲裁 A-13 追加的 `call_recording_failed`（W02 发，字段 `call_id, recording_id, error`）。
+ * 本地扩展，不要求 W05 改 `CallMessageKind`。
+ */
+export type CallCardKind = CallMessageKind | "call_recording_failed";
+
+export const CALL_MESSAGE_KINDS: readonly CallCardKind[] = [
   "call_started",
   "call_ended",
   "call_missed",
@@ -11,6 +17,7 @@ export const CALL_MESSAGE_KINDS: readonly CallMessageKind[] = [
   "call_recording_started",
   "call_recording_stopped",
   "call_recording_ready",
+  "call_recording_failed",
   "call_transcription_started",
   "call_transcription_stopped",
   "call_minutes",
@@ -24,7 +31,7 @@ const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/;
 const MAX_IDS = 60;
 
 export interface CallCardMeta {
-  kind: CallMessageKind;
+  kind: CallCardKind;
   callId: string;
   startedBy: string | null;
   durationSeconds: number | null;
@@ -88,7 +95,7 @@ export function callMetaOf(message: { sender_kind?: unknown; kind?: unknown; met
   const callId = idOf(meta.call_id);
   if (!callId) return null;
   return {
-    kind: kind as CallMessageKind,
+    kind: kind as CallCardKind,
     callId,
     startedBy: idOf(meta.started_by),
     durationSeconds: countOf(meta.duration_seconds),
