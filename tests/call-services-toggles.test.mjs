@@ -1053,18 +1053,63 @@ test("采集：优先 clone 引擎的麦克风轨道（A-9），只 stop 自己�
   assert.match(capture, /isIosWebKit\(\)\) throw new Error\("capture_unsupported"\)/);
   assert.match(capture, /echoCancellation: true/);
   assert.match(capture, /deviceId: \{ exact: deviceId \}/);
-  assert.match(capture, /audioWorklet\.addModule/);
-  assert.match(capture, /createScriptProcessor/);
+  assert.match(capture, /from "\.\.\/\.\.\/\.\.\/\.\.\/lib\/call-pcm-worklet"/, "AudioWorklet 处理器在消息目录之外（A-26）");
+  assert.match(capture, /connectCallPcmWorklet\(ctx, source,/);
+  assert.match(capture, /createScriptProcessor/, "不支持 AudioWorklet 时回落");
   assert.doesNotMatch(capture, /getter[^;]*\.stop\(\)/, "引擎原轨道从不 stop");
+  const worklet = readFileSync(new URL("../src/lib/call-pcm-worklet.ts", import.meta.url), "utf8");
+  assert.match(worklet, /audioWorklet\.addModule/);
+  assert.match(worklet, /data instanceof Float32Array/, "主线程只收 Float32Array");
   const host = readFileSync(new URL("CallServicesHost.tsx", SERVICES_DIR), "utf8");
   assert.match(host, /useImEvent\("call_caption"/);
   assert.match(host, /micDeviceId/);
 });
 
-test("安全：服务目录不新增 innerHTML / dangerouslySetInnerHTML / eval / new Function / postMessage(*)", () => {
+test("AudioWorklet 处理器（src/lib/call-pcm-worklet.ts）：多声道平均成单声道、攒够一块才交（转移缓冲区）、输出全 0", async () => {
+  const vm = await import("node:vm");
+  const mod = await import("../src/lib/call-pcm-worklet.ts");
+  assert.equal(mod.callPcmWorkletChunk(48000), 2400, "48 kHz 下约 50 ms 一块");
+  assert.equal(mod.callPcmWorkletChunk(1000), 128, "至少一个渲染量子");
+  const registered = {};
+  const posted = [];
+  class FakeProcessor {
+    constructor() {
+      this.port = { postMessage: (data, transfer) => posted.push({ data, transfer }) };
+    }
+  }
+  vm.runInNewContext(mod.CALL_PCM_WORKLET_SOURCE, {
+    AudioWorkletProcessor: FakeProcessor,
+    registerProcessor: (name, cls) => {
+      registered[name] = cls;
+    },
+    Float32Array,
+    Math,
+  });
+  const Processor = registered[mod.CALL_PCM_WORKLET_NAME];
+  assert.equal(typeof Processor, "function", "按约定的名字注册");
+  const p = new Processor({ processorOptions: { chunk: 4 } });
+  assert.equal(p.size, 128, "块长不小于 128");
+  const q = new Processor({ processorOptions: { chunk: 256 } });
+  const out = [new Float32Array(128).fill(9)];
+  const left = new Float32Array(128).fill(0.5);
+  const right = new Float32Array(128).fill(-0.25);
+  assert.equal(q.process([[left, right]], [out]), true);
+  assert.equal(out[0].every((v) => v === 0), true, "输出全写 0，不出声");
+  assert.equal(posted.length, 0, "不满一块不交");
+  q.process([[left, right]], [out]);
+  assert.equal(posted.length, 1);
+  assert.ok(posted[0].data instanceof Float32Array);
+  assert.equal(posted[0].data.length, 256);
+  assert.equal(posted[0].data[0], 0.125, "两声道平均");
+  assert.equal(posted[0].transfer.length, 1);
+  assert.equal(posted[0].transfer[0], posted[0].data.buffer, "转移缓冲区，不拷贝");
+  assert.equal(q.process([], [out]), true, "没有输入也继续活着");
+});
+
+test("安全：服务目录不新增 innerHTML / dangerouslySetInnerHTML / eval / new Function，也不收发 postMessage（同 im-acceptance-static #12）", () => {
   for (const { name, text } of serviceSourceFiles()) {
     assert.doesNotMatch(text, /dangerouslySetInnerHTML|\.innerHTML\s*=|\beval\(|new Function\(/, name);
-    assert.doesNotMatch(text, /postMessage\([^)]*["']\*["']/, name);
+    assert.doesNotMatch(text, /\.postMessage\(|addEventListener\(\s*["']message["']/, name);
   }
 });
 

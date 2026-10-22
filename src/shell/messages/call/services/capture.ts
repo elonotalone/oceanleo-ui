@@ -5,30 +5,13 @@
 //   2. 引擎没给（旧版本/还没发布）：对同一个设备（`useCall().me.micDeviceId`）另开一次 getUserMedia，
 //      开回声消除——不然扬声器里别人的声音会被当成你的话再转写一遍。
 //      iOS WebKit 上第二次采集会把通话本身的麦克风轨道静音，所以 iOS 不另开（抛 capture_unsupported）。
-// PCM：AudioWorklet 把输入（多声道平均成单声道）按约 50 ms 一块送回主线程；不支持 AudioWorklet
+// PCM：AudioWorklet 把输入（多声道平均成单声道）按约 50 ms 一块送回主线程——处理器与它的端口接线在
+// `src/lib/call-pcm-worklet.ts`（仲裁 A-26：消息目录里不收发 postMessage）；不支持 AudioWorklet
 // （或模块加载被内容安全策略拦下）时回落 ScriptProcessorNode。重采样与分帧在主线程（pcm.ts）。
+import { connectCallPcmWorklet, type CallPcmWorklet } from "../../../../lib/call-pcm-worklet";
 import * as engine from "../engine";
 import { downmixToMono } from "./pcm";
 import type { CaptureHandle, CaptureRequest } from "./controller";
-
-const WORKLET_NAME = "oceanleo-captions-capture";
-
-/** AudioWorklet 处理器源码（Blob URL 加载；与 Leo 实时通话的写法一致）。 */
-export const CAPTURE_WORKLET_SOURCE =
-  "class OceanLeoCaptionsCapture extends AudioWorkletProcessor{" +
-  "constructor(options){super();const o=(options&&options.processorOptions)||{};" +
-  "this.size=Math.max(128,o.chunk|0);this.buf=new Float32Array(this.size);this.fill=0;}" +
-  "process(inputs,outputs){const out=outputs[0];if(out){for(let c=0;c<out.length;c++)out[c].fill(0);}" +
-  "const input=inputs[0];if(!input||input.length===0)return true;const ch=input.length,n=input[0].length;" +
-  "for(let i=0;i<n;i++){let s=0;for(let c=0;c<ch;c++)s+=input[c][i];this.buf[this.fill++]=s/ch;" +
-  "if(this.fill===this.size){this.port.postMessage(this.buf,[this.buf.buffer]);this.buf=new Float32Array(this.size);this.fill=0;}}" +
-  "return true;}}" +
-  `registerProcessor(${JSON.stringify(WORKLET_NAME)},OceanLeoCaptionsCapture);`;
-
-/** 主线程每块约 50 ms。 */
-export function workletChunkSamples(sampleRate: number): number {
-  return Math.max(128, Math.round(sampleRate * 0.05));
-}
 
 interface NavigatorLike {
   userAgent?: string;
@@ -106,7 +89,7 @@ export async function startBrowserMicCapture(request: CaptureRequest): Promise<C
   const track = await acquireTrack(request.deviceId);
   let context: AudioContext | null = null;
   let source: MediaStreamAudioSourceNode | null = null;
-  let worklet: AudioWorkletNode | null = null;
+  let worklet: CallPcmWorklet | null = null;
   let processor: ScriptProcessorNode | null = null;
   let stopped = false;
   const gestureEvents = ["pointerdown", "keydown"] as const;
@@ -131,14 +114,7 @@ export async function startBrowserMicCapture(request: CaptureRequest): Promise<C
     } catch {
       /* ignore */
     }
-    if (worklet) {
-      worklet.port.onmessage = null;
-      try {
-        worklet.disconnect();
-      } catch {
-        /* ignore */
-      }
-    }
+    worklet?.dispose();
     if (processor) {
       processor.onaudioprocess = null;
       try {
@@ -168,33 +144,11 @@ export async function startBrowserMicCapture(request: CaptureRequest): Promise<C
       for (const name of gestureEvents) window.addEventListener(name, resumeOnGesture, true);
     }
     source = ctx.createMediaStreamSource(new MediaStream([track]));
-    let useWorklet = typeof AudioWorkletNode !== "undefined" && Boolean(ctx.audioWorklet);
-    if (useWorklet) {
-      const url = URL.createObjectURL(new Blob([CAPTURE_WORKLET_SOURCE], { type: "text/javascript" }));
-      try {
-        await ctx.audioWorklet.addModule(url);
-      } catch {
-        useWorklet = false; // 内容安全策略不放行 blob: 等：回落
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    }
-    if (useWorklet) {
-      const node = new AudioWorkletNode(ctx, WORKLET_NAME, {
-        numberOfInputs: 1,
-        numberOfOutputs: 1,
-        outputChannelCount: [1],
-        processorOptions: { chunk: workletChunkSamples(ctx.sampleRate) },
-      });
-      node.port.onmessage = (event: MessageEvent<unknown>) => {
-        if (stopped) return;
-        const data = event.data;
-        if (data instanceof Float32Array && data.length > 0) request.onSamples(data);
-      };
-      source.connect(node);
-      node.connect(ctx.destination); // 输出全是 0：只为让音频图持续拉取
-      worklet = node;
-    } else {
+    worklet = await connectCallPcmWorklet(ctx, source, (samples) => {
+      if (!stopped) request.onSamples(samples);
+    });
+    if (!worklet) {
+      // 回落：ScriptProcessorNode（已废弃但普遍可用）。
       if (typeof ctx.createScriptProcessor !== "function") throw new Error("capture_unsupported");
       const node = ctx.createScriptProcessor(4096, 1, 1);
       node.onaudioprocess = (event: AudioProcessingEvent) => {
