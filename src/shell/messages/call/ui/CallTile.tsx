@@ -49,6 +49,8 @@ export function CallTile({ participant, variant, audioOnly, narrow = false }: Ca
     participant.speaking ? tt("正在说话") : null,
     participant.connection === "reconnecting" ? tt("正在重连") : null,
   ].filter(Boolean);
+  // 读屏句子里名字与状态之间的停顿：标点按语种翻（中文「，」、英文「, 」、日文「、」）。
+  const spoken = [name, ...states].join(tt("，"));
   const compact = variant === "dock";
   const withMenu = !compact && !participant.isMe;
 
@@ -103,7 +105,7 @@ export function CallTile({ participant, variant, audioOnly, narrow = false }: Ca
       ) : null}
 
       {/* 读屏读这一行：名字 + 状态。小窗的格子太小，名字只放在 title 与读屏文字里。 */}
-      <span className="sr-only">{[name, ...states].join("，")}</span>
+      <span className="sr-only">{spoken}</span>
 
       {compact ? (
         participant.mic && !participant.locallyMuted ? null : (

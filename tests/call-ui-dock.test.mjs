@@ -679,3 +679,33 @@ test("产物同步：call/ui 用到的每个 Tailwind 工具类都已在 src/the
   const missing = utilities.filter((name) => !present.has(name)).sort();
   assert.deepEqual(missing, [], "这些类不在 ui.css 里：改用已有的类或行内 style（ui.css 不是 W07 的独占面）");
 });
+
+test("A17 文案：call/ui 里每个 tt 键在合并后的词典（UI_MESSAGES）17 种语言都有译文、占位符一个不少；本表的键没被别的表改写", async () => {
+  const { UI_MESSAGES } = await import(pathToFileURL(join(REPO, "src/i18n/ui/messages/index.ts")).href);
+  const { CALL_UI_MESSAGES } = await import(pathToFileURL(join(REPO, "src/i18n/ui/messages/call-ui-copy.ts")).href);
+  const keys = new Set();
+  for (const file of uiFiles) {
+    for (const match of stripJsComments(readFileSync(join(REPO, file), "utf8")).matchAll(/\btt\(\s*"((?:[^"\\]|\\.)*)"/g)) {
+      keys.add(JSON.parse(`"${match[1]}"`));
+    }
+  }
+  assert.ok(keys.size > 50, `call/ui 应有几十个界面文案键，实际 ${keys.size}`);
+  const locales = Object.keys(UI_MESSAGES);
+  assert.equal(locales.length, 17);
+  const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort().join(",");
+  const problems = [];
+  for (const locale of locales) {
+    for (const key of keys) {
+      const value = UI_MESSAGES[locale][key];
+      if (typeof value !== "string" || !value.trim()) {
+        problems.push(`${locale} 缺：${key}`);
+        continue;
+      }
+      if (placeholders(value) !== placeholders(key)) problems.push(`${locale} 占位符不对：${key} → ${value}`);
+      // 拉丁、阿拉伯、泰、天城、韩文的语种里不该还留着汉字（= 没翻、回退成了中文原文）。
+      if (!["zh", "zh-TW", "ja"].includes(locale) && /\p{Script=Han}/u.test(value)) problems.push(`${locale} 没翻：${key} → ${value}`);
+      if (key in CALL_UI_MESSAGES[locale] && CALL_UI_MESSAGES[locale][key] !== value) problems.push(`${locale} 被别的表改写：${key} → ${value}`);
+    }
+  }
+  assert.deepEqual(problems, []);
+});
