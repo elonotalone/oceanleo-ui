@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  Suspense,
   createElement,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -73,15 +75,15 @@ import {
   useVisibleViewerGate,
 } from "./library-viewer-first-paint";
 import { WebsiteArtifactViewer } from "./WebsiteArtifactViewer";
-import {
-  isDisplayableText,
-  websiteFrameAdmission,
-} from "./website-inline-preview";
+import { isDisplayableText } from "./website-inline-preview";
 import {
   GamePlayDetail,
   MaterialDetailUnavailable,
   useMaterialDetailTarget,
 } from "./material-detail-slot";
+
+// PDFium is a wasm engine: only load it when a PDF is actually previewed.
+const LibraryPdfReader = lazy(() => import("./LibraryPdfReader"));
 
 function extension(url?: string): string {
   const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(url || "");
@@ -89,80 +91,40 @@ function extension(url?: string): string {
 }
 
 /**
- * UC-1 / UC-3 —— 免沙箱 PDF frame 的第一方主机白名单。
- * 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1、
- * §7.5、§8.1、§8.3。
- *
- * Chromium 的内建 PDF 查看器是插件式实现，加**任何** sandbox 属性都会让 PDF 完全
- * 不渲染（crbug 413851），所以这条渲染路径只能免沙箱；主机白名单是它唯一还剩下的
- * 边界。跨源只阻止 frame 读**宿主**的 DOM，并不阻止 frame 读**它自己
- * origin** 的 cookie，而会话 cookie 的 `Domain=.oceanleo.com` 且不是 httpOnly，对
- * 任何 `*.oceanleo.com` 主机来说都是「自己的 cookie」。因此：
- *   - 落在 SSO cookie 域内的地址，只放行写死的第一方 rendition 网关——它的响应带
- *     `Content-Security-Policy: sandbox`，即便被喂了 HTML 也运行在 opaque origin；
- *   - cookie 域外的对象存储主机（Supabase / OSS）本就读不到会话 cookie；
- *   - 用户内容可注册域 `oceanleo.app` 即使在 cookie 域外也要挡掉：免沙箱 frame 仍
- *     可顶层导航、弹窗、下载。
- * 判据禁止改成域名后缀授信：新开的任意 `*.oceanleo.com` 子域必须默认不可信。
+ * Fetch the stored bytes of a Library item through the media proxy, re-signing
+ * the rendition once if the signed URL has expired.
  */
-// 两个家族的网关都写在这里，判定按「落在哪个 cookie 域里」逐个 host 走，不按页面
-// 当前属于哪个家族 —— 这一层是**降权**判定，多覆盖一个家族只会更严：
-//   * `.oceanleo.cn` 下的主机以前落在「cookie 域外」，被当成对象存储放行；
-//     现在它落在 cn 家族的 cookie 域内，于是只有 cn 网关能放行，其余一律拒。
-//   * leoapp.cn 以前完全没被排除，现在与 oceanleo.app 同等挡掉。
-// 对 `.com` 主机的结论与本轮改动前逐字相同（`api.oceanleo.com` 放行，其余 cookie
-// 域内主机拒，域外对象存储放行）。
-const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = [
-  "api.oceanleo.com",
-  "api.oceanleo.cn",
-  // ws（分身 oceanbizs.com，2026-09-21）：分身自己的 rendition 网关，与 .com / .cn
-  // 那两条同一档；`.oceanbizs.com` 下其余主机同样落入 cookie 域内 → 拒绝。
-  "api.oceanbizs.com",
-  "api.dev.oceanleo.com",
-  "api-cn.dev.oceanleo.com",
-];
-const PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS: readonly string[] = [
-  "oceanleo.app",
-  "leoapp.cn",
-  // 分身用户内容域（oceanleo.app 的子区，上一行已覆盖；显式列出与家族表同源）。
-  "ws.oceanleo.app",
-];
-const SSO_COOKIE_REGISTRABLE_DOMAINS: readonly string[] = [
-  "oceanleo.com",
-  "oceanleo.cn",
-  "oceanbizs.com",
-];
-
-/** 判定 host 是否落在**任一家族**的共享 cookie 域内。这是降权判定，不是授信判定。 */
-function isUnderSsoCookieDomain(host: string): boolean {
-  return SSO_COOKIE_REGISTRABLE_DOMAINS.some(
-    (domain) => host === domain || host.endsWith(`.${domain}`),
-  );
-}
-
-function isSandboxExemptPdfFrameUrl(value: string | undefined): boolean {
-  let parsed: URL;
-  try {
-    // 相对地址证明不了自己落在哪个 origin，一律 fail closed。
-    parsed = new URL(String(value || ""));
-  } catch {
-    return false;
-  }
-  if (parsed.protocol !== "https:") return false;
-  if (parsed.username || parsed.password || parsed.port) return false;
-  const host = parsed.hostname.trim().toLowerCase().replace(/\.$/, "");
-  if (!host) return false;
-  if (
-    PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS.some(
-      (domain) => host === domain || host.endsWith(`.${domain}`),
-    )
-  ) {
-    return false;
-  }
-  if (isUnderSsoCookieDomain(host)) {
-    return PDF_FRAME_TRUSTED_GATEWAY_HOSTS.includes(host);
-  }
-  return true;
+function fetchItemSourceBlob(
+  item: LibraryItem,
+  url: string,
+  signal: AbortSignal,
+  onResourceError: () => void,
+): Promise<Blob> {
+  return fetchMediaBlobRefreshing(url, {
+    signal,
+    cache: "no-store",
+    refreshGoneUrl: async (goneUrl) => {
+      onResourceError();
+      const artifactId = String(item.artifactId || "");
+      const revisionId = String(
+        item.revisionId || item.artifact?.revisionId || "",
+      );
+      if (!artifactId || !revisionId) return null;
+      const purpose = signedMediaRefreshPurpose({
+        goneUrl,
+        previewUrl:
+          item.artifact?.renditions.preview?.url || item.previewUrl || "",
+        fullUrl: item.artifact?.renditions.full?.url || item.url || "",
+        sourceUrl: item.artifact?.renditions.source?.url || "",
+      });
+      const refreshed = await refreshArtifactRendition(
+        { artifactId, revisionId },
+        purpose,
+        signal,
+      );
+      return refreshed.ok ? refreshed.data?.url || null : null;
+    },
+  });
 }
 
 /** Office binary preview needs an opaque source grant, not a poster image. */
@@ -1595,31 +1557,12 @@ function DocumentViewer({
     setError("");
     void (async () => {
       try {
-        const blob = await fetchMediaBlobRefreshing(url, {
-          signal: abort.signal,
-          cache: "no-store",
-          refreshGoneUrl: async (goneUrl) => {
-            onResourceError();
-            const artifactId = String(item.artifactId || "");
-            const revisionId = String(
-              item.revisionId || item.artifact?.revisionId || "",
-            );
-            if (!artifactId || !revisionId) return null;
-            const purpose = signedMediaRefreshPurpose({
-              goneUrl,
-              previewUrl:
-                item.artifact?.renditions.preview?.url || item.previewUrl || "",
-              fullUrl: item.artifact?.renditions.full?.url || item.url || "",
-              sourceUrl: item.artifact?.renditions.source?.url || "",
-            });
-            const refreshed = await refreshArtifactRendition(
-              { artifactId, revisionId },
-              purpose,
-              abort.signal,
-            );
-            return refreshed.ok ? refreshed.data?.url || null : null;
-          },
-        });
+        const blob = await fetchItemSourceBlob(
+          item,
+          url,
+          abort.signal,
+          onResourceError,
+        );
         const text = await blob.text();
         if (cancelled) return;
         if (!isDisplayableText(text)) {
@@ -1671,26 +1614,25 @@ function DocumentViewer({
     );
   }
   if (isPdf && sourceUrl) {
-    if (!isSandboxExemptPdfFrameUrl(sourceUrl)) {
-      // 拒绝时不给「打开原文件」链接：顶层导航到 *.oceanleo.com 上的敌手页面是
-      // 隔离文档 §4.3 点名的最危险形态，比免沙箱 frame 更糟。
-      return (
-        <ErrorView
-          message={tt(
-            "这个 PDF 的地址不在第一方渲染网关白名单内，已拒绝在免沙箱预览框中打开。",
-          )}
-        />
-      );
-    }
+    // Our own read-only EmbedPDF reader. Never an iframe on the PDF URL: that
+    // is the browser's built-in viewer, with annotate/draw tools that save nothing.
     return (
-      // sandbox-exempt: pdf-plugin —— 见 editor-sandbox-origin 的豁免说明。
-      // 免沙箱成立的前提由上面的 isSandboxExemptPdfFrameUrl() 主机白名单提供。
-      <iframe
-        src={sourceUrl}
-        title={item.title}
-        referrerPolicy="no-referrer"
-        className="h-full min-h-[560px] w-full border-0 bg-stone-100"
-      />
+      <Suspense fallback={<LoadingView label={tt("正在打开这份素材…")} />}>
+        <LibraryPdfReader
+          key={`${sourceIdentity}:${accessRetry}:${attempt}`}
+          title={item.title}
+          loadBlob={(signal) =>
+            fetchItemSourceBlob(item, sourceUrl, signal, () => {
+              failedSourceRef.current.url = sourceUrl;
+              sourceRef.current.onResourceError?.();
+            })
+          }
+          onRetry={() => {
+            onResourceError?.();
+            setAttempt((value) => value + 1);
+          }}
+        />
+      </Suspense>
     );
   }
   if (loading) {
@@ -2163,14 +2105,28 @@ function LibraryItemViewerBody({
   }
   if (resolvedItem.kind === "canvas") {
     /**
-     * 画布的 rendition 也可能是 JSON 工程信封或打包字节。把它塞进 frame，浏览器
-     * 会把它当纯文本铺满一屏——那就是「拿不到可显示本体时摆原始字节」。这一档改走
+     * 设计画布已并入图片类型（2026-10-22）：库里按图片看，只显示渲出的位图，
+     * 绝不把画布的 HTML / JSON 工程信封塞进 `SandboxedWebViewer`。没有位图时走
      * 结构化快照，读不出快照时由它自己落到空状态。
      */
-    const framable =
-      websiteFrameAdmission(rendition.rendition?.mediaType) !== "opaque-bytes";
-    return url && framable ? (
-      <SandboxedWebViewer url={url} title={resolvedItem.title} />
+    const renditionIsImage = String(rendition.rendition?.mediaType || "")
+      .toLowerCase()
+      .startsWith("image/");
+    const imageUrl =
+      (renditionIsImage ? url : "") ||
+      resolvedItem.previewUrl ||
+      resolvedItem.thumbUrl ||
+      "";
+    return imageUrl ? (
+      <Center>
+        <ProgressiveArtifactImage
+          thumbUrl={resolvedItem.thumbUrl || ""}
+          fullUrl={imageUrl}
+          alt={resolvedItem.title}
+          onError={rendition.resourceFailed}
+          geometry={libraryMediaGeometry(resolvedItem, imageUrl)}
+        />
+      </Center>
     ) : (
       <StructuredCanvas item={resolvedItem} />
     );
@@ -2311,7 +2267,7 @@ function LibraryItemViewerBody({
 export function libraryKindLabel(kind: LibraryItem["kind"]): string {
   return {
     website: "网站",
-    canvas: "画布",
+    canvas: "图片",
     ppt: "PPT",
     sheet: "Excel",
     document: "文档",

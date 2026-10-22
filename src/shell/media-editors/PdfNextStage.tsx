@@ -1,167 +1,138 @@
 "use client";
 
 /**
- * PDF 新核（EmbedPDF 2.15.0）的叶子模块 —— flag=`next` 时才被拉起。
+ * PDF 专业模式舞台（EmbedPDF 2.15.0 官方即用查看器）—— 叶子模块。
  *
- * ## 为什么是「叶子」，以及为什么这一层这么薄
- *
- * `W01-deps.md` §4 的硬规则：重内核只能出现在 `advanced-routes/*` 经 `dynamic()`
- * 拉起的叶子里，不许进 `src/shell/index.ts` 桶文件。PDFium 是 4.6 MB WASM +
- * 一个 blob worker，进了桶文件就等于 31 个租户站每次进任何编辑器都拖上它。
- *
- * 所以本文件是唯一 import `@embedpdf/*` 的地方，并且刻意只做三件事：
+ * 普通模式不在这里：普通模式是我们自己的舞台（`PdfStage`），渲染 / 文字层 / 涂黑
+ * 校验都走同一个 EmbedPDF(PDFium) 引擎（`pdf-engine-host.ts`）。这里只在用户点
+ * 「专业」时装上游查看器，且只做四件事：
  * ① 按 `pdf-next-runtime.ts` 算出的地址装载内核（**不许回落到第三方 CDN**）；
- * ② 普通模式画我们自己的舞台，专业模式换成上游的即用查看器；
- * ③ 装不起来时把原因显示出来，而不是留一块空白。
+ * ② 用 `pdf-pro-config.ts` 关掉查看器自带的 打开 / 下载 / 导出 / 打印 / 加密，
+ *    换上宿主主题色；文件级动作只走 OceanLeo 顶栏；
+ * ③ 把查看器里的编辑经 `export` 插件的 `saveAsCopy()` 取回字节，交给路由的既有保存
+ *    链路（顶栏保存 / 自动保存 / 下载都用同一份字节）；
+ * ④ 装不起来时把原因显示出来，而不是留一块空白。
  *
- * 判定逻辑（地址从哪儿来、字体给不给、哪个按钮能不能点）全在同目录的纯函数模块
- * 里，那些是 `tests/pdf-next-core-swap.test.mjs` 能直接跑的东西。这里只剩「接起来」。
- *
- * ## 上游 API 的两处实读（不是猜的）
- *
- * - 引擎从 **hook** 来：`usePdfiumEngine({wasmUrl, fontFallback})` 返回
- *   `{engine, isLoading, error}`（`@embedpdf/engines/dist/shared-react/hooks/
- *   use-pdfium-engine.d.ts`）。没有 `createPdfiumEngine` 这种函数。
- * - `PdfEngine` 的方法返回的是 **`Task`**，不是 Promise；要 `await` 得先
- *   `.toPromise()`（`@embedpdf/models/dist/task.d.ts:119`）。直接 `await` 一个 Task
- *   会立刻得到 Task 自己，于是「文档打开了」这件事永远不发生，而且不报错。
+ * ## 上游 API 的实读
+ * - `PdfEngine` 的方法返回 **`Task`**，要 `await` 得先 `.toPromise()`。
+ * - 查看器只在挂载时读一次 config（`react-pdf-viewer` 的 effect 依赖是 `[]`）。
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePdfiumEngine } from "@embedpdf/engines/react";
 import {
-  PDFIUM_FONT_BASE_ENV_KEY,
   PDFIUM_INIT_TIMEOUT_MS,
-  PDFIUM_WASM_ENV_KEY,
-  PDF_VIEWER_NO_EXTERNAL_FONTS,
-  absolutizePdfiumWasmUrl,
   pdfiumInitWatch,
-  resolvePdfiumFontFallback,
-  resolvePdfiumWasmUrl,
 } from "./pdf-next-runtime";
-import type { EditorMode } from "../hosted-editor";
+import { pdfEngineBuffer, resolvePdfiumLoadPlan } from "./pdf-engine-host";
+import { buildPdfProViewerConfig } from "./pdf-pro-config";
 import { useModeSwitchReady } from "../advanced-routes/mode-switch-gate";
 import {
   peekW19EnterHandoff,
   w19PdfBytesFromHandoff,
 } from "../advanced-routes/w19-handoff-store";
 
+/** What the route needs from the live Pro viewer. */
+export interface PdfProController {
+  /** Current document bytes of the Pro viewer (its own edits included). */
+  pullBytes: () => Promise<Uint8Array>;
+}
+
 export interface PdfNextStageProps {
   /** 当前文档字节。两个模式共用这一份 —— 同一文档实例（规范 §7 判据 1）。 */
   bytes: Uint8Array | null;
   /** 与路由 stash 的 handoff 对齐；bytes 为空时用这份。 */
   itemKey?: string;
-  /** 文件名；只用于查看器标题与下载默认名。 */
+  /** 文件名；只用于查看器标题。 */
   name: string;
-  mode: EditorMode;
+  /** 宿主强调色（主题）；查看器配色跟它走。 */
+  accent?: string;
   /** 装不起来 / 打不开时报给宿主状态栏的那句话。 */
   onFailure: (reason: string) => void;
-  /** 打开成功后的页数，交回路由用于 L1/L2 的页码控件。 */
-  onDocumentReady?: (pageCount: number) => void;
+  /** 查看器就绪后交出取字节的把手；卸载时交回 null。 */
+  onController?: (controller: PdfProController | null) => void;
+  /** 查看器里发生了编辑（撤销栈变动）。路由据此去取字节并走既有保存链路。 */
+  onEdited?: () => void;
 }
 
-/**
- * 打包器发出的 WASM 地址。
- *
- * `new URL(…, import.meta.url)` 是让 webpack/turbopack 把 `pdfium.wasm` 当**资源**
- * 发出来的写法，发出来的地址在自家域名下。取不到就返回 `null`——
- * 由 `resolvePdfiumWasmUrl` 决定「拒绝并说明」，这里不许编一个地址出来。
- */
-function bundledWasmUrl(): string | null {
-  try {
-    return new URL("@embedpdf/pdfium/pdfium.wasm", import.meta.url).href;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * `Uint8Array` → 一份确定由 `ArrayBuffer` 背衬的字节。
- *
- * 直接把 `bytes.buffer` 递给上游过不了本仓的 `tsc`：`Uint8Array` 的 buffer 类型是
- * `ArrayBufferLike`，也可能是 `SharedArrayBuffer`，而上游的 `PdfFileContent` 恰好
- * 写死成 `ArrayBuffer`。`Uint8Array.from` 拷一份是仓里既有的做法
- * （`pdf-workbench-utils.ts:138`、`pdf-recovery.ts:8` 同一个形状）。
- *
- * 代价是一次拷贝。没有绕开它的办法：内核要一份自己拥有的字节，
- * 而我们这一份还要留给撤销栈与保存路径继续用。
- */
-function pdfArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return Uint8Array.from(bytes).buffer as ArrayBuffer;
-}
-
-function envValue(key: string): string | null {
-  if (typeof process === "undefined") return null;
-  const bag = process.env as Record<string, string | undefined> | undefined;
-  return bag?.[key] ?? null;
-}
-
-/**
- * 内核的加载参数。**先算清楚再装**：把「地址合不合规」放在装载之前，
- * 是为了让一次配置错误表现为一句话，而不是一个已经开始向 jsDelivr 发请求的引擎。
- */
+/** 内核的加载参数。**先算清楚再装**：一次配置错误表现为一句话，而不是一个向 CDN 发请求的引擎。 */
 export function usePdfiumLoadPlan() {
-  return useMemo(() => {
-    const wasm = resolvePdfiumWasmUrl({
-      envUrl: envValue(PDFIUM_WASM_ENV_KEY),
-      bundledUrl: bundledWasmUrl(),
-    });
-    const origin =
-      typeof window !== "undefined" ? window.location.origin : "";
-    const resolved = wasm.ok
-      ? {
-          ...wasm,
-          wasmUrl: absolutizePdfiumWasmUrl(wasm.wasmUrl, origin),
-        }
-      : wasm;
-    const fontFallback = resolvePdfiumFontFallback(
-      envValue(PDFIUM_FONT_BASE_ENV_KEY),
-    );
-    return { wasm: resolved, fontFallback };
-  }, []);
+  return useMemo(() => resolvePdfiumLoadPlan(), []);
 }
 
-/**
- * 专业模式：上游「即用查看器」的完整工具栏（R4 点名的那一档）。
- *
- * 两处刻意的收窄，都不是洁癖：
- * - `fonts` 传 `PDF_VIEWER_NO_EXTERNAL_FONTS`（`ui: null` / `signature: null`）：
- *   snippet 默认会往 Google Fonts 插 `<link>` 取 Open Sans 与四款手写体。
- *   专业模式是同一份文档、同一个用户，没有理由比普通模式多向外发请求。
- * - 文档用 `initialDocuments` 的**字节**交接，而不是给它一个 URL 让它再去网络拉
- *   一遍：那样会出现「专业模式看到的是服务器上的版本，普通模式看到的是你刚改过
- *   的版本」这种没人能解释的分裂。
- *
- * 查看器本身再懒加载一层：它把 snippet 整包拖进来，而绝大多数会话根本不开专业模式。
- */
+/** The slice of the viewer's plugin registry this stage touches. */
+interface ProRegistry {
+  getPlugin: (id: string) => {
+    provides?: () => unknown;
+  } | null;
+}
+
+interface ProExportCapability {
+  forDocument: (id: string) => {
+    saveAsCopy: () => { toPromise: () => Promise<ArrayBuffer> };
+  };
+}
+interface ProDocumentManager {
+  getActiveDocumentId: () => string | null;
+}
+interface ProHistory {
+  onHistoryChange: (listener: () => void) => (() => void) | void;
+}
+
+function hostIsDark(): boolean {
+  if (typeof document === "undefined") return false;
+  const root = document.documentElement;
+  return root.classList.contains("dark") || root.dataset.theme === "dark";
+}
+
 function ProViewer({
   bytes,
   name,
+  accent,
   wasmUrl,
   fontFallback,
   onFailure,
+  onController,
+  onEdited,
 }: {
   bytes: Uint8Array;
   name: string;
+  accent: string;
   wasmUrl: string;
-  fontFallback: ReturnType<typeof resolvePdfiumFontFallback>;
+  fontFallback: ReturnType<typeof resolvePdfiumLoadPlan>["fontFallback"];
   onFailure: (reason: string) => void;
+  onController?: (controller: PdfProController | null) => void;
+  onEdited?: () => void;
 }) {
   const [Viewer, setViewer] = useState<React.ComponentType<
     Record<string, unknown>
   > | null>(null);
   const [timeoutError, setTimeoutError] = useState("");
   const pluginsReadyRef = useRef(false);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const callbacksRef = useRef({ onController, onEdited });
+  callbacksRef.current = { onController, onEdited };
   // 过渡门的 ready 信号（plugin-ui U4）：查看器插件就绪（下面 onReady）即首帧可见。
   const markModeSwitchReady = useModeSwitchReady();
+  // 查看器只在挂载时读一次 config：字节只取第一次的快照。
+  const config = useMemo(
+    () =>
+      buildPdfProViewerConfig({
+        wasmUrl,
+        fontFallback,
+        bytes: pdfEngineBuffer(bytes),
+        name,
+        palette: { accent, dark: hostIsDark() },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   useEffect(() => {
     let alive = true;
     import("@embedpdf/react-pdf-viewer")
       .then((module) => {
         if (!alive) return;
-        // `setState(fn)` 会被当成 updater。查看器是函数组件，必须再包一层，
-        // 否则 React 会拿 null 去调它（读 props.config 当场炸），专业模式挂不上。
+        // `setState(fn)` 会被当成 updater。查看器是函数组件，必须再包一层。
         setViewer(
           () =>
             module.PDFViewer as unknown as React.ComponentType<
@@ -181,6 +152,15 @@ function ProViewer({
       alive = false;
     };
   }, [onFailure]);
+
+  useEffect(
+    () => () => {
+      unsubscribeRef.current?.();
+      unsubscribeRef.current = null;
+      callbacksRef.current.onController?.(null);
+    },
+    [],
+  );
 
   useEffect(() => {
     pluginsReadyRef.current = false;
@@ -215,16 +195,35 @@ function ProViewer({
     <div className="h-full w-full" data-pdf-pro-stage="">
       <Viewer
         style={{ width: "100%", height: "100%" }}
-        config={{
-          wasmUrl,
-          fontFallback: fontFallback ?? null,
-          fonts: PDF_VIEWER_NO_EXTERNAL_FONTS,
-          documentManager: {
-            initialDocuments: [{ buffer: pdfArrayBuffer(bytes), name }],
-          },
-        }}
-        onReady={() => {
+        config={config}
+        onReady={(registry: ProRegistry) => {
           pluginsReadyRef.current = true;
+          const capability = <T,>(id: string): T | null =>
+            (registry.getPlugin(id)?.provides?.() as T | undefined) ?? null;
+          const exporter = capability<ProExportCapability>("export");
+          const documents = capability<ProDocumentManager>("document-manager");
+          if (!exporter || !documents) {
+            onFailure(
+              "专业模式的查看器缺少导出能力，编辑无法保存回来，已停止。",
+            );
+            return;
+          }
+          callbacksRef.current.onController?.({
+            pullBytes: async () => {
+              const id = documents.getActiveDocumentId();
+              if (!id) throw new Error("专业模式里没有打开的文档。");
+              const buffer = await exporter
+                .forDocument(id)
+                .saveAsCopy()
+                .toPromise();
+              return new Uint8Array(buffer);
+            },
+          });
+          const history = capability<ProHistory>("history");
+          const off = history?.onHistoryChange(() =>
+            callbacksRef.current.onEdited?.(),
+          );
+          if (typeof off === "function") unsubscribeRef.current = off;
           markModeSwitchReady();
         }}
       />
@@ -236,64 +235,21 @@ export function PdfNextStage({
   bytes,
   itemKey,
   name,
-  mode,
+  accent = "#4f46e5",
   onFailure,
-  onDocumentReady,
+  onController,
+  onEdited,
 }: PdfNextStageProps) {
   const handed = itemKey
     ? w19PdfBytesFromHandoff(peekW19EnterHandoff(itemKey))
     : null;
-  const liveBytes =
-    bytes && bytes.byteLength > 0 ? bytes : handed;
+  const liveBytes = bytes && bytes.byteLength > 0 ? bytes : handed;
   const plan = usePdfiumLoadPlan();
-  // 地址不合规时不许把它递给 hook：`wasmUrl: undefined` 会让上游用它写死的
-  // jsDelivr 兜底地址（`dist/react/index.js:7`），那正是判据 1 要拦的行为。
-  const { engine, error } = usePdfiumEngine(
-    plan.wasm.ok
-      ? { wasmUrl: plan.wasm.wasmUrl, fontFallback: plan.fontFallback }
-      : undefined,
-  );
-  const [pageCount, setPageCount] = useState(0);
 
   // 地址不合规就一句话说清并停下：**不许**回落到第三方 CDN。
-  // 这一支不是错误处理的边角，它是判据 1 的一半——上游默认行为就是走 jsDelivr。
   useEffect(() => {
     if (!plan.wasm.ok) onFailure(plan.wasm.reason);
   }, [onFailure, plan.wasm]);
-
-  useEffect(() => {
-    if (error) onFailure(`PDF 内核没装起来：${error.message}`);
-  }, [error, onFailure]);
-
-  // 普通模式：用同一个引擎实例打开同一份字节，页数交回路由。
-  // 专业模式不走这里——查看器自己管文档，两边同时开会有两份状态。
-  useEffect(() => {
-    if (mode === "pro" || !engine || !liveBytes) return;
-    let alive = true;
-    engine
-      .openDocumentBuffer({
-        id: name || "document.pdf",
-        content: pdfArrayBuffer(liveBytes),
-      })
-      .toPromise()
-      .then((doc) => {
-        if (!alive) return;
-        const count = doc.pageCount ?? 0;
-        setPageCount(count);
-        onDocumentReady?.(count);
-      })
-      .catch((caught: unknown) => {
-        if (!alive) return;
-        onFailure(
-          caught instanceof Error
-            ? `这份 PDF 打不开：${caught.message}`
-            : "这份 PDF 打不开。",
-        );
-      });
-    return () => {
-      alive = false;
-    };
-  }, [liveBytes, engine, mode, name, onDocumentReady, onFailure]);
 
   if (!plan.wasm.ok) {
     return (
@@ -303,21 +259,17 @@ export function PdfNextStage({
     );
   }
   if (!liveBytes) return <p className="p-4 text-xs">正在载入 PDF…</p>;
-  if (mode === "pro") {
-    return (
-      <ProViewer
-        bytes={liveBytes}
-        name={name}
-        wasmUrl={plan.wasm.wasmUrl}
-        fontFallback={plan.fontFallback}
-        onFailure={onFailure}
-      />
-    );
-  }
   return (
-    <div className="h-full w-full" data-pdf-next-stage data-pdf-pages={pageCount}>
-      {pageCount > 0 ? null : <p className="p-4 text-xs">正在解析 PDF…</p>}
-    </div>
+    <ProViewer
+      bytes={liveBytes}
+      name={name}
+      accent={accent}
+      wasmUrl={plan.wasm.wasmUrl}
+      fontFallback={plan.fontFallback}
+      onFailure={onFailure}
+      onController={onController}
+      onEdited={onEdited}
+    />
   );
 }
 

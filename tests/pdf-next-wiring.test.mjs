@@ -1,14 +1,10 @@
-// PDF 换核的接线闸（W06 · editor-core-swap · 批 J）。
+// PDF 接线闸（native-editors W06）。
 //
-// `pdf-next-core-swap.test.mjs` 判的是三份纯模块的**内容**（加载地址、命令映射、chips）。
-// 这一份判的是**接线**：用户把 flag 翻到 `pdf:next` 之后，舞台上是不是真的挂了
-// EmbedPDF 那一支；再翻到专业模式，即用查看器是不是带着同一份字节出现。
-//
-// V6 实跑：把 `stage` 改成 `{false && core === "next" ? <PdfNextStage/> : <PdfStage/>}`，
-// 上一版只扫源码子串的闸 5/5 仍绿。A-48：源码正则只能当辅闸。
-// 行为闸照 W07 `deck-core-swap`：`compileModule` + jsdom 挂真 `PdfRoute` /
-// 真 `PdfNextStage`，看节点。jsdom 没有 layout，不假装验可见像素。
-// 「真的渲染出一页光栅」仍归 V 浏览器验收（上一棒缩小承诺，本棒不改）。
+// 普通模式 = 我们自己的舞台（PdfStage）画在 EmbedPDF(PDFium) 引擎上；专业模式 =
+// 上游官方即用查看器（PdfNextStage 叶子）。没有 flag、没有 pdf.js。
+// 这一份判的是**接线**：默认挂的是普通舞台；点专业后即用查看器带着同一份字节、
+// 关掉了自带的打开/下载/导出/打印，并把里面的编辑经 `saveAsCopy()` 取回我们的保存链路。
+// 行为闸：`compileModule` + jsdom 挂真 `PdfRoute` / 真 `PdfNextStage`，看节点。
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -20,16 +16,15 @@ import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import {
-  DEFAULT_EDITOR_CORE,
-  resolveEditorCore,
-  setEditorCoreOverride,
-} from "../src/shell/editor-core-flags.ts";
-import {
   isVendorCdnUrl,
   PDFIUM_UPSTREAM_DEFAULT_WASM_URL,
   PDFIUM_WASM_ENV_KEY,
   resolvePdfiumWasmUrl,
 } from "../src/shell/media-editors/pdf-next-runtime.ts";
+import {
+  PDF_PRO_DISABLED_CATEGORIES,
+  buildPdfProViewerConfig,
+} from "../src/shell/media-editors/pdf-pro-config.ts";
 import {
   pdfNextCommandAvailability,
   pdfNextCommandGaps,
@@ -61,45 +56,38 @@ const routeCode = route
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/\/\/.*$/gm, "");
 const leaf = read("src/shell/media-editors/PdfNextStage.tsx");
+const proConfig = read("src/shell/media-editors/pdf-pro-config.ts");
 const state = read("src/shell/media-editors/pdf-workbench-state.ts");
 
-// `_COMMON.md` §10 第 3 条（双核 flag，默认 legacy）+ `editor-core-flags.ts` 纪律 1
-// 违反后果：flag 判定写在组件深处 ⇒ 两套核的模块图进同一个 chunk，
-// 31 个租户站每次打开任何编辑器都拖上 4.6 MB 的 PDFium。
-test("the dual-core flag is resolved once, at the top of the route", () => {
-  assert.match(route, /const core = resolveEditorCore\("pdf"\);/);
-  // 重内核只许出现在懒加载叶子里（`W01-deps.md` §4）：路由自己不许 import 它。
+// 重内核（PDFium/查看器）只许出现在懒加载叶子里。
+// 违反后果：路由直接 import 它 ⇒ 31 个租户站每次打开任何编辑器都拖上 4.6 MB 的 PDFium 与整个查看器。
+test("the Pro viewer is a lazy leaf, and the route has no core flag", () => {
+  assert.doesNotMatch(route, /resolveEditorCore|editor-core-flags/);
   assert.doesNotMatch(route, /from "@embedpdf\//);
   assert.match(
     route,
     /dynamic\(\s*\(\) =>\s*import\("\.\.\/media-editors\/PdfNextStage"\)/,
   );
-  // `ssr: false` 是硬要求：PDFium 是 WASM + blob worker，服务端两者都不存在。
   assert.match(route, /\{ ssr: false, loading: \(\) => null \}/);
-  // 舞台按 flag 或专业模式分流，但两面之间经 ModeSwitchGate（plugin-ui U4）：
-  // 切模式时旧面留到新面 ready，不再是三元式立即换树。旧核那一支仍在。
-  assert.match(route, /const effectiveCore = core === "next" \|\| mode === "pro" \? "next" : "legacy";/);
+  assert.match(route, /const effectiveCore = mode === "pro" \? "next" : "legacy";/);
   assert.match(route, /<ModeSwitchGate\s+pro=\{effectiveCore === "next"\}/);
   assert.match(route, /renderPro=\{\(\) => \(\s*<PdfNextStage/);
-  assert.doesNotMatch(route, /core === "next" \|\| mode === "pro" \? \(\s*<PdfNextStage/);
-  assert.match(route, /<PdfStage editor=\{editor\} accent=\{accent\} \/>/);
+  assert.match(route, /<PdfNormalFace editor=\{collabEditor\} accent=\{accent\} \/>/);
+  // 叶子里不再有普通模式的引擎 hook / `mode` 分支：普通模式不经过它。
+  assert.doesNotMatch(leaf, /usePdfiumEngine|mode === "pro"|mode: EditorMode/);
 });
 
 // 判据 1（自托管 WASM / 不向第三方要字体）
 // 违反后果：不显式传 wasmUrl，上游用它写死的 jsDelivr 地址（dist/react/index.js:7），
 // 于是每个租户站每次打开 PDF 都向第三方发一次 4.6 MB 请求。
 test("the kernel is never handed a config that lets it fall back to a CDN", () => {
-  // 地址算不出来时**不许**把 `{wasmUrl: undefined}` 递进去——那正好触发上游兜底。
-  assert.match(
-    leaf,
-    /usePdfiumEngine\(\s*plan\.wasm\.ok\s*\?\s*\{ wasmUrl: plan\.wasm\.wasmUrl, fontFallback: plan\.fontFallback \}\s*:\s*undefined,\s*\)/,
-  );
   // 字体：`null` 是上游唯一走得掉 CDN 的取值（`fontFallback ?? cdnFontConfig`）。
-  assert.match(leaf, /fontFallback: fontFallback \?\? null/);
+  assert.match(proConfig, /fontFallback: input\.fontFallback \?\? null/);
   // 专业模式的查看器同样不许向 Google Fonts 取字。
-  assert.match(leaf, /fonts: PDF_VIEWER_NO_EXTERNAL_FONTS/);
+  assert.match(proConfig, /fonts: PDF_VIEWER_NO_EXTERNAL_FONTS/);
   // 叶子里不许出现任何写死的 CDN 地址。
   assert.doesNotMatch(leaf, /cdn\.jsdelivr\.net/);
+  assert.doesNotMatch(proConfig, /cdn\.jsdelivr\.net/);
 
   // 纯函数那一侧的行为（这条是真调用，不是 grep）。
   const refused = resolvePdfiumWasmUrl({
@@ -124,21 +112,45 @@ test("the kernel is never handed a config that lets it fall back to a CDN", () =
 // 违反后果：切模式时重新载入文档 ⇒ 用户刚打的批注消失，而且没有任何报错。
 test("professional mode is the adapter's mode face, over the same bytes", () => {
   assert.match(route, /useState<EditorMode>\(DEFAULT_EDITOR_MODE\)/);
-  // Native 件走 adapter 的 mode 面，**不发 postMessage**（契约 v2 §4）。
   assert.doesNotMatch(routeCode, /postMessage|buildSetModeMessage/);
   assert.match(route, /mode: \{\s*\n\s*current: mode,/);
-  // 13 件都必须交出 setMode；旧核点专业编辑页切到同一份字节的新核查看器。
   assert.match(route, /setMode,/);
-  assert.doesNotMatch(route, /setMode: core === "next"/);
   assert.match(route, /pages:\s*\{\s*\}/);
   assert.doesNotMatch(route, /aux:\s*\[/);
-
-  // 同一文档实例：两个模式吃的是同一个取值器（facade 后的那一个，见下一条用例）。
   assert.match(route, /bytes=\{nextCoreEditor\.currentBytes\(\)\}/);
   assert.match(state, /currentBytes: \(\) => Uint8Array \| null;/);
-  // 叶子里两支都用同一份 `bytes`，专业模式不去网络再拉一遍。
-  assert.match(leaf, /initialDocuments: \[\{ buffer: pdfArrayBuffer\(bytes\), name \}\]/);
+  // 同一份字节交给查看器；不让它再去网络拉一遍。
+  assert.match(proConfig, /initialDocuments: \[\{ buffer: input\.bytes, name: input\.name \}\]/);
   assert.doesNotMatch(leaf, /src:\s*(?:url|sourceUrl)/);
+});
+
+// 专业模式不得变成「文档外面又套了一个 App」：自带的打开/下载/导出/打印/加密/截图
+// 命令（按钮与快捷键）必须关掉，文件级动作只走 OceanLeo 顶栏。
+// 违反后果：用户在 Pro 里点了查看器自己的下载或「打开文件」，绕开顶栏的保存链路。
+test("the Pro viewer's own file commands are switched off, themed with the host accent", () => {
+  for (const category of [
+    "document-open",
+    "document-export",
+    "document-print",
+    "document-close",
+    "document-protect",
+    "document-capture",
+    "document-menu",
+  ]) {
+    assert.ok(PDF_PRO_DISABLED_CATEGORIES.includes(category), category);
+  }
+  const config = buildPdfProViewerConfig({
+    wasmUrl: "https://oceanleo.com/static/pdfium/pdfium.wasm",
+    fontFallback: undefined,
+    bytes: new Uint8Array([1, 2, 3]).buffer,
+    name: "x.pdf",
+    palette: { accent: "#0f766e", dark: false },
+  });
+  assert.deepEqual(config.disabledCategories, [...PDF_PRO_DISABLED_CATEGORIES]);
+  assert.equal(config.tabBar, "never");
+  assert.equal(config.fontFallback, null);
+  assert.equal(config.theme.light.accent.primary, "#0f766e");
+  assert.equal(config.documentManager.initialDocuments.length, 1);
 });
 
 // 判据 5 后半（`tools-manifest` v2 声明 PDF chips）
@@ -347,6 +359,12 @@ const workbenchStubUrl = dataModule(`
       failure: null,
       notice: "",
       mergePdf: async () => {},
+      replaceBytesSilently: async (transform, options) => {
+        const next = await transform(SAMPLE);
+        globalThis.__pdfReplaced = globalThis.__pdfReplaced || [];
+        globalThis.__pdfReplaced.push({ next, options });
+        return "applied";
+      },
       saveCopy: async () => null,
       captureRecovery() { return {}; },
       restoreRecovery() {},
@@ -366,26 +384,6 @@ const emptyComponent = (name) =>
     export function ${name}() { return null; }
   `);
 
-const pdfiumStubUrl = dataModule(`
-  export function usePdfiumEngine(opts) {
-    globalThis.__pdfiumEngineCalls = globalThis.__pdfiumEngineCalls || [];
-    globalThis.__pdfiumEngineCalls.push(opts);
-    return {
-      engine: {
-        openDocumentBuffer() {
-          return {
-            toPromise() {
-              return Promise.resolve({ pageCount: 3 });
-            },
-          };
-        },
-      },
-      isLoading: false,
-      error: null,
-    };
-  }
-`);
-
 const viewerStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
   export function PDFViewer(props) {
@@ -396,6 +394,7 @@ const viewerStubUrl = dataModule(`
     // 上游查看器的 onReady（插件就绪）由测试手动触发：ModeSwitchGate 例要先看到
     // 「旧面仍在 + 覆盖层」，再放 ready。
     globalThis.__pdfViewerOnReady = props.onReady;
+    globalThis.__pdfViewerConfig = cfg;
     return jsx("div", {
       "data-embedpdf-viewer": "",
       "data-wasm-url": String(cfg.wasmUrl || ""),
@@ -404,6 +403,36 @@ const viewerStubUrl = dataModule(`
     });
   }
 `);
+
+/** 一个带 export / document-manager / history 三个插件的假 registry。 */
+function fakeRegistry(pulledBytes) {
+  const listeners = [];
+  const plugins = {
+    export: {
+      provides: () => ({
+        forDocument: () => ({
+          saveAsCopy: () => ({
+            toPromise: async () => pulledBytes.buffer.slice(0),
+          }),
+        }),
+      }),
+    },
+    "document-manager": { provides: () => ({ getActiveDocumentId: () => "doc-1" }) },
+    history: {
+      provides: () => ({
+        onHistoryChange: (listener) => {
+          listeners.push(listener);
+          return () => listeners.splice(listeners.indexOf(listener), 1);
+        },
+      }),
+    },
+  };
+  return {
+    registry: { getPlugin: (id) => plugins[id] ?? null },
+    fireEdit: () => listeners.slice().forEach((listener) => listener()),
+    listenerCount: () => listeners.length,
+  };
+}
 
 const routeStubs = {
   "next/dynamic": dynamicStubUrl,
@@ -434,7 +463,6 @@ const routeStubs = {
   "../advanced-recovery-store": dataModule(
     `export function advancedRecoveryKey(editorId, item) { return editorId + ":" + item.id; }`,
   ),
-  "@embedpdf/engines/react": pdfiumStubUrl,
   "@embedpdf/react-pdf-viewer": viewerStubUrl,
   // ModeSwitchGate 的覆盖层文案走 tt()；这里没有 IntlProvider，key 原样回显。
   "../../i18n/ui/useUI": dataModule(
@@ -547,11 +575,12 @@ async function mountPdfRoute() {
   };
 }
 
-async function withPdfFlag(choice, run) {
+async function withPdfRoute(run) {
   const previousWasm = process.env[PDFIUM_WASM_ENV_KEY];
   process.env[PDFIUM_WASM_ENV_KEY] = SELF_HOSTED_WASM;
-  globalThis.__pdfiumEngineCalls = [];
-  setEditorCoreOverride("pdf", choice);
+  globalThis.__pdfViewerOnReady = null;
+  globalThis.__pdfViewerConfig = null;
+  globalThis.__pdfReplaced = [];
   try {
     const mounted = await mountPdfRoute();
     try {
@@ -560,183 +589,96 @@ async function withPdfFlag(choice, run) {
       await mounted.unmount();
     }
   } finally {
-    setEditorCoreOverride("pdf", null);
+    globalThis.__pdfViewerOnReady = null;
+    globalThis.__pdfViewerConfig = null;
+    globalThis.__pdfReplaced = [];
     if (previousWasm === undefined) delete process.env[PDFIUM_WASM_ENV_KEY];
     else process.env[PDFIUM_WASM_ENV_KEY] = previousWasm;
-    globalThis.__pdfiumEngineCalls = [];
   }
 }
 
-test("默认档仍是 legacy：用户打开 PDF 看到的是旧舞台，不是 EmbedPDF", async () => {
-  assert.equal(DEFAULT_EDITOR_CORE, "legacy");
-  assert.equal(resolveEditorCore("pdf"), "legacy");
-  const previousWasm = process.env[PDFIUM_WASM_ENV_KEY];
-  process.env[PDFIUM_WASM_ENV_KEY] = SELF_HOSTED_WASM;
-  globalThis.__pdfiumEngineCalls = [];
-  try {
-    const { container, unmount } = await mountPdfRoute();
-    try {
-      assert.ok(
-        container.querySelector("[data-pdf-legacy-stage]"),
-        "默认档没有旧舞台。把默认核改成 next，或把三元式写反，用户今天就会被推上未验收的新核。",
-      );
-      assert.equal(
-        container.querySelector("[data-pdf-next-stage]"),
-        null,
-        "默认档挂上了新核舞台。十三件默认档必须保持 legacy。",
-      );
-      assert.equal(container.querySelector("[data-embedpdf-viewer]"), null);
-      assert.ok(
-        container.querySelector("[data-role='pdf-set-pro']"),
-        "默认档也必须把专业编辑页的 setMode 交给壳",
-      );
-      assert.equal(
-        container.querySelector("[data-role='pdf-mode-unavailable']"),
-        null,
-        "默认档把专业编辑页又藏成不可用了",
-      );
-    } finally {
-      await unmount();
-    }
-  } finally {
-    if (previousWasm === undefined) delete process.env[PDFIUM_WASM_ENV_KEY];
-    else process.env[PDFIUM_WASM_ENV_KEY] = previousWasm;
-    globalThis.__pdfiumEngineCalls = [];
-  }
-});
-
-test("flag=next：舞台上是 PdfNextStage，不是旧核", async () => {
-  await withPdfFlag("next", async ({ container }) => {
-    const stage = await waitFor(
-      container,
-      "[data-pdf-next-stage]",
-      "翻到 next 之后 DOM 里没有 data-pdf-next-stage。V6 那刀 `{false && core === \"next\"}`、PdfNextStage `return null`、dynamic loader `return null`、bytes={null}，都是这个样子：用户还在旧舞台，闸却绿。",
-    );
-    assert.equal(stage.tagName, "DIV");
-    assert.equal(
-      container.querySelector("[data-pdf-legacy-stage]"),
-      null,
-      "flag=next 仍挂着旧舞台",
-    );
-    const hidden = findHiddenAncestor(stage);
-    assert.equal(
-      hidden,
-      null,
-      `新核舞台还在 DOM 里，但祖先带了藏起标记 ${hidden}。jsdom 没有 layout，这条钉的是 hidden / aria-hidden / display:none / class:hidden，不是在假装量了可见像素。`,
-    );
-    const calls = engineCalls();
-    assert.ok(calls.length >= 1, "usePdfiumEngine 一次都没被叫到，内核没挂上");
-    const handed = calls.filter((opts) => opts && typeof opts === "object");
+test("默认打开 PDF 看到的是我们自己的普通舞台，不是官方查看器", async () => {
+  await withPdfRoute(async ({ container }) => {
     assert.ok(
-      handed.length >= 1,
-      "usePdfiumEngine 拿到的是 undefined——上游会回落到 jsDelivr",
+      container.querySelector("[data-pdf-legacy-stage]"),
+      "默认没有普通舞台",
     );
-    for (const opts of handed) {
-      assert.ok(
-        typeof opts.wasmUrl === "string" && opts.wasmUrl.length > 8,
-        `wasmUrl 是空的：${JSON.stringify(opts)}`,
-      );
-      assert.equal(isVendorCdnUrl(opts.wasmUrl), false, opts.wasmUrl);
-    }
-    const opened = await waitFor(
-      container,
-      "[data-pdf-next-stage][data-pdf-pages='3']",
-      "舞台挂了，但文档没打开（页数还是 0）。加载函数提前 return / 不调 openDocumentBuffer 就是这样。",
+    assert.equal(container.querySelector("[data-pdf-next-stage]"), null);
+    assert.equal(container.querySelector("[data-embedpdf-viewer]"), null);
+    assert.ok(
+      container.querySelector("[data-role='pdf-set-pro']"),
+      "PDF 的专业页 setMode 必须交给壳",
     );
-    assert.equal(opened, stage);
   });
 });
 
-test("flag=next 再切专业模式：即用查看器带着同一份字节挂上来", async () => {
-  await withPdfFlag("next", async ({ container, clickPro }) => {
+test("点专业：旧舞台留到查看器 ready，中间是舞台内覆盖层；ready 后换成同一份字节上的即用查看器", async () => {
+  await withPdfRoute(async ({ container, clickPro }) => {
+    assert.equal(container.querySelector("[data-mode-switch-pending]"), null);
     await clickPro();
     const viewer = await waitFor(
       container,
       "[data-embedpdf-viewer]",
-      "点了专业模式，EmbedPDF 即用查看器没挂上。mode={null}、{false && mode === \"pro\"}、ProViewer return null、Viewer 换成裸 div，用户看见的还是空壳。",
+      "点了专业编辑页，查看器没挂上。setMode 没交出，或 ProViewer return null。",
     );
     assert.equal(viewer.getAttribute("data-has-buffer"), "1");
     assert.equal(viewer.getAttribute("data-doc-name"), "闸.pdf");
     const wasmUrl = viewer.getAttribute("data-wasm-url") || "";
     assert.ok(wasmUrl.length > 8, "专业模式查看器的 wasmUrl 是空串");
     assert.equal(isVendorCdnUrl(wasmUrl), false, wasmUrl);
-    assert.equal(
+    // 自带文件命令已关掉（行为：查看器真收到的 config）。
+    const config = globalThis.__pdfViewerConfig;
+    assert.ok(config.disabledCategories.includes("document-open"));
+    assert.ok(config.disabledCategories.includes("document-export"));
+    assert.ok(config.disabledCategories.includes("document-print"));
+    assert.equal(config.tabBar, "never");
+    assert.ok(
       container.querySelector("[data-pdf-legacy-stage]"),
-      null,
-      "专业模式退回了旧舞台",
+      "查看器还没 ready 就卸了旧舞台——这就是用户看到的留白",
     );
-    const hidden = findHiddenAncestor(viewer);
-    assert.equal(
-      hidden,
-      null,
-      `查看器还在 DOM 里，但祖先带了藏起标记 ${hidden}。jsdom 没有 layout，只钉 hidden / aria-hidden / 内联 style / class token。`,
-    );
+    const overlay = container.querySelector("[data-mode-switch-pending='pro']");
+    assert.ok(overlay, "切专业模式时没有 data-mode-switch-pending 覆盖层");
+    const pendingSlot = viewer.closest("[data-mode-switch-face='pro']");
+    assert.equal(pendingSlot.getAttribute("data-mode-switch-face-state"), "pending");
+    assert.match(pendingSlot.getAttribute("style") || "", /visibility:\s*hidden/i);
+    assert.equal(findHiddenAncestor(viewer), null, "待命面只许 visibility:hidden");
+
+    assert.equal(typeof globalThis.__pdfViewerOnReady, "function", "ProViewer 没把 onReady 交给查看器");
+    const fake = fakeRegistry(new Uint8Array([9, 9]));
+    await act(async () => {
+      globalThis.__pdfViewerOnReady(fake.registry);
+    });
+    await settle();
+    assert.equal(container.querySelector("[data-pdf-legacy-stage]"), null, "查看器 ready 之后旧舞台还在");
+    assert.equal(container.querySelector("[data-mode-switch-pending]"), null, "ready 之后覆盖层还在");
+    const shown = container.querySelector("[data-embedpdf-viewer]").closest("[data-mode-switch-face='pro']");
+    assert.equal(shown.getAttribute("data-mode-switch-face-state"), "shown");
+    assert.equal(fake.listenerCount(), 1, "没有订阅查看器的编辑事件，Pro 里的修改永远回不来");
   });
 });
 
-test("默认档点专业模式：旧舞台留到查看器 ready，中间是舞台内覆盖层；ready 后换成同一份字节上的即用查看器", async () => {
-  assert.equal(resolveEditorCore("pdf"), "legacy");
-  const previousWasm = process.env[PDFIUM_WASM_ENV_KEY];
-  process.env[PDFIUM_WASM_ENV_KEY] = SELF_HOSTED_WASM;
-  globalThis.__pdfiumEngineCalls = [];
-  globalThis.__pdfViewerOnReady = null;
-  try {
-    const { container, clickPro, unmount } = await mountPdfRoute();
-    try {
-      assert.ok(
-        container.querySelector("[data-pdf-legacy-stage]"),
-        "默认档开场应仍是旧舞台",
-      );
-      assert.equal(container.querySelector("[data-mode-switch-pending]"), null);
-      await clickPro();
-      const viewer = await waitFor(
-        container,
-        "[data-embedpdf-viewer]",
-        "默认档点了专业编辑页，查看器没挂上。setMode 没交出、或 stage 仍只看 flag。",
-      );
-      assert.equal(viewer.getAttribute("data-has-buffer"), "1");
-      // plugin-ui U4 新语义：查看器 ready 之前旧舞台**还在**，舞台上有切换覆盖层，
-      // 新面在覆盖层之下 visibility:hidden 预挂（不是 display:none / aria-hidden）。
-      assert.ok(
-        container.querySelector("[data-pdf-legacy-stage]"),
-        "查看器还没 ready 就卸了旧舞台——这就是用户看到的留白",
-      );
-      const overlay = container.querySelector("[data-mode-switch-pending='pro']");
-      assert.ok(overlay, "切专业模式时没有 data-mode-switch-pending 覆盖层");
-      assert.equal(overlay.parentElement, container.querySelector("[data-mode-switch-gate]"));
-      const pendingSlot = viewer.closest("[data-mode-switch-face='pro']");
-      assert.equal(pendingSlot.getAttribute("data-mode-switch-face-state"), "pending");
-      assert.match(pendingSlot.getAttribute("style") || "", /visibility:\s*hidden/i);
-      assert.equal(findHiddenAncestor(viewer), null, "待命面只许 visibility:hidden");
-
-      assert.equal(typeof globalThis.__pdfViewerOnReady, "function", "ProViewer 没把 onReady 交给查看器");
-      await act(async () => {
-        globalThis.__pdfViewerOnReady();
-      });
-      await settle();
-      assert.equal(
-        container.querySelector("[data-pdf-legacy-stage]"),
-        null,
-        "查看器 ready 之后旧舞台还在",
-      );
-      assert.equal(container.querySelector("[data-mode-switch-pending]"), null, "ready 之后覆盖层还在");
-      const shownViewer = container.querySelector("[data-embedpdf-viewer]");
-      assert.ok(shownViewer);
-      assert.equal(
-        shownViewer.closest("[data-mode-switch-face='pro']").getAttribute("data-mode-switch-face-state"),
-        "shown",
-      );
-      assert.doesNotMatch(
-        shownViewer.closest("[data-mode-switch-face='pro']").getAttribute("style") || "",
-        /visibility/i,
-      );
-    } finally {
-      await unmount();
-    }
-  } finally {
-    globalThis.__pdfViewerOnReady = null;
-    if (previousWasm === undefined) delete process.env[PDFIUM_WASM_ENV_KEY];
-    else process.env[PDFIUM_WASM_ENV_KEY] = previousWasm;
-    globalThis.__pdfiumEngineCalls = [];
-  }
+// Pro 里的修改必须回到我们的保存链路，否则顶栏「保存」存的是改之前的字节。
+// 违反后果：用户在官方查看器里批注后点保存，保存成功但批注没了。
+test("Pro 里的编辑经 saveAsCopy 取回，并作为脏字节换进编辑器（保存/下载读的就是这份）", async () => {
+  await withPdfRoute(async ({ container, clickPro }) => {
+    await clickPro();
+    await waitFor(container, "[data-embedpdf-viewer]", "查看器没挂上");
+    const pulled = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 7]);
+    const fake = fakeRegistry(pulled);
+    await act(async () => {
+      globalThis.__pdfViewerOnReady(fake.registry);
+    });
+    await settle();
+    assert.deepEqual(globalThis.__pdfReplaced, [], "没编辑就不该替换字节");
+    await act(async () => {
+      fake.fireEdit();
+    });
+    // 去抖 600ms 后同步一次。
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    });
+    assert.equal(globalThis.__pdfReplaced.length, 1, "编辑后字节没有同步回编辑器");
+    assert.deepEqual([...globalThis.__pdfReplaced[0].next], [...pulled]);
+    assert.equal(globalThis.__pdfReplaced[0].options.markDirty, true);
+  });
 });

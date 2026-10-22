@@ -84,7 +84,7 @@ test("PdfRoute 的指令面经过只读闸，新旧两核共用这一处", async
   assert.match(route, /from "\.\.\/collab\/adapters\/visual-readonly"/);
   assert.match(
     route,
-    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) =>\s*guardPluginSurface\(\s*buildPdfCommandSurface\(nextCoreEditor,[^)]*\),\s*collabReadOnly,\s*\),\s*\[nextCoreEditor, downloadAs, collabReadOnly\]/,
+    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) =>\s*guardPluginSurface\(\s*buildPdfCommandSurface\(nextCoreEditor,[\s\S]*?\),\s*collabReadOnly,\s*\),\s*\[nextCoreEditor, downloadAs, collabReadOnly,/,
   );
   assert.equal((route.match(/usePluginCommandSurface\(/g) ?? []).length, 1, "PDF 路由只有这一处指令面");
 });

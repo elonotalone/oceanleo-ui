@@ -190,11 +190,11 @@ const SPECS: readonly PdfNextCommandSpec[] = [
     id: "pdf.find-text",
     layer: "command",
     label: "全文搜索",
-    legacy: "use-pdf-text-layer.searchFullText（pdfjs-dist 文字层）",
+    legacy: "use-pdf-text-layer.searchFullText（PDFium 文字层）",
     executor: "search",
     member: "searchAllPages",
     readiness: "ready",
-    note: "搜索改由 PDFium 出，不再需要 pdfjs-dist 的文字层；扫描件仍然搜不到，原因照旧说明。",
+    note: "搜索由 PDFium 出（已不再有 pdfjs-dist）；扫描件仍然搜不到，原因照旧说明。",
   },
   // ── 页面管理（L1 溢出区 + plugin-command）──────────────────────────────
   {

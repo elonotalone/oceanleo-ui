@@ -57,7 +57,7 @@ test("PDF text actions are icon+tooltip controls and unsupported crop is hidden"
   assert.match(route, /history:\s*\{[\s\S]*undo:\s*(?:collabEditor|editor)\.undo/);
   assert.match(
     route,
-    /directDownload:[\s\S]*onTrigger:[\s\S]*afterAdvancedDraftExport\([^)]*editor\.download\)/,
+    /directDownload:[\s\S]*onTrigger:[\s\S]*afterAdvancedDraftExport\([\s\S]*syncProEdits\(\)[\s\S]*editor\.download\(\)/,
   );
   assert.match(route, /capture:\s*editor\.captureRecovery/);
   assert.match(route, /restore:\s*editor\.restoreRecovery/);

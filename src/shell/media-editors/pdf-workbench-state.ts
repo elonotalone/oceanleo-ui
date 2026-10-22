@@ -175,7 +175,7 @@ export interface PdfWorkbenchState {
    */
   replaceBytesSilently?: (
     transform: (current: Uint8Array) => Promise<Uint8Array | null>,
-    options?: { markDirty?: boolean },
+    options?: { markDirty?: boolean; personEdit?: boolean },
   ) => Promise<"applied" | "unchanged" | "busy">;
   /** 多人同改：只读（只有查看权限，或别人正在调整页面）。界面把改动入口灰掉。 */
   collabReadOnly?: boolean;

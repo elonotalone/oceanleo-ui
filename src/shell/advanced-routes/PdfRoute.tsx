@@ -2,7 +2,7 @@
 
 import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { useAdvancedSession } from "../advanced-session-context";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditorHandoffSource } from "./editor-handoff";
 import {
   applyW19HandoffToItem,
@@ -15,7 +15,6 @@ import {
 } from "./w19-handoff-store";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { resolveEditorCore } from "../editor-core-flags";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
 import { setPluginMode } from "../plugin-chrome/plugin-mode-store";
 import { pdfNextEditorFacade } from "../media-editors/pdf-next-facade";
@@ -26,6 +25,7 @@ import { fetchMediaBlob } from "../../lib/media-proxy";
 import { PdfContextToolbar } from "../media-editors/PdfContextToolbar";
 import { PdfControls } from "../media-editors/PdfControls";
 import { PdfStage } from "../media-editors/PdfStage";
+import type { PdfProController } from "../media-editors/PdfNextStage";
 import {
   usePdfWorkbench,
   type PdfWorkbenchState,
@@ -53,10 +53,11 @@ import {
 import { pdfSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 
 /**
- * 新核舞台的懒加载入口。
+ * 专业模式舞台（EmbedPDF 官方查看器）的懒加载入口。
  *
- * `import()` 的字面量**必须**写在这一层：它是打包器切 chunk 的唯一依据
- * （`01-verified-facts.md` §1.7），搬进 helper 会让 PDFium 退回主包。
+ * `import()` 的字面量**必须**写在这一层：它是打包器切 chunk 的唯一依据，
+ * 搬进 helper 会让查看器整包退回主包。普通模式不用它：普通模式的舞台是
+ * `PdfStage`，渲染走同一个 EmbedPDF(PDFium) 引擎。
  * `ssr: false` 是硬要求——PDFium 是 WASM + blob worker，服务端渲染时两者都不存在。
  */
 const PdfNextStage = dynamic(
@@ -67,8 +68,8 @@ const PdfNextStage = dynamic(
   { ssr: false, loading: () => null },
 );
 
-/** 旧核舞台 + 切回「编辑」时的 ready 信号：页数解析出来就算首帧可见。 */
-function PdfLegacyFace({
+/** 普通模式舞台 + 切回「编辑」时的 ready 信号：页数解析出来就算首帧可见。 */
+function PdfNormalFace({
   editor,
   accent,
 }: {
@@ -101,16 +102,13 @@ export function PdfRoute({
     () => applyW19HandoffToItem(liveItem, source),
     [liveItem, source],
   );
-  // 双核 flag 顶层判一次（`editor-core-flags.ts` 三条纪律的第 1 条）：
-  // 默认 `legacy`，翻到 `next` 才拉起 EmbedPDF 那个叶子。
-  const core = resolveEditorCore("pdf");
   const tt = useUI();
   // ---- 多人同改（work-chat F05）：默认的旧核按批注同改（批注、表单字段、页 id 都在字节里，
   // 别人的批注静默并进本地字节，谁保存都包含双方的）；整页级改动先拿锁、别人只读；
   // 新核还没有按批注写入的入口，保持整份上锁。细节见 `collab/adapters/use-pdf-collab.ts`。
   const collab = usePdfCollab({
     item,
-    core,
+    core: "legacy",
     onExternalItem: (next) => reportW19ProSaved(w19ItemKey("pdf", item), next),
   });
   const editor = usePdfWorkbench(workbenchItem, siteId, undefined, collab.workbenchHooks);
@@ -120,7 +118,7 @@ export function PdfRoute({
   // Native 件不发 postMessage —— 那是 Hosted 件的路（契约 v2 §4）。
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const [nextCoreFailure, setNextCoreFailure] = useState("");
-  const effectiveCore = core === "next" || mode === "pro" ? "next" : "legacy";
+  const effectiveCore = mode === "pro" ? "next" : "legacy";
   /**
    * 新核档下，`pdf.rotate-page`（写不进文件）与 `pdf.add-blank-page`（缺 API）
    * 换成「说明原因并失败」。包在 editor 这一层，是因为 L1 浮条、指令面、agent
@@ -130,6 +128,83 @@ export function PdfRoute({
   const nextCoreEditor = useMemo(
     () => pdfNextEditorFacade(collabEditor, effectiveCore, setNextCoreFailure),
     [effectiveCore, collabEditor],
+  );
+  /**
+   * Pro 模式的编辑怎么回到我们的保存链路：
+   * 官方查看器自己持有一份文档；它的撤销栈一动（`onEdited`）就记「待同步」，稍后经
+   * `export` 插件的 `saveAsCopy()` 取回字节，用 `replaceBytesSilently` 换进普通模式
+   * 正在用的那份字节（`dirty` 因此为真，顶栏保存 / 自动保存 / 下载都读这份）。
+   * 离开专业模式、下载、保存之前都会先同步一次；同步失败就不放行，不报成功。
+   */
+  const proControllerRef = useRef<PdfProController | null>(null);
+  const proEditSeqRef = useRef(0);
+  const proSyncedSeqRef = useRef(0);
+  const proTimerRef = useRef<number | null>(null);
+  const proInFlightRef = useRef<Promise<boolean> | null>(null);
+  const [proPending, setProPending] = useState(false);
+  const replaceBytesSilently = editor.replaceBytesSilently;
+  const syncProEdits = useCallback(async (): Promise<boolean> => {
+    if (proInFlightRef.current) await proInFlightRef.current.catch(() => false);
+    const controller = proControllerRef.current;
+    if (!controller || proSyncedSeqRef.current === proEditSeqRef.current) {
+      return true;
+    }
+    const run = (async () => {
+      const seq = proEditSeqRef.current;
+      try {
+        const pulled = await controller.pullBytes();
+        if (!replaceBytesSilently) {
+          throw new Error("这份 PDF 当前不能接收专业模式里的修改。");
+        }
+        let outcome: "applied" | "unchanged" | "busy" = "busy";
+        for (let attempt = 0; attempt < 8 && outcome === "busy"; attempt += 1) {
+          if (attempt) await new Promise((r) => window.setTimeout(r, 150));
+          outcome = await replaceBytesSilently(async () => pulled, {
+            markDirty: true,
+            personEdit: true,
+          });
+        }
+        if (outcome === "busy") {
+          throw new Error("页面正在处理其他操作，专业模式里的修改还没同步，请稍后重试。");
+        }
+        proSyncedSeqRef.current = seq;
+        setProPending(proEditSeqRef.current !== seq);
+        return true;
+      } catch (caught) {
+        setNextCoreFailure(
+          caught instanceof Error && caught.message
+            ? `专业模式里的修改没能同步：${caught.message}`
+            : "专业模式里的修改没能同步。",
+        );
+        return false;
+      }
+    })();
+    proInFlightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (proInFlightRef.current === run) proInFlightRef.current = null;
+    }
+  }, [replaceBytesSilently]);
+  const syncProEditsRef = useRef(syncProEdits);
+  syncProEditsRef.current = syncProEdits;
+  const onProController = useCallback((controller: PdfProController | null) => {
+    proControllerRef.current = controller;
+  }, []);
+  const onProEdited = useCallback(() => {
+    proEditSeqRef.current += 1;
+    setProPending(true);
+    if (proTimerRef.current != null) window.clearTimeout(proTimerRef.current);
+    proTimerRef.current = window.setTimeout(() => {
+      proTimerRef.current = null;
+      void syncProEditsRef.current();
+    }, 600);
+  }, []);
+  useEffect(
+    () => () => {
+      if (proTimerRef.current != null) window.clearTimeout(proTimerRef.current);
+    },
+    [],
   );
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
@@ -169,6 +244,9 @@ export function PdfRoute({
   const saveBeforeNewConversation = useCallback(async () => {
     // 只读（别人持锁）或不是该存档的一端：不落库，别人保存后这里会自动更新。
     if (!collab.mayWrite) return { ok: true as const, item };
+    if (!(await syncProEdits())) {
+      return { ok: false as const, error: "专业模式里的修改还没同步，暂时不能保存。" };
+    }
     const admitted = pdfSourcePersistenceAdmitted({
       loading: editor.loading,
       failure: editor.failure,
@@ -198,6 +276,7 @@ export function PdfRoute({
     editor.pageCount,
     editor.saveCopy,
     item,
+    syncProEdits,
   ]);
   const enterPdfPro = useCallback(async () => {
     const bytes = editor.currentBytes();
@@ -236,10 +315,11 @@ export function PdfRoute({
       if (extension !== "pdf") {
         return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
       }
+      if (!(await syncProEdits())) return "专业模式里的修改还没同步，暂时不能下载。";
       editor.download();
       return "";
     },
-    [editor.download],
+    [editor.download, syncProEdits],
   );
   // 只读（只有查看权限 / 别人正在调整页面）：会改文档的指令一律拒绝，不靠冻结后的 editor 静默吞掉。
   usePluginCommandSurface(
@@ -305,7 +385,10 @@ export function PdfRoute({
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.pdf[0].label}`,
           icon: "download",
           disabled: editor.loading || editor.processing,
-          onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.download),
+          onTrigger: () =>
+            afterAdvancedDraftExport(item.key || item.id, async () => {
+              if (await syncProEdits()) editor.download();
+            }),
         },
         upload: collabReadOnly
           ? undefined
@@ -338,6 +421,18 @@ export function PdfRoute({
           <ModeSwitchGate
             pro={effectiveCore === "next"}
             beforeEnterPro={enterPdfPro}
+            beforeLeavePro={syncProEdits}
+            hasUnsavedProChanges={() =>
+              proSyncedSeqRef.current !== proEditSeqRef.current
+            }
+            onLeaveProFailed={() => {
+              setMode("pro");
+              setPluginMode("pdf", "pro");
+            }}
+            onRetryLeavePro={() => {
+              setMode("normal");
+              setPluginMode("pdf", "normal");
+            }}
             onEnterProFailed={() => {
               setMode("normal");
               setPluginMode("pdf", "normal");
@@ -347,15 +442,17 @@ export function PdfRoute({
               setPluginMode("pdf", "pro");
             }}
             renderNormal={() => (
-              <PdfLegacyFace editor={collabEditor} accent={accent} />
+              <PdfNormalFace editor={collabEditor} accent={accent} />
             )}
             renderPro={() => (
               <PdfNextStage
                 bytes={nextCoreEditor.currentBytes()}
                 itemKey={w19ItemKey("pdf", item)}
                 name={`${item.title || "document"}.pdf`}
-                mode={mode}
+                accent={accent}
                 onFailure={setNextCoreFailure}
+                onController={onProController}
+                onEdited={onProEdited}
               />
             )}
           />
@@ -382,7 +479,7 @@ export function PdfRoute({
           editor.notice ||
           (editor.loading ? "正在载入 PDF" : ""),
         persistence: {
-          dirty: pdfAdmitted.ok && collab.mayWrite ? editor.dirty : false,
+          dirty: pdfAdmitted.ok && collab.mayWrite ? editor.dirty || proPending : false,
           editRevision: editor.editRevision,
           autoSave: pdfAdmitted.ok && collab.mayWrite,
           flush: saveBeforeNewConversation,

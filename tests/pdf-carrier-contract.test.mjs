@@ -898,10 +898,11 @@ test("§5.1 (3/3) 可下载: download hands back the source bytes as application
   assert.equal(manifest.permissions.downloadable, true);
   assert.equal(manifest.permissions.encrypted, false);
   const route = await source("src/shell/advanced-routes/PdfRoute.tsx");
-  // 下载走草稿导出闸门（afterAdvancedDraftExport），闸门放行后才调 editor.download。
+  // 下载走草稿导出闸门（afterAdvancedDraftExport），闸门放行、且专业模式里的修改
+  // 已同步回编辑器字节（syncProEdits）之后才调 editor.download。
   assert.match(
     route,
-    /directDownload:[\s\S]*onTrigger:[\s\S]*afterAdvancedDraftExport\([^)]*editor\.download\)/,
+    /directDownload:[\s\S]*onTrigger:[\s\S]*afterAdvancedDraftExport\([\s\S]*syncProEdits\(\)[\s\S]*editor\.download\(\)/,
   );
   const pageActions = await source(
     "src/shell/media-editors/use-pdf-page-actions.ts",
@@ -1321,14 +1322,16 @@ test("C-1 §1.1: the editor still saves as a bounded pdf-binary@1 artifact", asy
   assert.equal(PDF_BINARY_MANIFEST_SCHEMA_ID, "pdf-binary@1");
 });
 
-test("§5.4: rendering stays on the pdf.js canvas path with eval disabled", async () => {
+test("§5.4: rendering stays on the PDFium (EmbedPDF) canvas path; no pdf.js", async () => {
   const loader = await source("src/shell/media-editors/use-pdf-document.ts");
-  assert.match(loader, /isEvalSupported: false/);
-  assert.match(loader, /stopAtErrors: true/);
+  assert.match(loader, /openPdfEngineDocument/);
+  assert.doesNotMatch(loader, /pdfjs/);
   const preview = await source(
     "src/shell/media-editors/use-pdf-preview-render.ts",
   );
-  assert.match(preview, /canvasContext: context/);
+  assert.match(preview, /renderPageRaw/);
+  assert.match(preview, /paintImageData\(canvas, image\)/);
+  assert.doesNotMatch(preview, /pdfjs/);
 
   // §1.2: no second PDF engine, and no server-side binaries.
   for (const file of [

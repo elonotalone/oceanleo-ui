@@ -184,45 +184,22 @@ test("W19/1 手工构造的 plan 也进不了免沙箱封面 frame", async () =>
 });
 
 // UC-1 §8.1 + UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
-// 违反后果：两份复制实现只要漂移一侧，就出现一处没有白名单的免沙箱 frame；拒绝分支若退化成顶层导航，同样把不可信地址送上第一方 origin。
-test("W19/2 两处 PDF frame 都在渲染前过白名单，且两份实现逐字一致", () => {
+// 违反后果：免沙箱 PDF frame 只剩封面一处；Library 详情不再有 PDF frame（改用自家
+// EmbedPDF 只读阅读器），若有人把 iframe 加回去，就重新出现浏览器内建 PDF 查看器
+// （带永远存不回去的批注 / 画笔工具）和一处没有白名单的免沙箱 frame。
+test("W19/2 唯一的免沙箱 PDF frame 是封面，且在渲染前过白名单；Library 详情没有 PDF frame", () => {
   const viewers = source("../src/shell/library-viewers.tsx");
   const cover = source("../src/shell/workspace-library-cover.tsx");
 
-  // 两个模块不能互相 import（封面模块要能以 data: URL 加载），只能复制实现；
-  // 这里做逐字对账，任何一侧被单独改动都会变红。
-  const guardSource = (text, name) => {
-    const start = text.indexOf("const PDF_FRAME_TRUSTED_GATEWAY_HOSTS");
-    assert.notEqual(start, -1, `${name}: 缺少 PDF frame 主机白名单`);
-    const fn = text.indexOf("function isSandboxExemptPdfFrameUrl", start);
-    assert.notEqual(fn, -1, `${name}: 缺少 isSandboxExemptPdfFrameUrl`);
-    const end = text.indexOf("\n}\n", fn);
-    assert.notEqual(end, -1, `${name}: isSandboxExemptPdfFrameUrl 未闭合`);
-    return text.slice(start, end + 3).replaceAll("export function", "function");
-  };
-  assert.equal(
-    guardSource(viewers, "library-viewers.tsx"),
-    guardSource(cover, "workspace-library-cover.tsx"),
-    "两处白名单实现必须逐字一致；改一侧必须同步改另一侧",
-  );
-
-  // 白名单常量本身：cookie 域内只有写死的网关，且不可信可注册域与共享判定同源。
-  const gatewayHosts = [
-    ...guardSource(viewers, "library-viewers.tsx").matchAll(
-      /PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string\[\] = \[([^\]]*)\]/g,
-    ),
+  // 封面：白名单常量与判定函数仍在，三个家族网关与不可信域不变。
+  const start = cover.indexOf("const PDF_FRAME_TRUSTED_GATEWAY_HOSTS");
+  assert.notEqual(start, -1, "workspace-library-cover.tsx: 缺少 PDF frame 主机白名单");
+  const gatewayHostList = [
+    ...cover
+      .slice(start)
+      .match(/PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string\[\] = \[([^\]]*)\]/)[1]
+      .matchAll(/"([^"]+)"/g),
   ].map((match) => match[1]);
-  // C5：两个家族的网关都在表内。这不是放宽 —— `api.oceanleo.cn` 本来就因为
-  // 「不在 .com 的 cookie 域内」而被放行（当对象存储处理），现在它改为按 cn 家族
-  // 的 cookie 域内网关放行，而 `.oceanleo.cn` 下的**其余**主机从「放行」变成「拒绝」。
-  // ws（2026-09-21，分身 oceanbizs.com）：第三个家族的网关 `api.oceanbizs.com` 同一档；
-  // `oceanbizs.com` 同时进 SSO cookie 域表，所以 `.oceanbizs.com` 下其余主机是拒绝。
-  const gatewayHostList = gatewayHosts
-    .join("")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('"'))
-    .map((line) => line.replace(/[",]/g, ""));
   assert.deepEqual(gatewayHostList, [
     "api.oceanleo.com",
     "api.oceanleo.cn",
@@ -235,76 +212,40 @@ test("W19/2 两处 PDF frame 都在渲染前过白名单，且两份实现逐字
     ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
     "三个家族的用户内容域都必须在不可信集合里（只增不减）",
   );
-  for (const [name, text] of [
-    ["library-viewers.tsx", viewers],
-    ["workspace-library-cover.tsx", cover],
-  ]) {
-    for (const domain of UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS) {
-      assert.ok(
-        text.includes(`"${domain}"`),
-        `${name}: 不可信可注册域 ${domain} 必须同时出现在 PDF 白名单的排除项里`,
-      );
-    }
+  for (const domain of UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS) {
+    assert.ok(
+      cover.includes(`"${domain}"`),
+      `workspace-library-cover.tsx: 不可信可注册域 ${domain} 必须出现在 PDF 白名单的排除项里`,
+    );
   }
-
-  // 渲染面：免沙箱 frame 前必须有守卫，且豁免标记仍各只有一处。
   assert.ok(
-    /if \(!isSandboxExemptPdfFrameUrl\(item\.url\)\) \{/.test(viewers),
-    "library-viewers: PDF frame 之前必须先过白名单",
-  );
-  assert.ok(
-    /plan\.renderer === "pdf" && !isSandboxExemptPdfFrameUrl\(plan\.url\)/.test(
-      cover,
-    ),
+    /plan\.renderer === "pdf" && !isSandboxExemptPdfFrameUrl\(plan\.url\)/.test(cover),
     "workspace-library-cover: 封面 frame 之前必须先过白名单",
   );
-  for (const [name, text] of [
-    ["library-viewers.tsx", viewers],
-    ["workspace-library-cover.tsx", cover],
-  ]) {
-    assert.equal(
-      (text.match(/sandbox-exempt: pdf-plugin/g) || []).length,
-      1,
-      `${name}: 豁免数量变化必须重新评审`,
-    );
-    assert.ok(
-      text.includes("crbug 413851"),
-      `${name}: 必须保留「不能改用 sandbox」的浏览器约束依据`,
-    );
-  }
-  // 被拒绝的地址不得再以「打开原文件」的形式变成顶层导航（隔离文档 §4.3）。
-  const rejected = viewers.slice(
-    viewers.indexOf("if (!isSandboxExemptPdfFrameUrl(item.url))"),
-  );
-  const errorView = rejected.slice(
-    rejected.indexOf("<ErrorView"),
-    rejected.indexOf("/>", rejected.indexOf("<ErrorView")),
-  );
-  assert.equal(
-    /url=/.test(errorView),
-    false,
-    "拒绝分支不得把不可信地址交给顶层导航链接",
-  );
+  assert.equal((cover.match(/sandbox-exempt: pdf-plugin/g) || []).length, 1);
+  assert.ok(cover.includes("crbug 413851"));
+
+  // Library 详情：没有白名单、没有豁免标记、没有 PDF 的 iframe，走自家阅读器。
+  assert.equal(viewers.includes("PDF_FRAME_TRUSTED_GATEWAY_HOSTS"), false);
+  assert.equal(viewers.includes("isSandboxExemptPdfFrameUrl"), false);
+  assert.equal(viewers.includes("sandbox-exempt"), false);
+  assert.equal((viewers.match(/<iframe/g) || []).length, 1, "只剩 SandboxedWebViewer 那一个 frame");
+  assert.match(viewers, /<LibraryPdfReader/);
+  assert.equal(/<iframe[^>]*src=\{sourceUrl\}/.test(viewers), false);
+  const reader = source("../src/shell/LibraryPdfReader.tsx");
+  assert.equal(/<iframe|<embed|<object/.test(reader), false, "阅读器不得用 iframe/embed/object 渲染 PDF");
 });
 
 // UC-1 §8.1（docs/architecture/oceanleo-untrusted-content-isolation.md）
-// 违反后果：这条记录的是事实：url 零校验且仅凭 .pdf 后缀路由。后人若误以为 url 恒由服务端生成而删掉主机白名单，攻击链立刻恢复。
+// 违反后果：这条记录的是事实：url 零校验且仅凭 .pdf 后缀路由。Library 详情不再给它
+// 一个 frame，而是由自家阅读器经媒体代理取字节 —— 后人若把 iframe 加回去，必须重新评审白名单。
 test("W19/3 前提锁死：item.url 由调用方给定，本包不做任何来源校验", () => {
-  // 这条断言记录的是**事实**，不是期望：`normalizeWork` 对 url 零校验，`.pdf`
-  // 后缀足以把任意地址路由到 document 查看器。后人若因此认为「url 恒由服务端
-  // 生成」而删掉主机白名单，本用例会连同上面的守卫断言一起变红。
   const hostile = "https://p8080-aaa.website.oceanleo.com/steal.pdf";
   const item = normalizeWork({ id: "w1", url: hostile, site_id: "asset" });
   assert.equal(item.url, hostile, "url 原样落到 LibraryItem 上，没有被过滤");
   assert.equal(item.kind, "document");
   assert.equal(inferLibraryKind({ url: hostile }), "document");
-  // 该条目在 DocumentViewer 里走 isPdf 分支（artifactType 为空，仅凭扩展名）。
   assert.equal(item.artifactType, undefined);
   const viewers = source("../src/shell/library-viewers.tsx");
-  assert.ok(
-    viewers.includes(
-      `const isPdf = item.artifactType === "pdf" || ext === "pdf";`,
-    ),
-    "isPdf 判据变化必须重新评审白名单覆盖面",
-  );
+  assert.match(viewers, /const isPdf =\s+item\.artifactType === "pdf" \|\|\s+ext === "pdf"/);
 });

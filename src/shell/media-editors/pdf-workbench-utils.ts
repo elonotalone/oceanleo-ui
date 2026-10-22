@@ -121,7 +121,19 @@ export function pdfErrorMessage(caught: unknown, fallback: string): string {
   ) {
     return "";
   }
-  return caught instanceof Error ? caught.message : fallback;
+  // EmbedPDF engine tasks reject with `{ name: "TaskRejectedError", reason: { code, message } }`
+  // (an Error whose own `message` is empty). Codes: PdfErrorCode in @embedpdf/models.
+  const reason =
+    caught && typeof caught === "object"
+      ? (caught as { reason?: { code?: number; message?: string } }).reason
+      : undefined;
+  if (reason && typeof reason === "object") {
+    if (reason.code === 4) return "这份 PDF 有密码保护，暂不能打开。";
+    if (reason.code === 3) return "这不是有效的 PDF 文件，或文件已损坏。";
+    if (reason.message) return `${fallback}：${reason.message}`;
+  }
+  if (caught instanceof Error && caught.message) return caught.message;
+  return fallback;
 }
 
 export function pdfFileStem(title: string): string {
