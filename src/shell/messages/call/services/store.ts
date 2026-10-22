@@ -295,7 +295,7 @@ export function createServicesStore(deps: ServicesStoreDeps): ServicesStore {
         if (state.callId !== callId) return;
         set({
           ...state,
-          transcription: { ...state.transcription, busy: false, error: { ...toServiceError(error), at: deps.now() } },
+          transcription: { ...state.transcription, busy: false, error: { ...toServiceError(error, "transcription"), at: deps.now() } },
         });
         armErrorClear("transcription");
       } finally {
@@ -327,7 +327,7 @@ export function createServicesStore(deps: ServicesStoreDeps): ServicesStore {
         if (value) armOverrideClear("recording");
       } catch (error) {
         if (state.callId !== callId) return;
-        const serviceError = toServiceError(error);
+        const serviceError = toServiceError(error, "recording");
         set({
           ...state,
           recording: {

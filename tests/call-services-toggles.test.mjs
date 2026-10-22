@@ -280,11 +280,39 @@ test("错误映射：存储未开通原话「录制存储尚未开通」；其�
   assert.equal(map(0, "network").message, "网络不通，请稍后再试");
   assert.equal(map(401, "unauthorized").message, "登录已过期，请重新登录");
   assert.equal(map(401, "http_401").message, "登录已过期，请重新登录");
-  assert.equal(map(429, "quota_exceeded").message, "操作太频繁，请稍后再试");
+  assert.equal(map(429, "quota_exceeded").message, "今天的录制次数已用完，请明天再试", "默认按录制开关（W02 的每日次数上限）");
   assert.equal(map(404, "http_404").message, "这通通话已经结束");
   assert.equal(map(500, "http_500").message, "操作没有成功，请稍后再试");
   assert.deepEqual(errors.toServiceError(new Error("boom")), { code: "unknown", message: "操作没有成功，请稍后再试" });
   assert.deepEqual(errors.toServiceError(null), { code: "unknown", message: "操作没有成功，请稍后再试" });
+});
+
+test("错误映射：W02 / W03 后端实际会给的码（graph.fail）逐条有专门说明，按开关区分", () => {
+  const rec = (status, code) => errors.toServiceError(new ApiError(status, code), "recording").message;
+  const tr = (status, code) => errors.toServiceError(new ApiError(status, code), "transcription").message;
+  // W02 call_recording.py
+  assert.equal(rec(429, "quota_exceeded"), "今天的录制次数已用完，请明天再试");
+  assert.equal(rec(409, "conflict"), "录制状态刚刚变了，请再试一次");
+  assert.equal(rec(503, "unavailable"), "录制暂时无法开始，请稍后再试");
+  assert.equal(rec(409, "recording_start_failed"), "通话里还没有人连上，稍后再试");
+  assert.equal(rec(503, "recording_start_failed"), "录制服务暂时不可用，请稍后再试");
+  assert.equal(rec(503, "recording_unavailable"), "录制服务繁忙，请稍后再试");
+  assert.equal(rec(404, "recording_unavailable"), "没有进行中的录制");
+  assert.equal(rec(503, "artc_not_configured"), "实时音视频尚未配置，暂时无法录制");
+  assert.equal(rec(429, "rate_limited"), "操作太频繁，请稍后再试");
+  // W03 call_captions.py
+  assert.equal(tr(503, "unavailable"), "转写暂时不可用，请稍后再试");
+  assert.equal(tr(503, "asr_unavailable"), "实时转写暂不可用，请稍后再试");
+  assert.equal(tr(429, "rate_limited"), "操作太频繁，请稍后再试");
+  assert.equal(tr(429, "quota_exceeded"), "操作太频繁，请稍后再试");
+  // W01 call_events.py require_live_participant
+  assert.equal(tr(403, "not_participant"), "你已不在通话中");
+  assert.equal(tr(404, "call_unavailable"), "这通通话已经结束");
+  // 映射的每个出口都在 SERVICE_ERROR_MESSAGES 里（下一条用例据此核 17 语）。
+  const outputs = new Set(errors.SERVICE_ERROR_MESSAGES);
+  for (const [status, code, kind] of [[429, "quota_exceeded", "recording"], [409, "conflict", "transcription"], [418, "teapot", "recording"], [0, "network", "recording"]]) {
+    assert.ok(outputs.has(errors.serviceErrorMessage(code, status, kind)));
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -306,7 +334,7 @@ function literalTtKeys() {
 }
 
 test("文案：界面里每一条 tt() 原文与每一条错误文案，16 个非中文语种都有译文", () => {
-  const keys = new Set([...literalTtKeys(), ...Object.values(errors.SERVICE_ERROR_COPY)]);
+  const keys = new Set([...literalTtKeys(), ...errors.SERVICE_ERROR_MESSAGES]);
   assert.ok(keys.size >= 20, `只收到 ${keys.size} 条，扫描失效`);
   for (const must of ["录制中", "转写中", "录制存储尚未开通", "开启转写", "开始录制", "隐藏字幕", "我"]) {
     assert.ok(keys.has(must), `没扫到「${must}」`);
