@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Suspense,
+  lazy,
   useEffect,
   useRef,
   type CSSProperties,
@@ -24,6 +26,9 @@ import type {
 // 六个公开类型移到 `workspace-cover-contract.ts`，此处原样转出：`index.ts` 与三个
 // 消费点的既有 import 路径逐字不变。
 export type * from "./workspace-cover-contract";
+
+// PDFium is a wasm engine: only loaded when a PDF cover is actually shown.
+const LazyWorkspacePdfCover = lazy(() => import("./WorkspacePdfCover"));
 
 /**
  * 按名字自证的合成占位图。放水这一条 = 真占位图直接漏上货架。
@@ -378,73 +383,6 @@ function supportsPdfCover(
   return artifactType === "pdf" || kind === "document" || kind === "file";
 }
 
-/**
- * UC-1 / UC-3 —— 免沙箱 PDF 封面 frame 的第一方主机白名单。
- * 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1/§7.5/§8.1/§8.3。
- * 与 `library-viewers.tsx` 同名判定逐字一致：两侧各留一份，一致性由
- * untrusted-content-pdf-frame-host.test.mjs 逐字锁死。改这里必须同时改那边，否则当场红。
- *
- * Chromium 内建 PDF 查看器加任何 sandbox 属性都不渲染（crbug 413851），PDF 封面只能免
- * 沙箱。免沙箱 frame 读不到宿主 DOM，但读得到自己 origin 的 cookie，而会话 cookie 非
- * httpOnly，对 cookie 域内任意主机都是「自己的 cookie」。因此域内只放行写死的第一方
- * rendition 网关（响应带 CSP sandbox，落 opaque origin），域外主机与 UGC 域一律挡掉。
- * 判定按「落在哪个 cookie 域里」逐个 host 走，不按页面属于哪个家族：这是**降权**判定，
- * 多覆盖一个家族只会更严（`.oceanleo.cn` 与 leoapp.cn 由此从放行改为拒绝，`.com`
- * 侧结论逐字不变）。
- */
-const PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string[] = [
-  "api.oceanleo.com",
-  "api.oceanleo.cn",
-  // ws（分身 oceanbizs.com，2026-09-21）：分身自己的 rendition 网关，与 .com / .cn
-  // 那两条同一档；`.oceanbizs.com` 下其余主机同样落入 cookie 域内 → 拒绝。
-  "api.oceanbizs.com",
-  "api.dev.oceanleo.com",
-  "api-cn.dev.oceanleo.com",
-];
-const PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS: readonly string[] = [
-  "oceanleo.app",
-  "leoapp.cn",
-  // 分身用户内容域（oceanleo.app 的子区，上一行已覆盖；显式列出与家族表同源）。
-  "ws.oceanleo.app",
-];
-const SSO_COOKIE_REGISTRABLE_DOMAINS: readonly string[] = [
-  "oceanleo.com",
-  "oceanleo.cn",
-  "oceanbizs.com",
-];
-
-/** 判定 host 是否落在**任一家族**的共享 cookie 域内。这是降权判定，不是授信判定。 */
-function isUnderSsoCookieDomain(host: string): boolean {
-  return SSO_COOKIE_REGISTRABLE_DOMAINS.some(
-    (domain) => host === domain || host.endsWith(`.${domain}`),
-  );
-}
-
-export function isSandboxExemptPdfFrameUrl(value: string | undefined): boolean {
-  let parsed: URL;
-  try {
-    // 相对地址证明不了自己落在哪个 origin，一律 fail closed。
-    parsed = new URL(String(value || ""));
-  } catch {
-    return false;
-  }
-  if (parsed.protocol !== "https:") return false;
-  if (parsed.username || parsed.password || parsed.port) return false;
-  const host = parsed.hostname.trim().toLowerCase().replace(/\.$/, "");
-  if (!host) return false;
-  if (
-    PDF_FRAME_UNTRUSTED_REGISTRABLE_DOMAINS.some(
-      (domain) => host === domain || host.endsWith(`.${domain}`),
-    )
-  ) {
-    return false;
-  }
-  if (isUnderSsoCookieDomain(host)) {
-    return PDF_FRAME_TRUSTED_GATEWAY_HOSTS.includes(host);
-  }
-  return true;
-}
-
 function supportsWebsiteCover(
   artifactType: ArtifactType | undefined,
   kind: LibraryKind,
@@ -558,13 +496,6 @@ export function workspaceCoverPlan({
       mediaType: mediaType || "application/pdf",
       format: format || "pdf",
     };
-    if (!isSandboxExemptPdfFrameUrl(normalizedUrl)) {
-      return planOf("unavailable", {
-        ...pdfPlan,
-        failureReason:
-          "PDF 封面地址不在第一方渲染网关白名单内；免沙箱 frame 不得加载它。",
-      });
-    }
     return planOf("pdf", pdfPlan);
   }
   if (isHtml(mediaType, format) && supportsWebsiteCover(artifactType, kind)) {
@@ -611,12 +542,6 @@ export function workspaceCoverRenditionPurposes(
       : 1;
   // Empty means truthful unavailable — do not fall back to known-bad posters.
   return purposes.sort((left, right) => dedicated(left) - dedicated(right));
-}
-
-function pdfFirstPageUrl(url: string): string {
-  return url.includes("#")
-    ? url
-    : `${url}#page=1&view=FitH&toolbar=0&navpanes=0&scrollbar=0`;
 }
 
 export function WorkspaceCoverResource({
@@ -700,26 +625,38 @@ export function WorkspaceCoverResource({
       />
     );
   }
-  if (plan.renderer === "pdf" || plan.renderer === "website") {
-    // 手工构造的 plan 绕不过白名单：渲染面自己再判一次（UC-1/UC-3）。
-    if (plan.renderer === "pdf" && !isSandboxExemptPdfFrameUrl(plan.url)) {
-      return null;
-    }
+  if (plan.renderer === "pdf") {
+    // 首页位图由自家 PDFium 渲出（懒加载、按 resourceKey 缓存）；失败走调用方既有的
+    // 海报 / 缩略图回退。绝不创建 iframe（浏览器内建 PDF 查看器）。
+    return (
+      <Suspense fallback={null}>
+        <LazyWorkspacePdfCover
+          key={resourceKey}
+          url={plan.url}
+          alt={alt}
+          className={className}
+          resourceKey={resourceKey}
+          style={mediaStyle}
+          common={common}
+          onReady={onReady}
+          onError={onError}
+        />
+      </Suspense>
+    );
+  }
+  if (plan.renderer === "website") {
     return (
       <iframe
         {...common}
         key={resourceKey}
-        src={
-          plan.renderer === "pdf" ? pdfFirstPageUrl(plan.url) : plan.url
-        }
+        src={plan.url}
         title={alt}
         loading="lazy"
         referrerPolicy="no-referrer"
         // 封面内容一律按不可信处理：allow-same-origin 永不出现（值与
         // editor-protocol 的 COVER_FRAME_SANDBOX 一致，本模块被渲染测试以
         // data: URL 加载，不能引入相对运行时依赖）。
-        // sandbox-exempt: pdf-plugin —— PDF 封面加任何 sandbox 都不渲染。
-        sandbox={plan.renderer === "website" ? "allow-scripts" : undefined}
+        sandbox="allow-scripts"
         tabIndex={-1}
         onLoad={onReady}
         onError={() => onError("load")}

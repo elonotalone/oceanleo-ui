@@ -1,28 +1,12 @@
-// W19 —— 免沙箱 PDF frame 的第一方主机白名单防线。
+// W19 → native-editors W06 —— PDF 不再有免沙箱 frame。
 //
-// 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md
-//   §4.1（cookie 按目标地址决定，iframe 有独立 origin，「只是被嵌在里面」不降权）
-//   §7.5（禁止依据域名后缀授予信任）
-//   §8.1 UC-1（用户内容只落 oceanleo.app，*.oceanleo.com 下不得有用户可控代码）
-//   §8.3 UC-3（不可信来源的 frame 不得取得同源能力）
-//
-// 为什么这两处 frame 只能用主机白名单、不能用 sandbox 属性：
-//   10| Chromium 内建 PDF 查看器加**任何** sandbox 都不渲染（crbug 413851）。
-//
-// 为什么必须有这条防线：`item.url` 可由用户指定。后端
-//   `POST /v1/database/assets`（backend/app/routers/database_router.py:389）经
-//   `supa.assets_add`（backend/app/supa.py:1169）把调用方给的 url 原样落库，只做
-//   `.strip()`，没有 scheme / host / rehost 校验；`GET /v1/database/overview` 与
-//   `GET /v1/database/item?source=asset` 原样读回。本包又把 `normalizeWork` /
-//   `buildLibraryItems` / `LibraryItemViewer` 作为公共 API 导出（src/shell/index.ts），
-//   `normalizeWork` 对 url 零校验，`inferLibraryKind` 仅凭 `.pdf` 后缀就把它路由到
-//   20| DocumentViewer 的免沙箱 frame。完整取证见
-//   scratch/expansion-and-security-2026-07-25/W19/01-item-url-provenance.md。
-//
-// 改坏本文件锁定的任意一行都必须变红。
+// 规范来源：docs/architecture/oceanleo-untrusted-content-isolation.md §4.1、§7.5、§8.1 UC-1、§8.3 UC-3。
+// 历史：Chromium 内建 PDF 查看器加任何 sandbox 都不渲染（crbug 413851），所以 PDF 封面 / Library
+// 详情只能免沙箱，靠主机白名单兜底。现在两处都改成自家 EmbedPDF(PDFium) 渲染的位图 / 阅读器，
+// 不再创建任何 PDF frame，免沙箱豁免与主机白名单随之删除。
+// 本文件锁住「不会再回来」：任何人把 PDF 地址重新交给 iframe，都必须先过 UC-1/UC-3 评审。
 
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -30,7 +14,6 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS } from "../src/shell/editor-sandbox-origin.ts";
 import { inferLibraryKind, normalizeWork } from "../src/shell/library-data.ts";
 
 import { compileModule } from "./helpers/module-bench.mjs";
@@ -42,122 +25,37 @@ function source(relativePath) {
   );
 }
 
-/**
- * 封面组件走共享编译台：相对依赖自动解析，不再手工改 react 两条边。
- * （产品代码两侧 PDF 白名单仍不许互相 import——那是实现一致性约束，见下方对账用例。）
- */
+const code = (text) =>
+  text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
 async function loadCoverModule() {
-  return import(
-    await compileModule("src/shell/workspace-library-cover.tsx")
-  );
+  return import(await compileModule("src/shell/workspace-library-cover.tsx"));
 }
 
-/** 白名单内：会话 cookie 域内唯一放行的第一方 rendition 网关，以及 cookie 域外主机。 */
-const ALLOWED_PDF_URLS = [
-  // 第一方 rendition 网关：响应带 `Content-Security-Policy: sandbox`
-  // （backend/app/routers/artifacts_router.py:1265），落在 opaque origin。
+const PDF_URLS = [
   "https://api.oceanleo.com/v1/artifact-renditions/access/abc123",
-  "https://api.oceanleo.com/v1/media/proxy?url=x",
-  // C5：境内家族的 rendition 网关，与 .com 那条同一档。
-  "https://api.oceanleo.cn/v1/artifact-renditions/access/abc123",
-  // ws（分身）：分身自己的 rendition 网关，与 .com / .cn 同一档。
-  "https://api.oceanbizs.com/v1/artifact-renditions/access/abc123",
-  // LeoDev 两版共用 `*.dev.oceanleo.com` 网关主机，仍是第一方 rendition 网关。
-  "https://api.dev.oceanleo.com/v1/artifact-renditions/access/abc123",
-  "https://api-cn.dev.oceanleo.com/v1/artifact-renditions/access/abc123",
-  // cookie 域外的对象存储主机：读不到会话 cookie。
-  "https://kvrtcumcmhyqhmawpzyc.supabase.co/storage/v1/object/public/media-uploads/u/a/b.pdf",
-  "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/a/b.pdf",
-];
-
-/** 白名单外：任何一条被放行都等于交出全家桶 access + refresh token。 */
-const BLOCKED_PDF_URLS = [
-  // 共享 cookie 域内的非网关主机——包括看起来最「第一方」的那些。
-  "https://oceanleo.com/x.pdf",
-  "https://asset.oceanleo.com/x.pdf",
-  "https://website.oceanleo.com/x.pdf",
-  "https://ppt.oceanleo.com/x.pdf",
-  // 迁移期仍留在 .oceanleo.com 下的预览/UGC 主机。
-  `https://p8080-${"a".repeat(32)}.website.oceanleo.com/x.pdf`,
-  `https://p-${"0".repeat(32)}.dev.oceanleo.com/x.pdf`,
-  "https://anything.preview.oceanleo.com/x.pdf",
-  "https://x.usercontent.oceanleo.com/x.pdf",
-  // 用户内容可注册域：即使在 cookie 域外，免沙箱 frame 仍可顶层导航/弹窗/下载。
-  "https://oceanleo.app/x.pdf",
-  "https://game-42.oceanleo.app/x.pdf",
-  // C5 收紧：境内家族的同款主机。leoapp.cn 是境内用户内容域；`.oceanleo.cn` 下的
-  // 非网关主机以前被当成「cookie 域外的对象存储」放行，现在落在 cn 的 cookie 域内。
-  "https://leoapp.cn/x.pdf",
-  "https://game-42.leoapp.cn/x.pdf",
-  "https://oceanleo.cn/x.pdf",
-  "https://asset.oceanleo.cn/x.pdf",
-  "https://website.oceanleo.cn/x.pdf",
-  "http://api.oceanleo.cn/x.pdf",
-  // ws（分身）收紧：`.oceanbizs.com` 落在 ws 的 cookie 域内，非网关主机一律拒；
-  // `ws.oceanleo.app` 是分身用户内容域。
-  "https://oceanbizs.com/x.pdf",
-  "https://www.oceanbizs.com/x.pdf",
-  "https://anything.oceanbizs.com/x.pdf",
-  "http://api.oceanbizs.com/x.pdf",
+  "https://p8080-aaa.website.oceanleo.com/x.pdf",
   "https://ws.oceanleo.app/x.pdf",
-  `https://p8080-${"a".repeat(32)}.ws.oceanleo.app/x.pdf`,
-  // 协议 / 端口 / 凭据 / 相对地址一律 fail closed。
-  "http://api.oceanleo.com/x.pdf",
-  "https://api.oceanleo.com:8443/x.pdf",
-  "https://user:pw@api.oceanleo.com/x.pdf",
-  "/v1/artifact-renditions/access/abc123",
-  "not a url",
-  "",
 ];
 
-test("W19/1 免沙箱 PDF frame 的主机白名单判定（UC-1/UC-3）", async () => {
-  const { isSandboxExemptPdfFrameUrl } = await loadCoverModule();
-  for (const url of ALLOWED_PDF_URLS) {
-    assert.equal(isSandboxExemptPdfFrameUrl(url), true, url);
-  }
-  for (const url of BLOCKED_PDF_URLS) {
-    assert.equal(isSandboxExemptPdfFrameUrl(url), false, url);
-  }
-  assert.equal(isSandboxExemptPdfFrameUrl(undefined), false);
-  // 后缀相似的别人的注册域不得因为「像」而被放行/误判。
-  assert.equal(
-    isSandboxExemptPdfFrameUrl("https://oceanleo.com.evil.test/x.pdf"),
-    true,
-    "别人的注册域在 cookie 域外，允许渲染但读不到会话 cookie",
-  );
-  assert.equal(
-    isSandboxExemptPdfFrameUrl("https://evil-oceanleo.app/x.pdf"),
-    true,
-  );
-});
-
-// UC-1 §8.1 + UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
-// 违反后果：免沙箱 frame 一旦加载 cookie 域内的用户可控地址，该页面就在 *.oceanleo.com origin 上执行并可读走会话 cookie。
-test("W19/1 封面 plan 对白名单外的 PDF 地址降级为 unavailable", async () => {
+// UC-3：封面的 PDF 不得再进 frame —— 无论地址落在哪个域。
+test("W19/1 PDF 封面 plan 走 pdf 位图渲染器，不再按主机白名单降级", async () => {
   const { workspaceCoverPlan } = await loadCoverModule();
-  // 真实形态：rendition 声明 application/pdf，地址本身可以没有 .pdf 后缀。
-  const planFor = (url) =>
-    workspaceCoverPlan({
+  for (const url of PDF_URLS) {
+    const plan = workspaceCoverPlan({
       kind: "document",
       url,
       rendition: { purpose: "full", mediaType: "application/pdf", url },
     });
-  for (const url of BLOCKED_PDF_URLS.filter(Boolean)) {
-    const plan = planFor(url);
-    assert.notEqual(plan.renderer, "pdf", url);
-    assert.ok(plan.failureReason, `${url}: 降级必须给出可读原因`);
+    assert.equal(plan.renderer, "pdf", url);
+    assert.equal(plan.failureReason, "");
   }
-  const allowed = planFor(ALLOWED_PDF_URLS[0]);
-  assert.equal(allowed.renderer, "pdf");
-  assert.equal(allowed.failureReason, "");
 });
 
-// UC-1 §8.1 + UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
-// 违反后果：只在 plan 生成处过滤而渲染处不再校验，调用方自己拼一个 plan 就能绕开整条白名单。
-test("W19/1 手工构造的 plan 也进不了免沙箱封面 frame", async () => {
+test("W19/1 手工构造的 pdf plan 也渲染不出 iframe / embed / object", async () => {
   const { WorkspaceCoverResource } = await loadCoverModule();
-  const render = (url) =>
-    renderToStaticMarkup(
+  for (const url of PDF_URLS) {
+    const html = renderToStaticMarkup(
       React.createElement(WorkspaceCoverResource, {
         plan: {
           renderer: "pdf",
@@ -175,77 +73,43 @@ test("W19/1 手工构造的 plan 也进不了免沙箱封面 frame", async () =>
         onError: () => undefined,
       }),
     );
-  assert.equal(
-    render(`https://p8080-${"a".repeat(32)}.website.oceanleo.com/x.pdf`),
-    "",
-    "白名单外的地址不得渲染出 frame",
-  );
-  assert.match(render(ALLOWED_PDF_URLS[0]), /<iframe/);
+    assert.equal(/<iframe|<embed|<object/i.test(html), false, html);
+  }
 });
 
-// UC-1 §8.1 + UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
-// 违反后果：免沙箱 PDF frame 只剩封面一处；Library 详情不再有 PDF frame（改用自家
-// EmbedPDF 只读阅读器），若有人把 iframe 加回去，就重新出现浏览器内建 PDF 查看器
-// （带永远存不回去的批注 / 画笔工具）和一处没有白名单的免沙箱 frame。
-test("W19/2 唯一的免沙箱 PDF frame 是封面，且在渲染前过白名单；Library 详情没有 PDF frame", () => {
-  const viewers = source("../src/shell/library-viewers.tsx");
-  const cover = source("../src/shell/workspace-library-cover.tsx");
-
-  // 封面：白名单常量与判定函数仍在，三个家族网关与不可信域不变。
-  const start = cover.indexOf("const PDF_FRAME_TRUSTED_GATEWAY_HOSTS");
-  assert.notEqual(start, -1, "workspace-library-cover.tsx: 缺少 PDF frame 主机白名单");
-  const gatewayHostList = [
-    ...cover
-      .slice(start)
-      .match(/PDF_FRAME_TRUSTED_GATEWAY_HOSTS: readonly string\[\] = \[([^\]]*)\]/)[1]
-      .matchAll(/"([^"]+)"/g),
-  ].map((match) => match[1]);
-  assert.deepEqual(gatewayHostList, [
-    "api.oceanleo.com",
-    "api.oceanleo.cn",
-    "api.oceanbizs.com",
-    "api.dev.oceanleo.com",
-    "api-cn.dev.oceanleo.com",
-  ]);
-  assert.deepEqual(
-    [...UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS],
-    ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
-    "三个家族的用户内容域都必须在不可信集合里（只增不减）",
-  );
-  for (const domain of UNTRUSTED_CONTENT_REGISTRABLE_DOMAINS) {
-    assert.ok(
-      cover.includes(`"${domain}"`),
-      `workspace-library-cover.tsx: 不可信可注册域 ${domain} 必须出现在 PDF 白名单的排除项里`,
-    );
+test("W19/2 源码里不再有免沙箱 PDF frame 的豁免、白名单与判定函数", () => {
+  for (const file of [
+    "../src/shell/workspace-library-cover.tsx",
+    "../src/shell/library-viewers.tsx",
+    "../src/shell/WorkspacePdfCover.tsx",
+    "../src/shell/LibraryPdfReader.tsx",
+  ]) {
+    const text = source(file);
+    assert.equal(text.includes("sandbox-exempt"), false, file);
+    assert.equal(text.includes("PDF_FRAME_TRUSTED_GATEWAY_HOSTS"), false, file);
+    assert.equal(text.includes("isSandboxExemptPdfFrameUrl"), false, file);
   }
-  assert.ok(
-    /plan\.renderer === "pdf" && !isSandboxExemptPdfFrameUrl\(plan\.url\)/.test(cover),
-    "workspace-library-cover: 封面 frame 之前必须先过白名单",
-  );
-  assert.equal((cover.match(/sandbox-exempt: pdf-plugin/g) || []).length, 1);
-  assert.ok(cover.includes("crbug 413851"));
-
-  // Library 详情：没有白名单、没有豁免标记、没有 PDF 的 iframe，走自家阅读器。
-  assert.equal(viewers.includes("PDF_FRAME_TRUSTED_GATEWAY_HOSTS"), false);
-  assert.equal(viewers.includes("isSandboxExemptPdfFrameUrl"), false);
-  assert.equal(viewers.includes("sandbox-exempt"), false);
+  const cover = code(source("../src/shell/workspace-library-cover.tsx"));
+  // 封面唯一剩下的 frame 是网站封面，且带 sandbox。
+  assert.equal((cover.match(/<iframe/g) || []).length, 1);
+  assert.match(cover, /sandbox="allow-scripts"/);
+  assert.equal(/pdfFirstPageUrl|#page=1/.test(cover), false);
+  const viewers = source("../src/shell/library-viewers.tsx");
   assert.equal((viewers.match(/<iframe/g) || []).length, 1, "只剩 SandboxedWebViewer 那一个 frame");
   assert.match(viewers, /<LibraryPdfReader/);
-  assert.equal(/<iframe[^>]*src=\{sourceUrl\}/.test(viewers), false);
-  const reader = source("../src/shell/LibraryPdfReader.tsx");
-  assert.equal(/<iframe|<embed|<object/.test(reader), false, "阅读器不得用 iframe/embed/object 渲染 PDF");
+  for (const file of ["WorkspacePdfCover.tsx", "LibraryPdfReader.tsx"]) {
+    assert.equal(/<iframe|<embed|<object/.test(code(source(`../src/shell/${file}`))), false, file);
+  }
 });
 
-// UC-1 §8.1（docs/architecture/oceanleo-untrusted-content-isolation.md）
-// 违反后果：这条记录的是事实：url 零校验且仅凭 .pdf 后缀路由。Library 详情不再给它
-// 一个 frame，而是由自家阅读器经媒体代理取字节 —— 后人若把 iframe 加回去，必须重新评审白名单。
-test("W19/3 前提锁死：item.url 由调用方给定，本包不做任何来源校验", () => {
+// UC-1 §8.1：这条记录的是事实 —— url 零校验且仅凭 .pdf 后缀路由。封面 / 阅读器因此只经媒体代理取字节、
+// 在 wasm 里渲染，绝不把这个地址交给浏览器当文档加载。
+test("W19/3 前提：item.url 由调用方给定，本包不做来源校验；PDF 只经 fetchMediaBlob 取字节", () => {
   const hostile = "https://p8080-aaa.website.oceanleo.com/steal.pdf";
   const item = normalizeWork({ id: "w1", url: hostile, site_id: "asset" });
-  assert.equal(item.url, hostile, "url 原样落到 LibraryItem 上，没有被过滤");
+  assert.equal(item.url, hostile);
   assert.equal(item.kind, "document");
   assert.equal(inferLibraryKind({ url: hostile }), "document");
-  assert.equal(item.artifactType, undefined);
-  const viewers = source("../src/shell/library-viewers.tsx");
-  assert.match(viewers, /const isPdf =\s+item\.artifactType === "pdf" \|\|\s+ext === "pdf"/);
+  assert.match(source("../src/shell/WorkspacePdfCover.tsx"), /fetchMediaBlob\(url,/);
+  assert.match(source("../src/shell/library-viewers.tsx"), /fetchMediaBlobRefreshing\(url,/);
 });

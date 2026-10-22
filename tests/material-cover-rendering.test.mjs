@@ -768,9 +768,8 @@ test("cover resources render image, video, PDF, website and audio semantics with
     sourceAspectRatio: null,
     failureReason: "",
   });
-  assert.match(pdf, /^<iframe /);
-  assert.match(pdf, /#page=1&amp;view=FitH/);
-  assert.doesNotMatch(pdf, /sandbox=/);
+  // PDF cover = PDFium first-page raster (lazy; empty until rendered). Never a frame.
+  assert.doesNotMatch(pdf, /<iframe|<embed|<object/);
 
   const website = render({
     renderer: "website",

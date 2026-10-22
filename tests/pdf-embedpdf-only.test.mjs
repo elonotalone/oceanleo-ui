@@ -187,3 +187,33 @@ test("the PDFium engine opens, renders and reads text; a blank page reads as emp
     await wasm.close();
   }
 });
+
+test("PDF cover is a PDFium first-page raster: lazy, cached per resource key, no frame", async () => {
+  const wasm = await servePdfiumWasm();
+  overridePdfiumWasmUrlForTests(wasm.url);
+  const document = await PDFDocument.create();
+  document.addPage([300, 200]).drawText("cover", { x: 20, y: 100, size: 20 });
+  const pdfBytes = await document.save();
+  try {
+    const source = read("src/shell/workspace-library-cover.tsx");
+    assert.match(source, /lazy\(\(\) => import\("\.\/WorkspacePdfCover"\)\)/);
+    const cover = stripComments(read("src/shell/WorkspacePdfCover.tsx"));
+    assert.match(cover, /renderPageRaw/);
+    assert.match(cover, /coverCache/);
+    assert.match(cover, /onError\("load"\)/, "failure must reach the caller's poster fallback");
+    assert.equal(/<iframe|<embed|<object/.test(cover), false);
+    // Real render path: bytes -> engine -> first page raster.
+    const opened = await openPdfEngineDocument(pdfBytes, { mode: "direct" });
+    try {
+      const image = await opened.engine
+        .renderPageRaw(opened.doc, opened.doc.pages[0], { scaleFactor: 480 / 300 })
+        .toPromise();
+      assert.equal(image.width, 480);
+    } finally {
+      await opened.close();
+    }
+  } finally {
+    overridePdfiumWasmUrlForTests(null);
+    await wasm.close();
+  }
+});

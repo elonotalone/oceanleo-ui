@@ -138,3 +138,25 @@ snippet's command table and `disabledCategories` documentation (see limitations)
 - Library reader renders at fit-width up to 900 px, no zoom/search/text-selection (read-only by design).
 - Encrypted PDFs: PDFium rejects them; the user gets "这份 PDF 有密码保护，暂不能打开。" (pdf.js had the same limit).
 - Dev-slot freshness (`oceanleo-dev-slots-fresh.sh`) not run: no bump/deploy allowed in this task.
+
+## Follow-up: PDF cover (workspace-library-cover.tsx)
+- NEW `src/shell/WorkspacePdfCover.tsx`: fetches via `fetchMediaBlob`, renders page 1 on PDFium (480 px wide),
+  JPEG data URL cached per `resourceKey` (LRU 48), shown as an `<img data-cover-renderer="pdf">`. Any failure calls
+  `onError("load")`, so the caller's existing poster/thumb fallback applies. No frame.
+- `workspace-library-cover.tsx`: lazy-loads it; deleted `PDF_FRAME_*` allowlist, exported `isSandboxExemptPdfFrameUrl`,
+  `pdfFirstPageUrl`, the `unavailable` downgrade for non-allowlisted hosts (the address is now only fetched as bytes,
+  never loaded by the browser as a document), and the `sandbox-exempt` marker. The website cover iframe keeps
+  `sandbox="allow-scripts"` (now a literal).
+- Tests: `untrusted-content-pdf-frame-host` rewritten (no PDF frame anywhere, no allowlist/marker left, bytes only via
+  fetchMediaBlob); `material-cover-rendering` PDF assertion now "no frame"; `pdf-embedpdf-only` gained the cover test.
+  Green: those three plus `media-aspect-stability`, `explore-playable-dispatch/feed`, `material-library-scope`.
+- Full `tsc --noEmit -p .`: **0 errors** (whole repo, run after these edits).
+- Honest note: the cover test checks wiring (lazy import, cache, failure path, no frame) plus the real engine render
+  of page 1; the React effect itself was not mounted under jsdom with a fake fetch.
+
+### Remaining "sandbox-exempt PDF frame" leftovers in src (grep: sandbox-exempt, pdf-plugin, isSandboxExemptPdfFrameUrl, PDF_FRAME_*, crbug 413851)
+1. `src/shell/editor-sandbox-origin.ts:188-194` — `PDF_FRAME_SANDBOX_EXEMPTION` constant and its crbug comment (W01; unused by product code now).
+2. `src/shell/AttachmentStrip.tsx:137` — comment only, mentions the constant (not mine; no iframe there).
+3. Tests that import/assert the constant: `tests/untrusted-content-sandbox-origin.test.mjs` (imports it, asserts `"sandbox-exempt: pdf-plugin"` and `crbug 413851` in editor-sandbox-origin.ts, asserts three non-PDF surfaces do not contain it). When W01 deletes the constant, those asserts go too. My expectation edits there (library-viewers 1 iframe/0 exemptions; cover `"allow-scripts"`/0 exemptions; total 0; Referer loop without library-viewers) are in the working tree, uncommitted because the file also holds W01 hunks.
+4. oceandino `scripts/oceanleo-untrusted-render-allowlist.json`: stale `UC-3-IFRAME-NO-SANDBOX` entries for `library-viewers.tsx` and `workspace-library-cover.tsx` should be deleted (0 hits).
+No product code creates a PDF frame any more (`<iframe` in src for PDFs: none).
