@@ -92,7 +92,7 @@ const SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\b(Bearer)\s+[^\s,;]+/gi, "$1 [redacted]"],
   // token=xxx / "token":"xxx" / access_token: xxx / secret / password / signature / auth_key / nonce
   [
-    /\b(access_token|refresh_token|token|secret|password|passwd|signature|auth_key|authorization|nonce|app_key|appkey)(["']?\s*[:=]\s*["']?)[^\s"',;&}]+/gi,
+    /\b(access_token|refresh_token|token|secret|password|passwd|signature|auth_key|authorization|nonce|app_key|appkey)(["']?\s*[:=]\s*["']?)(?!Bearer\b|Basic\b|\[redacted\])[^\s"',;&}]+/gi,
     "$1$2[redacted]",
   ],
   // 很长的不透明串（≥40 位 base64/hex），常见凭证形状
