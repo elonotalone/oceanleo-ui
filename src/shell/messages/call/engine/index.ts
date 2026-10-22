@@ -14,6 +14,11 @@ export type {
   NetLevel,
 } from "./types";
 export { claimCall, releaseCall } from "./mutex";
+// 仲裁 A-5（signals/W14-to-W05.md）：通话检测的连接测试用独立 SDK 实例。
+export { createDiagnosticsEngine } from "./diagnostics";
+export type { DiagnosticsEngine } from "./diagnostics";
+// 仲裁 A-9（signals/W06-to-W05.md）：字幕上行复用通话里的麦克风轨道（只许 clone，不许 stop 原轨道）。
+export { getLocalMicTrack } from "./active";
 
 const IDLE: CallSnapshot = {
   phase: "idle",
