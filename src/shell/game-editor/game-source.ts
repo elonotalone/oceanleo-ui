@@ -69,6 +69,10 @@ export function splitGameRuntime(full: string): GameRuntimeSplit {
   };
 }
 
+export function gameSourceNeedsThree(source: string): boolean {
+  return GAME_NEEDS_THREE_RE.test(source);
+}
+
 /** 试玩草稿用：把剥掉的运行时接回 `<head>` 最前面（草稿已不用 THREE 就不接）。 */
 export function joinGameRuntime(source: string, hiddenRuntime: string): string {
   if (!hiddenRuntime || !GAME_NEEDS_THREE_RE.test(source)) return source;

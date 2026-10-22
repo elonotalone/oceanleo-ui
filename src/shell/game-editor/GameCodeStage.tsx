@@ -42,6 +42,7 @@ import {
 import { GAME_AGENT_CHIPS, gameToolsManifestChips } from "./l4-chips";
 import {
   inspectGameDraft,
+  gameSourceNeedsThree,
   joinGameRuntime,
   splitGameRuntime,
   readGameEnvelope,
@@ -168,6 +169,8 @@ function workingDocumentFromCode(
     skeletonVersion: string;
     engineApiVersion: string;
     paramDeclarations: GameParamDeclarations | null;
+    /** 平台内联运行时：只留在进程内存的暂存里，绝不进恢复草稿（约 700KB）。 */
+    hiddenRuntime?: string;
   },
 ) {
   const cover = coverOf(item);
@@ -194,6 +197,7 @@ function workingDocumentFromCode(
     origin: (fields.origin === "remix" ? "remix" : "ai") as "ai" | "remix",
     source: fields.source,
     paramDeclarations: fields.paramDeclarations,
+    ...(fields.hiddenRuntime ? { hiddenRuntime: fields.hiddenRuntime } : {}),
   };
 }
 
@@ -225,6 +229,40 @@ export function GameCodeStage({
     currentItem.current = item;
     setHead(item);
   }, [item]);
+  // 草稿恢复后运行时可能不在手里（暂存被清、或来自跨刷新的恢复草稿，那里不存运行时）：
+  // 从已保存的信封重新取出来，让试玩未保存草稿时仍能接回 three。
+  const rederiveHiddenRuntime = useCallback(async () => {
+    if (hiddenRuntimeRef.current) return;
+    if (!gameSourceNeedsThree(sourceRef.current)) return;
+    const url = envelopeUrlOf(currentItem.current);
+    if (!url) return;
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) return;
+      const read = readGameEnvelope(await response.json());
+      if (!read.ok || !read.envelope.hiddenRuntime) return;
+      if (!hiddenRuntimeRef.current) {
+        hiddenRuntimeRef.current = read.envelope.hiddenRuntime;
+      }
+      const stashed = peekGameWorkingDocument(currentItem.current);
+      if (stashed) {
+        stashGameWorkingDocument(currentItem.current, {
+          ...stashed,
+          hiddenRuntime: hiddenRuntimeRef.current,
+        });
+      }
+      if (dirtyRef.current) {
+        setRunSnapshot(
+          joinGameRuntime(sourceRef.current, hiddenRuntimeRef.current),
+        );
+      }
+    } catch {
+      // 取不到就保持现状：试玩时 THREE 缺失会在预览里报错，不影响保存。
+    }
+  }, []);
   const editAccess = gameEditAccess(head);
   const [sourceReady, setSourceReady] = useState(false);
   const [codeEl, setCodeEl] = useState<HTMLTextAreaElement | null>(null);
@@ -287,6 +325,7 @@ export function GameCodeStage({
     setRunSnapshot(undefined);
     const stashed = peekGameWorkingDocument(item);
     if (stashed?.source?.trim()) {
+      if (stashed.hiddenRuntime) hiddenRuntimeRef.current = stashed.hiddenRuntime;
       setSource(stashed.source);
       setDirty(stashed.sourceDirty === true);
       setRunSnapshot(
@@ -298,6 +337,11 @@ export function GameCodeStage({
           : undefined,
       );
       setSourceReady(true);
+      if (stashed.sourceDirty === true && !hiddenRuntimeRef.current) {
+        sourceRef.current = splitGameRuntime(stashed.source).source;
+        dirtyRef.current = true;
+        void rederiveHiddenRuntime();
+      }
       if (stashed.origin) setOrigin(stashed.origin);
       if (typeof stashed.prompt === "string") setPrompt(stashed.prompt);
       if (typeof stashed.skeletonVersion === "string") {
@@ -498,6 +542,7 @@ export function GameCodeStage({
         skeletonVersion,
         engineApiVersion,
         paramDeclarations,
+        hiddenRuntime: hiddenRuntimeRef.current,
       }), sourceDirty: dirty },
     );
   }, [
@@ -726,6 +771,7 @@ export function GameCodeStage({
         skeletonVersion,
         engineApiVersion,
         paramDeclarations,
+        hiddenRuntime: hiddenRuntimeRef.current,
       }),
     );
     return { ok: true as const, item: saved.item };
@@ -961,7 +1007,17 @@ export function GameCodeStage({
                 setParamDeclarations(declared);
                 if (declared) setParamValues(resolveGameParamValues(declared));
               }
-              stashGameWorkingDocument(item, next);
+              stashGameWorkingDocument(
+                item,
+                hiddenRuntimeRef.current
+                  ? { ...next, hiddenRuntime: hiddenRuntimeRef.current }
+                  : next,
+              );
+              if (next.source && !hiddenRuntimeRef.current) {
+                sourceRef.current = splitGameRuntime(next.source).source;
+                dirtyRef.current = next.sourceDirty === true;
+                void rederiveHiddenRuntime();
+              }
               applyGameUserEditSession(item, { kind: "restore" });
               bump();
               return true;

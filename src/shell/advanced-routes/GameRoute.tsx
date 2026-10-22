@@ -119,6 +119,8 @@ export const GAME_WORKING_DOCUMENT_SCHEMA = "oceanleo.game.edit.v1";
 export type GameWorkingDocument = GameBundleDocument & {
   source?: string;
   sourceDirty?: boolean;
+  /** 平台内联的 three 运行时。只在进程内存暂存里带，绝不进恢复草稿。 */
+  hiddenRuntime?: string;
   paramDeclarations?: Record<string, unknown> | null;
 };
 
@@ -349,7 +351,7 @@ function GameLegacyRoute({
     const stashed = peekGameWorkingDocument(item);
     stashGameWorkingDocument(item, {
       ...document_,
-      ...(stashed?.source && stashed.envelopeDigest === document_.envelopeDigest ? { source: stashed.source, sourceDirty: stashed.sourceDirty } : {}),
+      ...(stashed?.source && stashed.envelopeDigest === document_.envelopeDigest ? { source: stashed.source, sourceDirty: stashed.sourceDirty, ...(stashed.hiddenRuntime ? { hiddenRuntime: stashed.hiddenRuntime } : {}) } : {}),
       ...(stashed?.paramDeclarations !== undefined
         ? { paramDeclarations: stashed.paramDeclarations }
         : {}),
