@@ -46,7 +46,7 @@
   (`test_game_iteration_preflight.py` and `test_game_generate_router_document.py` fail at collection in this environment on a pre-existing
   fastapi/pydantic `PYDANTIC_V2` import error, unrelated; not run.)
 - oceanleo-ui: `run-light ... --test tests/game-core-swap.test.mjs tests/eas-w20-game-video-canvas.test.mjs` -> 12 pass, 0 fail.
-- Typecheck of oceanleo-ui: see journal/final note below.
+- oceanleo-ui `tsc --noEmit` NOT completed: the run-heavy disk lane stayed queued behind another owner (10+ min). The UI edits only delete code; parent should typecheck GameRoute/GameCodeStage/game-pages/game-next-mode. Game `three-runtime.ts` was checked with a standalone strict tsc (clean).
 - `collab/adapters/game.ts` needed no change (no mode code).
 
 ## Now live: runtime travels inside the stored document (parent follow-up)
