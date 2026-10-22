@@ -21,6 +21,8 @@ export const IM_OPEN_EVENT = "oceanleo:im-open";
 
 export interface ImOpenDetail {
   conversationId: string;
+  /** 点的是来电推送（calls-v2 仲裁 A-20）：SW 带来的通话 id，W08 的来电宿主据此一键接听。 */
+  callId?: string;
 }
 
 export function dispatchImOpen(detail: ImOpenDetail): void {
@@ -158,9 +160,11 @@ export async function disablePush(): Promise<boolean> {
 }
 
 const CONVERSATION_ID = /^[A-Za-z0-9:_-]{1,80}$/;
+/** 通话 id（= im_meetings.meeting_id，uuid）；与 public/im-sw.js 的校验同一口径（A-20）。 */
+const CALL_ID = /^[A-Za-z0-9-]{1,64}$/;
 
 /**
- * 点推送通知时 Service Worker 会给已打开的门户标签页发 `{type:"im.open", conversation_id}`。
+ * 点推送通知时 Service Worker 会给已打开的门户标签页发 `{type:"im.open", conversation_id}`（来电推送另带可选 `call_id`）。
  * 这里只认「来自本源 Service Worker」的这一种消息，转成统一的 `oceanleo:im-open` window 事件。
  * 幂等：重复调用只装一次；返回卸载函数。
  */
@@ -182,11 +186,13 @@ export function installImOpenBridge(): () => void {
     } catch {
       return;
     }
-    const data = event.data as { type?: unknown; conversation_id?: unknown } | null;
+    const data = event.data as { type?: unknown; conversation_id?: unknown; call_id?: unknown } | null;
     if (!data || data.type !== "im.open") return;
     const id = data.conversation_id;
     if (typeof id !== "string" || !CONVERSATION_ID.test(id)) return; // 空 id = 只聚焦，不跳转
-    dispatchImOpen({ conversationId: id });
+    // 来电推送多带一个可选的 call_id（A-20）：形状不对就当没有，照旧只打开会话。
+    const callId = typeof data.call_id === "string" && CALL_ID.test(data.call_id) ? data.call_id : null;
+    dispatchImOpen(callId ? { conversationId: id, callId } : { conversationId: id });
   };
   container.addEventListener("message", onMessage);
   bridgeCleanup = () => {
