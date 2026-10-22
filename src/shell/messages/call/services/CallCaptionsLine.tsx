@@ -63,7 +63,11 @@ export function CallCaptionsLine({ mode = "dock", className }: CallCaptionsLineP
       style={CAPTION_SURFACE}
     >
       <CaptionsIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70" />
-      <div className="min-w-0 flex-1" aria-live="polite">
+      {/* 读屏只播报最新定稿的一句；看得见的几行会随中间结果变动，不做实时播报，免得刷屏。 */}
+      <span className="sr-only" aria-live="polite" aria-atomic="true" data-caption-announce="">
+        {captions.latestFinal ? `${captions.latestFinal.speakerName} ${captions.latestFinal.text}` : ""}
+      </span>
+      <div className="min-w-0 flex-1">
         {lines.map((line) => (
           <p
             key={`${line.participantId}\u0000${line.sentenceId}`}

@@ -939,6 +939,10 @@ test("字幕行：转写关着不出现；小窗一行、放大视图两行；�
   assert.match(rows[1].textContent, /^测试乙/, "按 participantId（去连字符）对上名字");
   assert.equal(rows[1].getAttribute("data-caption-final"), "0");
   assert.equal(stage.container.querySelector("[data-call-captions]").getAttribute("role"), "region");
+  const announce = stage.container.querySelector("[data-caption-announce]");
+  assert.equal(announce.getAttribute("aria-live"), "polite");
+  assert.equal(announce.textContent, "我 我们开始吧。", "读屏只播报最新定稿的一句，不播中间结果");
+  assert.equal(stage.container.querySelectorAll("[aria-live]").length, 1, "看得见的几行不做实时播报");
   await stage.unmount();
 
   const dock = await mount(h(services.CallCaptionsLine, { mode: "dock" }), { store, call: transcribing });

@@ -14,6 +14,7 @@ export { useCaptions, useRecordingState, useTranscriptionState } from "./hooks";
 export { recordingApi, transcriptionApi } from "./api";
 
 export type {
+  CaptionAnnouncement,
   CaptionLine,
   CaptionsState,
   CaptionsCaptureState,

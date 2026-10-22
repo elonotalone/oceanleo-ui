@@ -16,7 +16,7 @@ import {
   transcriptionIsOn,
   type ServicesState,
 } from "./store";
-import type { CaptionLine, CaptionsState, RecordingState, TranscriptionState } from "./types";
+import type { CaptionAnnouncement, CaptionLine, CaptionsState, RecordingState, TranscriptionState } from "./types";
 
 const SERVER_STATE: ServicesState = initialServicesState(false);
 
@@ -97,35 +97,46 @@ export function useCaptions(): CaptionsState {
   const { captions, speakers } = services;
   const participants = call.participants;
 
-  const lines = useMemo<CaptionLine[]>(() => {
-    if (!enabled || !callId || captions.callId !== callId) return [];
+  const { lines, latestFinal } = useMemo<{ lines: CaptionLine[]; latestFinal: CaptionAnnouncement | null }>(() => {
+    if (!enabled || !callId || captions.callId !== callId) return { lines: [], latestFinal: null };
     const byParticipant = new Map(participants.map((p) => [participantKey(p.participantId), p]));
     const byUser = new Map(participants.map((p) => [p.userId, p]));
     const myUserId = participants.find((p) => p.isMe)?.userId ?? null;
-    return captionLines(captions, servicesStore.now(), CAPTION_HOOK_MAX_LINES, CAPTION_HOOK_MAX_CHARS).map((line) => {
-      const key = participantKey(line.participantId);
+    const speakerOf = (participantId: string, userId: string): { speakerName: string; isMe: boolean } => {
+      const key = participantKey(participantId);
       const present = byParticipant.get(key);
       const known = speakers[key];
-      const byUserId = line.userId ? byUser.get(line.userId) : undefined;
-      const isMe = present ? present.isMe : known ? known.isMe : Boolean(myUserId && line.userId === myUserId);
+      const byUserId = userId ? byUser.get(userId) : undefined;
+      const isMe = present ? present.isMe : known ? known.isMe : Boolean(myUserId && userId === myUserId);
       const name = (present?.displayName || known?.displayName || byUserId?.displayName || "").trim();
-      return {
-        participantId: line.participantId,
-        userId: line.userId,
-        speakerName: isMe ? tt("我") : name || tt("参与者"),
-        isMe,
-        sentenceId: line.sentenceId,
-        text: line.text,
-        isFinal: line.isFinal,
-        updatedAt: line.updatedAt,
-      };
-    });
+      return { speakerName: isMe ? tt("我") : name || tt("参与者"), isMe };
+    };
+    const now = servicesStore.now();
+    const shown = captionLines(captions, now, CAPTION_HOOK_MAX_LINES, CAPTION_HOOK_MAX_CHARS).map((line) => ({
+      participantId: line.participantId,
+      userId: line.userId,
+      ...speakerOf(line.participantId, line.userId),
+      sentenceId: line.sentenceId,
+      text: line.text,
+      isFinal: line.isFinal,
+      updatedAt: line.updatedAt,
+    }));
+    // 读屏只播报最新定稿的那一句（不播中间结果、不重复整行）。
+    let last: (typeof captions.entries)[number] | null = null;
+    for (const entry of captions.entries) {
+      if (entry.isFinal && (!last || entry.updatedAt >= last.updatedAt)) last = entry;
+    }
+    const announce: CaptionAnnouncement | null = last
+      ? { key: last.key, participantId: last.participantId, text: last.text, ...speakerOf(last.participantId, last.userId) }
+      : null;
+    return { lines: shown, latestFinal: announce };
   }, [enabled, callId, captions, speakers, participants, tt]);
 
   const setHidden = useCallback((hidden: boolean) => servicesStore.setCaptionsHidden(hidden), []);
   return {
     enabled,
     lines,
+    latestFinal,
     hidden: services.captionsHidden,
     setHidden,
     uplink: services.uplink,

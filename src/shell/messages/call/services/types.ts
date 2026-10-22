@@ -22,6 +22,16 @@ export interface CaptionLine {
   updatedAt: number;
 }
 
+/** 读屏播报用：最新定稿的一句（不是合并后的整行）。 */
+export interface CaptionAnnouncement {
+  /** 这一句的唯一键（participant + sentence），变了才播报。 */
+  key: string;
+  participantId: string;
+  speakerName: string;
+  isMe: boolean;
+  text: string;
+}
+
 /** 自己这一路字幕采集的状态。unsupported = 这台设备不另开采集（见 capture.ts）。 */
 export type CaptionsCaptureState = "off" | "starting" | "running" | "unsupported" | "failed";
 
@@ -30,6 +40,8 @@ export interface CaptionsState {
   enabled: boolean;
   /** 最近几行（最多 4 行，最新在后）；小窗取最后 1 行、放大视图取最后 2 行。 */
   lines: CaptionLine[];
+  /** 最新定稿的一句（读屏播报用）；没有 = null。 */
+  latestFinal: CaptionAnnouncement | null;
   /** 本地隐藏字幕（记住选择，只影响自己）。 */
   hidden: boolean;
   setHidden(hidden: boolean): void;
