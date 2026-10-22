@@ -1,0 +1,1 @@
+- Baseline consumer runs (pre-W15): edu/study/novel/script artifact-surface green; word-ai 12/12; image convergence 4/4; video convergence 4/7 (window.dispatchEvent in pinned ui auth client, unrelated); aihuman 6/6; converter 5/5; design fails (missing module fflate, env); ppt-maker 3/3.
