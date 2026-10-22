@@ -2,11 +2,11 @@
 // 桩由 W07 在首个提交里建；本表只归 W07 改。注册在 call-copy.ts（W07 聚合）→ work-chat-copy.ts。
 // 写法同 leochat-page-copy.ts：SOURCE 里「名字 → 简体中文原文」，各语种给同名条目；键就是简体中文原文（`tt("中文原文", { n })`）。
 // 17 种语言写全；缺一条 key 或少一个语种，assembleCopy 的入参类型会让 tsc 编不过。
-// 基础词典已有、意思也对得上的不在这里重复：查看、上一页、下一页、第 {page} / {total} 页、举报、正在连接…。
+// 基础词典已有、意思也对得上的不在这里重复：查看、上一页、下一页、第 {page} / {total} 页、举报、正在连接…、请先登录。
 // 「放大」「缩小」「离开」在别的分表里分别是「放大面板/放大画面」「离开编辑器」，这里改用不会撞键的说法（放大通话窗口、回到小窗、离开通话）。
 // 别的通话分表已有的键也不重复（同一个中文键只留一份译文，聚合时它们排在本表后面）：
-//   麦克风、摄像头、扬声器、没有找到可用的设备、正在重连、网络连接中断，请检查网络后再试。（W14 call-diagnostics-copy.ts）；
-//   通话已结束（W08 call-chat-copy.ts）；显示字幕（W06 call-services-copy.ts）。tests/call-ui-dock.test.mjs 逐语种核对 call/ui 用到的每个键都有译文。
+//   麦克风、摄像头、扬声器、没有找到可用的设备、正在重连、网络连接中断，请检查网络后再试。、通话组件加载失败，请检查网络后再试。（W14 call-diagnostics-copy.ts）；
+//   通话已结束、对方已拒绝、未接通（W08 call-chat-copy.ts）；显示字幕（W06 call-services-copy.ts）。tests/call-ui-dock.test.mjs 逐语种核对 call/ui 用到的每个键都有译文。
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
@@ -64,6 +64,12 @@ const SOURCE = {
   errBrowser: "当前浏览器不支持通话，请换用最新版 Chrome、Edge 或 Safari。",
   errGeneric: "通话出了点问题，请稍后再试。",
   pagination: "翻页",
+  errNotParticipant: "你已不在这通通话里，请重新加入。",
+  errBusyLeo: "你正在和 Leo 实时通话，请先结束再加入。",
+  errJoinedElsewhere: "你已在其他页面或设备加入这个通话。",
+  errKicked: "通话连接已被断开。",
+  errRejoinFailed: "网络中断，重新连接没有成功。",
+  errJoinFailed: "加入通话失败，请稍后再试。",
 } as const;
 
 export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
@@ -122,6 +128,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "This browser doesn't support calls. Please use the latest Chrome, Edge, or Safari.",
     errGeneric: "Something went wrong with the call. Please try again later.",
     pagination: "Pages",
+    errNotParticipant: "You're no longer in this call. Please join again.",
+    errBusyLeo: "You're in a live call with Leo. End it first, then join.",
+    errJoinedElsewhere: "You've joined this call from another page or device.",
+    errKicked: "The call connection was closed.",
+    errRejoinFailed: "The network dropped and reconnecting didn't work.",
+    errJoinFailed: "Couldn't join the call. Please try again later.",
   },
   de: {
     call: "Anruf",
@@ -178,6 +190,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Dieser Browser unterstützt keine Anrufe. Bitte nutze die neueste Version von Chrome, Edge oder Safari.",
     errGeneric: "Beim Anruf ist etwas schiefgelaufen. Bitte versuche es später erneut.",
     pagination: "Seiten",
+    errNotParticipant: "Du bist nicht mehr in diesem Anruf. Bitte tritt erneut bei.",
+    errBusyLeo: "Du bist gerade in einem Live-Anruf mit Leo. Beende ihn zuerst und tritt dann bei.",
+    errJoinedElsewhere: "Du bist diesem Anruf auf einer anderen Seite oder einem anderen Gerät beigetreten.",
+    errKicked: "Die Anrufverbindung wurde getrennt.",
+    errRejoinFailed: "Die Netzwerkverbindung wurde unterbrochen und konnte nicht wiederhergestellt werden.",
+    errJoinFailed: "Beitritt zum Anruf fehlgeschlagen. Bitte versuche es später erneut.",
   },
   es: {
     call: "Llamada",
@@ -234,6 +252,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Este navegador no admite llamadas. Usa la última versión de Chrome, Edge o Safari.",
     errGeneric: "Algo ha fallado en la llamada. Inténtalo más tarde.",
     pagination: "Páginas",
+    errNotParticipant: "Ya no estás en esta llamada. Vuelve a unirte.",
+    errBusyLeo: "Estás en una llamada en directo con Leo. Termínala primero y luego únete.",
+    errJoinedElsewhere: "Te has unido a esta llamada desde otra página o dispositivo.",
+    errKicked: "Se ha cerrado la conexión de la llamada.",
+    errRejoinFailed: "Se perdió la red y no se pudo reconectar.",
+    errJoinFailed: "No se pudo unir a la llamada. Inténtalo más tarde.",
   },
   "es-419": {
     call: "Llamada",
@@ -290,6 +314,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Este navegador no admite llamadas. Usa la versión más reciente de Chrome, Edge o Safari.",
     errGeneric: "Algo salió mal en la llamada. Intenta de nuevo más tarde.",
     pagination: "Páginas",
+    errNotParticipant: "Ya no estás en esta llamada. Vuelve a unirte.",
+    errBusyLeo: "Estás en una llamada en vivo con Leo. Termínala primero y luego únete.",
+    errJoinedElsewhere: "Te uniste a esta llamada desde otra página o dispositivo.",
+    errKicked: "Se cerró la conexión de la llamada.",
+    errRejoinFailed: "Se perdió la red y no se pudo reconectar.",
+    errJoinFailed: "No se pudo unir a la llamada. Intenta de nuevo más tarde.",
   },
   fr: {
     call: "Appel",
@@ -346,6 +376,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Ce navigateur ne prend pas en charge les appels. Utilisez la dernière version de Chrome, Edge ou Safari.",
     errGeneric: "Un problème est survenu pendant l’appel. Réessayez plus tard.",
     pagination: "Pages",
+    errNotParticipant: "Vous n’êtes plus dans cet appel. Rejoignez-le à nouveau.",
+    errBusyLeo: "Vous êtes en appel en direct avec Leo. Terminez-le d’abord, puis rejoignez l’appel.",
+    errJoinedElsewhere: "Vous avez rejoint cet appel depuis une autre page ou un autre appareil.",
+    errKicked: "La connexion de l’appel a été fermée.",
+    errRejoinFailed: "Le réseau a été coupé et la reconnexion a échoué.",
+    errJoinFailed: "Impossible de rejoindre l’appel. Réessayez plus tard.",
   },
   it: {
     call: "Chiamata",
@@ -402,6 +438,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Questo browser non supporta le chiamate. Usa l’ultima versione di Chrome, Edge o Safari.",
     errGeneric: "Si è verificato un problema con la chiamata. Riprova più tardi.",
     pagination: "Pagine",
+    errNotParticipant: "Non sei più in questa chiamata. Partecipa di nuovo.",
+    errBusyLeo: "Sei in una chiamata dal vivo con Leo. Terminala prima di partecipare.",
+    errJoinedElsewhere: "Sei entrato in questa chiamata da un’altra pagina o da un altro dispositivo.",
+    errKicked: "La connessione della chiamata è stata chiusa.",
+    errRejoinFailed: "La rete si è interrotta e la riconnessione non è riuscita.",
+    errJoinFailed: "Impossibile partecipare alla chiamata. Riprova più tardi.",
   },
   "pt-BR": {
     call: "Chamada",
@@ -458,6 +500,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Este navegador não oferece suporte a chamadas. Use a versão mais recente do Chrome, Edge ou Safari.",
     errGeneric: "Algo deu errado na chamada. Tente novamente mais tarde.",
     pagination: "Páginas",
+    errNotParticipant: "Você não está mais nesta chamada. Entre novamente.",
+    errBusyLeo: "Você está em uma chamada ao vivo com o Leo. Encerre-a primeiro e depois entre.",
+    errJoinedElsewhere: "Você entrou nesta chamada por outra página ou dispositivo.",
+    errKicked: "A conexão da chamada foi encerrada.",
+    errRejoinFailed: "A rede caiu e não foi possível reconectar.",
+    errJoinFailed: "Não foi possível entrar na chamada. Tente novamente mais tarde.",
   },
   "pt-PT": {
     call: "Chamada",
@@ -514,6 +562,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Este navegador não suporta chamadas. Utilize a versão mais recente do Chrome, Edge ou Safari.",
     errGeneric: "Ocorreu um problema na chamada. Tente novamente mais tarde.",
     pagination: "Páginas",
+    errNotParticipant: "Já não está nesta chamada. Entre novamente.",
+    errBusyLeo: "Está numa chamada em direto com o Leo. Termine-a primeiro e depois entre.",
+    errJoinedElsewhere: "Entrou nesta chamada a partir de outra página ou dispositivo.",
+    errKicked: "A ligação da chamada foi terminada.",
+    errRejoinFailed: "A rede caiu e não foi possível restabelecer a ligação.",
+    errJoinFailed: "Não foi possível entrar na chamada. Tente novamente mais tarde.",
   },
   vi: {
     call: "Cuộc gọi",
@@ -570,6 +624,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Trình duyệt này không hỗ trợ cuộc gọi. Vui lòng dùng bản mới nhất của Chrome, Edge hoặc Safari.",
     errGeneric: "Cuộc gọi gặp sự cố. Vui lòng thử lại sau.",
     pagination: "Trang",
+    errNotParticipant: "Bạn không còn trong cuộc gọi này. Hãy tham gia lại.",
+    errBusyLeo: "Bạn đang trong cuộc gọi trực tiếp với Leo. Hãy kết thúc trước rồi tham gia.",
+    errJoinedElsewhere: "Bạn đã tham gia cuộc gọi này từ trang hoặc thiết bị khác.",
+    errKicked: "Kết nối cuộc gọi đã bị đóng.",
+    errRejoinFailed: "Mất mạng và không kết nối lại được.",
+    errJoinFailed: "Không tham gia được cuộc gọi. Vui lòng thử lại sau.",
   },
   tr: {
     call: "Arama",
@@ -626,6 +686,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "Bu tarayıcı aramaları desteklemiyor. Lütfen Chrome, Edge veya Safari'nin en son sürümünü kullanın.",
     errGeneric: "Aramada bir sorun oluştu. Lütfen daha sonra tekrar deneyin.",
     pagination: "Sayfalar",
+    errNotParticipant: "Artık bu aramada değilsiniz. Lütfen yeniden katılın.",
+    errBusyLeo: "Leo ile canlı bir aramadasınız. Önce onu bitirip sonra katılın.",
+    errJoinedElsewhere: "Bu aramaya başka bir sayfadan veya cihazdan katıldınız.",
+    errKicked: "Arama bağlantısı kapatıldı.",
+    errRejoinFailed: "Ağ bağlantısı kesildi ve yeniden bağlanılamadı.",
+    errJoinFailed: "Aramaya katılılamadı. Lütfen daha sonra tekrar deneyin.",
   },
   "zh-TW": {
     call: "通話",
@@ -682,6 +748,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "目前的瀏覽器不支援通話，請改用最新版 Chrome、Edge 或 Safari。",
     errGeneric: "通話發生問題，請稍後再試。",
     pagination: "翻頁",
+    errNotParticipant: "你已不在這通通話中，請重新加入。",
+    errBusyLeo: "你正在和 Leo 即時通話，請先結束再加入。",
+    errJoinedElsewhere: "你已在其他頁面或裝置加入這個通話。",
+    errKicked: "通話連線已被中斷。",
+    errRejoinFailed: "網路中斷，重新連線沒有成功。",
+    errJoinFailed: "加入通話失敗，請稍後再試。",
   },
   ja: {
     call: "通話",
@@ -738,6 +810,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "このブラウザは通話に対応していません。最新版の Chrome、Edge、Safari をお使いください。",
     errGeneric: "通話で問題が発生しました。しばらくしてからもう一度お試しください。",
     pagination: "ページ",
+    errNotParticipant: "この通話から外れています。もう一度参加してください。",
+    errBusyLeo: "Leo とのリアルタイム通話中です。終了してから参加してください。",
+    errJoinedElsewhere: "別のページまたはデバイスでこの通話に参加しています。",
+    errKicked: "通話の接続が切断されました。",
+    errRejoinFailed: "ネットワークが切断され、再接続できませんでした。",
+    errJoinFailed: "通話に参加できませんでした。しばらくしてからもう一度お試しください。",
   },
   ko: {
     call: "통화",
@@ -794,6 +872,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "이 브라우저는 통화를 지원하지 않아요. 최신 버전의 Chrome, Edge 또는 Safari를 사용해 주세요.",
     errGeneric: "통화에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.",
     pagination: "페이지",
+    errNotParticipant: "더 이상 이 통화에 있지 않아요. 다시 참여해 주세요.",
+    errBusyLeo: "Leo와 실시간 통화 중이에요. 먼저 끝낸 뒤 참여해 주세요.",
+    errJoinedElsewhere: "다른 페이지나 기기에서 이 통화에 참여했어요.",
+    errKicked: "통화 연결이 끊어졌어요.",
+    errRejoinFailed: "네트워크가 끊겨 다시 연결하지 못했어요.",
+    errJoinFailed: "통화에 참여하지 못했어요. 잠시 후 다시 시도해 주세요.",
   },
   ar: {
     call: "مكالمة",
@@ -850,6 +934,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "هذا المتصفح لا يدعم المكالمات. يُرجى استخدام أحدث إصدار من Chrome أو Edge أو Safari.",
     errGeneric: "حدثت مشكلة في المكالمة. يُرجى المحاولة لاحقًا.",
     pagination: "الصفحات",
+    errNotParticipant: "لم تعد ضمن هذه المكالمة. يُرجى الانضمام مرة أخرى.",
+    errBusyLeo: "أنت في مكالمة مباشرة مع Leo. أنهِها أولًا ثم انضم.",
+    errJoinedElsewhere: "انضممت إلى هذه المكالمة من صفحة أو جهاز آخر.",
+    errKicked: "تم إغلاق اتصال المكالمة.",
+    errRejoinFailed: "انقطعت الشبكة وتعذّرت إعادة الاتصال.",
+    errJoinFailed: "تعذّر الانضمام إلى المكالمة. يُرجى المحاولة لاحقًا.",
   },
   th: {
     call: "การโทร",
@@ -906,6 +996,12 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "เบราว์เซอร์นี้ไม่รองรับการโทร โปรดใช้ Chrome, Edge หรือ Safari เวอร์ชันล่าสุด",
     errGeneric: "การโทรมีปัญหา โปรดลองอีกครั้งภายหลัง",
     pagination: "หน้า",
+    errNotParticipant: "คุณไม่ได้อยู่ในสายนี้แล้ว โปรดเข้าร่วมอีกครั้ง",
+    errBusyLeo: "คุณกำลังโทรสดกับ Leo อยู่ โปรดวางสายก่อนแล้วจึงเข้าร่วม",
+    errJoinedElsewhere: "คุณเข้าร่วมการโทรนี้จากหน้าอื่นหรืออุปกรณ์อื่นแล้ว",
+    errKicked: "การเชื่อมต่อการโทรถูกปิดแล้ว",
+    errRejoinFailed: "เครือข่ายขาดหายและเชื่อมต่อใหม่ไม่สำเร็จ",
+    errJoinFailed: "เข้าร่วมการโทรไม่สำเร็จ โปรดลองอีกครั้งภายหลัง",
   },
   hi: {
     call: "कॉल",
@@ -962,5 +1058,11 @@ export const CALL_UI_MESSAGES = assembleCopy(SOURCE, {
     errBrowser: "यह ब्राउज़र कॉल सपोर्ट नहीं करता। कृपया Chrome, Edge या Safari का नया वर्शन इस्तेमाल करें।",
     errGeneric: "कॉल में कुछ गड़बड़ हुई। कृपया बाद में फिर कोशिश करें।",
     pagination: "पेज",
+    errNotParticipant: "अब आप इस कॉल में नहीं हैं। कृपया फिर से जुड़ें।",
+    errBusyLeo: "आप Leo के साथ लाइव कॉल पर हैं। पहले उसे खत्म करें, फिर जुड़ें।",
+    errJoinedElsewhere: "आप किसी दूसरे पेज या डिवाइस से इस कॉल में जुड़ चुके हैं।",
+    errKicked: "कॉल का कनेक्शन बंद कर दिया गया।",
+    errRejoinFailed: "नेटवर्क टूट गया और फिर से कनेक्ट नहीं हो सका।",
+    errJoinFailed: "कॉल में शामिल नहीं हो सके। कृपया बाद में फिर कोशिश करें।",
   },
 });

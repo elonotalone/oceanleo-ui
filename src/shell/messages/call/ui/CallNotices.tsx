@@ -8,10 +8,15 @@ import { runCallAction } from "./CallControls";
 import { IconScreenShare } from "./icons";
 import { aloneProgress, aloneSecondsLeft } from "./layout";
 
-/** 引擎 / 网关的错误码 → 一句人话（合同 §3.2 错误码 + 引擎自己的几种）。认不得的码用引擎给的原话兜底。 */
+/**
+ * 引擎 / 网关的错误码 → 一句人话（合同 §3.2 的错误码 + `signals/W05-to-W07.md` 列的引擎错误码）。
+ * 一律按码给 17 种语言的文案，**不显示 `error.message`**：那是网关或引擎的中文兜底原文，海外版会露出中文。
+ * 认不得的码给通用的一句。
+ */
 export function callErrorText(tt: UITranslate, error: { code: string; message: string } | null, maxParticipants: number): string {
   if (!error) return "";
   switch (error.code) {
+    // 网关（合同 §3.2；not_participant 见仲裁 A-15）
     case "not_member":
       return tt("你不在这个会话里，无法加入通话。");
     case "talent_not_supported":
@@ -23,19 +28,39 @@ export function callErrorText(tt: UITranslate, error: { code: string; message: s
     case "artc_not_configured":
       return tt("通话服务暂未开通，请稍后再试。");
     case "removed_from_conversation":
-    case "call_kicked":
       return tt("你已不在这个会话里，通话已断开。");
+    case "not_participant":
+      return tt("你已不在这通通话里，请重新加入。");
     case "rate_limited":
       return tt("操作太频繁，请稍后再试。");
+    case "unauthorized":
+      return tt("请先登录");
+    case "network":
+      return tt("网络连接中断，请检查网络后再试。");
+    // 引擎（W05）
+    case "busy_leo_realtime":
+      return tt("你正在和 Leo 实时通话，请先结束再加入。");
+    case "ring_declined":
+      return tt("对方已拒绝");
+    case "ring_missed":
+      return tt("未接通");
+    case "joined_elsewhere":
+      return tt("你已在其他页面或设备加入这个通话。");
+    case "artc_kicked":
+      return tt("通话连接已被断开。");
+    case "rejoin_failed":
+      return tt("网络中断，重新连接没有成功。");
+    case "artc_sdk_load_failed":
+      return tt("通话组件加载失败，请检查网络后再试。");
+    case "artc_join_failed":
+      return tt("加入通话失败，请稍后再试。");
     case "artc_unsupported":
     case "artc_browser_unsupported":
       return tt("当前浏览器不支持通话，请换用最新版 Chrome、Edge 或 Safari。");
     case "alone_timeout":
       return tt("只剩你一个人，已自动离开通话。");
-    case "network":
-      return tt("网络连接中断，请检查网络后再试。");
     default:
-      return error.message || tt("通话出了点问题，请稍后再试。");
+      return tt("通话出了点问题，请稍后再试。");
   }
 }
 

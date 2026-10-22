@@ -582,10 +582,40 @@ test("已结束：说明 + 关闭键，关掉就收起；出错：按错误码�
     await setSnapshot(snapshot(2, { phase: "error", callId: null, error: { code: "removed_from_conversation", message: "x" } }));
     assert.equal($('[data-call-status="error"]').textContent, "你已不在这个会话里，通话已断开。");
     await setSnapshot(snapshot(2, { phase: "error", callId: null, error: { code: "something_new", message: "服务端原话" } }));
-    assert.equal($('[data-call-status="error"]').textContent, "服务端原话", "认不得的码用引擎原话兜底");
+    // 原先这里断言「认不得的码用 error.message 兜底」。按 signals/W05-to-W07.md 与父任务转告改判：
+    // error.message 是网关/引擎的中文原文，海外版会露出中文，所以一律按码给 17 种语言的人话，认不得的码给通用一句。
+    assert.equal($('[data-call-status="error"]').textContent, "通话出了点问题，请稍后再试。");
+    assert.equal($("[data-call-dock]").textContent.includes("服务端原话"), false, "不显示 error.message");
   } finally {
     await unmount();
   }
+});
+
+test("错误码：合同 §3.2 与 W05 列出的每个码都有自己的一句人话、从不显示 error.message；已结束时按码说明原因", async () => {
+  const { callErrorText, phaseStatusText } = await import(await compileModule(`${UI_DIR}/CallNotices.tsx`, STUBS));
+  const tt = (value, vars) => value.replace(/\{(\w+)\}/g, (m, key) => (vars && key in vars ? String(vars[key]) : m));
+  const limits = { maxParticipants: 50, maxVideo: 25 };
+  const codes = [
+    // 合同 §3.2（not_participant 见仲裁 A-15）与 imFetch
+    "not_member", "talent_not_supported", "call_full", "call_unavailable", "artc_not_configured", "removed_from_conversation",
+    "not_participant", "rate_limited", "unauthorized", "network",
+    // signals/W05-to-W07.md
+    "busy_leo_realtime", "ring_declined", "ring_missed", "joined_elsewhere", "artc_kicked", "rejoin_failed",
+    "artc_sdk_load_failed", "artc_join_failed", "artc_unsupported", "alone_timeout",
+  ];
+  const generic = callErrorText(tt, { code: "zzz_unknown", message: "原文" }, 50);
+  assert.equal(generic, "通话出了点问题，请稍后再试。");
+  for (const code of codes) {
+    const text = callErrorText(tt, { code, message: "RAW_MESSAGE_MUST_NOT_SHOW" }, 50);
+    assert.ok(text && text !== generic, `${code} 要有自己的一句`);
+    assert.equal(text.includes("RAW_MESSAGE_MUST_NOT_SHOW"), false, `${code} 不许显示 error.message`);
+  }
+  assert.equal(callErrorText(tt, { code: "call_full", message: "" }, 50), "通话人数已满（最多 50 人）。");
+  assert.equal(phaseStatusText(tt, { phase: "ended", error: { code: "ring_declined", message: "x" }, limits }), "对方已拒绝");
+  assert.equal(phaseStatusText(tt, { phase: "ended", error: { code: "ring_missed", message: "x" }, limits }), "未接通");
+  assert.equal(phaseStatusText(tt, { phase: "ended", error: { code: "alone_timeout", message: "x" }, limits }), "只剩你一个人，已自动离开通话。");
+  assert.equal(phaseStatusText(tt, { phase: "ended", error: null, limits }), "通话已结束");
+  assert.equal(phaseStatusText(tt, { phase: "connected", error: null, limits }), "", "连上且没出错时没有状态行");
 });
 
 test("仲裁 A-10：window 事件 oceanleo:call-dock-focus → 焦点给小窗并亮一下", async () => {
