@@ -78,7 +78,7 @@ export const EDITOR_CORE_SPECS: Record<EditorCoreId, EditorCoreSpec> = {
   threed: { nextCore: null, owner: "W11", hosting: "none" },
   website: { nextCore: "Puck", owner: "W13", hosting: "native" },
   game: { nextCore: null, owner: "W14", hosting: "none" },
-  // 视频画布：React Flow 是唯一编辑面；专业编辑不可用。
+  // 视频画布：本仓 React Flow 是唯一编辑面。
   "video-canvas": { nextCore: null, owner: "W15", hosting: "none" },
 };
 

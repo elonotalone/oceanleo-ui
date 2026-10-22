@@ -17,14 +17,11 @@ const stage = readFileSync("src/shell/workflow-carrier/VideoCanvasStage.tsx", "u
 const EVIDENCE_DIR =
   "/root/projects/oceanleo-app/docs/react-client-rebuild/evidence/W10/video-canvas";
 
-test("web path still embeds the video site; local React Flow is opt-in", () => {
-  assert.match(stage, /liveCanvasBase \? "detect" : "lock"/);
-  assert.match(stage, /<EmbedEditorPane/);
-  assert.match(stage, /preferLocal/);
+test("video canvas always renders the local React Flow canvas; no hosted video site", () => {
   assert.match(stage, /VideoCanvasLocalCanvas/);
-  assert.match(stage, /liveCanvasBase \? undefined : "oceanleo.workflow.graph.v1"/);
-  assert.match(stage, /capture: \(\) => liveCanvasBase \|\| !sourceReady \|\| nativeV2ReadOnlyProjection \? null : graph/);
-  assert.match(stage, /preferLocal \? "" : shownItem \? embedEditorBase\(shownItem\) : ""/);
+  assert.match(stage, /draftSchema: "oceanleo\.workflow\.graph\.v1"/);
+  assert.match(stage, /capture: \(\) => \(!sourceReady \|\| nativeV2ReadOnlyProjection \? null : graph\)/);
+  assert.doesNotMatch(stage, /EmbedEditorPane|embedEditorBase|workbench-embed|liveCanvasBase|usePreferLocalRemoteEditor/);
   assert.doesNotMatch(stage, /<iframe/);
   assert.doesNotMatch(stage, /\.postMessage\(/);
 });

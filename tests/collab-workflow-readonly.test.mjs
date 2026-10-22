@@ -50,7 +50,7 @@ test("VideoCanvasStage 把流程图指令面交给 guardPluginSurface(collabRead
   const dependencies = src.match(/collabReadOnly,\s*\),\s*\[([^\]]+)\],\s*\),\s*\);/);
   assert.ok(dependencies, "the guarded surface must retain its own memo dependency list");
   const names = dependencies[1].split(",").map((name) => name.trim()).filter(Boolean);
-  for (const name of ["chipsManifest.chips", "editRevision", "graph", "collabReadOnly", "commitGraph", "executeNativeWorkflowAddNode"]) {
+  for (const name of ["chipsManifest.chips", "editRevision", "graph", "collabReadOnly", "commitGraph"]) {
     assert.ok(names.includes(name), `guarded surface must refresh when ${name} changes`);
   }
 });

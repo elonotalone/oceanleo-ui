@@ -199,15 +199,3 @@ test("success requires re-capture to match exact written graph, native revision,
     "a reloaded iframe instance fails closed",
   );
 });
-
-test("workflow Stage source contains restore delivery, native ack and recapture guards", () => {
-  const stage = read("src/shell/workflow-carrier/VideoCanvasStage.tsx");
-  const bridge = read("src/shell/workbench-embed.tsx");
-  assert.match(stage, /setHead\(prepared\.request as WorkflowRestoreItem\)/);
-  assert.match(stage, /recoveryRestore=\{mode === "lock" \? null : \(head as unknown as EmbedRecoveryRestore\)\}/);
-  assert.match(stage, /matchWorkflowNativeWriteAck\(/);
-  assert.match(stage, /verifyWorkflowNativeWriteCapture\(/);
-  assert.match(stage, /expectedNativeRevision,/);
-  assert.match(bridge, /type: "recovery-restore"[\s\S]*?snapshot: recoveryRestore\.snapshot/);
-  assert.match(stage, /if \(liveCanvasBase\) \{\s*return executeNativeWorkflowAddNode\(params \|\| \{\}\);/);
-});

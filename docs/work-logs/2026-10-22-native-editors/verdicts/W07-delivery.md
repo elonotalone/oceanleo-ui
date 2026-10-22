@@ -49,3 +49,30 @@
   I left it and recommend W01/parent decide. Local React Flow is used when `preferLocal`.
 - Conversion from the stored openvideo format is lossy for keyframes, word-level captions, exact crop (listed to the user in the notice).
 - After "convert" the doc is not dirty until the user edits; a save with no edits does nothing.
+
+## Follow-up: hosted video-site canvas removed (parent decision)
+- `VideoCanvasStage.tsx` rewritten (1489 -> ~520 lines): only the local `VideoCanvasLocalCanvas` (xyflow) renders. Removed: EmbedEditorPane
+  branch, `liveCanvasBase`/`preferLocal`, detect/collab/lock modes, CanvasCollabLink + entity collab, recovery/capture/restore protocol,
+  native agent-write bridge use, hosted save correlation, dependency-grant loading, remote history, `WorkflowCanvasStandIn`.
+  Kept: graph load/hydrate, local undo/redo history, autosave/flush with save receipts, recovery draft, plugin command surface
+  (`workflow.add-node`), editing lock collab (`useLockedEditCollab`, one editor at a time), read-only projection handling.
+  Behavior change to note: the web path previously went through field-level entity collab only for the hosted frame; local canvas always
+  used the lock collab, which is unchanged.
+- Deleted src: `workbench-embed.tsx`, `workbench-embed-base.ts`, `workbench-embed-types.ts`, `use-embed-editor-messages.ts`,
+  `website-embed-params.ts` (only imported by the pane), `use-prefer-local-editors.ts`, `workflow-carrier/video-canvas-dependencies.ts`,
+  `video-canvas-dependency-runtime.{mjs,d.mts}`, `video-canvas-save-receipt.ts`. `EmbedChrome` kept (workspace sub-site shell).
+  `editor-core-flags.ts` / `registry.ts` had no designcombo left (W01 cleaned); only a stale comment fixed.
+- Deleted tests: `video-canvas-stage-autosave-runtime`, `workflow-native-stage-runtime`, `video-canvas-dependency-runtime`,
+  `video-canvas-save-receipt`, `embed-save-failure-runtime` (all about the deleted hosted path). Rewritten: `collab-workflow-stage`,
+  `collab-workflow-readonly`, `w10-video-canvas-local`, `workflow-native-agent-write` (dropped the hosted-stage source test).
+- Verification: `native-editors-guard` 7/7 incl. case (e); 17 video/workflow test files, 94 pass 0 fail (run-heavy);
+  `tsc --noEmit -p .`: no errors in my files; the only error is `image-editor/use-fabric-image-editor.ts(1440)` (W08).
+
+## Remaining for parent (tests I do not own that read deleted files; they will fail with ENOENT/import errors)
+`advanced-workbench`, `untrusted-content-sandbox-origin` (reads workbench-embed.tsx surfaces: removing that surface entry is a deletion of a
+check for deleted code, not a loosening, but you should confirm), `website-editor-w11` and `embed-host-identity-source-validation`
+(import `website-embed-params.ts`; W09 website may want its own copy if it still needs those params), `embedded-protocol-v8`,
+`advanced-editor-v7`, `w2-editor-save-contract` (line ~896), `w25-translate-wrapper-vars`, `advanced-canva-interactions`,
+`effect-tt-dependency`, `family-embed-origin`. Also `public-api.snapshot.json`/barrels: run `npm run api:check`.
+- Dead-but-kept: `workflow-carrier/agent-write-bridge.ts` native-write parts (still imported for `validateLocalWorkflowAddNodeParams`) and
+  `CanvasCollabLink` in `collab/adapters/workflow.ts` (still used by `replay/work/frames/workflow.tsx` and unit tests); prune later if wanted.
