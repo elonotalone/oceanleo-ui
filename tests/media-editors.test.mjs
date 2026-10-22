@@ -106,8 +106,14 @@ test("media editor public API and lifecycle hardening remain wired", () => {
     assert.match(index, new RegExp(`\\b${api}\\b`));
   }
   assert.match(pdfHook, /new AbortController\(\)/);
-  assert.match(pdfPreviewHook, /renderTask\?\.cancel\(\)/);
-  assert.match(pdfPreviewHook, /document\.createElement\("canvas"\)/);
+  // PDFium (EmbedPDF) engine: there is no pdf.js renderTask to cancel, so a stale
+  // render is dropped by the disposed flag before it paints, and the effect cleanup sets it.
+  assert.match(
+    pdfPreviewHook,
+    /\.toPromise\(\);\s*if \(disposed\) return;\s*paintImageData\(canvas, image\)/,
+  );
+  assert.match(pdfPreviewHook, /return \(\) => \{\s*disposed = true;\s*\};/);
+  assert.doesNotMatch(pdfPreviewHook, /pdfjs|renderTask|getDocument\(/);
   assert.match(pdfHook, /saveFileToLibrary/);
   assert.match(pdfHook, /deliveryProjectSchema: "pdf-binary@1"/);
   assert.match(modelRuntimeHook, /new Model3DSceneRuntime/);

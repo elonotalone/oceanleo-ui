@@ -98,10 +98,9 @@ test("PDF blank creation is explicit and disposed page loads release resources",
   assert.match(workbench, /item\.source === "creation"/);
   assert.match(workbench, /allowBlank:\s*allowBlankSource/);
   assert.match(workbench, /catch \(caught\) \{[\s\S]*PDF 本地草稿恢复失败/);
-  assert.match(
-    preview,
-    /if \(disposed\) \{\s*page\.cleanup\(\);\s*return;\s*\}/,
-  );
+  // PDFium (EmbedPDF) engine: no pdf.js page.cleanup(); a disposed load must not paint.
+  assert.match(preview, /\.toPromise\(\);\s*if \(disposed\) return;\s*paintImageData\(canvas, image\)/);
+  assert.match(preview, /return \(\) => \{\s*disposed = true;\s*\};/);
 });
 
 test("audio failures preserve prior state and close partial browser resources", async () => {
@@ -204,9 +203,10 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
     hook.indexOf("const addMediaUrl"),
   );
   assert.match(fileImport, /catch \(caught\) \{[\s\S]*素材导入失败/);
+  // 存量素材没有可用地址时要失败，而不是悄悄变成空白工程（判定已搬进 video-timeline-source.ts）。
   assert.match(
-    hook,
-    /item\.source === "artifact" \|\| isDurableLibraryItem\(item\)/,
+    await source("src/shell/video-editor/video-timeline-source.ts"),
+    /item\.source === "artifact" \|\|\s*isDurableLibraryItem\(item as LibraryItem\) \|\|\s*item\.artifactId[\s\S]*?error: VIDEO_TIMELINE_MISSING_MEDIA/,
   );
   assert.match(hook, /sourceReadyRef\.current/);
   assert.match(
