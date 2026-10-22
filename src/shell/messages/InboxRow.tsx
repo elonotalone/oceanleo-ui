@@ -2,16 +2,18 @@
 
 // 收件箱的一行：头像（群为拼图）、标题、「外部」标记、最后一条、时间、未读与 @ 角标、免打扰图标、草稿提示。
 // 会话里正在通话：右列时间下方是耳机 + 人数的标记（calls-v2 W08），点标记直接加入。整行是 <button>，
-// 标记也是按钮，不能套在里面——画在行外、叠在右列预留的位置上。
-import type { MouseEvent } from "react";
+// 标记也是按钮，不能套在里面——画在行外、叠在右列预留的位置上。标记组件由 Inbox 注入（`callDecor`），
+// 行组件本身不静态依赖通话引擎（只为头像加载本文件的地方不会把整条通话链路拖进来）。
+import type { ComponentType, MouseEvent } from "react";
 import { conversationDisplayTitle } from "../../lib/im/people-api";
 import { avatarMembersOf } from "../../lib/im/types";
 import type { ImConversationSummary } from "../../lib/im/types";
 import { useUI } from "../../i18n/ui/useUI";
 import { formatBadge } from "./realtime/store";
 import { GroupAvatar } from "./groups/GroupAvatar";
-import { InboxCallBadge } from "./call/chat/InboxCallBadge";
-import { useActiveCallSummary } from "./call/chat/use-conversation-call";
+
+/** 通话装饰（`call/chat` 的 InboxCallDecor）：part=slot 画在行按钮右列里占位，part=badge 画在行外叠上去。 */
+export type InboxRowCallDecor = ComponentType<{ conversationId: string; activeCall: unknown; part: "slot" | "badge" }>;
 
 const TILE_COLORS = ["#38bdf8", "#818cf8", "#34d399", "#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#2dd4bf"];
 
@@ -109,20 +111,20 @@ export function InboxRow({
   hasDraft,
   onOpen,
   onContextMenu,
+  callDecor: CallDecor,
 }: {
   item: ImConversationSummary;
   active: boolean;
   hasDraft: boolean;
   onOpen: (id: string) => void;
   onContextMenu?: (event: MouseEvent<HTMLButtonElement>, item: ImConversationSummary) => void;
+  callDecor?: InboxRowCallDecor;
 }) {
   const tt = useUI();
   const title = conversationTitle(item);
-  // 列表接口的 `active_call`（calls-v2 §3.2）+ 实时 `call` 事件；交易会话没有通话。
-  const activeCall = useActiveCallSummary(
-    item.kind === "talent" ? null : item.id,
-    (item as ImConversationSummary & { active_call?: unknown }).active_call,
-  );
+  // 列表接口的 `active_call`（calls-v2 §3.2）；实时 `call` 事件由装饰组件自己订阅。交易会话没有通话。
+  const activeCall = (item as ImConversationSummary & { active_call?: unknown }).active_call;
+  const Decor = CallDecor && item.kind !== "talent" ? CallDecor : null;
   const unread = formatBadge(item.unread_count);
   const mention = item.mention_count > 0;
   const last = item.last_message;
@@ -187,14 +189,10 @@ export function InboxRow({
           <span className="text-[12px] text-black/35 dark:text-white/35">
             {item.last_activity_at ? formatRowTime(item.last_activity_at, new Date(), tt("昨天")) : ""}
           </span>
-          {activeCall ? <span aria-hidden="true" className="block h-5 w-11" data-inbox-call-slot="" /> : null}
+          {Decor ? <Decor conversationId={item.id} activeCall={activeCall} part="slot" /> : null}
         </span>
       </button>
-      {activeCall ? (
-        <span className="absolute bottom-2.5 right-3">
-          <InboxCallBadge conversationId={item.id} activeCall={activeCall} />
-        </span>
-      ) : null}
+      {Decor ? <Decor conversationId={item.id} activeCall={activeCall} part="badge" /> : null}
     </div>
   );
 }

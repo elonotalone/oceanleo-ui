@@ -31,6 +31,29 @@ function titleFromInbox(conversationId: string): string | undefined {
   }
 }
 
+export interface InboxCallDecorProps {
+  conversationId: string;
+  /** 列表行原样的 `active_call`（没校验过的数据）。 */
+  activeCall: unknown;
+  /** slot = 行按钮右列里给标记留的空位；badge = 叠在空位上的标记本身（在行按钮外面）。 */
+  part: "slot" | "badge";
+}
+
+/**
+ * 列表行的通话装饰：由 Inbox 注入给 InboxRow（InboxRow 自己不静态依赖通话引擎，行组件保持轻）。
+ * 行里渲染两次（slot 一次、badge 一次），两处读同一份状态，所以「有没有通话」总是一致的。
+ */
+export function InboxCallDecor({ conversationId, activeCall, part }: InboxCallDecorProps) {
+  const live = useActiveCallSummary(isTalentConversation(conversationId) ? null : conversationId, activeCall);
+  if (!live) return null;
+  if (part === "slot") return <span aria-hidden="true" className="block h-5 w-11" data-inbox-call-slot="" />;
+  return (
+    <span className="absolute bottom-2.5 right-3">
+      <InboxCallBadge conversationId={conversationId} activeCall={live} />
+    </span>
+  );
+}
+
 export function InboxCallBadge({ conversationId, activeCall }: InboxCallBadgeProps) {
   const tt = useUI();
   const live = useActiveCallSummary(conversationId, activeCall);

@@ -2,6 +2,7 @@
 // 判据：列表行读 `active_call` 显示耳机 + 人数；实时 `call` 事件更新人数、结束即消失（不出现「进行中 · 0 人」）；
 // 重连后回到列表数据；点标记直接加入那一通、不触发打开会话；标记不嵌在行按钮里；交易会话没有标记。
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
@@ -243,15 +244,21 @@ const storeStub = dataModule(`export function formatBadge(n){ return n > 0 ? Str
 const IDLE = { phase: "idle", conversationId: null, callId: null, incoming: null, server: null, participants: [] };
 globalThis.__W08N = { snapshot: { ...IDLE }, calls: [], handlers: { call: new Set(), resync: new Set() } };
 
+// InboxRow 本身不静态依赖通话链路（标记组件由 Inbox 注入），所以行与装饰分开编译。
 const { InboxRow } = await import(
   await compileModule("src/shell/messages/InboxRow.tsx", {
     "../../i18n/ui/useUI": uiStub,
     "./realtime/store": storeStub,
-    "./realtime/hooks": hooksStub,
-    "./call/engine": engineStub,
-    "../../lib/im/calls-api": callsApiStub,
-    "../../ui": confirmStub,
-    "../../ui/Toast": toastStub,
+  })
+);
+const { InboxCallDecor } = await import(
+  await compileModule("src/shell/messages/call/chat/InboxCallBadge.tsx", {
+    "../../../../i18n/ui/useUI": uiStub,
+    "../../realtime/hooks": hooksStub,
+    "../engine": engineStub,
+    "../../../../lib/im/calls-api": callsApiStub,
+    "../../../../ui": confirmStub,
+    "../../../../ui/Toast": toastStub,
   })
 );
 
@@ -286,13 +293,21 @@ async function flush() {
   }
 }
 
-async function mountRow(row) {
+async function mountRow(row, decor) {
   const opened = [];
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(InboxRow, { item: row, active: false, hasDraft: false, onOpen: (id) => opened.push(id) }));
+    root.render(
+      React.createElement(InboxRow, {
+        item: row,
+        active: false,
+        hasDraft: false,
+        onOpen: (id) => opened.push(id),
+        callDecor: decor === undefined ? InboxCallDecor : decor,
+      }),
+    );
   });
   await flush();
   return {
@@ -415,3 +430,21 @@ test("交易会话：即使数据里带了 active_call 也不显示标记", asyn
 function view_(cid, callId, users, status) {
   return view(cid, callId, users, status);
 }
+
+test("没注入装饰（只为头像加载 InboxRow 的地方）：行照常画，没有任何通话元素", async () => {
+  reset();
+  const row = item("g-7", { active_call: { call_id: "call-7", participant_count: 2, started_at: "" } });
+  const view = await mountRow(row, null);
+  assert.ok(view.host.querySelector('[data-testid="inbox-row"]'));
+  assert.equal(view.badge(), null);
+  assert.equal(view.host.querySelector("[data-inbox-call-slot]"), null);
+  await view.unmount();
+});
+
+test("接线：Inbox 把 InboxCallDecor 注入每一行；InboxRow 不静态引通话模块", () => {
+  const inbox = readFileSync(new URL("../src/shell/messages/Inbox.tsx", import.meta.url), "utf8");
+  assert.match(inbox, /import \{ InboxCallDecor \} from "\.\/call\/chat\/InboxCallBadge";/);
+  assert.match(inbox, /callDecor=\{InboxCallDecor\}/);
+  const row = readFileSync(new URL("../src/shell/messages/InboxRow.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(row, /from "\.\/call\//);
+});

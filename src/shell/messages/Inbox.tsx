@@ -1,6 +1,7 @@
 "use client";
 
 // 聊天列表：搜索、全部会话（按最近活动倒序，事件实时更新）、新建聊天。
+// 通话（calls-v2 W08）：每行读 `active_call`，实时 `call` 事件更新人数；标记组件 InboxCallDecor 注入给 InboxRow。
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { fetchDraftConversationIds } from "../../lib/im/inbox-api";
@@ -11,6 +12,7 @@ import type { ImConversationSummary } from "../../lib/im/types";
 import { searchQueryReady } from "../../lib/im/search-api";
 import { PanelToolbar } from "../leochat/PanelToolbar";
 import { InboxRow } from "./InboxRow";
+import { InboxCallDecor } from "./call/chat/InboxCallBadge";
 import { InviteLinkDialog } from "./people/InviteLinkDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
@@ -127,6 +129,7 @@ export function Inbox(props: InboxProps) {
             active={item.id === props.activeConversationId}
             hasDraft={drafts.has(item.id) && item.id !== props.activeConversationId}
             onOpen={props.onOpenConversation}
+            callDecor={InboxCallDecor}
             onContextMenu={(event, item) => {
               if (item.kind === "talent") return;
               event.preventDefault();

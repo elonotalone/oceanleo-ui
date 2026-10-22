@@ -20,7 +20,7 @@ import {
   withHandled,
 } from "../src/shell/messages/call/incoming/incoming-model.ts";
 import { RING_BURSTS, RING_PERIOD_S, RING_TONES_HZ, createRingtone } from "../src/shell/messages/call/incoming/ringtone.ts";
-import { HIDDEN_DELAY_MS, RING_LOCK_PREFIX, claimRing, pickRinger } from "../src/shell/messages/call/incoming/ring-leader.ts";
+import { HIDDEN_DELAY_MS, RING_LOCK_PREFIX, claimRing } from "../src/shell/messages/call/incoming/ring-leader.ts";
 import { parseCallDeepLink, stripCallDeepLink } from "../src/shell/messages/call/incoming/deep-link.ts";
 
 const require = createRequire(import.meta.url);
@@ -222,14 +222,13 @@ function sharedLocks() {
   };
 }
 
-function leaderDeps({ locks = null, channel = null, tabId, visible = true }) {
+function leaderDeps({ locks = null, tabId, visible = true }) {
   const timers = [];
   return {
+    tabId,
     timers,
     deps: {
       locks,
-      openChannel: () => channel,
-      tabId,
       isVisible: () => visible,
       setTimeout(fn, ms) {
         const handle = { fn, ms };
@@ -272,45 +271,7 @@ test("Web Locks：后台标签页晚 120 毫秒去拿锁（用户正看着的那
   claimHidden.release();
 });
 
-function sharedBus() {
-  const members = new Set();
-  return {
-    open() {
-      const listeners = new Set();
-      const channel = {
-        postMessage(data) {
-          for (const other of members) if (other !== channel) for (const l of other.listeners) l({ data });
-        },
-        addEventListener(_type, l) { listeners.add(l); },
-        removeEventListener(_type, l) { listeners.delete(l); },
-        close() { members.delete(channel); },
-        listeners,
-      };
-      members.add(channel);
-      return channel;
-    },
-  };
-}
-
-test("BroadcastChannel 兜底：互报之后按（可见优先、标签 id 小者）选一个响", async () => {
-  const bus = sharedBus();
-  const x = leaderDeps({ channel: bus.open(), tabId: "tab-b", visible: true });
-  const y = leaderDeps({ channel: bus.open(), tabId: "tab-a", visible: false });
-  const cx = claimRing(x.deps, "call-3");
-  const cy = claimRing(y.deps, "call-3");
-  // 后台那页晚一点报名，可见那页的结算在它报名之后。
-  y.timers.shift().fn();
-  x.timers.shift().fn();
-  y.timers.shift().fn();
-  assert.deepEqual([await cx.won, await cy.won], [true, false], "可见的那页赢，即使它的 id 更大");
-  cx.release();
-  cy.release();
-  assert.equal(pickRinger([{ tabId: "b", visible: true }, { tabId: "a", visible: true }]), "a");
-  assert.equal(pickRinger([{ tabId: "a", visible: false }, { tabId: "z", visible: true }]), "z");
-  assert.equal(pickRinger([]), null);
-});
-
-test("两样都没有：照响（宁可多响一次）", async () => {
+test("没有 Web Locks（很老的浏览器）：照响，宁可多响一次", async () => {
   const claim = claimRing(leaderDeps({ tabId: "solo" }).deps, "call-4");
   assert.equal(await claim.won, true);
 });
