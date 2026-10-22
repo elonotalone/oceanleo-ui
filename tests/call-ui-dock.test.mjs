@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { stripJsComments } from "./helpers/strip-js-comments.mjs";
 
 const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 const UI_DIR = "src/shell/messages/call/ui";
@@ -652,12 +653,13 @@ test("源码：不新增 dangerouslySetInnerHTML / innerHTML / eval / new Functi
 });
 
 test("源码：名字叫「通话」、图标是耳机；没有主持人入口（结束会议 / 移出 / 邀请）、没有检查麦克风", () => {
-  const all = uiFiles.map((file) => readFileSync(join(REPO, file), "utf8")).join("\n");
-  assert.match(all, /export function IconHeadphones/);
+  // 只看代码与界面字面量：注释里写「没有主持人」是在说明规则，不是入口。
+  const code = uiFiles.map((file) => stripJsComments(readFileSync(join(REPO, file), "utf8"))).join("\n");
+  assert.match(code, /export function IconHeadphones/);
   assert.match(readFileSync(join(REPO, UI_DIR, "CallDock.tsx"), "utf8"), /<IconHeadphones/);
   assert.match(readFileSync(join(REPO, UI_DIR, "CallStage.tsx"), "utf8"), /<IconHeadphones/);
   for (const gone of ["结束会议", "主持人", "邀请", "检查麦克风", "会话会议", "移出"]) {
-    assert.equal(all.includes(gone), false, `call/ui 不该出现「${gone}」`);
+    assert.equal(code.includes(gone), false, `call/ui 的代码与文案不该出现「${gone}」`);
   }
 });
 
