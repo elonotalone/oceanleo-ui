@@ -1313,7 +1313,10 @@ test("C-8 §1.3 / F6: only CC0, CC-BY and CC-BY-SA carry full text", () => {
 // C-1 · §1.1 the four-tuple, and §5.4 security
 
 test("C-1 §1.1: the editor still saves as a bounded pdf-binary@1 artifact", async () => {
-  const workbench = await source("src/shell/media-editors/use-pdf-workbench.ts");
+  // The Library write lives in pdf-library-save.ts (split out of the workbench hook).
+  const workbench =
+    (await source("src/shell/media-editors/use-pdf-workbench.ts")) +
+    (await source("src/shell/media-editors/pdf-library-save.ts"));
   assert.match(workbench, /deliveryProjectSchema: "pdf-binary@1"/);
   assert.match(workbench, /sourceFormat: "pdf"/);
   assert.match(workbench, /sourceMediaType: "application\/pdf"/);

@@ -5,7 +5,8 @@ import {
   isDurableLibraryItem,
   type LibraryItem,
 } from "../library-data";
-import { saveFileToLibrary, type PersistedEditorVersion } from "../doc-editors/doc-io";
+import type { PersistedEditorVersion } from "../doc-editors/doc-io";
+import { savePdfBytesToLibrary } from "./pdf-library-save";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { usePdfAnnotations } from "./use-pdf-annotations";
 import { loadInitialPdfSource } from "./pdf-source";
@@ -17,7 +18,6 @@ import {
   fitPdfZoom,
   nextPdfZoomStop,
   pdfErrorMessage,
-  pdfFileStem,
   type PdfSnapshot,
 } from "./pdf-workbench-utils";
 import { PDF_FAILURE_CODES } from "./pdf-manifest";
@@ -443,38 +443,14 @@ export function usePdfWorkbench(
     setNotice("");
     advance("commit-started");
     try {
-      const title = `${pdfFileStem(item.title)}-${tt("编辑版")}`;
-      const file = new File([Uint8Array.from(bytes)], `${title}.pdf`, {
-        type: "application/pdf",
-      });
-      const saved = await saveFileToLibrary({
+      const saved = await savePdfBytesToLibrary({
         item,
         siteId,
-        fallbackSite: "oceanleo",
-        file,
-        sourceFormat: "pdf",
-        sourceMediaType: "application/pdf",
-        title,
-        mediaType: "doc",
-        kind: "pdf",
-        idempotencyKey: `pdf:${item.id}:${savingRevision}${collabRef.current?.saveKeySalt ? `:${collabRef.current.saveKeySalt}` : ""}`,
-        meta: {
-          editor: "pdf-native-v1",
-          editor_capability: "pdf-editor",
-          page_count: pageCount,
-        },
-        deliveryProjectSchema: "pdf-binary@1",
-        // The edited PDF bytes are the artifact source and are themselves a
-        // displayable primary (matrix §3.2 row 8). This editor keeps no project
-        // sidecar, which is why it never reached createArtifactRevision before.
-        artifactRevision: {
-          artifactType: "pdf",
-          editor: "pdf-native-v1",
-          provenance: {
-            editorRevision: savingRevision,
-            pageCount,
-          },
-        },
+        bytes,
+        editedSuffix: tt("编辑版"),
+        savingRevision,
+        pageCount,
+        keySalt: collabRef.current?.saveKeySalt,
       });
       if (!saved.ok) {
         throw new Error(

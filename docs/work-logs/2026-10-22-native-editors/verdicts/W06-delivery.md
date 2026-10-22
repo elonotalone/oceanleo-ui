@@ -160,3 +160,12 @@ snippet's command table and `disabledCategories` documentation (see limitations)
 3. Tests that import/assert the constant: `tests/untrusted-content-sandbox-origin.test.mjs` (imports it, asserts `"sandbox-exempt: pdf-plugin"` and `crbug 413851` in editor-sandbox-origin.ts, asserts three non-PDF surfaces do not contain it). When W01 deletes the constant, those asserts go too. My expectation edits there (library-viewers 1 iframe/0 exemptions; cover `"allow-scripts"`/0 exemptions; total 0; Referer loop without library-viewers) are in the working tree, uncommitted because the file also holds W01 hunks.
 4. oceandino `scripts/oceanleo-untrusted-render-allowlist.json`: stale `UC-3-IFRAME-NO-SANDBOX` entries for `library-viewers.tsx` and `workspace-library-cover.tsx` should be deleted (0 hits).
 No product code creates a PDF frame any more (`<iframe` in src for PDFs: none).
+
+## Follow-up: use-pdf-workbench.ts line limit
+- File was 606/607 lines (limit 600; the growth predates my Pro sync, which lives in `PdfRoute`, not this hook). Split along the
+  Library-write seam: NEW `media-editors/pdf-library-save.ts` (`savePdfBytesToLibrary`, the `saveFileToLibrary` call with the
+  pdf-binary@1 artifact fields, idempotency key and title). Behaviour identical; hook is now 582 lines.
+- Source-reading tests that looked for those strings in the hook (`media-editors.test` #3, `pdf-carrier-contract` C-1 §1.1) now read
+  hook + `pdf-library-save.ts`.
+- Green: `media-editors` (4), `pdf-carrier-contract` (31), `advanced-editor-v7`, `advanced-project-autosave`, `advanced-native-editors`,
+  `collab-pdf-undo`, `pdf-workbench-hook-runtime`, `pdf-annotations-runtime`, `pdf-editor-v8`, `W6-20261021-pdf`. Full `tsc --noEmit -p .`: 0 errors.

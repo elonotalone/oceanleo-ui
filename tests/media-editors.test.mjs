@@ -73,7 +73,9 @@ test("PDF operations merge and extract selected pages in requested order", async
 
 test("media editor public API and lifecycle hardening remain wired", () => {
   const index = source("../src/shell/media-editors/index.ts");
-  const pdfHook = source("../src/shell/media-editors/use-pdf-workbench.ts");
+  const pdfHook =
+    source("../src/shell/media-editors/use-pdf-workbench.ts") +
+    source("../src/shell/media-editors/pdf-library-save.ts");
   const pdfPreviewHook = source(
     "../src/shell/media-editors/use-pdf-preview-render.ts",
   );
