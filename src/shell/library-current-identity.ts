@@ -96,6 +96,16 @@ export function replaceLibraryCurrentIdentity(
   return { search, href };
 }
 
+/** Leave the item route through the same writer used when opening it. */
+export function clearLibraryCurrentIdentity(nonce?: string): void {
+  if (nonce) {
+    consumeWorkspaceAction(nonce, "library-edit-intent");
+    consumeWorkspaceAction(nonce, "workspace-library");
+    consumeWorkspaceAction(nonce, "material-deeplink");
+  }
+  replaceLibraryCurrentIdentity({ artifactId: "", entryId: "" });
+}
+
 export function matchLibraryIdentityEntry(
   entry: WorkspaceLibraryEntry,
   identity: LibraryCurrentIdentity,

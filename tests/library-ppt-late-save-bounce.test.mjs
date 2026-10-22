@@ -652,6 +652,25 @@ test("夹具：PPT 与图片走进不同的生产路由", () => {
   assert.equal(editorCapabilityFor(PDF).route.type, "pdf");
 });
 
+test("closing MyLibrary editor clears item route and a late save cannot reopen it", async () => {
+  const gate = resetCase();
+  await mounted(async (root, container) => {
+    await renderLibrary(root);
+    await clickCard(container, PPT.artifactId);
+    await waitFor(container, '[data-workbench-editor="deck"]');
+    window.history.replaceState({ router: "preserved" }, "", `/library?item=${PPT.artifactId}&entry=old&mode=preview&q=notes#shelf`);
+    await clickClose(container);
+    assert.equal(window.location.search, "?q=notes");
+    assert.equal(window.location.hash, "#shelf");
+    assert.deepEqual(window.history.state, { router: "preserved" });
+    assert.equal(getLibraryCurrentIdentity(), null);
+    await flushLateSave(gate);
+    assert.equal(container.querySelector("[data-workbench-editor]"), null);
+    assert.equal(window.location.search, "?q=notes");
+    assert.ok(container.querySelector("[data-library-card]"));
+  });
+});
+
 test("adoptSavedEditorItem：不同根身份的迟到保存不改当前件", () => {
   assert.equal(adoptSavedEditorItem(IMAGE, PPT_SAVED), IMAGE);
   assert.equal(adoptSavedEditorItem(PPT, PPT_SAVED), PPT_SAVED);

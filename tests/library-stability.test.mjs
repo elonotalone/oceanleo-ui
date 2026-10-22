@@ -395,6 +395,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     }
   `),
   "./library-current-identity": dataModule(`
+    export function clearLibraryCurrentIdentity(){}
     export function getLibraryCurrentIdentity(){ return null; }
     export function rememberOpenedLibraryItem(){}
   `),

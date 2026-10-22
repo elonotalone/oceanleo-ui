@@ -436,6 +436,13 @@ export function useVirtualList({
       if (size !== null && Number.isFinite(size)) measurements.push([row, size]);
     }
     if (!measurements.length) return;
+    const changed = measurements.some(([row, size]) =>
+      Number.isFinite(size) &&
+      size >= 0 &&
+      row >= 0 &&
+      row < metrics.count &&
+      (!metrics.isMeasured(row) || metrics.sizeOf(row) !== size),
+    );
     const delta = applyRowMeasurements(metrics, measurements, window_.startRow);
     if (delta !== 0) {
       const scroller = scrollRef?.current ?? scrollElementRef.current;
@@ -444,8 +451,9 @@ export function useVirtualList({
         setScrollTop(scroller.scrollTop);
       }
     }
-    // 账本变了就得重算窗口；`RowMetrics` 是可变对象，React 看不见它的变化。
-    setMeasureNonce((value) => value + 1);
+    // 账本真的变了才重算窗口；相同高度可能由 inline measureRow 再量一次。
+    // `RowMetrics` 是可变对象，React 看不见它的变化。
+    if (changed) setMeasureNonce((value) => value + 1);
     // `measureNonce` 是这个 effect 自己的输出，不能进依赖，否则每帧自激。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [

@@ -52,6 +52,7 @@ import {
   retireArtifact,
 } from "./artifact-client";
 import {
+  clearLibraryCurrentIdentity,
   getLibraryCurrentIdentity,
   rememberOpenedLibraryItem,
 } from "./library-current-identity";
@@ -1923,7 +1924,11 @@ export function MyLibrary({
               adoptSavedEditorItem(current, saved),
             )
           }
-          onClose={() => setStandaloneEditorItem(null)}
+          onClose={() => {
+            clearLibraryCurrentIdentity(action?.nonce);
+            setPreviewIntentItem(null);
+            setStandaloneEditorItem(null);
+          }}
         />
       </div>
     );

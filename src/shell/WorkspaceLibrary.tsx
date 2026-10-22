@@ -36,6 +36,7 @@ import {
   type WorkspaceActionEnvelope,
 } from "./workspace-actions";
 import {
+  clearLibraryCurrentIdentity,
   matchLibraryIdentityEntry,
   rememberOpenedLibraryItem,
   resolveLibraryCurrentIdentity,
@@ -876,6 +877,8 @@ export function WorkspaceLibrary({
               ) {
                 void document.exitFullscreen();
               }
+              clearLibraryCurrentIdentity(action?.nonce);
+              appliedIdentityRef.current = true;
               setDetailSelection("");
             }}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]"

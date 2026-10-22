@@ -327,6 +327,26 @@ const ENTRIES = [
   workspaceEntryFromLibraryItem(ITEM_X),
 ];
 
+test("closing a deep-linked preview clears its route and survives a fresh mount", async () => {
+  resetCase();
+  window.history.replaceState({ router: "preserved" }, "", "/library?item=item-x&entry=artifact%3Aitem-x&mode=preview&q=flowers&type=image#shelf");
+  setLibraryCurrentIdentity(null);
+  await mounted(async (root, container) => {
+    const render = (key) => root.render(React.createElement(WorkspaceLibrary, { key, entries: ENTRIES, plain: true, hideToolbar: true }));
+    await act(async () => render("first"));
+    assert.equal(container.querySelector("[data-library-viewer]")?.dataset.libraryViewer, "item-x");
+    await act(async () => container.querySelector('[aria-label="返回列表"]').click());
+    assert.equal(container.querySelector("[data-library-viewer]"), null);
+    assert.equal(window.location.search, "?q=flowers&type=image");
+    assert.equal(window.location.hash, "#shelf");
+    assert.deepEqual(window.history.state, { router: "preserved" });
+    assert.equal(getLibraryCurrentIdentity(), null);
+    await act(async () => render("refresh"));
+    assert.equal(container.querySelector("[data-library-viewer]"), null);
+    assert.ok(container.querySelector('[data-card="item-x"]'));
+  });
+});
+
 test("身份为 Y 时，WorkspaceLibrary 收到 itemId=X 必须打开 X", async () => {
   resetCase();
   const action = envelope(ITEM_X.artifactId, "lib-open-x-while-y", "open");

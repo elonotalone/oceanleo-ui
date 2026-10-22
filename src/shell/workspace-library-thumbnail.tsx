@@ -376,8 +376,8 @@ export function WorkspaceThumbnail({
           compact={compact}
           visible={visible}
           onReady={() => {
-            setFailed(false);
-            setSolidRejected(false);
+            // A rendered document excerpt is a ready fallback. It does not
+            // make the failed or rejected primary rendition usable again.
             setReady(true);
           }}
         />
