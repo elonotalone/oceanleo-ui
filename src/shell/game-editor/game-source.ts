@@ -37,11 +37,53 @@ export const GAME_DRAFT_MAX_BYTES = 2 * 1024 * 1024;
 
 /** UTF-8 字节数。`String.length` 是 UTF-16 码元数，中文注释会让它少算一半。 */
 export function gameSourceByteLength(source: string): number {
-  return new TextEncoder().encode(source).length;
+  // 平台内联的运行时不算作者的体积。
+  return new TextEncoder().encode(splitGameRuntime(source).source).length;
+}
+
+// ── 后端内联的 three 运行时：用户永远看不见，也不计入显示体积 ─────────────────
+//
+// 后端生成/保存 3D 游戏时会在 `<head>` 最前面内联一份约 700KB 的 three.js 运行时
+// （`<script data-leoplay-runtime="three@...">`）。它是平台的东西，不是作者的代码：
+// 代码页显示前剥掉，体积按剥掉之后算；试玩未保存草稿时再原样接回去；
+// 保存时只送剥掉后的源码，后端会重新注入（并替换任何客户端自带的）。
+
+const GAME_RUNTIME_SCRIPT_RE =
+  /<script\b[^>]*\bdata-leoplay-runtime\s*=\s*["']three@[^"']*["'][^>]*>[\s\S]*?<\/script\s*>[ \t]*\n?/i;
+const GAME_NEEDS_THREE_RE = /\bTHREE\s*\.|\bLeoEngine3D\b|\bnew\s+THREE\b/;
+
+export interface GameRuntimeSplit {
+  /** 作者看到、编辑、保存的源码。 */
+  source: string;
+  /** 被剥掉的整段 `<script ...>...</script>`；没有则为空串。 */
+  hiddenRuntime: string;
+}
+
+export function splitGameRuntime(full: string): GameRuntimeSplit {
+  const text = String(full ?? "");
+  const match = GAME_RUNTIME_SCRIPT_RE.exec(text);
+  if (!match) return { source: text, hiddenRuntime: "" };
+  return {
+    source: text.slice(0, match.index) + text.slice(match.index + match[0].length),
+    hiddenRuntime: match[0],
+  };
+}
+
+/** 试玩草稿用：把剥掉的运行时接回 `<head>` 最前面（草稿已不用 THREE 就不接）。 */
+export function joinGameRuntime(source: string, hiddenRuntime: string): string {
+  if (!hiddenRuntime || !GAME_NEEDS_THREE_RE.test(source)) return source;
+  const head = /<head(?:\s[^>]*)?>/i.exec(source);
+  if (head) {
+    const at = head.index + head[0].length;
+    return source.slice(0, at) + hiddenRuntime + source.slice(at);
+  }
+  return hiddenRuntime + source;
 }
 
 export interface GameDraftEnvelope {
   source: string;
+  /** 从信封源码里剥下来的平台运行时（用户不可见），见上。 */
+  hiddenRuntime: string;
   sizeBytes: number;
   /** 原 revision 的来路，原样透传。 */
   origin: string;
@@ -70,6 +112,7 @@ export function readGameEnvelope(input: unknown): GameEnvelopeRead {
   if (typeof source !== "string" || source.trim().length === 0) {
     return { ok: false, reason: "这一版的工程档里没有游戏源码。" };
   }
+  const split = splitGameRuntime(source);
   const origin = typeof input.origin === "string" ? input.origin : "";
   if (!origin) {
     return { ok: false, reason: "这一版的工程档没有记录产物来路，拒绝在其上编辑。" };
@@ -78,8 +121,9 @@ export function readGameEnvelope(input: unknown): GameEnvelopeRead {
   return {
     ok: true,
     envelope: {
-      source,
-      sizeBytes: gameSourceByteLength(source),
+      source: split.source,
+      hiddenRuntime: split.hiddenRuntime,
+      sizeBytes: gameSourceByteLength(split.source),
       origin,
       ...(manifest ? { manifest } : {}),
     },
@@ -95,10 +139,12 @@ export function buildGameEnvelope(input: {
   origin: string;
   manifest?: Record<string, unknown>;
 }): Record<string, unknown> {
-  const sizeBytes = gameSourceByteLength(input.source);
+  // 客户端从不送运行时：后端保存时唯一注入。
+  const source = splitGameRuntime(input.source).source;
+  const sizeBytes = gameSourceByteLength(source);
   return {
     sourceFormat: "oceanleo.game-document.v1",
-    source: input.source,
+    source,
     sizeBytes,
     origin: input.origin,
     ...(input.manifest ? { manifest: input.manifest } : {}),
@@ -137,8 +183,9 @@ export interface GameDraftInspection {
  */
 export function inspectGameDraft(source: string): GameDraftInspection {
   const issues: GameDraftIssue[] = [];
-  const trimmed = String(source ?? "").trim();
-  const sizeBytes = gameSourceByteLength(source ?? "");
+  const visible = splitGameRuntime(source).source;
+  const trimmed = visible.trim();
+  const sizeBytes = gameSourceByteLength(visible);
   if (!trimmed) {
     return { issues: ["empty"], sizeBytes, publishable: false };
   }

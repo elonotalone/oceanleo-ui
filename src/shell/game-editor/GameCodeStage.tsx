@@ -42,6 +42,8 @@ import {
 import { GAME_AGENT_CHIPS, gameToolsManifestChips } from "./l4-chips";
 import {
   inspectGameDraft,
+  joinGameRuntime,
+  splitGameRuntime,
   readGameEnvelope,
   readGameParamDeclarations,
   resolveGameParamValues,
@@ -206,7 +208,14 @@ export function GameCodeStage({
   pages?: AdvancedEditorPagesAdapter;
 }) {
   const tt = useUI();
-  const [source, setSource] = useState(EMPTY_DOC);
+  const [source, setSourceState] = useState(EMPTY_DOC);
+  // 后端内联的 three 运行时：不显示、不计体积，试玩草稿时再接回去。
+  const hiddenRuntimeRef = useRef("");
+  const setSource = useCallback((next: string) => {
+    const split = splitGameRuntime(next);
+    if (split.hiddenRuntime) hiddenRuntimeRef.current = split.hiddenRuntime;
+    setSourceState(split.source);
+  }, []);
   const currentItem = useRef(item);
   const [head, setHead] = useState(item);
   // 预览快照：只在载入 / 运行 / 重载 / 保存时变化，绝不随按键变化；
@@ -280,7 +289,14 @@ export function GameCodeStage({
     if (stashed?.source?.trim()) {
       setSource(stashed.source);
       setDirty(stashed.sourceDirty === true);
-      setRunSnapshot(stashed.sourceDirty === true ? stashed.source : undefined);
+      setRunSnapshot(
+        stashed.sourceDirty === true
+          ? joinGameRuntime(
+              splitGameRuntime(stashed.source).source,
+              hiddenRuntimeRef.current,
+            )
+          : undefined,
+      );
       setSourceReady(true);
       if (stashed.origin) setOrigin(stashed.origin);
       if (typeof stashed.prompt === "string") setPrompt(stashed.prompt);
@@ -338,6 +354,7 @@ export function GameCodeStage({
           setStatus(read.reason);
           return;
         }
+        hiddenRuntimeRef.current = read.envelope.hiddenRuntime;
         setSource(read.envelope.source);
         setSourceReady(true);
         setOrigin(read.envelope.origin || "ai");
@@ -429,6 +446,7 @@ export function GameCodeStage({
           if (!json) return;
           const read = readGameEnvelope(json);
           if (!read.ok) return;
+          hiddenRuntimeRef.current = read.envelope.hiddenRuntime;
           writeThrough(read.envelope.source);
           setSource(read.envelope.source);
           setDirty(false);
@@ -498,7 +516,11 @@ export function GameCodeStage({
     (action: "run" | "stop" | "reload") => {
       if (action !== "stop") {
         // 运行 / 重载：以此刻的草稿为准；没改过就直接播放已保存的那一版。
-        setRunSnapshot(dirtyRef.current ? sourceRef.current : undefined);
+        setRunSnapshot(
+          dirtyRef.current
+            ? joinGameRuntime(sourceRef.current, hiddenRuntimeRef.current)
+            : undefined,
+        );
       }
       setPlayback((current) => planGamePreviewControl(current, action));
     },
