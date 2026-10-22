@@ -1,0 +1,2 @@
+- tsc: no errors in DeckRoute.tsx; only w10-editor-mounts.ts (W01) imports deleted DeckHostedRoute.
+- 254 deck tests run: 249 pass; 4 fail (deck-delivery-family, deck-html-action x3) all mount ArtifactActions.tsx ("下载必须还在"), a file W05 did not touch.

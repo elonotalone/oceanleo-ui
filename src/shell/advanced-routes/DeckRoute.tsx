@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -12,16 +10,6 @@ import {
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useAdvancedSession } from "../advanced-session-context";
 import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
-import { resolveEditorCore } from "../editor-core-flags";
-import { usePluginMode } from "../plugin-chrome/plugin-mode";
-import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
-import {
-  bindNormalFaceHandoff,
-  handoffItemKey,
-  captureBeforeEnterPro,
-  useProSavedRevision,
-} from "./editor-handoff";
-import { deckDocumentToPptist } from "../doc-editors/deck-pptist-carrier";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -92,16 +80,6 @@ import {
 } from "../workbench-material-provider";
 
 /**
- * 双核 flag 的 `next` 分支：PPTist iframe 托管。**单独 lazy**，
- * 这样翻 flag 之前它的模块图不会被拉进本 chunk（`editor-core-flags.ts` 纪律 1）。
- */
-const DeckHostedRoute = lazy(() =>
-  import("./DeckHostedRoute").then((module) => ({
-    default: module.DeckHostedRoute,
-  })),
-);
-
-/**
  * PPT 的指令面（Leo 的「帮我改」从这里进来）。只能查看时，会改文稿的指令在这一层直接拒绝，
  * 导出等查看类指令照常；指令表本身在 doc-family-commands.ts，不在这里动。
  */
@@ -113,39 +91,8 @@ function buildDeckCommandSurface(
   return guardPluginSurface(buildRawDeckCommandSurface(editor, deps), readOnly);
 }
 
-/**
- * 双核分发口。**flag 只在这里判一次**，判完各走各的组件。
- *
- * 默认 `legacy`（`_COMMON.md` §10 第 3 条：换核期间旧核不删、默认旧核）。
- * 验收绿之后由我翻 flag 并单独提交删除旧目录（message 以 `[core-swap:delete]` 开头）。
- */
-export function DeckRoute(props: AdvancedContentWorkbenchProps) {
-  if (resolveEditorCore("deck") === "next") {
-    return (
-      <Suspense fallback={null}>
-        <DeckHostedRoute {...props} />
-      </Suspense>
-    );
-  }
-  // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到 PPTist 发 ready，中间是舞台内的切换覆盖层。
-  return (
-    <PluginModeSwitchGate
-      pluginId="deck"
-      handoffItemKey={handoffItemKey(props.item)}
-      captureOnMount
-      beforeEnterPro={(signal) => captureBeforeEnterPro(props.item, { waitForReady: true, signal })}
-      renderNormal={() => <DeckLegacyRoute {...props} />}
-      renderPro={() => (
-        <Suspense fallback={null}>
-          <DeckHostedRoute {...props} />
-        </Suspense>
-      )}
-    />
-  );
-}
-
-/** 自研 deck 引擎（旧核）。本波一个字未动，等 V1/V2 验收绿后整体删除。 */
-function DeckLegacyRoute({
+/** 演示文稿编辑器：只有原生 DeckStage 一种模式。 */
+export function DeckRoute({
   item,
   previewContent,
   linkUrl,
@@ -155,9 +102,7 @@ function DeckLegacyRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const advancedSession = useAdvancedSession();
-  const proSaved = useProSavedRevision(item.key || item.id);
-  const workingItem = proSaved ?? item;
-  const officeSource = useOfficeArtifactSource(workingItem);
+  const officeSource = useOfficeArtifactSource(item);
   // 多人同改：编辑器先于房间创建（房间要读编辑器的文稿），所以「只读」「存成功」两件事走 state / ref 回填。
   const [collabReadOnly, setCollabReadOnly] = useState(false);
   const collabSavedRef = useRef<(revisionId: string) => void>(() => undefined);
@@ -213,29 +158,6 @@ function DeckLegacyRoute({
     [editor.activeSlide.id, editor.selectedElementId],
   );
   const peerSelections = useCollabSelections(collab.room, selectionKeys);
-  const liveDeckRef = useRef(editor.deck);
-  liveDeckRef.current = editor.deck;
-  const liveRevisionRef = useRef(editor.editRevision);
-  liveRevisionRef.current = editor.editRevision;
-  useEffect(() => {
-    return bindNormalFaceHandoff(item.key || item.id, {
-      status: editor.sourceFailed ? "error" : editor.loading || officeSource.loading ? "loading" : "ready",
-      getHandoff: () =>
-        editor.sourceFailed || editor.loading || officeSource.loading
-          ? { kind: "empty" as const }
-          : {
-              kind: "inline" as const,
-              json: deckDocumentToPptist(liveDeckRef.current),
-              revision:
-                liveRevisionRef.current == null
-                  ? null
-                  : String(liveRevisionRef.current),
-            },
-      persistInBackground: () => {
-        if (editor.dirty && !editor.sourceFailed && collab.saveGate && !editor.loading && !officeSource.loading) editor.persistInBackground();
-      },
-    });
-  }, [editor.dirty, collab.saveGate, editor.loading, editor.persistInBackground, editor.sourceFailed, officeSource.loading, item.id, item.key]);
   const [zoom, setZoom] = useState(DECK_PREVIEW_FIT_ZOOM_PERCENT);
   const [activeTool, setActiveTool] =
     useState<DeckCreationTool>("select");
@@ -253,11 +175,6 @@ function DeckLegacyRoute({
   const presenterDisposeRef = useRef<(() => void) | null>(null);
   // 两个窗口必须同名才通道得上（W16-request §2）。
   const presenterChannelName = `deck-${item.id}`;
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂托管件。
-  const { setMode: setEditorMode } = usePluginMode("deck");
-  // 切回「编辑」时的 ready 信号：演示文稿载入完就算首帧可见。
-  useModeSwitchReady(!editor.loading && !officeSource.loading);
-
   const exitPresentation = useCallback(() => {
     presenterDisposeRef.current?.();
     presenterDisposeRef.current = null;
@@ -589,13 +506,6 @@ function DeckLegacyRoute({
           setValue: setZoom,
           fit: () => setZoom(DECK_PREVIEW_FIT_ZOOM_PERCENT),
         },
-        mode: {
-          current: "normal",
-          setMode: (next) => {
-            setEditorMode(next);
-          },
-        },
-        pages: { proLabel: "PPTist" },
         directDownload: {
           id: "deck-export-pptx",
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.deck[0].label}`,
