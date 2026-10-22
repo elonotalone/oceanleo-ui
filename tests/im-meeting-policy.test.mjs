@@ -76,3 +76,14 @@ test("ARTC client requires server credentials and turns off automatic subscripti
     await client.destroy();
   } finally { delete globalThis.window; }
 });
+
+test("platform-absorbed meetings need no wallet balance and say so", async () => {
+  const snap = { ...baseSnapshot, billing_mode: "platform_absorbed" };
+  const base = { snapshot: snap, wallet: null, online: true, busy: false, connected: false };
+  assert.equal(canJoinMeeting(base), true);
+  assert.equal(canJoinMeeting({ ...base, wallet: { balance: 0 } }), true);
+  assert.equal(canJoinMeeting({ ...base, snapshot: { ...snap, metering_status: "unavailable" } }), false);
+  assert.match(meetingAvailabilityMessage(snap), /由 OceanLeo 承担/);
+  const source = await readFile(new URL("../src/shell/messages/meeting/MeetingPanel.tsx", import.meta.url), "utf8");
+  assert.match(source, /const platformPays = snapshot\?\.billing_mode === "platform_absorbed"/);
+});

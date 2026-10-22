@@ -343,6 +343,8 @@ export interface ImMeetingSnapshot {
   artc_configured: boolean;
   metering_status: ImMeetingMeteringStatus;
   metering_reason?: string | null;
+  /** "platform_absorbed": OceanLeo pays the supplier; no wallet balance or hold is involved. */
+  billing_mode?: "platform_absorbed" | "metered";
   invitations?: ImMeetingInvitation[];
 }
 

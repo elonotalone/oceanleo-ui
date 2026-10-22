@@ -110,6 +110,7 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
   const meeting = snapshot?.meeting ?? null;
   const participants = meeting?.participants?.filter((participant) => participant.status === "joined") ?? [];
   const canManage = myRole === "owner" || myRole === "admin";
+  const platformPays = snapshot?.billing_mode === "platform_absorbed";
   const canStart = canJoinMeeting({ snapshot, wallet, online, busy, connected }) && deviceChecked;
   const canCreate = !meeting && !loading && online && !busy;
 
@@ -554,13 +555,15 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
               {meeting?.status === "active" ? <span className="text-xs text-neutral-500">{participants.length} 位成员在线</span> : null}
             </div>
             <p className="mt-2 text-xs leading-5 text-neutral-600">{readyLabel}</p>
+            {platformPays ? null : <>
             <p className="mt-2 text-xs leading-5 text-neutral-600">费用按服务商核验的音频、视频和屏幕共享用量原价结算，不加客户费率或加价。发起人和受邀者各自使用自己的余额；静音或只听也可能计费。远端已发布的音频和视频会自动订阅。</p>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600">
               <span>本人余额：{wallet ? formatMoney(wallet.balance, wallet.currency, 2) : "暂不可读取"}</span>
               {wallet && wallet.balance <= 0 ? <span className="font-medium text-rose-700">余额不足，无法加入</span> : null}
             </div>
+            </>}
           </div>
-          {bill ? (() => {
+          {bill && !platformPays ? (() => {
             const receipt = bill as ProviderCostReceipt;
             const providerCostNano = receipt.provider_cost_nano;
             const providerCostVerified = isVerifiedProviderCost(receipt.provider_cost_status, providerCostNano);
@@ -580,7 +583,7 @@ export function MeetingPanel({ conversationId, conversationTitle, myUserId, myRo
             <details className="mt-2"><summary className="min-h-8 cursor-pointer py-1">高级核对：服务商用量与成本依据</summary><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify({ raw_usage: bill.raw_usage, modality_events: bill.modality_events, pricing_snapshot: snapshot }, null, 2)}</pre></details>
           </div>;
           })() : null}
-          {reservation ? <p className="mt-2 text-xs text-neutral-600">已预留余额：{formatMoney((reservation.reserved_nano ?? 0) / 1e9, reservation.currency, 9)}。这是临时预授权，不代表最终费用；结束后按服务端确认用量结算，余额余量会释放。</p> : null}
+          {reservation && !platformPays ? <p className="mt-2 text-xs text-neutral-600">已预留余额：{formatMoney((reservation.reserved_nano ?? 0) / 1e9, reservation.currency, 9)}。这是临时预授权，不代表最终费用；结束后按服务端确认用量结算，余额余量会释放。</p> : null}
 
           {loading ? <p className="py-8 text-center text-sm text-neutral-500">正在加载…</p> : null}
           {!loading && !meeting ? <div className="mt-4 flex justify-end"><button type="button" disabled={!canCreate} onClick={() => void createMeeting()} className="min-h-11 rounded-lg bg-neutral-900 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">发起会议</button></div> : null}
