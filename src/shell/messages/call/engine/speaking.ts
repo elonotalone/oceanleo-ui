@@ -14,7 +14,8 @@ export interface SpeakingConfig {
 }
 
 // 阈值按 SDK 电平口径（频域均值，0–100，静音约 0–3）估的，V02 用真实语音假麦克风核对后可调。
-export const SPEAKING_DEFAULTS: SpeakingConfig = { onThreshold: 12, offThreshold: 6, holdMs: 700, attack: 0.6, release: 0.3 };
+// 300 ms 一次采样时：停说后约 1 s 熄灭（下降平滑 2–3 拍 + 0.5 s 拖尾），字间停顿（≤0.5 s）不会熄。
+export const SPEAKING_DEFAULTS: SpeakingConfig = { onThreshold: 12, offThreshold: 6, holdMs: 500, attack: 0.6, release: 0.5 };
 
 export interface SpeakerState {
   /** 平滑后的电平（0–100）。 */
