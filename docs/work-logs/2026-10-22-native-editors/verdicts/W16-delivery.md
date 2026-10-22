@@ -51,3 +51,22 @@ Baseline (run-light, each repo's own test form; no file edits made for these):
 ## Limitations
 - Video site has no stored-project loader, so the lossy stored-OpenVideo read path lives only in the ui reader.
 - Step 3 incomplete as described.
+
+## Step 3 re-run after W15 (ui c190e581)
+Which ui each test read (checked by `readlink -f node_modules/@oceanleo/ui`). None of the test files supports an override
+(only supabase env keys), and I may not edit package.json/node_modules, so pinned copies stay pinned.
+| Repo | ui copy read | Result |
+|---|---|---|
+| edu, study, novel, script artifact-surface | pinned tarball (pnpm store, hash 2372fca...) | 9 / 12 / 13 / 12 pass |
+| word-ai/frontend artifact-surface | pinned 2372fca... | 12/12 |
+| image material-convergence | pinned 2372fca... | 4/4 |
+| video material-convergence | pinned 0d96502... | 4 pass, 3 fail (`window.dispatchEvent is not a function` in pinned ui auth client; not wave-related, unedited) |
+| aihuman-studio/frontend, converter-suite/frontend artifact-integration-rendered | pinned 2372fca... | 6/6, 5/5 |
+| ppt-maker/frontend home-compile-boundary | pinned 2372fca... | 3/3 |
+| design artifact-context | LOCAL (`node_modules/@oceanleo/ui` -> /root/projects/oceanleo-ui) | 5/5 after fix (run with `NODE_PATH=/root/projects/oceanleo-ui/node_modules` for `fflate`; env only) |
+
+Fix (design commit, test only): cross-type routing test iterated all `ARTIFACT_TYPES` and required an editor capability for
+`chart`; W15 removed the chart row, `chart` is now read-only with `available: false`. The test now asserts that for chart and
+continues. Only stale expectation found. Caveat: the pinned-copy results are pre-wave contracts, so green there does not prove
+compatibility with c190e581; they will be re-evaluated when each consumer is bumped (parent's job). Without NODE_PATH, design
+fails to resolve `fflate` (environment gap).
