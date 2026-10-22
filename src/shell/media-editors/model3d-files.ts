@@ -12,12 +12,14 @@ import {
   parseGltfDocument,
 } from "./source-integrity.mjs";
 import {
+  Model3DHttpError,
   materializeModel3DGltfDependencies,
   model3DDependencyGrantPath,
   model3DDependencyPath,
   model3DSourceGrantPath,
   normalizeModel3DArtifactIdentity,
   validateModel3DGrant,
+  withModel3DRetry,
   type Model3DArtifactIdentity,
 } from "./model3d-dependency-runtime.mjs";
 import {
@@ -150,7 +152,10 @@ async function requestModelGrant(
     // The status-specific error below remains authoritative.
   }
   if (!response.ok) {
-    throw new Error(modelGrantError(payload, response.status));
+    throw new Model3DHttpError(
+      modelGrantError(payload, response.status),
+      response.status,
+    );
   }
   return validateModel3DGrant(
     payload,
@@ -183,7 +188,10 @@ async function fetchGrantedModelBlob(
     ...(sendAuthorization ? { credentials: "include" as const } : {}),
   });
   if (!response.ok) {
-    throw new Error(`3D 素材加载失败 HTTP ${response.status}`);
+    throw new Model3DHttpError(
+      `3D 素材加载失败 HTTP ${response.status}`,
+      response.status,
+    );
   }
   const declared = Number(response.headers.get("content-length") || 0);
   if (declared > MAX_MODEL_BYTES) {
@@ -213,29 +221,36 @@ export async function prepareModelRuntimeSource(
   );
   const identity = normalizeModel3DArtifactIdentity(artifactIdentity);
   let token = "";
-  let sourceGrant:
-    | ReturnType<typeof validateModel3DGrant>
-    | null = null;
+  let grantedFormat = "";
   if (identity) {
     token = await modelGrantToken();
-    sourceGrant = await requestModelGrant(
-      model3DSourceGrantPath(identity),
-      identity,
-      token,
-      signal,
-    );
   }
-  const blob = identity && sourceGrant
-    ? await fetchGrantedModelBlob(sourceGrant.url, token, signal)
-    : await fetchMediaBlob(sourceUrl, {
-        maxBytes: MAX_MODEL_BYTES,
-        signal,
-      });
+  // Grant and download retry together: a gateway restart ("Failed to fetch") or
+  // an expired 5-minute signed URL (410) is cured by a fresh grant, no Reload.
+  const blob = identity
+    ? await withModel3DRetry(async () => {
+        const sourceGrant = await requestModelGrant(
+          model3DSourceGrantPath(identity),
+          identity,
+          token,
+          signal,
+        );
+        grantedFormat = sourceGrant.format;
+        return fetchGrantedModelBlob(sourceGrant.url, token, signal);
+      }, { signal })
+    : await withModel3DRetry(
+        () =>
+          fetchMediaBlob(sourceUrl, {
+            maxBytes: MAX_MODEL_BYTES,
+            signal,
+          }),
+        { signal },
+      );
   const format = await assertBlobSource(blob, "model3d");
   if (format !== "glb" && format !== "gltf") {
     throw new Error("3D 模型源格式校验失败");
   }
-  if (sourceGrant?.format && sourceGrant.format !== format) {
+  if (grantedFormat && grantedFormat !== format) {
     throw new Error("3D source grant format disagrees with the validated bytes");
   }
 
@@ -257,14 +272,16 @@ export async function prepareModelRuntimeSource(
         try {
           if (identity) {
             const dependencyPath = model3DDependencyPath(uri);
-            const grant = await requestModelGrant(
-              model3DDependencyGrantPath(identity, dependencyPath),
-              identity,
-              token,
-              signal,
-              dependencyPath,
-            );
-            dependency = await fetchGrantedModelBlob(grant.url, token, signal);
+            dependency = await withModel3DRetry(async () => {
+              const grant = await requestModelGrant(
+                model3DDependencyGrantPath(identity, dependencyPath),
+                identity,
+                token,
+                signal,
+                dependencyPath,
+              );
+              return fetchGrantedModelBlob(grant.url, token, signal);
+            }, { signal });
           } else {
             let resolved: URL;
             try {
@@ -275,10 +292,15 @@ export async function prepareModelRuntimeSource(
             if (!["http:", "https:"].includes(resolved.protocol)) {
               throw new Error(`glTF 依赖协议不受支持：${resolved.protocol}`);
             }
-            dependency = await fetchMediaBlob(resolved.href, {
-              maxBytes: MAX_MODEL_BYTES,
-              signal,
-            });
+            const href = resolved.href;
+            dependency = await withModel3DRetry(
+              () =>
+                fetchMediaBlob(href, {
+                  maxBytes: MAX_MODEL_BYTES,
+                  signal,
+                }),
+              { signal },
+            );
           }
         } catch (caught) {
           if (caught instanceof DOMException && caught.name === "AbortError") {

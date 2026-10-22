@@ -46,8 +46,29 @@ export function materializeModel3DGltfDependencies(
   document: Record<string, unknown>,
   resolveDependency: (uri: string) => Promise<Blob>,
   objectUrlApi?: Pick<typeof URL, "createObjectURL" | "revokeObjectURL">,
+  options?: { concurrency?: number },
 ): Promise<{
   document: Record<string, unknown>;
   objectUrls: string[];
   release: () => void;
 }>;
+
+export const MODEL3D_DEPENDENCY_CONCURRENCY: number;
+
+export class Model3DHttpError extends Error {
+  constructor(message: string, status: number);
+  status: number;
+}
+
+export function isTransientModel3DError(error: unknown): boolean;
+
+export function withModel3DRetry<T>(
+  task: (attempt: number) => Promise<T>,
+  options?: {
+    attempts?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+    signal?: AbortSignal;
+    sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  },
+): Promise<T>;
