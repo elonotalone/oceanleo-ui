@@ -11,7 +11,9 @@
 
 export const PDF_BINARY_MANIFEST_SCHEMA_ID = "pdf-binary@1";
 export const PDF_BINARY_MANIFEST_VERSION = 1;
-export const PDF_TEXT_LAYER_EXTRACTOR = "pdfjs-dist@4.10.38";
+export const PDF_TEXT_LAYER_EXTRACTOR = "pdfium@embedpdf-2.15.0";
+/** Manifests already stored by the pdf.js era stay valid; new ones never emit this. */
+export const PDF_TEXT_LAYER_LEGACY_EXTRACTOR = "pdfjs-dist@4.10.38";
 
 /** §3.1 — the manifest schema, kept as data so validation runs against it. */
 export const PDF_BINARY_MANIFEST_JSON_SCHEMA = {
@@ -59,7 +61,9 @@ export const PDF_BINARY_MANIFEST_JSON_SCHEMA = {
         present: { type: "boolean" },
         totalCharacters: { type: "integer", minimum: 0, maximum: 20000000 },
         coveragePageRatio: { type: "number", minimum: 0, maximum: 1 },
-        extractor: { const: "pdfjs-dist@4.10.38" },
+        extractor: {
+          enum: ["pdfium@embedpdf-2.15.0", "pdfjs-dist@4.10.38"],
+        },
       },
     },
     outline: {
@@ -236,7 +240,9 @@ export interface PdfManifestTextLayer {
   present: boolean;
   totalCharacters: number;
   coveragePageRatio: number;
-  extractor?: typeof PDF_TEXT_LAYER_EXTRACTOR;
+  extractor?:
+    | typeof PDF_TEXT_LAYER_EXTRACTOR
+    | typeof PDF_TEXT_LAYER_LEGACY_EXTRACTOR;
 }
 
 export interface PdfManifestOutlineEntry {

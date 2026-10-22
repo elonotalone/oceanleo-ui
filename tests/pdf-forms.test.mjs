@@ -26,7 +26,7 @@ import {
 import {
   REDACTION_IRREVERSIBLE,
   applyPdfRedactions,
-  extractPageTextWithPdfJs,
+  extractPageTextWithPdfium,
 } from "../src/shell/media-editors/pdf-form/redaction.ts";
 import {
   CROSS_PAGE_SEAL_NEEDS_PAGES,
@@ -44,11 +44,20 @@ import {
   scanContentStrings,
 } from "../src/shell/media-editors/pdf-form/content-stream.ts";
 import { listPdfAnnotations } from "../src/shell/media-editors/pdf-annotation-operations.ts";
+import { overridePdfiumWasmUrlForTests } from "../src/shell/media-editors/pdf-engine-host.ts";
+import { servePdfiumWasm } from "./helpers/pdfium-wasm.mjs";
+
+const pdfiumWasm = await servePdfiumWasm();
+overridePdfiumWasmUrlForTests(pdfiumWasm.url);
+test.after(async () => {
+  overridePdfiumWasmUrlForTests(null);
+  await pdfiumWasm.close();
+});
 
 /* ------------------------------------------------------------------ *
  * Fixtures.
  *
- * Text is read back with pdfjs — a reader that shares no code with the
+ * Text is read back with PDFium (EmbedPDF's engine) — a reader that shares no code with the
  * redaction implementation — so "the text is gone" is a claim about the
  * file, not about our own bookkeeping.
  * ------------------------------------------------------------------ */
@@ -307,8 +316,8 @@ test("filling keeps fields editable and the values read back", async () => {
 
   // While the form stays editable the value is deliberately NOT painted into
   // the page content stream -- that is what keeps it a form and not ink.
-  // pdfjs reads page content only, so empty here is the correct answer.
-  assert.equal(await extractPageTextWithPdfJs(filled, 0), "");
+  // PDFium reads page content only, so empty here is the correct answer.
+  assert.equal(await extractPageTextWithPdfium(filled, 0), "");
 });
 
 test("flattening removes the interactive form but keeps the text visible", async () => {
@@ -324,7 +333,7 @@ test("flattening removes the interactive form but keeps the text visible", async
 
   // Flattening bakes the appearances into the page content, so this is where
   // an outside reader can finally see the answers.
-  const pageText = await extractPageTextWithPdfJs(flattened, 0);
+  const pageText = await extractPageTextWithPdfium(flattened, 0);
   assert.match(pageText, /Ada Lovelace/);
   assert.match(pageText, /pro/);
 });
@@ -437,15 +446,15 @@ test("cross-page seal refuses a single-page document", async () => {
  * P4 · Redaction — the safety judge
  * ------------------------------------------------------------------ */
 
-test("redaction removes the text, and pdfjs can no longer extract it", async () => {
+test("redaction removes the text, and PDFium can no longer extract it", async () => {
   const before = await flatDocument();
-  assert.match(await extractPageTextWithPdfJs(before, 0), /SECRET-ALPHA/);
+  assert.match(await extractPageTextWithPdfium(before, 0), /SECRET-ALPHA/);
 
   const outcome = await applyPdfRedactions(before, [
     { id: "m1", pageIndex: 0, rect: visualBandForPdfY(700) },
   ]);
 
-  const after = await extractPageTextWithPdfJs(outcome.bytes, 0);
+  const after = await extractPageTextWithPdfium(outcome.bytes, 0);
   assert.doesNotMatch(after, /SECRET-ALPHA/, "redacted text must not be extractable");
   assert.match(after, /PUBLIC-BETA/, "untouched text must survive");
   assert.equal(outcome.removedTextCount, 1);
@@ -502,7 +511,7 @@ test("redaction empties every content stream of the page, not only the first", a
   const content = await rawPageContent(outcome.bytes);
   const hex = Buffer.from("SECRET-ALPHA", "latin1").toString("hex").toUpperCase();
   assert.doesNotMatch(content, new RegExp(hex, "i"));
-  assert.equal(await extractPageTextWithPdfJs(outcome.bytes, 0), "");
+  assert.equal(await extractPageTextWithPdfium(outcome.bytes, 0), "");
 });
 
 test("redaction deletes an image whose placement falls under the mark", async () => {

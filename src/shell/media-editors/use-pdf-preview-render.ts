@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type {
-  PDFDocumentProxy,
-  PDFPageProxy,
-  RenderTask,
-} from "pdfjs-dist";
+import { paintImageData, type PdfEngineDocument } from "./pdf-engine-host";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import {
   PDF_READER_LAYOUT,
@@ -24,7 +20,7 @@ export function usePdfPreviewRender({
   setError,
 }: {
   canvas: HTMLCanvasElement | null;
-  documentProxy: PDFDocumentProxy | null;
+  documentProxy: PdfEngineDocument | null;
   pageCount: number;
   pageNumber: number;
   revision: number;
@@ -65,60 +61,41 @@ export function usePdfPreviewRender({
       return;
     }
     let disposed = false;
-    let page: PDFPageProxy | null = null;
-    let renderTask: RenderTask | null = null;
     const pageKey = `${pageNumber}:${revision}`;
     const blocking = renderedPageKeyRef.current !== pageKey;
     if (blocking) setRendering(true);
     setError("");
     void (async () => {
       try {
-        page = await documentProxy.getPage(
-          clamp(pageNumber, 1, documentProxy.numPages),
-        );
-        if (disposed) {
-          page.cleanup();
-          return;
-        }
-        const viewport = page.getViewport({ scale: rasterZoom / 100 });
+        const { engine, doc, numPages } = documentProxy;
+        const page = doc.pages[clamp(pageNumber, 1, numPages) - 1];
+        if (!page) throw new Error(translate("PDF 页面渲染失败"));
+        const scale = rasterZoom / 100;
         const pixelRatio = clamp(
           window.devicePixelRatio || 1,
           1,
           rasterZoom > 175 ? 1 : 2,
         );
-        const offscreen = document.createElement("canvas");
-        offscreen.width = Math.max(1, Math.floor(viewport.width * pixelRatio));
-        offscreen.height = Math.max(1, Math.floor(viewport.height * pixelRatio));
-        const context = offscreen.getContext("2d", { alpha: false });
-        if (!context) throw new Error(translate("浏览器无法创建 PDF 画布"));
-        renderTask = page.render({
-          canvasContext: context,
-          viewport,
-          transform:
-            pixelRatio === 1
-              ? undefined
-              : [pixelRatio, 0, 0, pixelRatio, 0, 0],
-          background: "#ffffff",
-        });
-        await renderTask.promise;
+        const image = await engine
+          .renderPageRaw(doc, page, {
+            scaleFactor: scale,
+            dpr: pixelRatio,
+            withAnnotations: true,
+          })
+          .toPromise();
         if (disposed) return;
-        canvas.width = offscreen.width;
-        canvas.height = offscreen.height;
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
-        const visibleContext = canvas.getContext("2d", { alpha: false });
-        if (!visibleContext) {
-          throw new Error(translate("浏览器无法创建 PDF 画布"));
-        }
-        visibleContext.drawImage(offscreen, 0, 0);
-        setPageWidth(viewport.width);
-        setPageHeight(viewport.height);
+        paintImageData(canvas, image);
+        const width = page.size.width * scale;
+        const height = page.size.height * scale;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+        setPageWidth(width);
+        setPageHeight(height);
         setRenderedZoom(rasterZoom);
         renderedPageKeyRef.current = pageKey;
-        setRotation(((page.rotate % 360) + 360) % 360);
+        setRotation((((page.rotation * 90) % 360) + 360) % 360);
       } catch (caught) {
-        const name = caught instanceof Error ? caught.name : "";
-        if (!disposed && name !== "RenderingCancelledException") {
+        if (!disposed) {
           setError(pdfErrorMessage(caught, translate("PDF 页面渲染失败")));
         }
       } finally {
@@ -127,8 +104,6 @@ export function usePdfPreviewRender({
     })();
     return () => {
       disposed = true;
-      renderTask?.cancel();
-      page?.cleanup();
     };
   }, [
     canvas,
@@ -144,31 +119,22 @@ export function usePdfPreviewRender({
   /**
    * §2.4 SC 2.4.5 — the thumbnail rail is one of the two required ways to
    * locate a page, and F8 forbids standing in a designed cover for it, so the
-   * rail renders the real page through the same pdf.js document as the stage.
+   * rail renders the real page through the same PDFium document as the stage.
    */
   const renderThumbnail = useCallback(
     async (targetPage: number, target: HTMLCanvasElement) => {
       if (!documentProxy) return;
-      const page = await documentProxy.getPage(
-        clamp(targetPage, 1, documentProxy.numPages),
-      );
-      try {
-        const base = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({
-          scale: PDF_READER_LAYOUT.thumbnailPageWidth / Math.max(1, base.width),
-        });
-        target.width = Math.max(1, Math.floor(viewport.width));
-        target.height = Math.max(1, Math.floor(viewport.height));
-        const context = target.getContext("2d", { alpha: false });
-        if (!context) return;
-        await page.render({
-          canvasContext: context,
-          viewport,
-          background: "#ffffff",
-        }).promise;
-      } finally {
-        page.cleanup();
-      }
+      const { engine, doc, numPages } = documentProxy;
+      const page = doc.pages[clamp(targetPage, 1, numPages) - 1];
+      if (!page) return;
+      const image = await engine
+        .renderPageRaw(doc, page, {
+          scaleFactor:
+            PDF_READER_LAYOUT.thumbnailPageWidth / Math.max(1, page.size.width),
+          withAnnotations: true,
+        })
+        .toPromise();
+      paintImageData(target, image);
     },
     [documentProxy],
   );

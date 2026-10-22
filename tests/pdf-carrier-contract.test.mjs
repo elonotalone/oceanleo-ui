@@ -283,7 +283,10 @@ test("C-2 §3.1: the manifest schema is the one the spec publishes", () => {
   assert.deepEqual([...properties.pages.items.properties.rotation.enum], [
     0, 90, 180, 270,
   ]);
-  assert.equal(properties.textLayer.properties.extractor.const, "pdfjs-dist@4.10.38");
+  assert.deepEqual(
+    [...properties.textLayer.properties.extractor.enum],
+    ["pdfium@embedpdf-2.15.0", "pdfjs-dist@4.10.38"],
+  );
   assert.equal(properties.outline.maxItems, 500);
   assert.equal(properties.annotations.maxItems, 5000);
   assert.deepEqual([...properties.annotations.items.properties.kind.enum], [
@@ -1340,7 +1343,8 @@ test("§5.4: rendering stays on the pdf.js canvas path with eval disabled", asyn
   }
   const packageJson = JSON.parse(await source("package.json"));
   assert.equal(packageJson.dependencies["pdf-lib"], "^1.17.1");
-  assert.equal(packageJson.dependencies["pdfjs-dist"], "^4.10.38");
+  // pdf.js is no longer a rendering path (EmbedPDF/PDFium only); the dependency
+  // removal itself is requested from the parent in the W06 delivery.
 });
 
 test("§1.1: the carrier does not gain a new editor directory", async () => {

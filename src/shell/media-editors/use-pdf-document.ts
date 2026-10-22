@@ -7,22 +7,22 @@ import {
   useState,
   type MutableRefObject,
 } from "react";
-import type {
-  PDFDocumentLoadingTask,
-  PDFDocumentProxy,
-} from "pdfjs-dist";
+import {
+  openPdfEngineDocument,
+  type PdfEngineDocument,
+} from "./pdf-engine-host";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import { clamp, pdfErrorMessage } from "./pdf-workbench-utils";
 
 /**
- * Owns the pdf.js side of the document: one proxy per revision of the bytes.
+ * Owns the PDFium (EmbedPDF) side of the document: one handle per revision of the bytes.
  * The proxy is state rather than a ref so that everything derived from it —
  * the stage render, the text-layer probe, the thumbnail rail — re-runs
  * together when the bytes change, instead of racing on a ref read during
  * render.
  *
- * §5.4: rendering goes through pdf.js canvas with `isEvalSupported: false`, so
- * a hostile PDF never reaches a script evaluator.
+ * §5.4: rendering goes through PDFium (wasm, no script evaluator), so a hostile
+ * PDF never reaches a JavaScript engine. There is no pdf.js path.
  */
 export function usePdfDocument({
   bytesRef,
@@ -37,11 +37,11 @@ export function usePdfDocument({
   setError: (message: string) => void;
   onPageCount: (pageCount: number) => void;
 }): {
-  documentProxy: PDFDocumentProxy | null;
+  documentProxy: PdfEngineDocument | null;
   previewRevision: number;
   loading: boolean;
 } {
-  const [documentProxy, setDocumentProxy] = useState<PDFDocumentProxy | null>(
+  const [documentProxy, setDocumentProxy] = useState<PdfEngineDocument | null>(
     null,
   );
   const [previewRevision, setPreviewRevision] = useState(0);
@@ -66,8 +66,7 @@ export function usePdfDocument({
 
   useEffect(() => {
     let disposed = false;
-    let loadingTask: PDFDocumentLoadingTask | null = null;
-    let loadedDocument: PDFDocumentProxy | null = null;
+    let loadedDocument: PdfEngineDocument | null = null;
     const bytes = bytesRef.current;
     setDocumentProxy(null);
     setPreviewRevision((value) => value + 1);
@@ -78,23 +77,14 @@ export function usePdfDocument({
     setLoading(true);
     void (async () => {
       try {
-        const pdfjs = await import("pdfjs-dist");
-        if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-          pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-            "pdfjs-dist/build/pdf.worker.min.mjs",
-            import.meta.url,
-          ).toString();
+        const opened = await openPdfEngineDocument(Uint8Array.from(bytes));
+        if (disposed) {
+          void opened.close();
+          return;
         }
-        if (disposed) return;
-        loadingTask = pdfjs.getDocument({
-          data: Uint8Array.from(bytes),
-          stopAtErrors: true,
-          isEvalSupported: false,
-        });
-        loadedDocument = await loadingTask.promise;
-        if (disposed) return;
+        loadedDocument = opened;
         setDocumentProxy(loadedDocument);
-        onPageCount(loadedDocument.numPages);
+        onPageCount(opened.numPages);
         setPreviewRevision((value) => value + 1);
       } catch (caught) {
         if (!disposed) {
@@ -107,12 +97,7 @@ export function usePdfDocument({
     return () => {
       disposed = true;
       setDocumentProxy(null);
-      const destroying = loadingTask
-        ? loadingTask.destroy()
-        : loadedDocument
-          ? loadedDocument.destroy()
-          : null;
-      void destroying?.catch(() => undefined);
+      void loadedDocument?.close();
     };
     // `onPageCount` and `setError` are stable callbacks from the workbench.
   }, [bytesRef, documentRevision, onPageCount, setError, translate]);

@@ -13,49 +13,64 @@ import {
   type PdfContentRegion,
   type PdfContentStringSpan,
 } from "./content-stream";
+import { openPdfEngineDocument, readPdfPageText } from "../pdf-engine-host";
 import { loadPdfDocument, savePdfDocument } from "./pdf-document-io";
 import type { PdfRedactionMark } from "./types";
 
-interface PdfJsTextItem {
+interface PdfTextItem {
   str: string;
-  transform: number[];
-  width: number;
-  height: number;
+  /** Bounds in PDF user space (origin bottom-left), i.e. what the content stream uses. */
+  bounds: PdfContentRegion;
 }
 
-/** Same pdfjs entry and options the preview pipeline uses (`use-pdf-document.ts`). */
-async function pdfJsTextItems(
+/**
+ * Text runs of one page as an independent reader (PDFium, the EmbedPDF engine)
+ * sees them. Runs are consecutive characters of one text object, which lines
+ * up with one text-showing operator in the content stream. Rotation is
+ * normalised so rects are in 0-degree space; the CropBox origin is added back
+ * to land in user space.
+ */
+async function pdfTextItems(
   bytes: Uint8Array,
   pageIndex: number,
-): Promise<PdfJsTextItem[]> {
-  const pdfjs = await import("pdfjs-dist");
-  const document = await pdfjs.getDocument({
-    data: Uint8Array.from(bytes),
-    isEvalSupported: false,
-    stopAtErrors: true,
-  }).promise;
+  crop: { x: number; y: number; height: number },
+): Promise<PdfTextItem[]> {
+  const opened = await openPdfEngineDocument(bytes, {
+    mode: "direct",
+    normalizeRotation: true,
+  });
   try {
-    const page = await document.getPage(pageIndex + 1);
-    const content = await page.getTextContent();
-    return (content.items as PdfJsTextItem[]).filter(
-      (item) => typeof item.str === "string",
-    );
+    const page = opened.doc.pages[pageIndex];
+    if (!page) return [];
+    const { runs } = await opened.engine
+      .getPageTextRuns(opened.doc, page)
+      .toPromise();
+    return runs.map((run) => ({
+      str: run.text.replace(/[\r\n]+$/, ""),
+      bounds: {
+        x: crop.x + run.rect.origin.x,
+        y: crop.y + crop.height - (run.rect.origin.y + run.rect.size.height),
+        width: run.rect.size.width,
+        height: run.rect.size.height,
+      },
+    }));
   } finally {
-    await document.destroy();
+    await opened.close();
   }
 }
 
 /** Text of one page as an independent reader sees it. */
-export async function extractPageTextWithPdfJs(
+export async function extractPageTextWithPdfium(
   bytes: Uint8Array,
   pageIndex: number,
 ): Promise<string> {
-  const items = await pdfJsTextItems(bytes, pageIndex);
-  return items
-    .map((item) => item.str)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const opened = await openPdfEngineDocument(bytes, { mode: "direct" });
+  try {
+    const text = await readPdfPageText(opened, pageIndex);
+    return text.replace(/\s+/g, " ").trim();
+  } finally {
+    await opened.close();
+  }
 }
 
 function rectsOverlap(a: PdfContentRegion, b: PdfContentRegion): boolean {
@@ -67,15 +82,8 @@ function rectsOverlap(a: PdfContentRegion, b: PdfContentRegion): boolean {
   );
 }
 
-function itemBounds(item: PdfJsTextItem): PdfContentRegion {
-  const [a, b, , d, e, f] = item.transform;
-  const width = item.width || Math.hypot(a, b);
-  const height = item.height || Math.abs(d) || Math.abs(b) || 12;
-  return { x: e, y: f, width, height };
-}
-
 /**
- * Pair content-stream strings with the text pdfjs reports, in stream order.
+ * Pair content-stream strings with the text PDFium reports, in stream order.
  *
  * Both sequences come from the same text-showing operators, so a greedy walk
  * lines them up. Pairing by position (not by text content) is what keeps a
@@ -83,7 +91,7 @@ function itemBounds(item: PdfJsTextItem): PdfContentRegion {
  */
 function pairSpansWithItems(
   spans: readonly PdfContentStringSpan[],
-  items: readonly PdfJsTextItem[],
+  items: readonly PdfTextItem[],
 ): Map<number, PdfContentStringSpan> {
   const paired = new Map<number, PdfContentStringSpan>();
   let spanIndex = 0;
@@ -130,7 +138,7 @@ export const REDACTION_NO_MARKS = "请先标记要涂黑的区域";
  * True redaction: delete the text and images under the marks, then paint an
  * opaque black rectangle.
  *
- * The result is verified with an independent reader (pdfjs) before it is
+ * The result is verified with an independent reader (PDFium) before it is
  * returned. If the targeted text is still extractable the call throws rather
  * than hand back a file that only looks redacted.
  */
@@ -156,11 +164,11 @@ export async function applyPdfRedactions(
   for (const [pageIndex, pageMarks] of byPage) {
     const geometry = pdfPageGeometry(document, pageIndex);
     const regions = pageMarks.map((mark) => visualRectToPdf(mark.rect, geometry));
-    const items = await pdfJsTextItems(bytes, pageIndex);
+    const items = await pdfTextItems(bytes, pageIndex, geometry);
     const targetIndexes = new Set<number>();
     for (let index = 0; index < items.length; index += 1) {
       if (!items[index].str.trim()) continue;
-      const bounds = itemBounds(items[index]);
+      const bounds = items[index].bounds;
       if (regions.some((region) => rectsOverlap(bounds, region))) {
         targetIndexes.add(index);
       }
@@ -236,7 +244,7 @@ async function survivingTargets(
   pageIndex: number,
   targets: readonly string[],
 ): Promise<string[]> {
-  const text = await extractPageTextWithPdfJs(bytes, pageIndex);
+  const text = await extractPageTextWithPdfium(bytes, pageIndex);
   const collapsed = text.replace(/\s+/g, "");
   return targets.filter((target) => {
     const needle = target.replace(/\s+/g, "");

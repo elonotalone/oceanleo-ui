@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import { readPdfPageText, type PdfEngineDocument } from "./pdf-engine-host";
 import {
   PDF_CARRIER_CONSTANTS,
   PDF_TEXT_LAYER_EXTRACTOR,
@@ -50,7 +50,7 @@ export function usePdfTextLayer({
   documentProxy,
   revision,
 }: {
-  documentProxy: PDFDocumentProxy | null;
+  documentProxy: PdfEngineDocument | null;
   revision: number;
 }): PdfTextLayerProbe {
   const pageTextRef = useRef<string[]>([]);
@@ -78,43 +78,33 @@ export function usePdfTextLayer({
       let cached = 0;
       let pagesWithText = 0;
       try {
-        for (let index = 1; index <= documentProxy.numPages; index += 1) {
+        const { doc, numPages } = documentProxy;
+        for (let index = 0; index < numPages; index += 1) {
           if (disposed) return;
-          const page = await documentProxy.getPage(index);
-          try {
-            const view = page.view;
-            geometry.push({
-              index: index - 1,
-              widthPt: Math.abs(view[2] - view[0]),
-              heightPt: Math.abs(view[3] - view[1]),
-              rotation: manifestRotation(page.rotate),
-            });
-            const content = await page.getTextContent();
-            const text = content.items
-              .map((item) =>
-                typeof (item as { str?: unknown }).str === "string"
-                  ? (item as { str: string }).str
-                  : "",
-              )
-              .join("");
-            const length = Math.min(
-              text.length,
-              PDF_CARRIER_CONSTANTS.C13_maximumPageCharacters,
-            );
-            counts.push(length);
-            if (text.trim().length > 0) pagesWithText += 1;
-            total = Math.min(
-              total + length,
-              PDF_CARRIER_CONSTANTS.C14_maximumTotalCharacters,
-            );
-            if (cached + text.length <= MAX_CACHED_CHARACTERS) {
-              texts.push(text);
-              cached += text.length;
-            } else {
-              texts.push("");
-            }
-          } finally {
-            page.cleanup();
+          const page = doc.pages[index];
+          // Page boxes are in points; size is the rotated (visual) size.
+          geometry.push({
+            index,
+            widthPt: page.size.width,
+            heightPt: page.size.height,
+            rotation: manifestRotation(page.rotation * 90),
+          });
+          const text = await readPdfPageText(documentProxy, index);
+          const length = Math.min(
+            text.length,
+            PDF_CARRIER_CONSTANTS.C13_maximumPageCharacters,
+          );
+          counts.push(length);
+          if (text.trim().length > 0) pagesWithText += 1;
+          total = Math.min(
+            total + length,
+            PDF_CARRIER_CONSTANTS.C14_maximumTotalCharacters,
+          );
+          if (cached + text.length <= MAX_CACHED_CHARACTERS) {
+            texts.push(text);
+            cached += text.length;
+          } else {
+            texts.push("");
           }
         }
       } catch {

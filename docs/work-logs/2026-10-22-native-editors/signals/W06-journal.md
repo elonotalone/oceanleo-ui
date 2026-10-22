@@ -1,0 +1,1 @@
+- pdfium extractText returns garbage on zero-char pages; use runs (readPdfPageText). run.text carries trailing CRLF. normalizeRotation:true gives top-left cropbox-relative rects.

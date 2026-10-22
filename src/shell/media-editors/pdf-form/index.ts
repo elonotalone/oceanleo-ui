@@ -8,7 +8,7 @@ export {
 } from "./acroform";
 export {
   applyPdfRedactions,
-  extractPageTextWithPdfJs,
+  extractPageTextWithPdfium,
   REDACTION_BROADENED,
   REDACTION_IRREVERSIBLE,
   REDACTION_NO_MARKS,
