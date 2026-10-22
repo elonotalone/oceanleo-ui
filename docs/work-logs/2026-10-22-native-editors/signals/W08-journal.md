@@ -1,0 +1,3 @@
+- backend: composite_image already maps to library kind image; only the upload hint table needed `image`. oceanleo commit a67d4f9; pytest 50 passed.
+- UI tests green: image-design-merge(7), image-route-merge, eas-w18, p6, photopea-removed, W6-r2-source-lifecycle, round-trip, design-mode(54), others.
+- pre-existing failures not mine: image-edge-snapping #10 (controller regex), d4-design-handshake-origin (lastDirtyRevisionRef undefined, not in my files).

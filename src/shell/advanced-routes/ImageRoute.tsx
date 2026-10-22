@@ -48,17 +48,6 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
-import {
-  applyImageL0Mode,
-  bindImageModeAdapter,
-  rememberedImagePluginMode,
-} from "../image-editor/design-mode/image-plugin-mode";
-import {
-  bindNormalFaceHandoff,
-  bindProFaceHandoff,
-  handoffItemKey,
-  handoffRevisionOf,
-} from "./editor-handoff";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { imageSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 import {
@@ -67,7 +56,6 @@ import {
 import { imageRouteChrome } from "../image-editor/image-editor-ui-offerings";
 import { IMAGE_EDIT_DRAFT_SCHEMA } from "../image-editor/editor-persistence";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
-import type { EditorMode } from "../editor-protocol-types";
 
 export function ImageRoute({
   item,
@@ -146,22 +134,6 @@ export function ImageRoute({
   );
   const peerSelections = useCollabSelections(collab.room, selectedLayerIds);
   const [importNotice, setImportNotice] = useState("");
-  /**
-   * L0 专业模式（W01：`normal | pro`）。第二行「专业编辑」页切到这里；
-   * 打开时用 `currentPluginMode("image")` 记住的档位，之后只走 `setEditorMode`。
-   * 两页共用同一份 Fabric 稿，切页不卸载画布。
-   * photo / design 是另一条轴，不占这个槽（`switchEditorMode`）。
-   */
-  const [pluginMode, setPluginModeState] = useState<EditorMode>(
-    () => rememberedImagePluginMode(),
-  );
-  const openedItemKey = useRef(editor.openIdentity);
-  useEffect(() => {
-    const nextKey = editor.openIdentity;
-    if (openedItemKey.current === nextKey) return;
-    openedItemKey.current = nextKey;
-    setPluginModeState("normal");
-  }, [editor.openIdentity]);
   const sourceLoadOverlay = imageStageShowsSourceLoadOverlay({
     loading: editor.loading,
     sourceReady: editor.sourceReady,
@@ -291,17 +263,6 @@ export function ImageRoute({
     editor.sceneDiagnostic,
     editor.sourceReady,
   ]);
-  useEffect(() => {
-    return bindProFaceHandoff(handoffItemKey(activeItem), {
-      hasUnsavedChanges: () => editor.dirty && imageAdmitted.ok,
-      flush: async () => (await saveBeforeNewConversation()).ok,
-    });
-  }, [
-    activeItem,
-    editor.dirty,
-    imageAdmitted.ok,
-    saveBeforeNewConversation,
-  ]);
   const addLocalImages = useCallback(
     async (files: File[]) => {
       setImportNotice("");
@@ -324,54 +285,6 @@ export function ImageRoute({
     },
     [editor.addImageFromFile],
   );
-
-  useEffect(() => {
-    return bindNormalFaceHandoff(handoffItemKey(activeItem), {
-      getHandoff: () => {
-        const url =
-          editor.savedUrl ||
-          (!advancedEditorSourceFor(activeItem)?.structured
-            ? advancedEditorSourceFor(activeItem)?.url
-            : "") ||
-          activeItem.previewUrl ||
-          activeItem.url ||
-          "";
-        if (!url) return { kind: "empty" };
-        return {
-          kind: "url",
-          url,
-          format: "png",
-          revision: handoffRevisionOf(activeItem),
-        };
-      },
-      persistInBackground: () => {
-        if (
-          !imageSourcePersistenceAdmitted({
-            loading: editor.loading,
-            sceneDiagnostic: editor.sceneDiagnostic,
-            sourceReady: editor.sourceReady,
-          }).ok
-        ) {
-          return;
-        }
-        if (editor.dirty && collab.saveGate) void editor.save();
-      },
-    });
-  }, [
-    activeItem,
-    collab.saveGate,
-    editor.dirty,
-    editor.loading,
-    editor.save,
-    editor.savedUrl,
-    editor.sceneDiagnostic,
-    editor.sourceReady,
-  ]);
-
-  const setEditorMode = useCallback((mode: EditorMode) => {
-    setPluginModeState(applyImageL0Mode(mode).mode);
-  }, []);
-
 
   usePluginCommandSurface(
     useMemo(
@@ -398,11 +311,6 @@ export function ImageRoute({
       adapter={{
         id: "image",
         label: editorToolLabel({ type: "image" }),
-        /**
-         * L0 专业模式。第二行「专业编辑」页调用 `setEditorMode`；
-         * 两页共用同一份 Fabric 稿，切页不卸载画布。
-         */
-        mode: bindImageModeAdapter(pluginMode, setEditorMode),
         drawers: [
           {
             id: "image-brush",
@@ -551,7 +459,6 @@ export function ImageRoute({
         stage: (
           <div
             className="relative flex h-full min-h-0 flex-col"
-            data-editor-mode={pluginMode}
             data-canvas-view-switch={imageRouteChrome.canvasViewSwitch ? "on" : "off"}
             data-image-ai-drawer={imageRouteChrome.aiDrawer ? "on" : "off"}
             data-image-cutout-action={imageRouteChrome.cutoutAction ? "on" : "off"}

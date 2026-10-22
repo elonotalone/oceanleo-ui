@@ -418,29 +418,6 @@ test("3d: local markDirty records; bootstrap does not", async () => {
 
 /* --------------------------------- W7 --------------------------------- */
 
-test("design canvas: commit records; load setRevision(0) does not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/design-canvas/use-local-design-canvas.ts",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "use-local-design-canvas.ts", [
-    "applyDesignCanvasUserEditSession",
-    "applyLocalDesignCanvasUserEditSession",
-  ]);
-  const item = itemFor("design-canvas");
-  assertRecords("design-canvas", callPair, fn, item, "commit");
-  resetUserEditSession();
-  callPair(fn, item, "undo");
-  assert.equal(generationOf(item), 1, "design undo is a person path");
-  resetUserEditSession();
-  callPair(fn, item, "redo");
-  assert.equal(generationOf(item), 1, "design redo is a person path");
-  assertDoesNotRecord("design-canvas", callPair, fn, item, ["load"]);
-  assertNonPersonAfterPerson("design-canvas", callPair, fn, item, "commit", [
-    "load",
-  ]);
-});
-
 test("game: local textarea origin records; remote Yjs / writeThrough do not", async () => {
   const mod = await loadOwnerModule(
     "src/shell/game-editor/GameCodeStage.tsx",

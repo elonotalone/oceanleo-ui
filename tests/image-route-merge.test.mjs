@@ -26,43 +26,10 @@ test("the scan itself finds something known to be there", () => {
   assert.ok(route.length > 5000, `路由只读到 ${route.length} 字节，可疑`);
 });
 
-test("专业模式经 W01 的 mode 适配器暴露，不是自造开关", () => {
-  assert.match(adapter, /mode\?:\s*AdvancedEditorModeAdapter/, "适配器契约里应有 mode 字段");
-  assert.match(
-    route,
-    /mode:\s*bindImageModeAdapter\(pluginMode,\s*setEditorMode\)/,
-    "路由必须把 setEditorMode 交给 bindImageModeAdapter；缺 setMode，「专业编辑」页切不过去",
-  );
-  assert.equal(
-    /setMode:\s*undefined/.test(route),
-    false,
-    "adapter.mode.setMode 写成 undefined，「专业编辑」页切不过去",
-  );
-  // §10 第 5 条：不得各自发明开关。
-  assert.equal(
-    /togglePro|proSwitch/.test(route),
-    false,
-    "专业模式只能走 W01 契约的 set-mode / mode 适配器，不许自造开关",
-  );
-});
-
-test("打开编辑器：用记住的档位初始化，不是一律普通模式", () => {
-  assert.match(
-    route,
-    /rememberedImagePluginMode\(\)/,
-    "初始档位必须读 currentPluginMode(\"image\")。写死 false / normal，用户上次选的专业模式就丢了",
-  );
-  assert.equal(
-    /useState<EditorMode>\(\s*"normal"\s*\)|useState\(false\)/.test(route),
-    false,
-    "初始档位写死普通模式，W01 第 11 例要的「记住的档位」就只是 localStorage 里的一个值",
-  );
-});
-
-test("专业页与编辑页共用同一份 Fabric 稿，舞台上没有 iframe", () => {
-  assert.match(route, /setEditorMode = useCallback\(\(mode: EditorMode\)/);
-  assert.match(route, /setPluginModeState\(applyImageL0Mode\(mode\)\.mode\)/);
-  assert.match(route, /data-editor-mode=\{pluginMode\}/);
+test("ImageRoute 单一模式：没有 mode 适配器、没有专业页、没有记住的档位", () => {
+  assert.equal(/bindImageModeAdapter|rememberedImagePluginMode|applyImageL0Mode|setPluginModeState|pluginMode/.test(route), false);
+  assert.equal(/mode:\s*bind/.test(route), false);
+  assert.equal(/bindProFaceHandoff|bindNormalFaceHandoff|togglePro|proSwitch/.test(route), false);
   assert.match(route, /<FabricImageStage /);
   assert.equal(/<iframe/i.test(route), false);
 });
@@ -79,10 +46,7 @@ test("画布内结构/皮肤入口已从 ImageRoute 卸下，不占 L0", () => {
 });
 
 test("retired AI capabilities are not wired into ImageRoute", () => {
-  assert.match(
-    route,
-    /createImageCommandSurface\(\{\s*editor,\s*deliver\s*\}\)/,
-  );
+  assert.match(route, /createImageCommandSurface\(\{[^}]*editor,[^}]*deliver/);
   assert.doesNotMatch(route, /const runAi = useMemo<AiCommandRunner>/);
   assert.doesNotMatch(route, /removeBgExecutor/);
   assert.doesNotMatch(route, /\/v1\/images\/remove-bg/);
@@ -95,14 +59,8 @@ test("retired AI capabilities are not wired into ImageRoute", () => {
   );
 });
 
-test("两种模式共用一份文档：L0 不占 photo/design 那条轴", () => {
-  // photo/design 的主闸在 design-mode.test.mjs。L0 槽是 W01 的 normal|pro。
-  assert.match(route, /applyImageL0Mode/);
-  assert.equal(
-    /FabricEditorMode/.test(route),
-    false,
-    "把 photo|design 塞进 adapter.mode，「专业编辑」页就会切错轴",
-  );
+test("photo/design 那条轴不进 ImageRoute 的 adapter", () => {
+  assert.equal(/FabricEditorMode/.test(route), false);
 });
 
 test("第二行不覆盖专业页标签、不报 aux；抠图不在 adapter.actions 里", () => {

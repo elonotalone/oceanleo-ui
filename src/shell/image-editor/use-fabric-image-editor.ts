@@ -76,6 +76,15 @@ import {
 } from "./types";
 import { PsdCompositeError, isPsdSource } from "./psd-composite";
 import {
+  designDocumentToSnapshot,
+  isDesignDocumentItem,
+  unsupportedDesignMessage,
+} from "./design-document-snapshot";
+import {
+  hydrateDesignCanvasSource,
+  planDesignCanvasSource,
+} from "../design-canvas/design-canvas-source";
+import {
   firstForkReceiptMatches,
   imageEditorOpenIdentity,
   imageSaveAdmitted,
@@ -656,10 +665,17 @@ export function useFabricImageEditor(
     };
   }, []);
   const editorSource = advancedEditorSourceFor(item);
+  // Legacy design canvas projects open here too (one editor). They are read
+  // as a design-document and converted to a scene at read time; the stored
+  // revision is not rewritten.
+  const designDocumentSource = isDesignDocumentItem(item);
   const compositeSourceRequired =
-    isDurableLibraryItem(item) && item.artifactType === "composite_image";
+    isDurableLibraryItem(item) &&
+    item.artifactType === "composite_image" &&
+    !designDocumentSource;
   const structuredSourceRequired =
     compositeSourceRequired ||
+    designDocumentSource ||
     Boolean(item.artifact && editorSource?.structured);
   const sourceUrl =
     item.kind === "image" || item.kind === "xhs" || item.kind === "file"
@@ -757,7 +773,39 @@ export function useFabricImageEditor(
         controllerRef.current = controller;
         let cloudProjectUpdatedAt = "";
         let projectLoaded = false;
-        if (projectUrl) {
+        if (designDocumentSource) {
+          try {
+            const hydrated = await hydrateDesignCanvasSource(
+              planDesignCanvasSource(item),
+              async (url) =>
+                (
+                  await fetchMediaBlob(url, {
+                    cache: "no-store",
+                    maxBytes: 20_000_000,
+                    signal: abort.signal,
+                  })
+                ).text(),
+            );
+            if (cancelled || abort.signal.aborted) return;
+            if (!hydrated.ok) throw new Error(hydrated.error);
+            const converted = designDocumentToSnapshot(hydrated.project);
+            if (converted.unsupported.length) {
+              throw new Error(unsupportedDesignMessage(converted.unsupported));
+            }
+            projectLoaded = await controller.loadSnapshot(converted.snapshot);
+            if (!projectLoaded) throw new Error("设计稿无法载入到图片画布。");
+            cloudProjectUpdatedAt = "";
+          } catch (caught) {
+            if (cancelled || isAbortError(caught)) return;
+            const message =
+              caught instanceof Error
+                ? caught.message
+                : "设计稿暂时无法读取，请重试。";
+            setError(message);
+            setSceneDiagnostic({ code: "invalid-scene", message });
+            return;
+          }
+        } else if (projectUrl) {
           try {
             const project = compositeSourceRequired
               ? await loadCompositeImageScene(item, abort.signal)
@@ -1298,7 +1346,7 @@ export function useFabricImageEditor(
         throw new Error("保存快照生成期间画布已变化，本次未提交，修改仍保留。");
       }
       const saved =
-        head.artifactType === "composite_image"
+        head.artifactType === "composite_image" && !isDesignDocumentItem(head)
           ? await persistCompositeImageProject(
               snapshot,
               head,

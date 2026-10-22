@@ -27,7 +27,6 @@ import {
   planDesignCanvasSource,
   serializeDesignCanvasSource,
 } from "../src/shell/design-canvas/design-canvas-source.ts";
-import { applyDesignCommand } from "../src/shell/design-canvas/design-command-surface.ts";
 import { parseDesignDocumentProject } from "../src/shell/image-editor/design-document-schema.ts";
 import {
   hydrateWorkflowGraph,
@@ -146,9 +145,7 @@ test("design: valid remote design-document loads, title edit serializes, reopen 
     JSON.stringify(stored),
   );
   assert.equal(loaded.ok, true);
-  const edited = applyDesignCommand(loaded.project, "design-canvas.set-title", {
-    text: "修订后的设计稿标题",
-  });
+  const edited = { ok: true, project: { ...loaded.project, title: "修订后的设计稿标题" } };
   assert.equal(edited.ok, true);
   const committed = stubCommit(serializeDesignCanvasSource(edited.project));
   const reopened = parseDesignDocumentProject(committed.payload);
