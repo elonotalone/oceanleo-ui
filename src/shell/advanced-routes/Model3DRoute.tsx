@@ -1,30 +1,18 @@
 "use client";
 
-import { afterAdvancedDraftExport, ensureAdvancedDraftExport, flushAdvancedDraftGate } from "../advanced-draft-gates";
+import { afterAdvancedDraftExport, ensureAdvancedDraftExport } from "../advanced-draft-gates";
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type MutableRefObject,
 } from "react";
-import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import { resolveEditorCore } from "../editor-core-flags";
-import { usePluginMode } from "../plugin-chrome/plugin-mode";
-import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
-import {
-  resolveW19Handoff,
-  stashW19EnterHandoff,
-  useW19ProSavedRevision,
-  w19ItemKey,
-} from "./w19-handoff-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
-import { preloadModel3DSource } from "../media-editors/model3d-source-cache";
 import { threeDSubtypeFor } from "../library-data";
 import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
 import {
@@ -61,14 +49,6 @@ import { model3dSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 
 type Model3DEditorState = ReturnType<typeof useModel3DWorkbench>;
 
-const Model3DNextStage = dynamic(
-  () =>
-    import("../media-editors/Model3DNextStage").then(
-      (module) => module.Model3DNextStage,
-    ),
-  { ssr: false, loading: () => null },
-);
-
 export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
   const subtype = threeDSubtypeFor(props.item);
   if (!isModel3DSourceItem(props.item)) {
@@ -87,25 +67,7 @@ export function Model3DRoute(props: AdvancedContentWorkbenchProps) {
       </div>
     );
   }
-  if (resolveEditorCore("threed") === "next") {
-    return <Model3DNextStage {...props} />;
-  }
-  return <Model3DLegacyRoute {...props} />;
-}
-
-/** 「编辑 ⇄ 专业编辑」经过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。 */
-function Model3DLegacyRoute(props: AdvancedContentWorkbenchProps) {
-  const enterProRef = useRef<(() => Promise<unknown>) | null>(null);
-  return (
-    <PluginModeSwitchGate
-      pluginId="threed"
-      beforeEnterPro={() => enterProRef.current?.() ?? Promise.resolve()}
-      renderNormal={() => (
-        <Model3DModelRoute {...props} enterProRef={enterProRef} />
-      )}
-      renderPro={() => <Model3DNextStage {...props} />}
-    />
-  );
+  return <Model3DModelRoute {...props} />;
 }
 
 function useModel3DDocumentHistory(
@@ -222,12 +184,8 @@ function Model3DModelRoute({
   siteId = "",
   accent = "#4f46e5",
   onClose,
-  enterProRef,
-}: AdvancedContentWorkbenchProps & {
-  enterProRef: MutableRefObject<(() => Promise<unknown>) | null>;
-}) {
-  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("threed", item));
-  const editor = useModel3DWorkbench(saved ?? item, siteId);
+}: AdvancedContentWorkbenchProps) {
+  const editor = useModel3DWorkbench(item, siteId);
   const history = useModel3DDocumentHistory(
     editor,
     `${item.id}:${item.url || item.previewUrl || ""}`,
@@ -344,11 +302,11 @@ function Model3DModelRoute({
         guardPluginSurface(
           {
             ...createModel3DCommandSurface({ editor: view, deliver }),
-            target: () => pluginTargetForLibraryItem(saved ?? item, "threed", view.editRevision),
+            target: () => pluginTargetForLibraryItem(item, "threed", view.editRevision),
           },
           collabReadOnly,
         ),
-      [collabReadOnly, deliver, item, saved, view],
+      [collabReadOnly, deliver, item, view],
     ),
   );
   const buildSavedItem = useCallback(
@@ -481,46 +439,6 @@ function Model3DModelRoute({
     },
     [editor.importModel],
   );
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂新核。
-  const { setMode: setEditorMode } = usePluginMode("threed");
-  // 切回「编辑」时的 ready 信号：模型载入完（或已判定失败）就算首帧可见。
-  useModeSwitchReady(!editor.loading);
-  useEffect(() => {
-    enterProRef.current = async () => {
-      const gate = await flushAdvancedDraftGate(item.key || item.id);
-      if (gate && !gate.ok) return gate;
-      const url = editor.sourceUrl;
-      const handoff = url
-        ? {
-            kind: "url" as const,
-            url,
-            format: editor.sourceFormat || "glb",
-            revision: String(editor.editRevision),
-          }
-        : resolveW19Handoff(item, null);
-      stashW19EnterHandoff(w19ItemKey("threed", item), handoff);
-      if (handoff.kind === "url") {
-        try {
-          await preloadModel3DSource({
-            ...handoff,
-            artifactId: item.id,
-            revisionId:
-              item.revisionId ||
-              String(item.meta?.revision_id || item.meta?.revisionId || handoff.revision || ""),
-          });
-        } catch (error) {
-          return {
-            ok: false as const,
-            error: error instanceof Error ? error.message : "3D 模型读取失败",
-          };
-        }
-      }
-      return { ok: true, handoff, item: gate?.item ?? saved ?? item };
-    };
-    return () => {
-      enterProRef.current = null;
-    };
-  }, [editor, enterProRef, item, saved]);
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -560,11 +478,6 @@ function Model3DModelRoute({
             else history.redo();
           },
         },
-        mode: {
-          current: "normal",
-          setMode: setEditorMode,
-        },
-        pages: {},
         viewport: {
           value: editor.zoom,
           min: 20,

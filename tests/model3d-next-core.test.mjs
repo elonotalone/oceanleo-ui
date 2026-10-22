@@ -1,12 +1,11 @@
 /**
  * W11 判据 1/3 的内容闸：L1 控件、L2 出图、存量只读转换、L4 chips、审阅提案。
- * 接线（flag / dynamic / iframe）在 model3d-next-wiring.test.mjs。
+ * 接线（单模式路由）在 model3d-next-wiring.test.mjs。
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  DEFAULT_EDITOR_MODE,
   validAgentChips,
   validReviewProposal,
 } from "../src/shell/hosted-editor/index.ts";
@@ -37,10 +36,6 @@ import {
   defaultModel3DNextView,
   model3dNextSelectionContext,
 } from "../src/shell/media-editors/model3d-next-plan.ts";
-import {
-  MODEL3D_NEXT_DEFAULT_MODE,
-  applyModel3DNextMode,
-} from "../src/shell/media-editors/model3d-next-mode.ts";
 
 const LEGACY_PROJECT = {
   schema: "oceanleo.three-editor@2",
@@ -51,9 +46,7 @@ const LEGACY_PROJECT = {
   },
 };
 
-test("ordinary mode default and L1 controls cover camera, exposure, look", () => {
-  assert.equal(MODEL3D_NEXT_DEFAULT_MODE, DEFAULT_EDITOR_MODE);
-  assert.equal(applyModel3DNextMode("x", "normal").mode, "normal");
+test("L1 controls cover camera, exposure, look", () => {
   const ids = model3dNextSelectionContext(defaultModel3DNextView()).controls.map(
     (control) => control.id,
   );
