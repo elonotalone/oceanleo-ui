@@ -1,30 +1,69 @@
 # Audio and video calls
 
-## Person to person meetings
+## Person to person calls
 
-The meeting panel is hosted by the global MessagesHost, so changing LeoChat
-surface or conversation does not dispose an active SDK engine. Its minimized
-button returns to the same meeting. Closing an idle panel releases the host;
-ending, leaving, page unload, and a failed join stop local media and release
-the server participant.
+Calls are Slack-style huddles: one tap on the headset button ("通话", Call)
+joins straight away — no preview, no microphone check, no invitation or
+approval, no host. Talent (trade) conversations have no call. During the
+development phase the platform absorbs the supplier cost; the client shows no
+balance or billing wording (the gateway still meters usage).
 
-The panel loads the server's ARTC and metering readiness before enabling join.
-Before joining, the caller can select the microphone and camera; those choices
-are applied with the ARTC SDK's documented device enumeration/switch methods
-([AliRtc device management](https://help.aliyun.com/zh/live/audio-and-video-equipment-management)).
-Microphone permission is checked before joining. The SDK joins with microphone,
-camera, and screen publication disabled; each control changes local UI state
-only after the SDK promise settles. Remote audio and video subscriptions are
-enabled independently, and the client preserves the other modality when one
-changes. Invitations remain unbilled until accepted and joined.
+The engine has no UI. It lives in `src/shell/messages/call/engine/`
+(`index.ts` is the public surface, `controller.ts` the state machine with all
+dependencies injected) and the gateway client in `src/lib/im/calls-api.ts`
+(`/v1/im/conversations/{cid}/call`, `/v1/im/calls/{call_id}/join|leave|token|heartbeat|decline`,
+`/v1/im/calls/test-token`). There is one engine per browser tab, so moving
+between pages keeps the call; the floating dock and the enlarged stage only
+render `useCall()` and drive `callActions`.
 
-Bills shown in the panel come from the meeting bill endpoint. They show
-server-measured connected time, per-participant per-minute tariff, included
-audio/video/screen modalities, settled amount, refundable/held reserve, and
-whether reconciliation is pending. Raw provider events and the tariff snapshot
-remain available as an advanced audit view. A reserve is not described as a
-charge, and pending reconciliation is not described as final. Wallet balance is
-only a prejoin hint; server admission and provider events remain authoritative.
+Joining: the ARTC Web SDK (`aliyun-rtc-sdk` 7.3.8, bundled through
+`import("aliyun-rtc-sdk")`; falls back to the Aliyun CDN script) is loaded
+first, then the gateway is asked to start or join, then a fresh SDK instance
+(`AliRtcEngine.createInstance()`) is set to interactive-live mode with the
+broadcaster role and joins with the gateway's single-parameter base64 token
+(`joinChannel(token, name)`), the same settings as the Android, iOS and
+HarmonyOS bridges. Defaults are microphone on and camera off; the last choices
+and the selected microphone, camera and speaker are remembered locally (only
+choices the user made — a refused permission is not remembered). The SDK calls
+`authInfoWillExpire` 30 s before the token lapses; the engine fetches a new
+token for the same participant and calls `refreshAuthInfo(token)`. An expired
+token or a failed connection triggers a rejoin with a new SDK instance; the
+dock shows "reconnecting" meanwhile.
+
+Who is in the call follows the SDK's remote online/offline and track events.
+The server `call` event only adds names, avatars and media state. Someone the
+SDK reports as timed out but the server still lists is shown as reconnecting
+for at most two minutes. Remote audio is always received and played by the
+SDK. Video is received only for tiles on screen (`setViewport`), plus the
+sharer's screen while the enlarged stage is open; "audio only" stops all
+incoming video. Tiles keep their entry order with yourself first; speaking
+lights a tile without moving it. When the dock (4 tiles) is full, a hidden
+person who speaks for 2.5 s takes the slot of the tile silent the longest,
+swaps are at least 5 s apart, and anyone who spoke in the last 3 s is never
+swapped out. The stage pages the same order (9 tiles, 4 on phones).
+
+While in a call the engine sends a heartbeat every 30 s with microphone,
+camera and screen state (and soon after any change). Alone for 10 minutes, it
+starts a 60 s countdown and then leaves unless cancelled. A missed or declined
+one-to-one ring ends the caller's empty call. Removal from the conversation
+(`call_kicked`), the server ending the call, or the same participant joining
+in another tab ends the local call with a reason. At most 25 cameras may be
+on at once; the 26th gets a `video_full` notice instead of turning on.
+Incoming rings (`call_ring`) appear as `incoming` on every page; accepting
+joins that call, declining tells the gateway.
+
+Notices (`issues`) cover refused or missing devices, a microphone that stays at
+zero level for 8 s, an unplugged device (the engine falls back to the default
+or first remaining device), and poor or lost network. Network bars and
+`getStats()` come only from SDK statistics (round trip from the candidate pair,
+throughput from byte deltas, download loss from the SDK quality report);
+values the SDK does not expose, such as upload loss, stay `null`. A separate
+SDK instance (`createDiagnosticsEngine()`) runs the connection test without
+touching an active call. Leo realtime calls and person to person calls share
+one claim, so only one of them can hold the microphone.
+
+Real microphone, camera, screen and network behaviour must be verified against
+the configured LeoDev gateway in a browser; unit tests replace the SDK.
 
 ## Leo realtime conversations
 
