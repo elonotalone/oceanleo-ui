@@ -1,7 +1,7 @@
 "use client";
 
 import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import {
   OPENVIDEO_PROJECT_SCHEMA,

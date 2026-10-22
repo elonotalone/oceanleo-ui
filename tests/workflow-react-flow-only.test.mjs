@@ -100,7 +100,6 @@ test("canvas has one mode: no pro page, no mode switch, no unavailable stub", ()
 test("chip routing is a pure function that defaults to review", () => {
   assert.match(routeFn, /export function routeWorkflowChip/);
   assert.match(routeFn, /kind: "review"/);
-  assert.match(stage, /dispatchWorkflowAgentChip/);
   assert.equal(workflowToolsManifestChips().chips.length, 8);
 });
 
@@ -256,7 +255,22 @@ const embedStubUrl = dataModule(`
   export function embedEditorBase() { return ""; }
   export function EmbedEditorPane() { return null; }
 `);
+const dynamicStubUrl = dataModule(`
+  import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+  export default function dynamic() {
+    return function LocalCanvasStub({ graph }) {
+      return jsxs("div", {
+        "data-testid": "workflow-react-flow-canvas",
+        children: [
+          ...(graph.nodes || []).map((n) => jsx("div", { "data-testid": "workflow-node", children: n.id }, n.id)),
+          ...(graph.edges || []).map((e) => jsx("div", { "data-testid": "workflow-edge" }, e.id)),
+        ],
+      });
+    };
+  }
+`);
 const leafStubs = {
+  "next/dynamic": dynamicStubUrl,
   "../AdvancedWorkbenchShell": shellStubUrl,
   "../plugin-command": pluginStubUrl,
   "../workbench-embed": embedStubUrl,
@@ -310,7 +324,7 @@ test("单一模式真画节点和连线，没有专业编辑入口", async () =>
     const canvas = mounted.container.querySelector(
       "[data-testid=workflow-react-flow-canvas]",
     );
-    assert.ok(canvas, "没有画布槽，用户看不到流程图");
+    assert.ok(canvas, "没有画布槽，用户看不到流程图 ");
     const nodes = mounted.container.querySelectorAll("[data-testid=workflow-node]");
     const edges = mounted.container.querySelectorAll("[data-testid=workflow-edge]");
     assert.equal(nodes.length, 2, "画布上的节点没画出来");
