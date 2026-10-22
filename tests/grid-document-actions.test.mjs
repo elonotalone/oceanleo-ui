@@ -74,8 +74,9 @@ test("sourceFailed 才给出重新载入，且只有这一个失败按钮", () =
 test("Univer 舞台是唯一消费方：文档段排在 actions 最前，重新计算接公式引擎", () => {
   assert.match(leaf, /buildGridDocumentActions\(\s*\{/);
   assert.match(leaf, /actions:\s*\[\s*(?:\/\/[^\n]*\n\s*)*\.\.\.documentActions,/);
-  assert.match(leaf, /sourceFailed:\s*Boolean\(officeSource\.error\)/);
-  assert.match(leaf, /reload:\s*officeSource\.retry/);
+  // 舞台自己的读取失败或 rendition 出错都摆「重新载入表格」；按钮 = retry 换版 + reloadNonce 强制重跑。
+  assert.match(leaf, /sourceFailed:\s*sourceFailed\s*\|\|\s*Boolean\(officeSource\.error\)/);
+  assert.match(leaf, /reload:\s*\(\)\s*=>\s*\{\s*officeSource\.retry\(\);\s*setReloadNonce\(/);
   assert.match(leaf, /getFormula\?\.\(\)/);
   assert.match(leaf, /executeCalculation\(\)/);
   assert.doesNotMatch(route, /buildGridDocumentActions|documentActionsEpoch|usePluginPage/);
