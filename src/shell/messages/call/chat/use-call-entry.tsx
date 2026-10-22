@@ -32,6 +32,13 @@ export function callErrorText(tt: UITranslate, code: string): string {
       return tt("通话服务暂未开通");
     case "rate_limited":
       return tt("操作太频繁，请稍后再试");
+    // 引擎自己的码（signals/W05-to-W07.md）：与 Leo 实时通话互斥、SDK 加载不了、没登录。
+    case "busy_leo_realtime":
+      return tt("正在与 Leo 实时通话，请先结束");
+    case "artc_sdk_load_failed":
+      return tt("通话组件加载失败，请检查网络");
+    case "unauthorized":
+      return tt("请先登录");
     default:
       return tt("没能加入通话，请稍后再试");
   }

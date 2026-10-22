@@ -67,6 +67,8 @@ const SOURCE = {
   notMemberNoCall: "你已不在这个会话里，无法加入通话",
   callServiceOff: "通话服务暂未开通",
   joinFailed: "没能加入通话，请稍后再试",
+  busyLeoRealtime: "正在与 Leo 实时通话，请先结束",
+  sdkLoadFailed: "通话组件加载失败，请检查网络",
 } as const;
 
 export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
@@ -128,6 +130,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "You're no longer in this conversation, so you can't join the call",
     callServiceOff: "Calling isn't available yet",
     joinFailed: "Couldn't join the call. Please try again later.",
+    busyLeoRealtime: "You're in a live call with Leo. End it first.",
+    sdkLoadFailed: "The call component couldn't load. Please check your network.",
   },
   de: {
     call: "Anruf",
@@ -187,6 +191,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Du bist nicht mehr in dieser Unterhaltung und kannst dem Anruf nicht beitreten",
     callServiceOff: "Anrufe sind noch nicht verfügbar",
     joinFailed: "Beitritt zum Anruf fehlgeschlagen. Bitte versuche es später erneut.",
+    busyLeoRealtime: "Du bist gerade in einem Live-Anruf mit Leo. Beende ihn zuerst.",
+    sdkLoadFailed: "Die Anrufkomponente konnte nicht geladen werden. Bitte prüfe deine Netzwerkverbindung.",
   },
   es: {
     call: "Llamada",
@@ -246,6 +252,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Ya no estás en esta conversación, así que no puedes unirte a la llamada",
     callServiceOff: "Las llamadas aún no están disponibles",
     joinFailed: "No se ha podido entrar en la llamada. Inténtalo de nuevo más tarde.",
+    busyLeoRealtime: "Estás en una llamada en directo con Leo. Termínala primero.",
+    sdkLoadFailed: "No se ha podido cargar el componente de llamada. Revisa tu conexión de red.",
   },
   "es-419": {
     call: "Llamada",
@@ -305,6 +313,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Ya no estás en esta conversación, así que no puedes unirte a la llamada",
     callServiceOff: "Las llamadas todavía no están disponibles",
     joinFailed: "No se pudo entrar a la llamada. Vuelve a intentarlo más tarde.",
+    busyLeoRealtime: "Estás en una llamada en vivo con Leo. Termínala primero.",
+    sdkLoadFailed: "No se pudo cargar el componente de llamada. Revisa tu conexión de red.",
   },
   fr: {
     call: "Appel",
@@ -364,6 +374,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Vous ne faites plus partie de cette conversation et ne pouvez pas rejoindre l'appel",
     callServiceOff: "Les appels ne sont pas encore disponibles",
     joinFailed: "Impossible de rejoindre l'appel. Réessayez plus tard.",
+    busyLeoRealtime: "Vous êtes en appel en direct avec Leo. Terminez-le d'abord.",
+    sdkLoadFailed: "Le composant d'appel n'a pas pu se charger. Vérifiez votre connexion réseau.",
   },
   it: {
     call: "Chiamata",
@@ -423,6 +435,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Non fai più parte di questa conversazione, quindi non puoi partecipare alla chiamata",
     callServiceOff: "Le chiamate non sono ancora disponibili",
     joinFailed: "Impossibile partecipare alla chiamata. Riprova più tardi.",
+    busyLeoRealtime: "Sei in una chiamata dal vivo con Leo. Terminala prima.",
+    sdkLoadFailed: "Impossibile caricare il componente di chiamata. Controlla la connessione di rete.",
   },
   "pt-BR": {
     call: "Chamada",
@@ -482,6 +496,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Você não está mais nesta conversa e não pode entrar na chamada",
     callServiceOff: "As chamadas ainda não estão disponíveis",
     joinFailed: "Não foi possível entrar na chamada. Tente novamente mais tarde.",
+    busyLeoRealtime: "Você está em uma chamada ao vivo com o Leo. Encerre-a primeiro.",
+    sdkLoadFailed: "Não foi possível carregar o componente de chamada. Verifique sua conexão de rede.",
   },
   "pt-PT": {
     call: "Chamada",
@@ -541,6 +557,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Já não está nesta conversa e não pode entrar na chamada",
     callServiceOff: "As chamadas ainda não estão disponíveis",
     joinFailed: "Não foi possível entrar na chamada. Tente novamente mais tarde.",
+    busyLeoRealtime: "Está numa chamada em direto com o Leo. Termine-a primeiro.",
+    sdkLoadFailed: "Não foi possível carregar o componente de chamada. Verifique a sua ligação de rede.",
   },
   vi: {
     call: "Cuộc gọi",
@@ -600,6 +618,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Bạn không còn ở trong cuộc trò chuyện này nên không thể tham gia cuộc gọi",
     callServiceOff: "Tính năng gọi chưa khả dụng",
     joinFailed: "Không tham gia được cuộc gọi. Vui lòng thử lại sau.",
+    busyLeoRealtime: "Bạn đang gọi trực tiếp với Leo. Hãy kết thúc cuộc gọi đó trước.",
+    sdkLoadFailed: "Không tải được thành phần cuộc gọi. Vui lòng kiểm tra kết nối mạng.",
   },
   tr: {
     call: "Arama",
@@ -659,6 +679,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "Artık bu sohbette değilsiniz, bu yüzden aramaya katılamazsınız",
     callServiceOff: "Arama özelliği henüz kullanılamıyor",
     joinFailed: "Aramaya katılınamadı. Lütfen daha sonra tekrar deneyin.",
+    busyLeoRealtime: "Şu anda Leo ile canlı aramadasınız. Önce onu sonlandırın.",
+    sdkLoadFailed: "Arama bileşeni yüklenemedi. Lütfen ağ bağlantınızı kontrol edin.",
   },
   "zh-TW": {
     call: "通話",
@@ -718,6 +740,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "你已不在這個會話裡，無法加入通話",
     callServiceOff: "通話服務尚未開通",
     joinFailed: "沒能加入通話，請稍後再試",
+    busyLeoRealtime: "正在與 Leo 即時通話，請先結束",
+    sdkLoadFailed: "通話元件載入失敗，請檢查網路",
   },
   ja: {
     call: "通話",
@@ -777,6 +801,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "この会話から外れているため、通話に参加できません",
     callServiceOff: "通話はまだ利用できません",
     joinFailed: "通話に参加できませんでした。しばらくしてからもう一度お試しください。",
+    busyLeoRealtime: "Leo とのリアルタイム通話中です。先に終了してください。",
+    sdkLoadFailed: "通話コンポーネントを読み込めませんでした。ネットワークを確認してください。",
   },
   ko: {
     call: "통화",
@@ -836,6 +862,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "이 대화에 더 이상 참여하고 있지 않아 통화에 참여할 수 없습니다",
     callServiceOff: "통화 기능을 아직 사용할 수 없습니다",
     joinFailed: "통화에 참여하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+    busyLeoRealtime: "Leo와 실시간 통화 중입니다. 먼저 종료해 주세요.",
+    sdkLoadFailed: "통화 구성 요소를 불러오지 못했습니다. 네트워크를 확인해 주세요.",
   },
   ar: {
     call: "مكالمة",
@@ -895,6 +923,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "لم تعد في هذه المحادثة، لذا لا يمكنك الانضمام إلى المكالمة",
     callServiceOff: "المكالمات غير متاحة بعد",
     joinFailed: "تعذّر الانضمام إلى المكالمة. يُرجى المحاولة لاحقًا.",
+    busyLeoRealtime: "أنت في مكالمة مباشرة مع Leo. أنهِها أولًا.",
+    sdkLoadFailed: "تعذّر تحميل مكوّن المكالمة. يُرجى التحقق من الشبكة.",
   },
   th: {
     call: "การโทร",
@@ -954,6 +984,8 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "คุณไม่ได้อยู่ในการสนทนานี้แล้ว จึงเข้าร่วมการโทรไม่ได้",
     callServiceOff: "ยังใช้งานการโทรไม่ได้",
     joinFailed: "เข้าร่วมการโทรไม่สำเร็จ โปรดลองอีกครั้งภายหลัง",
+    busyLeoRealtime: "คุณกำลังโทรสดกับ Leo อยู่ โปรดวางสายก่อน",
+    sdkLoadFailed: "โหลดส่วนประกอบการโทรไม่สำเร็จ โปรดตรวจสอบเครือข่าย",
   },
   hi: {
     call: "कॉल",
@@ -1013,5 +1045,7 @@ export const CALL_CHAT_MESSAGES = assembleCopy(SOURCE, {
     notMemberNoCall: "आप अब इस बातचीत में नहीं हैं, इसलिए कॉल में नहीं जुड़ सकते",
     callServiceOff: "कॉलिंग अभी उपलब्ध नहीं है",
     joinFailed: "कॉल में नहीं जुड़ सके। कृपया बाद में फिर से कोशिश करें।",
+    busyLeoRealtime: "आप Leo के साथ लाइव कॉल पर हैं। पहले उसे समाप्त करें।",
+    sdkLoadFailed: "कॉल कंपोनेंट लोड नहीं हो सका। कृपया अपना नेटवर्क जाँचें।",
   },
 });

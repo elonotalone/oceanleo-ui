@@ -318,6 +318,25 @@ test("CallButton 入会失败（例如满员）：给一条站内提示，不弹
   await view.unmount();
 });
 
+test("CallButton 与 Leo 实时通话互斥（引擎 busy_leo_realtime）：提示先结束 Leo 通话", async () => {
+  reset();
+  globalThis.__W08_CALL.fail = Object.assign(new Error("busy"), { code: "busy_leo_realtime" });
+  const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "设计组", kind: "group" }));
+  await view.click("button[data-call-button]");
+  assert.deepEqual(globalThis.__W08_TOASTS, ["正在与 Leo 实时通话，请先结束"]);
+  await view.unmount();
+});
+
+test("引擎进了 error 阶段（小窗自己写原因）时不再重复弹提示", async () => {
+  reset();
+  globalThis.__W08_CALL.fail = Object.assign(new Error("join"), { code: "artc_join_failed" });
+  const view = await mount(React.createElement(CallButton, { conversationId: "c1", title: "设计组", kind: "group" }));
+  globalThis.__W08_CALL.snapshot = { ...IDLE, phase: "error" };
+  await view.click("button[data-call-button]");
+  assert.deepEqual(globalThis.__W08_TOASTS, []);
+  await view.unmount();
+});
+
 // ── 接线（源码断言）─────────────────────────────────────────────────────────
 
 test("会话顶栏：◉ 会议按钮与 openMeeting 已移除；通话按钮只在非交易、未解散、是成员时渲染", () => {
