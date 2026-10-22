@@ -53,6 +53,21 @@ test("503 on token refresh stays 503 so the session cookie is not wiped", async 
   }
 });
 
+test("401 on a refresh is softened so a cross-subdomain rotation race cannot wipe SSO", async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response("refresh raced", { status: 401 });
+  try {
+    const res = await authFetch("https://example.invalid/auth/v1/token?grant_type=refresh_token");
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), {
+      error: "auth_unavailable",
+      msg: "login service unavailable",
+    });
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test("200 passes through unchanged", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () =>

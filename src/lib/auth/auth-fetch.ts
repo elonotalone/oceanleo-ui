@@ -56,6 +56,15 @@ export function isTransientAuthStatus(status: number): boolean {
 }
 
 function softenTransient(input: RequestInfo | URL, res: Response): Response {
+  // GoTrue can answer a refresh with 401 while another first-party origin is
+  // rotating the same shared refresh token.  Passing that response through
+  // makes auth-js treat a recoverable race as a revoked session and clear the
+  // Domain=.oceanbizs.com cookie for every subsite.  A real invalid refresh
+  // token is returned as 400/invalid_grant, so keep that explicit revocation
+  // path intact and soften only this refresh-specific 401.
+  if (isAuthRefreshRequest(input) && res.status === 401) {
+    return unavailableResponse(503);
+  }
   if (!isTransientAuthStatus(res.status)) return res;
   if (isAuthJwksRequest(input)) return unavailableResponse(401);
   return res;
