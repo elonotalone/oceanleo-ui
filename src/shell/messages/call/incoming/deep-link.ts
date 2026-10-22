@@ -39,20 +39,23 @@ export function stripCallDeepLink(search: string): string {
 }
 
 export interface PendingCallLink {
+  /** 单调递增的序号：来电宿主按它判断「这条处理过没有」（同一毫秒连来两条也分得开）。 */
+  id: number;
   conversationId: string;
   callId: string;
   at: number;
 }
 
 let pending: PendingCallLink | null = null;
+let nextId = 0;
 const listeners = new Set<() => void>();
 
 export function pendingCallLink(): PendingCallLink | null {
   return pending;
 }
 
-export function setPendingCallLink(next: PendingCallLink | null): void {
-  pending = next;
+export function setPendingCallLink(next: Omit<PendingCallLink, "id"> | null): void {
+  pending = next ? { ...next, id: ++nextId } : null;
   for (const listener of Array.from(listeners)) listener();
 }
 

@@ -122,8 +122,8 @@ export function IncomingCallHost() {
   const pending = useSyncExternalStore(subscribePendingCallLink, pendingCallLink, () => null);
   const processedLink = useRef(0);
   useEffect(() => {
-    if (!pending || pending.at === processedLink.current) return;
-    processedLink.current = pending.at;
+    if (!pending || pending.id === processedLink.current) return;
+    processedLink.current = pending.id;
     const target = pending;
     void (async () => {
       try {
@@ -145,7 +145,7 @@ export function IncomingCallHost() {
       } catch {
         /* 核实不了就不弹：会话已经打开了，用户可以在会话里点「通话」 */
       } finally {
-        if (pendingCallLink()?.at === target.at) setPendingCallLink(null);
+        if (pendingCallLink()?.id === target.id) setPendingCallLink(null);
       }
     })();
   }, [pending]);
