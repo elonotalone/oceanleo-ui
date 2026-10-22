@@ -758,10 +758,14 @@ export function createCallController(deps: CallControllerDeps): CallController {
   }
 
   // ---- 快照 ----------------------------------------------------------------------
+  /** 开摄像头前的计数：以服务端 `media.camera` 为准（任务书），SDK 已看到的开着摄像头的人只会让它更大。 */
   function cameraCountExcludingMe(): number {
-    let count = 0;
-    for (const view of remoteViews(clock.now())) if (view.camera) count += 1;
-    return count;
+    const myPid = session?.participantId ?? null;
+    let fromServer = 0;
+    for (const p of server?.participants ?? []) if (p.participant_id !== myPid && p.media?.camera) fromServer += 1;
+    let fromSdk = 0;
+    for (const view of remoteViews(clock.now())) if (view.camera) fromSdk += 1;
+    return Math.max(fromServer, fromSdk);
   }
 
   function remoteViews(now: number): CallParticipantView[] {

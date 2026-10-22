@@ -659,9 +659,21 @@ test("limits: the 26th camera is refused with video_full; call_full on join is a
   assert.equal(t.engine().named("publishVideo").filter((c) => c[1] === true).length, 0, "the camera is not opened");
   assert.equal(t.snap().me.camera, false);
   assert.ok(t.snap().issues.some((i) => i.kind === "video_full"));
-  t.engine().emit("remoteTrackAvailableNotify", uidOf(1), 1, 0); // 有人关了摄像头
+  t.engine().emit("remoteTrackAvailableNotify", uidOf(1), 1, 0); // 有人关了摄像头，但服务端还没广播
   await settle();
-  assert.equal(t.snap().issues.some((i) => i.kind === "video_full"), false, "the notice clears once a slot frees up");
+  assert.ok(t.snap().issues.some((i) => i.kind === "video_full"), "the server count still says 25");
+  serverWith(t, many, { ...media, 1: { mic: true, camera: false, screen: false } });
+  await settle();
+  assert.equal(t.snap().issues.some((i) => i.kind === "video_full"), false, "the notice clears once the server frees a slot");
+
+  // 服务端说已有 25 路摄像头，哪怕 SDK 还没看到这些人，也不开第 26 路。
+  const quiet = await joined();
+  const server25 = Array.from({ length: 25 }, (_, i) => i + 1);
+  serverWith(quiet, server25, Object.fromEntries(server25.map((n) => [n, { mic: true, camera: true, screen: false }])));
+  await settle();
+  await quiet.actions.setCamera(true);
+  assert.equal(quiet.snap().me.camera, false);
+  assert.ok(quiet.snap().issues.some((i) => i.kind === "video_full"));
 
   const full = setup();
   full.api.failStart = apiError(409, "call_full", "");
