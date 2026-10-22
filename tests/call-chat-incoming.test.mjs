@@ -14,6 +14,7 @@ import {
   MIN_VISIBLE_MS,
   RING_TIMEOUT_MS,
   acceptIncomingCard,
+  answerFromPush,
   declineIncomingCard,
   pickIncoming,
   ringDeadline,
@@ -606,3 +607,142 @@ test("推送深链：通话已结束 / 主叫是自己 → 只打开会话，不
 
   assert.equal(consumeCallDeepLink(linkEnv("?im=dm-1").env), false, "不是通话深链就不动");
 });
+
+// ── 门户已开着时点来电推送：一键接听（仲裁 A-20）──────────────────────────
+
+function pushDeps({ phase = "idle", callId = null, incoming = null, current = null } = {}) {
+  const calls = [];
+  const state = { phase, callId, incoming };
+  return {
+    calls,
+    deps: {
+      snapshot: () => state,
+      isLive: (p) => p === "joining" || p === "connected" || p === "reconnecting",
+      acceptIncoming: async () => calls.push(["acceptIncoming"]),
+      join: async (id, cid) => calls.push(["join", id, cid]),
+      leave: async (reason) => {
+        calls.push(["leave", reason]);
+        state.phase = "idle";
+      },
+      currentCall: async (cid) => {
+        calls.push(["currentCall", cid]);
+        return current;
+      },
+      focusDock: () => calls.push(["focusDock"]),
+    },
+  };
+}
+
+test("answerFromPush：本页还在响 → acceptIncoming；没响但通话仍在进行 → join；已结束 → 什么都不做；没有 callId → 忽略", async () => {
+  const ringing = pushDeps({ incoming: { callId: "call-1", conversationId: "dm-1" } });
+  assert.equal(await answerFromPush(ringing.deps, { conversationId: "dm-1", callId: "call-1" }), "accepted");
+  assert.deepEqual(ringing.calls, [["acceptIncoming"]]);
+
+  const active = pushDeps({ current: { callId: "call-2", status: "active" } });
+  assert.equal(await answerFromPush(active.deps, { conversationId: "dm-2", callId: "call-2" }), "joined");
+  assert.deepEqual(active.calls, [["currentCall", "dm-2"], ["join", "call-2", "dm-2"]]);
+
+  const switching = pushDeps({ phase: "connected", callId: "call-other", current: { callId: "call-3", status: "active" } });
+  assert.equal(await answerFromPush(switching.deps, { conversationId: "dm-3", callId: "call-3" }), "joined");
+  assert.deepEqual(switching.calls, [["currentCall", "dm-3"], ["leave", "switch"], ["join", "call-3", "dm-3"]]);
+
+  const gone = pushDeps({ current: null });
+  assert.equal(await answerFromPush(gone.deps, { conversationId: "dm-4", callId: "call-4" }), "gone");
+  assert.deepEqual(gone.calls, [["currentCall", "dm-4"]]);
+  const other = pushDeps({ current: { callId: "call-new", status: "active" } });
+  assert.equal(await answerFromPush(other.deps, { conversationId: "dm-5", callId: "call-old" }), "gone", "会话里已经是另一通了");
+  assert.deepEqual(other.calls.filter(([n]) => n === "join"), []);
+
+  const already = pushDeps({ phase: "connected", callId: "call-6" });
+  assert.equal(await answerFromPush(already.deps, { conversationId: "dm-6", callId: "call-6" }), "already");
+  assert.deepEqual(already.calls, [["focusDock"]]);
+
+  const plain = pushDeps();
+  assert.equal(await answerFromPush(plain.deps, { conversationId: "dm-7" }), "ignored");
+  assert.equal(await answerFromPush(plain.deps, null), "ignored");
+  assert.deepEqual(plain.calls, []);
+});
+
+const notifyApiStub = dataModule(`
+  export async function fetchPushConfig(){ return null; }
+  export async function registerPushSubscription(){ return null; }
+  export async function removePushSubscription(){ return null; }
+  export async function saveImSettings(){ return { ok: true }; }
+`);
+const { installImOpenBridge, IM_OPEN_EVENT } = await import(
+  await compileModule("src/shell/messages/notify/push-subscribe.ts", { "../../../lib/im/notify-api": notifyApiStub })
+);
+
+test("推送桥：SW 发来的 call_id 按 ^[A-Za-z0-9-]{1,64}$ 校验后放进 detail.callId；坏值丢掉、只打开会话；别处来的消息不认", async () => {
+  const listeners = new Set();
+  const container = {
+    addEventListener: (_type, l) => listeners.add(l),
+    removeEventListener: (_type, l) => listeners.delete(l),
+  };
+  Object.defineProperty(window.navigator, "serviceWorker", { configurable: true, value: container });
+  Object.defineProperty(globalThis, "navigator", { configurable: true, writable: true, value: window.navigator });
+  const seen = [];
+  const onOpen = (event) => seen.push(event.detail);
+  window.addEventListener(IM_OPEN_EVENT, onOpen);
+  const off = installImOpenBridge();
+  const sw = { scriptURL: `${window.location.origin}/im-sw.js` };
+  const send = (data, source = sw, origin = window.location.origin) => {
+    for (const l of Array.from(listeners)) l({ data, source, origin });
+  };
+  const uuid = "8f0c1d2e-3b4a-4c5d-8e9f-0a1b2c3d4e5f";
+  send({ type: "im.open", conversation_id: "dm-1", call_id: uuid });
+  send({ type: "im.open", conversation_id: "dm-2" });
+  send({ type: "im.open", conversation_id: "dm-3", call_id: "../../etc/passwd" });
+  send({ type: "im.open", conversation_id: "dm-4", call_id: "x".repeat(65) });
+  send({ type: "im.open", conversation_id: "dm-5", call_id: 42 });
+  send({ type: "im.open", conversation_id: "dm-6", call_id: uuid }, { scriptURL: "https://evil.example.com/im-sw.js" });
+  send({ type: "im.open", conversation_id: "dm-7", call_id: uuid }, sw, "https://evil.example.com");
+  send({ type: "other", conversation_id: "dm-8", call_id: uuid });
+  assert.deepEqual(seen, [
+    { conversationId: "dm-1", callId: uuid },
+    { conversationId: "dm-2" },
+    { conversationId: "dm-3" },
+    { conversationId: "dm-4" },
+    { conversationId: "dm-5" },
+  ]);
+  off();
+  window.removeEventListener(IM_OPEN_EVENT, onOpen);
+  delete window.navigator.serviceWorker;
+});
+
+test("来电宿主：收到带 callId 的 oceanleo:im-open → 卡片收起、直接接听（本页在响）或核实后加入（本页没响）", async () => {
+  reset();
+  const view = await mountHost();
+  await view.set({ incoming: ring("call-p1", { conversationId: "dm-p1" }) });
+  assert.ok(view.q('[data-incoming-call="ring"]'));
+  await act(async () => {
+    window.dispatchEvent(new window.CustomEvent(IM_OPEN_EVENT, { detail: { conversationId: "dm-p1", callId: "call-p1" } }));
+  });
+  await flush(8);
+  assert.ok(globalThis.__W08I.calls.some(([n]) => n === "acceptIncoming"));
+  assert.equal(view.q("[data-incoming-call]"), null);
+
+  reset();
+  globalThis.__W08I.status = {
+    "dm-p2": {
+      call: {
+        call_id: "call-p2", conversation_id: "dm-p2", status: "active", started_by: "u2", started_at: iso(Date.now()), ended_at: null,
+        participants: [], participant_count: 1, ring: null, recording: null, transcription: null, controls: [],
+      },
+    },
+  };
+  await act(async () => {
+    window.dispatchEvent(new window.CustomEvent(IM_OPEN_EVENT, { detail: { conversationId: "dm-p2", callId: "call-p2" } }));
+  });
+  await flush(8);
+  assert.deepEqual(globalThis.__W08I.calls.filter(([n]) => n === "join"), [["join", "call-p2", "dm-p2"]]);
+
+  reset();
+  await act(async () => {
+    window.dispatchEvent(new window.CustomEvent(IM_OPEN_EVENT, { detail: { conversationId: "dm-p3" } }));
+  });
+  await flush(4);
+  assert.deepEqual(globalThis.__W08I.calls, [], "普通的打开会话事件不碰通话");
+  await view.unmount();
+});
+

@@ -12,20 +12,24 @@ import { callsApi } from "../../../../lib/im/calls-api";
 import { messagesApi } from "../../../../lib/im/messages-api";
 import type { ImProfile } from "../../../../lib/im/types";
 import { useToast } from "../../../../ui/Toast";
-import { callErrorCode, isLivePhase } from "../chat/call-entry";
+import { IM_OPEN_EVENT } from "../../host-state";
+import type { ImOpenDetail } from "../../notify/push-subscribe";
+import { callErrorCode, isLivePhase, requestDockFocus } from "../chat/call-entry";
 import { CallAvatar, HandsetIcon, HeadphonesIcon } from "../chat/call-visuals";
 import { sanitizeCallView } from "../chat/conversation-calls";
 import { callErrorText } from "../chat/use-call-entry";
-import { callActions, callStore, useCall } from "../engine";
+import { callActions, callStore, useCall, type CallPhase } from "../engine";
 import { pendingCallLink, setPendingCallLink, subscribePendingCallLink } from "./deep-link";
 import {
   acceptIncomingCard,
+  answerFromPush,
   declineIncomingCard,
   pickIncoming,
   withHandled,
   type IncomingActions,
   type IncomingCardModel,
   type LinkIncomingLike,
+  type PushAnswerDeps,
 } from "./incoming-model";
 import { browserRingLeaderDeps, claimRing } from "./ring-leader";
 import { browserRingtoneDeps, createRingtone, type RingStartResult, type Ringtone } from "./ringtone";
@@ -83,6 +87,24 @@ const INCOMING_ACTIONS: IncomingActions = {
   declineLink: (callId) => callsApi.decline(callId),
 };
 
+/** 门户已开着时点来电推送（A-20）：直接接听 / 加入用到的引擎与接口。 */
+const PUSH_ANSWER_DEPS: PushAnswerDeps = {
+  snapshot: () => {
+    const snap = callStore.getSnapshot();
+    return { phase: snap.phase, callId: snap.callId, incoming: snap.incoming };
+  },
+  isLive: (phase) => isLivePhase(phase as CallPhase),
+  acceptIncoming: () => callActions.acceptIncoming(),
+  join: (callId, conversationId) => callActions.join(callId, conversationId),
+  leave: (reason) => callActions.leave(reason),
+  async currentCall(conversationId) {
+    const status = await callsApi.status(conversationId);
+    const view = sanitizeCallView(status?.call ?? null, conversationId);
+    return view ? { callId: view.call_id, status: view.status } : null;
+  },
+  focusDock: () => requestDockFocus(),
+};
+
 type RingUiState = "idle" | "other_tab" | RingStartResult;
 
 /** 来电卡片的层级（`signals/W07-to-W08.md` 第 4 条：≥1160）。 */
@@ -117,6 +139,21 @@ export function IncomingCallHost() {
     if (!engineCallId) return;
     setEngineSeen((current) => (current?.callId === engineCallId ? current : { callId: engineCallId, at: Date.now() }));
   }, [engineCallId]);
+
+  // 门户已开着时点了来电推送（A-20）：push-subscribe 的桥把 call_id 放进 `oceanleo:im-open`。
+  // 用户在系统通知上点的就是「接听」：收起本页卡片、直接接听 / 加入（通话已结束就只打开会话，由 host-state 处理）。
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onOpen = (event: Event) => {
+      const detail = (event as CustomEvent<ImOpenDetail>).detail;
+      const callId = detail && typeof detail.callId === "string" ? detail.callId : "";
+      if (!callId) return;
+      setHandled((current) => withHandled(current, callId));
+      void answerFromPush(PUSH_ANSWER_DEPS, detail).catch(() => undefined);
+    };
+    window.addEventListener(IM_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(IM_OPEN_EVENT, onOpen);
+  }, []);
 
   // 推送深链：核实这通还在进行，才弹卡片。
   const pending = useSyncExternalStore(subscribePendingCallLink, pendingCallLink, () => null);

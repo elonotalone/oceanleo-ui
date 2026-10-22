@@ -117,6 +117,52 @@ export async function acceptIncomingCard(actions: IncomingActions, card: Incomin
   else await actions.joinLink(card);
 }
 
+// ── 门户已开着时点来电推送（仲裁 A-20）────────────────────────────────────
+// SW 聚焦已有标签页并发 `im.open`（带 call_id）→ push-subscribe 的桥转成 `oceanleo:im-open`（detail.callId）。
+// 用户在系统通知上点的就是「接听」，所以这里直接接听 / 加入，不再弹卡片让他点第二次。
+
+export interface PushAnswerDeps {
+  snapshot(): {
+    phase: string;
+    callId: string | null;
+    incoming: { callId: string; conversationId: string } | null;
+  };
+  isLive(phase: string): boolean;
+  acceptIncoming(): Promise<void>;
+  join(callId: string, conversationId: string): Promise<void>;
+  leave(reason: string): Promise<void>;
+  /** 核实这通还在进行（`GET …/call`）：返回会话当前通话的 id 与状态；取不到返回 null。 */
+  currentCall(conversationId: string): Promise<{ callId: string; status: string } | null>;
+  focusDock(): void;
+}
+
+export type PushAnswerOutcome = "ignored" | "already" | "accepted" | "joined" | "gone";
+
+export async function answerFromPush(
+  deps: PushAnswerDeps,
+  detail: { conversationId?: unknown; callId?: unknown } | null | undefined,
+): Promise<PushAnswerOutcome> {
+  const callId = typeof detail?.callId === "string" ? detail.callId : "";
+  const conversationId = typeof detail?.conversationId === "string" ? detail.conversationId : "";
+  if (!callId || !conversationId) return "ignored";
+  const snap = deps.snapshot();
+  if (deps.isLive(snap.phase) && snap.callId === callId) {
+    deps.focusDock();
+    return "already";
+  }
+  // 还在响铃（本页收到过 call_ring）：走引擎的接听。
+  if (snap.incoming && snap.incoming.callId === callId) {
+    await deps.acceptIncoming();
+    return "accepted";
+  }
+  // 本页没收到响铃（比如刚从后台醒来）：核实这通还在进行再加入。
+  const current = await deps.currentCall(conversationId);
+  if (!current || current.status !== "active" || current.callId !== callId) return "gone";
+  if (deps.isLive(deps.snapshot().phase)) await deps.leave("switch");
+  await deps.join(callId, conversationId);
+  return "joined";
+}
+
 /** 拒绝：按来源分派。拒绝失败不提示（卡片照样收起，对方 45 秒后看到「未接通」）。 */
 export async function declineIncomingCard(actions: IncomingActions, card: IncomingCardModel): Promise<void> {
   try {
