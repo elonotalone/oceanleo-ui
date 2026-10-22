@@ -34,3 +34,6 @@
 
 ## Limitations
 - Gate re-run after the final commit was started in the background; result not captured by this report beyond the above (expected: only the allowlist drift and the pre-existing other-repo citations).
+
+## Final security gate (after commit 2adc2351)
+GATE: 25 pass, 1 skip, 1 fail. "security assertions cite their rule" now PASS (UC citation added to all four cases in untrusted-content-pdf-frame-host.test.mjs; the other-repo uncited cases are baseline-tolerated). The only failure is the cross-repo render scan: NEW findings none, ALLOWLIST DRIFT 1 = stale `UC-3-IFRAME-DYNAMIC-SANDBOX` entry for deleted `oceanleo-ui/src/shell/workbench-embed.tsx` in `/opt/cursor-workspaces/oceandino/scripts/oceanleo-untrusted-render-allowlist.json` (oceandino repo, not mine). Deleting that one entry makes the gate green.
