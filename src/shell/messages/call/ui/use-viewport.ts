@@ -1,6 +1,6 @@
 // 通话界面的视口小钩子：窄屏判定、固定侧栏让位、走秒的时钟、浏览器能不能共享屏幕。
 import { useEffect, useState } from "react";
-import { NARROW_MEDIA_QUERY, NO_INSETS, insetsFromSidebarRect, type SideInsets } from "./layout";
+import { NARROW_MEDIA_QUERY, NO_INSETS, insetsFromSidebarRect, type ScreenRect, type SideInsets } from "./layout";
 
 function matchNarrow(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -74,6 +74,66 @@ export function useSidebarInsets(enabled: boolean): SideInsets {
     };
   }, [enabled]);
   return insets;
+}
+
+const OVERLAY_OPEN_SELECTOR = '[data-im-overlay-state="open"]';
+
+function overlaySnapshot(doc: Document): { rect: ScreenRect | null; viewport: { width: number; height: number } } {
+  const view = doc.defaultView;
+  const viewport = { width: view?.innerWidth ?? 0, height: view?.innerHeight ?? 0 };
+  const overlay = doc.querySelector<HTMLElement>(OVERLAY_OPEN_SELECTOR);
+  if (!overlay) return { rect: null, viewport };
+  const box = overlay.getBoundingClientRect();
+  if (box.width <= 0 || box.height <= 0) return { rect: null, viewport };
+  return { rect: { left: box.left, top: box.top, right: box.right, bottom: box.bottom }, viewport };
+}
+
+function sameOverlay(
+  a: { rect: ScreenRect | null; viewport: { width: number; height: number } },
+  b: { rect: ScreenRect | null; viewport: { width: number; height: number } },
+): boolean {
+  if (a.viewport.width !== b.viewport.width || a.viewport.height !== b.viewport.height) return false;
+  if (!a.rect || !b.rect) return a.rect === b.rect;
+  return a.rect.left === b.rect.left && a.rect.top === b.rect.top && a.rect.right === b.rect.right && a.rect.bottom === b.rect.bottom;
+}
+
+/**
+ * 打开着的消息浮层占在哪（小窗要让开它）+ 视口大小。
+ * 只盯两件事，开销很小：整页里 `data-im-overlay-state` 这一个属性的变化（浮层开/关），
+ * 以及浮层自己 style 的变化（拖动、改大小）；外加 resize。
+ */
+export function useMessagesOverlayRect(enabled: boolean): { rect: ScreenRect | null; viewport: { width: number; height: number } } {
+  const [state, setState] = useState(() =>
+    typeof document === "undefined" ? { rect: null, viewport: { width: 0, height: 0 } } : overlaySnapshot(document),
+  );
+  useEffect(() => {
+    if (!enabled || typeof document === "undefined") return undefined;
+    let watched: Element | null = null;
+    const styleObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => update());
+    function update() {
+      const overlay = document.querySelector(OVERLAY_OPEN_SELECTOR);
+      if (styleObserver && overlay !== watched) {
+        styleObserver.disconnect();
+        if (overlay) styleObserver.observe(overlay, { attributes: true, attributeFilter: ["style"] });
+        watched = overlay;
+      }
+      const next = overlaySnapshot(document);
+      setState((current) => (sameOverlay(current, next) ? current : next));
+    }
+    const stateObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => update());
+    stateObserver?.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["data-im-overlay-state"] });
+    update();
+    window.addEventListener("resize", update);
+    // 没有 MutationObserver 的环境退回每 2 秒复量一次。
+    const timer = stateObserver ? null : window.setInterval(update, 2000);
+    return () => {
+      window.removeEventListener("resize", update);
+      if (timer !== null) window.clearInterval(timer);
+      stateObserver?.disconnect();
+      styleObserver?.disconnect();
+    };
+  }, [enabled]);
+  return state;
 }
 
 /** 走秒的时钟（时长、倒计时）；不需要时不起定时器。 */

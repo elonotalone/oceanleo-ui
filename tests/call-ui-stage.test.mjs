@@ -37,7 +37,7 @@ const { document } = window;
 for (const [name, value] of Object.entries({
   window, document, navigator: window.navigator, HTMLElement: window.HTMLElement, HTMLVideoElement: window.HTMLVideoElement,
   Element: window.Element, Node: window.Node, Event: window.Event, CustomEvent: window.CustomEvent, MouseEvent: window.MouseEvent,
-  KeyboardEvent: window.KeyboardEvent, localStorage: window.localStorage,
+  KeyboardEvent: window.KeyboardEvent, localStorage: window.localStorage, MutationObserver: window.MutationObserver,
 })) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);

@@ -4,7 +4,7 @@
 // 会话名、时长、自己的信号；最多 4 格（头像或画面）、放不下显示「+N」；说话亮框不重排；静音标记；
 // 五个按钮；转写/录制徽标、字幕一行、问题警告、远程控制提示条、「XX 在共享屏幕 · 查看」、独处倒计时、正在重连。
 // 可以拖到四个角之一（记住位置）；窄屏（手机浏览器）变成贴底的一条。
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { useUI } from "../../../../i18n/ui/useUI";
 import { dragStartThreshold } from "../../overlay-geometry";
 import { CallControlBanner } from "../control";
@@ -19,14 +19,14 @@ import { IconClose, IconHeadphones } from "./icons";
 import {
   CALL_DOCK_Z,
   DOCK_WIDTH_PX,
-  dockPlacement,
+  dockPlacementAvoiding,
   dockTiles,
   formatCallDuration,
   isLivePhase,
   nearestCorner,
   shareState,
 } from "./layout";
-import { useNow, useSidebarInsets } from "./use-viewport";
+import { useMessagesOverlayRect, useNow, useSidebarInsets } from "./use-viewport";
 
 export interface CallDockProps {
   narrow: boolean;
@@ -56,6 +56,9 @@ export function CallDock({ narrow, onExpand, onDismiss, focusToggleOnMount = fal
   const ui = useCallUiState();
   const health = useNetworkHealth();
   const insets = useSidebarInsets(!narrow);
+  // 消息浮层默认就开在小窗的位置（侧栏右边、靠下）：开着时小窗横向让开，聊天输入框不被挡住。
+  const overlay = useMessagesOverlayRect(!narrow);
+  const [dockHeight, setDockHeight] = useState(180);
   const live = isLivePhase(call.phase);
   const now = useNow(live && (Boolean(call.startedAt) || call.aloneDeadline !== null));
   const rootRef = useRef<HTMLElement | null>(null);
@@ -72,6 +75,12 @@ export function CallDock({ narrow, onExpand, onDismiss, focusToggleOnMount = fal
   );
   const share = shareState(call);
   const tileKey = tiles.map((tile) => tile.participantId).join("\n");
+
+  // 量自己的高度（内容会变：倒计时、共享提示、字幕），让开浮层时按真实高度判断是否相交。
+  useLayoutEffect(() => {
+    const height = rootRef.current?.offsetHeight ?? 0;
+    if (height > 0 && Math.abs(height - dockHeight) > 4) setDockHeight(height);
+  });
 
   // 告诉引擎小窗上看得见谁（只订阅这些人的摄像头）。
   useEffect(() => {
@@ -137,7 +146,9 @@ export function CallDock({ narrow, onExpand, onDismiss, focusToggleOnMount = fal
   const title = call.conversationTitle || tt("通话");
   const duration = live ? formatCallDuration(call.startedAt, now) : "";
   const finished = call.phase === "ended" || call.phase === "error";
-  const placement = narrow ? { left: 0, right: 0, bottom: 0 } : dockPlacement(ui.corner, insets);
+  const placement = narrow
+    ? { left: 0, right: 0, bottom: 0 }
+    : dockPlacementAvoiding(ui.corner, insets, { width: DOCK_WIDTH_PX, height: dockHeight }, overlay.rect, overlay.viewport);
 
   return (
     <section

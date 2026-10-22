@@ -36,7 +36,7 @@ const { document } = window;
 for (const [name, value] of Object.entries({
   window, document, navigator: window.navigator, HTMLElement: window.HTMLElement, HTMLVideoElement: window.HTMLVideoElement,
   Element: window.Element, Node: window.Node, Event: window.Event, CustomEvent: window.CustomEvent, MouseEvent: window.MouseEvent,
-  KeyboardEvent: window.KeyboardEvent, localStorage: window.localStorage,
+  KeyboardEvent: window.KeyboardEvent, localStorage: window.localStorage, MutationObserver: window.MutationObserver,
 })) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
@@ -563,6 +563,38 @@ test("让开固定侧栏：AppShell 侧栏展开 256px 时，小窗贴在侧栏�
   await mount(snapshot(2));
   try {
     assert.equal($("[data-call-dock]").style.left, "272px");
+  } finally {
+    await unmount();
+  }
+});
+
+test("纯函数：被打开的消息浮层挡住时小窗横向让开（左角先试浮层右边、右角先试左边，放不下就不挪）", () => {
+  const view = { width: 1440, height: 900 };
+  const dock = { width: 320, height: 180 };
+  const overlay = { left: 268, top: 228, right: 668, bottom: 888 }; // 浮层默认：侧栏右边、靠下
+  assert.deepEqual(layout.dockPlacementAvoiding("bottom-left", { left: 256, right: 0 }, dock, null, view), { bottom: 16, left: 272 }, "没有浮层不挪");
+  assert.deepEqual(layout.dockPlacementAvoiding("bottom-left", { left: 256, right: 0 }, dock, overlay, view), { bottom: 16, left: 684 });
+  assert.deepEqual(layout.dockPlacementAvoiding("bottom-right", { left: 0, right: 0 }, dock, { left: 1000, top: 200, right: 1420, bottom: 890 }, view), { bottom: 16, left: 664 });
+  assert.deepEqual(layout.dockPlacementAvoiding("top-left", { left: 0, right: 0 }, dock, overlay, view), { top: 16, left: 16 }, "不相交不挪");
+  assert.deepEqual(layout.dockPlacementAvoiding("bottom-left", { left: 0, right: 0 }, dock, { left: 0, top: 0, right: 1440, bottom: 900 }, view), { bottom: 16, left: 16 },
+    "浮层占满（放大态）两边都放不下：不挪");
+});
+
+test("渲染：消息浮层开着且挡住小窗时小窗让开，浮层关了就回到左下角", async () => {
+  const overlay = document.createElement("div");
+  overlay.setAttribute("data-im-overlay-state", "open");
+  overlay.getBoundingClientRect = () => ({ left: 268, top: 100, right: 668, bottom: 756, width: 400, height: 656, x: 268, y: 100 });
+  document.body.append(overlay);
+  await mount(snapshot(3));
+  try {
+    const dock = $("[data-call-dock]");
+    assert.equal(window.innerWidth, 1024);
+    assert.equal(dock.style.left, "684px", "让到浮层右边");
+    await act(async () => {
+      overlay.setAttribute("data-im-overlay-state", "closed");
+    });
+    await flush();
+    assert.equal($("[data-call-dock]").style.left, "16px", "浮层关了回到左下角");
   } finally {
     await unmount();
   }

@@ -66,6 +66,48 @@ export function dockPlacement(
   };
 }
 
+export interface ScreenRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export function rectsIntersect(a: ScreenRect, b: ScreenRect): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+/**
+ * 小窗贴角的位置被打开着的消息浮层挡住时（浮层默认就开在「侧栏右边、靠下」，正好是小窗的位置），
+ * 横向挪到浮层旁边：左侧的角先试浮层右边，右侧的角先试浮层左边；两边都放不下就不挪（用户还能拖到别的角）。
+ * 不挪竖直方向：浮层几乎占满整个高度。
+ */
+export function dockPlacementAvoiding(
+  corner: DockCorner,
+  insets: SideInsets,
+  dock: { width: number; height: number },
+  obstacle: ScreenRect | null,
+  viewport: { width: number; height: number },
+  margin: number = DOCK_MARGIN_PX,
+): { left?: number; right?: number; top?: number; bottom?: number } {
+  const base = dockPlacement(corner, insets, margin);
+  if (!obstacle) return base;
+  const left = base.left ?? viewport.width - (base.right ?? margin) - dock.width;
+  const top = base.top ?? viewport.height - (base.bottom ?? margin) - dock.height;
+  const rect = { left, top, right: left + dock.width, bottom: top + dock.height };
+  if (!rectsIntersect(rect, obstacle)) return base;
+  const vertical = corner.startsWith("top") ? { top: margin } : { bottom: margin };
+  const minLeft = Math.max(0, insets.left) + margin;
+  const maxLeft = viewport.width - Math.max(0, insets.right) - margin - dock.width;
+  const rightOf = obstacle.right + margin;
+  const leftOf = obstacle.left - margin - dock.width;
+  const tries = corner.endsWith("left") ? [rightOf, leftOf] : [leftOf, rightOf];
+  for (const candidate of tries) {
+    if (candidate >= minLeft && candidate <= maxLeft) return { ...vertical, left: Math.round(candidate) };
+  }
+  return base;
+}
+
 /** 侧栏量出来的矩形 → 让位宽度。贴左边就让左边，贴右边（RTL）就让右边，都不贴就不让。 */
 export function insetsFromSidebarRect(rect: { left: number; right: number; width: number } | null, viewportWidth: number): SideInsets {
   if (!rect || rect.width <= 0) return NO_INSETS;
