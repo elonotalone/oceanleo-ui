@@ -242,12 +242,11 @@ const { MessagesHost } = await import(
     "./Inbox": viewStub("Inbox"),
     "./invite/InviteAcceptDialog": dialogStub("InviteAcceptDialog"),
     "./host-state": hostStub,
-    "./meeting/MeetingPanel": dataModule(`export function MeetingPanel(){ return null; }`),
-    "./meeting/meeting-host-state": dataModule(`
-      export function closeMeeting(){}
-      export function createMeetingInvitationHandler(){ return { handle: async () => false, cancel(){} }; }
-      export function useMeetingHostRequest(){ return null; }
-    `),
+    // calls-v2（仲裁 A-21）：MessagesHost 挂的三个通话宿主照旧会议面板的做法打桩——它们的图里有 imFetch，
+    // 而本测试把 lib/im/client 换成了只有 useImEnabled 的桩。
+    "./call/ui": dataModule(`export function CallHost(){ return null; } export function CallParticipantMenu(){ return null; }`),
+    "./call/incoming": dataModule(`export function IncomingCallHost(){ return null; }`),
+    "./call/control": dataModule(`export function CallControlHost(){ return null; } export function CallControlBanner(){ return null; }`),
     "./MessagesLayout": dataModule(`
       import React from ${JSON.stringify(reactUrl)};
       export function MessagesLayout(){
