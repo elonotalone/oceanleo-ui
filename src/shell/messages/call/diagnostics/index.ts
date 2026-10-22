@@ -1,7 +1,8 @@
-// W14 · 网络检测与通话检测（合同 §3.9）。首个提交：导出名与 props 的桩，组件先 return null。
-// NetLevel 与 W05 engine/index.ts 的定义同形（0 未知，1 很差 … 5 很好）；W05 引擎落地后改为从 ../engine 引入。
+// W14 · 网络检测与通话检测（合同 §3.9；A-7 追加无 props 的 CallDiagnosticsHost，由 W07 在 CallHost 里无条件挂一次）。
+// 桩阶段：组件先 return null；NetLevel 取自 W05 引擎。
+import type { NetLevel } from "../engine";
 
-export type NetLevel = 0 | 1 | 2 | 3 | 4 | 5;
+export type { NetLevel } from "../engine";
 
 export type NetworkQuality = "unknown" | "good" | "fair" | "poor";
 
@@ -17,6 +18,7 @@ export interface NetworkHealth {
 
 export interface NetworkBarsProps { level: NetLevel }
 export interface CallTestPanelProps { open: boolean; onClose(): void }
+export interface CallTestMenuItemProps { onSelect?(): void }
 
 export function NetworkBars(_props: NetworkBarsProps): null {
   return null;
@@ -30,7 +32,12 @@ export function CallTestPanel(_props: CallTestPanelProps): null {
   return null;
 }
 
-export function CallTestMenuItem(): null {
+export function CallTestMenuItem(_props: CallTestMenuItemProps = {}): null {
+  return null;
+}
+
+/** 全局宿主（A-7）：渲染由 `CallTestMenuItem` 打开的「通话检测」面板，活得比菜单久，不在通话中也能用。 */
+export function CallDiagnosticsHost(): null {
   return null;
 }
 
