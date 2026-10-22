@@ -34,6 +34,7 @@ import { useModel3DDirector } from "./use-model3d-director";
 import { useModel3DProjectBootstrap } from "./use-model3d-project-bootstrap";
 import { useModel3DRuntime } from "./use-model3d-runtime";
 import { useModel3DSave } from "./use-model3d-save";
+import { useModel3DSceneRestore } from "./use-model3d-scene-restore";
 import { useModel3DSidecar } from "./use-model3d-sidecar";
 import { useModel3DSourceActions } from "./use-model3d-source-actions";
 import { useModel3DSourceLoader } from "./use-model3d-source-loader";
@@ -314,108 +315,30 @@ export function useModel3DWorkbench(
     tt,
   });
 
-  const restoreRecovery = useCallback((payload: unknown) => {
-    const recovered = normalizeModel3DProjectRecovery(
-      payload,
-      {
-        ...viewRef.current,
-        sourceUrl,
-        annotations: sidecar.annotations,
-      },
+  const { restoreRecovery, applyRemoteScene, applyLocalScene } =
+    useModel3DSceneRestore({
+      runtimeRef,
+      viewRef,
+      revisionRef,
+      sourceGenerationRef,
+      loadedSourceRef,
+      pendingOperationsRef,
+      keptSelectionRef,
       sourceUrl,
-    );
-    if (!recovered) return false;
-    sourceGenerationRef.current += 1;
-    loadedSourceRef.current = "";
-    pendingOperationsRef.current = recovered.operations;
-    runtimeRef.current?.clear();
-    setSourceProvenance(recovered.provenance);
-    setSourceUrl(recovered.checkpointUrl);
-    setReloadToken((current) => current + 1);
-    applyView(recovered.view);
-    revisionRef.current += 1;
-    setDirty(true);
-    setSavedUrl("");
-    applyModel3dUserEditSession(itemRef.current, "recovery-restore");
-    setNotice(tt("已恢复上次未同步的本地草稿"));
-    return true;
-  }, [applyView, sidecar.annotations, sourceUrl, tt]);
-
-  /**
-   * 多人同改：套用一份新的场景状态（检查点 + 操作日志 + 视图 + 批注）。
-   * - 镜头（方位、仰角、缩放、自转）是我自己的，永远保留；
-   * - 场景本身没变（只是曝光、背景、批注之类的视图参数变了）就不重载模型；
-   * - `remote`：对方的改动，不标「未保存」、不加编辑修订号、不弹提示；
-   * - `local`：撤销 / 重做算出来的我自己的改动，标「未保存」（走自动保存）。
-   */
-  const replaceScene = useCallback(
-    (payload: unknown, mode: "remote" | "local"): boolean => {
-      const recovered = normalizeModel3DProjectRecovery(
-        payload,
-        {
-          ...viewRef.current,
-          sourceUrl,
-          annotations: sidecar.annotations,
-        },
-        sourceUrl,
-      );
-      if (!recovered) return false;
-      const current = viewRef.current;
-      const nextView = {
-        ...recovered.view,
-        azimuth: current.azimuth,
-        elevation: current.elevation,
-        zoom: current.zoom,
-        autoRotate: current.autoRotate,
-      };
-      const runtime = runtimeRef.current;
-      const sameScene =
-        Boolean(runtime) &&
-        loadedSourceRef.current === sourceUrl &&
-        recovered.checkpointUrl === sourceUrl &&
-        JSON.stringify(recovered.operations) ===
-          JSON.stringify(runtime?.getOperationJournal() ?? []);
-      if (!sameScene) {
-        const scene = runtime as unknown as {
-          selected?: unknown;
-          editorId?: (object: unknown) => string;
-        } | null;
-        keptSelectionRef.current =
-          scene?.selected && scene.editorId ? scene.editorId(scene.selected) : "";
-        sourceGenerationRef.current += 1;
-        loadedSourceRef.current = "";
-        pendingOperationsRef.current = recovered.operations;
-        runtime?.clear();
-        setSourceProvenance(recovered.provenance);
-        setSourceUrl(recovered.checkpointUrl);
-        setReloadToken((value) => value + 1);
-      }
-      applyView(nextView);
-      if (mode === "local") markDirty();
-      return true;
-    },
-    [applyView, markDirty, sidecar.annotations, sourceUrl],
-  );
-  const applyRemoteScene = useCallback(
-    (payload: unknown) => replaceScene(payload, "remote"),
-    [replaceScene],
-  );
-  const applyLocalScene = useCallback(
-    (payload: unknown) => replaceScene(payload, "local"),
-    [replaceScene],
-  );
-
-  // 重载完成后把我选中的节点选回去（节点还在时）。
-  useEffect(() => {
-    if (!modelReady || !keptSelectionRef.current) return;
-    const id = keptSelectionRef.current;
-    keptSelectionRef.current = "";
-    const scene = runtimeRef.current as unknown as {
-      objectByEditorId?: (id: string) => { uuid: string } | null;
-    } | null;
-    const node = scene?.objectByEditorId?.(id);
-    if (node) runtimeRef.current?.setSelectedNode(node.uuid);
-  }, [modelReady]);
+      annotations: sidecar.annotations,
+      modelReady,
+      applyView,
+      markDirty,
+      noteRecoveryRestore: () =>
+        void applyModel3dUserEditSession(itemRef.current, "recovery-restore"),
+      setSourceProvenance,
+      setSourceUrl,
+      setReloadToken,
+      setDirty,
+      setSavedUrl,
+      setNotice,
+      tt,
+    });
 
   useEffect(() => {
     if (runtimeReady) runtimeRef.current?.setReadOnly(readOnlyFlag);

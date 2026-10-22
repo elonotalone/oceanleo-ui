@@ -41,3 +41,5 @@ None requested. (`@google/model-viewer` is now unused by product code if no othe
 - The legacy "oceanleo.three-editor@2 read-only + convert" flow lived only in NextStage and is gone; stored projects open through the
   workbench's existing `model3d-project` recovery path (not re-verified in a browser; no browser per red lines).
 - Full typecheck not judged beyond my files; no browser check.
+
+- Follow-up: extracted scene restore/replace (restoreRecovery, applyRemoteScene/applyLocalScene, kept-selection effect) from `use-model3d-workbench.ts` (606 -> 527 lines) into `use-model3d-scene-restore.ts` (173 lines), behaviour unchanged. tsc clean for 3D files; `media-editors.test.mjs` #4 now fails only on `use-pdf-workbench.ts` (607 lines, W06's file). All 3D tests green.
