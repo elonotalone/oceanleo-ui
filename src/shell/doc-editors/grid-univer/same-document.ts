@@ -199,11 +199,13 @@ type UniverPaintSheet = {
 type UniverPaintWorkbook = {
   getId?: () => string;
   getActiveSheet?: () => UniverPaintSheet | null;
+  save?: () => unknown;
   setEditable?: (value: boolean) => unknown;
 };
 
 export type UniverWorkbookApi = {
   getActiveWorkbook?: () => UniverPaintWorkbook | null;
+  getUniverSheet?: (id: string) => UniverPaintWorkbook | null;
   createWorkbook?: (data: unknown) => unknown;
   disposeUnit?: (unitId: string) => unknown;
 };
@@ -283,9 +285,21 @@ export function enrichUniverSnapshotPlainText(snapshot: unknown): unknown {
   return { ...snapshot, sheets: nextSheets };
 }
 
+/** 快照自带的工作簿 id（Univer 用它当 unit id）。没有 id 时 Univer 会自己发一个，不会撞。 */
+function snapshotUnitId(snapshot: unknown): string {
+  if (!snapshot || typeof snapshot !== "object") return "";
+  const id = (snapshot as { id?: unknown }).id;
+  return typeof id === "string" ? id : "";
+}
+
 /**
  * 先建带数据的那一本，再卸掉 preset 留下的空簿。
  * 反过来卸会让 Univer 处在「一本工作簿都没有」的空窗，新表经常画不出来。
+ *
+ * 例外：新快照的 id 已经有一本在画布上（同一份文档重新载入：签名地址换发、协同整本
+ * 采纳、保存后回读）。`createWorkbook` 会抛
+ * `[UniverInstanceService]: cannot create a unit with the same unit id`，
+ * 所以这种情况必须先卸旧的再建；建失败时用旧簿的存档把它建回来，不留空窗。
  */
 export function replaceUniverWorkbookWithSnapshot(
   api: UniverWorkbookApi,
@@ -294,10 +308,28 @@ export function replaceUniverWorkbookWithSnapshot(
   const existing = asWorkbook(api.getActiveWorkbook?.() ?? null);
   const existingId = existing?.getId?.() || "";
   const payload = enrichUniverSnapshotPlainText(snapshot);
-  const created = asWorkbook(api.createWorkbook?.(payload) ?? null);
-  const createdId = created?.getId?.() || "";
+  const incomingId = snapshotUnitId(payload);
+  const clashing =
+    incomingId !== "" &&
+    (incomingId === existingId ||
+      Boolean(asWorkbook(api.getUniverSheet?.(incomingId) ?? null)));
   let disposedId = "";
-  if (existingId && createdId && existingId !== createdId && api.disposeUnit) {
+  let created: UniverPaintWorkbook | null;
+  if (clashing && api.disposeUnit) {
+    const backup = incomingId === existingId ? existing?.save?.() : undefined;
+    api.disposeUnit(incomingId);
+    disposedId = incomingId;
+    try {
+      created = asWorkbook(api.createWorkbook?.(payload) ?? null);
+    } catch (error) {
+      if (backup) api.createWorkbook?.(backup);
+      throw error;
+    }
+  } else {
+    created = asWorkbook(api.createWorkbook?.(payload) ?? null);
+  }
+  const createdId = created?.getId?.() || "";
+  if (!disposedId && existingId && createdId && existingId !== createdId && api.disposeUnit) {
     api.disposeUnit(existingId);
     disposedId = existingId;
   }

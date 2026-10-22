@@ -195,6 +195,78 @@ test("换核先建带数据的表再卸空簿；快照格子补上 p 才能画�
   assert.ok(received.sheets.s1.cellData[0][1].p.body.dataStream.includes("agent-test-w13-cell"));
 });
 
+test("新快照 id 与画布上已有那本相同：先卸再建，不抛 same unit id", () => {
+  const units = new Map();
+  const log = [];
+  const makeApi = () => ({
+    getActiveWorkbook() {
+      const first = [...units.values()][0];
+      return first || null;
+    },
+    getUniverSheet(id) {
+      return units.get(id) || null;
+    },
+    createWorkbook(data) {
+      if (units.has(data.id)) {
+        throw new Error(
+          `[UniverInstanceService]: cannot create a unit with the same unit id: ${data.id}`,
+        );
+      }
+      log.push(`create:${data.id}`);
+      const unit = {
+        getId: () => data.id,
+        save: () => ({ id: data.id, name: "backup" }),
+        setEditable() {},
+      };
+      units.set(data.id, unit);
+      return unit;
+    },
+    disposeUnit(id) {
+      log.push(`dispose:${id}`);
+      units.delete(id);
+      return true;
+    },
+  });
+  const api = makeApi();
+  const snap = () => ({
+    id: "grid-sheet-abc",
+    name: "表",
+    sheets: { s1: { cellData: { 0: { 0: { v: "x", t: 1 } } } } },
+  });
+  replaceUniverWorkbookWithSnapshot(api, snap());
+  const again = replaceUniverWorkbookWithSnapshot(api, snap());
+  assert.equal(again.createdId, "grid-sheet-abc");
+  assert.equal(again.disposedId, "grid-sheet-abc");
+  assert.deepEqual(log, [
+    "create:grid-sheet-abc",
+    "dispose:grid-sheet-abc",
+    "create:grid-sheet-abc",
+  ]);
+  assert.equal(units.size, 1);
+});
+
+test("同 id 重建失败时用旧簿存档建回来，不留空窗", () => {
+  const created = [];
+  let first = true;
+  const api = {
+    getActiveWorkbook: () => ({ getId: () => "u1", save: () => ({ id: "u1", name: "old" }) }),
+    createWorkbook(data) {
+      if (first) {
+        first = false;
+        throw new Error("boom");
+      }
+      created.push(data);
+      return { getId: () => data.id };
+    },
+    disposeUnit() {},
+  };
+  assert.throws(
+    () => replaceUniverWorkbookWithSnapshot(api, { id: "u1", name: "new", sheets: {} }),
+    /boom/,
+  );
+  assert.equal(created[0].name, "old");
+});
+
 // ---- 崩溃恢复（父 agent 收尾 W13 时补，浏览器实测：同键互灌导致 Univer 白画布） ----
 
 test("Univer 崩溃恢复键是 grid-univer：库里旧核留下的 grid:* 草稿不会被灌进来", () => {
