@@ -520,6 +520,57 @@ test("store: open/close and host registration are idempotent", () => {
   off();
 });
 
+// ---------- A-22：不在通话中的入口（LeoChat 消息设置页） ----------
+
+const sharedStoreUrl = await compileModule("src/shell/messages/call/diagnostics/diagnostics-store.ts");
+const sharedMenu = await import(
+  await compileModule("src/shell/messages/call/diagnostics/CallTestMenuItem.tsx", { ...STUBS, "./diagnostics-store": sharedStoreUrl })
+);
+const settingsModule = await import(
+  await compileModule("src/shell/messages/SettingsView.tsx", {
+    "../../i18n/ui/useUI": translatorUrl,
+    "./notify/NotifySettingsPanel": dataModule("export function NotifySettingsPanel() { return null; }"),
+    "./PrivacyNotice": dataModule("export function PrivacySummary() { return null; }"),
+    "./call/diagnostics/diagnostics-store": sharedStoreUrl,
+  })
+);
+
+test("A-22: message settings has a Call check entry that opens the same panel outside a call", async () => {
+  const settings = await readFile(new URL("../src/shell/messages/SettingsView.tsx", import.meta.url), "utf8");
+  assert.match(settings, /import \{ openCallTest \} from "\.\/call\/diagnostics\/diagnostics-store";/, "tiny store import, not the whole barrel");
+  assert.match(settings, /onClick=\{openCallTest\}/);
+  assert.match(settings, /data-open-call-test="settings"/);
+  assert.doesNotMatch(settings, /dangerouslySetInnerHTML|innerHTML/);
+  const { LOCALES } = await import("../src/i18n/config.ts");
+  for (const key of ["通话检测", "检查麦克风、扬声器、摄像头和网络连接。", "打开通话检测"]) {
+    assert.ok(settings.includes(`tt("${key}")`), key);
+    for (const locale of LOCALES) assert.ok(COPY[locale]?.[key], `${locale}: ${key}`);
+  }
+  await withDom(
+    async ({ render, find, text, click, settle }) => {
+      await render(
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(sharedMenu.CallDiagnosticsHost),
+          React.createElement(settingsModule.SettingsView, { onOpenBlocks() {} }),
+        ),
+      );
+      await settle();
+      assert.match(text(), /Call check/);
+      assert.equal(find('[role="dialog"]'), null);
+      await click('[data-open-call-test="settings"]');
+      await settle();
+      assert.ok(find('[role="dialog"]'), "panel opens from settings with no call");
+      assert.equal(find("[data-connection-test-start]").disabled, false, "connection test available outside a call");
+      await click("[data-call-test-close]");
+      await settle();
+      assert.equal(find('[role="dialog"]'), null);
+    },
+    harness({ snapshot: { ...harness().snapshot, phase: "idle", issues: [] } }),
+  );
+});
+
 // ---------- ④ 源码约束 ----------
 
 const DIAG_DIR = new URL("../src/shell/messages/call/diagnostics/", import.meta.url);
