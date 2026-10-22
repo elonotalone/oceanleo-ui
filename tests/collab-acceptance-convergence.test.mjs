@@ -596,24 +596,19 @@ test("[F05] PDF：两人同时各加批注都在；甲删第 3 页，乙在第 5
 });
 
 // ------------------------------------------------------------------ F06 流程图
-test("[F06] 流程图：路径 B — collab 不由只读推出 inert、useEntityCollab 在用、旧画布回落允许锁；只读人能拖能缩放（外壳能验到的部分）", () => {
+test("[F06] 流程图：本地 xyflow 画布只有一次一人的编辑锁；只读人不能改但能平移、缩放", () => {
   const stage = src("workflow-carrier/VideoCanvasStage.tsx");
-  assert.match(stage, /useEntityCollab\s*[<(]/, "新画布要走 useEntityCollab（按节点连线合并）");
-  assert.match(stage, /useLockedEditCollab\s*\(/, "旧画布不认协同消息，探测失败后必须能退回一次一人锁");
-  const inertDef = /const canvasInert\s*=([\s\S]{0,260}?);/.exec(stage)?.[1] ?? "";
-  assert.match(
-    inertDef,
-    /mode === "detect" \? true : mode === "collab" \? !controlReady : lockedEdit\.readOnly/,
-    `canvasInert 必须是 detect→true / collab→!controlReady / lock→lockedEdit.readOnly，实际：${inertDef.trim()}`,
-  );
-  const collabArm = /mode === "collab" \? ([^:]+):/.exec(inertDef)?.[1] ?? "";
-  assert.doesNotMatch(collabArm, /readOnly|viewer|canWrite|role/i, `collab 分支 inert 不得由只读推出：${collabArm.trim()}`);
-  const canvasInert = (mode, controlReady, lockedReadOnly) =>
-    mode === "detect" ? true : mode === "collab" ? !controlReady : lockedReadOnly;
-  assert.equal(canvasInert("collab", true, true), false, "只读查看者、新画布已对齐：外壳不 inert，能平移、缩放");
-  assert.equal(canvasInert("collab", false, false), true, "对齐未完成：整块 inert");
-  assert.equal(canvasInert("lock", true, true), true, "旧画布回落：只读仍 inert");
-  assert.equal(canvasInert("detect", true, false), true, "探测期 inert");
+  const canvas = src("workflow-carrier/VideoCanvasLocalCanvas.tsx");
+  assert.match(stage, /useLockedEditCollab\s*\(/, "画布协同只剩一次一人的编辑锁");
+  assert.doesNotMatch(stage, /useEntityCollab|CanvasCollabLink|canvasInert/, "已删的探测/按实体合并路径不许长回来");
+  assert.match(stage, /const collabReadOnly = lockedEdit\.readOnly;/, "只读必须来自编辑锁");
+  assert.match(stage, /readOnly=\{!mayWrite \|\| nativeV2ReadOnlyProjection\}/, "没有写权限的人拿到的画布必须是只读");
+  // 只读：节点不可拖、不可连、不接变更回调；但不许关掉平移/缩放。
+  assert.match(canvas, /onNodesChange=\{readOnly \? undefined : handleNodesChange\}/);
+  assert.match(canvas, /onConnect=\{readOnly \? undefined : onConnect\}/);
+  assert.match(canvas, /nodesDraggable=\{!readOnly\}/);
+  assert.match(canvas, /nodesConnectable=\{!readOnly\}/);
+  assert.doesNotMatch(canvas, /panOnDrag=\{|zoomOnScroll=\{|zoomOnPinch=\{|panOnScroll=\{/, "只读人必须仍能平移、缩放");
 });
 
 test("[F06] 流程图：两人同时加节点与连线都在；甲删节点，乙连到它的线不留断线", () => {
@@ -747,8 +742,13 @@ for (const [family, rel] of Object.entries(SURFACE_FILES)) {
     const builders = (SURFACE_BUILDERS[family] ?? []).filter(has).map(src).join("\n");
     for (const call of calls) {
       // 只看调用本身的实参（到下一个 `);` 为止）与这一族的指令面构造文件，不看周围别处的 readOnly
+      // 调用本身到它自己的收尾 `\n  });`（组件体内缩进两格）为止；长调用里前面的
+      // `currentSnapshot();` 之类不能提前把实参截断。找不到收尾才退回到第一个 `);`。
       const rest = text.slice(call.index);
-      const around = rest.slice(0, Math.max(1, rest.indexOf(");") + 2));
+      const closing = rest.search(/\n {2}\}\);/);
+      const around = closing >= 0
+        ? rest.slice(0, closing + 5)
+        : rest.slice(0, Math.max(1, rest.indexOf(");") + 2));
       assert.ok(
         READ_ONLY_GUARD.test(around) || READ_ONLY_GUARD.test(builders),
         `${family}（${rel}）：Leo 指令入口没有只读判断（路由与指令面构造文件都没有），只读用户让 Leo 改会直接改动作品`,
