@@ -41,6 +41,7 @@ import {
   model3dToEntities,
   type Model3DCollabSnapshot,
 } from "../collab/adapters/model3d";
+import { isStaleModel3DRemoteScene } from "../media-editors/model3d-collab-guard";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -213,6 +214,16 @@ function Model3DModelRoute({
       model3dFromEntities(input, prev as unknown as Model3DCollabSnapshot | null) as unknown as Model3DRouteSnapshot,
     local: editor.loading || !editor.modelLoaded ? null : history.snapshot,
     applyRemote: (state) => {
+      // 房间状态落后于作品当前版本时不套用（见 model3d-collab-guard）；本端状态随后推回房间。
+      if (
+        isStaleModel3DRemoteScene(state, {
+          artifactId: String(item.artifactId || ""),
+          itemRevisionId: String(item.revisionId || ""),
+          sourceRevisionId: editor.sourceProvenance.revisionId,
+        })
+      ) {
+        return;
+      }
       editor.applyRemoteScene(state);
     },
     applyLocal: (state) => {

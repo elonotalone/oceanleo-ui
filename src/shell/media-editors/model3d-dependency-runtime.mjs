@@ -304,7 +304,10 @@ export async function materializeModel3DGltfDependencies(
     const width = Math.max(1, Math.min(Math.trunc(concurrency) || 1, pending.length));
     await Promise.all(Array.from({ length: width }, worker));
     if (failure) throw failure.error;
-    for (const [entry, uri] of entries) entry.uri = byUri.get(uri);
+    for (const [entry, uri] of entries) {
+      const objectUrl = byUri.get(uri);
+      entry.uri = objectUrl;
+    }
     return {
       document: cloned,
       objectUrls: [...objectUrls],
