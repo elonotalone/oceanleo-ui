@@ -20,11 +20,6 @@ import {
   richDocLoadVerified,
   sanitizeRichDocHtml,
 } from "../src/shell/doc-editors/rich-doc-model.ts";
-import {
-  deriveEditorHandoffFromItem,
-  htmlToRichDocJson,
-  loadRichDocHostedState,
-} from "../src/shell/advanced-routes/richdoc-pro-source.ts";
 import { tiptapJsonToDocxBlob } from "../src/shell/doc-editors/docx-export.ts";
 
 const SCAN_HTML =
@@ -135,12 +130,9 @@ test("W1-r3 real DOMPurify keeps the scan image and strips XSS", async () => {
   assert.equal(loaded.source, "url-html");
   assert.match(loaded.html, /img/i);
   assert.doesNotMatch(loaded.html, /<script/i);
-
-  const json = await htmlToRichDocJson(loaded.html);
-  assert.equal(richDocHasContent(json), true);
 });
 
-test("W1-r3 image-only markdown and empty native JSON admit through hook and pro", async () => {
+test("W1-r3 image-only markdown and empty native JSON admit through the editor hook", async () => {
   const mdItem = scanItem({
     url: "https://files.example.test/scan.md",
     previewUrl: "https://files.example.test/scan.md",
@@ -162,14 +154,6 @@ test("W1-r3 image-only markdown and empty native JSON admit through hook and pro
   const htmlLoad = await loadRichDocHtml(item, undefined, {
     fetchText: async () => SCAN_HTML,
   });
-  const hosted = await loadRichDocHostedState(
-    item,
-    deriveEditorHandoffFromItem(item),
-    { loadHtml: async () => htmlLoad },
-  );
-  assert.equal(hosted.ok, true);
-  assert.equal(richDocHasContent(hosted.source), true);
-
   const emptyItem = scanItem({
     url: "https://files.example.test/empty.json",
     previewUrl: "https://files.example.test/empty.json",
@@ -193,12 +177,6 @@ test("W1-r3 image-only markdown and empty native JSON admit through hook and pro
     error: "",
   });
 
-  const emptyHosted = await loadRichDocHostedState(
-    emptyItem,
-    deriveEditorHandoffFromItem(emptyItem),
-    { fetchJson: async () => EMPTY_DOC },
-  );
-  assert.equal(emptyHosted.ok, true);
 });
 
 test("W1-r3 mammoth DOCX image-only and empty Word reopen clean", async () => {
@@ -226,14 +204,6 @@ test("W1-r3 mammoth DOCX image-only and empty Word reopen clean", async () => {
   assert.equal(richDocHtmlHasBody(imageLoad.html), true);
   assert.match(imageLoad.html, /img/i);
   assert.equal(hookAdmission(imageLoad, item).sourceReady, true);
-
-  const hosted = await loadRichDocHostedState(
-    item,
-    deriveEditorHandoffFromItem(item),
-    { loadHtml: async () => imageLoad },
-  );
-  assert.equal(hosted.ok, true);
-  assert.equal(richDocHasContent(hosted.source), true);
 
   const emptyItem = {
     ...item,
@@ -274,17 +244,6 @@ test("W1-r3 empty project does not hide a richer original; failures stay blocked
   assert.equal(loaded.error, "");
   assert.equal(loaded.source, "url-html");
   assert.match(loaded.html, /扫描页|page\.png/);
-
-  const hosted = await loadRichDocHostedState(
-    item,
-    deriveEditorHandoffFromItem(item),
-    {
-      fetchJson: async () => EMPTY_DOC,
-      loadHtml: async () => ({ html: SCAN_HTML, error: "" }),
-    },
-  );
-  assert.equal(hosted.ok, true);
-  assert.equal(richDocHasContent(hosted.source), true);
 
   const projectOnly = scanItem({
     url: "",

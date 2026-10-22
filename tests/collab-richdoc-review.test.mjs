@@ -780,7 +780,7 @@ test("只读时 Leo 的帮改入口也被挡住：会改正文的指令一律拒
   const route = readFileSync(new URL("../src/shell/advanced-routes/RichDocRoute.tsx", import.meta.url), "utf8");
   assert.match(
     route,
-    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) =>\s*guardPluginSurface\(\s*buildRichDocCommandSurface\(editor, \{ download: downloadAs \}\),\s*editor\.collabReadOnly,/,
+    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) =>\s*guardPluginSurface\(\s*buildRichDocCommandSurface\(editor, \{[^}]*download: downloadAs[^}]*\}\),\s*editor\.collabReadOnly,/,
     "路由把指令面包在只读闸里，条件是房间只读",
   );
 });

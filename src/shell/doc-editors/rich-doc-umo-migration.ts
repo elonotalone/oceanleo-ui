@@ -1,14 +1,8 @@
 /**
- * RichDoc Tiptap JSON ↔ Umo 文档迁移（W08 判据 3；R7 / `_COMMON.md` §10 第 6 条）。
- *
- * 两边都是 Tiptap JSON，**同源不是同扩展集**。本文件只走路树、列差异、产出
- * 一份新对象；**不改写入参**，也不静默把存量换成 Umo 格式。
- *
- * 产品动作只有两档：
- *   1. 只读打开 —— `openRichDocReadOnly`：原样返回，附差异清单，没有转换结果；
- *   2. 一键转换 —— `convertRichDocToUmo`：用户点了才跑，失败给一句能看懂的原因。
- *
- * 不自研文档模型（§10 第 2 条）：这里没有第二套 IR，输出仍是 Tiptap `doc`。
+ * 读路径：Umo 面（已删除）曾存下 `umo.tiptap.v1` 外壳的文档。原生 Tiptap 编辑器
+ * 用 `convertUmoToRichDoc` 把它们（以及旧的恢复草稿）读回普通 Tiptap `doc`。
+ * 只读入参，产出新对象，不改写存量；不认识的 Umo 扩展节点会被列进差异清单。
+ * 没有再往 Umo 格式写的方向 —— 新写入一律是 `tiptap-json@1`。
  */
 
 export const UMO_DOC_FORMAT = "umo.tiptap.v1";
@@ -191,14 +185,6 @@ const UMO_ONLY_NODES = new Set([
   "emoji",
 ]);
 
-export interface UmoDocument {
-  format: typeof UMO_DOC_FORMAT;
-  title: string;
-  content: TiptapNode;
-  warnings: string[];
-  differences: MigrationDifference[];
-}
-
 export interface TiptapNode {
   type: string;
   attrs?: Record<string, unknown>;
@@ -222,28 +208,11 @@ export interface InspectResult {
   reason: string;
 }
 
-export interface ReadOnlyOpenResult {
-  ok: boolean;
-  mode: "readonly";
-  kind: MigrationKind;
-  source: unknown;
-  differences: MigrationDifference[];
-  canConvert: boolean;
-  reason: string;
-}
-
 export type ConvertFailureCode =
   | "invalid-json"
   | "not-a-document"
   | "empty-after-convert"
-  | "already-converted"
   | "strict-blocker";
-
-export interface ConvertSuccess {
-  ok: true;
-  document: UmoDocument;
-  alreadyConverted: boolean;
-}
 
 export interface ConvertFailure {
   ok: false;
@@ -251,8 +220,6 @@ export interface ConvertFailure {
   reason: string;
   differences: MigrationDifference[];
 }
-
-export type ConvertResult = ConvertSuccess | ConvertFailure;
 
 export interface ReverseConvertSuccess {
   ok: true;
@@ -267,10 +234,6 @@ export type ReverseConvertResult = ReverseConvertSuccess | ConvertFailure;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function nodeType(value: unknown): string {
@@ -607,118 +570,6 @@ export function inspectRichDocDocument(input: unknown): InspectResult {
   };
 }
 
-/**
- * 存量只读打开。返回的 `source` 是入参的深拷贝，**没有转换结果**。
- * 调用方把这份 JSON 送给 Umo 时必须带 `readOnly: true`，不得当可编辑稿用。
- */
-export function openRichDocReadOnly(input: unknown): ReadOnlyOpenResult {
-  const inspect = inspectRichDocDocument(input);
-  if (inspect.kind === "invalid") {
-    return {
-      ok: false,
-      mode: "readonly",
-      kind: "invalid",
-      source: null,
-      differences: [],
-      canConvert: false,
-      reason: inspect.reason || "这份文档打不开。",
-    };
-  }
-  return {
-    ok: true,
-    mode: "readonly",
-    kind: inspect.kind,
-    source: cloneJson(inspect.source),
-    differences: inspect.differences,
-    canConvert: inspect.kind === "richdoc" || inspect.kind === "empty",
-    reason:
-      inspect.kind === "umo"
-        ? "已经是 Umo 文档，只读打开不会改写。"
-        : inspect.kind === "empty"
-          ? "空文档，只读打开。"
-          : "存量按只读打开，原文一个字节都没改。要点「一键转换」才会生成 Umo 副本。",
-  };
-}
-
-export function convertRichDocToUmo(
-  input: unknown,
-  options: { title?: string; strict?: boolean } = {},
-): ConvertResult {
-  const inspect = inspectRichDocDocument(input);
-  if (inspect.kind === "invalid") {
-    return {
-      ok: false,
-      code: "not-a-document",
-      reason: inspect.reason || "这份内容不是一份能转换的文档。",
-      differences: [],
-    };
-  }
-  if (inspect.kind === "umo") {
-    const existing = isPlainObject(input) && input.format === UMO_DOC_FORMAT
-      ? (cloneJson(input) as unknown as UmoDocument)
-      : {
-          format: UMO_DOC_FORMAT,
-          title: options.title || inspect.title,
-          content: cloneJson(inspect.source) as TiptapNode,
-          warnings: [],
-          differences: inspect.differences,
-        };
-    if (options.strict) {
-      return {
-        ok: false,
-        code: "already-converted",
-        reason: "这份已经是 Umo 文档，一键转换不会再改写它。",
-        differences: inspect.differences,
-      };
-    }
-    return {
-      ok: true,
-      alreadyConverted: true,
-      document: {
-        format: UMO_DOC_FORMAT,
-        title: existing.title || options.title || inspect.title,
-        content: existing.content,
-        warnings: existing.warnings || [],
-        differences: inspect.differences,
-      },
-    };
-  }
-  if (options.strict && inspect.differences.some((item) => item.action === "fail")) {
-    const blocker = inspect.differences.find((item) => item.action === "fail");
-    return {
-      ok: false,
-      code: "strict-blocker",
-      reason: blocker?.reason || "严格模式下存在无法转换的节点。",
-      differences: inspect.differences,
-    };
-  }
-  const converted = convertNode(inspect.source, "$", "to-umo");
-  const doc = ensureDoc(converted);
-  if (!hasVisibleText(doc) && hasVisibleText(inspect.source as TiptapNode)) {
-    return {
-      ok: false,
-      code: "empty-after-convert",
-      reason:
-        "转换后正文被清空：原文档只剩 Umo 不认识的节点，没有可留下的文字或图片。",
-      differences: inspect.differences,
-    };
-  }
-  const warnings = inspect.differences.map(
-    (item) => `${item.feature}：${item.reason}`,
-  );
-  return {
-    ok: true,
-    alreadyConverted: false,
-    document: {
-      format: UMO_DOC_FORMAT,
-      title: options.title || inspect.title,
-      content: doc,
-      warnings,
-      differences: inspect.differences,
-    },
-  };
-}
-
 export function convertUmoToRichDoc(
   input: unknown,
   options: { strict?: boolean } = {},
@@ -772,10 +623,4 @@ export function convertUmoToRichDoc(
     warnings: differences.map((item) => `${item.feature}：${item.reason}`),
     differences,
   };
-}
-
-/** 给宿主判断：这份工程档要不要先挡在只读门后面。 */
-export function needsOneClickConvert(input: unknown): boolean {
-  const inspect = inspectRichDocDocument(input);
-  return inspect.kind === "richdoc" && inspect.differences.length > 0;
 }

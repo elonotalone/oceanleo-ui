@@ -1,6 +1,5 @@
 /**
- * W1-r4: loadHtml stubs without `source` still admit verified bodies, and
- * DOCX typed-array views become a real ArrayBuffer before mammoth.
+ * W1-r4: DOCX typed-array views become a real ArrayBuffer before mammoth.
  */
 import "./helpers/w1-jsdom-window.mjs";
 import assert from "node:assert/strict";
@@ -8,11 +7,6 @@ import test from "node:test";
 import { Document, ImageRun, Packer, Paragraph } from "docx";
 
 import { loadRichDocHtml } from "../src/shell/doc-editors/rich-doc-model.ts";
-import {
-  deriveEditorHandoffFromItem,
-  loadRichDocHostedState,
-  umoSourceFromDocxItem,
-} from "../src/shell/advanced-routes/richdoc-pro-source.ts";
 
 const SCAN_HTML =
   '<p><img src="https://files.example.test/page.png" alt="扫描页"></p>';
@@ -41,25 +35,6 @@ function scanDocxItem() {
     },
   };
 }
-
-test("W1-r4 loadHtml without source still admits image-only HTML", async () => {
-  const item = {
-    ...scanDocxItem(),
-    url: "https://files.example.test/scan.html",
-    previewUrl: "https://files.example.test/scan.html",
-    meta: { filename: "scan.html", mime: "text/html", source_format: "html" },
-  };
-  const hosted = await loadRichDocHostedState(
-    item,
-    deriveEditorHandoffFromItem(item),
-    { loadHtml: async () => ({ html: SCAN_HTML, error: "" }) },
-  );
-  assert.equal(hosted.ok, true);
-  const converted = await umoSourceFromDocxItem(item, {
-    loadHtml: async () => ({ html: SCAN_HTML, error: "" }),
-  });
-  assert.equal(converted.ok, true);
-});
 
 test("W1-r4 DOCX Uint8Array view loads without SharedArrayBuffer", async () => {
   const doc = new Document({

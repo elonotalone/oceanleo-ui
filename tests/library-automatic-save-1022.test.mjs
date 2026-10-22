@@ -281,32 +281,3 @@ test("the 'N changes still not saved' + Retry toast path is gone", () => {
     assert.doesNotMatch(text, /还没保存上|retryAllFailed|data-advanced-background-save-retry|Retry|重试/);
   }
 });
-
-// ---- Umo save path --------------------------------------------------------
-test("Umo persist: delivery file + cover build overlap the serial uploads; idempotency key is stable per content", async () => {
-  saver.resetBackgroundSaverForTests();
-  delete globalThis.window; delete globalThis.document; // the stub DOM above is only for the saver
-  const { persistUmoPayload } = await import("../src/shell/advanced-routes/richdoc-pro-source.ts");
-  const payload = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "代号：蓝鲸-42" }] }] };
-  const item = { key: "k", source: "artifact", id: "a1", title: "T", kind: "document", siteId: "word", favorite: false, meta: {}, revisionId: "r1", artifactId: "a1" };
-  const keys = []; const timings = [];
-  const save = async (args) => {
-    keys.push(args.idempotencyKey);
-    const t0 = Date.now();
-    await new Promise((r) => setTimeout(r, 150)); // simulated project upload
-    const t1 = Date.now();
-    await args.createFile().then(() => console.log("umo-file-ok"), (e) => console.log("umo-file-err", String(e).slice(0, 80))); const t2 = Date.now();
-    await args.createPreview().then((b) => console.log("umo-preview", b ? b.size : b), (e) => console.log("umo-preview-err", String(e).slice(0, 80))); const t3 = Date.now();
-    timings.push({ projectUpload: t1 - t0, createFileAfterUpload: t2 - t1, createPreviewAfterUpload: t3 - t2 });
-    return { ok: true, url: "https://cdn.example/x.docx", revisionId: "r2", artifactId: "a1", projectUrl: "https://cdn.example/x.json" };
-  };
-  const a = await persistUmoPayload({ item, siteId: "word", payload, save });
-  const b = await persistUmoPayload({ item, siteId: "word", payload, save });
-  assert.equal(a.ok, true);
-  assert.equal(keys[0], keys[1], "same base revision + content replays instead of duplicating");
-  const changed = await persistUmoPayload({ item, siteId: "word", payload: { ...payload, content: [{ type: "paragraph", content: [{ type: "text", text: "另一句" }] }] }, save });
-  assert.equal(changed.ok, true); assert.notEqual(keys[2], keys[0]);
-  // Both already finished during the 150ms "upload": waiting for them afterwards is ~free.
-  console.log("umo-timings", JSON.stringify(timings));
-  assert.ok(timings[0].createFileAfterUpload < 100, JSON.stringify(timings[0]));
-});

@@ -17,7 +17,6 @@ import {
 } from "../src/shell/advanced-draft-deck.ts";
 import { deckDocumentToPptist } from "../src/shell/doc-editors/deck-pptist-carrier.ts";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
-import { mountRoute } from "./e9-richdoc-harness.mjs";
 
 const RICHDOC_DRAFT_SCHEMA = "oceanleo.richdoc.edit.v1";
 const GRID_DRAFT_SCHEMA = "oceanleo.grid.univer.v1";
@@ -54,37 +53,16 @@ function sampleDeck() {
   });
 }
 
-async function mountReadyRoute(saveOverride) {
-  const host = mountRoute(saveOverride);
-  // Loading the inline handoff still crosses the route's async source boundary.
-  // Wait for it before the iframe's ready/init handshake, matching the E7 route tests.
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
-  host.render();
-  host.message({ type: "ready" });
-  host.render();
-  await Promise.resolve();
-  await new Promise((resolve) => setImmediate(resolve));
-  host.render();
-  assert.ok(
-    host.posted.some((message) => message.type === "init"),
-    "RichDoc must finish init before this test sends a dirty edit",
-  );
-  return host;
-}
-
 test("P4: owned routes share one working-document schema and drop .pro.v1 destinations", () => {
   const deckHosted = source("../src/shell/advanced-routes/DeckHostedRoute.tsx");
   const deckDraft = source("../src/shell/advanced-draft-deck.ts");
-  const richHosted = source("../src/shell/advanced-routes/RichDocHostedRoute.tsx");
   const richNormal = source("../src/shell/advanced-routes/RichDocRoute.tsx");
   const grid = source("../src/shell/doc-editors/GridUniverStage.tsx");
   assert.match(deckDraft, new RegExp(DECK_DRAFT_SCHEMA.replace(/\./g, "\\.")));
   assert.match(deckHosted, /DECK_DRAFT_SCHEMA/);
   assert.doesNotMatch(deckHosted, /oceanleo\.deck\.pro\.v1/);
-  assert.match(richHosted, new RegExp(RICHDOC_DRAFT_SCHEMA.replace(/\./g, "\\.")));
   assert.match(richNormal, new RegExp(RICHDOC_DRAFT_SCHEMA.replace(/\./g, "\\.")));
-  assert.doesNotMatch(richHosted, /oceanleo\.richdoc\.pro\.v1/);
+  assert.doesNotMatch(richNormal, /oceanleo\.richdoc\.pro\.v1/);
   assert.match(grid, new RegExp(GRID_DRAFT_SCHEMA.replace(/\./g, "\\.")));
   assert.equal((grid.match(/draftSchema:/g) || []).length, 1);
 });
@@ -93,7 +71,6 @@ test("P4: applyMode in owned faces never waits on saveBeforeLeavePro", () => {
   for (const rel of [
     "../src/shell/advanced-routes/DeckHostedRoute.tsx",
     "../src/shell/advanced-routes/DeckRoute.tsx",
-    "../src/shell/advanced-routes/RichDocHostedRoute.tsx",
     "../src/shell/advanced-routes/RichDocRoute.tsx",
     "../src/shell/doc-editors/GridUniverStage.tsx",
   ]) {
@@ -148,30 +125,4 @@ test("P4: server draft loader reads a PPTist working document under the shared s
   assert.equal(loaded.serverDraft.schema, DECK_DRAFT_SCHEMA);
   assert.match(loaded.deck.slides[0].elements[0].text, /专业面刚写下的正文/);
   assert.equal(loaded.draft, null);
-});
-
-test("P4: RichDoc pro face uses the same schema and applyMode still switches when flush would fail", async () => {
-  const host = await mountReadyRoute(async () => ({ ok: false, error: "save failed" }));
-  try {
-    host.message({ type: "dirty", dirty: true, revision: 1 });
-    const capture = host.posted.findLast((message) => message.type === "recovery-capture");
-    assert.ok(capture, "a ready RichDoc editor must capture the dirty document");
-    host.message({
-      type: "recovery-snapshot",
-      ok: true,
-      recoveryId: capture.recoveryId,
-      snapshot: { revision: 1, payload: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "同一份稿" }] }] } },
-    });
-    const adapter = host.render();
-    assert.equal(adapter.persistence.draft.schema, RICHDOC_DRAFT_SCHEMA);
-    assert.equal(adapter.persistence.recovery.draftSchema, RICHDOC_DRAFT_SCHEMA);
-    const failed = await adapter.persistence.flush();
-    assert.equal(failed.ok, false);
-    adapter.mode.setMode("pro");
-    assert.equal(host.render().mode.current, "pro");
-    adapter.mode.setMode("normal");
-    assert.equal(host.render().mode.current, "normal");
-  } finally {
-    host.unmount();
-  }
 });

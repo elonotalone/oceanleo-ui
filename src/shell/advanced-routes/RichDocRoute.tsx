@@ -1,12 +1,9 @@
 "use client";
 
 import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useAdvancedSession } from "../advanced-session-context";
-import { resolveEditorCore } from "../editor-core-flags";
-import { usePluginMode } from "../plugin-chrome/plugin-mode";
-import { PluginModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
 import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -46,59 +43,9 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
-import {
-  bindNormalFaceHandoff,
-  captureBeforeEnterPro,
-  handoffItemKey,
-  handoffRevisionOf,
-  useProSavedRevision,
-} from "./editor-handoff";
-import {
-  deriveEditorHandoffFromItem,
-  isEmptyRichDoc,
-} from "./richdoc-pro-source";
-import { richDocHasContent } from "../doc-editors/rich-doc-model";
 import { convertUmoToRichDoc } from "../doc-editors/rich-doc-umo-migration";
 
-/**
- * 双核 `next` 分支：Umo iframe 托管。**单独 lazy**，翻 flag 前不进本 chunk
- * （`editor-core-flags.ts` 纪律 1）。
- */
-const RichDocHostedRoute = lazy(() =>
-  import("./RichDocHostedRoute").then((module) => ({
-    default: module.RichDocHostedRoute,
-  })),
-);
-
-/**
- * 双核分发口。**flag 只在这里判一次**。
- * 默认 `legacy`（§10 第 3 条）。验收绿之后才翻 flag 并单独删旧目录。
- */
-export function RichDocRoute(props: AdvancedContentWorkbenchProps) {
-  if (resolveEditorCore("richdoc") === "next") {
-    return (
-      <Suspense fallback={null}>
-        <RichDocHostedRoute {...props} />
-      </Suspense>
-    );
-  }
-  // 「编辑 ⇄ 专业编辑」经过渡门：旧面留到 Umo 发 ready，中间是舞台内的切换覆盖层。
-  return (
-    <PluginModeSwitchGate
-      pluginId="richdoc"
-      handoffItemKey={handoffItemKey(props.item)}
-      beforeEnterPro={() => captureBeforeEnterPro(props.item)}
-      renderNormal={() => <RichDocLegacyRoute {...props} />}
-      renderPro={() => (
-        <Suspense fallback={null}>
-          <RichDocHostedRoute {...props} />
-        </Suspense>
-      )}
-    />
-  );
-}
-
-function RichDocLegacyRoute({
+export function RichDocRoute({
   item,
   previewContent,
   linkUrl,
@@ -112,13 +59,6 @@ function RichDocLegacyRoute({
   // loaded bytes stable so that parent identity updates cannot discard edits
   // that landed while the save request was in flight.
   const openedItemRef = useRef(item);
-  const proSaved = useProSavedRevision(handoffItemKey(item));
-  const [, setProTick] = useState(0);
-  useEffect(() => {
-    if (!proSaved) return;
-    openedItemRef.current = proSaved;
-    setProTick((value) => value + 1);
-  }, [proSaved]);
   const officeSource = useOfficeArtifactSource(openedItemRef.current);
   // 多人同改（work-chat W12）：房间由 W11 提供；没有 artifactId 或没开协同就是单人编辑。
   const collabRoom = useCollabRoom({
@@ -151,12 +91,7 @@ function RichDocLegacyRoute({
     live: editor.collabPhase === "live",
     readOnly: editor.collabReadOnly,
   });
-  const persistFlushRef = useRef<(() => Promise<{ ok: boolean }>) | null>(null);
   const [exportError, setExportError] = useState("");
-  // 本组件只画「编辑」页。切「专业编辑」时 store 变 pro，过渡门在旧面之下挂托管件。
-  const { setMode: setEditorMode } = usePluginMode("richdoc");
-  // 切回「编辑」时的 ready 信号：文档载入完就算首帧可见。
-  useModeSwitchReady(!editor.loading && !officeSource.loading);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "richdoc-materials@2",
@@ -266,38 +201,6 @@ function RichDocLegacyRoute({
       item: richDocSavedItemForHandoff(receipt || item, saved),
     };
   }, [collabSaveGate, editor.error, editor.save, item]);
-  persistFlushRef.current = saveBeforeNewConversation;
-  useEffect(() => {
-    return bindNormalFaceHandoff(handoffItemKey(openedItemRef.current), {
-      status:
-        editor.loading || officeSource.loading
-          ? "loading"
-          : editor.sourceReady
-            ? "ready"
-            : "error",
-      getHandoff: () => {
-        const live = editor.editor?.getJSON();
-        if (live && (richDocHasContent(live) || !isEmptyRichDoc(live))) {
-          return {
-            kind: "inline",
-            json: live,
-            revision: handoffRevisionOf(openedItemRef.current),
-          };
-        }
-        return deriveEditorHandoffFromItem(openedItemRef.current);
-      },
-      persistInBackground: () => {
-        if (editor.dirty && editor.sourceReady) void persistFlushRef.current?.();
-      },
-    });
-  }, [
-    editor.dirty,
-    editor.editRevision,
-    editor.editor,
-    editor.loading,
-    editor.sourceReady,
-    officeSource.loading,
-  ]);
   const restoreWorkingDocument = useCallback(
     (payload: unknown) => {
       const reversed = convertUmoToRichDoc(payload);
@@ -524,13 +427,6 @@ function RichDocLegacyRoute({
             editor.editor?.chain().focus().redo().run();
           },
         },
-        mode: {
-          current: "normal",
-          setMode: (next) => {
-            setEditorMode(next);
-          },
-        },
-        pages: { proLabel: "Umo" },
         directDownload: {
           id: "richdoc-export-docx",
           label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.richdoc[0].label}`,

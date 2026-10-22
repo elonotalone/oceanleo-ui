@@ -1,0 +1,2 @@
+- Umo face saved tiptap-json@1 projects (persistUmoPayload) => stored docs open in native editor unchanged; umo.tiptap.v1 shells read by rich-doc-model unwrapNativeRichDocJson (kept).
+- collab-richdoc-review regex was already stale (save arg); loosened.

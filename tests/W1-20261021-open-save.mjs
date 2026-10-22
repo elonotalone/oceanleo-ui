@@ -13,18 +13,6 @@ import {
   loadRichDocSource,
   richDocPersistTarget,
 } from "../src/shell/doc-editors/rich-doc-model.ts";
-import {
-  deriveEditorHandoffFromItem,
-  hostedRichDocOpenState,
-  isUmoNativeSaveId,
-  loadRichDocHostedState,
-  persistUmoPayload,
-} from "../src/shell/advanced-routes/richdoc-pro-source.ts";
-import {
-  createSaveResultWaiter,
-  createUmoHostedSave,
-  isUmoNativeSaveId as isUmoSaveIdFromHosted,
-} from "/root/projects/umo-hosted/src/bridge/umo-save.ts";
 
 const ARTIFACT_ID = "21c1e4d9-0818-4bbe-ae33-b4d01a5beafd";
 const REVISION_ID = "568afa53-b506-4492-9b07-bb2ac3729883";
@@ -122,21 +110,6 @@ function installFetch(handler) {
   };
 }
 
-const MD_JSON = {
-  type: "doc",
-  content: [
-    {
-      type: "heading",
-      attrs: { level: 1 },
-      content: [{ type: "text", text: "需签字盖章页清单（只打第3页）" }],
-    },
-    {
-      type: "paragraph",
-      content: [{ type: "text", text: "只打印第 3 页。" }],
-    },
-  ],
-};
-
 test("W1 persist target: md item stays markdown; docx stays Word", () => {
   const md = richDocPersistTarget(screenshotItem());
   assert.equal(md.sourceFormat, "md");
@@ -225,19 +198,6 @@ test("W1 markdown artifact load (preview URL, not source-tree) contains the body
     assert.match(loaded.html, /需签字盖章页清单/);
     assert.match(loaded.html, /只打印第 3 页|只打第3页/);
     assert.equal(fetched.length, 1);
-
-    const hosted = await loadRichDocHostedState(
-      item,
-      deriveEditorHandoffFromItem(item),
-      {
-        loadHtml: async () => loaded,
-        htmlToJson: async () => MD_JSON,
-      },
-    );
-    assert.equal(hosted.ok, true);
-    const open = hostedRichDocOpenState(hosted);
-    assert.equal(open.saveable, true);
-    assert.equal(open.frameInteractive, true);
   } finally {
     restore();
   }
@@ -272,69 +232,6 @@ test("W1 load retries HTTP 410 then returns the markdown body", async () => {
   } finally {
     restore();
   }
-});
-
-test("W1 failed hosted load is not a saveable blank Umo", async () => {
-  const item = screenshotItem();
-  const loaded = await loadRichDocHostedState(
-    item,
-    deriveEditorHandoffFromItem(item),
-    {
-      loadHtml: async () => ({
-        html: "",
-        error: "媒体加载失败 HTTP 410",
-        source: "empty",
-      }),
-    },
-  );
-  assert.equal(loaded.ok, false);
-  const open = hostedRichDocOpenState(loaded);
-  assert.equal(open.source, null);
-  assert.equal(open.saveable, false);
-  assert.equal(open.frameInteractive, false);
-  assert.match(open.status, /410/);
-});
-
-test("W1 persistUmoPayload of md writes text/markdown, never Word", async () => {
-  const item = screenshotItem();
-  const files = [];
-  const saved = await persistUmoPayload({
-    item,
-    siteId: "home",
-    payload: MD_JSON,
-    save: async (args) => {
-      assert.equal(args.sourceFormat, "md");
-      assert.equal(args.sourceMediaType, "text/markdown");
-      const file = await args.createFile();
-      files.push(file);
-      const text = await file.text();
-      assert.equal(file.type, "text/markdown");
-      assert.match(file.name, /\.md$/);
-      assert.match(text, /需签字盖章页清单/);
-      assert.doesNotMatch(file.type, /wordprocessingml/);
-      return {
-        ok: true,
-        url: "https://cdn.example/docs/v2.md",
-        versionId: "ver-2",
-        projectUrl: "https://cdn.example/docs/v2.json",
-        projectSchema: "tiptap-json@1",
-        sourceFormat: args.sourceFormat,
-        sourceMediaType: args.sourceMediaType,
-        title: args.title,
-        fileName: file.name,
-        savedAt: "2026-10-21T00:00:00.000Z",
-        artifactId: ARTIFACT_ID,
-        revisionId: "rev-2",
-        previousRevisionId: REVISION_ID,
-        error: "",
-      };
-    },
-  });
-  assert.equal(saved.ok, true);
-  assert.equal(saved.item.meta.source_format, "md");
-  assert.equal(saved.item.meta.source_media_type, "text/markdown");
-  assert.equal(saved.item.meta.delivery_format, "md");
-  assert.equal(files.length, 1);
 });
 
 test("W1 persist of a docx item still writes Word", async () => {
@@ -384,24 +281,4 @@ test("W1 persist of a docx item still writes Word", async () => {
   assert.equal(file.type, WORD_MEDIA);
   assert.match(file.name, /\.docx$/);
   assert.ok(file.size > 0);
-});
-
-test("W1 Umo native onSave sends recovery-snapshot and waits for host save-result", async () => {
-  const snapshots = [];
-  const waiter = createSaveResultWaiter(1_000);
-  const onSave = createUmoHostedSave({
-    sendRecoverySnapshot: (saveId, payload, revision) => {
-      snapshots.push({ saveId, payload, revision });
-      waiter.settle(saveId, { ok: true, message: "已保存" });
-    },
-    waitForSaveResult: (saveId) => waiter.wait(saveId),
-    revision: () => 4,
-  });
-  const result = await onSave({ json: MD_JSON });
-  assert.equal(result.status, "success");
-  assert.equal(result.message, "已保存");
-  assert.equal(snapshots.length, 1);
-  assert.equal(isUmoNativeSaveId(snapshots[0].saveId), true);
-  assert.equal(isUmoSaveIdFromHosted(snapshots[0].saveId), true);
-  assert.equal(snapshots[0].revision, 4);
 });

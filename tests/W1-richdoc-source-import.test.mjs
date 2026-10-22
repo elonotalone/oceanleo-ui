@@ -14,13 +14,6 @@ import {
   selectRichDocSourceUrl,
   shouldMarkRichDocSourceReadyFromCollab,
 } from "../src/shell/doc-editors/rich-doc-model.ts";
-import {
-  deriveEditorHandoffFromItem,
-  hostedStateFromResolvedJson,
-  inferRichDocHandoffFormat,
-  isEmptyRichDoc,
-  loadRichDocHostedState,
-} from "../src/shell/advanced-routes/richdoc-pro-source.ts";
 import { sourceHintForItem } from "../src/shell/office-editor/office-source-cache.ts";
 
 const ARTIFACT_ID = "21c1e4d9-0818-4bbe-ae33-b4d01a5beafd";
@@ -93,10 +86,6 @@ test("W1 screenshot item: preview URL is selected, source-tree is not", () => {
   assert.equal(selectRichDocSourceUrl(item), PREVIEW_ACCESS);
   assert.equal(detectRichDocFormat(item, selectRichDocSourceUrl(item)), "markdown");
   assert.equal(itemLooksLikeExistingRichDoc(item), true);
-  const handoff = deriveEditorHandoffFromItem(item);
-  assert.equal(handoff.kind, "url");
-  assert.equal(handoff.url, PREVIEW_ACCESS);
-  assert.equal(handoff.format, "markdown");
   assert.equal(sourceHintForItem(item).url, "");
 });
 
@@ -194,64 +183,6 @@ test("W1 HTML / text / native JSON / docx-shaped import keep their bodies", asyn
   assert.equal(richDocHasContent(emptyJson.json), false);
 });
 
-test("W1 hosted load does not silent-convert markdown and refuses empty handoff", async () => {
-  const item = screenshotItem();
-  const loaded = await loadRichDocHostedState(item, deriveEditorHandoffFromItem(item), {
-    loadHtml: async () => ({ html: `<p>${MARKDOWN_BODY.split("\n")[0]}</p>`, error: "" }),
-    htmlToJson: async (html) => ({
-      type: "doc",
-      content: [
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: html.replace(/<[^>]+>/g, "") }],
-        },
-      ],
-    }),
-  });
-  assert.equal(loaded.ok, true);
-  assert.equal(isEmptyRichDoc(loaded.source), false);
-  assert.equal(loaded.converted, null);
-  assert.notEqual(loaded.inspect.kind, "umo");
-
-  const emptyInline = await loadRichDocHostedState(
-    item,
-    {
-      kind: "inline",
-      json: { type: "doc", content: [{ type: "paragraph" }] },
-      revision: null,
-    },
-    {
-      loadHtml: async () => ({
-        html: `<p>${MARKDOWN_BODY.split("\n")[0]}</p>`,
-        error: "",
-      }),
-      htmlToJson: async (html) => ({
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: html.replace(/<[^>]+>/g, "") }],
-          },
-        ],
-      }),
-    },
-  );
-  assert.equal(emptyInline.ok, true);
-  assert.equal(isEmptyRichDoc(emptyInline.source), false);
-
-  const alreadyUmo = hostedStateFromResolvedJson({
-    format: "umo.tiptap.v1",
-    title: "已转换",
-    content: {
-      type: "doc",
-      content: [
-        { type: "paragraph", content: [{ type: "text", text: "Umo 正文" }] },
-      ],
-    },
-  });
-  assert.equal(alreadyUmo.readOnly, false);
-});
-
 test("W1 empty collab room cannot mark a failed document ready", () => {
   assert.equal(
     shouldMarkRichDocSourceReadyFromCollab({
@@ -321,11 +252,4 @@ test("W1 sanitizer strips script XSS and never returns raw HTML when unavailable
   assert.equal(failed.source, "empty");
   assert.match(failed.error, /安全过滤器暂时不可用/);
   assert.doesNotMatch(failed.html, /alert\(1\)/);
-});
-
-test("W1 deck handoff format still wins over document suffixes", () => {
-  assert.equal(
-    inferRichDocHandoffFormat(screenshotItem(), PREVIEW_ACCESS),
-    "markdown",
-  );
 });
