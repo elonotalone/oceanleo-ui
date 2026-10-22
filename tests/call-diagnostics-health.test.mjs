@@ -306,3 +306,38 @@ test("monitor: audio-only flips the suggestion without a new sample", async () =
   assert.equal(monitor.getSnapshot().suggestion, "check_network");
   assert.equal(monitor.getServerSnapshot().level, 0);
 });
+
+test("monitor: call-store churn (speaking levels) does not re-notify; hang-up resets; audio-only flip re-notifies", async () => {
+  const clock = fakeClock();
+  let ctx = { active: true, sdkLevel: 0, audioOnly: false, ctx: {} };
+  let callListener = null;
+  const monitor = createHealthMonitor({
+    getStats: async () => S({ rttMs: 30 }),
+    getContext: () => ctx,
+    subscribeCall: (listener) => {
+      callListener = listener;
+      return () => {
+        callListener = null;
+      };
+    },
+    now: clock.now,
+    setInterval: clock.setInterval,
+    clearInterval: clock.clearInterval,
+  });
+  let notified = 0;
+  const off = monitor.subscribe(() => {
+    notified += 1;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const afterFirstSample = notified;
+  for (let i = 0; i < 20; i += 1) callListener();
+  assert.equal(notified, afterFirstSample, "unrelated call snapshot changes are ignored");
+  ctx = { ...ctx, audioOnly: true };
+  callListener();
+  assert.equal(notified, afterFirstSample + 1);
+  ctx = { ...ctx, active: false };
+  callListener();
+  assert.equal(monitor.getSnapshot().level, 0, "hang-up clears the level immediately");
+  off();
+  assert.equal(callListener, null, "unsubscribed from the call store with the last listener");
+});

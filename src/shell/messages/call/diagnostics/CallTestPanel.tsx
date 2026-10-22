@@ -98,8 +98,23 @@ function entries(list: MediaDeviceLite[], selectedId: string | null): DeviceEntr
   const selected = selectValue(selectedId);
   return list.map((device) => ({
     label: device.label,
-    selected: selected ? device.deviceId === selected : PSEUDO_DEVICE_IDS.has(device.deviceId),
+    selected: selected ? device.deviceId === selected : device.deviceId === "default",
   }));
+}
+
+const LIST_OF: Record<"mic" | "camera" | "speaker", keyof DeviceLists> = {
+  mic: "microphones",
+  camera: "cameras",
+  speaker: "speakers",
+};
+
+/**
+ * 面板里选的设备写回引擎时用的 id：具体设备原样；「系统默认」只有在浏览器真有 `default` 这个设备（Chrome）时
+ * 才写回 `default`，否则没有可写的 id（Safari/Firefox 没有这个伪设备），返回 null 表示不写。
+ */
+export function engineDeviceId(value: string, list: MediaDeviceLite[]): string | null {
+  if (value) return value;
+  return list.some((device) => device.deviceId === "default") ? "default" : null;
 }
 
 type TestState =
@@ -146,13 +161,16 @@ function CallTestDialog({ onClose }: { onClose(): void }) {
     return () => md.removeEventListener("devicechange", onChange);
   }, [refreshDevices, refreshPermissions]);
 
+  const devicesRef = useRef(devices);
+  devicesRef.current = devices;
   const pickDevice = useCallback((kind: "mic" | "camera" | "speaker", value: string) => {
     const id = value || null;
     if (kind === "mic") setMicId(id);
     if (kind === "camera") setCameraId(id);
     if (kind === "speaker") setSpeakerId(id);
-    // 与通话共用同一个选择（通话中立即切换，不在通话中记住）；系统默认不需要写回。
-    if (id) void callActions.selectDevice(kind, id).catch(() => undefined);
+    // 与通话共用同一个选择（通话中立即切换，不在通话中记住）。
+    const engineId = engineDeviceId(value, devicesRef.current[LIST_OF[kind]]);
+    if (engineId) void callActions.selectDevice(kind, engineId).catch(() => undefined);
   }, []);
 
   // ---------- 麦克风音量条 ----------

@@ -103,10 +103,18 @@ export function createHealthMonitor(deps: HealthMonitorDeps): HealthMonitor {
     timer = deps.setInterval(() => {
       void poll();
     }, HEALTH_POLL_MS);
+    // 通话快照变化很频繁（说话音量每秒好几次）：只在挂断（清零）或仅语音开关变化（建议要跟着变）时通知。
+    let lastAudioOnly = deps.getContext().audioOnly;
     unsubscribeCall = deps.subscribeCall?.(() => {
       const context = deps.getContext();
-      if (!context.active) reset();
-      else emit();
+      if (!context.active) {
+        reset();
+        return;
+      }
+      if (context.audioOnly !== lastAudioOnly) {
+        lastAudioOnly = context.audioOnly;
+        emit();
+      }
     }) ?? null;
     void poll();
   };

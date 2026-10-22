@@ -310,6 +310,15 @@ test("mic level meter opens the SELECTED mic on its own, follows device changes 
     assert.deepEqual(h.selected, [["mic", "mic-3"]]);
     assert.equal(h.meters[0].stopped, true, "the previous capture is released");
     assert.equal(h.meters.at(-1).deviceId, "mic-3");
+    // 「系统默认」：Chrome 有 default 伪设备 → 写回 default；音量条按默认设备开（不指定 deviceId）
+    await choose('select[aria-label="Choose microphone"]', "");
+    await settle();
+    assert.deepEqual(h.selected.at(-1), ["mic", "default"]);
+    assert.equal(h.meters.at(-1).deviceId, null);
+    // 扬声器列表里没有 default 伪设备（Safari/Firefox 的样子）→ 选「系统默认」不写回引擎
+    const before = h.selected.length;
+    await choose('select[aria-label="Choose speaker"]', "");
+    assert.equal(h.selected.length, before);
   });
 });
 
