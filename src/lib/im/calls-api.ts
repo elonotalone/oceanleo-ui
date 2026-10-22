@@ -34,8 +34,12 @@ export const callsApi = {
   join(callId: string): Promise<JoinResponse> {
     return imFetch<JoinResponse>(`${callPath(callId)}/join`, { method: "POST" });
   },
-  leave(callId: string): Promise<LeaveResponse> {
-    return imFetch<LeaveResponse>(`${callPath(callId)}/leave`, { method: "POST" });
+  /** `opts.keepalive`：页面关闭时尽力发出（fetch keepalive），不保证送达；网关 2 分钟无心跳也会清掉。 */
+  leave(callId: string, opts?: { keepalive?: boolean }): Promise<LeaveResponse> {
+    return imFetch<LeaveResponse>(`${callPath(callId)}/leave`, {
+      method: "POST",
+      ...(opts?.keepalive ? { keepalive: true } : {}),
+    });
   },
   /** 同一 participant 续期入频道凭证（`authInfoWillExpire` 时调）。 */
   refreshToken(callId: string): Promise<TokenResponse> {

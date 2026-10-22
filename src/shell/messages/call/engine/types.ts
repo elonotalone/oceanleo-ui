@@ -87,3 +87,24 @@ export interface CallStats {
 }
 
 export type CallOwner = "meeting" | "leo-realtime";
+
+/** `callActions` 的形状（合同 §3.9，签名不许改）。 */
+export interface CallActions {
+  startOrJoin(conversationId: string, ctx?: { title?: string }): Promise<void>;
+  join(callId: string, conversationId: string, ctx?: { title?: string }): Promise<void>;
+  leave(reason?: string): Promise<void>;
+  setMic(on: boolean): Promise<void>;
+  setCamera(on: boolean): Promise<void>;
+  setScreenShare(on: boolean): Promise<void>;
+  setAudioOnly(on: boolean): Promise<void>;
+  listDevices(): Promise<{ microphones: MediaDeviceLite[]; cameras: MediaDeviceLite[]; speakers: MediaDeviceLite[] }>;
+  selectDevice(kind: "mic" | "camera" | "speaker", deviceId: string): Promise<void>;
+  setLocalMute(participantId: string, muted: boolean): Promise<void>;
+  setViewport(mode: "dock" | "stage", visibleIds: string[]): void;
+  attachVideo(el: HTMLVideoElement | null, participantId: string, track: "camera" | "screen"): void;
+  acceptIncoming(): Promise<void>;
+  declineIncoming(): Promise<void>;
+  cancelAloneTimer(): void;
+  getStats(): Promise<CallStats>;
+  getScreenShareSurface(): { width: number; height: number; displaySurface: string } | null;
+}

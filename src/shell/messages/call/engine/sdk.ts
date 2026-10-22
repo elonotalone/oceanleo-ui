@@ -16,6 +16,9 @@
 //     `localDeviceException(deviceType, exceptionType, msg)`、`userAudioMuted/userVideoMuted/userScreenMuted(uid, mute)`。
 //   - 引擎没有 `getStats()` 方法：统计只来自上面这些事件。
 //   - npm 的 ES 产物只有 `default` 导出是引擎类（声明里写的具名 `AliRtcEngine` 在 ES 产物里不存在）。
+//   - 仲裁 A-11：入会前 `setChannelProfile("interactive_live")` + `setClientRole("interactive")`（与安卓/iOS/鸿蒙同一频道互通）；
+//     网关 `RtcCredentials.token` 是单参数 base64 令牌（appid/channelid/userid/nonce/timestamp/token 的 JSON），
+//     所以 `joinChannel(token, 显示名)`、`refreshAuthInfo(新 token)`，不拆成多参数对象。
 
 export const ARTC_SDK_VERSION = "7.3.8";
 export const ARTC_CDN_URLS: readonly string[] = [
@@ -23,8 +26,55 @@ export const ARTC_CDN_URLS: readonly string[] = [
   "https://g.alicdn.com/apsara-media-box/imp-web-rtc/7.3.7/aliyun-rtc-sdk.js",
 ];
 
+/** 仲裁 A-11：全端统一「互动模式 + 主播角色」（声明 :342 AliRtcSdkChannelProfile、:351 AliRtcSdkClientRole 的取值）。 */
+export const CHANNEL_PROFILE = "interactive_live";
+export const CLIENT_ROLE = "interactive";
+
+/** 入会前的公共设置：互动模式 + 主播角色（A-11），远端音频自动收、画面默认不收。 */
+export async function prepareEngine(engine: ArtcEngine, opts: { autoSubscribeAudio: boolean }): Promise<void> {
+  engine.setChannelProfile(CHANNEL_PROFILE);
+  if (typeof engine.setClientRole === "function") await engine.setClientRole(CLIENT_ROLE);
+  engine.setDefaultSubscribeAllRemoteAudioStreams(opts.autoSubscribeAudio);
+  engine.setDefaultSubscribeAllRemoteVideoStreams(false);
+}
+
 /** AliRtcVideoTrack */
 export const VIDEO_TRACK = { none: 0, camera: 1, screen: 2, both: 3 } as const;
+
+export interface VideoWant {
+  camera: boolean;
+  screen: boolean;
+}
+
+interface BizControlWants {
+  updateVideoWant(uid: string, sub: boolean): void;
+  updateScreenWant(uid: string, sub: boolean): void;
+}
+
+/**
+ * 某个远端要不要收摄像头 / 屏幕（音频始终收）。
+ *
+ * 7.3.8 的 `subscribeRemoteMediaStream(uid, track, subVideo, subAudio)` 实现（es.js:24750）只把 `{video, audio}` 交给
+ * 远端用户的 `subscribe()`（es.js:20165），不带 `screen`：传 track=2 实际订到的是摄像头；subVideo=false 也不会退订已收的画面。
+ * 所以优先用声明里 `BizControl.updateVideoWant / updateScreenWant(uid, sub)`（d.ts:2788-2789，按「想要」对账、
+ * 单独退订某一路）；引擎上没有这两个方法时（其它版本）才退回公开的 `subscribeRemoteMediaStream`。
+ */
+export function applyRemoteVideoWant(engine: ArtcEngine, uid: string, previous: VideoWant, next: VideoWant): void {
+  const biz = (engine as unknown as { bizControl?: Partial<BizControlWants> | null }).bizControl;
+  if (biz && typeof biz.updateVideoWant === "function" && typeof biz.updateScreenWant === "function") {
+    if (previous.camera !== next.camera) biz.updateVideoWant(uid, next.camera);
+    if (previous.screen !== next.screen) biz.updateScreenWant(uid, next.screen);
+    return;
+  }
+  const track = next.camera && next.screen
+    ? VIDEO_TRACK.both
+    : next.camera
+      ? VIDEO_TRACK.camera
+      : next.screen
+        ? VIDEO_TRACK.screen
+        : VIDEO_TRACK.none;
+  engine.subscribeRemoteMediaStream(uid, track, track !== VIDEO_TRACK.none, true);
+}
 /** AliRtcAudioTrack */
 export const AUDIO_TRACK = { none: 0, mic: 1, dual: 2 } as const;
 /** AliRtcConnectionStatus */
@@ -92,6 +142,8 @@ export interface ArtcEngine {
   off?(event: string, listener?: ArtcListener): unknown;
   removeAllListeners?(event?: string): unknown;
   setChannelProfile(profile: string): void;
+  /** 声明 :471；互动模式下要设成主播 `interactive` 才能推流（仲裁 A-11）。 */
+  setClientRole?(role: string): Promise<void> | void;
   setDefaultSubscribeAllRemoteAudioStreams(sub: boolean): void;
   setDefaultSubscribeAllRemoteVideoStreams(sub: boolean): void;
   subscribeRemoteMediaStream(uid: string, videoTrack: number, subVideo: boolean, subAudio: boolean): void;
@@ -119,9 +171,11 @@ export interface ArtcEngine {
   getVideoTrack?(config: { userId?: string; streamType: number }): Promise<MediaStreamTrack | undefined>;
   /** 不传 userId = 本地麦克风轨道。 */
   getAudioTrack?(userId?: string): Promise<MediaStreamTrack | undefined>;
-  joinChannel(auth: ArtcAuthInfo, userName?: string): Promise<void>;
+  /** 仲裁 A-11：一律传网关下发的单参数 base64 令牌（`RtcCredentials.token`）。 */
+  joinChannel(authInfoOrToken: ArtcAuthInfo | string, userName?: string): Promise<void>;
   leaveChannel(): Promise<void>;
-  refreshAuthInfo(auth: ArtcRefreshAuthInfo): Promise<void>;
+  /** 仲裁 A-11：续期同样传新的单参数 base64 令牌。 */
+  refreshAuthInfo(authInfoOrToken: ArtcRefreshAuthInfo | string): Promise<void>;
   destroy(): Promise<void> | void;
 }
 

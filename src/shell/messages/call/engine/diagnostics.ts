@@ -3,7 +3,7 @@
 // 只发布音频（可指定麦克风），不订阅任何远端，不发摄像头。统计与 `callActions.getStats()` 同口径。
 import type { RtcCredentials } from "../../../../lib/im/call-types";
 import { createStatsTracker, type StatsTracker } from "./network";
-import { loadArtcSdk, type ArtcEngine, type ArtcSdk } from "./sdk";
+import { loadArtcSdk, prepareEngine, type ArtcEngine, type ArtcSdk } from "./sdk";
 import type { CallStats } from "./types";
 
 export interface DiagnosticsEngine {
@@ -29,12 +29,9 @@ export function diagnosticsEngineFrom(sdk: ArtcSdk, tracker: StatsTracker = crea
     async join(rtc, opts = {}) {
       if (closed) throw new Error("diagnostics_closed");
       if (joined) throw new Error("diagnostics_already_joined");
-      if (!rtc?.app_id || !rtc.channel_id || !rtc.user_id || !rtc.token || !Number.isFinite(rtc.timestamp)) {
-        throw new Error("rtc_credentials_incomplete");
-      }
-      engine.setChannelProfile("communication");
-      engine.setDefaultSubscribeAllRemoteAudioStreams(false);
-      engine.setDefaultSubscribeAllRemoteVideoStreams(false);
+      if (!rtc?.token) throw new Error("rtc_credentials_incomplete");
+      // 仲裁 A-11：与通话同一组设置（互动模式 + 主播角色），单参数令牌入会。
+      await prepareEngine(engine, { autoSubscribeAudio: false });
       await engine.publishLocalVideoStream(false);
       await engine.publishLocalAudioStream(true);
       const micDeviceId = opts.micDeviceId ?? null;
@@ -43,10 +40,7 @@ export function diagnosticsEngineFrom(sdk: ArtcSdk, tracker: StatsTracker = crea
       }
       joined = true;
       try {
-        await engine.joinChannel(
-          { channelId: rtc.channel_id, userId: rtc.user_id, appId: rtc.app_id, token: rtc.token, timestamp: rtc.timestamp },
-          opts.displayName || undefined,
-        );
+        await engine.joinChannel(rtc.token, opts.displayName || undefined);
       } catch (error) {
         joined = false;
         throw error;
