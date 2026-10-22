@@ -920,27 +920,37 @@ test("字幕行：转写关着不出现；小窗一行、放大视图两行；�
   await unknown.unmount();
 });
 
-test("字幕行：本地隐藏（记住选择）→ 只剩「显示字幕」按钮；菜单项同一开关", async () => {
+test("字幕行：本地隐藏（记住选择）→ 只剩「显示字幕」按钮；W07 菜单用 useCaptions().hidden/setHidden 是同一开关", async () => {
   const storage = memoryStorage();
   const { store } = makeStore({ storage });
   store.setCall("call-1");
   store.applyCaption(captionEvent({ sentence_id: 1, text: "大家好", is_final: true }));
   const call = snapshot({ server: { transcription: { enabled: true, started_by: "u-a", started_at: "t" } } });
-  const view = await mount(
-    h(React.Fragment, null, h(services.CallCaptionsLine, { mode: "stage" }), h(services.CallCaptionsMenuItem, {})),
-    { store, call },
-  );
-  const menu = () => view.container.querySelector("[data-call-captions-menuitem]");
+  // 照 W07 CallControls 的用法：菜单项读 hidden、调 setHidden(!hidden)。
+  function MenuLikeW07() {
+    const captions = services.useCaptions();
+    return h(
+      "button",
+      { type: "button", role: "menuitemcheckbox", "aria-checked": !captions.hidden, "data-w07-menu": "", onClick: () => captions.setHidden(!captions.hidden) },
+      "显示字幕",
+    );
+  }
+  const view = await mount(h(React.Fragment, null, h(services.CallCaptionsLine, { mode: "stage" }), h(MenuLikeW07)), { store, call });
+  const menu = () => view.container.querySelector("[data-w07-menu]");
   assert.equal(menu().getAttribute("aria-checked"), "true");
+  assert.ok(view.container.querySelector("[data-caption-speaker]"));
   await view.click('button[aria-label="隐藏字幕"]');
-  assert.equal(storage.data.get(storeMod.CAPTIONS_HIDDEN_KEY), "1");
+  assert.equal(storage.data.get(storeMod.CAPTIONS_HIDDEN_KEY), "1", "记住选择");
   assert.equal(view.container.querySelector("[data-caption-speaker]"), null);
   const show = view.container.querySelector('[data-call-captions="hidden"]');
   assert.equal(show.getAttribute("aria-label"), "显示字幕");
   assert.equal(menu().getAttribute("aria-checked"), "false");
-  await view.click("[data-call-captions-menuitem]");
-  assert.ok(view.container.querySelector("[data-caption-speaker]"), "菜单项把字幕打开");
+  await view.click("[data-w07-menu]");
+  assert.ok(view.container.querySelector("[data-caption-speaker]"), "菜单把字幕打开");
   assert.equal(storage.data.get(storeMod.CAPTIONS_HIDDEN_KEY), "0");
+  await view.click('[data-call-captions] button[aria-label="隐藏字幕"]');
+  await view.click('[data-call-captions="hidden"]');
+  assert.ok(view.container.querySelector("[data-caption-speaker]"), "「显示字幕」按钮也能打开");
   await view.unmount();
 });
 
@@ -1027,19 +1037,20 @@ test("安全：服务目录不新增 innerHTML / dangerouslySetInnerHTML / eval 
 test("样式：组件只用 ui.css 里已有的工具类（ui.css 是共享产物，不在 W06 独占面），其余走行内样式", () => {
   const css = readFileSync(new URL("../src/theme/ui.css", import.meta.url), "utf8");
   const escape = (cls) => cls.replace(/([:[\]./%#(),])/g, "\\$1");
+  // 只认长得像工具类的词：变体前缀（hover:/dark:/…）+ 已知工具类前缀。行内样式的值（如 max-content）不在其列。
+  const UTILITY = /^(?:[a-z-]+:)*(?:-?(?:bg|text|px|py|pt|pb|pl|pr|p|mx|my|mt|mb|ml|mr|m|gap|rounded|h|w|size|min-h|min-w|max-w|max-h|inset|top|bottom|left|right|z|items|justify|self|font|leading|tracking|opacity|shrink|grow|basis|border|ring|shadow|overflow|whitespace|animate|outline|cursor|select|pointer-events|line-clamp|break|flex|inline|grid|order|col|row|place|content|decoration|underline|transition|duration|ease|translate|scale|rotate|fill|stroke)(?:-[a-z0-9.[\]/%#(),-]+)?|flex|block|hidden|truncate|relative|absolute|fixed|sticky|sr-only|italic|uppercase|underline)$/;
   const missing = [];
+  let checked = 0;
   for (const { name, text } of serviceSourceFiles().filter((f) => f.name.endsWith(".tsx"))) {
-    const strings = [...text.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\})/g)].map((m) => m[1] ?? m[2]);
-    for (const m of text.matchAll(/^\s*"([a-z0-9:/[\].\- ]+)",?$/gm)) strings.push(m[1]);
-    for (const m of text.matchAll(/:\s*"([a-z0-9:/[\].\- ]+)",?$/gm)) strings.push(m[1]);
-    for (const raw of strings) {
-      for (const cls of raw.replace(/\$\{[^}]*\}/g, " ").split(/\s+/).filter(Boolean)) {
-        if (!/^[a-z]/.test(cls) || !/[-:]/.test(cls)) {
-          if (!["flex", "relative", "absolute", "truncate", "block", "hidden"].includes(cls)) continue;
-        }
-        if (!css.includes(`.${escape(cls)}`)) missing.push(`${name}: ${cls}`);
+    for (const literal of text.matchAll(/"([^"\n]*)"|`([^`]*)`/g)) {
+      const raw = (literal[1] ?? literal[2] ?? "").replace(/\$\{[^}]*\}/g, " ");
+      for (const token of raw.split(/\s+/).filter(Boolean)) {
+        if (!UTILITY.test(token)) continue;
+        checked += 1;
+        if (!css.includes(`.${escape(token)}`)) missing.push(`${name}: ${token}`);
       }
     }
   }
+  assert.ok(checked > 40, `只检查到 ${checked} 个工具类，抽取失效`);
   assert.deepEqual([...new Set(missing)], []);
 });

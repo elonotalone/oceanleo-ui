@@ -54,15 +54,6 @@ export function CloseIcon({ className }: IconProps) {
   );
 }
 
-/** 勾。 */
-export function CheckIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" className={className}>
-      <path d="M5 12.5l4.5 4.5L19 7.5" />
-    </svg>
-  );
-}
-
 /** 进行中（转圈）。 */
 export function SpinnerIcon({ className }: IconProps) {
   return (

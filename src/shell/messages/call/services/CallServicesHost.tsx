@@ -41,7 +41,7 @@ export function CallServicesHost(): null {
   useEffect(() => {
     const at = nextCaptionExpiry(services.captions);
     if (at === null) return undefined;
-    const timer = setTimeout(() => servicesStore.prune(), Math.max(0, at - Date.now()) + 30);
+    const timer = setTimeout(() => servicesStore.prune(), Math.max(0, at - servicesStore.now()) + 30);
     return () => clearTimeout(timer);
   }, [services.captions]);
 
@@ -59,7 +59,7 @@ export function CallServicesHost(): null {
   const me = call.participants.find((p) => p.isMe) ?? null;
   const participantId = live ? participantUuid(me?.participantId) : null;
   const transcription = live
-    ? transcriptionIsOn(effectiveView(call.server?.transcription ?? null, services.transcription.override, Date.now()))
+    ? transcriptionIsOn(effectiveView(call.server?.transcription ?? null, services.transcription.override))
     : false;
   const mic = live && call.me.mic;
   const micDeviceId = call.me.micDeviceId;

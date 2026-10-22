@@ -32,7 +32,7 @@ export function CallCaptionsLine({ mode = "dock", className }: CallCaptionsLineP
         aria-label={tt("显示字幕")}
         title={tt("显示字幕")}
         className={[
-          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white/80 hover:bg-white/15 focus-visible:outline focus-visible:outline-2",
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white/80 hover:bg-white/10 focus-visible:outline focus-visible:outline-2",
           className,
         ]
           .filter(Boolean)
@@ -86,7 +86,7 @@ export function CallCaptionsLine({ mode = "dock", className }: CallCaptionsLineP
         onClick={() => captions.setHidden(true)}
         aria-label={tt("隐藏字幕")}
         title={tt("隐藏字幕")}
-        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white/70 hover:bg-white/15 focus-visible:outline focus-visible:outline-2"
+        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white/70 hover:bg-white/10 focus-visible:outline focus-visible:outline-2"
       >
         <CloseIcon className="h-3 w-3" />
       </button>

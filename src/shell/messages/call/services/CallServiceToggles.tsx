@@ -1,15 +1,15 @@
 "use client";
 
-// 转写开关、录制开关（合同 §3.9；验收 A12/A13：任何在场的人都可以开、可以关），
-// 外加给 W07 麦克风菜单用的「显示字幕」菜单项。
+// 转写开关、录制开关（合同 §3.9；验收 A12/A13：任何在场的人都可以开、可以关）。
+// 「显示字幕」开关在 W07 的麦克风菜单里（读 useCaptions().hidden、调 setHidden），这里不重复做。
 // 开关调 transcriptionApi / recordingApi（经状态仓）；状态以服务端 CallView 为准。
 // 录制存储没开通（503 recording_storage_unavailable）：按钮上方弹出原话「录制存储尚未开通」，不显示「录制中」，
 // 本通话内按钮的提示与可读说明也一直带着这句（再点会重试，万一中途开通了）。
 import { useId, type ReactNode } from "react";
 import { useUI } from "../../../../i18n/ui/useUI";
-import { useCaptions, useRecordingState, useTranscriptionState } from "./hooks";
-import { CaptionsIcon, CaptionsOffIcon, CheckIcon, RecordIcon, SpinnerIcon, StopIcon } from "./icons";
-import type { CallCaptionsMenuItemProps, CallServiceToggleProps } from "./types";
+import { useRecordingState, useTranscriptionState } from "./hooks";
+import { CaptionsIcon, RecordIcon, SpinnerIcon, StopIcon } from "./icons";
+import type { CallServiceToggleProps } from "./types";
 
 type Tone = "info" | "danger";
 
@@ -18,8 +18,9 @@ const PRESSED_TONE: Record<Tone, string> = {
   danger: "text-red-600 dark:text-red-400",
 };
 
-/** 提示气泡底色（ui.css 没有这一档，行内样式）。 */
+/** 提示气泡：底色 ui.css 没有这一档，行内样式；层级 ≥1160（W07：小窗 1050、放大视图 1100、通话菜单 1150、举报框 1200）。 */
 const BUBBLE_STYLE = {
+  zIndex: 1160,
   backgroundColor: "rgba(0, 0, 0, 0.84)",
   width: "max-content",
   maxWidth: 240,
@@ -111,7 +112,7 @@ function ToggleView(props: ToggleViewProps) {
         <span
           id={messageId}
           role="alert"
-          className="absolute bottom-full left-0 z-10 mb-1 rounded-md px-2 py-1 text-[11px] leading-4 text-white shadow-lg"
+          className="absolute bottom-full left-0 mb-1 rounded-md px-2 py-1 text-[11px] leading-4 text-white shadow-lg"
           style={BUBBLE_STYLE}
         >
           {error}
@@ -171,31 +172,5 @@ export function CallRecordingToggle({ mode = "stage", variant = "button", classN
       error={recording.error ? tt(recording.error.message) : null}
       onToggle={() => void recording.toggle()}
     />
-  );
-}
-
-/** W07 麦克风菜单里的「显示字幕」开关（只影响自己这台设备，记住选择）。 */
-export function CallCaptionsMenuItem({ onSelect, className }: CallCaptionsMenuItemProps) {
-  const tt = useUI();
-  const captions = useCaptions();
-  const shown = !captions.hidden;
-  return (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={shown}
-      data-call-captions-menuitem=""
-      onClick={() => {
-        captions.setHidden(shown);
-        onSelect?.();
-      }}
-      className={["flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-black/5 dark:hover:bg-white/10", className]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      {shown ? <CaptionsIcon className="h-4 w-4 shrink-0" /> : <CaptionsOffIcon className="h-4 w-4 shrink-0" />}
-      <span className="min-w-0 flex-1">{tt("显示字幕")}</span>
-      {shown ? <CheckIcon className="h-4 w-4 shrink-0" /> : null}
-    </button>
   );
 }

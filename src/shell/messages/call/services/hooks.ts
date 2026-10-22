@@ -44,7 +44,7 @@ export function useTranscriptionState(): TranscriptionState {
   const callId = call.callId;
   const live = callIsLive(call.phase) && Boolean(callId);
   const server = call.server?.transcription ?? null;
-  const view = live ? effectiveView(server, services.transcription.override, Date.now()) : null;
+  const view = live ? effectiveView(server, services.transcription.override) : null;
   const toggle = useCallback(async () => {
     if (!callId || !live) return;
     alignStore(callId);
@@ -67,7 +67,7 @@ export function useRecordingState(): RecordingState {
   const callId = call.callId;
   const live = callIsLive(call.phase) && Boolean(callId);
   const server = call.server?.recording ?? null;
-  const view = live ? effectiveView(server, services.recording.override, Date.now()) : null;
+  const view = live ? effectiveView(server, services.recording.override) : null;
   const toggle = useCallback(async () => {
     if (!callId || !live) return;
     alignStore(callId);
@@ -92,7 +92,7 @@ export function useCaptions(): CaptionsState {
   const services = useServicesState();
   const callId = call.callId;
   const live = callIsLive(call.phase) && Boolean(callId);
-  const transcription = live ? effectiveView(call.server?.transcription ?? null, services.transcription.override, Date.now()) : null;
+  const transcription = live ? effectiveView(call.server?.transcription ?? null, services.transcription.override) : null;
   const enabled = transcriptionIsOn(transcription);
   const { captions, speakers } = services;
   const participants = call.participants;
@@ -102,7 +102,7 @@ export function useCaptions(): CaptionsState {
     const byParticipant = new Map(participants.map((p) => [participantKey(p.participantId), p]));
     const byUser = new Map(participants.map((p) => [p.userId, p]));
     const myUserId = participants.find((p) => p.isMe)?.userId ?? null;
-    return captionLines(captions, Date.now(), CAPTION_HOOK_MAX_LINES, CAPTION_HOOK_MAX_CHARS).map((line) => {
+    return captionLines(captions, servicesStore.now(), CAPTION_HOOK_MAX_LINES, CAPTION_HOOK_MAX_CHARS).map((line) => {
       const key = participantKey(line.participantId);
       const present = byParticipant.get(key);
       const known = speakers[key];

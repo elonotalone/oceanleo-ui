@@ -91,9 +91,17 @@ export function viewStamp(value: unknown): string {
   }
 }
 
-/** 有效视图：开关刚返回、服务端快照还没变时用请求结果，否则用服务端快照。 */
-export function effectiveView<T>(server: T | null | undefined, override: ServiceOverride<T | null> | null, now: number): T | null {
-  if (override && override.base === viewStamp(server) && now - override.at < SERVICE_OVERRIDE_MAX_MS) return override.value;
+/**
+ * 有效视图：开关刚返回、服务端快照还没变时用请求结果，否则用服务端快照。
+ * 覆盖最多活 10 秒：状态仓到点自己清掉；传了 `now` 时这里也按它再判一次（同一个时钟）。
+ */
+export function effectiveView<T>(
+  server: T | null | undefined,
+  override: ServiceOverride<T | null> | null,
+  now?: number,
+): T | null {
+  const fresh = now === undefined || !override || now - override.at < SERVICE_OVERRIDE_MAX_MS;
+  if (override && fresh && override.base === viewStamp(server)) return override.value;
   return server ?? null;
 }
 
@@ -132,6 +140,8 @@ export function initialServicesState(captionsHidden = false): ServicesState {
 export interface ServicesStore {
   subscribe(listener: () => void): () => void;
   getState(): ServicesState;
+  /** 状态仓用的时钟（字幕淡出、覆盖过期都按它算；界面也用它，免得两个时钟对不上）。 */
+  now(): number;
   /** 进入/离开/换了通话（null = 不在通话里）。换通话清空字幕、错误与覆盖。 */
   setCall(callId: string | null): void;
   applyCaption(event: CaptionEventInput): void;
@@ -215,6 +225,7 @@ export function createServicesStore(deps: ServicesStoreDeps): ServicesStore {
       ensureHidden();
       return state;
     },
+    now: () => deps.now(),
     setCall(callId) {
       ensureHidden();
       if (state.callId === callId) return;

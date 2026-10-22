@@ -81,9 +81,3 @@ export interface CallServiceBadgesProps {
   mode?: "dock" | "stage";
   className?: string;
 }
-
-export interface CallCaptionsMenuItemProps {
-  /** 选中后（例如关掉所在菜单）。 */
-  onSelect?(): void;
-  className?: string;
-}
