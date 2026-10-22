@@ -193,13 +193,24 @@ test("GameCodeStage 把 Leo 指令面交给 guardPluginSurface(collabReadOnly)",
     new URL("../src/shell/game-editor/GameCodeStage.tsx", import.meta.url),
     "utf8",
   );
+  // 契约：Leo 指令面 = createGameAgentSurface(agentPort) 展开后再补 target / agentContext，
+  // 整体交给 guardPluginSurface，第二参数是 collabReadOnly；useMemo 依赖里必须有
+  // agentPort 与 collabReadOnly。早先那条「guardPluginSurface(createGameAgentSurface(agentPort), collabReadOnly)」
+  // 的字面正则在指令面加了 target / agentContext 之后就过期了——守卫仍在，只是不再是单一调用。
+  // 守卫行为本身由上面的行为测试（只读时三条改源码指令被挡）钉住。
+  const surfaceBlock = src.slice(src.indexOf("usePluginCommandSurface("));
   assert.match(
-    src,
-    /guardPluginSurface\(createGameAgentSurface\(agentPort\), collabReadOnly\)/,
+    surfaceBlock,
+    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) => guardPluginSurface\(\{\s*\.\.\.createGameAgentSurface\(agentPort\),/,
   );
   assert.match(
+    surfaceBlock,
+    /\},\s*collabReadOnly\),\s*\[[^\]]*\bagentPort\b[^\]]*\bcollabReadOnly\b[^\]]*\],\s*\),\s*\)/,
+  );
+  assert.doesNotMatch(
     src,
-    /usePluginCommandSurface\(\s*useMemo\(\s*\(\) => guardPluginSurface\(createGameAgentSurface\(agentPort\), collabReadOnly\),\s*\[agentPort, collabReadOnly\],\s*\),\s*\)/,
+    /usePluginCommandSurface\(\s*createGameAgentSurface/,
+    "指令面不得绕过守卫直接注册",
   );
   assert.match(src, /import \{ guardPluginSurface \} from "\.\.\/collab\/adapters\/visual-readonly"/);
 });
