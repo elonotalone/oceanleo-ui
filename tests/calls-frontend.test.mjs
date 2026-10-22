@@ -4,12 +4,11 @@ import { readFile } from "node:fs/promises";
 import { acceptMediaStreamIfCurrent, applyForCurrentSession, dispatchForCurrentCallSocket, floatToPcm16LE, flushPlaybackQueue, isCurrentCallAttempt, isCurrentCallSocket, pcm16LEToFloat, pcmSamplesPerFrame, shouldRefreshRealtimeBill, stopMediaStreams, videoFrameEnvelope } from "../src/lib/realtime-audio.ts";
 import { appendFinalUserTranscript, upsertFinalAssistantTranscript } from "../src/lib/realtime-transcript.ts";
 import { callStatusLabel, formatConnectedTime, tokenUsageRows } from "../src/lib/call-billing-display.ts";
-import { createArtcClient } from "../src/shell/messages/meeting/artc-client.ts";
-import { meetingHostRequestSnapshot, openMeeting, closeMeeting, claimCall, releaseCall, activeCallOwner, createMeetingInvitationHandler } from "../src/shell/messages/meeting/meeting-host-state.ts";
-import { admitMeetingClient } from "../src/shell/messages/meeting/meeting-admission.ts";
-import { normalizeMeetingBillResponse } from "../src/lib/im/meetings-api.ts";
+// 人际通话（calls-v2）：旧「会话会议」的 artc-client / meeting-admission / meetings-api / 邀请与面板状态已删除（A20）；
+// 与 Leo 实时通话的互斥迁到通话引擎 engine/mutex.ts，旧路径 meeting/meeting-host-state.ts 只做再导出。
+import { claimCall, releaseCall, activeCallOwner } from "../src/shell/messages/call/engine/mutex.ts";
+import * as legacyMutex from "../src/shell/messages/meeting/meeting-host-state.ts";
 import { createLeoRealtimeSession, realtimeSessionRequestBody, realtimeSocket, takeRealtimeMessages } from "../src/lib/leo-realtime.ts";
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 test("realtime PCM uses signed little-endian 16 bit mono frames at provider input rates", () => {
   const encoded = floatToPcm16LE(new Float32Array([-1, -0.5, 0, 0.5, 1]));
@@ -123,21 +122,14 @@ test("billing summaries distinguish confirmed charges from held reserves and des
   ]);
 });
 
-test("meeting leave/end response normalizes the server bill field to the UI receipt field", () => {
-  const bill = { meeting_id: "m1", participant_id: "p1", currency: "CNY", raw_usage: {}, gross: 0, discount: 0, net: 0, status: "closed" };
-  assert.equal(normalizeMeetingBillResponse({ ok: true, bill }).billing, bill);
-  assert.equal(normalizeMeetingBillResponse({ ok: true, billing: bill }).billing, bill);
-});
-
-test("ARTC receipt displays only verified provider pass-through cost and keeps unresolved cost pending", async () => {
-  const source = await readFile(new URL("../src/shell/messages/meeting/MeetingPanel.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /per_user_minute|资费/);
-  assert.match(source, /provider_cost_nano/);
-  assert.match(source, /provider_cost_status/);
-  assert.match(source, /providerCostVerified \? formatMoney\(providerCostNano/);
-  assert.match(source, /待服务商核验，不显示估算/);
-  assert.match(source, /receipt\.pending_reconciliation \? "待核对" : "待核验"/);
-  assert.match(source, /已预留余额：/);
+test("person-to-person call client carries no balance, receipt or invitation surface (A18/A20)", async () => {
+  const api = await readFile(new URL("../src/lib/im/calls-api.ts", import.meta.url), "utf8");
+  const engine = await readFile(new URL("../src/shell/messages/call/engine/controller.ts", import.meta.url), "utf8");
+  for (const source of [api, engine]) {
+    assert.doesNotMatch(source, /余额|扣费|资费|计费|receipt|wallet|reserve/i);
+    assert.doesNotMatch(source, /invitation|invite/i, "joining no longer depends on an invitation");
+  }
+  assert.doesNotMatch(api, /\/meetings\//, "the new client only uses the /calls routes");
 });
 
 test("final provider transcripts refresh canonical Leo history without duplicating streamed assistant text", () => {
@@ -148,130 +140,18 @@ test("final provider transcripts refresh canonical Leo history without duplicati
   assert.equal(shouldRefreshRealtimeBill(10_000, 25_000), true);
 });
 
-test("ARTC media subscriptions preserve the other modality and async failures do not publish false state", async () => {
+test("remote video subscriptions use the declared SDK argument order: (uid, track, subVideo, subAudio)", async () => {
+  const { applyRemoteVideoWant, VIDEO_TRACK } = await import("../src/shell/messages/call/engine/sdk.ts");
   const calls = [];
-  const deviceCalls = [];
-  let releaseDevice;
-  let failNext = false;
-  const engine = {
-    setDefaultSubscribeAllRemoteAudioStreams() {},
-    setDefaultSubscribeAllRemoteVideoStreams() {},
-    publishLocalAudioStream(enabled) { deviceCalls.push(["microphone", enabled]); return new Promise((resolve) => { releaseDevice = resolve; }); },
-    publishLocalVideoStream(enabled) { deviceCalls.push(["camera", enabled]); },
-    publishLocalScreenShareStream(enabled) { deviceCalls.push(["screen", enabled]); },
-    async switchMicrophone(deviceId) { deviceCalls.push(["switch-microphone", deviceId]); },
-    async switchCamera(deviceId) { deviceCalls.push(["switch-camera", deviceId]); },
-    setChannelProfile() {},
-    async joinChannel() {},
-    async leaveChannel() {},
-    destroy() {},
-    on() {},
-    async subscribeRemoteMediaStream(userId, track, audio, video) {
-      calls.push({ userId, track, audio, video });
-      if (failNext) { failNext = false; throw new Error("sdk rejected subscription"); }
-    },
-    setRemoteViewConfig() {},
-    setLocalViewConfig() {},
-    async startPreview() {},
-    async stopPreview() {},
-  };
-  globalThis.window = { AliRtcEngine: {
-    async isSupported() { return { support: true }; },
-    getInstance() { return engine; },
-    async getMicrophoneList() { return [{ deviceId: "mic-1", label: "Mic 1" }]; },
-    async getCameraList() { return [{ deviceId: "camera-1", label: "Camera 1" }]; },
-    AliRtcVideoTrack: { AliRtcVideoTrackBoth: 1 },
-  } };
-  try {
-    const client = await createArtcClient({
-      app_id: "app", token: "provider-token", channel_id: "room", user_id: "member",
-      expires_at: new Date(Date.now() + 60_000).toISOString(),
-      meeting: { meeting_id: "m", conversation_id: "c", edition: "global", channel_id: "room", status: "active", created_by: "u", created_at: "", ended_at: null, participants: [] },
-    }, "name");
-    deviceCalls.length = 0;
-    let microphoneSettled = false;
-    const microphoneSwitch = client.setMicrophone(true).then(() => { microphoneSettled = true; });
-    await Promise.resolve();
-    assert.equal(microphoneSettled, false, "local control must await the SDK promise");
-    assert.deepEqual(deviceCalls[0], ["microphone", true]);
-    releaseDevice();
-    await microphoneSwitch;
-    await client.setCamera(true);
-    await client.setScreenShare(true);
-    assert.deepEqual(deviceCalls.slice(1), [["camera", true], ["screen", true]]);
-    await client.switchMicrophone("mic-1");
-    await client.switchCamera("camera-1");
-    assert.deepEqual(deviceCalls.slice(3), [["switch-microphone", "mic-1"], ["switch-camera", "camera-1"]]);
-    await client.subscribeAudio("remote", true);
-    await client.subscribeVideo("remote", true);
-    assert.deepEqual(calls.at(-1), { userId: "remote", track: 1, audio: true, video: true });
-    failNext = true;
-    await assert.rejects(client.subscribeVideo("remote", false), /sdk rejected/);
-    await client.subscribeAudio("remote", false);
-    assert.deepEqual(calls.at(-1), { userId: "remote", track: 1, audio: false, video: true });
-    await client.subscribeVideo("remote", false);
-    assert.deepEqual(calls.at(-1), { userId: "remote", track: 1, audio: false, video: false });
-    await client.destroy();
-  } finally {
-    delete globalThis.window;
-  }
-});
-
-test("meeting media enumeration and camera/microphone selection use the documented SDK operations", async () => {
-  globalThis.window = { AliRtcEngine: {
-    async isSupported() { return { support: true }; },
-    getInstance() {
-      return {
-        setDefaultSubscribeAllRemoteAudioStreams() {}, setDefaultSubscribeAllRemoteVideoStreams() {},
-        publishLocalAudioStream() {}, publishLocalVideoStream() {}, publishLocalScreenShareStream() {},
-        setChannelProfile() {}, async joinChannel() {}, async leaveChannel() {}, destroy() {}, on() {},
-        async subscribeRemoteMediaStream() {}, setRemoteViewConfig() {}, setLocalViewConfig() {},
-        async startPreview() {}, async stopPreview() {},
-        async switchMicrophone(id) { if (id === "bad") throw new Error("device removed"); },
-        async switchCamera(id) { if (id === "bad") throw new Error("device removed"); },
-      };
-    },
-    AliRtcVideoTrack: { AliRtcVideoTrackBoth: 1 },
-    async getMicrophoneList() { return [{ deviceId: "mic-1", label: "Built-in microphone" }]; },
-    async getCameraList() { return [{ deviceId: "camera-1", label: "Front camera" }]; },
-  } };
-  try {
-    const { getArtcDevices, createArtcClient } = await import("../src/shell/messages/meeting/artc-client.ts");
-    assert.deepEqual(await getArtcDevices(), {
-      microphones: [{ deviceId: "mic-1", label: "Built-in microphone" }],
-      cameras: [{ deviceId: "camera-1", label: "Front camera" }],
-    });
-    const client = await createArtcClient({ app_id: "app", token: "token", channel_id: "room", user_id: "member", expires_at: new Date(Date.now() + 60_000).toISOString(), meeting: { meeting_id: "m", conversation_id: "c", edition: "global", channel_id: "room", status: "active", created_by: "u", created_at: "", ended_at: null, participants: [] } }, "name");
-    await client.switchMicrophone("mic-1");
-    await client.switchCamera("camera-1");
-    await assert.rejects(client.switchCamera("bad"), /device removed/);
-    await client.destroy();
-  } finally { delete globalThis.window; }
-});
-
-test("meeting invitation accept and reject call their authenticated meeting-scoped routes", async () => {
-  globalThis.__CALL_API = { calls: [] };
-  const clientStub = dataModule(`
-    export async function imFetch(path, init = {}) {
-      globalThis.__CALL_API.calls.push({ path, init });
-      return { ok: true };
-    }
-  `);
-  const moduleUrl = await compileModule("src/lib/im/meetings-api.ts", { "./client": clientStub });
-  const { meetingsApi } = await import(moduleUrl);
-  await meetingsApi.invite("meeting/one", ["member-a"]);
-  await meetingsApi.invitations("meeting-1");
-  await meetingsApi.acceptInvitation("meeting-1", "invite-1");
-  await meetingsApi.rejectInvitation("meeting-1", "invite-2");
-  await meetingsApi.bill("meeting-1");
-  assert.deepEqual(globalThis.__CALL_API.calls.map(({ path, init }) => [path, init.method || "GET", init.json]), [
-    ["/v1/im/meetings/meeting%2Fone/invitations", "POST", { recipient_ids: ["member-a"] }],
-    ["/v1/im/meetings/meeting-1/invitations", "GET", undefined],
-    ["/v1/im/meetings/meeting-1/invitations/invite-1/accept", "POST", undefined],
-    ["/v1/im/meetings/meeting-1/invitations/invite-2/reject", "POST", undefined],
-    ["/v1/im/meetings/meeting-1/bill", "GET", undefined],
-  ]);
-  delete globalThis.__CALL_API;
+  const engine = { subscribeRemoteMediaStream(uid, track, subVideo, subAudio) { calls.push([uid, track, subVideo, subAudio]); } };
+  applyRemoteVideoWant(engine, "u1", { camera: false, screen: false }, { camera: true, screen: false });
+  applyRemoteVideoWant(engine, "u1", { camera: true, screen: false }, { camera: true, screen: true });
+  applyRemoteVideoWant(engine, "u1", { camera: true, screen: true }, { camera: false, screen: false });
+  assert.deepEqual(calls, [
+    ["u1", VIDEO_TRACK.camera, true, true],
+    ["u1", VIDEO_TRACK.both, true, true],
+    ["u1", VIDEO_TRACK.none, false, true],
+  ], "audio stays subscribed (4th argument) whatever the video want is");
 });
 
 test("camera and screen frame envelopes stay separately labeled, and cleanup stops every local track", () => {
@@ -296,58 +176,6 @@ test("late media permission results after hangup stop the acquired stream instea
   finishPermission({ getTracks: () => [{ stop() { stopped.push("track"); } }] });
   assert.equal(await pending, null);
   assert.deepEqual(stopped, ["track"]);
-});
-
-test("meeting invitation identity is resolved asynchronously and stale account results cannot open another user's call", async () => {
-  const opened = [];
-  const pendingIds = [];
-  const handler = createMeetingInvitationHandler(() => new Promise((resolve) => pendingIds.push(resolve)), (request) => opened.push(request));
-  const invitation = { invitation_id: "i", meeting_id: "m", inviter_id: "host", invitee_id: "self", status: "pending", created_at: "", expires_at: "" };
-  const older = handler.handle("c", invitation);
-  const newer = handler.handle("c", invitation);
-  pendingIds[1]("self");
-  assert.equal(await newer, true);
-  pendingIds[0]("other-user");
-  assert.equal(await older, false);
-  assert.equal(opened.length, 1);
-  assert.equal(opened[0].myUserId, "self");
-  assert.equal(opened[0].conversationId, "c");
-  handler.cancel();
-});
-
-test("meeting admission closes late join and destroys late SDK clients after unmount", async () => {
-  const leave = [];
-  const destroy = [];
-  let current = true;
-  let resolveCredentials;
-  const joining = admitMeetingClient({
-    join: () => new Promise((resolve) => { resolveCredentials = resolve; }),
-    async createClient() { return { id: "client" }; },
-    isCurrent: () => current,
-    async leave(id) { leave.push(id); },
-    async destroy(client) { destroy.push(client.id); },
-  });
-  current = false;
-  resolveCredentials({ meeting: { meeting_id: "meeting-late" } });
-  assert.equal(await joining, null);
-  assert.deepEqual(leave, ["meeting-late"]);
-  assert.deepEqual(destroy, []);
-
-  current = true;
-  let resolveClient;
-  const creating = admitMeetingClient({
-    async join() { return { meeting: { meeting_id: "meeting-client-late" } }; },
-    createClient() { return new Promise((resolve) => { resolveClient = resolve; }); },
-    isCurrent: () => current,
-    async leave(id) { leave.push(id); },
-    async destroy(client) { destroy.push(client.id); },
-  });
-  await Promise.resolve();
-  current = false;
-  resolveClient({ id: "client-late" });
-  assert.equal(await creating, null);
-  assert.deepEqual(leave, ["meeting-late", "meeting-client-late"]);
-  assert.deepEqual(destroy, ["client-late"]);
 });
 
 test("Leo realtime requests carry only owner session id and bounded typed page context", () => {
@@ -441,15 +269,9 @@ test("aborting a session-ready wait closes the pending socket and rejects as can
   assert.equal(socket.readyState, 3);
 });
 
-test("global meeting request stays owned across surface switches and cannot be replaced while active", () => {
-  closeMeeting();
-  const first = { conversationId: "c1", conversationTitle: "First", myUserId: "u1", myRole: "member", profiles: {}, members: [] };
-  const second = { ...first, conversationId: "c2", conversationTitle: "Second" };
-  openMeeting(first);
-  openMeeting(second);
-  assert.equal(meetingHostRequestSnapshot().conversationId, "c1");
-  closeMeeting();
-  assert.equal(meetingHostRequestSnapshot(), null);
+test("Leo realtime and person-to-person calls stay mutually exclusive through one shared claim (A20)", () => {
+  assert.equal(legacyMutex.claimCall, claimCall, "the legacy path re-exports the engine mutex, so there is only one lock");
+  assert.equal(legacyMutex.releaseCall, releaseCall);
   releaseCall("meeting", 0);
   releaseCall("leo-realtime", 0);
   const meetingClaim = claimCall("meeting");
@@ -461,5 +283,7 @@ test("global meeting request stays owned across surface switches and cannot be r
   releaseCall("meeting", meetingClaim);
   const leoClaim = claimCall("leo-realtime");
   assert.equal(typeof leoClaim, "number", "a different call may start after release");
+  assert.equal(claimCall("meeting"), null, "a person-to-person call cannot start during a Leo realtime call");
   releaseCall("leo-realtime", leoClaim);
+  assert.equal(activeCallOwner(), null);
 });

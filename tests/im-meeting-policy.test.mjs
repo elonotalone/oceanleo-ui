@@ -1,89 +1,48 @@
+// 人际通话的客户端规则（calls-v2，合同 §1 A1 / A18 / A20）。
+// 旧「会话会议」的 meeting-policy（余额门槛、计费提示、检查麦克风）与 artc-client 已删除；
+// 这里改为对新引擎与新接口断言：点了就进、没有余额/计费门槛、没有邀请审批、ARTC 身份映射不变。
+//
+// 跑法：node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
+//        --experimental-loader ./tests/ts-extension-loader.mjs --test tests/im-meeting-policy.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { canJoinMeeting, meetingAvailabilityMessage, sdkUserIdForParticipant } from "../src/shell/messages/meeting/meeting-policy.ts";
 
-const baseSnapshot = {
-  meeting: { meeting_id: "m-1", status: "active" },
-  artc_configured: true,
-  metering_status: "ready",
-};
+import { rtcUserIdForParticipant } from "../src/lib/im/call-types.ts";
+import { participantIdFromRtcUserId } from "../src/shell/messages/call/engine/controller.ts";
+import { DEFAULT_PREFS } from "../src/shell/messages/call/engine/prefs.ts";
 
-test("meeting join requires active meeting, configured ARTC, ready metering, positive known balance, and online idle client", () => {
-  const base = { snapshot: baseSnapshot, wallet: { balance: 1 }, online: true, busy: false, connected: false };
-  assert.equal(canJoinMeeting(base), true);
-  for (const input of [
-    { ...base, snapshot: { ...baseSnapshot, meeting: null } },
-    { ...base, snapshot: { ...baseSnapshot, meeting: { meeting_id: "m-1", status: "ended" } } },
-    { ...base, snapshot: { ...baseSnapshot, artc_configured: false } },
-    { ...base, snapshot: { ...baseSnapshot, metering_status: "unavailable" } },
-    { ...base, snapshot: { ...baseSnapshot, metering_status: "config_missing" } },
-    { ...base, wallet: null },
-    { ...base, wallet: { balance: 0 } },
-    { ...base, wallet: { balance: Number.NaN } },
-    { ...base, online: false },
-    { ...base, busy: true },
-    { ...base, connected: true },
-  ]) assert.equal(canJoinMeeting(input), false);
+const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("server participant UUID maps to the ARTC string identity without separators, and back", () => {
+  const pid = "a41df0d6-3ba2-4a91-bf0d-2905f1eecaa1";
+  assert.equal(rtcUserIdForParticipant(pid), "a41df0d63ba24a91bf0d2905f1eecaa1");
+  assert.equal(participantIdFromRtcUserId("a41df0d63ba24a91bf0d2905f1eecaa1"), pid);
+  assert.equal(participantIdFromRtcUserId("not-a-uuid"), "not-a-uuid", "non-UUID SDK ids pass through untouched");
 });
 
-test("meeting readiness copy distinguishes missing provider config from unavailable metering", () => {
-  assert.match(meetingAvailabilityMessage(null), /读取会议状态/);
-  assert.match(meetingAvailabilityMessage({ ...baseSnapshot, artc_configured: false }), /尚未开通或配置/);
-  assert.equal(meetingAvailabilityMessage({ ...baseSnapshot, metering_status: "unavailable", metering_reason: "核验暂不可用" }), "核验暂不可用");
-  assert.match(meetingAvailabilityMessage(baseSnapshot), /静音或只听也可能计费/);
+test("default media on first join: microphone on, camera off (A1)", () => {
+  assert.equal(DEFAULT_PREFS.mic, true);
+  assert.equal(DEFAULT_PREFS.camera, false);
 });
 
-test("meeting pre-join billing copy explains provider-cost pass-through for every participant", async () => {
-  const source = await readFile(new URL("../src/shell/messages/meeting/MeetingPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /服务商核验的音频、视频和屏幕共享用量原价结算，不加客户费率或加价/);
-  assert.match(source, /发起人和受邀者各自使用自己的余额；静音或只听也可能计费/);
-  assert.doesNotMatch(source, /per_user_minute|资费/);
+test("joining is one click: no microphone check, no preview, no invitation gate, no wallet gate (A1/A18/A20)", async () => {
+  const controller = await read("src/shell/messages/call/engine/controller.ts");
+  const api = await read("src/lib/im/calls-api.ts");
+  // 新接口只有合同 §3.2 的八个动作，没有邀请/接受/拒绝邀请/账单。
+  for (const name of ["status", "startOrJoin", "join", "leave", "refreshToken", "heartbeat", "decline", "testToken"]) {
+    assert.match(api, new RegExp(`\\b${name}\\(`), `callsApi.${name} exists`);
+  }
+  assert.doesNotMatch(api, /invit|accept|reject|bill/i);
+  // 入会路径：装 SDK → 网关入会 → 建引擎入频道；中间没有「检查麦克风」「预览」「余额」这一步。
+  assert.doesNotMatch(controller, /检查麦克风|checkDevices|deviceChecked|startPreview\(\)/);
+  assert.doesNotMatch(controller, /balance|wallet|余额|计费|扣费/i);
+  assert.doesNotMatch(controller, /billing_mode|metering/);
 });
 
-test("server participant UUID maps to the ARTC string identity without separators", () => {
-  assert.equal(sdkUserIdForParticipant("a41df0d6-3ba2-4a91-bf0d-2905f1eecaa1"), "a41df0d63ba24a91bf0d2905f1eecaa1");
-});
-
-test("ARTC client requires server credentials and turns off automatic subscriptions before channel join", async () => {
-  const operations = [];
-  let instanceCount = 0;
-  const engine = {
-    setDefaultSubscribeAllRemoteAudioStreams(value) { operations.push(["default-audio", value]); },
-    setDefaultSubscribeAllRemoteVideoStreams(value) { operations.push(["default-video", value]); },
-    publishLocalAudioStream(value) { operations.push(["publish-audio", value]); },
-    publishLocalVideoStream(value) { operations.push(["publish-video", value]); },
-    publishLocalScreenShareStream(value) { operations.push(["publish-screen", value]); },
-    setChannelProfile(value) { operations.push(["profile", value]); },
-    async joinChannel() { operations.push(["join"]); },
-    async leaveChannel() {}, destroy() {}, on() {}, async subscribeRemoteMediaStream() {},
-    setRemoteViewConfig() {}, setLocalViewConfig() {}, async startPreview() {}, async stopPreview() {},
-    async switchMicrophone() {}, async switchCamera() {},
-  };
-  globalThis.window = { AliRtcEngine: { async isSupported() { return { support: true }; }, getInstance() { instanceCount += 1; return engine; }, AliRtcVideoTrack: { AliRtcVideoTrackBoth: 1 } } };
-  try {
-    const { createArtcClient } = await import("../src/shell/messages/meeting/artc-client.ts");
-    await assert.rejects(createArtcClient({ app_id: "", token: "", channel_id: "", user_id: "", expires_at: "" }, "name"), /meeting_credentials_incomplete/);
-    assert.equal(instanceCount, 0, "incomplete server credentials must not create a media engine");
-    const credentials = { app_id: "app", token: "server-token", channel_id: "room", user_id: "member", expires_at: new Date(Date.now() + 60_000).toISOString(), meeting: { meeting_id: "m", conversation_id: "c", edition: "global", channel_id: "room", status: "active", created_by: "u", created_at: "", ended_at: null, participants: [] } };
-    const client = await createArtcClient(credentials, "name");
-    const joinIndex = operations.findIndex(([name]) => name === "join");
-    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "default-audio" && value === false));
-    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "default-video" && value === false));
-    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "publish-audio" && value === false));
-    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "publish-video" && value === false));
-    assert.ok(operations.slice(0, joinIndex).some(([name, value]) => name === "publish-screen" && value === false));
-    await client.destroy();
-  } finally { delete globalThis.window; }
-});
-
-test("platform-absorbed meetings need no wallet balance and say so", async () => {
-  const snap = { ...baseSnapshot, billing_mode: "platform_absorbed" };
-  const base = { snapshot: snap, wallet: null, online: true, busy: false, connected: false };
-  assert.equal(canJoinMeeting(base), true);
-  assert.equal(canJoinMeeting({ ...base, wallet: { balance: 0 } }), true);
-  assert.equal(canJoinMeeting({ ...base, snapshot: { ...snap, metering_status: "unavailable" } }), false);
-  assert.match(meetingAvailabilityMessage(snap), /由 OceanLeo 承担/);
-  const source = await readFile(new URL("../src/shell/messages/meeting/MeetingPanel.tsx", import.meta.url), "utf8");
-  assert.match(source, /const platformPays = snapshot\?\.billing_mode === "platform_absorbed"/);
+test("no host role: leaving never ends the call for others and nobody can end it for everyone (A20)", async () => {
+  const controller = await read("src/shell/messages/call/engine/controller.ts");
+  const api = await read("src/lib/im/calls-api.ts");
+  assert.doesNotMatch(api, /\/end\b|\bend\(/, "there is no end-for-everyone route in the client");
+  assert.doesNotMatch(controller, /\bowner\b.*\bend\b|isHost|myRole/);
 });
