@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,6 @@ import {
 } from "../src/shell/editor-protocol.ts";
 import {
   COVER_FRAME_SANDBOX,
-  PDF_FRAME_SANDBOX_EXEMPTION,
   SANDBOX_ORIGIN_CONTRACT,
   TRUSTED_EMBED_EDITOR_BASES,
   TRUSTED_EMBED_EDITOR_ORIGINS,
@@ -210,7 +209,6 @@ test("UC-3 W8/1 子站嵌入白名单已清空：workbench-routes.ts 不再有�
 // 违反后果：内联字面量绕过共享策略，新增 iframe 或改宽 sandbox 都不会被任何断言看见。
 test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享策略", () => {
   const surfaces = {
-    "workbench-embed.tsx": source("../src/shell/workbench-embed.tsx"),
     "library-viewers.tsx": source("../src/shell/library-viewers.tsx"),
     "WebsiteArtifactViewer.tsx": source(
       "../src/shell/WebsiteArtifactViewer.tsx",
@@ -222,11 +220,6 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
   // 每个渲染面的 iframe 数量、sandbox 表达式与豁免数量全部锁死：任何新增
   // iframe 或改动 sandbox 表达式都会让本用例变红，必须重新评审。
   const expected = {
-    "workbench-embed.tsx": {
-      iframes: 1,
-      exemptions: 0,
-      sandbox: ["{frameSandbox}"],
-    },
     // PDF 不再有 frame（自家 EmbedPDF 阅读器），只剩 SandboxedWebViewer 一个。
     "library-viewers.tsx": {
       iframes: 1,
@@ -244,8 +237,8 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
     // 与 COVER_FRAME_SANDBOX 等值的字面量，由本断言锁住取值。
     "workspace-library-cover.tsx": {
       iframes: 1,
-      exemptions: 1,
-      sandbox: ['{plan.renderer === "website" ? "allow-scripts" : undefined}'],
+      exemptions: 0,
+      sandbox: ['"allow-scripts"'],
     },
   };
   let exemptions = 0;
@@ -271,12 +264,14 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
     "封面字面量必须与 COVER_FRAME_SANDBOX 同义",
   );
   assert.equal(COVER_FRAME_SANDBOX, "allow-scripts");
-  // 豁免只允许存在于封面这一处 PDF frame，且必须写明理由。
-  assert.equal(exemptions, 1, "sandbox 豁免数量变化必须重新评审");
-  assert.ok(
-      PDF_FRAME_SANDBOX_EXEMPTION === "sandbox-exempt: pdf-plugin" &&
-      source("../src/shell/editor-sandbox-origin.ts").includes("crbug 413851"),
-    "PDF 豁免必须保留其浏览器约束依据",
+  // PDF 封面与详情都已改成自家 PDFium 渲染，不再有任何免沙箱豁免。
+  assert.equal(exemptions, 0, "sandbox 豁免数量变化必须重新评审");
+  assert.equal(
+    source("../src/shell/editor-sandbox-origin.ts").includes(
+      "PDF_FRAME_SANDBOX_EXEMPTION",
+    ),
+    false,
+    "免沙箱 PDF 豁免常量已删除，不得回归",
   );
   for (const name of [
     "WebsiteArtifactViewer.tsx",
@@ -287,12 +282,6 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
       `${name}: 免沙箱的 PDF frame 至少要阻断 Referer 外泄`,
     );
   }
-  assert.ok(
-    surfaces["workbench-embed.tsx"].includes(
-      "isTrustedEmbedEditorBase(editorBase)",
-    ),
-    "workbench-embed 必须在构造 src 前校验 base 属于写死白名单",
-  );
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -301,7 +290,7 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
 test("附件条不得用 iframe 预览 PDF", () => {
   const text = source("../src/shell/AttachmentStrip.tsx");
   assert.equal((text.match(/<iframe\b/g) || []).length, 0);
-  assert.equal(text.includes(PDF_FRAME_SANDBOX_EXEMPTION), false);
+  assert.equal(text.includes("sandbox-exempt"), false);
 });
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -532,23 +521,28 @@ test("W8/3 targetOrigin 不得为 `*`，且只允许白名单编辑器 origin", 
   for (const origin of TRUSTED_EMBED_EDITOR_ORIGINS) {
     assert.equal(isValidEditorTargetOrigin(origin), true, origin);
   }
-  for (const file of [
-    "../src/shell/workbench-embed.tsx",
-    "../src/shell/use-embed-editor-messages.ts",
-    "../src/shell/library-viewers.tsx",
-  ]) {
-    const text = source(file);
+  // 编辑器 iframe 已全部移除；改为扫描 src 下所有代码（去掉注释行）确保没有任何
+  // `postMessage(..., "*")` 调用，防止未来任何新增承载面广播给任意 origin。
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return walk(full);
+      return /\.(tsx?|mjs)$/.test(entry.name) ? [full] : [];
+    });
+  const srcRoot = fileURLToPath(new URL("../src", import.meta.url));
+  const files = walk(srcRoot);
+  assert.ok(files.length > 100, "必须真正扫描到 src 源码");
+  for (const file of files) {
+    const code = readFileSync(file, "utf8")
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
+      .join("\n");
     assert.equal(
-      /postMessage\([^;]*["'`]\*["'`]/s.test(text),
+      /\.postMessage\([^;]*["'`]\*["'`]/s.test(code),
       false,
       `${file}: postMessage 的 targetOrigin 不得为 *`,
     );
   }
-  const embed = source("../src/shell/workbench-embed.tsx");
-  const posts = (embed.match(/postMessage\(/g) || []).length;
-  const guards = (embed.match(/isValidEditorTargetOrigin\(editorOrigin\)/g) || [])
-    .length;
-  assert.ok(posts > 0 && guards >= 2, "每条投递路径都要先校验 targetOrigin");
 });
 
 // UC-6 §8.6（docs/architecture/oceanleo-untrusted-content-isolation.md）
@@ -702,11 +696,6 @@ test("W8/3 协议指令集保持最小闭集", () => {
   assert.ok(
     protocol.includes("!HOST_TO_EDITOR_MESSAGE_TYPES.has(type)"),
     "asHostToEditorMessage 必须先过指令白名单",
-  );
-  const messages = source("../src/shell/use-embed-editor-messages.ts");
-  assert.ok(
-    messages.includes("acceptEditorFrameMessage(event, {"),
-    "收信必须走共享闸门，不得在 hook 内自行拼 origin 判断",
   );
 });
 
@@ -940,7 +929,7 @@ test("W24/3 三处渲染面：iframe、sandbox 与 src 表达式集合相等且�
       `${name}: 渲染面不得内联 allow-same-origin 字符串`,
     );
     assert.equal(
-      text.includes(PDF_FRAME_SANDBOX_EXEMPTION),
+      text.includes("sandbox-exempt"),
       false,
       `${name}: 这三处不是 PDF frame，不得套用免沙箱豁免`,
     );
@@ -1027,7 +1016,4 @@ test("R8 生产宿主忽略嵌入源覆盖，LeoDev 槽位覆盖不得放宽 UGC
     familyEmbedFrameSandbox(`${slotOrigin}/embed/site-editor`, "website.oceanleo.com"),
     UNTRUSTED_FRAME_SANDBOX,
   );
-  const embed = source("../src/shell/workbench-embed.tsx");
-  assert.match(embed, /isTrustedEmbedEditorBase\(editorBase\)[\s\S]*resolveEmbedLoadBase\(editorBase\)/);
-  assert.match(source("../src/shell/workbench-embed-base.ts"), /applyFamilyEmbedOriginOverride\(/);
 });

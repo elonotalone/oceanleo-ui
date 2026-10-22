@@ -182,17 +182,6 @@ export const UNTRUSTED_FRAME_SANDBOX =
 /** 只读封面 frame：不需要表单/弹窗/下载。 */
 export const COVER_FRAME_SANDBOX = "allow-scripts";
 
-/**
- * PDF frame 的沙箱豁免标记。Chromium 的内建 PDF 查看器是插件式实现，
- * **任何** sandbox 属性（包括 `allow-scripts allow-same-origin`）都会让 PDF
- * 完全不渲染（crbug 413851）。因此 PDF frame 只能不加 sandbox，靠三件事兜底：
- *   1. src 恒为第一方签发的 rendition 地址，不接受用户可控 URL；
- *   2. `referrerPolicy="no-referrer"`，签名地址不经 Referer 外泄；
- *   3. PDF 是跨源文档，同源策略本身即阻止它触碰宿主 DOM 与 cookie。
- * 加沙箱前必须先换掉渲染方式（pdf.js 之类的纯 HTML 渲染器）。
- */
-export const PDF_FRAME_SANDBOX_EXEMPTION = "sandbox-exempt: pdf-plugin";
-
 /** 白名单协议编辑器：第一方代码，需要同源以完成 round-trip 保存。 */
 export const TRUSTED_EMBED_EDITOR_SANDBOX =
   "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals";

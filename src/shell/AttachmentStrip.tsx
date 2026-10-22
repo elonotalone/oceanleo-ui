@@ -133,9 +133,8 @@ function PreviewPanel({ item, onClose }: { item: StripAttachment; onClose: () =>
             <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">{text}</pre>
           )
         ) : kind === "pdf" && src ? (
-          // 不内嵌 iframe。src 经常是 blob:（与宿主同源），Chromium 的 PDF
-          // 插件又不能加任何 sandbox（crbug 413851 / PDF_FRAME_SANDBOX_EXEMPTION）。
-          // 免沙箱 + 同源会把 UC-3 拆掉；库里的 PDF 查看器才走主机白名单豁免。
+          // 不内嵌 iframe。src 经常是 blob:（与宿主同源），PDF 又不得免沙箱
+          // 渲染（UC-3）；库里的 PDF 走自家 EmbedPDF 阅读器。
           // 这里只用顶栏「打开」在新标签看文件。
           <p className="text-neutral-500">{item.name || tt("附件")}</p>
         ) : kind === "audio" && src ? (

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -30,8 +29,6 @@ const hostRoundTrip = (message) =>
     JSON.parse(JSON.stringify(envelope(message))),
     instanceId,
   );
-const source = (path) =>
-  readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("history changes round-trip and embedded undo/redo consume child truth", () => {
   const history = childRoundTrip({
@@ -75,11 +72,6 @@ test("history changes round-trip and embedded undo/redo consume child truth", ()
     }),
     null,
   );
-
-  const host =
-    source("../src/shell/workbench-embed.tsx") +
-    source("../src/shell/use-embed-editor-messages.ts");
-  assert.match(host, /message\.type === "history-changed"/);
 });
 
 test("tools and six project views are validated and commandable both ways", () => {
@@ -172,11 +164,6 @@ test("tools and six project views are validated and commandable both ways", () =
     null,
     "multiple active views must fail closed",
   );
-
-  const host =
-    source("../src/shell/workbench-embed.tsx") +
-    source("../src/shell/use-embed-editor-messages.ts");
-  assert.match(host, /onProtocolReset\?\.\(\)/);
 });
 
 test("manifest role/placement split pages.aux from document actions; first row has no project-view buttons", () => {
@@ -243,10 +230,6 @@ test("manifest role/placement split pages.aux from document actions; first row h
   assert.equal(accepted?.type, "project-manifest");
   assert.equal(accepted?.manifest.views[0].role, "artifact");
   assert.equal(accepted?.manifest.actions[1].placement, "download");
-
-  const host = source("../src/shell/workbench-embed.tsx");
-  assert.match(host, /chrome: "host"/);
-  assert.match(host, /type: "set-mode"/);
 });
 
 // 规范 v2 §4（plugin-chrome X3）：manifest 动作按 `group` 三分——edit 进编辑栏、
@@ -321,9 +304,6 @@ test("manifest action.group splits edit / save / download; save never reaches th
     console.error = originalError;
   }
   assert.ok(errors.some((line) => line.includes("invalid action.group")));
-
-  // EmbeddedRoute 把三组都交给宿主，并把 group 写进每条 AdvancedWorkbenchAction；
-  // video_canvas 的「运行全部」显式 edit。
 });
 
 test("recovery capture and restore preserve a real unconfirmed revision", () => {
@@ -386,13 +366,6 @@ test("recovery capture and restore preserve a real unconfirmed revision", () => 
     }),
     false,
   );
-
-  const pane = source("../src/shell/workbench-embed.tsx");
-  assert.match(
-    pane,
-    /if \(phase !== "ready" \|\| !recoveryRestore\) return/,
-    "restore may queue before handshake but cannot cross the iframe ready gate",
-  );
 });
 
 test("editor issues preserve legacy fatal behavior and validate optional severity", () => {
@@ -432,18 +405,6 @@ test("editor issues preserve legacy fatal behavior and validate optional severit
       severity: "fatal",
     })?.code,
     "WEBSITE_RECOVERY_STALE_SOURCE",
-  );
-
-  const messages = source("../src/shell/use-embed-editor-messages.ts");
-  const pane = source("../src/shell/workbench-embed.tsx");
-  assert.match(messages, /message\.severity \|\| "fatal"/);
-  assert.match(pane, /status\.severity === "fatal" \? "alert" : "status"/);
-  assert.match(pane, /aria-live=\{status\.severity === "fatal"/);
-  assert.match(pane, /status\.retryable \? 8_000 : 5_000/);
-  assert.match(pane, /data-editor-status-severity/);
-  assert.doesNotMatch(
-    pane,
-    /status && phase === "ready"[\s\S]{0,120}className="[^"]*bg-red-700/,
   );
 });
 
@@ -531,34 +492,4 @@ test("protocol remains fail-closed and save/export/dispose carry idempotency key
     })?.exportId,
     "export-1",
   );
-
-  const host =
-    source("../src/shell/workbench-embed.tsx") +
-    source("../src/shell/use-embed-editor-messages.ts");
-  assert.match(host, /event\.source !== iframeRef\.current\?\.contentWindow/);
-  assert.match(host, /event\.origin !== editorOrigin/);
-  assert.match(host, /sentSaveRequestsRef/);
-  assert.match(host, /sentExportRequestsRef/);
-  assert.match(host, /disposeId/);
-  assert.match(host, /artifactSaveOperationsRef/);
 });
-
-test("selection and project failures become host-visible errors", () => {
-  const host =
-    source("../src/shell/workbench-embed.tsx") +
-    source("../src/shell/use-embed-editor-messages.ts");
-  assert.match(
-    host,
-    /message\.type === "selection-result"[\s\S]*?!message\.ok[\s\S]*?setStatus/,
-  );
-  assert.match(
-    host,
-    /message\.type === "project-result"[\s\S]*?!message\.ok[\s\S]*?setStatus/,
-  );
-  assert.match(
-    host,
-    /latestProjectManifestRevisionRef\.current[\s\S]*?staleMessage[\s\S]*?onProjectResult/,
-  );
-  assert.match(host, /status\.severity === "fatal" \? "alert" : "status"/);
-});
-
