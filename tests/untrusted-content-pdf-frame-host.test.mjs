@@ -52,6 +52,8 @@ test("W19/1 PDF 封面 plan 走 pdf 位图渲染器，不再按主机白名单�
   }
 });
 
+// UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
+// 违反后果：PDF 封面一旦重新出现 iframe/embed/object 就会绕开 sandbox 策略。
 test("W19/1 手工构造的 pdf plan 也渲染不出 iframe / embed / object", async () => {
   const { WorkspaceCoverResource } = await loadCoverModule();
   for (const url of PDF_URLS) {
