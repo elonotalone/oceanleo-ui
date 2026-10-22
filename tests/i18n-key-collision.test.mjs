@@ -129,6 +129,7 @@ const WORK_CHAT_FRAGMENTS = [
   ["collab-pdf-copy", "COLLAB_PDF_MESSAGES"],
   ["collab-workflow-copy", "COLLAB_WORKFLOW_MESSAGES"],
   ["collab-grid-copy", "COLLAB_GRID_MESSAGES"],
+  ["call-copy", "CALL_MESSAGES"],
 ];
 
 // 每一项都必须说明为什么同一中文键在两张 work-chat 分表里可以故意有不同英文——这代表

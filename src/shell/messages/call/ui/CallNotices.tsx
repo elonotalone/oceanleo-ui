@@ -24,7 +24,7 @@ export function callErrorText(tt: UITranslate, error: { code: string; message: s
     case "call_full":
       return tt("通话人数已满（最多 {n} 人）。", { n: maxParticipants });
     case "call_unavailable":
-      return tt("这通通话已经结束。");
+      return tt("这通通话已经结束");
     case "artc_not_configured":
       return tt("通话服务暂未开通，请稍后再试。");
     case "removed_from_conversation":
@@ -32,14 +32,14 @@ export function callErrorText(tt: UITranslate, error: { code: string; message: s
     case "not_participant":
       return tt("你已不在这通通话里，请重新加入。");
     case "rate_limited":
-      return tt("操作太频繁，请稍后再试。");
+      return tt("操作太频繁，请稍后再试");
     case "unauthorized":
       return tt("请先登录");
     case "network":
       return tt("网络连接中断，请检查网络后再试。");
     // 引擎（W05）
     case "busy_leo_realtime":
-      return tt("你正在和 Leo 实时通话，请先结束再加入。");
+      return tt("正在与 Leo 实时通话，请先结束");
     case "ring_declined":
       return tt("对方已拒绝");
     case "ring_missed":
