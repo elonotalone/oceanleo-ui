@@ -244,6 +244,7 @@ export function callEventText(
   nameOf: (userId: string | null | undefined) => string,
   viewerId: string | null,
 ): string {
+  const mine = Boolean(viewerId) && meta.userId === viewerId;
   switch (meta.kind) {
     case "call_ended": {
       const duration = formatCallDuration(meta.durationSeconds);
@@ -256,19 +257,20 @@ export function callEventText(
       return tt("未接通");
     case "call_declined":
       return viewerId && meta.calleeId === viewerId ? tt("你已拒接") : tt("对方已拒绝");
+    // 本人做的事用单独的「你…」句子：把「你」代进「{name} …」在德语、法语等语言里主谓不一致。
     case "call_recording_started":
-      return tt("{name} 开始了录制", { name: nameOf(meta.userId) });
+      return mine ? tt("你开始了录制") : tt("{name} 开始了录制", { name: nameOf(meta.userId) });
     case "call_recording_stopped":
-      return tt("{name} 停止了录制", { name: nameOf(meta.userId) });
+      return mine ? tt("你停止了录制") : tt("{name} 停止了录制", { name: nameOf(meta.userId) });
     case "call_recording_failed": {
       // 仲裁 A-13：一行「录制失败 · 原因」，不给播放按钮；不认识的原因只写「录制失败」。
       const reason = recordingFailureReason(tt, meta.error);
       return reason ? tt("录制失败 · {reason}", { reason }) : tt("录制失败");
     }
     case "call_transcription_started":
-      return tt("{name} 开启了转写", { name: nameOf(meta.userId) });
+      return mine ? tt("你开启了转写") : tt("{name} 开启了转写", { name: nameOf(meta.userId) });
     case "call_transcription_stopped":
-      return tt("{name} 关闭了转写", { name: nameOf(meta.userId) });
+      return mine ? tt("你关闭了转写") : tt("{name} 关闭了转写", { name: nameOf(meta.userId) });
     default:
       return "";
   }
