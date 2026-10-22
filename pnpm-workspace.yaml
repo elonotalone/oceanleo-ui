@@ -7,6 +7,7 @@ allowBuilds:
   '@scarf/scarf': false # 遥测上报，明确关闭
   es5-ext: false # postinstall 只打印赞助信息
   protobufjs: false # CLI 用的代码生成，浏览器侧用不到
+  core-js: false # 2026-10-23 calls-v2：aliyun-rtc-sdk 的传递依赖，postinstall 只打印赞助信息
   '@parcel/watcher': set this to true or false
   '@swc/core': set this to true or false
   sharp: set this to true or false
