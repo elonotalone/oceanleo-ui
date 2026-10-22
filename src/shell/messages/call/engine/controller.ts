@@ -244,6 +244,7 @@ interface MeState {
 }
 
 const IN_CALL_PHASES: ReadonlySet<CallPhase> = new Set<CallPhase>(["connected", "reconnecting"]);
+const PARTICIPANT_UID = /^[0-9a-f]{32}$/i;
 
 // ---------------------------------------------------------------------------
 // 控制器
@@ -534,7 +535,8 @@ export function createCallController(deps: CallControllerDeps): CallController {
   }
 
   function remoteOnline(engine: ArtcEngine, uid: string): void {
-    if (!uid) return;
+    // 只认网关签发的身份（participant UUID 去连字符 = 32 位十六进制）；云端录制机器人等非参会者不进名单（仲裁 A-17 背景）。
+    if (!PARTICIPANT_UID.test(uid)) return;
     const now = clock.now();
     let r = remotes.get(uid);
     if (!r) {

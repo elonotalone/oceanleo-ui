@@ -419,6 +419,11 @@ test("roster follows SDK presence; the server CallView only supplies names and m
   t.engine().emit("remoteUserOffLineNotify", uidOf(3), 0);
   await settle();
   assert.deepEqual(t.snap().participants.map((p) => p.participantId), [ME_PID]);
+  // 不是网关签发的身份（如云端录制机器人）：不进名单，也不打断「只剩自己」。
+  t.engine().emit("remoteUserOnLineNotify", "cloud-recorder-01", 0);
+  t.engine().emit("remoteTrackAvailableNotify", "cloud-recorder-01", 1, 0);
+  await settle();
+  assert.deepEqual(t.snap().participants.map((p) => p.participantId), [ME_PID]);
 });
 
 test("a dropped person who never comes back disappears after the 2-minute server grace", async () => {
