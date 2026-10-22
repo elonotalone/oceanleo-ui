@@ -1,0 +1,1 @@
+- baseline: tests/test_reviewed_material_catalog*.py (6 fail, 10 error) and test_edition_c6_global_unchanged::c3_verdicts fail on untouched HEAD too.
