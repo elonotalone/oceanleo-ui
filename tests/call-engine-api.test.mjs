@@ -199,8 +199,8 @@ test("stats: rtt from the candidate pair, kbps from byte deltas, loss from SDK q
   // 远端：入站包两次之差算丢包率。
   tracker.onRemoteInbound("audio", [{ uid: "r1", stats: { packetsLost: 0, packetsReceived: 100 } }]);
   assert.equal(tracker.remoteLevel("r1"), 0, "one sample: unknown");
-  tracker.onRemoteInbound("audio", [{ uid: "r1", stats: { packetsLost: 30, packetsReceived: 170 } }]);
-  assert.equal(tracker.remoteLevel("r1"), 2, "30 lost of 100 in the window → 30 % → level 2");
+  tracker.onRemoteInbound("audio", [{ uid: "r1", stats: { packetsLost: 31, packetsReceived: 169 } }]);
+  assert.equal(tracker.remoteLevel("r1"), 2, "31 lost of 100 in the window → 31 % (> 30, SDK口径) → level 2");
   // candidate-pair 不带字节数时，用本地 outbound-rtp 估上行。
   const t2 = createStatsTracker(() => now);
   t2.onTransport({ currentRoundTripTime: 0.02 });
