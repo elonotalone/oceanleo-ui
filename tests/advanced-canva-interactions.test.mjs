@@ -140,7 +140,6 @@ test("advanced editors autosave projects and reserve header actions for delivery
   assert.doesNotMatch(imageHook, /URL\.createObjectURL\(file\)/);
 
   for (const [path, manualSaveCall] of [
-    ["../src/shell/chart-editor/ChartControls.tsx", /editor\.save\(\)/],
     ["../src/shell/media-editors/PdfControls.tsx", /editor\.saveCopy\(\)/],
     ["../src/shell/media-editors/Model3DControls.tsx", /editor\.saveCopy\(\)/],
     [

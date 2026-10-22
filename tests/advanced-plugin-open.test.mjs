@@ -31,13 +31,12 @@ const EDITOR_BOARD_FEATURE_IDS = [
   "pdf_editing",
   "audio_editing",
   "model_3d",
-  "chart_editing",
   "video_canvas",
   "game_editing",
 ];
 
-test("all 13 operator plugins have a local draft that can open without the gateway", () => {
-  assert.equal(ADVANCED_PLUGIN_FEATURE_IDS.length, 13);
+test("all 12 operator plugins have a local draft (chart editor deleted 2026-10-22) that can open without the gateway", () => {
+  assert.equal(ADVANCED_PLUGIN_FEATURE_IDS.length, 12);
   assert.deepEqual([...ADVANCED_PLUGIN_FEATURE_IDS].sort(), [...EDITOR_BOARD_FEATURE_IDS].sort());
   for (const id of ADVANCED_PLUGIN_FEATURE_IDS) {
     const item = blankAdvancedFeatureItem({ id, title: id }, "oceanleo");

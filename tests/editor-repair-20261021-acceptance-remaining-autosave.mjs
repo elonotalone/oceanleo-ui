@@ -223,39 +223,6 @@ test("native deck: local apply / endGesture / undo record; remote collab / load 
   assert.equal(generationOf(item), 1);
 });
 
-test("hosted deck: post-open dirty:true records; restore-only dirty does not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/advanced-routes/DeckHostedRoute.tsx",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "DeckHostedRoute.tsx", [
-    "applyHostedDeckUserEditSession",
-  ]);
-  const item = itemFor("hosted-deck");
-  const opened = {
-    kind: "dirty",
-    dirty: true,
-    openedContentIdentity: "v2-deck|open-1",
-    contentIdentity: "v2-deck|open-1",
-    source: { slides: [{ id: "s1" }] },
-    applyingInit: false,
-  };
-  assertRecords("hosted-deck", callBag, fn, item, opened);
-  assertDoesNotRecord("hosted-deck", callBag, fn, item, [
-    { ...opened, kind: "restore", dirty: true },
-    { ...opened, kind: "init" },
-    { ...opened, dirty: false },
-    { ...opened, openedContentIdentity: null },
-    { ...opened, openedContentIdentity: "other" },
-    { ...opened, source: null },
-    { ...opened, applyingInit: true },
-  ]);
-  assertNonPersonAfterPerson("hosted-deck", callBag, fn, item, opened, [
-    { ...opened, kind: "restore", dirty: true },
-    { ...opened, kind: "init" },
-  ]);
-});
-
 /* --------------------------------- W6 --------------------------------- */
 
 test("video timeline: person commit records; load hydrate does not", async () => {
@@ -270,20 +237,6 @@ test("video timeline: person commit records; load hydrate does not", async () =>
   const item = itemFor("video-timeline");
   assertRecords("video-timeline", callPair, fn, item, "person-commit");
   assertDoesNotRecord("video-timeline", callPair, fn, item, ["hydrate", "load"]);
-});
-
-test("video designcombo: person commit records; load does not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/video-editor/VideoDesigncomboStage.tsx",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "VideoDesigncomboStage.tsx", [
-    "applyVideoDesigncomboUserEditSession",
-    "applyVideoUserEditSession",
-  ]);
-  const item = itemFor("video-designcombo");
-  assertRecords("video-designcombo", callPair, fn, item, "commit");
-  assertDoesNotRecord("video-designcombo", callPair, fn, item, ["load"]);
 });
 
 test("video canvas: person command records; hydrate does not", async () => {
@@ -326,27 +279,10 @@ test("audio: local mutation records; remote apply does not", async () => {
     "src/shell/media-editors/use-audio-mutations.ts",
     lightStubs(),
   );
-  const playlist = await loadOwnerModule(
-    "src/shell/media-editors/AudioPlaylistStage.tsx",
-    lightStubs(),
-  );
-  const { fn } = (() => {
-    try {
-      return requireLiveHelper(mutations, "use-audio-mutations.ts", [
-        "applyAudioUserEditSession",
-        "applyAudioMutationUserEditSession",
-      ]);
-    } catch (first) {
-      try {
-        return requireLiveHelper(playlist, "AudioPlaylistStage.tsx", [
-          "applyAudioUserEditSession",
-          "applyAudioPlaylistUserEditSession",
-        ]);
-      } catch (second) {
-        throw new Error(`${first.message}; ${second.message}`);
-      }
-    }
-  })();
+  const { fn } = requireLiveHelper(mutations, "use-audio-mutations.ts", [
+    "applyAudioUserEditSession",
+    "applyAudioMutationUserEditSession",
+  ]);
   const item = itemFor("audio");
   assertRecords("audio", callPair, fn, item, "local-mutation");
   assertDoesNotRecord("audio", callPair, fn, item, ["remote-apply"]);
@@ -381,25 +317,6 @@ test("pdf: local annotation engine records; silent source replace / collab do no
   const item = itemFor("pdf");
   assertRecords("pdf", callPair, fn, item, "local-annotation");
   assertDoesNotRecord("pdf", callPair, fn, item, ["silent-replace", "collab"]);
-});
-
-test("chart: mutate / history record; applyRemoteDocument does not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/chart-editor/use-chart-workbench.ts",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "use-chart-workbench.ts", [
-    "applyChartUserEditSession",
-  ]);
-  const item = itemFor("chart");
-  assertRecords("chart", callPair, fn, item, "mutate");
-  resetUserEditSession();
-  callPair(fn, item, "history");
-  assert.equal(generationOf(item), 1, "chart history (undo/redo) is a person path");
-  assertDoesNotRecord("chart", callPair, fn, item, [
-    "remote-document",
-    "applyRemoteDocument",
-  ]);
 });
 
 test("3d: local markDirty records; bootstrap does not", async () => {
@@ -444,62 +361,3 @@ test("game: local textarea origin records; remote Yjs / writeThrough do not", as
   ]);
 });
 
-test("embedded: post-handshake person dirty records; restore / handshake do not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/advanced-routes/EmbeddedRoute.tsx",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "EmbeddedRoute.tsx", [
-    "applyEmbeddedUserEditSession",
-  ]);
-  const item = itemFor("embedded");
-  const person = {
-    kind: "person-dirty",
-    dirty: true,
-    hostedOpen: true,
-    handshakeReady: true,
-  };
-  assertRecords("embedded", callBag, fn, item, person);
-  resetUserEditSession();
-  callBag(fn, item, {
-    dirty: true,
-    hostedOpen: true,
-    handshakeReady: true,
-  });
-  assert.equal(
-    generationOf(item),
-    1,
-    "embedded derived post-handshake dirty (no explicit kind) must record",
-  );
-  assertDoesNotRecord("embedded", callBag, fn, item, [
-    {
-      kind: "restore",
-      dirty: true,
-      hostedOpen: true,
-      handshakeReady: true,
-    },
-    {
-      kind: "handshake",
-      dirty: true,
-      hostedOpen: true,
-      handshakeReady: false,
-    },
-    {
-      dirty: true,
-      hostedOpen: false,
-      handshakeReady: true,
-    },
-    {
-      dirty: true,
-      hostedOpen: true,
-      handshakeReady: true,
-      restoring: true,
-    },
-    {
-      dirty: true,
-      hostedOpen: true,
-      handshakeReady: true,
-      initEcho: true,
-    },
-  ]);
-});

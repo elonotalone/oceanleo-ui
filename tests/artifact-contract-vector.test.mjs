@@ -110,7 +110,8 @@ test("矢量素材不再走位图适配器", () => {
 
 test("vector-editor 的运行时路由落在图层工程适配器上", () => {
   assert.equal(editorAdapterForArtifactCapability("vector-editor"), "design-canvas");
-  assert.equal(editorRouteHintForArtifactCapability("vector-editor"), "embed");
+  // 设计画布并入图片编辑器：适配器仍是 design-canvas，路由落点是 image。
+  assert.equal(editorRouteHintForArtifactCapability("vector-editor"), "image");
   assert.equal(
     TRUSTED_EDITOR_REGISTRY["design-canvas"].artifactCapabilities.includes(
       "vector-editor",

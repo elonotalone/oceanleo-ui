@@ -15,6 +15,7 @@ import {
   type AdvancedEditorAdapterId,
 } from "./artifact-contract";
 import {
+  READ_ONLY_ARTIFACT_TYPES,
   TRUSTED_EDITOR_REGISTRY,
   editorAdapterForArtifactCapability,
   isLegacyOfficeMetadata,
@@ -276,13 +277,14 @@ function durableEditorCapabilityFor(
   ) {
     return unavailable("复合图片缺少当前 revision 的完整 scene 依赖闭包。");
   }
-  if (artifact.artifactType === "chart") {
-    return unavailable(CHART_EDITOR_REMOVED_REASON);
-  }
-  // 矢量图原先在整站嵌入的设计子站里编辑；本地图片编辑器不改写 SVG 源，
-  // 所以只读打开，绝不静默改写已存文档。
-  if (artifact.artifactType === "vector_image") {
-    return unavailable(VECTOR_IMAGE_READ_ONLY_REASON);
+  if (READ_ONLY_ARTIFACT_TYPES.has(artifact.artifactType)) {
+    // 图表编辑器已删除；矢量图原先在整站嵌入的设计子站里编辑，本地图片编辑器
+    // 不改写 SVG 源。都只读打开，绝不静默改写已存文档。
+    return unavailable(
+      artifact.artifactType === "chart"
+        ? CHART_EDITOR_REMOVED_REASON
+        : VECTOR_IMAGE_READ_ONLY_REASON,
+    );
   }
   const advancedContract = advancedCapabilityForArtifactFields({
     artifactType: artifact.artifactType,
@@ -319,7 +321,11 @@ function durableEditorCapabilityFor(
     case "website":
       return websiteEditor();
     case "design-canvas":
-      return designCanvasEditor();
+      // 合同矩阵把 workflow（节点图）也挂在 design-canvas 能力下；节点图的本地编辑器
+      // 是视频画布，不是图片编辑器，所以按 artifactType 分流。
+      return artifact.artifactType === "workflow"
+        ? videoCanvasEditor()
+        : designCanvasEditor();
     case "video-canvas":
       return videoCanvasEditor();
   }

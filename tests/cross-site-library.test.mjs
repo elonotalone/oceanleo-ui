@@ -141,11 +141,10 @@ test("Design template series keeps its layered document for Advanced editing", (
   assert.match(source, /siteId: designTemplateDoc \? "design" : "asset"/);
   assert.match(source, /siteId: templateDocUrl \? "design" : ""/);
   assert.match(routesSource, /item\.meta\.template_doc_url/);
-  // C5 家族化：design 内嵌编辑器的 origin 按当前家族拼，写死的是子站标签与路径。
-  assert.match(
-    routesSource,
-    /subsite: "design",\s*path: "\/embed\/editor",\s*mediaType: "canvas"/,
-  );
+  // 2026-10-22：设计画布并入图片编辑器——带分层文档的模板条目落到 image 路由，不再是子站嵌入。
+  assert.match(routesSource, /function designCanvasEditor\(\)/);
+  assert.match(routesSource, /available\("design-canvas", \{ type: "image" \}\)/);
+  assert.doesNotMatch(routesSource, /subsite: "design"/);
 });
 
 test("closing a configured library keeps the app runtime mounted", () => {

@@ -224,12 +224,12 @@ test('restored server content keeps its original edit time in local recovery, so
 
 
 test('media handoff aliases honor foreign-face protection and exports cannot bypass it', async () => {
-  const b = bed(); b.key = 'display-key'; b.editorId = 'chart-editor@1';
-  b.item.id = 'alias-chart'; server(b, 'other-face'); b.item.meta.advanced_server_draft.rootId = b.item.id;
+  const b = bed(); b.key = 'display-key'; b.editorId = 'audio';
+  b.item.id = 'alias-audio'; server(b, 'other-face'); b.item.meta.advanced_server_draft.rootId = b.item.id;
   const tree = await mount(React.createElement(Probe, { b }));
   try {
-    assert.equal((await flushAdvancedDraftGate('chart-editor:alias-chart', 'export')).ok, false);
-    const switching = await flushAdvancedDraftGate('chart-editor:alias-chart');
+    assert.equal((await flushAdvancedDraftGate('audio:alias-audio', 'export')).ok, false);
+    const switching = await flushAdvancedDraftGate('audio:alias-audio');
     assert.equal(switching.ok, true); assert.equal(switching.item.meta.advanced_server_draft.schema, 'other-face');
     assert.equal(b.versions.length, 0);
   } finally { await tree.unmount(); }

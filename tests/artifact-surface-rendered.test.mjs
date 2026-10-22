@@ -849,21 +849,24 @@ const TEST_SOURCE_FORMAT = {
   interactive_doc: "oceanleo.interactive-doc.v1",
 };
 
+const READ_ONLY_ARTIFACT_TYPES = new Set(["vector_image", "chart"]);
+
 const EXPECTED_EDITOR_ROUTE = {
   single_file_image: ["image", "image"],
   composite_image: ["image", "image"],
   // 矢量走图层工程适配器：svg 被位图适配器打开时拿不到锚点/配色/图形替换。
-  vector_image: ["design-canvas", "embed"],
-  chart: ["chart-editor@1", "grid"],
+  // 2026-10-22：矢量图与图表没有本地编辑器，只读（见 READ_ONLY_ARTIFACT_TYPES）。
+  vector_image: ["none", "none"],
+  chart: ["none", "none"],
   document: ["richdoc", "richdoc"],
   grid: ["grid", "grid"],
   deck: ["deck", "deck"],
   pdf: ["pdf", "pdf"],
-  website: ["website", "embed"],
+  website: ["website", "website"],
   video: ["video-timeline", "video-timeline"],
   audio: ["audio", "audio"],
   model_3d: ["threed", "threed"],
-  workflow: ["design-canvas", "embed"],
+  workflow: ["video-canvas", "video-canvas"],
   game: ["game", "game"],
   // 两个非编辑类内核也是 artifact 类型：库里躺着的那一件由对应内核打开。
   geo_map: ["geo-map", "geo-map"],
@@ -1462,6 +1465,12 @@ test("each editable artifact type resolves its exact route and pinned source", (
     const source = advancedEditorSourceFor(item);
     const [adapter, routeType] = EXPECTED_EDITOR_ROUTE[artifactType];
 
+    if (READ_ONLY_ARTIFACT_TYPES.has(artifactType)) {
+      assert.equal(capability.available, false, artifactType);
+      assert.equal(capability.route.type, "none", artifactType);
+      assert.ok(capability.unavailableReason.length > 0, artifactType);
+      continue;
+    }
     assert.equal(capability.available, true, artifactType);
     assert.equal(capability.adapter, adapter, artifactType);
     assert.equal(capability.route.type, routeType, artifactType);

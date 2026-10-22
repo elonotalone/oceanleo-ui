@@ -32,14 +32,13 @@ test("typed routes render real content in the inline App-library editor shell", 
   ].join("\n");
   const routeAdapters = [
     source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
-    source("../src/shell/advanced-routes/EmbeddedRoute.tsx"),
+    source("../src/shell/advanced-routes/WebsiteLocalRoute.tsx"),
     source("../src/shell/advanced-routes/ImageRoute.tsx"),
     // grid 的 adapter 长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）。
     source("../src/shell/doc-editors/GridUniverStage.tsx"),
     source("../src/shell/advanced-routes/DeckRoute.tsx"),
     source("../src/shell/advanced-routes/PdfRoute.tsx"),
     source("../src/shell/advanced-routes/Model3DRoute.tsx"),
-    source("../src/shell/advanced-routes/ChartRoute.tsx"),
   ].join("\n");
   const routes =
     source("../src/shell/workbench-routes.ts") +
@@ -49,7 +48,8 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.match(workbench, /WorkbenchRouteLoading/);
   assert.match(workbench, /VideoTimelineRoute/);
   assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
-  assert.match(workbench, /EmbeddedRoute/);
+  assert.match(workbench, /WebsiteLocalRoute/);
+  assert.doesNotMatch(workbench, /EmbeddedRoute|ChartRoute/);
   assert.match(workbench, /AudioRoute/);
   assert.match(workbench, /RichDocRoute/);
   assert.match(workbench, /ImageRoute/);
@@ -57,7 +57,6 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.match(workbench, /DeckRoute/);
   assert.match(workbench, /PdfRoute/);
   assert.match(workbench, /Model3DRoute/);
-  assert.match(workbench, /ChartRoute/);
   assert.match(workbench, /GameRoute/);
   assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
   assert.match(routeAdapters, /AdvancedWorkbenchShell/);
@@ -80,7 +79,8 @@ test("typed routes render real content in the inline App-library editor shell", 
     "deck",
     "threed",
     "game",
-    "embed",
+    "website",
+    "video-canvas",
   ]) {
     assert.match(routes, new RegExp(`type: "${type}"`));
   }
@@ -238,7 +238,6 @@ test("advanced materials click to center and drag to the exact canvas point", ()
     "../src/shell/advanced-routes/VideoTimelineRoute.tsx",
   );
   const timelineArea = source("../src/shell/video-editor/TimelineArea.tsx");
-  const embedded = source("../src/shell/advanced-routes/EmbeddedRoute.tsx");
   assert.match(library, /primaryMaterialAction/);
   assert.match(library, /activateEntry/);
   assert.match(library, /materialActionPendingRef/);
@@ -258,21 +257,6 @@ test("advanced materials click to center and drag to the exact canvas point", ()
   assert.match(deck, /editor\.insertImageElement/);
   assert.match(timeline, /timelineInsertionMs\(placement, editor\.playheadMs\)/);
   assert.match(timelineArea, /data-video-timeline-content/);
-  assert.match(embedded, /setMaterialInsertion/);
-  assert.match(
-    embedded,
-    /materialResolversRef\.current\.delete\(commandId\);[\s\S]*?current\?\.commandId === commandId \? null/,
-  );
-  assert.match(embedded, /onMaterialResult/);
-  assert.doesNotMatch(embedded, /editorToolbox=/);
-  assert.match(
-    embedded,
-    /\}, \[\s*designComposite,\s*designSourceReceipt,\s*hostedMediaType,\s*\]\);/,
-  );
-  assert.doesNotMatch(
-    embedded,
-    /\}, \[route\]\);\s*useWorkbenchMaterialAdapter/,
-  );
   assert.match(provider, /const adapterRef = useRef\(adapter\)/);
   assert.match(provider, /Register a stable proxy/);
   assert.match(provider, /useWorkbenchMaterialScope/);
@@ -373,9 +357,6 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
   const shell =
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
     source("../src/shell/FloatingContextToolbar.tsx");
-  const embeddedRoute = source(
-    "../src/shell/advanced-routes/EmbeddedRoute.tsx",
-  );
   assert.match(protocol, /EDITOR_PROTOCOL = "oceanleo\.editor\.v1"/);
   assert.match(protocol, /record\.instanceId !== instanceId/);
   // C5 家族化：授信判定不再裸 endsWith(".oceanleo.com")，而是走共享家族判定
@@ -424,8 +405,6 @@ test("specialist embeds require a trusted origin, frame and instance handshake",
     shell,
     /\(\) => \(\) => workspacePane\?\.clearDetail\(ownerIdRef\.current\)/,
   );
-  assert.match(embeddedRoute, /renderContextToolbar: \(\{ openDrawer \}\)/);
-  assert.match(embeddedRoute, /onOpenPanel=\{openDrawer\}/);
   assert.doesNotMatch(shell, /-translate-y-full/);
   assert.match(embed, /Number\(result\.data\?\.saved \|\| 0\) === 1/);
 });
@@ -602,15 +581,15 @@ test("editor protocol rejects malformed artifacts and uncorrelated saves", async
     ),
     null,
   );
-  const embedUrl = new URL(
+  // 2026-10-22: no sub-site editor base is trusted any more (whitelist is empty),
+  // so even the former design editor base cannot build an embed URL.
+  assert.throws(() =>
     buildEditorEmbedUrl("https://design.oceanleo.com/embed/editor", {
       instanceId: "instance-1",
       hostOrigin: "https://oceanleo.com",
       extra: { instance: "attacker", mode: "design" },
     }),
   );
-  assert.equal(embedUrl.searchParams.get("instance"), "instance-1");
-  assert.equal(embedUrl.searchParams.get("mode"), "design");
   assert.throws(() =>
     buildEditorEmbedUrl("https://evil.test/editor", {
       instanceId: "instance-1",

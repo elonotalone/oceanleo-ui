@@ -17,7 +17,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
 // ---- ① 源码里的模板都已登记 ---------------------------------------------------
-const ADAPTERS = ["chart", "image", "vector", "deck", "richdoc", "grid", "pdf"].map((n) => `src/shell/collab/adapters/${n}.ts`);
+const ADAPTERS = ["image", "vector", "deck", "richdoc", "grid", "pdf"].map((n) => `src/shell/collab/adapters/${n}.ts`);
 const FRAMES = ["video", "audio", "model3d", "game", "pdf", "workflow"].map((n) => `src/shell/replay/work/frames/${n}.tsx`);
 
 function stripComments(source) {
@@ -45,11 +45,30 @@ function scanTemplates() {
   return [...found].sort();
 }
 
+// 图表编辑器与它的回放画法已删除（2026-10-22）。这些词条还留在 i18n 的
+// work-replay-copy.ts 里（i18n 文件归父 agent）；父 agent 清掉词条后删除本集合。
+const DELETED_CHART_NOTE_TEMPLATES = new Set([
+  "创建了图表",
+  "新增了系列「{name}」",
+  "删除了系列「{name}」",
+  "改了系列「{name}」的数据",
+  "给系列改了名「{name}」",
+  "改了系列「{name}」的样式",
+  "调整了系列顺序",
+  "改了图表标题",
+  "改了坐标轴",
+  "改了图例",
+  "改了数据表",
+  "改了配色或提示框",
+  "改了图表说明",
+]);
+
 test("说明模板：这次新增的模板都登记进 REPLAY_NOTE_TEMPLATES，且都是源码里真在用的", () => {
   const found = new Set(scanTemplates());
   assert.ok(found.size >= 60, `扫到的模板数太少（${found.size}），扫描规则可能失效`);
   const replayUi = read("src/shell/replay/work/WorkReplayTimeline.tsx") + read("src/shell/replay/work/WorkReplayPlayer.tsx") + read("src/shell/replay/work/fork-artifact.ts");
   for (const template of REPLAY_NOTE_TEMPLATES) {
+    if (DELETED_CHART_NOTE_TEMPLATES.has(template)) continue;
     assert.ok(found.has(template) || replayUi.includes(`"${template}"`), `登记了但源码里没用：${template}`);
   }
   assert.equal(new Set(REPLAY_NOTE_TEMPLATES).size, REPLAY_NOTE_TEMPLATES.length, "不重复登记");
@@ -92,7 +111,7 @@ const useUIStub = dataModule(`export function useUI(){ return (zh, vars) => zh; 
 const stubs = { "../../../../i18n/ui/useUI": useUIStub };
 const frame = async (name) => (await import(await compileModule(`src/shell/replay/work/frames/${name}.tsx`, stubs))).default;
 const R = {};
-for (const name of ["chart", "image", "vector", "deck", "richdoc", "grid", "video", "audio", "model3d", "game", "pdf", "workflow"]) R[name] = await frame(name);
+for (const name of ["image", "vector", "deck", "richdoc", "grid", "video", "audio", "model3d", "game", "pdf", "workflow"]) R[name] = await frame(name);
 
 function assertTranslated(label, produce) {
   const zh = produce(makeTt("zh"));
@@ -186,13 +205,7 @@ test("画法说明：game / model3d / pdf / workflow", () => {
   assertTranslated("workflow 加节点", (tt) => R.workflow.describeChange(R.workflow.fromRevision(flow()), R.workflow.fromRevision(grown), tt));
 });
 
-test("画法说明：chart / image / vector / deck（*ChangeNote 家族走 tt(note.zh, note.vars)）", () => {
-  const chart = (series) => R.chart.fromRevision({ option: { series } });
-  const c1 = chart([{ id: "s1", name: "Sales", data: [1] }]);
-  assertTranslated("chart 改数据", (tt) => R.chart.describeChange(c1, chart([{ id: "s1", name: "Sales", data: [1, 2] }]), tt));
-  assertTranslated("chart 新增系列", (tt) => R.chart.describeChange(c1, chart([{ id: "s1", name: "Sales", data: [1] }, { id: "s2", name: "Profit", data: [2] }]), tt));
-  assertTranslated("chart 创建", (tt) => R.chart.describeChange(null, c1, tt));
-
+test("画法说明：image / vector / deck（*ChangeNote 家族走 tt(note.zh, note.vars)）", () => {
   const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="4" height="4"/></svg>';
   const v1 = R.vector.fromRevision(SVG);
   const v2 = R.vector.fromRevision(SVG.replace("</svg>", '<circle r="2"/></svg>'));

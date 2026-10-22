@@ -533,6 +533,9 @@ test("renderChipPrompt 只替换一轮，用户内容里的占位符不再展开
 
 // ─── 5. builder 拼错当场抛 ─────────────────────────────────────────────────
 
+// UC-NONE: pure message-builder validation (instanceId bounds, schema fit); it
+// guards protocol correctness, not an isolation rule — the origin/sandbox rules
+// are asserted in the UC-3 / UC-6 cases of this file.
 test("builder 产出的消息一定能过校验；instanceId 非法当场抛", () => {
   assert.ok(asHostToEditorMessage(buildSetModeMessage(INSTANCE, "pro"), INSTANCE));
   assert.ok(

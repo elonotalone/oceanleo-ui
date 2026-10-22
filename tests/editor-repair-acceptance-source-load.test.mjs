@@ -213,57 +213,6 @@ test("existing grid artifact without source must not become a blank workbook", a
   }
 });
 
-test("chart hydrates inline option JSON and fails closed when source is missing", async () => {
-  const { loadChartDocument, ChartSourceError } = await import(
-    "../src/shell/chart-editor/chart-source.ts"
-  );
-  const chart = await loadChartDocument({
-    key: "chart:inline",
-    source: "artifact",
-    id: "chart-inline",
-    title: "季度收入",
-    kind: "image",
-    siteId: "asset",
-    favorite: false,
-    content: JSON.stringify({
-      title: { text: "季度收入" },
-      xAxis: { type: "category", data: ["Q1"] },
-      series: [{ type: "bar", data: [120] }],
-    }),
-    meta: {
-      content_type: "chart",
-      editor: {
-        schema: "oceanleo.editor-manifest.v1",
-        id: "chart-editor",
-        version: 1,
-        capabilities: ["load", "mutate", "save", "reopen"],
-        source: { kind: "inline", format: "echarts-option+json" },
-      },
-    },
-  });
-  assert.equal(chart.option.series[0].data[0], 120);
-  await assert.rejects(
-    () =>
-      loadChartDocument(
-        artifactItem({
-          kind: "image",
-          content: "",
-          meta: {
-            content_type: "chart",
-            editor: {
-              schema: "oceanleo.editor-manifest.v1",
-              id: "chart-editor",
-              version: 1,
-              capabilities: ["load", "mutate", "save", "reopen"],
-              source: { kind: "inline", format: "echarts-option+json" },
-            },
-          },
-        }),
-      ),
-    (error) => error instanceof ChartSourceError || /缺少|missing/i.test(String(error)),
-  );
-});
-
 test("pdf loader refuses a missing source instead of opening blank", async () => {
   const { loadInitialPdfSource } = await import(
     "../src/shell/media-editors/pdf-source.ts"

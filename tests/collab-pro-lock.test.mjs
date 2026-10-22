@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+// NOTE: since 2026-10-22 only grid / pdf / website have a Pro mode (PRO_PAGE_EDITORS), so the
+// lock cases use those ids; every case detaches its lock and resets the cache.
 import { attachProModeLock, decideProEntry } from "../src/shell/collab/pro-mode-lock.ts";
 import {
   currentPluginMode,
@@ -63,16 +65,16 @@ test("公共切换点 setPluginMode：拿到锁才进专业模式；退出时释
   resetPluginModeCache();
   const room = fakeRoom();
   const blocked = [];
-  const detach = attachProModeLock({ pluginId: "t-lock-a", room, onBlocked: (v) => blocked.push(v) });
-  setPluginMode("t-lock-a", "pro");
-  assert.equal(currentPluginMode("t-lock-a"), "normal", "拿锁是异步的，拿到之前不切换");
+  const detach = attachProModeLock({ pluginId: "grid", room, onBlocked: (v) => blocked.push(v) });
+  setPluginMode("grid", "pro");
+  assert.equal(currentPluginMode("grid"), "normal", "拿锁是异步的，拿到之前不切换");
   await tick();
-  assert.equal(currentPluginMode("t-lock-a"), "pro");
+  assert.equal(currentPluginMode("grid"), "pro");
   assert.equal(room.acquires, 1);
   assert.equal(blocked.length, 0);
   assert.equal(room.lock?.holder.id, "me");
-  setPluginMode("t-lock-a", "normal");
-  assert.equal(currentPluginMode("t-lock-a"), "normal");
+  setPluginMode("grid", "normal");
+  assert.equal(currentPluginMode("grid"), "normal");
   assert.equal(room.releases >= 1, true);
   assert.equal(room.lock, null);
   detach();
@@ -82,10 +84,10 @@ test("拿不到锁 → 拦下、模式不变、提示谁在用", async () => {
   resetPluginModeCache();
   const room = fakeRoom({ acquireResult: false, lock: { holder: OTHER, mode: "pro", expires_at: "" } });
   const blocked = [];
-  const detach = attachProModeLock({ pluginId: "t-lock-b", room, onBlocked: (v) => blocked.push(v) });
-  setPluginMode("t-lock-b", "pro");
+  const detach = attachProModeLock({ pluginId: "pdf", room, onBlocked: (v) => blocked.push(v) });
+  setPluginMode("pdf", "pro");
   await tick();
-  assert.equal(currentPluginMode("t-lock-b"), "normal");
+  assert.equal(currentPluginMode("pdf"), "normal");
   assert.deepEqual(blocked, [{ ok: false, reason: "locked", holder: OTHER }]);
   detach();
 });
@@ -94,34 +96,34 @@ test("viewer 进不了专业模式；没挂锁的插件与离开专业模式不�
   resetPluginModeCache();
   const room = fakeRoom({ role: "viewer" });
   const blocked = [];
-  const detach = attachProModeLock({ pluginId: "t-lock-c", room, onBlocked: (v) => blocked.push(v.reason) });
-  setPluginMode("t-lock-c", "pro");
+  const detach = attachProModeLock({ pluginId: "website", room, onBlocked: (v) => blocked.push(v.reason) });
+  setPluginMode("website", "pro");
   await tick();
-  assert.equal(currentPluginMode("t-lock-c"), "normal");
+  assert.equal(currentPluginMode("website"), "normal");
   assert.deepEqual(blocked, ["viewer"]);
   detach();
   // 解除后（组件卸载）同一个插件恢复无把关行为：同步生效
-  setPluginMode("t-lock-c", "pro");
-  assert.equal(currentPluginMode("t-lock-c"), "pro");
-  setPluginMode("t-lock-c", "normal");
+  setPluginMode("website", "pro");
+  assert.equal(currentPluginMode("website"), "pro");
+  setPluginMode("website", "normal");
   // 另一个从没挂过锁的插件
-  setPluginMode("t-lock-d", "pro");
-  assert.equal(currentPluginMode("t-lock-d"), "pro");
+  setPluginMode("pdf", "pro");
+  assert.equal(currentPluginMode("pdf"), "pro");
 });
 
 test("打开作品时上次记住的就是专业模式：房间就绪后补拿锁，拿不到退回普通模式", async () => {
   resetPluginModeCache();
-  setPluginMode("t-lock-e", "pro"); // 先记住 pro（此时没有把关）
+  setPluginMode("grid", "pro"); // 先记住 pro（此时没有把关）
   const room = fakeRoom({ status: "connecting", acquireResult: false, lock: { holder: OTHER, mode: "pro", expires_at: "" } });
   const blocked = [];
-  const detach = attachProModeLock({ pluginId: "t-lock-e", room, onBlocked: (v) => blocked.push(v.reason) });
+  const detach = attachProModeLock({ pluginId: "grid", room, onBlocked: (v) => blocked.push(v.reason) });
   await tick();
-  assert.equal(currentPluginMode("t-lock-e"), "pro", "还没连上：先不动");
+  assert.equal(currentPluginMode("grid"), "pro", "还没连上：先不动");
   room.status = "synced";
   room.emit();
   await tick();
   await tick();
-  assert.equal(currentPluginMode("t-lock-e"), "normal");
+  assert.equal(currentPluginMode("grid"), "normal");
   assert.deepEqual(blocked, ["locked"]);
   detach();
 });
@@ -130,16 +132,16 @@ test("在专业模式里锁被别人拿走 → 退回普通模式", async () => 
   resetPluginModeCache();
   const room = fakeRoom();
   const blocked = [];
-  const detach = attachProModeLock({ pluginId: "t-lock-f", room, onBlocked: (v) => blocked.push(v.reason) });
-  setPluginMode("t-lock-f", "pro");
+  const detach = attachProModeLock({ pluginId: "pdf", room, onBlocked: (v) => blocked.push(v.reason) });
+  setPluginMode("pdf", "pro");
   await tick();
-  assert.equal(currentPluginMode("t-lock-f"), "pro");
+  assert.equal(currentPluginMode("pdf"), "pro");
   room.acquireResult = false;
   room.lock = { holder: OTHER, mode: "pro", expires_at: "" };
   room.emit();
   await tick();
   await tick();
-  assert.equal(currentPluginMode("t-lock-f"), "normal");
+  assert.equal(currentPluginMode("pdf"), "normal");
   assert.deepEqual(blocked, ["locked"]);
   detach();
 });
@@ -147,8 +149,8 @@ test("在专业模式里锁被别人拿走 → 退回普通模式", async () => 
 test("detach 释放锁并注销把关", async () => {
   resetPluginModeCache();
   const room = fakeRoom();
-  const detach = attachProModeLock({ pluginId: "t-lock-g", room, onBlocked() {} });
-  setPluginMode("t-lock-g", "pro");
+  const detach = attachProModeLock({ pluginId: "website", room, onBlocked() {} });
+  setPluginMode("website", "pro");
   await tick();
   const before = room.releases;
   detach();

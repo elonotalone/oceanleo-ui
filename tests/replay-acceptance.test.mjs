@@ -319,10 +319,6 @@ test("[F04] 英文界面：12 个编辑器族的回放说明全部走 tt，输�
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 0, top: 0, width: 5, height: 5, fill: "#fff" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 3, top: 0, width: 5, height: 5, fill: "#f00" }, { type: "Circle", oceanleoId: "b", left: 1, top: 1, radius: 2, fill: "#000" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
     ],
-    chart: [
-      { schema: "oceanleo.chart.v1", version: 1, title: "A", option: { series: [{ id: "s1", name: "N", type: "bar", data: [1, 2] }] } },
-      { schema: "oceanleo.chart.v1", version: 1, title: "B", option: { series: [{ id: "s1", name: "N", type: "line", data: [1, 2] }, { id: "s2", name: "M", type: "bar", data: [3] }] } },
-    ],
     vector: [vectorFromRevision(vecSvg(1)), vectorFromRevision(vecSvg(3))],
     game: [
       { pages: [{ id: "main", label: "main", code: "a()" }], origin: "ai" },
@@ -417,10 +413,6 @@ test("[F04] en/ja：逐族回放说明、章节标题、专业模式进出不是
     image: [
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 0, top: 0, width: 5, height: 5, fill: "#fff" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 3, top: 0, width: 5, height: 5, fill: "#f00" }, { type: "Circle", oceanleoId: "b", left: 1, top: 1, radius: 2, fill: "#000" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
-    ],
-    chart: [
-      { schema: "oceanleo.chart.v1", version: 1, title: "A", option: { series: [{ id: "s1", name: "N", type: "bar", data: [1, 2] }] } },
-      { schema: "oceanleo.chart.v1", version: 1, title: "B", option: { series: [{ id: "s1", name: "N", type: "line", data: [1, 2] }, { id: "s2", name: "M", type: "bar", data: [3] }] } },
     ],
     vector: [vectorFromRevision(vecSvg(1)), vectorFromRevision(vecSvg(3))],
     game: [
@@ -525,8 +517,8 @@ test("[F04] 17 种语言：回放说明模板与章节/锁事件词条，en 无�
   }
   const scanned = new Set();
   const files = [
-    ...["chart", "image", "vector", "deck", "richdoc", "grid", "audio", "video", "game", "model3d", "pdf", "workflow"].map((k) => `src/shell/collab/adapters/${k}.ts`),
-    ...["audio", "chart", "deck", "game", "grid", "image", "model3d", "pdf", "richdoc", "vector", "video", "workflow", "notes"].map((k) => `src/shell/replay/work/frames/${k}.${k === "notes" ? "ts" : "tsx"}`),
+    ...["image", "vector", "deck", "richdoc", "grid", "audio", "video", "game", "model3d", "pdf", "workflow"].map((k) => `src/shell/collab/adapters/${k}.ts`),
+    ...["audio", "deck", "game", "grid", "image", "model3d", "pdf", "richdoc", "vector", "video", "workflow", "notes"].map((k) => `src/shell/replay/work/frames/${k}.${k === "notes" ? "ts" : "tsx"}`),
   ];
   for (const rel of files) {
     for (const key of scanReplayNoteTemplates(readSrc(rel))) scanned.add(key);

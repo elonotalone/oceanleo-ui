@@ -30,7 +30,6 @@ import {
   parseWebsiteSource,
   serializeWebsiteSource,
 } from "../src/shell/website-source-carrier/website-source-validate.ts";
-import { loadChartDocument } from "../src/shell/chart-editor/chart-source.ts";
 import { loadGridSheets } from "../src/shell/doc-editors/grid-model.ts";
 import { loadRichDocHtml } from "../src/shell/doc-editors/rich-doc-model.ts";
 import "./helpers/w1-jsdom-window.mjs";
@@ -96,41 +95,6 @@ test("grid: csv hydrates, in-memory cell edit survives, sourceless durable still
       }),
     /缺少可验证的 source\/full 内容/,
   );
-});
-
-test("chart: inline option hydrates and the edited series round-trips through JSON", async () => {
-  const item = {
-    key: "chart:rt",
-    source: "artifact",
-    id: "chart-rt",
-    title: "季度收入",
-    kind: "image",
-    siteId: "asset",
-    favorite: false,
-    content: JSON.stringify({
-      title: { text: "季度收入" },
-      xAxis: { type: "category", data: ["Q1"] },
-      series: [{ type: "bar", data: [120] }],
-    }),
-    meta: {
-      content_type: "chart",
-      editor: {
-        schema: "oceanleo.editor-manifest.v1",
-        id: "chart-editor",
-        version: 1,
-        capabilities: ["load", "mutate", "save", "reopen"],
-        source: { kind: "inline", format: "echarts-option+json" },
-      },
-    },
-  };
-  const loaded = await loadChartDocument(item);
-  assert.equal(loaded.option.series[0].data[0], 120);
-  loaded.option.series[0].data[0] = 240;
-  const reopened = await loadChartDocument({
-    ...item,
-    content: JSON.stringify(loaded.option),
-  });
-  assert.equal(reopened.option.series[0].data[0], 240);
 });
 
 test("website local: stored JSON loads, theme command mutates, reopen restores accent", async () => {

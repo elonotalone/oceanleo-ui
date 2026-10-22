@@ -80,7 +80,8 @@ const { AdvancedLayoutContext } = await load("src/shell/advanced-layout-context.
 const { usePluginChromeLayout } = await load("src/shell/plugin-chrome/use-plugin-chrome-layout.tsx");
 const { usePluginChromePanels } = await load("src/shell/plugin-chrome/use-plugin-chrome-panels.ts");
 const { createLiveReactNodeStore, publishLiveReactNode, LiveReactNode } = await load("src/shell/live-react-node.tsx");
-const { hostedWebsiteEditBarSelection } = await load("src/shell/website-host-edit-bar.ts");
+// website-host-edit-bar.ts was deleted with the sub-site embed host (2026-10-22); the object selection passes through unchanged.
+const hostedWebsiteEditBarSelection = (selection) => selection;
 const { createRoot } = await import("react-dom/client");
 // Generated from website/front/components/site-editor/editor-controls.ts
 // selectionContext at website 22ac13b, with the heading/image/button/section

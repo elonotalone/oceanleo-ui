@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  READ_ONLY_ARTIFACT_TYPES,
   artifactTypeHasRoutableEditor,
   TRUSTED_EDITOR_REGISTRY,
 } from "../src/shell/workbench-capability-registry.ts";
@@ -26,15 +27,17 @@ const PACKS_NOT_EDITORS = [
   "interactive_doc",
 ];
 
-test("每一种 artifact 类型都有一个到得了的编辑器", () => {
+test("每一种 artifact 类型都有一个到得了的编辑器（图表与矢量图除外：只读）", () => {
   // 后端 `_EDITOR_CAPABILITIES` 给 16 种类型都声明了编辑能力，而共享工作台
   // 为每一种能力都备了可路由的适配器。所以正确答案是「全是 true」——
   // 这正是那份六项清单错得有多远的度量。
+  // 2026-10-22：图表编辑器已删除、矢量图不再有本地编辑器，二者只读（READ_ONLY_ARTIFACT_TYPES）。
+  assert.deepEqual([...READ_ONLY_ARTIFACT_TYPES].sort(), ["chart", "vector_image"]);
   for (const artifactType of ARTIFACT_TYPES) {
     assert.equal(
       artifactTypeHasRoutableEditor(artifactType),
-      true,
-      `${artifactType} 应当有可路由编辑器`,
+      !READ_ONLY_ARTIFACT_TYPES.has(artifactType),
+      `${artifactType} 的可路由编辑器判定`,
     );
   }
 });
@@ -52,7 +55,8 @@ test("旧的六项清单是真子集，说明这次是放宽而不是改判", ()
   for (const artifactType of PACKS_NOT_EDITORS) {
     assert.equal(
       artifactTypeHasRoutableEditor(artifactType),
-      !VIEW_ONLY_ARTIFACT_TYPES.includes(artifactType),
+      !VIEW_ONLY_ARTIFACT_TYPES.includes(artifactType) &&
+        !READ_ONLY_ARTIFACT_TYPES.has(artifactType),
       artifactType,
     );
   }
@@ -63,17 +67,24 @@ test("旧的六项清单是真子集，说明这次是放宽而不是改判", ()
       `${viewOnly} 进了 ARTIFACT_TYPES：它已经有编辑/上传链路了，本组判据要跟着翻`,
     );
   }
-  const gained = ARTIFACT_TYPES.filter((t) => !PACKS_NOT_EDITORS.includes(t));
-  assert.equal(gained.length, 10, "应当恰好恢复 10 类");
+  const gained = ARTIFACT_TYPES.filter(
+    (t) => !PACKS_NOT_EDITORS.includes(t) && !READ_ONLY_ARTIFACT_TYPES.has(t),
+  );
+  assert.equal(gained.length, 9, "应当恰好恢复 9 类（vector_image 只读）");
   assert.ok(gained.includes("website"), "网站必须在恢复之列");
 });
 
-test("embed 路由算落点：网站走的就是它", () => {
-  // `website` / `design-canvas` / `video-canvas` 的 routeType 是 "embed" ——
-  // 共享工作台把站点自己的编辑器嵌进来。那是一种落点，不是没有落点。
-  // 把 embed 当成「没有编辑器」，就会重蹈本文件要修的那个错。
+test("网站走本地 website 路由（不再是 embed 落点）", () => {
+  // 2026-10-22：`website` 的 routeType 是 "website"（本地 Puck），设计画布并入 image，
+  // 视频画布是本地 "video-canvas"。没有任何适配器再是 "embed"。
   const website = TRUSTED_EDITOR_REGISTRY["website"];
-  assert.equal(website.routeType, "embed");
+  assert.equal(website.routeType, "website");
+  assert.equal(TRUSTED_EDITOR_REGISTRY["design-canvas"].routeType, "image");
+  assert.equal(TRUSTED_EDITOR_REGISTRY["video-canvas"].routeType, "video-canvas");
+  assert.equal(
+    Object.values(TRUSTED_EDITOR_REGISTRY).some((entry) => entry.routeType === "embed"),
+    false,
+  );
   assert.equal(website.routable, true);
   assert.equal(website.featureId, "website_finetuning");
   assert.ok(ARTIFACT_EDITOR_CAPABILITIES["website"].has("website-editor"));
@@ -98,13 +109,16 @@ test("判据是推导的，不是又一份手抄清单", () => {
   // 若有人把某个适配器改成不可路由，这里必须立刻反映出来，而不是继续报 true。
   for (const artifactType of ARTIFACT_TYPES) {
     const capabilities = [...ARTIFACT_EDITOR_CAPABILITIES[artifactType]];
-    const routable = capabilities.some((capability) =>
-      Object.values(TRUSTED_EDITOR_REGISTRY).some(
-        (entry) =>
-          entry.routable &&
-          (entry.artifactCapabilities || []).includes(capability),
-      ),
-    );
+    const routable =
+      !READ_ONLY_ARTIFACT_TYPES.has(artifactType) &&
+      capabilities.some((capability) =>
+        Object.values(TRUSTED_EDITOR_REGISTRY).some(
+          (entry) =>
+            entry.routable &&
+            entry.routeType !== "none" &&
+            (entry.artifactCapabilities || []).includes(capability),
+        ),
+      );
     assert.equal(artifactTypeHasRoutableEditor(artifactType), routable, artifactType);
   }
 });

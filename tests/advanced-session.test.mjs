@@ -49,7 +49,7 @@ test("blank advanced drafts retain their onboarding identity after resume", () =
   );
 });
 
-test("advanced Design sessions keep stored template_doc_url and the embed route", () => {
+test("advanced Design sessions keep stored template_doc_url and alias the legacy embed pin to the image editor", () => {
   const routes = readFileSync(
     new URL("../src/shell/workbench-routes.ts", import.meta.url),
     "utf8",
@@ -65,7 +65,7 @@ test("advanced Design sessions keep stored template_doc_url and the embed route"
   );
   assert.match(
     routes,
-    /pinnedRoute === "embed"[\s\S]*?const pinnedEditor[\s\S]*?item\.kind === "canvas"[\s\S]*?pinnedEditor === "design-canvas"[\s\S]*?embedEditor\("design-canvas"\)/,
+    /pinnedRoute === "embed"[\s\S]*?const pinnedEditor[\s\S]*?item\.kind === "canvas"[\s\S]*?pinnedEditor === "design-canvas"[\s\S]*?designCanvasEditor\(\)/,
   );
 });
 

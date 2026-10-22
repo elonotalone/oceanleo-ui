@@ -59,7 +59,7 @@ class ErrorBoundary extends React.Component {
   render() { return this.state.error ? React.createElement('output', {'data-crash': true}, this.state.error) : this.props.children; }
 }
 
-test('host-reported design page switches settle in the workspace header slot', async () => {
+test('host-reported Pro page switches settle in the workspace header slot (website is a Pro editor)', async () => {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {pretendToBeVisual: true, url: 'https://test.dev.oceanleo.com/'});
   const {window} = dom;
   const restore = [];
@@ -79,11 +79,11 @@ test('host-reported design page switches settle in the workspace header slot', a
   const h=React.createElement;
   function Selection() { useAdvancedLayout(); return h('span',{'data-selection':true}); }
   function Editor({onClose}) {
-    const {pageId}=usePluginPage('design-canvas');
+    const {pageId}=usePluginPage('website');
     const [mode,setMode]=React.useState('normal');
     React.useLayoutEffect(() => { commits++; transitions.push([pageId,mode]); });
     return h(InlineAdvancedWorkbenchShell,{item,siteId:'design',onClose,adapter:{
-      id:'design-canvas', label:'设计画布',
+      id:'website', label:'网站',
       pages:{activePageId:pageId}, mode:{current:mode,setMode},
       stage:h('div',{'data-design-content':mode}, 'public design'),
       contextToolbar:h(Selection),

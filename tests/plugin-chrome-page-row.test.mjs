@@ -254,8 +254,8 @@ test("pro 不可用时 title 含原因，点击后仍停在编辑页", async () 
         InlineAdvancedWorkbenchHeader,
         headerProps({
           adapter: {
-            id: "game",
-            label: "游戏",
+            id: "pdf",
+            label: "PDF",
             stage: null,
             mode: {
               current: "normal",
@@ -263,7 +263,7 @@ test("pro 不可用时 title 含原因，点击后仍停在编辑页", async () 
               unavailableReason: "专业编辑即将到来",
             },
           },
-          pluginThemeId: "game",
+          pluginThemeId: "pdf",
         }),
       ),
     );
@@ -271,8 +271,8 @@ test("pro 不可用时 title 含原因，点击后仍停在编辑页", async () 
     assert.ok(pro, "专业编辑页签被藏起来了");
     assert.match(pro.getAttribute("title") || "", /专业编辑即将到来/);
     await click(pro);
-    assert.equal(currentPluginPage("game"), "artifact");
-    assert.equal(currentPluginMode("game"), "normal");
+    assert.equal(currentPluginPage("pdf"), "artifact");
+    assert.equal(currentPluginMode("pdf"), "normal");
     assert.deepEqual(calls, []);
     assert.equal(
       find('[data-plugin-page="artifact"]').getAttribute("aria-current"),

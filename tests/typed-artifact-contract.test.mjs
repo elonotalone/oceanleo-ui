@@ -909,8 +909,9 @@ test("video timeline and workflow canvas keep distinct typed editor routes", () 
   const flowRoute = editorCapabilityFor(
     artifactProjectionToLibraryItem(workflow, { forEdit: true }),
   ).route;
-  assert.equal(flowRoute.type, "embed");
-  assert.equal(flowRoute.mediaType, "canvas");
+  // 节点图（workflow）按 artifactType 落到本地视频画布，不再是嵌入的设计子站。
+  assert.equal(flowRoute.type, "video-canvas");
+  assert.equal("mediaType" in flowRoute, false);
 });
 
 test("save/reopen snapshots carry revision pins rather than rendition URLs", () => {
