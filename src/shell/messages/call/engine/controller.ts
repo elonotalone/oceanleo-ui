@@ -790,7 +790,8 @@ export function createCallController(deps: CallControllerDeps): CallController {
 
   function participantsNow(now: number): CallParticipantView[] {
     const s = session;
-    if (!s || !s.joined || !s.participantId || !IN_CALL_PHASES.has(phase)) return [];
+    // 重新入会（换新 SDK 实例）期间照样显示名单，免得小窗一闪变空。
+    if (!s || !(s.joined || s.rejoining) || !s.participantId || !IN_CALL_PHASES.has(phase)) return [];
     const mine = speakers.get("");
     const self: CallParticipantView = {
       participantId: s.participantId,
