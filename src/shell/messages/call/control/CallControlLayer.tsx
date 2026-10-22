@@ -243,7 +243,11 @@ function ActiveControlSurface({
   // ---- 键盘 ----
   const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     const native = event.nativeEvent;
-    if (native.isComposing || composingRef.current || event.key === "Process" || native.keyCode === 229) return;
+    if (native.isComposing || composingRef.current || event.key === "Process" || native.keyCode === 229) {
+      // 输入法组字中的 Esc 只用来取消组字：标记已处理，免得放大视图把它当成「缩小」（W07 跳过 defaultPrevented）。
+      if (event.key === "Escape") event.preventDefault();
+      return;
+    }
     if (escRef.current.press(event.code, event.repeat)) {
       event.preventDefault();
       event.stopPropagation();
@@ -390,7 +394,7 @@ function ActiveControlSurface({
           background: "transparent",
           color: "transparent",
           caretColor: "transparent",
-          outline: "none",
+          outlineStyle: "none",
           opacity: 0,
         }}
       />

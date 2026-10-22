@@ -226,7 +226,7 @@ export function CallControlHost() {
             position: "fixed",
             top: 16,
             insetInlineEnd: 16,
-            zIndex: 2147483000,
+            zIndex: 1250, // W07 层级：小窗 1050、放大 1100、菜单 1150、举报 1200；控制请求要压在它们上面
             width: "min(360px, calc(100vw - 32px))",
             display: "flex",
             flexDirection: "column",
@@ -296,7 +296,7 @@ export function CallControlHost() {
             position: "fixed",
             bottom: 16,
             insetInlineEnd: 16,
-            zIndex: 2147483000,
+            zIndex: 1250, // W07 层级：小窗 1050、放大 1100、菜单 1150、举报 1200；控制请求要压在它们上面
             width: "min(360px, calc(100vw - 32px))",
             display: "flex",
             flexDirection: "column",

@@ -157,8 +157,13 @@ export function createControlLink(deps: ControlLinkDeps): ControlLink {
     scheduleReconnect();
   }
 
+  // 读当前状态走函数：await 之后 TS 会沿用 await 之前的收窄，直接比较会被判成「不可能」。
+  function isEnded(): boolean {
+    return snap.state === "ended";
+  }
+
   async function connect(): Promise<void> {
-    if (snap.state === "ended") return;
+    if (isEnded()) return;
     const url = deps.url();
     if (!url) {
       end("unavailable");
@@ -171,7 +176,7 @@ export function createControlLink(deps: ControlLinkDeps): ControlLink {
     } catch {
       token = null;
     }
-    if (myGeneration !== generation || snap.state === "ended") return;
+    if (myGeneration !== generation || isEnded()) return;
     if (!token) {
       scheduleReconnect();
       return;
