@@ -292,7 +292,7 @@ test("宫格：每页 9 格按 order 摆，可翻页，翻页即 setViewport；�
     assert.deepEqual(tileIds("stage"), ["me", "p1", "p2", "p3"]);
     assert.equal($("[data-call-grid]").getAttribute("data-call-grid"), "2x2");
     assert.equal($("[data-call-pager]").getAttribute("data-call-pager"), "1/3");
-    assert.equal($("[data-call-collapse]").getAttribute("aria-label"), "缩小", "窄屏只剩图标，仍有可读名");
+    assert.equal($("[data-call-collapse]").getAttribute("aria-label"), "回到小窗", "窄屏只剩图标，仍有可读名");
   } finally {
     await unmount();
   }
@@ -427,14 +427,14 @@ test("CallParticipantMenu 单独用（§3.9 导出）：不给锚点也能弹；
   }
 });
 
-test("底部：同一组五个按钮（放大位变成「缩小」）+ 转写/录制开关；字幕两行模式；所有按钮有可读名", async () => {
+test("底部：同一组五个按钮（放大位变成「回到小窗」）+ 转写/录制开关；字幕两行模式；所有按钮有可读名", async () => {
   await mount(snapshot(3));
   try {
     const stage = await openStage();
     const group = $('[data-call-controls="stage"]', stage);
     assert.deepEqual($$("[data-call-control]", group).map((b) => b.getAttribute("data-call-control")), ["mic", "camera", "screen", "expand", "leave"]);
-    assert.equal($('[data-call-control="expand"]', group).getAttribute("aria-label"), "缩小");
-    assert.match($('[data-call-control="leave"]', group).textContent, /离开/);
+    assert.equal($('[data-call-control="expand"]', group).getAttribute("aria-label"), "回到小窗");
+    assert.match($('[data-call-control="leave"]', group).textContent, /离开通话/);
     const toggles = $("[data-call-service-toggles]", stage);
     assert.equal($('[data-stub="CallTranscriptionToggle"]', toggles).getAttribute("data-mode"), "stage");
     assert.equal($('[data-stub="CallRecordingToggle"]', toggles).getAttribute("data-mode"), "stage");
@@ -448,7 +448,7 @@ test("底部：同一组五个按钮（放大位变成「缩小」）+ 转写/�
   }
 });
 
-test("Esc 与「缩小」回到小窗，焦点落回「放大」按钮；Tab 在浮层里转圈", async () => {
+test("Esc 与「回到小窗」回到小窗，焦点落回「放大」按钮；Tab 在浮层里转圈", async () => {
   await mount(snapshot(3));
   try {
     let stage = await openStage();
@@ -469,7 +469,7 @@ test("Esc 与「缩小」回到小窗，焦点落回「放大」按钮；Tab 在
 
     stage = await openStage();
     await click($("[data-call-collapse]", stage));
-    assert.equal($("[data-call-stage]"), null, "「缩小」");
+    assert.equal($("[data-call-stage]"), null, "「回到小窗」按钮");
     assert.equal(document.activeElement, $('[data-call-dock] [data-call-control="expand"]'));
   } finally {
     await unmount();

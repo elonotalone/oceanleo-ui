@@ -201,13 +201,13 @@ export function CallStage({ narrow, onCollapse, focusTick }: CallStageProps) {
         <button
           type="button"
           data-call-collapse
-          aria-label={tt("缩小")}
-          title={tt("缩小（Esc）")}
+          aria-label={tt("回到小窗")}
+          title={tt("回到小窗（Esc）")}
           onClick={() => onCollapse()}
           className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-neutral-700 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-200 dark:hover:bg-white/10"
         >
           <IconCollapse size={16} />
-          {narrow ? null : <span aria-hidden="true">{tt("缩小")}</span>}
+          {narrow ? null : <span aria-hidden="true">{tt("回到小窗")}</span>}
         </button>
       </header>
 

@@ -139,7 +139,8 @@ export function CallControls({ mode, narrow, onToggleStage, toggleRef }: CallCon
     : me.screen
       ? tt("停止共享屏幕")
       : tt("共享屏幕");
-  const toggleLabel = mode === "stage" ? tt("缩小") : tt("放大");
+  // 「放大」「缩小」两个字在别的分表里是「放大面板 / 放大画面」，这里用不会撞键的说法。
+  const toggleLabel = mode === "stage" ? tt("回到小窗") : tt("放大通话窗口");
 
   return (
     <div role="group" aria-label={tt("通话控制")} data-call-controls={mode} className={`flex items-center ${narrow ? "justify-between gap-1" : "justify-center gap-1.5"}`}>
@@ -236,7 +237,7 @@ export function CallControls({ mode, narrow, onToggleStage, toggleRef }: CallCon
         className={`${ROUND} ${mode === "stage" && !narrow ? "h-11 gap-1.5 px-4" : size} ${TONE_LEAVE}`}
       >
         <IconLeave size={iconSize} />
-        {mode === "stage" && !narrow ? <span className="text-[13px] font-medium">{tt("离开")}</span> : null}
+        {mode === "stage" && !narrow ? <span className="text-[13px] font-medium">{tt("离开通话")}</span> : null}
       </button>
 
       <CallMenu open={menu === "mic"} anchorRef={micCaretRef} onClose={() => setMenu(null)} label={tt("麦克风设置")}>
