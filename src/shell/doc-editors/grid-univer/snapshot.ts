@@ -30,6 +30,11 @@ import type {
   GridRange,
 } from "../grid-structure";
 import { translateGridFormula } from "../grid-structure";
+import {
+  isGeneralNumberFormat,
+  legacyNumberFormatPattern,
+  parseGridDateValue,
+} from "../grid-format/number-format";
 
 /** Univer 空白表的最小尺寸；存量表比它小就补到这里，和旧核的空表观感一致。 */
 export const GRID_UNIVER_MIN_ROWS = 20;
@@ -292,6 +297,52 @@ function numericValue(raw: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * 存量格式里 `type`（date / currency / percent）与 `decimals` 是 `numFmt` 的退化形式。
+ * 以前这里只平移 `numFmt`，于是只带 `type: "date"` 的格子（SheetJS 导入、旧核工程档）
+ * 进了 Univer 就丢掉格式：公式算出来的日期显示成 Excel 序列号（46239）。
+ * 这里把退化形式归一成 Excel 格式串；`number` 只有显式给了小数位才归一，
+ * 否则整数会被无端补成 `0.00`。
+ */
+export function effectiveGridNumberFormat(
+  format: GridCellFormat | undefined,
+): string {
+  if (!format) return "";
+  const explicit = format.numFmt?.trim();
+  if (explicit && !isGeneralNumberFormat(explicit)) return explicit;
+  switch (format.type) {
+    case "date":
+    case "currency":
+    case "percent":
+      return legacyNumberFormatPattern(format.type, format.decimals);
+    case "number":
+      return format.decimals === undefined
+        ? ""
+        : legacyNumberFormatPattern("number", format.decimals);
+    default:
+      return "";
+  }
+}
+
+const SERIAL_DAY_MS = 86_400_000;
+
+/** 日历日期 → Excel 序列号（`excelSerialToDate` 的逆，含 1900 闰年兼容）。 */
+export function dateToExcelSerial(date: Date): number {
+  const time = date.getTime();
+  const days = (time - Date.UTC(1899, 11, 30)) / SERIAL_DAY_MS;
+  return days >= 61 ? days : (time - Date.UTC(1899, 11, 31)) / SERIAL_DAY_MS;
+}
+
+/** 日期格子里存的 ISO 文本 → 序列号；不是日期文本返回 null（不猜）。 */
+function dateTextToSerial(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(trimmed)) return null;
+  const parsed = parseGridDateValue(trimmed);
+  if (!parsed) return null;
+  const serial = dateToExcelSerial(parsed);
+  return Number.isFinite(serial) ? Math.round(serial * 1e6) / 1e6 : null;
+}
+
 /** 存量格式 → Univer 样式。返回 `null` = 这个格子没有任何要带过去的样式。 */
 export function gridFormatToUniverStyle(
   format: GridCellFormat | undefined,
@@ -319,8 +370,9 @@ export function gridFormatToUniverStyle(
   // （两边都直接进 XLSX 的 `numFmt`），所以这里是平移不是翻译。
   // `type` / `decimals` 那两个自研字段没有对应位：它们表达不了自定义格式，
   // 本来就是 `numFmt` 的退化形式，由调用方先归一化。
-  if (format.numFmt) {
-    style.n = { pattern: format.numFmt };
+  const numFmt = effectiveGridNumberFormat(format);
+  if (numFmt) {
+    style.n = { pattern: numFmt };
     touched = true;
   }
   return touched ? style : null;
@@ -451,14 +503,20 @@ export function gridSheetsToUniverSnapshot(
       maxCol = Math.max(maxCol, line.length);
       for (let col = 0; col < line.length; col += 1) {
         const raw = line[col] ?? "";
-        const style = gridFormatToUniverStyle(sheet.formats?.[`${row}:${col}`]);
+        const sourceFormat = sheet.formats?.[`${row}:${col}`];
+        const style = gridFormatToUniverStyle(sourceFormat);
         if (!raw && !style) continue;
         const cell: ICellData = {};
         if (isFormula(raw)) {
           cell.f = raw;
           report.formulas += 1;
         } else if (raw) {
-          const numeric = numericValue(raw);
+          // 日期格里的 ISO 文本存成序列号 + 日期格式，才是真日期（能参与 DATE/TODAY 运算）。
+          const dateSerial =
+            sourceFormat?.type === "date" || /[ymd]/i.test(sourceFormat?.numFmt || "")
+              ? dateTextToSerial(raw)
+              : null;
+          const numeric = dateSerial ?? numericValue(raw);
           if (numeric === null) {
             cell.v = raw;
             cell.t = CELL_VALUE_STRING;

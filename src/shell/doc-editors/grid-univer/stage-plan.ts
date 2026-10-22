@@ -87,7 +87,19 @@ export interface GridUniverCorePresetConfig {
       };
   contextMenu: boolean;
   statusBarStatistic: boolean;
+  /** Univer 菜单项配置（按菜单项 id）。 */
+  menu?: Record<string, { hidden?: boolean }>;
 }
+
+/**
+ * 撤销 / 重做只留 OceanLeo 顶栏那一份：Univer 功能区里的同名按钮用 Univer 自己的
+ * `menu` 配置隐藏（菜单项 id 就是命令 id），不是 CSS 遮盖。两处走同一个撤销栈，
+ * 留两份只会让用户以为是两套历史。
+ */
+export const GRID_UNIVER_HIDDEN_MENU_IDS = [
+  "univer.command.undo",
+  "univer.command.redo",
+] as const;
 
 /**
  * 传给 `UniverSheetsCorePreset` 的配置。
@@ -114,6 +126,9 @@ export function gridUniverCorePresetConfig(
     },
     contextMenu: true,
     statusBarStatistic: true,
+    menu: Object.fromEntries(
+      GRID_UNIVER_HIDDEN_MENU_IDS.map((id) => [id, { hidden: true }]),
+    ),
   };
 }
 

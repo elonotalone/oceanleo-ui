@@ -533,7 +533,9 @@ async function readWorkbook(
             cell?.f
               ? `=${cell.f}`
               : value instanceof Date
-                ? value.toISOString().slice(0, 10)
+                ? value.toISOString().endsWith("T00:00:00.000Z")
+                  ? value.toISOString().slice(0, 10)
+                  : value.toISOString().slice(0, 19).replace("T", " ")
                 : value == null
                   ? ""
                   : String(value),
@@ -541,7 +543,13 @@ async function readWorkbook(
           if (cell) {
             const format: GridCellFormat = {};
             const numberFormat = String(cell.z || "");
-            if (value instanceof Date || /[ymdhis]/i.test(numberFormat)) {
+            // 去掉引号串、方括号段（[Red] 的 d）和转义字符后再判日期，
+            // 否则 `0.00;[Red]-0.00` 会被当成日期。
+            const dateProbe = numberFormat
+              .replace(/"[^"]*"/g, "")
+              .replace(/\[[^\]]*\]/g, "")
+              .replace(/\\./g, "");
+            if (value instanceof Date || /[ymdhs]/i.test(dateProbe)) {
               format.type = "date";
             } else if (cell.t === "n" && /%/.test(numberFormat)) {
               format.type = "percent";
@@ -549,6 +557,12 @@ async function readWorkbook(
               format.type = "currency";
             } else if (cell.t === "n") {
               format.type = "number";
+            }
+            // 原文件的格式串原样带过去：日期、货币、自定义格式都靠它显示，
+            // 不带的话公式算出来的日期会在编辑器里变成序列号。
+            const nf = numberFormat.trim();
+            if (nf && nf.toLowerCase() !== "general" && nf !== "@") {
+              format.numFmt = nf;
             }
             if (cell.s?.font?.bold) format.bold = true;
             const align = cell.s?.alignment?.horizontal;

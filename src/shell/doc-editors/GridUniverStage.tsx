@@ -69,7 +69,11 @@ import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { downloadBlob, loadEditorProject, saveFileToLibrary } from "./doc-io";
 import { renderGridPreviewPng } from "./editor-preview-raster";
-import { buildGridRouteWorkbookBlob } from "./GridWorkbookExport";
+import {
+  buildGridXlsxFromUniverSnapshot,
+  gridXlsxDroppedWarning,
+  univerSnapshotToPreviewSheets,
+} from "./grid-univer/xlsx-export";
 import { emptyGridSheet, loadGridFile, loadGridSheets } from "./grid-model";
 import { downloadConvertedCopy } from "./doc-family-download";
 import {
@@ -132,7 +136,6 @@ import {
 import {
   gridSheetsToUniverSnapshot,
   univerSnapshotToGridSheets,
-  gridUniverOutboundWarning,
 } from "./grid-univer/snapshot";
 import { runGridUniverCommand } from "./grid-univer/facade-commands";
 import {
@@ -801,12 +804,15 @@ export function GridUniverStage({
 
   const workbookBlob = useCallback(
     async () => {
-      const notes = { dropped: [] as string[] };
-      const sheets = univerSnapshotToGridSheets(currentSnapshot(), notes);
-      const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: true });
-      return { blob, warning: gridUniverOutboundWarning(notes) };
+      // 直接从 Univer 快照写 XLSX（不经过只有行/格式/合并的 GridSheet），
+      // 写不出去的东西进 dropped，原样告诉用户。
+      const { blob, dropped } = await buildGridXlsxFromUniverSnapshot(
+        currentSnapshot(),
+        { title: item.title },
+      );
+      return { blob, warning: gridXlsxDroppedWarning(dropped) };
     },
-    [currentSnapshot],
+    [currentSnapshot, item.title],
   );
 
   const exportXlsx = useCallback(async () => {
@@ -881,8 +887,9 @@ export function GridUniverStage({
     const baseItem = externalItemRef.current ?? item;
     const snapshot = currentSnapshot();
     snapshotRef.current = snapshot;
-    const notes = { dropped: [] as string[] };
-    const sheets = univerSnapshotToGridSheets(snapshot, notes);
+    // `sheets` 只用来画预览图和写 meta；交付的 XLSX 直接从快照生成。
+    const sheets = univerSnapshotToGridSheets(snapshot);
+    let xlsxDropped: string[] = [];
     const title = `${item.title || tt("工作簿")}-${tt("编辑版")}`;
     const fileStem =
       title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "workbook";
@@ -893,14 +900,18 @@ export function GridUniverStage({
         fallbackSite: "excel",
         idempotencyKey: `grid-univer:${editRevision}:${String(item.id).slice(-80)}`,
         createFile: async () => {
-          const delivery = await buildGridRouteWorkbookBlob(sheets, {
-            headerRow: true,
+          const built = await buildGridXlsxFromUniverSnapshot(snapshot, {
+            title,
           });
-          return new File([delivery], `${fileStem}.xlsx`, {
+          xlsxDropped = built.dropped;
+          return new File([built.blob], `${fileStem}.xlsx`, {
             type: GRID_SOURCE_MEDIA_TYPE,
           });
         },
-        createPreview: () => renderGridPreviewPng(sheets, { headerRow: true }),
+        createPreview: () =>
+          renderGridPreviewPng(univerSnapshotToPreviewSheets(snapshot), {
+            headerRow: true,
+          }),
         sourceFormat: GRID_SOURCE_FORMAT,
         sourceMediaType: GRID_SOURCE_MEDIA_TYPE,
         title,
@@ -941,7 +952,7 @@ export function GridUniverStage({
       setDirty(false);
       externalItemRef.current = null;
       if (collabRoom && result.revisionId) collabRoom.markSaved(result.revisionId);
-      setStatus(gridUniverOutboundWarning(notes));
+      setStatus(gridXlsxDroppedWarning(xlsxDropped));
       return result;
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : tt("保存失败"));

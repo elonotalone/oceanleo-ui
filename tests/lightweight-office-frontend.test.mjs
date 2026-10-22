@@ -143,7 +143,7 @@ test("document, grid and deck chains expose load-edit-save-export without global
   assert.match(grid, /loadGridSheets/);
   assert.match(grid, /setDirty\(true\)/);
   assert.match(grid, /saveFileToLibrary/);
-  assert.match(grid, /buildGridRouteWorkbookBlob/);
+  assert.match(grid, /buildGridXlsxFromUniverSnapshot/);
   assert.match(grid, /editor_project_url: saved\.projectUrl/);
 
   assert.match(deck, /importPptxDeck/);

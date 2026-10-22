@@ -93,7 +93,7 @@ test("structured document editors cover rich text, workbooks and editable decks"
   const pptxImport = source("../src/shell/doc-editors/pptx-deck-import.ts");
   assert.match(rich, /tiptapJsonToDocxBlob/);
   assert.match(rich, /saveFileToLibrary/);
-  assert.match(grid, /buildGridRouteWorkbookBlob/);
+  assert.match(grid, /buildGridXlsxFromUniverSnapshot/);
   assert.match(grid, /saveFileToLibrary/);
   assert.match(grid, /univerSnapshotToGridSheets/);
   assert.match(deck, /pptxgenjs/);
