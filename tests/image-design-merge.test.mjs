@@ -14,6 +14,11 @@ import test from "node:test";
 
 import { blankDesignDocument } from "../src/shell/design-canvas/blank-design-document.ts";
 import {
+  createFabricImageProject,
+  parseFabricImageProject,
+} from "../src/shell/image-editor/editor-persistence.ts";
+import {
+  designAssetUrl,
   designDocumentToSnapshot,
   isDesignDocumentItem,
   looksLikeDesignDocument,
@@ -98,13 +103,107 @@ test("a stored design-document converts to an image scene with its layers", () =
   );
 });
 
-test("design elements the scene cannot show are reported, never dropped silently", () => {
+function richProject() {
   const project = JSON.parse(JSON.stringify(blankDesignDocument("本地设计稿 W10")));
-  project.document.elements.push({
-    id: "img-x", type: "image", x: 0, y: 0, width: 10, height: 10, z: 999, assetId: "a1",
-  });
-  const result = designDocumentToSnapshot(project);
-  assert.deepEqual(result.unsupported, [{ id: "img-x", type: "image" }]);
+  const base = { x: 100, y: 200, width: 400, height: 200, rotationDeg: 15, opacity: 0.5 };
+  project.document.elements.push(
+    { id: "img-x", type: "image", z: 1001, assetId: "assets/image/a.webp", fit: "cover", alt: "产品", ...base },
+    { id: "icon-x", type: "icon", z: 1002, assetId: "assets/icon/b.svg", ...base },
+    { id: "chart-x", type: "chart-embed", z: 1003, assetId: "assets/chart/c.png", ...base },
+    { id: "grp-x", type: "group", z: 1004, x: 0, y: 0, width: 10, height: 10, childIds: ["img-x", "icon-x"] },
+  );
+  return project;
+}
+
+const ASSETS = {
+  "assets/image/a.webp": { url: "https://cdn.test/a.webp", width: 800, height: 400 },
+  "assets/icon/b.svg": { url: "https://cdn.test/b.svg", width: 100, height: 100 },
+  "assets/chart/c.png": { url: "https://cdn.test/c.png", width: 400, height: 200 },
+};
+
+test("image, icon and chart-embed become Fabric image layers with asset refs, crop, rotation, opacity", () => {
+  const project = richProject();
+  const result = designDocumentToSnapshot(project, ASSETS);
+  assert.deepEqual(result.unsupported, []);
+  const byId = Object.fromEntries(result.snapshot.json.objects.map((o) => [o.oceanleoId, o]));
+  const img = byId["img-x"];
+  assert.equal(img.type, "Image");
+  assert.equal(img.src, "https://cdn.test/a.webp");
+  assert.equal(img.oceanleoDesignAssetId, "assets/image/a.webp");
+  assert.equal(img.angle, 15);
+  assert.equal(img.opacity, 0.5);
+  // cover: 800x400 into 400x200 -> scale 0.5, nothing to crop
+  assert.equal(img.scaleX, 0.5);
+  assert.equal(img.cropX, 0);
+  assert.equal(img.oceanleoDesignGroup, "grp-x");
+  assert.equal(byId["chart-x"].oceanleoName, "图表");
+  assert.equal(byId["chart-x"].type, "Image");
+  assert.equal(byId["icon-x"].oceanleoName, "图标");
+});
+
+test("cover crops and contain centres a non-matching aspect ratio", () => {
+  const project = richProject();
+  const cover = designDocumentToSnapshot(project, {
+    ...ASSETS,
+    "assets/image/a.webp": { url: "https://cdn.test/a.webp", width: 400, height: 400 },
+  }).snapshot.json.objects.find((o) => o.oceanleoId === "img-x");
+  assert.equal(cover.scaleX, 1);
+  assert.equal(cover.height, 200);
+  assert.equal(cover.cropY, 100);
+  const contain = designDocumentToSnapshot(project, ASSETS).snapshot.json.objects.find((o) => o.oceanleoId === "icon-x");
+  assert.equal(contain.scaleX, 2);
+  assert.equal(contain.left, 100 + (400 - 200) / 2);
+});
+
+test("a missing asset or a genuinely unknown type fails closed, never dropped", () => {
+  const project = richProject();
+  const missing = designDocumentToSnapshot(project, {});
+  assert.deepEqual(
+    missing.unsupported.map((e) => e.id).sort(),
+    ["chart-x", "icon-x", "img-x"],
+  );
+  const unknown = JSON.parse(JSON.stringify(blankDesignDocument("本地设计稿 W10")));
+  unknown.document.elements[0].type = "hologram";
+  // Unknown element types are refused by the carrier schema before conversion.
+  assert.throws(() => designDocumentToSnapshot(unknown), /type expected one of/);
+});
+
+test("text + shape + image + icon + chart-embed open, edit, save and reopen identical", () => {
+  const project = richProject();
+  const opened = designDocumentToSnapshot(project, ASSETS).snapshot;
+  const types = new Set(opened.json.objects.map((o) => o.oceanleoKind));
+  for (const kind of ["text", "rect", "image", "icon", "chart-embed"]) {
+    assert.ok(types.has(kind), `layer kind ${kind} present`);
+  }
+  // edit: move the image layer and retitle the text
+  const edited = JSON.parse(JSON.stringify(opened));
+  edited.json.objects.find((o) => o.oceanleoId === "img-x").left = 321;
+  const text = edited.json.objects.find((o) => o.type === "Textbox");
+  text.text = "改过的标题";
+  // save = fabric project JSON; reopen = parse it back
+  const saved = JSON.stringify(createFabricImageProject(edited, "2026-10-22T00:00:00.000Z"));
+  const reopened = parseFabricImageProject(JSON.parse(saved));
+  assert.ok(reopened);
+  assert.deepEqual(reopened.snapshot, edited);
+  assert.equal(reopened.snapshot.json.objects.length, opened.json.objects.length);
+  const reImg = reopened.snapshot.json.objects.find((o) => o.oceanleoId === "img-x");
+  assert.equal(reImg.left, 321);
+  assert.equal(reImg.oceanleoDesignAssetId, "assets/image/a.webp");
+  assert.equal(reImg.src, "https://cdn.test/a.webp");
+});
+
+test("asset keys resolve only to the first-party bucket", () => {
+  assert.equal(
+    designAssetUrl("assets/image/a b.webp"),
+    "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/a%20b.webp",
+  );
+  for (const bad of ["", "https://evil.test/x.png", "../x", "/abs", "a/../b", "javascript:1"]) {
+    assert.equal(designAssetUrl(bad), "", bad);
+  }
+  const props = readFileSync(join(ROOT, "src/shell/image-editor/editor-objects.ts"), "utf8");
+  for (const prop of ["oceanleoName", "oceanleoDesignAssetId", "oceanleoDesignGroup"]) {
+    assert.match(props, new RegExp(`"${prop}"`), `${prop} must be a serialized snapshot prop`);
+  }
 });
 
 test("design item detection: inline, schema meta, typed source format", () => {

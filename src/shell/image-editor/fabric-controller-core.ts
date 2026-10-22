@@ -664,6 +664,7 @@ export class FabricEditorCore {
           visible: object.visible !== false,
           isBackground: roleOf(object) === "background",
           selected: editorObject.oceanleoId === selectedId,
+          ...(editorObject.oceanleoName ? { name: editorObject.oceanleoName } : {}),
         };
       });
     const target = this.target();

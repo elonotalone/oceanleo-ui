@@ -154,7 +154,7 @@ export function FabricImageControls({
                   : "border-[var(--border,#e7e5e4)]"
               }`}
             >
-              <span className="min-w-0 flex-1 truncate">{layer.kind}</span>
+              <span className="min-w-0 flex-1 truncate">{layer.name || layer.kind}</span>
               <span
                 className={layer.locked ? "pointer-events-none opacity-30" : ""}
                 onClick={(event) => { event.stopPropagation(); editor.toggleLayerVisible(layer.id); }}

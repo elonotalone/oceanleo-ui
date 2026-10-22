@@ -182,6 +182,8 @@ export interface LayerEntry {
   visible: boolean;
   isBackground: boolean;
   selected: boolean;
+  /** Display name when the layer has one (design chart/icon layers). */
+  name?: string;
 }
 
 export interface BrushSettings {

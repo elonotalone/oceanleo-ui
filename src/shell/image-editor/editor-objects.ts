@@ -72,6 +72,12 @@ export interface EditorObjectProps {
    * new size without asking the user to retype it.
    */
   oceanleoBarcode?: BarcodePayload;
+  /** Layer display name (e.g. "图表" for a design chart-embed). */
+  oceanleoName?: string;
+  /** Design-document `assetId` (platform_assets.oss_key) this layer was built from. */
+  oceanleoDesignAssetId?: string;
+  /** Design-document group id this layer belonged to. */
+  oceanleoDesignGroup?: string;
 }
 
 export type EditorObject = FabricObject & EditorObjectProps;
@@ -93,6 +99,9 @@ export const SNAPSHOT_PROPS = [
   "oceanleoTablePart",
   "oceanleoDependency",
   "oceanleoBarcode",
+  "oceanleoName",
+  "oceanleoDesignAssetId",
+  "oceanleoDesignGroup",
   ...FABRIC_CARRIER_SNAPSHOT_PROPS,
 ];
 

@@ -76,8 +76,11 @@ import {
 } from "./types";
 import { PsdCompositeError, isPsdSource } from "./psd-composite";
 import {
+  designAssetRefs,
+  designAssetUrl,
   designDocumentToSnapshot,
   isDesignDocumentItem,
+  type DesignAssetImage,
   unsupportedDesignMessage,
 } from "./design-document-snapshot";
 import {
@@ -788,7 +791,32 @@ export function useFabricImageEditor(
             );
             if (cancelled || abort.signal.aborted) return;
             if (!hydrated.ok) throw new Error(hydrated.error);
-            const converted = designDocumentToSnapshot(hydrated.project);
+            // Image / icon / chart-embed elements: assetId is a platform asset
+            // key. Load each once to learn its natural size; a missing asset
+            // fails the open instead of dropping the layer.
+            const assets: Record<string, DesignAssetImage> = {};
+            for (const ref of designAssetRefs(hydrated.project)) {
+              if (assets[ref.assetId]) continue;
+              const url = designAssetUrl(ref.assetId);
+              if (!url) {
+                throw new Error(`设计稿素材引用无效（${ref.assetId}），未改用空白画布覆盖原件。`);
+              }
+              const safe = canvasSafeUrl(url);
+              try {
+                const probe = await loadImageObject(fabric, safe, abort.signal);
+                assets[ref.assetId] = {
+                  url: safe,
+                  width: probe.width || 0,
+                  height: probe.height || 0,
+                };
+                probe.dispose();
+              } catch (caught) {
+                if (isAbortError(caught)) throw caught;
+                throw new Error(`设计稿素材无法载入（${ref.assetId}），未改用空白画布覆盖原件。`);
+              }
+              if (cancelled || abort.signal.aborted) return;
+            }
+            const converted = designDocumentToSnapshot(hydrated.project, assets);
             if (converted.unsupported.length) {
               throw new Error(unsupportedDesignMessage(converted.unsupported));
             }
