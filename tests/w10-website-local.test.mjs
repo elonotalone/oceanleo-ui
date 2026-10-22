@@ -54,8 +54,9 @@ test("EmbeddedRoute keeps the remote website iframe and branches to Puck only wh
   assert.match(embedded, /<EmbedEditorPane/);
   assert.match(embedded, /WebsiteLocalRoute/);
   assert.match(embedded, /preferLocalWebsite/);
-  assert.match(localRoute, /website-local-undo/);
-  assert.match(localRoute, /website-local-redo/);
+  // Undo/redo live in the OceanLeo top bar (adapter.history), not inside the stage.
+  assert.match(localRoute, /history: \{ canUndo, canRedo, undo, redo \}/);
+  assert.doesNotMatch(localRoute, /website-local-undo|website-local-redo/);
   assert.match(localRoute, /website-offline-preview-notice/);
   assert.match(localRoute, /preview\.notice/);
   assert.match(localRoute, /website-page-add/);

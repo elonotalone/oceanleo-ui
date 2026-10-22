@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Puck } from "@puckeditor/core";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
@@ -15,6 +14,10 @@ import {
 } from "../website-source-carrier/website-source-schema";
 import { blankWebsiteSource } from "../website-local/blank-website-source";
 import { websitePuckConfig } from "../website-local/website-puck-config";
+import { WebsitePuckStage } from "../website-local/WebsitePuckStage";
+import { websiteFaceForMode } from "../website-local/website-puck-faces";
+import { setPluginMode } from "../plugin-chrome/plugin-mode-store";
+import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
 import {
   addWebsitePage,
   addWebsiteSection,
@@ -122,6 +125,8 @@ export function WebsiteLocalRoute({
   const [editorKey, setEditorKey] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  // Normal = composed light UI, Pro = Puck's default UI; one Puck instance, same data.
+  const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const [addKind, setAddKind] = useState<WebsiteSectionKind>("content");
   const online = typeof navigator === "undefined" ? false : navigator.onLine !== false;
   const preview = cloudBuildPreviewAvailable(online);
@@ -172,6 +177,21 @@ export function WebsiteLocalRoute({
     ),
   );
 
+  const undo = () => {
+    const next = history.undo();
+    setSource(next);
+    setRevision((value) => value + 1);
+    setEditorKey((value) => value + 1);
+    syncHistory();
+  };
+  const redo = () => {
+    const next = history.redo();
+    setSource(next);
+    setRevision((value) => value + 1);
+    setEditorKey((value) => value + 1);
+    syncHistory();
+  };
+
   if (!item) {
     return <div data-testid="website-missing-item">没有打开的网站工程。</div>;
   }
@@ -196,6 +216,14 @@ export function WebsiteLocalRoute({
       adapter={{
         id: "website",
         label: "网站",
+        history: { canUndo, canRedo, undo, redo },
+        mode: {
+          current: mode,
+          setMode: (next) => {
+            setMode(next);
+            setPluginMode("website", next);
+          },
+        },
         stage: remoteLoading ? (
           <div className="flex h-full items-center justify-center p-8 text-sm" data-testid="website-remote-loading">
             正在读取远程网站工程。
@@ -221,36 +249,6 @@ export function WebsiteLocalRoute({
                 {preview.notice}
               </p>
             )}
-            <div className="flex flex-wrap gap-2 border-b px-4 py-2">
-              <button
-                type="button"
-                data-testid="website-local-undo"
-                disabled={!canUndo}
-                onClick={() => {
-                  const next = history.undo();
-                  setSource(next);
-                  setRevision((value) => value + 1);
-                  setEditorKey((value) => value + 1);
-                  syncHistory();
-                }}
-              >
-                撤销
-              </button>
-              <button
-                type="button"
-                data-testid="website-local-redo"
-                disabled={!canRedo}
-                onClick={() => {
-                  const next = history.redo();
-                  setSource(next);
-                  setRevision((value) => value + 1);
-                  setEditorKey((value) => value + 1);
-                  syncHistory();
-                }}
-              >
-                重做
-              </button>
-            </div>
             <div
               className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-[12px]"
               data-testid="website-page-bar"
@@ -360,11 +358,11 @@ export function WebsiteLocalRoute({
               </label>
             </div>
             <div className="min-h-0 flex-1">
-              <Puck
+              <WebsitePuckStage
                 key={`${editorKey}:${currentPage?.id || "home"}`}
+                face={websiteFaceForMode(mode)}
                 config={websitePuckConfig}
                 data={websiteSourceToPuck(source, currentPage?.id)}
-                iframe={{ enabled: false }}
                 onChange={(data) =>
                   commit(puckToWebsiteSource(data, source, currentPage?.id))
                 }
