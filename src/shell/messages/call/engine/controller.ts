@@ -61,7 +61,7 @@ import type {
 export const VOLUME_INTERVAL_MS = 300;
 export const MIC_SILENT_MS = 8_000;
 export const NETWORK_POOR_MS = 6_000;
-export const ENDED_RESET_MS = 4_000;
+export const ENDED_RESET_MS = 6_000; // 与小窗「通话已结束」显示 6 秒一致（signals/W07-to-W05.md 第 6 条）
 export const ERROR_RESET_MS = 10_000;
 export const HEARTBEAT_DEBOUNCE_MS = 400;
 export const DEVICE_ISSUE_CLEAR_MS = 15_000;

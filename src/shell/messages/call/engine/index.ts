@@ -6,7 +6,7 @@
 //     共享屏幕的画面只在 stage 模式下订阅（小窗只显示「XX 在共享屏幕 · 查看」）。
 //   - `participants[].level` 为 0–1 的平滑电平；`network` 0 未知、1 很差 … 5 很好。
 //   - 远端声音由 SDK 自己播放；`attachVideo` 只管画面（自己的 participantId = 本地预览）。
-//   - `phase`：idle → joining → connected ⇄ reconnecting → leaving → ended（4 s 后回 idle）；
+//   - `phase`：idle → joining → connected ⇄ reconnecting → leaving → ended（6 s 后回 idle）；
 //     入会失败 → error（10 s 后回 idle）。结束原因/失败原因在 `error.code`（见 controller.ts CALL_ERROR_MESSAGES）。
 import { useSyncExternalStore } from "react";
 import { getUserId } from "../../../../lib/auth/client";
