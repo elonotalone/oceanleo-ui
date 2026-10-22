@@ -145,12 +145,16 @@ function permissionHelp(env: IssueEnvironment, device: "mic" | "camera"): string
 
 const SCREEN_PICK_STEP = "点「重试」后，在弹出的窗口里选择要共享的屏幕或窗口，再点「共享」。";
 
+/**
+ * 引擎只在操作系统拒绝屏幕录制时报 screen_permission（用户在选择器里点取消不算问题，W05 抄送）：
+ * 所以系统设置那一步放最前；网页里放行之后还要重试并在选择器里选屏幕。
+ */
 function screenHelp(env: IssueEnvironment): string[] {
   if (env.os === "android" || env.os === "ios") return ["手机浏览器不能共享屏幕，请在电脑上共享。"];
-  const steps = env.desktopClient ? [] : [SCREEN_PICK_STEP];
+  const steps: string[] = [];
   const system = systemPermissionStep(env, "screen");
   if (system) steps.push(system);
-  if (!steps.length) steps.push(SCREEN_PICK_STEP);
+  if (!env.desktopClient || !steps.length) steps.push(SCREEN_PICK_STEP);
   return steps;
 }
 
