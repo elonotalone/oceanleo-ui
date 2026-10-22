@@ -410,16 +410,10 @@ test("floating toolbar geometry spans the workspace without escaping its bounds"
 
 test("normal autosave progress is icon-only while actionable errors remain visible", () => {
   const bar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
-  const embed = source("../src/shell/workbench-embed.tsx");
   const pdf = source("../src/shell/media-editors/PdfStage.tsx");
   const richdoc = source("../src/shell/doc-editors/RichDocStage.tsx");
   assert.match(bar, /CloudAutoSaveIcon/);
   assert.match(bar, /onRetrySave/);
-  assert.doesNotMatch(
-    embed,
-    /tt\("修改已保存"\)|tt\("有未保存的修改"\)|正在连接编辑器|编辑器已连接/,
-  );
-  assert.match(embed, /status\.severity === "fatal" \? "alert" : "status"/);
   const library = source("../src/shell/WorkspaceLibrary.tsx");
   const artifactActions = source("../src/shell/ArtifactActions.tsx");
   assert.doesNotMatch(library, /"彻底删除"|此操作无法撤销/);

@@ -20,7 +20,6 @@ test("advanced editor surfaces use semantic theme tokens", () => {
     "../src/shell/video-editor/TimelineArea.tsx",
     "../src/shell/media-editors/PdfWorkbench.tsx",
     "../src/shell/media-editors/Model3DWorkbench.tsx",
-    "../src/shell/workbench-embed.tsx",
   ];
   const hardcodedSurface =
     /\b(?:bg-white|bg-stone-\d+|text-stone-\d+|border-stone-\d+|bg-neutral-\d+|text-neutral-\d+|border-neutral-\d+)\b/;
@@ -44,7 +43,6 @@ test("large Canva workbench components stay split below the frontend limit", () 
     "../src/shell/FloatingContextToolbar.tsx",
     "../src/shell/AdvancedStageControls.tsx",
     "../src/shell/editor-protocol.ts",
-    "../src/shell/workbench-embed.tsx",
   ]) {
     const lines = source(path).split("\n").length;
     assert.ok(lines < 600, `${path} has ${lines} lines`);
