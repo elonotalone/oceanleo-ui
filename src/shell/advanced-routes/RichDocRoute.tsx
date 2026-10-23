@@ -4,7 +4,7 @@ import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditor
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useAdvancedSession } from "../advanced-session-context";
-import { advancedSavedItem } from "../advanced-session";
+import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { exportWechatFromTiptap } from "../doc-editors/rich-doc-wechat-export";
@@ -43,6 +43,7 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import { withEditorHistoryCommand } from "../workbench-material-command";
 import { convertUmoToRichDoc } from "../doc-editors/rich-doc-umo-migration";
 
 export function RichDocRoute({
@@ -137,7 +138,17 @@ export function RichDocRoute({
     }),
     [editor.insertImageUrl],
   );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  // 素材库「点一下 / 拖进去 = 插入」：插图走 Tiptap 自己的撤销历史（`setImage` 链），
+  // 基线是当前 revision（保存后随 `item` 前移）；基线未知时不登记，面板如实说还不能插。
+  const materialCommandAdapter = useMemo(
+    () =>
+      withEditorHistoryCommand(materialAdapter, {
+        documentId: advancedRootItemId(item),
+        targetRevisionId: item.revisionId,
+      }),
+    [item, materialAdapter],
+  );
+  useWorkbenchMaterialAdapter(materialCommandAdapter);
   const saveBeforeNewConversation = useCallback(async () => {
     // 协同里不是保存者：没有要存的东西（保存者会存），别拦住「新开一轮对话」。
     if (!collabSaveGate) return { ok: true as const, item };

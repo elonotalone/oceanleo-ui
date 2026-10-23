@@ -17,3 +17,6 @@
 - [实测 浏览器 R2] md `c3e0c65b…`：两次保存 = revision 8/9，重开/刷新两处都在；断网 error → 重试 4s 后 saved = revision 10（上一轮 15s 窗口内没动，probe 显示恢复网络约 3s 后自动重试即成功；场景重试窗口放宽到 60s）。turndown 预载后不再报 chunk 失败。
 - [实测 DB] docx `2e894b64…` 上一轮（07:55Z）3 次保存只有 2 个 revision（save2 的 saved 没有对应 revision），待复测。
 - [实测 浏览器+DB] docx：第一次改动直接走版本；同会话第二次改动走草稿层（database/upload）→ saved，版本 20s 空闲或关闭 hand-off 后约 9s 才发（rev 7/8 实测）。关闭后马上重开 + 刷新会让版本推迟到下一次编辑（数据在草稿里不丢）。写 `signals/W08-to-W04.md`。
+- R2：接 W02 契约——`RichDocRoute` 用 `withEditorHistoryCommand(materialAdapter, {documentId: advancedRootItemId(item), targetRevisionId: item.revisionId})` 登记；插图走 Tiptap `setImage` 链（可撤销）。
+- [实测 浏览器] 「插入」抽屉英文界面混中文：文档来源 / 导入文档 / 选中文字后… / 插入内容 / 3×3 表格 / 分割线 / 代码块 / 引用块 / 上传本地图片 / 字体分类 中文、经典。全部补 16 语（W08 册，598 行）；它们原在 i18n 历史基线里，需父 agent 从 PRE_EXISTING_GAPS 摘掉。
+- [实测 浏览器] 链接面板在左侧检查器（textarea，回车提交）；打开后编辑栏右端超出舞台（W03 布局）。
