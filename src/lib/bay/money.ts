@@ -1,9 +1,11 @@
-// Bay 设置「钱」的取数（逻辑照 talent 的 lib/talent/money.ts）：账本、月度汇总、
+// Bay 卖家的钱的取数（逻辑照 talent 的 lib/talent/money.ts）：账本、月度汇总、
 // 单笔对账单、收款账户状态、接单资格。全部是只读接口。
+// 用在两处：数据面板（收款状态、收入流水、对账单、导出）和设置 → LeoBay 的收款账户。
 //
 // 收款账户开户、刷新、后台登录链接都会调 Stripe Connect，本期界面不提供，这里也不导出
 // （契约 §7：开发网关的 Stripe 是真钥匙）。
 import { BayApiError, bayGet } from "./http";
+import { fetchBayPaymentConfig } from "./payments";
 
 export type BayLedgerDirection = "in" | "out";
 export type BayLedgerEvent = "ordered" | "delivered" | "completed" | "cancelled" | "adjusted";
@@ -281,6 +283,7 @@ const CLOSED_PAYOUT_COPY = {
   onboard: "开户暂未开放",
   withdraw: "提现暂未开放",
   rail: "放款通道尚未接入",
+  usd: "美元账本上还没有能付出美元的收款通道",
 } as const;
 
 /** 把网关 blocker 收成词表里已有的中文 key；对不上的原样留下，调用方再 tt()。 */
@@ -290,6 +293,8 @@ export function mapBayPayoutBlockerLine(line: string): string {
   if (CLOSED_PAYOUT_ONBOARD_MARKERS.some((marker) => text.includes(marker))) return CLOSED_PAYOUT_COPY.onboard;
   if (text.includes(CLOSED_PAYOUT_COPY.payout)) return CLOSED_PAYOUT_COPY.payout;
   if (text.includes("放款通道尚未接入") || text.includes("收款通道尚未接入")) return CLOSED_PAYOUT_COPY.rail;
+  // 网关的美元账本那句是「USD payouts are not available yet：…」，中英混写，收成一句带译文的。
+  if (text.startsWith("USD payouts are not available yet")) return CLOSED_PAYOUT_COPY.usd;
   return text;
 }
 
@@ -314,7 +319,7 @@ export function bayPayoutBlockerLines(eligibility: BayPaidWorkEligibility | null
   return uniqueLines(raw.map(mapBayPayoutBlockerLine));
 }
 
-/** 钱页收款卡已经写了「暂未开放」三句时，不要把映射后的同一句再画一遍。 */
+/** 收款账户那块已经写了「暂未开放」三句时，不要把映射后的同一句再画一遍。 */
 export function bayVisiblePayoutBlockerLines(lines: string[], sellerReady: boolean): string[] {
   if (sellerReady) return lines;
   const alreadyOnCard = new Set<string>([CLOSED_PAYOUT_COPY.payout, CLOSED_PAYOUT_COPY.onboard, CLOSED_PAYOUT_COPY.withdraw]);
@@ -325,13 +330,49 @@ export const BAY_PAYOUT_ACCOUNT_STATE_LABELS: Readonly<Record<string, string>> =
   none: "还没有收款账户",
   onboarding: "开户办理中",
   pending: "通道审核中",
+  // 网关能收钱的那一档叫 `ready`（backend payouts.PAYABLE_STATES）；`active` 是早先前端自己起的名字，一并认。
+  ready: "可以收款",
   active: "可以收款",
   restricted: "收款受限",
   disabled: "已停用",
 };
 
+/** 收款账户已经能收钱的状态（网关的 `ready`，兼容旧名 `active`）。 */
+export function bayPayoutAccountIsPayable(state: string | null | undefined): boolean {
+  return state === "ready" || state === "active";
+}
+
 export function bayPayoutAccountStateLabel(state: string | null | undefined): string {
   return BAY_PAYOUT_ACCOUNT_STATE_LABELS[String(state || "none")] ?? "状态未知";
+}
+
+/** 收款现在是什么状态：通道开没开、账户走到哪一步、为什么还收不了款。数据面板和设置页共用这一份。 */
+export interface BayPayoutStatus {
+  /** 网关的 `seller_ready`：收款通道是否已对卖家开放。 */
+  sellerReady: boolean;
+  /** 收款账户状态原值：none / onboarding / pending / active / restricted / disabled。 */
+  state: string;
+  /** `state` 在词表里的中文句，调用方再 tt()。 */
+  stateLabel: string;
+  /** 还收不了款的原因（词表里已有的句子或网关原文）；通道没开时已去掉卡片上本来就写着的三句。 */
+  blockers: string[];
+}
+
+/**
+ * 收款状态（纯读）。就绪只看 `fetchBayPaymentConfig()` 的 `seller_ready`；账户状态与原因来自
+ * 收款账户、接单资格两个只读接口。登录失效（401）等错误照常抛出，由调用方决定怎么显示。
+ */
+export async function fetchBayPayoutStatus(): Promise<BayPayoutStatus> {
+  const config = await fetchBayPaymentConfig();
+  const [account, eligibility] = await Promise.all([fetchBayPayoutAccount(), fetchBayPaidWorkEligibility()]);
+  const sellerReady = config.seller_ready === true;
+  const state = account?.state || "none";
+  return {
+    sellerReady,
+    state,
+    stateLabel: bayPayoutAccountStateLabel(state),
+    blockers: bayVisiblePayoutBlockerLines(bayPayoutBlockerLines(eligibility, account), sellerReady),
+  };
 }
 
 export function bayLedgerCounterpartyName(item: BayLedgerEntry): string {

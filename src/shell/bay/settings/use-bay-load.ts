@@ -1,6 +1,6 @@
 "use client";
 
-// 设置里「钱」「规则与条款」几块共用的取数小钩子：换了依赖或点「重试」就重新取，过期的结果丢掉。
+// 设置 → LeoBay 各块共用的取数小钩子：换了依赖或点「重试」就重新取，过期的结果丢掉。
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface BayLoadState<T> {

@@ -1,6 +1,7 @@
 "use client";
 
-// 设置「钱」里用的几块小界面：卡片、统计格、按月柱状图、流水列表、单笔对账单。
+// 钱的几块小界面：卡片、统计格、按月柱状图、流水列表、单笔对账单。
+// 用在设置 → LeoBay（付款卡、收款账户）、数据面板（收入流水、对账单）和「我买到的」（对账单）。
 // 全是只读展示；这里没有任何会碰 Stripe 的按钮（契约 §7）。
 import type { ReactNode } from "react";
 import { htmlLang } from "../../../i18n/config";
@@ -23,11 +24,26 @@ export function useBayMoneyLocale(): string {
   return htmlLang(bayUiLocale());
 }
 
-export function MoneyCard({ title, children, id }: { title: string; children: ReactNode; id: string }) {
+/** 一块白色圆角卡片（同项目页主区卡片）：标题、可选的一句说明、正文。 */
+export function MoneyCard({
+  title,
+  hint,
+  children,
+  id,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+  id: string;
+}) {
   return (
-    <section className="space-y-2" data-bay-money-card={id}>
-      <h4 className="text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">{title}</h4>
-      <div className="mt-2">{children}</div>
+    <section
+      className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-700 dark:bg-neutral-900"
+      data-bay-money-card={id}
+    >
+      <h3 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">{title}</h3>
+      {hint ? <p className="mt-1 text-[12px] leading-5 text-neutral-500 dark:text-neutral-400">{hint}</p> : null}
+      <div className="mt-3">{children}</div>
     </section>
   );
 }

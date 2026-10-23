@@ -15,6 +15,7 @@ import {
   type BayAppTrial,
 } from "../../../lib/bay/app-paid";
 import { formatBayFen } from "../../../lib/bay/money";
+import { openBaySettings } from "../settings/settings-open";
 import { openBay, requireBayLogin } from "../shell/bay-state";
 import { PaneLoading, PaneMessage, Section } from "../supply/parts";
 import { errorText, useBayResource } from "../supply/use-bay-resource";
@@ -52,7 +53,7 @@ export function MyBoughtAppsPane(): ReactElement | null {
 
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
-    return <PaneMessage text={resource.error ? tt(resource.error) : tt("没读到你买到的作品，请稍后再试。")} onRetry={reload} />;
+    return <PaneMessage text={resource.error ? tt(resource.error) : tt("没读到你买到的东西，请稍后再试。")} onRetry={reload} />;
   }
 
   const { purchases, subscriptions, trials, apps } = resource.data;
@@ -82,7 +83,7 @@ export function MyBoughtAppsPane(): ReactElement | null {
     <section data-bay-pane="mine-bought-apps" className="space-y-4 px-4 pb-4">
       {empty ? (
         <p data-bay-empty="bought-apps" className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-[13px] text-neutral-600">
-          {tt("你还没有买过或试用过任何作品")}
+          {tt("你还没有买过或试用过任何东西")}
         </p>
       ) : null}
 
@@ -145,7 +146,7 @@ export function MyBoughtAppsPane(): ReactElement | null {
                       </button>
                     ) : null}
                     {row.status === "past_due" ? (
-                      <button type="button" data-bay-action="check-payment" className={SECONDARY} onClick={() => openBay({ kind: "settings", pane: "money" })}>
+                      <button type="button" data-bay-action="check-payment" className={SECONDARY} onClick={() => openBaySettings()}>
                         {tt("去检查付款方式")}
                       </button>
                     ) : null}
@@ -272,7 +273,7 @@ function TrialRow({
       {asking === "buy" ? (
         <div data-bay-confirm="buy" className="mt-3 space-y-2">
           <p className="text-[12px] text-neutral-600">
-            {tt("将支付 {price}。款项托管 7 天；7 天内没打开过作品可直接全额退，打开过的需写理由由作者处理。", {
+            {tt("将支付 {price}。款项托管 7 天；7 天内没打开过可直接全额退，打开过的需写理由由作者处理。", {
               price: formatBayFen(app?.price_fen || 0, "CNY", locale),
             })}
           </p>

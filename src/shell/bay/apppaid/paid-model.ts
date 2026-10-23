@@ -1,4 +1,4 @@
-// 作品收费：价格换算、权益 → 该显示哪一块、退款是否要理由、卖出列表排序。不碰 window。
+// 网站与软件服务的收费：价格换算、权益 → 该显示哪一块、退款是否要理由、卖出列表排序。不碰 window。
 
 import type { BayAppAccess, BayAppPriceModel, BayAppPricingInput, BayAppPurchase, BayAppSubscription } from "../../../lib/bay/app-paid";
 
@@ -181,7 +181,7 @@ function purchaseButtons(purchase: PurchaseLike | null | undefined): Pick<PaidBu
   };
 }
 
-/** access + 是不是作者 → 作品页收费条该处在哪一种情形、露出哪些按钮。 */
+/** access + 是不是作者 → 详情页收费条该处在哪一种情形、露出哪些按钮。 */
 export function describePaidView(access: BayAppAccess, isOwner: boolean): { kind: PaidKind; buttons: PaidButtons } {
   if (isOwner) {
     return { kind: "owner", buttons: { ...EMPTY_BUTTONS, editPricing: true } };

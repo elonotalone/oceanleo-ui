@@ -119,7 +119,7 @@ export async function fetchBayPaymentConfig(): Promise<BayPaymentConfig> {
   };
 }
 
-/** 设置「钱」里的费用说明与收款国家用；就绪判断仍以 `fetchBayPaymentConfig()` 为准。 */
+/** 通道费说明与可收款国家（条款页、费用说明用）；就绪判断仍以 `fetchBayPaymentConfig()` 为准。 */
 export async function fetchBayPaymentChannel(): Promise<BayPaymentChannel> {
   return readChannel(false);
 }
@@ -180,8 +180,8 @@ export interface BayCardMethod {
 }
 
 /**
- * 已绑的卡（只读）。只在 `buyer_ready` 为 true 时问网关；否则返回 null，不发请求。
- * 绑卡、换卡、解绑都会动 Stripe，本期界面不提供。
+ * 已绑的卡（只读，设置 → LeoBay 的「付款卡」显示它）。只在 `buyer_ready` 为 true 时问网关；
+ * 否则返回 null，不发请求。绑卡、换卡、解绑都会动 Stripe，本期界面不提供。
  */
 export async function fetchBayCardMethod(): Promise<BayCardMethod | null> {
   const channel = await readChannel(false);

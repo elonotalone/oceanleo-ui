@@ -15,6 +15,7 @@ import {
   type BayAppAccess,
 } from "../../../lib/bay/app-paid";
 import { formatBayFen } from "../../../lib/bay/money";
+import { openBaySettings } from "../settings/settings-open";
 import { openBay, requireBayLogin } from "../shell/bay-state";
 import { errorText } from "../supply/use-bay-resource";
 import { AppPurchaseStatus } from "./AppPurchaseStatus";
@@ -23,7 +24,7 @@ import { describePaidView, formatPaidDate, offersMoneySettings } from "./paid-mo
 export interface AppPurchaseBarProps {
   app: BayApp;
   isOwner: boolean;
-  /** 每次读到或改变了权益就告诉作品页：它据此决定窗口里放作品还是放「需要购买」。读取失败时传 null。 */
+  /** 每次读到或改变了权益就告诉详情页：它据此决定窗口里放内容还是放「需要购买」。读取失败时传 null。 */
   onAccess: (access: BayAppAccess | null) => void;
 }
 
@@ -209,7 +210,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
             type="button"
             data-bay-action="check-payment"
             className={SECONDARY}
-            onClick={() => openBay({ kind: "settings", pane: "money" })}
+            onClick={() => openBaySettings()}
           >
             {tt("去检查付款方式")}
           </button>
@@ -221,7 +222,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
       {ask === "buy" ? (
         <div data-bay-confirm="buy" className="mt-3 space-y-2">
           <p className="text-[13px] font-medium text-neutral-900">{tt("确认购买")}</p>
-          <p className="mt-1 text-[12px] text-neutral-600">{tt("将支付 {price}。款项托管 7 天；7 天内没打开过作品可直接全额退，打开过的需写理由由作者处理。", { price })}</p>
+          <p className="mt-1 text-[12px] text-neutral-600">{tt("将支付 {price}。款项托管 7 天；7 天内没打开过可直接全额退，打开过的需写理由由作者处理。", { price })}</p>
           {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
             <button type="button" disabled={busy} onClick={() => setAsk(null)} className={SECONDARY}>
@@ -298,7 +299,7 @@ export function AppPurchaseBar({ app, isOwner, onAccess }: AppPurchaseBarProps):
               type="button"
               data-bay-action="setup-money"
               className={`${SECONDARY} mt-2`}
-              onClick={() => openBay({ kind: "settings", pane: "money" })}
+              onClick={() => openBaySettings()}
             >
               {tt("去设置付款方式")}
             </button>

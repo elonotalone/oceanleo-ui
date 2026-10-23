@@ -85,7 +85,7 @@ export function AppPurchaseStatus({
       ) : null}
       {stage === "disputed" ? <p className="text-[13px] text-neutral-700">{tt("平台正在处理这笔退款争议")}</p> : null}
       {stage === "completed" ? <p className="text-[13px] text-neutral-700">{tt("款项已付给作者，不能再退")}</p> : null}
-      {stage === "refunded" ? <p className="text-[13px] text-neutral-700">{tt("已退款，作品已收回")}</p> : null}
+      {stage === "refunded" ? <p className="text-[13px] text-neutral-700">{tt("已退款，使用权已收回")}</p> : null}
 
       {error && !ask ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
 

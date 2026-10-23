@@ -6,17 +6,19 @@ import { useLocale } from "next-intl";
 import { htmlLang, normalizeLocale } from "../../../i18n/config";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getBayDashboard, type BayDashboardRange } from "../../../lib/bay/dashboard";
-import { formatBayFen } from "../../../lib/bay/money";
+import { bayPayoutAccountIsPayable, fetchBayPayoutStatus, formatBayFen } from "../../../lib/bay/money";
+import { openBaySettings } from "../settings/settings-open";
 import { useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { PaneLoading, PaneMessage } from "../supply/parts";
 import { useBayResource } from "../supply/use-bay-resource";
-import { changeOf, DASHBOARD_RANGES, type ChangeView } from "./dashboard-model";
-
-const NO_COMPARE: ChangeView = { kind: "empty", label: "—" };
+import { changeOf, DASHBOARD_RANGES, payoutTileView, type ChangeView } from "./dashboard-model";
+import { IncomeLedgerCard } from "./IncomeLedgerCard";
 import { OverviewChart } from "./OverviewChart";
 import { ProductTable } from "./ProductTable";
 import { StatTile } from "./StatTile";
+
+const NO_COMPARE: ChangeView = { kind: "empty", label: "—" };
 
 function formatCount(value: number, locale: string): string {
   try {
@@ -31,8 +33,10 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
   const locale = htmlLang(normalizeLocale(useLocale()));
   const signedIn = useBaySignedIn();
   const [days, setDays] = useState<BayDashboardRange>(30);
-  const productsRef = useRef<HTMLDivElement | null>(null);
+  const productsRef = useRef<HTMLElement | null>(null);
   const resource = useBayResource(signedIn ? `dashboard:${days}` : null, () => getBayDashboard(days));
+  // 收款状态单独取：它取不到时只让那一格显示「—」，不拖累整张面板。
+  const payout = useBayResource(signedIn ? "dashboard-payout" : null, () => fetchBayPayoutStatus());
 
   if (!signedIn) {
     return (
@@ -55,9 +59,14 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
   const money = (fen: number) => formatBayFen(fen, data.currency, locale);
   const count = (value: number) => formatCount(value, locale);
   const scrollToProducts = () => productsRef.current?.scrollIntoView({ block: "start" });
+  const payoutView = payoutTileView(
+    payout.data
+      ? { sellerReady: payout.data.sellerReady, payable: bayPayoutAccountIsPayable(payout.data.state), stateLabel: payout.data.stateLabel }
+      : null,
+  );
 
   return (
-    <div data-bay-pane="dashboard" className="space-y-6 p-4">
+    <div data-bay-pane="dashboard" className="space-y-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-[18px] font-semibold text-neutral-950">{tt("数据面板")}</h2>
         <div role="tablist" aria-label={tt("数据面板")} className="flex flex-wrap gap-1">
@@ -87,6 +96,14 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
         <StatTile marker="income_lifetime" label={tt("累计收入")} value={money(totals.income_lifetime_fen)} change={NO_COMPARE} />
         <StatTile marker="income" label={tt("本段收入")} value={money(totals.income_fen)} change={changeOf(totals.income_fen, totals.income_prev_fen)} />
         <StatTile marker="pending" label={tt("托管中")} value={money(totals.pending_fen)} change={NO_COMPARE} />
+        <StatTile
+          marker="payout"
+          label={tt("收款状态")}
+          value={tt(payoutView.value)}
+          change={NO_COMPARE}
+          hint={payoutView.hint ? tt(payoutView.hint) : undefined}
+          onActivate={() => openBaySettings()}
+        />
         <StatTile marker="users_lifetime" label={tt("累计用户")} value={count(totals.users_lifetime)} change={NO_COMPARE} />
         <StatTile marker="new_users" label={tt("本段新增用户")} value={count(totals.new_users)} change={changeOf(totals.new_users, totals.new_users_prev)} />
         <StatTile marker="buyers" label={tt("本段付款人数")} value={count(totals.buyers)} change={NO_COMPARE} />
@@ -109,9 +126,12 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
         />
         </div>} />
 
-      <div ref={productsRef}>
+      <section ref={productsRef} data-bay-dashboard-card="products" className="rounded-xl border border-neutral-200 bg-white p-4">
+        <h3 className="mb-3 text-[14px] font-semibold text-neutral-900">{tt("商品明细")}</h3>
         <ProductTable products={data.products} currency={data.currency} locale={locale} />
-      </div>
+      </section>
+
+      <IncomeLedgerCard locale={locale} sellerReady={payout.data?.sellerReady === true} />
     </div>
   );
 }

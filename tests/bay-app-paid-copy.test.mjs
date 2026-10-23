@@ -7,6 +7,7 @@ import test from "node:test";
 
 import { LOCALES } from "../src/i18n/config.ts";
 import { BAY_APP_PAID_MESSAGES, BAY_APP_PAID_SOURCE } from "../src/i18n/ui/messages/bay-app-paid-copy.ts";
+import { LBP_W05_MESSAGES } from "../src/i18n/ui/messages/lbp-w05-copy.ts";
 
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const HAN = /[\u4e00-\u9fff]/;
@@ -43,7 +44,8 @@ test("收费组件里的新原文都登记进了 bay-app-paid-copy", () => {
     "src/shell/bay/apppaid/MyBoughtAppsPane.tsx",
     "src/shell/bay/apppaid/MySoldAppsPane.tsx",
   ];
-  const registered = new Set(Object.values(BAY_APP_PAID_SOURCE));
+  // leobay-projects 波 W05 清掉退役种类名后改写的句子登记在 lbp-w05-copy。
+  const registered = new Set([...Object.values(BAY_APP_PAID_SOURCE), ...Object.keys(LBP_W05_MESSAGES.zh)]);
   const reused = new Set([
     "购买",
     "取消",
@@ -79,7 +81,6 @@ test("收费组件里的新原文都登记进了 bay-app-paid-copy", () => {
     "没处理成功，请稍后再试。",
     "购买没成功，请稍后再试。",
     "没保存成功，请稍后再试。",
-    "这个作品不存在或已下架",
     "确认收货并把款项付给卖家？",
     "确认后款项付给卖家，不能再退",
     "卖家拒绝后，你可以请平台介入。由操作员裁定。",

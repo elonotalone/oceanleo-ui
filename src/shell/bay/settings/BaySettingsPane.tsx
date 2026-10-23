@@ -1,6 +1,7 @@
 "use client";
 
-// Bay 右栏里的设置内容：和设置窗同一套四块。不自带返回栏、标题、滚动（契约 §4.4 / 仲裁 #12）。
+// Bay 右栏里的设置内容：和设置窗同一页（付款卡 + 收款账户）。不自带返回栏、标题、滚动（契约 §4.4 / 仲裁 #12）。
+// 老深链 `?bay=settings:<pane>` 的 pane 不管是 profile / vetting / money，都落到这一页。
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayPaneProps } from "../shell/bay-state";
 import { BaySettingsSection } from "./BaySettingsSection";

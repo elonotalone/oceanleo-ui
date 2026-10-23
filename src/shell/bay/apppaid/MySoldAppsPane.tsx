@@ -26,7 +26,7 @@ export function MySoldAppsPane(): ReactElement | null {
 
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
-    return <PaneMessage text={resource.error ? tt(resource.error) : tt("没读到作品订单，请稍后再试。")} onRetry={resource.reload} />;
+    return <PaneMessage text={resource.error ? tt(resource.error) : tt("没读到订单，请稍后再试。")} onRetry={resource.reload} />;
   }
 
   const purchases = sortSoldPurchases(resource.data.purchases);
@@ -56,7 +56,7 @@ export function MySoldAppsPane(): ReactElement | null {
     <section data-bay-pane="mine-sold-apps" className="space-y-4 px-4 pb-4">
       {empty ? (
         <p data-bay-empty="sold-apps" className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-[13px] text-neutral-600">
-          {tt("还没有人买过你的作品")}
+          {tt("还没有人买过你的商品")}
         </p>
       ) : (
         <>

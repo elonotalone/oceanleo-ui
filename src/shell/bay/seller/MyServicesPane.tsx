@@ -1,7 +1,7 @@
 "use client";
 
-// Bay「我的」→ 我上架的素材与服务。概况那一行可单独拿去「我卖出的」用。
-// 窗格不自带返回栏/标题栏/滚动。钱的数字不在这里出现，只给「去看收款」入口。答疑挂牌只读。
+// Bay「我的」→ 我发布的现成文件、人工服务和其他。概况那一行可单独拿去「我卖出的」用。
+// 窗格不自带返回栏/标题栏/滚动。钱的数字不在这里出现，只给「收款账户」入口（设置 → LeoBay）；收入流水在数据面板。答疑挂牌只读。
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -81,8 +81,8 @@ export function SellerOverview() {
       <OverviewCell label={tt("进行中的订单")} value={String(active)} />
       <OverviewCell label={tt("待回复")} value={String(replies)} />
       <OverviewCell label={tt("评分")} value={rating == null ? tt("暂无评价") : rating.toFixed(1)} />
-      <button type="button" data-bay-money-entry onClick={() => openBaySettings("money")} className="px-0 py-1 text-left hover:opacity-80">
-        <span className="block text-[11px] text-stone-500">{tt("收款与账单")}</span>
+      <button type="button" data-bay-money-entry onClick={() => openBaySettings()} className="px-0 py-1 text-left hover:opacity-80">
+        <span className="block text-[11px] text-stone-500">{tt("收款账户")}</span>
         <span className="mt-1 block text-[13px] font-semibold text-stone-900">{tt("去设置里看")}</span>
       </button>
     </div>
@@ -133,7 +133,7 @@ export function MyServicesPane({
   if (!signedIn) {
     return (
       <section data-bay-pane="mine-services" className="p-4 text-[13px] text-stone-600">
-        <p>{tt("登录后管理你发布的服务。")}</p>
+        <p>{tt("登录后管理你发布的东西。")}</p>
         <button type="button" onClick={() => requireBayLogin()} className="mt-3 rounded-xl bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white">
           {tt("登录")}
         </button>
@@ -164,7 +164,7 @@ export function MyServicesPane({
     );
   }
 
-  // 类别选择条：只留选中的那一类。答疑算「人工服务」。
+  // 类别下拉：只留选中的那一类。答疑算「人工服务」。
   const shownServices = category === "all" ? loaded.services : loaded.services.filter((service) => listingCategory(service) === category);
   const shownConsults = category === "all" || category === "service" ? loaded.consults : [];
   const groups = groupMyServices(shownServices);
@@ -175,7 +175,7 @@ export function MyServicesPane({
     <section data-bay-pane="mine-services" className="space-y-4 p-4">
       {overviewRow}
 
-      {/* 一个服务都没有时，下面的空状态里已经有「发布第一个服务」，这里不再放一个。嵌进「我发布的」时由外层的发布按钮负责。 */}
+      {/* 一件都没发布时，下面的空状态里已经有「去发布」，这里不再放一个。嵌进「我发布的」时由外层的发布按钮负责。 */}
       {empty || hideNew ? null : (
         <div className="flex justify-end">
           <button type="button" onClick={() => openBay({ kind: "publish" })} data-bay-new-service className="rounded-xl bg-stone-900 px-3 py-1.5 text-[12.5px] font-semibold text-white">
@@ -186,9 +186,9 @@ export function MyServicesPane({
 
       {empty ? (
         <div data-bay-empty="services" className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center">
-          <p className="text-[13px] text-stone-600">{tt("还没有发布过服务。把一件你做得好的事变成别人能直接下单的服务。")}</p>
+          <p className="text-[13px] text-stone-600">{tt("还没有发布过东西。把一件你做得好的事发布出来，别人就能直接下单。")}</p>
           <button type="button" onClick={() => openBay({ kind: "publish" })} className="mt-3 rounded-xl bg-stone-900 px-4 py-2 text-[13px] font-semibold text-white">
-            {tt("发布第一个服务")}
+            {tt("去发布")}
           </button>
         </div>
       ) : filteredEmpty ? (
@@ -219,7 +219,7 @@ export function MyServicesPane({
             {shownConsults.map((consult) => (
               <li key={consult.id} className="border-b border-stone-100 px-1 py-2.5 text-[13px] text-stone-800">
                 <span className="flex items-start justify-between gap-2">
-                  <span className="block min-w-0 truncate font-semibold">{consult.title || tt("未命名服务")}</span>
+                  <span className="block min-w-0 truncate font-semibold">{consult.title || tt("未命名")}</span>
                   <PublishedCategoryTag category="service" />
                 </span>
                 <span className="mt-0.5 block text-[12px] text-stone-500">{tt("答疑上架后暂时不能修改")}</span>
@@ -241,7 +241,7 @@ function OverviewCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-// 服务表里的行只有三类：成品文件（数字商品）、其他、人工服务（服务、答疑）；右边标签见 PublishedCategoryTag。
+// 这张表里的行只有三类：现成文件（数字商品）、其他、人工服务（含答疑）；右边标签见 PublishedCategoryTag。
 function listingCategory(service: BayOwnService): "digital" | "service" | "other" {
   if (service.listing_kind === "digital") return "digital";
   if (service.listing_kind === "other") return "other";
@@ -260,7 +260,7 @@ function ServiceRow({ service }: { service: BayOwnService }) {
       className="block w-full border-b border-stone-100 px-1 py-2.5 text-left hover:bg-stone-50"
     >
       <span className="flex items-start justify-between gap-2">
-        <span className="block min-w-0 truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名服务")}</span>
+        <span className="block min-w-0 truncate text-[14px] font-semibold text-stone-800">{service.title || tt("未命名")}</span>
         <PublishedCategoryTag category={category} />
       </span>
       {service.summary ? <span className="mt-0.5 line-clamp-2 text-[12px] text-stone-500">{service.summary}</span> : null}

@@ -1,6 +1,6 @@
 // 安全矩阵：不适用（填写页展开表单，无不可信注入）
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -172,21 +172,20 @@ function labelsOf(host, ids) {
   });
 }
 
-test("卖家资料不再是第二张表：主页编辑源码没有展开字段、设置只留一扇门", () => {
+test("卖家资料不再是第二张表：主页编辑源码没有展开字段、设置里连那扇门都拆了", () => {
   const pane = readFileSync(new URL("../src/shell/bay/supply/ProfilePane.tsx", import.meta.url), "utf8");
   const editor = readFileSync(new URL("../src/shell/bay/page/ProfilePageEditor.tsx", import.meta.url), "utf8");
   const page = readFileSync(new URL("../src/shell/bay/page/ProfilePage.tsx", import.meta.url), "utf8");
   const settings = readFileSync(new URL("../src/shell/bay/settings/BaySettingsSection.tsx", import.meta.url), "utf8");
-  const door = readFileSync(new URL("../src/shell/bay/settings/BaySettingsProfileDoor.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(pane, /BaySellerProfileSection/);
   assert.doesNotMatch(pane, /data-bay-own-profile-form/);
   assert.doesNotMatch(editor, /BayRevealForm/);
   assert.match(page, /data-bay-field="handle"/);
   assert.match(page, /data-bay-field="display_name"/);
   assert.match(page, /variant="avatar"/);
-  assert.match(settings, /BaySettingsProfileDoor/);
-  assert.match(door, /requestMinePageEdit/);
-  assert.match(door, /编辑主页/);
+  // leobay-projects W05：设置 → LeoBay 只剩付款卡 + 收款账户，「编辑主页」那扇门随卖家资料页签一起删了。
+  assert.doesNotMatch(settings, /BaySettingsProfileDoor|BayVettingSection|requestMinePageEdit/);
+  assert.equal(existsSync(new URL("../src/shell/bay/settings/BaySettingsProfileDoor.tsx", import.meta.url)), false);
 });
 
 test("核验：标签看得见；字段都开着；领域选项没有医疗/法律/宠物医疗", async () => {

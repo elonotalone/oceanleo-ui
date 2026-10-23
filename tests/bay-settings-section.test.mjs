@@ -1,4 +1,5 @@
-// W09（oceanleo-bay）：设置四块、钱页没就绪没有可点按钮、openBaySettings、条款门、静态安全。
+// W09（oceanleo-bay）：设置 → LeoBay 单页没就绪没有可点按钮、openBaySettings、条款门、静态安全。
+// leobay-projects W05：设置只剩一页（付款卡 + 收款账户），四个页签与钱页拆除；新增用例见 lbp-w05-settings-dashboard.test.mjs。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync, readdirSync } from "node:fs";
@@ -9,6 +10,7 @@ import test from "node:test";
 import React, { act } from "react";
 
 import { BAY_MONEY_MESSAGES } from "../src/i18n/ui/messages/bay-money-copy.ts";
+import { LBP_W05_MESSAGES } from "../src/i18n/ui/messages/lbp-w05-copy.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -63,12 +65,6 @@ const stateStub = dataModule(`
   export function bayEnabledHere() { return globalThis.__bayEnabled !== false; }
   export function requireBayLogin() { globalThis.__bayLoginCalls = (globalThis.__bayLoginCalls || 0) + 1; return false; }
 `);
-const sellerStub = dataModule(`
-  export function BayVettingSection() { return null; }
-`);
-const profileDoorStub = dataModule(`
-  export function BaySettingsProfileDoor() { return null; }
-`);
 const settingsTabsStub = dataModule(`
   export function openSettingsModal(tab) {
     globalThis.__bayOpenSettings = (globalThis.__bayOpenSettings || []).concat(tab);
@@ -109,9 +105,6 @@ async function loadSection() {
   const url = await compileModule("src/shell/bay/settings/BaySettingsSection.tsx", {
     "../../../lib/bay/http": httpStub,
     "../shell/bay-state": stateStub,
-    "../seller": sellerStub,
-    "../seller/BayVettingSection": sellerStub,
-    "./BaySettingsProfileDoor": profileDoorStub,
     "../../../i18n/ui/useUI": uiStub,
   });
   return import(`${url}?case=${Math.random().toString(36).slice(2)}`);
@@ -130,7 +123,7 @@ async function render(node) {
   return { host, root };
 }
 
-test("没就绪：钱页写「暂未开放」，没有任何可点的绑卡、开户、提现、付款按钮", async () => {
+test("没就绪：LeoBay 设置只有一页（付款卡 + 收款账户），写「暂未开放」，没有任何可点的绑卡、开户、提现、付款按钮", async () => {
   bench({
     "GET /v1/talent/payments/config": DEV_CONFIG,
     "GET /v1/talent/ledger": { items: [], page: 1, limit: 20, total: 0, has_more: false, total_in_fen: 0, total_out_fen: 0, monthly: [] },
@@ -142,6 +135,8 @@ test("没就绪：钱页写「暂未开放」，没有任何可点的绑卡、�
   const { host, root } = await render(React.createElement(BaySettingsSection, { pane: "money" }));
   assert.match(host.textContent, /付款暂未开放/);
   assert.match(host.textContent, /收款暂未开放/);
+  assert.equal(host.querySelector("[data-bay-settings-tab]"), null, "没有页签");
+  assert.deepEqual([...host.querySelectorAll("[data-bay-money-card]")].map((el) => el.getAttribute("data-bay-money-card")), ["payment-card", "payout"]);
   const buttons = [...host.querySelectorAll("button")].map((el) => el.textContent.trim());
   for (const label of ["绑卡", "开户", "提现", "付款"]) {
     assert.equal(
@@ -172,7 +167,7 @@ test("英文 locale：网关中文 blockers 不出现「到收益页」或「Str
       ],
     },
   });
-  globalThis.__bayTtTable = BAY_MONEY_MESSAGES.en;
+  globalThis.__bayTtTable = { ...BAY_MONEY_MESSAGES.en, ...LBP_W05_MESSAGES.en };
   const { BaySettingsSection } = await loadSection();
   const { host, root } = await render(React.createElement(BaySettingsSection, { pane: "money" }));
   assert.equal(host.textContent.includes("到收益页"), false, host.textContent);
@@ -193,14 +188,17 @@ test("英文 locale：网关中文 blockers 不出现「到收益页」或「Str
   document.documentElement.lang = "zh";
 });
 
-test("openBaySettings('money') 记下这一块并打开设置窗的 bay 栏", async () => {
+test("openBaySettings：不管传哪个 pane（或不传），都只是打开设置窗的 bay 栏（那一栏只有一页）", async () => {
   globalThis.__bayOpenSettings = [];
   const url = await compileModule("src/shell/bay/settings/settings-open.ts", {
     "../../../pages/settings/settings-tabs": settingsTabsStub,
   });
   const { openBaySettings } = await import(`${url}?open=${Math.random().toString(36).slice(2)}`);
   openBaySettings("money");
-  assert.deepEqual(globalThis.__bayOpenSettings, ["bay"]);
+  openBaySettings("vetting");
+  openBaySettings("profile");
+  openBaySettings();
+  assert.deepEqual(globalThis.__bayOpenSettings, ["bay", "bay", "bay", "bay"]);
 });
 
 test("境内：设置栏整块不渲染", async () => {

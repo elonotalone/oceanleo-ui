@@ -6,7 +6,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { getBayApp } from "../../../lib/bay/apps";
 import { saveBayAppPricing, type BayAppPriceModel } from "../../../lib/bay/app-paid";
 import { BayRevealForm } from "../form";
-import { openBay } from "../shell/bay-state";
+import { openBaySettings } from "../settings/settings-open";
 import { PaneLoading, PaneMessage } from "../supply/parts";
 import { errorStatus, errorText, useBayResource } from "../supply/use-bay-resource";
 import { fenToPriceInput, offersMoneySettings, parsePriceInput, parseTrialDays, pricingPayload } from "./paid-model";
@@ -49,7 +49,7 @@ export function PricingManagePanel({ appId }: { appId: string }): ReactElement |
 
   if (resource.loading) return <PaneLoading />;
   if (!app) {
-    return <PaneMessage text={resource.error ? tt(resource.error) : tt("这个作品不存在或已下架")} onRetry={resource.reload} />;
+    return <PaneMessage text={resource.error ? tt(resource.error) : tt("找不到这件东西，可能已下架。")} onRetry={resource.reload} />;
   }
 
   async function save() {
@@ -167,7 +167,7 @@ export function PricingManagePanel({ appId }: { appId: string }): ReactElement |
 
       {error ? <p className="text-[12px] text-rose-600">{tt(error)}</p> : null}
       {needPayout ? (
-        <button type="button" data-bay-action="setup-payout" className={SECONDARY} onClick={() => openBay({ kind: "settings", pane: "money" })}>
+        <button type="button" data-bay-action="setup-payout" className={SECONDARY} onClick={() => openBaySettings()}>
           {tt("去开通收款")}
         </button>
       ) : null}

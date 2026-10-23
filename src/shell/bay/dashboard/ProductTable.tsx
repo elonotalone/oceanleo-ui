@@ -32,7 +32,7 @@ export function ProductTable({
   const tt = useUI();
   if (!products.length) {
     return (
-      <div data-bay-dashboard-products className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center">
+      <div data-bay-dashboard-products className="px-4 py-8 text-center">
         <p className="text-[13px] text-neutral-600">{tt("你还没有发布任何东西")}</p>
         <button
           type="button"

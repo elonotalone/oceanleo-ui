@@ -15,12 +15,15 @@ export function StatTile({
   label,
   value,
   change,
+  hint,
   onActivate,
 }: {
   marker: string;
   label: string;
   value: string;
   change: ChangeView;
+  /** 数字下面再补一句话（例如收款状态：钱什么时候到账、为什么还不能收）。已翻译。 */
+  hint?: string;
   onActivate?: () => void;
 }): ReactElement {
   const tt = useUI();
@@ -33,6 +36,11 @@ export function StatTile({
       {change.kind !== "empty" && <p data-bay-stat-change={change.kind} className={`mt-1 text-[11px] tabular-nums ${changeClass(change.kind)}`}>
         {changeText}
       </p>}
+      {hint ? (
+        <p data-bay-stat-hint="" className="mt-1 max-w-[16rem] text-[11px] leading-4 text-neutral-500">
+          {hint}
+        </p>
+      ) : null}
     </>
   );
   const box = "text-left";

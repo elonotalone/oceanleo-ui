@@ -57,7 +57,7 @@ export function OverviewChart({ days, products, money, count, labels, summary }:
     : product ? `${product.title} · ${labels.income} ${money(product.income_fen)}` : labels.noIncome;
   const line = (field: "usersY" | "opensY") => points.map((point) => `${point.x},${point[field]}`).join(" ");
   return (
-    <section data-bay-chart="overview" className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+    <section data-bay-chart="overview" className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4">
         <div role="group" aria-label={labels.overview} className="flex flex-wrap gap-1">
           {(["overview", "products"] as const).map((value) => (

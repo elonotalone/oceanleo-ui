@@ -1,6 +1,6 @@
 "use client";
 
-// 一单的详情：概要、作品、时间线、里程碑、付款状态、交付/验收/改稿/取消、争议三层、评价、再来一单。
+// 一单的详情：概要、交付物、时间线、里程碑、付款状态、交付/验收/改稿/取消、争议三层、评价、再来一单。
 // 窗格不自带返回键、标题栏、滚动（外框约定第 12 条）。付款按钮只按 buyer_ready，绝不按 enabled。
 
 import { useEffect, useMemo, useState } from "react";
@@ -305,7 +305,7 @@ export function OrderPane({ target }: BayPaneProps) {
           </button>
         ) : null}
         {actions.setupPayment ? (
-          <button type="button" data-bay-action="setup-payment" onClick={() => openBaySettings("money")} className={ORDER_BUTTON_QUIET}>
+          <button type="button" data-bay-action="setup-payment" onClick={() => openBaySettings()} className={ORDER_BUTTON_QUIET}>
             {tt("去设置付款方式")}
           </button>
         ) : null}

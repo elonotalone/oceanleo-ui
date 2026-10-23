@@ -208,14 +208,17 @@ test("我的服务：概况、分组、空状态入口；没有返回栏；钱�
   assert.match(view.host.textContent, /LeoDesign/);
   assert.doesNotMatch(view.host.textContent, /返回/);
   await view.click("[data-bay-money-entry]");
-  assert.deepEqual(globalThis.__baySettings, ["money"]);
+  // 设置 → LeoBay 只有一页，入口不再指定 pane。
+  assert.deepEqual(globalThis.__baySettings, [undefined]);
+  assert.match(view.host.textContent, /收款账户/);
+  assert.doesNotMatch(view.host.textContent, /收款与账单/);
   await view.click('[data-bay-own-service="s1"]');
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "service-editor", serviceId: "s1" });
     assert.equal(view.host.querySelectorAll("[data-bay-new-service]").length, 1, "有服务时右上角有一个「发布服务」");
   view.unmount();
 });
 
-test("我的服务：空状态引导发布第一个服务", async () => {
+test("我的服务：空状态引导去发布", async () => {
   reset();
   globalThis.__baySellerReply = (method, path) => {
     if (path === "/v1/talent/me/stats") return { orders_by_status: {}, rating_avg: 0, rating_count: 0 };
@@ -225,9 +228,10 @@ test("我的服务：空状态引导发布第一个服务", async () => {
   const view = await mount(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "published" }, layout: "page", siteKey: "design" }));
   assert.match(view.host.innerHTML, /data-bay-empty="services"/);
   assert.equal(view.host.querySelector("[data-bay-seller-overview]"), null, "默认不画卖家概况");
-  // 空状态里已经有「发布第一个服务」，右上角那个「发布服务」不再同时出现。
+  // 空状态里已经有「去发布」，右上角那个「发布」不再同时出现。
   assert.equal(view.host.querySelectorAll("[data-bay-new-service]").length, 0);
-  assert.equal((view.host.innerHTML.match(/发布第一个服务/g) || []).length, 1);
+  assert.equal((view.host.innerHTML.match(/去发布/g) || []).length, 1);
+  assert.match(view.host.textContent, /还没有发布过东西/);
   assert.equal((view.host.innerHTML.match(/>发布服务</g) || []).length, 0);
   view.unmount();
 });
@@ -274,6 +278,6 @@ test("静态：我的服务未登录只给登录", () => {
   reset();
   globalThis.__baySignedIn = false;
   const out = renderToStaticMarkup(React.createElement(MyServicesPane, { target: { kind: "mine", tab: "published" }, layout: "docked", siteKey: "design" }));
-  assert.match(out, /登录后管理你发布的服务/);
+  assert.match(out, /登录后管理你发布的东西/);
   assert.doesNotMatch(out, /返回/);
 });

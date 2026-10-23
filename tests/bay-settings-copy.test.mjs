@@ -25,6 +25,18 @@ function headBase(locale) {
 
 const BASE = Object.fromEntries(LOCALES.map((locale) => [locale, headBase(locale)]));
 
+// leobay-projects 波的分表（lbp-w<NN>-copy.ts）：设置目录里的新句子登记在这里，而不是 bay-copy / 基础词典。
+const LBP_DIR = join(REPO, "src", "i18n", "ui", "messages");
+const LBP_TABLES = [];
+for (const name of readdirSync(LBP_DIR).filter((file) => /^lbp-w\d+-copy\.ts$/.test(file))) {
+  const mod = await import(`../src/i18n/ui/messages/${name}`);
+  for (const table of Object.values(mod)) LBP_TABLES.push(table);
+}
+
+function lbpHas(locale, key) {
+  return LBP_TABLES.some((table) => Boolean(table?.[locale]?.[key]));
+}
+
 function regexEscape(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -73,7 +85,7 @@ test("设置目录里的每句中文都有 16 语译文（分表或基础词典�
   const missing = [];
   for (const key of keys) {
     for (const locale of LOCALES) {
-      if (BAY_MESSAGES[locale]?.[key] || baseHas(locale, key)) continue;
+      if (BAY_MESSAGES[locale]?.[key] || baseHas(locale, key) || lbpHas(locale, key)) continue;
       missing.push(`${locale}: ${key}`);
     }
   }

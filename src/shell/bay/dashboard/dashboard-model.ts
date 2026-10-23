@@ -138,12 +138,46 @@ export function productErrorsTarget(appId: string): ProductTarget {
   return { kind: "app-manage", appId, tab: "errors" };
 }
 
-export function productKindLabel(item: Pick<BayDashboardProduct, "item_kind" | "item_id">): string {
-  if (item.item_kind === "app") return "作品";
+/**
+ * 商品行的「种类」列。种类名是 LeoBay 统一的五个：人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他。
+ * 网关的 `service` 行同时装着人工服务、现成文件和其他；网关带了 `listing_kind` 就按它分，
+ * 没带（目前如此）按人工服务。
+ */
+export function productKindLabel(item: Pick<BayDashboardProduct, "item_kind" | "item_id"> & { listing_kind?: string | null }): string {
+  if (item.item_kind === "app") return "网站与软件服务";
   if (item.item_kind === "lesson") return "课程";
   if (item.item_kind === "bundle") return "套餐";
-  if (item.item_kind === "service" && item.item_id !== "other") return "服务";
+  if (item.item_kind === "service" && item.item_id !== "other") {
+    if (item.listing_kind === "digital") return "现成文件";
+    if (item.listing_kind === "other") return "其他";
+    return "人工服务";
+  }
   return "其他订单";
+}
+
+/** 收款状态格要的输入：只留三样，免得模型层去依赖取数那一层。 */
+export type PayoutTileInput = {
+  /** 网关的 `seller_ready`：收款通道是否已对卖家开放。 */
+  sellerReady: boolean;
+  /** 收款账户已经能收钱（网关的 `ready`）。 */
+  payable: boolean;
+  /** 账户状态的中文句（词表里已有）。 */
+  stateLabel: string;
+};
+
+/**
+ * 数据面板里「托管中」旁边那一格：值是收款现在处在哪一步，说明是「钱什么时候到账 / 为什么还不能收」。
+ * 返回的是中文原句，由组件 tt()；还没取到就只给一个「—」。
+ */
+export function payoutTileView(status: PayoutTileInput | null): { value: string; hint: string } {
+  if (!status) return { value: "—", hint: "" };
+  if (!status.sellerReady) {
+    return { value: "暂未开放", hint: "平台暂时不代收代付；开放后，订单款验收通过即转入你的收款账户。" };
+  }
+  if (status.payable) {
+    return { value: status.stateLabel, hint: "订单款先托管，验收通过后转入你的收款账户。" };
+  }
+  return { value: status.stateLabel, hint: "收款账户还不能收款，点开看原因。" };
 }
 
 export function productStatusLabel(status: string): string {
