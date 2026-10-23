@@ -245,6 +245,13 @@ async function mount(props = {}) {
         await new Promise((resolve) => setTimeout(resolve, 40));
       });
     },
+    /** 同一棵树换 props（深链指向另一件）。 */
+    async update(nextProps) {
+      await act(async () => {
+        root.render(React.createElement(MessagesContentCases, nextProps));
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+    },
     async unmount() {
       await act(() => {
         root.unmount();
@@ -594,6 +601,26 @@ test("caseId 指名：只展开那一件并滚到可见处；指名的找不到�
     if (original) window.HTMLElement.prototype.scrollIntoView = original;
     else delete window.HTMLElement.prototype.scrollIntoView;
   }
+});
+
+test("已经开着时又点了一条新通知：案件是列表取过之后才有的，静默再取一次并展开它，不误报找不到；真没有就只取一次", async () => {
+  const db = install();
+  const view = await mount({ caseId: ID_COPYRIGHT });
+  const newId = "66666666-6666-4666-8666-666666666666";
+  db.cases.unshift(serverCase({ id: newId, source: "machine", tier: "illegal", target_snapshot: { title: "新来的" } }));
+  const before = gets().length;
+  await view.update({ caseId: newId });
+  assert.equal(gets().length, before + 1, "取了一次新列表");
+  assert.equal(view.q("[data-cases-unknown]"), null);
+  assert.equal(view.card(newId).getAttribute("data-case-open"), "true");
+  assert.equal(view.card(ID_COPYRIGHT).getAttribute("data-case-open"), "true", "原来展开的不被收起");
+
+  const ghost = "77777777-7777-4777-8777-777777777777";
+  const before2 = gets().length;
+  await view.update({ caseId: ghost });
+  assert.equal(gets().length, before2 + 1, "真没有的 id 再取一次就停，不循环");
+  assert.ok(view.q("[data-cases-unknown]"));
+  await view.unmount();
 });
 
 test("空列表、返回键、刷新键", async () => {

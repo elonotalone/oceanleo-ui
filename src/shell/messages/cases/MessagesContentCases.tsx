@@ -26,12 +26,22 @@ export function MessagesContentCases({ caseId = null, onBack }: MessagesContentC
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set(caseId ? [caseId] : []));
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrolledTo = useRef<string | null>(null);
+  // 列表是为哪个 caseId 取的（挂载时的那个）；之后换了 caseId 而列表里没有，才值得再取一次。
+  const loadedFor = useRef<string | null>(caseId);
 
   // 深链指向另一件（组件没卸载就换了 caseId）：把它也展开。
   useEffect(() => {
     if (!caseId) return;
     setOpened((prev) => (prev.has(caseId) ? prev : new Set(prev).add(caseId)));
   }, [caseId]);
+
+  // 已经开着的时候又点了一条新通知（案件是列表取过之后才产生的）：静默再取一次，别误报「找不到」。
+  useEffect(() => {
+    if (phase !== "ready" || !caseId || loadedFor.current === caseId) return;
+    if (cases.some((row) => row.id === caseId)) return;
+    loadedFor.current = caseId;
+    void reload({ quiet: true });
+  }, [phase, cases, caseId, reload]);
 
   // 列表到了：把指名的那一件滚到可见处（每个 id 只滚一次，之后重取不抢用户的滚动位置）。
   useEffect(() => {
@@ -67,7 +77,7 @@ export function MessagesContentCases({ caseId = null, onBack }: MessagesContentC
       ref={rootRef}
       data-messages-content-cases=""
       data-phase={phase}
-      className="flex h-full min-h-0 flex-col text-neutral-900"
+      className="flex h-full min-h-0 flex-1 flex-col text-neutral-900"
     >
       <header className="flex shrink-0 items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
         {onBack ? (
