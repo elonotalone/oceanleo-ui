@@ -59,7 +59,7 @@ const minePanelUrl = await compileModule("src/shell/inline-editor-mine-panel.tsx
   "../ui/Button": button,
   "./artifact-client": dataModule(`export async function listMyArtifacts(){ return { ok: true, data: { items: globalThis.__mineItems || [] } }; }`),
 });
-const { useInlineLibraryPanels, editBarDrawersAlwaysVisible } = await import(await compileModule("src/shell/use-inline-library-panels.tsx", {
+const { useInlineLibraryPanels, editBarDrawersAlwaysVisible, editBarShowsDrawers } = await import(await compileModule("src/shell/use-inline-library-panels.tsx", {
   "./inline-editor-mine-panel": minePanelUrl,
 }));
 const { EditBarDocumentSegment } = await import(await compileModule("src/shell/plugin-chrome/EditBarDocumentSegment.tsx", {
@@ -366,4 +366,15 @@ test("document drawers (插入/批注) stay reachable next to the always-on text
   assert.equal(editBarDrawersAlwaysVisible("richdoc"), true);
   assert.equal(editBarDrawersAlwaysVisible("image"), false);
   assert.equal(editBarDrawersAlwaysVisible("deck"), false);
+});
+
+test("a page-level context (deck slide with nothing selected) counts as no selection; an object selection does not", () => {
+  const base = { adapterId: "deck@2", hasContextToolbar: true, selectionPresent: true };
+  assert.equal(editBarShowsDrawers({ ...base, selectionKind: "slide" }), true, "W07: 模板/元素/画笔/线条/便签 next to the page controls");
+  assert.equal(editBarShowsDrawers({ ...base, selectionKind: "slide-text" }), false);
+  assert.equal(editBarShowsDrawers({ ...base, selectionKind: "slide-image" }), false);
+  assert.equal(editBarShowsDrawers({ ...base, selectionPresent: false, selectionKind: null }), true);
+  assert.equal(editBarShowsDrawers({ ...base, hasContextToolbar: false, selectionKind: null }), true);
+  assert.equal(editBarShowsDrawers({ ...base, adapterId: "richdoc", selectionKind: "text" }), true);
+  assert.equal(editBarShowsDrawers({ ...base, adapterId: "image", selectionKind: "image" }), false);
 });

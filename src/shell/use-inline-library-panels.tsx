@@ -30,6 +30,28 @@ export function editBarDrawersAlwaysVisible(adapterId: string): boolean {
   return EDIT_BAR_DRAWERS_ALWAYS_VISIBLE.has(adapterId.split("@")[0]);
 }
 
+/**
+ * 页面级上下文（演示没选中对象时发的 `kind: "slide"`：版式 / 背景 / 过渡……）不是对象选区，
+ * 按「没选中」算，抽屉按钮与页面级控件同排出现（signals/W07-to-W02.md）。
+ * 选中对象时种类是 `slide-text` / `slide-image`……，不会误中。
+ */
+export const EDIT_BAR_PAGE_LEVEL_KINDS: ReadonlySet<string> = new Set(["slide"]);
+
+export function editBarShowsDrawers(input: {
+  adapterId: string;
+  hasContextToolbar: boolean;
+  selectionPresent: boolean;
+  selectionKind: string | null;
+}): boolean {
+  return (
+    !input.hasContextToolbar ||
+    !input.selectionPresent ||
+    (input.selectionKind != null &&
+      EDIT_BAR_PAGE_LEVEL_KINDS.has(input.selectionKind)) ||
+    editBarDrawersAlwaysVisible(input.adapterId)
+  );
+}
+
 interface PanelControls {
   activeDrawerId: string;
   isPanelOpen: (panelId: string) => boolean;
