@@ -16,15 +16,15 @@
 - 文案闸：新键 16 语必须齐；新增写 `lbp-w06-copy.ts`；已有词条不重定义（查重脚本 /tmp/w06-tools/has-key.mjs）。
 
 ## 已完成
-- 22b55c94：代码主体（见 journal）。tests/lbp-w06-verification-grants.test.mjs 30 条绿。
+- 22b55c94（主体）/ ecae1de1（新测试 30 条绿）/ ec171878（a11y 小修 + 注释）/ 1a606c7c（测试收尾）。
+- 相关 45 份旧测试逐份跑过，除开工前就红或别人在途的几份外全绿；共享 UI typecheck 0 错（第一次）。
 
 ## 正在做
-第 2 步：收尾检查（边界内注释里的退役名、遗漏处）-> 交卷。
+等 heavy 槽（别人占着）：共享 UI 与门户 typecheck 各再跑一次，结果回填 verdicts/W06-delivery.md 后提交，即交卷。
 
 ## 下一步
-1. 边界内注释里的退役名（app-login.ts 注释、ProfilePane 注释）
-2. 全量相关测试再跑一遍 + typecheck + 文案闸里我自己的 key
-3. 交卷 verdicts/W06-delivery.md（含对 W05 的接口说明：MyDashboardTab 用 requestMinePageEdit() 无参即可；想强制落在核验块用 requestMinePageEdit("vetting")）
+1. typecheck 结果回填交卷文件 -> `git add` + `git commit -m … -- <交卷文件 + signals>`。
+2. 回报：一段话 + 交卷文件路径 + 最后一个提交号。
 
 ## 复现命令
 cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<名字>.test.mjs

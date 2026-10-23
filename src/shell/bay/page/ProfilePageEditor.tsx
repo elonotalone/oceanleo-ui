@@ -5,7 +5,7 @@
 // 主页卡之后是「资质核验」白卡：只有本人看得到，不属于公开主页，所以不套主页的主题色。
 // 从「去核验」进来时（vettingFocus 变大）自动滚到这张卡。页面底色上只有这几张卡，不铺整页白板。
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayProfilePage, BayShowcaseItem } from "../../../lib/bay/directory";
@@ -162,6 +162,8 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
   const bayOn = useBayEnabled();
   const showVetting = signedIn && bayOn;
   const vettingRef = useRef<HTMLDivElement>(null);
+  const alignPending = useRef<(() => void) | null>(null);
+  const alignAfterLoad = useRef(false);
   // 进入编辑那一刻的版面：之后父组件再怎么重画，「有没有改动」都跟它比。
   const [base] = useState<BayPageDoc>(initial);
   const [baseIdentity] = useState<BayPageIdentity>(initialIdentity);
@@ -179,15 +181,34 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
   const onBlock = (id: string, patch: Partial<BayPageBlock>) => setDoc((current) => patchBlock(current, id, patch));
   const onIdentity = (patch: Partial<BayPageIdentity>) => setIdentity((current) => ({ ...current, ...patch }));
 
-  useEffect(() => {
-    if (!vettingFocus || !showVetting) return;
-    return afterLayout(() => {
+  // 滚到核验卡并把焦点放上去。已经排了一次就不重复排（读完数据时那一次正好并进去）。
+  const scheduleAlign = useCallback(() => {
+    if (alignPending.current) return;
+    alignPending.current = afterLayout(() => {
+      alignPending.current = null;
       const node = vettingRef.current;
       if (!node) return;
       node.scrollIntoView?.({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
       node.focus?.({ preventScroll: true });
     });
-  }, [vettingFocus, showVetting]);
+  }, []);
+
+  useEffect(() => {
+    if (!vettingFocus || !showVetting) return;
+    alignAfterLoad.current = true;
+    scheduleAlign();
+    return () => {
+      alignPending.current?.();
+      alignPending.current = null;
+    };
+  }, [vettingFocus, showVetting, scheduleAlign]);
+
+  // 卡刚挂上时还是一行「正在加载」，页面不够长，滚不到位；数据读完卡长高了，再对齐一次。
+  const onVettingLoaded = useCallback(() => {
+    if (!alignAfterLoad.current) return;
+    alignAfterLoad.current = false;
+    scheduleAlign();
+  }, [scheduleAlign]);
 
   async function importWork() {
     if (showcaseBusy) return;
@@ -360,7 +381,7 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
         </div>
         {showVetting ? (
           <div ref={vettingRef} tabIndex={-1} data-bay-mine-vetting className="scroll-mt-32 outline-none">
-            <BayVettingSection />
+            <BayVettingSection onLoaded={onVettingLoaded} />
           </div>
         ) : null}
       </div>

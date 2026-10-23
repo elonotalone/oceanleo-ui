@@ -3,7 +3,7 @@
 // 「我的主页」编辑状态里的资质核验：提交材料、看进度、被拒后申诉。一张白色卡片，按主页宽度排版，只有本人看得到。
 // 医疗、法律、宠物医疗不出现。不收证件照片、身份证号。申诉不带正文。
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -55,9 +55,16 @@ function filled(value: string): boolean {
 
 const CARD_CLASS = "rounded-xl border border-neutral-200 bg-white p-5 text-stone-900 sm:p-6";
 
-export function BayVettingSection() {
+export interface BayVettingSectionProps {
+  /** 第一次读取结束（成功或失败）、卡片有了真实高度之后调一次；宿主在这时重新对齐滚动位置。 */
+  onLoaded?: () => void;
+}
+
+export function BayVettingSection({ onLoaded }: BayVettingSectionProps = {}) {
   const tt = useUI();
   const titleId = useId();
+  const onLoadedRef = useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
   const [mine, setMine] = useState<BayMyVetting | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -68,19 +75,28 @@ export function BayVettingSection() {
   const [busy, setBusy] = useState(false);
 
   // 只有第一次读取显示「正在加载…」；提交、申诉之后的重读保留现有内容，卡片不塌下去（页面滚动位置不跳）。
+  const announced = useRef(false);
+  const announceLoaded = useCallback(() => {
+    if (announced.current) return;
+    announced.current = true;
+    onLoadedRef.current?.();
+  }, []);
+
   const load = useCallback(() => {
     setError("");
     void fetchMyVetting().then(
       (data) => {
         setMine(data);
         setLoading(false);
+        announceLoaded();
       },
       (err: unknown) => {
         setError(err instanceof Error ? err.message : "");
         setLoading(false);
+        announceLoaded();
       },
     );
-  }, []);
+  }, [announceLoaded]);
 
   useEffect(() => {
     load();

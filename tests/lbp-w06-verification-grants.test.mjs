@@ -400,6 +400,28 @@ test("入口 vetting：直接进编辑并滚到核验卡（焦点也落在那里
   await view.unmount();
 });
 
+test("入口 vetting：卡刚挂上只有一行「正在加载」滚不到位，数据读完、卡长高之后再对齐一次", async () => {
+  resetEnv();
+  let release;
+  globalThis.__bayHttpRespond = (method, path) =>
+    path === "/v1/talent/vetting/mine"
+      ? new Promise((resolve) => {
+          release = () => resolve(VETTING_MINE);
+        })
+      : {};
+  edit.requestMinePageEdit("vetting");
+  const view = await mount(h(ProfileDetailView, { page: ownPage(), viewerId: "seller-1" }));
+  await frames();
+  assert.equal(scrollCalls.length, 1, "先滚一次");
+  assert.equal(view.host.querySelector("[data-bay-vetting]").getAttribute("aria-busy"), "true", "这时卡还在加载");
+  release();
+  await frames();
+  assert.equal(view.host.querySelector("[data-bay-vetting]").getAttribute("aria-busy"), null);
+  assert.equal(scrollCalls.length, 2, "读完后再对齐一次");
+  assert.equal(scrollCalls[1].el, view.host.querySelector("[data-bay-mine-vetting]"));
+  await view.unmount();
+});
+
 test("旧的无参调用：已公开主页的人（I-8 去核验）滚过去；没公开的人（去建资料）从顶上开始", async () => {
   resetEnv();
   edit.requestMinePageEdit();
