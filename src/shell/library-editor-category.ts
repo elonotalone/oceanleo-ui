@@ -41,6 +41,7 @@ const LEGACY_ALIASES: Record<string, LibraryCategoryId> = {
   canvas: "image_editing",
   composite_image: "image_editing",
   设计画布: "image_editing",
+  画布: "image_editing",
   视频编辑: "video_editing",
   网站编辑: "website_finetuning",
   演示文稿编辑: "presentation_editing",
@@ -49,6 +50,7 @@ const LEGACY_ALIASES: Record<string, LibraryCategoryId> = {
   图片编辑: "image_editing",
   "PDF 编辑": "pdf_editing",
   音频编辑: "audio_editing",
+  视频工作流: "video_canvas",
   "3D": "model_3d",
   游戏创作: "game_editing",
 };

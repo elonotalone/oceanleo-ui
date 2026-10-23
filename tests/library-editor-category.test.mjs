@@ -54,11 +54,12 @@ test("every capability family selects its own entries; design canvas folds into 
 test("legacy ?category=design, design_canvas and old editor names land on the image category", () => {
   const rows = contract.ADVANCED_CAPABILITY_MATRIX;
   const design = model.workspaceEntryFromLibraryItem(itemFor(rows.find((row) => row.featureId === "design_canvas")));
-  for (const alias of ["design", "design_canvas", "设计画布", "canvas", "图片编辑", "images", "图片"]) {
+  for (const alias of ["design", "design_canvas", "设计画布", "画布", "canvas", "图片编辑", "images", "图片"]) {
     assert.equal(taxonomy.normalizeLibraryCategory(alias), "image_editing", alias);
     assert.equal(model.filterWorkspaceLibraryEntries([design], "", alias).length, 1, alias);
   }
   assert.equal(taxonomy.normalizeLibraryCategory("视频编辑"), "video_editing");
+  assert.equal(taxonomy.normalizeLibraryCategory("视频工作流"), "video_canvas");
   assert.equal(taxonomy.normalizeLibraryCategory("3D"), "model_3d");
   assert.equal(taxonomy.libraryCategoryLabel("design"), "图片");
   assert.equal(taxonomy.libraryCategoryLabel("model_3d"), "3D 模型");
