@@ -11,15 +11,16 @@
 - [读码] `useArtifactRendition(item, [])` 空数组会退回默认取景顺序，不是「不取」；文字卡片要传非 durable 的空 item 才完全不签名。
 - [读码] `globals.css` 有 `html.dark .bg-white → --leo-d-card` 的全局覆盖；`ui.css` 是预编译的，只能用里面已有的工具类（用 `/tmp/w05-scripts/css-has.py` 核）。
 
+## 已完成
+- 步骤 1 D5：提交 8409d324。
+- 步骤 2 D8 + 深色 token：`document-cover-excerpt.ts`（摘要规则/文字卡判定/源选择）、`document-shelf-cover.tsx`（标题首帧、无「正在读取」、meta 摘要不发请求、64KB 流式读开头、docx ≤16MB、token 配色）、`workspace-library-thumbnail.tsx`（文档项不签名不生成不挂 PNG）；测试改 3 份 + 新增 `tests/library-document-card-w05.test.mjs`；父 agent 抢救提交 6b8e9618 / 2ceab0a2 / 489fefc1。
+
 ## 正在做
-- 步骤 1：类型名（D5）：`library-editor-category.ts` 折叠 design_canvas→image_editing，typeLabel 做菜单，「3D 模型」，语境 key 翻译；改 MyLibrary / WorkspaceLibrary / ArtifactLibrary / 卡片调用点；改 `tests/library-editor-category.test.mjs`；w05 词册。
+- 步骤 3：backend `typed_uploads.py` 上传摘要 + pytest（向量与前端 `tests/library-document-card-w05.test.mjs` 相同）+ restart。
 
 ## 下一步
-- 步骤 2：文档卡片（D8）+ 深色 token；改 `document-cover-runtime` / `library-render-stability-1022` / `library-document-open` 三处旧断言。
-- 步骤 3：backend `typed_uploads.py` 摘要 + pytest + `docker restart oceanleo-api`（journal 先记）。
 - 步骤 4：浏览器验收（harness）+ 截图。
-- 步骤 5：信号（父 agent：投影带摘要；W08：复用摘要函数）+ 交付。
+- 步骤 5：信号（父：投影带 textExcerpt；W08：复用 textExcerptFromSource）+ 交付。
 
 ## 复现命令
 - focused test：`cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<file>.test.mjs`
-- 词典核对：`node --experimental-strip-types /tmp/w05-scripts/show-keys.mjs /root/projects/oceanleo-ui <key…>`
