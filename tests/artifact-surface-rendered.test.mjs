@@ -1840,9 +1840,10 @@ test("material cards and rows hide machine copy without changing generic rows", 
   });
   try {
     assert.match(materialRow.container.textContent || "", /Quiet material/);
+    assert.match(materialRow.container.textContent || "", /图片/, 'D5 exposes the material category, not internal provenance');
     assert.doesNotMatch(
       materialRow.container.textContent || "",
-      /图片|OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
+      /OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
     );
   } finally {
     await materialRow.unmount();
@@ -1855,9 +1856,10 @@ test("material cards and rows hide machine copy without changing generic rows", 
   });
   try {
     assert.match(materialCard.container.textContent || "", /Quiet material/);
+    assert.match(materialCard.container.textContent || "", /图片/);
     assert.doesNotMatch(
       materialCard.container.textContent || "",
-      /图片|OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
+      /OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
     );
   } finally {
     await materialCard.unmount();
@@ -3041,7 +3043,7 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
       mounted.container
         .querySelector('[data-entry-title="Favorite template"]')
         ?.getAttribute("data-entry-category"),
-      "收藏素材",
+      "image_editing",
     );
     favoriteIncluded = false;
     await act(async () => {
@@ -3206,7 +3208,7 @@ test("rendered My Library pins owned documents above the mixed mine page", async
       mounted.container
         .querySelector('[data-entry-title="Pinned PDF"]')
         ?.getAttribute("data-entry-category"),
-      "文档",
+      "pdf_editing",
     );
   } finally {
     await mounted.unmount();
