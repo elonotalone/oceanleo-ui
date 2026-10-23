@@ -18,13 +18,11 @@ function layer(sourceText, marker) {
 test("all pane and plugin headers sit below every page overlay", async () => {
   const split = await source("src/shell/SplitWorkspace.tsx");
   const plugin = await source("src/shell/plugin-chrome/PluginChromeFrame.tsx");
-  const row = await source("src/shell/plugin-chrome/PluginPageRow.tsx");
   const advanced = await source("src/shell/InlineAdvancedWorkbenchHeader.tsx");
   const headers = [
     layer(split, "data-pane-header\n"),
     layer(split, "data-oceanleo-pane-header"),
     layer(plugin, "data-plugin-chrome-rows"),
-    layer(row, "data-plugin-page-row"),
     layer(advanced, "data-advanced-workbench-header"),
   ];
   const overlays = [

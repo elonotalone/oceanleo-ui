@@ -107,7 +107,13 @@ export function AdvancedWorkspaceActionBar({
 }) {
   const tt = useUI();
   const confirmation = adapter.persistence?.confirmation;
-  const autoSaveState = confirmation?.state ?? observedAutoSaveState;
+  const reportedSaveState = confirmation?.state ?? observedAutoSaveState;
+  // 草稿回执到达之前（recovery.ready === false，PDF 处理中也会这样）槽照样在，
+  // 但绝不说「已保存」：服务器没确认就如实显示「尚未确认保存」。
+  const autoSaveState: AdvancedAutoSaveState | "unconfirmed" =
+    adapter.persistence?.recovery?.ready === false && reportedSaveState === "saved"
+      ? "unconfirmed"
+      : reportedSaveState;
   const rightPaneSlot = useRightPaneSlot();
   const rightMaximized = useSyncExternalStore(
     rightPaneSlot?.subscribeRightMaximized ?? subscribeWithoutPane,
