@@ -27,16 +27,17 @@ function glb() {
   return new Blob([header, json], { type: "model/gltf-binary" });
 }
 
-test("shelf replacement executes actual GLB bytes through import rather than a thumbnail URL", async () => {
+test("typed shelf replacement validates actual GLB bytes and reuses its private immutable identity without reupload", async () => {
   const imports = [];
+  const opened = [];
   const source = glb();
-  const adapter = make({ importModel: async (file) => imports.push(file) }, false, async () => source, assertBlobSource, isModel3DSourceItem);
+  const adapter = make({ importModel: async (file) => imports.push(file), openModelUrl: (...args) => opened.push(args) }, false, async () => source, assertBlobSource, isModel3DSourceItem);
   assert.deepEqual(adapter.actions, ["replace"]);
   assert.equal(adapter.accepts(material()), true);
-  await adapter.mutate("replace", material());
-  assert.equal(imports.length, 1);
-  assert.equal(await assertBlobSource(imports[0], "model3d"), "glb");
-  assert.deepEqual(new Uint8Array(await imports[0].arrayBuffer()), new Uint8Array(await source.arrayBuffer()));
+  const item = material("glb", { artifactId: "private-fixture", revisionId: "immutable-r1", artifact: { renditions: { source: { digest: "sha256:private" } } } });
+  await adapter.mutate("replace", item);
+  assert.equal(imports.length, 0, "must not reupload private shelf bytes through legacy uploadFile");
+  assert.deepEqual(opened, [[item.url, "glb", { artifactId: "private-fixture", revisionId: "immutable-r1", sourceDigest: "sha256:private" }]]);
   assert.match(route, /withEditorHistoryCommand\(materialAdapter,/);
 });
 

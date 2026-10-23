@@ -276,9 +276,11 @@ function Model3DModelRoute({
           throw new Error("3D 素材内容无法识别为 GLB/glTF。");
         }
         const extension = actualFormat;
-        if (actualFormat === "gltf") {
+        if (actualFormat === "gltf" || (material.artifactId && material.revisionId)) {
           // Keep the remote directory as one dependency closure. Turning only
           // the JSON entrypoint into a local File severs its .bin/textures.
+          // Typed GLB also keeps its authenticated private identity: importing
+          // it as a File would reupload private bytes through the legacy path.
           editor.openModelUrl(
             url,
             actualFormat,

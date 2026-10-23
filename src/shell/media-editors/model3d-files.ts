@@ -233,7 +233,7 @@ export async function prepareModelRuntimeSource(
     // Resolve only this exact old checkpoint, never head: its journal may still
     // contain unsaved clone/delete operations which cannot be replayed on head.
     const response = await fetch(`${GATEWAY_BASE.replace(/\/+$/, "")}/v1/library/items/${encodeURIComponent(hint.artifactId)}?revisionId=${encodeURIComponent(hint.revisionId)}`, {
-      headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal,
+      headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal, credentials: "include",
     });
     if (!response.ok) throw new Model3DHttpError("无法恢复 3D 检查点版本", response.status);
     const projection = await response.json();

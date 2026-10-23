@@ -16,7 +16,7 @@ test("expired opaque URLs supply only an exact old-revision hint, never the curr
   assert.equal(model3DIdentityFromAccessUrl(urlFor(), base, ""), null);
   for (const url of [urlFor().replace("api.dev.oceanleo.com", "evil.invalid"), urlFor() + "?x=1", urlFor() + "#x",
     urlFor({ ...claim, purpose: "thumbnail" }), urlFor({ ...claim, mode: "preview" }), urlFor({ ...claim, v: 2 }),
-    urlFor({ ...claim, revision: "missing" }), `${base}/v1/artifact-renditions/access/not-json.sig`]) {
+    urlFor({ ...claim, revision: "missing" }), urlFor({ ...claim, oversized: "x".repeat(10000) }), `${base}/v1/artifact-renditions/access/not-json.sig`]) {
     assert.equal(model3DIdentityFromAccessUrl(url, base, artifact), null, url);
   }
 });
@@ -42,6 +42,7 @@ test("loader renews the exact expired checkpoint under authenticated grants with
     requests.push(String(url)); assert.equal(options?.method || "GET", "GET");
     assert.equal(options.headers.Authorization, "Bearer test-auth");
     if (String(url).includes("/library/items/")) {
+      assert.equal(options.credentials, "include");
       assert.equal(new URL(url).searchParams.get("revisionId"), oldRevision);
       return Response.json({ artifactId: artifact, revisionId: oldRevision, sourceFormat: "glb",
         source: { digest: createHash("sha256").update(Buffer.concat([header, json])).digest("hex") }, ...projectionOverrides });

@@ -32,7 +32,7 @@ export function model3DIdentityFromAccessUrl(value, gatewayBase, expectedArtifac
   if (!qualified || !UUID_RE.test(expectedArtifactId || "")) return null;
   try {
     const token = new URL(qualified).pathname.split("/access/")[1];
-    if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) return null;
+    if (token.length > 8192 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) return null;
     const payload = JSON.parse(atob(token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/")));
     if (payload.v !== 1 || payload.purpose !== "source" || payload.mode !== "source" ||
       payload.artifact !== expectedArtifactId || !UUID_RE.test(payload.revision || "") || payload.dependencyPath) return null;
