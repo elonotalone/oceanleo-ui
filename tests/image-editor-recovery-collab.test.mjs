@@ -109,3 +109,15 @@ test("a repeat flush with no canvas change returns the last receipt instead of a
   assert.match(save.slice(0, 900), /!dirtyRef\.current &&\s*last\.revision === revisionRef\.current &&\s*last\.identity === openIdentityRef\.current &&\s*last\.result\.item === artifactHeadRef\.current\s*\) return last\.result;/);
   assert.match(save, /lastSaveRef\.current = \{\s*revision: savingRevision,\s*identity: savingIdentity,\s*result,/);
 });
+
+// [实测] 09:59Z button sweep: quick successive edits showed 「保存失败」 seven times — a flush that
+// arrived while a save was running got null, and an edit during preview capture threw.
+test("overlapping saves wait for the running one; an edit during capture re-captures", () => {
+  const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
+  const at = hook.indexOf("const saveSerialized = useCallback(");
+  const wrapper = hook.slice(at, at + 500);
+  assert.match(wrapper, /await saveRunRef\.current\.catch/);
+  assert.match(wrapper, /const run = save\(\)/);
+  assert.match(hook, /\n    save: saveSerialized,\n/);
+  assert.match(hook, /if \(revisionRef\.current === savingRevision\) break;\s*if \(attempt >= 3\)/);
+});

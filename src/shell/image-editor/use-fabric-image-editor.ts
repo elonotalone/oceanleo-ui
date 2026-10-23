@@ -1442,7 +1442,7 @@ export function useFabricImageEditor(
     ) {
       return null;
     }
-    const savingRevision = revisionRef.current;
+    let savingRevision = revisionRef.current;
     const savingIdentity = openIdentityRef.current;
     const savingController = controllerRef.current;
     const sourceItem = artifactHeadRef.current;
@@ -1454,17 +1454,24 @@ export function useFabricImageEditor(
     try {
       const controller = savingController;
       if (!controller) throw new Error("图片画布尚未就绪");
-      const snapshot = controller.getSnapshot();
-      const previewBlob = await makeStaticPreviewBlob();
       // The static preview is rasterized from the live canvas. If a newer edit
-      // lands before it is captured, retry so the persisted project and preview
-      // stay paired. Edits after upload starts remain dirty for the next save.
-      if (
-        openIdentityRef.current !== savingIdentity ||
-        controllerRef.current !== savingController
-      ) return null;
-      if (revisionRef.current !== savingRevision) {
-        throw new Error("保存快照生成期间画布已变化，本次未提交，修改仍保留。");
+      // lands before it is captured, capture again so the persisted project and
+      // preview stay paired (连点几下时不再报「保存失败」). Edits after upload
+      // starts remain dirty for the next save.
+      let snapshot = controller.getSnapshot();
+      let previewBlob = await makeStaticPreviewBlob();
+      for (let attempt = 0; ; attempt += 1) {
+        if (
+          openIdentityRef.current !== savingIdentity ||
+          controllerRef.current !== savingController
+        ) return null;
+        if (revisionRef.current === savingRevision) break;
+        if (attempt >= 3) {
+          throw new Error("保存快照生成期间画布已变化，本次未提交，修改仍保留。");
+        }
+        savingRevision = revisionRef.current;
+        snapshot = controller.getSnapshot();
+        previewBlob = await makeStaticPreviewBlob();
       }
       const saved =
         head.artifactType === "composite_image" && !isDesignDocumentItem(head)
@@ -1611,6 +1618,22 @@ export function useFabricImageEditor(
       if (aliveRef.current) setSaving(false);
     }
   }, [item, loading, makeStaticPreviewBlob, siteId, updateDirty]);
+
+  // 一次只跑一个保存；外壳在上一次还没结束时又要保存（关闭、会话重试），等它结束再存最新的，
+  // 不再回 null（以前会被当成「保存失败」显示出来）。
+  const saveRunRef = useRef<Promise<FabricImageSaveResult | null> | null>(null);
+  const saveSerialized = useCallback(async (): Promise<FabricImageSaveResult | null> => {
+    for (let waited = 0; saveRunRef.current && waited < 10; waited += 1) {
+      await saveRunRef.current.catch(() => null);
+    }
+    const run = save();
+    saveRunRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (saveRunRef.current === run) saveRunRef.current = null;
+    }
+  }, [save]);
 
   const runAiEdit = useCallback(async () => {
     if (aiBusyRef.current || !aiPrompt.trim()) return;
@@ -1842,7 +1865,7 @@ export function useFabricImageEditor(
     download,
     downloadAs,
     downloadDefaultPng,
-    save,
+    save: saveSerialized,
     aiAvailable: true,
     aiPrompt,
     setAiPrompt,

@@ -17,3 +17,4 @@
 - [实测] w09-reload-edit.mjs（09:16Z）：一次改动出了 rev27 + rev28（会话快照还在记时外壳又要一次保存，图片照样提交相同内容）→ 修：画布自上次提交没动过就交回上次回执。
 - [实测] 新上下文首开：协同房间副本的两个对象 id 与载入版本不同（`+wsdnojjo;+e226fbf8;-wpsa89ob;-0rd3n7uk`）→ 套用 → dirty=true（不触发保存）。根因在房间保留上一场的对象模型、重开载入的版本对象 id 不同；属于 use-entity-collab 对齐策略，写进交付剩余问题。
 - [实测] 英文界面图片调整面板露中文（像素化/黑白/复古/反相），画笔/签名/表格/导出等抽屉说明也在历史缺口表里 → 册子补 45 句 × 16 语种；i18n 闸 #9 现在把这 45 条列为「已补译文的死登记」，需父 agent 从基线表摘掉。
+- [实测] w09-buttons b4（10:00Z）：flip-x/flip-y/rotate 有效且撤销还原；duplicate 1→2、delete 2→1；crop 进裁剪态（crop-apply crop-ratio crop-cancel）、取消还原；replace 打开素材面板；radius/border/opacity/adjust/position 开面板；lock 生效但撤销不撤锁定。连点期间 7 次 autosave.error、顶栏「保存失败」→ 修：保存串行（上一个没完等它）、预览期间画布又变就重抓（≤3 次），不再回 null。
