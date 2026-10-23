@@ -34,7 +34,7 @@ import {
 } from "../workbench-material-provider";
 import { PdfControls } from "../media-editors/PdfControls";
 import { PdfFindBar } from "../media-editors/PdfFindBar";
-import { PdfSelectionBar } from "../media-editors/PdfSelectionBar";
+import { PdfSelectionBar, pdfSelectionBarVisible } from "../media-editors/PdfSelectionBar";
 import { PdfSignatureDialog } from "../media-editors/PdfSignatureDialog";
 import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
 import { buildPdfCommandSurface } from "../media-editors/pdf-command-surface";
@@ -228,7 +228,7 @@ export function PdfRoute({
         label: editorToolLabel({ type: "pdf" }),
         actions: chrome === "basic" ? toolActions : [],
         contextToolbar:
-          chrome === "basic" && bridge ? (
+          chrome === "basic" && bridge && pdfSelectionBarVisible(editor.selected, activeTool, readOnly) ? (
             <PdfSelectionBar
               bridge={bridge}
               selected={editor.selected}

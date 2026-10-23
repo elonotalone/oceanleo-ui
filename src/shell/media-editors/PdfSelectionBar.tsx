@@ -72,6 +72,17 @@ const TOOL_KIND: Record<string, Kind> = {
   textComment: "note",
 };
 
+/** 编辑栏要不要出选区段：选中了能编辑的批注，或开着有设置项的工具。 */
+export function pdfSelectionBarVisible(
+  selected: PdfAnnotationLike | null,
+  activeTool: string | null,
+  readOnly: boolean,
+): boolean {
+  if (readOnly) return false;
+  if (selected) return pdfAnnotationKind(selected.type) !== null;
+  return Boolean(activeTool && TOOL_KIND[activeTool]);
+}
+
 function hex(value: unknown, fallback: string): string {
   return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
 }
