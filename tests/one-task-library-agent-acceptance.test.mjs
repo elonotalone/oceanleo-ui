@@ -1072,12 +1072,12 @@ test("standalone Library editor keeps its Task conversation hidden after reopen 
     await assertStandaloneAgentClosed("first standalone editor");
 
     await click(await waitFor(mounted, '[aria-label="返回库"]', "standalone editor return-to-Library action"));
+    await click(await waitFor(mounted, 'button[aria-label="预览「Library acceptance document」"]', "closed editor returns to the Library list; select the same root again"));
     await click(await waitFor(mounted, '[data-artifact-action="edit"]', "reopened first Library item Edit action"));
     await waitFor(mounted, '[data-library-editor-host="agent-workspace"]', "reopened standalone Task-shaped editor host");
     await assertStandaloneAgentClosed("reopened standalone editor");
 
     await click(await waitFor(mounted, '[aria-label="返回库"]', "reopened editor return-to-Library action"));
-    await click(await waitFor(mounted, '[aria-label="返回列表"]', "Library detail return-to-list action"));
     await click(await waitFor(mounted, 'button[aria-label="预览「Second canonical Library document」"]', "second canonical Library artifact"));
     await click(await waitFor(mounted, '[data-artifact-action="edit"]', "second Library item Edit action"));
     await waitFor(mounted, '[data-library-editor-host="agent-workspace"]', "second standalone Task-shaped editor host");
@@ -1541,8 +1541,6 @@ test("switching an existing Task's native workbench to another Library root reje
     // Leave the actual inline Library editor, return through the real shelf, and
     // open a second canonical Library artifact in that same existing Task pane.
     await click(mounted.container.querySelector('[aria-label="返回库"]'));
-    await waitFor(mounted, '[data-artifact-action="edit"]', "the first Library detail after leaving the editor");
-    await click(await waitFor(mounted, '[aria-label="返回列表"]', "the Library detail's real back-to-list action"));
     const secondCard = await waitFor(mounted, 'button[aria-label="预览「Second canonical Library document」"]', "the second distinct canonical Library artifact");
     await click(secondCard);
     await click(await waitFor(mounted, '[data-artifact-action="edit"]', "the second Library artifact's real Edit action"));
