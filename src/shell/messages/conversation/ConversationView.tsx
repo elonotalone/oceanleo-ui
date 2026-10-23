@@ -27,8 +27,10 @@ import {
   CallChatProvider,
   callMetaOf,
   callMetaUserIds,
+  removalReasonFor,
   useEndedCallIndex,
   type CallChatContextValue,
+  type RemovalReason,
 } from "../call/chat";
 
 export interface ConversationViewProps {
@@ -96,6 +98,13 @@ function useConversationDetail(conversationId: string, onUnavailable?: () => voi
   });
   useImEvent("conversation.updated", (event) => {
     if (event.conversation.id === conversationId) load();
+  });
+  // 被移出 / 退出 / 解散（V02 D5）：以网关为准重取一次；网关说不再是成员就由 onUnavailable 关掉这个会话。
+  useImEvent("conversation.removed", (event) => {
+    if (removalReasonFor(event, conversationId)) load();
+  });
+  useImEvent("call_kicked", (event) => {
+    if (removalReasonFor(event, conversationId)) load();
   });
   useImResync(load);
   return detail;
@@ -185,6 +194,8 @@ function ConversationBody(props: ConversationViewProps & {
   const [searchOpen, setSearchOpen] = useState(false);
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
   const [unreadAfterSeq, setUnreadAfterSeq] = useState<number | null>(null);
+  // 收到移出类事件（call_kicked / conversation.removed）后立即置灰，不等会话详情重取回来（V02 D5）。
+  const [removed, setRemoved] = useState<RemovalReason | null>(null);
   const unreadFrozen = useRef(false);
   const readState = useRef({ last: 0, at: 0, pending: 0, timer: null as ReturnType<typeof setTimeout> | null });
 
@@ -216,6 +227,12 @@ function ConversationBody(props: ConversationViewProps & {
   });
   useImEvent("conversation.removed", (event) => {
     if (historyEventTargetsConversation(event, conversationId)) reloadHistory();
+    const reason = removalReasonFor(event, conversationId);
+    if (reason) setRemoved(reason);
+  });
+  useImEvent("call_kicked", (event) => {
+    const reason = removalReasonFor(event, conversationId);
+    if (reason) setRemoved((current) => current ?? reason);
   });
 
   // 打开：定位到高亮那条，或补到最新
@@ -358,8 +375,8 @@ function ConversationBody(props: ConversationViewProps & {
   );
 
   const title = conversation ? conversationDisplayTitle(conversation) : "";
-  const dissolved = Boolean(conversation?.dissolved);
-  const notMember = conversation !== null && conversation.my_role === null && conversation.kind !== "dm";
+  const dissolved = Boolean(conversation?.dissolved) || removed === "dissolved";
+  const notMember = (conversation !== null && conversation.my_role === null && conversation.kind !== "dm") || removed !== null;
   const disabledReason = dissolved ? tt("这个群已解散，历史消息只读。") : notMember ? tt("你已不在这个会话里。") : undefined;
   const peerPresence = peerId ? presence[peerId] : undefined;
   const showCallButton = Boolean(conversation) && conversation?.kind !== "talent" && !dissolved && !notMember;
@@ -379,8 +396,9 @@ function ConversationBody(props: ConversationViewProps & {
         });
       },
       endedMetaOf,
+      canJoin: showCallButton,
     }),
-    [viewerId, conversationId, conversation?.kind, conversation?.show_member_nicknames, title, profiles, endedMetaOf],
+    [viewerId, conversationId, conversation?.kind, conversation?.show_member_nicknames, title, profiles, endedMetaOf, showCallButton],
   );
 
   return (

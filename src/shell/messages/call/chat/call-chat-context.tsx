@@ -16,6 +16,11 @@ export interface CallChatContextValue {
   nameOf(userId: string | null | undefined): string;
   /** 当前已加载消息里这通通话的 `call_ended` meta（开始卡片变「已结束」时取时长与参与者）。 */
   endedMetaOf(callId: string): CallCardMeta | undefined;
+  /**
+   * 现在能不能从卡片加入：交易会话、已解散、不是成员、刚收到移出事件（V02 D5）时为 false，
+   * 进行中的卡片照样显示人数，但不给「加入通话」。
+   */
+  canJoin: boolean;
 }
 
 const CallChatContext = createContext<CallChatContextValue | null>(null);
@@ -32,6 +37,7 @@ const FALLBACK: CallChatContextValue = {
   profileOf: () => undefined,
   nameOf: () => "",
   endedMetaOf: () => undefined,
+  canJoin: true,
 };
 
 export function useCallChatContext(): CallChatContextValue {

@@ -9,3 +9,4 @@ export { CallChatProvider, useEndedCallIndex, type CallChatContextValue } from "
 export { callMetaOf, callMetaUserIds, type CallCardMeta } from "./call-meta";
 export { CALL_DOCK_FOCUS_EVENT, requestDockFocus } from "./call-entry";
 export { useActiveCallSummary } from "./use-conversation-call";
+export { removalReasonFor, type RemovalReason } from "./call-removal";

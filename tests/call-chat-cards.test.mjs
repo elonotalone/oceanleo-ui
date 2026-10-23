@@ -226,6 +226,7 @@ function context(overrides = {}) {
     profileOf: (id) => (id ? PROFILES[id] : undefined),
     nameOf: (id) => (id && PROFILES[id] ? PROFILES[id].display_name : ""),
     endedMetaOf: () => undefined,
+    canJoin: true,
     ...overrides,
   };
 }

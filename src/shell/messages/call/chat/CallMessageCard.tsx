@@ -133,9 +133,11 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
     const people = uniqueUserIds((liveView?.participants ?? []).map((p) => p.user_id));
     const count = Math.max(liveView?.participant_count ?? 0, people.length, mineLive ? 1 : 0);
     const inThis = join.state === "in_this_call" && mineLive;
+    // 已不在这个会话里（被移出 / 解散 / 非成员）：照样显示人数，但不给加入按钮（V02 D5）。
+    const showJoin = ctx.canJoin || inThis;
     return (
       <CardFrame message={message} kind="call_started">
-        <div className="flex items-center gap-3" data-call-status="active">
+        <div className="flex items-center gap-3" data-call-status="active" data-call-joinable={showJoin ? "true" : "false"}>
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
             <HeadphonesIcon size={18} />
           </span>
@@ -145,20 +147,22 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
             </div>
             <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{starter}</div>
           </div>
-          <button
-            type="button"
-            data-call-join={inThis ? "mine" : join.state}
-            disabled={join.pending || join.state === "busy" || join.state === "hidden"}
-            onClick={() => void join.run({ title: ctx.conversationTitle || undefined, callId: meta.callId })}
-            className={
-              "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:opacity-60 " +
-              (inThis
-                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300"
-                : "bg-emerald-500 text-white hover:bg-emerald-600")
-            }
-          >
-            {inThis ? tt("通话中") : tt("加入通话")}
-          </button>
+          {showJoin ? (
+            <button
+              type="button"
+              data-call-join={inThis ? "mine" : join.state}
+              disabled={join.pending || join.state === "busy" || join.state === "hidden"}
+              onClick={() => void join.run({ title: ctx.conversationTitle || undefined, callId: meta.callId })}
+              className={
+                "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:opacity-60 " +
+                (inThis
+                  ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300"
+                  : "bg-emerald-500 text-white hover:bg-emerald-600")
+              }
+            >
+              {inThis ? tt("通话中") : tt("加入通话")}
+            </button>
+          ) : null}
         </div>
         {people.length > 0 ? (
           <div className="mt-2 pl-12">
