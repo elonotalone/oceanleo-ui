@@ -118,7 +118,7 @@ export default async function ({ page, log, shot, helpers, args }) {
       await page.waitForTimeout(500);
       const pre = await imageStyle(page, last);
       await fn();
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(1500);
       const post = await imageStyle(page, last);
       results[name] = { ok: check(pre, post), pre, post };
     } catch (error) {
@@ -159,6 +159,26 @@ export default async function ({ page, log, shot, helpers, args }) {
     await width.press("Enter");
   }, (pre, post) => changed(pre, post) && /border/.test(JSON.stringify(post)));
   await page.keyboard.press("Escape");
+  // replace: opens the file picker; the picked file swaps the selected image's src in place.
+  try {
+    await images(page).nth(last).click();
+    await page.waitForTimeout(500);
+    const srcBefore = await images(page).nth(last).getAttribute("src");
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser", { timeout: 8000 }),
+      control(page, "replace").click(),
+    ]);
+    await chooser.setFiles(args[3] || args[2] || "/tmp/w08-r2-fx/[W08] 图.png");
+    let srcAfter = srcBefore;
+    for (let i = 0; i < 60 && srcAfter === srcBefore; i++) {
+      await page.waitForTimeout(1000);
+      srcAfter = await images(page).nth(last).getAttribute("src");
+    }
+    results.replace = { ok: srcAfter !== srcBefore, count: await images(page).count() };
+  } catch (error) {
+    results.replace = { ok: false, error: String(error).slice(0, 200) };
+  }
+  log("click", "replace", JSON.stringify(results.replace));
   const count0 = await images(page).count();
   await run("duplicate", () => control(page, "duplicate").click(), () => true);
   const count1 = await images(page).count();

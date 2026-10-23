@@ -24,3 +24,7 @@
 - [实测 node] 行距丢失根因：`RichDocRoute.restoreWorkingDocument` 把原生草稿也送进 `convertUmoToRichDoc`，`mapAttrs` 剥掉 lineHeight/首行缩进/段前段后/编号预设/图片环绕。改为 `rich-doc-draft-restore.ts::richDocDraftForRestore`：原生 doc 原样恢复，只有 Umo 草稿回转。`tests/richdoc-draft-restore.test.mjs` 3/3。
 - [实测] tsc：W08 文件无错（3 个错都在 W16 `workflow-carrier/video-project-doc.ts`）。
 - 链接面板是检查器 textarea，Ctrl/Cmd+Enter 或失焦提交（场景原先用 Enter+Escape，等于取消）。
+- [实测 浏览器] 图片栏（`80a3e686…`，经「插入」抽屉上传；素材库货架没有图片，见 W08-to-W02）：插图后撤销/重做有效；栏 = replace radius border opacity(面板) duplicate delete，更多 = image-wrap。radius/border/duplicate/delete 生效；opacity 松手（失焦）后生效；replace 原先上传 200 但图不换。
+- 修 replace：`replaceSelectedImage` 在上传前钉住选中图的位置与地址，回来按位置/地址写回（`tests/richdoc-image-replace.test.mjs`）。[实测] 修后 replace ok。
+- [实测] 深色：正文深底、默认字浅色、用户红字保留、高亮压暗、插入抽屉/字体面板深色（`evidence/W08/w08-r2-dark-imagebar.png`）。
+- `tests/advanced-project-autosave.test.mjs` 第 4 条：保存体改名 `saveOnce` 后断言段落起点跟着改（不放松断言）。

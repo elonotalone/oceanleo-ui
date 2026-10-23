@@ -1042,6 +1042,18 @@ export function useRichDocEditor(
     async (file: File) => {
       if (!editor || !requireSourceReady()) return;
       setError("");
+      // 记住点「替换」那一刻选中的是哪张图：选文件对话框和上传期间焦点会离开编辑器，
+      // 等上传回来再看「当前是否选中图片」就会落空（R2 实测：上传成功、图却没换）。
+      const { selection } = editor.state;
+      const targetPos =
+        editor.isActive("image") && typeof (selection as { node?: unknown }).node === "object"
+          ? selection.from
+          : null;
+      if (targetPos === null) {
+        setError(tt("先选中要替换的图片"));
+        return;
+      }
+      const targetSrc = String(editor.state.doc.nodeAt(targetPos)?.attrs.src || "");
       try {
         const uploaded = await uploadFile(file, {
           siteId: siteId || "word",
@@ -1052,11 +1064,28 @@ export function useRichDocEditor(
           setError(uploaded.error ? tt(uploaded.error) : tt("图片上传失败"));
           return;
         }
-        if (!editor.isActive("image")) {
+        // 上传期间文档可能变过（自动保存、协同）：位置上还是那张图就用它，否则按原地址找回。
+        let pos: number | null = null;
+        const atTarget = editor.state.doc.nodeAt(targetPos);
+        if (atTarget?.type.name === "image" && String(atTarget.attrs.src || "") === targetSrc) {
+          pos = targetPos;
+        } else {
+          editor.state.doc.descendants((node, at) => {
+            if (pos !== null) return false;
+            if (node.type.name === "image" && String(node.attrs.src || "") === targetSrc) pos = at;
+            return true;
+          });
+        }
+        if (pos === null) {
           setError(tt("先选中要替换的图片"));
           return;
         }
-        editor.chain().focus().updateAttributes("image", { src: url, alt: file.name }).run();
+        editor
+          .chain()
+          .focus()
+          .setNodeSelection(pos)
+          .updateAttributes("image", { src: url, alt: file.name })
+          .run();
       } catch (caught) {
         setError(
           caught instanceof Error ? tt(caught.message) : tt("图片上传失败"),

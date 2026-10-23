@@ -229,7 +229,7 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
   );
   assert.match(richDocDelivery, /await tiptapJsonToDocxBlob\(input\.title, json\)/);
   assert.match(richDocDelivery, /new File\(\[blob\], `\$\{stem\}\.docx`/);
-  for (const [path, end, exporter, extension] of [
+  for (const [path, end, exporter, extension, start] of [
     [
       DECK_EDITOR,
       "const restoreRecovery = useCallback",
@@ -248,9 +248,11 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
       "const uploadImage = useCallback",
       "createRichDocDeliveryFile",
       "docx",
+      // 10-23 W08：真正的保存体是 `saveOnce`；`save` 只是共享在途保存的薄包装。
+      "const saveOnce = useCallback",
     ],
   ]) {
-    const save = section(path, "const save = useCallback", end);
+    const save = section(path, start || "const save = useCallback", end);
     assert.match(save, new RegExp(exporter), path);
     assert.match(save, /saveFileToLibrary/, path);
     if (extension === "docx") {
