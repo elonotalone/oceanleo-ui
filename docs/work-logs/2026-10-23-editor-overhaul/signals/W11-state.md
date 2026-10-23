@@ -9,13 +9,15 @@
 - [读码] W03 projection exists (`edit-bar-canon-table.ts`, `-projection.ts`); A-1: panel canon items = sub-controls with slot inspector + inspectorGroup=<canon id>.
 - [读码] convert/timeline.py (parent-owned) export supports: video scale/opacity/x/y/rotation/eq/fit; image scale/opacity/x/y/rotation; text size/color/background/x/y/align/bold; no flip/italic/underline/font-family.
 
-## Current step (resumed 06:0xZ after parent salvage f4856921)
-- Step 2: browser probe of panels (probe-panels.mjs), then rewrite VideoTimelineContextToolbar to canonical ids.
+- [实测] video clip bar today: panels 片段时间/音量/位置与变换/画面调色/转场 + muted/speed/fit + more(duplicate/delete). 片段时间 & 位置与变换 share icon position; 音量 & 静音 share effects.
+- [实测] clicking a panel button marks it active but the panel host `section.tool-detail` is not visible in the `/library?item=` carrier -> every slider control unreachable (shell/W02 side).
+- [实测] seeded clip source_url is a short-lived artifact-access grant (exp ~minutes) -> 410 Gone, preview turns black, and it is saved into the project doc (breaks reopen). Backend media import accepts artifact-access URLs.
+
+## Current step (06:45Z)
+- Step 3: code: video-edit-bar.ts (canonical controls, A-1 panels), flip_x/flip_y in model+preview, light/dark timeline palette, durable seed source (refresh grant + import), clip labels, copy book.
 
 ## Next
-- Step 2: write browser scenario `evidence/W11/scenarios/` that clicks every edit-bar button on video / image / text / audio clips and screenshots before/after -> broken list.
-- Step 3: fix, migrate to canonical ids (§4), light/dark, save protocol §5.
-
+- focused tests + tsc, commit; browser matrix + two themes + save protocol; delivery.
 ## Repro commands
 - focused test: `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<file>.test.mjs`
 - browser: `cd docs/work-logs/2026-10-23-editor-overhaul && bash harness/mint.sh | OUT_DIR=/tmp/w11-x THEME=light node harness/run.mjs evidence/W11/scenarios/<s>.mjs`
