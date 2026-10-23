@@ -2,6 +2,7 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
   "en": {
+    "取消静音": "Unmute",
     "共 {count} 页": "{count} pages",
     "这份 PDF 打不开。": "This PDF could not be opened.",
     "暂时无法保存私有工作文档": "Could not save the private working document",
@@ -14,6 +15,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Audio source upload failed"
   },
   "de": {
+    "取消静音": "Ton einschalten",
     "共 {count} 页": "{count} Seiten",
     "这份 PDF 打不开。": "Diese PDF konnte nicht geöffnet werden.",
     "暂时无法保存私有工作文档": "Das private Arbeitsdokument konnte nicht gespeichert werden",
@@ -26,6 +28,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Audioquelle konnte nicht hochgeladen werden"
   },
   "es": {
+    "取消静音": "Activar sonido",
     "共 {count} 页": "{count} páginas",
     "这份 PDF 打不开。": "No se pudo abrir este PDF.",
     "暂时无法保存私有工作文档": "No se pudo guardar el documento de trabajo privado",
@@ -38,6 +41,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Error al subir el audio de origen"
   },
   "es-419": {
+    "取消静音": "Activar sonido",
     "共 {count} 页": "{count} páginas",
     "这份 PDF 打不开。": "No se pudo abrir este PDF.",
     "暂时无法保存私有工作文档": "No se pudo guardar el documento de trabajo privado",
@@ -50,6 +54,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "No se pudo subir el audio de origen"
   },
   "fr": {
+    "取消静音": "Réactiver le son",
     "共 {count} 页": "{count} pages",
     "这份 PDF 打不开。": "Impossible d’ouvrir ce PDF.",
     "暂时无法保存私有工作文档": "Impossible d’enregistrer le document de travail privé",
@@ -62,6 +67,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Échec de l’envoi du fichier audio source"
   },
   "it": {
+    "取消静音": "Riattiva audio",
     "共 {count} 页": "{count} pagine",
     "这份 PDF 打不开。": "Impossibile aprire questo PDF.",
     "暂时无法保存私有工作文档": "Impossibile salvare il documento di lavoro privato",
@@ -74,6 +80,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Caricamento della sorgente audio non riuscito"
   },
   "pt-BR": {
+    "取消静音": "Ativar som",
     "共 {count} 页": "{count} páginas",
     "这份 PDF 打不开。": "Não foi possível abrir este PDF.",
     "暂时无法保存私有工作文档": "Não foi possível salvar o documento de trabalho privado",
@@ -86,6 +93,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Falha ao enviar a fonte de áudio"
   },
   "pt-PT": {
+    "取消静音": "Ativar som",
     "共 {count} 页": "{count} páginas",
     "这份 PDF 打不开。": "Não foi possível abrir este PDF.",
     "暂时无法保存私有工作文档": "Não foi possível guardar o documento de trabalho privado",
@@ -98,6 +106,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Falha ao carregar a fonte de áudio"
   },
   "vi": {
+    "取消静音": "Bật tiếng",
     "共 {count} 页": "{count} trang",
     "这份 PDF 打不开。": "Không mở được PDF này.",
     "暂时无法保存私有工作文档": "Không lưu được tài liệu làm việc riêng tư",
@@ -110,6 +119,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Tải nguồn âm thanh lên thất bại"
   },
   "tr": {
+    "取消静音": "Sesi aç",
     "共 {count} 页": "{count} sayfa",
     "这份 PDF 打不开。": "Bu PDF açılamadı.",
     "暂时无法保存私有工作文档": "Özel çalışma belgesi kaydedilemedi",
@@ -122,6 +132,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Ses kaynağı yüklenemedi"
   },
   "zh-TW": {
+    "取消静音": "取消靜音",
     "共 {count} 页": "共 {count} 頁",
     "这份 PDF 打不开。": "這份 PDF 打不開。",
     "暂时无法保存私有工作文档": "暫時無法儲存私人工作文件",
@@ -134,6 +145,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "音訊來源上傳失敗"
   },
   "ja": {
+    "取消静音": "ミュート解除",
     "共 {count} 页": "全 {count} ページ",
     "这份 PDF 打不开。": "この PDF を開けませんでした。",
     "暂时无法保存私有工作文档": "非公開の作業文書を保存できませんでした",
@@ -146,6 +158,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "音声ソースのアップロードに失敗しました"
   },
   "ko": {
+    "取消静音": "음소거 해제",
     "共 {count} 页": "총 {count}페이지",
     "这份 PDF 打不开。": "이 PDF를 열 수 없습니다.",
     "暂时无法保存私有工作文档": "비공개 작업 문서를 저장할 수 없습니다",
@@ -158,6 +171,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "오디오 소스 업로드 실패"
   },
   "ar": {
+    "取消静音": "إلغاء كتم الصوت",
     "共 {count} 页": "{count} صفحات",
     "这份 PDF 打不开。": "تعذّر فتح ملف PDF هذا.",
     "暂时无法保存私有工作文档": "تعذر حفظ مستند العمل الخاص",
@@ -170,6 +184,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "فشل رفع مصدر الصوت"
   },
   "th": {
+    "取消静音": "เปิดเสียง",
     "共 {count} 页": "ทั้งหมด {count} หน้า",
     "这份 PDF 打不开。": "เปิด PDF นี้ไม่ได้",
     "暂时无法保存私有工作文档": "บันทึกเอกสารทำงานส่วนตัวไม่ได้",
@@ -182,6 +197,7 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "อัปโหลดแหล่งเสียงไม่สำเร็จ"
   },
   "hi": {
+    "取消静音": "आवाज़ चालू करें",
     "共 {count} 页": "कुल {count} पृष्ठ",
     "这份 PDF 打不开。": "यह PDF नहीं खुल सका।",
     "暂时无法保存私有工作文档": "निजी कार्य दस्तावेज़ सहेजा नहीं जा सका",
