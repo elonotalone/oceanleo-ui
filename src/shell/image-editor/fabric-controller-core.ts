@@ -58,6 +58,11 @@ import {
 } from "./editor-runtime";
 import { imageChangedObjects, imageRebaseSnapshot } from "../collab/adapters/image";
 import {
+  collabComparableSnapshot,
+  keepFresherDependency,
+  remoteDeltaSummary,
+} from "./image-remote-delta";
+import {
   imageObjectMutationAllowed,
   type ImageObjectMutationIntent,
 } from "./image-mutation-policy";
@@ -82,8 +87,11 @@ export interface FabricControllerView {
 export interface ControllerCallbacks {
   onChange: (view: FabricControllerView) => void;
   onDocumentChange?: () => void;
-  /** 多人同改：别人的改动已逐对象套进画布（不是本地的一步编辑，不进撤销栈）。 */
-  onRemoteApplied?: () => void;
+  /**
+   * 多人同改：别人的改动已逐对象套进画布（不是本地的一步编辑，不进撤销栈）。
+   * `summary` 只说哪些对象的哪些字段变了（不含取值），供诊断与「是否真有改动」判断。
+   */
+  onRemoteApplied?: (summary: string) => void;
   onError: (message: string) => void;
 }
 
@@ -1119,7 +1127,8 @@ export class FabricEditorCore {
 
   private async applyRemoteOnce(remote: EditorSnapshot): Promise<boolean> {
     const before = this.getCollabSnapshot();
-    const delta = imageChangedObjects(before, remote);
+    // 只比内容：控制柄样式与会过期的来源签名不算别人的改动（见 image-remote-delta）。
+    const delta = imageChangedObjects(collabComparableSnapshot(before), collabComparableSnapshot(remote));
     const docChanged =
       before.doc.width !== remote.doc.width ||
       before.doc.height !== remote.doc.height ||
@@ -1156,6 +1165,12 @@ export class FabricEditorCore {
     }
     const builtById = new Map<string, FabricObject>();
     built.forEach((object, index) => builtById.set(toBuild[index], object));
+    const summary = remoteDeltaSummary(
+      collabComparableSnapshot(before),
+      collabComparableSnapshot(remote),
+      delta,
+      docChanged,
+    );
 
     // —— 下面同步完成，期间不会插进本地的提交 ——
     this.restoring = true;
@@ -1179,6 +1194,13 @@ export class FabricEditorCore {
       }
       for (const [id, next] of builtById) {
         const old = current.get(id);
+        if (old) {
+          const kept = keepFresherDependency(
+            (old as EditorObject).oceanleoDependency,
+            (next as EditorObject).oceanleoDependency,
+          );
+          if (kept) (next as EditorObject).oceanleoDependency = kept as EditorObject["oceanleoDependency"];
+        }
         this.styleObject(next);
         if (old) {
           const index = canvas.getObjects().indexOf(old);
@@ -1215,7 +1237,7 @@ export class FabricEditorCore {
       this.restoring = false;
     }
     this.emit();
-    this.callbacks.onRemoteApplied?.();
+    this.callbacks.onRemoteApplied?.(summary);
     return true;
   }
 

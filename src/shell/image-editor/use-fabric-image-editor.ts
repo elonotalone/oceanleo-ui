@@ -44,6 +44,10 @@ import {
   persistImageProject,
   saveLocalImageDraft,
 } from "./editor-persistence";
+import {
+  sameImageContent,
+  type ImageRecoveryRestoreResult,
+} from "./image-remote-delta";
 import { FabricEditorController } from "./fabric-controller";
 import type { FabricControllerView } from "./fabric-controller-core";
 import { normalizeEditorSnapshot } from "./editor-runtime";
@@ -496,6 +500,8 @@ export interface FabricImageCollabHandle {
   readOnly: boolean;
   /** 随别人的改动套进画布而递增，用来让「别人的选择框」重新量位置。 */
   tick: number;
+  /** 最近一次套进来的远端改动摘要（对象 id + 字段名，不含取值），诊断用。 */
+  remoteDelta: string;
   /** 协同用的画布现状（不含裁剪框）；画布还没起来时为 null。 */
   snapshot(): ImageSnapshot | null;
   ensureIds(): void;
@@ -543,6 +549,7 @@ export function useFabricImageEditor(
   const [exportScale, setExportScaleState] = useState(1);
   const [aiPrompt, setAiPrompt] = useState("");
   const [collabTick, setCollabTick] = useState(0);
+  const [remoteDelta, setRemoteDelta] = useState("");
   const tt = useUI();
   const ttRef = useRef(tt);
   ttRef.current = tt;
@@ -620,6 +627,10 @@ export function useFabricImageEditor(
   const sourceReadyRef = useRef(false);
   const sceneDiagnosticRef = useRef<FabricImageEditorState["sceneDiagnostic"]>(null);
   const revisionRef = useRef(0);
+  /** 只数本人的编辑（不含别人同步过来的改动），恢复草稿时据此判断有没有被新手势打断。 */
+  const localEditsRef = useRef(0);
+  /** 画布当前所基于的云端版本的保存时刻（ms）；比它旧的本机/草稿恢复不再盖上来。 */
+  const cloudSavedAtRef = useRef(0);
   const aiBusyRef = useRef(false);
   const workingHeadUrlRef = useRef(
     String(
@@ -751,6 +762,7 @@ export function useFabricImageEditor(
       setVectorConverted(false);
       updateDirty(false);
       revisionRef.current = 0;
+      cloudSavedAtRef.current = 0;
     }
     let controller: FabricEditorController | null = null;
     void (async () => {
@@ -769,6 +781,7 @@ export function useFabricImageEditor(
             onDocumentChange: () => {
               if (cancelled) return;
               revisionRef.current += 1;
+              localEditsRef.current += 1;
               if (controller) {
                 saveLocalImageDraft(item, controller.getSnapshot());
               }
@@ -780,8 +793,9 @@ export function useFabricImageEditor(
               if (mutationKey) recordUserMutation(mutationKey);
               optionsRef.current.collab?.onLocalChange?.();
             },
-            onRemoteApplied: () => {
+            onRemoteApplied: (summary) => {
               if (cancelled) return;
+              setRemoteDelta(summary);
               // 别人的改动：这份画布和库里最近一版不同了——存档人要存；不是本地的一步编辑
               revisionRef.current += 1;
               updateDirty(true);
@@ -967,6 +981,7 @@ export function useFabricImageEditor(
         }
         const localDraft = loadLocalImageDraft(item);
         const cloudTime = Date.parse(cloudProjectUpdatedAt || projectSavedAt) || 0;
+        cloudSavedAtRef.current = cloudTime;
         const localTime = Date.parse(localDraft?.updatedAt || "") || 0;
         if (
           localDraft &&
@@ -1307,12 +1322,24 @@ export function useFabricImageEditor(
     return { revision, payload };
   }, []);
 
-  const restoreRecovery = useCallback(async (payload: unknown) => {
+  const restoreRecovery = useCallback(async (
+    payload: unknown,
+    updatedAt?: number,
+  ): Promise<ImageRecoveryRestoreResult> => {
     const project = parseFabricImageProject(payload);
     const controller = controllerRef.current;
     if (!project || !controller || !sourceReadyRef.current) return false;
+    // 已经在画布上（保存后残留的本机记录）：什么也不用恢复，也不把画布标成未保存。
+    if (sameImageContent(project.snapshot, controller.getSnapshot())) return "unchanged";
+    // 比画布所基于的云端版本还旧：不拿旧内容盖掉更新的版本（记录本身保留，不删）。
+    if (
+      typeof updatedAt === "number" &&
+      updatedAt > 0 &&
+      cloudSavedAtRef.current > 0 &&
+      updatedAt <= cloudSavedAtRef.current
+    ) return "stale";
     const identity = openIdentityRef.current;
-    const startingRevision = revisionRef.current;
+    const startingEdits = localEditsRef.current;
     // Server draft reads happen after the source is ready. Freeze edits while
     // Fabric resolves the snapshot so a late restore cannot overwrite a new
     // gesture; restore the collaboration permission that is current at finish.
@@ -1324,9 +1351,9 @@ export function useFabricImageEditor(
         !aliveRef.current ||
         controllerRef.current !== controller ||
         openIdentityRef.current !== identity ||
-        revisionRef.current !== startingRevision
+        localEditsRef.current !== startingEdits
       ) return false;
-      revisionRef.current = startingRevision + 1;
+      revisionRef.current += 1;
       updateDirty(true);
       setSavedUrl("");
       setSavedProjectUrl("");
@@ -1520,6 +1547,7 @@ export function useFabricImageEditor(
       setSavedUrl(saved.previewUrl);
       setSavedProjectUrl(saved.projectUrl);
       setSavedAt(saved.savedAt);
+      cloudSavedAtRef.current = Date.parse(saved.savedAt) || Date.now();
       if (revisionRef.current === savingRevision) {
         updateDirty(false);
         clearLocalImageDraft(sourceItem);
@@ -1642,6 +1670,7 @@ export function useFabricImageEditor(
   const collabHandle: FabricImageCollabHandle = {
     readOnly: collabReadOnly,
     tick: collabTick,
+    remoteDelta,
     snapshot: () => (controllerRef.current ? (controllerRef.current.getCollabSnapshot() as ImageSnapshot) : null),
     ensureIds: () => {
       controllerRef.current?.ensureObjectIds();

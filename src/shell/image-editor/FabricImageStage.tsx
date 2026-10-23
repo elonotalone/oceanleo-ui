@@ -111,6 +111,10 @@ export function FabricImageStage({
       data-editor-selected-locked={
         editor.selected?.locked === true ? "true" : "false"
       }
+      data-editor-dirty={editor.dirty ? "true" : "false"}
+      data-editor-revision={editor.editRevision}
+      data-editor-collab-tick={editor.collab?.tick ?? 0}
+      data-editor-remote-delta={editor.collab?.remoteDelta || ""}
       data-editor-doc-width={editor.doc.width}
       data-editor-doc-height={editor.doc.height}
       data-editor-viewport-zoom={Number(editor.zoom.toFixed(6))}

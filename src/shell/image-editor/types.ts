@@ -283,7 +283,14 @@ export interface FabricImageEditorState {
     payload: unknown;
   } | null;
   /** Applies a validated recovery snapshot without recording a user edit. */
-  restoreRecovery: (payload: unknown) => Promise<boolean>;
+  /**
+   * `unchanged`：记录与画布内容相同（可删记录）；`stale`：记录比画布所基于的云端版本旧，
+   * 不盖上来（记录保留）。两者都不把画布标成未保存。
+   */
+  restoreRecovery: (
+    payload: unknown,
+    updatedAt?: number,
+  ) => Promise<boolean | "unchanged" | "stale">;
   // ---- 画布挂载 ----
   stageCanvasRef: (element: HTMLCanvasElement | null) => void;
   stageContainerRef: MutableRefObject<HTMLDivElement | null>;

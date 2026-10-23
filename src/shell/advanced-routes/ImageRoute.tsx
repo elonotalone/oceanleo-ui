@@ -51,7 +51,7 @@ import {
 } from "../image-editor/image-source-ready";
 import { imageRouteChrome } from "../image-editor/image-editor-ui-offerings";
 import { IMAGE_EDIT_DRAFT_SCHEMA } from "../image-editor/editor-persistence";
-import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { advancedRecoveryKey, deleteAdvancedRecovery } from "../advanced-recovery-store";
 
 export function ImageRoute({
   item,
@@ -503,7 +503,16 @@ export function ImageRoute({
             ready: imageAdmitted.ok && editor.sourceReady,
             capture: editor.captureRecovery,
             captureRevision: editor.captureRecoveryRevision,
-            restore: editor.restoreRecovery,
+            restore: async (payload: unknown, updatedAt?: number) => {
+              const result = await editor.restoreRecovery(payload, updatedAt);
+              if (result === "unchanged") {
+                // 保存后残留的本机记录：内容已在画布上，删掉，下次打开不再「恢复」。
+                await deleteAdvancedRecovery(
+                  `${advancedRecoveryKey("image", activeItem)}:${IMAGE_EDIT_DRAFT_SCHEMA}`,
+                ).catch(() => undefined);
+              }
+              return result === "unchanged" || result === "stale" ? true : result;
+            },
           },
         },
       }}
