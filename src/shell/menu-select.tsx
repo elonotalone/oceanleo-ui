@@ -284,6 +284,10 @@ export function MenuSelect(props: MenuSelectProps): ReactElement {
               data-menu-select-menu={name ?? ""}
               style={place}
               onKeyDown={onMenuKeyDown}
+              // 清单 portal 到了 body，但 React 事件仍会顺着组件树冒泡给外层：选一个选项不该同时点中
+              // 外面那一行 / 那个遮罩，所以鼠标事件到清单为止。
+              onClick={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
               className={COLLECTION_FILTER_MENU_CLASS}
             >
               <div className="min-h-0 flex-1 overflow-y-auto">

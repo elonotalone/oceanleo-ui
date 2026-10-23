@@ -24,15 +24,18 @@ const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
 const previousCanvasModule = require.cache[canvasEntry];
 require.cache[canvasEntry] = { id: canvasEntry, filename: canvasEntry, loaded: true, exports: {} };
-const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
+const { JSDOM, VirtualConsole } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
 if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
 else delete require.cache[canvasEntry];
 
+// 共享 Modal 会注入带 @starting-style 的样式表并锁滚动：jsdom 解析不了前者、没实现后者，只是噪声，不是被测行为。
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   pretendToBeVisual: true,
   url: "https://oceanleo.com/workspace",
+  virtualConsole: new VirtualConsole(),
 });
 const { window } = dom;
+window.scrollTo = () => {};
 for (const [name, value] of Object.entries({
   window,
   document: window.document,
@@ -50,6 +53,8 @@ for (const [name, value] of Object.entries({
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 const { createRoot } = await import("react-dom/client");
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -71,6 +76,10 @@ const { BayFilterSelect } = await import(
 );
 const { MenuSelect } = await import(
   await compileModule("src/shell/menu-select.tsx", { "../i18n/ui/useUI": uiStub })
+);
+// 项目页的弹窗就是这个共享 Modal（portal、z-[1000]、document 上听 Esc、Tab 圈在面板里）。
+const { Modal } = await import(
+  await compileModule("src/ui/index.tsx", { "../i18n/ui/useUI": uiStub, "react-dom": reactDomUrl })
 );
 
 // ---------------------------------------------------------------------------
@@ -383,6 +392,33 @@ test("BayFilterSelect 菜单：选中项前有勾、点不动的项不能选且�
   await view.unmount();
 });
 
+test("筛选菜单开在弹窗里：Esc 只关菜单，不会连带关掉外层弹窗（Modal 在 document 上听 Esc）", async () => {
+  for (const [Component, trigger, menu] of [
+    [CollectionFilterSelect, "[data-collection-filter]", "[data-collection-filter-menu]"],
+    [BayFilterSelect, "[data-bay-filter]", "[data-bay-filter-menu]"],
+  ]) {
+    const outer = [];
+    const spy = (event) => outer.push(event.key);
+    window.document.addEventListener("keydown", spy);
+    const view = await mount(
+      h(Component, { label: "类型", name: "type", value: "", options: TYPES, onChange() {}, allLabel: "全部类型" }),
+    );
+    const button = view.host.querySelector(trigger);
+    await click(button);
+    const open = window.document.querySelector(menu);
+    assert.ok(open, `${trigger} 点开后应有菜单`);
+    await key(open, "Escape");
+    assert.equal(window.document.querySelector(menu), null, "Esc 关菜单");
+    assert.deepEqual(outer, [], "Esc 被菜单拦下，外层弹窗的 document 监听收不到");
+    assert.equal(window.document.activeElement, button);
+    // 菜单没开着的时候 Esc 照常交给外层
+    await key(button, "Escape");
+    assert.deepEqual(outer, ["Escape"]);
+    window.document.removeEventListener("keydown", spy);
+    await view.unmount();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // ③ MenuSelect
 // ---------------------------------------------------------------------------
@@ -561,6 +597,28 @@ test("MenuSelect：Esc 只关清单、不会连带关掉外层弹窗；点到外
   await view.unmount();
 });
 
+test("MenuSelect：清单的鼠标事件到清单为止，选一个选项不会同时点中外层的行 / 遮罩", async () => {
+  const outer = [];
+  const calls = [];
+  const view = await mount(
+    h(
+      "div",
+      { onClick: () => outer.push("click"), onMouseDown: () => outer.push("mousedown") },
+      h(MenuHarness, { calls }),
+    ),
+  );
+  await click(view.host.querySelector("[data-menu-select-trigger]"));
+  outer.length = 0;
+  const done = window.document.querySelector("[data-menu-select-menu] [data-value='done']");
+  await act(async () => {
+    done.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  });
+  await click(done);
+  assert.deepEqual(calls, ["done"], "选项照常生效");
+  assert.deepEqual(outer, [], "外层的 onClick / onMouseDown 不该被清单里的点击触发");
+  await view.unmount();
+});
+
 test("MenuSelect：禁用项键盘跳过、点不动；打字跳到以该字开头的项；整条 disabled 时点不开", async () => {
   const calls = [];
   const options = [
@@ -602,6 +660,98 @@ test("MenuSelect：禁用项键盘跳过、点不动；打字跳到以该字开�
   assert.equal(window.document.querySelector("[data-menu-select-menu]"), null);
   assert.equal(off.host.querySelector("select").disabled, true);
   await off.unmount();
+});
+
+test("放进真 Modal（项目页的弹窗）：菜单盖得住、能键盘选、Esc 只关菜单、Tab 把焦点还给选择条", async () => {
+  const picked = { role: [], type: [] };
+  function Page() {
+    const [role, setRole] = React.useState("todo");
+    const [type, setType] = React.useState("");
+    return h(
+      Modal,
+      { onClose() {}, labelledBy: "w01-title" },
+      h(
+        "div",
+        { className: "p-6" },
+        h("h2", { id: "w01-title" }, "邀请"),
+        h(MenuSelect, {
+          name: "role",
+          ariaLabel: "权限",
+          value: role,
+          options: STATUS,
+          onChange: (next) => {
+            picked.role.push(next);
+            setRole(next);
+          },
+          className: "w-32 shrink-0",
+        }),
+        h(CollectionFilterSelect, {
+          label: "类型",
+          name: "type",
+          value: type,
+          options: TYPES,
+          allLabel: "全部类型",
+          onChange: (next) => {
+            picked.type.push(next);
+            setType(next);
+          },
+        }),
+        h("button", { type: "button", "data-last": "" }, "完成"),
+      ),
+    );
+  }
+  const view = await mount(h(Page));
+  const overlay = () => window.document.querySelector("[role='dialog']");
+  assert.ok(overlay(), "弹窗已渲染");
+  assert.equal(overlay().getAttribute("data-leo-overlay-state"), "open");
+
+  const roleTrigger = window.document.querySelector("[data-menu-select-trigger='role']");
+  assert.ok(overlay().contains(roleTrigger), "选择条在弹窗里");
+  await click(roleTrigger);
+  const menu = window.document.querySelector("[data-menu-select-menu='role']");
+  assert.ok(menu && !overlay().contains(menu), "清单 portal 在弹窗外面");
+  assert.ok(Number(menu.style.zIndex) > 1000, "清单的层级高过弹窗遮罩的 z-[1000]");
+  assert.equal(window.document.activeElement, menu, "焦点进了清单（Modal 的焦点圈只在按 Tab 时才管）");
+
+  // 键盘选择：弹窗不动
+  await key(menu, "ArrowDown");
+  await key(menu, "Enter");
+  assert.deepEqual(picked.role, ["doing"]);
+  assert.equal(window.document.querySelector("[data-menu-select-menu]"), null);
+  assert.equal(overlay().getAttribute("data-leo-overlay-state"), "open", "选完弹窗还开着");
+  assert.equal(window.document.activeElement, roleTrigger);
+
+  // Esc 只关清单
+  await click(roleTrigger);
+  await key(window.document.querySelector("[data-menu-select-menu='role']"), "Escape");
+  assert.equal(window.document.querySelector("[data-menu-select-menu]"), null);
+  assert.equal(overlay().getAttribute("data-leo-overlay-state"), "open", "Esc 关了清单，没关弹窗");
+  assert.equal(window.document.activeElement, roleTrigger);
+
+  // 筛选下拉同理
+  const typeTrigger = window.document.querySelector("[data-collection-filter='type']");
+  await click(typeTrigger);
+  const filterMenu = window.document.querySelector("[data-collection-filter-menu='type']");
+  assert.ok(filterMenu && !overlay().contains(filterMenu));
+  assert.ok(Number(filterMenu.style.zIndex) > 1000);
+  await key(filterMenu, "Escape");
+  assert.equal(overlay().getAttribute("data-leo-overlay-state"), "open", "筛选菜单的 Esc 也不关弹窗");
+  await click(typeTrigger);
+  await click(window.document.querySelector("[data-collection-filter-menu='type'] [data-value='audio']"));
+  assert.deepEqual(picked.type, ["audio"]);
+  assert.equal(overlay().getAttribute("data-leo-overlay-state"), "open");
+
+  // Tab：清单关掉，焦点回到选择条，Modal 的焦点圈接着管（选择条不是面板里最后一个可聚焦项，不会被绕回去）
+  await click(roleTrigger);
+  const third = window.document.querySelector("[data-menu-select-menu='role']");
+  await key(third, "Tab");
+  assert.equal(window.document.querySelector("[data-menu-select-menu]"), null);
+  assert.equal(window.document.activeElement, roleTrigger);
+
+  // 没有菜单开着时，Esc 照常关弹窗
+  await key(window.document.body, "Escape");
+  assert.equal(overlay().getAttribute("data-leo-overlay-state"), "closed", "没有菜单时 Esc 是弹窗的");
+  await view.unmount();
 });
 
 // ---------------------------------------------------------------------------

@@ -176,9 +176,11 @@ export function BayFilterSelect({
       if (target && (menuRef.current?.contains(target) || triggerRef.current?.contains(target))) return;
       close();
     };
+    // Esc 只关菜单：捕获阶段拦下，不连带关掉外层弹窗。
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         close();
         triggerRef.current?.focus();
       }
@@ -187,13 +189,13 @@ export function BayFilterSelect({
       if (menuRef.current?.contains(event.target as Node)) return;
       close();
     };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown, true);
+    window.addEventListener("keydown", onKey, true);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", onScroll, true);
     return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown, true);
+      window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", onScroll, true);
     };

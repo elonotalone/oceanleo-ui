@@ -743,9 +743,11 @@ export function CollectionFilterSelect(props: {
       if (target && (menuRef.current?.contains(target) || triggerRef.current?.contains(target))) return;
       close();
     };
+    // Esc 只关菜单：捕获阶段拦下，菜单开在弹窗（Modal 在 document 上听 Esc）里时不会连弹窗一起关掉。
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         close();
         triggerRef.current?.focus();
       }
@@ -754,13 +756,13 @@ export function CollectionFilterSelect(props: {
       if (menuRef.current?.contains(event.target as Node)) return;
       close();
     };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown, true);
+    window.addEventListener("keydown", onKey, true);
     window.addEventListener("resize", close);
     window.addEventListener("scroll", onScroll, true);
     return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown, true);
+      window.removeEventListener("keydown", onKey, true);
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", onScroll, true);
     };
