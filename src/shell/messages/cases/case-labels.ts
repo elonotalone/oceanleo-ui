@@ -96,7 +96,8 @@ export function statusLabel(tt: UITranslate, row: OwnerCase, now: number = Date.
 export function statusNote(tt: UITranslate, row: OwnerCase, locale?: string, now: number = Date.now()): string {
   switch (row.status) {
     case "awaiting_counter": {
-      const date = formatCaseTime(row.restore_at, locale);
+      // 恢复日已过、定时任务还没来得及恢复的那一小段：不写「某日前」，只留上面的状态行「反通知中，等待恢复」。
+      const date = isFuture(row.restore_at, now) ? formatCaseTime(row.restore_at, locale) : "";
       return date ? tt("反通知已收到。{date} 前平台若没有进一步维持下架，内容会自动恢复。", { date }) : "";
     }
     case "taken_down":

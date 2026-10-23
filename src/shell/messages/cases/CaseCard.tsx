@@ -60,7 +60,7 @@ function Chevron({ open }: { open: boolean }): ReactElement {
       strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`mt-1 shrink-0 text-neutral-400 transition-transform ${open ? "rotate-180" : ""}`}
+      className={`mt-1 shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${open ? "rotate-180" : ""}`}
     >
       <path d="M5 8l5 5 5-5" />
     </svg>
@@ -94,7 +94,7 @@ export function CaseCard({ row, open, onToggle, onDone }: CaseCardProps): ReactE
         type="button"
         data-case-toggle
         aria-expanded={open}
-        aria-controls={panelId}
+        aria-controls={open ? panelId : undefined}
         onClick={onToggle}
         className="flex w-full items-start gap-3 px-4 py-3 text-left"
       >

@@ -461,6 +461,15 @@ test("种类 / 来源 / 状态 / 原因：全覆盖，退役种类名不再指�
   assert.equal(labels.statusLabel(tt, row({ status: "awaiting_counter", restore_at: "2026-10-20T00:00:00Z" }), now), "反通知中，等待恢复");
   assert.equal(labels.statusLabel(tt, row({ status: "awaiting_counter", restore_at: null }), now), "反通知中，等待恢复");
 
+  // 一句话解释：反通知处理中带恢复日；恢复日已过就不写「某日前」
+  assert.match(labels.statusNote(tt, row({ status: "awaiting_counter", restore_at: "2026-11-07T00:00:00Z" }), "en", now), /^反通知已收到。.*2026.* 前平台若没有进一步维持下架，内容会自动恢复。$/);
+  assert.equal(labels.statusNote(tt, row({ status: "awaiting_counter", restore_at: "2026-10-20T00:00:00Z" }), "en", now), "");
+  assert.equal(labels.statusNote(tt, row({ status: "taken_down" }), "zh", now), "内容已下架，别人现在看不到。");
+  assert.equal(labels.statusNote(tt, row({ status: "restored", hidden: false }), "zh", now), "内容已恢复，别人又能看到了。");
+  assert.equal(labels.statusNote(tt, row({ status: "executed", tier: "authority" }), "zh", now), "已按主管部门的要求执行。");
+  assert.match(labels.statusNote(tt, row({ status: "open", hidden: false, due_at: "2026-10-24T00:00:00Z" }), "en", now), /^平台会在 .*2026.* 前判断；到时仍未决，内容会先被暂时隐藏。$/);
+  assert.equal(labels.statusNote(tt, row({ status: "open", hidden: false, due_at: "2026-10-22T00:00:00Z" }), "en", now), "平台正在处理，内容目前没有被隐藏。", "时限已过就不写「某日前判断」");
+
   assert.equal(labels.reasonLabel(tt, "machine:sexual"), "未通过内容安全审核");
   assert.equal(labels.reasonLabel(tt, "sexual"), "色情或低俗内容");
   assert.equal(labels.reasonLabel(tt, "staydown"), "与已下架内容重复");

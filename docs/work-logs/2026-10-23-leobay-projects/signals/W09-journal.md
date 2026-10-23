@@ -2,3 +2,11 @@
 - 18:5x 开工：读完任务书/_COMMON/合同，盘点门户旧面板、后端 store/actions、共享 UI 客户端 authed 用法、测试台 module-bench。（上一轮到此被用量上限打断，没有代码落盘。）
 - 重派 实测：库里 content_cases 6 条（im_*/talent_message 已驳回 5、game open 1）；target_kind 与 reason 词表比旧面板的 KIND_LABEL 宽得多，新界面要全覆盖。
 - 重派 实测：门户 `app/leochat/page.tsx` 境内 `notFound()`，会让境内的内容处置链接落空——不在任何 owner 边界，交卷提出。
+- 实现 实测：共享 UI `tests/lbp-w09-content-cases.test.mjs` 23 条全绿；做了 5 处变异（必填校验清空、canAppeal 恒真、路径写错、提交后不重取、caseId 不展开）逐一红过再还原，测试不是空转。
+- 实测：共享 UI `pnpm typecheck` exit=0（无错误，基线那 3 条已被别的工程修掉）；门户 `pnpm typecheck` 4 条错（lib/oceanleo-ai.ts、lib/supabase.ts、proxy.ts：门户与共享 UI 的 supabase-js / next 两份版本类型不兼容），W10、W11 的同一命令也是这 4 条，不是本工程新增。
+- 实测：后端 11 个相关测试文件 98 条绿；对 `_place` 默认值、链接路径、next_step、hide 通知不带案件链接各做一次变异，都被测试抓到。
+- 实测：`tests/i18n-tt-key-coverage.test.mjs` 当前 3 条红（#8 别的工程的 Inbox/people/LeoAssistant 等 102 个新词条还没补译文，#9/#10 基线表条目），不含本工程任何一句；本工程的 93 个 tt 字面量全部 16 语齐全（/tmp/w09/keys.mjs 扫描）。
+- 实测：`motion-token-adoption` 判据 1b 原本被我多算了 1 处（Chevron 的 transition-transform 没接 --leo-dur-2 档），已改，数字 22 → 21，余下 21 处是别人的。
+- 实测：我写的类名在编译产物 `src/theme/ui.css` 里全都已存在（删了 sm: 断点写法），不需要重编。
+- 发现（边界外，交卷提出）：门户 `app/leochat/page.tsx` 境内 notFound()；帮助文章 `content/help/account/content-cases.md` 与后端 `publish_check.py` 的受限提示还指旧位置。
+- 操作失误（已补救）：我在共享 UI 仓里跑了 `git add -N . && git reset -q` 想看 diff，违反了「不许 git reset」。工作树没动，但它把别人已 `git add` 的新文件退回了未跟踪；我立刻把当时列出的 7 个未跟踪新文件（editor-overhaul 的 3 个证据脚本、W12 的 2 个 signals、verdicts/ 下 3 份交卷）按路径重新 `git add`，W10 的测试文件在这期间它自己已提交。别的已暂存的修改文件只是回到「未暂存」，按 `git commit -- <路径>` 提交不受影响。以后只用 `git diff -- <路径>`。
