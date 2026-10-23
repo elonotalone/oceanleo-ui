@@ -138,7 +138,7 @@ test("autosaved items preserve visual previews and never use project JSON as a t
   assert.doesNotMatch(savedItem, /previewUrl: input\.previewUrl \|\| input\.url/);
 });
 
-test("non-Office autosave blocks never invoke delivery renderers", () => {
+test("image/video project autosave stays render-free; typed 3D save checkpoints canonical GLB", () => {
   const cases = [
     {
       path: "../src/shell/image-editor/use-fabric-image-editor.ts",
@@ -192,10 +192,13 @@ test("non-Office autosave blocks never invoke delivery renderers", () => {
     modelSave,
     /captureBlob|uploadFile|fetchMediaBlob|dataURL|readAsDataURL/,
   );
-  // Small scene edits and viewer-only state persist as a replay journal +
-  // sidecar. The full GLB exporter is gated by a bounded checkpoint reason.
+  // W13 typed saves now require fresh canonical GLB bytes, not a journal-only
+  // receipt whose source would still point at the unedited model. Keep the
+  // journal/commit checks as well: publishing bytes must cover the same edits.
   assert.match(modelSave, /createModel3DSavePlan/);
-  assert.match(modelSave, /if \(plan\.shouldExportGlb\) glb = await runtime\.exportGlb\(\)/);
+  assert.match(modelSave, /createModel3DSavePlan\(journal, \{\s*force: true,/);
+  assert.match(modelSave, /glb = await runtime\.exportGlb\(\);/);
+  assert.match(modelSave, /persistModel3DProject\(\{[\s\S]*?\bglb,/);
   assert.match(modelSave, /operations: plan\.persistedOperations/);
   assert.match(modelSave, /runtime\.commitCheckpoint\(plan\.coveredOperationIds\)/);
   assert.match(modelRuntime, /exportGlb\(\)/);
@@ -279,10 +282,14 @@ test("delivery renderers remain attached to explicit export and download actions
     ),
     /await exportModel\(\)/,
   );
-  assert.match(
-    source("../src/shell/media-editors/use-model3d-save.ts"),
-    /checkpointForExport[\s\S]*?persist\(true\)/,
+  const modelExport = section(
+    "../src/shell/media-editors/use-model3d-save.ts",
+    "const checkpointForExport = useCallback",
+    "return { saving, saveCopy, checkpointForExport }",
   );
+  // Download gets current GLB bytes without manufacturing a saved revision.
+  assert.match(modelExport, /modelLoaded && runtimeRef\.current \? await runtimeRef\.current\.exportGlb\(\) : null/);
+  assert.doesNotMatch(modelExport, /\bpersist\(|persistModel3DProject|commitCheckpoint/);
   assert.match(
     section(
       "../src/shell/image-editor/use-fabric-image-editor.ts",

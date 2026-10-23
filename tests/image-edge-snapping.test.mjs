@@ -546,8 +546,17 @@ test("Fabric drag and crop/scale hooks share snapping state and preserve Alt obj
   );
   assert.match(
     core,
-    /object:moving[\s\S]*?constrainCropToDoc[\s\S]*?snapImageMoveEdges\(target, e\)/,
+    /object:moving[\s\S]*?constrainActiveCrop\(\)[\s\S]*?snapImageMoveEdges\(target, e\)/,
   );
+  // Object crop and document crop now share a helper. Follow both exits rather
+  // than requiring the old document-only clamp to remain in the move handler.
+  const cropStart = core.indexOf("protected constrainActiveCrop(): void");
+  const cropEnd = core.indexOf("protected target()", cropStart);
+  assert.ok(cropStart >= 0 && cropEnd > cropStart);
+  const crop = core.slice(cropStart, cropEnd);
+  assert.match(crop, /const crop = findByRole\(this\.canvas, "crop"\);\s*if \(!crop\) return;/);
+  assert.match(crop, /if \(this\.cropTargetId\)[\s\S]*?findById\(this\.canvas, this\.cropTargetId\)[\s\S]*?if \(host\) \{\s*constrainCropToObject\(crop, host\);\s*return;/);
+  assert.match(crop, /constrainCropToDoc\(crop, this\.doc\);/);
   assert.match(
     core,
     /object:scaling[\s\S]*?snapImageScaleEdges\(target, e, transform\)/,

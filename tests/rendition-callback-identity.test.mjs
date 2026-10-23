@@ -188,15 +188,15 @@ test("非 durable 与不可见早退分支的 retry / resourceFailed 跨渲染�
 
 /* --------------------- 三个编辑器的加载 effect 依赖数组 -------------------- */
 
-function loadEffectDependencies(relativePath, marker, sourceText) {
+function loadEffectCall(relativePath, marker, sourceText) {
   const file = ts.createSourceFile(
     relativePath,
     sourceText,
     ts.ScriptTarget.ES2022,
     true,
-    ts.ScriptKind.TS,
+    relativePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
-  let dependencies = null;
+  let effect = null;
   const visit = (node) => {
     if (
       ts.isCallExpression(node) &&
@@ -206,15 +206,18 @@ function loadEffectDependencies(relativePath, marker, sourceText) {
       ts.isArrayLiteralExpression(node.arguments[1]) &&
       node.arguments[0].getText().includes(marker)
     ) {
-      dependencies = node.arguments[1].elements.map((element) =>
-        element.getText(),
-      );
+      assert.equal(effect, null, `${relativePath}: multiple effects contain ${marker}`);
+      effect = node;
     }
     ts.forEachChild(node, visit);
   };
   visit(file);
-  assert.ok(dependencies, `${relativePath} 里找不到含 ${marker} 的加载 effect`);
-  return dependencies;
+  assert.ok(effect, `${relativePath} 里找不到含 ${marker} 的加载 effect`);
+  return effect;
+}
+
+function loadEffectDependencies(relativePath, marker, sourceText) {
+  return loadEffectCall(relativePath, marker, sourceText).arguments[1].elements.map(element => element.getText());
 }
 
 test("三个编辑器的加载 effect 都不再依赖调用方递进来的对象与回调", async () => {
@@ -293,11 +296,24 @@ test("Univer 舞台：源晚到 / 换版时就地重画，不重建实例；源�
     resolve("src/shell/doc-editors/GridUniverStage.tsx"),
     "utf8",
   );
-  const effectStart = text.indexOf("useEffect(() => {\n    if (waitingForSource)");
-  assert.ok(effectStart > 0, "加载 effect 应先判 waitingForSource");
-  const effectEnd = text.indexOf("}, [loadKey]);", effectStart);
-  assert.ok(effectEnd > effectStart);
-  const effect = text.slice(effectStart, effectEnd);
+  const call = loadEffectCall("src/shell/doc-editors/GridUniverStage.tsx", "loadGridSheets(", text);
+  assert.deepEqual(call.arguments[1].elements.map(element => element.getText()), ["loadKey"]);
+  const callback = call.arguments[0];
+  assert.ok(ts.isArrowFunction(callback) && ts.isBlock(callback.body));
+  const statements = [...callback.body.statements];
+  const waitIndex = statements.findIndex(statement => ts.isIfStatement(statement) && statement.expression.getText() === "waitingForSource");
+  assert.ok(waitIndex >= 0, "加载 effect 必须在读源/构建工作簿之前判 waitingForSource");
+  // The source identity is now built before the guard, so signed-URL refresh
+  // can preserve dirty edits. Only that inert declaration may precede waiting.
+  for (const statement of statements.slice(0, waitIndex)) {
+    assert.ok(ts.isVariableStatement(statement));
+    assert.deepEqual(statement.declarationList.declarations.map(declaration => declaration.name.getText()), ["identity"]);
+  }
+  const waiting = statements[waitIndex].thenStatement.getText();
+  assert.match(waiting, /setLoading\(true\)/);
+  assert.match(waiting, /return;/);
+  assert.doesNotMatch(waiting, /loadGridSheets|emptySnapshot|replaceUniverWorkbookWithSnapshot|setSnapshotReady\(true\)/);
+  const effect = callback.body.getText();
   assert.match(
     effect,
     /if \(handleRef\.current\) \{\s*replaceUniverWorkbookWithSnapshot\(/,

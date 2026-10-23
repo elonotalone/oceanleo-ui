@@ -170,9 +170,12 @@ test("lightweight stages announce loading, error and empty states accessibly", (
     assert.match(stage, /role="status"/);
     assert.match(stage, /role="alert"/);
   }
-  assert.match(gridStage, /\{!snapshotReady && \(/);
+  // Source failure now wins over initial loading, so an inaccessible workbook
+  // cannot sit behind a permanent spinner. Both existing exit paths stay real.
+  assert.match(gridStage, /\{sourceFailed \? \(\s*<EditorSourceFailurePanel[\s\S]*?onReload=\{\(\) => \{\s*officeSource\.retry\(\);\s*setReloadNonce\(\(value\) => value \+ 1\);[\s\S]*?\) : !snapshotReady \? \(/);
   assert.match(gridStage, /<WorkbenchRouteLoading \/>/);
   assert.match(gridStage, /data-grid-univer-loading="true"/);
+  assert.match(source("../src/shell/advanced-routes/WorkbenchRouteLoading.tsx"), /role="status"/);
   assert.match(richStage, /空白文档/);
   assert.match(richHook, /"aria-multiline": "true"/);
   assert.match(richModel, /请转换为 DOCX 后重试/);

@@ -225,27 +225,29 @@ test("preview and native Office routes consume only refreshable source/full inpu
   assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
   for (const route of ["DeckRoute", "GridRoute", "RichDocRoute"]) {
     // grid 的取源与重试长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）；
-    // Univer 侧两条失败路径汇成一个 `officeSource.retry`，按钮只有「重新载入表格」。
+    // Univer's reload refreshes the rendition and bumps the parser nonce; the
+    // visible action remains “重新载入表格”.
     const isGrid = route === "GridRoute";
     const contents = source(
       isGrid
         ? "../src/shell/doc-editors/GridUniverStage.tsx"
         : `../src/shell/advanced-routes/${route}.tsx`,
     );
-    // Deck 快速面在专业面回写后改读 workingItem（proSaved ?? item），
-    // 仍必须走同一条可刷新 source/full，不能换成别的取源。
-    assert.match(
-      contents,
-      /useOfficeArtifactSource\((?:item|openedItemRef\.current|workingItem)\)/,
-      route,
-    );
+    // Every native route must enter the same refreshable source/full gate.
+    assert.match(contents, route === "RichDocRoute"
+      ? /useOfficeArtifactSource\(openedItemRef\.current\)/
+      : /useOfficeArtifactSource\(item\)/, route);
     if (route === "DeckRoute") {
-      assert.match(contents, /useProSavedRevision\(/, route);
-      assert.match(contents, /const workingItem = proSaved \?\? item/, route);
+      // Deck no longer has a hosted/pro split or a proSaved shadow head.
+      // The native editor must receive the admitted rendition item and its
+      // access-error callback directly, rather than bypassing the source gate.
+      assert.match(contents, /const officeSource = useOfficeArtifactSource\(item\)/, route);
+      assert.match(contents, /useDeckEditor\(\s*officeSource\.item,\s*siteId,\s*previewContent,\s*officeSource\.resourceFailed,/, route);
+      assert.doesNotMatch(contents, /useProSavedRevision|proSaved/, route);
     }
     assert.match(contents, /resourceFailed/, route);
     if (isGrid) {
-      assert.match(contents, /reload:\s*officeSource\.retry/, route);
+      assert.match(contents, /reload: \(\) => \{\s*officeSource\.retry\(\);\s*setReloadNonce\(\(value\) => value \+ 1\);\s*\}/, route);
       assert.match(
         source("../src/shell/doc-editors/grid-univer/document-actions.ts"),
         /重新载入表格/,
