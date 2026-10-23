@@ -203,7 +203,7 @@ test("edit bar shows labeled drawer buttons with a pressed state and toggles the
   try {
     const buttons = [...m.container.querySelectorAll("[data-edit-bar-drawer]")];
     assert.deepEqual(buttons.map((b) => b.textContent), ["模板", "画笔"]);
-    assert.equal(buttons[0].style.paddingInline, "6px", "compact inline padding leaves space for the page rail without shrinking the 44px target");
+    assert.equal(buttons[0].style.paddingInline, "6px", "compact inline padding leaves space for the page rail without changing control height");
     assert.equal(buttons[0].getAttribute("aria-pressed"), "false");
     assert.equal(buttons[1].getAttribute("aria-pressed"), "true");
     await click(buttons[0]);
