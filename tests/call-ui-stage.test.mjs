@@ -113,6 +113,7 @@ const uiIndex = await import(await compileModule(`${UI_DIR}/index.ts`, STUBS));
 const { CallHost, CallParticipantMenu } = uiIndex;
 const uiState = await import(await compileModule(`${UI_DIR}/call-ui-state.ts`, STUBS));
 const layout = await import(await compileModule(`${UI_DIR}/layout.ts`, STUBS));
+const pool = await import(await compileModule(`${UI_DIR}/video-pool.ts`, STUBS));
 
 const NAMES = { me: "我自己", p1: "张三", p2: "李四", p3: "王五", p4: "赵六", p5: "钱七", p6: "孙八", p7: "周九", p8: "吴十", p9: "郑一", p10: "冯二", p11: "陈三" };
 function person(id, over = {}) {
@@ -191,6 +192,7 @@ async function unmount() {
   });
   container.remove();
   uiState.closeCallStage();
+  pool.releaseAllVideos();
   for (const node of [...document.body.children]) node.remove();
   document.body.removeAttribute("style");
   S.listeners.clear();
@@ -505,6 +507,105 @@ test("通话结束时放大视图自己收起，小窗显示「通话已结束�
     assert.equal($("[data-call-stage]"), null);
     assert.equal($('[data-call-status="ended"]').textContent, "通话已结束");
     assert.equal(uiState.callUiStore.getSnapshot().stageOpen, false, "下一通从小窗开始");
+  } finally {
+    await unmount();
+  }
+});
+
+// =====================================================================================
+// 返工 A-34 / V02 发现 D3：版式切换不重挂 <video>、不解绑再绑
+// =====================================================================================
+
+const cameraVideo = (pid) => $(`video[data-call-video="camera"][data-call-video-of="${pid}"]`);
+const screenVideo = (pid) => $(`video[data-call-video="screen"][data-call-video-of="${pid}"]`);
+const bindings = (pid, track) => calls("attachVideo").filter((entry) => entry[2] === pid && entry[3] === track).map((entry) => entry[1]);
+function withCamera(snap, ...ids) {
+  return { ...snap, participants: snap.participants.map((p) => (ids.includes(p.participantId) ? { ...p, camera: true } : p)) };
+}
+
+test("D3：小窗 ↔ 放大视图来回切换，同一个人的摄像头画面始终是同一个 <video>，只绑一次、从不解绑", async () => {
+  await mount(withCamera(snapshot(3), "p1"));
+  try {
+    const video = cameraVideo("p1");
+    assert.ok(video && $("[data-call-dock]").contains(video), "小窗里有 p1 的画面");
+    await openStage();
+    assert.equal(cameraVideo("p1"), video, "放大视图里是同一个元素");
+    assert.ok($("[data-call-stage]").contains(video));
+    await click($("[data-call-collapse]"));
+    assert.equal(cameraVideo("p1"), video, "回到小窗还是同一个元素");
+    await openStage();
+    assert.equal(cameraVideo("p1"), video);
+    assert.deepEqual(bindings("p1", "camera"), ["video"], "attachVideo 只调过一次，没有 attachVideo(null)");
+  } finally {
+    await unmount();
+  }
+});
+
+test("D3：宫格 ↔ 共享版式切换，格子不重挂（同一个 <li>、同一个 <video>）；停了再共享还是原来的共享画面元素", async () => {
+  const grid = withCamera(snapshot(5), "p1");
+  const shared = { ...grid, screenSharerId: "p2", participants: grid.participants.map((p) => (p.participantId === "p2" ? { ...p, screen: true } : p)) };
+  await mount(grid);
+  try {
+    await openStage();
+    const li = $('[data-call-tile][data-participant-id="p1"]');
+    const video = cameraVideo("p1");
+    assert.ok(li && video && li.contains(video));
+    await setSnapshot(shared);
+    assert.equal($("[data-call-stage]").getAttribute("data-layout"), "share");
+    assert.equal($('[data-call-tile][data-participant-id="p1"]'), li, "同一个 <li>：格子没重挂");
+    assert.equal(li.getAttribute("data-call-tile"), "rail");
+    assert.equal(cameraVideo("p1"), video, "同一个摄像头 <video>");
+    const screen = screenVideo("p2");
+    assert.ok(screen && $('[data-call-share="p2"]').contains(screen));
+    assert.equal($('[data-stub="CallControlLayer"]').getAttribute("data-has-video"), "yes", "控制层拿到池里的共享画面元素");
+    await setSnapshot(grid);
+    assert.equal($("[data-call-stage]").getAttribute("data-layout"), "grid");
+    assert.equal($('[data-call-tile][data-participant-id="p1"]'), li);
+    assert.equal(cameraVideo("p1"), video);
+    await setSnapshot(shared);
+    assert.equal(screenVideo("p2"), screen, "再次共享还是同一个元素");
+    assert.deepEqual(bindings("p1", "camera"), ["video"]);
+    assert.deepEqual(bindings("p2", "screen"), ["video"]);
+  } finally {
+    await unmount();
+  }
+});
+
+test("D3：仅语音开 → 关，共享画面与摄像头画面都是原来的元素回到原位，不解绑再绑", async () => {
+  const base = withCamera(snapshot(4), "p1");
+  const shared = { ...base, screenSharerId: "p2", participants: base.participants.map((p) => (p.participantId === "p2" ? { ...p, screen: true } : p)) };
+  await mount(shared);
+  try {
+    await openStage();
+    const screen = screenVideo("p2");
+    const video = cameraVideo("p1");
+    assert.ok(screen && video);
+    await setSnapshot({ ...shared, me: { ...shared.me, audioOnly: true } });
+    assert.equal(screenVideo("p2"), null, "仅语音：共享画面不在页面上");
+    assert.equal(cameraVideo("p1"), null, "仅语音：别人的摄像头画面不在页面上");
+    await setSnapshot(shared);
+    assert.equal(screenVideo("p2"), screen, "回来的是同一个共享画面元素");
+    assert.equal(cameraVideo("p1"), video, "回来的是同一个摄像头元素");
+    assert.deepEqual(bindings("p2", "screen"), ["video"]);
+    assert.deepEqual(bindings("p1", "camera"), ["video"]);
+  } finally {
+    await unmount();
+  }
+});
+
+test("D3：只有离开通话的人才解绑；通话结束全部解绑", async () => {
+  const base = withCamera(snapshot(3), "p1", "p2");
+  await mount(base);
+  try {
+    assert.equal(pool.pooledVideoCount(), 2);
+    const left = { ...base, participants: base.participants.filter((p) => p.participantId !== "p2"), order: ["me", "p1"], visibleIds: ["me", "p1"] };
+    await setSnapshot(left);
+    assert.deepEqual(bindings("p2", "camera"), ["video", null], "p2 离开 → 解绑");
+    assert.deepEqual(bindings("p1", "camera"), ["video"], "p1 还在 → 不动");
+    assert.equal(pool.pooledVideoCount(), 1);
+    await setSnapshot(snapshot(3, { phase: "ended" }));
+    assert.deepEqual(bindings("p1", "camera"), ["video", null], "通话结束 → 全部解绑");
+    assert.equal(pool.pooledVideoCount(), 0);
   } finally {
     await unmount();
   }

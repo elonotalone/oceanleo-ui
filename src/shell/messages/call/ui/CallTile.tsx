@@ -1,15 +1,16 @@
 "use client";
 
-// 一格参与者：开了摄像头就是画面（attachVideo 绑定），否则头像。说话 = 亮框（叠在最上层，不挪位置、不改顺序）；
+// 一格参与者：开了摄像头就是画面（池里那个 <video>，见 video-pool.ts），否则头像。说话 = 亮框（叠在最上层，不挪位置、不改顺序）；
 // 静音、仅对我静音、正在重连各有标记；放大视图里每格还有信号格和「更多」（参与者菜单）。
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useUI } from "../../../../i18n/ui/useUI";
 import { PersonAvatar } from "../../groups/GroupAvatar";
 import { NetworkBars } from "../diagnostics";
-import { callActions, type CallParticipantView } from "../engine";
+import type { CallParticipantView } from "../engine";
 import { CallParticipantMenu } from "./CallParticipantMenu";
 import { IconMicOff, IconMore, IconVolumeOff } from "./icons";
 import { DOCK_TILE_PX } from "./layout";
+import { PooledVideo } from "./PooledVideo";
 
 /** 说话亮框：叠在画面上面的内描边（翠绿），不改变格子大小与位置。 */
 export const SPEAKING_RING_SHADOW = "inset 0 0 0 3px #34d399";
@@ -36,11 +37,6 @@ export function CallTile({ participant, variant, audioOnly, narrow = false }: Ca
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const { participantId } = participant;
   const showVideo = participant.camera && (participant.isMe || !audioOnly);
-  // 同一个参与者同一路画面只绑一次：回调身份只随参与者变，避免每次渲染解绑再绑。
-  const attachCamera = useCallback(
-    (element: HTMLVideoElement | null) => callActions.attachVideo(element, participantId, "camera"),
-    [participantId],
-  );
 
   const name = participant.isMe ? tt("{name}（我）", { name: participant.displayName }) : participant.displayName;
   const states = [
@@ -82,16 +78,8 @@ export function CallTile({ participant, variant, audioOnly, narrow = false }: Ca
       title={compact ? [name, ...states].join(" · ") : undefined}
     >
       {showVideo ? (
-        <video
-          ref={attachCamera}
-          autoPlay
-          playsInline
-          muted
-          data-call-video="camera"
-          className="absolute inset-0 h-full w-full object-cover"
-          // 自己的预览照镜子习惯左右翻转；别人的不翻。
-          style={participant.isMe ? { transform: "scaleX(-1)" } : undefined}
-        />
+        // 同一个人的摄像头画面在小窗、放大视图、侧栏之间是同一个 <video>，换格子不解绑再绑（A-34 / D3）。
+        <PooledVideo participantId={participantId} track="camera" mirror={participant.isMe} />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center">
           <PersonAvatar name={participant.displayName} src={participant.avatarUrl} seed={participant.userId} size={avatarSize(variant, narrow)} />

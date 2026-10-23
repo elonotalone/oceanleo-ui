@@ -237,8 +237,27 @@ export function isLivePhase(phase: CallSnapshot["phase"]): boolean {
   return phase === "joining" || phase === "connected" || phase === "reconnecting" || phase === "leaving";
 }
 
-/** 结束态（已结束 / 出错）的身份：换了一通通话或换了一个错误，被关掉的小窗要重新出现。 */
-export function finalStateKey(snapshot: Pick<CallSnapshot, "phase" | "callId" | "error" | "conversationId">): string | null {
-  if (snapshot.phase !== "ended" && snapshot.phase !== "error") return null;
-  return [snapshot.phase, snapshot.callId ?? "", snapshot.conversationId ?? "", snapshot.error?.code ?? ""].join("|");
+/**
+ * 结束态的「一段」（返工 A-34 / V02 发现 D2）：小窗「通话已结束」显示 6 秒后收起、关掉的结束提示不再出现，
+ * 都按段号认。规则：
+ * - 进入「已结束」才算新的一段；已结束期间再来的状态事件（callId、错误码、服务端名单来回变）都还是这一段——
+ *   6 秒计时只在段开始时起一次，不会被重复事件反复重置。
+ * - 「出错」换了一个错误码算新的一段（新的错误要重新让人看到）。
+ * - 回到在通话中 / idle 时段结束（段号不回退，下一段继续加一）。
+ * 没变就原样返回同一个对象，调用方据此判断要不要更新。
+ */
+export interface FinalEpisode {
+  id: number;
+  kind: "ended" | "error" | null;
+  code: string | null;
+}
+
+export const NO_FINAL_EPISODE: FinalEpisode = { id: 0, kind: null, code: null };
+
+export function nextFinalEpisode(previous: FinalEpisode, snapshot: Pick<CallSnapshot, "phase" | "error">): FinalEpisode {
+  const kind = snapshot.phase === "ended" || snapshot.phase === "error" ? snapshot.phase : null;
+  if (kind === null) return previous.kind === null ? previous : { id: previous.id, kind: null, code: null };
+  const code = snapshot.error?.code ?? null;
+  if (kind === "ended") return previous.kind === "ended" ? previous : { id: previous.id + 1, kind, code };
+  return previous.kind === "error" && previous.code === code ? previous : { id: previous.id + 1, kind, code };
 }

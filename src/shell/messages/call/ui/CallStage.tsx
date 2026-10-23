@@ -4,7 +4,7 @@
 // 有人共享屏幕 → 共享画面占主位、人像在侧栏，共享格上挂 W09 的 CallControlLayer；
 // 每格有名字、静音、信号、说话亮框、参与者菜单；底部同一组五个按钮 + 转写/录制开关；Esc 或「缩小」回到小窗。
 // 可见格变化时调用 setViewport（引擎只订阅看得见的画面）。
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../../i18n/ui/useUI";
 import { lockBodyScroll, trapTabWithin } from "../../../anchored-popover";
 import { CallControlBanner, CallControlLayer } from "../control";
@@ -14,6 +14,7 @@ import { CallCaptionsLine, CallRecordingToggle, CallServiceBadges, CallTranscrip
 import { CallControls, runCallAction } from "./CallControls";
 import { AloneCountdown, CallStatusLine, SelfShareNotice } from "./CallNotices";
 import { CallTile } from "./CallTile";
+import { PooledVideo } from "./PooledVideo";
 import { IconChevronLeft, IconChevronRight, IconCollapse, IconHeadphones } from "./icons";
 import {
   CALL_STAGE_Z,
@@ -44,13 +45,6 @@ function ShareView({ sharer, audioOnly }: { sharer: CallParticipantView; audioOn
   const tt = useUI();
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const sharerId = sharer.participantId;
-  const attachScreen = useCallback(
-    (element: HTMLVideoElement | null) => {
-      setVideoEl(element);
-      callActions.attachVideo(element, sharerId, "screen");
-    },
-    [sharerId],
-  );
   const label = tt("{name} 的屏幕", { name: sharer.displayName });
   return (
     <section
@@ -71,7 +65,8 @@ function ShareView({ sharer, audioOnly }: { sharer: CallParticipantView; audioOn
         </div>
       ) : (
         <>
-          <video ref={attachScreen} autoPlay playsInline muted data-call-video="screen" className="absolute inset-0 h-full w-full object-contain" />
+          {/* 共享画面也走 <video> 池：仅语音来回切换、关开放大视图都是同一个元素，不解绑再绑（A-34 / D3）。 */}
+          <PooledVideo participantId={sharerId} track="screen" onElement={setVideoEl} />
           <CallControlLayer participantId={sharerId} videoEl={videoEl} />
         </>
       )}
@@ -99,6 +94,7 @@ export function CallStage({ narrow, onCollapse, focusTick }: CallStageProps) {
   );
   const share = shareState(call);
   const layout: "grid" | "share" = share.other ? "share" : "grid";
+  const sharing = layout === "share";
   const pageSize = stagePageSize(layout, narrow);
   const pages = pageCount(people.length, pageSize);
   const current = clampPage(page, people.length, pageSize);
@@ -219,31 +215,32 @@ export function CallStage({ narrow, onCollapse, focusTick }: CallStageProps) {
         <AloneCountdown deadline={call.aloneDeadline} now={now} />
       </div>
 
-      {layout === "share" && share.other ? (
-        <div className={`flex min-h-0 flex-1 gap-2 p-3 ${narrow ? "flex-col" : "flex-row"}`}>
-          <ShareView sharer={share.other} audioOnly={call.me.audioOnly} />
-          <ul
-            aria-label={tt("在场的人")}
-            data-call-rail
-            className={`flex shrink-0 gap-2 ${narrow ? "flex-row overflow-x-auto" : "flex-col overflow-y-auto"}`}
-            style={narrow ? { height: 88 } : { width: 240 }}
-          >
-            {tiles}
-          </ul>
-        </div>
-      ) : (
+      {/* 宫格与共享版式共用同一个 <ul>（树上位置不变），版式切换时格子不重挂（A-34 / D3）。 */}
+      <div data-call-stage-body={layout} className={`flex min-h-0 flex-1 gap-2 p-3 ${sharing && !narrow ? "flex-row" : "flex-col"}`}>
+        {sharing && share.other ? <ShareView key={share.other.participantId} sharer={share.other} audioOnly={call.me.audioOnly} /> : null}
         <ul
           aria-label={tt("在场的人")}
-          data-call-grid={`${shape.cols}x${shape.rows}`}
-          className="grid min-h-0 flex-1 gap-2 p-3"
-          style={{
-            gridTemplateColumns: `repeat(${shape.cols}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${shape.rows}, minmax(0, 1fr))`,
-          }}
+          data-call-grid={sharing ? undefined : `${shape.cols}x${shape.rows}`}
+          data-call-rail={sharing ? "" : undefined}
+          className={
+            sharing
+              ? `flex shrink-0 gap-2 ${narrow ? "flex-row overflow-x-auto" : "flex-col overflow-y-auto"}`
+              : "grid min-h-0 flex-1 gap-2"
+          }
+          style={
+            sharing
+              ? narrow
+                ? { height: 88 }
+                : { width: 240 }
+              : {
+                  gridTemplateColumns: `repeat(${shape.cols}, minmax(0, 1fr))`,
+                  gridTemplateRows: `repeat(${shape.rows}, minmax(0, 1fr))`,
+                }
+          }
         >
           {tiles}
         </ul>
-      )}
+      </div>
 
       {pages > 1 ? (
         <nav aria-label={tt("翻页")} data-call-pager={`${current + 1}/${pages}`} className="flex items-center justify-center gap-3 pb-1">

@@ -126,9 +126,10 @@ const STUBS = {
   "../../../../i18n/ui/useUI": uiStub,
 };
 
-const { CallHost } = await import(await compileModule(`${UI_DIR}/CallHost.tsx`, STUBS));
+const { CallHost, ENDED_DOCK_MS } = await import(await compileModule(`${UI_DIR}/CallHost.tsx`, STUBS));
 const uiState = await import(await compileModule(`${UI_DIR}/call-ui-state.ts`, STUBS));
 const layout = await import(await compileModule(`${UI_DIR}/layout.ts`, STUBS));
+const pool = await import(await compileModule(`${UI_DIR}/video-pool.ts`, STUBS));
 
 // ---- 快照工厂 ----
 const NAMES = { me: "我自己", p1: "张三", p2: "李四", p3: "王五", p4: "赵六", p5: "钱七", p6: "孙八", p7: "周九", p8: "吴十", p9: "郑一", p10: "冯二", p11: "陈三" };
@@ -209,6 +210,7 @@ async function unmount() {
   });
   container.remove();
   uiState.closeCallStage();
+  pool.releaseAllVideos();
   for (const node of [...document.body.children]) node.remove();
   S.listeners.clear();
   S.narrow = false;
@@ -379,7 +381,7 @@ test("说话只亮框不重排：同一组 visibleIds 下有人说话，DOM 顺�
   }
 });
 
-test("格子：静音有标记、开了摄像头的格子绑 <video>（attachVideo），仅语音时别人的画面不画、自己的预览照常", async () => {
+test("格子：静音有标记、开了摄像头的格子放 <video>（attachVideo 只绑一次），仅语音时别人的画面不画、自己的预览照常", async () => {
   const base = snapshot(4);
   const participants = base.participants.map((p) =>
     p.participantId === "p1" ? { ...p, mic: false } : p.participantId === "p2" ? { ...p, camera: true } : p.isMe ? { ...p, camera: true } : p,
@@ -399,7 +401,13 @@ test("格子：静音有标记、开了摄像头的格子绑 <video>（attachVid
     await setSnapshot({ ...base, participants, me: { ...base.me, camera: true, audioOnly: true } });
     assert.equal($('[data-participant-id="p2"] video'), null, "仅语音：不画别人的画面");
     assert.ok($('[data-participant-id="me"] video'), "自己的预览照常");
-    assert.ok(calls("attachVideo").some((entry) => entry[1] === null && entry[2] === "p2"), "卸掉的格子解绑");
+    // 原先这里断言「仅语音卸掉的格子解绑（attachVideo(null)）」。返工 A-34 / V02 D3 改判：解绑再绑会让 SDK 的 play() 被打断，
+    // 现在人还在通话里就不解绑，元素留在池里；关掉仅语音时同一个元素回到格子，全程只绑过一次。
+    const videoOfP2 = () => $('[data-participant-id="p2"] video[data-call-video="camera"]');
+    assert.equal(calls("attachVideo").some((entry) => entry[1] === null && entry[2] === "p2"), false, "人还在：不解绑");
+    await setSnapshot({ ...base, participants, me: { ...base.me, camera: true, audioOnly: false } });
+    assert.ok(videoOfP2(), "关掉仅语音：画面回来");
+    assert.equal(calls("attachVideo").filter((entry) => entry[2] === "p2").length, 1, "全程只绑一次");
   } finally {
     await unmount();
   }
@@ -648,6 +656,63 @@ test("错误码：合同 §3.2 与 W05 列出的每个码都有自己的一句�
   assert.equal(phaseStatusText(tt, { phase: "ended", error: { code: "alone_timeout", message: "x" }, limits }), "只剩你一个人，已自动离开通话。");
   assert.equal(phaseStatusText(tt, { phase: "ended", error: null, limits }), "通话已结束");
   assert.equal(phaseStatusText(tt, { phase: "connected", error: null, limits }), "", "连上且没出错时没有状态行");
+});
+
+test("D2 纯函数：进入「已结束」才算新的一段；已结束期间 callId / 错误码来回变还是同一段；出错换了错误码才算新的一段", () => {
+  const start = layout.NO_FINAL_EPISODE;
+  assert.equal(layout.nextFinalEpisode(start, { phase: "connected", error: null }), start, "通话中：没有结束段");
+  const ended = layout.nextFinalEpisode(start, { phase: "ended", error: null });
+  assert.deepEqual(ended, { id: 1, kind: "ended", code: null });
+  let episode = ended;
+  for (const error of [{ code: "alone_timeout", message: "" }, null, { code: "ring_missed", message: "" }, null]) {
+    episode = layout.nextFinalEpisode(episode, { phase: "ended", error });
+    assert.equal(episode, ended, "已结束期间的重复状态事件不开新段（6 秒计时不重置）");
+  }
+  const full = layout.nextFinalEpisode(episode, { phase: "error", error: { code: "call_full", message: "" } });
+  assert.deepEqual(full, { id: 2, kind: "error", code: "call_full" });
+  assert.equal(layout.nextFinalEpisode(full, { phase: "error", error: { code: "call_full", message: "又一次" } }), full, "同一个错误码还是同一段");
+  const network = layout.nextFinalEpisode(full, { phase: "error", error: { code: "network", message: "" } });
+  assert.equal(network.id, 3, "换了错误码：新的一段（关掉的提示要重新出现）");
+  const rejoin = layout.nextFinalEpisode(network, { phase: "joining", error: null });
+  assert.deepEqual(rejoin, { id: 3, kind: null, code: null });
+  assert.deepEqual(layout.nextFinalEpisode(rejoin, { phase: "ended", error: null }), { id: 4, kind: "ended", code: null }, "下一通结束：新的一段");
+});
+
+test("D2：「通话已结束」从进入那一刻起 6 秒收起，期间 5 次重复的状态事件（callId、错误码来回变）不会重置计时", async (t) => {
+  assert.equal(ENDED_DOCK_MS, 6000, "与引擎 ended → idle 的 6 秒对齐");
+  await mount(snapshot(2));
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const ended = (i) =>
+      snapshot(2, { phase: "ended", callId: i % 2 ? null : "call-1", error: i % 3 === 1 ? { code: "alone_timeout", message: "" } : null });
+    await setSnapshot(ended(0));
+    assert.ok($("[data-call-dock]"), "进入已结束：小窗在");
+    for (let i = 1; i <= 5; i += 1) {
+      await act(async () => {
+        t.mock.timers.tick(1000);
+      });
+      await setSnapshot(ended(i));
+      assert.ok($("[data-call-dock]"), `第 ${i} 秒又来一次状态事件：小窗还在`);
+    }
+    await act(async () => {
+      t.mock.timers.tick(ENDED_DOCK_MS - 5000 - 1);
+    });
+    assert.ok($("[data-call-dock]"), "5.999 秒：还在");
+    await act(async () => {
+      t.mock.timers.tick(1);
+    });
+    assert.equal($("[data-call-dock]"), null, "6 秒整：收起，没有被重复事件往后推");
+    await setSnapshot(snapshot(2));
+    await setSnapshot(snapshot(2, { phase: "ended", callId: "call-2" }));
+    assert.ok($("[data-call-dock]"), "下一通结束：新的一段，小窗重新出现");
+    await act(async () => {
+      t.mock.timers.tick(ENDED_DOCK_MS);
+    });
+    assert.equal($("[data-call-dock]"), null, "新的一段同样 6 秒收起");
+  } finally {
+    t.mock.timers.reset();
+    await unmount();
+  }
 });
 
 test("仲裁 A-10：window 事件 oceanleo:call-dock-focus → 焦点给小窗并亮一下", async () => {
