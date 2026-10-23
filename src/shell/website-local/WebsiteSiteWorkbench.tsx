@@ -46,6 +46,7 @@ import {
   type StagedSiteFile,
 } from "./website-site-save";
 import { SitePuckBridgeContext, SitePuckBridgeHost } from "./WebsiteSitePuckBridge";
+import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 
 function debugW14(...parts: unknown[]) {
   if (typeof window !== "undefined" && (window as { __W14_DEBUG__?: boolean }).__W14_DEBUG__) {
@@ -188,14 +189,17 @@ function SiteEditor({
   );
   const config = useMemo(() => siteDocPuckConfig(initial, tt), [initial, tt]);
 
+  // Autosave runs only after a person changed the open item (user-edit-session).
+  const userEditKey = userEditItemKey(item);
   const commit = useCallback(
-    (next: SiteDoc, options: { fromPuck?: boolean; coalesceKey?: string } = {}) => {
+    (next: SiteDoc, options: { fromPuck?: boolean; coalesceKey?: string; restored?: boolean } = {}) => {
+      if (!options.restored) recordUserMutation(userEditKey);
       const stored = history.commit(next, options.coalesceKey || "");
       setDoc(stored);
       setRevision((value) => value + 1);
       if (!options.fromPuck) setPushToken((value) => value + 1);
     },
-    [history],
+    [history, userEditKey],
   );
 
   const onPuckChange = useCallback(
@@ -284,11 +288,13 @@ function SiteEditor({
   };
 
   const undo = () => {
+    recordUserMutation(userEditKey);
     setDoc(history.undo());
     setRevision((value) => value + 1);
     setPushToken((value) => value + 1);
   };
   const redo = () => {
+    recordUserMutation(userEditKey);
     setDoc(history.redo());
     setRevision((value) => value + 1);
     setPushToken((value) => value + 1);
@@ -402,6 +408,7 @@ function SiteEditor({
           </div>
         ),
         persistence: {
+          userEditKey,
           dirty: revision > savedRevision,
           editRevision: revision,
           flush,
@@ -413,7 +420,7 @@ function SiteEditor({
             restore: (payload) => {
               const restored = (payload as { doc?: unknown } | null)?.doc;
               if (!isSiteDoc(restored)) return false;
-              commit(restored);
+              commit(restored, { restored: true });
               return true;
             },
           },

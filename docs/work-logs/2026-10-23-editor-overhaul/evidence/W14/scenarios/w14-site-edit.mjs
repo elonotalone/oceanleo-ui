@@ -83,10 +83,11 @@ export default async function ({ page, log, shot, helpers, args }) {
 
   if (!args.includes("--no-save-wait")) {
     const states = [];
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 16 && (await helpers.saveState(page)) === "saved"; i += 1) await page.waitForTimeout(500);
+    for (let i = 0; i < 90; i += 1) {
       const state = await helpers.saveState(page);
       if (states[states.length - 1] !== state) states.push(state);
-      if (state === "saved" || state === "error" || state === "failed") break;
+      if ((state === "saved" || state === "error" || state === "failed") && states.length > 1) break;
       await page.waitForTimeout(1000);
     }
     log("save-states", JSON.stringify(states));

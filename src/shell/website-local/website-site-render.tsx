@@ -13,6 +13,8 @@
 import {
   createContext,
   useContext,
+  useEffect,
+  useRef,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
@@ -356,12 +358,16 @@ export function SiteFrame({ children }: { children: ReactNode }) {
   // In edit mode Puck draws its overlay above the section and turns pointer
   // events off for component content, so neither the event target nor
   // `elementsFromPoint` sees our nodes: hit-test their boxes instead.
-  const pick = (event: { currentTarget: Element; clientX: number; clientY: number }) => {
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const contextRef = useRef(context);
+  contextRef.current = context;
+  const pick = (frame: Element, event: { clientX: number; clientY: number }) => {
+    const context = contextRef.current;
     if (!context) return;
     const hit = (selector: string) => {
       let best: Element | null = null;
       let bestArea = Infinity;
-      for (const element of event.currentTarget.querySelectorAll(selector)) {
+      for (const element of frame.querySelectorAll(selector)) {
         const box = element.getBoundingClientRect();
         if (
           event.clientX >= box.left && event.clientX <= box.right &&
@@ -391,6 +397,22 @@ export function SiteFrame({ children }: { children: ReactNode }) {
         : { sectionId, field: "", kind: "text" },
     );
   };
+  // Puck portals its hover/selection overlays outside this frame, so listen on
+  // the document and keep only presses inside this stage and this frame's box.
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const frame = frameRef.current;
+      const stage = frame?.closest("[data-testid='website-puck-stage']");
+      if (!frame || !stage || !(event.target instanceof Node) || !stage.contains(event.target)) return;
+      const box = frame.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) return;
+      pick(frame, event);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    // pick reads the latest context through a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const siteStyle = {
     background: safeSiteColor(doc?.backgroundColor) || "#ffffff",
     color: "#0f172a",
@@ -405,7 +427,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
     <div
       data-testid="website-site-frame"
       style={siteStyle}
-      onPointerDownCapture={pick}
+      ref={frameRef}
     >
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 28px", borderBottom: "1px solid rgba(15,23,42,0.08)" }}>
         <strong style={{ fontWeight: 800 }}>{String(doc?.siteName || "")}</strong>
