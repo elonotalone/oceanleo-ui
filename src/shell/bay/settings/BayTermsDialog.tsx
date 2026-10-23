@@ -13,7 +13,7 @@ import {
   type BayTermsStatus,
 } from "../../../lib/bay/terms";
 import { IconButton } from "../../../ui/Button";
-import { BayTermsSections, formatBayTermsTime } from "./terms-text";
+import { BayTermsFullTextLink, BayTermsSections, formatBayTermsTime } from "./terms-text";
 
 export type BayTermsScope = "buyer" | "seller";
 
@@ -116,6 +116,9 @@ export function BayTermsDialog({ scope, initialStatus, locale, onCancel, onAccep
               {scope === "seller"
                 ? tt("报价、发布服务、接单都以这份条款为准，同意一次即可。")
                 : tt("发需求、下单、接受报价都以这份条款为准，同意一次即可。")}
+            </p>
+            <p className="mt-1.5">
+              <BayTermsFullTextLink />
             </p>
           </div>
           <IconButton

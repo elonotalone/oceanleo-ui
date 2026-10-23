@@ -6,7 +6,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { acceptBayTerms, bayTermsUpToDate, fetchBayTermsCurrent, fetchBayTermsStatus, type BayTermsStatus } from "../../../lib/bay/terms";
 import { bayEnabledHere, requireBayLogin } from "../shell/bay-state";
 import { subscribeBayTermsAccepted } from "./terms-flow";
-import { BayTermsSections } from "./terms-text";
+import { BayTermsFullTextLink, BayTermsSections } from "./terms-text";
 
 export function BayTermsGate({ scope, children }: { scope: "buyer" | "seller"; children?: ReactNode }): ReactNode {
   const tt = useUI();
@@ -49,6 +49,9 @@ export function BayTermsGate({ scope, children }: { scope: "buyer" | "seller"; c
           {scope === "seller"
             ? tt("报价、发布服务、接单都以这份条款为准，同意一次即可。")
             : tt("发需求、下单、接受报价都以这份条款为准，同意一次即可。")}
+        </p>
+        <p className="mt-1.5">
+          <BayTermsFullTextLink />
         </p>
       </div>
       {current ? <BayTermsSections document={current} /> : <p className="text-[13px] text-rose-600">{tt(error || "条款加载失败，请稍后重试")}</p>}

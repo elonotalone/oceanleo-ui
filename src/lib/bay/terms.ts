@@ -59,6 +59,21 @@ export function bayTermsAnchor(key: string): string {
   return `bay-terms-${String(key).replace(/[^a-zA-Z0-9_-]/g, "")}`;
 }
 
+/** 门户上公开的条款页（不用登录就能读）。 */
+export const BAY_TERMS_PAGE_PATH = "/legal/marketplace";
+
+/** 条款页里「LeoBay 使用规则（站内同意的版本）」一节的锚点。 */
+export const BAY_TERMS_PAGE_ANCHOR = "bay-terms";
+
+/**
+ * 条款页的相对地址，带锚点。不给 `sectionKey` 落在「LeoBay 使用规则」一节的开头；
+ * 给了就落在网关下发的那一节（锚点同 `bayTermsAnchor`）。子站上要再包一层 `portalHref()`。
+ */
+export function bayTermsPagePath(sectionKey?: string | null): string {
+  const anchor = sectionKey ? bayTermsAnchor(sectionKey) : BAY_TERMS_PAGE_ANCHOR;
+  return `${BAY_TERMS_PAGE_PATH}#${anchor}`;
+}
+
 function sectionsOf(value: unknown, legacyBody: string): BayTermsSection[] {
   const out: BayTermsSection[] = [];
   const seen = new Set<string>();
