@@ -15,6 +15,10 @@ import { Modal as SharedModal } from "../ui";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
 
+/** Any modal other than the configuration drawer itself. */
+const OVERLAY_ABOVE_DRAWER =
+  '[aria-modal="true"]:not([data-project-workspace-config])';
+
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -35,13 +39,23 @@ function useDesktopLayout() {
 }
 
 export interface ProjectWorkspaceFrameProps {
-  /** Top-level project identity, navigation, and page actions. */
+  /**
+   * Top-level project identity, navigation, and page actions. Sits directly on
+   * the page background: no band, no bottom rule.
+   */
   top?: ReactNode;
-  /** Primary workspace content. */
+  /** Primary workspace content (the left column, above `bottom`). */
   children: ReactNode;
-  /** Configuration or supporting content shown beside the main workspace. */
+  /**
+   * Configuration or supporting content. On desktop it is a full-height column
+   * beside the main column (main + bottom); on narrow screens it is a drawer.
+   * The frame paints no panel behind it: white belongs to the cards inside.
+   */
   config?: ReactNode;
-  /** Persistent content below the main workspace, such as a composer. */
+  /**
+   * Persistent content right under the main workspace, such as a composer.
+   * It lives in the main column only and never reaches under `config`.
+   */
   bottom?: ReactNode;
   className?: string;
   topClassName?: string;
@@ -96,6 +110,7 @@ export function ProjectWorkspaceFrame({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const previousMobileOpenRef = useRef(false);
+  const hasBottom = bottom != null;
 
   const changeConfigOpen = useCallback(
     (nextOpen: boolean) => {
@@ -132,6 +147,11 @@ export function ProjectWorkspaceFrame({
     if (isDesktop || !resolvedConfigOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // A dialog opened from inside the drawer (activity, plan, assets...) sits
+      // above it and owns Escape. Both listeners live on `document`, so
+      // stopPropagation cannot arbitrate between them: yield instead, otherwise
+      // one key press would close the dialog and the drawer together.
+      if (document.querySelector(OVERLAY_ABOVE_DRAWER)) return;
       event.preventDefault();
       event.stopPropagation();
       changeConfigOpen(false);
@@ -152,7 +172,7 @@ export function ProjectWorkspaceFrame({
         <header
           data-project-workspace-top
           className={classNames(
-            "flex min-w-0 shrink-0 items-center gap-3 border-b border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-4 py-3",
+            "flex min-w-0 shrink-0 items-center gap-3 px-4 py-3",
             topClassName,
           )}
         >
@@ -177,16 +197,35 @@ export function ProjectWorkspaceFrame({
       <div
         data-project-workspace-body
         className={classNames(
-          "grid min-h-0 min-w-0 flex-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_clamp(20rem,24vw,22.5rem)]",
+          "grid min-h-0 min-w-0 flex-1 gap-4 px-4 pb-4",
+          hasConfig &&
+            "lg:grid-cols-[minmax(0,1fr)_clamp(20rem,24vw,22.5rem)]",
           bodyClassName,
         )}
       >
-        <main
-          data-project-workspace-main
-          className={classNames("min-h-0 min-w-0", mainClassName)}
+        {/* Main column: the work area with the persistent bottom slot right
+            under it. The config column is a sibling of this column, so the
+            bottom slot can never stretch underneath the configuration. */}
+        <div
+          data-project-workspace-column
+          className="flex min-h-0 min-w-0 flex-col gap-3"
         >
-          {children}
-        </main>
+          <main
+            data-project-workspace-main
+            className={classNames("min-h-0 min-w-0 flex-1", mainClassName)}
+          >
+            {children}
+          </main>
+
+          {hasBottom && (
+            <footer
+              data-project-workspace-bottom
+              className={classNames("shrink-0", bottomClassName)}
+            >
+              {bottom}
+            </footer>
+          )}
+        </div>
 
         {hasConfig && (
           <>
@@ -217,11 +256,14 @@ export function ProjectWorkspaceFrame({
               data-project-workspace-config
               data-mobile-open={resolvedConfigOpen || undefined}
               className={classNames(
-                "fixed inset-y-0 right-0 z-50 flex w-[min(22.5rem,calc(100vw-2rem))] min-w-0 flex-col border-l border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-2xl transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)]",
+                // Narrow screens: a sheet in the page colour, so the white cards
+                // inside still stand out. Desktop: no panel at all, the column
+                // is bare and only the cards are white.
+                "fixed inset-y-0 right-0 z-50 flex w-[min(22.5rem,calc(100vw-2rem))] min-w-0 flex-col border-l border-[var(--border,#e7e5e4)] bg-[var(--bg,#faf8f5)] shadow-2xl transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)]",
                 resolvedConfigOpen
                   ? "translate-x-0"
                   : "translate-x-full",
-                "lg:static lg:z-auto lg:h-full lg:w-auto lg:translate-x-0 lg:rounded-xl lg:border lg:shadow-sm lg:transition-none",
+                "lg:static lg:z-auto lg:h-full lg:w-auto lg:translate-x-0 lg:border-0 lg:bg-transparent lg:shadow-none lg:transition-none",
                 configClassName,
               )}
             >
@@ -240,23 +282,16 @@ export function ProjectWorkspaceFrame({
                   <span aria-hidden="true">×</span>
                 </button>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">{config}</div>
+              <div
+                data-project-workspace-config-scroll
+                className="min-h-0 flex-1 overflow-y-auto p-4 lg:-mx-1 lg:p-0 lg:px-1 lg:pb-1"
+              >
+                {config}
+              </div>
             </aside>
           </>
         )}
       </div>
-
-      {bottom != null && (
-        <footer
-          data-project-workspace-bottom
-          className={classNames(
-            "shrink-0 border-t border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]",
-            bottomClassName,
-          )}
-        >
-          {bottom}
-        </footer>
-      )}
     </div>
   );
 }
@@ -388,6 +423,11 @@ export interface ProjectToolbarProps {
   controlsClassName?: string;
 }
 
+/**
+ * The filter row of a project tab. It is bare on purpose: no panel, no border,
+ * no white band around the controls (white only separates cards). Controls
+ * bring their own frames.
+ */
 export function ProjectToolbar({
   search,
   controls,
@@ -403,7 +443,7 @@ export function ProjectToolbar({
       aria-label={ariaLabel}
       data-project-toolbar
       className={classNames(
-        "flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-3 sm:flex-row sm:items-center",
+        "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center",
         className,
       )}
     >
@@ -585,11 +625,32 @@ export interface ProjectModalProps {
   footer?: ReactNode;
   onClose: () => void;
   closeLabel?: string;
+  /**
+   * `default`: a compact dialog (max 42rem wide, up to 44rem tall).
+   * `wide`: a work-sized dialog for tabs that carry their own toolbar and a
+   * table (about 960px wide); its height follows the screen (never taller
+   * than the viewport minus the scrim padding) and the body scrolls.
+   */
+  size?: "default" | "wide";
   className?: string;
   headerClassName?: string;
   bodyClassName?: string;
   footerClassName?: string;
 }
+
+const PROJECT_MODAL_SIZE_CLASS: Record<
+  NonNullable<ProjectModalProps["size"]>,
+  { panel: string; inner: string }
+> = {
+  default: {
+    panel: "max-h-[min(44rem,calc(100dvh-2rem))] max-w-2xl",
+    inner: "max-h-[min(44rem,calc(100dvh-2rem))]",
+  },
+  wide: {
+    panel: "max-h-[calc(100dvh-2rem)] max-w-[60rem]",
+    inner: "h-[min(52rem,calc(100dvh-2rem))]",
+  },
+};
 
 /** Project-neutral content structure over the package's accessible Modal. */
 export function ProjectModal({
@@ -599,6 +660,7 @@ export function ProjectModal({
   footer,
   onClose,
   closeLabel = "Close",
+  size = "default",
   className,
   headerClassName,
   bodyClassName,
@@ -606,17 +668,23 @@ export function ProjectModal({
 }: ProjectModalProps) {
   const titleId = useId();
   if (!open) return null;
+  const sizeClass =
+    PROJECT_MODAL_SIZE_CLASS[size] ?? PROJECT_MODAL_SIZE_CLASS.default;
 
   return (
     <SharedModal
       onClose={onClose}
       labelledBy={titleId}
       className={classNames(
-        "max-h-[min(44rem,calc(100dvh-2rem))] max-w-2xl overflow-hidden bg-[var(--card,#fff)] text-[var(--fg,#292524)]",
+        sizeClass.panel,
+        "overflow-hidden bg-[var(--card,#fff)] text-[var(--fg,#292524)]",
         className,
       )}
     >
-      <div className="flex max-h-[min(44rem,calc(100dvh-2rem))] min-h-0 flex-col">
+      <div
+        data-project-modal-size={size}
+        className={classNames("flex min-h-0 flex-col", sizeClass.inner)}
+      >
         <header
           className={classNames(
             "flex shrink-0 items-center gap-3 border-b border-[var(--border,#e7e5e4)] px-5 py-4",
