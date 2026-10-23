@@ -32,12 +32,13 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
     assert.match(types, new RegExp(capability));
   }
   assert.match(controls, /图层/);
-  assert.match(controls, /FabricImageFilterPanel/);
-  assert.match(controls, /FabricImageFontPanel/);
+  // 10-23 W09：调色与字体进编辑栏（adjust 面板、font-family 下拉），左侧两个抽屉删除。
+  assert.doesNotMatch(controls, /FabricImageFilterPanel|FabricImageFontPanel/);
+  assert.match(toolbar, /inspector\("adjust"/);
+  assert.match(toolbar, /id: "font-family"/);
   assert.match(commands, /startCrop/);
   assert.match(commands, /setFilter/);
   assert.match(commands, /duplicateSelected/);
-  assert.match(toolbar, /panelId: "image-filters"/);
   assert.match(toolbar, /panelAction: "replace"/);
   assert.match(toolbar, /selected\.kind === "image"/);
   assert.match(creationPanels, /FabricImageShapePanel/);

@@ -75,7 +75,7 @@ const [controllerModule, commandModule, toolbarModule, inspectorModule, runtimeM
   ]).then((urls) => Promise.all(urls.map((url) => import(url))));
 const { FabricEditorController } = controllerModule;
 const { dispatchFabricImageCommand } = commandModule;
-const { buildFabricImageToolbarControls, primaryImageToolbarControlIds } = toolbarModule;
+const { buildFabricImageToolbarControls, fabricImageSelectionBar, primaryImageToolbarControlIds } = toolbarModule;
 const { partitionSelectionInspectorControls } = inspectorModule;
 const { fabricImageCropPatch } = runtimeModule;
 
@@ -279,32 +279,167 @@ function toolbar(selected) {
   });
 }
 
-test("text bar follows the supplied order and maps visible controls to real inspectors", () => {
+test("text bar uses canonical ids in canonical order and A-1 panels", () => {
   const controls = toolbar(selectedText());
   const ids = primaryImageToolbarControlIds(controls);
-  assert.deepEqual(ids.slice(0, 12), [
-    "font-panel", "font-size", "text-color", "bold", "italic", "underline",
-    "linethrough", "text-case", "align", "list", "line-height", "opacity",
-  ]);
-  assert.equal(ids.includes("animate"), false, "image text has no animation adapter");
+  // 00-dispatch §4 文字组 → 形状组适用项 → 对象组；做不到的（link / vertical-text / indent）不出。
+  assert.deepEqual(
+    ids.filter((id) => !controls.find((control) => control.id === id)?.inspectorGroup),
+    [
+      "font-family", "font-size", "bold", "italic", "underline", "strike",
+      "text-color", "highlight", "align", "list", "line-height",
+      "opacity", "arrange", "lock", "duplicate", "delete",
+    ],
+  );
+  for (const legacy of ["font-panel", "linethrough", "text-case", "char-spacing", "layer-up", "layer-down", "rotate-left", "rotate-right"]) {
+    assert.equal(controls.some((control) => control.id === legacy), false, legacy);
+  }
+  assert.equal(controls.some((control) => control.id === "link"), false, "raster text cannot carry links");
+  const more = controls.filter((control) => control.placement === "more").map((control) => control.id);
+  for (const id of ["letter-spacing", "case", "clear-format", "shadow"]) assert.ok(more.includes(id), id);
+  const font = controls.find((control) => control.id === "font-family");
+  assert.equal(font?.kind, "select");
+  assert.equal(font?.value, "Inter");
+  assert.equal(font?.options?.[0]?.value, "Inter", "current font stays selectable");
   assert.equal(controls.find((control) => control.id === "font-size")?.step, 0.1);
-  assert.ok(ids.includes("shadow"), "Effects maps to the supported shadow toggle");
+  assert.deepEqual(
+    controls.find((control) => control.id === "align")?.options.map((option) => option.value),
+    ["left", "center", "right", "justify"],
+  );
+  assert.deepEqual(
+    controls.find((control) => control.id === "list")?.options.map((option) => option.value),
+    ["none", "bullet", "ordered"],
+  );
+  assert.deepEqual(
+    controls.find((control) => control.id === "arrange")?.options.map((option) => option.value),
+    ["front", "forward", "backward", "back"],
+  );
+  // A-1：面板型规范项只发子控件，inspectorGroup 就是规范 id，不另发同名 panel。
+  const panelOf = (group) => controls.filter((control) => control.inspectorGroup === group).map((control) => control.id);
+  assert.deepEqual(panelOf("position"), [
+    "position-x", "position-y", "object-width", "object-height", "angle", "position-flip-x", "position-flip-y",
+  ]);
+  assert.deepEqual(panelOf("stroke"), ["stroke-color", "stroke-width"]);
+  for (const id of ["position", "stroke", "border", "adjust"]) {
+    assert.equal(controls.some((control) => control.id === id), false, `no duplicate ${id} panel control`);
+  }
+  for (const control of controls) {
+    if (control.inspectorGroup) assert.equal(control.slot, "inspector", control.id);
+  }
+  const { compact } = partitionSelectionInspectorControls(controls);
+  assert.ok(compact.some((control) => control.panelId === "selection-inspector-position"));
+});
 
-  const { compact, groups } = partitionSelectionInspectorControls(controls);
-  const spacing = compact.find((control) => control.label === "间距");
-  assert.equal(spacing?.kind, "panel", "spacing opens a compact inspector launcher");
-  assert.equal(compact.some((control) => control.id === "line-height"), false);
-  const spacingGroup = groups.find((group) => group.panelId === spacing?.panelId);
-  assert.ok(spacingGroup?.controls.some((control) => control.id === "line-height"));
-  assert.ok(spacingGroup?.controls.some((control) => control.id === "char-spacing"));
+test("image, shape, line, note and table selections pick their bar and canonical groups", () => {
+  const base = selectedText({ text: null });
+  const image = toolbar({ ...base, kind: "image", radius: 12, imageFit: "cover" });
+  const imageIds = primaryImageToolbarControlIds(image).filter(
+    (id) => !image.find((control) => control.id === id)?.inspectorGroup,
+  );
+  assert.deepEqual(imageIds.slice(0, 7), ["replace", "crop", "flip-x", "flip-y", "rotate", "radius", "opacity"]);
+  assert.deepEqual(
+    image.filter((control) => control.inspectorGroup === "border").map((control) => control.id),
+    ["border-color", "border-width"],
+  );
+  assert.equal(image.find((control) => control.id === "replace")?.panelAction, "replace");
+  assert.equal(image.find((control) => control.id === "image-fit")?.placement, "more");
+  assert.equal(image.some((control) => control.id === "position-flip-x"), false, "images flip on the bar, not twice");
+  const background = toolbar({ ...base, kind: "background", radius: 0 });
+  assert.equal(background.some((control) => control.id === "arrange"), false, "the base image cannot change layer order");
 
-  const position = compact.find((control) => control.semantic === "position");
-  assert.equal(position?.kind, "panel");
-  assert.equal(position?.label, "位置");
-  const geometry = groups.find((group) => group.semantic === "position");
-  assert.ok(geometry?.controls.some((control) => control.id === "position-x"));
-  assert.ok(geometry?.controls.some((control) => control.id === "object-width"));
-  assert.ok(compact.some((control) => control.icon === "transparency"));
+  const rect = toolbar({ ...base, kind: "rect", radius: 8, strokeDash: "dashed" });
+  assert.deepEqual(
+    primaryImageToolbarControlIds(rect)
+      .filter((id) => !rect.find((control) => control.id === id)?.inspectorGroup)
+      .slice(0, 2),
+    ["fill", "radius"],
+  );
+  assert.equal(rect.find((control) => control.id === "stroke-dash")?.value, "dashed");
+  const line = toolbar({ ...base, kind: "arrow" });
+  assert.equal(line.some((control) => control.id === "fill"), false, "lines have no fill");
+  assert.deepEqual(
+    line.filter((control) => control.inspectorGroup === "stroke").map((control) => control.id),
+    ["stroke-color", "stroke-width", "stroke-dash"],
+  );
+  const note = toolbar({ ...base, kind: "note" });
+  assert.ok(note.some((control) => control.id === "fill"), "note color is its fill");
+  assert.equal(note.some((control) => control.inspectorGroup === "stroke"), false);
+
+  assert.equal(fabricImageSelectionBar(selectedText()), "text");
+  assert.equal(fabricImageSelectionBar({ ...base, kind: "image" }), "image");
+  assert.equal(fabricImageSelectionBar({ ...base, kind: "background" }), "image");
+  assert.equal(fabricImageSelectionBar({ ...base, kind: "rect" }), "shape");
+  assert.equal(fabricImageSelectionBar({ ...base, kind: "rect" }, true), "image", "crop session is an image bar");
+  assert.equal(
+    fabricImageSelectionBar({ ...base, kind: "table", table: { rows: 2, columns: 2, style: {} } }),
+    "object",
+  );
+});
+
+test("a locked layer shows only unlock and an unready source shows no bar", () => {
+  const locked = toolbar(selectedText({ locked: true }));
+  assert.deepEqual(locked.map((control) => control.id), ["lock"]);
+  assert.equal(locked[0].value, true);
+  assert.equal(locked.some((control) => control.disabled), false, "no grey placeholders");
+  assert.deepEqual(
+    buildFabricImageToolbarControls({
+      selected: selectedText(),
+      cropping: false,
+      cropRatio: "free",
+      loading: false,
+      sourceReady: false,
+      transformInfo: null,
+      filters: null,
+      layers: [],
+      tt,
+    }),
+    [],
+  );
+});
+
+test("canonical commands reach the controller: highlight, lists, clear format, font, arrange, dash, radius", () => {
+  const text = new FakeText({ oceanleoId: "text-1", text: "one\ntwo", fontWeight: "bold", underline: true });
+  const back = new FakeImage({ oceanleoId: "back", oceanleoKind: "image" });
+  const rect = new FakeRect({ oceanleoId: "rect-1", width: 100, height: 60, strokeWidth: 4 });
+  const controller = controllerWith([back, text, rect]);
+  controller.layers.push({ id: "rect-1", kind: "rect", locked: false, visible: true, isBackground: false, selected: false });
+  controller.canvas.setActiveObject(text);
+  dispatchFabricImageCommand(controller, command("highlight", "text-1", "#ffee00"));
+  assert.equal(text.textBackgroundColor, "#ffee00");
+  dispatchFabricImageCommand(controller, command("list", "text-1", "ordered"));
+  assert.equal(text.text, "1. one\n2. two");
+  dispatchFabricImageCommand(controller, command("list", "text-1", "bullet"));
+  assert.equal(text.text, "• one\n• two", "switching list type replaces its own prefix");
+  dispatchFabricImageCommand(controller, command("list", "text-1", "none"));
+  assert.equal(text.text, "one\ntwo");
+  dispatchFabricImageCommand(controller, command("font-family", "text-1", "Georgia, Times New Roman, serif"));
+  assert.equal(text.fontFamily, "Georgia, Times New Roman, serif");
+  dispatchFabricImageCommand(controller, command("strike", "text-1", true));
+  assert.equal(text.linethrough, true);
+  dispatchFabricImageCommand(controller, command("align", "text-1", "justify"));
+  assert.equal(text.textAlign, "justify");
+  dispatchFabricImageCommand(controller, command("clear-format", "text-1"));
+  assert.equal(text.fontWeight, "normal");
+  assert.equal(text.underline, false);
+  assert.equal(text.linethrough, false);
+  assert.equal(text.textBackgroundColor, "");
+  assert.equal(text.fontFamily, "Georgia, Times New Roman, serif", "clear format keeps the font");
+
+  dispatchFabricImageCommand(controller, command("arrange", "text-1", "back"));
+  assert.equal(controller.canvas.getObjects()[0], text);
+  dispatchFabricImageCommand(controller, command("arrange", "text-1", "front"));
+  assert.equal(controller.canvas.getObjects().at(-1), text);
+
+  controller.canvas.setActiveObject(rect);
+  dispatchFabricImageCommand(controller, command("stroke-dash", "rect-1", "dashed"));
+  assert.deepEqual(rect.strokeDashArray, [12, 8]);
+  dispatchFabricImageCommand(controller, command("stroke-dash", "rect-1", "solid"));
+  assert.equal(rect.strokeDashArray, undefined);
+  dispatchFabricImageCommand(controller, command("radius", "rect-1", 20));
+  assert.equal(rect.rx, 20);
+  assert.equal(rect.ry, 20);
+  dispatchFabricImageCommand(controller, command("radius", "rect-1", 500));
+  assert.equal(rect.rx, 30, "radius is clamped to half the short side");
 });
 
 test("actual controller text commands align, apply reversible case and list edits, and commit", () => {
@@ -342,7 +477,7 @@ test("actual free crop is editable, cancel preserves selection, and confirm chan
   const controller = controllerWith([image]);
   controller.canvas.setActiveObject(image);
 
-  dispatchFabricImageCommand(controller, command("crop-start", "image-1"));
+  dispatchFabricImageCommand(controller, command("crop", "image-1"));
   assert.equal(controller.cropping, true);
   const crop = controller.canvas.getActiveObject();
   assert.ok(crop instanceof FakeRect);
@@ -362,7 +497,8 @@ test("actual free crop is editable, cancel preserves selection, and confirm chan
     layers: cropView.layers,
     tt,
   });
-  assert.deepEqual(primaryImageToolbarControlIds(cropControls), ["crop-apply"]);
+  assert.deepEqual(primaryImageToolbarControlIds(cropControls), ["crop-apply", "crop-ratio", "crop-cancel"]);
+  assert.equal(cropControls.some((control) => control.icon === "crop"), false, "crop session controls never borrow the canonical crop icon");
   assert.ok(cropControls.some((control) => control.id === "crop-cancel"));
   assert.ok(cropControls.some((control) => control.id === "crop-ratio"));
   crop.set({ left: 250, top: 180, width: 140, height: 100 });
@@ -516,7 +652,7 @@ test("mounted image action preserves pointer selection and invokes the controlle
     filters: null,
     layers: controller.layers,
     tt,
-  }).find((item) => item.id === "rotate-right");
+  }).find((item) => item.id === "rotate");
   assert.ok(control);
   const container = document.createElement("div");
   document.body.append(container);

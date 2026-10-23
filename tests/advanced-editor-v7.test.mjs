@@ -141,12 +141,16 @@ test("Fabric main image is movable and its image geometry commands are concrete"
   assert.match(runtime, /target\.oceanleoRole === "background"/);
   assert.match(runtime, /target\.oceanleoRole = undefined/);
   assert.match(runtime, /setLocked\(target, false\)/);
+  // 10-23 W09：编辑栏改规范 id（00-dispatch §4）。旧 id replace-panel / filter-panel /
+  // layer-up / layer-down / crop-start 换成 replace / adjust 面板 / arrange 下拉 / crop。
   for (const id of [
-    "replace-panel",
+    "replace",
+    "crop",
     "image-fit",
-    "filter-panel",
+    "filter-reset",
     "flip-x",
     "flip-y",
+    "rotate",
     "radius",
     "shadow",
     "opacity",
@@ -155,18 +159,19 @@ test("Fabric main image is movable and its image geometry commands are concrete"
     "object-width",
     "object-height",
     "angle",
+    "arrange",
     "lock",
     "duplicate",
     "delete",
-    "layer-up",
-    "layer-down",
   ]) {
     assert.match(toolbar, new RegExp(`id: "${id}"`), id);
   }
-  assert.match(toolbar, /"crop-apply" : "crop-start"/);
+  assert.match(toolbar, /inspector\("adjust"/);
+  assert.match(toolbar, /inspector\("position"/);
+  assert.match(toolbar, /id: "crop-apply"/);
   assert.match(commands, /case "image-fit"/);
   assert.match(commands, /case "position-x"/);
-  assert.match(commands, /case "layer-up"/);
+  assert.match(commands, /case "arrange"/);
 });
 
 test("all spreadsheet formats use the lightweight Grid route", () => {

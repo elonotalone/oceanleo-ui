@@ -407,6 +407,9 @@ test("SelectionToolbar bold click mutates Fabric through the live onCommand path
   const text = { value: "Hello", bold: false, fontSize: 24 };
   const editor = {
     selected: { locked: false, kind: "text", id: "text:hero" },
+    // The dispatcher only acts on a selection that is still a live layer.
+    layers: [{ id: "text:hero", locked: false }],
+    selectLayer() {},
     setSelectedText(patch) {
       Object.assign(text, patch);
     },

@@ -130,11 +130,17 @@ test("image lock flags and continuous controls participate in snapshot/history c
   assert.match(core, /text:editing:entered[\s\S]*canMutateObject/);
   assert.match(core, /tool === "erase" && this\.hasLockedEditableObjects/);
   assert.match(controller, /resizeDoc[\s\S]*hasLockedEditableObjects/);
-  assert.match(controls, /onPointerDown=\{onBegin\}/);
-  assert.match(controls, /onBegin=\{editor\.beginGesture\}/);
-  assert.match(controls, /onChange=\{\(value\) => editor\.setFilter/);
-  assert.match(controls, /onPointerUp=\{onCommit\}/);
-  assert.match(controls, /onCommit=\{editor\.endGesture\}/);
+  // 10-23 W09：调色滑杆从左侧面板移进编辑栏 `adjust` 面板；一次拖动 = 一次撤销步，
+  // 由编辑栏事务（start → beginGesture，commit → endGesture）保证。
+  const contextToolbar = readFileSync(
+    new URL("../src/shell/image-editor/FabricImageContextToolbar.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(contextToolbar, /phase === "start"[\s\S]*editor\.beginGesture\(\)/);
+  assert.match(contextToolbar, /phase === "cancel"[\s\S]*editor\.cancelGesture\(\)/);
+  assert.match(contextToolbar, /phase === "commit"[\s\S]*editor\.endGesture\(\)/);
+  assert.match(controls, /onPointerDown=\{editor\.beginGesture\}/);
+  assert.match(controls, /onPointerUp=\{editor\.endGesture\}/);
 });
 
 test("image recovery rejects malformed payloads and retains serialized lock state", () => {
