@@ -20,3 +20,6 @@
 - [实测] w09-buttons b4（10:00Z）：flip-x/flip-y/rotate 有效且撤销还原；duplicate 1→2、delete 2→1；crop 进裁剪态（crop-apply crop-ratio crop-cancel）、取消还原；replace 打开素材面板；radius/border/opacity/adjust/position 开面板；lock 生效但撤销不撤锁定。连点期间 7 次 autosave.error、顶栏「保存失败」→ 修：保存串行（上一个没完等它）、预览期间画布又变就重抓（≤3 次），不再回 null。
 - [实测] w09-undo（10:12Z）：翻转→等保存→撤销、翻转→保存中立刻撤销，两种都在保存落定后回到翻转前（hash 一致），各出一个 revision。按钮扫描里「restored=false」是 1.5 s 采样早于异步还原的假阴性。
 - [实测] 10:20Z 深浅两档、库卡片、按钮扫描全部跑完（见交付）。
+- R3 [读码+实测] W04 §7「重开/刷新后无编辑也多 1 个 revision」：链路 = 协同首次对齐把房间副本当别人的改动 → dirty → 本机恢复记录（从不删，因为没人存）→ 下次打开恢复并按「恢复的未存改动」发布。修（64bd2feb）：画面相同只差对象 id → 换成房间的 id，不算改动；本人这次打开还没动过手时远端改动不标未保存；恢复比较忽略 id。
+- R3 [实测] w09-open-only（自己的图 03e7bab9，浅色）：打开 40 s → × → 重开 40 s → 刷新 40 s，`/revisions` 0 次，ordinal 47 不变，dirty 始终 false，IndexedDB 无记录。fork 副本 8bd5a879（深色）同样 0 次，ordinal 4 不变。
+- R3 [实测] w09-reload-edit：改 → 刷新 → 改 = rev48、rev49，正好 2 个。

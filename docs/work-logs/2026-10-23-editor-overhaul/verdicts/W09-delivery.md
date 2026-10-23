@@ -112,3 +112,42 @@ supabase-sql oceanleo "select ordinal, created_at from artifact_revisions where 
 - 版本回执在 × 关闭之后才落时，会话里的指针没清（草稿层时期）；图片不接草稿层以后不再走这条路，已有的残留指针会被忽略。
 - 槽上会话快照 `PUT` 偶发 409，期间顶栏会短暂显示「保存失败」（W04 §4）。
 - 链接（`link`）、竖排、缩进不出：Fabric 的图片文字层没有这些能力。
+
+
+## 第 3 轮（2026-10-23 13:00Z 起，父 agent 转来 W04 §7）
+
+**问题**：只打开图片（自己的或 fork 来的）、不做任何改动，重开或刷新之后也会多出 1 个内容没变的 revision。
+
+**根因**（[读码] + [实测]）：
+1. 重开时载入的版本给对象发了新 id，协同房间里还是上一场的 id。首次对齐时，房间副本被当成「别人的改动」套进画布，画布被标成未保存。
+2. 未保存状态让本机恢复记录写进了 IndexedDB。没有人改，也就没有保存，这条记录从不删除。
+3. 下次打开时，这条记录被当作「恢复的未存改动」套回画布，然后发布成一个新版本。
+
+**修法**（64bd2feb，全部在我的文件里）：
+- `image-editor/image-remote-delta.ts`：新增 `imageIdRelabelMap` / `relabelImageSnapshot`，比较时可以忽略对象 id 和跟着 id 走的来源凭证 id。
+- `image-editor/fabric-controller-core.ts`：远端与画布画面相同、只差对象 id 时，把本地对象换成房间的 id（撤销栈一起换），不算改动，不触发 `onRemoteApplied`。
+- `image-editor/use-fabric-image-editor.ts`：
+  - 本人这次打开还没动过手时，别人的改动只更新画布，不标未保存。自动保存本来就只在本人编辑后才存，标脏只会留下恢复记录。
+  - 编辑计数每次打开清零。
+  - 恢复比较也忽略 id，与画布相同的记录直接删掉。
+- `collab/adapters/image.ts` / `vector.ts` 没有改动：对齐的比较发生在图片控制器里，适配器本身不用改。
+
+**回归测试**：`tests/image-editor-recovery-collab.test.mjs` 新增 2 条（共 11/11）：
+- 只差 id 的同一画面会被换 id，翻转之类的真改动仍算改动。
+- 远端套用先尝试换 id；没有本人编辑就不标未保存；每次打开清零编辑计数。
+
+其它测试：collab-visual-readonly 20/20、collab-image-adapter 6/6、image-editor-integrity 11/11、rebuild-image-actions 14/14、rebuild-image-save-history 5/5。类型检查 0 个错误。
+
+**浏览器实测**（验收账号，场景 `evidence/W09/scenarios/w09-open-only.mjs`）：
+
+| 对象 | 过程 | `/revisions` 次数 | 数据库 ordinal |
+|---|---|---|---|
+| 自己的图 `03e7bab9…`（浅色） | 打开 40 s → × → 重开 40 s → 刷新 40 s，全程不改 | 0 | 47 → 47 |
+| fork 副本 `8bd5a879…`（深色） | 同上，每段 30 s | 0 | 4 → 4 |
+
+- 全程 `dirty=false`，IndexedDB 里没有恢复记录。截图：`evidence/W09/shots/open-only-dark.png`。
+- 改动照常保存：`w09-reload-edit.mjs` 跑「改 → 刷新 → 改」，正好得到 2 个 revision（ordinal 48、49）。
+
+**仍然存在**：房间里保留着上一场的对象模型，所以重开时房间副本仍可能套进画布（`collab-tick` 增加，画面不变）。现在它不标未保存、不写恢复记录、不发布版本。真正多人同时编辑时，别人的改动在本人第一次动手之后才算进本人这边的保存，这和「自动保存只在本人编辑后才存」的既有规则一致。
+
+提交：64bd2feb（修复和测试），以及本节所在的交付提交。
