@@ -5,6 +5,7 @@ import test from "node:test";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
+// D8（2026-10-23）：标题第一帧就在；读源文期间摘要位置留空，不再写「正在读取内容预览」。
 test("document covers render fetched text, honest errors and bounded pending requests", async () => {
   const require = createRequire(import.meta.url);
   const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -20,7 +21,7 @@ test("document covers render fetched text, honest errors and bounded pending req
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const { DocumentShelfCover } = await import(await compileModule("src/shell/document-shelf-cover.tsx", {
     "../i18n/ui/useUI": dataModule('export function useUI() { return value => value; }'),
-    "../lib/media-proxy": dataModule('export function fetchMediaBlob(...args) { return globalThis.__documentCoverFetch(...args); }'),
+    "../lib/media-proxy": dataModule('export function canvasSafeUrl(url) { return url; }'),
     "./doc-editors/office-file": dataModule('export function officePackageKindForItem(){return null;} export async function fetchValidatedOfficePackage(){throw new Error("unused");}'),
   }));
   const { WorkspaceThumbnail } = await import(await compileModule("src/shell/workspace-library-thumbnail.tsx", {
@@ -33,6 +34,7 @@ test("document covers render fetched text, honest errors and bounded pending req
   const node = dom.window.document.createElement("div");
   const root = createRoot(node);
   const realSetTimeout = globalThis.setTimeout;
+  const realFetch = globalThis.fetch;
   let expireRead;
   let expireCover;
   globalThis.setTimeout = (callback, ms, ...args) => {
@@ -43,17 +45,20 @@ test("document covers render fetched text, honest errors and bounded pending req
   const item = (id) => ({ id, key: id, source: "artifact", title: "Notes", kind: "document", artifactType: "document", url: `https://example.test/${id}.txt`, meta: { mime: "text/plain" } });
   const render = async (id) => act(async () => root.render(React.createElement(DocumentShelfCover, { item: item(id), kind: "document", alt: "Notes" })));
   try {
-    globalThis.__documentCoverFetch = async () => new Blob(["# Real heading\nActual document paragraph"]);
+    globalThis.fetch = async () => new Response("# Real heading\nActual document paragraph");
     await render("real");
     assert.equal(node.querySelector('[data-document-cover="excerpt"]') !== null, true);
     assert.match(node.textContent, /Real heading\s*Actual document paragraph/);
     assert.equal(node.querySelector('[aria-hidden="true"]'), null);
-    globalThis.__documentCoverFetch = async () => { throw new Error("network unavailable"); };
+    globalThis.fetch = async () => { throw new Error("network unavailable"); };
     await render("failure");
     assert.match(node.textContent, /暂无内容预览，打开查看素材/);
-    globalThis.__documentCoverFetch = () => new Promise(() => {});
+    globalThis.fetch = () => new Promise(() => {});
     await render("pending");
-    assert.match(node.textContent, /正在读取内容预览/);
+    assert.ok(node.querySelector('[data-document-cover="pending"]'), "pending is its own quiet state");
+    assert.match(node.textContent, /Notes/, "the title renders on the first frame");
+    assert.doesNotMatch(node.textContent, /正在读取|暂无内容预览/, "no reading placeholder while the source is pending");
+    assert.equal(node.querySelector('[role="status"], .v-spinner'), null, "no spinner on a document card");
     await act(async () => expireRead());
     assert.match(node.textContent, /暂无内容预览，打开查看素材/);
 
@@ -70,7 +75,7 @@ test("document covers render fetched text, honest errors and bounded pending req
   } finally {
     await act(async () => root.unmount());
     globalThis.setTimeout = realSetTimeout;
-    delete globalThis.__documentCoverFetch;
+    globalThis.fetch = realFetch;
     delete globalThis.__documentCoverRendition;
     dom.window.close();
   }

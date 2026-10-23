@@ -15,6 +15,7 @@ import {
   DocumentShelfCover,
   itemUsesDocumentShelfCover,
 } from "./document-shelf-cover";
+import { itemUsesTextDocumentCard } from "./document-cover-excerpt";
 import {
   WorkspaceCoverResource,
   coverEvidenceOf,
@@ -23,7 +24,10 @@ import {
   workspaceCoverRenditionPurposes,
 } from "./workspace-library-cover";
 import { WORKSPACE_KIND_LABELS } from "./workspace-library-model";
-import { libraryEditorLabel } from "./library-editor-category";
+import {
+  libraryEditorLabel,
+  translateLibraryTypeLabel,
+} from "./library-editor-category";
 
 const generatedThumbnailCache = new Map<string, string>();
 const generatedThumbnailPending = new Map<string, Promise<string>>();
@@ -79,14 +83,21 @@ export function WorkspaceThumbnail({
   compact?: boolean;
 }) {
   const tt = useUI();
-  const renditionPurposes = item
+  /**
+   * D8：文档类的项直接是文字卡片（标题 + 开头几行）。它的 preview / thumbnail 可能是
+   * 编辑器保存时渲的整页 PNG——这里连签名都不发：给 rendition hook 一个非 durable 的
+   * 空项，它就不碰网络；也不走「浏览器现生成缩略图」。
+   */
+  const textDocumentCard = Boolean(item) && itemUsesTextDocumentCard(item, kind);
+  const renditionPurposes = item && !textDocumentCard
     ? workspaceCoverRenditionPurposes(item)
     : THUMBNAIL_PURPOSES;
   const noDisplayableCover =
+    !textDocumentCard &&
     Boolean(item && isDurableLibraryItem(item)) &&
     renditionPurposes.length === 0;
   const artifactRendition = useArtifactRendition(
-    item || EMPTY_THUMBNAIL_ITEM,
+    textDocumentCard ? EMPTY_THUMBNAIL_ITEM : item || EMPTY_THUMBNAIL_ITEM,
     noDisplayableCover ? [] : renditionPurposes,
   );
   const [failed, setFailed] = useState(false);
@@ -151,6 +162,7 @@ export function WorkspaceThumbnail({
     kind === "geo_map" || kind === "interactive_doc";
   const requiresGeneratedThumbnail = Boolean(
     item &&
+      !textDocumentCard &&
       !forbidsGeneratedThumbnail &&
       canGenerateThumbnail &&
       ["ppt", "sheet", "document", "video", "file"].includes(kind) &&
@@ -178,6 +190,7 @@ export function WorkspaceThumbnail({
   }, [artifactRendition.url, artifactRendition.version, url]);
   useEffect(() => {
     if (
+      textDocumentCard ||
       !referenceKey ||
       generatedThumbnailFailed.has(referenceKey) ||
       !visible ||
@@ -221,13 +234,15 @@ export function WorkspaceThumbnail({
     reference,
     referenceKey,
     requiresGeneratedThumbnail,
+    textDocumentCard,
     url,
     visible,
   ]);
   const documentShelfCover =
-    Boolean(item) &&
-    itemUsesDocumentShelfCover(item, kind) &&
-    (noDisplayableCover || generationError || failed || timedOut);
+    textDocumentCard ||
+    (Boolean(item) &&
+      itemUsesDocumentShelfCover(item, kind) &&
+      (noDisplayableCover || generationError || failed || timedOut));
   const displayUrl =
     noDisplayableCover || solidRejected
       ? ""
@@ -450,13 +465,13 @@ export function WorkspaceThumbnail({
           data-cover-failure={provenPlaceholder ? "placeholder" : "true"}
           title={failureMessage}
         >
-          {!compact && <WorkspaceKindIcon kind={kind} accent={accent} label={item ? libraryEditorLabel(item) : undefined} />}
+          {!compact && <WorkspaceKindIcon kind={kind} accent={accent} label={item ? translateLibraryTypeLabel(tt, libraryEditorLabel(item)) : undefined} />}
           <span className="text-[10px] font-semibold text-[var(--fg-2,#57534e)]">
             {provenPlaceholder ? tt("占位图") : tt("封面不可用")}
           </span>
           <span className="line-clamp-2 text-[9px] leading-tight text-[var(--muted,#a8a29e)]">
             {compact
-              ? tt(item ? libraryEditorLabel(item) : WORKSPACE_KIND_LABELS[kind] || "内容")
+              ? translateLibraryTypeLabel(tt, item ? libraryEditorLabel(item) : WORKSPACE_KIND_LABELS[kind] || "内容")
               : tt(failureMessage)}
           </span>
         </div>
