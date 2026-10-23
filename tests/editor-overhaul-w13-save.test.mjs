@@ -26,6 +26,12 @@ const { useModel3DSave } = await import(await compileModule("src/shell/media-edi
   `),
   "./model3d-project": dataModule(`export async function persistModel3DProject(input) { return globalThis.__w13.persist(input); }`),
 }));
+const { useModel3DProjectBootstrap } = await import(await compileModule("src/shell/media-editors/use-model3d-project-bootstrap.ts", {
+  "../doc-editors/doc-io": dataModule(`
+    export async function loadEditorProject(url, schema) { return globalThis.__w13Manifest.load(url, schema); }
+    export async function saveFileToLibrary() { throw Error('not a save test'); }
+  `),
+}));
 
 const ref = (current) => ({ current });
 function fixture() {
@@ -98,4 +104,36 @@ test("a failed save retains the journal and can be retried without clearing it p
     assert.equal(result, null);
     assert.equal(calls.checkpoints.length, 0);
   } finally { await tree.unmount(); }
+});
+
+test("cold typed projection loads its editor manifest; a broken manifest cannot admit an empty fallback", async () => {
+  for (const broken of [false, true]) {
+    const { options } = fixture();
+    const calls = { urls: [], source: [], errors: [], views: [] };
+    globalThis.__w13Manifest = { load: async (url, schema) => {
+      calls.urls.push([url, schema]);
+      if (broken) throw Error("manifest unavailable");
+      return { checkpointUrl: "", operations: [], view: { exposure: 2.25, background: "#123456" } };
+    } };
+    const bootstrap = { ...options, item: { ...options.item, meta: { editor_manifest_url: "https://example.invalid/manifest.json" } },
+      artifactSourceDigest: "", loadedSourceRef: ref(""), pendingOperationsRef: ref([]), runtimeRef: ref({ clear() {} }),
+      applyView: (view) => calls.views.push(view), setSourceUrl: (url) => calls.source.push(url),
+      setSourceLoading() {}, setModelLoading() {}, setProgress() {}, setRuntimeState() {}, setSourceProvenance() {},
+      setError: (value) => calls.errors.push(value) };
+    const container = document.createElement("div"); document.body.appendChild(container);
+    const root = createRoot(container);
+    function Probe() { useModel3DProjectBootstrap(bootstrap); return null; }
+    try {
+      await act(async () => { root.render(React.createElement(Probe)); await new Promise((resolve) => setTimeout(resolve, 0)); });
+      assert.equal(calls.urls[0][0], "https://example.invalid/manifest.json");
+      if (broken) {
+        assert.deepEqual(calls.source, [""]);
+        assert.ok(calls.errors.some((value) => value.includes("manifest unavailable")));
+      } else {
+        assert.equal(calls.views.at(-1).exposure, 2.25);
+        assert.equal(calls.views.at(-1).background, "#123456");
+        assert.equal(calls.source.at(-1), options.item.url);
+      }
+    } finally { await act(async () => root.unmount()); container.remove(); }
+  }
 });

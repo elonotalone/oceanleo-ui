@@ -181,10 +181,8 @@ export function useModel3DProjectBootstrap({
         view: fallback,
       };
       const projectUrl =
-        typeof item.meta.editor_project_url === "string"
-          ? item.meta.editor_project_url
-          : "";
-      const projectSchema = String(item.meta.editor_project_schema || "");
+        String(item.meta.editor_project_url || item.meta.editor_manifest_url || "");
+      const projectSchema = String(item.meta.editor_project_schema || item.meta.editor_manifest_schema || MODEL3D_PROJECT_SCHEMA);
       if (
         projectUrl &&
         [MODEL3D_PROJECT_SCHEMA, LEGACY_MODEL3D_PROJECT_SCHEMA].includes(
@@ -196,13 +194,21 @@ export function useModel3DProjectBootstrap({
             projectUrl,
             projectSchema,
           );
-          recovered = normalizeModel3DProjectRecovery(
+          const normalized = normalizeModel3DProjectRecovery(
             project,
             fallback,
             originalSource,
-          ) || recovered;
-        } catch {
-          // The creation metadata remains a complete sidecar fallback.
+          );
+          if (!normalized) throw new Error(tt("3D 模型导入失败"));
+          recovered = normalized;
+        } catch (caught) {
+          // A present editor manifest is authoritative. Falling back to an
+          // empty journal could overwrite annotations, view or director state.
+          if (aliveRef.current && generation === sourceGenerationRef.current) {
+            setError(model3DWorkbenchErrorMessage(caught, tt("3D 模型导入失败")));
+            setSourceLoading(false);
+          }
+          return;
         }
       }
       if (!aliveRef.current || generation !== sourceGenerationRef.current) {
@@ -266,6 +272,8 @@ export function useModel3DProjectBootstrap({
     item.meta.editor,
     item.meta.editor_project_schema,
     item.meta.editor_project_url,
+    item.meta.editor_manifest_url,
+    item.meta.editor_manifest_schema,
     item.meta.format,
     item.meta.mime,
     item.meta.model_dependency_base_url,

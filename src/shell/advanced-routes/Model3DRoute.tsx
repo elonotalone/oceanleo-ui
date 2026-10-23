@@ -201,7 +201,7 @@ function Model3DModelRoute({
   const loadRevision = useCallback(
     async (revisionId: string) => {
       const json = await fetchRevisionJson(String(item.artifactId || ""), revisionId, (found) =>
-        String(found.meta.editor_project_url || ""),
+        String(found.meta.editor_project_url || found.meta.editor_manifest_url || ""),
       );
       return json ? (model3dFromRevisionJson(json) as unknown as Model3DRouteSnapshot) : null;
     },
