@@ -16,3 +16,5 @@
 - 21:06 素材库在「卖家在售」探测没回来时画骨架（共享 UI 4491dd92）；加英文命名测试。
 - 21:12 父 agent 已按请求第 1 条改了 bay-state.ts（9a31e864），随后把 todo 测试转成正式测试（7ba00bc0）：lbp-w02-browse 46 条全绿，todo 0。
 - 21:13 实测：后端 `tests/test_bay_*.py + test_talent_services/demands/categories_v2` 960 passed；对 BayAssetSellers / BayFeedItemCard / 货架 / BayList / 素材库 / PanelBrowse 的样式类逐个比对已提交的 ui.css，全部已在产物里（不用重编）；交卷文件初稿写完（verdicts/W02-delivery.md），共享 UI / 门户 typecheck 在 heavy 槽排队，跑完回填 §7。
+- 21:25 `bay-shell-copy` 第 3 条改成「在最终运行时总表 UI_MESSAGES 里有 16 语译文就算数」（比先前并 lbp 分表更稳，W04 的「列表」也过了）：3/3 绿。
+- 21:26 实测（真库，只读）：叠两个 `.or_()`（搜索词 + listing_kind=service）是 AND，所以搜索与种类叠加正确。

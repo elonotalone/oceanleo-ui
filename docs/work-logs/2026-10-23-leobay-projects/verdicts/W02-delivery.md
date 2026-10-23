@@ -104,11 +104,11 @@ tests/bay-shell-feed.test.mjs  tests=6 pass=6 fail=0 todo=0
 tests/bay-shell-state.test.mjs  tests=16 pass=16 fail=0 todo=0
 tests/bay-template-shelf.test.mjs  tests=8 pass=8 fail=0 todo=0
 tests/bay-toolbar.test.mjs  tests=6 pass=6 fail=0 todo=0
-tests/bay-shell-copy.test.mjs  tests=3 pass=2 fail=1 todo=0
+tests/bay-shell-copy.test.mjs  tests=3 pass=3 fail=0 todo=0
 ```
 
 - `lbp-w02-browse` 里「bay-state 的求购 offer 白名单认 other」那条原先是 `todo`（`bay-state.ts` 不归我）；父 agent 已按 §9 第 1 条改了 `bay-state.ts`（`9a31e864`）并把它转成正式测试（`7ba00bc0`），现在 46 条全绿。
-- `bay-shell-copy` 第 3 条剩下的唯一缺口是 `列表`（`BayMine.tsx`，W04 的文件，等 W04 把它写进自己的分表）。我在该测试里做的是小范围精确改：把 11 张 `lbp-wNN-copy.ts` 并进查找，让各 owner 写在自己分表里的新词条算数（原来只认 `bay-copy.ts` 和基础词典）。
+- `bay-shell-copy` 第 3 条原来只认 `bay-copy.ts` 和基础词典，认不出各 owner 写在自己 `lbp-wNN-copy.ts` 里的新词条（`全部站点`、`网站与软件服务`、W04 的 `列表` 都因此红）。我在该测试里做了一处小范围精确改：外壳源码里的句子在最终的运行时总表 `UI_MESSAGES`（用户真正查的那一份）里有 16 语译文就算数。现在 3/3 绿。
 - 新增的 `lbp-w02-browse` 覆盖：种类合同与旧值兼容、`bayFeedRequestFor` / `useBayFeed` 每类带对 `listing_kind`（含求购 `other`、现成文件默认不取、选项透传）、客户端查询串、出售/求购下拉与种类下拉（五个选项、名字、求购改 offer、读到的永远是真正在取的那一类）、站点「全部站点」、其他栏信息流、清除筛选、发布键按栏发布、两个货架（顺序、空态、加载中不算空、出错重试只重取出错那边、翻页）、素材库「卖家在售」（来源顺序与名字、默认规则、探测未回、换类型不再抢默认、地址钉住、境内、站点筛选、各「全部」带名词）、右侧栏、分表 16 语、英文命名。
 
 后端：
