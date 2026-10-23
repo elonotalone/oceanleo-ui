@@ -79,7 +79,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
 
   // close (× in the top bar: flushes pending work) and reopen
   // × is the last button of the one-row top bar (D1).
-  const close = page.locator("[aria-label='工作区操作'] button, [aria-label='Workspace actions'] button").last();
+  const close = page.locator('[data-global-row-slot="close"] button').first();
   await close.click().catch((error) => log("close click failed", String(error).slice(0, 120)));
   const closedAt = Date.now();
   while (Date.now() - closedAt < 60000) {

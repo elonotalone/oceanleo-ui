@@ -19,6 +19,7 @@
 ## Current step (Codex continuation)
 - Saved protocol own-library A/B/offline retry confirmed against DB (ordinals 6/7/8 on b0fed7d4). Focused existing group 54/54, renewal hook 7/7.
 - Fixed idle grant renewal; running updated bar matrix after dev HMR settles. Parent owns export flip parity and dev API restart.
+- Final video dark matrix and caption light matrix complete; actual close/reopen verified. Delivery: `verdicts/CODEX-W11.md`. Parent acceptance still owns public fork/card update, image/audio matrix and per-control reopen, shared Enter behavior, full suite/typecheck and slot freshness.
 
 ## Next
 - browser: scenario w11-bar.mjs clicks each control, before/after shots; save protocol; delivery.

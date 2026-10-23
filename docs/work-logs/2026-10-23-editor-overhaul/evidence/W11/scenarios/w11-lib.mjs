@@ -53,6 +53,13 @@ export async function canvasStats(page) {
     const { width, height } = canvas;
     const data = ctx.getImageData(0, 0, width, height).data;
     let r = 0, g = 0, b = 0, n = 0;
+    let hash = 2166136261;
+    // Sparse grid/mean alone misses captions occupying a small part of a frame.
+    for (let i = 0; i < data.length; i += 16) {
+      hash = Math.imul(hash ^ data[i], 16777619);
+      hash = Math.imul(hash ^ data[i + 1], 16777619);
+      hash = Math.imul(hash ^ data[i + 2], 16777619);
+    }
     const grid = [];
     for (let gy = 0; gy < 6; gy += 1) {
       for (let gx = 0; gx < 8; gx += 1) {
@@ -70,6 +77,7 @@ export async function canvasStats(page) {
       height,
       mean: [Math.round(r / n), Math.round(g / n), Math.round(b / n)],
       signature: grid.join(""),
+      pixelHash: hash >>> 0,
     };
   });
 }
@@ -77,6 +85,7 @@ export async function canvasStats(page) {
 export function statsDiffer(before, after) {
   if (!before || !after) return false;
   if (before.width !== after.width || before.height !== after.height) return true;
+  if (before.pixelHash !== after.pixelHash) return true;
   if (before.signature !== after.signature) return true;
   return before.mean.some((value, index) => Math.abs(value - after.mean[index]) > 2);
 }

@@ -59,6 +59,12 @@ export default async function ({ page, log, shot, helpers, args }) {
   }));
   log("open", JSON.stringify(diag));
   await shot(`${tag}-open`);
+  if (tag === "text" && !(await selectClip(page, { trackIndex, clipIndex: 0 }))) {
+    await page.locator('[data-video-timeline-content]').click({ position: { x: 700, y: 200 } });
+    await page.getByRole('button', { name: /媒体与轨道|Media.*tracks/i }).first().click();
+    await page.getByRole('button', { name: /添加文字|Add text/i, exact: true }).click();
+    await page.waitForTimeout(1000);
+  }
   if (!(await selectClip(page, { trackIndex, clipIndex: 0 }))) {
     log("no clip on track", trackIndex);
     return;
@@ -104,19 +110,41 @@ export default async function ({ page, log, shot, helpers, args }) {
       });
       await shot(`${tag}-${id.replace("selection-inspector-", "panel-")}`);
       const sub = [];
+      const textarea = page.locator('[data-selection-inspector] textarea').first();
+      if (await textarea.count()) {
+        const before = await snapshot(page);
+        await textarea.fill('W11 saved caption');
+        await textarea.blur();
+        await page.waitForTimeout(800);
+        const after = await snapshot(page);
+        const undone = await undo(page);
+        sub.push({ text: true, effect: changed(before, after), undone });
+      }
+      const option = page.locator('[data-selection-inspector] button[aria-pressed="false"]').first();
+      if (await option.count()) {
+        const before = await snapshot(page);
+        const label = await option.innerText();
+        await option.click();
+        await page.waitForTimeout(800);
+        const after = await snapshot(page);
+        const undone = await undo(page);
+        sub.push({ option: label, effect: changed(before, after), undone });
+      }
       const inputs = page.locator("[data-selection-inspector] input");
       const count = await inputs.count();
       for (let index = 0; index < count; index += 1) {
         const input = inputs.nth(index);
         const type = await input.getAttribute("type");
         const label = (await input.getAttribute("aria-label")) || String(index);
-        if (type === "checkbox" || type === "color") continue;
+        if (type === "checkbox" || type === "color" || type === "text") continue;
         const before = await snapshot(page);
         const value = Number(await input.inputValue().catch(() => "0")) || 0;
         const max = Number((await input.getAttribute("max")) || value + 50);
         const min = Number((await input.getAttribute("min")) || value - 50);
         const step = Number((await input.getAttribute("step")) || 1);
-        const target = value + (max - value > value - min ? Math.max(step, (max - value) / 2) : -Math.max(step, (value - min) / 2));
+        const target = id === 'selection-inspector-video-timing'
+          ? (index === 1 ? Math.max(0.1, value / 2) : value + 1)
+          : value + (max - value > value - min ? Math.max(step, (max - value) / 2) : -Math.max(step, (value - min) / 2));
         if (type === "range") {
           await input.evaluate((el, next) => {
             const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -136,15 +164,30 @@ export default async function ({ page, log, shot, helpers, args }) {
         const undone = await undo(page);
         const back = await snapshot(page);
         sub.push({ label, type, from: value, to: target, effect, undone, restored: !statsDiffer(before.canvas, back.canvas) && before.text === back.text });
-        await root.locator("button").first().click();
-        await page.waitForTimeout(300);
+        if (!(await page.locator("[data-selection-inspector]").isVisible().catch(() => false))) {
+          await root.locator("button").first().click();
+          await page.waitForTimeout(300);
+        }
       }
       results.push({ id, panel, sub });
+      log("panel-result", JSON.stringify({ id, panel, sub }));
       await closeOverlays(page);
       continue;
     }
     const before = await snapshot(page);
-    await root.locator("button").first().click();
+    const directNumber = root.locator('input[type="number"]');
+    const directColor = root.locator('input[type="color"]');
+    if (await directColor.count()) {
+      await directColor.fill('#ff0000');
+      await directColor.blur();
+    } else if (await directNumber.count()) {
+      const input = directNumber.first();
+      const value = Number(await input.inputValue());
+      await input.fill(String(value + 20));
+      await input.blur();
+    } else {
+      await root.locator("button").first().click();
+    }
     await page.waitForTimeout(700);
     let picked = null;
     if (await openPopover(page)) {
