@@ -1,9 +1,11 @@
 // 「通话检测」的连接测试用的独立 SDK 实例（仲裁 A-5，形状见 signals/W14-to-W05.md）。
 // 用 `AliRtcEngine.createInstance()`（7.3.8 声明里有多实例方法），不碰正在进行的通话实例；
 // 只发布音频（可指定麦克风），不订阅任何远端，不发摄像头。统计与 `callActions.getStats()` 同口径。
+// V02 D8：入会前显式采集麦克风（不靠 SDK 入会后的自动采集），入会后再确认一次发布；上行码率取本地 outbound-rtp
+// （`rtcLocalAudioStats`），不再只看 candidate-pair（那条连接可能只收不发，算出来恒为 0）。
 import type { RtcCredentials } from "../../../../lib/im/call-types";
 import { createStatsTracker, type StatsTracker } from "./network";
-import { loadArtcSdk, prepareEngine, type ArtcEngine, type ArtcSdk } from "./sdk";
+import { PUBLISH_STATE, loadArtcSdk, prepareEngine, type ArtcEngine, type ArtcSdk } from "./sdk";
 import type { CallStats } from "./types";
 
 export interface DiagnosticsEngine {
@@ -24,6 +26,10 @@ export function diagnosticsEngineFrom(sdk: ArtcSdk, tracker: StatsTracker = crea
   engine.on("rtcStats", (pair: unknown) => tracker.onTransport(pair));
   engine.on("rtcLocalAudioStats", (list: unknown) => tracker.onLocalOutbound("audio", list));
   engine.on("networkQuality", (event: unknown) => tracker.onNetworkQuality(event));
+  let published = false;
+  engine.on("audioPublishStateChanged", (_old: unknown, state: unknown) => {
+    published = state === PUBLISH_STATE.published;
+  });
 
   return {
     async join(rtc, opts = {}) {
@@ -35,8 +41,8 @@ export function diagnosticsEngineFrom(sdk: ArtcSdk, tracker: StatsTracker = crea
       await engine.publishLocalVideoStream(false);
       await engine.publishLocalAudioStream(true);
       const micDeviceId = opts.micDeviceId ?? null;
-      if (micDeviceId && engine.startAudioCapture) {
-        await engine.startAudioCapture({ deviceId: { exact: micDeviceId } });
+      if (engine.startAudioCapture) {
+        await engine.startAudioCapture(micDeviceId ? { deviceId: { exact: micDeviceId } } : undefined);
       }
       joined = true;
       try {
@@ -45,6 +51,8 @@ export function diagnosticsEngineFrom(sdk: ArtcSdk, tracker: StatsTracker = crea
         joined = false;
         throw error;
       }
+      // 入会后（已连接）再确认一次：已有采集就推流，没有就现采（SDK publishLocalAudioStream 的已连接分支）。
+      if (!published) await engine.publishLocalAudioStream(true);
     },
     async getStats() {
       return tracker.stats();

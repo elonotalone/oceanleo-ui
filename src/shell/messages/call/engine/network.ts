@@ -5,10 +5,16 @@
 //   - `rtcRemoteAudioStats` / `rtcRemoteVideoStats`：[{uid, track, stats: inbound-rtp}]（packetsLost、packetsReceived、bytesReceived）
 //   - `networkQuality`：{subscribe:{rtt 毫秒, loss 百分比, quality 0 极好 … 5 断开、6 未知}}（只有下行；没有远端时为未知）
 // 取不到的字段一律给 null，不编造：Web SDK 不给上行丢包（publisher 只给 outbound-rtp，没有 remote-inbound-rtp），所以 upLossPct 恒为 null。
+// 码率口径（V02 D8）：优先用媒体统计——上行 = 本地 outbound-rtp 的 bytesSent 增量（音频 + 视频），下行 = 各远端 inbound-rtp
+// 的 bytesReceived 增量之和；没有媒体统计时才退回 candidate-pair 的字节数。原因：`rtcStats` 取的是 `getPCStats()` 那条连接的
+// candidate-pair，多连接模式下可能是只收不发的那条，bytesSent 只涨 RTCP，四舍五入就是 0 kbps。
 import { NETWORK_QUALITY } from "./sdk";
 import type { CallStats, NetLevel } from "./types";
 
 export const EMPTY_STATS: CallStats = { rttMs: null, upLossPct: null, downLossPct: null, upKbps: null, downKbps: null };
+
+/** 媒体统计 2 秒一次；超过 5 秒没更新的分路不再计入码率（关了摄像头、对方离开）。 */
+export const MEDIA_FRESH_MS = 5_000;
 
 function num(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -59,9 +65,9 @@ interface LossSample {
 export interface StatsTracker {
   /** `rtcStats` 事件（candidate-pair）。 */
   onTransport(pair: unknown): void;
-  /** `rtcLocalAudioStats` / `rtcLocalVideoStats` 事件（outbound-rtp 列表）；只在 candidate-pair 不带字节数时用来估上行。 */
+  /** `rtcLocalAudioStats` / `rtcLocalVideoStats` 事件（outbound-rtp 列表）：上行码率的首选来源。 */
   onLocalOutbound(kind: "audio" | "video", list: unknown): void;
-  /** `rtcRemoteAudioStats` / `rtcRemoteVideoStats` 事件（inbound-rtp 列表，带 uid）。 */
+  /** `rtcRemoteAudioStats` / `rtcRemoteVideoStats` 事件（inbound-rtp 列表，带 uid）：下行码率与每人丢包。 */
   onRemoteInbound(kind: "audio" | "video", list: unknown): void;
   /** `networkQuality` 事件。 */
   onNetworkQuality(event: unknown): void;
@@ -82,15 +88,39 @@ export function createStatsTracker(now: () => number = () => Date.now()): StatsT
   let quality: number | null = null;
   let qualityRtt: number | null = null;
   let lastPair: ByteSample | null = null;
-  let pairHasBytes = false;
-  let lastOutbound: { at: number; bytes: number } | null = null;
-  const outboundBytes: Record<"audio" | "video", number> = { audio: 0, video: 0 };
+  /** 媒体统计算出的分路码率（key = 本地 "out:audio"/"out:video"，远端 "in:<uid>:<audio|video>:<track>"）。 */
+  const mediaRates = new Map<string, { at: number; bytes: number; rate: number | null; seenAt: number }>();
   const remoteLoss = new Map<string, { prev: LossSample | null; pct: number | null }>();
   const remoteTotals = new Map<string, Record<"audio" | "video", LossSample>>();
 
   function kbps(deltaBytes: number, deltaMs: number): number | null {
     if (!(deltaMs > 0) || deltaBytes < 0) return null;
     return Math.round((deltaBytes * 8) / deltaMs);
+  }
+
+  /** 记一路累计字节数，算出这一路的码率（计数回退 = 重新订阅/重新推流，等下一个样本）。 */
+  function noteMedia(key: string, bytes: number, at: number): void {
+    const previous = mediaRates.get(key);
+    let rate: number | null = null;
+    if (previous && at > previous.at && bytes >= previous.bytes) rate = kbps(bytes - previous.bytes, at - previous.at);
+    mediaRates.set(key, { at, bytes, rate, seenAt: now() });
+  }
+
+  /** 某个方向上「最近 5 秒内有样本」的分路码率之和；一路都没有返回 null。 */
+  function mediaRate(prefix: "out:" | "in:"): number | null {
+    const fresh = now() - MEDIA_FRESH_MS;
+    let total = 0;
+    let any = false;
+    for (const [key, entry] of mediaRates) {
+      if (!key.startsWith(prefix) || entry.seenAt < fresh || entry.rate === null) continue;
+      total += entry.rate;
+      any = true;
+    }
+    return any ? total : null;
+  }
+
+  function statsAt(stats: Record<string, unknown>): number {
+    return num(stats.timestamp) ?? now();
   }
 
   return {
@@ -101,7 +131,6 @@ export function createStatsTracker(now: () => number = () => Date.now()): StatsT
       const at = num(row.timestamp) ?? now();
       const sent = num(row.bytesSent);
       const received = num(row.bytesReceived);
-      pairHasBytes = sent !== null || received !== null;
       if (lastPair) {
         const dt = at - lastPair.at;
         if (sent !== null && lastPair.sent !== null) upKbps = kbps(sent - lastPair.sent, dt);
@@ -110,18 +139,19 @@ export function createStatsTracker(now: () => number = () => Date.now()): StatsT
       lastPair = { at, sent, received };
     },
     onLocalOutbound(kind, list) {
-      if (!Array.isArray(list)) return;
+      if (!Array.isArray(list) || list.length === 0) return;
       let total = 0;
+      let at = 0;
+      let any = false;
       for (const item of list) {
         const stats = ((item ?? {}) as { stats?: Record<string, unknown> }).stats ?? {};
-        total += num(stats.bytesSent) ?? 0;
+        const sent = num(stats.bytesSent);
+        if (sent === null) continue;
+        total += sent;
+        at = Math.max(at, statsAt(stats));
+        any = true;
       }
-      outboundBytes[kind] = total;
-      if (pairHasBytes) return;
-      const at = now();
-      const bytes = outboundBytes.audio + outboundBytes.video;
-      if (lastOutbound) upKbps = kbps(bytes - lastOutbound.bytes, at - lastOutbound.at);
-      lastOutbound = { at, bytes };
+      if (any) noteMedia(`out:${kind}`, total, at);
     },
     onRemoteInbound(kind, list) {
       if (!Array.isArray(list)) return;
@@ -130,6 +160,11 @@ export function createStatsTracker(now: () => number = () => Date.now()): StatsT
         const uid = typeof row.uid === "string" ? row.uid : "";
         if (!uid) continue;
         const stats = row.stats ?? {};
+        const bytesReceived = num(stats.bytesReceived);
+        if (bytesReceived !== null) {
+          const track = num((item as { track?: unknown }).track) ?? 0;
+          noteMedia(`in:${uid}:${kind}:${track}`, bytesReceived, statsAt(stats));
+        }
         const lost = num(stats.packetsLost);
         const received = num(stats.packetsReceived);
         if (lost === null || received === null) continue;
@@ -172,8 +207,8 @@ export function createStatsTracker(now: () => number = () => Date.now()): StatsT
         rttMs: rttMs ?? qualityRtt,
         upLossPct: null,
         downLossPct,
-        upKbps,
-        downKbps,
+        upKbps: mediaRate("out:") ?? upKbps,
+        downKbps: mediaRate("in:") ?? downKbps,
       };
     },
     selfLevel() {
@@ -193,10 +228,7 @@ export function createStatsTracker(now: () => number = () => Date.now()): StatsT
       quality = null;
       qualityRtt = null;
       lastPair = null;
-      pairHasBytes = false;
-      lastOutbound = null;
-      outboundBytes.audio = 0;
-      outboundBytes.video = 0;
+      mediaRates.clear();
       remoteLoss.clear();
       remoteTotals.clear();
     },

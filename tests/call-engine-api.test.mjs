@@ -117,10 +117,11 @@ test("per-user video wants prefer BizControl (camera and screen separately); fal
   assert.deepEqual(calls, [["video", "u", true], ["screen", "u", true], ["video", "u", false], ["screen", "u", false]]);
 });
 
-function fakeDiagEngine() {
+function fakeDiagEngine(onJoinHook = null) {
   const calls = [];
   const handlers = new Map();
-  return {
+  let onJoin = null;
+  const engine = {
     calls,
     emit: (name, ...args) => (handlers.get(name) ?? []).forEach((fn) => fn(...args)),
     on: (name, fn) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
@@ -131,10 +132,15 @@ function fakeDiagEngine() {
     publishLocalVideoStream: async (v) => calls.push(["publishVideo", v]),
     publishLocalAudioStream: async (v) => calls.push(["publishAudio", v]),
     startAudioCapture: async (c) => calls.push(["startAudioCapture", c]),
-    joinChannel: async (token, name) => calls.push(["joinChannel", token, name]),
+    joinChannel: async (token, name) => {
+      calls.push(["joinChannel", token, name]);
+      if (onJoin) onJoin();
+    },
     leaveChannel: async () => calls.push(["leaveChannel"]),
     destroy: async () => calls.push(["destroy"]),
   };
+  if (onJoinHook) onJoin = () => onJoinHook(engine);
+  return engine;
 }
 
 test("diagnostics engine (A-5, A-11): own instance, interactive role, audio only, no remote subscriptions, single-param token", async () => {
@@ -153,14 +159,20 @@ test("diagnostics engine (A-5, A-11): own instance, interactive role, audio only
     ["publishAudio", true],
     ["startAudioCapture", { deviceId: { exact: "mic-9" } }],
     ["joinChannel", "BASE64TOKEN", "测试"],
-  ]);
+    ["publishAudio", true],
+  ], "V02 D8: the microphone is captured before joining and publishing is confirmed after joining");
   assert.equal(CHANNEL_PROFILE, "interactive_live");
   assert.equal(CLIENT_ROLE, "interactive");
   engine.emit("rtcStats", { currentRoundTripTime: 0.05, bytesSent: 1_000, bytesReceived: 0, timestamp: 0 });
   engine.emit("rtcStats", { currentRoundTripTime: 0.05, bytesSent: 6_000, bytesReceived: 0, timestamp: 1_000 });
-  const stats = await diag.getStats();
+  let stats = await diag.getStats();
   assert.equal(stats.rttMs, 50);
-  assert.equal(stats.upKbps, 40);
+  assert.equal(stats.upKbps, 40, "no media stats yet: fall back to the candidate pair");
+  // 媒体统计到了：上行按 outbound-rtp 算（candidate-pair 可能是只收不发的那条连接）。
+  engine.emit("rtcLocalAudioStats", [{ track: 1, stats: { type: "outbound-rtp", bytesSent: 10_000, timestamp: 2_000 } }]);
+  engine.emit("rtcLocalAudioStats", [{ track: 1, stats: { type: "outbound-rtp", bytesSent: 18_000, timestamp: 4_000 } }]);
+  stats = await diag.getStats();
+  assert.equal(stats.upKbps, 32);
   assert.equal(stats.upLossPct, null);
   assert.equal(stats.downLossPct, null, "nobody else is in the diagnostic channel");
   await diag.leave();
@@ -256,4 +268,41 @@ test("device memory: defaults when empty or corrupted, merges patches, ignores j
   assert.deepEqual(readPrefs(storage), { ...DEFAULT_PREFS, camera: false });
   const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
   assert.deepEqual(writePrefs(throwing, { mic: false }), { ...DEFAULT_PREFS, mic: false }, "storage failures never break a call");
+});
+
+test("D8: diagnostics captures the default microphone without a device id and skips the extra publish once the SDK says published", async () => {
+  const engine = fakeDiagEngine((e) => e.emit("audioPublishStateChanged", 2, 3, 120, "diag-x"));
+  const diag = diagnosticsEngineFrom({ createEngine: () => engine });
+  await diag.join({ app_id: "a", channel_id: "diag-x", user_id: "u", token: "T", timestamp: 1, expires_at: "x" });
+  assert.deepEqual(engine.calls.filter((c) => c[0] === "startAudioCapture"), [["startAudioCapture", undefined]], "default microphone captured explicitly");
+  assert.deepEqual(engine.calls.filter((c) => c[0] === "publishAudio"), [["publishAudio", true]], "already published during join: no second publish");
+  await diag.leave();
+});
+
+test("D8: upload/download rates come from media stats first; an RTCP-only candidate pair can no longer report 0 kbps", () => {
+  let now = 100_000;
+  const tracker = createStatsTracker(() => now);
+  // 只收不发的连接：两次 candidate-pair 之间 bytesSent 只涨了 RTCP 的 60 字节。
+  tracker.onTransport({ currentRoundTripTime: 0.03, bytesSent: 1_000, bytesReceived: 0, timestamp: 1_000 });
+  tracker.onTransport({ currentRoundTripTime: 0.03, bytesSent: 1_060, bytesReceived: 0, timestamp: 3_000 });
+  assert.equal(tracker.stats().upKbps, 0, "the transport alone says ~0 kbps");
+  tracker.onLocalOutbound("audio", [{ track: 1, stats: { bytesSent: 20_000, timestamp: 1_000 } }]);
+  tracker.onLocalOutbound("video", [{ track: 1, stats: { bytesSent: 100_000, timestamp: 1_000 } }, { track: 2, stats: { bytesSent: 0, timestamp: 1_000 } }]);
+  now += 2_000;
+  tracker.onLocalOutbound("audio", [{ track: 1, stats: { bytesSent: 28_000, timestamp: 3_000 } }]);
+  tracker.onLocalOutbound("video", [{ track: 1, stats: { bytesSent: 225_000, timestamp: 3_000 } }, { track: 2, stats: { bytesSent: 0, timestamp: 3_000 } }]);
+  assert.equal(tracker.stats().upKbps, 32 + 500, "audio 32 kbps + camera 500 kbps from outbound-rtp");
+  // 下行：各远端 inbound-rtp 之和。
+  tracker.onRemoteInbound("audio", [{ uid: "a", track: 1, stats: { bytesReceived: 10_000, packetsLost: 0, packetsReceived: 100, timestamp: 1_000 } }, { uid: "b", track: 1, stats: { bytesReceived: 5_000, packetsLost: 0, packetsReceived: 50, timestamp: 1_000 } }]);
+  now += 2_000;
+  tracker.onRemoteInbound("audio", [{ uid: "a", track: 1, stats: { bytesReceived: 18_000, packetsLost: 0, packetsReceived: 200, timestamp: 3_000 } }, { uid: "b", track: 1, stats: { bytesReceived: 13_000, packetsLost: 0, packetsReceived: 150, timestamp: 3_000 } }]);
+  assert.equal(tracker.stats().downKbps, 64, "32 + 32 kbps");
+  // 计数回退（重新订阅）：这一路等下一个样本，不出负数。
+  now += 2_000;
+  tracker.onRemoteInbound("audio", [{ uid: "a", track: 1, stats: { bytesReceived: 500, packetsLost: 0, packetsReceived: 5, timestamp: 5_000 } }, { uid: "b", track: 1, stats: { bytesReceived: 21_000, packetsLost: 0, packetsReceived: 250, timestamp: 5_000 } }]);
+  assert.equal(tracker.stats().downKbps, 32, "only b counts in this window");
+  // 5 秒没有媒体样本（关了摄像头/没人了）：退回 candidate-pair。
+  now += 6_000;
+  assert.equal(tracker.stats().upKbps, 0, "stale media samples are ignored; transport fallback");
+  assert.equal(tracker.stats().downKbps, 0);
 });

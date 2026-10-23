@@ -83,6 +83,8 @@ export const CONNECTION_STATUS = { init: 0, disconnected: 1, connecting: 2, conn
 export const NETWORK_QUALITY = { excellent: 0, good: 1, poor: 2, bad: 3, veryBad: 4, disconnected: 5, unknown: 6 } as const;
 /** AliRtcOnByeType */
 export const BYE_TYPE = { kicked: 1, channelTerminated: 2, userReplaced: 3 } as const;
+/** AliRtcPublishState（声明 :2273；`audioPublishStateChanged(old, new, …)` 的取值）。 */
+export const PUBLISH_STATE = { idle: 0, noPublish: 1, publishing: 2, published: 3, reconnecting: 4 } as const;
 /** AliRtcUserOfflineReason */
 export const OFFLINE_REASON = { quit: 0, dropped: 1, becomeAudience: 2 } as const;
 /** AliRtcEngineLocalDeviceType */
