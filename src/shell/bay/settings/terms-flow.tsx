@@ -21,7 +21,7 @@ import { bayUiLocale } from "./terms-text";
 let activeFlow: Promise<boolean> | null = null;
 const acceptedListeners = new Set<() => void>();
 
-/** 条款在任何地方被同意后通知；设置里的「规则与条款」、BayTermsGate 据此刷新。 */
+/** 条款在任何地方被同意后通知；BayTermsGate 等据此刷新。 */
 export function subscribeBayTermsAccepted(listener: () => void): () => void {
   acceptedListeners.add(listener);
   return () => {

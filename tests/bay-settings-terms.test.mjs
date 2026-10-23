@@ -157,7 +157,7 @@ test("没同意：弹窗，点「同意并继续」后记下版本并返回 true
   assert.equal(await pending, true);
   assert.deepEqual(posts(b).map((call) => [call.path, call.body]), [["/v1/talent/terms/accept", { version: 3 }]]);
   await settleClosed();
-  assert.equal(notified, 1, "同意后通知设置里的「规则与条款」刷新");
+  assert.equal(notified, 1, "同意后通知订阅者（条款门等）刷新");
   off();
 });
 
