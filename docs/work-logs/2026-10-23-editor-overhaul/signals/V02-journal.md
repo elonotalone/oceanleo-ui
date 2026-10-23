@@ -3,3 +3,7 @@
 - 05:08Z [实测] harness 可用：验收账号登录 `/library`，`htmlClass=light`，库里只有父 agent 的 `[P] notes.txt`（root `467fd217`）。验收账号历史 root 144 个，现存 1 个，`editorInternal` 现存 0 个。
 - 05:10Z [实测] 库卡片 DOM：`[data-collection-card-grid] > div > button[aria-label="预览「<标题>」"]`；验收账号是全波共用账号（已见 `[W07] sample.pptx`），所以 V02 的计数一律按标题前缀 `[V02]` 过滤。
 - 05:20Z [实测] 开发槽过载：`/advanced/presentation_editing` 两次 150s 导航超时，curl 502（78s）；`/library` curl 200s 超时。容器日志在 05:16–05:20Z 每 30–90s 一次「shared UI source changed」（owner 们在改共享源码）。等一会儿重试。
+- 05:22Z [父 agent 告知] 05:09–05:25Z 超时是预览代理连接池满（64→512 已修），非产品问题。
+- 05:27Z [实测] 10 件 `[V02] R0 *` 上传成功，root id 见 `evidence/V02/r0-items.json`（ordinal 均为 1，editorInternal=false）。
+- 05:35Z [实测] 自有文件打开路径：`/library?item=<id>` → 详情 `button[data-artifact-action=edit]` → 右栏编辑器；顶栏有 `[data-workspace-save-launcher][data-save-state]`、`关闭右侧面板`(×)、主题键 `data-plugin-theme-toggle`；txt 打开后初始状态 `saved`。
+- 05:53Z 会话中断后恢复（父 agent 已 salvage 提交 ac71ad60），接着做 R0。
