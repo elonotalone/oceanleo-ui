@@ -44,6 +44,8 @@ import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
+import { withEditorHistoryCommand } from "../workbench-material-command";
+import { advancedRootItemId } from "../advanced-session";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { imageSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 import {
@@ -198,7 +200,34 @@ export function ImageRoute({
     }),
     [editor.addImageFromUrl, editor.replaceSelectedImageFromUrl, viewOnly],
   );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  // 素材库点一下 / 拖进来 = 插入；选中图片时 = 替换。走 W02 的 command 契约（signals/W02-to-editors.md）：
+  // 执行仍是上面的 mutate，进 Fabric 自己的撤销历史；载入中或还没有版本时不登记，面板如实说「还不能插入」。
+  const selectedImage =
+    editor.selected?.kind === "image" && !editor.selected.locked ? editor.selected : null;
+  const materialCommandAdapter = useMemo(
+    () =>
+      withEditorHistoryCommand(materialAdapter, {
+        documentId: activeItem.artifactId ? advancedRootItemId(activeItem) : "",
+        targetRevisionId: editor.loading
+          ? ""
+          : String(activeItem.revisionId || activeItem.meta.revision_id || ""),
+        replaceTarget: () =>
+          selectedImage
+            ? {
+                targetId: selectedImage.id,
+                slotId: "canvas",
+                geometry: {
+                  x: selectedImage.x,
+                  y: selectedImage.y,
+                  width: selectedImage.width,
+                  height: selectedImage.height,
+                },
+              }
+            : null,
+      }),
+    [activeItem, editor.loading, materialAdapter, selectedImage],
+  );
+  useWorkbenchMaterialAdapter(materialCommandAdapter);
   const imageAdmitted = imageSourcePersistenceAdmitted({
     loading: editor.loading,
     sceneDiagnostic: editor.sceneDiagnostic,

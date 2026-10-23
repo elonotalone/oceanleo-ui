@@ -150,6 +150,24 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     log("control-missing", id);
     return false;
   };
+  // Like helpers.waitSaved, but a transient error is logged (it is a finding) and waited out.
+  const waitSettled = async (tag, timeout = 120000) => {
+    const started = Date.now();
+    let sawError = false;
+    while (Date.now() - started < timeout) {
+      const state = await helpers.saveState(page);
+      if (state === "saved") {
+        log("settled", tag, stamp(), sawError ? "after-error" : "clean");
+        return;
+      }
+      if (state === "error" && !sawError) {
+        sawError = true;
+        log("transient-error", tag, stamp(), JSON.stringify(await launcher().getAttribute("title").catch(() => null)));
+      }
+      await page.waitForTimeout(500);
+    }
+    throw new Error(`${tag}: not saved within ${timeout} ms`);
+  };
   const retryFromMenu = async () => {
     await launcher().click().catch(() => {});
     await page.waitForTimeout(500);
@@ -172,8 +190,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     if (!(await clickControl(id))) throw new Error(`${id} control not found`);
     log(`edit${n}`, stamp(), id);
     await page.waitForTimeout(500);
-    await helpers.waitSaved(page, { timeout: 90000 });
-    log(`saved${n}`, stamp());
+    await waitSettled(`save${n}`);
   }
   await shot(`${label}-after-two-saves`);
   // 2. version tier: let the idle timer run, then close through the top bar ×

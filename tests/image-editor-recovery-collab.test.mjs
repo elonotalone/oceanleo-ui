@@ -89,3 +89,14 @@ test("remote apply diffs content only; recovery restore skips what is already on
     assert.match(stage, new RegExp(attribute));
   }
 });
+
+// W02 → W09 (09:15Z): material click/drag-to-insert needs the command/history contract.
+test("image material adapter registers the editor-history command contract", () => {
+  const route = source("../src/shell/advanced-routes/ImageRoute.tsx");
+  assert.match(route, /withEditorHistoryCommand\(materialAdapter, \{/);
+  assert.match(route, /useWorkbenchMaterialAdapter\(materialCommandAdapter\)/);
+  assert.doesNotMatch(route, /useWorkbenchMaterialAdapter\(materialAdapter\)/);
+  // No contract while loading: the panel says "cannot insert yet" instead of pretending.
+  assert.match(route, /targetRevisionId: editor\.loading\s*\?\s*""/);
+  assert.match(route, /editor\.selected\?\.kind === "image" && !editor\.selected\.locked/);
+});
