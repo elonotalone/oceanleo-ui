@@ -263,6 +263,10 @@ test("theme: light and dark are distinct, light is a real light surface; no hard
   assert.doesNotMatch(canvas, /#fff\b|bg-white|text-black|text-stone-900/);
   assert.match(canvas, /colorMode=\{theme\}/);
   assert.match(canvas, /<MiniMap/);
+  // 10-23 实测: echoing xyflow's onSelectionChange back into `selected` ping-ponged on duplicate
+  // (React "maximum update depth"). Selection goes up only from user `select` changes.
+  assert.doesNotMatch(canvas, /onSelectionChange=\{/);
+  assert.match(canvas, /change\.type === "select"/);
   const layout = videoPreviewLayout([{ x: 0, y: 0 }, { x: 2000, y: 900 }]);
   assert.ok(layout.scale > 0 && layout.scale < 1);
 });

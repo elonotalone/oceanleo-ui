@@ -16,12 +16,16 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  applyEdgeChanges,
+  applyNodeChanges,
   useEdgesState,
   useNodesState,
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
+  type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -211,19 +215,50 @@ function CanvasInner(props: VideoProjectCanvasProps) {
     return () => onReady?.(null);
   }, [flow, onReady]);
 
+  // Selection flows one way per direction: user gestures arrive as `select` changes
+  // (reported up); the stage's selection goes down through `selected` on the nodes,
+  // which xyflow never echoes back as a change. Listening to `onSelectionChange`
+  // instead ping-ponged between the two (React "maximum update depth" on duplicate).
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
   const lastSelection = useRef<VideoCanvasSelection>(props.selection);
   lastSelection.current = props.selection;
-  const handleSelection = useCallback(
-    ({ nodes: picked, edges: pickedEdges }: { nodes: Node[]; edges: Edge[] }) => {
+  const { onSelectionChange } = props;
+  const report = useCallback(
+    (nextNodes: Node[], nextEdges: Edge[]) => {
       const next = {
-        nodeIds: picked.map((node) => node.id).sort(),
-        edgeIds: pickedEdges.map((edge) => edge.id).sort(),
+        nodeIds: nextNodes.filter((node) => node.selected).map((node) => node.id).sort(),
+        edgeIds: nextEdges.filter((edge) => edge.selected).map((edge) => edge.id).sort(),
       };
       const previous = lastSelection.current;
       if (sameIds(previous.nodeIds, next.nodeIds) && sameIds(previous.edgeIds, next.edgeIds)) return;
-      props.onSelectionChange(next);
+      lastSelection.current = next;
+      onSelectionChange(next);
     },
-    [props],
+    [onSelectionChange],
+  );
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<Node<CardData>>[]) => {
+      onNodesChange(changes);
+      if (changes.some((change) => change.type === "select")) {
+        // Same-tick node + edge batches (click a node while a link is selected) must see each other.
+        nodesRef.current = applyNodeChanges(changes, nodesRef.current);
+        report(nodesRef.current, edgesRef.current);
+      }
+    },
+    [onNodesChange, report],
+  );
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      onEdgesChange(changes);
+      if (changes.some((change) => change.type === "select")) {
+        edgesRef.current = applyEdgeChanges(changes, edgesRef.current);
+        report(nodesRef.current, edgesRef.current);
+      }
+    },
+    [onEdgesChange, report],
   );
 
   const palette = videoCanvasPalette(theme);
@@ -234,8 +269,8 @@ function CanvasInner(props: VideoProjectCanvasProps) {
         edges={edges}
         nodeTypes={NODE_TYPES}
         colorMode={theme}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
+        onNodesChange={handleNodesChange}
+        onEdgesChange={handleEdgesChange}
         onNodeDragStop={(_event, _node, dragged) => {
           if (readOnly) return;
           props.onMove(dragged.map((node) => ({ id: node.id, x: node.position.x, y: node.position.y })));
@@ -245,7 +280,6 @@ function CanvasInner(props: VideoProjectCanvasProps) {
           if (readOnly) return;
           props.onRemove(gone.map((node) => node.id), goneEdges.map((edge) => edge.id));
         }}
-        onSelectionChange={handleSelection}
         deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
