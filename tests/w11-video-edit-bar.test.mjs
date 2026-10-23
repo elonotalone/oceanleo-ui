@@ -275,3 +275,56 @@ test("W11 short-lived artifact grants are recognised so they never land in the p
   assert.equal(isExpiringArtifactGrantUrl("https://cdn.example/a.mp4"), false);
   assert.equal(isExpiringArtifactGrantUrl(""), false);
 });
+
+test("W11 expired artifact grants in a project heal to a durable (or at least fresh) source", async () => {
+  const { artifactGrantIdentity, healTimelineGrants, healGrantUrl, replaceClipSources } = await import(
+    "../src/shell/video-editor/grant-heal.ts"
+  );
+  const payload = Buffer.from(JSON.stringify({ artifact: "art-1", revision: "rev-1", exp: 1 })).toString("base64url");
+  const grant = `https://api.dev.oceanleo.com/v1/artifact-renditions/access/${payload}.sig`;
+  assert.deepEqual(artifactGrantIdentity(grant), { artifactId: "art-1", revisionId: "rev-1" });
+  assert.equal(artifactGrantIdentity("https://cdn.example/a.mp4"), null);
+  const doc = {
+    width: 1280,
+    height: 720,
+    fps: 30,
+    tracks: [
+      { id: "v", kind: "video", clips: [{ id: "a", start_ms: 0, duration_ms: 1000, source_url: grant }, { id: "b", start_ms: 1000, duration_ms: 1000, source_url: grant }] },
+      { id: "t", kind: "text", clips: [{ id: "c", start_ms: 0, duration_ms: 1000, text: "x" }] },
+    ],
+  };
+  const refreshed = [];
+  const deps = {
+    refresh: async (identity) => {
+      refreshed.push(identity);
+      return "https://api.dev.oceanleo.com/v1/artifact-renditions/access/fresh.sig";
+    },
+    importUrl: async () => "https://auth.oceanleo.com/storage/v1/object/public/media-uploads/u/v.mp4",
+  };
+  const map = await healTimelineGrants(doc, deps);
+  assert.equal(refreshed.length, 1, "one refresh per distinct source");
+  const healed = replaceClipSources(doc, map);
+  assert.deepEqual(
+    healed.tracks[0].clips.map((c) => c.source_url),
+    [
+      "https://auth.oceanleo.com/storage/v1/object/public/media-uploads/u/v.mp4",
+      "https://auth.oceanleo.com/storage/v1/object/public/media-uploads/u/v.mp4",
+    ],
+  );
+  assert.equal(healed.tracks[1], doc.tracks[1], "text tracks untouched");
+  assert.equal(replaceClipSources(healed, map), healed, "no-op returns the same object");
+  // 拷贝失败：退回新鲜地址，不抛。
+  const fallback = await healGrantUrl(grant, "video", {
+    ...deps,
+    importUrl: async () => {
+      throw new Error("500");
+    },
+  });
+  assert.deepEqual(fallback, {
+    url: "https://api.dev.oceanleo.com/v1/artifact-renditions/access/fresh.sig",
+    durable: false,
+  });
+  // 重签也失败：换不了（空串），交给预检如实报错。
+  const none = await healGrantUrl(grant, "video", { ...deps, refresh: async () => "" });
+  assert.equal(none.url, "");
+});

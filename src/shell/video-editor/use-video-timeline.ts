@@ -81,6 +81,13 @@ import {
 } from "./video-timeline-source";
 import { refreshArtifactRendition } from "../artifact-client";
 import {
+  healGrantUrl,
+  healTimelineGrants,
+  replaceClipSources,
+  expiringGrantSources,
+  type GrantHealDeps,
+} from "./grant-heal";
+import {
   assertBlobSource,
   parseVideoProjectEnvelope,
 } from "../media-editors/source-integrity.mjs";
@@ -221,11 +228,33 @@ function trackKindForMedia(kind: "video" | "audio" | "image"): TrackKind {
   return kind;
 }
 
+/** grant 地址自愈要用的两个网关动作（重签 / 拷进持久存储）。 */
+function timelineGrantDeps(siteId: string, title: string): GrantHealDeps {
+  return {
+    refresh: async (identity) => {
+      const refreshed = await refreshArtifactRendition(identity, "full");
+      return refreshed.ok ? String(refreshed.data?.url || "").trim() : "";
+    },
+    importUrl: (url, kind) =>
+      importMediaUrl(url, {
+        kind: kind === "text" ? undefined : kind,
+        siteId,
+        title,
+        registerAsset: false,
+      }),
+  };
+}
+
 async function durableTimelineSources(
   doc: TimelineDoc,
   siteId: string,
   title: string,
 ): Promise<TimelineDoc> {
+  // 几分钟就过期的签名地址先换掉，否则下面的预检和重开都会 410。
+  doc = replaceClipSources(
+    doc,
+    await healTimelineGrants(doc, timelineGrantDeps(siteId, title)),
+  );
   const replacements = new Map<string, string>();
   for (const track of doc.tracks) {
     if (track.kind === "text") continue;
@@ -311,6 +340,9 @@ export function useVideoTimeline(
 
   const [doc, setDocState] = useState<TimelineDoc>(seedRef.current.doc);
   const docRef = useRef(doc);
+  /** 过期签名地址自愈：已换好的（旧 → 新）与正在换的。 */
+  const healedGrantsRef = useRef(new Map<string, string>());
+  const healingGrantsRef = useRef(new Set<string>());
   docRef.current = doc;
 
   const undoStack = useRef<TimelineDoc[]>([]);
@@ -594,34 +626,32 @@ export function useVideoTimeline(
     const seededClipId = seed.seededClipId;
     const seededKind = seed.seededKind;
     let cancelled = false;
+    healingGrantsRef.current.add(itemSourceUrl);
     markSourceReady(false);
     void (async () => {
       try {
         let sourceUrl = itemSourceUrl;
         if (isExpiringArtifactGrantUrl(sourceUrl)) {
-          // 签名地址几分钟就 410：先按 revision 重签一份新鲜的，再拷进持久存储，
-          // 工程里存的是持久地址，关掉重开、过几天再开都还在。
+          // 签名地址几分钟就 410：先按 revision 重签一份新鲜的，再尽量拷进持久存储，
+          // 工程里存持久地址；拷贝失败就先用新鲜地址（下次打开再自愈）。
           const artifactId = String(item.artifactId || "").trim();
           const revisionId = String(item.revisionId || item.artifact?.revisionId || "").trim();
-          if (artifactId && revisionId) {
-            const refreshed = await refreshArtifactRendition(
-              { artifactId, revisionId },
-              "full",
-            );
-            const fresh = refreshed.ok ? String(refreshed.data?.url || "").trim() : "";
-            if (fresh) sourceUrl = fresh;
-          }
-          if (cancelled) return;
-          sourceUrl = await importMediaUrl(sourceUrl, {
-            kind: seededKind,
-            siteId: siteId || "video",
-            title: item.title,
-            registerAsset: false,
-          });
-          if (cancelled) return;
-          setDocState((current) =>
-            patchClipIn(current, seededClipId, { source_url: sourceUrl }),
+          const healed = await healGrantUrl(
+            sourceUrl,
+            seededKind,
+            timelineGrantDeps(siteId || "video", item.title),
+            artifactId && revisionId ? { artifactId, revisionId } : null,
           );
+          if (cancelled) return;
+          if (healed.url) {
+            healedGrantsRef.current.set(sourceUrl, healed.url);
+            sourceUrl = healed.url;
+            setDocState((current) => {
+              const next = patchClipIn(current, seededClipId, { source_url: sourceUrl });
+              docRef.current = next;
+              return next;
+            });
+          }
         } else if (!isFirstPartyMediaUrl(sourceUrl)) {
           sourceUrl = await importMediaUrl(sourceUrl, {
             kind: seededKind,
@@ -672,6 +702,41 @@ export function useVideoTimeline(
     // seedRef 一次性，仅在挂载时探测。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 协同房间、远端改动、撤销栈带回来的过期签名地址：就地换成新地址
+  // （不进撤销栈、不标未保存；下一次保存会带上新地址）。
+  useEffect(() => {
+    const known = new Map<string, string>();
+    const pending: Array<[string, TrackKind]> = [];
+    for (const [url, kind] of expiringGrantSources(doc)) {
+      const healed = healedGrantsRef.current.get(url);
+      if (healed) known.set(url, healed);
+      else if (!healingGrantsRef.current.has(url)) pending.push([url, kind]);
+    }
+    const apply = (replacements: ReadonlyMap<string, string>) => {
+      if (!replacements.size) return;
+      setDocState((current) => {
+        const next = replaceClipSources(current, replacements);
+        docRef.current = next;
+        return next;
+      });
+    };
+    apply(known);
+    if (!pending.length) return;
+    for (const [url] of pending) healingGrantsRef.current.add(url);
+    const deps = timelineGrantDeps(siteId || "video", item.title);
+    void (async () => {
+      const replacements = new Map<string, string>();
+      for (const [url, kind] of pending) {
+        // 每条地址每次打开只试一次；换不了就留给预检如实报错。
+        const healed = await healGrantUrl(url, kind, deps);
+        if (!healed.url) continue;
+        healedGrantsRef.current.set(url, healed.url);
+        replacements.set(url, healed.url);
+      }
+      apply(replacements);
+    })();
+  }, [doc, item.title, siteId]);
 
   // ------------------------------------------------------------- history
 
