@@ -6,7 +6,7 @@ import { LOCALES } from "../src/i18n/config.ts";
 
 test("3D bar and scene labels have complete local copy in all sixteen non-Chinese locales", () => {
   const keys = Object.keys(EDITOR_OVERHAUL_W13_COPY.en).sort();
-  assert.equal(keys.length, 42);
+  assert.equal(keys.length, 45);
   for (const locale of LOCALES.filter((value) => value !== "zh")) {
     const dictionary = EDITOR_OVERHAUL_W13_COPY[locale];
     assert.deepEqual(Object.keys(dictionary).sort(), keys, locale);

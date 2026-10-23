@@ -26,12 +26,20 @@ const clamp = (value: number, minimum: number, maximum: number) =>
  * §3.3/§6:闭包缺件必须带 §6 错误码与缺哪一件一起显示出来。空场景 + 无提示是
  * 规格点名要治的观感,所以这里从不把缺件降级成通用文案。
  */
-function sourceError(caught: unknown, fallback: string): string {
+function sourceError(caught: unknown, fallback: string, tt: UITranslate): string {
   if (caught instanceof DOMException && caught.name === "AbortError") return "";
   if (caught instanceof Model3DClosureError) {
     return `[${caught.code}] ${caught.message}`;
   }
-  return caught instanceof Error ? caught.message : fallback;
+  if (caught instanceof Error) {
+    switch (caught.message) {
+      case "无法恢复 3D 检查点版本": return tt("无法恢复 3D 检查点版本");
+      case "3D 检查点来源身份无法确认": return tt("3D 检查点来源身份无法确认");
+      case "3D 检查点内容校验失败": return tt("3D 检查点内容校验失败");
+      default: return caught.message;
+    }
+  }
+  return fallback;
 }
 
 export function useModel3DSourceLoader({
@@ -152,7 +160,7 @@ export function useModel3DSourceLoader({
           return;
         }
         setModelLoading(false);
-        setError(sourceError(caught, tt("3D 模型加载失败")));
+        setError(sourceError(caught, tt("3D 模型加载失败"), tt));
       })
       .finally(() => releasePreparedSource?.());
     return () => {

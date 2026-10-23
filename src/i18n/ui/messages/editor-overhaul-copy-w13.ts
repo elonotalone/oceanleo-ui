@@ -64,8 +64,31 @@ const ROWS = {
   "hi": ["रूपांतरण उपकरण","खिसकाएँ","ऑब्जेक्ट रूपांतरण","नोड दिखाएँ","PBR सामग्री","मूल रंग","धात्विकता","खुरदरापन","मॉडल कैमरा","मॉडल प्रकाश","प्रकाश का रंग","टिप्पणियाँ","टिप्पणी का पाठ","टिप्पणी हटाएँ","संपादक कैमरा","क्षैतिज परिक्रमा","ऊर्ध्वाधर परिक्रमा","कैमरे की दूरी","स्वतः घुमाएँ","कैमरा रीसेट करें","परिवेश और छायाएँ","एक्सपोज़र","HDR परिवेश URL","परिवेश की तीव्रता","छायाएँ चालू करें","छाया की तीव्रता","छाया की कोमलता","एनिमेशन क्लिप","विश्राम मुद्रा","एनिमेशन चलाएँ","चलने का समय","एनिमेशन की गति","दृश्य कोण","ऑर्थोग्राफ़िक ज़ूम","निकट क्लिपिंग","दूर क्लिपिंग","प्रकाश की तीव्रता","प्रकाश की दूरी","क्षय","शंकु कोण","उपच्छाया","ऑब्जेक्ट का आकार बदलें"],
 } satisfies Record<keyof EditorOverhaulCopy, readonly string[]>;
 
+const CHECKPOINT_KEYS = ["无法恢复 3D 检查点版本", "3D 检查点来源身份无法确认", "3D 检查点内容校验失败"] as const;
+const CHECKPOINT_ROWS = {
+  de: ["Die 3D-Prüfpunktversion konnte nicht wiederhergestellt werden", "Die Quellidentität des 3D-Prüfpunkts konnte nicht bestätigt werden", "Die Inhaltsprüfung des 3D-Prüfpunkts ist fehlgeschlagen"],
+  en: ["Unable to restore the 3D checkpoint revision", "Unable to verify the 3D checkpoint source identity", "3D checkpoint content verification failed"],
+  es: ["No se pudo restaurar la versión del punto de control 3D", "No se pudo verificar la identidad del origen del punto de control 3D", "Falló la verificación del contenido del punto de control 3D"],
+  "es-419": ["No se pudo restaurar la versión del punto de control 3D", "No se pudo verificar la identidad del origen del punto de control 3D", "Falló la verificación del contenido del punto de control 3D"],
+  fr: ["Impossible de restaurer la version du point de contrôle 3D", "Impossible de vérifier l’identité de la source du point de contrôle 3D", "La vérification du contenu du point de contrôle 3D a échoué"],
+  it: ["Impossibile ripristinare la versione del checkpoint 3D", "Impossibile verificare l’identità dell’origine del checkpoint 3D", "Verifica del contenuto del checkpoint 3D non riuscita"],
+  "pt-BR": ["Não foi possível restaurar a versão do ponto de controle 3D", "Não foi possível verificar a identidade da origem do ponto de controle 3D", "Falha na verificação do conteúdo do ponto de controle 3D"],
+  "pt-PT": ["Não foi possível restaurar a versão do ponto de controlo 3D", "Não foi possível verificar a identidade da origem do ponto de controlo 3D", "Falha na verificação do conteúdo do ponto de controlo 3D"],
+  vi: ["Không thể khôi phục phiên bản điểm kiểm tra 3D", "Không thể xác minh danh tính nguồn của điểm kiểm tra 3D", "Xác minh nội dung điểm kiểm tra 3D thất bại"],
+  tr: ["3D kontrol noktası sürümü geri yüklenemedi", "3D kontrol noktasının kaynak kimliği doğrulanamadı", "3D kontrol noktası içerik doğrulaması başarısız oldu"],
+  "zh-TW": ["無法還原 3D 檢查點版本", "無法確認 3D 檢查點來源身分", "3D 檢查點內容驗證失敗"],
+  ja: ["3Dチェックポイントのリビジョンを復元できません", "3Dチェックポイントのソースの識別情報を確認できません", "3Dチェックポイントの内容検証に失敗しました"],
+  ko: ["3D 체크포인트 버전을 복원할 수 없습니다", "3D 체크포인트의 소스 식별 정보를 확인할 수 없습니다", "3D 체크포인트 콘텐츠 검증에 실패했습니다"],
+  ar: ["تعذرت استعادة إصدار نقطة التحقق ثلاثية الأبعاد", "تعذر التحقق من هوية مصدر نقطة التحقق ثلاثية الأبعاد", "فشل التحقق من محتوى نقطة التحقق ثلاثية الأبعاد"],
+  th: ["ไม่สามารถกู้คืนรุ่นของจุดตรวจสอบ 3D ได้", "ไม่สามารถยืนยันข้อมูลระบุแหล่งที่มาของจุดตรวจสอบ 3D ได้", "การตรวจสอบเนื้อหาจุดตรวจสอบ 3D ล้มเหลว"],
+  hi: ["3D चेकपॉइंट संस्करण पुनर्स्थापित नहीं किया जा सका", "3D चेकपॉइंट स्रोत की पहचान सत्यापित नहीं की जा सकी", "3D चेकपॉइंट सामग्री का सत्यापन विफल रहा"],
+} satisfies Record<keyof EditorOverhaulCopy, readonly [string, string, string]>;
+
 export const EDITOR_OVERHAUL_W13_COPY = Object.fromEntries(
   Object.entries(ROWS).map(([locale, values]) => [locale,
-    Object.fromEntries(KEYS.map((key, index) => [key, values[index]])),
+    Object.fromEntries([
+      ...KEYS.map((key, index) => [key, values[index]]),
+      ...CHECKPOINT_KEYS.map((key, index) => [key, CHECKPOINT_ROWS[locale as keyof EditorOverhaulCopy][index]]),
+    ]),
   ]),
 ) as EditorOverhaulCopy;

@@ -2,6 +2,8 @@
 
 ## 当前交接（以本段为准）
 
+- [最后小收尾] sourceError仅3句checkpoint错误做UI静态tt映射，W13文案新增3keys×16语，总45keys；真实hook正/负边界+locale+opaque续签6/6绿。按parent正式write-window原子落地后已向parent/website报告settled，无Chrome/源码其他变动；最终全局tsc归parent。
+
 - 最后产品源码 `d60060cc`（含 `567be2db`、`2c511c2c`、`279b0128`）。所有自有Chrome已关，窗口交W10；不再改src。无部署/push/操作员数据/新公共素材。
 - strict保存/离线Retry：`/tmp/codex-w13-save4` exit0；dark复制/删除/Undo：`/tmp/codex-w13-controls6` exit0 at133s，实际mesh1→2→1→2、hardreload2，3×200无phantom；直接服务端`durable-source.glb`确认2mesh。
 - 色值实测：material3蓝→橙200、Undo200、library重开恢复蓝强断言通过；该整轮末尾被dev overlay拦pointer，未标fullpass。最终`/tmp/codex-w13-material-close3` exit0 at39.1s，freshcontext旧room exact-source授权续签200、真实close/reopen保持蓝、0POST，已关闭410缺陷。

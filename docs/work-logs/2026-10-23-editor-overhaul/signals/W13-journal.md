@@ -11,6 +11,7 @@
 - [隐私修复] 实际shelf准备发现typedGLB重经importModel→legacy uploadFile会重新公开上传；经parent批准，`d60060cc`按actualFormat bytes sniff后reuse typed GLB exactidentity/openModelUrl，与glTF闭包路径一致。actual factory先红1import→绿0import。并补exactrev GET credentials include与opaque payload8192cap；11focused绿。最后actual shelf用既有私有[V01] sample.glb，不新增公共/操作员素材，脚本阻断legacyupload防泄露。W10已settled6ed2d7bd，双owner统一freeze后最终验收。
 - [终验PASS] material-close3 exit0 at39.1s，freshcontext exactoldsource grant200续签，场景ready且原蓝色保持，native键盘Close→library reopen成功，0POST。早先410与pointer阻挡分支不冒充pass；本轮完整终验关闭。
 - [终验PASS] actual private shelf exit0 at68.7s：既有[V01] sample.glb卡replace→typed200，直接server download replaced.glb独立1mesh；Undo→typed200，undo-replacement.glb独立2mesh；hardreload2，恰2POST、0legacyupload、无phantom。SQL root21→22→23精确父链，final1d8e6a5a-88c6-4c1d-b707-4138c21c6327，title保持。所有自有Chrome已关并交W10。不宣称public3D fork实测。
+- [最终错误本地化] 按CODEX-W13-final-errors.md及parent正式write-window，sourceError UI边界仅对3句检查点错误做明确静态tt映射，W13 copy补16语，既有copy positive count42→45，其他locale/注册/非汉字断言原样。新测试真实useModel3DSourceLoader注入错误：3句英文输出、Abort抑制、Closure code/detail（包括同文案closure负例）、未知Error/非Error fallback与16locale全部通过。加原opaque-source安全回归，focused6/6绿；无grant/auth/digest/identity/加载行为改动，无Chrome。parent/website已获settled，最终全局typecheck仍由parent负责。
 
 - Codex continuation [实施] `1a0704a4` 修复普通 typed GLB/PNG 保存、当前回执 CAS、幂等 flush、纯下载不发版本、对象规范栏和场景抽屉；运行时复制接线；真实空选区；零位移点选不再触发相机编辑。
 - [实施/实测] `5da176b7` 兼容冷 typed 投影的 editor_manifest_url，读取失败阻止保存；真实 React hook 成功/失败回归绿。并行 index race 带入 W10 已暂存场景，立即告知 parent/W10，未改其内容、未改历史；后续统一显式 --only paths。

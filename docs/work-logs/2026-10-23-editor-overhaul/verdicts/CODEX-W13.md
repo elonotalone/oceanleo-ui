@@ -48,6 +48,8 @@ Parent independently confirmed the durable two-mesh GLB and reported final typec
 
 Final independent parent verification: W13 eleven-file batch50/50 green; opaque/bootstrap batches12/12 and7/7 green; UI typecheck9 exit0 including2c511c2c+d60060cc+Grid6ed2d7bd. Parent separately parsed shelf `replaced.glb` as one orange Cube and `undo-replacement.glb` as two blue Cubes with authored position/rotation preserved.
 
+Final localization-only follow-up: the three new checkpoint errors now use explicit static translations at the source-loader UI boundary, with3 additional keys in all16 non-Chinese locales (45 total W13 keys). Real-hook positive/negative boundary tests, dictionary registration and existing opaque-source safety regression pass6/6. Abort suppression, structured closure error code/detail and unrelated Error/non-Error behavior remain unchanged. No grant/auth/digest/identity/loading behavior, shared aggregator or browser changes; parent owns the final global typecheck after this copy-only follow-up.
+
 ## Limits
 
 - A full actual public-model fork has not been independently retested here; no public fixture was invented. Actual private shelf scene replacement is now proven above, not arbitrary merge/insertion. Do not infer a public-fork pass from typed-save coverage.
