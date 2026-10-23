@@ -12,3 +12,7 @@
 - [读码] 旧核依赖面：`media-editors/index.ts`（父 agent 的 barrel，只被 Model3DRoute 引用）导出 PdfStage / PdfControls / PdfWorkbench / usePdfWorkbench ⇒ 这四个名字原地换成新实现（单实例舞台 / 缩略图页面栏 / 新状态 hook / 独立组合），barrel 不用动；其余旧核模块可删。必须保留：`pdf-workbench-state.ts`（doc-family-commands 的类型）、`pdf-engine-host` / `pdf-next-runtime` / `pdf-workbench-utils` / `pdf-manifest`（W05 库预览）、`pdf-agent-chips`（quick-actions 目录）。
 - [读码] 保存基线：doc-io `saveFileToLibrary` 的 CAS 基线读 `input.item.artifactId/revisionId`；无类型身份的条目走 creations（每次新建）。⇒ 路由必须在每次保存成功后把基线换成返回的 `saved.item`，否则第 2 次保存要么 CAS 冲突、要么再 fork 一份。
 - [读码] 协同：新核没有按批注写入口，沿用「整份上锁」（打开拿锁，别人只读）；按批注三方合并（pdf-collab-sync/bytes）依赖旧核字节替换，随旧核删除。
+- 07:3xZ [实测] `8126ea72` 后：基础档官方 UI 全隐藏（只剩翻页浮层），专业档同一实例 `pdf-viewer-1`，切换后 `[data-mode-switch-pending]`=0，官方工具栏出现、外壳缩放隐藏。截图 /tmp/w06-x/basic.png、pro.png。
+- [实测] 编辑栏空态 10 个工具直接显示；「高亮」先点工具再拖选 → 黄色高亮批注生成，编辑栏变成 填充色/透明度/删除，顶栏撤销亮起。
+- [实测] 修：`contextToolbar` 恒传元素会让外壳当成有选区、把工具折进「…」→ 只在有可编辑选区/工具时传。
+- [实测] 07:4xZ 开发网关 api.dev 502 / CORS 失败（他人重启网关），浏览器暂停。
