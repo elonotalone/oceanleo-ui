@@ -16,3 +16,4 @@
 - 12:35Z [实测] 断网改动：saving→error（从未出现 saved），恢复网络后 error→saving→saved，DB ordinal 6。
 - 12:36Z [实测] Code 页运行条：停止 → data-game-preview-paused=true 且显示「试玩已停止」；运行 → false；重载 → reloadKey 0→1。
 - 12:38Z [实测] 第二次「迭代这一版」181s 后报「连接中断，未能确认修改结果…」（game 仓 runner 文案），错误现在在抽屉里可见；DB 无新 revision。生成模型 qwen3.7-plus 多轮调用 >3 分钟，超出前端/代理等待；非本人文件。
+- 12:56Z [实测] 第三次迭代同样约 180s CORS 失败，服务器 12:50:58Z 落 ordinal 8，编辑器自行关回 /library 预览页；已写 W15-to-parent §2。交付已写。
