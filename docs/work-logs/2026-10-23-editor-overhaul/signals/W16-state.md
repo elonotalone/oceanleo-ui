@@ -13,14 +13,19 @@
 - [读码] 节点样式写死 `#fff` / `#cbd5e1`，xyflow 默认浅色样式 → 深色下是浅色岛；没有小地图；顶部「加节点」是裸按钮。
 - [读码] 视频站旧编辑器（`/root/projects/video/packages/gallery-editor/src/project-model.ts`）把 `prompt→script`、`generate→video` 归一；每次改动 `advanceProject` 新建内部版本。
 
+## R2 接班（08:30Z 后）
+
+- [实测 tsc] 半成品 `video-project-doc.ts` 3 个类型错误（`addVideoDocNode` 的 Omit 丢键）已修。
+- [读码] 保存走共享内核 `saveFileToLibrary`：`file`=v2 JSON、`sourceFormat=oceanleo.video.project.v2`、`artifactRevision.artifactType=workflow`；workflow 契约只要 `full`（=source）或 `preview` 任一，preview PNG 选配。后端只校 v2 结构 + assets，节点字段自由。
+- [读码] 素材资产 `url` 可以是私有暂存定位 `project-assets:u/…`（`stageArtifactBlob`）。
+
 ## 正在做
 
-- 读码：外壳接口（选区上下文 / 编辑栏投影 / drawers / material adapter / 主题 / 保存内核 fork 路径）。
+- 新建 v2 编辑面：`VideoProjectStage.tsx`（路由按 source_format 分流）+ `VideoProjectCanvas.tsx`（主题化 xyflow、自定义节点、小地图）+ 选区栏 + 「加节点」抽屉 + 真保存 + 封面 PNG。
 
 ## 下一步
 
-- R0 浏览器基线：验收账号从公共模板打开视频画布，记录现状（两档截图 + 保存）。
-- 然后改：v2 原生可编辑模型 + 真保存 + 统一栏 + 两档主题。
+- focused tests、i18n、浏览器两档截图 + §5 保存协议，交付。
 
 ## 复现命令
 

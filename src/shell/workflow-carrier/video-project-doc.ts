@@ -333,7 +333,13 @@ export function duplicateVideoDocNodes(
 
 export function addVideoDocNode(
   doc: VideoProjectDoc,
-  node: Omit<VideoDocNode, "nodeId"> & { nodeId?: string },
+  // `Omit` on an index-signature interface drops the named keys, so spell them out.
+  node: Rec & {
+    nodeId?: string;
+    kind: string;
+    title: string;
+    position: VideoDocPosition;
+  },
 ): { doc: VideoProjectDoc; id: string } | null {
   const { nodes, edges } = videoDocGraph(doc);
   if (nodes.length >= VIDEO_DOC_NODE_LIMIT) return null;
@@ -343,6 +349,8 @@ export function addVideoDocNode(
     : videoDocNewId("node", taken);
   const created: VideoDocNode = {
     ...node,
+    kind: node.kind,
+    title: node.title,
     nodeId: id,
     position: {
       x: clampCoordinate(node.position.x),
