@@ -81,3 +81,14 @@ test("舞台：素材适配器只申报 insert 图片，并登记 W02 的 comman
   // 整份替换不进撤销历史，不再作为素材库动作。
   assert.doesNotMatch(stage, /actions:\s*\["replace"\]/);
 });
+
+test("舞台：协同本地侧的活动不再标脏 / 加编辑序号（本人改动只认撤销栈）；只有远端改动交给保存者", () => {
+  const block = stage.slice(stage.indexOf("onActivity: (origin) =>"), stage.indexOf("collabBinderRef.current = binder;"));
+  assert.ok(block.length > 0);
+  const guard = block.indexOf('if (origin !== "remote") return;');
+  assert.ok(guard > 0, "本地活动必须在标脏之前返回");
+  assert.ok(guard < block.indexOf("setEditRevision"));
+  // 撤销栈判据只在真只读 / 只能看时不算本人改动，等首同步时照算。
+  assert.match(stage, /personWriteBlockedRef\.current = readonly \|\| \(collabOn && collabViewOnly\);/);
+  assert.match(stage, /editBlockedRef: personWriteBlockedRef,/);
+});

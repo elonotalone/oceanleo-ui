@@ -341,6 +341,9 @@ export function GridUniverStage({
   const editBlocked = readonly || collabBlocked;
   const editBlockedRef = useRef(editBlocked);
   editBlockedRef.current = editBlocked;
+  // 撤销栈判据只在真只读时不算本人改动；等首同步时画布仍能打字（实测），打了就是本人的改动。
+  const personWriteBlockedRef = useRef(false);
+  personWriteBlockedRef.current = readonly || (collabOn && collabViewOnly);
   const collabOnRef = useRef(collabOn);
   collabOnRef.current = collabOn;
   const collabBinderRef = useRef<GridCollabBinder | null>(null);
@@ -678,7 +681,7 @@ export function GridUniverStage({
       canvasColor: ICanvasColorService,
       renderManager: IRenderManagerService,
     },
-    editBlockedRef,
+    editBlockedRef: personWriteBlockedRef,
     onPersonWrite: bumpHistory,
   });
 
@@ -732,6 +735,9 @@ export function GridUniverStage({
       onFullReplace: () => setStatus(ttRef.current("别人调整了表格的一部分设置，表格已重新载入。")),
       onActivity: (origin) => {
         noteGridProbe(`collab-${origin}`);
+        // 本地那一侧：本人的改动已由撤销栈判据记过（bumpHistory）；其余是 Univer 载入后
+        // 自己的回写（公式、换簿），不算改动——否则只是打开就标脏、自动存一版（R2 实测 14 次）。
+        if (origin !== "remote") return;
         applyGridUserEditSession(liveItemRef.current, "collab-activity");
         setEditRevision((value) => value + 1);
         setDirty(true);

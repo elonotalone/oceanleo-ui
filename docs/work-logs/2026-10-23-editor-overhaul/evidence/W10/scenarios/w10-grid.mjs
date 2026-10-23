@@ -70,6 +70,24 @@ async function surfaces(page) {
   });
 }
 
+let revisionPosts = 0;
+
+/** After an edit: wait until a new revision POST went out, then until the bar says saved. */
+async function waitEditSaved(page, helpers, log, before, timeout = 90000) {
+  const started = Date.now();
+  while (revisionPosts === before && Date.now() - started < timeout) {
+    if ((await helpers.saveState(page)) === "error") {
+      const why = await page.locator("[data-workspace-save-launcher]").first().textContent().catch(() => "");
+      const probe = await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.state || null) + " " + JSON.stringify((globalThis.__oceanleoGridUniverPaint?.events || []).slice(-8)));
+      throw new Error(`save reported error: ${String(why).trim()} ${probe}`);
+    }
+    await page.waitForTimeout(500);
+  }
+  if (revisionPosts === before) throw new Error("no revision was posted for this edit");
+  await helpers.waitSaved(page, { timeout });
+  log("revision posts", revisionPosts);
+}
+
 export default async function ({ page, context, log, shot, helpers, args }) {
   const [mode, id, tag = mode] = args;
   if (!id) throw new Error("artifact id required");
@@ -87,6 +105,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   });
   page.on("request", (req) => {
     const url = req.url();
+    if (req.method() === "POST" && /\/revisions(\?|$)/.test(url)) revisionPosts += 1;
     if (req.method() !== "GET" && /artifact|revision|upload|commit|fork/.test(url)) {
       log("REQ", req.method(), url.replace(/^https?:\/\/[^/]+/, "").slice(0, 120));
     }
@@ -125,13 +144,15 @@ export default async function ({ page, context, log, shot, helpers, args }) {
       for (let i = 0; i < secs; i += 1) {
         const s = await helpers.saveState(page);
         const busy = await page.locator("[data-grid-univer-loading]").count();
-        const now = `${s}${busy ? "+loading" : ""}`;
+        const st = await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.state || null));
+        const now = `${s}${busy ? "+loading" : ""} ${st}`;
         if (now !== prev) log(label, `t+${i}s`, now);
         prev = now;
         await page.waitForTimeout(1000);
       }
     };
     log("open state", await helpers.saveState(page), "tag", await tagCanvas(page));
+    log("events@open", await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.events || [])));
     await clickCell(page, 14, 4);
     await page.keyboard.type(`T1${stamp}`);
     await page.keyboard.press("Enter");
@@ -142,6 +163,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     await page.keyboard.press("Enter");
     await watch("edit2", 25);
     await shot(`${tag}-after-edit2`);
+    log("events", await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.events || [])));
     log("tag after edit2", await tagCanvas(page));
     return;
   }
@@ -343,14 +365,28 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   if (mode === "save") {
     const stamp = String(Date.now()).slice(-5);
     log("canvas tag at open", await tagCanvas(page));
+    await page.waitForTimeout(3000);
+    const posts0 = revisionPosts;
+    log("revision posts before edits (opening must not save)", posts0, await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.state || null)));
     await clickCell(page, 12, 4);
     await page.keyboard.type(`W10a${stamp}`);
     await page.keyboard.press("Enter");
     await page.waitForTimeout(800);
     log("state after edit 1", await helpers.saveState(page));
-    await helpers.waitSaved(page, { timeout: 90000 });
+    await waitEditSaved(page, helpers, log, posts0);
     log("saved 1", page.url());
     log("canvas tag after save 1", await tagCanvas(page));
+    const posts1 = revisionPosts;
+    {
+      const pt = await cellPoint(page, 12, 5);
+      log("hit@F13", await page.evaluate(({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        const chain = [];
+        for (let n = el; n && chain.length < 6; n = n.parentElement) chain.push(`${n.tagName.toLowerCase()}${n.id ? "#" + n.id : ""}${n.getAttribute?.("data-u-comp") ? "[" + n.getAttribute("data-u-comp") + "]" : ""}.${String(n.className || "").slice(0, 40)}`);
+        return chain.join(" < ");
+      }, pt));
+      log("activeElement", await page.evaluate(() => `${document.activeElement?.tagName} ${String(document.activeElement?.className || "").slice(0, 60)}`));
+    }
     await shot(`${tag}-saved1`);
     await clickCell(page, 12, 5);
     await page.keyboard.type(`W10b${stamp}`);
@@ -358,8 +394,9 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     await page.waitForTimeout(800);
     log("state after edit 2", await helpers.saveState(page));
     log("canvas tag after edit 2", await tagCanvas(page));
+    log("events after edit 2", await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.events || []) + " " + JSON.stringify(globalThis.__oceanleoGridUniverPaint?.state || null)));
     await shot(`${tag}-edit2`);
-    await helpers.waitSaved(page, { timeout: 90000 });
+    await waitEditSaved(page, helpers, log, posts1);
     log("saved 2", page.url());
     // Close → reopen (fresh navigation), then a full page reload; both must show the two edits.
     await openGrid(page, helpers, id);
