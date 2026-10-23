@@ -4,6 +4,9 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
   de: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Einfügen",
+    "批注": "Kommentare",
     "这个编辑器还不能从素材库直接插入": "Dieser Editor kann noch nicht direkt aus den Materialien einfügen",
     "这个编辑器用不了这类素材": "Dieser Editor kann diese Art von Material nicht verwenden",
     "这份素材还没存进库，暂时不能插入": "Dieses Material ist noch nicht in deiner Bibliothek gespeichert und kann noch nicht eingefügt werden",
@@ -19,6 +22,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Diese Datei hat noch nicht übernommene Änderungen. Bitte zuerst speichern.",
   },
   en: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Insert",
+    "批注": "Comments",
     "这个编辑器还不能从素材库直接插入": "This editor can't insert from Assets yet",
     "这个编辑器用不了这类素材": "This editor can't use this kind of material",
     "这份素材还没存进库，暂时不能插入": "This material isn't saved to your library yet, so it can't be inserted",
@@ -34,6 +40,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "This file has changes that aren't applied yet. Save them first.",
   },
   es: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Insertar",
+    "批注": "Comentarios",
     "这个编辑器还不能从素材库直接插入": "Este editor aún no puede insertar desde los materiales",
     "这个编辑器用不了这类素材": "Este editor no puede usar este tipo de material",
     "这份素材还没存进库，暂时不能插入": "Este material aún no está guardado en tu biblioteca, así que no se puede insertar",
@@ -49,6 +58,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este archivo tiene cambios sin aplicar. Guárdalos primero.",
   },
   "es-419": {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Insertar",
+    "批注": "Comentarios",
     "这个编辑器还不能从素材库直接插入": "Este editor todavía no puede insertar desde los materiales",
     "这个编辑器用不了这类素材": "Este editor no puede usar este tipo de material",
     "这份素材还没存进库，暂时不能插入": "Este material todavía no está guardado en tu biblioteca, así que no se puede insertar",
@@ -64,6 +76,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este archivo tiene cambios sin aplicar. Guárdalos primero.",
   },
   fr: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Insérer",
+    "批注": "Commentaires",
     "这个编辑器还不能从素材库直接插入": "Cet éditeur ne peut pas encore insérer depuis les ressources",
     "这个编辑器用不了这类素材": "Cet éditeur ne peut pas utiliser ce type de ressource",
     "这份素材还没存进库，暂时不能插入": "Cette ressource n’est pas encore enregistrée dans ta bibliothèque, elle ne peut donc pas être insérée",
@@ -79,6 +94,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Ce fichier contient des modifications non appliquées. Enregistrez-les d'abord.",
   },
   it: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Inserisci",
+    "批注": "Commenti",
     "这个编辑器还不能从素材库直接插入": "Questo editor non può ancora inserire dai materiali",
     "这个编辑器用不了这类素材": "Questo editor non può usare questo tipo di materiale",
     "这份素材还没存进库，暂时不能插入": "Questo materiale non è ancora salvato nella tua libreria, quindi non può essere inserito",
@@ -94,6 +112,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Questo file ha modifiche non applicate. Salvale prima.",
   },
   "pt-BR": {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Inserir",
+    "批注": "Comentários",
     "这个编辑器还不能从素材库直接插入": "Este editor ainda não pode inserir a partir dos materiais",
     "这个编辑器用不了这类素材": "Este editor não pode usar este tipo de material",
     "这份素材还没存进库，暂时不能插入": "Este material ainda não foi salvo na sua biblioteca, então não pode ser inserido",
@@ -109,6 +130,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este arquivo tem alterações não aplicadas. Salve-as primeiro.",
   },
   "pt-PT": {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Inserir",
+    "批注": "Comentários",
     "这个编辑器还不能从素材库直接插入": "Este editor ainda não consegue inserir a partir dos materiais",
     "这个编辑器用不了这类素材": "Este editor não consegue usar este tipo de material",
     "这份素材还没存进库，暂时不能插入": "Este material ainda não foi guardado na sua biblioteca, por isso não pode ser inserido",
@@ -124,6 +148,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este ficheiro tem alterações por aplicar. Guarde-as primeiro.",
   },
   vi: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Chèn",
+    "批注": "Bình luận",
     "这个编辑器还不能从素材库直接插入": "Trình chỉnh sửa này chưa thể chèn trực tiếp từ kho tư liệu",
     "这个编辑器用不了这类素材": "Trình chỉnh sửa này không dùng được loại tư liệu này",
     "这份素材还没存进库，暂时不能插入": "Tư liệu này chưa được lưu vào thư viện của bạn nên chưa thể chèn",
@@ -139,6 +166,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Tệp này còn thay đổi chưa áp dụng. Hãy lưu trước.",
   },
   tr: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "Ekle",
+    "批注": "Yorumlar",
     "这个编辑器还不能从素材库直接插入": "Bu düzenleyici henüz materyallerden doğrudan ekleme yapamıyor",
     "这个编辑器用不了这类素材": "Bu düzenleyici bu tür materyali kullanamaz",
     "这份素材还没存进库，暂时不能插入": "Bu materyal henüz kitaplığına kaydedilmedi, bu yüzden eklenemiyor",
@@ -154,6 +184,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Bu dosyada uygulanmamış değişiklikler var. Önce kaydedin.",
   },
   "zh-TW": {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "插入",
+    "批注": "批註",
     "这个编辑器还不能从素材库直接插入": "這個編輯器還不能從素材庫直接插入",
     "这个编辑器用不了这类素材": "這個編輯器用不了這類素材",
     "这份素材还没存进库，暂时不能插入": "這份素材還沒存進庫，暫時不能插入",
@@ -169,6 +202,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "這份檔案還有未套用的變更，請先儲存",
   },
   ja: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "挿入",
+    "批注": "コメント",
     "这个编辑器还不能从素材库直接插入": "このエディタはまだ素材ライブラリから直接挿入できません",
     "这个编辑器用不了这类素材": "このエディタではこの種類の素材を使えません",
     "这份素材还没存进库，暂时不能插入": "この素材はまだライブラリに保存されていないため、挿入できません",
@@ -184,6 +220,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "このファイルには未適用の変更があります。先に保存してください。",
   },
   ko: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "삽입",
+    "批注": "댓글",
     "这个编辑器还不能从素材库直接插入": "이 편집기는 아직 소재 라이브러리에서 바로 삽입할 수 없습니다",
     "这个编辑器用不了这类素材": "이 편집기에서는 이 종류의 소재를 쓸 수 없습니다",
     "这份素材还没存进库，暂时不能插入": "이 소재는 아직 라이브러리에 저장되지 않아 삽입할 수 없습니다",
@@ -199,6 +238,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "이 파일에 적용하지 않은 변경 사항이 있습니다. 먼저 저장하세요.",
   },
   ar: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "إدراج",
+    "批注": "التعليقات",
     "这个编辑器还不能从素材库直接插入": "لا يمكن لهذا المحرر الإدراج من المواد مباشرةً بعد",
     "这个编辑器用不了这类素材": "لا يمكن لهذا المحرر استخدام هذا النوع من المواد",
     "这份素材还没存进库，暂时不能插入": "لم تُحفظ هذه المادة في مكتبتك بعد، لذا لا يمكن إدراجها",
@@ -214,6 +256,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "في هذا الملف تغييرات لم تُطبَّق بعد. احفظها أولًا.",
   },
   th: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "แทรก",
+    "批注": "ความคิดเห็น",
     "这个编辑器还不能从素材库直接插入": "ตัวแก้ไขนี้ยังแทรกจากคลังสื่อโดยตรงไม่ได้",
     "这个编辑器用不了这类素材": "ตัวแก้ไขนี้ใช้สื่อประเภทนี้ไม่ได้",
     "这份素材还没存进库，暂时不能插入": "สื่อนี้ยังไม่ได้บันทึกลงคลังของคุณ จึงยังแทรกไม่ได้",
@@ -229,6 +274,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "ไฟล์นี้มีการเปลี่ยนแปลงที่ยังไม่ได้ใช้ โปรดบันทึกก่อน",
   },
   hi: {
+    // 编辑栏空态抽屉按钮的文字由 EditBarDocumentSegment 统一 tt()（文档的「插入」「批注」）。
+    "插入": "इन्सर्ट",
+    "批注": "टिप्पणियाँ",
     "这个编辑器还不能从素材库直接插入": "यह एडिटर अभी एसेट्स से सीधे इन्सर्ट नहीं कर सकता",
     "这个编辑器用不了这类素材": "यह एडिटर इस तरह की सामग्री का उपयोग नहीं कर सकता",
     "这份素材还没存进库，暂时不能插入": "यह सामग्री अभी आपकी लाइब्रेरी में सहेजी नहीं गई है, इसलिए इन्सर्ट नहीं की जा सकती",
