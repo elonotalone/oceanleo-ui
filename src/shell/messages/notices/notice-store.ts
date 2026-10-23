@@ -122,7 +122,11 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
       }
       // 只清自己：停掉再起之后，新一轮的 inflight 不能被旧响应抹掉。
       if (inflight === mine) inflight = null;
-      if (startedGeneration !== generation) return;
+      if (startedGeneration !== generation) {
+        // 停掉 / 重置 / 重新开始之后才回来的旧响应：不进状态；没有别的取数在跑就别让「正在加载」一直亮着。
+        if (!inflight && state.loading) set({ loading: false });
+        return;
+      }
       if (!result.ok || !result.data || !Array.isArray(result.data.items)) {
         set({ loading: false, error: true });
         return;
@@ -207,6 +211,8 @@ export function createNoticeStore(deps: NoticeStoreDeps): NoticeStore {
       users += 1;
       if (users === 1) {
         generation += 1;
+        // 先于 acquire 发出的取数（refresh 单独调过）属于上一代，它的响应会被丢掉：这里重新发一次，别白等一个轮询周期。
+        inflight = null;
         void fetchNow();
         schedule();
         offVisible = deps.onVisible(() => {

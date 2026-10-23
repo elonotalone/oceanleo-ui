@@ -632,6 +632,33 @@ test("通知仓：标签页在后台不取；切回可见立即取；取失败�
   assert.equal(h.store.getState().error, false);
 });
 
+test("通知仓：refresh 先于 acquire 发出时，第一个使用方到来会重新取一次（上一代的响应作废，不白等一个轮询周期，也不留「正在加载」）", async () => {
+  const h = makeStoreHarness({ items: [item("a")], unread: 1 });
+  h.gates.list = deferred();
+  const early = h.store.refresh();
+  assert.equal(h.store.getState().loading, true);
+  h.store.acquire();
+  h.gates.list.resolve();
+  h.gates.list = null;
+  await early;
+  await settle();
+  assert.equal(h.calls.list.length, 2, "acquire 又发了一次");
+  assert.equal(h.store.getState().loaded, true);
+  assert.equal(h.store.getState().loading, false);
+
+  // 使用方全部释放后才回来的响应：不进状态，也不让「正在加载」一直亮着
+  const g = makeStoreHarness({ items: [item("a")], unread: 1 });
+  const release = g.store.acquire();
+  g.gates.list = deferred();
+  await settle();
+  const pending = g.store.refresh();
+  release();
+  g.gates.list.resolve();
+  await pending;
+  await settle();
+  assert.equal(g.store.getState().loading, false);
+});
+
 test("通知仓：第一次就失败 = 没有数据、error；refresh 重试成功后 loaded", async () => {
   const h = makeStoreHarness({ items: [item("a")], unread: 1 });
   h.gates.failList = true;
