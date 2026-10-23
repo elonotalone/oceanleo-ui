@@ -6,8 +6,28 @@ export default async function ({ page, log, shot, helpers }) {
     "/tmp/w02/[W02] sample.png",
     "/tmp/w02/[W02] sample.docx",
   ];
+  await helpers.gotoApp(page, "/library");
+  // The dev slot compiles on first hit; wait until the library list is really loaded.
+  const loadedBy = Date.now() + 180000;
+  while (Date.now() < loadedBy) {
+    const loading = await page
+      .getByText(/Loading My Library|正在加载我的库/)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (!loading) break;
+    await page.waitForTimeout(1000);
+  }
   await helpers.uploadFiles(page, files);
-  await page.waitForTimeout(3000);
+  const titles = ["[W02] sample.pdf", "[W02] sample.png", "[W02] sample.docx"];
+  const seenBy = Date.now() + 120000;
+  let seen = [];
+  while (Date.now() < seenBy) {
+    const text = await page.locator("body").innerText().catch(() => "");
+    seen = titles.filter((title) => text.includes(title.replace(/\.[a-z]+$/, "")));
+    if (seen.length === titles.length) break;
+    await page.waitForTimeout(1500);
+  }
   await shot("after-upload");
-  log("uploaded", files.length);
+  log("visible-after-upload", JSON.stringify(seen));
 }
