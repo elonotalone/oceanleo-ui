@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { gridDownloadBaseName, gridDownloadFileName, gridDownloadFormatLabel } from "../src/shell/doc-editors/grid-univer/download.ts";
 
 import {
   GRID_LEGACY_PROJECT_SCHEMA,
@@ -54,6 +55,8 @@ test("typed native project survives legacy meta alias removal and validates real
   assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !handleRef\.current/);
   assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !snapshotReady \|\| !handleRef\.current/);
   assert.match(leaf, /if \(!gridSnapshotIsUsable\(snapshot\)\)[\s\S]*?return null;/);
+  assert.match(leaf, /if \(waitingForSource\) \{\s*sourceReadyRef\.current = sourceReadyRef\.current && gridShouldSkipSourceReload\(/,
+    "switching to an unresolved source must not retain another item's ready flag");
 });
 
 
@@ -67,6 +70,23 @@ function sheet(cell) {
     conditionalFormats: [],
   };
 }
+
+test("grid downloads translate format names and do not duplicate the opening extension", () => {
+  assert.equal(gridDownloadFileName('[W10] Plan.xlsx', 'xlsx'), '[W10] Plan.xlsx');
+  assert.equal(gridDownloadFileName('Plan.XLSX', 'csv'), 'Plan.csv');
+  assert.equal(gridDownloadBaseName('Budget.2026.xlsx'), 'Budget.2026');
+  assert.equal(gridDownloadFileName('Plan', 'xlsx'), 'Plan.xlsx');
+  const translated = new Map([
+    ['Excel 工作簿 (.xlsx)', 'Excel workbook (.xlsx)'],
+    ['当前工作表逗号分隔 (.csv)', 'Current sheet (.csv)'],
+    ['PDF 文件 (.pdf)', 'PDF file (.pdf)'],
+  ]);
+  for (const [extension, expected] of [['xlsx', 'Excel workbook (.xlsx)'], ['csv', 'Current sheet (.csv)'], ['pdf', 'PDF file (.pdf)']]) {
+    assert.equal(gridDownloadFormatLabel(extension, key => translated.get(key)), expected);
+  }
+  assert.match(leaf, /gridDownloadFormatLabel\("xlsx", tt\)/);
+  assert.match(leaf, /gridDownloadFormatLabel\(format\.extension, tt\)/);
+});
 
 test("会话交接已随旧核一起删：没有 handoff / flush 登记，路由不再 flush", () => {
   const sameDocumentCode = sameDocument

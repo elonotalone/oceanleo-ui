@@ -164,6 +164,7 @@ import {
   type GridUniverLiveApi,
 } from "./grid-univer/stage-plan";
 import { gridStageTopInset } from "./grid-univer/chrome";
+import { gridDownloadBaseName, gridDownloadFileName, gridDownloadFormatLabel } from "./grid-univer/download";
 import { noteGridProbe, setGridProbe } from "./grid-univer/acceptance-probe";
 import { gridRecoveryReady } from "./grid-univer/open-settle";
 import {
@@ -400,17 +401,20 @@ export function GridUniverStage({
   ].join("\u0000");
 
   useEffect(() => {
-    if (waitingForSource) {
-      setLoading(true);
-      setStatus(ttRef.current("正在载入表格"));
-      return;
-    }
-    // 只是签名地址换发（同一 artifact / revision）：不重载、不清未保存的编辑。
     const identity: GridLoadIdentity = {
       artifactId: item.artifactId ? String(item.artifactId) : "",
       revisionId: item.revisionId ? String(item.revisionId) : "",
       nonce: reloadNonce,
     };
+    if (waitingForSource) {
+      sourceReadyRef.current = sourceReadyRef.current && gridShouldSkipSourceReload({
+        loaded: loadedIdentityRef.current, next: identity, dirty: dirtyRef.current,
+      });
+      setLoading(true);
+      setStatus(ttRef.current("正在载入表格"));
+      return;
+    }
+    // 只是签名地址换发（同一 artifact / revision）：不重载、不清未保存的编辑。
     if (
       gridShouldSkipSourceReload({
         loaded: loadedIdentityRef.current,
@@ -896,7 +900,7 @@ export function GridUniverStage({
     setXlsxExporting(true);
     try {
       const { blob, warning } = await workbookBlob();
-      downloadBlob(`${item.title || "workbook"}.xlsx`, blob);
+      downloadBlob(gridDownloadFileName(item.title || "workbook", "xlsx"), blob);
       setStatus(warning);
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : tt("导出 XLSX 失败"));
@@ -920,13 +924,13 @@ export function GridUniverStage({
           if (!first) return tt("没有可导出的工作表。");
           const rows = first.rows.map((row) => row.join(",")).join("\n");
           downloadBlob(
-            `${item.title || "workbook"}.csv`,
+            gridDownloadFileName(item.title || "workbook", "csv"),
             new Blob([`\uFEFF${rows}`], { type: "text/csv;charset=utf-8" }),
           );
           return "";
         }
         if (extension === "pdf") {
-          const title = item.title || "workbook";
+          const title = gridDownloadBaseName(item.title || "workbook");
           const { blob, warning } = await workbookBlob();
           const error =
             (await downloadConvertedCopy({
@@ -1310,7 +1314,7 @@ export function GridUniverStage({
         pages: { proLabel: GRID_PRO_LABEL },
         directDownload: {
           id: "grid-export-xlsx",
-          label: tt("直接下载 {fmt}", { fmt: DOC_FAMILY_DOWNLOAD_FORMATS.grid[0].label }),
+          label: tt("直接下载 {fmt}", { fmt: gridDownloadFormatLabel("xlsx", tt) }),
           icon: "download",
           busyLabel: tt("导出中…"),
           busy: xlsxExporting,
@@ -1332,7 +1336,7 @@ export function GridUniverStage({
             : []),
           ...DOC_FAMILY_DOWNLOAD_FORMATS.grid.slice(1).map((format) => ({
             id: `grid-export-${format.extension}`,
-            label: tt("下载 {fmt}", { fmt: format.label }),
+            label: tt("下载 {fmt}", { fmt: gridDownloadFormatLabel(format.extension, tt) }),
             group: "download" as const,
             disabled: loading || xlsxExporting || readonly,
             onTrigger: () => {

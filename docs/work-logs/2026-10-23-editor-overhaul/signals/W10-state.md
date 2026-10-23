@@ -2,6 +2,8 @@
 
 ## Codex continuation（2026-10-23）
 
+最新纠正：2dab34bd给probe补上remote后真实模型读数，确认native源46cells→room首套后liveCells=0；此前「重开两mark在」只来自未更新的初始probe，不是通过。父已接共享collab诊断。pageSize假设无效已撤回。W10 native入口、源ready/维度failclosed和CAShead修复保留；实际完整验收仍待共享修复后复测。
+
 - [实测] 原未完成保存验收确有红：旧基线导致第二存409；typed Library重新打开丢了legacy project meta alias，忽略native manifest，降级XLSX路径出现白屏。失败fixture b13b20b5的ordinal2/3源XLSX与native project两mark仍在；之后失败诊断写入的ordinal4/5不可当作验收正确head。
 - [修复] 5e024e3c：typed editor_manifest入口恢复、schema验证与有效sheet模型/尺寸验证，未完成/失败源禁止保存与checkpoint，成功回执推进局部CAS基线。
 - [实测] fresh验收账号fixture d8bf00e4-7d6f-4110-9988-3ac412957d32 两次保存200、DB ordinal1→2→3正确父链；重开两mark均在。65 focused tests passed。

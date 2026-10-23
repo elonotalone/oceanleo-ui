@@ -1,5 +1,7 @@
 # W10 journal（每条实测/读码结论一行，UTC）
 
+- 2026-10-24 [Codex实测] native manifest503故障注入：2次真实拒绝，错误面板出现、无空白canvas；等8s并CtrlS，staging/revision均0（codex-w10-source-fail）。补W01明确signal里的下载格式16语与重复扩展名问题；source等待换项不保留旧ready标记。
+
 - 2026-10-23 [Codex纠正/确认] pageSize假设未解释白字，已移除其专用规范化与测试；Univer上游本就处理null。补probe在remote套用完成后读真实模型：d8bf00e4源46cells，collab-remote后liveCells=0、dirty=true；确认为首套room覆盖，证据codex-w10-live-diagnose2，已交父处理共享collab。初始probe的两mark不能当成功重开证据。
 
 - 2026-10-23 [Codex根因] native工程原cell.p.documentStyle.pageSize的Infinity经JSON成为null；重开精确该字段是null，Univer内核默认用Infinity。probe初始v虽在，截图cells全白，不能据probe判pass。W10加载时只恢复这些pageSize null sentinel→Infinity，保留文本/富文本/有限尺寸且不改原JSON；25focused通过，正在视觉/完整协议复核。
