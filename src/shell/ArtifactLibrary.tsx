@@ -682,7 +682,7 @@ function ArtifactLibraryLegacy({
               label: translateLibraryTypeLabel(tt, item.label),
             }))}
             onChange={(id) => setFilter((id || "all") as ArtifactFilter)}
-            allLabel={tt("全部")}
+            allLabel={tt("全部类型")}
           />
         </CollectionFilterRow>
       )}

@@ -1,7 +1,8 @@
 "use client";
 
-// LeoBay 工具条上的下拉筛选：一个按键，上面写着「名称：当前选中的值」，点开是一张选项单。
+// LeoBay 工具条上的下拉筛选：一个按键，上面只写当前值（「全部类型 ⌄」），点开是一张选项单。
 // 服务 / 需求的「站点」，素材的「类型」「来源」「目录」都用这一个件，所以筛选只占一行，不再叠成几排小标签。
+// 外观（按键、选项单、勾）与库 / 工作台用的 CollectionFilterSelect 是同一份，类名与取值逻辑都来自 collection-chrome。
 //
 // 另有一对「槽」：`BayToolbarFilterSlot` 摆在工具条里，`BayToolbarFilters` 把自己的子节点送进那个槽。
 // 素材库的筛选状态在素材库自己手里，靠这对槽把下拉画到页面那一行工具条上；没有槽时（右侧栏、境内只剩素材的页）就地画成一行。
@@ -21,7 +22,16 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../../../i18n/ui/useUI";
-import { CollectionFilterChevron, CollectionMenuSearchField } from "../../collection-chrome";
+import {
+  COLLECTION_FILTER_MENU_CLASS,
+  CollectionFilterCheck,
+  CollectionFilterTriggerFace,
+  CollectionMenuSearchField,
+  collectionFilterOptionClass,
+  collectionFilterState,
+  collectionFilterTriggerClass,
+  collectionMenuPlace,
+} from "../../collection-chrome";
 
 export interface BayFilterOption {
   value: string;
@@ -36,14 +46,16 @@ export interface BayFilterOption {
 }
 
 export interface BayFilterSelectProps {
-  /** 这个筛选叫什么（已 `tt()`）：站点 / 类型 / 来源 / 目录 / 行业。 */
+  /** 这个筛选叫什么（已 `tt()`）：站点 / 类型 / 来源 / 目录 / 行业。不画在按键上，只作按键的 aria-label 和选项单的读屏名。 */
   label: string;
-  /** 当前值；`""` 表示没选（显示 `allLabel`）。 */
+  /** 当前值；`""`（或 `defaultValue`）表示没选（显示 `allLabel`）。 */
   value: string;
   options: readonly BayFilterOption[];
   onChange: (value: string) => void;
-  /** 给了就在选项单顶上多一条「全部」（值为 `""`）。 */
+  /** 给了就在选项单顶上多一条「全部」（值为 `defaultValue`，默认 `""`）。必须自带名词：「全部站点」，不许光秃秃的「全部」。 */
   allLabel?: string;
+  /** 值等于它时视作「未筛选」、不加深边框。用 `"all"` 当全部的调用方传 `"all"`；不传以 `""` 为未筛选。 */
+  defaultValue?: string;
   /** 选项多时（站点有 33 个）在单子顶上放一个可打字的过滤框。 */
   searchable?: boolean;
   accent?: string;
@@ -52,27 +64,6 @@ export interface BayFilterSelectProps {
 }
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
-
-const TRIGGER =
-  "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-
-const PAD = 8;
-const MENU_MIN = 208;
-const MENU_GAP = 4;
-
-function menuPlace(rect: DOMRect): CSSProperties {
-  const maxWidth = Math.max(0, window.innerWidth - PAD * 2);
-  const width = Math.min(Math.max(rect.width, MENU_MIN), maxWidth);
-  const left = Math.max(PAD, Math.min(rect.left, window.innerWidth - width - PAD));
-  const spaceBelow = window.innerHeight - rect.bottom - PAD;
-  const spaceAbove = rect.top - PAD;
-  const below = spaceBelow >= 160 || spaceBelow >= spaceAbove;
-  const maxHeight = Math.max(160, below ? spaceBelow : spaceAbove);
-  if (below) {
-    return { position: "fixed", top: rect.bottom + MENU_GAP, left, width, minWidth: width, maxWidth, maxHeight };
-  }
-  return { position: "fixed", bottom: window.innerHeight - rect.top + MENU_GAP, left, width, minWidth: width, maxWidth, maxHeight };
-}
 
 function firstEnabled(rows: readonly BayFilterOption[], from: number, step: number): number {
   const n = rows.length;
@@ -86,9 +77,19 @@ function firstEnabled(rows: readonly BayFilterOption[], from: number, step: numb
   return from;
 }
 
-export function BayFilterSelect({ label, value, options, onChange, allLabel, searchable, name }: BayFilterSelectProps): ReactElement {
+export function BayFilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+  allLabel,
+  defaultValue,
+  searchable,
+  name,
+}: BayFilterSelectProps): ReactElement {
   const tt = useUI();
   const listId = useId();
+  const valueId = `${listId}-value`;
   const [open, setOpen] = useState(false);
   const [needle, setNeedle] = useState("");
   const [highlight, setHighlight] = useState(0);
@@ -97,18 +98,25 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
   const menuRef = useRef<HTMLDivElement | null>(null);
   const highlightedRef = useRef<HTMLButtonElement | null>(null);
 
-  const current = options.find((option) => option.value === value);
-  const picked = Boolean(current && value !== "");
+  const { filtered, shown: shownValue, unfilteredValue } = collectionFilterState({
+    label,
+    value,
+    options,
+    allLabel,
+    defaultValue,
+  });
   const shown = useMemo(() => {
     const text = needle.trim().toLowerCase();
     return text ? options.filter((option) => option.label.toLowerCase().includes(text)) : options;
   }, [needle, options]);
   const items = useMemo(() => {
     const rows: BayFilterOption[] = [];
-    if (allLabel && !needle.trim()) rows.push({ value: "", label: allLabel });
+    if (allLabel && !needle.trim() && !options.some((option) => option.value === unfilteredValue)) {
+      rows.push({ value: unfilteredValue, label: allLabel });
+    }
     rows.push(...shown);
     return rows;
-  }, [allLabel, needle, shown]);
+  }, [allLabel, options, needle, shown, unfilteredValue]);
   const activeId = items[highlight] ? `${listId}-opt-${highlight}` : undefined;
 
   const close = useCallback(() => {
@@ -134,7 +142,7 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
 
   useIsoLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
-    setPlace(menuPlace(triggerRef.current.getBoundingClientRect()));
+    setPlace(collectionMenuPlace(triggerRef.current.getBoundingClientRect()));
   }, [open, items.length]);
 
   useIsoLayoutEffect(() => {
@@ -229,19 +237,12 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
         data-highlight={active ? "true" : undefined}
         onMouseEnter={() => setHighlight(index)}
         onClick={() => (option.disabled ? undefined : pick(option.value))}
-        className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] ${
-          option.disabled
-            ? "cursor-not-allowed text-stone-400"
-            : active
-              ? "bg-stone-100 font-medium text-stone-900"
-              : on
-                ? "font-medium text-stone-900"
-                : "text-stone-700 hover:bg-stone-50"
-        }`}
+        className={collectionFilterOptionClass({ active, selected: on, disabled: option.disabled })}
       >
+        <CollectionFilterCheck on={on} />
         {option.icon}
         <span className="min-w-0 flex-1 truncate">{option.label}</span>
-        {typeof option.count === "number" ? <span className="shrink-0 text-[12px] tabular-nums text-stone-400">{option.count}</span> : null}
+        {typeof option.count === "number" ? <span className="shrink-0 text-[12px] tabular-nums text-neutral-400">{option.count}</span> : null}
       </button>
     );
   };
@@ -254,8 +255,11 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        aria-label={label}
+        aria-describedby={valueId}
         data-bay-filter={name}
         data-value={value}
+        data-filtered={filtered ? "true" : undefined}
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => {
           if (!open) {
@@ -269,11 +273,9 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
             onMenuKeyDown(event);
           }
         }}
-        className={`${TRIGGER} ${picked ? "border-neutral-900 bg-white font-medium text-neutral-900" : "border-neutral-900 bg-white text-neutral-700 hover:text-neutral-900"}`}
+        className={collectionFilterTriggerClass({ filtered, open })}
       >
-        <span className={picked ? "opacity-70" : undefined}>{label}</span>
-        {picked || allLabel ? <span className="max-w-[10rem] truncate">{picked ? current?.label : allLabel}</span> : null}
-        <CollectionFilterChevron open={open} />
+        <CollectionFilterTriggerFace id={valueId} text={shownValue} open={open} />
       </button>
       {open && place && typeof document !== "undefined"
         ? createPortal(
@@ -287,7 +289,7 @@ export function BayFilterSelect({ label, value, options, onChange, allLabel, sea
               data-bay-filter-menu={name}
               style={place}
               onKeyDown={onMenuKeyDown}
-              className="z-50 flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white p-1 shadow-lg"
+              className={COLLECTION_FILTER_MENU_CLASS}
             >
               {searchable ? (
                 <CollectionMenuSearchField

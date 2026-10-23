@@ -269,7 +269,7 @@ export function AppMarket({
             count: option.count,
           }))}
           onChange={onSceneChange}
-          allLabel={tt("全部")}
+          allLabel={tt("全部场景")}
         />
         {siteIds.length > 1 ? (
           <div data-app-market-sites>
@@ -282,7 +282,7 @@ export function AppMarket({
                 label: option,
               }))}
               onChange={onSiteChange}
-              allLabel={tt("全部")}
+              allLabel={tt("全部站点")}
               searchable={siteIds.length > 8}
             />
           </div>

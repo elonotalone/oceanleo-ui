@@ -467,10 +467,11 @@ export function WorkspaceDetail({
         label={tt("分区")}
         name="section"
         value={tab}
+        defaultValue="app"
         options={[
           { value: "site", label: tt("网站") },
-          { value: "app", label: "app" },
-          { value: "skill", label: "agent" },
+          { value: "app", label: tt("应用") },
+          { value: "skill", label: tt("agent") },
         ]}
         onChange={(value) => {
           if (value === "site" || value === "app" || value === "skill") setTab(value);

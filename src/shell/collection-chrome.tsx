@@ -46,27 +46,86 @@ const SEARCH_INPUT_CLASS =
   "h-9 w-56 rounded-xl border border-neutral-200 bg-white pr-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100";
 const SEARCH_INPUT_STYLE = { paddingLeft: 36, appearance: "none" } as const;
 
-const FILTER_TRIGGER =
-  "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+// ---- 筛选下拉的外观（CollectionFilterSelect 与 LeoBay 的 BayFilterSelect 共用同一份） ----------
+// 参考 Slack 搜索筛选（「All channels ⌄」）：白底、浅灰细边、圆角矩形、粗体；按键上只写当前值，
+// 筛选的名称（label）不再画在按键上，只作读屏名。选了具体值（不是「全部」）时边框加深。
+// 只用 src/theme/ui.css 产物里已有的类：新类要先重编产物，而产物不归本文件管。
+
+/** 触发键：高度字号对齐页头搜索框（SEARCH_INPUT_CLASS 的 h-9 / 13px）。键盘焦点用内圈，不会被横滑的筛选行剪掉。 */
+export const COLLECTION_FILTER_TRIGGER_CLASS =
+  "inline-flex h-9 max-w-xs shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border bg-white px-3 text-[13px] font-semibold outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-400";
+
+/** 触发键的整串 class：没筛 = 浅灰边；打开 = 中灰边；选了具体值 = 深色边。 */
+export function collectionFilterTriggerClass(state: { filtered: boolean; open?: boolean }): string {
+  const tone = state.filtered
+    ? "border-neutral-900 text-neutral-900"
+    : state.open
+      ? "border-neutral-400 text-neutral-900"
+      : "border-neutral-200 text-neutral-800 hover:border-neutral-400";
+  return `${COLLECTION_FILTER_TRIGGER_CLASS} ${tone}`;
+}
+
+/** 选项单：白底圆角清单，和触发键同一条浅灰边。 */
+export const COLLECTION_FILTER_MENU_CLASS =
+  "z-50 flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg outline-none";
+
+/** 选项单里的一行：高亮 = 浅灰底；选中 = 加粗（前面还有勾）；点不动 = 灰字。 */
+export function collectionFilterOptionClass(state: {
+  active: boolean;
+  selected: boolean;
+  disabled?: boolean;
+}): string {
+  const base = "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px]";
+  if (state.disabled) return `${base} cursor-not-allowed text-neutral-400`;
+  if (state.active) return `${base} bg-neutral-100 font-semibold text-neutral-900`;
+  if (state.selected) return `${base} font-semibold text-neutral-900 hover:bg-neutral-50`;
+  return `${base} text-neutral-700 hover:bg-neutral-50`;
+}
+
+/**
+ * 按键上写什么、边框要不要加深。纯函数，两份下拉共用。
+ * - 值是某个选项 → 写那个选项的 label；没选（值为「未筛选」的值）→ 写 allLabel；都没有才退回 label。
+ * - 「未筛选」的值默认是 ""；用 "all" 当全部的调用方传 defaultValue="all"。
+ * - 只有值落在某个选项上、且不等于「未筛选」的值，才算筛了（加深边框）。
+ */
+export function collectionFilterState<T extends { value: string; label: string }>(input: {
+  label: string;
+  value: string;
+  options: readonly T[];
+  allLabel?: string;
+  defaultValue?: string;
+}): { current: T | undefined; filtered: boolean; shown: string; unfilteredValue: string } {
+  const unfilteredValue = input.defaultValue ?? "";
+  const current = input.options.find((option) => option.value === input.value);
+  return {
+    current,
+    filtered: Boolean(current) && input.value !== unfilteredValue,
+    shown: current?.label || input.allLabel || input.label,
+    unfilteredValue,
+  };
+}
 
 const PAD = 8;
 const MENU_MIN = 208;
 const MENU_GAP = 4;
+/** 菜单要盖过项目页里的弹窗（z-[80]～z-[2147483100]），所以不靠 z-50 这个类，直接写行内 zIndex。 */
+const MENU_Z_INDEX = 2147483500;
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-function menuPlace(rect: DOMRect): CSSProperties {
+/** 菜单贴着触发键放：下面放得下就放下面，否则放上面；宽度不小于触发键，也不小于 MENU_MIN。 */
+export function collectionMenuPlace(rect: DOMRect, minWidth = MENU_MIN): CSSProperties {
   const maxWidth = Math.max(0, window.innerWidth - PAD * 2);
-  const width = Math.min(Math.max(rect.width, MENU_MIN), maxWidth);
+  const width = Math.min(Math.max(rect.width, minWidth), maxWidth);
   const left = Math.max(PAD, Math.min(rect.left, window.innerWidth - width - PAD));
   const spaceBelow = window.innerHeight - rect.bottom - PAD;
   const spaceAbove = rect.top - PAD;
   const below = spaceBelow >= 160 || spaceBelow >= spaceAbove;
   const maxHeight = Math.max(160, below ? spaceBelow : spaceAbove);
   if (below) {
-    return { position: "fixed", top: rect.bottom + MENU_GAP, left, width, minWidth: width, maxWidth, maxHeight };
+    return { position: "fixed", top: rect.bottom + MENU_GAP, left, width, minWidth: width, maxWidth, maxHeight, zIndex: MENU_Z_INDEX };
   }
-  return { position: "fixed", bottom: window.innerHeight - rect.top + MENU_GAP, left, width, minWidth: width, maxWidth, maxHeight };
+  return { position: "fixed", bottom: window.innerHeight - rect.top + MENU_GAP, left, width, minWidth: width, maxWidth, maxHeight, zIndex: MENU_Z_INDEX };
 }
 
 function wrapIndex(length: number, from: number): number {
@@ -132,6 +191,45 @@ export function CollectionFilterChevron({ open }: { open: boolean }): ReactEleme
     >
       <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+/** 选项前的勾位：选中画勾，没选留同宽空位，各行文字对得齐。两份下拉共用。 */
+export function CollectionFilterCheck({ on }: { on: boolean }): ReactElement {
+  return on ? (
+    <svg
+      className="h-3.5 w-3.5 shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+      data-collection-filter-check=""
+    >
+      <path d="M5 12l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <span className="inline-block h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+  );
+}
+
+/** 触发键里面：当前值（太长就省略）+ 下箭头。读屏靠 id 把当前值接到按键的 aria-describedby 上。 */
+export function CollectionFilterTriggerFace({
+  id,
+  text,
+  open,
+}: {
+  id: string;
+  text: string;
+  open: boolean;
+}): ReactElement {
+  return (
+    <>
+      <span id={id} data-collection-filter-value="" className="min-w-0 truncate">
+        {text}
+      </span>
+      <CollectionFilterChevron open={open} />
+    </>
   );
 }
 
@@ -538,18 +636,27 @@ export function CollectionInfiniteSentinel(props: {
   );
 }
 
+/**
+ * 筛选下拉。按键上只写当前值（「全部类型 ⌄」「图片 ⌄」），不再画「名称：值」两截；
+ * 名称 `label` 只作按键的 aria-label 和菜单的读屏名。选了具体值时边框加深。
+ */
 export function CollectionFilterSelect(props: {
+  /** 这个筛选叫什么（已 tt()）：类型 / 分区 / 站点。不画在按键上，只给读屏。 */
   label: string;
   name: string;
   value: string;
   options: readonly CollectionFilterOption[];
   onChange: (value: string) => void;
+  /** 「全部」那一项（值为 defaultValue，默认 ""）。必须自带名词：「全部类型」，不许光秃秃的「全部」。 */
   allLabel?: string;
+  /** 值等于它时视作「未筛选」、不加深边框。用 "all" 当全部的调用方传 "all"；不传以 "" 为未筛选。 */
+  defaultValue?: string;
   searchable?: boolean;
   accent?: string;
 }): ReactElement {
   const tt = useUI();
   const listId = useId();
+  const valueId = `${listId}-value`;
   const [open, setOpen] = useState(false);
   const [needle, setNeedle] = useState("");
   const [highlight, setHighlight] = useState(0);
@@ -558,20 +665,26 @@ export function CollectionFilterSelect(props: {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const highlightedRef = useRef<HTMLButtonElement | null>(null);
 
-  const current = props.options.find((option) => option.value === props.value);
-  const picked = Boolean(current && props.value !== "");
+  const { filtered, shown: shownValue, unfilteredValue } = collectionFilterState({
+    label: props.label,
+    value: props.value,
+    options: props.options,
+    allLabel: props.allLabel,
+    defaultValue: props.defaultValue,
+  });
   const shown = useMemo(() => {
     const text = needle.trim().toLowerCase();
     return text ? props.options.filter((option) => option.label.toLowerCase().includes(text)) : props.options;
   }, [needle, props.options]);
   const items = useMemo(() => {
     const rows: CollectionFilterOption[] = [];
-    if (props.allLabel && !needle.trim()) rows.push({ value: "", label: props.allLabel });
+    if (props.allLabel && !needle.trim() && !props.options.some((option) => option.value === unfilteredValue)) {
+      rows.push({ value: unfilteredValue, label: props.allLabel });
+    }
     rows.push(...shown);
     return rows;
-  }, [props.allLabel, needle, shown]);
+  }, [props.allLabel, props.options, needle, shown, unfilteredValue]);
   const activeId = items[highlight] ? `${listId}-opt-${highlight}` : undefined;
-  const shownValue = picked ? current?.label : props.allLabel;
 
   const close = useCallback(() => {
     setOpen(false);
@@ -596,7 +709,7 @@ export function CollectionFilterSelect(props: {
 
   useIsoLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
-    setPlace(menuPlace(triggerRef.current.getBoundingClientRect()));
+    setPlace(collectionMenuPlace(triggerRef.current.getBoundingClientRect()));
   }, [open, items.length]);
 
   useIsoLayoutEffect(() => {
@@ -681,8 +794,11 @@ export function CollectionFilterSelect(props: {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        aria-label={props.label}
+        aria-describedby={valueId}
         data-collection-filter={props.name}
         data-value={props.value}
+        data-filtered={filtered ? "true" : undefined}
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => {
           if (!open) {
@@ -696,11 +812,9 @@ export function CollectionFilterSelect(props: {
             onMenuKeyDown(event);
           }
         }}
-        className={`${FILTER_TRIGGER} ${picked ? "border-neutral-900 bg-white font-medium text-neutral-900" : "border-neutral-900 bg-white text-neutral-700 hover:text-neutral-900"}`}
+        className={collectionFilterTriggerClass({ filtered, open })}
       >
-        <span className={picked ? "opacity-70" : undefined}>{props.label}</span>
-        {shownValue != null && shownValue !== "" ? <span className="max-w-[10rem] truncate">{shownValue}</span> : null}
-        <CollectionFilterChevron open={open} />
+        <CollectionFilterTriggerFace id={valueId} text={shownValue} open={open} />
       </button>
       {open && place && typeof document !== "undefined"
         ? createPortal(
@@ -714,7 +828,7 @@ export function CollectionFilterSelect(props: {
               data-collection-filter-menu={props.name}
               style={place}
               onKeyDown={onMenuKeyDown}
-              className="z-50 flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white p-1 shadow-lg"
+              className={COLLECTION_FILTER_MENU_CLASS}
             >
               {props.searchable ? (
                 <CollectionMenuSearchField
@@ -744,18 +858,13 @@ export function CollectionFilterSelect(props: {
                       data-highlight={active ? "true" : undefined}
                       onMouseEnter={() => setHighlight(index)}
                       onClick={() => pick(option.value)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] ${
-                        active
-                          ? "bg-stone-100 font-medium text-stone-900"
-                          : on
-                            ? "font-medium text-stone-900"
-                            : "text-stone-700 hover:bg-stone-50"
-                      }`}
+                      className={collectionFilterOptionClass({ active, selected: on })}
                     >
+                      <CollectionFilterCheck on={on} />
                       {option.icon}
                       <span className="min-w-0 flex-1 truncate">{option.label}</span>
                       {typeof option.count === "number" ? (
-                        <span className="shrink-0 text-[12px] tabular-nums text-stone-400">{option.count}</span>
+                        <span className="shrink-0 text-[12px] tabular-nums text-neutral-400">{option.count}</span>
                       ) : null}
                     </button>
                   );

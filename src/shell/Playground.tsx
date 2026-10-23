@@ -448,17 +448,19 @@ export function PlaygroundDetail({
       onSelect: toggleFav,
     },
   ];
+  // 分区的值是名词，按键上只写当前分区（「应用 ⌄」）。叫法与工作台别处一致：网站 / 应用 / agent / 提示词。
   const sectionOptions = [
     ...(renderSites ? [{ value: "site", label: tt("网站") }] : []),
-    { value: "app", label: "app" },
-    { value: "skill", label: "agent" },
-    { value: "prompt", label: "prompt" },
+    { value: "app", label: tt("应用") },
+    { value: "skill", label: tt("agent") },
+    { value: "prompt", label: tt("提示词") },
   ];
   const tabsBar = (
     <CollectionFilterSelect
       label={tt("分区")}
       name="section"
       value={tab}
+      defaultValue={renderSites ? "site" : "app"}
       options={sectionOptions}
       onChange={(value) => {
         if (value) setTab(value as Tab);
@@ -825,7 +827,7 @@ function PromptZone({
             value={cat === "__all__" ? "" : cat}
             options={categories.map((item) => ({ value: item, label: item }))}
             onChange={(next) => setCat(next || "__all__")}
-            allLabel={tt("全部")}
+            allLabel={tt("全部类型")}
             searchable={categories.length > 8}
           />
         ) : null}

@@ -1038,7 +1038,7 @@ export function WorkspaceLibrary({
                   label: translateLibraryTypeLabel(tt, item.label),
                 }))}
               onChange={(value) => setCategory(value || "all")}
-              allLabel={tt("全部")}
+              allLabel={tt("全部类型")}
               searchable={categories.length > 8}
             />
           </CollectionFilterRow>

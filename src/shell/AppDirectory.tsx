@@ -157,7 +157,7 @@ export interface AppDirectoryProps {
    * 用于成品 app 目录（image/word/…）：顶部横排 = 面向场景的分类。
    */
   sceneMode?: boolean;
-  /** 场景模式下「全部」chip 的文字，默认「全部」。 */
+  /** 场景模式下「全部」那一项的文字（已 tt()），默认「全部场景」。必须自带名词，按键上不许只剩「全部」。 */
   sceneAllLabel?: string;
   /**
    * 宗旨 v21（操作员 2026-07-09）：两层分类器的【第一层：能力大板块】。给了它 →
@@ -169,7 +169,7 @@ export interface AppDirectoryProps {
    * 数据驱动：站点在 app-catalog 里声明 GROUPS 数组，顺序即 tab 顺序。
    */
   groups?: { id: string; label: string; icon?: React.ReactNode }[];
-  /** 大板块「全部」tab 的文字，默认「全部」。 */
+  /** 大板块「全部」那一项的文字（已 tt()），默认「全部板块」。必须自带名词，按键上不许只剩「全部」。 */
   groupAllLabel?: string;
 }
 
@@ -216,8 +216,8 @@ export function AppDirectory({
   const openLabelText = openLabel ?? tt(OPEN_LABEL_KEY);
   const emptyTextText = emptyText ?? tt("暂无内容");
   const nativeLabelText = nativeLabel ?? tt("按分类");
-  const sceneAllText = sceneAllLabel ?? tt("全部");
-  const groupAllText = groupAllLabel ?? tt("全部");
+  const sceneAllText = sceneAllLabel ?? tt("全部场景");
+  const groupAllText = groupAllLabel ?? tt("全部板块");
   // 分类方式 + 当前选中分类（"all" = 全部）。nativeFirst 时默认「按分类」（原生 category）。
   const [mode, setMode] = useState<TaxonomyMode>(nativeFirst ? "native" : "industry");
   const [cat, setCat] = useState<string>("all");
@@ -371,6 +371,7 @@ export function AppDirectory({
             label={tt("分类")}
             name="taxonomy"
             value={mode}
+            defaultValue={nativeFirst ? "native" : "industry"}
             options={modeTabs.map((item) => ({ value: item.id, label: item.label }))}
             onChange={(next) => {
               if (next === "native" || next === "industry" || next === "content") switchMode(next);
@@ -396,12 +397,12 @@ export function AppDirectory({
         ) : null}
         {categoryOptions.length > 0 ? (
           <CollectionFilterSelect
-            label={tt("类型")}
+            label={sceneMode ? tt("场景") : tt("类型")}
             name="category"
             value={cat === "all" ? "" : cat}
             options={categoryOptions}
             onChange={(next) => setCat(next || "all")}
-            allLabel={sceneMode ? sceneAllText : tt("全部")}
+            allLabel={sceneMode ? sceneAllText : tt("全部类型")}
             searchable={categoryOptions.length > 8}
           />
         ) : null}

@@ -1976,7 +1976,7 @@ export function MyLibrary({
                   label: translateLibraryTypeLabel(tt, option.typeLabel),
                 }))}
                 onChange={(value) => changeCategory(value || "all")}
-                allLabel={tt("全部")}
+                allLabel={tt("全部类型")}
               />
             </CollectionFilterRow>
           ) : null}
