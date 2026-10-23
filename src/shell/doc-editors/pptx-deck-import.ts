@@ -1,3 +1,4 @@
+import { deckSafeLink } from "./deck-text-format";
 import {
   normalizeDeckDocument,
   type DeckDocument,
@@ -157,6 +158,10 @@ function textStyle(content: string): Pick<
   | "align"
   | "lineHeight"
   | "letterSpacing"
+  | "strike"
+  | "highlight"
+  | "list"
+  | "link"
 > {
   const fontSize = number(cssValue(content, "font-size").replace(/pt$/i, ""), 18);
   const textAlign = cssValue(content, "text-align").toLowerCase();
@@ -173,8 +178,24 @@ function textStyle(content: string): Pick<
     italic: /font-style\s*:\s*italic/i.test(content),
     underline: /text-decoration(?:-line)?\s*:[^;"']*underline/i.test(content),
     align: (
-      textAlign === "center" || textAlign === "right" ? textAlign : "left"
+      textAlign === "center" || textAlign === "right" || textAlign === "justify"
+        ? textAlign
+        : "left"
     ) as DeckTextAlign,
+    ...(/text-decoration(?:-line)?\s*:[^;"']*line-through/i.test(content)
+      ? { strike: true }
+      : {}),
+    ...(hex(cssValue(content, "background-color"))
+      ? { highlight: hex(cssValue(content, "background-color")) }
+      : {}),
+    ...(/<ol[\s>]/i.test(content)
+      ? { list: "ordered" as const }
+      : /<ul[\s>]/i.test(content)
+        ? { list: "bullet" as const }
+        : {}),
+    ...(deckSafeLink(content.match(/<a\s[^>]*href="([^"]+)"/i)?.[1])
+      ? { link: deckSafeLink(content.match(/<a\s[^>]*href="([^"]+)"/i)?.[1]) }
+      : {}),
     lineHeight: Math.max(0.7, Math.min(4, lineHeight)),
     letterSpacing: Math.max(-10, Math.min(40, letterSpacing)),
   };

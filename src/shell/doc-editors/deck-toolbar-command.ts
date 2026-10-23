@@ -5,6 +5,8 @@ import type {
   DeckTextAlign,
 } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
+import { deckArrangedElements, deckArrangeMode } from "./deck-arrange";
+import { deckSafeLink, deckTextList } from "./deck-text-format";
 
 function numeric(value: SelectionCommand["value"], fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -151,6 +153,74 @@ export function applyDeckToolbarCommand(
     case "shape":
       patch[message.controlId] = String(message.value ?? "");
       break;
+    case "text-color":
+      patch.color = String(message.value ?? "");
+      break;
+    case "highlight":
+      patch.highlight = String(message.value || "") || undefined;
+      break;
+    case "strike":
+      patch.strike = message.value === true || undefined;
+      break;
+    case "list": {
+      const list = deckTextList(message.value);
+      patch.list = list === "none" ? undefined : list;
+      break;
+    }
+    case "link": {
+      // 空串 = 去掉链接；写不成合法地址（javascript:、乱码）就不改。
+      const raw = String(message.value ?? "").trim();
+      const link = deckSafeLink(raw);
+      if (raw && !link) return;
+      patch.link = link || undefined;
+      break;
+    }
+    case "clear-format":
+      Object.assign(patch, {
+        bold: false,
+        italic: false,
+        underline: false,
+        strike: undefined,
+        highlight: undefined,
+        letterSpacing: 0,
+      });
+      break;
+    case "stroke-color":
+      patch.borderColor = String(message.value || "");
+      break;
+    case "stroke-width":
+      patch.borderWidth = numeric(message.value);
+      break;
+    case "stroke-dash":
+      patch.lineDash = String(message.value) as DeckElement["lineDash"];
+      break;
+    case "radius":
+      patch.borderRadius = numeric(message.value);
+      break;
+    case "rotate":
+      patch.rotation = ((Math.round(element.rotation || 0) + 90) % 360 + 360) % 360;
+      break;
+    case "brightness":
+    case "contrast":
+    case "saturation":
+      patch[message.controlId] = numeric(message.value, 1);
+      break;
+    case "blur":
+      patch.blur = numeric(message.value);
+      break;
+    case "adjust-reset":
+      Object.assign(patch, { brightness: 1, contrast: 1, saturation: 1, blur: 0 });
+      break;
+    case "arrange": {
+      const mode = deckArrangeMode(message.value);
+      if (!mode) return;
+      const elements = deckArrangedElements(editor.activeSlide.elements, element.id, mode);
+      if (elements.every((item, index) => item.order === editor.activeSlide.elements[index]?.order)) {
+        return;
+      }
+      editor.patchSlide({ elements });
+      return;
+    }
     case "text":
       patch.text = String(message.value ?? "");
       break;
@@ -199,7 +269,8 @@ export function applyDeckToolbarCommand(
     case "opacity":
       patch.opacity = numeric(message.value, 1);
       break;
-    case "animation": {
+    case "animation":
+    case "animation-type": {
       const type = String(message.value || "none");
       patch.animation = ["fade", "fly-up", "wipe", "zoom"].includes(type)
         ? {

@@ -209,7 +209,7 @@ function PositionedPresenterSlide({ slide, aspect }: { slide: DeckSlide; aspect:
                 className="h-full w-full overflow-hidden rounded-[inherit]"
                 style={{ animation: deckElementAnimationStyle(element) }}
               >
-                <DeckElementContent element={element} aspect={aspect} />
+                <DeckElementContent element={element} aspect={aspect} linkable />
               </div>
             </div>
           );

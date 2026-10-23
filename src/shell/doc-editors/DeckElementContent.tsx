@@ -3,6 +3,66 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import type { DeckAspect, DeckElement, DeckSlide } from "./deck-schema";
 import { deckFontSizeCqi } from "./deck-text-scale";
+import {
+  deckSafeLink,
+  deckTextDecoration,
+  deckTextList,
+  deckTextListLines,
+} from "./deck-text-format";
+
+/**
+ * 整框文字：高亮按行涂底（`box-decoration-break: clone`），列表按行出记号，
+ * 放映时（`linkable`）超链接可点。存的文字不含记号，记号只在显示层。
+ */
+function DeckTextBody({
+  element,
+  linkable,
+}: {
+  element: DeckElement;
+  linkable: boolean;
+}) {
+  const mark = element.highlight
+    ? ({
+        backgroundColor: element.highlight,
+        boxDecorationBreak: "clone",
+        WebkitBoxDecorationBreak: "clone",
+      } as const)
+    : undefined;
+  const paint = (value: string) =>
+    mark ? <span style={mark}>{value}</span> : value;
+  const body =
+    deckTextList(element.list) === "none" ? (
+      paint(element.text || "")
+    ) : (
+      deckTextListLines(element.text || "", element.list).map((line, index) => (
+        <span
+          key={index}
+          data-deck-list-line={line.marker ? "" : undefined}
+          className="block"
+          style={line.marker ? { paddingInlineStart: "1.4em", textIndent: "-1.4em" } : undefined}
+        >
+          {line.marker && (
+            <span aria-hidden="true" className="inline-block w-[1.4em] indent-0">
+              {line.marker}
+            </span>
+          )}
+          {paint(line.text || "\u200b")}
+        </span>
+      ))
+    );
+  const link = linkable ? deckSafeLink(element.link) : "";
+  return (
+    <span className="block w-full min-w-0" data-deck-text-body>
+      {link ? (
+        <a href={link} target="_blank" rel="noopener noreferrer" className="text-inherit">
+          {body}
+        </a>
+      ) : (
+        body
+      )}
+    </span>
+  );
+}
 
 export function deckShapeClipPath(shape?: string): string | undefined {
   switch (shape) {
@@ -95,6 +155,7 @@ export function DeckElementContent({
   aspect = "16:9",
   miniature = false,
   editing = false,
+  linkable = false,
   onCommitText,
   onCommitCell,
   onCancelEditing,
@@ -103,6 +164,8 @@ export function DeckElementContent({
   aspect?: DeckAspect;
   miniature?: boolean;
   editing?: boolean;
+  /** 放映：超链接可点；编辑画布上点文字是选中，不跳走。 */
+  linkable?: boolean;
   onCommitText?: (text: string) => void;
   onCommitCell?: (row: number, column: number, text: string) => void;
   onCancelEditing?: () => void;
@@ -132,7 +195,7 @@ export function DeckElementContent({
           fontSize: `${deckFontSizeCqi(element.fontSize || 16, aspect)}cqi`,
           fontWeight: element.bold ? 700 : 400,
           fontStyle: element.italic ? "italic" : "normal",
-          textDecoration: element.underline ? "underline" : "none",
+          textDecoration: deckTextDecoration(element),
           lineHeight: element.lineHeight || 1.15,
           letterSpacing: `${element.letterSpacing || 0}px`,
         }}
@@ -312,7 +375,7 @@ export function DeckElementContent({
     fontSize: `${deckFontSizeCqi(element.fontSize || 18, aspect)}cqi`,
     fontWeight: element.bold ? 700 : 400,
     fontStyle: element.italic ? "italic" : "normal",
-    textDecoration: element.underline ? "underline" : "none",
+    textDecoration: deckTextDecoration(element),
     lineHeight: element.lineHeight || 1.15,
     letterSpacing: `${element.letterSpacing || 0}px`,
   } as const;
@@ -330,8 +393,9 @@ export function DeckElementContent({
     <span
       className="flex h-full w-full overflow-hidden whitespace-pre-wrap leading-tight"
       style={textStyle}
+      title={!linkable && element.link ? deckSafeLink(element.link) : undefined}
     >
-      {element.text || ""}
+      <DeckTextBody element={element} linkable={linkable} />
     </span>
   );
 }

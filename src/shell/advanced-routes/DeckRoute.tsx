@@ -18,18 +18,12 @@ import {
   DeckDrawPanel,
   DeckLinePanel,
   DeckNotesPanel,
-  DeckSignaturePanel,
-  DeckTablePanel,
 } from "../doc-editors/DeckCreationPanels";
 import {
   DeckDesignPanel,
-  DeckEffectsPanel,
   DeckElementsPanel,
-  DeckLayersPanel,
   DeckTextPanel,
-  DeckUploadPanel,
 } from "../doc-editors/DeckControls";
-import { DeckFontPanel } from "../doc-editors/DeckFontPanel";
 import {
   DeckPresenterView,
   openDeckPresenterWindow,
@@ -407,7 +401,13 @@ export function DeckRoute({
             id: "deck-elements",
             label: "元素",
             icon: "elements",
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckElementsPanel editor={editor} /></VisualViewOnlyPanel>,
+            // 文字、形状、表格都从「元素」加（10-23 D3：演示空态只有模板 / 元素 / 画笔 / 线条 / 便签）。
+            content: (
+              <VisualViewOnlyPanel readOnly={viewOnly}>
+                <DeckTextPanel editor={editor} />
+                <DeckElementsPanel editor={editor} />
+              </VisualViewOnlyPanel>
+            ),
           },
           {
             id: "deck-draw",
@@ -437,52 +437,6 @@ export function DeckRoute({
             icon: "note",
             hiddenFromRail: true,
             content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckNotesPanel editor={editor} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "deck-text",
-            label: "文字",
-            icon: "text",
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckTextPanel editor={editor} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "deck-signature",
-            label: "签名",
-            icon: "signature",
-            hiddenFromRail: true,
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckSignaturePanel editor={editor} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "deck-tables",
-            label: "表格",
-            icon: "table",
-            hiddenFromRail: true,
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckTablePanel editor={editor} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "deck-uploads",
-            label: "上传",
-            icon: "uploads",
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckUploadPanel editor={editor} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "deck-layers",
-            label: "图层",
-            icon: "layers",
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckLayersPanel editor={editor} accent={accent} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "deck-effects",
-            label: "效果",
-            icon: "effects",
-            hiddenFromRail: true,
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckEffectsPanel editor={editor} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "deck-fonts",
-            label: "字体",
-            icon: "font",
-            hiddenFromRail: true,
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckFontPanel editor={editor} /></VisualViewOnlyPanel>,
           },
         ],
         contextToolbar: (

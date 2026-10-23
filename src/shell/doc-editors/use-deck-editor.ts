@@ -89,6 +89,7 @@ import {
   injectDeckPptxVisuals,
 } from "./DeckPptxVisuals";
 import { injectDeckPptxOoxml } from "./deck-pptx-ooxml";
+import { deckPptxTextRuns } from "./deck-text-format";
 import { importPptxDeck } from "./pptx-deck-import";
 import {
   fetchValidatedOfficePackage,
@@ -759,7 +760,7 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
         if (element.type === "text") {
           const textStyle = deckPptxTextStyle(element);
           const transparency = deckPptxTransparency(element);
-          slide.addText(element.text || "", {
+          slide.addText(deckPptxTextRuns(element.text || "", element), {
             ...box,
             objectName: deckPptxVisualObjectName(element.id),
             rotate: element.rotation,

@@ -7,7 +7,7 @@ export function deckSlideSelectionContext(
   tt: UITranslate,
 ): SelectionContext {
   const slide = editor.activeSlide;
-  return {
+  const context: SelectionContext = {
     version: 1,
     kind: "slide",
     id: `slide:${slide.id}`,
@@ -51,8 +51,8 @@ export function deckSlideSelectionContext(
       {
         id: "transition",
         kind: "select",
+        // 「动画」图标归规范项 animation（对象组）；页面过渡是特有控件，只显示文字。
         label: tt("过渡"),
-        icon: "animate",
         value: slide.transition?.type || "none",
         options: [
           { value: "none", label: tt("无") },
@@ -198,16 +198,21 @@ export function deckSlideSelectionContext(
         id: "duplicate-slide",
         kind: "action",
         label: tt("复制页面"),
-        icon: "duplicate",
+        placement: "more",
       },
       {
         id: "delete-slide",
         kind: "action",
         label: tt("删除页面"),
-        icon: "delete",
+        placement: "more",
         danger: true,
         disabled: editor.deck.slides.length <= 1,
       },
     ],
+  };
+  // 做不到的（只剩一页、只剩一个母版）不出，不放灰按钮（10-23 D9）。
+  return {
+    ...context,
+    controls: context.controls.filter((control) => !control.disabled),
   };
 }
