@@ -18,3 +18,4 @@
 - 21:13 实测：后端 `tests/test_bay_*.py + test_talent_services/demands/categories_v2` 960 passed；对 BayAssetSellers / BayFeedItemCard / 货架 / BayList / 素材库 / PanelBrowse 的样式类逐个比对已提交的 ui.css，全部已在产物里（不用重编）；交卷文件初稿写完（verdicts/W02-delivery.md），共享 UI / 门户 typecheck 在 heavy 槽排队，跑完回填 §7。
 - 21:25 `bay-shell-copy` 第 3 条改成「在最终运行时总表 UI_MESSAGES 里有 16 语译文就算数」（比先前并 lbp 分表更稳，W04 的「列表」也过了）：3/3 绿。
 - 21:26 实测（真库，只读）：叠两个 `.or_()`（搜索词 + listing_kind=service）是 AND，所以搜索与种类叠加正确。
+- 21:28 门户 typecheck 跑完：4 条错（lib/supabase.ts、lib/oceanleo-ai.ts、proxy.ts ×2），全是 supabase-js / next 在共享 UI 与门户各装一份、版本不同造成的类型不兼容，与 Bay 无关；共享 UI typecheck 0 错误。已写进交卷 §7。

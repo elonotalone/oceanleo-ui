@@ -128,7 +128,7 @@ $ .venv/bin/python -m pytest tests/test_bay_*.py tests/test_talent_services.py t
 
 共享 UI `pnpm typecheck`（`agent-io-guard.sh run-heavy`，21:12 在最终代码上跑完）：输出只有一行 `$ tsc --noEmit`，没有任何 `error TS`，也没有 `ELIFECYCLE`，即 0 错误（开工时的 3 条 `video-project-doc.ts` 基线错已被别的工程修掉）。20:58 的上一次在排队等 heavy 槽时被别的 owner 改到一半的文件拖红过 10 条（`BaySettingsSection`、`BayMine`、`collection-chrome`），0 条在我的文件里。
 
-门户 `pnpm typecheck`：提交这份交卷时还在 heavy 槽队列里（日志 `/tmp/w02-tools/typecheck-portal.log`，前面排着十来个别的 owner 的 tsc）。风险很小：门户源码（`app/`、`components/`、`lib/`）里没有任何文件引用我改过或删掉的导出（`BAY_FEED_KINDS`、`canonicalBayFeedKind`、`useBayFeed`、`BayViewSwitch`、`BayAssetLibrary`、`TYPE_ZONES`、`ZONE_LABELS`、`BayAppShelf`、`BayLessonShelf`、`fetchBayFeed` 都 grep 过，零命中），`src/architecture/public-api.snapshot.json` 也没有这些名字；共享 UI 自己的 tsc 已经 0 错误。父 agent 验收时的门户 typecheck 应当与基线一致。
+门户 `pnpm typecheck`（21:20 跑完）：4 条错，全是依赖副本版本不一致，与 Bay 无关、也不是这一波引入的——`lib/oceanleo-ai.ts(24,3)`、`lib/supabase.ts(13,3)`（共享 UI 那份 `@supabase/supabase-js@2.108.1` 的 `SupabaseClient` 不能赋给门户那份）、`proxy.ts(58,27)` / `proxy.ts(58,47)`（共享 UI 的 `next@16.2.9` 与门户的 `next@16.2.6` 的 `NextResponse` / `NextRequest`）。门户的 `package.json` / `pnpm-lock.yaml` 在工作区里带着别人未提交的改动（`_COMMON` §3 点名的那批）。除此之外门户源码（`app/`、`components/`、`lib/`）里没有任何文件引用我改过或删掉的导出（`BAY_FEED_KINDS`、`canonicalBayFeedKind`、`useBayFeed`、`BayViewSwitch`、`BayAssetLibrary`、`TYPE_ZONES`、`ZONE_LABELS`、`BayAppShelf`、`BayLessonShelf`、`fetchBayFeed` 都 grep 过，零命中），`src/architecture/public-api.snapshot.json` 也没有这些名字。
 
 ## 8. 文案闸与其他红
 
@@ -191,4 +191,4 @@ done
 ## 提交号
 
 - 门户后端：`3145092`
-- 共享 UI：见本文件所在提交（`git log -1 -- docs/work-logs/2026-10-23-leobay-projects/verdicts/W02-delivery.md`）
+- 共享 UI：`5ceebf4a`（前端主体）、`bc83fd4f`、`4491dd92`、`a3a38e64`（交卷）、`c0520f7f`（bay-shell-copy 测试 + 交卷订正）；之后若还有改动，以 `git log -- docs/work-logs/2026-10-23-leobay-projects/verdicts/W02-delivery.md` 的最新一条为准

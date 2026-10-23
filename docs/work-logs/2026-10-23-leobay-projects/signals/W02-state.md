@@ -12,11 +12,10 @@
 - 类型检查：我的文件 0 错误；全仓报错来自 settings / BayMine / collection-chrome（别人在改）。
 
 ## 正在做
-- 等 heavy 槽：共享 UI `pnpm typecheck`（日志 /tmp/w02-tools/typecheck-2.log）与门户 `pnpm typecheck`（/tmp/w02-tools/typecheck-portal.log）。跑完把结果写进交卷 §7（占位符 TYPECHECK_PLACEHOLDER）。
+- 无。交卷已提交，两个 typecheck 都跑完并写进交卷 §7（共享 UI 0 错误；门户 4 条是依赖副本版本不一致，与 Bay 无关）。
 
 ## 下一步
-1. 回填 §7，提交交卷文件 `verdicts/W02-delivery.md`（共享 UI 仓）= 结束。
-2. 回报：两个仓各自最后一个提交号。
+1. 回报：两个仓各自最后一个提交号。
 
 ## 已完成
 - 后端、前端主体、组件级测试（lbp-w02-browse 46 条全绿）、分表、旧种类名清扫与「非种类保留」清单、交卷文件初稿。
