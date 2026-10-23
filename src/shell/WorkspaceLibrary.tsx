@@ -50,7 +50,11 @@ import {
   type ArtifactTargetActionEvidence,
 } from "./ArtifactActions";
 import { humanErrorMessage } from "./human-error-message";
-import { libraryEditorLabel, normalizeLibraryCategory } from "./library-editor-category";
+import {
+  libraryEditorLabel,
+  normalizeLibraryCategory,
+  translateLibraryTypeLabel,
+} from "./library-editor-category";
 import {
   WORKSPACE_KIND_LABELS,
   filterWorkspaceLibraryEntries,
@@ -896,7 +900,7 @@ export function WorkspaceLibrary({
               </h3>
               {detailKind && (
                 <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
-                  {tt(detailLabelItem
+                  {translateLibraryTypeLabel(tt, detailLabelItem
                     ? libraryEditorLabel(detailLabelItem)
                     : WORKSPACE_KIND_LABELS[detailKind] || "内容")}
                 </span>
@@ -1030,7 +1034,7 @@ export function WorkspaceLibrary({
                 .filter((item) => item.id !== "all")
                 .map((item) => ({
                   value: item.id,
-                  label: tt(item.label),
+                  label: translateLibraryTypeLabel(tt, item.label),
                 }))}
               onChange={(value) => setCategory(value || "all")}
               allLabel={tt("全部")}
@@ -1039,7 +1043,11 @@ export function WorkspaceLibrary({
           </CollectionFilterRow>
         ) : !hideCategoryChips && categories.length > 1 ? (
           <LibraryChips
-            chips={visibleCategories}
+            chips={visibleCategories.map((chip) =>
+              chip.id === "all"
+                ? chip
+                : { ...chip, label: translateLibraryTypeLabel(tt, chip.label) },
+            )}
             active={category}
             onChange={setCategory}
             accent={accent}

@@ -44,7 +44,11 @@ import {
 } from "./collection-chrome";
 import { useStandaloneMineEditReceipt } from "./inline-editor-mine-activate";
 import { MyLibrary } from "./MyLibrary";
-import { LIBRARY_EDITOR_CATEGORIES, normalizeLibraryCategory } from "./library-editor-category";
+import {
+  LIBRARY_EDITOR_CATEGORIES,
+  normalizeLibraryCategory,
+  translateLibraryTypeLabel,
+} from "./library-editor-category";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
@@ -58,10 +62,10 @@ export interface ArtifactItem {
   created_at: string;
 }
 
-/** 文件库筛选分区：与主站一致，直接暴露 13 类编辑器。 */
+/** 文件库筛选分区：与主站一致，按素材类别（D5）；设计画布已并入图片。 */
 export const ARTIFACT_FILTERS: { id: string; label: string }[] = [
   { id: "all", label: "全部" },
-  ...LIBRARY_EDITOR_CATEGORIES.map((row) => ({ id: row.filter, label: row.label })),
+  ...LIBRARY_EDITOR_CATEGORIES.map((row) => ({ id: row.filter, label: row.typeLabel })),
 ];
 
 export type ArtifactFilter =
@@ -84,10 +88,11 @@ export type ArtifactFilter =
 
 const KIND_SETS: Record<string, string[]> = {
   website: ["website"],
-  design: ["canvas", "design"],
+  // 设计画布并入图片（10-22）：旧 `design` 筛选与图片同一组。
+  design: ["image", "canvas", "design"],
   presentations: ["slides", "slide", "presentation", "ppt"],
   slides: ["slides", "slide", "presentation", "ppt"],
-  images: ["image"],
+  images: ["image", "canvas", "design"],
   documents: ["markdown", "document", "text"],
   spreadsheets: ["sheet", "spreadsheet", "grid", "xlsx"],
   pdf: ["pdf"],
@@ -343,7 +348,9 @@ function ArtifactLibraryLegacy({
     controlledFilter === "favorites",
   );
   const rawFilter = controlledFilter ?? internalFilter;
-  const typeFilter: ArtifactFilter = rawFilter === "favorites" ? "all" : rawFilter;
+  // 旧链接里的 `design` 落到图片（D5）：菜单里已经没有单独的设计画布。
+  const typeFilter: ArtifactFilter =
+    rawFilter === "favorites" ? "all" : rawFilter === "design" ? "images" : rawFilter;
   const onlyFavorites = controlledFilter === "favorites" || internalOnlyFavorites;
   const setFilter = (f: ArtifactFilter) => {
     if (controlledFilter === undefined) setInternalFilter(f);
@@ -670,7 +677,7 @@ function ArtifactLibraryLegacy({
             value={typeFilter === "all" ? "" : typeFilter}
             options={ARTIFACT_FILTERS.filter((item) => item.id !== "all").map((item) => ({
               value: item.id,
-              label: tt(item.label),
+              label: translateLibraryTypeLabel(tt, item.label),
             }))}
             onChange={(id) => setFilter((id || "all") as ArtifactFilter)}
             allLabel={tt("全部")}

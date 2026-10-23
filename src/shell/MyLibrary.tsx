@@ -64,7 +64,12 @@ import {
   normalizeArtifactProjectionResult,
   type TransientGenerationResult,
 } from "./artifact-contract";
-import { LIBRARY_EDITOR_CATEGORIES, libraryEditorCategory, normalizeLibraryCategory } from "./library-editor-category";
+import {
+  LIBRARY_EDITOR_CATEGORIES,
+  libraryEditorCategory,
+  normalizeLibraryCategory,
+  translateLibraryTypeLabel,
+} from "./library-editor-category";
 import {
   WorkspaceLibrary,
   type WorkspaceLibraryEntry,
@@ -1968,7 +1973,7 @@ export function MyLibrary({
                 value={activeCategory === "all" ? "" : activeCategory}
                 options={LIBRARY_PAGE_TYPE_OPTIONS.map((option) => ({
                   value: option.value,
-                  label: tt(option.label),
+                  label: translateLibraryTypeLabel(tt, option.typeLabel),
                 }))}
                 onChange={(value) => changeCategory(value || "all")}
                 allLabel={tt("全部")}

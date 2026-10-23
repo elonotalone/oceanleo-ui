@@ -11,7 +11,11 @@ import {
   type WorkspaceLibraryEntry,
 } from "./workspace-library-model";
 import { WorkspaceThumbnail } from "./workspace-library-thumbnail";
-import { libraryEditorLabel, libraryCategoryLabel } from "./library-editor-category";
+import {
+  libraryEditorLabel,
+  libraryCategoryLabel,
+  translateLibraryTypeLabel,
+} from "./library-editor-category";
 
 export function WorkspaceLibraryEntryViewer({
   entry,
@@ -101,7 +105,7 @@ export function WorkspaceCard({
             {entry.title}
           </p>
           <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
-            {tt(entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : libraryCategoryLabel(entry.category || WORKSPACE_KIND_LABELS[kind] || "内容"))}
+            {translateLibraryTypeLabel(tt, entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : libraryCategoryLabel(entry.category || WORKSPACE_KIND_LABELS[kind] || "内容"))}
           </p>
         </div>
       </button>
@@ -158,7 +162,8 @@ export function WorkspaceListRow({
             <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
               {entry.description
                 ? tt(entry.description)
-                : tt(
+                : translateLibraryTypeLabel(
+                    tt,
                     (entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : WORKSPACE_KIND_LABELS[kind]) ||
                       libraryCategoryLabel(entry.category || "") ||
                       "内容",
