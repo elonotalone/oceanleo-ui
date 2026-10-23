@@ -1,8 +1,10 @@
 "use client";
 
 // 全局唯一的消息浮层（每个站挂一次，在 AppShell / 门户外壳里与 SettingsModalHost 并列）。
-// 境内站与未登录：什么都不渲染、不连接、不监听深链。
+// 未登录：什么都不渲染、不连接、不监听深链。境内外同一条路径，不按域名家族分叉。
 // 浮层里：聊天 / 联系人两个栏目 + 会话（交易会话也在这里）；放大后左列表、右对话。LeoBay 不在小窗里，它是 `/bay` 那张页。
+// 平台通知：聊天列表最上面固定一行「通知」，点开进通知视图（二级视图，占详情位）；内容处置（cases）同为二级视图，
+// 只经通知或深链 `?im=cases[:<案件>]` 进入。通知的轮询、标签页标题的未读数（会话 + 通知）都在这里接线。
 // LeoChat 还能在整页和右侧栏里显示，一次只显示一处，见 host-state.ts。小窗只在 surface === "window" 时画。
 // 聊天搜索在聊天列表和已打开的对话里。提醒与拉黑在设置中心「消息」栏。同时挂工作回放播放层与邀请对话框。
 // 通话 v2（calls-v2 合同 §3.9）：消息可用时挂通话小窗 / 放大视图（W07 CallHost）、来电浮层（W08 IncomingCallHost）、
@@ -22,8 +24,12 @@ import { ConversationInfoPanel } from "./groups/ConversationInfoPanel";
 import { NewConversationDialog } from "./groups/NewConversationDialog";
 import { Inbox } from "./Inbox";
 import { InviteAcceptDialog } from "./invite/InviteAcceptDialog";
-import { closeMessages, hostState, useMessagesHost, type MessagesView } from "./host-state";
+import { closeMessages, hostState, isSubView, tabOfView, useMessagesHost, type MessagesView } from "./host-state";
 import { MessagesLayout } from "./MessagesLayout";
+import { MessagesSubView } from "./notices/MessagesSubView";
+import { combineUnread } from "./notices/notice-unread";
+import { setNoticeNavigator } from "./notices/open-notice";
+import { noticeStore, useLeoChatUnread, useNoticePolling } from "./notices/use-notices";
 import { attachMessageSound, createBrowserMessageSound } from "./notify/sound";
 import { attachBrowserTitleBadge } from "./notify/title-badge";
 import { PeopleView } from "./people/PeopleView";
@@ -32,7 +38,7 @@ import { IncomingCallHost } from "./call/incoming";
 import { CallControlHost } from "./call/control";
 import { RealtimeCallHost } from "../realtime-call/RealtimeCallHost";
 import { PrivacyNotice } from "./PrivacyNotice";
-import { attachImRealtime, imStore, publishImDisabled, useImUnread } from "./realtime/hooks";
+import { attachImRealtime, imStore, publishImDisabled } from "./realtime/hooks";
 
 export function isTalentConversationId(id: string): boolean {
   return id.startsWith("talent:");
@@ -55,10 +61,14 @@ function MessagesHostBody() {
   const router = useRouter();
 
   // 别的页面上「去 LeoBay」的动作（任务页的找人帮忙、旧的 ?bay= 链接）= 站内跳到 /bay，不整页刷新。
-  // 这个宿主每个站都挂一次，所以在这里把站内跳转交给 LeoBay。
+  // 这个宿主每个站都挂一次，所以在这里把站内跳转交给 LeoBay；平台通知里的站内链接（订单、任务……）同走这一条。
   useEffect(() => {
     setBayNavigator((href) => router.push(href));
-    return () => setBayNavigator(null);
+    setNoticeNavigator((href) => router.push(href));
+    return () => {
+      setBayNavigator(null);
+      setNoticeNavigator(null);
+    };
   }, [router]);
 
   useEffect(() => {
@@ -88,18 +98,29 @@ function MessagesHostBody() {
     return attachImRealtime();
   }, [enabled]);
 
-  // 标签页标题前的未读数（静音会话不计入，数字来自状态仓的 unread.total）。
-  // 消息不可用（境内、未登录）时整段不挂，标题一个字都不动。
+  // 平台通知（订单、任务、账单、内容处置……）：登录就轮询（60 秒一次，切回标签页立即取一次），登出清空。
+  // 和 IM 连接用同一个开关——境内外同一条路径，不按域名家族分叉。
+  useNoticePolling(enabled);
+  // LeoChat 一打开（小窗 / 整页 / 右侧栏）就取一次最新的，不让人看 59 秒前的通知。
+  useEffect(() => {
+    if (enabled && state.open) void noticeStore().refresh();
+  }, [enabled, state.open]);
+
+  // 标签页标题前的未读数 = 会话未读（静音会话不计入，数字来自状态仓的 unread.total）+ 平台通知未读。
+  // 消息不可用（未登录）时整段不挂，标题一个字都不动。
   useEffect(() => {
     if (!enabled) return undefined;
     const badge = attachBrowserTitleBadge();
     if (!badge) return undefined;
     const store = imStore();
-    const sync = () => badge.setCount(store.unread()?.total ?? 0);
+    const notices = noticeStore();
+    const sync = () => badge.setCount(combineUnread(store.unread()?.total, notices.getState().unread));
     sync();
-    const off = store.subscribe(sync);
+    const offChat = store.subscribe(sync);
+    const offNotices = notices.subscribe(sync);
     return () => {
-      off();
+      offChat();
+      offNotices();
       badge.detach();
     };
   }, [enabled]);
@@ -154,7 +175,8 @@ function MessagesHostBody() {
 function MessagesOverlay() {
   const state = useMessagesHost();
   const host = hostState();
-  const unread = useImUnread();
+  // 「聊天」标签上的数字 = 会话未读 + 平台通知未读；联系人标签只是联系请求。
+  const unread = useLeoChatUnread(true);
   const windowOpen = state.open && state.surface === "window";
   const [newOpen, setNewOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -182,32 +204,38 @@ function MessagesOverlay() {
   const openConversation = (id: string) => host.showConversation(id);
   const talent = state.conversationId ? isTalentConversationId(state.conversationId) : false;
 
+  // 通知 / 内容处置是二级视图：左边仍是聊天列表（最上面那行「通知」亮着），右边（小窗里是整块）是它们。
+  const subView = isSubView(state.view);
   let list: ReactNode;
-  if (state.view === "inbox") {
+  if (state.view === "people") {
+    list = <PeopleView onOpenConversation={openConversation} />;
+  } else {
     list = (
       <Inbox
         activeConversationId={state.conversationId}
         onOpenConversation={(id, seq) => host.showConversation(id, seq ?? null)}
         onNew={() => setNewOpen(true)}
+        onOpenNotices={() => setView("notices")}
+        noticesActive={state.view === "notices"}
       />
     );
-  } else {
-    list = <PeopleView onOpenConversation={openConversation} />;
   }
 
   const listBody = (
-    <div key={state.view} data-im-view-body className="flex min-h-0 flex-1 flex-col">
+    <div key={tabOfView(state.view)} data-im-view-body className="flex min-h-0 flex-1 flex-col">
       {list}
     </div>
   );
   const tabs = (
-    <LeoChatTabs active={state.view} onSelect={setView} badges={{ inbox: unread?.total ?? 0, people: unread?.requests ?? 0 }} />
+    <LeoChatTabs active={tabOfView(state.view)} onSelect={setView} badges={{ inbox: unread.total, people: unread.requests }} />
   );
 
   // 放大后右边一直是当前会话（左边切到联系人也不收走）；小窗里只有聊天栏会滑进会话。
   const showConversation = Boolean(state.conversationId) && (state.view === "inbox" || state.layout === "full");
   let detail: ReactNode = null;
-  if (showConversation && state.conversationId) {
+  if (subView) {
+    detail = <MessagesSubView view={state.view} caseId={state.caseId} onSelectView={setView} />;
+  } else if (showConversation && state.conversationId) {
     const conversation = talent ? (
       <DealConversationView
         key={state.conversationId}
@@ -268,7 +296,7 @@ function MessagesOverlay() {
         onToggleExpand={() => host.setExpanded(!state.expanded)}
         list={listBody}
         detail={detail}
-        showDetail={showConversation}
+        showDetail={subView || showConversation}
       >
         <PrivacyNotice />
       </MessagesLayout>

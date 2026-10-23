@@ -1,6 +1,7 @@
 "use client";
 
 // 整页和右侧栏共用的 LeoChat 正文。栏目、会话一律读写 host-state；小窗的「前台会话」仍留在 MessagesHost。
+// 通知 / 内容处置是二级视图：左边仍是聊天列表（最上面固定一行「通知」），右边（窄屏里是整块）是它们。
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { DealConversationView } from "../bay/deal";
@@ -9,7 +10,8 @@ import { ConversationInfoPanel } from "../messages/groups/ConversationInfoPanel"
 import { NewConversationDialog } from "../messages/groups/NewConversationDialog";
 import { Inbox } from "../messages/Inbox";
 import { InviteAcceptDialog } from "../messages/invite/InviteAcceptDialog";
-import { hostState, useMessagesHost } from "../messages/host-state";
+import { hostState, isSubView, useMessagesHost } from "../messages/host-state";
+import { MessagesSubView } from "../messages/notices/MessagesSubView";
 import { PeopleView } from "../messages/people/PeopleView";
 
 export interface LeoChatBodyProps {
@@ -34,22 +36,27 @@ export function LeoChatBody({ wide }: LeoChatBodyProps): ReactElement {
   const closeConversation = () => host.showConversation(null);
   const layout = wide ? "full" : "docked";
 
+  const subView = isSubView(state.view);
   let list: ReactNode;
-  if (state.view === "inbox") {
+  if (state.view === "people") {
+    list = <PeopleView onOpenConversation={(id) => host.showConversation(id)} />;
+  } else {
     list = (
       <Inbox
         activeConversationId={state.conversationId}
         onOpenConversation={(id, seq) => host.showConversation(id, seq ?? null)}
         onNew={() => setNewOpen(true)}
+        onOpenNotices={() => host.setView("notices")}
+        noticesActive={state.view === "notices"}
       />
     );
-  } else {
-    list = <PeopleView onOpenConversation={(id) => host.showConversation(id)} />;
   }
 
   const talent = state.conversationId ? state.conversationId.startsWith("talent:") : false;
   let thread: ReactNode = null;
-  if (state.conversationId) {
+  if (subView) {
+    thread = <MessagesSubView view={state.view} caseId={state.caseId} onSelectView={(view) => host.setView(view)} />;
+  } else if (state.conversationId) {
     const conversation = talent ? (
       <DealConversationView
         key={state.conversationId}
@@ -133,7 +140,7 @@ export function LeoChatBody({ wide }: LeoChatBodyProps): ReactElement {
     );
   }
 
-  const showThread = state.view === "inbox" && Boolean(state.conversationId);
+  const showThread = subView || (state.view === "inbox" && Boolean(state.conversationId));
   return (
     <div data-leochat-body="narrow" className="flex min-h-0 flex-1 flex-col">
       {showThread ? (

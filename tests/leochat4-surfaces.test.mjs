@@ -1,7 +1,7 @@
 // LeoChat 三处入口：整页、右侧栏、小窗；一次只显示一处。host-state 用真的 createHostState + 假环境。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
@@ -104,8 +104,11 @@ function resetHost() {
 const uiStub = dataModule(
   "export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m,k)=> k in vars ? String(vars[k]) : m) : zh; }",
 );
+const hostStateUrl = pathToFileURL(fileURLToPath(new URL("../src/shell/messages/host-state.ts", import.meta.url))).href;
 const hostStub = dataModule(`
   import { useSyncExternalStore } from ${JSON.stringify(reactUrl)};
+  // 视图归类的两个纯函数（W08：notices / cases 是二级视图，标签停在「聊天」）用真的。
+  export { isSubView, tabOfView } from ${JSON.stringify(hostStateUrl)};
   export function hostState(){ return globalThis.__leoChat4Host; }
   export function useMessagesHost(){
     const host = globalThis.__leoChat4Host;
@@ -122,7 +125,15 @@ const bayStateStub = dataModule(`
   export function attachBayDeepLinks(){ return () => {}; }
   export function setBayNavigator(){}
 `);
-const unreadStub = dataModule(`export function useImUnread(){ return { total: 0, requests: 0 }; }`);
+// 平台通知（W08）：入口角标 / 标签徽标的合计、轮询、通知仓。真实现见 tests/lbp-w08-notices.test.mjs。
+const noticesStub = dataModule(`
+  export function useLeoChatUnread(){ return { chat: 0, notices: 0, requests: 0, total: 0 }; }
+  export function useNoticePolling(){}
+  export function useNoticeState(){ return { items: [], unread: 0, loaded: true, loading: false, error: false, hasMore: false }; }
+  export function noticeStore(){
+    return { getState(){ return { unread: 0 }; }, subscribe(){ return () => {}; }, refresh(){ return Promise.resolve(); } };
+  }
+`);
 const stylesStub = dataModule(`export function ensureMessagesSurfaceStyles(){}`);
 const signInStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -176,6 +187,7 @@ const bodyAliases = {
   "../messages/Inbox": viewStub("Inbox"),
   "../messages/invite/InviteAcceptDialog": dialogStub("InviteAcceptDialog"),
   "../messages/host-state": hostStub,
+  "../messages/notices/MessagesSubView": viewStub("MessagesSubView"),
   "../messages/people/PeopleView": viewStub("PeopleView"),
 };
 
@@ -189,7 +201,7 @@ const { LeoChatPage } = await import(
     "../bay/shell/bay-state": bayStateStub,
     "../messages/host-state": hostStub,
     "../messages/messages-surface": stylesStub,
-    "../messages/realtime/hooks": unreadStub,
+    "../messages/notices/use-notices": noticesStub,
     "./leochat-body": bodyStub,
   })
 );
@@ -200,7 +212,7 @@ const { LeoChatPanel } = await import(
     "../bay/shell/BayMine": signInStub,
     "../messages/host-state": hostStub,
     "../messages/messages-surface": stylesStub,
-    "../messages/realtime/hooks": unreadStub,
+    "../messages/notices/use-notices": noticesStub,
     "./leochat-body": bodyStub,
   })
 );
@@ -211,7 +223,7 @@ const { LeoChatButton } = await import(
     "../bay/shell/bay-state": bayStateStub,
     "../messages/host-state": hostStub,
     "../messages/messages-surface": stylesStub,
-    "../messages/realtime/hooks": unreadStub,
+    "../messages/notices/use-notices": noticesStub,
   })
 );
 const { MessagesHost } = await import(
@@ -242,6 +254,9 @@ const { MessagesHost } = await import(
     "./Inbox": viewStub("Inbox"),
     "./invite/InviteAcceptDialog": dialogStub("InviteAcceptDialog"),
     "./host-state": hostStub,
+    "./notices/MessagesSubView": viewStub("MessagesSubView"),
+    "./notices/open-notice": dataModule(`export function setNoticeNavigator(){}`),
+    "./notices/use-notices": noticesStub,
     // calls-v2（仲裁 A-21）：MessagesHost 挂的三个通话宿主照旧会议面板的做法打桩——它们的图里有 imFetch，
     // 而本测试把 lib/im/client 换成了只有 useImEnabled 的桩。
     "./call/ui": dataModule(`export function CallHost(){ return null; } export function CallParticipantMenu(){ return null; }`),
@@ -379,7 +394,7 @@ test("交易会话 talent:t1 走 DealConversationView，threadId 是 t1", async 
   await view.unmount();
 });
 
-test("LeoChatPage：可用且登录 ready 并认领 page；卸载后收起；境内 unavailable；未登录 signin", async () => {
+test("LeoChatPage：登录 ready 并认领 page；卸载后收起；境内外同一页（不再有 unavailable）；未登录 signin", async () => {
   const host = resetHost();
   const ready = await mount(React.createElement(LeoChatPage, { siteKey: "music" }));
   await flush();
@@ -389,13 +404,16 @@ test("LeoChatPage：可用且登录 ready 并认领 page；卸载后收起；境
   await ready.unmount();
   assert.equal(host.getSnapshot().open, false);
 
+  // 境内（LeoBay 不在本站）：整页与海外完全一样——LeoChat 是登录就有的功能，不看域名家族（2026-10-23，W08）。
   const inlandHost = resetHost();
   globalThis.__leoChat4BayOn = false;
   const inland = await mount(React.createElement(LeoChatPage, { siteKey: "music" }));
   await flush();
-  assert.equal(inland.host.querySelector("[data-leochat-page]")?.getAttribute("data-leochat-page"), "unavailable");
-  assert.equal(inlandHost.getSnapshot().surface, "window");
+  assert.equal(inland.host.querySelector("[data-leochat-page]")?.getAttribute("data-leochat-page"), "ready");
+  assert.equal(inlandHost.getSnapshot().surface, "page");
+  assert.equal(inlandHost.getSnapshot().open, true);
   await inland.unmount();
+  assert.equal(inlandHost.getSnapshot().open, false);
 
   const signHost = resetHost();
   globalThis.__leoChat4ImOn = false;

@@ -13,6 +13,7 @@ import { searchQueryReady } from "../../lib/im/search-api";
 import { PanelToolbar } from "../leochat/PanelToolbar";
 import { InboxRow } from "./InboxRow";
 import { InboxCallDecor } from "./call/chat/InboxCallBadge";
+import { InboxNoticesRow } from "./notices/InboxNoticesRow";
 import { InviteLinkDialog } from "./people/InviteLinkDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
@@ -21,6 +22,10 @@ export interface InboxProps {
   activeConversationId: string | null;
   onOpenConversation: (conversationId: string, seq?: number) => void;
   onNew: () => void;
+  /** 最上方固定的「通知」行被点开：进通知视图（小窗、整页、右侧栏三处都画这一行，境内外一样）。 */
+  onOpenNotices: () => void;
+  /** 通知视图正开着（放大 / 整页里右边就是它）。 */
+  noticesActive?: boolean;
 }
 
 export function Inbox(props: InboxProps) {
@@ -124,6 +129,7 @@ export function Inbox(props: InboxProps) {
         />
       ) : (
       <>
+      <InboxNoticesRow active={props.noticesActive === true} onOpen={props.onOpenNotices} />
       <div
         className="min-h-0 flex-1 overflow-y-auto"
         onScroll={(event) => {

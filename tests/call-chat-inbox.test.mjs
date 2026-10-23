@@ -554,6 +554,7 @@ const { Inbox } = await import(
     "../../ui": confirmStub,
     "../leochat/PanelToolbar": nullComponent("PanelToolbar"),
     "./InboxRow": nullComponent("InboxRow"),
+    "./notices/InboxNoticesRow": nullComponent("InboxNoticesRow"),
     "./people/InviteLinkDialog": nullComponent("InviteLinkDialog"),
     "./search/SearchView": nullComponent("SearchView"),
     "./call/chat/InboxCallBadge": nullComponent("InboxCallDecor"),
@@ -566,7 +567,7 @@ async function mountInbox(inboxState) {
   document.body.appendChild(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(Inbox, { activeConversationId: null, onOpenConversation() {}, onNew() {} }));
+    root.render(React.createElement(Inbox, { activeConversationId: null, onOpenConversation() {}, onNew() {}, onOpenNotices() {} }));
   });
   await flush();
   return {

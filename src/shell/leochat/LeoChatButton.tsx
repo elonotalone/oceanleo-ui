@@ -1,14 +1,14 @@
 "use client";
 
 // 左下角的 LeoChat 图标。LeoChat 还能从左侧边栏整页、对话右侧栏打开；一次只显示一处（host-state.toggleWindow）。
-// 境内站与未登录不出现。
+// 未登录不出现；境内外一样。角标 = 会话未读 + 平台通知未读（notices/notice-unread.ts 的合计规则）。
 import { useEffect } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { attachBayDeepLinks, useBayEnabled } from "../bay/shell/bay-state";
 import { hostState, useMessagesHost } from "../messages/host-state";
 import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
-import { useImUnread } from "../messages/realtime/hooks";
+import { useLeoChatUnread } from "../messages/notices/use-notices";
 
 export function LeoChatGlyph({ className = "h-[18px] w-[18px]" }: { className?: string }) {
   return (
@@ -32,9 +32,9 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
   const tt = useUI();
   const imOn = useImEnabled();
   const bayOn = useBayEnabled();
-  const unread = useImUnread();
+  const unread = useLeoChatUnread(imOn);
   const { open, surface } = useMessagesHost();
-  const count = imOn ? unread?.total ?? 0 : 0;
+  const count = imOn ? unread.total : 0;
 
   // 别的页面上的 `?bay=` 深链由 LeoBay 自己接（跳到 /bay），这里顺手挂上监听：每个页面都有这个图标。
   useEffect(() => (bayOn ? attachBayDeepLinks() : undefined), [bayOn]);

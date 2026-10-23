@@ -11,7 +11,8 @@ const src = (rel) => readFileSync(join(REPO, "src", rel), "utf8");
 test("host-state：MessagesView 与深链不认 bay", () => {
   const text = src("shell/messages/host-state.ts");
   assert.match(text, /export type MessagesView = "inbox" \| "people"/);
-  assert.match(text, /MESSAGES_VIEWS: readonly MessagesView\[\] = \["inbox", "people"\]/);
+  // 2026-10-23（W08）：加了两个二级视图 notices（平台通知）与 cases（内容处置）；仍然没有 bay。
+  assert.match(text, /MESSAGES_VIEWS: readonly MessagesView\[\] = \["inbox", "people", "notices", "cases"\]/);
   assert.doesNotMatch(text, /raw === "bay"/);
   assert.doesNotMatch(text, /view === "bay"/);
 });
@@ -31,9 +32,9 @@ test("MessagesHost：不可用时只渲染登录框宿主；talent 会话走 Dea
   assert.doesNotMatch(text, /TalentConversationView/);
 });
 
-test("SidebarAccountCluster：铃铛后有 LeoChatButton，没有 BayNavIcon", () => {
+test("SidebarAccountCluster：有 LeoChatButton，没有铃铛（平台通知搬进 LeoChat），没有 BayNavIcon", () => {
   const text = src("shell/account/SidebarAccountCluster.tsx");
-  assert.match(text, /<NotificationBell className="leo-tap-target-inner" \/>/);
+  assert.doesNotMatch(text, /NotificationBell/);
   assert.match(text, /<LeoChatButton className="leo-tap-target-inner" \/>/);
   assert.doesNotMatch(text, /<BayNavIcon/);
 });

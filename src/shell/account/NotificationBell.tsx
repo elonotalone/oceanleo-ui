@@ -1,6 +1,12 @@
 "use client";
 
-// 境内账号旁的通知列表。海外由 LeoChat 图标负责，本组件不渲染。
+// 【已不再渲染】2026-10-23：平台通知搬进 LeoChat（收件箱最上方固定的「通知」行 + 通知视图，境内外同一套），
+// 侧栏账号区不再放铃铛（SidebarAccountCluster 已拿掉它）。登录后两版它都 return null（imEnabledFor 对两版都只看是否登录），
+// 未登录又没有通知可看，所以留着没有用处。
+// 文件与导出保留（不删）：公开 API 快照和几份读源码的测试（leodev-cn-edition、im-overlay-layout、门户 device-status-popover）还引用它。
+// 想看通知：LeoChat → 聊天列表最上面的「通知」，或深链 `?im=notices`。
+//
+// 以下是原先的说明：境内账号旁的通知列表。海外由 LeoChat 图标负责，本组件不渲染。
 //
 // 2026-09-21：面板必须 portal 到 document.body 并用 position:fixed 往上弹。侧栏是
 // h-screen overflow-hidden，原先 absolute top-10 往下弹会整块掉出可视区。

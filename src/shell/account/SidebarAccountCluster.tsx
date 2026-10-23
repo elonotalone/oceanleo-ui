@@ -5,7 +5,6 @@ import { portalHref } from "../../contracts/domain-family";
 import { signOutEverywhere } from "../../lib/auth/client";
 import { DeviceStatusPopover } from "./DeviceStatusPopover";
 import { LeoChatButton } from "../leochat/LeoChatButton";
-import { NotificationBell } from "./NotificationBell";
 import { openSettingsModal } from "./SettingsModalHost";
 
 export interface SidebarAccountClusterProps {
@@ -39,7 +38,6 @@ export function SidebarAccountCluster(props: SidebarAccountClusterProps) {
       onSignOut={signOut} />
     <div data-sidebar-account-actions className={`flex shrink-0 items-center ${props.compact ? "flex-col gap-2" : "gap-3"}`}>
       <DeviceStatusPopover className="leo-tap-target-inner" />
-      <NotificationBell className="leo-tap-target-inner" />
       <LeoChatButton className="leo-tap-target-inner" />
     </div>
   </div>;

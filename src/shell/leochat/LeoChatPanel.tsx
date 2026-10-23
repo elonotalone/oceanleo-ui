@@ -5,9 +5,9 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { BaySignInPrompt } from "../bay/shell/BayMine";
-import { hostState, useMessagesHost } from "../messages/host-state";
+import { hostState, isSubView, tabOfView, useMessagesHost } from "../messages/host-state";
 import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
-import { useImUnread } from "../messages/realtime/hooks";
+import { useLeoChatUnread } from "../messages/notices/use-notices";
 import type { WorkspaceChatRequest } from "../workspace-actions";
 import { LeoChatBody } from "./leochat-body";
 import { LeoChatTabs } from "./LeoChatTabs";
@@ -29,7 +29,7 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
   const tt = useUI();
   const imOn = useImEnabled();
   const state = useMessagesHost();
-  const unread = useImUnread();
+  const unread = useLeoChatUnread(imOn);
   const onEvictedRef = useRef(onEvicted);
   const onBackChangeRef = useRef(onBackChange);
   onEvictedRef.current = onEvicted;
@@ -37,6 +37,10 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
   const requestNonce = request?.nonce;
   const requestConversationId = request?.conversationId;
   const threadOpen = state.view === "inbox" && Boolean(state.conversationId);
+  // 通知 / 内容处置占着整块（和会话一样）：顶上的标签收起，右侧栏的「返回」先退它们。
+  const subView = isSubView(state.view);
+  const detailOpen = threadOpen || subView;
+  const view = state.view;
 
   useEffect(() => {
     ensureMessagesSurfaceStyles();
@@ -57,10 +61,14 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
   }, [active, imOn, requestNonce, requestConversationId]);
 
   useEffect(() => {
-    const back = threadOpen ? () => hostState().showConversation(null) : null;
+    // 会话 → 回列表；内容处置 → 回通知；通知 → 回聊天列表；列表本身没有上一层（退到头交 null）。
+    let back: (() => void) | null = null;
+    if (threadOpen) back = () => hostState().showConversation(null);
+    else if (view === "cases") back = () => hostState().setView("notices");
+    else if (view === "notices") back = () => hostState().setView("inbox");
     onBackChangeRef.current?.(back);
     return () => onBackChangeRef.current?.(null);
-  }, [threadOpen]);
+  }, [threadOpen, view]);
 
   if (!imOn) {
     return (
@@ -72,12 +80,12 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
 
   return (
     <div data-leochat-panel className="flex h-full min-h-0 flex-col bg-white">
-      {threadOpen ? null : (
+      {detailOpen ? null : (
         <div className="flex justify-center border-b border-stone-200 px-3 py-2">
           <LeoChatTabs
-            active={state.view}
-            onSelect={(view) => hostState().setView(view)}
-            badges={{ inbox: unread?.total ?? 0, people: unread?.requests ?? 0 }}
+            active={tabOfView(state.view)}
+            onSelect={(tab) => hostState().setView(tab)}
+            badges={{ inbox: unread.total, people: unread.requests }}
           />
         </div>
       )}

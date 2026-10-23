@@ -375,6 +375,25 @@ html.dark [data-im-filter-row] [role="tab"][aria-selected="true"] {
 html.dark [data-testid="inbox-row"][aria-current="true"] {
   background: var(--leo-d-card-2);
 }
+/* 收件箱最上方固定的「通知」行：外观与会话行一致，当前通知视图开着时高亮。通知列表里的每一条同样淡淡地悬停。 */
+[data-inbox-notices-row] {
+  width: calc(100% - 12px);
+  margin: 1px 6px;
+  border-radius: 14px;
+  transition: background var(--leo-dur-2) var(--leo-ease-standard);
+}
+[data-inbox-notices-row]:hover { background: rgba(30, 27, 75, 0.045); }
+[data-inbox-notices-row][aria-current="true"] {
+  background: var(--im-accent-soft);
+  box-shadow: inset 3px 0 0 var(--im-accent);
+}
+html.dark [data-inbox-notices-row][aria-current="true"] {
+  background: var(--leo-d-card-2);
+}
+[data-notice-row] {
+  transition: background var(--leo-dur-2) var(--leo-ease-standard);
+}
+[data-notice-row]:hover { background: rgba(30, 27, 75, 0.045); }
 [data-im-unread] {
   min-width: 8px;
   height: 8px;

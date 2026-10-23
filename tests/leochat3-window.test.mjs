@@ -78,7 +78,13 @@ const { LeoChatButton } = await import(
       export function openMessages(){ globalThis.__leoChat3.open = true; globalThis.__leoChat3.toggles += 1; }
       export function closeMessages(){ globalThis.__leoChat3.open = false; globalThis.__leoChat3.toggles += 1; }
     `),
-    "../messages/realtime/hooks": dataModule(`export function useImUnread(){ return { total: globalThis.__leoChat3.unread }; }`),
+    // 入口角标 = 会话未读 + 平台通知未读（W08）；这里只给会话那一份，通知那份在 tests/lbp-w08-notices.test.mjs。
+    "../messages/notices/use-notices": dataModule(`
+      export function useLeoChatUnread(){
+        const total = globalThis.__leoChat3.unread;
+        return { chat: total, notices: 0, requests: 0, total };
+      }
+    `),
     "../messages/messages-surface": dataModule(`export function ensureMessagesSurfaceStyles(){}`),
   }),
 );

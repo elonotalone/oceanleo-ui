@@ -72,6 +72,7 @@ const inboxStubs = {
   "../../lib/im/inbox-api": dataModule(`export async function fetchDraftConversationIds(){ return []; }`),
   "../../lib/im/search-api": dataModule(`export function searchQueryReady(){ return false; }`),
   "./InboxRow": dataModule(`export function InboxRow(){ return null; }`),
+  "./notices/InboxNoticesRow": dataModule(`export function InboxNoticesRow(){ return null; }`),
   "./people/InviteLinkDialog": dataModule(`export function InviteLinkDialog(){ return null; }`),
   "./search/SearchView": dataModule(`export function SearchView(){ return null; }`),
   "./realtime/hooks": dataModule(`
@@ -115,6 +116,7 @@ test("Inbox、PeopleView 各有一套头部；没有横向滚动容器；LeoBay 
       activeConversationId: null,
       onOpenConversation() {},
       onNew() {},
+      onOpenNotices() {},
     }),
   );
   const people = html(React.createElement(PeopleView, { onOpenConversation() {} }));
