@@ -34,3 +34,5 @@
 | R2 W04 | aedbeceff7a1ed468 | 08:14Z |
 | R2 W14 | a5b8e9e87deb331f3 | 08:58Z |
 | R2 W01 | a91d1dd404d60bf66 | 08:58Z |
+| R2 W12 | aa40aa2eef1cbd81b | 10:04Z |
+| R2 W13 | ae49a6a3d698e43b2 | 10:04Z |
