@@ -6,12 +6,17 @@
 - [实测] R2 08:3xZ 类型检查：PDF 文件 0 错（全仓 5 错都在 video-editor / workflow-carrier，非我）。
 - [实测] 57 个涉 PDF 的测试里 33 个红：绝大多数 import 已删的旧核模块（pdf-annotation-operations / pdf-form / pdf-next-* / use-pdf-* / mode-switch-gate）。b12（Fabric）、g3（W02 循环依赖）不是我。
 
+- [实测] 测试清理完成：`85f8dffa`、`af74dfe0`、`102d76a5`（新单测 17/17、jsdom 同实例判据 1/1）。
+
+- [实测] 浏览器全部跑完（r2-protocol / rail / offline / fork / theme / local-upload / download），结论与剩余问题见 `verdicts/W06-delivery.md`。
+
 ## 正在做
-- 第 3 步：测试清理（删旧核测试 / 改写跨编辑器测试里的 PDF 段）+ 新能力单测。
+- 已交付（`verdicts/W06-delivery.md`）。
 
 ## 下一步
-- 浏览器：工具逐个点测、保存协议 §5、深浅两档截图 → 交付。
+- 等 W03 字形、W04 / W02 回信；父 agent 代改清单见交付 §8。
 
 ## 复现命令
 - focused test：`cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<file>.test.mjs`
+- 浏览器：`cd docs/work-logs/2026-10-23-editor-overhaul && bash harness/mint.sh | OUT_DIR=/tmp/w06-x THEME=light node harness/run.mjs evidence/W06/scenarios/<s>.mjs <args>`
 - 批量：`bash /tmp/w06-run/run-tests.sh /tmp/w06-tests.txt /tmp/w06-run/<dir>`（列表 = tests 里 grep PdfRoute|media-editors/pdf|ModeSwitchGate）

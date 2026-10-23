@@ -31,3 +31,5 @@
 - R2 10:1xZ [实测] r2-protocol 新文件 971dd460：高亮→已保存 rev2，✓→已保存 rev3；✗/下划线/删除线/加文字/画笔/便签/签名逐个 revision+1；选中 ✓ 编辑栏 = 描边/透明度/删除；选中便签 = 颜色/透明度/便签内容/删除，点删除 revision+1；顶栏撤销/重做各 +1；页面栏旋转/排序/删页/撤销删页全过；专业档同实例、无 pending、Shapes→矩形 +1；下载 pypdf 读到 /Square /Stamp /Ink /Highlight /Underline /StrikeOut /FreeText。
 - R2 [实测] 期间 agent session snapshot 409 → 顶栏保存失败卡住（W04 内核，已写 signals/W06-to-W04.md）。
 - R2 [实测] 加文字存进 PDF 的是「Insert textZhang San」：上游点击用 clickBehavior.defaultContent 预填。改为按 id 覆盖 freeText 工具（黑字、空框）；复测「王五 Wang」存出来原样。
+- R2 10:3xZ [实测] 断网：只出 error（不假已保存），恢复后重试 error→saving→saved；公共素材 6c907508 进编辑 fork 一次 → 369687e3，两次改动 = 2 个 revision，期间只新增 1 个 root；深浅两档截图齐；「从本地上传」图片 = 当前页中央图章，可撤销。中文加文字重开外观不显示汉字（未配自托管回退字体），交付 §8.3。
+- R2 交付：verdicts/W06-delivery.md。
