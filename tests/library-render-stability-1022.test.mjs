@@ -147,23 +147,25 @@ test("inline measureRow with unchanged row heights settles after bounded renders
   }
 });
 
-test("a ready document fallback stays mounted after its primary cover failed", async () => {
+// D8（2026-10-23）：文档卡片是文字卡片。它的 thumbnail 是编辑器渲的整页 PNG 也不挂，
+// 不签名、不生成；源文只读一次，结算后不重启读取，也不把 PNG 再挂回来。
+test("a document card never mounts its PNG preview and reads its source once", async () => {
   const uiModule = dataModule("export function useUI(){ return (value) => value; }");
   const thumbnailModuleUrl = await compileModule(
     "src/shell/workspace-library-thumbnail.tsx",
     {
       "../i18n/ui/useUI": uiModule,
       "../lib/database": dataModule(
-        "export async function ensureDatabaseThumbnail(){ return {ok:false}; }",
+        "export async function ensureDatabaseThumbnail(){ globalThis.__renderStabilityGenerated += 1; return {ok:false}; }",
       ),
       "../lib/media-proxy": dataModule(
-        "export async function fetchMediaBlob(...args){ return globalThis.__renderStabilityFetch(...args); }",
+        "export function canvasSafeUrl(url){ return url; }",
       ),
       "./advanced-features": dataModule(
         "export function advancedLibraryReferenceFor(){ return null; }",
       ),
       "./ArtifactRendition": dataModule(
-        "export function useArtifactRendition(){ return globalThis.__renderStabilityRendition; }",
+        "export function useArtifactRendition(item){ globalThis.__renderStabilityHookItems.push(item); return globalThis.__renderStabilityRendition; }",
       ),
       "./doc-editors/office-file": dataModule(
         "export function officePackageKindForItem(){ return null; } export async function fetchValidatedOfficePackage(){ throw new Error('unused'); }",
@@ -181,7 +183,7 @@ test("a ready document fallback stays mounted after its primary cover failed", a
   };
   const thumbnailRendition = {
     purpose: "thumbnail",
-    url: "https://example.test/failed-cover.png",
+    url: "https://example.test/rendered-page.png",
     mediaType: "image/png",
     format: "png",
     width: 640,
@@ -207,13 +209,15 @@ test("a ready document fallback stays mounted after its primary cover failed", a
       renditions: {
         source: sourceRendition,
         thumbnail: thumbnailRendition,
+        preview: { ...thumbnailRendition, purpose: "preview" },
       },
     },
   };
   let resolveSource;
-  let fetchCount = 0;
+  const fetched = [];
   const realSetTimeout = globalThis.setTimeout;
   const realClearTimeout = globalThis.clearTimeout;
+  const realFetch = globalThis.fetch;
   globalThis.setTimeout = (callback, ms, ...args) => {
     if (ms === 12_000 || ms === 15_000) {
       return realSetTimeout(() => {}, 0);
@@ -221,12 +225,14 @@ test("a ready document fallback stays mounted after its primary cover failed", a
     return realSetTimeout(callback, ms, ...args);
   };
   globalThis.clearTimeout = (timer) => realClearTimeout(timer);
-  globalThis.__renderStabilityFetch = () => {
-    fetchCount += 1;
+  globalThis.fetch = (url) => {
+    fetched.push(String(url));
     return new Promise((resolve) => {
       resolveSource = resolve;
     });
   };
+  globalThis.__renderStabilityGenerated = 0;
+  globalThis.__renderStabilityHookItems = [];
   globalThis.__renderStabilityRendition = {
     loading: false,
     url: thumbnailRendition.url,
@@ -241,6 +247,7 @@ test("a ready document fallback stays mounted after its primary cover failed", a
       root.render(
         React.createElement(WorkspaceThumbnail, {
           item,
+          url: thumbnailRendition.url,
           kind: "document",
           alt: "Notes",
           accent: "#123456",
@@ -248,41 +255,35 @@ test("a ready document fallback stays mounted after its primary cover failed", a
         }),
       ),
     );
-    const primaryCover = node.querySelector('img[data-cover-renderer="image"]');
-    assert.ok(primaryCover, "the primary thumbnail should render initially");
-
-    await act(async () => {
-      primaryCover.dispatchEvent(new window.Event("error"));
-    });
-    assert.equal(fetchCount, 1, "the fallback should read the document once");
-    assert.ok(resolveSource, "the document fallback should be awaiting source text");
+    assert.equal(node.querySelector("img"), null, "the rendered page PNG is never mounted");
+    assert.ok(node.querySelector('[data-cover-state="ready"]'), "the text card is ready on the first frame");
+    assert.match(node.textContent, /Notes/);
     assert.ok(
-      node.querySelector('[data-document-cover="unavailable"]'),
-      "the document fallback should stay visible while its source is pending",
+      globalThis.__renderStabilityHookItems.every((hookItem) => !hookItem.artifactId),
+      "the rendition hook never receives the durable document, so nothing is signed",
     );
+    assert.deepEqual(fetched, [sourceRendition.url], "only the text source is read");
+    assert.ok(node.querySelector('[data-document-cover="pending"]'));
 
     await act(async () => {
-      resolveSource(new Blob(["# Stable fallback\nActual document text"]));
+      resolveSource(new Response("# Stable card\nActual document text"));
       await new Promise((resolve) => realSetTimeout(resolve, 0));
     });
 
-    assert.equal(
-      node.querySelector('img[data-cover-renderer="image"]'),
-      null,
-      "a ready fallback must not remount the primary cover that already failed",
-    );
-    assert.ok(
-      node.querySelector('[data-document-cover="excerpt"]'),
-      "the rendered excerpt should remain visible after it becomes ready",
-    );
-    assert.equal(fetchCount, 1, "settling the fallback must not restart its fetch");
+    assert.equal(node.querySelector("img"), null, "settling never brings the PNG back");
+    assert.ok(node.querySelector('[data-document-cover="excerpt"]'));
+    assert.match(node.textContent, /Stable card\s*Actual document text/);
+    assert.equal(fetched.length, 1, "settling the card must not restart its read");
+    assert.equal(globalThis.__renderStabilityGenerated, 0, "no browser-side thumbnail generation");
   } finally {
     try {
       await act(async () => root.unmount());
     } finally {
       globalThis.setTimeout = realSetTimeout;
       globalThis.clearTimeout = realClearTimeout;
-      delete globalThis.__renderStabilityFetch;
+      globalThis.fetch = realFetch;
+      delete globalThis.__renderStabilityGenerated;
+      delete globalThis.__renderStabilityHookItems;
       delete globalThis.__renderStabilityRendition;
       node.remove();
     }
