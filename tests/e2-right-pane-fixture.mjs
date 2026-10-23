@@ -92,6 +92,10 @@ const buttonStubUrl = dataModule(`
 `);
 const popoverStubUrl = dataModule(`
   export function AnchoredPopover() { return null; }
+  export function runAfterOverlayExit(_element, done) {
+    const timer = setTimeout(done, 0);
+    return () => clearTimeout(timer);
+  }
 `);
 const themeStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
@@ -252,6 +256,8 @@ const { InlineAdvancedWorkbenchShell } = await import(await compileModule("src/s
       "./use-advanced-recovery": dataModule(`export function useAdvancedRecovery() {}`),
       "./workbench-routes": dataModule(`
         export function editBarOwnershipForItem() { return "host"; }
+        export function editorCapabilityFor() { return { available: true }; }
+        export function editorRouteFor() { return { type: "deck" }; }
       `),
   "./InlineAdvancedWorkbenchHeader": dataModule(`
     import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};

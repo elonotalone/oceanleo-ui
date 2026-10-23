@@ -153,8 +153,12 @@ test("closing a configured library keeps the app runtime mounted", () => {
     "utf8",
   );
   assert.match(source, /if \(!hasRight && !library\)/);
-  // 2026-09-07 全屏键（maxed）已删：右版面只按 hasRight 显隐。
-  assert.match(source, /!hasRight \? "hidden" : "flex"/);
+  // Closed panels now remain mounted for their transition/runtime. They must
+  // be semantically hidden, inert and non-interactive rather than display:none.
+  assert.match(source, /data-workspace-pane-state=\{hasRight \? "open" : "closed"\}/);
+  assert.match(source, /aria-hidden=\{hasRight \? undefined : "true"\}/);
+  assert.match(source, /inert=\{!hasRight \|\| undefined\}/);
+  assert.match(source, /hasRight\s*\? "pointer-events-auto opacity-100"\s*: "pointer-events-none mt-0 border-0 opacity-0"/);
   assert.match(source, /Keep every left-panel runtime mounted/);
   assert.match(source, /WORKSPACE_ACTION_EVENT/);
 });

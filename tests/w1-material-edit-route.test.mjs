@@ -32,6 +32,7 @@ const reactUrl = pathToFileURL(
 
 const uiStubUrl = dataModule(`export function useUI(){ return (zh) => zh; }`);
 const libraryDataStubUrl = dataModule(`
+  export { cacheableRenditionTwin } from ${JSON.stringify(new URL("../src/shell/library-data.ts", import.meta.url).href)};
   export function isDurableLibraryItem(item) {
     return Boolean(
       item?.artifactId &&
@@ -53,6 +54,7 @@ const libraryDataStubUrl = dataModule(`
   }
 `);
 const contractStubUrl = dataModule(`
+  export { isArtifactSourceTreeUrl, POPULARITY_META_KEY, popularityMetricsFromWire } from ${JSON.stringify(new URL("../src/shell/artifact-contract.ts", import.meta.url).href)};
   export function isEnsureableTransient(value) {
     return Boolean(value?.idempotencyKey && value?.resultId);
   }

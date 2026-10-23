@@ -40,9 +40,9 @@ const pass = dataModule(`export function WorkbenchMaterialProvider({ children })
   export function AdvancedWorkbenchBlankStage() { throw new Error('No blank draft allowed'); }
   export function useWorkbenchOpenClaim() {}
 `);
-const routeNames = ['EmbeddedRoute', 'DeckRoute', 'RichDocRoute', 'GridRoute', 'ImageRoute', 'PdfRoute', 'Model3DRoute', 'GameRoute', 'VideoTimelineRoute', 'VideoCanvasRoute', 'AudioRoute', 'ChartRoute', 'UnsupportedRoute'];
+const routeNames = ['WebsiteLocalRoute', 'DeckRoute', 'RichDocRoute', 'GridRoute', 'ImageRoute', 'PdfRoute', 'Model3DRoute', 'GameRoute', 'VideoTimelineRoute', 'VideoCanvasRoute', 'AudioRoute', 'ChartRoute', 'UnsupportedRoute'];
 const routes = dataModule(`import React from ${JSON.stringify(reactUrl)};\n` + routeNames.map(name => `export function ${name}(props) {
-  globalThis.__g3library.editor = { route: '${name}', item: props.item, linkUrl: props.linkUrl };
+  globalThis.__g3library.editor = { route: '${name}', item: props.item, linkUrl: props.linkUrl, siteId: props.siteId, appId: props.appId };
   return React.createElement('div', { 'data-editor': '${name}', 'data-artifact': props.item.artifactId, 'data-revision': props.item.revisionId }, props.item.title);
 }`).join('\n'));
 const preload = dataModule(`
@@ -84,9 +84,14 @@ const stubs = {
   '../lib/lazy-with-retry': dataModule(`export const chunkRetryLoader = (id, load) => load; export const withChunkRetry = (id, Component) => Component;`),
   './advanced-routes/WorkbenchRouteLoading': dataModule(`export function WorkbenchRouteLoading() { return null; } export function WorkbenchRouteChunkError() { return null; }`),
   '../lib/auth/client': dataModule(`export function browserClient() { throw new Error('unexpected auth access'); }
-    export async function accessToken() { return null; }`),
+    export async function accessToken() { return null; }
+    export const AUTH_STATE_EVENT = 'g3-verified-auth';
+    export async function getUserIdSnapshot() { return { available: true, userId: 'owner' }; }`),
   '../ui': dataModule(`export function Modal() { return null; } export function SkeletonCard() { return null; } export function EmptyState() { return null; } export function timeAgo() { return ''; }`),
   './StorageCapacityStrip': dataModule(`export function StorageCapacityStrip() { return null; }`),
+  // Keep the real TaskFileWorkspace/editor composition. Only unrelated chat
+  // orchestration is replaced to break AgentChat→ResultCanvas→Library's cycle.
+  './AgentChat': dataModule(`export function AgentChat({ workspaceContent }) { return workspaceContent; }`),
 };
 for (const name of routeNames) stubs[`./advanced-routes/${name}`] = routes;
 // Keep real ArtifactActions, WorkspaceLibrary, MyLibrary and workbench dispatch.
@@ -119,7 +124,7 @@ function material(kind, artifactType, capability, format, siteId) {
         preview: { purpose: 'preview', revisionId, url: `https://assets.test/${artifactId}.png` } } } };
 }
 const CASES = [
-  [material('website', 'website', 'website-editor', 'website-source@1', 'website'), 'EmbeddedRoute'],
+  [material('website', 'website', 'website-editor', 'website-source@1', 'website'), 'WebsiteLocalRoute'],
   [material('ppt', 'deck', 'deck-editor', 'pptx', 'ppt'), 'DeckRoute'],
   [material('document', 'document', 'richdoc-editor', 'docx', 'word'), 'RichDocRoute'],
 ];
@@ -131,6 +136,7 @@ test('清单自检：CASES 覆盖网站、幻灯片、文档三种素材——�
 });
 
 for (const [item, route] of CASES) {
+  const originSiteId = item.siteId;
   test(`portal library Edit delivers ${item.artifactType} identity to ${route} and stays at its library URL`, async () => {
     const mounted = await mountDom();
     resetLibraryCurrentIdentityForTests();
@@ -142,7 +148,10 @@ for (const [item, route] of CASES) {
       assert.equal(mounted.container.querySelector('[data-preview]').dataset.preview, item.artifactId);
       const edit = [...mounted.container.querySelectorAll('button')].find(button => button.getAttribute('aria-label')?.startsWith('编辑「'));
       await click(edit);
-      assert.match(edit.textContent, /处理中/);
+      // Canonical Library actions are icon-only now. Pending preparation must
+      // still be visible as a spinner and must block repeated activation.
+      assert.equal(edit.disabled, true);
+      assert.equal(edit.getAttribute('aria-disabled'), 'true');
       assert.equal(Boolean(edit.querySelector('.animate-spin')), true);
       assert.doesNotMatch(mounted.container.textContent, /正在打开编辑器|编辑器已打开/);
       assert.equal(mounted.container.querySelector('[data-editor]'), null);
@@ -157,7 +166,13 @@ for (const [item, route] of CASES) {
       assert.equal(editor?.dataset.revision, item.revisionId);
       assert.equal(globalThis.__g3library.editor.item, item);
       assert.equal(globalThis.__g3library.editor.linkUrl, item.url);
-      assert.deepEqual(globalThis.__g3library.binding, { appId: 'library', siteId: item.siteId });
+      // The new Library task belongs to the current portal host, not the
+      // artifact's origin app/site. Artifact identity and origin stay unchanged.
+      assert.deepEqual(globalThis.__g3library.binding, { appId: 'library', siteId: 'oceanleo' });
+      assert.equal(globalThis.__g3library.editor.siteId, 'oceanleo');
+      assert.equal(globalThis.__g3library.editor.appId, 'library');
+      assert.equal(globalThis.__g3library.editor.item.siteId, originSiteId);
+      assert.equal(item.siteId, originSiteId, 'host binding must not rewrite the input artifact origin');
       assert.equal(window.location.pathname + window.location.search, `/library?item=${item.artifactId}`);
       assert.deepEqual(globalThis.__g3library.prepared, [{ action: 'edit', id: item.artifactId }]);
       assert.deepEqual(globalThis.__g3library.navigations, []);
