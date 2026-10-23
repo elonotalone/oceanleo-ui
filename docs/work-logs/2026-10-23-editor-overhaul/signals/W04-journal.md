@@ -7,3 +7,4 @@
 - 07:30Z [后端] oceanleo 473f3d1：staging 口子 / revision metadata 白名单 / 网站闭包继承；pytest 144 passed。即将 docker restart oceanleo-api（W04 第 1 次）。
 - 07:37Z [focused] tests/editor-overhaul-w04-save-kernel.test.mjs 9/9；advanced-session/W2-*/persistence/model3d/w2-save-contract 全绿；tsc 我的文件 0 错。
 - 07:38Z [实测 API，重启后] `--fixed --stage`：3 次保存 → staging 3 次（无 hidden root）→ 3 个 revision（4d921631→f6596a2b→c85be1b4）；DB：952e4481 共 8 个 revision，W04 近 3 分钟新增 editorInternal root 0（唯一新增的是 W07 草稿层 `[W07] sample.pptx草稿`，走 advanced-draft.ts，非本内核路径）。
+- 07:45Z [后端] a396ef7 网站新图进闭包；pytest 146 passed。即将 docker restart oceanleo-api（W04 第 2 次）。

@@ -247,3 +247,14 @@ test("a failed save attempt is shown as 保存失败, never as saving forever or
   assert.equal(advancedAutoSaveDisplayState({ state: "saving", failedAttempt: false, restorationPaused: false }), "saving");
   assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: false, restorationError: "草稿读取失败", restorationPaused: false }), "error");
 });
+
+test("website closure files staged by the editor ride along with the commit", async () => {
+  resetOwnCommittedHeadsForTests();
+  const { state, dependencies } = gateway();
+  const sourceDependencies = [{ path: "images/new.webp", blobId: "project-assets:u/x/editor-staging/2026-10-23/a.webp", digest: "a".repeat(64), mediaType: "image/webp" }];
+  await saveFileToLibraryWithDependencies(
+    pdfSave(durable("r1"), { artifactRevision: { artifactType: "pdf", sourceDependencies } }),
+    dependencies,
+  );
+  assert.deepEqual(state.commits[0].sourceDependencies, sourceDependencies);
+});

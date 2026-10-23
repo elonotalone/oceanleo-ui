@@ -125,6 +125,13 @@ export interface ArtifactRevisionCommit {
   provenance?: Record<string, unknown>;
   /** Allowlisted revision metadata (server-filtered), e.g. `text_excerpt`. */
   metadata?: Record<string, unknown>;
+  /** Website only: new `images/*` files staged via `stageArtifactBlob`. */
+  sourceDependencies?: Array<{
+    path: string;
+    blobId: string;
+    digest: string;
+    mediaType: string;
+  }>;
 }
 
 interface ArtifactRequestOptions extends RequestInit {
@@ -2980,6 +2987,16 @@ export async function createArtifactRevision(
             : null,
           provenance: commit.provenance || {},
           ...(commit.metadata ? { metadata: commit.metadata } : {}),
+          ...(commit.sourceDependencies?.length
+            ? {
+                source_dependencies: commit.sourceDependencies.map((entry) => ({
+                  path: entry.path,
+                  blob_id: entry.blobId,
+                  digest: entry.digest,
+                  media_type: entry.mediaType,
+                })),
+              }
+            : {}),
         }),
       },
     ),

@@ -10,7 +10,11 @@
 
 import { useEffect, useRef } from "react";
 import { saveCreations, uploadFile, type MediaType } from "../../lib/database";
-import { createArtifactRevision, stageArtifactBlob } from "../artifact-client";
+import {
+  createArtifactRevision,
+  stageArtifactBlob,
+  type ArtifactRevisionCommit,
+} from "../artifact-client";
 import { editorWorkingHeadUrl } from "../editor-working-head";
 import {
   normalizeWork,
@@ -147,6 +151,8 @@ export interface SaveToLibraryInput {
      * bounded keys; control-plane keys can never be set from here.
      */
     metadata?: Record<string, unknown>;
+    /** Website: new images already staged (`stageArtifactBlob`) for the closure. */
+    sourceDependencies?: ArtifactRevisionCommit["sourceDependencies"];
   };
   /** Retry receipts. Callers may reuse them only for the same edit revision. */
   preparedProject?: PreparedProjectUpload;
@@ -1101,6 +1107,9 @@ export async function saveFileToLibraryWithDependencies(
         },
         renditions: plan.renditions,
         ...(revisionMetadata ? { metadata: revisionMetadata } : {}),
+        ...(input.artifactRevision!.sourceDependencies?.length
+          ? { sourceDependencies: input.artifactRevision!.sourceDependencies }
+          : {}),
         provenance: {
           editor: editorManifest?.id || input.artifactRevision!.editor || "",
           previousRevisionId: base,
