@@ -1,6 +1,6 @@
 "use client";
 
-// 「我的收藏」：一张列表。服务按交付种类归类，卖家和需求算其他；行右边标明类别。
+// 「我的收藏」：一张列表。收藏的东西按交付种类归类，卖家和需求算其他；行右边标明类别。
 import { useUI } from "../../../i18n/ui/useUI";
 import {
   favoriteOpenTarget,

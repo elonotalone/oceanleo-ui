@@ -1,6 +1,6 @@
 "use client";
 
-// LeoBay 的详情正文：按当前目标渲染需求、供给、订单、卖家几块的窗格；「我的」五块；设置交给共用设置窗。
+// LeoBay 的详情正文：按当前目标渲染需求、供给、订单、卖家几块的窗格；「我的」三块（交易 / 我的主页 / 数据面板）；设置交给共用设置窗。
 // 返回键与标题在 `/bay` 页的页头那一行（见 LeoBayPage），这里只出正文，所以页面上不会出现两个返回键、两个标题。
 // 交易会话不在这里：它在 LeoChat 小窗里开。
 import { lazy, Suspense, type ReactNode } from "react";
@@ -12,7 +12,7 @@ import { CheckoutPane, ConsultPane, ProfilePane, ServicePane } from "../supply";
 import type { BayPaneProps, BayTarget } from "./bay-state";
 import { BayMine } from "./BayMine";
 
-// 不走 apps/index 桶：桶会把货架和「我的作品」一起拉进来，测试编译台的 BayMine 桩没有 BaySignInPrompt。
+// 不走 apps/index 桶：桶会把货架和「我的网站与软件服务」一起拉进来，测试编译台的 BayMine 桩没有 BaySignInPrompt。
 const AppPane = lazy(() => import("../apps/AppPane").then((mod) => ({ default: mod.AppPane })));
 const AppEditorPane = lazy(() => import("../apps/AppEditorPane").then((mod) => ({ default: mod.AppEditorPane })));
 const LessonPane = lazy(() => import("../lessons/LessonPane").then((mod) => ({ default: mod.LessonPane })));
@@ -24,7 +24,7 @@ const AppThreadPane = lazy(() => import("../appfeedback/AppThreadPane").then((mo
 const DashboardPane = lazy(() => import("../dashboard/DashboardPane").then((mod) => ({ default: mod.DashboardPane })));
 const AppLoginConsentPane = lazy(() => import("../applogin/AppLoginConsentPane").then((mod) => ({ default: mod.AppLoginConsentPane })));
 
-/** 作品的两个窗格是按需加载的；加载那一下给一块骨架，别让页面白一下。 */
+/** 网站与软件服务、课程的窗格是按需加载的；加载那一下给一块骨架，别让页面白一下。 */
 function LazyPaneLoading() {
   return (
     <div data-bay-loading className="space-y-3 p-4" aria-busy="true">
@@ -36,7 +36,7 @@ function LazyPaneLoading() {
 
 const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>> = {
   demand: "需求详情",
-  service: "服务详情",
+  service: "详情",
   help: "求助详情",
   consult: "答疑详情",
   profile: "主页",
@@ -49,13 +49,13 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
   publish: "发布",
   "service-editor": "发布",
   mine: "我的",
-  app: "作品详情",
+  app: "详情",
   "app-editor": "发布",
   lesson: "课程详情",
   bundle: "套餐详情",
   "lesson-editor": "发布",
   "bundle-editor": "发布",
-  "app-manage": "管理作品",
+  "app-manage": "管理",
   "app-thread": "留言详情",
   dashboard: "数据面板",
   "app-login": "登录确认",
@@ -66,7 +66,7 @@ const DETAIL_TITLES: Readonly<Record<Exclude<BayTarget["kind"], "feed">, string>
 export function bayDetailTitleKey(target: BayTarget): string | null {
   if (target.kind === "feed") return null;
   if (target.kind === "service-editor" && target.serviceId) return "编辑";
-  if (target.kind === "app-editor" && target.appId) return "编辑作品";
+  if (target.kind === "app-editor" && target.appId) return "编辑";
   if (target.kind === "lesson-editor" && target.lessonId) return "编辑课程";
   if (target.kind === "bundle-editor" && target.bundleId) return "编辑套餐";
   return DETAIL_TITLES[target.kind];

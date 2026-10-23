@@ -42,26 +42,34 @@ test("收藏：服务按 listing_kind；卖家和需求算其他", () => {
   assert.equal(favoriteCategory({ id: "3", target_kind: "demand", target_ref: "d", created_at: null, target: {} }), "other");
 });
 
-test("类别选择条：全部 + 五类，顺序是成品文件、人工服务、网站与软件服务、课程、其他", () => {
+test("类别：五类的顺序与名字是现成文件、人工服务、网站与软件服务、课程、其他；胶囊条已删，文件里只剩类型", () => {
   const tag = src("src/shell/bay/mine/PublishedCategoryTag.tsx");
   assert.match(tag, /PUBLISHED_CATEGORIES: readonly PublishedCategory\[\] = \["digital", "service", "app", "lesson", "other"\]/);
-  assert.match(tag, /digital: "成品文件"/);
+  assert.match(tag, /digital: "现成文件"/);
+  assert.doesNotMatch(tag, /成品文件/);
   assert.match(tag, /service: "人工服务"/);
   assert.match(tag, /app: "网站与软件服务"/);
   assert.match(tag, /lesson: "课程"/);
   assert.match(tag, /other: "其他"/);
   const bar = src("src/shell/bay/mine/MineCategoryBar.tsx");
-  assert.match(bar, /\["all", \.\.\.PUBLISHED_CATEGORIES\]/);
-  assert.match(bar, /data-bay-mine-category=\{id\}/);
+  assert.doesNotMatch(bar, /export function MineCategoryBar/);
+  assert.doesNotMatch(bar, /data-bay-mine-category/);
+  assert.match(bar, /export type \{ MineCategory \} from/);
+  assert.match(bar, /export type \{ MinePaneProps \} from/);
 });
 
-test("BayMine：四个交易页显示类别条，主页与数据面板不分类；标签是六块", () => {
+test("BayMine：交易里一行两个下拉（列表 + 类别），主页与数据面板不分类；页签是项目页那件下划线 ProjectTabNav", () => {
   const mine = src("src/shell/bay/shell/BayMine.tsx");
-  assert.match(mine, /const CATEGORY_TABS: readonly BayMineTab\[\] = \["published", "sold", "bought", "favorites"\];/);
-  assert.match(mine, /\{signedIn && categorised \? <MineCategoryBar/);
-  assert.match(mine, /category=\{categorised \? category : "all"\}/);
+  assert.match(mine, /<ProjectTabNav/);
+  assert.match(mine, /name="mine-list"/);
+  assert.match(mine, /name="mine-category"/);
+  assert.match(mine, /allLabel=\{tt\("全部类别"\)\}/);
+  assert.doesNotMatch(mine, /MineCategoryBar/);
+  assert.doesNotMatch(mine, /data-bay-mine-category/);
+  assert.match(mine, /category=\{view\.category\}/);
+  assert.match(mine, /category="all"/);
   const links = src("src/shell/bay/shell/bay-links.ts");
-  assert.match(links, /BAY_MINE_UI_TABS: readonly BayMineTab\[\] = \["published", "sold", "bought", "favorites", "page", "dashboard"\]/);
+  assert.match(links, /BAY_MINE_TABS: readonly BayMineTab\[\] = \["published", "sold", "bought", "favorites", "page", "dashboard"\]/);
 });
 
 test("四个页面都走同一张清单并按类别筛选", () => {

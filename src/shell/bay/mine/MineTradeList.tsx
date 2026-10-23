@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { MineStatement } from "./MineStatement";
 import { PublishedCategoryTag, type PublishedCategory } from "./PublishedCategoryTag";
 
 export type MineTradeRow = {
@@ -12,6 +13,10 @@ export type MineTradeRow = {
   onOpen: () => void;
   orderId?: string;
   favoriteId?: string;
+  /** 付款金额（已排好版的文字）；给了就在行右侧、类别标签左边显示。「我买到的」用。 */
+  amount?: string;
+  /** 这一行对应的订单（合同）号；给了就出现「查看对账单」，点开在这一行下面展开对账单。 */
+  statementContractId?: string;
   /** 给了就在行右侧显示「删除」；返回的 Promise 失败时，错误文案显示在这一行下面。 */
   onDelete?: () => Promise<void>;
   /** 点「删除」后的确认文案；不给就用通用的。 */
@@ -36,6 +41,7 @@ export function MineTradeList({
   const tt = useUI();
   const [confirming, setConfirming] = useState("");
   const [busy, setBusy] = useState("");
+  const [statementOpen, setStatementOpen] = useState("");
   const [failed, setFailed] = useState<{ id: string; message: string } | null>(null);
 
   async function remove(row: MineTradeRow) {
@@ -101,9 +107,27 @@ export function MineTradeList({
                     <span className="block truncate text-[14px] font-semibold text-stone-800">{row.title}</span>
                     {row.subtitle ? <span className="mt-0.5 block truncate text-[12px] text-stone-500">{row.subtitle}</span> : null}
                   </span>
-                  <PublishedCategoryTag category={row.category} />
+                  <span className="flex shrink-0 items-center gap-3">
+                    {row.amount ? (
+                      <span data-bay-mine-amount={row.id} className="text-[14px] font-semibold tabular-nums text-stone-900">
+                        {row.amount}
+                      </span>
+                    ) : null}
+                    <PublishedCategoryTag category={row.category} />
+                  </span>
                 </span>
               </button>
+              {row.statementContractId ? (
+                <button
+                  type="button"
+                  data-bay-mine-statement={row.id}
+                  aria-expanded={statementOpen === row.id}
+                  onClick={() => setStatementOpen(statementOpen === row.id ? "" : row.id)}
+                  className="shrink-0 px-3 py-3 text-[12px] font-medium text-stone-700 hover:text-stone-900"
+                >
+                  {tt("查看对账单")}
+                </button>
+              ) : null}
               {row.onDelete && confirming !== row.id ? (
                 <button
                   type="button"
@@ -118,6 +142,11 @@ export function MineTradeList({
                 </button>
               ) : null}
             </div>
+            {row.statementContractId && statementOpen === row.id ? (
+              <div data-bay-mine-statement-panel={row.id} className="border-t border-stone-100 bg-stone-50 px-4 py-3">
+                <MineStatement contractId={row.statementContractId} onClose={() => setStatementOpen("")} />
+              </div>
+            ) : null}
             {row.onDelete && confirming === row.id ? (
               <div data-bay-mine-confirm={row.id} className="flex flex-wrap items-center gap-3 bg-rose-50 px-4 py-2">
                 <p className="min-w-0 flex-1 text-[12px] text-rose-700">{row.deleteHint || tt("确定删除吗？删除后不能恢复。")}</p>

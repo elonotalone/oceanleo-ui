@@ -1,6 +1,6 @@
 # W04 state
 
-更新：2026-10-23 20:50（重派后第一轮：读码与定案完成，开始实现）
+更新：2026-10-23 21:20（主体实现与新测试已绿；余：收尾核对 + 交卷）
 
 ## 已确认的事实（实测）
 - 上一轮只做到第 0 步（读任务书），没有代码改动入库；LeoBayPage.tsx 的 view 透传已随 a08f3083 入库。基线：相关 16 份测试全绿（bay2-copy、bay3-page、bay3-profile、bay4-browse、bay4-mine-trade、bay-apps-nav、bay-lessons-mine、bay-lessons-nav、bay-mine-category、bay-shell-state、bay-supply-cards、bay-supply-checkout、bay-supply-profile、bay-toolbar、leochat4-surfaces、leochat-get-help）。
@@ -20,16 +20,17 @@
 - 退役名字：LeoBayPage 搜索提示→「搜索 LeoBay」；BayDetail 标题 服务详情/作品详情→详情、管理作品→管理、编辑作品→编辑；未命名服务/未命名作品→未命名。
 - 「成品文件」→「现成文件」（PublishedCategoryTag）。
 
+## 已完成（已入库）
+- 分表 lbp-w04-copy.ts（交易 / 全部类别 / 网站与软件服务）+ bay-shell-copy en 三处大小写。
+- mine-blocks.ts、mine-view-state.ts、MineStatement.tsx 新增；BayMine.tsx 重写；MineTradeList 加 amount / statementContractId；MyBoughtPane 金额 + 对账单；MineCategoryBar 变类型垫片；PublishedCategoryTag 现成文件；LeoBayPage PAPER_DETAILS / 搜索提示；BayDetail 标题。
+- 测试：bay4-mine-trade、bay-mine-category、leochat-get-help 改绿；新增 tests/lbp-w04-mine.test.mjs（22 条）。
+
 ## 正在做
-第 1 步：词条 + 分表（lbp-w04-copy.ts）+ bay-shell-copy en 三处大小写。
+收尾核对：bay-shell-picker 测试标题、其他 owner 分表里有没有也定义「全部类别 / 网站与软件服务」、用到的 Tailwind 类都在 ui.css、再跑 typecheck 与相关测试、写交卷 verdicts/W04-delivery.md。
 
 ## 下一步
-1. lbp-w04-copy.ts（交易 / 全部类别 / 网站与软件服务 15 语）+ bay-shell-copy en 三处
-2. mine-blocks.ts、mine-view-state.ts、MineFilterRow.tsx、MineStatement.tsx；PublishedCategoryTag、MineCategoryBar 垫片
-3. BayMine.tsx 重写；MineTradeList 加金额/对账单字段；MyBoughtPane
-4. LeoBayPage.tsx（PAPER_DETAILS、搜索提示、注释）、BayDetail.tsx 标题；未命名*
-5. 测试：改绿被打红的（bay4-mine-trade、bay-mine-category、leochat-get-help、bay2-copy、bay-shell-picker 标题…）+ 新增 tests/lbp-w04-mine.test.mjs
-6. typecheck（基线 3 条错在 video-project-doc.ts）、i18n 闸、交卷 verdicts/W04-delivery.md
+1. 交卷 verdicts/W04-delivery.md（三块与地址映射表、白底改动说明、测试原文、对父 agent 的请求）
+2. 提交后回报
 
 ## 复现命令
 cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<名字>.test.mjs

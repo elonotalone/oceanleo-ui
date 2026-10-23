@@ -1,6 +1,6 @@
 "use client";
 
-// 「我的」→「我卖出的」：报价、服务单、课程单、作品单合成一张列表，行右边标明类别。
+// 「我的」→「我卖出的」：报价、人工服务、课程、网站与软件服务的订单合成一张列表，行右边标明类别。
 import { useUI } from "../../../i18n/ui/useUI";
 import { listSoldBayApps } from "../../../lib/bay/app-paid";
 import { formatBayFen, listMyProposals } from "../../../lib/bay/demands";
@@ -117,7 +117,7 @@ export function MySoldPane({ category = "all" }: MinePaneProps) {
       if (!rowMatchesCategory(category, "app")) continue;
       rows.push({
         id: `app-order:${row.id}`,
-        title: row.item_title || tt("未命名作品"),
+        title: row.item_title || tt("未命名"),
         subtitle: joinMeta([tt(purchaseStatusText(row.status)), row.price_fen ? formatBayFen(row.price_fen) : tt("免费")]),
         category: "app",
         ...hideRowProps(tt, bundle.reload, purchaseIsSettled(row.status), "app-order", row.id),
@@ -129,7 +129,7 @@ export function MySoldPane({ category = "all" }: MinePaneProps) {
       if (!rowMatchesCategory(category, "app")) continue;
       rows.push({
         id: `app-sub:${row.id}`,
-        title: row.app_title || tt("未命名作品"),
+        title: row.app_title || tt("未命名"),
         subtitle: joinMeta([tt(subscriptionStatusText(row.status)), row.price_fen ? formatBayFen(row.price_fen) : ""]),
         category: "app",
         ...hideRowProps(tt, bundle.reload, subscriptionIsSettled(row.status), "app-sub", row.id),

@@ -290,7 +290,8 @@ test("我发布的：一张统一列表，没有需求、没有分区标题，�
   assert.match(view.host.textContent, /Logo/);
   assert.doesNotMatch(view.host.textContent, /做一份路演稿/);
   assert.match(view.host.textContent, /人工服务/);
-  assert.match(view.host.textContent, /成品文件/);
+  assert.match(view.host.textContent, /现成文件/);
+  assert.doesNotMatch(view.host.textContent, /成品文件/);
   assert.match(view.host.textContent, /网站与软件服务/);
   assert.match(view.host.textContent, /课程/);
   assert.match(view.host.textContent, /我的计算器/);
@@ -332,7 +333,7 @@ test("我卖出的：报价和卖家订单在同一张清单；没有概况、�
   assert.equal(view.q("[data-bay-role]"), null);
   assert.ok(view.q("[data-bay-order-row=sell-1]"));
   assert.equal(view.q("[data-bay-order-row=buy-1]"), null);
-  assert.match(view.host.textContent, /人工服务|成品文件|网站与软件服务|课程|其他/);
+  assert.match(view.host.textContent, /人工服务|现成文件|网站与软件服务|课程|其他/);
   await view.unmount();
 });
 

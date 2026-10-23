@@ -1,6 +1,6 @@
 "use client";
 
-// LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按服务 / 素材 / 作品 / 课程 / 需求五栏逛。
+// LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按种类逛（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他，出售与求购两边）。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -118,7 +118,7 @@ function Hero({
               value={search.text}
               onChange={search.change}
               onCommit={search.commit}
-              placeholder={tt("搜素材、服务、作品、课程、需求…")}
+              placeholder={tt("搜索 LeoBay")}
             />
           </div>
           <CollectionViewOptions options={viewOptions} />
@@ -274,12 +274,13 @@ const FORM_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(
   "propose",
 ]);
 
-/** 发帖、编辑、我的、数据面板：正文垫白底圆角板。返回和标题留在板外，坐在页底渐变上，和逛 Bay 同一块底。 */
+/**
+ * 发帖、编辑：正文垫白底圆角板。返回和标题留在板外，坐在页底渐变上，和逛 Bay 同一块底。
+ * 「我的」「数据面板」不在这里：整页铺白等于没有白底，它们的页签与下拉直接坐在页底，白色只给里面分隔区域的卡片。
+ */
 const PAPER_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>([
   "publish",
   "post-need",
-  "mine",
-  "dashboard",
   "service-editor",
   "app-editor",
   "lesson-editor",

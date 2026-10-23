@@ -368,17 +368,18 @@ test("PostNeedPane 与 CallHumanPane 都有找人帮忙表单；从「发布 →
   assert.equal(bayDetailTitleKey({ kind: "call-human" }), "找人帮忙");
 });
 
-test("BayMineTabs 六块：四块交易加我的主页、数据面板；认不出的值高亮我发布的", () => {
+test("BayMineTabs 三块：交易 / 我的主页 / 数据面板（下划线页签）；四个列表不再是页签，认不出的值落在交易", () => {
   const html = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "help" }));
   assert.deepEqual(
-    [...html.matchAll(/data-mine-tab="([a-z]+)"/g)].map((match) => match[1]),
-    ["published", "sold", "bought", "favorites", "page", "dashboard"],
+    [...html.matchAll(/data-project-tab="([a-z]+)"/g)].map((match) => match[1]),
+    ["trade", "page", "dashboard"],
   );
-  for (const label of ["我发布的", "我卖出的", "我买到的", "我的收藏", "我的主页", "数据面板"]) assert.ok(html.includes(label), label);
+  for (const label of ["交易", "我的主页", "数据面板"]) assert.ok(html.includes(label), label);
+  for (const label of ["我发布的", "我卖出的", "我买到的", "我的收藏"]) assert.ok(!html.includes(label), `${label} 现在是「交易」里的下拉选项，不是页签`);
   assert.doesNotMatch(html, /我的求助|我发出的|我的报价|我的服务|我的订单/);
-  assert.match(html, /aria-selected="true"[^>]*data-mine-tab="published"|data-mine-tab="published"[^>]*aria-selected="true"/);
-  const sold = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "sold" }));
-  assert.match(sold, /aria-selected="true"[^>]*data-mine-tab="sold"|data-mine-tab="sold"[^>]*aria-selected="true"/);
-  const page = renderToStaticMarkup(React.createElement(BayMineTabs, { tab: "page" }));
-  assert.match(page, /aria-selected="true"[^>]*data-mine-tab="page"|data-mine-tab="page"[^>]*aria-selected="true"/);
+  assert.match(html, /aria-selected="true"[^>]*data-project-tab="trade"/);
+  for (const [tab, block] of [["sold", "trade"], ["bought", "trade"], ["favorites", "trade"], ["page", "page"], ["dashboard", "dashboard"]]) {
+    const selected = renderToStaticMarkup(React.createElement(BayMineTabs, { tab }));
+    assert.match(selected, new RegExp(`aria-selected="true"[^>]*data-project-tab="${block}"`), `${tab} 应当高亮 ${block}`);
+  }
 });

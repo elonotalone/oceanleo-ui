@@ -1,6 +1,6 @@
 "use client";
 
-// 「我的」→「我发布的」：一张列表。成品文件、人工服务、网站与软件服务、课程、其他都在这里，每一行右边标明类别。
+// 「我的」→「我发布的」：一张列表。现成文件、人工服务、网站与软件服务、课程、其他都在这里，每一行右边标明类别。
 import { useUI } from "../../../i18n/ui/useUI";
 import { deleteBayApp, listMyBayApps } from "../../../lib/bay/apps";
 import { deleteBayLesson, listMyBayLessons } from "../../../lib/bay/lessons";
@@ -51,7 +51,7 @@ export function MyPublishedPane({ category = "all" }: MinePaneProps) {
       if (!rowMatchesCategory(category, kind)) continue;
       rows.push({
         id: `service:${service.id}`,
-        title: service.title || tt("未命名服务"),
+        title: service.title || tt("未命名"),
         subtitle: tt(listingStatusText(service.status, service.moderation_hidden)),
         category: kind,
         onOpen: () => openBay({ kind: "service-editor", serviceId: service.id }),
@@ -63,7 +63,7 @@ export function MyPublishedPane({ category = "all" }: MinePaneProps) {
       if (!rowMatchesCategory(category, "service")) continue;
       rows.push({
         id: `consult:${consult.id}`,
-        title: consult.title || tt("未命名服务"),
+        title: consult.title || tt("未命名"),
         subtitle: tt(listingStatusText(consult.status, consult.moderation_hidden)),
         category: "service",
         onOpen: () => openBay({ kind: "consult", id: consult.id }),
@@ -75,7 +75,7 @@ export function MyPublishedPane({ category = "all" }: MinePaneProps) {
       if (!rowMatchesCategory(category, "app")) continue;
       rows.push({
         id: `app:${app.id}`,
-        title: app.title || tt("未命名作品"),
+        title: app.title || tt("未命名"),
         subtitle: tt(listingStatusText(app.status, app.moderation_hidden)),
         category: "app",
         onOpen: () => openBay({ kind: "app-editor", appId: app.id }),
