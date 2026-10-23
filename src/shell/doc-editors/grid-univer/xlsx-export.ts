@@ -22,9 +22,23 @@ import { sanitizeSheetName } from "../grid-model";
 import { formatWithNumberFormat, parseGridDateValue } from "../grid-format/number-format";
 import type { GridSheet } from "../grid-model";
 import { translateGridFormula } from "../grid-structure";
+import { AUTOSAVE_ERROR_NETWORK } from "../../../lib/auth/autosave-error-message";
 
 type Json = Record<string, unknown>;
 type ExcelJs = typeof import("exceljs");
+let loadedExcelJs: (ExcelJs & { default?: ExcelJs }) | undefined;
+
+async function loadExcelJs() {
+  if (loadedExcelJs) return loadedExcelJs;
+  // Do not retain a rejected import promise. In particular, avoid starting a
+  // first chunk request while offline; loaded modules still support CPU export.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new Error(AUTOSAVE_ERROR_NETWORK);
+  }
+  const imported = (await import("exceljs")) as ExcelJs & { default?: ExcelJs };
+  loadedExcelJs = imported;
+  return imported;
+}
 
 export interface GridUniverXlsxResult {
   blob: Blob;
@@ -702,7 +716,7 @@ export async function buildGridXlsxFromUniverSnapshot(
   options: { title?: string } = {},
 ): Promise<GridUniverXlsxResult> {
   const snapshot = data || {};
-  const imported = (await import("exceljs")) as ExcelJs & { default?: ExcelJs };
+  const imported = await loadExcelJs();
   const ExcelJS = imported.Workbook ? imported : (imported.default ?? imported);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "OceanLeo";
@@ -1066,4 +1080,3 @@ function toExcelLink(url: string, names: Map<string, string>): string {
   const name = gid ? names.get(decodeURIComponent(gid)) : undefined;
   return name ? `#${quoteSheet(name)}!${decodeURIComponent(range)}` : url;
 }
-

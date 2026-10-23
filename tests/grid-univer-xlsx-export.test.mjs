@@ -28,6 +28,24 @@ function snapshot(sheet, resources = [], extra = {}) {
 
 const res = (name, data) => ({ name, data: JSON.stringify(data) });
 
+test("offline first export does not start a chunk load; online retry preserves the workbook", async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const input = snapshot({ cellData: { 0: { 0: { v: 'offline first', t: 1 } } } });
+  try {
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } });
+    await assert.rejects(buildGridXlsxFromUniverSnapshot(input), /网络不通/);
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: true } });
+    const { workbook } = await roundTrip(input);
+    assert.equal(workbook.worksheets[0].getCell('A1').value, 'offline first');
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } });
+    const offline = await roundTrip(input);
+    assert.equal(offline.workbook.worksheets[0].getCell('A1').value, 'offline first', 'loaded exporter remains available offline');
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'navigator', previous);
+    else delete globalThis.navigator;
+  }
+});
+
 test("数字写成数字，文本写成文本，布尔写成布尔，格式串带过去", async () => {
   const { workbook } = await roundTrip(
     snapshot({
