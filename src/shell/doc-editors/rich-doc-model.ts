@@ -25,6 +25,11 @@ import {
   officePackageKindForItem,
   validateOfficePackageBlob,
 } from "./office-file";
+import {
+  richDocHtmlToMarkdown,
+  richDocHtmlToPlainText,
+  richDocJsonToPlainText,
+} from "./rich-doc-text-delivery";
 
 export type RichDocSource =
   | "project"
@@ -721,7 +726,7 @@ export async function createRichDocDeliveryFile(input: {
   const target = richDocPersistTarget(input.item);
   const stem = deliveryFileStem(input.title);
   if (target.extension === "md") {
-    const markdown = await htmlToMarkdown(
+    const markdown = await richDocHtmlToMarkdown(
       input.html || richDocJsonToHtmlFragment(input.json),
     );
     return new File([markdown], `${stem}.md`, { type: target.sourceMediaType });
@@ -736,11 +741,10 @@ export async function createRichDocDeliveryFile(input: {
     return new File([html], `${stem}.html`, { type: target.sourceMediaType });
   }
   if (target.extension === "txt") {
-    const text =
-      (input.html || richDocJsonToHtmlFragment(input.json))
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim() || "";
+    // 从结构写，不从「去标签 + 压空白」写：后者存一次整篇就成了一行。
+    const text = input.json
+      ? richDocJsonToPlainText(input.json)
+      : richDocHtmlToPlainText(input.html);
     return new File([text], `${stem}.txt`, { type: target.sourceMediaType });
   }
   const { tiptapJsonToDocxBlob } = await import("./docx-export");
@@ -1047,14 +1051,9 @@ export async function loadRichDocFile(
   }
 }
 
+/** 与保存时写 .md 用同一套规则（表格、紧凑列表、删除线），下载与交付一字不差。 */
 export async function htmlToMarkdown(html: string): Promise<string> {
-  const TurndownService = (await import("turndown")).default;
-  const service = new TurndownService({
-    headingStyle: "atx",
-    codeBlockStyle: "fenced",
-    bulletListMarker: "-",
-  });
-  return service.turndown(html);
+  return richDocHtmlToMarkdown(html);
 }
 
 /** 包一层完整 HTML 文档（导出用）。 */
