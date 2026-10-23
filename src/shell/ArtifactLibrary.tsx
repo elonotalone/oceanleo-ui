@@ -23,6 +23,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { CollectionItemCard, CollectionItemRow, CollectionItemList } from "./collection-items";
 import { browserClient } from "../lib/auth/client";
 import {
   pixelsPerRem,
@@ -303,7 +304,8 @@ function VirtualArtifactGrid({
     // 刻意**不传** `scrollRef`：本组件绝不自带 `overflow-y-auto`（双滚动条的病根，
     // 见根容器那段注释），滚动容器是外层 ResultCanvas body，让原语自己往上找。
     rule,
-    estimatedRowHeight: (columnWidth) => columnWidth * 0.75 + 46,
+    // Library: 16:9 cover + two text lines, padding/border and one row gap.
+    estimatedRowHeight: (columnWidth) => columnWidth * (9 / 16) + 66 + rule.gapPx,
   });
 
   return (
@@ -721,52 +723,19 @@ function ArtifactLibraryLegacy({
           }
         />
       ) : view === "list" ? (
-        <div className="v-fade-in mt-5 divide-y divide-neutral-100 rounded-xl border border-neutral-200">
+        <CollectionItemList className="v-fade-in mt-5">
           {filtered.map((a, idx) => (
-            <div key={a.id} className="group flex items-center gap-3 px-4 py-3 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50">
-              <button
-                type="button"
-                onClick={() => setSelectedIdx(idx)}
-                className="flex min-w-0 flex-1 items-center gap-3 text-left"
-              >
-                <ListThumb a={a} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-medium text-neutral-900">
-                    {a.title || tt("无标题")}
-                  </span>
-                  <span className="block truncate text-[11px] text-neutral-500">
-                    {kindLabel(a.kind)} · {timeAgo(a.created_at, tt)}
-                    {previewKind(a) === "link" && a.url ? ` · ${hostOf(a.url)}` : ""}
-                  </span>
-                </span>
-              </button>
-              <FavButton a={a} onToggle={toggleFavorite} tt={tt} />
-            </div>
+            <CollectionItemRow key={a.id} cover={<ListThumb a={a} />} title={a.title || tt("无标题")}
+              metadata={<>{kindLabel(a.kind)} · {timeAgo(a.created_at, tt)}{previewKind(a) === "link" && a.url ? ` · ${hostOf(a.url)}` : ""}</>}
+              onOpen={() => setSelectedIdx(idx)} actions={<FavButton a={a} onToggle={toggleFavorite} tt={tt} />} />
           ))}
-        </div>
+        </CollectionItemList>
       ) : (
-        <VirtualArtifactGrid
-          items={filtered}
-          renderCard={(a, idx) => (
-            <div
-              key={a.id}
-              className="group relative overflow-hidden rounded-xl border border-neutral-200 bg-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md"
-            >
-              <button type="button" onClick={() => setSelectedIdx(idx)} className="w-full text-left">
-                <CardThumb a={a} kindLabel={kindLabel} />
-                <div className="p-3">
-                  <p className="truncate text-[13px] font-medium text-neutral-900">
-                    {a.title || tt("无标题")}
-                  </p>
-                  <p className="mt-1 text-[11px] text-neutral-500">
-                    {kindLabel(a.kind)} · {timeAgo(a.created_at, tt)}
-                  </p>
-                </div>
-              </button>
-              <FavButton a={a} onToggle={toggleFavorite} tt={tt} floating />
-            </div>
-          )}
-        />
+        <VirtualArtifactGrid items={filtered} renderCard={(a, idx) => (
+          <CollectionItemCard key={a.id} cover={<CardThumb a={a} kindLabel={kindLabel} />}
+            title={a.title || tt("无标题")} metadata={<>{kindLabel(a.kind)} · {timeAgo(a.created_at, tt)}</>}
+            onOpen={() => setSelectedIdx(idx)} floatingActions={<FavButton a={a} onToggle={toggleFavorite} tt={tt} floating />} />
+        )} />
       )}
 
       {!authMsg && !loading && (hasMore || loadingMore) && filtered.length > 0 ? (
@@ -933,7 +902,7 @@ function CardThumb({ a, kindLabel }: { a: ArtifactItem; kindLabel: (k: string) =
   const kind = previewKind(a);
   if (kind === "image") {
     return (
-      <div className="aspect-video w-full overflow-hidden">
+      <div className="h-full w-full overflow-hidden">
         <div className="h-full w-full transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.04]">
           <LazyImage src={a.url} alt={a.title} className="h-full w-full" />
         </div>
@@ -942,7 +911,7 @@ function CardThumb({ a, kindLabel }: { a: ArtifactItem; kindLabel: (k: string) =
   }
   if (kind === "video" && isMediaUrl(a.url)) {
     return (
-      <div className="aspect-video w-full overflow-hidden bg-black">
+      <div className="h-full w-full overflow-hidden bg-black">
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video src={a.url} muted playsInline preload="metadata" className="h-full w-full object-cover" />
       </div>
@@ -950,14 +919,14 @@ function CardThumb({ a, kindLabel }: { a: ArtifactItem; kindLabel: (k: string) =
   }
   if (kind === "text") {
     return (
-      <div className="aspect-video w-full overflow-hidden bg-neutral-50 p-4">
+      <div className="h-full w-full overflow-hidden bg-neutral-50 p-4">
         <div className="line-clamp-6 text-[12px] leading-relaxed text-neutral-600">{a.content}</div>
       </div>
     );
   }
   const Icon = kind === "link" ? LinkIcon : kind === "audio" ? AudioIcon : kind === "video" ? VideoIcon : FileIcon;
   return (
-    <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100 px-4 text-center">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br from-neutral-50 to-neutral-100 px-4 text-center">
       <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-neutral-400 shadow-sm ring-1 ring-neutral-200/70">
         <Icon className="h-5 w-5" />
       </span>

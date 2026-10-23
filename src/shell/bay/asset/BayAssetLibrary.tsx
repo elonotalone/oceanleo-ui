@@ -5,7 +5,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { COLLECTION_CARD_GRID_CLASS, COLLECTION_CARD_GRID_STYLE } from "../../collection-chrome";
+import { CollectionCardGrid } from "../../collection-chrome";
+import { CollectionItemList } from "../../collection-items";
 import { useBaySignedIn, type BayFeedFilter } from "../shell/bay-state";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { BayFilterSelect, BayToolbarFilters, type BayFilterOption } from "../shell/BayFilterSelect";
@@ -120,12 +121,15 @@ export function BayAssetLibrary({
   filter,
   siteKey,
   accent,
+  view = "grid",
 }: {
   filter: BayFeedFilter;
   siteKey: string;
   accent?: string;
+  view?: "grid" | "list";
 }) {
   const tt = useUI();
+  const Items = view === "list" ? CollectionItemList : CollectionCardGrid;
   const signedIn = useBaySignedIn();
   const loadFailedText = tt("加载失败");
   const [type, setType] = useState<BayAssetType>(() => initialType(filter, siteKey));
@@ -779,20 +783,20 @@ export function BayAssetLibrary({
               </button>
             </div>
           ) : !mineGrid || (mineGrid.loading && mineGrid.items.length === 0) ? (
-            <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+            <Items role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
               {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} aria-hidden="true" className="aspect-[4/3] animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+                <div key={index} aria-hidden="true" className={view === "list" ? "h-16 animate-pulse bg-stone-100" : "aspect-video animate-pulse rounded-xl border border-stone-200 bg-stone-100"} />
               ))}
-            </div>
+            </Items>
           ) : mineGrid.items.length === 0 ? (
             <div data-bay-asset-empty />
           ) : (
             <>
-              <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
+              <Items data-bay-asset-grid>
                 {mineGrid?.items.map((asset) => (
-                  <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                  <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} view={view} />
                 ))}
-              </div>
+              </Items>
               {mineGrid?.loading ? (
                 <div className="py-8 text-center text-[13px] text-stone-400">{tt("加载中…")}</div>
               ) : null}
@@ -837,11 +841,11 @@ export function BayAssetLibrary({
           <p className="mt-5 text-[12px] text-stone-500">{tt("此类型没有实时开源上游。")}</p>
         )
       ) : !index && !(official && (official.items.length > 0 || official.total > 0)) ? (
-        <div className={`mt-5 ${COLLECTION_CARD_GRID_CLASS}`} style={COLLECTION_CARD_GRID_STYLE} role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+        <Items className="mt-5" role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
           {Array.from({ length: 8 }).map((_, index) => (
-            <div key={index} aria-hidden="true" className="aspect-[4/3] animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+            <div key={index} aria-hidden="true" className={view === "list" ? "h-16 animate-pulse bg-stone-100" : "aspect-video animate-pulse rounded-xl border border-stone-200 bg-stone-100"} />
           ))}
-        </div>
+        </Items>
       ) : (
         <div className="mt-5">
           {docZone && mode !== "search" ? <DocumentZoneHeader zone={docZone} total={countByCat.get(docZone.category) ?? currentGrid?.items.length} formats={formats} loading={loading && items.length === 0} /> : null}
@@ -922,11 +926,11 @@ export function BayAssetLibrary({
                         {tt("查看全部")}
                       </button>
                     </div>
-                    <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
+                    <Items data-bay-asset-grid>
                       {official.items.slice(0, BAY_OFFICIAL_PREVIEW_COUNT).map((asset) => (
-                        <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                        <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} view={view} />
                       ))}
-                    </div>
+                    </Items>
                   </section>
                 ) : null}
                 {previews.map((preview) => {
@@ -950,11 +954,11 @@ export function BayAssetLibrary({
                           {tt("查看全部")}
                         </button>
                       </div>
-                      <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
+                      <Items data-bay-asset-grid>
                         {preview.items.map((asset) => (
-                          <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                          <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} view={view} />
                         ))}
-                      </div>
+                      </Items>
                     </section>
                   );
                 })}
@@ -965,11 +969,11 @@ export function BayAssetLibrary({
           {mode !== "browse" ? (
             <>
               {loading && items.length === 0 ? (
-                <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
+                <Items role="status" aria-label={tt("正在加载…")} data-bay-asset-loading>
                   {Array.from({ length: 8 }).map((_, index) => (
-                    <div key={index} aria-hidden="true" className="aspect-[4/3] animate-pulse rounded-xl border border-stone-200 bg-stone-100" />
+                    <div key={index} aria-hidden="true" className={view === "list" ? "h-16 animate-pulse bg-stone-100" : "aspect-video animate-pulse rounded-xl border border-stone-200 bg-stone-100"} />
                   ))}
-                </div>
+                </Items>
               ) : items.length === 0 && !error ? (
                 docZone ? (
                   <div data-bay-asset-empty />
@@ -989,11 +993,11 @@ export function BayAssetLibrary({
                   />
                 )
               ) : items.length > 0 ? (
-                <div className={COLLECTION_CARD_GRID_CLASS} style={COLLECTION_CARD_GRID_STYLE} data-bay-asset-grid>
+                <Items data-bay-asset-grid>
                   {items.map((asset) => (
-                    <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} />
+                    <BayAssetCard key={asset.id} asset={asset} onOpen={openAsset} view={view} />
                   ))}
-                </div>
+                </Items>
               ) : null}
               {loading && items.length > 0 ? (
                 <div className="py-8 text-center text-[13px] text-stone-400">{tt("加载中…")}</div>

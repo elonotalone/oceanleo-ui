@@ -11,11 +11,10 @@ import { useBaySignedIn, type BayPaneProps } from "../shell/bay-state";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { PaneLoading, PaneMessage } from "../supply/parts";
 import { useBayResource } from "../supply/use-bay-resource";
-import { changeOf, DASHBOARD_RANGES, donutItems, type ChangeView } from "./dashboard-model";
+import { changeOf, DASHBOARD_RANGES, type ChangeView } from "./dashboard-model";
 
 const NO_COMPARE: ChangeView = { kind: "empty", label: "—" };
-import { DonutChart } from "./DonutChart";
-import { LineChart } from "./LineChart";
+import { OverviewChart } from "./OverviewChart";
 import { ProductTable } from "./ProductTable";
 import { StatTile } from "./StatTile";
 
@@ -55,14 +54,6 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
   const totals = data.totals;
   const money = (fen: number) => formatBayFen(fen, data.currency, locale);
   const count = (value: number) => formatCount(value, locale);
-  const incomeValues = data.days.map((row) => row.income_fen);
-  const userValues = data.days.map((row) => row.new_users);
-  const openValues = data.days.map((row) => row.opens);
-  const labels = data.days.map((row) => row.day);
-  const slices = donutItems(data.products);
-  const incomeTotal = incomeValues.reduce((sum, value) => sum + value, 0);
-  const userTotal = userValues.reduce((sum, value) => sum + value, 0);
-  const openTotal = openValues.reduce((sum, value) => sum + value, 0);
   const scrollToProducts = () => productsRef.current?.scrollIntoView({ block: "start" });
 
   return (
@@ -90,7 +81,9 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      <OverviewChart days={data.days} products={data.products} money={money} count={count}
+        labels={{ overview: tt("数据面板"), products: tt("分商品收入"), income: tt("收入"), users: tt("新增用户"), opens: tt("打开次数"), count: `${tt("新增用户")} / ${tt("打开次数")}`, empty: tt("这段时间还没有数据"), noIncome: tt("这段时间还没有收入") }}
+        summary={<div className="flex flex-wrap gap-x-6 gap-y-4">
         <StatTile marker="income_lifetime" label={tt("累计收入")} value={money(totals.income_lifetime_fen)} change={NO_COMPARE} />
         <StatTile marker="income" label={tt("本段收入")} value={money(totals.income_fen)} change={changeOf(totals.income_fen, totals.income_prev_fen)} />
         <StatTile marker="pending" label={tt("托管中")} value={money(totals.pending_fen)} change={NO_COMPARE} />
@@ -114,54 +107,7 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
           change={NO_COMPARE}
           onActivate={totals.open_errors > 0 ? scrollToProducts : undefined}
         />
-      </div>
-
-      <LineChart
-        marker="income"
-        title={tt("收入")}
-        days={labels}
-        values={incomeValues}
-        formatValue={money}
-        ariaLabel={
-          data.range_days === 365
-            ? tt("最近一年{title}合计 {total}", { title: tt("收入"), total: money(incomeTotal) })
-            : tt("最近 {days} 天{title}合计 {total}", { days: data.range_days, title: tt("收入"), total: money(incomeTotal) })
-        }
-      />
-      <LineChart
-        marker="new_users"
-        title={tt("新增用户")}
-        days={labels}
-        values={userValues}
-        formatValue={count}
-        ariaLabel={
-          data.range_days === 365
-            ? tt("最近一年{title}合计 {total}", { title: tt("新增用户"), total: count(userTotal) })
-            : tt("最近 {days} 天{title}合计 {total}", { days: data.range_days, title: tt("新增用户"), total: count(userTotal) })
-        }
-      />
-      <LineChart
-        marker="opens"
-        title={tt("打开次数")}
-        days={labels}
-        values={openValues}
-        formatValue={count}
-        ariaLabel={
-          data.range_days === 365
-            ? tt("最近一年{title}合计 {total}", { title: tt("打开次数"), total: count(openTotal) })
-            : tt("最近 {days} 天{title}合计 {total}", { days: data.range_days, title: tt("打开次数"), total: count(openTotal) })
-        }
-      />
-
-      <DonutChart
-        items={totals.income_fen > 0 ? slices : []}
-        formatMoney={money}
-        ariaLabel={
-          data.range_days === 365
-            ? tt("最近一年{title}合计 {total}", { title: tt("分商品收入"), total: money(totals.income_fen) })
-            : tt("最近 {days} 天{title}合计 {total}", { days: data.range_days, title: tt("分商品收入"), total: money(totals.income_fen) })
-        }
-      />
+        </div>} />
 
       <div ref={productsRef}>
         <ProductTable products={data.products} currency={data.currency} locale={locale} />

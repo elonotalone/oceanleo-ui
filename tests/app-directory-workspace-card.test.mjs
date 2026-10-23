@@ -1,11 +1,11 @@
 // 工作台目录卡的行为契约（2026-10-19：与我的库同一套四列等宽卡）。
 //
 // 覆盖：
-//   ① 网格走 `CollectionCardGrid`（四列等宽），卡面是 4:3 封面 + 一行标题；
+//   ① 网格走 `CollectionCardGrid`（四列等宽），卡面是 16:9 封面 + 一行标题；
 //   ② 缩略图取 `capabilityImage` 并**拼成绝对 URL**——废弃的 `thumb` 渲染路径彻底消失；
 //   ③ 点卡片主体 = 直接进该 app 操作台（onOpen），**不开大卡片**（无 TemplateShowcase）；
 //   ④ 列表视图保留，缩略图同样换成 capabilityImage 的 `.thumb.webp`；
-//   ⑤ 自建 / 无图 app 卡不是死卡（emoji tint 占满同一 4:3 封面）；
+//   ⑤ 自建 / 无图 app 卡不是死卡（emoji tint 占满同一 16:9 封面）；
 //   ⑥ 三个文件的数据链：SiteCatalogConsole → ConsoleFunction → DirectoryItem 全程带
 //      `capabilityImage`，且源码里再没有 `.thumb` 的读取点。
 //
@@ -69,12 +69,12 @@ function renderDirectory(props = {}) {
   );
 }
 
-test("网格卡走我的库四列等宽，卡面是 4:3 封面加标题", () => {
+test("网格卡走我的库四列等宽，卡面是 16:9 封面加标题", () => {
   const markup = renderDirectory();
 
   assert.match(markup, /data-collection-card-grid/);
   assert.match(markup, /repeat\(4, minmax\(0, 1fr\)\)/);
-  assert.match(markup, /aspect-\[4\/3\]/);
+  assert.match(markup, /aspect-video/);
   assert.match(markup, /data-collection-card="poster"/);
   assert.match(markup, /data-collection-card-main/);
   assert.doesNotMatch(markup, /data-app-card-variant/);
@@ -116,7 +116,7 @@ test("整卡可点；无图 app 不是死卡", () => {
 
   const noImage = renderDirectory({ items: [AMBIENT] });
   assert.doesNotMatch(noImage, /<img/);
-  assert.match(noImage, /aspect-\[4\/3\]/);
+  assert.match(noImage, /aspect-video/);
   assert.match(noImage, /🎵/);
   assert.match(noImage, /data-collection-card-main/);
   assert.match(noImage, /aria-label="打开 氛围音乐"/);

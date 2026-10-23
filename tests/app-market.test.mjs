@@ -315,6 +315,21 @@ test("搜索与横排场景标签会真的缩小卡片结果", async () => {
   });
 });
 
+test("列表使用 Library 方形缩略图与同框分隔行，保留打开和安装入口", async () => {
+  await withDom(async ({ container, render, click }) => {
+    await render(React.createElement(MarketHarness));
+    await click(container.querySelector('[aria-label="列表视图"]'));
+    const rows = [...container.querySelectorAll('[data-market-app]')];
+    assert.equal(rows.length, 3);
+    assert.match(rows[0].parentElement.className, /divide-y/);
+    assert.match(rows[0].innerHTML, /h-9 w-9/);
+    assert.doesNotMatch(rows[0].innerHTML, /aspect-video/);
+    assert.ok(rows[0].querySelector('[data-market-app-open]'));
+    assert.ok(rows[0].querySelector('[data-market-app-install]'));
+    assert.equal(rows[0].querySelector('button button'), null);
+  });
+});
+
 test("点装会 POST、立即变已装，且按钮不会顺带打开卡片", async () => {
   await withDom(async ({ window, container, fetchCalls, render, click }) => {
     const opened = [];

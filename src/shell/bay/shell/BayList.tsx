@@ -7,8 +7,10 @@ import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import { CollectionCardGrid, CollectionInfiniteSentinel } from "../../collection-chrome";
 import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
-import { DemandCard, HelpRequestCard } from "../needs";
-import { ConsultCard, ServiceCard } from "../supply";
+import { CollectionItemCard, CollectionItemRow, CollectionItemList } from "../../collection-items";
+import { consultPriceText, feedPriceLabel } from "../supply/format";
+import { priceText } from "../needs/need-format";
+import { isRestrictedDomain } from "../../../lib/bay/services";
 import { rememberPublishListing } from "../form/publish-listing";
 import { BayCategoryIcon } from "./bay-icons";
 import { BAY_ADVICE_ZONE, BAY_FEED_KINDS, canonicalBayFeedKind, stripLeoCategoryPrefix, type BayFeedKind } from "./bay-links";
@@ -27,7 +29,7 @@ import { useBayCategories, useBayFeed } from "./use-bay-data";
 const SEARCH_DEBOUNCE_MS = 350;
 const SEARCH_MAX_LENGTH = 60;
 
-/** 页头网格/列表与「仅看收藏」：货架卡读这里，因为 App/Lesson 货架 props 不是本单元的文件。 */
+/** 页头的展示与收藏状态。货架通过显式 view 属性接收展示状态。 */
 export type BayListingChromeValue = {
   view: "grid" | "list";
   favoritesOnly: boolean;
@@ -324,49 +326,24 @@ function titleInitial(title: string): string {
   return Array.from(title.trim())[0] || "?";
 }
 
-const LIBRARY_CARD_CLASS =
-  "group relative w-full overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm";
-
-/** 网格态：Library `WorkspaceCard` 的 4:3 封面 + 12px 标题。列表仍走原来的四种行卡。 */
-function FeedLibraryCard({ item }: { item: BayFeedItem }) {
-  const cover = httpsCover(item.cover_url);
-  return (
-    <button
-      type="button"
-      data-bay-card={item.kind}
-      data-bay-card-variant="card"
-      data-bay-id={item.id}
-      onClick={() => openBay(targetForFeedItem(item))}
-      className={LIBRARY_CARD_CLASS}
-    >
-      <span className="relative block aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
-        {cover ? (
-          <img
-            src={cover}
-            alt=""
-            loading="lazy"
-            className="h-full w-full object-cover transition duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.02]"
-          />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center text-[15px] font-semibold text-stone-400">
-            {titleInitial(item.title)}
-          </span>
-        )}
-      </span>
-      <span className="block p-2.5">
-        <span className="line-clamp-1 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">{item.title}</span>
-      </span>
-    </button>
-  );
-}
-
+/** Both page views share the Library presentation; kind-specific panel cards stay independent. */
 function FeedCard({ item, variant }: { item: BayFeedItem; variant: BayFeedCardVariant }) {
-  const onOpen = () => openBay(targetForFeedItem(item));
-  if (variant === "card") return <FeedLibraryCard item={item} />;
-  if (item.kind === "demand") return <DemandCard item={item} onOpen={onOpen} variant={variant} />;
-  if (item.kind === "help") return <HelpRequestCard item={item} onOpen={onOpen} variant={variant} />;
-  if (item.kind === "service") return <ServiceCard item={item} onOpen={onOpen} variant={variant} />;
-  return <ConsultCard item={item} onOpen={onOpen} variant={variant} />;
+  const tt = useUI();
+  if ((item.kind === "service" || item.kind === "consult") && isRestrictedDomain((item as { regulated_domain?: unknown }).regulated_domain)) return null;
+  const cover = httpsCover(item.cover_url);
+  const Item = variant === "card" ? CollectionItemCard : CollectionItemRow;
+  const price = item.kind === "consult"
+    ? consultPriceText(tt, item.price?.min_fen, item.price?.unit, item.price?.currency)
+    : item.kind === "service" ? feedPriceLabel(tt, item.price) : priceText(tt, item.price);
+  return (
+    <Item
+      containerProps={{ "data-bay-card": item.kind, "data-bay-card-variant": variant, "data-bay-id": item.id }}
+      title={item.title}
+      metadata={<>{item.author.display_name || item.author.handle} · {price}{item.summary ? ` · ${item.summary}` : ""}</>}
+      cover={cover ? <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-[15px] font-semibold text-stone-400">{titleInitial(item.title)}</span>}
+      onOpen={() => openBay(targetForFeedItem(item))}
+    />
+  );
 }
 
 const QUIET_BUTTON =
@@ -379,7 +356,7 @@ function FeedSkeleton({ variant }: { variant: "list" | "grid" }) {
       <CollectionCardGrid role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-feed-loading>
         {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} aria-hidden="true" className="overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]">
-            <div className="aspect-[4/3] animate-pulse bg-[var(--surface,#f5f5f4)]" />
+            <div className="aspect-video animate-pulse bg-[var(--surface,#f5f5f4)]" />
             <div className="p-2.5">
               <div className="h-3 w-2/3 rounded bg-stone-100" />
             </div>
@@ -389,7 +366,7 @@ function FeedSkeleton({ variant }: { variant: "list" | "grid" }) {
     );
   }
   return (
-    <div role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-feed-loading>
+    <CollectionItemList role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-feed-loading>
       {Array.from({ length: 4 }).map((_, index) => (
         <div key={index} aria-hidden="true" className="border-b border-black/5 px-3 py-3 dark:border-white/10">
           <div className="h-3.5 w-2/3 animate-pulse rounded bg-black/5 dark:bg-white/10" />
@@ -397,7 +374,7 @@ function FeedSkeleton({ variant }: { variant: "list" | "grid" }) {
           <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-black/5 dark:bg-white/10" />
         </div>
       ))}
-    </div>
+    </CollectionItemList>
   );
 }
 
@@ -446,7 +423,7 @@ export function BayFeed({
                 key={key}
                 data-bay-feed-item={item.kind}
                 data-bay-feed-active={active ? "true" : undefined}
-                className="flex min-w-0"
+                className="min-w-0"
               >
                 <FeedCard item={item} variant="card" />
               </div>
@@ -454,7 +431,7 @@ export function BayFeed({
           })}
         </CollectionCardGrid>
         ) : (
-        <div>
+        <CollectionItemList>
           {items.map((item) => {
             const key = `${item.kind}:${item.id}`;
             const active = key === activeKey;
@@ -469,7 +446,7 @@ export function BayFeed({
               </div>
             );
           })}
-        </div>
+        </CollectionItemList>
         )
       ) : null}
       {firstLoad ? <FeedSkeleton variant={variant} /> : null}

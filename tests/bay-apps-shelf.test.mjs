@@ -42,7 +42,7 @@ test("use-bay-apps / BayAppShelf / BayAppCard 只走 lib/bay/apps，有取消与
   assert.match(shelf, /data-bay-app-error/);
   assert.match(shelf, /data-bay-app-more/);
   assert.match(shelf, /data-bay-app-loading/);
-  assert.match(card, /data-bay-app-card=\{app\.id\}/);
+  assert.match(card, /"data-bay-app-card": app\.id/);
 });
 
 test("bay-apps-shelf-copy：每条原文 16 语非空，非中日韩不含汉字", () => {

@@ -2,6 +2,7 @@
 
 // 素材格子里的一张卡。授权徽标、自有/开源、按类型不同的卡面都画在这里。
 import type { ReactElement } from "react";
+import { CollectionItemCard, CollectionItemRow } from "../../collection-items";
 import { useUI } from "../../../i18n/ui/useUI";
 import { BayAssetOriginChip } from "./BayAssetProvenance";
 import { BayLicenseBadge } from "./BayLicenseBadge";
@@ -9,6 +10,7 @@ import type { BayAsset } from "./library-client";
 
 export interface BayAssetCardProps {
   asset: BayAsset;
+  view?: "grid" | "list";
   onOpen: (asset: BayAsset) => void;
 }
 
@@ -44,7 +46,7 @@ function DocGlyph() {
   );
 }
 
-export function BayAssetCard({ asset, onOpen }: BayAssetCardProps): ReactElement {
+export function BayAssetCard({ asset, onOpen, view = "grid" }: BayAssetCardProps): ReactElement {
   const tt = useUI();
   const isMedia = asset.type === "audio" || asset.type === "music";
   const isVideo = asset.type === "video";
@@ -58,10 +60,10 @@ export function BayAssetCard({ asset, onOpen }: BayAssetCardProps): ReactElement
   const isContain = isChecker || isPpt || isChart || isDocument;
   const openHref = (asset.openHref || "").trim();
 
-  const face = (
+  const cover = (
       <>
         <div
-          className={`relative aspect-[4/3] w-full overflow-hidden ${
+          className={`relative h-full w-full overflow-hidden ${
             isChecker
               ? "bg-[conic-gradient(#f1f5f9_90deg,#fff_90deg_180deg,#f1f5f9_180deg_270deg,#fff_270deg)] bg-[length:20px_20px] p-3"
               : isPpt
@@ -88,60 +90,34 @@ export function BayAssetCard({ asset, onOpen }: BayAssetCardProps): ReactElement
             </div>
           )}
 
-          {(isVideo || isMedia) && (
+          {view === "grid" && (isVideo || isMedia) && (
             <span className="absolute left-2 top-2 inline-flex items-center justify-center rounded-full bg-black/55 p-1.5 text-white backdrop-blur">
               <PlayGlyph />
             </span>
           )}
-          {asset.duration ? (
+          {view === "grid" && asset.duration ? (
             <span className="absolute bottom-2 right-2 rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white">
               {fmtDuration(asset.duration)}
             </span>
           ) : null}
-          <span className="absolute right-2 top-2 flex items-center gap-1">
+          {view === "grid" ? <span className="absolute right-2 top-2 flex items-center gap-1">
             <BayAssetOriginChip asset={asset} />
             <BayLicenseBadge license={asset.license} asset={asset} />
-          </span>
+          </span> : null}
         </div>
 
-        <div className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
-          <span className="truncate text-sm font-medium text-stone-800">{asset.title}</span>
-          {asset.type === "prompt" && asset.prompt ? (
-            <span className="line-clamp-2 text-xs leading-snug text-stone-500">
-              {asset.prompt}
-            </span>
-          ) : (
-            <span className="truncate text-xs text-stone-500">
-              {asset.author} · {asset.source}
-            </span>
-          )}
-        </div>
       </>
   );
 
+  const Item = view === "list" ? CollectionItemRow : CollectionItemCard;
   return (
-    <div
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-      data-bay-asset-card={asset.id}
-      data-shelf-kind={asset.shelfKind || "origin"}
-    >
-      {openHref ? (
-        <a
-          href={openHref}
-          data-bay-asset-open-href={openHref}
-          className="flex flex-col text-left focus:outline-none focus:ring-2 focus:ring-sky-400"
-        >
-          {face}
-        </a>
-      ) : (
-        <button
-          type="button"
-          onClick={() => onOpen(asset)}
-          className="flex flex-col text-left focus:outline-none focus:ring-2 focus:ring-sky-400"
-        >
-          {face}
-        </button>
-      )}
-    </div>
+    <Item
+      containerProps={{ "data-bay-asset-card": asset.id, "data-shelf-kind": asset.shelfKind || "origin", "data-bay-asset-open-href": openHref || undefined }}
+      openHref={openHref || undefined}
+      cover={cover}
+      title={asset.title}
+      metadata={<>{asset.type === "prompt" && asset.prompt ? asset.prompt : `${asset.author} · ${asset.source}`}{view === "list" ? <> · <BayAssetOriginChip asset={asset} /> <BayLicenseBadge license={asset.license} asset={asset} />{asset.duration ? ` · ${fmtDuration(asset.duration)}` : ""}</> : null}</>}
+      onOpen={() => { if (!openHref) onOpen(asset); }}
+    />
   );
 }

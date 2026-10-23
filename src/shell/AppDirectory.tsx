@@ -8,13 +8,14 @@
 //   - 二元分类器：分区、分类方式、类型都是胶囊下拉，不跟搜索挤在同一行。
 //
 // 卡片版式（2026-10-19）：网格与我的库同一套四列等宽（`CollectionCardGrid`），
-// 卡面是 4:3 封面 + 一行标题。点卡片主体 = 直接进该 app 操作台（不先弹模板大卡片）。
+// 卡面与 Library 共用 16:9 封面、标题与元数据。点卡片主体直接进 app 操作台。
 // 缩略图取 `capabilityImage`（功能图）；旧的 `thumb` 已废弃且本文件不再读取。
 //
 // 复用处：all-sites（app / skill / 网站）、playground（app / skill）、workspace
 // 选择页（app / skill / 网站）。各处只是 items 不同、onOpen/onAdd 行为不同。
 // ============================================================================
 
+import { CollectionItemCard, CollectionItemRow, CollectionItemList } from "./collection-items";
 import { useMemo, useState, type ReactNode } from "react";
 import {
   classify,
@@ -431,7 +432,7 @@ export function AppDirectory({
           ))}
         </CollectionCardGrid>
       ) : (
-        <div className="space-y-2">
+        <CollectionItemList>
           {[...leadingCards, ...visible].map((it, index) => (
               <DirectoryListRow
                 key={it.id}
@@ -444,7 +445,7 @@ export function AppDirectory({
                 adding={addingId === it.id}
               />
           ))}
-        </div>
+        </CollectionItemList>
       )}
       </div>
     </div>
@@ -491,23 +492,10 @@ function DirectoryCard({
       path: "M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0l1 13a1 1 0 001 1h6a1 1 0 001-1l1-13" });
   }
   return (
-    <article
-      data-collection-card={item.id}
-      className={`group relative overflow-hidden rounded-xl border bg-[var(--card,#fff)] text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-        isNew
-          ? "border-dashed border-neutral-300"
-          : "border-[var(--border,#e7e5e4)] hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm"
-      }`}
-    >
-      <button
-        type="button"
-        data-collection-card-main=""
-        onClick={onOpen ? open : undefined}
-        disabled={!onOpen}
-        className={`block w-full text-left ${onOpen ? "cursor-pointer" : "cursor-default"}`}
-        aria-label={onOpen ? `${openLabel} ${tt(item.name)}` : undefined}
-      >
-        <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
+    <CollectionItemCard containerProps={{ "data-collection-card": item.id, className: isNew ? "border-dashed border-neutral-300" : "" }}
+      onOpen={open} disabled={!onOpen} openLabel={onOpen ? `${openLabel} ${tt(item.name)}` : undefined}
+      title={tt(item.name)} metadata={tt(item.tagline || item.capabilities || "") || undefined}
+      cover={<>
           {image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -528,13 +516,8 @@ function DirectoryCard({
               {item.icon || "✦"}
             </span>
           )}
-        </div>
-        <div className="p-2.5">
-          <p className="line-clamp-1 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
-            {tt(item.name)}
-          </p>
-        </div>
-      </button>
+      </>}
+      floatingActions={<>
       {(canStar || corners.length > 0) && (
         <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
           {canStar && (
@@ -577,7 +560,8 @@ function DirectoryCard({
           ))}
         </div>
       )}
-    </article>
+      </>}
+    />
   );
 }
 
@@ -613,29 +597,20 @@ function DirectoryListRow({
       action(item);
     };
   return (
-    <div
-      className={`flex w-full flex-wrap items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
-        onOpen ? "cursor-pointer" : ""
-      }`}
-    >
-      <button
-        type="button"
-        onClick={() => onOpen?.(item)}
-        disabled={!onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
-        aria-label={onOpen ? tt(item.name) : undefined}
-      >
+    <CollectionItemRow onOpen={() => onOpen?.(item)} disabled={!onOpen} openLabel={onOpen ? tt(item.name) : undefined}
+      title={tt(item.name)} metadata={showDescription ? tt(item.tagline || item.capabilities || "") : undefined}
+      cover={<>
         {rowImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={rowImage}
             alt=""
-            className="h-12 w-16 shrink-0 rounded-lg object-cover"
+            className="h-full w-full object-cover"
             loading="lazy"
           />
         ) : (
           <span
-            className="grid h-12 w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--surface,#f5f5f4)] text-xl"
+            className="grid h-full w-full place-items-center bg-[var(--surface,#f5f5f4)] text-xl"
             style={
               item.plainThumb
                 ? { color: iconColor }
@@ -645,34 +620,9 @@ function DirectoryListRow({
             {item.icon || "✦"}
           </span>
         )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-semibold text-[var(--fg,#292524)]">
-            {tt(item.name)}
-          </p>
-          {showDescription && (
-            <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
-              {tt(item.tagline || item.capabilities || "")}
-            </p>
-          )}
-        </div>
-        {item.badge && (
-          <span
-            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-            style={{ background: accent }}
-          >
-            {tt(item.badge)}
-          </span>
-        )}
-        <svg
-          className="h-4 w-4 shrink-0 text-[var(--border-strong,#d6d3d1)]"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        >
-          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      </>}
+      actions={<>
+      {item.badge && <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white" style={{ background: accent }}>{tt(item.badge)}</span>}
       <div className="flex shrink-0 items-center gap-1.5 px-2 py-2" onClick={(event) => event.stopPropagation()}>
         {canStar && (
           <button
@@ -709,11 +659,12 @@ function DirectoryListRow({
           </button>
         )}
       </div>
-    </div>
+      </>}
+    />
   );
 }
 
-/** 骨架屏跟着 Library 4:3 卡，否则加载完会跳版。 */
+/** 骨架屏跟着 Library 16:9 卡，否则加载完会跳版。 */
 function CardGridSkeleton() {
   return (
     <CollectionCardGrid>
@@ -722,7 +673,7 @@ function CardGridSkeleton() {
           key={i}
           className="overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]"
         >
-          <div className="aspect-[4/3] animate-pulse bg-stone-200/70" />
+          <div className="aspect-video animate-pulse bg-stone-200/70" />
           <div className="p-2.5">
             <div className="h-3 w-2/3 animate-pulse rounded bg-stone-200/70" />
           </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { CollectionItemCard, CollectionItemRow, CollectionItemList } from "./collection-items";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import {
   installApp,
@@ -130,7 +131,7 @@ function MarketSkeleton({ view }: { view: CollectionView }) {
         >
           {view === "list" ? null : (
             <>
-              <div className="aspect-[4/3] animate-pulse bg-stone-100" />
+              <div className="aspect-video animate-pulse bg-stone-100" />
               <div className="h-8 bg-white" />
             </>
           )}
@@ -330,79 +331,19 @@ export function AppMarket({
         </div>
       ) : loading && !items.length ? (
         <MarketSkeleton view={view} />
-      ) : view === "list" ? (
-        <div className="flex flex-col gap-2">
-          {visibleItems.map((app) => (
-            <article
-              key={app.app_id}
-              data-market-app={app.app_id}
-              className="group relative flex w-full items-center rounded-xl border border-stone-200 bg-white transition hover:border-stone-300 hover:bg-stone-50"
-            >
-              <button
-                type="button"
-                data-market-app-open
-                onClick={() => openApp(app)}
-                aria-label={tt("打开 {name}", { name: app.name })}
-                className="flex min-w-0 flex-1 items-center gap-3 p-2 pr-3 text-left"
-              >
-                <span className="grid h-12 w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-stone-50 text-[18px] text-stone-500">
-                  <MarketIcon app={app} />
-                </span>
-                <p className="min-w-0 truncate text-[12px] font-semibold text-stone-900">
-                  {app.name}
-                </p>
-              </button>
-              <div className="pr-2">
-                <MarketInstallButton
-                  app={app}
-                  accent={accent}
-                  pending={pendingAppId === app.app_id}
-                  confirmUninstall={confirmUninstallId === app.app_id}
-                  onToggle={(event) => void toggleInstalled(event, app)}
-                />
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <CollectionCardGrid>
-          {visibleItems.map((app) => (
-              <article
-                key={app.app_id}
-                data-market-app={app.app_id}
-                className="group relative overflow-hidden rounded-xl border border-stone-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-sm"
-              >
-                <button
-                  type="button"
-                  data-market-app-open
-                  onClick={() => openApp(app)}
-                  aria-label={tt("打开 {name}", { name: app.name })}
-                  className="block w-full text-left"
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-stone-50">
-                    <span className="grid h-full w-full place-items-center text-[28px] text-stone-500">
-                      <MarketIcon app={app} />
-                    </span>
-                  </div>
-                  <div className="p-2.5">
-                    <p className="line-clamp-1 text-[12px] font-semibold leading-snug text-stone-900">
-                      {app.name}
-                    </p>
-                  </div>
-                </button>
-                <div className="absolute right-2 top-2">
-                  <MarketInstallButton
-                    app={app}
-                    accent={accent}
-                    pending={pendingAppId === app.app_id}
-                    confirmUninstall={confirmUninstallId === app.app_id}
-                    onToggle={(event) => void toggleInstalled(event, app)}
-                  />
-                </div>
-              </article>
-          ))}
-        </CollectionCardGrid>
-      )}
+      ) : (() => {
+        const Container = view === "list" ? CollectionItemList : CollectionCardGrid;
+        const Item = view === "list" ? CollectionItemRow : CollectionItemCard;
+        return <Container>{visibleItems.map((app) => {
+          const install = <MarketInstallButton app={app} accent={accent} pending={pendingAppId === app.app_id}
+            confirmUninstall={confirmUninstallId === app.app_id} onToggle={(event) => void toggleInstalled(event, app)} />;
+          return <Item key={app.app_id} containerProps={{ "data-market-app": app.app_id }} openProps={{ "data-market-app-open": true }}
+            title={app.name} metadata={app.tagline || app.category || undefined} onOpen={() => openApp(app)} openLabel={tt("打开 {name}", { name: app.name })}
+            cover={<span className="grid h-full w-full place-items-center text-[28px] text-stone-500"><MarketIcon app={app} /></span>}
+            actions={view === "list" ? install : undefined}
+            floatingActions={view === "grid" ? <div className="absolute right-2 top-2">{install}</div> : undefined} />;
+        })}</Container>;
+      })()}
 
       {!loading && !error && visibleItems.length === 0 && (
         <p data-app-market-empty className="py-12 text-center text-[13px] text-stone-400">

@@ -29,10 +29,10 @@ export function StatTile({
   const body = (
     <>
       <p className="text-[11px] text-neutral-500">{label}</p>
-      <p className="mt-1 text-[18px] font-semibold tabular-nums text-neutral-900">{value}</p>
-      <p data-bay-stat-change={change.kind} className={`mt-1 text-[12px] tabular-nums ${changeClass(change.kind)}`}>
+      <p className="mt-1 text-[14px] font-semibold tabular-nums text-neutral-900">{value}</p>
+      {change.kind !== "empty" && <p data-bay-stat-change={change.kind} className={`mt-1 text-[11px] tabular-nums ${changeClass(change.kind)}`}>
         {changeText}
-      </p>
+      </p>}
     </>
   );
   const box = "text-left";

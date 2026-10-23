@@ -1,4 +1,5 @@
 "use client";
+import { CollectionItemList } from "./collection-items";
 
 import {
   useCallback,
@@ -259,9 +260,9 @@ function VirtualCardGrid({
     containerRef: gridRef,
     scrollRef,
     rule,
-    // 卡片 = 4:3 缩略图 + 一行标题（`line-clamp-1`）+ `p-2.5`，再加一个行间距。
+    // Library 卡片 = 16:9 封面 + 标题和元数据两行 + 内边距/边框 + 行间距。
     // 这只是量到真高之前的乐观估值，量到就回填。
-    estimatedRowHeight: (columnWidth) => columnWidth * 0.75 + 46,
+    estimatedRowHeight: (columnWidth) => columnWidth * (9 / 16) + 66 + rule.gapPx,
   });
 
   // 「打开素材 → 返回列表」会把整个货架重新挂载，滚动位置归零：库一大，返回后
@@ -983,7 +984,7 @@ export function WorkspaceLibrary({
    */
   const renderEntries = (list: readonly WorkspaceLibraryEntry[]) =>
     view === "list" ? (
-      <div className="space-y-1.5">
+      <CollectionItemList>
         {list.map((entry) => (
           <WorkspaceListRow
             key={entry.id}
@@ -993,7 +994,7 @@ export function WorkspaceLibrary({
             actions={entryActions?.(entry)}
           />
         ))}
-      </div>
+      </CollectionItemList>
     ) : (
       <VirtualCardGrid
         entries={list}

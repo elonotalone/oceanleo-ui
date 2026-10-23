@@ -6,7 +6,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import type { BayLesson } from "../../../lib/bay/lessons";
 import { formatBayMoney } from "../../../lib/bay/services";
 import { ledgerCurrency } from "../../../lib/money";
-import { FEED_TILE_CLASS, FEED_TILE_PILL_CLASS, FEED_TILE_SUMMARY_CLASS } from "../shell/feed-card-ui";
+import { CollectionItemCard, CollectionItemRow } from "../../collection-items";
 import { openBay } from "../shell/bay-state";
 import { lessonPriceLabel, ratingLabel } from "./lesson-format";
 
@@ -20,7 +20,7 @@ function titleInitial(title: string): string {
   return Array.from(title.trim())[0] || "?";
 }
 
-export function BayLessonCard({ lesson }: { lesson: BayLesson }): ReactElement {
+export function BayLessonCard({ lesson, view = "grid" }: { lesson: BayLesson; view?: "grid" | "list" }): ReactElement {
   const tt = useUI();
   const cover = httpsCover(lesson.cover_url);
   const [broken, setBroken] = useState(false);
@@ -35,14 +35,12 @@ export function BayLessonCard({ lesson }: { lesson: BayLesson }): ReactElement {
   const chapters = Number.isFinite(lesson.chapter_count) ? lesson.chapter_count : 0;
   const sold = Number.isFinite(lesson.sales_count) ? lesson.sales_count : 0;
 
+  const Item = view === "list" ? CollectionItemRow : CollectionItemCard;
   return (
-    <button
-      type="button"
-      data-bay-lesson-card={lesson.id}
-      onClick={() => openBay({ kind: "lesson", id: lesson.id })}
-      className={FEED_TILE_CLASS}
-    >
-      <span className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-stone-100">
+    <Item
+      containerProps={{ "data-bay-lesson-card": lesson.id }}
+      title={lesson.title}
+      cover={<>
         {showCover ? (
           <img
             src={cover ?? ""}
@@ -57,18 +55,11 @@ export function BayLessonCard({ lesson }: { lesson: BayLesson }): ReactElement {
             {titleInitial(lesson.title)}
           </span>
         )}
-      </span>
-      <span className="mt-3 truncate text-[15px] font-semibold leading-snug tracking-tight text-stone-900">
-        {lesson.title}
-      </span>
-      {lesson.summary ? <span className={FEED_TILE_SUMMARY_CLASS}>{lesson.summary}</span> : null}
-      <span className="mt-auto flex flex-wrap items-center gap-x-1.5 gap-y-1 pt-3 text-[12px] text-stone-500">
-        {author ? <span className="min-w-0 truncate font-medium text-stone-700">{author}</span> : null}
-        <span className={FEED_TILE_PILL_CLASS}>{tt("{n} 节", { n: chapters })}</span>
-        <span className="font-semibold text-stone-800">{price}</span>
-        {rating ? <span className="tabular-nums text-stone-500">{rating}</span> : null}
-        {sold > 0 ? <span className="tabular-nums text-stone-400">{tt("已售 {n}", { n: sold })}</span> : null}
-      </span>
-    </button>
+      </>}
+      metadata={<>
+        {author ? <span>{author} · </span> : null}{tt("{n} 节", { n: chapters })} · {price}{rating ? ` · ${rating}` : ""}{sold > 0 ? ` · ${tt("已售 {n}", { n: sold })}` : ""}{lesson.summary ? ` · ${lesson.summary}` : ""}
+      </>}
+      onOpen={() => openBay({ kind: "lesson", id: lesson.id })}
+    />
   );
 }

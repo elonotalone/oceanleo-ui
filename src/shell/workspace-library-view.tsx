@@ -4,6 +4,7 @@ import type {
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
+import { CollectionItemCard, CollectionItemRow } from "./collection-items";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryItemViewer } from "./library-viewers";
 import {
@@ -62,136 +63,26 @@ interface WorkspaceRowProps {
   };
 }
 
-function showsSecondaryDescription(entry: WorkspaceLibraryEntry): boolean {
-  return (
-    entry.libraryItem?.meta.workspace_library_surface !== "materials"
-  );
+function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI>) {
+  const kind = entry.kind || entry.libraryItem?.kind || "file";
+  return translateLibraryTypeLabel(tt, entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : libraryCategoryLabel(entry.category || WORKSPACE_KIND_LABELS[kind] || "内容"));
 }
 
-export function WorkspaceCard({
-  entry,
-  onOpen,
-  accent,
-  dragProps,
-  actions,
-}: WorkspaceRowProps & { accent: string }) {
+export function WorkspaceCard({ entry, onOpen, accent, dragProps, actions }: WorkspaceRowProps & { accent: string }) {
   const tt = useUI();
-  const kind = entry.kind || entry.libraryItem?.kind || "file";
-  return (
-    <div
-      {...dragProps}
-      className={`group relative overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:-translate-y-0.5 hover:border-[var(--border-strong,#d6d3d1)] hover:shadow-sm ${
- dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
- }`}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        className="block w-full text-left"
-        aria-label={tt("预览「{title}」", { title: entry.title })}
-      >
-        <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface,#f5f5f4)]">
-          <WorkspaceThumbnail
-            url={entry.thumbUrl}
-            item={entry.libraryItem}
-            alt={entry.title}
-            kind={kind}
-            accent={accent}
-            imageClassName="h-full w-full object-cover transition duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.02]"
-          />
-        </div>
-        <div className="p-2.5">
-          <p className="line-clamp-1 text-[12px] font-semibold leading-snug text-[var(--fg,#292524)]">
-            {entry.title}
-          </p>
-          <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
-            {translateLibraryTypeLabel(tt, entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : libraryCategoryLabel(entry.category || WORKSPACE_KIND_LABELS[kind] || "内容"))}
-          </p>
-        </div>
-      </button>
-      {actions ? (
-        <div
-          className="flex flex-wrap items-center gap-1.5 border-t border-[var(--border,#e7e5e4)] px-2 py-2"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {actions}
-        </div>
-      ) : null}
-    </div>
-  );
+  return <CollectionItemCard title={entry.title} metadata={entryMetadata(entry, tt)} onOpen={onOpen}
+    openLabel={tt("预览「{title}」", { title: entry.title })} containerProps={dragProps} actions={actions}
+    cover={<WorkspaceThumbnail url={entry.thumbUrl} item={entry.libraryItem} alt={entry.title}
+      kind={entry.kind || entry.libraryItem?.kind || "file"} accent={accent}
+      imageClassName="h-full w-full object-cover transition duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.02]" />} />;
 }
 
-export function WorkspaceListRow({
-  entry,
-  onOpen,
-  dragProps,
-  actions,
-}: WorkspaceRowProps) {
+export function WorkspaceListRow({ entry, onOpen, dragProps, actions }: WorkspaceRowProps) {
   const tt = useUI();
-  const kind = entry.kind || entry.libraryItem?.kind || "file";
-  const showDescription = showsSecondaryDescription(entry);
-  return (
-    <div
-      {...dragProps}
-      className={`flex w-full flex-wrap items-center rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-[var(--border-strong,#d6d3d1)] hover:bg-[var(--surface-hover,#fafaf9)] ${
- dragProps?.draggable ? "cursor-grab active:cursor-grabbing" : ""
- }`}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 p-2 text-left"
-        aria-label={tt("预览「{title}」", { title: entry.title })}
-      >
-        <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-[var(--surface,#f5f5f4)]">
-          <WorkspaceThumbnail
-            url={entry.thumbUrl}
-            item={entry.libraryItem}
-            alt={entry.title}
-            kind={kind}
-            accent="#78716c"
-            imageClassName="h-full w-full object-cover"
-            compact
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-semibold text-[var(--fg,#292524)]">
-            {entry.title}
-          </p>
-          {showDescription && (
-            <p className="mt-0.5 truncate text-[10px] text-[var(--muted,#a8a29e)]">
-              {entry.description
-                ? tt(entry.description)
-                : translateLibraryTypeLabel(
-                    tt,
-                    (entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : WORKSPACE_KIND_LABELS[kind]) ||
-                      libraryCategoryLabel(entry.category || "") ||
-                      "内容",
-                  )}
-            </p>
-          )}
-        </div>
-        <svg
-          className="h-4 w-4 shrink-0 text-[var(--border-strong,#d6d3d1)]"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        >
-          <path
-            d="M9 6l6 6-6 6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-      {actions ? (
-        <div className="mr-2 flex flex-wrap items-center gap-1 py-1" onClick={(event) => event.stopPropagation()}>
-          {actions}
-        </div>
-      ) : null}
-    </div>
-  );
+  return <CollectionItemRow title={entry.title} metadata={entryMetadata(entry, tt)} onOpen={onOpen}
+    openLabel={tt("预览「{title}」", { title: entry.title })} containerProps={dragProps} actions={actions}
+    cover={<WorkspaceThumbnail url={entry.thumbUrl} item={entry.libraryItem} alt={entry.title}
+      kind={entry.kind || entry.libraryItem?.kind || "file"} accent="#78716c" imageClassName="h-full w-full object-cover" compact />} />;
 }
 
 export function WorkspaceLibraryEmpty({

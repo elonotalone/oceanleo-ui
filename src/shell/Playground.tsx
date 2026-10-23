@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
+import { CollectionItemCard, CollectionItemRow, CollectionItemList } from "./collection-items";
 import { ItemDetailModal } from "./ItemDetailModal";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { SkillPromptPanel } from "./SkillPromptPanel";
@@ -835,74 +836,26 @@ function PromptZone({
       )}
 
       {(() => {
-        const PromptShelf = view === "list" ? "div" : CollectionCardGrid;
-        return (
-      <PromptShelf className={view === "list" ? "mt-5 space-y-2" : "mt-5"}>
-        {/* 「添加 prompt」板块（第一张）：预制库选择 + 新建 二合一（宗旨 v12）。 */}
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="flex min-h-[110px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed bg-white/70 px-4 py-4 text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-solid hover:text-stone-600"
-          style={{ borderColor: `${accent}80` }}
-        >
-          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-          </svg>
-          <span className="text-[13px] font-medium">{tt("添加 prompt")}</span>
-        </button>
-
-        {shown.map((c) => {
-          // 宗旨 v13：每张 prompt 卡自己的稳定色（emoji 走 icon 圆底 + 该色）。
-          const cColor = brandColorFor(c.id || c.title);
-          return (
-          <div
-            key={c.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => setModal({ card: c, isNew: false })}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") setModal({ card: c, isNew: false });
-            }}
-            className="group relative flex min-h-[110px] cursor-pointer flex-col rounded-2xl border border-stone-200/80 bg-white/85 px-4 py-3.5 text-left shadow-sm transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md"
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[15px]"
-                style={{ background: tintOf(cColor, 0.14), color: cColor }}
-              >
-                {c.icon}
-              </span>
-              <span className="truncate text-[14px] font-semibold text-stone-900">{c.title}</span>
-              {c.custom && (
-                <span className="shrink-0 rounded bg-stone-100 px-1 text-[10px] text-stone-400">
-                  {tt("我的")}
-                </span>
-              )}
-            </div>
-            <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-stone-500">
-              {c.desc || c.prompt}
-            </p>
-            <span className="mt-auto pt-2 text-[11px] text-stone-400">{c.category}</span>
-            {/* 右上角：预览 / 编辑 / 保存 */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setModal({ card: c, isNew: false });
-              }}
-              title={tt("查看 / 编辑")}
-              aria-label={tt("查看 / 编辑")}
-              className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 opacity-0 shadow-sm transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 group-hover:opacity-100"
-            >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
-        );
-        })}
-      </PromptShelf>
-        );
+        const PromptShelf = view === "list" ? CollectionItemList : CollectionCardGrid;
+        const Item = view === "list" ? CollectionItemRow : CollectionItemCard;
+        return <PromptShelf className="mt-5">
+          <Item title={tt("添加 prompt")} onOpen={() => setAdding(true)}
+            containerProps={{ className: view === "grid" ? "border-dashed" : undefined }}
+            cover={<span className="grid h-full w-full place-items-center text-3xl text-stone-400">＋</span>} />
+          {shown.map((c) => {
+            const cColor = brandColorFor(c.id || c.title);
+            const edit = <button type="button" title={tt("查看 / 编辑")} aria-label={tt("查看 / 编辑")}
+              onClick={() => setModal({ card: c, isNew: false })}
+              className="grid h-7 w-7 place-items-center rounded-lg border border-stone-200 bg-white/90 text-stone-400 shadow-sm hover:text-stone-600">
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>;
+            return <Item key={c.id} title={c.title} metadata={<>{c.category}{c.custom ? ` · ${tt("我的")}` : ""}{c.desc || c.prompt ? ` · ${c.desc || c.prompt}` : ""}</>}
+              onOpen={() => setModal({ card: c, isNew: false })}
+              cover={<span className="grid h-full w-full place-items-center text-3xl" style={{ background: tintOf(cColor, 0.14), color: cColor }}>{c.icon}</span>}
+              actions={view === "list" ? edit : undefined}
+              floatingActions={view === "grid" ? <div className="absolute right-2 top-2">{edit}</div> : undefined} />;
+          })}
+        </PromptShelf>;
       })()}
 
       {shown.length === 0 && (

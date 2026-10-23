@@ -162,10 +162,6 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   const [favoriteKeys, setFavoriteKeys] = useState<ReadonlySet<string> | null>(null);
   const search = useBaySearchText(filter);
   const listingChrome = useMemo(() => ({ view, favoritesOnly }), [favoritesOnly, view]);
-  const listShelves =
-    view === "list"
-      ? "[&_[data-bay-app-shelf]>div]:!grid-cols-1 [&_[data-bay-app-shelf]>div]:sm:!grid-cols-1 [&_[data-bay-app-shelf]>div]:lg:!grid-cols-1 [&_[data-bay-app-shelf]>div]:2xl:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:sm:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:lg:!grid-cols-1 [&_[data-bay-lesson-shelf]_div.grid]:2xl:!grid-cols-1 [&_[data-bay-asset-grid]]:!grid-cols-1 [&_[data-bay-asset-grid]]:sm:!grid-cols-1 [&_[data-bay-asset-grid]]:lg:!grid-cols-1 [&_[data-bay-asset-grid]]:2xl:!grid-cols-1"
-      : "";
 
   useEffect(() => {
     if (asset) setAssetVisited(true);
@@ -202,7 +198,7 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
           onScroll={(event) => {
             if (visibleRef.current) savedTop.current = event.currentTarget.scrollTop;
           }}
-          className={`-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4 ${listShelves}`}
+          className="-mx-2 flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-4"
           data-bay-page-feed
           data-bay-listing-view={view}
         >
@@ -220,16 +216,16 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
           </CollectionFilterRow>
           {assetVisited ? (
             <div className={asset ? "flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
-              <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} />
+              <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} view={view} />
             </div>
           ) : null}
           {asset ? null : app ? (
             <div className="mt-5">
-              <BayAppShelf filter={filter} siteKey={siteKey} accent={accent} />
+              <BayAppShelf filter={filter} siteKey={siteKey} accent={accent} view={view} />
             </div>
           ) : lesson ? (
             <div className="mt-5">
-              <BayLessonShelf filter={filter} siteKey={siteKey} accent={accent} />
+              <BayLessonShelf filter={filter} siteKey={siteKey} accent={accent} view={view} />
             </div>
           ) : (
             <div className="mt-5">
