@@ -242,15 +242,12 @@ export function DeckRoute({
       id: "deck-elements@2",
       actions: ["insert", "replace"],
       accepts: (material) => {
-        const urls = [
-          material.url,
-          material.previewUrl,
-          material.thumbUrl,
-        ].filter(Boolean);
+        const urls = [material.url].filter(Boolean);
         const mime = String(material.meta.mime || "").toLowerCase();
+        // 只收图片：视频、文档的预览图不算图片素材（插进去是一张截图，不是用户要的东西）。
         return (
-          Boolean(material.previewUrl || material.thumbUrl) ||
           material.kind === "image" ||
+          material.artifactType === "image" ||
           mime.startsWith("image/") ||
           urls.some((url) =>
             /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i.test(url || ""),

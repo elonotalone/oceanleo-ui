@@ -370,6 +370,7 @@ export function DeckPreviewLayout({
     >
       <aside
         aria-label={tt("幻灯片缩略图")}
+        data-edit-bar-avoid
         className="flex h-full min-h-0 w-[clamp(7.5rem,18vw,10rem)] shrink-0 flex-col overflow-hidden border-r border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]"
       >
         <div className="flex min-h-8 shrink-0 items-center justify-between gap-1 border-b border-[var(--border,#e7e5e4)] px-2 py-1.5">
