@@ -146,6 +146,7 @@ test("each media editor source file stays below the 600-line component limit", (
     "PdfFindBar.tsx",
     "PdfSelectionBar.tsx",
     "PdfSignatureDialog.tsx",
+    "pdf-cjk-appearance.ts",
     "pdf-command-surface.ts",
     "pdf-mark-tools.ts",
     "pdf-signature-store.ts",

@@ -68,6 +68,22 @@ async function exportPdf(bridge: PdfViewerBridge): Promise<Uint8Array> {
   return (await fixPdfCjkFreeTextAppearances(bytes)).bytes;
 }
 
+/**
+ * 打开时同样补外观流（只为显示，不保存、不标脏）：之前存下的中日韩「加文字」外观流是空的，
+ * 不补的话打开看不见；用户下一次真改动保存时，导出会把补好的外观一并存进去。
+ * 大文件跳过（pdf-lib 整份解析的代价），照原样显示。
+ */
+const DISPLAY_FIX_MAX_BYTES = 24 * 1024 * 1024;
+async function displayablePdf(bytes: Uint8Array): Promise<Uint8Array> {
+  if (bytes.byteLength > DISPLAY_FIX_MAX_BYTES) return bytes;
+  try {
+    const { fixPdfCjkFreeTextAppearances } = await import("./pdf-cjk-appearance");
+    return (await fixPdfCjkFreeTextAppearances(bytes)).bytes;
+  } catch {
+    return bytes;
+  }
+}
+
 function sourceKeyOf(item: LibraryItem): string {
   return String(item.meta.editor_source_url || "").trim() || item.url || item.previewUrl || "";
 }
@@ -160,11 +176,13 @@ export function usePdfWorkbench(
         loadedKey.current = sourceKey;
         undoOps.current = [];
         redoOps.current = [];
+        const shown = await displayablePdf(loaded.bytes);
+        if (controller.signal.aborted) return;
         if (reloading) {
-          await handleRef.current!.bridge.replaceDocument(loaded.bytes);
+          await handleRef.current!.bridge.replaceDocument(shown);
           setSavedRevision(revisionRef.current);
         } else {
-          setInitialBytes(loaded.bytes);
+          setInitialBytes(shown);
         }
         setPageCount(loaded.pageCount);
         if (loaded.blank) setNotice(tt("已创建一页空白 PDF"));

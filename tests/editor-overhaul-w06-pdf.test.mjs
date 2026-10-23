@@ -248,6 +248,26 @@ test("exported bytes include annotations: pending edits are committed before sav
   assert.ok(order.indexOf("commit") >= 0 && order.indexOf("commit") < order.indexOf("saveAsCopy"));
 });
 
+test("a text box still being typed in is committed before deselect, tool change, mode switch and page edits", async () => {
+  const fake = fakeViewerRegistry();
+  const bridge = createPdfViewerBridge(fake.registry, "a.pdf");
+  let flushed = 0;
+  bridge.setTextEditFlusher(() => {
+    flushed += 1;
+  });
+  bridge.deselect();
+  bridge.setTool("highlight");
+  bridge.setChrome("pro");
+  await bridge.replaceDocument(new Uint8Array([1]), 1);
+  assert.equal(flushed, 4, "every user action that ends editing blurs the box first (blur = commit)");
+  await bridge.exportBytes();
+  assert.equal(flushed, 4, "autosave export must not steal focus from someone still typing");
+  bridge.setTextEditFlusher(() => {
+    throw new Error("no box");
+  });
+  assert.doesNotThrow(() => bridge.deselect());
+});
+
 test("read-only locks every annotation and refuses tools and new annotations", () => {
   const fake = fakeViewerRegistry();
   const bridge = createPdfViewerBridge(fake.registry, "a.pdf");
@@ -291,6 +311,7 @@ test("viewer config: self-hosted only, single document, site-token theme, mark t
     bytes: new Uint8Array([1]).buffer,
     name: "x.pdf",
     palette: { accent: "#0f766e", dark: true },
+    textPlaceholder: "输入文字",
   });
   assert.equal(isVendorCdnUrl(config.wasmUrl), false);
   assert.equal(config.fontFallback, null, "null is the only value that does not fall back to a CDN");
@@ -306,11 +327,13 @@ test("viewer config: self-hosted only, single document, site-token theme, mark t
     config.annotations.tools.map((tool) => tool.id),
     [PDF_MARK_TOOL_IDS.check, PDF_MARK_TOOL_IDS.cross, "freeText"],
   );
-  // 加文字用来填表：黑字、点下去是空框（上游点击预填 "Insert text"，打的字会接在后面）。
+  // 加文字用来填表：黑字；占位词与 defaults.contents 同一个字（上游据此整段选中、打字就地替换，
+  // 不一致时打的字接在后面或显示两遍）；放下一个就收起工具（点别处不会再建空框把字冲掉）。
   const freeText = config.annotations.tools.find((tool) => tool.id === "freeText");
   assert.equal(freeText.defaults.fontColor, "#000000");
-  assert.equal(freeText.defaults.contents, "");
-  assert.equal(freeText.clickBehavior.defaultContent, "");
+  assert.equal(freeText.defaults.contents, freeText.clickBehavior.defaultContent);
+  assert.ok(freeText.defaults.contents.length > 0);
+  assert.equal(freeText.behavior, undefined, "deactivating the tool after create keeps the new box out of edit mode");
   assert.equal(freeText.clickBehavior.enabled, true);
   assert.deepEqual(config.annotations.locked, { type: "include", categories: ["form"] });
   const unsafe = buildPdfViewerConfig({

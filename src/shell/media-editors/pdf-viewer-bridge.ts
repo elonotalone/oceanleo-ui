@@ -189,6 +189,19 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
   }>("selection");
 
   let mode: PdfChromeMode = "basic";
+  /**
+   * 正在框里打字的「加文字」只在失焦（blur）时才把文字交给批注插件。取消选中、换工具、
+   * 切档、导出之前先让它失焦，否则打的字会整个丢掉（浏览器实测：点别处 + Esc 后
+   * 存出来的 FreeText 没有 /Contents）。由舞台注入（它拿得到 shadow root）。
+   */
+  let flushTextEdit: () => void = () => undefined;
+  const flush = () => {
+    try {
+      flushTextEdit();
+    } catch {
+      /* 没有在编辑的框 */
+    }
+  };
   let proSecondary: string | null = null;
   let readOnly = false;
   const offs: Off[] = [];
@@ -260,6 +273,7 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       return mode;
     },
     setChrome(next: PdfChromeMode) {
+      flush();
       mode = next;
       annotationScope()?.setActiveTool(null);
       applyChrome();
@@ -275,6 +289,7 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     activeTool: () => annotationScope()?.getState().activeToolId ?? null,
     setTool(toolId: string | null) {
       if (readOnly && toolId) return;
+      flush();
       annotationScope()?.setActiveTool(toolId);
     },
     toolDefaults: (toolId: string) => annotations?.getTool(toolId)?.defaults ?? {},
@@ -300,7 +315,15 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     deleteAnnotation(annotation: PdfAnnotationLike) {
       annotationScope()?.deleteAnnotation(annotation.pageIndex, annotation.id);
     },
-    deselect: () => annotationScope()?.deselectAnnotation(),
+    deselect: () => {
+      flush();
+      annotationScope()?.deselectAnnotation();
+    },
+    /** 舞台注入：让正在打字的文字框失焦（文字随之提交给插件）。 */
+    setTextEditFlusher(next: () => void) {
+      flushTextEdit = next;
+    },
+    flushTextEdit: flush,
     createAnnotation(pageIndex: number, annotation: Record<string, unknown>, context?: unknown) {
       const scope = annotationScope();
       if (!scope || readOnly) return false;
@@ -354,6 +377,8 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     async exportBytes(): Promise<Uint8Array> {
       const id = doc();
       if (!id || !exporter) throw new Error("查看器里没有打开的文档。");
+      // 不在这里让文字框失焦：自动保存可能正赶上用户还在打字。框失焦时插件提交
+      // 文字、触发一次编辑，随后的自动保存会带上它。
       await annotations?.forDocument(id).commit().toPromise().catch(() => false);
       const buffer = await exporter.forDocument(id).saveAsCopy().toPromise();
       return new Uint8Array(buffer);
@@ -364,6 +389,7 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
      */
     async replaceDocument(bytes: Uint8Array, keepPage?: number) {
       if (!docs) throw new Error("查看器没有文档管理能力。");
+      flush();
       const previous = doc();
       const opened = await docs
         .openDocumentBuffer({ buffer: bytesBuffer(bytes), name, autoActivate: false })

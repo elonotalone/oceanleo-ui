@@ -87,6 +87,7 @@ export function PdfStage({
             name,
             palette: { accent, dark },
             author,
+            textPlaceholder: tt("输入文字"),
           })
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,7 +168,12 @@ export function PdfStage({
       const bridge = bridgeRef.current;
       if (event.key !== "Escape" || !bridge || modeRef.current !== "basic") return;
       const target = event.composedPath()[0] as HTMLElement | undefined;
-      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      // 在文字框里按 Esc：先把打的字交出去（失焦），再收起选中。
+      if (target?.isContentEditable) {
+        bridge.flushTextEdit();
+        return;
+      }
       if (bridge.selected()) bridge.deselect();
       else if (bridge.activeTool()) bridge.setTool(null);
     };
@@ -201,6 +207,20 @@ export function PdfStage({
       data-pdf-stage=""
       data-pdf-viewer-instance={instanceId}
       data-pdf-chrome={mode}
+      onPointerDownCapture={(event) => {
+        // 正在框里打字时点到别处：先让框失焦（插件在失焦时提交文字），开着「加文字」
+        // 工具时这一下只算「打完了」，不再在点的地方建一个新空框——否则旧框还没提交就被
+        // 重置，打的字整个丢掉（浏览器实测）。
+        const active = containerRef.current?.shadowRoot?.activeElement as HTMLElement | null | undefined;
+        if (!active?.isContentEditable || event.nativeEvent.composedPath().includes(active)) return;
+        active.blur();
+        const bridge = bridgeRef.current;
+        if (bridge && bridge.activeTool() === "freeText") {
+          event.preventDefault();
+          event.stopPropagation();
+          bridge.setTool(null);
+        }
+      }}
       onKeyDownCapture={(event) => {
         if (
           modeRef.current === "basic" &&
@@ -232,6 +252,10 @@ export function PdfStage({
                 return;
               }
               bridgeRef.current = bridge;
+              bridge.setTextEditFlusher(() => {
+                const active = containerRef.current?.shadowRoot?.activeElement as HTMLElement | null | undefined;
+                if (active?.isContentEditable) active.blur();
+              });
               setTimeoutError("");
               bridge.setChrome(modeRef.current);
               bridge.subscribe({

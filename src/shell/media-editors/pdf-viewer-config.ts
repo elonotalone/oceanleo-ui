@@ -14,15 +14,23 @@ import { PDF_VIEWER_ALWAYS_DISABLED } from "./pdf-viewer-bridge";
 import { pdfMarkTools } from "./pdf-mark-tools";
 
 /**
- * 「加文字」是填表用的：默认黑字、点下去是空框直接打字。上游默认红字，且点击时
- * 用 `clickBehavior.defaultContent`（"Insert text"）预填——打的字会接在它后面
- * （浏览器实测存进 PDF 的是「Insert textZhang San」）。按 id 覆盖，上游深合并。
+ * 「加文字」是填表用的：默认黑字。
+ * - 点下去预填一个占位词，**占位词与 `defaults.contents` 必须同一个字**：上游据此在进入
+ *   编辑时把它整段选中，打字就地替换同一个文本节点。两者不一致（R2 曾用空串）时，打的字会
+ *   接在后面，或者新建一个文本节点、框里显示成两遍（浏览器实测「孙七 Sun孙七 Sun」）。
+ * - 开着工具时点别处会在那里再建一个空框，正在打的那个框里的字还没来得及在失焦时提交
+ *   就被重置掉（浏览器实测 /Contents 为空）——这一下由舞台在捕获阶段接住（`PdfStage`）。
+ *   这里不能用 `deactivateToolAfterCreate`：工具一收，新框就进不了编辑态。
+ * 按 id 覆盖，上游深合并。
  */
-export const PDF_FREE_TEXT_TOOL = {
-  id: "freeText",
-  defaults: { fontColor: "#000000", fontSize: 12, contents: "" },
-  clickBehavior: { enabled: true, defaultSize: { width: 160, height: 20 }, defaultContent: "" },
-} as const;
+export function pdfFreeTextTool(placeholder: string) {
+  const text = placeholder.trim() || "Text";
+  return {
+    id: "freeText",
+    defaults: { fontColor: "#000000", fontSize: 12, contents: text },
+    clickBehavior: { enabled: true, defaultSize: { width: 160, height: 20 }, defaultContent: text },
+  };
+}
 
 /** 查看器配色：全部引外壳 token，两档同形，靠外壳变量切明暗。 */
 export function pdfViewerColors(accent: string) {
@@ -83,6 +91,8 @@ export interface PdfViewerConfigInput {
   name: string;
   palette: { accent: string; dark: boolean };
   author?: string;
+  /** 「加文字」点下去时的占位词（已翻译）。 */
+  textPlaceholder?: string;
 }
 
 export function buildPdfViewerConfig(input: PdfViewerConfigInput) {
@@ -101,7 +111,7 @@ export function buildPdfViewerConfig(input: PdfViewerConfigInput) {
     },
     zoom: { minZoom: 0.25, maxZoom: 4 },
     annotations: {
-      tools: [...pdfMarkTools(), PDF_FREE_TEXT_TOOL],
+      tools: [...pdfMarkTools(), pdfFreeTextTool(input.textPlaceholder ?? "")],
       ...(input.author ? { annotationAuthor: input.author } : {}),
       locked: { type: "include", categories: ["form"] },
     },

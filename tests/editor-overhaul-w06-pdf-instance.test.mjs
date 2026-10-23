@@ -43,6 +43,14 @@ for (const [name, value] of Object.entries({
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+// jsdom 没有实现 isContentEditable（浏览器都有）：按属性补上。
+if (!("isContentEditable" in window.HTMLElement.prototype)) {
+  Object.defineProperty(window.HTMLElement.prototype, "isContentEditable", {
+    get() {
+      return this.getAttribute("contenteditable") === "true";
+    },
+  });
+}
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
@@ -51,17 +59,26 @@ const { createRoot } = await import(pathToFileURL(require.resolve("react-dom/cli
 globalThis.__w06Viewer = { mounts: 0, unmounts: 0, onReady: null, themes: [], configs: [] };
 
 const viewerStub = dataModule(`
-  import { createElement, useEffect } from ${JSON.stringify(reactUrl)};
+  import { createElement, useEffect, useRef } from ${JSON.stringify(reactUrl)};
   export function PDFViewer(props) {
+    const ref = useRef(null);
     useEffect(() => {
       const probe = globalThis.__w06Viewer;
       probe.mounts += 1;
       probe.configs.push(props.config);
       probe.onReady = props.onReady;
-      props.onInit && props.onInit({ setTheme: (theme) => probe.themes.push(theme), shadowRoot: null });
+      // 一个真的 open shadow root：里面一个可编辑文字框、一块「页面」（像上游那样在冒泡阶段建框）
+      const shadow = ref.current.shadowRoot || ref.current.attachShadow({ mode: "open" });
+      shadow.innerHTML = '<span tabindex="0" contenteditable="true" data-box>typed</span><div data-page></div>';
+      probe.pagePointerDowns = 0;
+      probe.blurs = 0;
+      shadow.querySelector("[data-page]").addEventListener("pointerdown", () => { probe.pagePointerDowns += 1; });
+      shadow.querySelector("[data-box]").addEventListener("blur", () => { probe.blurs += 1; });
+      probe.shadow = shadow;
+      props.onInit && props.onInit({ setTheme: (theme) => probe.themes.push(theme), shadowRoot: shadow });
       return () => { probe.unmounts += 1; };
     }, []);
-    return createElement("div", { "data-embedpdf-viewer": "" });
+    return createElement("div", { "data-embedpdf-viewer": "", ref });
   }
 `);
 
@@ -125,7 +142,17 @@ function fakeRegistry() {
     },
     export: { forDocument: () => ({ saveAsCopy: () => task(new ArrayBuffer(4)) }) },
   };
-  return { calls, registry: { getPlugin: (id) => (plugins[id] ? { provides: () => plugins[id] } : null) } };
+  return {
+    calls,
+    setActiveTool: (toolId) => {
+      state.activeToolId = toolId;
+    },
+    registry: { getPlugin: (id) => (plugins[id] ? { provides: () => plugins[id] } : null) },
+  };
+}
+
+function resetProbe() {
+  Object.assign(globalThis.__w06Viewer, { mounts: 0, unmounts: 0, onReady: null, themes: [], configs: [] });
 }
 
 async function settle() {
@@ -136,7 +163,53 @@ async function settle() {
   }
 }
 
+test("clicking away from a text box being typed in commits it and does not start a new box", async () => {
+  resetProbe();
+  const container = window.document.createElement("div");
+  window.document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        React.createElement(PdfStage, {
+          bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+          name: "t.pdf",
+          mode: "basic",
+          dark: false,
+          onHandle: () => undefined,
+          onFailure: () => undefined,
+        }),
+      ),
+    );
+    await settle();
+    const probe = globalThis.__w06Viewer;
+    const fake = fakeRegistry();
+    await act(async () => probe.onReady(fake.registry));
+    await settle();
+    fake.setActiveTool("freeText");
+    const box = probe.shadow.querySelector("[data-box]");
+    box.focus();
+    assert.equal(probe.shadow.activeElement, box, "jsdom must report the focused box inside the shadow root");
+    // 点在框里：照常（光标挪动），不失焦
+    box.dispatchEvent(new window.Event("pointerdown", { bubbles: true, composed: true }));
+    assert.equal(probe.blurs, 0);
+    // 点在页面别处：先失焦（= 提交文字），工具收起，这一下不再传给页面（不建新框）
+    fake.calls.length = 0;
+    probe.shadow.querySelector("[data-page]").dispatchEvent(new window.Event("pointerdown", { bubbles: true, composed: true, cancelable: true }));
+    assert.equal(probe.blurs, 1, "the box was not blurred, so the typed text never reaches the plugin");
+    assert.equal(probe.pagePointerDowns, 0, "the click went on to the page and started a second box");
+    assert.ok(fake.calls.some((call) => call[0] === "setActiveTool" && call[1] === null));
+    // 不在打字时点页面：正常传下去
+    probe.shadow.querySelector("[data-page]").dispatchEvent(new window.Event("pointerdown", { bubbles: true, composed: true }));
+    assert.equal(probe.pagePointerDowns, 1);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
 test("basic and pro are one viewer instance: switching never remounts, reloads or shows a switching overlay", async () => {
+  resetProbe();
   const container = window.document.createElement("div");
   window.document.body.appendChild(container);
   const root = createRoot(container);

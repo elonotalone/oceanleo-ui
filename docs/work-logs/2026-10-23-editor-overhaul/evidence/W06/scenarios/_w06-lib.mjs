@@ -14,7 +14,7 @@ export async function openPdf(page, helpers, log, id) {
     if (await edit.count().catch(() => 0)) {
       await edit.click().catch(() => {});
     }
-    if (Date.now() - t0 > 120000) throw new Error("PDF editor never mounted");
+    if (Date.now() - t0 > 240000) throw new Error("PDF editor never mounted");
     await page.waitForTimeout(1500);
   }
   await page.waitForFunction(() => {

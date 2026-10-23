@@ -49,6 +49,8 @@ test("loading a newer source (someone else's save) does not record a person muta
   const load = section("// ---- 源装载 ----", "// ---- 查看器事件 ----");
   assert.doesNotMatch(load, /bump\(|recordUserMutation/);
   // 重载换的是同一个查看器里的文档，并把「已保存」对齐到当前修订（不留假脏）。
-  assert.match(load, /bridge\.replaceDocument\(loaded\.bytes\)/);
+  assert.match(load, /bridge\.replaceDocument\(shown\)/);
+  // 打开时补中日韩加文字的外观流只为显示（不标脏、不保存）。
+  assert.match(load, /const shown = await displayablePdf\(loaded\.bytes\)/);
   assert.match(load, /setSavedRevision\(revisionRef\.current\)/);
 });
