@@ -528,6 +528,106 @@ test("a delayed decode rejection from an invalidated generation is silent", asyn
   }
 });
 
+test("a hidden page still paints and presents frames (no visibility drop)", async () => {
+  // Regression for the 2026-10-22 live failure: Chrome reports background
+  // tabs, minimized windows and windows covered by another app as "hidden".
+  // Dropping frames then starved the gateway's 10 s first-paint gate
+  // (FIRST_PAINT_TIMEOUT reconnect loop → "Failed to connect", no takeover).
+  const presented = [];
+  const dropped = [];
+  const decodeErrors = [];
+  const previousCreateImageBitmap = globalThis.createImageBitmap;
+  const previousVisibility = Object.getOwnPropertyDescriptor(
+    document,
+    "visibilityState",
+  );
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => "hidden",
+  });
+  globalThis.createImageBitmap = async () => ({
+    width: 1,
+    height: 1,
+    close() {},
+  });
+
+  let painter;
+  function PainterHarness() {
+    painter = useCloudBrowserFramePainter({
+      onPresented(meta) {
+        presented.push(meta.sequence);
+      },
+      onDropped(meta) {
+        dropped.push(meta.sequence);
+      },
+      onDecodeError(reason) {
+        decodeErrors.push(reason);
+      },
+    });
+    return null;
+  }
+
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(React.createElement(PainterHarness)));
+    painter.canvasRef.current = {
+      width: 0,
+      height: 0,
+      dataset: {},
+      getContext() {
+        return { clearRect() {}, drawImage() {} };
+      },
+    };
+    const frame = new Blob([Uint8Array.of(1)], { type: "image/jpeg" });
+    for (const sequence of [1, 2]) {
+      assert.equal(
+        painter.acceptFrameMeta({
+          width: 1,
+          height: 1,
+          byteLength: 1,
+          sequence,
+          actionSequence: 0,
+          capturedAtMs: Date.now(),
+          source: "native-chrome-window",
+          paintState: "real",
+          nativeChromeWindow: true,
+        }),
+        true,
+      );
+      assert.equal(painter.drawBlobFrame(frame), true);
+      await flushMicrotasks();
+    }
+    assert.deepEqual(dropped, [], "hidden pages must not drop frames");
+    assert.deepEqual(decodeErrors, []);
+    assert.deepEqual(presented, [1, 2]);
+  } finally {
+    globalThis.createImageBitmap = previousCreateImageBitmap;
+    if (previousVisibility) {
+      Object.defineProperty(document, "visibilityState", previousVisibility);
+    } else {
+      delete document.visibilityState;
+    }
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+test("the live transport never cancels frame decode on visibilitychange", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const transport = await readFile(
+    new URL("../src/shell/cloud-browser-transport.ts", import.meta.url),
+    "utf8",
+  );
+  const live = await readFile(
+    new URL("../src/shell/cloud-browser-live.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(transport, /visibilitychange/);
+  assert.doesNotMatch(live, /visibilityState === "hidden"/);
+});
+
 test("latest-value frame decoding keeps one pending frame", async () => {
   const pendingDecodes = [];
   const presented = [];

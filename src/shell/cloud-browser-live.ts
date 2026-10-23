@@ -628,10 +628,15 @@ export function useCloudBrowserFramePainter(options: {
         try {
           bitmap = await createImageBitmap(pending.blob);
           if (!pending.settled) {
-            if (
-              pending.generation !== frameDecodeGenerationRef.current ||
-              document.visibilityState === "hidden"
-            ) {
+            // Page visibility must never decide whether a frame is painted.
+            // Chrome reports background tabs, minimized windows AND windows
+            // fully covered by another app as "hidden"; dropping frames then
+            // starved the gateway's 10 s first-paint gate, which closed the
+            // socket (FIRST_PAINT_TIMEOUT) in a reconnect loop until the panel
+            // showed "Failed to connect" and Take control never became
+            // available. Painting a hidden canvas is cheap and still a real
+            // paint of the native window frame.
+            if (pending.generation !== frameDecodeGenerationRef.current) {
               dropBlobFrame(pending);
               continue;
             }
@@ -656,8 +661,7 @@ export function useCloudBrowserFramePainter(options: {
         } catch {
           if (
             !pending.settled &&
-            pending.generation === frameDecodeGenerationRef.current &&
-            document.visibilityState !== "hidden"
+            pending.generation === frameDecodeGenerationRef.current
           ) {
             dropBlobFrame(pending);
             decodeErrorCallbackRef.current?.("jpeg decode failed");
@@ -702,10 +706,8 @@ export function useCloudBrowserFramePainter(options: {
         generation,
         settled: false,
       };
-      if (document.visibilityState === "hidden") {
-        dropBlobFrame(pending);
-        return true;
-      }
+      // No visibility gate here either: see pumpBlobFrames. Backpressure
+      // below still keeps at most one pending frame, hidden or not.
       if (pendingBlobFrameRef.current) {
         dropBlobFrame(pendingBlobFrameRef.current);
       }

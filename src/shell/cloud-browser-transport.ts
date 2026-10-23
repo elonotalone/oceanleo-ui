@@ -840,20 +840,6 @@ export function useCloudBrowserTransport({
     if (liveRequestedRef.current) stopLive(true);
   }, [scopeKey, stopLive]);
 
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        cancelFrameDecode(false, true);
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () =>
-      document.removeEventListener(
-        "visibilitychange",
-        onVisibilityChange,
-      );
-  }, [cancelFrameDecode]);
-
   useEffect(
     () => () => {
       liveRequestedRef.current = false;
