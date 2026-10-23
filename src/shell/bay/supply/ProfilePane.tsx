@@ -76,7 +76,7 @@ async function loadOwnPage(): Promise<OwnPage> {
     own: true,
     seller: profile,
     profile: { ...profile, user_id: profile.user_id || "" } as BayProfilePage["profile"],
-    // 主页上只摆已上架的；草稿在「我的 → 我的服务」里。
+    // 主页上只摆已上架的；草稿在「我的 → 我发布的」里。
     services: services.filter((service) => service.status === "published" && !service.moderation_hidden) as unknown as BayService[],
     showcase: showcase as unknown as BayProfilePage["showcase"],
     reviews,

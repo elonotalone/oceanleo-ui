@@ -7,3 +7,5 @@
 - 21:25 实测：pnpm typecheck 0 条错（基线那 3 条 video-project-doc 已被别的工程修掉）；我边界内 279 条 tt() 字面量 16 语全有译文；相关 28 份测试绿（bay3-profile / bay-supply-profile 的 bay-state 桩补 useBayEnabled，bay3-profile 两处「逛官方素材」改「逛官方现成文件」）。
 - 21:25 别人的在途红（不是我的）：i18n-tt-key-coverage 第 8/9/10 条（别的工程新增文案未配译文、PRE_EXISTING_GAPS 基线在变）、bay-seller-panes「我的服务未登录」（W05 改了 MyServicesPane 文案）、bay-seller-profile-reveal 第 1 条（W05 删了 BaySettingsProfileDoor.tsx）、bay-settings-store（W05 在改 settings-pane-store）。
 - 21:50 新测试 tests/lbp-w06-verification-grants.test.mjs 30 条全绿（请求一次性/订阅/过期/sessionStorage；核验卡出现条件与自动滚；白卡不铺整页；系统消息新目标与动作顺序；账户子页 id/首页一行/AccountSection/设置窗整条链路；列表+撤回二次确认+失败+空态+出错+401；边界内退役名扫描；17 语）。变异检查：把核验卡的出现条件改成 true，只有「出现条件」一条红（其余不连坐，afterEach 统一卸载挂载）。
+- 22:05 相关测试 45 份再跑：全绿，唯两份开工前就红且与我无关——hit-target-budget（全仓命中区欠账 145 > 预算 98，我的文件不在名单里）、org-membership（`../ui` 桩没有 Modal，在 22b55c94 的前一个提交上同样红，已用临时 worktree 复核后清掉）。architecture:check 绿；api:check 的快照过期不是我的名字造成的（快照里没有我动过的任何导出）。
+- 22:05 W05 的 MyDashboardTab 已按我提交的接口调用 `requestMinePageEdit("vetting")`。

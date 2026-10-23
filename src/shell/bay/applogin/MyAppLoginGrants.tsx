@@ -94,7 +94,7 @@ function GrantRow({
             <button type="button" data-bay-login-revoke-yes disabled={busy} onClick={onRevoke} className={PILL_DARK}>
               {busy ? tt("正在撤回…") : tt("撤回授权")}
             </button>
-            <button type="button" data-bay-login-revoke-cancel disabled={busy} onClick={onCancel} className={PILL}>
+            <button type="button" data-bay-login-revoke-cancel autoFocus disabled={busy} onClick={onCancel} className={PILL}>
               {tt("取消")}
             </button>
           </div>
@@ -166,7 +166,11 @@ export function MyAppLoginGrants(): ReactElement {
   }
 
   return (
-    <ul data-bay-login-grants className="divide-y divide-neutral-200 overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+    <ul
+      data-bay-login-grants
+      aria-label={tt("用 OceanLeo 账号登录的应用")}
+      className="divide-y divide-neutral-200 overflow-hidden rounded-2xl border border-neutral-200 bg-white"
+    >
       {items.map((item) => (
         <GrantRow
           key={item.app_id}
