@@ -153,19 +153,37 @@ export async function uploadFiles(page, files, { timeout = 180000 } = {}) {
     if (Date.now() - ready > 60000) throw new Error("upload input never enabled");
     await page.waitForTimeout(500);
   }
-  await input.setInputFiles(files);
-  const started = Date.now();
-  await page.waitForTimeout(1000);
-  while (Date.now() - started < timeout) {
-    const busy = await page
-      .getByText(/上传中…|Uploading…/)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    if (!busy) return;
-    await page.waitForTimeout(1000);
+  let confirmed = 0;
+  let failure = null;
+  const pending = new Set();
+  const onResponse = response => {
+    const url = new URL(response.url());
+    if (response.request().method() !== "POST" ||
+        !/^\/v1\/(?:database\/(?:private-)?upload|media\/upload\/finalize)$/.test(url.pathname)) return;
+    const read = (async () => {
+      const payload = await response.json().catch(() => null);
+      if (!response.ok() || payload?.ok === false || !payload?.file) {
+        failure = `upload was not confirmed (HTTP ${response.status()})`;
+      } else confirmed += 1;
+    })();
+    pending.add(read);
+    void read.finally(() => pending.delete(read));
+  };
+  page.on("response", onResponse);
+  try {
+    await input.setInputFiles(files);
+    const expected = Array.isArray(files) ? files.length : 1;
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      if (failure) throw new Error(failure);
+      if (confirmed >= expected) return;
+      await page.waitForTimeout(500);
+    }
+    throw new Error(`upload did not finish (${confirmed}/${expected} confirmed)`);
+  } finally {
+    page.off("response", onResponse);
+    await Promise.all(pending);
   }
-  throw new Error("upload did not finish");
 }
 
 /** Current top-bar save state of the open editor ("saved" | "saving" | "error" | "unconfirmed" | null). */
