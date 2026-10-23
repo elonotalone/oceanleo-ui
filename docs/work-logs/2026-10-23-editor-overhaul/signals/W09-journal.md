@@ -18,3 +18,5 @@
 - [实测] 新上下文首开：协同房间副本的两个对象 id 与载入版本不同（`+wsdnojjo;+e226fbf8;-wpsa89ob;-0rd3n7uk`）→ 套用 → dirty=true（不触发保存）。根因在房间保留上一场的对象模型、重开载入的版本对象 id 不同；属于 use-entity-collab 对齐策略，写进交付剩余问题。
 - [实测] 英文界面图片调整面板露中文（像素化/黑白/复古/反相），画笔/签名/表格/导出等抽屉说明也在历史缺口表里 → 册子补 45 句 × 16 语种；i18n 闸 #9 现在把这 45 条列为「已补译文的死登记」，需父 agent 从基线表摘掉。
 - [实测] w09-buttons b4（10:00Z）：flip-x/flip-y/rotate 有效且撤销还原；duplicate 1→2、delete 2→1；crop 进裁剪态（crop-apply crop-ratio crop-cancel）、取消还原；replace 打开素材面板；radius/border/opacity/adjust/position 开面板；lock 生效但撤销不撤锁定。连点期间 7 次 autosave.error、顶栏「保存失败」→ 修：保存串行（上一个没完等它）、预览期间画布又变就重抓（≤3 次），不再回 null。
+- [实测] w09-undo（10:12Z）：翻转→等保存→撤销、翻转→保存中立刻撤销，两种都在保存落定后回到翻转前（hash 一致），各出一个 revision。按钮扫描里「restored=false」是 1.5 s 采样早于异步还原的假阴性。
+- [实测] 10:20Z 深浅两档、库卡片、按钮扫描全部跑完（见交付）。

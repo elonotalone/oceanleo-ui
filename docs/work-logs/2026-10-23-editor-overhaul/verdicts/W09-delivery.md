@@ -11,18 +11,20 @@ R2 接班（08:30Z 起），第 1 轮的成果（c0086af3 / fa872c0d / c8934dc6 
   - 每次保存都是服务器上的一个新版本：图片不再接草稿层（同 W07 演示）。之前第 2 次改动只上传一份「…草稿」隐藏文件就显示「已保存」，版本要等 20 秒空闲才发；断网一直转圈不报失败；每个会话还多出一个隐藏「…草稿」root。
   - 重开图片不再被标成未保存、也不再偶发「最新服务器草稿暂时无法恢复，自动保存已暂停」：协同房间里上一场的副本只差控制柄样式和过期签名时，不算别人的改动；保存后残留的本机恢复记录，内容和画布一样就删掉，比画布所基于的版本还旧就不套用。
   - 外壳在会话快照重试后会再要一次保存，画布没动过的话交回上次回执，不再多出一个内容相同的版本。
+  - 连着点几下不再显示「保存失败」：保存一次只跑一个（上一次没结束就等它结束），生成预览期间画布又变了就重新抓一次。
+  - 协同房间把本页刚提交的版本当作「外部版本」推回来时不再套回画布（以前保存过程中做的撤销会被盖掉）。
 - **素材库**：点一下「插入」把图片放进画布，选中图片时「替换」可用（接上 W02 的 command 契约）；撤销能撤回。
 - **外语界面**：图片调整面板（像素化 / 黑白 / 复古 / 反相）、画笔 / 线条 / 便签 / 签名 / 表格 / 导出抽屉的说明，共 45 句，以前在英文界面里显示中文，现在有 16 种语言的译文。
 
 ## 2. 文件清单（R2）
 
 - 改：`src/shell/advanced-routes/ImageRoute.tsx`、`src/shell/image-editor/{fabric-controller-core,use-fabric-image-editor,types,FabricImageStage}.ts(x)`、`src/i18n/ui/messages/editor-overhaul-copy-w09.ts`、`tests/advanced-canva-interactions.test.mjs`（只改图片那几行）、`tests/image-route-merge.test.mjs`。
-- 增：`src/shell/image-editor/image-remote-delta.ts`、`tests/image-editor-recovery-collab.test.mjs`、场景 `evidence/W09/scenarios/{w09-protocol,w09-recovery-diag,w09-reload-edit,w09-insert,w09-fork,w09-theme,w09-buttons}.mjs`、`signals/W09-journal.md`、`signals/W09-to-W04.md`。
+- 增：`src/shell/image-editor/image-remote-delta.ts`、`tests/image-editor-recovery-collab.test.mjs`、场景 `evidence/W09/scenarios/{w09-protocol,w09-recovery-diag,w09-reload-edit,w09-insert,w09-fork,w09-theme,w09-buttons,w09-undo,w09-card}.mjs`、截图 `evidence/W09/shots/*.png`（9 张，每张 ≤150KB）、`signals/W09-to-parent.md`、`signals/W09-journal.md`、`signals/W09-to-W04.md`。
 - 删：无文件。
 
 ## 3. 提交
 
-第 1 轮：c0086af3 fa872c0d c8934dc6 ad36afaf。R2：31b748fc db2d9bc9 b3fac2df bd17805b f20b7134 445ef810 5f71282c 5ecc8d97（以及本交付的提交）。
+第 1 轮：c0086af3 fa872c0d c8934dc6 ad36afaf。R2：31b748fc db2d9bc9 b3fac2df bd17805b f20b7134 445ef810 5f71282c 5ecc8d97 9a94c6df d900d389（以及本交付的提交）。
 
 ## 4. 验证
 
@@ -30,7 +32,7 @@ R2 接班（08:30Z 起），第 1 轮的成果（c0086af3 / fa872c0d / c8934dc6 
 
 | 测试 | 结果 |
 |---|---|
-| image-editor-recovery-collab（新） | 7/7 |
+| image-editor-recovery-collab（新） | 9/9 |
 | rebuild-image-actions | 14/14 |
 | image-editor-integrity | 11/11 |
 | rebuild-image-save-history | 5/5 |
@@ -49,14 +51,30 @@ R2 接班（08:30Z 起），第 1 轮的成果（c0086af3 / fa872c0d / c8934dc6 
 
 `npx tsc --noEmit -p .`：3 个错误，全在 `workflow-carrier/video-project-doc.ts`（W16），图片文件 0 个。
 
-BROWSER_SECTION
+### 浏览器（验收账号，LeoDev 槽，`harness/run.mjs`，场景都在 `evidence/W09/scenarios/`）
+
+| 场景 | 结果 | 证据 |
+|---|---|---|
+| `w09-buttons.mjs`（浅色），图片栏逐个点 | `replace` → 打开素材面板；`crop` → 进入裁剪态（`crop-apply crop-ratio crop-cancel`），取消后画布原样；`flip-x` / `flip-y` / `rotate` → 画面变了，撤销能撤回；`radius` / `border` / `opacity` / `adjust` / `position` → 打开面板；`arrange` → 打开下拉；`lock` → 选区被锁（撤销不撤锁定，见 §9）；`duplicate` 图层 1→2，`delete` 2→1；连点一轮后保存落定、没有一次 autosave.error（修之前同一轮 7 次） | `/tmp/w09-b4`、`/tmp/w09-b6`、`evidence/W09/shots/crop-mode.png` |
+| `w09-undo.mjs` | 翻转 → 等保存 → 撤销，以及翻转 → 保存中立刻撤销：两种情况保存落定后都回到翻转前（像素 hash 一致），每一步一个 revision | `/tmp/w09-u1` |
+| `w09-insert.mjs` | 素材库「插入」可点 → 图层 1→2，面板显示「Inserted “[W09] sample.png”」→ 已保存；撤销 → 2→1 → 已保存 | `/tmp/w09-i4`、`evidence/W09/shots/insert-after.png` |
+| `w09-fork.mjs` | 见 §5 第 3 条 | `/tmp/w09-f1` |
+| `w09-protocol.mjs` / `w09-reload-edit.mjs` / `w09-recovery-diag.mjs` | 见 §5；诊断过程记在 journal | `/tmp/w09-p1…p5`、`/tmp/w09-r1`、`/tmp/w09-d1…d3` |
+| `w09-theme.mjs` 深色 | 舞台四周、编辑栏、空态抽屉条、左侧「调整」面板都是深色，图片保持原色；扫描编辑器内大于 6000 px² 的不透明白底元素，结果为 0（空态、调整面板两处） | `evidence/W09/shots/dark-empty.png`、`dark-image-bar.png`、`dark-adjust.png` |
+| `w09-theme.mjs` 浅色 | 浅色舞台 `#f3f4f6`、白色面板；调整面板的「Black & white / Vintage / Invert / Pixelate」已经是英文 | `evidence/W09/shots/light-empty.png`、`light-image-bar.png`、`light-adjust.png` |
+| `w09-card.mjs` | 库里只有一张「[W09] sample.png」，缩略图是最新一版（含插入的图层），标题没有「-编辑版」 | `evidence/W09/shots/library-card.png` |
+
+空态抽屉条（深浅两档都一样）：`image-brush image-shapes image-lines image-notes image-text image-signature image-tables image-layers image-canvas`，即 Brush / Shape / Lines / Note / Text / Signature / Table / Layers / Canvas。
+
+数据库（只读）：`03e7bab9…` 现在一共 47 个 revision（ordinal 1–47）。修之前出现过 3 个没有对应改动的多余版本：rev15（草稿指针残留后重新发布）、rev20（刷新后多提交了一次）、rev28（重复 flush），对应的修复是 bd17805b 和 445ef810；修完以后每个 revision 都对应一次改动或撤销，记录见 journal；08:52Z 去掉草稿层以后，验收账号再没有新增「[W09]…草稿」隐藏 root（查询结果 0）。
+
 
 ## 5. 保存协议（§5，验收账号，LeoDev 槽，数据库只读核对）
 
 | 条 | 结果 | 证据 |
 |---|---|---|
 | 1 自己的图：改 → 已保存 → 再改 → 已保存 → 关闭 → 重开 → 刷新 | **通过**。p4：rev18、rev19；重开、刷新后画布采样都是第 2 次改动后的样子 | `/tmp/w09-p4/w09-protocol.log`、`p4-reopen-open.png`、`p4-reload.png` |
-| 2 库卡片跟着更新 | 见 §4 浏览器部分的库截图 | |
+| 2 库卡片跟着更新 | **通过**。库里只有一张卡片，缩略图是最新一版，标题不变 | `evidence/W09/shots/library-card.png` |
 | 3 公共素材只 fork 一次 | **通过**。公共图「Plains Sunset」`530789e5…`：点「编辑」时 `:fork` 一次 → 副本 `8bd5a879…`，地址栏切过去；3 次改动 = 副本 ordinal 4（fork + 3 个 revision），验收账号新增 root 只有这一个 | `/tmp/w09-f1/w09-fork.log` |
 | 4 断网 → 保存失败 → 重试 → 已保存 | **部分**。断网时从没显示过「已保存」；但如果断网时卡住的是会话快照那一步，顶栏一直「保存中」，不转「保存失败」（共享内核，已转 W04 §3）；恢复网络后自己存上（p4 rev21） | `/tmp/w09-p4` |
 | 5 保存次数 = 新增 revision 数，没有多余条目 | **修后通过**。修之前一次改动出过 rev27 + rev28（重复 flush），修了（445ef810）。去掉草稿层以后不再生成隐藏「…草稿」root | SQL 见下 |
@@ -89,7 +107,8 @@ supabase-sql oceanleo "select ordinal, created_at from artifact_revisions where 
 ## 9. 如实的剩余问题
 
 - **协同房间对齐**：新的浏览器上下文首次打开时，房间里上一场的副本对象 id 和载入的版本不同（`+wsdnojjo;+e226fbf8;-wpsa89ob;-0rd3n7uk`）→ 被当成别人的改动套进来，画布被标成未保存（不会触发保存，看上去一样）。根因是 `use-entity-collab` 的首次对齐策略：房间留着上一场的对象模型。不在我的文件里，没改。
-- 保存还没结束就点撤销，偶尔没反应（控制器 `restoring` 期间不接撤销）；保存完再点就正常（w09-insert i4）。
+- 「锁定」不进撤销历史：点了锁定以后，撤销撤不掉锁定（要再点一次解锁）。
+- AI 快捷按钮（一键多尺寸 / 换配色 / 去水印/擦除 / 生成同款 / 导出全部尺寸，来自 `design-mode/l4-chips.ts`）在英文界面里还是中文：渲染它们的 quick-actions 外壳没有用 `tt()`，不在我的文件里。
 - 版本回执在 × 关闭之后才落时，会话里的指针没清（草稿层时期）；图片不接草稿层以后不再走这条路，已有的残留指针会被忽略。
 - 槽上会话快照 `PUT` 偶发 409，期间顶栏会短暂显示「保存失败」（W04 §4）。
 - 链接（`link`）、竖排、缩进不出：Fabric 的图片文字层没有这些能力。

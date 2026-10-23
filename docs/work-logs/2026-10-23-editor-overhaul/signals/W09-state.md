@@ -10,14 +10,14 @@
 - [读码] 已在 main：c0086af3 + fa872c0d（规范 id、bar、A-1 面板、删 图片调整/字体 抽屉、画布改名、标题不拼编辑版、签名板纸色）、c8934dc6（测试改规范 id + 回归）、ad36afaf（文案册）。
 
 ## 已完成（R2）
-- 31b748fc canva 测试跟删掉的抽屉；db2d9bc9 重开不再标脏/暂停自动保存（远端只比内容、恢复 unchanged/stale）；bd17805b 不接草稿层；f20b7134 素材命令契约；445ef810 无改动不重复提交；5f71282c 45 句译文；b3fac2df 等 W04 信号。
+- 9a94c6df 保存串行、预览期间改动就重抓；d900d389 自己的版本不被房间回推套回；31b748fc canva 测试跟删掉的抽屉；db2d9bc9 重开不再标脏/暂停自动保存（远端只比内容、恢复 unchanged/stale）；bd17805b 不接草稿层；f20b7134 素材命令契约；445ef810 无改动不重复提交；5f71282c 45 句译文；b3fac2df 等 W04 信号。
 - [实测] 保存协议：自己的图 2 改 = 2 revision、重开刷新都在；公共图 fork 一份、3 改进同一份；素材库插入 + 撤销可用。
 
 ## 正在做
-- 槽 09:40Z 起不响应（curl 60 s 超时）；等槽恢复后跑 w09-buttons.mjs、w09-theme.mjs（dark/light），然后写交付。
+- 无。交付已写：`verdicts/W09-delivery.md`。
 
 ## 下一步
-- `verdicts/W09-delivery.md`。
+- 等父 agent / 验收位复核；转给 W04 / W02 / W05 和请父 agent 代改的事见交付 §7–§8。
 
 ## 复现命令
 - 按钮：`bash harness/mint.sh | OUT_DIR=/tmp/w09-b THEME=light node harness/run.mjs evidence/W09/scenarios/w09-buttons.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184`
