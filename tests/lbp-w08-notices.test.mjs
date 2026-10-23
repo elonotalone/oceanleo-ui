@@ -1106,6 +1106,9 @@ test("收件箱最上方固定的「通知」行：未读数 + 最新一条标�
 });
 
 const noticesViewStubs = {
+  "../cases/use-owner-cases": dataModule(`
+    export function useOwnerCases(){ return globalThis.__w08Cases ?? { phase: "ready", cases: [] }; }
+  `),
   "../../../i18n/ui/useUI": uiStub,
   "../messages-surface": dataModule(`
     import React from ${JSON.stringify(reactUrl)};
@@ -1118,6 +1121,28 @@ const noticesViewStubs = {
   "./use-notices": noticesHookStub,
 };
 const { NoticesView } = await import(await compileModule("src/shell/messages/notices/NoticesView.tsx", noticesViewStubs));
+
+test("只有真实案件才显示找回入口，旧通知已不在最近列表时仍可打开内容处置", async () => {
+  resetW08();
+  globalThis.__w08Cases = { phase: "ready", cases: [] };
+  let opened = 0;
+  const element = () => React.createElement(NoticesView, { onBack() {}, onCases() { opened += 1; } });
+  const view = await mount(element());
+  assert.equal(view.$("[data-notices-cases]"), null, "没案件不显示");
+  globalThis.__w08Cases = { phase: "loading", cases: [] };
+  await view.rerender(element());
+  assert.equal(view.$("[data-notices-cases]"), null, "加载时不提前显示");
+  globalThis.__w08Cases = { phase: "ready", cases: [{ id: "older-than-200-notices" }] };
+  await view.rerender(element());
+  assert.ok(view.$("[data-notices-cases]"), "真实案件独立于最近通知");
+  await view.click("[data-notices-cases]");
+  assert.equal(opened, 1);
+  globalThis.__w08Cases = { phase: "signed-out", cases: [] };
+  await view.rerender(element());
+  assert.equal(view.$("[data-notices-cases]"), null, "退出后入口清除");
+  await view.unmount();
+  delete globalThis.__w08Cases;
+});
 
 test("通知视图：标题、正文、时间、已读 / 未读；点一条走 openNotice；全部标记已读；返回", async () => {
   const w = resetW08();

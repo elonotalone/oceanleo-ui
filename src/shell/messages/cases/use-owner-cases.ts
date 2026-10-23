@@ -68,9 +68,14 @@ export function useOwnerCases(load: () => Promise<OwnerCase[]> = listMyCases): O
   }, [reload]);
 
   // 在别处登录 / 退出：重取（退出后 401 会落到「请先登录」）。
+  // 刚挂载时的 INITIAL_SESSION 和每小时一次的 TOKEN_REFRESHED 不是「换人了」，不值得再打一次网关。
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onAuth = () => void reload({ quiet: true });
+    const onAuth = (event: Event) => {
+      const kind = (event as CustomEvent<{ event?: string } | undefined>).detail?.event;
+      if (kind === "INITIAL_SESSION" || kind === "TOKEN_REFRESHED") return;
+      void reload({ quiet: true });
+    };
     window.addEventListener(AUTH_STATE_EVENT, onAuth);
     return () => window.removeEventListener(AUTH_STATE_EVENT, onAuth);
   }, [reload]);

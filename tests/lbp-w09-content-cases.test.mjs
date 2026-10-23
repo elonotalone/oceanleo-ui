@@ -47,6 +47,7 @@ for (const [name, value] of Object.entries({
   Element: dom.window.Element,
   Node: dom.window.Node,
   Event: dom.window.Event,
+  CustomEvent: dom.window.CustomEvent,
   MouseEvent: dom.window.MouseEvent,
 })) {
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
@@ -674,6 +675,28 @@ test("未登录（401）：提示登录，按「去登录」打开设置里的�
   });
   assert.equal(view.q("[data-messages-content-cases]").getAttribute("data-phase"), "ready");
   assert.equal(view.all("[data-case-id]").length, 4);
+  await view.unmount();
+});
+
+test("登录状态事件：INITIAL_SESSION / TOKEN_REFRESHED 不重取；SIGNED_IN / SIGNED_OUT 重取，退出后落到「请先登录」", async () => {
+  install();
+  const view = await mount();
+  const fire = async (kind) => {
+    await act(async () => {
+      window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", { detail: { event: kind, userId: "u1" } }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+  };
+  const before = gets().length;
+  await fire("INITIAL_SESSION");
+  await fire("TOKEN_REFRESHED");
+  assert.equal(gets().length, before, "续期不是换人，不打网关");
+  await fire("SIGNED_IN");
+  assert.equal(gets().length, before + 1);
+  globalThis.__casesAuthed = () => ({ ok: false, status: 401, error: "未登录" });
+  await fire("SIGNED_OUT");
+  assert.ok(view.q("[data-cases-signed-out]"), "退出后列表换成「请先登录」");
+  assert.equal(view.q("[data-cases-list]"), null);
   await view.unmount();
 });
 

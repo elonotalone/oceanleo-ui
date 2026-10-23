@@ -6,6 +6,7 @@
 import { useEffect, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ImBackIcon } from "../messages-surface";
+import { useOwnerCases } from "../cases/use-owner-cases";
 import { NoticeBellIcon, NoticeChevronIcon } from "./notice-icons";
 import { formatNoticeTime } from "./notice-present";
 import { noticeActionable, openNotice } from "./open-notice";
@@ -13,9 +14,28 @@ import { noticeStore, useNoticeState } from "./use-notices";
 
 export interface NoticesViewProps {
   onBack: () => void;
+  onCases?: () => void;
 }
 
-export function NoticesView({ onBack }: NoticesViewProps): ReactElement {
+// This lookup is independent of the latest 200 notifications. A case remains
+// reachable after its notification scrolls out of that window or is read.
+function CaseRecovery({ onOpen }: { onOpen: () => void }): ReactElement | null {
+  const tt = useUI();
+  const { phase, cases } = useOwnerCases();
+  if (phase !== "ready" || cases.length === 0) return null;
+  return (
+    <button
+      type="button"
+      data-notices-cases=""
+      onClick={onOpen}
+      className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-medium text-[color:var(--im-accent)] hover:bg-black/5 dark:hover:bg-white/10"
+    >
+      {tt("内容处置")}
+    </button>
+  );
+}
+
+export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement {
   const tt = useUI();
   const state = useNoticeState(true);
   const store = noticeStore();
@@ -157,6 +177,7 @@ export function NoticesView({ onBack }: NoticesViewProps): ReactElement {
         <h2 className="min-w-0 flex-1 truncate px-1 text-[13px] font-semibold tracking-tight text-neutral-900 dark:text-white">
           {tt("通知")}
         </h2>
+        {onCases ? <CaseRecovery onOpen={onCases} /> : null}
         {state.unread > 0 ? (
           <button
             type="button"

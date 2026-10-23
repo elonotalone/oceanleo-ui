@@ -20,7 +20,7 @@ export function MessagesSubView({ view, caseId, onSelectView }: MessagesSubViewP
   if (view === "notices") {
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-leochat-subview="notices">
-        <NoticesView onBack={() => onSelectView("inbox")} />
+        <NoticesView onBack={() => onSelectView("inbox")} onCases={() => onSelectView("cases")} />
       </div>
     );
   }
