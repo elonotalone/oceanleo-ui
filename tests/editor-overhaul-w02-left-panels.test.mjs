@@ -335,7 +335,7 @@ test("materials panel lists the editor-declared types and reports every insert i
   }));
   try {
     assert.equal(globalThis.__materialProps.curatedType, "image", "PDF editor declared images, not PDFs");
-    const { resolveMaterialPanelType } = await import(await compileModule("src/shell/InlineEditorMaterialPanel.tsx", {
+    const { resolveMaterialPanelType, humanMaterialReason } = await import(await compileModule("src/shell/InlineEditorMaterialPanel.tsx", {
       "../i18n/ui/useUI": ui,
       "./MaterialLibrary": dataModule(`export function MaterialLibrary(){ return null; }`),
     }));
@@ -347,12 +347,18 @@ test("materials panel lists the editor-declared types and reports every insert i
     assert.equal(resolveMaterialPanelType({ ...item, kind: "document", meta: {} }, [], ["insert"]), "image", "doc inserts images only");
     assert.equal(resolveMaterialPanelType({ ...item, kind: "video", meta: {} }, [], ["insert"]), "video");
     assert.equal(resolveMaterialPanelType({ ...item, kind: "audio", meta: {} }, [], ["replace"]), "audio");
+    const id = (t) => t;
+    assert.equal(humanMaterialReason("目标编辑器尚未注册 command/history 执行契约。", id), "这个编辑器还不能从素材库直接插入");
+    assert.equal(humanMaterialReason("Insert/Replace 前必须取得 artifactId + revisionId。", id), "这份素材还没存进库，暂时不能插入");
+    assert.equal(humanMaterialReason("网络断了", id), "网络断了");
     await act(async () => { await globalThis.__materialProps.onMaterialAction("insert", { ...item, title: "Logo" }); });
     assert.equal(m.container.querySelector("[data-material-insert-feedback]").dataset.materialInsertFeedback, "ok");
     assert.match(m.container.textContent, /已插入「Logo」/);
     next = { ok: false, error: "当前编辑器不接受这种 artifact type/source。" };
     await act(async () => { await globalThis.__materialProps.onMaterialAction("insert", { ...item, title: "Clip" }); });
     assert.equal(m.container.querySelector("[data-material-insert-feedback]").dataset.materialInsertFeedback, "error");
+    assert.match(m.container.textContent, /这个编辑器用不了这类素材/, "registry jargon is shown in plain words");
+    assert.equal(globalThis.__materialProps.materialActionEvidence, undefined, "no availability source: host fallback");
   } finally { await m.destroy(); }
 });
 

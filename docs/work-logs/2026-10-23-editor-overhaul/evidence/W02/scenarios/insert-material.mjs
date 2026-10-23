@@ -19,7 +19,16 @@ export default async function ({ page, log, shot, helpers, args }) {
   await page.locator('[data-workspace-library-panel="materials"]').first().click();
   const pane = page.locator("[data-editor-fallback-pane], [data-workspace-pane='left'][data-left-panel='tool-detail']").first();
   await pane.waitFor({ state: "visible", timeout: 30000 });
-  const loadedBy = Date.now() + 60000;
+  for (const at of [1500, 4000, 8000]) {
+    await page.waitForTimeout(at === 1500 ? 1500 : 2500);
+    log("pane-at", at, JSON.stringify(await pane.evaluate((root) => {
+      const attrs = new Set();
+      for (const el of root.querySelectorAll("*")) for (const a of el.getAttributeNames()) if (a.startsWith("data-")) attrs.add(a);
+      return { attrs: [...attrs].slice(0, 60), buttons: [...root.querySelectorAll("button")].slice(0, 16).map((b) => (b.getAttribute("aria-label") || b.textContent || "").trim().slice(0, 30)) };
+    })));
+    await shot(`${label}-pane-${at}`);
+  }
+  const loadedBy = Date.now() + 30000;
   while (Date.now() < loadedBy) {
     const loading = await pane.locator("[data-material-shelf-state='loading']").count();
     const cards = await pane.locator("[draggable='true']").count();

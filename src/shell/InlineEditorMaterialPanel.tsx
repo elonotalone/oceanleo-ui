@@ -11,6 +11,36 @@ import type {
   WorkbenchMaterialAction,
 } from "./workbench-material-provider";
 
+/**
+ * 注册表的拒绝理由是写给开发者的（「command/history 契约」「artifactId + revisionId」）。
+ * 面板里给用户看人话；认不出的理由原样交给 humanErrorMessage。
+ */
+export function humanMaterialReason(
+  reason: string,
+  tt: (text: string) => string,
+): string {
+  if (/command\/history|command contract|command executor/i.test(reason)) {
+    return tt("这个编辑器还不能从素材库直接插入");
+  }
+  if (/不接受这种/.test(reason)) return tt("这个编辑器用不了这类素材");
+  if (/artifactId \+ revisionId|耐久 identity|durable identity/i.test(reason)) {
+    return tt("这份素材还没存进库，暂时不能插入");
+  }
+  if (/没有声明这个/.test(reason)) return tt("这个编辑器不支持这个动作");
+  if (/先选中要替换的对象/.test(reason)) return tt("先选中要替换的对象，再点素材");
+  return reason;
+}
+
+function materialFailureText(
+  error: string | undefined,
+  tt: (text: string) => string,
+): string {
+  const raw = String(error || "");
+  const mapped = humanMaterialReason(raw, tt);
+  if (mapped !== raw) return mapped;
+  return tt(humanErrorMessage(raw, tt("这份素材没能插入，请重试")));
+}
+
 function curatedTypeFor(item: LibraryItem): string {
   const format = String(item.meta.format || item.meta.file_ext || "")
     .trim()
@@ -105,12 +135,25 @@ export function InlineEditorMaterialPanel({
           ? { ok: true, text: tt("已插入「{title}」", { title: material.title }) }
           : {
               ok: false,
-              text: tt(humanErrorMessage(result.error, tt("这份素材没能插入，请重试"))),
+              text: materialFailureText(result.error, tt),
             },
       );
       return result;
     },
     [perform, tt],
+  );
+  const availability = materials?.availability;
+  // 灰掉的「插入 / 替换」旁边写的是真原因（人话），不是宿主的通用兜底句。
+  const materialActionEvidence = useCallback(
+    (action: WorkbenchMaterialAction, material: LibraryItem) => {
+      const evidence = availability
+        ? availability(action, material)
+        : { visible: false, available: false, reason: "" };
+      return evidence.available
+        ? evidence
+        : { ...evidence, reason: humanMaterialReason(evidence.reason, tt) };
+    },
+    [availability, tt],
   );
   const curatedType = resolveMaterialPanelType(
     item,
@@ -150,6 +193,7 @@ export function InlineEditorMaterialPanel({
         materialActions={materials?.actions || []}
         onMaterialAction={materials ? onMaterialAction : undefined}
         materialActionAvailable={materials?.canPerform}
+        materialActionEvidence={availability ? materialActionEvidence : undefined}
         primaryMaterialAction={primaryMaterialAction}
         draggableMaterials={Boolean(primaryMaterialAction)}
         onMaterialDragStart={materials?.beginMaterialDrag}
