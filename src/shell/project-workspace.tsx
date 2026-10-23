@@ -667,6 +667,29 @@ export function ProjectModal({
   footerClassName,
 }: ProjectModalProps) {
   const titleId = useId();
+
+  // Escape belongs to the innermost dialog. The tab shown inside a ProjectModal
+  // (plan, assets...) can open its own dialog (todo editor, rename, delete
+  // confirmation) and those do not close on Escape themselves; the shared
+  // Modal, however, closes on any Escape, which would throw the whole dialog
+  // away together with an unsaved draft. This listener is registered before the
+  // shared Modal mounts (it renders nothing until its own effect has run), so
+  // on `document` it runs first and can stop the shared Modal from seeing the
+  // key. React handlers inside the nested dialog already ran earlier in the
+  // bubble, so a nested dialog that handles Escape itself still works.
+  useEffect(() => {
+    if (!open) return;
+    const keepOuterDialogOpen = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const outer = document.getElementById(titleId)?.closest('[role="dialog"]');
+      if (outer?.querySelector('[aria-modal="true"]')) {
+        event.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener("keydown", keepOuterDialogOpen);
+    return () => document.removeEventListener("keydown", keepOuterDialogOpen);
+  }, [open, titleId]);
+
   if (!open) return null;
   const sizeClass =
     PROJECT_MODAL_SIZE_CLASS[size] ?? PROJECT_MODAL_SIZE_CLASS.default;

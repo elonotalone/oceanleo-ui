@@ -425,6 +425,74 @@ test("ProjectModal 默认尺寸不变；wide 约 960px 宽、高随屏幕", asyn
   });
 });
 
+test("ProjectModal 里的页签自己开了对话框（待办编辑、重命名、删除确认）：Esc 不连外层一起关，也不丢草稿", async () => {
+  await withDom(async ({ find, renderRoot, window, escape }) => {
+    let closed = 0;
+    function Harness() {
+      const [nested, setNested] = React.useState(true);
+      return h(
+        ProjectModal,
+        { title: "Plan", size: "wide", onClose: () => (closed += 1), closeLabel: "Close" },
+        // What ProjectPlanTab's TodoEditor looks like from the outside.
+        nested &&
+          h(
+            "section",
+            { role: "dialog", "aria-modal": "true", "data-nested": true },
+            h("input", { "aria-label": "title", defaultValue: "未保存的草稿", "data-draft": true }),
+            h("button", { type: "button", "data-nested-cancel": true, onClick: () => setNested(false) }, "Cancel"),
+          ),
+      );
+    }
+    await renderRoot(h(Harness));
+    assert.ok(find("[data-nested]"));
+
+    await escape();
+    assert.equal(closed, 0, "Escape with a nested dialog open must not close the outer dialog");
+    assert.ok(find("[data-draft]"), "the draft in the nested dialog survives");
+    assert.equal(find("[data-draft]").value, "未保存的草稿");
+
+    // The nested dialog goes away (cancel/save); now Escape belongs to the outer one again.
+    await act(async () =>
+      find("[data-nested-cancel]").dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
+    );
+    assert.equal(find("[data-nested]"), null);
+    await escape();
+    assert.equal(closed, 1);
+  });
+});
+
+test("嵌套对话框自己处理 Esc（React onKeyDown）时，照样收得到", async () => {
+  await withDom(async ({ find, renderRoot, window, escape }) => {
+    let nestedSawEscape = 0;
+    let closed = 0;
+    await renderRoot(
+      h(
+        ProjectModal,
+        { title: "Plan", onClose: () => (closed += 1), closeLabel: "Close" },
+        h(
+          "section",
+          {
+            role: "dialog",
+            "aria-modal": "true",
+            onKeyDown: (event) => {
+              if (event.key === "Escape") nestedSawEscape += 1;
+            },
+          },
+          h("input", { "aria-label": "title", "data-field": true }),
+        ),
+      ),
+    );
+    const field = find("[data-field]");
+    field.focus();
+    await act(async () => {
+      field.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 200));
+    });
+    assert.equal(nestedSawEscape, 1, "React handlers run before the document-level guard");
+    assert.equal(closed, 0, "and the outer dialog stays open");
+  });
+});
+
 test("ProjectModal：点关闭键走 onClose（计划 / 资产弹窗的出口）", async () => {
   await withDom(async ({ find, renderRoot, click, window }) => {
     let closed = 0;
