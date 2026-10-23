@@ -9,8 +9,8 @@ const FIXTURES = path.resolve(HERE, "../../../harness/fixtures");
 
 export default async ({ page, context, log, shot, helpers, args }) => {
   const [mode = "check", locale = "zh", tag = "a"] = args;
-  if (locale === "en") {
-    await context.addCookies([{ name: "NEXT_LOCALE", value: "en", url: new URL("/", page.url() === "about:blank" ? process.env.LEODEV_BASE || "https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com" : page.url()).toString() }]);
+  {
+    await context.addCookies([{ name: "NEXT_LOCALE", value: locale, url: new URL("/", page.url() === "about:blank" ? process.env.LEODEV_BASE || "https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com" : page.url()).toString() }]);
   }
   if (mode === "upload") {
     const dir = `/tmp/w05/${tag}`;
