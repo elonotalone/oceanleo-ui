@@ -933,6 +933,19 @@ test("共用件：collection-chrome 不 import bay 模块；Bay 那份引用同�
   assert.match(menuSelect, /collectionFilterOptionClass/);
 });
 
+test("焦点环预算：按键抑制了轮廓就带 focus-visible 环；清单容器不抑制轮廓（tests/focus-ring-budget 不许新增没补环的 outline-none）", () => {
+  const chrome = source("src/shell/collection-chrome.tsx");
+  const constant = (name) => chrome.match(new RegExp(`export const ${name} =\\s*"([^"]*)"`))[1];
+  const trigger = constant("COLLECTION_FILTER_TRIGGER_CLASS");
+  assert.match(trigger, /\boutline-none\b/);
+  assert.match(trigger, /\bfocus-visible:ring-2\b/, "按键抑制了轮廓，就必须补键盘焦点环");
+  assert.match(trigger, /\bfocus-visible:ring-inset\b/, "环画在里面，不会被横滑的筛选行剪掉");
+  assert.doesNotMatch(constant("COLLECTION_FILTER_MENU_CLASS"), /outline-(none|0|hidden)/);
+  const menuSelect = source("src/shell/menu-select.tsx");
+  const base = menuSelect.match(/const TRIGGER_BASE =\s*"([^"]*)"/)[1];
+  assert.match(base, /\bfocus-visible:ring-2\b/);
+});
+
 test("W01 分表的新词条 17 语齐全、不把汉字抄进非中日韩语种、占位符不丢", async () => {
   const { register } = await import("node:module");
   register("./ts-extension-loader.mjs", import.meta.url);

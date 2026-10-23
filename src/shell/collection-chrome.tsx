@@ -65,9 +65,9 @@ export function collectionFilterTriggerClass(state: { filtered: boolean; open?: 
   return `${COLLECTION_FILTER_TRIGGER_CLASS} ${tone}`;
 }
 
-/** 选项单：白底圆角清单，和触发键同一条浅灰边。 */
+/** 选项单：白底圆角清单，和触发键同一条浅灰边。清单本身可聚焦（tabIndex -1，键盘在它上面），不抑制轮廓——焦点环预算锁不许新增没补环的 outline-none。 */
 export const COLLECTION_FILTER_MENU_CLASS =
-  "z-50 flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg outline-none";
+  "z-50 flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-lg";
 
 /** 选项单里的一行：高亮 = 浅灰底；选中 = 加粗（前面还有勾）；点不动 = 灰字。 */
 export function collectionFilterOptionClass(state: {

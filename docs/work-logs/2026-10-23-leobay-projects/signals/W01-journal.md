@@ -13,3 +13,5 @@
 - 21:42 结论：菜单 zIndex 写行内 2147483500 才盖得住弹窗；Esc 必须在 window 捕获阶段拦（Modal 在 document 冒泡阶段听），否则筛选菜单/选择条一按 Esc 连弹窗一起关——已改三处（MenuSelect、CollectionFilterSelect、BayFilterSelect）。MenuSelect 清单的 click/mousedown 到清单为止（portal 的 React 事件会冒泡给外层行/遮罩）。
 - 21:48 实测：把真 Modal 编进 module-bench 做了集成测试（弹窗里选择条与筛选下拉：盖得住、键盘选、Esc 只关菜单、Tab 还焦点；无菜单时 Esc 关弹窗），lbp-w01 测试 26 条全绿；6 个变异（撤 Esc 拦截 / 撤勾 / 撤 defaultValue / rounded-full / Tab 不还焦点 / 清单不拦点击）都被测试抓住。
 - 21:50 实测：artifact-surface-rendered 3 条红（My Library 类型标签 image_editing 等）在改动前的 /tmp 基线检出里同样 3 条红，非我造成。
+- 22:05 实测：tests/focus-ring-budget 新增一条红是我造成的（COLLECTION_FILTER_MENU_CLASS 带 outline-none 却没补环 → collection-chrome.tsx「新文件冒出 2 处」，一处是导出常量一处是 div）；去掉清单容器的 outline-none（回到改动前的写法）后，焦点环预算的违规名单里不再有我的文件。
+- 22:08 实测：相关 87 份测试里 25 份是红的，逐份跑改动前的 /tmp 基线检出对照：失败的子测试名一致（hit-target-budget / effect-tt-dependency 基线多一条「基线自检」是因为 /tmp 检出不是 git 仓；one-task-library-agent-acceptance 是等待超时型，基线同样 2 红）。hit-target-budget 总数基线 145、现 145 不变，只是每文件登记：menu-select.tsx 新增 2（h-10 / sm 的 h-8），collection-chrome 3→2，BayFilterSelect 1→0。
