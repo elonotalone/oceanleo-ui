@@ -1,8 +1,8 @@
 # CODEX W10 — 表格续验
 
-2026-10-24（本地）。替代旧 W10-delivery 中未完成的保存/离线/素材/模板验收结论。产品源码最终 `18ad8f0b`；本轮只操作内部验收账号，未部署、push、修改运营账号或清除协同房间。
+2026-10-24（本地）。替代旧 W10-delivery 中未完成的保存/离线/素材/模板验收结论。W10 产品源码最终 `18ad8f0b`；本轮只操作内部验收账号，未部署、push、修改运营账号或清除协同房间。
 
-核心保存与编辑场景已通过；最后只读 Library 当前版本预览卡片，等待共享文案短窗口结束后补证。不能把首轮搜索过早被 hydration 清空的场景算卡片通过。
+续验全部完成。最后 Library 卡片在 owner-ready 后查询稳定，真实 img 解码成功，私有 preview grant 同时绑定目标 root 与当前 revision `54274288`，零写入。首轮搜索过早被 hydration 清空已排除，不拿它冒充预览通过或产品故障。
 
 ## 修复
 
@@ -25,6 +25,7 @@
 | public 模板实际 Edit→private fork→两存→close/reopen/reload | 仅一 fork、两次200，全部非覆盖源 cells 与两 mark 保留；公共原件未变 | `/tmp/codex-w10-fork-final/codex-accept.log` |
 | native manifest503 故障注入 | 两次真实拒绝、无替代空白画布；CtrlS 后仍零 staging/revision | `/tmp/codex-w10-source-fail/codex-fail-closed.log` |
 | 深色 | 实际 workbench `rgb(24,24,27)`、stage theme=dark；素材 shelf、图片重开目视确认 | `../evidence/W10/codex-material-dark-reopened.png` |
+| Library 当前版本卡片 | owner-ready 后查询值稳定；img decode/naturalWidth 成功；grant 绑定目标 root/current revision；零版本/fork | `/tmp/codex-w10-library-ready-final/codex-accept.log` |
 
 严格场景均对真实 post-remote cells 逐坐标保留原值；不是仅看截图或未更新的初始 probe。最终 material/fork 场景记录并断言最新 src commit 一致，操作期间无 HMR。个别开发首载 hydration/编译、Next portal 拦截 close 单列为环境记录：仅 portal 明确拦截时调用真实 close button handler，不忽略其他 editor runtime error。
 
@@ -39,6 +40,6 @@
 
 新离线、late-stack、handler once/no-op 回归均先红后绿。实际 XLSX 往返 14/14；watch/material/wiring 聚焦批 33/33；最终 handler/stage/wiring 批 30/30；最终 text-bar 17/17。父独立最终 Grid 四文件 43/43。全仓 suite、最终 tsc 由父统一执行，本交付不另冒充全仓绿。
 
-截图：`../evidence/W10/codex-strict-full-reload.png`、`codex-offline-error.png`、`codex-material-dark-reopened.png`、`codex-public-fork-reopened.png`。可复现脚本：`../evidence/W10/scenarios/{w10-grid,codex-accept,codex-fail-closed}.mjs`；harness mint 后运行，令牌只走 stdin，不写文件。
+截图位于 `../evidence/W10/`：`codex-strict-full-reload.png`、`codex-offline-error.png`、`codex-material-dark-reopened.png`、`codex-public-fork-reopened.png`、`codex-library-current-preview.png`。可复现脚本：`../evidence/W10/scenarios/{w10-grid,codex-accept,codex-fail-closed}.mjs`；harness mint 后运行，令牌只走 stdin，不写文件。
 
-余项：只读卡片 owner-ready 后搜索稳定、真实 img decode、preview grant 绑定当前 root/revision。
+卡片核验的是当前版本的格子概览预览；浮图耐久数据及实际画布重开在 material 场景单独核验，不把卡片概览当作整幅浮图像素一致性证明。首次离线 loader 修复不扩展到其它独立 ExcelJS 入口或一般在线 chunk 故障。W10 无待完成项；全仓最终检查和汇总由父收口。

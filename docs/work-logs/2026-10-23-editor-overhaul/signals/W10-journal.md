@@ -1,5 +1,7 @@
 # W10 journal（每条实测/读码结论一行，UTC）
 
+- 2026-10-23 [Codex最终实测] 18ad8f0b消除Undo/Redo手动bump：实际handler回归每次native移动=1person-write，no-op=0，17/17；stage/wiring批30/30，父最终Grid四文件43/43。material-dedup-final FULLPASS77.7s，三动作三200、native/published状态一致、Undo/Redo editRevision各+1、真实close/reopen图像可见且原cells保持。fork-final FULLPASS75s，UI一fork+两200、重开/reload保原cells和两mark；SQL private2582122f恰3版/acceptance owner/public原件仍1版。library-ready-final FULLPASS34s：owner-ready查询稳定、img解码及当前revision grant绑定、零写。首轮早填搜索被hydration清空不计产品结论；所有Chrome关闭、source/copy窗口释放，CODEX-W10已完成。
+
 - 2026-10-23 [Codex红→绿] 冻结source567be的material场景真实插图1→Undo0、各200通过，但Redo按钮disabled。4f6c7c3c诊断确认native actualHistory={false,true}，publishedHistory={true,false}；无操作期间collab replace。原因是CommandExecuted最后mutation早于原生popUndoToRedo，顶栏没收到稍后栈变更。6ed2d7bd只订阅既有undoRedoStatus$再走原observe，保持baseline/blocked和栈顶引用去重，清理订阅；late-event回归先红后绿，3focused文件33/33。待原生图片整条终验，不把之前半场当最终通过。
 - 2026-10-23 [Codex实测] 最终loader-only offline-stable PASS64.3s：首次offline→error零版本、online一次retry三staging200+revision923610bc200，fullreload新增mark和全部非覆盖原cells保持。source567be全程一致；初始FastRefresh在stage出现前完成，交互区间无HMR。merge-final PASS40.1s，真实mergeData新增/Undo去除，各200，共2版本，无409；数据不变。
 

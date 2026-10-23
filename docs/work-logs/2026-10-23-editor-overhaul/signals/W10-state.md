@@ -2,6 +2,8 @@
 
 ## Codex continuation（2026-10-23）
 
+最终：W10续验全部完成，`verdicts/CODEX-W10.md`。Library owner-ready 再填搜索 PASS34s，真实img decode且preview grant绑定73root/current revision54274288，零写。`18ad8f0b` 后 material-dedup77.7s、fork75s全部PASS；源码/浏览器窗口已释放，不再产品改动。两次最初 native/协同红、首次离线 chunk 毒化及图片Redo晚栈/手动双计数均已实际定位修复，旧误判已纠正。
+
 最新产品源码 `18ad8f0b`：完整 material-dedup-final PASS77.7s（插图/Undo/Redo三版，native/published Redo一致、各history动作editRevision+1，真实close/reopen图片可见、所有原cells保留）；public fork-final PASS75s（一fork、两存、close/reopen/reload全保留）。私有fork `2582122f-6795-4661-9028-50686b8860f7` SQL恰3版、owner=acceptance；公共原件仍1版。offline、merge、源503 failclosed均真PASS。最终剩只读Library卡片，首次搜索过早被hydration清空不算预览红/通过，现等owner-ready再填。最终交付 `verdicts/CODEX-W10.md` 已记录准确版本父链、测试及限制。
 
 最新实测（16:25Z）：父共享修复64657726后，fresh fixture `73b709be-bb23-400d-aea4-e80f206a63e5` 完整 strict PASS。baseline ordinal5→6 `e4f0aa9d`→7 `21690c97`；两次200、零409；实际close/reopen/fullreload均保留 W10a54183/W10b54183 与全部非覆盖原有cells，零额外revision。目视表格非白屏。日志 `/tmp/codex-w10-strict-complete/w10-grid.log`。仍待offline/merge/material/fork最后验收，不能提前算全部完成。
