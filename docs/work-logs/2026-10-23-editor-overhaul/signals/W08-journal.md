@@ -28,3 +28,5 @@
 - 修 replace：`replaceSelectedImage` 在上传前钉住选中图的位置与地址，回来按位置/地址写回（`tests/richdoc-image-replace.test.mjs`）。[实测] 修后 replace ok。
 - [实测] 深色：正文深底、默认字浅色、用户红字保留、高亮压暗、插入抽屉/字体面板深色（`evidence/W08/w08-r2-dark-imagebar.png`）。
 - `tests/advanced-project-autosave.test.mjs` 第 4 条：保存体改名 `saveOnce` 后断言段落起点跟着改（不放松断言）。
+- [实测 浏览器] 公共素材 `74822a67…` → 进编辑器即生成 1 份副本 `e426c567…`（地址栏切过去），两次保存都进它；第二次同样只在草稿层（见 W08-to-W04）。
+- [实测 浏览器] 两档截图齐（editor / 插入 / 批注 / 库卡片 / 文字栏 / 图片栏），深色无浅色岛。交付 `verdicts/W08-delivery.md`。

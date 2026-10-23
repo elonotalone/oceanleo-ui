@@ -12,7 +12,7 @@
 
 ## 正在做
 
-R2：focused tests → 复测 txt / md 保存协议（含断网）→ DB 核对 → 库卡片 → 两档截图 → 按钮点测 → 交付。
+已交付：`verdicts/W08-delivery.md`（10:2xZ）。
 
 ## 复现命令
 
