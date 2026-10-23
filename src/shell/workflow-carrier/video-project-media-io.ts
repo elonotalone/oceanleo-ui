@@ -28,7 +28,7 @@ export async function videoDependencyBlob(reference: Record<string, unknown>, si
   const token = await accessToken();
   const encoded = path.split("/").map(encodeURIComponent).join("/");
   const response = await fetch(`${GATEWAY_BASE}/v1/artifacts/${encodeURIComponent(String(reference.artifactId))}/revisions/${encodeURIComponent(String(reference.revisionId))}/source-dependencies/${encoded}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}, signal, credentials: "omit",
+    headers: token ? { Authorization: `Bearer ${token}` } : {}, signal, credentials: "include",
   });
   if (!response.ok) throw new Error("素材暂时无法读取。");
   const body = await response.json();
