@@ -8,6 +8,8 @@
 - Next: fix proven phantom versions, then strict two-edit/offline/fork/card/bar/theme checks. Shared draft/typecheck/full suite belong to parent.
 - [实测] Phantom fixed: formatted collab hydration key ordering and first clean flush both covered. Strict `/tmp/codex-w07-open-fixed` exit0, 0 revisions POST through open/close/reopen/reload, rev18 unchanged.
 - Current: strict two-real-edits + reopen/reload + offline retry; first two revisions POST200. Next fork/card/bar/theme acceptance and CODEX-W07.
+- [实测] `/tmp/codex-w07-stable` 全协议exit0，真实2次编辑+offline retry共3版，rev22→25，重开和刷新样式均在。现正在fork/card/bar/theme验收收尾。
+- [实测] fork/card收尾通过；现有light/dark文字/图片栏截图已复核、栏源码未改。交付 `verdicts/CODEX-W07.md`；84条focused判据通过。父负责共享栏独立验收/全量检查。
 
 更新时间：2026-10-23 08:25Z（R2 接班）
 

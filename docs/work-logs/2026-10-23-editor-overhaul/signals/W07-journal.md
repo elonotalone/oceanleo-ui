@@ -22,3 +22,5 @@
 - Codex [实测] 进一步定位另一条 phantom：协作hydrate重建格式化文字的对象key顺序改变，旧JSON.stringify比较把相同内容判成编辑；独立格式化deckToEntities/fromEntities往返复现。DeckMutationPolicy改结构比较（数组顺序仍重要）；载入既有版本seed回执，加载中拒绝写出。
 - Codex [实测] 修后 `/tmp/codex-w07-open-fixed` 98.6秒全程打开/关闭/重开/刷新，0 revisions POST。基线rev18未变化。保存真改动场景进行中，已两次POST200。
 - Codex [实测] 父报两份红测已恢复：deck-delivery-family桩隔离新StandaloneEditor循环，15/15；e6私有传输使用真实loadDeckServerDraft的可注入fetch测试边界，保留未发布server draft标脏和较新本地恢复保护。
+- Codex [实测] `/tmp/codex-w07-stable` 完整严格保存协议exit0（150.8秒）：两处格式修改、重开、刷新、离线italic报error、恢复Retry后saved、再重开；恰好3个revision POST200，同root rev22→25，W07 root数不变。上轮被其他owner源码HMR整页重载中断不作验收依据。
+- Codex [实测] `/tmp/codex-w07-fork` exit0：公共源1次fork请求、既有副本同root三次修改恰好3版（rev24→27），地址不变，匹配条目数1→1。`/tmp/codex-w07-card-final` exit0：W07库卡标题正确、首张幻灯片封面1280×960已加载。

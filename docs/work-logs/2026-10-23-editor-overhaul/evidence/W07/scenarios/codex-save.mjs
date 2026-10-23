@@ -54,8 +54,9 @@ export default async function ({ page, context, helpers, log, shot, args }) {
   await shot("offline-error");
   await context.setOffline(false);
   await page.locator("[data-workspace-save-launcher]").first().click();
-  const retry = page.getByText(/click to retry|点击重试|重试|Retry/i).first();
-  if (await retry.isVisible().catch(() => false)) await retry.click();
+  await page.locator('[data-workspace-save-action-id="retry"]:visible').click();
+  const retryStart = Date.now();
+  while (await helpers.saveState(page) === "error" && Date.now() - retryStart < 20000) await page.waitForTimeout(250);
   await saveCycle();
   await page.waitForTimeout(3000);
   assert.equal(writes.length, 3, "offline retry must commit exactly once");
