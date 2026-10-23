@@ -28,6 +28,7 @@ function data(source) {
 function univerStubs() {
   const presets = data(`
     export const LocaleType = { ZH_CN: "zhCN", EN_US: "enUS" };
+  export const IUndoRedoService = "IUndoRedoService";
     export function mergeLocales(...parts) { return Object.assign({}, ...parts); }
     export function getPlainText() { return ""; }
     export function createUniver() {
@@ -51,7 +52,7 @@ function univerStubs() {
   const stubs = { "@univerjs/presets": presets };
   for (const [pkg, name] of Object.entries(names)) {
     stubs[pkg] = data(
-      `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; }`,
+      `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService";`,
     );
     stubs[`${pkg}/locales/zh-CN`] = data(`export default {};`);
     stubs[`${pkg}/lib/index.css`] = data(``);

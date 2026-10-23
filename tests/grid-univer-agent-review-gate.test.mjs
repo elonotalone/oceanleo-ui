@@ -56,6 +56,16 @@ const WRITE_METHODS = new Set([
   "setFontColor",
   "setBackgroundColor",
   "setHorizontalAlignment",
+  // 2026-10-23 统一文字栏（W10）新增的写口：字体、字号、斜体、垂直对齐、换行、边框、清除格式，
+  // 以及下划线 / 删除线走的 `sheet.command.set-style`（端口上的 execute）。
+  "setFontFamily",
+  "setFontSize",
+  "setFontStyle",
+  "setVerticalAlignment",
+  "setWrap",
+  "setBorder",
+  "clearFormat",
+  "execute",
   "setNumberFormat",
   "merge",
   "breakApart",
@@ -106,6 +116,10 @@ const ARGS = {
 const ARG_OVERRIDES = {
   align: { value: "center" },
   "numfmt-preset": { value: "decimal2" },
+  "font-family": { value: "Arial" },
+  "font-size": { value: 12 },
+  "grid-valign": { value: "top" },
+  "grid-border": { value: "all" },
 };
 
 function argsFor(id) {
@@ -171,6 +185,13 @@ function recordingPort() {
     setFontColor: write("setFontColor"),
     setBackgroundColor: write("setBackgroundColor"),
     setHorizontalAlignment: write("setHorizontalAlignment"),
+    setFontFamily: write("setFontFamily"),
+    setFontSize: write("setFontSize"),
+    setFontStyle: write("setFontStyle"),
+    setVerticalAlignment: write("setVerticalAlignment"),
+    setWrap: write("setWrap"),
+    setBorder: write("setBorder"),
+    clearFormat: write("clearFormat"),
     setNumberFormat: write("setNumberFormat"),
     merge: write("merge"),
     breakApart: write("breakApart"),
@@ -226,6 +247,8 @@ function recordingPort() {
       sheet,
       range: makeRange(0, 0),
       selection: { startRow: 0, endRow: 0, startColumn: 0, endColumn: 0 },
+      unitId: "unit-1",
+      execute: write("execute"),
     },
     calls,
     writes: () => calls.filter((call) => WRITE_METHODS.has(call.name)),
@@ -627,7 +650,8 @@ test("§4 describe() 放出 L1/L2，抽样面 ≥10（V3 判据）", () => {
   const specs = gridAgentCommandSpecs();
   assert.ok(specs.length >= 10, `agent 只看得到 ${specs.length} 条指令`);
   const ids = specs.map((spec) => spec.id);
-  for (const id of ["bold", "align", "color", "row-before", "sort-asc"]) {
+  // 「文字色」2026-10-23 起以规范 id `text-color` 放出（旧 id `color` 仍经别名落到同一执行器）。
+  for (const id of ["bold", "align", "text-color", "row-before", "sort-asc"]) {
     assert.ok(ids.includes(id), `L1/L2 的「${id}」agent 调不到`);
   }
   const readOnly = specs.filter((spec) => !spec.mutates).map((spec) => spec.id);

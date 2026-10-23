@@ -207,7 +207,10 @@ test("L1/L2 facade control ids are wired into the Univer selection context", () 
   const ids = gridUniverFacadeControlIds();
   assert.ok(ids.includes("bold"));
   assert.ok(ids.includes("align"));
-  assert.ok(ids.includes("merge-cells"));
+  // 合并是开关：只在选了多格（或已合并）时出现，单个普通格子点它没有效果（不放死按钮）。
+  assert.equal(ids.includes("merge-cells"), false);
+  assert.ok(gridUniverFacadeControlIds({ multiCell: true }).includes("merge-cells"));
+  assert.ok(gridUniverFacadeControlIds({ merged: true }).includes("merge-cells"));
   const context = gridUniverSelectionContext({ revision: 1, kind: "grid-cell" });
   assert.equal(context.version, 1);
   const controlIds = context.controls.map((control) => control.id);

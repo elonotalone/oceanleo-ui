@@ -96,6 +96,7 @@ globalThis.__gridUniverRuntimeCounters = counters;
 const presetsStubUrl = dataModule(`
   const counters = globalThis.__gridUniverRuntimeCounters;
   export const LocaleType = { ZH_CN: "zhCN", EN_US: "enUS" };
+  export const IUndoRedoService = "IUndoRedoService";
   export function mergeLocales(...parts) { return Object.assign({}, ...parts); }
   // snapshot.ts 用它把富文本单元格压成纯文本；替身照 Univer 的实现只拼 body.dataStream。
   export function getPlainText(doc) {
@@ -164,7 +165,7 @@ const presetNames = {
 };
 const stubs = { "@univerjs/presets": presetsStubUrl };
 for (const [pkg, name] of Object.entries(presetNames)) {
-  stubs[pkg] = dataModule(`export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; }`);
+  stubs[pkg] = dataModule(`export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService";`);
   stubs[`${pkg}/locales/zh-CN`] = dataModule(`export default {};`);
   stubs[`${pkg}/lib/index.css`] = dataModule(``);
 }

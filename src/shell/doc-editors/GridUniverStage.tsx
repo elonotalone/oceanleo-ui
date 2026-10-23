@@ -25,8 +25,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { createUniver, LocaleType, mergeLocales } from "@univerjs/presets";
-import { UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
+import { createUniver, IUndoRedoService, LocaleType, mergeLocales } from "@univerjs/presets";
+import { ICanvasColorService, UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
 import UniverPresetSheetsCoreZhCN from "@univerjs/preset-sheets-core/locales/zh-CN";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import { UniverSheetsFilterPreset } from "@univerjs/preset-sheets-filter";
@@ -115,6 +115,8 @@ import { SelectionToolbar } from "../SelectionToolbar";
 import type { EditorMode } from "../hosted-editor/index";
 import type { SelectionCommand } from "../selection-context";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
+import { usePluginTheme } from "../plugin-theme";
+import { useGridUniverLive } from "./grid-univer/use-grid-univer-live";
 import { WorkbenchRouteLoading } from "../advanced-routes/WorkbenchRouteLoading";
 import {
   buildGridDocumentActions,
@@ -268,6 +270,10 @@ export function GridUniverStage({
   const { mode, setMode } = usePluginMode("grid");
   const modeRef = useRef<EditorMode>(mode);
   modeRef.current = mode;
+  // D7：主题只跟随站点（`usePluginTheme` 由外壳解析成 light / dark）。
+  const dark = usePluginTheme("grid").theme === "dark";
+  const darkRef = useRef(dark);
+  darkRef.current = dark;
   const [snapshotReady, setSnapshotReady] = useState(false);
   const [sourceFailed, setSourceFailed] = useState(false);
   const [sourceFailureReason, setSourceFailureReason] = useState("");
@@ -281,8 +287,6 @@ export function GridUniverStage({
   /** 上一次成功载入的文档身份；见 gridShouldSkipSourceReload。 */
   const loadedIdentityRef = useRef<GridLoadIdentity | null>(null);
   const sourceFailedRef = useRef(false);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [xlsxExporting, setXlsxExporting] = useState(false);
@@ -488,6 +492,7 @@ export function GridUniverStage({
             handleRef.current.api,
             structuredClone(snapshotRef.current),
           );
+          live.resetBaseline();
         }
         if (planned.kind === "legacy-stored") {
           legacySheetsRef.current = planned.sheets;
@@ -543,6 +548,7 @@ export function GridUniverStage({
     }
     const preset = gridUniverCorePresetConfig(GRID_UNIVER_DEFAULT_MODE, container);
     const created = createUniver({
+      darkMode: darkRef.current,
       locale: LocaleType.ZH_CN,
       locales: {
         [LocaleType.ZH_CN]: mergeLocales(
@@ -642,6 +648,17 @@ export function GridUniverStage({
     applyChrome(mode);
   }, [applyChrome, mode]);
 
+  // 主题、本人改动判据（撤销栈）、编辑栏取值：见 `grid-univer/use-grid-univer-live.ts`。
+  const live = useGridUniverLive({
+    handleRef,
+    containerRef,
+    ready: snapshotReady,
+    dark,
+    ids: { undo: IUndoRedoService, canvasColor: ICanvasColorService },
+    editBlockedRef,
+    onPersonWrite: bumpHistory,
+  });
+
   useEffect(() => {
     const workbook = handleRef.current?.api.getActiveWorkbook?.();
     (workbook as { setEditable?: (value: boolean) => void } | null)?.setEditable?.(
@@ -665,6 +682,7 @@ export function GridUniverStage({
         if (!api) return;
         const payload = structuredClone(next) as Partial<IWorkbookData>;
         replaceUniverWorkbookWithSnapshot(api, payload);
+        live.resetBaseline();
         snapshotRef.current = payload;
         applyChrome(modeRef.current);
         const workbook = api.getActiveWorkbook?.();
@@ -810,15 +828,12 @@ export function GridUniverStage({
       }
       setStatus("");
       bumpHistory();
-      setCanUndo(true);
-      setCanRedo(false);
     },
     [bumpHistory, collabBlocked, collabPhase, livePort, readonly, sourceFailureReason, tt],
   );
 
   const undo = useCallback(() => {
     void handleRef.current?.api.undo?.();
-    setCanRedo(true);
     bumpHistory();
   }, [bumpHistory]);
   const redo = useCallback(() => {
@@ -1214,12 +1229,19 @@ export function GridUniverStage({
 
   const selectionContext = useMemo(
     () =>
-      gridUniverSelectionContext({
-        revision: editRevision + toolbarEpoch,
-        kind: "grid-cell",
-        tt,
+      ({
+        ...gridUniverSelectionContext({
+          revision: editRevision + toolbarEpoch,
+          kind: "grid-cell",
+          tt,
+          selection: live.read?.selection,
+          sheetId: live.read?.sheetId,
+          style: live.read?.style,
+          numberType: live.read?.numberType,
+        }),
+        bar: "text" as const,
       }),
-    [editRevision, toolbarEpoch, tt],
+    [editRevision, live.read, toolbarEpoch, tt],
   );
 
   return (
@@ -1250,8 +1272,8 @@ export function GridUniverStage({
             />
           ),
         history: {
-          canUndo,
-          canRedo,
+          canUndo: live.history.canUndo,
+          canRedo: live.history.canRedo,
           undo,
           redo,
         },
@@ -1360,6 +1382,7 @@ export function GridUniverStage({
               if (!api) return false;
               // 先建新簿再卸旧簿：先卸会让 Univer 空窗，新表常常不画。
               replaceUniverWorkbookWithSnapshot(api, structuredClone(payload));
+              live.resetBaseline();
               snapshotRef.current = payload as Partial<IWorkbookData>;
               applyChrome(mode);
               return true;

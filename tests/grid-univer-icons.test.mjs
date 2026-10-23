@@ -60,9 +60,11 @@ test("real generated grid controls render named glyphs for compact and overflow 
   assert.equal(contexts[1].kind, "grid-range");
 
   for (const context of contexts) {
+    // 选区范围决定合并开关在不在（单格不出），其余与 facade 控件表逐项一致。
+    const multiCell = context.kind === "grid-range";
     assert.deepEqual(
       context.controls.map(({ id }) => id),
-      gridUniverFacadeControlIds(),
+      gridUniverFacadeControlIds({ multiCell }),
       "the rendered toolbar must come from every runnable grid facade control",
     );
 
