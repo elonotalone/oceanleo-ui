@@ -1,0 +1,86 @@
+[21.6s] pdf report {"htmlClass":"dark","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","pages","history","collab","save-state","more","maximize","close"],"tabs":["artifact:Edit*","pro:Pro edit"],"editorTheme":"dark","themedRoots":["dark"],"adapter":"pdf","saveState":"saved","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(14, 14, 17)"}
+[21.7s] screenshot /tmp/w01/r2-dark/dark-pdf-01-header.png
+[27.1s] screenshot /tmp/w01/r2-dark/dark-pdf-02-tab-pro.png
+[31.5s] pdf tabs ["pro:selected:rows=1:theme=dark","back-artifact:selected"]
+[32.2s] pdf more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Remove from favorites:icon","download:Download:icon"]
+[32.3s] screenshot /tmp/w01/r2-dark/dark-pdf-03-more.png
+[32.4s] pdf formats ["pdf-download:Download PDFDefault"]
+[32.5s] screenshot /tmp/w01/r2-dark/dark-pdf-04-download-menu.png
+[32.6s] pdf download [W01] sample.pdf
+[33.7s] screenshot /tmp/w01/r2-dark/dark-pdf-05-share.png
+[33.7s] pdf share {"feedback":["beside-more-notice:Copied"],"clipboard":"https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/library?item=6334d8f0-7958-4cd8-ab9c-6b3c8d4d813c"}
+[37.6s] screenshot /tmp/w01/r2-dark/dark-pdf-06-favorite-feedback.png
+[38.3s] pdf favorite {"before":"true","after":"false","label":"Favorite","feedback":["beside-more-notice:Removed from favorites"]}
+[38.4s] screenshot /tmp/w01/r2-dark/dark-pdf-06-favorite.png
+[39.7s] pdf invite window-opened
+[39.8s] screenshot /tmp/w01/r2-dark/dark-pdf-07-invite.png
+[41.6s] pdf replay window-opened
+[41.7s] screenshot /tmp/w01/r2-dark/dark-pdf-07-replay.png
+[64.8s] screenshot /tmp/w01/r2-dark/dark-pdf-08-auto-light.png
+[66.3s] screenshot /tmp/w01/r2-dark/dark-pdf-08-auto-dark.png
+[66.3s] pdf live-follow ["light:html=light:editor=light:roots=light:headerBg=rgba(0, 0, 0, 0)","dark:html=dark:editor=dark:roots=dark:headerBg=rgba(0, 0, 0, 0)"]
+[129.5s] grid report {"htmlClass":"dark univer-dark","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","pages","history","collab","save-state","more","maximize","close"],"tabs":["artifact:Edit*","pro:Pro edit"],"editorTheme":"dark","themedRoots":["dark"],"adapter":"grid","saveState":"unconfirmed","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(14, 14, 17)"}
+[129.5s] screenshot /tmp/w01/r2-dark/dark-grid-01-header.png
+[135.1s] screenshot /tmp/w01/r2-dark/dark-grid-02-tab-pro.png
+[139.4s] grid tabs ["pro:selected:rows=1:theme=dark","back-artifact:selected"]
+[140.5s] grid more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Remove from favorites:icon","download:Download:icon"]
+[140.6s] screenshot /tmp/w01/r2-dark/dark-grid-03-more.png
+[140.7s] grid formats ["grid-export-xlsx:Download Excel 工作簿 (.xlsx) directlyDefault","grid-export-csv:Download 当前工作表逗号分隔 (.csv)","grid-export-pdf:Download PDF 文件 (.pdf)"]
+[140.9s] screenshot /tmp/w01/r2-dark/dark-grid-04-download-menu.png
+[141.2s] grid download [W01] sample.xlsx.xlsx
+[142.2s] screenshot /tmp/w01/r2-dark/dark-grid-05-share.png
+[142.2s] grid share {"feedback":["beside-more-notice:Copied"],"clipboard":"https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/library?item=39c6a3c8-bcde-4288-a580-ab364bc30e7a"}
+[165.6s] screenshot /tmp/w01/r2-dark/dark-grid-06-favorite-feedback.png
+[166.3s] grid favorite {"before":"true","after":"true","label":"Remove from favorites","feedback":["beside-more-error:素材请求超时，请重试。"]}
+[166.3s] screenshot /tmp/w01/r2-dark/dark-grid-06-favorite.png
+[167.7s] grid invite window-opened
+[167.8s] screenshot /tmp/w01/r2-dark/dark-grid-07-invite.png
+[169.4s] grid replay window-opened
+[169.5s] screenshot /tmp/w01/r2-dark/dark-grid-07-replay.png
+[251.2s] pencil-click TimeoutError: locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator('button[aria-label^="编辑「"], but
+[341.2s] header not up (attempt 1 )
+[355.2s] deck report {"htmlClass":"dark","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","history","collab","save-state","more","maximize","close"],"tabs":[],"editorTheme":"dark","themedRoots":["dark"],"adapter":"deck","saveState":"saved","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(14, 14, 17)"}
+[355.3s] screenshot /tmp/w01/r2-dark/dark-deck-01-header.png
+[356.1s] deck more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Remove from favorites:icon","download:Download:icon"]
+[356.2s] screenshot /tmp/w01/r2-dark/dark-deck-03-more.png
+[356.3s] deck formats ["deck-export-pptx:直接下载 PowerPoint 演示文稿 (.pptx)Default","deck-export-pdf:下载 PDF 文件 (.pdf)","deck-export-json:下载 可继续编辑的工程文件 (.json)"]
+[356.4s] screenshot /tmp/w01/r2-dark/dark-deck-04-download-menu.png
+[356.6s] deck download [W01] sample.pptx.pptx
+[357.9s] screenshot /tmp/w01/r2-dark/dark-deck-05-share.png
+[357.9s] deck share {"feedback":["beside-more-notice:Copied"],"clipboard":"https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/library?item=fa40a165-f5f2-41ad-b998-c9dc6617d629"}
+[362.2s] screenshot /tmp/w01/r2-dark/dark-deck-06-favorite-feedback.png
+[362.9s] deck favorite {"before":"true","after":"false","label":"Favorite","feedback":["beside-more-notice:Removed from favorites"]}
+[363.0s] screenshot /tmp/w01/r2-dark/dark-deck-06-favorite.png
+[364.5s] deck invite window-opened
+[364.7s] screenshot /tmp/w01/r2-dark/dark-deck-07-invite.png
+[366.4s] deck replay window-opened
+[366.5s] screenshot /tmp/w01/r2-dark/dark-deck-07-replay.png
+[391.4s] game report {"htmlClass":"dark","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","pages","history","save-state","more","maximize","close"],"tabs":["artifact:Edit*","code:Code"],"editorTheme":"dark","themedRoots":["dark"],"adapter":"game","saveState":"saved","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(14, 14, 17)"}
+[391.5s] screenshot /tmp/w01/r2-dark/dark-game-01-header.png
+[396.7s] screenshot /tmp/w01/r2-dark/dark-game-02-tab-code.png
+[400.8s] game tabs ["code:selected:rows=1:theme=dark","back-artifact:selected"]
+[401.5s] game more ["share:Share:icon","favorite:Favorite:icon"]
+[401.6s] screenshot /tmp/w01/r2-dark/dark-game-03-more.png
+[451.4s] console.error Failed to load resource: the server responded with a status of 410 ()
+[454.9s] video report {"htmlClass":"dark","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","history","save-state","more","maximize","close"],"tabs":[],"editorTheme":"dark","themedRoots":["dark"],"adapter":"video-timeline","saveState":"unconfirmed","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(14, 14, 17)"}
+[454.9s] screenshot /tmp/w01/r2-dark/dark-video-01-header.png
+[455.7s] video more ["share:Share:icon","favorite:Favorite:icon","download:Download:icon"]
+[455.8s] screenshot /tmp/w01/r2-dark/dark-video-03-more.png
+[455.8s] video formats ["video-download-mp4:MP4 视频 (.mp4)Default:disabled","video-download-webm:WebM 视频 (.webm):disabled"]
+[455.9s] screenshot /tmp/w01/r2-dark/dark-video-04-download-menu.png
+[457.1s] console.error Failed to load resource: the server responded with a status of 500 ()
+[457.8s] console.error Failed to load resource: the server responded with a status of 500 ()
+[465.5s] console.error Failed to load resource: the server responded with a status of 500 ()
+[607.4s] FAILED page.goto: Timeout 150000ms exceeded.
+Call log:
+  - navigating to "https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/library?item=6b16c807-da26-4fe5-be93-ef3e4c9c60ee", waiting until "domcontentloaded"
+    at Module.gotoApp (/root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/harness/session.mjs:122:14)
+    at openEditor (/root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/evidence/W01/scenarios/accept.mjs:15:17)
+    at Module.default (/root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/evidence/W01/scenarios/accept.mjs:120:17)
+    at async file:///root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/harness/run.mjs:26:3
+[628.4s] console.error Access to fetch at 'https://api.dev.oceanleo.com/v1/models/groups' from origin 'https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[628.4s] console.error Failed to load resource: net::ERR_FAILED
+[628.4s] console.error Access to fetch at 'https://api.dev.oceanleo.com/v1/models/groups' from origin 'https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[628.4s] console.error Failed to load resource: net::ERR_FAILED

@@ -1,0 +1,42 @@
+[18.7s] pdf report {"htmlClass":"light","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","pages","history","collab","save-state","more","maximize","close"],"tabs":["artifact:Edit*","pro:Pro edit"],"editorTheme":"light","themedRoots":["light"],"adapter":"pdf","saveState":"unconfirmed","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(243, 244, 246)"}
+[18.8s] screenshot /tmp/w01/r2-light/light-pdf-01-header.png
+[23.9s] screenshot /tmp/w01/r2-light/light-pdf-02-tab-pro.png
+[28.1s] pdf tabs ["pro:selected:rows=1:theme=light","back-artifact:selected"]
+[29.1s] pdf more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Favorite:icon","download:Download:icon"]
+[29.3s] screenshot /tmp/w01/r2-light/light-pdf-03-more.png
+[29.5s] pdf formats ["pdf-download:Download PDFDefault:disabled"]
+[29.7s] screenshot /tmp/w01/r2-light/light-pdf-04-download-menu.png
+[37.4s] console.error Failed to load resource: net::ERR_FILE_NOT_FOUND
+[37.4s] pdf download [W01] sample.pdf
+[38.1s] screenshot /tmp/w01/r2-light/light-pdf-05-share.png
+[38.1s] pdf share {"feedback":["beside-more-notice:Copied"],"clipboard":"https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/library?item=6334d8f0-7958-4cd8-ab9c-6b3c8d4d813c"}
+[42.1s] screenshot /tmp/w01/r2-light/light-pdf-06-favorite-feedback.png
+[42.7s] pdf favorite {"before":"false","after":"true","label":"Remove from favorites","feedback":["beside-more-notice:Added to favorites"]}
+[42.8s] screenshot /tmp/w01/r2-light/light-pdf-06-favorite.png
+[43.9s] pdf invite window-opened
+[44.0s] screenshot /tmp/w01/r2-light/light-pdf-07-invite.png
+[45.6s] pdf replay window-opened
+[45.7s] screenshot /tmp/w01/r2-light/light-pdf-07-replay.png
+[95.3s] screenshot /tmp/w01/r2-light/light-pdf-08-auto-dark.png
+[96.9s] screenshot /tmp/w01/r2-light/light-pdf-08-auto-light.png
+[96.9s] pdf live-follow ["dark:html=dark:editor=dark:roots=dark:headerBg=rgba(0, 0, 0, 0)","light:html=light:editor=light:roots=light:headerBg=rgba(0, 0, 0, 0)"]
+[217.2s] header not up (attempt 1 )
+[307.3s] header not up (attempt 2 )
+[397.3s] header not up (attempt 3 )
+[397.3s] grid NO HEADER
+[397.4s] screenshot /tmp/w01/r2-light/light-grid-noheader.png
+[436.0s] deck report {"htmlClass":"light","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","history","collab","save-state","more","maximize","close"],"tabs":[],"editorTheme":"light","themedRoots":["light"],"adapter":"deck","saveState":"saved","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(243, 244, 246)"}
+[448.5s] screenshot /tmp/w01/r2-light/light-deck-01-header.png
+[458.0s] deck more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Favorite:icon","download:Download:icon"]
+[464.4s] screenshot /tmp/w01/r2-light/light-deck-03-more.png
+[464.6s] deck formats ["deck-export-pptx:直接下载 PowerPoint 演示文稿 (.pptx)Default","deck-export-pdf:下载 PDF 文件 (.pdf)","deck-export-json:下载 可继续编辑的工程文件 (.json)"]
+[490.9s] screenshot /tmp/w01/r2-light/light-deck-04-download-menu.png
+[503.4s] deck download [W01] sample.pptx.pptx
+[545.6s] FAILED page.screenshot: Timeout 30000ms exceeded.
+Call log:
+  - taking page screenshot
+  - waiting for fonts to load...
+  - fonts loaded
+    at shot (/root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/harness/session.mjs:111:16)
+    at Module.default (/root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/evidence/W01/scenarios/accept.mjs:196:17)
+    at async file:///root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/harness/run.mjs:26:3

@@ -1,0 +1,71 @@
+[27.3s] grid report {"htmlClass":"light","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","pages","history","collab","save-state","more","maximize","close"],"tabs":["artifact:Edit*","pro:Pro edit"],"editorTheme":"light","themedRoots":["light"],"adapter":"grid","saveState":"saved","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(243, 244, 246)"}
+[27.4s] screenshot /tmp/w01/r2-light2/light-grid-01-header.png
+[33.2s] screenshot /tmp/w01/r2-light2/light-grid-02-tab-pro.png
+[37.7s] grid tabs ["pro:selected:rows=1:theme=light","back-artifact:selected"]
+[38.5s] grid more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Favorite:icon","download:Download:icon"]
+[38.6s] screenshot /tmp/w01/r2-light2/light-grid-03-more.png
+[38.6s] grid formats ["grid-export-xlsx:Download Excel 工作簿 (.xlsx) directlyDefault","grid-export-csv:Download 当前工作表逗号分隔 (.csv)","grid-export-pdf:Download PDF 文件 (.pdf)"]
+[38.8s] screenshot /tmp/w01/r2-light2/light-grid-04-download-menu.png
+[39.1s] grid download [W01] sample.xlsx.xlsx
+[39.7s] screenshot /tmp/w01/r2-light2/light-grid-05-share.png
+[39.7s] grid share {"feedback":["beside-more-notice:Copied"],"clipboard":"https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/library?item=39c6a3c8-bcde-4288-a580-ab364bc30e7a"}
+[47.3s] screenshot /tmp/w01/r2-light2/light-grid-06-favorite-feedback.png
+[48.0s] grid favorite {"before":"false","after":"true","label":"Remove from favorites","feedback":["beside-more-notice:Added to favorites"]}
+[48.1s] screenshot /tmp/w01/r2-light2/light-grid-06-favorite.png
+[49.7s] grid invite window-opened
+[49.8s] screenshot /tmp/w01/r2-light2/light-grid-07-invite.png
+[51.5s] grid replay window-opened
+[51.6s] screenshot /tmp/w01/r2-light2/light-grid-07-replay.png
+[79.8s] deck report {"htmlClass":"light","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","history","collab","save-state","more","maximize","close"],"tabs":[],"editorTheme":"light","themedRoots":["light"],"adapter":"deck","saveState":"saved","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(243, 244, 246)"}
+[79.9s] screenshot /tmp/w01/r2-light2/light-deck-01-header.png
+[80.7s] deck more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Favorite:icon","download:Download:icon"]
+[80.8s] screenshot /tmp/w01/r2-light2/light-deck-03-more.png
+[80.9s] deck formats ["deck-export-pptx:直接下载 PowerPoint 演示文稿 (.pptx)Default","deck-export-pdf:下载 PDF 文件 (.pdf)","deck-export-json:下载 可继续编辑的工程文件 (.json)"]
+[81.0s] screenshot /tmp/w01/r2-light2/light-deck-04-download-menu.png
+[81.3s] deck download [W01] sample.pptx.pptx
+[82.1s] screenshot /tmp/w01/r2-light2/light-deck-05-share.png
+[82.1s] deck share {"feedback":["beside-more-notice:Copied"],"clipboard":"https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/library?item=fa40a165-f5f2-41ad-b998-c9dc6617d629"}
+[88.7s] screenshot /tmp/w01/r2-light2/light-deck-06-favorite-feedback.png
+[89.4s] deck favorite {"before":"false","after":"true","label":"Remove from favorites","feedback":["beside-more-notice:Added to favorites"]}
+[89.6s] screenshot /tmp/w01/r2-light2/light-deck-06-favorite.png
+[90.8s] deck invite window-opened
+[90.9s] screenshot /tmp/w01/r2-light2/light-deck-07-invite.png
+[92.7s] deck replay window-opened
+[92.9s] screenshot /tmp/w01/r2-light2/light-deck-07-replay.png
+[128.9s] game report {"htmlClass":"light","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","pages","history","save-state","more","maximize","close"],"tabs":["artifact:Edit*","code:Code"],"editorTheme":"light","themedRoots":["light"],"adapter":"game","saveState":"saved","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(243, 244, 246)"}
+[129.0s] screenshot /tmp/w01/r2-light2/light-game-01-header.png
+[134.2s] screenshot /tmp/w01/r2-light2/light-game-02-tab-code.png
+[138.3s] game tabs ["code:selected:rows=1:theme=light","back-artifact:selected"]
+[139.1s] game more ["share:Share:icon","favorite:Favorite:icon"]
+[139.2s] screenshot /tmp/w01/r2-light2/light-game-03-more.png
+[164.4s] console.error Failed to load resource: the server responded with a status of 410 ()
+[164.7s] video report {"htmlClass":"light","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","history","collab","save-state","more","maximize","close"],"tabs":[],"editorTheme":"light","themedRoots":["light"],"adapter":"video-timeline","saveState":"unconfirmed","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(243, 244, 246)"}
+[164.8s] screenshot /tmp/w01/r2-light2/light-video-01-header.png
+[165.6s] video more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Favorite:icon","download:Download:icon"]
+[165.6s] screenshot /tmp/w01/r2-light2/light-video-03-more.png
+[165.7s] video formats ["video-download-mp4:MP4 视频 (.mp4)Default:disabled","video-download-webm:WebM 视频 (.webm):disabled"]
+[165.8s] screenshot /tmp/w01/r2-light2/light-video-04-download-menu.png
+[176.9s] console.error Failed to load resource: the server responded with a status of 500 ()
+[179.2s] console.error Failed to load resource: the server responded with a status of 500 ()
+[196.2s] FAILED locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator('[data-workspace-more-menu] [data-more-menu-entry="invite"]').first()
+    - locator resolved to <button tabindex="-1" type="button" role="menuitem" data-leo-button="ghost" data-leo-button-size="lg" data-more-menu-entry="invite" class="inline-flex shrink-0 select-none items-center font-medium leading-none active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40 aria-disabled:cursor-default aria-disabled:opacity-60 rounded-lg justify-start text-left h-11 min-w-11 gap-2 px-4 text-[13px] border border-transparent text-[var(--pchrome-ink-mid,var(--awb-muted,var(--fg-2,#57534e)))] hover:bg…>…</button>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not stable
+    - retrying click action
+    - waiting 20ms
+    - waiting for element to be visible, enabled and stable
+    - element is not stable
+      - waiting 100ms
+      - waiting for element to be visible, enabled and stable
+      - element is not visible
+       - waiting 500ms
+       - waiting for element to be visible, enabled and stable
+       - element is not visible
+  - retrying click action
+    - waiting 500ms
+    at Module.default (/root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/evidence/W01/scenarios/accept.mjs:234:15)
+    at async file:///root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/harness/run.mjs:26:3
+[197.6s] screenshot /tmp/w01/r2-light2/failure.png
