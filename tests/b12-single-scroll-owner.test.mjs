@@ -27,8 +27,6 @@ test("各编辑器同位置左栏面板不再自建滚动、也不再撑满父�
     ["shell/doc-editors/DeckControls.tsx", "DeckDesignPanel"],
     ["shell/doc-editors/RichDocControls.tsx", "RichDocControls"],
     ["shell/image-editor/FabricImageControls.tsx", "FabricImageControls"],
-    ["shell/image-editor/FabricImageControls.tsx", "FabricImageFilterPanel"],
-    ["shell/media-editors/PdfControls.tsx", "PdfControls"],
     ["shell/media-editors/Model3DControls.tsx", "Model3DControls"],
     ["shell/media-editors/AudioWorkbenchView.tsx", "AudioControls"],
     ["shell/video-editor/VideoTimelineControls.tsx", "VideoTimelineControls"],
@@ -54,3 +52,13 @@ test("各编辑器同位置左栏面板不再自建滚动、也不再撑满父�
   }
 });
 
+test("PDF 原生页栏只在舞台内独立滚动，不占共享左栏", async () => {
+  const rail = await source("shell/media-editors/PdfControls.tsx");
+  assert.match(rail, /<nav[\s\S]*?data-pdf-page-rail[\s\S]*?overflow-y-auto/);
+  for (const file of ["shell/advanced-routes/PdfRoute.tsx", "shell/media-editors/PdfWorkbench.tsx"]) {
+    const text = await source(file);
+    assert.match(text, /<PdfControls[\s\S]*?<PdfStage/);
+    assert.match(text, /min-h-0/);
+    assert.doesNotMatch(text, /leftPanel=\{[\s\S]{0,100}<PdfControls/);
+  }
+});

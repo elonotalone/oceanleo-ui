@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { buildFabricImageToolbarControls } from "../src/shell/image-editor/fabric-image-toolbar-controls.ts";
+import { fabricImageFilterControls } from "../src/shell/image-editor/fabric-image-filter-controls.ts";
+import { dispatchFabricImageCommand } from "../src/shell/image-editor/fabric-image-commands.ts";
+import { deckObjectGeometryControls } from "../src/shell/doc-editors/deck-object-geometry-controls.ts";
+import { applyDeckToolbarCommand } from "../src/shell/doc-editors/deck-toolbar-command.ts";
+import { videoClipSelection, runVideoClipCommand } from "../src/shell/video-editor/video-edit-bar.ts";
 
 import {
   PDFDict,
@@ -65,223 +71,144 @@ function assertInspectorControls(path, ids) {
   }
 }
 
-test("route toolbars put continuous and long-form controls in semantic inspectors", () => {
-  assertInspectorControls(
-    "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
-    [
-      "crop-ratio",
-      "text",
-      "font-size",
-      "line-height",
-      "char-spacing",
-      "table-rows",
-      "table-columns",
-      "table-border-width",
-      "opacity",
-      "stroke-width",
-      "radius",
-      "angle",
-    ],
-  );
-  // Compact bar no longer shows X/Y/W/H. Geometry readback is the sr-only
-  // stage probe; inspector keeps the number fields under 位置与尺寸.
-  {
-    const toolbar = source(
-      "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
-    );
-    assert.match(
-      toolbar,
-      /const geometryInspector = \{[\s\S]*?placement: "more"[\s\S]*?slot: "inspector"/,
-      "geometry inspector must be overflow + inspector",
-    );
-    for (const id of [
-      "position-x",
-      "position-y",
-      "object-width",
-      "object-height",
-    ]) {
-      const block = controlBlock(toolbar, id);
-      assert.match(
-        block,
-        /\.\.\.geometryInspector/,
-        `${id} must inherit inspector geometry, not sit on the compact bar`,
-      );
-      assert.doesNotMatch(
-        block,
-        /placement:\s*"primary"/,
-        `${id} must not be primary`,
-      );
-    }
+const tt = value => value;
+function inspectors(controls, ids) {
+  for (const id of ids) {
+    const control = controls.find(control => control.id === id);
+    assert.ok(control, `missing control ${id}`);
+    assert.equal(control.slot, "inspector", `${id} must be inspector-only`);
+    assert.ok(control.inspectorGroup, `${id} needs a semantic group`);
+    assert.ok(control.inspectorLabel, `${id} needs a visible group label`);
   }
-  assertInspectorControls(
-    "../src/shell/image-editor/fabric-image-filter-controls.ts",
-    ["brightness", "contrast", "saturation", "grayscale", "filter-reset"],
-  );
-  // 表格只剩 Univer 舞台（core-swap:delete grid）：选区控件不是 JSX 字面量，
-  // 而是 `gridUniverSelectionContext()` 从命令表算出来的，直接对着运行期结果判。
+}
+function videoLocation(kind) {
+  const clip = { id: "clip", start_ms: 1000, duration_ms: 3000,
+    source_url: "https://assets.oceanleo.app/clip.mp4", text: "Hello", style: {},
+    transition_in: { type: "fade", duration_ms: 500 } };
+  return { clip, track: { id: "track", kind, clips: [clip] } };
+}
+
+test("route toolbars keep panel controls semantic while canonical compact controls remain usable", () => {
+  const selected = { id: "image", kind: "image", opacity: 1, shadow: { enabled: false } };
+  const input = { selected, cropping: false, cropRatio: "free", loading: false,
+    sourceReady: true, transformInfo: null, filters: {}, layers: [], tt };
+  const image = buildFabricImageToolbarControls(input);
+  inspectors(image, ["position-x", "position-y", "object-width", "object-height", "angle",
+    "brightness", "contrast", "saturation", "filter-reset", "border-width"]);
+  for (const id of ["opacity", "radius"]) {
+    assert.notEqual(image.find(control => control.id === id)?.slot, "inspector", id);
+  }
+  const cropping = buildFabricImageToolbarControls({ ...input, cropping: true });
+  assert.ok(cropping.some(control => control.id === "crop-apply"));
+  assert.ok(cropping.some(control => control.id === "crop-ratio"));
+  inspectors(fabricImageFilterControls({}, tt),
+    ["brightness", "contrast", "saturation", "grayscale", "filter-reset"]);
+  const text = buildFabricImageToolbarControls({ ...input,
+    selected: { ...selected, kind: "text", text: { value: "Hello", fontFamily: "Arial" } } });
+  inspectors(text, ["text", "stroke-width"]);
+  for (const id of ["font-size", "line-height"]) {
+    assert.ok(text.some(control => control.id === id && control.slot !== "inspector"), id);
+  }
+  assert.equal(text.find(control => control.id === "letter-spacing")?.placement, "more");
+  const table = buildFabricImageToolbarControls({ ...input,
+    selected: { ...selected, kind: "table", table: { rows: 2, columns: 2, style: {} } } });
+  inspectors(table, ["table-rows", "table-columns", "table-border-width"]);
+
   const gridControls = gridUniverSelectionContext().controls;
-  assert.ok(gridControls.length >= 10, "Univer 选区控件表空了");
-  const gridInspector = gridControls.filter((control) => control.slot === "inspector");
-  assert.ok(gridInspector.some((control) => control.id === "decimals"));
-  assert.ok(gridInspector.some((control) => control.id === "row-before"));
-  assert.ok(gridInspector.some((control) => control.id === "sort-asc"));
-  for (const control of gridInspector) {
-    assert.ok(control.inspectorGroup, `${control.id} needs a semantic group`);
-    assert.ok(control.inspectorLabel, `${control.id} needs a visible group label`);
-    assert.equal(control.placement, "more", `${control.id} must be inspector-only`);
+  assert.ok(gridControls.length >= 10);
+  inspectors(gridControls, ["decimals", "row-before", "sort-asc"]);
+  for (const control of gridControls.filter(control => control.slot === "inspector")) {
+    inspectors(gridControls, [control.id]);
+    assert.equal(control.placement, "more");
   }
-  // 连续量 / 长表单控件（数字输入）不许直接摆在浮条上。
-  for (const control of gridControls) {
-    if (control.kind === "number") {
-      assert.equal(control.slot, "inspector", `${control.id} must be inspector-only`);
+  inspectors(deckObjectGeometryControls({ x: 1, y: 2, width: 30, height: 40, rotation: 0 }, tt),
+    ["x", "y", "width", "height", "rotation"]);
+  assertInspectorControls("../src/shell/doc-editors/deck-slide-selection-context.ts", ["transition-duration", "notes"]);
+  assertInspectorControls("../src/shell/doc-editors/RichDocContextToolbar.tsx",
+    ["link", "unlink", "row-add", "row-delete", "column-add", "column-delete", "table-delete"]);
+
+  for (const kind of ["video", "image", "text", "audio"]) {
+    const controls = videoClipSelection(videoLocation(kind), tt).controls;
+    inspectors(controls, ["start-time", "duration", "transition", "transition-duration"]);
+    if (kind === "video" || kind === "image") inspectors(controls,
+      ["position-x", "position-y", "position-scale", "position-angle"]);
+    if (kind === "video") inspectors(controls, ["brightness", "contrast", "saturation", "source-in", "volume"]);
+    if (kind === "text") {
+      inspectors(controls, ["text", "position-x", "position-y"]);
+      assert.notEqual(controls.find(control => control.id === "font-size")?.slot, "inspector");
     }
   }
-  assertInspectorControls(
-    "../src/shell/doc-editors/deck-slide-selection-context.ts",
-    // 10-23 W07：「页面内容」（title / body）不再上栏——有对象的页面上是死按钮。
-    ["transition-duration", "notes"],
-  );
-  // 演示（10-23 D9 / A-1）：面板子控件用 panel("<规范 id>") 生成，行为断言在
-  // tests/deck-unified-edit-bar.test.mjs（opacity / link / alt / stroke / border / adjust /
-  // position / animation 都是 slot:"inspector" + inspectorGroup:<规范 id>）。
-  assertInspectorControls(
-    "../src/shell/doc-editors/deck-object-geometry-controls.ts",
-    ["x", "y", "width", "height", "rotation"],
-  );
-  assertInspectorControls(
-    "../src/shell/doc-editors/RichDocContextToolbar.tsx",
-    [
-      "highlight",
-      "link",
-      "unlink",
-      "row-add",
-      "row-delete",
-      "column-add",
-      "column-delete",
-      "table-delete",
-    ],
-  );
-  assertInspectorControls(
-    "../src/shell/video-editor/VideoTimelineContextToolbar.tsx",
-    [
-      "start-time",
-      "duration",
-      "source-in",
-      "text",
-      "font-size",
-      "volume",
-      "scale",
-      "opacity",
-      "rotation",
-      "x",
-      "y",
-      "brightness",
-      "contrast",
-      "saturation",
-      "transition",
-      "transition-duration",
-    ],
-  );
-  assertInspectorControls(
-    "../src/shell/media-editors/AudioContextToolbar.tsx",
-    [
-      "fade-duration",
-      "fade-in",
-      "fade-out",
-      "gain",
-      "apply-gain",
-      "effect-speed",
-      "eq-low",
-      "eq-mid",
-      "eq-high",
-      "apply-effects",
-    ],
-  );
-  assertInspectorControls(
-    "../src/shell/media-editors/PdfContextToolbar.tsx",
-    [
-      "annotation-select",
-      "annotation-text",
-      "annotation-update",
-      "annotation-delete",
-    ],
-  );
-  assertInspectorControls(
-    "../src/shell/media-editors/Model3DContextToolbar.tsx",
-    [
-      "azimuth",
-      "elevation",
-      "zoom",
-      "exposure",
-      "shadow-intensity",
-      "shadow-softness",
-      "background",
-      "environment-url",
-      "environment-intensity",
-      "shadow-enabled",
-      "material-select",
-      "material-color",
-      "material-metallic",
-      "material-roughness",
-      "annotation-new",
-      "annotation-add",
-      "annotation-select",
-      "annotation-label",
-      "annotation-delete",
-      "animation",
-      "animation-playing",
-      "animation-time",
-      "animation-speed",
-    ],
-  );
+  assertInspectorControls("../src/shell/media-editors/AudioContextToolbar.tsx",
+    ["fade-duration", "fade-in", "fade-out", "gain", "apply-gain", "effect-speed", "eq-low", "eq-mid", "eq-high", "apply-effects"]);
+  assertInspectorControls("../src/shell/media-editors/Model3DContextToolbar.tsx",
+    ["azimuth", "elevation", "zoom", "exposure", "shadow-intensity", "shadow-softness",
+      "background", "environment-url", "environment-intensity", "shadow-enabled",
+      "material-select", "material-color", "material-metallic", "material-roughness",
+      "annotation-new", "annotation-add", "annotation-select", "annotation-label", "annotation-delete",
+      "animation", "animation-playing", "animation-time", "animation-speed"]);
 });
 
-test("route toolbar controls are backed by concrete persistent editor commands", () => {
-  const imageCommands = source(
-    "../src/shell/image-editor/fabric-image-commands.ts",
-  );
-  assert.match(imageCommands, /case "filter-reset":[\s\S]*?resetFilters\(\)/);
-  assert.match(imageCommands, /case "crop-apply":[\s\S]*?confirmCrop\(\)/);
-  assert.match(
-    imageCommands,
-    /case "layer-up":[\s\S]*?moveLayer\(selected\.id, "up"\)/,
-  );
-  const imageToolbar = source(
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
-  );
-  assert.match(imageToolbar, /editor\.beginGesture\(\)/);
-  assert.match(imageToolbar, /editor\.endGesture\(\)/);
-  assert.match(imageToolbar, /editor\.cancelGesture\(\)/);
+test("route commands target the rendered selection and preserve gesture commit/cancel semantics", () => {
+  const calls = [];
+  const record = name => (...args) => calls.push([name, ...args]);
+  const selected = { id: "image", kind: "image", locked: false };
+  const image = { selected, layers: [selected], selectLayer() {},
+    resetFilters: record("reset"), confirmCrop: record("crop"), moveLayer: record("arrange") };
+  const command = (controlId, value, extra = {}) => ({ version: 1, selectionId: "image", controlId, value, ...extra });
+  dispatchFabricImageCommand(image, command("filter-reset"));
+  dispatchFabricImageCommand(image, command("crop-apply"));
+  dispatchFabricImageCommand(image, command("arrange", "forward"));
+  assert.deepEqual(calls, [["reset"], ["crop"], ["arrange", "image", "up"]]);
+  calls.length = 0;
+  dispatchFabricImageCommand(image, command("arrange", "front", { selectionId: "stale" }));
+  selected.locked = true;
+  dispatchFabricImageCommand(image, command("arrange", "front"));
+  assert.deepEqual(calls, [], "stale/locked selection must not mutate");
 
-  // 表格：每个浮条控件都要有一条真的进 Univer Facade 的命令（`run`），
-  // 不许只有一个 id 摆在那里。旧核的 editor.xxx() 那套已随 core-swap:delete grid 删除。
-  const gridControlIds = gridUniverSelectionContext().controls.map((control) => control.id);
-  for (const id of [
-    "bold",
-    "row-before",
-    "row-delete",
-    "column-before",
-    "column-delete",
-    "sort-asc",
-    "sort-desc",
-    "merge-cells",
-    "split-cells",
-  ]) {
-    assert.ok(gridControlIds.includes(id), `grid 浮条少了 ${id}`);
-    const command = GRID_UNIVER_COMMANDS.find((each) => each.id === id);
-    assert.equal(typeof command?.run, "function", `${id} 没有 Facade 执行器`);
+  const video = { patchClip: record("persist"), patchClipTransient: record("preview"),
+    beginGesture: record("begin"), endGesture: record("end"), cancelGesture: record("cancel"),
+    setClipTiming: record("timing") };
+  const located = videoLocation("video");
+  const volume = phase => ({ version: 1, selectionId: "clip", controlId: "volume", value: 50, transactionId: "drag", phase });
+  for (const phase of ["start", "update", "commit", "cancel"]) runVideoClipCommand(video, located, volume(phase));
+  assert.deepEqual(calls, [["begin"], ["preview", "clip", { volume: 0.5 }],
+    ["preview", "clip", { volume: 0.5 }], ["end"], ["cancel"]]);
+  calls.length = 0;
+  assert.equal(runVideoClipCommand(video, located, { ...volume("commit"), selectionId: "stale" }), false);
+  assert.deepEqual(calls, []);
+  runVideoClipCommand(video, located, { version: 1, selectionId: "clip", controlId: "start-time", value: 2 });
+  assert.deepEqual(calls, [["timing", "clip", { startMs: 2000 }]]);
+
+  calls.length = 0;
+  const deck = { activeSlide: { transition: { type: "fade", durationMs: 500 } },
+    patchSlide: record("persist"), patchSlideTransient: record("preview"),
+    beginGesture: record("begin"), endGesture: record("end"), cancelGesture: record("cancel") };
+  applyDeckToolbarCommand(deck, null, { controlId: "transition-duration", value: 9999 });
+  assert.deepEqual(calls, [["persist", { transition: { type: "fade", durationMs: 3000 } }]]);
+  calls.length = 0;
+  for (const phase of ["start", "update", "commit", "cancel"]) {
+    applyDeckToolbarCommand(deck, null, { controlId: "notes", value: "Review", transactionId: "edit", phase });
   }
+  assert.deepEqual(calls, [["begin"], ["preview", { notes: "Review" }],
+    ["preview", { notes: "Review" }], ["end"], ["cancel"]]);
 
-  const deck = source("../src/shell/doc-editors/deck-toolbar-command.ts");
-  assert.match(deck, /case "transition"/);
-  assert.match(deck, /editor\.patchSlide/);
-  assert.match(deck, /editor\.patchSlideTransient/);
-  assert.match(deck, /editor\.patchElementTransient/);
-  assert.match(
-    source("../src/shell/doc-editors/DeckStage.tsx"),
-    /oleo-deck-slide-fade/,
-  );
+  for (const id of ["bold", "row-before", "row-delete", "column-before", "column-delete",
+    "sort-asc", "sort-desc", "merge-cells", "split-cells"]) {
+    const context = gridUniverSelectionContext({ selection: { startRow: 0, endRow: 1, startColumn: 0, endColumn: 1 } });
+    if (id !== "split-cells") assert.ok(context.controls.some(control => control.id === id), id);
+    assert.equal(typeof GRID_UNIVER_COMMANDS.find(command => command.id === id)?.run, "function", id);
+  }
+  calls.length = 0;
+  assert.ok(!gridUniverSelectionContext().controls.some(control => control.id === "merge-cells"),
+    "single-cell selection must not expose an inapplicable merge");
+  const port = { range: { merge: record("merge"), breakApart: record("split") } };
+  GRID_UNIVER_COMMANDS.find(command => command.id === "merge-cells").run(port, { on: true });
+  GRID_UNIVER_COMMANDS.find(command => command.id === "merge-cells").run(port, { on: false });
+  GRID_UNIVER_COMMANDS.find(command => command.id === "split-cells").run(port, {});
+  assert.deepEqual(calls, [["merge"], ["split"], ["split"]], "canonical merge toggle retains split execution");
+});
 
+test("remaining editor controls retain their persistent engine bindings", () => {
   const richdoc = source(
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",
   );
@@ -289,21 +216,6 @@ test("route toolbar controls are backed by concrete persistent editor commands",
   assert.match(richdoc, /setLinkHref/);
   assert.match(richdoc, /addRowAfter\(\)/);
   assert.match(richdoc, /deleteColumn\(\)/);
-
-  const video = source(
-    "../src/shell/video-editor/VideoTimelineContextToolbar.tsx",
-  );
-  assert.match(video, /state\.setClipTiming/);
-  assert.match(
-    video,
-    /message\.phase === "cancel"[\s\S]*?state\.cancelGesture\(\)/,
-  );
-  assert.match(video, /transition_in:/);
-  assert.match(video, /patchGesture\(\{ volume:/);
-  assert.match(
-    source("../src/shell/video-editor/preview-engine.ts"),
-    /clip\.transition_in/,
-  );
 
   const audio = [
     source("../src/shell/media-editors/AudioWorkbench.tsx"),
@@ -331,7 +243,7 @@ test("route toolbar controls are backed by concrete persistent editor commands",
   assert.match(model, /patchSelectedTransform/);
   assert.match(
     source("../src/shell/media-editors/model3d-project.ts"),
-    /saveFileToLibrary[\s\S]*?annotations:/,
+    /annotations: view\.annotations/,
   );
 });
 

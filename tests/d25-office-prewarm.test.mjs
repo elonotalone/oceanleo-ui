@@ -4,6 +4,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import { zipSync, strToU8 } from 'fflate';
 import * as cache from '../src/shell/office-editor/office-source-cache.ts';
+import { isArtifactSourceTreeUrl } from '../src/shell/artifact-contract.ts';
 import { officePackageKindForItem, officeRenditionPurposes, fetchValidatedOfficePackage } from '../src/shell/doc-editors/office-file.ts';
 
 // Run the real hook body and its mount effect. Only React scheduling and the
@@ -14,7 +15,7 @@ const declaration = ast.statements.find(n => ts.isFunctionDeclaration(n) && n.na
 const js = ts.transpileModule(declaration.getText(ast).replace('export ', ''), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 function mount(item) {
   const effects = [];
-  const deps = { ...cache, officePackageKindForItem, officeRenditionPurposes,
+  const deps = { ...cache, officePackageKindForItem, officeRenditionPurposes, isArtifactSourceTreeUrl,
     useEffect: effect => effects.push(effect), useMemo: factory => factory(),
     isDurableLibraryItem: () => true,
     useArtifactRendition: value => ({ url: value.url, purpose: 'source', loading: false, error: '', version: 0, retry() {}, resourceFailed() {} }),
@@ -38,6 +39,19 @@ function stubFetch(t, response) {
   return () => calls;
 }
 const settle = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
+
+test('authenticated source-tree entrypoints are not fetched as Office package bytes', async t => {
+  const count = stubFetch(t, () => new Response(packet));
+  const item = material();
+  const url = '/v1/artifacts/11111111-1111-4111-8111-111111111111/revisions/22222222-2222-4222-8222-222222222222/source-tree/@source';
+  item.url = url;
+  item.artifact.renditions.source.url = url;
+  const result = mount(item);
+  await settle();
+  assert.equal(result.url, '');
+  assert.equal(count(), 0);
+  assert.equal(cache.officeSourceCacheStats().size, 0);
+});
 
 for (const [kind, ext] of [['audio','mp3'], ['pdf','pdf'], ['model','glb'], ['chart','json']]) {
   test(`${kind}: mounting still resolves a source URL but does not download cache bytes`, async t => {
