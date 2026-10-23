@@ -9,6 +9,8 @@ actual browser, shared host product code and final integration. Tests-only scope
 - tests/g3-portal-typed-editor.test.mjs
 - tests/g3-website-material-restore.test.mjs
 - tests/w1-material-edit-route.test.mjs
+- tests/e2-right-pane-fixture.mjs (shared fixture exclusively for the two e2 files;
+  preserve the actual runAfterOverlayExit(element, done):cancel signature)
 
 Full suite snapshot has failing/never-running fixtures for this task's changed
 Library/editor composition. Examples: missing runAfterOverlayExit export in
