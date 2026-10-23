@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -11,11 +12,13 @@ import {
 } from "react";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AnchoredPopover, runAfterOverlayExit } from "./anchored-popover";
+import { useAdvancedLayout } from "./advanced-layout-context";
+import { useUI } from "../i18n/ui/useUI";
 import {
-  registerAdvancedToolsTrigger,
-  useAdvancedLayout,
-} from "./advanced-layout-context";
-import { EditorToolsTrigger } from "./EditorToolsIcon";
+  canonicalSelectionControls,
+  finalizeEditBarIcons,
+  type CanonicalSelectionControl,
+} from "./edit-bar-canon";
 import {
   type SelectionPanelAction,
   type SelectionCommand,
@@ -24,11 +27,8 @@ import {
 } from "./selection-context";
 import type { SelectionInteractionChange } from "./edit-bar-hosted-selection-hold";
 import {
-  DESIGN_TEXT_CONTROL_ORDER,
   groupSelectionOverflowControls,
-  orderDesignTextControls,
   partitionSelectionControls,
-  selectionControlSemantic,
   selectionLiveCapability,
   selectionMoreDialogLabel,
   SELECTION_TOOLBAR_VIEWPORT_MAX,
@@ -41,10 +41,7 @@ import {
 import { publishAgentSelection } from "./agent-review/inbox";
 import { partitionSelectionInspectorControls } from "./selection-inspector-groups";
 import { useSelectionInspectorHost } from "./selection-inspector-host";
-import {
-  hasCanonicalAlignmentCapability,
-  SelectionToolbarControl,
-} from "./SelectionToolbarControl";
+import { SelectionToolbarControl } from "./SelectionToolbarControl";
 import { useSelectionToolbarMeasure } from "./useSelectionToolbarMeasure";
 import { useInsideEditBarRow } from "./edit-bar-row-context";
 import {
@@ -112,7 +109,7 @@ export function SelectionToolbar({
   useEffect(() => {
     publishAgentSelection(context);
   }, [context]);
-  const toolsLauncher = layout?.toolsLauncher || null;
+  const tt = useUI();
   const [moreMounted, setMoreMounted] = useState(false);
   const [availableWidth, setAvailableWidth] = useState(
     Number.POSITIVE_INFINITY,
@@ -129,7 +126,6 @@ export function SelectionToolbar({
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
   const morePanelRef = useRef<HTMLDivElement | null>(null);
   const restoreMoreFocusRef = useRef(false);
-  const toolsButtonRef = useRef<HTMLButtonElement | null>(null);
   const morePanelId = `selection-more-${useId().replace(/:/g, "")}`;
   const identity = context
     ? `${context.kind}:${context.id}:${String(context.epoch ?? "")}:${String(
@@ -143,42 +139,26 @@ export function SelectionToolbar({
       ),
     [context],
   );
-  const canonicalDesignText =
-    toolsLauncher?.id === "design-canvas" &&
-    Boolean(context?.kind.toLowerCase().includes("text"));
-  const projectedSourceControls = useMemo(
+  // 统一编辑栏（D9）：所有编辑器同一套规范 id → 同样的图标、标签、顺序、分组。
+  const projection = useMemo(
     () =>
-      canonicalDesignText
-        ? sourceControls.map((control) => {
-            const semantic = selectionControlSemantic(control);
-            return semantic &&
-              DESIGN_TEXT_CONTROL_ORDER.includes(semantic) &&
-              control.placement !== "more" &&
-              control.slot !== "stage" &&
-              control.slot !== "context-menu"
-              ? { ...control, placement: "primary" as const }
-              : control;
-          })
-        : sourceControls,
-    [canonicalDesignText, sourceControls],
+      context
+        ? canonicalSelectionControls({ ...context, controls: sourceControls }, tt)
+        : null,
+    [context, sourceControls, tt],
   );
   const { compact: controls, groups: inspectorGroups } = useMemo(
-    () => partitionSelectionInspectorControls(projectedSourceControls),
-    [projectedSourceControls],
+    () => partitionSelectionInspectorControls(projection?.controls || []),
+    [projection],
   );
-  const orderedControls = useMemo(
-    () =>
-      toolsLauncher?.id === "design-canvas" &&
-      context?.kind.toLowerCase().includes("text")
-        ? orderDesignTextControls(
-            controls.filter(
-              (control) =>
-                selectionControlSemantic(control) !== "alignment" ||
-                hasCanonicalAlignmentCapability(control),
-            ),
-          )
-        : controls,
-    [context?.kind, controls, toolsLauncher?.id],
+  const orderedControls = useMemo(() => finalizeEditBarIcons(controls), [controls]);
+  // 合成的规范下拉（arrange ← layer-up/down）发出的命令还原成编辑器自己的 id。
+  const dispatchCommand = useCallback(
+    (command: SelectionCommand) => {
+      const translated = projection ? projection.translate(command) : command;
+      if (translated) onCommand(translated);
+    },
+    [onCommand, projection],
   );
   const controlsIdentity = sourceControls
     .map(
@@ -205,7 +185,7 @@ export function SelectionToolbar({
       layout,
       groups: inspectorGroups,
       context,
-      onCommand,
+      onCommand: dispatchCommand,
       onOpenPanel,
       accent,
       anchorRef: toolbarRef,
@@ -282,15 +262,6 @@ export function SelectionToolbar({
       setMoreMounted(false),
     );
   }, [moreOpen]);
-  const toolsLauncherId = toolsLauncher?.available
-    ? toolsLauncher.id
-    : undefined;
-  useLayoutEffect(() => {
-    if (!toolsLauncherId) return;
-    return registerAdvancedToolsTrigger(toolsLauncherId, () =>
-      toolsButtonRef.current?.focus(),
-    );
-  }, [toolsLauncherId]);
   useLayoutEffect(() => {
     if (
       overflow.length ||
@@ -315,13 +286,13 @@ export function SelectionToolbar({
   const insideRow = useInsideEditBarRow();
   const contextLeading = insideRow ? undefined : layout?.contextBarLeading;
   const contextTrailing = insideRow ? undefined : layout?.contextBarTrailing;
-  const toolsAvailable = Boolean(context && toolsLauncher?.available);
   // AI 键：在单行编辑栏里由行画（见 selection-toolbar-chrome.tsx 注释）。
   const agentButton =
     layout && !insideRow ? (
       <SelectionToolbarAgentButton layout={layout} />
     ) : null;
-  const prefixVisible = Boolean(contextLeading || leading || toolsAvailable);
+  // 2026-10-23 D3：前缀区不再有「编辑工具」触发器；抽屉改由空态按钮打开（W02）。
+  const prefixVisible = Boolean(contextLeading || leading);
   const suffixVisible = Boolean(agentButton || trailing || contextTrailing);
   useSelectionToolbarMeasure({
     toolbarRef,
@@ -360,6 +331,7 @@ export function SelectionToolbar({
       <div
         key={`${identity}:${control.id}`}
         data-selection-control-id={control.id}
+        data-edit-bar-canon={(control as CanonicalSelectionControl).canonId}
         data-edit-bar-interactive
         data-selection-overflow-control={
           presentation === "menu" ? true : undefined
@@ -375,10 +347,9 @@ export function SelectionToolbar({
           selectionId={context?.id || ""}
           selectionRevision={context?.revision}
           selectionEpoch={context?.epoch}
-          onCommand={onCommand}
+          onCommand={dispatchCommand}
           onOpenPanel={openControlPanel}
           accent={accent}
-          canonicalDesignText={canonicalDesignText}
           activePanel={Boolean(
             control.kind === "panel" &&
               activePanelId === (control.panelId || control.id),
@@ -400,10 +371,9 @@ export function SelectionToolbar({
         selectionId={context?.id || ""}
         selectionRevision={context?.revision}
         selectionEpoch={context?.epoch}
-        onCommand={onCommand}
+        onCommand={dispatchCommand}
         onOpenPanel={openControlPanel}
         accent={accent}
-        canonicalDesignText={canonicalDesignText}
         activePanel={false}
         presentation="compact"
         forMeasurement
@@ -418,6 +388,7 @@ export function SelectionToolbar({
     <div
       ref={toolbarRef}
       data-selection-kind={context?.kind || "none"}
+      data-edit-bar-bar={projection?.bar}
       data-selection-live-capability={liveCapability?.id || undefined}
       data-selection-id={context?.id || ""}
       data-edit-bar-session={session.sessionId}
@@ -477,19 +448,7 @@ export function SelectionToolbar({
               {leading}
             </div>
           )}
-          {(contextLeading || leading) &&
-            (toolsAvailable || adaptiveRegionVisible) && (
-              <span className={EDIT_BAR_DIVIDER_CLASS} />
-            )}
-          {toolsAvailable && context && toolsLauncher && (
-            <EditorToolsTrigger
-              ref={toolsButtonRef}
-              selectionKind={context.kind}
-              launcher={toolsLauncher}
-              accent={accent}
-            />
-          )}
-          {toolsAvailable && adaptiveRegionVisible && (
+          {(contextLeading || leading) && adaptiveRegionVisible && (
             <span className={EDIT_BAR_DIVIDER_CLASS} />
           )}
         </div>

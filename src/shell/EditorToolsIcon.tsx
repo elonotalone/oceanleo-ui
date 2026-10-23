@@ -1,8 +1,11 @@
-import { forwardRef } from "react";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
-import type { AdvancedToolsLauncher } from "./advanced-layout-context";
-import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 import type { SelectionControlIcon } from "./selection-context";
+
+/**
+ * 2026-10-23 D3：编辑栏最左的「编辑工具」触发器（EditorToolsTrigger）已删除，
+ * 它藏的抽屉改成编辑栏空态里带文字的按钮（W02）。这里只剩选区种类 → 上下文图标，
+ * 给收起后的小圆用（`FloatingContextToolbar` 的 `collapsedIcon`）。
+ */
 
 export function editorToolsIconForSelection(
   selectionKind: string,
@@ -45,51 +48,3 @@ export function EditorToolsIcon({
     />
   );
 }
-
-export const EditorToolsTrigger = forwardRef<
-  HTMLButtonElement,
-  {
-    selectionKind: string;
-    launcher: AdvancedToolsLauncher | null;
-    accent: string;
-  }
->(function EditorToolsTrigger(
-  { selectionKind, launcher, accent },
-  ref,
-) {
-  const available = Boolean(launcher?.available);
-  const label = launcher?.label || "编辑工具";
-  const accessibleLabel = available
-    ? label
-    : `${label}：${launcher?.unavailableReason || "当前编辑器没有可用工具"}`;
-  return (
-    <button
-      ref={ref}
-      type="button"
-      data-editor-tools-trigger
-      aria-disabled={!available}
-      onClick={() => {
-        if (available) launcher?.toggle();
-      }}
-      aria-label={accessibleLabel}
-      aria-haspopup={available ? "dialog" : undefined}
-      aria-expanded={available ? launcher?.expanded || false : undefined}
-      aria-controls={available ? launcher?.controlsId : undefined}
-      title={accessibleLabel}
-      className={`grid h-7 w-7 shrink-0 place-items-center rounded-xl outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS} ${
- available
- ? "hover:brightness-95"
- : "cursor-not-allowed opacity-40"
- }`}
-      style={{
-        color: accent,
-        background: `color-mix(in srgb, ${accent} 9%, var(--card,#fff))`,
-      }}
-    >
-      <EditorToolsIcon
-        selectionKind={selectionKind}
-        className="h-[18px] w-[18px]"
-      />
-    </button>
-  );
-});

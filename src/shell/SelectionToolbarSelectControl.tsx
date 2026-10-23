@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon";
 import { AnchoredPopover } from "./anchored-popover";
 import {
   selectionRequestId,
@@ -25,6 +25,10 @@ export function SelectionToolbarSelectControl({
   presentation,
   onActivated,
   forMeasurement = false,
+  triggerIcon,
+  optionIcon,
+  compactValue = "label",
+  showIcon = true,
 }: {
   control: SelectionControl;
   selectionId: string;
@@ -35,6 +39,13 @@ export function SelectionToolbarSelectControl({
   presentation: "compact" | "menu";
   onActivated?: () => void;
   forMeasurement?: boolean;
+  /** 统一栏：图标随当前值（对齐、列表）。缺省用控件自己的图标。 */
+  triggerIcon?: WorkbenchIconName;
+  optionIcon?: (value: string) => WorkbenchIconName | undefined;
+  /** 栏上要不要写出当前值：字体写字体名；对齐 / 列表 / 层级只看图标。 */
+  compactValue?: "label" | "none";
+  /** 栏上画不画图标：字体、字号只画值。 */
+  showIcon?: boolean;
 }) {
   const sessionId = useEditBarSessionId();
   const [open, setOpen] = useState(false);
@@ -101,9 +112,9 @@ export function SelectionToolbarSelectControl({
         aria-describedby={forMeasurement ? undefined : valueDescriptionId}
         className={buttonClass}
       >
-        {control.icon && (
+        {(menu || showIcon) && (triggerIcon || control.icon) && (
           <AdvancedEditorIcon
-            name={control.icon}
+            name={triggerIcon || control.icon!}
             className="h-4 w-4"
           />
         )}
@@ -116,9 +127,11 @@ export function SelectionToolbarSelectControl({
             {control.label}
           </span>
         )}
-        <span className="min-w-0 truncate font-semibold">
-          {selectedLabel}
-        </span>
+        {(menu || compactValue === "label") && (
+          <span className="min-w-0 truncate font-semibold">
+            {selectedLabel}
+          </span>
+        )}
         <span className="shrink-0 text-[9px] opacity-50">⌄</span>
       </button>
       {!forMeasurement && (
@@ -170,7 +183,15 @@ export function SelectionToolbarSelectControl({
  }`}
               title={option.label}
             >
-              <span className="min-w-0 truncate">{option.label}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                {optionIcon?.(option.value) && (
+                  <AdvancedEditorIcon
+                    name={optionIcon(option.value)!}
+                    className="h-4 w-4 shrink-0"
+                  />
+                )}
+                <span className="min-w-0 truncate">{option.label}</span>
+              </span>
               {active && (
                 <span className="shrink-0" style={{ color: accent }}>
                   ✓

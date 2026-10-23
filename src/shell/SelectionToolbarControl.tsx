@@ -1,6 +1,15 @@
 "use client";
 
-import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
+import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon";
+import {
+  EDIT_BAR_CANON_OPTIONS,
+  type CanonicalSelectionControl,
+  type EditBarCanonId,
+} from "./edit-bar-canon";
+import {
+  SelectionToolbarFontFamilyButton,
+  SelectionToolbarFontSizeControl,
+} from "./selection-toolbar-canon-controls";
 import { SelectionAnimationGallery } from "./SelectionAnimationGallery";
 import { SelectionToolbarButtonControl } from "./SelectionToolbarButtonControl";
 import { SelectionToolbarNumberControl } from "./SelectionToolbarNumberControl";
@@ -12,25 +21,40 @@ import {
   type SelectionControl,
   type SelectionControlValue,
 } from "./selection-context";
-import {
-  nextTextAlignment,
-  selectionControlSemantic,
-  selectionControlUsesIconOnly,
-} from "./selection-toolbar-layout";
+import { selectionControlUsesIconOnly } from "./selection-toolbar-layout";
 import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 import { SelectionToolbarSelectControl } from "./SelectionToolbarSelectControl";
 
-export function hasCanonicalAlignmentCapability(
-  control: SelectionControl,
-): boolean {
-  if (control.kind !== "select" && control.kind !== "action") return false;
-  const declaredValues = new Set(
-    (control.options || []).map((option) => option.value),
-  );
-  return ["left", "center", "right"].every((value) =>
-    declaredValues.has(value),
-  );
+/** 下拉规范项：栏上只画随值变化的图标（§4：对齐图标随当前值）。 */
+function canonTriggerIcon(
+  canonId: EditBarCanonId | undefined,
+  value: SelectionControl["value"],
+): WorkbenchIconName | undefined {
+  if (canonId === "align") {
+    return value === "center"
+      ? "align-center"
+      : value === "right"
+        ? "align-right"
+        : value === "justify"
+          ? "align-justify"
+          : "align-left";
+  }
+  if (canonId === "list") return value === "ordered" ? "list-ordered" : "list";
+  if (canonId === "arrange") return "arrange";
+  return undefined;
+}
+
+function canonOptionIcon(canonId: EditBarCanonId | undefined) {
+  const table =
+    canonId === "align" || canonId === "list"
+      ? EDIT_BAR_CANON_OPTIONS[canonId]
+      : null;
+  if (!table) return undefined;
+  return (value: string) =>
+    table.find((option) => option.value === value)?.icon as
+      | WorkbenchIconName
+      | undefined;
 }
 
 export function SelectionToolbarControl({
@@ -41,7 +65,6 @@ export function SelectionToolbarControl({
   onCommand,
   onOpenPanel,
   accent,
-  canonicalDesignText: _canonicalDesignText = false,
   activePanel = false,
   presentation = "compact",
   onActivated,
@@ -54,7 +77,6 @@ export function SelectionToolbarControl({
   onCommand: (command: SelectionCommand) => void;
   onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction) => void;
   accent: string;
-  canonicalDesignText?: boolean;
   activePanel?: boolean;
   presentation?: "compact" | "menu";
   onActivated?: () => void;
@@ -98,58 +120,29 @@ export function SelectionToolbarControl({
     );
   }
 
-  if (
-    selectionControlSemantic(control) === "alignment" &&
-    (control.kind === "select" || control.kind === "action") &&
-    hasCanonicalAlignmentCapability(control)
-  ) {
-    const current =
-      typeof control.value === "string" ? control.value : undefined;
-    const available = (control.options || []).map((option) => option.value);
-    const next = nextTextAlignment(current, available);
-    const alignmentLabel =
-      control.disabled && control.unavailableReason
-        ? `${control.label}：${control.unavailableReason}`
-        : control.label;
-    const namedAlignmentLabel = forMeasurement
-      ? undefined
-      : `${alignmentLabel}: ${current || "未设置"}`;
-    const alignmentIcon =
-      current === "center"
-        ? "align-center"
-        : current === "right"
-          ? "align-right"
-          : current === "justify"
-            ? "align-justify"
-            : "align-left";
+  const canonId = (control as CanonicalSelectionControl).canonId;
+  if (canonId === "font-size" && control.kind === "number" && !menu) {
     return (
-      <button
-        type="button"
-        disabled={control.disabled}
-        tabIndex={forMeasurement ? -1 : undefined}
-        onPointerDown={preserveEditBarSelection}
-        onClick={() => {
-          if (forMeasurement) return;
-          emit(next);
-          onActivated?.();
-        }}
-        className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""}`}
-        title={namedAlignmentLabel}
-        aria-label={forMeasurement ? undefined : alignmentLabel}
-        aria-pressed={current !== undefined}
-        data-selection-alignment={current || "unset"}
-      >
-        <AdvancedEditorIcon
-          name={alignmentIcon}
-          className="h-4 w-4"
-        />
-        {!iconOnly && (
-          <span className="whitespace-nowrap">{control.label}</span>
-        )}
-      </button>
+      <SelectionToolbarFontSizeControl
+        control={control}
+        emit={emit}
+        accent={accent}
+        forMeasurement={forMeasurement}
+      />
     );
   }
-
+  if (canonId === "font-family" && control.kind === "panel") {
+    return (
+      <SelectionToolbarFontFamilyButton
+        control={control as CanonicalSelectionControl}
+        buttonClass={buttonClass}
+        activePanel={activePanel}
+        onOpenPanel={onOpenPanel}
+        onActivated={onActivated}
+        forMeasurement={forMeasurement}
+      />
+    );
+  }
   if (
     control.kind === "action" ||
     control.kind === "panel" ||
@@ -184,6 +177,14 @@ export function SelectionToolbarControl({
         presentation={presentation}
         onActivated={onActivated}
         forMeasurement={forMeasurement}
+        triggerIcon={canonTriggerIcon(canonId, control.value)}
+        optionIcon={canonOptionIcon(canonId)}
+        compactValue={
+          canonId === "align" || canonId === "list" || canonId === "arrange"
+            ? "none"
+            : "label"
+        }
+        showIcon={canonId !== "font-family" && canonId !== "font-size"}
       />
     );
   }
