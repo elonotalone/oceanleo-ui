@@ -734,6 +734,9 @@ export function GridUniverStage({
         // 本地那一侧：本人的改动已由撤销栈判据记过（bumpHistory）；其余是 Univer 载入后
         // 自己的回写（公式、换簿），不算改动——否则只是打开就标脏、自动存一版（R2 实测 14 次）。
         if (origin !== "remote") return;
+        // The acceptance readback must reflect the post-sync model, not only
+        // the snapshot installed before the room's initial apply.
+        queueMicrotask(() => setGridProbe("liveCells", listUniverSnapshotValues(currentSnapshot())));
         applyGridUserEditSession(liveItemRef.current, "collab-activity");
         setEditRevision((value) => value + 1);
         setDirty(true);

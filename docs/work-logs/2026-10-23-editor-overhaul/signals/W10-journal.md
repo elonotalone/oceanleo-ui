@@ -1,5 +1,7 @@
 # W10 journal（每条实测/读码结论一行，UTC）
 
+- 2026-10-23 [Codex纠正/确认] pageSize假设未解释白字，已移除其专用规范化与测试；Univer上游本就处理null。补probe在remote套用完成后读真实模型：d8bf00e4源46cells，collab-remote后liveCells=0、dirty=true；确认为首套room覆盖，证据codex-w10-live-diagnose2，已交父处理共享collab。初始probe的两mark不能当成功重开证据。
+
 - 2026-10-23 [Codex根因] native工程原cell.p.documentStyle.pageSize的Infinity经JSON成为null；重开精确该字段是null，Univer内核默认用Infinity。probe初始v虽在，截图cells全白，不能据probe判pass。W10加载时只恢复这些pageSize null sentinel→Infinity，保留文本/富文本/有限尺寸且不改原JSON；25focused通过，正在视觉/完整协议复核。
 
 - 2026-10-23 [Codex实测] Shared focused reconciliation c3d47eba完成后接W10；读原任务/交付/state/journal与共同合同。b13b20b5两存DB1→3，但第二存先409后重试200；新浏览器打开白屏，继续编辑触发Univer line-layout递归RangeError。只读取ordinal3源XLSX与native manifest均保留两mark；失败诊断后ordinal4/5已是空白模型，不再使用该head验收。
