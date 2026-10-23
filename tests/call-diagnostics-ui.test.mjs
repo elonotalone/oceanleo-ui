@@ -112,7 +112,7 @@ export async function createDiagnosticsEngine() {
   h().engines += 1;
   return {
     async join(rtc, opts) { h().joins.push({ channel: rtc.channel_id, token: rtc.token, micDeviceId: opts && opts.micDeviceId }); },
-    async getStats() { return { rttMs: 42, upLossPct: null, downLossPct: null, upKbps: 31, downKbps: null }; },
+    async getStats() { return h().diagStats; },
     async leave() { h().leaves += 1; },
   };
 }
@@ -161,6 +161,7 @@ function harness(over = {}) {
     permissions: { microphone: "granted", camera: "prompt" },
     sinkSelectable: true,
     micError: null,
+    diagStats: { rttMs: 42, upLossPct: null, downLossPct: null, upKbps: 31, downKbps: null },
     meters: [],
     played: [],
     previews: [],
@@ -399,9 +400,33 @@ test("connection test: diag token → independent engine with the selected mic �
     assert.match(text(), /Connection: good/);
     assert.match(text(), /Round-trip time42 ms/);
     assert.match(text(), /Upload bitrate31 kbps/);
-    assert.match(text(), /Upload packet loss—/, "not measurable in a solo channel → dash, not 0%");
+    assert.match(text(), /Upload packet lossUnknown/, "not measurable in a solo channel → Unknown, not 0% or a dash");
     assert.match(find("[data-connection-test-start]").textContent, /Test again/);
   });
+});
+
+test("D8: uplink stats unavailable (0 kbps after publishing) → 'Unknown', never 'Connection: good' or '0 kbps'", async () => {
+  await withDom(
+    async ({ h, render, find, text, click, settle }) => {
+      await render(React.createElement(CallTestPanel, { open: true, onClose() {} }));
+      await settle();
+      await click("[data-connection-test-start]");
+      await settle(150);
+      assert.equal(h.leaves, 1);
+      assert.equal(find("[data-connection-result]").getAttribute("data-connection-result"), "unknown");
+      assert.match(text(), /Connection: unknown/);
+      assert.ok(find("[data-connection-uplink-unknown]"));
+      assert.match(text(), /No upload data was measured, so we can’t tell how good your network is\. Please test again\./);
+      assert.match(text(), /Upload bitrateUnknown/);
+      assert.doesNotMatch(text(), /Connection: good|0 kbps/);
+      assert.match(text(), /Round-trip time42 ms/, "what was measured is still shown");
+      await click("[data-copy-diagnostics]");
+      await settle();
+      assert.match(h.clipboard[0], /^test\.result: unknown$/m);
+      assert.match(h.clipboard[0], /^test\.stats: rtt=42 ms up_loss=— down_loss=— up=— down=—$/m);
+    },
+    harness({ diagStats: { rttMs: 42, upLossPct: null, downLossPct: null, upKbps: 0, downKbps: null } }),
+  );
 });
 
 test("copy diagnostic info: browser, OS, devices, permissions, numbers, time, edition — and never the token", async () => {

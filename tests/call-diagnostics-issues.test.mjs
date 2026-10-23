@@ -20,7 +20,7 @@ import {
   osFamily,
   pruneDismissed,
 } from "../src/shell/messages/call/diagnostics/issues.ts";
-import { connectionTestErrorText, gradeLabel } from "../src/shell/messages/call/diagnostics/connection-test.ts";
+import { UPLINK_UNKNOWN_TEXT, connectionTestErrorText, gradeLabel } from "../src/shell/messages/call/diagnostics/connection-test.ts";
 import { netLevelLabel } from "../src/shell/messages/call/diagnostics/health.ts";
 import { mediaErrorText } from "../src/shell/messages/call/diagnostics/media-probes.ts";
 
@@ -292,7 +292,9 @@ function dynamicCopy() {
     out.add(connectionTestErrorText(code));
   }
   for (const level of [0, 1, 2, 3, 4, 5]) out.add(netLevelLabel(level));
-  for (const grade of ["good", "fair", "poor"]) out.add(gradeLabel(grade));
+  for (const grade of ["good", "fair", "poor", "unknown"]) out.add(gradeLabel(grade));
+  out.add(UPLINK_UNKNOWN_TEXT);
+  out.add("未知");
   return out;
 }
 
@@ -304,7 +306,7 @@ test("every Chinese string the diagnostics UI can show is in the call-diagnostic
   assert.deepEqual(missing, []);
   for (const key of keys) assert.ok(literal.has(key) || dynamic.has(key), `unused key in table: ${key}`);
   for (const reused of REUSED_FROM_BASE) assert.ok(!keys.has(reused), `${reused} must not be redefined (base dictionary owns it)`);
-  assert.equal(keys.size, 121);
+  assert.equal(keys.size, 124);
 });
 
 test("17 locales complete: every key translated, placeholders kept, Chinese source is the zh value", () => {

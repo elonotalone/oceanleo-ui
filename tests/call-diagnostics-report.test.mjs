@@ -109,6 +109,23 @@ test("outside a call and before any test the report still has every field", () =
   assert.equal(r["speaker.selectable"], "unknown");
 });
 
+test("D8: an unmeasured uplink is reported as unknown, not as 0 kbps", () => {
+  const r = rows(
+    buildDiagnosticsReport(
+      input({
+        test: {
+          grade: "unknown",
+          numbers: { rttMs: 2, upLossPct: null, downLossPct: null, upKbps: null, downKbps: null, joinMs: 248 },
+          error: null,
+        },
+      }),
+    ),
+  );
+  assert.equal(r["test.result"], "unknown");
+  assert.equal(r["test.stats"], "rtt=2 ms up_loss=— down_loss=— up=— down=—");
+  assert.equal(r["test.join"], "248 ms");
+});
+
 test("no token ever: credentials are not an input, and token-shaped text is scrubbed anyway", () => {
   // Someone passes the whole test-token response along by mistake: the whitelist ignores it.
   const sloppy = {
