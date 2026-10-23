@@ -634,8 +634,6 @@ const PRE_EXISTING_GAPS = new Set([
   "PPT 在线解析失败，可打开原文件。",
   "PPT 在线解析失败，正在显示结构化幻灯片快照。",
   "Previs 截图",
-  "Three.js 3D 编辑画布",
-  "Three.js 场景",
   "Three.js 拥有可编辑场景；保存会导出新的自包含 GLB。",
   "URL 扩展名与服务器验证的真实素材类型不一致，已拒绝加入时间线",
   "X 轴",
