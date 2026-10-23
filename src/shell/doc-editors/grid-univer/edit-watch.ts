@@ -17,6 +17,9 @@
 export interface GridUndoStackLike {
   pitchTopUndoElement(): unknown;
   pitchTopRedoElement(): unknown;
+  undoRedoStatus$?: {
+    subscribe(callback: () => void): { unsubscribe(): void };
+  };
 }
 
 export interface GridUndoStatus {
@@ -102,6 +105,10 @@ export function createGridEditWatch(options: {
         ? events.addEvent(name, listener)
         : events.onCommandExecuted?.(listener);
   }
+  // Image Undo can emit its final mutation before popUndoToRedo. Read again
+  // when the native service actually moves the stacks; commands alone leave
+  // the toolbar stuck at the previous canUndo/canRedo pair.
+  const statusHandle = undo?.undoRedoStatus$?.subscribe(() => observe());
   if (baseline) publish(baseline.status);
 
   return {
@@ -113,6 +120,7 @@ export function createGridEditWatch(options: {
     dispose() {
       handle?.dispose();
       handle = undefined;
+      statusHandle?.unsubscribe();
     },
   };
 }

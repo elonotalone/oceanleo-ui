@@ -210,6 +210,41 @@ test("只读时栈动了也不算本人改动（不会开自动保存）", () =>
   assert.equal(writes, 0);
 });
 
+test("image Undo publishes its late native stack move, without duplicate writes or post-dispose listeners", () => {
+  const stack = fakeUndo();
+  stack.undo.push({ id: 'insert-image' });
+  const listeners = new Set();
+  const commands = new Set();
+  stack.service.undoRedoStatus$ = { subscribe: callback => {
+    listeners.add(callback);
+    return { unsubscribe: () => listeners.delete(callback) };
+  } };
+  let writes = 0, blocked = false;
+  const history = [];
+  const watch = createGridEditWatch({
+    undo: stack.service,
+    events: { onCommandExecuted: callback => { commands.add(callback); return { dispose: () => commands.delete(callback) }; } },
+    onPersonWrite: () => writes++, onHistory: state => history.push(state), blocked: () => blocked,
+  });
+  // Real image Undo finishes its final mutation before popUndoToRedo emits
+  // undoRedoStatus$. No later CommandExecuted event is guaranteed.
+  for (const callback of commands) callback({ id: 'drawing.mutation.apply' });
+  stack.redo.push(stack.undo.pop());
+  for (const callback of listeners) callback({ undos: 0, redos: 1 });
+  assert.deepEqual(history.at(-1), { canUndo: false, canRedo: true });
+  assert.equal(writes, 1);
+  for (const callback of listeners) callback({ undos: 0, redos: 1 });
+  assert.equal(writes, 1, 'duplicate status notifications do not duplicate an edit');
+  blocked = true;
+  stack.undo.push(stack.redo.pop());
+  for (const callback of listeners) callback({ undos: 1, redos: 0 });
+  assert.deepEqual(history.at(-1), { canUndo: true, canRedo: false });
+  assert.equal(writes, 1, 'readonly/initial-sync gate remains authoritative');
+  watch.dispose();
+  assert.equal(commands.size, 0);
+  assert.equal(listeners.size, 0);
+});
+
 test("深色画布：默认黑字变浅、表头和网格线变深，用户色原样", () => {
   assert.equal(gridDarkCanvasColor("rgb(0,0,0)"), GRID_DARK_CANVAS.text);
   assert.equal(gridDarkCanvasColor("#000000"), GRID_DARK_CANVAS.text);
