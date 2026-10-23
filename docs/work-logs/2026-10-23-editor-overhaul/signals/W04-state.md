@@ -9,11 +9,16 @@
 - [实测] 验收账号已上传 `[W04] sample.pdf` = artifact `952e4481-3d35-4633-a0c6-b78864a8859c`（rev1 `a3bb41bd…`）。
 - [待办] W14-to-W04：网站 deployed 提交要带父版本依赖闭包 + 可选 sourceDependencies。
 
+## 已完成（提交）
+- ui e1013941 基线前移 + 自提交 head 409 兜底 + 私有 staging + metadata；8975a26a 状态诚实；1503b59b sourceDependencies。
+- oceanleo 473f3d1 staging 路由 / metadata 白名单 / 网站闭包继承；a396ef7 网站新图。dev 网关已重启 2 次。
+- [实测 API] staging 后 3 次保存 = 3 revision、0 hidden root。
+
 ## 正在做
-- 步骤 1：浏览器复现 PDF 3 次保存（evidence/W04/scenarios/explore-editor.mjs → repro-pdf）。
+- 清理脚本 backend/scripts/editor_overhaul_cleanup_20261023.py（dry-run）。
 
 ## 下一步
-- 修 advancedSavedItem + doc-io 自提交 head 兜底；私有 staging；metadata 透传；状态诚实；网站闭包；清理脚本。
+- 浏览器验收 §5 第 1/3/4/5 条：PDF、文档、演示、图片（槽不稳时重跑）。交付。
 
 ## 复现命令
 ```bash
