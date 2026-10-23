@@ -106,6 +106,12 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     const body = await res.text().catch(() => "");
     log("HTTP", res.status(), res.request().method(), url.replace(/^https?:\/\/[^/]+/, "").slice(0, 120), body.slice(0, 300));
   });
+  page.on("response", async (res) => {
+    if (res.request().method() !== "POST" || !/\/revisions(\?|$)/.test(res.url())) return;
+    const body = await res.text().catch(() => "");
+    const id = /"(?:revision_id|revisionId|id)"\s*:\s*"([0-9a-f-]{36})"/.exec(body)?.[1] || "";
+    log("REVISION-RES", res.status(), id, body.length);
+  });
   page.on("requestfailed", (req) => {
     const url = req.url();
     if (/_next\/|hot-update/.test(url)) return;

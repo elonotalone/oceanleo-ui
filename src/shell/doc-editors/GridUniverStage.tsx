@@ -1378,7 +1378,8 @@ export function GridUniverStage({
           autoSave: !readonly && collabSaveGate && !sourceFailed && snapshotReady,
           flush: saveBeforeNewConversation,
           recovery: {
-            draftSchema: "oceanleo.grid.univer.v1",
+            // 不接草稿层（不给 draftSchema）：草稿层下第 2 次起的改动只写隐藏「草稿」root、
+            // 顶栏照报「已保存」却不成新版本（R2 实测，同 W07）。每次保存都走版本提交（D11 §5.5）。
             key: advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item),
             ready: recoveryReady,
             capture: () =>

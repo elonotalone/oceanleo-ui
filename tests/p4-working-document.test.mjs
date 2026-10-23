@@ -67,8 +67,10 @@ test("P4: owned routes share one working-document schema and drop .pro.v1 destin
   );
   assert.match(richNormal, new RegExp(RICHDOC_DRAFT_SCHEMA.replace(/\./g, "\\.")));
   assert.doesNotMatch(richNormal, /oceanleo\.richdoc\.pro\.v1/);
-  assert.match(grid, new RegExp(GRID_DRAFT_SCHEMA.replace(/\./g, "\\.")));
-  assert.equal((grid.match(/draftSchema:/g) || []).length, 1);
+  // 10-23 W10：表格不接草稿层——草稿层下第 2 次改动只写隐藏草稿、顶栏报「已保存」却不成
+  // 新版本（D11 §5.5）。普通 / 专业仍是同一个 Univer 实例，不需要共享草稿 schema。
+  assert.doesNotMatch(grid, new RegExp(GRID_DRAFT_SCHEMA.replace(/\./g, "\\.")));
+  assert.equal((grid.match(/draftSchema:/g) || []).length, 0);
 });
 
 test("P4: applyMode in owned faces never waits on saveBeforeLeavePro", () => {
