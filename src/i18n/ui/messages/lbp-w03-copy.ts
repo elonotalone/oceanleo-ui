@@ -529,7 +529,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     errorsSnippetHint:
       "Coloque a linha abaixo no <head> da sua página. Os erros no navegador dos visitantes serão enviados para cá automaticamente.",
     callbackHostMismatch: "O host do endereço de callback precisa ser o mesmo do endereço publicado",
-    endpointNotNeeded: "Não é um app em um computador na nuvem, então não precisa de URL pública.",
+    endpointNotNeeded: "Não é um app hospedado em um computador na nuvem, então não precisa de URL pública.",
     endpointDeletedUnlisted: "A URL foi excluída e a publicação foi retirada automaticamente.",
     endpointNotFound: "Ainda não foi encontrada uma URL pública para este site ou software.",
     endpointDeleteUnlists: "Depois de excluir, ele sai da lista automaticamente",
@@ -563,7 +563,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     editorDeleted: "Excluído",
     editorSignIn: "Entre para publicar.",
     overreachNotTaken:
-      "“{term}” exige uma licença separada para operar. A plataforma não aceita isso, e a publicação será devolvida depois de publicada.",
+      "“{term}” exige uma licença separada para operar. A plataforma não aceita isso, e a publicação será devolvida.",
     needSellerProfile: "Crie primeiro um perfil de vendedor para poder salvar",
     fileLoadFailed: "Não foi possível carregar o arquivo. Tente novamente mais tarde.",
     fileOpening: "Abrindo este arquivo…",
@@ -599,7 +599,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     errorsSnippetHint:
       "Coloque a linha abaixo no <head> da sua página. Os erros no navegador dos visitantes serão enviados para aqui automaticamente.",
     callbackHostMismatch: "O anfitrião do endereço de callback tem de coincidir com o endereço publicado",
-    endpointNotNeeded: "Não é uma aplicação num computador na nuvem, por isso não precisa de URL pública.",
+    endpointNotNeeded: "Não é uma aplicação alojada num computador na nuvem, por isso não precisa de URL pública.",
     endpointDeletedUnlisted: "A URL foi eliminada e a publicação foi retirada automaticamente.",
     endpointNotFound: "Ainda não foi encontrada uma URL pública para este site ou software.",
     endpointDeleteUnlists: "Depois de eliminar, sai da lista automaticamente",
@@ -633,7 +633,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     editorDeleted: "Eliminado",
     editorSignIn: "Inicie sessão para publicar.",
     overreachNotTaken:
-      "“{term}” exige uma licença separada para operar. A plataforma não aceita isto, e a publicação será devolvida depois de publicada.",
+      "“{term}” exige uma licença separada para operar. A plataforma não aceita isto, e a publicação será devolvida.",
     needSellerProfile: "Crie primeiro um perfil de vendedor para poder guardar",
     fileLoadFailed: "Não foi possível carregar o ficheiro. Tente novamente mais tarde.",
     fileOpening: "A abrir este ficheiro…",
