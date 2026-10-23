@@ -72,6 +72,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   await context.setOffline(false);
   const beforeRetry = revisions.length;
   await page.locator("[data-workspace-save-launcher]").click();
+  await page.locator('[data-workspace-save-action-id="retry"]').click();
   for (let n = 0; n < 180 && revisions.length === beforeRetry; n++) await page.waitForTimeout(500);
   assert.ok(revisions.length > beforeRetry);
   await helpers.waitSaved(page, { timeout: 90000 });
