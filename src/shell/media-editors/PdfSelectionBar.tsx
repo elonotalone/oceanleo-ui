@@ -117,7 +117,7 @@ export function PdfToolPalette({
       role="radiogroup"
       aria-label={tt("颜色")}
       data-pdf-tool-palette={activeTool}
-      className="absolute left-3 top-3 z-10 flex items-center rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-1 shadow-[var(--awb-shadow-floating)]"
+      className="absolute left-3 top-14 z-10 flex items-center rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-1 shadow-[var(--awb-shadow-floating)]"
     >
       {PDF_TOOL_SWATCHES.map((color) => (
         <button

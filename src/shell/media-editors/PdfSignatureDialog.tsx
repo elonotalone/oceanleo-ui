@@ -14,6 +14,9 @@ import {
   type PdfSavedSignature,
 } from "./pdf-signature-store";
 
+/** 纸的颜色：签名板与存过的签名预览两档都用它（同 PDF 页面，不随主题变）。 */
+const PDF_PAPER = "#ffffff";
+
 const PAD_WIDTH = 480;
 const PAD_HEIGHT = 160;
 const SCRIPT_FONT = '"Snell Roundhand", "Segoe Script", "Brush Script MT", "STKaiti", "KaiTi", cursive';
@@ -178,7 +181,10 @@ export function PdfSignatureDialog({
           width={PAD_WIDTH}
           height={PAD_HEIGHT}
           aria-label={tt("在这里手写签名")}
-          className="w-full touch-none rounded-xl border border-dashed border-[var(--awb-border)] bg-white"
+          className="w-full touch-none rounded-xl border border-dashed border-[var(--awb-border)]"
+          // 签名板是「纸」：和 PDF 页面一样两档都保持白底（D6），深色墨迹才看得见、
+          // 放到白色页面上也是同一个样子。
+          style={{ background: PDF_PAPER }}
           onPointerDown={(event) => {
             if (tab !== "draw") return;
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -247,7 +253,8 @@ export function PdfSignatureDialog({
                     data-pdf-saved-signature=""
                     onClick={() => void use(signature)}
                     aria-label={tt("放这个签名")}
-                    className="grid h-16 w-full place-items-center rounded-lg border border-[var(--awb-border)] bg-white p-1 hover:ring-2 hover:ring-[var(--awb-accent)]"
+                    className="grid h-16 w-full place-items-center rounded-lg border border-[var(--awb-border)] p-1 hover:ring-2 hover:ring-[var(--awb-accent)]"
+                    style={{ background: PDF_PAPER }}
                   >
                     <img src={signature.dataUrl} alt="" className="max-h-full max-w-full object-contain" />
                   </button>

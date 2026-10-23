@@ -55,7 +55,7 @@ export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClo
     <div
       role="search"
       data-pdf-find-bar=""
-      className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1 text-[var(--awb-text)] shadow-[var(--awb-shadow-floating)]"
+      className="absolute right-3 top-14 z-10 flex items-center gap-1 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1 text-[var(--awb-text)] shadow-[var(--awb-shadow-floating)]"
     >
       <input
         ref={inputRef}
