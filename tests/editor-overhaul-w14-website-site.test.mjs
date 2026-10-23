@@ -32,8 +32,39 @@ import {
   siteSectionsToPuck,
 } from "../src/shell/website-local/website-site-puck-map.ts";
 import { EDIT_BAR_CANON } from "../src/shell/edit-bar-canon-table.ts";
+import { captureSiteDraft, restoreSiteDraft } from "../src/shell/website-local/website-site-recovery.ts";
+import { applyStrictWebsiteCommand, strictWebsiteSelection } from "../src/shell/website-local/website-strict-bar.ts";
+import { blankWebsiteSource } from "../src/shell/website-local/blank-website-source.ts";
 
 const tt = (text, vars) => (vars ? text.replace(/\{(\w+)\}/g, (_, key) => String(vars[key])) : text);
+
+test("strict sources project real text/object fields without changing their schema", () => {
+  const source = blankWebsiteSource();
+  const context = strictWebsiteSelection(source, "home", "hero", tt);
+  assert.ok(context.controls.some(control => control.id === "text-color"));
+  const colored = applyStrictWebsiteCommand(source, "home", "hero", { controlId: "text-color", value: "#123456" });
+  assert.equal(colored.theme.text, "#123456");
+  assert.equal("style" in colored.sections[0], false);
+  const copied = applyStrictWebsiteCommand(source, "home", "hero", { controlId: "duplicate" });
+  assert.equal(copied.pages[0].sectionIds[1], "hero-copy");
+  const moved = applyStrictWebsiteCommand(copied, "home", "hero-copy", { controlId: "arrange", value: "back" });
+  assert.equal(moved.pages[0].sectionIds.at(-1), "hero-copy");
+});
+
+test("offline recovery round trips replacement image bytes through JSON", async () => {
+  const doc = site();
+  const bytes = new Uint8Array(1024).fill(77);
+  const image = new File([bytes], "a.webp", { type: "image/webp", lastModified: 123 });
+  const unused = new File([bytes], "unused.webp", { type: "image/webp" });
+  const payload = await captureSiteDraft(doc, new Map([["images/a.webp", image], ["images/unused.webp", unused]]));
+  const restored = restoreSiteDraft(JSON.parse(JSON.stringify(payload)));
+  assert.ok(restored);
+  assert.equal(restored.images.size, 1);
+  assert.deepEqual(new Uint8Array(await restored.images.get("images/a.webp").arrayBuffer()), bytes);
+  assert.equal(restored.images.get("images/a.webp").lastModified, 123);
+  assert.equal(restoreSiteDraft({ ...payload, images: [{ ...payload.images[0], path: "../bad.webp" }] }), null);
+  assert.equal(restoreSiteDraft({ ...payload, images: [{ ...payload.images[0], type: "image/svg+xml" }] }), null);
+});
 
 function site() {
   const hero = {
@@ -218,6 +249,9 @@ test("save keeps the bundle: only site.json (and new images) change in the manif
 
 test("route delegates site documents and never reloads over its own saves", () => {
   const route = readFileSync("src/shell/advanced-routes/WebsiteLocalRoute.tsx", "utf8");
+  assert.match(route, /saveStrictWebsiteRevision\(baseItemRef.current/);
+  assert.doesNotMatch(route, /ok: true as const, item: savedItem/);
+  assert.doesNotMatch(route, /autoSave: false/);
   assert.match(route, /websiteSiteEnvelopeFromText\(entryText\)/);
   assert.match(route, /<WebsiteSiteWorkbench/);
   assert.match(route, /ownSavedRevisionsRef\.current\.has\(/);

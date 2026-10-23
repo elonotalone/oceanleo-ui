@@ -47,6 +47,8 @@ import {
 } from "./website-site-save";
 import { SitePuckBridgeContext, SitePuckBridgeHost } from "./WebsiteSitePuckBridge";
 import { recordUserMutation, userEditItemKey } from "../user-edit-session";
+import { captureSiteDraft, restoreSiteDraft } from "./website-site-recovery";
+import { useSiteMaterial } from "./use-site-material";
 
 function debugW14(...parts: unknown[]) {
   if (typeof window !== "undefined" && (window as { __W14_DEBUG__?: boolean }).__W14_DEBUG__) {
@@ -287,6 +289,32 @@ function SiteEditor({
     commit(setSectionContent(current, pageRef.current, target.sectionId, [...siteFieldPath(target.field), "url"], path));
   };
 
+  useSiteMaterial({
+    item,
+    selectedImage: selection?.kind === "image" ? `${selection.sectionId}:${selection.field}` : "",
+    insert: (file, replace) => {
+      const problem = validateSiteImage(file);
+      if (problem) throw new Error(tt(problem));
+      if (replace && selection?.kind === "image") {
+        replaceTargetRef.current = { sectionId: selection.sectionId, field: selection.field };
+        onReplaceFile(file);
+        return;
+      }
+      const current = docRef.current;
+      const sections = pageSections(current, pageRef.current);
+      const id = `image-${Date.now().toString(36)}`;
+      const taken = new Set([...siteImagePaths(current), ...imagesRef.current.keys(),
+        ...(envelope.kind === "bundle" ? envelope.manifest.files.map(entry => entry.path) : [])]);
+      const path = siteImagePathFor(file, candidate => taken.has(candidate));
+      imagesRef.current.set(path, file);
+      resolver.setLocal(path, URL.createObjectURL(file));
+      commit(replacePageSections(current, pageRef.current, [...sections, {
+        id, type: sections.find(section => section.content.image)?.type || sections[0]?.type || "hero",
+        content: { image: { url: path, alt: file.name } },
+      }]));
+    },
+  });
+
   const undo = () => {
     recordUserMutation(userEditKey);
     setDoc(history.undo());
@@ -416,11 +444,20 @@ function SiteEditor({
             draftSchema: WEBSITE_SITE_DRAFT_SCHEMA,
             key: advancedRecoveryKey("website", item),
             ready: true,
-            capture: () => ({ doc: docRef.current }),
+            capture: () => captureSiteDraft(docRef.current, imagesRef.current),
+            captureRevision: async (requestedRevision) => {
+              if (!Object.is(requestedRevision, revisionRef.current)) return null;
+              const payload = await captureSiteDraft(docRef.current, imagesRef.current);
+              return Object.is(requestedRevision, revisionRef.current) ? { revision: requestedRevision, payload } : null;
+            },
             restore: (payload) => {
-              const restored = (payload as { doc?: unknown } | null)?.doc;
-              if (!isSiteDoc(restored)) return false;
-              commit(restored, { restored: true });
+              const restored = restoreSiteDraft(payload);
+              if (!restored) return false;
+              for (const [path, file] of restored.images) {
+                imagesRef.current.set(path, file);
+                resolver.setLocal(path, URL.createObjectURL(file));
+              }
+              commit(restored.doc, { restored: true });
               return true;
             },
           },

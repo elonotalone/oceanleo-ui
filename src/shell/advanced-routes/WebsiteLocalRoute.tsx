@@ -13,7 +13,7 @@ import {
   type WebsiteSource,
 } from "../website-source-carrier/website-source-schema";
 import { blankWebsiteSource } from "../website-local/blank-website-source";
-import { websitePuckConfig } from "../website-local/website-puck-config";
+import { websitePuckConfig, WebsiteStrictThemeContext } from "../website-local/website-puck-config";
 import { WebsitePuckStage } from "../website-local/WebsitePuckStage";
 import { websiteFaceForMode } from "../website-local/website-puck-faces";
 import { setPluginMode } from "../plugin-chrome/plugin-mode-store";
@@ -44,6 +44,12 @@ import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { siteEnvelopeOf, type SiteEnvelope } from "../website-local/website-site-doc";
 import { WebsiteSiteWorkbench } from "../website-local/WebsiteSiteWorkbench";
 import { unwrapStoredEditorProject } from "./stored-editor-project";
+import { saveStrictWebsiteRevision } from "../website-local/website-strict-save";
+import { recordUserMutation, userEditItemKey } from "../user-edit-session";
+import { useUI } from "../../i18n/ui/useUI";
+import { SelectionToolbar } from "../SelectionToolbar";
+import { SitePuckBridgeContext, SitePuckBridgeHost } from "../website-local/WebsiteSitePuckBridge";
+import { strictWebsiteSelection, applyStrictWebsiteCommand } from "../website-local/website-strict-bar";
 
 /** Entry text → site-document envelope (bundle `site.json` or structured), else null. */
 export function websiteSiteEnvelopeFromText(text: string): SiteEnvelope | null {
@@ -64,6 +70,7 @@ export function WebsiteLocalRoute({
   accent = "#1F6FEB",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const tt = useUI();
   const [reloadNonce, setReloadNonce] = useState(0);
   const itemIdentity = `${item?.key || item?.id || ""}:${item?.revisionId || ""}:${item?.artifactId || ""}:${reloadNonce}`;
   const plan = useMemo(
@@ -94,8 +101,6 @@ export function WebsiteLocalRoute({
     }
     if (loadedIdentityRef.current === itemIdentity) return;
     if (
-      siteEntry &&
-      siteEntry.artifactId === String(item?.artifactId || "") &&
       ownSavedRevisionsRef.current.has(String(item?.revisionId || ""))
     ) {
       loadedIdentityRef.current = itemIdentity;
@@ -185,7 +190,11 @@ export function WebsiteLocalRoute({
   const [source, setSource] = useState(initial);
   const [pageId, setPageId] = useState(initial.pages[0]?.id || "home");
   const [revision, setRevision] = useState(0);
+  const [savedRevision, setSavedRevision] = useState(0);
+  const baseItemRef = useRef(item);
+  if (baseItemRef.current?.artifactId !== item?.artifactId) baseItemRef.current = item;
   const [editorKey, setEditorKey] = useState(0);
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   // Normal = composed light UI, Pro = Puck's default UI; one Puck instance, same data.
@@ -211,18 +220,21 @@ export function WebsiteLocalRoute({
   }, [history]);
 
   const commit = useCallback(
-    (next: WebsiteSource) => {
+    (next: WebsiteSource, fromPuck = false) => {
       if (sourceFailed) return;
+      if (JSON.stringify(next) === JSON.stringify(sourceRef.current)) return;
+      recordUserMutation(userEditItemKey(item));
       const stored = history.commit(next);
       setSource(stored);
       setRevision((value) => value + 1);
+      if (!fromPuck) setEditorKey(value => value + 1);
       if (!stored.pages.some((page) => page.id === pageId)) {
         setPageId(stored.pages[0]?.id || "home");
         setEditorKey((value) => value + 1);
       }
       syncHistory();
     },
-    [history, pageId, sourceFailed, syncHistory],
+    [history, item, pageId, sourceFailed, syncHistory],
   );
 
   usePluginCommandSurface(
@@ -241,6 +253,7 @@ export function WebsiteLocalRoute({
   );
 
   const undo = () => {
+    recordUserMutation(userEditItemKey(item));
     const next = history.undo();
     setSource(next);
     setRevision((value) => value + 1);
@@ -248,12 +261,21 @@ export function WebsiteLocalRoute({
     syncHistory();
   };
   const redo = () => {
+    recordUserMutation(userEditItemKey(item));
     const next = history.redo();
     setSource(next);
     setRevision((value) => value + 1);
     setEditorKey((value) => value + 1);
     syncHistory();
   };
+
+  const strictBridge = useMemo(() => ({
+    pushToken: editorKey,
+    data: () => websiteSourceToPuck(sourceRef.current, pageId),
+    onSelectedSection: setSelectedSection,
+    selectToken: 0, selectId: "",
+  }), [editorKey, pageId]);
+  const strictSelection = strictWebsiteSelection(source, pageId, selectedSection || "", tt);
 
   if (!item) {
     return <div data-testid="website-missing-item">没有打开的网站工程。</div>;
@@ -275,17 +297,6 @@ export function WebsiteLocalRoute({
     );
   }
 
-  const savedItem = {
-    ...item,
-    title: source.title,
-    meta: {
-      ...item.meta,
-      editor: "website",
-      websiteSource: source,
-      editor_project_schema: WEBSITE_SOURCE_FORMAT,
-    },
-  };
-
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -296,6 +307,9 @@ export function WebsiteLocalRoute({
         id: "website",
         label: "网站",
         history: { canUndo, canRedo, undo, redo },
+        contextToolbar: strictSelection ? <SelectionToolbar context={strictSelection} accent={accent} onCommand={command => {
+          if (command.selectionId === strictSelection.id) commit(applyStrictWebsiteCommand(source, pageId, strictSelection.id, command));
+        }} /> : null,
         mode: {
           current: mode,
           setMode: (next) => {
@@ -437,26 +451,44 @@ export function WebsiteLocalRoute({
               </label>
             </div>
             <div className="min-h-0 flex-1">
+              <WebsiteStrictThemeContext.Provider value={source.theme}>
+              <SitePuckBridgeContext.Provider value={strictBridge}>
               <WebsitePuckStage
-                key={`${editorKey}:${currentPage?.id || "home"}`}
+                key={currentPage?.id || "home"}
                 face={websiteFaceForMode(mode)}
                 config={websitePuckConfig}
                 data={websiteSourceToPuck(source, currentPage?.id)}
                 onChange={(data) =>
-                  commit(puckToWebsiteSource(data, source, currentPage?.id))
+                  commit(puckToWebsiteSource(data, source, currentPage?.id), true)
                 }
+                puckWrapper={SitePuckBridgeHost}
               />
+              </SitePuckBridgeContext.Provider>
+              </WebsiteStrictThemeContext.Provider>
             </div>
           </div>
         ),
         persistence: {
-          dirty: !sourceFailed && !remoteLoading && revision > 0,
+          userEditKey: userEditItemKey(item),
+          dirty: !sourceFailed && !remoteLoading && revision > savedRevision,
           editRevision: revision,
-          autoSave: false,
-          flush: () =>
-            sourceFailed || remoteLoading
-              ? { ok: false as const, error: sourceFailureReason || "网站工程尚未载入完成。" }
-              : { ok: true as const, item: savedItem },
+          flush: async () => {
+            if (sourceFailed || remoteLoading || !baseItemRef.current) {
+              return { ok: false as const, error: sourceFailureReason || "网站工程尚未载入完成。" };
+            }
+            const savingRevision = revisionRef.current;
+            try {
+              const result = await saveStrictWebsiteRevision(baseItemRef.current, sourceRef.current, siteId, savingRevision);
+              if (!result.ok) return result;
+              if (result.item) baseItemRef.current = result.item;
+              const revisionId = String(result.item?.revisionId || result.revisionId || "");
+              if (revisionId) ownSavedRevisionsRef.current.add(revisionId);
+              setSavedRevision(value => Math.max(value, savingRevision));
+              return { ok: true as const, item: result.item };
+            } catch (error) {
+              return { ok: false as const, error: error instanceof Error ? error.message : "网站没能保存成新版本。" };
+            }
+          },
           recovery: {
             draftSchema: WEBSITE_SOURCE_FORMAT,
             key: advancedRecoveryKey("website", item),
@@ -465,6 +497,8 @@ export function WebsiteLocalRoute({
             restore: (payload) => {
               try {
                 setSource(parseWebsiteSource(JSON.stringify(payload)));
+                setRevision(value => value + 1);
+                setEditorKey(value => value + 1);
                 return true;
               } catch {
                 return false;

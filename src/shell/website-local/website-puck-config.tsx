@@ -1,10 +1,14 @@
 "use client";
 
 import type { Config } from "@puckeditor/core";
+import { createContext, useContext } from "react";
 import {
   WEBSITE_SECTION_KINDS,
   type WebsiteSectionKind,
+  type WebsiteSourceTheme,
 } from "../website-source-carrier/website-source-schema";
+
+export const WebsiteStrictThemeContext = createContext<WebsiteSourceTheme | null>(null);
 
 export type WebsitePuckItemFields = {
   heading?: string;
@@ -92,18 +96,19 @@ function WebsiteSectionPreview({
   items,
   actions,
 }: WebsitePuckItemFields & { kind: WebsiteSectionKind }) {
+  const theme = useContext(WebsiteStrictThemeContext);
   const surface =
     background === "accent"
-      ? "var(--accent, #1F6FEB)"
+      ? theme?.accent || "#1F6FEB"
       : background === "surface"
-        ? "var(--surface, #F5F7FA)"
-        : "transparent";
+        ? theme?.surface || "#F5F7FA"
+        : theme?.background || "#ffffff";
   return (
     <section
       className="px-6 py-8"
       data-testid={`website-section-${kind}`}
       data-kind={kind}
-      style={{ background: surface }}
+      style={{ background: surface, color: theme?.text || "#1F2328", colorScheme: "light" }}
     >
       {heading ? <h2 className="text-xl font-semibold">{heading}</h2> : null}
       {subheading ? <p className="mt-1 text-sm opacity-80">{subheading}</p> : null}
