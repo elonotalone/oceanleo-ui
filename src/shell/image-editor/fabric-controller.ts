@@ -50,6 +50,15 @@ import {
   zoomViewport,
 } from "./editor-runtime";
 import {
+  CLEARED_TEXT_PROPS,
+  applyRectRadius,
+  applyStrokeDash,
+  applyTextListMode,
+  noteBackground,
+  type StrokeDash,
+  type TextListMode,
+} from "./fabric-style-ops";
+import {
   FabricEditorCore,
   clampDocument,
   cropRatioNumber,
@@ -480,8 +489,12 @@ export class FabricEditorController extends FabricEditorCore {
     });
   }
 
-  setSelectedStroke(patch: { color?: string; width?: number }): void {
+  setSelectedStroke(patch: { color?: string; width?: number; dash?: StrokeDash }): void {
     this.mutateSelected((object) => {
+      if (patch.dash) {
+        applyStrokeDash(this.fabric, object, patch.dash);
+        if (patch.color == null && patch.width == null) return;
+      }
       const snapshot = buildSelectedSnapshot(this.fabric, object);
       const color = patch.color ?? snapshot.stroke;
       const width = Math.max(0, patch.width ?? snapshot.strokeWidth);
@@ -521,6 +534,9 @@ export class FabricEditorController extends FabricEditorCore {
         kind === "curve"
       ) {
         object.set("stroke", color);
+      } else if (kind === "note") {
+        noteBackground(this.fabric, object)?.set("fill", color);
+        object.set("dirty", true);
       } else {
         object.set("fill", color);
       }
@@ -531,6 +547,8 @@ export class FabricEditorController extends FabricEditorCore {
     this.mutateSelected((object) => {
       if (object instanceof this.fabric.FabricImage) {
         applyImageRadius(this.fabric, object, Math.max(0, px));
+      } else {
+        applyRectRadius(this.fabric, object, Math.max(0, px));
       }
     });
   }
@@ -599,6 +617,7 @@ export class FabricEditorController extends FabricEditorCore {
       if (patch.backgroundColor != null) {
         props.backgroundColor = patch.backgroundColor;
       }
+      if (patch.highlight != null) props.textBackgroundColor = patch.highlight;
       if (patch.bold != null) props.fontWeight = patch.bold ? "bold" : "normal";
       if (patch.italic != null) {
         props.fontStyle = patch.italic ? "italic" : "normal";
@@ -646,6 +665,20 @@ export class FabricEditorController extends FabricEditorCore {
     this.setSelectedText({
       value: lines.map((line) => isBulleted ? line.slice(2) : `• ${line}`).join("\n"),
     });
+  }
+
+  setSelectedTextList(mode: TextListMode): void {
+    const active = this.canvas.getActiveObject();
+    if (!(active instanceof this.fabric.IText)) return;
+    const value = String((active as IText).text || "");
+    const next = applyTextListMode(value, mode);
+    if (next !== value) this.setSelectedText({ value: next });
+  }
+
+  clearSelectedTextFormat(): void {
+    this.mutateSelected((object) => {
+      if (object instanceof this.fabric.IText) object.set({ ...CLEARED_TEXT_PROPS });
+    }, "content");
   }
 
   deleteSelected(): void {

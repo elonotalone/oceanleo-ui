@@ -1755,6 +1755,8 @@ export function useFabricImageEditor(
     setSelectedText: (patch) => controller()?.setSelectedText(patch),
     toggleSelectedTextCase: () => controller()?.toggleSelectedTextCase(),
     toggleSelectedTextList: () => controller()?.toggleSelectedTextList(),
+    setSelectedTextList: (mode) => controller()?.setSelectedTextList(mode),
+    clearSelectedTextFormat: () => controller()?.clearSelectedTextFormat(),
     setSelectedTableStyle: (patch) =>
       controller()?.setSelectedTableStyle(patch),
     resizeSelectedTable: (rows, columns) =>

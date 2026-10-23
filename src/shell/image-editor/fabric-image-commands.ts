@@ -6,6 +6,13 @@ import type {
 } from "./types";
 import { imageToolbarCommandAllowed } from "./image-mutation-policy";
 
+const ARRANGE_DIRECTIONS: Record<string, "top" | "up" | "down" | "bottom"> = {
+  front: "top",
+  forward: "up",
+  backward: "down",
+  back: "bottom",
+};
+
 function numeric(value: SelectionCommand["value"], fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -65,11 +72,27 @@ export function dispatchFabricImageCommand(
     case "text-color":
       editor.setSelectedText({ fill: String(message.value || "#000000") });
       break;
+    case "case":
     case "text-case":
       editor.toggleSelectedTextCase();
       break;
     case "list":
-      editor.toggleSelectedTextList();
+      if (message.value === "none" || message.value === "bullet" || message.value === "ordered") {
+        editor.setSelectedTextList(message.value);
+      } else {
+        editor.toggleSelectedTextList();
+      }
+      break;
+    case "clear-format":
+      editor.clearSelectedTextFormat();
+      break;
+    case "font-family":
+      if (typeof message.value === "string" && message.value.trim()) {
+        editor.setSelectedText({ fontFamily: message.value.trim().slice(0, 300) });
+      }
+      break;
+    case "highlight":
+      editor.setSelectedText({ highlight: String(message.value || "") });
       break;
     case "bold":
       editor.setSelectedText({ bold: message.value === true });
@@ -80,12 +103,14 @@ export function dispatchFabricImageCommand(
     case "underline":
       editor.setSelectedText({ underline: message.value === true });
       break;
+    case "strike":
     case "linethrough":
       editor.setSelectedText({ linethrough: message.value === true });
       break;
     case "line-height":
       editor.setSelectedText({ lineHeight: numeric(message.value, 1.16) });
       break;
+    case "letter-spacing":
     case "char-spacing":
       editor.setSelectedText({ charSpacing: numeric(message.value, 0) });
       break;
@@ -93,7 +118,8 @@ export function dispatchFabricImageCommand(
       if (
         message.value === "left" ||
         message.value === "center" ||
-        message.value === "right"
+        message.value === "right" ||
+        message.value === "justify"
       ) {
         editor.setSelectedText({ align: message.value });
       }
@@ -105,8 +131,16 @@ export function dispatchFabricImageCommand(
       editor.setSelectedOpacity(numeric(message.value, 100));
       break;
     case "stroke":
+    case "stroke-color":
+    case "border-color":
       editor.setSelectedStroke({ color: String(message.value || "#000000") });
       break;
+    case "stroke-dash":
+      if (message.value === "solid" || message.value === "dashed" || message.value === "dotted") {
+        editor.setSelectedStroke({ dash: message.value });
+      }
+      break;
+    case "border-width":
     case "stroke-width":
       editor.setSelectedStroke({ width: numeric(message.value) });
       break;
@@ -184,10 +218,12 @@ export function dispatchFabricImageCommand(
         borderWidth: numeric(message.value, 1),
       });
       break;
+    case "replace":
     case "replace-panel":
     case "filter-panel":
     case "font-panel":
       break;
+    case "crop":
     case "crop-start":
       editor.startCrop();
       break;
@@ -210,13 +246,16 @@ export function dispatchFabricImageCommand(
     case "rotate-left":
       editor.rotateTarget(-90);
       break;
+    case "rotate":
     case "rotate-right":
       editor.rotateTarget(90);
       break;
     case "flip-x":
+    case "position-flip-x":
       editor.flipTarget("x");
       break;
     case "flip-y":
+    case "position-flip-y":
       editor.flipTarget("y");
       break;
     case "brightness":
@@ -224,8 +263,14 @@ export function dispatchFabricImageCommand(
     case "saturation":
       editor.setFilter(message.controlId, numeric(message.value));
       break;
+    case "blur":
+    case "pixelate":
+      editor.setFilter(message.controlId, numeric(message.value));
+      break;
     case "grayscale":
-      editor.setFilter("grayscale", message.value === true);
+    case "sepia":
+    case "invert":
+      editor.setFilter(message.controlId, message.value === true);
       break;
     case "filter-reset":
       editor.resetFilters();
@@ -234,6 +279,11 @@ export function dispatchFabricImageCommand(
       if (!targetId) break;
       if (selected && message.value === selected.locked) break;
       editor.toggleLayerLock(targetId);
+      break;
+    }
+    case "arrange": {
+      const direction = ARRANGE_DIRECTIONS[String(message.value)];
+      if (targetId && direction) editor.moveLayer(targetId, direction);
       break;
     }
     case "layer-up": {

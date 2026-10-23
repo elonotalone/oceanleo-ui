@@ -116,13 +116,15 @@ export interface TextSettings {
   fontSize: number;
   fill: string;
   backgroundColor: string;
+  /** 文字底色（高亮，Fabric `textBackgroundColor`）；空串 = 无。 */
+  highlight?: string;
   bold: boolean;
   italic: boolean;
   underline: boolean;
   linethrough: boolean;
   lineHeight: number;
   charSpacing: number;
-  align: "left" | "center" | "right";
+  align: "left" | "center" | "right" | "justify";
   stroke: string;
   strokeWidth: number;
 }
@@ -152,8 +154,10 @@ export interface SelectedSnapshot {
   fill: string;
   stroke: string;
   strokeWidth: number;
+  /** 描边线型（实线 / 虚线 / 点线）。 */
+  strokeDash?: "solid" | "dashed" | "dotted";
   shadow: ShadowSettings;
-  /** 仅图片对象有值（clipPath 圆角，画布像素）。 */
+  /** 图片（clipPath 圆角）与矩形类形状（rx）有值，画布像素。 */
   radius: number | null;
   /** 仅文字对象有值。 */
   text: TextSettings | null;
@@ -332,7 +336,11 @@ export interface FabricImageEditorState {
   cancelGesture: () => void;
   setSelectedOpacity: (value: number) => void;
   setSelectedShadow: (patch: Partial<ShadowSettings>) => void;
-  setSelectedStroke: (patch: { color?: string; width?: number }) => void;
+  setSelectedStroke: (patch: {
+    color?: string;
+    width?: number;
+    dash?: "solid" | "dashed" | "dotted";
+  }) => void;
   setSelectedFill: (color: string) => void;
   setSelectedRadius: (px: number) => void;
   setSelectedGeometry: (
@@ -342,6 +350,8 @@ export interface FabricImageEditorState {
   setSelectedText: (patch: Partial<TextSettings>) => void;
   toggleSelectedTextCase: () => void;
   toggleSelectedTextList: () => void;
+  setSelectedTextList: (mode: "none" | "bullet" | "ordered") => void;
+  clearSelectedTextFormat: () => void;
   setSelectedTableStyle: (patch: Partial<TableSettings>) => void;
   resizeSelectedTable: (rows: number, columns: number) => void;
   deleteSelected: () => void;

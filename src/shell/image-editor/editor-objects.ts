@@ -8,6 +8,7 @@
 // 后传进来）。类型 import 会在编译期擦除，不产生运行时依赖。
 // ============================================================================
 
+import { readRectRadius, readStrokeDash } from "./fabric-style-ops";
 import type {
   Canvas,
   FabricImage,
@@ -388,13 +389,18 @@ export function buildSelectedSnapshot(
       fontSize: Math.round(obj.fontSize),
       fill: typeof obj.fill === "string" ? obj.fill : "#1c1917",
       backgroundColor: obj.backgroundColor || "",
+      highlight:
+        typeof obj.textBackgroundColor === "string" ? obj.textBackgroundColor : "",
       bold: weight === "bold" || Number(weight) >= 600,
       italic: obj.fontStyle === "italic",
       underline: obj.underline === true,
       linethrough: obj.linethrough === true,
       lineHeight: obj.lineHeight || 1.16,
       charSpacing: obj.charSpacing || 0,
-      align: align === "center" || align === "right" ? align : "left",
+      align:
+        align === "center" || align === "right" || align === "justify"
+          ? align
+          : "left",
       stroke: typeof obj.stroke === "string" ? obj.stroke : "",
       strokeWidth: obj.strokeWidth ?? 0,
     };
@@ -444,8 +450,11 @@ export function buildSelectedSnapshot(
     fill,
     stroke,
     strokeWidth,
+    strokeDash: readStrokeDash(fabric, obj),
     shadow: readShadow(obj),
-    radius: isImage ? (target.oceanleoRadius ?? 0) : null,
+    radius: isImage
+      ? (target.oceanleoRadius ?? 0)
+      : readRectRadius(fabric, obj),
     text,
     table:
       kind === "table"
