@@ -18,8 +18,6 @@ export const VIDEO_NODE_DURATION_MAX = 600;
 /** 文案类节点编辑 `text`，其余编辑 `prompt`。 */
 const TEXT_KINDS = new Set(["prompt", "script", "text", "subtitle"]);
 const PROMPT_KINDS = new Set(["generate", "video", "image", "audio", "model"]);
-const DURATION_KINDS = new Set(["generate", "video", "audio", "timeline", "delivery"]);
-const RATIO_KINDS = new Set(["generate", "video", "image", "delivery", "timeline"]);
 
 function params(node: VideoDocNode): Rec | null {
   const value = node.params;
@@ -75,8 +73,12 @@ function durationKey(node: VideoDocNode): "durationMs" | "durationSeconds" {
   return typeof readField(node, "durationMs") === "number" ? "durationMs" : "durationSeconds";
 }
 
+/**
+ * Offered only when the node already carries the field (new nodes are created with
+ * it): the panel never shows a made-up default as if it were the stored value.
+ */
 export function videoNodeOffersDuration(node: VideoDocNode): boolean {
-  return typeof readField(node, durationKey(node)) === "number" || DURATION_KINDS.has(node.kind);
+  return typeof readField(node, durationKey(node)) === "number";
 }
 
 export function videoNodeDuration(node: VideoDocNode): number | null {
@@ -92,7 +94,7 @@ function ratioKey(node: VideoDocNode): "aspectRatio" | "ratio" {
 }
 
 export function videoNodeOffersRatio(node: VideoDocNode): boolean {
-  return typeof readField(node, ratioKey(node)) === "string" || RATIO_KINDS.has(node.kind);
+  return typeof readField(node, ratioKey(node)) === "string";
 }
 
 export function videoNodeRatio(node: VideoDocNode): VideoNodeRatio | "" {

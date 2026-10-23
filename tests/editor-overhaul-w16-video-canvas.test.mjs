@@ -160,7 +160,13 @@ test("edit bar: node gets canonical object ids, unique icons, specific params af
   const canon = bar.map((control) => control.canonId).filter(Boolean);
   assert.equal(canon.includes("arrange"), false, "a flow graph has no layers");
   const params = context.controls.filter((control) => control.inspectorGroup === VIDEO_NODE_PARAMS_GROUP);
-  assert.deepEqual(params.map((control) => control.id), ["node-title", "node-text", "node-duration", "node-ratio"]);
+  assert.deepEqual(params.map((control) => control.id), ["node-title", "node-text", "node-duration"],
+    "no ratio row for a node that stores none (no made-up default)");
+  const brief = videoProjectSelectionContext(doc, { nodeIds: ["n1"], edgeIds: [] }, { tt, readOnly: false });
+  assert.deepEqual(
+    brief.controls.filter((control) => control.inspectorGroup === VIDEO_NODE_PARAMS_GROUP).map((control) => [control.id, control.value]),
+    [["node-title", "简报"], ["node-text", "四段反转"], ["node-ratio", "9:16"]],
+  );
   assert.equal(EDIT_BAR_CANON_ICON_SET.has(params[0].inspectorIcon), false, "specific panel never borrows a canonical icon");
   const icons = bar.map((control) => control.icon).filter(Boolean);
   assert.equal(new Set(icons).size, icons.length, "no duplicate icons on one bar");

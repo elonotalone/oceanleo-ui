@@ -39,10 +39,13 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   await shot("s3-01-position-panel");
   const inputs = page.locator("input[type=number]");
   log("number-inputs", String(await inputs.count()));
-  await inputs.nth(0).fill("40");
+  // Alternate between two spots so every run is a real change.
+  const target = before.nodes.find((n) => n.id === "brief")?.rect === "40px, 40px" ? "60" : "40";
+  log("position-target", target);
+  await inputs.nth(0).fill(target);
   await inputs.nth(0).press("Enter");
   await page.waitForTimeout(300);
-  await inputs.nth(1).fill("40");
+  await inputs.nth(1).fill(target);
   await inputs.nth(1).press("Enter");
   await page.waitForTimeout(300);
   await page.keyboard.press("Escape");
@@ -50,6 +53,10 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   const placed = await canvasInfo(page);
   log("brief-after-panel", placed.nodes.find((n) => n.id === "brief")?.rect);
 
+  if (!(await page.locator("[data-video-project-stage=v2]").isVisible().catch(() => false))) {
+    log("slot-reloaded", "reopening");
+    await openCanvas(page, helpers, log, id);
+  }
   // Link brief → render through the handles.
   await page.locator(".react-flow__controls-fitview").click().catch(() => {});
   await page.waitForTimeout(800);
