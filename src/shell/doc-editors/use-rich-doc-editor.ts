@@ -80,6 +80,11 @@ import {
   type RichDocLoadResult,
   type RichDocSource,
 } from "./rich-doc-model";
+import { RichDocImageStyle } from "./rich-doc-image-style";
+import {
+  richDocRendersPreviewBitmap,
+  richDocTextExcerpt,
+} from "./rich-doc-text-delivery";
 import { richDocReviewExtensions } from "./richdoc-review/review-marks";
 import { richDocTrackChangesExtension } from "./richdoc-review/track-changes";
 import {
@@ -135,6 +140,8 @@ export interface RichDocEditorState {
   importSource: (file: File) => Promise<void>;
   /** 本地图片 → uploadFile → 光标处插入 img。 */
   uploadImage: (file: File) => Promise<void>;
+  /** 选中的那张图片换成本地另一张（位置、尺寸、样式属性不动）。 */
+  replaceSelectedImage: (file: File) => Promise<void>;
   insertImageUrl: (
     url: string,
     point?: { clientX: number; clientY: number },
@@ -379,6 +386,8 @@ export function useRichDocEditor(
       // 上一棒暂缓是对的：当时 `RichDocTypography` 全仓零命中，静态 import 一个
       // 不存在的符号会当场断 typecheck 与 31 个站的构建。它现在在 `main` 上了。
       RichDocTypography,
+      // 统一图片栏的圆角 / 边框 / 不透明度（D9）。
+      RichDocImageStyle,
       Highlight.configure({ multicolor: true }),
       // 审阅层：四个 mark + 修订录制器。
       ...richDocReviewExtensions(),
@@ -834,6 +843,7 @@ export function useRichDocEditor(
      * 拿到这份 docx 的人一眼看得出稿子还没定。
      */
     const deliveryJson = applyRevisionExportChoice(json, "keep-markup");
+    const textExcerpt = richDocTextExcerpt(json);
     const html = editor.getHTML();
     const baseItem = persistedItemRef.current;
     const baseRevision = String(
@@ -866,8 +876,11 @@ export function useRichDocEditor(
             html,
             json: persist.extension === "docx" ? deliveryJson : json,
           }),
-        // Word is not a displayable primary; markdown/html/text still get a cover.
-        createPreview: () => renderRichDocPreviewPng(deliveryJson, baseTitle),
+        // txt / md / html 的封面就是正文本身（后端把 full 当 preview / thumbnail，
+        // 与上传时一致，库卡片读字）；只有 docx 另画一张位图。
+        createPreview: richDocRendersPreviewBitmap(persist)
+          ? () => renderRichDocPreviewPng(deliveryJson, baseTitle)
+          : undefined,
         sourceFormat: persist.sourceFormat,
         sourceMediaType: persist.sourceMediaType,
         title,
@@ -884,6 +897,8 @@ export function useRichDocEditor(
           content_type: "document",
           html: html.slice(0, 10_000),
           delivery_format: persist.sourceFormat,
+          // 库卡片的「开头几行」（00-dispatch.md §6）：≤600 字，不含 markdown 记号。
+          text_excerpt: textExcerpt,
         },
         project: {
           schema: RICHDOC_PROJECT_SCHEMA,
@@ -992,6 +1007,34 @@ export function useRichDocEditor(
     [editor, requireSourceReady, siteId, tt],
   );
 
+  const replaceSelectedImage = useCallback(
+    async (file: File) => {
+      if (!editor || !requireSourceReady()) return;
+      setError("");
+      try {
+        const uploaded = await uploadFile(file, {
+          siteId: siteId || "word",
+          title: file.name,
+        });
+        const url = uploaded.data?.file?.url || "";
+        if (!uploaded.ok || !url) {
+          setError(uploaded.error ? tt(uploaded.error) : tt("图片上传失败"));
+          return;
+        }
+        if (!editor.isActive("image")) {
+          setError(tt("先选中要替换的图片"));
+          return;
+        }
+        editor.chain().focus().updateAttributes("image", { src: url, alt: file.name }).run();
+      } catch (caught) {
+        setError(
+          caught instanceof Error ? tt(caught.message) : tt("图片上传失败"),
+        );
+      }
+    },
+    [editor, requireSourceReady, siteId, tt],
+  );
+
   const insertImageUrl = useCallback(
     (url: string, point?: { clientX: number; clientY: number }) => {
       const trimmed = url.trim();
@@ -1077,6 +1120,7 @@ export function useRichDocEditor(
     review,
     importSource,
     uploadImage,
+    replaceSelectedImage,
     insertImageUrl,
     setLinkHref,
     unsetLink,
