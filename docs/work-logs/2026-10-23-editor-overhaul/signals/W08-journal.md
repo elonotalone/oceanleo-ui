@@ -30,3 +30,4 @@
 - `tests/advanced-project-autosave.test.mjs` 第 4 条：保存体改名 `saveOnce` 后断言段落起点跟着改（不放松断言）。
 - [实测 浏览器] 公共素材 `74822a67…` → 进编辑器即生成 1 份副本 `e426c567…`（地址栏切过去），两次保存都进它；第二次同样只在草稿层（见 W08-to-W04）。
 - [实测 浏览器] 两档截图齐（editor / 插入 / 批注 / 库卡片 / 文字栏 / 图片栏），深色无浅色岛。交付 `verdicts/W08-delivery.md`。
+- 接 W01-to-W08：`···` 下载项改 `tt("直接下载 {fmt}")` / `tt("下载 {fmt}")`；回归测试加在 editor-overhaul-w08-material-insert（4/4）。tsc W08 文件 0 错。

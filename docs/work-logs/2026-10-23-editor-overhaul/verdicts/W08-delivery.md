@@ -18,6 +18,7 @@
   1. **关掉重开丢行距 / 首行缩进 / 段前段后 / 编号预设 / 图片环绕**：原生草稿恢复时被当成 Umo 文档回转，这些段落属性被剥掉了。现在原生 doc 原样恢复，只有旧 Umo 草稿才回转。
   2. **图片「替换」上传成功（200）但图不变**：现在上传前先钉住选中图片的位置和地址，上传回来后按位置或地址写回。
   3. **素材库插入**：接上了 W02 的 `withEditorHistoryCommand` 契约（基线是当前 revision，插图走 Tiptap `setImage`，可以撤销）。
+  4. **`···` 下载项**（`signals/W01-to-W08.md`）：原来是拼好的中文串（`直接下载 DOCX` / `下载 …`），英文界面会显示中文。现在改用 `tt("直接下载 {fmt}")` / `tt("下载 {fmt}")`，与表格一致，键已有 16 语。
 
 ## 2. 文件
 
@@ -37,7 +38,7 @@
 ## 3. 提交
 
 - 第 1 轮：51953f0a、811a87ea、0ec30af1（父 agent 抢救）、17787181、ec64925f、eafced1a、998b856b、5c4c4ed4（父 agent 抢救）
-- R2：b51624c1、6f56c8c8、e3722f1b、ad7fe4f4、309da93c、f08d354e、3bb545d4，以及本交付的提交
+- R2：b51624c1、6f56c8c8、e3722f1b、ad7fe4f4、309da93c、f08d354e、3bb545d4、1fc90766（交付），以及下载文案那一笔（见 `git log -- src/shell/advanced-routes/RichDocRoute.tsx`）
 
 ## 4. 验证
 
@@ -49,7 +50,7 @@
 | richdoc-dark-ink | 6/6 |
 | richdoc-draft-restore | 3/3 |
 | richdoc-image-replace | 1/1 |
-| editor-overhaul-w08-material-insert | 3/3 |
+| editor-overhaul-w08-material-insert | 4/4 |
 | rich-doc-single-mode | 4/4 |
 | richdoc-typography | 17/17 |
 | richdoc-table | 18/18 |

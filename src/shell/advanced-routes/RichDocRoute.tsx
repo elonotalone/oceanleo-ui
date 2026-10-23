@@ -2,6 +2,7 @@
 
 import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useAdvancedSession } from "../advanced-session-context";
 import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
@@ -56,6 +57,7 @@ export function RichDocRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const advancedSession = useAdvancedSession();
+  const tt = useUI();
   // A successful commit updates `item` to the new pinned revision. Keep the
   // loaded bytes stable so that parent identity updates cannot discard edits
   // that landed while the save request was in flight.
@@ -439,7 +441,8 @@ export function RichDocRoute({
         },
         directDownload: {
           id: "richdoc-export-docx",
-          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.richdoc[0].label}`,
+          // `···` 菜单再 tt(label) 一次查不到键：这里先按带占位符的键译好（同 GridUniverStage）。
+          label: tt("直接下载 {fmt}", { fmt: DOC_FAMILY_DOWNLOAD_FORMATS.richdoc[0].label }),
           icon: "download",
           disabled: downloadDisabled,
           onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.exportDoc),
@@ -457,7 +460,7 @@ export function RichDocRoute({
             : []),
           ...DOC_FAMILY_DOWNLOAD_FORMATS.richdoc.slice(1).map((format) => ({
             id: `richdoc-export-${format.extension}`,
-            label: `下载 ${format.label}`,
+            label: tt("下载 {fmt}", { fmt: format.label }),
             group: "download" as const,
             disabled: downloadDisabled,
             onTrigger: () => {

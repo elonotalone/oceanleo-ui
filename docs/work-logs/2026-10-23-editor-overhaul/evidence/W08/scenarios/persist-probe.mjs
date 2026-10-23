@@ -39,8 +39,9 @@ export default async function ({ page, log, shot, helpers, args }) {
     }
   });
   const body = await open(page, helpers, id);
-  await body.click();
+  await body.locator(":scope > *").last().click({ position: { x: 2, y: 2 } }).catch(() => body.click());
   await page.keyboard.press("Control+End");
+  await page.keyboard.press("End");
   await page.keyboard.press("Enter");
   await page.keyboard.type(`${word} tail`, { delay: 15 });
   await page.waitForTimeout(600);
@@ -67,8 +68,10 @@ export default async function ({ page, log, shot, helpers, args }) {
   let last = "";
   while (Date.now() - started < Number(waitMs)) {
     const state = await page.locator(LAUNCHER).first().getAttribute("data-save-state").catch(() => null);
-    if (state !== last) log("state", String(state), `${((Date.now() - started) / 1000).toFixed(1)}s`);
-    last = String(state);
+    const strong = await page.locator(`${BODY} strong`).filter({ hasText: word }).count();
+    const now = `${state} bold=${strong}`;
+    if (now !== last) log("state", now, `${((Date.now() - started) / 1000).toFixed(1)}s`);
+    last = now;
     await page.waitForTimeout(500);
   }
   log("reloading");
