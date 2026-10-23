@@ -31,7 +31,7 @@ oceanbizs 同步、操作员账号修改，也没有再次清理此前已退休�
 | 视频时间线 | CODEX-W11；真实翻转/静音按钮、保存/重开/离线；父独立FFmpeg导出像素/音轨验证 | 已通过所述链路 |
 | 视频画布 | CODEX-W16；PNG/MP4/MP3插入/保存/Undo/Redo/播放/刷新；私有依赖保留、fork复用/离线 | 已通过所述链路 |
 | 网站 | CODEX-W14；私有site.json闭包、连续保存/重开、浅/深色和素材依赖 | 已通过所述链路 |
-| 3D | CODEX-W13；严格两存/重开/刷新/离线；最终controls6实际mesh1→2→1→2和冷刷新通过，父下载GLB独立验证两节点；材质改色/Undo/重开通过 | 更晚冷开遇过期地址410，仍在定位；实际素材卡替换待验，不算全部完成 |
+| 3D | CODEX-W13；严格两存/重开/刷新/离线；mesh1→2→1→2及冷刷新；材质改色/Undo/重开；旧来源续签；实际私有素材替换/Undo/冷开，父独立解析持久GLB | 已通过所述链路；公开3D fork未实测，不作通过声明 |
 | 游戏 | CODEX-W15；两次实际模型任务51/80秒成功、标题不变；最终132秒重开/离线/刷新场景3GET/0POST | 已通过所述链路；>180秒为注入时钟测试，不假称真实慢模型 |
 
 各行不等于所有旧报告未验按钮都重新验过。没有可用公共3D素材时，不能从通用
@@ -60,13 +60,24 @@ fork单测推断真实公共3D fork已通过。3D旧controls4的3个HTTP200不�
 - 3D9f0e3849/279b0128把保存记账与真实编辑分开，并用完整artifact:revision识别自己的
   外部版本回执，防止其重置Undo。父独立真实hook/策略/远端13/13、实际adapter/controls8/8。
   controls6服务器下载GLB为2756字节，Cube/Cube copy两节点，位置/旋转/蓝色材质实际存在；
-  最后stage不用第三方品牌标签。567be2db修空meta抹掉可续期source身份，hook7/7，但
-  新冷开仍有410，不能把局部修复当完整冷开通过。
+  最后stage不用第三方品牌标签。567be2db修空meta抹掉可续期source身份，hook7/7。
+- 410最终证实旧协同房间含旧r16 checkpoint+clone，而不是当前head。2c511c2c/d60060cc
+  仅从精确可信网关source地址取同已验证root的旧revision定位提示，经认证核对服务端旧版本、
+  模型类型、digest，再授权读取并SHA256核内容；提示不是权限。错误root/origin/purpose/
+  mode/version/UUID/大payload/服务端身份与digest全部拒绝，绝不清房间/硬切head重放。
+  close3全新context39.1秒通过：准确旧版本4次200续签，关闭/重开0POST且两对象保留。
+- 真实私有GLB替换原会重传legacy上传路径。d60060cc使typed GLB与glTF复用完整来源身份，
+  不重传私有字节或制造根。实际shelf场景68.7秒通过，legacy上传0，替换/Undo恰两版200，
+  冷刷新仍两对象。父独立解析`replaced.glb`1716字节/一橙色Cube与`undo-replacement.glb`
+  2756字节/两蓝色Cube，确认服务器实际内容恢复。最终11文件父独立50/50通过。
+- Grid图片Undo时native canRedo=true但发布给按钮的状态仍false，属命令事件早于实际
+  栈移动。6ed2d7bd订阅既有undoRedoStatus$并清理订阅，保留blocked/baseline/去重；
+  父独立最终四文件42/42，包括late-stack-event与不重复写。真实素材流程正在终验。
 - 游戏后端父独立13/13+2子项、客户端9/9。可信网关媒体依赖凭据回归先红后绿2/2，
   仍拒绝外部origin URL。新补译文的34个历史豁免已删除，healed-key闸绿。
 - 暗色最终共壳实测`/tmp/codex-shared-shell-dark-final2`25.7秒通过，真实卡片底色
   rgb(32,32,32)，标题rgb(180,180,180)，44px单行顶栏和两抽屉/更多均在。
-- UI typecheck8和portal最终typecheck均exit0（567be2db之前）；最近一次双com/cn槽FRESH(dev)、0STALE。
+- UI最终typecheck9与portal最终typecheck2均exit0，覆盖最终3D和Grid源修复；最近一次双com/cn槽FRESH(dev)、0STALE。
   后续源码修复后仍要再次确认，不能用旧通过代替最终确认。
 
 ## 未触碰的并行工作
@@ -76,4 +87,4 @@ Bay、个人主页、项目、消息/通话、collections等同时被别的任�
 `artifact-surface-rendered`现47/48，剩余generic描述被新collections元信息替换，
 属于另一任务的展示兼容性问题；本任务没有擅改其所有权文件。
 
-此记录仍待表格/3D最终结果补齐，不是“全部完成”声明。
+此记录仍待表格素材/fork/库卡片最终结果补齐，不是“全部完成”声明。
