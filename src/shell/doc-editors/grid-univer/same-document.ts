@@ -8,6 +8,7 @@
  */
 
 import type { IWorkbookData } from "@univerjs/presets";
+import type { LibraryItem } from "../../library-data";
 import { emptyGridSheet, type GridSheet } from "../grid-model";
 import {
   GRID_LEGACY_PROJECT_SCHEMA,
@@ -29,6 +30,32 @@ export const GRID_PRO_LABEL = "专业编辑";
  * 键名不同 + `isUniverWorkbookSnapshot` 双保险。
  */
 export const GRID_UNIVER_RECOVERY_EDITOR_ID = "grid-univer";
+
+/** Typed Library projections retain the native rendition, not legacy meta aliases.
+ * Read the native project before considering its delivery XLSX; loadEditorProject
+ * still validates the schema/version before any snapshot is installed. */
+export function gridProjectSource(item: LibraryItem): { schema: string; url: string } {
+  const url = String(item.meta.editor_project_url || item.meta.editor_manifest_url ||
+    item.artifact?.renditions.editor_manifest?.url || "");
+  return {
+    url,
+    schema: String(item.meta.editor_project_schema || (url ? GRID_UNIVER_PROJECT_SCHEMA : "")),
+  };
+}
+
+/** A declared native project must contain actual sheet models, including their
+ * dimensions. An empty object is not an empty workbook and cannot be saved. */
+export function gridSnapshotIsUsable(payload: unknown): boolean {
+  if (!isUniverWorkbookSnapshot(payload)) return false;
+  const sheets = (payload as { sheets: Record<string, unknown> }).sheets;
+  return Object.values(sheets).every((sheet) => {
+    if (!sheet || typeof sheet !== "object" || Array.isArray(sheet)) return false;
+    const value = sheet as { rowCount?: unknown; columnCount?: unknown; cellData?: unknown };
+    return Number.isInteger(value.rowCount) && Number(value.rowCount) > 0 && Number(value.rowCount) <= 1_048_576 &&
+      Number.isInteger(value.columnCount) && Number(value.columnCount) > 0 && Number(value.columnCount) <= 16_384 &&
+      (value.cellData === undefined || Boolean(value.cellData && typeof value.cellData === "object" && !Array.isArray(value.cellData)));
+  });
+}
 
 /** 只认 Univer 工作簿快照：`sheets` 是对象（不是数组）且至少一张表。 */
 export function isUniverWorkbookSnapshot(payload: unknown): boolean {

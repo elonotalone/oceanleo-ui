@@ -2,9 +2,10 @@
 //   probe   – open, screenshot, list edit-bar controls, select a styled cell, click bar buttons.
 //   save    – type into two empty cells (save after each), reload, confirm both values are back.
 //   offline – go offline, type, expect "error" (never "saved"), go online, retry, expect "saved".
+import assert from "node:assert/strict";
 const STAGE = "[data-grid-univer-stage]";
 
-async function openGrid(page, helpers, id) {
+export async function openGrid(page, helpers, id) {
   await helpers.gotoApp(page, `/library?item=${id}`);
   const stage = page.locator(`${STAGE} canvas >> visible=true`).first();
   if (!(await stage.isVisible().catch(() => false))) {
@@ -18,7 +19,7 @@ async function openGrid(page, helpers, id) {
 }
 
 /** Centre of a cell (0-based row/col) in normal mode: no ribbon, 46px row header, 20px col header (from the canvas, below the bar inset). */
-async function cellPoint(page, row, col) {
+export async function cellPoint(page, row, col) {
   // The largest canvas is the sheet; Univer also parks an 88×24 cell-editor canvas off-screen after the first edit.
   const box = await page.evaluate((sel) => {
     let best = null;
@@ -31,7 +32,7 @@ async function cellPoint(page, row, col) {
   return { x: box.x + 46 + 88 * col + 44, y: box.y + 20 + 24 * row + 12 };
 }
 
-async function clickCell(page, row, col) {
+export async function clickCell(page, row, col) {
   const p = await cellPoint(page, row, col);
   await page.mouse.click(p.x, p.y);
   await page.waitForTimeout(500);
@@ -79,6 +80,7 @@ async function surfaces(page) {
 }
 
 let revisionPosts = 0;
+let committedRevisions = 0;
 
 /** After an edit: wait until a new revision POST went out, then until the bar says saved. */
 async function waitEditSaved(page, helpers, log, before, timeout = 90000) {
@@ -108,6 +110,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   });
   page.on("response", async (res) => {
     if (res.request().method() !== "POST" || !/\/revisions(\?|$)/.test(res.url())) return;
+    if (res.ok()) committedRevisions += 1;
     const body = await res.text().catch(() => "");
     const id = /"(?:revision_id|revisionId|id)"\s*:\s*"([0-9a-f-]{36})"/.exec(body)?.[1] || "";
     log("REVISION-RES", res.status(), id, body.length);
@@ -381,6 +384,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     log("canvas tag at open", await tagCanvas(page));
     await page.waitForTimeout(3000);
     const posts0 = revisionPosts;
+    assert.equal(posts0, 0, "a clean open must not create a revision");
     log("revision posts before edits (opening must not save)", posts0, await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.state || null)));
     await clickCell(page, 12, 4);
     await page.keyboard.type(`W10a${stamp}`);
@@ -412,6 +416,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     log("events after edit 2", await page.evaluate(() => JSON.stringify(globalThis.__oceanleoGridUniverPaint?.events || []) + " " + JSON.stringify(globalThis.__oceanleoGridUniverPaint?.state || null)));
     await shot(`${tag}-edit2`);
     await waitEditSaved(page, helpers, log, posts1);
+    assert.equal(committedRevisions, 2, "two edits must produce exactly two committed revisions (CAS retries do not count)");
     log("saved 2", page.url());
     // Close → reopen (fresh navigation), then a full page reload; both must show the two edits.
     await openGrid(page, helpers, id);
@@ -421,7 +426,19 @@ export default async function ({ page, context, log, shot, helpers, args }) {
       return marks.map((m) => all.includes(m));
     }, [`W10a${stamp}`, `W10b${stamp}`]);
     log("RESULT", found.every(Boolean) ? "both-present" : `MISSING ${JSON.stringify(found)}`, stamp);
+    assert.ok(found.every(Boolean), "both edits must survive close/reopen");
     await shot(`${tag}-reopened`);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator(`${STAGE} canvas`).first().waitFor({ timeout: 150000 });
+    await page.waitForTimeout(5000);
+    const reloaded = await page.evaluate(marks => {
+      const all = JSON.stringify(globalThis.__oceanleoGridUniverPaint?.liveCells || []);
+      return marks.map(mark => all.includes(mark));
+    }, [`W10a${stamp}`, `W10b${stamp}`]);
+    assert.ok(reloaded.every(Boolean), "both edits must survive full reload");
+    assert.equal(committedRevisions, 2, "reopen/reload must not create extra revisions");
+    log("RESULT full-reload", JSON.stringify(reloaded));
+    await shot(`${tag}-full-reload`);
     return;
   }
 

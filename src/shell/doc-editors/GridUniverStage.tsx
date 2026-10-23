@@ -172,6 +172,8 @@ import {
   type GridLoadIdentity,
   gridExpectedSourcePresent,
   gridOpenFailedClosed,
+  gridProjectSource,
+  gridSnapshotIsUsable,
   isUniverWorkbookSnapshot,
   listUniverSnapshotValues,
   planGridSameDocumentOpen,
@@ -227,10 +229,11 @@ async function readGridRevisionSnapshot(
   revision: LibraryItem,
   title: string,
 ): Promise<Partial<IWorkbookData> | null> {
-  const schema = String(revision.meta.editor_project_schema || "");
-  const url = String(revision.meta.editor_project_url || "");
+  const { schema, url } = gridProjectSource(revision);
   if (schema === GRID_UNIVER_PROJECT_SCHEMA && url) {
-    return loadEditorProject<Partial<IWorkbookData>>(url, GRID_UNIVER_PROJECT_SCHEMA);
+    const snapshot = await loadEditorProject<Partial<IWorkbookData>>(url, GRID_UNIVER_PROJECT_SCHEMA);
+    if (!gridSnapshotIsUsable(snapshot)) throw new Error("表格源尚未成功载入，未保存空白表。");
+    return snapshot;
   }
   const officeSheets = await loadGridSheets(revision);
   const planned = planGridSameDocumentOpen({
@@ -290,6 +293,7 @@ export function GridUniverStage({
   /** 上一次成功载入的文档身份；见 gridShouldSkipSourceReload。 */
   const loadedIdentityRef = useRef<GridLoadIdentity | null>(null);
   const sourceFailedRef = useRef(false);
+  const sourceReadyRef = useRef(false);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [xlsxExporting, setXlsxExporting] = useState(false);
@@ -325,12 +329,12 @@ export function GridUniverStage({
   /** 还在等第一次同步，或者在房间里只有查看权限 / 专业模式锁在别人手里：画布不让改。 */
   const collabBlocked =
     collabOn && (collabPhase === "waiting" || collabViewOnly);
-  const editBlocked = readonly || collabBlocked;
+  const editBlocked = readonly || collabBlocked || loading || !snapshotReady || sourceFailed;
   const editBlockedRef = useRef(editBlocked);
   editBlockedRef.current = editBlocked;
   // 撤销栈判据只在真只读时不算本人改动；等首同步时画布仍能打字（实测），打了就是本人的改动。
   const personWriteBlockedRef = useRef(false);
-  personWriteBlockedRef.current = readonly || (collabOn && collabViewOnly);
+  personWriteBlockedRef.current = readonly || (collabOn && collabViewOnly) || loading || !snapshotReady || sourceFailed;
   const collabOnRef = useRef(collabOn);
   collabOnRef.current = collabOn;
   const collabBinderRef = useRef<GridCollabBinder | null>(null);
@@ -379,8 +383,7 @@ export function GridUniverStage({
   resourceFailedRef.current = officeSource.resourceFailed;
   const officeErrorRef = useRef(officeSource.error);
   officeErrorRef.current = officeSource.error;
-  const projectSchema = String(item.meta.editor_project_schema || "");
-  const projectUrl = String(item.meta.editor_project_url || "");
+  const { schema: projectSchema, url: projectUrl } = gridProjectSource(item);
   // 长期库件还在解析签名源（rendition 转圈、url 还是空）时不要先开一张空表：
   // 等 url 到了再起跑一次。有工程档的不等——工程档本身就是源。
   const waitingForSource =
@@ -418,6 +421,7 @@ export function GridUniverStage({
       return;
     }
     loadedIdentityRef.current = null;
+    sourceReadyRef.current = false;
     noteGridProbe("source-reload");
     let cancelled = false;
     const title = item.title || ttRef.current("工作簿");
@@ -428,6 +432,7 @@ export function GridUniverStage({
     setDirty(false);
     setStatus(ttRef.current("正在载入表格"));
     const failClosed = (reason: string) => {
+      sourceReadyRef.current = false;
       loadedIdentityRef.current = null;
       snapshotRef.current = null;
       sourceFailedRef.current = true;
@@ -449,6 +454,7 @@ export function GridUniverStage({
             projectUrl,
             GRID_UNIVER_PROJECT_SCHEMA,
           );
+          if (!gridSnapshotIsUsable(univerSnapshot)) throw new Error(ttRef.current("表格源尚未成功载入，未保存空白表。"));
         } else if (projectUrl && schema !== GRID_UNIVER_PROJECT_SCHEMA) {
           // 存量用户的旧核工程档（`oceanleo.grid.v1`）：读进来、转成快照、只读打开。
           // 这是旧文档进新核的入口，旧核运行时删了它也必须在。
@@ -519,6 +525,7 @@ export function GridUniverStage({
           setConversionNotice("");
         }
         loadedIdentityRef.current = identity;
+        sourceReadyRef.current = true;
         setSnapshotReady(true);
       } catch (caught) {
         if (cancelled) return;
@@ -937,7 +944,7 @@ export function GridUniverStage({
   );
 
   const save = useCallback(async () => {
-    if (sourceFailedRef.current) {
+    if (sourceFailedRef.current || !sourceReadyRef.current || !handleRef.current) {
       setStatus(sourceFailureReason || tt("表格源尚未成功载入，未保存空白表。"));
       return null;
     }
@@ -947,9 +954,13 @@ export function GridUniverStage({
     }
     // 协同里只有房间里的保存者存版本；别人的画布内容会经房间同步给它。
     if (!collabSaveGate) return null;
-    collabBinderRef.current?.flush();
     const baseItem = externalItemRef.current ?? item;
     const snapshot = currentSnapshot();
+    if (!gridSnapshotIsUsable(snapshot)) {
+      setStatus(tt("表格源尚未成功载入，未保存空白表。"));
+      return null;
+    }
+    collabBinderRef.current?.flush();
     snapshotRef.current = snapshot;
     // `sheets` 只用来画预览图和写 meta；交付的 XLSX 直接从快照生成。
     const sheets = univerSnapshotToGridSheets(snapshot);
@@ -1016,7 +1027,11 @@ export function GridUniverStage({
       setDirty(false);
       noteGridProbe(`saved:${result.revisionId || ""}`);
       if (result.revisionId) ownRevisionsRef.current.add(String(result.revisionId));
-      externalItemRef.current = null;
+      // Keep the server-confirmed head locally: the host may retain the opening
+      // item until navigation, but the next save must not CAS against that head.
+      externalItemRef.current = result.item ?? advancedSavedItem(baseItem, {
+        url: result.url, versionId: result.versionId, title: result.title,
+      });
       if (collabRoom && result.revisionId) collabRoom.markSaved(result.revisionId);
       setStatus(gridXlsxDroppedWarning(xlsxDropped));
       return result;
@@ -1382,13 +1397,15 @@ export function GridUniverStage({
             // 顶栏照报「已保存」却不成新版本（R2 实测，同 W07）。每次保存都走版本提交（D11 §5.5）。
             key: advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item),
             ready: recoveryReady,
-            capture: () =>
-              sourceFailedRef.current || !snapshotReady
-                ? null
-                : currentSnapshot(),
+            capture: () => {
+              if (sourceFailedRef.current || !sourceReadyRef.current || !snapshotReady || !handleRef.current) return null;
+              const snapshot = currentSnapshot();
+              return gridSnapshotIsUsable(snapshot) ? snapshot : null;
+            },
             restore: (payload) => {
               // 只认 Univer 工作簿快照：旧核写下的 `{sheets:[…]}` 草稿被拒，不灌进 Univer。
               if (!isUniverWorkbookSnapshot(payload)) return false;
+              if (!gridSnapshotIsUsable(payload)) return false;
               const api = handleRef.current?.api;
               if (!api) return false;
               // 先建新簿再卸旧簿：先卸会让 Univer 空窗，新表常常不画。

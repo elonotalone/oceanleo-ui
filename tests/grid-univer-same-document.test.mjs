@@ -19,6 +19,8 @@ import {
   GRID_UNIVER_RECOVERY_EDITOR_ID,
   gridExpectedSourcePresent,
   gridOpenFailedClosed,
+  gridProjectSource,
+  gridSnapshotIsUsable,
   gridShouldSkipSourceReload,
   isUniverWorkbookSnapshot,
   paintUniverWorkbookFromSnapshot,
@@ -34,6 +36,25 @@ const sameDocument = readFileSync(
   "src/shell/doc-editors/grid-univer/same-document.ts",
   "utf8",
 );
+
+test("typed native project survives legacy meta alias removal and validates real sheet dimensions", () => {
+  const item = { meta: {}, artifact: { renditions: { editor_manifest: { url: "/private/native.json" } } } };
+  assert.deepEqual(gridProjectSource(item), { schema: GRID_UNIVER_PROJECT_SCHEMA, url: "/private/native.json" });
+  assert.deepEqual(gridProjectSource({ meta: { editor_manifest_url: "/native.json" } }),
+    { schema: GRID_UNIVER_PROJECT_SCHEMA, url: "/native.json" });
+  assert.deepEqual(gridProjectSource({ meta: { editor_project_schema: GRID_LEGACY_PROJECT_SCHEMA, editor_project_url: "/old.json" } }),
+    { schema: GRID_LEGACY_PROJECT_SCHEMA, url: "/old.json" });
+  assert.equal(gridSnapshotIsUsable({}), false);
+  assert.equal(gridSnapshotIsUsable({ sheets: {} }), false);
+  for (const rowCount of [undefined, 0, -1, NaN, Infinity, 1.5, 1_048_577]) {
+    assert.equal(gridSnapshotIsUsable({ sheets: { s: { rowCount, columnCount: 8 } } }), false);
+  }
+  assert.equal(gridSnapshotIsUsable({ sheets: { s: { rowCount: 20, columnCount: 8, cellData: {} } } }), true,
+    "a validated blank sheet is legitimate; an uninitialized model is not");
+  assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !handleRef\.current/);
+  assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !snapshotReady \|\| !handleRef\.current/);
+  assert.match(leaf, /if \(!gridSnapshotIsUsable\(snapshot\)\)[\s\S]*?return null;/);
+});
 
 function sheet(cell) {
   return {
@@ -291,8 +312,8 @@ test("签名地址换发（同 artifact / revision）不重载；重新载入、
 
 test("舞台加载 effect 用 gridShouldSkipSourceReload 拦签名地址换发，成功才记身份", () => {
   assert.match(leaf, /gridShouldSkipSourceReload\(\{[\s\S]*loaded: loadedIdentityRef\.current[\s\S]*dirty: dirtyRef\.current/);
-  assert.match(leaf, /loadedIdentityRef\.current = identity;\s*setSnapshotReady\(true\)/);
-  assert.match(leaf, /failClosed = \(reason: string\) => \{\s*loadedIdentityRef\.current = null/);
+  assert.match(leaf, /loadedIdentityRef\.current = identity;\s*sourceReadyRef\.current = true;\s*setSnapshotReady\(true\)/);
+  assert.match(leaf, /failClosed = \(reason: string\) => \{\s*sourceReadyRef\.current = false;\s*loadedIdentityRef\.current = null/);
 });
 
 // ---- 崩溃恢复（父 agent 收尾 W13 时补，浏览器实测：同键互灌导致 Univer 白画布） ----

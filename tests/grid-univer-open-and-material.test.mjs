@@ -91,7 +91,7 @@ test("舞台：协同本地侧的活动不再标脏 / 加编辑序号（本人�
   assert.ok(guard > 0, "本地活动必须在标脏之前返回");
   assert.ok(guard < block.indexOf("setEditRevision"));
   // 撤销栈判据只在真只读 / 只能看时不算本人改动，等首同步时照算。
-  assert.match(stage, /personWriteBlockedRef\.current = readonly \|\| \(collabOn && collabViewOnly\);/);
+  assert.match(stage, /personWriteBlockedRef\.current = readonly \|\| \(collabOn && collabViewOnly\) \|\| loading \|\| !snapshotReady \|\| sourceFailed;/);
   assert.match(stage, /editBlockedRef: personWriteBlockedRef,/);
 });
 
@@ -101,4 +101,6 @@ test("舞台：房间回送本页自己存出的 revision 时不整本换回（R
   assert.ok(handler.length > 0);
   // 收到时、取完版本后各判一次。
   assert.equal(handler.split("ownRevisionsRef.current.has(String(revisionId))").length - 1, 2);
+  assert.match(stage, /externalItemRef\.current = result\.item \?\? advancedSavedItem\(baseItem,/,
+    "next save uses this tab's committed head rather than the opening item");
 });
