@@ -436,7 +436,8 @@ export function DeckRoute({
             content: <VisualViewOnlyPanel readOnly={viewOnly}><DeckNotesPanel editor={editor} /></VisualViewOnlyPanel>,
           },
         ],
-        contextToolbar: (
+        // 载入完成前不给编辑栏：占位稿上的改动会被真文稿顶掉。
+        contextToolbar: editor.loading ? undefined : (
           <DeckContextToolbar
             editor={editor}
             accent={accent}

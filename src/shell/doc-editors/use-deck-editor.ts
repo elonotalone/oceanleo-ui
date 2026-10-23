@@ -1883,7 +1883,8 @@ export function useDeckEditor(
 
   const commit = useCallback(
     (update: (current: DeckDocument) => DeckDocument, nextActive?: string) => {
-      if (readOnlyRef.current) return false;
+      // 载入完成前画布上是占位稿：改了会被真文稿顶掉，却照样报「已保存」（10-23 W07 实测）。
+      if (readOnlyRef.current || sourceLoadingRef.current) return false;
       const base = snapshot();
       const next = update(cloneDeckDocument(base.deck));
       const resolvedActive = nextActive || base.activeId || next.slides[0].id;
@@ -1914,7 +1915,7 @@ export function useDeckEditor(
 
   const applyTransient = useCallback(
     (update: (current: DeckDocument) => DeckDocument) => {
-      if (readOnlyRef.current) return false;
+      if (readOnlyRef.current || sourceLoadingRef.current) return false;
       const current = deckRef.current;
       const next = update(cloneDeckDocument(current));
       if (deckDocumentsEqual(next, current)) return false;
@@ -1926,7 +1927,7 @@ export function useDeckEditor(
     [],
   );
   const beginGesture = useCallback(() => {
-    if (readOnlyRef.current) return;
+    if (readOnlyRef.current || sourceLoadingRef.current) return;
     if (!gestureRef.current) gestureRef.current = snapshot();
   }, [snapshot]);
   const endGesture = useCallback(() => {
