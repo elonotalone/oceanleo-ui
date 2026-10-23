@@ -243,3 +243,24 @@ test("format helpers: decoration, list markers, links, PPTX runs", () => {
   });
   assert.deepEqual(deckPptxTextRuns("plain", {}), [{ text: "plain", options: {} }]);
 });
+
+test("slide bar: no page-content panel, layout and notes do not share the drawers' glyphs", async () => {
+  const { deckSlideSelectionContext } = await import("../src/shell/doc-editors/deck-slide-selection-context.ts");
+  const deck = normalizeDeckDocument({ title: "d", slides: [{ id: "s1", title: "t", body: "b", elements: [] }] });
+  const editor = {
+    activeSlide: deck.slides[0],
+    activeIndex: 0,
+    activeMaster: deck.masters[0],
+    deck,
+  };
+  const context = deckSlideSelectionContext(editor, tt);
+  const ids = context.controls.map((control) => control.id);
+  assert.ok(!ids.includes("title") && !ids.includes("body"), ids.join(" "));
+  assert.ok(ids.includes("notes"));
+  const layout = context.controls.find((control) => control.id === "layout");
+  const notes = context.controls.find((control) => control.id === "notes");
+  // 空态抽屉：模板 templates / 元素 elements / 画笔 draw / 线条 line / 便签 note。
+  const drawerGlyphs = new Set(["templates", "elements", "draw", "line", "note"]);
+  assert.ok(!drawerGlyphs.has(layout.icon), layout.icon);
+  assert.ok(!drawerGlyphs.has(notes.inspectorIcon), notes.inspectorIcon);
+});

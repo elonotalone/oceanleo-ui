@@ -156,7 +156,9 @@ test("viewport cap is definite only when content overflows (compact scroll)", ()
   assert.deepEqual(deckPreviewViewportCapStyle(null), {});
 });
 
-test("tall desktop keeps maxHeight but auto height so 50% fit occupancy recovers", () => {
+// 10-23 W07：桌面高屏不再 `height:auto` 缩成缩略图栏高度（舞台半截、幻灯片钻到浮动编辑栏底下），
+// 只给 maxHeight，由 h-full 撑满窗格。
+test("tall desktop keeps maxHeight and lets h-full fill the pane", () => {
   const eightSlideContent = deckPreviewEstimatedLayoutContentHeightPx(8);
   // V2 desktop preview/edit caps from geometry.json tops.
   const previewDesktopCap = deckPreviewViewportCapPx(160.5, 1050);
@@ -176,7 +178,7 @@ test("tall desktop keeps maxHeight but auto height so 50% fit occupancy recovers
     previewDesktopCap,
     eightSlideContent,
   );
-  assert.equal(desktopStyle.height, "auto");
+  assert.equal(desktopStyle.height, undefined);
   assert.equal(desktopStyle.maxHeight, "885px");
   assert.equal(desktopStyle.minHeight, undefined);
 

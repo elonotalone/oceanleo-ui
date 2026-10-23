@@ -138,7 +138,8 @@ test("route toolbars put continuous and long-form controls in semantic inspector
   }
   assertInspectorControls(
     "../src/shell/doc-editors/deck-slide-selection-context.ts",
-    ["transition-duration", "title", "body", "notes"],
+    // 10-23 W07：「页面内容」（title / body）不再上栏——有对象的页面上是死按钮。
+    ["transition-duration", "notes"],
   );
   // 演示（10-23 D9 / A-1）：面板子控件用 panel("<规范 id>") 生成，行为断言在
   // tests/deck-unified-edit-bar.test.mjs（opacity / link / alt / stroke / border / adjust /

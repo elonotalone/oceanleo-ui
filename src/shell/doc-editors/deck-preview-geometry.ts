@@ -123,8 +123,10 @@ export function deckPreviewNeedsDefiniteViewportHeight(
  * - Always `maxHeight` so the root cannot spill past the window.
  * - Definite `height` + `minHeight:0` only when content overflows the cap
  *   (compact / short stages that need a flex scrollport).
- * - Otherwise `height:auto` overrides Tailwind `h-full` so tall desktop
- *   workbenches shrink to content and keep 50%-fit stage occupancy.
+ * - Otherwise only `maxHeight`: Tailwind `h-full` keeps the stage filling the
+ *   pane. (It used to be `height:auto`, which shrank the stage to the rail's
+ *   height: a 3-slide deck got a 400px stage with the slide tucked under the
+ *   floating edit bar and a bare band below — 10-23 W07, D9.)
  */
 export function deckPreviewViewportCapStyle(
   capPx: number | null | undefined,
@@ -150,10 +152,7 @@ export function deckPreviewViewportCapStyle(
       minHeight: 0,
     };
   }
-  return {
-    height: "auto",
-    maxHeight,
-  };
+  return { maxHeight };
 }
 
 /**

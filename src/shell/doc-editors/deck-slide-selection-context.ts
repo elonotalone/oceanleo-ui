@@ -17,7 +17,8 @@ export function deckSlideSelectionContext(
         id: "layout",
         kind: "select",
         label: tt("版式"),
-        icon: "templates",
+        // 「模板」抽屉用 templates 字形；页面版式换 pages，栏上不撞形（D9）。
+        icon: "pages",
         value: slide.layout,
         // deck-extension.md §4 L1–L16 plus the two legacy editor grammars.
         options: [
@@ -164,26 +165,8 @@ export function deckSlideSelectionContext(
         inspectorLabel: tt("母版与版式"),
         inspectorIcon: "templates",
       },
-      {
-        id: "title",
-        kind: "text",
-        label: tt("页面标题"),
-        value: slide.title,
-        slot: "inspector",
-        inspectorGroup: "deck-slide-content",
-        inspectorLabel: tt("页面内容"),
-        inspectorIcon: "text",
-      },
-      {
-        id: "body",
-        kind: "text",
-        label: tt("页面正文"),
-        value: slide.body,
-        slot: "inspector",
-        inspectorGroup: "deck-slide-content",
-        inspectorLabel: tt("页面内容"),
-        inspectorIcon: "text",
-      },
+      // 「页面内容」（slide.title / body）不再上栏：有对象的页面上改它画面不变（死按钮），
+      // 旧式页面本来就在画布上原地编辑标题和正文。
       {
         id: "notes",
         kind: "text",
@@ -192,7 +175,8 @@ export function deckSlideSelectionContext(
         slot: "inspector",
         inspectorGroup: "deck-slide-notes",
         inspectorLabel: tt("演讲者备注"),
-        inspectorIcon: "note",
+        // 「便签」抽屉用 note 字形；备注暂用 text，专用图标见 signals/W07-to-W03.md。
+        inspectorIcon: "text",
       },
       {
         id: "duplicate-slide",

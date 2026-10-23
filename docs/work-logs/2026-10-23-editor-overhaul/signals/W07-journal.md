@@ -12,3 +12,6 @@
 - 08:31Z [实测+SQL] 修完重载后复跑（/tmp/w07-r2i）：不再 409，但第 2、3 次改动走草稿层——`/v1/database/upload` 写出两个隐藏「…草稿」root（editorInternal working-document，241→243），顶栏「已保存」，revision 只 +1。演示是全仓唯一接草稿层（`persistence.draft`）的编辑器。修：DeckRoute 不再接草稿层，每次保存都走版本提交。
 - 08:36Z [实测+SQL] 去掉草稿层后公共模板 fork 流程（/tmp/w07-r2k）：同一份副本 a67bdb59，3 次改动 = rev 9→10→11（父子相接），不重载、不 409，W07 新增 root 0。之前 r2j 那次「重载」是我提交 DeckRoute 触发槽热更新撞上场景，不是产品行为。
 - 08:40Z [实测+SQL] 自己库 0dac8934（/tmp/w07-r2s）：粗体 → 删除线 → 重开 → 断网斜体（保存失败）→ 恢复点重试 → 已保存。revision 8→12 = +4，但改动只有 3 次：第 1 次改动后外壳（会话快照 409 / 会话新建后补记）又要了一次保存，编辑器无改动照样提交了一版。修：同一次改动已提交就交回上次回执（`lastSavedRef`）。tsc 0 个演示错误（仅 video-project-doc.ts 3 个，非我）。
+- 08:45Z [实测] 3 页的演示在库页里舞台只有 399px 高（`deckPreviewViewportCapStyle` 给 `height:auto`，舞台缩成缩略图栏高度），幻灯片顶部钻进浮动编辑栏底下、下面一截空底。修：只给 maxHeight，h-full 撑满（/tmp/w07-r2m 829px）。
+- 08:50Z [读码] W02 契约：素材 adapter 搬进 `use-deck-material-adapter.ts`，`withEditorHistoryCommand` 登记 command（载入中不登记；替换只认选中图片）。
+- 08:55Z [实测] W02 落地后空态抽屉出来了（Templates 元素 Brush Lines Note）。英文界面露中文：空白 / 母版与版式 / 元素 / 过渡……→ 文案册补 75 条 ×16 语。页面栏：版式换 pages 字形、备注换 text 字形（不与抽屉撞形）；「页面内容」下栏（有对象的页上是死按钮，旧式页本来就原地编辑）。tsc 演示 0 错。

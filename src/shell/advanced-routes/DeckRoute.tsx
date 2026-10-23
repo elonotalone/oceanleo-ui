@@ -68,10 +68,7 @@ import {
 } from "../doc-editors/doc-family-formats";
 import { importDocFamilyFile } from "../doc-editors/doc-family-import";
 import { usePluginCommandSurface } from "../plugin-command";
-import {
-  useWorkbenchMaterialAdapter,
-  type WorkbenchMaterialAdapter,
-} from "../workbench-material-provider";
+import { useDeckMaterialAdapter } from "../doc-editors/use-deck-material-adapter";
 
 /**
  * PPT 的指令面（Leo 的「帮我改」从这里进来）。只能查看时，会改文稿的指令在这一层直接拒绝，
@@ -237,45 +234,7 @@ export function DeckRoute({
     presenterDisposeRef.current = outcome.dispose;
     setPresentation({ surface: "stage-only", reason: "none" });
   }, [editor, presenterChannelName, tt]);
-  const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
-    () => ({
-      id: "deck-elements@2",
-      actions: ["insert", "replace"],
-      accepts: (material) => {
-        const urls = [material.url].filter(Boolean);
-        const mime = String(material.meta.mime || "").toLowerCase();
-        // 只收图片：视频、文档的预览图不算图片素材（插进去是一张截图，不是用户要的东西）。
-        return (
-          material.kind === "image" ||
-          material.artifactType === "image" ||
-          mime.startsWith("image/") ||
-          urls.some((url) =>
-            /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i.test(url || ""),
-          )
-        );
-      },
-      mutate: (action, material, placement) => {
-        const candidates = [
-          material.previewUrl,
-          material.thumbUrl,
-          material.url,
-        ].filter(Boolean) as string[];
-        const url =
-          candidates.find((candidate) =>
-            /\.(?:png|jpe?g|webp|gif|svg)(?:$|[?#])/i.test(candidate),
-          ) || candidates[0] || "";
-        if (!url) throw new Error("这个图片素材没有可用地址。");
-        editor.insertImageElement(
-          url,
-          material.title,
-          action === "replace",
-          placement,
-        );
-      },
-    }),
-    [editor.insertImageElement],
-  );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  useDeckMaterialAdapter(editor, item);
   const saveBeforeNewConversation = useCallback(async () => {
     const saved = await editor.save();
     if (!saved) return { ok: false as const };

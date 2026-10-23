@@ -173,6 +173,10 @@ const STUBS = {
   "../workbench-material-provider": dataModule(
     "export function useWorkbenchMaterialAdapter(){}",
   ),
+  // 10-23 W07：素材 adapter 搬进自己的 hook；这条测试不管素材。
+  "../doc-editors/use-deck-material-adapter": dataModule(
+    "export function useDeckMaterialAdapter(){}",
+  ),
   "../office-editor": dataModule(`
     export function useOfficeArtifactSource(item) {
       return { item, error: "", loading: false, resourceFailed: false, retry: () => {} };
