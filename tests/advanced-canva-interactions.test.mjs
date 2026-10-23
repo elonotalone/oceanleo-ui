@@ -67,11 +67,15 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
   const richToolbar = source(
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",
   );
-  assert.match(deck, /id: "deck-effects"[\s\S]*?hiddenFromRail: true/);
-  assert.match(deck, /id: "deck-fonts"[\s\S]*?hiddenFromRail: true/);
+  // 10-23 D3：演示只申报 模板 / 元素 / 画笔 / 线条 / 便签；字体、效果是统一栏控件，不再是抽屉。
+  assert.deepEqual(
+    [...deck.matchAll(/\n {10}\{\n {12}id: "(deck-[a-z-]+)",\n {12}label:/g)].map((m) => m[1]),
+    ["deck-design", "deck-elements", "deck-draw", "deck-lines", "deck-notes"],
+  );
+  assert.doesNotMatch(deck, /id: "deck-(?:effects|fonts|layers|uploads|signature|tables|text)"/);
   assert.match(image, /id: "image-filters"[\s\S]*?hiddenFromRail: true/);
   assert.match(image, /id: "image-fonts"[\s\S]*?hiddenFromRail: true/);
-  assert.match(deckToolbar, /panelId: "deck-fonts"/);
+  assert.doesNotMatch(deckToolbar, /panelId: "deck-fonts"/);
   assert.match(imageToolbar, /panelId: "image-filters"/);
   for (const drawer of [
     "image-brush",

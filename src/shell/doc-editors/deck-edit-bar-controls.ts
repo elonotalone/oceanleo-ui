@@ -8,7 +8,6 @@
  * 锁定的对象只剩「取消锁定」与替代文字，其余不出（不放灰按钮）。
  */
 import type { UITranslate } from "../../i18n/ui/useUI";
-import { ADVANCED_EDITOR_FONTS } from "../AdvancedFontPicker";
 import {
   EDIT_BAR_CANON,
   EDIT_BAR_CANON_OPTIONS,
@@ -24,17 +23,26 @@ function familyKey(family: string): string {
   return family.split(",")[0].trim().replace(/^["']|["']$/g, "").toLowerCase();
 }
 
-/** 字体下拉：共享字体表；文稿里的字体不在表中时排第一个，显示它自己的名字。 */
+export interface DeckFontChoice {
+  family: string;
+  label: string;
+}
+
+/**
+ * 字体下拉：共享字体表（`ADVANCED_EDITOR_FONTS`，由组件层传入，这里保持纯 TS）；
+ * 文稿里的字体不在表中时排第一个，显示它自己的名字。
+ */
 export function deckFontOptions(
   current: string | undefined,
   inherited: string,
+  fonts: readonly DeckFontChoice[],
 ): { value: string; options: { value: string; label: string }[] } {
-  const options = ADVANCED_EDITOR_FONTS.map((font) => ({
+  const options = fonts.map((font) => ({
     value: font.family,
     label: font.label,
   }));
   const family = (current || inherited || "").trim();
-  if (!family) return { value: options[0].value, options };
+  if (!family) return { value: options[0]?.value || "", options };
   const match = options.find((option) => familyKey(option.value) === familyKey(family));
   if (match) return { value: match.value, options };
   const label = family.split(",")[0].trim().replace(/^["']|["']$/g, "");
@@ -52,6 +60,7 @@ export function deckElementSelectionControls(
   element: DeckElement,
   tt: UITranslate,
   inheritedFont = "",
+  fonts: readonly DeckFontChoice[] = [],
 ): Control[] {
   const canon = (id: EditBarCanonId) => ({
     id,
@@ -146,8 +155,8 @@ export function deckElementSelectionControls(
 
   const text: Control[] = [];
   if (element.type === "text" || element.type === "table") {
-    const font = deckFontOptions(element.fontFamily, inheritedFont);
-    if (element.type === "text") {
+    const font = deckFontOptions(element.fontFamily, inheritedFont, fonts);
+    if (element.type === "text" && font.options.length) {
       text.push({
         ...canon("font-family"),
         kind: "select",

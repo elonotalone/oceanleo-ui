@@ -87,7 +87,7 @@ const toolbarStubUrl = dataModule(`
   }
 `);
 
-const OBJECT_ACTION_IDS = ["edit-text", "lock", "duplicate", "delete"];
+const OBJECT_ACTION_IDS = ["lock", "duplicate", "delete"];
 
 const TEXT_ELEMENT = {
   id: "el-title",
@@ -270,28 +270,36 @@ test("deck 选中态不再画独立 5 键条，缩放柄还在", async () => {
   }
 });
 
-test("DeckContextToolbar 暴露复制 / 锁定 / 删除 / 编辑文字，未选中时禁用", async () => {
+// 10-23 D9：统一编辑栏「做不到就不出、不放灰按钮」；「编辑文字」键删了（双击 / Enter / F2 编辑），
+// 所以原来「未选中时露出并禁用」「锁定时灰掉」的断言改成「不出」。
+test("DeckContextToolbar：对象组只在选中对象时出现；锁定只剩取消锁定；没有「编辑文字」键", async () => {
   const toolbarUrl = await compileModule(
     "src/shell/doc-editors/DeckContextToolbar.tsx",
     {
       react: reactUrl,
       "../../i18n/ui/useUI": uiStubUrl,
       "../SelectionToolbar": toolbarStubUrl,
+      "../AdvancedFontPicker": dataModule(
+        `export const ADVANCED_EDITOR_FONTS = [{ family: "Inter, Arial, sans-serif", label: "Modern Sans" }];`,
+      ),
     },
   );
   const { DeckContextToolbar } = await import(toolbarUrl);
+  const ids = (mounted) =>
+    [...mounted.container.querySelectorAll("[data-selection-control-id]")].map(
+      (node) => node.getAttribute("data-selection-control-id"),
+    );
+  const control = (mounted, id) =>
+    mounted.container.querySelector(`[data-selection-control-id="${id}"]`);
 
   const empty = await render(
     React.createElement(DeckContextToolbar, { editor: mockEditor() }),
   );
   try {
     for (const id of OBJECT_ACTION_IDS) {
-      const button = empty.container.querySelector(
-        `[data-selection-control-id="${id}"]`,
-      );
-      assert.ok(button, `未选中时必须露出 ${id}`);
-      assert.equal(button.disabled, true, `${id} 未选中时必须禁用`);
+      assert.equal(control(empty, id), null, `未选中时不出 ${id}`);
     }
+    assert.ok(!ids(empty).some((id) => id === "edit-text"));
   } finally {
     await empty.unmount();
   }
@@ -303,12 +311,11 @@ test("DeckContextToolbar 暴露复制 / 锁定 / 删除 / 编辑文字，未选�
   );
   try {
     for (const id of OBJECT_ACTION_IDS) {
-      const button = selected.container.querySelector(
-        `[data-selection-control-id="${id}"]`,
-      );
+      const button = control(selected, id);
       assert.ok(button, `选中文字后必须露出 ${id}`);
       assert.equal(button.disabled, false, `${id} 选中未锁定文字时应可点`);
     }
+    assert.equal(control(selected, "edit-text"), null);
   } finally {
     await selected.unmount();
   }
@@ -319,26 +326,8 @@ test("DeckContextToolbar 暴露复制 / 锁定 / 删除 / 编辑文字，未选�
     }),
   );
   try {
-    assert.equal(
-      locked.container.querySelector('[data-selection-control-id="edit-text"]')
-        .disabled,
-      true,
-    );
-    assert.equal(
-      locked.container.querySelector('[data-selection-control-id="duplicate"]')
-        .disabled,
-      true,
-    );
-    assert.equal(
-      locked.container.querySelector('[data-selection-control-id="delete"]')
-        .disabled,
-      true,
-    );
-    assert.equal(
-      locked.container.querySelector('[data-selection-control-id="lock"]')
-        .disabled,
-      false,
-    );
+    assert.deepEqual(ids(locked), ["lock"]);
+    assert.equal(control(locked, "lock").disabled, false);
   } finally {
     await locked.unmount();
   }
@@ -349,16 +338,8 @@ test("DeckContextToolbar 暴露复制 / 锁定 / 删除 / 编辑文字，未选�
     }),
   );
   try {
-    assert.equal(
-      image.container.querySelector('[data-selection-control-id="edit-text"]')
-        .disabled,
-      true,
-    );
-    assert.equal(
-      image.container.querySelector('[data-selection-control-id="duplicate"]')
-        .disabled,
-      false,
-    );
+    assert.equal(control(image, "edit-text"), null);
+    assert.equal(control(image, "duplicate").disabled, false);
   } finally {
     await image.unmount();
   }

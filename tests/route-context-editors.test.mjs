@@ -139,21 +139,9 @@ test("route toolbars put continuous and long-form controls in semantic inspector
     "../src/shell/doc-editors/deck-slide-selection-context.ts",
     ["transition-duration", "title", "body", "notes"],
   );
-  assertInspectorControls(
-    "../src/shell/doc-editors/DeckContextToolbar.tsx",
-    [
-      "opacity",
-      "text",
-      "font-size",
-      "line-height",
-      "letter-spacing",
-      "border-width",
-      "line-dash",
-      "line-start",
-      "line-end",
-      "alt",
-    ],
-  );
+  // 演示（10-23 D9 / A-1）：面板子控件用 panel("<规范 id>") 生成，行为断言在
+  // tests/deck-unified-edit-bar.test.mjs（opacity / link / alt / stroke / border / adjust /
+  // position / animation 都是 slot:"inspector" + inspectorGroup:<规范 id>）。
   assertInspectorControls(
     "../src/shell/doc-editors/deck-object-geometry-controls.ts",
     ["x", "y", "width", "height", "rotation"],

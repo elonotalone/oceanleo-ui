@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { ADVANCED_EDITOR_FONTS } from "../AdvancedFontPicker";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type {
   SelectionCommand,
@@ -57,7 +58,12 @@ export function DeckContextToolbar({
                 ? "形状"
                 : "对象",
         ),
-      controls: deckElementSelectionControls(element, tt, inheritedFont),
+      controls: deckElementSelectionControls(
+        element,
+        tt,
+        inheritedFont,
+        ADVANCED_EDITOR_FONTS,
+      ),
     };
   }, [editor.activeIndex, editor.deck.slides.length, element, inheritedFont, slide, tt]);
   const viewContext = useMemo(

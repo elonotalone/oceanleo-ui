@@ -83,7 +83,8 @@ test("structured document editors cover rich text, workbooks and editable decks"
     "../src/shell/doc-editors/DeckElementContent.tsx",
   );
   const deckControls = source("../src/shell/doc-editors/DeckControls.tsx");
-  const deckFonts = source("../src/shell/doc-editors/DeckFontPanel.tsx");
+  // 10-23 D9：字体抽屉、效果抽屉删了，字体是统一栏下拉，层级是规范 arrange 下拉。
+  const deckBar = source("../src/shell/doc-editors/deck-edit-bar-controls.ts");
   const deckToolbar = source("../src/shell/doc-editors/DeckContextToolbar.tsx");
   const deckToolbarCommand = source(
     "../src/shell/doc-editors/deck-toolbar-command.ts",
@@ -121,10 +122,12 @@ test("structured document editors cover rich text, workbooks and editable decks"
   assert.match(wheelZoom, /viewport\.scrollLeft/);
   assert.match(deckControls, /DeckTextPanel/);
   assert.match(deckControls, /DeckElementsPanel/);
-  assert.match(deckFonts, /DeckFontPanel/);
-  assert.match(deckToolbar, /上移一层/);
-  assert.match(deckToolbar, /panelId: "deck-effects"/);
-  assert.match(deckToolbar, /panelId: "deck-fonts"/);
+  assert.match(deckToolbar, /deckElementSelectionControls/);
+  assert.match(deckBar, /canon\("font-family"\)[\s\S]*?kind: "select"/);
+  assert.match(deckBar, /canon\("arrange"\)[\s\S]*?choices\("arrange"\)/);
+  assert.match(deckBar, /panel\("adjust"\)/);
+  assert.doesNotMatch(deckToolbar, /panelId: "deck-(?:effects|fonts)"/);
+  assert.match(deckToolbarCommand, /deckArrangedElements/);
   assert.match(deckToolbarCommand, /applySlideLayout/);
   assert.match(deckGeometry, /moveDeckElement/);
   assert.match(deckGeometry, /resizeDeckElement/);

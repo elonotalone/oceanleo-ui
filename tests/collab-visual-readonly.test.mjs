@@ -313,7 +313,7 @@ test("DeckRoute 接线：指令面经只读闸、工具条 / 面板 / 上传 / �
   assert.match(src, /<DeckContextToolbar[\s\S]*?readOnly=\{viewOnly\}/);
   assert.match(src, /viewOnlyUploadHandler\(viewOnly, addLocalFiles\)/);
   assert.match(src, /canUndo: editor\.canUndo && !viewOnly/);
-  assert.equal((src.match(/<VisualViewOnlyPanel readOnly=\{viewOnly\}>/g) || []).length, 12, "十二个面板都包了只读外壳");
+  assert.equal((src.match(/<VisualViewOnlyPanel readOnly=\{viewOnly\}>/g) || []).length, 5, "五个抽屉（模板 / 元素 / 画笔 / 线条 / 便签，10-23 D3）都包了只读外壳");
 });
 
 test("ImageRoute 接线：工具条、面板、上传、撤销都吃同一个 viewOnly；图片素材与 AI 入口各挡一次", () => {
