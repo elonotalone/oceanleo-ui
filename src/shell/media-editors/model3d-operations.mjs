@@ -58,10 +58,23 @@ const light = (value) => ({
 
 function normalizeObjectSpec(value) {
   if (!value || typeof value !== "object") return undefined;
-  const kind = ["camera", "directional", "point", "spot"].includes(value.kind)
+  const kind = ["camera", "directional", "point", "spot", "clone"].includes(
+    value.kind,
+  )
     ? value.kind
     : "";
   if (!kind) return undefined;
+  if (kind === "clone") {
+    // 「复制一份」：从同一场景里的原件复制（见 model3d-duplicate.mjs）。
+    const source = text(value.source, 240);
+    if (!source) return undefined;
+    return {
+      kind,
+      source,
+      name: text(value.name, 200),
+      transform: transform(value.transform),
+    };
+  }
   return {
     kind,
     name: text(value.name, 200),
@@ -120,6 +133,9 @@ export function normalizeModel3DOperation(value) {
         present: value.present !== false,
         ...(normalizeObjectSpec(value.object)
           ? { object: normalizeObjectSpec(value.object) }
+          : {}),
+        ...(value.requiresCheckpoint === true
+          ? { requiresCheckpoint: true }
           : {}),
       };
     case "visibility":

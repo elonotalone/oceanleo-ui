@@ -46,6 +46,7 @@ export type Model3DOperation =
       index: number;
       present: boolean;
       object?: Model3DObjectSpec;
+      requiresCheckpoint?: boolean;
     }
   | {
       id: string;
@@ -85,7 +86,9 @@ export interface Model3DLightValue {
   penumbra: number;
 }
 export interface Model3DObjectSpec {
-  kind: "camera" | "directional" | "point" | "spot";
+  kind: "camera" | "directional" | "point" | "spot" | "clone";
+  /** `clone` only: editor id of the node this one was duplicated from. */
+  source?: string;
   name: string;
   transform: Model3DTransformValue;
   camera?: Model3DCameraValue;

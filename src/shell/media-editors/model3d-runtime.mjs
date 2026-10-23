@@ -17,6 +17,11 @@ import {
 } from "./model3d-gltf.mjs";
 import { Model3DCommandHistory } from "./model3d-history.mjs";
 import {
+  cloneModel3DNode,
+  model3DCloneRegistryEntries,
+  placeModel3DCloneBeside,
+} from "./model3d-duplicate.mjs";
+import {
   model3DJournalByteLength,
   normalizeModel3DOperation,
   normalizeModel3DOperationJournal,
@@ -1076,6 +1081,17 @@ export class Model3DSceneRuntime {
 
   createObjectFromSpec(spec, id) {
     let object;
+    if (spec.kind === "clone") {
+      const source = this.objectByEditorId(spec.source);
+      if (!source) return null;
+      object = cloneModel3DNode(source, id);
+      for (const [key, node] of model3DCloneRegistryEntries(object)) {
+        this.objectRegistry.set(key, node);
+      }
+      if (spec.name) object.name = spec.name;
+      applyTransform(object, spec.transform);
+      return object;
+    }
     if (spec.kind === "camera") {
       object = new THREE.PerspectiveCamera();
       applyCamera(object, spec.camera);
@@ -1647,24 +1663,57 @@ export class Model3DSceneRuntime {
     this.addAuthoredObject(light, "添加模型灯光");
   }
 
-  addAuthoredObject(object, label) {
+  /** 统一编辑栏「复制一份」：复制选中节点，放在原件旁边并选中复制品。 */
+  duplicateSelected() {
+    const source = this.selected;
+    const parent = source?.parent;
+    if (!source || !parent || source === this.contentScene || this.readOnly) return;
+    const id = `added:${uniqueId("clone")}`;
+    const clone = cloneModel3DNode(source, id);
+    placeModel3DCloneBeside(clone, source);
+    for (const [key, node] of model3DCloneRegistryEntries(clone)) {
+      this.objectRegistry.set(key, node);
+    }
+    this.addAuthoredObject(clone, "复制场景节点", {
+      parent,
+      index: parent.children.indexOf(source) + 1,
+      spec: {
+        kind: "clone",
+        source: this.editorId(source),
+        name: clone.name,
+        transform: transformSnapshot(clone),
+      },
+      requiresCheckpoint: true,
+    });
+  }
+
+  addAuthoredObject(object, label, placement = {}) {
     if (!this.contentScene) return;
-    const parent = this.contentScene;
-    const id = `added:${uniqueId("object")}`;
+    const parent = placement.parent || this.contentScene;
+    const id = placement.spec
+      ? this.editorId(object)
+      : `added:${uniqueId("object")}`;
     object.userData.oceanleoEditorId = id;
     this.objectRegistry.set(id, object);
-    const index = parent.children.length;
-    const spec = this.objectSpec(object);
+    const index = placement.index ?? parent.children.length;
+    const spec = placement.spec || this.objectSpec(object);
+    const checkpoint = placement.requiresCheckpoint
+      ? { requiresCheckpoint: true }
+      : {};
     this.history.execute(
       label,
       () => {
         parent.add(object);
+        const at = parent.children.indexOf(object);
+        parent.children.splice(at, 1);
+        parent.children.splice(Math.min(index, parent.children.length), 0, object);
         this.setSelectedNode(object.uuid);
         this.pendingHistoryOperation = this.createOperation("presence", object, {
           parent: this.editorId(parent),
           index,
           present: true,
           object: spec,
+          ...checkpoint,
         });
       },
       () => {
