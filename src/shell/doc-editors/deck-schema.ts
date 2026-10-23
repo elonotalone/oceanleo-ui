@@ -10,6 +10,13 @@ import {
 } from "./deck-layout-grid";
 import type { DeckIrDocument } from "./deck-ir";
 import { packById } from "./deck-packs";
+import {
+  deckSafeLink,
+  deckTextList,
+  type DeckTextList,
+} from "./deck-text-format";
+
+export type { DeckTextList } from "./deck-text-format";
 
 export type DeckAspect = "16:9" | "4:3";
 
@@ -38,7 +45,7 @@ export type DeckElementType =
   | "shape"
   | "table"
   | "unsupported";
-export type DeckTextAlign = "left" | "center" | "right";
+export type DeckTextAlign = "left" | "center" | "right" | "justify";
 export type DeckImageFit = "contain" | "cover" | "fill";
 export type DeckLineDash = "solid" | "dash" | "dot";
 export type DeckLineMarker = "none" | "arrow" | "circle" | "diamond";
@@ -86,6 +93,11 @@ export interface DeckElement {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  /** 整框删除线、文字底色、列表、超链接（`deck-text-format.ts`，10-23 D9）。 */
+  strike?: boolean;
+  highlight?: string;
+  list?: DeckTextList;
+  link?: string;
   align?: DeckTextAlign;
   lineHeight?: number;
   letterSpacing?: number;
@@ -403,6 +415,21 @@ function color(value: unknown): string {
   return /^#[0-9a-f]{3,8}$/i.test(candidate) ? candidate : "";
 }
 
+/** 新的整框文字格式只在设过时才写进元素，旧文稿的投影与字节不因此变化。 */
+function deckTextFormatFields(
+  source: Record<string, unknown>,
+): Pick<DeckElement, "strike" | "highlight" | "list" | "link"> {
+  const list = deckTextList(source.list);
+  const highlight = color(source.highlight);
+  const link = deckSafeLink(source.link);
+  return {
+    ...(source.strike === true ? { strike: true } : {}),
+    ...(highlight ? { highlight } : {}),
+    ...(list !== "none" ? { list } : {}),
+    ...(link ? { link } : {}),
+  };
+}
+
 function normalizeImage(value: unknown, source: Record<string, unknown>): DeckImage | undefined {
   const image = record(value);
   const url = text(
@@ -519,8 +546,12 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
     bold: Boolean(source.bold),
     italic: Boolean(source.italic),
     underline: Boolean(source.underline),
+    ...deckTextFormatFields(source),
     align:
-      align === "center" || align === "right" || align === "left"
+      align === "center" ||
+      align === "right" ||
+      align === "left" ||
+      align === "justify"
         ? align
         : undefined,
     lineHeight: finite(source.lineHeight, 1.15, 0.7, 4),
