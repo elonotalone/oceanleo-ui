@@ -32,6 +32,14 @@ export default async function ({ page, log, shot, helpers, args }) {
   });
   log("surfaces", JSON.stringify(surfaces));
   await shot(`${tag}-empty`);
+  const elements = page.locator('[data-edit-bar-drawer="deck-elements"]:visible').first();
+  if (await elements.count()) {
+    await elements.click();
+    await page.waitForTimeout(900);
+    await shot(`${tag}-drawer-elements`);
+    await elements.click();
+    await page.waitForTimeout(400);
+  }
   for (const type of ["text", "image", "shape"]) {
     const target = page.locator(`[data-deck-canvas] [data-deck-element][data-element-type=${type}]`).first();
     if (!(await target.count())) continue;
@@ -51,7 +59,7 @@ export default async function ({ page, log, shot, helpers, args }) {
         await shot(`${tag}-panel-stroke`);
         await page.keyboard.press("Escape");
       }
-      const more = page.locator("[data-selection-kind] button[aria-haspopup=dialog]").last();
+      const more = page.locator('[data-selection-kind] button[aria-controls^="selection-more-"]:visible').first();
       if (await more.count()) {
         await more.click();
         await page.waitForTimeout(700);
