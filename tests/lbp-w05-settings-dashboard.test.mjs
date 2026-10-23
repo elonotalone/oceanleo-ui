@@ -90,6 +90,7 @@ const stateStub = dataModule(`
   export function requireBayLogin() { globalThis.__w05.loginCalls += 1; return false; }
   export function useBaySignedIn() { return globalThis.__w05.signedIn !== false; }
   export function openBay(target) { globalThis.__w05.opened.push(target); }
+  export function replaceBay(target) { globalThis.__w05.replaced.push(target); }
 `);
 const uiStub = dataModule(`
   export function useUI() {
@@ -137,6 +138,7 @@ function bench(routes = {}, patch = {}) {
     routes,
     calls: [],
     opened: [],
+    replaced: [],
     settings: [],
     editRequests: [],
     modalTabs: [],
@@ -312,6 +314,7 @@ async function loadSettingsPane() {
     "../../../lib/bay/http": httpStub,
     "../shell/bay-state": stateStub,
     "../../../i18n/ui/useUI": uiStub,
+    "../page/mine-page-edit": pageEditStub,
     "./settings-open": settingsOpenStub,
   }));
   return import(`${url}?case=${Math.random().toString(36).slice(2)}`);
@@ -363,7 +366,7 @@ test("设置 → LeoBay 只有一页：付款卡 + 收款账户两块，没有�
   view.unmount();
 });
 
-test("旧 pane（profile / vetting / money）与不带 pane 的入口，落到同一页", async () => {
+test("旧 pane：设置窗里不管传什么 pane 都是这一页；右栏 settings:money / 不带 pane 也是这一页", async () => {
   const { BaySettingsSection } = await loadSection();
   for (const pane of [undefined, "money", "vetting", "profile"]) {
     bench(settingsRoutes());
@@ -371,15 +374,30 @@ test("旧 pane（profile / vetting / money）与不带 pane 的入口，落到�
     assert.deepEqual(cardIds(view.host), ["payment-card", "payout"], `pane=${pane}`);
     view.unmount();
   }
-  // 右栏版：?bay=settings:<pane> 的 target 一样落到这一页，并带「在设置中打开」。
+  // 右栏版（?bay=settings:<pane>）：money / 不带 pane 显示同一页，并带「在设置中打开」。
   const { BaySettingsPane } = await loadSettingsPane();
-  for (const pane of [undefined, "money", "vetting", "profile"]) {
+  for (const pane of [undefined, "money"]) {
     const w = bench(settingsRoutes());
     const target = pane ? { kind: "settings", pane } : { kind: "settings" };
     const view = await render(React.createElement(BaySettingsPane, { target, layout: "docked", siteKey: "design" }));
     assert.deepEqual(cardIds(view.host), ["payment-card", "payout"], `右栏 pane=${pane}`);
     await click(view.host.querySelector("[data-bay-open-in-settings]"));
     assert.deepEqual(w.settings, [pane], "「在设置中打开」仍把 pane 原样交给 openBaySettings");
+    assert.deepEqual(w.replaced, [], "money / 不带 pane 不转走");
+    view.unmount();
+  }
+});
+
+test("右栏的老深链 settings:vetting / settings:profile（网关通知与旧书签仍会发）：转去我的主页，不显示付款页", async () => {
+  const { BaySettingsPane } = await loadSettingsPane();
+  for (const [pane, focus] of [["vetting", "vetting"], ["profile", null]]) {
+    const w = bench(settingsRoutes());
+    const view = await render(React.createElement(BaySettingsPane, { target: { kind: "settings", pane }, layout: "docked", siteKey: "design" }));
+    assert.equal(view.host.querySelector("[data-bay-money-card]"), null, `pane=${pane} 不画付款卡/收款账户`);
+    assert.equal(view.host.querySelector("[data-bay-open-in-settings]"), null);
+    assert.deepEqual(w.editRequests, [focus], "vetting 明确要去核验块；profile 只是进编辑");
+    assert.deepEqual(w.replaced, [{ kind: "mine", tab: "page" }], "换掉这一层详情，不新增返回层");
+    assert.equal(w.calls.length, 0, "转走的不取设置页的数据");
     view.unmount();
   }
 });

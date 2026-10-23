@@ -350,7 +350,7 @@ export function bayPayoutAccountStateLabel(state: string | null | undefined): st
 export interface BayPayoutStatus {
   /** 网关的 `seller_ready`：收款通道是否已对卖家开放。 */
   sellerReady: boolean;
-  /** 收款账户状态原值：none / onboarding / pending / active / restricted / disabled。 */
+  /** 收款账户状态原值：none / onboarding / pending / ready（旧名 active）/ restricted / disabled。 */
   state: string;
   /** `state` 在词表里的中文句，调用方再 tt()。 */
   stateLabel: string;
