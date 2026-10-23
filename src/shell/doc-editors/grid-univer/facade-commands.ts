@@ -15,6 +15,11 @@
 import { numberFormatPatternForPreset } from "../grid-format/toolbar-bridge";
 import type { GridCellType } from "../grid-model";
 import type { UITranslate } from "../../../i18n/ui/useUI";
+import {
+  GRID_TEXT_COMMANDS,
+  type GridFacadeTextRange,
+  type GridStyleCommandPort,
+} from "./text-commands";
 
 // ── 端口 ────────────────────────────────────────────────────────────────────
 
@@ -109,7 +114,7 @@ export interface GridFacadeValidationBuilder {
   build(): unknown;
 }
 
-export interface GridFacadeRange {
+export interface GridFacadeRange extends GridFacadeTextRange {
   setValue(value: string | number | boolean): unknown;
   getValue(): string | number | boolean | null;
   setFontWeight(weight: "normal" | "bold" | null): unknown;
@@ -177,7 +182,7 @@ export interface GridUniverSelection {
   endColumn: number;
 }
 
-export interface GridFacadePort {
+export interface GridFacadePort extends GridStyleCommandPort {
   api: GridFacadeApi;
   workbook: GridFacadeWorkbook;
   sheet: GridFacadeWorksheet;
@@ -480,13 +485,13 @@ export const GRID_UNIVER_COMMANDS: readonly GridUniverCommand[] = [
     },
   },
   {
-    id: "color",
+    id: "text-color",
     label: "文字色",
     layer: "L1",
     run: (port, args) => port.range.setFontColor(str(args, "value") || null),
   },
   {
-    id: "background",
+    id: "highlight",
     label: "底色",
     layer: "L1",
     run: (port, args) => port.range.setBackgroundColor(str(args, "value")),
@@ -544,7 +549,9 @@ export const GRID_UNIVER_COMMANDS: readonly GridUniverCommand[] = [
     id: "merge-cells",
     label: "合并所选单元格",
     layer: "L1",
-    run: (port) => port.range.merge(),
+    // 编辑栏上是一个开关：按下 = 合并，再按 = 取消合并（与 split-cells 同一个执行器）。
+    run: (port, args) =>
+      args.on === false ? port.range.breakApart() : port.range.merge(),
   },
   {
     id: "split-cells",
@@ -552,6 +559,8 @@ export const GRID_UNIVER_COMMANDS: readonly GridUniverCommand[] = [
     layer: "L1",
     run: (port) => port.range.breakApart(),
   },
+  // —— L1 统一文字栏的其余规范项与表格特有控件（`text-commands.ts`）——
+  ...GRID_TEXT_COMMANDS,
   // —— L2：行列结构 ——
   {
     id: "row-before",
@@ -874,8 +883,14 @@ const COMMAND_INDEX = new Map(
   GRID_UNIVER_COMMANDS.map((command) => [command.id, command]),
 );
 
+/** 旧控件 id → 规范 id（§4 别名）：旧核用户、agent 回放、旧草稿发来的 id 仍落到同一个执行器。 */
+export const GRID_LEGACY_CONTROL_ALIASES: Readonly<Record<string, string>> = {
+  color: "text-color",
+  background: "highlight",
+};
+
 export function gridUniverCommand(id: string): GridUniverCommand | null {
-  return COMMAND_INDEX.get(id) || null;
+  return COMMAND_INDEX.get(GRID_LEGACY_CONTROL_ALIASES[id] || id) || null;
 }
 
 export type GridUniverCommandOutcome =

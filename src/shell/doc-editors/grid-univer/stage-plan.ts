@@ -25,6 +25,11 @@ import {
   type GridUniverSelection,
 } from "./facade-commands";
 import { UNIVER_SHEETS_OSS_PRESETS } from "./presets";
+import {
+  GRID_DEFAULT_TEXT_STYLE,
+  gridTextBarControls,
+  type GridCellTextStyle,
+} from "./text-bar";
 import type { SelectionContext, SelectionControl } from "../../selection-context-types";
 import type { UITranslate } from "../../../i18n/ui/useUI";
 
@@ -253,6 +258,8 @@ export interface GridUniverLiveApi {
   undo?: () => unknown;
   redo?: () => unknown;
   createWorkbook?: (data: unknown) => unknown;
+  /** `FUniver.syncExecuteCommand`：文字栏的下划线 / 删除线开关走 `sheet.command.set-style`。 */
+  syncExecuteCommand?: (id: string, params?: Record<string, unknown>) => unknown;
   disposeUnit?: (unitId: string) => unknown;
   /** `FUniver.getFormula()`：编辑栏「重新计算」走它的 `executeCalculation()`（强制全量）。 */
   getFormula?: () => { executeCalculation?: () => unknown } | null | undefined;
@@ -330,12 +337,20 @@ export function univerFacadePortFromLive(
     cols,
   );
   if (!api.newDataValidation) return null;
+  const unitId = (workbook as { getId?: () => string }).getId?.();
   return {
     api: { newDataValidation: () => api.newDataValidation!() },
     workbook,
     sheet,
     range,
     selection,
+    ...(api.syncExecuteCommand && unitId
+      ? {
+          unitId,
+          execute: (id: string, params: Record<string, unknown>) =>
+            api.syncExecuteCommand!(id, params),
+        }
+      : {}),
   };
 }
 
@@ -366,11 +381,6 @@ const SELECT_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: "currency", label: "人民币" },
     { value: "percent", label: "百分比" },
     { value: "date", label: "日期" },
-  ],
-  align: [
-    { value: "left", label: "左" },
-    { value: "center", label: "中" },
-    { value: "right", label: "右" },
   ],
 };
 
@@ -408,10 +418,6 @@ const GRID_CONTROL_ICONS: Record<
   string,
   NonNullable<SelectionControl["icon"]>
 > = {
-  bold: "bold",
-  align: "align-left",
-  color: "color",
-  background: "background",
   type: "table",
   decimals: "font-size",
   "numfmt-preset": "font-size",
@@ -444,19 +450,9 @@ function controlForCommand(
   label: string,
   layer: string,
   tt: UITranslate,
+  numberType = "auto",
 ): SelectionControl {
-  if (id === "bold") {
-    return {
-      id,
-      kind: "toggle",
-      label,
-      icon: gridCommandIcon(id),
-      iconOnly: true,
-      group: "format",
-      value: false,
-    };
-  }
-  if (id === "align" || id === "type") {
+  if (id === "type") {
     return {
       id,
       kind: "select",
@@ -464,22 +460,11 @@ function controlForCommand(
       icon: gridCommandIcon(id),
       iconOnly: true,
       group: "format",
-      value: id === "align" ? "left" : "auto",
+      value: numberType,
       options: SELECT_OPTIONS[id].map((option) => ({
         value: option.value,
         label: tt(option.label),
       })),
-    };
-  }
-  if (id === "color" || id === "background") {
-    return {
-      id,
-      kind: "color",
-      label,
-      icon: gridCommandIcon(id),
-      iconOnly: true,
-      group: "format",
-      value: id === "color" ? "#292524" : "#ffffff",
     };
   }
   if (id === "decimals") {
@@ -523,12 +508,40 @@ function controlForCommand(
   };
 }
 
-/** L1/L2 里真正进 Facade 的控件（draft/shell 不进浮条的执行器位）。 */
-export function gridUniverFacadeControlIds(): string[] {
+/**
+ * 统一文字栏已经出过的 id，命令表里同名或被它取代的不再出第二份
+ * （`split-cells` 由 `merge-cells` 开关的「取消合并」承担，同一个执行器）。
+ */
+const GRID_TEXT_BAR_OWNED = new Set(["split-cells"]);
+
+function gridRemainingCommands(barIds: ReadonlySet<string>) {
   return GRID_UNIVER_COMMANDS.filter(
     (command) =>
-      (command.layer === "L1" || command.layer === "L2") && command.run,
-  ).map((command) => command.id);
+      (command.layer === "L1" || command.layer === "L2") &&
+      command.run &&
+      !barIds.has(command.id) &&
+      !GRID_TEXT_BAR_OWNED.has(command.id) &&
+      // 文字栏没出的规范项（例如单格时的合并）也不许从命令表补回来。
+      !GRID_TEXT_BAR_COMMAND_IDS.has(command.id),
+  );
+}
+
+const GRID_TEXT_BAR_COMMAND_IDS = new Set(
+  gridTextBarControls({ ...GRID_DEFAULT_TEXT_STYLE, multiCell: true }, passthrough).map(
+    (control) => control.id,
+  ),
+);
+
+/** 编辑栏上真正进 Facade 的控件 id，顺序即显示顺序：统一文字栏 → 表格特有 → 结构/数据。 */
+export function gridUniverFacadeControlIds(
+  style: Partial<GridCellTextStyle> = {},
+): string[] {
+  const bar = gridTextBarControls({ ...GRID_DEFAULT_TEXT_STYLE, ...style }, passthrough);
+  const barIds = new Set(bar.map((control) => control.id));
+  return [
+    ...bar.map((control) => control.id),
+    ...gridRemainingCommands(barIds).map((command) => command.id),
+  ];
 }
 
 /**
@@ -546,21 +559,34 @@ export function gridUniverSelectionContext(input: {
    * 所以中文原文必须在**这里**换成用户的语言（旧 GridContextToolbar 也是在建控件前 `tt()`）。
    */
   tt?: UITranslate;
+  /** 当前格子的样式（`readGridSelectionStyle`）；没给时按默认样式出。 */
+  style?: Partial<GridCellTextStyle>;
+  /** 当前格子的数字类型（`type` 下拉的当前值）。 */
+  numberType?: string;
 } = {}): SelectionContext {
   const tt = input.tt || passthrough;
   const selection = input.selection || GRID_UNIVER_EMPTY_SELECTION;
   const address = `${selection.startRow}:${selection.startColumn}`;
-  const controls = GRID_UNIVER_COMMANDS.filter(
-    (command) =>
-      (command.layer === "L1" || command.layer === "L2") && command.run,
-  ).map((command) =>
-    controlForCommand(
-      command.id,
-      gridUniverCommandLabel(command, tt),
-      command.layer,
-      tt,
-    ),
+  const multiCell =
+    selection.endRow > selection.startRow ||
+    selection.endColumn > selection.startColumn;
+  const bar = gridTextBarControls(
+    { ...GRID_DEFAULT_TEXT_STYLE, multiCell, ...input.style },
+    tt,
   );
+  const barIds = new Set(bar.map((control) => control.id));
+  const controls = [
+    ...bar,
+    ...gridRemainingCommands(barIds).map((command) =>
+      controlForCommand(
+        command.id,
+        gridUniverCommandLabel(command, tt),
+        command.layer,
+        tt,
+        input.numberType || "auto",
+      ),
+    ),
+  ];
   return {
     version: 1,
     kind: input.kind || "grid-cell",
