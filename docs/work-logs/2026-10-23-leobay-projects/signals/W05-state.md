@@ -14,17 +14,20 @@ Updated: 2026-10-23 (redispatch round 2, start; nothing of W05 was in the tree w
 - Existing keys I can reuse: 收款账户, 付款暂未开放, 收款暂未开放, 暂未开放, 绑卡暂未开放, 开户暂未开放, 提现暂未开放, 已绑卡 · {brand} ·••• {last4}, 有效期 {month}/{year}, 卡, 收款账户状态：{state}, 导出 CSV, 加载更多, 还没有流水, 查看对账单, 去设置付款方式, 去开通收款, 去检查付款方式. NEW (mine): 付款卡, 收款设置, 资质核验 (same en as 资质审核 = Verification, W06 may define it too), 收入流水, 收款状态, ...
 - 网站与软件服务 only has en in the dictionary (15 languages missing) - W03 owns that gap; I only reference it dynamically via productKindLabel.
 
+## Done (committed 263df010 + test file commit)
+1 settings single page (BaySettingsSection/Pane/store/open, ProfileDoor + BayMoneySection deleted, lib fetchBayPayoutStatus)
+2 dashboard: payout tile next to escrow, products card, income ledger card (statement, load more, CSV of all pages), white cards
+3 MyDashboardTab buttons: 收款设置 -> openBaySettings(); 资质核验 -> requestMinePageEdit("vetting") + openBay mine page
+4 entries redirected (OrderPane, AppPurchaseBar x2, PricingManagePanel, MyBoughtAppsPane, MyServicesPane)
+5 5.1 sweep in boundary done (apppaid strings, MyServicesPane strings, dashboard-model kind labels, comments)
+6 tests: red ones fixed; new tests/lbp-w05-settings-dashboard.test.mjs 32/32
+7 copy table lbp-w05-copy.ts 28 keys x 17 locales
+
 ## Doing now
-Step 1: settings single page (BaySettingsSection/Pane/store/open, delete ProfileDoor + BayMoneySection, index.ts, lib payout status helper).
+Final checks: typecheck again, coverage-gate delta vs baseline, rerun every related test, wave-wide greps (V01 item 2/5/6), then delivery.
 
 ## Next
-2 dashboard money blocks (payout tile next to escrow, income ledger card with statement + CSV, white cards, product kind names)
-3 MyDashboardTab buttons (收款设置 -> openBaySettings(); 资质核验 -> requestMinePageEdit()+openBay mine page)
-4 entry redirects (OrderPane, AppPurchaseBar x2, PricingManagePanel, MyBoughtAppsPane, MyServicesPane)
-5 section 5.1 sweep in boundary (apppaid strings, MyServicesPane strings, dashboard-model kind labels, comments)
-6 tests: fix red ones (bay-settings-section/store/copy, bay-seller-panes, bay-seller-profile-reveal), new tests/lbp-w05-settings-dashboard.test.mjs
-7 copy table lbp-w05-copy.ts (17 languages), typecheck, coverage gate delta check
-8 verdicts/W05-delivery.md, commit
+8 verdicts/W05-delivery.md (settings content, dashboard blocks, entry table file:line -> target, test originals, requests to parent), commit
 
 ## Repro
 cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<name>.test.mjs
