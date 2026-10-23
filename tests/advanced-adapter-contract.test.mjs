@@ -119,19 +119,23 @@ test("fixed workspace row owns download only; semantic actions live in the edit 
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
   const actions = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   const editBar = source("../src/shell/plugin-chrome/EditBarDocumentSegment.tsx");
+  const more = source("../src/shell/plugin-chrome/PluginMoreMenu.tsx");
   assert.match(contract, /interface AdvancedWorkbenchAction/);
   assert.match(contract, /variant\?: "default" \| "primary" \| "danger" \| "icon"/);
   assert.match(header, /<PluginGlobalRow/);
-  assert.match(header, /<PluginPageRow/);
+  // D1（2026-10-23）：顶栏一行；第二行页签行删除，下载进 `···` 的「下载 ▸」子菜单。
+  assert.doesNotMatch(header, /<PluginPageRow/);
   assert.match(actions, /const actions = adapter\.actions \|\| \[\]/);
   assert.doesNotMatch(actions, /standaloneActions\.map\(\(action\)/);
   assert.match(actions, /adapter\.directDownload/);
   assert.match(contract, /group\?: "download"/);
   assert.match(actions, /action\.group === "download"/);
-  assert.match(actions, /data-workspace-download-launcher/);
-  assert.match(actions, /data-workspace-download-menu/);
+  assert.match(more, /data-workspace-download-launcher/);
+  assert.match(more, /data-workspace-download-menu/);
   assert.match(actions, /data-advanced-workspace-actions/);
-  assert.match(actions, /data-global-row-slot="download"/);
+  assert.match(actions, /data-global-row-slot="more"/);
+  assert.match(actions, /<PluginMoreMenu/);
+  assert.doesNotMatch(actions, /data-global-row-slot="download"/);
   assert.match(shell, /EditBarDocumentSegment/);
   assert.match(shell, /action\.group !== "download"/);
   assert.match(shell, /action\.panelId/);

@@ -92,7 +92,8 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
   }
   assert.match(shell, /drawers\.map\(\(drawer\) =>/);
   assert.match(shell, /<PluginGlobalRow/);
-  assert.match(shell, /<PluginPageRow/);
+  // D1（2026-10-23）：顶栏一行，第二行页签行删除（页签在 PluginGlobalRow 里）。
+  assert.doesNotMatch(shell, /<PluginPageRow/);
   assert.doesNotMatch(deckToolbar, /deckQuickTools|applyDeckQuickTool/);
 
   assert.match(

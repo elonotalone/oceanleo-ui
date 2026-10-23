@@ -134,7 +134,8 @@ test("global history shares the first row and sits immediately before save", () 
   assert.equal(GLOBAL_ROW_SLOTS[GLOBAL_ROW_SLOTS.indexOf("history") + 1], "save-state");
 });
 
-test("plugin global row renders undo and redo ahead of save/download/share/favorite", async () => {
+// D1（2026-10-23）：下载 / 分享 / 收藏住进 `···`；撤销重做仍在保存状态和 `···` 左边。
+test("plugin global row renders undo and redo ahead of save-state and ···", async () => {
   await withDom(async ({ render, container }) => {
     await render(React.createElement(AdvancedWorkspaceActionBar, actionBarProps({
       item: { id: "doc-1", title: "文档", url: "https://example.test/doc-1", favorite: false },
@@ -147,18 +148,16 @@ test("plugin global row renders undo and redo ahead of save/download/share/favor
     assert.ok(row, "shared first row should render");
     const historyRow = row.querySelector('[data-global-row-slot="history"]');
     const save = row.querySelector('[data-global-row-slot="save-state"]');
-    const download = row.querySelector('[data-global-row-slot="download"]');
-    const share = row.querySelector('[data-global-row-slot="share"]');
-    const favorite = row.querySelector('[data-global-row-slot="favorite"]');
+    const more = row.querySelector('[data-global-row-slot="more"] [data-workspace-more-launcher]');
     assert.ok(historyRow, "history slot should render");
     assert.ok(save, "save slot should render");
-    assert.ok(download, "download slot should render");
-    assert.ok(share, "share slot should render");
-    assert.ok(favorite, "favorite slot should render");
+    assert.ok(more, "··· should render (download/share live in it)");
+    for (const gone of ["download", "share", "favorite"]) {
+      assert.equal(row.querySelector(`[data-global-row-slot="${gone}"]`), null, `${gone} is no longer its own slot`);
+    }
     assert.ok(historyRow.compareDocumentPosition(save) & 4);
-    assert.ok(historyRow.compareDocumentPosition(download) & 4);
-    assert.ok(historyRow.compareDocumentPosition(share) & 4);
-    assert.ok(historyRow.compareDocumentPosition(favorite) & 4);
+    assert.ok(historyRow.compareDocumentPosition(more) & 4);
+    assert.ok(save.compareDocumentPosition(more) & 4);
     assert.equal(historyRow.querySelectorAll("button").length, 2);
     assert.equal(container.querySelector("[data-edit-bar-history]"), null);
   });

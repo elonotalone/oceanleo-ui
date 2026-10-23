@@ -286,12 +286,14 @@ test("advanced first row is PluginGlobalRow chrome with fixed direct download", 
   assert.match(shell, /rightPaneSlot\.clearRightPaneClaim\(owner\)/);
   assert.doesNotMatch(shell, /absolute left-2 right-2 top-2/);
   assert.match(header, /<PluginGlobalRow/);
-  assert.match(header, /<PluginPageRow/);
+  // D1（2026-10-23）：顶栏一行；页签进第一行，下载进 `···` 的「下载 ▸」子菜单。
+  assert.doesNotMatch(header, /<PluginPageRow/);
+  assert.match(bar, /<PluginPageTabs/);
   assert.match(bar, /adapter\.directDownload/);
   assert.doesNotMatch(bar, /standaloneActions\.map\(\(action\)/);
   assert.match(bar, /action\.group === "download"/);
-  assert.match(bar, /data-workspace-download-menu/);
-  assert.match(bar, /data-global-row-slot="download"/);
+  assert.match(source("../src/shell/plugin-chrome/PluginMoreMenu.tsx"), /data-workspace-download-menu/);
+  assert.match(bar, /data-global-row-slot="more"/);
 
   for (const route of [
     "AudioRoute",
