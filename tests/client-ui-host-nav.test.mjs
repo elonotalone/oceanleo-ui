@@ -103,6 +103,7 @@ test("nav hrefs reject schemes, protocol-relative, and blank labels", () => {
 test("clone-shell reads getHostNavItems, not getBootExtensions", () => {
   assert.match(portalShell, /getHostNavItems/);
   assert.match(portalShell, /onClientHostConfigChange/);
+  assert.match(portalShell, /useHostAwarePathname/);
   assert.match(portalShell, /data-oceanleo-host-nav/);
   assert.match(portalShell, /useHostNavItems/);
   assert.doesNotMatch(portalShell, /getBootExtensions\s*\(/);

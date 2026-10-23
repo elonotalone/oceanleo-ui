@@ -67,6 +67,11 @@ import {
 import { nativeShellFromHostConfig } from "../client-ui/host-config";
 import { useOptionalClientHost } from "../client-ui/host-context";
 import { NextWebHostProvider } from "../client-ui/web";
+import {
+  isClientHostConfigured,
+  readShellUserEmail,
+  useHostAwarePathname,
+} from "../client-ui/web/host-shell-state";
 
 /** 外壳布局：
  *  - "sidebar"（默认）：经典左侧边栏 + 可选右上操作区。
@@ -328,7 +333,7 @@ const AppShellPresence = createContext(false);
 export function AppShell(props: AppShellProps) {
   const nested = useContext(AppShellPresence);
   const existingHost = useOptionalClientHost();
-  const rawPathname = usePathname() || "/";
+  const rawPathname = useHostAwarePathname(usePathname() || "/");
   const pathname = props.stripLocale ? props.stripLocale(rawPathname) : rawPathname;
   // 公开对话链接只有一个 id 段；`/share` 本身可能是分站自己的页面，不能一并去壳。
   const publicShare = /^\/share\/[^/]+\/?$/.test(pathname);
@@ -388,7 +393,9 @@ function AppShellInner({
   useEffect(() => {
     setBaySiteKey(shellSiteKey || "oceanleo");
   }, [shellSiteKey]);
-  const rawPathname = usePathname() || "/";
+  const host = useOptionalClientHost();
+  const [hostEmail, setHostEmail] = useState<string | null>(null);
+  const rawPathname = useHostAwarePathname(usePathname() || "/");
   const searchParams = useSearchParams();
   const accountHelpHref = useAccountHelpHref(
     helpHref,
@@ -459,6 +466,34 @@ function AppShellInner({
 
   const [profileDisplayName, setProfileDisplayName] = useState("");
   useEffect(() => {
+    if (!isClientHostConfigured()) {
+      setHostEmail(null);
+      return;
+    }
+    let cancelled = false;
+    async function read() {
+      const email = await readShellUserEmail(host?.session, async () => null);
+      if (!cancelled) setHostEmail(email);
+    }
+    void read();
+    const unsub = host?.session?.subscribe(() => {
+      void read();
+    });
+    if (typeof window === "undefined") {
+      return () => {
+        cancelled = true;
+        unsub?.();
+      };
+    }
+    window.addEventListener(AUTH_STATE_EVENT, read);
+    return () => {
+      cancelled = true;
+      unsub?.();
+      window.removeEventListener(AUTH_STATE_EVENT, read);
+    };
+  }, [host]);
+  const resolvedEmail = userEmail || (isClientHostConfigured() ? hostEmail : null);
+  useEffect(() => {
     let cancelled = false;
     async function refreshName() {
       try {
@@ -490,13 +525,13 @@ function AppShellInner({
       cancelled = true;
       window.removeEventListener(AUTH_STATE_EVENT, refreshName);
     };
-  }, [userEmail]);
+  }, [resolvedEmail]);
 
-  const emailLocal = userEmail ? userEmail.split("@")[0] : "";
-  const accountName = userEmail ? profileDisplayName || emailLocal : tt("登录");
+  const emailLocal = resolvedEmail ? resolvedEmail.split("@")[0] : "";
+  const accountName = resolvedEmail ? profileDisplayName || emailLocal : tt("登录");
   function renderAccountCluster(compact = false): ReactNode {
-    return <SidebarAccountCluster name={accountName} email={userEmail}
-      compact={compact} signedIn={Boolean(userEmail)} balanceText={creditsText}
+    return <SidebarAccountCluster name={accountName} email={resolvedEmail}
+      compact={compact} signedIn={Boolean(resolvedEmail)} balanceText={creditsText}
       onSignOut={onSignOut} helpHref={accountHelpHref} />;
   }
 

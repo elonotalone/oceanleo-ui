@@ -1215,15 +1215,39 @@
         },
         {
           "kind": "named",
+          "name": "getClientHostConfig",
+          "importedName": "getClientHostConfig",
+          "source": "./host-config"
+        },
+        {
+          "kind": "named",
           "name": "getHostNavItems",
           "importedName": "getHostNavItems",
           "source": "./host-config"
         },
         {
           "kind": "named",
+          "name": "HOST_LOCATION_EVENT",
+          "importedName": "HOST_LOCATION_EVENT",
+          "source": "./web/host-shell-state"
+        },
+        {
+          "kind": "named",
+          "name": "hostAwareActivePath",
+          "importedName": "hostAwareActivePath",
+          "source": "./web/host-shell-state"
+        },
+        {
+          "kind": "named",
           "name": "HostSessionPort",
           "importedName": "HostSessionPort",
           "source": "./host-ports"
+        },
+        {
+          "kind": "named",
+          "name": "isClientHostConfigured",
+          "importedName": "isClientHostConfigured",
+          "source": "./web/host-shell-state"
         },
         {
           "kind": "named",
@@ -1239,9 +1263,27 @@
         },
         {
           "kind": "named",
+          "name": "pushHostLocation",
+          "importedName": "pushHostLocation",
+          "source": "./web/host-shell-state"
+        },
+        {
+          "kind": "named",
+          "name": "readShellUserEmail",
+          "importedName": "readShellUserEmail",
+          "source": "./web/host-shell-state"
+        },
+        {
+          "kind": "named",
           "name": "useClientHost",
           "importedName": "useClientHost",
           "source": "./host-context"
+        },
+        {
+          "kind": "named",
+          "name": "useHostAwarePathname",
+          "importedName": "useHostAwarePathname",
+          "source": "./web/host-shell-state"
         },
         {
           "kind": "named",

@@ -151,8 +151,9 @@ test("clone-shell names host nav from ariaLabel or label on real links/buttons",
   assert.doesNotMatch(portalShell, /__OCEANLEO_ACCEPT_DRIVE__/);
   const footerStart = portalShell.indexOf("const FOOTER_NAV");
   assert.ok(footerStart > 0);
-  const footerChunk = portalShell.slice(footerStart, footerStart + 1200);
-  assert.match(footerChunk, /\];\s*const \[userEmail/);
+  const footerChunk = portalShell.slice(footerStart, footerStart + 1400);
+  assert.match(footerChunk, /\];\s*const host = useOptionalClientHost/);
+  assert.match(footerChunk, /const \[userEmail/);
   assert.doesNotMatch(footerChunk, /\];\}/);
 });
 
