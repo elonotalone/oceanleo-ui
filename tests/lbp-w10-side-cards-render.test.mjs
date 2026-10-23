@@ -550,6 +550,39 @@ test("动态卡 · 最近 3 条（读的是全员动态），句子按模板认�
   });
 });
 
+test("读取失败后被通知重读：先显示读取中，不闪一句还不成立的空态；已有内容则原样留着", skipPortal, async () => {
+  const { Activity } = await load();
+  await withDom(async ({ renderRoot, find, findAll, text, settle }) => {
+    let release;
+    let calls = 0;
+    globalThis.__w10.api = {
+      listProjectFeed: () => {
+        calls += 1;
+        if (calls === 1) return Promise.resolve({ ok: false, error: "网关忙" });
+        if (calls === 2) return new Promise((resolveFeed) => (release = () => resolveFeed({ ok: true, data: { items: [event("5", "任务“甲”状态为 done")] } })));
+        return new Promise(() => {});
+      },
+    };
+    await renderRoot(h(Activity, { projectId: "p1", refreshKey: 0 }));
+    assert.match(text(), /网关忙/);
+
+    // Another card's dialog closed: the owner bumps refreshKey while the second read is in flight.
+    await renderRoot(h(Activity, { projectId: "p1", refreshKey: 1 }));
+    assert.ok(find('[role="status"]'), "loading placeholder while the read is in flight");
+    assert.doesNotMatch(text(), /项目里的任务、待办、资产和成员变化会显示在这里。/, "no premature empty state");
+    assert.doesNotMatch(text(), /网关忙/);
+
+    await act(async () => release());
+    await settle();
+    assert.equal(findAll("[data-project-side-activity-list] li").length, 1);
+
+    // Content on screen stays while a later read is pending.
+    await renderRoot(h(Activity, { projectId: "p1", refreshKey: 2 }));
+    assert.equal(findAll("[data-project-side-activity-list] li").length, 1, "old rows stay during a quiet re-read");
+    assert.equal(find('[role="status"]'), null, "no skeleton flash over existing content");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 容器：顺序 + 任一弹窗关掉，三张卡一起重读
 // ---------------------------------------------------------------------------
