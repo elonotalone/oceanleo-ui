@@ -6,7 +6,7 @@ const STAGE = "[data-grid-univer-stage]";
 
 async function openGrid(page, helpers, id) {
   await helpers.gotoApp(page, `/library?item=${id}`);
-  const stage = page.locator(`${STAGE} canvas`).first();
+  const stage = page.locator(`${STAGE} canvas >> visible=true`).first();
   if (!(await stage.isVisible().catch(() => false))) {
     // The detail viewer comes first; the pencil at the top right opens the editor.
     const edit = page.locator("button[aria-label*='编辑'], button[aria-label*='Edit'], button[title*='编辑'], button[title*='Edit']").last();
@@ -132,7 +132,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     await helpers.waitSaved(page, { timeout: 90000 });
     log("saved 2", page.url());
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.locator(`${STAGE} canvas`).first().waitFor({ timeout: 150000 });
+    await page.locator(`${STAGE} canvas >> visible=true`).first().waitFor({ timeout: 150000 });
     await page.waitForTimeout(5000);
     const cells = await liveCells(page);
     log("liveCells@reload", cells);
