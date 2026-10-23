@@ -103,10 +103,11 @@ test("PDF blank creation is explicit and disposed page loads release resources",
 });
 
 test("audio failures preserve prior state and close partial browser resources", async () => {
-  const [workbenchCore, waveLoader, persistence] = await Promise.all([
+  const [workbenchCore, waveLoader, persistence, importer] = await Promise.all([
     source("src/shell/media-editors/AudioWorkbench.tsx"),
     source("src/shell/media-editors/use-audio-wave-loader.ts"),
     source("src/shell/media-editors/use-audio-persistence.ts"),
+    source("src/shell/media-editors/audio-source-import.ts"),
   ]);
   const workbench = workbenchCore + waveLoader;
 
@@ -125,8 +126,9 @@ test("audio failures preserve prior state and close partial browser resources", 
       importSource.indexOf("bufferRef.current = decoded;"),
     "waveform must load before imported audio replaces the durable editor state",
   );
-  assert.match(importSource, /let context: AudioContext \| null = null/);
-  assert.match(importSource, /context\?\.close\(\)\.catch/);
+  assert.match(importSource, /await importAudioSource\(file, item\.id, siteId, tt\)/);
+  assert.match(importer, /const context = new AudioContext\(\)/);
+  assert.match(importer, /finally \{\s*await context\.close\(\)\.catch/);
 
   const restore = persistence.slice(
     persistence.indexOf("const restoreRecovery"),
@@ -280,7 +282,7 @@ test("W13 V7 product gates: PDF page count, audio project key, mute chrome, rich
       source("src/shell/media-editors/PdfControls.tsx"),
       source("src/shell/media-editors/use-pdf-workbench.ts"),
       source("src/shell/media-editors/AudioWorkbench.tsx"),
-      source("src/shell/video-editor/VideoTimelineContextToolbar.tsx"),
+      source("src/shell/video-editor/video-edit-bar.ts"),
       source("src/shell/doc-editors/rich-doc-model.ts"),
     ]);
 
@@ -291,10 +293,8 @@ test("W13 V7 product gates: PDF page count, audio project key, mute chrome, rich
     audio,
     /workingHeadUrlRef = useRef\(\s*String\(item\.meta\.editor_working_head_url \|\| ""\)/,
   );
-  assert.match(
-    toolbar,
-    /id:\s*"muted"[\s\S]*icon:\s*"effects"[\s\S]*value:\s*clip\.muted === true/,
-  );
+  assert.match(toolbar, /id:\s*"muted"[^\n]*value:\s*clip\.muted === true/);
+  assert.match(toolbar, /case "muted":[\s\S]*?patchClip\(clip\.id, \{ muted: value === true \}\)/);
   assert.match(richdoc, /function richDocSourceUrl/);
   assert.match(richdoc, /item\.meta\.editor_source_url \|\| ""\)\.trim\(\)/);
   assert.match(richdoc, /item\.artifact\?\.renditions\.source\?\.url/);

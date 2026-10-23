@@ -61,13 +61,14 @@ export function InlineInsertableMaterialShelf({ types, siteId, currentId, featur
     for (const entry of [...featured, ...items.map(item => workspaceEntryFromLibraryItem(item))]) {
       const item = entry.libraryItem;
       if (!item || !item.artifactType || !accepted.has(item.artifactType)) continue;
+      if (canPerform && !canPerform(action, item)) continue;
       const id = item.artifactId || item.id;
       if (id === currentId || unique.has(id)) continue;
       if (query && !entry.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())) continue;
       unique.set(id, entry);
     }
     return [...unique.values()];
-  }, [featured, items, currentId, typeKey, query]);
+  }, [featured, items, currentId, typeKey, query, action, canPerform]);
   return <div data-inline-insertable-materials className="flex h-full min-h-0 flex-col gap-2 p-3">
     <input type="search" aria-label={tt("搜索素材")} placeholder={tt("搜索素材")} value={query} onChange={event => setQuery(event.target.value)}
       className="min-h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--fg)]" />
@@ -77,8 +78,6 @@ export function InlineInsertableMaterialShelf({ types, siteId, currentId, featur
       <div className="grid grid-cols-1 gap-2" inert={pending || undefined}>
         {entries.map(entry => {
           const item = entry.libraryItem!;
-          const available = canPerform?.(action, item) ?? true;
-          if (!available) return null;
           return <WorkspaceCard key={entry.id} entry={entry} accent={accent}
             onOpen={() => { if (!pending) { setPending(true); void perform(action, item).finally(() => setPending(false)); } }}
             dragProps={{ draggable: Boolean(beginDrag), onDragStart: (event: DragEvent<HTMLElement>) => {

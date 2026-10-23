@@ -44,3 +44,17 @@ test('insert shelf loads compatible own media and site templates, excludes wrong
     assert.deepEqual(inserted, [['insert', 'own-single_file_image']]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test('compatible types with no admissible entries show an honest empty state rather than a blank shelf', async () => {
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(InlineInsertableMaterialShelf, {
+      types: ['image'], siteId: 'video', currentId: 'current', featured: [], accent: '#000', action: 'insert',
+      perform: async () => ({ ok: true }), canPerform: () => false,
+    })));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    assert.equal(host.querySelectorAll('[data-item]').length, 0);
+    assert.match(host.textContent, /暂无素材/);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

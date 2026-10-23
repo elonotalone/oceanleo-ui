@@ -16,6 +16,7 @@ import {
   workspaceAppFillHref,
 } from "../src/shell/site-catalog-controller.ts";
 import { normalizeWorkspaceAction } from "../src/shell/workspace-actions.ts";
+import { libraryEditorCategory, libraryEditorLabel, normalizeLibraryCategory } from "../src/shell/library-editor-category.ts";
 
 const controllerSource = await readFile(
   new URL("../src/shell/site-catalog-controller.ts", import.meta.url),
@@ -372,7 +373,7 @@ test("open=advanced 派发合规的 v1 envelope 并落在我的库标签", () =>
     version: 1,
     tab: "mine",
     query: undefined,
-    category: "PPT",
+    category: "演示文稿",
     itemId: undefined,
     url: undefined,
     browserSessionId: undefined,
@@ -420,17 +421,12 @@ test("没有可编辑产物类型时退化为打开我的库并给出可见提�
   assert.match(deepLinkSource, /function CatalogDeepLinkNotice/);
 });
 
-test("我的库分类词典与 MyLibrary 的 KIND_CATEGORY 逐条一致", () => {
-  const block = myLibrarySource.slice(
-    myLibrarySource.indexOf("const KIND_CATEGORY"),
-  );
-  const body = block.slice(block.indexOf("{"), block.indexOf("};") + 1);
+test("目录深链分类与我的库的实际类别逐条一致", () => {
+  assert.match(myLibrarySource, /category: libraryEditorCategory\(item\)/);
   for (const [kind, label] of Object.entries(CATALOG_LIBRARY_KIND_CATEGORY)) {
-    assert.match(
-      body,
-      new RegExp(`\\b${kind}:\\s*"${label}"`),
-      `${kind} → ${label} 与 MyLibrary 不一致`,
-    );
+    const item = { id: kind, key: kind, kind, title: kind, meta: {} };
+    assert.equal(label, libraryEditorLabel(item), `${kind} uses the same material name as My library`);
+    assert.equal(normalizeLibraryCategory(label), libraryEditorCategory(item), 'deep link resolves to the actual shelf category');
   }
 });
 
