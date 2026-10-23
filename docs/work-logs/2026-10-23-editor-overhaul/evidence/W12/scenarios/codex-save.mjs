@@ -17,7 +17,7 @@ export default async ({page,context,helpers,log,shot,args}) => {
     const started=Date.now();
     while(Date.now()-started<90000){
       if(revisions.length>count && await saveState()==='saved'){log('saved',label,revisions.length);return;}
-      if(await saveState()==='error') throw new Error(`save error ${label}`);
+      if(await saveState()==='error' && (!label.includes('retry') || Date.now()-started>15000)) throw new Error(`save error ${label}`);
       await delay(page);
     }
     throw new Error(`no confirmed revision ${label}`);
@@ -57,6 +57,7 @@ export default async ({page,context,helpers,log,shot,args}) => {
   await page.waitForFunction(()=>document.querySelector('[data-workspace-save-launcher]')?.getAttribute('data-save-state')==='error',{},{timeout:45000});
   log('offline',await saveState());await shot('offline');
   await context.setOffline(false);
+  await delay(page,1500);
   await page.locator('[data-workspace-save-launcher]').first().click();
   const retry=page.getByRole('button',{name:/重试|Retry/}).first();
   if(await retry.isVisible().catch(()=>false))await retry.click();

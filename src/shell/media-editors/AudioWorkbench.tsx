@@ -5,7 +5,7 @@ import type WaveSurfer from "wavesurfer.js";
 import type RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 import { useUI } from "../../i18n/ui/useUI";
-import { uploadPrivateEditorSource } from "../advanced-private-source";
+import { importAudioSource } from "./audio-source-import";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -17,14 +17,9 @@ import type {
 } from "./audio-workbench-state";
 import {
   appendAudioHistory,
-  audioBufferBytes,
   AUDIO_PROJECT_SCHEMA,
   encodeWav,
-  MAX_AUDIO_FILE_BYTES,
-  MAX_COMPRESSED_AUDIO_BYTES,
-  MAX_DECODED_AUDIO_BYTES,
 } from "./audio-workbench-utils";
-import { assertBlobSource } from "./source-integrity.mjs";
 import { useAudioMutations, applyAudioMutationUserEditSession } from "./use-audio-mutations";
 import type { AudioProjectData } from "./audio-workbench-state";
 import { useAudioPersistence } from "./use-audio-persistence";
@@ -211,47 +206,10 @@ export function useAudioWorkbench(
 
   const importSource = useCallback(
     async (file: File) => {
-      if (file.size > MAX_AUDIO_FILE_BYTES) {
-        setError(tt("音频文件超过 128MB 安全上限"));
-        return false;
-      }
       setLoading(true);
       setError("");
-      let context: AudioContext | null = null;
       try {
-        context = new AudioContext();
-        const sourceFormat = await assertBlobSource(file, "audio");
-        if (
-          file.size > MAX_COMPRESSED_AUDIO_BYTES &&
-          ["mp3", "mp4", "aac", "ogg"].includes(sourceFormat)
-        ) {
-          throw new Error(
-            tt("压缩音频解码后可能超过浏览器内存，请改用视频时间线处理长音频"),
-          );
-        }
-        let decoded: AudioBuffer;
-        try {
-          decoded = await context.decodeAudioData(
-            (await file.arrayBuffer()).slice(0),
-          );
-        } catch {
-          throw new Error(
-            tt("音频源虽有正确容器签名，但没有浏览器可解码的音轨"),
-          );
-        }
-        if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) {
-          throw new Error(tt("音频解码后过大，请改用视频时间线处理长音频"));
-        }
-        const uploaded = await uploadPrivateEditorSource(file, {
-          siteId: siteId || "audio",
-          title: file.name,
-          registerAsset: false,
-          idempotencyKey: `audio-source:${item.id}:${file.name}:${file.size}:${file.lastModified}`,
-        });
-        const sourceUrl = uploaded.data?.file?.url || "";
-        if (!uploaded.ok || !sourceUrl) {
-          throw new Error(uploaded.error || tt("音频源上传失败"));
-        }
+        const { decoded, sourceUrl } = await importAudioSource(file, item.id, siteId, tt);
         await reloadWaveform(decoded);
         const previous = bufferRef.current;
         const previousProject = { sourceUrl: sourceUrlRef.current, operations: [...operationsRef.current] };
@@ -276,7 +234,6 @@ export function useAudioWorkbench(
         setError(caught instanceof Error ? caught.message : tt("音频导入失败"));
         return false;
       } finally {
-        await context?.close().catch(() => undefined);
         setLoading(false);
       }
     },

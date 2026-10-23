@@ -40,6 +40,13 @@ const REV2 = "72ba72b5-6592-4d2c-a507-0b5bf3edc9b7";
 const mp3Bytes = () => new Blob([new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4])], { type: "audio/mpeg" });
 
 const sourceStubs = {
+  "../advanced-private-source": dataModule(`
+    export const isPrivateEditorSourceUrl = (url) => url.includes('/v1/editor-sources/');
+    export async function readPrivateEditorSource() {
+      globalThis.__privateReads = (globalThis.__privateReads || 0) + 1;
+      return globalThis.__privateForbidden ? new Response('', {status:403}) : new Response(globalThis.__sourceBlob());
+    }
+  `),
   "../../lib/media-proxy": dataModule(`
     export async function fetchMediaBlobRefreshing(url, options = {}) {
       globalThis.__fetches.push(url);
@@ -66,6 +73,19 @@ const source = await import(await compileModule("src/shell/media-editors/audio-p
 globalThis.__fetches = [];
 globalThis.__refreshes = [];
 globalThis.__sourceBlob = mp3Bytes;
+
+test("immutable private audio inputs use authenticated reads and never public media fallback", async () => {
+  globalThis.__privateReads = 0;
+  globalThis.__fetches = [];
+  const url = `https://api.dev.oceanleo.com/v1/editor-sources/${'a'.repeat(64)}?key=private`;
+  assert.equal((await source.fetchAudioProjectSourceBlob(url)).type, 'audio/mpeg');
+  assert.equal(globalThis.__privateReads, 1);
+  assert.equal(globalThis.__fetches.length, 0);
+  globalThis.__privateForbidden = true;
+  try { await assert.rejects(()=>source.fetchAudioProjectSourceBlob(url), /403/); }
+  finally { delete globalThis.__privateForbidden; }
+  assert.equal(globalThis.__fetches.length, 0);
+});
 
 test("artifactAccessIdentity reads artifact / revision / purpose out of the signed token", () => {
   assert.deepEqual(source.artifactAccessIdentity(SIGNED), {

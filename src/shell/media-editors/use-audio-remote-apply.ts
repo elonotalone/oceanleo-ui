@@ -18,7 +18,6 @@ import {
   applyAudioOperation,
   audioBufferBytes,
   encodeWav,
-  MAX_AUDIO_FILE_BYTES,
   MAX_DECODED_AUDIO_BYTES,
   validAudioProject,
 } from "./audio-workbench-utils";
