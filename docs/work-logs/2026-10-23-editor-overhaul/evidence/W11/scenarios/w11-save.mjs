@@ -16,6 +16,15 @@ async function waitCycle(page, helpers, log, label, { timeout = 90000 } = {}) {
     await page.waitForTimeout(400);
   }
   log("save-cycle", label, last, `${Math.round((Date.now() - started) / 100) / 10}s`);
+  if (last === "error") {
+    const text = await page.evaluate(() => {
+      const hit = [...document.querySelectorAll("[role=status], [role=alert], span, p, div")].find(
+        (el) => el.children.length === 0 && /保存失败|Save failed|couldn.t save/i.test(el.textContent || ""),
+      );
+      return hit ? hit.textContent.trim().slice(0, 600) : "";
+    });
+    log("save-error-text", text);
+  }
   return last;
 }
 
@@ -68,9 +77,16 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   const url = page.url();
   log("url after saves", url.replace(/token=[^&]+/, "token=…"));
 
-  // leave and reopen
-  await helpers.gotoApp(page, "/library");
-  await page.waitForTimeout(2000);
+  // close (× in the top bar: flushes pending work) and reopen
+  const close = page.locator("button[aria-label='关闭'], button[aria-label='Close']").last();
+  await close.click().catch((error) => log("close click failed", String(error).slice(0, 120)));
+  const closedAt = Date.now();
+  while (Date.now() - closedAt < 60000) {
+    if (!(await page.locator("[data-editor-adapter='video-timeline']").count())) break;
+    await page.waitForTimeout(500);
+  }
+  log("closed", `${Math.round((Date.now() - closedAt) / 100) / 10}s`);
+  await page.waitForTimeout(3000);
   await openVideoEditor(page, helpers, log, rootId);
   await verify(page, log, "reopen");
   await shot("save-reopen");

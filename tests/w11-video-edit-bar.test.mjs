@@ -378,3 +378,31 @@ test("W11 library materials insert through the editor's own history (D2 command 
     /catch \(/,
   );
 });
+
+test("W11 the second save starts from this tab's own committed head, never the stale opened revision", async () => {
+  const heads = await import("../src/shell/doc-editors/editor-own-heads.ts");
+  heads.resetOwnCommittedHeadsForTests();
+  globalThis.__w11OwnHeadAfter = heads.ownHeadAfter;
+  const { timelineSaveBase: fn } = await import(
+    await compileModule("src/shell/video-editor/persistence.ts", {
+      "../../lib/database": dataModule("export async function uploadFile() { return { ok: false }; }"),
+      "../doc-editors/doc-io": dataModule("export async function saveProjectWorkingHead() { return { ok: false }; }"),
+      "../doc-editors/editor-own-heads": dataModule(
+        "export function ownHeadAfter(a, b) { return globalThis.__w11OwnHeadAfter(a, b); }",
+      ),
+      "./timeline-carrier": dataModule("export function assertPreviewResolution() { return { ok: true }; } export const TIMELINE_PROJECT_SCHEMA_ID = 'oceanleo.timeline.v1'; export class TimelineCarrierError extends Error {}"),
+    })
+  );
+  const opened = { id: "a1", key: "a1", artifactId: "a1", revisionId: "r1", meta: { revision_id: "r1" } };
+  assert.equal(fn(opened), opened, "nothing committed yet → the opened revision is the base");
+  heads.noteOwnCommittedHead("a1", "r1", "r2");
+  const base = fn(opened);
+  assert.equal(base.revisionId, "r2");
+  assert.equal(base.meta.revision_id, "r2");
+  heads.noteOwnCommittedHead("a1", "r2", "r3", { ...opened, revisionId: "r3", meta: { revision_id: "r3", x: 1 } });
+  assert.equal(fn(opened).revisionId, "r3");
+  assert.equal(fn(opened).meta.x, 1);
+  // 别人提交的版本不在本页链里：不改基线。
+  assert.equal(fn({ ...opened, revisionId: "someone-else" }).revisionId, "someone-else");
+  heads.resetOwnCommittedHeadsForTests();
+});

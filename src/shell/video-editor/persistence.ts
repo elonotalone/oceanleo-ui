@@ -9,6 +9,7 @@ import { uploadFile } from "../../lib/database";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import { saveProjectWorkingHead } from "../doc-editors/doc-io";
+import { ownHeadAfter } from "../doc-editors/editor-own-heads";
 import type { TimelinePreviewEngine } from "./preview-engine";
 import {
   assertPreviewResolution,
@@ -87,6 +88,25 @@ export async function timelinePreviewRenditionPng(
   return timelineCoverPng(canvas);
 }
 
+/**
+ * 保存基线（D11 / §5）：路由手里的 item 在本页保存之后不一定被外壳换成新版本，
+ * 拿它当 CAS 基线第 2 次保存就 409（10-23 实测：期望 cc6fb607、当前 90d13e50）。
+ * 若这份 item 的版本是本标签页自己提交链里更早的一版，就从本页提交出的 head 起存；
+ * 别人提交的版本不在链里，照旧用 item（冲突由服务端如实报）。
+ */
+export function timelineSaveBase(item: LibraryItem): LibraryItem {
+  const artifactId = String(item.artifactId || item.meta?.artifact_id || "").trim();
+  const revisionId = String(item.revisionId || item.meta?.revision_id || "").trim();
+  const head = artifactId && revisionId ? ownHeadAfter(artifactId, revisionId) : null;
+  if (!head) return item;
+  if (head.item) return { ...item, ...head.item, meta: { ...item.meta, ...head.item.meta } };
+  return {
+    ...item,
+    revisionId: head.revisionId,
+    meta: { ...item.meta, revision_id: head.revisionId },
+  };
+}
+
 /** 上传 TimelineDoc 草稿 JSON 并登记到我的库。 */
 export async function uploadDraft(
   doc: TimelineDoc,
@@ -99,7 +119,7 @@ export async function uploadDraft(
   createPreview?: () => Promise<Blob | null>,
 ): Promise<PersistResult> {
   const saved = await saveProjectWorkingHead({
-    item,
+    item: timelineSaveBase(item),
     siteId,
     fallbackSite: "oceanleo",
     title,

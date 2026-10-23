@@ -4,6 +4,7 @@ const ALL = {
   mp4: "/tmp/w11/[W11] sample.mp4",
   png: "/tmp/w11/[W11] sample.png",
   mp3: "/tmp/w11/[W11] sample.mp3",
+  save: "/tmp/w11/[W11] save.mp4",
 };
 
 async function libraryReady(page, log, timeout = 240000) {
