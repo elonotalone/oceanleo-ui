@@ -16,11 +16,7 @@
 - 步骤 2 D8 + 深色 token：`document-cover-excerpt.ts`（摘要规则/文字卡判定/源选择）、`document-shelf-cover.tsx`（标题首帧、无「正在读取」、meta 摘要不发请求、64KB 流式读开头、docx ≤16MB、token 配色）、`workspace-library-thumbnail.tsx`（文档项不签名不生成不挂 PNG）；测试改 3 份 + 新增 `tests/library-document-card-w05.test.mjs`；父 agent 抢救提交 6b8e9618 / 2ceab0a2 / 489fefc1。
 
 ## 正在做
-- 步骤 3：backend `typed_uploads.py` 上传摘要 + pytest（向量与前端 `tests/library-document-card-w05.test.mjs` 相同）+ restart。
+- 无。全部完成，交付 `verdicts/W05-delivery.md`（后端 8191e59，浏览器证据 313d4e9e）。
 
 ## 下一步
-- 步骤 4：浏览器验收（harness）+ 截图。
-- 步骤 5：信号（父：投影带 textExcerpt；W08：复用 textExcerptFromSource）+ 交付。
-
-## 复现命令
-- focused test：`cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<file>.test.mjs`
+- 等父 agent 对 `signals/W05-to-parent.md` §2（摘要进投影）的决定；采纳后补 `library-data.ts` 一行。
