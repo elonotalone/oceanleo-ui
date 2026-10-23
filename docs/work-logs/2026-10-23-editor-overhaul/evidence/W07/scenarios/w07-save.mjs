@@ -7,10 +7,15 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   const open = async () => {
     await helpers.gotoApp(page, `/library?item=${artifactId}`);
     // 库详情先是预览；右上角铅笔进编辑器。
-    const edit = page.getByRole("button", { name: /^(编辑|Edit)\b|编辑|Edit/ }).last();
-    await edit.waitFor({ timeout: 60000 }).catch(() => {});
+    await page.locator("[data-deck-thumbnail-rail], [data-workspace-save-launcher]").first().waitFor({ timeout: 150000 });
+    await page.waitForTimeout(1500);
     if (!(await page.locator("[data-workspace-save-launcher]").count())) {
-      await edit.click().catch((error) => log("no edit button", String(error).slice(0, 120)));
+      const labels = await page.evaluate(() =>
+        [...document.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") || b.title || "").filter(Boolean),
+      );
+      const name = labels.find((label) => /^(编辑|Edit)$|编辑|Edit/i.test(label) && !/Issue/.test(label));
+      log("edit button", name || "(none)", JSON.stringify(labels.slice(-8)));
+      if (name) await page.getByRole("button", { name, exact: true }).first().click();
     }
     await page.locator("[data-workspace-save-launcher]").first().waitFor({ timeout: 150000 });
     await page.locator("[data-deck-canvas]").first().waitFor({ timeout: 150000 });
@@ -38,12 +43,19 @@ export default async function ({ page, context, log, shot, helpers, args }) {
         text: el.textContent.slice(0, 40),
       };
     });
+  page.on("response", async (response) => {
+    const url = response.url();
+    if (!/\/v1\//.test(url) || response.request().method() === "GET") return;
+    const body = response.status() >= 400 ? (await response.text().catch(() => "")).slice(0, 300) : "";
+    log("api", response.request().method(), response.status(), url.replace(/^https?:\/\/[^/]+/, "").slice(0, 120), body);
+  });
   const states = [];
   const watch = setInterval(async () => {
     const state = await helpers.saveState(page);
     if (states[states.length - 1] !== state) states.push(state);
   }, 250);
   try {
+    if (args[2] !== "reopen") {
     await open();
     await shot(`${tag}-open`);
     await text().click({ force: true });
@@ -69,6 +81,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     await shot(`${tag}-saved-2`);
     log("url-after-saves", JSON.stringify(await bar()));
 
+    }
     // Reopen from scratch (full reload).
     await open();
     log("after-reload", JSON.stringify(await style()));
@@ -94,13 +107,17 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     const launcher = page.locator("[data-workspace-save-launcher]").first();
     await launcher.click().catch(() => {});
     await page.waitForTimeout(600);
-    const retry = page.getByRole("button", { name: /重试|Retry/ }).first();
+    const retry = page.getByText(/click to retry|点击重试|重试|Retry/i).first();
     if (await retry.isVisible().catch(() => false)) {
       await retry.click();
       log("clicked retry");
     } else {
       log("no retry button visible");
       await shot(`${tag}-no-retry`);
+    }
+    const retried = Date.now();
+    while (Date.now() - retried < 15000 && (await helpers.saveState(page)) === "error") {
+      await page.waitForTimeout(250);
     }
     await helpers.waitSaved(page, { timeout: 90000 }).then(
       () => log("saved-after-retry"),

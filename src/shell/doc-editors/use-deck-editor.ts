@@ -90,6 +90,7 @@ import {
 } from "./DeckPptxVisuals";
 import { injectDeckPptxOoxml } from "./deck-pptx-ooxml";
 import { deckPptxTextRuns } from "./deck-text-format";
+import { AUTOSAVE_ERROR_NETWORK } from "../../lib/auth/autosave-error-message";
 import { importPptxDeck } from "./pptx-deck-import";
 import {
   fetchValidatedOfficePackage,
@@ -723,8 +724,33 @@ export async function assertDeckPptxDelivery(
   }
 }
 
+/**
+ * PPTX 写出器按需载入。只缓存成功的那次：断网时载入失败若被缓存，恢复网络后点「重试」
+ * 还是同一个失败（10-23 W07 实测）。编辑器载入完成后会先预热一次（`warmDeckPptxWriter`）。
+ */
+let pptxWriterModule: Promise<typeof import("pptxgenjs")> | null = null;
+export function warmDeckPptxWriter(): Promise<typeof import("pptxgenjs")> {
+  if (!pptxWriterModule) {
+    pptxWriterModule = import("pptxgenjs").catch((caught: unknown) => {
+      pptxWriterModule = null;
+      throw caught;
+    });
+  }
+  return pptxWriterModule;
+}
+
+/** 断网、分包载不下来：给人话（与顶栏同一句），不把内部路径甩给用户。 */
+export function deckSaveFailureMessage(caught: unknown): string | null {
+  const message = caught instanceof Error ? caught.message : String(caught ?? "");
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  return offline ||
+    /chunk|failed to fetch|networkerror|load failed|network-error/i.test(message)
+    ? AUTOSAVE_ERROR_NETWORK
+    : null;
+}
+
 export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
-  const { default: PptxGenJS } = await import("pptxgenjs");
+  const { default: PptxGenJS } = await warmDeckPptxWriter();
   const pinnedDeck = cloneDeckDocument(deck);
   const pptx = new PptxGenJS();
   pptx.layout =
@@ -1838,6 +1864,8 @@ export function useDeckEditor(
         if (next.importWarnings?.length) {
           setNotice(next.importWarnings.join("；"));
         }
+        // 保存要用的写出器趁在线先载好，断网时改动仍能在恢复后一次存上。
+        void warmDeckPptxWriter().catch(() => undefined);
         setHistoryRevision((value) => value + 1);
       })
       .catch((caught) => {
@@ -2778,10 +2806,13 @@ export function useDeckEditor(
       // Keep the in-memory deck, dirty flag, and reusable upload receipts.
       // A failed publish must not discard the page the user just edited.
       if (mountedRef.current) {
+        const network = deckSaveFailureMessage(caught);
         setError(
-          caught instanceof Error
-            ? artifactSaveStepMessage("revision-publish", caught.message)
-            : artifactSaveStepMessage("revision-publish", caught),
+          network
+            ? tt(network)
+            : caught instanceof Error
+              ? artifactSaveStepMessage("revision-publish", caught.message)
+              : artifactSaveStepMessage("revision-publish", caught),
         );
       }
       return null;
