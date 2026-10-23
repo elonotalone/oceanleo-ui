@@ -13,8 +13,8 @@
  * - 同一规范 id 出现两次：形态相同的合并成一个，形态不同的后来者降为特有控件。
  * - `layer-up` / `layer-down` 这类「一个选项一个按钮」的旧控件合成一个规范下拉，
  *   命令经 `translate` 还原成编辑器自己的 id，编辑器不用改就能用。
- * - 能上栏的规范项（按钮、开关、下拉、数字、色板、面板）从旧属性分组里拉回栏上；
- *   滑杆、长文本这类不能上栏的，各自成一个规范面板。
+ * - 顶层的规范项上栏；顶层的滑杆、长文本这类不能上栏的，各自成一个规范面板。
+ *   编辑器自己放进属性分组（`slot:"inspector"`）的控件一律留在原分组，不拉成顶层。
  * - 灰掉的控件不出（D9「做不到就不出」）；整条只读（协同只能查看）时保留原样。
  * - 编辑器特有控件排在对象组之后。
  */
@@ -347,6 +347,12 @@ export function canonicalSelectionControls(
     const legacy = legacyPanels.get(control);
     if (legacy) {
       children.push(panelChild(control, legacy, groupOf(legacy), tt));
+      continue;
+    }
+    if (control.slot === "inspector") {
+      // 编辑器自己分组的面板子控件：留在原面板，不拉成顶层（与 A-1 同理）。
+      // 规范项该上栏的，由编辑器改成顶层控件。
+      demote(control);
       continue;
     }
     const canonId = resolveEditBarCanonId(control, bar);

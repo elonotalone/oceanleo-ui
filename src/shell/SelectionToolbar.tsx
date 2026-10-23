@@ -140,12 +140,20 @@ export function SelectionToolbar({
     [context],
   );
   // 统一编辑栏（D9）：所有编辑器同一套规范 id → 同样的图标、标签、顺序、分组。
+  // 只按「语言」重算，不按 tt 的引用：引用一变就重算会让属性面板反复重发（死循环）。
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
+  const localeProbe = tt("加粗");
   const projection = useMemo(
     () =>
       context
-        ? canonicalSelectionControls({ ...context, controls: sourceControls }, tt)
+        ? canonicalSelectionControls(
+            { ...context, controls: sourceControls },
+            (zh) => ttRef.current(zh),
+          )
         : null,
-    [context, sourceControls, tt],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [context, sourceControls, localeProbe],
   );
   const { compact: controls, groups: inspectorGroups } = useMemo(
     () => partitionSelectionInspectorControls(projection?.controls || []),

@@ -66,9 +66,9 @@ const stubs = {
   "../i18n/ui/useUI": dataModule('export function useUI() { return (s) => s; }'),
   "./plugin-theme": dataModule('export function pluginWorkbenchStyle() { return {}; } export function usePluginTheme() { return { theme: "light", accent: "#6d5dfc" }; } export function usePluginThemePortal() { return null; } export function PluginThemeScope({children}) { return children; }'),
   "./SelectionAnimationGallery": dataModule('export function SelectionAnimationGallery() { return null; }'),
-  "../ui/Button": dataModule(`import { jsx } from ${JSON.stringify(jsxUrl)}; export function Button({children, ...props}) { return jsx("button", props, children); }`),
+  "../ui/Button": dataModule(`import { jsx } from ${JSON.stringify(jsxUrl)}; export function Button({children, ...props}) { return jsx("button", props, children); } export function IconButton({children, icon, label, ...props}) { return jsx("button", { "aria-label": label, ...props }, icon || children); }`),
   "./InlineEditorMaterialPanel": dataModule('export function InlineEditorMaterialPanel() { return null; }'),
-  "./inline-advanced-shell-helpers": dataModule('export function resolveInlineAdvancedDrawers() { return []; } export function resolveActiveMaterialAction() { return undefined; }'),
+  "./inline-advanced-shell-helpers": dataModule('export function resolveInlineAdvancedDrawers() { return []; } export function resolveActiveMaterialAction() { return undefined; } export function resolveEditBarDrawers() { return []; } export const EDIT_BAR_EMPTY_STATE_DRAWERS = {}; export function resolveDroppedWorkbenchMaterial() { return null; }'),
   "./plugin-chrome/PluginAgentPanel": dataModule('export function PluginAgentPanel() { return null; }'),
   "./SplitWorkspace": dataModule('export function useConsoleAgentFocus() { return null; }'),
 };
@@ -318,15 +318,23 @@ test("document segment keeps a collapsed state until the expansion hysteresis cl
     const more = () => api.container.querySelector("[data-edit-bar-document-more]");
     assert.ok(slot(), "document segment starts visible with ample width");
 
-    // With the real row reserve and 96px document clone, 178.75px is below
-    // the fold line.  179.75px is only 0.5px above it: the old single
-    // threshold immediately re-expanded here, while the fixed state should
-    // stay folded until the additional 24px expansion is available.
-    await api.resize(178.75);
-    assert.ok(more(), "document segment folds when the external boundary narrows");
-    await api.resize(179.75);
+    // 原来写死 178.75 / 179.75 / 204.25：那是 10-22（07bf3412）删掉钉选键之前的行宽。
+    // 改成先从宽往窄量出真实折叠线 L，再判回差：L 以下折、L+0.5 仍折、L+24.5 才展开。
+    let foldLine = 0;
+    for (let width = 300; width >= 60; width -= 1) {
+      await api.resize(width);
+      if (more()) { foldLine = width + 1; break; }
+    }
+    assert.ok(foldLine > 0, "document segment folds when the external boundary narrows");
+    await api.resize(foldLine + 40);
+    assert.ok(slot(), "back to visible with ample width");
+    await api.resize(foldLine - 1.25);
+    assert.ok(more(), "document segment folds just below the fold line");
+    await api.resize(foldLine - 0.25);
     assert.ok(more(), "a sub-pixel rebound must not re-expand the document segment");
-    await api.resize(204.25);
+    await api.resize(foldLine + 0.5);
+    assert.ok(more(), "half a pixel above the line is still inside the hysteresis band");
+    await api.resize(foldLine + 24.5);
     assert.ok(slot(), "a clearly wider boundary expands the document segment");
     assert.deepEqual(api.errors, []);
   } finally { await api.unmount(); }
@@ -360,7 +368,9 @@ for (const kind of ["inline", "plugin"]) test(`${kind} chain scans website selec
         await act(async () => api.collapsed(true));
         await act(async () => api.collapsed(false));
         await act(async () => api.selection(null));
-        assert.equal(api.toolbar()?.getAttribute("data-selection-id"), "host:website");
+        // 10-22 删了子站嵌入宿主（website-host-edit-bar.ts），没有选区时不再垫一条
+        // 「host:website」文档级选区：选中工具段整段消失，由编辑栏空态接手。
+        assert.equal(api.toolbar(), null);
         await act(async () => api.selection(clone(selection)));
         assert.equal(api.toolbar()?.getAttribute("data-selection-id"), selection.id);
         assert.deepEqual(api.errors, []);
