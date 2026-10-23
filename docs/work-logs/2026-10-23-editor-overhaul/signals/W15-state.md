@@ -1,6 +1,6 @@
 # W15 接班状态（游戏）
 
-更新：2026-10-23 开工
+更新：2026-10-23 10:25Z（R2 接班）
 
 ## 已确认的事实
 - [读码] 路由 `src/shell/advanced-routes/GameRoute.tsx`（755 行），Code 页 `src/shell/game-editor/GameCodeStage.tsx`（1031 行，旧大文件，不许再明显变大），页面申报 `game-editor/game-pages.ts`。
@@ -8,8 +8,10 @@
 - [读码] 硬编码浅色回退：`bg-[var(--card,#fff)]`、`--awb-stage-bg,#fafaf9` 等；Code 页 textarea / border 没有主题 token。
 - [读码] Code 页保存 `uploadFile(... idempotencyKey: game-draft:<seed>:<item.id>)`，待核：同一 item 第二次保存是否被幂等键吞掉。
 
+- [实测] 后端审核修复 oceanleo bb7937e 已提交；oceanleo-api 09:51Z 已由别人重启过（晚于修复），新代码已在跑，W15 不再重启。
+
 ## 正在做
-- 读代码：外壳 toolbox/drawers 渲染、主题 token、现有测试。
+- R2：读 GameRoute / GameCodeStage / game-pages，做 A–E（编辑栏、空态抽屉、深浅两档、保存、素材）。
 
 ## 下一步
 - 浏览器现状基线（从公共游戏打开 → fork → 保存两次），记录到 journal。
