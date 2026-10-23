@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  overlayXlsxStyles,
+  type GridStyleOverlayTarget,
+} from "./grid-format/xlsx-style-overlay";
 import type { LibraryItem } from "../library-data";
 import { urlExtension } from "./doc-io";
 import {
@@ -499,7 +503,8 @@ async function readWorkbook(
     cellStyles: true,
   });
   const used = new Set<string>();
-  return bindGridWorkbook(workbook.SheetNames.map((name) => {
+  const styleTargets: GridStyleOverlayTarget[] = [];
+  const sheets = workbook.SheetNames.map((name) => {
     const worksheet = workbook.Sheets[name];
     const rows: string[][] = [];
     const formats: Record<string, GridCellFormat> = {};
@@ -525,6 +530,9 @@ async function readWorkbook(
                   font?: { bold?: boolean; color?: { rgb?: string } };
                   alignment?: { horizontal?: string };
                   fill?: { fgColor?: { rgb?: string } };
+                  // SheetJS 社区版把实心填充直接放在 s 上（`{patternType, fgColor}`）。
+                  patternType?: string;
+                  fgColor?: { rgb?: string };
                 };
               }
             | undefined;
@@ -573,7 +581,10 @@ async function readWorkbook(
             if (color && /^[0-9a-f]{6}$/i.test(color)) {
               format.color = `#${color}`;
             }
-            const background = cell.s?.fill?.fgColor?.rgb?.slice(-6);
+            const background = (
+              cell.s?.fill?.fgColor?.rgb ??
+              (cell.s?.patternType === "solid" ? cell.s.fgColor?.rgb : undefined)
+            )?.slice(-6);
             if (background && /^[0-9a-f]{6}$/i.test(background)) {
               format.background = `#${background}`;
             }
@@ -585,6 +596,7 @@ async function readWorkbook(
         rows.push(nextRow);
       }
     }
+    styleTargets.push({ sourceName: name, originRow, originCol, formats });
     return {
       id: gridId(),
       name: uniqueSheetName(name, used),
@@ -602,7 +614,12 @@ async function readWorkbook(
       ),
       conditionalFormats: [],
     };
-  }));
+  });
+  // 字体（粗体 / 字色）社区版 SheetJS 读不到：xlsx 字节再交给 exceljs 补一层样式。
+  if (mode === "array" && typeof input !== "string") {
+    await overlayXlsxStyles(input, styleTargets);
+  }
+  return bindGridWorkbook(sheets);
 }
 
 export async function loadGridSheets(

@@ -32,6 +32,8 @@ export interface GridStyleDataLike {
   vt?: number | null;
   /** WrapStrategy：1 溢出 / 2 截断 / 3 换行。 */
   tb?: number | null;
+  /** 边框：上下左右各一项，有值 = 有这条边。 */
+  bd?: { t?: unknown; b?: unknown; l?: unknown; r?: unknown } | null;
 }
 
 export type GridHorizontalAlign = "left" | "center" | "right";
@@ -56,6 +58,8 @@ export interface GridCellTextStyle {
   merged: boolean;
   /** 选区不止一格（合并才有意义）。 */
   multiCell: boolean;
+  /** 左上格的框线：all / none / 单边；几条边混着时为空串。 */
+  border: string;
 }
 
 /** Univer 的默认字体 / 字号（`DEFAULT_STYLES`：Arial 11）。 */
@@ -78,6 +82,7 @@ export const GRID_DEFAULT_TEXT_STYLE: GridCellTextStyle = {
   wrap: false,
   merged: false,
   multiCell: false,
+  border: "none",
 };
 
 /**
@@ -170,7 +175,22 @@ export function gridCellTextStyleFromStyleData(
     wrap: s.tb === 3,
     merged: Boolean(extras.merged),
     multiCell: Boolean(extras.multiCell),
+    border: gridBorderState(s.bd),
   };
+}
+
+/** 左上格的四条边 → 边框下拉的当前值（混合时空串）。 */
+export function gridBorderState(bd: GridStyleDataLike["bd"]): string {
+  const sides = (["t", "b", "l", "r"] as const).filter((side) => {
+    const edge = bd?.[side] as { s?: number } | null | undefined;
+    return Boolean(edge) && edge?.s !== 0;
+  });
+  if (sides.length === 0) return "none";
+  if (sides.length === 4) return "all";
+  if (sides.length === 1) {
+    return { t: "top", b: "bottom", l: "left", r: "right" }[sides[0]];
+  }
+  return "";
 }
 
 /** 两次读到的样式是否一样（选区移动时不必要的重渲染靠它挡掉）。 */
@@ -189,6 +209,7 @@ export function gridCellTextStyleKey(style: GridCellTextStyle): string {
     style.wrap ? 1 : 0,
     style.merged ? 1 : 0,
     style.multiCell ? 1 : 0,
+    style.border,
   ].join("|");
 }
 
@@ -350,8 +371,8 @@ export function gridTextBarControls(
     label: tt("边框"),
     iconOnly: false,
     group: "format",
-    // 边框是「对选区做一次」的动作，没有一个能回读的当前值；下拉显示的是动作名。
-    value: "",
+    // 当前值是左上格实际的框线（单格时「外侧」就是「所有」，回读显示为所有框线）。
+    value: style.border,
     options: GRID_BORDER_OPTIONS.map((value) => ({
       value,
       label: tt(BORDER_LABELS[value]),
