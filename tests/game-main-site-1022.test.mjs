@@ -332,6 +332,7 @@ const shellStub = dataModule(`
   import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
   export function AdvancedWorkbenchShell({ adapter }) {
     globalThis.__flush = adapter.persistence && adapter.persistence.flush;
+    globalThis.__persistence = adapter.persistence || null;
     return jsxs("div", { children: [
       adapter.toolbox && adapter.toolbox.content ? adapter.toolbox.content : null,
       adapter.stage || null,
@@ -701,6 +702,89 @@ test("Edit 页：没有注册宿主时给用户话，不出现开发者提示", 
     // the call itself must never reach the screen.
     assert.doesNotMatch(text, /tt\(/);
     assert.doesNotMatch(text, /registerGamePreviewHost|共享包|iframe/);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+// ── W15 2026-10-23：结果提示可见；回到旧版本 = 未保存，保存把它写成新 revision ──────────
+
+function iterationDocument(item, next, prompt) {
+  return {
+    envelopeUrl: `https://cdn.test/${item.artifactId}/${next}/full.json`,
+    envelopeDigest: `dig-${next}`,
+    bundleFormat: "html",
+    coverUrl: `https://cdn.test/${item.artifactId}/cover.png`,
+    coverDigest: "d-cover",
+    manifestUrl: `https://cdn.test/${item.artifactId}/m.json`,
+    manifestDigest: "d-m",
+    engineApiVersion: "1",
+    skeletonVersion: "1",
+    prompt,
+    origin: "ai",
+  };
+}
+
+test("W15 Edit 页：迭代成功的提示显示在玩法抽屉里（以前只进 adapter.status，看不见）", async () => {
+  resetGlobals();
+  const item = gameItem({ artifactId: "art-w15-ok" });
+  route.registerGameIterationRunner(async (request) => ({
+    ok: true,
+    document: iterationDocument(item, "rev-2", request.prompt),
+    artifact: projectionOf(item, "rev-2"),
+  }));
+  const mounted = await mountRoute(item);
+  try {
+    await settle();
+    await iterateOnce(mounted.container, "加一个敌人");
+    const notice = q(mounted.container, "[data-testid=game-play-panel] [data-testid=game-play-notice]");
+    assert.ok(notice, "抽屉里要有结果提示");
+    assert.match(notice.textContent, /已生成并保存/);
+    assert.equal(globalThis.__persistence.dirty, false, "服务器已确认的新版本不是未保存");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("W15 Edit 页：迭代失败的原因显示在抽屉里（role=alert），游戏保持上一版", async () => {
+  resetGlobals();
+  const item = gameItem({ artifactId: "art-w15-fail" });
+  route.registerGameIterationRunner(async () => ({ ok: false, error: "生成请求需要人工复审" }));
+  const mounted = await mountRoute(item);
+  try {
+    await settle();
+    await iterateOnce(mounted.container, "加一个敌人");
+    const alert = q(mounted.container, "[data-testid=game-play-panel] [role=alert]");
+    assert.ok(alert, "失败要在抽屉里说出来");
+    assert.match(alert.textContent, /人工复审/);
+    assert.equal(lastRender().revisionId, "rev-1");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("W15 Edit 页：点回 v1 = 未保存；保存把 v1 写成新 revision，之后回到已保存", async () => {
+  resetGlobals();
+  const item = gameItem({ artifactId: "art-w15-pick" });
+  route.registerGameIterationRunner(async (request) => ({
+    ok: true,
+    document: iterationDocument(item, "rev-2", request.prompt),
+    artifact: projectionOf(item, "rev-2"),
+  }));
+  const mounted = await mountRoute(item);
+  try {
+    await settle();
+    await iterateOnce(mounted.container, "加一个敌人");
+    assert.equal(globalThis.__persistence.dirty, false);
+    const v1 = byText(mounted.container, "button", "v1 ·");
+    await click(v1);
+    await settle();
+    assert.equal(globalThis.__persistence.dirty, true, "显示的版本不是服务器上那一版，必须是未保存");
+    const saved = await act(async () => globalThis.__flush());
+    assert.equal(saved.ok, true, JSON.stringify(saved));
+    assert.equal(globalThis.__commits.length, 1, "保存一次 = 一个新 revision");
+    await settle();
+    assert.equal(globalThis.__persistence.dirty, false, "保存确认后回到已保存");
   } finally {
     await mounted.unmount();
   }

@@ -12,3 +12,7 @@
 - 10:31Z [实测] 基线保存：Code 页两次改动都显示「已保存」，DB 只 +1 revision（ordinal 2）；复跑时两次上传都 409（typed_artifact_upload_replay 400）。根因 [读码]：幂等键 `game-draft:<seed>:<item.id>` 与内容无关，第二次换字节撞键。
 - 10:36Z [实测] 后端修复生效：默认路由 POST /v1/game-generate/<id>/iterate 200（~40s），DB ordinal 3，版本列表出现 v2；但「新玩法已生成并保存」提示编辑页上看不到（只进 adapter.status）。
 - 10:50Z [实测] focused：game-core-swap 10/10、game-main-site-1022 14/14、hidden-runtime 3/3、W6-r2 7/7 等 11 份绿；g3-portal-typed-editor 红在 material-library-standalone 循环依赖（W02 文件，非本人）。i18n 闸红 2 条均非游戏文件；tsc 本人文件 0 错。
+- 12:31Z [实测] 修后 Code 页保存协议：两次改动 → 两次 upload 200 + 两次 POST revisions 200，DB ordinal 4、5；全新浏览器打开 Code 页两处标记都在；库条目数不变。
+- 12:35Z [实测] 断网改动：saving→error（从未出现 saved），恢复网络后 error→saving→saved，DB ordinal 6。
+- 12:36Z [实测] Code 页运行条：停止 → data-game-preview-paused=true 且显示「试玩已停止」；运行 → false；重载 → reloadKey 0→1。
+- 12:38Z [实测] 第二次「迭代这一版」181s 后报「连接中断，未能确认修改结果…」（game 仓 runner 文案），错误现在在抽屉里可见；DB 无新 revision。生成模型 qwen3.7-plus 多轮调用 >3 分钟，超出前端/代理等待；非本人文件。
