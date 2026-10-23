@@ -25,13 +25,14 @@ import {
   pageSections,
   replacePageSections,
   setSectionContent,
+  siteFieldPath,
   siteImagePaths,
   type SiteDoc,
   type SiteEnvelope,
 } from "./website-site-doc";
 import { loadSiteDoc, SiteImageResolver, type SiteRevisionIdentity } from "./website-site-load";
 import { puckToSiteSections, siteDocPuckConfig, siteSectionsToPuck } from "./website-site-puck";
-import { SiteEditorContext, siteFieldPath, type SiteFieldPick } from "./website-site-render";
+import { SiteEditorContext, type SiteFieldPick } from "./website-site-render";
 import {
   applySiteBarCommand,
   normalizePick,
@@ -45,6 +46,12 @@ import {
   type StagedSiteFile,
 } from "./website-site-save";
 import { SitePuckBridgeContext, SitePuckBridgeHost } from "./WebsiteSitePuckBridge";
+
+function debugW14(...parts: unknown[]) {
+  if (typeof window !== "undefined" && (window as { __W14_DEBUG__?: boolean }).__W14_DEBUG__) {
+    console.info("[w14-debug]", JSON.stringify(parts).slice(0, 600));
+  }
+}
 
 export const WEBSITE_SITE_DRAFT_SCHEMA = "oceanleo.website-site-draft.v1";
 
@@ -211,17 +218,21 @@ function SiteEditor({
   );
 
   const onPick = useCallback((pick: SiteFieldPick | null) => {
-    setSelection(normalizePick(docRef.current, pageRef.current, pick));
+    const next = normalizePick(docRef.current, pageRef.current, pick);
+    debugW14("pick", pick, next);
+    setSelection(next);
   }, []);
 
   const bridge = useMemo(
     () => ({
       pushToken,
       data: () => siteSectionsToPuck(pageSections(docRef.current, pageRef.current)),
-      onSelectedSection: (sectionId: string | null) =>
+      onSelectedSection: (sectionId: string | null) => {
+        debugW14("puck-selected", sectionId);
         setSelection((current) =>
           !sectionId ? null : current?.sectionId === sectionId ? current : { sectionId, field: "", kind: "text" },
-        ),
+        );
+      },
       selectToken: selectRequest.token,
       selectId: selectRequest.id,
     }),

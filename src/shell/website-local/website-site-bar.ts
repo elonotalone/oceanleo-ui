@@ -26,11 +26,12 @@ import {
   safeSiteColor,
   setSectionContent,
   setSectionStyle,
+  siteFieldPath,
   type SiteArrange,
   type SiteDoc,
   type SiteRow,
 } from "./website-site-doc";
-import { siteFieldPath, type SiteFieldPick } from "./website-site-render";
+import type { SiteFieldPick } from "./website-site-render";
 
 type Translate = (text: string, vars?: Record<string, string | number>) => string;
 

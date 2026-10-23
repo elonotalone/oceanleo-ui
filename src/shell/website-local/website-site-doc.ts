@@ -351,3 +351,15 @@ export function safeSiteHref(value: unknown): string {
   if (/^(?:https?:|mailto:|tel:)/i.test(text)) return text;
   return "#";
 }
+
+/** Field path → value inside `content` (dots for nesting, numbers for indexes). */
+export function siteFieldPath(field: string): Array<string | number> {
+  return field
+    .split(".")
+    .filter(Boolean)
+    .map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+}
+
+export function siteFieldValue(section: SiteSection, field: string): unknown {
+  return readPath(section.content, siteFieldPath(field));
+}

@@ -18,7 +18,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  readPath,
   safeSiteColor,
   safeSiteHref,
   type SiteDoc,
@@ -26,6 +25,8 @@ import {
   type SiteSection,
 } from "./website-site-doc";
 import type { SiteImageResolver } from "./website-site-load";
+
+export { siteFieldPath, siteFieldValue } from "./website-site-doc";
 
 export interface SiteFieldPick {
   sectionId: string;
@@ -352,10 +353,29 @@ export function SiteFrame({ children }: { children: ReactNode }) {
   const doc = context?.doc;
   const typography = isRow(doc?.typography) ? doc!.typography : {};
   const page = doc?.pages[context?.pageIndex || 0];
-  const pick = (target: EventTarget | null) => {
-    if (!context || !(target instanceof Element)) return;
-    const section = target.closest("[data-w14-section]");
-    const field = target.closest("[data-w14-field]");
+  // In edit mode Puck draws its overlay above the section and turns pointer
+  // events off for component content, so neither the event target nor
+  // `elementsFromPoint` sees our nodes: hit-test their boxes instead.
+  const pick = (event: { currentTarget: Element; clientX: number; clientY: number }) => {
+    if (!context) return;
+    const hit = (selector: string) => {
+      let best: Element | null = null;
+      let bestArea = Infinity;
+      for (const element of event.currentTarget.querySelectorAll(selector)) {
+        const box = element.getBoundingClientRect();
+        if (
+          event.clientX >= box.left && event.clientX <= box.right &&
+          event.clientY >= box.top && event.clientY <= box.bottom &&
+          box.width * box.height < bestArea
+        ) {
+          best = element;
+          bestArea = box.width * box.height;
+        }
+      }
+      return best;
+    };
+    const field = hit("[data-w14-field]");
+    const section = field?.closest("[data-w14-section]") || hit("[data-w14-section]");
     if (!section) {
       context.onPick(null);
       return;
@@ -385,7 +405,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
     <div
       data-testid="website-site-frame"
       style={siteStyle}
-      onPointerDownCapture={(event) => pick(event.target)}
+      onPointerDownCapture={pick}
     >
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 28px", borderBottom: "1px solid rgba(15,23,42,0.08)" }}>
         <strong style={{ fontWeight: 800 }}>{String(doc?.siteName || "")}</strong>
@@ -400,16 +420,4 @@ export function SiteFrame({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
-}
-
-/** Field path → value inside `content` (dots for nesting, numbers for indexes). */
-export function siteFieldPath(field: string): Array<string | number> {
-  return field
-    .split(".")
-    .filter(Boolean)
-    .map((part) => (/^\d+$/.test(part) ? Number(part) : part));
-}
-
-export function siteFieldValue(section: SiteSection, field: string): unknown {
-  return readPath(section.content, siteFieldPath(field));
 }
