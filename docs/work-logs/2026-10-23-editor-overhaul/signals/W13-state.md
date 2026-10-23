@@ -1,5 +1,17 @@
 # W13 state (接班文件)
 
+## Codex continuation 2026-10-23
+- [当前交接] 产品源码 `0558a160` 最后冻结；`CODEX-W13.md` 已写，最后附加材质 HEX 操作场景等 parent 通知 unrelated Bay batch 编译稳定。自有 browser 已关闭。通过项：完整 D11 strict、dark 复制/删除/Undo、独立GLB原材质校验、51 focused。未宣称 public fork/实际素材替换通过。
+- [实测] `/tmp/codex-w13-save4` exit0，SQL4→7；`/tmp/codex-w13-controls4` exit0，SQL10→13。Undo后CAS409已由fd512b80修复并真实复测3×200。manifest兼容5da176b7；显式标注栏0558a160。
+- [实施] `1a0704a4`: typed GLB each save + private PNG; receipt CAS/idempotence; own-save echo guard; no-save download; canonical position/duplicate/delete; real empty context; scene settings drawer; material command contract; zero-delta orbit no dirty.
+- [实测] 40 focused assertions pass (new save/control/recovery + persistence/core/gates/route-context). Parent tsc found missing duplicate method declaration; fixed in milestone.
+- [实测] Initial light browser probe and first edit passed. Root ordinal1→2 SQL: source/full GLB, editor_manifest JSON, preview/thumbnail PNG; title unchanged. Strict multi-edit/reopen/offline test running (initial script close-panel locator corrected because panel auto-closes).
+- [读码] salvage `abfb13bc` only added runtime duplication; toolbar wiring and typed-save fixes are still absent.
+- [实测] Existing persistence/core/real Three roundtrip/gate baseline: 31 assertions pass, but they do not cover ordinary typed saves.
+- [实测] New `editor-overhaul-w13-save` detects ordinary save/export defects (2 expected reds before implementation); failed-save journal retention already passes.
+- [实测] Parent-reported e9 3D admission binding repaired; added failed/loading-source capture=null regression. This only changes tests.
+- Plan after shared short source freeze: canonical position/duplicate/delete and actual material controls; scene-view controls move to Scene drawer; typed saves always checkpoint GLB with private PNG staging; current CAS/receipt and own-save echo retained; no authored model color changes. Then strict D11 + light/dark acceptance and CODEX-W13.
+
 更新于 2026-10-23 05:58Z（会话中断后恢复）。
 
 ## 已确认的事实

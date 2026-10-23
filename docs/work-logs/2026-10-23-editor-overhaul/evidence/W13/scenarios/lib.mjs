@@ -36,6 +36,8 @@ export async function enterEditor(page, log, timeout = 240000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
     if (await canvas.isVisible().catch(() => false)) return;
+    const issueBadge = page.locator("nextjs-portal").getByRole("button", { name: /collapse.*issues|collapse.*badge|hide.*issues/i }).first();
+    if (await issueBadge.isVisible().catch(() => false)) await issueBadge.click();
     const edit = page
       .locator("button[aria-label='编辑'], button[aria-label='Edit'], button[title='编辑'], button[title='Edit']")
       .first();
