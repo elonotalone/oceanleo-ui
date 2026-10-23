@@ -14,3 +14,4 @@
 - 21:40 实测：dev 预览 /bay?bay=mine:published 200，无编译错误字样（HTTP 验证）。
 - 21:45 核对：我边界内 34 条 tt 字面量 16 语 0 缺口；用到的类名对 ui.css 产物 0 缺失；相关 21 份测试全绿（见交卷）；全仓 gate 的红灯（i18n-tt-key-coverage 8/9/10、i18n-key-collision 2 条、share-i18n-coverage 1 条、hit-target-budget 2 条）都不含我的文件。
 - 21:50 交卷草稿写好（verdicts/W04-delivery.md），等最后一次 typecheck 填结果后提交。
+- 22:05 交卷：typecheck exit=0；测试与红灯归属写进 verdicts/W04-delivery.md；交卷提交 674ae127。
