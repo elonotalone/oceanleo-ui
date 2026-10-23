@@ -61,6 +61,27 @@ export type GameDraftSaveResult =
   | { ok: false; error: string };
 
 /** SHA-256 十六进制。没有 WebCrypto（非安全上下文）时返回空串，由调用方判。 */
+/**
+ * Code 页保存的上传幂等键：同一份字节 → 同一把键（重试安全），换了字节 → 换键。
+ * 以前用 `seed + item.id`，同一游戏的第二次保存撞上第一次的键，服务端 409，
+ * 第二次保存永远成不了 revision（W15 2026-10-23 [实测]）。
+ * 拿不到 SHA-256（无 WebCrypto）时退回内容的 FNV-1a + 长度，仍随字节变化。
+ */
+export function gameDraftUploadKey(
+  seed: string,
+  digest: string,
+  text = "",
+): string {
+  const clean = String(digest || "").replace(/^sha256:/, "").trim();
+  if (clean) return `game-draft:${seed}:${clean.slice(0, 64)}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `game-draft:${seed}:fnv-${hash.toString(16)}-${text.length}`;
+}
+
 export async function sha256Text(text: string): Promise<string> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return "";

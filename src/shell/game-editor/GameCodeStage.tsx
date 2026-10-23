@@ -50,7 +50,8 @@ import {
   resolveGameParamValues,
   type GameParamDeclarations,
 } from "./game-source";
-import { saveGameDraft, sha256Text } from "./game-draft-save";
+import { gameDraftUploadKey, saveGameDraft, sha256Text } from "./game-draft-save";
+import { GameCodeRunBar } from "./GameCodeRunBar";
 import {
   GAME_NEXT_MODE_ATTR,
   GAME_NEXT_STAGE_ATTR,
@@ -377,7 +378,7 @@ export function GameCodeStage({
       return;
     }
     if (!url) {
-      setStatus("这个游戏没有可编辑的源码，目前只能试玩。可以回到「编辑」页用描述修改玩法，或打开带源码的副本。");
+      setStatus(tt("这个游戏没有可编辑的源码，目前只能试玩。可以回到「编辑」页用描述修改玩法，或打开带源码的副本。"));
       return;
     }
     let cancelled = false;
@@ -387,7 +388,7 @@ export function GameCodeStage({
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`游戏源码读取失败（HTTP ${response.status}）`);
+          throw new Error(tt("游戏源码读取失败（HTTP {status}）", { status: response.status }));
         }
         return response.json() as Promise<unknown>;
       })
@@ -409,7 +410,7 @@ export function GameCodeStage({
       .catch((caught: unknown) => {
         if (!cancelled) {
           setStatus(
-            caught instanceof Error ? caught.message : "游戏源码读取失败。",
+            caught instanceof Error ? caught.message : tt("游戏源码读取失败。"),
           );
         }
       });
@@ -647,16 +648,16 @@ export function GameCodeStage({
       return {
         ok: false as const,
         error: inspection.issues[0]
-          ? `这份草稿现在不能保存：${inspection.issues.join("，")}。`
-          : "这份草稿现在不能保存。",
+          ? tt("这份草稿现在不能保存：{issues}。", { issues: inspection.issues.join("，") })
+          : tt("这份草稿现在不能保存。"),
       };
     }
     if (origin !== "ai" && origin !== "remix") {
-      return { ok: false as const, error: "游戏来源不被接受，已取消保存。" };
+      return { ok: false as const, error: tt("游戏来源不被接受，已取消保存。") };
     }
     // 不是自己的作品：保存前先落成自己的二创副本，之后一切只作用在副本上。
     const own = await ensureOwnGameCopy(currentItem.current, forkArtifact);
-    if (!own.ok) return { ok: false as const, error: own.error };
+    if (!own.ok) return { ok: false as const, error: tt(own.error) };
     const base = own.item;
     if (own.forked) {
       currentItem.current = base;
@@ -677,18 +678,22 @@ export function GameCodeStage({
       {
         uploadJson: async (json, fileName, seed) => {
           const file = new File([json], fileName, { type: "application/json" });
+          // 幂等键跟着字节走（W15 2026-10-23 [实测]）：以前是 `seed + item.id`，同一份游戏
+          // 第二次保存换了内容却沿用同一把键，上传被 409 拒掉（键已绑定第一次的字节），
+          // 第二次保存永远成不了 revision。同字节重试仍复用同一把键。
+          const localDigest = await sha256Text(json);
           const uploaded = await uploadFile(file, {
             siteId,
-            idempotencyKey: `game-draft:${seed}:${String(item.id).slice(-80)}`,
+            idempotencyKey: gameDraftUploadKey(seed, localDigest, json),
           });
           if (!uploaded.ok) {
-            throw new Error(uploaded.error || "上传失败");
+            throw new Error(uploaded.error || tt("上传失败"));
           }
           const url = uploaded.data?.file?.url || "";
           const digest = String(
             uploaded.data?.file?.meta?.content_digest ||
               uploaded.data?.file?.meta?.sha256 ||
-              (await sha256Text(json)),
+              localDigest,
           ).replace(/^sha256:/, "");
           return { url, digest };
         },
@@ -704,9 +709,7 @@ export function GameCodeStage({
             });
           }
           if (!cover.url || !cover.digest) {
-            throw new Error(
-              "这个游戏缺少封面，暂时无法保存。",
-            );
+            throw new Error(tt("这个游戏缺少封面，暂时无法保存。"));
           }
           return commitAdvancedSavedRevision(base, {
             publish: createArtifactRevision,
@@ -790,6 +793,7 @@ export function GameCodeStage({
     siteId,
     skeletonVersion,
     source,
+    tt,
   ]);
 
   const paramEntries = paramDeclarations
@@ -809,65 +813,6 @@ export function GameCodeStage({
         id: "game",
         label: editorToolLabel({ type: "game" }),
         pages: chromePages,
-        toolbox: {
-          label: "运行",
-          icon: "code",
-          content: (
-            <div className="flex flex-col gap-3 p-3">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  data-testid="game-run"
-                  onClick={() => runControl("run")}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--awb-on-accent,#fff)]"
-                  style={{ background: accent }}
-                >
-                  运行
-                </button>
-                <button
-                  type="button"
-                  data-testid="game-stop"
-                  onClick={() => runControl("stop")}
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
-                  停止
-                </button>
-                <button
-                  type="button"
-                  data-testid="game-reload"
-                  onClick={() => runControl("reload")}
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
-                  重载
-                </button>
-              </div>
-              {paramEntries.length > 0 ? (
-                <div data-testid="game-param-panel" className="flex flex-col gap-2">
-                  {paramEntries.map(([name, declaration]) => (
-                    <label key={name} className="flex items-center gap-2 text-xs">
-                      <span className="w-20 truncate">{declaration.label}</span>
-                      <input
-                        type="range"
-                        data-testid={`game-param-${name}`}
-                        min={declaration.min}
-                        max={declaration.max}
-                        step={declaration.step}
-                        value={paramValues[name] ?? declaration.default}
-                        onChange={(event) => {
-                          const next = Number(event.target.value);
-                          setParamValues((current) => ({
-                            ...current,
-                            [name]: next,
-                          }));
-                        }}
-                      />
-                    </label>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ),
-        },
         actions: [],
         stage: (
           <div
@@ -881,7 +826,7 @@ export function GameCodeStage({
               <div
                 role="alert"
                 data-game-ide-notice="true"
-                className="border-b border-[var(--awb-danger-line,#fecdd3)] bg-[var(--awb-danger-soft,#fff1f2)] px-3 py-1.5 text-[12px] leading-4 text-[var(--awb-danger,#be123c)]"
+                className="border-b border-[var(--awb-border)] bg-[var(--awb-danger-soft)] px-3 py-1.5 text-[12px] leading-4 text-[var(--awb-danger)]"
               >
                 {status}
               </div>
@@ -890,15 +835,25 @@ export function GameCodeStage({
               <div
                 role="status"
                 data-testid="game-access-notice"
-                className="border-b bg-[var(--awb-stage-bg,#fafaf9)] px-3 py-1.5 text-[12px] leading-4 text-[var(--awb-muted,#57534e)]"
+                className="border-b border-[var(--awb-border)] bg-[var(--awb-stage-bg)] px-3 py-1.5 text-[12px] leading-4 text-[var(--awb-muted)]"
               >
-                {editAccess === "fork"
+                {tt(editAccess === "fork"
                   ? GAME_FORK_ON_SAVE_NOTICE
-                  : GAME_VIEW_ONLY_MESSAGE}
+                  : GAME_VIEW_ONLY_MESSAGE)}
               </div>
             ) : null}
+            <GameCodeRunBar
+              tt={tt}
+              onControl={runControl}
+              paused={playback.paused}
+              params={paramEntries}
+              values={paramValues}
+              onParam={(name, next) =>
+                setParamValues((current) => ({ ...current, [name]: next }))
+              }
+            />
             <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-2">
-              <div className="flex min-h-0 flex-col border-r">
+              <div className="flex min-h-0 flex-col border-r border-[var(--awb-border)]">
                 <textarea
                   ref={setCodeEl}
                   data-testid="game-code-editor"
@@ -911,12 +866,12 @@ export function GameCodeStage({
                   }}
                   onSelect={onCodeSelect}
                   spellCheck={false}
-                  className="min-h-[240px] flex-1 resize-none bg-[var(--card,#fff)] p-3 font-mono text-xs"
+                  className="min-h-[240px] flex-1 resize-none bg-[var(--awb-chrome-bg)] p-3 font-mono text-xs text-[var(--awb-text)] outline-none"
                 />
                 {peerLines.length > 0 ? (
                   <div
                     data-testid="game-peer-lines"
-                    className="flex flex-wrap gap-x-3 gap-y-1 border-t px-3 py-1 text-[11px] leading-4"
+                    className="flex flex-wrap gap-x-3 gap-y-1 border-t border-[var(--awb-border)] px-3 py-1 text-[11px] leading-4 text-[var(--awb-muted)]"
                   >
                     {peerLines.map((peer) => (
                       <span key={peer.id} className="inline-flex items-center gap-1">
@@ -950,7 +905,7 @@ export function GameCodeStage({
                 ) : (
                   <div
                     role="alert"
-                    className="grid h-full place-items-center p-8 text-center text-sm"
+                    className="grid h-full place-items-center bg-[var(--awb-stage-bg)] p-8 text-center text-sm text-[var(--awb-warn)]"
                   >
                     {tt("当前站点暂不支持试玩，请在 OceanLeo 主站打开")}
                   </div>

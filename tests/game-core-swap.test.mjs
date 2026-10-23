@@ -93,7 +93,8 @@ test("hosted-pro files are gone; route declares Code page", () => {
 test("remix action is declared as group save, never an edit-bar action", () => {
   assert.match(
     routeCode,
-    /id:\s*"game-remix",\s*label:\s*"另存为二创副本",\s*group:\s*"save"/,
+    // W15 2026-10-23：保存菜单不替动作翻译，路由自己 tt()。
+    /id:\s*"game-remix",\s*label:\s*tt\("另存为二创副本"\),\s*group:\s*"save"/,
   );
 });
 
@@ -183,7 +184,9 @@ test("run/stop/reload are decided by a pure function, not an if in the button", 
   const reloaded = planGamePreviewControl(running, "reload");
   assert.equal(reloaded.reloadKey, GAME_PREVIEW_INITIAL.reloadKey + 1);
   assert.match(leaf, /planGamePreviewControl/);
-  assert.match(leaf, /data-testid="game-run"/);
+  // W15 2026-10-23：运行条从 toolbox（Code 是 aux 页，没有编辑栏，点不到）搬进舞台顶上的 GameCodeRunBar。
+  assert.match(leaf, /<GameCodeRunBar/);
+  assert.match(read("src/shell/game-editor/GameCodeRunBar.tsx"), /data-testid="game-run"/);
 });
 
 test("next-core sources do not embed a DashScope key", () => {

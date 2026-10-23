@@ -54,6 +54,7 @@ import {
   useGamePages,
 } from "../game-editor/game-pages";
 import { gameSourceAdmission } from "./non-richdoc-source-gate";
+import { GamePlayPanel } from "../game-editor/GamePlayPanel";
 
 export { GAME_DUAL_ENGINE_HANDOFF, gameLeavePolicy, gameSourceAdmission };
 import type { AdvancedEditorPagesAdapter } from "../plugin-chrome/plugin-pages";
@@ -290,6 +291,14 @@ function documentFromItem(item: LibraryItem): GameBundleDocument | null {
   return null;
 }
 
+/** 打开时的版本列表：进程内暂存（Code 页刚改过）优先，否则取条目本身。 */
+function initialGameHistory(item: LibraryItem): GameWorkingDocument[] {
+  const stashed = peekGameWorkingDocument(item);
+  if (stashed?.envelopeUrl && stashed.envelopeDigest) return [stashed];
+  const initial = documentFromItem(item);
+  return initial ? [initial] : [];
+}
+
 function GameLegacyRoute({
   item,
   taskId,
@@ -310,38 +319,33 @@ function GameLegacyRoute({
     currentItem.current = item;
     setHead(item);
   }, [item]);
-  const [history, setHistory] = useState<GameWorkingDocument[]>(() => {
-    const stashed = peekGameWorkingDocument(item);
-    if (stashed?.envelopeUrl && stashed.envelopeDigest) {
-      return [stashed];
-    }
-    const initial = documentFromItem(item);
-    return initial ? [initial] : [];
-  });
+  const [history, setHistory] = useState<GameWorkingDocument[]>(() =>
+    initialGameHistory(item),
+  );
+  // 服务器最后确认过的那一版信封摘要。编辑页的「未保存」= 当前显示的版本不是它：
+  // 撤销 / 点版本列表回到旧版、恢复草稿、生成了但没自动落库，都会让保存把这一版
+  // 写成新 revision（以前这些路径 dirty 不变，显示「已保存」而重开回到别的版本）。
+  const [savedDigest, setSavedDigest] = useState(
+    () => initialGameHistory(item)[0]?.envelopeDigest || "",
+  );
   const [cursor, setCursor] = useState(0);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [dirty, setDirty] = useState(false);
   const busyRef = useRef(false);
 
   const document_ = history[cursor] || null;
+  const dirty = Boolean(document_) && document_!.envelopeDigest !== savedDigest;
   const editRevision = `${cursor}:${document_?.envelopeDigest || "empty"}`;
   const viewOnly = gameEditAccess(head) === "view-only";
   const admitted = gameSourceAdmission(item);
   const sourceFailed = !admitted.ok && !document_;
 
   useEffect(() => {
-    const stashed = peekGameWorkingDocument(item);
-    if (stashed?.envelopeUrl && stashed.envelopeDigest) {
-      setHistory([stashed]);
-      setCursor(0);
-      setError("");
-      return;
-    }
-    const initial = documentFromItem(item);
-    setHistory(initial ? [initial] : []);
+    const initial = initialGameHistory(item);
+    setHistory(initial);
+    setSavedDigest(initial[0]?.envelopeDigest || "");
     setCursor(0);
     setError("");
   }, [item.artifactId, item.id, item.key, reloadNonce]);
@@ -362,7 +366,7 @@ function GameLegacyRoute({
     const draft = prompt.trim();
     if (busyRef.current || !draft) return;
     if (document_?.sourceDirty) {
-      setError("代码页还有未保存的修改，请先保存，再继续描述玩法改动。");
+      setError(tt("代码页还有未保存的修改，请先保存，再继续描述玩法改动。"));
       return;
     }
     if (sourceFailed) {
@@ -370,11 +374,11 @@ function GameLegacyRoute({
       return;
     }
     if (!isDurableLibraryItem(item)) {
-      setError("这个条目还没有保存到你的库，暂时无法用描述来修改。");
+      setError(tt("这个条目还没有保存到你的库，暂时无法用描述来修改。"));
       return;
     }
     if (!gameIterationRunner) {
-      setError("当前站点暂不支持用描述修改玩法，请在 OceanLeo 主站打开。");
+      setError(tt("当前站点暂不支持用描述修改玩法，请在 OceanLeo 主站打开。"));
       return;
     }
     busyRef.current = true;
@@ -385,7 +389,7 @@ function GameLegacyRoute({
       // 不是自己的作品：先落成自己的二创副本，再在副本上修改。
       const own = await ensureOwnGameCopy(currentItem.current, forkArtifact);
       if (!own.ok) {
-        setError(own.error);
+        setError(tt(own.error));
         return;
       }
       const base = own.item;
@@ -401,12 +405,12 @@ function GameLegacyRoute({
         engineApiVersion: document_?.engineApiVersion || "",
       });
       if (!result.ok) {
-        setError(result.error || "这一轮生成失败，游戏保持上一版。");
+        setError(result.error || tt("这一轮生成失败，游戏保持上一版。"));
         return;
       }
       if (!isAllowedGameRevisionOrigin(result.document.origin)) {
         setError(
-          "这一版的来源不被接受（本站不接受上传或导入的游戏），游戏保持上一版。",
+          tt("这一版的来源不被接受（本站不接受上传或导入的游戏），游戏保持上一版。"),
         );
         return;
       }
@@ -422,16 +426,15 @@ function GameLegacyRoute({
         setHead(saved);
         setPreviewKey((value) => value + 1);
         stashGameWorkingDocument(saved, result.document);
+        setSavedDigest(result.document.envelopeDigest);
         await session?.recordSavedItem(saved);
-        setDirty(false);
-        setNotice("新玩法已生成并保存，可以直接试玩。");
+        setNotice(tt("新玩法已生成并保存，可以直接试玩。"));
       } else {
-        setDirty(true);
-        setNotice("新玩法已生成，先试玩再保存。");
+        setNotice(tt("新玩法已生成，先试玩再保存。"));
       }
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "这一轮生成失败。",
+        caught instanceof Error ? caught.message : tt("这一轮生成失败。"),
       );
     } finally {
       busyRef.current = false;
@@ -446,17 +449,18 @@ function GameLegacyRoute({
     prompt,
     session,
     sourceFailed,
+    tt,
   ]);
 
   const flush = useCallback(async () => {
-    if (document_?.sourceDirty) return { ok: false as const, error: "代码页还有未保存的修改，请先在代码页保存。" };
+    if (document_?.sourceDirty) return { ok: false as const, error: tt("代码页还有未保存的修改，请先在代码页保存。") };
     if (!document_) {
-      return { ok: false as const, error: "还没有可保存的可玩产物。" };
+      return { ok: false as const, error: tt("还没有可保存的可玩产物。") };
     }
     if (!isAllowedGameRevisionOrigin(document_.origin)) {
       return {
         ok: false as const,
-        error: "游戏来源不被接受，已取消保存。",
+        error: tt("游戏来源不被接受，已取消保存。"),
       };
     }
     if (!isDurableLibraryItem(item)) {
@@ -474,24 +478,24 @@ function GameLegacyRoute({
         },
       });
       stashGameWorkingDocument(next, { ...document_ });
+      setSavedDigest(document_.envelopeDigest);
       return { ok: true as const, item: next };
     }
     if (!document_.coverUrl || !document_.coverDigest) {
       return {
         ok: false as const,
-        error: "这个游戏缺少封面，暂时无法保存。",
+        error: tt("这个游戏缺少封面，暂时无法保存。"),
       };
     }
     if (!document_.manifestUrl || !document_.manifestDigest) {
       return {
         ok: false as const,
-        error:
-          "这个游戏缺少保存所需的信息，暂时无法保存。",
+        error: tt("这个游戏缺少保存所需的信息，暂时无法保存。"),
       };
     }
     try {
       const own = await ensureOwnGameCopy(currentItem.current, forkArtifact);
-      if (!own.ok) return { ok: false as const, error: own.error };
+      if (!own.ok) return { ok: false as const, error: tt(own.error) };
       currentItem.current = own.item;
       const committed = await commitAdvancedSavedRevision(own.item, {
         publish: createArtifactRevision,
@@ -537,8 +541,9 @@ function GameLegacyRoute({
           editor_project_schema: GAME_PROJECT_SCHEMA,
         },
       });
-      setDirty(false);
+      setSavedDigest(document_.envelopeDigest);
       currentItem.current = committed;
+      setHead(committed);
       stashGameWorkingDocument(committed, {
         ...document_,
       });
@@ -549,10 +554,10 @@ function GameLegacyRoute({
         error:
           caught instanceof Error
             ? caught.message
-            : "游戏保存失败，请稍后重试。",
+            : tt("游戏保存失败，请稍后重试。"),
       };
     }
-  }, [document_, item]);
+  }, [document_, item, tt]);
 
   // remix 直接复用既有的 `POST /v1/artifacts/{id}:fork`：血缘由服务端的
   // `provenance.parent_revision_ids` 承载，这里不发明第二套血缘机制（D7）。
@@ -565,27 +570,27 @@ function GameLegacyRoute({
     try {
       const forked = await forkArtifact(item);
       if (!forked.ok || !forked.data) {
-        setError(forked.error || "二创副本创建失败。");
+        setError(forked.error || tt("二创副本创建失败。"));
         return;
       }
       const recorded = await session?.recordSavedItem(forked.data);
       setNotice(
         recorded === false
-          ? "二创副本已创建，但工作台会话未能切换；请从我的库打开它。"
-          : "已创建二创副本，后续修改只影响你的副本。",
+          ? tt("二创副本已创建，但工作台会话未能切换；请从我的库打开它。")
+          : tt("已创建二创副本，后续修改只影响你的副本。"),
       );
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
-  }, [item, session]);
+  }, [item, session, tt]);
 
   const PreviewHost = useGamePreviewHost();
   const stage = useMemo(() => {
     if (!document_) {
       return (
-        <div className="grid h-full place-items-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-muted,#57534e)]">
-          这个游戏还没有可玩产物；在左侧描述你想要的玩法来生成第一版。
+        <div className="grid h-full place-items-center bg-[var(--awb-stage-bg)] p-8 text-center text-sm text-[var(--awb-muted)]">
+          {tt("这个游戏还没有可玩的版本。点编辑栏里的「玩法」，描述你想要的玩法来生成第一版。")}
         </div>
       );
     }
@@ -593,7 +598,7 @@ function GameLegacyRoute({
       return (
         <div
           role="alert"
-          className="grid h-full place-items-center bg-[var(--awb-stage-bg,#fafaf9)] p-8 text-center text-sm text-[var(--awb-warn,#b45309)]"
+          className="grid h-full place-items-center bg-[var(--awb-stage-bg)] p-8 text-center text-sm text-[var(--awb-warn)]"
         >
           {tt("当前站点暂不支持试玩，请在 OceanLeo 主站打开")}
         </div>
@@ -616,59 +621,26 @@ function GameLegacyRoute({
 
   const toolbox = useMemo(
     () => (
-      <div className="flex flex-col gap-3 p-3">
-        <label
-          className="text-xs font-medium text-[var(--awb-muted,#57534e)]"
-          htmlFor="game-prompt"
-        >
-          描述这一轮想要的玩法改动
-        </label>
-        <textarea
-          id="game-prompt"
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          rows={6}
-          disabled={busy}
-          placeholder="例：加入二段跳，被击中三次后结束并显示得分。"
-          className="w-full resize-y rounded-lg border border-[var(--awb-border,#d6d3d1)] bg-[var(--card,#fff)] p-2 text-sm text-[var(--awb-text,#292524)] outline-none focus:border-[var(--awb-accent,#57534e)]"
-        />
-        <button
-          type="button"
-          onClick={iterate}
-          disabled={busy || sourceFailed || viewOnly || !prompt.trim()}
-          className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--awb-on-accent,#fff)] disabled:opacity-50"
-          style={{ background: accent }}
-        >
-          {busy ? "生成中…" : document_ ? "迭代这一版" : "生成第一版"}
-        </button>
-        {viewOnly ? (
-          <p role="status" className="text-xs text-[var(--awb-muted,#57534e)]">
-            {GAME_VIEW_ONLY_MESSAGE}
-          </p>
-        ) : null}
-        {history.length > 0 ? (
-          <ol className="flex flex-col gap-1 text-xs text-[var(--awb-muted,#57534e)]">
-            {history.map((entry, index) => (
-              <li key={`${index}:${entry.envelopeDigest}`}>
-                <button
-                  type="button"
-                  onClick={() => setCursor(index)}
-                  disabled={busy}
-                  className={`w-full truncate rounded px-2 py-1 text-left ${
-                    index === cursor
-                      ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
-                      : "hover:bg-[var(--awb-hover)]"
-                  }`}
-                >
-                  {`v${index + 1} · ${entry.prompt || "初始版本"}`}
-                </button>
-              </li>
-            ))}
-          </ol>
-        ) : null}
-      </div>
+      <GamePlayPanel
+        tt={tt}
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onIterate={iterate}
+        busy={busy}
+        hasDocument={Boolean(document_)}
+        blocked={sourceFailed || viewOnly}
+        viewOnlyMessage={viewOnly ? tt(GAME_VIEW_ONLY_MESSAGE) : ""}
+        error={error}
+        notice={notice}
+        versions={history.map((entry, index) => ({
+          key: `${index}:${entry.envelopeDigest}`,
+          prompt: entry.prompt,
+        }))}
+        cursor={cursor}
+        onSelectVersion={setCursor}
+      />
     ),
-    [accent, busy, cursor, document_, history, iterate, prompt, sourceFailed, viewOnly],
+    [busy, cursor, document_, error, history, iterate, notice, prompt, sourceFailed, tt, viewOnly],
   );
 
   return (
@@ -697,7 +669,7 @@ function GameLegacyRoute({
           // 规范 v2 §6：另存副本是「保存类」动作，住第一行保存菜单，不进编辑栏。
           {
             id: "game-remix",
-            label: "另存为二创副本",
+            label: tt("另存为二创副本"),
             group: "save",
             disabled: busy || !isDurableLibraryItem(item),
             busy,
@@ -742,6 +714,7 @@ function GameLegacyRoute({
                 return false;
               }
               stashGameWorkingDocument(item, restored);
+              // 恢复的草稿若不是服务器上那一版，dirty 由摘要差自动成立，保存会把它写成新 revision。
               setHistory((entries) => [...entries, restored]);
               setCursor((value) => value + 1);
               return true;
