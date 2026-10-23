@@ -265,6 +265,11 @@ test("交易里一行两个下拉：第一个选 我发布的 / 我卖出的 / �
   assert.equal(view.qa("[data-bay-mine-category]").length, 0);
   assert.equal(trigger(view, "mine-list").getAttribute("data-value"), "published");
   assert.equal(trigger(view, "mine-category").getAttribute("data-value"), "");
+  // §5.2：按键上只写当前值；「全部」自带名词；列表下拉是视图切换，不因选了具体值加深边框
+  assert.equal(trigger(view, "mine-list").textContent.trim(), "我发布的");
+  assert.equal(trigger(view, "mine-category").textContent.trim(), "全部类别");
+  assert.doesNotMatch(trigger(view, "mine-list").className, /\bborder-neutral-900\b/);
+  assert.doesNotMatch(trigger(view, "mine-category").className, /\bborder-neutral-900\b/);
 
   const list = await openMenu(view, "mine-list");
   assert.deepEqual(list.options.map((o) => o.value), ["published", "sold", "bought", "favorites"]);
@@ -278,6 +283,8 @@ test("交易里一行两个下拉：第一个选 我发布的 / 我卖出的 / �
   assert.equal(category.options.filter((o) => o.label === "全部").length, 0, "「全部」要自带名词");
   await view.click(category.options[4].node);
   assert.equal(trigger(view, "mine-category").getAttribute("data-value"), "lesson");
+  assert.equal(trigger(view, "mine-category").textContent.trim(), "课程");
+  assert.match(trigger(view, "mine-category").className, /\bborder-neutral-900\b/, "选了具体类别，边框加深");
   assert.equal(view.q('[data-stub-pane="published"]').getAttribute("data-category"), "lesson", "类别传给了列表窗格");
   await view.unmount();
 });

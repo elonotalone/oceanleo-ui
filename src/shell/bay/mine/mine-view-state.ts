@@ -50,8 +50,13 @@ export function subscribeMineView(listener: () => void): () => void {
   };
 }
 
+/** 服务端渲染与水合的第一帧一律用初始值：模块级状态不能把上一位访客的选择带进别人的首屏。 */
+function getServerMineView(): MineView {
+  return INITIAL;
+}
+
 export function useMineView(): MineView {
-  return useSyncExternalStore(subscribeMineView, getMineView, getMineView);
+  return useSyncExternalStore(subscribeMineView, getMineView, getServerMineView);
 }
 
 let resetTimer: ReturnType<typeof setTimeout> | null = null;

@@ -211,7 +211,7 @@ test("我的收藏：一张清单，行右边标类别；点行打开对应目�
   assert.match(view.host.textContent, /Logo 设计/);
   assert.match(view.host.textContent, /高手/);
   assert.match(view.host.textContent, /路演稿/);
-  assert.match(view.host.textContent, /人工服务|成品文件/);
+  assert.match(view.host.textContent, /人工服务|现成文件/);
   assert.match(view.host.textContent, /其他/);
   assert.equal(view.host.querySelector("[data-bay-fav-remove]"), null);
   assert.equal(view.host.querySelector("[data-bay-fav-group]"), null);

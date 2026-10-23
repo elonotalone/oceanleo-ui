@@ -229,9 +229,7 @@ const { BayMineTabs } = await import(
       export function MyFavoritesPane(){ return null; }
       export function MyCardPane(){ return null; }
     `),
-    "./bay-links": dataModule(`export const BAY_MINE_TABS = ["published", "sold", "bought", "favorites", "page", "dashboard"]; export const BAY_MINE_UI_TABS = ["published", "sold", "bought", "favorites", "page", "dashboard"];`),
     "../mine/MyDashboardTab": dataModule("export function BayMineDashboardTab(){ return null; }"),
-    "../mine/MineCategoryBar": dataModule("export function MineCategoryBar(){ return null; }"),
     "../supply/parts": dataModule("export function PaneLoading(){ return null; }"),
     "./bay-state": stateStub,
   })

@@ -130,7 +130,10 @@ export function BaySignInPrompt({ text }: { text: string }) {
   );
 }
 
-/** 「交易」顶上的一行两个下拉：列表 + 类别。选列表走地址（mine:<列表>），选类别只改视图状态。 */
+/**
+ * 「交易」顶上的一行两个下拉：列表 + 类别。选列表走地址（mine:<列表>），选类别只改视图状态。
+ * 列表下拉是视图切换、不是筛选：`defaultValue={list}` 让它的边框不因「选了具体值」加深，只有类别选了具体类别才加深。
+ */
 function TradeFilters({ list, category, page }: { list: MineList; category: MineCategory; page: boolean }) {
   const tt = useUI();
   const listOptions: BayFilterOption[] = MINE_LISTS.map((id) => ({ value: id, label: tt(MINE_LABELS[id]) }));
@@ -141,6 +144,7 @@ function TradeFilters({ list, category, page }: { list: MineList; category: Mine
         name="mine-list"
         label={tt("列表")}
         value={list}
+        defaultValue={list}
         options={listOptions}
         onChange={(next) => {
           if (isMineList(next) && next !== list) replaceBay({ kind: "mine", tab: next });

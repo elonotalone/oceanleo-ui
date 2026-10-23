@@ -30,11 +30,13 @@ test("LeoBay 详情页不再套带描边的白底悬浮板", () => {
   assert.doesNotMatch(seller, /rounded-xl border border-stone-200 bg-white/);
 });
 
-test("发帖、我的、数据面板垫白底圆角板", () => {
+test("发帖、编辑垫白底圆角板；「我的」「数据面板」不垫整页白板（白色只给分隔区域的卡片）", () => {
   const page = readFileSync(join(REPO, "src/shell/bay/shell/LeoBayPage.tsx"), "utf8");
   assert.match(page, /BAY_FORM_PAPER_CLASS/);
   assert.match(page, /data-bay-page-paper=\{target\.kind\}/);
   assert.match(page, /"service-editor",\s*"app-editor",\s*"lesson-editor",\s*"bundle-editor"/);
+  const paperSet = page.match(/const PAPER_DETAILS[\s\S]*?\]\);/)[0];
+  assert.doesNotMatch(paperSet, /"mine"|"dashboard"/);
   const headerAt = page.indexOf("data-bay-page-detail-header");
   const paperAt = page.indexOf("data-bay-page-paper={target.kind}");
   assert.ok(headerAt >= 0 && paperAt > headerAt, "返回和标题在板外");
