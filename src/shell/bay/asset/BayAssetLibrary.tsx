@@ -796,6 +796,12 @@ export function BayAssetLibrary({
         </div>
       ) : sellersZone ? (
         <BayAssetSellers query={query} category={sellerSite} view={view} />
+      ) : defaultPending ? (
+        <Items className="mt-5" role="status" aria-busy="true" aria-label={tt("正在加载…")} data-bay-asset-loading>
+          {Array.from({ length: 8 }).map((_, index) => (
+            <div key={index} aria-hidden="true" className={view === "list" ? "h-16 animate-pulse bg-stone-100" : "aspect-video animate-pulse rounded-xl border border-stone-200 bg-stone-100"} />
+          ))}
+        </Items>
       ) : zone === "mine" ? (
         <div className="mt-5" data-bay-asset-mine>
           {mineGrid?.unauthenticated || !signedIn ? (

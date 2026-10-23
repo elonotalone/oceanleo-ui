@@ -854,6 +854,7 @@ test("探测还没回来时先不下结论（不先画自有再跳去卖家在�
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
   assert.equal(view.host.querySelector("[data-bay-asset-sellers]"), null);
+  assert.ok(view.host.querySelector("[data-bay-asset-loading]"), "等探测期间画骨架，不先画自有内容");
   lib.probe = { items: [sellerFile("f1", "年报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} };
   lib.sellers = lib.probe;
   await view.rerender(libraryEl());
@@ -1046,6 +1047,21 @@ test("英文就是操作员拍板的那几句；网站与软件服务的英文�
   assert.equal(english("现成文件"), "Ready-made files");
   assert.equal(english("出售"), "For sale");
   assert.equal(english("求购"), "Wanted");
+});
+
+test("英文界面：五个种类、出售/求购的名字就是约定的那一组；两个下拉的读屏名不再同叫 Type", () => {
+  const en = UI_MESSAGES.en;
+  assert.deepEqual(
+    links.BAY_SELL_KINDS.map((kind) => en[links.BAY_SELL_KIND_LABEL[kind]]),
+    ["Human service", "Ready-made files", "Website & software service", "Lessons", "Other"],
+  );
+  assert.deepEqual([en["出售"], en["求购"]], ["For sale", "Wanted"]);
+  assert.deepEqual([en["全部站点"], en["全部类型"], en["全部目录"]], ["All sites", "All types", "All categories"]);
+  // 种类下拉（页级）叫 Type，素材库里的类型下拉叫 File type：同屏不再有两个 Type。
+  assert.equal(en["种类"], "Type");
+  assert.equal(en["文件类型"], "File type");
+  const library = src("shell/bay/asset/BayAssetLibrary.tsx");
+  assert.doesNotMatch(library, /label=\{tt\("类型"\)\}/);
 });
 
 function ttKeysOf(file) {
