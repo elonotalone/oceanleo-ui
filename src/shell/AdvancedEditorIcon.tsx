@@ -35,7 +35,11 @@ export type WorkbenchIconName =
   | "list"
   | "font-size"
   | "underline-color"
-  | "linethrough";
+  | "linethrough"
+  // PDF 基础编辑的特有工具（D4）：表单勾选、叉选、全文查找。
+  | "check-mark"
+  | "cross-mark"
+  | "search";
 
 /** Shared 24×24 text-tool glyphs. */
 const paths: Record<string, string> = {
@@ -484,6 +488,15 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
     <>
       <path d="M4 11a8 8 0 102.3 5.7" />
       <path d="M4 4v7h7" />
+    </>
+  ),
+  // PDF 基础编辑特有工具（D4）。不借用外壳的关闭「×」。
+  "check-mark": <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  "cross-mark": <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" strokeWidth="2.2" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
     </>
   ),
   // 音频特有控件（W12）。

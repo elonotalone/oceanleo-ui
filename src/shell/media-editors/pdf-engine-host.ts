@@ -47,8 +47,11 @@ export function resolvePdfiumLoadPlan() {
   const resolved = wasm.ok
     ? { ...wasm, wasmUrl: absolutizePdfiumWasmUrl(wasm.wasmUrl, origin) }
     : wasm;
+  // 没配环境变量时用同源的 `/pdfium-fonts/`（门户 public/ 自托管 Noto，OFL）。
+  // 没有这批文件的站点只会在真缺字形时拿到一次 404，与不配时一样显示缺字。
   const fontFallback = resolvePdfiumFontFallback(
-    envValue(PDFIUM_FONT_BASE_ENV_KEY),
+    envValue(PDFIUM_FONT_BASE_ENV_KEY) ||
+      (origin ? `${origin}/pdfium-fonts/` : null),
   );
   return { wasm: resolved, fontFallback };
 }

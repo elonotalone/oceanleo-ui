@@ -104,11 +104,18 @@ test("回退字体默认显式关闭，配了自托管目录才开", () => {
   const hosted = resolvePdfiumFontFallback("/static/pdfium-fonts");
   assert.ok(hosted);
   assert.equal(hosted.baseUrl, "/static/pdfium-fonts/");
-  assert.equal(Object.keys(hosted.fonts).length, PDFIUM_FONT_GROUPS.length);
+  // 上游按 FontCharset 取字体：简中 134、繁中 136、日 128、韩 129、阿 178、希伯来 177，
+  // 拉丁包覆盖西里尔 204 / 希腊 161 / 越南 163。
+  assert.equal(hosted.fonts[134], "/static/pdfium-fonts/sc.ttf");
+  assert.equal(hosted.fonts[136], "/static/pdfium-fonts/tc.ttf");
+  assert.equal(hosted.fonts[128], "/static/pdfium-fonts/jp.ttf");
+  assert.equal(hosted.fonts[129], "/static/pdfium-fonts/kr.ttf");
+  assert.equal(hosted.fonts[204], "/static/pdfium-fonts/latin.ttf");
+  assert.equal(Object.keys(hosted.fonts).length, 9);
   for (const group of PDFIUM_FONT_GROUPS) {
-    assert.equal(hosted.fonts[group], `/static/pdfium-fonts/${group}.ttf`);
-    assert.equal(isVendorCdnUrl(hosted.fonts[group]), false);
+    assert.ok(Object.values(hosted.fonts).includes(`/static/pdfium-fonts/${group}.ttf`));
   }
+  for (const url of Object.values(hosted.fonts)) assert.equal(isVendorCdnUrl(url), false);
   assert.equal(typeof PDFIUM_FONT_BASE_ENV_KEY, "string");
 });
 

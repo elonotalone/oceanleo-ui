@@ -170,23 +170,40 @@ export const PDFIUM_FONT_GROUPS = [
 export type PdfiumFontGroup = (typeof PDFIUM_FONT_GROUPS)[number];
 
 /**
+ * 分组 → PDFium 字符集（`@embedpdf/models` 的 `FontCharset` 数值）。
+ * 上游 `FontFallbackConfig.fonts` 按**字符集**取字体，不按分组名——2026-10-23
+ * 之前这里按分组名做键，配了目录也一条都匹配不上，中文「加文字」重开后外观里没有汉字。
+ * 数值照抄 `cdn-fonts.ts::buildCdnFontConfig`（拉丁包同时覆盖西里尔、希腊、越南）。
+ */
+export const PDFIUM_FONT_CHARSETS: Readonly<Record<PdfiumFontGroup, readonly number[]>> = {
+  latin: [204, 161, 163],
+  sc: [134],
+  tc: [136],
+  jp: [128],
+  kr: [129],
+  arabic: [178],
+  hebrew: [177],
+};
+
+/**
  * 回退字体策略。
  *
  * 没有配自托管目录时返回 `null`——**这不是「忘了配」，是显式关掉**：
  * `fontFallback: null` 是上游唯一能让 worker 不去 jsDelivr 的取值
  * （`fontFallback ?? cdnFontConfig` 只有 `null` 走得掉，`undefined` 走不掉）。
- * 代价写在返回值的 `note` 里，由调用方原样呈现给用户：缺字的 PDF 会显示豆腐块，
- * 而不是偷偷去第三方要字体。
+ * 字体按需取：只有页面里真的缺某个字符集的字形时，worker 才去拿那一份。
  */
 export function resolvePdfiumFontFallback(
   fontBaseUrl?: string | null,
-): { fonts: Record<string, string>; baseUrl: string } | null {
+): { fonts: Record<number, string>; baseUrl: string } | null {
   const base = (fontBaseUrl || "").trim();
   if (!base || isVendorCdnUrl(base)) return null;
   const baseUrl = base.endsWith("/") ? base : `${base}/`;
-  const fonts: Record<string, string> = {};
+  const fonts: Record<number, string> = {};
   for (const group of PDFIUM_FONT_GROUPS) {
-    fonts[group] = `${baseUrl}${group}.ttf`;
+    for (const charset of PDFIUM_FONT_CHARSETS[group]) {
+      fonts[charset] = `${baseUrl}${group}.ttf`;
+    }
   }
   return { fonts, baseUrl };
 }

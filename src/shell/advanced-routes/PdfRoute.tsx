@@ -63,13 +63,13 @@ const PDF_TOOLS: readonly {
   { id: "pdf-tool-highlight", label: "高亮", tool: "highlight", icon: "highlight" },
   { id: "pdf-tool-underline", label: "下划线", tool: "underline", icon: "underline" },
   { id: "pdf-tool-strikeout", label: "删除线", tool: "strikeout", icon: "strike" },
-  { id: "pdf-tool-check", label: "打勾", tool: PDF_MARK_TOOL_IDS.check },
-  { id: "pdf-tool-cross", label: "打叉", tool: PDF_MARK_TOOL_IDS.cross },
+  { id: "pdf-tool-check", label: "打勾", tool: PDF_MARK_TOOL_IDS.check, icon: "check-mark" },
+  { id: "pdf-tool-cross", label: "打叉", tool: PDF_MARK_TOOL_IDS.cross, icon: "cross-mark" },
   { id: "pdf-tool-text", label: "加文字", tool: "freeText", icon: "text" },
   { id: "pdf-tool-signature", label: "签名", icon: "signature" },
   { id: "pdf-tool-ink", label: "画笔", tool: "ink", icon: "draw" },
   { id: "pdf-tool-note", label: "便签", tool: "textComment", icon: "note" },
-  { id: "pdf-tool-find", label: "查找" },
+  { id: "pdf-tool-find", label: "查找", icon: "search" },
 ];
 
 function isImageMaterial(material: LibraryItem): boolean {
