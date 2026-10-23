@@ -66,7 +66,23 @@ const MENU_CLASS =
   "z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl";
 
 const FEEDBACK_CLASS =
-  "ms-1 max-w-[14rem] truncate rounded-md border border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-2 py-0.5 text-xs leading-5 shadow-sm";
+  "ms-1 max-w-[14rem] truncate rounded-md border px-2 py-0.5 text-xs leading-5 shadow-sm";
+// 顶栏可能被 portal 进分栏标题槽（不在插件根的 --awb-* 作用域里），所以颜色走
+// --pchrome-* → --awb-* → 站点 token 的兜底链，写成 inline style（任意值类不一定在 ui.css 里）。
+const FEEDBACK_DANGER = "var(--pchrome-danger, var(--awb-danger, #ef4444))";
+const FEEDBACK_STYLE_BASE = {
+  background: "var(--pchrome-surface, var(--awb-chrome-bg, var(--card, transparent)))",
+} as const;
+const FEEDBACK_STYLE_NOTICE = {
+  ...FEEDBACK_STYLE_BASE,
+  color: "var(--pchrome-ink, var(--awb-text, var(--fg, currentColor)))",
+  borderColor: "var(--pchrome-line, var(--awb-border, var(--border, rgba(127, 127, 127, 0.35))))",
+} as const;
+const FEEDBACK_STYLE_ERROR = {
+  ...FEEDBACK_STYLE_BASE,
+  color: FEEDBACK_DANGER,
+  borderColor: `color-mix(in srgb, ${FEEDBACK_DANGER} 45%, transparent)`,
+} as const;
 
 /** 页面上此刻有没有一摞 toast 在渲染（第一方 viewport，或宿主接管的那套）。 */
 export function toastSurfaceRendering(): boolean {
@@ -330,11 +346,8 @@ function MoreMenuFeedback({ error, notice }: { error: string; notice: string }) 
       aria-live="polite"
       data-more-menu-feedback={shown ? (error ? "error" : "notice") : undefined}
       title={shown ? text : undefined}
-      className={
-        shown
-          ? `${FEEDBACK_CLASS} ${error ? "text-[var(--awb-danger)]" : "text-[var(--awb-text)]"}`
-          : "sr-only"
-      }
+      className={shown ? FEEDBACK_CLASS : "sr-only"}
+      style={shown ? (error ? FEEDBACK_STYLE_ERROR : FEEDBACK_STYLE_NOTICE) : undefined}
     >
       {text}
     </span>

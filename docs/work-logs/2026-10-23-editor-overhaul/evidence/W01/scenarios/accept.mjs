@@ -80,11 +80,16 @@ async function waitFeedback(page, timeout = 20000) {
 }
 
 async function openMore(page) {
-  await page.keyboard.press("Escape").catch(() => {});
+  for (let i = 0; i < 3; i += 1) {
+    const open = await page.locator("[data-workspace-more-menu]").first().isVisible().catch(() => false);
+    if (!open) break;
+    await page.keyboard.press("Escape").catch(() => {});
+    await sleep(300);
+  }
   await sleep(200);
   const more = page.locator("[data-workspace-more-launcher]").first();
   if (!(await more.count())) return false;
-  await more.click();
+  await more.click({ timeout: 10000 });
   return visible(page, "[data-workspace-more-menu]", 5000);
 }
 
@@ -93,7 +98,10 @@ async function entry(page, id) {
   return (await loc.count()) ? loc : null;
 }
 
-export default async ({ page, context, log, shot, helpers, args }) => {
+export default async ({ page, context, log, shot: rawShot, helpers, args }) => {
+  // A heavy stage can stall one screenshot; that must not abort the remaining checks.
+  const shot = (label) =>
+    rawShot(label).catch((error) => log("screenshot-failed", label, String(error).slice(0, 120)));
   await context.route((url) => PROD_HOST.test(url.hostname), (route) => {
     log("BLOCKED-PROD", route.request().method(), route.request().url().slice(0, 140));
     return route.abort();
