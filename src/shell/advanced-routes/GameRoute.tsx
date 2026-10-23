@@ -204,15 +204,19 @@ export interface GameIterationRequest {
   prompt: string;
   /** 上一轮的 engine API 版本，供兼容判断；首轮为空。 */
   engineApiVersion: string;
+  /** Resume only reads an existing owner-bound job; it must never generate. */
+  resume?: boolean;
+  signal?: AbortSignal;
+  onProgress?: (state: "running" | "reconnecting") => void;
 }
 
 export type GameIterationResult =
   | { ok: true; document: GameBundleDocument; artifact?: ArtifactProjection }
-  | { ok: false; error: string };
+  | { ok: false; error: string; idle?: boolean };
 
-export type GameIterationRunner = (
+export type GameIterationRunner = ((
   request: GameIterationRequest,
-) => Promise<GameIterationResult>;
+) => Promise<GameIterationResult>) & { supportsResume?: boolean };
 
 let gameIterationRunner: GameIterationRunner | null = null;
 
@@ -334,6 +338,9 @@ function GameLegacyRoute({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const busyRef = useRef(false);
+  const iterationAbort = useRef<AbortController | null>(null);
+  const resumedArtifact = useRef("");
+  useEffect(() => () => { iterationAbort.current?.abort(); }, []);
 
   const document_ = history[cursor] || null;
   const dirty = Boolean(document_) && document_!.envelopeDigest !== savedDigest;
@@ -362,9 +369,9 @@ function GameLegacyRoute({
     });
   }, [document_, item]);
 
-  const iterate = useCallback(async () => {
+  const iterate = useCallback(async (resume = false) => {
     const draft = prompt.trim();
-    if (busyRef.current || !draft) return;
+    if (busyRef.current || (!draft && !resume)) return;
     if (document_?.sourceDirty) {
       setError(tt("代码页还有未保存的修改，请先保存，再继续描述玩法改动。"));
       return;
@@ -387,7 +394,9 @@ function GameLegacyRoute({
     setNotice("");
     try {
       // 不是自己的作品：先落成自己的二创副本，再在副本上修改。
-      const own = await ensureOwnGameCopy(currentItem.current, forkArtifact);
+      const own = resume
+        ? { ok: true as const, item: currentItem.current, forked: false }
+        : await ensureOwnGameCopy(currentItem.current, forkArtifact);
       if (!own.ok) {
         setError(tt(own.error));
         return;
@@ -403,9 +412,14 @@ function GameLegacyRoute({
         revisionId: base.revisionId || "",
         prompt: draft,
         engineApiVersion: document_?.engineApiVersion || "",
+        resume,
+        signal: (iterationAbort.current = new AbortController()).signal,
+        onProgress: (state) => setNotice(tt(state === "running"
+          ? "修改任务正在处理中，关闭后重新打开可继续查看。"
+          : "正在重新连接，修改任务不会重复生成或扣费。")),
       });
       if (!result.ok) {
-        setError(result.error || tt("这一轮生成失败，游戏保持上一版。"));
+        if (!result.idle) setError(result.error || tt("这一轮生成失败，游戏保持上一版。"));
         return;
       }
       if (!isAllowedGameRevisionOrigin(result.document.origin)) {
@@ -451,6 +465,14 @@ function GameLegacyRoute({
     sourceFailed,
     tt,
   ]);
+
+  useEffect(() => {
+    const id = item.artifactId;
+    if (!id || !isDurableLibraryItem(item) || resumedArtifact.current === id || !gameIterationRunner?.supportsResume) return;
+    resumedArtifact.current = id;
+    // Read-only lookup: opening a game never forks, generates or saves a revision.
+    void iterate(true);
+  }, [item, iterate]);
 
   const flush = useCallback(async () => {
     if (document_?.sourceDirty) return { ok: false as const, error: tt("代码页还有未保存的修改，请先在代码页保存。") };
@@ -625,7 +647,7 @@ function GameLegacyRoute({
         tt={tt}
         prompt={prompt}
         onPromptChange={setPrompt}
-        onIterate={iterate}
+        onIterate={() => { void iterate(); }}
         busy={busy}
         hasDocument={Boolean(document_)}
         blocked={sourceFailed || viewOnly}

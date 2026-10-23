@@ -597,3 +597,26 @@ export const EDITOR_OVERHAUL_W15_COPY: EditorOverhaulCopy = {
     "这是别人的作品：你的修改会保存为自己的二创副本，原作不受影响。": "यह किसी और की रचना है। आपके बदलाव आपके अपने रीमिक्स के रूप में सहेजे जाएँगे; मूल रचना जस की तस रहेगी।",
   },
 };
+
+const ITERATION_STATUS_COPY = {
+  de: ["Die Änderung wird verarbeitet. Du kannst das Spiel schließen und später wieder öffnen.", "Verbindung wird wiederhergestellt. Erstellung und Abrechnung werden nicht wiederholt."],
+  en: ["Your change is processing. Close and reopen the game to check progress.", "Reconnecting. Your change will not be generated or charged twice."],
+  es: ["El cambio está en proceso. Puedes cerrar y volver a abrir el juego para consultarlo.", "Reconectando. El cambio no se generará ni cobrará dos veces."],
+  fr: ["La modification est en cours. Fermez puis rouvrez le jeu pour suivre son avancement.", "Reconnexion en cours. La génération et la facturation ne seront pas répétées."],
+  ja: ["変更を処理中です。閉じてからゲームを開き直して確認できます。", "再接続中です。生成や課金が重複することはありません。"],
+  ko: ["변경 사항을 처리 중입니다. 게임을 닫고 다시 열어 진행 상황을 확인할 수 있습니다.", "다시 연결 중입니다. 생성이나 결제가 중복되지 않습니다."],
+  "pt-BR": ["A alteração está em andamento. Feche e reabra o jogo para acompanhar.", "Reconectando. A geração e a cobrança não serão repetidas."],
+  "pt-PT": ["A alteração está em curso. Feche e volte a abrir o jogo para acompanhar.", "A restabelecer a ligação. A geração e a cobrança não serão repetidas."],
+  ar: ["جارٍ معالجة التعديل. يمكنك إغلاق اللعبة وإعادة فتحها لمتابعة التقدم.", "جارٍ إعادة الاتصال. لن يتكرر إنشاء التعديل أو تحصيل رسومه."],
+  it: ["La modifica è in corso. Chiudi e riapri il gioco per verificarne lo stato.", "Riconnessione in corso. Generazione e addebito non verranno ripetuti."],
+  "es-419": ["El cambio está en proceso. Puedes cerrar y volver a abrir el juego para consultarlo.", "Reconectando. El cambio no se generará ni cobrará dos veces."],
+  "zh-TW": ["修改任務正在處理中，關閉後重新開啟可繼續查看。", "正在重新連線，修改任務不會重複生成或扣費。"],
+  tr: ["Değişiklik işleniyor. İlerlemeyi görmek için oyunu kapatıp yeniden açabilirsiniz.", "Yeniden bağlanılıyor. Oluşturma ve ücretlendirme yinelenmez."],
+  th: ["กำลังประมวลผลการแก้ไข ปิดแล้วเปิดเกมอีกครั้งเพื่อติดตามความคืบหน้าได้", "กำลังเชื่อมต่อใหม่ ระบบจะไม่สร้างหรือเรียกเก็บเงินซ้ำ"],
+  vi: ["Thay đổi đang được xử lý. Đóng rồi mở lại trò chơi để xem tiến độ.", "Đang kết nối lại. Việc tạo và tính phí sẽ không bị lặp lại."],
+  hi: ["बदलाव पर काम चल रहा है। प्रगति देखने के लिए गेम बंद करके फिर खोल सकते हैं।", "फिर से कनेक्ट हो रहा है। बदलाव दोबारा नहीं बनाया जाएगा और दोबारा शुल्क नहीं लगेगा।"],
+} satisfies Record<keyof EditorOverhaulCopy, readonly [string, string]>;
+for (const locale of Object.keys(ITERATION_STATUS_COPY) as Array<keyof EditorOverhaulCopy>) {
+  EDITOR_OVERHAUL_W15_COPY[locale]["修改任务正在处理中，关闭后重新打开可继续查看。"] = ITERATION_STATUS_COPY[locale][0];
+  EDITOR_OVERHAUL_W15_COPY[locale]["正在重新连接，修改任务不会重复生成或扣费。"] = ITERATION_STATUS_COPY[locale][1];
+}
