@@ -67,19 +67,10 @@ import type { IWorkbookData } from "@univerjs/presets";
 
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { LibraryItem } from "../library-data";
-import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
-import { withEditorHistoryCommand } from "../workbench-material-command";
-import {
-  GRID_IMAGE_MAX_BYTES,
-  gridAcceptsImageMaterial,
-  gridImageDataUrlFromBlob,
-  gridMaterialImageUrl,
-  insertGridImageAtSelection,
-  type GridImageInsertApi,
-} from "./grid-univer/material-image";
+import { advancedSavedItem } from "../advanced-session";
+import { useGridMaterialAdapter } from "./grid-univer/use-grid-material";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { fetchMediaBlob } from "../../lib/media-proxy";
 import { downloadBlob, loadEditorProject, saveFileToLibrary } from "./doc-io";
 import { renderGridPreviewPng } from "./editor-preview-raster";
 import {
@@ -120,10 +111,6 @@ import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
 import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
-import {
-  useWorkbenchMaterialAdapter,
-  type WorkbenchMaterialAdapter,
-} from "../workbench-material-provider";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type { EditorMode } from "../hosted-editor/index";
 import type { SelectionCommand } from "../selection-context";
@@ -1159,30 +1146,8 @@ export function GridUniverStage({
     [applyChrome, bumpHistory, mode],
   );
 
-  // 素材库：点一张图片 = 在当前格子插浮动图片（进撤销栈，见 `grid-univer/material-image.ts`）。
-  const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
-    () => ({
-      id: "grid-materials@3",
-      actions: ["insert"],
-      materialTypes: ["image"],
-      accepts: (material, action) => action === "insert" && gridAcceptsImageMaterial(material),
-      mutate: async (_action, material) => {
-        if (editBlockedRef.current) throw new Error(tt("现在是只读状态，不能修改。"));
-        const blob = await fetchMediaBlob(gridMaterialImageUrl(material), { maxBytes: GRID_IMAGE_MAX_BYTES });
-        const dataUrl = await gridImageDataUrlFromBlob(blob).catch((e: Error) => { throw new Error(tt(e.message)); });
-        if (!(await insertGridImageAtSelection(handleRef.current?.api as GridImageInsertApi, dataUrl))) {
-          throw new Error(tt("图片没有插进表格，请重试。"));
-        }
-      },
-    }),
-    [tt],
-  );
-  useWorkbenchMaterialAdapter(
-    withEditorHistoryCommand(materialAdapter, {
-      documentId: advancedRootItemId(item),
-      targetRevisionId: item.revisionId ? String(item.revisionId) : "",
-    }),
-  );
+  // 素材库：点一张图片 = 在当前格子插浮动图片（`grid-univer/use-grid-material.ts`）。
+  useGridMaterialAdapter({ item, getApi: () => handleRef.current?.api, blockedRef: editBlockedRef, tt });
 
   // agent 指令面：一条 `run` 一条路，写与不写的判断全在 `runGridAgentCommand`
   // 里（V3-red-3）。这里不许再出现任何直接调 Facade 的分支——

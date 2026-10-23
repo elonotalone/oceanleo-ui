@@ -74,12 +74,14 @@ test("素材：插在活动格子处（走 facade 的 insertImage），拿不到
 });
 
 test("舞台：素材适配器只申报 insert 图片，并登记 W02 的 command 契约（基线 = 当前 revision）", () => {
-  assert.match(stage, /id:\s*"grid-materials@3"/);
-  assert.match(stage, /actions:\s*\["insert"\]/);
-  assert.match(stage, /materialTypes:\s*\["image"\]/);
-  assert.match(stage, /withEditorHistoryCommand\(materialAdapter,\s*\{\s*documentId:\s*advancedRootItemId\(item\),\s*targetRevisionId:/);
+  const hook = readFileSync(new URL("../src/shell/doc-editors/grid-univer/use-grid-material.ts", import.meta.url), "utf8");
+  assert.match(stage, /useGridMaterialAdapter\(\{ item, getApi: \(\) => handleRef\.current\?\.api, blockedRef: editBlockedRef, tt \}\)/);
+  assert.match(hook, /id:\s*"grid-materials@3"/);
+  assert.match(hook, /actions:\s*\["insert"\]/);
+  assert.match(hook, /materialTypes:\s*\["image"\]/);
+  assert.match(hook, /withEditorHistoryCommand\(adapter,\s*\{\s*documentId:\s*advancedRootItemId\(item\),\s*targetRevisionId:/);
   // 整份替换不进撤销历史，不再作为素材库动作。
-  assert.doesNotMatch(stage, /actions:\s*\["replace"\]/);
+  assert.doesNotMatch(stage + hook, /actions:\s*\["replace"\]/);
 });
 
 test("舞台：协同本地侧的活动不再标脏 / 加编辑序号（本人改动只认撤销栈）；只有远端改动交给保存者", () => {
