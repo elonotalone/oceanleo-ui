@@ -44,10 +44,8 @@ test("11 件插件的主题档一个都不许漏登记", () => {
   for (const id of EXPECTED_PLUGIN_IDS) {
     const spec = PLUGIN_THEME_SPECS[id];
     assert.ok(spec, `${id} 没有主题档`);
-    assert.ok(
-      spec.defaultTheme === "dark" || spec.defaultTheme === "light",
-      `${id} 的本命默认不合法`,
-    );
+    // D7（2026-10-23）：没有本命默认了，明暗只跟站点走。
+    assert.equal("defaultTheme" in spec, false, `${id} 还挂着本命默认`);
     // 两档都要有 accent：只给一档的话，用户切过去就没有身份色。
     assert.match(spec.accent.light, /^#[0-9a-f]{6}$/i, `${id} 缺 light accent`);
     assert.match(spec.accent.dark, /^#[0-9a-f]{6}$/i, `${id} 缺 dark accent`);
