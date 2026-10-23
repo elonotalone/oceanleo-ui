@@ -732,7 +732,10 @@ export function GridUniverStage({
         doc: room.doc,
         canWrite: () => !collabViewOnlyRef.current,
       }),
-      onFullReplace: () => setStatus(ttRef.current("别人调整了表格的一部分设置，表格已重新载入。")),
+      onFullReplace: (reason) => {
+        noteGridProbe(`collab-replace:${reason}`);
+        setStatus(ttRef.current("别人调整了表格的一部分设置，表格已重新载入。"));
+      },
       onActivity: (origin) => {
         noteGridProbe(`collab-${origin}`);
         // 本地那一侧：本人的改动已由撤销栈判据记过（bumpHistory）；其余是 Univer 载入后

@@ -37,6 +37,7 @@ import {
   type GridSelectionStyleApi,
   type GridSelectionStyleRead,
 } from "./selection-style";
+import { setGridProbe } from "./acceptance-probe";
 
 export const GRID_UNIVER_THEME_ATTR = "data-grid-univer-theme";
 const STYLE_ELEMENT_ID = "oceanleo-grid-univer-dark";
@@ -148,14 +149,19 @@ export function useGridUniverLive(options: {
         setRead(next);
       });
     };
+    const undo = service<GridUndoStackLike>(handle, idsRef.current.undo);
     const watch = createGridEditWatch({
-      undo: service<GridUndoStackLike>(handle, idsRef.current.undo),
+      undo,
       events: handle.api,
       onPersonWrite: () => onPersonWriteRef.current(),
-      onHistory: setHistory,
+      onHistory: (status) => { setHistory(status); setGridProbe("publishedHistory", status); },
       onAnyCommand: () => {
         ensureFontFill();
         refresh();
+        queueMicrotask(() => setGridProbe("actualHistory", {
+          canUndo: Boolean(undo?.pitchTopUndoElement()),
+          canRedo: Boolean(undo?.pitchTopRedoElement()),
+        }));
       },
       blocked: () => editBlockedRef.current,
     });
