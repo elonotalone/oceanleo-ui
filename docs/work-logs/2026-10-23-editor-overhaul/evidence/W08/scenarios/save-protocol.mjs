@@ -17,7 +17,7 @@ async function saveStateNow(page) {
 }
 
 /** Wait for a real transition: leave "saved" first (or time out), then settle. */
-async function waitForSaveCycle(page, log, label, { timeout = 90000, from = "saved" } = {}) {
+async function waitForSaveCycle(page, log, label, { timeout = 90000, from = "saved", idle = 15000 } = {}) {
   const started = Date.now();
   const seen = [];
   let left = false;
@@ -29,7 +29,7 @@ async function waitForSaveCycle(page, log, label, { timeout = 90000, from = "sav
     }
     if (state && state !== from) left = true;
     if (left && (state === "saved" || state === "error")) break;
-    if (!left && Date.now() - started > 15000) break;
+    if (!left && Date.now() - started > idle) break;
     await page.waitForTimeout(300);
   }
   const title = await page
@@ -83,6 +83,11 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     const url = response.url();
     if (response.request().method() === "POST" && /\/artifacts\/[^/]+\/revisions(\?|$)/.test(url)) {
       log("revision-post", String(response.status()));
+    }
+  });
+  page.on("requestfailed", (request) => {
+    if (request.method() === "POST" && /\/artifacts\/[^/]+\/(revisions|staging)/.test(request.url())) {
+      log("post-failed", new URL(request.url()).pathname.split("/").pop(), request.failure()?.errorText || "");
     }
   });
   let body = await openDocument(page, helpers, log, artifactId);
@@ -145,7 +150,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
       if (await retry.isVisible().catch(() => false)) await retry.click();
     }
     // Already "error" before the retry: wait until it leaves "error" and settles.
-    const retried = await waitForSaveCycle(page, log, "retry", { timeout: 90000, from: "error" });
+    const retried = await waitForSaveCycle(page, log, "retry", { timeout: 90000, from: "error", idle: 60000 });
     log("retry", JSON.stringify(retried));
     await shot(`${label}-8-after-retry`);
   }

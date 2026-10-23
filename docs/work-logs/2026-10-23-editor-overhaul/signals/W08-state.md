@@ -1,30 +1,22 @@
 # W08 state（文档 RichDoc / Tiptap）
 
-更新：2026-10-23 第 1 批提交后
+更新：2026-10-23 08:3xZ，R2 接班（第 2 轮）
 
 ## 已确认的事实
 
-- [实测] bootstrap 通过；`oceanleo-ui` 在 `main`。
-- [实测 node] 旧 txt 写回把整篇压成一行、实体留在文件里；旧 md 写回把表格压成散字、列表写坏。已由 `doc-editors/rich-doc-text-delivery.ts` 修，`tests/richdoc-text-delivery.test.mjs` 7/7。
-- [读码] 后端 DOCUMENT 合同 cover 顺序 preview → full → source，text/plain、text/markdown 在原生封面白名单；不送 preview 时 preview/thumbnail = full。
-- [读码] `docx-export.ts`：`w:highlight` 写的是十六进制（OOXML 只认命名色）；`textStyle` 的 fontSize / fontFamily 没进 docx。
-- [读码] 深色：`RICHDOC_CSS` 写死 `color:#1c1917`，而页面底用 `--card`（深色下 #1b1b1f）→ 深色下黑字压黑底。
-- [读码] A-1 仲裁：`list`=none|bullet|ordered，`align`=left|center|right|justify，`font-family` value=当前字体；面板型规范项用 `slot:"inspector"`+`inspectorGroup:<规范 id>`。
-- [待核] W03 `edit-bar-canon.ts` 未落地；W04 `artifactRevision.metadata` 透传未落地。
+- [实测] 统一栏改写、docx 高亮/字号/字体、深色正文、text_excerpt 走 `artifactRevision.metadata`、保存失败原因不再吞、md/docx 写出模块预加载，均已在 main（0ec30af1 17787181 ec64925f eafced1a 998b856b）。
+- [实测 浏览器 15:55 本地] docx `2e894b64…`：两次保存 → 已保存，关掉重开、整页刷新两处都在；断网 → error「网络不通」，恢复后重试 → saved。
+- [实测 浏览器 15:50] md `c3e0c65b…`：1–3 步通过；断网重试失败（turndown chunk 断网时没加载）→ 998b856b 已预加载，**待复测**。
+- [实测 浏览器 15:58] txt `54424e1a…`：save1 saved；save2 期间出现一次 409 并被踢回阅读视图（父进程重启/槽热更新时段），重开两处都在。**待复测**。
+- [待核] 库卡片文字摘要、数据库 revision 计数、两档截图、按钮点测。
 
 ## 正在做
 
-保存路径：txt/md/html 不画 PNG；`text_excerpt` 写进 meta（W04 透传落地后写进 `artifactRevision.metadata`）；docx 的高亮/字号/字体。
-
-## 下一步
-
-1. 深色正文（CSS token + 显示层颜色映射）。
-2. 统一文字栏（等 W03 canon）。
-3. 浏览器：保存协议基线与修后各一遍（验收账号）。
+R2：focused tests → 复测 txt / md 保存协议（含断网）→ DB 核对 → 库卡片 → 两档截图 → 按钮点测 → 交付。
 
 ## 复现命令
 
 ```bash
-cd /root/projects/oceanleo-ui
-bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/richdoc-text-delivery.test.mjs
+cd /root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul
+bash harness/mint.sh | OUT_DIR=/tmp/w08-r2-txt THEME=light node harness/run.mjs evidence/W08/scenarios/save-protocol.mjs 54424e1a-ac85-4ec0-82e5-1f85ea7c020f txt offline
 ```
