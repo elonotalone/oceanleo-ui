@@ -918,6 +918,8 @@ export function useRichDocEditor(
         artifactRevision: {
           artifactType: "document",
           provenance: { editorRevision: savingRevision },
+          // 进 artifact_revisions.metadata：库卡片优先读它，不必再抓源文本。
+          metadata: { text_excerpt: textExcerpt },
         },
       });
       if (!result.ok) {

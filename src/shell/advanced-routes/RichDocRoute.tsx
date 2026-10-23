@@ -102,8 +102,8 @@ export function RichDocRoute({
           material.previewUrl,
           material.thumbUrl,
         ].filter(Boolean);
+        // 文档只接图片：视频、PDF 这类素材带的封面图不是用户要插的东西。
         return (
-          Boolean(material.previewUrl || material.thumbUrl) ||
           material.kind === "image" ||
           String(material.meta.mime || "").startsWith("image/") ||
           urls.some((url) =>
