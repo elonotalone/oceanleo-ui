@@ -2,6 +2,8 @@
 // 写法：const SOURCE = { key: "简体中文原文" } as const;
 //       export const LBP_W04_MESSAGES = assembleCopy(SOURCE, { en: {...}, ... 16 个语种 });
 // 只放新的中文原文；已有词条不要在这里重定义（合并次序会让它覆盖别处的译文）。
+// 「网站与软件服务」（类别下拉与每行类别标签要用）的 15 语译文由 lbp-w02-copy.ts 定义，这里不重复；
+// 「现成文件」「人工服务」「课程」「其他」「列表」「类别」在基础词典与 bay-posting-copy / bay-mine-copy 里已有。
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
@@ -13,89 +15,71 @@ const SOURCE = {
   mineTradeTab: "交易 ",
   // 「我的」页类别下拉的「全部」项：按 §5.2 自带名词。
   allCategories: "全部类别",
-  // 类别名之一（§5.1）。基础词典只有英文；其余语种在这里补齐，类别下拉与每行的类别标签都要用。
-  websiteSoftwareService: "网站与软件服务",
 } as const;
 
 export const LBP_W04_MESSAGES = assembleCopy(SOURCE, {
   en: {
     mineTradeTab: "Listings & orders",
     allCategories: "All categories",
-    websiteSoftwareService: "Website & software service",
   },
   "zh-TW": {
     mineTradeTab: "交易",
     allCategories: "全部類別",
-    websiteSoftwareService: "網站與軟體服務",
   },
   ja: {
     mineTradeTab: "出品と注文",
     allCategories: "すべてのカテゴリ",
-    websiteSoftwareService: "ウェブサイト・ソフトウェアサービス",
   },
   ko: {
     mineTradeTab: "게시물 및 주문",
     allCategories: "모든 카테고리",
-    websiteSoftwareService: "웹사이트·소프트웨어 서비스",
   },
   de: {
     mineTradeTab: "Angebote & Bestellungen",
     allCategories: "Alle Kategorien",
-    websiteSoftwareService: "Website- und Software-Service",
   },
   es: {
     mineTradeTab: "Publicaciones y pedidos",
     allCategories: "Todas las categorías",
-    websiteSoftwareService: "Servicio de sitios web y software",
   },
   "es-419": {
     mineTradeTab: "Publicaciones y pedidos",
     allCategories: "Todas las categorías",
-    websiteSoftwareService: "Servicio de sitios web y software",
   },
   fr: {
     mineTradeTab: "Annonces et commandes",
     allCategories: "Toutes les catégories",
-    websiteSoftwareService: "Service de sites web et de logiciels",
   },
   it: {
     mineTradeTab: "Inserzioni e ordini",
     allCategories: "Tutte le categorie",
-    websiteSoftwareService: "Servizio di siti web e software",
   },
   "pt-BR": {
     mineTradeTab: "Anúncios e pedidos",
     allCategories: "Todas as categorias",
-    websiteSoftwareService: "Serviço de sites e software",
   },
   "pt-PT": {
     mineTradeTab: "Anúncios e encomendas",
     allCategories: "Todas as categorias",
-    websiteSoftwareService: "Serviço de sites e software",
   },
   vi: {
     mineTradeTab: "Tin đăng & đơn hàng",
     allCategories: "Tất cả danh mục",
-    websiteSoftwareService: "Dịch vụ website & phần mềm",
   },
   tr: {
     mineTradeTab: "İlanlar ve siparişler",
     allCategories: "Tüm kategoriler",
-    websiteSoftwareService: "Web sitesi ve yazılım hizmeti",
   },
   ar: {
     mineTradeTab: "المنشورات والطلبات",
     allCategories: "جميع الفئات",
-    websiteSoftwareService: "خدمة المواقع والبرمجيات",
   },
   th: {
     mineTradeTab: "รายการและคำสั่งซื้อ",
     allCategories: "ทุกหมวดหมู่",
-    websiteSoftwareService: "บริการเว็บไซต์และซอฟต์แวร์",
   },
   hi: {
     mineTradeTab: "लिस्टिंग और ऑर्डर",
     allCategories: "सभी श्रेणियाँ",
-    websiteSoftwareService: "वेबसाइट और सॉफ़्टवेयर सेवा",
   },
 });

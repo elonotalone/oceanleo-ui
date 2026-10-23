@@ -779,7 +779,7 @@ test("文案：页签「交易 」（末尾一个空格）英文 Listings & orde
     if (locale === "zh") continue;
     assert.ok(UI_MESSAGES[locale][key], `${locale} 缺「交易 」`);
     assert.ok(UI_MESSAGES[locale]["全部类别"], `${locale} 缺「全部类别」`);
-    assert.ok(UI_MESSAGES[locale]["网站与软件服务"], `${locale} 缺「网站与软件服务」`);
+    assert.ok(UI_MESSAGES[locale]["网站与软件服务"], `${locale} 缺「网站与软件服务」（15 语译文由 lbp-w02-copy.ts 定义）`);
     assert.ok(UI_MESSAGES[locale]["现成文件"], `${locale} 缺「现成文件」`);
   }
   assert.equal(UI_MESSAGES.en["全部类别"], "All categories");

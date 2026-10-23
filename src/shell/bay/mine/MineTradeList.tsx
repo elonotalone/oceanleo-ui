@@ -93,7 +93,7 @@ export function MineTradeList({
     <section data-bay-pane={pane} className="py-2">
       <ul>
         {rows.map((row) => (
-          <li key={row.id} data-bay-fav-row={row.favoriteId} className="border-b border-stone-100">
+          <li key={row.id} data-bay-fav-row={row.favoriteId} className="border-b border-stone-100 last:border-b-0">
             <div className="flex items-start">
               <button
                 type="button"
