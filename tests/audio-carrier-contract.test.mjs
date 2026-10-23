@@ -203,9 +203,12 @@ test("色板与版面真的接到了波形渲染上（§2 不是纸面数值）"
     resolve("src/shell/media-editors/use-audio-wave-loader.ts"),
     "utf8",
   );
-  assert.match(loader, /AUDIO_WAVE_PALETTE\["wave\.body"\]\.value/);
-  assert.match(loader, /AUDIO_WAVE_PALETTE\["wave\.playhead"\]\.value/);
-  assert.match(loader, /AUDIO_WAVE_PALETTE\["wave\.selection"\]\.value/);
+  const theme = await readFile(resolve("src/shell/media-editors/audio-wave-theme.ts"), "utf8");
+  assert.match(theme, /AUDIO_WAVE_PALETTE\["wave\.body"\]\.value/);
+  assert.match(theme, /AUDIO_WAVE_PALETTE\["wave\.playhead"\]\.value/);
+  assert.match(theme, /AUDIO_WAVE_PALETTE\["wave\.selection"\]\.value/);
+  assert.match(loader, /waveColor: paletteRef\.current\.body/);
+  assert.match(loader, /cursorColor: paletteRef\.current\.cursor/);
   assert.match(loader, /height: AUDIO_LAYOUT\.waveViewHeightPx/);
   assert.match(loader, /cursorWidth: AUDIO_LAYOUT\.playheadWidthPx/);
   // 旧的硬编码灰蓝配色不得残留。

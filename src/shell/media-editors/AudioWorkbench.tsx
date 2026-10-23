@@ -5,7 +5,7 @@ import type WaveSurfer from "wavesurfer.js";
 import type RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 import { useUI } from "../../i18n/ui/useUI";
-import { uploadFile } from "../../lib/database";
+import { uploadPrivateEditorSource } from "../advanced-private-source";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -25,7 +25,8 @@ import {
   MAX_DECODED_AUDIO_BYTES,
 } from "./audio-workbench-utils";
 import { assertBlobSource } from "./source-integrity.mjs";
-import { useAudioMutations } from "./use-audio-mutations";
+import { useAudioMutations, applyAudioMutationUserEditSession } from "./use-audio-mutations";
+import type { AudioProjectData } from "./audio-workbench-state";
 import { useAudioPersistence } from "./use-audio-persistence";
 import { useAudioRemoteApply } from "./use-audio-remote-apply";
 import { useAudioWaveLoader } from "./use-audio-wave-loader";
@@ -53,6 +54,7 @@ export function useAudioWorkbench(
   const objectUrlRef = useRef("");
   const undoRef = useRef<AudioBuffer[]>([]);
   const redoRef = useRef<AudioBuffer[]>([]);
+  const sourceHistoryRef = useRef(new WeakMap<AudioBuffer, AudioProjectData>());
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
   const speedRef = useRef(1);
@@ -177,7 +179,7 @@ export function useAudioWorkbench(
   );
   const bumpContent = useCallback(() => setContentVersion((value) => value + 1), []);
 
-  const commit = useAudioMutations({
+  const mutateAudio = useAudioMutations({
     mutatingRef,
     remoteReplayRef,
     item,
@@ -199,12 +201,19 @@ export function useAudioWorkbench(
     setCanRedo,
     tt,
   });
+  const commit = useCallback(async (operation: AudioEditOperation) => {
+    const previous = { sourceUrl: sourceUrlRef.current, operations: [...operationsRef.current] };
+    const applied = await mutateAudio(operation);
+    const snapshot = undoRef.current.at(-1);
+    if (applied && snapshot) sourceHistoryRef.current.set(snapshot, previous);
+    return applied;
+  }, [mutateAudio]);
 
   const importSource = useCallback(
     async (file: File) => {
       if (file.size > MAX_AUDIO_FILE_BYTES) {
         setError(tt("音频文件超过 128MB 安全上限"));
-        return;
+        return false;
       }
       setLoading(true);
       setError("");
@@ -233,7 +242,7 @@ export function useAudioWorkbench(
         if (audioBufferBytes(decoded) > MAX_DECODED_AUDIO_BYTES) {
           throw new Error(tt("音频解码后过大，请改用视频时间线处理长音频"));
         }
-        const uploaded = await uploadFile(file, {
+        const uploaded = await uploadPrivateEditorSource(file, {
           siteId: siteId || "audio",
           title: file.name,
           registerAsset: false,
@@ -244,20 +253,28 @@ export function useAudioWorkbench(
           throw new Error(uploaded.error || tt("音频源上传失败"));
         }
         await reloadWaveform(decoded);
+        const previous = bufferRef.current;
+        const previousProject = { sourceUrl: sourceUrlRef.current, operations: [...operationsRef.current] };
+        undoRef.current = previous ? appendAudioHistory(undoRef.current, previous) : [];
+        const snapshot = undoRef.current.at(-1);
+        if (snapshot) sourceHistoryRef.current.set(snapshot, previousProject);
+        undoOperationsRef.current = undoRef.current.length
+          ? [...undoOperationsRef.current, previousProject.operations].slice(-undoRef.current.length) : [];
         bufferRef.current = decoded;
         sourceUrlRef.current = sourceUrl;
         operationsRef.current = [];
-        undoOperationsRef.current = [];
         redoOperationsRef.current = [];
-        undoRef.current = [];
         redoRef.current = [];
         revisionRef.current += 1;
-        setCanUndo(false);
+        setCanUndo(undoRef.current.length > 0);
         setCanRedo(false);
         setDirty(true);
         setSavedUrl("");
+        applyAudioMutationUserEditSession(item, "local-mutation");
+        return true;
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : tt("音频导入失败"));
+        return false;
       } finally {
         await context?.close().catch(() => undefined);
         setLoading(false);
@@ -401,12 +418,21 @@ export function useAudioWorkbench(
       current,
       undoRef.current,
     );
+    const redoSnapshot = redoRef.current.at(-1);
+    if (redoSnapshot) sourceHistoryRef.current.set(redoSnapshot, {
+      sourceUrl: sourceUrlRef.current, operations: [...operationsRef.current],
+    });
     redoOperationsRef.current = redoRef.current.length
       ? [...redoOperationsRef.current, [...operationsRef.current]].slice(
           -redoRef.current.length,
         )
       : [];
     operationsRef.current = undoOperationsRef.current.pop() || [];
+    const previousSource = sourceHistoryRef.current.get(previous);
+    if (previousSource) {
+      sourceUrlRef.current = previousSource.sourceUrl;
+      operationsRef.current = [...previousSource.operations];
+    }
     revisionRef.current += 1;
     setCanUndo(undoRef.current.length > 0);
     setCanRedo(redoRef.current.length > 0);
@@ -430,12 +456,21 @@ export function useAudioWorkbench(
       current,
       redoRef.current,
     );
+    const undoSnapshot = undoRef.current.at(-1);
+    if (undoSnapshot) sourceHistoryRef.current.set(undoSnapshot, {
+      sourceUrl: sourceUrlRef.current, operations: [...operationsRef.current],
+    });
     undoOperationsRef.current = undoRef.current.length
       ? [...undoOperationsRef.current, [...operationsRef.current]].slice(
           -undoRef.current.length,
         )
       : [];
     operationsRef.current = redoOperationsRef.current.pop() || [];
+    const nextSource = sourceHistoryRef.current.get(next);
+    if (nextSource) {
+      sourceUrlRef.current = nextSource.sourceUrl;
+      operationsRef.current = [...nextSource.operations];
+    }
     revisionRef.current += 1;
     setCanUndo(undoRef.current.length > 0);
     setCanRedo(redoRef.current.length > 0);

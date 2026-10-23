@@ -27,9 +27,9 @@ import type {
 } from "./audio-workbench-state";
 import {
   AUDIO_LAYOUT,
-  AUDIO_WAVE_PALETTE,
-  isAudioProjectSchemaId,
 } from "./audio-project-carrier";
+import { usePluginTheme } from "../plugin-theme";
+import { AUDIO_THEME_PALETTES } from "./audio-wave-theme";
 import {
   applyAudioOperation,
   audioBufferBytes,
@@ -41,6 +41,7 @@ import {
 import {
   fetchAudioProjectSourceBlob,
   normalizeAudioSourceRef,
+  audioEditorProjectSource,
 } from "./audio-project-source";
 import { assertBlobSource } from "./source-integrity.mjs";
 
@@ -115,6 +116,14 @@ export function useAudioWaveLoader({
   setDirty,
   tt: providedTranslate,
 }: AudioWaveLoaderOptions): void {
+  const { theme } = usePluginTheme("audio");
+  const palette = AUDIO_THEME_PALETTES[theme === "dark" ? "dark" : "light"];
+  const paletteRef = useRef(palette);
+  paletteRef.current = palette;
+  useEffect(() => {
+    waveRef.current?.setOptions({ waveColor: palette.body, progressColor: palette.progress, cursorColor: palette.cursor });
+    regionsRef.current?.getRegions().forEach((region) => region.setOptions({ color: `${palette.selection}33` }));
+  }, [palette, waveRef, regionsRef]);
   // `tt` 由调用方从 `useUI()` 直接透传，是 provider 所有的函数。它进下面那个装载
   // effect 的依赖，就是 W13 在 `dcc0a7d` 里治掉的自锁引信：effect 体里写 state →
   // 重渲染 → `tt` 换身份 → 波形整条重装。这里重跑的代价尤其大：destroy 掉
@@ -137,10 +146,9 @@ export function useAudioWaveLoader({
     const container = containerRef.current;
     const sourceUrl = item.url || item.previewUrl || "";
     // 存量草稿的 schema 可能是改名前的 `oceanleo.audio.v1`；两个 id 都要能打开。
-    const declaredSchema = String(item.meta.editor_project_schema || "");
-    const projectUrl = isAudioProjectSchemaId(declaredSchema)
-      ? String(item.meta.editor_project_url || item.url || "").trim()
-      : "";
+    const projectSource = audioEditorProjectSource(item);
+    const declaredSchema = projectSource?.schema || "";
+    const projectUrl = projectSource?.url || "";
     if (!container) return;
     let disposed = false;
     const controller = new AbortController();
@@ -256,25 +264,26 @@ export function useAudioWaveLoader({
           url: objectUrl,
           plugins: [regions],
           height: AUDIO_LAYOUT.waveViewHeightPx,
-          waveColor: AUDIO_WAVE_PALETTE["wave.body"].value,
-          progressColor: AUDIO_WAVE_PALETTE["wave.peak"].value,
-          cursorColor: AUDIO_WAVE_PALETTE["wave.playhead"].value,
+          waveColor: paletteRef.current.body,
+          progressColor: paletteRef.current.progress,
+          cursorColor: paletteRef.current.cursor,
           cursorWidth: AUDIO_LAYOUT.playheadWidthPx,
           barWidth: 2,
           barGap: 1,
           barRadius: 2,
-          normalize: true,
+          normalize: false,
           minPxPerSec: zoomRef.current,
         });
         waveRef.current = wave;
         regionsRef.current = regions;
         disableDrag = regions.enableDragSelection({
           // §2.1 `wave.selection` = #2E8B6F（实测 4.31:1 对 wave.bg）。
-          color: `${AUDIO_WAVE_PALETTE["wave.selection"].value}33`,
+          color: `${paletteRef.current.selection}33`,
           drag: true,
           resize: true,
         });
         regions.on("region-created", (region) => {
+          region.setOptions({ color: `${paletteRef.current.selection}33` });
           for (const existing of regions.getRegions()) {
             if (existing !== region) existing.remove();
           }
@@ -338,6 +347,9 @@ export function useAudioWaveLoader({
     containerRef,
     item.meta.editor_project_schema,
     item.meta.editor_project_url,
+    item.meta.editor_manifest_url,
+    item.meta.source_format,
+    item.meta.source_url,
     item.meta.editor_working_head_url,
     item.previewUrl,
     item.title,

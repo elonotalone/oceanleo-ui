@@ -7,7 +7,7 @@ import {
 } from "react";
 
 import type { UITranslate } from "../../i18n/ui/useUI";
-import { uploadFile } from "../../lib/database";
+import { uploadPrivateEditorSource } from "../advanced-private-source";
 import type { LibraryItem } from "../library-data";
 import {
   prepareCheckpointedAudioMutation,
@@ -103,7 +103,7 @@ async function uploadRenderedCheckpoint({
   }
 
   const title = `${item.title || "audio"}-checkpoint-r${revision}`;
-  const uploaded = await uploadFile(
+  const uploaded = await uploadPrivateEditorSource(
     new File([rendered], `${title}.wav`, { type: "audio/wav" }),
     {
       siteId: siteId || "audio",

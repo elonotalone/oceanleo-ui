@@ -47,7 +47,7 @@ test("Audio actions are icon controls while host owns export and history", async
   assert.match(view, /AudioIconButton/);
   assert.match(view, /aria-label=\{label\}/);
   assert.match(toolbar, /iconOnly:\s*true/g);
-  assert.match(toolbar, /id:\s*"crop"[\s\S]*icon:\s*"crop"/);
+  assert.match(toolbar, /id:\s*"audio-trim"[\s\S]*icon:\s*"trim"/);
   assert.match(toolbar, /id:\s*"delete"[\s\S]*icon:\s*"delete"/);
   assert.match(route, /history:\s*\{[\s\S]*undo:\s*view\.undo/);
   assert.match(route, /directDownload:[\s\S]*onTrigger:[\s\S]*editor\.download/);

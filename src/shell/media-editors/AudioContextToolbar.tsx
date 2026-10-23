@@ -24,6 +24,7 @@ export function AudioContextToolbar({
   const context = useMemo<SelectionContext>(() => {
     const built: SelectionContext = {
       version: 1,
+      bar: "object",
       kind: selection ? "audio-region" : "audio-track",
       id: selection
         ? `region:${Math.round(selection.start * 1_000)}-${Math.round(selection.end * 1_000)}`
@@ -33,10 +34,10 @@ export function AudioContextToolbar({
         ...(selection
           ? [
               {
-                id: "crop",
+                id: "audio-trim",
                 kind: "action" as const,
                 label: tt("裁剪保留"),
-                icon: "crop" as const,
+                icon: "trim" as const,
                 iconOnly: true,
                 disabled: editor.loading,
               },
@@ -61,35 +62,35 @@ export function AudioContextToolbar({
           step: 0.1,
           placement: "more",
           slot: "inspector",
-          inspectorGroup: "audio-fades",
+          inspectorGroup: "audio-fade-tools",
           inspectorLabel: tt("淡入淡出"),
-          inspectorIcon: "effects",
+          inspectorIcon: "fade-in",
         },
         {
           id: "fade-in",
           kind: "action",
           label: tt("淡入"),
-          icon: "effects",
+          icon: "fade-in",
           iconOnly: true,
           disabled: editor.loading,
           placement: "more",
           slot: "inspector",
-          inspectorGroup: "audio-fades",
+          inspectorGroup: "audio-fade-tools",
           inspectorLabel: tt("淡入淡出"),
-          inspectorIcon: "effects",
+          inspectorIcon: "fade-in",
         },
         {
           id: "fade-out",
           kind: "action",
           label: tt("淡出"),
-          icon: "effects",
+          icon: "fade-out",
           iconOnly: true,
           disabled: editor.loading,
           placement: "more",
           slot: "inspector",
-          inspectorGroup: "audio-fades",
+          inspectorGroup: "audio-fade-tools",
           inspectorLabel: tt("淡入淡出"),
-          inspectorIcon: "effects",
+          inspectorIcon: "fade-in",
         },
         {
           id: "gain",
@@ -102,20 +103,20 @@ export function AudioContextToolbar({
           slot: "inspector",
           inspectorGroup: "audio-gain",
           inspectorLabel: tt("音量增益"),
-          inspectorIcon: "effects",
+          inspectorIcon: "gain",
         },
         {
           id: "apply-gain",
           kind: "action",
           label: tt("应用增益"),
-          icon: "effects",
+          icon: "gain",
           iconOnly: true,
           disabled: editor.loading,
           placement: "more",
           slot: "inspector",
           inspectorGroup: "audio-gain",
           inspectorLabel: tt("音量增益"),
-          inspectorIcon: "effects",
+          inspectorIcon: "gain",
         },
         {
           id: "effect-speed",
@@ -128,7 +129,7 @@ export function AudioContextToolbar({
           slot: "inspector",
           inspectorGroup: "audio-effect-chain",
           inspectorLabel: tt("选区效果链"),
-          inspectorIcon: "effects",
+          inspectorIcon: "equalizer",
         },
         {
           id: "eq-low",
@@ -142,7 +143,7 @@ export function AudioContextToolbar({
           slot: "inspector",
           inspectorGroup: "audio-effect-chain",
           inspectorLabel: tt("选区效果链"),
-          inspectorIcon: "effects",
+          inspectorIcon: "equalizer",
         },
         {
           id: "eq-mid",
@@ -156,7 +157,7 @@ export function AudioContextToolbar({
           slot: "inspector",
           inspectorGroup: "audio-effect-chain",
           inspectorLabel: tt("选区效果链"),
-          inspectorIcon: "effects",
+          inspectorIcon: "equalizer",
         },
         {
           id: "eq-high",
@@ -170,19 +171,19 @@ export function AudioContextToolbar({
           slot: "inspector",
           inspectorGroup: "audio-effect-chain",
           inspectorLabel: tt("选区效果链"),
-          inspectorIcon: "effects",
+          inspectorIcon: "equalizer",
         },
         {
           id: "apply-effects",
           kind: "action",
           label: tt("应用效果链"),
-          icon: "effects",
+          icon: "equalizer",
           iconOnly: true,
           disabled: editor.loading || !selection,
           slot: "inspector",
           inspectorGroup: "audio-effect-chain",
           inspectorLabel: tt("选区效果链"),
-          inspectorIcon: "effects",
+          inspectorIcon: "equalizer",
         },
       ],
     };
@@ -210,6 +211,7 @@ export function AudioContextToolbar({
   const command = (message: SelectionCommand) => {
     if (readOnly || message.selectionId !== context.id) return;
     switch (message.controlId) {
+      case "audio-trim":
       case "crop":
         editor.cropSelection();
         break;

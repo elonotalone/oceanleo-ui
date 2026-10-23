@@ -158,7 +158,7 @@ test("unedited audio whose original is unreachable still gets a rendered deliver
 const calls = { file: [], projectOnly: [] };
 const persistenceStubs = {
   "../../i18n/ui/useUI": dataModule(`export const useUI = () => (t) => String(t);`),
-  "../../lib/database": dataModule(`export const uploadFile = async () => ({ ok: false });`),
+  "../advanced-private-source": dataModule(`export const uploadPrivateEditorSource = async () => ({ ok: false });`),
   "../../lib/media-proxy": dataModule(`
     export const importMediaUrl = async (u) => u;
     export const isFirstPartyMediaUrl = () => true;
@@ -247,29 +247,28 @@ const durableAudio = {
 };
 const CROP = [{ type: "crop", start: 1, end: 2 }];
 
-test("autosave of an edited durable item is project-only and stores a stable base-clip reference", async () => {
+test("autosave includes playable audio and a stable project reference in the same revision", async () => {
   const h = await harness(durableAudio, CROP, { idleMs: 10_000 });
   try {
     assert.ok(await h.save());
-    assert.equal(calls.file.length, 0, "自动保存不能渲 WAV");
-    assert.equal(calls.projectOnly.length, 1);
-    const project = calls.projectOnly[0].project;
+    assert.equal(calls.file.length, 1);
+    assert.equal(calls.projectOnly.length, 0);
+    assert.equal(calls.file[0].title, durableAudio.title);
+    const project = calls.file[0].project;
     assert.deepEqual(project.data.sourceRef, { artifactId: ARTIFACT, revisionId: REV1, purpose: "source" });
     assert.equal(project.data.sourceUrl, SIGNED, "签名地址继续保留作兼容");
   } finally { await h.unmount(); }
 });
 
-test("the full WAV is rendered once, after the edits go quiet, through the normal autosave path", async () => {
+test("a saved edit stays saved after idle time without manufacturing another revision", async () => {
   const h = await harness(durableAudio, CROP, { idleMs: 15 });
   try {
     await h.save();
-    assert.equal(calls.file.length, 0);
+    assert.equal(calls.file.length, 1);
     const revisionBefore = h.refs.revision.current;
     await h.wait(60);
-    assert.equal(h.refs.revision.current, revisionBefore + 1, "空闲后要让自动保存再来一次");
-    assert.equal(h.state.dirty.at(-1), true);
-    assert.equal(calls.file.length, 0, "计时器本身不渲染，只请求一次保存");
-    await h.save();
+    assert.equal(h.refs.revision.current, revisionBefore);
+    assert.equal(h.state.dirty.at(-1), false);
     assert.equal(calls.file.length, 1);
     assert.equal(calls.file[0].file.type, "audio/wav");
     assert.equal(calls.file[0].sourceFormat, "wav");
@@ -283,18 +282,17 @@ test("the full WAV is rendered once, after the edits go quiet, through the norma
   } finally { await h.unmount(); }
 });
 
-test("a new edit during the quiet window cancels the pending render", async () => {
+test("two real edits publish two playable saves without a timer adding a third", async () => {
   const h = await harness(durableAudio, CROP, { idleMs: 30 });
   try {
     await h.save();
     h.refs.revision.current += 1; // user keeps editing
     await h.wait(80);
     assert.equal(h.refs.revision.current, 4, "不能再被计时器改写 revision");
-    assert.equal(calls.file.length, 0);
-    // the next autosave simply reschedules
+    assert.equal(calls.file.length, 1);
     await h.save();
-    assert.equal(calls.file.length, 0);
-    assert.equal(calls.projectOnly.length, 2);
+    assert.equal(calls.file.length, 2);
+    assert.equal(calls.projectOnly.length, 0);
   } finally { await h.unmount(); }
 });
 
@@ -310,8 +308,6 @@ test("unmounting the editor cancels the pending render", async () => {
 test("a render superseded by an edit mid-flight is dropped and saved project-only", async () => {
   const h = await harness(durableAudio, CROP, { idleMs: 10 });
   try {
-    await h.save();
-    await h.wait(40);
     // An edit lands while the WAV is being encoded (encodeWav reads the channel data).
     h.refs.buffer.current = new Proxy(h.refs.buffer.current, {
       get(target, prop, receiver) {
@@ -323,7 +319,7 @@ test("a render superseded by an edit mid-flight is dropped and saved project-onl
     calls.file.length = 0;
     await h.save();
     assert.equal(calls.file.length, 0, "已经过时的渲染不能上传");
-    assert.equal(calls.projectOnly.length, 2);
+    assert.equal(calls.projectOnly.length, 1);
   } finally { await h.unmount(); }
 });
 

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import { useCallback, type MutableRefObject } from "react";
 
-import { uploadFile } from "../../lib/database";
+import { uploadPrivateEditorSource } from "../advanced-private-source";
 import {
   importMediaUrl,
   isFirstPartyMediaUrl,
@@ -37,6 +37,15 @@ import {
   validAudioProject,
 } from "./audio-workbench-utils";
 import { assertBlobSource } from "./source-integrity.mjs";
+import { ownHeadAfter } from "../doc-editors/editor-own-heads";
+
+export function audioSaveBase(item: LibraryItem): LibraryItem {
+  const artifactId = String(item.artifactId || item.meta.artifact_id || "");
+  const revisionId = String(item.revisionId || item.meta.revision_id || "");
+  const head = artifactId && revisionId ? ownHeadAfter(artifactId, revisionId) : null;
+  return head ? { ...item, ...head.item, revisionId: head.revisionId,
+    meta: { ...item.meta, ...head.item?.meta, revision_id: head.revisionId } } : item;
+}
 
 const LICENSE_URLS: Record<string, string> = {
   CC0: "https://creativecommons.org/publicdomain/zero/1.0/",
@@ -71,8 +80,8 @@ function audioAttributionFromItem(item: LibraryItem): AudioAttributionEntry[] {
 }
 
 /**
- * 编辑停下多久之后才去渲染并上传完整音频（`full` 交付物）。自动保存只存工程、
- * 轻且频繁；一份 WAV 动辄几十 MB，不能跟着每一次防抖保存走。
+ * Compatibility export. Delivery now accompanies the edit's single revision;
+ * an idle timer must never manufacture another edit or revision.
  */
 export const AUDIO_DELIVERY_IDLE_MS = 8_000;
 
@@ -124,35 +133,16 @@ export function useAudioPersistence({
   setCanUndo,
   setCanRedo,
   tt,
-  deliveryIdleMs = AUDIO_DELIVERY_IDLE_MS,
 }: AudioPersistenceOptions) {
-  /**
-   * 交付物节流（每个「稳定下来」的 revision 至多渲一次）：
-   *   - 自动保存 / 关闭冲刷一律只存工程（有编辑时）；
-   *   - 一次成功的工程保存后起一个空闲计时器；`deliveryIdleMs` 内没有新编辑，
-   *     就把 `deliveryDueRef` 置位并把编辑器标成「有改动」，让既有的自动保存
-   *     通路再来一次——这一次才渲染并上传交付物；
-   *   - 期间任何新编辑都会让这次渲染作废（`isSuperseded`），下一次保存重新计时；
-   *   - 未编辑（原样带原始音频，几 MB）不受节流。
-   * 两次保存之间的工程-only revision 由查看器按工程还原播放。
-   */
-  const deliveryDueRef = useRef(false);
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  useEffect(() => () => clearTimeout(idleTimerRef.current), []);
-
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     const source = bufferRef.current;
     if (!source || savingRef.current) return null;
     const savingRevision = revisionRef.current;
-    clearTimeout(idleTimerRef.current);
-    const deliveryWasDue = deliveryDueRef.current;
     savingRef.current = true;
     setSaving(true);
     setError("");
     try {
-      const title = `${item.title || tt("音频")}-${tt("编辑版")}`;
+      const title = item.title || tt("音频");
       const attribution = audioAttributionFromItem(item);
       // 稳定引用：签名地址 5 分钟后失效，重开 / 查看靠它重新换发。
       const sourceRef = artifactAccessIdentity(sourceUrlRef.current);
@@ -183,7 +173,7 @@ export function useAudioPersistence({
       }
       const licenseMeta = audioLicenseMetadata(project);
       const saveInput = {
-        item,
+        item: audioSaveBase(item),
         siteId,
         fallbackSite: "audio",
         title,
@@ -239,8 +229,7 @@ export function useAudioPersistence({
       const durableAudio =
         isDurableLibraryItem(item) && item.artifactType === "audio";
       const delivery =
-        durableAudio &&
-        (project.operations.length === 0 || deliveryWasDue)
+        durableAudio
           ? await buildAudioDelivery({
               title,
               buffer: source,
@@ -270,19 +259,6 @@ export function useAudioPersistence({
       workingHeadUrlRef.current = saved.url;
       setSavedUrl(saved.url);
       if (revisionRef.current === savingRevision) setDirty(false);
-      if (deliveryWasDue) deliveryDueRef.current = false;
-      if (durableAudio && !delivery && !deliveryWasDue) {
-        // Project-only revision of an edited item: render the playable
-        // delivery once the edits have been quiet for `deliveryIdleMs`.
-        idleTimerRef.current = setTimeout(() => {
-          if (revisionRef.current !== savingRevision || savingRef.current) {
-            return;
-          }
-          deliveryDueRef.current = true;
-          revisionRef.current += 1;
-          setDirty(true);
-        }, deliveryIdleMs);
-      }
       return {
         url: saved.url,
         versionId: saved.versionId,
@@ -319,7 +295,6 @@ export function useAudioPersistence({
     sourceUrlRef,
     tt,
     workingHeadUrlRef,
-    deliveryIdleMs,
   ]);
 
   const captureRecovery = useCallback(
@@ -350,7 +325,7 @@ export function useAudioPersistence({
             : recoveredFormat === "mp4"
               ? "audio/mp4"
               : `audio/${recoveredFormat}`;
-        const uploaded = await uploadFile(
+        const uploaded = await uploadPrivateEditorSource(
           new File([payload], `${item.title || "audio"}-recovery.${extension}`, {
             type: recoveredMime,
           }),

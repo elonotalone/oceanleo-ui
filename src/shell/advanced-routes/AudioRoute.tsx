@@ -43,6 +43,9 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { audioSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
+import { withEditorHistoryCommand } from "../workbench-material-command";
+import { advancedRootItemId } from "../advanced-session";
+import { useUI } from "../../i18n/ui/useUI";
 
 /** 协同只读时覆盖撤销/重做：不可用且点了不动。 */
 const COLLAB_READONLY_HISTORY = {
@@ -62,6 +65,7 @@ export function AudioRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const tt = useUI();
   const editor = useAudioWorkbench(item, siteId);
   const [deliverBusy, setDeliverBusy] = useState(false);
   const [deliverNotice, setDeliverNotice] = useState("");
@@ -188,16 +192,21 @@ export function AudioRoute({
         });
         const extension =
           url.split(/[?#]/)[0].split(".").pop() || "audio";
-        await editor.importSource(
+        const imported = await editor.importSource(
           new File([blob], `${material.title || "audio"}.${extension}`, {
             type: blob.type || "audio/mpeg",
           }),
         );
+        if (!imported) throw new Error(tt("音频导入失败"));
       },
     }),
-    [collabReadOnly, editor.importSource],
+    [collabReadOnly, editor.importSource, tt],
   );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  useWorkbenchMaterialAdapter(useMemo(() => withEditorHistoryCommand(materialAdapter, {
+    documentId: advancedRootItemId(item),
+    targetRevisionId: String(item.revisionId || item.meta.revision_id || ""),
+    replaceTarget: () => ({ targetId: "audio-track", slotId: "audio-source", geometry: { x: 0, y: 0, width: 1, height: 1 } }),
+  }), [materialAdapter, item]));
   usePluginCommandSurface(
     useMemo(
       () =>

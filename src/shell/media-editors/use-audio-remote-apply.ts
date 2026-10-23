@@ -9,7 +9,8 @@
  */
 import { useCallback, useRef, type MutableRefObject } from "react";
 
-import { importMediaUrl, fetchMediaBlob, isFirstPartyMediaUrl } from "../../lib/media-proxy";
+import { importMediaUrl, isFirstPartyMediaUrl } from "../../lib/media-proxy";
+import { fetchAudioProjectSourceBlob, normalizeAudioSourceRef } from "./audio-project-source";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
 import type { AudioEditOperation } from "./audio-operations";
@@ -99,7 +100,7 @@ export function useAudioRemoteApply({
           decoded = cached.buffer;
         } else {
           const blob = durableUrl
-            ? await fetchMediaBlob(durableUrl, { maxBytes: MAX_AUDIO_FILE_BYTES })
+            ? await fetchAudioProjectSourceBlob(durableUrl, undefined, normalizeAudioSourceRef(project.sourceRef))
             : encodeWav(new AudioBuffer({ length: 44_100, numberOfChannels: 1, sampleRate: 44_100 }));
           await assertBlobSource(blob, "audio");
           try {

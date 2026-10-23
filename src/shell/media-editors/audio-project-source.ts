@@ -13,6 +13,23 @@ import {
   validAudioProject,
 } from "./audio-workbench-utils";
 import { assertBlobSource } from "./source-integrity.mjs";
+import type { LibraryItem } from "../library-data";
+import { isPrivateEditorSourceUrl, readPrivateEditorSource } from "../advanced-private-source";
+
+/** Typed library projections carry the project as editor_manifest, not the cover. */
+export function audioEditorProjectSource(item: Pick<LibraryItem, "url" | "meta">): { url: string; schema: string } | null {
+  const meta = item.meta;
+  const declared = String(meta.editor_project_schema || "");
+  if (isAudioProjectSchemaId(declared)) {
+    return { schema: declared, url: String(meta.editor_project_url || item.url || "") };
+  }
+  const sourceFormat = String(meta.source_format || meta.format || "");
+  const manifest = String(meta.editor_manifest_url || "");
+  if (manifest || isAudioProjectSchemaId(sourceFormat)) {
+    return { schema: "oceanleo.audio-project.v1", url: manifest || String(meta.source_url || "") };
+  }
+  return null;
+}
 
 /**
  * 音频工程里 `sourceUrl` 是「基础素材」的地址。编辑器在打开时把当时拿到的
@@ -152,6 +169,14 @@ export async function fetchAudioProjectSourceBlob(
   signal?: AbortSignal,
   ref?: AudioSourceRef | null,
 ): Promise<Blob> {
+  if (isPrivateEditorSourceUrl(sourceUrl)) {
+    const response = await readPrivateEditorSource(sourceUrl, { signal, cache: "no-store" });
+    if (!response.ok) throw new Error(`媒体加载失败 HTTP ${response.status}`);
+    if (Number(response.headers.get("content-length")) > MAX_AUDIO_FILE_BYTES) throw new Error("音频文件超过 128MB 安全上限");
+    const blob = await response.blob();
+    if (blob.size > MAX_AUDIO_FILE_BYTES) throw new Error("音频文件超过 128MB 安全上限");
+    return blob;
+  }
   // A signed URL whose own `exp` has passed is re-issued up front.
   const first = artifactAccessUrlExpired(sourceUrl)
     ? (await refreshedArtifactAccessUrl(sourceUrl, signal, ref)) || sourceUrl

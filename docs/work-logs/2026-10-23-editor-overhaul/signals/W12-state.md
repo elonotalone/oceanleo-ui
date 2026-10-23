@@ -2,6 +2,10 @@
 
 更新：2026-10-23 10:05Z（R2 第 2 轮接班）
 
+## Codex continuation
+- Baseline verified with original fixture (ea2e3d75): light screenshot/report in /tmp/codex-w12-before-light.
+- Implementing actual missing theme/material undo/save fixes in original W12 files. New focused regressions cover contrast, typed project source and full-hook source replacement undo/redo. Parent owns full typecheck/suite.
+
 ## 已确认的事实
 - [读码] 控件在 `src/shell/media-editors/AudioContextToolbar.tsx`：crop、delete、fade-duration、fade-in、fade-out、gain、apply-gain、effect-speed、eq-low/mid/high、apply-effects；除 crop/delete 外图标全是 `effects`（重复）。crop 借用了图片栏的 `crop` 图标。
 - [读码] 路由 `src/shell/advanced-routes/AudioRoute.tsx`：adapter 带 `toolbox`（音轨工具）、`contextToolbar`、`persistence`、`viewport`、`directDownload`、`actions`（mp3/m4a 下载）。

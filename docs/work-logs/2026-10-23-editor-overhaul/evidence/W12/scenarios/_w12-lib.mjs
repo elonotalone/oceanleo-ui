@@ -48,12 +48,16 @@ export function saveLedger(page, log) {
 
 /** Open a library card whose accessible label contains `needle`; press Edit when asked. */
 export async function openFromLibrary(page, helpers, needle, log, { route = "/library" } = {}) {
-  await helpers.gotoApp(page, route);
-  const card = page.locator(`button[aria-label*="${needle}"]`).first();
-  await card.waitFor({ timeout: 120000 });
-  await card.click();
+  const root = /^[0-9a-f-]{36}$/.test(needle);
+  await helpers.gotoApp(page, root ? `/library?item=${needle}` : route);
+  if (!root) {
+    const card = page.locator(`button[aria-label*="${needle}"]`).first();
+    await card.waitFor({ timeout: 120000 });
+    await card.click();
+  }
   await sleep(2500);
-  const edit = page.getByRole("button", { name: /^(编辑|Edit|打开编辑器|Open editor)$/ }).first();
+  const edit = page.getByRole("button", { name: /^(编辑|Edit|打开编辑器|Open editor)(?:「| |$)/ }).first();
+  await edit.waitFor({ state: 'visible', timeout: 60000 }).catch(() => {});
   if (await edit.isVisible().catch(() => false)) {
     await edit.click();
     log("clicked Edit for", needle);

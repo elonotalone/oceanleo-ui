@@ -42,7 +42,7 @@ const useUiStub = dataModule(`export const useUI = () => (text, vars) =>
   vars ? String(text).replace(/\\{(\\w+)\\}/g, (_, key) => String(vars[key] ?? "")) : String(text);`);
 const stubs = {
   "../../i18n/ui/useUI": useUiStub,
-  "../../lib/database": dataModule(`export const uploadFile = async () => ({ ok: true, data: { file: { url: "https://m/cp.wav" } } });`),
+  "../advanced-private-source": dataModule(`export const uploadPrivateEditorSource = async () => ({ ok: true, data: { file: { url: "https://m/cp.wav" } } });`),
   "../../lib/media-proxy": dataModule(`
     export const fetchMediaBlob = async () => new Blob([new Uint8Array(16)], { type: "audio/wav" });
     export const importMediaUrl = async (url) => url;
@@ -56,7 +56,7 @@ const stubs = {
   // Saves in this test are project-only (non-durable item): no delivery is built.
   "../library-data": dataModule(`export const isDurableLibraryItem = () => false;`),
   "./audio-delivery": dataModule(`export const buildAudioDelivery = async () => null;`),
-  "./audio-project-source": dataModule(`export const fetchAudioProjectSourceBlob = async () => new Blob([new Uint8Array(16)], { type: "audio/wav" }); export const artifactAccessIdentity = () => null;`),
+  "./audio-project-source": dataModule(`export const fetchAudioProjectSourceBlob = async () => new Blob([new Uint8Array(16)], { type: "audio/wav" }); export const artifactAccessIdentity = () => null; export const normalizeAudioSourceRef=()=>null;`),
   "../doc-editors/artifact-save-contract": dataModule(`export const artifactSaveStepMessage = () => "";`),
   "../doc-editors/editor-preview-raster": dataModule(`export const renderAudioWaveformPng = async () => null;`),
 };

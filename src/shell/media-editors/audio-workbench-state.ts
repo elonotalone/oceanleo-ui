@@ -97,7 +97,7 @@ export interface AudioWorkbenchState {
   applyEffectChain: () => void;
   undo: () => void;
   redo: () => void;
-  importSource: (file: File) => Promise<void>;
+  importSource: (file: File) => Promise<boolean>;
   download: () => void;
   save: () => Promise<PersistedEditorVersion | null>;
   captureRecovery: () => AudioProjectData | null;

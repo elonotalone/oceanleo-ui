@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { usePluginTheme } from "../plugin-theme";
+import { AUDIO_THEME_PALETTES } from "./audio-wave-theme";
 import type {
   AudioWorkbenchProps,
   AudioWorkbenchState,
@@ -229,6 +231,8 @@ export function AudioStage({
   accent?: string;
 }) {
   const tt = useUI();
+  const { theme } = usePluginTheme("audio");
+  const palette = AUDIO_THEME_PALETTES[theme === "dark" ? "dark" : "light"];
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto bg-[var(--surface,#f5f5f4)] p-6">
@@ -248,6 +252,8 @@ export function AudioStage({
         </div>
         <div
           data-audio-waveform
+          data-audio-ready={!editor.loading && !editor.error}
+          style={{ backgroundColor: palette.background }}
           className="relative rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-6 shadow-sm"
         >
           {editor.loading && (
@@ -255,7 +261,7 @@ export function AudioStage({
               {tt("正在处理音频…")}
             </div>
           )}
-          <div ref={editor.containerRef} className="min-h-44 w-full" />
+          <div data-audio-wave-host ref={editor.containerRef} className="min-h-44 w-full" />
         </div>
         {editor.error && (
           <p className="mt-3 text-center text-[12px] text-[var(--awb-danger)]">
