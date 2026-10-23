@@ -100,3 +100,12 @@ test("image material adapter registers the editor-history command contract", () 
   assert.match(route, /targetRevisionId: editor\.loading\s*\?\s*""/);
   assert.match(route, /editor\.selected\?\.kind === "image" && !editor\.selected\.locked/);
 });
+
+// [实测] 09:16Z: one edit produced rev27 and rev28 — the shell asked for a second flush while the
+// session snapshot was still being recorded, and the image editor committed identical content again.
+test("a repeat flush with no canvas change returns the last receipt instead of a new revision", () => {
+  const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
+  const save = hook.slice(hook.indexOf("const save = useCallback("));
+  assert.match(save.slice(0, 900), /!dirtyRef\.current &&\s*last\.revision === revisionRef\.current &&\s*last\.identity === openIdentityRef\.current &&\s*last\.result\.item === artifactHeadRef\.current\s*\) return last\.result;/);
+  assert.match(save, /lastSaveRef\.current = \{\s*revision: savingRevision,\s*identity: savingIdentity,\s*result,/);
+});

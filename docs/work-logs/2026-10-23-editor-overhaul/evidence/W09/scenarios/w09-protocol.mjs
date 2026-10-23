@@ -39,7 +39,11 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   const stateLine = async (tag) => {
     const state = await helpers.saveState(page);
     const title = await launcher().getAttribute("title", { timeout: 2000 }).catch(() => null);
-    log("state", tag, stamp(), String(state), JSON.stringify(title));
+    const ed = await page.evaluate(() => {
+      const stage = document.querySelector("[data-editor-loading]");
+      return stage ? ["dirty", "revision", "collab-tick", "remote-delta"].map((k) => `${k}=${stage.getAttribute(`data-editor-${k}`)}`).join(",") : "no-stage";
+    }).catch(() => "?");
+    log("state", tag, stamp(), String(state), JSON.stringify(title), ed);
     return state;
   };
   let lastState = null;

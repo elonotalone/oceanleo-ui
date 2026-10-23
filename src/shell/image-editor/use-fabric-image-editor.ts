@@ -631,6 +631,12 @@ export function useFabricImageEditor(
   const localEditsRef = useRef(0);
   /** 画布当前所基于的云端版本的保存时刻（ms）；比它旧的本机/草稿恢复不再盖上来。 */
   const cloudSavedAtRef = useRef(0);
+  /** 上一次成功提交：哪个编辑计数、哪次打开、回执。 */
+  const lastSaveRef = useRef<{
+    revision: number;
+    identity: string;
+    result: FabricImageSaveResult;
+  } | null>(null);
   const aiBusyRef = useRef(false);
   const workingHeadUrlRef = useRef(
     String(
@@ -1411,6 +1417,16 @@ export function useFabricImageEditor(
 
   const save = useCallback(async (): Promise<FabricImageSaveResult | null> => {
     if (savingRef.current) return null;
+    // 外壳在会话快照重试 / 会话补建后会再要一次保存：画布从上次提交后没动过，就交回上次回执，
+    // 不再把同一份内容提交成一个新版本（10-23 W09 实测：一次改动出了两个 revision）。
+    const last = lastSaveRef.current;
+    if (
+      last &&
+      !dirtyRef.current &&
+      last.revision === revisionRef.current &&
+      last.identity === openIdentityRef.current &&
+      last.result.item === artifactHeadRef.current
+    ) return last.result;
     const admitted = imageSaveAdmitted({
       loading,
       sourceReady: sourceReadyRef.current,
@@ -1552,11 +1568,7 @@ export function useFabricImageEditor(
         updateDirty(false);
         clearLocalImageDraft(sourceItem);
       }
-      setNotice("");
-      optionsRef.current.onSaved?.(saved.previewUrl);
-      const savedRevisionId = String(saved.item?.revisionId || saved.versionId || "");
-      if (savedRevisionId) optionsRef.current.collab?.onSavedRevision?.(savedRevisionId);
-      return {
+      const result: FabricImageSaveResult = {
         baseItem: sourceItem,
         url: saved.previewUrl,
         projectUrl: saved.projectUrl,
@@ -1568,6 +1580,16 @@ export function useFabricImageEditor(
         dependencyClosureDigest: saved.dependencyClosureDigest,
         dependencyRevisionIds: saved.dependencyRevisionIds,
       };
+      lastSaveRef.current = {
+        revision: savingRevision,
+        identity: savingIdentity,
+        result,
+      };
+      setNotice("");
+      optionsRef.current.onSaved?.(saved.previewUrl);
+      const savedRevisionId = String(saved.item?.revisionId || saved.versionId || "");
+      if (savedRevisionId) optionsRef.current.collab?.onSavedRevision?.(savedRevisionId);
+      return result;
     } catch (caught) {
       if (aliveRef.current && !isAbortError(caught)) {
         const message =
