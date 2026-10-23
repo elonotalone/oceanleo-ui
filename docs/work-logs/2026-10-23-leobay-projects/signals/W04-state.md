@@ -1,26 +1,36 @@
 # W04 state
 
-更新：2026-10-23 18:50（开工，读完任务书/共同须知/合同）
+更新：2026-10-23 20:50（重派后第一轮：读码与定案完成，开始实现）
 
-## 已确认的事实
-- 工作区带着上一轮 bay-library-dashboard 波未提交的改动：`LeoBayPage.tsx` 里有 `view` 属性透传（BayAssetLibrary / BayAppShelf / BayLessonShelf）与删掉 `listShelves` 两处旧改；文件在我的边界里，提交时会连带提交。`src/shell/collection-items.tsx`（未跟踪）不归我。
-- `BayMineTabs` 只在 BayMine.tsx 内部用；`BaySignInPrompt` 被多处引用（不许删）；`MineCategory` 类型被 `seller/MyServicesPane.tsx`（W05）与 `orders/MyOrdersPane.tsx`（W03）从 `mine/MineCategoryBar` 引用 → 删胶囊条组件后文件要留成只含类型的垫片。
-- “交易”这个词条已被 LeoChat 筛选占用（en: Deals），不能在我的分表里重定义；第一块页签要用另起的词条键。
-- `ProjectTabNav` 在 `src/shell/project-workspace.tsx`，props: tabs / activeId / onChange / ariaLabel / className / tabClassName。
-- `BayFilterSelect` props: label / value / options / onChange / allLabel? / searchable? / accent? / name（W01 在改外观，我只传参）。
-- 「我买到的」数据：BayOrder(total_fen,currency,id=合同id)、BayLessonPurchase / BayAppPurchase(price_fen, contract_id)、BayAppSubscription(price_fen，无合同)。
+## 已确认的事实（实测）
+- 上一轮只做到第 0 步（读任务书），没有代码改动入库；LeoBayPage.tsx 的 view 透传已随 a08f3083 入库。基线：相关 16 份测试全绿（bay2-copy、bay3-page、bay3-profile、bay4-browse、bay4-mine-trade、bay-apps-nav、bay-lessons-mine、bay-lessons-nav、bay-mine-category、bay-shell-state、bay-supply-cards、bay-supply-checkout、bay-supply-profile、bay-toolbar、leochat4-surfaces、leochat-get-help）。
+- `ProjectTabNav`（project-workspace.tsx）按钮属性固定：`data-project-tab={id}`、role=tab、`aria-selected`；不能加别的属性。
+- `openMine()` 在 BayList.tsx（W02 的文件）= `openBay({kind:"mine",tab:"published"})`，映射后天然进「交易·我发布的」，不用改。
+- LeoBayPage.Detail 与 BayPanel 的包裹 div 都 `key={formatBayParam(target)}`：mine 的地址一变 BayMine 整个重挂，本地 state 会丢 → 类别/最近列表放进模块级小 store（mine-view-state.ts），卸载后延迟复位。
+- 词典：`交易` 已被 LeoChat 筛选占用（en Deals，de Aufträge…）→ 页签用另起的词条键 `"交易 "`（末尾一个半角空格，渲染等同「交易」），en = Listings & orders；`全部类别` 不存在、`网站与软件服务` 只有 en（其余 15 语缺）→ 写进我的分表（最后再查 W02/W03 分表有没有已经定义，避免冲突）；`详情`/`管理`/`未命名`/`金额`/`查看对账单`/`加载失败，请稍后再试。`/`搜索 LeoBay` 都已有 16 语。
+- 样式类必须已在 `src/theme/ui.css` 产物里（`/tmp/w04-tools/hasclass.mjs "<类名…>"` 查）；产物里没有的类不用，实在要用的写进交卷「对父 agent 的请求」。
+- `tests/i18n-key-collision.test.mjs`：分表英文不得与 en.ts 基础词典同键不同义。
+
+## 定案
+- 三块 id：`trade` / `page` / `dashboard`；列表 id：published|sold|bought|favorites。地址 mine:published|sold|bought|favorites → trade + 该列表；mine:page、mine:dashboard 原样。纯映射放 `mine/mine-blocks.ts`。
+- 两个下拉用 `BayFilterSelect`（label=tt("我的") / tt("类别")，allLabel=tt("全部类别")，name=mine-list / mine-category），放进 `CollectionFilterRow`。
+- 白卡：`rounded-xl border border-neutral-200 bg-white overflow-hidden`，只包交易列表；主页/数据面板不包。PAPER_DETAILS 去 mine、dashboard。overlay 变体不包卡。
+- MineCategoryBar.tsx 留成仅类型垫片（MineCategory、MinePaneProps），组件删除。
+- 我买到的：行右侧金额 `data-bay-mine-amount`，有合同的行「查看对账单」展开 StatementPanel（fetchBayStatement + useBayMoneyLocale）。
+- 退役名字：LeoBayPage 搜索提示→「搜索 LeoBay」；BayDetail 标题 服务详情/作品详情→详情、管理作品→管理、编辑作品→编辑；未命名服务/未命名作品→未命名。
+- 「成品文件」→「现成文件」（PublishedCategoryTag）。
 
 ## 正在做
-- 第 0 步：基线测试（哪些相关测试开工前就红）
+第 1 步：词条 + 分表（lbp-w04-copy.ts）+ bay-shell-copy en 三处大小写。
 
 ## 下一步
-1. 词条 + 分表（lbp-w04-copy.ts）+ bay-shell-copy en 三处大小写
-2. mine-category.ts：类别新名字；新 MineFilterRow（两个下拉）；MineCategoryBar 变类型垫片
-3. BayMine.tsx 重写（ProjectTabNav 三块 + 地址映射 + 两下拉 + 白卡）
-4. LeoBayPage.tsx：PAPER_DETAILS、搜索提示；BayDetail.tsx 标题
-5. MyBoughtPane 金额 + 对账单
-6. 测试：改绿被打红的 + 新增 tests/lbp-w04-mine.test.mjs
-7. 交卷 verdicts/W04-delivery.md
+1. lbp-w04-copy.ts（交易 / 全部类别 / 网站与软件服务 15 语）+ bay-shell-copy en 三处
+2. mine-blocks.ts、mine-view-state.ts、MineFilterRow.tsx、MineStatement.tsx；PublishedCategoryTag、MineCategoryBar 垫片
+3. BayMine.tsx 重写；MineTradeList 加金额/对账单字段；MyBoughtPane
+4. LeoBayPage.tsx（PAPER_DETAILS、搜索提示、注释）、BayDetail.tsx 标题；未命名*
+5. 测试：改绿被打红的（bay4-mine-trade、bay-mine-category、leochat-get-help、bay2-copy、bay-shell-picker 标题…）+ 新增 tests/lbp-w04-mine.test.mjs
+6. typecheck（基线 3 条错在 video-project-doc.ts）、i18n 闸、交卷 verdicts/W04-delivery.md
 
 ## 复现命令
 cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<名字>.test.mjs
+词典查询：node --experimental-strip-types /tmp/w04-tools/lookup.mjs "<中文>"（/tmp 下，丢了见 journal 说明重写：register ts-extension-loader 后 import src/i18n/ui/messages/index.ts 的 UI_MESSAGES）
