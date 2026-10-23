@@ -18,3 +18,9 @@
 - 实测：LeoDev 槽 `/legal/marketplace` 20:40 前 200，标题 `LeoBay 条款 LeoBay Terms — OceanLeo`，导航新名，`#fees`/`#bay-terms`/`#payout-countries` 三个 id 在，11 个 h2，第 10 节占位「正在加载… Loading…」；开发网关 CORS 对该槽 origin 和 `https://oceanleo.com` 都放行 `/v1/talent/terms/current`。
 - 注意：20:41 起 LeoDev 槽对所有页返回 500，原因是别人的在途文件 `oceanleo-ui/src/shell/bay/mine/MineCategoryBar.tsx` 暂时没有导出（W04 正在重写），与我无关。
 - 门户测试：`talent-entry-domain-family` 7/7、`legal-rights-notice` 4/4 绿；`bay-portal-help` 第 9 条红（`what-is-bay.md` 里没有「LeoSlides」，早先「类目标签去掉 Leo」提交留下的红，与本任务无关）。
+- 2026-10-23 21:1x 实测（最后一轮）：共享 UI `pnpm typecheck` → `exit=0`（0 条错）；门户 `pnpm typecheck` → 恰好是开工前基线的 4 条（`lib/oceanleo-ai.ts`、`lib/supabase.ts`、`proxy.ts`×2），无新增，我的文件 0 条；门户 `eslint`（我的三个文件 + 新目录）无输出。
+- 实测：共享 UI 相关测试全绿：`lbp-w07-terms` 18、`bay-settings-terms` 13、`bay-buy-sell-terms` 5、`bay-settings-lib` 6、`bay-settings-section` 8、`bay-orders-panes` 9、`bay4-mine-trade` 10；门户 `lbp-w07-legal-pages` 9、`talent-entry-domain-family` 7、`legal-rights-notice` 4。
+- 实测：`tests/theme-artifact-in-sync.test.mjs` 红（别人的 28 条新类名）；我最初的 3 个产物里没有的类（`scroll-mt-6`、`hover:text-neutral-950`、`dark:hover:text-white`）已换成产物里已有的，提交 `2387ad70` 后不再出现在缺口表里。
+- 实测：`node scripts/public-api-snapshot.mjs --check` → stale；快照只记 `package.json exports` 入口文件里的直接声明，我没碰任何入口文件，不是我造成的。
+- 实测：LeoDev 槽 `/legal/marketplace`、`/terms` 均 200（最后一次改动之后）：12 个 h2、`#fees`/`#payout-countries`/`#bay-terms` 在、无「人才市场」、第 10 节占位在。
+- 交卷：`verdicts/W07-delivery.md`。门户最后一个提交 `badb773`；共享 UI 最后一个提交是带交卷文件的那一个。

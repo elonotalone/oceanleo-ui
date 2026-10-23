@@ -20,14 +20,12 @@
 
 ## 正在做
 
-- 第 3 步：收尾。共享 UI 与门户的实现都已提交（共享 UI `cdf86420` + `ee044dcb`，门户 `c94705c`），测试与类型检查证据见 journal。
-- 剩下：LeoDev 槽恢复后（别人的 `MineCategoryBar.tsx` 在途，槽暂时 500）复测 `/legal/marketplace`、`/terms` 的 HTTP；写交卷 `verdicts/W07-delivery.md` 并提交。
+- 已交卷：`verdicts/W07-delivery.md` 随最后一个提交入库。两仓实现、测试、类型检查、HTTP 证据都在 journal 与交卷里。
+- 门户最后一个提交 `badb773`；共享 UI 实现提交 `cdf86420`（第一轮入库）+ `ee044dcb` + `2387ad70`，最后一个是带交卷的提交。
 
 ## 下一步
 
-1. 交卷：`verdicts/W07-delivery.md`（条款页新结构、改名清单、测试与 typecheck 原文、发现与对父 agent 的请求）。
-2. 提交交卷 + 本文件 + journal（共享 UI 仓）。
-3. 回报：两个仓各自最后一个提交号。
+- 无。若被再次派回来：先看交卷第 6 节「发现」A（网关条款第 3 版「费用」一节与条款页矛盾，需要操作员拍板）是否已有结论。
 
 ## 复现命令
 
