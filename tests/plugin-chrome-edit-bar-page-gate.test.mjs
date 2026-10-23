@@ -82,6 +82,8 @@ function loadShell() {
           return {
             drawers: [],
             activeDrawerId: "",
+            isPanelOpen() { return false; },
+            editBarDrawers: [],
             activeMaterialAction: null,
             transientPanel: null,
             fallbackDetail: null,

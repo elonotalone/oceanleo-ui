@@ -1350,8 +1350,14 @@ test("dock follows the action row and showDetail reveals console without exiting
       editorStage > editBarDock,
     "project/page controls must precede the dock so the website edit bar is adjacent to its displayed stage",
   );
+  // 10-23 W02: the fallback aside moved into inline-advanced-shell-parts (shell < 600 lines).
+  const shellParts = await readFile(
+    new URL("../src/shell/inline-advanced-shell-parts.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(inline, /<FallbackDetailAside fallbackDetail=\{fallbackDetail\}/);
   assert.match(
-    inline,
+    shellParts,
     /data-workspace-pane=\{fallbackDetail \? "left" : undefined\}[\s\S]*data-left-panel=\{fallbackDetail \? "tool-detail" : undefined\}/,
   );
 });

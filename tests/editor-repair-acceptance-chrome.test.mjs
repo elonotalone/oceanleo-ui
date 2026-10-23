@@ -374,6 +374,8 @@ test("standalone workbench 我的库 still opens the mine panel when SplitWorksp
           return {
             drawers: [],
             activeDrawerId: "",
+            isPanelOpen() { return false; },
+            editBarDrawers: [],
             activeMaterialAction: null,
             transientPanel: null,
             fallbackDetail: null,

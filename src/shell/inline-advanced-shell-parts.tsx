@@ -149,19 +149,19 @@ export function StageNoticeCorner({
  * 左侧面板：320px，滑入滑出；收起后 300ms 内保留上一份内容，退场不闪空。
  */
 export function FallbackDetailAside({
-  detail,
+  fallbackDetail,
   onClose,
 }: {
-  detail: { label: ReactNode; content: ReactNode } | null;
+  fallbackDetail: { label: ReactNode; content: ReactNode } | null;
   onClose: () => void;
 }) {
   const tt = useUI();
-  const [closing, setClosing] = useState<typeof detail>(null);
-  const lastRef = useRef<typeof detail>(detail);
-  if (detail) lastRef.current = detail;
+  const [closing, setClosing] = useState<typeof fallbackDetail>(null);
+  const lastRef = useRef<typeof fallbackDetail>(fallbackDetail);
+  if (fallbackDetail) lastRef.current = fallbackDetail;
   useEffect(() => {
-    if (detail) {
-      lastRef.current = detail;
+    if (fallbackDetail) {
+      lastRef.current = fallbackDetail;
       setClosing(null);
       return;
     }
@@ -171,20 +171,20 @@ export function FallbackDetailAside({
     setClosing(previous);
     const timer = globalThis.setTimeout(() => setClosing(null), 300);
     return () => globalThis.clearTimeout(timer);
-  }, [detail]);
-  const displayed = detail || closing || lastRef.current;
+  }, [fallbackDetail]);
+  const displayed = fallbackDetail || closing || lastRef.current;
   return (
     <aside
-      data-workspace-pane={detail ? "left" : undefined}
-      data-left-panel={detail ? "tool-detail" : undefined}
-      aria-hidden={!detail}
-      inert={!detail}
+      data-workspace-pane={fallbackDetail ? "left" : undefined}
+      data-left-panel={fallbackDetail ? "tool-detail" : undefined}
+      aria-hidden={!fallbackDetail}
+      inert={!fallbackDetail}
       style={{
-        width: detail ? 320 : 0,
-        flexBasis: detail ? 320 : 0,
-        opacity: detail ? 1 : 0,
-        pointerEvents: detail ? "auto" : "none",
-        borderRightWidth: detail ? undefined : 0,
+        width: fallbackDetail ? 320 : 0,
+        flexBasis: fallbackDetail ? 320 : 0,
+        opacity: fallbackDetail ? 1 : 0,
+        pointerEvents: fallbackDetail ? "auto" : "none",
+        borderRightWidth: fallbackDetail ? undefined : 0,
       }}
       className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] transition-[width,flex-basis,opacity] duration-300 ease-out motion-reduce:transition-none"
     >

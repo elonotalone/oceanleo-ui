@@ -90,13 +90,15 @@ export function useInlineAdvancedPanels({
   ownerId,
   pluginThemeId,
   workbenchMaterials,
-  showWorkspaceDetail,
+  showWorkspaceDetail: showWorkspaceDetailInput,
   clearWorkspaceDetail,
   workspaceLeftHidden = false,
   ownedWorkspaceDetailId = null,
   onLocalUpload,
 }: InlineAdvancedPanelsInput) {
-  const workspaceShow = workspaceLeftHidden ? undefined : showWorkspaceDetail;
+  const showWorkspaceDetail = workspaceLeftHidden
+    ? undefined
+    : showWorkspaceDetailInput;
   const tt = useUI();
   const consoleAgentFocus = useConsoleAgentFocus();
   const liveDetailStoreRef = useRef(createLiveReactNodeStore());
@@ -293,8 +295,8 @@ export function useInlineAdvancedPanels({
       );
       const next = panelFor(drawerId, materialAction);
       publishLiveReactNode(liveDetailStoreRef.current, next.content);
-      if (workspaceShow) {
-        workspaceShow({
+      if (showWorkspaceDetail) {
+        showWorkspaceDetail({
           ownerId,
           id: drawerId,
           label: next.label,
@@ -304,7 +306,7 @@ export function useInlineAdvancedPanels({
         setFallbackDetail({ label: next.label, content: liveDetailNode });
       }
     },
-    [closeDetail, consoleAgentFocus, liveDetailNode, ownerId, panelFor, workspaceShow],
+    [closeDetail, consoleAgentFocus, liveDetailNode, ownerId, panelFor, showWorkspaceDetail],
   );
 
   const openTransientPanel = useCallback(
@@ -315,8 +317,8 @@ export function useInlineAdvancedPanels({
       setActiveDrawerId(panelId);
       setRequestedMaterialAction(undefined);
       publishLiveReactNode(liveDetailStoreRef.current, content);
-      if (workspaceShow) {
-        workspaceShow({
+      if (showWorkspaceDetail) {
+        showWorkspaceDetail({
           ownerId,
           id: panelId,
           label,
@@ -326,7 +328,7 @@ export function useInlineAdvancedPanels({
         setFallbackDetail({ label, content: liveDetailNode });
       }
     },
-    [liveDetailNode, ownerId, workspaceShow],
+    [liveDetailNode, ownerId, showWorkspaceDetail],
   );
 
   const updateTransientPanel = useCallback(
@@ -339,7 +341,7 @@ export function useInlineAdvancedPanels({
 
   // 工作区把我们的面板换掉/清掉（左栏「←」、别的面板顶替）时，本地状态跟着归零，
   // 否则顶栏按钮还亮着，下一次点击会去「收起」一个已经不在的面板——看起来就是死按钮。
-  const placedInWorkspace = Boolean(workspaceShow);
+  const placedInWorkspace = Boolean(showWorkspaceDetail);
   useEffect(() => {
     if (!placedInWorkspace || !activeDrawerId) return;
     if (ownedWorkspaceDetailId === activeDrawerId) return;

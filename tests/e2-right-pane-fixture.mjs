@@ -225,6 +225,8 @@ const { InlineAdvancedWorkbenchShell } = await import(await compileModule("src/s
           return {
             drawers: [],
             activeDrawerId: "",
+            isPanelOpen() { return false; },
+            editBarDrawers: [],
             activeMaterialAction: null,
             transientPanel: null,
             fallbackDetail: null,

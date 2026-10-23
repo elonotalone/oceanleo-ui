@@ -212,13 +212,18 @@ const stubs = {
   "./AdvancedStageControls": nullComponent("AdvancedStageControls"),
   "./AdvancedWorkbenchStage": dataModule(`${jsx} export function AdvancedWorkbenchStage({editorStage}){ return _jsx("div", {"data-real-workbench-stage":true, children:editorStage}); }`),
   "./InlineEditorMinePanel": nullComponent("InlineEditorMinePanel"),
-  "./InlineEditorMaterialPanel": nullComponent("InlineEditorMaterialPanel"),
+  // 10-23 W02: 素材库 opens the shell's own materials drawer in every host.
+  "./InlineEditorMaterialPanel": dataModule(`${jsx}
+    export function InlineEditorMaterialPanel(){ return _jsx("div", { "data-shell-materials": true, children: "Assets" }); }
+  `),
   "./plugin-chrome/PluginAgentPanel": nullComponent("PluginAgentPanel"),
   "./inline-advanced-workbench-drop": dataModule(`export function useInlineAdvancedWorkbenchDrop(){ return {dropMessage:"", performUpload:async()=>{}, handleDrop(){}}; }`),
   "./inline-advanced-shell-parts": dataModule(`${jsx}
     export function HiddenUploadInput(){ return null; }
     export function StageNoticeCorner(){ return null; }
     export function useEditBarDockPresentation(){ return {}; }
+    export function FallbackDetailAside({ fallbackDetail }){ return fallbackDetail ? _jsx("aside", { "data-workspace-pane": "left", "data-left-panel": "tool-detail", children: fallbackDetail.content }) : null; }
+    export function SelectionPresenceProbe({ children }){ return children; }
     export function usePluginPagesForAdapter(){ return [{id:"normal", kind:"main", label:"编辑"}]; }
   `),
   "./advanced-session-context": dataModule(`export function useAdvancedSession(){ return null; }`),
@@ -404,8 +409,8 @@ test("Library ImageRoute survives first frame, selection, Assets toggles, and Ag
     assert.deepEqual(loops, []);
 
     await click('[data-workspace-library-panel="materials"]');
-    assert.equal(container.querySelector('[data-workspace-pane="left"]')?.getAttribute("data-left-panel"), "library");
-    assert.ok(container.querySelector('[data-library-panel-content="materials"]'));
+    assert.equal(container.querySelector('[data-workspace-pane="left"]')?.getAttribute("data-left-panel"), "tool-detail");
+    assert.ok(container.querySelector('[data-workspace-pane="left"] [data-shell-materials]'));
     await click('[aria-label="返回操作台"]');
     assert.ok(container.querySelector("[data-agent-runtime-pane]"));
 
@@ -440,7 +445,7 @@ test("Library ImageRoute survives first frame, selection, Assets toggles, and Ag
     // not merely assert that production source contains the expected controls.
     for (let i = 0; i < 3; i += 1) {
       await click('[data-workspace-library-panel="materials"]');
-      assert.ok(container.querySelector('[data-library-panel-content="materials"]'));
+      assert.ok(container.querySelector('[data-workspace-pane="left"] [data-shell-materials]'));
       await click('[aria-label="返回操作台"]');
       await click("[data-fixture-selection-toggle]");
     }

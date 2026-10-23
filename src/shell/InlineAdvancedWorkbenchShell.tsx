@@ -457,7 +457,7 @@ export function InlineAdvancedWorkbenchShell({
           upload={adapter.upload}
           onFiles={(files) => void performUpload(files)}
         />
-        <FallbackDetailAside detail={fallbackDetail} onClose={closeDetail} />
+        <FallbackDetailAside fallbackDetail={fallbackDetail} onClose={closeDetail} />
         <div
           ref={localEditBarLayerRef}
           data-edit-bar-layer-root={!rightPaneSlot || undefined}
