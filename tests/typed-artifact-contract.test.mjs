@@ -102,6 +102,14 @@ function projection(overrides = {}) {
   };
 }
 
+test("revision excerpt survives normalization and reaches Library text cards without fetching source", () => {
+  const raw = projection({ textExcerpt: "保存后的文档开头" });
+  const normalized = normalizeArtifactProjection(raw);
+  assert.equal(normalized.textExcerpt, "保存后的文档开头");
+  assert.equal(artifactProjectionToLibraryItem(normalized).meta.text_excerpt, "保存后的文档开头");
+  assert.equal(normalizeArtifactProjection(projection({ textExcerpt: "x".repeat(1000) })).textExcerpt.length, 600);
+});
+
 test("artifact type is an open self-reported transport label", () => {
   const raw = projection({
     artifact_type: "agent_created_luminous_forest",
@@ -502,7 +510,9 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   // 搬家不等于放行：view 仍要挂上它，深链仍按裸 artifactId 取当前版本。
   assert.match(materialView, /MaterialStandaloneEditor/);
   assert.match(materialStandalone, /artifactId/);
-  assert.match(materialStandalone, /revisionId/);
+  // Saved revision adoption moved into the shared identity helper; keep the
+  // assertion on that call rather than requiring a duplicate inline field.
+  assert.match(materialStandalone, /adoptSavedEditorItem\(/);
   assert.match(materialStandalone, /AdvancedContentWorkbench/);
   assert.match(materialEffects, /裸 artifactId/);
   assert.match(materialEffects, /getCurrentArtifactItem\(artifactId/);
@@ -791,7 +801,9 @@ test("library shelf cards stay quiet; detail header keeps Edit/Download/Favorite
   );
   // No cover badge and a single-line title without a description paragraph.
   assert.doesNotMatch(card, /absolute bottom-2 left-2/);
-  assert.match(card, /line-clamp-1/);
+  assert.match(card, /CollectionItemCard/);
+  const sharedCard = readFileSync(new URL("../src/shell/collection-items.tsx", import.meta.url), "utf8");
+  assert.match(sharedCard, /<p className="truncate[^\n]*\{title\}/);
   assert.doesNotMatch(card, /entry\.description &&/);
   assert.match(card, /预览「\{title\}」/);
   // Shelf grid/list mounts at most the single 下载 slot (合同 §0.6 / §8.9).

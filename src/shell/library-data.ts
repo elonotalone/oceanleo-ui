@@ -516,6 +516,7 @@ export function artifactProjectionToLibraryItem(
   const popularity = popularityForProjection(artifact);
   const meta: Record<string, unknown> = {
     artifact_id: artifact.artifactId,
+    text_excerpt: artifact.textExcerpt || "",
     revision_id: artifact.revisionId,
     artifact_type: artifact.artifactType,
     roles: artifact.roles,

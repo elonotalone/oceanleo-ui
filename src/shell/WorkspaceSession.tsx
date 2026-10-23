@@ -693,6 +693,7 @@ export function WorkspaceSessionProvider({
           if (
             latestResult.ok &&
             latestResult.data &&
+            latestResult.data.id === active.id &&
             typeof options.mergeFromLatest === "function"
           ) {
             const retrySnap = options.mergeFromLatest(
@@ -722,7 +723,16 @@ export function WorkspaceSessionProvider({
               }
               // A merge request that failed in transit is still retryable.
               // Do not latch a CAS conflict and permanently block later saves.
-              if (retried.status !== 409) {
+              if (retried.status === 409) {
+                // The caller supplied a merge of its own snapshot region.
+                // Another tab can race this second CAS too; allow the next
+                // retry to read/merge again rather than latch a permanent
+                // explicit-resolution conflict after the artifact was saved.
+                applySession(latestResult.data);
+                conflictRef.current = null;
+                setConflict(null);
+                return { ok: false, status: 409, error: "工作会话仍在同步，请稍后重试。" };
+              } else {
                 applySession(latestResult.data);
                 reportFailure(retried.status, retried.error);
                 return { ok: false, status: retried.status,

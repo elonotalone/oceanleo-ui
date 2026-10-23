@@ -84,6 +84,12 @@ export function SelectionToolbarNumberControl({
         step={step}
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.stopPropagation();
+            if (!event.nativeEvent.isComposing && !composingRef.current) event.preventDefault();
+          }
+        }}
         onCompositionStart={() => {
           composingRef.current = true;
         }}

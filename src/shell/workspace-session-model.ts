@@ -103,7 +103,7 @@ export interface WorkspaceSnapshotSaveResult {
 
 export function workspaceSnapshotFailureRetryable(result: WorkspaceSnapshotSaveResult): boolean {
   if (result.ok || result.stale || result.readOnly || result.conflict) return false;
-  return result.status === 0 || result.status === 408 || result.status === 425 ||
+  return result.status === 0 || result.status === 408 || result.status === 409 || result.status === 425 ||
     result.status === 429 || (result.status !== undefined && result.status >= 500 && result.status !== 501);
 }
 

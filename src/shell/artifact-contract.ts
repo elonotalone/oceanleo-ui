@@ -987,6 +987,7 @@ export interface ArtifactProjection extends ArtifactIdentity {
   bindings: ArtifactContextBinding[];
   integrity: ArtifactIntegrity;
   createdAt: string | null;
+  textExcerpt?: string | null;
   /**
    * 服务端给的热度数值（游玩 / 点赞 / 二创 / 下载），没有就是 `null`。
    *
@@ -1987,6 +1988,7 @@ export function normalizeArtifactProjection(
     ),
     integrity: effectiveIntegrity,
     createdAt: text(raw.createdAt, raw.created_at) || null,
+    textExcerpt: text(raw.textExcerpt, raw.text_excerpt).slice(0, 600) || null,
     // 热度不参与完整性判定：读不到只影响排序，不影响这个 artifact 能不能预览/编辑。
     // 所以它在这里是纯放行，绝不能让一份缺热度的投影被判成 invalid。
     popularity: popularityMetricsFromWire(raw),

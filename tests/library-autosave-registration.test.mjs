@@ -116,6 +116,28 @@ test("session HTTP failures remain visible and keep their retry classification",
   } finally { await unmount(); }
 });
 
+test("a second concurrent CAS conflict stays retryable and preserves other session fields", async () => {
+  const unmount = await mount();
+  try {
+    status = [409, 409, 409, 200];
+    const merge = latest => ({ ...latest, editor: { revisionId: "revision-confirmed" } });
+    const options = { expectedSessionId: stored.id, mergeFromLatest: merge };
+    let result;
+    await act(async () => { result = await workspace.saveSnapshot(merge(stored.snapshot), 1, options); });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 409);
+    assert.equal(workspaceSnapshotFailureRetryable(result), true);
+    assert.equal(workspace.conflict, null);
+    stored.snapshot.otherTab = "keep concurrent work";
+    stored.revision += 1;
+    await act(async () => { result = await workspace.saveSnapshot(merge(stored.snapshot), 1, options); });
+    assert.equal(result.ok, true);
+    assert.equal(stored.snapshot.otherTab, "keep concurrent work");
+    assert.equal(stored.snapshot.editor.revisionId, "revision-confirmed");
+    assert.equal(writes.length, 4);
+  } finally { await unmount(); }
+});
+
 test("a temporary failure during CAS merge remains retryable without latching a conflict", async () => {
   const unmount = await mount();
   try {
