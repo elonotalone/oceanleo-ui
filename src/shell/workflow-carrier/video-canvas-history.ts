@@ -26,11 +26,14 @@ export function shouldPreserveDirtyWorkflowGraph(input: {
       input.ownSaveRevisionId === input.sourceRevisionId);
 }
 
-/** Small immutable snapshot stack for the local workflow graph editor. */
-export class VideoCanvasGraphHistory {
-  private undoStack: VideoCanvasGraph[] = [];
-  private redoStack: VideoCanvasGraph[] = [];
-  private current: VideoCanvasGraph | null = null;
+/**
+ * Small immutable snapshot stack for the local workflow graph editor. Generic
+ * so the v2 project editor (`VideoProjectStage`) reuses the same stack.
+ */
+export class VideoCanvasGraphHistory<T = VideoCanvasGraph> {
+  private undoStack: T[] = [];
+  private redoStack: T[] = [];
+  private current: T | null = null;
 
   get canUndo(): boolean {
     return this.undoStack.length > 0;
@@ -40,13 +43,13 @@ export class VideoCanvasGraphHistory {
     return this.redoStack.length > 0;
   }
 
-  reset(graph: VideoCanvasGraph): void {
+  reset(graph: T): void {
     this.current = graph;
     this.undoStack = [];
     this.redoStack = [];
   }
 
-  record(graph: VideoCanvasGraph): void {
+  record(graph: T): void {
     if (this.current) {
       this.undoStack.push(this.current);
       if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
@@ -55,7 +58,7 @@ export class VideoCanvasGraphHistory {
     this.redoStack = [];
   }
 
-  undo(): VideoCanvasGraph | null {
+  undo(): T | null {
     const previous = this.undoStack.pop();
     if (!previous || !this.current) return null;
     this.redoStack.push(this.current);
@@ -63,7 +66,7 @@ export class VideoCanvasGraphHistory {
     return previous;
   }
 
-  redo(): VideoCanvasGraph | null {
+  redo(): T | null {
     const next = this.redoStack.pop();
     if (!next || !this.current) return null;
     this.undoStack.push(this.current);

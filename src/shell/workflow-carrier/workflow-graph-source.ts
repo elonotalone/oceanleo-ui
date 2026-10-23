@@ -9,6 +9,7 @@ import { parseVideoCanvasSource } from "./video-canvas-source";
 import { parseVideoCanvasProject } from "./video-canvas-local-session";
 import { VIDEO_CANVAS_NODE_KINDS } from "./video-canvas-schema";
 import type { VideoCanvasGraph, VideoCanvasProject } from "./video-canvas-schema";
+import { parseVideoProjectDoc, type VideoDocParse } from "./video-project-doc";
 
 const NATIVE_VIDEO_PROJECT_SCHEMA = "oceanleo.video.project.v2";
 const NATIVE_VIDEO_PROJECT_VERSION = 2;
@@ -229,13 +230,18 @@ function nativeVideoProjectGraph(value: unknown): VideoCanvasGraph | null {
   return { nodes, edges, readOnlyNativeV2: true } as VideoCanvasGraph;
 }
 
+/** v2 project items open in the editable `VideoProjectStage`, not the v1 graph stage. */
+export function isNativeVideoProjectItem(item: LibraryItem | null | undefined): boolean {
+  return Boolean(item && sourceFormatIsNativeVideo(item));
+}
+
 function sourceFormatIsNativeVideo(item: LibraryItem): boolean {
   const metaFormat = item.meta?.source_format || item.meta?.format;
   return item.artifact?.sourceFormat === NATIVE_VIDEO_PROJECT_SCHEMA ||
     metaFormat === NATIVE_VIDEO_PROJECT_SCHEMA;
 }
 
-function nativeVideoSourceUrl(item: LibraryItem): string {
+export function nativeVideoSourceUrl(item: LibraryItem): string {
   // A stale editor_project_url can still point at the pre-migration v1 body.
   // Canonical source/full renditions are authoritative for v2 reopens.
   return storedEditorProjectUrl({
@@ -349,4 +355,36 @@ export async function hydrateWorkflowGraph(
       error: `${detail}，未改用空白图画覆盖原件。`,
     };
   }
+}
+
+/**
+ * Loads the exact stored v2 project for editing. Fails closed with a sentence;
+ * never substitutes a blank or projected graph for a source it cannot read.
+ */
+export async function loadVideoProjectDoc(
+  item: LibraryItem,
+  loadText: TextLoader,
+): Promise<VideoDocParse> {
+  const url = nativeVideoSourceUrl(item);
+  if (!url) {
+    return { ok: false, error: "这份视频画布没有可读取的当前版本，未改用空白画布覆盖原件。" };
+  }
+  let text: string;
+  try {
+    text = await loadText(url);
+  } catch (caught) {
+    const detail = caught instanceof Error && caught.message.trim() ? caught.message.trim() : "视频画布读取失败";
+    return { ok: false, error: `${detail}，未改用空白画布覆盖原件。` };
+  }
+  if (!text || !String(text).trim()) {
+    return { ok: false, error: "视频画布的源文件是空的，未改用空白画布覆盖原件。" };
+  }
+  let value: unknown;
+  try {
+    const unwrapped = unwrapStoredEditorProject(text);
+    value = typeof unwrapped === "string" ? JSON.parse(unwrapped) : unwrapped;
+  } catch {
+    return { ok: false, error: "视频画布的源文件不是有效的 JSON，未改用空白画布覆盖原件。" };
+  }
+  return parseVideoProjectDoc(value);
 }
