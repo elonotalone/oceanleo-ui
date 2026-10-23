@@ -50,7 +50,6 @@ import {
   imageStageShowsSourceLoadOverlay,
 } from "../image-editor/image-source-ready";
 import { imageRouteChrome } from "../image-editor/image-editor-ui-offerings";
-import { IMAGE_EDIT_DRAFT_SCHEMA } from "../image-editor/editor-persistence";
 import { advancedRecoveryKey, deleteAdvancedRecovery } from "../advanced-recovery-store";
 
 export function ImageRoute({
@@ -497,8 +496,9 @@ export function ImageRoute({
           dirty: editor.dirty && collab.saveGate && imageAdmitted.ok,
           editRevision: editor.editRevision,
           flush: saveBeforeNewConversation,
+          // 不接草稿层（10-23 W09，同 W07 演示）：草稿层让「已保存」先于新版本出现、断网只转圈不报失败，
+          // 且每个会话写一个隐藏「…草稿」root。每次保存都直接提交版本；本机恢复走 IndexedDB。
           recovery: {
-            draftSchema: IMAGE_EDIT_DRAFT_SCHEMA,
             key: advancedRecoveryKey("image", activeItem),
             ready: imageAdmitted.ok && editor.sourceReady,
             capture: editor.captureRecovery,
@@ -508,7 +508,7 @@ export function ImageRoute({
               if (result === "unchanged") {
                 // 保存后残留的本机记录：内容已在画布上，删掉，下次打开不再「恢复」。
                 await deleteAdvancedRecovery(
-                  `${advancedRecoveryKey("image", activeItem)}:${IMAGE_EDIT_DRAFT_SCHEMA}`,
+                  advancedRecoveryKey("image", activeItem),
                 ).catch(() => undefined);
               }
               return result === "unchanged" || result === "stale" ? true : result;

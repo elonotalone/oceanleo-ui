@@ -10,3 +10,5 @@
 - [实测] d1–d3（w09-recovery-diag.mjs）：草稿层保存后 IndexedDB 留一条本机恢复记录；版本发布、关闭后仍在（`use-advanced-recovery.ts` 卸载/脏→净时的兜底写盘与删除竞速）。重开：协同房间把上一场的副本当「别人的改动」套进来，摘要 `bedywdg0:hasControls,hoverCursor;2ptwutwr:oceanleoDependency`（控制柄样式 + 过期签名，非内容）→ dirty、revision++；本机旧记录随后被恢复，和房间的套用竞速 → 偶发 DRAFT_READ_FAILED。
 - 修（W09 文件）：远端套用只比内容（`image-remote-delta.ts::collabComparableSnapshot`，同 digest 保留本机未过期签名）；恢复回调对「与画布相同」返回 unchanged（并删记录）、对「比所基于版本旧」返回 stale，都不标未保存；恢复期间只认本人编辑计数（别人的同步不算打断）。舞台加 `data-editor-dirty / -revision / -collab-tick / -remote-delta` 诊断属性。新测 image-editor-recovery-collab 5/5。
 - 每个编辑会话仍新建 1 个隐藏「[W09] sample.png草稿」root（advanced-draft.ts 走 /v1/database/upload），W08 已报，转 W04/父。
+- [实测] p2（修后，08:45Z）：重开不再报错、不再套房间副本；两次改 = rev13、rev14（rev14 由草稿层空闲发布、在 × 之后才落）；重开/刷新内容都在。但 ① 关窗后版本回执没写回会话，指针残留 → 刷新时把同一内容又发布成 rev15（无人改动）；② 断网改动 120 s 一直「保存中」，从不转「保存失败」（草稿层对可重试失败无限重试且不报 failedAttempt）。
+- 决定：ImageRoute 不再接草稿层（同 W07 c3fc5215）。每次保存直接提交版本；断网走版本 flush → failedAttempt → 「保存失败，点击重试」。本机恢复改走非草稿 IndexedDB 路径。旧测 image-route-merge #? 改为断言不接草稿层。
