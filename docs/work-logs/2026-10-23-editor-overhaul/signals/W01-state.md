@@ -18,7 +18,9 @@
 - [实测] 上一轮浏览器 `chrome.mjs` 全部 NO HEADER：`/library?item=` 只开到详情预览，需点铅笔（编辑「…」）才进编辑器。
 - 正在做：`evidence/W01/scenarios/accept.mjs`（铅笔进编辑器 → 顶栏报告 → 页签往返 → `···` 每项：分享/收藏/下载/邀请/回放 → 站点 auto+系统切暗跟随），light / dark 各一遍。
 - 素材：[W01] pdf 6334d8f0…、xlsx 39c6a3c8…、pptx fa40a165…（写操作只对这三件）；只看：游戏 53931dfb…(W15)、视频 16cfec58…(W11)、网站 6b16c807…(平台公共)。
-- 下一步：写 `verdicts/W01-delivery.md` 并提交。
+- [实测] light / dark 两档：PDF、表格、演示、游戏、视频全部通过（见 delivery §4）；`···` 反馈兜底已落（a6a24b19、e2a26735）。
+- 已交付：`verdicts/W01-delivery.md`。剩：网站一件两档（开发槽 ~09:50Z 起无响应）。槽恢复后：
+  `bash harness/mint.sh | OUT_DIR=/tmp/w01/r2-web-<t> THEME=<t> node harness/run.mjs evidence/W01/scenarios/accept.mjs website=6b16c807-da26-4fe5-be93-ef3e4c9c60ee`，结果补进 delivery §4 表。
 
 ## 正在做（06:0xZ 恢复后，已完成）
 

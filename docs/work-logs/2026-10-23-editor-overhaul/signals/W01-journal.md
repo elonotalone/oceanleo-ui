@@ -12,3 +12,4 @@
 - R2 [实测] 收藏 PUT 在开发槽上要 3–6 秒才回；之前 2.5 秒就读状态，误判为没翻。结果正确：`/v1/library/favorites` 前后对得上。
 - R2 [实测] tsc：仅 W16 video-project-doc.ts 3 错（已知）；W3-editor-chrome-library-share-favorite 11/11、editor-repair-acceptance-social 2/2、plugin-chrome-frame-host 5/5、advanced-editor-v7 9/9、advanced-adapter-contract 6/6、one-task-library-image-runtime 1/1。
 - R2 [实测] oceandino `tests/plugin-chrome-adoption.test.mjs`（只读跑）：#5 网站 accent 因 W01 删 defaultTheme、表改单行而红（改法写交付）；#8「13 件」开工前就是 11 件，非 W01。
+- R2 [实测] 两档验收：PDF/表格/演示/游戏/视频 一行、页签往返、`···` 每项（邀请弹窗、回放面板、分享剪贴板+旁注、收藏翻转+数据库行、下载拿到文件）、跟随站点（含 auto 切系统明暗不刷新）全部通过；网站因开发槽无响应未测。日志 evidence/W01/logs/。
