@@ -162,3 +162,12 @@ Agent id 名册：`signals/roster.md`（父 agent 派发后填写）。
 ## 9. 派发词（父 agent 照抄）
 
 > 你是 `<ID>`。先跑 `bash /opt/cursor-workspaces/oceandino/scripts/agent-bootstrap.sh`。完整读 `/root/projects/oceanleo-ui/docs/work-logs/2026-10-23-editor-overhaul/_COMMON.md`、`00-dispatch.md`、`tasks/<ID>.md`，然后按它们干活。红线在 `_COMMON.md` §2，违反即本份活作废。立刻开工，不要静默等待。做完写 `verdicts/<ID>-delivery.md`（验收位写 `-verdict.md`）并限定路径提交，不 push；最后回一段简短总结和交付文件路径。
+
+## §4 增补 A-1（父 agent 仲裁，2026-10-23 05:30Z，源自 `signals/W09-to-W03.md`）
+
+面板型规范项（`position`、`stroke`、`border`、`adjust`，以及其它「点开是一组子控件」的规范项）一律这样表达：
+- 编辑器发出子控件，带 `slot: "inspector"` 与 `inspectorGroup: <规范 id>`，**不再**另发一个同名的 `kind: "panel"` 控件。
+- 外壳（W03）把 `inspectorGroup` 等于规范 id 的合成面板控件当作该规范 id：图标、标签、顺序由投影出；`panelId` 仍是 `selection-inspector-<id>`。
+- 面板里的子控件 id（`stroke-color`、`border-width`、`position-x`、`brightness` 等）不是顶层规范项，投影不得把它们拉成顶层按钮。
+- 选择类规范项的取值：`arrange` = `front|forward|backward|back`，`list` = `none|bullet|ordered`，`align` = `left|center|right|justify`，`font-family` 的 `value` 为当前字体名。
+- 特有控件不带规范图标；必要时只显示文字（例：图片裁剪态的「应用 / 取消 / 比例」）。
