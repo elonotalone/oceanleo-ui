@@ -19,6 +19,8 @@ const SOURCE = {
   fromSellers: "卖家在售",
   // 种类名（操作员 2026-10-23 拍板）；与基础词典的英文一致。
   websiteSoftwareService: "网站与软件服务",
+  // 来源「我上传的」没登录时的提示（原来写「你这一类的成品」，来源改名后跟着改）。
+  signInUploads: "登录后查看你上传的这一类文件。",
 } as const;
 
 export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
@@ -28,6 +30,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "My uploads",
     fromSellers: "From sellers",
     websiteSoftwareService: "Website & software service",
+    signInUploads: "Log in to view the files of this type you uploaded.",
   },
   de: {
     allSites: "Alle Sites",
@@ -35,6 +38,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Meine Uploads",
     fromSellers: "Von Verkäufern",
     websiteSoftwareService: "Website- und Softwareservice",
+    signInUploads: "Melde dich an, um die Dateien dieses Typs zu sehen, die du hochgeladen hast.",
   },
   es: {
     allSites: "Todos los sitios",
@@ -42,6 +46,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Mis subidas",
     fromSellers: "De vendedores",
     websiteSoftwareService: "Servicio de sitios web y software",
+    signInUploads: "Inicia sesión para ver los archivos de este tipo que has subido.",
   },
   "es-419": {
     allSites: "Todos los sitios",
@@ -49,6 +54,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Mis cargas",
     fromSellers: "De vendedores",
     websiteSoftwareService: "Servicio de sitios web y software",
+    signInUploads: "Inicia sesión para ver los archivos de este tipo que subiste.",
   },
   fr: {
     allSites: "Tous les sites",
@@ -56,6 +62,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Mes imports",
     fromSellers: "Des vendeurs",
     websiteSoftwareService: "Service de sites web et de logiciels",
+    signInUploads: "Connectez-vous pour voir les fichiers de ce type que vous avez importés.",
   },
   it: {
     allSites: "Tutti i siti",
@@ -63,6 +70,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "I miei caricamenti",
     fromSellers: "Dai venditori",
     websiteSoftwareService: "Servizio di siti web e software",
+    signInUploads: "Accedi per vedere i file di questo tipo che hai caricato.",
   },
   "pt-BR": {
     allSites: "Todos os sites",
@@ -70,6 +78,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Meus uploads",
     fromSellers: "De vendedores",
     websiteSoftwareService: "Serviço de sites e software",
+    signInUploads: "Entre para ver os arquivos deste tipo que você enviou.",
   },
   "pt-PT": {
     allSites: "Todos os sites",
@@ -77,6 +86,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Os meus carregamentos",
     fromSellers: "De vendedores",
     websiteSoftwareService: "Serviço de sites e software",
+    signInUploads: "Inicie sessão para ver os ficheiros deste tipo que carregou.",
   },
   vi: {
     allSites: "Tất cả trang",
@@ -84,6 +94,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Tệp tôi tải lên",
     fromSellers: "Từ người bán",
     websiteSoftwareService: "Dịch vụ website và phần mềm",
+    signInUploads: "Đăng nhập để xem các tệp loại này mà bạn đã tải lên.",
   },
   tr: {
     allSites: "Tüm siteler",
@@ -91,6 +102,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "Yüklediklerim",
     fromSellers: "Satıcılardan",
     websiteSoftwareService: "Web sitesi ve yazılım hizmeti",
+    signInUploads: "Yüklediğiniz bu türdeki dosyaları görmek için giriş yapın.",
   },
   "zh-TW": {
     allSites: "全部站點",
@@ -98,6 +110,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "我上傳的",
     fromSellers: "賣家在售",
     websiteSoftwareService: "網站與軟體服務",
+    signInUploads: "登入後查看你上傳的這一類檔案。",
   },
   ja: {
     allSites: "すべてのサイト",
@@ -105,6 +118,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "自分のアップロード",
     fromSellers: "出品者から",
     websiteSoftwareService: "ウェブサイト・ソフトウェアサービス",
+    signInUploads: "ログインすると、このタイプでアップロードしたファイルを表示できます。",
   },
   ko: {
     allSites: "모든 사이트",
@@ -112,6 +126,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "내가 업로드한 파일",
     fromSellers: "판매자 제공",
     websiteSoftwareService: "웹사이트 및 소프트웨어 서비스",
+    signInUploads: "로그인하여 이 유형으로 업로드한 파일을 확인하세요.",
   },
   ar: {
     allSites: "جميع المواقع",
@@ -119,6 +134,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "ما رفعته",
     fromSellers: "من البائعين",
     websiteSoftwareService: "خدمة المواقع والبرمجيات",
+    signInUploads: "سجّل الدخول لعرض الملفات التي رفعتها من هذا النوع.",
   },
   th: {
     allSites: "ทุกไซต์",
@@ -126,6 +142,7 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "ที่ฉันอัปโหลด",
     fromSellers: "จากผู้ขาย",
     websiteSoftwareService: "บริการเว็บไซต์และซอฟต์แวร์",
+    signInUploads: "เข้าสู่ระบบเพื่อดูไฟล์ประเภทนี้ที่คุณอัปโหลด",
   },
   hi: {
     allSites: "सभी साइट",
@@ -133,5 +150,6 @@ export const LBP_W02_MESSAGES = assembleCopy(SOURCE, {
     myUploads: "मेरे अपलोड",
     fromSellers: "विक्रेताओं से",
     websiteSoftwareService: "वेबसाइट और सॉफ़्टवेयर सेवा",
+    signInUploads: "आपके द्वारा अपलोड की गई इस प्रकार की फ़ाइलें देखने के लिए लॉग इन करें।",
   },
 });

@@ -799,7 +799,7 @@ export function BayAssetLibrary({
       ) : zone === "mine" ? (
         <div className="mt-5" data-bay-asset-mine>
           {mineGrid?.unauthenticated || !signedIn ? (
-            <BaySignInPrompt text={tt("登录后查看你这一类的成品。")} />
+            <BaySignInPrompt text={tt("登录后查看你上传的这一类文件。")} />
           ) : mineGrid?.error ? (
             <div className="flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-asset-error>
               <p className="text-[13px] text-neutral-500">{tt(mineGrid.error)}</p>
