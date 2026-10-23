@@ -10,6 +10,10 @@ const revision = (page) =>
 
 export default async function ({ page, log, shot, helpers, args, outDir }) {
   const id = args[0];
+  page.on("response", async (response) => {
+    if (response.status() < 400 || !/\/v1\//.test(response.url())) return;
+    log("HTTP", response.status(), response.request().method(), response.url().replace(/\?.*$/, "").slice(0, 120), (await response.text().catch(() => "")).slice(0, 300));
+  });
   await openPdf(page, helpers, log, id);
   await firstPage(page);
   const instance = await page.locator("[data-pdf-viewer-instance]").getAttribute("data-pdf-viewer-instance");
@@ -100,7 +104,7 @@ export default async function ({ page, log, shot, helpers, args, outDir }) {
       await tool(page, "pdf-tool-signature");
       await page.waitForTimeout(500);
       await page.getByRole("tab", { name: /^(打字|Type)$/ }).first().click();
-      await page.locator("input").last().fill("Zhang San");
+      await page.getByPlaceholder(/Type your name|输入/).first().fill("Zhang San");
       await page.getByRole("button", { name: /存下并放到页面|Save and place/ }).first().click();
       await page.waitForTimeout(1500);
       await page.keyboard.press("Escape");
@@ -117,7 +121,12 @@ export default async function ({ page, log, shot, helpers, args, outDir }) {
       await input.press("Escape");
     });
     // selection bar: select the highlight, read the bar, change opacity via keyboard-free path: delete the note instead
-    await step("select highlight → bar shows its properties", async () => {
+    await step("select ✓ → bar shows its properties", async () => {
+      await page.mouse.click(...at(77, 191));
+      await page.waitForTimeout(800);
+      log("editbar check selected", JSON.stringify(await editBar(page)));
+      await shot("p4a-selected-check");
+      await page.keyboard.press("Escape");
       await page.mouse.click(...at(150, 221));
       await page.waitForTimeout(800);
       log("editbar highlight selected", JSON.stringify(await editBar(page)));
@@ -199,11 +208,13 @@ export default async function ({ page, log, shot, helpers, args, outDir }) {
   try {
     await page.locator("button[aria-label*='More'], button[aria-label*='更多']").first().click();
     await page.waitForTimeout(500);
-    await page.getByRole("menuitem", { name: /^(Download|下载)/ }).first().hover();
-    await page.waitForTimeout(500);
+    const menu = page.getByRole("menuitem", { name: /^(Download|下载)/ }).first();
+    await menu.hover();
+    await menu.click().catch(() => {});
+    await page.waitForTimeout(800);
     const [download] = await Promise.all([
-      page.waitForEvent("download", { timeout: 20000 }),
-      page.getByText(/Download PDF|直接下载 PDF/).first().click(),
+      page.waitForEvent("download", { timeout: 30000 }),
+      page.getByRole("menuitem", { name: /PDF/ }).last().click(),
     ]);
     const file = path.join(outDir, "download.pdf");
     await download.saveAs(file);

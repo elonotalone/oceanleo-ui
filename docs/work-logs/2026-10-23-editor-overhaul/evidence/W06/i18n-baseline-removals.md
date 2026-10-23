@@ -1,12 +1,17 @@
 # W06：请父 agent 从 tests/i18n-tt-key-coverage.test.mjs 的 PRE_EXISTING_GAPS 删掉的条目
 
-## 已补译文（闸 9）
+## 已补译文（闸 9；R2 09:2xZ 重跑闸核对，均在 editor-overhaul-copy-w06.ts）
 - PDF 批注
+- PDF 本地草稿恢复失败（R2 草稿恢复失败重新照实报，调用点回来了并已补译文）
+- 文字颜色
+- 跳到第 {page} 页
+- 顺时针旋转 90°
+- 颜色
+- 高亮
 
 ## 调用点随旧 PDF 内核删除（闸 10，56 条，按删除前源码核对）
 - PDF 处理失败
 - PDF 批注读取失败
-- PDF 本地草稿恢复失败
 - PDF 第 {page} 页
 - PDF 页面渲染失败
 - PDF 预览引擎加载失败

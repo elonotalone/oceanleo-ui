@@ -21,7 +21,22 @@ export async function openPdf(page, helpers, log, id) {
     const p = [...document.querySelectorAll("[data-pdf-stage] [role=status]")];
     return p.length === 0;
   }, null, { timeout: 90000 });
-  await page.waitForTimeout(3000);
+  // The viewer is ready when the bar's tools are enabled. On a busy dev slot PDFium can take
+  // longer than the 15 s hint; the stage then offers "Reload" — press it once after 45 s.
+  const readySince = Date.now();
+  let reloaded = false;
+  for (;;) {
+    const enabled = await page.locator('[data-workspace-action-id="pdf-tool-highlight"]:not([disabled])').count().catch(() => 0);
+    if (enabled) break;
+    if (!reloaded && Date.now() - readySince > 45000 && (await page.locator("[data-pdf-init-slow] button").count())) {
+      log("viewer slow: pressing Reload");
+      await page.locator("[data-pdf-init-slow] button").click();
+      reloaded = true;
+    }
+    if (Date.now() - readySince > 150000) throw new Error("PDF viewer never became ready");
+    await page.waitForTimeout(1000);
+  }
+  await page.waitForTimeout(1500);
   if (!(await page.locator("[data-pdf-stage]").count())) throw new Error("PDF stage unmounted after ready");
   log("pdf editor ready after", Math.round((Date.now() - t0) / 1000), "s", page.url());
 }
