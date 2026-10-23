@@ -231,3 +231,19 @@ test("artifactRevision.metadata reaches the commit with only well-formed keys", 
   );
   assert.deepEqual(state.commits[0].metadata, { text_excerpt: "第一行\n第二行" });
 });
+
+test("a failed save attempt is shown as 保存失败, never as saving forever or saved", async () => {
+  const { advancedAutoSaveDisplayState, advancedFlushFailureVisible } = await import(
+    "../src/shell/advanced-autosave-display.ts"
+  );
+  const failed = { ok: false, error: "保存失败：「上传交付文件」这一步没有完成 —— 网络不通", status: 0 };
+  assert.equal(advancedFlushFailureVisible(failed), true);
+  assert.equal(advancedFlushFailureVisible({ ok: false }), true, "a bare refusal is still a failure");
+  assert.equal(advancedFlushFailureVisible({ ok: true }), false);
+  // Controller still retrying in the background → top bar says error, with retry.
+  assert.equal(advancedAutoSaveDisplayState({ state: "saving", failedAttempt: true, restorationPaused: false }), "error");
+  // Only the server-confirmed transition clears it.
+  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: true, restorationPaused: false }), "saved");
+  assert.equal(advancedAutoSaveDisplayState({ state: "saving", failedAttempt: false, restorationPaused: false }), "saving");
+  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: false, restorationError: "草稿读取失败", restorationPaused: false }), "error");
+});

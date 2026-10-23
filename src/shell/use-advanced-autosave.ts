@@ -21,7 +21,14 @@ import {
 } from "./user-edit-session";
 import type { AdvancedEditorDraftAdapter, AdvancedEditorRecoveryAdapter } from "./advanced-editor-adapter";
 import { uploadAdvancedDraft, type AdvancedDraftPointer } from "./advanced-draft";
-import { mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
+import {
+  AUTOSAVE_ERROR_NETWORK,
+  mapAutosaveErrorMessage,
+} from "../lib/auth/autosave-error-message";
+import {
+  advancedAutoSaveDisplayState,
+  advancedFlushFailureVisible,
+} from "./advanced-autosave-display";
 import type {
   AdvancedFlushResult,
   AdvancedSessionActions,
@@ -35,16 +42,23 @@ import {
 import type { LibraryItem } from "./library-data";
 import { noteAdvancedSaveSucceeded } from "./use-advanced-recovery";
 
-export type AdvancedAutoSaveState = "saved" | "saving" | "error";
+export type { AdvancedAutoSaveState } from "./advanced-autosave-display";
+import type { AdvancedAutoSaveState } from "./advanced-autosave-display";
 export { mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
 
 function withErrorMessage(result: AdvancedFlushResult): AdvancedFlushResult {
   if (result.ok) return result;
+  // Offline is named as such, whatever wording the failing step used.
+  const offline =
+    typeof navigator !== "undefined" && navigator.onLine === false;
   return {
     ...result,
-    errorMessage: mapAutosaveErrorMessage(result),
+    errorMessage: offline
+      ? AUTOSAVE_ERROR_NETWORK
+      : mapAutosaveErrorMessage(result),
   };
 }
+
 
 function sameRevision(
   left: AdvancedEditRevision | undefined,
@@ -258,6 +272,7 @@ export function useAdvancedAutoSave({
   if (!ledgerRef.current) ledgerRef.current = new RevisionFlushLedger();
   const [state, setState] = useState<AdvancedAutoSaveState>("saved");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [failedAttempt, setFailedAttempt] = useState(false);
   flushRef.current = flush;
   sessionRef.current = session;
   latestRevisionRef.current = revision;
@@ -296,6 +311,7 @@ export function useAdvancedAutoSave({
     const next = withErrorMessage(result);
     if (mountedRef.current && sourceLifetime.current) {
       setErrorMessage(next.ok ? undefined : next.errorMessage);
+      setFailedAttempt(advancedFlushFailureVisible(next));
     }
     return next;
   }, [sourceLifetime]);
@@ -415,7 +431,10 @@ export function useAdvancedAutoSave({
         onStateChange: (next) => {
           if (!mountedRef.current || !sourceLifetime.current) return;
           setState(next);
-          if (next === "saved") setErrorMessage(undefined);
+          if (next === "saved") {
+            setErrorMessage(undefined);
+            setFailedAttempt(false);
+          }
         },
       });
     },
@@ -563,6 +582,7 @@ export function useAdvancedAutoSave({
     return () => window.removeEventListener("pagehide", onPageHide);
   }, [draftEnabled, flushLatest]);
 
-  return { state: restoration.error ? "error" as const : restoration.paused ? "saving" as const : state,
+  return { state: advancedAutoSaveDisplayState({ state, failedAttempt,
+      restorationError: restoration.error, restorationPaused: restoration.paused }),
     errorMessage: restoration.error || errorMessage, flushLatest, retry, handOffToBackground };
 }

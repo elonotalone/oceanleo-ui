@@ -21,6 +21,7 @@ token = sys.stdin.read().strip()
 artifact_id = sys.argv[1]
 fixed = "--fixed" in sys.argv
 private = "--private" in sys.argv
+staged = "--stage" in sys.argv
 
 
 def call(method, path, body=None, headers=None, raw=None, content_type=None):
@@ -50,7 +51,8 @@ def upload(name, payload, endpoint="upload"):
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode())
     parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{name}"\r\nContent-Type: application/pdf\r\n\r\n'.encode() + payload + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode())
-    return call("POST", f"/v1/database/{endpoint}", raw=b"".join(parts),
+    path = f"/v1/artifacts/{artifact_id}/staging" if endpoint == "stage" else f"/v1/database/{endpoint}"
+    return call("POST", path, raw=b"".join(parts),
                 content_type=f"multipart/form-data; boundary={boundary}")
 
 
@@ -63,7 +65,7 @@ pdf = urllib.request.urlopen(urllib.request.Request(source_url if source_url.sta
 for attempt in range(1, 4):
     payload = pdf + f"\n%W04 repro edit {uuid.uuid4().hex}\n".encode()
     digest = hashlib.sha256(payload).hexdigest()
-    up_status, up = upload("[W04] sample-编辑版.pdf", payload, "private-upload" if private else "upload")
+    up_status, up = upload("[W04] sample-编辑版.pdf", payload, "stage" if staged else "private-upload" if private else "upload")
     file = up.get("file") or {}
     locator = {"blob_id": file["blob_id"]} if file.get("blob_id") else {"url": file.get("url")}
     print(f"save {attempt}: upload {up_status} hidden_root={file.get('artifact_id') or '-'} blob={'yes' if file.get('blob_id') else 'no'}")
