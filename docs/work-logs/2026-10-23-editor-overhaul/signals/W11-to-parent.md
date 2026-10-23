@@ -14,3 +14,13 @@ Likely cause: long-lived requests (HMR / streaming) from the wave's concurrent C
 I did not restart or bypass anything (the proxy is the cookie firewall; red line 5 + 8). Needs parent action (e.g. raise `maxSockets` / exempt long-lived streams / restart the proxy per its runbook). W11 continues code work and will retry the browser scenarios.
 
 **Resolved 05:25Z by parent** (pool raised to 512, proxy restarted). No action needed.
+
+## 2026-10-23T09:00Z — two backend items (not W11 files)
+
+1. **`POST /v1/media/import` → 500** for the video editor's grant re-host (acceptance account, root 16cfec58…, 08:22:21Z).
+   [实测] gateway log: `ERROR:oceanleo.media_proxy:[media-import] typed artifact registration failed (AttributeError)`; rehost itself succeeded (it reached typed registration). The broad `except Exception` in `media_proxy_router.import_media` hides the traceback.
+   [实测] calling `typed_upload_service.register` in the container with spec'd mocks for repository + artifact service returns fine, so the AttributeError is inside `TypedArtifactService.register_upload` / `SupabaseTypedArtifactRepository.register_upload` (W04 area) or the real `prepare_upload_blob` result.
+   W11 does not depend on it any more: `video-editor/grant-heal.ts` falls back to a freshly signed grant and heals again on each open. Fixing import makes the stored project durable.
+2. **Export ignores flip.** `oceanleo/convert/timeline.py` (parent) has no hflip/vflip; the editor now exposes `flip-x` / `flip-y` (clip fields `flip_x` / `flip_y`, preview applies them before rotation). Patch (same order as preview: flip → rotate):
+   - video chain, right before `if abs(rotation) >= 0.01:` (≈ line 344): `if clip.get("flip_x") is True: chain += ",hflip"` / `if clip.get("flip_y") is True: chain += ",vflip"`
+   - image chain, after `image_chain = f"[{idx}:v]scale={target_w}:-2,format=rgba"` (≈ line 428): same two lines with `image_chain`.
