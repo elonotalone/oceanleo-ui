@@ -208,6 +208,7 @@ export function usePdfWorkbench(
         const before = await bridge.exportBytes();
         const after = await transform(before);
         await bridge.replaceDocument(after, page);
+        setPageCount(bridge.pages().length);
         undoOps.current.push({ before, after, page });
         redoOps.current = [];
         bump();
@@ -252,6 +253,7 @@ export function usePdfWorkbench(
       setProcessing(true);
       try {
         await bridge.replaceDocument(bytes, page);
+        setPageCount(bridge.pages().length);
         bump();
       } catch (caught) {
         setError(pdfErrorMessage(caught, tt("撤销没有成功")));

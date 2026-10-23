@@ -25,3 +25,6 @@
 - R2 [实测] 409 来自 `PUT /v1/agent/sessions/<id>/snapshot`（session revision conflict，非 PDF 保存）；PDF revisions POST 全部成功（r2-save-stress 6 轮）。CJK 加文字保存 → 已保存（r2-text-save 李四，2 个新 revision）。
 - R2 [实测] 加文字默认红字 +「Insert text」占位（上游默认）→ 改默认黑字、空内容（填表用）。
 - R2 W02-to-W06：adapter 加 materialTypes ["image"] + withEditorHistoryCommand（插入走查看器自己的撤销历史）。
+- R2 09:1xZ [实测] 页面栏旋转/排序/删页全部失败：`openDocumentBuffer` 在 2.15 返回 Task<{documentId, task}>（旧码当成直接对象 → `reading 'toPromise'`）。修后 r2-rail：旋转 rev0→1、拖 p3→p1 rev→2、删 p2 页数 3→2、顶栏撤销 → 3 页回来，保存 → 已保存。
+- R2 [实测] 删页那一拍缩略图还在画旧第 3 页，引擎同步抛「Page 2 not found」→ 错误边界打崩编辑器。修：bridge.renderThumb 越界/同步抛一律转被拒 promise；Thumb effect 包 Promise.resolve；换文档后立刻同步页数。回归测试已加。
+- R2 [实测] 下载（··· → Download → Download PDF）14 KB，pypdf（非 pdfjs）读：p2 有 14 条标准批注（/Highlight /Ink /Underline /StrikeOut /FreeText「Zhang San 张三」/Text），页序 p3,p1,p2，p3 /Rotate 180。证据 /tmp/w06-dl/download.pdf。

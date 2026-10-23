@@ -57,7 +57,8 @@ function Thumb({
     if (!visible) return undefined;
     let alive = true;
     let objectUrl = "";
-    renderThumb(pageIndex)
+    Promise.resolve()
+      .then(() => renderThumb(pageIndex))
       .then((blob) => {
         if (!alive) return;
         objectUrl = URL.createObjectURL(blob);

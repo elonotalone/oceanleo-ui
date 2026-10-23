@@ -303,6 +303,8 @@ export function PdfRoute({
             data-pdf-revision={editor.editRevision}
             data-pdf-may-write={collab.mayWrite ? "true" : "false"}
             data-pdf-collab={collab.room?.status ?? "none"}
+            data-pdf-processing={editor.processing ? "true" : "false"}
+            data-pdf-error={editor.error || undefined}
             className="flex h-full min-h-0 bg-[var(--awb-stage-bg)]"
           >
             {chrome === "basic" && bridge ? (

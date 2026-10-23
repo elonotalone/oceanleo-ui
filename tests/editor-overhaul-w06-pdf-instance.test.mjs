@@ -114,7 +114,7 @@ function fakeRegistry() {
       getActiveDocument: () => ({ pages: [{ index: 0, size: { width: 600, height: 800 }, rotation: 0 }] }),
       openDocumentBuffer: () => {
         calls.push(["openDocumentBuffer"]);
-        return { documentId: "doc-2", task: task(undefined) };
+        return task({ documentId: "doc-2", task: task(undefined) });
       },
       closeDocument: () => {
         calls.push(["closeDocument"]);

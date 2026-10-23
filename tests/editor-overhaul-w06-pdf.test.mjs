@@ -109,7 +109,7 @@ export function fakeViewerRegistry({ pages = 3 } = {}) {
       openDocumentBuffer: (options) => {
         const documentId = `doc-${++seq}`;
         calls.push(["openDocumentBuffer", documentId, options.autoActivate, options.buffer.byteLength]);
-        return { documentId, task: task(undefined) };
+        return task({ documentId, task: task(undefined) });
       },
       closeDocument: (id) => {
         calls.push(["closeDocument", id]);
@@ -234,6 +234,16 @@ test("page edits swap bytes inside the same viewer: load in background, activate
   // 新文档也是基础档的样子，页码回到原来那页。
   assert.ok(named(fake.calls, "closeToolbarSlot").every((call) => call[1] === "doc-2"));
   assert.deepEqual(named(fake.calls, "scrollToPage").at(-1)[1], { pageNumber: 2, behavior: "instant" });
+});
+
+test("thumbnails of pages that no longer exist reject instead of throwing into React", async () => {
+  const fake = fakeViewerRegistry({ pages: 2 });
+  const bridge = createPdfViewerBridge(fake.registry, "a.pdf");
+  // 删页那一拍：栏里还画着第 3 页。旧码同步抛，打崩整个编辑器（浏览器实测）。
+  const stale = bridge.renderThumb(2, 1);
+  assert.ok(stale instanceof Promise);
+  await assert.rejects(stale, /不在文档里/);
+  assert.ok((await bridge.renderThumb(1, 1)) instanceof Blob);
 });
 
 test("exported bytes include annotations: pending edits are committed before saveAsCopy", async () => {

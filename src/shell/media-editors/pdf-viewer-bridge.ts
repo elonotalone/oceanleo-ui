@@ -119,11 +119,12 @@ interface DocsCap {
   getActiveDocument(): {
     pages: { index: number; size: { width: number; height: number }; rotation: number }[];
   } | null;
+  /** 2.15：外层 Task 给出 documentId，内层 task 才是文档真正载好。 */
   openDocumentBuffer(options: {
     buffer: ArrayBuffer;
     name: string;
     autoActivate?: boolean;
-  }): { documentId: string; task: TaskLike<unknown> };
+  }): TaskLike<{ documentId: string; task: TaskLike<unknown> }>;
   closeDocument(id: string): TaskLike<void>;
   setActiveDocument(id: string): void;
   onDocumentOpened: Hook<{ id: string }>;
@@ -360,7 +361,9 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     async replaceDocument(bytes: Uint8Array, keepPage?: number) {
       if (!docs) throw new Error("查看器没有文档管理能力。");
       const previous = doc();
-      const opened = docs.openDocumentBuffer({ buffer: bytesBuffer(bytes), name, autoActivate: false });
+      const opened = await docs
+        .openDocumentBuffer({ buffer: bytesBuffer(bytes), name, autoActivate: false })
+        .toPromise();
       await opened.task.toPromise();
       docs.setActiveDocument(opened.documentId);
       applyChrome();
@@ -413,7 +416,16 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     renderThumb(pageIndex: number, dpr: number): Promise<Blob> {
       const id = doc();
       if (!id || !thumbs) return Promise.reject(new Error("没有缩略图能力。"));
-      return thumbs.forDocument(id).renderThumb(pageIndex, dpr).toPromise();
+      // 换文档（删页 / 撤销）的那一拍，旧页号可能已不在新文档里：引擎会同步抛，
+      // 一律转成被拒的 promise，不许冒到 React 的 effect 里把编辑器打崩。
+      if (pageIndex < 0 || pageIndex >= pages().length) {
+        return Promise.reject(new Error("这一页已经不在文档里。"));
+      }
+      try {
+        return thumbs.forDocument(id).renderThumb(pageIndex, dpr).toPromise();
+      } catch (caught) {
+        return Promise.reject(caught);
+      }
     },
 
     /**

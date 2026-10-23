@@ -3,7 +3,7 @@
 // Writes `<OUT_DIR>/download.pdf` (the editor's own download) for an outside-reader check.
 import fs from "node:fs";
 import path from "node:path";
-import { openPdf, pageBox, tool, editBar, saveTrace, viewerChrome } from "./_w06-lib.mjs";
+import { openPdf, pageBox, tool, editBar, saveTrace, viewerChrome, firstPage } from "./_w06-lib.mjs";
 
 const revision = (page) =>
   page.evaluate(() => Number(document.querySelector("[data-pdf-revision]")?.getAttribute("data-pdf-revision") || -1));
@@ -11,6 +11,7 @@ const revision = (page) =>
 export default async function ({ page, log, shot, helpers, args, outDir }) {
   const id = args[0];
   await openPdf(page, helpers, log, id);
+  await firstPage(page);
   const instance = await page.locator("[data-pdf-viewer-instance]").getAttribute("data-pdf-viewer-instance");
   log("instance", instance, "editbar", JSON.stringify(await editBar(page)));
   let box = await pageBox(page, 0);
@@ -98,7 +99,7 @@ export default async function ({ page, log, shot, helpers, args, outDir }) {
     await step("signature (typed, saved, placed)", async () => {
       await tool(page, "pdf-tool-signature");
       await page.waitForTimeout(500);
-      await page.getByRole("button", { name: /^(打字|Type)$/ }).first().click();
+      await page.getByRole("tab", { name: /^(打字|Type)$/ }).first().click();
       await page.locator("input").last().fill("Zhang San");
       await page.getByRole("button", { name: /存下并放到页面|Save and place/ }).first().click();
       await page.waitForTimeout(1500);
@@ -133,18 +134,19 @@ export default async function ({ page, log, shot, helpers, args, outDir }) {
       await page.waitForTimeout(800);
     });
     await step("undo (top bar)", async () => {
-      await page.locator("button[aria-label='Undo'], button[aria-label='撤销']").first().click();
+      await page.locator("[data-global-history-undo]").first().click();
       await page.waitForTimeout(1200);
     });
     await shot("p5-after-undo");
     await step("redo (top bar)", async () => {
-      await page.locator("button[aria-label='Redo'], button[aria-label='重做']").first().click();
+      await page.locator("[data-global-history-redo]").first().click();
       await page.waitForTimeout(1200);
     });
     log("save#3", await saveTrace(page, helpers, log, "after all tools"));
 
     // page rail: rotate page 2, move page 3 before page 1, delete page 2, undo the delete
     const thumb = (n) => page.locator(`[data-pdf-page-thumb="${n}"]`);
+    const stageError = () => page.evaluate(() => document.querySelector("[data-pdf-revision]") ? "" : "STAGE GONE " + location.href);
     await step("rail rotate p2", async () => {
       await thumb(2).hover();
       await page.locator('[data-pdf-page-rotate="2"]').click();
@@ -160,12 +162,12 @@ export default async function ({ page, log, shot, helpers, args, outDir }) {
       await page.locator('[data-pdf-page-delete="2"]').click();
       await page.waitForTimeout(2500);
     });
-    log("pages after delete", await page.locator("[data-pdf-page-thumb]").count());
+    log("pages after delete", await page.locator("[data-pdf-page-thumb]").count(), await stageError());
     await step("undo the delete", async () => {
-      await page.locator("button[aria-label='Undo'], button[aria-label='撤销']").first().click();
+      await page.locator("[data-global-history-undo]").first().click();
       await page.waitForTimeout(2500);
     });
-    log("pages after undo", await page.locator("[data-pdf-page-thumb]").count());
+    log("pages after undo", await page.locator("[data-pdf-page-thumb]").count(), await stageError());
     await shot("p7-rail-undo");
     log("save#4", await saveTrace(page, helpers, log, "after page rail"));
   }
