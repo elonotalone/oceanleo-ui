@@ -54,7 +54,7 @@ def upload(name, payload, endpoint="upload"):
                 content_type=f"multipart/form-data; boundary={boundary}")
 
 
-status, current = call("GET", f"/v1/artifacts/{artifact_id}")
+status, current = call("GET", f"/v1/library/items/{artifact_id}")
 base = current.get("revisionId")
 opened = base
 print("opened revision", base, "status", status)
