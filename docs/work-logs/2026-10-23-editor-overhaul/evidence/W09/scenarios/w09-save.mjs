@@ -32,7 +32,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     const request = response.request();
     const url = response.url();
     if (request.method() === "GET") return;
-    if (!/\/v1\/(artifacts|database\/upload|creations|editor-drafts|drafts)/.test(url)) return;
+    if (!/\/v1\/|\/rest\/v1\//.test(url) || /agent_tasks|notifications|presence|heartbeat/.test(url)) return;
     log("net", stamp(), request.method(), url.replace(/^https?:\/\/[^/]+/, "").slice(0, 140), response.status());
   });
   page.on("requestfailed", (request) => {
@@ -84,7 +84,10 @@ export default async function ({ page, context, log, shot, helpers, args }) {
         await preview.click().catch(() => {});
         await page.waitForTimeout(5000);
       }
-      const edit = page.locator("button, a").filter({ hasText: /^(编辑|Edit)$/ }).first();
+      const edit = page
+        .locator('button[aria-label^="编辑"], button[aria-label^="Edit"], button[title="编辑"], button[title="Edit"], [data-artifact-action="edit"]')
+        .or(page.locator("button, a").filter({ hasText: /^(编辑|Edit)$/ }))
+        .first();
       if (await edit.count()) {
         await edit.click().catch(() => {});
         log("clicked Edit");
@@ -213,6 +216,16 @@ export default async function ({ page, context, log, shot, helpers, args }) {
 
   // 3. full reload
   await page.reload({ waitUntil: "domcontentloaded" });
+  log("settled", "reload", await settle());
+  if (!(await page.locator("[data-editor-loading]").count())) {
+    const edit = page
+      .locator('button[aria-label^="编辑"], button[aria-label^="Edit"], button[title="编辑"], button[title="Edit"], [data-artifact-action="edit"]')
+      .first();
+    if (await edit.count()) {
+      await edit.click().catch(() => {});
+      log("clicked Edit after reload");
+    }
+  }
   await page.waitForFunction(
     () => document.querySelector("[data-editor-loading]")?.getAttribute("data-editor-loading") === "false",
     null,
