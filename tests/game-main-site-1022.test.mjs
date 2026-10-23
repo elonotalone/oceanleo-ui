@@ -599,6 +599,28 @@ test("W15 reopen only resumes an explicitly job-aware runner and aborts polling 
   route.registerGameIterationRunner(null);
 });
 
+test("W15 late host registration wakes a mounted editor without generating", async () => {
+  resetGlobals();
+  route.registerGameIterationRunner(null);
+  const mounted = await mountRoute(gameItem({ artifactId: "art-late-host" }));
+  const calls = [];
+  const runner = async request => { calls.push(request); return { ok: false, idle: true, error: "" }; };
+  runner.supportsResume = true;
+  try {
+    await settle();
+    assert.equal(calls.length, 0);
+    await act(async () => { route.registerGameIterationRunner(runner); });
+    await settle();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].resume, true);
+    assert.equal(globalThis.__forks.length, 0);
+    assert.equal(globalThis.__commits.length, 0);
+  } finally {
+    await mounted.unmount();
+    route.registerGameIterationRunner(null);
+  }
+});
+
 async function iterateOnce(container, prompt) {
   await type(q(container, "#game-prompt"), window.HTMLTextAreaElement.prototype, prompt);
   await click(byText(container, "button", "迭代这一版"));

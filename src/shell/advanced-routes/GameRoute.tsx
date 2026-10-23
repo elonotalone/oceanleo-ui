@@ -53,6 +53,8 @@ import {
   gamePagesAdapter,
   useGamePages,
 } from "../game-editor/game-pages";
+import { useGameIterationRunner } from "../game-editor/game-iteration-runner";
+export { registerGameIterationRunner } from "../game-editor/game-iteration-runner";
 import { gameSourceAdmission } from "./non-richdoc-source-gate";
 import { GamePlayPanel } from "../game-editor/GamePlayPanel";
 
@@ -218,13 +220,6 @@ export type GameIterationRunner = ((
   request: GameIterationRequest,
 ) => Promise<GameIterationResult>) & { supportsResume?: boolean };
 
-let gameIterationRunner: GameIterationRunner | null = null;
-
-export function registerGameIterationRunner(
-  runner: GameIterationRunner | null,
-): void {
-  gameIterationRunner = runner;
-}
 
 // ── Route ──────────────────────────────────────────────────────────────────
 
@@ -314,6 +309,7 @@ function GameLegacyRoute({
   pages?: AdvancedEditorPagesAdapter;
 }) {
   const session = useAdvancedSession();
+  const gameIterationRunner = useGameIterationRunner();
   const tt = useUI();
   const [reloadNonce, setReloadNonce] = useState(0);
   const currentItem = useRef(item);
@@ -464,6 +460,7 @@ function GameLegacyRoute({
     session,
     sourceFailed,
     tt,
+    gameIterationRunner,
   ]);
 
   useEffect(() => {
@@ -472,7 +469,7 @@ function GameLegacyRoute({
     resumedArtifact.current = id;
     // Read-only lookup: opening a game never forks, generates or saves a revision.
     void iterate(true);
-  }, [item, iterate]);
+  }, [item, iterate, gameIterationRunner]);
 
   const flush = useCallback(async () => {
     if (document_?.sourceDirty) return { ok: false as const, error: tt("代码页还有未保存的修改，请先在代码页保存。") };
