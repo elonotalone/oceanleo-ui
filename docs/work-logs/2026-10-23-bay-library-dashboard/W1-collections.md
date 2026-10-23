@@ -11,6 +11,7 @@ Owned files: oceanleo-ui `src/shell/collection-items.tsx`,
 `src/shell/ArtifactLibrary.tsx`, `src/shell/workspace-library-view.tsx`,
 `src/shell/WorkspaceLibrary.tsx`, `src/shell/AppDirectory.tsx`,
 `src/shell/SiteCatalogConsole.tsx`, `src/shell/WorkspaceDesk.tsx`,
+`src/shell/AppMarket.tsx`, `src/shell/Playground.tsx`,
 `src/shell/index.ts`, needed non-Bay collection tests/public export snapshots;
 oceanleo `app/projects/page.tsx`, `components/SiteExplorer.tsx` and a directly
 used project/site card only if required by the same component contract.
@@ -24,3 +25,7 @@ collection/render tests through run-light; no browser. Return changed paths,
 test command/results and any residual limitation, write evidence to W1-result.md.
 Do not commit; parent integrates commits after review.
 
+Scope clarification after call-graph evidence: WorkspaceDesk -> Playground's
+app branch renders AppMarket; its prompt branch has local PromptZone cards.
+These are the same requested Workspace collection surface and must also use
+the shared format. No unrelated Playground behavior/editor changes.
