@@ -1,7 +1,8 @@
 // W02: upload the [W02] fixtures (pdf / png / docx) into the acceptance account's library.
 // Usage: bash harness/mint.sh | OUT_DIR=/tmp/w02-up node harness/run.mjs evidence/W02/scenarios/upload-fixtures.mjs
-export default async function ({ page, log, shot, helpers }) {
-  const files = [
+// Pass explicit paths to upload others (R2: `/tmp/w02/[W02] sample.pptx`).
+export default async function ({ page, log, shot, helpers, args = [] }) {
+  const files = args.length ? args : [
     "/tmp/w02/[W02] sample.pdf",
     "/tmp/w02/[W02] sample.png",
     "/tmp/w02/[W02] sample.docx",

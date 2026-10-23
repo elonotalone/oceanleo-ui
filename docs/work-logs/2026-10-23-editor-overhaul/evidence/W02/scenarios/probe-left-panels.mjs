@@ -86,7 +86,20 @@ export default async function ({ page, log, shot, helpers, args }) {
   await page.keyboard.press("Escape").catch(() => {});
   const stage = await page.locator("[data-advanced-viewport-row]").first().boundingBox().catch(() => null);
   if (stage) await page.mouse.click(stage.x + 12, stage.y + stage.height - 12);
+  // Decks keep a page rail on the left; the empty canvas to the right of the slide deselects there.
+  if (stage) await page.mouse.click(stage.x + stage.width - 40, stage.y + stage.height / 2);
+  // Optional args[2] = "fx,fy": an empty spot inside the page (fractions of the stage), e.g. a slide's blank area.
+  if (stage && args[2]) {
+    const [fx, fy] = args[2].split(",").map(Number);
+    await page.mouse.click(stage.x + stage.width * fx, stage.y + stage.height * fy);
+  }
+  // Focus is on the stage now; Escape there leaves text editing, a second one drops the selection.
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(300);
+  await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(1200);
+  await shot(`${label}-2-deselected`);
+  log("selection-kind", await page.evaluate(() => [...document.querySelectorAll("[data-selection-kind]")].map((e) => e.getAttribute("data-selection-kind")).join(",")));
   log("edit-bar-after-deselect", (await page.locator("[data-workspace-edit-bar]").first().innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 200));
   // D3: labeled drawer buttons in the empty-state edit bar.
   const drawerIds = await page.$$eval("[data-edit-bar-drawer]", (els) => els.map((e) => `${e.dataset.editBarDrawer}:${e.innerText.trim()}`));
