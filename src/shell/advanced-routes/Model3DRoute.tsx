@@ -43,6 +43,7 @@ import {
   type Model3DCollabSnapshot,
 } from "../collab/adapters/model3d";
 import { isStaleModel3DRemoteScene } from "../media-editors/model3d-collab-guard";
+import { Model3DCollabSnapshotPolicy } from "../media-editors/model3d-collab-snapshot";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
@@ -193,6 +194,11 @@ function Model3DModelRoute({
     editor,
     `${item.id}:${item.url || item.previewUrl || ""}`,
   );
+  const collabSnapshots = useRef(new Model3DCollabSnapshotPolicy());
+  const collabLocal = collabSnapshots.current.project(
+    String(item.artifactId || item.id), editor.editRevision,
+    !editor.loading && editor.modelLoaded, history.snapshot,
+  );
   const deliveryBusy =
     editor.downloading || editor.capturing || editor.saving;
   // ---- 多人同改（W14 / F07）：合并粒度 = 场景节点上的一个属性；镜头不同步。
@@ -214,7 +220,7 @@ function Model3DModelRoute({
     toEntities: (state) => model3dToEntities(state as unknown as Model3DCollabSnapshot),
     fromEntities: (input, prev) =>
       model3dFromEntities(input, prev as unknown as Model3DCollabSnapshot | null) as unknown as Model3DRouteSnapshot,
-    local: editor.loading || !editor.modelLoaded ? null : history.snapshot,
+    local: collabLocal,
     applyRemote: (state) => {
       // 房间状态落后于作品当前版本时不套用（见 model3d-collab-guard）；本端状态随后推回房间。
       if (
@@ -226,6 +232,7 @@ function Model3DModelRoute({
       ) {
         return;
       }
+      collabSnapshots.current.acceptRemote(state, editor.editRevision);
       editor.applyRemoteScene(state);
     },
     applyLocal: (state) => {

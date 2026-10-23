@@ -82,6 +82,8 @@ export function Model3DStage({
         data-model3d-selected-node={editor.selectedNode?.id || ""}
         data-model3d-selected-transform={JSON.stringify(editor.selectedNode?.transform || null)}
         data-model3d-loaded={editor.modelLoaded ? "true" : "false"}
+        data-model3d-mesh-count={editor.sceneNodes.filter((node) => /Mesh$/.test(node.type)).length}
+        data-model3d-selected-color={editor.materials.find((entry) => entry.index === editor.selectedMaterialIndex)?.color || ""}
         style={{
           // §2.2:默认背景是 stage.bg.top → stage.bg.bottom 渐变。用户显式挑过
           // 纯色就尊重 view.background。

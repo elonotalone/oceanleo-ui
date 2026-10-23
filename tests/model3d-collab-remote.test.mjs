@@ -301,7 +301,7 @@ test("3D（只读）：转视角、缩放照常；工作台把运行时切到只
   }
 });
 
-test("3D（只读）：工具栏里改场景的入口置灰，我自己的相机控件仍可用", async () => {
+test("3D（只读）：不渲染变更浮条，Scene里的本地相机可用而作品设置禁用", async () => {
   const calls = [];
   const uiStub = dataModule(`export const useUI = () => (text, vars) =>
     vars ? String(text).replace(/\\{(\\w+)\\}/g, (_, key) => String(vars[key] ?? "")) : String(text);`);
@@ -316,6 +316,9 @@ test("3D（只读）：工具栏里改场景的入口置灰，我自己的相机
       `),
     })
   );
+  const sceneControls = await import(await compileModule("src/shell/media-editors/Model3DViewControls.tsx", {
+    "../../i18n/ui/useUI": uiStub,
+  }));
   const editor = new Proxy(
     {
       loading: false,
@@ -342,18 +345,24 @@ test("3D（只读）：工具栏里改场景的入口置灰，我自己的相机
   const mounted = await mount(h(toolbar.Model3DContextToolbar, { editor, readOnly: true }));
   try {
     const { context, onCommand } = globalThis.__model3dSelection;
-    const viewOnly = new Set(["azimuth", "elevation", "zoom", "auto-rotate", "reset-camera", "material-select"]);
-    const editing = context.controls.filter((control) => !viewOnly.has(control.id));
-    assert.ok(editing.length >= 6, "有一批改场景的控件");
-    assert.ok(editing.every((control) => control.disabled === true), "改场景的控件全部置灰");
-    assert.ok(editing.every((control) => control.unavailableReason === "只能查看，不能修改"));
-    const camera = context.controls.filter((control) => viewOnly.has(control.id));
-    assert.ok(camera.length >= 4);
-    assert.ok(camera.every((control) => control.disabled !== true), "我自己的相机（转视角 / 缩放）仍可用");
-    for (const control of editing) onCommand({ selectionId: context.id, controlId: control.id, value: 1 });
+    assert.equal(context, null, "只读时不出不可用变更浮条");
+    for (const controlId of ["duplicate", "delete", "position-x", "material-color"]) onCommand({ selectionId: "node:1", controlId, value: 1 });
     assert.deepEqual(calls, [], "只读时命令不触发任何改动");
-    onCommand({ selectionId: context.id, controlId: "zoom", value: 150 });
-    onCommand({ selectionId: context.id, controlId: "azimuth", value: 10 });
+    const inputs = [];
+    const visit = (element) => {
+      if (Array.isArray(element)) return element.forEach(visit);
+      if (!element?.props) return;
+      if (element.type === "input") inputs.push(element.props);
+      visit(element.props.children);
+    };
+    visit(sceneControls.Model3DViewControls({ editor, readOnly: true }));
+    const zoom = inputs.find((input) => input["aria-label"] === "镜头距离");
+    const orbit = inputs.find((input) => input["aria-label"] === "水平环绕");
+    assert.equal(zoom.disabled, false);
+    assert.equal(orbit.disabled, false);
+    for (const label of ["曝光", "环境强度", "阴影强度", "背景"]) assert.equal(inputs.find((input) => input["aria-label"] === label).disabled, true, label);
+    zoom.onChange({ currentTarget: { valueAsNumber: 150 } });
+    orbit.onChange({ currentTarget: { valueAsNumber: 10 } });
     assert.deepEqual(
       calls.map((call) => call[0]),
       ["setZoom", "setOrbit"],

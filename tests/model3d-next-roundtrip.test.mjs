@@ -60,11 +60,9 @@ test("gltf roundtrip produces a real GLB and keeps name, translation, color", as
     `translations=${JSON.stringify(result.outbound.translations)}`,
   );
   const nameDrop = dropped.find((entry) => entry.feature === "nodes[].name");
-  assert.ok(
-    nameDrop,
-    "Exporter 会多包一层无名根节点，必须点名，不许当没变",
-  );
-  assert.match(nameDrop.reason, /RoundtripBox/);
+  assert.equal(nameDrop, undefined, "identity scene envelope must not add an anonymous node");
+  assert.deepEqual(result.outbound.nodeNames, ["RoundtripBox"]);
+  assert.ok(kept.includes("nodes[].name"));
   const meshDrop = dropped.find((entry) => entry.feature === "meshes[].name");
   assert.ok(meshDrop, "meshes[].name 从 BoxMesh 变成空串必须点名");
   const generatorDrop = dropped.find((entry) => entry.feature === "asset.generator");

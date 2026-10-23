@@ -238,7 +238,9 @@ test("route and hooks wire authenticated closure loading, deferred cleanup and p
   );
   assert.match(workbench, /item\.artifact\?\.renditions\.source\?\.digest/);
   assert.match(workbench, /model3DPosterForItem\(item\)/);
-  assert.match(save, /uploadModel3DPoster/);
+  assert.match(save, /poster = await runtime\.capturePng\(\)/);
+  assert.doesNotMatch(save, /uploadModel3DPoster/);
+  assert.match(source("../src/shell/media-editors/model3d-project.ts"), /createPreview: async \(\) => poster/);
   assert.match(stage, /data-testid="model3d-poster"/);
   assert.match(route, /previewUrl: saved\.posterUrl/);
   assert.match(route, /thumbUrl: saved\.posterUrl/);

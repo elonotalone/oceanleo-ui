@@ -29,6 +29,7 @@ test("v8 routes expose one real global history and semantic compact controls", (
   const modelToolbar = source(
     "../src/shell/media-editors/Model3DContextToolbar.tsx",
   );
+  const modelControls = source("../src/shell/media-editors/model3d-selection-controls.ts");
 
   for (const route of [richRoute, gridRoute, modelRoute]) {
     assert.match(route, /history: \{/);
@@ -53,14 +54,15 @@ test("v8 routes expose one real global history and semantic compact controls", (
   // grid 的浮条控件由 `gridUniverSelectionContext` 从命令表算出（stage-plan.ts），
   // 不是 JSX 字面量；它的 iconOnly / revision 语义由 grid-univer-wiring 判据钉住。
   for (const toolbar of [richToolbar, modelToolbar]) {
-    assert.match(toolbar, /iconOnly: true/);
+    assert.match(toolbar === modelToolbar ? modelControls : toolbar, /iconOnly: true/);
     assert.match(toolbar, /selectionRevision/);
     assert.match(toolbar, /editRevision/);
   }
   assert.match(richToolbar, /"embedded-object"/);
   assert.match(richToolbar, /id: "link"/);
   assert.match(richToolbar, /id: "row-add"/);
-  assert.match(modelToolbar, /placement: "more"/);
+  for (const id of ["duplicate", "delete"]) assert.match(modelControls, new RegExp(`id: "${id}"`));
+  assert.match(modelControls, /inspectorGroup: "position"/);
 });
 
 test("RichDoc table, link and inline formats survive a real DOCX package", async () => {
