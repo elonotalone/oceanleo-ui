@@ -24,3 +24,7 @@ I did not restart or bypass anything (the proxy is the cookie firewall; red line
 2. **Export ignores flip.** `oceanleo/convert/timeline.py` (parent) has no hflip/vflip; the editor now exposes `flip-x` / `flip-y` (clip fields `flip_x` / `flip_y`, preview applies them before rotation). Patch (same order as preview: flip → rotate):
    - video chain, right before `if abs(rotation) >= 0.01:` (≈ line 344): `if clip.get("flip_x") is True: chain += ",hflip"` / `if clip.get("flip_y") is True: chain += ",vflip"`
    - image chain, after `image_chain = f"[{idx}:v]scale={target_w}:-2,format=rgba"` (≈ line 428): same two lines with `image_chain`.
+
+## 09:47Z — LeoDev slot hangs again (blocks W11 browser runs)
+
+[实测] `curl https://p-511af…dev.oceanleo.com/favicon.ico` → no first byte in 60 s. `ss -tnp | grep :8095` → 1038 sockets (by pid: 519 pid=173866 519 pid=1467394 ). Same shape as 05:20Z. I did not restart anything; W11 will retry.
