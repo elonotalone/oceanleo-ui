@@ -92,3 +92,11 @@ test("舞台：协同本地侧的活动不再标脏 / 加编辑序号（本人�
   assert.match(stage, /personWriteBlockedRef\.current = readonly \|\| \(collabOn && collabViewOnly\);/);
   assert.match(stage, /editBlockedRef: personWriteBlockedRef,/);
 });
+
+test("舞台：房间回送本页自己存出的 revision 时不整本换回（R2 实测：保存后 8 秒被换回，冲掉第 2 次改动）", () => {
+  assert.match(stage, /if \(result\.revisionId\) ownRevisionsRef\.current\.add\(String\(result\.revisionId\)\);/);
+  const handler = stage.slice(stage.indexOf("collabRoom.onExternalRevision("), stage.indexOf("binder.adopt("));
+  assert.ok(handler.length > 0);
+  // 收到时、取完版本后各判一次。
+  assert.equal(handler.split("ownRevisionsRef.current.has(String(revisionId))").length - 1, 2);
+});

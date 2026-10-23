@@ -19,7 +19,15 @@ async function openGrid(page, helpers, id) {
 
 /** Centre of a cell (0-based row/col) in normal mode: no ribbon, 46px row header, 20px col header (from the canvas, below the bar inset). */
 async function cellPoint(page, row, col) {
-  const box = await page.locator(`${STAGE} canvas >> visible=true`).first().boundingBox();
+  // The largest canvas is the sheet; Univer also parks an 88×24 cell-editor canvas off-screen after the first edit.
+  const box = await page.evaluate((sel) => {
+    let best = null;
+    for (const c of document.querySelectorAll(`${sel} canvas`)) {
+      const b = c.getBoundingClientRect();
+      if (!best || b.width * b.height > best.width * best.height) best = { x: b.x, y: b.y, width: b.width, height: b.height };
+    }
+    return best;
+  }, STAGE);
   return { x: box.x + 46 + 88 * col + 44, y: box.y + 20 + 24 * row + 12 };
 }
 
@@ -43,7 +51,7 @@ async function bar(page) {
 /** Tag the visible main canvas once; the same tag later = same Univer instance (no remount). */
 async function tagCanvas(page) {
   return page.evaluate(() => {
-    const c = [...document.querySelectorAll("[data-grid-univer-stage] canvas")].find((n) => n.getBoundingClientRect().height > 0);
+    const c = [...document.querySelectorAll("[data-grid-univer-stage] canvas")].sort((a, b) => b.getBoundingClientRect().width - a.getBoundingClientRect().width)[0];
     if (!c) return null;
     if (!c.dataset.w10Tag) c.dataset.w10Tag = `t${Date.now()}`;
     return c.dataset.w10Tag;
@@ -385,6 +393,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
         for (let n = el; n && chain.length < 6; n = n.parentElement) chain.push(`${n.tagName.toLowerCase()}${n.id ? "#" + n.id : ""}${n.getAttribute?.("data-u-comp") ? "[" + n.getAttribute("data-u-comp") + "]" : ""}.${String(n.className || "").slice(0, 40)}`);
         return chain.join(" < ");
       }, pt));
+      log("canvases", await page.evaluate(() => JSON.stringify([...document.querySelectorAll("[data-grid-univer-stage] canvas")].map((c) => { const b = c.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height), getComputedStyle(c).visibility]; }))), JSON.stringify(pt));
       log("activeElement", await page.evaluate(() => `${document.activeElement?.tagName} ${String(document.activeElement?.className || "").slice(0, 60)}`));
     }
     await shot(`${tag}-saved1`);

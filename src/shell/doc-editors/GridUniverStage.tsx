@@ -348,6 +348,8 @@ export function GridUniverStage({
   collabOnRef.current = collabOn;
   const collabBinderRef = useRef<GridCollabBinder | null>(null);
   const [collabBound, setCollabBound] = useState(false);
+  /** 本标签页自己存出的 revision：房间把它当「别人存的新版本」回送时不许整本换回（会冲掉刚打的字）。 */
+  const ownRevisionsRef = useRef(new Set<string>());
   /** 别人存了新版本后，下一次保存要以它为基线（否则版本冲突）。 */
   const externalItemRef = useRef<LibraryItem | null>(null);
 
@@ -761,6 +763,7 @@ export function GridUniverStage({
     let alive = true;
     let ticket = 0;
     const off = collabRoom.onExternalRevision((revisionId) => {
+      if (ownRevisionsRef.current.has(String(revisionId))) return;
       ticket += 1;
       const mine = ticket;
       void (async () => {
@@ -772,6 +775,8 @@ export function GridUniverStage({
           revision.title || ttRef.current("工作簿"),
         );
         if (!alive || mine !== ticket || !snapshot) return;
+        // 取版本期间本页的保存回来了、正是这一版：画布已经是它（或更新），不换。
+        if (ownRevisionsRef.current.has(String(revisionId))) return;
         const binder = collabBinderRef.current;
         if (!binder) return;
         noteGridProbe(`external-adopt:${revisionId}`);
@@ -1023,6 +1028,7 @@ export function GridUniverStage({
       }
       setDirty(false);
       noteGridProbe(`saved:${result.revisionId || ""}`);
+      if (result.revisionId) ownRevisionsRef.current.add(String(result.revisionId));
       externalItemRef.current = null;
       if (collabRoom && result.revisionId) collabRoom.markSaved(result.revisionId);
       setStatus(gridXlsxDroppedWarning(xlsxDropped));
