@@ -270,6 +270,8 @@ export { artifactTypeHasRoutableEditor } from "./workbench-capability-registry";
 // 固定五槽位中「预览 / 素材库 / 我的库」共用的搜索、分类和 master/detail 原语。
 export { LibraryToolbar, LibraryChips } from "./LibraryLayout"; export { CollectionSearchField, CollectionViewOptions, CollectionViewToggle, CollectionPageToolbar, CollectionFilterSelect, CollectionFilterRow, CollectionFilterChevron, CollectionInfiniteSentinel, CollectionCardGrid, COLLECTION_ACTION_BTN, COLLECTION_ACTION_BTN_GHOST, COLLECTION_ACTION_BTN_PRIMARY, COLLECTION_CARD_GRID_CLASS, COLLECTION_CARD_GRID_COLUMNS, COLLECTION_CARD_GRID_STYLE, COLLECTION_FILTER_ROW_CLASS } from "./collection-chrome";
 export type { LibraryToolbarProps, LibraryChipsProps, LibraryChip } from "./LibraryLayout"; export type { CollectionView, CollectionViewOption, CollectionFilterOption } from "./collection-chrome";
+export { MenuSelect } from "./menu-select";
+export type { MenuSelectOption, MenuSelectProps } from "./menu-select";
 export { WorkspaceLibrary, workspaceEntryFromLibraryItem } from "./WorkspaceLibrary";
 export type { WorkspaceLibraryProps, WorkspaceLibraryEntry } from "./WorkspaceLibrary";
 export { PublishToOrgButton } from "./PublishToOrgButton";
@@ -785,6 +787,7 @@ export { EXPLORE_FEED_PLAY_LINK_ATTR } from "./ExplorePlayableFeed";
 
 // 手机原生桥的公开面。整组挑选过的转出在那一份里，这里只把它接上门面。
 export * from "./mobile-bridge-public";
+export { CollectionItemCard, CollectionItemRow, CollectionItemList, type CollectionItemProps } from "./collection-items";
 // Dev / HMR：`next/dynamic` 拉共享 barrel 时旧 chunk hash 会 404。消费站用
 // `dynamic(() => importWithChunkReload(() => import("@oceanleo/ui/shell").then(…)))`。
 export { importWithChunkReload } from "../lib/lazy-with-retry";

@@ -61,6 +61,17 @@ import { ACCOUNT_LAYOUT_MESSAGES } from "./account-layout-copy";
 import { MAIL_BOT_MESSAGES } from "./mail-bot-copy";
 import { FOLLOW_THROUGH_MESSAGES } from "./follow-through-copy";
 import { GAME_PLAY_MESSAGES } from "./game-play-copy";
+import { LBP_W01_MESSAGES } from "./lbp-w01-copy";
+import { LBP_W02_MESSAGES } from "./lbp-w02-copy";
+import { LBP_W03_MESSAGES } from "./lbp-w03-copy";
+import { LBP_W04_MESSAGES } from "./lbp-w04-copy";
+import { LBP_W05_MESSAGES } from "./lbp-w05-copy";
+import { LBP_W06_MESSAGES } from "./lbp-w06-copy";
+import { LBP_W07_MESSAGES } from "./lbp-w07-copy";
+import { LBP_W08_MESSAGES } from "./lbp-w08-copy";
+import { LBP_W09_MESSAGES } from "./lbp-w09-copy";
+import { LBP_W10_MESSAGES } from "./lbp-w10-copy";
+import { LBP_W11_MESSAGES } from "./lbp-w11-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -122,6 +133,17 @@ const PARTS = [
   ACCOUNT_DELIVERY_MESSAGES,
   FOLLOW_THROUGH_MESSAGES,
   GAME_PLAY_MESSAGES,
+  LBP_W01_MESSAGES,
+  LBP_W02_MESSAGES,
+  LBP_W03_MESSAGES,
+  LBP_W04_MESSAGES,
+  LBP_W05_MESSAGES,
+  LBP_W06_MESSAGES,
+  LBP_W07_MESSAGES,
+  LBP_W08_MESSAGES,
+  LBP_W09_MESSAGES,
+  LBP_W10_MESSAGES,
+  LBP_W11_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =

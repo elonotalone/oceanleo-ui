@@ -5,3 +5,5 @@ export { BaySettingsSection } from "./BaySettingsSection";
 export { BaySettingsPane } from "./BaySettingsPane";
 export { openBaySettings } from "./settings-open";
 export { BayTermsGate } from "./BayTermsGate";
+export { BayTermsPublic } from "./BayTermsPublic";
+export type { BayTermsPublicProps } from "./BayTermsPublic";
