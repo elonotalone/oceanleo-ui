@@ -214,8 +214,12 @@ export function useLibraryEditIntent({
     : "";
   // A bookmarked /library?item=<artifactId> has no action envelope. Restore it
   // through the same read-only detail route; list membership is only a fast path.
+  // Workspace routes already have a catalog sender, which waits for its app
+  // scope before dispatching. Reading that URL here would bypass its readiness
+  // gate and fetch/open the same artifact twice when the real action arrives.
   const bareUrlArtifactId =
-    !nonce && onPreviewItem && typeof window !== "undefined"
+    !nonce && onPreviewItem && typeof window !== "undefined" &&
+      window.location.pathname.replace(/\/+$/, "") === "/library"
       ? libraryCurrentIdentityFromSearch(window.location.search)?.artifactId || ""
       : "";
   const artifactId = editArtifactId || previewArtifactId || bareUrlArtifactId;
