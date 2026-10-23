@@ -15,17 +15,16 @@
 - 退役种类名在我边界内的用户可见句子：ProfilePage（还没有上架的商品或服务。/ 发布商品或服务时… / 官方素材 / 逛官方素材）、deal-lines（这条服务… / 相关服务…）、MyAppLoginGrants（作品 x3）。「作品集」「还没有作品。从「我的库」挑进来。」「从我的库挑一件作品」指用户库里的作品，保留（交卷写明）。
 - 文案闸：新键 16 语必须齐；新增写 `lbp-w06-copy.ts`；已有词条不重定义（查重脚本 /tmp/w06-tools/has-key.mjs）。
 
+## 已完成
+- 22b55c94：代码主体（见 journal）。tests/lbp-w06-verification-grants.test.mjs 30 条绿。
+
 ## 正在做
-第 1 步：mine-page-edit.ts 扩展 + BayVettingSection 白卡 + ProfilePageEditor/ProfilePane 接线。
+第 2 步：收尾检查（边界内注释里的退役名、遗漏处）-> 交卷。
 
 ## 下一步
-1. mine-page-edit.ts（focus / 订阅 / 过期 / sessionStorage）
-2. BayVettingSection 白卡；ProfilePageEditor 挂核验块（自动滚）；ProfilePane 接线 + 白卡分隔；ProfilePage 退役名
-3. deal-lines / deal-actions 改指（my-page / my-vetting；DealLineTarget 无 settings）
-4. MyAppLoginGrants 重排 + ConnectedAppsPage + AccountHome 行 + settings-tabs id + AccountSection/SettingsHub 挂载
-5. lbp-w06-copy.ts 17 语
-6. 测试：改绿 + 新增 tests/lbp-w06-verification-grants.test.mjs；typecheck；文案闸
-7. 交卷 verdicts/W06-delivery.md
+1. 边界内注释里的退役名（app-login.ts 注释、ProfilePane 注释）
+2. 全量相关测试再跑一遍 + typecheck + 文案闸里我自己的 key
+3. 交卷 verdicts/W06-delivery.md（含对 W05 的接口说明：MyDashboardTab 用 requestMinePageEdit() 无参即可；想强制落在核验块用 requestMinePageEdit("vetting")）
 
 ## 复现命令
 cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<名字>.test.mjs
