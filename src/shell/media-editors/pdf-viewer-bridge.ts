@@ -287,6 +287,13 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       return scope.getSelectedAnnotation()?.object ?? null;
     },
     annotationCount: () => annotationScope()?.getAnnotations().length ?? 0,
+    /** 有没有内容里带拉丁 1 以外字符的 FreeText（PDFium 的外观流画不出，导出时要补）。 */
+    hasWideFreeText: () =>
+      (annotationScope()?.getAnnotations() ?? []).some(({ object }) => {
+        if (object.type !== PDF_SUBTYPE.FREETEXT) return false;
+        for (const char of String(object.contents ?? "")) if ((char.codePointAt(0) ?? 0) > 0xff) return true;
+        return false;
+      }),
     updateAnnotation(annotation: PdfAnnotationLike, patch: Record<string, unknown>) {
       annotationScope()?.updateAnnotation(annotation.pageIndex, annotation.id, patch);
     },

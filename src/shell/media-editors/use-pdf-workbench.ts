@@ -21,7 +21,7 @@ import { loadInitialPdfSource } from "./pdf-source";
 import { decodePdfRecovery } from "./pdf-recovery";
 import { deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
 import { downloadPdfBytes, pdfErrorMessage, pdfFileStem } from "./pdf-workbench-utils";
-import { PDF_SUBTYPE, type PdfAnnotationLike } from "./pdf-viewer-bridge";
+import { PDF_SUBTYPE, type PdfAnnotationLike, type PdfViewerBridge } from "./pdf-viewer-bridge";
 import type { PdfStageHandle } from "./PdfStage";
 import { sourceFormatForBlob } from "./source-integrity.mjs";
 import { recordUserMutation, userEditItemKey, userMutationGeneration } from "../user-edit-session";
@@ -55,6 +55,17 @@ export function applyPdfWorkbenchUserEditSession(
   const key = userEditItemKey(item);
   if (reason === "silent-replace" || reason === "collab") return userMutationGeneration(key);
   return recordUserMutation(key);
+}
+
+/**
+ * 查看器导出的整份字节；有中日韩「加文字」时补上标准外观流（PDFium 自己生成的是空的，
+ * 重开后文字会整个不见，`pdf-cjk-appearance.ts`）。没有就原样，不多走一遍 pdf-lib。
+ */
+async function exportPdf(bridge: PdfViewerBridge): Promise<Uint8Array> {
+  const bytes = await bridge.exportBytes();
+  if (!bridge.hasWideFreeText()) return bytes;
+  const { fixPdfCjkFreeTextAppearances } = await import("./pdf-cjk-appearance");
+  return (await fixPdfCjkFreeTextAppearances(bytes)).bytes;
 }
 
 function sourceKeyOf(item: LibraryItem): string {
@@ -205,7 +216,7 @@ export function usePdfWorkbench(
       setProcessing(true);
       setError("");
       try {
-        const before = await bridge.exportBytes();
+        const before = await exportPdf(bridge);
         const after = await transform(before);
         await bridge.replaceDocument(after, page);
         setPageCount(bridge.pages().length);
@@ -310,7 +321,7 @@ export function usePdfWorkbench(
     setError("");
     const savingRevision = revisionRef.current;
     try {
-      const bytes = await bridge.exportBytes();
+      const bytes = await exportPdf(bridge);
       const saved = await savePdfBytesToLibrary({
         item: baseRef.current,
         siteId,
@@ -354,7 +365,7 @@ export function usePdfWorkbench(
     const bridge = handleRef.current?.bridge;
     if (!bridge) return tt("PDF 还没有载入。");
     try {
-      downloadPdfBytes(await bridge.exportBytes(), `${pdfFileStem(item.title)}.pdf`);
+      downloadPdfBytes(await exportPdf(bridge), `${pdfFileStem(item.title)}.pdf`);
       return "";
     } catch (caught) {
       return pdfErrorMessage(caught, tt("下载没有成功"));
@@ -365,7 +376,7 @@ export function usePdfWorkbench(
   const captureRecovery = useCallback(async () => {
     const bridge = handleRef.current?.bridge;
     if (!bridge) return null;
-    const bytes = await bridge.exportBytes();
+    const bytes = await exportPdf(bridge);
     return new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
   }, []);
   const restoreRecovery = useCallback(

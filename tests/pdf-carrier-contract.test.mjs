@@ -573,7 +573,8 @@ test("§5.1 (3/3) 可下载: download hands back the source bytes as application
   assert.match(route, /directDownload:[\s\S]*onTrigger:[\s\S]*editor\.download\(\)/);
   const workbench = await source("src/shell/media-editors/use-pdf-workbench.ts");
   // 下载的是查看器导出的整份字节（含标准批注），不是重渲染。
-  assert.match(workbench, /downloadPdfBytes\(await bridge\.exportBytes\(\)/);
+  assert.match(workbench, /downloadPdfBytes\(await exportPdf\(bridge\)/);
+  assert.match(workbench, /const bytes = await bridge\.exportBytes\(\);/);
 });
 
 // ---------------------------------------------------------------------------
