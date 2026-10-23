@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 import { portalHref } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayContentCase } from "../../../lib/bay/seller";
+import { reasonCodeOf } from "../../../lib/moderation/case-model";
+import { reasonLabel } from "../../messages/cases/case-labels";
 import {
   BAY_FORM_DANGER_BUTTON_CLASS,
   BAY_FORM_INPUT_CLASS,
@@ -65,12 +67,19 @@ export function SellerEmpty({ children }: { children: ReactNode }) {
   return <p className="rounded-xl border border-dashed border-stone-300 px-4 py-6 text-center text-[12.5px] text-stone-500">{children}</p>;
 }
 
-/** 门户「内容处理记录」页：查看完整原因、提交反通知或申诉。 */
-export function contentCasesHref(): string {
+const CASE_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * LeoChat 里的「内容处置」（门户 `/leochat?im=cases`；合同 I-4）：查看完整原因、提交反通知或申诉。
+ * 给了案件 id 就直接展开那一件（`?im=cases:<id>`）；id 不像案件 id 就当没给。
+ */
+export function contentCasesHref(caseId?: string | null): string {
+  const id = typeof caseId === "string" ? caseId.trim() : "";
+  const path = CASE_ID_SHAPE.test(id) ? `/leochat?im=cases:${id}` : "/leochat?im=cases";
   try {
-    return portalHref("/account/content-cases");
+    return portalHref(path);
   } catch {
-    return "https://oceanleo.com/account/content-cases";
+    return `https://oceanleo.com${path}`;
   }
 }
 
@@ -79,18 +88,25 @@ export function HiddenByPlatformNotice({ what, caseRow }: { what: "service" | "p
   const tt = useUI();
   const headline =
     what === "service"
-      ? tt("这项服务已被平台暂时隐藏，买家现在看不到。")
+      ? tt("这项人工服务已被平台暂时隐藏，买家现在看不到。")
       : what === "profile"
         ? tt("你的卖家资料已被平台暂时隐藏，其他人现在看不到。")
         : tt("作品集里有内容被平台暂时隐藏，其他人现在看不到。");
-  const reason = caseRow ? [caseRow.reason, caseRow.detail].map((part) => part.trim()).filter(Boolean).join(" · ") : "";
+  // 认得的原因代码翻成当前语言（sexual、machine:… 之类不亮原文）；认不出的自由文本照旧原样写。
+  const known = caseRow ? reasonLabel(tt, caseRow.reason) : "";
+  const reason = caseRow
+    ? [known || (reasonCodeOf(caseRow.reason) ? "" : caseRow.reason), caseRow.detail]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   return (
     <div role="status" data-bay-hidden={what} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-5 text-amber-950">
       <p className="font-semibold">{headline}</p>
-      <p className="mt-1">{reason ? tt("原因：{reason}", { reason }) : tt("原因在内容处理记录里。")}</p>
+      <p className="mt-1">{reason ? tt("原因：{reason}", { reason }) : tt("原因在内容处置里。")}</p>
       <p className="mt-1">
-        {tt("觉得判错了：在内容处理记录里提交反通知或申诉，平台会重新看一遍。")}{" "}
-        <a href={contentCasesHref()} target="_blank" rel="noopener noreferrer" className={LINK_BUTTON}>
+        {tt("觉得判错了：在 LeoChat 的内容处置里提交反通知或申诉，平台会重新看一遍。")}{" "}
+        <a href={contentCasesHref(caseRow?.id)} target="_blank" rel="noopener noreferrer" className={LINK_BUTTON}>
           {tt("查看原因并申诉")}
         </a>
       </p>
