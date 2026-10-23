@@ -279,33 +279,30 @@ test("global row is icon-only, opens mine, and hosts share/favorite with Library
     await act(async () => mine.click());
     assert.deepEqual(libraryOpens, ["mine"]);
 
-    const share = findLabeledButton(row, [/share/i, /分享/]);
-    const favorite = findLabeledButton(row, [/favorite/i, /收藏/, /星标/]);
-    assert.ok(
-      share,
-      "editor chrome must host the existing share action with LibraryItem identity",
-    );
-    assert.ok(
-      favorite,
-      "editor chrome must host the existing favorite action with LibraryItem identity",
-    );
-    const shareAction =
-      share.getAttribute("data-editor-chrome-action") ||
-      share.getAttribute("data-artifact-action") ||
-      "";
-    assert.equal(shareAction, "share");
+    // D1（2026-10-23）：分享 / 收藏住进 `···` 菜单；身份绑定照旧落在菜单宿主上。
     const social = row.querySelector("[data-editor-item-social]");
     assert.ok(social, "share/favorite must bind to the LibraryItem identity");
     assert.equal(social.getAttribute("data-artifact-id"), item.artifactId);
     assert.equal(social.getAttribute("data-revision-id"), item.revisionId);
     assert.equal(
-      share.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
-      "share",
+      social.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
+      "more",
     );
-    assert.equal(
-      favorite.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
-      "favorite",
-    );
+    const launcher = row.querySelector("[data-workspace-more-launcher]");
+    assert.ok(launcher, "editor chrome must host ···");
+    await act(async () => launcher.click());
+    const menu = document.querySelector("[data-workspace-more-menu]");
+    assert.ok(menu, "··· menu did not open");
+    const share = findLabeledButton(menu, [/share/i, /分享/]);
+    const favorite = findLabeledButton(menu, [/favorite/i, /收藏/, /星标/]);
+    assert.ok(share, "··· must host the existing share action with LibraryItem identity");
+    assert.ok(favorite, "··· must host the existing favorite action with LibraryItem identity");
+    assert.equal(share.getAttribute("data-editor-chrome-action"), "share");
+    assert.equal(favorite.getAttribute("data-editor-chrome-action"), "favorite");
+    for (const node of [share, favorite]) {
+      assert.ok(node.querySelector("[data-icon]"), "menu items carry an icon");
+      assert.ok(visibleText(node).length > 0, "menu items carry text");
+    }
   });
 });
 
