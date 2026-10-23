@@ -10,7 +10,7 @@
 
 import { useEffect, useRef } from "react";
 import { saveCreations, uploadFile, type MediaType } from "../../lib/database";
-import { createArtifactRevision } from "../artifact-client";
+import { createArtifactRevision, stageArtifactBlob } from "../artifact-client";
 import { editorWorkingHeadUrl } from "../editor-working-head";
 import {
   normalizeWork,
@@ -24,6 +24,14 @@ import {
   type ArtifactSaveStep,
 } from "./artifact-save-contract";
 import { EDITOR_PREVIEW_MEDIA_TYPE } from "./editor-preview-raster";
+import { noteOwnCommittedHead, ownHeadAfter } from "./editor-own-heads";
+import {
+  boundedRevisionMetadata,
+  intermediateLocator,
+  stagedLocatorMeta,
+  stagedProjectUrl,
+  uploadSaveIntermediate,
+} from "./editor-save-staging";
 export { editorWorkingHeadUrl } from "../editor-working-head";
 
 export function downloadBlob(name: string, blob: Blob): void {
@@ -133,6 +141,12 @@ export interface SaveToLibraryInput {
     /** Editor id recorded in provenance when there is no editor manifest. */
     editor?: string;
     provenance?: Record<string, unknown>;
+    /**
+     * Revision metadata (lands on `artifact_revisions.metadata`), e.g.
+     * `text_excerpt` for text documents. The server keeps only allowlisted,
+     * bounded keys; control-plane keys can never be set from here.
+     */
+    metadata?: Record<string, unknown>;
   };
   /** Retry receipts. Callers may reuse them only for the same edit revision. */
   preparedProject?: PreparedProjectUpload;
@@ -148,6 +162,8 @@ export interface SaveToLibraryInput {
 
 export interface PreparedUpload {
   url: string;
+  /** Owner-private staging locator (`project-assets:u/<owner>/editor-staging/…`); url is then "". */
+  blobId?: string;
   digest: string;
   artifactId: string;
   revisionId: string;
@@ -278,6 +294,8 @@ export interface SaveToLibraryDependencies {
   uploadFile: typeof uploadFile;
   saveCreations: typeof saveCreations;
   createArtifactRevision: typeof createArtifactRevision;
+  /** Private staging for typed revisions; absent → legacy uploads only. */
+  stageArtifactBlob?: typeof stageArtifactBlob;
   now: () => Date;
 }
 
@@ -285,6 +303,7 @@ const SAVE_DEPENDENCIES: SaveToLibraryDependencies = {
   uploadFile,
   saveCreations,
   createArtifactRevision,
+  stageArtifactBlob,
   now: () => new Date(),
 };
 
@@ -477,6 +496,12 @@ export async function saveFileToLibraryWithDependencies(
     }
     return null;
   };
+  // Typed saves stage their intermediates privately: no Library root per save.
+  const stageFor =
+    input.artifactRevision && hasTypedIdentity && !typedIdentityFailure()
+      ? identity.artifactId
+      : "";
+  const stage = { stageFor, stage: dependencies.stageArtifactBlob };
 
   if (
     input.project &&
@@ -532,23 +557,26 @@ export async function saveFileToLibraryWithDependencies(
         return fail("project-build", resultError(caught));
       }
       projectTask = (async (): Promise<StepFailure | null> => {
-        let projectUpload: Awaited<ReturnType<typeof uploadFile>>;
+        let projectUpload: Awaited<ReturnType<typeof uploadSaveIntermediate>>;
         try {
-          projectUpload = await dependencies.uploadFile(projectFile, {
-            siteId: site,
-            title: `${input.title}工程`,
-            registerAsset: false,
-            idempotencyKey: uploadIdempotencyKey(
-              input.idempotencyKey,
-              "project",
-              digest,
-            ),
-          });
+          projectUpload = await uploadSaveIntermediate(projectFile, stage, () =>
+            dependencies.uploadFile(projectFile, {
+              siteId: site,
+              title: `${input.title}工程`,
+              registerAsset: false,
+              idempotencyKey: uploadIdempotencyKey(
+                input.idempotencyKey,
+                "project",
+                digest,
+              ),
+            }),
+          );
         } catch (caught) {
           return { step: "project-upload", detail: resultError(caught) };
         }
-        const uploadedUrl = safePreparedUrl(projectUpload.data?.file?.url);
-        if (!projectUpload.ok || !uploadedUrl) {
+        const located = intermediateLocator(projectUpload, safePreparedUrl);
+        const uploadedUrl = located?.url || "";
+        if (!located) {
           return {
             step: "project-upload",
             detail: projectUpload.error || "存储服务没有返回可编辑工程地址",
@@ -561,6 +589,7 @@ export async function saveFileToLibraryWithDependencies(
               uploadedUrl,
               digest,
             ),
+            ...(located.blobId ? { blobId: located.blobId } : {}),
             schema: projectSchema,
             savedAt,
           };
@@ -654,23 +683,26 @@ export async function saveFileToLibraryWithDependencies(
       const uploadedFormat = sourceFormat;
       const uploadedMediaType = sourceMediaType;
       deliveryTask = (async (): Promise<StepFailure | null> => {
-        let uploaded: Awaited<ReturnType<typeof uploadFile>>;
+        let uploaded: Awaited<ReturnType<typeof uploadSaveIntermediate>>;
         try {
-          uploaded = await dependencies.uploadFile(uploadedFile, {
-            siteId: site,
-            title: input.title,
-            registerAsset: false,
-            idempotencyKey: uploadIdempotencyKey(
-              input.idempotencyKey,
-              "delivery",
-              digest,
-            ),
-          });
+          uploaded = await uploadSaveIntermediate(uploadedFile, stage, () =>
+            dependencies.uploadFile(uploadedFile, {
+              siteId: site,
+              title: input.title,
+              registerAsset: false,
+              idempotencyKey: uploadIdempotencyKey(
+                input.idempotencyKey,
+                "delivery",
+                digest,
+              ),
+            }),
+          );
         } catch (caught) {
           return { step: "delivery-upload", detail: resultError(caught) };
         }
-        const uploadedUrl = safePreparedUrl(uploaded.data?.file?.url);
-        if (!uploaded.ok || !uploadedUrl) {
+        const located = intermediateLocator(uploaded, safePreparedUrl);
+        const uploadedUrl = located?.url || "";
+        if (!located) {
           return {
             step: "delivery-upload",
             detail: uploaded.error || "存储服务没有返回交付文件地址",
@@ -679,6 +711,7 @@ export async function saveFileToLibraryWithDependencies(
         try {
           preparedDelivery = {
             ...preparedUploadFrom(uploaded.data?.file, uploadedUrl, digest),
+            ...(located.blobId ? { blobId: located.blobId } : {}),
             format: uploadedFormat,
             mediaType: uploadedMediaType,
             fileName: uploadedFile.name,
@@ -731,26 +764,32 @@ export async function saveFileToLibraryWithDependencies(
             { type: EDITOR_PREVIEW_MEDIA_TYPE },
           );
           const previewDigest = await sha256Blob(previewFile);
-          let previewUpload: Awaited<ReturnType<typeof uploadFile>>;
+          let previewUpload: Awaited<ReturnType<typeof uploadSaveIntermediate>>;
           try {
-            previewUpload = await dependencies.uploadFile(previewFile, {
-              siteId: site,
-              title: `${input.title}封面`,
-              registerAsset: false,
-              idempotencyKey: uploadIdempotencyKey(
-                input.idempotencyKey,
-                "preview",
-                previewDigest,
-              ),
-            });
+            previewUpload = await uploadSaveIntermediate(previewFile, stage, () =>
+              dependencies.uploadFile(previewFile, {
+                siteId: site,
+                title: `${input.title}封面`,
+                registerAsset: false,
+                idempotencyKey: uploadIdempotencyKey(
+                  input.idempotencyKey,
+                  "preview",
+                  previewDigest,
+                ),
+              }),
+            );
           } catch (caught) {
             return {
               warning,
               failure: { step: "preview-upload", detail: resultError(caught) },
             };
           }
-          const previewUrl = safePreparedUrl(previewUpload.data?.file?.url);
-          if (!previewUpload.ok || !previewUrl) {
+          const previewLocated = intermediateLocator(
+            previewUpload,
+            safePreparedUrl,
+          );
+          const previewUrl = previewLocated?.url || "";
+          if (!previewLocated) {
             return {
               warning,
               failure: {
@@ -769,6 +808,9 @@ export async function saveFileToLibraryWithDependencies(
                   previewUrl,
                   previewDigest,
                 ),
+                ...(previewLocated.blobId
+                  ? { blobId: previewLocated.blobId }
+                  : {}),
                 mediaType: EDITOR_PREVIEW_MEDIA_TYPE,
               },
             };
@@ -815,8 +857,8 @@ export async function saveFileToLibraryWithDependencies(
         editorWorkingHeadUrl(input.item, input.workingHeadUrl, projectUrl);
   }
 
-  if (!projectUrl && projectSchema) projectUrl = url;
-  if (input.project && !input.projectOnly && projectUrl === url) {
+  if (!projectUrl && projectSchema && !preparedProject?.blobId) projectUrl = url;
+  if (input.project && !input.projectOnly && projectUrl && projectUrl === url) {
     return fail("contract", "交付 source 与 editor project 必须使用不同文件");
   }
   const projectUrlIsWorkingHead =
@@ -831,8 +873,9 @@ export async function saveFileToLibraryWithDependencies(
       identity.artifactId ||
       input.item.id,
   ).slice(0, 600);
+  const projectLocated = Boolean(projectUrl || preparedProject?.blobId);
   const editorManifest =
-    input.editorManifest && projectUrl
+    input.editorManifest && projectLocated
       ? {
           schema: "oceanleo.editor-manifest.v1",
           id: boundedText(input.editorManifest.id, 64),
@@ -887,7 +930,7 @@ export async function saveFileToLibraryWithDependencies(
     ...(identity.revisionId
       ? { previous_revision_id: identity.revisionId }
       : {}),
-    ...(projectUrl
+    ...(projectLocated
       ? {
           editor_project_url: projectUrl,
           editor_project_schema: projectSchema,
@@ -940,16 +983,27 @@ export async function saveFileToLibraryWithDependencies(
      * 于是没有工程 sidecar 的 `pdf` 和没有独立交付物的 `audio`/`video` 在类型层面
      * 就永远进不来——这正是 A9-1 里那 8 类没有提交路径的机制之一。
      */
-    const commitSource = preparedDelivery?.digest
+    const revisionMetadata = boundedRevisionMetadata(
+      input.artifactRevision.metadata,
+    );
+    const commitSource: {
+      url: string;
+      blobId?: string;
+      digest: string;
+      format: string;
+      mediaType: string;
+    } | null = preparedDelivery?.digest
       ? {
           url,
+          ...(preparedDelivery.blobId ? { blobId: preparedDelivery.blobId } : {}),
           digest: preparedDelivery.digest,
           format: sourceFormat,
           mediaType: sourceMediaType,
         }
-      : preparedProject?.digest && projectUrl
+      : preparedProject?.digest && projectLocated
         ? {
             url: projectUrl,
+            ...(preparedProject.blobId ? { blobId: preparedProject.blobId } : {}),
             digest: preparedProject.digest,
             format: sourceFormat || projectSchema,
             mediaType: "application/json",
@@ -985,14 +1039,26 @@ export async function saveFileToLibraryWithDependencies(
       input.artifactRevision.artifactType,
       {
         delivery: preparedDelivery?.digest
-          ? { url, digest: preparedDelivery.digest }
+          ? {
+              url: preparedDelivery.blobId ? "" : url,
+              digest: preparedDelivery.digest,
+              blobId: preparedDelivery.blobId,
+            }
           : null,
         editorManifest:
           editorManifest && preparedProject?.digest
-            ? { url: projectUrl, digest: preparedProject.digest }
+            ? {
+                url: preparedProject.blobId ? "" : projectUrl,
+                digest: preparedProject.digest,
+                blobId: preparedProject.blobId,
+              }
             : null,
         previewBitmap: preparedPreview
-          ? { url: preparedPreview.url, digest: preparedPreview.digest }
+          ? {
+              url: preparedPreview.blobId ? "" : preparedPreview.url,
+              digest: preparedPreview.digest,
+              blobId: preparedPreview.blobId,
+            }
           : null,
       },
     );
@@ -1018,36 +1084,51 @@ export async function saveFileToLibraryWithDependencies(
       return fail("revision-publish", localRefusal.error);
     }
 
+    // CAS base: the revision the editor holds. If it 409s and that base is an
+    // older link of this tab's own commit chain, retry once from our own head
+    // (`editor-own-heads.ts`); anyone else's commit still surfaces as conflict.
+    let baseRevisionId = identity.revisionId;
+    const publish = (base: string) =>
+      dependencies.createArtifactRevision(identity.artifactId, {
+        expectedRevisionId: base,
+        artifactType: input.artifactRevision!.artifactType,
+        source: {
+          format: commitSource.format,
+          ...(commitSource.blobId
+            ? { blobId: commitSource.blobId }
+            : { url: commitSource.url }),
+          digest: commitSource.digest,
+        },
+        renditions: plan.renditions,
+        ...(revisionMetadata ? { metadata: revisionMetadata } : {}),
+        provenance: {
+          editor: editorManifest?.id || input.artifactRevision!.editor || "",
+          previousRevisionId: base,
+          editorProjectSchema: projectSchema,
+          sourceFormat,
+          displayable_primary: plan.displayablePrimary,
+          ...(preparedPreview
+            ? {
+                preview_digest: preparedPreview.digest,
+                preview_media_type: preparedPreview.mediaType,
+                preview_static_frame: "final",
+              }
+            : {}),
+          ...input.artifactRevision!.provenance,
+        },
+      });
     let published: Awaited<ReturnType<typeof createArtifactRevision>>;
     try {
-      published = await dependencies.createArtifactRevision(
-        identity.artifactId,
-        {
-          expectedRevisionId: identity.revisionId,
-          artifactType: input.artifactRevision.artifactType,
-          source: {
-            format: commitSource.format,
-            url: commitSource.url,
-            digest: commitSource.digest,
-          },
-          renditions: plan.renditions,
-          provenance: {
-            editor: editorManifest?.id || input.artifactRevision.editor || "",
-            previousRevisionId: identity.revisionId,
-            editorProjectSchema: projectSchema,
-            sourceFormat,
-            displayable_primary: plan.displayablePrimary,
-            ...(preparedPreview
-              ? {
-                  preview_digest: preparedPreview.digest,
-                  preview_media_type: preparedPreview.mediaType,
-                  preview_static_frame: "final",
-                }
-              : {}),
-            ...input.artifactRevision.provenance,
-          },
-        },
-      );
+      published = await publish(baseRevisionId);
+      const ownHead =
+        !published.ok &&
+        (published.code === "revision-conflict" || published.status === 409)
+          ? ownHeadAfter(identity.artifactId, baseRevisionId)
+          : null;
+      if (ownHead) {
+        baseRevisionId = ownHead.revisionId;
+        published = await publish(baseRevisionId);
+      }
     } catch (caught) {
       return fail("revision-publish", resultError(caught));
     }
@@ -1069,7 +1150,7 @@ export async function saveFileToLibraryWithDependencies(
     if (
       next.artifactId !== identity.artifactId ||
       !next.revisionId ||
-      next.revisionId === identity.revisionId ||
+      next.revisionId === baseRevisionId ||
       next.artifactType !== input.artifactRevision.artifactType ||
       next.artifact?.sourceFormat !== commitSource.format ||
       nextSource?.revisionId !== next.revisionId ||
@@ -1108,15 +1189,22 @@ export async function saveFileToLibraryWithDependencies(
       ...next,
       title: input.title,
       url: nextSource.url || url,
-      meta: { ...next.meta, ...creationMeta },
+      meta: {
+        ...next.meta,
+        ...creationMeta,
+        ...stagedLocatorMeta(next, preparedProject, creationMeta.editor_manifest),
+        previous_revision_id: baseRevisionId,
+      },
     };
+    noteOwnCommittedHead(next.artifactId, baseRevisionId, next.revisionId, item);
     return finish({
       ok: true,
       url: nextSource.url || url,
+      projectUrl: stagedProjectUrl(next, preparedProject) || projectUrl,
       versionId: next.revisionId,
       artifactId: next.artifactId,
       revisionId: next.revisionId,
-      previousRevisionId: identity.revisionId,
+      previousRevisionId: baseRevisionId,
       item,
     });
   }

@@ -4,3 +4,5 @@
 - 06:49Z [实测 API] 同一链、基线每次前移到返回的新 revision（`--fixed`）：3/3 commit 200（ea3dd249→2e754ae0→46c4af97）。仍然 3 个隐藏 root（bb36ccd3 / 030c38c9 / 1916d763）。
 - 06:50Z [实测 API] `/v1/database/private-upload register_asset=false` 拒收 PDF（422，只收 JSON/PNG）→ 交付件进私有 staging 需要后端新口子。
 - 06:50Z [实测] 浏览器复现暂缓：槽里他人半成品编译错（SelectionToolbar.tsx 缺导出）+ 05:09–05:25Z 连接池满；里程碑后再跑浏览器。
+- 07:30Z [后端] oceanleo 473f3d1：staging 口子 / revision metadata 白名单 / 网站闭包继承；pytest 144 passed。即将 docker restart oceanleo-api（W04 第 1 次）。
+- 07:37Z [focused] tests/editor-overhaul-w04-save-kernel.test.mjs 9/9；advanced-session/W2-*/persistence/model3d/w2-save-contract 全绿；tsc 我的文件 0 错。

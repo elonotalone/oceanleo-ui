@@ -16,6 +16,7 @@ import {
   type LibraryKind,
 } from "./library-data";
 import { savedItemVisualUrls } from "./editor-working-head";
+import { ownCommittedItem } from "./doc-editors/editor-own-heads";
 import {
   advancedFeatureById,
   advancedFeatureForItem,
@@ -639,6 +640,13 @@ export function advancedSessionAppId(
   return advancedSessionAppIdForStoredRoute(item, route);
 }
 
+/**
+ * Merge one save receipt into the opened item. The durable identity moves with
+ * it: the next save's CAS base must be the revision this save produced, never
+ * the one the editor opened (10-23: every second save 409'd and orphaned its
+ * upload). The committed item comes from `input.item` or, for routes that only
+ * pass `versionId`, from this tab's own-commit ledger (`editor-own-heads.ts`).
+ */
 export function advancedSavedItem(
   item: LibraryItem,
   input: {
@@ -648,10 +656,13 @@ export function advancedSavedItem(
     title?: string;
     versionId?: string;
     meta?: Record<string, unknown>;
+    /** Server-confirmed item of the new revision, when the caller has it. */
+    item?: LibraryItem;
   },
 ): LibraryItem {
   const rootId = advancedRootItemId(item);
   const visual = savedItemVisualUrls(item, input);
+  const committed = committedRevisionFor(item, input);
   return {
     ...item,
     id: input.versionId || item.id,
@@ -659,12 +670,47 @@ export function advancedSavedItem(
     url: input.url,
     previewUrl: visual.previewUrl,
     thumbUrl: visual.thumbUrl,
+    ...(committed
+      ? {
+          revisionId: committed.revisionId,
+          artifactType: committed.artifactType,
+          artifact: committed.artifact,
+        }
+      : {}),
     meta: {
       ...item.meta,
       ...input.meta,
+      ...(committed
+        ? {
+            revision_id: committed.revisionId,
+            previous_revision_id: item.revisionId,
+          }
+        : {}),
       parent_asset_id: rootId,
     },
   };
+}
+
+function committedRevisionFor(
+  item: LibraryItem,
+  input: { versionId?: string; item?: LibraryItem },
+): (LibraryItem & { revisionId: string }) | null {
+  if (!isDurableLibraryItem(item)) return null;
+  const candidate =
+    input.item ??
+    (input.versionId
+      ? ownCommittedItem(item.artifactId, input.versionId)
+      : null);
+  if (
+    !candidate ||
+    !isDurableLibraryItem(candidate) ||
+    candidate.artifactId !== item.artifactId ||
+    candidate.revisionId === item.revisionId ||
+    (input.versionId && candidate.revisionId !== input.versionId)
+  ) {
+    return null;
+  }
+  return candidate;
 }
 
 export function advancedSessionSnapshot(

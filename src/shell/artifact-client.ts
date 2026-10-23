@@ -123,6 +123,8 @@ export interface ArtifactRevisionCommit {
     dependencyRevisionIds: string[];
   };
   provenance?: Record<string, unknown>;
+  /** Allowlisted revision metadata (server-filtered), e.g. `text_excerpt`. */
+  metadata?: Record<string, unknown>;
 }
 
 interface ArtifactRequestOptions extends RequestInit {
@@ -730,7 +732,10 @@ async function artifactRequest<T>(
       ...init,
       headers: {
         Accept: "application/json",
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(init.body &&
+        !(typeof FormData !== "undefined" && init.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init.headers || {}),
       },
@@ -2974,6 +2979,7 @@ export async function createArtifactRevision(
               }
             : null,
           provenance: commit.provenance || {},
+          ...(commit.metadata ? { metadata: commit.metadata } : {}),
         }),
       },
     ),
@@ -3018,6 +3024,61 @@ export async function createArtifactRevision(
     );
   }
   return committed;
+}
+
+export interface StagedArtifactBlob {
+  /** `project-assets:u/<owner>/editor-staging/<day>/<file>`; not a URL. */
+  blobId: string;
+  digest: string;
+  mediaType: string;
+  byteSize: number;
+}
+
+const STAGED_BLOB_ID =
+  /^project-assets:u\/[0-9a-f-]{36}\/editor-staging\/[A-Za-z0-9._~/-]+$/i;
+
+/**
+ * Owner-private bytes for the next revision of `artifactId` (W04, 10-23).
+ * Unlike `/v1/database/upload` this never creates a Library root: the next
+ * `createArtifactRevision` re-verifies the locator and copies it into
+ * content-addressed storage. `status` 404/405 means an older gateway.
+ */
+export async function stageArtifactBlob(
+  artifactId: string,
+  file: File,
+): Promise<ArtifactApiResult<StagedArtifactBlob>> {
+  const body = new FormData();
+  body.append("file", file, file.name);
+  const result = await artifactRequest<unknown>(
+    `/v1/artifacts/${encodeURIComponent(artifactId)}/staging`,
+    { method: "POST", body },
+  );
+  if (!result.ok) return result as ArtifactApiResult<StagedArtifactBlob>;
+  const raw =
+    result.data && typeof result.data === "object"
+      ? ((result.data as Record<string, unknown>).file as Record<string, unknown>)
+      : null;
+  const blobId = String(raw?.blob_id || "");
+  const digest = String(raw?.digest || "").toLowerCase();
+  if (!STAGED_BLOB_ID.test(blobId) || !/^[0-9a-f]{64}$/.test(digest)) {
+    return {
+      ok: false,
+      error: "保存暂存区没有返回可校验的文件定位。",
+      code: "invalid-response",
+      status: result.status,
+      retryable: true,
+    };
+  }
+  return {
+    ok: true,
+    status: result.status,
+    data: {
+      blobId,
+      digest,
+      mediaType: String(raw?.mime || ""),
+      byteSize: Number(raw?.bytes || 0),
+    },
+  };
 }
 
 export async function retireArtifact(
