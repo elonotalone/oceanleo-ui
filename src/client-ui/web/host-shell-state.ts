@@ -12,7 +12,27 @@ import type { HostSessionPort } from "../host-ports";
 
 export const HOST_LOCATION_EVENT = "oceanleo:host-location";
 
+export type HostPortalPageKind = "library" | "default";
+
 type PatchedHistory = History & { __oceanleoHostLocation?: boolean };
+
+export function hostPortalPageKind(pathname: string): HostPortalPageKind {
+  if (!getClientHostConfig()) return "default";
+  const path = (pathname.split("?")[0] || "/").replace(/\/+$/, "") || "/";
+  if (path === "/library" || path.startsWith("/library/")) return "library";
+  return "default";
+}
+
+export function notifyHostLocation(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(HOST_LOCATION_EVENT));
+  try {
+    const PopState = window.PopStateEvent || window.Event;
+    window.dispatchEvent(new PopState("popstate"));
+  } catch {
+    window.dispatchEvent(new Event("popstate"));
+  }
+}
 
 export function hostAwareActivePath(
   nextPathname: string,
@@ -46,7 +66,7 @@ export function patchHostHistory(): void {
       ...args: Parameters<History["pushState"]>
     ) {
       const result = original.apply(this, args as [unknown, string, string?]);
-      window.dispatchEvent(new Event(HOST_LOCATION_EVENT));
+      notifyHostLocation();
       return result;
     };
   }
@@ -113,6 +133,6 @@ export function pushHostLocation(
   }
   if (typeof window === "undefined") return true;
   window.history.pushState({}, "", href);
-  window.dispatchEvent(new Event(HOST_LOCATION_EVENT));
+  notifyHostLocation();
   return true;
 }

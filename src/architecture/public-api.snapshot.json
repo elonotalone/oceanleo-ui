@@ -1239,6 +1239,12 @@
         },
         {
           "kind": "named",
+          "name": "hostPortalPageKind",
+          "importedName": "hostPortalPageKind",
+          "source": "./web/host-shell-state"
+        },
+        {
+          "kind": "named",
           "name": "HostSessionPort",
           "importedName": "HostSessionPort",
           "source": "./host-ports"
@@ -1254,6 +1260,12 @@
           "name": "NextWebHostProvider",
           "importedName": "NextWebHostProvider",
           "source": "./web/next-web-host"
+        },
+        {
+          "kind": "named",
+          "name": "notifyHostLocation",
+          "importedName": "notifyHostLocation",
+          "source": "./web/host-shell-state"
         },
         {
           "kind": "named",
@@ -1296,6 +1308,12 @@
           "name": "ClientHostNavItem",
           "importedName": "ClientHostNavItem",
           "source": "./host-config"
+        },
+        {
+          "kind": "type",
+          "name": "HostPortalPageKind",
+          "importedName": "HostPortalPageKind",
+          "source": "./web/host-shell-state"
         }
       ]
     },

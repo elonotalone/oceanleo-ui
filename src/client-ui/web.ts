@@ -14,9 +14,12 @@ export {
 export {
   HOST_LOCATION_EVENT,
   hostAwareActivePath,
+  hostPortalPageKind,
   isClientHostConfigured,
+  notifyHostLocation,
   pushHostLocation,
   readShellUserEmail,
   useHostAwarePathname,
+  type HostPortalPageKind,
 } from "./web/host-shell-state";
 export type { HostSessionPort, ClientHost, ClientEnvironment } from "./host-ports";

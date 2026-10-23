@@ -11,6 +11,7 @@ import {
 import {
   HOST_LOCATION_EVENT,
   hostAwareActivePath,
+  hostPortalPageKind,
   isClientHostConfigured,
   patchHostHistory,
   pushHostLocation,
@@ -105,19 +106,33 @@ test("host-configured /library selects 我的库, not 我的任务", () => {
   assert.equal(isActivePath(live, "/library"), true);
 });
 
-test("silent pushState('/library') notifies host location subscribers", () => {
+test("silent pushState('/library') notifies host location and popstate", () => {
   installMemoryHistory("/");
   configureClientHost(hostConfig());
   patchHostHistory();
   let ticks = 0;
+  let pops = 0;
   const stop = subscribeHostLocation(() => {
     ticks += 1;
+  });
+  window.addEventListener("popstate", () => {
+    pops += 1;
   });
   window.history.pushState({}, "", "/library");
   assert.equal(readHostLocationPath(), "/library");
   assert.equal(hostAwareActivePath("/", readHostLocationPath(), true), "/library");
   assert.ok(ticks >= 1, `expected location event, got ${ticks}`);
+  assert.ok(pops >= 1, `expected popstate so W09 PageRenderer can mount /library, got ${pops}`);
   stop();
+});
+
+test("host-configured /library mounts the real portal library surface", () => {
+  assert.equal(hostPortalPageKind("/library"), "default");
+  configureClientHost(hostConfig());
+  assert.equal(hostPortalPageKind("/"), "default");
+  assert.equal(hostPortalPageKind("/library"), "library");
+  assert.equal(hostPortalPageKind("/library/"), "library");
+  assert.equal(hostPortalPageKind("/projects"), "default");
 });
 
 test("pushHostLocation is a no-op on the website and writes history in host mode", () => {
@@ -159,6 +174,9 @@ test("readShellUserEmail prefers host session when configured", async () => {
 test("clone-shell wires host location and host session", () => {
   assert.match(portalShell, /useHostAwarePathname/);
   assert.match(portalShell, /pushHostLocation/);
+  assert.match(portalShell, /hostPortalPageKind/);
+  assert.match(portalShell, /SharedLibraryPage/);
+  assert.match(portalShell, /data-oceanleo-host-portal="library"/);
   assert.match(portalShell, /readShellUserEmail\(host\?\.session, getUserEmail\)/);
   assert.match(portalShell, /host\?\.session\?\.subscribe/);
   assert.match(portalShell, /signedIn=\{Boolean\(userEmail\)\}/);
