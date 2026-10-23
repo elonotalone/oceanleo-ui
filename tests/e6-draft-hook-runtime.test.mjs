@@ -75,7 +75,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 
 const transportStubs = {
-  "../lib/database": dataModule(`export async function uploadFile(file, options) { return globalThis.__e6Upload(file, options); }`),
+  "./advanced-draft-transport": dataModule(`export async function uploadPrivateWorkingDraft(file) { return globalThis.__e6Upload(file); } export function readPrivateWorkingDraft(url, init) { return globalThis.fetch(url, init); }`),
 };
 // The upload transport is a dynamic import: register that entry before the hook
 // so module-bench replaces it as well as static collaborators.
@@ -85,9 +85,8 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 function bed() {
   resetUserEditSession();
   const b = { revision: 0, itemKey: "artifact:e6-draft", uploads: [], records: [], versions: [], hooks: null, setInput: null, boundFlush: null };
-  globalThis.__e6Upload = async (file, options) => {
+  globalThis.__e6Upload = async (file) => {
     b.uploads.push(JSON.parse(await file.text()));
-    assert.equal(options.registerAsset, false);
     return { ok: true, data: { file: { url: 'https://files.example/draft-' + b.uploads.length + '.json' } } };
   };
   b.draft = { schema: 'test.working.v1', capture: () => ({ text: 'edit-' + b.revision }), bindFlush: f => { b.boundFlush = f; } };

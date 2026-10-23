@@ -83,7 +83,7 @@ export async function uploadAdvancedDraft(input: {
   const file = new File([encoded], "working-document.oceanleo-project.json", { type: "application/json" });
   if (file.size > ADVANCED_DRAFT_MAX_BYTES) throw new Error("工作文档超过 20MB 安全上限");
   const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())), b => b.toString(16).padStart(2, "0")).join("");
-  const upload = dependencies?.upload ?? (await import("../lib/database")).uploadFile;
+  const upload = dependencies?.upload ?? (await import("./advanced-draft-transport")).uploadPrivateWorkingDraft;
   const uploaded = await upload(file, { siteId: input.siteId, title: `${input.title}草稿`, registerAsset: false,
     idempotencyKey: `advanced-draft:${digest}` });
   const receiptDigest = String(
@@ -105,9 +105,10 @@ export async function uploadAdvancedDraft(input: {
 
 export async function loadAdvancedDraft(
   pointer: AdvancedDraftPointer, signal?: AbortSignal,
-  read: typeof fetch = fetch,
+  read?: typeof fetch,
 ): Promise<unknown> {
-  const response = await read(pointer.url, { signal, cache: "no-store", credentials: "omit", headers: { Accept: "application/json" } });
+  const readDraft = read ?? (await import("./advanced-draft-transport")).readPrivateWorkingDraft;
+  const response = await readDraft(pointer.url, { signal, cache: "no-store", credentials: "omit", headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error("服务器草稿暂时无法读取，请重新载入");
   const text = await response.text();
   if (!text || new TextEncoder().encode(text).byteLength > ADVANCED_DRAFT_MAX_BYTES) throw new Error("服务器草稿为空或过大");

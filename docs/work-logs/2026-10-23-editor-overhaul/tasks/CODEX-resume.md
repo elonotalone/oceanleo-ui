@@ -19,3 +19,19 @@ Read original W11 task, state/journal and signals. Finish actual remaining video
 ## W14
 
 Read original W14 task, state/journal/signals and latest code. Finish website text/image shared bars, faithful preview, stable same-instance mode switching, private save with dependency closure, fork once, offline recovery. Preserve UGC isolation; run security gate before touching any injection/iframe/postMessage code and do not weaken it. Use existing website scenarios. Produce CODEX-W14.md with browser and focused test evidence.
+
+## W07
+
+Original W07 boundary only. Read state/journal plus newest deck commits before doing anything. Finish open-only phantom-version fix, text/image canon bars and light/dark layout, and remaining save/fork/offline/card acceptance. Reuse existing scenarios; specifically no version should be created merely opening/closing/reloading. Confirm real edits still publish exactly once. Parent changed shared drafts to owner-authenticated private storage and added stale-local protection; coordinate any interfaces. Produce CODEX-W07.md.
+
+## W12
+
+Original W12 audio boundary only. Read state/journal then inspect newest changes, as old state can lag commits. Finish theme-aware waveform, working toolbar/drawers and material insertion with undo, actual save revisions for two edits, reopen/reload and offline retry. Use original W12 scenes and fixture; create acceptance-owned copies only. Produce CODEX-W12.md.
+
+## W13
+
+Original W13 3D boundary only. Read state/journal/newest commits. Finish actual remaining object bars, duplicate/delete/transform behavior, theme chrome, GLB checkpoint save/restore with advanced source identity, material insertion, and D11 protocol. Preserve original scene colors. Verify no blank/phantom save on open, working save after second edit, both reopen and reload. Produce CODEX-W13.md.
+
+## W16
+
+Original W16 video-canvas boundary only. Read state/journal/latest code and preserve untracked s7-material.mjs. Finish native project canvas nodes, material insertion through full pipeline, private durable saves and thumbnails, real two-edit revision/fork/offline protocol, light/dark chrome. Do not assume saved if only a session snapshot exists. Produce CODEX-W16.md. Own focused tests only; parent coordinates global checks.

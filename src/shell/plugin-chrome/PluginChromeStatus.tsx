@@ -39,12 +39,12 @@ export function PluginChromeStatus({ state }: { state: PluginChromeSaveState }) 
     case "error":
       tone = "danger";
       text = tt("保存失败");
-      title = state.message;
+      title = state.message ? tt(state.message) : "";
       break;
     case "local-only":
       tone = "warn";
       text = tt("仅存本地");
-      title = state.reason;
+      title = state.reason ? tt(state.reason) : "";
       break;
   }
 

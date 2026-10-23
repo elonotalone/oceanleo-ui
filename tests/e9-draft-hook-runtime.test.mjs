@@ -75,6 +75,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 
 const stubs = {
+  "./advanced-draft-transport": dataModule(`export async function uploadPrivateWorkingDraft(file) { return globalThis.__e9.upload(file); } export function readPrivateWorkingDraft(url, init) { return globalThis.fetch(url, init); }`),
   "../lib/database": dataModule(`export async function uploadFile(file, options) { return globalThis.__e9.upload(file, options); }`),
   "./advanced-recovery-store": dataModule(`
     export async function readAdvancedRecovery(key) { return globalThis.__e9.local?.key === key ? globalThis.__e9.local : null; }

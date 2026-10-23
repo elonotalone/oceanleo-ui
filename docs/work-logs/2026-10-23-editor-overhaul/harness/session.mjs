@@ -95,7 +95,18 @@ export async function launch({
   const t0 = Date.now();
   const lines = [];
   const log = (...parts) => {
-    const line = `[${((Date.now() - t0) / 1000).toFixed(1)}s] ${parts.join(" ")}`;
+    const safe = parts.join(" ")
+      .replace(/https?:\/\/[^\s"'<>]+/g, raw => {
+        try {
+          const url = new URL(raw);
+          url.search = url.search ? "?redacted" : "";
+          url.hash = "";
+          if (/\/artifact-access\//.test(url.pathname)) url.pathname = "/artifact-access/[redacted]";
+          return url.href;
+        } catch { return "[redacted-url]"; }
+      })
+      .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]");
+    const line = `[${((Date.now() - t0) / 1000).toFixed(1)}s] ${safe}`;
     lines.push(line);
     console.log(line);
   };

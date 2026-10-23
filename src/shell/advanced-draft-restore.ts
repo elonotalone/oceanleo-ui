@@ -65,9 +65,11 @@ export function useAdvancedDraftRestore({ item, schema, recovery, revision }: {
       const records = await Promise.all([localKey, active.key].filter((key, index, keys) => keys.indexOf(key) === index)
         .map(key => readAdvancedRecovery(key).catch(() => null)));
       let local = null as (typeof records)[number];
+      const baseSavedAt = item?.createdAt ? Date.parse(item.createdAt) : Number.NaN;
       for (const record of records) {
         if (!record) continue;
-        if (advancedRecoverySupersededBySave(record.key, record.updatedAt)) {
+        if (advancedRecoverySupersededBySave(record.key, record.updatedAt) ||
+            Number.isFinite(baseSavedAt) && record.updatedAt <= baseSavedAt) {
           await deleteAdvancedRecovery(record.key).catch(() => undefined);
         } else if (!local || record.updatedAt > local.updatedAt) local = record;
       }

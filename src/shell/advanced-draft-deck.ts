@@ -50,7 +50,7 @@ function draftFromWorkingPayload(value: unknown): DeckDraftState | null {
 
 /** Also used when reopening a session on another device; never falls back to
  * an older version after a matching server draft failed to load. */
-export async function loadDeckServerDraft(item: LibraryItem, signal?: AbortSignal, read: typeof fetch = fetch) {
+export async function loadDeckServerDraft(item: LibraryItem, signal?: AbortSignal, read?: typeof fetch) {
   const pointer = normalizeAdvancedDraftPointer(item.meta[ADVANCED_DRAFT_META_KEY], advancedDraftIdentity(item), DECK_DRAFT_SCHEMA);
   if (!pointer) return null;
   const raw = await loadAdvancedDraft(pointer, signal, read);
