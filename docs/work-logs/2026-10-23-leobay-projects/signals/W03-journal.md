@@ -9,3 +9,6 @@
 - 实测：基线相关测试 126 个里有 19 个本来就红（bay3-page、bay-needs-help 等 5 个是测试里 domain-family 桩缺 `runtimePageOrigin` 导出，整份没执行，和我无关；bay-seller-copy / bay-settings-copy / bay-shell-copy 的「tt 字面量都有 16 语译文」红是别的 owner 的新词条）。
 - 判定：作品=库条目（LibraryWorkPicker/附带作品/课程章节/打开作品）、作品图=图集名、抄袭他人作品、作品集、图表成品、原始素材、专业服务站网页、交付一件成品 —— 非种类，保留（共 18 句，写进 tests/lbp-w03-kind-names.test.mjs 的 KEEP 并逐条有理由）。
 - 做完：apps/app*/ 全部「作品」→「网站或软件」（71 处）；supply/seller/deal/orders 的「服务」→「商品」或省略名词（44 处）；ServiceCard 角标按 listing_kind 五类取名；ServiceEditorPane 徽标改 offerKindLabel；预览里「素材」→「文件」。新分表 59 句 × 16 语。
+- 2026-10-23 21:40 最后一轮相关测试 127 个：红 7 个全是开工基线就红的（bay-listing-sections 的 CSS 选择器；bay-needs-* 三份整份没执行；bay-shell-copy 随后转绿；i18n-key-collision；文案闸 #8/#9/#10），没有新增；typecheck exit 0；其他 owner 的 lbp-w01/02/04/05/06/09 新测试在合并树上全绿。
+- 2026-10-23 21:45 判定：ServicePane 的「打开作品」= 买家领取后拿到手的库条目，保留；HiddenByPlatformNotice(what="service") 写「这项人工服务」但现成文件 / 其他的条目也用它 —— 不在我边界（seller-ui.tsx），写进交卷请 W09/父改成「这件商品」。
+- 2026-10-23 21:50 交卷文件 verdicts/W03-delivery.md 已写完并提交。

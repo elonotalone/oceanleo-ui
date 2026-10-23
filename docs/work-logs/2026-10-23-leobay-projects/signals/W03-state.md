@@ -1,6 +1,6 @@
 # W03 state（被打断时只靠它续接）
 
-更新：2026-10-23 21:45（第一个检查点已入库 770dd1d3；接下来收尾 + 交卷）
+更新：2026-10-23 21:50（交卷完成：verdicts/W03-delivery.md 已提交；无待办）
 
 ## 已确认的事实
 - 工作目录 /root/projects/oceanleo-ui，分支 main，bootstrap 已跑。
@@ -17,12 +17,10 @@
 4. 测试：新增 `tests/lbp-w03-kind-names.test.mjs`（8 条，含边界扫描 + 18 句保留清单 + 分表完整性）；精确替换 bay-app-insights / bay-app-login / bay-seller-editor / bay-supply-checkout / bay2-supply / bay-deal-view；bay-seller-copy 的「tt 字面量都有 16 语译文」改为也认汇总词典。
 
 ## 正在做
-- 收尾：全量相关测试复跑、typecheck 复跑、交卷文件 verdicts/W03-delivery.md。
+- 无。交卷文件已提交；全量相关测试 127 个、typecheck 都复跑过（见交卷第 6 节）。
 
 ## 下一步
-1. `/tmp/w03/run-tests.sh <日志> $(cat /tmp/w03/rel_tests_all2.txt)`（分两半并行）对照 /tmp/w03/baseline_red.txt。
-2. `pnpm typecheck`（run-heavy）。
-3. 写 verdicts/W03-delivery.md（对照表见 /tmp/w03/make_table.mjs 生成的 table.md），提交。
+- 父 agent 验收；若 V01 或父提出新的措辞要求，在 `lbp-w03-copy.ts` 与源码里精确替换，并跑 `tests/lbp-w03-kind-names.test.mjs`。
 
 ## 复现命令
 见 _COMMON.md §2。单测：
