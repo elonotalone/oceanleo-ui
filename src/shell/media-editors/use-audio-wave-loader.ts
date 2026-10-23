@@ -30,6 +30,7 @@ import {
 } from "./audio-project-carrier";
 import { usePluginTheme } from "../plugin-theme";
 import { AUDIO_THEME_PALETTES } from "./audio-wave-theme";
+import { audioWaveformChannels } from "./audio-wave-peaks";
 import {
   applyAudioOperation,
   audioBufferBytes,
@@ -262,6 +263,8 @@ export function useAudioWaveLoader({
         const wave = WaveSurferClass.create({
           container,
           url: objectUrl,
+          peaks: audioWaveformChannels(decoded),
+          duration: decoded.duration,
           plugins: [regions],
           height: AUDIO_LAYOUT.waveViewHeightPx,
           waveColor: paletteRef.current.body,

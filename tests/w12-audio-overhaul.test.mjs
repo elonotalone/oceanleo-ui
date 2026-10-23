@@ -3,6 +3,16 @@ import test from 'node:test';
 import { React, act, compileModule, dataModule, mount, settle } from './collab-media-sim.mjs';
 import { AUDIO_THEME_PALETTES } from '../src/shell/media-editors/audio-wave-theme.ts';
 import { audioEditorProjectSource } from '../src/shell/media-editors/audio-project-source.ts';
+import { audioWaveformChannels } from '../src/shell/media-editors/audio-wave-peaks.ts';
+
+test('W12 initial and edited waveforms use authoritative samples without normalizing the audio',()=>{
+  const samples=Float32Array.from([.5,2,-2]);
+  const peaks=audioWaveformChannels({numberOfChannels:1,getChannelData:()=>samples});
+  assert.deepEqual([...peaks[0]],[.5,1,-1]);
+  assert.deepEqual([...samples],[.5,2,-2]);
+  const quiet=Float32Array.from([.2,-.2]);
+  assert.equal(audioWaveformChannels({numberOfChannels:1,getChannelData:()=>quiet})[0],quiet);
+});
 
 const luminance = (hex) => {
   const channels = hex.match(/[a-f0-9]{2}/ig).map((part) => parseInt(part,16)/255)

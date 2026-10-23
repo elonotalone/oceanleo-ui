@@ -6,6 +6,7 @@ import type RegionsPlugin from "wavesurfer.js/dist/plugins/regions.js";
 import type { Region } from "wavesurfer.js/dist/plugins/regions.js";
 import { useUI } from "../../i18n/ui/useUI";
 import { importAudioSource } from "./audio-source-import";
+import { audioWaveformChannels } from "./audio-wave-peaks";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -133,7 +134,7 @@ export function useAudioWorkbench(
     const nextUrl = URL.createObjectURL(encodeWav(next));
     const previousUrl = objectUrlRef.current;
     try {
-      await wave.load(nextUrl);
+      await wave.load(nextUrl, audioWaveformChannels(next), next.duration);
       objectUrlRef.current = nextUrl;
       if (previousUrl) URL.revokeObjectURL(previousUrl);
       wave.setPlaybackRate(speedRef.current);

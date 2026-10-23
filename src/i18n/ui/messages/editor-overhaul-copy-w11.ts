@@ -4,6 +4,7 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
   de: {
+    "取消渲染": "Rendering abbrechen", "媒体与轨道": "Medien und Spuren", "正在转成 WebM…": "Wird in WebM umgewandelt…", "渲染中…": "Wird gerendert…", "转换为可编辑时间线": "In bearbeitbare Zeitleiste umwandeln",
     "交叉溶解": "Weiche Überblendung",
     "黑场": "Abblende auf Schwarz",
     "横向位置": "Horizontale Position",
@@ -56,6 +57,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Audioclip",
   },
   en: {
+    "取消渲染": "Cancel render", "媒体与轨道": "Media and tracks", "正在转成 WebM…": "Converting to WebM…", "渲染中…": "Rendering…", "转换为可编辑时间线": "Convert to editable timeline",
     "交叉溶解": "Cross dissolve",
     "黑场": "Dip to black",
     "横向位置": "Horizontal position",
@@ -108,6 +110,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Audio clip",
   },
   es: {
+    "取消渲染": "Cancelar renderizado", "媒体与轨道": "Medios y pistas", "正在转成 WebM…": "Convirtiendo a WebM…", "渲染中…": "Renderizando…", "转换为可编辑时间线": "Convertir a línea de tiempo editable",
     "交叉溶解": "Disolución cruzada",
     "黑场": "Fundido a negro",
     "横向位置": "Posición horizontal",
@@ -160,6 +163,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Clip de audio",
   },
   "es-419": {
+    "取消渲染": "Cancelar renderizado", "媒体与轨道": "Medios y pistas", "正在转成 WebM…": "Convirtiendo a WebM…", "渲染中…": "Renderizando…", "转换为可编辑时间线": "Convertir a línea de tiempo editable",
     "交叉溶解": "Disolución cruzada",
     "黑场": "Fundido a negro",
     "横向位置": "Posición horizontal",
@@ -212,6 +216,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Clip de audio",
   },
   fr: {
+    "取消渲染": "Annuler le rendu", "媒体与轨道": "Médias et pistes", "正在转成 WebM…": "Conversion en WebM…", "渲染中…": "Rendu en cours…", "转换为可编辑时间线": "Convertir en timeline modifiable",
     "交叉溶解": "Fondu enchaîné",
     "黑场": "Fondu au noir",
     "横向位置": "Position horizontale",
@@ -264,6 +269,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Clip audio",
   },
   it: {
+    "取消渲染": "Annulla rendering", "媒体与轨道": "Media e tracce", "正在转成 WebM…": "Conversione in WebM…", "渲染中…": "Rendering…", "转换为可编辑时间线": "Converti in timeline modificabile",
     "交叉溶解": "Dissolvenza incrociata",
     "黑场": "Dissolvenza al nero",
     "横向位置": "Posizione orizzontale",
@@ -316,6 +322,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Clip audio",
   },
   "pt-BR": {
+    "取消渲染": "Cancelar renderização", "媒体与轨道": "Mídia e faixas", "正在转成 WebM…": "Convertendo para WebM…", "渲染中…": "Renderizando…", "转换为可编辑时间线": "Converter em linha do tempo editável",
     "交叉溶解": "Dissolução cruzada",
     "黑场": "Fade para preto",
     "横向位置": "Posição horizontal",
@@ -368,6 +375,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Clipe de áudio",
   },
   "pt-PT": {
+    "取消渲染": "Cancelar renderização", "媒体与轨道": "Multimédia e faixas", "正在转成 WebM…": "A converter para WebM…", "渲染中…": "A renderizar…", "转换为可编辑时间线": "Converter em linha temporal editável",
     "交叉溶解": "Dissolução cruzada",
     "黑场": "Fade para preto",
     "横向位置": "Posição horizontal",
@@ -420,6 +428,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Clip de áudio",
   },
   vi: {
+    "取消渲染": "Hủy kết xuất", "媒体与轨道": "Nội dung và rãnh", "正在转成 WebM…": "Đang chuyển sang WebM…", "渲染中…": "Đang kết xuất…", "转换为可编辑时间线": "Chuyển sang dòng thời gian có thể sửa",
     "交叉溶解": "Hòa tan chéo",
     "黑场": "Mờ về đen",
     "横向位置": "Vị trí ngang",
@@ -472,6 +481,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Đoạn âm thanh",
   },
   tr: {
+    "取消渲染": "İşlemeyi iptal et", "媒体与轨道": "Medya ve kanallar", "正在转成 WebM…": "WebM biçimine dönüştürülüyor…", "渲染中…": "İşleniyor…", "转换为可编辑时间线": "Düzenlenebilir zaman çizelgesine dönüştür",
     "交叉溶解": "Çapraz geçiş",
     "黑场": "Siyaha geçiş",
     "横向位置": "Yatay konum",
@@ -524,6 +534,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "Ses klibi",
   },
   "zh-TW": {
+    "取消渲染": "取消算繪", "媒体与轨道": "媒體與軌道", "正在转成 WebM…": "正在轉成 WebM…", "渲染中…": "算繪中…", "转换为可编辑时间线": "轉換為可編輯時間軸",
     "交叉溶解": "交叉溶解",
     "黑场": "黑場",
     "横向位置": "橫向位置",
@@ -576,6 +587,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "音訊片段",
   },
   ja: {
+    "取消渲染": "レンダリングを中止", "媒体与轨道": "メディアとトラック", "正在转成 WebM…": "WebMに変換中…", "渲染中…": "レンダリング中…", "转换为可编辑时间线": "編集可能なタイムラインに変換",
     "交叉溶解": "クロスディゾルブ",
     "黑场": "黒へフェード",
     "横向位置": "水平位置",
@@ -628,6 +640,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "音声クリップ",
   },
   ko: {
+    "取消渲染": "렌더링 취소", "媒体与轨道": "미디어 및 트랙", "正在转成 WebM…": "WebM으로 변환 중…", "渲染中…": "렌더링 중…", "转换为可编辑时间线": "편집 가능한 타임라인으로 변환",
     "交叉溶解": "교차 디졸브",
     "黑场": "검은색으로 페이드",
     "横向位置": "가로 위치",
@@ -680,6 +693,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "오디오 클립",
   },
   ar: {
+    "取消渲染": "إلغاء التصيير", "媒体与轨道": "الوسائط والمسارات", "正在转成 WebM…": "جارٍ التحويل إلى WebM…", "渲染中…": "جارٍ التصيير…", "转换为可编辑时间线": "تحويل إلى مخطط زمني قابل للتحرير",
     "交叉溶解": "ذوبان متقاطع",
     "黑场": "تلاشٍ إلى الأسود",
     "横向位置": "الموضع الأفقي",
@@ -732,6 +746,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "مقطع صوتي",
   },
   th: {
+    "取消渲染": "ยกเลิกการเรนเดอร์", "媒体与轨道": "สื่อและแทร็ก", "正在转成 WebM…": "กำลังแปลงเป็น WebM…", "渲染中…": "กำลังเรนเดอร์…", "转换为可编辑时间线": "แปลงเป็นไทม์ไลน์ที่แก้ไขได้",
     "交叉溶解": "ครอสดิสซอลฟ์",
     "黑场": "จางเป็นสีดำ",
     "横向位置": "ตำแหน่งแนวนอน",
@@ -784,6 +799,7 @@ export const EDITOR_OVERHAUL_W11_COPY: EditorOverhaulCopy = {
     "音频片段": "คลิปเสียง",
   },
   hi: {
+    "取消渲染": "रेंडर रद्द करें", "媒体与轨道": "मीडिया और ट्रैक", "正在转成 WebM…": "WebM में बदल रहे हैं…", "渲染中…": "रेंडर हो रहा है…", "转换为可编辑时间线": "संपादन योग्य टाइमलाइन में बदलें",
     "交叉溶解": "क्रॉस डिज़ॉल्व",
     "黑场": "काले में फ़ेड",
     "横向位置": "क्षैतिज स्थिति",
