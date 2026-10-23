@@ -2664,7 +2664,8 @@ export function useDeckEditor(
     try {
       await flushBeforeExport();
       const { blob, notes } = await buildDelivery(deckRef.current);
-      downloadBlob(`${deckRef.current.title || "演示文稿"}.pptx`, blob);
+      // 标题常带着上传时的扩展名（「x.pptx」）：不再补成「x.pptx.pptx」（W01 实测）。
+      downloadBlob(`${(deckRef.current.title || "演示文稿").replace(/\.(?:pptx?|odp|key)$/i, "")}.pptx`, blob);
       setNotice(
         [tt("PPTX 已导出，可在 PowerPoint 或兼容软件中继续使用"), ...notes].join(
           "；",

@@ -309,7 +309,7 @@ export function DeckRoute({
         }
         if (extension === "pdf") {
           await editor.flushBeforeExport();
-          const title = editor.deck.title || item.title || "presentation";
+          const title = (editor.deck.title || item.title || "presentation").replace(/\.(?:pptx?|odp|key)$/i, "");
           return await downloadConvertedCopy({
             source: await buildDeckPptxBlob(editor.deck),
             sourceName: `${title}.pptx`,
@@ -419,7 +419,7 @@ export function DeckRoute({
         },
         directDownload: {
           id: "deck-export-pptx",
-          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.deck[0].label}`,
+          label: tt("直接下载 {fmt}", { fmt: tt(DOC_FAMILY_DOWNLOAD_FORMATS.deck[0].label) }),
           icon: "download",
           busyLabel: "导出 PPTX…",
           busy: editor.exporting,
@@ -459,7 +459,7 @@ export function DeckRoute({
             : []),
           ...DOC_FAMILY_DOWNLOAD_FORMATS.deck.slice(1).map((format) => ({
             id: `deck-export-${format.extension}`,
-            label: `下载 ${format.label}`,
+            label: tt("下载 {fmt}", { fmt: tt(format.label) }),
             group: "download" as const,
             disabled: editor.loading || editor.exporting,
             onTrigger: () => {
