@@ -46,7 +46,7 @@ export function useModel3DSidecar({
 
   const reset = useCallback((view: Pick<Model3DViewProject, "annotations">) => {
     setAnnotations(view.annotations);
-    setSelectedAnnotationId(view.annotations[0]?.id || "");
+    setSelectedAnnotationId("");
     setAnnotationDraft("");
     pendingAnnotationLabelRef.current = "";
   }, []);

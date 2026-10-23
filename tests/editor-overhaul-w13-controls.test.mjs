@@ -35,6 +35,14 @@ test("read-only selection omits mutation controls instead of emitting disabled b
   assert.ok(!context || !context.controls.some((c) => ["duplicate", "delete"].includes(c.id)));
 });
 
+test("annotation text remains in its inspector even when a scene node is also selected", () => {
+  const editor = { ...fixture(), annotations: [{ id: "note", label: "Detail" }], selectedAnnotationId: "note" };
+  const context = model3dSelectionContext(editor, tt, false);
+  assert.equal(context.controls.find((c) => c.id === "annotation-label").slot, "inspector");
+  assert.ok(context.controls.some((c) => c.id === "annotation-delete"));
+  assert.ok(context.controls.some((c) => c.id === "delete"), "node delete must remain distinct from annotation delete");
+});
+
 test("duplicated node tree has unique stable IDs and appears beside its original", () => {
   const scene = new THREE.Scene();
   const material = new THREE.MeshStandardMaterial({ color: "#ff8800" });

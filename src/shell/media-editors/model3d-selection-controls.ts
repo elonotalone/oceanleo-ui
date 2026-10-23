@@ -46,9 +46,12 @@ export function model3dSelectionContext(editor: Model3DWorkbenchState, tt: UITra
         if (typeof value === "number") controls.push({ id: `light-${key}`, kind: "number", label: tt({ intensity: "灯光强度", distance: "照射距离", decay: "衰减", angle: "锥角", penumbra: "半影" }[key]), value, min: 0, step: 0.1, ...group });
       }
     }
-  } else if (annotation) {
-    controls.push({ id: "annotation-label", kind: "text", label: tt("标注内容"), value: annotation.label },
-      { id: "delete", kind: "action", label: tt("删除标注"), icon: "delete", iconOnly: true, danger: true });
+  }
+  if (annotation) {
+    const group = { slot: "inspector" as const, inspectorGroup: "model-annotations", inspectorLabel: tt("标注"), inspectorIcon: "note" as const };
+    controls.push({ id: "annotation-label", kind: "text", label: tt("标注内容"), value: annotation.label, ...group },
+      node ? { id: "annotation-delete", kind: "action", label: tt("删除标注"), danger: true, ...group }
+        : { id: "delete", kind: "action", label: tt("删除标注"), icon: "delete", iconOnly: true, danger: true });
   }
   return { version: 1, kind: "model-3d", bar: "object", id: node?.id || annotation!.id,
     label: node?.name || annotation!.label, revision: editor.editRevision, controls };
