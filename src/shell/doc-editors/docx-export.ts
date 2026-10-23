@@ -26,6 +26,11 @@ interface TiptapNode {
 
 type DocxModule = typeof import("docx");
 
+/** 打开文档时预载 docx 写入器（见 `preloadRichDocDeliveryWriters`）。 */
+export function preloadDocxWriter(): Promise<unknown> {
+  return import("docx");
+}
+
 export interface DocxExportOptions {
   /**
    * 由 `buildDocxCommentPayload(doc, sidecar)` 备好的批注载荷（审阅层出，

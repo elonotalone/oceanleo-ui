@@ -391,3 +391,22 @@ export async function richDocHtmlToMarkdown(html: string): Promise<string> {
   const markdown = service.turndown(String(html || "")).trim();
   return markdown ? `${markdown}\n` : "";
 }
+
+const warmedWriters = new Set<string>();
+
+/**
+ * 打开文档时就把这种格式的写回器载好。保存时才去拉 chunk 的话，断网那一次
+ * 保存拉不到，恢复网络后重试还卡在同一个失败的 chunk 上。
+ */
+export function preloadRichDocDeliveryWriters(extension: string): void {
+  if (warmedWriters.has(extension)) return;
+  const task =
+    extension === "md"
+      ? import("turndown")
+      : extension === "docx"
+        ? import("./docx-export").then((module) => module.preloadDocxWriter())
+        : null;
+  if (!task) return;
+  warmedWriters.add(extension);
+  task.catch(() => warmedWriters.delete(extension));
+}

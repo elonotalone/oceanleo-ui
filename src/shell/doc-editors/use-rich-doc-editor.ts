@@ -83,6 +83,7 @@ import {
 import { RichDocImageStyle } from "./rich-doc-image-style";
 import { RichDocThemeInk } from "./rich-doc-theme-ink";
 import {
+  preloadRichDocDeliveryWriters,
   richDocRendersPreviewBitmap,
   richDocTextExcerpt,
 } from "./rich-doc-text-delivery";
@@ -568,6 +569,13 @@ export function useRichDocEditor(
       cancelled = true;
     };
   }, [loadKey, notifySourceAccessError, reloadNonce, translate]);
+
+  // 源一到手就预载这种格式的写回器：保存那一刻不再依赖网络去拉 chunk。
+  useEffect(() => {
+    if (sourceReady) {
+      preloadRichDocDeliveryWriters(richDocPersistTarget(itemRef.current).extension);
+    }
+  }, [sourceReady]);
 
   const reload = useCallback(() => {
     setReloadNonce((value) => value + 1);
