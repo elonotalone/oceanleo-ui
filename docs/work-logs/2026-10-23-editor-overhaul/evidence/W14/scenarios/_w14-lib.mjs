@@ -21,9 +21,7 @@ export async function openWebsite(page, log, helpers, rootId = PUBLIC_WEBSITE) {
   await helpers.gotoApp(page, `/library?item=${rootId}`);
   await settle(page, log);
   const stage = page.locator("[data-testid='website-puck-stage']").first();
-  const edit = page
-    .locator('button[aria-label^="编辑「"], button[aria-label^="Edit “"], button[aria-label^="Edit \""]')
-    .first();
+  const edit = page.locator('button[aria-label^="编辑「"], button[aria-label^="Edit "]').first();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (await stage.isVisible().catch(() => false)) break;
     await Promise.race([

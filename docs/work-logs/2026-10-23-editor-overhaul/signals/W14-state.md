@@ -1,6 +1,6 @@
 # W14 state（接班文件）
 
-更新于 2026-10-23 05:40Z。
+更新于 2026-10-23 09:00Z（R2 接班）。
 
 ## 已确认的事实
 
@@ -14,9 +14,11 @@
 - [读码] 后端有 `GET /v1/artifacts/{id}/revisions/{rev}/source-dependencies/{path}` 签发依赖文件地址；前端没有客户端。
 - [读码] 编辑器预览把图片画成「图片 cover」文字；区块用宿主 `--accent/--surface` 与宿主前景色，深色站点下网站预览会跟着变深（违反 D6）。
 
+- [读码] R2 接班：上一任只提交了 state / W14-to-W04 / probe 场景，产品代码无改动；无 journal。W04 已回复：闭包继承（oceanleo 473f3d1）+ `stageArtifactBlob` / `artifactRevision.sourceDependencies`（1503b59b）。
+
 ## 正在做
 
-- 步骤 1：浏览器复现现状（打开平台网站模板 `6b16c807-…`，点文字/图片，看编辑栏、深浅色、保存）。
+- R2：读 website-local/** 与 WebsiteLocalRoute，开始步骤 2–4。
 
 ## 下一步
 
