@@ -78,6 +78,13 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   const first = ` W08-${stamp}-一`;
   const second = ` W08-${stamp}-二`;
 
+  // Every revision commit the page sends, with its status: "saved" must follow one.
+  page.on("response", (response) => {
+    const url = response.url();
+    if (response.request().method() === "POST" && /\/artifacts\/[^/]+\/revisions(\?|$)/.test(url)) {
+      log("revision-post", String(response.status()));
+    }
+  });
   let body = await openDocument(page, helpers, log, artifactId);
   await shot(`${label}-1-opened`);
   log("opened", page.url(), "state", String(await saveStateNow(page)));
