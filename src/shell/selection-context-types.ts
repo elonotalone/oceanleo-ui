@@ -49,6 +49,8 @@ export const SELECTION_CONTROL_ICONS = [
   "indent-increase", "indent-decrease", "list-ordered", "replace", "radius",
   "adjust", "fill", "stroke", "shadow", "arrange", "alt", "image-fit",
   "remove-background", "rotate-ccw",
+  // 音频特有控件（W12 申请，2026-10-23）：不借规范图标的独立字形。
+  "trim", "fade-in", "fade-out", "gain", "equalizer", "speed",
 ] as const;
 
 export type SelectionControlIcon = (typeof SELECTION_CONTROL_ICONS)[number];

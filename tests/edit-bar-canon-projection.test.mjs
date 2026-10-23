@@ -22,6 +22,7 @@ import {
 } from "../src/shell/edit-bar-canon.ts";
 import { partitionSelectionInspectorControls } from "../src/shell/selection-inspector-groups.ts";
 import { normalizeSelectionContext } from "../src/shell/selection-context.ts";
+import { SELECTION_CONTROL_ICONS } from "../src/shell/selection-context-types.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -209,13 +210,10 @@ for (const bar of ["text", "image", "shape"]) {
   });
 }
 
-test("canonical glyphs are pairwise distinct (svg fingerprint)", () => {
-  const names = [
-    ...new Set([
-      ...Object.values(EDIT_BAR_CANON).map((entry) => entry.icon),
-      "align-center", "align-right", "align-justify", "list-ordered", "unlock", "rotate-ccw",
-    ]),
-  ];
+test("every selection-control glyph is drawn and pairwise distinct (svg fingerprint)", () => {
+  // 规范项 + 编辑器特有控件可选的全部图标：撞形就等于一条栏上两个一样的图标。
+  const names = [...SELECTION_CONTROL_ICONS];
+  for (const entry of Object.values(EDIT_BAR_CANON)) assert.ok(names.includes(entry.icon), entry.icon);
   const prints = names.map((name) =>
     renderToStaticMarkup(React.createElement(AdvancedEditorIcon, { name })).replace(/ data-icon="[^"]*"/, ""),
   );

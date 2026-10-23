@@ -486,6 +486,13 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
       <path d="M4 4v7h7" />
     </>
   ),
+  // 音频特有控件（W12）。
+  trim: <path d="M7 4v16M17 4v16M7 12h10M4 8l3 4-3 4M20 8l-3 4 3 4" />,
+  "fade-in": <path d="M3 19L13 6h8M3 19h18" />,
+  "fade-out": <path d="M3 6h8l10 13M3 19h18" />,
+  gain: <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4zM16 12h5M18.5 9.5v5" />,
+  equalizer: <path d="M6 4v16M12 4v16M18 4v16M4 14h4M10 8h4M16 16h4" />,
+  speed: <path d="M4.5 17a8 8 0 1115 0M12 13l4-5" />,
 };
 
 const unknownGlyph = (
