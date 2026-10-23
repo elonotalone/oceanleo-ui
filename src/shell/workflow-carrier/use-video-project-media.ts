@@ -4,7 +4,7 @@ import type { VideoProjectDoc } from "./video-project-doc";
 import { videoDependencyBlob } from "./video-project-media-io";
 
 /** Object URLs hold verified closure bytes, so an open node never expires with its grant. */
-export function useVideoProjectMedia(doc: VideoProjectDoc | null, onMedia: (assetId: string, url: string) => void) {
+export function useVideoProjectMedia(doc: VideoProjectDoc | null, onMedia: (assetId: string, url: string) => void, onFailure: (assetId: string) => void) {
   useEffect(() => {
     const abort = new AbortController();
     const urls: string[] = [];
@@ -16,8 +16,8 @@ export function useVideoProjectMedia(doc: VideoProjectDoc | null, onMedia: (asse
         const url = URL.createObjectURL(blob);
         urls.push(url);
         onMedia(assetId, url);
-      }).catch(() => undefined);
+      }).catch(() => { if (!abort.signal.aborted) onFailure(assetId); });
     }
     return () => { abort.abort(); urls.forEach(url => URL.revokeObjectURL(url)); };
-  }, [doc?.assets, onMedia]);
+  }, [doc?.assets, onMedia, onFailure]);
 }

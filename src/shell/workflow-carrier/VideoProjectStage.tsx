@@ -111,6 +111,7 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
   const [reloadNonce, setReloadNonce] = useState(0);
   const [selection, setSelection] = useState<VideoCanvasSelection>(EMPTY_VIDEO_SELECTION);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [mediaFailures, setMediaFailures] = useState<string[]>([]);
   const localMediaRef = useRef<string[]>([]);
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => {
@@ -143,6 +144,7 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
     setEditRevision(0);
     setSavedRevision(0);
     setThumbs({});
+    setMediaFailures([]);
     void loadVideoProjectDoc(shownItem, async (url) => {
       const read = async (sourceUrl: string) => (await fetchMediaBlob(sourceUrl, { cache: "no-store", maxBytes: 20_000_000, signal: abort.signal })).text();
       try { return await read(url); } catch (error) {
@@ -172,24 +174,28 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shownIdentity.rootId, shownIdentity.revisionId, reloadNonce]);
 
-  const onMedia = useCallback((assetId: string, url: string) => setThumbs(current => ({ ...current, [assetId]: url })), []);
-  useVideoProjectMedia(doc, onMedia);
+  const onMedia = useCallback((assetId: string, url: string) => {
+    setThumbs(current => ({ ...current, [assetId]: url }));
+    setMediaFailures(current => current.filter(id => id !== assetId));
+  }, []);
+  const onMediaFailure = useCallback((assetId: string) => setMediaFailures(current => current.includes(assetId) ? current : [...current, assetId]), []);
+  useVideoProjectMedia(doc, onMedia, onMediaFailure);
 
-  const noteHistory = useCallback(() => {
+  const noteHistory = useCallback((userMutation = true) => {
     setHistoryState({ canUndo: historyRef.current.canUndo, canRedo: historyRef.current.canRedo });
     setEditRevision((value) => value + 1);
-    recordUserMutation(userEditItemKey(shownItem));
+    if (userMutation) recordUserMutation(userEditItemKey(shownItem));
   }, [shownItem]);
 
   const commit = useCallback(
-    (next: VideoProjectDoc | null, nextSelection?: VideoCanvasSelection) => {
+    (next: VideoProjectDoc | null, nextSelection?: VideoCanvasSelection, restored = false) => {
       const current = docRef.current;
       if (!canEdit || !current || !next || next === current) return false;
       historyRef.current.record(next);
       docRef.current = next;
       setDoc(next);
       if (nextSelection) setSelection(nextSelection);
-      noteHistory();
+      noteHistory(!restored);
       return true;
     },
     [canEdit, noteHistory],
@@ -351,6 +357,7 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
         id: "video-canvas",
         label: tt("视频画布"),
         status: statusText,
+        notices: mediaFailures.length ? [{ id: "video-media-failed", text: tt("素材加载失败"), severity: "warn" }] : [],
         drawers: canEdit
           ? [
               {
@@ -431,7 +438,7 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
             restore: (payload) => {
               const parsed = parseVideoProjectDoc(payload);
               if (!canEdit || !parsed.ok) return false;
-              return commit(parsed.doc);
+              return commit(parsed.doc, undefined, true);
             },
           },
         },
