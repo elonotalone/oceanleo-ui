@@ -167,6 +167,7 @@ export function SelectionToolbarSelectControl({
               key={option.value}
               type="button"
               role="option"
+              data-selection-option={option.value}
               aria-selected={active}
               tabIndex={active ? 0 : -1}
               onPointerDown={preserveEditBarSelection}

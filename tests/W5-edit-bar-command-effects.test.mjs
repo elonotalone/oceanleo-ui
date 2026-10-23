@@ -429,12 +429,31 @@ test("W5-number stepper changes Fabric font size", async () => {
   const editor = makeImageEditor();
   const api = await mountToolbar(editor);
   try {
-    const steppers = api.container.querySelectorAll(
-      '[data-selection-control-id="font-size"] button',
+    // 2026-10-23 D9：字号是「数字输入 + 常用字号下拉」（原来是 −/+ 步进器）。
+    const input = api.container.querySelector(
+      '[data-selection-control-id="font-size"] input[type="number"]',
     );
-    assert.equal(steppers.length >= 2, true, "font-size stepper must render");
-    await act(async () => steppers[steppers.length - 1].click());
+    assert.ok(input, "font-size number input must render");
+    const setNativeValue = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    ).set;
+    await act(async () => {
+      setNativeValue.call(input, "25");
+      input.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
     assert.equal(editor.text.fontSize, 25);
+    const presets = api.container.querySelector(
+      '[data-selection-control-id="font-size"] button[aria-haspopup="listbox"]',
+    );
+    assert.ok(presets, "font-size preset dropdown must render");
+    await act(async () => presets.click());
+    const size32 = [...document.body.querySelectorAll('[role="option"]')].find(
+      (option) => option.textContent.trim().startsWith("32"),
+    );
+    assert.ok(size32);
+    await act(async () => size32.click());
+    assert.equal(editor.text.fontSize, 32);
   } finally {
     await api.unmount();
   }
@@ -531,13 +550,16 @@ test("W5-document segment trigger stays a real action", async () => {
 });
 
 test("W5-image overflow actions work through the floating toolbar without arming its drag root", async () => {
+  // 2026-10-23 D9：图片栏的旋转 / 锁定 / 复制 / 删除是规范主栏项，投影把它们放在栏上
+  // （原来作者放进「更多」）；层级是一个规范下拉。按住不起拖、只发一次命令的判据不变，
+  // 只是控件在栏上还是在「更多」里都要找得到。
   const cases = [
     {
-      controlId: "rotate-left",
+      controlId: "rotate",
       pointerType: "mouse",
       verify(editor) {
-        assert.deepEqual(editor.effects, [{ action: "rotate", degrees: -90 }]);
-        assert.equal(editor.selected.angle, -90);
+        assert.deepEqual(editor.effects, [{ action: "rotate", degrees: 90 }]);
+        assert.equal(editor.selected.angle, 90);
       },
     },
     {
@@ -549,7 +571,8 @@ test("W5-image overflow actions work through the floating toolbar without arming
       },
     },
     {
-      controlId: "layer-up",
+      controlId: "arrange",
+      option: "forward",
       pointerType: "mouse",
       verify(editor) {
         assert.deepEqual(editor.effects, [
@@ -578,20 +601,26 @@ test("W5-image overflow actions work through the floating toolbar without arming
     },
   ];
 
-  for (const { controlId, pointerType, verify } of cases) {
+  for (const { controlId, option, pointerType, verify } of cases) {
     const editor = makeImageCommandEditor();
     const mounted = await mountFloatingImageToolbar(editor);
     try {
-      const more = mounted.container.querySelector(
-        'button[aria-controls^="selection-more-"]',
-      );
-      assert.ok(more, "the shared toolbar should expose its overflow trigger");
-      await act(async () => more.click());
-
-      const action = document.body.querySelector(
-        `[data-selection-control-id="${controlId}"] button`,
-      );
-      assert.ok(action, `${controlId} should be rendered in the overflow panel`);
+      const selector = `[data-selection-control-id="${controlId}"] button`;
+      let action = mounted.container.querySelector(selector);
+      if (!action) {
+        const more = mounted.container.querySelector(
+          'button[aria-controls^="selection-more-"]',
+        );
+        assert.ok(more, `${controlId} is neither on the bar nor behind More`);
+        await act(async () => more.click());
+        action = document.body.querySelector(selector);
+      }
+      assert.ok(action, `${controlId} should be rendered on the bar or in More`);
+      if (option) {
+        await act(async () => action.click());
+        action = document.body.querySelector(`[data-selection-option="${option}"]`);
+        assert.ok(action, `${controlId} dropdown should offer ${option}`);
+      }
       assert.equal(action.type, "button", "overflow actions stay keyboard-focusable buttons");
 
       let down;
@@ -622,15 +651,17 @@ test("W5-image overflow action remains keyboard reachable and dispatches from fo
   const editor = makeImageCommandEditor();
   const mounted = await mountFloatingImageToolbar(editor);
   try {
-    const more = mounted.container.querySelector(
-      'button[aria-controls^="selection-more-"]',
-    );
-    assert.ok(more);
-    await act(async () => more.click());
-
-    const action = document.body.querySelector(
-      '[data-selection-control-id="rotate-right"] button',
-    );
+    // 2026-10-23 D9：旋转是规范 `rotate`（顺时针 90°），主栏项；栏放不下时才在「更多」里。
+    const selector = '[data-selection-control-id="rotate"] button';
+    let action = mounted.container.querySelector(selector);
+    if (!action) {
+      const more = mounted.container.querySelector(
+        'button[aria-controls^="selection-more-"]',
+      );
+      assert.ok(more);
+      await act(async () => more.click());
+      action = document.body.querySelector(selector);
+    }
     assert.ok(action);
     action.focus();
     assert.equal(document.activeElement, action);

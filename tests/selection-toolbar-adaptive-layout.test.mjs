@@ -1239,7 +1239,8 @@ test("grid toolbar aria-labels stay unique and measurement clones stay unnamed",
       [],
       `expected unique toolbar aria-labels, got duplicates=${duplicates.join(",")} labels=${labels.join("|")}`,
     );
-    for (const expected of ["对齐", "底色", "数据类型", "文字", "粗体"]) {
+    // 2026-10-23 D9：bold / color 是规范项，标签由投影统一成「加粗」「文字色」（原断言编辑器自写的「粗体」「文字」）。
+    for (const expected of ["对齐", "底色", "数据类型", "文字色", "加粗"]) {
       assert.equal(
         labels.filter((label) => label === expected).length,
         1,
