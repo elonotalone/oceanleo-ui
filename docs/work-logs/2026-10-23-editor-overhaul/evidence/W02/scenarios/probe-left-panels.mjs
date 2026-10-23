@@ -8,7 +8,14 @@ export default async function ({ page, log, shot, helpers, args }) {
   const label = args[1] || "host";
   await helpers.gotoApp(page, route);
   const editor = page.locator("[data-inline-editor]").first();
-  await editor.waitFor({ state: "visible", timeout: 180000 });
+  // /library?item= lands on the read-only preview; its pencil opens the editor.
+  const pencil = page.getByRole("button", { name: /^(Edit|编辑)$/ }).first();
+  const openBy = Date.now() + 180000;
+  while (Date.now() < openBy && !(await editor.isVisible().catch(() => false))) {
+    if (await pencil.isVisible().catch(() => false)) await pencil.click().catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  await editor.waitFor({ state: "visible", timeout: 30000 });
   await page.waitForTimeout(4000);
   await shot(`${label}-0-open`);
 
