@@ -540,3 +540,19 @@ test("SystemLine：认出通话 meta 交给卡片，别的系统消息照旧一�
   await act(async () => root.unmount());
   host.remove();
 });
+
+test("D5 call_started：已不在这个会话里（canJoin=false，被移出 / 解散 / 非成员）→ 照样显示进行中与人数，但没有「加入通话」", async () => {
+  reset();
+  globalThis.__W08C.status = { "c-removed": { call: activeCall("c-removed", "call-r", ["u1", "u2"]) } };
+  const view = await mountCard(
+    sys({ kind: "call_started", call_id: "call-r", started_by: "u1" }, { conversation_id: "c-removed" }),
+    context({ conversationId: "c-removed", canJoin: false }),
+  );
+  assert.ok(view.q('[data-call-status="active"]'));
+  assert.equal(view.q('[data-call-status="active"]').getAttribute("data-call-joinable"), "false");
+  assert.match(view.text(), /通话进行中 · 2 人/);
+  assert.equal(view.q("[data-call-join]"), null);
+  assert.doesNotMatch(view.text(), /加入通话/);
+  await view.unmount();
+});
+

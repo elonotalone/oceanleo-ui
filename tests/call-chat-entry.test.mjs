@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { removalReasonFor } from "../src/shell/messages/call/chat/call-removal.ts";
 import {
   callEntryState,
   callErrorCode,
@@ -363,3 +364,189 @@ test("全局宿主（A20）：没有会议面板与会议邀请处理；可用�
   // Leo 实时通话两种状态下是同一个实例（不随可用与否换位置重挂）。
   assert.match(host, /export function MessagesHost\(\) \{\s*return \(\s*<>\s*<MessagesHostBody \/>\s*<RealtimeCallHost \/>/);
 });
+
+// ── V02 D5（仲裁 A-34）：被移出后会话视图置灰、去掉「通话」与「加入通话」───────
+
+test("removalReasonFor：call_kicked → kicked；conversation.removed 认 kicked / left / dissolved，hidden 与别的会话不算", () => {
+  assert.equal(removalReasonFor({ type: "call_kicked", conversation_id: "g1", reason: "removed_from_conversation" }, "g1"), "kicked");
+  assert.equal(removalReasonFor({ type: "conversation.removed", conversation_id: "g1", reason: "kicked" }, "g1"), "kicked");
+  assert.equal(removalReasonFor({ type: "conversation.removed", conversation_id: "g1", reason: "left" }, "g1"), "left");
+  assert.equal(removalReasonFor({ type: "conversation.removed", conversation_id: "g1", reason: "dissolved" }, "g1"), "dissolved");
+  assert.equal(removalReasonFor({ type: "conversation.removed", conversation_id: "g1", reason: "hidden" }, "g1"), null);
+  assert.equal(removalReasonFor({ type: "call_kicked", conversation_id: "g2" }, "g1"), null);
+  assert.equal(removalReasonFor({ type: "member.changed", conversation_id: "g1" }, "g1"), null);
+  assert.equal(removalReasonFor(null, "g1"), null);
+});
+
+const removalUrl = new URL("../src/shell/messages/call/chat/call-removal.ts", import.meta.url).href;
+const viewStubs = {
+  "../../../i18n/ui/useUI": uiStub,
+  "../../../lib/im/client": dataModule(`
+    export class ImApiError extends Error {
+      constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+    }
+    (globalThis.__W08V ??= {}).ImApiError = ImApiError;
+  `),
+  "../../../lib/im/people-api": dataModule(`
+    export function conversationDisplayTitle(c) { return c?.title ?? ""; }
+    export function visiblePersonName(p) { return p?.display_name ?? ""; }
+  `),
+  "../../../lib/im/messages-api": dataModule(`
+    const V = () => globalThis.__W08V;
+    export const messagesApi = {
+      async me() { return { profile: { user_id: "me" } }; },
+      async getConversation(id) {
+        V().detailCalls.push(id);
+        const next = V().detailQueue.length ? V().detailQueue.shift() : V().detail;
+        if (next === "403") {
+          const ImApiError = V().ImApiError;
+          throw new ImApiError(403, "not_member", "你不在这个会话里");
+        }
+        return next;
+      },
+      async profiles() { return []; },
+      async markRead() {},
+      async sendMessage() {},
+    };
+  `),
+  "../../../lib/im/inbox-api": dataModule(`export async function fetchConversations(){ return { items: [] }; }`),
+  "../../../ui": confirmStub,
+  "../composer/Composer": dataModule(`
+    import React from ${JSON.stringify(reactUrl)};
+    export function Composer({ disabled, disabledReason }) {
+      return React.createElement("div", { "data-composer": "", "data-disabled": String(Boolean(disabled)) }, disabledReason ?? "");
+    }
+  `),
+  "../host-state": dataModule(`export function openMessages(){}`),
+  "../messages-surface": dataModule(`export function ImBackIcon(){ return null; } export function ImInfoIcon(){ return null; } export function ImSearchIcon(){ return null; }`),
+  "../search/SearchView": dataModule(`export function SearchView(){ return null; }`),
+  "../people/ProfileCard": dataModule(`export function ProfileCard(){ return null; }`),
+  "../report/ReportDialog": dataModule(`export function ReportDialog(){ return null; }`),
+  "../realtime/hooks": dataModule(`
+    import { useEffect, useRef } from ${JSON.stringify(reactUrl)};
+    const V = () => globalThis.__W08V;
+    export function useImEvent(type, handler) {
+      const ref = useRef(handler);
+      ref.current = handler;
+      useEffect(() => {
+        const map = V().handlers;
+        const set = map[type] ?? (map[type] = new Set());
+        const fn = (event) => ref.current(event);
+        set.add(fn);
+        return () => set.delete(fn);
+      }, [type]);
+    }
+    export function useImResync() {}
+    export function usePresence() { return {}; }
+  `),
+  "./MessageList": dataModule(`
+    import React from ${JSON.stringify(reactUrl)};
+    export function MessageList() { return React.createElement("div", { "data-message-list": "" }); }
+    export function useStoreEvents() {}
+  `),
+  "./MessageItem": dataModule(`export function useMessageHandlers() { return {}; }`),
+  "./PinnedBar": dataModule(`export function PinnedBar() { return null; }`),
+  "./TypingLine": dataModule(`export function TypingLine() { return null; } export function useTypingUsers() { return []; }`),
+  "./conversation-store": dataModule(`
+    const SNAP = { messages: [], pins: [], loaded: true, hasMoreAfter: false };
+    const store = {
+      subscribe() { return () => {}; },
+      getSnapshot() { return SNAP; },
+      loadLatest() {}, refreshPins() {}, catchUp() {}, loadAround() { return Promise.resolve(); },
+      find() { return null; }, togglePin() {}, recall() {},
+    };
+    export function getConversationStore() { return store; }
+    export function unreadBoundary() { return null; }
+  `),
+  "../call/chat": dataModule(`
+    import React from ${JSON.stringify(reactUrl)};
+    export { removalReasonFor } from ${JSON.stringify(removalUrl)};
+    export function CallButton({ conversationId }) { return React.createElement("button", { type: "button", "data-call-button": conversationId }); }
+    export function CallChatProvider({ value, children }) { globalThis.__W08V.ctx = value; return children; }
+    export function callMetaOf() { return null; }
+    export function callMetaUserIds() { return []; }
+    export function useEndedCallIndex() { return () => undefined; }
+  `),
+};
+const { ConversationView } = await import(await compileModule("src/shell/messages/conversation/ConversationView.tsx", viewStubs));
+
+const GROUP = {
+  id: "g1", kind: "group", title: "设计组", avatar_url: null, peer: null, member_count: 3, last_message: null,
+  last_activity_at: "2026-10-23T01:00:00Z", unread_count: 0, mention_count: 0, muted: false, notify_level: "all",
+  org_id: null, project_id: null, has_external: false, my_role: "member", dissolved: false, description: "", owner_id: "u1",
+  join_approval: false, members_can_add: true, leo_enabled: true, members: [], pinned_count: 0, pending_join_requests: 0,
+  created_at: "2026-10-01T00:00:00Z",
+};
+
+async function mountView({ detail = GROUP, queue = [] } = {}) {
+  globalThis.__W08V = { ...(globalThis.__W08V ?? {}), handlers: {}, detail, detailQueue: [...queue], detailCalls: [], ctx: null, unavailable: 0 };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(
+      React.createElement(ConversationView, {
+        conversationId: "g1",
+        layout: "docked",
+        onUnavailable: () => { globalThis.__W08V.unavailable += 1; },
+      }),
+    );
+  });
+  for (let i = 0; i < 8; i += 1) await act(async () => { await Promise.resolve(); });
+  return {
+    host,
+    composer: () => host.querySelector("[data-composer]"),
+    callButton: () => host.querySelector("[data-call-button]"),
+    async emit(type, event) {
+      await act(async () => {
+        for (const fn of Array.from(globalThis.__W08V.handlers[type] ?? [])) fn({ type, ...event });
+      });
+      for (let i = 0; i < 8; i += 1) await act(async () => { await Promise.resolve(); });
+    },
+    async unmount() {
+      await act(async () => root.unmount());
+      host.remove();
+    },
+  };
+}
+
+test("D5 会话视图：收到 call_kicked → 立即置灰（输入框只读「你已不在这个会话里。」、没有「通话」按钮、卡片不给加入），并重取会话详情", async () => {
+  const view = await mountView({ queue: [GROUP, GROUP] });
+  assert.ok(view.callButton(), "成员时有「通话」按钮");
+  assert.equal(view.composer().getAttribute("data-disabled"), "false");
+  assert.equal(globalThis.__W08V.ctx.canJoin, true);
+  const before = globalThis.__W08V.detailCalls.length;
+  await view.emit("call_kicked", { conversation_id: "g1", call_id: "call-1", reason: "removed_from_conversation" });
+  assert.equal(view.callButton(), null, "去掉「通话」");
+  assert.equal(view.composer().getAttribute("data-disabled"), "true");
+  assert.equal(view.composer().textContent, "你已不在这个会话里。");
+  assert.equal(globalThis.__W08V.ctx.canJoin, false, "卡片不再给「加入通话」");
+  assert.equal(globalThis.__W08V.detailCalls.length, before + 1, "以网关为准重取一次详情");
+  await view.unmount();
+});
+
+test("D5 会话视图：conversation.removed（kicked）后网关说不再是成员 → 关掉这个会话；dissolved → 只读「这个群已解散」", async () => {
+  const kicked = await mountView({ queue: [GROUP, "403"] });
+  await kicked.emit("conversation.removed", { conversation_id: "g1", reason: "kicked" });
+  assert.equal(kicked.callButton(), null);
+  assert.equal(globalThis.__W08V.unavailable, 1, "重取详情 403 → onUnavailable 关掉会话");
+  await kicked.unmount();
+
+  const dissolved = await mountView({ queue: [GROUP, GROUP] });
+  await dissolved.emit("conversation.removed", { conversation_id: "g1", reason: "dissolved" });
+  assert.equal(dissolved.callButton(), null);
+  assert.equal(dissolved.composer().textContent, "这个群已解散，历史消息只读。");
+  await dissolved.unmount();
+});
+
+test("D5 会话视图：hidden（只是不显示）与别的会话的移出事件都不影响当前会话", async () => {
+  const view = await mountView({ queue: [GROUP] });
+  await view.emit("conversation.removed", { conversation_id: "g1", reason: "hidden" });
+  await view.emit("call_kicked", { conversation_id: "g2", call_id: "c", reason: "removed_from_conversation" });
+  await view.emit("conversation.removed", { conversation_id: "g2", reason: "kicked" });
+  assert.ok(view.callButton());
+  assert.equal(view.composer().getAttribute("data-disabled"), "false");
+  assert.equal(globalThis.__W08V.ctx.canJoin, true);
+  await view.unmount();
+});
+
