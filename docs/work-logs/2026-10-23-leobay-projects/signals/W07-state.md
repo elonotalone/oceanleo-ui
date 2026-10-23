@@ -6,7 +6,7 @@
 
 - 两个仓都在 `main`。共享 UI 仓开工时工作区干净（别的 owner 的在途改动已由父 agent 入库）；门户仓只有他人的 4 个未提交文件（`package.json`、`pnpm-lock.yaml`、`.github/workflows/oceanleo-cn-frontend.yml`、`backend/scripts/retire_operator_examples_20261021.py`），不碰。
 - 上一轮留下并已入库（共享 UI `cdf86420`）：`BayTermsPublic` 正式实现（加载/失败重试/就绪三态、目录 + 各节锚点）、`terms-text.tsx` 的 `tone`/`anchors` 与 `BayTermsFullTextLink`/`formatBayTermsDate`、`lib/bay/terms.ts` 的 `BAY_TERMS_PAGE_PATH`/`BAY_TERMS_PAGE_ANCHOR`/`bayTermsPagePath`、弹窗与条款门里的「在条款页查看全文」链接、`lbp-w07-copy.ts` 的 `fullTextLink`（17 语）。
-- 门户一行没动（`legal-shell.tsx`、`marketplace/page.tsx`、`terms/page.tsx` 都还是旧的）；`tests/lbp-w07-terms.test.mjs` 还不存在。
+- （已过时，见 journal）接手时门户一行没动、新测试不存在；现在门户已提交 `c94705c`，共享 UI 新测试已提交 `ee044dcb`。
 - 接手时基线：`bay-settings-terms`（13）、`bay-buy-sell-terms`（5）、`bay-settings-lib`（6）、`bay-settings-section`（8）全绿。
 - 网关 `GET https://api.dev.oceanleo.com/v1/talent/terms/current`：第 3 版，生效 2026-08-18，9 节（knowledge_only / how_it_works / fees / off_platform / dispute / verification / data_residency / privacy / dispute_forum），正文只有中文，不登录可读。
 - 网关 v3 的 fees 一节写「当前版本不接入任何支付通道」，与条款页第 2、7 节（Stripe 托管、通道费 3.9% + $0.30）矛盾。文本在库里（migration 0186），我不能改，写进交卷的「发现」。
@@ -20,13 +20,14 @@
 
 ## 正在做
 
-- 第 2 步：共享 UI 收尾（`terms-flow.tsx` 注释、旧测试里的措辞、新测试 `tests/lbp-w07-terms.test.mjs`、文案闸与类型检查）。
+- 第 3 步：收尾。共享 UI 与门户的实现都已提交（共享 UI `cdf86420` + `ee044dcb`，门户 `c94705c`），测试与类型检查证据见 journal。
+- 剩下：LeoDev 槽恢复后（别人的 `MineCategoryBar.tsx` 在途，槽暂时 500）复测 `/legal/marketplace`、`/terms` 的 HTTP；写交卷 `verdicts/W07-delivery.md` 并提交。
 
 ## 下一步
 
-1. 共享 UI：`tests/lbp-w07-terms.test.mjs`（BayTermsPublic 渲染 9 节/失败重试、弹窗与条款门链接地址）；跑 `bay-settings-terms` / `bay-buy-sell-terms` / `bay-settings-lib` / `bay-settings-section`；`tests/i18n-tt-key-coverage.test.mjs`；共享 UI `pnpm typecheck`（基线 3 条错在 `video-project-doc.ts`）。提交。
-2. 门户：`legal-shell.tsx`（`LegalSection` 加 `id`、导航改名）、`marketplace/page.tsx`（新一节「LeoBay 使用规则」挂 `BayTermsPublic` + 「平台怎么收费」含可收款国家 + 去「人才市场」）、`terms/page.tsx`（改名）、同目录客户端文件 `bay-terms-public-client.tsx`。门户 typecheck 对照基线。提交。
-3. HTTP 验证 LeoDev 槽 `/legal/marketplace`、`/terms` 渲染；写交卷 `verdicts/W07-delivery.md`；提交。
+1. 交卷：`verdicts/W07-delivery.md`（条款页新结构、改名清单、测试与 typecheck 原文、发现与对父 agent 的请求）。
+2. 提交交卷 + 本文件 + journal（共享 UI 仓）。
+3. 回报：两个仓各自最后一个提交号。
 
 ## 复现命令
 
