@@ -223,6 +223,7 @@ export class Model3DSceneRuntime {
   addCamera(): void;
   addLight(kind: "directional" | "point" | "spot"): void;
   deleteSelected(): void;
+  duplicateSelected(): void;
   setNodeVisible(visible: boolean): void;
   undo(): boolean;
   redo(): boolean;

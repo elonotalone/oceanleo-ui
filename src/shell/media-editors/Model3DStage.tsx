@@ -78,6 +78,10 @@ export function Model3DStage({
       <div
         className="relative min-h-0 flex-1 overflow-hidden"
         data-testid="model3d-stage-backdrop"
+        data-model3d-edit-revision={editor.editRevision}
+        data-model3d-selected-node={editor.selectedNode?.id || ""}
+        data-model3d-selected-transform={JSON.stringify(editor.selectedNode?.transform || null)}
+        data-model3d-loaded={editor.modelLoaded ? "true" : "false"}
         style={{
           // §2.2:默认背景是 stage.bg.top → stage.bg.bottom 渐变。用户显式挑过
           // 纯色就尊重 view.background。

@@ -78,6 +78,7 @@ export function useModel3DWorkbench(
   const sourceGenerationRef = useRef(0);
   const revisionRef = useRef(0);
   const loadedSourceRef = useRef("");
+  const ownSavedVersionKeys = useRef(new Set<string>());
   const pendingOperationsRef = useRef<Model3DOperation[]>([]);
   const annotationPointRef = useRef<
     ((point: Model3DAnnotationPoint) => void) | undefined
@@ -181,6 +182,7 @@ export function useModel3DWorkbench(
   }, []);
 
   useModel3DProjectBootstrap({
+    ownSavedVersionKeys,
     item,
     artifactSourceDigest: item.artifact?.renditions.source?.digest || "",
     siteId,
@@ -262,6 +264,7 @@ export function useModel3DWorkbench(
     saveCopy,
     checkpointForExport,
   } = useModel3DSave({
+    ownSavedVersionKeys,
     item,
     siteId,
     modelLoaded: modelReady,
@@ -414,6 +417,7 @@ export function useModel3DWorkbench(
     setSelectedNodeVisible: (visible) =>
       runtimeRef.current?.setNodeVisible(visible),
     deleteSelectedNode: () => runtimeRef.current?.deleteSelected(),
+    duplicateSelectedNode: () => runtimeRef.current?.duplicateSelected(),
     addCamera: () => runtimeRef.current?.addCamera(),
     addLight: (kind) => runtimeRef.current?.addLight(kind),
     patchSelectedCamera: (patch) =>

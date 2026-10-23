@@ -14,6 +14,7 @@ import { advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { threeDSubtypeFor } from "../library-data";
+import type { PersistedModel3DVersion } from "../media-editors/model3d-project";
 import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
 import {
   Model3DControls,
@@ -47,6 +48,7 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { model3dSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
+import { withEditorHistoryCommand } from "../workbench-material-command";
 
 type Model3DEditorState = ReturnType<typeof useModel3DWorkbench>;
 
@@ -295,7 +297,11 @@ function Model3DModelRoute({
     }),
     [collabReadOnly, editor.importModel, editor.openModelUrl],
   );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  useWorkbenchMaterialAdapter(useMemo(() => withEditorHistoryCommand(materialAdapter, {
+    documentId: item.artifactId || item.id,
+    targetRevisionId: String(item.revisionId || item.meta.revision_id || ""),
+    replaceTarget: () => ({ targetId: "model-scene", slotId: "model-source", geometry: { x: 0, y: 0, width: 1, height: 1 } }),
+  }), [materialAdapter, item]));
   const deliver = useCallback(
     async (format: string) => {
       if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
@@ -321,24 +327,9 @@ function Model3DModelRoute({
     ),
   );
   const buildSavedItem = useCallback(
-    (saved: {
-      url: string;
-      versionId: string;
-      projectUrl: string;
-      projectSchema: string;
-      posterUrl: string;
-      sourceFormat: "" | "glb" | "gltf";
-      sourceProvenance: {
-        sourceUrl: string;
-        dependencyBaseUrl: string;
-        format: "" | "glb" | "gltf";
-        identity: string;
-        artifactId: string;
-        revisionId: string;
-        sourceDigest: string;
-      };
-    }) =>
+    (saved: PersistedModel3DVersion) =>
       advancedSavedItem(item, {
+        item: saved.item,
         url: saved.url,
         previewUrl: saved.posterUrl,
         thumbUrl: saved.posterUrl,
@@ -417,6 +408,7 @@ function Model3DModelRoute({
       modelLoaded: editor.modelLoaded,
     });
     if (!admitted.ok) return { ok: false as const, error: admitted.error };
+    if (!editor.dirty) return { ok: true as const, item };
     const saved = await editor.saveCopy();
     if (saved?.versionId) collab.markSaved(String(saved.versionId));
     return saved
@@ -472,9 +464,9 @@ function Model3DModelRoute({
             />
           ),
         },
-        contextToolbar: (
+        contextToolbar: (view.selectedNode || view.selectedAnnotationId) && !collabReadOnly ? (
           <Model3DContextToolbar editor={view} accent={accent} readOnly={collabReadOnly} />
-        ),
+        ) : null,
         history: {
           canUndo: (collab.history.active ? collab.history.canUndo : history.canUndo) && !collabReadOnly,
           canRedo: (collab.history.active ? collab.history.canRedo : history.canRedo) && !collabReadOnly,

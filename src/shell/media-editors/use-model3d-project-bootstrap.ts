@@ -38,6 +38,7 @@ import {
 
 export function useModel3DProjectBootstrap({
   item,
+  ownSavedVersionKeys,
   artifactSourceDigest,
   siteId,
   tt: providedTranslate,
@@ -60,6 +61,7 @@ export function useModel3DProjectBootstrap({
   setSourceProvenance,
 }: {
   item: LibraryItem;
+  ownSavedVersionKeys?: MutableRefObject<Set<string>>;
   artifactSourceDigest: string;
   siteId: string;
   tt: UITranslate;
@@ -101,6 +103,9 @@ export function useModel3DProjectBootstrap({
 
   useEffect(() => {
     const originalSource = model3DSourceForItem(item);
+    // A receipt for this runtime's own checkpoint is not an external source
+    // replacement. Reloading it would discard selection and undo history.
+    if (item.artifactId && item.revisionId && ownSavedVersionKeys?.current.has(`${item.artifactId}:${item.revisionId}`)) return;
     const fallbackProvenance = normalizeModel3DSourceProvenance(
       {
         sourceUrl: originalSource,

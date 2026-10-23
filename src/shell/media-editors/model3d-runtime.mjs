@@ -411,12 +411,16 @@ export class Model3DSceneRuntime {
 
     this.orbit.addEventListener("start", () => {
       this.orbitGestureStarted = true;
+      this.orbitGestureView = [this.view.azimuth, this.view.elevation, this.view.zoom];
     });
     this.orbit.addEventListener("change", () => this.handleOrbitChange());
     this.orbit.addEventListener("end", () => {
       if (!this.orbitGestureStarted) return;
       this.orbitGestureStarted = false;
-      this.options.onViewCommit({ ...this.view });
+      const before = this.orbitGestureView;
+      if (before && [this.view.azimuth, this.view.elevation, this.view.zoom].some((value, index) => Math.abs(value - before[index]) > 0.0001)) {
+        this.options.onViewCommit({ ...this.view });
+      }
     });
     this.transform.addEventListener("dragging-changed", (event) => {
       this.transformDragging = Boolean(event.value);

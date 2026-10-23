@@ -57,12 +57,20 @@ test('three real ordinary recovery adapters declare schemas and capture portable
     ['advanced-routes/VideoTimelineRoute.tsx', 'oceanleo.video-timeline.edit.v1', { tracks: [], clips: [] }],
   ];
   for (const [file, schema, payload] of cases) {
-    const recovery = realRecovery(file, { editor: { sourceReady: true, editor: { getJSON: () => payload }, restoreRecovery() {}, doc: payload }, history: { snapshot: payload }, restoreWorkingDocument: () => true });
+    const recovery = realRecovery(file, { editor: { sourceReady: true, editor: { getJSON: () => payload }, restoreRecovery() {}, doc: payload }, history: { snapshot: payload }, model3dAdmitted: { ok: true }, restoreWorkingDocument: () => true });
     assert.equal(recovery.draftSchema, schema);
     assert.deepEqual(recovery.capture(), payload);
     assert.deepEqual(await capturePortableAdvancedDraft(draftFromRecovery(recovery), 3), payload);
     assert.deepEqual(portableAdvancedDraft(payload), payload);
   }
+});
+
+test('failed or loading 3D sources never capture a portable recovery document', () => {
+  const recovery = realRecovery('advanced-routes/Model3DRoute.tsx', {
+    editor: { restoreRecovery() {} }, history: { snapshot: { secret: 'unloaded-placeholder' } }, model3dAdmitted: { ok: false },
+  });
+  assert.equal(recovery.ready, false);
+  assert.equal(recovery.capture(), null);
 });
 
 test('workflow draft captures only its loaded editable graph, never failed or read-only sources', async () => {

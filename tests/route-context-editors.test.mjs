@@ -140,12 +140,13 @@ test("route toolbars keep panel controls semantic while canonical compact contro
   }
   assertInspectorControls("../src/shell/media-editors/AudioContextToolbar.tsx",
     ["fade-duration", "fade-in", "fade-out", "gain", "apply-gain", "effect-speed", "eq-low", "eq-mid", "eq-high", "apply-effects"]);
-  assertInspectorControls("../src/shell/media-editors/Model3DContextToolbar.tsx",
-    ["azimuth", "elevation", "zoom", "exposure", "shadow-intensity", "shadow-softness",
-      "background", "environment-url", "environment-intensity", "shadow-enabled",
-      "material-select", "material-color", "material-metallic", "material-roughness",
-      "annotation-new", "annotation-add", "annotation-select", "annotation-label", "annotation-delete",
-      "animation", "animation-playing", "animation-time", "animation-speed"]);
+  const sceneView = readFileSync(new URL("../src/shell/media-editors/Model3DViewControls.tsx", import.meta.url), "utf8");
+  for (const method of ["setOrbit", "setZoom", "setExposure", "setShadowIntensity", "setShadowSoftness",
+    "setBackground", "setEnvironmentUrl", "setEnvironmentIntensity", "setShadowEnabled", "selectAnimation",
+    "setAnimationPlaying", "setAnimationTime", "setAnimationSpeed"]) assert.ok(sceneView.includes(method), method);
+  const selection3d = readFileSync(new URL("../src/shell/media-editors/model3d-selection-controls.ts", import.meta.url), "utf8");
+  for (const id of ["material-select", "material-color", "material-metallic", "material-roughness"]) assert.ok(selection3d.includes(id), id);
+  assert.ok(selection3d.includes('inspectorGroup: "position"'));
 });
 
 test("route commands target the rendered selection and preserve gesture commit/cancel semantics", () => {

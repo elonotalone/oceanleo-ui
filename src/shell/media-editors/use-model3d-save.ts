@@ -10,7 +10,6 @@ import {
 } from "react";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
-import { safeModelStem, uploadModel3DPoster } from "./model3d-files";
 import { createModel3DSavePlan } from "./model3d-operations.mjs";
 import {
   persistModel3DProject,
@@ -32,6 +31,7 @@ export function useModel3DSave({
   revisionRef,
   sourceGenerationRef,
   aliveRef,
+  ownSavedVersionKeys,
   setError,
   setNotice,
   setSavedUrl,
@@ -51,6 +51,7 @@ export function useModel3DSave({
   revisionRef: MutableRefObject<number>;
   sourceGenerationRef: MutableRefObject<number>;
   aliveRef: MutableRefObject<boolean>;
+  ownSavedVersionKeys?: MutableRefObject<Set<string>>;
   setError: Dispatch<SetStateAction<string>>;
   setNotice: Dispatch<SetStateAction<string>>;
   setSavedUrl: Dispatch<SetStateAction<string>>;
@@ -67,52 +68,49 @@ export function useModel3DSave({
   checkpointForExport: () => Promise<ArrayBuffer | null>;
 } {
   const busyRef = useRef(false);
+  const receiptRef = useRef<{ generation: number; revision: number; saved: PersistedModel3DVersion } | null>(null);
   const [saving, setSaving] = useState(false);
-  const persist = useCallback(async (forceCheckpoint = false) => {
+  const persist = useCallback(async () => {
     if (busyRef.current || !modelLoaded) return null;
     const runtime = runtimeRef.current;
     if (!runtime || !checkpointUrl) return null;
     const generation = sourceGenerationRef.current;
     const savingRevision = revisionRef.current;
+    const previous = receiptRef.current;
+    if (previous?.generation === generation && previous.revision === savingRevision) return previous.saved;
     const journal = runtime.getOperationJournal();
     const plan = createModel3DSavePlan(journal, {
-      force: forceCheckpoint,
+      force: true,
     });
     let glb: ArrayBuffer | undefined;
     busyRef.current = true;
     setSaving(true);
     setError("");
     try {
-      const title = `${safeModelStem(item.title)}-${tt("编辑版")}`;
-      let durablePosterUrl = posterUrl;
-      try {
-        durablePosterUrl = await uploadModel3DPoster(
-          await runtime.capturePng(),
-          siteId,
-          title,
-        );
-      } catch (caught) {
-        if (!durablePosterUrl) throw caught;
-      }
-      // GLTFExporter is the canonical editable-source checkpoint serializer,
-      // not a delivery renderer; saves between bounded checkpoints are journal-only.
-      if (plan.shouldExportGlb) glb = await runtime.exportGlb();
+      const title = item.title;
+      const poster = await runtime.capturePng();
+      // A typed revision must carry freshly hashed source bytes. The sidecar
+      // records view state, while the GLB is the canonical editable scene.
+      glb = await runtime.exportGlb();
       const saved = await persistModel3DProject({
-        item,
+        item: previous?.generation === generation ? previous.saved.item || item : item,
         siteId,
         title,
         checkpointUrl,
         sourceProvenance,
         glb,
+        poster,
         operations: plan.persistedOperations,
         checkpointReason: plan.checkpointReason,
         thumbUrl:
-          durablePosterUrl || item.thumbUrl || item.previewUrl || undefined,
+          posterUrl || item.thumbUrl || item.previewUrl || undefined,
         view,
         revision: savingRevision,
       });
+      receiptRef.current = { generation, revision: savingRevision, saved };
+      if (saved.artifactId && saved.revisionId) ownSavedVersionKeys?.current.add(`${saved.artifactId}:${saved.revisionId}`);
       if (!aliveRef.current || generation !== sourceGenerationRef.current) {
-        return null;
+        return saved;
       }
       setSavedUrl(saved.url);
       if (glb) {
@@ -124,14 +122,14 @@ export function useModel3DSave({
       }
       setNotice("");
       onSaved?.(saved.url);
-      return { saved, glb };
+      return saved;
     } catch (caught) {
       if (aliveRef.current) {
         setError(
           caught instanceof Error ? caught.message : tt("保存 3D 副本失败"),
         );
       }
-      return glb ? { saved: null, glb } : null;
+      return null;
     } finally {
       busyRef.current = false;
       if (aliveRef.current) setSaving(false);
@@ -143,6 +141,7 @@ export function useModel3DSave({
     modelLoaded,
     onDurableModelUrl,
     onSaved,
+    ownSavedVersionKeys,
     posterUrl,
     revisionRef,
     runtimeRef,
@@ -157,12 +156,12 @@ export function useModel3DSave({
     view,
   ]);
   const saveCopy = useCallback(
-    async () => (await persist(false))?.saved || null,
+    async () => await persist(),
     [persist],
   );
   const checkpointForExport = useCallback(
-    async () => (await persist(true))?.glb || null,
-    [persist],
+    async () => modelLoaded && runtimeRef.current ? await runtimeRef.current.exportGlb() : null,
+    [modelLoaded, runtimeRef],
   );
   return { saving, saveCopy, checkpointForExport };
 }

@@ -2,6 +2,7 @@
 
 import { useUI } from "../../i18n/ui/useUI";
 import { Model3DDirectorPanel } from "./Model3DDirectorPanel";
+import { Model3DViewControls } from "./Model3DViewControls";
 import type { Model3DTextureSlot } from "./model3d-runtime.mjs";
 import type { Model3DWorkbenchState } from "./use-model3d-workbench";
 
@@ -139,6 +140,7 @@ export function Model3DControls({
   );
   return (
     <div className="space-y-4 bg-[var(--card,#fff)] p-4">
+      <Model3DViewControls editor={editor} readOnly={readOnly} />
       <Lock readOnly={readOnly} className="block space-y-2">
         <p className="text-[11px] font-semibold text-[var(--fg,#292524)]">
           {tt("3D 模型")}

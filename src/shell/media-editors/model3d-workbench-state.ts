@@ -93,6 +93,7 @@ export interface Model3DWorkbenchState {
   }) => void;
   setSelectedNodeVisible: (visible: boolean) => void;
   deleteSelectedNode: () => void;
+  duplicateSelectedNode: () => void;
   addCamera: () => void;
   addLight: (kind: "directional" | "point" | "spot") => void;
   patchSelectedCamera: (patch: {

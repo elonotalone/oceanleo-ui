@@ -370,6 +370,7 @@ export async function persistModel3DProject({
   checkpointUrl,
   sourceProvenance,
   glb,
+  poster,
   operations,
   checkpointReason,
   thumbUrl,
@@ -382,6 +383,7 @@ export async function persistModel3DProject({
   checkpointUrl: string;
   sourceProvenance: Model3DSourceProvenance;
   glb?: Blob | ArrayBuffer;
+  poster?: Blob;
   operations: Model3DOperation[];
   checkpointReason?: string;
   thumbUrl?: string;
@@ -439,7 +441,7 @@ export async function persistModel3DProject({
         identity: model3DSourceIdentity(checkpointUrl),
       };
   const file = binary
-    ? new File([binary], `${title}.glb`, { type: "model/gltf-binary" })
+    ? new File([binary], `${title.replace(/\.(glb|gltf)$/i, "")}.glb`, { type: "model/gltf-binary" })
     : undefined;
   const saved = await saveFileToLibrary({
     item,
@@ -456,8 +458,9 @@ export async function persistModel3DProject({
     title,
     mediaType: "model3d",
     kind: "model3d",
-    idempotencyKey: `model3d:${item.id}:${revision}`,
+    idempotencyKey: `model3d:${item.artifactId || item.id}:${item.revisionId || item.id}:${revision}`,
     thumbUrl,
+    ...(poster ? { createPreview: async () => poster } : {}),
     editorManifest: {
       id: "model-3d-editor",
       format: MODEL3D_PROJECT_SCHEMA,
@@ -527,12 +530,15 @@ export async function persistModel3DProject({
     sourceFormat,
   );
   return {
+    item: saved.item,
+    artifactId: saved.artifactId,
+    revisionId: saved.revisionId,
     url: saved.url,
     versionId: saved.versionId,
     projectUrl: saved.projectUrl,
     projectSchema: saved.projectSchema,
     sourceFormat,
     sourceProvenance: persistedProvenance,
-    posterUrl: thumbUrl || "",
+    posterUrl: saved.item?.thumbUrl || saved.item?.previewUrl || thumbUrl || "",
   };
 }
