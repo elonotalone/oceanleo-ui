@@ -6,7 +6,7 @@ import {
   actionGroup,
   type AdvancedWorkbenchAction,
 } from "../advanced-workbench-chrome";
-import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
+import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
 import { preserveEditBarSelection } from "../edit-bar-selection-preserve";
 
 /**
@@ -17,20 +17,59 @@ import { preserveEditBarSelection } from "../edit-bar-selection-preserve";
  * 作为 `FloatingContextToolbar` 的 `documentSegment` 内容渲染（X2 负责与选中对象
  * 工具、AI 助手同一行内联）；本组件自己也是单行：`flex-nowrap` + `whitespace-nowrap`。
  */
+export interface EditBarDrawerButton {
+  id: string;
+  label: string;
+  icon: WorkbenchIconName;
+}
+
+/**
+ * D3（2026-10-23）：原来藏在「编辑工具」图标里的抽屉，改成编辑栏里带文字的按钮。
+ * 宿主只在**没选中任何东西**时传 `drawers`；选中对象后传空，让位给选区控件。
+ * 打开着的那一个是选中态，再点一次收起。
+ */
 export function EditBarDocumentSegment({
   actions,
   onTrigger,
   emptyHint,
+  drawers = [],
+  activeDrawerId = "",
+  onToggleDrawer,
 }: {
   actions: readonly AdvancedWorkbenchAction[];
   onTrigger(a: AdvancedWorkbenchAction): void;
   emptyHint?: string;
+  drawers?: readonly EditBarDrawerButton[];
+  activeDrawerId?: string;
+  onToggleDrawer?(drawerId: string): void;
 }) {
   const tt = useUI();
   const editActions = actions.filter(
     (action) => actionGroup(action) === "edit",
   );
-  if (editActions.length === 0) {
+  const drawerButtons = onToggleDrawer
+    ? drawers.map((drawer) => {
+        const label = tt(drawer.label);
+        const open = drawer.id === activeDrawerId;
+        return (
+          <Button
+            key={`drawer:${drawer.id}`}
+            data-edit-bar-drawer={drawer.id}
+            aria-pressed={open}
+            aria-label={label || drawer.id}
+            onPointerDown={preserveEditBarSelection}
+            onClick={() => onToggleDrawer(drawer.id)}
+            variant="ghost"
+            selected={open}
+            pill
+          >
+            <AdvancedEditorIcon name={drawer.icon} className="h-4 w-4" />
+            <span>{label}</span>
+          </Button>
+        );
+      })
+    : [];
+  if (editActions.length === 0 && drawerButtons.length === 0) {
     if (!emptyHint) return null;
     return (
       <div
@@ -48,6 +87,7 @@ export function EditBarDocumentSegment({
       data-edit-bar-document-segment
       className="inline-flex shrink-0 flex-nowrap items-center gap-0.5 whitespace-nowrap"
     >
+      {drawerButtons}
       {editActions.map((action) => {
         const label = tt(
           action.busy && action.busyLabel ? action.busyLabel : action.label,

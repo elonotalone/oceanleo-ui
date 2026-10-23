@@ -33,7 +33,8 @@ test("one app-level owner controls entrance animation without nested remounts", 
 
 test("configured library visibility never swaps out the left runtime tree", () => {
   assert.match(splitWorkspace, /if \(!hasRight && !library\)/);
-  assert.match(splitWorkspace, /const paneMaximized = hasRight && \(rightMaximized \|\| leftHidden\)/);
+  // 10-23 W02: a host-hidden left pane still opens for a requested tool/library panel.
+  assert.match(splitWorkspace, /const paneMaximized = hasRight && \(rightMaximized \|\| \(leftHidden && !activeLeftPanel\)\)/);
   const leftStart = splitWorkspace.indexOf('data-workspace-pane="left"');
   const rightStart = splitWorkspace.indexOf('data-workspace-pane="main"', leftStart);
   assert.ok(leftStart >= 0 && rightStart > leftStart);

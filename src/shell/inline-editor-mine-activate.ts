@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useEffect, useRef, useState } from "react";
 import { rememberOpenedLibraryItem } from "./library-current-identity";
 import type { LibraryItem } from "./library-data";
 import {
@@ -9,6 +9,14 @@ import {
   WORKSPACE_ACTION_EVENT,
   type WorkspaceActionEnvelope,
 } from "./workspace-actions";
+
+/**
+ * 承载提供的「就地换文件」：我的库里点另一份时，壳先保存，再调它把同一个编辑器换成
+ * 那份文件。没有提供者的承载（工作台 ResultCanvas）退回 typed workspace action。
+ */
+export const InlineEditorSwitchContext = createContext<
+  ((item: LibraryItem) => void) | null
+>(null);
 
 export function libraryItemIdentityKey(
   item: Pick<LibraryItem, "id" | "artifactId"> | null | undefined,

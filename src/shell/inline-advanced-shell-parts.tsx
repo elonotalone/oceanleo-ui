@@ -1,10 +1,16 @@
 "use client";
 
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
+  useState,
+  type ReactNode,
   type RefObject,
 } from "react";
+import { useUI } from "../i18n/ui/useUI";
+import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
 import type {
   AdvancedEditorAdapter,
   AdvancedEditorNotice,
@@ -134,6 +140,123 @@ export function StageNoticeCorner({
       style={{ zIndex: 2_147_483_010 }}
     >
       <PluginChromeNotices notices={notices} />
+    </div>
+  );
+}
+
+/**
+ * 没有可用工作区左栏时（`/advanced/<featureId>`、宿主把左栏收着的库页面）壳自己的
+ * 左侧面板：320px，滑入滑出；收起后 300ms 内保留上一份内容，退场不闪空。
+ */
+export function FallbackDetailAside({
+  detail,
+  onClose,
+}: {
+  detail: { label: ReactNode; content: ReactNode } | null;
+  onClose: () => void;
+}) {
+  const tt = useUI();
+  const [closing, setClosing] = useState<typeof detail>(null);
+  const lastRef = useRef<typeof detail>(detail);
+  if (detail) lastRef.current = detail;
+  useEffect(() => {
+    if (detail) {
+      lastRef.current = detail;
+      setClosing(null);
+      return;
+    }
+    const previous = lastRef.current;
+    if (!previous) return;
+    lastRef.current = null;
+    setClosing(previous);
+    const timer = globalThis.setTimeout(() => setClosing(null), 300);
+    return () => globalThis.clearTimeout(timer);
+  }, [detail]);
+  const displayed = detail || closing || lastRef.current;
+  return (
+    <aside
+      data-workspace-pane={detail ? "left" : undefined}
+      data-left-panel={detail ? "tool-detail" : undefined}
+      aria-hidden={!detail}
+      inert={!detail}
+      style={{
+        width: detail ? 320 : 0,
+        flexBasis: detail ? 320 : 0,
+        opacity: detail ? 1 : 0,
+        pointerEvents: detail ? "auto" : "none",
+        borderRightWidth: detail ? undefined : 0,
+      }}
+      className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] transition-[width,flex-basis,opacity] duration-300 ease-out motion-reduce:transition-none"
+    >
+      {displayed && (
+        <>
+          <div className="flex h-11 items-center gap-2 border-b border-[var(--awb-border)] px-3">
+            <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
+              {displayed.label}
+            </span>
+            <button
+              type="button"
+              data-editor-fallback-close
+              onClick={onClose}
+              aria-label={tt("收起面板")}
+              title={tt("收起面板")}
+              className="grid h-8 w-8 place-items-center rounded-lg outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--awb-hover)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
+            >
+              <span aria-hidden="true" className="text-lg leading-none">×</span>
+            </button>
+          </div>
+          <div
+            data-editor-fallback-pane
+            className={`min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&:has([data-agent-conversation])]:overflow-hidden ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
+          >
+            {displayed.content}
+          </div>
+        </>
+      )}
+    </aside>
+  );
+}
+
+const SELECTION_CONTROL_SELECTOR =
+  "button, input, select, textarea, [role='button'], [role='combobox']";
+
+/**
+ * 「此刻有没有选中对象」的探针（D3）：编辑器的选区工具栏没选中时什么都不画，
+ * 但多数编辑器总是交出一个包装组件。这里包一层 `display: contents`，看它里面有没有
+ * 真的画出控件；没有就算「没选中」，编辑栏改显示抽屉按钮。
+ */
+export function SelectionPresenceProbe({
+  children,
+  onChange,
+}: {
+  children: ReactNode;
+  onChange: (present: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    let last: boolean | null = null;
+    const read = () => {
+      const present = Boolean(node.querySelector(SELECTION_CONTROL_SELECTOR));
+      if (present === last) return;
+      last = present;
+      onChangeRef.current(present);
+    };
+    read();
+    if (typeof MutationObserver !== "function") return;
+    const observer = new MutationObserver(read);
+    observer.observe(node, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      onChangeRef.current(false);
+    };
+  }, []);
+  return (
+    <div ref={ref} data-edit-bar-selection-probe style={{ display: "contents" }}>
+      {children}
     </div>
   );
 }

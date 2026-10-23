@@ -7,6 +7,16 @@ import { humanErrorMessage } from "./human-error-message";
 import { libraryItemIdentityKey } from "./inline-editor-mine-activate";
 import type { LibraryItem } from "./library-data";
 
+export interface MineActivationResult {
+  ok: boolean;
+  /** 留在原处的原因（人话）；ok 时为空。 */
+  error?: string;
+}
+
+/**
+ * 编辑器里的「我的库」：列出我的文件，当前这份高亮。点另一份时先保存当前改动，
+ * 保存成功才换；保存失败就留在原处并写明原因（10-23 W02，D2）。
+ */
 export function InlineEditorMinePanel({
   siteId = "",
   currentItem = null,
@@ -14,9 +24,32 @@ export function InlineEditorMinePanel({
 }: {
   siteId?: string;
   currentItem?: LibraryItem | null;
-  onActivateItem: (item: LibraryItem) => void;
+  onActivateItem: (
+    item: LibraryItem,
+  ) => MineActivationResult | void | Promise<MineActivationResult | void>;
 }) {
   const tt = useUI();
+  const [switching, setSwitching] = useState("");
+  const [switchError, setSwitchError] = useState("");
+  const activate = async (entry: LibraryItem) => {
+    if (switching) return;
+    setSwitchError("");
+    setSwitching(libraryItemIdentityKey(entry) || entry.title);
+    try {
+      const result = await onActivateItem(entry);
+      if (result && !result.ok) {
+        setSwitchError(
+          tt("当前改动没有保存成功，先留在这份文件：{reason}", {
+            reason: tt(humanErrorMessage(result.error, tt("保存失败，请重试"))),
+          }),
+        );
+      }
+    } catch (caught) {
+      setSwitchError(humanErrorMessage(caught, tt("切换失败，请重试")));
+    } finally {
+      setSwitching("");
+    }
+  };
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -52,6 +85,24 @@ export function InlineEditorMinePanel({
       data-inline-editor-mine-panel
       className="flex h-full min-h-0 flex-col overflow-hidden p-2"
     >
+      {switching ? (
+        <p
+          role="status"
+          data-inline-editor-mine-switching
+          className="px-2 pb-2 text-[12px] text-[var(--awb-muted,#737373)]"
+        >
+          {tt("正在保存当前改动…")}
+        </p>
+      ) : null}
+      {switchError ? (
+        <p
+          role="alert"
+          data-inline-editor-mine-switch-error
+          className="px-2 pb-2 text-[12px] text-[var(--awb-danger,#dc2626)]"
+        >
+          {switchError}
+        </p>
+      ) : null}
       {error ? (
         <div className="grid gap-2 p-2 text-[12px] text-[var(--awb-danger,#dc2626)]">
           <p title={error}>{error}</p>
@@ -85,8 +136,11 @@ export function InlineEditorMinePanel({
                   data-inline-editor-mine-item={id}
                   data-inline-editor-mine-action="edit"
                   aria-current={current ? "true" : undefined}
+                  selected={current}
+                  disabled={Boolean(switching)}
+                  aria-busy={switching === id || undefined}
                   title={entry.title}
-                  onClick={() => onActivateItem(entry)}
+                  onClick={() => void activate(entry)}
                 >
                   <span className="min-w-0 flex-1 truncate">{entry.title}</span>
                 </Button>

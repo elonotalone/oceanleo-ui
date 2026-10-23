@@ -72,6 +72,7 @@ const inlinePanelsUrl = await compileModule("src/shell/use-inline-advanced-panel
   "./inline-advanced-shell-helpers": dataModule(`
     export function resolveActiveMaterialAction(){return undefined;}
     export function resolveInlineAdvancedDrawers(adapter){return adapter.drawers || [];}
+    export function resolveEditBarDrawers(_id, drawers){return drawers.filter(d=>d.id!=='agent');}
   `),
   "./plugin-chrome/PluginAgentPanel": dataModule(`export function PluginAgentPanel(){return null;}`),
   "./plugin-chrome/agent-drawer": dataModule(`export const PLUGIN_AGENT_DRAWER_ID='agent';`),

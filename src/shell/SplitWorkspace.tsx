@@ -168,6 +168,8 @@ export interface WorkspacePaneController {
   /** Fullscreen keeps the semantic left pane and the right editor together. */
   fullscreenRef: RefObject<HTMLDivElement | null>;
   libraryOpen: boolean;
+  /** Host keeps the left semantic pane collapsed (standalone Library file); editors use their own aside. */
+  leftHidden: boolean;
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
   registerLibraryPanel: (
     id: WorkspaceLibraryPanelId,
@@ -633,6 +635,7 @@ export function SplitWorkspace({
     () => ({
       fullscreenRef: wrapRef,
       libraryOpen,
+      leftHidden,
       activeLibraryPanelId,
       registerLibraryPanel,
       unregisterLibraryPanel,
@@ -648,6 +651,7 @@ export function SplitWorkspace({
       clearDetail,
       closeLibraryPanel,
       libraryOpen,
+      leftHidden,
       openLibraryPanel,
       registerLibraryPanel,
       showDetail,
@@ -798,8 +802,9 @@ export function SplitWorkspace({
     );
   }
 
-  const paneMaximized = hasRight && (rightMaximized || leftHidden);
   const activeLeftPanel = activeDetail || activeLibraryPanel;
+  // A requested tool/library panel is never parked in a collapsed pane (10-23 W02).
+  const paneMaximized = hasRight && (rightMaximized || (leftHidden && !activeLeftPanel));
   const presentedLeftPanel = activeDetail || activeLibraryPanel;
   const detailLabel = presentedLeftPanel ? (
     <div className="flex min-w-0 items-center gap-2">
@@ -810,10 +815,10 @@ export function SplitWorkspace({
           else closeLibraryPanel();
         }}
         className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800"
-        aria-label={tt("返回操作台")}
-        title={tt("返回操作台")}
+        aria-label={tt(leftHidden ? "收起面板" : "返回操作台")}
+        title={tt(leftHidden ? "收起面板" : "返回操作台")}
       >
-        ←
+        {leftHidden ? "×" : "←"}
       </button>
       <span className="truncate text-[12px] font-semibold text-stone-700">
         {presentedLeftPanel.label}

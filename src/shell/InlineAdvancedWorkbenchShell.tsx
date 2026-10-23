@@ -22,8 +22,6 @@ import {
 } from "./FloatingContextToolbar";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
-import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
-import { InlineEditorMinePanel } from "./inline-editor-mine-panel";
 import {
   hasPendingOrFailed,
   subscribe as subscribeBackgroundSaves,
@@ -31,8 +29,11 @@ import {
 import { useInlineWorkbenchLeave } from "./use-inline-workbench-leave";
 import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
 import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
+import { useInlineLibraryPanels } from "./use-inline-library-panels";
 import {
+  FallbackDetailAside,
   HiddenUploadInput,
+  SelectionPresenceProbe,
   StageNoticeCorner,
   useEditBarDockPresentation,
   usePluginPagesForAdapter,
@@ -151,6 +152,23 @@ export function InlineAdvancedWorkbenchShell({
     () => uploadInputRef.current?.click(),
     [],
   );
+  const ownedWorkspaceDetailId =
+    workspaceDetail?.ownerId === ownerIdRef.current ? workspaceDetail.id : null;
+  const panels = useInlineAdvancedPanels({
+    adapter,
+    item,
+    taskId,
+    siteId,
+    accent: effectiveAccent,
+    ownerId: ownerIdRef.current,
+    pluginThemeId,
+    workbenchMaterials,
+    showWorkspaceDetail,
+    clearWorkspaceDetail,
+    workspaceLeftHidden: workspacePane?.leftHidden === true,
+    ownedWorkspaceDetailId,
+    onLocalUpload: openLocalUpload,
+  });
   const {
     drawers,
     activeDrawerId,
@@ -162,41 +180,8 @@ export function InlineAdvancedWorkbenchShell({
     updateTransientPanel,
     closeDetail,
     closeDrawer,
-  } = useInlineAdvancedPanels({
-    adapter,
-    item,
-    taskId,
-    siteId,
-    accent: effectiveAccent,
-    ownerId: ownerIdRef.current,
-    pluginThemeId,
-    workbenchMaterials,
-    showWorkspaceDetail,
-    clearWorkspaceDetail,
-    onLocalUpload: openLocalUpload,
-  });
-  const [closingFallbackDetail, setClosingFallbackDetail] =
-    useState<typeof fallbackDetail>(null);
-  const lastFallbackDetailRef = useRef<typeof fallbackDetail>(fallbackDetail);
-  if (fallbackDetail) lastFallbackDetailRef.current = fallbackDetail;
-  useEffect(() => {
-    if (fallbackDetail) {
-      lastFallbackDetailRef.current = fallbackDetail;
-      setClosingFallbackDetail(null);
-      return;
-    }
-    const previous = lastFallbackDetailRef.current;
-    if (!previous) return;
-    lastFallbackDetailRef.current = null;
-    setClosingFallbackDetail(previous);
-    const timer = globalThis.setTimeout(
-      () => setClosingFallbackDetail(null),
-      300,
-    );
-    return () => globalThis.clearTimeout(timer);
-  }, [fallbackDetail]);
-  const displayedFallbackDetail =
-    fallbackDetail || closingFallbackDetail || lastFallbackDetailRef.current;
+  } = panels;
+  const [selectionPresent, setSelectionPresent] = useState(false);
 
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
@@ -276,10 +261,7 @@ export function InlineAdvancedWorkbenchShell({
         ? ownedDetail?.id || activeDrawerId
         : activeDrawerId,
       activeTransientPanelId:
-        transientPanel &&
-        (showWorkspaceDetail
-          ? ownedDetail?.id === transientPanel.id
-          : Boolean(fallbackDetail))
+        transientPanel && panels.isPanelOpen(transientPanel.id)
           ? transientPanel.id
           : "",
       contextBarLeading: floatingToolbar.leading,
@@ -301,14 +283,23 @@ export function InlineAdvancedWorkbenchShell({
       openTransientPanel,
       updateTransientPanel,
       ownedDetail?.id,
+      panels.isPanelOpen,
       panelVisible,
       showWorkspaceDetail,
       transientPanel?.id,
     ],
   );
-  const contextToolbar = adapter.renderContextToolbar
+  const rawContextToolbar = adapter.renderContextToolbar
     ? adapter.renderContextToolbar(layoutState)
     : adapter.contextToolbar;
+  // 合同：没选中时 contextToolbar 为 null；多数编辑器仍交包装组件，由探针看它画没画出控件。
+  const contextToolbar =
+    rawContextToolbar == null ? null : (
+      <SelectionPresenceProbe onChange={setSelectionPresent}>
+        {rawContextToolbar}
+      </SelectionPresenceProbe>
+    );
+  const noSelection = rawContextToolbar == null || !selectionPresent;
 
   const { leavingMountedEditor, requestClose, requestPaneClose, activateMineItem } = useInlineWorkbenchLeave({
     item, onClose, onPaneClose: rightPaneSlot?.closeRightPane, closeDetail, autoSave,
@@ -347,49 +338,14 @@ export function InlineAdvancedWorkbenchShell({
   }, [advancedSession, flushForExplicitSave]);
 
   void backgroundBusy;
-  const openLibraryPanel = useCallback(
-    (id: "materials" | "mine") => {
-      closeDetail();
-      // `/advanced/<featureId>` 与 MaterialCatalog 这类没有 SplitWorkspace 的承载里，
-      // 工作区窗格不存在（或没人登记库面板），第一行「素材库」以前点了没反应。
-      // 这时退到壳自己的素材抽屉——它的第一项就是「从本地上传」。
-      // 「我的库」同样必须有落点：打开侧栏列表，不卸载当前编辑器，以免丢掉未保存改动。
-      if (workspacePane?.openLibraryPanel(id)) return;
-      if (id === "materials") {
-        openDrawer("materials");
-        return;
-      }
-      openTransientPanel(
-        "mine",
-        tt("我的库"),
-        <InlineEditorMinePanel
-          siteId={siteId}
-          currentItem={item}
-          onActivateItem={activateMineItem}
-        />,
-      );
-    },
-    [
-      activateMineItem,
-      closeDetail,
+  const { openLibraryPanel, toggleDrawer, activeLibraryPanelId, openDrawerId } =
+    useInlineLibraryPanels({
+      panels,
       item,
-      openDrawer,
-      openTransientPanel,
       siteId,
-      tt,
-      workspacePane,
-    ],
-  );
-  const materialsDrawerOpen =
-    !transientPanel && activeDrawerId === "materials";
-  const minePanelOpen = transientPanel?.id === "mine" || activeDrawerId === "mine";
-  const activeLibraryPanelId =
-    workspacePane?.activeLibraryPanelId ||
-    (materialsDrawerOpen
-      ? ("materials" as const)
-      : minePanelOpen
-        ? ("mine" as const)
-        : null);
+      mineLabel: tt("我的库"),
+      activateMineItem,
+    });
   const actionBar = useMemo(
     () => (
       <InlineAdvancedWorkbenchHeader
@@ -469,10 +425,14 @@ export function InlineAdvancedWorkbenchShell({
           // （signals/X2-interface.md）：撤销重做在第一行 history 槽，
           // 文档段走 documentSegment，AI 助手由容器最右段统一画。
           documentSegment={
-            documentActions.length > 0 ? (
+            documentActions.length > 0 ||
+            (noSelection && panels.editBarDrawers.length > 0) ? (
               <EditBarDocumentSegment
                 actions={documentActions}
                 onTrigger={triggerDocumentAction}
+                drawers={noSelection ? panels.editBarDrawers : []}
+                activeDrawerId={openDrawerId}
+                onToggleDrawer={toggleDrawer}
               />
             ) : undefined
           }
@@ -497,44 +457,7 @@ export function InlineAdvancedWorkbenchShell({
           upload={adapter.upload}
           onFiles={(files) => void performUpload(files)}
         />
-        <aside
-          data-workspace-pane={fallbackDetail ? "left" : undefined}
-          data-left-panel={fallbackDetail ? "tool-detail" : undefined}
-          aria-hidden={!fallbackDetail}
-          inert={!fallbackDetail}
-          style={{
-            width: fallbackDetail ? 320 : 0,
-            flexBasis: fallbackDetail ? 320 : 0,
-            opacity: fallbackDetail ? 1 : 0,
-            pointerEvents: fallbackDetail ? "auto" : "none",
-            borderRightWidth: fallbackDetail ? undefined : 0,
-          }}
-          className="flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] transition-[width,flex-basis,opacity] duration-300 ease-out motion-reduce:transition-none"
-        >
-          {displayedFallbackDetail && (
-            <>
-            <div className="flex h-11 items-center gap-2 border-b border-[var(--awb-border)] px-3">
-              <button
-                type="button"
-                onClick={closeDetail}
-                aria-label={tt("关闭详情")}
-                className="grid h-8 w-8 place-items-center rounded-lg outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--awb-hover)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
-              >
-                ←
-              </button>
-              <span className="truncate text-[12px] font-semibold">
-                {displayedFallbackDetail.label}
-              </span>
-            </div>
-            <div
-              data-editor-fallback-pane
-              className={`min-h-0 flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&:has([data-agent-conversation])]:overflow-hidden ${AGENT_CONVERSATION_HOST_STRETCH_CLASS}`}
-            >
-              {displayedFallbackDetail.content}
-            </div>
-            </>
-          )}
-        </aside>
+        <FallbackDetailAside detail={fallbackDetail} onClose={closeDetail} />
         <div
           ref={localEditBarLayerRef}
           data-edit-bar-layer-root={!rightPaneSlot || undefined}

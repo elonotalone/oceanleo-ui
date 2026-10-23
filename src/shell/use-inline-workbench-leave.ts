@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { leaveAdvancedWorkbench, shouldWarnBeforeUnload } from "./advanced-background-saver";
-import { libraryItemIdentityKey, requestOpenLibraryItemInEditor } from "./inline-editor-mine-activate";
+import {
+  InlineEditorSwitchContext,
+  libraryItemIdentityKey,
+  requestOpenLibraryItemInEditor,
+} from "./inline-editor-mine-activate";
+import type { MineActivationResult } from "./inline-editor-mine-panel";
 import type { LibraryItem } from "./library-data";
 import type { useAdvancedAutoSave } from "./use-advanced-autosave";
 
@@ -59,12 +64,20 @@ export function useInlineWorkbenchLeave({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [warnBeforeUnload]);
-  const activateMineItem = useCallback((next: LibraryItem) => {
+  const switchItem = useContext(InlineEditorSwitchContext);
+  // 我的库换文件（D2）：先把当前改动存到服务器，确认成功才换；失败就留在原处并交出原因。
+  const activateMineItem = useCallback(async (next: LibraryItem): Promise<MineActivationResult> => {
     const currentId = libraryItemIdentityKey(item);
     const nextId = libraryItemIdentityKey(next);
-    if (currentId && nextId && currentId === nextId) { closeDetail(); return; }
-    // MyLibrary consumes this typed edit intent without closing its own host.
-    requestLeave(() => requestOpenLibraryItemInEditor(next));
-  }, [closeDetail, item, requestLeave]);
+    if (currentId && nextId && currentId === nextId) { closeDetail(); return { ok: true }; }
+    if (editorUnconfirmed) {
+      if (!autoSaveEnabled) return { ok: false, error: "这份文件还有没应用的改动，请先保存" };
+      const saved = await autoSave.flushLatest();
+      if (!saved.ok) return { ok: false, error: saved.errorMessage || saved.error || "保存失败，请重试" };
+    }
+    // Hosts with an in-place switch keep the same editor host; others receive the typed edit intent.
+    requestLeave(() => (switchItem ? switchItem(next) : requestOpenLibraryItemInEditor(next)));
+    return { ok: true };
+  }, [autoSave, autoSaveEnabled, closeDetail, editorUnconfirmed, item, requestLeave, switchItem]);
   return { leavingMountedEditor, requestClose, requestPaneClose, activateMineItem };
 }

@@ -16,6 +16,7 @@
 
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -29,6 +30,7 @@ import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { InlineEditorMaterialPanel } from "./InlineEditorMaterialPanel";
 import {
   resolveActiveMaterialAction,
+  resolveEditBarDrawers,
   resolveInlineAdvancedDrawers,
 } from "./inline-advanced-shell-helpers";
 import type { LibraryItem } from "./library-data";
@@ -66,6 +68,13 @@ export interface InlineAdvancedPanelsInput {
   showWorkspaceDetail?: (detail: WorkspaceDetailRequest) => void;
   clearWorkspaceDetail?: (ownerId: string) => void;
   /**
+   * 宿主把左栏整块收着（`/library?item=` 单开一份文件时 agent 隐藏）。这时面板不进那块
+   * 看不见的左栏，改走壳自己的 aside（10-23 W02 根因）。
+   */
+  workspaceLeftHidden?: boolean;
+  /** 工作区此刻显示的、属于本壳的面板 id；被别处清掉时本地开合状态跟着归零。 */
+  ownedWorkspaceDetailId?: string | null;
+  /**
    * 规范 v2 §2：上传住在素材库抽屉第一项，不再进编辑栏。宿主把隐藏的
    * `<input type=file>` 的 click 接到这里；`adapter.upload` 缺席时不给这一项。
    */
@@ -83,8 +92,11 @@ export function useInlineAdvancedPanels({
   workbenchMaterials,
   showWorkspaceDetail,
   clearWorkspaceDetail,
+  workspaceLeftHidden = false,
+  ownedWorkspaceDetailId = null,
   onLocalUpload,
 }: InlineAdvancedPanelsInput) {
+  const workspaceShow = workspaceLeftHidden ? undefined : showWorkspaceDetail;
   const tt = useUI();
   const consoleAgentFocus = useConsoleAgentFocus();
   const liveDetailStoreRef = useRef(createLiveReactNodeStore());
@@ -125,6 +137,15 @@ export function useInlineAdvancedPanels({
       },
     ];
   }, [adapter, siteId, accent, tt]);
+  // D3：编辑栏空态的带文字抽屉按钮（AI 除外，右端 AI 键保留）。
+  const editBarDrawers = useMemo(() => {
+    const shown = new Set(
+      resolveEditBarDrawers(adapter.id, drawers).map((entry) => entry.id),
+    );
+    return drawers
+      .map((drawer) => ({ id: drawer.id, label: drawer.label, icon: drawer.icon }))
+      .filter((drawer) => shown.has(drawer.id));
+  }, [adapter.id, drawers]);
   const drawerById = useMemo(
     () => new Map(drawers.map((drawer) => [drawer.id, drawer])),
     [drawers],
@@ -272,8 +293,8 @@ export function useInlineAdvancedPanels({
       );
       const next = panelFor(drawerId, materialAction);
       publishLiveReactNode(liveDetailStoreRef.current, next.content);
-      if (showWorkspaceDetail) {
-        showWorkspaceDetail({
+      if (workspaceShow) {
+        workspaceShow({
           ownerId,
           id: drawerId,
           label: next.label,
@@ -283,7 +304,7 @@ export function useInlineAdvancedPanels({
         setFallbackDetail({ label: next.label, content: liveDetailNode });
       }
     },
-    [closeDetail, consoleAgentFocus, liveDetailNode, ownerId, panelFor, showWorkspaceDetail],
+    [closeDetail, consoleAgentFocus, liveDetailNode, ownerId, panelFor, workspaceShow],
   );
 
   const openTransientPanel = useCallback(
@@ -294,8 +315,8 @@ export function useInlineAdvancedPanels({
       setActiveDrawerId(panelId);
       setRequestedMaterialAction(undefined);
       publishLiveReactNode(liveDetailStoreRef.current, content);
-      if (showWorkspaceDetail) {
-        showWorkspaceDetail({
+      if (workspaceShow) {
+        workspaceShow({
           ownerId,
           id: panelId,
           label,
@@ -305,7 +326,7 @@ export function useInlineAdvancedPanels({
         setFallbackDetail({ label, content: liveDetailNode });
       }
     },
-    [liveDetailNode, ownerId, showWorkspaceDetail],
+    [liveDetailNode, ownerId, workspaceShow],
   );
 
   const updateTransientPanel = useCallback(
@@ -316,8 +337,31 @@ export function useInlineAdvancedPanels({
     [],
   );
 
+  // 工作区把我们的面板换掉/清掉（左栏「←」、别的面板顶替）时，本地状态跟着归零，
+  // 否则顶栏按钮还亮着，下一次点击会去「收起」一个已经不在的面板——看起来就是死按钮。
+  const placedInWorkspace = Boolean(workspaceShow);
+  useEffect(() => {
+    if (!placedInWorkspace || !activeDrawerId) return;
+    if (ownedWorkspaceDetailId === activeDrawerId) return;
+    transientPanelRef.current = null;
+    setTransientPanel(null);
+    setActiveDrawerId("");
+    setRequestedMaterialAction(undefined);
+  }, [activeDrawerId, ownedWorkspaceDetailId, placedInWorkspace]);
+  const isPanelOpen = useCallback(
+    (panelId: string) =>
+      activeDrawerId === panelId &&
+      (placedInWorkspace
+        ? ownedWorkspaceDetailId === panelId
+        : Boolean(fallbackDetail)),
+    [activeDrawerId, fallbackDetail, ownedWorkspaceDetailId, placedInWorkspace],
+  );
+
   return {
     drawers,
+    editBarDrawers,
+    isPanelOpen,
+    placedInWorkspace,
     activeMaterialAction,
     transientPanel,
     fallbackDetail,
