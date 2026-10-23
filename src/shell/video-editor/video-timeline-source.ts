@@ -220,3 +220,12 @@ export function isExpiringArtifactGrantUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * 标题里带的素材扩展名去掉（「片子.mp4」→「片子」），否则成品叫「片子.mp4-剪辑成品.mp4」、
+ * 下载名叫「片子.mp4.webm」。只认常见音视频 / 工程扩展名，别的点号原样保留。
+ */
+export function timelineTitleStem(title: string | undefined | null): string {
+  const text = String(title || "").trim();
+  return text.replace(/\.(?:mp4|m4v|mov|webm|mkv|avi|mp3|wav|m4a|aac|ogg|oga|flac|json)$/i, "").trim() || text;
+}

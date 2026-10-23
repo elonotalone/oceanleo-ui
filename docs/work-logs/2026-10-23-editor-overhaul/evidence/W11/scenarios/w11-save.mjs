@@ -78,7 +78,8 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   log("url after saves", url.replace(/token=[^&]+/, "token=…"));
 
   // close (× in the top bar: flushes pending work) and reopen
-  const close = page.locator("button[aria-label='关闭'], button[aria-label='Close']").last();
+  // × is the last button of the one-row top bar (D1).
+  const close = page.locator("[aria-label='工作区操作'] button, [aria-label='Workspace actions'] button").last();
   await close.click().catch((error) => log("close click failed", String(error).slice(0, 120)));
   const closedAt = Date.now();
   while (Date.now() - closedAt < 60000) {
@@ -117,7 +118,18 @@ export default async function ({ page, context, log, shot, helpers, args }) {
       await retry.click();
       log("clicked retry");
     }
-    await waitCycle(page, helpers, log, "C retry", { timeout: 90000 });
+    // The cloud itself is the retry button when the save failed.
+    const retryStarted = Date.now();
+    let final = "";
+    while (Date.now() - retryStarted < 90000) {
+      final = (await helpers.saveState(page)) || "";
+      if (final === "saved") break;
+      if (final === "error" && Date.now() - retryStarted > 15000) {
+        await launcher.click().catch(() => {});
+      }
+      await page.waitForTimeout(1000);
+    }
+    log("save-cycle", "C retry", final, `${Math.round((Date.now() - retryStarted) / 100) / 10}s`);
     await shot("save-after-retry");
   }
 }

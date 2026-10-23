@@ -78,14 +78,45 @@ export async function healGrantUrl(
   return { url: fresh, durable: false };
 }
 
-/** 工程里所有过期型 grant 地址（去重，带轨道类型）。 */
-export function expiringGrantSources(doc: TimelineDoc): Map<string, TrackKind> {
+/** grant 的过期时刻（ms）；读不出返回 null。 */
+export function artifactGrantExpiresAt(url: string): number | null {
+  if (!isExpiringArtifactGrantUrl(url)) return null;
+  try {
+    const parsed = new URL(url, "https://api.oceanleo.com");
+    const marker = "/artifact-renditions/access/";
+    const token = parsed.pathname.slice(parsed.pathname.indexOf(marker) + marker.length);
+    const payload = JSON.parse(base64UrlDecode(token.split(".")[0] || "")) as Record<string, unknown>;
+    const exp = Number(payload.exp);
+    return Number.isFinite(exp) && exp > 0 ? exp * 1_000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 还有这么久才过期的 grant 现在不必换（换了只会让工程每存一次就变一次地址）。 */
+export const GRANT_HEAL_MARGIN_MS = 120_000;
+
+function needsHeal(url: string, now: number): boolean {
+  const expiresAt = artifactGrantExpiresAt(url);
+  return expiresAt === null || expiresAt - now <= GRANT_HEAL_MARGIN_MS;
+}
+
+/** 工程里所有快过期 / 已过期的 grant 地址（去重，带轨道类型）。 */
+export function expiringGrantSources(
+  doc: TimelineDoc,
+  now: number = Date.now(),
+): Map<string, TrackKind> {
   const found = new Map<string, TrackKind>();
   for (const track of doc.tracks) {
     if (track.kind === "text") continue;
     for (const clip of track.clips) {
       const source = clip.source_url || "";
-      if (source && !found.has(source) && isExpiringArtifactGrantUrl(source)) {
+      if (
+        source &&
+        !found.has(source) &&
+        isExpiringArtifactGrantUrl(source) &&
+        needsHeal(source, now)
+      ) {
         found.set(source, track.kind);
       }
     }

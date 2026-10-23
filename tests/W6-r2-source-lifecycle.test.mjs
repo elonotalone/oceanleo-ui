@@ -265,7 +265,9 @@ test("game Code preview buttons change playback state; play preview stays non-ed
   assert.equal(reloaded.reloadKey, 4);
   const code = readFileSync("src/shell/game-editor/GameCodeStage.tsx", "utf8");
   assert.match(code, /planGamePreviewControl/);
-  assert.match(code, /data-testid="game-run"/);
+  // W15 2026-10-23：运行条搬进 GameCodeRunBar（Code 是 aux 页，toolbox 抽屉点不到）。
+  assert.match(code, /<GameCodeRunBar/);
+  assert.match(readFileSync("src/shell/game-editor/GameCodeRunBar.tsx", "utf8"), /data-testid="game-run"/);
   const play = readFileSync("src/shell/advanced-routes/GameRoute.tsx", "utf8");
   assert.doesNotMatch(play, /usePluginCommandSurface/);
 });

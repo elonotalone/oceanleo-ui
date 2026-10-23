@@ -78,6 +78,7 @@ import {
   VIDEO_TIMELINE_PLACEHOLDER_DURATION_MS,
   isExpiringArtifactGrantUrl,
   planVideoTimelineSeed,
+  timelineTitleStem,
   videoTimelineProjectSource,
 } from "./video-timeline-source";
 import { refreshArtifactRendition } from "../artifact-client";
@@ -1357,7 +1358,7 @@ export function useVideoTimeline(
         item.title,
       );
       await assertTimelineMediaSources(snapshot, tt);
-      const title = `${item.title || tt("视频")}-${tt("时间线草稿")}`;
+      const title = `${timelineTitleStem(item.title) || tt("视频")}-${tt("时间线草稿")}`;
       const result = await uploadDraft(
         snapshot,
         item,
@@ -1464,7 +1465,7 @@ export function useVideoTimeline(
       const url = await renderTimeline(
         {
           timeline: docToRender,
-          title: `${item.title || tt("视频")}-${tt("剪辑成品")}`,
+          title: `${timelineTitleStem(item.title) || tt("视频")}-${tt("剪辑成品")}`,
           site_id: siteId || "oceanleo",
           parent_id: item.id,
           ...(coverUrl ? { cover_url: coverUrl } : {}),

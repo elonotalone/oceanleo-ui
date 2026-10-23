@@ -1,6 +1,7 @@
 "use client";
 
 import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
+import { useUI } from "../../i18n/ui/useUI";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import {
@@ -20,7 +21,13 @@ import { usePluginCommandSurface } from "../plugin-command";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { createVideoCommandSurface } from "../video-editor/video-command-surface";
-import { downloadConvertedFromUrl } from "../media-editors/visual-convert-client";
+import {
+  downloadConvertedFromUrl,
+  downloadVisualBlob,
+  fetchDeliverableBlob,
+  withExtension,
+} from "../media-editors/visual-convert-client";
+import { timelineTitleStem } from "../video-editor/video-timeline-source";
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
 import {
   visualDownloadFormats,
@@ -200,6 +207,7 @@ function VideoTimelineBody({
   onConvertStored?: () => void;
 }) {
   const editor = useVideoTimeline(item, siteId);
+  const tt = useUI();
   const editorRef = useRef(editor);
   editorRef.current = editor;
   // ---- 多人同改（W14 / F07）：片段为粒度。远端改动经 applyRemoteDoc 套进来：保住选中、播放头和我自己的撤销栈，
@@ -267,11 +275,11 @@ function VideoTimelineBody({
       }
       if (!rendered) throw new Error(editor.error || "渲染没有成功，无法转格式。");
       setConvertingWebm(true);
-      setDeliverNotice("正在转成 WebM…");
+      setDeliverNotice(tt("正在转成 WebM…"));
       try {
         await downloadConvertedFromUrl({
           url: rendered,
-          title: item.title || "video",
+          title: timelineTitleStem(item.title) || "video",
           target: format,
           kind: "media",
         });
@@ -440,15 +448,19 @@ function VideoTimelineBody({
         pages: {},
         directDownload: {
           id: "video-download-mp4",
-          label: visualDownloadFormats("video-timeline")[0].label,
+          label: tt(visualDownloadFormats("video-timeline")[0].label),
           icon: "download",
-          busyLabel: "渲染中…",
+          busyLabel: tt("渲染中…"),
           busy: editor.exporting,
           disabled:
             busy || editor.loadingSource || !editor.sourceReady,
           onTrigger: async () => {
             if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
-            await editor.exportVideo();
+            // 渲染（成品同时进我的库），再把 mp4 真的下载到本机：下载菜单里的项不许只有通知。
+            const rendered = await editor.exportVideo();
+            if (!rendered) return;
+            const blob = await fetchDeliverableBlob(rendered);
+            downloadVisualBlob(blob, withExtension(timelineTitleStem(item.title) || "video", "mp4"));
           },
         },
         actions: [
@@ -456,11 +468,11 @@ function VideoTimelineBody({
             .slice(1)
             .map((entry) => ({
               id: entry.id,
-              label: entry.label,
+              label: tt(entry.label),
               icon: "download" as const,
               group: "download" as const,
               busy,
-              busyLabel: editor.exporting ? "渲染中…" : "转换中…",
+              busyLabel: editor.exporting ? tt("渲染中…") : tt("转换中…"),
               disabled:
                 busy || editor.loadingSource || !editor.sourceReady,
               onTrigger: () => deliver(entry.format).catch(() => undefined),
@@ -469,7 +481,7 @@ function VideoTimelineBody({
             ? [
                 {
                   id: "video-convert-stored",
-                  label: "转换为可编辑时间线",
+                  label: tt("转换为可编辑时间线"),
                   onTrigger: onConvertStored,
                 },
               ]
