@@ -174,6 +174,24 @@ function actionBarProps(overrides = {}) {
   };
 }
 
+// D1（2026-10-23）：分享 / 收藏不再是第一行的独立按钮，状态与动作收进 useEditorItemSocial，
+// 由 `···` 菜单画。两条身份保护（链接带当前条目、迟到的收藏结果不改新条目）照旧，测在 hook 上。
+function socialProbe(useEditorItemSocial) {
+  return function SocialProbe({ item }) {
+    const social = useEditorItemSocial(item);
+    return React.createElement(
+      "div",
+      { "data-editor-item-social": true, "data-artifact-id": social.artifactId || undefined },
+      React.createElement("button", { "data-editor-chrome-action": "share", onClick: () => void social.share() }),
+      React.createElement("button", {
+        "data-editor-chrome-action": "favorite",
+        "aria-pressed": String(social.favorite),
+        onClick: () => void social.toggleFavorite(),
+      }),
+    );
+  };
+}
+
 async function withDom(run) {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
@@ -336,23 +354,25 @@ test("W3: 分享把当前条目 URL 交给剪贴板；收藏走 setArtifactFavor
         }),
       ),
     );
-    const share = find('[data-editor-chrome-action="share"]');
-    const favorite = find('[data-editor-chrome-action="favorite"]');
+    // D1（2026-10-23）：分享 / 收藏在 `···` 菜单里，点了做的事与原来的独立按钮一样。
+    assert.equal(find('[data-editor-chrome-action="share"]'), null, "分享还是第一行的独立按钮");
+    const openMore = async () => {
+      await click(find('[data-global-row-slot="more"] [data-workspace-more-launcher]'));
+      return window.document.querySelector("[data-workspace-more-menu]");
+    };
+    let menu = await openMore();
+    assert.ok(menu, "··· 菜单没点开");
+    const share = menu.querySelector('[data-editor-chrome-action="share"]');
     assert.ok(share, "分享按钮没画出来");
-    assert.ok(favorite, "收藏按钮没画出来");
+    assert.ok(menu.querySelector('[data-editor-chrome-action="favorite"]'), "收藏按钮没画出来");
     await click(share);
+    await waitUntil(() => (globalThis.__w3Toasts || []).length > 0);
     assert.match(String(window.__copied || ""), /item=21c1e4d9-0818-4bbe-ae33-b4d01a5beafd/);
     assert.deepEqual(globalThis.__w3Toasts, ["已复制"]);
-    assert.equal(
-      share.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
-      "share",
-    );
-    assert.equal(
-      favorite.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
-      "favorite",
-    );
-    assert.equal(share.closest('[data-global-row-slot="download"]'), null);
+    menu = await openMore();
+    const favorite = menu.querySelector('[data-editor-chrome-action="favorite"]');
     assert.equal(favorite.hasAttribute("disabled"), false);
+    assert.match(favorite.textContent || "", /收藏/);
     await click(favorite);
     await waitUntil(() => (globalThis.__w3Favorites || []).length > 0);
     assert.deepEqual(globalThis.__w3Favorites, [
@@ -362,6 +382,14 @@ test("W3: 分享把当前条目 URL 交给剪贴板；收藏走 setArtifactFavor
         favorite: true,
       },
     ]);
+    await waitUntil(() => (globalThis.__w3Toasts || []).includes("已加入收藏"));
+    assert.ok(globalThis.__w3Toasts.includes("已加入收藏"), "收藏成功没有看得见的反馈");
+    menu = await openMore();
+    assert.match(
+      menu.querySelector('[data-editor-chrome-action="favorite"]').textContent || "",
+      /取消收藏/,
+      "收藏后菜单项没变成「取消收藏」",
+    );
     await click(find('[data-workspace-library-panel="mine"]'));
     assert.equal(opened, "mine");
   });
@@ -435,6 +463,9 @@ test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
               setActiveDrawerId("");
               setTransientPanel(null);
             },
+            closeDrawer() {},
+            isPanelOpen(id) { return activeDrawerId === id; },
+            editBarDrawers: [],
           };
         }
       `),
@@ -567,6 +598,7 @@ const frameStubs = {
     export function pluginWorkbenchStyle(_theme, accent) {
       return { "--awb-accent": accent };
     }
+    export function usePluginThemePortal() { return null; }
   `),
   "../SplitWorkspace": dataModule(`
     export function useConsoleAgentFocus() { return null; }
@@ -646,25 +678,28 @@ test("W3: 自有 chrome 画出我的库和带身份的分享/收藏，点我的�
       find('[data-workspace-library-panel="mine"]').getAttribute("aria-label"),
       "我的库",
     );
-    const share = find('[data-editor-chrome-action="share"]');
-    const favorite = find('[data-editor-chrome-action="favorite"]');
-    assert.ok(share, "自有 chrome 没有分享");
-    assert.ok(favorite, "自有 chrome 没有收藏");
+    assert.equal(find("[data-plugin-theme-toggle]"), null, "自有 chrome 还有主题键");
     assert.equal(
       find("[data-editor-item-social]").getAttribute("data-artifact-id"),
       item.artifactId,
     );
+    const openMore = async () => {
+      await click(find('[data-global-row-slot="more"] [data-workspace-more-launcher]'));
+      return window.document.querySelector("[data-workspace-more-menu]");
+    };
+    let menu = await openMore();
+    const share = menu?.querySelector('[data-editor-chrome-action="share"]');
+    assert.ok(share, "自有 chrome 的 ··· 没有分享");
+    assert.ok(menu.querySelector('[data-editor-chrome-action="favorite"]'), "自有 chrome 的 ··· 没有收藏");
     await click(share);
+    await waitUntil(() => (globalThis.__w3Toasts || []).length > 0);
     assert.match(
       String(window.__copied || ""),
       /item=21c1e4d9-0818-4bbe-ae33-b4d01a5beafd/,
     );
     assert.deepEqual(globalThis.__w3Toasts, ["已复制"]);
-    assert.equal(
-      share.closest("[data-global-row-slot]")?.getAttribute("data-global-row-slot"),
-      "share",
-    );
-    await click(favorite);
+    menu = await openMore();
+    await click(menu.querySelector('[data-editor-chrome-action="favorite"]'));
     await waitUntil(() => (globalThis.__w3Favorites || []).length > 0);
     assert.deepEqual(globalThis.__w3Favorites, [
       {
@@ -712,13 +747,14 @@ test("W3: host chrome 不自画库钮和分享收藏，舞台仍在", async () =
 });
 
 test("W3-r2: 收藏过期请求不得改新打开条目的图标", async () => {
-  const { EditorItemSocialChrome } = await import(
+  const { useEditorItemSocial } = await import(
     await compileModule("src/shell/editor-item-social-chrome.tsx", {
       "../i18n/ui/useUI": ttStubUrl,
       "../ui/Toast": toastStubUrl,
       "./artifact-client": artifactClientStubUrl,
     })
   );
+  const EditorItemSocialChrome = socialProbe(useEditorItemSocial);
   globalThis.__w3Favorites = [];
   globalThis.__w3FavoriteDelay = 50;
   try {
@@ -816,6 +852,9 @@ test("W3-r2: 独立侧栏空对话与长对话走 stretch，控制面板自己�
             openTransientPanel() {},
             updateTransientPanel() {},
             closeDetail() {},
+            closeDrawer() {},
+            isPanelOpen() { return false; },
+            editBarDrawers: [],
           };
         }
       `),
@@ -871,6 +910,7 @@ test("W3-r2: 独立侧栏空对话与长对话走 stretch，控制面板自己�
   });
 });
 
+// D1（2026-10-23）：有 `···` 宿主时邀请 / 回放进菜单（下一条）；这条锁的是没有宿主时的退路。
 test("W3-r2: 邀请/回放各只有一个可聚焦触发器，真实动作仍触发", async () => {
   const { CollabActionSlotInner } = await import(
     await compileModule("src/shell/collab/CollabActionSlotInner.tsx", {
@@ -887,6 +927,7 @@ test("W3-r2: 邀请/回放各只有一个可聚焦触发器，真实动作仍触
       `),
       "../replay/work/GenerateReplayButton": dataModule(`
         import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+        export function GenerateReplayPanel() { return null; }
         export function GenerateReplayButton({ iconOnly }) {
           return jsx("button", {
             type: "button",
@@ -900,6 +941,7 @@ test("W3-r2: 邀请/回放各只有一个可聚焦触发器，真实动作仍触
       `),
       "./CollabInviteButton": dataModule(`
         import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+        export function CollabInviteDialog() { return null; }
         export function CollabInviteButton({ iconOnly }) {
           return jsx("button", {
             type: "button",

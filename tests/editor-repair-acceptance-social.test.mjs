@@ -73,6 +73,24 @@ function durableItem(patch = {}) {
   };
 }
 
+// D1（2026-10-23）：分享 / 收藏不再是第一行的独立按钮，状态与动作收进 useEditorItemSocial，
+// 由 `···` 菜单画。两条身份保护（链接带当前条目、迟到的收藏结果不改新条目）照旧，测在 hook 上。
+function socialProbe(useEditorItemSocial) {
+  return function SocialProbe({ item }) {
+    const social = useEditorItemSocial(item);
+    return React.createElement(
+      "div",
+      { "data-editor-item-social": true, "data-artifact-id": social.artifactId || undefined },
+      React.createElement("button", { "data-editor-chrome-action": "share", onClick: () => void social.share() }),
+      React.createElement("button", {
+        "data-editor-chrome-action": "favorite",
+        "aria-pressed": String(social.favorite),
+        onClick: () => void social.toggleFavorite(),
+      }),
+    );
+  };
+}
+
 async function withDom(run) {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
@@ -146,7 +164,7 @@ test("share copies item identity and toasts 已复制; delayed favorite cannot f
   const toasts = [];
   let favoriteDelay = 40;
   const favorites = [];
-  const { EditorItemSocialChrome } = await import(
+  const { useEditorItemSocial } = await import(
     await compileModule("src/shell/editor-item-social-chrome.tsx", {
       "../i18n/ui/useUI": dataModule(
         "export function useUI(){ return (value) => value; }",
@@ -180,6 +198,7 @@ test("share copies item identity and toasts 已复制; delayed favorite cannot f
       `),
     })
   );
+  const EditorItemSocialChrome = socialProbe(useEditorItemSocial);
   globalThis.__acceptToasts = toasts;
   globalThis.__acceptFavorites = favorites;
   globalThis.__acceptFavoriteDelay = favoriteDelay;
