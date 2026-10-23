@@ -205,8 +205,13 @@ const { ArtifactLibrary } = await import(
     "../i18n/ui/useUI": ttStubUrl,
     "../lib/database": dataModule(`
       export async function uploadFile() { return { ok: false, error: "unused" }; }
+      export const humanLibraryUploadError = result => result?.error || "unused";
+      export const normalizeUploadIdempotencyKey = value => value;
     `),
     "../lib/auth/client": dataModule(`
+      export const AUTH_STATE_EVENT = "test:auth-state";
+      export async function accessToken() { return "test-token"; }
+      export async function getUserIdSnapshot() { return { available: true, userId: "oceanleo:user:me" }; }
       export function browserClient() {
         return { from() { throw new Error("legacy unused"); } };
       }
@@ -268,6 +273,10 @@ const { ArtifactLibrary } = await import(
       }
     `),
     "./AdvancedContentWorkbench": workbenchUrl,
+    // This receiver test exercises the actual Library host/switch context, not
+    // chat/session loading. Keep that composition boundary out of data: cycles.
+    "./AgentChat": dataModule(`export function AgentChat({ workspaceContent }) { return workspaceContent; }`),
+    "./WorkspaceSession": dataModule(`export function WorkspaceSessionProvider({ children }) { return children; }`),
     "./artifact-client": artifactClientStubUrl,
     "./advanced-session": dataModule(`
       export function adoptSavedEditorItem(current, saved) {
@@ -406,7 +415,8 @@ async function withDom(run) {
   const root = createRoot(container);
   const render = (element) => act(async () => root.render(element));
   const unmount = () => act(async () => root.unmount());
-  const find = (selector) => container.querySelector(selector);
+  // Anchored popovers portal into this test document, outside the root div.
+  const find = (selector) => window.document.querySelector(selector);
   const click = (node) =>
     act(async () =>
       node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
@@ -472,7 +482,7 @@ test("W3-r3: /library 点乙份时舞台切到乙，脏稿先 handOff，同条�
       }),
     );
     await waitFor(find, `[data-library-card="${ITEM_A.artifactId}"]`);
-    assert.equal(globalThis.__w3LibraryCategory, "文档");
+    assert.equal(globalThis.__w3LibraryCategory, "document_editing");
     assert.ok(find(`[data-library-card="${ITEM_B.artifactId}"]`));
 
     act(() => {
@@ -563,7 +573,7 @@ test("W3-r3: /library 点乙份时舞台切到乙，脏稿先 handOff，同条�
 
     await click(find("[data-editor-close]"));
     await waitFor(find, `[data-library-card="${ITEM_B.artifactId}"]`);
-    assert.equal(globalThis.__w3LibraryCategory, "文档");
+    assert.equal(globalThis.__w3LibraryCategory, "document_editing");
   });
 });
 
@@ -624,6 +634,10 @@ test("W3-r3: 邀请/回放真实触发器打开对话框和范围面板，再点
     assert.ok(find('[data-replay-range="today"]'));
     assert.equal(globalThis.__w3ReplayCreated, 0);
     await click(replay);
-    assert.equal(find("[data-generate-replay-panel]"), null, "再点回放没有关掉范围面板");
+    const closedPanel = find("[data-generate-replay-panel]");
+    assert.ok(closedPanel?.hidden, "再点回放应隐藏并保留范围选择，不是销毁表单");
+    assert.equal(closedPanel.getAttribute("aria-hidden"), "true");
+    assert.ok(closedPanel.hasAttribute("inert"), "关闭后的面板不可交互");
+    assert.equal(replay.getAttribute("aria-expanded"), "false");
   });
 });
