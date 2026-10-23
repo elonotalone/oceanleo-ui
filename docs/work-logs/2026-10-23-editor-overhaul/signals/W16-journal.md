@@ -7,3 +7,5 @@
 - 2026-10-23 12:33Z [实测 浏览器 s2 + SQL] 移动 → saving→saved，改名 → saving→saved，第三处 → saving→saved；整页刷新后移动与改名都在；revision 1→4（+3 = 保存 3 次）。断网改动 → saving→error（未显示已保存）。
 - 2026-10-23 12:33Z [实测 SQL] 每次保存另多出一个 `…草稿` 隐藏 root（`editorInternal:true`，`advanced-draft.ts::uploadAdvancedDraft`，由 recovery.draftSchema 触发）→ 已去掉 draftSchema，只留本地恢复；内核问题转 W04。
 - 2026-10-23 12:34Z [实测 浏览器 s2] 连线拖不出：节点卡 overflow-hidden 把半露在外的把手裁掉了，拖到的是节点本身 → 已去掉裁切、把手加大。
+- Codex 接班 [实测] 旧 s7-material 完整保留；网关恢复后重跑仍无 search 请求，素材面板只有当前 workflow 卡，已把截图与查询证据交父 agent 修共享承载。
+- Codex 接班 [读码+测试] 素材原来只有 materialRef，现补 fresh full → private staging → immutable asset+node 单次历史 → exact closure 引用；重开按依赖读真实媒体、签发地址不进工程。v2 安全私有草稿与保存基线前移同步补齐。专项 10/10、durable-save 1/1、workflow E9 安全测试通过；3D E9 VM binding 错误归父/W13。

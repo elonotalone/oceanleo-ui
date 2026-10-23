@@ -9,6 +9,7 @@
  */
 import type { LibraryItem } from "../library-data";
 import type { VideoDocPosition } from "./video-project-doc";
+import { addVideoDocAsset, addVideoDocNode, videoDocNewId, type VideoProjectDoc } from "./video-project-doc";
 
 export type VideoMaterialKind = "image" | "video" | "audio";
 
@@ -58,4 +59,41 @@ export function videoMaterialNodeInput(
       title,
     },
   };
+}
+
+export interface VideoMaterialReceipt {
+  blobId: string;
+  digest: string;
+  mediaType: string;
+  byteSize: number;
+}
+
+/** One insertion is one immutable graph+asset mutation, with complete byte evidence. */
+export function insertVideoMaterial(doc: VideoProjectDoc, item: LibraryItem, kind: VideoMaterialKind, position: VideoDocPosition, receipt: VideoMaterialReceipt) {
+  if (!receipt.blobId.startsWith("project-assets:") || !/^[a-f0-9]{64}$/.test(receipt.digest) || !receipt.mediaType.startsWith(`${kind}/`) || receipt.byteSize <= 0) {
+    throw new Error("素材字节没有通过私有保存校验。");
+  }
+  const assetId = videoDocNewId("asset", new Set(Object.keys(doc.assets)));
+  const asset = { assetId, kind, title: item.title, origin: "import", immutable: true, createdAt: new Date().toISOString(), mime: receipt.mediaType, url: receipt.blobId, contentDigest: receipt.digest, byteSize: receipt.byteSize };
+  const withAsset = addVideoDocAsset(doc, asset);
+  const node = videoMaterialNodeInput(item, kind, position, kind);
+  return addVideoDocNode(withAsset, { ...node, assetId, localEditRecipe: [] });
+}
+
+/** Match backend closure paths and replace transient staging locations on open/save. */
+export function pinVideoProjectAssets(doc: VideoProjectDoc, artifactId: string, revisionId: string): VideoProjectDoc {
+  let changed = false;
+  const assets = Object.fromEntries(Object.entries(doc.assets).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([id, asset], index) => {
+    const digest = String(asset.contentDigest || "").replace(/^sha256:/, "");
+    const mime = String(asset.mime || "");
+    const byteSize = Number(asset.byteSize || asset.size || 0);
+    const reference = asset.sourceDependency as { path?: unknown } | undefined;
+    if (!/^[a-f0-9]{64}$/.test(digest) || !mime || !Number.isSafeInteger(byteSize) || byteSize <= 0) return [id, asset];
+    const safeId = id.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "asset";
+    const path = typeof reference?.path === "string" ? reference.path : `assets/${String(index + 1).padStart(4, "0")}-${safeId}`;
+    const { url: _url, previewUrl: _preview, sourceDependency: _reference, ...rest } = asset;
+    changed = true;
+    return [id, { ...rest, sourceDependency: { artifactId, revisionId, path, sha256: digest, mediaType: mime, byteSize } }];
+  }));
+  return changed ? { ...doc, assets } : doc;
 }

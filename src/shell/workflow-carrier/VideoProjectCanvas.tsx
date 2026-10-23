@@ -46,6 +46,7 @@ export interface VideoCanvasViewNode {
   locked: boolean;
   /** Displayable https image; media keeps its own colours in both themes. */
   thumbUrl?: string;
+  mediaKind?: "image" | "video" | "audio";
 }
 
 export interface VideoCanvasViewEdge {
@@ -116,7 +117,11 @@ const VideoNodeCard = memo(function VideoNodeCard({ data, selected }: NodeProps<
         className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r"
         style={{ background: data.accent }}
       />
-      {data.thumbUrl ? (
+      {data.thumbUrl && data.mediaKind === "video" ? (
+        <video src={data.thumbUrl} muted preload="metadata" controls className="nodrag block h-[96px] w-full rounded-t-[10px] object-cover" />
+      ) : data.thumbUrl && data.mediaKind === "audio" ? (
+        <audio src={data.thumbUrl} controls preload="metadata" className="nodrag block w-full" />
+      ) : data.thumbUrl ? (
         <img
           src={data.thumbUrl}
           alt=""

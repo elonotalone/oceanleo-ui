@@ -2,6 +2,13 @@
 
 更新于 2026-10-23（开工后读码阶段）。
 
+## Codex 接班
+
+- [实测] 当前 v2 专项 9/9、durable-save 1/1 通过；E9 workflow 测试仍引用已删除的 embedded 变量，准备改成 sourceReady/nativeV2ReadOnlyProjection 的实际安全边界。
+- [读码] 当前素材插入只记 materialRef，不把资产字节和摘要放进 assets；缩略图仅在会话中。正在补完整 private staging → assets → 闭包 → 重开缩略图链路。
+- [实测] 保留并运行旧 untracked s7-material，素材面板只出现当前 workflow 卡片、无可拖入素材，父 agent 正查共享承载。运行期间网关重启，完成后再核。
+- 下一步：冻结 owner 源码后跑两次保存/重开/刷新/断网重试与深浅两档，交付 CODEX-W16.md。
+
 ## 已确认的事实
 
 - [实测] bootstrap OK（main-only）。暂无 `signals/*-to-W16.md`。

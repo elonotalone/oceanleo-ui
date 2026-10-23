@@ -65,11 +65,21 @@ test('three real ordinary recovery adapters declare schemas and capture portable
   }
 });
 
-test('workflow adapter captures its host graph and never claims the unobserved embedded graph as a draft', async () => {
+test('workflow draft captures only its loaded editable graph, never failed or read-only sources', async () => {
   const { draftFromRecovery, capturePortableAdvancedDraft } = await subject();
   const graph = { nodes: [{ id: 'one', kind: 'input' }], edges: [] };
-  const local = realRecovery('workflow-carrier/VideoCanvasStage.tsx', { graph, liveCanvasBase: '' });
+  const local = realRecovery('workflow-carrier/VideoCanvasStage.tsx', { graph, sourceReady: true, nativeV2ReadOnlyProjection: false });
   assert.deepEqual(await capturePortableAdvancedDraft(draftFromRecovery(local), 1), graph);
-  const embedded = realRecovery('workflow-carrier/VideoCanvasStage.tsx', { graph, liveCanvasBase: 'https://video.oceanleo.app' });
-  assert.equal(draftFromRecovery(embedded), undefined);
+  for (const bindings of [{ sourceReady: false, nativeV2ReadOnlyProjection: false }, { sourceReady: true, nativeV2ReadOnlyProjection: true }]) {
+    const unavailable = realRecovery('workflow-carrier/VideoCanvasStage.tsx', { graph, ...bindings });
+    assert.equal(unavailable.ready, false);
+    assert.equal(await capturePortableAdvancedDraft(draftFromRecovery(unavailable), 1), null);
+  }
+  const doc = { schema: 'oceanleo.video.project.v2', assets: {}, headVersionId: 'v1', versions: { v1: { graph } } };
+  const native = realRecovery('workflow-carrier/VideoProjectStage.tsx', { canEdit: true, docRef: { current: doc } });
+  assert.equal(native.draftSchema, 'oceanleo.video-project.edit.v2');
+  assert.deepEqual(await capturePortableAdvancedDraft(draftFromRecovery(native), 1), doc);
+  const failed = realRecovery('workflow-carrier/VideoProjectStage.tsx', { canEdit: false, docRef: { current: doc } });
+  assert.equal(failed.ready, false);
+  assert.equal(await capturePortableAdvancedDraft(draftFromRecovery(failed), 1), null);
 });

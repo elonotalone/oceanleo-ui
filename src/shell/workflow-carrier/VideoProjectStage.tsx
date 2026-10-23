@@ -20,6 +20,7 @@ import type { SelectionCommand } from "../selection-context-types";
 import { usePluginTheme } from "../plugin-theme";
 import { useUI } from "../../i18n/ui/useUI";
 import { fetchMediaBlob } from "../../lib/media-proxy";
+import { refreshArtifactRendition } from "../artifact-client";
 import { useLockedEditCollab } from "../collab/adapters/use-entity-collab";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { recordUserMutation, userEditItemKey } from "../user-edit-session";
@@ -51,9 +52,11 @@ import { saveVideoProject } from "./video-project-save";
 import { renderVideoProjectPreview } from "./video-project-preview";
 import {
   videoMaterialKind,
-  videoMaterialNodeInput,
-  videoMaterialThumb,
+  insertVideoMaterial,
+  pinVideoProjectAssets,
 } from "./video-project-material";
+import { stageVideoMaterial } from "./video-project-media-io";
+import { useVideoProjectMedia } from "./use-video-project-media";
 import { loadVideoProjectDoc } from "./workflow-graph-source";
 import { VideoAddNodeDrawer } from "./VideoAddNodeDrawer";
 import type {
@@ -101,12 +104,19 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
   const historyRef = useRef(new VideoCanvasGraphHistory<VideoProjectDoc>());
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [editRevision, setEditRevision] = useState(0);
+  const [savedRevision, setSavedRevision] = useState(0);
   const editRevisionRef = useRef(0);
   editRevisionRef.current = editRevision;
   const [loadError, setLoadError] = useState("");
   const [reloadNonce, setReloadNonce] = useState(0);
   const [selection, setSelection] = useState<VideoCanvasSelection>(EMPTY_VIDEO_SELECTION);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const localMediaRef = useRef<string[]>([]);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => {
+    mountedRef.current = false;
+    localMediaRef.current.forEach(url => URL.revokeObjectURL(url));
+  }; }, []);
   const viewApiRef = useRef<VideoCanvasViewApi | null>(null);
   const baseRef = useRef<LibraryItem | null>(shownItem ?? null);
   const loadedRef = useRef({ rootId: "", revisionId: "", nonce: -1 });
@@ -131,9 +141,16 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
     setLoadError("");
     setSelection(EMPTY_VIDEO_SELECTION);
     setEditRevision(0);
+    setSavedRevision(0);
+    setThumbs({});
     void loadVideoProjectDoc(shownItem, async (url) => {
-      const blob = await fetchMediaBlob(url, { cache: "no-store", maxBytes: 20_000_000, signal: abort.signal });
-      return blob.text();
+      const read = async (sourceUrl: string) => (await fetchMediaBlob(sourceUrl, { cache: "no-store", maxBytes: 20_000_000, signal: abort.signal })).text();
+      try { return await read(url); } catch (error) {
+        if (abort.signal.aborted) throw error;
+        const fresh = await refreshArtifactRendition({ artifactId: shownIdentity.rootId, revisionId: shownIdentity.revisionId }, "source", abort.signal);
+        if (!fresh.ok || !fresh.data?.url) throw error;
+        return read(fresh.data.url);
+      }
     }).then((parsed) => {
       if (cancelled) return;
       if (!parsed.ok) {
@@ -142,9 +159,10 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
       }
       loadedRef.current = { ...shownIdentity, nonce: reloadNonce };
       baseRef.current = shownItem;
-      historyRef.current.reset(parsed.doc);
+      const pinned = pinVideoProjectAssets(parsed.doc, shownIdentity.rootId, shownIdentity.revisionId);
+      historyRef.current.reset(pinned);
       setHistoryState({ canUndo: false, canRedo: false });
-      setDoc(parsed.doc);
+      setDoc(pinned);
     });
     return () => {
       cancelled = true;
@@ -153,6 +171,9 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
     // The identity strings pin the item; object churn must not reload the canvas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shownIdentity.rootId, shownIdentity.revisionId, reloadNonce]);
+
+  const onMedia = useCallback((assetId: string, url: string) => setThumbs(current => ({ ...current, [assetId]: url })), []);
+  useVideoProjectMedia(doc, onMedia);
 
   const noteHistory = useCallback(() => {
     setHistoryState({ canUndo: historyRef.current.canUndo, canRedo: historyRef.current.canRedo });
@@ -216,7 +237,10 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
       x: node.position.x,
       y: node.position.y,
       locked: videoNodeLocked(node),
-      ...(thumbs[node.nodeId] ? { thumbUrl: thumbs[node.nodeId] } : {}),
+      ...(node.assetId && thumbs[node.assetId] ? {
+        thumbUrl: thumbs[node.assetId],
+        mediaKind: String(doc.assets[node.assetId]?.kind || node.kind) as "image" | "video" | "audio",
+      } : {}),
     }));
   }, [doc, theme, thumbs, tt]);
   const viewEdges = useMemo(
@@ -247,23 +271,24 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
       actions: ["insert"],
       materialTypes: ["image", "video", "audio"],
       accepts: (material) => canEdit && Boolean(material.artifactId) && videoMaterialKind(material) !== null,
-      mutate: (_action, material) => {
+      mutate: async (_action, material) => {
         const kind = videoMaterialKind(material);
-        if (!kind || !docRef.current) throw new Error("这个素材不能放进视频画布。");
+        const root = baseRef.current?.artifactId;
+        if (!kind || !docRef.current || !root) throw new Error("这个素材不能放进视频画布。");
+        const { receipt, blob } = await stageVideoMaterial(root, material, kind, tt);
+        if (!mountedRef.current || baseRef.current?.artifactId !== root || !docRef.current) throw new Error(tt("这份素材没能插入，请重试"));
         const center = viewApiRef.current?.center() ?? { x: 0, y: 0 };
-        const { kind: nodeKind, position, ...extra } = videoMaterialNodeInput(
-          material,
-          kind,
-          center,
-          tt(videoKindSpec(kind).label),
-        );
-        const id = addNode(nodeKind, extra, position);
-        if (!id) throw new Error("没能把素材放进视频画布。");
-        const thumb = videoMaterialThumb(material);
-        if (thumb) setThumbs((current) => ({ ...current, [id]: thumb }));
+        const inserted = insertVideoMaterial(docRef.current, material, kind, center, receipt);
+        if (!inserted || !commit(inserted.doc, { nodeIds: [inserted.id], edgeIds: [] })) throw new Error("没能把素材放进视频画布。");
+        const assetId = videoDocGraph(inserted.doc).nodes.find(node => node.nodeId === inserted.id)?.assetId;
+        if (assetId) {
+          const url = URL.createObjectURL(blob);
+          localMediaRef.current.push(url);
+          onMedia(assetId, url);
+        }
       },
     }),
-    [addNode, canEdit, tt],
+    [canEdit, commit, onMedia, tt],
   );
   const materialDocumentId = shownItem ? advancedRootItemId(shownItem) : "";
   const materialBaseRevision = ready ? String(baseRef.current?.revisionId || "") : "";
@@ -279,7 +304,7 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
   );
 
   const flush = useCallback(async () => {
-    if (!writable) return { ok: true as const, item };
+    if (!writable) return { ok: false as const, error: "只能查看，不能修改" };
     const current = docRef.current;
     const base = baseRef.current;
     if (!current || !base || loadError) {
@@ -296,6 +321,12 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
     if (!outcome.ok) return { ok: false as const, error: outcome.error };
     ownSavesRef.current.add(outcome.revisionId);
     baseRef.current = outcome.item;
+    setSavedRevision(value => Math.max(value, revisionAtStart));
+    if (docRef.current === current) {
+      const pinned = pinVideoProjectAssets(current, outcome.item.artifactId || "", outcome.revisionId);
+      docRef.current = pinned;
+      setDoc(pinned);
+    }
     loadedRef.current = { ...loadedRef.current, revisionId: outcome.revisionId };
     markSaved(outcome.revisionId);
     return { ok: true as const, item: outcome.item };
@@ -386,13 +417,14 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
           </div>
         ),
         persistence: {
-          dirty: canEdit && editRevision > 0,
+          userEditKey: userEditItemKey(shownItem),
+          dirty: canEdit && editRevision > savedRevision,
           editRevision,
           autoSave: true,
           flush,
-          // Local recovery only (no `draftSchema`): the server draft tier uploads a hidden
-          // `…草稿` root on every save (10-23 W16 实测), which §5 forbids.
+          // Owner-private working-draft transport creates no Library root.
           recovery: {
+            draftSchema: "oceanleo.video-project.edit.v2",
             key: advancedRecoveryKey("video-canvas", item),
             ready: canEdit,
             capture: () => (canEdit ? docRef.current : null),

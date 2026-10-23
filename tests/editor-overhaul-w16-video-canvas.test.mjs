@@ -47,9 +47,31 @@ import {
 } from "../src/shell/edit-bar-canon-projection.ts";
 import { partitionSelectionInspectorControls } from "../src/shell/selection-inspector-groups.ts";
 import { EDIT_BAR_CANON_ICON_SET } from "../src/shell/edit-bar-canon.ts";
+import { insertVideoMaterial, pinVideoProjectAssets } from "../src/shell/workflow-carrier/video-project-material.ts";
 
 const tt = (text, vars) =>
   vars ? text.replace(/\{(\w+)\}/g, (_m, key) => String(vars[key] ?? "")) : text;
+
+test("material insertion includes verified bytes; reopened assets read the same revision closure", () => {
+  const doc = parsed();
+  const item = { title: "Picture", artifactId: "source", revisionId: "r1", artifactType: "single_file_image" };
+  const inserted = insertVideoMaterial(doc, item, "image", { x: 40, y: 50 }, {
+    blobId: "project-assets:u/user/editor-staging/image.png", digest: "a".repeat(64), mediaType: "image/png", byteSize: 1000,
+  });
+  const node = videoDocGraph(inserted.doc).nodes.at(-1);
+  assert.ok(node.assetId);
+  assert.equal(inserted.doc.assets[node.assetId].contentDigest, "a".repeat(64));
+  assert.equal(inserted.doc.assets[node.assetId].immutable, true, "video core refuses mutable Assets");
+  assert.equal(doc.assets[node.assetId], undefined, "undo baseline contains neither new node nor new bytes");
+  const pinned = pinVideoProjectAssets(inserted.doc, "workflow-root", "revision-two");
+  const asset = pinned.assets[node.assetId];
+  assert.equal(asset.url, undefined, "staging or signed runtime URL does not survive reopen");
+  assert.deepEqual(asset.sourceDependency, {
+    artifactId: "workflow-root", revisionId: "revision-two", path: `assets/0001-${node.assetId}`, sha256: "a".repeat(64), mediaType: "image/png", byteSize: 1000,
+  });
+  assert.equal(pinVideoProjectAssets(pinned, "fork-root", "fork-revision").assets[node.assetId].sourceDependency.artifactId, "fork-root");
+  assert.throws(() => insertVideoMaterial(doc, item, "image", { x: 0, y: 0 }, { blobId: "https://public/image", digest: "bad", mediaType: "image/png", byteSize: 1000 }));
+});
 
 /** Shape of the 41 public templates (10-23 SQL): prompt/generate/timeline/delivery, params.* fields. */
 function officialTemplate() {
