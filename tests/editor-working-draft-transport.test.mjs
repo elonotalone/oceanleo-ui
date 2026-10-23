@@ -20,7 +20,7 @@ test('working draft upload uses private route and returns a non-expiring authent
     assert.equal(result.ok, true);
     assert.equal(request.url, 'https://api.dev.oceanleo.com/v1/editor-drafts');
     assert.equal(request.init.headers.Authorization, 'Bearer test-token');
-    assert.equal(request.init.credentials, 'omit');
+    assert.equal(request.init.credentials, 'include');
     const locator = new URL(result.data.file.url);
     assert.equal(locator.searchParams.get('key'), key);
     assert.equal(locator.searchParams.get('size'), String(file.size));

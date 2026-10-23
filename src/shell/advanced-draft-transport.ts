@@ -10,7 +10,7 @@ export async function uploadPrivateWorkingDraft(file: File): Promise<{
   const body = new FormData();
   body.append("file", file, file.name);
   const response = await fetch(`${GATEWAY_BASE}/v1/editor-drafts`, {
-    method: "POST", headers: { Authorization: `Bearer ${token}` }, body, credentials: "omit",
+    method: "POST", headers: { Authorization: `Bearer ${token}` }, body, credentials: "include",
   });
   if (!response.ok) return { ok: false, error: "暂时无法保存私有工作文档" };
   const receipt = (await response.json()).file;
@@ -32,5 +32,5 @@ export async function readPrivateWorkingDraft(url: string, init: RequestInit): P
   }
   const token = await accessToken();
   if (!token) throw new Error("服务器草稿暂时无法读取，请重新载入");
-  return fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` }, credentials: "omit" });
+  return fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` }, credentials: "include" });
 }

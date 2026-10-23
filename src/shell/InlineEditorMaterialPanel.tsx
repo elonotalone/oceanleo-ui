@@ -6,6 +6,7 @@ import { canonicalArtifactContextId } from "./artifact-contract";
 import { humanErrorMessage } from "./human-error-message";
 import type { LibraryItem } from "./library-data";
 import { MaterialLibrary } from "./MaterialLibrary";
+import { InlineInsertableMaterialShelf } from "./InlineInsertableMaterialShelf";
 import type {
   useWorkbenchMaterials,
   WorkbenchMaterialAction,
@@ -176,7 +177,13 @@ export function InlineEditorMaterialPanel({
         </p>
       ) : null}
       <div className="min-h-0 flex-1">
-      <MaterialLibrary
+      {materials && primaryMaterialAction ? <InlineInsertableMaterialShelf
+        types={materials.materialTypes.length ? materials.materialTypes : [curatedType]}
+        siteId={siteId || ""} currentId={item.artifactId || item.id}
+        featured={materials.entries} accent={accent} action={primaryMaterialAction}
+        perform={onMaterialAction} canPerform={materials.canPerform}
+        beginDrag={materials.beginMaterialDrag} endDrag={materials.endMaterialDrag}
+      /> : <MaterialLibrary
         materials={[]}
         featuredEntries={[...(materials?.entries || [])]}
         curatedType={curatedType}
@@ -200,7 +207,7 @@ export function InlineEditorMaterialPanel({
         onMaterialDragEnd={materials?.endMaterialDrag}
         allowAdvancedOnSelect={false}
         hideSeeAll
-      />
+      />}
       </div>
     </div>
   );
