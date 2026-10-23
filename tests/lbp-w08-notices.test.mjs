@@ -369,6 +369,8 @@ test("链接落点：其余站内页站内跳转，别的站新窗口，不是 h
   assert.equal(classifyNoticeLink({ link: "https://oceanleo.com.evil.com/account/content-cases" }, ctx).kind, "external");
   // 没给 pageHost 时绝对地址不当站内
   assert.equal(classifyNoticeLink({ link: "https://oceanleo.com/history" }).kind, "external");
+  // 编码过的反斜杠只是路径里的一个字符，换不了主机
+  assert.deepEqual(classifyNoticeLink({ link: "/%5Cevil.com" }, ctx), { kind: "internal", href: "/%5Cevil.com" });
 
   for (const bad of [
     "",
@@ -384,6 +386,10 @@ test("链接落点：其余站内页站内跳转，别的站新窗口，不是 h
     "bay?bay=order:1",
     "https://user:pw@oceanleo.com/x",
     `/${"a".repeat(3000)}`,
+    // URL 解析器会把这几种路径写法吃成换了主机的 `//evil.com`：不能被当成站内路径
+    "/\\evil.com/x",
+    "/\t/evil.com",
+    "/\n/evil.com",
   ]) {
     assert.deepEqual(classifyNoticeLink({ kind: "x", link: bad }, ctx), { kind: "none" }, String(bad).slice(0, 40));
   }
@@ -1953,4 +1959,144 @@ test("本波新文案 17 种语言齐全（中文站 key 即原文），占位�
   for (const key of ["通知", "还没有通知", "全部标记已读", "正在加载…", "加载更多", "返回", "重试", "昨天", "未读"]) {
     for (const locale of LOCALES) assert.ok(UI_MESSAGES[locale][key], `${locale} ${key}`);
   }
+});
+
+// 后端 app/notifications.py 的 TALENT_NOTIFICATION_EVENTS（33 种 LeoBay 交易事件）的固定标题与说明，逐字抄下来的快照。
+// 服务端只写中文；通知视图把它们过 tt()，所以每一句都要有 16 语译文。后端改了句子，这里和 lbp-w08-copy.ts 一起改。
+const TRADE_EVENT_TEXTS = [
+  ["你收到了一笔新订单", "请查看订单条款与需求，并在订单页继续协作。"],
+  ["合同条款已更新", "对方修改了合同条款，请打开订单重新核对并确认。"],
+  ["合同已签署生效", "双方已确认合同条款，请在订单页进入交付协作。"],
+  ["订单有新的交付", "对方已提交交付内容，请在订单页查看并决定验收或请求改稿。"],
+  ["订单收到改稿请求", "请查看改稿说明，并在订单页更新交付。"],
+  ["订单已验收完成", "本次订单已完成，金额仅作为记录，款项仍由双方自行结算。"],
+  ["订单已自动验收", "验收期限已到，订单按约定自动完成；平台没有代收或放款。"],
+  ["订单已取消", "订单状态已经更新，请打开订单查看取消记录。"],
+  ["订单已进入争议处理", "请在订单页查看争议记录并补充必要证据。"],
+  ["对方撤回了争议", "争议发起方已撤回争议，请打开纠纷页查看处理记录。"],
+  ["争议评估已给出", "评估仅供参考、不具约束力，双方都可以继续请求平台人工裁定。"],
+  ["对方已就争议作出答辩", "双方陈述已同时展示在争议页面。"],
+  ["争议已请求平台人工裁定", "平台会在人工复核后给出裁定结论。"],
+  ["平台已给出裁定结论", "裁定说明与依据已展示在争议页面。"],
+  ["你的需求收到新投标", "打开需求页比较方案、交期与报价。"],
+  ["你收到一份投标邀请", "请查看需求详情，再决定是否提交方案。"],
+  ["你的投标已被接受", "双方可以继续确认订单条款并开始协作。"],
+  ["本次投标未被选中", "需求方已完成选择，你仍可继续寻找其他合适需求。"],
+  ["你收到一条新消息", "打开站内会话查看消息并回复。"],
+  ["你收到一份新报价", "打开站内会话核对范围、交期和记录金额。"],
+  ["报价已被接受", "请继续在会话和订单页确认后续安排。"],
+  ["一条订单评价现在可见", "双方评价已公开，可以在订单页查看。"],
+  ["你的评价收到回复", "打开订单页查看公开回复。"],
+  ["你的人才等级已更新", "新的等级已显示在公开人才档案中。"],
+  ["有人指名请你接一个求助", "打开求助详情查看品类、说明与预算，再决定要不要接。"],
+  ["你的求助已经有人接了", "对方已进入你们的会话；你授权的上下文只对接单方可见，可以随时收回。"],
+  ["对方取消了这次求助", "之前交接的上下文已全部收回，会话记录双方仍可查看。"],
+  ["这条服务未通过资质核验", "打开资质核验页查看具体理由；不同意结论可以申诉一次，转由人工复核。"],
+  ["你的执业资质核验已到期", "该领域下已发布的服务已转回草稿，重新完成核验后可以再次发布。"],
+  ["付款未成功", "请到账单页检查银行卡后重试。"],
+  ["合同款项已托管", "买家已付款，钱在通道托管中，可以开工。"],
+  ["合同款项已放款", "托管中的钱已转到你的收款账户。"],
+  ["合同款项已退款", "已托管未放款的钱已退回买家。"],
+];
+
+test("LeoBay 交易事件通知（后端 33 种固定句式）每一句标题与说明都有 16 语译文，非中日韩语种没有汉字，日韩不是照抄", async () => {
+  const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
+  const { LOCALES } = await import("../src/i18n/config.ts");
+  assert.equal(TRADE_EVENT_TEXTS.length, 33);
+  const HAN = /[\u4e00-\u9fff]/;
+  const seen = new Set();
+  for (const [title, body] of TRADE_EVENT_TEXTS) {
+    for (const zh of [title, body]) {
+      seen.add(zh);
+      assert.equal(UI_MESSAGES.zh[zh], zh, `中文站 key 等于值：${zh}`);
+      for (const locale of LOCALES) {
+        if (locale === "zh") continue;
+        const value = UI_MESSAGES[locale][zh];
+        assert.ok(value, `${locale} 缺译文：${zh}`);
+        assert.doesNotMatch(value, /\{\w+\}/, `${locale} 凭空多了占位符：${zh}`);
+        if (!["zh-TW", "ja", "ko"].includes(locale)) assert.doesNotMatch(value, HAN, `${locale} 里有汉字：${zh}`);
+        if (locale === "ja" || locale === "ko") assert.notEqual(value, zh, `${locale} 整句照抄了中文：${zh}`);
+      }
+    }
+  }
+  assert.equal(seen.size, 66, "66 句互不相同");
+  assert.equal(UI_MESSAGES.en["你收到了一笔新订单"], "You received a new order");
+  assert.equal(UI_MESSAGES["zh-TW"]["你收到了一笔新订单"], "你收到了一筆新訂單");
+});
+
+test("通知视图把服务端的固定句式翻成当前语言；含用户内容的动态句子（不在词典里）原样显示", async () => {
+  const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
+  globalThis.__w08Dict = UI_MESSAGES.en;
+  const translatingUi = dataModule(`
+    export function useUI(){
+      return (zh, vars) => {
+        const hit = globalThis.__w08Dict[zh];
+        const text = hit == null || hit === "" ? zh : hit;
+        return vars ? text.replace(/\\{(\\w+)\\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : text;
+      };
+    }
+  `);
+  const { NoticesView: EnglishNoticesView } = await import(
+    await compileModule("src/shell/messages/notices/NoticesView.tsx", { ...noticesViewStubs, "../../../i18n/ui/useUI": translatingUi })
+  );
+  const { InboxNoticesRow: EnglishRow } = await import(
+    await compileModule("src/shell/messages/notices/InboxNoticesRow.tsx", {
+      "../../../i18n/ui/useUI": translatingUi,
+      "./use-notices": noticesHookStub,
+    })
+  );
+  const w = resetW08();
+  w.notices = noticeState({
+    items: [
+      item("a", { title: TRADE_EVENT_TEXTS[0][0], body: TRADE_EVENT_TEXTS[0][1] }),
+      item("b", { title: "「hi」没有完成", body: "" }),
+    ],
+    unread: 2,
+  });
+  const view = await mount(React.createElement(EnglishNoticesView, { onBack: () => {} }));
+  const text = view.host.textContent;
+  assert.match(text, /You received a new order/);
+  assert.match(text, /Check the order terms and requirements/);
+  assert.match(text, /Notifications/, "标题栏");
+  assert.match(text, /Mark all as read/);
+  assert.match(text, /「hi」没有完成/, "含用户内容的动态句子没有译文，原样");
+  await view.unmount();
+
+  const row = await mount(React.createElement(EnglishRow, { active: false, onOpen() {} }));
+  assert.match(row.$("[data-notices-latest]").textContent, /You received a new order/);
+  assert.equal(row.$("[data-im-unread]").getAttribute("aria-label"), "2 unread");
+  await row.unmount();
+  globalThis.__w08Dict = {};
+});
+
+// LeoChat（src/shell/messages/*）里一直没有译文的 29 句老词条（右键菜单、多选与转发、联系人名片、群信息）：
+// 不是本波新增，全仓 tt() 闸一直报它们；它们都在 W08 的目录里，由 W08 的分表补齐。
+const IM_OLD_KEYS = [
+  "不显示", "会话设置", "共同群聊", "删除后，你们将不再是联系人。", "删除所选消息？删除后所有人都看不到内容。",
+  "删除此聊天及你自己的聊天记录，其他成员的记录不受影响。新消息到来时会话会重新显示。", "删除聊天",
+  "删除这条消息？删除后所有人都看不到内容。", "取消星标朋友", "取消消息免打扰", "取消选择",
+  "只清空你自己的聊天记录，其他成员的记录不受影响。这一步不能撤销。", "多选", "已选择 {n} 条", "我在本群的昵称",
+  "新的朋友", "星标朋友", "暂时无法加载会话列表。", "查看资料", "标为未读", "添加到通讯录", "清空聊天记录",
+  "独立窗口显示", "群聊的备注仅自己可见", "设为星标朋友", "转发", "转发到会话", "转发失败，请稍后重试。", "选择消息",
+];
+
+test("LeoChat 里 29 句老词条补齐 16 语译文：占位符不丢、非中日韩语种没有汉字、日韩不是照抄", async () => {
+  const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
+  const { LOCALES } = await import("../src/i18n/config.ts");
+  assert.equal(IM_OLD_KEYS.length, 29);
+  const HAN = /[一-鿿]/;
+  for (const key of IM_OLD_KEYS) {
+    assert.equal(UI_MESSAGES.zh[key], key, `中文站 key 等于值：${key}`);
+    const placeholders = [...key.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+    for (const locale of LOCALES) {
+      if (locale === "zh") continue;
+      const value = UI_MESSAGES[locale][key];
+      assert.ok(value, `${locale} 缺译文：${key}`);
+      assert.deepEqual([...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort(), placeholders, `${locale} 占位符：${key}`);
+      if (!["zh-TW", "ja", "ko"].includes(locale)) assert.doesNotMatch(value, HAN, `${locale} 里有汉字：${key}`);
+      if (locale === "ja" || locale === "ko") assert.notEqual(value, key, `${locale} 整句照抄了中文：${key}`);
+    }
+  }
+  assert.equal(UI_MESSAGES.en["已选择 {n} 条"], "{n} selected");
+  assert.equal(UI_MESSAGES.en["转发"], "Forward");
 });

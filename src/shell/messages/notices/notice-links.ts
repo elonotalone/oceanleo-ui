@@ -39,6 +39,7 @@ export interface NoticeLinkContext {
 }
 
 const MAX_LINK = 2048;
+const RELATIVE_BASE = "https://notice.invalid";
 const CASES_PATH = /^\/(?:account|settings)\/content-cases(?:\/([^/]+))?\/?$/;
 const LEOCHAT_PATH = /(^|\/)leochat\/?$/;
 /** 服务端 `notify(kind="moderation")`；以后若分出子类（`moderation.counter`）也算。 */
@@ -70,7 +71,9 @@ function parseLink(raw: unknown, ctx: NoticeLinkContext): ParsedLink | null {
   try {
     if (text.startsWith("/") && !text.startsWith("//")) {
       relative = true;
-      url = new URL(text, "https://notice.invalid");
+      url = new URL(text, RELATIVE_BASE);
+      // `/\evil.com`、`/<tab>/evil.com` 会被 URL 解析器吃成 `//evil.com`（换了主机）：路径写法不许换主机。
+      if (url.origin !== RELATIVE_BASE) return null;
     } else if (/^https?:\/\//i.test(text)) {
       url = new URL(text);
       // 带账号密码的地址是钓鱼写法；协议相对（//host）与 javascript:/data: 等一概不认。
