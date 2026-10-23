@@ -65,6 +65,10 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     await page.locator('[data-selection-control-id="bold"] button, button[data-selection-control-id="bold"]').first().click();
     await page.waitForTimeout(500);
     log("after-bold", JSON.stringify(await style()));
+    const first = Date.now();
+    while (Date.now() - first < 8000 && (await helpers.saveState(page)) === "saved") {
+      await page.waitForTimeout(200);
+    }
     await helpers.waitSaved(page, { timeout: 90000 });
     log("saved-1", JSON.stringify(states));
     await text().click({ force: true });

@@ -1775,6 +1775,8 @@ export function useDeckEditor(
   const persistedItemRef = useRef(item);
   /** Revisions this editor committed since the last real load (`deck-save-echo.ts`). */
   const ownSavedRevisionsRef = useRef<Set<string>>(new Set());
+  /** Receipt of the last commit; a re-flush of the same edit returns it instead of a duplicate revision. */
+  const lastSavedRef = useRef<{ editRevision: number; item: LibraryItem; version: PersistedEditorVersion } | null>(null);
   const preparedSaveRef = useRef<{
     key: string;
     project?: PreparedProjectUpload;
@@ -1849,6 +1851,7 @@ export function useDeckEditor(
     revisionRef.current = 0;
     persistedItemRef.current = source;
     ownSavedRevisionsRef.current = new Set();
+    lastSavedRef.current = null;
     preparedSaveRef.current = null;
     draftRef.current = null;
     workingHeadUrlRef.current =
@@ -2677,6 +2680,11 @@ export function useDeckEditor(
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     if (savingRef.current || sourceFailedRef.current) return null;
     const savingRevision = revisionRef.current;
+    // 外壳（会话补记、重试）可能对同一次改动再要一次保存：没有新改动就交回上次的回执（D11 §5.5）。
+    const lastSaved = lastSavedRef.current;
+    if (lastSaved && lastSaved.editRevision === savingRevision && lastSaved.item === persistedItemRef.current) {
+      return lastSaved.version;
+    }
     const snapshot = cloneDeckDocument(deckRef.current);
     const baseItem = deckSaveBaseItem(persistedItemRef.current);
     const baseRevision = String(
@@ -2802,7 +2810,7 @@ export function useDeckEditor(
       }
       const savedRevisionId = String(handoff.revisionId || result.versionId || "");
       if (savedRevisionId) onSavedRef.current?.(savedRevisionId);
-      return {
+      const version: PersistedEditorVersion = {
             url: result.url,
             versionId: result.versionId,
             projectUrl: result.projectUrl,
@@ -2819,6 +2827,8 @@ export function useDeckEditor(
             preparedProject: result.preparedProject,
             preparedDelivery: result.preparedDelivery,
           };
+      lastSavedRef.current = { editRevision: savingRevision, item: handoff, version };
+      return version;
     } catch (caught) {
       // Keep the in-memory deck, dirty flag, and reusable upload receipts.
       // A failed publish must not discard the page the user just edited.

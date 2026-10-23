@@ -2,6 +2,10 @@
 // Logs each revision POST's CAS base so a stale baseline is visible.
 // args: <templateArtifactId> [tag]
 export default async function ({ page, log, shot, helpers, args }) {
+  await page.addInitScript(() => { window.__W07_DEBUG__ = true; });
+  page.on("console", (message) => {
+    if (message.text().startsWith("[w07-debug]")) log("debug", message.text().slice(0, 1500));
+  });
   const [artifactId, tag = "fork"] = args;
   if (!artifactId) throw new Error("template artifact id required");
   const text = () => page.locator("[data-deck-canvas] [data-deck-element][data-element-type=text]").first();
