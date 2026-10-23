@@ -86,7 +86,7 @@ export default async function ({ page, log, shot, helpers, args }) {
       results.push({ id, effect, undone, restored: back.text === before.text });
       continue;
     }
-    if (id.startsWith("selection-inspector-")) {
+    if (id.startsWith("selection-inspector-") || id === "adjust" || id === "position") {
       await root.locator("button").first().click();
       await page.waitForTimeout(900);
       const panel = await page.evaluate(() => {
@@ -131,7 +131,13 @@ export default async function ({ page, log, shot, helpers, args }) {
         }
         await page.waitForTimeout(900);
         const after = await snapshot(page);
-        sub.push({ label, type, from: value, to: target, effect: changed(before, after) });
+        const effect = changed(before, after);
+        await page.keyboard.press("Escape");
+        const undone = await undo(page);
+        const back = await snapshot(page);
+        sub.push({ label, type, from: value, to: target, effect, undone, restored: !statsDiffer(before.canvas, back.canvas) && before.text === back.text });
+        await root.locator("button").first().click();
+        await page.waitForTimeout(300);
       }
       results.push({ id, panel, sub });
       await closeOverlays(page);

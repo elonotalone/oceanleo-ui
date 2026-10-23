@@ -4,7 +4,7 @@ export function watchApi(page, log) {
   page.on("response", (response) => {
     const url = response.url();
     if (response.status() >= 400 && /\/v1\/|\/api\//.test(url)) {
-      log("http", response.status(), response.request().method(), url.replace(/\?.*$/, "").slice(0, 160));
+      log("http", response.status(), response.request().method(), url.replace(/\/artifact-renditions\/access\/[^/?]+/, "/artifact-renditions/access/[redacted]").replace(/\?.*$/, "").slice(0, 160));
     }
   });
 }

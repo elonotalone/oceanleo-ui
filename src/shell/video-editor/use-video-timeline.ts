@@ -365,7 +365,17 @@ export function useVideoTimeline(
   /** 过期签名地址自愈：已换好的（旧 → 新）与正在换的。 */
   const healedGrantsRef = useRef(new Map<string, string>());
   const healingGrantsRef = useRef(new Set<string>());
+  const [grantRefreshTick, setGrantRefreshTick] = useState(0);
   docRef.current = doc;
+  const hasGrantSources = doc.tracks.some((track) => track.kind !== "text" &&
+    track.clips.some((clip) => isExpiringArtifactGrantUrl(clip.source_url || "")));
+  // An unchanged project can stay open longer than the media grant lifetime.
+  // Check again without entering history or marking the document dirty.
+  useEffect(() => {
+    if (!hasGrantSources) return;
+    const timer = setInterval(() => setGrantRefreshTick((tick) => tick + 1), 30_000);
+    return () => clearInterval(timer);
+  }, [hasGrantSources]);
 
   const undoStack = useRef<TimelineDoc[]>([]);
   const redoStack = useRef<TimelineDoc[]>([]);
@@ -663,8 +673,7 @@ export function useVideoTimeline(
           if (cancelled) return;
           if (healed.url) {
             healedGrantsRef.current.set(sourceUrl, healed.url);
-            // 退回的新鲜地址本身也是 grant：记成「已处理」，别再循环重签。
-            healingGrantsRef.current.add(healed.url);
+            // A fresh fallback grant can be renewed again before its next expiry.
             sourceUrl = healed.url;
             setDocState((current) => {
               const next = patchClipIn(current, seededClipId, { source_url: sourceUrl });
@@ -748,16 +757,16 @@ export function useVideoTimeline(
     void (async () => {
       const replacements = new Map<string, string>();
       for (const [url, kind] of pending) {
-        // 每条地址每次打开只试一次；换不了就留给预检如实报错。
+        // Failed refreshes may recover on the next periodic check.
         const healed = await healGrantUrl(url, kind, deps);
+        healingGrantsRef.current.delete(url);
         if (!healed.url) continue;
-        healingGrantsRef.current.add(healed.url);
         healedGrantsRef.current.set(url, healed.url);
         replacements.set(url, healed.url);
       }
       apply(replacements);
     })();
-  }, [doc, item.title, siteId]);
+  }, [doc, item.title, siteId, grantRefreshTick]);
 
   // ------------------------------------------------------------- history
 
@@ -1169,7 +1178,6 @@ export function useVideoTimeline(
           // 库里的签名地址几分钟就过期：先换成持久地址（换不了就用新鲜地址，重开时再自愈）。
           const healed = await healGrantUrl(url, material.media, deps);
           if (healed.url) {
-            healingGrantsRef.current.add(healed.url);
             healedGrantsRef.current.set(url, healed.url);
             url = healed.url;
           }

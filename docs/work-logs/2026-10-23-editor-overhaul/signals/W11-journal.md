@@ -1,5 +1,8 @@
 # W11 journal (one line per measured conclusion)
 
+- 2026-10-23 Codex [实测] Existing focused group 54/54 green. Acceptance root b0fed7d4: A/B/retry POST revisions all 200; DB ordinal 6=1cab317a, 7=9d7db189, 8=235a24d7. Reopen and full reload retain flip and changed mute. Offline immediately reports error; network recovery retry reaches saved. Evidence /tmp/codex-w11-save.
+- 2026-10-23 Codex [读码+实测] Fixed idle-session expiring grants: check every 30 seconds while a project contains grants; newly refreshed fallback grants can renew again. Hook regression advances expiry twice, confirms two renewals, unchanged edit revision, empty undo, timer cleanup. video-collab-remote 7/7 green. First bar run invalidated by dev HMR during Undo; rerun after files settle.
+
 - 2026-10-23T05:09Z [实测] bootstrap OK; HEAD 377b212b; acceptance account has no video items yet.
 - 2026-10-23T05:20Z [实测] LeoDev slot public URL hangs (no first byte in 120 s); :8095 gate answers in 0.12 s; :8098 session proxy holds 64/64 upstream sockets (`maxSockets: 64`). Signalled parent (`signals/W11-to-parent.md`).
 - 2026-10-23T05:27Z [实测] parent raised the session-proxy pool to 512; slot answers again. Re-running scenarios.

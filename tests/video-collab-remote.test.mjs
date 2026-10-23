@@ -20,7 +20,7 @@ const useUiStub = dataModule(`export const useUI = () => (text, vars) =>
 const mediaProxyStub = dataModule(`
   export const fetchMediaBlob = async () => new Blob();
   export const importMediaAsset = async () => ({});
-  export const importMediaUrl = async () => ({});
+  export const importMediaUrl = async () => "";
   export const isFirstPartyMediaUrl = () => false;
   export const canvasSafeUrl = (url) => url;
 `);
@@ -62,6 +62,10 @@ const timeline = await import(
     "./persistence": persistenceStub,
     "./render-client": renderClientStub,
     "./preview-engine": previewEngineStub,
+    "../artifact-client": dataModule(`export const refreshArtifactRendition = async () => {
+      globalThis.__videoGrantRefreshes = (globalThis.__videoGrantRefreshes || 0) + 1;
+      return { ok: true, data: { url: globalThis.__videoFreshGrant } };
+    };`),
   })
 );
 const { useVideoTimeline } = timeline;
@@ -91,6 +95,56 @@ const ITEM = (key) => ({
   source: "local",
   url: "",
   meta: { timeline_doc: DOC() },
+});
+
+test("视频：未编辑的长开会话在素材签名临近过期时重签，不产生保存或撤销记录", async () => {
+  const originalInterval = globalThis.setInterval;
+  const originalClear = globalThis.clearInterval;
+  const originalNow = Date.now;
+  let tick;
+  let cleared = false;
+  let now = originalNow();
+  const grant = (expires) => `https://api.dev.oceanleo.com/v1/artifact-renditions/access/${Buffer.from(JSON.stringify({ artifact: "video", revision: "rev", exp: Math.floor(expires / 1000) })).toString("base64url")}.sig`;
+  const source = grant(now + 600_000);
+  globalThis.__videoFreshGrant = grant(now + 1200_000);
+  globalThis.__videoGrantRefreshes = 0;
+  globalThis.setInterval = (callback, delay) => {
+    assert.equal(delay, 30_000);
+    tick = callback;
+    return 123;
+  };
+  globalThis.clearInterval = (id) => { if (id === 123) cleared = true; };
+  Date.now = () => now;
+  let editor;
+  const item = ITEM("renewal");
+  item.meta.timeline_doc.tracks[0].clips[0].source_url = source;
+  function Client() { editor = useVideoTimeline(item); return null; }
+  let mounted;
+  try {
+    mounted = await mount(h(Client));
+    await settle();
+    assert.equal(globalThis.__videoGrantRefreshes, 0);
+    const revision = editor.editRevision;
+    now += 500_000;
+    await act(async () => tick());
+    await settle();
+    assert.equal(globalThis.__videoGrantRefreshes, 1);
+    assert.equal(editor.doc.tracks[0].clips[0].source_url, globalThis.__videoFreshGrant);
+    assert.equal(editor.editRevision, revision);
+    assert.equal(editor.canUndo, false);
+    // A fresh fallback URL must itself remain eligible for the next renewal.
+    globalThis.__videoFreshGrant = grant(now + 1200_000);
+    now += 600_000;
+    await act(async () => tick());
+    await settle();
+    assert.equal(globalThis.__videoGrantRefreshes, 2);
+  } finally {
+    await mounted?.unmount();
+    globalThis.setInterval = originalInterval;
+    globalThis.clearInterval = originalClear;
+    Date.now = originalNow;
+  }
+  assert.equal(cleared, true);
 });
 
 /** 照 VideoTimelineRoute 的接法：真 useVideoTimeline + 真 useEntityCollab。 */

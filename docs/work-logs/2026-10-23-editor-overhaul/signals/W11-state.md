@@ -16,8 +16,9 @@
 - [实测 08:30Z R2] salvage 3a7fe576 has video-edit-bar.ts / timeline-theme.ts / flip / durable seed on main. tsc: only my error was `title` missing on planVideoTimelineSource Pick (fixed). Focused fails in my area: carrier-contract #6 (palette regex → moved to timeline-theme), video-editor-v8 #5 (ctx stub has no scale → only scale when flipped), W5 (timeline-model stub lacks rotateClockwise90 → helper moved into video-edit-bar.ts). route-context-editors / w13 #2 #5 fail on PDF files (W06), not mine.
 - [读码] convert/timeline.py (oceanleo, parent) has no hflip/vflip → export ignores flip; signal to parent with patch.
 
-## Current step (R2 08:35Z)
-- Step 4: fix tests, add video-edit-bar + theme tests, copy book, commit; then browser matrix (both themes) + save protocol; delivery.
+## Current step (Codex continuation)
+- Saved protocol own-library A/B/offline retry confirmed against DB (ordinals 6/7/8 on b0fed7d4). Focused existing group 54/54, renewal hook 7/7.
+- Fixed idle grant renewal; running updated bar matrix after dev HMR settles. Parent owns export flip parity and dev API restart.
 
 ## Next
 - browser: scenario w11-bar.mjs clicks each control, before/after shots; save protocol; delivery.
