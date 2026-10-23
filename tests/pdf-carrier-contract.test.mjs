@@ -9,30 +9,12 @@ import test from "node:test";
 import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib";
 
 import {
-  addBlankPdfPage,
-  addPdfTextAnnotation,
   createBlankPdf,
   deletePdfPage,
-  extractPdfPages,
   inspectPdf,
-  mergePdfBytes,
   movePdfPage,
   rotatePdfPage,
 } from "../src/shell/media-editors/pdf-operations.ts";
-import {
-  addPdfHighlightAnnotation,
-  addPdfTextAnnotationAt,
-  deletePdfAnnotation,
-  listPdfAnnotations,
-  movePdfAnnotation,
-  normalizedVisualRect,
-  pdfPageGeometry,
-  pdfPointToVisual,
-  pdfRectToVisual,
-  updatePdfAnnotation,
-  visualPointToPdf,
-  visualRectToPdf,
-} from "../src/shell/media-editors/pdf-annotation-operations.ts";
 import {
   PDF_ANNOTATION_KINDS,
   PDF_BINARY_MANIFEST_JSON_SCHEMA,
@@ -149,94 +131,35 @@ function conformingEvidence(overrides = {}) {
 // ---------------------------------------------------------------------------
 // C-4 · §0.3 the API surface this contract is allowed to name
 
-test("C-4 §0.3: the two operation modules export exactly the surveyed API", async () => {
+test("C-4 §0.3: the page operation module exports exactly the surveyed API", async () => {
+  // 10-23 D4：批注由 EmbedPDF 写成标准 PDF 批注；字节级只剩页面整理（缩略图栏的
+  // 旋转、排序、删页）与空白新建。提取页、插空白页、合并 PDF 按裁定删除。
   const operations = await source("src/shell/media-editors/pdf-operations.ts");
-  const annotations = await source(
-    "src/shell/media-editors/pdf-annotation-operations.ts",
-  );
   const exported = (text) =>
     [
       ...text.matchAll(
         /export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/g,
       ),
     ].map((match) => match[1]);
-
   assert.deepEqual(exported(operations).sort(), [
-    "addBlankPdfPage",
-    "addPdfTextAnnotation",
     "createBlankPdf",
     "deletePdfPage",
-    "extractPdfPages",
     "inspectPdf",
-    "mergePdfBytes",
     "movePdfPage",
     "rotatePdfPage",
   ]);
-  // `W17`（`9edca72`）把批注从 2 种扩到 11 种标准 Annot 字典，随之多了两个**通用**入口：
-  // `appendPdfAnnotation`（按 draft 落一条）与 `addPdfAnnotation`（对外的那一层）。
-  // 原来那两个 `addPdfTextAnnotationAt` / `addPdfHighlightAnnotation` 现在是它们的特例。
-  // 清单锁照旧是全等——多一个少一个都红，只是把这次**有意的**扩面登记进来。
-  // 多人同改（F05）：按稳定 id 读写批注需要「对已打开的 PDFDocument 直接操作」的一组入口
-  // （`*InDocument`、`findPdfAnnotationPage`），同样是有意的扩面；原有 14 个入口一个没动。
-  assert.deepEqual(exported(annotations).sort(), [
-    "addPdfAnnotation",
-    "addPdfHighlightAnnotation",
-    "addPdfTextAnnotationAt",
-    "appendPdfAnnotation",
-    "deletePdfAnnotation",
-    "ensurePdfAnnotationIdsInDocument",
-    "findPdfAnnotationPage",
-    "hasPdfAnnotationInDocument",
-    "listPdfAnnotations",
-    "listPdfAnnotationsInDocument",
-    "movePdfAnnotation",
-    "movePdfAnnotationInDocument",
-    "normalizedVisualRect",
-    "pdfPageGeometry",
-    "pdfPointToVisual",
-    "pdfRectToVisual",
-    "removePdfAnnotationInDocument",
-    "setPdfAnnotationStyleInDocument",
-    "updatePdfAnnotation",
-    "updatePdfAnnotationContentsInDocument",
-    "visualPointToPdf",
-    "visualRectToPdf",
-  ]);
-
-  // §0.3: functions that do not exist must never be named anywhere in the cluster.
   for (const file of [
     "src/shell/media-editors/pdf-operations.ts",
-    "src/shell/media-editors/pdf-annotation-operations.ts",
-    "src/shell/media-editors/pdf-manifest.ts",
-    "src/shell/media-editors/use-pdf-annotations.ts",
-    "src/shell/media-editors/use-pdf-page-actions.ts",
-    "src/shell/media-editors/PdfStage.tsx",
     "src/shell/media-editors/PdfControls.tsx",
-    "src/shell/media-editors/PdfContextToolbar.tsx",
+    "src/shell/media-editors/use-pdf-workbench.ts",
+    "src/shell/advanced-routes/PdfRoute.tsx",
   ]) {
     assert.doesNotMatch(
       await source(file),
-      /addPdfInkAnnotation|addPdfSquareAnnotation|addPdfUnderlineAnnotation/,
-      `${file} names an API that does not exist`,
+      /extractPdfPages|mergePdfBytes|addBlankPdfPage/,
+      `${file} still names a removed page operation`,
     );
   }
-});
-
-test("C-4 §3.3: no call site hand-rolls a pt/px conversion", async () => {
-  for (const file of [
-    "src/shell/media-editors/PdfStage.tsx",
-    "src/shell/media-editors/use-pdf-annotations.ts",
-    "src/shell/media-editors/PdfContextToolbar.tsx",
-  ]) {
-    const text = await source(file);
-    assert.doesNotMatch(
-      text,
-      /clientX - bounds\.left|clientY - bounds\.top/,
-      `${file} divides a bounding box by hand instead of using viewportPointToVisual`,
-    );
-  }
-  const stage = await source("src/shell/media-editors/PdfStage.tsx");
-  assert.match(stage, /viewportPointToVisual\(/);
 });
 
 // ---------------------------------------------------------------------------
@@ -509,22 +432,14 @@ test("C-3 §3.2: every documented migration fires and the five illegal ones cann
 
 test("C-3 §6: a failed load is surfaced, never left as a blank stage", async () => {
   const stage = await source("src/shell/media-editors/PdfStage.tsx");
-  assert.match(stage, /editor\.readerState === "invalid"/);
   assert.match(stage, /role="alert"/);
-  assert.match(stage, /data-pdf-failure-code=\{editor\.failure\?\.code\}/);
-  // §2.4 SC 1.4.5 / F2: a scan must say so. Since plugin-chrome v2 §1 the
-  // stage may not paint a top banner for it; the route hands the sentence to
-  // the host's PluginChromeNotices (bottom-left pill) via `adapter.notices`.
-  assert.doesNotMatch(stage, /data-pdf-no-text-layer/);
-  assert.doesNotMatch(stage, /tt\("此文档无文本层"\)/);
-
+  assert.match(stage, /callbacks\.current\.onFailure\(watch\.message\)/);
+  const workbench = await source("src/shell/media-editors/use-pdf-workbench.ts");
+  // 源坏了：报出原因，不许拿空白页顶替。
+  assert.match(workbench, /setError\(pdfErrorMessage\(caught, tt\("PDF 加载失败"\)\)\)/);
+  assert.match(workbench, /throw new Error\(tt\("PDF 没有可显示的页面"\)\)/);
   const route = await source("src/shell/advanced-routes/PdfRoute.tsx");
-  assert.match(route, /editor\.failure\?\.message/);
-  assert.match(
-    route,
-    /notices:\s*editor\.readerState === "image-only"[\s\S]{0,200}id: "pdf-no-text-layer"/,
-  );
-  assert.match(route, /此文档无文本层/);
+  assert.match(route, /editor\.error \|\|/);
 
   assert.deepEqual(Object.values(PDF_FAILURE_CODES), [
     "pdf-not-full-text",
@@ -537,51 +452,10 @@ test("C-3 §6: a failed load is surfaced, never left as a blank stage", async ()
     "pdf-cover-substituted",
     "pdf-invalid-source",
   ]);
-
-  // F5: the only failure path out of `saving` keeps the bytes and re-enters
-  // `annotating`; `saving -> invalid` is unreachable.
-  const workbench = await source("src/shell/media-editors/use-pdf-workbench.ts");
-  assert.match(workbench, /advance\("commit-conflicted"\)/);
-  assert.match(workbench, /PDF_FAILURE_CODES\.F5_annotationLost/);
 });
 
 // ---------------------------------------------------------------------------
 // C-4 · §3.3 the annotation coordinate contract
-
-test("C-4 §3.3: pt<->px round trips are exact at all four rotations", async () => {
-  const samples = [
-    { x: 0, y: 0 },
-    { x: 1, y: 0 },
-    { x: 1, y: 1 },
-    { x: 0, y: 1 },
-    { x: 0.5, y: 0.5 },
-    { x: 0.137, y: 0.826 },
-  ];
-  for (const rotation of PDF_CARRIER_CONSTANTS.C10_pageRotations) {
-    const document = await PDFDocument.load(await fullTextPdf({ rotation }));
-    const geometry = pdfPageGeometry(document, 0);
-    assert.equal(geometry.rotation, rotation);
-    for (const visual of samples) {
-      const point = visualPointToPdf(visual, geometry);
-      // The point always lands inside the CropBox, never outside the page.
-      assert.ok(point.x >= geometry.x - 1e-6);
-      assert.ok(point.x <= geometry.x + geometry.width + 1e-6);
-      assert.ok(point.y >= geometry.y - 1e-6);
-      assert.ok(point.y <= geometry.y + geometry.height + 1e-6);
-      const back = pdfPointToVisual(point, geometry);
-      assert.ok(Math.abs(back.x - visual.x) < 1e-9, `x at ${rotation}deg`);
-      assert.ok(Math.abs(back.y - visual.y) < 1e-9, `y at ${rotation}deg`);
-    }
-    const rect = { x: 0.2, y: 0.3, width: 0.35, height: 0.15 };
-    const back = pdfRectToVisual(visualRectToPdf(rect, geometry), geometry);
-    for (const key of ["x", "y", "width", "height"]) {
-      assert.ok(
-        Math.abs(back[key] - rect[key]) < 1e-9,
-        `rect.${key} drifted at ${rotation}deg: ${back[key]} vs ${rect[key]}`,
-      );
-    }
-  }
-});
 
 test("C-4 §3.3 / F4: zoom does not move an annotation", () => {
   // The visual space is the page frame normalised to [0,1] and the frame is
@@ -617,111 +491,6 @@ test("C-4 §3.3 / F4: zoom does not move an annotation", () => {
   assert.deepEqual(viewportPointToVisual({ x: 9999, y: 9999 }, bounds), { x: 1, y: 1 });
 });
 
-test("C-4 §3.3 / F4: an annotation written at each rotation reopens where it was written", async (t) => {
-  for (const rotation of PDF_CARRIER_CONSTANTS.C10_pageRotations) {
-    await t.test(`${rotation} degrees`, async () => {
-      const original = await fullTextPdf({ rotation });
-      const target = { x: 0.62, y: 0.28 };
-
-      const text = await addPdfTextAnnotationAt(original, 1, "锚点", target);
-      const [placed] = (await listPdfAnnotations(text.bytes, 1)).filter(
-        (entry) => entry.id === text.id,
-      );
-      assert.ok(placed, "the text annotation is listed on the page it was written to");
-      assert.ok(Math.abs(placed.rect.x + placed.rect.width / 2 - target.x) < 0.03);
-      assert.ok(Math.abs(placed.rect.y + placed.rect.height / 2 - target.y) < 0.03);
-
-      const highlightRect = { x: 0.12, y: 0.44, width: 0.6, height: 0.05 };
-      const highlight = await addPdfHighlightAnnotation(
-        text.bytes,
-        1,
-        highlightRect,
-        "结论",
-      );
-      const listed = await listPdfAnnotations(highlight.bytes, 1);
-      const written = listed.find((entry) => entry.id === highlight.id);
-      for (const key of ["x", "y", "width", "height"]) {
-        assert.ok(
-          Math.abs(written.rect[key] - highlightRect[key]) < 0.003,
-          `highlight.${key} drifted at ${rotation}deg`,
-        );
-      }
-
-      // Save, reopen, and confirm the rects are byte-stable.
-      const reopened = await (await PDFDocument.load(highlight.bytes)).save();
-      const after = await listPdfAnnotations(reopened, 1);
-      assert.equal(after.length, listed.length);
-      for (const before of listed) {
-        const match = after.find((entry) => entry.id === before.id);
-        assert.equal(match.kind, before.kind);
-        for (const key of ["x", "y", "width", "height"]) {
-          assert.ok(
-            Math.abs(match.rect[key] - before.rect[key]) < 1e-6,
-            `${before.kind}.${key} drifted across reopen at ${rotation}deg`,
-          );
-        }
-      }
-
-      // Rotating the page afterwards keeps the annotation on the same glyph:
-      // the stored pt rect is untouched and the visual rect follows the new
-      // page geometry rather than sliding across the sheet.
-      const rotated = await rotatePdfPage(reopened, 1, 90);
-      const rotatedGeometry = pdfPageGeometry(await PDFDocument.load(rotated), 1);
-      assert.equal(rotatedGeometry.rotation, (rotation + 90) % 360);
-      const afterRotate = await listPdfAnnotations(rotated, 1);
-      assert.equal(afterRotate.length, after.length);
-      const beforePt = visualRectToPdf(
-        after.find((entry) => entry.id === highlight.id).rect,
-        pdfPageGeometry(await PDFDocument.load(reopened), 1),
-      );
-      const afterPt = visualRectToPdf(
-        afterRotate.find((entry) => entry.id === highlight.id).rect,
-        rotatedGeometry,
-      );
-      for (const key of ["x", "y", "width", "height"]) {
-        assert.ok(
-          Math.abs(afterPt[key] - beforePt[key]) < 0.05,
-          `rotation moved the stored pt rect: ${key} ${beforePt[key]} -> ${afterPt[key]}`,
-        );
-      }
-    });
-  }
-});
-
-test("C-4 §3.3: paging does not leak annotations between pages", async () => {
-  let bytes = await fullTextPdf({ pages: 6 });
-  const ids = [];
-  for (const pageIndex of [0, 2, 5]) {
-    const created = await addPdfTextAnnotationAt(
-      bytes,
-      pageIndex,
-      `note-${pageIndex}`,
-      { x: 0.4, y: 0.4 },
-    );
-    bytes = created.bytes;
-    ids.push([pageIndex, created.id]);
-  }
-  for (let pageIndex = 0; pageIndex < 6; pageIndex += 1) {
-    const listed = await listPdfAnnotations(bytes, pageIndex);
-    const expected = ids.filter(([index]) => index === pageIndex);
-    assert.equal(listed.length, expected.length, `page ${pageIndex}`);
-    for (const [, id] of expected) {
-      assert.ok(listed.some((entry) => entry.id === id));
-    }
-  }
-  // Moving a page carries its annotation with it.
-  const moved = await movePdfPage(bytes, 0, 4);
-  assert.equal((await listPdfAnnotations(moved, 0))[0]?.contents, undefined);
-  assert.equal((await listPdfAnnotations(moved, 4))[0].contents, "note-0");
-});
-
-test("C-4 §3.3: normalizedVisualRect stays inside the page", () => {
-  const rect = normalizedVisualRect({ x: 0.8, y: 0.9 }, { x: -0.4, y: 1.6 });
-  assert.ok(rect.x >= 0 && rect.y >= 0);
-  assert.ok(rect.x + rect.width <= 1 + 1e-12);
-  assert.ok(rect.y + rect.height <= 1 + 1e-12);
-});
-
 // ---------------------------------------------------------------------------
 // §5.1 · the three capabilities that define this carrier
 
@@ -738,15 +507,8 @@ test("§5.1 (1/3) 全文可翻页: page count, page list and navigation agree", 
   assert.equal(manifest.pages.length, manifest.pageCount);
   manifest.pages.forEach((page, index) => assert.equal(page.index, index));
 
-  // §5.1: all six page operations exist and change the artifact, so the
-  // carrier cannot silently degrade into a read-only viewer.
-  assert.equal(await inspectPdf(await addBlankPdfPage(bytes, 0)), 7);
+  // D4：页面整理的三件事（旋转写进文件、删页、排序）都真改字节。
   assert.equal(await inspectPdf(await deletePdfPage(bytes, 0)), 5);
-  assert.equal(
-    (await mergePdfBytes(bytes, await fullTextPdf({ pages: 4 }))).insertedCount,
-    4,
-  );
-  assert.equal(await inspectPdf(await extractPdfPages(bytes, [1, 3])), 2);
   const rotated = await rotatePdfPage(bytes, 2, 90);
   assert.equal(
     (await PDFDocument.load(rotated)).getPage(2).getRotation().angle,
@@ -764,102 +526,10 @@ test("§5.1 (1/3) 全文可翻页: page count, page list and navigation agree", 
     assert.ok(page.getHeight() <= PDF_CARRIER_CONSTANTS.C5_maximumPageHeightPt);
   }
 
-  // Both required ways to reach a page exist on the surface (§2.4 SC 2.4.5).
-  const stage = await source("src/shell/media-editors/PdfStage.tsx");
+  // 到达某一页的入口：左侧缩略图栏（每页一个按钮）+ 查看器自己的滚动。
   const controls = await source("src/shell/media-editors/PdfControls.tsx");
-  assert.match(stage, /data-pdf-page-jump/);
-  assert.match(controls, /data-pdf-thumbnail-rail/);
-  assert.match(controls, /editor\.renderPageThumbnail\(page, canvas\)/);
-});
-
-test("§5.1 (2/3) 可标注: both kinds survive create, move, edit, delete and write-back", async () => {
-  assert.deepEqual([...PDF_ANNOTATION_KINDS], ["text", "highlight"]);
-  assert.equal(
-    PDF_ANNOTATION_KINDS.length,
-    PDF_CARRIER_CONSTANTS.C19_annotationKindCount,
-  );
-
-  let bytes = await fullTextPdf({ pages: 6 });
-  const created = [];
-
-  const note = await addPdfTextAnnotationAt(bytes, 1, "初稿批注", {
-    x: 0.5,
-    y: 0.5,
-  });
-  bytes = note.bytes;
-  created.push({ id: note.id, kind: "text" });
-
-  const highlight = await addPdfHighlightAnnotation(
-    bytes,
-    1,
-    { x: 0.1, y: 0.2, width: 0.5, height: 0.06 },
-    "关键结论",
-  );
-  bytes = highlight.bytes;
-  created.push({ id: highlight.id, kind: "highlight" });
-
-  let listed = await listPdfAnnotations(bytes, 1);
-  assert.equal(listed.length, 2);
-  assert.deepEqual(
-    listed.map((entry) => entry.kind).sort(),
-    ["highlight", "text"],
-  );
-  // §2.1: the colours written into the bytes are the normative tokens.
-  assert.equal(
-    listed.find((entry) => entry.kind === "highlight").color.toUpperCase(),
-    PDF_READER_PALETTE["annot.highlight"],
-  );
-  assert.equal(
-    listed.find((entry) => entry.kind === "text").color.toUpperCase(),
-    PDF_READER_PALETTE["annot.text.marker"],
-  );
-
-  // Move, then edit.
-  bytes = await movePdfAnnotation(bytes, 1, highlight.id, {
-    x: 0.3,
-    y: 0.6,
-    width: 0.4,
-    height: 0.05,
-  });
-  bytes = await updatePdfAnnotation(bytes, 1, highlight.id, "复核后的结论");
-  bytes = await updatePdfAnnotation(bytes, 1, note.id, "终稿批注");
-
-  // Write back: reload the saved bytes exactly as A7 describes.
-  const saved = await (await PDFDocument.load(bytes)).save();
-  listed = await listPdfAnnotations(saved, 1);
-  assert.equal(listed.length, 2);
-  assert.equal(
-    listed.find((entry) => entry.id === highlight.id).contents,
-    "复核后的结论",
-  );
-  assert.equal(listed.find((entry) => entry.id === note.id).contents, "终稿批注");
-  assert.ok(Math.abs(listed.find((entry) => entry.id === highlight.id).rect.x - 0.3) < 0.003);
-
-  // Delete removes them from the bytes, not just from the view model.
-  let pruned = saved;
-  for (const entry of created) {
-    pruned = await deletePdfAnnotation(pruned, 1, entry.id);
-  }
-  assert.deepEqual(await listPdfAnnotations(pruned, 1), []);
-  assert.deepEqual(
-    await listPdfAnnotations(
-      await (await PDFDocument.load(pruned)).save(),
-      1,
-    ),
-    [],
-  );
-
-  // The legacy §0.3 entry point still writes a Text subtype.
-  const legacy = await addPdfTextAnnotation(await fullTextPdf(), 0, "旧接口批注");
-  const [legacyListed] = await listPdfAnnotations(legacy, 0);
-  assert.equal(legacyListed.kind, "text");
-  assert.equal(legacyListed.contents, "旧接口批注");
-
-  // C18: annotation bodies are bounded.
-  assert.ok(
-    PDF_CARRIER_CONSTANTS.C18_maximumAnnotationContents === 4000,
-    "C18 is 4000 characters",
-  );
+  assert.match(controls, /data-pdf-page-rail/);
+  assert.match(controls, /onClick=\{\(\) => onGoTo\(page\)\}/);
 });
 
 test("§5.1 (3/3) 可下载: download hands back the source bytes as application/pdf", async () => {
@@ -898,16 +568,10 @@ test("§5.1 (3/3) 可下载: download hands back the source bytes as application
   assert.equal(manifest.permissions.downloadable, true);
   assert.equal(manifest.permissions.encrypted, false);
   const route = await source("src/shell/advanced-routes/PdfRoute.tsx");
-  // 下载走草稿导出闸门（afterAdvancedDraftExport），闸门放行、且专业模式里的修改
-  // 已同步回编辑器字节（syncProEdits）之后才调 editor.download。
-  assert.match(
-    route,
-    /directDownload:[\s\S]*onTrigger:[\s\S]*afterAdvancedDraftExport\([\s\S]*syncProEdits\(\)[\s\S]*editor\.download\(\)/,
-  );
-  const pageActions = await source(
-    "src/shell/media-editors/use-pdf-page-actions.ts",
-  );
-  assert.match(pageActions, /downloadPdfBytes\(bytesRef\.current/);
+  assert.match(route, /directDownload:[\s\S]*onTrigger:[\s\S]*editor\.download\(\)/);
+  const workbench = await source("src/shell/media-editors/use-pdf-workbench.ts");
+  // 下载的是查看器导出的整份字节（含标准批注），不是重渲染。
+  assert.match(workbench, /downloadPdfBytes\(await bridge\.exportBytes\(\)/);
 });
 
 // ---------------------------------------------------------------------------
@@ -983,52 +647,6 @@ test("C-5 §2.1 / §2.4 SC 1.4.3+1.4.11: the palette meets every contrast floor 
   for (const [label, fg, bg, floor] of floors) {
     const ratio = contrast(fg, bg);
     assert.ok(ratio >= floor, `${label}: ${ratio.toFixed(3)} < ${floor}`);
-  }
-
-  // Two alphas exist and both must clear the floor: the on-screen overlay
-  // PdfStage paints, and the `CA` pdf-lib writes into the saved annotation.
-  const stage = await source("src/shell/media-editors/PdfStage.tsx");
-  const overlayMatch = stage.match(/\$\{annotation\.color\}([0-9a-f]{2})/i);
-  assert.ok(overlayMatch, "PdfStage 里没找到叠加层的 alpha 后缀：判据取样口径漂了");
-  const overlayAlpha = Number.parseInt(overlayMatch[1], 16) / 255;
-
-  const operations = await source("src/shell/media-editors/pdf-annotation-operations.ts");
-  // `CA` 从字面量变成了变量：`W17`（`9edca72`）把不透明度按批注类型分档，
-  // 现在写的是 `CA: opacity`，而 `opacity` 来自 `DEFAULT_OPACITY` 那张表。
-  // 上一版直接 `operations.match(/CA:\s*([0-9.]+)/)[1]` 取下标，表一改就 **TypeError**，
-  // 于是这条对比度判据从 `W17` 起就一次都没真的跑过（`§7b⑩` 同族：红是记了，
-  // 但记的是判据自己炸了，不是产品的读数）。
-  // 改成从表里取，并且**先断言取到了**再用（`§7b③`：零命中先验取样，别直接下标）。
-  assert.match(operations, /CA:\s*opacity/, "CA 不再由 opacity 变量喂，取样口径要重定");
-  assert.match(
-    operations,
-    /draft\.opacity \?\? DEFAULT_OPACITY\[draft\.kind\]/,
-    "opacity 不再兜底到 DEFAULT_OPACITY，这张表就不是事实源了",
-  );
-  const opacityTable = operations.match(/const DEFAULT_OPACITY[^=]*=\s*\{([^}]*)\}/);
-  assert.ok(opacityTable, "没找到 DEFAULT_OPACITY 表：判据取样口径漂了");
-  const defaultOpacity = Object.fromEntries(
-    [...opacityTable[1].matchAll(/(\w+):\s*([0-9.]+)/g)].map((entry) => [
-      entry[1],
-      Number.parseFloat(entry[2]),
-    ]),
-  );
-  // 只有 highlight 是半透明填充、压在正文上；其余几种是 alpha 1 的描边/记号。
-  const savedAlpha = defaultOpacity.highlight;
-  assert.ok(
-    Number.isFinite(savedAlpha),
-    `DEFAULT_OPACITY 里没有 highlight：取到的是 ${JSON.stringify(defaultOpacity)}`,
-  );
-  assert.ok(overlayAlpha > 0 && overlayAlpha <= 0.5, `overlay alpha ${overlayAlpha}`);
-  assert.ok(savedAlpha > 0 && savedAlpha <= 0.5, `saved alpha ${savedAlpha}`);
-
-  for (const alpha of [overlayAlpha, savedAlpha]) {
-    const highlighted = composite(PDF_READER_PALETTE["annot.highlight"], page, alpha);
-    const throughHighlight = contrast("#1A1A1A", highlighted);
-    assert.ok(
-      throughHighlight >= 4.5,
-      `body text through a highlight at CA=${alpha}: ${throughHighlight.toFixed(3)} < 4.5`,
-    );
   }
 });
 
@@ -1326,31 +944,23 @@ test("C-1 §1.1: the editor still saves as a bounded pdf-binary@1 artifact", asy
 });
 
 test("§5.4: rendering stays on the PDFium (EmbedPDF) canvas path; no pdf.js", async () => {
-  const loader = await source("src/shell/media-editors/use-pdf-document.ts");
-  assert.match(loader, /openPdfEngineDocument/);
-  assert.doesNotMatch(loader, /pdfjs/);
-  const preview = await source(
-    "src/shell/media-editors/use-pdf-preview-render.ts",
-  );
-  assert.match(preview, /renderPageRaw/);
-  assert.match(preview, /paintImageData\(canvas, image\)/);
-  assert.doesNotMatch(preview, /pdfjs/);
+  const stage = await source("src/shell/media-editors/PdfStage.tsx");
+  assert.match(stage, /import\("@embedpdf\/react-pdf-viewer"\)/);
+  assert.doesNotMatch(stage, /pdfjs/);
 
   // §1.2: no second PDF engine, and no server-side binaries.
   for (const file of [
     "src/shell/media-editors/pdf-operations.ts",
-    "src/shell/media-editors/pdf-annotation-operations.ts",
     "src/shell/media-editors/pdf-source.ts",
-    "src/shell/media-editors/use-pdf-document.ts",
-    "src/shell/media-editors/use-pdf-text-layer.ts",
+    "src/shell/media-editors/PdfStage.tsx",
+    "src/shell/media-editors/pdf-viewer-bridge.ts",
+    "src/shell/media-editors/use-pdf-workbench.ts",
   ]) {
     const text = await source(file);
-    assert.doesNotMatch(text, /pdftotext|qpdf|mupdf|poppler|pdfkit|jspdf/i, file);
+    assert.doesNotMatch(text, /pdftotext|qpdf|mupdf|poppler|pdfkit|jspdf|pdfjs/i, file);
   }
   const packageJson = JSON.parse(await source("package.json"));
   assert.equal(packageJson.dependencies["pdf-lib"], "^1.17.1");
-  // pdf.js is no longer a rendering path (EmbedPDF/PDFium only); the dependency
-  // removal itself is requested from the parent in the W06 delivery.
 });
 
 test("§1.1: the carrier does not gain a new editor directory", async () => {

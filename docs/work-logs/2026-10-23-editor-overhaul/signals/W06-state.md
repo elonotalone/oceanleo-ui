@@ -1,27 +1,17 @@
-# W06 state（PDF 编辑器，D4 + PDF 的 D6 D9 D11）
+# W06 state（PDF 编辑器，D4 + PDF 的 D6 D9 D11）— 第 2 轮接班（R2）
 
 ## 已确认的事实
-- [实测] bootstrap 通过；仓 `oceanleo-ui` 在 `main`。
-- [读码] 方案与依赖面见 `signals/W06-journal.md`（EmbedPDF 能力、旧核依赖、保存基线、协同）。
-- [读码] W03 的 `bar` / `edit-bar-canon.ts` 在 05:21Z 还没落地 ⇒ 先只出规范 id。
-- [待核] 浏览器里：官方 UI 隐藏后选中菜单是否干净、`page-settings` 菜单哪几项有用、Ink/Stamp 存盘后外部阅读器可见。
-
-## 方案（新文件，全部 < 600 行）
-- `media-editors/pdf-viewer-bridge.ts`：包 registry（模式显隐、工具、缩放、页码、历史、导出、换文档、图章）。
-- `media-editors/pdf-mark-tools.ts`：✓ / ✗ 自定义工具（标准 Ink）。
-- `media-editors/pdf-signature-store.ts`：签名按用户 id 存 localStorage。
-- `media-editors/PdfStage.tsx`（原地换）：唯一的 EmbedPDF 实例；基础 = 隐藏官方 UI，专业 = 显示。
-- `media-editors/PdfControls.tsx`（原地换）：左侧缩略图栏，悬停旋转/删除，拖动排序。
-- `media-editors/use-pdf-workbench.ts`（原地换）：源装载、脏标记、撤销（查看器历史 + 页面整理栈）、页面整理、保存（基线前移）、恢复、下载。
-- `media-editors/PdfSelectionBar.tsx`：选中批注 / 激活工具 / 选字时的统一编辑栏；`PdfSignatureDialog.tsx`、`PdfFindBar.tsx`。
-- `media-editors/pdf-command-surface.ts`：agent 指令面（只暴露新能力）。
-- `advanced-routes/PdfRoute.tsx` 重写；删 `mode-switch-gate.tsx` 与旧核。
+- [实测] R2 bootstrap 通过；`main` HEAD `4a17d173`。无 `signals/*-to-W06.md`；`W03-to-editors.md` 已读（`data-edit-bar-avoid` 已加在页面栏）。
+- [实测] 第 1 轮已落：`8126ea72`（单实例、新工具、页面栏、保存基线、删旧核）、`e58924fa`、`a1e4395e`（文案册）、父 salvage `47d7f607`（工具色板、Esc、recordUserMutation、data-pdf-* 标记）。
+- [实测] R2 08:3xZ 类型检查：PDF 文件 0 错（全仓 5 错都在 video-editor / workflow-carrier，非我）。
+- [实测] 57 个涉 PDF 的测试里 33 个红：绝大多数 import 已删的旧核模块（pdf-annotation-operations / pdf-form / pdf-next-* / use-pdf-* / mode-switch-gate）。b12（Fabric）、g3（W02 循环依赖）不是我。
 
 ## 正在做
-- 第 2 步：写 bridge / mark tools / signature store（纯模块）+ 单测。
+- 第 3 步：测试清理（删旧核测试 / 改写跨编辑器测试里的 PDF 段）+ 新能力单测。
 
 ## 下一步
-- PdfStage / PdfControls / use-pdf-workbench / PdfRoute 接线 → 类型检查 → 浏览器。
+- 浏览器：工具逐个点测、保存协议 §5、深浅两档截图 → 交付。
 
 ## 复现命令
 - focused test：`cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<file>.test.mjs`
+- 批量：`bash /tmp/w06-run/run-tests.sh /tmp/w06-tests.txt /tmp/w06-run/<dir>`（列表 = tests 里 grep PdfRoute|media-editors/pdf|ModeSwitchGate）

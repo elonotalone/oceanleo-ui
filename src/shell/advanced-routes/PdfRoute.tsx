@@ -44,6 +44,7 @@ import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
 import { buildPdfCommandSurface } from "../media-editors/pdf-command-surface";
 import { PDF_MARK_TOOL_IDS } from "../media-editors/pdf-mark-tools";
 import { pdfDataUrlBytes } from "../media-editors/pdf-signature-store";
+import { PDF_MAX_ZOOM, PDF_MIN_ZOOM } from "../media-editors/pdf-workbench-utils";
 
 /** 查看器是 WASM + worker，只在浏览器里装；`import()` 字面量必须写在这一层（切 chunk）。 */
 const PdfStage = dynamic(
@@ -255,8 +256,8 @@ export function PdfRoute({
         nativeChrome: { viewport: chrome === "pro" },
         viewport: {
           value: editor.zoom,
-          min: 25,
-          max: 400,
+          min: PDF_MIN_ZOOM,
+          max: PDF_MAX_ZOOM,
           step: 5,
           setValue: editor.setZoom,
           fit: editor.fit,
