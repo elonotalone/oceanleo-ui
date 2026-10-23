@@ -219,3 +219,23 @@ test('a newly created session enables drafts after the legacy save finishes with
     pending.resolve({ ok: true }); await first; await tree.unmount();
   }
 });
+
+test('W04 R2: a committed version whose session record hits a CAS conflict says saving, never 保存失败, then saved', async () => {
+  const b = bed(); let records = 0, failing = true; const seen = [];
+  b.session.recordSavedItem = async () => { records += 1; return !failing; };
+  const tree = await mount(React.createElement(Probe, { b }));
+  try {
+    await edit(b, 1);
+    for (let i = 0; i < 20 && b.versions.length === 0; i += 1) { await act(async () => { await sleep(250); }); seen.push(b.hooks.state); }
+    assert.deepEqual(b.versions, [1]);
+    await act(async () => { await b.boundFlush(); }); // an explicit gate while the record is still refused
+    seen.push(b.hooks.state);
+    assert.notEqual(b.hooks.state, 'error', 'the version is on the server; only the session record is owed');
+    failing = false;
+    for (let i = 0; i < 40 && b.hooks.state !== 'saved'; i += 1) { await act(async () => { await sleep(250); }); seen.push(b.hooks.state); }
+    assert.deepEqual(b.versions, [1], 'the record retry does not publish the same edit twice');
+    assert.ok(!seen.includes('error'), `states: ${seen.join(',')}`);
+    assert.equal(b.hooks.state, 'saved');
+    assert.ok(records >= 2, 'the record was retried');
+  } finally { await tree.unmount(); }
+});

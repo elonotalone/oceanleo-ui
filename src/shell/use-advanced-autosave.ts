@@ -301,11 +301,15 @@ export function useAdvancedAutoSave({
     return controller;
   }, [sourceLifetime]);
 
+  // W09-to-W04 #4: the version is committed but the session record hit a CAS 409 (online).
+  // The controller keeps retrying that record; the bar says 保存中, not 保存失败.
+  const recordOwedRef = useRef(false);
   const rememberFlush = useCallback((result: AdvancedFlushResult) => {
     const next = withErrorMessage(result);
+    const quiet = !next.ok && recordOwedRef.current && !browserOffline();
     if (mountedRef.current && sourceLifetime.current) {
-      setErrorMessage(next.ok ? undefined : next.errorMessage);
-      setFailedAttempt(advancedFlushFailureVisible(next));
+      setErrorMessage(next.ok || quiet ? undefined : next.errorMessage);
+      setFailedAttempt(!quiet && advancedFlushFailureVisible(next));
     }
     return next;
   }, [sourceLifetime]);
@@ -388,6 +392,7 @@ export function useAdvancedAutoSave({
           // same pinned marker reachable by either receipt identity.
           versionRecoveryReceiptsRef.current.set(targetRevision, pinnedReceipt);
           versionRecoveryReceiptsRef.current.set(captured, pinnedReceipt);
+          recordOwedRef.current = false; // a new editor flush: its own failure is shown
           return ledger.track(targetRevision, captured, async () =>
             rememberFlush(await activeFlush()),
           );
@@ -397,6 +402,7 @@ export function useAdvancedAutoSave({
           const recorded = activeSession ? await (draftEnabled
             ? activeSession.recordSavedItem(item, coveredRevision, { schema: draftRef.current!.schema, restored: restoredPointerRef.current })
             : activeSession.recordSavedItem(item)) : true;
+          recordOwedRef.current = !recorded;
           if (!recorded && browserOffline()) rememberFlush({ ok: false, error: AUTOSAVE_ERROR_NETWORK });
           if (recorded) versionSessionsRef.current.delete(coveredRevision);
           if (recorded) lastVersionItemRef.current = item;

@@ -19,3 +19,4 @@
 - 10:0xZ [后端] oceanleo typed_artifact_repository.verify_blob_durable：重试同一私有 staged 对象不再 blob-digest-conflict（API 探针 api-retry-staged.py 复现 200/409/409）；pytest 新增 3 条 + 相关 185 passed（1 条无关的 acceptance seed manifest 失败）。即将 docker restart oceanleo-api（W04 第 3 次）。
 - 10:3xZ [修，W08-to-W04 #1 + 父 agent 要点 1] 草稿层版本空闲发布 20s → 1.5s（DRAFT_VERSION_IDLE_MS），且草稿已确认、版本未提交时顶栏显示「保存中」而非「已保存」（versionOwed）；e6/e9 三条旧断言（「草稿回执即变绿、不出版本」）改为新合同。withErrorMessage 移入 advanced-autosave-display.ts（hook 587 行）。tsc 仅 W16 video-project-preview.ts 1 错。
 - 10:2xZ [实测 浏览器] 图片（W09 去草稿层后 + 后端 62128b0）：2 编辑 = 2 revision 200，0 个 409；断网 0.8s「保存失败」→ 重试 → revision 200 →「已保存」（会话快照 409 一次，自愈）。演示 fork（公共 8005de37 → 0e1fa553，恰好 1 次 :fork，URL 换成副本）2 编辑 = 2 revision。重开/刷新后无编辑仍多 1 个 revision（演示、图片都有；digest 与上一版相同），见交付剩余问题。
+- 11:0xZ [修，W09-to-W04 #4 / 父 agent 要点 3] 版本已提交、会话记录 409（在线）时顶栏保持「保存中」、控制器后台重试记录，成功后「已保存」；不再显示「保存失败」。新的编辑器 flush 失败照常显示。e6 新增运行时用例（去掉修复即红，已验证）。
