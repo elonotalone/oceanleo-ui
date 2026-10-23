@@ -81,7 +81,9 @@ export async function openFromLibrary(page, helpers, needle, log, { route = "/li
     await card.click();
   }
   const header = "[data-advanced-workbench-header], [data-plugin-chrome-header], [data-workspace-save-launcher]";
-  const edit = page.getByRole("button", { name: /^(编辑|Edit|打开编辑器|Open editor)$/ }).first();
+  const edit = page
+    .locator('button[aria-label^="编辑"], button[title^="编辑"], button[aria-label^="Edit"], button[title^="Edit"], button[aria-label*="Open editor"]')
+    .first();
   const started = Date.now();
   while (Date.now() - started < 120000) {
     if (await page.locator(header).first().isVisible().catch(() => false)) break;
