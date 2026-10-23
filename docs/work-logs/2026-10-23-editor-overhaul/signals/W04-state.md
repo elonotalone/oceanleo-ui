@@ -18,11 +18,16 @@
 - [实测] R2 08:18Z 上传 [W04] sample.docx 0420568e / .md eb23423e / .png e9c7803e / .pptx f04b448c（upload-wait.mjs）。
 - [实测] 文档 2 次编辑 = 2 个新 revision；但第 2 次「已保存」来自草稿层（advanced-draft.ts 经 /v1/database/upload 建 1 个隐藏 `…草稿` root），版本在空闲 20s / 关闭时才发布。
 
-## 正在做（R2 第 2 轮）
-- 浏览器验收 §5 第 1/3/4/5 条：`evidence/W04/scenarios/save-protocol.mjs <doc|deck|image|pdf> id:<id> [--offline]`，每次跑后 `db-check.sh <id> <since>`。
+## R2 已完成（提交）
+- ui c5e506a4 草稿层本地恢复=待存改动；3c0dfc45 IndexedDB 写删串行 + 陈旧副本不重发 + 草稿失败可见；0cef89b0 服务器草稿恢复后发布版本。
+- oceanleo 62128b0 own-head 重试同一 staged 对象不再 blob-digest-conflict；dev 网关第 3 次重启 09:5xZ。
+- [实测 浏览器] 文档 §5.1/4/5 通过（2 编辑 = 2 revision、断网 0.8s「保存失败」、重试后 revision）；interrupted-save 修后重开自动存上。
+
+## 正在做
+- 槽 17:47 本地被重启，等热身后跑：deck 自己的 f04b448c、deck fork 8005de37（§5.3）、image e9c7803e、pdf 952e4481（Check 图章）、draft-restore-publish。
 
 ## 下一步
-- deck 从公共素材 8005de37 fork（§5.3）；交付 verdicts/W04-delivery.md。
+- 写 verdicts/W04-delivery.md。
 
 ## 复现命令
 ```bash
