@@ -50,9 +50,11 @@ export default async function ({ page, log, shot, helpers, args }) {
     } else if (op === "wait") {
       await page.waitForTimeout(Number(val));
     } else if (op === "waitfor") {
-      await page.locator(val).first().waitFor({ timeout: 120000 }).catch(() => log("waitfor timeout", val));
+      await page.locator(val).first().waitFor({ timeout: 300000 }).catch(() => log("waitfor timeout", val));
     } else if (op === "shot") {
       await shot(`${label}-${val}`);
+    } else if (op === "url") {
+      log("url", page.url());
     } else if (op === "dump") {
       await dump(page, log, val);
     } else if (op === "key") {
