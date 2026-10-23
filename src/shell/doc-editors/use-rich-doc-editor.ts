@@ -81,6 +81,7 @@ import {
   type RichDocSource,
 } from "./rich-doc-model";
 import { RichDocImageStyle } from "./rich-doc-image-style";
+import { RichDocThemeInk } from "./rich-doc-theme-ink";
 import {
   richDocRendersPreviewBitmap,
   richDocTextExcerpt,
@@ -388,6 +389,8 @@ export function useRichDocEditor(
       RichDocTypography,
       // 统一图片栏的圆角 / 边框 / 不透明度（D9）。
       RichDocImageStyle,
+      // 深色下正文的显示层颜色映射（只出 decoration，不改存储）。
+      RichDocThemeInk,
       Highlight.configure({ multicolor: true }),
       // 审阅层：四个 mark + 修订录制器。
       ...richDocReviewExtensions(),

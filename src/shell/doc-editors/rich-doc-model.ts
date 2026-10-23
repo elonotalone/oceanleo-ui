@@ -1657,7 +1657,7 @@ export function richDocDocxRowProperties(
 
 /** 编辑区排版样式（Tailwind preflight 把标题拍平了，这里补回文档观感）。 */
 export const RICHDOC_CSS = `
-.oleo-richdoc{outline:none;min-height:100%;color:#1c1917;font-size:14px;line-height:1.75}
+.oleo-richdoc{--richdoc-ink:var(--awb-text,var(--fg,#1c1917));--richdoc-soft:var(--fg-2,#57534e);--richdoc-line:var(--border-strong,#d6d3d1);--richdoc-fill:var(--card-2,#f5f5f4);--richdoc-link:var(--awb-accent,#4f46e5);outline:none;min-height:100%;color:var(--richdoc-ink);font-size:14px;line-height:1.75}
 .oleo-richdoc>*+*{margin-top:.6em}
 .oleo-richdoc h1{font-size:1.9em;font-weight:700;line-height:1.3;margin-top:1em}
 .oleo-richdoc h2{font-size:1.5em;font-weight:700;line-height:1.35;margin-top:1em}
@@ -1666,18 +1666,22 @@ export const RICHDOC_CSS = `
 .oleo-richdoc ul{list-style:disc;padding-left:1.5em}
 .oleo-richdoc ol{list-style:decimal;padding-left:1.5em}
 .oleo-richdoc li+li{margin-top:.25em}
-.oleo-richdoc blockquote{border-left:3px solid #d6d3d1;padding-left:1em;color:#57534e}
+.oleo-richdoc blockquote{border-left:3px solid var(--richdoc-line);padding-left:1em;color:var(--richdoc-soft)}
 .oleo-richdoc pre{background:#1c1917;color:#e7e5e4;padding:.9em 1.1em;border-radius:10px;font-size:.9em;overflow-x:auto}
-.oleo-richdoc code{background:#f5f5f4;border-radius:4px;padding:.15em .35em;font-size:.9em}
+.oleo-richdoc code{background:var(--richdoc-fill);border-radius:4px;padding:.15em .35em;font-size:.9em}
 .oleo-richdoc pre code{background:transparent;padding:0}
-.oleo-richdoc hr{border:none;border-top:1px solid #d6d3d1;margin:1.4em 0}
-.oleo-richdoc a{color:#4f46e5;text-decoration:underline}
+.oleo-richdoc hr{border:none;border-top:1px solid var(--richdoc-line);margin:1.4em 0}
+.oleo-richdoc a{color:var(--richdoc-link);text-decoration:underline}
 .oleo-richdoc img{max-width:100%;border-radius:8px}
 .oleo-richdoc table{border-collapse:collapse;width:100%;table-layout:fixed;margin:.8em 0}
-.oleo-richdoc td,.oleo-richdoc th{border:1px solid #d6d3d1;padding:5px 9px;vertical-align:top;position:relative}
-.oleo-richdoc th{background:#fafaf9;font-weight:600;text-align:left}
+.oleo-richdoc td,.oleo-richdoc th{border:1px solid var(--richdoc-line);padding:5px 9px;vertical-align:top;position:relative}
+.oleo-richdoc th{background:var(--richdoc-fill);font-weight:600;text-align:left}
 .oleo-richdoc .selectedCell:after{content:"";position:absolute;inset:0;background:rgba(79,70,229,.08);pointer-events:none}
 .oleo-richdoc mark{border-radius:3px;padding:0 .1em}
+/* 深色（D6）：正文跟着变深。用户颜色由 rich-doc-theme-ink 的 decoration 改显示，
+   高亮的原底色在这里让位给 decoration 画的压暗底色；存储内容不动。 */
+[data-richdoc-theme="dark"] .oleo-richdoc{--leo-review-ins:#4ade80;--leo-review-del:#f87171;--leo-review-fmt:#93c5fd;--leo-review-comment-bg:rgba(250,204,21,.18);--leo-review-comment-active:rgba(250,204,21,.32)}
+[data-richdoc-theme="dark"] .oleo-richdoc mark{background-color:transparent!important;color:inherit}
 
 /* --- 多级编号（W15）---------------------------------------------------------
    分级格式用 @counter-style 做，不用 CSS counter 手搓：counter 方案要给每一级

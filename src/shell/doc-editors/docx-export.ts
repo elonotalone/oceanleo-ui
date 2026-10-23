@@ -211,11 +211,16 @@ async function inlineChildren(
       else if (mark.type === "strike") style.strike = true;
       else if (mark.type === "code") style.font = "Consolas";
       else if (mark.type === "highlight") {
-        const color = String(mark.attrs?.color || "FFFF00").replace("#", "");
-        if (/^[0-9a-f]{6}$/i.test(color)) style.highlight = color;
+        // `w:highlight` 只认 16 个命名色，十六进制写进去 Word 判损坏；任意色走底纹。
+        const fill = docxHexColor(mark.attrs?.color) || "FFFF00";
+        style.shading = { type: "clear", color: "auto", fill };
       } else if (mark.type === "textStyle") {
-        const color = String(mark.attrs?.color || "").replace("#", "");
-        if (/^[0-9a-f]{6}$/i.test(color)) style.color = color;
+        const color = docxHexColor(mark.attrs?.color);
+        if (color) style.color = color;
+        const size = docxHalfPoints(mark.attrs?.fontSize);
+        if (size) style.size = size;
+        const font = docxFontName(mark.attrs?.fontFamily);
+        if (font) style.font = font;
       } else if (mark.type === "link") {
         const value = String(mark.attrs?.href || "");
         if (/^https?:\/\//i.test(value)) href = value;
@@ -232,6 +237,37 @@ async function inlineChildren(
   // `CommentRangeEnd`，Word 会判整份文档损坏。
   closeRanges([]);
   return output;
+}
+
+/** `#rgb` / `#rrggbb` / `rgb(r, g, b)` → `RRGGBB`；认不出返回空串。 */
+export function docxHexColor(value: unknown): string {
+  const text = String(value ?? "").trim().toLowerCase();
+  const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(text);
+  if (short) return `${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`.toUpperCase();
+  const long = /^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/.exec(text);
+  if (long) return long[1].toUpperCase();
+  const rgb = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/.exec(text);
+  if (!rgb) return "";
+  return rgb
+    .slice(1, 4)
+    .map((part) => Math.min(255, Number(part)).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}
+
+/** 编辑器字号（`16px` / `12pt`）→ docx 的半磅数。 */
+export function docxHalfPoints(value: unknown): number {
+  const match = /^(\d+(?:\.\d+)?)\s*(px|pt)?$/i.exec(String(value ?? "").trim());
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  const points = (match[2] || "px").toLowerCase() === "pt" ? amount : amount * 0.75;
+  return points > 0 && points <= 1638 ? Math.round(points * 2) : 0;
+}
+
+/** 字体栈取第一个名字（Word 只认一个字体名）。 */
+export function docxFontName(value: unknown): string {
+  const first = String(value ?? "").split(",")[0]?.replace(/["']/g, "").trim() || "";
+  return /^(serif|sans-serif|monospace|cursive|system-ui)$/i.test(first) ? "" : first.slice(0, 64);
 }
 
 const NUMBERING_PRESET_VALUES = new Set<string>(

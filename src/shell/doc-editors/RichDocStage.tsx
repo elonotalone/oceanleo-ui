@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { EditorContent } from "@tiptap/react";
 import { useUI } from "../../i18n/ui/useUI";
+import { usePluginTheme } from "../plugin-theme";
+import { refreshRichDocThemeInk } from "./rich-doc-theme-ink";
 import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
 import { RICHDOC_CSS } from "./rich-doc-model";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
@@ -14,9 +17,15 @@ export function RichDocStage({
   accent?: string;
 }) {
   const tt = useUI();
+  // 主题只跟网站走（D7）；正文的颜色映射是显示层，换档不重建编辑器。
+  const theme = usePluginTheme("richdoc").theme === "dark" ? "dark" : "light";
+  useEffect(() => {
+    refreshRichDocThemeInk(editor.editor, theme === "dark");
+  }, [editor.editor, theme]);
   return (
     <div
       role="region"
+      data-richdoc-theme={theme}
       aria-label={tt("文档编辑器")}
       aria-busy={editor.loading}
       className="flex h-full min-h-0 flex-col bg-[var(--surface,#f5f5f4)]"
