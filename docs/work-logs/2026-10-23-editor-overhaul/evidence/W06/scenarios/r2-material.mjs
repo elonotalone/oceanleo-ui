@@ -11,7 +11,9 @@ export default async function ({ page, log, shot, helpers, args }) {
   if (await back.isVisible().catch(() => false)) await back.click();
   const pane = page.locator("[data-editor-fallback-pane]").first();
   const until = Date.now() + 40000;
+  const cardSel = "[draggable='true'], [data-material-card], [data-artifact-card], button:has(img)";
   while (Date.now() < until && !(await pane.locator("[draggable='true']").count())) await page.waitForTimeout(1000);
+  log("pane html sample", (await pane.innerHTML().catch(() => "")).replace(/\s+/g, " ").match(/<(button|div|article)[^>]*data-[^>]*>/g)?.slice(0, 12).join(" | ").slice(0, 1500));
   log("panel", JSON.stringify(await pane.evaluate((root) => ({
     filter: [...root.querySelectorAll("select, [aria-haspopup=listbox], button[aria-haspopup]")].map((el) => (el.value || el.textContent || "").trim().slice(0, 30)).slice(0, 4),
     cards: root.querySelectorAll("[draggable='true']").length,
