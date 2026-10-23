@@ -121,6 +121,7 @@ export default async function ({ page, log, shot, helpers, args }) {
   }, 700);
   page.on("close", () => clearInterval(stateTimer));
   const body = await open(page, helpers, log, id);
+  page.setDefaultTimeout(8000);
   log("bar-on-open", JSON.stringify(await barIds(page)));
   await shot(`${label}-bar-open`);
 
@@ -203,7 +204,8 @@ export default async function ({ page, log, shot, helpers, args }) {
     // The link panel opens in the left inspector dock: one textarea, Enter commits.
     const input = page.locator("[data-selection-inspector] textarea, [data-selection-inspector] input").filter({ visible: true }).first();
     await input.fill("https://example.com/w08", { timeout: 5000 });
-    await input.press("Enter");
+    // The inspector textarea commits on Ctrl/Cmd+Enter or blur; plain Enter is a newline.
+    await input.press("Control+Enter");
   }, (s) => /example\.com\/w08/.test(s?.href || ""));
   await page.keyboard.press("Escape");
   await record("align", w("align"), () => pickOption(page, log, "align", "center"), (s) => /text-align:\s*center/.test(s?.block || ""));
@@ -217,7 +219,8 @@ export default async function ({ page, log, shot, helpers, args }) {
     await options.nth(two >= 0 ? two : values.length - 1).click();
   }, (s) => /line-height/.test(`${s?.block || ""} ${s?.styles || ""}`));
   await record("format", w("head"), async () => {
-    await page.locator(`${BAR} button[aria-haspopup=dialog]`).last().click();
+    await page.locator(`${BAR} button[aria-haspopup=dialog][aria-expanded]`).filter({ has: page.locator("svg") })
+      .and(page.locator("button[title*='更多'], button[title*='More'], button[title*='more']")).first().click();
     await page.waitForTimeout(500);
     await shot(`${label}-bar-more`);
     const select = page.locator("[role=dialog] [data-selection-control-id='format'], [role=dialog] [data-selection-overflow-control='format']").first();

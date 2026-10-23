@@ -20,3 +20,7 @@
 - R2：接 W02 契约——`RichDocRoute` 用 `withEditorHistoryCommand(materialAdapter, {documentId: advancedRootItemId(item), targetRevisionId: item.revisionId})` 登记；插图走 Tiptap `setImage` 链（可撤销）。
 - [实测 浏览器] 「插入」抽屉英文界面混中文：文档来源 / 导入文档 / 选中文字后… / 插入内容 / 3×3 表格 / 分割线 / 代码块 / 引用块 / 上传本地图片 / 字体分类 中文、经典。全部补 16 语（W08 册，598 行）；它们原在 i18n 历史基线里，需父 agent 从 PRE_EXISTING_GAPS 摘掉。
 - [实测 浏览器] 链接面板在左侧检查器（textarea，回车提交）；打开后编辑栏右端超出舞台（W03 布局）。
+- [实测 浏览器 fresh docx `80a3e686…`] 栏点测：bold/italic/underline/strike/text-color/highlight/font-family/font-size/align/list/line-height/format(h2)/clear-format 点了都有效果，bold 撤销/重做有效；重开后除行距外都在。
+- [实测 node] 行距丢失根因：`RichDocRoute.restoreWorkingDocument` 把原生草稿也送进 `convertUmoToRichDoc`，`mapAttrs` 剥掉 lineHeight/首行缩进/段前段后/编号预设/图片环绕。改为 `rich-doc-draft-restore.ts::richDocDraftForRestore`：原生 doc 原样恢复，只有 Umo 草稿回转。`tests/richdoc-draft-restore.test.mjs` 3/3。
+- [实测] tsc：W08 文件无错（3 个错都在 W16 `workflow-carrier/video-project-doc.ts`）。
+- 链接面板是检查器 textarea，Ctrl/Cmd+Enter 或失焦提交（场景原先用 Enter+Escape，等于取消）。

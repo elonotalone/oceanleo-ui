@@ -44,7 +44,7 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { withEditorHistoryCommand } from "../workbench-material-command";
-import { convertUmoToRichDoc } from "../doc-editors/rich-doc-umo-migration";
+import { richDocDraftForRestore } from "../doc-editors/rich-doc-draft-restore";
 
 export function RichDocRoute({
   item,
@@ -215,10 +215,7 @@ export function RichDocRoute({
     };
   }, [collabSaveGate, editor.error, editor.lastSaveError, editor.save, item]);
   const restoreWorkingDocument = useCallback(
-    (payload: unknown) => {
-      const reversed = convertUmoToRichDoc(payload);
-      return editor.restoreRecovery(reversed.ok ? reversed.data : payload);
-    },
+    (payload: unknown) => editor.restoreRecovery(richDocDraftForRestore(payload)),
     [editor.restoreRecovery],
   );
   const [importError, setImportError] = useState("");
