@@ -12,7 +12,15 @@
 - [读码] `useTheme()` 无 Provider 时回落 `resolved: "light"`，分不出「有 Provider 且 light」与「无 Provider」；ThemeProvider.tsx 不归我。站点 `applyClass` 同步写 html class，ThemeScript 首帧写 html class。
 - [读码] 59 个测试文件引用我这片代码/选择器（清单 `/tmp/w01-tests.txt` 的生成命令见下）。
 
-## 正在做（06:0xZ 恢复后）
+## R2（08:58Z 接班）
+
+- [实测] 代码、测试、tsc 已在 main（见 journal）；不重做。
+- [实测] 上一轮浏览器 `chrome.mjs` 全部 NO HEADER：`/library?item=` 只开到详情预览，需点铅笔（编辑「…」）才进编辑器。
+- 正在做：`evidence/W01/scenarios/accept.mjs`（铅笔进编辑器 → 顶栏报告 → 页签往返 → `···` 每项：分享/收藏/下载/邀请/回放 → 站点 auto+系统切暗跟随），light / dark 各一遍。
+- 素材：[W01] pdf 6334d8f0…、xlsx 39c6a3c8…、pptx fa40a165…（写操作只对这三件）；只看：游戏 53931dfb…(W15)、视频 16cfec58…(W11)、网站 6b16c807…(平台公共)。
+- 下一步：写 `verdicts/W01-delivery.md` 并提交。
+
+## 正在做（06:0xZ 恢复后，已完成）
 
 - 新文件已在 main（cbc07b39 salvage）：plugin-chrome/{PluginMoreMenu,PluginPageTabs,more-menu-registry}。
 - 改动暂存于 `/tmp/w01/stage/src/...`（overlay tsc 0 错：`node /tmp/w01/scripts/overlay-tsc.mjs /tmp/w01/stage`），正在整批落盘：

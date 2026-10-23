@@ -698,9 +698,22 @@ test("W3: 自有 chrome 画出我的库和带身份的分享/收藏，点我的�
       /item=21c1e4d9-0818-4bbe-ae33-b4d01a5beafd/,
     );
     assert.deepEqual(globalThis.__w3Toasts, ["已复制"]);
+    // W01 R2：宿主页面没有任何 toast 在渲染时（门户实测如此），反馈必须画在 `···` 旁边。
+    await waitUntil(() => find("[data-more-menu-feedback]"));
+    const feedback = find("[data-more-menu-feedback]");
+    assert.equal(feedback?.getAttribute("data-more-menu-feedback"), "notice", "没有 toast 时分享成功看不见");
+    assert.equal(feedback.textContent, "已复制");
+    assert.notEqual(feedback.className, "sr-only");
+    // 页面上有 toast 在渲染时不重复显示。
+    const viewport = window.document.createElement("div");
+    viewport.setAttribute("data-leo-toast-viewport", "");
+    window.document.body.appendChild(viewport);
     menu = await openMore();
     await click(menu.querySelector('[data-editor-chrome-action="favorite"]'));
     await waitUntil(() => (globalThis.__w3Favorites || []).length > 0);
+    await waitUntil(() => (globalThis.__w3Toasts || []).includes("已加入收藏"));
+    assert.equal(find("[data-more-menu-feedback]"), null, "有 toast 时 ··· 旁又画了一遍");
+    viewport.remove();
     assert.deepEqual(globalThis.__w3Favorites, [
       {
         artifactId: item.artifactId,

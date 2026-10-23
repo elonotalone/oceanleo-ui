@@ -44,9 +44,16 @@ export interface EditorItemSocial {
   busy: "share" | "favorite" | "";
   /** 最近一次失败的人话原因（同时已经弹过 toast）。 */
   error: string;
+  /**
+   * 最近一次成功的人话反馈（「已复制」「已加入收藏」…），与 toast 同文，
+   * {@link EDITOR_ITEM_SOCIAL_NOTICE_MS} 后自动清空。宿主没挂 toast 时，`···` 靠它把反馈画在按钮旁。
+   */
+  notice: string;
   share(): Promise<void>;
   toggleFavorite(): Promise<void>;
 }
+
+export const EDITOR_ITEM_SOCIAL_NOTICE_MS = 2400;
 
 export function useEditorItemSocial(
   item: LibraryItem | null | undefined,
@@ -56,6 +63,7 @@ export function useEditorItemSocial(
   const [favorite, setFavorite] = useState(Boolean(item?.favorite));
   const [busy, setBusy] = useState<"share" | "favorite" | "">("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const mountedRef = useRef(true);
   const generationRef = useRef(0);
   const itemRef = useRef(item);
@@ -75,7 +83,13 @@ export function useEditorItemSocial(
     setFavorite(Boolean(item?.favorite));
     setBusy("");
     setError("");
+    setNotice("");
   }, [item?.artifactId, item?.favorite, item?.id, item?.revisionId]);
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = setTimeout(() => setNotice(""), EDITOR_ITEM_SOCIAL_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   const shareUrl = item ? shareUrlForLibraryItem(item) : "";
   const durable = item && isDurableLibraryItem(item) ? item : null;
@@ -90,6 +104,7 @@ export function useEditorItemSocial(
     (generation: number, caught: unknown, fallback: string) => {
       if (!mountedRef.current || generation !== generationRef.current) return;
       const message = humanErrorMessage(caught, fallback);
+      setNotice("");
       setError(message);
       toast.error(message);
     },
@@ -104,6 +119,7 @@ export function useEditorItemSocial(
     const generation = generationRef.current;
     setBusy("share");
     setError("");
+    setNotice("");
     try {
       if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
         await navigator.share({ title: current.title, url });
@@ -112,7 +128,9 @@ export function useEditorItemSocial(
       const copied = await writeClipboardText(url);
       if (!copied) throw new Error(tt("复制失败，请手动复制文案。"));
       if (!mountedRef.current || generation !== generationRef.current) return;
-      toast.success(tt("已复制"));
+      const copiedMessage = tt("已复制");
+      setNotice(copiedMessage);
+      toast.success(copiedMessage);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") return;
       fail(generation, caught, tt("复制失败，请手动复制文案。"));
@@ -144,6 +162,7 @@ export function useEditorItemSocial(
     const next = !favoriteRef.current;
     setBusy("favorite");
     setError("");
+    setNotice("");
     try {
       const { setArtifactFavorite } = await import("./artifact-client");
       const result = await setArtifactFavorite(currentDurable, next);
@@ -168,7 +187,9 @@ export function useEditorItemSocial(
         throw new Error(result.error || tt("操作失败，请重试"));
       }
       setFavorite(next);
-      toast.success(tt(next ? "已加入收藏" : "已取消收藏"));
+      const favoriteMessage = tt(next ? "已加入收藏" : "已取消收藏");
+      setNotice(favoriteMessage);
+      toast.success(favoriteMessage);
     } catch (caught) {
       fail(generation, caught, tt("操作失败，请重试"));
     } finally {
@@ -186,6 +207,7 @@ export function useEditorItemSocial(
     favorite,
     busy,
     error,
+    notice,
     share,
     toggleFavorite,
   };

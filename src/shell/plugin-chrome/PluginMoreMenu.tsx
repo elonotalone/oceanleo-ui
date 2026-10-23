@@ -12,10 +12,14 @@
 // 做不到的项不出；一项都没有时连 `···` 都不出（不放死按钮）。
 // 键盘：AnchoredPopover 管方向键 / Home / End / Esc；「下载」上 → / Enter 打开子菜单，
 // 子菜单里 ← 收回并把焦点还给「下载」。
+// 反馈：分享 / 收藏 / 下载的成败照旧走 toast；宿主页面没有任何 toast 在渲染时
+// （没挂 ToastViewport、也没 registerToastHost），同一句话画在 `···` 旁边，
+// 不让「点了没反应」发生。有 toast 时它退回读屏专用，不重复显示。
 // ============================================================================
 
 import { useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { hasToastHost } from "../../lib/toast-bridge";
 import { Button, IconButton } from "../../ui/Button";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
 import { AnchoredPopover } from "../anchored-popover";
@@ -60,6 +64,16 @@ export function splitDownloadActions<A extends { group?: string }>(
 
 const MENU_CLASS =
   "z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl";
+
+const FEEDBACK_CLASS =
+  "ms-1 max-w-[14rem] truncate rounded-md border border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-2 py-0.5 text-xs leading-5 shadow-sm";
+
+/** 页面上此刻有没有一摞 toast 在渲染（第一方 viewport，或宿主接管的那套）。 */
+export function toastSurfaceRendering(): boolean {
+  if (hasToastHost()) return true;
+  if (typeof document === "undefined") return false;
+  return Boolean(document.querySelector("[data-leo-toast-viewport]"));
+}
 
 function focusLater(target: RefObject<HTMLElement | null>) {
   if (typeof window === "undefined") return;
@@ -145,9 +159,10 @@ export function PluginMoreMenu<A extends PluginMoreMenuDownload>({
         aria-busy={social.busy !== "" || undefined}
         icon={<AdvancedEditorIcon name="more" className="h-4 w-4" />}
       />
-      <span className="sr-only" role="status" aria-live="polite">
-        {errorMessage || social.error}
-      </span>
+      <MoreMenuFeedback
+        error={errorMessage || social.error}
+        notice={social.notice}
+      />
       <AnchoredPopover
         open={open}
         anchorRef={triggerRef}
@@ -299,6 +314,29 @@ export function PluginMoreMenu<A extends PluginMoreMenuDownload>({
           </>
         ) : null}
       </AnchoredPopover>
+    </span>
+  );
+}
+
+/** `···` 旁的反馈：始终是读屏的 status 区；页面没有 toast 在渲染时才画出来。 */
+function MoreMenuFeedback({ error, notice }: { error: string; notice: string }) {
+  // 有 toast 时成功反馈由 toast 的 live 区播报，这里只留错误（与改版前一致），免得读两遍。
+  const surface = Boolean(error || notice) && toastSurfaceRendering();
+  const text = error || (surface ? "" : notice);
+  const shown = Boolean(text) && !surface;
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      data-more-menu-feedback={shown ? (error ? "error" : "notice") : undefined}
+      title={shown ? text : undefined}
+      className={
+        shown
+          ? `${FEEDBACK_CLASS} ${error ? "text-[var(--awb-danger)]" : "text-[var(--awb-text)]"}`
+          : "sr-only"
+      }
+    >
+      {text}
     </span>
   );
 }
