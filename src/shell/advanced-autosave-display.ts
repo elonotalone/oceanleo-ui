@@ -48,7 +48,10 @@ export function advancedRecoveredLocalWork(input: {
 }): boolean {
   if (!input.dirty) return false;
   if (input.localPromotion && Object.is(input.localPromotion.revision, input.revision)) return true;
-  if (!input.draftTier || input.serverRestoredRevision !== undefined || input.draftRestoredAt === undefined) return false;
+  // A restored server draft already said 「已保存」 in an earlier visit; it still has to become a
+  // version (W08-to-W04 #1), so publishing it is owed work even before this visit's first edit.
+  if (input.draftTier && input.serverRestoredRevision !== undefined) return Object.is(input.serverRestoredRevision, input.revision);
+  if (!input.draftTier || input.draftRestoredAt === undefined) return false;
   return !(Number.isFinite(input.baseSavedAt) && input.draftRestoredAt <= (input.baseSavedAt as number));
 }
 
