@@ -4,6 +4,8 @@
 
 ## 0. 先做的事
 
+**重派说明（20:30）**：第一轮全体在 20:00 左右因 Sonnet 用量上限被同时中断。若你是重派的 owner：先读 `signals/<ID>-state.md`、`signals/<ID>-journal.md` 和 `git log --oneline -- <你的边界>`，从那里接着做；你上一轮留在工作区的改动已由父 agent 以「partial work salvaged」提交入库，不要重做已完成的部分。
+
 ```bash
 bash /opt/cursor-workspaces/oceandino/scripts/agent-bootstrap.sh
 ```
@@ -41,10 +43,9 @@ cd /root/projects/oceanleo/backend && .venv/bin/python -m pytest tests/<文件>.
 
 ## 3. 同仓有别的工程在并发（重要）
 
-`editor-overhaul` 波此刻正在 `oceanleo-ui` 里提交。另有一处不明归属的**未提交改动**：
-`oceanleo-ui/src/shell/AppDirectory.tsx`、`oceanleo-ui/src/shell/AppMarket.tsx`、`oceanleo-ui/src/architecture/public-api.snapshot.json`、
-门户 `app/projects/page.tsx`、`package.json`、`pnpm-lock.yaml`、`.github/workflows/oceanleo-cn-frontend.yml`。
-**这些文件一律不许改、不许提交、不许 `git checkout`/`git stash`/`git reset`。**
+`editor-overhaul` 波此刻正在 `oceanleo-ui` 里提交（视频、游戏、PDF 编辑器一带），别碰它的文件。
+2026-10-23 20:30 更新：上午 `bay-library-dashboard` 波留下的未提交改动（collection-items 统一卡片/列表、数据面板总览图、库/工作台/项目/Bay 货架改用共享卡片）已由父 agent 作为独立提交 `a08f3083`（共享 UI）与 `3dc343e`（门户 `app/projects/page.tsx`）入库，并跑过 55 条相关测试全绿。**你在它之上继续**：不要回退它，`CollectionItemCard / CollectionItemRow / CollectionItemList`（`src/shell/collection-items.tsx`）是现行的卡片/列表件。
+仍然**不许改、不许提交**的他人未提交文件：门户 `package.json`、`pnpm-lock.yaml`、`.github/workflows/oceanleo-cn-frontend.yml`、`backend/scripts/retire_operator_examples_20261021.py`、`public/pdfium-fonts/`。不许 `git checkout`/`git stash`/`git reset`。
 
 提交纪律：
 - 只提交你边界内的路径，写法固定为 `git commit -m "<消息>" -- <路径…>`（`--` 在 `-m` 之后）。

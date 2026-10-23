@@ -15,7 +15,7 @@
 
 | ID | 内容 | 主要边界 |
 |---|---|---|
-| W01 | 下拉共用件改样式 + 表单下拉 MenuSelect + 库/工作台调用方 | `collection-chrome.tsx`、`bay/shell/BayFilterSelect.tsx`、`menu-select.tsx`、`Playground.tsx`、`WorkspaceMasterDetail.tsx`、`ArtifactLibrary.tsx`、`MyLibrary.tsx`、`WorkspaceLibrary.tsx`、`SiteSkillDirectory.tsx`、`OperatorConsole.tsx` |
+| W01 | 下拉共用件改样式 + 表单下拉 MenuSelect + 库/工作台调用方 | `collection-chrome.tsx`、`bay/shell/BayFilterSelect.tsx`、`menu-select.tsx`、`Playground.tsx`、`WorkspaceMasterDetail.tsx`、`ArtifactLibrary.tsx`、`MyLibrary.tsx`、`WorkspaceLibrary.tsx`、`SiteSkillDirectory.tsx`、`OperatorConsole.tsx`、`AppDirectory.tsx`、`AppMarket.tsx` |
 | W02 | LeoBay 逛：出售/求购下拉、种类新名字、每类内容对得上（含后端信息流）、素材库筛选、右侧栏 | `bay/shell/{BayList,bay-links,use-bay-data,feed-card-ui,bay-icons}.ts(x)`、`bay/asset/*`、`bay/panel/*`、`bay/apps/BayAppShelf.tsx`、`bay/lessons/BayLessonShelf.tsx`、`lib/bay/feed.ts`、后端 `app/talent/bay_feed.py` |
 | W03 | LeoBay 其余文件的种类名字清扫 + 发布表单 | `bay/` 下未分给别人的全部文件（见任务书清单）、`pages/settings/sections/AutomationSettingsSection.tsx` |
 | W04 | 「我的」页 | `bay/shell/{BayMine,LeoBayPage,BayDetail}.tsx`、`bay/mine/*`（除 `MyDashboardTab.tsx`） |
@@ -25,7 +25,7 @@
 | W08 | LeoChat 里的通知（两版一样）、铃铛去留、未读数、深链（含 cases 视图挂载） | `src/shell/messages/*`（除 `messages/cases/*`）、`src/shell/leochat/*`、`src/shell/account/{NotificationBell,SidebarAccountCluster}.tsx`、`src/api/notifications.ts` |
 | W09 | 内容处置搬进 LeoChat | `src/shell/messages/cases/*`、新 `src/lib/moderation/*`、门户 `app/settings/{sections.tsx,content-cases/*}`、`app/account/content-cases/page.tsx`、`app/legal/copyright/page.tsx`、`lib/moderation/client.ts`、后端 `app/moderation/{actions,store}.py` |
 | W10 | 项目页布局 | 共享 `src/shell/project-workspace.tsx`；门户 `components/project/{ProjectWorkspace,ProjectFeedTab}.tsx`、`components/ProjectConfigEditor.tsx` |
-| W11 | 项目页各选择框 + 计划页翻译 | 门户 `components/project/{ProjectPlanTab,ProjectTasksTab,ProjectAssetsTab,ProjectAutomationDialog,ProjectConnectorDialog,ProjectInstructionDialog}.tsx`、`components/ShareProjectModal.tsx` |
+| W11 | 项目页各选择框 + 计划页翻译 + 项目列表页筛选 | 门户 `app/projects/page.tsx`、`components/project/{ProjectPlanTab,ProjectTasksTab,ProjectAssetsTab,ProjectAutomationDialog,ProjectConnectorDialog,ProjectInstructionDialog}.tsx`、`components/ShareProjectModal.tsx` |
 
 每位另有自己的分表 `src/i18n/ui/messages/lbp-w<NN>-copy.ts`，以及与自己源文件对应的测试文件。
 
