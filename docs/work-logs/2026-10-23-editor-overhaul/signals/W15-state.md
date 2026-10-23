@@ -11,11 +11,8 @@
 - [实测] 后端审核修复 oceanleo bb7937e 已提交；oceanleo-api 09:51Z 已由别人重启过（晚于修复），新代码已在跑，W15 不再重启。
 
 ## 正在做
-- R2：读 GameRoute / GameCodeStage / game-pages，做 A–E（编辑栏、空态抽屉、深浅两档、保存、素材）。
-
-## 下一步
-- 浏览器现状基线（从公共游戏打开 → fork → 保存两次），记录到 journal。
-- 改深浅两档、编辑栏、保存路径。
+- R2 改动已落（parent salvage a325213c）：GamePlayPanel（玩法抽屉，结果提示可见）、GameCodeRunBar（运行条进舞台）、幂等键随字节、编辑页 dirty=摘要差、tt + 16 语。focused tests 绿、tsc 本人文件 0 错。
+- 下一步：浏览器复验（两档截图、Code 页两次保存=2 revision、断网重试、迭代成功分支提示），然后写交付。
 
 ## 复现命令
 ```bash
