@@ -21,9 +21,12 @@ export const controlNotices = createNoticeStore({ now, setTimer, clearTimer });
 // ---- 我是谁 & 本端刚停止过的会话 -------------------------------------------------------------
 let selfId: string | null = null;
 
-/** CallControlHost 每次渲染时告诉运行时「我」的 user_id（提示与安全兜底要用）。 */
+/** CallControlHost 每次渲染时告诉运行时「我」的 user_id（提示与安全兜底要用）。
+ *  改变时重新对账控制方链路：这也兜住「active 事件先到、selfId 后到」的竞态（D9）。 */
 export function setControlSelfId(id: string | null): void {
+  if (selfId === id) return;
   selfId = id;
+  syncControllerLinks();
 }
 
 export function controlSelfId(): string | null {
@@ -111,13 +114,23 @@ export function controllerLinkIds(): string[] {
   return Array.from(links.keys());
 }
 
+// 控制方链路的 WebSocket 工厂：生产用浏览器 `WebSocket`；测试经 `__setControllerSocketFactory` 注入假的。
+type ControllerSocketFactory = (url: string) => ControlWebSocketLike;
+const defaultSocketFactory: ControllerSocketFactory = (url) => new WebSocket(url) as unknown as ControlWebSocketLike;
+let controllerSocketFactory: ControllerSocketFactory = defaultSocketFactory;
+
+/** 测试接缝：注入假 WebSocket 工厂；传 null 恢复默认。生产代码不要调。 */
+export function __setControllerSocketFactory(factory: ControllerSocketFactory | null): void {
+  controllerSocketFactory = factory ?? defaultSocketFactory;
+}
+
 export function ensureControllerLink(sessionId: string): ControllerLinkEntry {
   const existing = links.get(sessionId);
   if (existing) return existing;
   const link = createControlLink({
     url: () => controlSocketUrl(controlGatewayBase(), sessionId),
     getToken: () => accessToken(),
-    createSocket: (url) => new WebSocket(url) as unknown as ControlWebSocketLike,
+    createSocket: (url) => controllerSocketFactory(url),
     setTimer,
     clearTimer,
     random: () => Math.random(),
@@ -154,6 +167,34 @@ export function closeControllerLink(sessionId: string, options: { sendStop?: boo
   entry.link.close({ sendStop: Boolean(options.sendStop), reason: "local_stop" });
   entry.sender.reset();
   emitLinks();
+}
+
+/**
+ * 对账控制方中继链路（D9 的修复点）：为「我是控制方、且会话 active」的每个会话开一条链路，
+ * 其余（会话结束/拒绝/超时/取消，或我已不是控制方/已离开通话）的链路关掉。幂等，可随意多调。
+ * 没有 selfId 时一条都不开（也顺带把残留的全关掉）。
+ */
+export function syncControllerLinks(): void {
+  const me = selfId;
+  const wanted = new Set<string>();
+  if (me) {
+    for (const session of controlStore.snapshot().sessions) {
+      if (session.state === "active" && session.controller_id === me) wanted.add(session.session_id);
+    }
+  }
+  for (const sessionId of wanted) ensureControllerLink(sessionId);
+  for (const sessionId of controllerLinkIds()) {
+    if (!wanted.has(sessionId)) closeControllerLink(sessionId);
+  }
+}
+
+/** 离开通话（或换到别的通话）时立刻关掉不属于当前在进行通话的控制方链路（不等服务端对账）。
+ *  `liveCallId` = 我当前在进行的通话 call_id；不在通话里传 null → 全关。 */
+export function closeControllerLinksOutsideCall(liveCallId: string | null): void {
+  for (const sessionId of controllerLinkIds()) {
+    const view = controlStore.get(sessionId);
+    if (!liveCallId || !view || view.call_id !== liveCallId) closeControllerLink(sessionId);
+  }
 }
 
 // ---- 动作 ---------------------------------------------------------------------------------
@@ -264,8 +305,6 @@ controlStore.onTransition((transition) => {
     const bridge = currentBridge();
     if (bridge) void bridge.stop(sessionId).catch(() => {});
   }
-  // 控制方：会话一离开 active，就关链路。
-  if (transition.next.state !== "active" && transition.next.controller_id === me) {
-    closeControllerLink(sessionId);
-  }
+  // 控制方：会话变 active 就开中继链路（D9），离开 active 就关——统一交给对账函数。
+  syncControllerLinks();
 });

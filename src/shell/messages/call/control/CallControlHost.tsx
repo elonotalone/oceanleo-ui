@@ -27,6 +27,7 @@ import { CloseIcon, ControlIcon, ShieldIcon } from "./icons";
 import { callIsLive, participantName, useControlNotices, useSelfUserId } from "./hooks";
 import {
   browserStorage,
+  closeControllerLinksOutsideCall,
   controlGatewayOrigin,
   controlNotices,
   controlStore,
@@ -196,6 +197,11 @@ export function CallControlHost() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [call.phase, call.callId, call.me.screen, meId]);
+
+  // 控制方：离开通话（或换到别的通话）立刻关掉旧通话的中继链路，不等服务端对账（D9：收口到底）。
+  useEffect(() => {
+    closeControllerLinksOutsideCall(callIsLive(call) ? call.callId : null);
+  }, [call.phase, call.callId]);
 
   // 桌面桥主动回传的状态（本机托盘/快捷键停止时）。
   useEffect(() => {
