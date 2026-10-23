@@ -206,7 +206,7 @@ function normalizeFilter(filter: BayFeedFilter | undefined): BayFeedFilter {
   if (q) out.q = q;
   if (out.kind === "request") {
     const offer = filter.offer;
-    if (offer === "service" || offer === "asset" || offer === "app" || offer === "lesson") out.offer = offer;
+    if (offer === "service" || offer === "asset" || offer === "app" || offer === "lesson" || offer === "other") out.offer = offer;
   }
   return out;
 }
@@ -473,7 +473,7 @@ function readPageKind(search: string): BayFeedFilter["kind"] | null {
 
 function readPageOffer(search: string): BayOfferKind | undefined {
   const raw = new URLSearchParams(search || "").get(BAY_OFFER_PARAM);
-  if (raw === "service" || raw === "asset" || raw === "app" || raw === "lesson") return raw;
+  if (raw === "service" || raw === "asset" || raw === "app" || raw === "lesson" || raw === "other") return raw;
   return undefined;
 }
 
