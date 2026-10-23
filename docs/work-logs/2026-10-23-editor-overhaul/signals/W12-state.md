@@ -5,6 +5,7 @@
 ## Codex continuation
 - Baseline verified with original fixture (ea2e3d75): light screenshot/report in /tmp/codex-w12-before-light.
 - Implementing actual missing theme/material undo/save fixes in original W12 files. New focused regressions cover contrast, typed project source and full-hook source replacement undo/redo. Parent owns full typecheck/suite.
+- Delivered: `verdicts/CODEX-W12.md`; commits a30efaa9,0c665c64,f18d9320. A/B+reopen/reload+offline/retry, private material replacement/undo/redo/reload and sound gain byte inspection verified. Browserclosed. Sourcefrozen; parent owns global checks and fork/card acceptance. Next authorized task W15 iteration completion.
 
 ## 已确认的事实
 - [读码] 控件在 `src/shell/media-editors/AudioContextToolbar.tsx`：crop、delete、fade-duration、fade-in、fade-out、gain、apply-gain、effect-speed、eq-low/mid/high、apply-effects；除 crop/delete 外图标全是 `effects`（重复）。crop 借用了图片栏的 `crop` 图标。
