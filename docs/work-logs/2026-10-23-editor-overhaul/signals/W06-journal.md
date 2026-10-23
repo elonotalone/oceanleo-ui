@@ -1,3 +1,14 @@
 # W06 journal（每条实测/读码结论一行，UTC）
 
 - 2026-10-23 W06 开工：bootstrap 通过，HEAD `377b212b`，无转给 W06 的信号。
+- 05:21Z 父 agent 通知：05:09–05:25Z 槽超时是代理连接池满，已修复；W06 此前未跑浏览器，无需重跑。
+- [读码] EmbedPDF 2.15：`react-pdf-viewer` 只是 `@embedpdf/snippet` 的薄壳（Preact，open shadow root）。onReady(registry) 后可拿到 ui / annotation / zoom / scroll / search / history / export / document-manager / thumbnail / viewport 全部 capability。
+- [读码] 官方工具栏、侧栏可在**同一实例**上运行时开关：`ui.forDocument(id).closeToolbarSlot("top","main"|"secondary")` / `closeSidebarSlot`，再 `setActiveToolbar("top","main","main-toolbar")` 打开；工具栏组件 `isOpen=false` 直接返回 null，不重载、不卸文档。选中批注 / 选字后的浮动菜单由 UI 分类控制（`ui.setDisabledCategories`，只影响 UI 的 CSS 隐藏，不影响指令）。
+- [读码] 批注工具 id：highlight / underline / strikeout / ink / freeText / textComment / stamp 均为默认工具；`setActiveTool` + `setToolDefaults` 驱动。stamp 支持 `defaults.imageSrc` 点哪放哪；也可 `createAnnotation(page, {type:STAMP…}, {data: ArrayBuffer})` 直接放。
+- [读码] ✓ / ✗：自定义工具（`annotations.tools` 里加，`pointerHandler` 点一下提交一条 Ink 批注，`matchScore` 恒 0 ⇒ 之后拖动/缩放/删除交给默认 ink 工具），是标准 /Ink 批注。
+- [读码] 引擎没有挪页、写旋转的 API（只有 deletePage）。页面整理走：`export.saveAsCopy()` 取字节（含批注）→ pdf-lib（MIT，`pdf-operations.ts` 已有 rotate/move/delete）→ 同一查看器 `documentManager.openDocumentBuffer` 换文档（不换实例）。撤销 = 换回前一份字节。
+- [读码] 查看器主题按原样写成 `:host{--ep-…:值}`、只做深合并不做颜色运算 ⇒ 直接传 `var(--awb-*)`，跟外壳同源，切主题自动跟随；PDF 页面底色在 snippet 里写死白色（D6 正确）。
+- [读码] 「文档 + 齿轮」= `page-settings-button`（`page:settings`）：打开视图设置菜单（双页/滚动方向/视图旋转/全屏），有作用；其中「视图旋转」不写进文件、「全屏」与外壳全屏重复，待浏览器实测后决定关哪几项。
+- [读码] 旧核依赖面：`media-editors/index.ts`（父 agent 的 barrel，只被 Model3DRoute 引用）导出 PdfStage / PdfControls / PdfWorkbench / usePdfWorkbench ⇒ 这四个名字原地换成新实现（单实例舞台 / 缩略图页面栏 / 新状态 hook / 独立组合），barrel 不用动；其余旧核模块可删。必须保留：`pdf-workbench-state.ts`（doc-family-commands 的类型）、`pdf-engine-host` / `pdf-next-runtime` / `pdf-workbench-utils` / `pdf-manifest`（W05 库预览）、`pdf-agent-chips`（quick-actions 目录）。
+- [读码] 保存基线：doc-io `saveFileToLibrary` 的 CAS 基线读 `input.item.artifactId/revisionId`；无类型身份的条目走 creations（每次新建）。⇒ 路由必须在每次保存成功后把基线换成返回的 `saved.item`，否则第 2 次保存要么 CAS 冲突、要么再 fork 一份。
+- [读码] 协同：新核没有按批注写入口，沿用「整份上锁」（打开拿锁，别人只读）；按批注三方合并（pdf-collab-sync/bytes）依赖旧核字节替换，随旧核删除。
