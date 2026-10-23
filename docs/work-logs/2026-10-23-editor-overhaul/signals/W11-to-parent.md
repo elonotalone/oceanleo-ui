@@ -12,3 +12,5 @@
 Likely cause: long-lived requests (HMR / streaming) from the wave's concurrent Chromium sessions hold all 64 sockets.
 
 I did not restart or bypass anything (the proxy is the cookie firewall; red line 5 + 8). Needs parent action (e.g. raise `maxSockets` / exempt long-lived streams / restart the proxy per its runbook). W11 continues code work and will retry the browser scenarios.
+
+**Resolved 05:25Z by parent** (pool raised to 512, proxy restarted). No action needed.
