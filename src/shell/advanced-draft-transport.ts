@@ -2,7 +2,9 @@ import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 
 /** Working documents have their own owner-checked storage, never Library rows. */
-export async function uploadPrivateWorkingDraft(file: File) {
+export async function uploadPrivateWorkingDraft(file: File): Promise<{
+  ok: boolean; error?: string; data?: { file: { url: string; meta: Record<string, unknown> } };
+}> {
   const token = await accessToken();
   if (!token) return { ok: false, error: "请登录后再保存" };
   const body = new FormData();

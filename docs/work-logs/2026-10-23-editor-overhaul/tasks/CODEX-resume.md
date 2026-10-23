@@ -35,3 +35,7 @@ Original W13 3D boundary only. Read state/journal/newest commits. Finish actual 
 ## W16
 
 Original W16 video-canvas boundary only. Read state/journal/latest code and preserve untracked s7-material.mjs. Finish native project canvas nodes, material insertion through full pipeline, private durable saves and thumbnails, real two-edit revision/fork/offline protocol, light/dark chrome. Do not assume saved if only a session snapshot exists. Produce CODEX-W16.md. Own focused tests only; parent coordinates global checks.
+
+## W15 iteration completion
+
+Ownership extension: oceanleo app/_components/game-iteration-client.ts, backend/app/routers/game_generate_router.py and a new dedicated game iteration job module if needed, plus focused game-iteration tests in that repo; original W15 UI boundary remains available. No CORS/cookie/sandbox/origin loosening, no model downgrade, no changes to credits or moderation rules. Read W15-delivery and W15-to-parent: user-visible iteration times out at ~180s while server saves later. Implement a bounded, authenticated job submission/status/result or robust streaming workflow so the user remains informed until the saved revision is confirmed, with idempotent submission and no duplicate billing/saves on transient retries. Preserve title unless the user changes title. Verify owner isolation, conflicts, cancellation/reload behavior and honest errors with focused tests and dev browser. Use existing durable job infrastructure if it exists; investigate first. Parent owns runtime restart after changes are tested. Produce CODEX-W15.md.

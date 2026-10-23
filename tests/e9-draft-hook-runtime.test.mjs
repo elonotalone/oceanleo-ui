@@ -201,6 +201,7 @@ for (const newer of [true, false]) test('local draft ' + (newer ? 'newer' : 'old
   try {
     await tick(); assert.equal(b.restores.length, 1); assert.equal(b.restores[0].payload.text, newer ? 'local' : 'server');
     // W04 R2: a newer local copy is a person's unsaved edit the server lacks; it is sent, not shown as saved.
+    if (newer) for (let i = 0; i < 40 && b.uploads.length === 0; i += 1) await tick(50);
     assert.equal(b.uploads.length, newer ? 1 : 0);
     if (newer) assert.equal(b.uploads[0].data.text, 'local');
     if (!newer) assert.equal(b.deleted.length, 1);
@@ -261,6 +262,24 @@ test('a pre-schema local recovery is still considered when it is newer than the 
   const b = bed(), p = server(b);
   b.local = { key: b.recovery.key, revision: 8, updatedAt: Date.parse(p.savedAt) + 1000, payload: { text: 'legacy-local-newer' } };
   const tree = await mount(React.createElement(Probe, { b }));
-  try { await tick(); assert.equal(b.restores[0].payload.text, 'legacy-local-newer'); assert.equal(b.uploads.length, 1); }
+  try {
+    for (let i = 0; i < 40 && b.uploads.length === 0; i += 1) await tick(50);
+    assert.equal(b.restores[0].payload.text, 'legacy-local-newer'); assert.equal(b.uploads.length, 1);
+  }
   finally { await tree.unmount(); }
+});
+
+test('a local draft older than the loaded version is discarded before it can replace the canvas', async () => {
+  const b = bed();
+  const now = Date.now();
+  b.item.createdAt = new Date(now).toISOString();
+  b.local = { key: b.recovery.key, revision: 8, updatedAt: now - 1000, payload: { text: 'stale content' } };
+  const tree = await mount(React.createElement(Probe, { b }));
+  try {
+    await tick();
+    assert.equal(b.restores.length, 0);
+    assert.equal(b.uploads.length, 0);
+    assert.equal(b.versions.length, 0);
+    assert.deepEqual(b.deleted, [b.recovery.key]);
+  } finally { await tree.unmount(); }
 });
