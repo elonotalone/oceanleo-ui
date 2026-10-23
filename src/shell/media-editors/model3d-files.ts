@@ -18,6 +18,7 @@ import {
   model3DDependencyPath,
   model3DSourceGrantPath,
   normalizeModel3DArtifactIdentity,
+  model3DIdentityFromAccessUrl,
   validateModel3DGrant,
   withModel3DRetry,
   type Model3DArtifactIdentity,
@@ -214,16 +215,34 @@ export async function prepareModelRuntimeSource(
   signal?: AbortSignal,
   dependencyBaseUrl = url,
   artifactIdentity?: Model3DArtifactIdentity | null,
+  expectedArtifactId = "",
 ): Promise<PreparedModelRuntimeSource> {
   const sourceUrl = absoluteMediaUrl(url);
   const resolvedDependencyBaseUrl = absoluteMediaUrl(
     dependencyBaseUrl || sourceUrl,
   );
-  const identity = normalizeModel3DArtifactIdentity(artifactIdentity);
+  let identity = normalizeModel3DArtifactIdentity(artifactIdentity);
+  const hint = identity ? null : model3DIdentityFromAccessUrl(sourceUrl, GATEWAY_BASE, expectedArtifactId);
+  identity ||= hint;
   let token = "";
   let grantedFormat = "";
   if (identity) {
     token = await modelGrantToken();
+  }
+  if (hint) {
+    // Resolve only this exact old checkpoint, never head: its journal may still
+    // contain unsaved clone/delete operations which cannot be replayed on head.
+    const response = await fetch(`${GATEWAY_BASE.replace(/\/+$/, "")}/v1/library/items/${encodeURIComponent(hint.artifactId)}?revisionId=${encodeURIComponent(hint.revisionId)}`, {
+      headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal,
+    });
+    if (!response.ok) throw new Model3DHttpError("无法恢复 3D 检查点版本", response.status);
+    const projection = await response.json();
+    const digest = String(projection.source?.digest || "");
+    if (projection.artifactId !== hint.artifactId || projection.revisionId !== hint.revisionId ||
+      !["glb", "gltf"].includes(projection.sourceFormat) || !/^[a-f0-9]{64}$/i.test(digest)) {
+      throw new Error("3D 检查点来源身份无法确认");
+    }
+    identity = { ...hint, sourceDigest: digest.toLowerCase() };
   }
   // Grant and download retry together: a gateway restart ("Failed to fetch") or
   // an expired 5-minute signed URL (410) is cured by a fresh grant, no Reload.
@@ -247,6 +266,11 @@ export async function prepareModelRuntimeSource(
         { signal },
       );
   const format = await assertBlobSource(blob, "model3d");
+  if (hint && identity?.sourceDigest) {
+    const hash = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    const actual = Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    if (actual !== identity.sourceDigest) throw new Error("3D 检查点内容校验失败");
+  }
   if (format !== "glb" && format !== "gltf") {
     throw new Error("3D 模型源格式校验失败");
   }

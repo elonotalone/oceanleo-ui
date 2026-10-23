@@ -40,6 +40,7 @@ export function useModel3DSourceLoader({
   sourceUrl,
   dependencyBaseUrl,
   artifactIdentity,
+  expectedArtifactId,
   reloadToken,
   sourceGenerationRef,
   loadedSourceRef,
@@ -59,6 +60,7 @@ export function useModel3DSourceLoader({
   sourceUrl: string;
   dependencyBaseUrl: string;
   artifactIdentity: Model3DArtifactIdentity | null;
+  expectedArtifactId?: string;
   reloadToken: number;
   sourceGenerationRef: MutableRefObject<number>;
   loadedSourceRef: MutableRefObject<string>;
@@ -110,6 +112,7 @@ export function useModel3DSourceLoader({
         controller.signal,
         dependencyBaseUrl,
         artifactIdentity,
+        expectedArtifactId,
       );
       releasePreparedSource = prepared.release;
       if (!aliveRef.current || generation !== sourceGenerationRef.current) {
@@ -163,6 +166,7 @@ export function useModel3DSourceLoader({
     aliveRef,
     annotations,
     artifactIdentity,
+    expectedArtifactId,
     dependencyBaseUrl,
     loadedSourceRef,
     onPreparedSource,

@@ -228,6 +228,7 @@ export function useModel3DWorkbench(
     sourceUrl,
     dependencyBaseUrl: sourceProvenance.dependencyBaseUrl || sourceUrl,
     artifactIdentity,
+    expectedArtifactId: item.artifactId || "",
     reloadToken,
     sourceGenerationRef,
     loadedSourceRef,

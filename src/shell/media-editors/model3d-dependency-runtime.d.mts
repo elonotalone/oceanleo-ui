@@ -17,6 +17,7 @@ export interface Model3DValidatedGrant {
 export function normalizeModel3DArtifactIdentity(
   value: unknown,
 ): Model3DArtifactIdentity | null;
+export function model3DIdentityFromAccessUrl(value: string, gatewayBase: string, expectedArtifactId: string): Model3DArtifactIdentity | null;
 
 export function model3DSourceGrantPath(
   identity: Model3DArtifactIdentity,

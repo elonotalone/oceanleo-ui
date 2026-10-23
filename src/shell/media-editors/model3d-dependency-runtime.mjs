@@ -25,6 +25,21 @@ export function normalizeModel3DArtifactIdentity(value) {
   return { artifactId, revisionId, sourceDigest };
 }
 
+/** Locator hint only: authentication and immutable identity are checked again
+ * by the server. Never treat an expired/signed payload as authorization. */
+export function model3DIdentityFromAccessUrl(value, gatewayBase, expectedArtifactId) {
+  const qualified = qualifyModel3DGrantUrl(value, gatewayBase);
+  if (!qualified || !UUID_RE.test(expectedArtifactId || "")) return null;
+  try {
+    const token = new URL(qualified).pathname.split("/access/")[1];
+    if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) return null;
+    const payload = JSON.parse(atob(token.split(".")[0].replace(/-/g, "+").replace(/_/g, "/")));
+    if (payload.v !== 1 || payload.purpose !== "source" || payload.mode !== "source" ||
+      payload.artifact !== expectedArtifactId || !UUID_RE.test(payload.revision || "") || payload.dependencyPath) return null;
+    return { artifactId: payload.artifact, revisionId: payload.revision, sourceDigest: "" };
+  } catch { return null; }
+}
+
 export function model3DSourceGrantPath(identity) {
   const normalized = normalizeModel3DArtifactIdentity(identity);
   if (!normalized) throw new Error("3D artifact identity is required");
