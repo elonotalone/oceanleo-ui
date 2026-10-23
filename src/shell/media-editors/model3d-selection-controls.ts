@@ -10,7 +10,7 @@ export function model3dSelectionContext(editor: Model3DWorkbenchState, tt: UITra
   const controls: SelectionControl[] = [];
   if (node) {
     controls.push({ id: "transform-mode", kind: "select", label: tt("变换工具"), icon: "select", iconOnly: true,
-      value: editor.transformMode, options: [{ value: "translate", label: tt("移动") }, { value: "rotate", label: tt("旋转") }, { value: "scale", label: tt("缩放") }] });
+      value: editor.transformMode, options: [{ value: "translate", label: tt("移动") }, { value: "rotate", label: tt("旋转") }, { value: "scale", label: tt("缩放对象") }] });
     for (const kind of ["position", "rotation", "scale"] as const) {
       for (const [index, axis] of ["x", "y", "z"].entries()) controls.push({
         id: `${kind}-${axis}`, kind: "number", label: `${kind === "position" ? "P" : kind === "rotation" ? "R" : "S"}${axis.toUpperCase()}`,
