@@ -16,3 +16,4 @@
 - [实测 DB] 每个编辑会话 `advanced-draft.ts::uploadAdvancedDraft` 新建一个隐藏 `…草稿` root（txt 3 个会话 → 3 个；非 W08 文件，转 W04/父）。
 - [实测 浏览器 R2] md `c3e0c65b…`：两次保存 = revision 8/9，重开/刷新两处都在；断网 error → 重试 4s 后 saved = revision 10（上一轮 15s 窗口内没动，probe 显示恢复网络约 3s 后自动重试即成功；场景重试窗口放宽到 60s）。turndown 预载后不再报 chunk 失败。
 - [实测 DB] docx `2e894b64…` 上一轮（07:55Z）3 次保存只有 2 个 revision（save2 的 saved 没有对应 revision），待复测。
+- [实测 浏览器+DB] docx：第一次改动直接走版本；同会话第二次改动走草稿层（database/upload）→ saved，版本 20s 空闲或关闭 hand-off 后约 9s 才发（rev 7/8 实测）。关闭后马上重开 + 刷新会让版本推迟到下一次编辑（数据在草稿里不丢）。写 `signals/W08-to-W04.md`。
