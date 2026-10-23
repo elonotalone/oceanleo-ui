@@ -1,4 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+test("stage chrome uses product language without exposing the rendering library brand", () => {
+  const stage = readFileSync(new URL("../src/shell/media-editors/Model3DStage.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(stage, /tt\(["']Three\.js/);
+  assert.match(stage, /aria-label=\{tt\("画布"\)\}/);
+  assert.match(stage, /: tt\("场景"\)/);
+});
 import test from "node:test";
 import { model3dSelectionContext } from "../src/shell/media-editors/model3d-selection-controls.ts";
 import { canonicalSelectionControls } from "../src/shell/edit-bar-canon.ts";

@@ -97,7 +97,7 @@ export function Model3DStage({
           ref={editor.canvasRef}
           data-testid="model3d-canvas"
           data-selection-mode="single"
-          aria-label={tt("Three.js 3D 编辑画布")}
+          aria-label={tt("画布")}
           aria-describedby="model3d-stage-status"
           className="block h-full min-h-[280px] w-full touch-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
         />
@@ -192,7 +192,7 @@ export function Model3DStage({
                 ? tt("标注放置模式")
                 : editor.selectedNode
                   ? `${tt("单选")} · ${editor.selectedNode.type}`
-                  : tt("Three.js 场景")}
+                  : tt("场景")}
           </div>
         )}
       </div>
