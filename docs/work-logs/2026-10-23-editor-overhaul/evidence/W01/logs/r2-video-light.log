@@ -1,0 +1,46 @@
+[16.8s] console.error Failed to load resource: the server responded with a status of 410 ()
+[20.8s] video report {"htmlClass":"light","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","history","collab","save-state","more","maximize","close"],"tabs":[],"editorTheme":"light","themedRoots":["light"],"adapter":"video-timeline","saveState":"unconfirmed","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(243, 244, 246)"}
+[20.9s] screenshot /tmp/w01/r2-video-light/light-video-01-header.png
+[21.9s] video more ["invite:Invite to edit together:icon","replay:Create replay:icon","share:Share:icon","favorite:Favorite:icon","download:Download:icon"]
+[22.0s] screenshot /tmp/w01/r2-video-light/light-video-03-more.png
+[22.0s] video formats ["video-download-mp4:MP4 视频 (.mp4)Default:disabled","video-download-webm:WebM 视频 (.webm):disabled"]
+[22.1s] screenshot /tmp/w01/r2-video-light/light-video-04-download-menu.png
+[23.8s] video invite window-opened
+[23.9s] screenshot /tmp/w01/r2-video-light/light-video-07-invite.png
+[25.6s] video replay window-opened
+[25.7s] screenshot /tmp/w01/r2-video-light/light-video-07-replay.png
+[26.4s] SUMMARY [
+ {
+  "name": "video",
+  "theme": "light",
+  "oneRow": true,
+  "noThemeKey": true,
+  "followsSite": true,
+  "saveSlot": true,
+  "saveState": "unconfirmed",
+  "slots": [
+   "back",
+   "library",
+   "history",
+   "collab",
+   "save-state",
+   "more",
+   "maximize",
+   "close"
+  ],
+  "tabs": [],
+  "more": [
+   "invite:Invite to edit together:icon",
+   "replay:Create replay:icon",
+   "share:Share:icon",
+   "favorite:Favorite:icon",
+   "download:Download:icon"
+  ],
+  "formats": [
+   "video-download-mp4:MP4 视频 (.mp4)Default:disabled",
+   "video-download-webm:WebM 视频 (.webm):disabled"
+  ],
+  "invite": "window-opened",
+  "replay": "window-opened"
+ }
+]

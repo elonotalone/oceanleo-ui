@@ -1,0 +1,43 @@
+[14.7s] console.error Blocked script execution in 'https://api.dev.oceanleo.com/v1/artifact-renditions/access/<redacted>
+[14.8s] console.error Blocked script execution in 'https://api.dev.oceanleo.com/v1/artifact-renditions/access/<redacted>
+[27.9s] website report {"htmlClass":"dark","actionRows":1,"pageRow":false,"themeToggle":0,"slots":["back","library","pages","history","save-state","more","maximize","close"],"tabs":["artifact:Edit*","pro:Pro edit"],"editorTheme":"dark","themedRoots":["dark"],"adapter":"website","saveState":"unconfirmed","saveSlot":true,"headerHeight":44,"headerBg":"rgba(0, 0, 0, 0)","rootBg":"rgb(14, 14, 17)"}
+[28.0s] screenshot /tmp/w01/r2-web-dark/dark-website-01-header.png
+[33.2s] screenshot /tmp/w01/r2-web-dark/dark-website-02-tab-pro.png
+[37.6s] website tabs ["pro:selected:rows=1:theme=dark","back-artifact:selected"]
+[38.3s] website more ["share:Share:icon","favorite:Favorite:icon"]
+[38.4s] screenshot /tmp/w01/r2-web-dark/dark-website-03-more.png
+[39.6s] SUMMARY [
+ {
+  "name": "website",
+  "theme": "dark",
+  "oneRow": true,
+  "noThemeKey": true,
+  "followsSite": true,
+  "saveSlot": true,
+  "saveState": "unconfirmed",
+  "slots": [
+   "back",
+   "library",
+   "pages",
+   "history",
+   "save-state",
+   "more",
+   "maximize",
+   "close"
+  ],
+  "tabs": [
+   "artifact:Edit*",
+   "pro:Pro edit"
+  ],
+  "tabRoundtrip": [
+   "pro:selected:rows=1:theme=dark",
+   "back-artifact:selected"
+  ],
+  "more": [
+   "share:Share:icon",
+   "favorite:Favorite:icon"
+  ],
+  "invite": "absent",
+  "replay": "absent"
+ }
+]

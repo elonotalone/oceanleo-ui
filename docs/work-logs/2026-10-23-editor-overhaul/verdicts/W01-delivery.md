@@ -58,11 +58,12 @@ bash harness/mint.sh | OUT_DIR=/tmp/w01/r2-<theme> THEME=<light|dark> node harne
 | 表格 | ✔ | Edit* ↔ Pro edit ✔ | 邀请 ✔、回放 ✔、分享 ✔、收藏 false→true ✔（dark 那次服务器回「素材请求超时」，按钮旁如实显示红字错误，状态没翻，也没假成功）、下载 `[W01] sample.xlsx.xlsx` ✔（文件名重复扩展名，转 W10） | ✔ / ✔ |
 | 演示 | ✔（单模式，不画页签） | — | 邀请 ✔、回放 ✔、分享 ✔、收藏 false→true→false ✔、下载 `[W01] sample.pptx.pptx` ✔（扩展名转 W07） | ✔ / ✔ |
 | 游戏 | ✔ | Edit* ↔ Code ✔ | 只有分享和收藏（没有协同、没有下载动作，所以不出这些项）；只看不点 | ✔ / ✔ |
-| 视频 | ✔（单模式） | — | light：邀请、回放、分享、收藏、下载都在；dark 那次协同块还没加载完，只有分享、收藏、下载。两格式在素材没加载完时 disabled（`sourceReady`，W11 的路由逻辑）。只看不点 | ✔ / ✔（浅色站点下视频编辑器是浅色） |
-| 网站 | **未测**：两档的 `page.goto` 都超时 150 秒，开发槽当时无响应（curl 60 秒 0 字节）。已写 `signals/W01-to-parent.md` | | | |
+| 视频 | ✔（单模式） | — | light：邀请弹窗 ✔、回放面板 ✔，分享、收藏、下载都在（重跑 `logs/r2-video-light.log`）；dark 那次协同块还没加载完，只有分享、收藏、下载。两格式在素材没加载完时 disabled（`sourceReady`，W11 的路由逻辑）。分享、收藏、下载只看不点 | ✔ / ✔（浅色站点下视频编辑器是浅色） |
+| 网站 | ✔（开发槽 09:58Z 恢复后重跑，`logs/r2-web-{light,dark}.log`） | Edit* ↔ Pro edit ✔ | 只有分享和收藏（平台公共件，没有协同、没有下载动作）；只看不点 | ✔ / ✔ |
 
 截图（`evidence/W01/`）：
 - `light/`：`light-pdf-01-header`、`light-pdf-04-download-menu`、`light-pdf-05-share`（按钮旁的「Copied」）、`light-pdf-07-invite`、`light-pdf-08-auto-dark`（auto 切暗，整页连编辑器一起变暗）、`light-grid-02-tab-pro`、`light-deck-04-download-menu`、`light-game-02-tab-code`、`light-video-01-header`。
+- 网站：`light/light-website-02-tab-pro`、`dark/dark-website-01-header`。
 - `dark/`：`dark-pdf-01-header`、`dark-pdf-07-replay`、`dark-pdf-08-auto-light`、`dark-grid-06-favorite-feedback`（错误反馈）、`dark-deck-03-more`、`dark-game-02-tab-code`、`dark-video-03-more`。
 - 其余截图只留在 `/tmp/w01/r2-{light,light2,dark}/`，没有提交。
 - 两档下 `···` 菜单、子菜单、邀请弹窗、回放面板都跟着主题走，没有浅色岛。dark 下邀请弹窗与回放面板是深底；light 下菜单是白底、浅色站点。
@@ -108,7 +109,7 @@ W01 不是编辑器 owner，只负责顶栏的保存状态槽。六件编辑器�
 
 ## 9. 如实的剩余问题
 
-- **网站一件两档都没验收**，原因是开发槽无响应（§4）。槽恢复后用上面的命令只带 `website=6b16c807-da26-4fe5-be93-ef3e4c9c60ee` 两档各跑一次即可，场景已经写好。
-- 视频这一件的邀请和回放，只在 light 那次列在菜单里，没来得及点开（槽在重编译，点击超时）。弹窗走的是和 PDF / 表格 / 演示同一个协同块，那三件都已点开过。
+- 开发槽在 09:4x–09:58Z 不通（父 agent 已确认是预览会话代理泄漏连接，已修好）。这段时间失败的网站和视频场景，恢复后都已重跑通过。
+- 网站舞台在截图时还停在「正在读取远程网站工程。」：这句是中文，没翻译，且加载较慢。归 W14，不是顶栏的问题。
 - 收藏 PUT 在开发槽上要 3–6 秒才回，期间按钮只有 `aria-busy`，没有可见的「进行中」。结果回来后，按钮旁的反馈和菜单文字都会翻。
 - 页签切换只核了「选中状态 + 仍是一行 + 主题对」，没有逐件核专业编辑页的内容（那是各编辑器 owner 的）。
