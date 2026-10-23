@@ -326,6 +326,11 @@ export function createImStore(deps: StoreDeps): ImStore {
   let foreground: string | null = null;
   let unsubscribeSocket: (() => void) | null = null;
   let loadSeq = 0;
+  /**
+   * 有人要过收件箱（Inbox 调过 loadInbox）。实时层停 / 启（登录态抖动、全局宿主重挂）会清空列表，
+   * 而 LeoChat 整页 / 右侧栏里的列表和全局宿主不在一棵树里、不会跟着重挂——start() 据此自己补拉（V02 D1）。
+   */
+  let inboxWanted = false;
 
   function emit(): void {
     for (const listener of Array.from(listeners)) listener();
@@ -398,6 +403,7 @@ export function createImStore(deps: StoreDeps): ImStore {
   }
 
   async function loadInbox(filter: string = inbox.filter): Promise<void> {
+    inboxWanted = true;
     const mySeq = ++loadSeq;
     inbox = { ...(filter === inbox.filter ? inbox : emptyInbox(filter)), filter, loading: true, error: null };
     emit();
@@ -487,6 +493,8 @@ export function createImStore(deps: StoreDeps): ImStore {
         if (id && !self) self = id;
       });
       deps.socket.start();
+      // 停 / 启之后：之前有人要过收件箱、现在没加载也没在加载 → 主动重拉，不让还挂着的列表一直空着（V02 D1）。
+      if (inboxWanted && !inbox.loaded && !inbox.loading) void loadInbox(inbox.filter);
     },
     stop() {
       if (unsubscribeSocket) unsubscribeSocket();
@@ -495,6 +503,8 @@ export function createImStore(deps: StoreDeps): ImStore {
       connection = "closed";
       unread = null;
       presence = {};
+      // 清空照旧（换账号不能看到上一个人的会话）；停之前发出的列表请求作废，结果可能属于上一个账号。
+      loadSeq += 1;
       inbox = emptyInbox();
       self = null;
       emit();

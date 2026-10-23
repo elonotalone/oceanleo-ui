@@ -448,3 +448,164 @@ test("接线：Inbox 把 InboxCallDecor 注入每一行；InboxRow 不静态引�
   const row = readFileSync(new URL("../src/shell/messages/InboxRow.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(row, /from "\.\/call\//);
 });
+
+// ── V02 D1（仲裁 A-34）：实时层停 / 启之后收件箱不能一直空着 ─────────────────
+
+const { createImStore } = await import("../src/shell/messages/realtime/store.ts");
+
+function storeHarness(pages) {
+  const socket = {
+    started: 0,
+    stopped: 0,
+    start() { this.started += 1; },
+    stop() { this.stopped += 1; },
+    subscribe() { return () => {}; },
+    state: () => "open",
+    tokenChanged() {},
+    noteActivity() {},
+    noteVisibility() {},
+    sendTyping() {},
+  };
+  const calls = [];
+  const pending = [];
+  const store = createImStore({
+    socket,
+    fetchUnread: async () => ({ total: 0, mentions: 0, requests: 0, by_conversation: {} }),
+    fetchConversations: (filter) => {
+      calls.push(filter);
+      const next = pages.shift();
+      if (next === "hold") return new Promise((resolve) => pending.push(resolve));
+      return Promise.resolve(next ?? { items: [], next_cursor: null });
+    },
+    notifyDesktop() {},
+    isHidden: () => false,
+    selfId: async () => "me",
+    fallbackTitle: () => "消息",
+  });
+  return { store, socket, calls, pending };
+}
+
+const page = (...ids) => ({ items: ids.map((id) => item(id)), next_cursor: null });
+async function settled() {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+}
+
+test("D1 状态仓：列表加载过 → stop() 清空（换账号不留旧数据）→ start() 自己补拉回来", async () => {
+  const h = storeHarness([page("a", "b"), page("a", "b", "c")]);
+  h.store.start();
+  await h.store.loadInbox("all");
+  assert.deepEqual(h.store.inbox().items.map((i) => i.id).sort(), ["a", "b"]);
+  h.store.stop();
+  assert.equal(h.store.inbox().items.length, 0, "停的时候照旧清空");
+  assert.equal(h.store.inbox().loaded, false);
+  h.store.start();
+  assert.equal(h.store.inbox().loading, true, "启动时就开始补拉");
+  await settled();
+  assert.deepEqual(h.calls, ["all", "all"]);
+  assert.deepEqual(h.store.inbox().items.map((i) => i.id).sort(), ["a", "b", "c"]);
+  assert.equal(h.store.inbox().loaded, true);
+});
+
+test("D1 状态仓：从没人要过列表时，start() 不多发请求", async () => {
+  const h = storeHarness([]);
+  h.store.start();
+  h.store.stop();
+  h.store.start();
+  await settled();
+  assert.deepEqual(h.calls, []);
+});
+
+test("D1 状态仓：stop() 之前发出的列表请求作废（结果可能属于上一个账号），以 start() 补拉的为准", async () => {
+  const h = storeHarness(["hold", page("new-account-row")]);
+  h.store.start();
+  const first = h.store.loadInbox("all");
+  h.store.stop();
+  h.store.start();
+  await settled();
+  h.pending[0](page("old-account-row"));
+  await first;
+  await settled();
+  assert.deepEqual(h.store.inbox().items.map((i) => i.id), ["new-account-row"]);
+});
+
+const inboxHooksStub = dataModule(`
+  // 每次现读：测试会整体替换 globalThis.__W08D1。
+  const S = () => globalThis.__W08D1;
+  export function useImInbox() { return S().inbox; }
+  export function useImConnection() { return "open"; }
+  export function useImResync() {}
+  export function imStore() {
+    return {
+      inbox: () => S().live ?? S().inbox,
+      loadInbox: async (filter) => { S().loads.push(filter); S().live = { ...S().inbox, loading: true }; },
+      loadMoreInbox: async () => {},
+    };
+  }
+`);
+const nullComponent = (name) => dataModule(`export function ${name}(){ return null; }`);
+const { Inbox } = await import(
+  await compileModule("src/shell/messages/Inbox.tsx", {
+    "../../i18n/ui/useUI": uiStub,
+    "./realtime/hooks": inboxHooksStub,
+    "../../lib/im/inbox-api": dataModule(`export async function fetchDraftConversationIds(){ return new Set(); }`),
+    "../../lib/im/groups-api": dataModule(`export async function clearConversationHistory(){} export async function markConversationUnread(){} export async function patchMySettings(){}`),
+    "../../lib/im/people-api": dataModule(`export function reasonOf(_e, fallback){ return fallback; }`),
+    "../../lib/im/search-api": dataModule(`export function searchQueryReady(){ return false; }`),
+    "../../ui": confirmStub,
+    "../leochat/PanelToolbar": nullComponent("PanelToolbar"),
+    "./InboxRow": nullComponent("InboxRow"),
+    "./people/InviteLinkDialog": nullComponent("InviteLinkDialog"),
+    "./search/SearchView": nullComponent("SearchView"),
+    "./call/chat/InboxCallBadge": nullComponent("InboxCallDecor"),
+  })
+);
+
+async function mountInbox(inboxState) {
+  globalThis.__W08D1 = { inbox: inboxState, live: null, loads: [] };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(React.createElement(Inbox, { activeConversationId: null, onOpenConversation() {}, onNew() {} }));
+  });
+  await flush();
+  return {
+    host,
+    text: () => host.textContent,
+    async unmount() {
+      await act(async () => root.unmount());
+      host.remove();
+    },
+  };
+}
+
+const EMPTY = { filter: "all", items: [], nextCursor: null, loaded: false, loading: false, error: null, needsRefresh: false };
+
+test("D1 列表：空且还没加载（刚被实时层清空）→ 显示「正在加载…」并自己补拉一次，不留空白", async () => {
+  const view = await mountInbox({ ...EMPTY });
+  assert.ok(view.host.querySelector("[data-inbox-loading]"), "显示正在加载");
+  assert.match(view.text(), /正在加载…/);
+  assert.doesNotMatch(view.text(), /还没有会话/);
+  assert.deepEqual(globalThis.__W08D1.loads, ["all"], "挂载与空闲补拉合起来只发一次");
+  await view.unmount();
+});
+
+test("D1 列表：正在加载也显示「正在加载…」；加载完是空的才写「还没有会话」；出错显示重试、不显示加载中", async () => {
+  const loading = await mountInbox({ ...EMPTY, loading: true });
+  assert.ok(loading.host.querySelector("[data-inbox-loading]"));
+  assert.deepEqual(globalThis.__W08D1.loads, [], "已经在加载就不重复发请求");
+  await loading.unmount();
+
+  const empty = await mountInbox({ ...EMPTY, loaded: true });
+  assert.equal(empty.host.querySelector("[data-inbox-loading]"), null);
+  assert.match(empty.text(), /还没有会话/);
+  assert.deepEqual(globalThis.__W08D1.loads, []);
+  await empty.unmount();
+
+  const failed = await mountInbox({ ...EMPTY, error: "load_failed" });
+  assert.equal(failed.host.querySelector("[data-inbox-loading]"), null);
+  assert.match(failed.text(), /会话列表暂时打不开/);
+  assert.deepEqual(globalThis.__W08D1.loads, ["all"], "挂载时照旧重试一次；空闲补拉不在出错时反复打");
+  await failed.unmount();
+});
+

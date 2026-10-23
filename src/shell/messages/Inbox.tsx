@@ -39,8 +39,22 @@ export function Inbox(props: InboxProps) {
 
   useEffect(() => {
     const store = imStore();
-    if (!store.inbox().loaded || store.inbox().filter !== "all") void store.loadInbox("all");
+    const live = store.inbox();
+    // 已加载或正在加载（实时层 start() 已经在补拉）就不重复发请求。
+    if (live.filter === "all" && (live.loaded || live.loading)) return;
+    void store.loadInbox("all");
   }, []);
+
+  // 实时层停 / 启把列表清空、而本组件还挂着（LeoChat 整页 / 右侧栏和全局宿主不在一棵树里）：
+  // 没在加载、也没报错，就自己补拉一次，不让列表一直空着（V02 D1；正常情况下 store.start() 已经补拉）。
+  const idleUnloaded = !inbox.loaded && !inbox.loading && !inbox.error;
+  useEffect(() => {
+    if (!idleUnloaded) return;
+    const store = imStore();
+    const live = store.inbox();
+    if (live.loaded || live.loading || live.error) return;
+    void store.loadInbox("all");
+  }, [idleUnloaded]);
 
   // 打开 / 切回聊天列表、重连之后，各取一次草稿。
   useEffect(() => {
@@ -143,8 +157,11 @@ export function Inbox(props: InboxProps) {
             {tt("还没有会话")}
           </div>
         ) : null}
-        {inbox.loading && rows.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45">{tt("正在加载…")}</div>
+        {rows.length === 0 && (inbox.loading || (!inbox.loaded && !inbox.error)) ? (
+          // 列表空且还没加载完（含刚被实时层清空、补拉还没发出的那一瞬）：显示「正在加载」，不留一片空白（V02 D1）。
+          <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45" data-inbox-loading="">
+            {tt("正在加载…")}
+          </div>
         ) : null}
         {inbox.error && rows.length === 0 && !inbox.loading ? (
           <div className="px-4 py-6 text-center text-sm text-black/55 dark:text-white/55">
