@@ -75,6 +75,7 @@ test("each typed save exports a GLB and a private PNG, moves CAS forward, and re
     assert.equal(calls.saves[0].poster.type, "image/png");
     assert.equal(calls.saves[0].title, "Model.glb", "saving must preserve the document title");
     options.revisionRef.current = 2;
+    options.sourceGenerationRef.current = 2; // Undo/replacement restores another scene generation.
     await act(async () => { await tree.current().saveCopy(); });
     assert.equal(calls.saves[1].item.revisionId, "r2", "second save used the old CAS base");
     await act(async () => { await tree.current().saveCopy(); });

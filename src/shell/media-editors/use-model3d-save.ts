@@ -68,7 +68,7 @@ export function useModel3DSave({
   checkpointForExport: () => Promise<ArrayBuffer | null>;
 } {
   const busyRef = useRef(false);
-  const receiptRef = useRef<{ generation: number; revision: number; saved: PersistedModel3DVersion } | null>(null);
+  const receiptRef = useRef<{ generation: number; revision: number; inputRoot: string; saved: PersistedModel3DVersion } | null>(null);
   const [saving, setSaving] = useState(false);
   const persist = useCallback(async () => {
     if (busyRef.current || !modelLoaded) return null;
@@ -76,7 +76,9 @@ export function useModel3DSave({
     if (!runtime || !checkpointUrl) return null;
     const generation = sourceGenerationRef.current;
     const savingRevision = revisionRef.current;
-    const previous = receiptRef.current;
+    const inputRoot = item.artifactId || item.id;
+    const candidate = receiptRef.current;
+    const previous = candidate && (candidate.inputRoot === inputRoot || candidate.saved.artifactId === inputRoot) ? candidate : null;
     if (previous?.generation === generation && previous.revision === savingRevision) return previous.saved;
     const journal = runtime.getOperationJournal();
     const plan = createModel3DSavePlan(journal, {
@@ -93,7 +95,9 @@ export function useModel3DSave({
       // records view state, while the GLB is the canonical editable scene.
       glb = await runtime.exportGlb();
       const saved = await persistModel3DProject({
-        item: previous?.generation === generation ? previous.saved.item || item : item,
+        // Undo/import changes the scene generation, not the durable target's
+        // CAS head. Keep the last successful receipt across those operations.
+        item: previous?.saved.item || item,
         siteId,
         title,
         checkpointUrl,
@@ -107,7 +111,7 @@ export function useModel3DSave({
         view,
         revision: savingRevision,
       });
-      receiptRef.current = { generation, revision: savingRevision, saved };
+      receiptRef.current = { generation, revision: savingRevision, inputRoot, saved };
       if (saved.artifactId && saved.revisionId) ownSavedVersionKeys?.current.add(`${saved.artifactId}:${saved.revisionId}`);
       if (!aliveRef.current || generation !== sourceGenerationRef.current) {
         return saved;

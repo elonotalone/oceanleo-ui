@@ -170,6 +170,28 @@ test(
     assert.equal(response?.status(), 200);
     await page.waitForFunction(() => window.__MODEL3D_SMOKE_READY__ === true);
 
+    await t.test("repeated GLB checkpoints do not accumulate scene wrapper nodes", async () => {
+      const result = await page.evaluate(async () => {
+        const THREE = await import("three");
+        const { exportModel3DGlb, parseModel3DGlb } = await import("/src/shell/media-editors/model3d-gltf.mjs");
+        let scene = new THREE.Group();
+        scene.name = "Authored scene";
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ color: "#ff8800" }));
+        mesh.name = "Cube"; scene.add(mesh);
+        const counts = [];
+        for (let i = 0; i < 3; i++) {
+          const bytes = await exportModel3DGlb(scene);
+          const header = new DataView(bytes);
+          const json = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes, 20, header.getUint32(12, true))));
+          counts.push(json.nodes.length);
+          if (i === 0 && mesh.parent !== scene) throw Error("export reparented the authored mesh");
+          scene = (await parseModel3DGlb(bytes)).scene;
+        }
+        return { counts, name: scene.name, meshes: scene.children.map((node) => node.name) };
+      });
+      assert.deepEqual(result, { counts: [1, 1, 1], name: "Authored scene", meshes: ["Cube"] });
+    });
+
     await t.test("runtime gestures coalesce previews and cancel cleanly", async () => {
       const committed = await page.evaluate(() =>
         window.__MODEL3D_RUN_GESTURE_TEST__("commit-transform"),

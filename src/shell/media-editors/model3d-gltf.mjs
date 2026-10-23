@@ -28,7 +28,19 @@ export async function parseModel3DGlb(source, resourcePath = "") {
 }
 
 export async function exportModel3DGlb(scene, animations = []) {
-  const output = await new GLTFExporter().parseAsync(scene, {
+  // GLTFLoader represents a glTF scene as an identity Group. Exporting that
+  // Group as a node adds an AuxScene wrapper on every save/reopen cycle. Use
+  // a non-owning Scene envelope; never reparent or flatten authored transforms.
+  let input = scene;
+  if (scene.isGroup && scene.position.lengthSq() === 0 &&
+      scene.rotation.x === 0 && scene.rotation.y === 0 && scene.rotation.z === 0 &&
+      scene.scale.x === 1 && scene.scale.y === 1 && scene.scale.z === 1) {
+    input = new THREE.Scene();
+    input.name = scene.name;
+    input.userData = { ...scene.userData };
+    input.children = scene.children;
+  }
+  const output = await new GLTFExporter().parseAsync(input, {
     binary: true,
     trs: true,
     onlyVisible: false,
