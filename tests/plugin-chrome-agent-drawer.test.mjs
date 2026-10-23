@@ -151,6 +151,7 @@ const pluginThemeStubUrl = dataModule(`
   export function pluginWorkbenchStyle(_theme, accent) {
     return { "--awb-accent": accent };
   }
+  export function usePluginThemePortal() { return null; }
 `);
 
 /**

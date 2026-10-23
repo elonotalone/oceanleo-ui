@@ -103,6 +103,7 @@ const pluginThemeStubUrl = dataModule(`
   export function pluginWorkbenchStyle(_theme, accent) {
     return { "--awb-accent": accent };
   }
+  export function usePluginThemePortal() { return null; }
 `);
 const splitWorkspaceStubUrl = dataModule(`
   export function useConsoleAgentFocus() { return null; }
@@ -161,7 +162,7 @@ const frameStubs = {
   "../../i18n/ui/useUI": uiStubUrl,
   "../../ui/Toast": toastStubUrl,
   "../AdvancedEditorIcon": iconStubUrl,
-  "../editor-item-social-chrome": dataModule(`export function EditorItemSocialChrome(){return null;}`),
+  "../editor-item-social-chrome": dataModule(`export function useEditorItemSocial(){ return { shareAvailable: false, favoriteAvailable: false, favorite: false, busy: "", error: "", artifactId: null, revisionId: null, async share(){}, async toggleFavorite(){} }; }`),
   "../plugin-theme": pluginThemeStubUrl,
   "./agent-drawer-panel": agentPanelStubUrl,
   "./PluginAgentPanel": agentPanelStubUrl,
