@@ -32,7 +32,6 @@ import type { WorkbenchMaterialAdapter } from "../workbench-material-registry";
 import { VideoCanvasGraphHistory } from "./video-canvas-history";
 import { videoKindAccent, videoKindSpec } from "./video-canvas-kinds";
 import {
-  VIDEO_PROJECT_V2_SCHEMA,
   addVideoDocNode,
   connectVideoDocNodes,
   moveVideoDocNodes,
@@ -391,8 +390,9 @@ export function VideoProjectStage({ item, taskId, siteId = "", accent = "#0d9488
           editRevision,
           autoSave: true,
           flush,
+          // Local recovery only (no `draftSchema`): the server draft tier uploads a hidden
+          // `…草稿` root on every save (10-23 W16 实测), which §5 forbids.
           recovery: {
-            draftSchema: VIDEO_PROJECT_V2_SCHEMA,
             key: advancedRecoveryKey("video-canvas", item),
             ready: canEdit,
             capture: () => (canEdit ? docRef.current : null),

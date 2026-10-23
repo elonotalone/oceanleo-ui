@@ -80,6 +80,13 @@ export interface VideoProjectCanvasProps {
 type CardData = VideoCanvasViewNode & { lockedLabel: string } & Record<string, unknown>;
 
 const NODE_WIDTH = 208;
+const HANDLE_STYLE = {
+  width: 10,
+  height: 10,
+  borderWidth: 2,
+  background: "var(--vc-node-bg)",
+  borderColor: "var(--vc-accent)",
+} as const;
 
 const VideoNodeCard = memo(function VideoNodeCard({ data, selected }: NodeProps<Node<CardData>>) {
   return (
@@ -87,7 +94,8 @@ const VideoNodeCard = memo(function VideoNodeCard({ data, selected }: NodeProps<
       data-testid="video-canvas-node"
       data-node-id={data.id}
       data-selected={selected ? "true" : undefined}
-      className="relative overflow-hidden rounded-[10px] text-left"
+      // No overflow clipping on the card: the side handles sit half outside it and must stay grabbable.
+      className="relative rounded-[10px] text-left"
       style={{
         width: NODE_WIDTH,
         background: "var(--vc-node-bg)",
@@ -98,7 +106,7 @@ const VideoNodeCard = memo(function VideoNodeCard({ data, selected }: NodeProps<
           : "var(--vc-node-shadow)",
       }}
     >
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <span
         aria-hidden
         className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r"
@@ -109,7 +117,7 @@ const VideoNodeCard = memo(function VideoNodeCard({ data, selected }: NodeProps<
           src={data.thumbUrl}
           alt=""
           draggable={false}
-          className="block h-[96px] w-full object-cover"
+          className="block h-[96px] w-full rounded-t-[10px] object-cover"
         />
       ) : null}
       <div className="space-y-1 py-2 pl-4 pr-3">
@@ -131,7 +139,7 @@ const VideoNodeCard = memo(function VideoNodeCard({ data, selected }: NodeProps<
           </div>
         ) : null}
       </div>
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
     </div>
   );
 });
@@ -253,7 +261,7 @@ function CanvasInner(props: VideoProjectCanvasProps) {
         <MiniMap
           pannable
           zoomable
-          position="bottom-right"
+          position="top-right"
           nodeColor={(node) => String((node.data as CardData | undefined)?.accent || palette.minimapNode)}
           nodeBorderRadius={4}
           bgColor={palette.minimapBg}

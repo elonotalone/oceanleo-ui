@@ -22,7 +22,7 @@ export function VideoAddNodeDrawer({
           data-testid="video-canvas-add-node"
           data-node-kind={entry.kind}
           onClick={() => onPick(entry.kind)}
-          className="flex w-full items-start gap-2.5 rounded-lg border border-[var(--awb-border,#e4e4e7)] bg-[var(--awb-popover-bg,#fff)] px-3 py-2 text-left text-[var(--awb-text,#18181b)] transition-colors hover:bg-[var(--awb-hover,rgba(0,0,0,.05))]"
+          className="flex w-full items-start gap-2.5 rounded-lg border border-[color:var(--border,#e7e5e4)] bg-[color:var(--card,#fff)] px-3 py-2 text-left text-[var(--fg,#292524)] transition-colors hover:border-[color:var(--awb-accent,#0d9488)]"
         >
           <span
             aria-hidden
@@ -31,7 +31,7 @@ export function VideoAddNodeDrawer({
           />
           <span className="min-w-0">
             <span className="block text-[13px] font-medium">{tt(entry.label)}</span>
-            <span className="block text-[11.5px] text-[var(--awb-muted,#71717a)]">{tt(entry.hint)}</span>
+            <span className="block text-[11.5px] text-[var(--muted,#78716c)]">{tt(entry.hint)}</span>
           </span>
         </button>
       ))}
