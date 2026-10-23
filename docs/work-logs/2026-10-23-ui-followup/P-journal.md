@@ -1,0 +1,20 @@
+# P — project surfaces journal
+
+2026-10-23: Read the live kernel, workstation instructions, OceanLeo and parallel-rollout packs; bootstrap passed. Ownership follows P-projects.md. No browser, push, commit, dependency install, or global build/typecheck performed.
+
+Geometry inspected before editing: CloneShell main adds safe-area top/bottom padding. ProjectWorkspace supplied h-screen; its implicit grid row and configuration aside's automatic minimum height allowed long configuration content to expand the workspace and push the composer out. The provided project screenshot confirms this and also shows task toolbar controls occupying the search input's width.
+
+Implemented a zero-minimum grid row and shrinking/overflow boundaries through the shared frame; portal workspace uses the dynamic viewport minus shell safe areas. Tasks and configuration scroll independently. The toolbar now wraps around a real search basis. Removed the privacy note. Plan and Assets always use header plus actions in their editable empty states; real add/upload behavior and nonempty detail dialogs remain. Projects now links directly to /projects/new, removes type-filter UI/state, and uses ownership metadata while preserving search, view, ownership, and stars.
+
+Verification passed:
+
+- Shared UI: `agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/project-workspace-primitives.test.mjs tests/lbp-w10-project-layout.test.mjs tests/ui-followup-project-cards.test.mjs` — 33/33. Existing jsdom warnings about modern overlay CSS/window.scrollTo are non-fatal. A first invocation omitted the repository loader and failed before loading the two existing suites; the command above corrected this.
+- Portal: `agent-io-guard.sh run-light -- node --experimental-strip-types --test tests/project-workspace-feed-tasks.test.mjs tests/project-index-membership.test.mjs tests/lbp-w10-project-layout.test.mjs tests/project-tasks-import.test.mjs` — 36/36 before one added height regression; the changed layout suite was rerun with the new check and passed 14/14.
+- Strengthened card integration test: Plan plus opens the inline form and creates a real scoped todo through the client seam; Assets plus opens the picker and uploads through its client seam; read-only members have no add action and retain populated detail dialogs. Rerun passed 3/3. It skips only when the sibling portal checkout is absent.
+- Scoped `git diff --check` passed in both repositories.
+
+No new translation dictionary is required. Parent owns global type checks, generated CSS (including the new grid row/basis/scrollbar utilities), dev-slot freshness and final commits.
+
+Completion extension (2026-10-24): ownership explicitly extended to portal `app/projects/new/page.tsx`. Removed the creation-page category picker, its state/imports and icon map. The UI omits optional `kind` in `createProject`; the existing client keeps its compatible default without altering stored historical data or backend schema. Updated `tests/project-index-membership.test.mjs`; focused run passed 10/10. Extended `tests/ui-followup-project-cards.test.mjs` with real React input/submit verification: a trimmed project name submits without kind, the created row enters the cache, and routing opens `/projects/project-created`; 4/4 passed. No global checks or commits performed.
+
+Final acceptance translation extension (2026-10-24): added `src/i18n/ui/messages/ui-followup-projects-copy.ts`, exporting `UI_FOLLOWUP_PROJECTS_MESSAGES` through `assembleCopy`. It covers the 8 requested pre-existing collection/creation strings in every configured locale. Focused runtime validation via the repository TS loader passed: 17 locale tables, identical 8-key sets, 136 nonempty strings, source identity for zh, translated values elsewhere, preserved `{error}` placeholders, and no stray Han characters in non-CJK languages. Parent registers the dictionary in the existing Bay aggregator; no product-source, index, baseline, or global-check changes made. Scoped diff check passed.

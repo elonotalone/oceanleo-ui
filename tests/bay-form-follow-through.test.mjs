@@ -142,22 +142,22 @@ test("choices start collapsed when selected; open menu overlays and does not fir
   }
   const m = await mount(Choice, {});
   try {
-    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 1);
+    assert.equal(m.host.querySelectorAll("button[data-bay-choice-option]").length, 1);
     assert.ok(m.host.querySelector("[data-bay-choice-collapsed]"));
-    assert.ok(m.host.querySelector("[data-bay-choice-chevron]"));
+    assert.ok(m.host.querySelector("[data-collection-filter-chevron]"));
     await click(m.host.querySelector("button"));
-    const menu = m.host.querySelector("[data-bay-choice-menu]");
+    const menu = document.querySelector("[data-bay-choice-menu]");
     assert.ok(menu);
-    assert.match(menu.className, /\babsolute\b/);
-    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 2);
+    assert.equal(menu.style.position, "fixed");
+    assert.equal(menu.querySelectorAll("button[data-bay-choice-option]").length, 2);
     assert.deepEqual(changes, []);
-    await click(m.host.querySelector('[data-bay-choice-option="b"]'));
-    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 1);
+    await click(menu.querySelector('button[data-bay-choice-option="b"]'));
+    assert.equal(m.host.querySelectorAll("button[data-bay-choice-option]").length, 1);
     assert.deepEqual(changes, ["b"]);
     await click(m.host.querySelector("button"));
-    assert.equal(m.host.querySelectorAll("[data-bay-choice-option]").length, 2);
+    assert.equal(document.querySelectorAll("[data-bay-choice-menu] button[data-bay-choice-option]").length, 2);
     assert.deepEqual(changes, ["b"]);
-    await click(m.host.querySelector('[data-bay-choice-option="a"]'));
+    await click(document.querySelector('[data-bay-choice-menu] button[data-bay-choice-option="a"]'));
     assert.deepEqual(changes, ["b", "a"]);
   } finally { await m.close(); }
 });

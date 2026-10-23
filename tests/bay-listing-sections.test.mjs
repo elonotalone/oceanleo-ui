@@ -33,13 +33,15 @@ test("发帖页左右分栏：封面在左，选择条打开盖住下面的字�
   assert.doesNotMatch(reveal, /md:grid-cols-2/);
   assert.match(editor, /layout="listing"/);
   assert.match(choice, /data-bay-choice-menu/);
-  assert.match(choice, /absolute inset-x-0 top-full/);
+  assert.match(choice, /<MenuSelect/);
+  assert.match(reveal, /data-bay-listing-card="images"/);
+  assert.match(reveal, /repeat\(auto-fit,minmax\(min\(100%,22rem\),1fr\)\)/);
   assert.match(form, /max-w-6xl/);
   assert.match(form, /BAY_FORM_SELECT_CLASS/);
   assert.match(globals, /\[data-bay-listing-layout="split"\]/);
-  assert.match(globals, /minmax\(0, 1\.55fr\)/);
+  assert.match(globals, /repeat\(auto-fit, minmax\(min\(100%, 22rem\), 1fr\)\)/);
   assert.match(globals, /#faf8f5/);
-  assert.match(globals, /html:not\(\.dark\) \[data-oceanleo-chrome\]\[data-oceanleo-sidebar-mode\]/);
+  assert.ok(/html:not\(\.dark\)[^{]*\[data-oceanleo-chrome\]\[data-oceanleo-sidebar-mode\]/.test(globals));
   assert.match(reveal, /data-bay-listing-lead/);
   assert.match(reveal, /data-bay-listing-split-css/);
   assert.match(gallery, /data-bay-gallery-rail/);

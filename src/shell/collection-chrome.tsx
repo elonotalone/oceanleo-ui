@@ -48,20 +48,18 @@ const SEARCH_INPUT_STYLE = { paddingLeft: 36, appearance: "none" } as const;
 
 // ---- 筛选下拉的外观（CollectionFilterSelect 与 LeoBay 的 BayFilterSelect 共用同一份） ----------
 // 参考 Slack 搜索筛选（「All channels ⌄」）：白底、浅灰细边、圆角矩形、粗体；按键上只写当前值，
-// 筛选的名称（label）不再画在按键上，只作读屏名。选了具体值（不是「全部」）时边框加深。
+// 筛选的名称（label）不再画在按键上，只作读屏名。所有取值都使用同一条浅灰边框。
 // 只用 src/theme/ui.css 产物里已有的类：新类要先重编产物，而产物不归本文件管。
 
 /** 触发键：高度字号对齐页头搜索框（SEARCH_INPUT_CLASS 的 h-9 / 13px）。键盘焦点用内圈，不会被横滑的筛选行剪掉。 */
 export const COLLECTION_FILTER_TRIGGER_CLASS =
   "inline-flex h-9 max-w-xs shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border bg-white px-3 text-[13px] font-semibold outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-400";
 
-/** 触发键的整串 class：没筛 = 浅灰边；打开 = 中灰边；选了具体值 = 深色边。 */
+/** 取值不改变边框；展开时仅用中灰边反馈焦点。 */
 export function collectionFilterTriggerClass(state: { filtered: boolean; open?: boolean }): string {
-  const tone = state.filtered
-    ? "border-neutral-900 text-neutral-900"
-    : state.open
-      ? "border-neutral-400 text-neutral-900"
-      : "border-neutral-200 text-neutral-800 hover:border-neutral-400";
+  const tone = state.open
+    ? "border-neutral-400 text-neutral-900"
+    : "border-neutral-200 text-neutral-800 hover:border-neutral-400";
   return `${COLLECTION_FILTER_TRIGGER_CLASS} ${tone}`;
 }
 
@@ -83,10 +81,10 @@ export function collectionFilterOptionClass(state: {
 }
 
 /**
- * 按键上写什么、边框要不要加深。纯函数，两份下拉共用。
+ * 按键显示值与筛选状态。纯函数，两份下拉共用。
  * - 值是某个选项 → 写那个选项的 label；没选（值为「未筛选」的值）→ 写 allLabel；都没有才退回 label。
  * - 「未筛选」的值默认是 ""；用 "all" 当全部的调用方传 defaultValue="all"。
- * - 只有值落在某个选项上、且不等于「未筛选」的值，才算筛了（加深边框）。
+ * - 只有值落在某个选项上、且不等于「未筛选」的值，才算筛了。
  */
 export function collectionFilterState<T extends { value: string; label: string }>(input: {
   label: string;
@@ -341,6 +339,7 @@ export function CollectionViewOptions(props: {
     const onDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (target && rootRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest("[data-collection-filter-menu]")) return;
       setOpen(false);
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -399,10 +398,25 @@ export function CollectionViewOptions(props: {
               aria-label={tt("排序")}
               data-collection-sort-controls=""
             >
-              <label className="flex items-center justify-between gap-2 text-[12px] text-neutral-500">
+              <div className="relative flex flex-col gap-1.5 text-[12px] text-neutral-500">
                 <span>{tt("排序")}</span>
+                <CollectionFilterSelect
+                  name="sort"
+                  label={tt("排序方式")}
+                  value={props.sort.by}
+                  defaultValue="none"
+                  disabled={props.sortBusy}
+                  options={[
+                    { value: "none", label: tt("默认顺序") },
+                    { value: "favorite", label: tt("收藏") },
+                    { value: "time", label: tt("时间") },
+                    { value: "size", label: tt("大小") },
+                  ]}
+                  onChange={(by) => props.onSortChange?.({ ...props.sort!, by: by as CollectionSort["by"] })}
+                />
                 <select
-                  aria-label={tt("排序方式")}
+                  aria-hidden="true"
+                  tabIndex={-1}
                   data-collection-sort=""
                   value={props.sort.by}
                   disabled={props.sortBusy}
@@ -412,14 +426,14 @@ export function CollectionViewOptions(props: {
                       by: event.currentTarget.value as CollectionSort["by"],
                     })
                   }
-                  className="max-w-32 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[12px] text-neutral-700"
+                  className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0"
                 >
                   <option value="none">{tt("默认顺序")}</option>
                   <option value="favorite">{tt("收藏")}</option>
                   <option value="time">{tt("时间")}</option>
                   <option value="size">{tt("大小")}</option>
                 </select>
-              </label>
+              </div>
               {props.sort.by !== "none" ? (
                 <button
                   type="button"
@@ -638,7 +652,7 @@ export function CollectionInfiniteSentinel(props: {
 
 /**
  * 筛选下拉。按键上只写当前值（「全部类型 ⌄」「图片 ⌄」），不再画「名称：值」两截；
- * 名称 `label` 只作按键的 aria-label 和菜单的读屏名。选了具体值时边框加深。
+ * 名称 `label` 只作按键的 aria-label 和菜单的读屏名。所有取值保持浅灰边框。
  */
 export function CollectionFilterSelect(props: {
   /** 这个筛选叫什么（已 tt()）：类型 / 分区 / 站点。不画在按键上，只给读屏。 */
@@ -649,10 +663,11 @@ export function CollectionFilterSelect(props: {
   onChange: (value: string) => void;
   /** 「全部」那一项（值为 defaultValue，默认 ""）。必须自带名词：「全部类型」，不许光秃秃的「全部」。 */
   allLabel?: string;
-  /** 值等于它时视作「未筛选」、不加深边框。用 "all" 当全部的调用方传 "all"；不传以 "" 为未筛选。 */
+  /** 值等于它时视作「未筛选」。用 "all" 当全部的调用方传 "all"；不传以 "" 为未筛选。 */
   defaultValue?: string;
   searchable?: boolean;
   accent?: string;
+  disabled?: boolean;
 }): ReactElement {
   const tt = useUI();
   const listId = useId();
@@ -801,6 +816,7 @@ export function CollectionFilterSelect(props: {
         data-collection-filter={props.name}
         data-value={props.value}
         data-filtered={filtered ? "true" : undefined}
+        disabled={props.disabled}
         onClick={() => (open ? close() : setOpen(true))}
         onKeyDown={(event) => {
           if (!open) {

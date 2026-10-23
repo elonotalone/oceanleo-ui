@@ -227,7 +227,13 @@ async function mount(element) {
     await act(async () => node.click());
     await settle();
   };
-  return { host, find, click, unmount: () => act(() => root.unmount()) };
+  const setValue = async (selector, value) => {
+    const node = find(selector);
+    Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set.call(node, value);
+    await act(async () => node.dispatchEvent(new window.Event("change", { bubbles: true })));
+    await settle();
+  };
+  return { host, find, click, setValue, unmount: () => act(() => root.unmount()) };
 }
 
 async function expandTerms(view) {
@@ -238,11 +244,7 @@ async function expandTerms(view) {
 }
 
 async function pickHowYouDeliver(view, kind) {
-  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
-  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
-    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-  }
-  await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
+  await view.setValue("[data-bay-how-you-deliver] select", kind);
 }
 
 function revealIds(host, section) {
@@ -299,9 +301,6 @@ test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格�
       ["how-you-deliver", "title", "description", "files"],
     );
     assert.ok(view.host.querySelector('[data-bay-section="product"] [data-bay-how-you-deliver]'));
-    if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
-      await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-    }
     for (const kind of ["digital", "service", "app", "lesson", "other"]) {
       assert.ok(view.host.querySelector(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`), `缺交付内容 ${kind}`);
     }
@@ -353,15 +352,9 @@ test("点 service：卖的价格组只有 price，买的需求单仍有 billing 
   await pickHowYouDeliver(sell, "service");
   await assertKind("service", buy, sell, EXPECTED.service);
 
-  if (buy.host.querySelector('[data-bay-section="price"] [data-bay-choice-collapsed]')) {
-    await buy.click('[data-bay-section="price"] [data-bay-choice-collapsed] [data-bay-choice-option]');
-  }
-  await buy.click('[data-bay-section="price"] [data-bay-billing="session"]');
+  await buy.setValue('[data-bay-section="price"] select', "session");
   assert.ok(buy.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-rounds"]'));
-  if (buy.host.querySelector('[data-bay-section="price"] [data-bay-choice-collapsed]')) {
-    await buy.click('[data-bay-section="price"] [data-bay-choice-collapsed] [data-bay-choice-option]');
-  }
-  await buy.click('[data-bay-section="price"] [data-bay-billing="hour"]');
+  await buy.setValue('[data-bay-section="price"] select', "hour");
   assert.ok(buy.host.querySelector('[data-bay-section="terms"] [data-bay-field="consult-minutes"]'));
   await buy.unmount();
   await sell.unmount();

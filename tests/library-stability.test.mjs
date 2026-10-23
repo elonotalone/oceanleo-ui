@@ -269,14 +269,20 @@ test("sort controls expose favorite/time/size and a direction toggle", async () 
       [...select.querySelectorAll("option")].map((option) => option.value),
       ["none", "favorite", "time", "size"],
     );
-    await act(async () => {
-      select.value = "favorite";
-      select.dispatchEvent(new window.Event("change", { bubbles: true }));
-    });
+    const trigger = container.querySelector('[data-collection-filter="sort"]');
+    assert.ok(trigger);
+    await act(async () => trigger.click());
+    const option = document.querySelector('[data-collection-filter-menu="sort"] [data-value="favorite"]');
+    assert.ok(option);
+    await act(async () => option.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true })));
+    assert.ok(container.querySelector("[data-collection-sort-controls]"), "portal 菜单操作不能关闭上层查看选项");
+    await act(async () => option.click());
     assert.equal(container.querySelector("[data-collection-sort]").value, "favorite");
     assert.equal(container.querySelector("[data-collection-sort-direction]")?.textContent, "降序");
     await act(async () => container.querySelector("[data-collection-sort-direction]").click());
     assert.equal(container.querySelector("[data-collection-sort-direction]")?.textContent, "升序");
+    assert.match(container.querySelector('[data-collection-filter="sort"]').className, /border-neutral-200/);
+    assert.doesNotMatch(container.querySelector('[data-collection-filter="sort"]').className, /border-neutral-900/);
   } finally {
     await act(async () => root.unmount());
     container.remove();

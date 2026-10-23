@@ -4,7 +4,9 @@ import test from "node:test";
 
 import {
   BAY_PAGE_MAX_BLOCKS,
+  BAY_PAGE_TEMPLATES,
   BAY_PAGE_TONES,
+  applyPageTemplate,
   accentInk,
   defaultPageDoc,
   insertBlock,
@@ -18,7 +20,10 @@ import {
   patchTheme,
   removeBlock,
   safePageUrl,
+  samePageDoc,
 } from "../src/lib/bay/page-doc.ts";
+import { LOCALES } from "../src/i18n/config.ts";
+import { UI_FOLLOWUP_PROFILE_MESSAGES } from "../src/i18n/ui/messages/ui-followup-profile-copy.ts";
 
 function doc(blocks, theme = {}) {
   return {
@@ -253,4 +258,57 @@ test("syncHeroName：大标题还是旧名字时跟着改，写成别的句子�
   const custom = patchBlock(start, start.blocks[0].id, { title: "你好，我是设计师" });
   assert.equal(syncHeroName(custom, "Leo", "Leo Chen").blocks[0].title, "你好，我是设计师");
   assert.equal(syncHeroName(start, "Leo", "Leo"), start);
+});
+
+test("page templates preserve existing section identities, copy, uploaded images and version-1 persistence", () => {
+  const original = doc([
+    { id: "custom-links", type: "links", title: "My links", links: [{ label: "Work", url: "https://example.com/work" }] },
+    { id: "custom-gallery", type: "gallery", title: "Real photos", images: [{ url: "https://cdn.example/real.png", caption: "Mine" }] },
+    { id: "custom-hero", type: "hero", title: "A custom introduction", subtitle: "A real headline" },
+    { id: "custom-about", type: "text", title: "Story", body: "Written by the owner" },
+    { id: "custom-quote", type: "quote", body: "A second voice", by: "Me" },
+  ], { cover_url: "https://cdn.example/cover.png", cover_style: "image" });
+  for (const template of BAY_PAGE_TEMPLATES) {
+    const next = applyPageTemplate(original, template.id);
+    assert.equal(next.version, 1);
+    for (const block of original.blocks) assert.deepEqual(next.blocks.find((item) => item.id === block.id), block);
+    assert.equal(next.theme.cover_url, original.theme.cover_url);
+    assert.equal(next.theme.cover_style, template.id === "minimal" ? "none" : "image");
+    assert.equal(next.blocks.at(-1).type, "contact");
+    assert.deepEqual(normalizePageDoc(JSON.parse(JSON.stringify(next))), next);
+  }
+  assert.equal(original.blocks.length, 5);
+  assert.equal(original.theme.tone, "light");
+});
+
+test("page templates never exceed 30 sections or replace a full page's content", () => {
+  for (const count of [27, 28, 29, 30]) {
+    const original = doc(Array.from({ length: count }, (_, index) => ({ id: `text-${index}`, type: "text", title: `Section ${index}`, body: `Body ${index}` })));
+    for (const template of BAY_PAGE_TEMPLATES) {
+      const next = applyPageTemplate(original, template.id);
+      assert.ok(next.blocks.length <= BAY_PAGE_MAX_BLOCKS);
+      for (const block of original.blocks) assert.deepEqual(next.blocks.find((item) => item.id === block.id), block);
+      assert.equal(new Set(next.blocks.map((block) => block.id)).size, next.blocks.length);
+    }
+  }
+});
+
+test("returning to the original section order or theme is clean again", () => {
+  const original = defaultPageDoc({ display_name: "Leo", bio: "A true story" });
+  const id = original.blocks[0].id;
+  const moved = moveBlock(original, id, 1);
+  assert.equal(samePageDoc(original, moved), false);
+  assert.equal(samePageDoc(original, moveBlock(moved, id, -1)), true);
+  const colored = patchTheme(original, { accent: "#ef4444" });
+  assert.equal(samePageDoc(original, patchTheme(colored, { accent: original.theme.accent })), true);
+});
+
+test("all profile builder copy is registered as complete dictionaries for all 17 locales", () => {
+  const keys = Object.keys(UI_FOLLOWUP_PROFILE_MESSAGES.zh);
+  assert.equal(keys.length, 28);
+  for (const locale of LOCALES) {
+    const messages = UI_FOLLOWUP_PROFILE_MESSAGES[locale];
+    assert.deepEqual(Object.keys(messages), keys);
+    for (const key of keys) assert.ok(typeof messages[key] === "string" && messages[key].trim(), `${locale}: ${key}`);
+  }
 });

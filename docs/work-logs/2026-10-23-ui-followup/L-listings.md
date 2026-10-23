@@ -4,4 +4,6 @@ Read 00-dispatch.md. Own /root/projects/oceanleo-ui/src/shell/bay/shell/BayMine.
 
 Make Listings & orders work like Library: toolbar with right-aligned search and list/grid view switch; real listing cards/rows with available covers, status/category and existing actions; filters/search/view work across published/sold/bought/favorites without falsely emptying unrelated tabs. Remove the enclosing whole-content white slab when card layout needs independent cards. Preserve data loading, category filtering, deletion, editing, deep links, and order details.
 
+Ownership extension approved by parent 2026-10-23: the exact paper-wrapper condition in src/shell/bay/shell/LeoBayPage.tsx may be changed so BayRevealForm variants use a transparent outer canvas. Preserve all other shell behavior.
+
 Listing Edit should have a separate upload/images card on the left and input cards on the right, with responsive stacking. Avoid one giant white card covering everything. All visible selectors must use the established LeoBay/common menu UI (the parent aligns primitives), keeping field semantics and callbacks. Preserve saved values and uploading behavior. Use existing translated copy or your own ui-followup-listings-copy.ts dictionary. Run focused relevant tests, no browser. Return paths, behavior and test results. No commits or global builds/typechecks.

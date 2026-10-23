@@ -1,8 +1,8 @@
 "use client";
 
 // 个人主页窗格：别人的主页（`profile:<handle>`）与我自己的主页（`profile:me`）。
-// 版面由 `page/ProfilePage` 按 `page_doc` 画。我自己看到的和别人看到的一模一样，默认不可编辑；
-// 点「编辑主页」才进 `page/ProfilePageEditor`。名字、地址、头像、技能都在画布上改，没有第二张表。
+// 版面由 `page/ProfilePage` 按 `page_doc` 画；我的主页入口直接打开带真实预览的编辑器。
+// 公开主页保持只读，只有本人可点「编辑主页」。资料与版面共用一份编辑状态。
 // 我自己的主页坐在一张卡里（页面底色上不铺整页白板）；编辑状态里还有「资质核验」白卡（见 page/mine-page-edit.ts 的入口）。
 // 不登录也能看别人的主页；先聊聊、收藏、举报、拉黑要登录。
 
@@ -44,7 +44,7 @@ export const BAY_OFFICIAL_HANDLE = "oceanleo";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
 const ACTION_PRIMARY = `rounded-full bg-neutral-900 px-3 py-1.5 text-[13px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-50`;
-const ACTION_SECONDARY = `rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
+const ACTION_SECONDARY = `rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[13px] font-medium text-stone-700 ${MOTION} hover:bg-stone-50 disabled:opacity-50`;
 
 interface OwnPage extends BayProfilePage {
   own: true;
@@ -119,19 +119,20 @@ export function ProfilePane({ target }: BayPaneProps) {
     const text = page.status === 404 || !page.error ? tt("这个主页不存在或尚未公开") : tt(page.error);
     return <PaneMessage text={text} onRetry={page.reload} />;
   }
-  return <ProfileDetailView page={page.data} viewerId={viewer.data} onChanged={page.reload} />;
+  return <ProfileDetailView page={page.data} viewerId={viewer.data} onChanged={page.reload} startEditing={mine} />;
 }
 
-export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProfilePage; viewerId: string | null; onChanged?: () => void }) {
+export function ProfileDetailView({ page, viewerId, onChanged, startEditing = false }: { page: BayProfilePage; viewerId: string | null; onChanged?: () => void; startEditing?: boolean }) {
   const tt = useUI();
   const profile = page.profile as BayProfilePage["profile"] & { page_doc?: unknown; official?: boolean };
   const own = isOwnPage(page) || Boolean(viewerId && profile.user_id && viewerId === profile.user_id);
   const [published, setPublished] = useState(Boolean(profile.published ?? true));
   // 进编辑的请求（「去建资料」「去核验」）在这里取走；vettingFocus 每变大一次，编辑器就滚到资质核验卡一次。
   const [entry] = useState(() => (own ? takeMinePageEditRequest() : null));
-  const [editing, setEditing] = useState(entry !== null);
+  const [editing, setEditing] = useState(own && (startEditing || entry !== null));
   const [vettingFocus, setVettingFocus] = useState(() => (wantsMinePageVetting(entry, published) ? 1 : 0));
   const [savedDoc, setSavedDoc] = useState<BayPageDoc | null>(null);
+  const [savedIdentity, setSavedIdentity] = useState<BayPageIdentity | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [talkError, setTalkError] = useState("");
@@ -183,7 +184,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
   }
 
   async function save(next: BayPageDoc, identity: BayPageIdentity) {
-    if (saving) return;
+    if (saving || !own) return;
     setSaving(true);
     setSaveError("");
     try {
@@ -210,6 +211,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
       );
       const result = await saveSellerPage(docToSave);
       setSavedDoc(normalizePageDoc(result.profile?.page_doc) ?? docToSave);
+      setSavedIdentity({ ...identity, handle: identity.handle.trim().toLowerCase(), display_name: identity.display_name.trim() });
       setPublished(identity.published);
       leaveEditing();
       onChanged?.();
@@ -225,7 +227,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
     setSaving(true);
     setSaveError("");
     try {
-      const seller = page.seller;
+      const seller = { ...page.seller, ...savedIdentity };
       await saveSellerProfile(
         sellerProfileBody({
           handle: seller.handle,
@@ -255,11 +257,11 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
   if (own && editing) {
     const seed = isOwnPage(page) ? page.seller : page.profile;
     return (
-      <div className="flex min-h-0 flex-1 flex-col" data-bay-profile="own-editing">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" data-bay-profile="own-editing">
         <ProfilePageEditor
           page={page}
           initial={doc}
-          initialIdentity={identityFromProfile(seed)}
+          initialIdentity={{ ...identityFromProfile(seed), ...savedIdentity, published }}
           saving={saving}
           error={saveError}
           onSave={(next, identity) => void save(next, identity)}
@@ -295,7 +297,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
 
   const view = (
     <ProfilePage
-      page={page}
+      page={savedIdentity ? { ...page, profile: { ...page.profile, ...savedIdentity } } : page}
       doc={doc}
       unpublished={own && !published}
       actions={actions}

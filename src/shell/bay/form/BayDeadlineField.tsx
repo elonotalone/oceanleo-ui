@@ -20,6 +20,7 @@ import {
   type ZonedParts,
 } from "./bay-deadline";
 import { BAY_FORM_CHIP_BUTTON_CLASS, BAY_FORM_HELP_CLASS, BAY_FORM_PRIMARY_BUTTON_CLASS, BAY_FORM_SELECT_CLASS } from "./form-ui";
+import { BayMenuSelect } from "./BayMenuSelect";
 
 type Time = { hour: number; minute: number; second: number };
 const END_OF_DAY: Time = { hour: 23, minute: 59, second: 59 };
@@ -115,6 +116,7 @@ export function BayDeadlineField(props: {
     const onDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
       if (target && boxRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest("[data-bay-menu]")) return;
       setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
@@ -273,23 +275,19 @@ export function BayDeadlineField(props: {
             <TimeBox label={tt("秒")} value={time.second} max={59} onChange={(second) => changeTime({ ...time, second })} />
           </div>
 
-          <label className="mt-4 block">
-            <span className="mb-1 block text-[13px] font-medium text-neutral-900">{tt("时区")}</span>
-            <select
-              data-bay-deadline-zone=""
+          <div className="mt-4 block">
+            <BayMenuSelect
+              label={tt("时区")}
+              selectProps={{ "data-bay-deadline-zone": "" }}
               value={zone}
-              onChange={(event) => changeZone(event.target.value)}
-              className="h-11 w-full rounded-md border border-neutral-300 bg-white px-3 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
-            >
-              <option value={DEVICE_ZONE}>{`${tt("按我设备的时间")} · ${device} (${offsetLabel(at ?? Date.now(), device)})`}</option>
-              {zones
-                .map((name) => (
-                  <option key={name} value={name}>
-                    {`${name} (${offsetLabel(at ?? Date.now(), name)})`}
-                  </option>
-                ))}
-            </select>
-          </label>
+              onChange={changeZone}
+              disabled={props.disabled}
+              options={[
+                { value: DEVICE_ZONE, label: `${tt("按我设备的时间")} · ${device} (${offsetLabel(at ?? Date.now(), device)})` },
+                ...zones.map((name) => ({ value: name, label: `${name} (${offsetLabel(at ?? Date.now(), name)})` })),
+              ]}
+            />
+          </div>
 
           {at != null ? (
             <div className={`mt-4 space-y-1 tabular-nums ${BAY_FORM_HELP_CLASS}`} data-bay-deadline-check="">

@@ -265,7 +265,7 @@ test("顶栏、输入框外层、桌面右列都不带白底与边线（白色�
   assert.match(html, /data-project-workspace-config-scroll[^>]*overflow-y-auto/);
 });
 
-test("筛选行（ProjectToolbar）不带白底和边框，布局类不变", () => {
+test("筛选行保留搜索宽度，控件在空间不足时换行", () => {
   const html = render(ProjectToolbar, {
     ariaLabel: "Plan tools",
     search: h("input", { "aria-label": "Search" }),
@@ -274,9 +274,36 @@ test("筛选行（ProjectToolbar）不带白底和边框，布局类不变", () 
   const open = html.match(/<div[^>]*role="toolbar"[^>]*>/)[0];
   assert.doesNotMatch(open, /bg-\[var\(--card|bg-white|border|rounded|(?<![\w-])p-3/);
   assert.match(open, /flex/);
-  assert.match(open, /sm:flex-row/);
-  assert.match(html, /data-project-toolbar-search/);
-  assert.match(html, /data-project-toolbar-controls/);
+  assert.match(open, /flex-wrap/);
+  const search = html.match(/<div(?=[^>]*data-project-toolbar-search)[^>]*>/)?.[0];
+  const controls = html.match(/<div(?=[^>]*data-project-toolbar-controls)[^>]*>/)?.[0];
+  assert.match(search, /basis-56/);
+  assert.match(search, /max-w-full/);
+  assert.match(controls, /flex-wrap/);
+  assert.match(controls, /max-w-full/);
+  assert.doesNotMatch(controls, /shrink-0/);
+});
+
+test("grid 行和两列均允许收缩，配置内容独立滚动而输入框不收缩", async () => {
+  await withDom(async ({ find, renderRoot }) => {
+    await renderRoot(frameNode({
+      config: h("div", null, ...Array.from({ length: 40 }, (_, key) => h("article", { key }, `Card ${key}`))),
+    }));
+    for (const selector of [
+      "[data-project-workspace-frame]",
+      "[data-project-workspace-body]",
+      "[data-project-workspace-column]",
+      "[data-project-workspace-config]",
+    ]) {
+      const element = find(selector);
+      assert.match(element.className, /min-h-0/, selector);
+      assert.match(element.className, /overflow-hidden/, selector);
+    }
+    assert.match(find("[data-project-workspace-body]").className, /grid-rows-\[minmax\(0,1fr\)\]/);
+    assert.match(find("[data-project-workspace-config-scroll]").className, /overflow-y-auto/);
+    assert.match(find("[data-project-workspace-bottom]").className, /shrink-0/);
+    assert.equal(find("[data-project-workspace-config]").contains(find("[data-composer]")), false);
+  }, { desktop: true });
 });
 
 test("白色卡片仍然是卡片：ProjectConfigCard 保留白底、边线和阴影", () => {

@@ -54,7 +54,7 @@ export interface BayFilterSelectProps {
   onChange: (value: string) => void;
   /** 给了就在选项单顶上多一条「全部」（值为 `defaultValue`，默认 `""`）。必须自带名词：「全部站点」，不许光秃秃的「全部」。 */
   allLabel?: string;
-  /** 值等于它时视作「未筛选」、不加深边框。用 `"all"` 当全部的调用方传 `"all"`；不传以 `""` 为未筛选。 */
+  /** 值等于它时视作「未筛选」。用 `"all"` 当全部的调用方传 `"all"`；不传以 `""` 为未筛选。 */
   defaultValue?: string;
   /** 选项多时（站点有 33 个）在单子顶上放一个可打字的过滤框。 */
   searchable?: boolean;

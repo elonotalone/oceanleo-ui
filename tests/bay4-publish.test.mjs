@@ -211,11 +211,7 @@ async function expandTerms(view) {
 
 async function pickHowYouDeliver(view, kind) {
   await expandTerms(view);
-  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
-  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
-    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-  }
-  await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
+  await view.setValue("[data-bay-how-you-deliver] select", kind);
 }
 
 test("类别选择器是卖/买，卖的交付方式含 digital / service / app / lesson，没有 consult，没有单独选类别页", async () => {
@@ -230,9 +226,7 @@ test("类别选择器是卖/买，卖的交付方式含 digital / service / app 
   assert.ok(view.host.querySelector("[data-bay-how-you-deliver]"));
   assert.ok(view.host.querySelector('[data-bay-listing-layout="split"]'));
   assert.equal(view.host.querySelector("[data-bay-listing-stage] [data-bay-reveal-item]")?.getAttribute("data-bay-reveal-item"), "cover");
-  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
-    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-  }
+  await view.click("[data-bay-how-you-deliver] button[data-menu-select-trigger]");
   const kinds = [...view.host.querySelectorAll("[data-bay-kind]")].map((node) => node.getAttribute("data-bay-kind"));
   assert.ok(kinds.includes("digital"));
   assert.ok(kinds.includes("service"));
@@ -255,9 +249,6 @@ test("选 service 后价格组只有价格框，计费方式卡片是交付条�
   assert.equal(view.find('[data-bay-section="terms"]').getAttribute("data-bay-section-collapsed"), "");
   await pickHowYouDeliver(view, "service");
   await expandTerms(view);
-  if (view.host.querySelector('[data-bay-section="terms"] [data-bay-choice-collapsed]')) {
-    await view.click('[data-bay-section="terms"] [data-bay-choice-collapsed] [data-bay-choice-option]');
-  }
   const price = view.find('[data-bay-section="price"]');
   const terms = view.find('[data-bay-section="terms"]');
   assert.equal(price.querySelector("[data-bay-service-form]"), null, "不再有「计费方式」选择行");
@@ -267,7 +258,7 @@ test("选 service 后价格组只有价格框，计费方式卡片是交付条�
     [...terms.querySelectorAll("[data-bay-model]")].map((node) => node.getAttribute("data-bay-model")),
     ["fixed", "session", "hourly", "milestone"],
   );
-  assert.equal(terms.querySelector('[data-bay-model="fixed"]').hasAttribute("data-bay-choice-selected"), true);
+  assert.equal(terms.querySelector('select[aria-label="计费方式"]').value, "fixed");
   const fixedCard = terms.querySelector('[data-bay-model="fixed"]');
   assert.doesNotMatch(fixedCard.textContent, /交付清单齐全|自动验收|Auto-accepted|不自动验收/);
   assert.equal(terms.querySelector("[data-bay-model-rule]")?.getAttribute("data-bay-model-rule"), "fixed");
@@ -297,23 +288,14 @@ test("点按次卡片后产品信息仍是封面标题介绍文件，不换成�
   const view = await mount({ kind: "publish" });
   await pickHowYouDeliver(view, "service");
   await expandTerms(view);
-  if (view.host.querySelector('[data-bay-section="terms"] [data-bay-choice-collapsed]')) {
-    await view.click('[data-bay-section="terms"] [data-bay-choice-collapsed] [data-bay-choice-option]');
-  }
-  await view.click('[data-bay-section="terms"] [data-bay-model="session"]');
-  // 选定后只留被选中的那一张，旁边有「更改」重新展开。
-  assert.deepEqual(
-    [...view.host.querySelectorAll("[data-bay-model]")].map((node) => node.getAttribute("data-bay-model")),
-    ["session"],
-  );
-  assert.equal(view.find('[data-bay-section="terms"] [data-bay-model="session"]').hasAttribute("data-bay-choice-selected"), true);
+  await view.setValue('[data-bay-section="terms"] select[aria-label="计费方式"]', "session");
+  assert.equal(view.find('[data-bay-section="terms"] select[aria-label="计费方式"]').value, "session");
   assert.doesNotMatch(view.find('[data-bay-section="terms"] [data-bay-model="session"]').textContent, /自动验收|以会话时间戳/);
   assert.equal(view.host.querySelector("[data-bay-model-rule]")?.getAttribute("data-bay-model-rule"), "session");
   // 没有「更改」键：点这一张（右侧是展开小箭头）就重新展开，可以改选。
   assert.equal(view.host.querySelector("[data-bay-choice-change]"), null);
-  assert.ok(view.host.querySelector('[data-bay-section="terms"] [data-bay-choice-chevron]'));
-  await view.click('[data-bay-section="terms"] [data-bay-model="session"]');
-  assert.equal(view.host.querySelectorAll("[data-bay-model]").length, 4);
+  await view.click('[data-bay-section="terms"] [data-bay-reveal-item="billing-model"] [data-bay-menu-trigger]');
+  assert.equal(document.querySelectorAll('[data-bay-menu] button[data-bay-model]').length, 4);
   assert.deepEqual(
     [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
     ["how-you-deliver", "title", "description", "files"],
@@ -381,11 +363,11 @@ test("必填项带 *；点发布缺项时标红、不显示「还差几项」；
   assert.ok(view.host.querySelector('[data-bay-reveal-item="title"][data-bay-reveal-invalid]'));
   // 描述默认一行，随内容变高由 scrollHeight 决定；这里只确认是单行起步。
   assert.equal(view.find('[data-bay-field="description"]').getAttribute("rows"), "1");
-  assert.equal(view.host.querySelectorAll("[data-bay-how-you-deliver] [data-bay-choice-option]").length, 1);
-  await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-  assert.equal(view.host.querySelectorAll("[data-bay-how-you-deliver] [data-bay-choice-option]").length, 5);
-  await view.click('[data-bay-how-you-deliver] [data-bay-choice-option="digital"]');
-  assert.equal(view.host.querySelectorAll("[data-bay-how-you-deliver] [data-bay-choice-option]").length, 1);
+  assert.equal(view.host.querySelectorAll("[data-bay-how-you-deliver] button[data-bay-choice-option]").length, 1);
+  await view.click("[data-bay-how-you-deliver] button[data-menu-select-trigger]");
+  assert.equal(document.querySelectorAll("[data-bay-choice-menu] button[data-bay-choice-option]").length, 5);
+  await act(async () => document.querySelector('[data-bay-choice-menu] button[data-bay-choice-option="digital"]').click());
+  assert.equal(document.querySelector("[data-bay-choice-menu]"), null);
   await view.unmount();
 });
 

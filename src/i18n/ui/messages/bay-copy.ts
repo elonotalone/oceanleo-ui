@@ -33,6 +33,9 @@ import { BAY_MINE_MESSAGES } from "./bay-mine-copy";
 import { BAY_DEADLINE_MESSAGES } from "./bay-deadline-copy";
 import { BAY_FORM_GAP_MESSAGES } from "./bay-form-gap-copy";
 
+import { UI_FOLLOWUP_PROFILE_MESSAGES } from "./ui-followup-profile-copy";
+import { UI_FOLLOWUP_PROJECTS_MESSAGES } from "./ui-followup-projects-copy";
+
 const PARTS = [
   BAY_SHELL_MESSAGES,
   BAY_NEEDS_MESSAGES,
@@ -65,6 +68,8 @@ const PARTS = [
   BAY_MINE_MESSAGES,
   BAY_DEADLINE_MESSAGES,
   BAY_FORM_GAP_MESSAGES,
+  UI_FOLLOWUP_PROFILE_MESSAGES,
+  UI_FOLLOWUP_PROJECTS_MESSAGES,
 ];
 
 export const BAY_MESSAGES: Record<Locale, Record<string, string>> =

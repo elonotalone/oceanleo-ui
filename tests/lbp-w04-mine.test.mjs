@@ -21,7 +21,9 @@ import {
   mineTabOfBlock,
   normalizeMineTab,
 } from "../src/shell/bay/mine/mine-blocks.ts";
-import { getMineView, resetMineView, setMineView } from "../src/shell/bay/mine/mine-view-state.ts";
+import { getMineView, resetMineView, setMineSearch, setMineView } from "../src/shell/bay/mine/mine-view-state.ts";
+
+const INITIAL_MINE_VIEW = { list: "published", category: "all", display: "grid", queries: { published: "", sold: "", bought: "", favorites: "" } };
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO = join(here, "..");
@@ -163,14 +165,27 @@ test("bay-links 与 BayMineTab 类型不动：六个地址值照旧能解析（�
 
 test("视图状态仓：没变化不通知；复位回到「我发布的」与「全部」", () => {
   resetMineView();
-  assert.deepEqual(getMineView(), { list: "published", category: "all" });
+  assert.deepEqual(getMineView(), INITIAL_MINE_VIEW);
   const first = getMineView();
   setMineView({ list: "published" });
   assert.equal(getMineView(), first, "值没变就不换对象");
   setMineView({ list: "bought", category: "lesson" });
-  assert.deepEqual(getMineView(), { list: "bought", category: "lesson" });
+  assert.deepEqual(getMineView(), { ...INITIAL_MINE_VIEW, list: "bought", category: "lesson" });
   resetMineView();
-  assert.deepEqual(getMineView(), { list: "published", category: "all" });
+  assert.deepEqual(getMineView(), INITIAL_MINE_VIEW);
+});
+
+test("搜索按交易清单分别保存，视图切换独立于类别和查询", () => {
+  resetMineView();
+  setMineSearch("published", "Logo");
+  setMineSearch("bought", "课程");
+  setMineView({ list: "bought", display: "list" });
+  assert.deepEqual(getMineView().queries, { published: "Logo", sold: "", bought: "课程", favorites: "" });
+  assert.equal(getMineView().display, "list");
+  const previous = getMineView();
+  setMineSearch("bought", "课程");
+  assert.equal(getMineView(), previous);
+  resetMineView();
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -187,7 +202,7 @@ const panesStub = dataModule(`
   const createElement = (...args) => globalThis.__w4React.createElement(...args);
   const make = (name) => function Pane(props){
     globalThis.__w4.panes.push({ name, category: props.category, tab: props.tab, target: props.target, layout: props.layout });
-    return createElement("section", { "data-stub-pane": name, "data-category": props.category == null ? "" : props.category });
+    return createElement("section", { "data-stub-pane": name, "data-category": props.category == null ? "" : props.category, "data-query": props.query, "data-display": props.display });
   };
   export const MyPublishedPane = make("published"), MySoldPane = make("sold"), MyBoughtPane = make("bought"), MyFavoritesPane = make("favorites");
 `);
@@ -284,7 +299,7 @@ test("交易里一行两个下拉：第一个选 我发布的 / 我卖出的 / �
   await view.click(category.options[4].node);
   assert.equal(trigger(view, "mine-category").getAttribute("data-value"), "lesson");
   assert.equal(trigger(view, "mine-category").textContent.trim(), "课程");
-  assert.match(trigger(view, "mine-category").className, /\bborder-neutral-900\b/, "选了具体类别，边框加深");
+  assert.doesNotMatch(trigger(view, "mine-category").className, /\bborder-neutral-900\b/, "选了类别也保持浅灰边框");
   assert.equal(view.q('[data-stub-pane="published"]').getAttribute("data-category"), "lesson", "类别传给了列表窗格");
   await view.unmount();
 });
@@ -313,7 +328,25 @@ test("类别在四个列表之间保持，从主页点回「交易」回到最�
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  assert.deepEqual(getMineView(), { list: "published", category: "all" }, "离开「我的」后复位");
+  assert.deepEqual(getMineView(), INITIAL_MINE_VIEW, "离开「我的」后复位");
+});
+
+test("交易工具栏使用库搜索和视图切换；搜索只传给当前清单，切换地址后可恢复", async () => {
+  reset();
+  const view = await mount(mine("published", "page", { key: "mine:published" }));
+  const search = view.q("[data-bay-mine-tools] input[type=search]");
+  assert.ok(search);
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(search, "Logo");
+  await act(async () => search.dispatchEvent(new window.Event("input", { bubbles: true })));
+  assert.equal(view.q('[data-stub-pane="published"]').getAttribute("data-query"), "Logo");
+  await view.click('[data-bay-mine-tools] button[aria-label="列表视图"]');
+  assert.equal(view.q('[data-stub-pane="published"]').getAttribute("data-display"), "list");
+  await view.render(mine("bought", "page", { key: "mine:bought" }));
+  assert.equal(view.q("[data-bay-mine-tools] input[type=search]").value, "");
+  assert.equal(view.q('[data-stub-pane="bought"]').getAttribute("data-query"), "");
+  await view.render(mine("published", "page", { key: "mine:published" }));
+  assert.equal(view.q("[data-bay-mine-tools] input[type=search]").value, "Logo");
+  await view.unmount();
 });
 
 test("地址兼容：mine:published|sold|bought|favorites 打开「交易」并选中对应列表；mine:page、mine:dashboard 不变", async () => {
@@ -365,7 +398,7 @@ test("点页签换地址：交易 → 最近的列表，我的主页 → page，
   await view.unmount();
 });
 
-test("不铺整页白板：根、页签、tabpanel、下拉行都不带 bg-white；白色只在列表这一块圆角卡片上；主页和数据面板外框不铺白", async () => {
+test("不铺整页白板：根、页签、tabpanel、筛选和清单外框都不带白底；每个清单条目自行成卡", async () => {
   reset();
   const view = await mount(mine("published"));
   for (const sel of ["[data-bay-mine]", "[data-bay-mine-tabs]", '[role="tabpanel"]', "[data-bay-mine-filters]"]) {
@@ -373,10 +406,7 @@ test("不铺整页白板：根、页签、tabpanel、下拉行都不带 bg-white
   }
   const cards = view.qa("[data-bay-mine-card]");
   assert.equal(cards.length, 1);
-  assert.match(cards[0].className, /\brounded-xl\b/);
-  assert.match(cards[0].className, /\bborder\b/);
-  assert.match(cards[0].className, /\bborder-neutral-200\b/);
-  assert.match(cards[0].className, /\bbg-white\b/);
+  assert.doesNotMatch(cards[0].className, /\bbg-white\b|\bborder\b/);
   assert.ok(cards[0].querySelector('[data-stub-pane="published"]'), "列表在卡片里");
   // 页签与下拉在卡片外面，直接坐在页底
   assert.equal(cards[0].querySelector("[data-bay-mine-tabs]"), null);
@@ -483,7 +513,7 @@ const { LeoBayPage } = await import(
   })
 );
 
-test("LeoBayPage：「我的」和「数据面板」页不垫整页白板，发帖和编辑页的白板照旧", async () => {
+test("LeoBayPage：我的、数据面板、发帖和编辑页都不垫整页白板，编辑页保留滚动框架", async () => {
   for (const current of [{ kind: "mine", tab: "published" }, { kind: "mine", tab: "dashboard" }, { kind: "dashboard" }]) {
     pageState.current = current;
     const view = await mount(React.createElement(LeoBayPage, { siteKey: "design" }));
@@ -505,8 +535,8 @@ test("LeoBayPage：「我的」和「数据面板」页不垫整页白板，发�
     const view = await mount(React.createElement(LeoBayPage, { siteKey: "design" }));
     const paper = view.q("[data-bay-page-paper]");
     assert.equal(paper?.getAttribute("data-bay-page-paper"), current.kind);
-    assert.match(paper.className, /\brounded-3xl\b/);
-    assert.match(paper.className, /\bbg-white\b/);
+    assert.doesNotMatch(paper.className, /\bbg-white\b|\brounded-3xl\b/);
+    assert.equal(paper.getAttribute("data-bay-page-canvas"), "cards");
     await view.unmount();
   }
   pageState.current = { kind: "feed" };

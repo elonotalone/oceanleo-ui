@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { BayPaneProps } from "../shell/bay-state";
 import type { MineCategory } from "./mine-category";
+import type { CollectionView } from "../../collection-chrome";
 
-export type MinePaneProps = BayPaneProps & { category?: MineCategory };
+export type MinePaneProps = BayPaneProps & { category?: MineCategory; query?: string; display?: CollectionView };
 
 export function useMineBundle<T>(signedIn: boolean, loader: () => Promise<T>, fallbackError: string): {
   data: T | null;

@@ -164,19 +164,12 @@ html.cool .bg-\[\#f7f7f7\]\/80 {
   background-color: #f7f7f7 !important;
 }
 
-/* 发帖填写：Etsy listing 左右分栏。左大图+缩略图轨，右一列字段。产物 ui.css 没有
-   这套 grid，必须写在这里才真的并排。 */
+/* Listing cards respond to their available pane width, including docked views. */
 [data-bay-listing-layout="split"] {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1.5rem;
   align-items: start;
-}
-@media (min-width: 768px) {
-  [data-bay-listing-layout="split"] {
-    grid-template-columns: minmax(0, 1.55fr) minmax(20rem, 0.9fr);
-    gap: 2.5rem;
-  }
 }
 [data-bay-listing-stage] {
   min-width: 0;
@@ -204,7 +197,7 @@ html.cool .bg-\[\#f7f7f7\]\/80 {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 28rem;
+  min-height: 0;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 2px;

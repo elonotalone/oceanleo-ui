@@ -196,11 +196,7 @@ async function expandTerms(view) {
 
 async function pickHowYouDeliver(view, kind) {
   await expandTerms(view);
-  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
-  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
-    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-  }
-  await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
+  await view.setValue("[data-bay-how-you-deliver] select", kind);
 }
 
 test("新草稿直接出表单，顶上是卖买和分类，默认打开封面", async () => {
@@ -215,9 +211,7 @@ test("新草稿直接出表单，顶上是卖买和分类，默认打开封面",
   assert.equal(view.find("[data-bay-how-you-deliver]").tagName, "DIV");
   assert.equal(view.find("[data-bay-how-you-deliver]").getAttribute("data-bay-publish-category"), "digital");
   assert.ok(view.host.querySelector('[data-bay-listing-layout="split"]'));
-  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
-    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-  }
+  await view.click("[data-bay-how-you-deliver] button[data-menu-select-trigger]");
   assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="digital"]'));
   assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="service"]'));
   assert.ok(view.host.querySelector('[data-bay-how-you-deliver] [data-bay-choice-option="app"]'));

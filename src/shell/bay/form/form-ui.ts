@@ -27,7 +27,7 @@ export const BAY_FORM_PAIR_CLASS = "grid gap-4 sm:grid-cols-2";
 
 /** 下拉触发条：白底细边，打开时菜单盖住下面的字段。 */
 export const BAY_FORM_SELECT_CLASS =
-  "flex h-11 w-full items-center justify-between gap-2 rounded-md border border-neutral-300 bg-white px-3 text-left text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 disabled:opacity-50";
+  "flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-white px-3 text-left text-[13px] font-semibold text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-400 disabled:opacity-50";
 
 /** 单行输入：浅灰槽、无描边、两头圆。比 100 深一点，不到实心 200。 */
 export const BAY_FORM_INPUT_CLASS =

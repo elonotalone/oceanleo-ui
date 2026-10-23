@@ -36,6 +36,7 @@ import {
   type LibraryScopeIntegration,
 } from "./library-scope";
 import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
+import { CollectionFilterSelect } from "./collection-chrome";
 
 export type LibraryTab = "files" | "works" | "assets" | "knowledge";
 type Tab = LibraryTab;
@@ -167,22 +168,18 @@ function SitePartition({
   const tt = useUI();
   return (
     <div className="flex items-center gap-1.5 text-[12px]">
-      <span className="text-stone-400">{tt("分区")}</span>
-      <select
+      <CollectionFilterSelect
+        name="file-library-site"
+        label={tt("分区")}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[12px] text-stone-700 outline-none focus:border-stone-400"
-      >
-        <option value={currentSiteId}>{tt("{name}（当前站）", { name: currentSiteName })}</option>
-        <option value="__all__">{tt("全部 OceanLeo 站")}</option>
-        {(sites || [])
-          .filter((s) => s.id !== currentSiteId)
-          .map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label}
-            </option>
-          ))}
-      </select>
+        defaultValue={currentSiteId}
+        options={[
+          { value: currentSiteId, label: tt("{name}（当前站）", { name: currentSiteName }) },
+          { value: "__all__", label: tt("全部 OceanLeo 站") },
+          ...(sites || []).filter((site) => site.id !== currentSiteId).map((site) => ({ value: site.id, label: site.label })),
+        ]}
+        onChange={onChange}
+      />
     </div>
   );
 }

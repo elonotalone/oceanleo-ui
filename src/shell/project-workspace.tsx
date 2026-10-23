@@ -164,7 +164,7 @@ export function ProjectWorkspaceFrame({
     <div
       data-project-workspace-frame
       className={classNames(
-        "flex min-h-0 min-w-0 flex-col bg-[var(--bg,#faf8f5)] text-[var(--fg,#292524)]",
+        "flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--bg,#faf8f5)] text-[var(--fg,#292524)]",
         className,
       )}
     >
@@ -197,7 +197,7 @@ export function ProjectWorkspaceFrame({
       <div
         data-project-workspace-body
         className={classNames(
-          "grid min-h-0 min-w-0 flex-1 gap-4 px-4 pb-4",
+          "grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden px-4 pb-4",
           hasConfig &&
             "lg:grid-cols-[minmax(0,1fr)_clamp(20rem,24vw,22.5rem)]",
           bodyClassName,
@@ -208,7 +208,7 @@ export function ProjectWorkspaceFrame({
             bottom slot can never stretch underneath the configuration. */}
         <div
           data-project-workspace-column
-          className="flex min-h-0 min-w-0 flex-col gap-3"
+          className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden"
         >
           <main
             data-project-workspace-main
@@ -259,7 +259,7 @@ export function ProjectWorkspaceFrame({
                 // Narrow screens: a sheet in the page colour, so the white cards
                 // inside still stand out. Desktop: no panel at all, the column
                 // is bare and only the cards are white.
-                "fixed inset-y-0 right-0 z-50 flex w-[min(22.5rem,calc(100vw-2rem))] min-w-0 flex-col border-l border-[var(--border,#e7e5e4)] bg-[var(--bg,#faf8f5)] shadow-2xl transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)]",
+                "fixed inset-y-0 right-0 z-50 flex w-[min(22.5rem,calc(100vw-2rem))] min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--border,#e7e5e4)] bg-[var(--bg,#faf8f5)] shadow-2xl transition-transform duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)]",
                 resolvedConfigOpen
                   ? "translate-x-0"
                   : "translate-x-full",
@@ -284,7 +284,7 @@ export function ProjectWorkspaceFrame({
               </div>
               <div
                 data-project-workspace-config-scroll
-                className="min-h-0 flex-1 overflow-y-auto p-4 lg:-mx-1 lg:p-0 lg:px-1 lg:pb-1"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable] lg:-mx-1 lg:p-0 lg:px-1 lg:pb-1"
               >
                 {config}
               </div>
@@ -443,14 +443,14 @@ export function ProjectToolbar({
       aria-label={ariaLabel}
       data-project-toolbar
       className={classNames(
-        "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center",
+        "flex min-w-0 flex-wrap items-center gap-3",
         className,
       )}
     >
       {search != null && (
         <div
           data-project-toolbar-search
-          className={classNames("min-w-0 flex-1", searchClassName)}
+          className={classNames("min-w-0 max-w-full flex-1 basis-56", searchClassName)}
         >
           {search}
         </div>
@@ -459,7 +459,7 @@ export function ProjectToolbar({
         <div
           data-project-toolbar-controls
           className={classNames(
-            "flex min-w-0 flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end",
+            "ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2",
             controlsClassName,
           )}
         >

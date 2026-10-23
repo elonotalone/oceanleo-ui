@@ -18,7 +18,6 @@ import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS }
 import type { ExplorePageProps } from "../../ExplorePage";
 import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
-import { BAY_FORM_PAPER_CLASS } from "../form/form-ui";
 import { BayLessonShelf } from "../lessons/BayLessonShelf";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { BayAuthHost } from "./bay-auth-host";
@@ -275,7 +274,7 @@ const FORM_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>(
 ]);
 
 /**
- * 发帖、编辑：正文垫白底圆角板。返回和标题留在板外，坐在页底渐变上，和逛 Bay 同一块底。
+ * 发帖、编辑：透明画布保留整页滚动，由表单里的图片与输入卡片区分内容。返回和标题留在画布外。
  * 「我的」「数据面板」不在这里：整页铺白等于没有白底，它们的页签与下拉直接坐在页底，白色只给里面分隔区域的卡片。
  */
 const PAPER_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>([
@@ -287,7 +286,7 @@ const PAPER_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>
   "bundle-editor",
 ]);
 
-/** 点开的那一条：一行「返回 + 标题」。发帖白底板跟页一起滚，板上不出滚动条；下滑后白板盖住返回和标题。 */
+/** 点开的那一条：一行「返回 + 标题」。编辑画布跟页一起滚，各个输入卡片不再包在整页白板里。 */
 function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed" }>; siteKey: string }) {
   const tt = useUI();
   const title = bayDetailTitleKey(target);
@@ -321,7 +320,7 @@ function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed"
       <div className="relative min-h-0 flex-1 overflow-y-auto" data-bay-page-scroll="">
         <div className="flex min-h-full flex-col">
           {header}
-          <div className={BAY_FORM_PAPER_CLASS} data-bay-page-paper={target.kind}>
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col pb-6" data-bay-page-paper={target.kind} data-bay-page-canvas="cards">
             {pane}
           </div>
         </div>

@@ -37,6 +37,8 @@ export interface MenuSelectOption {
   description?: string;
   icon?: ReactNode;
   disabled?: boolean;
+  /** Compatibility metadata for form fields and their options. */
+  attrs?: Record<string, string | undefined>;
 }
 
 export interface MenuSelectProps {
@@ -53,6 +55,9 @@ export interface MenuSelectProps {
   /** 加在最外层容器上（定宽、外边距、flex-1 这类版面类）；选择条本身总是铺满它。 */
   className?: string;
   size?: "md" | "sm";
+  selectProps?: Record<string, string | undefined>;
+  triggerProps?: Record<string, string | undefined>;
+  menuProps?: Record<string, string | undefined>;
 }
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -64,7 +69,7 @@ const TYPE_AHEAD_MS = 700;
 const TRIGGER_BASE =
   "flex w-full items-center justify-between gap-2 border bg-white text-left outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-400 disabled:cursor-not-allowed disabled:opacity-50";
 const TRIGGER_SIZE = {
-  md: "h-10 rounded-xl px-3 text-[13px]",
+  md: "h-10 rounded-xl px-3 text-[13px] font-semibold",
   sm: "h-8 rounded-lg px-2.5 text-[12px]",
 } as const;
 
@@ -227,6 +232,7 @@ export function MenuSelect(props: MenuSelectProps): ReactElement {
   return (
     <div className={rootClass} data-menu-select-root={name ?? ""}>
       <select
+        {...props.selectProps}
         aria-hidden="true"
         aria-label={ariaLabel}
         tabIndex={-1}
@@ -238,12 +244,13 @@ export function MenuSelect(props: MenuSelectProps): ReactElement {
       >
         {current ? null : <option value={value}>{placeholder ?? ""}</option>}
         {options.map((option) => (
-          <option key={option.value} value={option.value} disabled={option.disabled}>
+          <option {...option.attrs} key={option.value} value={option.value} disabled={option.disabled}>
             {option.label}
           </option>
         ))}
       </select>
       <button
+        {...props.triggerProps}
         ref={triggerRef}
         type="button"
         disabled={disabled}
@@ -275,6 +282,7 @@ export function MenuSelect(props: MenuSelectProps): ReactElement {
       {open && place && typeof document !== "undefined"
         ? createPortal(
             <div
+              {...props.menuProps}
               ref={menuRef}
               id={listId}
               role="listbox"
@@ -290,12 +298,13 @@ export function MenuSelect(props: MenuSelectProps): ReactElement {
               onMouseDown={(event) => event.stopPropagation()}
               className={COLLECTION_FILTER_MENU_CLASS}
             >
-              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto" data-menu-select-options="">
                 {options.map((option, index) => {
                   const on = option.value === value;
                   const active = index === highlight;
                   return (
                     <button
+                      {...option.attrs}
                       key={option.value}
                       id={`${listId}-opt-${index}`}
                       ref={active ? highlightedRef : undefined}

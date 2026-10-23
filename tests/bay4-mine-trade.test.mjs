@@ -141,6 +141,7 @@ const STUBS = {
 const { MyPublishedPane } = await import(await compileModule("src/shell/bay/mine/MyPublishedPane.tsx", STUBS));
 const { MySoldPane } = await import(await compileModule("src/shell/bay/mine/MySoldPane.tsx", STUBS));
 const { MyBoughtPane } = await import(await compileModule("src/shell/bay/mine/MyBoughtPane.tsx", STUBS));
+const { MyFavoritesPane } = await import(await compileModule("src/shell/bay/mine/MyFavoritesPane.tsx", STUBS));
 const { MyOrdersPane } = await import(await compileModule("src/shell/bay/orders/MyOrdersPane.tsx", STUBS));
 
 function contract(extra = {}) {
@@ -173,7 +174,7 @@ function reset(orders) {
     contract({ id: "buy-1", title: "我买的稿", status: "delivered", payment_state: "disabled" }),
     contract({ id: "sell-1", title: "我卖的稿", my_role: "seller", status: "active", payment_state: "disabled" }),
   ];
-  W.myApps = [{ id: "a1", title: "我的计算器", status: "published" }];
+  W.myApps = [{ id: "a1", title: "我的计算器", status: "published", cover_url: "https://cdn.example.com/calculator.png" }];
   W.myLessons = [{ id: "l1", title: "PPT 入门", status: "published" }];
   W.soldLessons = [];
   W.boughtLessons = [];
@@ -215,6 +216,7 @@ function reset(orders) {
     if (path === "/v1/talent/me/stats") return { orders_by_status: { active: 2, delivered: 1 }, rating_avg: 4.6, rating_count: 8, pending_orders: 0 };
     if (String(path).startsWith("/v1/talent/threads")) return { threads: [{ id: "t1", unread_count: 2 }] };
     if (path === "/v1/moderation/my-cases") return { cases: [] };
+    if (path === "/v1/talent/favorites") return { items: [{ id: "fav-1", target_kind: "service", target_ref: "s1", target: { id: "s1", title: "收藏 Logo", listing_kind: "service", cover_url: "https://cdn.example.com/logo.png" } }] };
     if (String(path).startsWith("/v1/talent/demands/mine")) {
       return {
         items: [{ id: "d1", title: "做一份路演稿", category: "doc", status: "open", proposal_count: 2, budget_min_fen: 50000, budget_max_fen: 50000, currency: "CNY", created_at: new Date().toISOString() }],
@@ -264,6 +266,10 @@ async function mount(element) {
     host,
     q: (sel) => host.querySelector(sel),
     qa: (sel) => [...host.querySelectorAll(sel)],
+    async render(element) {
+      await act(async () => root.render(element));
+      await settle();
+    },
     async click(sel) {
       const el = host.querySelector(sel);
       assert.ok(el, `找不到 ${sel}`);
@@ -278,6 +284,53 @@ async function mount(element) {
 }
 
 const props = (tab) => ({ target: { kind: "mine", tab }, layout: "docked", siteKey: "design" });
+
+test("刊登网格用真实封面，搜索后仍可编辑；列表视图显示同一组条目", async () => {
+  reset();
+  const view = await mount(React.createElement(MyPublishedPane, { ...props("published"), query: "计算器", display: "grid" }));
+  assert.equal(view.q("[data-bay-mine-view]").getAttribute("data-bay-mine-view"), "grid");
+  assert.equal(view.qa("[data-bay-mine-row]").length, 1);
+  assert.equal(view.q('[data-bay-mine-cover="app:a1"] img').getAttribute("src"), "https://cdn.example.com/calculator.png");
+  await view.click('[data-bay-mine-row="app:a1"]');
+  assert.deepEqual(W.opened.at(-1), { kind: "app-editor", appId: "a1" });
+  await view.render(React.createElement(MyPublishedPane, { ...props("published"), query: "", display: "list" }));
+  assert.equal(view.q("[data-bay-mine-view]").getAttribute("data-bay-mine-view"), "list");
+  assert.ok(view.q('[data-bay-mine-row="service:s1"]'));
+  assert.ok(view.q('[data-bay-mine-row="app:a1"]'));
+  assert.ok(view.q('[data-bay-mine-row="lesson:l1"]'));
+  await view.unmount();
+});
+
+test("卖出、买入、收藏都按自己的数据搜索；收藏封面与打开目标保留", async () => {
+  reset();
+  for (const [Component, tab, query, row] of [
+    [MySoldPane, "sold", "路演", "proposal:p1"],
+    [MyBoughtPane, "bought", "我买", "order:buy-1"],
+    [MyFavoritesPane, "favorites", "收藏 Logo", "fav-1"],
+  ]) {
+    const view = await mount(React.createElement(Component, { ...props(tab), query, display: "grid" }));
+    assert.equal(view.qa("[data-bay-mine-row]").length, 1, tab);
+    assert.ok(view.q(`[data-bay-mine-row="${row}"]`), tab);
+    if (tab === "favorites") {
+      assert.equal(view.q('[data-bay-mine-cover="fav-1"] img').getAttribute("src"), "https://cdn.example.com/logo.png");
+      await view.click('[data-bay-mine-row="fav-1"]');
+      assert.deepEqual(W.opened.at(-1), { kind: "service", id: "s1" });
+    }
+    await view.unmount();
+  }
+});
+
+test("清空无匹配搜索后恢复刊登，损坏的封面回退为类别图标", async () => {
+  reset();
+  const view = await mount(React.createElement(MyPublishedPane, { ...props("published"), query: "不存在的关键词" }));
+  assert.ok(view.q('[data-bay-empty="search"]'));
+  await view.render(React.createElement(MyPublishedPane, { ...props("published"), query: "计算器" }));
+  const image = view.q('[data-bay-mine-cover="app:a1"] img');
+  await act(async () => image.dispatchEvent(new window.Event("error")));
+  assert.equal(view.q('[data-bay-mine-cover="app:a1"] img'), null);
+  assert.ok(view.q('[data-bay-mine-cover="app:a1"] svg'));
+  await view.unmount();
+});
 
 test("我发布的：一张统一列表，没有需求、没有分区标题，每行右边标类别，没有页内发布按钮", async () => {
   reset();

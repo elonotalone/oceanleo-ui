@@ -301,6 +301,66 @@ export function patchTheme(doc: BayPageDoc, patch: Partial<BayPageTheme>): BayPa
   return { ...doc, theme: { ...doc.theme, ...patch } };
 }
 
+export type BayPageTemplateId = "portfolio" | "studio" | "editorial" | "minimal";
+
+/** Templates use the same durable version-1 document; applying one never drops a person's content. */
+export const BAY_PAGE_TEMPLATES: readonly {
+  id: BayPageTemplateId;
+  name: string;
+  hint: string;
+  tone: BayPageTone;
+  accent: string;
+  font: BayPageFont;
+  cover_style: BayPageCoverStyle;
+  order: readonly BayPageBlockType[];
+}[] = [
+  { id: "portfolio", name: "作品橱窗", hint: "让图片和作品先说话", tone: "warm", accent: "#b45309", font: "serif", cover_style: "gradient", order: ["hero", "gallery", "showcase", "text", "links", "contact"] },
+  { id: "studio", name: "专业工作室", hint: "介绍服务，展示合作成果", tone: "light", accent: "#6366f1", font: "sans", cover_style: "gradient", order: ["hero", "text", "services", "showcase", "reviews", "contact"] },
+  { id: "editorial", name: "个人名片", hint: "用经历与文字介绍自己", tone: "ocean", accent: "#38bdf8", font: "sans", cover_style: "gradient", order: ["hero", "text", "quote", "links", "contact"] },
+  { id: "minimal", name: "简洁留白", hint: "清晰的介绍与常用链接", tone: "light", accent: "#171717", font: "rounded", cover_style: "none", order: ["hero", "text", "links", "contact"] },
+];
+
+export function applyPageTemplate(doc: BayPageDoc, id: BayPageTemplateId, tt: (zh: string) => string = (zh) => zh): BayPageDoc {
+  const template = BAY_PAGE_TEMPLATES.find((item) => item.id === id);
+  if (!template) return doc;
+  const blocks: BayPageBlock[] = [];
+  const used = new Set<string>();
+  // Keep the final contact invitation last, including when preserving sections outside the preset.
+  for (const type of template.order.filter((type) => type !== "contact")) {
+    const existing = doc.blocks.filter((block) => block.type === type);
+    for (const block of existing) {
+      blocks.push(block);
+      used.add(block.id);
+    }
+    if (!existing.length && doc.blocks.length + blocks.filter((block) => !doc.blocks.includes(block)).length < BAY_PAGE_MAX_BLOCKS) {
+      blocks.push(newBlock(type, tt));
+    }
+  }
+  for (const block of doc.blocks) {
+    if (!used.has(block.id) && block.type !== "contact") blocks.push(block);
+  }
+  const contacts = doc.blocks.filter((block) => block.type === "contact");
+  blocks.push(...contacts);
+  if (!contacts.length && blocks.length < BAY_PAGE_MAX_BLOCKS) blocks.push(newBlock("contact", tt));
+  return {
+    ...doc,
+    theme: {
+      ...doc.theme,
+      tone: template.tone,
+      accent: template.accent,
+      font: template.font,
+      // An uploaded cover remains available even if the chosen layout hides it.
+      cover_style: doc.theme.cover_url && template.cover_style !== "none" ? "image" : template.cover_style,
+    },
+    blocks,
+  };
+}
+
+/** Content equality matters for reverting an edit or moving a section back to its original position. */
+export function samePageDoc(left: BayPageDoc, right: BayPageDoc): boolean {
+  return left === right || JSON.stringify(left) === JSON.stringify(right);
+}
+
 /** 序列化后的字节数（保存前在界面上先拦一道，后端还会再判）。 */
 export function pageDocBytes(doc: BayPageDoc): number {
   const json = JSON.stringify(doc);

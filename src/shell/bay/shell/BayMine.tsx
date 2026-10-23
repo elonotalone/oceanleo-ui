@@ -1,15 +1,12 @@
 "use client";
 
-// 「我的」三块：交易 / 我的主页 / 数据面板。没登录先请登录。
-// 页签是项目页同一件 ProjectTabNav（下划线）。「交易」里一行两个下拉：第一个选列表（我发布的 / 我卖出的 / 我买到的 / 我的收藏），
-// 第二个选类别（全部类别 / 现成文件 / 人工服务 / 网站与软件服务 / 课程 / 其他）；列表放在一块白色圆角卡片里。
-// 页签与下拉直接坐在页底上，不铺整页白板；白色只给列表这一块卡片。主页与数据面板的卡片由它们自己画。
+// 「我的」三块：交易 / 我的主页 / 数据面板。交易用库的搜索与网格/列表切换，各条目独立成卡。
 // 地址 `mine:published|sold|bought|favorites` 打开「交易」并选中对应列表，`mine:page`、`mine:dashboard` 原样（映射见 ../mine/mine-blocks.ts）。
 // 每一块的正文在 `../mine/` 里（主页与数据面板借用 `../supply/ProfilePane` 与 `../dashboard/DashboardPane`），
 // 这个文件只管页签、下拉和登录提示。
 import { lazy, Suspense, useEffect, useId, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { CollectionFilterRow } from "../../collection-chrome";
+import { CollectionSearchField, CollectionViewToggle } from "../../collection-chrome";
 import { ProjectTabNav } from "../../project-workspace";
 import { MyBoughtPane, MyFavoritesPane, MyPublishedPane, MySoldPane } from "../mine";
 import { BayMineDashboardTab } from "../mine/MyDashboardTab";
@@ -26,7 +23,7 @@ import {
   type MineList,
 } from "../mine/mine-blocks";
 import type { MineCategory } from "../mine/mine-category";
-import { setMineView, useMineView, useMineViewLifecycle } from "../mine/mine-view-state";
+import { setMineSearch, setMineView, useMineView, useMineViewLifecycle } from "../mine/mine-view-state";
 import { PUBLISHED_CATEGORIES, PUBLISHED_CATEGORY_LABEL, type PublishedCategory } from "../mine/PublishedCategoryTag";
 import { PaneLoading } from "../supply/parts";
 import { replaceBay, requireBayLogin, useBaySignedIn, type BayLayout, type BayMineTab } from "./bay-state";
@@ -55,7 +52,7 @@ function blockLabelKey(block: MineBlock): string {
   return block === "trade" ? TRADE_TAB_LABEL : MINE_LABELS[block];
 }
 
-/** 交易列表的白色圆角卡片（参考项目页主区卡片）。页底不铺白，白色只用来分隔这一块。 */
+/** 登录提示单独成卡；交易清单由每个条目自己画卡片。 */
 const TRADE_CARD_CLASS = "mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-white";
 
 function MinePane({ tab, ...props }: MinePaneProps & { tab: BayMineTab }) {
@@ -132,9 +129,9 @@ export function BaySignInPrompt({ text }: { text: string }) {
 
 /**
  * 「交易」顶上的一行两个下拉：列表 + 类别。选列表走地址（mine:<列表>），选类别只改视图状态。
- * 列表下拉是视图切换、不是筛选：`defaultValue={list}` 让它的边框不因「选了具体值」加深，只有类别选了具体类别才加深。
+ * 列表下拉切换地址，类别下拉只筛当前清单；两者使用同一套浅色菜单控件。
  */
-function TradeFilters({ list, category, page }: { list: MineList; category: MineCategory; page: boolean }) {
+function TradeFilters({ list, category }: { list: MineList; category: MineCategory }) {
   const tt = useUI();
   const listOptions: BayFilterOption[] = MINE_LISTS.map((id) => ({ value: id, label: tt(MINE_LABELS[id]) }));
   const categoryOptions: BayFilterOption[] = PUBLISHED_CATEGORIES.map((id) => ({ value: id, label: tt(PUBLISHED_CATEGORY_LABEL[id]) }));
@@ -163,9 +160,8 @@ function TradeFilters({ list, category, page }: { list: MineList; category: Mine
       />
     </>
   );
-  if (page) return <CollectionFilterRow data-bay-mine-filters="">{filters}</CollectionFilterRow>;
   return (
-    <div data-bay-mine-filters="" className="flex shrink-0 flex-nowrap items-center gap-2 overflow-x-auto px-3 pt-3">
+    <div data-bay-mine-filters="" className="flex min-w-0 flex-wrap items-center gap-2">
       {filters}
     </div>
   );
@@ -197,24 +193,34 @@ export function BayMine({ tab, layout, siteKey }: { tab: BayMineTab; layout: Bay
   } else if (block === "trade") {
     body = (
       <>
-        <TradeFilters list={list} category={view.category} page={page} />
-        <div className={page ? TRADE_CARD_CLASS : "mt-2"} data-bay-mine-card="">
-          <MinePane tab={list} target={{ kind: "mine", tab: list }} layout={layout} siteKey={siteKey} category={view.category} />
+        <div data-bay-mine-toolbar="" className={`mt-5 flex flex-wrap items-center justify-between gap-3 ${page ? "" : "px-3"}`}>
+          <TradeFilters list={list} category={view.category} />
+          <div data-bay-mine-tools="" className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <CollectionSearchField
+              value={view.queries[list]}
+              onChange={(query) => setMineSearch(list, query)}
+              placeholder={tt("搜索标题或内容")}
+            />
+            <CollectionViewToggle view={view.display} onChange={(display) => setMineView({ display })} />
+          </div>
+        </div>
+        <div className={page ? "mt-4" : "mt-3 px-3"} data-bay-mine-card="">
+          <MinePane tab={list} target={{ kind: "mine", tab: list }} layout={layout} siteKey={siteKey} category={view.category} query={view.queries[list]} display={view.display} />
         </div>
       </>
     );
   } else {
     body = (
-      <div className={page ? "mt-4" : undefined}>
+      <div className={page && block === "page" ? "mt-4 flex min-h-0 flex-1 flex-col" : page ? "mt-4" : undefined}>
         <MinePane tab={shown} target={{ kind: "mine", tab: shown }} layout={layout} siteKey={siteKey} category="all" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col" data-bay-mine={shown} data-bay-mine-block={block}>
+    <div className={page && block === "page" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "flex flex-col"} data-bay-mine={shown} data-bay-mine-block={block}>
       <BayMineTabs tab={shown} variant={page ? "page" : "overlay"} panelId={panelId} />
-      <div id={panelId} role="tabpanel" aria-labelledby={`${panelId}-tab-${block}`} className="flex flex-col">
+      <div id={panelId} role="tabpanel" aria-labelledby={`${panelId}-tab-${block}`} className={page && block === "page" ? "flex min-h-0 flex-1 flex-col" : "flex flex-col"}>
         {body}
       </div>
     </div>

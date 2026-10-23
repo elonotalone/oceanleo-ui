@@ -19,7 +19,7 @@ import {
   type BaySellerCategory,
   type BayServiceMediaKind,
 } from "../../../lib/bay/seller";
-import { BayChoice, BayImageGallery, BayMenuSelect, BAY_FORM_HELP_CLASS } from "../form";
+import { BayImageGallery, BayMenuSelect, BAY_FORM_HELP_CLASS } from "../form";
 import { cleanGalleryUrls } from "../form/bay-gallery";
 import { isPriceInputText, parsePriceInput } from "../form/bay-price";
 import {
@@ -343,16 +343,15 @@ export function ModelStep({
         </SellerNotice>
       ) : (
         <div className="space-y-2">
-          <BayChoice
-            label={tt("计费方式")}
-            columns={1}
-            collapsible
+          <BayMenuSelect
+            selectProps={{ "aria-label": tt("计费方式") }}
+            placeholder={tt("计费方式")}
             value={selected}
             onChange={onSelect}
-            optionProps={(key) => ({ "data-bay-model": key })}
             options={models.map((model) => ({
               value: model.key,
-              title: tt(model.name_zh),
+              label: tt(model.name_zh),
+              attrs: { "data-bay-model": model.key },
             }))}
           />
           {selectedModel ? (
@@ -411,14 +410,12 @@ export function RequiredField({ spec, value, onChange }: { spec: BayFieldSpec; v
   if (spec.type === "enum") {
     return (
       <SellerField label={label}>
-        <select className={INPUT_CLASS} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)}>
-          <option value=""></option>
-          {(spec.enum || []).map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        <BayMenuSelect
+          value={typeof value === "string" ? value : ""}
+          selectProps={{ "aria-label": label }}
+          onChange={onChange}
+          options={(spec.enum || []).map((option) => ({ value: option, label: option }))}
+        />
       </SellerField>
     );
   }
@@ -732,13 +729,15 @@ export function MediaStep({
               {imagesOnly ? null : (
                 <div className="w-28">
                   <SellerField label={tt("类型")}>
-                    <select className={INPUT_CLASS} value={item.kind} onChange={(event) => onChange(item.key, { kind: event.target.value as BayServiceMediaKind })}>
-                      {kinds.map((kind) => (
-                        <option key={kind} value={kind}>
-                          {tt(MEDIA_KIND_LABEL[kind])}
-                        </option>
-                      ))}
-                    </select>
+                    <BayMenuSelect
+                      value={item.kind}
+                      selectProps={{ "aria-label": tt("类型") }}
+                      options={kinds.map((kind) => ({ value: kind, label: tt(MEDIA_KIND_LABEL[kind]) }))}
+                      onChange={(value) => {
+                        const kind = kinds.find((candidate) => candidate === value);
+                        if (kind) onChange(item.key, { kind });
+                      }}
+                    />
                   </SellerField>
                 </div>
               )}

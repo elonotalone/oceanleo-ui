@@ -107,7 +107,7 @@ const LISTING_MAIN: CSSProperties = {
   position: "relative",
   flex: 1,
   minWidth: 0,
-  minHeight: 448,
+  minHeight: 0,
   aspectRatio: "1 / 1",
   borderRadius: 2,
   overflow: "hidden",
@@ -402,7 +402,7 @@ export function BayImageGallery(props: {
         <div data-bay-gallery-stage="" style={LISTING_STAGE}>
           <div data-bay-gallery-rail="" style={LISTING_RAIL}>
             {urls.map((url, index) => (
-              <div key={`${index}-${url}`} data-bay-gallery-tile={index} style={{ ...LISTING_THUMB, border: active === index ? "2px solid #171717" : "1px solid #e5e5e5" }}>
+              <div key={`${index}-${url}`} data-bay-gallery-tile={index} style={{ ...LISTING_THUMB, border: active === index ? "2px solid #a3a3a3" : "1px solid #e5e5e5" }}>
                 <button
                   type="button"
                   data-bay-gallery-thumb={index}

@@ -263,11 +263,7 @@ async function expandTerms(view) {
 
 async function pickHowYouDeliver(view, kind) {
   await expandTerms(view);
-  // 选定后只留被选中的一张；先点它展开，才点得到别的选项。
-  if (view.host.querySelector("[data-bay-how-you-deliver] [data-bay-choice-collapsed]")) {
-    await view.click("[data-bay-how-you-deliver] [data-bay-choice-option]");
-  }
-  await view.click(`[data-bay-how-you-deliver] [data-bay-choice-option="${kind}"]`);
+  await view.setValue("[data-bay-how-you-deliver] select", kind);
 }
 
 const calls = (method, path) => globalThis.__bayCalls.filter((call) => call.method === method && (path === undefined || call.path === path));

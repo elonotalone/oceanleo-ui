@@ -24,7 +24,7 @@ import {
   subscriptionIsSettled,
   subscriptionStatusText,
 } from "./mine-category";
-import { loadServiceCategories } from "./mine-load";
+import { loadServiceCards } from "./mine-load";
 import { hideRowProps } from "./mine-hide";
 import { MineTradeList, type MineTradeRow } from "./MineTradeList";
 
@@ -32,7 +32,7 @@ type BoughtBundle = {
   orders: Awaited<ReturnType<typeof listBayOrders>>;
   lessons: Awaited<ReturnType<typeof listBoughtBayLessonOrders>>["items"];
   apps: Awaited<ReturnType<typeof listBoughtBayApps>>;
-  serviceKinds: Awaited<ReturnType<typeof loadServiceCategories>>;
+  serviceCards: Awaited<ReturnType<typeof loadServiceCards>>;
   hidden: Set<string>;
 };
 
@@ -59,11 +59,11 @@ async function loadBought(): Promise<BoughtBundle> {
   ]);
   const paidIds = paidContractIds(lessons, apps.purchases);
   const tradeOrders = orders.filter((order) => !isMergedPaidOrder(order, paidIds));
-  const serviceKinds = await loadServiceCategories(tradeOrders.map((order) => order.source_service_id || ""));
-  return { orders: tradeOrders, lessons, apps, serviceKinds, hidden };
+  const serviceCards = await loadServiceCards(tradeOrders.map((order) => order.source_service_id || ""));
+  return { orders: tradeOrders, lessons, apps, serviceCards, hidden };
 }
 
-export function MyBoughtPane({ category = "all" }: MinePaneProps) {
+export function MyBoughtPane({ category = "all", query = "", display = "grid" }: MinePaneProps) {
   const tt = useUI();
   const signedIn = useBaySignedIn();
   const locale = useBayMoneyLocale();
@@ -81,12 +81,14 @@ export function MyBoughtPane({ category = "all" }: MinePaneProps) {
   if (data) {
     for (const order of data.orders) {
       if (data.hidden.has(hiddenKey("order", order.id))) continue;
-      const kind = categoryOfListingKind(data.serviceKinds[order.source_service_id || ""] || "service");
+      const card = data.serviceCards[order.source_service_id || ""];
+      const kind = categoryOfListingKind(card?.category || "service");
       if (!rowMatchesCategory(category, kind)) continue;
       rows.push({
         id: `order:${order.id}`,
         title: order.title || tt("订单"),
         subtitle: orderStatusLabel(tt, order.status),
+        coverUrl: card?.coverUrl,
         amount: paid(order.total_fen, order.currency),
         statementContractId: order.id,
         category: kind,
@@ -116,6 +118,7 @@ export function MyBoughtPane({ category = "all" }: MinePaneProps) {
         id: `app-order:${row.id}`,
         title: row.item_title || tt("未命名"),
         subtitle: tt(purchaseStatusText(row.status)),
+        coverUrl: data.apps.apps.find((app) => app.id === row.item_id)?.cover_url,
         amount: paid(row.price_fen),
         statementContractId: row.contract_id || undefined,
         category: "app",
@@ -130,6 +133,7 @@ export function MyBoughtPane({ category = "all" }: MinePaneProps) {
         id: `app-sub:${row.id}`,
         title: row.app_title || tt("未命名"),
         subtitle: tt(subscriptionStatusText(row.status)),
+        coverUrl: data.apps.apps.find((app) => app.id === row.app_id)?.cover_url,
         amount: paid(row.price_fen),
         category: "app",
         ...hideRowProps(tt, bundle.reload, subscriptionIsSettled(row.status), "app-sub", row.id),
@@ -145,6 +149,8 @@ export function MyBoughtPane({ category = "all" }: MinePaneProps) {
       error={bundle.error}
       onRetry={bundle.reload}
       emptyText={mineEmptyText("bought")}
+      query={query}
+      display={display}
     />
   );
 }

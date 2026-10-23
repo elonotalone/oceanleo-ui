@@ -9,14 +9,23 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { DEFAULT_MINE_LIST, type MineList } from "./mine-blocks";
 import type { MineCategory } from "./mine-category";
+import type { CollectionView } from "../../collection-chrome";
 
 export interface MineView {
   /** 最近一次看的交易列表。地址上有列表时以地址为准；这里只在从主页 / 数据面板点回「交易」时用。 */
   list: MineList;
   category: MineCategory;
+  display: CollectionView;
+  /** 搜索只作用于正在看的清单，切到别的清单不会沿用不相关的关键词。 */
+  queries: Readonly<Record<MineList, string>>;
 }
 
-const INITIAL: MineView = { list: DEFAULT_MINE_LIST, category: "all" };
+const INITIAL: MineView = {
+  list: DEFAULT_MINE_LIST,
+  category: "all",
+  display: "grid",
+  queries: { published: "", sold: "", bought: "", favorites: "" },
+};
 
 let view: MineView = INITIAL;
 const listeners = new Set<() => void>();
@@ -32,9 +41,14 @@ export function getMineView(): MineView {
 /** 没变化就不换对象、不通知，useSyncExternalStore 才不会白渲染。 */
 export function setMineView(patch: Partial<MineView>): void {
   const next: MineView = { ...view, ...patch };
-  if (next.list === view.list && next.category === view.category) return;
+  if (next.list === view.list && next.category === view.category && next.display === view.display && next.queries === view.queries) return;
   view = next;
   emit();
+}
+
+export function setMineSearch(list: MineList, query: string): void {
+  if (view.queries[list] === query) return;
+  setMineView({ queries: { ...view.queries, [list]: query } });
 }
 
 export function resetMineView(): void {

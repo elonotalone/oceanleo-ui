@@ -33,7 +33,7 @@ async function loadPublished(): Promise<PublishedBundle> {
   };
 }
 
-export function MyPublishedPane({ category = "all" }: MinePaneProps) {
+export function MyPublishedPane({ category = "all", query = "", display = "grid" }: MinePaneProps) {
   const tt = useUI();
   const signedIn = useBaySignedIn();
   const bundle = useMineBundle(signedIn, loadPublished, tt("列表没读出来，请稍后再试。"));
@@ -53,6 +53,8 @@ export function MyPublishedPane({ category = "all" }: MinePaneProps) {
         id: `service:${service.id}`,
         title: service.title || tt("未命名"),
         subtitle: tt(listingStatusText(service.status, service.moderation_hidden)),
+        coverUrl: service.cover_url,
+        searchText: service.summary,
         category: kind,
         onOpen: () => openBay({ kind: "service-editor", serviceId: service.id }),
         onDelete: remover(() => deleteMyService(service.id)),
@@ -77,6 +79,8 @@ export function MyPublishedPane({ category = "all" }: MinePaneProps) {
         id: `app:${app.id}`,
         title: app.title || tt("未命名"),
         subtitle: tt(listingStatusText(app.status, app.moderation_hidden)),
+        coverUrl: app.cover_url,
+        searchText: app.summary,
         category: "app",
         onOpen: () => openBay({ kind: "app-editor", appId: app.id }),
         onDelete: remover(() => deleteBayApp(app.id)),
@@ -89,6 +93,8 @@ export function MyPublishedPane({ category = "all" }: MinePaneProps) {
         id: `lesson:${lesson.id}`,
         title: lesson.title || tt("未命名课程"),
         subtitle: tt(listingStatusText(lesson.status, lesson.moderation_hidden)),
+        coverUrl: lesson.cover_url,
+        searchText: lesson.summary,
         category: "lesson",
         onOpen: () => openBay({ kind: "lesson-editor", lessonId: lesson.id }),
         onDelete: remover(() => deleteBayLesson(lesson.id)),
@@ -104,6 +110,8 @@ export function MyPublishedPane({ category = "all" }: MinePaneProps) {
       error={bundle.error}
       onRetry={bundle.reload}
       emptyText={mineEmptyText("published")}
+      query={query}
+      display={display}
     />
   );
 }

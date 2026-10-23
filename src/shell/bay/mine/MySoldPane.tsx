@@ -24,7 +24,7 @@ import {
   subscriptionIsSettled,
   subscriptionStatusText,
 } from "./mine-category";
-import { loadServiceCategories } from "./mine-load";
+import { loadServiceCards } from "./mine-load";
 import { hideRowProps } from "./mine-hide";
 import { MineTradeList, type MineTradeRow } from "./MineTradeList";
 
@@ -33,7 +33,7 @@ type SoldBundle = {
   orders: Awaited<ReturnType<typeof listBayOrders>>;
   lessons: Awaited<ReturnType<typeof listSoldBayLessonOrders>>["items"];
   apps: Awaited<ReturnType<typeof listSoldBayApps>>;
-  serviceKinds: Awaited<ReturnType<typeof loadServiceCategories>>;
+  serviceCards: Awaited<ReturnType<typeof loadServiceCards>>;
   hidden: Set<string>;
 };
 
@@ -59,11 +59,11 @@ async function loadSold(): Promise<SoldBundle> {
   ]);
   const paidIds = paidContractIds(lessons, apps.purchases);
   const tradeOrders = orders.filter((order) => !isMergedPaidOrder(order, paidIds));
-  const serviceKinds = await loadServiceCategories(tradeOrders.map((order) => order.source_service_id || ""));
-  return { proposals, orders: tradeOrders, lessons, apps, serviceKinds, hidden };
+  const serviceCards = await loadServiceCards(tradeOrders.map((order) => order.source_service_id || ""));
+  return { proposals, orders: tradeOrders, lessons, apps, serviceCards, hidden };
 }
 
-export function MySoldPane({ category = "all" }: MinePaneProps) {
+export function MySoldPane({ category = "all", query = "", display = "grid" }: MinePaneProps) {
   const tt = useUI();
   const signedIn = useBaySignedIn();
   const bundle = useMineBundle(signedIn, loadSold, tt("列表没读出来，请稍后再试。"));
@@ -88,12 +88,14 @@ export function MySoldPane({ category = "all" }: MinePaneProps) {
     }
     for (const order of data.orders) {
       if (data.hidden.has(hiddenKey("order", order.id))) continue;
-      const kind = categoryOfListingKind(data.serviceKinds[order.source_service_id || ""] || "service");
+      const card = data.serviceCards[order.source_service_id || ""];
+      const kind = categoryOfListingKind(card?.category || "service");
       if (!rowMatchesCategory(category, kind)) continue;
       rows.push({
         id: `order:${order.id}`,
         title: order.title || tt("订单"),
         subtitle: joinMeta([orderStatusLabel(tt, order.status), orderAmountText(tt, order)]),
+        coverUrl: card?.coverUrl,
         category: kind,
         orderId: order.id,
         ...hideRowProps(tt, bundle.reload, orderIsSettled(order.status), "order", order.id),
@@ -145,6 +147,8 @@ export function MySoldPane({ category = "all" }: MinePaneProps) {
       error={bundle.error}
       onRetry={bundle.reload}
       emptyText={mineEmptyText("sold")}
+      query={query}
+      display={display}
     />
   );
 }

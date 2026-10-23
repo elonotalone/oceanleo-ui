@@ -42,6 +42,10 @@ export interface ProfilePageProps {
   doc: BayPageDoc;
   /** 本人在编辑：文字可改，版块带操作条。 */
   editing?: boolean;
+  /** Builder identity fields live in its sidebar; older inline callers retain their behavior. */
+  editingIdentity?: boolean;
+  /** A phone preview must use phone geometry even inside a desktop browser. */
+  compact?: boolean;
   onBlock?: (id: string, patch: Partial<BayPageBlock>) => void;
   /** 编辑时包在每个版块外面的操作条（上移 / 下移 / 删除 / 在下面加）。 */
   renderBlockChrome?: (block: BayPageBlock, index: number, children: ReactNode) => ReactNode;
@@ -132,7 +136,7 @@ function BlockTitle({ block, editing, onBlock, fallback }: { block: BayPageBlock
 
 /** 浅色内容区：里面放共用的发布卡片、评价列表（它们只有浅色一套）。 */
 function LightCard({ children }: { children: ReactNode }) {
-  return <div className="text-stone-900">{children}</div>;
+  return <div className="rounded-xl bg-white p-4 text-stone-900">{children}</div>;
 }
 
 function EmptyLine({ text }: { text: string }) {
@@ -275,14 +279,14 @@ function RemoveChip({ onClick, label }: { onClick: () => void; label: string }) 
 
 function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePageProps }) {
   const tt = useUI();
-  const { page, editing = false, onBlock, onTalk } = props;
+  const { page, editing = false, compact = false, onBlock, onTalk } = props;
   const { profile, services, showcase, reviews } = page;
   const patch = (next: Partial<BayPageBlock>) => onBlock?.(block.id, next);
 
   switch (block.type) {
     case "hero":
       return (
-        <div className="py-4 sm:py-8">
+        <div className={compact ? "py-4" : "py-4 sm:py-6"}>
           <EditableText
             as="h2"
             value={block.title ?? ""}
@@ -290,7 +294,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
             onChange={(title) => patch({ title })}
             maxLength={200}
             label={tt("大标题")}
-            className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[28px]"
+            className={compact ? "text-[28px] font-semibold leading-tight tracking-tight" : "text-[28px] font-semibold leading-tight tracking-tight sm:text-[40px]"}
           />
           <div className="mt-4 max-w-2xl">
             <EditableText
@@ -300,7 +304,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
               maxLength={400}
               multiline
               label={tt("副标题")}
-              className="text-[17px] leading-relaxed sm:text-[19px]"
+              className={compact ? "text-[16px] leading-relaxed" : "text-[17px] leading-relaxed sm:text-[19px]"}
               style={{ color: "var(--bp-muted)" }}
             />
           </div>
@@ -351,7 +355,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
         <div>
           <BlockTitle block={block} editing={editing} onBlock={onBlock} fallback="" />
           {images.length ? (
-            <div className="mt-4 columns-2 gap-3 sm:columns-3" data-bay-page-gallery>
+            <div className={compact ? "mt-4 columns-2 gap-3" : "mt-4 columns-2 gap-3 sm:columns-3"} data-bay-page-gallery>
               {images.map((image, index) => (
                 <figure key={`${image.url}-${index}`} className="relative mb-3 break-inside-avoid overflow-hidden rounded-2xl" style={{ background: "var(--bp-surface)" }}>
                   <img src={image.url} alt={image.caption} loading="lazy" className="block w-full" />
@@ -397,7 +401,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
       const items = block.items ?? [];
       return (
         <div>
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4" data-bay-page-stats>
+          <dl className={compact ? "grid grid-cols-2 gap-3" : "grid grid-cols-2 gap-3 sm:grid-cols-4"} data-bay-page-stats>
             {items.map((item, index) => (
               <div key={index} className="relative rounded-xl px-4 py-4" style={{ background: "var(--bp-surface)" }}>
                 <dd>
@@ -449,7 +453,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
           <div className="mt-4">
             {services.length ? (
               <LightCard>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-bay-profile-services>
+                <div className={compact ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"} data-bay-profile-services>
                   {services.map((service) => (
                     <ServiceCard key={service.id} item={asFeedItem(service, profile)} variant="card" onOpen={() => openBay({ kind: "service", id: service.id })} />
                   ))}
@@ -471,7 +475,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
           <BlockTitle block={block} editing={editing} onBlock={onBlock} fallback={tt("作品集")} />
           <div className="mt-4">
             {items.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className={compact ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>
                 {items.map((item) => {
                   const cover = safeHttpUrl(item.cover_url);
                   return (
@@ -533,7 +537,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
 
     case "contact":
       return (
-        <div className="overflow-hidden rounded-xl px-5 py-8 text-center sm:px-8 sm:py-10" style={{ background: "var(--bp-accent)", color: "var(--bp-accent-ink)" }}>
+        <div className={compact ? "overflow-hidden rounded-xl px-5 py-8 text-center" : "overflow-hidden rounded-xl px-5 py-8 text-center sm:px-8 sm:py-10"} style={{ background: "var(--bp-accent)", color: "var(--bp-accent-ink)" }}>
           <EditableText
             as="h2"
             value={block.title ?? ""}
@@ -541,7 +545,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
             onChange={(title) => patch({ title })}
             maxLength={200}
             label={tt("版块标题")}
-            className="text-[17px] font-semibold leading-tight tracking-tight sm:text-[20px]"
+            className={compact ? "text-[20px] font-semibold leading-tight tracking-tight" : "text-[20px] font-semibold leading-tight tracking-tight sm:text-[24px]"}
           />
           <div className="mx-auto mt-3 max-w-xl">
             <EditableText
@@ -584,7 +588,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
 
     case "quote":
       return (
-        <figure className="border-l-4 py-2 pl-5 sm:pl-8" style={{ borderColor: "var(--bp-accent)" }}>
+        <figure className={compact ? "border-l-4 py-2 pl-5" : "border-l-4 py-2 pl-5 sm:pl-8"} style={{ borderColor: "var(--bp-accent)" }}>
           <blockquote>
             <EditableText
               value={block.body ?? ""}
@@ -593,7 +597,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
               maxLength={600}
               multiline
               label={tt("引言")}
-              className="text-[24px] font-semibold leading-snug tracking-tight sm:text-[32px]"
+              className={compact ? "text-[24px] font-semibold leading-snug tracking-tight" : "text-[24px] font-semibold leading-snug tracking-tight sm:text-[32px]"}
             />
           </blockquote>
           {block.by || editing ? (
@@ -684,7 +688,8 @@ function OfficialBadge() {
 
 export function ProfilePage(props: ProfilePageProps) {
   const tt = useUI();
-  const { page, doc, editing = false, renderBlockChrome, actions, onBrowseMaterials, identity, onIdentity, unpublished } = props;
+  const { page, doc, editing = false, compact = false, renderBlockChrome, actions, onBrowseMaterials, identity, onIdentity, unpublished } = props;
+  const editingIdentity = props.editingIdentity ?? editing;
   const profile = page.profile as BayProfilePage["profile"] & { official?: boolean };
   const handle = identity?.handle ?? profile.handle ?? "";
   const displayName = identity?.display_name ?? profile.display_name ?? "";
@@ -696,20 +701,21 @@ export function ProfilePage(props: ProfilePageProps) {
   const coverImage = theme.cover_style === "image" ? safePageUrl(theme.cover_url) : "";
   const showCover = theme.cover_style !== "none";
   const categories = (profile.categories || []).slice(0, 10);
-  const showTags = editing || categories.length > 0 || skills.length > 0 || languages.length > 0;
+  const showTags = editingIdentity || categories.length > 0 || skills.length > 0 || languages.length > 0;
 
   return (
     <article
       data-bay-pane="profile"
       data-bay-page-tone={theme.tone}
       data-bay-page-editing={editing ? "true" : undefined}
+      data-bay-page-compact={compact ? "true" : undefined}
       className="min-h-full"
       style={{ ...(pageThemeVars(theme) as CSSProperties), background: "var(--bp-bg)", color: "var(--bp-fg)", fontFamily: "var(--bp-font)" }}
     >
       {showCover ? (
         <div
           data-bay-page-cover={coverImage ? "image" : "gradient"}
-          className="h-40 w-full sm:h-56"
+          className={compact ? "h-32 w-full" : "h-36 w-full sm:h-48"}
           style={
             coverImage
               ? { backgroundImage: `url("${coverImage.replace(/["\\\n]/g, "")}")`, backgroundSize: "cover", backgroundPosition: "center" }
@@ -718,16 +724,16 @@ export function ProfilePage(props: ProfilePageProps) {
         />
       ) : null}
 
-      <div className="mx-auto w-full max-w-5xl px-5 pb-16 sm:px-8">
+      <div className={compact ? "mx-auto w-full px-5 pb-12" : "mx-auto w-full max-w-5xl px-5 pb-16 sm:px-8"}>
         {unpublished ? (
           <p data-bay-page-unpublished className="pt-5 text-[13px] leading-5" style={{ color: "var(--bp-muted)" }}>
             {tt("这张主页现在只有你自己看得到。公开之后别人才能访问，发布东西时也会自动公开。")}
           </p>
         ) : null}
-        <header className={`flex flex-wrap items-end justify-between gap-4 ${showCover ? "-mt-10 sm:-mt-12" : "pt-8"}`} data-bay-page-identity>
+        <header className={`relative flex flex-wrap items-end justify-between gap-4 ${showCover ? compact ? "-mt-8" : "-mt-8 sm:-mt-10" : "pt-8"}`} data-bay-page-identity>
           <div className="flex min-w-0 items-end gap-4">
             <span className="shrink-0 rounded-full p-1 shadow-md" style={{ background: "var(--bp-bg)" }}>
-              {editing ? (
+              {editingIdentity ? (
                 <BayCoverDrop url={avatarUrl} onUrl={(url) => onIdentity?.({ avatar_url: url })} variant="avatar" />
               ) : (
                 <Avatar url={avatarUrl} name={name} size="lg" />
@@ -735,7 +741,7 @@ export function ProfilePage(props: ProfilePageProps) {
             </span>
             <div className="min-w-0 pb-1">
               <p className="flex flex-wrap items-center gap-2">
-                {editing ? (
+                {editingIdentity ? (
                   <span data-bay-field="display_name" className="min-w-0">
                     <EditableText
                       as="span"
@@ -755,7 +761,7 @@ export function ProfilePage(props: ProfilePageProps) {
                 {profile.official ? <OfficialBadge /> : null}
               </p>
               <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]" style={{ color: "var(--bp-muted)" }}>
-                {editing ? (
+                {editingIdentity ? (
                   <span className="inline-flex min-w-0 items-baseline gap-0.5" data-bay-field="handle">
                     <span aria-hidden>@</span>
                     <EditableText
@@ -794,7 +800,7 @@ export function ProfilePage(props: ProfilePageProps) {
             ))}
             <TagPills
               items={skills}
-              editing={editing}
+              editing={editingIdentity}
               field="skills"
               addLabel={tt("技能")}
               tone="accent"
@@ -802,7 +808,7 @@ export function ProfilePage(props: ProfilePageProps) {
             />
             <TagPills
               items={languages}
-              editing={editing}
+              editing={editingIdentity}
               field="languages"
               addLabel={tt("语言")}
               tone="outline"
@@ -823,8 +829,15 @@ export function ProfilePage(props: ProfilePageProps) {
           </div>
         ) : null}
 
-        <div className="mt-8 space-y-12 sm:mt-10 sm:space-y-16" data-bay-page-blocks>
+        <div className={compact ? "mt-8 space-y-10" : "mt-8 space-y-10 sm:mt-10 sm:space-y-12"} data-bay-page-blocks>
           {doc.blocks.map((block, index) => {
+            if (!editing) {
+              if (block.type === "services" && !page.services.length) return null;
+              if (block.type === "showcase" && !page.showcase.length) return null;
+              if (block.type === "reviews" && !page.reviews.length) return null;
+              if (block.type === "gallery" && !block.images?.length) return null;
+              if (block.type === "links" && !block.links?.length) return null;
+            }
             const body = (
               <section key={block.id} data-bay-page-block={block.type}>
                 <BlockBody block={block} props={props} />

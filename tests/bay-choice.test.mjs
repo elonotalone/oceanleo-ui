@@ -120,7 +120,7 @@ test("optionProps 把各页自己的 data- 属性挂到选项上；disabled 的�
   await unmount();
 });
 
-test("可折叠时选定后只留一条，点开的清单上下紧贴、盖住后面的字段", async () => {
+test("可折叠选择使用公共菜单、浅色边框和 portal，选值后回调并收起", async () => {
   const picked = [];
   const { host, unmount } = await mount({
     collapsible: true,
@@ -129,20 +129,21 @@ test("可折叠时选定后只留一条，点开的清单上下紧贴、盖住�
     onChange: (value) => picked.push(value),
   });
   assert.ok(host.querySelector("[data-bay-choice-collapsed]"));
-  assert.equal(host.querySelectorAll("[data-bay-choice-option]").length, 1);
+  assert.equal(host.querySelectorAll("button[data-bay-choice-option]").length, 1);
   assert.equal(host.querySelector("[data-bay-choice-menu]"), null);
   await act(async () => {
     host.querySelector("button").click();
   });
-  const menu = host.querySelector("[data-bay-choice-menu]");
+  const menu = document.querySelector("[data-bay-choice-menu]");
   assert.ok(menu);
-  assert.match(menu.className, /\babsolute\b/);
-  assert.match(menu.className, /top-full/);
-  assert.equal(host.querySelectorAll("[data-bay-choice-option]").length, 2);
-  assert.match(host.querySelector("[data-bay-choice]").className, /\bz-30\b/);
+  assert.equal(host.contains(menu), false);
+  assert.equal(menu.style.position, "fixed");
+  assert.equal(menu.querySelectorAll("button[data-bay-choice-option]").length, 2);
+  assert.doesNotMatch(host.querySelector("button[data-menu-select-trigger]").className, /border-neutral-900/);
   await act(async () => {
-    host.querySelector('[data-bay-choice-option="consult"]').click();
+    menu.querySelector('button[data-bay-choice-option="consult"]').click();
   });
   assert.deepEqual(picked, ["consult"]);
+  assert.equal(document.querySelector("[data-bay-choice-menu]"), null);
   await unmount();
 });

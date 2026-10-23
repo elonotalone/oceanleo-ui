@@ -1,51 +1,21 @@
 "use client";
 
-// 编辑主页：顶上一张主题栏卡（底色、主色、字体、封面、是否公开），下面是主页本身那张卡——点文字直接改，
-// 页头改名字 / 地址 / 头像 / 技能，每个版块右上角有上移 / 下移 / 删除。只改版面，不产生任何代码。
-// 主页卡之后是「资质核验」白卡：只有本人看得到，不属于公开主页，所以不套主页的主题色。
-// 从「去核验」进来时（vettingFocus 变大）自动滚到这张卡。页面底色上只有这几张卡，不铺整页白板。
-
+// A bounded settings sidebar and the actual public-page renderer share one durable document.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayProfilePage, BayShowcaseItem } from "../../../lib/bay/directory";
 import {
-  BAY_PAGE_ACCENTS,
-  BAY_PAGE_BLOCK_LABELS,
-  BAY_PAGE_BLOCK_TYPES,
-  BAY_PAGE_FONTS,
-  BAY_PAGE_FONT_LABELS,
-  BAY_PAGE_FONT_STACKS,
-  BAY_PAGE_MAX_BLOCKS,
-  BAY_PAGE_MAX_BYTES,
-  BAY_PAGE_PALETTES,
-  BAY_PAGE_TONES,
-  BAY_PAGE_TONE_LABELS,
-  insertBlock,
-  moveBlock,
-  newBlock,
-  pageDocBytes,
-  patchBlock,
-  patchTheme,
-  removeBlock,
-  type BayPageBlock,
-  type BayPageBlockType,
-  type BayPageDoc,
+  BAY_PAGE_BLOCK_LABELS, BAY_PAGE_MAX_BYTES, BAY_PAGE_PALETTES,
+  applyPageTemplate, insertBlock, moveBlock, newBlock, pageDocBytes,
+  patchBlock, patchTheme, removeBlock, samePageDoc, syncHeroName,
+  type BayPageBlock, type BayPageDoc, type BayPageTemplateId,
 } from "../../../lib/bay/page-doc";
 import { addShowcaseWork, isBayHandle, removeShowcaseItem } from "../../../lib/bay/seller";
-import { BayCoverDrop } from "../form/BayCoverDrop";
 import { pickLibraryWork } from "../needs/LibraryWorkPicker";
 import { BayVettingSection } from "../seller/BayVettingSection";
 import { useBayEnabled, useBaySignedIn } from "../shell/bay-state";
 import { ProfilePage, type BayPageIdentity } from "./ProfilePage";
-
-const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
-const BAR_BUTTON = `rounded-lg px-3 py-1.5 text-[13px] font-medium ${MOTION}`;
-const CHROME_BUTTON = `rounded-full bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white ${MOTION} hover:bg-stone-800 disabled:opacity-30`;
-
-function sameIdentity(left: BayPageIdentity, right: BayPageIdentity): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
+import { ProfilePageSettings, PAGE_EDITOR_BUTTON, PAGE_EDITOR_QUIET } from "./ProfilePageSettings";
 
 export interface ProfilePageEditorProps {
   page: BayProfilePage;
@@ -55,11 +25,9 @@ export interface ProfilePageEditorProps {
   error: string;
   onSave: (doc: BayPageDoc, identity: BayPageIdentity) => void;
   onCancel: () => void;
-  /** 从「去核验」进来：每变大一次就滚到资质核验卡一次。0 = 不滚。 */
   vettingFocus?: number;
 }
 
-/** 等版面排好再做事（核验卡刚挂上、主页内容还在铺）。 */
 function afterLayout(run: () => void): () => void {
   if (typeof requestAnimationFrame === "function") {
     const frame = requestAnimationFrame(run);
@@ -77,111 +45,48 @@ function prefersReducedMotion(): boolean {
   }
 }
 
-function Swatch({ selected, onClick, label, children }: { selected: boolean; onClick: () => void; label: string; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className={`rounded-full p-1 ${MOTION} ${selected ? "ring-2 ring-neutral-900 ring-offset-2" : "ring-1 ring-black/10 hover:ring-black/30"}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{title}</span>
-      <div role="radiogroup" aria-label={title} className="flex flex-wrap items-center gap-2">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) => void; disabled: boolean }) {
-  const tt = useUI();
-  const [open, setOpen] = useState(false);
-  if (disabled) {
-    return <p className="py-6 text-center text-[13px] text-neutral-500">{tt("一张主页最多 {n} 个版块。", { n: BAY_PAGE_MAX_BLOCKS })}</p>;
-  }
-  return (
-    <div className="mx-auto w-full max-w-5xl px-5 pb-10 sm:px-8" data-bay-page-add>
-      {open ? (
-        <div className="text-stone-900">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[14px] font-semibold">{tt("添加版块")}</p>
-            <button type="button" onClick={() => setOpen(false)} className={`${BAR_BUTTON} text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900`}>
-              {tt("收起")}
-            </button>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {BAY_PAGE_BLOCK_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                data-bay-page-add-type={type}
-                onClick={() => {
-                  onPick(type);
-                  setOpen(false);
-                }}
-                className={`px-0 py-3 text-left ${MOTION} hover:opacity-80`}
-              >
-                <span className="block text-[14px] font-semibold">{tt(BAY_PAGE_BLOCK_LABELS[type].name)}</span>
-                <span className="mt-0.5 block text-[12px] text-neutral-500">{tt(BAY_PAGE_BLOCK_LABELS[type].hint)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          data-bay-page-add-open
-          className={`flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-stone-300 px-4 py-4 text-[13px] font-medium text-stone-600 ${MOTION} hover:border-stone-900 hover:text-stone-900`}
-        >
-          <span aria-hidden className="text-[18px] leading-none">
-            +
-          </span>
-          {tt("添加版块")}
-        </button>
-      )}
-    </div>
-  );
-}
-
 export function ProfilePageEditor({ page, initial, initialIdentity, saving, error, onSave, onCancel, vettingFocus = 0 }: ProfilePageEditorProps) {
   const tt = useUI();
-  // 资质核验只给登录后、LeoBay 开着的本人（境内没有 LeoBay，这一块不出现）。
   const signedIn = useBaySignedIn();
   const bayOn = useBayEnabled();
   const showVetting = signedIn && bayOn;
   const vettingRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const alignPending = useRef<(() => void) | null>(null);
   const alignAfterLoad = useRef(false);
-  // 进入编辑那一刻的版面：之后父组件再怎么重画，「有没有改动」都跟它比。
-  const [base] = useState<BayPageDoc>(initial);
-  const [baseIdentity] = useState<BayPageIdentity>(initialIdentity);
-  const [doc, setDoc] = useState<BayPageDoc>(initial);
-  const [identity, setIdentity] = useState<BayPageIdentity>(initialIdentity);
+  const [base] = useState(initial);
+  const [baseIdentity] = useState(initialIdentity);
+  const [doc, setDoc] = useState(initial);
+  const [identity, setIdentity] = useState(initialIdentity);
+  const [templateId, setTemplateId] = useState<BayPageTemplateId | null>(null);
+  const [selectedBlock, setSelectedBlock] = useState(initial.blocks[0]?.id || "");
+  const [preview, setPreview] = useState(false);
+  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
+  const [discarding, setDiscarding] = useState(false);
   const [showcase, setShowcase] = useState<BayShowcaseItem[]>(() => page.showcase || []);
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [showcaseError, setShowcaseError] = useState("");
-  const theme = doc.theme;
   const handleOk = isBayHandle(identity.handle);
-  const dirty = doc !== base || !sameIdentity(identity, baseIdentity);
+  const dirty = !samePageDoc(doc, base) || JSON.stringify(identity) !== JSON.stringify(baseIdentity);
   const tooBig = useMemo(() => pageDocBytes(doc) > BAY_PAGE_MAX_BYTES, [doc]);
+  const canSave = dirty && !saving && !tooBig && handleOk && Boolean(identity.display_name.trim());
   const canvasPage = useMemo(() => ({ ...page, showcase, profile: { ...page.profile, ...identity, avatar_url: identity.avatar_url || null } }), [page, showcase, identity]);
-
   const onBlock = (id: string, patch: Partial<BayPageBlock>) => setDoc((current) => patchBlock(current, id, patch));
-  const onIdentity = (patch: Partial<BayPageIdentity>) => setIdentity((current) => ({ ...current, ...patch }));
+  const onIdentity = (patch: Partial<BayPageIdentity>) => {
+    if (patch.display_name !== undefined) {
+      const nextName = patch.display_name;
+      setDoc((current) => syncHeroName(syncHeroName(current, identity.display_name, nextName), baseIdentity.display_name, nextName));
+    }
+    setIdentity((current) => ({ ...current, ...patch }));
+  };
 
-  // 滚到核验卡并把焦点放上去。已经排了一次就不重复排（读完数据时那一次正好并进去）。
+  useEffect(() => {
+    if (!dirty) return;
+    const preventLoss = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", preventLoss);
+    return () => window.removeEventListener("beforeunload", preventLoss);
+  }, [dirty]);
+
   const scheduleAlign = useCallback(() => {
     if (alignPending.current) return;
     alignPending.current = afterLayout(() => {
@@ -192,26 +97,30 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
       node.focus?.({ preventScroll: true });
     });
   }, []);
-
   useEffect(() => {
     if (!vettingFocus || !showVetting) return;
+    setPreview(false);
     alignAfterLoad.current = true;
     scheduleAlign();
-    return () => {
-      alignPending.current?.();
-      alignPending.current = null;
-    };
+    return () => { alignPending.current?.(); alignPending.current = null; };
   }, [vettingFocus, showVetting, scheduleAlign]);
-
-  // 卡刚挂上时还是一行「正在加载」，页面不够长，滚不到位；数据读完卡长高了，再对齐一次。
   const onVettingLoaded = useCallback(() => {
     if (!alignAfterLoad.current) return;
     alignAfterLoad.current = false;
     scheduleAlign();
   }, [scheduleAlign]);
 
+  function focusBlock(id: string) {
+    setSelectedBlock(id);
+    setPreview(false);
+    afterLayout(() => {
+      const node = canvasRef.current?.querySelector<HTMLElement>(`[data-bay-page-block-edit="${id}"]`);
+      node?.scrollIntoView?.({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
+    });
+  }
+
   async function importWork() {
-    if (showcaseBusy) return;
+    if (showcaseBusy || saving) return;
     setShowcaseBusy(true);
     setShowcaseError("");
     try {
@@ -220,170 +129,87 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
       const next = await addShowcaseWork(work);
       setShowcase(next.items || []);
     } catch (err) {
-      setShowcaseError(err instanceof Error ? err.message : "");
+      setShowcaseError(err instanceof Error && err.message ? err.message : tt("没保存成功，请稍后再试。"));
     } finally {
       setShowcaseBusy(false);
     }
   }
-
   async function dropWork(id: string) {
+    if (showcaseBusy || saving) return;
+    setShowcaseBusy(true);
     setShowcaseError("");
     try {
       await removeShowcaseItem(id);
       setShowcase((items) => items.filter((item) => item.id !== id));
     } catch (err) {
-      setShowcaseError(err instanceof Error ? err.message : "");
+      setShowcaseError(err instanceof Error && err.message ? err.message : tt("没保存成功，请稍后再试。"));
+    } finally {
+      setShowcaseBusy(false);
     }
   }
 
-  const renderBlockChrome = (block: BayPageBlock, index: number, children: ReactNode) => (
-    <div className="group/block relative rounded-xl outline-dashed outline-1 outline-offset-8 outline-transparent hover:outline-stone-400/70 focus-within:outline-stone-400/70" data-bay-page-block-edit={block.id}>
-      <div className="absolute -top-4 right-0 z-10 flex items-center gap-1.5">
-        <span className="rounded-full bg-white px-3 py-2 text-[12px] font-semibold text-neutral-700 shadow-sm ring-1 ring-black/10">{tt(BAY_PAGE_BLOCK_LABELS[block.type].name)}</span>
-        <button type="button" disabled={index === 0} onClick={() => setDoc((current) => moveBlock(current, block.id, -1))} className={CHROME_BUTTON} data-bay-page-block-action="up">
-          {tt("上移")}
-        </button>
-        <button
-          type="button"
-          disabled={index === doc.blocks.length - 1}
-          onClick={() => setDoc((current) => moveBlock(current, block.id, 1))}
-          className={CHROME_BUTTON}
-          data-bay-page-block-action="down"
-        >
-          {tt("下移")}
-        </button>
-        <button type="button" onClick={() => setDoc((current) => removeBlock(current, block.id))} className={CHROME_BUTTON} data-bay-page-block-action="remove">
-          {tt("删除")}
-        </button>
-      </div>
+  const renderBlockChrome = (block: BayPageBlock, _index: number, children: ReactNode) => (
+    <div data-bay-page-block-edit={block.id} data-bay-page-block-selected={selectedBlock === block.id ? "true" : undefined}
+      onFocusCapture={() => setSelectedBlock(block.id)} onClick={() => setSelectedBlock(block.id)}
+      className="relative rounded-xl outline-dashed outline-1 outline-offset-8 outline-transparent hover:outline-neutral-300 focus-within:outline-neutral-300">
+      <span className="mb-3 inline-flex rounded-full border border-neutral-200 bg-white px-2 py-1 text-[10px] font-medium text-neutral-500">{tt(BAY_PAGE_BLOCK_LABELS[block.type].name)}</span>
       {children}
     </div>
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-4 pt-3 sm:px-4" data-bay-page-editor>
-      <div className="sticky top-0 z-20 shrink-0 rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 text-neutral-900 shadow-sm backdrop-blur sm:px-5" data-bay-page-toolbar>
-        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="flex min-w-0 flex-wrap items-end gap-x-6 gap-y-3">
-            <Group title={tt("底色")}>
-              {BAY_PAGE_TONES.map((tone) => {
-                const palette = BAY_PAGE_PALETTES[tone];
-                return (
-                  <Swatch key={tone} selected={theme.tone === tone} label={tt(BAY_PAGE_TONE_LABELS[tone])} onClick={() => setDoc((current) => patchTheme(current, { tone }))}>
-                    <span className="block h-6 w-6 rounded-full" style={{ background: `linear-gradient(135deg, ${palette.bg} 50%, ${palette.surface} 50%)`, boxShadow: `inset 0 0 0 1px ${palette.border}` }} />
-                  </Swatch>
-                );
-              })}
-            </Group>
-            <Group title={tt("主色")}>
-              {BAY_PAGE_ACCENTS.map((accent) => (
-                <Swatch key={accent} selected={theme.accent.toLowerCase() === accent} label={accent} onClick={() => setDoc((current) => patchTheme(current, { accent }))}>
-                  <span className="block h-6 w-6 rounded-full" style={{ background: accent }} />
-                </Swatch>
-              ))}
-              <label className="relative inline-flex cursor-pointer items-center rounded-full p-1 ring-1 ring-black/10" title={tt("自选颜色")}>
-                <span className="block h-6 w-6 rounded-full" style={{ background: "conic-gradient(#ef4444, #eab308, #10b981, #0ea5e9, #6366f1, #ec4899, #ef4444)" }} />
-                <input
-                  type="color"
-                  value={theme.accent}
-                  aria-label={tt("自选颜色")}
-                  onChange={(event) => setDoc((current) => patchTheme(current, { accent: event.target.value }))}
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                />
-              </label>
-            </Group>
-            <Group title={tt("字体")}>
-              {BAY_PAGE_FONTS.map((font) => (
-                <button
-                  key={font}
-                  type="button"
-                  role="radio"
-                  aria-checked={theme.font === font}
-                  onClick={() => setDoc((current) => patchTheme(current, { font }))}
-                  style={{ fontFamily: BAY_PAGE_FONT_STACKS[font] }}
-                  className={`${BAR_BUTTON} ${theme.font === font ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
-                >
-                  {tt(BAY_PAGE_FONT_LABELS[font])}
-                </button>
-              ))}
-            </Group>
-            <Group title={tt("封面")}>
-              {(["gradient", "image", "none"] as const).map((style) => (
-                <button
-                  key={style}
-                  type="button"
-                  role="radio"
-                  aria-checked={theme.cover_style === style}
-                  onClick={() => setDoc((current) => patchTheme(current, { cover_style: style }))}
-                  className={`${BAR_BUTTON} ${theme.cover_style === style ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
-                >
-                  {style === "gradient" ? tt("渐变") : style === "image" ? tt("图片") : tt("不要")}
-                </button>
-              ))}
-            </Group>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={identity.published}
-              data-bay-page-published={identity.published ? "true" : "false"}
-              onClick={() => onIdentity({ published: !identity.published })}
-              className={`${BAR_BUTTON} ${identity.published ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"}`}
-            >
-              {tt("公开主页")}
-            </button>
-            <button type="button" onClick={onCancel} disabled={saving} data-bay-page-action="cancel" className={`${BAR_BUTTON} border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50`}>
-              {tt("取消")}
-            </button>
-            <button
-              type="button"
-              onClick={() => onSave(doc, identity)}
-              disabled={saving || tooBig || !dirty || !handleOk || !identity.display_name.trim()}
-              data-bay-page-action="save"
-              className={`${BAR_BUTTON} bg-neutral-900 px-6 text-white hover:bg-neutral-800 disabled:opacity-40`}
-            >
-              {saving ? tt("保存中…") : tt("保存主页")}
-            </button>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pb-3 pt-3" data-bay-page-editor
+      onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") { event.preventDefault(); if (canSave) onSave(doc, identity); } }}>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3" data-bay-page-editor-header>
+        <div className="min-w-0">
+          <h2 className="text-[16px] font-semibold tracking-tight text-neutral-900">{tt("设计你的个人主页")}</h2>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-neutral-500" role="status" aria-live="polite">
+            <span className="inline-flex items-center gap-1.5"><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${identity.published ? "bg-emerald-500" : "bg-neutral-300"}`} />{identity.published ? tt("已公开") : tt("未公开")}</span>
+            <span aria-hidden>·</span>{saving ? tt("保存中…") : dirty ? tt("有未保存的修改") : tt("已保存")}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={() => dirty ? setDiscarding(true) : onCancel()} disabled={saving} data-bay-page-action="cancel" className={PAGE_EDITOR_QUIET}>{tt("取消")}</button>
+          <button type="button" onClick={() => onSave(doc, identity)} disabled={!canSave} data-bay-page-action="save"
+            className={`${PAGE_EDITOR_BUTTON} bg-neutral-900 px-5 text-white hover:bg-neutral-800 disabled:opacity-40`}>{saving ? tt("保存中…") : tt("保存主页")}</button>
+        </div>
+      </header>
+      {discarding ? (
+        <div role="alert" data-bay-page-discard className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-neutral-800">
+          <span>{tt("放弃未保存的修改？")}</span><div className="flex gap-2">
+            <button type="button" data-bay-page-action="continue" className={PAGE_EDITOR_QUIET} onClick={() => setDiscarding(false)}>{tt("继续编辑")}</button>
+            <button type="button" data-bay-page-action="discard" className={`${PAGE_EDITOR_BUTTON} bg-white text-rose-700`} onClick={onCancel}>{tt("放弃修改")}</button>
           </div>
         </div>
-        {theme.cover_style === "image" ? (
-          <div className="mt-3">
-            <BayCoverDrop
-              url={theme.cover_url}
-              onUrl={(url) => setDoc((current) => patchTheme(current, { cover_url: url }))}
-            />
+      ) : null}
+      {error || showcaseError ? <p role="alert" className="shrink-0 rounded-lg bg-rose-50 px-4 py-2 text-[12px] text-rose-700">{tt(error || showcaseError)}</p> : null}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row" data-bay-page-workspace>
+        <ProfilePageSettings doc={doc} identity={identity} saving={saving} tooBig={tooBig} selectedBlock={selectedBlock} templateId={templateId}
+          onIdentity={onIdentity} onTheme={(patch) => setDoc((current) => patchTheme(current, patch))}
+          onTemplate={(id) => { setDoc((current) => applyPageTemplate(current, id, tt)); setTemplateId(id); }}
+          onFocusBlock={focusBlock} onMoveBlock={(id, direction) => setDoc((current) => moveBlock(current, id, direction))}
+          onRemoveBlock={(id) => setDoc((current) => removeBlock(current, id))}
+          onAddBlock={(type) => { const block = newBlock(type, tt); setDoc((current) => insertBlock(current, block)); focusBlock(block.id); }} />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100" data-bay-page-preview-shell>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-white px-3 py-2">
+            <div className="flex items-center gap-1" role="group" aria-label={tt("预览")}>
+              <button type="button" data-bay-page-preview="edit" aria-pressed={!preview} onClick={() => setPreview(false)} className={`${PAGE_EDITOR_BUTTON} py-1.5 text-[12px] ${!preview ? "bg-neutral-100 text-neutral-900" : "text-neutral-500"}`}>{tt("编辑内容")}</button>
+              <button type="button" data-bay-page-preview="preview" aria-pressed={preview} onClick={() => setPreview(true)} className={`${PAGE_EDITOR_BUTTON} py-1.5 text-[12px] ${preview ? "bg-neutral-100 text-neutral-900" : "text-neutral-500"}`}>{tt("预览主页")}</button>
+            </div>
+            <div className="flex items-center gap-1" role="group" aria-label={tt("预览")}>
+              {(["desktop", "mobile"] as const).map((value) => <button key={value} type="button" data-bay-page-viewport={value} aria-pressed={viewport === value} onClick={() => setViewport(value)} className={`${PAGE_EDITOR_BUTTON} py-1.5 text-[12px] ${viewport === value ? "bg-neutral-100 text-neutral-900" : "text-neutral-500"}`}>{value === "desktop" ? tt("电脑版") : tt("手机版")}</button>)}
+            </div>
           </div>
-        ) : null}
-        {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
-        {showcaseError ? <p className="mt-2 text-[12px] text-rose-600">{tt(showcaseError)}</p> : null}
-        {!handleOk ? <p className="mt-2 text-[12px] text-rose-600">{tt("主页地址要用 3–32 位小写字母、数字、下划线或连字符，以字母或数字开头。")}</p> : null}
-        {tooBig ? <p className="mt-2 text-[12px] text-rose-600">{tt("内容太多了，删掉一些文字或图片再保存。")}</p> : null}
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto" data-bay-page-canvas>
-        <div className="overflow-hidden rounded-xl border border-neutral-200" data-bay-page-canvas-card>
-          <ProfilePage
-            page={canvasPage}
-            doc={doc}
-            editing
-            identity={identity}
-            onIdentity={onIdentity}
-            onBlock={onBlock}
-            renderBlockChrome={renderBlockChrome}
-            onShowcaseImport={() => void importWork()}
-            onShowcaseRemove={(id) => void dropWork(id)}
-            showcaseBusy={showcaseBusy}
-          />
-          <div style={{ background: BAY_PAGE_PALETTES[theme.tone].bg }}>
-            <AddBlockMenu disabled={doc.blocks.length >= BAY_PAGE_MAX_BLOCKS} onPick={(type) => setDoc((current) => insertBlock(current, newBlock(type, tt)))} />
+          <div ref={canvasRef} className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4" data-bay-page-canvas>
+            {!preview ? <p className="mb-3 text-[11px] leading-4 text-neutral-500">{tt("点击画布中的文字即可编辑；在左侧调整版块顺序。")}</p> : null}
+            <div className="mx-auto w-full overflow-hidden rounded-xl border border-neutral-200 shadow-sm" style={{ maxWidth: viewport === "mobile" ? 390 : 1120 }} data-bay-page-canvas-card data-bay-page-preview-mode={viewport}>
+              <fieldset disabled={saving} className="min-w-0" style={{ background: BAY_PAGE_PALETTES[doc.theme.tone].bg }}>
+                <ProfilePage page={canvasPage} doc={doc} editing={!preview} editingIdentity={false} compact={viewport === "mobile"} identity={identity} onBlock={onBlock} renderBlockChrome={!preview ? renderBlockChrome : undefined} onShowcaseImport={() => void importWork()} onShowcaseRemove={(id) => void dropWork(id)} showcaseBusy={showcaseBusy || saving} />
+              </fieldset>
+            </div>
+            {showVetting ? <div ref={vettingRef} tabIndex={-1} data-bay-mine-vetting className={`mt-4 scroll-mt-4 outline-none ${preview ? "hidden" : ""}`}><p className="mb-2 px-1 text-[11px] text-neutral-500">{tt("作品集和资质核验单独保存。")}</p><BayVettingSection onLoaded={onVettingLoaded} /></div> : null}
           </div>
         </div>
-        {showVetting ? (
-          <div ref={vettingRef} tabIndex={-1} data-bay-mine-vetting className="scroll-mt-32 outline-none">
-            <BayVettingSection onLoaded={onVettingLoaded} />
-          </div>
-        ) : null}
       </div>
     </div>
   );

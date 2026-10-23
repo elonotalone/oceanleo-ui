@@ -68,6 +68,7 @@ export function BayRevealForm(props: {
   const split = listing ? takeCover(source) : { cover: null, groups: source };
   const groups = split.groups;
   const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const cardClass = "rounded-xl border border-neutral-200 bg-white p-5";
 
   function groupOpen(group: BayRevealGroup): boolean {
     if (!group.collapsedByDefault) return true;
@@ -172,7 +173,7 @@ export function BayRevealForm(props: {
               data-bay-reveal=""
               data-bay-section-done={sectionDone ? "true" : "false"}
               data-bay-section-collapsed={open ? undefined : ""}
-              className={`scroll-mt-4 ${group.highlight ? "rounded-xl border border-rose-300 p-3" : ""}`}
+              className={`scroll-mt-4 ${listing ? cardClass : ""} ${group.highlight ? "ring-2 ring-rose-300" : ""}`}
             >
               {titleBar}
               {missing}
@@ -188,12 +189,13 @@ export function BayRevealForm(props: {
   if (listing && split.cover) {
     return (
       <div data-bay-reveal-form="" data-bay-listing-layout="split">
-        <style data-bay-listing-split-css="">{`[data-bay-listing-layout="split"]{display:grid;grid-template-columns:minmax(0,1fr);gap:2rem;align-items:start}@media (min-width:768px){[data-bay-listing-layout="split"]{grid-template-columns:minmax(0,1.55fr) minmax(20rem,0.9fr);gap:2.5rem}}`}</style>
-        <aside data-bay-listing-stage="" className="sticky top-4 min-w-0 self-start">
+        <style data-bay-listing-split-css="">{`[data-bay-listing-layout="split"]{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1.5rem;align-items:start}`}</style>
+        <aside data-bay-listing-stage="" data-bay-listing-card="images" className={`min-w-0 self-start ${cardClass}`}>
+          <h3 className={`mb-4 ${BAY_FORM_SECTION_TITLE_CLASS}`}>{tt("上传图片")}</h3>
           {renderRow(split.cover, true)}
         </aside>
-        <div data-bay-listing-fields="" className="relative min-w-0 space-y-12">
-          {props.lead ? <div data-bay-listing-lead="">{props.lead}</div> : null}
+        <div data-bay-listing-fields="" className="relative min-w-0 space-y-4">
+          {props.lead ? <div data-bay-listing-lead="" className={cardClass}>{props.lead}</div> : null}
           {renderGroups(groups)}
         </div>
       </div>

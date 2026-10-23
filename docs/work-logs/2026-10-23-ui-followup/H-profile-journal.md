@@ -1,0 +1,11 @@
+# H — personal page builder journal
+
+Implemented a settings sidebar beside the real page renderer, with four content-preserving templates, identity and theme editing, a section outline with add/reorder/remove, desktop/phone preview, save/cancel/discard states, input validation and unload protection. The own-page entry opens the builder directly; visitor profiles remain read-only. Empty automatic sections are omitted from the public view. Existing profile/page document, image upload, showcase import/removal and qualification APIs remain in use.
+
+Geometry uses the bounded flex parents supplied by L's BayMine page tab, with independent sidebar/canvas scrolling and a capped sidebar on narrow displays; no viewport height is hardcoded. New messages are in `UI_FOLLOWUP_PROFILE_MESSAGES` (17 locales, 28 keys); parent registered the dictionary through bay-copy.ts.
+
+Verification complete: 52/52 cases passed across `bay3-page-doc.test.mjs`, `bay3-profile.test.mjs`, `bay-supply-profile.test.mjs`, and `bay-seller-profile-reveal.test.mjs` (exit 0). Final command: `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test --test-concurrency=1 --test-timeout=90000 --test-reporter=dot tests/bay3-page-doc.test.mjs tests/bay3-profile.test.mjs tests/bay-supply-profile.test.mjs tests/bay-seller-profile-reveal.test.mjs`.
+
+Coverage includes preservation of populated documents, every preset at 27–30 sections, v1 serialization, all locale dictionaries, phone preview/edit retention, dirty state reversion, safe discard, identity validation, publication persistence, save retry, owner boundaries, image upload, showcase import and qualifications. Final review also synchronized the live hero name with sidebar identity edits and retained unload protection during pending saves. `git diff --check` passed for all H-owned paths. No browser, builds, pushes or commits run by H.
+
+Existing API limitation: profile metadata and page document remain two sequential durable requests; showcase and qualification changes use their existing separate immediate-save APIs. The editor explicitly labels the latter. No schema, domain, trust, or backend changes.

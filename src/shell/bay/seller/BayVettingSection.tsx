@@ -19,6 +19,7 @@ import {
   type BayVettingKind,
 } from "../../../lib/bay/vetting";
 import { BayRevealForm } from "../form/BayRevealForm";
+import { BayMenuSelect } from "../form/BayMenuSelect";
 import { INPUT_CLASS, PRIMARY_BUTTON, SECONDARY_BUTTON, SellerCard, SellerNotice } from "./seller-ui";
 
 const DOMAIN_LABEL: Record<string, string> = {
@@ -176,13 +177,12 @@ export function BayVettingSection({ onLoaded }: BayVettingSectionProps = {}) {
                   done: Boolean(domain),
                   summary: tt(DOMAIN_LABEL[domain]),
                   children: (
-                    <select data-bay-field="domain" className={INPUT_CLASS} value={domain} onChange={(event) => setDomain(event.target.value as (typeof BAY_VETTING_DOMAINS)[number])}>
-                      {BAY_VETTING_DOMAINS.map((value) => (
-                        <option key={value} value={value}>
-                          {tt(DOMAIN_LABEL[value])}
-                        </option>
-                      ))}
-                    </select>
+                    <BayMenuSelect
+                      value={domain}
+                      selectProps={{ "data-bay-field": "domain", "aria-label": tt("领域") }}
+                      options={BAY_VETTING_DOMAINS.map((value) => ({ value, label: tt(DOMAIN_LABEL[value]) }))}
+                      onChange={(value) => setDomain(value as (typeof BAY_VETTING_DOMAINS)[number])}
+                    />
                   ),
                 },
                 {
@@ -191,13 +191,12 @@ export function BayVettingSection({ onLoaded }: BayVettingSectionProps = {}) {
                   done: Boolean(kind),
                   summary: tt(KIND_LABEL[kind]),
                   children: (
-                    <select data-bay-field="kind" className={INPUT_CLASS} value={kind} onChange={(event) => setKind(event.target.value as BayVettingKind)}>
-                      {BAY_VETTING_KIND_CHOICES.map((value) => (
-                        <option key={value} value={value}>
-                          {tt(KIND_LABEL[value])}
-                        </option>
-                      ))}
-                    </select>
+                    <BayMenuSelect
+                      value={kind}
+                      selectProps={{ "data-bay-field": "kind", "aria-label": tt("凭证种类") }}
+                      options={BAY_VETTING_KIND_CHOICES.map((value) => ({ value, label: tt(KIND_LABEL[value]) }))}
+                      onChange={(value) => setKind(value as BayVettingKind)}
+                    />
                   ),
                 },
                 {

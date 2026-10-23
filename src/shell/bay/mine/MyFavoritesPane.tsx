@@ -14,8 +14,9 @@ import { openBay, useBaySignedIn } from "../shell/bay-state";
 import { useMineBundle, type MinePaneProps } from "./mine-bundle";
 import { favoriteCategory, mineEmptyText, rowMatchesCategory } from "./mine-category";
 import { MineTradeList, type MineTradeRow } from "./MineTradeList";
+import { mineCoverUrl } from "./mine-trade-model";
 
-export function MyFavoritesPane({ category = "all" }: MinePaneProps) {
+export function MyFavoritesPane({ category = "all", query = "", display = "grid" }: MinePaneProps) {
   const tt = useUI();
   const signedIn = useBaySignedIn();
   const categories = useNeedCategories();
@@ -35,6 +36,7 @@ export function MyFavoritesPane({ category = "all" }: MinePaneProps) {
       id: item.id,
       title: favoriteTitle(item) || item.target_ref,
       subtitle,
+      coverUrl: mineCoverUrl(item.target),
       category: kind,
       favoriteId: item.id,
       deleteHint: tt("确定取消这条收藏吗？"),
@@ -55,6 +57,8 @@ export function MyFavoritesPane({ category = "all" }: MinePaneProps) {
       error={bundle.error}
       onRetry={bundle.reload}
       emptyText={mineEmptyText("favorites")}
+      query={query}
+      display={display}
     />
   );
 }

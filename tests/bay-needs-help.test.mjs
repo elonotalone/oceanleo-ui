@@ -102,6 +102,7 @@ const domainStub = dataModule(`
   export function familyForHost(){ return "com"; }
   export function currentFamilySubsiteOrigin(label){ return ["slide", "design", "3d"].includes(label) ? "https://" + label + ".oceanleo.test" : undefined; }
   export function portalHref(path){ return "https://oceanleo.test" + path; }
+  export function runtimePageOrigin(){ return "https://oceanleo.test"; }
 `);
 const toastStub = dataModule(`
   globalThis.__toasts ??= [];

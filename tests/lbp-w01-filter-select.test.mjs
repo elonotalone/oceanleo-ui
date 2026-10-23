@@ -2,7 +2,7 @@
 //
 // leobay-projects 波 W01：
 //   ① CollectionFilterSelect / BayFilterSelect 按键只写当前值（参考 Slack 搜索筛选「All channels ⌄」），
-//      label 改作 aria-label；两份外观一模一样；选了具体值边框加深；defaultValue 让 "all" 也能当「未筛选」；
+//      label 改作 aria-label；两份外观一模一样；选中值保持浅灰边；defaultValue 让 "all" 也能当「未筛选」；
 //   ② 菜单：选中项前有勾、读屏名是 label、盖过项目页弹窗；
 //   ③ MenuSelect（表单下拉）：整条选择条 + 同一种清单 + 隐藏的原生 select 同步，键盘可用；
 //   ④ 调用方的「全部」都自带名词；工作台分区的值是翻译过的名词；新词条 17 语齐全。
@@ -210,7 +210,7 @@ test("CollectionFilterSelect：白底浅灰细边圆角矩形粗体，高度字�
   assert.match(search, /\btext-\[13px\]/, "页头搜索框是 13px");
 });
 
-test("CollectionFilterSelect：选了具体值边框加深，没选 / 选「全部」保持浅灰", () => {
+test("CollectionFilterSelect：选中具体值和「全部」都保持浅灰边框", () => {
   const render = (value) =>
     html(
       h(CollectionFilterSelect, {
@@ -227,8 +227,8 @@ test("CollectionFilterSelect：选了具体值边框加深，没选 / 选「全�
   assert.match(classOf(unfiltered, "data-collection-filter="), /border-neutral-200/);
   assert.doesNotMatch(classOf(unfiltered, "data-collection-filter="), /border-neutral-900/);
   assert.doesNotMatch(unfiltered, /data-filtered/);
-  assert.match(classOf(filtered, "data-collection-filter="), /border-neutral-900/);
-  assert.doesNotMatch(classOf(filtered, "data-collection-filter="), /border-neutral-200/);
+  assert.doesNotMatch(classOf(filtered, "data-collection-filter="), /border-neutral-900/);
+  assert.match(classOf(filtered, "data-collection-filter="), /border-neutral-200/);
   assert.match(filtered, /data-filtered="true"/);
 });
 
@@ -237,16 +237,17 @@ test("defaultValue：值等于它时视作未筛选；不传以 \"\" 为未筛�
   const render = (props) =>
     html(h(CollectionFilterSelect, { label: "类型", name: "kind", options, onChange() {}, ...props }));
 
-  // 用 "all" 当全部：传 defaultValue="all" → 写「全部任务」、不加深
+  // 用 "all" 当全部：传 defaultValue="all" → 写「全部任务」
   const idle = render({ value: "all", defaultValue: "all" });
   assert.deepEqual(textNodes(idle), ["全部任务"]);
   assert.doesNotMatch(idle, /data-filtered/);
   assert.match(classOf(idle, "data-collection-filter="), /border-neutral-200/);
-  // 选了别的 → 加深
+  // 选了别的 → 保留筛选状态，边框仍然浅灰
   const active = render({ value: "task", defaultValue: "all" });
   assert.deepEqual(textNodes(active), ["任务"]);
   assert.match(active, /data-filtered="true"/);
-  assert.match(classOf(active, "data-collection-filter="), /border-neutral-900/);
+  assert.match(classOf(active, "data-collection-filter="), /border-neutral-200/);
+  assert.doesNotMatch(classOf(active, "data-collection-filter="), /border-neutral-900/);
   // 不传 defaultValue：只有 "" 算未筛选，所以 "all" 这个具体选项会被当成「筛了」
   const legacy = render({ value: "all" });
   assert.match(legacy, /data-filtered="true"/);

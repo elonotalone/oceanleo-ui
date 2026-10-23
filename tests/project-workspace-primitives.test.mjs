@@ -338,7 +338,7 @@ test("toolbar, empty state, and config card render caller-owned slots with nativ
   assert.match(toolbar, /role="toolbar"/);
   assert.match(toolbar, /data-project-toolbar-search/);
   assert.match(toolbar, /data-project-toolbar-controls/);
-  assert.match(toolbar, /sm:flex-row/);
+  assert.match(toolbar, /flex-wrap/);
 
   const empty = render(ProjectEmptyState, {
     icon: "○",

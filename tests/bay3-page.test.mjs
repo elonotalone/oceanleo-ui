@@ -269,7 +269,7 @@ test("境内只渲染素材货架", async () => {
   await view.unmount();
 });
 
-test("编辑页和发帖页用同一块白底圆角板，页框不另铺白", async () => {
+test("编辑页和发帖页使用透明画布，由内部图片与输入卡片分区", async () => {
   for (const current of [
     { kind: "publish" },
     { kind: "service-editor", serviceId: "s1" },
@@ -278,8 +278,8 @@ test("编辑页和发帖页用同一块白底圆角板，页框不另铺白", as
     const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
     const paper = view.host.querySelector("[data-bay-page-paper]");
     assert.equal(paper?.getAttribute("data-bay-page-paper"), current.kind);
-    assert.match(paper.className, /\brounded-3xl\b/);
-    assert.match(paper.className, /\bbg-white\b/);
+    assert.doesNotMatch(paper.className, /\brounded-3xl\b|\bbg-white\b/);
+    assert.equal(paper.getAttribute("data-bay-page-canvas"), "cards");
     const scroll = view.host.querySelector("[data-bay-page-scroll]");
     assert.ok(scroll);
     assert.doesNotMatch(scroll.className, /\bbg-white\b/);
