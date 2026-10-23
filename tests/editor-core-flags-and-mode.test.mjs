@@ -326,6 +326,9 @@ function loadShell() {
           openTransientPanel() {},
           updateTransientPanel() {},
           closeDetail() {},
+          closeDrawer() {},
+          isPanelOpen() { return false; },
+          editBarDrawers: [],
         };
       }
     `);
@@ -535,7 +538,7 @@ function modeHost(Header, pluginId, calls, extraProps = {}) {
   return React.createElement(ModeHost);
 }
 
-test("共用顶栏第二行：只有 grid / pdf / website 有专业编辑页；第一行不再挂开关", async () => {
+test("共用顶栏一行：只有 grid / pdf / website 有专业编辑页签；不再挂开关", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   const pluginIds = await loadPluginThemeIds();
   assert.ok(
@@ -578,15 +581,13 @@ test("共用顶栏第二行：只有 grid / pdf / website 有专业编辑页；�
         assert.equal(pro, null, `${pluginId}：不在 PRO_PAGE_EDITORS 里，不该有专业编辑页签`);
       }
 
+      // D1（2026-10-23）：顶栏只剩一行，页签住在第一行里；第二行整行删除。
       const actionRow = find("[data-advanced-workspace-actions]");
-      const pageRow = find("[data-plugin-page-row]");
       const headerRoot = find("[data-advanced-workbench-header]");
       assert.ok(actionRow, `${pluginId}：共用顶栏第一行没渲染出来`);
-      assert.ok(pageRow, `${pluginId}：共用顶栏第二行没渲染出来`);
-      assert.ok(
-        headerRoot && headerRoot.contains(actionRow) && headerRoot.contains(pageRow),
-        `${pluginId}：两行不在顶栏容器里`,
-      );
+      assert.equal(find("[data-plugin-page-row]"), null, `${pluginId}：第二行页签行还在`);
+      assert.ok(headerRoot && headerRoot.contains(actionRow), `${pluginId}：第一行不在顶栏容器里`);
+      if (pro) assert.ok(actionRow.contains(pro), `${pluginId}：专业编辑页签不在第一行里`);
     }
   });
 });
@@ -832,11 +833,14 @@ function assertShellChromeVisible(find, adapterId, expectedThemeId) {
     header,
     `${adapterId}：十件壳没把共用顶栏渲染出来（壳里那条 actionBar 被短路了）`,
   );
-  const theme = find(`[data-plugin-theme-toggle="${expectedThemeId}"]`);
-  assert.ok(
-    theme,
-    `${adapterId}：壳没有把 pluginThemeIdForAdapter 的非空结果交给 Header。` +
-      `预期主题键 id=${expectedThemeId}。`,
+  // D7（2026-10-23）：主题键删除，编辑器跟随站点。证据换成壳根上的插件主题档：
+  // 非空 pluginThemeId → 根上有 data-plugin-theme（JSDOM 的 <html> 无 dark 类 → light）。
+  assert.equal(find("[data-plugin-theme-toggle]"), null, `${adapterId}：顶栏还有主题键`);
+  const root = find("[data-inline-editor]");
+  assert.equal(
+    root?.getAttribute("data-plugin-theme"),
+    "light",
+    `${adapterId}：壳没有把 pluginThemeIdForAdapter 的非空结果（${expectedThemeId}）接到插件主题上。`,
   );
   const pro = find('[data-plugin-page="pro"]');
   if (!PRO_PAGE_EDITORS.includes(expectedThemeId)) {

@@ -33,7 +33,13 @@ const stubs = {
   './plugin-chrome/PluginAgentPanel': dataModule('export function PluginAgentPanel() { return null; }'),
   './plugin-chrome/PluginGlobalRow': dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
-    export function PluginGlobalRow({onBack}) { return createElement('button', {onClick:onBack,'data-exit':true}, 'exit'); }
+    // D1（2026-10-23）：页签住进第一行，由 PluginGlobalRow 收 pages / activePageId / onSelectPage。
+    export function PluginGlobalRow({onBack, pages = [], activePageId, onSelectPage}) {
+      return createElement('div', null,
+        createElement('button', {onClick:onBack,'data-exit':true}, 'exit'),
+        ...pages.map((page) => createElement('button', {key:page.id,'data-plugin-page':page.id,'aria-selected':String(page.id===activePageId),onClick:() => onSelectPage(page.id)}, page.label)),
+      );
+    }
   `),
   './advanced-session-context': dataModule('export function useAdvancedSession() { return null; }'),
   './workbench-material-provider': dataModule(`
