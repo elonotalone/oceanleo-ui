@@ -1,6 +1,7 @@
 // 2026-10-23 editor overhaul W02 — left panels in every host, edit-bar drawer
 // buttons (D3), save-first "My library" switch (D2).
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
@@ -183,8 +184,9 @@ test("D3 drawer list: AI excluded, deck/image use the ruled subsets, toolbox edi
   const d = (id) => ({ id, label: id, icon: "add", content: null });
   const deck = ["deck-design", "deck-elements", "deck-draw", "deck-text", "deck-lines", "deck-notes", "deck-fonts", "agent"].map(d);
   assert.deepEqual(helpers.resolveEditBarDrawers("deck", deck).map((x) => x.id), ["deck-design", "deck-elements", "deck-draw", "deck-lines", "deck-notes"]);
-  const image = ["image-brush", "image-shapes", "image-lines", "image-notes", "image-layers", "image-filters", "agent"].map(d);
-  assert.deepEqual(helpers.resolveEditBarDrawers("image", image).map((x) => x.id), ["image-brush", "image-shapes", "image-lines", "image-notes"]);
+  // W09-to-W02: text/signature/tables/layers/canvas have no other entry once EditorToolsTrigger is gone; export stays in the download menu.
+  const image = ["image-text", "image-brush", "image-shapes", "image-lines", "image-notes", "image-signature", "image-tables", "image-layers", "image-canvas", "image-export", "agent"].map(d);
+  assert.deepEqual(helpers.resolveEditBarDrawers("image", image).map((x) => x.id), ["image-text", "image-brush", "image-shapes", "image-lines", "image-notes", "image-signature", "image-tables", "image-layers", "image-canvas"]);
   const doc = ["editor-global", "richdoc-review", "agent"].map(d);
   assert.deepEqual(helpers.resolveEditBarDrawers("rich-doc", doc).map((x) => x.id), ["editor-global", "richdoc-review"]);
   const pdf = helpers.resolveInlineAdvancedDrawers({ id: "pdf", toolbox: { label: "页面", icon: "pages", content: "x" } });
@@ -228,6 +230,27 @@ test("selection probe reports whether the editor's selection toolbar rendered an
     await act(async () => new Promise((r) => setTimeout(r, 0)));
     assert.equal(seen.at(-1), false, "deselecting brings the drawer buttons back");
   } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("selection probe reports the selection kind so the collapsed edit-bar dot keeps its object icon", async () => {
+  const kinds = [];
+  function Host({ kind }) {
+    return React.createElement(SelectionPresenceProbe, { onChange() {}, onKindChange: (k) => kinds.push(k) },
+      React.createElement("div", { "data-selection-kind": kind || "none" }, kind ? React.createElement("button", null, "B") : null));
+  }
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const settle = () => act(async () => new Promise((r) => setTimeout(r, 0)));
+  try {
+    await act(async () => root.render(React.createElement(Host, { kind: null })));
+    assert.equal(kinds.at(-1), null, "no selection = no kind");
+    await act(async () => root.render(React.createElement(Host, { kind: "image" }))); await settle();
+    assert.equal(kinds.at(-1), "image");
+    await act(async () => root.render(React.createElement(Host, { kind: "text" }))); await settle();
+    assert.equal(kinds.at(-1), "text", "kind attribute changes are observed");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+  const shell = readFileSync(new URL("../src/shell/InlineAdvancedWorkbenchShell.tsx", import.meta.url), "utf8");
+  assert.match(shell, /collapsedIcon=\{[\s\S]{0,120}editorToolsIconForSelection\(selectionKind\)/);
 });
 
 function LeaveHarness({ dirty, flushResult, onReady }) {

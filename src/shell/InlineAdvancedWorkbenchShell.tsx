@@ -21,6 +21,7 @@ import {
   useFloatingContextToolbar,
 } from "./FloatingContextToolbar";
 import { EditBarDockHost } from "./EditBarDockHost";
+import { editorToolsIconForSelection } from "./EditorToolsIcon";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
 import {
   hasPendingOrFailed,
@@ -185,6 +186,7 @@ export function InlineAdvancedWorkbenchShell({
     closeDrawer,
   } = panels;
   const [selectionPresent, setSelectionPresent] = useState(false);
+  const [selectionKind, setSelectionKind] = useState<string | null>(null);
 
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
@@ -298,7 +300,10 @@ export function InlineAdvancedWorkbenchShell({
   // 合同：没选中时 contextToolbar 为 null；多数编辑器仍交包装组件，由探针看它画没画出控件。
   const contextToolbar =
     rawContextToolbar == null ? null : (
-      <SelectionPresenceProbe onChange={setSelectionPresent}>
+      <SelectionPresenceProbe
+        onChange={setSelectionPresent}
+        onKindChange={setSelectionKind}
+      >
         {rawContextToolbar}
       </SelectionPresenceProbe>
     );
@@ -427,6 +432,12 @@ export function InlineAdvancedWorkbenchShell({
           controller={floatingToolbar}
           accent={effectiveAccent}
           theme={pluginTheme.theme}
+          // 收起后的小圆显示选中对象类型（signals/W03-to-W02.md #1）。
+          collapsedIcon={
+            selectionPresent && selectionKind
+              ? editorToolsIconForSelection(selectionKind)
+              : undefined
+          }
           // 单行容器 `[data-workspace-edit-bar]` 由 FloatingContextToolbar 自己画
           // （signals/X2-interface.md）：撤销重做在第一行 history 槽，
           // 文档段走 documentSegment，AI 助手由容器最右段统一画。

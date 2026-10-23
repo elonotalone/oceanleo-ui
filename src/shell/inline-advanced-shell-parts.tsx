@@ -228,19 +228,35 @@ const SELECTION_CONTROL_SELECTOR =
 export function SelectionPresenceProbe({
   children,
   onChange,
+  onKindChange,
 }: {
   children: ReactNode;
   onChange: (present: boolean) => void;
+  /** 选区种类（SelectionToolbar 根上的 `data-selection-kind`），给收起后的小圆选图标。 */
+  onKindChange?: (kind: string | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onKindChangeRef = useRef(onKindChange);
+  onKindChangeRef.current = onKindChange;
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
     let last: boolean | null = null;
+    let lastKind: string | null | undefined;
     const read = () => {
       const present = Boolean(node.querySelector(SELECTION_CONTROL_SELECTOR));
+      const rawKind = present
+        ? node
+            .querySelector("[data-selection-kind]")
+            ?.getAttribute("data-selection-kind")
+        : null;
+      const kind = rawKind && rawKind !== "none" ? rawKind : null;
+      if (kind !== lastKind) {
+        lastKind = kind;
+        onKindChangeRef.current?.(kind);
+      }
       if (present === last) return;
       last = present;
       onChangeRef.current(present);
@@ -248,10 +264,16 @@ export function SelectionPresenceProbe({
     read();
     if (typeof MutationObserver !== "function") return;
     const observer = new MutationObserver(read);
-    observer.observe(node, { childList: true, subtree: true });
+    observer.observe(node, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-selection-kind"],
+    });
     return () => {
       observer.disconnect();
       onChangeRef.current(false);
+      onKindChangeRef.current?.(null);
     };
   }, []);
   return (

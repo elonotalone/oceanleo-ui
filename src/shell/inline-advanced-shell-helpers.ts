@@ -42,7 +42,19 @@ export const EDIT_BAR_EMPTY_STATE_DRAWERS: Readonly<
   Record<string, readonly string[]>
 > = Object.freeze({
   deck: ["deck-design", "deck-elements", "deck-draw", "deck-lines", "deck-notes"],
-  image: ["image-brush", "image-shapes", "image-lines", "image-notes"],
+  // D3 列的是前四项；其余抽屉（文字、签名、表格、图层、画布）没了 EditorToolsTrigger
+  // 后只剩这条入口（signals/W09-to-W02.md）。`image-export` 只从下载菜单打开。
+  image: [
+    "image-brush",
+    "image-shapes",
+    "image-lines",
+    "image-notes",
+    "image-text",
+    "image-signature",
+    "image-tables",
+    "image-layers",
+    "image-canvas",
+  ],
 });
 
 export function resolveEditBarDrawers(
