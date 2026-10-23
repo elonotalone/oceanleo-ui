@@ -80,12 +80,12 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   };
   const reload = async () => {
     await page.reload({ waitUntil: 'domcontentloaded' });
-    if (!(await page.locator(`${STAGE} canvas`).first().isVisible().catch(() => false))) {
+    if (!(await page.locator(`${STAGE} canvas >> visible=true`).first().isVisible().catch(() => false))) {
       const edit = page.locator("button[aria-label*='编辑'], button[aria-label*='Edit'], button[title*='编辑'], button[title*='Edit']").last();
       await edit.waitFor({ timeout: 60000 });
-      await edit.click();
+      await edit.click({ timeout: 5000 }).catch(() => edit.evaluate(button => button.click()));
     }
-    await page.locator(`${STAGE} canvas`).first().waitFor({ timeout: 90000 });
+    await page.locator(`${STAGE} canvas >> visible=true`).first().waitFor({ timeout: 90000 });
     await page.waitForTimeout(5000);
   };
   if (mode === 'reopen') {

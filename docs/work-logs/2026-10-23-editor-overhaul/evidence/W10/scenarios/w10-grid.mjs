@@ -4,6 +4,7 @@
 //   offline – go offline, type, expect "error" (never "saved"), go online, retry, expect "saved".
 import assert from "node:assert/strict";
 const STAGE = "[data-grid-univer-stage]";
+const safePath = raw => new URL(raw).pathname.replace(/(\/artifact-renditions\/access\/)[^/]+/, '$1[redacted]');
 
 export async function openGrid(page, helpers, id) {
   await helpers.gotoApp(page, `/library?item=${id}`);
@@ -12,7 +13,7 @@ export async function openGrid(page, helpers, id) {
     // The detail viewer comes first; the pencil at the top right opens the editor.
     const edit = page.locator("button[aria-label*='编辑'], button[aria-label*='Edit'], button[title*='编辑'], button[title*='Edit']").last();
     await edit.waitFor({ timeout: 60000 });
-    await edit.click();
+    await edit.click({ timeout: 5000 }).catch(() => edit.evaluate(button => button.click()));
   }
   await stage.waitFor({ timeout: 150000 });
   await page.waitForTimeout(5000);
@@ -106,7 +107,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     const url = res.url();
     if (res.status() < 400 || /_next\/|\.(js|css|png|woff2?)(\?|$)/.test(url)) return;
     const body = await res.text().catch(() => "");
-    log("HTTP", res.status(), res.request().method(), url.replace(/^https?:\/\/[^/]+/, "").slice(0, 120), body.slice(0, 300));
+    log("HTTP", res.status(), res.request().method(), safePath(url).slice(0, 120), body.slice(0, 300));
   });
   page.on("response", async (res) => {
     if (res.request().method() !== "POST" || !/\/revisions(\?|$)/.test(res.url())) return;
@@ -118,7 +119,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   page.on("requestfailed", (req) => {
     const url = req.url();
     if (/_next\/|hot-update/.test(url)) return;
-    log("REQFAILED", req.method(), url.replace(/\?.*$/, "").slice(0, 140), req.failure()?.errorText || "");
+    log("REQFAILED", req.method(), safePath(url).slice(0, 140), req.failure()?.errorText || "");
   });
   page.on("request", (req) => {
     const url = req.url();
@@ -429,7 +430,12 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     assert.ok(found.every(Boolean), "both edits must survive close/reopen");
     await shot(`${tag}-reopened`);
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.locator(`${STAGE} canvas`).first().waitFor({ timeout: 150000 });
+    if (!(await page.locator(`${STAGE} canvas >> visible=true`).first().isVisible().catch(() => false))) {
+      const edit = page.locator("button[aria-label*='编辑'], button[aria-label*='Edit'], button[title*='编辑'], button[title*='Edit']").last();
+      await edit.waitFor({ timeout: 60000 });
+      await edit.click({ timeout: 5000 }).catch(() => edit.evaluate(button => button.click()));
+    }
+    await page.locator(`${STAGE} canvas >> visible=true`).first().waitFor({ timeout: 150000 });
     await page.waitForTimeout(5000);
     const reloaded = await page.evaluate(marks => {
       const all = JSON.stringify(globalThis.__oceanleoGridUniverPaint?.liveCells || []);

@@ -1,5 +1,11 @@
 # W10 journal（每条实测/读码结论一行，UTC）
 
+- 2026-10-23 [Codex根因] native工程原cell.p.documentStyle.pageSize的Infinity经JSON成为null；重开精确该字段是null，Univer内核默认用Infinity。probe初始v虽在，截图cells全白，不能据probe判pass。W10加载时只恢复这些pageSize null sentinel→Infinity，保留文本/富文本/有限尺寸且不改原JSON；25focused通过，正在视觉/完整协议复核。
+
+- 2026-10-23 [Codex实测] Shared focused reconciliation c3d47eba完成后接W10；读原任务/交付/state/journal与共同合同。b13b20b5两存DB1→3，但第二存先409后重试200；新浏览器打开白屏，继续编辑触发Univer line-layout递归RangeError。只读取ordinal3源XLSX与native manifest均保留两mark；失败诊断后ordinal4/5已是空白模型，不再使用该head验收。
+- 2026-10-23 [Codex修复] 5e024e3c：从typed editor_manifest恢复native project入口、schema与sheet维度验证；源未ready/失败不save或capture，invalid模型不flush；保存成功推进本地head。65 focused tests通过。
+- 2026-10-23 [Codex实测] fresh验收fixture d8bf00e4两存均200，无CAS409；SQL ordinal1→2→3父链正确；close/reopen两mark在。旧场景fullreload落详情页，等待stage并非产品失败，补再点编辑继续严格验收。
+
 - 2026-10-23 05:10 [实测] bootstrap 通过；HEAD `377b212b`；没有转给 W10 的信号。
 - 2026-10-23 05:20 [实测] 05:09–05:25Z 槽请求超时（父 agent：代理连接池满，已修）；重跑后上传成功：`b13b20b5-c492-4126-9f80-fa5d9d4caf9c`「[W10] 保存验收.xlsx」、`85a058e9-ae06-473a-bc5c-b2814860a5e9`「[W10] 预算配色.xlsx」，都是 grid、ordinal 1（只读 SQL）。
 - 2026-10-23 05:25 [读码] Univer 0.25.1 暗色：`createUniver({darkMode})` / `univerAPI.toggleDarkMode()`；UI 走 `univer-dark` 类（挂在 `<html>` 和 workbench-layout 上）；画布走 `ICanvasColorService.getRenderColor`，暗色时对**所有**颜色做保色相的明度反转（黄底→橄榄、深蓝表头→浅蓝），会改掉用户设的颜色。

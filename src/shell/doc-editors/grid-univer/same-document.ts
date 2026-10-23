@@ -266,6 +266,24 @@ export function paintUniverWorkbookFromSnapshot(
   return painted;
 }
 
+/** Univer uses Infinity for an unbounded cell text page. JSON encodes that
+ * engine sentinel as null; passing null back makes layout see a zero-size page
+ * (blank cells, and recursive line splitting while editing). Rehydrate only
+ * these exact internal page-size fields, without changing the stored project. */
+function restoreCellTextPage(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const document = value as Record<string, unknown>;
+  const style = document.documentStyle as Record<string, unknown> | undefined;
+  const size = style?.pageSize as Record<string, unknown> | undefined;
+  if (!size || typeof size !== "object" || Array.isArray(size) ||
+      (size.width !== null && size.height !== null)) return value;
+  return { ...document, documentStyle: { ...style, pageSize: {
+    ...size,
+    ...(size.width === null ? { width: Number.POSITIVE_INFINITY } : {}),
+    ...(size.height === null ? { height: Number.POSITIVE_INFINITY } : {}),
+  } } };
+}
+
 /**
  * Univer 0.25 画布认的是格子上的 `p`（一段 dataStream）。
  * 只有 `v` 的快照会进模型但画不出来，用户看见空表。
@@ -293,7 +311,7 @@ export function enrichUniverSnapshotPlainText(snapshot: unknown): unknown {
         if (!cell || typeof cell !== "object") continue;
         const current = cell as { v?: unknown; p?: unknown };
         if (current.p || current.v === undefined || current.v === null || current.v === "") {
-          nextCells[rowKey][colKey] = current;
+          nextCells[rowKey][colKey] = current.p ? { ...current, p: restoreCellTextPage(current.p) } : current;
           continue;
         }
         const text = String(current.v);

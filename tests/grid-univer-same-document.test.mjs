@@ -21,6 +21,7 @@ import {
   gridOpenFailedClosed,
   gridProjectSource,
   gridSnapshotIsUsable,
+  enrichUniverSnapshotPlainText,
   gridShouldSkipSourceReload,
   isUniverWorkbookSnapshot,
   paintUniverWorkbookFromSnapshot,
@@ -54,6 +55,20 @@ test("typed native project survives legacy meta alias removal and validates real
   assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !handleRef\.current/);
   assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !snapshotReady \|\| !handleRef\.current/);
   assert.match(leaf, /if \(!gridSnapshotIsUsable\(snapshot\)\)[\s\S]*?return null;/);
+});
+
+test("native JSON roundtrip rehydrates only Univer's unbounded cell-text page sentinel", () => {
+  const text = { body: { dataStream: "Keep text\r\n", textRuns: [{ st: 0, ed: 4, ts: { bl: 1 } }] },
+    documentStyle: { marginLeft: 2, pageSize: { width: Infinity, height: Infinity } } };
+  const stored = JSON.parse(JSON.stringify({ sheets: { s: { cellData: { 0: { 0: { v: "Keep text", p: text } } } } } }));
+  assert.equal(stored.sheets.s.cellData[0][0].p.documentStyle.pageSize.width, null);
+  const reopened = enrichUniverSnapshotPlainText(stored).sheets.s.cellData[0][0];
+  assert.deepEqual(reopened.p.documentStyle.pageSize, { width: Infinity, height: Infinity });
+  assert.deepEqual(reopened.p.body, text.body);
+  assert.equal(stored.sheets.s.cellData[0][0].p.documentStyle.pageSize.width, null, 'input is not mutated');
+  const bounded = { sheets: { s: { cellData: { 0: { 0: { p: { ...text, documentStyle: { pageSize: { width: 200, height: 100 } } } } } } } } };
+  assert.deepEqual(enrichUniverSnapshotPlainText(bounded).sheets.s.cellData[0][0].p.documentStyle.pageSize,
+    { width: 200, height: 100 }, 'finite page sizes remain unchanged');
 });
 
 function sheet(cell) {
