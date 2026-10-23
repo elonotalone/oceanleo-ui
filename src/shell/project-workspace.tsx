@@ -670,24 +670,42 @@ export function ProjectModal({
 
   // Escape belongs to the innermost dialog. The tab shown inside a ProjectModal
   // (plan, assets...) can open its own dialog (todo editor, rename, delete
-  // confirmation) and those do not close on Escape themselves; the shared
-  // Modal, however, closes on any Escape, which would throw the whole dialog
-  // away together with an unsaved draft. This listener is registered before the
-  // shared Modal mounts (it renders nothing until its own effect has run), so
-  // on `document` it runs first and can stop the shared Modal from seeing the
-  // key. React handlers inside the nested dialog already ran earlier in the
-  // bubble, so a nested dialog that handles Escape itself still works.
+  // confirmation). The shared Modal closes on any Escape, which would throw the
+  // whole dialog away together with an unsaved draft. These listeners are
+  // registered before the shared Modal mounts (it renders nothing until its own
+  // effect has run), so on `document` the guard runs first and can stop the
+  // shared Modal from seeing the key. React handlers inside the nested dialog
+  // run earlier in the bubble, so a nested dialog that handles Escape itself
+  // still works. The capture listener remembers that a nested dialog was open
+  // when the key went down: a nested dialog that closes itself on that very key
+  // has unmounted by the time the event reaches `document`, and that key must
+  // still not close the outer dialog too.
   useEffect(() => {
     if (!open) return;
+    const nestedDialogOpen = () => {
+      const outer = document
+        .getElementById(titleId)
+        ?.closest('[role="dialog"]');
+      return Boolean(outer?.querySelector('[aria-modal="true"]'));
+    };
+    const keysWithNestedDialog = new WeakSet<Event>();
+    const remember = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && nestedDialogOpen()) {
+        keysWithNestedDialog.add(event);
+      }
+    };
     const keepOuterDialogOpen = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      const outer = document.getElementById(titleId)?.closest('[role="dialog"]');
-      if (outer?.querySelector('[aria-modal="true"]')) {
+      if (keysWithNestedDialog.has(event) || nestedDialogOpen()) {
         event.stopImmediatePropagation();
       }
     };
+    window.addEventListener("keydown", remember, true);
     document.addEventListener("keydown", keepOuterDialogOpen);
-    return () => document.removeEventListener("keydown", keepOuterDialogOpen);
+    return () => {
+      window.removeEventListener("keydown", remember, true);
+      document.removeEventListener("keydown", keepOuterDialogOpen);
+    };
   }, [open, titleId]);
 
   if (!open) return null;

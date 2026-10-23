@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import React, { act } from "react";
+import { flushSync } from "react-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 
@@ -490,6 +491,44 @@ test("嵌套对话框自己处理 Esc（React onKeyDown）时，照样收得到"
     });
     assert.equal(nestedSawEscape, 1, "React handlers run before the document-level guard");
     assert.equal(closed, 0, "and the outer dialog stays open");
+  });
+});
+
+test("嵌套对话框在同一次按键里自己关掉（不 stopPropagation）：这一下 Esc 也不连外层一起关", async () => {
+  await withDom(async ({ find, renderRoot, window }) => {
+    let closed = 0;
+    function Harness() {
+      const [nested, setNested] = React.useState(true);
+      return h(
+        ProjectModal,
+        { title: "Assets", size: "wide", onClose: () => (closed += 1), closeLabel: "Close" },
+        nested &&
+          h(
+            "section",
+            {
+              role: "dialog",
+              "aria-modal": "true",
+              "data-nested": true,
+              // React flushes a discrete event's updates before the native event goes on to
+              // `document`; flushSync makes the test do the same under act().
+              onKeyDown: (event) => {
+                if (event.key === "Escape") flushSync(() => setNested(false));
+              },
+            },
+            h("input", { "aria-label": "name", "data-field": true }),
+          ),
+      );
+    }
+    await renderRoot(h(Harness));
+    find("[data-field]").focus();
+    await act(async () => {
+      find("[data-field]").dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 200));
+    });
+    assert.equal(find("[data-nested]"), null, "the nested dialog closed itself");
+    assert.equal(closed, 0, "the same key must not also close the outer dialog");
   });
 });
 
