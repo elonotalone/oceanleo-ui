@@ -36,7 +36,7 @@ export function classifyModerationError(error: unknown): ModerationFailure {
 
 async function call(path: string, init?: RequestInit): Promise<unknown> {
   const result = await authed<unknown>(path, init);
-  if (!result.ok) throw new ModerationApiError(result.error || "请求失败", result.status ?? 0);
+  if (!result.ok) throw new ModerationApiError(result.error || "request failed", result.status ?? 0);
   return result.data;
 }
 
