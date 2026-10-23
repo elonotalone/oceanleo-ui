@@ -23,6 +23,7 @@ import {
 import type { SiteOption } from "./FileLibrary";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import { useUI } from "../i18n/ui/useUI";
+import { translateLibraryTypeLabel } from "./library-editor-category";
 
 function currentFilter(sel: string | null): ArtifactFilter {
   return (ARTIFACT_FILTERS.find((f) => f.id === sel)?.id as ArtifactFilter) || "all";
@@ -49,7 +50,7 @@ export function LibrarySubNav({ accent = "#0ea5e9" }: { accent?: string }) {
  }`}
             style={on ? { background: accent } : undefined}
           >
-            {tt(f.label)}
+            {translateLibraryTypeLabel(tt, f.label)}
           </button>
         );
       })}
