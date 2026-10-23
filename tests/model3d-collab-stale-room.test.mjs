@@ -60,6 +60,6 @@ test("Model3DRoute drops stale room scenes before applyRemoteScene", () => {
   );
   assert.match(
     route,
-    /isStaleModel3DRemoteScene\(state, \{[\s\S]*?\}\)\s*\) \{\s*return;\s*\}\s*editor\.applyRemoteScene\(state\)/,
+    /isStaleModel3DRemoteScene\(state, \{[\s\S]*?\}\)\s*\) \{\s*return;\s*\}\s*collabSnapshots\.current\.acceptRemote\(state, editor\.editRevision\);\s*editor\.applyRemoteScene\(state\)/,
   );
 });

@@ -119,16 +119,16 @@ export function useModel3DProjectBootstrap({
             ? item.meta.model_source_identity
             : "",
         artifactId:
-          typeof item.meta.model_source_artifact_id === "string"
-            ? item.meta.model_source_artifact_id
+          typeof item.meta.model_source_artifact_id === "string" && item.meta.model_source_artifact_id.trim()
+            ? item.meta.model_source_artifact_id.trim()
             : item.artifactId || "",
         revisionId:
-          typeof item.meta.model_source_revision_id === "string"
-            ? item.meta.model_source_revision_id
+          typeof item.meta.model_source_revision_id === "string" && item.meta.model_source_revision_id.trim()
+            ? item.meta.model_source_revision_id.trim()
             : item.revisionId || "",
         sourceDigest:
-          typeof item.meta.model_source_digest === "string"
-            ? item.meta.model_source_digest
+          typeof item.meta.model_source_digest === "string" && item.meta.model_source_digest.trim()
+            ? item.meta.model_source_digest.trim()
             : artifactSourceDigest,
       },
       originalSource,

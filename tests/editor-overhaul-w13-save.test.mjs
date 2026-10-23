@@ -110,16 +110,17 @@ test("a failed save retains the journal and can be retried without clearing it p
 test("cold typed projection loads its editor manifest; a broken manifest cannot admit an empty fallback", async () => {
   for (const broken of [false, true]) {
     const { options } = fixture();
-    const calls = { urls: [], source: [], errors: [], views: [] };
+    const calls = { urls: [], source: [], errors: [], views: [], provenance: [] };
     globalThis.__w13Manifest = { load: async (url, schema) => {
       calls.urls.push([url, schema]);
       if (broken) throw Error("manifest unavailable");
       return { checkpointUrl: "", operations: [], view: { exposure: 2.25, background: "#123456" } };
     } };
-    const bootstrap = { ...options, item: { ...options.item, meta: { editor_manifest_url: "https://example.invalid/manifest.json" } },
-      artifactSourceDigest: "", loadedSourceRef: ref(""), pendingOperationsRef: ref([]), runtimeRef: ref({ clear() {} }),
+    const bootstrap = { ...options, item: { ...options.item, meta: { editor_manifest_url: "https://example.invalid/manifest.json",
+      model_source_artifact_id: "", model_source_revision_id: "", model_source_digest: "" } },
+      artifactSourceDigest: "sha256:typed", loadedSourceRef: ref(""), pendingOperationsRef: ref([]), runtimeRef: ref({ clear() {} }),
       applyView: (view) => calls.views.push(view), setSourceUrl: (url) => calls.source.push(url),
-      setSourceLoading() {}, setModelLoading() {}, setProgress() {}, setRuntimeState() {}, setSourceProvenance() {},
+      setSourceLoading() {}, setModelLoading() {}, setProgress() {}, setRuntimeState() {}, setSourceProvenance: (value) => calls.provenance.push(value),
       setError: (value) => calls.errors.push(value) };
     const container = document.createElement("div"); document.body.appendChild(container);
     const root = createRoot(container);
@@ -134,6 +135,9 @@ test("cold typed projection loads its editor manifest; a broken manifest cannot 
         assert.equal(calls.views.at(-1).exposure, 2.25);
         assert.equal(calls.views.at(-1).background, "#123456");
         assert.equal(calls.source.at(-1), options.item.url);
+        assert.equal(calls.provenance.at(-1).artifactId, options.item.artifactId, "blank typed metadata must not erase renewable grant identity");
+        assert.equal(calls.provenance.at(-1).revisionId, options.item.revisionId);
+        assert.equal(calls.provenance.at(-1).sourceDigest, "sha256:typed");
       }
     } finally { await act(async () => root.unmount()); container.remove(); }
   }
