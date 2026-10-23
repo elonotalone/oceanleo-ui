@@ -9,7 +9,11 @@ export default async function ({ page, log, shot, helpers, args }) {
   await helpers.gotoApp(page, route);
   const editor = page.locator("[data-inline-editor]").first();
   // /library?item= lands on the read-only preview; its pencil opens the editor.
-  const pencil = page.getByRole("button", { name: /^(Edit|编辑)$/ }).first();
+  const pencil = page
+    .locator('button[aria-label*="Edit"], button[aria-label*="编辑"], button[title*="Edit"], button[title*="编辑"], a[aria-label*="Edit"], a[aria-label*="编辑"]')
+    .first();
+  await page.waitForTimeout(3000);
+  log("header-buttons", JSON.stringify(await page.$$eval("button[aria-label], a[aria-label]", (els) => els.slice(0, 30).map((e) => e.getAttribute("aria-label")))));
   const openBy = Date.now() + 180000;
   while (Date.now() < openBy && !(await editor.isVisible().catch(() => false))) {
     if (await pencil.isVisible().catch(() => false)) await pencil.click().catch(() => {});
@@ -70,6 +74,30 @@ export default async function ({ page, log, shot, helpers, args }) {
     await page.waitForTimeout(1500);
     await shot(`${label}-1-${id}`);
     log("probe", JSON.stringify(await probe(`after-${id}`)));
+  }
+  // Second click on the open panel closes it (toggle).
+  const mine = page.locator('[data-workspace-library-panel="mine"]').first();
+  if (await mine.count()) {
+    await mine.click();
+    await page.waitForTimeout(1200);
+    log("probe", JSON.stringify(await probe("after-mine-second-click")));
+  }
+  // Deselect: Escape, then click an empty corner of the stage.
+  await page.keyboard.press("Escape").catch(() => {});
+  const stage = await page.locator("[data-advanced-viewport-row]").first().boundingBox().catch(() => null);
+  if (stage) await page.mouse.click(stage.x + 12, stage.y + stage.height - 12);
+  await page.waitForTimeout(1200);
+  log("edit-bar-after-deselect", (await page.locator("[data-workspace-edit-bar]").first().innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 200));
+  // D3: labeled drawer buttons in the empty-state edit bar.
+  const drawerIds = await page.$$eval("[data-edit-bar-drawer]", (els) => els.map((e) => `${e.dataset.editBarDrawer}:${e.innerText.trim()}`));
+  log("edit-bar-drawers", JSON.stringify(drawerIds));
+  const firstDrawer = page.locator("[data-edit-bar-drawer]").first();
+  if (await firstDrawer.count()) {
+    await firstDrawer.click();
+    await page.waitForTimeout(1500);
+    await shot(`${label}-3-drawer`);
+    log("probe", JSON.stringify(await probe("after-drawer")));
+    log("drawer-pressed", await firstDrawer.getAttribute("aria-pressed"));
   }
   const tools = page.locator("[data-editor-tools-trigger]").first();
   if (await tools.count()) {

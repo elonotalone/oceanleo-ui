@@ -58,7 +58,7 @@ const minePanelUrl = await compileModule("src/shell/inline-editor-mine-panel.tsx
   "../ui/Button": button,
   "./artifact-client": dataModule(`export async function listMyArtifacts(){ return { ok: true, data: { items: globalThis.__mineItems || [] } }; }`),
 });
-const { useInlineLibraryPanels } = await import(await compileModule("src/shell/use-inline-library-panels.tsx", {
+const { useInlineLibraryPanels, editBarDrawersAlwaysVisible } = await import(await compileModule("src/shell/use-inline-library-panels.tsx", {
   "./inline-editor-mine-panel": minePanelUrl,
 }));
 const { EditBarDocumentSegment } = await import(await compileModule("src/shell/plugin-chrome/EditBarDocumentSegment.tsx", {
@@ -301,4 +301,10 @@ test("materials panel lists the editor-declared types and reports every insert i
     await act(async () => { await globalThis.__materialProps.onMaterialAction("insert", { ...item, title: "Clip" }); });
     assert.equal(m.container.querySelector("[data-material-insert-feedback]").dataset.materialInsertFeedback, "error");
   } finally { await m.destroy(); }
+});
+
+test("document drawers (插入/批注) stay reachable next to the always-on text bar", () => {
+  assert.equal(editBarDrawersAlwaysVisible("richdoc"), true);
+  assert.equal(editBarDrawersAlwaysVisible("image"), false);
+  assert.equal(editBarDrawersAlwaysVisible("deck"), false);
 });

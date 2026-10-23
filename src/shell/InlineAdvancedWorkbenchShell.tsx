@@ -29,7 +29,10 @@ import {
 import { useInlineWorkbenchLeave } from "./use-inline-workbench-leave";
 import { useInlineAdvancedWorkbenchDrop } from "./inline-advanced-workbench-drop";
 import { useInlineAdvancedPanels } from "./use-inline-advanced-panels";
-import { useInlineLibraryPanels } from "./use-inline-library-panels";
+import {
+  editBarDrawersAlwaysVisible,
+  useInlineLibraryPanels,
+} from "./use-inline-library-panels";
 import {
   FallbackDetailAside,
   HiddenUploadInput,
@@ -299,7 +302,10 @@ export function InlineAdvancedWorkbenchShell({
         {rawContextToolbar}
       </SelectionPresenceProbe>
     );
-  const noSelection = rawContextToolbar == null || !selectionPresent;
+  const noSelection =
+    rawContextToolbar == null ||
+    !selectionPresent ||
+    editBarDrawersAlwaysVisible(adapter.id);
 
   const { leavingMountedEditor, requestClose, requestPaneClose, activateMineItem } = useInlineWorkbenchLeave({
     item, onClose, onPaneClose: rightPaneSlot?.closeRightPane, closeDetail, autoSave,

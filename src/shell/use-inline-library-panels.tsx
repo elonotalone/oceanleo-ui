@@ -18,6 +18,18 @@ import {
 } from "./inline-editor-mine-panel";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 
+/**
+ * 文字编辑器的选区栏在光标处也常驻（字体、对齐……），「没选中」永远不成立。
+ * 这些编辑器的抽屉按钮与文字栏同排常驻，否则「插入」「批注」就没有入口了。
+ */
+export const EDIT_BAR_DRAWERS_ALWAYS_VISIBLE: ReadonlySet<string> = new Set([
+  "richdoc",
+]);
+
+export function editBarDrawersAlwaysVisible(adapterId: string): boolean {
+  return EDIT_BAR_DRAWERS_ALWAYS_VISIBLE.has(adapterId.split("@")[0]);
+}
+
 interface PanelControls {
   activeDrawerId: string;
   isPanelOpen: (panelId: string) => boolean;
