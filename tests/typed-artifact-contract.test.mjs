@@ -596,7 +596,7 @@ test("catalog and Explore share public rich-v1 search, deep links and accessible
   assert.match(collectionChrome, /type="search"/);
   assert.match(mine, /listMyArtifacts/);
   assert.match(mine, /listFavoriteArtifacts/);
-  assert.match(mine, /AdvancedContentWorkbench/);
+  assert.match(mine, /MaterialStandaloneEditor/);
   assert.match(
     mine,
     /onOpenItem=\{onOpenItem \|\| setStandaloneEditorItem\}/,
