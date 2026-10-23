@@ -317,6 +317,18 @@ test("materials panel lists the editor-declared types and reports every insert i
   }));
   try {
     assert.equal(globalThis.__materialProps.curatedType, "image", "PDF editor declared images, not PDFs");
+    const { resolveMaterialPanelType } = await import(await compileModule("src/shell/InlineEditorMaterialPanel.tsx", {
+      "../i18n/ui/useUI": ui,
+      "./MaterialLibrary": dataModule(`export function MaterialLibrary(){ return null; }`),
+    }));
+    const pdfItem = { ...item, kind: "document", meta: { format: "pdf" } };
+    assert.equal(resolveMaterialPanelType(pdfItem, [], ["insert"]), "image", "an undeclared PDF stamp adapter still lists images (D2), not PDFs");
+    assert.equal(resolveMaterialPanelType(pdfItem, [], []), "pdf", "no insert action: the file's own type");
+    assert.equal(resolveMaterialPanelType({ ...item, kind: "image", meta: {} }, [], ["insert"]), "image");
+    assert.equal(resolveMaterialPanelType({ ...item, kind: "ppt", meta: {} }, [], ["insert", "replace"]), "image", "deck inserts images only");
+    assert.equal(resolveMaterialPanelType({ ...item, kind: "document", meta: {} }, [], ["insert"]), "image", "doc inserts images only");
+    assert.equal(resolveMaterialPanelType({ ...item, kind: "video", meta: {} }, [], ["insert"]), "video");
+    assert.equal(resolveMaterialPanelType({ ...item, kind: "audio", meta: {} }, [], ["replace"]), "audio");
     await act(async () => { await globalThis.__materialProps.onMaterialAction("insert", { ...item, title: "Logo" }); });
     assert.equal(m.container.querySelector("[data-material-insert-feedback]").dataset.materialInsertFeedback, "ok");
     assert.match(m.container.textContent, /已插入「Logo」/);

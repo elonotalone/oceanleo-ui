@@ -51,6 +51,27 @@ function curatedTypeFor(item: LibraryItem): string {
   return map[item.kind] || "all";
 }
 
+/**
+ * 能「插入」却只接图片的编辑器：PDF（图片 / 签名作图章，D2）、演示、文档。
+ * 它们的素材库面板列图片——列同类文件（PDF / 演示 / 文档）的话一件都插不进去。
+ */
+const IMAGE_INSERT_TYPES: ReadonlySet<string> = new Set(["pdf", "ppt", "document"]);
+
+/**
+ * 素材库面板列哪一类素材：编辑器申报了就按它列；没申报时按当前文件类型，
+ * 只接图片的插入型编辑器改列图片（`IMAGE_INSERT_TYPES`）。
+ */
+export function resolveMaterialPanelType(
+  item: LibraryItem,
+  declared: readonly string[] | undefined,
+  actions: readonly WorkbenchMaterialAction[] | undefined,
+): string {
+  if (declared?.[0]) return declared[0];
+  const own = curatedTypeFor(item);
+  if (IMAGE_INSERT_TYPES.has(own) && actions?.includes("insert")) return "image";
+  return own;
+}
+
 export function InlineEditorMaterialPanel({
   item,
   taskId,
@@ -91,8 +112,11 @@ export function InlineEditorMaterialPanel({
     },
     [perform, tt],
   );
-  // 编辑器申报了能接的素材类型就按它列（PDF → 图片 / 签名），否则按当前文件类型。
-  const curatedType = materials?.materialTypes?.[0] || curatedTypeFor(item);
+  const curatedType = resolveMaterialPanelType(
+    item,
+    materials?.materialTypes,
+    materials?.actions,
+  );
   return (
     <div className="flex h-full min-h-0 flex-col">
       {feedback ? (
