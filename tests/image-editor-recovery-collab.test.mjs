@@ -121,3 +121,12 @@ test("overlapping saves wait for the running one; an edit during capture re-capt
   assert.match(hook, /\n    save: saveSerialized,\n/);
   assert.match(hook, /if \(revisionRef\.current === savingRevision\) break;\s*if \(attempt >= 3\)/);
 });
+
+// [实测] 10:05Z: flip → undo while the save of the flip was in flight: the room pushed this page's
+// own new revision back as an "external revision" and re-applied it, so the undo was lost.
+test("the editor's own committed revision is never re-applied as an external revision", () => {
+  const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
+  const adopt = hook.slice(hook.indexOf("adoptRevision: async (artifactId, revisionId) => {"));
+  assert.match(adopt.slice(0, 600), /await saveRunRef\.current\.catch[\s\S]*if \(ownRevisionIdsRef\.current\.has\(String\(revisionId\)\)\) return null;/);
+  assert.match(hook, /ownRevisionIdsRef\.current\.add\(String\(id\)\)/);
+});

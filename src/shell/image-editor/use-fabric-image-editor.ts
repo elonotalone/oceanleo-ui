@@ -631,6 +631,8 @@ export function useFabricImageEditor(
   const localEditsRef = useRef(0);
   /** 画布当前所基于的云端版本的保存时刻（ms）；比它旧的本机/草稿恢复不再盖上来。 */
   const cloudSavedAtRef = useRef(0);
+  /** 本页自己提交过的版本：协同房间把它当「外部版本」回推时不再套回画布。 */
+  const ownRevisionIdsRef = useRef(new Set<string>());
   /** 上一次成功提交：哪个编辑计数、哪次打开、回执。 */
   const lastSaveRef = useRef<{
     revision: number;
@@ -1587,6 +1589,9 @@ export function useFabricImageEditor(
         dependencyClosureDigest: saved.dependencyClosureDigest,
         dependencyRevisionIds: saved.dependencyRevisionIds,
       };
+      for (const id of [saved.item?.revisionId, saved.versionId]) {
+        if (id) ownRevisionIdsRef.current.add(String(id));
+      }
       lastSaveRef.current = {
         revision: savingRevision,
         identity: savingIdentity,
@@ -1725,6 +1730,12 @@ export function useFabricImageEditor(
     },
     objectBoxes: (ids) => controllerRef.current?.collabObjectBoxes(ids) ?? [],
     adoptRevision: async (artifactId, revisionId) => {
+      // 房间可能先于保存回执把本页刚提交的版本当「外部版本」推回来：等手上的保存结束，
+      // 是自己的就不套（否则会把保存开始后的撤销 / 新改动盖掉——10-23 W09 实测）。
+      for (let waited = 0; saveRunRef.current && waited < 10; waited += 1) {
+        await saveRunRef.current.catch(() => null);
+      }
+      if (ownRevisionIdsRef.current.has(String(revisionId))) return null;
       try {
         const result = await getArtifactItem(artifactId, revisionId);
         const revisionItem = (result as { data?: LibraryItem }).data;
