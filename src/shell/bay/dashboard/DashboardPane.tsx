@@ -131,7 +131,8 @@ export function DashboardPane(_props: BayPaneProps): ReactElement {
         <ProductTable products={data.products} currency={data.currency} locale={locale} />
       </section>
 
-      <IncomeLedgerCard locale={locale} sellerReady={payout.data?.sellerReady === true} />
+      {/* 收款状态还在取时不知道该说哪一句，先不写，免得写错一句又换掉；取不到就按「没开放」说。 */}
+      <IncomeLedgerCard locale={locale} sellerReady={payout.loading ? null : payout.data?.sellerReady === true} />
     </div>
   );
 }

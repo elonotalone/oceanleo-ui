@@ -649,6 +649,25 @@ test("收入流水：收款开放后的说明换成托管规则", async () => {
   view.unmount();
 });
 
+test("收入流水：收款状态还在取的时候先不写「钱能不能动」那句，取到再写（不先写错一句又换掉）", async () => {
+  let release = () => {};
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  bench(dashboardRoutes({ "GET /v1/talent/payout-account": () => gate.then(() => NO_ACCOUNT) }));
+  const { DashboardPane } = await loadDashboard();
+  const view = await render(React.createElement(DashboardPane, { target: { kind: "dashboard" }, layout: "page", siteKey: "design" }));
+  const card = view.host.querySelector("[data-bay-dashboard-ledger]");
+  assert.ok(card, "流水卡不等收款状态");
+  assert.equal(card.querySelector("[data-bay-ledger-notice]"), null);
+  assert.match(view.host.querySelector('[data-bay-stat="payout"]').textContent, /—/);
+  release();
+  await tick();
+  await tick();
+  assert.match(card.querySelector("[data-bay-ledger-notice]").textContent, /平台目前不代收代付/);
+  view.unmount();
+});
+
 test("收入流水：只有带订单的行能看对账单；点开出现对账单，可关闭", async () => {
   const w = bench(dashboardRoutes());
   const { DashboardPane } = await loadDashboard();

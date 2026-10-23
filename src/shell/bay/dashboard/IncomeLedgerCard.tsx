@@ -32,7 +32,8 @@ interface LedgerState {
   hasMore: boolean;
 }
 
-export function IncomeLedgerCard({ locale, sellerReady }: { locale: string; sellerReady: boolean }): ReactElement {
+/** `sellerReady` 为 null = 收款状态还没取到：先不写那句关于「钱什么时候能动」的说明。 */
+export function IncomeLedgerCard({ locale, sellerReady }: { locale: string; sellerReady: boolean | null }): ReactElement {
   const tt = useUI();
   const [state, setState] = useState<LedgerState | null>(null);
   const [error, setError] = useState("");
@@ -133,10 +134,12 @@ export function IncomeLedgerCard({ locale, sellerReady }: { locale: string; sell
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-[14px] font-semibold text-neutral-900">{tt("收入流水")}</h3>
-          <p className="mt-1 text-[12px] leading-5 text-neutral-500" data-bay-ledger-notice="">
-            {tt(bayMoneyNotice(sellerReady))}
-          </p>
-          <p className="text-[12px] leading-5 text-neutral-500">{tt("流水只是逐笔记录，收入数字以上面的为准。")}</p>
+          {sellerReady === null ? null : (
+            <p className="mt-1 text-[12px] leading-5 text-neutral-500" data-bay-ledger-notice="">
+              {tt(bayMoneyNotice(sellerReady))}
+            </p>
+          )}
+          <p className="mt-1 text-[12px] leading-5 text-neutral-500">{tt("流水只是逐笔记录，收入数字以上面的为准。")}</p>
         </div>
         {items.length ? (
           <button type="button" data-bay-action="export-ledger" disabled={exporting} onClick={() => void exportCsv()} className={GHOST_BUTTON}>
