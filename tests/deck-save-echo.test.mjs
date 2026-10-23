@@ -72,3 +72,10 @@ test("useDeckEditor keeps its load key on a save echo and commits on the own hea
   assert.match(source, /const baseItem = deckSaveBaseItem\(persistedItemRef\.current\);/);
   assert.match(source, /ownSavedRevisionsRef\.current\.add\(saved\)/);
 });
+
+test("deck saves are revisions, not the hidden draft tier", () => {
+  const route = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
+  const persistence = route.slice(route.indexOf("persistence: {"), route.indexOf("onClose={onClose}"));
+  assert.ok(persistence.length > 0);
+  assert.doesNotMatch(persistence, /\bdraft:\s*editor\.draft/);
+});

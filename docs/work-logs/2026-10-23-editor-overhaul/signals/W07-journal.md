@@ -9,3 +9,4 @@
 - 07:55Z [实测+SQL] 修后：断网 → error；恢复 → 点重试 → saved，rev7/rev8 落库；07:45Z 之后不再新增「草稿」隐藏 root（W04 staging 已生效）。
 - 08:21–08:27Z [实测] R2 复跑公共模板 `8886a2d9…`：`:fork` 每次都回同一份副本 a67bdb59（不新增条目）。第 1 次保存 200 → 随即遮罩闪一下（宿主传回保存回执 item，载入键变 → 整份重载 → 读到服务端草稿又标脏）→ 第 2 次保存拿旧基线 409 → 内核重试撞 `blob-digest-conflict` → 保存失败（/tmp/w07-r2h/w07-fork.log）。另一次（/tmp/w07-r2g）第 2、3 次改动显示「已保存」却没有新 revision（只有 rev4）。
 - 08:40Z [读码+test] 修：`deck-save-echo.ts`——宿主传回本编辑器刚存的那一版不重载；保存前基线若是本页谱系里更早的一版先换成自己的 head。`tests/deck-save-echo.test.mjs` 4/4；`deck-editor-integrity` 第 6 条改断言统一栏的 gesture/transient（DeckControls 已不画对象连续控件）。
+- 08:31Z [实测+SQL] 修完重载后复跑（/tmp/w07-r2i）：不再 409，但第 2、3 次改动走草稿层——`/v1/database/upload` 写出两个隐藏「…草稿」root（editorInternal working-document，241→243），顶栏「已保存」，revision 只 +1。演示是全仓唯一接草稿层（`persistence.draft`）的编辑器。修：DeckRoute 不再接草稿层，每次保存都走版本提交。

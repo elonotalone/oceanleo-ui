@@ -555,7 +555,8 @@ export function DeckRoute({
           editRevision: editor.editRevision,
           autoSave: collab.saveGate && !editor.sourceFailed,
           flush: saveBeforeNewConversation,
-          draft: editor.draft,
+          // 不接草稿层：草稿层下第 2 次起的改动只写隐藏「草稿」root、顶栏照报「已保存」，
+          // 却不成新版本（10-23 W07 实测 + SQL）。每次保存都走版本提交（D11 §5.5）。
           recovery: {
             key: advancedRecoveryKey("deck", item),
             ready: !editor.loading && !editor.sourceFailed,
