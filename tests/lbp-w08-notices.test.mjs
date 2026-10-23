@@ -2127,3 +2127,83 @@ test("LeoChat 里 29 句老词条补齐 16 语译文：占位符不丢、非中�
   assert.equal(UI_MESSAGES.en["已选择 {n} 条"], "{n} selected");
   assert.equal(UI_MESSAGES.en["转发"], "Forward");
 });
+
+// ---- 与 W09 的真实现对接（I-3）：MessagesSubView 挂真的 MessagesContentCases，只把网关与登录打桩 ----------------------------
+const casesNetworkStubs = {
+  "./NoticesView": dataModule(`export function NoticesView(){ return null; }`),
+  "../../../i18n/ui/useUI": uiStub,
+  "next-intl": dataModule('export function useLocale(){ return "zh"; }'),
+  "../../../lib/auth/client": dataModule(`
+    export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+    export async function accessToken(){ return "t"; }
+  `),
+  "../../../lib/agent": dataModule(`
+    export async function authed(path, init){ return globalThis.__w08CasesAuthed(path, init); }
+  `),
+  "../../../pages/settings/settings-tabs": dataModule(`export function openSettingsModal(){}`),
+};
+const { MessagesSubView: RealCasesSubView } = await import(
+  await compileModule("src/shell/messages/notices/MessagesSubView.tsx", casesNetworkStubs)
+);
+
+function ownerCase(id, title) {
+  return {
+    id,
+    family: "com",
+    source: "rights_notice",
+    tier: "infringement",
+    status: "open",
+    queue: "judge",
+    target_kind: "bay_app",
+    target_ref: "app-1",
+    target_snapshot: { title, text: "", image_urls: [], url: null },
+    reason: "",
+    detail: "",
+    hidden: true,
+    due_at: null,
+    restore_at: null,
+    decision: null,
+    decision_note: "",
+    notice: { claimant_name: "王权利", work_description: "我的原创海报系列", location_urls: [] },
+    actions: ["counter_notice"],
+    counter_notice_at: null,
+    appeal_at: null,
+    created_at: "2026-10-20T08:30:00+00:00",
+  };
+}
+
+test("与 W09 对接（I-3）：cases 视图里真的 MessagesContentCases 收到 caseId 直接展开那一件，返回回到通知；找不到的 id 有提示", async () => {
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+  globalThis.__w08CasesAuthed = (path) =>
+    path === "/v1/moderation/my-cases"
+      ? { ok: true, data: { cases: [ownerCase(A, "海报生成器"), ownerCase(B, "另一件作品")], family: "com" } }
+      : { ok: false, status: 404, error: `HTTP 404 ${path}` };
+  const picked = [];
+  const mountCases = (caseId) =>
+    mount(React.createElement(RealCasesSubView, { view: "cases", caseId, onSelectView: (view) => picked.push(view) }));
+
+  const view = await mountCases(B);
+  await flush();
+  assert.ok(view.$('[data-leochat-subview="cases"] [data-messages-content-cases]'), "挂上的是真的内容处置视图");
+  assert.equal(view.$(`[data-case-id="${B}"]`).getAttribute("data-case-open"), "true", "?im=cases:<id> 指名的那一件直接展开");
+  assert.equal(view.$(`[data-case-id="${A}"]`).getAttribute("data-case-open"), "false", "别的件不展开");
+  const back = view.$$("button").find((button) => button.getAttribute("aria-label") === "返回");
+  assert.ok(back, "视图自带返回键（onBack 收到了）");
+  await act(() => {
+    back.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  assert.deepEqual(picked, ["notices"], "返回 = 回到通知列表");
+  await view.unmount();
+
+  const all = await mountCases(null);
+  await flush();
+  assert.equal(all.$$("[data-case-open='true']").length, 0, "没带 id：列出全部，都不展开");
+  assert.equal(all.$$("[data-case-id]").length, 2);
+  await all.unmount();
+
+  const unknown = await mountCases("99999999-9999-4999-8999-999999999999");
+  await flush();
+  assert.ok(unknown.$("[data-cases-unknown]"), "指名的那一件不在列表里：给提示");
+  await unknown.unmount();
+});
