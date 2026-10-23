@@ -59,7 +59,9 @@ test("会话交接已随旧核一起删：没有 handoff / flush 登记，路由
 });
 
 test("专业页签名字由同一常量给出，舞台用它；路由不再自己拼 adapter", () => {
-  assert.equal(GRID_PRO_LABEL, "Univer");
+  // D1：表格和 PDF、网站一样是「编辑 | 专业编辑」，页签不出引擎品牌名。
+  assert.equal(GRID_PRO_LABEL, "专业编辑");
+  assert.doesNotMatch(GRID_PRO_LABEL, /univer/i);
   assert.match(leaf, /proLabel:\s*GRID_PRO_LABEL/);
   assert.match(leaf, /planGridSameDocumentOpen/);
   assert.doesNotMatch(route, /proLabel/);

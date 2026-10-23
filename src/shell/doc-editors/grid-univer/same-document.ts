@@ -16,8 +16,11 @@ import {
 } from "./legacy-conversion";
 import { gridSheetsToUniverSnapshot } from "./snapshot";
 
-/** 第二行「专业编辑」页在表格件上的名字。 */
-export const GRID_PRO_LABEL = "Univer";
+/**
+ * 顶栏「专业编辑」页签在表格件上的名字。和 PDF、网站一样叫「专业编辑」（D1），
+ * 不出第三方引擎名（10-22 规矩：编辑器里不许出现第三方品牌）。
+ */
+export const GRID_PRO_LABEL = "专业编辑";
 
 /**
  * 崩溃恢复键。旧核记 `grid:*`，Univer 记 `grid-univer:*`——

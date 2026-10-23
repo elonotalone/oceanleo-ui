@@ -77,7 +77,7 @@ test("路由只剩一条路：懒加载 Univer 叶子，不判 flag、不留旧�
   assert.match(routeCode, /return <GridUniverStage \{\.\.\.props\} \/>;/);
 });
 
-test("编辑栏文档段有重新计算；第二行申报 Univer，不报 aux", () => {
+test("编辑栏文档段有重新计算；专业页签用 GRID_PRO_LABEL，不报 aux", () => {
   const actions = read("src/shell/doc-editors/grid-univer/document-actions.ts");
   assert.match(actions, /id:\s*"grid-recalculate"/);
   assert.match(actions, /label:\s*tt\("重新计算"\)/);
