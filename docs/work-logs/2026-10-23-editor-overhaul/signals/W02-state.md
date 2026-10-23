@@ -11,12 +11,14 @@
 - [实测] 上传 root：pdf 5f203d39-993f-4e3a-8d54-88d6935c6175 / png f9c000cb-a8a7-4f62-a5a4-afe044e158be / docx 60af3ec7-eaa2-44d5-97ce-05e2997c57c1。
 - 已提交：f1454b7c e7b78434 d0fc9653 624ed139 6a5b6bae f53bd8a0（mine-switch 场景）。
 
-## 正在做（R2）
+## 已完成（R2，09:55Z）
 
-1. W09-to-W02：图片白名单扩成 9 项。
-2. W03-to-W02：壳传 `collapsedIcon`（探针读 `data-selection-kind`）。
-3. 里程碑浏览器：PDF / docx 库页面板、我的库切换（mine-switch.mjs）、light+dark 截图。
-4. focused tests + i18n 闸 + tsc → 交付。
+- 9 个 R2 提交 + 交付提交，见 `verdicts/W02-delivery.md` §3。交付已写。
+- 剩余只在别人文件里：编辑器 owner 接 `withEditorHistoryCommand`（W02-to-editors）、父 agent 加 `restoreHostIdentity`（W02-to-parent 09:30Z）、W03 栏溢出、W07 选区退不出。
+
+## 下一步
+
+- 父 agent 加好 `restoreHostIdentity` 后，在 `InlineEditorMaterialPanel.tsx` 传 `restoreHostIdentity={false}`（一行）。
 
 ## 复现命令
 

@@ -10,3 +10,4 @@
 - 08:55Z [实测] 图片库页（dark）：空态编辑栏 9 个抽屉按钮「Brush Shape Lines Note Text Signature Table Layers Canvas」，点 Brush 开左栏且 aria-pressed=true；我的库/素材库深色无浅色岛。发现宽栏盖住壳自己的左侧面板标题与关闭键 → aside 加 data-edit-bar-avoid（W03 约定）。/tmp/w02r2-img-dark/。
 - 09:10Z [实测] 图片库页点素材库：面板直接跳进当前文件自己的详情（宿主 ?item= 被嵌套库当成「当前条目」恢复），「插入/替换」灰着，理由是宿主兜底句「目标编辑器没有可验证的 command/history 契约」。[读码] 共享闸要求 command 契约，7 件编辑器没有一件登记过 → 所有编辑器点素材都插不进去（7 月起即如此）。不放松闸（架构文档 §5.1 要求走编辑器 history）；新增 workbench-material-command.ts::withEditorHistoryCommand 一行接法，信号发给编辑器 owner；面板灰按钮写人话真原因。/tmp/w02r2-ins-img/。
 - 09:50Z [实测] 演示（dark，[W02] sample.pptx 709af8fe…）：素材库/我的库开合正常；开档标题框选中且退不出选区（Esc×2、点空白都仍是 slide-text），浏览器上看不到页面级态 → 告 W07。W07-to-W02 的 slide=无选区 已落 042b20dd（jsdom 覆盖）。
+- 09:55Z 交付写好：verdicts/W02-delivery.md。
