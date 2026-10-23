@@ -10,13 +10,33 @@
 //   - `close()` 只关小窗；`toggleWindow()` 是左下角图标专用（整页在场不动；右侧栏在场 → 接过来开小窗）。
 //   - 最后一处认领释放后 LeoChat 收起，小窗不会自己弹回来。
 //
-// 深链：任何站 `?im=<会话 id>`（可带 `&im_seq=<seq>`）、`?im=inbox`、`?im=people`、`?im_invite=<code>`。
+// 深链：任何站 `?im=<会话 id>`（可带 `&im_seq=<seq>`）、`?im=inbox`、`?im=people`、`?im=notices`（平台通知）、
+// `?im=cases`（内容处置）、`?im=cases:<案件 id>`（直接展开那一件）、`?im_invite=<code>`。
 // 浮层不是路由：侧栏打开不写 `?im=`。带着深链进来时 applyLocation 打开一次，随后 replaceState 清掉。
 // 切页由外壳 closeMessages，不把 `?im=` 带到下一页。
+//
+// 视图（view）有四个，但常驻导航只有两个标签（聊天 / 联系人）：
+//   - `notices`：收件箱最上面固定的「通知」行点进去；`cases`：内容处置，只经通知或深链进入，不出现在任何常驻导航里。
+//   - 这两个是二级视图（isSubView），占着右侧的详情位（小窗 / 窄屏里就是整块内容区），标签仍停在「聊天」（tabOfView）。
+//   - 进二级视图会放下当前会话；`cases` 不被记住（`oceanleo:leochat:last` 里存的是 inbox），所以平时不会落到它上面。
 import { useSyncExternalStore } from "react";
 
-export type MessagesView = "inbox" | "people";
-export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people"];
+export type MessagesView = "inbox" | "people" | "notices" | "cases";
+export const MESSAGES_VIEWS: readonly MessagesView[] = ["inbox", "people", "notices", "cases"];
+/** 常驻导航里的两个标签。 */
+export type MessagesTab = "inbox" | "people";
+/** 关掉再开 / 刷新后会停在原处的栏目：`cases` 不在其中（它不是常驻入口）。 */
+const REMEMBERED_VIEWS: readonly MessagesView[] = ["inbox", "people", "notices"];
+
+/** 通知 / 内容处置：从收件箱那一行或深链进去的二级视图，不是标签。 */
+export function isSubView(view: MessagesView): boolean {
+  return view === "notices" || view === "cases";
+}
+
+/** 这个视图归哪个标签高亮：二级视图都挂在「聊天」下面。 */
+export function tabOfView(view: MessagesView): MessagesTab {
+  return view === "people" ? "people" : "inbox";
+}
 /** 收件箱筛选的合法值；与 `lib/im/inbox-api.ts` 的 `INBOX_FILTERS` 相同（测试里对拍，host-state 保持纯、不引入鉴权依赖）。 */
 export const INBOX_FILTER_IDS: readonly string[] = ["all", "unread", "mentions", "dm", "group", "team", "project", "talent"];
 export type MessagesLayoutKind = "docked" | "full" | "mobile";
@@ -28,6 +48,8 @@ export interface MessagesTarget {
   seq?: number;
   filter?: string;
   view?: MessagesView;
+  /** 只在 `view === "cases"` 时有意义：直接展开这一件。 */
+  caseId?: string;
 }
 
 /** `useMessagesHost()` 的返回：契约要求 open/layout/conversationId，其余是本外壳内部要用的附加字段。 */
@@ -36,6 +58,8 @@ export interface MessagesHostSnapshot {
   layout: MessagesLayoutKind;
   conversationId: string | null;
   view: MessagesView;
+  /** `view === "cases"` 时要展开的那一件；其余时候为 null。 */
+  caseId: string | null;
   filter: string;
   highlightSeq: number | null;
   inviteCode: string | null;
@@ -63,6 +87,14 @@ export const MOBILE_MAX_WIDTH = 767;
 
 const CONVERSATION_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/;
 const INVITE_CODE = /^[A-Za-z0-9]{6,32}$/;
+/** 内容处置案件的 id（后端是 uuid）；不含冒号，免得和 `cases:<id>` 的分隔混淆。 */
+const CASE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
+const CASES_PREFIX = "cases:";
+
+/** 案件 id 是否合法（链接分类、事件、深链共用同一把尺子）。 */
+export function isCaseId(value: unknown): value is string {
+  return typeof value === "string" && CASE_ID.test(value);
+}
 
 export type ImDeepLink =
   | { kind: "none" }
@@ -90,6 +122,20 @@ export function parseImDeepLink(search: string): ImDeepLink {
   } else if (raw === "people") {
     target.view = "people";
     valid = true;
+  } else if (raw === "notices") {
+    target.view = "notices";
+    valid = true;
+  } else if (raw === "cases") {
+    target.view = "cases";
+    valid = true;
+  } else if (raw.startsWith(CASES_PREFIX)) {
+    // `cases:<id>`：先于会话 id 判断（会话 id 的字符集也含冒号，`talent:<id>` 就是）。id 不合法 = 整条当没有。
+    const caseId = raw.slice(CASES_PREFIX.length);
+    if (isCaseId(caseId)) {
+      target.view = "cases";
+      target.caseId = caseId;
+      valid = true;
+    }
   } else if (RETIRED_IM_VALUES.has(raw)) {
     // 旧链接里曾经是栏目名的值（小窗里有过 LeoBay 栏）：当没有——不能把它当成会话 id 去开。
     valid = false;
@@ -125,12 +171,17 @@ export function buildImSearch(
       }
     } else if (target.view === "people") {
       params.set(IM_PARAM, "people");
+    } else if (target.view === "notices") {
+      params.set(IM_PARAM, "notices");
+    } else if (target.view === "cases") {
+      params.set(IM_PARAM, target.caseId && isCaseId(target.caseId) ? `${CASES_PREFIX}${target.caseId}` : "cases");
     } else {
       params.set(IM_PARAM, "inbox");
     }
     if (next.inviteCode) params.set(IM_INVITE_PARAM, next.inviteCode);
   }
-  const text = params.toString();
+  // `cases:<id>` 的冒号照原样写（合同 I-4 的写法）；解析时两种写法等价。
+  const text = params.toString().replace(/(^|&)im=cases%3A/, "$1im=cases:");
   return text ? `?${text}` : "";
 }
 
@@ -198,6 +249,7 @@ interface Internal {
   open: boolean;
   conversationId: string | null;
   view: MessagesView;
+  caseId: string | null;
   filter: string;
   highlightSeq: number | null;
   inviteCode: string | null;
@@ -245,7 +297,7 @@ export function createHostState(env: HostEnv): HostState {
       if (!raw) return { view: "inbox" as MessagesView, conversationId: null as string | null };
       const value = JSON.parse(raw) as { view?: unknown; conversationId?: unknown };
       const view =
-        typeof value?.view === "string" && (MESSAGES_VIEWS as readonly string[]).includes(value.view)
+        typeof value?.view === "string" && (REMEMBERED_VIEWS as readonly string[]).includes(value.view)
           ? (value.view as MessagesView)
           : "inbox";
       const conversationId = typeof value?.conversationId === "string" ? value.conversationId : null;
@@ -267,6 +319,7 @@ export function createHostState(env: HostEnv): HostState {
     open: false,
     conversationId: storedLast.conversationId,
     view: storedLast.view,
+    caseId: null,
     filter: "all",
     highlightSeq: null,
     inviteCode: null,
@@ -294,6 +347,7 @@ export function createHostState(env: HostEnv): HostState {
       layout: v.narrow ? "mobile" : v.expanded ? "full" : "docked",
       conversationId: v.conversationId,
       view: v.view,
+      caseId: v.caseId,
       filter: v.filter,
       highlightSeq: v.highlightSeq,
       inviteCode: v.inviteCode,
@@ -318,8 +372,10 @@ export function createHostState(env: HostEnv): HostState {
   }
 
   function persistLast(view: MessagesView, conversationId: string | null): void {
+    // 内容处置不是常驻入口：下次打开（含刷新）不能停在它上面，所以存成聊天。
+    const remembered: MessagesView = (REMEMBERED_VIEWS as readonly string[]).includes(view) ? view : "inbox";
     try {
-      env.storage?.setItem(LAST_VIEW_KEY, JSON.stringify({ view, conversationId }));
+      env.storage?.setItem(LAST_VIEW_KEY, JSON.stringify({ view: remembered, conversationId }));
     } catch {
       /* 隐私模式 */
     }
@@ -358,10 +414,20 @@ export function createHostState(env: HostEnv): HostState {
     }
   }
 
-  function resolveOpen(target: MessagesTarget): { view: MessagesView; conversationId: string | null } {
-    if (target.conversationId) return { view: "inbox", conversationId: target.conversationId };
-    if (target.view) return { view: target.view, conversationId: s.conversationId };
-    return { view: s.view, conversationId: s.conversationId };
+  function resolveOpen(target: MessagesTarget): {
+    view: MessagesView;
+    conversationId: string | null;
+    caseId: string | null;
+  } {
+    if (target.conversationId) return { view: "inbox", conversationId: target.conversationId, caseId: null };
+    if (target.view && isSubView(target.view)) {
+      // 通知 / 内容处置占着详情位：放下当前会话。案件 id 只对 cases 有意义，且要合法。
+      const caseId = target.view === "cases" && isCaseId(target.caseId) ? target.caseId : null;
+      return { view: target.view, conversationId: null, caseId };
+    }
+    if (target.view) return { view: target.view, conversationId: s.conversationId, caseId: null };
+    // 没点名栏目（左下角图标）：停在原处；但内容处置不是常驻入口，平时开图标不落到它上面。
+    return { view: s.view === "cases" ? "inbox" : s.view, conversationId: s.conversationId, caseId: null };
   }
 
   function open(target: MessagesTarget = {}): void {
@@ -374,6 +440,7 @@ export function createHostState(env: HostEnv): HostState {
       surface: claimedSurface() ?? "window",
       conversationId: resolved.conversationId,
       view: resolved.view,
+      caseId: resolved.caseId,
       filter: target.filter ?? s.filter,
       highlightSeq: resolved.conversationId && typeof target.seq === "number" ? target.seq : null,
       inviteCode: wasOpen ? s.inviteCode : null,
@@ -404,6 +471,7 @@ export function createHostState(env: HostEnv): HostState {
       surface: claimedSurface() ?? "window",
       conversationId: link.target.conversationId ?? null,
       view: link.target.view ?? "inbox",
+      caseId: link.target.caseId ?? null,
       highlightSeq: typeof link.target.seq === "number" ? link.target.seq : null,
       inviteCode: link.inviteCode,
     });
@@ -443,7 +511,9 @@ export function createHostState(env: HostEnv): HostState {
     setView(view) {
       if (!s.open) return;
       if (!MESSAGES_VIEWS.includes(view)) return;
-      commit({ view });
+      // 通知 / 内容处置占着详情位：进去就放下当前会话；切回聊天 / 联系人不清会话（其余行为不变）。
+      // 案件 id 只由 open({ view: "cases", caseId }) 或深链带进来；这里切视图一律清掉。
+      commit(isSubView(view) ? { view, conversationId: null, caseId: null, highlightSeq: null } : { view, caseId: null });
     },
     setFilter(filter) {
       if (!INBOX_FILTER_IDS.includes(filter)) return;
@@ -476,6 +546,7 @@ export function createHostState(env: HostEnv): HostState {
       commit({
         conversationId,
         view: "inbox",
+        caseId: null,
         highlightSeq: conversationId && typeof seq === "number" ? seq : null,
       });
     },
@@ -493,7 +564,9 @@ export function createHostState(env: HostEnv): HostState {
       const offPop = env.on("popstate", () => applyLocation(true));
       const offOpen = env.on(
         IM_OPEN_EVENT,
-        (event: { detail?: { conversationId?: unknown; seq?: unknown; view?: unknown; filter?: unknown } }) => {
+        (event: {
+          detail?: { conversationId?: unknown; seq?: unknown; view?: unknown; filter?: unknown; caseId?: unknown };
+        }) => {
           const detail = event?.detail ?? {};
           const conversationId =
             typeof detail.conversationId === "string" && CONVERSATION_ID.test(detail.conversationId)
@@ -515,6 +588,7 @@ export function createHostState(env: HostEnv): HostState {
             if (seq !== undefined) target.seq = seq;
           } else if (view) {
             target.view = view;
+            if (view === "cases" && isCaseId(detail.caseId)) target.caseId = detail.caseId;
           }
           if (filter) target.filter = filter;
           open(target);
@@ -617,6 +691,7 @@ const SERVER_SNAPSHOT: MessagesHostSnapshot = {
   layout: "docked",
   conversationId: null,
   view: "inbox",
+  caseId: null,
   filter: "all",
   highlightSeq: null,
   inviteCode: null,
