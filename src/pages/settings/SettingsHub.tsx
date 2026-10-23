@@ -165,6 +165,8 @@ function headingForAccountView(view: AccountSettingsView): string {
       return "管理登录方式";
     case "login-devices":
       return "已连接的设备";
+    case "connected-apps":
+      return "用 OceanLeo 账号登录的应用";
     case "security":
       return "账号安全";
     default:
@@ -376,6 +378,7 @@ export function SettingsHub({
             currency={currency}
             onOpenSignInMethods={() => goAccountView("sign-in-methods")}
             onOpenDevices={() => goAccountView("login-devices")}
+            onOpenConnectedApps={() => goAccountView("connected-apps")}
             onOpenTopup={() => selectTab("billing", { billingView: "topup" })}
             onProfileChange={(next) => setProfile(next)}
           />

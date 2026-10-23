@@ -1,5 +1,5 @@
 // W06（oceanleo-bay）：交易会话里的灰字行。
-// 覆盖：33 种交易事件 + 「已签约」一行都有文案与动作映射；动作只指向 Bay / 项目群 / 设置；
+// 覆盖：33 种交易事件 + 「已签约」一行都有文案与动作映射；动作只指向 Bay / 项目群（资料与核验在「我的主页」，不进设置）；
 // 没见过的事件退回服务端兜底；组件把内容当纯文字渲染；目录里没有 talent 站链接与 innerHTML。
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -14,6 +14,7 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const lines = await import("../src/shell/bay/deal/deal-lines.ts");
 const copy = await import("../src/i18n/ui/messages/bay-deal-copy.ts");
+const w06Copy = await import("../src/i18n/ui/messages/lbp-w06-copy.ts");
 const i18n = await import("../src/i18n/config.ts");
 
 const fakeTT = (zh, vars) => (vars ? zh.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : zh);
@@ -50,7 +51,7 @@ test("每个事件都有文案与动作映射，文案互不相同", () => {
   assert.equal(lines.dealLineText(fakeTT, "no.such.event"), null);
 });
 
-test("动作目标：订单 / 需求 / 求助在 LeoBay 打开，项目群在消息窗打开，资料与核验去设置", () => {
+test("动作目标：订单 / 需求 / 求助在 LeoBay 打开，项目群在消息窗打开，资料与核验去我的主页", () => {
   const order = lines.resolveDealLine(fakeTT, { body: "x", meta: { event: "payment.held", contract_id: "c_1" } });
   assert.deepEqual(order.action, { kind: "order", label: "查看订单", target: { kind: "order", id: "c_1" } });
 
@@ -80,7 +81,12 @@ test("动作目标：订单 / 需求 / 求助在 LeoBay 打开，项目群在消
   assert.equal(loop.action, null, "项目群 id 不能指回交易会话自己");
 
   const vetting = lines.resolveDealLine(fakeTT, { meta: { event: "vetting.rejected" } });
-  assert.deepEqual(vetting.action?.target, { kind: "settings", pane: "vetting" });
+  assert.deepEqual(vetting.action?.target, { kind: "my-vetting" });
+  assert.equal(vetting.action?.label, "查看资质核验");
+
+  const level = lines.resolveDealLine(fakeTT, { meta: { event: "level.changed" } });
+  assert.deepEqual(level.action?.target, { kind: "my-page" });
+  assert.equal(level.action?.label, "查看我的主页");
 
   const quote = lines.resolveDealLine(fakeTT, { meta: { event: "quote.new" } });
   assert.equal(quote.action, null, "新报价卡就在会话里，不另给按钮");
@@ -234,7 +240,7 @@ test("每个事件和 openTradeThread 错误句子都有 17 种语言文案", ()
     assert.ok(zh && zh.trim(), "空文案");
     const placeholders = zh.match(/\{\w+\}/g) || [];
     for (const locale of locales) {
-      const translated = copy.BAY_DEAL_MESSAGES[locale][zh];
+      const translated = copy.BAY_DEAL_MESSAGES[locale][zh] ?? w06Copy.LBP_W06_MESSAGES[locale][zh];
       assert.ok(translated && String(translated).trim(), `${locale} 缺「${zh}」`);
       for (const token of placeholders) {
         assert.ok(String(translated).includes(token), `${locale} 「${zh}」丢了 ${token}`);

@@ -3,6 +3,7 @@
 import type { LedgerCurrency } from "../../../lib/money";
 import { AccountSecurityPage } from "../../AccountSecurityPage";
 import AccountHome from "../account/AccountHome";
+import ConnectedAppsPage from "../account/ConnectedAppsPage";
 import LoginDevicesPage from "../account/LoginDevicesPage";
 import SignInMethodsPage from "../account/SignInMethodsPage";
 import type { AccountSettingsView } from "../settings-tabs";
@@ -30,6 +31,7 @@ export function AccountSection({
   currency,
   onOpenSignInMethods,
   onOpenDevices,
+  onOpenConnectedApps,
   onOpenTopup,
   onProfileChange,
 }: {
@@ -41,6 +43,7 @@ export function AccountSection({
   currency?: LedgerCurrency;
   onOpenSignInMethods?: () => void;
   onOpenDevices?: () => void;
+  onOpenConnectedApps?: () => void;
   onOpenTopup?: () => void;
   onProfileChange?: (profile: AccountSectionProfile) => void;
 }) {
@@ -73,6 +76,14 @@ export function AccountSection({
     );
   }
 
+  if (view === "connected-apps") {
+    return (
+      <div data-settings-pane="account" data-account-view="connected-apps">
+        <ConnectedAppsPage />
+      </div>
+    );
+  }
+
   if (view === "security") {
     return (
       <div data-settings-pane="account" data-account-view="security">
@@ -88,6 +99,7 @@ export function AccountSection({
       currency={currency}
       onOpenSignInMethods={onOpenSignInMethods}
       onOpenDevices={onOpenDevices}
+      onOpenConnectedApps={onOpenConnectedApps}
       onOpenTopup={onOpenTopup}
       onSignedOut={onSignedOut}
       onProfileChange={onProfileChange}

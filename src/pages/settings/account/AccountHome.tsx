@@ -67,6 +67,7 @@ export function AccountHome({
   currency,
   onOpenSignInMethods,
   onOpenDevices,
+  onOpenConnectedApps,
   onOpenTopup,
   onSignedOut,
   onProfileChange,
@@ -350,6 +351,22 @@ export function AccountHome({
             type="button"
             data-account-open-devices=""
             onClick={() => onOpenDevices?.()}
+            className={QUIET_BTN}
+          >
+            {tt("管理")}
+          </button>
+        </div>
+        <div className={ROW}>
+          <div className="min-w-0 pr-4">
+            <p className="text-[13px] font-medium text-neutral-900">{tt("用 OceanLeo 账号登录的应用")}</p>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-400">
+              {tt("查看你授权过的应用，随时可以撤回。")}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-account-open-connected-apps=""
+            onClick={() => onOpenConnectedApps?.()}
             className={QUIET_BTN}
           >
             {tt("管理")}

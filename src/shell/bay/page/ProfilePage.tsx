@@ -49,7 +49,7 @@ export interface ProfilePageProps {
   actions?: ReactNode;
   /** 「先聊聊」按钮按下：版块里的按钮与身份区的按钮走同一个动作。本人看自己的主页时不传。 */
   onTalk?: () => void;
-  /** 官方账号主页上的「逛官方素材」。 */
+  /** 官方账号主页上的「逛官方现成文件」。 */
   onBrowseMaterials?: () => void;
   identity?: BayPageIdentity;
   onIdentity?: (patch: Partial<BayPageIdentity>) => void;
@@ -130,7 +130,7 @@ function BlockTitle({ block, editing, onBlock, fallback }: { block: BayPageBlock
   );
 }
 
-/** 浅色内容区：里面放共用的服务卡、评价列表（它们只有浅色一套）。 */
+/** 浅色内容区：里面放共用的发布卡片、评价列表（它们只有浅色一套）。 */
 function LightCard({ children }: { children: ReactNode }) {
   return <div className="text-stone-900">{children}</div>;
 }
@@ -456,7 +456,7 @@ function BlockBody({ block, props }: { block: BayPageBlock; props: ProfilePagePr
                 </div>
               </LightCard>
             ) : (
-              <EmptyLine text={tt("还没有上架的商品或服务。")} />
+              <EmptyLine text={tt("还没有发布任何东西。")} />
             )}
           </div>
         </div>
@@ -721,7 +721,7 @@ export function ProfilePage(props: ProfilePageProps) {
       <div className="mx-auto w-full max-w-5xl px-5 pb-16 sm:px-8">
         {unpublished ? (
           <p data-bay-page-unpublished className="pt-5 text-[13px] leading-5" style={{ color: "var(--bp-muted)" }}>
-            {tt("这张主页现在只有你自己看得到。公开之后别人才能访问，发布商品或服务时也会自动公开。")}
+            {tt("这张主页现在只有你自己看得到。公开之后别人才能访问，发布东西时也会自动公开。")}
           </p>
         ) : null}
         <header className={`flex flex-wrap items-end justify-between gap-4 ${showCover ? "-mt-10 sm:-mt-12" : "pt-8"}`} data-bay-page-identity>
@@ -814,12 +814,12 @@ export function ProfilePage(props: ProfilePageProps) {
         {onBrowseMaterials ? (
           <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-xl px-4 py-4" style={{ background: "var(--bp-surface)" }} data-bay-page-materials>
             <div className="min-w-0">
-              <p className="text-[15px] font-semibold tracking-tight">{tt("官方素材")}</p>
+              <p className="text-[15px] font-semibold tracking-tight">{tt("官方现成文件")}</p>
               <p className="mt-1 text-[13px]" style={{ color: "var(--bp-muted)" }}>
                 {tt("图片、模板、视频、音乐、3D……由 OceanLeo 官方发布，拿去直接用。")}
               </p>
             </div>
-            <AccentButton label={tt("逛官方素材")} onClick={onBrowseMaterials} />
+            <AccentButton label={tt("逛官方现成文件")} onClick={onBrowseMaterials} />
           </div>
         ) : null}
 

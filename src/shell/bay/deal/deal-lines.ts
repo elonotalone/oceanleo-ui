@@ -81,7 +81,8 @@ export type LegacyHandoffEvent = (typeof LEGACY_HANDOFF_EVENTS)[number];
 
 export const UNKNOWN_DEAL_LINE_TEXT = "交易有了新进展。";
 
-export type DealLineActionKind = "order" | "demand" | "help" | "project" | "settings-profile" | "settings-vetting";
+// my-page = 打开我的主页；my-vetting = 打开我的主页的资质核验块（合同 I-8）。动作都在 LeoBay 里，不进设置。
+export type DealLineActionKind = "order" | "demand" | "help" | "project" | "my-page" | "my-vetting";
 
 export type DealLineFamily = "notify" | "offer" | "contract" | "handoff" | "unknown";
 
@@ -117,12 +118,12 @@ export const DEAL_LINE_ACTIONS: Record<DealEvent | OfferEvent, DealLineActionKin
   "quote.accepted": "order",
   "review.visible": "order",
   "review.reply": "order",
-  "level.changed": "settings-profile",
+  "level.changed": "my-page",
   "handoff.invited": "help",
   "handoff.claimed": "help",
   "handoff.cancelled": "help",
-  "vetting.rejected": "settings-vetting",
-  "vetting.credential_expired": "settings-vetting",
+  "vetting.rejected": "my-vetting",
+  "vetting.credential_expired": "my-vetting",
   "payment.failed": "order",
   "payment.held": "order",
   "payment.released": "order",
@@ -228,9 +229,9 @@ function notifyOrOfferText(tt: UITranslate, event: string): string | null {
     case "handoff.cancelled":
       return tt("求助已取消，之前给出的内容已收回。");
     case "vetting.rejected":
-      return tt("这条服务没有通过资质核验，可以查看理由并申诉一次。");
+      return tt("这条人工服务没有通过资质核验，可以查看理由并申诉一次。");
     case "vetting.credential_expired":
-      return tt("资质核验已到期，相关服务已转回草稿。");
+      return tt("资质核验已到期，相关人工服务已转回草稿。");
     case "payment.failed":
       return tt("付款没有成功。");
     case "payment.held":
@@ -335,9 +336,9 @@ export function dealActionLabel(tt: UITranslate, kind: DealLineActionKind): stri
       return tt("查看求助");
     case "project":
       return tt("打开项目群");
-    case "settings-profile":
-      return tt("查看卖家资料");
-    case "settings-vetting":
+    case "my-page":
+      return tt("查看我的主页");
+    case "my-vetting":
       return tt("查看资质核验");
   }
 }
@@ -356,7 +357,8 @@ export type DealLineTarget =
   | { kind: "demand"; id: string }
   | { kind: "help"; id: string }
   | { kind: "project"; conversationId: string }
-  | { kind: "settings"; pane: "profile" | "vetting" };
+  | { kind: "my-page" }
+  | { kind: "my-vetting" };
 
 export interface ResolvedDealLine {
   event: string | null;
@@ -387,10 +389,10 @@ function targetFor(
       const id = metaId(meta, "im_conversation_id", CONVERSATION_ID);
       return id && !id.startsWith("talent:") ? { kind: "project", conversationId: id } : null;
     }
-    case "settings-profile":
-      return { kind: "settings", pane: "profile" };
-    case "settings-vetting":
-      return { kind: "settings", pane: "vetting" };
+    case "my-page":
+      return { kind: "my-page" };
+    case "my-vetting":
+      return { kind: "my-vetting" };
   }
 }
 

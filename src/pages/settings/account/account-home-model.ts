@@ -22,6 +22,8 @@ export type AccountHomeProps = {
   currency?: string | null;
   onOpenSignInMethods?: () => void;
   onOpenDevices?: () => void;
+  /** 「用 OceanLeo 账号登录的应用」子页。 */
+  onOpenConnectedApps?: () => void;
   onOpenTopup?: () => void;
   onSignedOut?: () => void;
   onProfileChange?: (profile: AccountHomeProfile) => void;

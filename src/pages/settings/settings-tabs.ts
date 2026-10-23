@@ -66,6 +66,7 @@ export const ACCOUNT_SETTINGS_VIEWS = [
   "home",
   "sign-in-methods",
   "login-devices",
+  "connected-apps",
   "security",
 ] as const;
 
@@ -141,7 +142,7 @@ export function rememberSettingsBillingView(view: BillingPaneView, href?: string
   );
 }
 
-const ACCOUNT_NESTED_VIEWS = new Set<string>(["sign-in-methods", "login-devices", "security"]);
+const ACCOUNT_NESTED_VIEWS = new Set<string>(["sign-in-methods", "login-devices", "connected-apps", "security"]);
 
 function settingsSearch(href: string): string {
   try {

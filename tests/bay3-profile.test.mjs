@@ -83,6 +83,7 @@ const stateStub = dataModule(`
   export function replaceBay(target){ globalThis.__bayOpened.push(target); }
   export function requireBayLogin(){ if (globalThis.__baySignedIn === false) { globalThis.__bayLoginAsked += 1; return false; } return true; }
   export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
+  export function useBayEnabled(){ return globalThis.__bayEnabled !== false; }
   export function setBayFilter(filter){ globalThis.__bayFilters.push(filter); }
   export function bayBack(){}
 `);
@@ -267,7 +268,7 @@ test("没公开时有「公开主页」和那条提示", () => {
   assert.match(out, /这张主页现在只有你自己看得到/);
 });
 
-test("官方主页有「官方」标和「逛官方素材」", () => {
+test("官方主页有「官方」标和「逛官方现成文件」", () => {
   reset();
   const out = renderToStaticMarkup(
     React.createElement(ProfileDetailView, {
@@ -279,7 +280,7 @@ test("官方主页有「官方」标和「逛官方素材」", () => {
   );
   assert.match(out, /data-bay-official/);
   assert.match(out, />官方</);
-  assert.match(out, /逛官方素材/);
+  assert.match(out, /逛官方现成文件/);
   assert.match(out, /由 OceanLeo 官方发布/);
   assert.equal(out.includes("全部免费，拿去直接用"), false);
 });
@@ -476,7 +477,7 @@ test("作品集在画布上从我的库导入", async () => {
   await view.unmount();
 });
 
-test("官方主页点「逛官方素材」停在素材栏", async () => {
+test("官方主页点「逛官方现成文件」停在现成文件栏", async () => {
   reset();
   const view = await mount(
     React.createElement(ProfileDetailView, {
@@ -486,7 +487,7 @@ test("官方主页点「逛官方素材」停在素材栏", async () => {
       viewerId: "buyer-1",
     }),
   );
-  const button = [...view.host.querySelectorAll("button")].find((node) => node.textContent.includes("逛官方素材"));
+  const button = [...view.host.querySelectorAll("button")].find((node) => node.textContent.includes("逛官方现成文件"));
   assert.ok(button);
   await act(() => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));

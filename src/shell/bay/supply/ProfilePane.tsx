@@ -3,9 +3,10 @@
 // 个人主页窗格：别人的主页（`profile:<handle>`）与我自己的主页（`profile:me`）。
 // 版面由 `page/ProfilePage` 按 `page_doc` 画。我自己看到的和别人看到的一模一样，默认不可编辑；
 // 点「编辑主页」才进 `page/ProfilePageEditor`。名字、地址、头像、技能都在画布上改，没有第二张表。
+// 我自己的主页坐在一张卡里（页面底色上不铺整页白板）；编辑状态里还有「资质核验」白卡（见 page/mine-page-edit.ts 的入口）。
 // 不登录也能看别人的主页；先聊聊、收藏、举报、拉黑要登录。
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import { getUserId } from "../../../lib/auth/client";
@@ -28,7 +29,7 @@ import {
 } from "../../../lib/bay/seller";
 import type { BayService } from "../../../lib/bay/services";
 import { openTradeThread } from "../deal";
-import { takeMinePageEdit } from "../page/mine-page-edit";
+import { subscribeMinePageEdit, takeMinePageEditRequest, wantsMinePageVetting } from "../page/mine-page-edit";
 import { ProfilePage, type BayPageIdentity } from "../page/ProfilePage";
 import { ProfilePageEditor } from "../page/ProfilePageEditor";
 import { BaySignInPrompt } from "../shell/BayMine";
@@ -125,9 +126,12 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
   const tt = useUI();
   const profile = page.profile as BayProfilePage["profile"] & { page_doc?: unknown; official?: boolean };
   const own = isOwnPage(page) || Boolean(viewerId && profile.user_id && viewerId === profile.user_id);
-  const [editing, setEditing] = useState(() => own && takeMinePageEdit());
-  const [savedDoc, setSavedDoc] = useState<BayPageDoc | null>(null);
   const [published, setPublished] = useState(Boolean(profile.published ?? true));
+  // 进编辑的请求（「去建资料」「去核验」）在这里取走；vettingFocus 每变大一次，编辑器就滚到资质核验卡一次。
+  const [entry] = useState(() => (own ? takeMinePageEditRequest() : null));
+  const [editing, setEditing] = useState(entry !== null);
+  const [vettingFocus, setVettingFocus] = useState(() => (wantsMinePageVetting(entry, published) ? 1 : 0));
+  const [savedDoc, setSavedDoc] = useState<BayPageDoc | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [talkError, setTalkError] = useState("");
@@ -139,6 +143,22 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [savedDoc, profile.page_doc, profile.display_name, profile.headline, profile.bio],
   );
+
+  // 主页已经开着时又有人点了「去核验」：不等下一次打开，当场进编辑并滚过去。
+  useEffect(() => {
+    if (!own) return;
+    return subscribeMinePageEdit(() => {
+      const request = takeMinePageEditRequest();
+      if (!request) return;
+      if (wantsMinePageVetting(request, published)) setVettingFocus((value) => value + 1);
+      setEditing(true);
+    });
+  }, [own, published]);
+
+  function leaveEditing() {
+    setVettingFocus(0);
+    setEditing(false);
+  }
 
   async function talk() {
     if (!requireBayLogin()) return;
@@ -191,7 +211,7 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
       const result = await saveSellerPage(docToSave);
       setSavedDoc(normalizePageDoc(result.profile?.page_doc) ?? docToSave);
       setPublished(identity.published);
-      setEditing(false);
+      leaveEditing();
       onChanged?.();
     } catch (error) {
       setSaveError(errorText(error) || tt("没保存成功，请稍后再试。"));
@@ -243,7 +263,8 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
           saving={saving}
           error={saveError}
           onSave={(next, identity) => void save(next, identity)}
-          onCancel={() => setEditing(false)}
+          onCancel={leaveEditing}
+          vettingFocus={vettingFocus}
         />
       </div>
     );
@@ -272,25 +293,37 @@ export function ProfileDetailView({ page, viewerId, onChanged }: { page: BayProf
     </>
   ) : null;
 
+  const view = (
+    <ProfilePage
+      page={page}
+      doc={doc}
+      unpublished={own && !published}
+      actions={actions}
+      onTalk={canTalk ? () => void talk() : undefined}
+      onBrowseMaterials={
+        official
+          ? () => {
+              setBayFilter({ kind: "asset" });
+              openBay({ kind: "feed" });
+            }
+          : undefined
+      }
+    />
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-bay-profile={own ? "own" : "public"}>
       {saveError && !editing ? <p className="shrink-0 bg-rose-50 px-4 py-2 text-center text-[12.5px] text-rose-700">{tt(saveError)}</p> : null}
       {talkError ? <p className="shrink-0 bg-rose-50 px-4 py-2 text-center text-[12.5px] text-rose-700">{tt(talkError)}</p> : null}
-      <ProfilePage
-        page={page}
-        doc={doc}
-        unpublished={own && !published}
-        actions={actions}
-        onTalk={canTalk ? () => void talk() : undefined}
-        onBrowseMaterials={
-          official
-            ? () => {
-                setBayFilter({ kind: "asset" });
-                openBay({ kind: "feed" });
-              }
-            : undefined
-        }
-      />
+      {own ? (
+        <div className="px-3 pb-4 pt-3 sm:px-4">
+          <div className="overflow-hidden rounded-xl border border-neutral-200" data-bay-profile-card>
+            {view}
+          </div>
+        </div>
+      ) : (
+        view
+      )}
       {canTalk ? (
         <footer className="flex shrink-0 flex-wrap items-center justify-center gap-4 border-t border-neutral-100 bg-white px-4 py-3 text-neutral-900">
           <ReportBox onSubmit={(reason, detail) => reportBayProfile(profile.user_id, reason, detail)} />

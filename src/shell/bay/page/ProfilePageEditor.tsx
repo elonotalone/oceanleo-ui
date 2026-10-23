@@ -1,9 +1,11 @@
 "use client";
 
-// 编辑主页：顶上一条主题栏（底色、主色、字体、封面、是否公开），下面就是主页本身——点文字直接改，
+// 编辑主页：顶上一张主题栏卡（底色、主色、字体、封面、是否公开），下面是主页本身那张卡——点文字直接改，
 // 页头改名字 / 地址 / 头像 / 技能，每个版块右上角有上移 / 下移 / 删除。只改版面，不产生任何代码。
+// 主页卡之后是「资质核验」白卡：只有本人看得到，不属于公开主页，所以不套主页的主题色。
+// 从「去核验」进来时（vettingFocus 变大）自动滚到这张卡。页面底色上只有这几张卡，不铺整页白板。
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayProfilePage, BayShowcaseItem } from "../../../lib/bay/directory";
@@ -33,6 +35,8 @@ import {
 import { addShowcaseWork, isBayHandle, removeShowcaseItem } from "../../../lib/bay/seller";
 import { BayCoverDrop } from "../form/BayCoverDrop";
 import { pickLibraryWork } from "../needs/LibraryWorkPicker";
+import { BayVettingSection } from "../seller/BayVettingSection";
+import { useBayEnabled, useBaySignedIn } from "../shell/bay-state";
 import { ProfilePage, type BayPageIdentity } from "./ProfilePage";
 
 const MOTION = "transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
@@ -51,6 +55,26 @@ export interface ProfilePageEditorProps {
   error: string;
   onSave: (doc: BayPageDoc, identity: BayPageIdentity) => void;
   onCancel: () => void;
+  /** 从「去核验」进来：每变大一次就滚到资质核验卡一次。0 = 不滚。 */
+  vettingFocus?: number;
+}
+
+/** 等版面排好再做事（核验卡刚挂上、主页内容还在铺）。 */
+function afterLayout(run: () => void): () => void {
+  if (typeof requestAnimationFrame === "function") {
+    const frame = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(frame);
+  }
+  const timer = setTimeout(run, 0);
+  return () => clearTimeout(timer);
+}
+
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  } catch {
+    return false;
+  }
 }
 
 function Swatch({ selected, onClick, label, children }: { selected: boolean; onClick: () => void; label: string; children: ReactNode }) {
@@ -131,8 +155,13 @@ function AddBlockMenu({ onPick, disabled }: { onPick: (type: BayPageBlockType) =
   );
 }
 
-export function ProfilePageEditor({ page, initial, initialIdentity, saving, error, onSave, onCancel }: ProfilePageEditorProps) {
+export function ProfilePageEditor({ page, initial, initialIdentity, saving, error, onSave, onCancel, vettingFocus = 0 }: ProfilePageEditorProps) {
   const tt = useUI();
+  // 资质核验只给登录后、LeoBay 开着的本人（境内没有 LeoBay，这一块不出现）。
+  const signedIn = useBaySignedIn();
+  const bayOn = useBayEnabled();
+  const showVetting = signedIn && bayOn;
+  const vettingRef = useRef<HTMLDivElement>(null);
   // 进入编辑那一刻的版面：之后父组件再怎么重画，「有没有改动」都跟它比。
   const [base] = useState<BayPageDoc>(initial);
   const [baseIdentity] = useState<BayPageIdentity>(initialIdentity);
@@ -149,6 +178,16 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
 
   const onBlock = (id: string, patch: Partial<BayPageBlock>) => setDoc((current) => patchBlock(current, id, patch));
   const onIdentity = (patch: Partial<BayPageIdentity>) => setIdentity((current) => ({ ...current, ...patch }));
+
+  useEffect(() => {
+    if (!vettingFocus || !showVetting) return;
+    return afterLayout(() => {
+      const node = vettingRef.current;
+      if (!node) return;
+      node.scrollIntoView?.({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+      node.focus?.({ preventScroll: true });
+    });
+  }, [vettingFocus, showVetting]);
 
   async function importWork() {
     if (showcaseBusy) return;
@@ -201,8 +240,8 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-bay-page-editor>
-      <div className="sticky top-0 z-20 shrink-0 border-b border-neutral-200 bg-white/95 px-4 py-3 text-neutral-900 backdrop-blur sm:px-6" data-bay-page-toolbar>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-4 pt-3 sm:px-4" data-bay-page-editor>
+      <div className="sticky top-0 z-20 shrink-0 rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 text-neutral-900 shadow-sm backdrop-blur sm:px-5" data-bay-page-toolbar>
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="flex min-w-0 flex-wrap items-end gap-x-6 gap-y-3">
             <Group title={tt("底色")}>
@@ -301,22 +340,29 @@ export function ProfilePageEditor({ page, initial, initialIdentity, saving, erro
         {tooBig ? <p className="mt-2 text-[12px] text-rose-600">{tt("内容太多了，删掉一些文字或图片再保存。")}</p> : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto" data-bay-page-canvas>
-        <ProfilePage
-          page={canvasPage}
-          doc={doc}
-          editing
-          identity={identity}
-          onIdentity={onIdentity}
-          onBlock={onBlock}
-          renderBlockChrome={renderBlockChrome}
-          onShowcaseImport={() => void importWork()}
-          onShowcaseRemove={(id) => void dropWork(id)}
-          showcaseBusy={showcaseBusy}
-        />
-        <div style={{ background: BAY_PAGE_PALETTES[theme.tone].bg }}>
-          <AddBlockMenu disabled={doc.blocks.length >= BAY_PAGE_MAX_BLOCKS} onPick={(type) => setDoc((current) => insertBlock(current, newBlock(type, tt)))} />
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto" data-bay-page-canvas>
+        <div className="overflow-hidden rounded-xl border border-neutral-200" data-bay-page-canvas-card>
+          <ProfilePage
+            page={canvasPage}
+            doc={doc}
+            editing
+            identity={identity}
+            onIdentity={onIdentity}
+            onBlock={onBlock}
+            renderBlockChrome={renderBlockChrome}
+            onShowcaseImport={() => void importWork()}
+            onShowcaseRemove={(id) => void dropWork(id)}
+            showcaseBusy={showcaseBusy}
+          />
+          <div style={{ background: BAY_PAGE_PALETTES[theme.tone].bg }}>
+            <AddBlockMenu disabled={doc.blocks.length >= BAY_PAGE_MAX_BLOCKS} onPick={(type) => setDoc((current) => insertBlock(current, newBlock(type, tt)))} />
+          </div>
         </div>
+        {showVetting ? (
+          <div ref={vettingRef} tabIndex={-1} data-bay-mine-vetting className="scroll-mt-32 outline-none">
+            <BayVettingSection />
+          </div>
+        ) : null}
       </div>
     </div>
   );
