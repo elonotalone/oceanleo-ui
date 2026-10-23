@@ -23,8 +23,10 @@ import { EDITOR_OVERHAUL_W13_COPY } from "./editor-overhaul-copy-w13";
 import { EDITOR_OVERHAUL_W14_COPY } from "./editor-overhaul-copy-w14";
 import { EDITOR_OVERHAUL_W15_COPY } from "./editor-overhaul-copy-w15";
 import { EDITOR_OVERHAUL_W16_COPY } from "./editor-overhaul-copy-w16";
+import { EDITOR_OVERHAUL_PARENT_COPY } from "./editor-overhaul-copy-parent";
 
 const PARTS: readonly EditorOverhaulCopy[] = [
+  EDITOR_OVERHAUL_PARENT_COPY,
   EDITOR_OVERHAUL_W01_COPY,
   EDITOR_OVERHAUL_W02_COPY,
   EDITOR_OVERHAUL_W03_COPY,

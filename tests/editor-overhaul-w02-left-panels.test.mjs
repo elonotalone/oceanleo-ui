@@ -373,6 +373,8 @@ test("a page-level context (deck slide with nothing selected) counts as no selec
   const base = { adapterId: "deck@2", hasContextToolbar: true, selectionPresent: true };
   assert.equal(editBarShowsDrawers({ ...base, selectionKind: "slide" }), true, "W07: 模板/元素/画笔/线条/便签 next to the page controls");
   assert.equal(editBarShowsDrawers({ ...base, selectionKind: "slide-text" }), false);
+  assert.equal(editBarShowsDrawers({ ...base, adapterId: "audio", selectionKind: "audio-track" }), true, "whole-track controls retain the audio tools drawer");
+  assert.equal(editBarShowsDrawers({ ...base, adapterId: "audio", selectionKind: "audio-region" }), false, "a selected region remains an object selection");
   assert.equal(editBarShowsDrawers({ ...base, selectionKind: "slide-image" }), false);
   assert.equal(editBarShowsDrawers({ ...base, selectionPresent: false, selectionKind: null }), true);
   assert.equal(editBarShowsDrawers({ ...base, hasContextToolbar: false, selectionKind: null }), true);

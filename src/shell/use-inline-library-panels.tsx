@@ -35,7 +35,7 @@ export function editBarDrawersAlwaysVisible(adapterId: string): boolean {
  * 按「没选中」算，抽屉按钮与页面级控件同排出现（signals/W07-to-W02.md）。
  * 选中对象时种类是 `slide-text` / `slide-image`……，不会误中。
  */
-export const EDIT_BAR_PAGE_LEVEL_KINDS: ReadonlySet<string> = new Set(["slide"]);
+export const EDIT_BAR_PAGE_LEVEL_KINDS: ReadonlySet<string> = new Set(["slide", "audio-track"]);
 
 export function editBarShowsDrawers(input: {
   adapterId: string;
