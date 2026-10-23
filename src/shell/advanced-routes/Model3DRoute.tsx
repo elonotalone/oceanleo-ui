@@ -35,10 +35,10 @@ import { visualImportPlan } from "../media-editors/visual-formats";
 import { assertBlobSource } from "../media-editors/source-integrity.mjs";
 import { editorToolLabel } from "../workbench-routes";
 import { fetchRevisionJson, useEntityCollab } from "../collab/adapters/use-entity-collab";
+import { loadModel3DCollabRevision } from "../media-editors/model3d-collab-revision";
 import {
   MODEL3D_ROOT,
   model3dFromEntities,
-  model3dFromRevisionJson,
   model3dToEntities,
   type Model3DCollabSnapshot,
 } from "../collab/adapters/model3d";
@@ -206,12 +206,10 @@ function Model3DModelRoute({
   // 不触发自动保存、不弹提示；撤销只撤我自己的改动（见 use-entity-collab 的 history）。
   const loadRevision = useCallback(
     async (revisionId: string) => {
-      const json = await fetchRevisionJson(String(item.artifactId || ""), revisionId, (found) =>
-        String(found.meta.editor_project_url || found.meta.editor_manifest_url || ""),
-      );
-      return json ? (model3dFromRevisionJson(json) as unknown as Model3DRouteSnapshot) : null;
+      return await loadModel3DCollabRevision(String(item.artifactId || ""), revisionId,
+        editor.isOwnSavedRevision, fetchRevisionJson) as Model3DRouteSnapshot | null;
     },
-    [item.artifactId],
+    [item.artifactId, editor.isOwnSavedRevision],
   );
   const collab = useEntityCollab<Model3DRouteSnapshot>({
     item,

@@ -30,6 +30,7 @@ export interface Model3DWorkbenchState {
   sourceUrl: string;
   sourceFormat: Model3DSourceFormat;
   sourceProvenance: Model3DSourceProvenance;
+  isOwnSavedRevision(artifactId: string, revisionId: string): boolean;
   posterUrl: string;
   runtimeReady: boolean;
   modelLoaded: boolean;

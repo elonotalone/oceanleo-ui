@@ -122,9 +122,55 @@ const { useModel3DWorkbench } = await import(
 const { captureModel3DRouteSnapshot } = await import("../src/shell/media-editors/Model3DRouteHistory.ts");
 const { useEntityCollab } = await loadEntityCollab();
 const adapter = await import("../src/shell/collab/adapters/model3d.ts");
+const { Model3DCollabSnapshotPolicy } = await import("../src/shell/media-editors/model3d-collab-snapshot.ts");
+const { loadModel3DCollabRevision } = await import("../src/shell/media-editors/model3d-collab-revision.ts");
 
 const ITEM = { id: "m1", key: "m1", title: "椅子", kind: "model3d", source: "local", url: "https://m/scene.glb", meta: {} };
 const op = (id, target, visible) => ({ id, kind: "visibility", target, visible });
+
+test("real collaboration hook does not undo a save receipt instead of the saved deletion", async () => {
+  const world = makeWorld();
+  let external;
+  let externalState;
+  const ownSaved = new Set();
+  world.rooms.A.onExternalRevision = (callback) => { external = callback; return () => {}; };
+  let captured;
+  function Client() {
+    const [state, setState] = React.useState({ checkpointUrl: "r1", operations: [], view: { annotations: [] } });
+    const [revision, setRevision] = React.useState(0);
+    const policy = React.useRef(new Model3DCollabSnapshotPolicy());
+    const local = policy.current.project("root", revision, true, state);
+    const collab = useEntityCollab({ item: { artifactId: "A", title: "Model" }, editorKind: "model3d", rootName: adapter.MODEL3D_ROOT,
+      toEntities: adapter.model3dToEntities, fromEntities: adapter.model3dFromEntities, local, historyCoalesceMs: 0,
+      applyRemote: (next) => { policy.current.acceptRemote(next, revision); setState(next); },
+      loadRevision: (revision) => loadModel3DCollabRevision("A", revision, (artifact, id) => ownSaved.has(`${artifact}:${id}`), async () => externalState),
+      applyLocal: (next) => { setState(next); setRevision((value) => value + 1); } });
+    captured = { state, local, collab, edit: (next) => { setState(next); setRevision((value) => value + 1); }, save: setState };
+    return null;
+  }
+  const mounted = await mount(h(Client));
+  try {
+    await settle(5); await world.sync(); await settle(5);
+    const clone = { id: "copy", kind: "presence", target: "clone:1", present: true, parent: "root", index: 1, spec: { kind: "clone", source: "base:0" } };
+    const copied = { ...captured.state, operations: [clone] };
+    await act(async () => captured.edit(copied)); await settle(5);
+    assert.equal(captured.collab.history.undoDepth, 1);
+    await act(async () => captured.save({ ...captured.state, checkpointUrl: "r2", operations: [] })); await settle(5);
+    ownSaved.add("A:r2");
+    externalState = { ...captured.state, checkpointUrl: "", operations: [] };
+    await act(async () => external("r2")); await settle(5);
+    assert.equal(captured.collab.history.undoDepth, 1);
+    await act(async () => captured.edit({ ...captured.state, operations: [{ id: "delete", kind: "presence", target: "clone:1", present: false, parent: "root", index: 1 }] })); await settle(5);
+    assert.equal(captured.collab.history.undoDepth, 2);
+    await act(async () => captured.save({ ...captured.state, checkpointUrl: "r3", operations: [] })); await settle(5);
+    ownSaved.add("A:r3");
+    externalState = { ...captured.state, checkpointUrl: "", operations: [] };
+    await act(async () => external("r3")); await settle(5);
+    await act(async () => captured.collab.history.undo()); await settle(6);
+    assert.deepEqual(captured.state.operations, [clone]);
+    assert.equal(captured.state.checkpointUrl, "r1");
+  } finally { await mounted.unmount(); }
+});
 
 /** 照 Model3DRoute 的接法：真 useModel3DWorkbench + 真 useEntityCollab。 */
 function makeClient(key, captured) {

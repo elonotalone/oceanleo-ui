@@ -3,6 +3,9 @@
 - [证据复核/撤回] controls4虽3×200，但undo-delete.png与独立GLB仍只有一个Cube，不能证明删除被撤销。已撤回「Undo语义通过」；源URL/日志清空等保存记账被collab history当成额外编辑步骤。
 - [parent授权方案] 只在W13 route接入本地协同快照策略：按真实editRevision推进，保存记账不推新历史；readiness首次就绪/重载完成更新；applyRemote显式更新基线，不吞remote。共享adapter不改。先测试这些分支，再等parent通知稳定browser窗口，用实际mesh数量验证复制/删除/Undo，不能只看POST200。
 
+- [根因/红→绿] controls5仍mesh1→2→1→1。真实EntityEditSession与useEntityCollab无external事件均绿；增加两次own external_revision回执后，实际hook精确复现Undo operations=[]（应clone）。typed sidecar的空checkpoint/清空journal被当成remote基准，抹掉本地selectiveUndo匹配。parent批准仅W13复用ownSavedVersionKeys完整artifact+revision忽略own已确认回执，含异步fetch竞态二次检查；真正remote补typed GLB源及版本identity，缺源/manifest失败不套空场景。新增真实hook回归和remote/failure/identity断言共13绿；共享adapter保持原样，真实Chrome mesh与冷开尚待最终复验。
+- [更正] 首存退出目前无共享host缺陷证据；parent/W10独立observer未复现，未改共享权限逻辑。早先controls4只200不能证明Undo，旧pass已撤回。
+
 - Codex continuation [实施] `1a0704a4` 修复普通 typed GLB/PNG 保存、当前回执 CAS、幂等 flush、纯下载不发版本、对象规范栏和场景抽屉；运行时复制接线；真实空选区；零位移点选不再触发相机编辑。
 - [实施/实测] `5da176b7` 兼容冷 typed 投影的 editor_manifest_url，读取失败阻止保存；真实 React hook 成功/失败回归绿。并行 index race 带入 W10 已暂存场景，立即告知 parent/W10，未改其内容、未改历史；后续统一显式 --only paths。
 - [实测] `/tmp/codex-w13-save4` exit0 at205.6s：PX/RY 两编辑各 POST200，冷重开/硬刷新保留，offline PZ 报错→精确 Retry→POST200→重开保留。恰好3次同 root 提交；SQL ordinal4→5→6→7，parent链精确。

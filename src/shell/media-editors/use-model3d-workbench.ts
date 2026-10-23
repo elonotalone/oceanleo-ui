@@ -351,6 +351,7 @@ export function useModel3DWorkbench(
     runtimeState.selection?.materials.find((entry) => entry.selected) || null;
   return {
     canvasRef,
+    isOwnSavedRevision: (artifactId, revisionId) => Boolean(artifactId && revisionId && ownSavedVersionKeys.current.has(`${artifactId}:${revisionId}`)),
     title: item.title,
     sourceUrl,
     sourceFormat: sourceProvenance.format,
