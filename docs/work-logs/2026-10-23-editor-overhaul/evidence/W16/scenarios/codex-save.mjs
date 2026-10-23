@@ -9,7 +9,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   page.on("response", async response => {
     const url = new URL(response.url());
     if (response.request().method() !== "POST") return;
-    if (/\/fork$/.test(url.pathname) && response.ok()) forks++;
+    if (/(?:\/|:)fork$/.test(url.pathname) && response.ok()) forks++;
     if (/\/v1\/artifacts\/[^/]+\/revisions$/.test(url.pathname)) {
       const body = await response.json().catch(() => ({}));
       log("revision", String(response.status()), body.revisionId || body.code || "");
