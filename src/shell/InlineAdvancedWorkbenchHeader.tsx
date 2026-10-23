@@ -4,7 +4,7 @@
 //
 // 原来这里装两行：第一行 PluginGlobalRow，第二行 PluginPageRow（页签）。第二行整行删除，
 // 页签与切页逻辑（usePluginPage、aux 回调、PluginModeAdapterBridge）挪进第一行。
-// 「编辑工具」面板的注册（toolsPanel / openTools / useAdvancedToolsLauncherRegistration）
+// 「编辑工具」面板的注册（工具面板、打开函数、向布局上下文登记启动器）
 // 也一并删除：W03 删了触发它的图标，留着就是死代码。抽屉改由 W02 做成编辑栏空态里的按钮。
 //
 // 有 SplitWorkspace 右栏时，整个 header 被 portal 进右栏的标题槽（W02 的壳负责）。

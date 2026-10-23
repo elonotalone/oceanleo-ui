@@ -415,12 +415,8 @@ test("shared edit bar popovers expose focusable dialog semantics", async () => {
   assert.match(editBarSource, /data-edit-bar-collapsed-pill/);
   assert.match(editBarSource, /event\.currentTarget\.focus\(\)/);
   assert.match(floatingSource, /overflow-visible/);
-  assert.match(
-    headerSource,
-    /id=\{ADVANCED_TOOLS_PANEL_ID\}[\s\S]{0,120}role="dialog"/,
-  );
-  assert.match(headerSource, /event\.key !== "Escape"/);
-  assert.match(headerSource, /focusAdvancedToolsTrigger\(adapter\.id\)/);
+  // D3 / W01（2026-10-23）：「编辑工具」面板与它的注册随触发图标一起删除（抽屉进编辑栏空态）。
+  assert.doesNotMatch(headerSource, /ADVANCED_TOOLS_PANEL_ID|useAdvancedToolsLauncherRegistration|focusAdvancedToolsTrigger/);
 });
 
 test("移动模式与收起圆共享同一套位置状态：按下即拖、Alt 键盘移动、收起可拖可展开", async () => {
@@ -1002,7 +998,8 @@ test("第一行只留 GLOBAL_ROW_SLOTS，非 download 动作不在第一行", as
     "utf8",
   );
   assert.match(headerSource, /<PluginGlobalRow/);
-  assert.match(headerSource, /<PluginPageRow/);
+  // D1（2026-10-23）：顶栏一行，第二行页签行删除。
+  assert.doesNotMatch(headerSource, /<PluginPageRow/);
   assert.match(shellSource, /EditBarDocumentSegment/);
   assert.match(shellSource, /action\.group !== "download"/);
 
@@ -1135,13 +1132,15 @@ test("第一行只留 GLOBAL_ROW_SLOTS，非 download 动作不在第一行", as
         `第一行槽位 ${slot.getAttribute("data-global-row-slot")} 不在 GLOBAL_ROW_SLOTS 里`,
       );
     }
-    const downloadLauncher = mounted.container.querySelector(
-      '[data-workspace-download-launcher]',
+    // D1（2026-10-23）：下载进 `···` →「下载 ▸」子菜单，第一行没有独立下载键。
+    assert.equal(mounted.container.querySelector("[data-workspace-download-launcher]"), null);
+    await click(mounted.container.querySelector("[data-workspace-more-launcher]"));
+    const downloadLauncher = document.querySelector(
+      "[data-workspace-more-menu] [data-workspace-download-launcher]",
     );
     assert.ok(downloadLauncher);
     assert.equal(
-      mounted.container.querySelectorAll("[data-workspace-download-launcher]")
-        .length,
+      document.querySelectorAll("[data-workspace-download-launcher]").length,
       1,
     );
     assert.equal(downloadLauncher.getAttribute("aria-expanded"), "false");
