@@ -15,6 +15,15 @@ const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const { BAY_SHELL_MESSAGES } = await import("../src/i18n/ui/messages/bay-shell-copy.ts");
 const { BAY_MESSAGES } = await import("../src/i18n/ui/messages/bay-copy.ts");
 
+// leobay-projects 波：各 owner 的新词条写在自己的分表 lbp-wNN-copy.ts 里，不进 bay-copy.ts。
+// 这里把它们并起来，外壳源码里的新句子在任何一张分表里有 16 语译文就算数。
+const LBP_MESSAGES = {};
+for (let n = 1; n <= 11; n += 1) {
+  const id = String(n).padStart(2, "0");
+  const table = (await import(`../src/i18n/ui/messages/lbp-w${id}-copy.ts`))[`LBP_W${id}_MESSAGES`] ?? {};
+  for (const [locale, dictionary] of Object.entries(table)) Object.assign((LBP_MESSAGES[locale] ||= {}), dictionary);
+}
+
 const LOCALES = ["zh-TW", "en", "ja", "ko", "fr", "de", "it", "es", "es-419", "pt-BR", "pt-PT", "ar", "hi", "th", "tr", "vi"];
 const HAN = /[\u4e00-\u9fff]/;
 
@@ -80,7 +89,7 @@ test("外壳源码里的每句中文与 16 个交付类目名都有 16 语译文
   const missing = [];
   for (const key of keys) {
     for (const locale of LOCALES) {
-      if (BAY_MESSAGES[locale]?.[key] || baseHas(locale, key)) continue;
+      if (BAY_MESSAGES[locale]?.[key] || LBP_MESSAGES[locale]?.[key] || baseHas(locale, key)) continue;
       missing.push(`${locale}: ${key}`);
     }
   }

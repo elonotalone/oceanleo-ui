@@ -22,7 +22,8 @@ export type BayAssetType =
   | "game";
 
 export type BayAssetOrigin = "first-party" | "external";
-export type BayAssetZone = "owned" | "mine" | "stocked" | "live";
+/** 现成文件的来源分区：卖家在售 / OceanLeo 自有 / 我上传的 / 开源专区（已入库）/ 实时搜索。 */
+export type BayAssetZone = "sellers" | "owned" | "mine" | "stocked" | "live";
 
 export interface BayAssetLicense {
   code: string;

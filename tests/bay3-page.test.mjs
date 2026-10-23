@@ -224,13 +224,20 @@ test("页头只有「我的」和「发布」两个键", async () => {
   await view.unmount();
 });
 
-test("切换是「服务 / 素材 / 需求」", async () => {
+test("顶栏是「出售 / 求购」「种类」两个下拉，不再是并排的键", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  const tabs = view.host.querySelector("[data-bay-view]");
-  assert.ok(tabs);
-  const labels = [...tabs.querySelectorAll('[role="tab"]')].map((node) => node.textContent.replace(/\s+/g, ""));
-  assert.deepEqual(labels, ["出售", "求购"]);
+  const bar = view.host.querySelector("[data-bay-view]");
+  assert.ok(bar);
+  assert.equal(bar.querySelectorAll('[role="tab"]').length, 0);
+  const intent = bar.querySelector('[data-bay-filter="intent"]');
+  assert.ok(intent);
+  assert.equal(intent.getAttribute("data-value"), "sell");
+  assert.match(intent.textContent, /出售/);
+  const kind = bar.querySelector('[data-bay-filter="kind"]');
+  assert.ok(kind);
+  assert.equal(kind.getAttribute("data-value"), "service");
+  assert.match(kind.textContent, /人工服务/);
   await view.unmount();
 });
 
@@ -345,16 +352,18 @@ test("信息流：首屏骨架、出错给重试、滑到底接下页", () => {
   assert.doesNotMatch(more, />加载更多</);
 });
 
-test("服务/素材/需求切换连成一组，自身不换行", () => {
+test("出售/求购与种类是两个下拉，连成一组，自身不换行", () => {
   const out = html(React.createElement(BayViewSwitch, { filter: { kind: "service" }, accent: "#0ea5e9" }));
   assert.doesNotMatch(out, /\bflex-wrap\b/);
   assert.match(out, /inline-flex/);
   assert.doesNotMatch(out, /overflow-x-auto/);
-  assert.equal(count(out, /role="tab"/g), 2);
+  assert.equal(count(out, /role="tab"/g), 0);
+  assert.equal(count(out, /aria-haspopup="listbox"/g), 2);
   assert.match(out, />出售</);
-  assert.match(out, />求购</);
+  assert.match(out, />人工服务</);
   assert.doesNotMatch(out, /#0ea5e9/);
   assert.doesNotMatch(out, /bg-stone-100/);
+  assert.match(out, /data-bay-filter="intent"/);
   assert.match(out, /data-bay-filter="kind"/);
   assert.doesNotMatch(out, /<select/);
 });

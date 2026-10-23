@@ -2,16 +2,23 @@
 import { bayGet } from "./http";
 import type { BayFeedItem, BayFeedKind, BayFeedPage, BaySummary } from "./types";
 
-/** `supply` = 服务 + 答疑（素材是服务里的数字商品）；`needs` = 需求 + 求助。`/bay` 页只用这两个。 */
+/** `supply` = 服务 + 答疑（现成文件、网站与软件服务、课程、其他也是服务行，靠 `listing_kind` 区分）；`needs` = 需求 + 求助。`/bay` 页只用这两个。 */
 export type BayFeedGroup = "supply" | "needs";
 export type BayFeedKindFilter = "all" | BayFeedGroup | BayFeedKind;
+
+/** 发布种类，信息流 `listing_kind` 的取值：人工服务 service、现成文件 digital、网站与软件服务 app、课程 lesson、其他 other。 */
+export type BayFeedListingKind = "service" | "digital" | "app" | "lesson" | "other";
+const LISTING_KINDS: readonly BayFeedListingKind[] = ["service", "digital", "app", "lesson", "other"];
 
 export interface BayFeedQuery {
   kind?: BayFeedKindFilter;
   category?: string | null;
   q?: string | null;
-  /** 求购栏的交付种类：service / digital / app / lesson。只在 kind=needs 时有效。 */
-  listing_kind?: "service" | "digital" | "app" | "lesson" | null;
+  /**
+   * 只看按这一种类发布的东西。出售（supply）与求购（needs）两侧都生效：
+   * `service` 含没写种类的老条目；答疑、求助没有发布种类，只在不传或传 `service` 时出现。
+   */
+  listing_kind?: BayFeedListingKind | null;
   limit?: number;
 }
 
@@ -68,9 +75,7 @@ export function bayFeedPath(filter: BayFeedQuery = {}, cursor?: string | null): 
   const q = typeof filter.q === "string" ? filter.q.trim().slice(0, MAX_Q) : "";
   if (q) params.set("q", q);
   const listing = filter.listing_kind;
-  if (listing === "service" || listing === "digital" || listing === "app" || listing === "lesson") {
-    params.set("listing_kind", listing);
-  }
+  if (listing && LISTING_KINDS.includes(listing)) params.set("listing_kind", listing);
   if (typeof cursor === "string" && cursor) params.set("cursor", cursor.slice(0, 400));
   if (typeof filter.limit === "number" && Number.isFinite(filter.limit)) {
     params.set("limit", String(Math.min(40, Math.max(1, Math.round(filter.limit)))));

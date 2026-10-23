@@ -273,7 +273,7 @@ test("没有 request：browse，有搜索框和类目下拉", async () => {
   const menu = document.querySelector('[data-bay-filter-menu="category"]');
   assert.ok(menu);
   const labels = [...menu.querySelectorAll('[role="option"]')].map((option) => option.textContent.trim());
-  assert.deepEqual(labels, ["全部", "Slides", "Music", "专业咨询"]);
+  assert.deepEqual(labels, ["全部站点", "Slides", "Music", "专业咨询"]);
   assert.equal(globalThis.__bay5.relatedCalls.length, 0);
   await view.unmount();
 });

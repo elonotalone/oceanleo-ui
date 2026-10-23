@@ -1,19 +1,22 @@
 "use client";
 
-// 素材栏：把 asset 站首页的浏览搬进来。筛选全部是工具条下拉，不再叠几排小标签。
+// 现成文件栏：把 asset 站首页的浏览搬进来，另加卖家按「现成文件」发布的条目。筛选全部是工具条下拉，不再叠几排小标签。
 // 类型 / 来源 / 目录 / 行业 / 成套写在 BayToolbarFilters 里，送到页面那一行工具条上。
+// 来源的第一项是「卖家在售」（走信息流 listing_kind=digital，见 BayAssetSellers）；有已发布的卖家现成文件时默认它。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { CollectionCardGrid } from "../../collection-chrome";
 import { CollectionItemList } from "../../collection-items";
-import { useBaySignedIn, type BayFeedFilter } from "../shell/bay-state";
+import { bayEnabledHere, useBaySignedIn, type BayFeedFilter } from "../shell/bay-state";
 import { BaySignInPrompt } from "../shell/BayMine";
 import { BayFilterSelect, BayToolbarFilters, type BayFilterOption } from "../shell/BayFilterSelect";
+import { useBayFeed } from "../shell/use-bay-data";
 import { BayAssetCard } from "./BayAssetCard";
 import { BayAssetDetail } from "./BayAssetDetail";
 import { BayAssetLive } from "./BayAssetLive";
 import { BayAssetSeries } from "./BayAssetSeries";
+import { BayAssetSellerSite, BayAssetSellers } from "./BayAssetSellers";
 import { BayArtifactDeepLink } from "./BayArtifactDeepLink";
 import { BayLicensesView } from "./BayLicensesView";
 import {
@@ -106,7 +109,9 @@ function initialCat(filter: BayFeedFilter, type: BayAssetType): string {
 }
 
 function initialView(type: BayAssetType): TypeZone | null {
-  return browseViewFor(type, parseAssetBrowseSearch(readSearch()));
+  const view = browseViewFor(type, parseAssetBrowseSearch(readSearch()));
+  // 「卖家在售」是交易市场的一部分，境内没有：地址里带着也当没有。
+  return view === "sellers" && !bayEnabledHere() ? null : view;
 }
 
 function initialAssetId(): string {
@@ -131,11 +136,15 @@ export function BayAssetLibrary({
   const tt = useUI();
   const Items = view === "list" ? CollectionItemList : CollectionCardGrid;
   const signedIn = useBaySignedIn();
+  const bayOn = bayEnabledHere();
   const loadFailedText = tt("加载失败");
   const [type, setType] = useState<BayAssetType>(() => initialType(filter, siteKey));
   const [viewPinned, setViewPinned] = useState(() => initialView(initialType(filter, siteKey)) != null);
   const [zone, setZone] = useState<TypeZone>(() => initialView(initialType(filter, siteKey)) ?? "owned");
   const [cat, setCat] = useState(() => initialCat(filter, initialType(filter, siteKey)));
+  const [sellerSite, setSellerSite] = useState("");
+  // 「卖家在售」只在刚进来、用户还没动过类型 / 来源时抢默认；之后换类型走原来的默认规则。
+  const [sellersDefaultOk, setSellersDefaultOk] = useState(true);
   const [seriesOn, setSeriesOn] = useState(() => initialSeries());
   const [industry, setIndustry] = useState("");
   const [subtab, setSubtab] = useState("");
@@ -179,12 +188,17 @@ export function BayAssetLibrary({
   const rooms = documentZonesForType(type);
   const docZone = documentZoneByCategory(cat);
   const seriesAvailable = hasSeriesFilter(type, zone);
+  // 有没有已发布的卖家现成文件：与搜索词、站点无关，取一条探一下。
+  const sellerProbe = useBayFeed({ kind: "asset" }, signedIn, { listingKind: "digital", enabled: bayOn, limit: 1 });
+  const hasSellerFiles = bayOn && sellerProbe.loaded && sellerProbe.items.length > 0;
+  const sellersFirst = !viewPinned && sellersDefaultOk && hasSellerFiles;
+  const defaultPending = !viewPinned && sellersDefaultOk && bayOn && !sellerProbe.loaded;
 
   useEffect(() => {
     const parsed = parseAssetBrowseSearch(readSearch());
     const next = parsed.type ?? APP_ASSET_PRESET[appFromWindow()]?.type ?? defaultAssetTypeForSite(filter.category || siteKey);
     setType(next);
-    if (!browseViewFor(next, parsed)) {
+    if (!initialView(next)) {
       setViewPinned(false);
       setZone("owned");
     }
@@ -305,17 +319,25 @@ export function BayAssetLibrary({
   }, [type, zone, query, signedIn, licensesOpen, reloadTick, loadFailedText]);
 
   useEffect(() => {
+    if (viewPinned || defaultPending) return;
+    if (sellersFirst) {
+      // 有卖家现成文件：不必等素材索引，直接默认「卖家在售」。
+      setZone(defaultZone(type, { owned: 0, stocked: 0, sellers: 1 }));
+      return;
+    }
     if (!index || index.type !== type) return;
-    if (!viewPinned) {
-      const next = defaultZone(type, {
+    setZone(
+      defaultZone(type, {
         owned: zoneTotal(index, "first-party") + (official?.total ?? 0),
         stocked: zoneTotal(index, "external"),
-      });
-      setZone(next);
-    } else if (zone === "live" && !liveOk) {
-      setZone("owned");
-    }
-  }, [index, type, viewPinned, zone, liveOk, official?.total]);
+      }),
+    );
+  }, [index, type, viewPinned, official?.total, sellersFirst, defaultPending]);
+
+  useEffect(() => {
+    if (!index || index.type !== type) return;
+    if (viewPinned && zone === "live" && !liveOk) setZone("owned");
+  }, [index, type, viewPinned, zone, liveOk]);
 
   useEffect(() => {
     if (seriesOn && !hasSeriesFilter(type, zone)) setSeriesOn(false);
@@ -463,6 +485,7 @@ export function BayAssetLibrary({
     if (!next || next === type) return;
     const nextType = next as BayAssetType;
     setType(nextType);
+    setSellersDefaultOk(false);
     setViewPinned(false);
     setZone("owned");
     setIndex(null);
@@ -476,6 +499,7 @@ export function BayAssetLibrary({
 
   function changeZone(next: string) {
     if (!next || next === zone) return;
+    setSellersDefaultOk(false);
     setViewPinned(true);
     setZone(next as TypeZone);
     setCat("");
@@ -628,7 +652,7 @@ export function BayAssetLibrary({
     value: item,
     label: tt(BAY_ASSET_TYPE_LABELS[item]),
   }));
-  const originOptions: BayFilterOption[] = TYPE_ZONES.map((item) => {
+  const originOptions: BayFilterOption[] = TYPE_ZONES.filter((item) => item !== "sellers" || bayOn).map((item) => {
     const usable = item !== "live" || liveOk;
     const count =
       item === "owned"
@@ -698,20 +722,23 @@ export function BayAssetLibrary({
     return [...new Set([...docZone.formats, ...found])];
   }, [docZone, items]);
 
-  const showCategory = zone !== "live" && zone !== "mine" && !seriesOn;
-  const showIndustry = type === "ppt" && zone !== "live" && zone !== "mine" && !seriesOn;
-  const showSeries = seriesAvailable && zone !== "mine";
+  const sellersZone = zone === "sellers";
+  const showCategory = !sellersZone && zone !== "live" && zone !== "mine" && !seriesOn;
+  const showIndustry = !sellersZone && type === "ppt" && zone !== "live" && zone !== "mine" && !seriesOn;
+  const showSeries = seriesAvailable && zone !== "mine" && !sellersZone;
 
   return (
     <div data-bay-asset-library className="mt-4 flex min-h-[32rem] flex-1 flex-col">
       <BayToolbarFilters>
-        <BayFilterSelect
-          name="type"
-          label={tt("类型")}
-          value={type}
-          options={typeOptions}
-          onChange={changeType}
-        />
+        {sellersZone ? null : (
+          <BayFilterSelect
+            name="type"
+            label={tt("文件类型")}
+            value={type}
+            options={typeOptions}
+            onChange={changeType}
+          />
+        )}
         <BayFilterSelect
           name="view"
           label={tt("来源")}
@@ -719,6 +746,7 @@ export function BayAssetLibrary({
           options={originOptions}
           onChange={changeZone}
         />
+        {sellersZone ? <BayAssetSellerSite value={sellerSite} onChange={setSellerSite} /> : null}
         {showCategory ? (
           <BayFilterSelect
             name="cat"
@@ -726,7 +754,7 @@ export function BayAssetLibrary({
             value={cat}
             options={catOptions}
             onChange={changeCat}
-            allLabel={tt("全部")}
+            allLabel={tt("全部目录")}
             searchable={catOptions.length > 12}
           />
         ) : null}
@@ -750,20 +778,24 @@ export function BayAssetLibrary({
             allLabel={tt("全部（含单件）")}
           />
         ) : null}
-        <button
-          type="button"
-          data-bay-asset-licenses-open
-          onClick={() => setLicensesOpen(true)}
-          className="h-8 shrink-0 px-2 text-[12px] text-stone-500 hover:text-stone-800"
-        >
-          {tt("授权说明")}
-        </button>
+        {sellersZone ? null : (
+          <button
+            type="button"
+            data-bay-asset-licenses-open
+            onClick={() => setLicensesOpen(true)}
+            className="h-8 shrink-0 px-2 text-[12px] text-stone-500 hover:text-stone-800"
+          >
+            {tt("授权说明")}
+          </button>
+        )}
       </BayToolbarFilters>
 
-      {licensesOpen ? (
+      {licensesOpen && !sellersZone ? (
         <div className="mt-4">
           <BayLicensesView onClose={() => setLicensesOpen(false)} />
         </div>
+      ) : sellersZone ? (
+        <BayAssetSellers query={query} category={sellerSite} view={view} />
       ) : zone === "mine" ? (
         <div className="mt-5" data-bay-asset-mine>
           {mineGrid?.unauthenticated || !signedIn ? (

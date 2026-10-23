@@ -1,4 +1,4 @@
-// 类型页三分区：OceanLeo 自有 / 开源专区（已入库）/ 实时搜索。
+// 类型页的来源分区：卖家在售（卖家按「现成文件」发布的条目，走信息流）/ OceanLeo 自有 / 我上传的 / 开源专区（已入库）/ 实时搜索。
 // 目录→来源索引、默认分区、区内取数、地址参数解析写回都在这里。
 // 从 asset 站 lib/assets.ts + lib/type-page-views.ts 搬来，请求打 GATEWAY_BASE。
 
@@ -22,7 +22,7 @@ import { documentZoneCategoryKey } from "./document-zones";
 export type MaterialOrigin = BayAssetOrigin;
 export type TypeZone = BayAssetZone;
 
-export const TYPE_ZONES: readonly TypeZone[] = ["owned", "mine", "stocked", "live"];
+export const TYPE_ZONES: readonly TypeZone[] = ["sellers", "owned", "mine", "stocked", "live"];
 
 export const ZONE_ORIGIN: Record<"owned" | "stocked", MaterialOrigin> = {
   owned: "first-party",
@@ -30,8 +30,9 @@ export const ZONE_ORIGIN: Record<"owned" | "stocked", MaterialOrigin> = {
 };
 
 export const ZONE_LABELS: Record<TypeZone, string> = {
+  sellers: "卖家在售",
   owned: "OceanLeo 自有",
-  mine: "我的",
+  mine: "我上传的",
   stocked: "开源专区（已入库）",
   live: "实时搜索",
 };
@@ -99,7 +100,7 @@ export function hasSeriesFilter(type: BayAssetType, zone: TypeZone): boolean {
 
 export function parseZone(raw: string | null | undefined, type: BayAssetType): TypeZone | null {
   const value = (raw || "").trim();
-  if (value === "owned" || value === "stocked" || value === "mine") return value;
+  if (value === "owned" || value === "stocked" || value === "mine" || value === "sellers") return value;
   if (value === "live" || value === "open") {
     return zoneIsUsable(type, "live") ? "live" : "owned";
   }
@@ -108,10 +109,15 @@ export function parseZone(raw: string | null | undefined, type: BayAssetType): T
   return null;
 }
 
+/**
+ * 没有被地址或用户钉住时的默认来源：有已发布的卖家现成文件（`sellers` > 0）就默认「卖家在售」，
+ * 否则是原来的规则（自有 → 开源专区 → 实时搜索）。
+ */
 export function defaultZone(
   type: BayAssetType,
-  counts: { owned: number; stocked: number },
+  counts: { owned: number; stocked: number; sellers?: number },
 ): TypeZone {
+  if ((counts.sellers ?? 0) > 0) return "sellers";
   if (counts.owned > 0) return "owned";
   if (counts.stocked > 0) return "stocked";
   return zoneIsUsable(type, "live") ? "live" : "owned";

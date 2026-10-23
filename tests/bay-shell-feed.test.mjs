@@ -115,9 +115,10 @@ test("useBayFeed 用分类函数消化 401/403/abort", () => {
   assert.doesNotMatch(text, /setError\(errorText\(caught\)\)/);
 });
 
-test("useBayFeed：页面 request→接口 needs，asset 跳过，其余→supply", () => {
+test("useBayFeed：页面 request→接口 needs，asset 默认跳过，其余→supply，每类带自己的 listing_kind", () => {
   const text = readFileSync(join(REPO, "src/shell/bay/shell/use-bay-data.ts"), "utf8");
-  assert.match(text, /canonicalBayFeedKind\(filter\.kind\) === "request" \? "needs" : "supply"/);
+  assert.match(text, /page === "request"\) return \{ kind: "needs"/);
+  assert.match(text, /kind: "supply"/);
   assert.match(text, /skipFeed/);
-  assert.match(text, /fetchBayFeed\(\{ kind, category, q \}/);
+  assert.match(text, /fetchBayFeed\(\s*\{ kind, category, q, listing_kind: listingKind, limit \}/);
 });

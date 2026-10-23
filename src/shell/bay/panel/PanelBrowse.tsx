@@ -1,6 +1,6 @@
 "use client";
 
-// 右侧栏里的 LeoBay 浏览：第一行搜索 + 「我的」「发布」；第二行种类切换 + 站点下拉（素材栏不放站点）。
+// 右侧栏里的 LeoBay 浏览：第一行搜索 + 「我的」「发布」；第二行「出售 / 求购」「种类」两个下拉 + 站点下拉（现成文件栏的筛选在素材库自己手里，不放站点）。
 import { useMemo, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { BayAppShelf } from "../apps/BayAppShelf";
@@ -60,7 +60,7 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
             type="search"
             value={search.text}
             maxLength={60}
-            placeholder={tt("搜素材、服务、作品、课程、需求…")}
+            placeholder={tt("搜索 LeoBay")}
             aria-label={tt("搜索")}
             onChange={(event) => search.change(event.target.value)}
             onKeyDown={(event) => {
@@ -92,7 +92,7 @@ export function PanelBrowse({ siteKey }: PanelBrowseProps): ReactElement {
             value={filter.category ?? ""}
             options={siteOptions}
             onChange={(next) => setBayFilter({ ...filter, category: next || undefined })}
-            allLabel={tt("全部")}
+            allLabel={tt("全部站点")}
             searchable
           />
         )}

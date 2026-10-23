@@ -1,19 +1,25 @@
 "use client";
 
-// LeoBay 页的信息流部件：搜索、出售/求购两档（两边都有种类）、站点下拉（含专业咨询）、信息流本体。
-// LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
+// LeoBay 页的信息流部件：搜索、出售/求购下拉 + 种类下拉（两边都有种类）、站点下拉（含专业咨询）、信息流本体。
+// 整行读起来是「出售 ⌄ · 人工服务 ⌄ · 全部站点 ⌄」。LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
 import { CollectionCardGrid, CollectionInfiniteSentinel } from "../../collection-chrome";
-import type { BayCategory, BayFeedItem } from "../../../lib/bay/types";
-import { CollectionItemCard, CollectionItemRow, CollectionItemList } from "../../collection-items";
-import { consultPriceText, feedPriceLabel } from "../supply/format";
-import { priceText } from "../needs/need-format";
-import { isRestrictedDomain } from "../../../lib/bay/services";
+import type { BayCategory } from "../../../lib/bay/types";
+import { CollectionItemList } from "../../collection-items";
 import { rememberPublishListing } from "../form/publish-listing";
 import { BayCategoryIcon } from "./bay-icons";
-import { BAY_ADVICE_ZONE, BAY_FEED_KINDS, canonicalBayFeedKind, stripLeoCategoryPrefix, type BayFeedKind } from "./bay-links";
+import {
+  BAY_ADVICE_ZONE,
+  BAY_SELL_KINDS,
+  BAY_SELL_KIND_LABEL,
+  canonicalBayFeedKind,
+  isBaySellKind,
+  stripLeoCategoryPrefix,
+  type BaySellKind,
+} from "./bay-links";
+import { FeedCard, targetForFeedItem } from "./BayFeedItemCard";
 import { BayFilterSelect, type BayFilterOption } from "./BayFilterSelect";
 import {
   openBay,
@@ -23,8 +29,9 @@ import {
   type BayFeedFilter,
   type BayTarget,
 } from "./bay-state";
-import type { BayFeedCardVariant } from "./feed-card-ui";
 import { useBayCategories, useBayFeed } from "./use-bay-data";
+
+export { targetForFeedItem };
 
 const SEARCH_DEBOUNCE_MS = 350;
 const SEARCH_MAX_LENGTH = 60;
@@ -39,10 +46,6 @@ export const BayListingChromeContext = createContext<BayListingChromeValue>({
   view: "grid",
   favoritesOnly: false,
 });
-
-export function targetForFeedItem(item: BayFeedItem): BayTarget {
-  return { kind: item.kind, id: item.id };
-}
 
 /** 类目名：接口名去掉开头的 Leo，中英文同一套（Slides、Website）。「其他」在词典里有译文；非中文界面查不到词条时用接口的英文名。 */
 export function useBayCategoryName(): (category: Pick<BayCategory, "name_zh" | "name_en" | "slug">) => string {
@@ -67,7 +70,7 @@ export function startPublish(category?: string, feedKind?: string): void {
     openBay(category && category !== BAY_ADVICE_ZONE ? { kind: "post-need", category } : { kind: "post-need" });
     return;
   }
-  const listing = feed === "app" ? "app" : feed === "lesson" ? "lesson" : feed === "asset" ? "digital" : "service";
+  const listing = feed === "app" ? "app" : feed === "lesson" ? "lesson" : feed === "other" ? "other" : feed === "asset" ? "digital" : "service";
   rememberPublishListing(listing);
   openBay(category && category !== BAY_ADVICE_ZONE ? { kind: "publish", category } : { kind: "publish" });
 }
@@ -100,11 +103,9 @@ export function activeFeedKey(target: BayTarget): string | null {
   return null;
 }
 
+/** 没有搜索词、没有站点：种类本身是下拉里选的，不算「筛选」，空了也没有可清的东西。 */
 function isDefaultFilter(filter: BayFeedFilter): boolean {
-  const kind = canonicalBayFeedKind(filter.kind);
-  if (filter.category || filter.q) return false;
-  if (kind === "request") return !filter.offer || filter.offer === "service";
-  return kind === "service";
+  return !filter.category && !filter.q;
 }
 
 // ---- 搜索 ---------------------------------------------------------------------
@@ -152,46 +153,37 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 
 // ---- 种类 ---------------------------------------------------------------------
 
-type SellFeedKind = Exclude<BayFeedKind, "request">;
-
-const SELL_FEED_KINDS = BAY_FEED_KINDS.filter((kind): kind is SellFeedKind => kind !== "request");
-
-const SELL_KIND_LABEL: Record<SellFeedKind, string> = {
-  service: "服务",
-  asset: "素材",
-  app: "作品",
-  lesson: "课程",
-};
-
-function isSellKind(kind: string): kind is SellFeedKind {
-  return kind !== "request" && (SELL_FEED_KINDS as readonly string[]).includes(kind);
-}
-
-const INTENT_PILL =
-  "inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-neutral-900 px-3 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]";
+type IntentValue = "sell" | "buy";
 
 /**
- * 顶栏两档：出售 / 求购。两边都有「种类」。
- * 出售改种类会换栏（服务信息流 / 素材库 / 作品 / 课程）；求购改种类只改 offer，不离开 request。
- * 点求购时带上当前出售种类；点出售且当前是 request 时回到上次卖的种类。
+ * 顶栏两个下拉：「出售 / 求购」和「种类」（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他）。
+ * 出售改种类会换栏（人工服务信息流 / 现成文件 / 网站与软件服务 / 课程 / 其他）；求购改种类只改 offer，不离开 request。
+ * 从出售切到求购时带上当前出售种类；从求购切回出售时回到上次卖的种类，没有就是人工服务。
+ * 键盘与读屏由 BayFilterSelect 负责（方向键、Home/End、Enter、Esc；listbox + option）。
  */
 export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: string }) {
   const tt = useUI();
   const value = canonicalBayFeedKind(filter.kind);
-  const lastSellRef = useRef<SellFeedKind>(isSellKind(value) ? value : "service");
-  const lastWantedRef = useRef<SellFeedKind>(filter.offer && isSellKind(filter.offer) ? filter.offer : "service");
-  if (isSellKind(value)) lastSellRef.current = value;
-  if (value === "request" && filter.offer && isSellKind(filter.offer)) lastWantedRef.current = filter.offer;
+  const lastSellRef = useRef<BaySellKind>(isBaySellKind(value) ? value : "service");
+  if (isBaySellKind(value)) lastSellRef.current = value;
   const selling = value !== "request";
-  const sellKind = isSellKind(value) ? value : lastSellRef.current;
-  const wantedKind = filter.offer && isSellKind(filter.offer) ? filter.offer : lastWantedRef.current;
+  const sellKind = isBaySellKind(value) ? value : lastSellRef.current;
+  // 求购栏的种类只看筛选里的 offer：显示的永远是真正在取的那一类。
+  const wantedKind: BaySellKind = filter.offer && isBaySellKind(filter.offer) ? filter.offer : "service";
   const typeValue = selling ? sellKind : wantedKind;
+  const intentOptions = useMemo<BayFilterOption[]>(
+    () => [
+      { value: "sell", label: tt("出售") },
+      { value: "buy", label: tt("求购") },
+    ],
+    [tt],
+  );
   const kindOptions = useMemo<BayFilterOption[]>(
-    () => SELL_FEED_KINDS.map((kind) => ({ value: kind, label: tt(SELL_KIND_LABEL[kind]) })),
+    () => BAY_SELL_KINDS.map((kind) => ({ value: kind, label: tt(BAY_SELL_KIND_LABEL[kind]) })),
     [tt],
   );
 
-  const applySell = (kind: SellFeedKind) => {
+  const applySell = (kind: BaySellKind) => {
     lastSellRef.current = kind;
     setBayFilter({
       ...filter,
@@ -200,8 +192,7 @@ export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: stri
     });
   };
 
-  const applyWanted = (offer: SellFeedKind) => {
-    lastWantedRef.current = offer;
+  const applyWanted = (offer: BaySellKind) => {
     setBayFilter({
       ...filter,
       kind: "request",
@@ -211,32 +202,20 @@ export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: stri
   };
 
   return (
-    <div
-      role="tablist"
-      aria-label={tt("出售还是求购")}
-      data-bay-view
-      className="inline-flex shrink-0 items-center gap-2"
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={selling}
-        data-bay-browse-intent="sell"
-        onClick={() => applySell(selling ? sellKind : lastSellRef.current)}
-        className={`${INTENT_PILL} ${selling ? "bg-neutral-900 text-white" : "bg-white text-neutral-900"}`}
-      >
-        {tt("出售")}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={!selling}
-        data-bay-browse-intent="buy"
-        onClick={() => applyWanted(selling ? sellKind : wantedKind)}
-        className={`${INTENT_PILL} ${!selling ? "bg-neutral-900 text-white" : "bg-white text-neutral-900"}`}
-      >
-        {tt("求购")}
-      </button>
+    <div data-bay-view className="inline-flex shrink-0 items-center gap-2">
+      <div data-bay-browse-intent={selling ? "sell" : "buy"}>
+        <BayFilterSelect
+          label={tt("出售还是求购")}
+          name="intent"
+          value={selling ? "sell" : "buy"}
+          options={intentOptions}
+          onChange={(next) => {
+            const intent = next as IntentValue;
+            if (intent === "sell") applySell(selling ? sellKind : lastSellRef.current);
+            else if (intent === "buy") applyWanted(selling ? sellKind : wantedKind);
+          }}
+        />
+      </div>
       <div data-bay-browse-kind>
         <BayFilterSelect
           label={tt("种类")}
@@ -244,7 +223,7 @@ export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: stri
           value={typeValue}
           options={kindOptions}
           onChange={(next) => {
-            if (!isSellKind(next)) return;
+            if (!isBaySellKind(next)) return;
             if (selling) applySell(next);
             else applyWanted(next);
           }}
@@ -257,8 +236,8 @@ export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: stri
 // ---- 类目 ---------------------------------------------------------------------
 
 /**
- * 服务 / 需求栏的「站点」下拉：选项是交付类目，服务栏末尾多一条「专业咨询」。
- * 选「全部」清掉 category。形态从原来会换行的小标签改成 BayFilterSelect。
+ * 人工服务 / 其他 / 求购栏的「站点」下拉：选项是交付类目，人工服务栏末尾多一条「专业咨询」。
+ * 选「全部站点」清掉 category。「全部」自带名词，按键上不会只剩一个光秃秃的「全部」。
  */
 export function BayCategorySelect({
   filter,
@@ -298,7 +277,7 @@ export function BayCategorySelect({
           setBayFilter({ ...filter, category: next || undefined });
           onPicked?.();
         }}
-        allLabel={tt("全部")}
+        allLabel={tt("全部站点")}
         searchable
       />
     </div>
@@ -315,36 +294,6 @@ export function BayCategoryChips(props: {
 }
 
 // ---- 信息流 --------------------------------------------------------------------
-
-function httpsCover(url: string | null | undefined): string | null {
-  if (typeof url !== "string") return null;
-  const text = url.trim();
-  return text.startsWith("https://") ? text : null;
-}
-
-function titleInitial(title: string): string {
-  return Array.from(title.trim())[0] || "?";
-}
-
-/** Both page views share the Library presentation; kind-specific panel cards stay independent. */
-function FeedCard({ item, variant }: { item: BayFeedItem; variant: BayFeedCardVariant }) {
-  const tt = useUI();
-  if ((item.kind === "service" || item.kind === "consult") && isRestrictedDomain((item as { regulated_domain?: unknown }).regulated_domain)) return null;
-  const cover = httpsCover(item.cover_url);
-  const Item = variant === "card" ? CollectionItemCard : CollectionItemRow;
-  const price = item.kind === "consult"
-    ? consultPriceText(tt, item.price?.min_fen, item.price?.unit, item.price?.currency)
-    : item.kind === "service" ? feedPriceLabel(tt, item.price) : priceText(tt, item.price);
-  return (
-    <Item
-      containerProps={{ "data-bay-card": item.kind, "data-bay-card-variant": variant, "data-bay-id": item.id }}
-      title={item.title}
-      metadata={<>{item.author.display_name || item.author.handle} · {price}{item.summary ? ` · ${item.summary}` : ""}</>}
-      cover={cover ? <img src={cover} alt="" loading="lazy" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center text-[15px] font-semibold text-stone-400">{titleInitial(item.title)}</span>}
-      onOpen={() => openBay(targetForFeedItem(item))}
-    />
-  );
-}
 
 const QUIET_BUTTON =
   "rounded-full border border-neutral-900 bg-white px-3 py-1.5 text-[13px] font-medium text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50";
@@ -465,8 +414,8 @@ export function BayFeed({
               <button
                 type="button"
                 onClick={() => {
-                  const kind = canonicalBayFeedKind(filter.kind);
-                  setBayFilter(kind === "request" ? { kind: "request" } : { kind: "service" });
+                  // 只清搜索词和站点；种类（以及求购的 offer）是下拉里选的，留在原处。
+                  setBayFilter({ ...filter, category: undefined, q: undefined });
                   onClearFavorites?.();
                 }}
                 className={QUIET_BUTTON}

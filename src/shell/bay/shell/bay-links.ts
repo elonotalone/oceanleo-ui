@@ -6,10 +6,12 @@
 // app:<id>（作品详情）、app-editor[:<id>]（上架 / 编辑作品）、lesson:<id>、bundle:<id>（课程 / 套餐详情）、
 // lesson-editor[:<id>]、bundle-editor[:<id>]（发布 / 编辑课程、套餐）、app-manage:<id>[:<分页>]（管理作品）、
 // app-thread:<id>（作品下的一条留言）、dashboard（开发者面板）、app-login（账号登录授权页）。认不出的值一律当没有。
-// 2026-10-13：`/bay` 顶栏是卖 / 买两档；卖的一侧用种类下拉切 service / asset / app / lesson。
-// URL `?kind=` 仍是这五个值（含 request），老值照样认（见 normalizeBayFeedKind）。
+// 2026-10-13：`/bay` 顶栏是卖 / 买两档；卖的一侧用种类下拉切 service / asset / app / lesson / other。
+// 2026-10-23：出售 / 求购并成一个下拉，种类多了 other（其他）；名字统一为 人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他。
+// URL `?kind=` 是这六个值（含 request），老值照样认（见 normalizeBayFeedKind）。
 // 「我的」六块标签：我发布的 / 我卖出的 / 我买到的 / 我的收藏 / 我的主页 / 数据面板。老的 `mine:<tab>` 值落到对应的块（card 落到主页）。
 import type { UITranslate } from "../../../i18n/ui/useUI";
+import type { BayFeedListingKind } from "../../../lib/bay/feed";
 import type { BayMineTab, BayTarget } from "./bay-state";
 
 export const BAY_PARAM = "bay";
@@ -35,17 +37,46 @@ export function normalizeBayMineTab(raw: string | null | undefined): BayMineTab 
 }
 export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = ["profile", "vetting", "money"];
 /**
- * `/bay?kind=<值>`（五值 URL 合同，界面不再并排五键）：
- * `service`（默认，不写进地址）= 这个类目里的服务（含答疑）；
- * `asset` = 素材库（类型、来源分区、文书区）；`app` = 作品栏；`lesson` = 课程栏；`request` = 这个类目里的需求（含求助）。
+ * `/bay?kind=<值>`（六值 URL 合同，界面不再并排摆键）：
+ * `service`（默认，不写进地址）= 人工服务（含答疑）；
+ * `asset` = 现成文件（素材库 + 卖家在售；类型、来源分区、文书区）；`app` = 网站与软件服务；`lesson` = 课程；
+ * `other` = 其他；`request` = 求购（这个类目里的需求，含求助）。
  * 老值 `supply`/`all`/`consult` → service，`demand`/`help` → request，`material` → asset。
  */
 export const BAY_KIND_PARAM = "kind";
-/** 求购栏的种类。只在 `kind=request` 且不是服务时写入地址。 */
+/** 求购栏的种类。只在 `kind=request` 且不是人工服务时写入地址。 */
 export const BAY_OFFER_PARAM = "offer";
-export const BAY_FEED_KINDS = ["service", "asset", "app", "lesson", "request"] as const;
+export const BAY_FEED_KINDS = ["service", "asset", "app", "lesson", "other", "request"] as const;
 export type BayFeedKind = (typeof BAY_FEED_KINDS)[number];
 export const DEFAULT_BAY_FEED_KIND: BayFeedKind = "service";
+/** 出售栏的五个种类（求购栏的 `offer` 取同一组值）。顺序就是下拉里的顺序。 */
+export type BaySellKind = Exclude<BayFeedKind, "request">;
+export const BAY_SELL_KINDS: readonly BaySellKind[] = BAY_FEED_KINDS.filter((kind): kind is BaySellKind => kind !== "request");
+
+/**
+ * 五个种类的名字（中文原文；界面里经 `tt()` 显示）。操作员 2026-10-23 拍板，全站统一：
+ * 人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他。旧叫法「服务 / 素材 / 作品」不再用来指一个种类。
+ */
+export const BAY_SELL_KIND_LABEL: Readonly<Record<BaySellKind, string>> = {
+  service: "人工服务",
+  asset: "现成文件",
+  app: "网站与软件服务",
+  lesson: "课程",
+  other: "其他",
+};
+
+/**
+ * 逛的种类 → 它对应的发布种类（信息流 `listing_kind`）：现成文件发布出来是 `digital`，其余同名。
+ * 每一类里显示的就是按这一类发布的东西，所以出售与求购两侧都用它传参。
+ */
+export function bayListingKindFor(kind: BaySellKind): BayFeedListingKind {
+  return kind === "asset" ? "digital" : kind;
+}
+
+/** 值是不是五个种类之一（`request` 不是种类，是「求购」）。 */
+export function isBaySellKind(value: unknown): value is BaySellKind {
+  return typeof value === "string" && (BAY_SELL_KINDS as readonly string[]).includes(value);
+}
 /** 老地址里的种类值。 */
 const LEGACY_FEED_KINDS: Readonly<Record<string, BayFeedKind>> = {
   all: "service",

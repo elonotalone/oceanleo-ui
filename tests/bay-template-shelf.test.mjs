@@ -98,9 +98,10 @@ test("新类型进下拉：海报 / 表格 / 工作流 / 游戏 / PDF", () => {
   assert.equal(BAY_ASSET_TYPE_LABELS.pdf, "PDF");
 });
 
-test("来源有「我的」一档，stocked / live 还在", () => {
-  assert.deepEqual(TYPE_ZONES, ["owned", "mine", "stocked", "live"]);
-  assert.equal(ZONE_LABELS.mine, "我的");
+test("来源第一档是「卖家在售」，「我上传的」一档，stocked / live 还在", () => {
+  assert.deepEqual(TYPE_ZONES, ["sellers", "owned", "mine", "stocked", "live"]);
+  assert.equal(ZONE_LABELS.sellers, "卖家在售");
+  assert.equal(ZONE_LABELS.mine, "我上传的");
   assert.equal(ZONE_LABELS.owned, "OceanLeo 自有");
   assert.equal(ZONE_LABELS.stocked, "开源专区（已入库）");
   assert.equal(ZONE_LABELS.live, "实时搜索");
