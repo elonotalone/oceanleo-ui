@@ -67,6 +67,7 @@ export function SelectionOverflowGroups({
   morePanelId: string;
   renderControl: (control: SelectionControl) => ReactNode;
 }) {
+  const tt = useUI();
   const labelId = (groupId: string, groupIndex: number) =>
     `${morePanelId}-group-${groupIndex}-${groupId.replace(/[^a-z0-9_-]/gi, "-")}`;
   return (
@@ -76,7 +77,7 @@ export function SelectionOverflowGroups({
           data-selection-overflow-capability-label
           className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
         >
-          {liveCapability.label}
+          {tt(liveCapability.label)}
         </div>
       )}
       {groups.map((group, groupIndex) => (
@@ -94,7 +95,7 @@ export function SelectionOverflowGroups({
             id={labelId(group.id, groupIndex)}
             className="truncate px-2.5 pb-0.5 pt-1 text-[10px] font-semibold tracking-wide text-[var(--muted,#78716c)]"
           >
-            {group.label}
+            {tt(group.label)}
           </div>
           {group.controls.map((control) => renderControl(control))}
         </div>

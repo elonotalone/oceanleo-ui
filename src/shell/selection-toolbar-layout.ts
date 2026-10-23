@@ -164,6 +164,11 @@ const OVERFLOW_GROUP_LABELS: Readonly<Record<string, string>> = {
   "grid-properties": "表格属性",
   transform: "变换",
   typography: "排版",
+  // 统一编辑栏投影（edit-bar-canon-projection）给规范项的分组。
+  "canon-text": "文字",
+  "canon-image": "图片",
+  "canon-shape": "形状",
+  "canon-object": "对象操作",
 };
 
 function overflowGroupLabel(
