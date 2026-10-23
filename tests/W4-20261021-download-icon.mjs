@@ -151,10 +151,11 @@ test("workspace download launcher renders data-leo-button=ghost", async () => {
         }),
       );
     });
+    // D1（2026-10-23）：下载进 `···`；第一行唯一的图标启动器 `···` 守同一条 ghost 家族规则。
     const launcher = container.querySelector(
-      "[data-workspace-download-launcher]",
+      "[data-workspace-more-launcher]",
     );
-    assert.ok(launcher, "download launcher missing");
+    assert.ok(launcher, "··· launcher missing");
     assert.equal(launcher.getAttribute("data-leo-button"), "ghost");
     assert.notEqual(launcher.getAttribute("data-leo-button"), "secondary");
   } finally {

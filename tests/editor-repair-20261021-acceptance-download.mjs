@@ -109,6 +109,7 @@ test("download launcher is not IconButton variant=secondary", async () => {
     export function AdvancedEditorIcon() { return null; }
     export function AnchoredPopover() { return null; }
     export function EditorItemSocialChrome() { return null; }
+    export function useEditorItemSocial() { return { shareAvailable: true, favoriteAvailable: false, favorite: false, busy: "", error: "", artifactId: null, revisionId: null, async share() {}, async toggleFavorite() {} }; }
     export function CollabActionSlot() { return null; }
     export function PluginThemeToggle() { return null; }
   `);
@@ -175,10 +176,11 @@ test("download launcher is not IconButton variant=secondary", async () => {
         onUploadFiles() {},
       }),
     );
+    // D1（2026-10-23）：下载进 `···` 的「下载 ▸」子菜单；第一行的 `···` 守同一条 ghost 规则。
     const launcher = container.querySelector(
-      "[data-workspace-download-launcher]",
+      "[data-workspace-more-launcher]",
     );
-    assert.ok(launcher, "download launcher must render");
+    assert.ok(launcher, "··· launcher must render");
     assert.notEqual(
       launcher.getAttribute("data-leo-button"),
       "secondary",
