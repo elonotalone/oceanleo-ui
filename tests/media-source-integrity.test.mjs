@@ -165,6 +165,7 @@ test("all five advanced editor paths enforce the shared source contract", async 
     video,
     timelineModel,
     audio,
+    audioSourceImport,
     audioWaveLoader,
     audioPersistence,
     pdfSource,
@@ -179,6 +180,7 @@ test("all five advanced editor paths enforce the shared source contract", async 
     "src/shell/video-editor/use-video-timeline.ts",
     "src/shell/video-editor/timeline-model.ts",
     "src/shell/media-editors/AudioWorkbench.tsx",
+    "src/shell/media-editors/audio-source-import.ts",
     "src/shell/media-editors/use-audio-wave-loader.ts",
     "src/shell/media-editors/use-audio-persistence.ts",
     "src/shell/media-editors/pdf-source.ts",
@@ -206,7 +208,8 @@ test("all five advanced editor paths enforce the shared source contract", async 
   assert.match(timelineModel, /timelineDocIssue/);
   assert.match(timelineModel, /缺少安全的 http\(s\) 媒体源/);
 
-  assert.match(audio, /assertBlobSource\(file, "audio"\)/);
+  assert.match(audio, /await importAudioSource\(file, item\.id, siteId, tt\)/);
+  assert.match(audioSourceImport, /await assertBlobSource\(file, "audio"\)/);
   assert.match(audioWaveLoader, /assertBlobSource\(blob, "audio"\)/);
   assert.match(audioPersistence, /assertBlobSource\(payload, "audio"\)/);
 

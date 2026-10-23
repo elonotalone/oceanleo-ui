@@ -18,7 +18,8 @@ for (const component of ['PptViewer', 'DocumentViewer', 'SpreadsheetViewer']) te
   const useEffect = (_callback, deps) => { if (!previous || deps.some((v, i) => !Object.is(v, previous[i]))) scheduled++; previous = deps; };
   const helpers = { useUI: () => x => x, useRef, useEffect, useState: value => [typeof value === 'function' ? value() : value, () => {}], useMemo: fn => fn(), useCallback: fn => fn,
     asRecords: v => Array.isArray(v) ? v : [], deckStructuredSourceUrl: () => '', structuredDeckSourceCandidate: () => '', deckPreviewLogicalSize: () => ({ width: 960, height: 540 }), extension: () => 'docx', officePackageKindForItem: () => component === 'DocumentViewer' ? 'docx' : 'pptx', ...cache };
-  const js = ts.transpileModule(setup, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+  const documentHelpers = ast.statements.filter(n => ts.isFunctionDeclaration(n) && ['documentSourceUrl', 'documentViewerMediaType'].includes(n.name?.text)).map(n => n.getText(ast)).join('\n');
+  const js = ts.transpileModule(documentHelpers + '\n' + setup, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   const run = new Function(...Object.keys(helpers), 'item', 'onResourceError', js);
   const item = (url = 'https://assets.oceanleo.app/a.pptx', revisionId = 'r1') => ({ url, revisionId, artifactId: 'a', title: 'A', kind: 'ppt', meta: { slides: [{ title: 'Label' }] }, artifact: { artifactId: 'a', revisionId, renditions: { full: { url, revisionId, purpose: 'full' } } } });
   const render = a => { cursor = 0; run(...Object.values(helpers), a, () => {}); };
