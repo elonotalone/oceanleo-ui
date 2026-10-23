@@ -251,9 +251,17 @@ test("计划卡 · 空：一句话 + 「添加待办」，一行输入直接建�
   await withDom(async ({ renderRoot, find, text, click, type, submit }) => {
     let created = null;
     let listCalls = 0;
+    let releaseSecondRead;
     globalThis.__w10.api = {
       listProjectTodos: () => {
         listCalls += 1;
+        if (listCalls === 2) {
+          // The confirming re-read is slow: the card must already show the new todo.
+          return new Promise((resolveRead) => {
+            releaseSecondRead = () =>
+              resolveRead({ ok: true, data: { items: [todo("n1", "todo", created.title)], sources: [], assignees: [] } });
+          });
+        }
         return ok({ items: created ? [todo("n1", "todo", created.title)] : [], sources: [], assignees: [] });
       },
       createProjectTodo: (projectId, body) => {
@@ -278,8 +286,12 @@ test("计划卡 · 空：一句话 + 「添加待办」，一行输入直接建�
     assert.deepEqual(created, { projectId: "p1", title: "订机票", status: "todo", source_kind: "manual" });
     assert.ok(listCalls >= 2, "the card re-reads after adding");
     assert.equal(find("[data-project-side-plan-add]"), null, "input closes after adding");
+    // Before the re-read answers: the new todo is already there, no flash back to the empty state.
     assert.match(text(), /订机票/);
+    assert.doesNotMatch(text(), /还没有待办/);
     assert.equal(find('[data-project-config-action="open"]').textContent, "打开");
+    await act(async () => releaseSecondRead());
+    assert.match(text(), /订机票/);
   });
 });
 
@@ -387,6 +399,8 @@ test("资产卡 · 空：「上传文件」直接开文件选择，传到根目�
     globalThis.__w10.api = {
       listProjectAssets: () => {
         listCalls += 1;
+        // The confirming re-read after the upload is slow: the card must already show the file.
+        if (listCalls === 2) return new Promise(() => {});
         return ok({
           items: uploads.length ? [asset(uploads[0].name, "file", "2026-10-22T00:00:00Z")] : [],
           usage: { used_bytes: 0, limit_bytes: 1024 ** 3 },
@@ -415,7 +429,9 @@ test("资产卡 · 空：「上传文件」直接开文件选择，传到根目�
     await settle();
     assert.deepEqual(uploads, [{ projectId: "p1", name: "报价.pdf", parent: null }]);
     assert.ok(listCalls >= 2, "the card re-reads after uploading");
-    assert.match(text(), /报价\.pdf/);
+    assert.match(text(), /报价\.pdf/, "the uploaded file is on screen before the re-read answers");
+    assert.doesNotMatch(text(), /还没有文件/);
+    assert.match(text(), /1 个文件 · 0 个文件夹/);
   });
 });
 
