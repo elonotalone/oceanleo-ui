@@ -25,7 +25,7 @@ oceanbizs 同步、操作员账号修改，也没有再次清理此前已退休�
 | 图片（含原设计画布） | 原W09连续保存/公共fork；父验收离线错误→重试→一版→刷新，像素按源坐标核对 | 已通过所述链路 |
 | 演示文稿 | CODEX-W07；两次保存、重开、离线；公共fork只一次；1280×960卡片 | 已通过所述链路 |
 | 文档 | `/tmp/codex-richdoc-protocol`；两次编辑、实际关闭/重开/刷新、离线重试，共3个200版本；另素材插入/Undo/Redo/重载 | 已通过所述链路 |
-| 表格 | 新根73b709be连续两存、关闭/重开/刷新保留47格及全部原有非覆盖坐标；源失败0上传/0版本；最终离线64秒及原生合并/Undo40秒均通过 | 插图/fork/卡片终验进行中 |
+| 表格 | 新根73b709be连续两存、关闭/重开/刷新保留47格及全部原有非覆盖坐标；源失败0上传/0版本；离线重试、合并/Undo、插图/Undo/Redo/重开、公共fork及当前版本库卡片均实测 | 已通过所述链路 |
 | PDF | CODEX-W06；混合中英FreeText重开/刷新及独立PDF解析/渲染；父验收原生Stamp插入/Undo/Redo/下载 | 已通过所述链路 |
 | 音频 | CODEX-W12；同根保存/重开/刷新/离线，实际替换/历史；父独立下载测增益比0.49974847 | 已通过所述链路 |
 | 视频时间线 | CODEX-W11；真实翻转/静音按钮、保存/重开/离线；父独立FFmpeg导出像素/音轨验证 | 已通过所述链路 |
@@ -72,13 +72,27 @@ fork单测推断真实公共3D fork已通过。3D旧controls4的3个HTTP200不�
   2756字节/两蓝色Cube，确认服务器实际内容恢复。最终11文件父独立50/50通过。
 - Grid图片Undo时native canRedo=true但发布给按钮的状态仍false，属命令事件早于实际
   栈移动。6ed2d7bd订阅既有undoRedoStatus$并清理订阅，保留blocked/baseline/去重；
-  父独立最终四文件42/42，包括late-stack-event与不重复写。真实素材流程正在终验。
+  18ad8f0b再去掉Undo/Redo手动重复计数，由observer唯一发布编辑。父独立最终四文件
+  43/43，包括late-stack-event、实际handler每次一步及no-op零步。
+- 表格最终素材实测77.7秒：drawings 1→2→1→2，插图/Undo/Redo恰三版200，
+  每次editRevision只加1；关闭重开仍有实际私有PNG，原有非覆盖单元格未变。
+  公共fork实测75秒：仅一次fork、两次保存、关闭/重开/刷新保留编辑和原格。
+  父独立SQL确认公共99300564仍只有1版，私有2582122f的三版parent链完整、
+  owner为验收账号、原题“事项清单与执行计划表”不变。
+- 表格库卡片实测34秒：img.decode成功、自然尺寸非零，预览授权绑定73b709be
+  当前54274288版本，0 staging/revision/fork。父独立SQL确认该私有根ordinal21、
+  owner及标题未变，并查看了最终卡片/插图重开/fork重开截图。卡片是单元格总览，
+  不栅格化浮动图片；图片持久化和实际重开另有上述证据，不声称卡片像素包含插图。
+- 最终3D错误边界、复制与opaque来源父独立6/6；45个控制/错误文案覆盖16种语言，
+  保留取消、结构化错误code/detail及未知错误回退，不吞掉真实故障。
 - 游戏后端父独立13/13+2子项、客户端9/9。可信网关媒体依赖凭据回归先红后绿2/2，
   仍拒绝外部origin URL。新补译文的34个历史豁免已删除，healed-key闸绿。
 - 暗色最终共壳实测`/tmp/codex-shared-shell-dark-final2`25.7秒通过，真实卡片底色
   rgb(32,32,32)，标题rgb(180,180,180)，44px单行顶栏和两抽屉/更多均在。
-- UI最终typecheck9与portal最终typecheck2均exit0，覆盖最终3D和Grid源修复；最近一次双com/cn槽FRESH(dev)、0STALE。
-  后续源码修复后仍要再次确认，不能用旧通过代替最终确认。
+- UI最终typecheck11与portal最终typecheck3均exit0，覆盖最终3D和Grid源修复；
+  日志为`/tmp/codex-editor-typecheck11.log`、`/tmp/codex-portal-typecheck-final3.log`。
+  2026-10-23 17:17:12Z双com/cn槽FRESH(dev)、0STALE，sourceLatest为17:15:49Z；
+  此后仅补交付记录，没有再改源码。开发API健康检查200。
 
 ## 未触碰的并行工作
 
@@ -87,4 +101,5 @@ Bay、个人主页、项目、消息/通话、collections等同时被别的任�
 `artifact-surface-rendered`现47/48，剩余generic描述被新collections元信息替换，
 属于另一任务的展示兼容性问题；本任务没有擅改其所有权文件。
 
-此记录仍待表格素材/fork/库卡片最终结果补齐，不是“全部完成”声明。
+本轮11类编辑器的上述实现与限定验收已收尾，源码及记录提交本地main，没有推送或生产发布。
+这不等于整仓全量测试通过、所有历史按钮或所有站点均重验；公开3D fork仍未实测。
