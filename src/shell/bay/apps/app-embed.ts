@@ -1,9 +1,9 @@
-// 作品页内窗口：只决定能不能嵌、嵌谁。不碰 window。
+// 详情页内窗口：只决定能不能嵌、嵌谁。不碰 window。
 import type { BayApp } from "../../../lib/bay/apps";
 
 const FIRST_PARTY_ROOTS = ["oceanleo.com", "oceanleo.cn", "oceandino.com", "oceanbizs.com"] as const;
 
-// UC-3：作品是不可信内容，绝不给 `allow-same-origin`，也不给 `allow-top-navigation`（不许它把 Bay 页整个带走）。
+// UC-3：上架的网站或软件是不可信内容，绝不给 `allow-same-origin`，也不给 `allow-top-navigation`（不许它把 Bay 页整个带走）。
 export const BAY_APP_FRAME_SANDBOX = "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
 
 export function isFirstPartyHost(host: string): boolean {

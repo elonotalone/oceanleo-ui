@@ -200,7 +200,7 @@ export function FeedbackManagePanel({ appId }: { appId: string }): ReactElement 
             <div>
               <p className="text-[13px] font-medium text-neutral-900">{tt("AI 代答")}</p>
               <p className="mt-0.5 text-[12px] leading-5 text-neutral-500">
-                {tt("打开后新的提问和报错先由 AI 根据作品介绍、更新日志和已解决的留言回一条，每天最多 30 条，费用由平台承担")}
+                {tt("打开后新的提问和报错先由 AI 根据这个网站或软件的介绍、更新日志和已解决的留言回一条，每天最多 30 条，费用由平台承担")}
               </p>
             </div>
             <Switch

@@ -20,7 +20,7 @@ function listingArtifactId(snap: BayPostSnapshot): string | undefined {
   return snap.previewArtifactId || snap.sampleArtifactId;
 }
 
-/** 别人打开这条发布时看到的页面长什么样。预览里能打开成品，购买键点不动。 */
+/** 别人打开这条发布时看到的页面长什么样。预览里能打开文件，购买键点不动。 */
 export function BayListingPreview(props: { snapshot: BayPostSnapshot; live?: boolean }): ReactElement {
   const tt = useUI();
   const snap = props.snapshot;

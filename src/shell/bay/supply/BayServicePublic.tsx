@@ -1,6 +1,6 @@
 "use client";
 
-// 门户公开服务页的纯展示：只吃已经取好的 data，不取数、不碰 window、不渲染 HTML/媒体。
+// 门户公开商品页的纯展示：只吃已经取好的 data，不取数、不碰 window、不渲染 HTML/媒体。
 // 可在服务端先渲染。交期只在有数字时出现（仲裁 #9：null 不显示）。
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -16,7 +16,7 @@ export function BayServicePublic({ data }: { data: BayServicePublicData }) {
       <p data-bay-public-title className="break-words text-[22px] font-semibold text-neutral-950">
         {data.title}
       </p>
-      {data.delivery_mode === "off_platform" ? <p className="mt-1 text-[12px] text-amber-800">{tt("这项服务在平台外完成")}</p> : null}
+      {data.delivery_mode === "off_platform" ? <p className="mt-1 text-[12px] text-amber-800">{tt("交付在平台外完成")}</p> : null}
       {data.summary ? <p className="mt-2 break-words text-[14px] text-neutral-600">{data.summary}</p> : null}
       <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-neutral-600">
         <span data-bay-price>{publicPriceFrom(tt, data.min_price_fen, data.currency)}</span>
@@ -64,7 +64,7 @@ export function BayServicePublic({ data }: { data: BayServicePublicData }) {
         {data.reviews.length ? (
           data.reviews.map((review) => <ReviewLine key={review.id} review={review} />)
         ) : (
-          <p className="mt-2 text-[13px] text-neutral-500">{tt("这个服务还没有已公开的评价。")}</p>
+          <p className="mt-2 text-[13px] text-neutral-500">{tt("还没有评价")}</p>
         )}
       </section>
     </article>

@@ -1,6 +1,6 @@
 "use client";
 
-// 作品的封面与信息由 Library 共用卡片/列表行呈现。
+// 网站与软件服务的封面与信息由 Library 共用卡片/列表行呈现。
 import { useEffect, useState, type ReactElement } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";

@@ -81,7 +81,7 @@ test("回调地址表单校验", () => {
   assert.equal(redirectUriProblem("http://app.example.com/", host), "回调地址必须是 https 开头");
   assert.equal(redirectUriProblem("https://app.example.com/cb#frag", host), "回调地址不能带 # 片段");
   assert.equal(redirectUriProblem(`https://app.example.com/${"x".repeat(500)}`, host), "回调地址不能超过 512 个字符");
-  assert.equal(redirectUriProblem("https://other.example.com/", host), "回调地址的主机名必须和作品一致");
+  assert.equal(redirectUriProblem("https://other.example.com/", host), "回调地址的主机名必须和上架的网址一致");
   assert.equal(redirectUriProblem("https://app.example.com/cb", host), null);
   assert.equal(redirectUrisProblem([], host, true), "开通登录至少要有一个回调地址");
   assert.equal(

@@ -1,11 +1,13 @@
 "use client";
 
-// 信息流里的一条服务：封面、标题、起价、几天交付、评分、卖家。整条点开服务。
+// 信息流里的一条商品：封面、标题、起价、几天交付、评分、卖家。整条点开商品。
+// 角标写这条商品的种类（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他），取自 `listing_kind`。
 // 浮窗里是一整行，/bay 页网格里是一张卡（variant）。全部内容按纯文本渲染；封面只认 http(s) 地址。
 
 import { useUI } from "../../../i18n/ui/useUI";
 import type { BayFeedCardProps } from "../needs";
 import { isRestrictedDomain } from "../../../lib/bay/services";
+import { offerFromFeedKind, offerKindLabel } from "../form/bay-listing";
 import {
   FEED_ROW_FOOTER_CLASS,
   FEED_ROW_META_CLASS,
@@ -46,15 +48,15 @@ export function ServiceCard({ item, onOpen, variant }: BayFeedCardProps) {
   const sellerName = item.author.display_name || item.author.handle || "";
   const price = feedPriceLabel(tt, item.price);
   const rating = ratingShort(tt, item.author.rating_avg, item.author.rating_count);
-  const digital = item.listing_kind === "digital";
-  const kindLabel = digital ? tt("数字商品") : tt("服务");
+  const offer = offerFromFeedKind(item.listing_kind);
+  const kindLabel = tt(offerKindLabel(offer));
   const official = item.author.official === true;
 
   if (variant === "card") {
     return (
       <button type="button" data-bay-card="service" data-bay-card-variant="card" data-bay-id={item.id} onClick={onOpen} className={feedCardClass("card")}>
         <span className="flex items-center justify-between gap-3">
-          <span data-bay-kind={digital ? "digital" : "service"} className={feedKindBadgeClass("service")}>
+          <span data-bay-kind={offer} className={feedKindBadgeClass("service")}>
             {kindLabel}
           </span>
           <span data-bay-price className={FEED_TILE_PRICE_CLASS}>
@@ -93,7 +95,7 @@ export function ServiceCard({ item, onOpen, variant }: BayFeedCardProps) {
       <span className="flex items-start gap-3">
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
-            <span data-bay-kind={digital ? "digital" : "service"} className={feedKindBadgeClass("service")}>
+            <span data-bay-kind={offer} className={feedKindBadgeClass("service")}>
               {kindLabel}
             </span>
             <span className={FEED_ROW_TITLE_CLASS}>{item.title}</span>

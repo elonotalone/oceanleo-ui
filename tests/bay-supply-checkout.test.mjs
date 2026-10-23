@@ -317,7 +317,7 @@ test("卖家本人打开自己服务的下单页：不给下单", async () => {
   reset();
   globalThis.__bayViewer = "seller-1";
   const view = await mount(pane("basic"));
-  assert.match(view.host.textContent, /这是你发布的服务/);
+  assert.match(view.host.textContent, /这是你发布的商品/);
   assert.equal(view.host.querySelector('[data-bay-action="place-order"]'), null);
   await view.unmount();
 });

@@ -56,7 +56,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
   if (app.source_kind !== "computer") {
     return (
       <section data-bay-endpoint-manage className="space-y-2">
-        <p className="text-[13px] font-medium text-stone-900">{tt("这个作品不是放在云电脑上的应用，不需要公开网址。")}</p>
+        <p className="text-[13px] font-medium text-stone-900">{tt("它不是放在云电脑上的应用，不需要公开网址。")}</p>
         <p className="text-[12.5px] leading-5 text-stone-500">
           {tt("公开网址是给跑在你自己云电脑上的应用用的：OceanLeo 给它一个地址，把访客的请求转到那台机器。平台不替你运行程序。")}
         </p>
@@ -67,7 +67,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
   if (deleted && !current) {
     return (
       <section data-bay-endpoint-manage className="space-y-2">
-        <SellerNotice tone="ok">{tt("网址已删除，这个作品已下架。")}</SellerNotice>
+        <SellerNotice tone="ok">{tt("网址已删除，已自动下架。")}</SellerNotice>
       </section>
     );
   }
@@ -75,7 +75,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
   if (!current) {
     return (
       <section data-bay-endpoint-manage>
-        <p className="text-[13px] text-stone-500">{tt("还没有找到这个作品的公开网址。")}</p>
+        <p className="text-[13px] text-stone-500">{tt("还没有找到它的公开网址。")}</p>
       </section>
     );
   }
@@ -215,7 +215,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
 
         {ask === "delete" ? (
           <div data-bay-confirm="delete" className="space-y-2">
-            <p className="text-[13px] text-stone-800">{tt("删除后这个作品会自动下架")}</p>
+            <p className="text-[13px] text-stone-800">{tt("删除后会自动下架")}</p>
             <div className="mt-3 flex flex-wrap justify-end gap-2">
               <button type="button" disabled={Boolean(busy)} className={SECONDARY_BUTTON} onClick={() => setAsk(null)}>
                 {tt("取消")}
@@ -242,7 +242,7 @@ export function EndpointManagePanel({ appId }: { appId: string }): ReactElement 
       <ul className="list-disc space-y-1 pl-5 text-[12.5px] leading-5 text-stone-500">
         <li>{tt("访客的请求经 OceanLeo 转到你的云电脑，云电脑不需要开放任何端口。")}</li>
         <li>{tt("目前只支持普通网页请求，不支持 WebSocket。")}</li>
-        <li>{tt("云电脑关机或欠费时作品打不开。")}</li>
+        <li>{tt("云电脑关机或欠费时打不开。")}</li>
       </ul>
     </section>
   );

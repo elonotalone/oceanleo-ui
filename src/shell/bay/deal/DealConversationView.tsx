@@ -1,7 +1,7 @@
 "use client";
 
 // 一笔交易一个会话（契约 §0 第 9、13 条）：消息窗的交易会话与 Bay 里的会话是同一个界面。
-// 头部：对方、回到主题（服务 / 需求 / 求助 / 订单）、举报与拉黑；顶上固定交易卡；中间消息（文字、文件、报价、灰字）；
+// 头部：对方、回到主题（商品 / 需求 / 求助 / 订单）、举报与拉黑；顶上固定交易卡；中间消息（文字、文件、报价、灰字）；
 // 底部输入框（文字、文件、卖家可发报价）。签约后输入框换成「在项目群里沟通」，合同取消或完成后恢复。
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -47,7 +47,7 @@ function errorMessage(error: unknown): string | null {
   return typeof message === "string" && message ? message : null;
 }
 
-/** 头部「回到主题」去哪：服务 / 需求 / 求助在 LeoBay 里打开；订单会话打开订单；私聊打开对方主页。 */
+/** 头部「回到主题」去哪：商品 / 需求 / 求助在 LeoBay 里打开；订单会话打开订单；私聊打开对方主页。 */
 export function subjectTarget(
   kind: string,
   subjectId: string | null,
@@ -480,7 +480,7 @@ function subjectLinkLabel(tt: UITranslate, kind: BayTarget["kind"], title: strin
   const name = title.trim();
   switch (kind) {
     case "service":
-      return name ? tt("服务：{title}", { title: name }) : tt("查看服务");
+      return name ? tt("商品：{title}", { title: name }) : tt("查看商品");
     case "demand":
       return name ? tt("需求：{title}", { title: name }) : tt("查看需求");
     case "help":

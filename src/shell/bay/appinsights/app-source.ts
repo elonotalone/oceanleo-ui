@@ -1,4 +1,4 @@
-// 作品页访客从哪里进来：货架点开时记下入口，计数时再收成给网关的短标签。
+// 详情页访客从哪里进来：货架点开时记下入口，计数时再收成给网关的短标签。
 // 只放在模块变量里，不用任何浏览器存储——页内窗口没有同源存储，也不该把这次点击写进可追踪的仓。
 
 import { familyForHost } from "../../../contracts/domain-family";
@@ -25,7 +25,7 @@ const SITE_KEY = /^[a-z0-9][a-z0-9-]{1,23}$/;
 
 let remembered: RememberedBayAppEntry | null = null;
 
-/** 货架 / 搜索结果 / 新作品位 / 关注列表里点开一个作品之前调用：记下这次是从哪里点进来的。 */
+/** 货架 / 搜索结果 / 新上架位 / 关注列表里点开一个网站或软件之前调用：记下这次是从哪里点进来的。 */
 export function rememberBayAppEntry(appId: string, entry: BayAppEntry): void {
   const id = typeof appId === "string" ? appId.trim() : "";
   if (!id) return;
@@ -84,7 +84,7 @@ export function resolveSource(input: ResolveSourceInput): string {
   return referrerBranch(input.referrer, input.host) ?? "direct";
 }
 
-/** 作品页记浏览 / 打开时调用：这位访客是从哪里来到这个作品页的（给网关的短标签）。 */
+/** 详情页记浏览 / 打开时调用：这位访客是从哪里来到这个详情页的（给网关的短标签）。 */
 export function currentBayAppSource(appId: string, siteKey: string): string {
   if (typeof window === "undefined") return "direct";
   const now = Date.now();

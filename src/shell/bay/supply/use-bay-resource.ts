@@ -1,6 +1,6 @@
 "use client";
 
-// 按 key 归属的一次取数：key 一变，上一份结果立刻算过期（先出加载态，不把上一个服务的价格摆在新服务上）。
+// 按 key 归属的一次取数：key 一变，上一份结果立刻算过期（先出加载态，不把上一件商品的价格摆在新商品上）。
 // 卸载或换 key 时丢弃迟到的响应。
 
 import { useCallback, useEffect, useState } from "react";

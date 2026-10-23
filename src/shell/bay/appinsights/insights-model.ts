@@ -17,7 +17,7 @@ const ACTION_LABEL: Readonly<Record<ErrorAction, string>> = {
   reopen: "重新打开",
 };
 
-/** 货架点开一张卡之前：有搜索词算搜索，卡片自己标了新作品位算 fresh，其余算货架。 */
+/** 货架点开一张卡之前：有搜索词算搜索，卡片自己标了新上架位算 fresh，其余算货架。 */
 export function shelfOpenEntry(filter: { q?: string | null }, app?: object | null): BayAppEntry {
   if (String(filter.q || "").trim()) return "search";
   if (app && "fresh" in app && (app as { fresh?: unknown }).fresh === true) return "fresh";
@@ -79,8 +79,8 @@ export function formatInsightTime(iso: string | null | undefined): string {
 export function sourceLabel(source: string, siteName: string): string {
   const raw = typeof source === "string" ? source.trim() : "";
   if (raw === "search") return "Bay 搜索";
-  if (raw === "fresh") return "新作品推荐位";
-  if (raw === "shelf") return "作品货架";
+  if (raw === "fresh") return "新上架推荐位";
+  if (raw === "shelf") return "网站与软件服务列表";
   if (raw === "share") return "分享链接";
   if (raw === "follow") return "关注列表与更新通知";
   if (raw === "direct") return "直接打开";

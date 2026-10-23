@@ -9,7 +9,7 @@ import { formatDealAmount, type DealCardModel, type DealNextKey, type DealStatus
 export interface DealCardProps {
   model: DealCardModel;
   compact?: boolean;
-  /** 有订单时打开订单；没有订单时打开主题（服务 / 需求 / 求助）。没有可去的地方就不可点。 */
+  /** 有订单时打开订单；没有订单时打开主题（商品 / 需求 / 求助）。没有可去的地方就不可点。 */
   onOpen?: (() => void) | null;
 }
 

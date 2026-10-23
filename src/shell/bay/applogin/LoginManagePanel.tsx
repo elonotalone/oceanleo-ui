@@ -141,7 +141,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
           onChange={(event) => setEnabled(event.target.checked)}
           className="mt-0.5"
         />
-        <span>{tt("允许访客用 OceanLeo 账号登录这个作品")}</span>
+        <span>{tt("允许访客用 OceanLeo 账号登录这个网站或软件")}</span>
       </label>
 
       <BayRevealForm
@@ -224,7 +224,7 @@ export function LoginManagePanel({ appId }: { appId: string }): ReactElement {
               </div>
             ) : null}
             <p className="text-[12px] leading-5 text-neutral-500">
-              {tt("凭证里有用户编号、昵称、头像，以及这个人有没有买 / 订阅这个作品。凭证只能证明身份，不能调用 OceanLeo 的接口。有后台的应用要在服务器上用公钥验签。")}
+              {tt("凭证里有用户编号、昵称、头像，以及这个人有没有买 / 订阅过它。凭证只能证明身份，不能调用 OceanLeo 的接口。有后台的应用要在服务器上用公钥验签。")}
             </p>
           </div>
         </Section>

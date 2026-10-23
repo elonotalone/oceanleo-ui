@@ -63,7 +63,7 @@ export function MyThreadsPane(): ReactElement | null {
     <section data-bay-my-threads className="space-y-3 p-4">
       {items.length === 0 ? (
         <p data-bay-my-threads-empty className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-[13px] text-neutral-500">
-          {tt("你还没有给任何作品留过言")}
+          {tt("你还没有给任何网站或软件留过言")}
         </p>
       ) : (
         <div className="space-y-2">

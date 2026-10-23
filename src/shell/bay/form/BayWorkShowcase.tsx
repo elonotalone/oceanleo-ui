@@ -75,10 +75,10 @@ export function BayWorkShowcase(props: {
       .then((result) => {
         if (controller.signal.aborted) return;
         if (result.ok && result.data) setState({ status: "ready", item: result.data });
-        else setState({ status: "error", message: "素材没读出来，请稍后再试。" });
+        else setState({ status: "error", message: "文件没读出来，请稍后再试。" });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setState({ status: "error", message: "素材没读出来，请稍后再试。" });
+        if (!controller.signal.aborted) setState({ status: "error", message: "文件没读出来，请稍后再试。" });
       });
     return () => controller.abort();
   }, [current?.id]);
@@ -120,7 +120,7 @@ export function BayWorkShowcase(props: {
         <div className="min-h-0 flex-1 overflow-hidden p-5">
           {state.status === "loading" ? (
             <p className="py-16 text-center text-[13px] text-stone-500" role="status">
-              {tt("正在打开这份素材…")}
+              {tt("正在打开这个文件…")}
             </p>
           ) : state.status === "error" ? (
             <p className="py-16 text-center text-[13px] text-stone-500" role="status" data-bay-work-showcase-error>
@@ -128,7 +128,7 @@ export function BayWorkShowcase(props: {
             </p>
           ) : (
             <div className="h-[70vh] overflow-hidden rounded-xl bg-stone-100">
-              <Suspense fallback={<p className="py-16 text-center text-[13px] text-stone-500">{tt("正在打开这份素材…")}</p>}>
+              <Suspense fallback={<p className="py-16 text-center text-[13px] text-stone-500">{tt("正在打开这个文件…")}</p>}>
                 <LibraryItemViewer item={state.item} accent={props.accent} />
               </Suspense>
             </div>

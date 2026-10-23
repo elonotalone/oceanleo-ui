@@ -1,6 +1,6 @@
 "use client";
 
-// 管理作品 → 更新日志：发布、编辑、删除。标题和正文只当文本渲染。
+// 管理网站或软件 → 更新日志：发布、编辑、删除。标题和正文只当文本渲染。
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -264,7 +264,7 @@ export function ReleasesManagePanel({ appId }: { appId: string }): ReactElement 
       {loading ? <p className="text-[13px] text-neutral-500">{tt("正在读取更新日志…")}</p> : null}
       {!loading && items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-neutral-200 px-4 py-6 text-center text-[13px] text-neutral-500">
-          {tt("还没有更新日志。写一条，让访客知道作品还在维护")}
+          {tt("还没有更新日志。写一条，让访客知道它还在维护")}
         </p>
       ) : null}
       <ul className="space-y-3">

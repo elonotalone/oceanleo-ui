@@ -14,6 +14,8 @@ import { stripJsComments } from "./helpers/strip-js-comments.mjs";
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const { BAY_SELLER_MESSAGES } = await import("../src/i18n/ui/messages/bay-seller-copy.ts");
 const { BAY_MESSAGES } = await import("../src/i18n/ui/messages/bay-copy.ts");
+// leobay-projects 波的各分表（lbp-w*-copy）都注册在汇总词典里；新词条不必再往上面两张旧表里挤。
+const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
 
 const LOCALES = ["zh-TW", "en", "ja", "ko", "fr", "de", "it", "es", "es-419", "pt-BR", "pt-PT", "ar", "hi", "th", "tr", "vi"];
 const HAN = /[\u4e00-\u9fff]/;
@@ -76,7 +78,7 @@ test("seller 源码里的 tt 字面量都有 16 语译文", () => {
   const missing = [];
   for (const key of keys) {
     for (const locale of LOCALES) {
-      if (BAY_SELLER_MESSAGES[locale]?.[key] || BAY_MESSAGES[locale]?.[key] || baseHas(locale, key)) continue;
+      if (BAY_SELLER_MESSAGES[locale]?.[key] || BAY_MESSAGES[locale]?.[key] || UI_MESSAGES[locale]?.[key] || baseHas(locale, key)) continue;
       missing.push(`${locale}: ${key}`);
     }
   }

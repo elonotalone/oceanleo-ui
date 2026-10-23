@@ -1,6 +1,6 @@
 "use client";
 
-// 作品把人带到 /bay?bay=app-login&…。地址参数全部不可信；跳回作品前再核对协议/主机/端口/路径。
+// 网站或软件把人带到 /bay?bay=app-login&…。地址参数全部不可信；跳回前再核对协议/主机/端口/路径。
 import { useState, useSyncExternalStore, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -41,7 +41,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
     try {
       const result = await approveBayAppLogin(request);
       if (!sameRedirectTarget(result.redirect_to, request.redirect_uri)) {
-        setActionError(tt("跳回作品的地址和登记的回调地址对不上，没有跳转。请回到作品重新点登录。"));
+        setActionError(tt("跳回的地址和登记的回调地址对不上，没有跳转。请回到原来的网站或软件重新点登录。"));
         return;
       }
       window.location.assign(result.redirect_to);
@@ -55,7 +55,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
   if (!parsed.ok || !request) {
     return (
       <div data-bay-pane="app-login" data-bay-login-invalid className="px-4 py-12 text-center">
-        <p className="text-[14px] font-medium text-neutral-800">{tt("登录请求不完整，请回到作品重新点登录。")}</p>
+        <p className="text-[14px] font-medium text-neutral-800">{tt("登录请求不完整，请回到原来的网站或软件重新点登录。")}</p>
       </div>
     );
   }
@@ -97,7 +97,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
   if (!preview.data) {
     return (
       <div data-bay-pane="app-login">
-        <PaneMessage text={preview.error || tt("登录请求不完整，请回到作品重新点登录。")} onRetry={preview.reload} />
+        <PaneMessage text={preview.error || tt("登录请求不完整，请回到原来的网站或软件重新点登录。")} onRetry={preview.reload} />
       </div>
     );
   }
@@ -141,7 +141,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
       <section>
         <h3 className="text-[13px] font-semibold text-neutral-900">{tt("它会得到")}</h3>
         <ul className="mt-1 list-disc space-y-1 pl-5 text-[13px] text-neutral-700">
-          <li>{tt("只在这个作品里使用的用户编号")}</li>
+          <li>{tt("只在这个网站或软件里使用的用户编号")}</li>
           <li>{tt("你的昵称")}</li>
           <li>{tt("你的头像")}</li>
         </ul>
@@ -152,7 +152,7 @@ export function AppLoginConsentPane(_props: BayPaneProps): ReactElement {
         <ul className="mt-1 list-disc space-y-1 pl-5 text-[13px] text-neutral-700">
           <li>{tt("你的邮箱和手机号")}</li>
           <li>{tt("你的余额和订单")}</li>
-          <li>{tt("在别的作品里的身份")}</li>
+          <li>{tt("在别的网站或软件里的身份")}</li>
           <li>{tt("以你的名义操作 OceanLeo 的能力")}</li>
         </ul>
       </section>

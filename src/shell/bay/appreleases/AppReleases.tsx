@@ -1,6 +1,6 @@
 "use client";
 
-// 作品页介绍下方的最近更新。标题和正文只当文本渲染，不解析链接、不当 HTML。
+// 详情页介绍下方的最近更新。标题和正文只当文本渲染，不解析链接、不当 HTML。
 import { useEffect, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -93,7 +93,7 @@ export function AppReleases({ appId, isOwner }: { appId: string; isOwner: boolea
       </div>
       {error ? <p className="mt-2 text-[12px] text-rose-600">{tt(error)}</p> : null}
       {items.length === 0 ? (
-        <p className="mt-2 text-[13px] text-neutral-500">{tt("还没有更新日志。写一条，让访客知道作品还在维护")}</p>
+        <p className="mt-2 text-[13px] text-neutral-500">{tt("还没有更新日志。写一条，让访客知道它还在维护")}</p>
       ) : (
         <ul className="mt-2 space-y-3">
           {items.map((release) => {

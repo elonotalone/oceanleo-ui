@@ -1,12 +1,12 @@
 "use client";
 
-// 作品栏分页：筛选或站点变了从头取；用 AbortController 取消上一枪，迟到的响应不覆盖。
+// 网站与软件服务分页：筛选或站点变了从头取；用 AbortController 取消上一枪，迟到的响应不覆盖。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listBayApps, type BayApp } from "../../../lib/bay/apps";
 import type { BayFeedFilter } from "../shell/bay-state";
 
 const PAGE_SIZE = 24;
-const LIST_ERROR = "作品列表没读出来，请稍后点「重试」。";
+const LIST_ERROR = "列表没读出来，请稍后点「重试」。";
 
 export interface BayAppsView {
   items: BayApp[];

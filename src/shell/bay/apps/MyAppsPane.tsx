@@ -1,6 +1,6 @@
 "use client";
 
-// 「我的」→「我发布的」里的作品一段：我的作品、状态、数据、上下架；每行右边标「网站与软件服务」。本文件归 U3 单元；组件名与 props 是合同，不许改。
+// 「我的」→「我发布的」里的网站与软件服务一段：我上架的网站或软件、状态、数据、上下架；每行右边标「网站与软件服务」。本文件归 U3 单元；组件名与 props 是合同，不许改。
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
@@ -85,7 +85,7 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
         if (alive) setStats({ ...next });
       },
       (error: unknown) => {
-        if (alive) setLoad({ loading: false, error: errorText(error, "作品列表没读出来，请稍后再试。") });
+        if (alive) setLoad({ loading: false, error: errorText(error, "列表没读出来，请稍后再试。") });
       },
     );
     return () => {
@@ -93,7 +93,7 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
     };
   }, [signedIn, nonce]);
 
-  if (!signedIn) return <BaySignInPrompt text={tt("登录后管理你上架的作品")} />;
+  if (!signedIn) return <BaySignInPrompt text={tt("登录后管理你上架的网站或软件")} />;
 
   async function runRow(id: string, work: () => Promise<void>, fallback: string) {
     if (busyId) return;
@@ -163,9 +163,9 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
       </div>
       {items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 px-4 py-8 text-center">
-          <p className="text-[13px] text-stone-600">{tt("你还没有上架过作品")}</p>
+          <p className="text-[13px] text-stone-600">{tt("你还没有上架过网站或软件")}</p>
           <button type="button" className={`${PRIMARY_BUTTON} mt-3`} onClick={() => openBay({ kind: "app-editor" })}>
-            {tt("上架作品")}
+            {tt("上架网站或软件")}
           </button>
         </div>
       ) : (
@@ -183,7 +183,7 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 truncate text-[14px] font-semibold text-stone-800">{row.title || tt("未命名作品")}</p>
+                      <p className="min-w-0 truncate text-[14px] font-semibold text-stone-800">{row.title || tt("未命名")}</p>
                       <PublishedCategoryTag category="app" />
                     </div>
                     <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-stone-500">
@@ -237,14 +237,14 @@ export function MyAppsPane(_props: MyAppsPaneProps): ReactElement | null {
       {items.length ? (
         <div className="flex justify-end">
           <button type="button" className={PRIMARY_BUTTON} onClick={() => openBay({ kind: "app-editor" })}>
-            {tt("上架作品")}
+            {tt("上架网站或软件")}
           </button>
         </div>
       ) : null}
       {rowError ? <SellerNotice tone="error">{rowError}</SellerNotice> : null}
       {pendingDelete ? (
         <ConfirmDialog
-          title={tt("确定删除「{title}」？删了别人就打不开了。", { title: pendingDelete.title || tt("未命名作品") })}
+          title={tt("确定删除「{title}」？删了别人就打不开了。", { title: pendingDelete.title || tt("未命名") })}
           danger
           onConfirm={() => void confirmRemove()}
           onCancel={() => setPendingDelete(null)}

@@ -43,3 +43,9 @@ export function offerFromListing(value: string | null | undefined): BayOfferKind
   if (value === "service" || value === "app" || value === "lesson" || value === "other") return value;
   return "digital";
 }
+
+/** 信息流 / 详情里读到的 `listing_kind` → 种类。老条目没写种类，按人工服务算（后端也是这样：`service` 含没写种类的）。 */
+export function offerFromFeedKind(value: string | null | undefined): BayOfferKind {
+  if (value === "digital" || value === "app" || value === "lesson" || value === "other") return value;
+  return "service";
+}

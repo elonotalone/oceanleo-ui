@@ -85,7 +85,7 @@ export function appHostFromUrl(appUrl: string): string {
   }
 }
 
-/** 第一次打开且列表为空时：作品地址去掉末尾斜杠再加 `/`。 */
+/** 第一次打开且列表为空时：网站或软件的地址去掉末尾斜杠再加 `/`。 */
 export function defaultRedirectUri(appUrl: string): string {
   const trimmed = appUrl.trim().replace(/\/+$/, "");
   return trimmed ? `${trimmed}/` : "";
@@ -111,7 +111,7 @@ export function redirectUriProblem(uri: string, appHost: string): string | null 
   if (parsed.protocol !== "https:") return "回调地址必须是 https 开头";
   if (parsed.hash) return "回调地址不能带 # 片段";
   if (appHost && parsed.hostname.toLowerCase() !== appHost.toLowerCase()) {
-    return "回调地址的主机名必须和作品一致";
+    return "回调地址的主机名必须和上架的网址一致";
   }
   return null;
 }

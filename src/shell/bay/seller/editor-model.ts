@@ -95,9 +95,11 @@ export const SECTION_LABELS: Record<PublishSection, string> = {
   price: "价格",
   terms: "交付条款",
 };
+// 编辑器内部三种形态的名字，对外的种类名只有五个（见 form/bay-listing.ts）：答疑算人工服务，
+// 已有条目的徽标按发布种类取名（offerKindLabel），不再读这张表。
 export const PUBLISH_KIND_LABELS: Record<PublishKind, string> = {
-  digital: "素材",
-  service: "服务",
+  digital: "现成文件",
+  service: "人工服务",
   consult: "答疑",
 };
 
@@ -171,7 +173,7 @@ export function clientKey(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${keySeq}`;
 }
 
-/** 一个服务只有一个价格；`basic` 行是它的载体（订单、台账、信息流都从这一行读价）。 */
+/** 一件商品只有一个价格；`basic` 行是它的载体（订单、台账、信息流都从这一行读价）。 */
 export function defaultTiers(tt: Translate): DraftTier[] {
   return [{ tier: "basic", title: tt("基础版"), description: tt("完成核心交付"), price_fen: 0, delivery_days: 3, revisions: 1, features: [], enabled: true }];
 }
@@ -300,7 +302,7 @@ export function categorySpecs(category: BaySellerCategory | undefined): BayField
 }
 
 /**
- * 这项服务要写的交付约定：网关 `/pricing` 给的那份（品类字段 + 计费方式要求的字段）与当前类目、
+ * 这件商品要写的交付约定：网关 `/pricing` 给的那份（品类字段 + 计费方式要求的字段）与当前类目、
  * 计费方式对得上就用它；对不上（刚换了类目或计费方式、还没存）先用类目字段，存过一次再以网关为准。
  * 不截断：发布闸门逐项核对全部字段。
  */
@@ -582,7 +584,7 @@ export function blockedReason(step: EditorStep, draft: EditorDraft, ctx: EditorC
   if (step === "basics") {
     if (!draft.title.trim()) return { message: "请先填写标题" };
     if (draft.catalogKind === "delivery" && !draft.category) return { message: "请选择类目" };
-    if (!ctx.profile) return { message: "先建卖家资料，才能保存服务" };
+    if (!ctx.profile) return { message: "先建卖家资料，才能保存" };
   }
   if (step === "model" && !draft.pricingModel) return { message: "先选一种计费方式" };
   if (step === "fields") {

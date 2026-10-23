@@ -1,6 +1,6 @@
 "use client";
 
-// 服务详情（移植自 talent `app/services/[id]/page.tsx`，外壳不搬）。
+// 商品详情（移植自 talent `app/services/[id]/page.tsx`，外壳不搬）。
 // 不登录也能看；下单、先聊聊、收藏、举报要登录（requireBayLogin）。卖家本人看到「编辑」，看不到下单与先聊聊。
 // 用户内容（标题、描述、条款、评价）一律纯文本；媒体只认 http(s)，不内嵌任何别站页面。买家页不画授权罐头句和 FAQ。
 
@@ -42,7 +42,7 @@ export function ServicePane({ target, layout }: BayPaneProps) {
   if (!serviceId) return null;
   if (service.loading) return <PaneLoading />;
   if (!service.data) {
-    const text = service.status === 404 || !service.error ? tt("这个服务不存在或已经下架") : tt(service.error);
+    const text = service.status === 404 || !service.error ? tt("这件商品不存在或已经下架") : tt(service.error);
     return <PaneMessage text={text} onRetry={service.reload} />;
   }
   return <ServiceDetailView service={service.data} viewerId={viewer.data} layout={layout} />;
@@ -242,7 +242,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       <div className="mt-3 grid gap-2">
         {owner ? (
           <>
-            <p className="text-[12px] text-neutral-500">{tt("这是你发布的服务")}</p>
+            <p className="text-[12px] text-neutral-500">{tt("这是你发布的商品")}</p>
             <button
               type="button"
               data-bay-action="edit"
@@ -317,7 +317,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
       <section className="mt-4">
         <h2 className="break-words text-[18px] font-semibold text-neutral-950">{service.title}</h2>
         {service.delivery_mode === "off_platform" ? (
-          <p className="mt-1 inline-block rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">{tt("这项服务在平台外完成")}</p>
+          <p className="mt-1 inline-block rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">{tt("交付在平台外完成")}</p>
         ) : null}
         {service.summary ? <p className="mt-1.5 break-words text-[13px] text-neutral-600">{service.summary}</p> : null}
         <p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[12px] text-neutral-500">

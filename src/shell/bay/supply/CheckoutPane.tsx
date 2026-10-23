@@ -51,10 +51,10 @@ export function CheckoutPane({ target, layout }: BayPaneProps) {
   if (!serviceId) return null;
   if (service.loading) return <PaneLoading />;
   if (!service.data) {
-    const text = service.status === 404 || !service.error ? tt("这个服务不存在或已经下架") : tt(service.error);
+    const text = service.status === 404 || !service.error ? tt("这件商品不存在或已经下架") : tt(service.error);
     return <PaneMessage text={text} onRetry={service.reload} />;
   }
-  if (isOwnService(service.data, viewer.data)) return <PaneMessage text={tt("这是你发布的服务")} />;
+  if (isOwnService(service.data, viewer.data)) return <PaneMessage text={tt("这是你发布的商品")} />;
   return <CheckoutView service={service.data} initialTier={tier} payment={payment.data} layout={layout} />;
 }
 
@@ -209,7 +209,7 @@ export function CheckoutView({ service, initialTier = "", payment, layout, initi
   ];
   const formView = (
     <div className="flex min-w-0 flex-col gap-6">
-      {/* 价格档位已下线：一个服务只有一个价格，不用选。只有没清理掉的旧多档服务才会走到这里。 */}
+      {/* 价格档位已下线：一件商品只有一个价格，不用选。只有没清理掉的旧多档商品才会走到这里。 */}
       {tiers.length > 1 ? (
       <fieldset>
         <legend className={BAY_FORM_LABEL_CLASS}>{tt("选择档位")}</legend>

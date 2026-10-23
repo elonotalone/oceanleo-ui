@@ -152,7 +152,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
         onClick={() => openBay({ kind: "app", id: thread.app_id })}
         className="text-[13px] text-neutral-700 hover:underline"
       >
-        {tt("所属作品")}
+        {tt("所属网站或软件")}
         {thread.app_title ? ` · ${thread.app_title}` : ""}
       </button>
 
@@ -170,7 +170,7 @@ export function AppThreadPane(props: BayPaneProps): ReactElement | null {
                 {ai ? <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-800">{tt("AI 助手")}</span> : null}
                 {formatThreadTime(post.created_at) ? <span>{formatThreadTime(post.created_at)}</span> : null}
               </div>
-              {ai ? <p className="mt-1 text-[11px] text-neutral-400">{tt("由 AI 根据作品资料生成，可能不准确")}</p> : null}
+              {ai ? <p className="mt-1 text-[11px] text-neutral-400">{tt("由 AI 根据网站或软件的资料生成，可能不准确")}</p> : null}
               <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] text-neutral-700">{post.body}</p>
             </article>
           );

@@ -1,6 +1,6 @@
 "use client";
 
-// 作品页标题旁的关注。和 AppReleases 共用 follow-store，避免各请求一遍。
+// 详情页标题旁的关注。和 AppReleases 共用 follow-store，避免各请求一遍。
 import { useEffect, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -112,7 +112,7 @@ export function FollowButton({ appId, isOwner }: { appId: string; isOwner: boole
       </span>
       {confirmUnfollow ? (
         <div data-bay-confirm="unfollow" className="mt-2 space-y-2">
-          <p className="text-[12px] text-neutral-800">{tt("确定取消关注这个作品？")}</p>
+          <p className="text-[12px] text-neutral-800">{tt("确定取消关注这个网站或软件？")}</p>
           {error ? <p className="mt-1 text-[12px] text-rose-600">{tt(error)}</p> : null}
           <div className="mt-2 flex flex-wrap justify-end gap-2">
             <button

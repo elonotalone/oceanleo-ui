@@ -54,6 +54,7 @@ export {
   BAY_OFFER_OPTIONS,
   LISTING_SECTION_LABELS,
   listingKindForOffer,
+  offerFromFeedKind,
   offerFromListing,
   offerKindLabel,
   type BayListingIntent,

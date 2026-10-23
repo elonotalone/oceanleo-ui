@@ -71,7 +71,7 @@ export function composerLock(summary: DealContractSummary | null): ComposerLock 
 
 export type DealRole = "buyer" | "seller" | "either" | "unknown";
 
-/** 我在这笔交易里是买家还是卖家：服务发布者、需求的非发布方、合同卖家是卖家；私聊两边都可以发报价。 */
+/** 我在这笔交易里是买家还是卖家：商品发布者、需求的非发布方、合同卖家是卖家；私聊两边都可以发报价。 */
 export function dealRole(
   thread: Pick<DealThread, "kind">,
   subject: DealSubjectInfo | null,

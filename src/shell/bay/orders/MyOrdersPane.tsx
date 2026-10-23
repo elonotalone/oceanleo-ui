@@ -1,7 +1,7 @@
 "use client";
 
 // 「我的」→「订单」：按每单身份分开看我买的 / 我卖的，四组是进行中 / 待我处理 / 已完成 / 已取消。
-// 窗格不自带返回键、标题栏、滚动（外框约定第 12 条）。空态分别带去逛服务或去发布服务。
+// 窗格不自带返回键、标题栏、滚动（外框约定第 12 条）。空态分别带去逛逛或去发布。
 
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -43,7 +43,7 @@ function groupLabel(tt: (zh: string) => string, group: BayOrderGroup): string {
   }
 }
 
-/** 来源服务的种类；查不到（服务已下架、无权限）按「人工服务」算。 */
+/** 来源商品的种类；查不到（商品已下架、无权限）按「人工服务」算。 */
 function useServiceKinds(ids: string[]): Record<string, PublishedCategory> {
   const [kinds, setKinds] = useState<Record<string, PublishedCategory>>({});
   const key = [...new Set(ids)].sort().join(",");
@@ -137,7 +137,7 @@ export function MyOrdersPane({
   const mine = useMemo(() => (items ?? []).filter((row) => row.my_role === role), [items, role]);
   const counts = useMemo(() => countOrderGroups(mine, gate), [mine, gate]);
   const visibleAll = useMemo(() => visibleMyOrders(items ?? [], { role, group, query, gate }), [items, role, group, query, gate]);
-  // 订单本身不带「种类」；按类别筛时，去查每一单的来源服务，看它是成品文件、人工服务还是其他。
+  // 订单本身不带「种类」；按类别筛时，去查每一单的来源商品，看它是现成文件、人工服务还是其他。
   const serviceKinds = useServiceKinds(category === "all" ? [] : visibleAll.map((order) => order.source_service_id || "").filter(Boolean));
   const visible = useMemo(
     () => (category === "all" ? visibleAll : visibleAll.filter((order) => orderCategory(order.source_service_id, serviceKinds) === category)),
@@ -219,7 +219,7 @@ export function MyOrdersPane({
         <div data-bay-empty="all" className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-[13px] text-neutral-600">
           <p>{emptyCopy}</p>
           <button type="button" data-bay-action="publish-service" onClick={() => openBay({ kind: "publish" })} className={"mt-3 " + ORDER_BUTTON}>
-            {tt("去发布服务")}
+            {tt("去发布")}
           </button>
         </div>
       ) : emptyGroup || emptyCategory ? (

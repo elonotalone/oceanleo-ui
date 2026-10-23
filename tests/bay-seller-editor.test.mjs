@@ -276,7 +276,7 @@ test("未登录：只给登录入口，不取数", async () => {
   reset();
   globalThis.__baySignedIn = false;
   const view = await mount({ kind: "service-editor" });
-  assert.match(view.host.textContent, /登录后发布你的服务/);
+  assert.match(view.host.textContent, /登录后才能发布/);
   assert.deepEqual(globalThis.__bayCalls, []);
   await view.unmount();
 });
@@ -307,7 +307,7 @@ test("字段校验：每一步缺什么就拦在本地", () => {
   assert.equal(blocked("kind", { catalogKind: "" }), "先选一种：交付一件成品，还是答疑");
   assert.equal(blocked("basics", { title: "  " }), "请先填写标题");
   assert.equal(blocked("basics", { category: "" }), "请选择类目");
-  assert.equal(blocked("basics", {}, { ...CTX, profile: null }), "先建卖家资料，才能保存服务");
+  assert.equal(blocked("basics", {}, { ...CTX, profile: null }), "先建卖家资料，才能保存");
   assert.equal(blocked("basics", {}), null);
   assert.equal(blocked("model", { pricingModel: "" }), "先选一种计费方式");
   const missing = model.blockedReason("fields", filledDraft({ fieldValues: { file_formats: [" "] } }), CTX);
@@ -464,7 +464,7 @@ test("删除路径：点删除后出现确认弹窗、点取消没有发出 DELE
     calls("DELETE").map((call) => call.path),
     ["/v1/talent/me/services/s1"],
   );
-  assert.equal(globalThis.__bayToasts.at(-1).title, "服务已删除");
+  assert.equal(globalThis.__bayToasts.at(-1).title, "已删除");
   assert.deepEqual(globalThis.__bayOpened.at(-1), { kind: "mine", tab: "published" });
   await view.unmount();
 });

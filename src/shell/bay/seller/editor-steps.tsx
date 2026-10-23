@@ -74,7 +74,7 @@ export function OverreachHintList({ text }: { text: string }) {
         <li key={`${hint.kind}-${hint.term}`} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900">
           {hint.kind === "title"
             ? tt("「{term}」是执业称谓，没有对应执业资质不能这样写，改成事实性的身份描述。", { term: tt(hint.term) })
-            : tt("「{term}」需要单独许可才能经营，平台不承接，这项服务会被退回。", { term: tt(hint.term) })}
+            : tt("「{term}」需要单独许可才能经营，平台不承接，发布后会被退回。", { term: tt(hint.term) })}
         </li>
       ))}
     </ul>
@@ -275,7 +275,7 @@ export function BasicsStep({
   const consult = kind === "consult";
   return (
     <SellerCard title={tt("它是什么")} hint={tt("让买家十秒内看懂你交付什么，再谈价格。")}>
-      <SellerField label={consult ? tt("答疑标题") : tt("服务标题")} hint={`${title.length}/${TITLE_MAX}`}>
+      <SellerField label={consult ? tt("答疑标题") : tt("标题")} hint={`${title.length}/${TITLE_MAX}`}>
         <input className={INPUT_CLASS} data-bay-field="title" value={title} maxLength={TITLE_MAX} onChange={(event) => onTitle(event.target.value)} />
         <OverreachHintList text={title} />
       </SellerField>

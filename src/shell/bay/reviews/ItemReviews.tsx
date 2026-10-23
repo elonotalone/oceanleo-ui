@@ -1,6 +1,6 @@
 "use client";
 
-// 买家评论区（服务、课程、套餐共用）：评分汇总、筛选、列表、写评价、追评、卖家回复、有用。
+// 买家评论区（商品、课程、套餐共用）：评分汇总、筛选、列表、写评价、追评、卖家回复、有用。
 // 本文件归 V4 单元；组件名与 props 是合同，不许改。
 import { useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";

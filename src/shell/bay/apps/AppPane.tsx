@@ -1,6 +1,6 @@
 "use client";
 
-// 作品详情：简介、作者、收费条、页内嵌入窗口、在新窗口打开、更新日志、买家评价、留言与反馈、举报。
+// 详情页：简介、作者、收费条、页内嵌入窗口、在新窗口打开、更新日志、买家评价、留言与反馈、举报。
 // 收费条、关注、更新日志、留言、登录提示各是别的目录里的组件，按文件路径引用；本文件只负责把它们摆在一起。
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { BayImageStage } from "../form/BayImageGallery";
@@ -29,7 +29,7 @@ export function AppPane(props: BayPaneProps): ReactElement | null {
   if (!appId) return null;
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
-    const text = resource.status === 404 || !resource.error ? tt("这个作品不存在或已下架") : tt(resource.error);
+    const text = resource.status === 404 || !resource.error ? tt("这个网站或软件不存在或已下架") : tt(resource.error);
     return <PaneMessage text={text} onRetry={resource.reload} />;
   }
   return <AppDetailView payload={resource.data} siteKey={props.siteKey} />;
@@ -46,7 +46,7 @@ function ownerBanner(app: BayApp | BayAppMine, owner: boolean): "hidden" | "offl
   return app.status === "offline" ? "offline" : "draft";
 }
 
-/** 收费作品在没买、没订阅、也不在试用期时不放进窗口；权益还没读出来时同样先不放。免费作品和作者本人不受影响。 */
+/** 收费的网站或软件在没买、没订阅、也不在试用期时不放进窗口；权益还没读出来时同样先不放。免费的和作者本人不受影响。 */
 export function appLocked(app: Pick<BayApp, "price_model">, owner: boolean, access: Pick<BayAppAccess, "entitled"> | null): boolean {
   if (owner || app.price_model === "free") return false;
   return !access || !access.entitled;
@@ -79,7 +79,7 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
     if (owner || openedRef.current) return;
     openedRef.current = true;
     void recordBayAppEvent(app.id, "open", currentBayAppSource(app.id, siteKey));
-    // 买了或订阅了的人第一次真的用上作品：记下来，之后退款要说明理由（没用过的可以直接退）。
+    // 买了或订阅了的人第一次真的用上它：记下来，之后退款要说明理由（没用过的可以直接退）。
     if (access?.entitled && (access.reason === "purchase" || access.reason === "subscription")) void markBayAppOpened(app.id);
   }
 
@@ -92,13 +92,13 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
   return (
     <div data-bay-pane="app" className="p-4">
       {banner === "hidden" ? (
-        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{tt("只有你能看到：这个作品已被平台隐藏")}</p>
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{tt("只有你能看到：这个网站或软件已被平台隐藏")}</p>
       ) : null}
       {banner === "offline" ? (
-        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{tt("只有你能看到：这个作品已下架")}</p>
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{tt("只有你能看到：这个网站或软件已下架")}</p>
       ) : null}
       {banner === "draft" ? (
-        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{tt("只有你能看到：这个作品还没上架")}</p>
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">{tt("只有你能看到：这个网站或软件还没上架")}</p>
       ) : null}
 
       {coverUrls.length ? (
@@ -170,7 +170,7 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
             {tt(decision.mode === "frame" ? "在新窗口打开" : "打开网站")}
           </button>
         ) : (
-          <p className="max-w-[14rem] shrink-0 text-right text-[12px] text-rose-600">{tt("这个作品的地址有问题，暂时打不开")}</p>
+          <p className="max-w-[14rem] shrink-0 text-right text-[12px] text-rose-600">{tt("这个网站或软件的地址有问题，暂时打不开")}</p>
         )}
       </div>
 
@@ -187,7 +187,7 @@ function AppDetailView({ payload, siteKey }: { payload: { app: BayApp | BayAppMi
             className="grid min-h-[20rem] place-items-center px-0 py-10 text-center"
           >
             <p className="max-w-[24rem] text-[14px] font-medium text-neutral-800">
-              {app.trial_days > 0 ? tt("这个作品需要购买或开始试用后才能使用") : tt("这个作品需要购买后才能使用")}
+              {app.trial_days > 0 ? tt("这个网站或软件需要购买或开始试用后才能使用") : tt("这个网站或软件需要购买后才能使用")}
             </p>
           </div>
         ) : decision.mode === "frame" ? (
@@ -253,7 +253,7 @@ function LinkOutCard({
   return (
     <div data-bay-app-link-out className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-8 text-center">
       {host ? <p className="text-[12px] text-neutral-500">{host}</p> : null}
-      <p className="mt-1 text-[14px] font-medium text-neutral-800">{tt("这个作品需要在它自己的网站上使用")}</p>
+      <p className="mt-1 text-[14px] font-medium text-neutral-800">{tt("它需要在自己的网站上使用")}</p>
       {href ? (
         <button
           type="button"

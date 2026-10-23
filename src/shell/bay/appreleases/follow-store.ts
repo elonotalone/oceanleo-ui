@@ -1,6 +1,6 @@
 "use client";
 
-// 作品页的关注按钮和更新日志共用一份「我是否已关注 / 关注数」，避免两个组件各请求一遍、数字对不上。
+// 详情页的关注按钮和更新日志共用一份「我是否已关注 / 关注数」，避免两个组件各请求一遍、数字对不上。
 import { useCallback, useSyncExternalStore } from "react";
 import type { BayAppReleasePage } from "../../../lib/bay/app-releases";
 

@@ -58,6 +58,7 @@ import {
   listingSectionGroups,
   listingTermsItems,
   offerFromListing,
+  offerKindLabel,
   type BayOfferKind,
   type BayPostSnapshot,
   type BayRevealItem,
@@ -80,7 +81,6 @@ import {
   prefillFieldsFromTiers,
   pricingInput,
   publishKindOf,
-  PUBLISH_KIND_LABELS,
   resolvedPriceFen,
   resolvedPricingModel,
   sectionMissing,
@@ -209,7 +209,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         if (!alive) return;
         const service = (services.items || []).find((row) => row.id === routeId);
         if (!service) {
-          setLoad({ loading: false, error: tt("这项服务不存在，或已经被删除。") });
+          setLoad({ loading: false, error: tt("这件商品不存在，或已经被删除。") });
           return;
         }
         setPricing(pricingBody);
@@ -220,7 +220,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         setAttempted(false);
         setLoad({ loading: false, error: "" });
       } catch (error) {
-        if (alive) setLoad({ loading: false, error: errorText(error) || tt("服务加载失败，请稍后再试。") });
+        if (alive) setLoad({ loading: false, error: errorText(error) || tt("加载失败，请稍后再试。") });
       }
     })();
     return () => {
@@ -504,7 +504,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         return;
       }
       if (!(await ensureBayTerms("seller"))) {
-        toast.info(tt("没有同意卖家条款，服务还没有上架。"));
+        toast.info(tt("没有同意卖家条款，还没有上架。"));
         return;
       }
       termsOk.current = true;
@@ -543,7 +543,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
         const hidden = result.moderation_hidden === true || result.service?.moderation_hidden === true;
         setDraft((current) => ({ ...current, status: "published", moderationHidden: hidden }));
         setHiddenMessage(hidden ? result.moderation_message || "" : "");
-        toast.success(hidden ? tt("已上架，但被平台暂时隐藏") : tt("服务已上架，买家现在能在 LeoBay 里看到它"));
+        toast.success(hidden ? tt("已上架，但被平台暂时隐藏") : tt("已上架，买家现在能在 LeoBay 里看到它"));
       } else {
         toast.success(created ? tt("草稿已建好") : draft.status === "published" ? tt("修改已保存") : tt("草稿已保存"));
       }
@@ -561,7 +561,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     try {
       await pauseMyService(draft.serviceId);
       setDraft((current) => ({ ...current, status: "paused" }));
-      toast.success(tt("已暂停，买家暂时看不到这项服务"));
+      toast.success(tt("已暂停，买家暂时看不到它"));
     } catch (error) {
       reportFailure(error, tt("暂停失败，请稍后再试。"));
     } finally {
@@ -575,7 +575,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     setSaving(true);
     try {
       await deleteMyService(draft.serviceId);
-      toast.success(tt("服务已删除"));
+      toast.success(tt("已删除"));
       openBay({ kind: "mine", tab: "published" });
     } catch (error) {
       reportFailure(error, tt("删除失败，请稍后再试。"));
@@ -614,7 +614,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   if (!signedIn) {
     return (
       <section data-bay-pane="service-editor" className="space-y-3 p-4 text-[13px] text-stone-600">
-        <p>{tt("登录后发布你的服务。")}</p>
+        <p>{tt("登录后才能发布。")}</p>
         <button type="button" onClick={() => requireBayLogin()} className={PRIMARY_BUTTON}>
           {tt("登录")}
         </button>
@@ -649,7 +649,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     { summary: draft.title.trim() || undefined, required: true },
   );
   const offerKind: BayOfferKind = draft.offerKind || (publishKind === "service" ? "service" : "digital");
-  // 人工服务与「其他」都走服务的定价与条款；成品文件、作品、课程各有自己的一套。
+  // 人工服务与「其他」都走计费方式与交付条款；现成文件、网站与软件服务、课程各有自己的一套。
   const pricedOffer = offerKind === "service" || offerKind === "other";
   const coverRow = revealRow("cover", tt("作品图"), coverDone, <MediaStep {...mediaProps} plain imagesOnly />, {
     summary: coverDone ? tt("已填好") : undefined,
@@ -773,7 +773,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
           draft.serviceId ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="flex flex-wrap items-center gap-2 text-[13px] font-medium text-neutral-600" data-bay-editor-status={draft.status}>
-                <span className="rounded-md bg-stone-900 px-2 py-0.5 text-[12px] font-medium text-white">{tt(PUBLISH_KIND_LABELS[publishKind])}</span>
+                <span className="rounded-md bg-stone-900 px-2 py-0.5 text-[12px] font-medium text-white">{tt(offerKindLabel(offerKind))}</span>
                 <span className="rounded-md bg-stone-100 px-2 py-0.5 text-[12px] font-medium text-stone-600">{statusLabel}</span>
                 {dirty ? <span className="text-[12px] text-amber-600">{tt("有没保存的修改")}</span> : null}
               </p>
@@ -845,7 +845,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
 
       {pendingDelete ? (
         <ConfirmDialog
-          title={tt("确定删除「{title}」？价格、作品图会一起删除。", { title: draft.title || tt("未命名服务") })}
+          title={tt("确定删除「{title}」？价格、作品图会一起删除。", { title: draft.title || tt("未命名") })}
           danger
           onConfirm={() => void confirmRemove()}
           onCancel={() => setPendingDelete(false)}

@@ -1,6 +1,6 @@
 "use client";
 
-// 作品页内窗口。不注入脚本、不 postMessage、不听 message。
+// 详情页内窗口。不注入脚本、不 postMessage、不听 message。
 // sandbox 在 iframe 上写成字面量（跨仓扫描器要能静态读出它的值），并由源码级断言锁成与
 // app-embed.ts 的 BAY_APP_FRAME_SANDBOX 逐字相同：改一处不改另一处会变红。
 import { useEffect, useRef, useState, type ReactElement } from "react";

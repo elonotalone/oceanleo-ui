@@ -1,6 +1,6 @@
 "use client";
 
-// 「管理作品」：作者在这里打理一个作品的留言、登录、收费、更新日志、报错、来源、公开网址。
+// 「管理网站或软件」：作者在这里打理它的留言、登录、收费、更新日志、报错、来源、公开网址。
 // 本文件只是外壳（分页条 + 归属核对）；七个分页各是一个单元的组件，按需加载，按文件路径引用。
 import { lazy, Suspense, type ReactElement } from "react";
 
@@ -61,10 +61,10 @@ export function AppManagePane(props: BayPaneProps): ReactElement | null {
   if (!appId) return null;
   if (resource.loading) return <PaneLoading />;
   if (!resource.data) {
-    const text = resource.status === 404 || !resource.error ? tt("这个作品不存在或已下架") : tt(resource.error);
+    const text = resource.status === 404 || !resource.error ? tt("这个网站或软件不存在或已下架") : tt(resource.error);
     return <PaneMessage text={text} onRetry={resource.reload} />;
   }
-  if (!resource.data.viewer.is_owner) return <PaneMessage text={tt("只有作者本人能管理这个作品")} />;
+  if (!resource.data.viewer.is_owner) return <PaneMessage text={tt("只有作者本人能管理这个网站或软件")} />;
   const app = resource.data.app;
   return (
     <div data-bay-pane="app-manage" className="p-4">
@@ -76,10 +76,10 @@ export function AppManagePane(props: BayPaneProps): ReactElement | null {
           onClick={() => openBay({ kind: "app", id: app.id })}
           className="shrink-0 rounded-full border border-neutral-900 px-2 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
         >
-          {tt("查看作品页")}
+          {tt("查看详情页")}
         </button>
       </div>
-      <div role="tablist" aria-label={tt("管理作品")} className="mt-4 flex flex-wrap gap-1 border-b border-neutral-200">
+      <div role="tablist" aria-label={tt("管理网站或软件")} className="mt-4 flex flex-wrap gap-1 border-b border-neutral-200">
         {BAY_APP_MANAGE_TABS.map((value) => (
           <button
             key={value}

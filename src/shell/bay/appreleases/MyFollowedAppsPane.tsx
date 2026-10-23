@@ -1,6 +1,6 @@
 "use client";
 
-// 我的 → 我买到的 → 关注的作品。点开作品前记下是从关注列表进来的。
+// 我的 → 我买到的 → 关注的网站或软件。点开前记下是从关注列表进来的。
 import { useCallback, useState, type ReactElement } from "react";
 
 import { useUI } from "../../../i18n/ui/useUI";
@@ -51,10 +51,10 @@ export function MyFollowedAppsPane(): ReactElement | null {
     }
   }
 
-  if (!signedIn) return <BaySignInPrompt text={tt("登录后查看你关注的作品")} />;
+  if (!signedIn) return <BaySignInPrompt text={tt("登录后查看你关注的网站或软件")} />;
   if (resource.loading && !resource.data) return <PaneLoading />;
   if (!resource.data) {
-    const text = resource.error || tt("没读到关注的作品，请稍后再试。");
+    const text = resource.error || tt("没读到你关注的网站或软件，请稍后再试。");
     return <PaneMessage text={tt(text)} onRetry={resource.reload} />;
   }
 
@@ -63,7 +63,7 @@ export function MyFollowedAppsPane(): ReactElement | null {
       {error ? <p className="text-[12px] text-rose-600">{tt(error)}</p> : null}
       {rows.length === 0 ? (
         <div data-bay-empty="followed-apps" className="rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center">
-          <p className="text-[13px] text-neutral-600">{tt("你还没有关注任何作品。在作品页点「关注」，它更新时你会收到通知")}</p>
+          <p className="text-[13px] text-neutral-600">{tt("你还没有关注任何网站或软件。在详情页点「关注」，它更新时你会收到通知")}</p>
         </div>
       ) : (
         <ul className="divide-y divide-neutral-100">

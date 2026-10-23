@@ -126,13 +126,14 @@ function digitalService(extra = {}) {
 
 const html = (node) => renderToStaticMarkup(node);
 
-test("数字商品卡：角标是数字商品，价格为 0 写免费，官方标在名字后面", () => {
+test("现成文件卡：角标是现成文件，价格为 0 写免费，官方标在名字后面", () => {
   const out = html(React.createElement(ServiceCard, { item: item(), onOpen() {} }));
-  assert.match(out, /数字商品/);
+  assert.match(out, /现成文件/);
   assert.match(out, /免费/);
   assert.match(out, /data-bay-kind="digital"/);
   assert.match(out, /data-bay-official[^>]*>官方</);
-  assert.doesNotMatch(out, />服务</);
+  assert.doesNotMatch(out, />人工服务</);
+  assert.doesNotMatch(out, /数字商品/);
 });
 
 test("数字商品详情：不出档位表与附加项，出立即交付，不出授权罐头句，免费时按钮是免费获取", () => {

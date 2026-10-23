@@ -112,8 +112,8 @@ test("sourceLabel 覆盖每一种来源", () => {
   assert.equal(sourceLabel("site:game", "LeoPlay"), "LeoPlay 的 Bay");
   assert.equal(sourceLabel("site:game", ""), "game 的 Bay");
   assert.equal(sourceLabel("search", ""), "Bay 搜索");
-  assert.equal(sourceLabel("fresh", ""), "新作品推荐位");
-  assert.equal(sourceLabel("shelf", ""), "作品货架");
+  assert.equal(sourceLabel("fresh", ""), "新上架推荐位");
+  assert.equal(sourceLabel("shelf", ""), "网站与软件服务列表");
   assert.equal(sourceLabel("share", ""), "分享链接");
   assert.equal(sourceLabel("follow", ""), "关注列表与更新通知");
   assert.equal(sourceLabel("direct", ""), "直接打开");

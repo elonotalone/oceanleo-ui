@@ -1,6 +1,6 @@
 "use client";
 
-// 上架 / 编辑一个作品。本文件归 U3 单元；组件名与 props 是合同，不许改。
+// 上架 / 编辑一个网站或软件。本文件归 U3 单元；组件名与 props 是合同，不许改。
 import { deadlineFromRow, deadlineToPayload, formatDeadline } from "../form/bay-deadline";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -112,13 +112,13 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
         const row = (body.items || []).find((item) => item.id === routeId);
         if (!row) {
           setApp(null);
-          setLoad({ loading: false, error: "这个作品不存在" });
+          setLoad({ loading: false, error: "这个网站或软件不存在" });
           return;
         }
         applyApp(row);
         setLoad({ loading: false, error: "" });
       } catch (error) {
-        if (alive) setLoad({ loading: false, error: errorText(error, "作品没读出来，请稍后再试。") });
+        if (alive) setLoad({ loading: false, error: errorText(error, "没读到这个网站或软件，请稍后再试。") });
       }
     })();
     return () => {
@@ -127,7 +127,7 @@ export function AppEditorPane(props: BayPaneProps): ReactElement | null {
   }, [signedIn, routeId, props.target.kind, applyApp]);
 
   if (props.target.kind !== "app-editor") return null;
-  if (!signedIn) return <BaySignInPrompt text={tt("登录后才能上架作品")} />;
+  if (!signedIn) return <BaySignInPrompt text={tt("登录后才能上架网站或软件")} />;
 
   const narrow = props.layout === "docked" || props.layout === "mobile";
 

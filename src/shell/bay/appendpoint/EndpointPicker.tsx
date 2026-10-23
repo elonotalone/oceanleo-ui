@@ -189,7 +189,7 @@ export function EndpointPicker({
   return (
     <div data-bay-endpoint-picker className="space-y-4">
       <div data-bay-endpoint-unused className="space-y-2">
-        <p className="text-[13px] font-medium text-stone-800">{tt("还没被作品用着的公开网址")}</p>
+        <p className="text-[13px] font-medium text-stone-800">{tt("还没被使用的公开网址")}</p>
         {pickable.length === 0 ? (
           <p className="text-[12.5px] text-stone-500">{tt("还没有闲着的公开网址。下面可以新开一个。")}</p>
         ) : (

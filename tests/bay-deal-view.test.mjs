@@ -239,7 +239,7 @@ test("首屏：头部、交易卡、消息；文件只认 https、新窗口打�
   const view = await mount({ threadId: "t1", layout: "docked" });
   assert.equal(view.q("[data-deal-title]").textContent, "Mia");
   assert.equal(view.q("[data-deal-subject]").getAttribute("data-deal-subject"), "service");
-  assert.match(view.q("[data-deal-subject]").textContent, /服务：Logo 设计服务/);
+  assert.match(view.q("[data-deal-subject]").textContent, /商品：Logo 设计服务/);
   assert.equal(view.q("[data-deal-card-status]").getAttribute("data-deal-card-status"), "offer_pending");
   assert.equal(view.q("[data-deal-card-next]").getAttribute("data-deal-card-next"), "reply_offer");
   assert.match(view.q("[data-deal-card-amount]").textContent, /120/);

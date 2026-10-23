@@ -88,7 +88,7 @@ function SetupBlock({
   const script = (
     <div data-bay-error-setup-script className="space-y-2">
       <p className="text-[13px] leading-relaxed text-neutral-700">
-        {tt("把下面这一行放进作品网页的 <head> 里，作品在访客浏览器里出错时会自动报到这里")}
+        {tt("把下面这一行放进网页的 <head> 里，访客的浏览器里一出错就会自动报到这里")}
       </p>
       <pre data-bay-error-setup-snippet className="overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-neutral-50 px-3 py-2 text-[12px] text-neutral-800">
         {snippet}

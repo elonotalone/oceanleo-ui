@@ -97,7 +97,7 @@ function artifactKindLabel(item: LibraryItem | null, title?: string): string {
   const fromUrl = item?.url ? kindFromUrl(item.url) : "file";
   if (fromUrl !== "file") return KIND_LABEL[fromUrl];
   const name = String(title || item?.title || "").trim();
-  return name ? KIND_LABEL[kindFromUrl(name)] : "作品";
+  return name ? KIND_LABEL[kindFromUrl(name)] : KIND_LABEL.file;
 }
 
 export function BayTypedPreview(props: {
@@ -171,7 +171,7 @@ export function BayTypedPreview(props: {
   const current = slides[safeActive];
   const item = fetched.status === "ready" ? fetched.item : givenItem;
   const thumb = artifactThumb(item);
-  const typeLabel = artifactKindLabel(item, props.workTitle);
+  const typeLabel = tt(artifactKindLabel(item, props.workTitle));
   const opening = fetched.status === "loading" || fetched.status === "idle";
 
   return (
@@ -222,18 +222,18 @@ export function BayTypedPreview(props: {
           <img src={current.url} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
         ) : opening ? (
           <p className="grid h-full place-items-center text-[13px] text-neutral-500" role="status">
-            {tt("正在打开这份素材…")}
+            {tt("正在打开这个文件…")}
           </p>
         ) : !item || fetched.status === "error" ? (
           <p className="grid h-full place-items-center px-3 text-center text-[13px] text-neutral-600" role="status" data-bay-typed-preview-error="">
-            {tt("素材没读出来，请稍后再试。")}
+            {tt("文件没读出来，请稍后再试。")}
           </p>
         ) : (
           <div className="h-full overflow-auto" data-bay-typed-slide="artifact">
             <Suspense
               fallback={
                 <p className="grid h-full place-items-center text-[13px] text-neutral-500" role="status">
-                  {tt("正在打开这份素材…")}
+                  {tt("正在打开这个文件…")}
                 </p>
               }
             >
