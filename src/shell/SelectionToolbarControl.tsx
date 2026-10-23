@@ -180,9 +180,11 @@ export function SelectionToolbarControl({
         triggerIcon={canonTriggerIcon(canonId, control.value)}
         optionIcon={canonOptionIcon(canonId)}
         compactValue={
-          canonId === "align" || canonId === "list" || canonId === "arrange"
-            ? "none"
-            : "label"
+          canonId === "arrange"
+            ? "hidden"
+            : canonId === "align" || canonId === "list"
+              ? "none"
+              : "label"
         }
         showIcon={canonId !== "font-family" && canonId !== "font-size"}
       />

@@ -343,7 +343,8 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
     "../src/shell/doc-editors/DeckContextToolbar.tsx",
     "../src/shell/doc-editors/RichDocContextToolbar.tsx",
     "../src/shell/doc-editors/GridUniverStage.tsx",
-    "../src/shell/media-editors/PdfContextToolbar.tsx",
+    // 2026-10-23 D4（W06）：旧基础版 PdfContextToolbar 删除，选中批注 / 文字的栏是 PdfSelectionBar。
+    "../src/shell/media-editors/PdfSelectionBar.tsx",
     "../src/shell/media-editors/AudioContextToolbar.tsx",
     "../src/shell/video-editor/VideoTimelineContextToolbar.tsx",
     "../src/shell/media-editors/Model3DContextToolbar.tsx",

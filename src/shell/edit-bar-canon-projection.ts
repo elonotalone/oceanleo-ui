@@ -174,6 +174,7 @@ function panelChild(
     inspectorLabel: tt(entry.label),
     inspectorIcon: entry.icon,
     placement: placementOf(canonId),
+    group: `canon-${group}`,
     canonPanel: canonId,
     canonGroup: group,
   };

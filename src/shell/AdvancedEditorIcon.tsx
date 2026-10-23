@@ -447,13 +447,8 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
       <path d="M19.8 14.4c.9 1.3 1.6 2.3 1.6 3.1a1.6 1.6 0 01-3.2 0c0-.8.7-1.8 1.6-3.1z" />
     </>
   ),
-  stroke: (
-    <>
-      <path d="M4 5.5h16" strokeWidth={1.2} />
-      <path d="M4 11.5h16" strokeWidth={2.2} />
-      <path d="M4 18h16" strokeWidth={3.4} />
-    </>
-  ),
+  // 描边：粗轮廓的圆角方块（三条粗细线在 16px 下像菜单键，弃用）。
+  stroke: <rect x="4.6" y="4.6" width="14.8" height="14.8" rx="4" strokeWidth={3.2} />,
   shadow: (
     <>
       <rect x="7.5" y="7.5" width="12.5" height="12.5" rx="2.5" fill="currentColor" stroke="none" opacity=".32" />

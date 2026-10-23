@@ -42,8 +42,8 @@ export function SelectionToolbarSelectControl({
   /** 统一栏：图标随当前值（对齐、列表）。缺省用控件自己的图标。 */
   triggerIcon?: WorkbenchIconName;
   optionIcon?: (value: string) => WorkbenchIconName | undefined;
-  /** 栏上要不要写出当前值：字体写字体名；对齐 / 列表 / 层级只看图标。 */
-  compactValue?: "label" | "none";
+  /** 栏上要不要写出当前值：字体写字体名；对齐 / 列表只看图标；层级是动作菜单，哪儿都不写值。 */
+  compactValue?: "label" | "none" | "hidden";
   /** 栏上画不画图标：字体、字号只画值。 */
   showIcon?: boolean;
 }) {
@@ -127,7 +127,7 @@ export function SelectionToolbarSelectControl({
             {control.label}
           </span>
         )}
-        {(menu || compactValue === "label") && (
+        {(menu ? compactValue !== "hidden" : compactValue === "label") && (
           <span className="min-w-0 truncate font-semibold">
             {selectedLabel}
           </span>
