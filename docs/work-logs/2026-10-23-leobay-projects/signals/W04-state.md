@@ -1,6 +1,6 @@
 # W04 state
 
-更新：2026-10-23 21:20（主体实现与新测试已绿；余：收尾核对 + 交卷）
+更新：2026-10-23 21:50（实现、测试、交卷草稿都在；只差最后一次 typecheck 结果填进交卷并提交）
 
 ## 已确认的事实（实测）
 - 上一轮只做到第 0 步（读任务书），没有代码改动入库；LeoBayPage.tsx 的 view 透传已随 a08f3083 入库。基线：相关 16 份测试全绿（bay2-copy、bay3-page、bay3-profile、bay4-browse、bay4-mine-trade、bay-apps-nav、bay-lessons-mine、bay-lessons-nav、bay-mine-category、bay-shell-state、bay-supply-cards、bay-supply-checkout、bay-supply-profile、bay-toolbar、leochat4-surfaces、leochat-get-help）。
@@ -26,11 +26,11 @@
 - 测试：bay4-mine-trade、bay-mine-category、leochat-get-help 改绿；新增 tests/lbp-w04-mine.test.mjs（22 条）。
 
 ## 正在做
-收尾核对：bay-shell-picker 测试标题、其他 owner 分表里有没有也定义「全部类别 / 网站与软件服务」、用到的 Tailwind 类都在 ui.css、再跑 typecheck 与相关测试、写交卷 verdicts/W04-delivery.md。
+等 /tmp/w04-tools/typecheck-3.log 出 exit=；然后把测试原文和 typecheck 结果填进 verdicts/W04-delivery.md 的两个占位（TEST_OUTPUT_PLACEHOLDER、TYPECHECK_PLACEHOLDER，测试原文在 /tmp/w04-tools/tests-final.txt，丢了就重跑），提交交卷。
 
 ## 下一步
-1. 交卷 verdicts/W04-delivery.md（三块与地址映射表、白底改动说明、测试原文、对父 agent 的请求）
-2. 提交后回报
+1. 填交卷占位、提交（`git commit -m "…" -- docs/work-logs/2026-10-23-leobay-projects/verdicts/W04-delivery.md signals/W04-state.md signals/W04-journal.md`）
+2. 回报：交付了什么 + 交卷文件路径 + 最后一个提交号
 
 ## 复现命令
 cd /root/projects/oceanleo-ui && bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<名字>.test.mjs

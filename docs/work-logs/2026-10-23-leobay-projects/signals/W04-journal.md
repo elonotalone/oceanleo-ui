@@ -10,3 +10,7 @@
 - 21:20 实测：pnpm typecheck exit=0（开工时基线的 3 条错在 video-project-doc.ts 已被别的工程修掉）。tests/lbp-w04-mine.test.mjs 22/22 绿；bay4-mine-trade、bay-mine-category、leochat-get-help、bay2-copy 绿。
 - 21:20 实测：bay3-page(2)、bay4-browse(3)、bay-apps-nav(1)、bay-lessons-nav(1) 现在红，原因是 W02 在改出售/求购（BayList / bay-links 工作区改动），不是我的改动（基线时它们全绿；失败项全是 BayViewSwitch / BAY_FEED_KINDS 的断言）。
 - 21:20 实测：i18n-key-collision 有 2 条红（WORK_CHAT_MESSAGES:置顶、BAY_MESSAGES:游戏），与我的键无关。
+- 21:35 实测：lbp-w02-copy.ts（W02，已入库）已定义「网站与软件服务」15 语 -> 我的分表里同键删除，避免重复定义；我的测试保留「16 语都得有」的守卫。
+- 21:40 实测：dev 预览 /bay?bay=mine:published 200，无编译错误字样（HTTP 验证）。
+- 21:45 核对：我边界内 34 条 tt 字面量 16 语 0 缺口；用到的类名对 ui.css 产物 0 缺失；相关 21 份测试全绿（见交卷）；全仓 gate 的红灯（i18n-tt-key-coverage 8/9/10、i18n-key-collision 2 条、share-i18n-coverage 1 条、hit-target-budget 2 条）都不含我的文件。
+- 21:50 交卷草稿写好（verdicts/W04-delivery.md），等最后一次 typecheck 填结果后提交。
