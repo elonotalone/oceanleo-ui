@@ -89,6 +89,50 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     return;
   }
 
+  if (mode === "layout") {
+    // Does the docked bar cover the column header? Is the pro switch the same instance?
+    const geo = () =>
+      page.evaluate(() => {
+        const r = (el) => {
+          if (!el) return null;
+          const b = el.getBoundingClientRect();
+          return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), h: Math.round(b.height) };
+        };
+        const stage = document.querySelector("[data-grid-univer-stage]");
+        const canvases = [...(stage?.querySelectorAll("canvas") || [])].filter((c) => c.getBoundingClientRect().height > 0);
+        canvases.forEach((c, i) => { if (!c.dataset.w10Tag) c.dataset.w10Tag = `c${Date.now()}-${i}`; });
+        return {
+          mode: stage?.getAttribute("data-grid-univer-mode"),
+          stage: r(stage),
+          mainCanvas: r(canvases[0]),
+          canvasTags: canvases.map((c) => c.dataset.w10Tag),
+          bar: r(document.querySelector("[data-workspace-edit-bar]")),
+          ribbon: r(document.querySelector('[data-u-comp="ribbon"], .univer-ribbon, [class*="ribbon"]')),
+        };
+      });
+    const before = await geo();
+    log("normal", JSON.stringify(before));
+    await shot(`${tag}-normal`);
+    const pro = page.locator("[data-plugin-page='pro']").first();
+    await pro.click();
+    await page.waitForTimeout(1500);
+    const during = await geo();
+    log("pro", JSON.stringify(during));
+    log("pro loading overlay", await page.locator("[data-grid-univer-loading]").count());
+    await shot(`${tag}-pro`);
+    await page.locator("[data-plugin-page='artifact']").first().click();
+    await page.waitForTimeout(1500);
+    const after = await geo();
+    log("back", JSON.stringify(after));
+    log(
+      "RESULT seamless",
+      before.canvasTags[0] && during.canvasTags.includes(before.canvasTags[0]) && after.canvasTags.includes(before.canvasTags[0])
+        ? "same-canvas"
+        : "CANVAS-REPLACED",
+    );
+    return;
+  }
+
   if (mode === "bar") {
     // Exercise each text-bar button on cell F2 (empty): type, then style it via the bar.
     await clickCell(page, 1, 5);

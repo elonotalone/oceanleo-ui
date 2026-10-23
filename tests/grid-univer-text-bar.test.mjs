@@ -3,10 +3,12 @@
  * - 统一文字栏用规范 id、按 §4 顺序，值跟着当前格子；
  * - 新控件都落到真 Facade 写口（下划线 / 删除线一次点击一条撤销记录）；
  * - 「本人改动」= 撤销栈栈顶变了（格子里打字也触发保存，公式回写 / 换簿不触发）；
- * - 深色只换画布默认色，用户设的颜色原样。
+ * - 深色只换画布默认色，用户设的颜色原样；有浅色填充的格子里默认黑字留黑；
+ * - 普通模式舞台给停靠编辑栏让出上边距，栏不盖列头。
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 
 import {
   GRID_DEFAULT_TEXT_STYLE,
@@ -20,9 +22,16 @@ import { gridUniverSelectionContext } from "../src/shell/doc-editors/grid-univer
 import { createGridEditWatch } from "../src/shell/doc-editors/grid-univer/edit-watch.ts";
 import {
   GRID_DARK_CANVAS,
+  GRID_DARK_STAGE_CSS,
+  gridCellFillAt,
   gridDarkCanvasColor,
+  gridDarkFillColor,
+  gridDarkKeepBlackOn,
+  installGridDarkBackgroundPass,
   installGridDarkCanvas,
+  installGridDarkFontFill,
 } from "../src/shell/doc-editors/grid-univer/dark-canvas.ts";
+import { GRID_NORMAL_EDIT_BAR_INSET_PX, gridStageTopInset } from "../src/shell/doc-editors/grid-univer/chrome.ts";
 import { gridNumberTypeFromPattern, readGridSelectionStyle } from "../src/shell/doc-editors/grid-univer/selection-style.ts";
 
 const tt = (zh) => zh;
@@ -252,4 +261,84 @@ test("数字类型跟着格式串；读不到工作簿时返回 null 而不是�
   assert.equal(read.style.multiCell, true);
   assert.equal(read.numberType, "percent");
   assert.deepEqual(read.selection, { startRow: 4, endRow: 4, startColumn: 2, endColumn: 3 });
+});
+
+test("深色：浅色填充上的默认黑字留黑，深色填充 / 白底（画成深格）/ 无填充换浅字", () => {
+  // 开发槽实测（R2）：黄底「Travel」、浅绿底「due」在深色下是浅字压浅底，看不清。
+  for (const fill of ["#FFFF00", "rgb(198,239,206)", "#d9d9d9"]) {
+    assert.equal(gridDarkKeepBlackOn(fill), true, `${fill} 上黑字更清楚`);
+    assert.equal(gridDarkCanvasColor("rgb(0,0,0)", fill), "rgb(0,0,0)");
+  }
+  for (const fill of ["#1f4e79", "#C00000", "#ffffff", "rgba(255,255,0,0)", null]) {
+    assert.equal(gridDarkKeepBlackOn(fill), false, `${fill} 上该用浅字`);
+    assert.equal(gridDarkCanvasColor("rgb(0,0,0)", fill), GRID_DARK_CANVAS.text);
+  }
+  // 用户自己设的非黑字色在任何底上都原样。
+  assert.equal(gridDarkCanvasColor("#C00000", "#FFFF00"), "#C00000");
+  // 用户填充画法：白底 = 默认底换深格，其它（含与表头边同值的 Excel 灰 #D9D9D9）原样。
+  assert.equal(gridDarkFillColor("#ffffff"), GRID_DARK_CANVAS.cell);
+  assert.equal(gridDarkFillColor("rgb(217,217,217)"), "rgb(217,217,217)");
+});
+
+test("深色：背景扩展这一趟里每一笔都是用户填充，原样画（白底除外），画完复位", () => {
+  const service = { getRenderColor: (c) => `inverted(${c})` };
+  const offColor = installGridDarkCanvas(service, () => true);
+  const drawn = [];
+  const bg = {
+    draw() {
+      for (const c of ["#d9d9d9", "#FFFF00", "rgb(255,255,255)"]) drawn.push(service.getRenderColor(c));
+    },
+  };
+  const off = installGridDarkBackgroundPass(bg, () => true);
+  bg.draw();
+  assert.deepEqual(drawn, ["#d9d9d9", "#FFFF00", GRID_DARK_CANVAS.cell]);
+  // 趟外：#d9d9d9 仍是表头边，照常换深。
+  assert.equal(service.getRenderColor("#d9d9d9"), GRID_DARK_CANVAS.headerBorder);
+  off();
+  assert.equal(Object.prototype.hasOwnProperty.call(bg, "draw"), true);
+  offColor();
+});
+
+test("深色：字体扩展逐格画字时把填充交给取色层，画完复位；浅色不查；只包一次、可卸载", () => {
+  let dark = true;
+  const service = { getRenderColor: (c) => `inverted(${c})` };
+  const offColor = installGridDarkCanvas(service, () => dark);
+  const matrix = (cells) => ({ getValue: (r, c) => cells[`${r}:${c}`] });
+  const skeleton = { stylesCache: { background: { "#FFFF00": matrix({ "2:0": "#FFFF00" }), "#1f4e79": matrix({ "0:0": "#1f4e79" }) } } };
+  assert.equal(gridCellFillAt(skeleton, 2, 0), "#FFFF00");
+  assert.equal(gridCellFillAt(skeleton, 5, 5), null);
+  const seen = [];
+  const ext = {
+    _renderFontEachCell(ctx, row, col) {
+      seen.push(service.getRenderColor("rgb(0,0,0)"));
+      return `${row}:${col}`;
+    },
+  };
+  const offFont = installGridDarkFontFill(ext, () => dark);
+  assert.equal(installGridDarkFontFill(ext, () => dark), offFont, "同一扩展不许包两层");
+  const ctx = { spreadsheetSkeleton: skeleton };
+  assert.equal(ext._renderFontEachCell(ctx, 2, 0), "2:0");
+  ext._renderFontEachCell(ctx, 0, 0);
+  ext._renderFontEachCell(ctx, 5, 5);
+  assert.deepEqual(seen, ["rgb(0,0,0)", GRID_DARK_CANVAS.text, GRID_DARK_CANVAS.text]);
+  // 画完复位：格子外（选区、表头）的黑色照常换浅。
+  assert.equal(service.getRenderColor("rgb(0,0,0)"), GRID_DARK_CANVAS.text);
+  dark = false;
+  ext._renderFontEachCell(ctx, 2, 0);
+  assert.equal(seen.at(-1), "rgb(0,0,0)");
+  offFont();
+  assert.equal(Object.prototype.hasOwnProperty.call(ext, "_renderFontEachCell"), true, "自有方法卸载后还原");
+  offColor();
+  assert.equal(installGridDarkFontFill(null, () => true)(), undefined);
+});
+
+test("普通模式舞台给停靠编辑栏让出上边距（栏不盖列头），专业模式不留", () => {
+  assert.ok(GRID_NORMAL_EDIT_BAR_INSET_PX >= 41, "实测栏底边在舞台顶 +41px");
+  assert.equal(gridStageTopInset("normal"), GRID_NORMAL_EDIT_BAR_INSET_PX);
+  assert.equal(gridStageTopInset("pro"), 0);
+  const stage = readFileSync(new URL("../src/shell/doc-editors/GridUniverStage.tsx", import.meta.url), "utf8");
+  assert.match(stage, /style=\{\{\s*paddingTop:\s*gridStageTopInset\(mode\)\s*\}\}/);
+  assert.match(stage, /renderManager:\s*IRenderManagerService/);
+  // 让出的那一条在深色下与格子同色。
+  assert.match(GRID_DARK_STAGE_CSS, /:has\(> \[data-grid-univer-stage\]\[data-grid-univer-theme="dark"\]\)/);
 });

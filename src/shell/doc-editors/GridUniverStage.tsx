@@ -26,7 +26,11 @@ import {
   useState,
 } from "react";
 import { createUniver, IUndoRedoService, LocaleType, mergeLocales } from "@univerjs/presets";
-import { ICanvasColorService, UniverSheetsCorePreset } from "@univerjs/preset-sheets-core";
+import {
+  ICanvasColorService,
+  IRenderManagerService,
+  UniverSheetsCorePreset,
+} from "@univerjs/preset-sheets-core";
 import UniverPresetSheetsCoreZhCN from "@univerjs/preset-sheets-core/locales/zh-CN";
 import "@univerjs/preset-sheets-core/lib/index.css";
 import { UniverSheetsFilterPreset } from "@univerjs/preset-sheets-filter";
@@ -163,6 +167,7 @@ import {
   univerFacadePortFromLive,
   type GridUniverLiveApi,
 } from "./grid-univer/stage-plan";
+import { gridStageTopInset } from "./grid-univer/chrome";
 import {
   GRID_PRO_LABEL,
   GRID_UNIVER_RECOVERY_EDITOR_ID,
@@ -654,7 +659,11 @@ export function GridUniverStage({
     containerRef,
     ready: snapshotReady,
     dark,
-    ids: { undo: IUndoRedoService, canvasColor: ICanvasColorService },
+    ids: {
+      undo: IUndoRedoService,
+      canvasColor: ICanvasColorService,
+      renderManager: IRenderManagerService,
+    },
     editBlockedRef,
     onPersonWrite: bumpHistory,
   });
@@ -1321,7 +1330,11 @@ export function GridUniverStage({
           onFiles: importLocalFile,
         },
         stage: (
-          <div className="relative h-full w-full">
+          // 普通模式留出停靠编辑栏的高度，栏不盖列头（`gridStageTopInset`）。
+          <div
+            className="relative h-full w-full"
+            style={{ paddingTop: gridStageTopInset(mode) }}
+          >
             {/*
               容器永远在树上：Univer 只认这个元素，加载态不能替换它，
               否则 snapshot 就位时 `containerRef.current` 还是 null。

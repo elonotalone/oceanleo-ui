@@ -38,7 +38,7 @@ const presetNames = {
 const stubs = { "@univerjs/presets": presetsStubUrl };
 for (const [pkg, name] of Object.entries(presetNames)) {
   stubs[pkg] = dataModule(
-    `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService";`,
+    `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService"; export const IRenderManagerService = "IRenderManagerService";`,
   );
   stubs[`${pkg}/locales/zh-CN`] = dataModule(`export default {};`);
   stubs[`${pkg}/lib/index.css`] = dataModule(``);

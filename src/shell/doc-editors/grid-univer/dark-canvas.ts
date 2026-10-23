@@ -16,6 +16,12 @@
  * - 表头底 `rgb(248,249,250)`、表头边 `rgb(217,217,217)`、网格线 `rgb(214,216,219)` → 深色调。
  * 其余颜色（用户的填充、字色、条件格式、选区高亮）原样返回。
  *
+ * 两处要看上下文（`installGridDarkBackgroundPass` / `installGridDarkFontFill` 包住 Univer 的两个画布扩展）：
+ * - 背景扩展画的全是用户填充：原样画，只有白底换深格。否则用户恰好用了与默认色
+ *   同值的填充（Excel 常用灰 `#D9D9D9` = 表头边色）会被当成默认色变深。
+ * - 字体扩展逐格画字：格子有用户填充时（黄底、浅绿底），默认黑字与浅字哪个对这块底
+ *   对比度高就用哪个——浅字压浅底看不清。
+ *
  * 本文件不 import Univer：颜色服务实例由舞台从注入器里取出来交给 `installGridDarkCanvas`。
  */
 
@@ -74,10 +80,45 @@ function withAlpha(hex: string, a: number): string {
  * 深色下这一笔画什么颜色。返回 `null` = 不是本表认识的默认色，交回调用方
  * （原样画，或交给 Univer 自己解析主题色 token）。
  */
-export function gridDarkCanvasColor(color: string): string | null {
+function luminance(c: Rgba): number {
+  const ch = (v: number) => {
+    const x = v / 255;
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch(c.r) + 0.7152 * ch(c.g) + 0.0722 * ch(c.b);
+}
+
+function contrast(a: number, b: number): number {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/** 深色下用户填充画成什么：白底 = 默认底，换深格；其它填充原样。 */
+export function gridDarkFillColor(fill: string): string {
+  const c = parseCanvasColor(fill);
+  return c && same(c, 255, 255, 255) ? withAlpha(GRID_DARK_CANVAS.cell, c.a) : fill;
+}
+
+/** 深色下这块用户填充上的默认黑字：留黑（`true`）还是换主题浅字。 */
+export function gridDarkKeepBlackOn(fill: string | null | undefined): boolean {
+  if (!fill) return false;
+  const raw = parseCanvasColor(fill);
+  if (!raw || raw.a === 0) return false;
+  // 按画出来的颜色判（白底在深色下是深格）。
+  const shown = parseCanvasColor(gridDarkFillColor(fill)) ?? raw;
+  const bg = luminance(shown);
+  const light = luminance(parseCanvasColor(GRID_DARK_CANVAS.text) as Rgba);
+  return contrast(0, bg) > contrast(light, bg);
+}
+
+export function gridDarkCanvasColor(
+  color: string,
+  cellFill: string | null = null,
+): string | null {
   const c = parseCanvasColor(color);
   if (!c) return null;
-  if (same(c, 0, 0, 0)) return withAlpha(GRID_DARK_CANVAS.text, c.a);
+  if (same(c, 0, 0, 0)) {
+    return gridDarkKeepBlackOn(cellFill) ? color : withAlpha(GRID_DARK_CANVAS.text, c.a);
+  }
   if (same(c, 255, 255, 255)) return withAlpha(GRID_DARK_CANVAS.cell, c.a);
   if (same(c, 248, 249, 250)) return withAlpha(GRID_DARK_CANVAS.headerBackground, c.a);
   if (same(c, 217, 217, 217)) return withAlpha(GRID_DARK_CANVAS.headerBorder, c.a);
@@ -105,6 +146,13 @@ export function installGridDarkCanvas(
   const cache = new Map<string, string>();
   service.getRenderColor = (color: string) => {
     if (!isDark() || typeof color !== "string") return color;
+    // 背景扩展正在画用户填充：原样（白底除外），不进缓存。
+    if (fillPass) return gridDarkFillColor(color);
+    // 正在画某一格的字且那格有填充：黑字按底色判，不进缓存（同一色在别的格子答案不同）。
+    if (fontFill) {
+      const black = parseCanvasColor(color);
+      if (black && same(black, 0, 0, 0)) return gridDarkCanvasColor(color, fontFill) ?? color;
+    }
     const hit = cache.get(color);
     if (hit !== undefined) return hit;
     const mapped = gridDarkCanvasColor(color);
@@ -119,13 +167,127 @@ export function installGridDarkCanvas(
   };
 }
 
+/** 字体扩展正在画的那一格的填充色（同步绘制期间有效，画完复位）。 */
+let fontFill: string | null = null;
+/** 背景扩展正在画（这期间每一笔都是用户填充）。 */
+let fillPass = false;
+
+interface ObjectMatrixLike {
+  getValue(row: number, col: number): unknown;
+}
+
+interface GridSkeletonLike {
+  stylesCache?: { background?: Record<string, ObjectMatrixLike | undefined> };
+}
+
+type RenderFontEachCell = (
+  renderContext: { spreadsheetSkeleton?: GridSkeletonLike } | undefined,
+  row: number,
+  col: number,
+  ...rest: unknown[]
+) => unknown;
+
+/** Univer 字体扩展（`DefaultFontExtension`）上本模块用到的那一个方法。 */
+export interface GridFontExtensionLike {
+  _renderFontEachCell?: RenderFontEachCell;
+}
+
+/** Univer 背景扩展（`DefaultBackgroundExtension`）的整趟绘制。 */
+export interface GridBackgroundExtensionLike {
+  draw?: (...args: unknown[]) => unknown;
+}
+
+/** 骨架的背景缓存是「颜色 → 格子矩阵」：找出这一格落在哪个颜色里。 */
+export function gridCellFillAt(
+  skeleton: GridSkeletonLike | undefined,
+  row: number,
+  col: number,
+): string | null {
+  const background = skeleton?.stylesCache?.background;
+  if (!background) return null;
+  for (const [rgb, matrix] of Object.entries(background)) {
+    const value = matrix?.getValue?.(row, col);
+    if (value !== undefined && value !== null) return rgb;
+  }
+  return null;
+}
+
+const PATCHED = new WeakMap<GridFontExtensionLike, () => void>();
+
+/**
+ * 包住字体扩展的逐格绘制：画某格的字之前把它的填充色交给取色层，画完复位。
+ * 只在深色下查填充（浅色下取色层整体透传，查了也白查）。同一个扩展只包一次；
+ * 返回卸载函数。拿不到扩展或方法签名不对就什么也不做。
+ */
+export function installGridDarkFontFill(
+  extension: GridFontExtensionLike | null | undefined,
+  isDark: () => boolean,
+): () => void {
+  if (!extension || typeof extension._renderFontEachCell !== "function") return () => {};
+  const existing = PATCHED.get(extension);
+  if (existing) return existing;
+  const ownBefore = Object.prototype.hasOwnProperty.call(extension, "_renderFontEachCell");
+  const original = extension._renderFontEachCell;
+  extension._renderFontEachCell = function (this: unknown, renderContext, row, col, ...rest) {
+    if (!isDark()) return original.call(this, renderContext, row, col, ...rest);
+    const previous = fontFill;
+    fontFill = gridCellFillAt(renderContext?.spreadsheetSkeleton, row, col);
+    try {
+      return original.call(this, renderContext, row, col, ...rest);
+    } finally {
+      fontFill = previous;
+    }
+  };
+  const uninstall = () => {
+    if (PATCHED.get(extension) !== uninstall) return;
+    PATCHED.delete(extension);
+    if (ownBefore) extension._renderFontEachCell = original;
+    else delete extension._renderFontEachCell;
+  };
+  PATCHED.set(extension, uninstall);
+  return uninstall;
+}
+
+/** 包住背景扩展的 `draw`：这一趟里取色层把颜色当用户填充（原样，白底换深格）。 */
+export function installGridDarkBackgroundPass(
+  extension: GridBackgroundExtensionLike | null | undefined,
+  isDark: () => boolean,
+): () => void {
+  if (!extension || typeof extension.draw !== "function") return () => {};
+  const key = extension as unknown as GridFontExtensionLike;
+  const existing = PATCHED.get(key);
+  if (existing) return existing;
+  const ownBefore = Object.prototype.hasOwnProperty.call(extension, "draw");
+  const original = extension.draw;
+  extension.draw = function (this: unknown, ...args: unknown[]) {
+    if (!isDark()) return original.apply(this, args);
+    const previous = fillPass;
+    fillPass = true;
+    try {
+      return original.apply(this, args);
+    } finally {
+      fillPass = previous;
+    }
+  };
+  const uninstall = () => {
+    if (PATCHED.get(key) !== uninstall) return;
+    PATCHED.delete(key);
+    if (ownBefore) extension.draw = original;
+    else delete extension.draw;
+  };
+  PATCHED.set(key, uninstall);
+  return uninstall;
+}
+
 /**
  * 画布本身透明清屏，看到的格子底其实是 Univer 容器的底色（暗色下是它自己的
  * `gray-800`，偏蓝）。在舞台根上把这几层压成 `GRID_DARK_CANVAS.cell`，让格子、
  * 表头、页脚是同一组灰。只在 `data-grid-univer-theme="dark"` 下生效。
+ * 舞台外层（普通模式给编辑栏留的上边距那一条）也用同一色，不出一道更黑的缝。
  */
 export const GRID_DARK_STAGE_CSS = `
-[data-grid-univer-theme="dark"] [data-u-comp="workbench-layout"] {
+[data-grid-univer-theme="dark"] [data-u-comp="workbench-layout"],
+:has(> [data-grid-univer-stage][data-grid-univer-theme="dark"]) {
   background-color: ${GRID_DARK_CANVAS.cell} !important;
 }
 `;

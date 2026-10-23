@@ -52,7 +52,7 @@ function univerStubs() {
   const stubs = { "@univerjs/presets": presets };
   for (const [pkg, name] of Object.entries(names)) {
     stubs[pkg] = data(
-      `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService";`,
+      `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService"; export const IRenderManagerService = "IRenderManagerService";`,
     );
     stubs[`${pkg}/locales/zh-CN`] = data(`export default {};`);
     stubs[`${pkg}/lib/index.css`] = data(``);

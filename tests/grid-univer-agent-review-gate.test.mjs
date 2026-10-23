@@ -699,7 +699,8 @@ test("§5 舞台的 agent run 只调 runGridAgentCommand，不许自己碰 Facad
   const block = commandSurfaceBlock(headSource(STAGE));
   assert.match(
     block,
-    /run:\s*\(id,\s*params\)\s*=>\s*\n?\s*runGridAgentCommand\(/,
+    // 唯一允许的前置：源载入失败时直接拒绝（59e9e746「源失败不许空白保存」），不碰 Facade。
+    /run:\s*\(id,\s*params\)\s*=>\s*\n?\s*(?:sourceFailedRef\.current\s*\?\s*\{\s*ok:\s*false,[^{}]*\}\s*:\s*)?runGridAgentCommand\(/,
     "agent 的 run 必须整条委派给 runGridAgentCommand",
   );
   assert.match(

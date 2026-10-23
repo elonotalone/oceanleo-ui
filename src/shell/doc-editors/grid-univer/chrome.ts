@@ -64,6 +64,18 @@ export function gridUniverChrome(mode: EditorMode): GridUniverChrome {
 }
 
 /**
+ * 普通模式下统一编辑栏停靠在舞台顶边（壳的停靠带是零高度浮层，不占位），
+ * 表格的列头和第一行正好在那里。舞台在普通模式留出栏高这么多的上边距，栏不盖列头。
+ * 开发槽实测：栏 top = 舞台顶 + 2、高 39 → 底边在 +41，再留 5px。
+ * 专业模式是 ribbon、没有浮动栏，不留。
+ */
+export const GRID_NORMAL_EDIT_BAR_INSET_PX = 46;
+
+export function gridStageTopInset(mode: EditorMode): number {
+  return mode === "pro" ? 0 : GRID_NORMAL_EDIT_BAR_INSET_PX;
+}
+
+/**
  * 切模式时，哪些东西**不许**跟着变。
  *
  * 规范 §7 判据 1 要求「同一文档实例、状态不丢」。Univer 的 UI 开关是可以在运行期
