@@ -13,6 +13,19 @@ export default async function ({ page, context, helpers, log, shot }) {
   assert.ok(cards.length > 0);
   assert.ok(cards.every(card => card.spinner === 0 && card.text > 0), 'document cards show structured text immediately');
   log('document-cards', JSON.stringify(cards));
+  const cardTheme = await page.locator('[data-document-cover]').first().evaluate(node => {
+    const main = node.closest('[data-collection-card-main]');
+    const card = main?.parentElement;
+    const title = main?.querySelector('p');
+    return { dark: document.documentElement.classList.contains('dark'),
+      background: card ? getComputedStyle(card).backgroundColor : null,
+      color: title ? getComputedStyle(title).color : null };
+  });
+  log('actual-card-theme', JSON.stringify(cardTheme));
+  if (cardTheme.dark) {
+    assert.notEqual(cardTheme.background, 'rgb(255, 255, 255)', 'dark host must not show a white collection card');
+    assert.ok(cardTheme.background && cardTheme.color, 'actual card and title styles are measurable');
+  }
   assert.equal(await openEditorByItem(page, helpers, '[V01] sample.txt', log), true);
   const chrome = await chromeReport(page);
   assert.equal(chrome.headerFound, true);
