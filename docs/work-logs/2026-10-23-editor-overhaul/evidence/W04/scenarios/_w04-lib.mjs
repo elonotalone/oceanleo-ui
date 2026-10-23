@@ -86,7 +86,8 @@ export async function openFromLibrary(page, helpers, needle, log, { route = "/li
     await card.waitFor({ timeout: 120000 });
     await card.click();
   }
-  const header = "[data-advanced-workbench-header], [data-plugin-chrome-header], [data-workspace-save-launcher]";
+  // The library detail also has a chrome header; only the editor has the save launcher.
+  const header = "[data-workspace-save-launcher]";
   const edit = page
     .locator('button[aria-label^="编辑"], button[title^="编辑"], button[aria-label^="Edit"], button[title^="Edit"], button[aria-label*="Open editor"]')
     .first();
