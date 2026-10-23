@@ -281,12 +281,11 @@ test("pro 不可用时 title 含原因，点击后仍停在编辑页", async () 
   });
 });
 
-// X1（规范 v2 §3）：页签行严格一行、固定 36px、不能上下滚、文字不裁。
-// JSDOM 不跑布局（scrollHeight / clientHeight 恒 0，量不出裁切），所以这里锁的是
-// **让浮层量得出那个结果的 CSS 契约**：容器 overflow-y-hidden + flex-nowrap + 固定高，
-// 页签 h-full + whitespace-nowrap 且不写死任何比行高大的 h-*。真实像素由
-// 浏览器探针（`signals/X1-journal.md` 判据 3）用 `scrollHeight <= clientHeight` 复测。
-test("页签行单行契约：固定 36px、不纵向滚、页签不换行、不写死比行高大的高度", async () => {
+// D1（操作员 2026-10-23）：顶栏只剩一行。原来的第二行页签行（36px，`[data-plugin-page-row]`）
+// 整行删除，页签挪进第一行左段、紧跟「素材库 / 我的库」，舞台多出 36px。
+// 锁三件事：没有第二行；页签在第一行的 `pages` 槽里且排在库按钮之后；
+// 页签不写死比行高大的高度、不换行、不压扁（命中区 = 撑满 44px 的按钮，胶囊在里面）。
+test("页签进第一行：没有第二行页签行，页签排在库按钮之后，单行不裁", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   resetPluginModeCache();
   resetPluginPageCache();
@@ -305,8 +304,6 @@ test("页签行单行契约：固定 36px、不纵向滚、页签不换行、不
               aux: [
                 { id: "code", label: "Code", kind: "aux" },
                 { id: "dashboard", label: "Dashboard", kind: "aux" },
-                { id: "database", label: "Database", kind: "aux" },
-                { id: "storage", label: "Storage", kind: "aux" },
               ],
             },
           },
@@ -314,43 +311,53 @@ test("页签行单行契约：固定 36px、不纵向滚、页签不换行、不
         }),
       ),
     );
-    const row = find("[data-plugin-page-row]");
-    assert.ok(row, "页面行没渲染出来");
-    const rowClass = row.className.split(/\s+/);
-    for (const required of ["flex", "flex-nowrap", "overflow-y-hidden", "overflow-x-auto"]) {
-      assert.ok(rowClass.includes(required), `页面行缺 ${required}：${row.className}`);
-    }
-    assert.equal(row.style.height, "36px", "页面行高度没钉死在 36px");
-    assert.equal(row.style.maxHeight, "36px", "页面行 max-height 没钉死在 36px");
+    assert.equal(find("[data-plugin-page-row]"), null, "第二行页签行还在");
+    const header = find("[data-advanced-workbench-header]");
+    assert.ok(header, "顶栏没渲染");
+    assert.equal(header.querySelectorAll("[data-advanced-action-row]").length, 1, "顶栏不止一行");
+    const row = find("[data-plugin-global-row]");
+    const slot = row.querySelector('[data-global-row-slot="pages"]');
+    assert.ok(slot, "第一行没有 pages 槽");
+    const library = row.querySelector('[data-global-row-slot="library"]');
     assert.ok(
-      rowClass.some((token) => /scrollbar-width:none/.test(token)),
-      "横向溢出时应隐藏滚动条",
+      library.compareDocumentPosition(slot) & 4 /* FOLLOWING */,
+      "页签要排在素材库 / 我的库后面",
     );
-
     const tabs = findAll("[data-plugin-page]");
-    assert.equal(tabs.length, 6, "编辑 + 专业编辑 + 4 个 aux 页应该都在");
+    assert.equal(tabs.length, 4, "编辑 + 专业编辑 + 2 个 aux 页应该都在");
     for (const tab of tabs) {
+      assert.ok(slot.contains(tab), `页签 ${tab.dataset.pluginPage} 不在第一行的 pages 槽里`);
       const tokens = tab.className.split(/\s+/);
-      assert.ok(tokens.includes("whitespace-nowrap"), `页签 ${tab.dataset.pluginPage} 可换行`);
       assert.ok(tokens.includes("h-full"), `页签 ${tab.dataset.pluginPage} 没跟随行高`);
       assert.ok(tokens.includes("shrink-0"), `页签 ${tab.dataset.pluginPage} 会被压扁`);
       const pinned = tokens
         .map((token) => /^h-(\d+)$/.exec(token))
         .filter(Boolean)
         .map((match) => Number(match[1]) * 4);
-      assert.deepEqual(
-        pinned.filter((px) => px > 36),
-        [],
-        `页签 ${tab.dataset.pluginPage} 写死了比 36px 高的高度：${tab.className}`,
-      );
-      assert.ok(
-        (tab.textContent || "").trim().length > 0 || tab.getAttribute("aria-label"),
-        "页签没有可见文字也没有 aria-label",
-      );
+      assert.deepEqual(pinned.filter((px) => px > 44), [], `页签写死了比行高大的高度：${tab.className}`);
+      const pill = tab.querySelector("span");
+      assert.ok(pill.className.split(/\s+/).includes("whitespace-nowrap"), "页签文字可换行");
+      assert.ok((tab.textContent || "").trim().length > 0, "页签没有可见文字");
       assert.equal(tab.getAttribute("role"), "tab");
     }
-    // JSDOM 下两者都为 0；真浏览器里这条就是判据本身。留在这里让口径与探针一致。
-    assert.ok(row.scrollHeight <= row.clientHeight, "页签行能上下滚");
+  });
+});
+
+test("单模式编辑器第一行不画页签", async () => {
+  const { InlineAdvancedWorkbenchHeader } = await loadHeader();
+  resetPluginModeCache();
+  resetPluginPageCache();
+  await withDom(async ({ find, findAll, render }) => {
+    await render(
+      React.createElement(
+        InlineAdvancedWorkbenchHeader,
+        headerProps({ adapter: { id: "deck", label: "PPT", stage: null }, pluginThemeId: "deck" }),
+      ),
+    );
+    assert.ok(find("[data-plugin-global-row]"));
+    assert.equal(findAll("[data-plugin-page]").length, 0, "单模式编辑器出了页签");
+    assert.equal(find('[data-global-row-slot="pages"]'), null);
+    assert.equal(find("[data-plugin-page-row]"), null);
   });
 });
 

@@ -19,9 +19,17 @@ const ttStubUrl = dataModule(`
       );
   }
 `);
-const { PluginPageRow } = await import(
-  await compileModule("src/shell/plugin-chrome/PluginPageRow.tsx", {
+// D1（2026-10-23）：第二行页签行删除，页签进第一行（PluginPageTabs），行为不变：
+// 未就绪页照样露出、点了不切页；红线「不放灰占位」——它不再是 disabled 的灰按钮，
+// 点了弹出原因（toast），停在当前页。
+const { PluginPageTabs } = await import(
+  await compileModule("src/shell/plugin-chrome/PluginPageTabs.tsx", {
     "../../i18n/ui/useUI": ttStubUrl,
+    "../../ui/Toast": dataModule(`
+      export function useToast() {
+        return { info(message) { (globalThis.__w16Toasts ||= []).push(message); } };
+      }
+    `),
   })
 );
 
@@ -166,7 +174,7 @@ async function withPageRowDom(run) {
       async render(pages, onSelectPage = () => {}) {
         await act(async () => {
           root.render(
-            React.createElement(PluginPageRow, {
+            React.createElement(PluginPageTabs, {
               pages,
               activePageId: "artifact",
               onSelectPage,
@@ -201,19 +209,22 @@ function readyWebsitePages() {
   });
 }
 
-test("未就绪四个页签按钮 disabled + aria-disabled，点击不切页", async () => {
+test("未就绪四个页签 aria-disabled、不是灰按钮，点击不切页而是说出原因", async () => {
   await withPageRowDom(async ({ container, render, click }) => {
     const selected = [];
+    globalThis.__w16Toasts = [];
     await render(websiteFirstFrame(), (id) => selected.push(id));
     for (const id of WEBSITE_AUX_PAGE_IDS) {
       const tab = container.querySelector(`[data-plugin-page="${id}"]`);
       assert.ok(tab, `${id} 页签不在`);
-      assert.equal(tab.disabled, true, `${id} 应 disabled`);
+      assert.equal(tab.disabled, false, `${id} 成了点不动的灰按钮`);
       assert.equal(tab.getAttribute("aria-disabled"), "true");
       assert.match(tab.getAttribute("title") || "", /编辑器还在加载/);
       await click(tab);
     }
     assert.deepEqual(selected, [], "点未就绪页签不该切页");
+    assert.equal(globalThis.__w16Toasts.length, WEBSITE_AUX_PAGE_IDS.length, "点了没有看得见的反馈");
+    assert.match(globalThis.__w16Toasts[0], /编辑器还在加载/);
     const artifact = container.querySelector('[data-plugin-page="artifact"]');
     assert.equal(artifact.disabled, false);
     assert.equal(artifact.getAttribute("aria-disabled"), null);

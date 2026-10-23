@@ -110,6 +110,9 @@ function loadShell() {
             openTransientPanel() {},
             updateTransientPanel() {},
             closeDetail() {},
+            closeDrawer() {},
+            isPanelOpen() { return false; },
+            editBarDrawers: [],
           };
         }
       `),
@@ -285,7 +288,12 @@ function assertGlobalRowAllowlist(row) {
       `第一行槽位 ${value} 不在 GLOBAL_ROW_SLOTS 里`,
     );
   }
-  assert.equal(GLOBAL_ROW_SLOTS.length, 11, "第一行槽位数变了");
+  // D1（2026-10-23）：theme 删除；share / favorite / download 住进 `more`；页签进 `pages`。
+  assert.deepEqual(
+    [...GLOBAL_ROW_SLOTS].sort(),
+    ["back", "close", "collab", "history", "library", "maximize", "more", "pages", "save-state"],
+    "第一行槽位表变了",
+  );
 }
 
 test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单、upload 不进编辑栏", async () => {
@@ -373,6 +381,23 @@ test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单
     );
     await click(menu.querySelector('[data-workspace-save-action-id="apply-draft"]'));
     assert.deepEqual(triggered, ["apply-draft"]);
+    // download 组不再有第一行的独立下载键：在 `···` →「下载 ▸」子菜单里。
+    assert.equal(row.querySelector('[data-global-row-slot="download"]'), null);
+    const more = row.querySelector('[data-global-row-slot="more"] [data-workspace-more-launcher]');
+    assert.ok(more, "第一行没有 ···");
+    await click(more);
+    const moreMenu = window.document.querySelector("[data-workspace-more-menu]");
+    assert.ok(moreMenu, "··· 菜单没点开");
+    assert.equal(moreMenu.querySelector('[data-workspace-save-action-id]'), null, "save 组混进了 ··· 菜单");
+    await click(moreMenu.querySelector('[data-more-menu-entry="download"]'));
+    const downloadMenu = window.document.querySelector("[data-workspace-download-menu]");
+    assert.ok(downloadMenu, "下载子菜单没打开");
+    assert.deepEqual(
+      [...downloadMenu.querySelectorAll("[data-workspace-export-action-id]")].map(
+        (node) => node.dataset.workspaceExportActionId,
+      ),
+      ["export-xlsx"],
+    );
     assert.equal(findAll("[data-plugin-mode-toggle]").length, 0);
   });
 });
@@ -417,7 +442,9 @@ test("没有 save 组即使能刷盘，云朵也只是状态，不弹「立即�
   });
 });
 
-test("既没有 save 组也没有持久化时，保存槽只是状态，不弹菜单", async () => {
+// 红线「服务器确认之前不许显示已保存」：没有持久化、也没有 save 组的件从不往服务器存，
+// 以前这里也画一朵绿云写「已保存」，那是假成功。现在整个槽不出。
+test("既没有 save 组也没有持久化时，不画保存槽（不说假的「已保存」）", async () => {
   const { InlineAdvancedWorkbenchShell } = await loadShell();
   await resetStores();
   globalThis.__x1AutoSaveState = "saved";
@@ -435,11 +462,9 @@ test("既没有 save 组也没有持久化时，保存槽只是状态，不弹�
         onClose() {},
       }),
     );
-    const launcher = find("[data-workspace-save-launcher]");
-    assert.ok(launcher);
-    assert.equal(launcher.getAttribute("aria-haspopup"), null);
-    await click(launcher);
-    assert.equal(window.document.querySelector("[data-workspace-save-menu]"), null);
+    assert.equal(find("[data-workspace-save-launcher]"), null, "没有持久化还画了保存云朵");
+    assert.equal(find('[data-global-row-slot="save-state"]'), null);
+    assert.doesNotMatch(find("[data-plugin-global-row]").textContent || "", /已保存/);
     assertGlobalRowAllowlist(find("[data-plugin-global-row]"));
   });
 });

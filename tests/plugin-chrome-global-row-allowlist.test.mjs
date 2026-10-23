@@ -98,6 +98,9 @@ function loadShell() {
             openTransientPanel() {},
             updateTransientPanel() {},
             closeDetail() {},
+            closeDrawer() {},
+            isPanelOpen() { return false; },
+            editBarDrawers: [],
           };
         }
       `),
@@ -275,5 +278,14 @@ test("第一行可点击元素全部落在 GLOBAL_ROW_SLOTS；非 download 动�
       0,
       "第一行还挂着专业模式开关",
     );
+    // D1 / D7（2026-10-23）：顶栏只剩一行，没有主题键，页签在第一行里。
+    assert.equal(find("[data-plugin-page-row]"), null, "第二行页签行还在");
+    assert.equal(findAll("[data-plugin-theme-toggle]").length, 0, "主题键还在");
+    assert.equal(row.querySelector('[data-global-row-slot="theme"]'), null);
+    assert.ok(row.querySelector('[data-global-row-slot="pages"] [data-plugin-page="pro"]'), "表格的专业编辑页签不在第一行");
+    assert.ok(row.querySelector('[data-global-row-slot="more"] [data-workspace-more-launcher]'), "第一行没有 ···");
+    for (const gone of ["share", "favorite", "download"]) {
+      assert.equal(row.querySelector(`[data-global-row-slot="${gone}"]`), null, `${gone} 还是第一行的独立槽`);
+    }
   });
 });
