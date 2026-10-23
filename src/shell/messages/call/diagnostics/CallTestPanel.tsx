@@ -10,6 +10,7 @@ import { getClientHostConfig } from "../../../../contracts/client-host-config";
 import { callsApi } from "../../../../lib/im/calls-api";
 import { callActions, createDiagnosticsEngine, useCall, type CallSnapshot, type MediaDeviceLite } from "../engine";
 import {
+  UPLINK_UNKNOWN_TEXT,
   connectionTestErrorText,
   gradeLabel,
   runConnectionTest,
@@ -582,6 +583,7 @@ const GRADE_TONE: Record<string, string> = {
   good: "text-emerald-600 dark:text-emerald-400",
   fair: "text-amber-600 dark:text-amber-400",
   poor: "text-red-600 dark:text-red-400",
+  unknown: "text-neutral-600 dark:text-neutral-300",
 };
 
 function progressText(progress: ConnectionTestProgress | null): string {
@@ -628,12 +630,17 @@ export function ConnectionTestBlock({ test, onStart, env }: { test: TestState; o
           ) : (
             <>
               <p className={`text-[14px] font-semibold ${GRADE_TONE[result.grade] ?? ""}`}>{tt(gradeLabel(result.grade))}</p>
+              {result.grade === "unknown" ? (
+                <p className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400" data-connection-uplink-unknown="">
+                  {tt(UPLINK_UNKNOWN_TEXT)}
+                </p>
+              ) : null}
               {result.numbers ? (
                 <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[12px] text-neutral-600 dark:text-neutral-300">
-                  <Stat label={tt("往返时延")} value={formatStat(result.numbers.rttMs, "ms")} />
-                  <Stat label={tt("入会耗时")} value={formatStat(result.numbers.joinMs, "ms")} />
-                  <Stat label={tt("上行码率")} value={formatStat(result.numbers.upKbps, "kbps")} />
-                  <Stat label={tt("上行丢包")} value={formatStat(result.numbers.upLossPct, "%")} />
+                  <Stat label={tt("往返时延")} value={statText(result.numbers.rttMs, "ms", tt)} />
+                  <Stat label={tt("入会耗时")} value={statText(result.numbers.joinMs, "ms", tt)} />
+                  <Stat label={tt("上行码率")} value={statText(result.numbers.upKbps, "kbps", tt)} />
+                  <Stat label={tt("上行丢包")} value={statText(result.numbers.upLossPct, "%", tt)} />
                 </dl>
               ) : null}
               {result.grade === "poor" ? (
@@ -649,6 +656,15 @@ export function ConnectionTestBlock({ test, onStart, env }: { test: TestState; o
       ) : null}
     </div>
   );
+}
+
+/** 取不到的数字显示「未知」（A-34 / V02 D8），不显示 0 也不显示破折号。 */
+export function statText(
+  value: number | null | undefined,
+  unit: "ms" | "%" | "kbps",
+  tt: (zh: string) => string,
+): string {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? formatStat(value, unit) : tt("未知");
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

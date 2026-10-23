@@ -1,5 +1,7 @@
 // 「通话检测」里的连接测试：`callsApi.testToken()` 拿 `diag-` 频道凭证 → 独立诊断引擎入会 →
-// 发布音频约 5 秒、每秒读一次统计 → 离开 → 好/一般/差 + 原始数字。
+// 发布音频约 5 秒、每秒读一次统计 → 离开 → 好/一般/差/未知 + 原始数字。
+// 上行（A-34 / V02 D8）：测的就是「发出去的声音」，所以上行码率必须计入等级；取不到（null，或发布了 5 秒仍 <1 kbps）
+// 就是没测到 → 显示「未知」、不判「好」，绝不把 0 当成一个测量值。
 // 依赖全部注入（凭证、引擎、时钟），纯逻辑，便于单测；无论成功、失败还是中途关闭面板，都会离开频道并销毁实例。
 import type { RtcCredentials } from "../../../../lib/im/call-types";
 import type { CallStats, NetLevel } from "../engine";
@@ -13,6 +15,14 @@ export const TEST_JOIN_TIMEOUT_MS = 15000;
 /** 入会耗时：3 秒内不扣分，3–8 秒最多「一般」，8 秒以上「差」。 */
 export const JOIN_FAIR_MS = 3000;
 export const JOIN_POOR_MS = 8000;
+/**
+ * 上行码率（只发音频）：SDK 的 Opus 没开 DTX（SDP 只有 `useinbandfec=1;stereo=1`），发布中的麦克风即使静音也持续发包，
+ * 正常在 20–70 kbps。低于 1 kbps = 这 5 秒没有测到上行（没发出去或统计没到），不是一个可用的测量值。
+ * ≥16 kbps 不扣分；8–16 kbps 最多「一般」（带宽被压，声音会变差）；低于 8 kbps「差」。
+ */
+export const UPLINK_MIN_MEASURED_KBPS = 1;
+export const UPLINK_FAIR_KBPS = 16;
+export const UPLINK_POOR_KBPS = 8;
 
 export interface DiagnosticsEngineLike {
   join(rtc: RtcCredentials, opts?: { displayName?: string; micDeviceId?: string | null }): Promise<void>;
@@ -55,8 +65,10 @@ export interface ConnectionTestDeps {
   onProgress?(progress: ConnectionTestProgress): void;
 }
 
+export type ConnectionGrade = "good" | "fair" | "poor" | "unknown";
+
 export interface ConnectionTestResult {
-  grade: "good" | "fair" | "poor" | "failed";
+  grade: ConnectionGrade | "failed";
   level: NetLevel;
   numbers: ConnectionTestNumbers | null;
   error: ConnectionTestErrorCode | null;
@@ -82,16 +94,47 @@ function finiteValues(samples: CallStats[], key: keyof CallStats): number[] {
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0);
 }
 
-/** 多次采样合成一份：时延与码率取中位数（抗单次抖动），丢包取最大（不掩盖问题）；全取不到的项为 null。 */
+/**
+ * 上行码率：去掉开头还没起量的样本（第一次取统计时两次字节数还没有差值，或音频刚开始发），其余取中位数；
+ * 结果低于 `UPLINK_MIN_MEASURED_KBPS`（包括全是 0）= 没测到 → null。
+ */
+export function uplinkKbps(samples: CallStats[]): number | null {
+  const values = samples.map((sample) => sample?.upKbps);
+  let start = 0;
+  while (start < values.length) {
+    const value = values[start];
+    if (typeof value === "number" && Number.isFinite(value) && value >= UPLINK_MIN_MEASURED_KBPS) break;
+    start += 1;
+  }
+  const measured = median(
+    values
+      .slice(start)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0),
+  );
+  return measured !== null && measured >= UPLINK_MIN_MEASURED_KBPS ? measured : null;
+}
+
+/**
+ * 多次采样合成一份：时延与下行码率取中位数（抗单次抖动），丢包取最大（不掩盖问题），上行码率见 `uplinkKbps`；
+ * 全取不到的项为 null。
+ */
 export function summarizeSamples(samples: CallStats[]): CallStats {
   const maxOrNull = (values: number[]) => (values.length ? Math.max(...values) : null);
   return {
     rttMs: median(finiteValues(samples, "rttMs")),
     upLossPct: maxOrNull(finiteValues(samples, "upLossPct")),
     downLossPct: maxOrNull(finiteValues(samples, "downLossPct")),
-    upKbps: median(finiteValues(samples, "upKbps")),
+    upKbps: uplinkKbps(samples),
     downKbps: median(finiteValues(samples, "downKbps")),
   };
+}
+
+/** 上行码率 → 等级；没测到（null / <1 kbps）→ 0。 */
+export function uplinkLevel(upKbps: number | null): NetLevel {
+  if (upKbps === null || !Number.isFinite(upKbps) || upKbps < UPLINK_MIN_MEASURED_KBPS) return 0;
+  if (upKbps >= UPLINK_FAIR_KBPS) return 5;
+  if (upKbps >= UPLINK_POOR_KBPS) return 3;
+  return 2;
 }
 
 export function joinLevel(joinMs: number | null): NetLevel {
@@ -101,26 +144,37 @@ export function joinLevel(joinMs: number | null): NetLevel {
   return 2;
 }
 
-/** 统计（丢包/时延）与入会耗时取较差者 → 好/一般/差。 */
-export function gradeConnection(numbers: ConnectionTestNumbers): { grade: "good" | "fair" | "poor"; level: NetLevel } {
-  const level = combineLevels(levelFromStats(numbers), joinLevel(numbers.joinMs));
+/**
+ * 统计（丢包/时延）、入会耗时、上行码率取最差者 → 好/一般/差。
+ * 上行没测到：不能判「好」也不能判「一般」（没有依据）→「未知」；只有其他指标已经是「差」时照实判「差」。
+ */
+export function gradeConnection(numbers: ConnectionTestNumbers): { grade: ConnectionGrade; level: NetLevel } {
+  const others = combineLevels(levelFromStats(numbers), joinLevel(numbers.joinMs));
+  const uplink = uplinkLevel(numbers.upKbps);
+  if (uplink === 0) {
+    if (qualityFromLevel(others) === "poor") return { grade: "poor", level: others };
+    return { grade: "unknown", level: 0 };
+  }
+  const level = combineLevels(others, uplink);
   const quality = qualityFromLevel(level);
   if (quality === "good") return { grade: "good", level };
   if (quality === "fair") return { grade: "fair", level };
-  if (quality === "poor") return { grade: "poor", level };
-  // 统计与入会耗时都未知：连上了但没有任何数字，不冒充「好」。
-  return { grade: "fair", level: 3 };
+  return { grade: "poor", level };
 }
 
 /**
  * 结果的可读名。用整句「连接：好」做词典 key，不用单字「好」：单字「好」在别的分表里已经是「OK」，
  * 词典按中文原文合并，单字 key 会互相覆盖。
  */
-export function gradeLabel(grade: "good" | "fair" | "poor"): string {
+export function gradeLabel(grade: ConnectionGrade): string {
   if (grade === "good") return "连接：好";
   if (grade === "fair") return "连接：一般";
-  return "连接：差";
+  if (grade === "poor") return "连接：差";
+  return "连接：未知";
 }
+
+/** 「未知」时的说明（一句）。 */
+export const UPLINK_UNKNOWN_TEXT = "没能测到上行数据，无法判断网络好坏，请再测一次。";
 
 interface ErrorLike {
   status?: unknown;

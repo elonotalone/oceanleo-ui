@@ -5,6 +5,10 @@ import {
   JOIN_FAIR_MS,
   JOIN_POOR_MS,
   TEST_DURATION_MS,
+  UPLINK_FAIR_KBPS,
+  UPLINK_MIN_MEASURED_KBPS,
+  UPLINK_POOR_KBPS,
+  UPLINK_UNKNOWN_TEXT,
   connectionTestErrorCode,
   connectionTestErrorText,
   gradeConnection,
@@ -12,6 +16,8 @@ import {
   joinLevel,
   runConnectionTest,
   summarizeSamples,
+  uplinkKbps,
+  uplinkLevel,
 } from "../src/shell/messages/call/diagnostics/connection-test.ts";
 import {
   chimeDurationSec,
@@ -121,7 +127,7 @@ test("grading uses loss/RTT and join time, worst wins", () => {
   assert.equal(gradeConnection({ ...base, rttMs: 420, joinMs: 500 }).grade, "fair");
   assert.equal(gradeConnection({ ...base, rttMs: 900, joinMs: 500 }).grade, "poor");
   assert.equal(gradeConnection({ ...base, downLossPct: 30, joinMs: 500 }).grade, "poor");
-  assert.deepEqual(["good", "fair", "poor"].map(gradeLabel), ["连接：好", "连接：一般", "连接：差"]);
+  assert.deepEqual(["good", "fair", "poor", "unknown"].map(gradeLabel), ["连接：好", "连接：一般", "连接：差", "连接：未知"]);
 });
 
 test("samples are summarised robustly: median for RTT/bitrate, max for loss, null when never measured", () => {
@@ -217,13 +223,14 @@ test("closing the panel mid-test aborts, leaves the channel and reports no error
   assert.equal(connectionTestErrorText("aborted"), null);
 });
 
-test("a stats hiccup skips that sample instead of inventing numbers", async () => {
+test("a stats hiccup skips that sample instead of inventing numbers — and with no uplink measured it is NOT graded good (A-34 D8)", async () => {
   const { engine } = fakeEngine({ statsError: true });
   const result = await runConnectionTest({ testToken: async () => ({ rtc: RTC }), createEngine: async () => engine, ...clockDeps() });
   assert.equal(result.error, null);
   assert.equal(result.numbers.rttMs, null);
   assert.equal(result.numbers.upKbps, null);
-  assert.equal(result.grade, "good", "joined fast; graded on join time only");
+  assert.equal(result.grade, "unknown", "joined fast, but nothing measured on the uplink → unknown, not good");
+  assert.equal(gradeLabel(result.grade), "连接：未知");
 });
 
 test("every error code has a sentence (except aborted)", () => {
@@ -278,4 +285,48 @@ test("media helpers: getUserMedia errors, device split, meter scale, test chime"
   assert.ok(notes.every((n) => n.frequency > 200 && n.frequency < 2000), "audible, not harsh");
   const total = chimeDurationSec(notes);
   assert.ok(total > 1 && total < 2.5, `chime ${total}s`);
+});
+
+// ---------- A-34 / V02 D8：上行码率 ----------
+
+const UP = (upKbps, over = {}) => ({ rttMs: 40, upLossPct: null, downLossPct: null, upKbps, downKbps: null, ...over });
+
+test("D8: an uplink of 0 kbps after publishing for 5 s is 'not measured' → null, shown as unknown, never graded good", async () => {
+  assert.equal(UPLINK_MIN_MEASURED_KBPS, 1);
+  assert.equal(uplinkKbps([UP(0), UP(0), UP(0), UP(0), UP(0)]), null);
+  assert.equal(uplinkKbps([UP(null), UP(null)]), null);
+  assert.equal(uplinkKbps([UP(0.4), UP(0.2), UP(0.6)]), null, "sub-1 kbps is keepalive noise, not audio");
+  const { engine } = fakeEngine({ stats: [UP(0)] });
+  const result = await runConnectionTest({ testToken: async () => ({ rtc: RTC }), createEngine: async () => engine, ...clockDeps() });
+  assert.equal(result.error, null);
+  assert.equal(result.numbers.upKbps, null, "0 is not reported as a measurement");
+  assert.equal(result.numbers.rttMs, 40);
+  assert.equal(result.grade, "unknown");
+  assert.notEqual(result.grade, "good");
+  assert.match(UPLINK_UNKNOWN_TEXT, /没能测到上行数据/);
+});
+
+test("D8: start-up samples are skipped; the steady uplink is the median of the rest", () => {
+  assert.equal(uplinkKbps([UP(null), UP(0), UP(31), UP(33), UP(32)]), 32);
+  assert.equal(uplinkKbps([UP(0), UP(28), UP(0.5), UP(30), UP(29)]), 28.5, "a later dip still counts (only the leading ramp is skipped)");
+  assert.equal(uplinkKbps([UP(30), UP(0), UP(0), UP(0), UP(0)]), null, "audio stopped going out → no usable measurement");
+  assert.equal(summarizeSamples([UP(0), UP(40), UP(42)]).upKbps, 41);
+});
+
+test("D8: a measured uplink is part of the grade (≥16 ok, 8–16 fair, <8 poor)", () => {
+  assert.equal(UPLINK_FAIR_KBPS, 16);
+  assert.equal(UPLINK_POOR_KBPS, 8);
+  assert.deepEqual([null, 0, 0.5, 1, 5, 7.9, 8, 15.9, 16, 64].map(uplinkLevel), [0, 0, 0, 2, 2, 2, 3, 3, 5, 5]);
+  const fast = { joinMs: 300 };
+  assert.equal(gradeConnection({ ...UP(32), ...fast }).grade, "good");
+  assert.equal(gradeConnection({ ...UP(12), ...fast }).grade, "fair", "throttled uplink caps the result");
+  assert.equal(gradeConnection({ ...UP(5), ...fast }).grade, "poor");
+  assert.equal(gradeConnection({ ...UP(32, { rttMs: 420 }), ...fast }).grade, "fair", "other metrics still count");
+});
+
+test("D8: uplink unknown — say poor only when other metrics already prove it, otherwise unknown", () => {
+  assert.deepEqual(gradeConnection({ ...UP(null, { rttMs: 900 }), joinMs: 300 }), { grade: "poor", level: 2 });
+  assert.deepEqual(gradeConnection({ ...UP(null, { rttMs: 40 }), joinMs: 9000 }), { grade: "poor", level: 2 });
+  assert.deepEqual(gradeConnection({ ...UP(null, { rttMs: 420 }), joinMs: 300 }), { grade: "unknown", level: 0 }, "fair-looking RTT is not enough to claim fair");
+  assert.deepEqual(gradeConnection({ ...UP(null, { rttMs: 40 }), joinMs: 300 }), { grade: "unknown", level: 0 });
 });

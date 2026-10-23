@@ -75,6 +75,9 @@ const PANEL_SOURCE = {
   errJoin: "没能连上通话服务器，请检查网络或防火墙设置。",
   errJoinTimeout: "连接通话服务器超时，请检查网络或防火墙设置。",
   errInCall: "通话中无法做连接测试，挂断后再试。",
+  gradeUnknown: "连接：未知",
+  uplinkUnknown: "没能测到上行数据，无法判断网络好坏，请再测一次。",
+  unknownValue: "未知",
 } as const;
 
 const PANEL = assembleCopy(PANEL_SOURCE, {
@@ -142,6 +145,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Couldn’t reach the call server. Check your network or firewall settings.",
     errJoinTimeout: "Connecting to the call server timed out. Check your network or firewall settings.",
     errInCall: "The connection test can’t run during a call. Try again after you leave.",
+    gradeUnknown: "Connection: unknown",
+    uplinkUnknown: "No upload data was measured, so we can’t tell how good your network is. Please test again.",
+    unknownValue: "Unknown",
   },
   de: {
     issueButtonOne: "Problem im Anruf – zum Anzeigen öffnen",
@@ -207,6 +213,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Der Anrufserver ist nicht erreichbar. Prüfe dein Netzwerk oder deine Firewall-Einstellungen.",
     errJoinTimeout: "Zeitüberschreitung beim Verbinden mit dem Anrufserver. Prüfe dein Netzwerk oder deine Firewall-Einstellungen.",
     errInCall: "Während eines Anrufs ist kein Verbindungstest möglich. Versuch es, nachdem du ihn verlassen hast.",
+    gradeUnknown: "Verbindung: unbekannt",
+    uplinkUnknown: "Es wurden keine Upload-Daten gemessen, daher lässt sich dein Netzwerk nicht beurteilen. Teste bitte erneut.",
+    unknownValue: "Unbekannt",
   },
   es: {
     issueButtonOne: "Problema en la llamada: ábrelo para verlo",
@@ -272,6 +281,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "No se pudo conectar con el servidor de llamadas. Revisa tu red o la configuración del firewall.",
     errJoinTimeout: "Se agotó el tiempo de conexión con el servidor de llamadas. Revisa tu red o la configuración del firewall.",
     errInCall: "No se puede hacer la prueba de conexión durante una llamada. Inténtalo después de salir.",
+    gradeUnknown: "Conexión: desconocida",
+    uplinkUnknown: "No se midieron datos de subida, así que no podemos saber cómo está tu red. Vuelve a probar.",
+    unknownValue: "Desconocido",
   },
   "es-419": {
     issueButtonOne: "Problema en la llamada: ábrelo para verlo",
@@ -337,6 +349,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "No se pudo conectar con el servidor de llamadas. Revisa tu red o la configuración del firewall.",
     errJoinTimeout: "Se agotó el tiempo de conexión con el servidor de llamadas. Revisa tu red o la configuración del firewall.",
     errInCall: "No se puede hacer la prueba de conexión durante una llamada. Inténtalo después de salir.",
+    gradeUnknown: "Conexión: desconocida",
+    uplinkUnknown: "No se midieron datos de subida, así que no podemos saber cómo está tu red. Vuelve a probar.",
+    unknownValue: "Desconocido",
   },
   fr: {
     issueButtonOne: "Problème d’appel — ouvrir pour voir",
@@ -402,6 +417,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Impossible de joindre le serveur d’appel. Vérifiez votre réseau ou votre pare-feu.",
     errJoinTimeout: "La connexion au serveur d’appel a expiré. Vérifiez votre réseau ou votre pare-feu.",
     errInCall: "Le test de connexion est impossible pendant un appel. Réessayez après l’avoir quitté.",
+    gradeUnknown: "Connexion : inconnue",
+    uplinkUnknown: "Aucune donnée d’envoi n’a été mesurée : impossible d’évaluer votre réseau. Refaites le test.",
+    unknownValue: "Inconnu",
   },
   it: {
     issueButtonOne: "Problema nella chiamata: apri per vedere",
@@ -467,6 +485,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Impossibile raggiungere il server delle chiamate. Controlla la rete o le impostazioni del firewall.",
     errJoinTimeout: "Timeout della connessione al server delle chiamate. Controlla la rete o le impostazioni del firewall.",
     errInCall: "Durante una chiamata non puoi fare il test di connessione. Riprova dopo averla lasciata.",
+    gradeUnknown: "Connessione: sconosciuta",
+    uplinkUnknown: "Non è stato misurato alcun dato in uscita, quindi non possiamo valutare la rete. Ripeti il test.",
+    unknownValue: "Sconosciuto",
   },
   "pt-BR": {
     issueButtonOne: "Problema na chamada — abra para ver",
@@ -532,6 +553,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Não foi possível alcançar o servidor de chamadas. Verifique sua rede ou as configurações de firewall.",
     errJoinTimeout: "A conexão com o servidor de chamadas expirou. Verifique sua rede ou as configurações de firewall.",
     errInCall: "Não dá para fazer o teste de conexão durante uma chamada. Tente de novo depois de sair.",
+    gradeUnknown: "Conexão: desconhecida",
+    uplinkUnknown: "Nenhum dado de upload foi medido, então não dá para avaliar sua rede. Teste de novo.",
+    unknownValue: "Desconhecido",
   },
   "pt-PT": {
     issueButtonOne: "Problema na chamada — abra para ver",
@@ -597,6 +621,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Não foi possível contactar o servidor de chamadas. Verifique a sua rede ou as definições da firewall.",
     errJoinTimeout: "A ligação ao servidor de chamadas expirou. Verifique a sua rede ou as definições da firewall.",
     errInCall: "Não é possível fazer o teste de ligação durante uma chamada. Tente novamente depois de sair.",
+    gradeUnknown: "Ligação: desconhecida",
+    uplinkUnknown: "Não foi medido nenhum dado de envio, por isso não é possível avaliar a sua rede. Teste novamente.",
+    unknownValue: "Desconhecido",
   },
   vi: {
     issueButtonOne: "Cuộc gọi có sự cố, mở để xem",
@@ -662,6 +689,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Không kết nối được tới máy chủ cuộc gọi. Hãy kiểm tra mạng hoặc cài đặt tường lửa.",
     errJoinTimeout: "Kết nối tới máy chủ cuộc gọi bị quá thời gian. Hãy kiểm tra mạng hoặc cài đặt tường lửa.",
     errInCall: "Không thể kiểm tra kết nối khi đang trong cuộc gọi. Hãy thử lại sau khi rời cuộc gọi.",
+    gradeUnknown: "Kết nối: chưa rõ",
+    uplinkUnknown: "Không đo được dữ liệu tải lên nên chưa thể đánh giá mạng của bạn. Hãy kiểm tra lại.",
+    unknownValue: "Chưa rõ",
   },
   tr: {
     issueButtonOne: "Aramada sorun var, görmek için aç",
@@ -727,6 +757,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "Arama sunucusuna ulaşılamadı. Ağını veya güvenlik duvarı ayarlarını kontrol et.",
     errJoinTimeout: "Arama sunucusuna bağlanırken zaman aşımı oldu. Ağını veya güvenlik duvarı ayarlarını kontrol et.",
     errInCall: "Arama sırasında bağlantı testi yapılamaz. Aramadan ayrıldıktan sonra tekrar dene.",
+    gradeUnknown: "Bağlantı: bilinmiyor",
+    uplinkUnknown: "Yükleme verisi ölçülemedi, bu yüzden ağının durumu anlaşılamıyor. Lütfen tekrar test et.",
+    unknownValue: "Bilinmiyor",
   },
   "zh-TW": {
     issueButtonOne: "通話有問題，點開查看",
@@ -792,6 +825,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "無法連上通話伺服器，請檢查網路或防火牆設定。",
     errJoinTimeout: "連線通話伺服器逾時，請檢查網路或防火牆設定。",
     errInCall: "通話中無法進行連線測試，掛斷後再試。",
+    gradeUnknown: "連線：未知",
+    uplinkUnknown: "沒能測到上行資料，無法判斷網路好壞，請再測一次。",
+    unknownValue: "未知",
   },
   ja: {
     issueButtonOne: "通話に問題があります。開いて確認",
@@ -857,6 +893,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "通話サーバーに接続できませんでした。ネットワークまたはファイアウォールの設定を確認してください。",
     errJoinTimeout: "通話サーバーへの接続がタイムアウトしました。ネットワークまたはファイアウォールの設定を確認してください。",
     errInCall: "通話中は接続テストができません。通話を終えてからお試しください。",
+    gradeUnknown: "接続：不明",
+    uplinkUnknown: "送信データを測定できなかったため、ネットワークの状態を判断できません。もう一度テストしてください。",
+    unknownValue: "不明",
   },
   ko: {
     issueButtonOne: "통화에 문제가 있어요. 눌러서 확인하세요",
@@ -922,6 +961,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "통화 서버에 연결하지 못했어요. 네트워크나 방화벽 설정을 확인하세요.",
     errJoinTimeout: "통화 서버 연결 시간이 초과됐어요. 네트워크나 방화벽 설정을 확인하세요.",
     errInCall: "통화 중에는 연결 테스트를 할 수 없어요. 통화를 마친 뒤 다시 시도하세요.",
+    gradeUnknown: "연결: 알 수 없음",
+    uplinkUnknown: "업로드 데이터를 측정하지 못해 네트워크 상태를 판단할 수 없어요. 다시 테스트해 주세요.",
+    unknownValue: "알 수 없음",
   },
   ar: {
     issueButtonOne: "توجد مشكلة في المكالمة، افتحها للتفاصيل",
@@ -987,6 +1029,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "تعذّر الوصول إلى خادم المكالمات. تحقّق من الشبكة أو إعدادات جدار الحماية.",
     errJoinTimeout: "انتهت مهلة الاتصال بخادم المكالمات. تحقّق من الشبكة أو إعدادات جدار الحماية.",
     errInCall: "لا يمكن إجراء اختبار الاتصال أثناء مكالمة. حاول مرة أخرى بعد مغادرتها.",
+    gradeUnknown: "الاتصال: غير معروف",
+    uplinkUnknown: "لم تُقَس أي بيانات إرسال، لذا لا يمكن تقييم شبكتك. أعد الاختبار.",
+    unknownValue: "غير معروف",
   },
   th: {
     issueButtonOne: "การโทรมีปัญหา แตะเพื่อดู",
@@ -1052,6 +1097,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "เชื่อมต่อเซิร์ฟเวอร์การโทรไม่ได้ โปรดตรวจสอบเครือข่ายหรือการตั้งค่าไฟร์วอลล์",
     errJoinTimeout: "เชื่อมต่อเซิร์ฟเวอร์การโทรหมดเวลา โปรดตรวจสอบเครือข่ายหรือการตั้งค่าไฟร์วอลล์",
     errInCall: "ทดสอบการเชื่อมต่อระหว่างการโทรไม่ได้ ลองอีกครั้งหลังวางสาย",
+    gradeUnknown: "การเชื่อมต่อ: ไม่ทราบ",
+    uplinkUnknown: "วัดข้อมูลขาขึ้นไม่ได้ จึงบอกไม่ได้ว่าเครือข่ายดีหรือไม่ โปรดทดสอบอีกครั้ง",
+    unknownValue: "ไม่ทราบ",
   },
   hi: {
     issueButtonOne: "कॉल में समस्या है, देखने के लिए खोलें",
@@ -1117,6 +1165,9 @@ const PANEL = assembleCopy(PANEL_SOURCE, {
     errJoin: "कॉल सर्वर तक नहीं पहुँच सके। अपना नेटवर्क या फ़ायरवॉल सेटिंग जाँचें।",
     errJoinTimeout: "कॉल सर्वर से कनेक्ट होने का समय खत्म हो गया। अपना नेटवर्क या फ़ायरवॉल सेटिंग जाँचें।",
     errInCall: "कॉल के दौरान कनेक्शन टेस्ट नहीं हो सकता। कॉल छोड़ने के बाद फिर कोशिश करें।",
+    gradeUnknown: "कनेक्शन: अज्ञात",
+    uplinkUnknown: "अपलोड डेटा मापा नहीं जा सका, इसलिए नेटवर्क की स्थिति नहीं बताई जा सकती। कृपया फिर से टेस्ट करें।",
+    unknownValue: "अज्ञात",
   },
 });
 

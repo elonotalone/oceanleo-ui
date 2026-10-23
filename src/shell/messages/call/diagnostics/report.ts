@@ -7,7 +7,7 @@ import { formatStat, qualityFromLevel, type NetworkQuality } from "./health";
 export type PermissionStateLite = "granted" | "denied" | "prompt" | "unknown";
 export type EditionLite = "cn" | "global" | "unknown";
 export type ClientLite = "web" | "desktop" | "ios" | "android" | "harmony" | "unknown";
-export type TestGrade = "good" | "fair" | "poor" | "failed";
+export type TestGrade = "good" | "fair" | "poor" | "unknown" | "failed";
 
 export interface DeviceEntry {
   label: string;
