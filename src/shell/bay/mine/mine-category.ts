@@ -47,7 +47,7 @@ export function joinMeta(parts: Array<string | null | undefined>): string {
   return parts.map((part) => (part || "").trim()).filter(Boolean).join(" · ");
 }
 
-/** 收藏的服务按 listing_kind；卖家和需求算「其他」。 */
+/** 收藏的挂牌（target_kind 为 service）按 listing_kind 归类；卖家和需求算「其他」。 */
 export function favoriteCategory(item: { target_kind: string; target?: Record<string, unknown> | null }): PublishedCategory {
   if (item.target_kind !== "service") return "other";
   const target = item.target && typeof item.target === "object" ? item.target : {};
@@ -55,7 +55,7 @@ export function favoriteCategory(item: { target_kind: string; target?: Record<st
   return categoryOfListingKind(kind);
 }
 
-/** 课程 / 作品买断会另建一笔 talent 合同，统一清单里只留购买行。 */
+/** 课程 / 网站与软件服务的买断会另建一笔 talent 合同，统一清单里只留购买行。 */
 export function isPaidListingContract(order: { id?: string; requirements?: unknown }): boolean {
   if (!order.requirements || typeof order.requirements !== "object") return false;
   return !!(order.requirements as { _lesson_order?: unknown })._lesson_order;

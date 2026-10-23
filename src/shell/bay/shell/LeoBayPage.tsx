@@ -49,7 +49,7 @@ import {
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-/** 素材货架的可选接线（各站原来传给探索页的那几项：点开、插入、拖拽）。 */
+/** 现成文件货架的可选接线（各站原来传给探索页的那几项：点开、插入、拖拽）。 */
 export type LeoBayMaterialProps = Pick<
   ExplorePageProps,
   "appId" | "onOpenItem" | "materialActions" | "onMaterialAction" | "materialActionEvidence" | "onMaterialDragStart" | "onMaterialDragEnd"
@@ -59,7 +59,7 @@ export interface LeoBayPageProps {
   siteKey: string;
   /** 站点主色：货架卡仍可读。筛选行不用它。不传用天蓝。 */
   accent?: string;
-  /** 素材货架的可选接线。 */
+  /** 现成文件货架的可选接线。 */
   materials?: LeoBayMaterialProps;
 }
 
@@ -143,9 +143,9 @@ function Hero({
 }
 
 /**
- * 逛 LeoBay：页头（搜索 / 查看选项 / 网格列表）、第二行是出售/求购、种类、站点/素材筛选。
+ * 逛 LeoBay：页头（搜索 / 查看选项 / 网格列表）、第二行是出售/求购、种类、站点/现成文件的筛选。
  * 看详情时这一整块只是藏起来（`visible` 为 false）；回来时把信息流滚回离开时的位置。
- * 工具条和素材库包在同一个 `BayToolbarSlotProvider` 里，素材筛选才能送到那一行。
+ * 工具条和现成文件库包在同一个 `BayToolbarSlotProvider` 里，现成文件的筛选才能送到那一行。
  */
 function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; accent: string; visible: boolean; siteKey: string }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -354,7 +354,7 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   if (availability === "pending") {
     return <div className={FRAME_CLASS} data-bay-page="pending" />;
   }
-  // 境内没有交易市场（发布、找人帮忙、主页都不开），但素材照旧能逛：这张页只剩素材库。
+  // 境内没有交易市场（发布、找人帮忙、主页都不开），但现成文件照旧能逛：这张页只剩现成文件库。
   if (availability === "off") {
     return (
       <div className={FRAME_CLASS} data-bay-page="materials-only">
