@@ -70,9 +70,18 @@ const headerUrl = await compileModule("src/shell/InlineAdvancedWorkbenchHeader.t
   "./plugin-chrome/plugin-mode": dataModule(
     `export function PluginModeAdapterBridge(){return null;}`,
   ),
-  "./plugin-chrome/PluginGlobalRow": dataModule(
-    `export function PluginGlobalRow(){return null;}`,
-  ),
+  // D1（2026-10-23）：页签住进第一行，PluginGlobalRow 收 pages / activePageId / onSelectPage。
+  "./plugin-chrome/PluginGlobalRow": dataModule(`
+    import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+    export function PluginGlobalRow({ pages = [], activePageId, onSelectPage }) {
+      return jsx("div", { children: pages.map((page) => jsx("button", {
+        "data-plugin-page": page.id,
+        "aria-selected": String(page.id === activePageId),
+        onClick: () => onSelectPage(page.id),
+        children: page.label,
+      }, page.id)) });
+    }
+  `),
   "../../i18n/ui/useUI": dataModule(`export function useUI(){return (v)=>v;}`),
   "./plugin-theme": dataModule(`export {};`),
 });
