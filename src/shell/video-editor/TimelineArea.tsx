@@ -15,11 +15,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import {
-  TIMELINE_CLIP_LABEL_COLORS,
-  TIMELINE_LAYOUT,
-  TIMELINE_PALETTE,
-} from "./timeline-carrier";
+import { TIMELINE_LAYOUT } from "./timeline-carrier";
+import { useTimelinePalette } from "./timeline-theme";
 import { clipEndMs, formatMs, snapDelta, snapPoints } from "./timeline-model";
 import {
   clampTimelinePxPerSecond,
@@ -41,34 +38,21 @@ const KIND_LABEL: Record<TrackKind, string> = {
   video: "视频",
   audio: "音频",
   text: "文字",
-  image: "贴图",
-};
-
-/**
- * §2.1：片段块是非文本图形对象（SC 1.4.11，≥ 3.0:1），块上的标签是文字
- * （SC 1.4.3，≥ 4.5:1）。所以标签色逐块定值，MUST NOT 一律用白字 ——
- * 白字在 `tl.clip.audio` 上只有 4.17:1。`image` 轨在 IR 里映射为 overlay，
- * 沿用 text 块的配色。
- */
-const KIND_CLIP_COLORS: Record<
-  TrackKind,
-  { background: string; label: string }
-> = {
-  video: TIMELINE_CLIP_LABEL_COLORS["tl.clip.video"],
-  audio: TIMELINE_CLIP_LABEL_COLORS["tl.clip.audio"],
-  text: TIMELINE_CLIP_LABEL_COLORS["tl.clip.text"],
-  image: TIMELINE_CLIP_LABEL_COLORS["tl.clip.text"],
+  image: "图片",
 };
 
 function clipLabel(track: TimelineTrack, clip: TimelineClip, fallback: string): string {
   if (track.kind === "text") return clip.text || fallback;
+  if (clip.label?.trim()) return clip.label.trim();
   if (clip.source_url) {
     try {
       const name = decodeURIComponent(new URL(clip.source_url).pathname)
         .split("/")
         .filter(Boolean)
         .pop();
-      if (name) return name;
+      // 签名地址的最后一段是不透明令牌，不是名字。
+      if (name && /\.[a-z0-9]{2,5}$/i.test(name) && name.length <= 80) return name;
+      return fallback;
     } catch {
       /* 相对/非法 URL */
     }
@@ -98,6 +82,7 @@ export function TimelineArea({
   readOnly?: boolean;
 }) {
   const tt = useUI();
+  const palette = useTimelinePalette();
   const {
     doc,
     durationMs,
@@ -457,8 +442,8 @@ export function TimelineArea({
             className="relative cursor-col-resize"
             style={{
               height: RULER_HEIGHT,
-              background: TIMELINE_PALETTE["tl.bg"].value,
-              borderBottom: `1px solid ${TIMELINE_PALETTE["tl.grid"].value}`,
+              background: palette.ruler,
+              borderBottom: `1px solid ${palette.grid}`,
             }}
           >
             {ticks.map((tick) => (
@@ -467,12 +452,12 @@ export function TimelineArea({
                 className="absolute top-0 h-full"
                 style={{
                   left: msToPx(tick.ms),
-                  borderLeft: `1px solid ${TIMELINE_PALETTE["tl.grid"].value}`,
+                  borderLeft: `1px solid ${palette.grid}`,
                 }}
               >
                 <span
                   className="ml-1 text-[9px] tabular-nums"
-                  style={{ color: TIMELINE_PALETTE["tl.grid"].value }}
+                  style={{ color: palette.grid }}
                 >
                   {tick.label}
                 </span>
@@ -492,7 +477,7 @@ export function TimelineArea({
               style={{
                 height: ROW_HEIGHT,
                 marginBottom: ROW_GAP,
-                background: TIMELINE_PALETTE["tl.bg"].value,
+                background: palette.track,
               }}
               onPointerDown={() => state.selectClip("")}
             >
@@ -500,7 +485,7 @@ export function TimelineArea({
                 const selected = clip.id === selectedClipId;
                 // §2.2 C21：片段块的最小可视宽是 24 px，再短也要能点中。
                 const width = Math.max(MIN_CLIP_WIDTH_PX, msToPx(clip.duration_ms));
-                const colors = KIND_CLIP_COLORS[track.kind];
+                const colors = palette.clips[track.kind];
                 return (
                   <div
                     key={clip.id}
@@ -533,19 +518,22 @@ export function TimelineArea({
                             width,
                             msToPx(clip.transition_in.duration_ms),
                           ),
-                          background: `linear-gradient(to right, ${TIMELINE_PALETTE["tl.transition"].value}, transparent)`,
+                          background: `linear-gradient(to right, ${palette.transition}, transparent)`,
                         }}
                         title={tt("转场")}
                       />
                     )}
                     <div className="pointer-events-none flex h-full flex-col justify-center gap-0.5 px-2">
                       <span className="truncate font-medium">
-                        {clipLabel(track, clip, tt("片段"))}
+                        {clipLabel(track, clip, tt(KIND_LABEL[track.kind]))}
                       </span>
                       <span className="truncate tabular-nums opacity-70">
                         {formatMs(clip.duration_ms)}
                         {clip.speed && clip.speed !== 1 ? ` · ${clip.speed}x` : ""}
                         {clip.muted ? ` · ${tt("静音")}` : ""}
+                        {!clip.muted && clip.volume !== undefined && Math.abs(clip.volume - 1) > 0.005
+                          ? ` · ${tt("音量 {value}%", { value: Math.round(clip.volume * 100) })}`
+                          : ""}
                       </span>
                     </div>
                     {/* trim 手柄（只读时不画） */}
@@ -591,12 +579,12 @@ export function TimelineArea({
               className="h-full"
               style={{
                 width: PLAYHEAD_WIDTH_PX,
-                background: TIMELINE_PALETTE["tl.playhead"].value,
+                background: palette.playhead,
               }}
             />
             <div
               className="absolute -top-0.5 -left-[5px] h-0 w-0 border-x-[5px] border-t-[7px] border-x-transparent"
-              style={{ borderTopColor: TIMELINE_PALETTE["tl.playhead"].value }}
+              style={{ borderTopColor: palette.playhead }}
             />
           </div>
         </div>

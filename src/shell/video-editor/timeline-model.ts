@@ -152,6 +152,10 @@ export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
           );
           next.opacity = canonicalNumber(clip.opacity, 1, 0, 1);
           next.rotation = canonicalNumber(clip.rotation, 0, -180, 180);
+          if (clip.flip_x === true) next.flip_x = true;
+          else delete next.flip_x;
+          if (clip.flip_y === true) next.flip_y = true;
+          else delete next.flip_y;
         }
         if (track.kind === "video") {
           next.fit = ["contain", "cover", "stretch"].includes(
@@ -676,6 +680,12 @@ export function timelineDocIssue(value: unknown): string {
 /** 严格校验一份草稿 JSON 是否能当 TimelineDoc 恢复。 */
 export function isTimelineDoc(value: unknown): value is TimelineDoc {
   return timelineDocIssue(value) === "";
+}
+
+/** 顺时针转 90°，结果落回 (-180, 180]。 */
+export function rotateClockwise90(rotation: number | undefined): number {
+  const next = (Math.round(Number(rotation) || 0) + 90) % 360;
+  return next > 180 ? next - 360 : next <= -180 ? next + 360 : next;
 }
 
 export const TRACK_KIND_ORDER: TrackKind[] = ["video", "audio", "text", "image"];

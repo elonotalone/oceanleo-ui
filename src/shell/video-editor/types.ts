@@ -56,6 +56,11 @@ export interface TimelineClip {
   opacity?: number;
   /** 顺时针旋转角度，单位 degree。 */
   rotation?: number;
+  /** 视觉素材（视频/贴图）水平 / 垂直镜像；先翻转再旋转（与 FFmpeg hflip/vflip→rotate 同序）。 */
+  flip_x?: boolean;
+  flip_y?: boolean;
+  /** 时间线片段块上显示的名字（素材标题）；渲染端不读。 */
+  label?: string;
   /** 视频适配方式；贴图始终按原始比例。 */
   fit?: "contain" | "cover" | "stretch";
   /** 视频基础调色（FFmpeg eq 范围）。 */

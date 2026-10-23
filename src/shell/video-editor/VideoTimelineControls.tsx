@@ -24,7 +24,7 @@ const TRACK_ADDS: Array<{ kind: TrackKind; label: string }> = [
   { kind: "video", label: "视频轨" },
   { kind: "audio", label: "音频轨" },
   { kind: "text", label: "文字轨" },
-  { kind: "image", label: "贴图轨" },
+  { kind: "image", label: "图片轨" },
 ];
 
 function ToolButton({
@@ -193,7 +193,7 @@ export function VideoTimelineControls({
                 style={
                   active
                     ? { borderColor: accent, color: accent, background: `${accent}12` }
-                    : { borderColor: "#e7e5e4", color: "#57534e" }
+                    : { borderColor: "var(--border)", color: "var(--fg-2)" }
                 }
               >
                 {format.label}
@@ -212,7 +212,7 @@ export function VideoTimelineControls({
               style={
                 state.doc.fps === fps
                   ? { borderColor: accent, color: accent, background: `${accent}12` }
-                  : { borderColor: "#e7e5e4", color: "#57534e" }
+                  : { borderColor: "var(--border)", color: "var(--fg-2)" }
               }
             >
               {fps} fps

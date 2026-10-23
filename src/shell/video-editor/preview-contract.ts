@@ -25,6 +25,9 @@ export interface TimelineVideoDrawSpec {
   centerX: number;
   centerY: number;
   rotationRadians: number;
+  /** -1 = 镜像。 */
+  flipX: 1 | -1;
+  flipY: 1 | -1;
   alpha: number;
   filter: string;
 }
@@ -61,6 +64,8 @@ export function timelineVideoDrawSpec(
     centerX: (clip.x ?? 0.5) * width,
     centerY: (clip.y ?? 0.5) * height,
     rotationRadians: ((clip.rotation ?? 0) * Math.PI) / 180,
+    flipX: clip.flip_x ? -1 : 1,
+    flipY: clip.flip_y ? -1 : 1,
     alpha: clamp01(transitionAlpha * (clip.opacity ?? 1)),
     filter: `brightness(${brightness}) contrast(${contrast}) saturate(${saturation})`,
   };
@@ -85,6 +90,7 @@ export function drawTimelineVideoFrame(
   ctx.save();
   ctx.translate(spec.centerX, spec.centerY);
   ctx.rotate(spec.rotationRadians);
+  ctx.scale(spec.flipX, spec.flipY);
   ctx.filter = spec.filter;
   ctx.globalAlpha = spec.alpha;
   ctx.drawImage(

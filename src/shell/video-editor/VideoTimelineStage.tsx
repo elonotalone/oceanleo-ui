@@ -215,7 +215,7 @@ export function VideoTimelineStage({
             style={
               state.snapEnabled
                 ? { borderColor: accent, color: accent, background: `${accent}12` }
-                : { borderColor: "#e7e5e4", color: "#57534e" }
+                : { borderColor: "var(--border)", color: "var(--fg-2)" }
             }
           >
             {tt("吸附")}

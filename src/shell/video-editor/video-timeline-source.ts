@@ -103,6 +103,7 @@ export function planVideoTimelineSource(
     in_ms: 0,
     speed: 1,
     volume: 1,
+    ...(item.title?.trim() ? { label: item.title.trim().slice(0, 120) } : {}),
   };
   track.clips.push(clip);
   return {
@@ -173,4 +174,22 @@ export function videoTimelineSeedFromPlan(plan: VideoTimelineSourcePlan): {
 
 export function planVideoTimelineSeed(item: LibraryItem) {
   return videoTimelineSeedFromPlan(planVideoTimelineSource(item));
+}
+
+/**
+ * 库条目的 `url` 常是 `/v1/artifact-renditions/access/<grant>` 这种几分钟就过期（410）的
+ * 签名地址。时间线工程要长期引用素材，所以 seed 时先换成持久地址；`.../access/public`
+ * 是内容寻址的，本身就持久。
+ */
+export function isExpiringArtifactGrantUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url, "https://api.oceanleo.com");
+    const marker = "/artifact-renditions/access/";
+    const at = parsed.pathname.indexOf(marker);
+    if (at < 0) return false;
+    const rest = parsed.pathname.slice(at + marker.length);
+    return Boolean(rest) && rest !== "public";
+  } catch {
+    return false;
+  }
 }

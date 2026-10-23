@@ -76,8 +76,10 @@ import { clampTimelinePxPerSecond } from "./timeline-viewport";
 import type { TimelineClip, TimelineDoc, TrackKind } from "./types";
 import {
   VIDEO_TIMELINE_PLACEHOLDER_DURATION_MS,
+  isExpiringArtifactGrantUrl,
   planVideoTimelineSeed,
 } from "./video-timeline-source";
+import { refreshArtifactRendition } from "../artifact-client";
 import {
   assertBlobSource,
   parseVideoProjectEnvelope,
@@ -596,7 +598,31 @@ export function useVideoTimeline(
     void (async () => {
       try {
         let sourceUrl = itemSourceUrl;
-        if (!isFirstPartyMediaUrl(sourceUrl)) {
+        if (isExpiringArtifactGrantUrl(sourceUrl)) {
+          // 签名地址几分钟就 410：先按 revision 重签一份新鲜的，再拷进持久存储，
+          // 工程里存的是持久地址，关掉重开、过几天再开都还在。
+          const artifactId = String(item.artifactId || "").trim();
+          const revisionId = String(item.revisionId || item.artifact?.revisionId || "").trim();
+          if (artifactId && revisionId) {
+            const refreshed = await refreshArtifactRendition(
+              { artifactId, revisionId },
+              "full",
+            );
+            const fresh = refreshed.ok ? String(refreshed.data?.url || "").trim() : "";
+            if (fresh) sourceUrl = fresh;
+          }
+          if (cancelled) return;
+          sourceUrl = await importMediaUrl(sourceUrl, {
+            kind: seededKind,
+            siteId: siteId || "video",
+            title: item.title,
+            registerAsset: false,
+          });
+          if (cancelled) return;
+          setDocState((current) =>
+            patchClipIn(current, seededClipId, { source_url: sourceUrl }),
+          );
+        } else if (!isFirstPartyMediaUrl(sourceUrl)) {
           sourceUrl = await importMediaUrl(sourceUrl, {
             kind: seededKind,
             siteId: siteId || "video",
@@ -1018,6 +1044,7 @@ export function useVideoTimeline(
             start_ms: appendAt,
             duration_ms: duration,
             source_url: url,
+            ...(title.trim() ? { label: title.trim().slice(0, 120) } : {}),
             ...(media === "image"
               ? { x: 0.5, y: 0.5, scale: 0.35, opacity: 1 }
               : {
