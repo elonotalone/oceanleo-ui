@@ -682,10 +682,4 @@ export function isTimelineDoc(value: unknown): value is TimelineDoc {
   return timelineDocIssue(value) === "";
 }
 
-/** 顺时针转 90°，结果落回 (-180, 180]。 */
-export function rotateClockwise90(rotation: number | undefined): number {
-  const next = (Math.round(Number(rotation) || 0) + 90) % 360;
-  return next > 180 ? next - 360 : next <= -180 ? next + 360 : next;
-}
-
 export const TRACK_KIND_ORDER: TrackKind[] = ["video", "audio", "text", "image"];

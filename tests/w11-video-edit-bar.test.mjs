@@ -1,0 +1,277 @@
+// 2026-10-23 编辑器整改波 W11：视频时间线编辑栏（D9 规范 id / D10 每个按钮都生效）、
+// 翻转进预览像素路径、时间线两档配色对比度、签名素材地址不进工程。
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  rotateClockwise90,
+  runVideoClipCommand,
+  videoClipSelection,
+} from "../src/shell/video-editor/video-edit-bar.ts";
+import { canonicalSelectionControls } from "../src/shell/edit-bar-canon-projection.ts";
+import { drawTimelineVideoFrame } from "../src/shell/video-editor/preview-contract.ts";
+import { normalizeTimelineDoc } from "../src/shell/video-editor/timeline-model.ts";
+import { isExpiringArtifactGrantUrl } from "../src/shell/video-editor/video-timeline-source.ts";
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
+const tt = (zh) => zh;
+
+function located(kind, extra = {}) {
+  const clip = {
+    id: "c1",
+    start_ms: 1_000,
+    duration_ms: 3_000,
+    ...(kind === "text" ? { text: "Hi", style: {} } : { source_url: "https://cdn.example/a.mp4" }),
+    ...extra,
+  };
+  return { clip, track: { id: "t1", kind, clips: [clip] } };
+}
+
+function recorder() {
+  const calls = [];
+  const fn = (name) => (...args) => calls.push([name, ...args]);
+  return {
+    calls,
+    state: {
+      patchClip: fn("patchClip"),
+      patchClipTransient: fn("patchClipTransient"),
+      moveClip: fn("moveClip"),
+      trimClip: fn("trimClip"),
+      setClipTiming: fn("setClipTiming"),
+      setClipSpeed: fn("setClipSpeed"),
+      duplicateSelectedClip: fn("duplicate"),
+      deleteSelectedClip: fn("delete"),
+      beginGesture: fn("begin"),
+      endGesture: fn("end"),
+      cancelGesture: fn("cancel"),
+    },
+  };
+}
+
+/** 每个控件一个「会改东西」的取值。 */
+function sampleValue(control) {
+  switch (control.kind) {
+    case "toggle":
+      return !control.value;
+    case "color":
+      return "#ff0000";
+    case "select":
+      return control.options.find((option) => option.value !== control.value)?.value;
+    case "text":
+      return "Changed";
+    case "number":
+    case "range":
+      return Number(control.value) + (control.max !== undefined && Number(control.value) >= control.max ? -1 : 1);
+    default:
+      return undefined;
+  }
+}
+
+test("W11 every emitted control runs a real mutation (D10: no dead buttons)", () => {
+  for (const kind of ["video", "image", "text", "audio"]) {
+    const extra = kind === "text"
+      ? { style: { background: "#000000" }, transition_in: { type: "fade", duration_ms: 500 } }
+      : { transition_in: { type: "fade", duration_ms: 500 } };
+    const at = located(kind, extra);
+    const context = videoClipSelection(at, tt);
+    assert.ok(context.controls.length > 0, kind);
+    for (const control of context.controls) {
+      const { state, calls } = recorder();
+      const handled = runVideoClipCommand(state, at, {
+        version: 1,
+        selectionId: "c1",
+        controlId: control.id,
+        value: sampleValue(control),
+      });
+      assert.equal(handled, true, `${kind}:${control.id} must be handled`);
+      assert.ok(calls.length > 0, `${kind}:${control.id} must mutate the timeline`);
+    }
+  }
+});
+
+test("W11 unknown control ids are rejected, foreign selections are ignored", () => {
+  const { state, calls } = recorder();
+  const at = located("video");
+  assert.equal(
+    runVideoClipCommand(state, at, { version: 1, selectionId: "c1", controlId: "nope" }),
+    false,
+  );
+  assert.equal(
+    runVideoClipCommand(state, at, { version: 1, selectionId: "other", controlId: "opacity", value: 50 }),
+    false,
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("W11 canonical ids and order per clip kind (D9)", () => {
+  const order = (kind) => {
+    const projection = canonicalSelectionControls(videoClipSelection(located(kind), tt), tt);
+    return projection.controls.filter((c) => c.canonId).map((c) => c.canonId);
+  };
+  assert.deepEqual(
+    [...new Set(order("text"))],
+    ["font-size", "bold", "text-color", "highlight", "align", "duplicate", "delete"],
+  );
+  assert.deepEqual(
+    [...new Set(order("video"))],
+    ["flip-x", "flip-y", "rotate", "image-fit", "duplicate", "delete"],
+  );
+  assert.deepEqual([...new Set(order("audio"))], ["duplicate", "delete"]);
+  // 面板型规范项按 A-1：子控件进 position / adjust 面板，不另发 panel 控件。
+  const video = videoClipSelection(located("video"), tt);
+  assert.equal(video.controls.some((c) => c.kind === "panel"), false);
+  assert.deepEqual(
+    video.controls.filter((c) => c.inspectorGroup === "adjust").map((c) => c.id),
+    ["brightness", "contrast", "saturation"],
+  );
+  assert.deepEqual(
+    video.controls.filter((c) => c.inspectorGroup === "position").map((c) => c.id),
+    ["position-x", "position-y", "position-scale", "position-angle"],
+  );
+  // 贴图没有调色与显示方式（预览/导出都不做）；音频没有视觉项。
+  const image = videoClipSelection(located("image"), tt).controls.map((c) => c.id);
+  assert.equal(image.includes("brightness"), false);
+  assert.equal(image.includes("image-fit"), false);
+  const audio = videoClipSelection(located("audio"), tt).controls.map((c) => c.id);
+  for (const id of ["flip-x", "opacity", "position-x", "font-size"]) {
+    assert.equal(audio.includes(id), false, id);
+  }
+  // 编辑器特有控件不带规范图标。
+  for (const kind of ["video", "audio", "text", "image"]) {
+    for (const c of videoClipSelection(located(kind), tt).controls) {
+      if (["speed", "muted", "volume", "start-time", "duration", "source-in", "transition", "transition-duration", "text"].includes(c.id)) {
+        assert.equal(c.icon, undefined, `${kind}:${c.id}`);
+      }
+    }
+  }
+});
+
+test("W11 visible bar icons are pairwise distinct for every clip kind", () => {
+  for (const kind of ["video", "image", "text", "audio"]) {
+    const projection = canonicalSelectionControls(videoClipSelection(located(kind), tt), tt);
+    const icons = projection.controls
+      .filter((c) => c.icon && c.slot !== "inspector")
+      .map((c) => c.icon);
+    assert.equal(new Set(icons).size, icons.length, `${kind}: ${icons.join(",")}`);
+  }
+});
+
+test("W11 flip and rotate commands patch the model; flips survive normalize", () => {
+  const { state, calls } = recorder();
+  const at = located("video", { rotation: 170 });
+  runVideoClipCommand(state, at, { version: 1, selectionId: "c1", controlId: "flip-x", value: true });
+  runVideoClipCommand(state, at, { version: 1, selectionId: "c1", controlId: "rotate" });
+  assert.deepEqual(calls[0], ["patchClip", "c1", { flip_x: true }]);
+  assert.deepEqual(calls[1], ["patchClip", "c1", { rotation: -100 }]);
+  assert.equal(rotateClockwise90(0), 90);
+  assert.equal(rotateClockwise90(90), 180);
+  assert.equal(rotateClockwise90(180), -90);
+  assert.equal(rotateClockwise90(-90), 0);
+  const doc = normalizeTimelineDoc({
+    width: 1280,
+    height: 720,
+    fps: 30,
+    tracks: [
+      { id: "v", kind: "video", clips: [{ id: "a", start_ms: 0, duration_ms: 1000, flip_x: true, flip_y: false, label: "Clip.mp4" }] },
+      { id: "a", kind: "audio", clips: [] },
+    ],
+  });
+  const clip = doc.tracks[0].clips[0];
+  assert.equal(clip.flip_x, true);
+  assert.equal("flip_y" in clip, false);
+  assert.equal(clip.label, "Clip.mp4");
+});
+
+test("W11 slider gestures fold into one undo step", () => {
+  const { state, calls } = recorder();
+  const at = located("video");
+  for (const phase of ["start", "update", "commit"]) {
+    runVideoClipCommand(state, at, {
+      version: 1,
+      selectionId: "c1",
+      controlId: "opacity",
+      value: 40,
+      transactionId: "tx",
+      phase,
+    });
+  }
+  assert.deepEqual(calls.map((c) => c[0]), ["begin", "patchClipTransient", "patchClipTransient", "end"]);
+  assert.deepEqual(calls[1][2], { opacity: 0.4 });
+});
+
+test("W11 preview pixel path mirrors flipped video frames", () => {
+  const calls = [];
+  const ctx = {
+    globalAlpha: 1,
+    filter: "none",
+    save() {},
+    restore() {},
+    translate() {},
+    rotate() {},
+    scale(x, y) {
+      calls.push(["scale", x, y]);
+    },
+    drawImage() {
+      calls.push(["drawImage"]);
+    },
+  };
+  const base = { id: "c", start_ms: 0, duration_ms: 1000 };
+  drawTimelineVideoFrame(ctx, { videoWidth: 1920, videoHeight: 1080 }, { ...base, flip_x: true }, 1280, 720, 1);
+  drawTimelineVideoFrame(ctx, { videoWidth: 1920, videoHeight: 1080 }, { ...base, flip_y: true }, 1280, 720, 1);
+  drawTimelineVideoFrame(ctx, { videoWidth: 1920, videoHeight: 1080 }, base, 1280, 720, 1);
+  assert.deepEqual(calls, [
+    ["scale", -1, 1],
+    ["drawImage"],
+    ["scale", 1, -1],
+    ["drawImage"],
+    ["drawImage"],
+  ]);
+});
+
+function luminance(hex) {
+  const n = hex.replace("#", "");
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) / 255).map((c) =>
+    c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+  );
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrast(a, b) {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
+test("W11 timeline palette follows the site theme and meets contrast floors in both modes", async () => {
+  let theme = "light";
+  const module = await import(
+    await compileModule("src/shell/video-editor/timeline-theme.ts", {
+      "../plugin-theme": dataModule(
+        "export function usePluginTheme() { return { theme: globalThis.__w11Theme }; }",
+      ),
+    })
+  );
+  globalThis.__w11Theme = theme;
+  const light = module.useTimelinePalette();
+  globalThis.__w11Theme = "dark";
+  const dark = module.useTimelinePalette();
+  assert.equal(light, module.TIMELINE_THEME_PALETTES.light);
+  assert.equal(dark, module.TIMELINE_THEME_PALETTES.dark);
+  assert.notEqual(light.track, dark.track);
+  // 浅色档要真是浅色：轨道底亮度高于 0.8。
+  assert.ok(luminance(light.track) > 0.8, light.track);
+  for (const palette of [light]) {
+    for (const [kind, colors] of Object.entries(palette.clips)) {
+      assert.ok(contrast(colors.background, palette.track) >= 3, `${kind} block vs track`);
+      assert.ok(contrast(colors.label, colors.background) >= 4.5, `${kind} label`);
+    }
+    assert.ok(contrast(palette.grid, palette.ruler) >= 4.5, "ruler text");
+    assert.ok(contrast(palette.playhead, palette.track) >= 4.5, "playhead");
+  }
+});
+
+test("W11 short-lived artifact grants are recognised so they never land in the project", () => {
+  assert.equal(isExpiringArtifactGrantUrl("https://api.oceanleo.com/v1/artifact-renditions/access/abc123"), true);
+  assert.equal(isExpiringArtifactGrantUrl("/v1/artifact-renditions/access/abc123?x=1"), true);
+  assert.equal(isExpiringArtifactGrantUrl("https://api.oceanleo.com/v1/artifact-renditions/access/public"), false);
+  assert.equal(isExpiringArtifactGrantUrl("https://cdn.example/a.mp4"), false);
+  assert.equal(isExpiringArtifactGrantUrl(""), false);
+});

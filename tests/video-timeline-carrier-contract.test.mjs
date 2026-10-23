@@ -369,12 +369,22 @@ test("§2 色板与版面真的接到了时间线渲染上（不是纸面数值�
   assert.match(area, /const ROW_HEIGHT = TIMELINE_LAYOUT\.trackRowHeightPx/);
   assert.match(area, /const MIN_CLIP_WIDTH_PX = TIMELINE_LAYOUT\.minimumClipWidthPx/);
   assert.match(area, /const PLAYHEAD_WIDTH_PX = TIMELINE_LAYOUT\.playheadWidthPx/);
-  assert.match(area, /TIMELINE_PALETTE\["tl\.bg"\]\.value/);
-  assert.match(area, /TIMELINE_PALETTE\["tl\.grid"\]\.value/);
-  assert.match(area, /TIMELINE_PALETTE\["tl\.playhead"\]\.value/);
-  assert.match(area, /TIMELINE_PALETTE\["tl\.transition"\]\.value/);
-  assert.match(area, /TIMELINE_CLIP_LABEL_COLORS\["tl\.clip\.video"\]/);
-  assert.match(area, /TIMELINE_CLIP_LABEL_COLORS\["tl\.clip\.audio"\]/);
+  // 2026-10-23 D6/D7：时间线跟随网站明暗。渲染读 useTimelinePalette()，深色档就是
+  // §2 规范色板原值（timeline-theme.ts 里逐项引用 TIMELINE_PALETTE），浅色档另定。
+  assert.match(area, /const palette = useTimelinePalette\(\)/);
+  assert.match(area, /background: palette\.track/);
+  assert.match(area, /background: palette\.ruler/);
+  assert.match(area, /palette\.grid/);
+  assert.match(area, /background: palette\.playhead/);
+  assert.match(area, /palette\.transition/);
+  assert.match(area, /palette\.clips\[track\.kind\]/);
+  const theme = await readFile(resolve("src/shell/video-editor/timeline-theme.ts"), "utf8");
+  assert.match(theme, /TIMELINE_PALETTE\["tl\.bg"\]\.value/);
+  assert.match(theme, /TIMELINE_PALETTE\["tl\.grid"\]\.value/);
+  assert.match(theme, /TIMELINE_PALETTE\["tl\.playhead"\]\.value/);
+  assert.match(theme, /TIMELINE_PALETTE\["tl\.transition"\]\.value/);
+  assert.match(theme, /TIMELINE_CLIP_LABEL_COLORS\["tl\.clip\.video"\]/);
+  assert.match(theme, /TIMELINE_CLIP_LABEL_COLORS\["tl\.clip\.audio"\]/);
   // 旧的 tailwind 硬编码配色与 1px 红播放头不得残留。
   assert.doesNotMatch(area, /border-sky-300 bg-sky-100/);
   assert.doesNotMatch(area, /bg-emerald-100/);

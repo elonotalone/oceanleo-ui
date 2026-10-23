@@ -500,7 +500,7 @@ export class TimelinePreviewEngine {
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(rotation);
-        ctx.scale(clip.flip_x ? -1 : 1, clip.flip_y ? -1 : 1);
+        if (clip.flip_x || clip.flip_y) ctx.scale(clip.flip_x ? -1 : 1, clip.flip_y ? -1 : 1);
         ctx.globalAlpha = clamp01(alpha);
         ctx.drawImage(
           el,

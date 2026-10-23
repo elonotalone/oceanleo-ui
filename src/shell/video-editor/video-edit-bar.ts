@@ -20,7 +20,6 @@ import type { UITranslate } from "../../i18n/ui/useUI";
 import {
   MIN_CLIP_MS,
   availableTimelineDurationMs,
-  rotateClockwise90,
   type ClipLocation,
 } from "./timeline-model";
 import type {
@@ -374,6 +373,12 @@ function finite(value: SelectionCommand["value"], fallback = 0): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/** 顺时针转 90°，结果落回 (-180, 180]（模型的角度域）。 */
+export function rotateClockwise90(rotation: number | undefined): number {
+  const next = (Math.round(Number(rotation) || 0) + 90) % 360;
+  return next > 180 ? next - 360 : next <= -180 ? next + 360 : next;
 }
 
 /** 执行一条编辑栏命令；返回是否认得这个控件。 */

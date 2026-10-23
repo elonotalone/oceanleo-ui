@@ -49,6 +49,7 @@ export function planVideoTimelineSource(
     "url" | "previewUrl" | "source" | "kind" | "artifactId"
   > & {
     meta?: LibraryItem["meta"];
+    title?: LibraryItem["title"];
   },
 ): VideoTimelineSourcePlan {
   const meta = item.meta ?? {};

@@ -13,11 +13,14 @@
 - [实测] clicking a panel button marks it active but the panel host `section.tool-detail` is not visible in the `/library?item=` carrier -> every slider control unreachable (shell/W02 side).
 - [实测] seeded clip source_url is a short-lived artifact-access grant (exp ~minutes) -> 410 Gone, preview turns black, and it is saved into the project doc (breaks reopen). Backend media import accepts artifact-access URLs.
 
-## Current step (06:45Z)
-- Step 3: code: video-edit-bar.ts (canonical controls, A-1 panels), flip_x/flip_y in model+preview, light/dark timeline palette, durable seed source (refresh grant + import), clip labels, copy book.
+- [实测 08:30Z R2] salvage 3a7fe576 has video-edit-bar.ts / timeline-theme.ts / flip / durable seed on main. tsc: only my error was `title` missing on planVideoTimelineSource Pick (fixed). Focused fails in my area: carrier-contract #6 (palette regex → moved to timeline-theme), video-editor-v8 #5 (ctx stub has no scale → only scale when flipped), W5 (timeline-model stub lacks rotateClockwise90 → helper moved into video-edit-bar.ts). route-context-editors / w13 #2 #5 fail on PDF files (W06), not mine.
+- [读码] convert/timeline.py (oceanleo, parent) has no hflip/vflip → export ignores flip; signal to parent with patch.
+
+## Current step (R2 08:35Z)
+- Step 4: fix tests, add video-edit-bar + theme tests, copy book, commit; then browser matrix (both themes) + save protocol; delivery.
 
 ## Next
-- focused tests + tsc, commit; browser matrix + two themes + save protocol; delivery.
+- browser: scenario w11-bar.mjs clicks each control, before/after shots; save protocol; delivery.
 ## Repro commands
 - focused test: `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/<file>.test.mjs`
 - browser: `cd docs/work-logs/2026-10-23-editor-overhaul && bash harness/mint.sh | OUT_DIR=/tmp/w11-x THEME=light node harness/run.mjs evidence/W11/scenarios/<s>.mjs`

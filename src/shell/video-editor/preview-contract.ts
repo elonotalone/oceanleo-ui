@@ -90,7 +90,7 @@ export function drawTimelineVideoFrame(
   ctx.save();
   ctx.translate(spec.centerX, spec.centerY);
   ctx.rotate(spec.rotationRadians);
-  ctx.scale(spec.flipX, spec.flipY);
+  if (spec.flipX !== 1 || spec.flipY !== 1) ctx.scale(spec.flipX, spec.flipY);
   ctx.filter = spec.filter;
   ctx.globalAlpha = spec.alpha;
   ctx.drawImage(
