@@ -19,7 +19,7 @@ import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
-import { advancedSavedItem } from "../advanced-session";
+import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { editorToolLabel } from "../workbench-routes";
 import { useUI } from "../../i18n/ui/useUI";
@@ -45,6 +45,7 @@ import { buildPdfCommandSurface } from "../media-editors/pdf-command-surface";
 import { PDF_MARK_TOOL_IDS } from "../media-editors/pdf-mark-tools";
 import { pdfDataUrlBytes } from "../media-editors/pdf-signature-store";
 import { PDF_MAX_ZOOM, PDF_MIN_ZOOM } from "../media-editors/pdf-workbench-utils";
+import { withEditorHistoryCommand } from "../workbench-material-command";
 
 /** 查看器是 WASM + worker，只在浏览器里装；`import()` 字面量必须写在这一层（切 chunk）。 */
 const PdfStage = dynamic(
@@ -146,6 +147,8 @@ export function PdfRoute({
     () => ({
       id: "pdf-stamps@3",
       actions: ["insert"],
+      // 素材库面板按申报列：PDF 只收图片（含签名图片），作为图章放进页面。
+      materialTypes: ["image"],
       accepts: (material) => !readOnly && isImageMaterial(material),
       mutate: async (_action, material, placement) => {
         const candidates = [material.url, material.previewUrl, material.thumbUrl].filter(Boolean) as string[];
@@ -161,7 +164,17 @@ export function PdfRoute({
     }),
     [editor.insertImage, readOnly, tt],
   );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  // 素材库「点一下 / 拖进去 = 插入」：图章经查看器的 createAnnotation 进 EmbedPDF 自己的
+  // 撤销历史（顶栏撤销即可撤回）；基线是当前 revision（保存后随 item 前移），未知时不登记。
+  const materialCommandAdapter = useMemo(
+    () =>
+      withEditorHistoryCommand(materialAdapter, {
+        documentId: advancedRootItemId(item),
+        targetRevisionId: item.revisionId,
+      }),
+    [item, materialAdapter],
+  );
+  useWorkbenchMaterialAdapter(materialCommandAdapter);
 
   const saveBeforeNewConversation = useCallback(async () => {
     // 只读（只有查看权限 / 别人在编辑）：不落库，别人保存后这里会自动更新。

@@ -204,6 +204,9 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     /* 拿不到 schema 时换文档会闪一下官方工具栏，功能不受影响 */
   }
 
+  // 「加文字」是填表用的：默认黑字、空内容（上游默认红字 + 「Insert text」占位）。
+  annotations?.setToolDefaults("freeText", { fontColor: "#000000", contents: "" });
+
   function applyChrome(): void {
     const id = doc();
     if (!id || !ui) return;

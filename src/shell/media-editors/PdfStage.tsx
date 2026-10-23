@@ -63,6 +63,8 @@ export function PdfStage({
   const [Viewer, setViewer] = useState<ComponentType<Record<string, unknown>> | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [timeoutError, setTimeoutError] = useState("");
+  /** 内核太慢时「重新载入」才换一个查看器（平时永远是同一个）。 */
+  const [attempt, setAttempt] = useState(0);
   const instanceId = useMemo(() => `pdf-viewer-${++instanceSeq}`, []);
   const containerRef = useRef<ContainerLike | null>(null);
   const bridgeRef = useRef<PdfViewerBridge | null>(null);
@@ -117,7 +119,8 @@ export function PdfStage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 初始化超时要说原因，不许一直转圈。
+  // 初始化超时要说原因、给出路，不许一直转圈；但也不卸掉查看器——慢网络下它
+  // 过一会儿还会就绪，就绪时提示自动收起。
   useEffect(() => {
     if (!config) return undefined;
     const startedAtMs = Date.now();
@@ -127,15 +130,27 @@ export function PdfStage({
         nowMs: Date.now(),
         ready: Boolean(bridgeRef.current),
         timeoutMs: PDFIUM_INIT_TIMEOUT_MS,
-        detail: "PDF 内核没有在时限内就绪。PDFium worker 必须能取到本站的 wasm。",
       });
-      if (watch.status === "timeout" && watch.message) {
-        setTimeoutError(watch.message);
-        callbacks.current.onFailure(watch.message);
+      if (watch.status === "timeout") {
+        setTimeoutError(
+          tt("PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。", {
+            seconds: Math.round(PDFIUM_INIT_TIMEOUT_MS / 1000),
+          }),
+        );
       }
     }, PDFIUM_INIT_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
-  }, [config]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, attempt]);
+
+  const reload = () => {
+    bridgeRef.current?.dispose();
+    bridgeRef.current = null;
+    callbacks.current.onHandle(null);
+    setRevealed(false);
+    setTimeoutError("");
+    setAttempt((value) => value + 1);
+  };
 
   useEffect(
     () => () => {
@@ -173,10 +188,10 @@ export function PdfStage({
   const viewport = () =>
     containerRef.current?.shadowRoot?.querySelector(".bg-bg-app") ?? null;
 
-  if (!plan.wasm.ok || timeoutError) {
+  if (!plan.wasm.ok) {
     return (
       <p role="alert" className="p-4 text-xs text-[var(--awb-danger)]">
-        {timeoutError || (plan.wasm.ok ? "" : plan.wasm.reason)}
+        {plan.wasm.reason}
       </p>
     );
   }
@@ -204,6 +219,7 @@ export function PdfStage({
           style={{ opacity: revealed ? 1 : 0, transition: "opacity var(--leo-dur-2, 160ms)" }}
         >
           <Viewer
+            key={attempt}
             style={{ width: "100%", height: "100%" }}
             config={config}
             onInit={(container: ContainerLike) => {
@@ -216,6 +232,7 @@ export function PdfStage({
                 return;
               }
               bridgeRef.current = bridge;
+              setTimeoutError("");
               bridge.setChrome(modeRef.current);
               bridge.subscribe({
                 onDocument: () => setRevealed(true),
@@ -226,13 +243,31 @@ export function PdfStage({
           />
         </div>
       ) : null}
-      {!revealed ? (
+      {!revealed && !timeoutError ? (
         <p
           role="status"
           className="absolute inset-0 grid place-items-center text-xs text-[var(--awb-muted)]"
         >
           {tt("正在载入 PDF…")}
         </p>
+      ) : null}
+      {!revealed && timeoutError ? (
+        <div
+          role="alert"
+          data-pdf-init-slow=""
+          className="absolute inset-0 grid place-items-center p-6 text-center"
+        >
+          <div className="grid max-w-sm justify-items-center gap-3 text-[13px] text-[var(--awb-text)]">
+            <p>{timeoutError}</p>
+            <button
+              type="button"
+              onClick={reload}
+              className="min-h-11 rounded-lg border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-4 text-[13px] hover:bg-[var(--awb-hover)]"
+            >
+              {tt("重新载入")}
+            </button>
+          </div>
+        </div>
       ) : null}
     </div>
   );

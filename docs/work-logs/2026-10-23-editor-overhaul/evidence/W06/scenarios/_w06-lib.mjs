@@ -92,3 +92,12 @@ export async function saveTrace(page, helpers, log, label, timeout = 90000) {
   log("save", label, seen.join(" → "), Math.round((Date.now() - t0) / 1000) + "s");
   return seen[seen.length - 1];
 }
+
+/** Scroll the viewer back to page 1 through the page rail (the viewer may open mid-document). */
+export async function firstPage(page) {
+  const thumb = page.locator('[data-pdf-page-thumb="1"] button').first();
+  if (await thumb.count()) {
+    await thumb.click();
+    await page.waitForTimeout(1500);
+  }
+}

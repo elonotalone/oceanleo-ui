@@ -178,6 +178,9 @@ test("basic hides the official chrome and pro shows it, on the same document wit
     toolbars: { "main-toolbar": { id: "main-toolbar", permanent: false } },
   });
 
+  // 加文字用来填表：默认黑字、空内容。
+  assert.deepEqual(named(fake.calls, "setToolDefaults")[0].slice(1), ["freeText", { fontColor: "#000000", contents: "" }]);
+
   bridge.setChrome("basic");
   const closed = named(fake.calls, "closeToolbarSlot").map((call) => call[3]);
   assert.deepEqual(closed.sort(), ["main", "secondary"]);
@@ -596,6 +599,13 @@ test("the PDF route: ten basic tools on the bar, one stage, no legacy toolbox, s
   assert.match(route, /accepts: \(material\) => !readOnly && isImageMaterial\(material\)/);
   assert.match(route, /placement\?\.source === "drop" \? placement\.clientX : undefined/);
   assert.match(route, /accept: "image\/png,image\/jpeg"/);
+  // 素材面板按申报列图片；点一下 / 拖进去走 W02 的 command 契约（插入进查看器自己的撤销历史）。
+  assert.match(route, /materialTypes: \["image"\]/);
+  assert.match(
+    route,
+    /withEditorHistoryCommand\(materialAdapter, \{\s*documentId: advancedRootItemId\(item\),\s*targetRevisionId: item\.revisionId,/,
+  );
+  assert.match(route, /useWorkbenchMaterialAdapter\(materialCommandAdapter\)/);
 });
 
 test("the page rail avoids the floating edit bar and locks while read-only", () => {

@@ -106,6 +106,7 @@ function fakeRegistry() {
         setLocked: () => undefined,
         commit: () => task(true),
       }),
+      setToolDefaults: () => undefined,
       onStateChange: noopHook,
     },
     "document-manager": {

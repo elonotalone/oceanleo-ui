@@ -59,6 +59,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "The PDF viewer didn't load: {reason}",
     "PDF 查看器没装起来。": "The PDF viewer didn't load.",
     "PDF 查看器缺少编辑能力，已停止。": "The PDF viewer is missing editing features, so it stopped.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "The PDF engine isn't ready after {seconds} seconds. Wait a little longer, or reload.",
+    "重新载入": "Reload",
   },
   de: {
     "高亮": "Markieren",
@@ -116,6 +118,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "Der PDF-Viewer wurde nicht geladen: {reason}",
     "PDF 查看器没装起来。": "Der PDF-Viewer wurde nicht geladen.",
     "PDF 查看器缺少编辑能力，已停止。": "Dem PDF-Viewer fehlen Bearbeitungsfunktionen, daher wurde er gestoppt.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "Die PDF-Engine ist nach {seconds} Sekunden noch nicht bereit. Warte noch etwas oder lade neu.",
+    "重新载入": "Neu laden",
   },
   es: {
     "高亮": "Resaltar",
@@ -173,6 +177,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "El visor de PDF no se cargó: {reason}",
     "PDF 查看器没装起来。": "El visor de PDF no se cargó.",
     "PDF 查看器缺少编辑能力，已停止。": "Al visor de PDF le faltan funciones de edición, así que se detuvo.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "El motor de PDF no está listo tras {seconds} segundos. Espera un poco más o vuelve a cargar.",
+    "重新载入": "Volver a cargar",
   },
   "es-419": {
     "高亮": "Resaltar",
@@ -230,6 +236,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "El visor de PDF no se cargó: {reason}",
     "PDF 查看器没装起来。": "El visor de PDF no se cargó.",
     "PDF 查看器缺少编辑能力，已停止。": "Al visor de PDF le faltan funciones de edición, así que se detuvo.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "El motor de PDF no está listo después de {seconds} segundos. Espera un poco más o vuelve a cargar.",
+    "重新载入": "Volver a cargar",
   },
   fr: {
     "高亮": "Surligner",
@@ -287,6 +295,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "Le lecteur PDF ne s'est pas chargé : {reason}",
     "PDF 查看器没装起来。": "Le lecteur PDF ne s'est pas chargé.",
     "PDF 查看器缺少编辑能力，已停止。": "Le lecteur PDF n'a pas les fonctions d'édition, il a été arrêté.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "Le moteur PDF n'est pas prêt après {seconds} secondes. Patientez encore ou rechargez.",
+    "重新载入": "Recharger",
   },
   it: {
     "高亮": "Evidenzia",
@@ -344,6 +354,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "Il visualizzatore PDF non si è caricato: {reason}",
     "PDF 查看器没装起来。": "Il visualizzatore PDF non si è caricato.",
     "PDF 查看器缺少编辑能力，已停止。": "Al visualizzatore PDF mancano le funzioni di modifica, quindi si è fermato.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "Il motore PDF non è pronto dopo {seconds} secondi. Attendi ancora un po' o ricarica.",
+    "重新载入": "Ricarica",
   },
   "pt-BR": {
     "高亮": "Destacar",
@@ -401,6 +413,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "O visualizador de PDF não carregou: {reason}",
     "PDF 查看器没装起来。": "O visualizador de PDF não carregou.",
     "PDF 查看器缺少编辑能力，已停止。": "Faltam recursos de edição no visualizador de PDF, então ele parou.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "O mecanismo de PDF não ficou pronto em {seconds} segundos. Espere um pouco mais ou recarregue.",
+    "重新载入": "Recarregar",
   },
   "pt-PT": {
     "高亮": "Realçar",
@@ -458,6 +472,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "O visualizador de PDF não carregou: {reason}",
     "PDF 查看器没装起来。": "O visualizador de PDF não carregou.",
     "PDF 查看器缺少编辑能力，已停止。": "Faltam funções de edição ao visualizador de PDF, por isso parou.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "O motor de PDF não ficou pronto em {seconds} segundos. Aguarde mais um pouco ou recarregue.",
+    "重新载入": "Recarregar",
   },
   vi: {
     "高亮": "Tô sáng",
@@ -515,6 +531,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "Trình xem PDF chưa tải được: {reason}",
     "PDF 查看器没装起来。": "Trình xem PDF chưa tải được.",
     "PDF 查看器缺少编辑能力，已停止。": "Trình xem PDF thiếu chức năng chỉnh sửa nên đã dừng.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "Bộ xử lý PDF chưa sẵn sàng sau {seconds} giây. Hãy chờ thêm hoặc tải lại.",
+    "重新载入": "Tải lại",
   },
   tr: {
     "高亮": "Vurgula",
@@ -572,6 +590,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "PDF görüntüleyici yüklenmedi: {reason}",
     "PDF 查看器没装起来。": "PDF görüntüleyici yüklenmedi.",
     "PDF 查看器缺少编辑能力，已停止。": "PDF görüntüleyicide düzenleme özellikleri eksik, bu yüzden durduruldu.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "PDF motoru {seconds} saniyede hazır olmadı. Biraz daha bekleyin veya yeniden yükleyin.",
+    "重新载入": "Yeniden yükle",
   },
   "zh-TW": {
     "高亮": "螢光標記",
@@ -629,6 +649,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "PDF 檢視器沒有載入：{reason}",
     "PDF 查看器没装起来。": "PDF 檢視器沒有載入。",
     "PDF 查看器缺少编辑能力，已停止。": "PDF 檢視器缺少編輯功能，已停止。",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "PDF 核心 {seconds} 秒內還沒就緒。可以再等等，或重新載入。",
+    "重新载入": "重新載入",
   },
   ja: {
     "高亮": "ハイライト",
@@ -686,6 +708,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "PDF ビューアーを読み込めませんでした：{reason}",
     "PDF 查看器没装起来。": "PDF ビューアーを読み込めませんでした。",
     "PDF 查看器缺少编辑能力，已停止。": "PDF ビューアーに編集機能がないため停止しました。",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "PDF エンジンが {seconds} 秒たっても準備できていません。もう少し待つか、再読み込みしてください。",
+    "重新载入": "再読み込み",
   },
   ko: {
     "高亮": "형광펜",
@@ -743,6 +767,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "PDF 뷰어를 불러오지 못했어요: {reason}",
     "PDF 查看器没装起来。": "PDF 뷰어를 불러오지 못했어요.",
     "PDF 查看器缺少编辑能力，已停止。": "PDF 뷰어에 편집 기능이 없어 멈췄어요.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "PDF 엔진이 {seconds}초가 지나도 준비되지 않았어요. 조금 더 기다리거나 다시 불러오세요.",
+    "重新载入": "다시 불러오기",
   },
   ar: {
     "高亮": "تمييز",
@@ -800,6 +826,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "لم يتم تحميل عارض PDF: {reason}",
     "PDF 查看器没装起来。": "لم يتم تحميل عارض PDF.",
     "PDF 查看器缺少编辑能力，已停止。": "يفتقد عارض PDF ميزات التحرير، لذا توقف.",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "محرك PDF غير جاهز بعد {seconds} ثانية. انتظر قليلًا أو أعد التحميل.",
+    "重新载入": "إعادة التحميل",
   },
   th: {
     "高亮": "ไฮไลต์",
@@ -857,6 +885,8 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "โหลดตัวดู PDF ไม่สำเร็จ: {reason}",
     "PDF 查看器没装起来。": "โหลดตัวดู PDF ไม่สำเร็จ",
     "PDF 查看器缺少编辑能力，已停止。": "ตัวดู PDF ไม่มีความสามารถในการแก้ไข จึงหยุดทำงาน",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "เอนจิน PDF ยังไม่พร้อมหลัง {seconds} วินาที รออีกสักครู่หรือโหลดใหม่",
+    "重新载入": "โหลดใหม่",
   },
   hi: {
     "高亮": "हाइलाइट",
@@ -914,5 +944,7 @@ export const EDITOR_OVERHAUL_W06_COPY: EditorOverhaulCopy = {
     "PDF 查看器没装起来：{reason}": "PDF व्यूअर लोड नहीं हुआ: {reason}",
     "PDF 查看器没装起来。": "PDF व्यूअर लोड नहीं हुआ।",
     "PDF 查看器缺少编辑能力，已停止。": "PDF व्यूअर में संपादन सुविधाएँ नहीं हैं, इसलिए इसे रोका गया।",
+    "PDF 内核 {seconds} 秒内还没就绪。可以再等等，或重新载入。": "{seconds} सेकंड बाद भी PDF इंजन तैयार नहीं है। थोड़ा और रुकें या फिर से लोड करें।",
+    "重新载入": "फिर से लोड करें",
   },
 };

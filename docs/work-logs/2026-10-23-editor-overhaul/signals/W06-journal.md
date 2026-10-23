@@ -21,3 +21,7 @@
 - R2 [实测] 跨编辑器测试只改 PDF 段：advanced-native-editors、advanced-project-autosave、eas-w19、remaining-autosave、media-editors（含 600 行闸登记新文件）、media-source-integrity、route-context-editors、w13、w25、W6-r4 两份 → PDF 段全绿；余下红是别人的（richdoc / image / video / bay）。
 - R2 [实测] 产品小改：PdfRoute flush 改名 saveBeforeNewConversation（与其它路由同名、闸认）；缩放上下限引 PDF_MIN/MAX_ZOOM；图章按字节认 PNG/JPEG（不信 MIME）；草稿恢复失败照实报；PdfStage 失败文案进 tt；hit-target：PDF 新文件按钮命中区全部 ≥44px（视觉不变）。
 - R2 [实测] 新增 tests/editor-overhaul-w06-pdf.test.mjs 17/17。
+- R2 08:4xZ [实测] 浏览器 r2-protocol（cf9fd989）：高亮→已保存（rev2）、✓→已保存（rev3）；之后自动保存连续成版本（rev4–7）。查看器偶发 15s 内未就绪 → 旧码整块换成报错并卸掉查看器（「内核加载失败」+ stage unmounted）。修：超时只叠一层说明 +「重新载入」，查看器不卸，就绪后自动收起。
+- R2 [实测] 409 来自 `PUT /v1/agent/sessions/<id>/snapshot`（session revision conflict，非 PDF 保存）；PDF revisions POST 全部成功（r2-save-stress 6 轮）。CJK 加文字保存 → 已保存（r2-text-save 李四，2 个新 revision）。
+- R2 [实测] 加文字默认红字 +「Insert text」占位（上游默认）→ 改默认黑字、空内容（填表用）。
+- R2 W02-to-W06：adapter 加 materialTypes ["image"] + withEditorHistoryCommand（插入走查看器自己的撤销历史）。
