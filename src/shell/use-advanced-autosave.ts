@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  advancedDraftRestoredAt,
   advancedLocalRecoveryPromotion,
   capturePortableAdvancedDraft,
+  draftRecoveryKey,
   clearAdvancedLocalRecoveryPromotion,
   draftFromRecovery,
   noteAdvancedDraftPublished,
@@ -28,6 +30,7 @@ import {
 import {
   advancedAutoSaveDisplayState,
   advancedFlushFailureVisible,
+  advancedRecoveredLocalWork,
 } from "./advanced-autosave-display";
 import type {
   AdvancedFlushResult,
@@ -233,10 +236,12 @@ export function useAdvancedAutoSave({
     : undefined;
   const registeredLocalPromotionRef = useSourceRef<AdvancedLocalRecoveryPromotion | undefined>(sourceLifetime, subscribedLocalPromotion);
   registeredLocalPromotionRef.current = subscribedLocalPromotion;
-  const recoveredLocalDraft = Boolean(
-    dirty && localPromotion && Object.is(localPromotion.revision, revision),
-  );
   const restoration = useAdvancedDraftRestore({ item, schema: draft?.schema, recovery, revision });
+  const recoveredLocalDraft = advancedRecoveredLocalWork({
+    dirty, revision, localPromotion, draftTier: Boolean(recovery?.draftSchema),
+    serverRestoredRevision: restoration.restoredRevision,
+    draftRestoredAt: recovery?.draftSchema ? advancedDraftRestoredAt(draftRecoveryKey(recovery), revision) : undefined,
+  });
   const blockedRef = useSourceRef(sourceLifetime, restoration.paused);
   blockedRef.current = restoration.paused;
   const restoredRevision = restoration.restoredRevision ?? draft?.restoredRevision;

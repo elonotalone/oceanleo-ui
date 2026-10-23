@@ -196,7 +196,9 @@ for (const newer of [true, false]) test('local draft ' + (newer ? 'newer' : 'old
   const tree = await mount(React.createElement(Probe, { b }));
   try {
     await tick(); assert.equal(b.restores.length, 1); assert.equal(b.restores[0].payload.text, newer ? 'local' : 'server');
-    assert.equal(b.uploads.length, 0);
+    // W04 R2: a newer local copy is a person's unsaved edit the server lacks; it is sent, not shown as saved.
+    assert.equal(b.uploads.length, newer ? 1 : 0);
+    if (newer) assert.equal(b.uploads[0].data.text, 'local');
     if (!newer) assert.equal(b.deleted.length, 1);
   } finally { await tree.unmount(); }
 });
@@ -255,6 +257,6 @@ test('a pre-schema local recovery is still considered when it is newer than the 
   const b = bed(), p = server(b);
   b.local = { key: b.recovery.key, revision: 8, updatedAt: Date.parse(p.savedAt) + 1000, payload: { text: 'legacy-local-newer' } };
   const tree = await mount(React.createElement(Probe, { b }));
-  try { await tick(); assert.equal(b.restores[0].payload.text, 'legacy-local-newer'); assert.equal(b.uploads.length, 0); }
+  try { await tick(); assert.equal(b.restores[0].payload.text, 'legacy-local-newer'); assert.equal(b.uploads.length, 1); }
   finally { await tree.unmount(); }
 });

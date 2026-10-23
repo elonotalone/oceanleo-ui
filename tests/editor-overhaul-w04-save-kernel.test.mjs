@@ -258,3 +258,24 @@ test("website closure files staged by the editor ride along with the commit", as
   );
   assert.deepEqual(state.commits[0].sourceDependencies, sourceDependencies);
 });
+
+test("restored local work is saved, not shown as 已保存 (draft-tier and plain editors)", async () => {
+  const { advancedRecoveredLocalWork } = await import("../src/shell/advanced-autosave-display.ts");
+  const base = { dirty: true, revision: 7, draftTier: true };
+  // Draft-tier editor restored its IndexedDB copy: only the restore time is known.
+  assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000 }), true);
+  // A server draft restore is already durable: it is not local work to resend.
+  assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000, serverRestoredRevision: 7 }), false);
+  // Nothing restored, or the document is clean: nothing to do.
+  assert.equal(advancedRecoveredLocalWork({ ...base }), false);
+  assert.equal(advancedRecoveredLocalWork({ ...base, dirty: false, draftRestoredAt: 1000 }), false);
+  // Plain (non-draft) editors keep the exact-revision local promotion rule.
+  const plain = { dirty: true, revision: 3, draftTier: false };
+  assert.equal(advancedRecoveredLocalWork({ ...plain, localPromotion: { revision: 3 } }), true);
+  assert.equal(advancedRecoveredLocalWork({ ...plain, localPromotion: { revision: 2 } }), false);
+  assert.equal(advancedRecoveredLocalWork({ ...plain, draftRestoredAt: 1000 }), false);
+  // The autosave hook feeds the draft-tier restore receipt into the rule.
+  const { readFileSync } = await import("node:fs");
+  const hook = readFileSync(new URL("../src/shell/use-advanced-autosave.ts", import.meta.url), "utf8");
+  assert.match(hook, /recoveredLocalDraft = advancedRecoveredLocalWork\(\{[\s\S]*?draftRestoredAt: recovery\?\.draftSchema \? advancedDraftRestoredAt\(/);
+});
