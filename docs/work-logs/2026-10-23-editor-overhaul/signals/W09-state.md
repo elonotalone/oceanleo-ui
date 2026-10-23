@@ -23,3 +23,6 @@
 - 按钮：`bash harness/mint.sh | OUT_DIR=/tmp/w09-b THEME=light node harness/run.mjs evidence/W09/scenarios/w09-buttons.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184`
 - 两档：`… THEME=dark node harness/run.mjs evidence/W09/scenarios/w09-theme.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184 dark`
 - 保存：`… node harness/run.mjs evidence/W09/scenarios/w09-protocol.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184 p 5`
+
+## 第 3 轮（10:30Z 起）
+- 正在做：只打开不改 = 0 个新版本（W04 §7）。根因假设：协同首次对齐把房间副本（对象 id 不同）当别人的改动 → dirty → 本机恢复记录 → 下次打开恢复并发布。

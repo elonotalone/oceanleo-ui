@@ -59,7 +59,9 @@ import {
 import { imageChangedObjects, imageRebaseSnapshot } from "../collab/adapters/image";
 import {
   collabComparableSnapshot,
+  imageIdRelabelMap,
   keepFresherDependency,
+  relabelImageSnapshot,
   remoteDeltaSummary,
 } from "./image-remote-delta";
 import {
@@ -92,6 +94,8 @@ export interface ControllerCallbacks {
    * `summary` 只说哪些对象的哪些字段变了（不含取值），供诊断与「是否真有改动」判断。
    */
   onRemoteApplied?: (summary: string) => void;
+  /** 远端与画布画面相同、只换了对象 id（重开对齐房间）：不是改动，不标未保存。 */
+  onRemoteRelabeled?: () => void;
   onError: (message: string) => void;
 }
 
@@ -1127,6 +1131,12 @@ export class FabricEditorCore {
 
   private async applyRemoteOnce(remote: EditorSnapshot): Promise<boolean> {
     const before = this.getCollabSnapshot();
+    // 画面相同、只差对象 id：换成房间的 id，不算别人的改动（10-23 W09 R3：重开即多一个版本的根因）。
+    const relabel = imageIdRelabelMap(before, remote);
+    if (relabel) {
+      if (relabel.size) this.relabelObjects(relabel);
+      return false;
+    }
     // 只比内容：控制柄样式与会过期的来源签名不算别人的改动（见 image-remote-delta）。
     const delta = imageChangedObjects(collabComparableSnapshot(before), collabComparableSnapshot(remote));
     const docChanged =
@@ -1243,6 +1253,19 @@ export class FabricEditorCore {
 
   getSnapshot(): EditorSnapshot {
     return captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+  }
+
+  private relabelObjects(map: Map<string, string>): void {
+    for (const object of this.canvas.getObjects()) {
+      const next = map.get(String((object as EditorObject).oceanleoId ?? ""));
+      if (next) setEditorObjectId(object, next);
+    }
+    const rebase = (value: EditorSnapshot) => relabelImageSnapshot(value, map) as EditorSnapshot;
+    this.undoStack = this.undoStack.map(rebase);
+    this.redoStack = this.redoStack.map(rebase);
+    if (this.gestureBase) this.gestureBase = rebase(this.gestureBase);
+    else this.currentSnapshot = captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+    this.callbacks.onRemoteRelabeled?.();
   }
 
   async loadSnapshot(snapshot: EditorSnapshot): Promise<boolean> {

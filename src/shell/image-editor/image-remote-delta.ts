@@ -52,18 +52,27 @@ export function remoteDeltaSummary(
  */
 const PRESENTATION_FIELDS = ["hasControls", "hoverCursor"] as const;
 
-function comparableObject(object: JsonObject): JsonObject {
+export interface ImageContentCompareOptions {
+  /** 只比画面：对象 id（以及来源凭证里跟着 id 走的那个 id）不算内容。 */
+  ignoreIds?: boolean;
+}
+
+function comparableObject(object: JsonObject, options: ImageContentCompareOptions = {}): JsonObject {
   const next: JsonObject = { ...object };
   for (const key of PRESENTATION_FIELDS) delete next[key];
+  if (options.ignoreIds) delete next.oceanleoId;
   const dependency = next.oceanleoDependency;
   if (dependency && typeof dependency === "object" && !Array.isArray(dependency)) {
     const { id, kind, digest } = dependency as JsonObject;
-    next.oceanleoDependency = { id, kind, digest };
+    next.oceanleoDependency = options.ignoreIds ? { kind, digest } : { id, kind, digest };
   }
   return next;
 }
 
-export function collabComparableSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
+export function collabComparableSnapshot(
+  snapshot: EditorSnapshot,
+  options: ImageContentCompareOptions = {},
+): EditorSnapshot {
   const objects = Array.isArray(snapshot.json?.objects)
     ? (snapshot.json.objects as JsonObject[])
     : [];
@@ -72,7 +81,7 @@ export function collabComparableSnapshot(snapshot: EditorSnapshot): EditorSnapsh
     json: {
       ...snapshot.json,
       objects: objects.map((object) =>
-        object && typeof object === "object" ? comparableObject(object) : object,
+        object && typeof object === "object" ? comparableObject(object, options) : object,
       ),
     },
   };
@@ -90,9 +99,13 @@ export function keepFresherDependency(local: unknown, remote: unknown): unknown 
 export type ImageRecoveryRestoreResult = boolean | "unchanged" | "stale";
 
 /** 两份画布内容是否相同（忽略控制柄样式、来源签名、只在本机存在的裁剪框）。 */
-export function sameImageContent(a: EditorSnapshot, b: EditorSnapshot): boolean {
+export function sameImageContent(
+  a: EditorSnapshot,
+  b: EditorSnapshot,
+  options: ImageContentCompareOptions = {},
+): boolean {
   const key = (snapshot: EditorSnapshot) => {
-    const comparable = collabComparableSnapshot(snapshot);
+    const comparable = collabComparableSnapshot(snapshot, options);
     const objects = (comparable.json.objects as JsonObject[]).filter(
       (object) => object?.oceanleoRole !== "crop",
     );
@@ -104,4 +117,47 @@ export function sameImageContent(a: EditorSnapshot, b: EditorSnapshot): boolean 
     ]);
   };
   return key(a) === key(b);
+}
+
+/**
+ * 远端与本地画面相同、只有对象 id 不同（重开时载入的版本给对象发了新 id，房间里还是上一场的 id）：
+ * 返回「本地 id → 远端 id」的对照，按非裁剪对象的顺序一一对应；对不上返回 null。
+ */
+export function imageIdRelabelMap(local: EditorSnapshot, remote: EditorSnapshot): Map<string, string> | null {
+  if (!sameImageContent(local, remote, { ignoreIds: true })) return null;
+  const ids = (snapshot: EditorSnapshot) =>
+    (Array.isArray(snapshot.json?.objects) ? (snapshot.json.objects as JsonObject[]) : [])
+      .filter((object) => object?.oceanleoRole !== "crop")
+      .map((object) => String(object?.oceanleoId ?? ""));
+  const from = ids(local);
+  const to = ids(remote);
+  if (from.length !== to.length) return null;
+  const map = new Map<string, string>();
+  from.forEach((id, index) => {
+    if (id && to[index] && id !== to[index]) map.set(id, to[index]);
+  });
+  return map;
+}
+
+/** 把一份快照（撤销栈里的）里的对象 id 按对照换掉。 */
+export function relabelImageSnapshot(snapshot: EditorSnapshot, map: Map<string, string>): EditorSnapshot {
+  if (!map.size || !Array.isArray(snapshot.json?.objects)) return snapshot;
+  return {
+    ...snapshot,
+    json: {
+      ...snapshot.json,
+      objects: (snapshot.json.objects as JsonObject[]).map((object) => {
+        const next = map.get(String(object?.oceanleoId ?? ""));
+        if (!next) return object;
+        const dependency = object.oceanleoDependency;
+        return {
+          ...object,
+          oceanleoId: next,
+          ...(dependency && typeof dependency === "object"
+            ? { oceanleoDependency: { ...(dependency as JsonObject), id: next } }
+            : {}),
+        };
+      }),
+    },
+  };
 }

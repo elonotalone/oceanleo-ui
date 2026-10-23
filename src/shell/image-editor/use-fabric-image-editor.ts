@@ -770,6 +770,7 @@ export function useFabricImageEditor(
       setVectorConverted(false);
       updateDirty(false);
       revisionRef.current = 0;
+      localEditsRef.current = 0;
       cloudSavedAtRef.current = 0;
     }
     let controller: FabricEditorController | null = null;
@@ -804,10 +805,18 @@ export function useFabricImageEditor(
             onRemoteApplied: (summary) => {
               if (cancelled) return;
               setRemoteDelta(summary);
-              // 别人的改动：这份画布和库里最近一版不同了——存档人要存；不是本地的一步编辑
+              // 别人的改动：这份画布和库里最近一版不同了；不是本地的一步编辑。
+              // 本人这次打开还没动过手时不标未保存（只打开不改 = 0 个新版本，10-23 W09 R3）：
+              // 自动保存本来就只在本人编辑后才存，标脏只会留下本机恢复记录、下次打开被「恢复」并发布。
               revisionRef.current += 1;
-              updateDirty(true);
+              if (localEditsRef.current > 0 || dirtyRef.current) updateDirty(true);
               setCollabTick((value) => value + 1);
+            },
+            onRemoteRelabeled: () => {
+              if (cancelled) return;
+              setRemoteDelta("relabel");
+              setCollabTick((value) => value + 1);
+              optionsRef.current.collab?.onLocalChange?.();
             },
             onError: (message) => {
               if (!cancelled) setError(message);
@@ -1338,7 +1347,7 @@ export function useFabricImageEditor(
     const controller = controllerRef.current;
     if (!project || !controller || !sourceReadyRef.current) return false;
     // 已经在画布上（保存后残留的本机记录）：什么也不用恢复，也不把画布标成未保存。
-    if (sameImageContent(project.snapshot, controller.getSnapshot())) return "unchanged";
+    if (sameImageContent(project.snapshot, controller.getSnapshot(), { ignoreIds: true })) return "unchanged";
     // 比画布所基于的云端版本还旧：不拿旧内容盖掉更新的版本（记录本身保留，不删）。
     if (
       typeof updatedAt === "number" &&

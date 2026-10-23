@@ -76,7 +76,7 @@ test("remote apply diffs content only; recovery restore skips what is already on
   assert.match(core, /imageChangedObjects\(collabComparableSnapshot\(before\), collabComparableSnapshot\(remote\)\)/);
   assert.match(core, /keepFresherDependency\(/);
   const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
-  assert.match(hook, /sameImageContent\(project\.snapshot, controller\.getSnapshot\(\)\)\) return "unchanged"/);
+  assert.match(hook, /sameImageContent\(project\.snapshot, controller\.getSnapshot\(\), \{ ignoreIds: true \}\)\) return "unchanged"/);
   assert.match(hook, /updatedAt <= cloudSavedAtRef\.current\s*\) return "stale"/);
   // A collaborator's change landing mid-restore is not a new local gesture.
   assert.match(hook, /localEditsRef\.current !== startingEdits/);
@@ -129,4 +129,37 @@ test("the editor's own committed revision is never re-applied as an external rev
   const adopt = hook.slice(hook.indexOf("adoptRevision: async (artifactId, revisionId) => {"));
   assert.match(adopt.slice(0, 600), /await saveRunRef\.current\.catch[\s\S]*if \(ownRevisionIdsRef\.current\.has\(String\(revisionId\)\)\) return null;/);
   assert.match(hook, /ownRevisionIdsRef\.current\.add\(String\(id\)\)/);
+});
+
+// R3 (W04 §7): opening an image without editing produced one extra revision. The room's copy
+// differed from the freshly loaded version only by object ids → applied as "someone's change" →
+// dirty → a device recovery record → restored and published on the next open.
+test("same picture with other object ids is relabelled, never a change", () => {
+  const local = snapshot([
+    { oceanleoId: "new-bg", oceanleoRole: "docbg", type: "Rect", fill: "#fff" },
+    { oceanleoId: "new-img", type: "Image", flipX: true, oceanleoDependency: { ...dependency("https://x/new"), id: "new-img" } },
+  ]);
+  const room = snapshot([
+    { oceanleoId: "old-bg", oceanleoRole: "docbg", type: "Rect", fill: "#fff" },
+    { oceanleoId: "old-img", type: "Image", flipX: true, oceanleoDependency: { ...dependency("https://x/old"), id: "old-img" } },
+  ]);
+  assert.equal(delta.sameImageContent(local, room), false);
+  assert.equal(delta.sameImageContent(local, room, { ignoreIds: true }), true);
+  const map = delta.imageIdRelabelMap(local, room);
+  assert.deepEqual([...map], [["new-bg", "old-bg"], ["new-img", "old-img"]]);
+  const relabelled = delta.relabelImageSnapshot(local, map);
+  assert.equal(relabelled.json.objects[1].oceanleoId, "old-img");
+  assert.equal(relabelled.json.objects[1].oceanleoDependency.id, "old-img");
+  assert.equal(relabelled.json.objects[1].oceanleoDependency.url, "https://x/new");
+  // A real change is still a change.
+  const flipped = snapshot([room.json.objects[0], { ...room.json.objects[1], flipX: false }]);
+  assert.equal(delta.imageIdRelabelMap(local, flipped), null);
+});
+
+test("remote apply relabels id-only differences and only dirties after the person's own edit", () => {
+  const core = source("../src/shell/image-editor/fabric-controller-core.ts");
+  assert.match(core, /const relabel = imageIdRelabelMap\(before, remote\);\s*if \(relabel\) \{\s*if \(relabel\.size\) this\.relabelObjects\(relabel\);\s*return false;/);
+  const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
+  assert.match(hook, /if \(localEditsRef\.current > 0 \|\| dirtyRef\.current\) updateDirty\(true\);/);
+  assert.match(hook, /revisionRef\.current = 0;\s*localEditsRef\.current = 0;/);
 });
