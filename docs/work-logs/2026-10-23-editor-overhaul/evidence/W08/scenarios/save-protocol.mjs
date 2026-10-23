@@ -17,7 +17,7 @@ async function saveStateNow(page) {
 }
 
 /** Wait for a real transition: leave "saved" first (or time out), then settle. */
-async function waitForSaveCycle(page, log, label, { timeout = 90000 } = {}) {
+async function waitForSaveCycle(page, log, label, { timeout = 90000, from = "saved" } = {}) {
   const started = Date.now();
   const seen = [];
   let left = false;
@@ -27,7 +27,7 @@ async function waitForSaveCycle(page, log, label, { timeout = 90000 } = {}) {
       seen.push(state);
       log(label, "state", String(state), `${((Date.now() - started) / 1000).toFixed(1)}s`);
     }
-    if (state && state !== "saved") left = true;
+    if (state && state !== from) left = true;
     if (left && (state === "saved" || state === "error")) break;
     if (!left && Date.now() - started > 15000) break;
     await page.waitForTimeout(300);
@@ -43,7 +43,18 @@ async function waitForSaveCycle(page, log, label, { timeout = 90000 } = {}) {
 async function openDocument(page, helpers, log, artifactId) {
   await helpers.gotoApp(page, `/library?item=${encodeURIComponent(artifactId)}`);
   const body = page.locator(BODY).first();
-  await body.waitFor({ state: "visible", timeout: 120000 });
+  // /library?item= opens the read view first; the editor is behind the pencil (Edit).
+  const direct = await body.waitFor({ state: "visible", timeout: 25000 }).then(() => true, () => false);
+  if (!direct) {
+    const edit = page
+      .locator("button, a")
+      .filter({ hasText: /^(编辑|Edit)$/ })
+      .or(page.getByRole("button", { name: /^(编辑|Edit)/ }))
+      .first();
+    await edit.click({ timeout: 30000 });
+    log("opened-via-edit-button");
+    await body.waitFor({ state: "visible", timeout: 120000 });
+  }
   // The stage drops aria-busy once the source is in.
   await page
     .locator("[role=region][aria-busy=false]")
@@ -101,10 +112,9 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   }));
   await shot(`${label}-5-reopened`);
 
+  // Full page load (not SPA navigation): the shell, editor and source all start cold.
   await page.reload({ waitUntil: "domcontentloaded" });
-  body = page.locator(BODY).first();
-  await body.waitFor({ state: "visible", timeout: 120000 });
-  await page.waitForTimeout(2500);
+  body = await openDocument(page, helpers, log, reopenedId);
   const reloaded = (await body.innerText()).trim();
   log("reload", JSON.stringify({
     hasFirst: reloaded.includes(first.trim()),
@@ -127,7 +137,8 @@ export default async function ({ page, context, log, shot, helpers, args }) {
       await retry.waitFor({ timeout: 5000 }).catch(() => log("warn", "no retry item"));
       if (await retry.isVisible().catch(() => false)) await retry.click();
     }
-    const retried = await waitForSaveCycle(page, log, "retry", { timeout: 90000 });
+    // Already "error" before the retry: wait until it leaves "error" and settles.
+    const retried = await waitForSaveCycle(page, log, "retry", { timeout: 90000, from: "error" });
     log("retry", JSON.stringify(retried));
     await shot(`${label}-8-after-retry`);
   }

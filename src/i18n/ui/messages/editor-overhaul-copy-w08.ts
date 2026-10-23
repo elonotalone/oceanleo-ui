@@ -4,6 +4,7 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
   de: {
+    "文档编辑器还没有就绪": "Der Dokumenteditor ist noch nicht bereit",
     "两端对齐": "Blocksatz",
     "先选中要替换的图片": "Zuerst das zu ersetzende Bild auswählen",
     "去掉高亮": "Hervorhebung entfernen",
@@ -27,6 +28,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Standardschrift",
   },
   en: {
+    "文档编辑器还没有就绪": "The document editor isn't ready yet",
     "两端对齐": "Justify",
     "先选中要替换的图片": "Select the image to replace first",
     "去掉高亮": "Remove highlight",
@@ -50,6 +52,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Default font",
   },
   es: {
+    "文档编辑器还没有就绪": "El editor de documentos aún no está listo",
     "两端对齐": "Justificar",
     "先选中要替换的图片": "Primero selecciona la imagen que quieres sustituir",
     "去掉高亮": "Quitar resaltado",
@@ -73,6 +76,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Fuente predeterminada",
   },
   "es-419": {
+    "文档编辑器还没有就绪": "El editor de documentos todavía no está listo",
     "两端对齐": "Justificar",
     "先选中要替换的图片": "Primero selecciona la imagen que quieres reemplazar",
     "去掉高亮": "Quitar resaltado",
@@ -96,6 +100,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Fuente predeterminada",
   },
   fr: {
+    "文档编辑器还没有就绪": "L’éditeur de document n’est pas encore prêt",
     "两端对齐": "Justifier",
     "先选中要替换的图片": "Sélectionnez d’abord l’image à remplacer",
     "去掉高亮": "Retirer le surlignage",
@@ -119,6 +124,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Police par défaut",
   },
   it: {
+    "文档编辑器还没有就绪": "L’editor di documenti non è ancora pronto",
     "两端对齐": "Giustifica",
     "先选中要替换的图片": "Seleziona prima l’immagine da sostituire",
     "去掉高亮": "Rimuovi evidenziazione",
@@ -142,6 +148,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Carattere predefinito",
   },
   "pt-BR": {
+    "文档编辑器还没有就绪": "O editor de documentos ainda não está pronto",
     "两端对齐": "Justificar",
     "先选中要替换的图片": "Selecione primeiro a imagem que deseja substituir",
     "去掉高亮": "Remover destaque",
@@ -165,6 +172,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Fonte padrão",
   },
   "pt-PT": {
+    "文档编辑器还没有就绪": "O editor de documentos ainda não está pronto",
     "两端对齐": "Justificar",
     "先选中要替换的图片": "Selecione primeiro a imagem a substituir",
     "去掉高亮": "Remover realce",
@@ -188,6 +196,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Tipo de letra predefinido",
   },
   vi: {
+    "文档编辑器还没有就绪": "Trình soạn tài liệu chưa sẵn sàng",
     "两端对齐": "Căn đều",
     "先选中要替换的图片": "Hãy chọn ảnh cần thay trước",
     "去掉高亮": "Bỏ tô sáng",
@@ -211,6 +220,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Phông mặc định",
   },
   tr: {
+    "文档编辑器还没有就绪": "Belge düzenleyici henüz hazır değil",
     "两端对齐": "İki yana yasla",
     "先选中要替换的图片": "Önce değiştirilecek görseli seçin",
     "去掉高亮": "Vurguyu kaldır",
@@ -234,6 +244,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "Varsayılan yazı tipi",
   },
   "zh-TW": {
+    "文档编辑器还没有就绪": "文件編輯器還沒準備好",
     "两端对齐": "兩端對齊",
     "先选中要替换的图片": "請先選取要替換的圖片",
     "去掉高亮": "移除醒目提示",
@@ -257,6 +268,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "預設字型",
   },
   ja: {
+    "文档编辑器还没有就绪": "ドキュメントエディターの準備ができていません",
     "两端对齐": "両端揃え",
     "先选中要替换的图片": "先に置き換える画像を選択してください",
     "去掉高亮": "ハイライトを解除",
@@ -280,6 +292,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "既定のフォント",
   },
   ko: {
+    "文档编辑器还没有就绪": "문서 편집기가 아직 준비되지 않았습니다",
     "两端对齐": "양쪽 맞춤",
     "先选中要替换的图片": "먼저 바꿀 이미지를 선택하세요",
     "去掉高亮": "강조 제거",
@@ -303,6 +316,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "기본 글꼴",
   },
   ar: {
+    "文档编辑器还没有就绪": "محرّر المستندات غير جاهز بعد",
     "两端对齐": "ضبط",
     "先选中要替换的图片": "حدّد الصورة المراد استبدالها أولاً",
     "去掉高亮": "إزالة التمييز",
@@ -326,6 +340,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "الخط الافتراضي",
   },
   th: {
+    "文档编辑器还没有就绪": "ตัวแก้ไขเอกสารยังไม่พร้อม",
     "两端对齐": "จัดเต็มแนว",
     "先选中要替换的图片": "เลือกรูปที่จะแทนที่ก่อน",
     "去掉高亮": "เอาไฮไลต์ออก",
@@ -349,6 +364,7 @@ export const EDITOR_OVERHAUL_W08_COPY: EditorOverhaulCopy = {
     "默认字体": "แบบอักษรเริ่มต้น",
   },
   hi: {
+    "文档编辑器还没有就绪": "दस्तावेज़ एडिटर अभी तैयार नहीं है",
     "两端对齐": "दोनों ओर संरेखित",
     "先选中要替换的图片": "पहले बदली जाने वाली इमेज चुनें",
     "去掉高亮": "हाइलाइट हटाएँ",

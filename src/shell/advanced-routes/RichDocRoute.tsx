@@ -145,7 +145,9 @@ export function RichDocRoute({
     if (!saved) {
       return {
         ok: false as const,
+        // 读这一次保存自己记下的原因：闭包里的 `editor.error` 是上一次渲染的值。
         error:
+          editor.lastSaveError() ||
           editor.error ||
           artifactSaveStepMessage(
             "contract",
@@ -200,7 +202,7 @@ export function RichDocRoute({
       ok: true as const,
       item: richDocSavedItemForHandoff(receipt || item, saved),
     };
-  }, [collabSaveGate, editor.error, editor.save, item]);
+  }, [collabSaveGate, editor.error, editor.lastSaveError, editor.save, item]);
   const restoreWorkingDocument = useCallback(
     (payload: unknown) => {
       const reversed = convertUmoToRichDoc(payload);

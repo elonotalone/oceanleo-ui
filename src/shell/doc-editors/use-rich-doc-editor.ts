@@ -127,6 +127,8 @@ export interface RichDocEditorState {
   /** Re-run the source load for the same item after a failure. */
   reload: () => void;
   save: () => Promise<PersistedEditorVersion | null>;
+  /** 上一次 `save()` 失败的原因（同步可读；React state 里的 `error` 要等下一次渲染）。 */
+  lastSaveError: () => string;
   exportMarkdown: () => Promise<void>;
   exportHtml: () => Promise<void>;
   /**
@@ -336,6 +338,8 @@ export function useRichDocEditor(
   );
   const revisionRef = useRef(0);
   const savingRef = useRef(false);
+  const saveErrorRef = useRef("");
+  const inflightSaveRef = useRef<Promise<PersistedEditorVersion | null> | null>(null);
   const sourceReadyRef = useRef(false);
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   /** The pin a save publishes against; advances with every committed revision. */
@@ -828,11 +832,16 @@ export function useRichDocEditor(
     [tt],
   );
 
-  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
-    if (!editor || savingRef.current) return null;
-    if (!sourceReadyRef.current) {
-      setError(tt("文档源尚未成功载入；请刷新源或导入文件后再保存"));
+  const saveOnce = useCallback(async (): Promise<PersistedEditorVersion | null> => {
+    const fail = (message: string) => {
+      saveErrorRef.current = message;
+      setError(message);
       return null;
+    };
+    saveErrorRef.current = "";
+    if (!editor) return fail(tt("文档编辑器还没有就绪"));
+    if (!sourceReadyRef.current) {
+      return fail(tt("文档源尚未成功载入；请刷新源或导入文件后再保存"));
     }
     const savingRevision = revisionRef.current;
     const json = editor.getJSON();
@@ -934,11 +943,10 @@ export function useRichDocEditor(
                 preview: result.preparedPreview,
               }
             : preparedSaveRef.current;
-        setError(
+        return fail(
           tt(result.error) ||
             artifactSaveStepMessage("revision-publish", ""),
         );
-        return null;
       }
       preparedSaveRef.current = null;
       const version: PersistedEditorVersion = {
@@ -968,18 +976,28 @@ export function useRichDocEditor(
       if (revisionRef.current === savingRevision) setDirty(false);
       return { ...version, item: handoff };
     } catch (caught) {
-      setError(
+      return fail(
         artifactSaveStepMessage(
           "revision-publish",
           caught instanceof Error ? tt(caught.message) : caught,
         ),
       );
-      return null;
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
   }, [editor, siteId, baseTitle, reviewSidecar, tt]);
+
+  /** 同一时刻只跑一次保存：并发的调用拿到同一个结果，而不是一个没有原因的 null。 */
+  const save = useCallback((): Promise<PersistedEditorVersion | null> => {
+    if (inflightSaveRef.current) return inflightSaveRef.current;
+    const running = saveOnce().finally(() => {
+      if (inflightSaveRef.current === running) inflightSaveRef.current = null;
+    });
+    inflightSaveRef.current = running;
+    return running;
+  }, [saveOnce]);
+  const lastSaveError = useCallback(() => saveErrorRef.current, []);
 
   /** 协同里只有房间里的保存者存版本，存完告诉房间是哪个版本；不在协同里原样存。 */
   const saveInRoom = useCallback(async (): Promise<PersistedEditorVersion | null> => {
@@ -1118,6 +1136,7 @@ export function useRichDocEditor(
     chars: counts.chars,
     reload,
     save: saveInRoom,
+    lastSaveError,
     exportMarkdown,
     exportHtml,
     exportDoc,
