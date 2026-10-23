@@ -6,6 +6,8 @@ Exact paths:
 - src/shell/media-editors/use-model3d-source-loader.ts
 - src/i18n/ui/messages/editor-overhaul-copy-w13.ts
 - tests/editor-overhaul-w13-source-errors.test.mjs (new focused regression)
+- tests/editor-overhaul-w13-copy.test.mjs (only the positive key-count42→45;
+  retain locale/registration/non-Chinese assertions unchanged)
 - existing W13 report/state/journal, only to record this result
 
 Three new checkpoint errors from the opaque-source fix currently pass to the UI
