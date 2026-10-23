@@ -35,7 +35,7 @@ const LABELS: Record<string, string> = {
   url: "图片地址",
   caption: "图片说明",
   label: "文字",
-  href: "链接",
+  href: "链接地址",
   name: "名称",
   role: "职位",
   quote: "引言",
@@ -65,7 +65,6 @@ const LABELS: Record<string, string> = {
   alignment: "对齐",
   paddingTop: "上边距",
   paddingBottom: "下边距",
-  contentWidth: "内容宽度",
 };
 
 function isRow(value: unknown): value is SiteRow {
