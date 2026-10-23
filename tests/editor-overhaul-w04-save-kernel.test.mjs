@@ -269,9 +269,8 @@ test("restored local work is saved, not shown as 已保存 (draft-tier and plain
   const base = { dirty: true, revision: 7, draftTier: true };
   // Draft-tier editor restored its IndexedDB copy: only the restore time is known.
   assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000 }), true);
-  // A restored server draft is durable but not yet a version: publishing it is owed (W08-to-W04 #1).
-  assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000, serverRestoredRevision: 7 }), true);
-  assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000, serverRestoredRevision: 6 }), false);
+  // A restored server draft is not resent (browser: republishing it made a duplicate revision on reopen).
+  assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000, serverRestoredRevision: 7 }), false);
   // Nothing restored, or the document is clean: nothing to do.
   assert.equal(advancedRecoveredLocalWork({ ...base }), false);
   assert.equal(advancedRecoveredLocalWork({ ...base, dirty: false, draftRestoredAt: 1000 }), false);
