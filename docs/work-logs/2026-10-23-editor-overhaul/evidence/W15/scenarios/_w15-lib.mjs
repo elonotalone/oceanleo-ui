@@ -20,15 +20,16 @@ export async function guardProduction(context, log) {
 
 export async function openGame(page, helpers, log, id = GAME_ID) {
   await helpers.gotoApp(page, `/library?item=${id}`);
+  log("opening-controls", JSON.stringify(await page.locator("button").evaluateAll(buttons => buttons.filter(button => button.getBoundingClientRect().width && button.getBoundingClientRect().height).map(button => ({ label: button.getAttribute("aria-label"), text: button.textContent?.trim().slice(0, 45) })).slice(-22))));
   const pencil = page
-    .locator('button[aria-label^="编辑「"], button[aria-label^="Edit “"], button[aria-label^="Edit \\""], button[aria-label^="Edit "]')
+    .getByRole("button", { name: /^(编辑|Edit|打开编辑器|Open editor)(?:「| |$)/ })
     .first();
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     if (await page.locator("[data-editor-adapter='game']").first().isVisible().catch(() => false)) break;
     const retry = page.getByRole("button", { name: /^(重试|Retry)$/ }).first();
     if (await retry.isVisible().catch(() => false)) await retry.click().catch(() => {});
     const shown = await pencil.waitFor({ timeout: 60000 }).then(() => true, () => false);
-    if (shown) await pencil.click().catch((e) => log("pencil-click", String(e).slice(0, 120)));
+    if (shown) await pencil.click({ timeout: 5000, force: true }).catch((e) => log("pencil-click", String(e).slice(0, 120)));
     const up = await page
       .locator("[data-editor-adapter='game']")
       .first()

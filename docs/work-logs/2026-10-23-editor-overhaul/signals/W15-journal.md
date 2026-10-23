@@ -1,5 +1,14 @@
 # W15 journal（每条实测结论一行）
 
+- Codex continuation [实现] oceanleo aee0bb6 +2c8bcb9：owner-private durable iteration job receipts、202 submit/GET result、原子幂等claim、16global/2owner上限、30min worker/31min client预算；原模型/审核/credits不改。取消/重启不自动重放；provenance恢复commit→receipt窗口；标题保留。backend12/12、client9/9，父独立复核。
+- Codex continuation [实现] UI75254d2b +25ca072a +efe3fd97：GET-only resume opt-in、运行/重连16locale提示、订阅late runner registration。Game main-site19/19、core10/10、draft-key4/4、i18n结构4/4。
+- 15:47Z [实测] acceptance root53931dfb，842a… job落ordinal9/90437…；15:49Z第二940d…job落ordinal10/41a998…；两次均保留“背景改成深蓝色。”标题，每job仅1版。实际51s/80s；>180s路径只在注入时钟定向测试覆盖，不冒充真实长模型运行。
+- Codex continuation [验收纠正] 首轮harness终止前已发出842a提交，早先ledger文件不存在的检查不能证明之后没有提交；重启scenario又在新head发940d，属于2次独立base生成，非同base重试。已如实撤回“未生成”推断；不再任何生成POST，仅GET追踪。
+- Codex continuation [实测] codex-job-status.py：authenticated latest/精确940d GET均200/succeeded，revision41a998/title一致；不同artifact locator→404；不输出token/URL。
+- Codex continuation [验收中] reopen未见latest请求，补订阅registration回归；当前真实browser受并行ProfilePageEditor→ProfilePageSettings短暂未落盘的编译overlay影响。父已协调owner落盘，等batch settled后重跑，不把外部编译中断当W15完成或永久缺失。
+- Codex continuation [已定位并修复] 稳定窗口真实fiber证实item durable/runner marker均正常。根因StrictMode replay：首次resume标记已设，cleanup abort异步defaultDependencies后的fetch，重放被标记拦住。新增StrictMode async-runner test先红0≠1，419721dd修后game-main20/20绿；最终browser13.6s已收到latest succeeded GET、POST0，继续完整reload。
+- Codex continuation [最终实测通过] /tmp/codex-w15-resume-strict全场景132.4s PASS：latest GET共3次、POST始终0，offline恢复后全页reload→41a998/title一致/saved，再全页reload仍saved。已归档evidence/W15/codex-resume.log与codex-reopened.png；截图新green stars可见。追加整体deadline取消回归后backend13/13绿。无第三次生成、无push/deploy/operator数据写入。
+
 - 05:17Z [实测] 开发槽 05:09–05:25Z 新请求超时（父 agent：会话代理连接池满，已扩容重启），之后 /library 0.4s。
 - 05:27Z [实测] 开发槽的网关是 `https://api.dev.oceanleo.com`（本机 oceanleo-api，写生产库）。
 - 05:28Z [实测] 没有任何可 fork 的公共游戏：206 个 public 平台游戏 root 全部 retired，`game_official_feed` / `game_official_catalog` 为空，`template_materials` 无 game。任务书「从公共游戏打开一份」做不到。

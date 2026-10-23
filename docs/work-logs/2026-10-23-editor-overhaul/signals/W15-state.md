@@ -2,6 +2,12 @@
 
 更新：2026-10-23 10:25Z（R2 接班）
 
+## Codex continuation（最新）
+
+专用异步job/幂等receipt/标题保留已实现并scoped commit（oceanleo aee0bb6、2c8bcb9；UI75254d2b、25ca072a、efe3fd97）。Backend12/12、client9/9、UI game-main-site19/19；两条真实acceptance task各落1版，current ordinal10，标题不变。见 `verdicts/CODEX-W15.md`，其中如实记录harness重启误发第二独立base任务。
+
+最后GET-only页面reopen/reload已通过：419721dd修复StrictMode清理首次lookup后标记阻断重放；回归先红后绿，game-main20/20。真实browser132.4s PASS，3次latest GET、全程0POST；offline后2次全页reload仍revision41a998/title一致、saved。截图与sanitized trace已入evidence/W15。Backend最新13/13含真实deadline取消定向测试。实际模型耗时51/80s，>180s transport仅定向测试模拟覆盖，不额外付费凑耗时。父负责全局检查，W15不再运行browser/生成。
+
 ## 已确认的事实
 - [读码] 路由 `src/shell/advanced-routes/GameRoute.tsx`（755 行），Code 页 `src/shell/game-editor/GameCodeStage.tsx`（1031 行，旧大文件，不许再明显变大），页面申报 `game-editor/game-pages.ts`。
 - [读码] 编辑页 adapter：`toolbox {label:"玩法", icon:"add"}`；Code 页 adapter：`toolbox {label:"运行", icon:"code"}`；两页 `actions` 里只有「另存为二创副本」（group save）。
