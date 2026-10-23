@@ -7,8 +7,8 @@
 //   · 指代一个上架的网站或软件（原「作品」）：句子里写「网站或软件」，能省名词就省；
 //   · 泛指一件商品（原「服务」，可能是现成文件 / 人工服务 / 其他）：写「商品」，能省名词就省；
 //   · 现成文件预览里的「这份素材」改「文件」。
-// 种类名本身（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他）不在这里定义：用基础词典与 W04 分表里已有的译法，
-// 这里的长句子里出现的「网站与软件服务」一律照 W04 分表的译法写，三处对得上。
+// 种类名本身（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他）不在这里定义：用基础词典与 W02 分表（lbp-w02-copy.ts）里已有的译法，
+// 这里的长句子里出现的「网站与软件服务」一律照 W02 分表的译法写，几处对得上。
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
@@ -175,7 +175,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     appAiReplyHint:
       "Wenn dies aktiviert ist, beantwortet die KI neue Fragen und Fehlermeldungen zuerst anhand der Beschreibung, des Änderungsprotokolls und der gelösten Nachrichten dieser Website oder Software. Höchstens 30 pro Tag, die Kosten trägt die Plattform",
     sourceFresh: "Platz für neue Einträge",
-    sourceList: "Liste der Website- und Software-Services",
+    sourceList: "Liste der Website- und Softwareservices",
     errorsSnippetHint:
       "Setze die folgende Zeile in den <head> deiner Seite. Fehler im Browser der Besucher werden dann automatisch hier gemeldet.",
     callbackHostMismatch: "Der Hostname der Callback-Adresse muss mit der veröffentlichten Adresse übereinstimmen",
@@ -200,9 +200,9 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     followedLoadFailed: "Die Websites und Software, denen du folgst, konnten nicht geladen werden. Bitte versuche es später erneut.",
     followedEmpty:
       "Du folgst noch keiner Website oder Software. Tippe auf der Detailseite auf „Folgen“, dann wirst du bei Updates benachrichtigt.",
-    shelfLoadFailed: "Die Liste konnte nicht geladen werden. Tippe gleich auf „Erneut versuchen“.",
+    shelfLoadFailed: "Die Liste konnte nicht geladen werden. Tippe in einem Moment auf „Erneut versuchen“.",
     itemMissingOrDown: "Dieses Produkt existiert nicht oder wurde zurückgezogen",
-    itemYours: "Das ist ein Produkt von dir",
+    itemYours: "Das ist dein Produkt",
     deliveryOffPlatform: "Die Lieferung erfolgt außerhalb der Plattform",
     dealSubjectItem: "Produkt: {title}",
     dealSubjectViewItem: "Produkt ansehen",
@@ -249,7 +249,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     errorsSnippetHint:
       "Pon esta línea en el <head> de tu página. Los errores del navegador de los visitantes se enviarán aquí automáticamente.",
     callbackHostMismatch: "El nombre de host de la dirección de retorno debe coincidir con la dirección publicada",
-    endpointNotNeeded: "No es una aplicación en un ordenador en la nube, así que no necesita una URL pública.",
+    endpointNotNeeded: "No es una aplicación alojada en un ordenador en la nube, así que no necesita una URL pública.",
     endpointDeletedUnlisted: "Se eliminó la URL y se retiró automáticamente de la lista.",
     endpointNotFound: "Aún no se ha encontrado una URL pública para este sitio web o software.",
     endpointDeleteUnlists: "Al eliminarla, se retirará automáticamente",
@@ -319,7 +319,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     errorsSnippetHint:
       "Pon esta línea en el <head> de tu página. Los errores en el navegador de los visitantes se reportarán aquí automáticamente.",
     callbackHostMismatch: "El host de la dirección de retorno debe coincidir con la dirección publicada",
-    endpointNotNeeded: "No es una app en una computadora en la nube, así que no necesita una URL pública.",
+    endpointNotNeeded: "No es una app alojada en una computadora en la nube, así que no necesita una URL pública.",
     endpointDeletedUnlisted: "Se eliminó la URL y se retiró automáticamente de la lista.",
     endpointNotFound: "Todavía no se encontró una URL pública para este sitio web o software.",
     endpointDeleteUnlists: "Al eliminarla, se va a retirar automáticamente",
@@ -664,7 +664,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     appAiReplyHint:
       "Khi bật, câu hỏi và báo lỗi mới sẽ được AI trả lời trước dựa trên phần giới thiệu, nhật ký cập nhật và các tin nhắn đã xử lý của website hoặc phần mềm này. Tối đa 30 mỗi ngày, phí do nền tảng chịu",
     sourceFresh: "Vị trí giới thiệu mục mới đăng",
-    sourceList: "Danh sách dịch vụ website & phần mềm",
+    sourceList: "Danh sách dịch vụ website và phần mềm",
     errorsSnippetHint:
       "Dán dòng dưới đây vào <head> của trang. Lỗi xảy ra trên trình duyệt của khách sẽ tự động được báo về đây.",
     callbackHostMismatch: "Tên máy chủ của địa chỉ callback phải trùng với địa chỉ đã đăng",
@@ -936,7 +936,7 @@ export const LBP_W03_MESSAGES = assembleCopy(SOURCE, {
     appAiReplyHint:
       "켜면 새 질문과 오류 신고에 이 웹사이트 또는 소프트웨어의 소개, 업데이트 기록, 해결된 메시지를 바탕으로 AI가 먼저 한 통 답합니다. 하루 최대 30통, 비용은 플랫폼이 부담합니다",
     sourceFresh: "신규 등록 추천 영역",
-    sourceList: "웹사이트·소프트웨어 서비스 목록",
+    sourceList: "웹사이트 및 소프트웨어 서비스 목록",
     errorsSnippetHint:
       "아래 한 줄을 페이지의 <head>에 넣으세요. 방문자의 브라우저에서 오류가 나면 여기로 자동 보고됩니다.",
     callbackHostMismatch: "콜백 주소의 호스트 이름은 등록한 주소와 같아야 합니다",

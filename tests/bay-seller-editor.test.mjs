@@ -469,6 +469,17 @@ test("删除路径：点删除后出现确认弹窗、点取消没有发出 DELE
   await view.unmount();
 });
 
+test("已有条目的种类徽标按发布种类取名：现成文件 / 人工服务 / 其他，不再写旧的「素材 / 服务」", async () => {
+  for (const [listingKind, label] of [["digital", "现成文件"], ["service", "人工服务"], ["other", "其他"]]) {
+    reset({ service: existingService({ listing_kind: listingKind }) });
+    const view = await mount({ kind: "service-editor", serviceId: "s1" });
+    const badge = view.find("[data-bay-editor-status]").textContent;
+    assert.ok(badge.startsWith(label), `${listingKind}: ${badge}`);
+    assert.equal(/素材|^服务/.test(badge), false, badge);
+    await view.unmount();
+  }
+});
+
 test("发布表：三块在一张常开表单里，标签和输入都看得见", async () => {
   reset();
   const view = await mount({ kind: "service-editor" });
