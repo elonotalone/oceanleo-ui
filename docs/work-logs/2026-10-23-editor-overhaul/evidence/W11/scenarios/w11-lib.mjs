@@ -13,7 +13,7 @@ export function watchApi(page, log) {
 export async function openVideoEditor(page, helpers, log, rootId, { timeout = 180000 } = {}) {
   await helpers.gotoApp(page, `/library?item=${encodeURIComponent(rootId)}`);
   const started = Date.now();
-  let clicked = false;
+  let clicked = 0;
   while (Date.now() - started < timeout) {
     const state = await page.evaluate(() => ({
       editor: Boolean(document.querySelector("[data-editor-adapter='video-timeline']")),
@@ -21,11 +21,12 @@ export async function openVideoEditor(page, helpers, log, rootId, { timeout = 18
       ready: Boolean(document.querySelector("[data-video-timeline-content]")),
     }));
     if (state.editor && state.canvas && state.ready) break;
-    if (!state.editor && !clicked) {
+    // The viewer may not be hydrated on the first click: retry every 10 s until the editor mounts.
+    if (!state.editor && Date.now() - clicked > 10000) {
       const edit = page.locator("button[aria-label^='编辑「'], button[aria-label^='Edit ']").first();
       if (await edit.isVisible().catch(() => false)) {
         await edit.click().catch(() => {});
-        clicked = true;
+        clicked = Date.now();
         log("clicked edit");
       }
     }

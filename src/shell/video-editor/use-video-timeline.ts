@@ -78,6 +78,7 @@ import {
   VIDEO_TIMELINE_PLACEHOLDER_DURATION_MS,
   isExpiringArtifactGrantUrl,
   planVideoTimelineSeed,
+  videoTimelineProjectSource,
 } from "./video-timeline-source";
 import { refreshArtifactRendition } from "../artifact-client";
 import {
@@ -231,9 +232,21 @@ function trackKindForMedia(kind: "video" | "audio" | "image"): TrackKind {
 /** grant 地址自愈要用的两个网关动作（重签 / 拷进持久存储）。 */
 function timelineGrantDeps(siteId: string, title: string): GrantHealDeps {
   return {
-    refresh: async (identity) => {
-      const refreshed = await refreshArtifactRendition(identity, "full");
-      return refreshed.ok ? String(refreshed.data?.url || "").trim() : "";
+    refresh: async ({ artifactId, revisionId, purpose }) => {
+      // 按 grant 原来签的那一份重签（上传的视频只有 source）；读不出再试 full。
+      const purposes: Array<"source" | "full" | "preview"> =
+        purpose === "source" || purpose === "preview"
+          ? [purpose, "full"]
+          : ["full", "source"];
+      for (const candidate of purposes) {
+        const refreshed = await refreshArtifactRendition(
+          { artifactId, revisionId },
+          candidate,
+        );
+        const url = refreshed.ok ? String(refreshed.data?.url || "").trim() : "";
+        if (url) return url;
+      }
+      return "";
     },
     importUrl: (url, kind) =>
       importMediaUrl(url, {
@@ -531,15 +544,9 @@ export function useVideoTimeline(
     workingHeadUrlRef.current = String(
       item.meta.editor_working_head_url || item.url || item.previewUrl || "",
     );
-    const projectUrl = String(
-      item.meta.editor_project_url ||
-        (item.meta.editor_project_schema === "oceanleo.timeline.v1"
-          ? item.url
-          : "") ||
-        "",
-    ).trim();
-    const expectsProject =
-      item.meta.editor_project_schema === "oceanleo.timeline.v1";
+    const project = videoTimelineProjectSource(item);
+    const projectUrl = project?.url || "";
+    const expectsProject = Boolean(project);
     if (!expectsProject || isTimelineDoc(item.meta.timeline_doc)) {
       return;
     }
@@ -603,6 +610,8 @@ export function useVideoTimeline(
     item.id,
     item.meta.editor_project_schema,
     item.meta.editor_project_url,
+    item.meta.source_format,
+    item.meta.source_url,
     item.meta.timeline_doc,
     item.title,
     item.url,
@@ -645,6 +654,8 @@ export function useVideoTimeline(
           if (cancelled) return;
           if (healed.url) {
             healedGrantsRef.current.set(sourceUrl, healed.url);
+            // 退回的新鲜地址本身也是 grant：记成「已处理」，别再循环重签。
+            healingGrantsRef.current.add(healed.url);
             sourceUrl = healed.url;
             setDocState((current) => {
               const next = patchClipIn(current, seededClipId, { source_url: sourceUrl });
@@ -731,6 +742,7 @@ export function useVideoTimeline(
         // 每条地址每次打开只试一次；换不了就留给预检如实报错。
         const healed = await healGrantUrl(url, kind, deps);
         if (!healed.url) continue;
+        healingGrantsRef.current.add(healed.url);
         healedGrantsRef.current.set(url, healed.url);
         replacements.set(url, healed.url);
       }

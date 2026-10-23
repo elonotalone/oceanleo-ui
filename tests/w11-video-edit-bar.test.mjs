@@ -328,3 +328,38 @@ test("W11 expired artifact grants in a project heal to a durable (or at least fr
   const none = await healGrantUrl(grant, "video", { ...deps, refresh: async () => "" });
   assert.equal(none.url, "");
 });
+
+test("W11 a typed timeline revision reopened from the library loads its project, not the cover image", async () => {
+  const { planVideoTimelineSource, videoTimelineProjectSource } = await import(
+    "../src/shell/video-editor/video-timeline-source.ts"
+  );
+  const typed = {
+    source: "artifact",
+    kind: "video",
+    artifactId: "a1",
+    url: "https://api.dev.oceanleo.com/v1/artifact-renditions/access/cover.sig",
+    meta: {
+      source_format: "oceanleo.timeline.v1",
+      source_url: "https://api.dev.oceanleo.com/v1/artifact-renditions/access/project.sig",
+      editor_manifest_url: "https://api.dev.oceanleo.com/v1/artifact-renditions/access/manifest.sig",
+    },
+  };
+  assert.deepEqual(videoTimelineProjectSource(typed), {
+    url: "https://api.dev.oceanleo.com/v1/artifact-renditions/access/project.sig",
+  });
+  const plan = planVideoTimelineSource(typed);
+  assert.equal(plan.kind, "remote");
+  assert.equal(plan.url, typed.meta.source_url);
+  // 本会话刚存过：路由合进 item 的 editor_project_url 优先。
+  assert.equal(
+    videoTimelineProjectSource({
+      url: "x",
+      meta: { editor_project_schema: "oceanleo.timeline.v1", editor_project_url: "https://p/j.json" },
+    }).url,
+    "https://p/j.json",
+  );
+  // 原始视频素材不是工程：照旧 seed。
+  const raw = { source: "artifact", kind: "video", artifactId: "a2", url: "https://cdn.example/a.mp4", meta: { source_format: "mp4" } };
+  assert.equal(videoTimelineProjectSource(raw), null);
+  assert.equal(planVideoTimelineSource(raw).kind, "seed");
+});

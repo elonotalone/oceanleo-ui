@@ -43,6 +43,31 @@ export function hydrateVideoTimelineDoc(text: string): TimelineDoc {
   return normalizeTimelineDoc(data);
 }
 
+/**
+ * 这一版是不是时间线工程，工程 JSON 在哪。
+ * - 本会话刚存过：`editor_project_schema` / `editor_project_url`（路由合进 item 的）；
+ * - 从库里重新打开的 typed revision：库投影只给 `source_format` = 工程 schema，
+ *   工程 JSON 就是它的 `source`（`editor_manifest` 是同一份字节）。
+ *   这时 `item.url` 是封面预览图，不能当工程读。
+ * 返回 null = 不是工程（原始视频 / 音频素材）。
+ */
+export function videoTimelineProjectSource(
+  item: Pick<LibraryItem, "url"> & { meta?: LibraryItem["meta"] },
+): { url: string } | null {
+  const meta = item.meta ?? {};
+  const declared = meta.editor_project_schema === VIDEO_TIMELINE_PROJECT_SCHEMA;
+  const typed =
+    meta.source_format === VIDEO_TIMELINE_PROJECT_SCHEMA ||
+    meta.format === VIDEO_TIMELINE_PROJECT_SCHEMA;
+  if (!declared && !typed) return null;
+  const pick = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const url =
+    pick(meta.editor_project_url) ||
+    (typed ? pick(meta.source_url) || pick(meta.editor_manifest_url) : "") ||
+    (declared ? pick(item.url) : "");
+  return { url };
+}
+
 export function planVideoTimelineSource(
   item: Pick<
     LibraryItem,
@@ -58,8 +83,9 @@ export function planVideoTimelineSource(
     return { kind: "ready", doc: normalizeTimelineDoc(draft) };
   }
   const doc = createEmptyDoc();
-  if (meta.editor_project_schema === VIDEO_TIMELINE_PROJECT_SCHEMA) {
-    const projectUrl = String(meta.editor_project_url || item.url || "").trim();
+  const project = videoTimelineProjectSource(item);
+  if (project) {
+    const projectUrl = project.url;
     if (projectUrl) {
       return { kind: "remote", url: projectUrl, doc };
     }

@@ -16,6 +16,8 @@ import type { TimelineDoc, TrackKind } from "./types";
 export interface ArtifactGrantIdentity {
   artifactId: string;
   revisionId: string;
+  /** grant 签的是哪一份 rendition（`source` / `full` / `preview`）；读不出时缺省。 */
+  purpose?: string;
 }
 
 function base64UrlDecode(value: string): string {
@@ -42,7 +44,9 @@ export function artifactGrantIdentity(url: string): ArtifactGrantIdentity | null
     >;
     const artifactId = String(payload.artifact || "").trim();
     const revisionId = String(payload.revision || "").trim();
-    return artifactId && revisionId ? { artifactId, revisionId } : null;
+    const purpose = String(payload.purpose || "").trim();
+    if (!artifactId || !revisionId) return null;
+    return purpose ? { artifactId, revisionId, purpose } : { artifactId, revisionId };
   } catch {
     return null;
   }
