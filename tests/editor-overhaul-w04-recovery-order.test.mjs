@@ -36,14 +36,14 @@ const STORE = dataModule(`
   export async function readAdvancedRecovery(key) { return store.records.get(key) || null; }
   export async function deleteAdvancedRecovery(key) { store.records.delete(key); }
 `);
-const { useAdvancedRecovery } = await import(await compileModule("src/shell/use-advanced-recovery.ts", { "./advanced-recovery-store": STORE }));
+const { useAdvancedRecovery, noteAdvancedSaveSucceeded } = await import(await compileModule("src/shell/use-advanced-recovery.ts", { "./advanced-recovery-store": STORE }));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function Probe({ dirty, revision, state }) {
+function Probe({ dirty, revision, state, recoveryKey = "richdoc:doc-1" }) {
   useAdvancedRecovery({
     editorId: "richdoc", revision, dirty, persistenceState: state,
     recovery: {
-      key: "richdoc:doc-1", draftSchema: "oceanleo.richdoc.edit.v1", ready: true,
+      key: recoveryKey, draftSchema: "oceanleo.richdoc.edit.v1", ready: true,
       capture: () => ({ type: "doc", content: [{ revision }] }),
       restore: () => true,
     },
@@ -67,5 +67,27 @@ test("a confirmed save leaves no local copy behind, even when the last write is 
   await act(async () => root.unmount());
   await act(async () => { await sleep(200); });
   assert.equal(globalThis.__w04Store.records.size, 0, "closing a clean, saved document writes nothing back");
+  container.remove();
+});
+
+test("an editor that keeps dirty up after a confirmed save still drops the obsolete copy", async () => {
+  globalThis.__w04Store.records.clear();
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const props = { recoveryKey: "deck:deck-000123" };
+  const render = (next) => act(async () => root.render(React.createElement(Probe, { ...props, ...next })));
+  await render({ dirty: false, revision: 0, state: "saved" });
+  await render({ dirty: true, revision: 1, state: "saving" });
+  await act(async () => { await sleep(600); });
+  assert.equal(globalThis.__w04Store.records.size, 1);
+  noteAdvancedSaveSucceeded({ id: "deck-000123", key: "deck-000123", meta: {} }, Date.now());
+  await render({ dirty: true, revision: 1, state: "saved" }); // dirty never comes down
+  await act(async () => { await sleep(400); });
+  assert.equal(globalThis.__w04Store.records.size, 0, "a save that covers the last edit retires the local copy");
+  await act(async () => root.unmount());
+  await act(async () => { await sleep(200); });
+  assert.equal(globalThis.__w04Store.records.size, 0, "unmount does not write the covered copy back");
   container.remove();
 });

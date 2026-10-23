@@ -230,16 +230,20 @@ export function useAdvancedRecovery({
 
   useEffect(() => {
     const active = recoveryRef.current;
+    const key = active ? draftRecoveryKey(active) : "";
+    // Some editors keep `dirty` up after a confirmed save (deck). The copy is still
+    // obsolete once a save that started after the last edit succeeded; leaving it
+    // made the next page lifetime restore and re-save it (an extra revision per reload).
+    const covered = Boolean(active) && advancedRecoverySupersededBySave(key, lastEditAtRef.current);
     if (
       !active ||
-      dirty ||
+      (dirty && !covered) ||
       persistenceState !== "saved" ||
       !hadDirtyRef.current
     ) {
       return;
     }
     hadDirtyRef.current = false;
-    const key = draftRecoveryKey(active);
     const promotion = localPromotionRef.current;
     if (promotion?.key === key) {
       clearAdvancedLocalRecoveryPromotion(key, promotion);

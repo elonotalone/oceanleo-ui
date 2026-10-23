@@ -55,15 +55,16 @@ const mutators = {
     await page.keyboard.press("Enter");
     await page.keyboard.type(marker, { delay: 20 });
   },
-  async deck(page, marker) {
-    const box = await largestVisible(page, "div.cursor-text");
-    if (!box) throw new Error("no deck text box on the stage");
-    await page.mouse.dblclick(box.x + box.w / 2, box.y + box.h / 2);
-    await sleep(600);
-    await page.keyboard.press("Control+End");
-    await page.keyboard.type(` ${marker}`, { delay: 20 });
-    await sleep(400);
-    await page.keyboard.press("Escape");
+  async deck(page, marker, step) {
+    // Same path as W07's own scenario: select the first text box, press a canonical edit-bar
+    // control. Step 1 bold, step 2 strikethrough, step 3 (offline) italic.
+    const text = page.locator("[data-deck-canvas] [data-deck-element][data-element-type=text]").first();
+    await text.waitFor({ timeout: 90000 });
+    await text.click({ force: true });
+    await sleep(800);
+    const id = step === 1 ? "bold" : step === 2 ? "strike" : "italic";
+    await page.locator(`[data-selection-control-id="${id}"] button, button[data-selection-control-id="${id}"]`).first().click();
+    await sleep(500);
   },
   async image(page, marker, step) {
     // Step 1 rotates, step 2 flips, step 3 rotates again: each is a visible pixel change.
