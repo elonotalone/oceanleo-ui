@@ -19,13 +19,18 @@ export function savePdfBytesToLibrary({
   item: LibraryItem;
   siteId: string;
   bytes: Uint8Array;
-  /** Localised "edited version" suffix for the file title. */
-  editedSuffix: string;
+  /**
+   * 旧版「另存一份」才加的标题后缀。现在保存是同一份 PDF 的新版本，标题不变；
+   * 不传就沿用原标题。
+   */
+  editedSuffix?: string;
   savingRevision: number;
   pageCount: number;
   keySalt?: string;
 }) {
-  const title = `${pdfFileStem(item.title)}-${editedSuffix}`;
+  const title = editedSuffix
+    ? `${pdfFileStem(item.title)}-${editedSuffix}`
+    : pdfFileStem(item.title);
   const file = new File([Uint8Array.from(bytes)], `${title}.pdf`, {
     type: "application/pdf",
   });

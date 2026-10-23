@@ -3,12 +3,6 @@
 import { inspectPdf } from "./pdf-operations";
 import { assertBlobSource } from "./source-integrity.mjs";
 
-export function capturePdfRecovery(bytes: Uint8Array | null): Blob | null {
-  return bytes
-    ? new Blob([Uint8Array.from(bytes)], { type: "application/pdf" })
-    : null;
-}
-
 export async function decodePdfRecovery(
   payload: unknown,
   maxBytes: number,

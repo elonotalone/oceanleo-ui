@@ -191,9 +191,6 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
   let proSecondary: string | null = null;
   let readOnly = false;
   const offs: Off[] = [];
-  const keep = (off: Off | void) => {
-    if (typeof off === "function") offs.push(off);
-  };
 
   const doc = () => docs?.getActiveDocumentId() ?? null;
 
@@ -453,18 +450,30 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       onThumbs?: (pages: number[]) => void;
     }) {
       const mine = (event: { documentId: string }) => event.documentId === doc();
-      keep(history?.onHistoryChange((event) => mine(event) && listeners.onEdit?.()));
-      keep(form?.onFieldValueChange?.((event) => mine(event) && listeners.onEdit?.()));
-      keep(annotations?.onStateChange((event) => mine(event) && listeners.onAnnotations?.()));
-      keep(zoom?.onZoomChange((event) => mine(event) && listeners.onZoom?.(Math.round(event.newZoom * 100))));
-      keep(scroll?.onPageChange((event) => mine(event) && listeners.onPage?.(event.pageNumber)));
-      keep(thumbs?.onRefreshPages((event) => mine(event) && listeners.onThumbs?.(event.pages)));
-      keep(
+      const own: Off[] = [];
+      const hold = (off: Off | void) => {
+        if (typeof off === "function") own.push(off);
+      };
+      hold(history?.onHistoryChange((event) => mine(event) && listeners.onEdit?.()));
+      hold(form?.onFieldValueChange?.((event) => mine(event) && listeners.onEdit?.()));
+      hold(annotations?.onStateChange((event) => mine(event) && listeners.onAnnotations?.()));
+      hold(zoom?.onZoomChange((event) => mine(event) && listeners.onZoom?.(Math.round(event.newZoom * 100))));
+      hold(scroll?.onPageChange((event) => mine(event) && listeners.onPage?.(event.pageNumber)));
+      hold(thumbs?.onRefreshPages((event) => mine(event) && listeners.onThumbs?.(event.pages)));
+      hold(
         docs?.onDocumentOpened(() => {
           applyChrome();
           listeners.onDocument?.();
         }),
       );
+      own.forEach((off) => offs.push(off));
+      return () => {
+        own.splice(0).forEach((off) => {
+          off();
+          const at = offs.indexOf(off);
+          if (at >= 0) offs.splice(at, 1);
+        });
+      };
     },
     dispose() {
       offs.splice(0).forEach((off) => off());

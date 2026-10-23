@@ -1,47 +1,16 @@
 "use client";
 
-import {
-  PDFDict,
-  PDFDocument,
-  PDFHexString,
-  PDFName,
-  PDFRef,
-  degrees,
-  type PDFPage,
-} from "pdf-lib";
-import { PDF_READER_PALETTE } from "./pdf-workbench-utils";
+import { PDFDocument, degrees } from "pdf-lib";
 
-// §2.1 `annot.text.marker`, expressed as the PDF `C` array.
-const TEXT_MARKER_CHANNELS = [0, 2, 4].map(
-  (offset) =>
-    Number.parseInt(
-      PDF_READER_PALETTE["annot.text.marker"].slice(1 + offset, 3 + offset),
-      16,
-    ) / 255,
-);
+/**
+ * 页面整理的字节级操作（pdf-lib，MIT）。查看器引擎没有「写旋转 / 挪页」的接口，
+ * 所以缩略图栏的旋转、排序、删页在这里改字节，再换回同一个查看器。
+ */
 
 const LOAD_OPTIONS = {
   ignoreEncryption: false,
   updateMetadata: false,
 } as const;
-
-/**
- * 合并进来的页：去掉带过来的页 id（多人同改时页 id 由本端重新补），
- * 页上批注的 id（NM）换成新的，免得合并同一份文件的另一份拷贝时两条批注共用一个 id。
- */
-function rekeyPdfPageForMerge(document: PDFDocument, page: PDFPage): void {
-  page.node.delete(PDFName.of("OLPageId"));
-  const annotations = page.node.Annots();
-  if (!annotations) return;
-  for (let index = 0; index < annotations.size(); index += 1) {
-    const raw = annotations.get(index);
-    const dictionary =
-      raw instanceof PDFRef ? document.context.lookup(raw, PDFDict) : raw instanceof PDFDict ? raw : null;
-    if (!dictionary || !dictionary.has(PDFName.of("NM"))) continue;
-    const fresh = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    dictionary.set(PDFName.of("NM"), PDFHexString.fromText(`oceanleo-${fresh}`));
-  }
-}
 
 function copyBytes(bytes: Uint8Array): Uint8Array {
   return Uint8Array.from(bytes);
@@ -88,63 +57,6 @@ export async function rotatePdfPage(
   return savePdf(document);
 }
 
-export async function addPdfTextAnnotation(
-  bytes: Uint8Array,
-  pageIndex: number,
-  contents: string,
-): Promise<Uint8Array> {
-  const text = contents.trim().slice(0, 2_000);
-  if (!text) throw new Error("批注内容不能为空");
-  const document = await loadPdf(bytes);
-  assertPageIndex(document, pageIndex);
-  const page = document.getPage(pageIndex);
-  const crop = page.getCropBox();
-  const iconSize = Math.min(24, crop.width, crop.height);
-  const rotation =
-    ((Math.round(page.getRotation().angle / 90) * 90) % 360 + 360) %
-    360;
-  let u = 0.9;
-  let v = 0.1;
-  if (rotation === 90) {
-    u = 0.1;
-    v = 0.1;
-  } else if (rotation === 180) {
-    u = 0.1;
-    v = 0.9;
-  } else if (rotation === 270) {
-    u = 0.9;
-    v = 0.9;
-  }
-  const centerX = crop.x + u * crop.width;
-  const centerY = crop.y + (1 - v) * crop.height;
-  const x = Math.max(
-    crop.x,
-    Math.min(
-      crop.x + crop.width - iconSize,
-      centerX - iconSize / 2,
-    ),
-  );
-  const y = Math.max(
-    crop.y,
-    Math.min(
-      crop.y + crop.height - iconSize,
-      centerY - iconSize / 2,
-    ),
-  );
-  const annotation = document.context.obj({
-    Type: PDFName.of("Annot"),
-    Subtype: PDFName.of("Text"),
-    Rect: [x, y, x + iconSize, y + iconSize],
-    Contents: PDFHexString.fromText(text),
-    T: PDFHexString.fromText("OceanLeo"),
-    Name: PDFName.of("Comment"),
-    C: TEXT_MARKER_CHANNELS,
-    F: 4,
-  });
-  page.node.addAnnot(document.context.register(annotation));
-  return savePdf(document);
-}
-
 export async function movePdfPage(
   bytes: Uint8Array,
   fromIndex: number,
@@ -173,54 +85,4 @@ export async function deletePdfPage(
   return savePdf(document);
 }
 
-export async function addBlankPdfPage(
-  bytes: Uint8Array,
-  afterIndex: number,
-): Promise<Uint8Array> {
-  const document = await loadPdf(bytes);
-  assertPageIndex(document, afterIndex);
-  const source = document.getPage(afterIndex);
-  const page = document.insertPage(afterIndex + 1, [source.getWidth(), source.getHeight()]);
-  page.setRotation(source.getRotation());
-  return savePdf(document);
-}
 
-export async function mergePdfBytes(
-  bytes: Uint8Array,
-  incomingBytes: Uint8Array,
-  insertAfterIndex?: number,
-): Promise<{ bytes: Uint8Array; insertedCount: number }> {
-  const document = await loadPdf(bytes);
-  const incoming = await loadPdf(incomingBytes);
-  const incomingCount = incoming.getPageCount();
-  if (incomingCount < 1) throw new Error("要合并的 PDF 没有页面");
-  const copied = await document.copyPages(
-    incoming,
-    Array.from({ length: incomingCount }, (_, index) => index),
-  );
-  const after =
-    insertAfterIndex == null
-      ? document.getPageCount() - 1
-      : Math.max(-1, Math.min(document.getPageCount() - 1, insertAfterIndex));
-  // 合进来的页是新页：不带原来的页 id / 批注 id（合并自己的另一份拷贝时否则会撞 id）。
-  copied.forEach((page) => rekeyPdfPageForMerge(document, page));
-  copied.forEach((page, offset) => document.insertPage(after + 1 + offset, page));
-  return { bytes: await savePdf(document), insertedCount: incomingCount };
-}
-
-export async function extractPdfPages(
-  bytes: Uint8Array,
-  pageIndices: readonly number[],
-): Promise<Uint8Array> {
-  const source = await loadPdf(bytes);
-  if (pageIndices.length < 1) throw new Error("请至少选择一页");
-  pageIndices.forEach((index) => assertPageIndex(source, index));
-  const output = await PDFDocument.create();
-  const pages = await output.copyPages(source, [...pageIndices]);
-  pages.forEach((page) => output.addPage(page));
-  const title = source.getTitle();
-  if (title) output.setTitle(title);
-  const author = source.getAuthor();
-  if (author) output.setAuthor(author);
-  return savePdf(output);
-}

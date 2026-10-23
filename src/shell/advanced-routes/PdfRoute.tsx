@@ -1,337 +1,221 @@
 "use client";
 
-import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
-import { useAdvancedSession } from "../advanced-session-context";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEditorHandoffSource } from "./editor-handoff";
-import {
-  applyW19HandoffToItem,
-  peekW19EnterHandoff,
-  reportW19ProSaved,
-  resolveW19Handoff,
-  stashW19EnterHandoff,
-  useW19ProSavedRevision,
-  w19ItemKey,
-} from "./w19-handoff-store";
+/**
+ * PDF 编辑器（2026-10-23 操作员裁定 D4）。
+ *
+ * 一个 EmbedPDF 查看器实例，两张页：
+ * - 编辑（基础）：画面就是 PDF 页面；左侧缩略图栏整理页面；编辑栏没选中东西时
+ *   直接列出十个工具（高亮、下划线、删除线、打勾、打叉、加文字、签名、画笔、便签、
+ *   查找），选中批注时变成它的属性；
+ * - 专业编辑：同一个实例显示 EmbedPDF 官方完整界面。切换只显隐工具，不重载。
+ * 改动是标准 PDF 批注，自动保存成同一份 PDF 的新版本。
+ */
 import dynamic from "next/dynamic";
+import { useCallback, useMemo, useState } from "react";
+import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
+import { useAdvancedSession } from "../advanced-session-context";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
+import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
-import { setPluginMode } from "../plugin-chrome/plugin-mode-store";
-import { pdfNextEditorFacade } from "../media-editors/pdf-next-facade";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedSavedItem } from "../advanced-session";
 import { fetchMediaBlob } from "../../lib/media-proxy";
-import { PdfContextToolbar } from "../media-editors/PdfContextToolbar";
-import { PdfControls } from "../media-editors/PdfControls";
-import { PdfStage } from "../media-editors/PdfStage";
-import type { PdfProController } from "../media-editors/PdfNextStage";
-import {
-  usePdfWorkbench,
-  type PdfWorkbenchState,
-} from "../media-editors/use-pdf-workbench";
-import { ModeSwitchGate, useModeSwitchReady } from "./mode-switch-gate";
-import {
-  PDF_MAX_ZOOM,
-  PDF_MIN_ZOOM,
-} from "../media-editors/pdf-workbench-utils";
 import { editorToolLabel } from "../workbench-routes";
 import { useUI } from "../../i18n/ui/useUI";
-import { usePdfCollab, usePdfCollabEditor } from "../collab/adapters/use-pdf-collab";
+import { usePdfCollab } from "../collab/adapters/use-pdf-collab";
 import { guardPluginSurface } from "../collab/adapters/visual-readonly";
-import { buildPdfCommandSurface } from "../doc-editors/doc-family-commands";
-import {
-  DOC_FAMILY_DOWNLOAD_FORMATS,
-  docFamilyAcceptAttribute,
-} from "../doc-editors/doc-family-formats";
-import { importDocFamilyFile } from "../doc-editors/doc-family-import";
 import { usePluginCommandSurface } from "../plugin-command";
+import { usePluginTheme } from "../plugin-theme";
+import type { LibraryItem } from "../library-data";
 import {
   useWorkbenchMaterialAdapter,
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
-import { pdfSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
+import { PdfControls } from "../media-editors/PdfControls";
+import { PdfFindBar } from "../media-editors/PdfFindBar";
+import { PdfSelectionBar } from "../media-editors/PdfSelectionBar";
+import { PdfSignatureDialog } from "../media-editors/PdfSignatureDialog";
+import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
+import { buildPdfCommandSurface } from "../media-editors/pdf-command-surface";
+import { PDF_MARK_TOOL_IDS } from "../media-editors/pdf-mark-tools";
+import { pdfDataUrlBytes } from "../media-editors/pdf-signature-store";
 
-/**
- * 专业模式舞台（EmbedPDF 官方查看器）的懒加载入口。
- *
- * `import()` 的字面量**必须**写在这一层：它是打包器切 chunk 的唯一依据，
- * 搬进 helper 会让查看器整包退回主包。普通模式不用它：普通模式的舞台是
- * `PdfStage`，渲染走同一个 EmbedPDF(PDFium) 引擎。
- * `ssr: false` 是硬要求——PDFium 是 WASM + blob worker，服务端渲染时两者都不存在。
- */
-const PdfNextStage = dynamic(
-  () =>
-    import("../media-editors/PdfNextStage").then(
-      (module) => module.PdfNextStage,
-    ),
+/** 查看器是 WASM + worker，只在浏览器里装；`import()` 字面量必须写在这一层（切 chunk）。 */
+const PdfStage = dynamic(
+  () => import("../media-editors/PdfStage").then((module) => module.PdfStage),
   { ssr: false, loading: () => null },
 );
 
-/** 普通模式舞台 + 切回「编辑」时的 ready 信号：页数解析出来就算首帧可见。 */
-function PdfNormalFace({
-  editor,
-  accent,
-}: {
-  editor: PdfWorkbenchState;
-  accent: string;
-}) {
-  useModeSwitchReady(!editor.loading && editor.pageCount > 0);
-  return <PdfStage editor={editor} accent={accent} />;
+/** 编辑栏空态的十个工具（顺序即显示顺序）。 */
+const PDF_TOOLS: readonly {
+  id: string;
+  label: string;
+  tool?: string;
+  icon?: AdvancedWorkbenchAction["icon"];
+}[] = [
+  { id: "pdf-tool-highlight", label: "高亮", tool: "highlight", icon: "highlight" },
+  { id: "pdf-tool-underline", label: "下划线", tool: "underline", icon: "underline" },
+  { id: "pdf-tool-strikeout", label: "删除线", tool: "strikeout", icon: "strike" },
+  { id: "pdf-tool-check", label: "打勾", tool: PDF_MARK_TOOL_IDS.check },
+  { id: "pdf-tool-cross", label: "打叉", tool: PDF_MARK_TOOL_IDS.cross },
+  { id: "pdf-tool-text", label: "加文字", tool: "freeText", icon: "text" },
+  { id: "pdf-tool-signature", label: "签名", icon: "signature" },
+  { id: "pdf-tool-ink", label: "画笔", tool: "ink", icon: "draw" },
+  { id: "pdf-tool-note", label: "便签", tool: "textComment", icon: "note" },
+  { id: "pdf-tool-find", label: "查找" },
+];
+
+function isImageMaterial(material: LibraryItem): boolean {
+  const mime = String(material.meta.mime || "").toLowerCase();
+  const urls = [material.url, material.previewUrl, material.thumbUrl].filter(Boolean);
+  return (
+    material.kind === "image" ||
+    mime.startsWith("image/") ||
+    urls.some((url) => /\.(?:png|jpe?g)(?:$|[?#])/i.test(url || ""))
+  );
 }
 
 export function PdfRoute({
   item,
-  previewContent,
-  linkUrl,
   taskId,
   siteId = "",
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
-  const advancedSession = useAdvancedSession();
-  const pendingHandoff = peekW19EnterHandoff(w19ItemKey("pdf", item));
-  const editorSource = useEditorHandoffSource(item, pendingHandoff);
-  const saved = useW19ProSavedRevision<typeof item>(w19ItemKey("pdf", item));
-  const liveItem = saved ?? item;
-  const source = useMemo(
-    () => resolveW19Handoff(liveItem, editorSource.source ?? pendingHandoff),
-    [editorSource.source, liveItem, pendingHandoff],
-  );
-  const workbenchItem = useMemo(
-    () => applyW19HandoffToItem(liveItem, source),
-    [liveItem, source],
-  );
   const tt = useUI();
-  // ---- 多人同改（work-chat F05）：默认的旧核按批注同改（批注、表单字段、页 id 都在字节里，
-  // 别人的批注静默并进本地字节，谁保存都包含双方的）；整页级改动先拿锁、别人只读；
-  // 新核还没有按批注写入的入口，保持整份上锁。细节见 `collab/adapters/use-pdf-collab.ts`。
-  const collab = usePdfCollab({
-    item,
-    core: "legacy",
-    onExternalItem: (next) => reportW19ProSaved(w19ItemKey("pdf", item), next),
-  });
-  const editor = usePdfWorkbench(workbenchItem, siteId, undefined, collab.workbenchHooks);
-  const collabEditor = usePdfCollabEditor(collab, editor);
-  const collabReadOnly = collab.readOnly;
-  // L0 专业模式（R3）：默认普通，唯一入口是宿主经 adapter 的 `setMode`。
-  // Native 件不发 postMessage —— 那是 Hosted 件的路（契约 v2 §4）。
+  const advancedSession = useAdvancedSession();
+  const [externalItem, setExternalItem] = useState<LibraryItem | null>(null);
+  const collab = usePdfCollab({ item, onExternalItem: setExternalItem });
+  const readOnly = collab.readOnly;
+  const editor = usePdfWorkbench(externalItem ?? item, siteId, { readOnly });
+  const dark = usePluginTheme("pdf").theme === "dark";
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
-  const [nextCoreFailure, setNextCoreFailure] = useState("");
-  const effectiveCore = mode === "pro" ? "next" : "legacy";
-  /**
-   * 新核档下，`pdf.rotate-page`（写不进文件）与 `pdf.add-blank-page`（缺 API）
-   * 换成「说明原因并失败」。包在 editor 这一层，是因为 L1 浮条、指令面、agent
-   * 三个入口最后都调它上面的同一个方法——只拦指令面的话，L1 那个按钮就是死键。
-   * `legacy` 档拿到的是**同一个对象**，旧核那条路一个字节不变。
-   */
-  const nextCoreEditor = useMemo(
-    () => pdfNextEditorFacade(collabEditor, effectiveCore, setNextCoreFailure),
-    [effectiveCore, collabEditor],
-  );
-  /**
-   * Pro 模式的编辑怎么回到我们的保存链路：
-   * 官方查看器自己持有一份文档；它的撤销栈一动（`onEdited`）就记「待同步」，稍后经
-   * `export` 插件的 `saveAsCopy()` 取回字节，用 `replaceBytesSilently` 换进普通模式
-   * 正在用的那份字节（`dirty` 因此为真，顶栏保存 / 自动保存 / 下载都读这份）。
-   * 离开专业模式、下载、保存之前都会先同步一次；同步失败就不放行，不报成功。
-   */
-  const proControllerRef = useRef<PdfProController | null>(null);
-  const proEditSeqRef = useRef(0);
-  const proSyncedSeqRef = useRef(0);
-  const proTimerRef = useRef<number | null>(null);
-  const proInFlightRef = useRef<Promise<boolean> | null>(null);
-  const [proPending, setProPending] = useState(false);
-  const replaceBytesSilently = editor.replaceBytesSilently;
-  const syncProEdits = useCallback(async (): Promise<boolean> => {
-    if (proInFlightRef.current) await proInFlightRef.current.catch(() => false);
-    const controller = proControllerRef.current;
-    if (!controller || proSyncedSeqRef.current === proEditSeqRef.current) {
-      return true;
-    }
-    const run = (async () => {
-      const seq = proEditSeqRef.current;
-      try {
-        const pulled = await controller.pullBytes();
-        if (!replaceBytesSilently) {
-          throw new Error("这份 PDF 当前不能接收专业模式里的修改。");
-        }
-        let outcome: "applied" | "unchanged" | "busy" = "busy";
-        for (let attempt = 0; attempt < 8 && outcome === "busy"; attempt += 1) {
-          if (attempt) await new Promise((r) => window.setTimeout(r, 150));
-          outcome = await replaceBytesSilently(async () => pulled, {
-            markDirty: true,
-            personEdit: true,
-          });
-        }
-        if (outcome === "busy") {
-          throw new Error("页面正在处理其他操作，专业模式里的修改还没同步，请稍后重试。");
-        }
-        proSyncedSeqRef.current = seq;
-        setProPending(proEditSeqRef.current !== seq);
-        return true;
-      } catch (caught) {
-        setNextCoreFailure(
-          caught instanceof Error && caught.message
-            ? `专业模式里的修改没能同步：${caught.message}`
-            : "专业模式里的修改没能同步。",
-        );
-        return false;
-      }
-    })();
-    proInFlightRef.current = run;
-    try {
-      return await run;
-    } finally {
-      if (proInFlightRef.current === run) proInFlightRef.current = null;
-    }
-  }, [replaceBytesSilently]);
-  const syncProEditsRef = useRef(syncProEdits);
-  syncProEditsRef.current = syncProEdits;
-  const onProController = useCallback((controller: PdfProController | null) => {
-    proControllerRef.current = controller;
+  const chrome = mode === "pro" ? "pro" : "basic";
+  const [findOpen, setFindOpen] = useState(false);
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const bridge = editor.bridge;
+  const activeTool = bridge ? bridge.activeTool() : null;
+  void editor.annotationVersion;
+
+  const switchMode = useCallback((next: EditorMode) => {
+    setFindOpen(false);
+    setSignatureOpen(false);
+    setMode(next);
   }, []);
-  const onProEdited = useCallback(() => {
-    proEditSeqRef.current += 1;
-    setProPending(true);
-    if (proTimerRef.current != null) window.clearTimeout(proTimerRef.current);
-    proTimerRef.current = window.setTimeout(() => {
-      proTimerRef.current = null;
-      void syncProEditsRef.current();
-    }, 600);
-  }, []);
-  useEffect(
-    () => () => {
-      if (proTimerRef.current != null) window.clearTimeout(proTimerRef.current);
-    },
-    [],
-  );
+
+  const toolActions = useMemo<AdvancedWorkbenchAction[]>(() => {
+    const disabled = readOnly || !bridge || editor.processing;
+    return PDF_TOOLS.map((entry) => {
+      const active = entry.tool
+        ? activeTool === entry.tool
+        : entry.id === "pdf-tool-find"
+          ? findOpen
+          : signatureOpen;
+      return {
+        id: entry.id,
+        label: entry.label,
+        ...(entry.icon ? { icon: entry.icon } : {}),
+        group: "edit" as const,
+        variant: active ? ("primary" as const) : ("default" as const),
+        disabled: entry.id === "pdf-tool-find" ? !bridge : disabled,
+        onTrigger: () => {
+          if (!bridge) return;
+          if (entry.id === "pdf-tool-find") {
+            setFindOpen((open) => !open);
+            return;
+          }
+          if (entry.id === "pdf-tool-signature") {
+            bridge.setTool(null);
+            setSignatureOpen(true);
+            return;
+          }
+          bridge.deselect();
+          bridge.setTool(active ? null : entry.tool ?? null);
+        },
+      };
+    });
+  }, [activeTool, bridge, editor.processing, findOpen, readOnly, signatureOpen]);
+
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
-      id: "pdf-materials@2",
-      actions: ["merge"],
-      accepts: (material) => {
-        if (collabReadOnly) return false;
-        const url = material.url || material.previewUrl || "";
-        return (
-          String(material.meta.format || "").toLowerCase() === "pdf" ||
-          String(material.meta.mime || "").toLowerCase() === "application/pdf" ||
-          /\.pdf(?:$|[?#])/i.test(url)
-        );
-      },
-      mutate: async (_action, material) => {
-        const url = material.url || material.previewUrl || "";
-        if (!url) throw new Error("这个 PDF 素材没有可用地址。");
-        const blob = await fetchMediaBlob(url, {
-          maxBytes: 96 * 1024 * 1024,
+      id: "pdf-stamps@3",
+      actions: ["insert"],
+      accepts: (material) => !readOnly && isImageMaterial(material),
+      mutate: async (_action, material, placement) => {
+        const candidates = [material.url, material.previewUrl, material.thumbUrl].filter(Boolean) as string[];
+        const url = candidates.find((value) => /\.(?:png|jpe?g)(?:$|[?#])/i.test(value)) || candidates[0];
+        if (!url) throw new Error(tt("这个图片素材没有可用地址。"));
+        const blob = await fetchMediaBlob(url, { maxBytes: 24 * 1024 * 1024 });
+        const mime = blob.type === "image/jpeg" ? "image/jpeg" : "image/png";
+        await editor.insertImage(await blob.arrayBuffer(), mime, {
+          clientX: placement?.source === "drop" ? placement.clientX : undefined,
+          clientY: placement?.source === "drop" ? placement.clientY : undefined,
         });
-        await collabEditor.mergePdf(
-          new File([blob], `${material.title || "document"}.pdf`, {
-            type: "application/pdf",
-          }),
-          "after-current",
-        );
       },
     }),
-    [collabReadOnly, collabEditor.mergePdf],
+    [editor.insertImage, readOnly, tt],
   );
   useWorkbenchMaterialAdapter(materialAdapter);
-  const pdfAdmitted = pdfSourcePersistenceAdmitted({
-    loading: editor.loading,
-    failure: editor.failure,
-    hasBytes: editor.pageCount > 0 && Boolean(editor.currentBytes()),
-  });
-  const saveBeforeNewConversation = useCallback(async () => {
-    // 只读（别人持锁）或不是该存档的一端：不落库，别人保存后这里会自动更新。
+
+  const flush = useCallback(async () => {
+    // 只读（只有查看权限 / 别人在编辑）：不落库，别人保存后这里会自动更新。
     if (!collab.mayWrite) return { ok: true as const, item };
-    if (!(await syncProEdits())) {
-      return { ok: false as const, error: "专业模式里的修改还没同步，暂时不能保存。" };
-    }
-    const admitted = pdfSourcePersistenceAdmitted({
-      loading: editor.loading,
-      failure: editor.failure,
-      hasBytes: editor.pageCount > 0 && Boolean(editor.currentBytes()),
-    });
-    if (!admitted.ok) return { ok: false as const, error: admitted.error };
-    const copied = await editor.saveCopy();
-    if (!copied) return { ok: false as const };
-    if (copied.versionId) collab.markSaved(String(copied.versionId));
-    const next = advancedSavedItem(item, {
-      url: copied.url,
-      versionId: copied.versionId,
-      meta: {
-        editor: "pdf-native-v1",
-        editor_project_url: copied.projectUrl,
-        editor_project_schema: copied.projectSchema,
-      },
-    });
-    reportW19ProSaved(w19ItemKey("pdf", item), next);
+    const result = await editor.save();
+    if (!result.ok) return { ok: false as const, error: result.error };
+    const saved = result.version;
+    if (saved.versionId) collab.markSaved(String(saved.versionId));
+    const next: LibraryItem = {
+      ...advancedSavedItem(item, {
+        url: saved.url,
+        versionId: saved.versionId,
+        meta: { editor: "pdf-native-v1" },
+      }),
+      ...(saved.item
+        ? {
+            artifactId: saved.item.artifactId,
+            revisionId: saved.item.revisionId,
+            artifact: saved.item.artifact,
+            artifactType: saved.item.artifactType,
+          }
+        : {}),
+    };
     return { ok: true as const, item: next };
-  }, [
-    collab.markSaved,
-    collab.mayWrite,
-    editor.currentBytes,
-    editor.failure,
-    editor.loading,
-    editor.pageCount,
-    editor.saveCopy,
-    item,
-    syncProEdits,
-  ]);
-  const enterPdfPro = useCallback(async () => {
-    const bytes = editor.currentBytes();
-    const handoff = bytes
-      ? {
-          kind: "inline" as const,
-          json: { pdfBytes: bytes },
-          revision: String(editor.editRevision),
-        }
-      : resolveW19Handoff(workbenchItem, null);
-    stashW19EnterHandoff(w19ItemKey("pdf", item), handoff);
-    return { ok: true, handoff, item: workbenchItem };
-  }, [editor, item, workbenchItem]);
-  const [importError, setImportError] = useState("");
-  /**
-   * 拖进来的不只是 PDF：Word / 表格 / 演示 / 图片先由后端转成 PDF（合同 §3.3），
-   * 再作为页码接到当前页后面。转不了的报出一句能看懂的原因，不静默丢掉文件。
-   */
-  const mergeLocalFiles = useCallback(
-    async (files: File[]) => {
-      setImportError("");
-      for (const file of files) {
-        const outcome = await importDocFamilyFile(file, "pdf");
-        if (!outcome.ok) {
-          setImportError(outcome.message);
-          continue;
-        }
-        await collabEditor.mergePdf(outcome.file, "after-current");
-      }
-    },
-    [collabEditor.mergePdf],
-  );
-  const downloadAs = useCallback(
-    async (extension: string): Promise<string> => {
-      if (!await ensureAdvancedDraftExport(item.key || item.id)) return "";
-      if (extension !== "pdf") {
-        return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
-      }
-      if (!(await syncProEdits())) return "专业模式里的修改还没同步，暂时不能下载。";
-      editor.download();
-      return "";
-    },
-    [editor.download, syncProEdits],
-  );
-  // 只读（只有查看权限 / 别人正在调整页面）：会改文档的指令一律拒绝，不靠冻结后的 editor 静默吞掉。
+  }, [collab.markSaved, collab.mayWrite, editor.save, item]);
+
   usePluginCommandSurface(
     useMemo(
       () =>
         guardPluginSurface(
-          buildPdfCommandSurface(nextCoreEditor, { download: downloadAs, item, save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush) }),
-          collabReadOnly,
+          buildPdfCommandSurface(editor, {
+            download: editor.download,
+            item,
+            save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush),
+          }),
+          readOnly,
         ),
-      [nextCoreEditor, downloadAs, collabReadOnly, item, advancedSession?.flush],
+      [advancedSession?.flush, editor, item, readOnly],
     ),
   );
+
+  const placeSignature = useCallback(
+    async (signature: { dataUrl: string }) => {
+      await editor.insertImage(pdfDataUrlBytes(signature.dataUrl), "image/png");
+    },
+    [editor.insertImage],
+  );
+
+  const status =
+    (readOnly && collab.lockHolderName
+      ? tt("「{name}」正在编辑这个作品，你现在只能看；他保存后这里会自动更新。", {
+          name: collab.lockHolderName,
+        })
+      : "") ||
+    (collab.isViewer ? tt("你只有查看权限，只能看、翻页和复制文字。") : "") ||
+    editor.error ||
+    editor.notice ||
+    (editor.loading ? tt("正在载入 PDF") : "");
+
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -342,150 +226,110 @@ export function PdfRoute({
         collab: collab.collab,
         id: "pdf",
         label: editorToolLabel({ type: "pdf" }),
-        toolbox: {
-          label: "页面",
-          icon: "pages",
-          content: (
-            <div inert={collabReadOnly || undefined} className={collabReadOnly ? "opacity-60" : undefined}>
-              <PdfControls editor={nextCoreEditor} />
-            </div>
-          ),
-        },
-        // 只读时工具栏仍在，只是改动入口灰掉（editor.collabReadOnly）。
-        contextToolbar: (
-          <PdfContextToolbar editor={nextCoreEditor} accent={accent} />
-        ),
+        actions: chrome === "basic" ? toolActions : [],
+        contextToolbar:
+          chrome === "basic" && bridge ? (
+            <PdfSelectionBar
+              bridge={bridge}
+              selected={editor.selected}
+              activeTool={activeTool}
+              version={editor.annotationVersion}
+              readOnly={readOnly}
+              accent={accent}
+            />
+          ) : null,
         history: {
-          canUndo: collabEditor.canUndo,
-          canRedo: collabEditor.canRedo,
-          undo: collabEditor.undo,
-          redo: collabEditor.redo,
+          canUndo: editor.canUndo,
+          canRedo: editor.canRedo,
+          undo: editor.undo,
+          redo: editor.redo,
         },
-        // L3 专业模式 = EmbedPDF 的即用查看器（R4）。**同一个文档实例**：
-        // 两个模式吃的是同一份 `editor.currentBytes()`，切换不重新载入、不丢改动。
-        //
-        // 旧核档点专业模式也交出 setMode：切到同一份字节上的新核查看器。
-        mode: {
-          current: mode,
-          setMode,
-        },
+        mode: { current: mode, setMode: switchMode },
         pages: {},
-        // §2.3 / C20–C21: the reader's zoom range is 25 %–400 %. The shell
-        // slider must not cap below the carrier contract.
+        // 全程一个缩放：基础档用外壳右下角那个（与查看器同步）；专业档官方工具栏
+        // 里有缩放，外壳那个藏起来。
+        nativeChrome: { viewport: chrome === "pro" },
         viewport: {
           value: editor.zoom,
-          min: PDF_MIN_ZOOM,
-          max: PDF_MAX_ZOOM,
+          min: 25,
+          max: 400,
           step: 5,
           setValue: editor.setZoom,
-          fit: () => editor.setZoom(100),
+          fit: editor.fit,
         },
         directDownload: {
           id: "pdf-download",
-          label: `直接下载 ${DOC_FAMILY_DOWNLOAD_FORMATS.pdf[0].label}`,
+          label: "直接下载 PDF",
           icon: "download",
-          disabled: editor.loading || editor.processing,
-          onTrigger: () =>
-            afterAdvancedDraftExport(item.key || item.id, async () => {
-              if (await syncProEdits()) editor.download();
-            }),
+          disabled: !bridge,
+          onTrigger: async () => {
+            const failure = await editor.download();
+            if (failure) editor.setError(failure);
+          },
         },
-        upload: collabReadOnly
+        upload: readOnly
           ? undefined
           : {
-              accept: docFamilyAcceptAttribute("pdf"),
+              accept: "image/png,image/jpeg",
               multiple: true,
-              onFiles: mergeLocalFiles,
-            },
-        // §2.4 SC 1.4.5 / F2：扫描件必须说明自己没有文本层。规范 v2 §1 之后
-        // 这句提示不再是画布顶部的黑条，而是宿主 PluginChromeNotices 的左下角小胶囊
-        // （id 与 PDF_FAILURE_CODES 的 `pdf-no-text-layer` 同名，验收脚本按它找）。
-        notices: editor.readerState === "image-only"
-          ? [
-              {
-                id: "pdf-no-text-layer",
-                text: "此文档无文本层，只能按页浏览与标注，无法全文检索或复制文字。",
-                severity: "info" as const,
+              onFiles: async (files) => {
+                for (const file of files) {
+                  await editor.insertImage(await file.arrayBuffer(), file.type || "image/png");
+                }
               },
-            ]
-          : [],
-        // flag=`next` 或专业模式走 EmbedPDF 叶子（普通模式我们自己画、专业
-        // 模式换成上游即用查看器，**同一份字节**）。`effectiveCore` 判定保留，
-        // 两面之间经同一个过渡门：旧面留到新面 ready，中间是舞台内的切换覆盖层。
+            },
         stage: (
-          // 只读时舞台不做 inert：旁观者要能翻页、缩放；改动入口（工具栏、浮条、导入、撤销）已在只读时关掉。
           <div
-            data-collab-readonly={collabReadOnly ? "true" : undefined}
-            className="h-full min-h-0"
+            data-collab-readonly={readOnly ? "true" : undefined}
+            className="flex h-full min-h-0 bg-[var(--awb-stage-bg)]"
           >
-          <ModeSwitchGate
-            pro={effectiveCore === "next"}
-            beforeEnterPro={enterPdfPro}
-            beforeLeavePro={syncProEdits}
-            hasUnsavedProChanges={() =>
-              proSyncedSeqRef.current !== proEditSeqRef.current
-            }
-            onLeaveProFailed={() => {
-              setMode("pro");
-              setPluginMode("pdf", "pro");
-            }}
-            onRetryLeavePro={() => {
-              setMode("normal");
-              setPluginMode("pdf", "normal");
-            }}
-            onEnterProFailed={() => {
-              setMode("normal");
-              setPluginMode("pdf", "normal");
-            }}
-            onRetryEnterPro={() => {
-              setMode("pro");
-              setPluginMode("pdf", "pro");
-            }}
-            renderNormal={() => (
-              <PdfNormalFace editor={collabEditor} accent={accent} />
-            )}
-            renderPro={() => (
-              <PdfNextStage
-                bytes={nextCoreEditor.currentBytes()}
-                itemKey={w19ItemKey("pdf", item)}
-                name={`${item.title || "document"}.pdf`}
-                accent={accent}
-                onFailure={setNextCoreFailure}
-                onController={onProController}
-                onEdited={onProEdited}
+            {chrome === "basic" && bridge ? (
+              <PdfControls
+                pageCount={editor.pageCount}
+                currentPage={editor.currentPage}
+                version={editor.thumbVersion}
+                aspect={(index) => {
+                  const page = bridge.pages()[index];
+                  return page ? page.size.height / page.size.width : 1.414;
+                }}
+                renderThumb={(index) => bridge.renderThumb(index, 1)}
+                readOnly={readOnly}
+                busy={editor.processing}
+                onGoTo={editor.goToPage}
+                onRotate={(index) => void editor.rotatePage(index)}
+                onDelete={(index) => void editor.deletePage(index)}
+                onMove={(from, to) => void editor.movePage(from, to)}
               />
-            )}
-          />
+            ) : null}
+            <div className="relative min-h-0 min-w-0 flex-1">
+              <PdfStage
+                bytes={editor.initialBytes}
+                name={`${item.title || "document"}.pdf`}
+                mode={chrome}
+                accent={accent}
+                dark={dark}
+                onHandle={editor.attach}
+                onFailure={editor.setError}
+                onFindShortcut={() => setFindOpen(true)}
+              />
+              {findOpen && chrome === "basic" && bridge ? (
+                <PdfFindBar bridge={bridge} onClose={() => setFindOpen(false)} />
+              ) : null}
+              {signatureOpen && chrome === "basic" ? (
+                <PdfSignatureDialog onPlace={placeSignature} onClose={() => setSignatureOpen(false)} />
+              ) : null}
+            </div>
           </div>
         ),
-        // §6: a failed load reaches the shell status bar with its code, so the
-        // route never presents an empty stage with no stated reason.
-        status:
-          (collabReadOnly && collab.lockHolderName
-            ? collab.mode === "whole"
-              ? tt("「{name}」正在编辑这个作品，你现在只能看；他保存后这里会自动更新。", {
-                  name: collab.lockHolderName,
-                })
-              : tt("「{name}」正在调整页面，你现在只能看；他保存后这里会自动更新。", {
-                  name: collab.lockHolderName,
-                })
-            : "") ||
-          (collab.isViewer ? tt("你只有查看权限，只能看、翻页和复制文字。") : "") ||
-          collab.notice ||
-          importError ||
-          nextCoreFailure ||
-          editor.error ||
-          editor.failure?.message ||
-          editor.notice ||
-          (editor.loading ? "正在载入 PDF" : ""),
+        status,
         persistence: {
-          dirty: pdfAdmitted.ok && collab.mayWrite ? editor.dirty || proPending : false,
+          dirty: collab.mayWrite ? editor.dirty : false,
           editRevision: editor.editRevision,
-          autoSave: pdfAdmitted.ok && collab.mayWrite,
-          flush: saveBeforeNewConversation,
+          autoSave: collab.mayWrite && Boolean(bridge),
+          flush,
           recovery: {
             key: advancedRecoveryKey("pdf", item),
-            ready: pdfAdmitted.ok && !editor.processing,
+            ready: Boolean(bridge) && !editor.loading,
             capture: editor.captureRecovery,
             restore: editor.restoreRecovery,
           },

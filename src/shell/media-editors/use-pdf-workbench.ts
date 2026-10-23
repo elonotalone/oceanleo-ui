@@ -1,472 +1,310 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type RefCallback } from "react";
-import { useUI, type UITranslate } from "../../i18n/ui/useUI";
-import {
-  isDurableLibraryItem,
-  type LibraryItem,
-} from "../library-data";
+
+/**
+ * PDF 编辑器的状态（D4 / D11）：围着**唯一的**查看器实例转。
+ *
+ * - 源：库里那份 PDF 的字节，只在第一次（或换成别的文件时）载入；我们自己保存产生
+ *   的新版本不触发重载——否则每存一次撤销栈就清空、画面闪一下。
+ * - 撤销 / 重做：查看器自己的历史（批注、文字、表单）在上；页面整理（旋转写进文件、
+ *   删页、排序）在下，每一步记「前 / 后」两份字节，撤销即换回前一份。
+ * - 保存：查看器导出整份字节（标准 PDF 批注）→ 同一份 PDF 的新版本；每次成功后
+ *   **基线换成服务器返回的那一版**，下一次保存的 CAS 基线才是对的（第 2 次保存
+ *   失败、或再 fork 一份，都是基线没前移造成的）。
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUI } from "../../i18n/ui/useUI";
+import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import type { PersistedEditorVersion } from "../doc-editors/doc-io";
-import { savePdfBytesToLibrary } from "./pdf-library-save";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
-import { usePdfAnnotations } from "./use-pdf-annotations";
+import { savePdfBytesToLibrary } from "./pdf-library-save";
 import { loadInitialPdfSource } from "./pdf-source";
-import { capturePdfRecovery } from "./pdf-recovery";
-import {
-  PDF_ZOOM_STOPS,
-  clamp,
-  clampPdfZoom,
-  fitPdfZoom,
-  nextPdfZoomStop,
-  pdfErrorMessage,
-  type PdfSnapshot,
-} from "./pdf-workbench-utils";
-import { PDF_FAILURE_CODES } from "./pdf-manifest";
-import type { PdfWorkbenchState } from "./pdf-workbench-state";
-export type { PdfWorkbenchState } from "./pdf-workbench-state";
-import { usePdfOffice } from "./pdf-form/use-pdf-office";
-import type { PdfOfficeWorkbenchState } from "./pdf-form/types";
-export type { PdfOfficeWorkbenchState } from "./pdf-form/types";
-import {
-  applyPdfUserEditSession,
-  usePdfMutationRunner,
-  usePdfSnapshotRestore,
-} from "./use-pdf-edit-engine";
-import { inspectPdf } from "./pdf-operations";
-import { usePdfPageActions } from "./use-pdf-page-actions";
-import { usePdfViewPipeline } from "./use-pdf-view-pipeline";
-import {
-  usePdfWorkbenchCollab,
-  type PdfWorkbenchCollabHooks,
-} from "./use-pdf-workbench-collab";
-export type { PdfWorkbenchCollabHooks } from "./use-pdf-workbench-collab";
-export {
-  applyPdfUserEditSession,
-  applyPdfEditEngineUserEditSession,
-} from "./use-pdf-edit-engine";
-export const applyPdfWorkbenchUserEditSession = applyPdfUserEditSession;
+import { decodePdfRecovery } from "./pdf-recovery";
+import { deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
+import { downloadPdfBytes, pdfErrorMessage, pdfFileStem } from "./pdf-workbench-utils";
+import { PDF_SUBTYPE, type PdfAnnotationLike } from "./pdf-viewer-bridge";
+import type { PdfStageHandle } from "./PdfStage";
+
+const MAX_RECOVERY_BYTES = 96 * 1024 * 1024;
+
+interface PageOpEntry {
+  before: Uint8Array;
+  after: Uint8Array;
+  page: number;
+}
+
+export interface PdfPlacement {
+  pageIndex?: number;
+  x?: number;
+  y?: number;
+  clientX?: number;
+  clientY?: number;
+}
+
+function sourceKeyOf(item: LibraryItem): string {
+  return String(item.meta.editor_source_url || "").trim() || item.url || item.previewUrl || "";
+}
+
+async function imageSize(bytes: ArrayBuffer, mime: string): Promise<{ width: number; height: number }> {
+  try {
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: mime }));
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close?.();
+    return size;
+  } catch {
+    return { width: 200, height: 100 };
+  }
+}
 
 export function usePdfWorkbench(
   item: LibraryItem,
   siteId = "",
-  onSaved?: (url: string) => void,
-  collabHooks?: PdfWorkbenchCollabHooks,
-): PdfOfficeWorkbenchState {
+  options: { readOnly?: boolean } = {},
+) {
   const tt = useUI();
-  const collabRef = useRef<PdfWorkbenchCollabHooks | undefined>(collabHooks);
-  collabRef.current = collabHooks;
-  // `tt` 是 i18n provider 所有的函数，进 effect 依赖就是 W13 在 `dcc0a7d` 里治掉的
-  // 自锁引信。本文件有两笔账要一起还：
-  //   1) 下面那个源装载 effect（`[…, tt]`）体里写了一整屏 state，`tt` 一换身份就把
-  //      整份 PDF 重新拉一遍、`setSourceLoading(false)` 轮不到；
-  //   2) 它把裸 `tt` 当 `translate` 传给了 `usePdfDocument` 与 `usePdfPreviewRender`,
-  //      等于把同一个引信装进那两个子 hook 的依赖里（W20 在 signals 里点名的那两处）。
-  // 语言切换与「这份 PDF 要不要重下重解析、这一页要不要重画」都无关，答案一律是不该
-  // 重跑。所以这里只包一次恒定身份，自己的 effect 用它，也把它传给两个子 hook。
-  // `vars` 一并转发；代价是装载期文案停在产生时那个语言（`error` / `notice` 由不在
-  // 本 owner 面上的 `PdfStage` / `PdfRoute` 原样渲染，改不成渲染时再翻）。
-  const translateRef = useRef(tt);
-  useEffect(() => {
-    translateRef.current = tt;
-  }, [tt]);
-  const translate = useCallback<UITranslate>(
-    (zh, vars) => translateRef.current(zh, vars),
-    [],
-  );
-  const bytesRef = useRef<Uint8Array | null>(null);
-  const processingRef = useRef(false);
-  const processingTokenRef = useRef(0);
-  const savingRef = useRef(false);
-  const savingTokenRef = useRef(0);
-  const aliveRef = useRef(true);
-  const sourceGenerationRef = useRef(0);
-  const revisionRef = useRef(0);
-  const zoomTimerRef = useRef<number | null>(null);
-  const undoRef = useRef<PdfSnapshot[]>([]);
-  const redoRef = useRef<PdfSnapshot[]>([]);
-  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageCount, setPageCount] = useState(0);
-  const [zoom, setZoomState] = useState(100);
-  const [rasterZoom, setRasterZoom] = useState(100);
-  const [sourceLoading, setSourceLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
+  const readOnly = Boolean(options.readOnly);
+  const [handle, setHandle] = useState<PdfStageHandle | null>(null);
+  const handleRef = useRef<PdfStageHandle | null>(null);
+  handleRef.current = handle;
+  const [initialBytes, setInitialBytes] = useState<Uint8Array | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [savedUrl, setSavedUrl] = useState("");
-  const [documentRevision, setDocumentRevision] = useState(0);
-  const allowBlankSource =
+  const [processing, setProcessing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pageCount, setPageCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [zoom, setZoom] = useState(100);
+  const [revision, setRevision] = useState(0);
+  const [savedRevision, setSavedRevision] = useState(0);
+  const [annotationVersion, setAnnotationVersion] = useState(0);
+  const [thumbVersion, setThumbVersion] = useState(0);
+  const [historyTick, setHistoryTick] = useState(0);
+  const revisionRef = useRef(0);
+  const undoOps = useRef<PageOpEntry[]>([]);
+  const redoOps = useRef<PageOpEntry[]>([]);
+  const navigating = useRef(false);
+  const processingRef = useRef(false);
+  const savingRef = useRef(false);
+  /** 下一次保存的基线（每次成功保存后换成服务器返回的那一版）。 */
+  const baseRef = useRef<LibraryItem>(item);
+  /** 我们自己保存出去的源地址：item 换成它们时不重载。 */
+  const ownSources = useRef(new Set<string>());
+  const loadedKey = useRef("");
+
+  const bump = useCallback(() => {
+    revisionRef.current += 1;
+    setRevision(revisionRef.current);
+    setThumbVersion((value) => value + 1);
+  }, []);
+
+  // ---- 源装载 ----
+  const sourceKey = sourceKeyOf(item);
+  const allowBlank =
     item.source === "creation" &&
     !isDurableLibraryItem(item) &&
     !String(item.meta.editor_project_schema || "").trim();
-  const onPageCount = useCallback((count: number) => {
-    setPageCount(count);
-    setPageNumber((value) => clamp(value, 1, count || 1));
-  }, []);
-  const {
-    previewLoading,
-    rotation,
-    rendering,
-    renderedZoom,
-    pageWidth,
-    pageHeight,
-    renderThumbnail,
-    textLayer,
-    machine,
-  } = usePdfViewPipeline({
-    bytesRef,
-    canvas,
-    documentRevision,
-    item,
-    pageCount,
-    pageNumber,
-    rasterZoom,
-    translate,
-    onPageCount,
-    setError,
-  });
-  const { advance, reportFailure, clearFailure } = machine;
-
   useEffect(() => {
-    aliveRef.current = true;
-    return () => {
-      aliveRef.current = false;
-      sourceGenerationRef.current += 1;
-      processingTokenRef.current += 1;
-      savingTokenRef.current += 1;
-      if (zoomTimerRef.current !== null) {
-        window.clearTimeout(zoomTimerRef.current);
-      }
-    };
-  }, []);
-
-  const canvasRef = useCallback<RefCallback<HTMLCanvasElement>>((node) => {
-    setCanvas(node);
-  }, []);
-
-  useEffect(() => {
-    const source =
-      String(item.meta.editor_source_url || "").trim() ||
-      item.url ||
-      item.previewUrl ||
-      "";
-    const generation = ++sourceGenerationRef.current;
+    if (ownSources.current.has(sourceKey) && loadedKey.current) {
+      // 自己刚存出去的那一版回到了 props：只换基线，不重载。
+      baseRef.current = { ...baseRef.current, ...item };
+      return undefined;
+    }
+    baseRef.current = item;
     const controller = new AbortController();
-    processingTokenRef.current += 1;
-    savingTokenRef.current += 1;
-    processingRef.current = false;
-    savingRef.current = false;
-    const previousBytes = bytesRef.current;
-    bytesRef.current = null;
-    revisionRef.current = 0;
-    undoRef.current = [];
-    redoRef.current = [];
-    setDocumentRevision((value) => value + 1);
-    setZoomState(100);
-    setRasterZoom(100);
-    setSourceUrl("");
-    setSourceLoading(true);
-    setPageNumber(1);
-    setPageCount(0);
-    setProcessing(false);
-    setSaving(false);
-    setDirty(false);
-    setCanUndo(false);
-    setCanRedo(false);
-    setSavedUrl("");
-    setNotice("");
+    setLoading(true);
     setError("");
-    clearFailure();
-    advance("reset");
-    advance("source-received");
     void (async () => {
       try {
         const loaded = await loadInitialPdfSource({
-          source,
+          source: sourceKey,
           siteId,
           title: item.title,
           signal: controller.signal,
-          allowBlank: allowBlankSource,
+          allowBlank,
         });
-        if (loaded.pageCount < 1) {
-          throw new Error(translate("PDF 没有可显示的页面"));
+        if (controller.signal.aborted) return;
+        if (loaded.pageCount < 1) throw new Error(tt("PDF 没有可显示的页面"));
+        const reloading = Boolean(loadedKey.current && handleRef.current);
+        loadedKey.current = sourceKey;
+        undoOps.current = [];
+        redoOps.current = [];
+        if (reloading) {
+          await handleRef.current!.bridge.replaceDocument(loaded.bytes);
+          setSavedRevision(revisionRef.current);
+        } else {
+          setInitialBytes(loaded.bytes);
         }
-        if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
-        let landed = loaded.bytes;
-        const prepare = collabRef.current?.prepareLoaded;
-        if (prepare) {
-          try {
-            landed = await prepare(loaded.bytes, previousBytes);
-          } catch {
-            landed = loaded.bytes;
-          }
-          if (controller.signal.aborted || generation !== sourceGenerationRef.current) return;
-        }
-        bytesRef.current = landed;
-        setSourceUrl(loaded.durableUrl);
         setPageCount(loaded.pageCount);
-        if (loaded.blank) setNotice(translate("已创建一页空白 PDF"));
-        advance("pages-resolved");
-        setDocumentRevision((value) => value + 1);
+        if (loaded.blank) setNotice(tt("已创建一页空白 PDF"));
       } catch (caught) {
-        if (!controller.signal.aborted && generation === sourceGenerationRef.current) {
-          const message = pdfErrorMessage(caught, translate("PDF 加载失败"));
-          setError(message);
-          advance("parse-failed");
-          reportFailure(
-            /encrypt|密码|加密/i.test(message)
-              ? PDF_FAILURE_CODES.F3_encrypted
-              : PDF_FAILURE_CODES.invalidSource,
-            message,
-          );
-        }
+        if (!controller.signal.aborted) setError(pdfErrorMessage(caught, tt("PDF 加载失败")));
       } finally {
-        if (!controller.signal.aborted && generation === sourceGenerationRef.current) {
-          setSourceLoading(false);
-        }
+        if (!controller.signal.aborted) setLoading(false);
       }
     })();
     return () => controller.abort();
-  }, [
-    advance,
-    allowBlankSource,
-    clearFailure,
-    item.meta.editor_source_url,
-    item.previewUrl,
-    item.title,
-    item.url,
-    reportFailure,
-    siteId,
-    translate,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey, siteId, allowBlank]);
 
+  // ---- 查看器事件 ----
   useEffect(() => {
-    if (zoomTimerRef.current !== null) {
-      window.clearTimeout(zoomTimerRef.current);
-    }
-    zoomTimerRef.current = window.setTimeout(() => {
-      zoomTimerRef.current = null;
-      setRasterZoom(zoom);
-    }, 180);
-    return () => {
-      if (zoomTimerRef.current !== null) {
-        window.clearTimeout(zoomTimerRef.current);
-        zoomTimerRef.current = null;
-      }
+    const bridge = handle?.bridge;
+    if (!bridge) return undefined;
+    bridge.setReadOnly(readOnly);
+    const syncPages = () => {
+      setPageCount(bridge.pages().length);
+      setCurrentPage(bridge.currentPage());
+      setZoom(bridge.zoomPercent());
     };
-  }, [zoom]);
+    syncPages();
+    return bridge.subscribe({
+      onEdit: () => {
+        if (!navigating.current && !bridge.canRedo()) redoOps.current = [];
+        bump();
+        setHistoryTick((value) => value + 1);
+      },
+      onAnnotations: () => setAnnotationVersion((value) => value + 1),
+      onZoom: setZoom,
+      onPage: setCurrentPage,
+      onDocument: () => {
+        syncPages();
+        setHistoryTick((value) => value + 1);
+        setThumbVersion((value) => value + 1);
+      },
+      onThumbs: () => setThumbVersion((value) => value + 1),
+    });
+  }, [bump, handle, readOnly]);
 
-  const runMutation = usePdfMutationRunner({
-    aliveRef,
-    bytesRef,
-    processingRef,
-    processingTokenRef,
-    redoRef,
-    revisionRef,
-    sourceGenerationRef,
-    undoRef,
-    pageCount,
-    pageNumber,
-    advance,
-    setCanRedo,
-    setCanUndo,
-    setDirty,
-    setDocumentRevision,
-    setError,
-    setNotice,
-    setPageCount,
-    setPageNumber,
-    setProcessing,
-    setSavedUrl,
-    item,
-    tt,
-  });
-  const annotation = usePdfAnnotations({
-    bytesRef,
-    pageNumber,
-    pageCount,
-    documentRevision,
-    resetKey: `${item.id}:${item.url || item.previewUrl || ""}`,
-    runMutation,
-    setError,
-    tt,
-  });
-
-  // AcroForm filling, image signatures and redaction. Kept in its own hook so
-  // the office surface can grow without widening this file's state machine.
-  const office = usePdfOffice({
-    bytesRef,
-    pageNumber,
-    pageCount,
-    documentRevision,
-    runMutation,
-    setError,
-    setNotice,
-    tt,
-  });
-
-  const restoreSnapshot = usePdfSnapshotRestore({
-    annotation,
-    bytesRef,
-    redoRef,
-    revisionRef,
-    undoRef,
-    setCanRedo,
-    setCanUndo,
-    setDirty,
-    setDocumentRevision,
-    setError,
-    setNotice,
-    setPageCount,
-    setPageNumber,
-    setSavedUrl,
-    item,
-  });
-
-  const { undo, redo, restoreRecovery } = usePdfWorkbenchCollab({
-    collabRef,
-    restoreSnapshot,
-    aliveRef,
-    bytesRef,
-    processingRef,
-    sourceGenerationRef,
-    undoRef,
-    redoRef,
-    revisionRef,
-    pageCount,
-    pageNumber,
-    tt,
-    annotation,
-    setPageCount,
-    setPageNumber,
-    setCanUndo,
-    setCanRedo,
-    setDirty,
-    setSavedUrl,
-    setError,
-    setNotice,
-    setDocumentRevision,
-  });
-
-  /**
-   * 多人同改：把别人的改动静默并进当前字节。不进撤销栈、不清选区、不动页码；
-   * 本地正有一次编辑在跑或字节在这期间被换过就返回 "busy"，调用方稍后重来。
-   */
-  const replaceBytesSilently = useCallback(
-    async (
-      transform: (current: Uint8Array) => Promise<Uint8Array | null>,
-      replaceOptions?: { markDirty?: boolean; personEdit?: boolean },
-    ): Promise<"applied" | "unchanged" | "busy"> => {
-      const current = bytesRef.current;
-      if (!current || processingRef.current) return "busy";
-      const generation = sourceGenerationRef.current;
-      const next = await transform(Uint8Array.from(current));
-      if (!aliveRef.current || generation !== sourceGenerationRef.current) return "unchanged";
-      if (processingRef.current || bytesRef.current !== current) return "busy";
-      if (!next) return "unchanged";
-      const count = await inspectPdf(next);
-      if (processingRef.current || bytesRef.current !== current) return "busy";
-      bytesRef.current = next;
-      revisionRef.current += 1;
-      setPageCount(count);
-      setPageNumber((value) => clamp(value, 1, count));
-      if (replaceOptions?.markDirty !== false) {
-        setDirty(true);
-        setSavedUrl("");
-      }
-      applyPdfUserEditSession(
-        item,
-        replaceOptions?.markDirty !== false && replaceOptions?.personEdit
-          ? "local-annotation"
-          : replaceOptions?.markDirty === false
-            ? "collab"
-            : "silent-replace",
-      );
-      setDocumentRevision((value) => value + 1);
-      return "applied";
-    },
-    [item],
-  );
-
-  const goToPage = useCallback(
-    (value: number) => setPageNumber(clamp(Math.round(value), 1, Math.max(1, pageCount))),
-    [pageCount],
-  );
-
-  const {
-    rotateCurrentPage,
-    movePage,
-    deleteCurrentPage,
-    addBlankPage,
-    mergePdf,
-    extractPages,
-    download,
-  } = usePdfPageActions({
-    bytesRef,
-    processingRef,
-    processingTokenRef,
-    aliveRef,
-    sourceGenerationRef,
-    pageNumber,
-    pageCount,
-    itemTitle: item.title,
-    runMutation,
-    setProcessing,
-    setError,
-    setNotice,
-    tt,
-  });
-
-  const saveCopy = useCallback(async (): Promise<PersistedEditorVersion | null> => {
-    if (!bytesRef.current || savingRef.current) return null;
-    // 多人同改：保存前先把共享文档里的批注并进字节，写出去的一份包含双方的。
-    const beforeSave = collabRef.current?.beforeSave;
-    if (beforeSave) {
+  // ---- 页面整理（写进文件，可撤销）----
+  const runPageOp = useCallback(
+    async (page: number, transform: (bytes: Uint8Array) => Promise<Uint8Array>) => {
+      const bridge = handleRef.current?.bridge;
+      if (!bridge || readOnly || processingRef.current) return false;
+      processingRef.current = true;
+      setProcessing(true);
+      setError("");
       try {
-        await beforeSave();
-      } catch {
-        /* 对齐失败不拦保存：字节里至少有本地已经收到的 */
+        const before = await bridge.exportBytes();
+        const after = await transform(before);
+        await bridge.replaceDocument(after, page);
+        undoOps.current.push({ before, after, page });
+        redoOps.current = [];
+        bump();
+        setHistoryTick((value) => value + 1);
+        return true;
+      } catch (caught) {
+        setError(pdfErrorMessage(caught, tt("页面没有调整成功")));
+        return false;
+      } finally {
+        processingRef.current = false;
+        setProcessing(false);
       }
+    },
+    [bump, readOnly, tt],
+  );
+  const rotatePage = useCallback(
+    (pageIndex: number, clockwise = true) =>
+      runPageOp(pageIndex + 1, (bytes) => rotatePdfPage(bytes, pageIndex, clockwise ? 90 : -90)),
+    [runPageOp],
+  );
+  const deletePage = useCallback(
+    (pageIndex: number) => {
+      if (pageCount <= 1) {
+        setError(tt("PDF 至少需要保留一页"));
+        return Promise.resolve(false);
+      }
+      return runPageOp(Math.max(1, pageIndex), (bytes) => deletePdfPage(bytes, pageIndex));
+    },
+    [pageCount, runPageOp, tt],
+  );
+  const movePage = useCallback(
+    (fromIndex: number, toIndex: number) =>
+      runPageOp(toIndex + 1, (bytes) => movePdfPage(bytes, fromIndex, toIndex)),
+    [runPageOp],
+  );
+
+  const swapTo = useCallback(
+    async (bytes: Uint8Array, page: number) => {
+      const bridge = handleRef.current?.bridge;
+      if (!bridge) return;
+      processingRef.current = true;
+      setProcessing(true);
+      try {
+        await bridge.replaceDocument(bytes, page);
+        bump();
+      } catch (caught) {
+        setError(pdfErrorMessage(caught, tt("撤销没有成功")));
+      } finally {
+        processingRef.current = false;
+        setProcessing(false);
+        setHistoryTick((value) => value + 1);
+      }
+    },
+    [bump, tt],
+  );
+  const undo = useCallback(() => {
+    const bridge = handleRef.current?.bridge;
+    if (!bridge || readOnly || processingRef.current) return;
+    if (bridge.canUndo()) {
+      navigating.current = true;
+      bridge.undo();
+      navigating.current = false;
+      return;
     }
-    const bytes = bytesRef.current;
-    if (!bytes || savingRef.current) return null;
-    const generation = sourceGenerationRef.current;
-    const savingRevision = revisionRef.current;
-    const savingToken = ++savingTokenRef.current;
+    const entry = undoOps.current.pop();
+    if (!entry) return;
+    redoOps.current.push(entry);
+    void swapTo(entry.before, entry.page);
+  }, [readOnly, swapTo]);
+  const redo = useCallback(() => {
+    const bridge = handleRef.current?.bridge;
+    if (!bridge || readOnly || processingRef.current) return;
+    if (bridge.canRedo()) {
+      navigating.current = true;
+      bridge.redo();
+      navigating.current = false;
+      return;
+    }
+    const entry = redoOps.current.pop();
+    if (!entry) return;
+    undoOps.current.push(entry);
+    void swapTo(entry.after, entry.page);
+  }, [readOnly, swapTo]);
+  const bridgeNow = handle?.bridge;
+  const canUndo = Boolean(!readOnly && (bridgeNow?.canUndo() || undoOps.current.length > 0));
+  const canRedo = Boolean(!readOnly && (bridgeNow?.canRedo() || redoOps.current.length > 0));
+  void historyTick;
+
+  // ---- 保存 ----
+  const save = useCallback(async (): Promise<
+    { ok: true; version: PersistedEditorVersion } | { ok: false; error: string }
+  > => {
+    const bridge = handleRef.current?.bridge;
+    if (!bridge) return { ok: false, error: tt("PDF 还没有载入，没有可保存的内容。") };
+    if (savingRef.current) return { ok: false, error: tt("上一次保存还没结束，请稍后再试。") };
     savingRef.current = true;
     setSaving(true);
     setError("");
-    setNotice("");
-    advance("commit-started");
+    const savingRevision = revisionRef.current;
     try {
+      const bytes = await bridge.exportBytes();
       const saved = await savePdfBytesToLibrary({
-        item,
+        item: baseRef.current,
         siteId,
         bytes,
-        editedSuffix: tt("编辑版"),
         savingRevision,
-        pageCount,
-        keySalt: collabRef.current?.saveKeySalt,
+        pageCount: bridge.pages().length || pageCount,
       });
       if (!saved.ok) {
-        throw new Error(
-          saved.error ||
-            artifactSaveStepMessage("revision-publish", ""),
-        );
+        throw new Error(saved.error || artifactSaveStepMessage("revision-publish", ""));
       }
-      if (!aliveRef.current || generation !== sourceGenerationRef.current) return null;
-      setSavedUrl(saved.url);
-      if (revisionRef.current === savingRevision) {
-        setDirty(false);
+      if (saved.url) ownSources.current.add(saved.url);
+      if (saved.item) {
+        ownSources.current.add(sourceKeyOf(saved.item));
+        baseRef.current = { ...baseRef.current, ...saved.item, key: baseRef.current.key };
       }
-      setNotice("");
-      advance("commit-succeeded");
-      onSaved?.(saved.url);
-      return {
+      setSavedRevision(savingRevision);
+      const version: PersistedEditorVersion = {
         url: saved.url,
         versionId: saved.versionId,
         projectUrl: saved.projectUrl,
@@ -478,105 +316,132 @@ export function usePdfWorkbench(
         previousRevisionId: saved.previousRevisionId,
         item: saved.item,
       };
+      return { ok: true, version };
     } catch (caught) {
-      // F5 / §5.3: the edited bytes stay in `bytesRef`, and the machine falls
-      // back to `annotating` — the one legal failure path out of `saving`.
-      if (aliveRef.current && generation === sourceGenerationRef.current) {
-        const message = pdfErrorMessage(caught, tt("保存 PDF 副本失败"));
-        setError(message);
-        advance("commit-conflicted");
-        reportFailure(PDF_FAILURE_CODES.F5_annotationLost, message);
-      }
-      return null;
+      const message = pdfErrorMessage(caught, tt("PDF 保存失败"));
+      setError(message);
+      return { ok: false, error: message };
     } finally {
-      if (savingToken === savingTokenRef.current) {
-        savingRef.current = false;
-        if (aliveRef.current) setSaving(false);
-      }
+      savingRef.current = false;
+      setSaving(false);
     }
-  }, [advance, item, onSaved, pageCount, reportFailure, siteId, tt]);
+  }, [pageCount, siteId, tt]);
 
-  const captureRecovery = useCallback(
-    () => capturePdfRecovery(bytesRef.current),
-    [],
+  const download = useCallback(async () => {
+    const bridge = handleRef.current?.bridge;
+    if (!bridge) return tt("PDF 还没有载入。");
+    try {
+      downloadPdfBytes(await bridge.exportBytes(), `${pdfFileStem(item.title)}.pdf`);
+      return "";
+    } catch (caught) {
+      return pdfErrorMessage(caught, tt("下载没有成功"));
+    }
+  }, [item.title, tt]);
+
+  // ---- 恢复草稿 ----
+  const captureRecovery = useCallback(async () => {
+    const bridge = handleRef.current?.bridge;
+    if (!bridge) return null;
+    const bytes = await bridge.exportBytes();
+    return new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
+  }, []);
+  const restoreRecovery = useCallback(
+    async (payload: unknown) => {
+      const decoded = await decodePdfRecovery(payload, MAX_RECOVERY_BYTES);
+      const bridge = handleRef.current?.bridge;
+      if (!decoded || !bridge) return false;
+      await bridge.replaceDocument(decoded.bytes);
+      undoOps.current = [];
+      redoOps.current = [];
+      bump();
+      return true;
+    },
+    [bump],
+  );
+
+  // ---- 图章（素材图片 / 签名）----
+  const insertImage = useCallback(
+    async (data: ArrayBuffer, mime: string, placement: PdfPlacement = {}) => {
+      const current = handleRef.current;
+      const bridge = current?.bridge;
+      if (!bridge || readOnly) throw new Error(tt("现在不能修改这份 PDF。"));
+      const pages = bridge.pages();
+      const dropped =
+        placement.clientX !== undefined && placement.clientY !== undefined
+          ? bridge.pagePointAt(placement.clientX, placement.clientY, current!.viewport())
+          : null;
+      const pageIndex = dropped?.pageIndex ?? placement.pageIndex ?? bridge.currentPage() - 1;
+      const page = pages[pageIndex];
+      if (!page) throw new Error(tt("找不到要放的那一页。"));
+      const natural = await imageSize(data, mime);
+      const maxWidth = page.size.width * 0.4;
+      const scale = Math.min(1, maxWidth / natural.width, (page.size.height * 0.4) / natural.height);
+      const width = natural.width * scale;
+      const height = natural.height * scale;
+      const cx = dropped?.x ?? placement.x ?? page.size.width / 2;
+      const cy = dropped?.y ?? placement.y ?? page.size.height / 2;
+      const left = Math.min(Math.max(cx - width / 2, 0), Math.max(0, page.size.width - width));
+      const top = Math.min(Math.max(cy - height / 2, 0), Math.max(0, page.size.height - height));
+      const ok = bridge.createAnnotation(
+        pageIndex,
+        {
+          id: globalThis.crypto?.randomUUID?.() || `stamp-${Date.now().toString(36)}`,
+          type: PDF_SUBTYPE.STAMP,
+          pageIndex,
+          rect: { origin: { x: left, y: top }, size: { width, height } },
+          flags: ["print"],
+          subject: "Stamp",
+          created: new Date(),
+        },
+        { data, mimeType: mime === "image/jpeg" ? "image/jpeg" : "image/png" },
+      );
+      if (!ok) throw new Error(tt("现在不能修改这份 PDF。"));
+    },
+    [readOnly, tt],
+  );
+
+  const selected: PdfAnnotationLike | null = useMemo(
+    () => (handle ? handle.bridge.selected() : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [handle, annotationVersion],
   );
 
   return {
-    readerState: machine.readerState,
-    failure: machine.failure,
-    textLayer,
-    manifest: machine.manifest,
-    searchFullText: textLayer.searchFullText,
-    renderPageThumbnail: renderThumbnail,
-    zoomStops: PDF_ZOOM_STOPS,
-    fitZoom: (mode, container) => {
-      const scale = Math.max(0.01, renderedZoom / 100);
-      setZoomState(
-        fitPdfZoom(mode, container, {
-          width: pageWidth / scale,
-          height: pageHeight / scale,
-        }),
-      );
-    },
-    canvasRef,
-    currentBytes: () => bytesRef.current,
-    sourceUrl,
-    pageNumber,
-    pageCount,
-    rotation,
-    zoom,
-    renderedZoom,
-    pageWidth,
-    pageHeight,
-    loading: sourceLoading || previewLoading,
-    rendering,
-    processing,
-    saving,
-    dirty,
-    editRevision: revisionRef.current,
-    documentVersion: documentRevision,
-    replaceBytesSilently,
-    canUndo,
-    canRedo,
+    attach: setHandle,
+    bridge: handle?.bridge ?? null,
+    viewport: () => handle?.viewport() ?? null,
+    initialBytes,
+    loading: loading || (!handle && !error),
     error,
     notice,
-    savedUrl,
-    annotationText: annotation.annotationText,
-    annotations: annotation.annotations,
-    selectedAnnotationId: annotation.selectedAnnotationId,
-    selectedAnnotation: annotation.selectedAnnotation,
-    annotationTool: annotation.annotationTool,
-    setAnnotationText: annotation.setAnnotationText,
-    setAnnotationTool: annotation.setAnnotationTool,
-    selectAnnotation: annotation.selectAnnotation,
-    goToPage,
-    previousPage: () => goToPage(pageNumber - 1),
-    nextPage: () => goToPage(pageNumber + 1),
-    setZoom: (value) => setZoomState(clampPdfZoom(value)),
-    zoomBy: (delta) =>
-      setZoomState((value) => nextPdfZoomStop(value, delta >= 0 ? 1 : -1)),
-    rotateCurrentPage,
-    movePage,
-    moveCurrentPage: async (offset) => {
-      const target = clamp(pageNumber + offset, 1, pageCount);
-      if (target !== pageNumber) await movePage(pageNumber, target);
-    },
-    deleteCurrentPage,
-    addBlankPage,
-    mergePdf,
-    extractPages,
-    addTextAnnotation: annotation.addTextAnnotation,
-    addTextAnnotationAt: annotation.addTextAnnotationAt,
-    addHighlightAnnotation: annotation.addHighlightAnnotation,
-    moveAnnotation: annotation.moveAnnotation,
-    updateSelectedAnnotation: annotation.updateSelectedAnnotation,
-    deleteSelectedAnnotation: annotation.deleteSelectedAnnotation,
+    setError,
+    processing,
+    saving,
+    pageCount,
+    currentPage,
+    zoom,
+    editRevision: revision,
+    dirty: revision !== savedRevision,
+    annotationVersion,
+    thumbVersion,
+    selected,
+    canUndo,
+    canRedo,
     undo,
     redo,
+    rotatePage,
+    deletePage,
+    movePage,
+    goToPage: (page: number) => handle?.bridge.goToPage(page),
+    setZoom: (percent: number) => handle?.bridge.setZoomPercent(percent),
+    fit: () => handle?.bridge.fitPage(),
+    save,
     download,
-    saveCopy,
     captureRecovery,
     restoreRecovery,
-    ...office,
+    insertImage,
+    baseItem: () => baseRef.current,
   };
 }
+
+export type PdfWorkbenchState = ReturnType<typeof usePdfWorkbench>;

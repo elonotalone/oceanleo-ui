@@ -1,10 +1,29 @@
 import type { RefCallback } from "react";
 import type { PersistedEditorVersion } from "../doc-editors/doc-io";
-import type {
-  PdfAnnotationView,
-  PdfVisualPoint,
-  PdfVisualRect,
-} from "./pdf-annotation-operations";
+
+/**
+ * 2026-10-23：PDF 路由已不用这个形状（新状态在 `use-pdf-workbench.ts`）。这里只为
+ * `doc-editors/doc-family-commands.ts` 里旧的 `buildPdfCommandSurface` 还能编译而保留，
+ * 那个旧函数由父 agent 清理后本文件一并删除。下面三种几何类型原在已删除的
+ * `pdf-annotation-operations.ts`，原样内联于此。
+ */
+export interface PdfVisualPoint {
+  x: number;
+  y: number;
+}
+export interface PdfVisualRect extends PdfVisualPoint {
+  width: number;
+  height: number;
+}
+export interface PdfAnnotationView {
+  id: string;
+  kind: string;
+  contents: string;
+  rect: PdfVisualRect;
+  color: string;
+  opacity: number;
+  [field: string]: unknown;
+}
 import type { PdfBinaryManifest, PdfFailureCode } from "./pdf-manifest";
 
 /** §3.2 — the reading and editing states. `invalid` and `image-only` are the
