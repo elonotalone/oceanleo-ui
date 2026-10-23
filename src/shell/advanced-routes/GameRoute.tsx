@@ -466,9 +466,15 @@ function GameLegacyRoute({
   useEffect(() => {
     const id = item.artifactId;
     if (!id || !isDurableLibraryItem(item) || resumedArtifact.current === id || !gameIterationRunner?.supportsResume) return;
-    resumedArtifact.current = id;
     // Read-only lookup: opening a game never forks, generates or saves a revision.
-    void iterate(true);
+    // StrictMode replays mount effects: starting immediately would mark the id,
+    // then cleanup aborts the async runner before fetch, permanently suppressing
+    // the replay. Only mark once the surviving effect actually starts its task.
+    const timer = setTimeout(() => {
+      resumedArtifact.current = id;
+      void iterate(true);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [item, iterate, gameIterationRunner]);
 
   const flush = useCallback(async () => {

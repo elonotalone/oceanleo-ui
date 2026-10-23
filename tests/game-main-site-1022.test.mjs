@@ -621,6 +621,29 @@ test("W15 late host registration wakes a mounted editor without generating", asy
   }
 });
 
+test("W15 StrictMode effect replay cannot permanently abort the only resume lookup", async () => {
+  resetGlobals();
+  const live = [];
+  const runner = async request => {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    if (!request.signal.aborted) live.push(request);
+    return { ok: false, idle: true, error: "" };
+  };
+  runner.supportsResume = true;
+  route.registerGameIterationRunner(runner);
+  const mounted = await mount(React.createElement(React.StrictMode, null,
+    React.createElement(route.GameRoute, { item: gameItem({ artifactId: "art-strict-resume" }), onClose() {} })));
+  try {
+    await settle(40);
+    assert.equal(live.length, 1, "exactly one non-aborted GET-only resume must survive StrictMode replay");
+    assert.equal(live[0].resume, true);
+    assert.equal(globalThis.__forks.length, 0);
+    assert.equal(globalThis.__commits.length, 0);
+  } finally {
+    await mounted.unmount(); route.registerGameIterationRunner(null);
+  }
+});
+
 async function iterateOnce(container, prompt) {
   await type(q(container, "#game-prompt"), window.HTMLTextAreaElement.prototype, prompt);
   await click(byText(container, "button", "迭代这一版"));
