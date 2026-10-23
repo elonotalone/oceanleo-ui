@@ -147,11 +147,16 @@ test("Design text controls follow the canonical semantic order", () => {
     false,
   );
   const toolbar = source("../src/shell/SelectionToolbar.tsx");
-  assert.ok(toolbar.indexOf("<EditorToolsTrigger") < toolbar.indexOf("{visible.map"));
+  // 2026-10-23 D3：「编辑工具」触发器删除（原断言它排在控件前面）。
+  assert.doesNotMatch(toolbar, /EditorToolsTrigger|data-editor-tools-trigger/);
+  assert.doesNotMatch(source("../src/shell/EditorToolsIcon.tsx"), /export const EditorToolsTrigger|data-editor-tools-trigger/);
   assert.doesNotMatch(toolbar, />T<\/|decorative/i);
 });
 
-test("Design alignment is one five-step click cycle and spacing stays separate", () => {
+// 2026-10-23 D9（00-dispatch §4）：对齐由「点一下轮换」改成下拉，栏上图标随当前值。
+// 原用例断言五步轮换、且不许是 listbox——都是被裁定删掉的行为，改断言新行为。
+// `nextTextAlignment` 仍导出（同级 design 仓的契约测试在用），这里只留它的纯函数断言。
+test("alignment is a dropdown whose bar icon follows the current value", () => {
   let alignment;
   const seen = [];
   for (let index = 0; index < 5; index += 1) {
@@ -159,12 +164,11 @@ test("Design alignment is one five-step click cycle and spacing stays separate",
     seen.push(alignment);
   }
   assert.deepEqual(seen, ["left", "center", "right", "justify", "left"]);
-  const toolbar =
-    source("../src/shell/SelectionToolbar.tsx") +
-    source("../src/shell/SelectionToolbarControl.tsx");
-  assert.match(toolbar, /data-selection-alignment/);
-  assert.match(toolbar, /aria-pressed=\{current !== undefined\}/);
-  assert.doesNotMatch(toolbar, /alignment[\s\S]{0,120}aria-haspopup="listbox"/);
+  const control = source("../src/shell/SelectionToolbarControl.tsx");
+  assert.match(control, /canonId === "align"/);
+  assert.match(control, /value === "center"\s*\?\s*"align-center"/);
+  assert.match(control, /compactValue=\{[\s\S]{0,80}canonId === "align"/);
+  assert.doesNotMatch(control, /nextTextAlignment/);
 });
 
 test("typed animation gallery exposes only declared real capabilities", () => {

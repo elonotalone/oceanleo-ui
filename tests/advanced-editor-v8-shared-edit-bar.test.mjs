@@ -710,7 +710,9 @@ test("移动模式与收起圆共享同一套位置状态：按下即拖、Alt �
   }
 });
 
-test("shared edit bar opens host tools, keeps values, and uses a focused vertical More dialog", async () => {
+// 2026-10-23 D3/D9（W03）：编辑栏最左的「编辑工具」触发器删除；控件按统一词表投影
+// （规范图标、规范标签、规范顺序）。原用例断言触发器存在、编辑器自写标签生效，已改写成新行为。
+test("shared edit bar has no tools trigger, projects canonical controls, and keeps a focused vertical More dialog", async () => {
   const anchoredPopoverUrl = await compileModule(
     "src/shell/anchored-popover.tsx",
     {
@@ -865,6 +867,12 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
           label: "Context duplicate",
           slot: "context-menu",
         },
+        {
+          id: "copy-style",
+          kind: "action",
+          label: "Copy style",
+          placement: "more",
+        },
       ],
     },
     onCommand(command) {
@@ -873,33 +881,29 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
   };
   const mounted = await createMounted(SelectionToolbar, props);
   try {
-    const tools = mounted.container.querySelector(
-      "[data-editor-tools-trigger]",
-    );
-    assert.ok(tools);
-    assert.equal(tools.tagName, "BUTTON");
-    assert.equal(tools.getAttribute("aria-expanded"), "false");
+    // D3：即便宿主登记了可用的工具面板，前缀区也不再有触发器。
     assert.equal(
-      tools.getAttribute("aria-controls"),
-      "advanced-workbench-tools-panel",
+      mounted.container.querySelector("[data-editor-tools-trigger]"),
+      null,
     );
+    assert.equal(toolsOpened, 0);
+    const toolbar = mounted.container.querySelector("[data-selection-kind]");
+    assert.equal(toolbar.getAttribute("data-edit-bar-bar"), "text");
+    // 规范顺序：文字组 → 图片组 → 对象组；delete 是对象组主栏项，不再被作者塞进「更多」。
     assert.equal(
-      tools.querySelector("[data-icon]")?.getAttribute("data-icon"),
-      "text",
+      toolbar.getAttribute("data-selection-visible-controls"),
+      "font-family font-size bold crop delete",
     );
-    await click(tools);
-    assert.equal(toolsOpened, 1);
 
-    const bold = mounted.container.querySelector('button[aria-label="Bold"]');
-    assert.ok(bold);
+    const bold = mounted.container.querySelector('button[aria-label="加粗"]');
+    assert.ok(bold, "规范标签取代编辑器自写的 Bold");
     assert.equal(bold.textContent, "");
-    const font = mounted.container.querySelector('button[aria-label="Font"]');
+    assert.equal(bold.querySelector("[data-icon]")?.getAttribute("data-icon"), "bold");
+    const font = mounted.container.querySelector('button[aria-label="字体"]');
     assert.ok(font);
-    assert.equal(font.textContent.includes("Inter"), true);
-    assert.equal(font.textContent.includes("Font"), false);
-    const fontSize = mounted.container.querySelector(
-      'input[aria-label="Font size"]',
-    );
+    assert.equal(font.textContent.includes("Inter"), true, "字体显示字体名");
+    assert.equal(font.querySelector("[data-icon]"), null, "字体在栏上不画图标");
+    const fontSize = mounted.container.querySelector('input[aria-label="字号"]');
     assert.equal(fontSize?.value, "24");
     await act(async () => {
       fontSize.dispatchEvent(
@@ -926,25 +930,15 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
     assert.equal(commands[0].controlId, "font-size");
     assert.equal(commands[0].value, 30);
     commands.length = 0;
-    assert.equal(
-      mounted.container.querySelector(
-        '[data-selection-control-id="crop"]',
-      )?.textContent,
-      "Crop",
+    const crop = mounted.container.querySelector(
+      '[data-selection-control-id="crop"]',
     );
-    const inspector = mounted.container.querySelector(
-      'button[aria-label="间距"]',
-    );
-    assert.ok(inspector);
-    assert.equal(inspector.textContent, "");
+    assert.equal(crop?.getAttribute("data-edit-bar-canon"), "crop");
+    assert.equal(crop.querySelector("[data-icon]")?.getAttribute("data-icon"), "crop");
     assert.equal(
       mounted.container.querySelector(
         '[data-selection-control-id="context-duplicate"]',
       ),
-      null,
-    );
-    assert.equal(
-      mounted.container.querySelector('[data-selection-control-id="delete"]'),
       null,
     );
 
@@ -957,23 +951,17 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       '[role="dialog"][aria-label="更多属性 · 图片"]',
     );
     assert.ok(dialog);
-    assert.equal(
-      dialog.querySelectorAll("[data-selection-overflow-group]").length,
-      1,
-    );
-    const deleteButton = dialog.querySelector('button[aria-label="Delete"]');
-    assert.ok(deleteButton);
-    assert.equal(deleteButton.textContent, "Delete");
-    assert.equal(document.activeElement, deleteButton);
-    await click(deleteButton);
+    // 「更多」里：规范「更多」项（字距面板）与作者放进「更多」的特有控件。
+    assert.ok(dialog.querySelector('[data-edit-bar-canon="letter-spacing"]'));
+    const duplicate = dialog.querySelector('button[aria-label="Copy style"]');
+    assert.ok(duplicate);
+    assert.equal(duplicate.textContent, "Copy style");
+    duplicate.focus();
+    await click(duplicate);
     assert.equal(dialog.isConnected, false);
     assert.equal(document.activeElement, more);
-    assert.deepEqual(commands[0], {
-      requestId: "selection-test-2",
-      selectionId: "text:hero",
-      controlId: "delete",
-      selectionRevision: 7,
-    });
+    assert.equal(commands[0].controlId, "copy-style");
+    assert.equal(commands[0].selectionRevision, 7);
 
     await click(more);
     assert.ok(
@@ -997,24 +985,6 @@ test("shared edit bar opens host tools, keeps values, and uses a focused vertica
       null,
     );
     assert.equal(document.activeElement, more);
-
-    globalThis.__oceanleoV8ToolFocus.focus();
-    assert.equal(document.activeElement, tools);
-
-    globalThis.__oceanleoV8Layout = {
-      ...globalThis.__oceanleoV8Layout,
-      toolsLauncher: {
-        ...globalThis.__oceanleoV8Layout.toolsLauncher,
-        available: false,
-        unavailableReason: "Read only",
-      },
-    };
-    await mounted.render(props);
-    const unavailableTools = mounted.container.querySelector(
-      "[data-editor-tools-trigger]",
-    );
-    assert.equal(unavailableTools, null);
-    assert.equal(toolsOpened, 1);
   } finally {
     await mounted.unmount();
     globalThis.__oceanleoV8Layout = null;
@@ -1439,17 +1409,19 @@ test("More 面板：动作之后关并归还焦点，连续取值的色板留在
       revision: 3,
       controls: [
         { id: "bold", kind: "toggle", label: "Bold", value: false },
+        // 2026-10-23 D9：text-color / duplicate 是规范主栏项，投影会把它们拉回栏上，
+        // 所以这条「更多面板」用例改用编辑器特有的两个控件（同样一个色板、一个动作）。
         {
-          id: "text-color",
+          id: "outline-color",
           kind: "color",
-          label: "Text color",
+          label: "Outline color",
           value: "#112233",
           placement: "more",
         },
         {
-          id: "duplicate",
+          id: "copy-style",
           kind: "action",
-          label: "Duplicate",
+          label: "Copy style",
           placement: "more",
         },
       ],
@@ -1488,7 +1460,7 @@ test("More 面板：动作之后关并归还焦点，连续取值的色板留在
     });
     assert.equal(
       commands.at(-1)?.controlId,
-      "text-color",
+      "outline-color",
       "取色本身要照常提交，别把「不关面板」做成「不生效」",
     );
     assert.equal(
@@ -1499,10 +1471,10 @@ test("More 面板：动作之后关并归还焦点，连续取值的色板留在
     assert.equal(dialog.getAttribute("data-leo-overlay-state"), "open");
 
     // ② 执行完一个动作：面板关掉、节点摘掉、焦点回到「更多」。
-    const duplicate = dialog.querySelector('button[aria-label="Duplicate"]');
+    const duplicate = dialog.querySelector('button[aria-label="Copy style"]');
     assert.ok(duplicate);
     await click(duplicate);
-    assert.equal(commands.at(-1)?.controlId, "duplicate");
+    assert.equal(commands.at(-1)?.controlId, "copy-style");
     // 同步这一拍就要成立的两件事：翻成关闭态、焦点回到「更多」。
     assert.equal(dialog.getAttribute("data-leo-overlay-state"), "closed");
     assert.equal(document.activeElement, more, "焦点要回到「更多」按钮");
