@@ -9,7 +9,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
       const el = document.querySelector("[data-selection-visible-controls]");
       return el
         ? { kind: el.getAttribute("data-selection-kind"), visible: el.getAttribute("data-selection-visible-controls"), overflow: el.getAttribute("data-selection-overflow-controls") }
-        : { empty: [...document.querySelectorAll("button")].filter((b) => b.closest("[data-edit-bar-empty-state], [data-edit-bar-drawers]")).map((b) => b.textContent.trim()).slice(0, 12) };
+        : { empty: [...document.querySelectorAll("[data-edit-bar-drawer]")].map((b) => `${b.getAttribute("data-edit-bar-drawer")}:${b.textContent.trim()}`) };
     });
     log("bar", tag, JSON.stringify(info));
   };
@@ -35,6 +35,8 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   await shot(`${label}-library`);
   await helpers.gotoApp(page, `/library?item=${rootId}`);
   for (let i = 0; i < 60 && !(await page.locator("[data-editor-loading='false']").count()); i += 1) {
+    const retry = page.locator("[data-library-retry]").first();
+    if (await retry.isVisible().catch(() => false)) await retry.click().catch(() => {});
     const edit = page.locator('button[aria-label*="Edit"], button[aria-label*="编辑"]').first();
     if (await edit.isVisible().catch(() => false)) await edit.click().catch(() => {});
     await page.waitForTimeout(2000);
@@ -62,17 +64,17 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     await page.keyboard.press("Escape");
   }
   const drawer = async (name) => {
-    const button = page.locator("button").filter({ hasText: name }).first();
+    const button = page.locator(`[data-edit-bar-drawer="${name}"]`).first();
     if (!(await button.count())) return log("drawer-missing", String(name));
     await button.click();
     await page.waitForTimeout(1200);
-    await shot(`${label}-drawer-${String(name).replace(/[^a-z]/gi, "").slice(0, 8) || "x"}`);
+    await shot(`${label}-drawer-${name}`);
     await surfaces(`drawer ${name}`);
   };
   await page.mouse.click(stage.x + 8, stage.y + stage.height - 60);
-  await drawer(/^(Text|文字)$/);
+  await drawer("image-text");
   log("drawer-text-buttons", JSON.stringify(await page.locator("[data-workspace-pane='left'] button, [data-editor-fallback-pane] button").allTextContents().then((t) => t.map((x) => x.trim()).filter(Boolean).slice(0, 12))));
   await page.mouse.click(stage.x + 8, stage.y + stage.height - 60);
-  await drawer(/^(Shape|形状)$/);
+  await drawer("image-shapes");
   log("drawer-shape-buttons", JSON.stringify(await page.locator("[data-workspace-pane='left'] button, [data-editor-fallback-pane] button").allTextContents().then((t) => t.map((x) => x.trim()).filter(Boolean).slice(0, 12))));
 }

@@ -9,12 +9,17 @@
 - [读码] `tests/advanced-canva-interactions.test.mjs` 断言 image-filters / image-fonts 抽屉存在 → 父 agent 文件，需代改。
 - [读码] 已在 main：c0086af3 + fa872c0d（规范 id、bar、A-1 面板、删 图片调整/字体 抽屉、画布改名、标题不拼编辑版、签名板纸色）、c8934dc6（测试改规范 id + 回归）、ad36afaf（文案册）。
 
-## 正在做（R2 接班，08:30Z 起）
-- focused tests + i18n 闸 → 浏览器保存协议 + 两档截图 → 类型检查 → 交付。
+## 已完成（R2）
+- 31b748fc canva 测试跟删掉的抽屉；db2d9bc9 重开不再标脏/暂停自动保存（远端只比内容、恢复 unchanged/stale）；bd17805b 不接草稿层；f20b7134 素材命令契约；445ef810 无改动不重复提交；5f71282c 45 句译文；b3fac2df 等 W04 信号。
+- [实测] 保存协议：自己的图 2 改 = 2 revision、重开刷新都在；公共图 fork 一份、3 改进同一份；素材库插入 + 撤销可用。
+
+## 正在做
+- 槽 09:40Z 起不响应（curl 60 s 超时）；等槽恢复后跑 w09-buttons.mjs、w09-theme.mjs（dark/light），然后写交付。
 
 ## 下一步
-- 写 `verdicts/W09-delivery.md`。
+- `verdicts/W09-delivery.md`。
 
 ## 复现命令
-- 浏览器：`cd docs/work-logs/2026-10-23-editor-overhaul && bash harness/mint.sh | OUT_DIR=/tmp/w09-x THEME=light node harness/run.mjs evidence/W09/scenarios/w09-save.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184 <label>`
-- focused：`bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/rebuild-image-actions.test.mjs`
+- 按钮：`bash harness/mint.sh | OUT_DIR=/tmp/w09-b THEME=light node harness/run.mjs evidence/W09/scenarios/w09-buttons.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184`
+- 两档：`… THEME=dark node harness/run.mjs evidence/W09/scenarios/w09-theme.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184 dark`
+- 保存：`… node harness/run.mjs evidence/W09/scenarios/w09-protocol.mjs 03e7bab9-4fd8-401b-ac5f-cee1b319a184 p 5`
