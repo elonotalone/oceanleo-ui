@@ -1167,6 +1167,8 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
 
   /** 行列 id 布局（画布现在的）；null = 还在老格式（或没有布局存储）。 */
   let layout: GridLayout | null = null;
+  let initialApplied = false;
+  let pendingInitialPush = false;
   /** 行列 id 格式下，上次与协同文档对齐的状态（按 id 存的格子与 meta）。 */
   let baseIds: GridPlanEntities | null = null;
   let lastEncoded: ReturnType<typeof gridToEntities> | null = null;
@@ -1206,6 +1208,15 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
   const pushNow = () => {
     if (destroyed) return;
     timer = null;
+    // Univer emits local initialization commands before the room finishes
+    // syncing. Until its first alignment, layout is still null: encoding here
+    // would write positional keys into an existing ids-v2 document, after
+    // which the decoder drops every cell. Keep local work until the room and
+    // its stable row/column ids have actually been read.
+    if (store && !initialApplied && !room.needsSeed) {
+      pendingInitialPush = true;
+      return;
+    }
     const live = port.getSnapshot();
     if (layout && store) {
       lastEncoded = null;
@@ -1218,6 +1229,13 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
       binding.push(live);
     }
     base = live;
+  };
+
+  const resumeInitialPush = () => {
+    if (!pendingInitialPush || destroyed) return;
+    pendingInitialPush = false;
+    if (timer !== null) clearTimer(timer);
+    timer = setTimer(pushNow, 0);
   };
 
   const schedulePush = () => {
@@ -1395,6 +1413,7 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
       applyRemoteLegacy(remote);
       adoptLayout(stored);
       initialApplied = true;
+      resumeInitialPush();
       return;
     }
     applyRemoteIds();
@@ -1402,17 +1421,18 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
   const disposeRemote = binding.onRemote(applyRemote);
 
   // 非播种者：同步完成后把协同文档里的状态读出来换进画布（之后的变化走 onRemote）。
-  let initialApplied = false;
   const applyInitial = () => {
     if (initialApplied || destroyed || room.needsSeed || room.status !== "synced") return;
     const state = binding.read?.();
     if (!state) return;
     initialApplied = true;
     applyRemoteLegacy(state);
-    if (!store) return;
-    let stored = store.read();
-    if (!stored && store.canWrite() && store.isLegacy() && store.migrate()) stored = store.read();
-    if (stored) adoptLayout(stored);
+    if (store) {
+      let stored = store.read();
+      if (!stored && store.canWrite() && store.isLegacy() && store.migrate()) stored = store.read();
+      if (stored) adoptLayout(stored);
+    }
+    resumeInitialPush();
   };
   const disposeRoom = room.subscribe(applyInitial);
 
@@ -1436,6 +1456,7 @@ export function createGridCollabBinder(options: GridCollabBinderOptions): GridCo
     }
     lastEncoded = null;
     binding.seed(live);
+    initialApplied = true;
     base = port.getSnapshot();
     if (layout) baseIds = planEntities(lastEncoded ?? gridToEntities(live, layout), layout);
   } else {
