@@ -67,7 +67,7 @@ export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClo
         }}
         placeholder={tt("在文档里查找")}
         aria-label={tt("在文档里查找")}
-        className="h-8 w-48 rounded-lg bg-transparent px-2 text-[13px] outline-none placeholder:text-[var(--awb-muted)]"
+        className="h-11 w-48 rounded-lg bg-transparent px-2 text-[13px] outline-none placeholder:text-[var(--awb-muted)]"
       />
       <span aria-live="polite" className="min-w-14 px-1 text-center text-[12px] tabular-nums text-[var(--awb-muted)]">
         {count}
@@ -77,7 +77,7 @@ export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClo
         aria-label={tt("上一个")}
         disabled={!state.total}
         onClick={() => step(-1)}
-        className="grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--awb-hover)] disabled:opacity-35"
+        className="grid h-11 w-11 place-items-center rounded-lg hover:bg-[var(--awb-hover)] disabled:opacity-35"
       >
         <AdvancedEditorIcon name="chevron" className="h-4 w-4 rotate-180" />
       </button>
@@ -86,7 +86,7 @@ export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClo
         aria-label={tt("下一个")}
         disabled={!state.total}
         onClick={() => step(1)}
-        className="grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--awb-hover)] disabled:opacity-35"
+        className="grid h-11 w-11 place-items-center rounded-lg hover:bg-[var(--awb-hover)] disabled:opacity-35"
       >
         <AdvancedEditorIcon name="chevron" className="h-4 w-4" />
       </button>
@@ -94,7 +94,7 @@ export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClo
         type="button"
         aria-label={tt("关闭查找")}
         onClick={onClose}
-        className="grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--awb-hover)]"
+        className="grid h-11 w-11 place-items-center rounded-lg hover:bg-[var(--awb-hover)]"
       >
         <AdvancedEditorIcon name="close" className="h-4 w-4" />
       </button>

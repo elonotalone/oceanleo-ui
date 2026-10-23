@@ -195,12 +195,11 @@ test("non-durable items may use previewUrl when url is empty", () => {
 });
 
 // 2026-10-22：只有 grid / pdf / website 还有专业页；音频、3D、视频、图表的专业面已删除。
-// 这里只剩 PDF 的交接接线。
-test("pdf route passes beforeEnterPro and keeps the handoff wiring", () => {
+// 2026-10-23 D4：PDF 的基础 / 专业是同一个查看器实例，切换不交接字节，所以 W19 的
+// 交接接线在 PDF 上整段删除；这里钉住「没有交接、只有一个舞台」。
+test("pdf route switches modes on one viewer instance, with no byte handoff", () => {
   const pdfRoute = source("src/shell/advanced-routes/PdfRoute.tsx");
-  const pdfStage = source("src/shell/media-editors/PdfNextStage.tsx");
-  assert.match(pdfRoute, /beforeEnterPro=/);
-  assert.match(pdfStage, /w19PdfBytesFromHandoff|peekW19EnterHandoff/);
-  assert.match(pdfRoute, /useEditorHandoffSource/);
-  assert.match(pdfRoute, /reportW19ProSaved/);
+  assert.doesNotMatch(pdfRoute, /beforeEnterPro|useEditorHandoffSource|reportW19ProSaved|ModeSwitchGate/);
+  assert.equal((pdfRoute.match(/<PdfStage\b/g) || []).length, 1);
+  assert.match(pdfRoute, /mode=\{chrome\}/);
 });

@@ -106,12 +106,15 @@ export function PdfStage({
       .catch((caught: unknown) => {
         if (!alive) return;
         callbacks.current.onFailure(
-          caught instanceof Error ? `PDF 查看器没装起来：${caught.message}` : "PDF 查看器没装起来。",
+          caught instanceof Error && caught.message
+            ? tt("PDF 查看器没装起来：{reason}", { reason: caught.message })
+            : tt("PDF 查看器没装起来。"),
         );
       });
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 初始化超时要说原因，不许一直转圈。
@@ -209,7 +212,7 @@ export function PdfStage({
             onReady={(registry: PdfViewerRegistryLike) => {
               const bridge = createPdfViewerBridge(registry, name);
               if (!bridge.ready) {
-                callbacks.current.onFailure("PDF 查看器缺少编辑能力，已停止。");
+                callbacks.current.onFailure(tt("PDF 查看器缺少编辑能力，已停止。"));
                 return;
               }
               bridgeRef.current = bridge;

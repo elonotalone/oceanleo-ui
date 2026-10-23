@@ -117,7 +117,7 @@ export function PdfToolPalette({
       role="radiogroup"
       aria-label={tt("颜色")}
       data-pdf-tool-palette={activeTool}
-      className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-2 py-1.5 shadow-[var(--awb-shadow-floating)]"
+      className="absolute left-3 top-3 z-10 flex items-center rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-1 shadow-[var(--awb-shadow-floating)]"
     >
       {PDF_TOOL_SWATCHES.map((color) => (
         <button
@@ -130,11 +130,15 @@ export function PdfToolPalette({
             bridge.setToolDefaults(activeTool, { [field]: color, ...(field === "strokeColor" ? { color } : {}) });
             setTick((value) => value + 1);
           }}
-          className={`h-5 w-5 rounded-full ring-1 ring-[var(--awb-border)] ${
-            current === color.toLowerCase() ? "outline outline-2 outline-offset-2 outline-[var(--awb-accent)]" : ""
-          }`}
-          style={{ background: color }}
-        />
+          className="grid h-11 w-8 place-items-center"
+        >
+          <span
+            className={`h-5 w-5 rounded-full ring-1 ring-[var(--awb-border)] ${
+              current === color.toLowerCase() ? "outline outline-2 outline-offset-2 outline-[var(--awb-accent)]" : ""
+            }`}
+            style={{ background: color }}
+          />
+        </button>
       ))}
     </div>
   );

@@ -3,11 +3,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import { PDFDocument } from "pdf-lib";
 import {
-  addBlankPdfPage,
   deletePdfPage,
-  extractPdfPages,
   inspectPdf,
-  mergePdfBytes,
   movePdfPage,
   rotatePdfPage,
 } from "../src/shell/media-editors/pdf-operations.ts";
@@ -27,7 +24,8 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-test("PDF operations rotate, reorder, delete and add pages without mutating input", async () => {
+// 10-23 D4：页面整理只剩旋转（写进文件）、排序、删页；插空白页、合并、提取页已删。
+test("PDF operations rotate, reorder and delete pages without mutating input", async () => {
   const original = await makePdf([
     [300, 500],
     [400, 500],
@@ -38,37 +36,20 @@ test("PDF operations rotate, reorder, delete and add pages without mutating inpu
   const rotated = await rotatePdfPage(original, 1, 90);
   const rotatedDocument = await PDFDocument.load(rotated);
   assert.equal(rotatedDocument.getPage(1).getRotation().angle, 90);
+  const back = await rotatePdfPage(rotated, 1, -90);
+  assert.equal((await PDFDocument.load(back)).getPage(1).getRotation().angle, 0);
 
   const moved = await movePdfPage(rotated, 0, 2);
   assert.deepEqual(await pageWidths(moved), [400, 500, 300]);
 
   const removed = await deletePdfPage(moved, 1);
   assert.deepEqual(await pageWidths(removed), [400, 300]);
-
-  const withBlank = await addBlankPdfPage(removed, 0);
-  assert.deepEqual(await pageWidths(withBlank), [400, 400, 300]);
-  assert.equal(await inspectPdf(withBlank), 3);
+  assert.equal(await inspectPdf(removed), 2);
   assert.deepEqual(original, snapshot);
-});
-
-test("PDF operations merge and extract selected pages in requested order", async () => {
-  const base = await makePdf([
-    [300, 500],
-    [400, 500],
-  ]);
-  const incoming = await makePdf([
-    [600, 500],
-    [700, 500],
-  ]);
-  const merged = await mergePdfBytes(base, incoming, 0);
-  assert.equal(merged.insertedCount, 2);
-  assert.deepEqual(await pageWidths(merged.bytes), [300, 600, 700, 400]);
-
-  const extracted = await extractPdfPages(merged.bytes, [2, 0]);
-  assert.deepEqual(await pageWidths(extracted), [700, 300]);
 
   const onePage = await makePdf([[300, 500]]);
   await assert.rejects(() => deletePdfPage(onePage, 0), /至少需要保留一页/);
+  await assert.rejects(() => rotatePdfPage(onePage, 3, 90), /页码超出范围/);
 });
 
 test("media editor public API and lifecycle hardening remain wired", () => {
@@ -76,9 +57,7 @@ test("media editor public API and lifecycle hardening remain wired", () => {
   const pdfHook =
     source("../src/shell/media-editors/use-pdf-workbench.ts") +
     source("../src/shell/media-editors/pdf-library-save.ts");
-  const pdfPreviewHook = source(
-    "../src/shell/media-editors/use-pdf-preview-render.ts",
-  );
+  const pdfRail = source("../src/shell/media-editors/PdfControls.tsx");
   const modelHook = source("../src/shell/media-editors/use-model3d-workbench.ts");
   const modelSave = source("../src/shell/media-editors/use-model3d-save.ts");
   const modelProject = source("../src/shell/media-editors/model3d-project.ts");
@@ -108,14 +87,9 @@ test("media editor public API and lifecycle hardening remain wired", () => {
     assert.match(index, new RegExp(`\\b${api}\\b`));
   }
   assert.match(pdfHook, /new AbortController\(\)/);
-  // PDFium (EmbedPDF) engine: there is no pdf.js renderTask to cancel, so a stale
-  // render is dropped by the disposed flag before it paints, and the effect cleanup sets it.
-  assert.match(
-    pdfPreviewHook,
-    /\.toPromise\(\);\s*if \(disposed\) return;\s*paintImageData\(canvas, image\)/,
-  );
-  assert.match(pdfPreviewHook, /return \(\) => \{\s*disposed = true;\s*\};/);
-  assert.doesNotMatch(pdfPreviewHook, /pdfjs|renderTask|getDocument\(/);
+  // 10-23 D4：页面由查看器（PDFium）自己画；我们只画缩略图，卸掉的那张不落图。
+  assert.match(pdfRail, /if \(!alive\) return;/);
+  assert.doesNotMatch(pdfRail + pdfHook, /pdfjs|renderTask|getDocument\(/);
   assert.match(pdfHook, /saveFileToLibrary/);
   assert.match(pdfHook, /deliveryProjectSchema: "pdf-binary@1"/);
   assert.match(modelRuntimeHook, /new Model3DSceneRuntime/);
@@ -167,15 +141,16 @@ test("each media editor source file stays below the 600-line component limit", (
     "use-model3d-save.ts",
     "use-model3d-sidecar.ts",
     "use-model3d-workbench.ts",
-    // 这两份是 `dfe6e54` 从 `use-pdf-workbench.ts` 里拆出来的读路径与写路径。
-    // 不登记进来，「拆分」本身就成了绕过这道闸的通道：把超限的代码搬进一个
-    // 未登记的新文件，闸照样变绿（`_COMMON.md §7b⑪c` 的棘轮空转同族）。
-    "use-pdf-edit-engine.ts",
-    "use-pdf-preview-render.ts",
-    "use-pdf-view-pipeline.ts",
     "use-pdf-workbench.ts",
-    // F15：F05 协同接线从 `use-pdf-workbench.ts` 再拆出的模块。不登记则同上。
-    "use-pdf-workbench-collab.ts",
+    // 10-23 D4 单实例 PDF 编辑器的新文件，一并守 600 行。
+    "PdfFindBar.tsx",
+    "PdfSelectionBar.tsx",
+    "PdfSignatureDialog.tsx",
+    "pdf-command-surface.ts",
+    "pdf-mark-tools.ts",
+    "pdf-signature-store.ts",
+    "pdf-viewer-bridge.ts",
+    "pdf-viewer-config.ts",
   ]);
   for (const filename of readdirSync(directory)) {
     if (!taskFiles.has(filename)) continue;

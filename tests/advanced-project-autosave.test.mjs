@@ -212,7 +212,7 @@ test("non-Office autosave blocks never invoke delivery renderers", () => {
   // bytes without invoking the preview canvas or another PDF render pass.
   const pdfSave = section(
     "../src/shell/media-editors/use-pdf-workbench.ts",
-    "const saveCopy = useCallback",
+    "const save = useCallback",
     "const captureRecovery = useCallback",
   );
   assert.doesNotMatch(pdfSave, /render|canvas|toDataURL|toBlob/);

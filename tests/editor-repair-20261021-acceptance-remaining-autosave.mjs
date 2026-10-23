@@ -289,32 +289,15 @@ test("audio: local mutation records; remote apply does not", async () => {
   assertDoesNotRecord("audio", callPair, fn, item, ["remote-apply"]);
 });
 
-test("pdf: local annotation engine records; silent source replace / collab do not", async () => {
-  const engine = await loadOwnerModule(
-    "src/shell/media-editors/use-pdf-edit-engine.ts",
-    lightStubs(),
-  );
+test("pdf: local edit records; silent source replace / collab do not", async () => {
+  // 10-23 D4：旧核 use-pdf-edit-engine 已删，单实例 hook 自己出这个 helper。
   const workbench = await loadOwnerModule(
     "src/shell/media-editors/use-pdf-workbench.ts",
     lightStubs(),
   );
-  const { fn } = (() => {
-    try {
-      return requireLiveHelper(engine, "use-pdf-edit-engine.ts", [
-        "applyPdfUserEditSession",
-        "applyPdfEditEngineUserEditSession",
-      ]);
-    } catch (first) {
-      try {
-        return requireLiveHelper(workbench, "use-pdf-workbench.ts", [
-          "applyPdfUserEditSession",
-          "applyPdfWorkbenchUserEditSession",
-        ]);
-      } catch (second) {
-        throw new Error(`${first.message}; ${second.message}`);
-      }
-    }
-  })();
+  const { fn } = requireLiveHelper(workbench, "use-pdf-workbench.ts", [
+    "applyPdfWorkbenchUserEditSession",
+  ]);
   const item = itemFor("pdf");
   assertRecords("pdf", callPair, fn, item, "local-annotation");
   assertDoesNotRecord("pdf", callPair, fn, item, ["silent-replace", "collab"]);

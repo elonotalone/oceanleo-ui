@@ -163,7 +163,7 @@ export function PdfRoute({
   );
   useWorkbenchMaterialAdapter(materialAdapter);
 
-  const flush = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async () => {
     // 只读（只有查看权限 / 别人在编辑）：不落库，别人保存后这里会自动更新。
     if (!collab.mayWrite) return { ok: true as const, item };
     const result = await editor.save();
@@ -338,7 +338,7 @@ export function PdfRoute({
           dirty: collab.mayWrite ? editor.dirty : false,
           editRevision: editor.editRevision,
           autoSave: collab.mayWrite && Boolean(bridge),
-          flush,
+          flush: saveBeforeNewConversation,
           recovery: {
             key: advancedRecoveryKey("pdf", item),
             ready: Boolean(bridge) && !editor.loading,

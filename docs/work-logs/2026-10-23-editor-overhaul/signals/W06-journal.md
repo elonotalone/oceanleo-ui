@@ -16,3 +16,8 @@
 - [实测] 编辑栏空态 10 个工具直接显示；「高亮」先点工具再拖选 → 黄色高亮批注生成，编辑栏变成 填充色/透明度/删除，顶栏撤销亮起。
 - [实测] 修：`contextToolbar` 恒传元素会让外壳当成有选区、把工具折进「…」→ 只在有可编辑选区/工具时传。
 - [实测] 07:4xZ 开发网关 api.dev 502 / CORS 失败（他人重启网关），浏览器暂停。
+- R2 08:3xZ [实测] 接班：tsc PDF 文件 0 错；57 份涉 PDF 测试 33 红（旧核模块已删）。
+- R2 [实测] 删 10 份旧核测试（collab-pdf-sync/undo、pdf-annotations(-runtime)、pdf-editor-v8、pdf-forms、pdf-next-annotations、pdf-workbench-hook-runtime、mode-switch-gate、d1-mode-switch-attempt）；改写 carrier-contract / core-swap / collab-pdf-readonly / W6-20261021-pdf，`85f8dffa`。
+- R2 [实测] 跨编辑器测试只改 PDF 段：advanced-native-editors、advanced-project-autosave、eas-w19、remaining-autosave、media-editors（含 600 行闸登记新文件）、media-source-integrity、route-context-editors、w13、w25、W6-r4 两份 → PDF 段全绿；余下红是别人的（richdoc / image / video / bay）。
+- R2 [实测] 产品小改：PdfRoute flush 改名 saveBeforeNewConversation（与其它路由同名、闸认）；缩放上下限引 PDF_MIN/MAX_ZOOM；图章按字节认 PNG/JPEG（不信 MIME）；草稿恢复失败照实报；PdfStage 失败文案进 tt；hit-target：PDF 新文件按钮命中区全部 ≥44px（视觉不变）。
+- R2 [实测] 新增 tests/editor-overhaul-w06-pdf.test.mjs 17/17。

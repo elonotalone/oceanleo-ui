@@ -89,18 +89,17 @@ test("PDF blank creation is explicit and disposed page loads release resources",
   assert.equal(blank.pageCount, 1);
   assert.ok(blank.bytes.byteLength > 0);
 
-  const [workbenchMain, workbenchCollab, preview] = await Promise.all([
+  // 10-23 D4：单实例 hook（旧核 collab / preview-render 已删）。
+  const [workbench, rail] = await Promise.all([
     source("src/shell/media-editors/use-pdf-workbench.ts"),
-    source("src/shell/media-editors/use-pdf-workbench-collab.ts"),
-    source("src/shell/media-editors/use-pdf-preview-render.ts"),
+    source("src/shell/media-editors/PdfControls.tsx"),
   ]);
-  const workbench = workbenchMain + workbenchCollab;
   assert.match(workbench, /item\.source === "creation"/);
-  assert.match(workbench, /allowBlank:\s*allowBlankSource/);
+  assert.match(workbench, /loadInitialPdfSource\(\{[\s\S]*?allowBlank,/);
   assert.match(workbench, /catch \(caught\) \{[\s\S]*PDF 本地草稿恢复失败/);
-  // PDFium (EmbedPDF) engine: no pdf.js page.cleanup(); a disposed load must not paint.
-  assert.match(preview, /\.toPromise\(\);\s*if \(disposed\) return;\s*paintImageData\(canvas, image\)/);
-  assert.match(preview, /return \(\) => \{\s*disposed = true;\s*\};/);
+  // 缩略图：卸掉的那一张不再落图，object URL 随之释放。
+  assert.match(rail, /if \(!alive\) return;\s*objectUrl = URL\.createObjectURL\(blob\)/);
+  assert.match(rail, /alive = false;\s*if \(objectUrl\) URL\.revokeObjectURL\(objectUrl\)/);
 });
 
 test("audio failures preserve prior state and close partial browser resources", async () => {
@@ -276,20 +275,17 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
 //   · 它本来的用法是真浏览器验收，而红线 §2.6 已明令禁止浏览器验证，这条路不会再走。
 // 下面五条对仓内源码的断言是这一格的实际价值，原样保留。
 test("W13 V7 product gates: PDF page count, audio project key, mute chrome, richdoc source", async () => {
-  const [pdfStage, pdfWorkbench, audio, toolbar, richdoc] =
+  const [pdfRail, pdfWorkbench, audio, toolbar, richdoc] =
     await Promise.all([
-      source("src/shell/media-editors/PdfStage.tsx"),
+      source("src/shell/media-editors/PdfControls.tsx"),
       source("src/shell/media-editors/use-pdf-workbench.ts"),
       source("src/shell/media-editors/AudioWorkbench.tsx"),
       source("src/shell/video-editor/VideoTimelineContextToolbar.tsx"),
       source("src/shell/doc-editors/rich-doc-model.ts"),
     ]);
 
-  assert.match(pdfStage, /data-pdf-page-count=\{editor\.pageCount > 0/);
-  assert.match(
-    pdfStage,
-    /editor\.pageCount > 0\s*\?\s*`\$\{editor\.pageNumber\} \/ \$\{editor\.pageCount\}`/,
-  );
+  // 10-23 D4：页数由左侧页面栏体现（每页一张缩略图），没有页数就没有缩略图。
+  assert.match(pdfRail, /Array\.from\(\{ length: pageCount \}/);
   assert.match(pdfWorkbench, /item\.meta\.editor_source_url/);
   assert.match(
     audio,

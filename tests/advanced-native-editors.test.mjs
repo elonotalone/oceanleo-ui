@@ -153,9 +153,7 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   const audio =
     source("../src/shell/media-editors/AudioWorkbench.tsx") +
     source("../src/shell/media-editors/use-audio-persistence.ts");
-  const pdf =
-    source("../src/shell/media-editors/use-pdf-workbench.ts") +
-    source("../src/shell/media-editors/use-pdf-workbench-collab.ts");
+  const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
   const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
 
   assert.match(shell, /useState\(""\)/);
@@ -177,7 +175,6 @@ test("native editors preserve history and never clear newer unsaved revisions", 
     ["deck", deck],
     ["image", image],
     ["audio", audio],
-    ["pdf", pdf],
     ["timeline", timeline],
   ]) {
     assert.match(editor, /revisionRef/);
@@ -190,6 +187,12 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   }
   assert.match(audio, /canRedo/);
   assert.match(audio, /const redo = useCallback/);
+  // PDF（10-23 单实例）：脏 = 当前修订 ≠ 已存修订；保存成功只把「已存」推到发起
+  // 保存那一刻的修订，保存途中又改的仍是脏的。
+  assert.match(pdf, /revisionRef/);
+  assert.match(pdf, /const savingRevision = revisionRef\.current;/);
+  assert.match(pdf, /setSavedRevision\(savingRevision\)/);
+  assert.match(pdf, /dirty: revision !== savedRevision/);
   assert.match(pdf, /const undo = useCallback/);
   assert.match(pdf, /const redo = useCallback/);
   assert.match(deck, /\.pptx/);

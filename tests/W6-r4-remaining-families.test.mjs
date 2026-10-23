@@ -7,14 +7,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PDFDocument } from "pdf-lib";
 
-import {
-  addPdfTextAnnotationAt,
-  listPdfAnnotationsInDocument,
-} from "../src/shell/media-editors/pdf-annotation-operations.ts";
-import {
-  loadPdfDocument,
-  savePdfDocument,
-} from "../src/shell/media-editors/pdf-form/pdf-document-io.ts";
+import { inspectPdf, rotatePdfPage } from "../src/shell/media-editors/pdf-operations.ts";
 import {
   audioSourcePersistenceAdmitted,
   gameSourceAdmission,
@@ -51,10 +44,11 @@ function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
 }
 
-test("pdf: stored bytes load, text annotation mutates, reopen keeps the note", async () => {
+// 10-23 D4：批注由 EmbedPDF 写（浏览器验收）；字节级可在 node 里跑的只剩页面整理。
+test("pdf: stored bytes load, page rotation mutates, reopen keeps the rotation", async () => {
   const created = await PDFDocument.create();
   created.addPage([400, 400]);
-  const original = await savePdfDocument(created);
+  const original = await created.save();
   assert.equal(
     pdfSourcePersistenceAdmitted({
       loading: false,
@@ -72,11 +66,11 @@ test("pdf: stored bytes load, text annotation mutates, reopen keeps the note", a
     false,
   );
 
-  const annotated = await addPdfTextAnnotationAt(original, 0, "页边批注");
-  const committed = stubCommit(annotated.bytes);
-  const reopened = await loadPdfDocument(committed.payload);
-  const notes = listPdfAnnotationsInDocument(reopened, 0);
-  assert.equal(notes.some((note) => note.contents.includes("页边批注")), true);
+  const rotated = await rotatePdfPage(original, 0, 90);
+  const committed = stubCommit(rotated);
+  assert.equal(await inspectPdf(committed.payload), 1);
+  const reopened = await PDFDocument.load(committed.payload);
+  assert.equal(reopened.getPage(0).getRotation().angle, 90);
 });
 
 test("audio: stored project with source is admitted; cut windows serialize; no commands while loading", () => {

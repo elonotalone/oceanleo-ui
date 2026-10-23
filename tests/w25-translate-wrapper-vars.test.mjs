@@ -38,11 +38,10 @@ const W25_WRAPPER_FILES = [
   "src/shell/media-editors/use-model3d-director.ts",
   "src/shell/media-editors/use-model3d-project-bootstrap.ts",
   "src/shell/media-editors/use-model3d-source-loader.ts",
-  "src/shell/media-editors/use-pdf-annotations.ts",
-  "src/shell/media-editors/use-pdf-document.ts",
-  "src/shell/media-editors/use-pdf-preview-render.ts",
-  "src/shell/media-editors/use-pdf-workbench.ts",
 ];
+// 10-23 D4：PDF 旧核那四份（use-pdf-annotations / use-pdf-document /
+// use-pdf-preview-render / use-pdf-workbench 的旧实现）随旧核删除；新的 use-pdf-workbench
+// 直接用 `useUI()` 的 tt，不再有 ref 包装，所以不在这张清单里。
 
 /**
  * 取出一份源码里所有「空依赖 `useCallback` 且函数体调用 `<某个 ref>.current(...)`」

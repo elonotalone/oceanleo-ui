@@ -23,7 +23,8 @@ import { deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
 import { downloadPdfBytes, pdfErrorMessage, pdfFileStem } from "./pdf-workbench-utils";
 import { PDF_SUBTYPE, type PdfAnnotationLike } from "./pdf-viewer-bridge";
 import type { PdfStageHandle } from "./PdfStage";
-import { recordUserMutation, userEditItemKey } from "../user-edit-session";
+import { sourceFormatForBlob } from "./source-integrity.mjs";
+import { recordUserMutation, userEditItemKey, userMutationGeneration } from "../user-edit-session";
 
 const MAX_RECOVERY_BYTES = 96 * 1024 * 1024;
 
@@ -39,6 +40,21 @@ export interface PdfPlacement {
   y?: number;
   clientX?: number;
   clientY?: number;
+}
+
+export type PdfUserEditReason = "local-annotation" | "page-edit" | "silent-replace" | "collab";
+
+/**
+ * 只有人的编辑记一次「真人改动」（自动保存只认这个信号）；重载别人存的新版本、
+ * 协作推送进来的变化不记。
+ */
+export function applyPdfWorkbenchUserEditSession(
+  item: { key?: string; id?: string; artifactId?: string },
+  reason: PdfUserEditReason,
+): number {
+  const key = userEditItemKey(item);
+  if (reason === "silent-replace" || reason === "collab") return userMutationGeneration(key);
+  return recordUserMutation(key);
 }
 
 function sourceKeyOf(item: LibraryItem): string {
@@ -96,7 +112,7 @@ export function usePdfWorkbench(
   itemRef.current = item;
   /** 本地编辑：记脏、并告诉外壳这是一次真人编辑（自动保存只认这个信号）。 */
   const bump = useCallback(() => {
-    recordUserMutation(userEditItemKey(itemRef.current));
+    applyPdfWorkbenchUserEditSession(itemRef.current, "local-annotation");
     revisionRef.current += 1;
     setRevision(revisionRef.current);
     setThumbVersion((value) => value + 1);
@@ -352,21 +368,30 @@ export function usePdfWorkbench(
   }, []);
   const restoreRecovery = useCallback(
     async (payload: unknown) => {
-      const decoded = await decodePdfRecovery(payload, MAX_RECOVERY_BYTES);
       const bridge = handleRef.current?.bridge;
-      if (!decoded || !bridge) return false;
-      await bridge.replaceDocument(decoded.bytes);
+      if (!bridge) return false;
+      try {
+        const decoded = await decodePdfRecovery(payload, MAX_RECOVERY_BYTES);
+        if (!decoded) return false;
+        await bridge.replaceDocument(decoded.bytes);
+      } catch (caught) {
+        // 草稿坏了：留在服务器那一版上，并照实说，不许静默吞掉。
+        void caught;
+        setError(tt("PDF 本地草稿恢复失败"));
+        return false;
+      }
       undoOps.current = [];
       redoOps.current = [];
       bump();
       return true;
     },
-    [bump],
+    [bump, tt],
   );
 
   // ---- 图章（素材图片 / 签名）----
   const insertImage = useCallback(
-    async (data: ArrayBuffer, mime: string, placement: PdfPlacement = {}) => {
+    async (data: ArrayBuffer, declaredMime: string, placement: PdfPlacement = {}) => {
+      let mime = declaredMime;
       const current = handleRef.current;
       const bridge = current?.bridge;
       if (!bridge || readOnly) throw new Error(tt("现在不能修改这份 PDF。"));
@@ -378,6 +403,12 @@ export function usePdfWorkbench(
       const pageIndex = dropped?.pageIndex ?? placement.pageIndex ?? bridge.currentPage() - 1;
       const page = pages[pageIndex];
       if (!page) throw new Error(tt("找不到要放的那一页。"));
+      // 按字节认格式，不信声明的 MIME：PDF 图章只收 PNG / JPEG。
+      const format = await sourceFormatForBlob(new Blob([data]));
+      if (format !== "png" && format !== "jpeg") {
+        throw new Error(tt("只能放 PNG 或 JPEG 图片。"));
+      }
+      mime = format === "jpeg" ? "image/jpeg" : "image/png";
       const natural = await imageSize(data, mime);
       const maxWidth = page.size.width * 0.4;
       const scale = Math.min(1, maxWidth / natural.width, (page.size.height * 0.4) / natural.height);
@@ -398,7 +429,7 @@ export function usePdfWorkbench(
           subject: "Stamp",
           created: new Date(),
         },
-        { data, mimeType: mime === "image/jpeg" ? "image/jpeg" : "image/png" },
+        { data, mimeType: mime },
       );
       if (!ok) throw new Error(tt("现在不能修改这份 PDF。"));
     },

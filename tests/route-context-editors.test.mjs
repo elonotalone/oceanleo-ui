@@ -12,8 +12,9 @@ import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
 import { gridUniverSelectionContext } from "../src/shell/doc-editors/grid-univer/stage-plan.ts";
 import { GRID_UNIVER_COMMANDS } from "../src/shell/doc-editors/grid-univer/facade-commands.ts";
 import {
-  addPdfTextAnnotation,
   createBlankPdf,
+  movePdfPage,
+  rotatePdfPage,
 } from "../src/shell/media-editors/pdf-operations.ts";
 import {
   normalizeModel3DAnnotations,
@@ -356,20 +357,33 @@ test("deck transition normalization is bounded and persistent", () => {
   );
 });
 
-test("PDF text annotations are embedded in the saved page dictionary", async () => {
+// 10-23 D4：批注由 EmbedPDF 写成标准 /Annots；缩略图栏的旋转、排序走 pdf-lib 改字节，
+// 必须把每页已有的标准批注原样带过去（别的阅读器照样看得到）。
+test("PDF page-rail edits keep the standard annotations embedded in each page", async () => {
   const blank = await createBlankPdf();
-  const annotated = await addPdfTextAnnotation(blank, 0, "审核通过");
-  const document = await PDFDocument.load(annotated);
-  const annotations = document.getPage(0).node.Annots();
+  const seeded = await PDFDocument.load(blank);
+  seeded.addPage([400, 600]);
+  const annot = seeded.context.register(
+    seeded.context.obj({
+      Type: "Annot",
+      Subtype: "Text",
+      Rect: [40, 40, 60, 60],
+      Contents: PDFHexString.fromText("审核通过"),
+    }),
+  );
+  seeded.getPage(0).node.addAnnot(annot);
+  const bytes = await seeded.save();
+
+  const rotated = await rotatePdfPage(bytes, 0, 90);
+  const moved = await movePdfPage(rotated, 0, 1);
+  const document = await PDFDocument.load(moved);
+  assert.equal(document.getPage(0).node.Annots()?.size() ?? 0, 0);
+  const page = document.getPage(1);
+  assert.equal(page.getRotation().angle, 90);
+  const annotations = page.node.Annots();
   assert.equal(annotations?.size(), 1);
-  const dictionary = document.context.lookup(
-    annotations.get(0),
-    PDFDict,
-  );
-  assert.equal(
-    dictionary.lookup(PDFName.of("Subtype"), PDFName).toString(),
-    "/Text",
-  );
+  const dictionary = document.context.lookup(annotations.get(0), PDFDict);
+  assert.equal(dictionary.lookup(PDFName.of("Subtype"), PDFName).toString(), "/Text");
   assert.equal(
     dictionary.lookup(PDFName.of("Contents"), PDFHexString).decodeText(),
     "审核通过",

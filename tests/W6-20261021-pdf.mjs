@@ -30,7 +30,7 @@ function section(from, to) {
 
 test("pdf local edit bumps the shared user-edit generation", () => {
   const bump = section("const bump = useCallback(", "}, []);");
-  assert.match(bump, /recordUserMutation\(userEditItemKey\(itemRef\.current\)\)/);
+  assert.match(bump, /applyPdfWorkbenchUserEditSession\(itemRef\.current, "local-annotation"\)/);
   resetUserEditSession();
   const item = { key: "artifact:pdf-w6:r1", id: "pdf-w6" };
   assert.equal(userMutationGeneration(userEditItemKey(item)), 0);

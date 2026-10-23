@@ -15,9 +15,8 @@ import {
   model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
 } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
-import { buildPdfCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
+import { buildPdfCommandSurface } from "../src/shell/media-editors/pdf-command-surface.ts";
 import {
-  addBlankPdfPage,
   createBlankPdf,
   inspectPdf,
   rotatePdfPage,
@@ -83,40 +82,36 @@ async function pageRotation(bytes, pageIndex = 0) {
   return document.getPage(pageIndex).getRotation().angle;
 }
 
+// 10-23 D4：单实例 PDF 编辑器的指令面（media-editors/pdf-command-surface.ts）。
 function livePdfEditor(initialBytes, pageCount) {
   let bytes = initialBytes;
   const editor = {
+    bridge: {
+      goToPage: () => undefined,
+      searchHits: async () => [],
+      revealHit: () => undefined,
+      createAnnotation: () => true,
+      pages: () => Array.from({ length: pageCount }, (_, index) => ({ index, size: { width: 595, height: 842 }, rotation: 0 })),
+      annotationCount: () => 0,
+    },
     loading: false,
     processing: false,
     pageCount,
-    pageNumber: 1,
-    rotation: 0,
+    currentPage: 1,
     zoom: 100,
-    readerState: "paged",
-    textLayer: { present: true },
-    annotations: [],
     dirty: false,
     error: "",
-    failure: null,
     editRevision: 0,
     currentBytes: () => bytes,
-    goToPage(page) {
-      editor.pageNumber = page;
-    },
-    async rotateCurrentPage(direction = 1) {
-      bytes = await rotatePdfPage(bytes, editor.pageNumber - 1, direction * 90);
-      editor.rotation = ((editor.rotation + direction * 90) % 360 + 360) % 360;
+    async rotatePage(pageIndex, clockwise = true) {
+      bytes = await rotatePdfPage(bytes, pageIndex, clockwise ? 90 : -90);
       editor.editRevision += 1;
       editor.dirty = true;
+      return true;
     },
-    async extractPages() {},
-    async deleteCurrentPage() {},
-    async addBlankPage() {},
-    async movePage() {},
-    async saveCopy() {
-      return null;
+    async deletePage() {
+      return false;
     },
-    searchFullText: () => [],
   };
   return editor;
 }
@@ -274,8 +269,9 @@ function durableGame(item = {}) {
 }
 
 test("pdf: stored bytes hydrate, rotate command mutates, reopen restores rotation", async () => {
-  let bytes = await createBlankPdf();
-  bytes = await addBlankPdfPage(bytes, 0);
+  const seed = await PDFDocument.load(await createBlankPdf());
+  seed.insertPage(0, [595.28, 841.89]);
+  let bytes = await seed.save();
   const pageCount = await inspectPdf(bytes);
   assert.equal(pageCount, 2);
   assert.equal(await pageRotation(bytes, 0), 0);
@@ -283,6 +279,7 @@ test("pdf: stored bytes hydrate, rotate command mutates, reopen restores rotatio
   const editor = livePdfEditor(bytes, pageCount);
   const surface = buildPdfCommandSurface(editor, {
     download: async () => "",
+    save: async () => ({ ok: true, message: "saved" }),
   });
   assert.ok(surface.describe().some((spec) => spec.id === "pdf.rotate-page"));
   const result = await surface.run("pdf.rotate-page", { direction: "cw" });

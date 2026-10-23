@@ -163,16 +163,18 @@ export function PdfControls({
               </span>
             </button>
             {!locked ? (
-              <div className="pointer-events-none absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <div className="pointer-events-none absolute right-0.5 top-0.5 flex opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                 <button
                   type="button"
                   data-pdf-page-rotate={page}
                   aria-label={tt("旋转第 {page} 页", { page })}
                   title={tt("顺时针旋转 90°")}
                   onClick={() => onRotate(index)}
-                  className="grid h-7 w-7 place-items-center rounded-md bg-[var(--awb-popover-bg)] text-[var(--awb-text)] shadow ring-1 ring-[var(--awb-border)] hover:bg-[var(--awb-hover)]"
+                  className="group/rail grid h-11 w-11 place-items-center"
                 >
-                  <AdvancedEditorIcon name="rotate" className="h-4 w-4" />
+                  <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--awb-popover-bg)] text-[var(--awb-text)] shadow ring-1 ring-[var(--awb-border)] group-hover/rail:bg-[var(--awb-hover)]">
+                    <AdvancedEditorIcon name="rotate" className="h-4 w-4" />
+                  </span>
                 </button>
                 {pageCount > 1 ? (
                   <button
@@ -181,9 +183,11 @@ export function PdfControls({
                     aria-label={tt("删除第 {page} 页", { page })}
                     title={tt("删除这一页")}
                     onClick={() => onDelete(index)}
-                    className="grid h-7 w-7 place-items-center rounded-md bg-[var(--awb-popover-bg)] text-[var(--awb-danger)] shadow ring-1 ring-[var(--awb-border)] hover:bg-[var(--awb-danger-soft)]"
+                    className="group/rail grid h-11 w-11 place-items-center"
                   >
-                    <AdvancedEditorIcon name="delete" className="h-4 w-4" />
+                    <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--awb-popover-bg)] text-[var(--awb-danger)] shadow ring-1 ring-[var(--awb-border)] group-hover/rail:bg-[var(--awb-danger-soft)]">
+                      <AdvancedEditorIcon name="delete" className="h-4 w-4" />
+                    </span>
                   </button>
                 ) : null}
               </div>

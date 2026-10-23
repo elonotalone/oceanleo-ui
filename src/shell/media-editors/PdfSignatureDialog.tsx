@@ -169,7 +169,7 @@ export function PdfSignatureDialog({
             placeholder={tt("输入你的名字")}
             aria-label={tt("输入你的名字")}
             autoFocus
-            className="mb-2 h-9 w-full rounded-lg border border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-3 text-[13px] outline-none"
+            className="mb-2 h-11 w-full rounded-lg border border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-3 text-[13px] outline-none"
           />
         ) : null}
         {/* 签名板是白纸：签名本身是黑色墨迹，最后放在白色的 PDF 页面上。 */}
@@ -258,9 +258,11 @@ export function PdfSignatureDialog({
                       removePdfSignature(userId, signature.id);
                       setSaved(readPdfSignatures(userId));
                     }}
-                    className="absolute -right-1 -top-1 hidden h-5 w-5 place-items-center rounded-full bg-[var(--awb-popover-bg)] text-[11px] text-[var(--awb-danger)] shadow ring-1 ring-[var(--awb-border)] group-hover:grid"
+                    className="absolute -right-3 -top-3 hidden h-11 w-11 place-items-center group-hover:grid group-focus-within:grid"
                   >
-                    ×
+                    <span className="grid h-5 w-5 place-items-center rounded-full bg-[var(--awb-popover-bg)] text-[11px] text-[var(--awb-danger)] shadow ring-1 ring-[var(--awb-border)]">
+                      ×
+                    </span>
                   </button>
                 </div>
               ))}

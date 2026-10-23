@@ -182,7 +182,7 @@ test("all five advanced editor paths enforce the shared source contract", async 
     "src/shell/media-editors/use-audio-wave-loader.ts",
     "src/shell/media-editors/use-audio-persistence.ts",
     "src/shell/media-editors/pdf-source.ts",
-    "src/shell/media-editors/use-pdf-page-actions.ts",
+    "src/shell/media-editors/use-pdf-workbench.ts",
     "src/shell/media-editors/model3d-files.ts",
     "src/shell/media-editors/model3d-dependency-runtime.mjs",
     "src/shell/media-editors/use-model3d-workbench.ts",
@@ -211,7 +211,9 @@ test("all five advanced editor paths enforce the shared source contract", async 
   assert.match(audioPersistence, /assertBlobSource\(payload, "audio"\)/);
 
   assert.match(pdfSource, /assertBlobSource\(blob, "pdf"\)/);
-  assert.match(pdfPageActions, /assertBlobSource\(file, "pdf"\)/);
+  // 10-23 D4：合并 PDF 已删；进 PDF 的外来字节只剩图章图片，按字节认格式。
+  assert.match(pdfPageActions, /sourceFormatForBlob\(new Blob\(\[data\]\)\)/);
+  assert.match(pdfPageActions, /format !== "png" && format !== "jpeg"/);
 
   assert.match(modelFiles, /prepareModelRuntimeSource/);
   assert.match(modelFiles, /materializeModel3DGltfDependencies/);
