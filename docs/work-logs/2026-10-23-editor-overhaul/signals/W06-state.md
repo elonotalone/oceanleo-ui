@@ -1,5 +1,13 @@
 # W06 state（PDF 编辑器，D4 + PDF 的 D6 D9 D11）— 第 2 轮接班（R2）
 
+## Codex 接班 2026-10-23
+- [实测] `71638f5a` 后 PDF focused 26/26 通过；dev `sc.ttf` HTTP 200（8,364,644 bytes）。
+- [实测] 旧 r3 场景缺少输入焦点及文字保留断言，存在假通过；新增 `codex-text.mjs` 严格断言。
+- [实测] 严格场景 exit 0：混合文字点击离开、保存、关闭重开与整页刷新通过；pypdf / pypdfium2 独立下载检查通过。focused 50/50。
+- 正在做：补交 CODEX-W06 结论与本地 scoped commit。
+- 下一步：父 agent 负责全量验证与共享上传问题；W06 文字问题已完成。
+- 命令：`bash harness/mint.sh | OUT_DIR=/tmp/codex-w06-strict THEME=light node harness/run.mjs evidence/W06/scenarios/codex-text.mjs 44811dab-4734-48ec-b640-266d7eb31f4b 'Chen 张三 Codex 456'`（工作目录本波根）。
+
 ## 已确认的事实
 - [实测] R2 bootstrap 通过；`main` HEAD `4a17d173`。无 `signals/*-to-W06.md`；`W03-to-editors.md` 已读（`data-edit-bar-avoid` 已加在页面栏）。
 - [实测] 第 1 轮已落：`8126ea72`（单实例、新工具、页面栏、保存基线、删旧核）、`e58924fa`、`a1e4395e`（文案册）、父 salvage `47d7f607`（工具色板、Esc、recordUserMutation、data-pdf-* 标记）。

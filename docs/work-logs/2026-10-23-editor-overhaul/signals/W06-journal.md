@@ -33,3 +33,7 @@
 - R2 [实测] 加文字存进 PDF 的是「Insert textZhang San」：上游点击用 clickBehavior.defaultContent 预填。改为按 id 覆盖 freeText 工具（黑字、空框）；复测「王五 Wang」存出来原样。
 - R2 10:3xZ [实测] 断网：只出 error（不假已保存），恢复后重试 error→saving→saved；公共素材 6c907508 进编辑 fork 一次 → 369687e3，两次改动 = 2 个 revision，期间只新增 1 个 root；深浅两档截图齐；「从本地上传」图片 = 当前页中央图章，可撤销。中文加文字重开外观不显示汉字（未配自托管回退字体），交付 §8.3。
 - R2 交付：verdicts/W06-delivery.md。
+- Codex 接班 [实测] `71638f5a` 后 focused PDF 21 + CJK 5 全通过；dev `/pdfium-fonts/sc.ttf` 200 / 8,364,644 bytes，浏览器同源字体请求成功。
+- Codex [实测] 旧 r3-text 场景可能在未聚焦时键入、保存后只剩占位词，且不作断言。新增 codex-text 严格场景；PdfStage 在 blur 前抓取真实文字，向选中 FreeText 显式提交，jsdom 增加文字内容断言。
+- Codex [实测] 一轮重开遇父 agent 事先通知的网关重启中断，已停场景，健康恢复后重测；上传新 PDF fixture 415 且 helper 误报 uploaded，已报父 agent。
+- Codex [实测] `/tmp/codex-w06-final` 严格场景 exit 0：混合文字点击离开保留、revision POST 200 / snapshot PUT 200、关闭重开与整页刷新都在。验收 root `44811dab` 两次有效修改 revision 6→7→8，同一 root。pypdf 标准 FreeText Contents/AP 精确匹配，pypdfium2 独立渲染可见。focused 50/50。

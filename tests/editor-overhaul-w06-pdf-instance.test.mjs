@@ -99,6 +99,7 @@ function fakeRegistry() {
   const calls = [];
   const task = (value) => ({ toPromise: () => Promise.resolve(value) });
   const state = { activeToolId: "highlight", selectedUids: [] };
+  const textAnnotation = { id: "typed-box", type: 3, pageIndex: 0, contents: "Type text", rect: {} };
   const noopHook = () => () => undefined;
   const plugins = {
     ui: {
@@ -114,7 +115,8 @@ function fakeRegistry() {
     annotation: {
       forDocument: () => ({
         getState: () => state,
-        getSelectedAnnotation: () => null,
+        getSelectedAnnotation: () => ({ object: textAnnotation }),
+        updateAnnotation: (page, id, patch) => calls.push(["updateAnnotation", page, id, patch]),
         getAnnotations: () => [],
         setActiveTool: (toolId) => {
           state.activeToolId = toolId;
@@ -146,6 +148,7 @@ function fakeRegistry() {
     calls,
     setActiveTool: (toolId) => {
       state.activeToolId = toolId;
+      state.selectedUids = toolId === "freeText" ? ["typed-box"] : [];
     },
     registry: { getPlugin: (id) => (plugins[id] ? { provides: () => plugins[id] } : null) },
   };
@@ -188,6 +191,7 @@ test("clicking away from a text box being typed in commits it and does not start
     await settle();
     fake.setActiveTool("freeText");
     const box = probe.shadow.querySelector("[data-box]");
+    box.textContent = "Chen 张三";
     box.focus();
     assert.equal(probe.shadow.activeElement, box, "jsdom must report the focused box inside the shadow root");
     // 点在框里：照常（光标挪动），不失焦
@@ -199,6 +203,9 @@ test("clicking away from a text box being typed in commits it and does not start
     assert.equal(probe.blurs, 1, "the box was not blurred, so the typed text never reaches the plugin");
     assert.equal(probe.pagePointerDowns, 0, "the click went on to the page and started a second box");
     assert.ok(fake.calls.some((call) => call[0] === "setActiveTool" && call[1] === null));
+    assert.deepEqual(fake.calls.find((call) => call[0] === "updateAnnotation"),
+      ["updateAnnotation", 0, "typed-box", { contents: "Chen 张三" }],
+      "the typed contents must be handed to the annotation capability, not just blurred");
     // 不在打字时点页面：正常传下去
     probe.shadow.querySelector("[data-page]").dispatchEvent(new window.Event("pointerdown", { bubbles: true, composed: true }));
     assert.equal(probe.pagePointerDowns, 1);

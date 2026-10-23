@@ -15,6 +15,7 @@ import { pdfEngineBuffer, resolvePdfiumLoadPlan } from "./pdf-engine-host";
 import { buildPdfViewerConfig, pdfViewerTheme } from "./pdf-viewer-config";
 import {
   createPdfViewerBridge,
+  PDF_SUBTYPE,
   type PdfChromeMode,
   type PdfViewerBridge,
   type PdfViewerRegistryLike,
@@ -213,8 +214,8 @@ export function PdfStage({
         // 重置，打的字整个丢掉（浏览器实测）。
         const active = containerRef.current?.shadowRoot?.activeElement as HTMLElement | null | undefined;
         if (!active?.isContentEditable || event.nativeEvent.composedPath().includes(active)) return;
-        active.blur();
         const bridge = bridgeRef.current;
+        bridge?.flushTextEdit();
         if (bridge && bridge.activeTool() === "freeText") {
           event.preventDefault();
           event.stopPropagation();
@@ -254,7 +255,15 @@ export function PdfStage({
               bridgeRef.current = bridge;
               bridge.setTextEditFlusher(() => {
                 const active = containerRef.current?.shadowRoot?.activeElement as HTMLElement | null | undefined;
-                if (active?.isContentEditable) active.blur();
+                if (!active?.isContentEditable) return;
+                // Read before blur: vendor rendering can replace the editable node while
+                // its blur handler is running. Preserve the actual typed text explicitly.
+                const text = (active.innerText ?? active.textContent ?? "").replace(/\u00a0/g, " ");
+                const selected = bridge.selected();
+                active.blur();
+                if (selected?.type === PDF_SUBTYPE.FREETEXT && bridge.selected()?.contents !== text) {
+                  bridge.updateAnnotation(selected, { contents: text });
+                }
               });
               setTimeoutError("");
               bridge.setChrome(modeRef.current);
