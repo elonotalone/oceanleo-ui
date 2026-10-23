@@ -363,3 +363,18 @@ test("W11 a typed timeline revision reopened from the library loads its project,
   assert.equal(videoTimelineProjectSource(raw), null);
   assert.equal(planVideoTimelineSource(raw).kind, "seed");
 });
+
+test("W11 library materials insert through the editor's own history (D2 command contract)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const route = await readFile("src/shell/advanced-routes/VideoTimelineRoute.tsx", "utf8");
+  assert.match(route, /withEditorHistoryCommand\(materialAdapter, \{/);
+  assert.match(route, /documentId: materialDocumentId/);
+  assert.match(route, /editor\.insertLibraryMedia\(/);
+  const hook = await readFile("src/shell/video-editor/use-video-timeline.ts", "utf8");
+  // 插入走 appendSourceClip → applyEdit（撤销栈），失败抛错不吞。
+  assert.match(hook, /const insertLibraryMedia = useCallback\([\s\S]*?await appendSourceClip\(url, material\.media/);
+  assert.doesNotMatch(
+    hook.slice(hook.indexOf("const insertLibraryMedia"), hook.indexOf("const addMediaFile")),
+    /catch \(/,
+  );
+});

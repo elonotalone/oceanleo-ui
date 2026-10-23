@@ -13,7 +13,8 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
-import { advancedSavedItem } from "../advanced-session";
+import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
+import { withEditorHistoryCommand } from "../workbench-material-command";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
@@ -309,18 +310,50 @@ function VideoTimelineBody({
         if (editor.loadingSource) {
           throw new Error("时间线源仍在载入，请完成后再导入媒体。");
         }
-        const url =
-          material.url || material.previewUrl || material.thumbUrl || "";
+        // 视频、音频用原件（不是封面图）；图片用全图。
+        const url = material.url || (material.kind === "image" ? material.previewUrl || "" : "");
         if (!url) throw new Error("这个媒体素材没有可用地址。");
-        await editor.addMediaUrl(
-          url,
+        const mime = String(material.meta.mime || material.meta.source_media_type || "").toLowerCase();
+        const media =
+          material.kind === "video" || mime.startsWith("video/")
+            ? "video"
+            : material.kind === "audio" || mime.startsWith("audio/")
+              ? "audio"
+              : material.kind === "image" || mime.startsWith("image/")
+                ? "image"
+                : null;
+        if (!media) {
+          // 类型认不出：退回按链接导入（服务端验真实类型）。
+          await editor.addMediaUrl(url, timelineInsertionMs(placement, editor.playheadMs));
+          return;
+        }
+        await editor.insertLibraryMedia(
+          { url, media, title: material.title || "" },
           timelineInsertionMs(placement, editor.playheadMs),
         );
       },
     }),
-    [collabReadOnly, editor.addMediaUrl, editor.loadingSource, editor.playheadMs],
+    [
+      collabReadOnly,
+      editor.addMediaUrl,
+      editor.insertLibraryMedia,
+      editor.loadingSource,
+      editor.playheadMs,
+    ],
   );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  // 素材库点一下 = 插入（D2）：登记 command/history 契约，插入进本编辑器的撤销历史。
+  const materialDocumentId = advancedRootItemId(item);
+  const materialBaseRevision = String(item.revisionId || item.meta.revision_id || "");
+  useWorkbenchMaterialAdapter(
+    useMemo(
+      () =>
+        withEditorHistoryCommand(materialAdapter, {
+          documentId: materialDocumentId,
+          targetRevisionId: materialBaseRevision,
+        }),
+      [materialAdapter, materialBaseRevision, materialDocumentId],
+    ),
+  );
   usePluginCommandSurface(
     useMemo(
       () =>

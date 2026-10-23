@@ -203,6 +203,14 @@ export interface VideoTimelineState {
   // asset intake
   addMediaFile: (file: File) => Promise<void>;
   addMediaUrl: (url: string, startAtMs?: number) => Promise<void>;
+  /**
+   * 素材库点一下 / 拖进来（D2）：类型与标题已知，走编辑器自己的撤销历史；
+   * 失败抛错（素材面板如实显示），不吞。
+   */
+  insertLibraryMedia: (
+    material: { url: string; media: "video" | "audio" | "image"; title: string },
+    startAtMs?: number,
+  ) => Promise<void>;
   addTextClip: () => void;
 
   // persistence
@@ -1145,6 +1153,36 @@ export function useVideoTimeline(
     [applyEdit, markSourceReady, tt],
   );
 
+  const insertLibraryMedia = useCallback(
+    async (
+      material: { url: string; media: "video" | "audio" | "image"; title: string },
+      startAtMs?: number,
+    ) => {
+      if (loadingSource) throw new Error(tt("时间线源仍在载入，请完成后再导入媒体"));
+      let url = material.url.trim();
+      if (!url) throw new Error(tt("素材导入失败"));
+      setAddingMedia(true);
+      try {
+        const deps = timelineGrantDeps(siteId || "video", material.title);
+        if (isExpiringArtifactGrantUrl(url)) {
+          // 库里的签名地址几分钟就过期：先换成持久地址（换不了就用新鲜地址，重开时再自愈）。
+          const healed = await healGrantUrl(url, material.media, deps);
+          if (healed.url) {
+            healingGrantsRef.current.add(healed.url);
+            healedGrantsRef.current.set(url, healed.url);
+            url = healed.url;
+          }
+        } else if (!isFirstPartyMediaUrl(url)) {
+          url = await deps.importUrl(url, material.media);
+        }
+        await appendSourceClip(url, material.media, material.title, startAtMs);
+      } finally {
+        setAddingMedia(false);
+      }
+    },
+    [appendSourceClip, loadingSource, siteId, tt],
+  );
+
   const addMediaFile = useCallback(
     async (file: File) => {
       setError("");
@@ -1584,6 +1622,7 @@ export function useVideoTimeline(
     setCanvasFormat,
     addMediaFile,
     addMediaUrl,
+    insertLibraryMedia,
     addTextClip,
     captureCover,
     saveDraft,
