@@ -236,6 +236,9 @@ export function DeckRoute({
   }, [editor, presenterChannelName, tt]);
   useDeckMaterialAdapter(editor, item);
   const saveBeforeNewConversation = useCallback(async () => {
+    // Leaving a freshly opened document may force a flush even though nothing
+    // changed. Return its existing version; exporting it would publish a phantom.
+    if (!editor.dirty && editor.editRevision === 0) return { ok: true as const, item };
     const saved = await editor.save();
     if (!saved) return { ok: false as const };
     const receipt = advancedSavedItem(item, {
@@ -260,7 +263,7 @@ export function DeckRoute({
       ok: true as const,
       item: deckSavedItemForHandoff(receipt || item, saved),
     };
-  }, [editor.save, item]);
+  }, [editor.save, editor.dirty, editor.editRevision, item]);
   const [importError, setImportError] = useState("");
   /**
    * 图片当插图插进当前页；演示文稿（pptx，以及先转成 pptx 的 ppt/odp/pot…）顶掉

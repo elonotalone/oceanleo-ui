@@ -1,5 +1,14 @@
 # W07 state — 演示（deck）
 
+## Codex continuation 2026-10-23
+
+- Read latest W07 commits through `ac7516a0`; no W07 delivery file exists yet.
+- Baseline acceptance-owned `0dac8934` current ordinal 15. Running strict open/close/reopen/reload with zero revision POST assertion before product changes.
+- First probe clicked a temporarily disabled Edit button; helper now waits for enablement instead of treating initial preview as an editor.
+- Next: fix proven phantom versions, then strict two-edit/offline/fork/card/bar/theme checks. Shared draft/typecheck/full suite belong to parent.
+- [实测] Phantom fixed: formatted collab hydration key ordering and first clean flush both covered. Strict `/tmp/codex-w07-open-fixed` exit0, 0 revisions POST through open/close/reopen/reload, rev18 unchanged.
+- Current: strict two-real-edits + reopen/reload + offline retry; first two revisions POST200. Next fork/card/bar/theme acceptance and CODEX-W07.
+
 更新时间：2026-10-23 08:25Z（R2 接班）
 
 ## 已确认的事实

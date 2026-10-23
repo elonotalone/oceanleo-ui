@@ -13,7 +13,7 @@ import type { WorkbenchMaterialPlacement } from "../workbench-material-provider"
 import { officeExtensionForItem } from "../workbench-routes";
 import { deckRebase } from "../collab/adapters/deck";
 import { getArtifactItem } from "../artifact-client";
-import { deckSaveBaseItem, isDeckOwnSaveEcho } from "./deck-save-echo";
+import { deckExistingVersion, deckSaveBaseItem, isDeckOwnSaveEcho } from "./deck-save-echo";
 import {
   recordUserMutation,
   userEditItemKey,
@@ -1868,6 +1868,8 @@ export function useDeckEditor(
           applyDeckUserEditSession(source, "load");
         }
         deckRef.current = next;
+        const existingVersion = deckExistingVersion(source, deckDeliveryUrlFor(source) || source.url || "", deckProjectUrlFor(source));
+        if (existingVersion && !loaded.serverDraft) lastSavedRef.current = { editRevision: revisionRef.current, item: source, version: existingVersion };
         activeRef.current = next.slides[0].id;
         selectedElementRef.current = "";
         setDeckState(next);
@@ -2679,7 +2681,7 @@ export function useDeckEditor(
   }, [buildDelivery, exporting, flushBeforeExport, tt]);
 
   const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
-    if (savingRef.current || sourceFailedRef.current) return null;
+    if (savingRef.current || sourceFailedRef.current || sourceLoadingRef.current) return null;
     const savingRevision = revisionRef.current;
     // 外壳（会话补记、重试）可能对同一次改动再要一次保存：没有新改动就交回上次的回执（D11 §5.5）。
     const lastSaved = lastSavedRef.current;

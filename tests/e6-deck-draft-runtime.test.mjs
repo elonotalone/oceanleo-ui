@@ -76,11 +76,16 @@ import { DECK_DRAFT_SCHEMA } from '../src/shell/advanced-draft-deck.ts';
 import { normalizeDeckDocument } from '../src/shell/doc-editors/deck-schema.ts';
 const { useDeckEditor } = await import(await compileModule('src/shell/doc-editors/use-deck-editor.ts', {
   '../../i18n/ui/useUI': dataModule('const tt = x => x; export function useUI() { return tt; }'),
+  '../advanced-draft-deck': dataModule(`
+    export * from ${JSON.stringify(new URL('../src/shell/advanced-draft-deck.ts', import.meta.url).href)};
+    import { loadDeckServerDraft as read } from ${JSON.stringify(new URL('../src/shell/advanced-draft-deck.ts', import.meta.url).href)};
+    export function loadDeckServerDraft(item, signal) { return read(item, signal, globalThis.fetch); }
+  `),
   './doc-io': dataModule(`
     export function blobToDataUrl() { throw Error('unexpected'); }
     export function downloadBlob() { globalThis.__e6Deck.downloads++; }
     export function downloadText() { globalThis.__e6Deck.downloads++; }
-    export function loadEditorProject() { throw Error('unexpected version read'); }
+    export function loadEditorProject() { if (globalThis.__e6Deck?.project) return globalThis.__e6Deck.project; throw Error('unexpected version read'); }
     export async function saveFileToLibrary(input) { return globalThis.__e6Deck.save(input); }
     export function urlExtension() { return ''; }
   `),
@@ -91,6 +96,23 @@ const pointer = { rootId: 'root-1', baseRevisionId: 'base-1', url: 'https://file
 let editor;
 function Probe({ item = base }) { editor = useDeckEditor(item, 'ppt'); return null; }
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { resolve, promise }; };
+
+test('clean durable deck flush returns its loaded revision without uploading a new version', async () => {
+  let uploads = 0;
+  globalThis.__e6Deck = { project: documentModel, save: async () => { uploads++; throw Error('unexpected upload'); } };
+  const durable = { ...base, source: 'library', artifactId: 'root-1', revisionId: 'base-1',
+    url: 'https://files.example/source.pptx', meta: { ...base.meta, editor_project_url: 'https://files.example/project.json' } };
+  const tree = await mount(React.createElement(Probe, { item: durable }));
+  try {
+    await act(async () => { await sleep(0); });
+    assert.equal(editor.loading, false);
+    const receipt = await editor.save();
+    assert.equal(receipt.revisionId, 'base-1');
+    assert.equal(receipt.artifactId, 'root-1');
+    assert.equal(uploads, 0);
+    assert.equal(editor.dirty, false);
+  } finally { await tree.unmount(); }
+});
 
 test('PPT hook restores the server document and exposes a durable revision, rejecting only older local recovery', async () => {
   const originalFetch = globalThis.fetch;

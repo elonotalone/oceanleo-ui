@@ -174,6 +174,8 @@ function PositionedSlideCanvas({
     <div
       ref={canvasRef}
       data-deck-canvas
+      data-deck-edit-revision={editor.editRevision}
+      data-deck-dirty={editor.dirty ? "true" : "false"}
       className="relative h-full w-full overflow-hidden rounded-lg shadow-2xl"
       style={{
         background: slide.background || master.background || theme.background,

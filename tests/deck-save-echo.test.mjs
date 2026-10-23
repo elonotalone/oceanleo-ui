@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   deckItemArtifactId,
+  deckExistingVersion,
   deckSaveBaseItem,
   isDeckOwnSaveEcho,
 } from "../src/shell/doc-editors/deck-save-echo.ts";
@@ -12,6 +13,24 @@ import {
   noteOwnCommittedHead,
   resetOwnCommittedHeadsForTests,
 } from "../src/shell/doc-editors/editor-own-heads.ts";
+import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
+import { deckDocumentsEqual } from "../src/shell/doc-editors/DeckMutationPolicy.ts";
+import { deckToEntities, deckFromEntities } from "../src/shell/collab/adapters/deck.ts";
+
+test("collab hydration of formatted text is not an edit, while real formatting and array edits are", () => {
+  const source = normalizeDeckDocument({ slides: [{ elements: [
+    { type: "text", text: "Hello", strike: true, highlight: "#aabbcc", list: "bullet", link: "https://example.com" },
+    { type: "shape", shape: "rectangle" },
+  ] }] });
+  const hydrated = deckFromEntities(deckToEntities(source), source);
+  assert.equal(deckDocumentsEqual(source, hydrated), true);
+  const changed = structuredClone(hydrated);
+  changed.slides[0].elements[0].strike = false;
+  assert.equal(deckDocumentsEqual(source, changed), false);
+  const reordered = structuredClone(hydrated);
+  reordered.slides[0].elements.reverse();
+  assert.equal(deckDocumentsEqual(source, reordered), false);
+});
 
 const ART = "a67bdb59-4b74-4e7d-97a4-50b4ae7926f5";
 
@@ -29,6 +48,16 @@ function item(extra = {}) {
     ...extra,
   };
 }
+
+test("a clean durable document reuses its existing version, while unsaved creations do not", () => {
+  const source = item();
+  const receipt = deckExistingVersion(source, source.url, "https://example.invalid/deck.json");
+  assert.equal(receipt.revisionId, "rev-1");
+  assert.equal(receipt.artifactId, ART);
+  assert.equal(receipt.item, source);
+  assert.equal(deckExistingVersion(item({ artifactId: "", revisionId: "" }), source.url, ""), null);
+  assert.equal(deckExistingVersion(source, "", ""), null);
+});
 
 test("host echo of the revision the deck just saved is not a new document", () => {
   const persisted = item({ id: "rev-2", revisionId: "rev-2" });
@@ -90,4 +119,12 @@ test("a re-flush of an already committed edit returns the same receipt (no dupli
     save.indexOf("return lastSaved.version;") < save.indexOf("saveFileToLibrary("),
     "the reuse check must run before anything is uploaded",
   );
+});
+
+test("closing a newly opened deck returns its existing identity before calling the writer", () => {
+  const route = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
+  const flush = route.slice(route.indexOf("const saveBeforeNewConversation = useCallback"), route.indexOf("const [importError"));
+  assert.match(flush, /if \(!editor\.dirty && editor\.editRevision === 0\) return \{ ok: true as const, item \};/);
+  assert.ok(flush.indexOf("editor.editRevision === 0") < flush.indexOf("await editor.save()"));
+  assert.match(flush, /\[editor\.save, editor\.dirty, editor\.editRevision, item\]/);
 });

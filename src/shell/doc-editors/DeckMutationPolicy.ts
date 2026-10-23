@@ -57,5 +57,11 @@ export function deckDocumentsEqual(
   before: DeckDocument,
   after: DeckDocument,
 ): boolean {
-  return JSON.stringify(before) === JSON.stringify(after);
+  // Collaboration and recovery reconstruct objects in a different key order.
+  // Object-key order is not a document edit; array order (slides/layers) is.
+  const serialize = (value: DeckDocument) => JSON.stringify(value, (_key, entry) =>
+    entry && typeof entry === "object" && !Array.isArray(entry)
+      ? Object.fromEntries(Object.keys(entry).sort().map((key) => [key, entry[key]]))
+      : entry);
+  return serialize(before) === serialize(after);
 }

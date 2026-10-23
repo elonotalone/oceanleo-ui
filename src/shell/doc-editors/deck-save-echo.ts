@@ -14,6 +14,7 @@
 // ============================================================================
 
 import type { LibraryItem } from "../library-data";
+import type { PersistedEditorVersion } from "./doc-io";
 import { ownHeadAfter } from "./editor-own-heads";
 
 function text(value: unknown): string {
@@ -59,5 +60,28 @@ export function deckSaveBaseItem(item: LibraryItem): LibraryItem {
     ...item,
     revisionId: head.revisionId,
     meta: { ...item.meta, revision_id: head.revisionId },
+  };
+}
+
+/** A loaded durable document already has a version; a clean flush reuses it. */
+export function deckExistingVersion(
+  item: LibraryItem,
+  url: string,
+  projectUrl: string,
+): PersistedEditorVersion | null {
+  const revisionId = text(item.revisionId) || text(item.meta.revision_id);
+  const artifactId = text(item.artifactId) || text(item.meta.artifact_id);
+  if (!artifactId || !revisionId || !url) return null;
+  return {
+    url,
+    versionId: revisionId,
+    artifactId,
+    revisionId,
+    projectUrl,
+    projectSchema: text(item.meta.editor_project_schema) || "oceanleo.deck.v1",
+    sourceFormat: text(item.meta.source_format) || "pptx",
+    sourceMediaType: text(item.meta.source_media_type) || undefined,
+    title: item.title,
+    item,
   };
 }

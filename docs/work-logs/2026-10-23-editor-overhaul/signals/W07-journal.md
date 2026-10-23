@@ -18,3 +18,7 @@
 - 09:00Z [实测] W02 报的「标题框选中退不出」复现（/tmp/w07-r2n，[W02] sample.pptx）：开档即进入标题文字编辑（DeckStage 有个「开页自动进入主文字编辑」的旧 effect）；Esc 后仍是 slide-text；点幻灯片外的舞台不取消选中；只有点幻灯片内空白处才回到页面栏。修：去掉自动编辑；舞台空白处按下 = 取消选中；文字编辑里 Esc 把焦点交回对象，再按 Esc 取消选中。
 - 09:05Z [实测] 修后（/tmp/w07-r2o，dark）：[W02] sample.pptx 开档即页面栏 + 五个抽屉；模板 / 元素 / 画笔 / 线条 / 便签 都能打开、深色面板。面板里剩的中文（添加标题、页面布局、章节页……）补第二批 34 条 ×16 语。
 - 09:58Z [读码+test] W01-to-W07：下载菜单标签改 `tt("直接下载 {fmt}", { fmt: tt(格式名) })`，格式名与「导出 PPTX…」「重新获取文件后重试」补 16 语；导出文件名先去掉标题里已带的 .pptx/.ppt/.odp/.key（PPTX 与 PDF 两条路）。
+- Codex [实测] `codex-open` 无编辑打开/关闭/重开/刷新：关掉时 force flush 仍调 `editor.save()`，首次没有 lastSaved 回执，产生1个 phantom revision（0dac8934 rev15→16）。修 DeckRoute：dirty=false 且 editRevision=0 的首次flush直接交回现有item，后续真实编辑仍走原保存/幂等回执。严格浏览器零POST回归覆盖此问题。
+- Codex [实测] 进一步定位另一条 phantom：协作hydrate重建格式化文字的对象key顺序改变，旧JSON.stringify比较把相同内容判成编辑；独立格式化deckToEntities/fromEntities往返复现。DeckMutationPolicy改结构比较（数组顺序仍重要）；载入既有版本seed回执，加载中拒绝写出。
+- Codex [实测] 修后 `/tmp/codex-w07-open-fixed` 98.6秒全程打开/关闭/重开/刷新，0 revisions POST。基线rev18未变化。保存真改动场景进行中，已两次POST200。
+- Codex [实测] 父报两份红测已恢复：deck-delivery-family桩隔离新StandaloneEditor循环，15/15；e6私有传输使用真实loadDeckServerDraft的可注入fetch测试边界，保留未发布server draft标脏和较新本地恢复保护。

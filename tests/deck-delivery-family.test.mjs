@@ -63,6 +63,7 @@ const SHELL_OVERRIDES = {
   "./AdvancedContentWorkbench": dataModule(
     "export function AdvancedContentWorkbench(){ return null; }",
   ),
+  "./material-library-standalone": dataModule("export function MaterialStandaloneEditor(){ return null; }"),
   "./WorkspaceSession": dataModule(
     "export function useOptionalWorkspaceSession(){ return null; }",
   ),
