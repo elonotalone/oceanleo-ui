@@ -41,6 +41,7 @@ import { LEO_PANEL_MESSAGES } from "./leo-panel-copy";
 import { MODEL_CATALOG_MESSAGES } from "./model-catalog-copy";
 import { WORK_CHAT_MESSAGES } from "./work-chat-copy";
 import { BAY_MESSAGES } from "./bay-copy";
+import { EDITOR_OVERHAUL_MESSAGES } from "./editor-overhaul-copy";
 
 export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -66,6 +67,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.zh,
     ...WORK_CHAT_MESSAGES.zh,
     ...BAY_MESSAGES.zh,
+    ...EDITOR_OVERHAUL_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -90,6 +92,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.en,
     ...WORK_CHAT_MESSAGES.en,
     ...BAY_MESSAGES.en,
+    ...EDITOR_OVERHAUL_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -114,6 +117,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.ja,
     ...WORK_CHAT_MESSAGES.ja,
     ...BAY_MESSAGES.ja,
+    ...EDITOR_OVERHAUL_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -138,6 +142,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.ko,
     ...WORK_CHAT_MESSAGES.ko,
     ...BAY_MESSAGES.ko,
+    ...EDITOR_OVERHAUL_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -162,6 +167,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.fr,
     ...WORK_CHAT_MESSAGES.fr,
     ...BAY_MESSAGES.fr,
+    ...EDITOR_OVERHAUL_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -186,6 +192,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.de,
     ...WORK_CHAT_MESSAGES.de,
     ...BAY_MESSAGES.de,
+    ...EDITOR_OVERHAUL_MESSAGES.de,
   },
   it: {
     ...it,
@@ -210,6 +217,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.it,
     ...WORK_CHAT_MESSAGES.it,
     ...BAY_MESSAGES.it,
+    ...EDITOR_OVERHAUL_MESSAGES.it,
   },
   es: {
     ...es,
@@ -234,6 +242,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.es,
     ...WORK_CHAT_MESSAGES.es,
     ...BAY_MESSAGES.es,
+    ...EDITOR_OVERHAUL_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -258,6 +267,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES["es-419"],
     ...WORK_CHAT_MESSAGES["es-419"],
     ...BAY_MESSAGES["es-419"],
+    ...EDITOR_OVERHAUL_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -282,6 +292,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES["pt-BR"],
     ...WORK_CHAT_MESSAGES["pt-BR"],
     ...BAY_MESSAGES["pt-BR"],
+    ...EDITOR_OVERHAUL_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -306,6 +317,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES["pt-PT"],
     ...WORK_CHAT_MESSAGES["pt-PT"],
     ...BAY_MESSAGES["pt-PT"],
+    ...EDITOR_OVERHAUL_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -330,6 +342,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.vi,
     ...WORK_CHAT_MESSAGES.vi,
     ...BAY_MESSAGES.vi,
+    ...EDITOR_OVERHAUL_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -354,6 +367,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.tr,
     ...WORK_CHAT_MESSAGES.tr,
     ...BAY_MESSAGES.tr,
+    ...EDITOR_OVERHAUL_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -378,6 +392,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES["zh-TW"],
     ...WORK_CHAT_MESSAGES["zh-TW"],
     ...BAY_MESSAGES["zh-TW"],
+    ...EDITOR_OVERHAUL_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -402,6 +417,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.ar,
     ...WORK_CHAT_MESSAGES.ar,
     ...BAY_MESSAGES.ar,
+    ...EDITOR_OVERHAUL_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -426,6 +442,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.th,
     ...WORK_CHAT_MESSAGES.th,
     ...BAY_MESSAGES.th,
+    ...EDITOR_OVERHAUL_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -450,5 +467,6 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...MODEL_CATALOG_MESSAGES.hi,
     ...WORK_CHAT_MESSAGES.hi,
     ...BAY_MESSAGES.hi,
+    ...EDITOR_OVERHAUL_MESSAGES.hi,
   },
 };

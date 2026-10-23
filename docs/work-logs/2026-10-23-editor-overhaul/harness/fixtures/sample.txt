@@ -1,0 +1,5 @@
+Acceptance notes
+
+The first lines of a text file should show on the library card.
+Second line of content.
+Third line of content.
