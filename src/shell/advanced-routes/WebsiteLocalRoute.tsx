@@ -41,6 +41,19 @@ import { usePluginCommandSurface } from "../plugin-command";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { refreshArtifactRendition } from "../artifact-client";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
+import { siteEnvelopeOf, type SiteEnvelope } from "../website-local/website-site-doc";
+import { WebsiteSiteWorkbench } from "../website-local/WebsiteSiteWorkbench";
+import { unwrapStoredEditorProject } from "./stored-editor-project";
+
+/** Entry text → site-document envelope (bundle `site.json` or structured), else null. */
+export function websiteSiteEnvelopeFromText(text: string): SiteEnvelope | null {
+  try {
+    const unwrapped = unwrapStoredEditorProject(text);
+    return siteEnvelopeOf(typeof unwrapped === "string" ? unwrapped : JSON.stringify(unwrapped));
+  } catch {
+    return null;
+  }
+}
 
 export { websiteLocalSourceFromItem, planWebsiteLocalSource, hydrateWebsiteLocalSource };
 
@@ -63,6 +76,14 @@ export function WebsiteLocalRoute({
   const [remoteError, setRemoteError] = useState("");
   const [remoteLoading, setRemoteLoading] = useState(plan.kind === "remote");
   const loadedIdentityRef = useRef("");
+  // Site documents (bundle `site.json` / structured entry): the format of
+  // nearly every stored website. Revisions this tab saved must not reload it.
+  const [siteEntry, setSiteEntry] = useState<{
+    envelope: SiteEnvelope;
+    artifactId: string;
+    revisionId: string;
+  } | null>(null);
+  const ownSavedRevisionsRef = useRef(new Set<string>());
 
   useEffect(() => {
     if (plan.kind !== "remote") {
@@ -72,11 +93,21 @@ export function WebsiteLocalRoute({
       return;
     }
     if (loadedIdentityRef.current === itemIdentity) return;
+    if (
+      siteEntry &&
+      siteEntry.artifactId === String(item?.artifactId || "") &&
+      ownSavedRevisionsRef.current.has(String(item?.revisionId || ""))
+    ) {
+      loadedIdentityRef.current = itemIdentity;
+      return;
+    }
     let cancelled = false;
     const abort = new AbortController();
     setRemoteLoading(true);
     setRemoteError("");
     setRemoteSource(null);
+    setSiteEntry(null);
+    let entryText = "";
     // The source URL is a 300 s signed grant and the gateway can restart under
     // an open editor: re-sign through the gateway on 410, retry transient
     // network failures, never fall back to a blank draft.
@@ -92,7 +123,8 @@ export function WebsiteLocalRoute({
           maxBytes: 20_000_000,
           signal: abort.signal,
         });
-        return blob.text();
+        entryText = await blob.text();
+        return entryText;
       },
       {
         signal: abort.signal,
@@ -114,9 +146,15 @@ export function WebsiteLocalRoute({
       if (result.ok) {
         loadedIdentityRef.current = itemIdentity;
         setRemoteSource(result.source);
-      } else {
-        setRemoteError(result.error);
+        return;
       }
+      const envelope = entryText ? websiteSiteEnvelopeFromText(entryText) : null;
+      if (envelope && artifactId && revisionId) {
+        loadedIdentityRef.current = itemIdentity;
+        setSiteEntry({ envelope, artifactId, revisionId });
+        return;
+      }
+      setRemoteError(result.error);
     });
     return () => {
       cancelled = true;
@@ -219,6 +257,22 @@ export function WebsiteLocalRoute({
 
   if (!item) {
     return <div data-testid="website-missing-item">没有打开的网站工程。</div>;
+  }
+
+  if (siteEntry) {
+    return (
+      <WebsiteSiteWorkbench
+        key={siteEntry.artifactId}
+        item={item}
+        taskId={taskId}
+        siteId={siteId}
+        accent={accent}
+        onClose={onClose}
+        envelope={siteEntry.envelope}
+        identity={{ artifactId: siteEntry.artifactId, revisionId: siteEntry.revisionId }}
+        onSavedRevision={(revisionId) => ownSavedRevisionsRef.current.add(revisionId)}
+      />
+    );
   }
 
   const savedItem = {

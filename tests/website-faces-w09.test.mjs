@@ -67,7 +67,10 @@ test("pro face renders Puck's default full UI on the same data, without Puck's p
 test("stage keeps one Puck instance for both faces and never exposes publish", () => {
   assert.equal((stage.match(/<Puck(?![.\w])/g) || []).length, 1);
   assert.match(stage, /face === "normal" \? <WebsiteNormalLayout \/> : undefined/);
-  assert.match(stage, /overrides=\{WEBSITE_PUCK_OVERRIDES\}/);
+  // W14 (10-23): site documents add a Puck bridge via `overrides.puck`; the
+  // empty header/headerActions overrides must still apply to both faces.
+  assert.match(stage, /overrides=\{overrides\}/);
+  assert.match(stage, /\{ \.\.\.WEBSITE_PUCK_OVERRIDES, puck: puckWrapper \} : WEBSITE_PUCK_OVERRIDES/);
   assert.doesNotMatch(stage, /onPublish/);
   assert.doesNotMatch(route, /onPublish/);
   assert.doesNotMatch(route, /key=\{`[^`]*mode/);

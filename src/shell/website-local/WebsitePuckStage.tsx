@@ -1,7 +1,7 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { Puck, type Config, type Data } from "@puckeditor/core";
+import { useMemo, type CSSProperties } from "react";
+import { Puck, type Config, type Data, type Overrides } from "@puckeditor/core";
 // no-external.css = the same Puck stylesheet without remote font imports (offline-safe).
 import "@puckeditor/core/no-external.css";
 import { useUI } from "../../i18n/ui/useUI";
@@ -20,11 +20,11 @@ export function WebsiteNormalLayout() {
   const tt = useUI();
   return (
     <div
-      className="grid h-full min-h-0 grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,18rem)]"
+      className="grid h-full min-h-0 grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,18rem)] bg-[var(--awb-stage-bg)] text-[var(--awb-text)]"
       data-testid="website-normal-layout"
     >
       <aside
-        className="min-h-0 overflow-auto border-r p-3"
+        className="min-h-0 overflow-auto border-r border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] p-3"
         data-testid="website-normal-blocks"
       >
         <h3 className="mb-2 text-[12px] font-medium">{tt("添加区块")}</h3>
@@ -36,7 +36,7 @@ export function WebsiteNormalLayout() {
         <Puck.Preview />
       </main>
       <aside
-        className="min-h-0 overflow-auto border-l p-3"
+        className="min-h-0 overflow-auto border-l border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] p-3"
         data-testid="website-normal-fields"
       >
         <h3 className="mb-2 text-[12px] font-medium">{tt("编辑内容")}</h3>
@@ -51,12 +51,19 @@ export function WebsitePuckStage({
   config,
   data,
   onChange,
+  puckWrapper,
 }: {
   face: WebsiteFace;
   config: Config;
   data: Partial<Data>;
   onChange: (data: Data) => void;
+  /** Site documents mount their Puck bridge here; the header stays empty in both faces. */
+  puckWrapper?: Overrides["puck"];
 }) {
+  const overrides = useMemo<Partial<Overrides>>(
+    () => (puckWrapper ? { ...WEBSITE_PUCK_OVERRIDES, puck: puckWrapper } : WEBSITE_PUCK_OVERRIDES),
+    [puckWrapper],
+  );
   return (
     <div
       className="h-full min-h-0"
@@ -68,7 +75,7 @@ export function WebsitePuckStage({
         config={config}
         data={data}
         iframe={{ enabled: false }}
-        overrides={WEBSITE_PUCK_OVERRIDES}
+        overrides={overrides}
         height="100%"
         onChange={onChange}
       >
