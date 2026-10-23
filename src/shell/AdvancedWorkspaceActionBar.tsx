@@ -171,8 +171,10 @@ export function AdvancedWorkspaceActionBar({
   );
   const saveErrorTitle =
     autoSaveState === "error"
-      ? confirmation?.message || autoSaveError || tt("保存失败，点击重试")
-      : confirmation?.message;
+      ? tt(confirmation?.message || autoSaveError || "保存失败，点击重试")
+      : confirmation?.message
+        ? tt(confirmation.message)
+        : undefined;
   const saveMenuAvailable = saveActions.length > 0 || autoSaveState === "error";
 
   const triggerAction = async (action: WorkspaceAction) => {
