@@ -23,6 +23,7 @@ import { deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
 import { downloadPdfBytes, pdfErrorMessage, pdfFileStem } from "./pdf-workbench-utils";
 import { PDF_SUBTYPE, type PdfAnnotationLike } from "./pdf-viewer-bridge";
 import type { PdfStageHandle } from "./PdfStage";
+import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 
 const MAX_RECOVERY_BYTES = 96 * 1024 * 1024;
 
@@ -91,7 +92,11 @@ export function usePdfWorkbench(
   const ownSources = useRef(new Set<string>());
   const loadedKey = useRef("");
 
+  const itemRef = useRef(item);
+  itemRef.current = item;
+  /** 本地编辑：记脏、并告诉外壳这是一次真人编辑（自动保存只认这个信号）。 */
   const bump = useCallback(() => {
+    recordUserMutation(userEditItemKey(itemRef.current));
     revisionRef.current += 1;
     setRevision(revisionRef.current);
     setThumbVersion((value) => value + 1);

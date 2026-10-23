@@ -143,6 +143,20 @@ export function PdfStage({
     [],
   );
 
+  // 基础档的 Esc：先取消选中，再收起当前工具（焦点常在页面外，挂在 window 上）。
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const bridge = bridgeRef.current;
+      if (event.key !== "Escape" || !bridge || modeRef.current !== "basic") return;
+      const target = event.composedPath()[0] as HTMLElement | undefined;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      if (bridge.selected()) bridge.deselect();
+      else if (bridge.activeTool()) bridge.setTool(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // 切档：只开关官方工具，同一实例。
   useEffect(() => {
     bridgeRef.current?.setChrome(mode);

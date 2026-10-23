@@ -78,9 +78,66 @@ export function pdfSelectionBarVisible(
   activeTool: string | null,
   readOnly: boolean,
 ): boolean {
+  void activeTool;
   if (readOnly) return false;
-  if (selected) return pdfAnnotationKind(selected.type) !== null;
-  return Boolean(activeTool && TOOL_KIND[activeTool]);
+  return Boolean(selected && pdfAnnotationKind(selected.type) !== null);
+}
+
+/** 工具颜色（开着工具时舞台左上角的小色板；编辑栏留给工具按钮本身）。 */
+export const PDF_TOOL_SWATCHES: readonly string[] = [
+  "#FFCD45",
+  "#5CC96E",
+  "#25D2D1",
+  "#597CE2",
+  "#E44234",
+  "#000000",
+];
+
+export function pdfToolColorField(toolId: string): "strokeColor" | "fontColor" | null {
+  const kind = TOOL_KIND[toolId];
+  if (kind === "freetext") return "fontColor";
+  return kind ? "strokeColor" : null;
+}
+
+export function PdfToolPalette({
+  bridge,
+  activeTool,
+}: {
+  bridge: PdfViewerBridge;
+  activeTool: string | null;
+}) {
+  const tt = useUI();
+  const [tick, setTick] = useState(0);
+  void tick;
+  const field = activeTool ? pdfToolColorField(activeTool) : null;
+  if (!activeTool || !field) return null;
+  const current = String(bridge.toolDefaults(activeTool)[field] || "").toLowerCase();
+  return (
+    <div
+      role="radiogroup"
+      aria-label={tt("颜色")}
+      data-pdf-tool-palette={activeTool}
+      className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-2 py-1.5 shadow-[var(--awb-shadow-floating)]"
+    >
+      {PDF_TOOL_SWATCHES.map((color) => (
+        <button
+          key={color}
+          type="button"
+          role="radio"
+          aria-checked={current === color.toLowerCase()}
+          aria-label={color}
+          onClick={() => {
+            bridge.setToolDefaults(activeTool, { [field]: color, ...(field === "strokeColor" ? { color } : {}) });
+            setTick((value) => value + 1);
+          }}
+          className={`h-5 w-5 rounded-full ring-1 ring-[var(--awb-border)] ${
+            current === color.toLowerCase() ? "outline outline-2 outline-offset-2 outline-[var(--awb-accent)]" : ""
+          }`}
+          style={{ background: color }}
+        />
+      ))}
+    </div>
+  );
 }
 
 function hex(value: unknown, fallback: string): string {

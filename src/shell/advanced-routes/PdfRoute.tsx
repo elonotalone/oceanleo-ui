@@ -34,7 +34,11 @@ import {
 } from "../workbench-material-provider";
 import { PdfControls } from "../media-editors/PdfControls";
 import { PdfFindBar } from "../media-editors/PdfFindBar";
-import { PdfSelectionBar, pdfSelectionBarVisible } from "../media-editors/PdfSelectionBar";
+import {
+  PdfSelectionBar,
+  PdfToolPalette,
+  pdfSelectionBarVisible,
+} from "../media-editors/PdfSelectionBar";
 import { PdfSignatureDialog } from "../media-editors/PdfSignatureDialog";
 import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
 import { buildPdfCommandSurface } from "../media-editors/pdf-command-surface";
@@ -281,6 +285,10 @@ export function PdfRoute({
         stage: (
           <div
             data-collab-readonly={readOnly ? "true" : undefined}
+            data-pdf-dirty={editor.dirty ? "true" : "false"}
+            data-pdf-revision={editor.editRevision}
+            data-pdf-may-write={collab.mayWrite ? "true" : "false"}
+            data-pdf-collab={collab.room?.status ?? "none"}
             className="flex h-full min-h-0 bg-[var(--awb-stage-bg)]"
           >
             {chrome === "basic" && bridge ? (
@@ -312,6 +320,9 @@ export function PdfRoute({
                 onFailure={editor.setError}
                 onFindShortcut={() => setFindOpen(true)}
               />
+              {chrome === "basic" && bridge && !readOnly ? (
+                <PdfToolPalette bridge={bridge} activeTool={activeTool} />
+              ) : null}
               {findOpen && chrome === "basic" && bridge ? (
                 <PdfFindBar bridge={bridge} onClose={() => setFindOpen(false)} />
               ) : null}
