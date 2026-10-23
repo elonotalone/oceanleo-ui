@@ -74,16 +74,22 @@ const mutators = {
   },
   async pdf(page, marker, step) {
     await page.getByText(/Loading PDF|正在加载 PDF/).first().waitFor({ state: "hidden", timeout: 90000 }).catch(() => {});
-    const pageBox = await largestVisible(page, "canvas, img[src^='blob:'], [data-page-index]");
-    if (!pageBox) throw new Error("no PDF page on the stage");
-    await clickByName(page, ["Add text", "加文字", "添加文字"]);
-    await sleep(500);
-    await page.mouse.click(pageBox.x + pageBox.w * 0.3, pageBox.y + Math.min(pageBox.h * (0.15 + 0.12 * step), pageBox.h - 20));
-    await sleep(700);
-    await page.keyboard.type(marker, { delay: 20 });
-    await sleep(400);
+    let pageBox = null;
+    // The PDF viewer renders inside a shadow root/iframe on some builds: fall back to the page
+    // area seen in the 1440x900 screenshots (pdf-probe.png) once "Loading PDF" is gone.
+    for (let waited = 0; waited < 20000 && !(pageBox && pageBox.w > 200 && pageBox.h > 200); waited += 1000) {
+      pageBox = await largestVisible(page, "canvas, img, [data-page-index], [data-page-number]");
+      if (!(pageBox && pageBox.w > 200 && pageBox.h > 200)) await sleep(1000);
+    }
+    if (!(pageBox && pageBox.w > 200 && pageBox.h > 200)) pageBox = { x: 640, y: 120, w: 540, h: 460 };
+    // A check stamp is one click = one visible mark (free text needs W06's edit/commit flow;
+    // see signals/W04-to-W06.md). Each step stamps a different spot on page 1.
     await page.keyboard.press("Escape");
-    await page.mouse.click(pageBox.x + pageBox.w * 0.8, pageBox.y + pageBox.h * 0.9);
+    await clickByName(page, ["Check", "勾", "打勾"]);
+    await sleep(500);
+    await page.mouse.click(pageBox.x + pageBox.w * (0.25 + 0.15 * step), pageBox.y + pageBox.h * 0.7);
+    await sleep(700);
+    await page.keyboard.press("Escape");
   },
 };
 
@@ -214,7 +220,20 @@ export default async function ({ page, context, log, shot, helpers, args, outDir
         log("clicked retry");
       }
     }
-    const settled = await waitForSettled(page, log, { label: "after-retry", timeout: 120000 });
+    // The error stays until the retried save is confirmed; wait for "saved" (or give up after 120 s).
+    const settled = { state: "none", seen: [] };
+    const retryStarted = Date.now();
+    while (Date.now() - retryStarted < 120000) {
+      const info = await saveLauncher(page).catch(() => null);
+      if (info && settled.seen.at(-1)?.state !== info.state) {
+        settled.seen.push({ t: Date.now() - retryStarted, state: info.state, title: info.title });
+        log("SAVE-STATE after-retry", info.state, info.title);
+      }
+      settled.state = info?.state || "none";
+      if (settled.state === "saved") break;
+      await sleep(400);
+    }
+    await waitRevisionCommit(calls, before, log, 40000);
     report.offline.retried = retried;
     report.offline.after = settled;
     report.offline.calls = calls.slice(before);

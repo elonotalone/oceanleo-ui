@@ -29,6 +29,12 @@ export function saveLedger(page, log) {
     const url = response.url();
     const match = url.match(interesting);
     const method = response.request().method();
+    if (response.status() >= 400 && !match) {
+      // Any other refusal during a save (session snapshot CAS, creations, …) is evidence too.
+      let code = "";
+      try { const body = await response.json(); code = JSON.stringify(body?.detail?.code || body?.code || body?.message || body?.detail || "").slice(0, 160); } catch {}
+      log("HTTP-REFUSED", method, new URL(url).pathname.slice(0, 140), response.status(), code);
+    }
     if (!match || method === "GET") return;
     let detail = "";
     try {

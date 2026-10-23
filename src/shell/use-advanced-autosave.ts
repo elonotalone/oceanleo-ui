@@ -31,6 +31,8 @@ import {
   advancedAutoSaveDisplayState,
   advancedFlushFailureVisible,
   advancedRecoveredLocalWork,
+  browserOffline,
+  visibleDraftAttempt,
 } from "./advanced-autosave-display";
 import type {
   AdvancedFlushResult,
@@ -61,7 +63,6 @@ function withErrorMessage(result: AdvancedFlushResult): AdvancedFlushResult {
       : mapAutosaveErrorMessage(result),
   };
 }
-
 
 function sameRevision(
   left: AdvancedEditRevision | undefined,
@@ -241,6 +242,7 @@ export function useAdvancedAutoSave({
     dirty, revision, localPromotion, draftTier: Boolean(recovery?.draftSchema),
     serverRestoredRevision: restoration.restoredRevision,
     draftRestoredAt: recovery?.draftSchema ? advancedDraftRestoredAt(draftRecoveryKey(recovery), revision) : undefined,
+    baseSavedAt: item?.createdAt ? Date.parse(item.createdAt) : undefined,
   });
   const blockedRef = useSourceRef(sourceLifetime, restoration.paused);
   blockedRef.current = restoration.paused;
@@ -321,7 +323,7 @@ export function useAdvancedAutoSave({
     return next;
   }, [sourceLifetime]);
 
-  const saveDraft = useCallback(async (targetRevision: AdvancedEditRevision): Promise<boolean | "full-save"> => {
+  const saveDraftAttempt = useCallback(async (targetRevision: AdvancedEditRevision): Promise<boolean | "full-save"> => {
     if (blockedRef.current) return false;
     const activeDraft = draftRef.current;
     const activeSession = sessionRef.current;
@@ -361,6 +363,8 @@ export function useAdvancedAutoSave({
     }
     return recorded;
   }, [sourceLifetime]);
+  const saveDraft = useCallback((targetRevision: AdvancedEditRevision) => visibleDraftAttempt(
+    () => saveDraftAttempt(targetRevision), (error) => { rememberFlush({ ok: false, error }); }), [rememberFlush, saveDraftAttempt]);
 
   const bindController = useCallback(
     (controller: AdvancedPersistenceController<LibraryItem>) => {
@@ -406,6 +410,7 @@ export function useAdvancedAutoSave({
           const recorded = activeSession ? await (draftEnabled
             ? activeSession.recordSavedItem(item, coveredRevision, { schema: draftRef.current!.schema, restored: restoredPointerRef.current })
             : activeSession.recordSavedItem(item)) : true;
+          if (!recorded && browserOffline()) rememberFlush({ ok: false, error: AUTOSAVE_ERROR_NETWORK });
           if (recorded) versionSessionsRef.current.delete(coveredRevision);
           if (recorded) lastVersionItemRef.current = item;
           if (recorded) {

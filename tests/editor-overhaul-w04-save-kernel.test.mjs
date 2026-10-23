@@ -279,3 +279,20 @@ test("restored local work is saved, not shown as 已保存 (draft-tier and plain
   const hook = readFileSync(new URL("../src/shell/use-advanced-autosave.ts", import.meta.url), "utf8");
   assert.match(hook, /recoveredLocalDraft = advancedRecoveredLocalWork\(\{[\s\S]*?draftRestoredAt: recovery\?\.draftSchema \? advancedDraftRestoredAt\(/);
 });
+
+test("a local copy older than the opened revision is stale, not new work; draft failures are visible", async () => {
+  const { advancedRecoveredLocalWork, visibleDraftAttempt } = await import("../src/shell/advanced-autosave-display.ts");
+  const base = { dirty: true, revision: 7, draftTier: true, draftRestoredAt: 1000 };
+  assert.equal(advancedRecoveredLocalWork({ ...base, baseSavedAt: 2000 }), false, "saved after the last local edit");
+  assert.equal(advancedRecoveredLocalWork({ ...base, baseSavedAt: 500 }), true, "edited after the opened revision");
+  assert.equal(advancedRecoveredLocalWork({ ...base, baseSavedAt: Number.NaN }), true, "unknown base time keeps the edit");
+  // W09-to-W04 #3: a failing draft upload says why (retries continue), offline names the network.
+  const failures = [];
+  await assert.rejects(visibleDraftAttempt(async () => { throw new Error("存储服务没有确认草稿地址"); }, (e) => failures.push(e), () => false));
+  assert.deepEqual(failures, ["存储服务没有确认草稿地址"]);
+  assert.equal(await visibleDraftAttempt(async () => false, (e) => failures.push(e), () => true), false);
+  assert.match(failures[1], /网络/);
+  assert.equal(await visibleDraftAttempt(async () => false, (e) => failures.push(e), () => false), false);
+  assert.equal(await visibleDraftAttempt(async () => true, (e) => failures.push(e), () => true), true);
+  assert.equal(failures.length, 2, "a moved-on revision online and a success are not failures");
+});

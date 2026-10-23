@@ -1,5 +1,6 @@
 import type { AdvancedFlushResult } from "./advanced-session-context";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
+import { AUTOSAVE_ERROR_NETWORK } from "../lib/auth/autosave-error-message";
 
 export type AdvancedAutoSaveState = "saved" | "saving" | "error";
 
@@ -42,8 +43,37 @@ export function advancedRecoveredLocalWork(input: {
   draftTier: boolean;
   serverRestoredRevision?: AdvancedEditRevision;
   draftRestoredAt?: number;
+  /** When the opened revision was committed. A local copy last edited before it is stale, not new work. */
+  baseSavedAt?: number;
 }): boolean {
   if (!input.dirty) return false;
   if (input.localPromotion && Object.is(input.localPromotion.revision, input.revision)) return true;
-  return input.draftTier && input.serverRestoredRevision === undefined && input.draftRestoredAt !== undefined;
+  if (!input.draftTier || input.serverRestoredRevision !== undefined || input.draftRestoredAt === undefined) return false;
+  return !(Number.isFinite(input.baseSavedAt) && input.draftRestoredAt <= (input.baseSavedAt as number));
 }
+
+export function browserOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+/**
+ * Draft-tier attempts fail visibly like a version flush (W09-to-W04 #3): the
+ * controller keeps retrying, but the bar says 「保存失败」 and why instead of
+ * sitting on 「保存中」. A refused session record only counts when offline;
+ * otherwise it is a benign "revision moved on" and the next attempt covers it.
+ */
+export async function visibleDraftAttempt<T>(
+  attempt: () => Promise<T>,
+  fail: (error: string) => void,
+  offline: () => boolean = browserOffline,
+): Promise<T> {
+  try {
+    const saved = await attempt();
+    if (saved === false && offline()) fail(AUTOSAVE_ERROR_NETWORK);
+    return saved;
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+}
+

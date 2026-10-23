@@ -127,6 +127,16 @@ export function useAdvancedRecovery({
   // 草稿的时间戳记「最后一次编辑」而不是「落盘那一刻」：卸载时的兜底写盘发生在
   // 保存成功之后，若记落盘时刻，它会把已入云的内容伪装成比保存更新的改动。
   const lastEditAtRef = useRef(0);
+  // W09-to-W04 #1: IndexedDB writes and the post-save delete run in order, and a
+  // clean document is never written back. Before, the cleanup write of the last
+  // dirty render could land after the delete and the saved copy was "restored"
+  // (and, now that restored local work is sent, re-saved) on the next open.
+  const storeChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const queueStore = (operation: () => Promise<unknown>) => {
+    storeChainRef.current = storeChainRef.current.then(operation, operation).catch(() => undefined);
+  };
+  const dirtyNowRef = useRef(dirty);
+  dirtyNowRef.current = dirty;
   recoveryRef.current = recovery;
   revisionRef.current = revision;
 
@@ -195,8 +205,11 @@ export function useAdvancedRecovery({
       const latest = recoveryRef.current;
       if (!latest?.ready) return;
       const updatedAt = advancedDraftRestoredAt(draftRecoveryKey(latest), revision) ?? (lastEditAtRef.current || Date.now());
-      void Promise.resolve(latest.capture())
-        .then((payload) =>
+      // Edits a confirmed save already covers are not unsaved work (unmount right after a save).
+      if (advancedRecoverySupersededBySave(draftRecoveryKey(latest), updatedAt)) return;
+      const captured = Promise.resolve(latest.capture());
+      queueStore(() =>
+        captured.then((payload) =>
           writeAdvancedRecovery({
             key: draftRecoveryKey(latest),
             editorId,
@@ -204,13 +217,14 @@ export function useAdvancedRecovery({
             updatedAt,
             payload,
           }),
-        )
-        .catch(() => undefined);
+        ),
+      );
     };
     const timer = window.setTimeout(persist, RECOVERY_DEBOUNCE_MS);
     return () => {
       window.clearTimeout(timer);
-      persist();
+      // Still dirty (newer revision, unmount mid-edit): keep the copy. Clean: nothing to keep.
+      if (dirtyNowRef.current) persist();
     };
   }, [dirty, editorId, recovery?.key, recovery?.ready, revision]);
 
@@ -231,6 +245,6 @@ export function useAdvancedRecovery({
       clearAdvancedLocalRecoveryPromotion(key, promotion);
       localPromotionRef.current = null;
     }
-    void deleteAdvancedRecovery(key).catch(() => undefined);
+    queueStore(() => deleteAdvancedRecovery(key));
   }, [dirty, persistenceState, recovery?.key]);
 }
