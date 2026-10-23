@@ -11,6 +11,7 @@
  * v1 本地草稿图仍走 `VideoCanvasStage`（路由按 source format 分流）。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type { Connection } from "@xyflow/react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -56,12 +57,17 @@ import {
 } from "./video-project-material";
 import { loadVideoProjectDoc } from "./workflow-graph-source";
 import { VideoAddNodeDrawer } from "./VideoAddNodeDrawer";
-import {
-  VideoProjectCanvas,
-  type VideoCanvasSelection,
-  type VideoCanvasViewApi,
-  type VideoCanvasViewNode,
+import type {
+  VideoCanvasSelection,
+  VideoCanvasViewApi,
+  VideoCanvasViewNode,
 } from "./VideoProjectCanvas";
+
+// xyflow stays out of the route's static graph (jsdom route tests, first paint).
+const VideoProjectCanvas = dynamic(
+  () => import("./VideoProjectCanvas").then((module) => module.VideoProjectCanvas),
+  { ssr: false, loading: () => null },
+);
 
 /** New nodes per kind: the fields the v2 core reads, so the node is usable at once. */
 function newNodeFields(kind: string): Record<string, unknown> {
