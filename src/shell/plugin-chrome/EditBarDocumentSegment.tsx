@@ -62,6 +62,7 @@ export function EditBarDocumentSegment({
             variant="ghost"
             selected={open}
             pill
+            style={{ paddingInline: 6, gap: 6 }}
           >
             <AdvancedEditorIcon name={drawer.icon} className="h-4 w-4" />
             <span>{label}</span>
@@ -106,6 +107,7 @@ export function EditBarDocumentSegment({
             variant={action.variant === "danger" ? "danger" : "ghost"}
             selected={action.variant === "primary"}
             pill
+            style={{ paddingInline: 6, gap: 6 }}
           >
             {action.icon ? (
               <AdvancedEditorIcon name={action.icon} className="h-4 w-4" />

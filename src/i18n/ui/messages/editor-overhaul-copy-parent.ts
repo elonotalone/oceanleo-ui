@@ -2,6 +2,8 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
   "en": {
+    "共 {count} 页": "{count} pages",
+    "这份 PDF 打不开。": "This PDF could not be opened.",
     "暂时无法保存私有工作文档": "Could not save the private working document",
     "存储服务没有确认草稿地址": "Storage did not confirm the draft address",
     "工作会话仍在同步，请稍后重试。": "The workspace is still syncing. Please retry shortly.",
@@ -12,6 +14,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Audio source upload failed"
   },
   "de": {
+    "共 {count} 页": "{count} Seiten",
+    "这份 PDF 打不开。": "Diese PDF konnte nicht geöffnet werden.",
     "暂时无法保存私有工作文档": "Das private Arbeitsdokument konnte nicht gespeichert werden",
     "存储服务没有确认草稿地址": "Der Speicher hat die Entwurfsadresse nicht bestätigt",
     "工作会话仍在同步，请稍后重试。": "Der Arbeitsbereich wird noch synchronisiert. Bitte gleich erneut versuchen.",
@@ -22,6 +26,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Audioquelle konnte nicht hochgeladen werden"
   },
   "es": {
+    "共 {count} 页": "{count} páginas",
+    "这份 PDF 打不开。": "No se pudo abrir este PDF.",
     "暂时无法保存私有工作文档": "No se pudo guardar el documento de trabajo privado",
     "存储服务没有确认草稿地址": "El almacenamiento no confirmó la dirección del borrador",
     "工作会话仍在同步，请稍后重试。": "El espacio de trabajo sigue sincronizándose. Inténtalo de nuevo en breve.",
@@ -32,6 +38,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Error al subir el audio de origen"
   },
   "es-419": {
+    "共 {count} 页": "{count} páginas",
+    "这份 PDF 打不开。": "No se pudo abrir este PDF.",
     "暂时无法保存私有工作文档": "No se pudo guardar el documento de trabajo privado",
     "存储服务没有确认草稿地址": "El almacenamiento no confirmó la dirección del borrador",
     "工作会话仍在同步，请稍后重试。": "El espacio de trabajo sigue sincronizándose. Vuelve a intentarlo en breve.",
@@ -42,6 +50,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "No se pudo subir el audio de origen"
   },
   "fr": {
+    "共 {count} 页": "{count} pages",
+    "这份 PDF 打不开。": "Impossible d’ouvrir ce PDF.",
     "暂时无法保存私有工作文档": "Impossible d’enregistrer le document de travail privé",
     "存储服务没有确认草稿地址": "Le stockage n’a pas confirmé l’adresse du brouillon",
     "工作会话仍在同步，请稍后重试。": "L’espace de travail se synchronise encore. Réessayez dans un instant.",
@@ -52,6 +62,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Échec de l’envoi du fichier audio source"
   },
   "it": {
+    "共 {count} 页": "{count} pagine",
+    "这份 PDF 打不开。": "Impossibile aprire questo PDF.",
     "暂时无法保存私有工作文档": "Impossibile salvare il documento di lavoro privato",
     "存储服务没有确认草稿地址": "L’archivio non ha confermato l’indirizzo della bozza",
     "工作会话仍在同步，请稍后重试。": "L’area di lavoro è ancora in sincronizzazione. Riprova tra poco.",
@@ -62,6 +74,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Caricamento della sorgente audio non riuscito"
   },
   "pt-BR": {
+    "共 {count} 页": "{count} páginas",
+    "这份 PDF 打不开。": "Não foi possível abrir este PDF.",
     "暂时无法保存私有工作文档": "Não foi possível salvar o documento de trabalho privado",
     "存储服务没有确认草稿地址": "O armazenamento não confirmou o endereço do rascunho",
     "工作会话仍在同步，请稍后重试。": "O espaço de trabalho ainda está sincronizando. Tente novamente em instantes.",
@@ -72,6 +86,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Falha ao enviar a fonte de áudio"
   },
   "pt-PT": {
+    "共 {count} 页": "{count} páginas",
+    "这份 PDF 打不开。": "Não foi possível abrir este PDF.",
     "暂时无法保存私有工作文档": "Não foi possível guardar o documento de trabalho privado",
     "存储服务没有确认草稿地址": "O armazenamento não confirmou o endereço do rascunho",
     "工作会话仍在同步，请稍后重试。": "O espaço de trabalho ainda está a sincronizar. Tente novamente dentro de instantes.",
@@ -82,6 +98,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Falha ao carregar a fonte de áudio"
   },
   "vi": {
+    "共 {count} 页": "{count} trang",
+    "这份 PDF 打不开。": "Không mở được PDF này.",
     "暂时无法保存私有工作文档": "Không lưu được tài liệu làm việc riêng tư",
     "存储服务没有确认草稿地址": "Dịch vụ lưu trữ chưa xác nhận địa chỉ bản nháp",
     "工作会话仍在同步，请稍后重试。": "Không gian làm việc vẫn đang đồng bộ. Vui lòng thử lại sau ít phút.",
@@ -92,6 +110,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Tải nguồn âm thanh lên thất bại"
   },
   "tr": {
+    "共 {count} 页": "{count} sayfa",
+    "这份 PDF 打不开。": "Bu PDF açılamadı.",
     "暂时无法保存私有工作文档": "Özel çalışma belgesi kaydedilemedi",
     "存储服务没有确认草稿地址": "Depolama taslak adresini doğrulamadı",
     "工作会话仍在同步，请稍后重试。": "Çalışma alanı hâlâ eşitleniyor. Birazdan yeniden deneyin.",
@@ -102,6 +122,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "Ses kaynağı yüklenemedi"
   },
   "zh-TW": {
+    "共 {count} 页": "共 {count} 頁",
+    "这份 PDF 打不开。": "這份 PDF 打不開。",
     "暂时无法保存私有工作文档": "暫時無法儲存私人工作文件",
     "存储服务没有确认草稿地址": "儲存服務未確認草稿位址",
     "工作会话仍在同步，请稍后重试。": "工作區仍在同步，請稍後重試。",
@@ -112,6 +134,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "音訊來源上傳失敗"
   },
   "ja": {
+    "共 {count} 页": "全 {count} ページ",
+    "这份 PDF 打不开。": "この PDF を開けませんでした。",
     "暂时无法保存私有工作文档": "非公開の作業文書を保存できませんでした",
     "存储服务没有确认草稿地址": "ストレージが下書きのアドレスを確認できませんでした",
     "工作会话仍在同步，请稍后重试。": "ワークスペースは同期中です。しばらくしてから再試行してください。",
@@ -122,6 +146,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "音声ソースのアップロードに失敗しました"
   },
   "ko": {
+    "共 {count} 页": "총 {count}페이지",
+    "这份 PDF 打不开。": "이 PDF를 열 수 없습니다.",
     "暂时无法保存私有工作文档": "비공개 작업 문서를 저장할 수 없습니다",
     "存储服务没有确认草稿地址": "저장소가 초안 주소를 확인하지 못했습니다",
     "工作会话仍在同步，请稍后重试。": "작업 공간을 동기화하고 있습니다. 잠시 후 다시 시도하세요.",
@@ -132,6 +158,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "오디오 소스 업로드 실패"
   },
   "ar": {
+    "共 {count} 页": "{count} صفحات",
+    "这份 PDF 打不开。": "تعذّر فتح ملف PDF هذا.",
     "暂时无法保存私有工作文档": "تعذر حفظ مستند العمل الخاص",
     "存储服务没有确认草稿地址": "لم تؤكد خدمة التخزين عنوان المسودة",
     "工作会话仍在同步，请稍后重试。": "لا تزال مساحة العمل قيد المزامنة. أعد المحاولة بعد قليل.",
@@ -142,6 +170,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "فشل رفع مصدر الصوت"
   },
   "th": {
+    "共 {count} 页": "ทั้งหมด {count} หน้า",
+    "这份 PDF 打不开。": "เปิด PDF นี้ไม่ได้",
     "暂时无法保存私有工作文档": "บันทึกเอกสารทำงานส่วนตัวไม่ได้",
     "存储服务没有确认草稿地址": "พื้นที่จัดเก็บยังไม่ยืนยันที่อยู่ฉบับร่าง",
     "工作会话仍在同步，请稍后重试。": "พื้นที่ทำงานยังซิงค์อยู่ โปรดลองอีกครั้งในอีกสักครู่",
@@ -152,6 +182,8 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "อัปโหลดแหล่งเสียงไม่สำเร็จ"
   },
   "hi": {
+    "共 {count} 页": "कुल {count} पृष्ठ",
+    "这份 PDF 打不开。": "यह PDF नहीं खुल सका।",
     "暂时无法保存私有工作文档": "निजी कार्य दस्तावेज़ सहेजा नहीं जा सका",
     "存储服务没有确认草稿地址": "स्टोरेज ने ड्राफ़्ट के पते की पुष्टि नहीं की",
     "工作会话仍在同步，请稍后重试。": "कार्यस्थान अभी सिंक हो रहा है। थोड़ी देर बाद फिर कोशिश करें।",
@@ -162,4 +194,3 @@ export const EDITOR_OVERHAUL_PARENT_COPY: EditorOverhaulCopy = {
     "音频源上传失败": "ऑडियो स्रोत अपलोड नहीं हो सका"
   }
 };
-
