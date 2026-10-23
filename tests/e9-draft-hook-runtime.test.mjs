@@ -131,7 +131,10 @@ test('generic recovery adapter debounces 400ms and requires both upload and sess
     await tick(250); assert.equal(b.uploads.length, 1); assert.equal(b.records.length, 1);
     assert.equal(b.hook.state, 'saving'); assert.equal(b.records[0].editRevision, 1);
     await act(async () => { ack.resolve(true); await sleep(0); });
-    assert.equal(b.hook.state, 'saved'); assert.equal(b.versions.length, 0);
+    // W04 R2: draft acknowledged → still owed a version, so not 「已保存」 yet; the version follows in ~1.5 s.
+    assert.equal(b.hook.state, 'saving'); assert.equal(b.versions.length, 0);
+    await tick(1700);
+    assert.equal(b.versions.length, 1); assert.equal(b.hook.state, 'saved');
   } finally { ack.resolve(true); await tree.unmount(); }
 });
 

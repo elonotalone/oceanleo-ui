@@ -117,14 +117,18 @@ test('real hook only reports saved after upload AND session acknowledgement, the
     assert.equal(b.uploads.length, 1); assert.equal(b.records.length, 1);
     assert.equal(b.hooks.state, 'saving'); assert.deepEqual(b.versions, []);
     await act(async () => { ack.resolve(true); await sleep(0); });
-    assert.equal(b.hooks.state, 'saved');
+    // W04 R2 (§5, W08-to-W04 #1): the draft receipt alone is not 「已保存」; the version follows within ~1.5 s.
+    assert.equal(b.hooks.state, 'saving');
     assert.equal(b.uploads[0].data.text, 'edit-1');
+    await act(async () => { await sleep(1700); });
+    assert.deepEqual(b.versions, [1]);
+    assert.equal(b.hooks.state, 'saved');
     assert.equal(typeof b.boundFlush, 'function');
     await act(async () => { assert.equal((await b.boundFlush()).ok, true); });
-    assert.deepEqual(b.versions, [1]);
+    assert.deepEqual(b.versions, [1], 'an explicit gate after the version has nothing left to publish');
   } finally { await tree.unmount(); }
 });
-test('image edits turn green on the durable image-draft receipt without creating a published version', async () => {
+test('image-draft receipts turn green only once the version is committed', async () => {
   const b = bed(), ack = deferred();
   const imageProject = {
     schema: 'oceanleo.fabric-image.v1',
@@ -144,10 +148,12 @@ test('image edits turn green on the durable image-draft receipt without creating
     assert.equal(b.uploads[0].data.snapshot.json.objects[0].text, 'saved edit');
     assert.equal(b.records.length, 1);
     assert.equal(b.hooks.state, 'saving', 'upload alone is not a durable receipt');
-    assert.deepEqual(b.versions, [], 'draft saves must not create a published document version');
+    assert.deepEqual(b.versions, [], 'the version waits for the draft receipt');
     await act(async () => { ack.resolve(true); await sleep(0); });
+    assert.equal(b.hooks.state, 'saving', 'W04 R2: a draft receipt is not yet a server version');
+    await act(async () => { await sleep(1700); });
+    assert.deepEqual(b.versions, [1]);
     assert.equal(b.hooks.state, 'saved');
-    assert.deepEqual(b.versions, []);
   } finally { await tree.unmount(); }
 });
 test('real hook reuses uploaded draft on failed CAS; pagehide forces the complete version', async () => {
@@ -157,9 +163,11 @@ test('real hook reuses uploaded draft on failed CAS; pagehide forces the complet
   try {
     await edit(b, 1); await waitDraft(); assert.equal(b.hooks.state, 'saving');
     await act(async () => { await sleep(1550); });
-    assert.equal(b.uploads.length, 1); assert.equal(b.records.length, 2); assert.equal(b.hooks.state, 'saved');
+    assert.equal(b.uploads.length, 1); assert.equal(b.records.length, 2);
+    await act(async () => { await sleep(1700); });
+    assert.deepEqual(b.versions, [1]); assert.equal(b.hooks.state, 'saved');
     await act(async () => { window.dispatchEvent(new window.Event('pagehide')); await sleep(0); });
-    assert.deepEqual(b.versions, [1]);
+    assert.deepEqual(b.versions, [1], 'pagehide after the version has nothing left to publish');
   } finally { await tree.unmount(); }
 });
 test('a captured server draft destination cannot drift to another session during upload', async () => {

@@ -1,6 +1,6 @@
 import type { AdvancedFlushResult } from "./advanced-session-context";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
-import { AUTOSAVE_ERROR_NETWORK } from "../lib/auth/autosave-error-message";
+import { AUTOSAVE_ERROR_NETWORK, mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
 
 export type AdvancedAutoSaveState = "saved" | "saving" | "error";
 
@@ -16,16 +16,32 @@ export function advancedFlushFailureVisible(result: AdvancedFlushResult): boolea
   return !result.ok;
 }
 
+/**
+ * Draft-tier editors publish the version this soon after the server draft is
+ * acknowledged (was 20 s; W08-to-W04 #1: closing and reopening inside that
+ * window showed the old version, and the library card lagged).
+ */
+export const DRAFT_VERSION_IDLE_MS = 1_500;
+
+export function withErrorMessage(result: AdvancedFlushResult): AdvancedFlushResult {
+  if (result.ok) return result;
+  // Offline is named as such, whatever wording the failing step used.
+  return { ...result, errorMessage: browserOffline() ? AUTOSAVE_ERROR_NETWORK : mapAutosaveErrorMessage(result) };
+}
+
 export function advancedAutoSaveDisplayState(input: {
   state: AdvancedAutoSaveState;
   failedAttempt: boolean;
   restorationError?: string;
   restorationPaused: boolean;
+  /** A server draft is acknowledged but its version is not committed yet: not 「已保存」 (§5). */
+  versionOwed?: boolean;
 }): AdvancedAutoSaveState {
   if (input.restorationError) return "error";
   if (input.restorationPaused) return "saving";
-  if (input.failedAttempt && input.state !== "saved") return "error";
-  return input.state;
+  const state = input.state === "saved" && input.versionOwed ? "saving" : input.state;
+  if (input.failedAttempt && state !== "saved") return "error";
+  return state;
 }
 
 /**

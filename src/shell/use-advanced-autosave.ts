@@ -23,16 +23,15 @@ import {
 } from "./user-edit-session";
 import type { AdvancedEditorDraftAdapter, AdvancedEditorRecoveryAdapter } from "./advanced-editor-adapter";
 import { uploadAdvancedDraft, type AdvancedDraftPointer } from "./advanced-draft";
-import {
-  AUTOSAVE_ERROR_NETWORK,
-  mapAutosaveErrorMessage,
-} from "../lib/auth/autosave-error-message";
+import { AUTOSAVE_ERROR_NETWORK } from "../lib/auth/autosave-error-message";
 import {
   advancedAutoSaveDisplayState,
   advancedFlushFailureVisible,
   advancedRecoveredLocalWork,
   browserOffline,
+  DRAFT_VERSION_IDLE_MS,
   visibleDraftAttempt,
+  withErrorMessage,
 } from "./advanced-autosave-display";
 import type {
   AdvancedFlushResult,
@@ -50,19 +49,6 @@ import { noteAdvancedSaveSucceeded } from "./use-advanced-recovery";
 export type { AdvancedAutoSaveState } from "./advanced-autosave-display";
 import type { AdvancedAutoSaveState } from "./advanced-autosave-display";
 export { mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
-
-function withErrorMessage(result: AdvancedFlushResult): AdvancedFlushResult {
-  if (result.ok) return result;
-  // Offline is named as such, whatever wording the failing step used.
-  const offline =
-    typeof navigator !== "undefined" && navigator.onLine === false;
-  return {
-    ...result,
-    errorMessage: offline
-      ? AUTOSAVE_ERROR_NETWORK
-      : mapAutosaveErrorMessage(result),
-  };
-}
 
 function sameRevision(
   left: AdvancedEditRevision | undefined,
@@ -280,6 +266,7 @@ export function useAdvancedAutoSave({
   const [state, setState] = useState<AdvancedAutoSaveState>("saved");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [failedAttempt, setFailedAttempt] = useState(false);
+  const [, setVersionReceipts] = useState(0);
   flushRef.current = flush;
   sessionRef.current = session;
   latestRevisionRef.current = revision;
@@ -369,7 +356,7 @@ export function useAdvancedAutoSave({
   const bindController = useCallback(
     (controller: AdvancedPersistenceController<LibraryItem>) => {
       controller.rebind({
-        ...(draftEnabled ? { draft: { saveRevision: saveDraft } } : {}),
+        ...(draftEnabled ? { draft: { saveRevision: saveDraft }, versionIdleMs: DRAFT_VERSION_IDLE_MS } : {}),
         flushRevision: (targetRevision) => {
           if (blockedRef.current) return rememberFlush({ ok: false, error: restoration.error || DRAFT_READ_FAILED });
           if (draftEnabled && !versionSessionsRef.current.has(targetRevision)) {
@@ -413,6 +400,7 @@ export function useAdvancedAutoSave({
           if (!recorded && browserOffline()) rememberFlush({ ok: false, error: AUTOSAVE_ERROR_NETWORK });
           if (recorded) versionSessionsRef.current.delete(coveredRevision);
           if (recorded) lastVersionItemRef.current = item;
+          if (recorded && mountedRef.current && sourceLifetime.current) setVersionReceipts((count) => count + 1);
           if (recorded) {
             const pinnedRecoveryReceipt = versionRecoveryReceiptsRef.current.get(coveredRevision);
             if (
@@ -453,7 +441,7 @@ export function useAdvancedAutoSave({
 
   const makeController = useCallback(() => {
     const controller = new AdvancedPersistenceController<LibraryItem>({
-      ...(draftEnabled ? { draft: { saveRevision: saveDraft } } : {}),
+      ...(draftEnabled ? { draft: { saveRevision: saveDraft }, versionIdleMs: DRAFT_VERSION_IDLE_MS } : {}),
       flushRevision: async () => ({
         ok: false,
         error: "自动保存控制器尚未绑定",
@@ -593,6 +581,7 @@ export function useAdvancedAutoSave({
   }, [draftEnabled, flushLatest]);
 
   return { state: advancedAutoSaveDisplayState({ state, failedAttempt,
+      versionOwed: draftEnabled && Boolean(controllerRef.current?.hasUnconfirmedWork()),
       restorationError: restoration.error, restorationPaused: restoration.paused }),
     errorMessage: restoration.error || errorMessage, flushLatest, retry, handOffToBackground };
 }

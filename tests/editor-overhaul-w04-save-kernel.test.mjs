@@ -246,6 +246,11 @@ test("a failed save attempt is shown as 保存失败, never as saving forever or
   assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: true, restorationPaused: false }), "saved");
   assert.equal(advancedAutoSaveDisplayState({ state: "saving", failedAttempt: false, restorationPaused: false }), "saving");
   assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: false, restorationError: "草稿读取失败", restorationPaused: false }), "error");
+  // A draft acknowledged but not yet a version is not 「已保存」 (W08-to-W04 #1).
+  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: false, restorationPaused: false, versionOwed: true }), "saving");
+  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: true, restorationPaused: false, versionOwed: true }), "error");
+  const { DRAFT_VERSION_IDLE_MS } = await import("../src/shell/advanced-autosave-display.ts");
+  assert.ok(DRAFT_VERSION_IDLE_MS <= 2000, "the version follows the draft within seconds, not 20 s");
 });
 
 test("website closure files staged by the editor ride along with the commit", async () => {
