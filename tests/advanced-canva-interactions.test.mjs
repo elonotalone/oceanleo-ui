@@ -73,10 +73,11 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
     ["deck-design", "deck-elements", "deck-draw", "deck-lines", "deck-notes"],
   );
   assert.doesNotMatch(deck, /id: "deck-(?:effects|fonts|layers|uploads|signature|tables|text)"/);
-  assert.match(image, /id: "image-filters"[\s\S]*?hiddenFromRail: true/);
-  assert.match(image, /id: "image-fonts"[\s\S]*?hiddenFromRail: true/);
+  // 10-23 W09：图片调整与字体不再是抽屉——调色是统一栏 `adjust` 面板（A-1 子控件），字体是 `font-family` 下拉。
+  assert.doesNotMatch(image, /id: "image-(?:filters|fonts)"/);
   assert.doesNotMatch(deckToolbar, /panelId: "deck-fonts"/);
-  assert.match(imageToolbar, /panelId: "image-filters"/);
+  assert.doesNotMatch(imageToolbar, /panelId: "image-(?:filters|fonts)"/);
+  assert.match(imageToolbar, /inspector\("adjust", tt\("调色"\)\)/);
   for (const drawer of [
     "image-brush",
     "image-shapes",
