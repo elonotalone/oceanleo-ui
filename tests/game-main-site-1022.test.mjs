@@ -579,6 +579,26 @@ function mountRoute(item) {
   return mount(React.createElement(route.GameRoute, { item, onClose() {} }));
 }
 
+test("W15 reopen only resumes an explicitly job-aware runner and aborts polling on unmount", async () => {
+  resetGlobals();
+  const item = gameItem({ artifactId: "art-resume" });
+  const calls = [];
+  const runner = async (request) => { calls.push(request); return { ok: false, idle: true, error: "" }; };
+  runner.supportsResume = true;
+  route.registerGameIterationRunner(runner);
+  const mounted = await mountRoute(item);
+  await settle();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].resume, true);
+  assert.equal(calls[0].prompt, "");
+  assert.equal(globalThis.__forks.length, 0);
+  assert.equal(globalThis.__commits.length, 0);
+  assert.equal(calls[0].signal.aborted, false);
+  await mounted.unmount();
+  assert.equal(calls[0].signal.aborted, true);
+  route.registerGameIterationRunner(null);
+});
+
 async function iterateOnce(container, prompt) {
   await type(q(container, "#game-prompt"), window.HTMLTextAreaElement.prototype, prompt);
   await click(byText(container, "button", "迭代这一版"));
