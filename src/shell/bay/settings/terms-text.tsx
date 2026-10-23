@@ -124,7 +124,7 @@ export function BayTermsSections({
         <section
           key={section.key}
           id={anchors ? bayTermsAnchor(section.key) : undefined}
-          className={anchors ? "scroll-mt-6" : undefined}
+          className={anchors ? "scroll-mt-4" : undefined}
           data-bay-terms-section={section.key}
         >
           <h3 className={TONE_CLASS[tone].title}>{tt(section.title_zh)}</h3>
@@ -144,7 +144,7 @@ export function BayTermsFullTextLink({ className }: { className?: string }) {
       target="_blank"
       rel="noopener noreferrer"
       data-bay-terms-fulltext=""
-      className={className ?? "text-xs font-medium text-neutral-700 underline underline-offset-2 hover:text-neutral-950 dark:text-neutral-300 dark:hover:text-white"}
+      className={className ?? "text-xs font-medium text-neutral-700 underline underline-offset-2 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100"}
     >
       {tt("在条款页查看全文")}
     </a>

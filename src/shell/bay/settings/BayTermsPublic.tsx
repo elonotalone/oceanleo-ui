@@ -80,7 +80,7 @@ export function BayTermsPublic({ className }: BayTermsPublicProps): ReactElement
             setAttempt((value) => value + 1);
           }}
           data-bay-terms-retry=""
-          className="mt-2 text-[13px] font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-950"
+          className="mt-2 text-[13px] font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-900"
         >
           {tt("重试")}
         </button>
