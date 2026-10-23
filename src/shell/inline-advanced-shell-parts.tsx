@@ -177,6 +177,8 @@ export function FallbackDetailAside({
     <aside
       data-workspace-pane={fallbackDetail ? "left" : undefined}
       data-left-panel={fallbackDetail ? "tool-detail" : undefined}
+      // 编辑栏和这块左侧面板同在一个图层里：标上避让，展开的栏不盖住面板标题与关闭键（W03 约定）。
+      data-edit-bar-avoid={fallbackDetail ? "" : undefined}
       aria-hidden={!fallbackDetail}
       inert={!fallbackDetail}
       style={{

@@ -67,7 +67,7 @@ const { EditBarDocumentSegment } = await import(await compileModule("src/shell/p
   "../../ui/Button": button,
   "../AdvancedEditorIcon": icon,
 }));
-const { SelectionPresenceProbe } = await import(await compileModule("src/shell/inline-advanced-shell-parts.tsx", {
+const { SelectionPresenceProbe, FallbackDetailAside } = await import(await compileModule("src/shell/inline-advanced-shell-parts.tsx", {
   "../i18n/ui/useUI": ui,
   "./plugin-chrome/PluginChromeNotices": dataModule(`export function PluginChromeNotices(){return null;}`),
   "./agent-conversation-layout": dataModule(`export const AGENT_CONVERSATION_HOST_STRETCH_CLASS='';`),
@@ -251,6 +251,24 @@ test("selection probe reports the selection kind so the collapsed edit-bar dot k
   } finally { await act(async () => root.unmount()); container.remove(); }
   const shell = readFileSync(new URL("../src/shell/InlineAdvancedWorkbenchShell.tsx", import.meta.url), "utf8");
   assert.match(shell, /collapsedIcon=\{[\s\S]{0,120}editorToolsIconForSelection\(selectionKind\)/);
+});
+
+test("the shell's own left panel is visible and tells the floating edit bar to stay off it", async () => {
+  const open = await mount(React.createElement(FallbackDetailAside, {
+    fallbackDetail: { label: "素材库", content: React.createElement("div", { "data-assets": true }) }, onClose() {},
+  }));
+  try {
+    const aside = open.container.querySelector("aside");
+    assert.equal(aside.hasAttribute("inert"), false);
+    assert.equal(aside.style.width, "320px");
+    assert.equal(aside.getAttribute("data-edit-bar-avoid"), "", "W03 avoid contract: the bar is moved out of this rect");
+  } finally { await open.destroy(); }
+  const closed = await mount(React.createElement(FallbackDetailAside, { fallbackDetail: null, onClose() {} }));
+  try {
+    const aside = closed.container.querySelector("aside");
+    assert.equal(aside.hasAttribute("inert"), true);
+    assert.equal(aside.hasAttribute("data-edit-bar-avoid"), false, "a closed panel does not push the bar away");
+  } finally { await closed.destroy(); }
 });
 
 function LeaveHarness({ dirty, flushResult, onReady }) {
