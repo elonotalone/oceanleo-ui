@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { AdvancedFontPicker } from "../AdvancedFontPicker";
 import {
   CANVAS_PRESETS,
   type FabricImageEditorState,
@@ -28,60 +27,6 @@ function Section({
       </summary>
       <div className="space-y-3 px-4 pb-4">{children}</div>
     </details>
-  );
-}
-
-function Range({
-  label,
-  value,
-  min,
-  max,
-  step = 1,
-  suffix = "",
-  onChange,
-  onBegin,
-  onCommit,
-  onCancel,
-  disabled = false,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  suffix?: string;
-  onChange: (value: number) => void;
-  onBegin?: () => void;
-  onCommit?: () => void;
-  onCancel?: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 flex justify-between text-[10px] text-[var(--muted,#78716c)]">
-        <span>{label}</span>
-        <span>{Math.round(value * 100) / 100}{suffix}</span>
-      </span>
-      <input
-        type="range"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        disabled={disabled}
-        onPointerDown={onBegin}
-        onPointerUp={onCommit}
-        onPointerCancel={onCancel}
-        onKeyDown={onBegin}
-        onKeyUp={onCommit}
-        onBlur={onCommit}
-        onChange={(event) => {
-          onBegin?.();
-          onChange(Number(event.target.value));
-        }}
-        className="w-full accent-[var(--awb-accent,#7c3aed)] disabled:opacity-40"
-      />
-    </label>
   );
 }
 
@@ -232,107 +177,5 @@ export function FabricImageControls({
       </Section>}
 
     </div>
-  );
-}
-
-export function FabricImageFilterPanel({
-  editor,
-}: {
-  editor: FabricImageEditorState;
-}) {
-  const tt = useUI();
-  const settings = editor.filterInfo?.settings;
-  if (!settings) {
-    return (
-      <div className="grid h-full place-items-center bg-[var(--card,#fff)] px-6 text-center text-[11px] leading-5 text-[var(--muted,#78716c)]">
-        {tt("请先选择一张图片，再调整滤镜。")}
-      </div>
-    );
-  }
-  const locked = editor.selected?.locked === true;
-  const ranges: {
-    key: "brightness" | "contrast" | "saturation" | "blur" | "pixelate";
-    label: string;
-    min: number;
-    max: number;
-  }[] = [
-    { key: "brightness", label: "亮度", min: -100, max: 100 },
-    { key: "contrast", label: "对比度", min: -100, max: 100 },
-    { key: "saturation", label: "饱和度", min: -100, max: 100 },
-    { key: "blur", label: "模糊", min: 0, max: 100 },
-    { key: "pixelate", label: "像素化", min: 0, max: 100 },
-  ];
-  const toggles: {
-    key: "grayscale" | "sepia" | "invert";
-    label: string;
-  }[] = [
-    { key: "grayscale", label: "黑白" },
-    { key: "sepia", label: "复古" },
-    { key: "invert", label: "反相" },
-  ];
-  return (
-    <div className="bg-[var(--card,#fff)] p-4">
-      <div className="mb-4">
-        <p className="text-[12px] font-semibold text-[var(--fg,#292524)]">
-          {tt("图片调整")}
-        </p>
-        <p className="mt-1 text-[10px] leading-4 text-[var(--muted,#78716c)]">
-          {tt("精细调整当前图片，所有改动都可撤销。")}
-        </p>
-      </div>
-      <div className="space-y-4">
-        {ranges.map((range) => (
-          <Range
-            key={range.key}
-            label={tt(range.label)}
-            value={settings[range.key]}
-            min={range.min}
-            max={range.max}
-            disabled={locked}
-            onBegin={editor.beginGesture}
-            onCommit={editor.endGesture}
-            onCancel={editor.cancelGesture}
-            onChange={(value) => editor.setFilter(range.key, value)}
-          />
-        ))}
-      </div>
-      <div className="mt-5 grid grid-cols-3 gap-2">
-        {toggles.map((toggle) => (
-          <ToolButton
-            key={toggle.key}
-            active={settings[toggle.key]}
-            disabled={locked}
-            onClick={() =>
-              editor.setFilter(toggle.key, !settings[toggle.key])
-            }
-          >
-            {tt(toggle.label)}
-          </ToolButton>
-        ))}
-      </div>
-      <button
-        type="button"
-        disabled={locked}
-        onClick={editor.resetFilters}
-        className="mt-5 w-full rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2.5 text-[10px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))] disabled:opacity-40"
-      >
-        {tt("重置调整")}
-      </button>
-    </div>
-  );
-}
-
-export function FabricImageFontPanel({
-  editor,
-}: {
-  editor: FabricImageEditorState;
-}) {
-  const selected = editor.selected?.text;
-  return (
-    <AdvancedFontPicker
-      selectedFamily={selected?.fontFamily}
-      disabled={!selected || editor.selected?.locked === true}
-      onSelect={(fontFamily) => editor.setSelectedText({ fontFamily })}
-    />
   );
 }

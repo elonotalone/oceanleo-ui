@@ -17,11 +17,7 @@ import {
 } from "../media-editors/visual-formats";
 import type { ExportFormat } from "../image-editor/types";
 import { FabricImageContextToolbar } from "../image-editor/FabricImageContextToolbar";
-import {
-  FabricImageControls,
-  FabricImageFilterPanel,
-  FabricImageFontPanel,
-} from "../image-editor/FabricImageControls";
+import { FabricImageControls } from "../image-editor/FabricImageControls";
 import {
   FabricImageBrushPanel,
   FabricImageExportPanel,
@@ -376,27 +372,13 @@ export function ImageRoute({
           },
           {
             id: "image-canvas",
-            label: "尺寸与背景",
+            label: "画布",
             icon: "templates",
             content: (
               <VisualViewOnlyPanel readOnly={viewOnly}>
                 <FabricImageControls editor={editor} sections={["canvas"]} />
               </VisualViewOnlyPanel>
             ),
-          },
-          {
-            id: "image-filters",
-            label: "图片调整",
-            icon: "filter",
-            hiddenFromRail: true,
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageFilterPanel editor={editor} /></VisualViewOnlyPanel>,
-          },
-          {
-            id: "image-fonts",
-            label: "字体",
-            icon: "font",
-            hiddenFromRail: true,
-            content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageFontPanel editor={editor} /></VisualViewOnlyPanel>,
           },
           {
             id: "image-export",

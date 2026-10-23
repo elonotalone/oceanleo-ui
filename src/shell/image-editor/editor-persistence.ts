@@ -260,7 +260,8 @@ export async function persistImageProject(
   vector?: { createSvg: () => string; createPreview: () => Promise<Blob> },
 ): Promise<PersistedImageProject> {
   const targetSite = siteId || "design";
-  const title = `${item.title || "图片"}-编辑版`;
+  // 改的是这一份本身：新版本沿用原标题，不再拼「-编辑版」（10-23 W09）。
+  const title = item.title || "图片";
   const rootId = String(
     item.meta.root_asset_id || item.meta.parent_asset_id || item.id,
   );
@@ -572,7 +573,8 @@ async function persistCompositeImageProjectInternal(
     bundle.source.dependencyClosure.dependencies,
     dependencies.fetchBlob,
   );
-  const title = `${item.title || "图片"}-编辑版`;
+  // 改的是这一份本身：新版本沿用原标题，不再拼「-编辑版」（10-23 W09）。
+  const title = item.title || "图片";
   const safeTitle =
     title.replace(/[\\/:*?"<>|]+/g, "-").trim().slice(0, 120) ||
     "复合图片";

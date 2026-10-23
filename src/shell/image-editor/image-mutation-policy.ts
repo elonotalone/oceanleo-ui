@@ -113,9 +113,10 @@ const OBJECT_MUTATION_CONTROLS = new Set<string>(
 
 export const IMAGE_LOCKED_ALLOWED_CONTROLS = [
   "lock",
+  "crop-cancel",
+  // 旧的只开面板的 id（不改对象）
   "font-panel",
   "filter-panel",
-  "crop-cancel",
 ] as const;
 
 const LOCKED_ALLOWED_CONTROLS = new Set<string>(

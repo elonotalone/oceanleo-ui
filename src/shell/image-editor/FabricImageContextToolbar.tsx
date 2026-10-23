@@ -5,7 +5,11 @@ import { useUI } from "../../i18n/ui/useUI";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type { SelectionCommand, SelectionContext } from "../selection-context";
 import { dispatchFabricImageCommand } from "./fabric-image-commands";
-import { buildFabricImageToolbarControls } from "./fabric-image-toolbar-controls";
+import {
+  buildFabricImageToolbarControls,
+  fabricImageSelectionBar,
+} from "./fabric-image-toolbar-controls";
+import { ADVANCED_EDITOR_FONTS } from "../AdvancedFontPicker";
 import type { FabricImageEditorState } from "./types";
 
 export {
@@ -13,6 +17,11 @@ export {
   primaryImageToolbarControlIds,
 } from "./fabric-image-toolbar-controls";
 import { viewOnlyContext } from "../collab/adapters/visual-readonly";
+
+const FONT_OPTIONS = ADVANCED_EDITOR_FONTS.map((font) => ({
+  value: font.family,
+  label: font.label,
+}));
 
 export function FabricImageContextToolbar({
   editor,
@@ -40,11 +49,13 @@ export function FabricImageContextToolbar({
       transformInfo: editor.transformInfo,
       filters,
       layers: editor.layers,
+      fonts: FONT_OPTIONS,
       tt,
     });
     return {
       version: 1,
       kind: selected.kind,
+      bar: fabricImageSelectionBar(selected, editor.cropping),
       id: selected.id,
       label: tt("已选 {kind}", { kind: selected.kind }),
       controls,

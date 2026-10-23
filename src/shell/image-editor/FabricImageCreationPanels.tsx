@@ -338,10 +338,11 @@ export function FabricImageSignaturePanel({
   return (
     <div className="bg-[var(--card,#fff)]">
       <Panel title={tt("手写签名")} description={tt("在签名板书写，满意后插入为可缩放图层。")}>
+        {/* 签名板是「纸」：和图片内容一样保持原色（D6），深色下墨色才看得见。 */}
         <svg
           viewBox="0 0 1000 300"
           preserveAspectRatio="none"
-          className="h-36 w-full touch-none rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]"
+          className="h-36 w-full touch-none rounded-xl border border-[var(--border,#e7e5e4)] bg-[#ffffff] [color-scheme:light]"
           onPointerDown={(event) => {
             if (event.button !== 0) return;
             event.preventDefault();
