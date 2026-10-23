@@ -17,9 +17,9 @@ async function openGrid(page, helpers, id) {
   await page.waitForTimeout(5000);
 }
 
-/** Centre of a cell (0-based row/col) in normal mode: no ribbon, 46px row header, 20px col header. */
+/** Centre of a cell (0-based row/col) in normal mode: no ribbon, 46px row header, 20px col header (from the canvas, below the bar inset). */
 async function cellPoint(page, row, col) {
-  const box = await page.locator(STAGE).first().boundingBox();
+  const box = await page.locator(`${STAGE} canvas >> visible=true`).first().boundingBox();
   return { x: box.x + 46 + 88 * col + 44, y: box.y + 20 + 24 * row + 12 };
 }
 
@@ -38,6 +38,16 @@ async function bar(page) {
       return `${el.getAttribute("data-selection-control-id")}${pressed ? `[${pressed}]` : ""}${value ? `=${value}` : ""}:${(b?.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 16)}`;
     }),
   );
+}
+
+/** Tag the visible main canvas once; the same tag later = same Univer instance (no remount). */
+async function tagCanvas(page) {
+  return page.evaluate(() => {
+    const c = [...document.querySelectorAll("[data-grid-univer-stage] canvas")].find((n) => n.getBoundingClientRect().height > 0);
+    if (!c) return null;
+    if (!c.dataset.w10Tag) c.dataset.w10Tag = `t${Date.now()}`;
+    return c.dataset.w10Tag;
+  });
 }
 
 async function liveCells(page) {
@@ -63,6 +73,24 @@ async function surfaces(page) {
 export default async function ({ page, context, log, shot, helpers, args }) {
   const [mode, id, tag = mode] = args;
   if (!id) throw new Error("artifact id required");
+  // Gateway answers that matter for saving (status + short body; never headers/tokens).
+  page.on("response", async (res) => {
+    const url = res.url();
+    if (res.status() < 400 || /_next\/|\.(js|css|png|woff2?)(\?|$)/.test(url)) return;
+    const body = await res.text().catch(() => "");
+    log("HTTP", res.status(), res.request().method(), url.replace(/^https?:\/\/[^/]+/, "").slice(0, 120), body.slice(0, 300));
+  });
+  page.on("requestfailed", (req) => {
+    const url = req.url();
+    if (/_next\/|hot-update/.test(url)) return;
+    log("REQFAILED", req.method(), url.replace(/\?.*$/, "").slice(0, 140), req.failure()?.errorText || "");
+  });
+  page.on("request", (req) => {
+    const url = req.url();
+    if (req.method() !== "GET" && /artifact|revision|upload|commit|fork/.test(url)) {
+      log("REQ", req.method(), url.replace(/^https?:\/\/[^/]+/, "").slice(0, 120));
+    }
+  });
   await openGrid(page, helpers, id);
   log("surfaces", JSON.stringify(await surfaces(page)));
   log("liveCells@open", await liveCells(page));
@@ -86,6 +114,160 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     await page.waitForTimeout(600);
     log("bar B3:C4", JSON.stringify(await bar(page)));
     await shot(`${tag}-range`);
+    return;
+  }
+
+  if (mode === "trace2") {
+    // Second edit after a save: watch the save state second by second.
+    const stamp = String(Date.now()).slice(-5);
+    const watch = async (label, secs) => {
+      let prev = "";
+      for (let i = 0; i < secs; i += 1) {
+        const s = await helpers.saveState(page);
+        const busy = await page.locator("[data-grid-univer-loading]").count();
+        const now = `${s}${busy ? "+loading" : ""}`;
+        if (now !== prev) log(label, `t+${i}s`, now);
+        prev = now;
+        await page.waitForTimeout(1000);
+      }
+    };
+    log("open state", await helpers.saveState(page), "tag", await tagCanvas(page));
+    await clickCell(page, 14, 4);
+    await page.keyboard.type(`T1${stamp}`);
+    await page.keyboard.press("Enter");
+    await watch("edit1", 25);
+    log("tag after save1", await tagCanvas(page));
+    await clickCell(page, 14, 5);
+    await page.keyboard.type(`T2${stamp}`);
+    await page.keyboard.press("Enter");
+    await watch("edit2", 25);
+    await shot(`${tag}-after-edit2`);
+    log("tag after edit2", await tagCanvas(page));
+    return;
+  }
+
+  if (mode === "diag") {
+    const launcher = page.locator("[data-workspace-save-launcher]").first();
+    log("launcher", await launcher.getAttribute("data-save-state").catch(() => null), (await launcher.textContent().catch(() => "")).trim(), await launcher.getAttribute("title").catch(() => null), await launcher.getAttribute("aria-label").catch(() => null));
+    await launcher.click().catch(() => {});
+    await page.waitForTimeout(800);
+    await shot(`${tag}-launcher`);
+    log("popover", (await page.locator("[role=dialog], [role=menu], [data-workspace-save-panel]").first().textContent().catch(() => "")).trim().slice(0, 400));
+    return;
+  }
+
+  if (mode === "buttons") {
+    // Every text-bar control on an empty cell: effect read back from Univer through the bar,
+    // top-bar undo reverts it, then a final styled state must survive save + reload.
+    const ctl = (id) =>
+      page.evaluate((cid) => {
+        const el = document.querySelector(`[data-selection-control-id="${cid}"]`);
+        if (!el) return null;
+        return {
+          pressed: el.querySelector("[aria-pressed]")?.getAttribute("aria-pressed") ?? null,
+          value: el.querySelector("input[type=number], input[type=color]")?.value ?? null,
+          text: (el.textContent || "").trim().slice(0, 30),
+          sel: [...el.querySelectorAll("[data-icon]")].map((n) => n.getAttribute("data-icon")).join(","),
+        };
+      }, id);
+    const undoBtn = page.getByRole("button", { name: /^(Undo|撤销)/ }).first();
+    const undo = async () => {
+      await undoBtn.click();
+      await page.waitForTimeout(600);
+    };
+    const pick = async (id, value) => {
+      await page.locator(`[data-selection-control-id="${id}"] button`).first().click();
+      await page.waitForTimeout(300);
+      await page.locator(`[data-selection-option="${value}"]`).first().click();
+      await page.waitForTimeout(600);
+    };
+    const results = [];
+    const record = (id, before, after, undone, ok) => {
+      results.push({ id, ok, before, after, undone });
+      log("BTN", id, ok ? "OK" : "FAIL", JSON.stringify({ before, after, undone }));
+    };
+    const [r, c] = [2, 7]; // H3
+    await clickCell(page, r, c);
+    await page.keyboard.type(`W10btn`);
+    await page.keyboard.press("Enter");
+    await clickCell(page, r, c);
+    for (const id of ["bold", "italic", "underline", "strike", "grid-wrap"]) {
+      const before = await ctl(id);
+      if (!before) { record(id, null, null, null, false); continue; }
+      await page.locator(`[data-selection-control-id="${id}"] button`).first().click();
+      await page.waitForTimeout(600);
+      const after = await ctl(id);
+      await undo();
+      const undone = await ctl(id);
+      record(id, before.pressed, after?.pressed, undone?.pressed, before.pressed !== after?.pressed && undone?.pressed === before.pressed);
+    }
+    {
+      const before = await ctl("font-size");
+      const input = page.locator('[data-selection-control-id="font-size"] input[type=number]').first();
+      await input.fill("16");
+      await input.press("Enter");
+      await page.waitForTimeout(600);
+      const after = await ctl("font-size");
+      await undo();
+      const undone = await ctl("font-size");
+      record("font-size", before?.value, after?.value, undone?.value, after?.value === "16" && undone?.value === before?.value);
+    }
+    for (const [id, value] of [["font-family", "Times New Roman"], ["align", "center"], ["grid-valign", "top"], ["grid-border", "all"], ["type", "percent"]]) {
+      const before = await ctl(id);
+      if (!before) { record(id, null, null, null, false); continue; }
+      await pick(id, value).catch((e) => log("pick failed", id, String(e).slice(0, 120)));
+      const after = await ctl(id);
+      await undo();
+      const undone = await ctl(id);
+      const changed = JSON.stringify(after) !== JSON.stringify(before);
+      record(id, before, after, undone, changed && JSON.stringify(undone) === JSON.stringify(before));
+    }
+    for (const [id, color] of [["text-color", "#c00000"], ["highlight", "#ffff00"]]) {
+      const before = await ctl(id);
+      await page.locator(`[data-selection-control-id="${id}"] input[type=color]`).first().fill(color);
+      await page.waitForTimeout(600);
+      const after = await ctl(id);
+      await undo();
+      const undone = await ctl(id);
+      record(id, before?.value, after?.value, undone?.value, after?.value === color && undone?.value === before?.value);
+    }
+    // merge only shows on a range: H5:I6.
+    {
+      const a = await cellPoint(page, 4, 7);
+      const b = await cellPoint(page, 5, 8);
+      await page.mouse.move(a.x, a.y);
+      await page.mouse.down();
+      await page.mouse.move(b.x, b.y, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(600);
+      const before = await ctl("merge-cells");
+      if (before) {
+        await page.locator('[data-selection-control-id="merge-cells"] button').first().click();
+        await page.waitForTimeout(800);
+        const after = await ctl("merge-cells");
+        await shot(`${tag}-merged`);
+        await undo();
+        const undone = await ctl("merge-cells");
+        record("merge-cells", before, after, undone, JSON.stringify(after) !== JSON.stringify(before) && JSON.stringify(undone) === JSON.stringify(before));
+      } else record("merge-cells", null, null, null, false);
+    }
+    // Final state that must persist: H3 bold + red + yellow fill.
+    await clickCell(page, r, c);
+    await page.locator('[data-selection-control-id="bold"] button').first().click();
+    await page.locator('[data-selection-control-id="text-color"] input[type=color]').first().fill("#c00000");
+    await page.locator('[data-selection-control-id="highlight"] input[type=color]').first().fill("#ffff00");
+    await page.waitForTimeout(800);
+    await shot(`${tag}-final`);
+    await helpers.waitSaved(page, { timeout: 90000 }).catch((e) => log("waitSaved", String(e)));
+    log("saveState", await helpers.saveState(page));
+    await openGrid(page, helpers, id);
+    log("saveState@reopen", await helpers.saveState(page));
+    await clickCell(page, r, c);
+    const reopened = { bold: await ctl("bold"), color: await ctl("text-color"), fill: await ctl("highlight") };
+    log("reopened H3", JSON.stringify(reopened));
+    log("RESULT persisted", reopened.bold?.pressed === "true" && reopened.color?.value === "#c00000" && reopened.fill?.value === "#ffff00" ? "yes" : "NO");
+    log("RESULT buttons", results.filter((x) => !x.ok).map((x) => x.id).join(",") || "all-ok");
+    await shot(`${tag}-reopened`);
     return;
   }
 
@@ -160,6 +342,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
 
   if (mode === "save") {
     const stamp = String(Date.now()).slice(-5);
+    log("canvas tag at open", await tagCanvas(page));
     await clickCell(page, 12, 4);
     await page.keyboard.type(`W10a${stamp}`);
     await page.keyboard.press("Enter");
@@ -167,20 +350,25 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     log("state after edit 1", await helpers.saveState(page));
     await helpers.waitSaved(page, { timeout: 90000 });
     log("saved 1", page.url());
+    log("canvas tag after save 1", await tagCanvas(page));
     await shot(`${tag}-saved1`);
     await clickCell(page, 12, 5);
     await page.keyboard.type(`W10b${stamp}`);
     await page.keyboard.press("Enter");
     await page.waitForTimeout(800);
     log("state after edit 2", await helpers.saveState(page));
+    log("canvas tag after edit 2", await tagCanvas(page));
+    await shot(`${tag}-edit2`);
     await helpers.waitSaved(page, { timeout: 90000 });
     log("saved 2", page.url());
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await page.locator(`${STAGE} canvas >> visible=true`).first().waitFor({ timeout: 150000 });
-    await page.waitForTimeout(5000);
-    const cells = await liveCells(page);
-    log("liveCells@reload", cells);
-    log("RESULT", cells.includes(`W10a${stamp}`) && cells.includes(`W10b${stamp}`) ? "both-present" : "MISSING", stamp);
+    // Close → reopen (fresh navigation), then a full page reload; both must show the two edits.
+    await openGrid(page, helpers, id);
+    log("saveState@reopen", await helpers.saveState(page));
+    const found = await page.evaluate((marks) => {
+      const all = JSON.stringify(globalThis.__oceanleoGridUniverPaint?.liveCells || []);
+      return marks.map((m) => all.includes(m));
+    }, [`W10a${stamp}`, `W10b${stamp}`]);
+    log("RESULT", found.every(Boolean) ? "both-present" : `MISSING ${JSON.stringify(found)}`, stamp);
     await shot(`${tag}-reopened`);
     return;
   }

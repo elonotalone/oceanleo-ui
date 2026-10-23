@@ -67,7 +67,16 @@ import type { IWorkbookData } from "@univerjs/presets";
 
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { LibraryItem } from "../library-data";
-import { advancedSavedItem } from "../advanced-session";
+import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
+import { withEditorHistoryCommand } from "../workbench-material-command";
+import {
+  GRID_IMAGE_MAX_BYTES,
+  gridAcceptsImageMaterial,
+  gridImageDataUrlFromBlob,
+  gridMaterialImageUrl,
+  insertGridImageAtSelection,
+  type GridImageInsertApi,
+} from "./grid-univer/material-image";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { fetchMediaBlob } from "../../lib/media-proxy";
@@ -168,6 +177,8 @@ import {
   type GridUniverLiveApi,
 } from "./grid-univer/stage-plan";
 import { gridStageTopInset } from "./grid-univer/chrome";
+import { noteGridProbe, setGridProbe } from "./grid-univer/acceptance-probe";
+import { gridRecoveryReady } from "./grid-univer/open-settle";
 import {
   GRID_PRO_LABEL,
   GRID_UNIVER_RECOVERY_EDITOR_ID,
@@ -333,6 +344,7 @@ export function GridUniverStage({
   const collabOnRef = useRef(collabOn);
   collabOnRef.current = collabOn;
   const collabBinderRef = useRef<GridCollabBinder | null>(null);
+  const [collabBound, setCollabBound] = useState(false);
   /** 别人存了新版本后，下一次保存要以它为基线（否则版本冲突）。 */
   const externalItemRef = useRef<LibraryItem | null>(null);
 
@@ -354,6 +366,7 @@ export function GridUniverStage({
   liveItemRef.current = item;
 
   const bumpHistory = useCallback(() => {
+    noteGridProbe("person-write");
     applyGridUserEditSession(liveItemRef.current, "person-write");
     setEditRevision((value) => value + 1);
     setDirty(true);
@@ -413,6 +426,7 @@ export function GridUniverStage({
       return;
     }
     loadedIdentityRef.current = null;
+    noteGridProbe("source-reload");
     let cancelled = false;
     const title = item.title || ttRef.current("工作簿");
     setLoading(true);
@@ -716,16 +730,19 @@ export function GridUniverStage({
         canWrite: () => !collabViewOnlyRef.current,
       }),
       onFullReplace: () => setStatus(ttRef.current("别人调整了表格的一部分设置，表格已重新载入。")),
-      onActivity: () => {
+      onActivity: (origin) => {
+        noteGridProbe(`collab-${origin}`);
         applyGridUserEditSession(liveItemRef.current, "collab-activity");
         setEditRevision((value) => value + 1);
         setDirty(true);
       },
     });
     collabBinderRef.current = binder;
+    setCollabBound(true);
     return () => {
       binder.destroy();
       if (collabBinderRef.current === binder) collabBinderRef.current = null;
+      setCollabBound(false);
     };
     // applyChrome 稳定；room 换了或协同开关变了才重绑。
   }, [applyChrome, collabOn, collabRoom, snapshotReady]);
@@ -751,6 +768,7 @@ export function GridUniverStage({
         if (!alive || mine !== ticket || !snapshot) return;
         const binder = collabBinderRef.current;
         if (!binder) return;
+        noteGridProbe(`external-adopt:${revisionId}`);
         binder.adopt(snapshot as GridWorkbookSnapshot);
         externalItemRef.current = revision;
         collabRoom.markSaved(revisionId);
@@ -998,6 +1016,7 @@ export function GridUniverStage({
         return null;
       }
       setDirty(false);
+      noteGridProbe(`saved:${result.revisionId || ""}`);
       externalItemRef.current = null;
       if (collabRoom && result.revisionId) collabRoom.markSaved(result.revisionId);
       setStatus(gridXlsxDroppedWarning(xlsxDropped));
@@ -1128,37 +1147,30 @@ export function GridUniverStage({
     [applyChrome, bumpHistory, mode],
   );
 
+  // 素材库：点一张图片 = 在当前格子插浮动图片（进撤销栈，见 `grid-univer/material-image.ts`）。
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
-      id: "grid-materials@2",
-      actions: ["replace"],
-      accepts: (material) => {
-        const url = material.url || material.previewUrl || "";
-        const format = String(material.meta.format || "").toLowerCase();
-        return (
-          material.kind === "sheet" ||
-          ["csv", "tsv", "xlsx", "xls"].includes(format) ||
-          /\.(?:csv|tsv|xlsx?|xlsm)(?:$|[?#])/i.test(url)
-        );
-      },
+      id: "grid-materials@3",
+      actions: ["insert"],
+      materialTypes: ["image"],
+      accepts: (material, action) => action === "insert" && gridAcceptsImageMaterial(material),
       mutate: async (_action, material) => {
-        const url = material.url || material.previewUrl || "";
-        if (!url) throw new Error(tt("这个表格素材没有可用地址。"));
-        const blob = await fetchMediaBlob(url, { maxBytes: 64 * 1024 * 1024 });
-        const extension =
-          String(material.meta.format || "").toLowerCase() ||
-          url.split(/[?#]/)[0].split(".").pop() ||
-          "xlsx";
-        await importLocalFile([
-          new File([blob], `${material.title || "table"}.${extension}`, {
-            type: blob.type || "application/octet-stream",
-          }),
-        ]);
+        if (editBlockedRef.current) throw new Error(tt("现在是只读状态，不能修改。"));
+        const blob = await fetchMediaBlob(gridMaterialImageUrl(material), { maxBytes: GRID_IMAGE_MAX_BYTES });
+        const dataUrl = await gridImageDataUrlFromBlob(blob).catch((e: Error) => { throw new Error(tt(e.message)); });
+        if (!(await insertGridImageAtSelection(handleRef.current?.api as GridImageInsertApi, dataUrl))) {
+          throw new Error(tt("图片没有插进表格，请重试。"));
+        }
       },
     }),
-    [importLocalFile],
+    [tt],
   );
-  useWorkbenchMaterialAdapter(materialAdapter);
+  useWorkbenchMaterialAdapter(
+    withEditorHistoryCommand(materialAdapter, {
+      documentId: advancedRootItemId(item),
+      targetRevisionId: item.revisionId ? String(item.revisionId) : "",
+    }),
+  );
 
   // agent 指令面：一条 `run` 一条路，写与不写的判断全在 `runGridAgentCommand`
   // 里（V3-red-3）。这里不许再出现任何直接调 Facade 的分支——
@@ -1235,6 +1247,14 @@ export function GridUniverStage({
             onWrite: bumpHistory,
           }),
   });
+
+  // 恢复草稿等协同首同步把房间内容套进画布之后再开始（`grid-univer/open-settle.ts`）。
+  const recoveryReady = gridRecoveryReady({
+    snapshotReady, loading, sourceFailed, collabOn, collabPhase, collabBound,
+  });
+  useEffect(() => {
+    setGridProbe("state", { editRevision, dirty, collab: collabPhase, ready: recoveryReady });
+  }, [collabPhase, dirty, editRevision, recoveryReady]);
 
   const selectionContext = useMemo(
     () =>
@@ -1383,7 +1403,7 @@ export function GridUniverStage({
           recovery: {
             draftSchema: "oceanleo.grid.univer.v1",
             key: advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item),
-            ready: snapshotReady && !loading && !sourceFailed,
+            ready: recoveryReady,
             capture: () =>
               sourceFailedRef.current || !snapshotReady
                 ? null

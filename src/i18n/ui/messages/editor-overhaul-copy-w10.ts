@@ -4,6 +4,9 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
   de: {
+    "图片没有插进表格，请重试。": "Das Bild wurde nicht eingefügt. Bitte erneut versuchen.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Tabellen können nur PNG-, JPEG- oder GIF-Bilder aufnehmen.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Bild zu groß – höchstens 5 MB pro Bild.",
     "合并单元格": "Zellen verbinden",
     "边框": "Rahmen",
     "所有框线": "Alle Rahmenlinien",
@@ -27,6 +30,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "Die Tabelle wurde nicht geladen; es wurde keine leere Tabelle gespeichert.",
   },
   en: {
+    "图片没有插进表格，请重试。": "The image wasn’t inserted. Please try again.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Sheets can only take PNG, JPEG or GIF images.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Image too large — 5 MB max per image.",
     "合并单元格": "Merge cells",
     "边框": "Borders",
     "所有框线": "All borders",
@@ -50,6 +56,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "The sheet didn't load, so no blank sheet was saved.",
   },
   es: {
+    "图片没有插进表格，请重试。": "No se insertó la imagen. Inténtalo de nuevo.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Las hojas solo admiten imágenes PNG, JPEG o GIF.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Imagen demasiado grande: máximo 5 MB.",
     "合并单元格": "Combinar celdas",
     "边框": "Bordes",
     "所有框线": "Todos los bordes",
@@ -73,6 +82,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "La hoja no se cargó; no se guardó una hoja en blanco.",
   },
   "es-419": {
+    "图片没有插进表格，请重试。": "No se insertó la imagen. Intenta de nuevo.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Las hojas solo admiten imágenes PNG, JPEG o GIF.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Imagen demasiado grande: máximo 5 MB.",
     "合并单元格": "Combinar celdas",
     "边框": "Bordes",
     "所有框线": "Todos los bordes",
@@ -96,6 +108,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "La hoja no se cargó; no se guardó una hoja en blanco.",
   },
   fr: {
+    "图片没有插进表格，请重试。": "L’image n’a pas été insérée. Réessayez.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Les feuilles n’acceptent que les images PNG, JPEG ou GIF.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Image trop lourde : 5 Mo maximum.",
     "合并单元格": "Fusionner les cellules",
     "边框": "Bordures",
     "所有框线": "Toutes les bordures",
@@ -119,6 +134,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "La feuille ne s'est pas chargée ; aucune feuille vide n'a été enregistrée.",
   },
   it: {
+    "图片没有插进表格，请重试。": "L’immagine non è stata inserita. Riprova.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "I fogli accettano solo immagini PNG, JPEG o GIF.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Immagine troppo grande: massimo 5 MB.",
     "合并单元格": "Unisci celle",
     "边框": "Bordi",
     "所有框线": "Tutti i bordi",
@@ -142,6 +160,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "Il foglio non è stato caricato: non è stato salvato un foglio vuoto.",
   },
   "pt-BR": {
+    "图片没有插进表格，请重试。": "A imagem não foi inserida. Tente de novo.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Planilhas só aceitam imagens PNG, JPEG ou GIF.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Imagem grande demais: máximo de 5 MB.",
     "合并单元格": "Mesclar células",
     "边框": "Bordas",
     "所有框线": "Todas as bordas",
@@ -165,6 +186,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "A planilha não carregou; nenhuma planilha em branco foi salva.",
   },
   "pt-PT": {
+    "图片没有插进表格，请重试。": "A imagem não foi inserida. Tente novamente.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "As folhas só aceitam imagens PNG, JPEG ou GIF.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Imagem demasiado grande: máximo de 5 MB.",
     "合并单元格": "Unir células",
     "边框": "Limites",
     "所有框线": "Todos os limites",
@@ -188,6 +212,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "A folha não carregou; não foi guardada nenhuma folha em branco.",
   },
   vi: {
+    "图片没有插进表格，请重试。": "Chưa chèn được ảnh. Vui lòng thử lại.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Bảng tính chỉ nhận ảnh PNG, JPEG hoặc GIF.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Ảnh quá lớn — tối đa 5 MB.",
     "合并单元格": "Gộp ô",
     "边框": "Viền",
     "所有框线": "Tất cả viền",
@@ -211,6 +238,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "Bảng tính chưa tải được nên không lưu bảng trống.",
   },
   tr: {
+    "图片没有插进表格，请重试。": "Görsel eklenemedi. Lütfen tekrar deneyin.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "Tablolara yalnızca PNG, JPEG veya GIF görseller eklenebilir.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "Görsel çok büyük — en fazla 5 MB.",
     "合并单元格": "Hücreleri birleştir",
     "边框": "Kenarlıklar",
     "所有框线": "Tüm kenarlıklar",
@@ -234,6 +264,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "Tablo yüklenemedi; boş bir tablo kaydedilmedi.",
   },
   "zh-TW": {
+    "图片没有插进表格，请重试。": "圖片沒有插入表格，請重試。",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "表格只能插入 PNG、JPEG 或 GIF 圖片。",
+    "图片太大，表格里最多插入 5 MB 的图片。": "圖片太大，表格中每張圖片最多 5 MB。",
     "合并单元格": "合併儲存格",
     "边框": "框線",
     "所有框线": "所有框線",
@@ -257,6 +290,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "表格來源尚未成功載入，未儲存空白表。",
   },
   ja: {
+    "图片没有插进表格，请重试。": "画像を挿入できませんでした。もう一度お試しください。",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "表には PNG・JPEG・GIF 画像のみ挿入できます。",
+    "图片太大，表格里最多插入 5 MB 的图片。": "画像が大きすぎます（最大 5 MB）。",
     "合并单元格": "セルを結合",
     "边框": "罫線",
     "所有框线": "格子",
@@ -280,6 +316,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "表を読み込めなかったため、空の表は保存していません。",
   },
   ko: {
+    "图片没有插进表格，请重试。": "이미지를 넣지 못했습니다. 다시 시도해 주세요.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "표에는 PNG, JPEG, GIF 이미지만 넣을 수 있습니다.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "이미지가 너무 큽니다(최대 5MB).",
     "合并单元格": "셀 병합",
     "边框": "테두리",
     "所有框线": "모든 테두리",
@@ -303,6 +342,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "시트를 불러오지 못해 빈 시트를 저장하지 않았습니다.",
   },
   ar: {
+    "图片没有插进表格，请重试。": "لم تُدرج الصورة. حاول مرة أخرى.",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "تقبل الجداول صور PNG أو JPEG أو GIF فقط.",
+    "图片太大，表格里最多插入 5 MB 的图片。": "الصورة كبيرة جدًا — الحد الأقصى 5 ميغابايت.",
     "合并单元格": "دمج الخلايا",
     "边框": "الحدود",
     "所有框线": "كل الحدود",
@@ -326,6 +368,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "لم يتم تحميل الجدول، لذلك لم يُحفظ جدول فارغ.",
   },
   th: {
+    "图片没有插进表格，请重试。": "แทรกรูปไม่สำเร็จ โปรดลองอีกครั้ง",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "ตารางแทรกได้เฉพาะรูป PNG, JPEG หรือ GIF",
+    "图片太大，表格里最多插入 5 MB 的图片。": "รูปใหญ่เกินไป — สูงสุด 5 MB",
     "合并单元格": "ผสานเซลล์",
     "边框": "เส้นขอบ",
     "所有框线": "เส้นขอบทั้งหมด",
@@ -349,6 +394,9 @@ export const EDITOR_OVERHAUL_W10_COPY: EditorOverhaulCopy = {
     "表格源尚未成功载入，未保存空白表。": "โหลดตารางไม่สำเร็จ จึงไม่ได้บันทึกตารางเปล่า",
   },
   hi: {
+    "图片没有插进表格，请重试。": "चित्र नहीं जुड़ा। कृपया फिर से कोशिश करें।",
+    "表格只能插入 PNG、JPEG 或 GIF 图片。": "शीट में केवल PNG, JPEG या GIF चित्र जोड़े जा सकते हैं।",
+    "图片太大，表格里最多插入 5 MB 的图片。": "चित्र बहुत बड़ा है — अधिकतम 5 MB।",
     "合并单元格": "सेल मर्ज करें",
     "边框": "बॉर्डर",
     "所有框线": "सभी बॉर्डर",
