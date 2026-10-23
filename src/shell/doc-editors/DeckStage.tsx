@@ -87,7 +87,6 @@ function PositionedSlideCanvas({
   const [interaction, setInteraction] = useState<ElementInteraction | null>(
     null,
   );
-  const textSurfaceActivatedForSlide = useRef("");
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
   const master = deckMasterFor(editor.deck, slide);
@@ -109,21 +108,8 @@ function PositionedSlideCanvas({
       editor.endTextEditing();
     }
   }, [editingId, editor.endTextEditing, slide.elements]);
-  // Surface a discoverable editable text target as soon as the slide opens so
-  // production acceptance (and users) are not stuck on image-only selection chrome.
-  useEffect(() => {
-    if (activeTool === "draw" || editor.readOnly) return;
-    if (!primaryEditableText) return;
-    if (textSurfaceActivatedForSlide.current === slide.id) return;
-    textSurfaceActivatedForSlide.current = slide.id;
-    editor.beginTextEditing(primaryEditableText.id);
-  }, [
-    activeTool,
-    editor.readOnly,
-    editor.beginTextEditing,
-    primaryEditableText,
-    slide.id,
-  ]);
+  // 开档 / 换页不再自动进入文字编辑：那样永远是文字栏，点哪里都回不到「没选中」，
+  // 空态抽屉也就看不到（10-23 W02/W07 实测）。编辑文字靠双击 / Enter / F2。
 
   const startInteraction = (
     event: ReactPointerEvent<HTMLElement>,
@@ -493,6 +479,10 @@ export function DeckStage({
           slides={previewSlides}
           activeSlideId={editor.activeSlide.id}
           onActiveSlideChange={editor.selectSlide}
+          onStageBackgroundPointerDown={() => {
+            editor.endTextEditing();
+            editor.selectElement("");
+          }}
           logicalSize={logicalSize}
           zoomPercent={zoom}
           onZoomPercentChange={onZoomChange}

@@ -134,7 +134,10 @@ function DeckEditableText({
           settledRef.current = true;
           event.currentTarget.textContent = element.text || "";
           onCancelEditing?.();
+          // 焦点交回对象本身：再按一次 Esc 就取消选中（use-deck-stage-shortcuts）。
+          const owner = event.currentTarget.closest<HTMLElement>("[data-deck-element]");
           event.currentTarget.blur();
+          owner?.focus({ preventScroll: true });
         } else if (
           (event.metaKey || event.ctrlKey) &&
           event.key === "Enter"

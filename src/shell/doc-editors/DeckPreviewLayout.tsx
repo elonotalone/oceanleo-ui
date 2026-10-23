@@ -67,6 +67,8 @@ export interface DeckPreviewLayoutProps {
   stageLabel?: string;
   stageOverlay?: ReactNode;
   busy?: boolean;
+  /** 点在幻灯片外的舞台空白处（编辑态用来取消选中）。 */
+  onStageBackgroundPointerDown?: () => void;
   accent?: string;
   className?: string;
 }
@@ -223,6 +225,7 @@ export function DeckPreviewLayout({
   stageLabel,
   stageOverlay,
   busy = false,
+  onStageBackgroundPointerDown,
   accent = "#4f46e5",
   className = "",
 }: DeckPreviewLayoutProps) {
@@ -411,6 +414,12 @@ export function DeckPreviewLayout({
         data-deck-preview-scale={geometry.scale}
         aria-label={stageLabel ?? tt("演示文稿画布")}
         aria-busy={busy}
+        onPointerDown={(event) => {
+          if (!onStageBackgroundPointerDown) return;
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("[data-deck-canvas]")) return;
+          onStageBackgroundPointerDown();
+        }}
         className="relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-[var(--advanced-stage-bg,#f4f1e8)]"
       >
         <div

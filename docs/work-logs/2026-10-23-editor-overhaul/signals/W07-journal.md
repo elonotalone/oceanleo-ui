@@ -15,3 +15,4 @@
 - 08:45Z [实测] 3 页的演示在库页里舞台只有 399px 高（`deckPreviewViewportCapStyle` 给 `height:auto`，舞台缩成缩略图栏高度），幻灯片顶部钻进浮动编辑栏底下、下面一截空底。修：只给 maxHeight，h-full 撑满（/tmp/w07-r2m 829px）。
 - 08:50Z [读码] W02 契约：素材 adapter 搬进 `use-deck-material-adapter.ts`，`withEditorHistoryCommand` 登记 command（载入中不登记；替换只认选中图片）。
 - 08:55Z [实测] W02 落地后空态抽屉出来了（Templates 元素 Brush Lines Note）。英文界面露中文：空白 / 母版与版式 / 元素 / 过渡……→ 文案册补 75 条 ×16 语。页面栏：版式换 pages 字形、备注换 text 字形（不与抽屉撞形）；「页面内容」下栏（有对象的页上是死按钮，旧式页本来就原地编辑）。tsc 演示 0 错。
+- 09:00Z [实测] W02 报的「标题框选中退不出」复现（/tmp/w07-r2n，[W02] sample.pptx）：开档即进入标题文字编辑（DeckStage 有个「开页自动进入主文字编辑」的旧 effect）；Esc 后仍是 slide-text；点幻灯片外的舞台不取消选中；只有点幻灯片内空白处才回到页面栏。修：去掉自动编辑；舞台空白处按下 = 取消选中；文字编辑里 Esc 把焦点交回对象，再按 Esc 取消选中。

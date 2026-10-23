@@ -264,3 +264,18 @@ test("slide bar: no page-content panel, layout and notes do not share the drawer
   assert.ok(!drawerGlyphs.has(layout.icon), layout.icon);
   assert.ok(!drawerGlyphs.has(notes.inspectorIcon), notes.inspectorIcon);
 });
+
+test("opening a deck selects nothing; Esc and the stage background return to the slide bar", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const stage = read("../src/shell/doc-editors/DeckStage.tsx");
+  // 10-23 W02/W07 实测：开档自动进入标题编辑 → 永远是文字栏，空态抽屉看不到。
+  assert.doesNotMatch(stage, /textSurfaceActivatedForSlide/);
+  assert.match(stage, /onStageBackgroundPointerDown=\{\(\) => \{\s*editor\.endTextEditing\(\);\s*editor\.selectElement\(""\);/);
+  const layout = read("../src/shell/doc-editors/DeckPreviewLayout.tsx");
+  assert.match(layout, /if \(target\?\.closest\("\[data-deck-canvas\]"\)\) return;\s*onStageBackgroundPointerDown\(\);/);
+  const shortcuts = read("../src/shell/doc-editors/use-deck-stage-shortcuts.ts");
+  assert.match(shortcuts, /event\.key === "Escape" && currentEditor\.selectedElement[\s\S]{0,160}currentEditor\.selectElement\(""\)/);
+  const content = read("../src/shell/doc-editors/DeckElementContent.tsx");
+  assert.match(content, /owner\?\.focus\(\{ preventScroll: true \}\)/);
+});

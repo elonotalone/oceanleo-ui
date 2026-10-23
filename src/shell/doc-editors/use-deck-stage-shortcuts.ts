@@ -37,7 +37,11 @@ export function useDeckStageShortcuts(
         return;
       }
       const command = event.ctrlKey || event.metaKey;
-      if (command && event.key.toLowerCase() === "z") {
+      if (event.key === "Escape" && currentEditor.selectedElement) {
+        // 退出选中，回到页面级编辑栏与空态抽屉（10-23 W07）。
+        event.preventDefault();
+        currentEditor.selectElement("");
+      } else if (command && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) currentEditor.redo();
         else currentEditor.undo();
