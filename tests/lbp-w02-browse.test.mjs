@@ -1098,11 +1098,10 @@ test("我改动的文件里每一句 tt() 中文都有 16 语译文（五个种�
 });
 
 // ---------------------------------------------------------------------------
-// 8. 等父 agent 改 bay-state.ts 之后才会绿（交卷「对父 agent 的请求」第 1 条）
+// 8. bay-state.ts 的求购白名单认 other（父 agent 已按 W02 请求改）
 // ---------------------------------------------------------------------------
 test(
   "bay-state 的求购 offer 白名单认 other：筛选里写 offer=other 不会被丢回人工服务（也认地址 ?offer=other）",
-  { todo: "bay-state.ts 不归 W02：normalizeFilter 与 readPageOffer 各加一个 other，见交卷「对父 agent 的请求」" },
   async () => {
     const family = dataModule(`
       export function currentDomainFamily() { return "com"; }
