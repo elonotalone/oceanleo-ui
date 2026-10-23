@@ -7,3 +7,5 @@
 - 07:44Z [实测+SQL] 两次栏内改动（加粗、删除线）→ rev4、rev5（+2）；重开编辑器两处都在（`/tmp/w07-y/save3-reloaded.png`）。
 - 07:47Z [实测] 断网改动 → 顶栏「保存失败，点击重试」；恢复网络点重试仍失败：断网时 `import("pptxgenjs")` 分包载入失败被缓存，舞台上还露出内部分包路径。修：载入完成即预热写出器、只缓存成功的载入、网络类失败给统一人话。
 - 07:55Z [实测+SQL] 修后：断网 → error；恢复 → 点重试 → saved，rev7/rev8 落库；07:45Z 之后不再新增「草稿」隐藏 root（W04 staging 已生效）。
+- 08:21–08:27Z [实测] R2 复跑公共模板 `8886a2d9…`：`:fork` 每次都回同一份副本 a67bdb59（不新增条目）。第 1 次保存 200 → 随即遮罩闪一下（宿主传回保存回执 item，载入键变 → 整份重载 → 读到服务端草稿又标脏）→ 第 2 次保存拿旧基线 409 → 内核重试撞 `blob-digest-conflict` → 保存失败（/tmp/w07-r2h/w07-fork.log）。另一次（/tmp/w07-r2g）第 2、3 次改动显示「已保存」却没有新 revision（只有 rev4）。
+- 08:40Z [读码+test] 修：`deck-save-echo.ts`——宿主传回本编辑器刚存的那一版不重载；保存前基线若是本页谱系里更早的一版先换成自己的 head。`tests/deck-save-echo.test.mjs` 4/4；`deck-editor-integrity` 第 6 条改断言统一栏的 gesture/transient（DeckControls 已不画对象连续控件）。

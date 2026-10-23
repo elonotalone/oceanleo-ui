@@ -484,7 +484,15 @@ test("Deck continuous editor controls use one gesture base and transient updates
   assert.match(editor, /beginGesture[\s\S]*gestureRef\.current = snapshot\(\)/);
   assert.match(editor, /endGesture[\s\S]*undoRef\.current\.push\(base\)/);
   assert.match(controls, /onPointerDown=\{editor\.beginGesture\}/);
-  assert.match(controls, /editor\.patchElementTransient/);
+  // 10-23 D9：对象的连续控件（不透明度、圆角、位置……）搬进统一编辑栏，
+  // 拖动走 SelectionCommand 的 phase：首帧 beginGesture → 中间 transient → commit 收口。
+  const toolbarCommand = readFileSync(
+    new URL("../src/shell/doc-editors/deck-toolbar-command.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(toolbarCommand, /editor\.beginGesture\(\)/);
+  assert.match(toolbarCommand, /editor\.patchElementTransient/);
+  assert.match(toolbarCommand, /message\.phase === "commit"\) editor\.endGesture\(\)/);
   assert.match(controls, /onPointerUp=\{editor\.endGesture\}/);
   assert.match(stage, /onFocus: \(\) => editor\.beginGesture\(\)/);
   assert.match(stage, /editor\.patchSlideTransient/);

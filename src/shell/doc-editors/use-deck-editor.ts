@@ -13,6 +13,7 @@ import type { WorkbenchMaterialPlacement } from "../workbench-material-provider"
 import { officeExtensionForItem } from "../workbench-routes";
 import { deckRebase } from "../collab/adapters/deck";
 import { getArtifactItem } from "../artifact-client";
+import { deckSaveBaseItem, isDeckOwnSaveEcho } from "./deck-save-echo";
 import {
   recordUserMutation,
   userEditItemKey,
@@ -1772,6 +1773,8 @@ export function useDeckEditor(
     if (result && !result.ok) throw new Error(result.error || "保存版本失败，请重试后导出");
   }, []);
   const persistedItemRef = useRef(item);
+  /** Revisions this editor committed since the last real load (`deck-save-echo.ts`). */
+  const ownSavedRevisionsRef = useRef<Set<string>>(new Set());
   const preparedSaveRef = useRef<{
     key: string;
     project?: PreparedProjectUpload;
@@ -1815,10 +1818,19 @@ export function useDeckEditor(
     (value: string) => translateRef.current(value),
     [],
   );
-  const loadKey = useMemo(
+  const rawLoadKey = useMemo(
     () => deckSourceLoadKey(item, previewContent),
     [item, previewContent],
   );
+  // 宿主把本编辑器刚存的那一版传回来不算换文稿：不重载（重载会拿旧基线再存一次）。
+  const loadKeyRef = useRef(rawLoadKey);
+  if (
+    rawLoadKey !== loadKeyRef.current &&
+    !isDeckOwnSaveEcho(item, persistedItemRef.current, ownSavedRevisionsRef.current)
+  ) {
+    loadKeyRef.current = rawLoadKey;
+  }
+  const loadKey = loadKeyRef.current;
 
   useEffect(() => {
     const source = loadInputRef.current.item;
@@ -1836,6 +1848,7 @@ export function useDeckEditor(
     setNotice("");
     revisionRef.current = 0;
     persistedItemRef.current = source;
+    ownSavedRevisionsRef.current = new Set();
     preparedSaveRef.current = null;
     draftRef.current = null;
     workingHeadUrlRef.current =
@@ -2665,7 +2678,7 @@ export function useDeckEditor(
     if (savingRef.current || sourceFailedRef.current) return null;
     const savingRevision = revisionRef.current;
     const snapshot = cloneDeckDocument(deckRef.current);
-    const baseItem = persistedItemRef.current;
+    const baseItem = deckSaveBaseItem(persistedItemRef.current);
     const baseRevision = String(
       baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
     );
@@ -2774,6 +2787,10 @@ export function useDeckEditor(
         result,
       );
       persistedItemRef.current = handoff;
+      for (const id of [result.revisionId, result.versionId, handoff.revisionId]) {
+        const saved = String(id || "");
+        if (saved && saved !== baseRevision && saved !== rootId) ownSavedRevisionsRef.current.add(saved);
+      }
       workingHeadUrlRef.current =
         result.projectUrl || deckProjectUrlFor(handoff);
       if (mountedRef.current) {
