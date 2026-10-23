@@ -26,7 +26,16 @@ import type {
   TokenResponse,
 } from "../../../../lib/im/call-types";
 import { httpsAvatarUrl } from "../../../../lib/im/types";
-import { issueFromDeviceException, issueFromMediaError, sameIssues, withIssue, withoutIssue } from "./issues";
+import {
+  deviceOfIssue,
+  issueFromDeviceException,
+  issueFromMediaError,
+  mergeDeviceIssue,
+  sameIssues,
+  textSaysDenied,
+  withIssue,
+  withoutIssue,
+} from "./issues";
 import { EMPTY_STATS, createStatsTracker } from "./network";
 import { EMPTY_ORDERING, updateOrdering, type OrderingResult, type SpeakingInfo } from "./ordering";
 import { readPrefs, writePrefs, type CallPrefs, type PrefsStorage } from "./prefs";
@@ -68,6 +77,8 @@ export const DEVICE_ISSUE_CLEAR_MS = 15_000;
 export const TOKEN_RETRY_MS = 5_000;
 export const REJOIN_DELAYS_MS: readonly number[] = [0, 2_000, 5_000, 10_000];
 export const DROPPED_GRACE_MS = CALL_LIMITS.STALE_AFTER_MS;
+/** 离开时最多等 SDK 退频道/销毁与网关 leave 这么久，超时也照常进入 ended（V02 D2：SDK 卡住时小窗不该停在结束态）。 */
+export const TEARDOWN_WAIT_MS = 3_000;
 
 export const CALL_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   not_member: "你不是这个会话的成员",
@@ -138,6 +149,8 @@ export interface CallControllerDeps {
   setActiveEngine(engine: ArtcEngine | null): void;
   /** 浏览器能否给音频元素换输出设备（`HTMLMediaElement.setSinkId`）。 */
   sinkIdSupported(): boolean;
+  /** `navigator.permissions.query({name})` 的结果；浏览器不支持这个名字时为 null（V02 D6）。 */
+  queryPermission?(name: "microphone" | "camera"): Promise<"granted" | "denied" | "prompt" | null>;
   log?(message: string, detail?: unknown): void;
 }
 
@@ -182,6 +195,31 @@ export function callErrorOf(error: unknown, fallbackCode = "unknown"): { code: s
 
 function namedError(code: string): Error {
   return new Error(code);
+}
+
+/**
+ * V02 D3：SDK 给 `<video>` 换源时 `load()` 再 `play()`（es.js:18796），新的 load 会让上一次 play() 以 AbortError
+ * 「The play() request was interrupted by a new load request」拒绝，而 SDK 把这个 Promise 原样往上传、没人接，
+ * 控制台就一直报未处理的异常。这里给交给 SDK 的元素包一层：被打断（AbortError）当作正常结束，其它错误（如自动播放被拦）照常抛出。
+ */
+export function guardInterruptedPlay(el: HTMLMediaElement): void {
+  const target = el as HTMLMediaElement & { __oceanleoPlayGuard?: boolean };
+  if (!target || typeof target.play !== "function" || target.__oceanleoPlayGuard) return;
+  const original = target.play.bind(target);
+  target.play = () => {
+    let result: Promise<void> | undefined;
+    try {
+      result = original();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (!result || typeof result.then !== "function") return Promise.resolve();
+    return result.catch((error: unknown) => {
+      if ((error as { name?: unknown } | null)?.name === "AbortError") return undefined;
+      throw error;
+    });
+  };
+  target.__oceanleoPlayGuard = true;
 }
 
 class Cancelled extends Error {
@@ -294,6 +332,8 @@ export function createCallController(deps: CallControllerDeps): CallController {
   let aloneDeadline: number | null = null;
   let micSilentSince: number | null = null;
   let poorSince: number | null = null;
+  /** 这一通已被移出（call_kicked / 403 removed_from_conversation）：结束原因一律用移出文案（V02 D5）。 */
+  let removedFrom: { callId: string | null; conversationId: string } | null = null;
   let connectionLost = false;
   let screenTrack: MediaStreamTrack | null = null;
   let screenTrackEnded: (() => void) | null = null;
@@ -333,6 +373,18 @@ export function createCallController(deps: CallControllerDeps): CallController {
       delete timers[name];
     }
   }
+  /** 等 promise 结束，但最多等 ms（不论成败都按时继续）。 */
+  function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const handle = clock.setTimeout(() => resolve(), ms);
+      const done = () => {
+        clock.clearTimeout(handle);
+        resolve();
+      };
+      promise.then(done, done);
+    });
+  }
+
   function sleep(ms: number): Promise<void> {
     if (ms <= 0) return Promise.resolve();
     return new Promise((resolve) => {
@@ -374,9 +426,15 @@ export function createCallController(deps: CallControllerDeps): CallController {
             avatar_url: httpsAvatarUrl(item.avatar_url),
           });
         }
-        if (incoming && !incoming.callerName) {
-          const name = profiles.get(incoming.callerId)?.display_name;
-          if (name) incoming = { ...incoming, callerName: name };
+        if (incoming && (!incoming.callerName || !incoming.callerAvatarUrl)) {
+          const known = profiles.get(incoming.callerId);
+          if (known) {
+            incoming = {
+              ...incoming,
+              callerName: incoming.callerName || known.display_name,
+              callerAvatarUrl: incoming.callerAvatarUrl ?? known.avatar_url,
+            };
+          }
         }
       })
       .catch(() => undefined)
@@ -458,14 +516,21 @@ export function createCallController(deps: CallControllerDeps): CallController {
   function onRing(event: CallRingEvent): void {
     if (selfId && event.caller_id === selfId) return;
     if (session && session.callId === event.call_id) return;
+    // 合同 §3.3（A-34）：网关带了主叫显示名/头像就直接用，不等资料接口（V02 D4：否则先显示占位约 1.3 s）。
+    const providedName = typeof event.caller_name === "string" ? event.caller_name.trim().slice(0, 200) : "";
+    const providedAvatar = httpsAvatarUrl(event.caller_avatar_url);
+    if (providedName && !profiles.has(event.caller_id)) {
+      profiles.set(event.caller_id, { user_id: event.caller_id, display_name: providedName, avatar_url: providedAvatar });
+    }
     incoming = {
       callId: event.call_id,
       conversationId: event.conversation_id,
       callerId: event.caller_id,
-      callerName: nameOf(event.caller_id),
+      callerName: providedName || nameOf(event.caller_id),
       expiresAt: event.expires_at,
+      callerAvatarUrl: providedAvatar ?? avatarOf(event.caller_id),
     };
-    requestProfiles([event.caller_id]);
+    if (!providedName) requestProfiles([event.caller_id]);
     const parsed = Date.parse(event.expires_at);
     const ms = Number.isFinite(parsed)
       ? Math.min(Math.max(0, parsed - clock.now()), CALL_LIMITS.RING_TIMEOUT_MS + 5_000)
@@ -501,17 +566,34 @@ export function createCallController(deps: CallControllerDeps): CallController {
     commit();
   }
 
+  const REMOVED_ERROR = { code: "removed_from_conversation", message: CALL_ERROR_MESSAGES.removed_from_conversation };
+
+  /**
+   * 被移出会话（V02 D5）：ARTC 侧踢人（SDK bye 1）常常先到，引擎已按 `artc_kicked` 结束；随后到的 `call_kicked`
+   * 或网关 403 `removed_from_conversation` 要把原因改成「被移出」。只改原因，不重启回 idle 的计时（D2）。
+   */
+  function markRemoved(callId: string | null, conversationId: string): void {
+    removedFrom = { callId, conversationId };
+    const sameCall = context && ((callId && context.callId === callId) || context.conversationId === conversationId);
+    if (sameCall && (phase === "ended" || phase === "error" || phase === "leaving") && error?.code !== REMOVED_ERROR.code) {
+      error = REMOVED_ERROR;
+    }
+    commit();
+  }
+
+  function removedMatches(s: Session): boolean {
+    return Boolean(removedFrom && ((removedFrom.callId && removedFrom.callId === s.callId) || removedFrom.conversationId === s.conversationId));
+  }
+
   function onKicked(event: CallKickedEvent): void {
     if (incoming && incoming.conversationId === event.conversation_id) clearIncoming();
     const s = session;
     if (s && (s.callId === event.call_id || s.conversationId === event.conversation_id)) {
-      void teardown({
-        callApi: false,
-        error: { code: "removed_from_conversation", message: CALL_ERROR_MESSAGES.removed_from_conversation },
-      });
+      removedFrom = { callId: event.call_id, conversationId: event.conversation_id };
+      void teardown({ callApi: false, error: REMOVED_ERROR });
       return;
     }
-    commit();
+    markRemoved(event.call_id, event.conversation_id);
   }
 
   // ---- 远端名单（以 SDK 为准） ------------------------------------------------------
@@ -915,8 +997,11 @@ export function createCallController(deps: CallControllerDeps): CallController {
     try {
       await api.heartbeat(s.callId, mediaNow());
     } catch (err) {
-      if (session !== s) return;
       const code = codeOf(err);
+      if (session !== s) {
+        if (code === "removed_from_conversation") markRemoved(s.callId, s.conversationId);
+        return;
+      }
       const status = statusOf(err);
       if (code === "call_unavailable") {
         void teardown({ callApi: false, error: null });
@@ -960,14 +1045,51 @@ export function createCallController(deps: CallControllerDeps): CallController {
     return { microphones: pick("audioinput"), cameras: pick("videoinput"), speakers: deps.sinkIdSupported() ? pick("audiooutput") : [] };
   }
 
-  function flagDeviceIssue(issue: CallIssue): void {
-    issues = withIssue(issues, issue);
-    if (issue.kind === "device_lost") {
+  /** 记一条设备问题（权限被拒优先于「设备掉了」）；返回这条是否真的记上了。 */
+  function flagDeviceIssue(issue: CallIssue): boolean {
+    const before = issues;
+    issues = mergeDeviceIssue(issues, issue);
+    const recorded = issues !== before || before.some((item) => item.kind === issue.kind && item.detail === issue.detail);
+    if (issue.kind === "device_lost" && recorded) {
       setTimer("deviceIssue", () => {
         issues = withoutIssue(issues, "device_lost");
         commit();
       }, DEVICE_ISSUE_CLEAR_MS);
     }
+    return recorded;
+  }
+
+  /**
+   * 设备打不开时到底是不是「权限被拒」（V02 D6）：SDK 7.3.8 把浏览器拒绝映射成「开麦失败」
+   * （media-device 的 AUDIODEVICE_NOTALLOWED=10003 被 SDK 当成自己的 10003=MicOpenFail），
+   * 所以除了看问题本身，还看异常文字里的 NotAllowedError/Permission denied，再问 `navigator.permissions`。
+   */
+  async function refineDeviceIssue(issue: CallIssue | null, ...texts: unknown[]): Promise<CallIssue | null> {
+    if (!issue) return issue;
+    const device = deviceOfIssue(issue);
+    if (!device || issue.kind === "mic_permission" || issue.kind === "camera_permission") return issue;
+    const permissionIssue: CallIssue = { kind: device === "mic" ? "mic_permission" : "camera_permission" };
+    if (textSaysDenied(...texts)) return permissionIssue;
+    if (deps.queryPermission) {
+      try {
+        if ((await deps.queryPermission(device === "mic" ? "microphone" : "camera")) === "denied") return permissionIssue;
+      } catch {
+        /* 浏览器不支持就按原判断 */
+      }
+    }
+    return issue;
+  }
+
+  /** 本地设备出错（入会采集失败、开麦/开摄像头失败、SDK localDeviceException）统一走这里。 */
+  async function reportDeviceFailure(issue: CallIssue | null, ...texts: unknown[]): Promise<void> {
+    const s = session;
+    const final = await refineDeviceIssue(issue, ...texts);
+    if (!final || session !== s) return;
+    if (final.kind === "mic_permission" || final.kind === "no_mic") me = { ...me, mic: false };
+    if (final.kind === "camera_permission") me = { ...me, camera: false };
+    const recorded = flagDeviceIssue(final);
+    if (recorded && final.kind === "device_lost") void onDeviceChange();
+    commit();
   }
 
   /** 设备拔出：当前选的设备不见了就回落到「默认」或第一个可用的（沿用旧面板的回落思路）。 */
@@ -1085,15 +1207,10 @@ export function createCallController(deps: CallControllerDeps): CallController {
     on("authInfoWillExpire", () => void refreshToken(s));
     on("authInfoExpired", () => void rejoin("auth_expired"));
     on("bye", (code) => onBye(code));
-    on("localDeviceException", (_type, exceptionType) => {
+    on("localDeviceException", (_type, exceptionType, description) => {
       const issue = issueFromDeviceException(exceptionType);
       if (!issue) return;
-      if (issue.kind === "mic_permission" || issue.kind === "no_mic") me = { ...me, mic: false };
-      if (issue.kind === "camera_permission") me = { ...me, camera: false };
-      flagDeviceIssue(issue);
-      if (issue.kind === "device_lost") void onDeviceChange();
-      heartbeatSoon();
-      commit();
+      void reportDeviceFailure(issue, description).then(() => heartbeatSoon());
     });
     on("rtcStats", (pair) => {
       tracker.onTransport(pair);
@@ -1150,11 +1267,15 @@ export function createCallController(deps: CallControllerDeps): CallController {
       await engine.refreshAuthInfo(rtc.token);
       s.refreshRetried = false;
     } catch (err) {
-      if (session !== s) return;
       const code = codeOf(err);
+      if (session !== s) {
+        if (code === "removed_from_conversation") markRemoved(s.callId, s.conversationId);
+        return;
+      }
       if (code === "call_unavailable") {
         void teardown({ callApi: false, error: null });
       } else if (code === "removed_from_conversation" || code === "not_member") {
+        if (code === "removed_from_conversation") removedFrom = { callId: s.callId, conversationId: s.conversationId };
         void teardown({ callApi: false, error: callErrorOf(err) });
       } else if (!s.refreshRetried) {
         s.refreshRetried = true;
@@ -1195,8 +1316,8 @@ export function createCallController(deps: CallControllerDeps): CallController {
         issues = withoutIssue(withoutIssue(issues, "mic_permission"), "no_mic");
       } catch (err) {
         me = { ...me, mic: false };
-        const issue = issueFromMediaError("mic", err);
-        if (issue) issues = withIssue(issues, issue);
+        const issue = await refineDeviceIssue(issueFromMediaError("mic", err), err);
+        if (issue) issues = mergeDeviceIssue(issues, issue);
         try {
           await engine.publishLocalAudioStream(false);
         } catch {
@@ -1238,6 +1359,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
     if (incoming && incoming.conversationId === target.conversationId) clearIncoming();
     error = null;
     issues = [];
+    removedFrom = null;
     const claim = deps.claimCall("meeting");
     context = { conversationId: target.conversationId, conversationTitle: ctx?.title ?? null, callId: target.callId, startedAt: null };
     if (claim === null) {
@@ -1321,6 +1443,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
     error = null;
     context = null;
     issues = [];
+    removedFrom = null;
     commit();
   }
 
@@ -1369,7 +1492,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
     deps.setActiveEngine(null);
     const tasks: Array<Promise<unknown>> = [destroyEngine(s.engine)];
     if (opts.callApi && s.callId) tasks.push(api.leave(s.callId).catch(() => undefined));
-    await Promise.all(tasks);
+    await settleWithin(Promise.all(tasks), TEARDOWN_WAIT_MS);
     deps.releaseCall("meeting", s.claim);
     remotes.clear();
     speakers.clear();
@@ -1388,6 +1511,10 @@ export function createCallController(deps: CallControllerDeps): CallController {
     issues = withoutIssue(withoutIssue(withoutIssue(issues, "network_lost"), "network_poor"), "mic_silent");
     phase = opts.phase ?? "ended";
     error = opts.error;
+    if (removedMatches(s)) {
+      phase = "ended";
+      error = REMOVED_ERROR;
+    }
     if (opts.silent) {
       phase = "idle";
       context = null;
@@ -1481,8 +1608,8 @@ export function createCallController(deps: CallControllerDeps): CallController {
         prefs = writePrefs(deps.storage, { mic: true });
       } catch (err) {
         me = { ...me, mic: false };
-        const issue = issueFromMediaError("mic", err);
-        if (issue) issues = withIssue(issues, issue);
+        const issue = await refineDeviceIssue(issueFromMediaError("mic", err), err);
+        if (issue) flagDeviceIssue(issue);
       }
     } else {
       try {
@@ -1529,8 +1656,8 @@ export function createCallController(deps: CallControllerDeps): CallController {
         }
       } catch (err) {
         me = { ...me, camera: false };
-        const issue = issueFromMediaError("camera", err);
-        if (issue) issues = withIssue(issues, issue);
+        const issue = await refineDeviceIssue(issueFromMediaError("camera", err), err);
+        if (issue) flagDeviceIssue(issue);
         try {
           await engine.publishLocalVideoStream(false);
         } catch {
@@ -1623,7 +1750,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
           await engine.switchMicrophone(id);
           issues = withoutIssue(issues, "device_lost");
         } catch (err) {
-          const issue = issueFromMediaError("mic", err);
+          const issue = await refineDeviceIssue(issueFromMediaError("mic", err), err);
           if (issue) flagDeviceIssue(issue);
         }
       }
@@ -1638,7 +1765,7 @@ export function createCallController(deps: CallControllerDeps): CallController {
         else await engine.setCameraCapturerConfiguration?.({ deviceId: id });
         issues = withoutIssue(issues, "device_lost");
       } catch (err) {
-        const issue = issueFromMediaError("camera", err);
+        const issue = await refineDeviceIssue(issueFromMediaError("camera", err), err);
         if (issue) flagDeviceIssue(issue);
       }
     }
@@ -1695,8 +1822,23 @@ export function createCallController(deps: CallControllerDeps): CallController {
     attachVideo(el, participantId, track) {
       if (!participantId || (track !== "camera" && track !== "screen")) return;
       const key = `${participantId}:${track}`;
-      if (el) views.set(key, { participantId, track, el });
-      else views.delete(key);
+      const current = views.get(key);
+      // V02 D3：同一元素同一路画面不重复绑定（每次绑定 SDK 都会 load()+play()，打断上一次 play）。
+      if (el && current?.el === el) return;
+      if (!el && !current) return;
+      if (el) {
+        // 这个元素原来在放别人的画面：先把那一路解开，免得两路抢一个元素。
+        for (const [otherKey, view] of Array.from(views)) {
+          if (otherKey !== key && view.el === el) {
+            views.delete(otherKey);
+            applyView(view.participantId, view.track, null);
+          }
+        }
+        guardInterruptedPlay(el);
+        views.set(key, { participantId, track, el });
+      } else {
+        views.delete(key);
+      }
       applyView(participantId, track, el);
     },
     async acceptIncoming() {

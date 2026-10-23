@@ -87,6 +87,17 @@ function browserMediaDevices(): MediaDevicesLike | null {
   };
 }
 
+/** `navigator.permissions.query`；Firefox 等不认 "microphone"/"camera" 时返回 null。 */
+async function queryBrowserPermission(name: "microphone" | "camera"): Promise<"granted" | "denied" | "prompt" | null> {
+  try {
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return null;
+    const status = await navigator.permissions.query({ name: name as PermissionName });
+    return status.state === "granted" || status.state === "denied" || status.state === "prompt" ? status.state : null;
+  } catch {
+    return null;
+  }
+}
+
 function subscribeCallEvents(handler: (event: CallHubEvent) => void): () => void {
   const store = imStore();
   const offs = [
@@ -119,6 +130,7 @@ function getController(): CallController | null {
     releaseCall,
     setActiveEngine,
     sinkIdSupported: () => typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype,
+    queryPermission: queryBrowserPermission,
   });
   window.addEventListener("pagehide", () => controller?.onPageHide());
   return controller;

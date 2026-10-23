@@ -94,6 +94,42 @@ export function issueFromDeviceException(exceptionType: unknown): CallIssue | nu
   }
 }
 
+/** 异常/描述文字里是否说的是「权限被拒」（浏览器 NotAllowedError、SDK 包装后的 "… not allowed"）。 */
+export function textSaysDenied(...texts: unknown[]): boolean {
+  return texts.some((text) => {
+    if (text && typeof text === "object") {
+      const row = text as { name?: unknown; message?: unknown };
+      return textSaysDenied(row.name, row.message);
+    }
+    return typeof text === "string" && /NotAllowedError|SecurityError|permission|denied|not ?allowed/i.test(text);
+  });
+}
+
+/** 问题属于哪个本地设备（权限/缺设备/掉线）；与设备无关的返回 null。 */
+export function deviceOfIssue(issue: CallIssue): "mic" | "camera" | null {
+  if (issue.kind === "mic_permission" || issue.kind === "no_mic") return "mic";
+  if (issue.kind === "camera_permission") return "camera";
+  if (issue.kind === "device_lost" && (issue.detail === "mic" || issue.detail === "camera")) return issue.detail;
+  return null;
+}
+
+/**
+ * 设备问题并入列表：权限被拒 / 没有麦克风 优先于「设备掉了」——
+ * 同一设备已有权限问题时不再加 `device_lost`，新来的权限问题会把同一设备的 `device_lost` 换掉（V02 D6）。
+ */
+export function mergeDeviceIssue(list: readonly CallIssue[], issue: CallIssue): CallIssue[] {
+  const device = deviceOfIssue(issue);
+  if (!device) return withIssue(list, issue);
+  if (issue.kind === "device_lost") {
+    const blocked = device === "mic"
+      ? list.some((item) => item.kind === "mic_permission" || item.kind === "no_mic")
+      : list.some((item) => item.kind === "camera_permission");
+    return blocked ? (list as CallIssue[]) : withIssue(list, issue);
+  }
+  const cleaned = list.filter((item) => !(item.kind === "device_lost" && item.detail === device));
+  return withIssue(cleaned, issue);
+}
+
 /** 两份问题列表是否一样（用来避免无谓的快照更新）。 */
 export function sameIssues(a: readonly CallIssue[], b: readonly CallIssue[]): boolean {
   if (a.length !== b.length) return false;

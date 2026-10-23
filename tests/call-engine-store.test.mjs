@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { rtcUserIdForParticipant } from "../src/lib/im/call-types.ts";
-import { ENDED_RESET_MS, MIC_SILENT_MS, NETWORK_POOR_MS, createCallController } from "../src/shell/messages/call/engine/controller.ts";
+import { ENDED_RESET_MS, MIC_SILENT_MS, NETWORK_POOR_MS, TEARDOWN_WAIT_MS, createCallController, guardInterruptedPlay } from "../src/shell/messages/call/engine/controller.ts";
 import { PREFS_KEY } from "../src/shell/messages/call/engine/prefs.ts";
 
 const START = Date.parse("2026-10-23T10:00:00.000Z");
@@ -131,8 +131,10 @@ function createFakeApi() {
       if (failure) throw failure;
       return { rtc: { app_id: "app", channel_id: callId, user_id: ME_UID, token: "tok-refreshed", timestamp: 1_900_086_400, expires_at: "2030-01-02T00:00:00Z" } };
     },
+    pendingHeartbeat: null,
     async heartbeat(callId, media) {
       api.calls.push(["heartbeat", callId, media]);
+      if (api.pendingHeartbeat) return api.pendingHeartbeat;
       if (api.failHeartbeat) throw api.failHeartbeat;
       return { ok: true };
     },
@@ -157,6 +159,9 @@ class FakeEngine {
     this.failCamera = null;
     this.failJoin = null;
     this.screenTrack = null;
+    this.exceptionBeforeMicFail = null; // [deviceType, exceptionType, description]：SDK 7.3.8 先发 localDeviceException 再抛
+    this.exceptionBeforeCameraFail = null;
+    this.hangLeave = false;
     this.bizControl = {
       updateVideoWant: (uid, sub) => this.calls.push(["updateVideoWant", uid, sub]),
       updateScreenWant: (uid, sub) => this.calls.push(["updateScreenWant", uid, sub]),
@@ -186,7 +191,10 @@ class FakeEngine {
   async publishLocalAudioStream(v) { this.record("publishAudio", v); }
   async publishLocalVideoStream(v) {
     this.record("publishVideo", v);
-    if (v && this.failCamera) throw this.failCamera;
+    if (v && this.failCamera) {
+      if (this.exceptionBeforeCameraFail) this.emit("localDeviceException", ...this.exceptionBeforeCameraFail);
+      throw this.failCamera;
+    }
   }
   async publishLocalScreenShareStream(v) { this.record("publishScreen", v); }
   async startScreenShare() { this.record("startScreenShare"); }
@@ -196,7 +204,10 @@ class FakeEngine {
   muteRemoteAudioPlaying(uid, mute) { this.record("muteRemoteAudioPlaying", uid, mute); }
   async startAudioCapture(constraints) {
     this.record("startAudioCapture", constraints ?? null);
-    if (this.failMic) throw this.failMic;
+    if (this.failMic) {
+      if (this.exceptionBeforeMicFail) this.emit("localDeviceException", ...this.exceptionBeforeMicFail);
+      throw this.failMic;
+    }
   }
   async switchMicrophone(id) { this.record("switchMicrophone", id); }
   async switchCamera(id) { this.record("switchCamera", id); }
@@ -214,12 +225,15 @@ class FakeEngine {
     this.record("joinChannel", token, name ?? null);
     if (this.failJoin) throw this.failJoin;
   }
-  async leaveChannel() { this.record("leaveChannel"); }
+  async leaveChannel() {
+    this.record("leaveChannel");
+    if (this.hangLeave) await new Promise(() => {});
+  }
   async refreshAuthInfo(token) { this.record("refreshAuthInfo", token); }
   async destroy() { this.record("destroy"); }
 }
 
-function setup({ storage = null, devices = null, sinkSupported = true, busy = false } = {}) {
+function setup({ storage = null, devices = null, sinkSupported = true, busy = false, permission = null, configureEngine = null } = {}) {
   const clock = createFakeClock();
   const engines = [];
   const sdk = {
@@ -227,7 +241,11 @@ function setup({ storage = null, devices = null, sinkSupported = true, busy = fa
     version: "7.3.8",
     supported: true,
     async isSupported() { return { support: sdk.supported, detail: { isScreenShareSupported: true } }; },
-    createEngine() { return new FakeEngine(engines); },
+    createEngine() {
+      const engine = new FakeEngine(engines);
+      configureEngine?.(engine);
+      return engine;
+    },
     async getMicrophoneList() { return []; },
     async getCameraList() { return []; },
     async getSpeakerList() { return []; },
@@ -244,11 +262,15 @@ function setup({ storage = null, devices = null, sinkSupported = true, busy = fa
   const deviceListeners = new Set();
   const mutex = { owner: busy ? "leo-realtime" : null, released: [] };
   const active = [];
+  const profileCalls = [];
   const controller = createCallController({
     api,
     loadSdk: async () => sdk,
     selfUserId: async () => "user-me",
-    fetchProfiles: async (ids) => ids.map((id) => ({ user_id: id, display_name: NAMES[id] ?? id, avatar_url: null })),
+    fetchProfiles: async (ids) => {
+      profileCalls.push(ids.slice());
+      return ids.map((id) => ({ user_id: id, display_name: NAMES[id] ?? id, avatar_url: null }));
+    },
     subscribeHub: (handler) => {
       hub.push(handler);
       return () => {};
@@ -271,6 +293,7 @@ function setup({ storage = null, devices = null, sinkSupported = true, busy = fa
     },
     setActiveEngine: (engine) => active.push(engine),
     sinkIdSupported: () => sinkSupported,
+    queryPermission: permission ? async (name) => permission[name] ?? null : undefined,
   });
   const notifications = { count: 0 };
   controller.store.subscribe(() => {
@@ -286,6 +309,7 @@ function setup({ storage = null, devices = null, sinkSupported = true, busy = fa
     deviceListeners,
     mutex,
     active,
+    profileCalls,
     controller,
     actions: controller.actions,
     notifications,
@@ -597,7 +621,7 @@ test("incoming: ring → incoming with caller name; ring end clears; accept join
   const expires = new Date(START + 45_000).toISOString();
   t.hub({ type: "call_ring", conversation_id: "conv-dm", call_id: "call-dm", caller_id: "user-caller", expires_at: expires });
   await settle();
-  assert.deepEqual(t.snap().incoming, { callId: "call-dm", conversationId: "conv-dm", callerId: "user-caller", callerName: "来电人", expiresAt: expires });
+  assert.deepEqual(t.snap().incoming, { callId: "call-dm", conversationId: "conv-dm", callerId: "user-caller", callerName: "来电人", expiresAt: expires, callerAvatarUrl: null });
   t.hub({ type: "call_ring_end", conversation_id: "conv-dm", call_id: "call-dm", reason: "cancelled" });
   await settle();
   assert.equal(t.snap().incoming, null);
@@ -885,4 +909,232 @@ test("leave: API leave + SDK leave/destroy, lock released, prefs untouched; page
   assert.equal(t.mutex.owner, null);
   assert.equal(t.active.at(-1), null, "the active engine is cleared");
   assert.ok(t.notifications.count > 0);
+});
+
+// ---------------------------------------------------------------------------
+// 仲裁 A-34 返工（V02 发现 D6 / D3 / D5 / D4 / D2）
+// ---------------------------------------------------------------------------
+
+const deniedByBrowser = () => Object.assign(new Error("audio device not allowed"), { errorCode: 10003 }); // media-device 包装后的拒绝
+const MIC = 1; // AliRtcEngineLocalDeviceType.Mic
+const CAMERA = 4;
+const MIC_OPEN_FAIL = 1; // SDK 把「拒绝」也映射成开麦失败
+const VIDEO_DEVICE_EXCEPTION = 13;
+
+test("D6: a refused microphone is mic_permission, never device_lost, although the SDK first reports MicOpenFail", async () => {
+  const t = await joined({
+    configureEngine(engine) {
+      engine.failMic = deniedByBrowser();
+      engine.exceptionBeforeMicFail = [MIC, MIC_OPEN_FAIL, ""];
+    },
+  });
+  await settle();
+  const s = t.snap();
+  assert.equal(s.phase, "connected", "joins listen-only");
+  assert.equal(s.me.mic, false);
+  assert.deepEqual(s.issues, [{ kind: "mic_permission" }]);
+  assert.equal(t.engine().named("switchMicrophone").length, 0, "no device fallback for a permission problem");
+  assert.equal(t.prefs(), null, "a refused permission is not remembered as a choice");
+});
+
+test("D6: when the error text is vague, a 'denied' browser permission still means mic_permission; granted stays device_lost", async () => {
+  const vague = () => Object.assign(new Error("auto open fail: Could not start audio source"), { code: 17040388 });
+  const denied = await joined({
+    permission: { microphone: "denied" },
+    configureEngine(engine) {
+      engine.failMic = vague();
+      engine.exceptionBeforeMicFail = [MIC, MIC_OPEN_FAIL, ""];
+    },
+  });
+  await settle();
+  assert.deepEqual(denied.snap().issues, [{ kind: "mic_permission" }]);
+
+  const granted = await joined({
+    permission: { microphone: "granted" },
+    configureEngine(engine) {
+      engine.failMic = vague();
+    },
+  });
+  await settle();
+  assert.deepEqual(granted.snap().issues, [{ kind: "device_lost", detail: "mic" }], "a real device failure is still reported as one");
+});
+
+test("D6: same for the camera, and for an in-call SDK exception whose description says NotAllowedError", async () => {
+  const t = await joined({
+    permission: { camera: "denied", microphone: "granted" },
+    configureEngine(engine) {
+      engine.failCamera = Object.assign(new Error("Could not start video source"), { name: "NotReadableError" });
+      engine.exceptionBeforeCameraFail = [CAMERA, VIDEO_DEVICE_EXCEPTION, ""];
+    },
+  });
+  await t.actions.setCamera(true);
+  await settle();
+  assert.equal(t.snap().me.camera, false);
+  assert.deepEqual(t.snap().issues, [{ kind: "camera_permission" }]);
+
+  const u = await joined();
+  u.engine().emit("localDeviceException", MIC, MIC_OPEN_FAIL, "NotAllowedError: Permission denied");
+  await settle();
+  assert.deepEqual(u.snap().issues, [{ kind: "mic_permission" }]);
+  assert.equal(u.snap().me.mic, false);
+  // 真的掉线（权限正常）仍是 device_lost，并尝试回落。
+  const w = await joined({ permission: { microphone: "granted" }, storage: { mic: true, camera: false, micDeviceId: "mic-2" } });
+  w.deviceList.splice(w.deviceList.findIndex((d) => d.deviceId === "mic-2"), 1);
+  w.engine().emit("localDeviceException", MIC, 2 /* MicInterrupt */, "");
+  await settle();
+  assert.deepEqual(w.snap().issues, [{ kind: "device_lost", detail: "mic" }]);
+  assert.deepEqual(w.engine().named("switchMicrophone").at(-1), ["switchMicrophone", "default"]);
+});
+
+test("D3: the same element for the same feed is bound once; a reused element releases its old feed", async () => {
+  const t = await joined();
+  remoteJoin(t, 1, { hasAudio: true, hasCamera: true, hasScreenShare: false });
+  remoteJoin(t, 2, { hasAudio: true, hasCamera: true, hasScreenShare: false });
+  await settle();
+  const engine = t.engine();
+  const el = { id: "v1", play: async () => {} };
+  t.actions.attachVideo(el, pid(1), "camera");
+  t.actions.attachVideo(el, pid(1), "camera");
+  t.actions.attachVideo(el, pid(1), "camera");
+  assert.deepEqual(engine.named("setRemoteViewConfig"), [["setRemoteViewConfig", "v1", uidOf(1), 1]], "bound once");
+  t.actions.attachVideo(el, pid(2), "camera");
+  assert.deepEqual(engine.named("setRemoteViewConfig").slice(1), [
+    ["setRemoteViewConfig", null, uidOf(1), 1],
+    ["setRemoteViewConfig", "v1", uidOf(2), 1],
+  ]);
+  t.actions.attachVideo(null, pid(2), "camera");
+  t.actions.attachVideo(null, pid(2), "camera");
+  assert.equal(engine.named("setRemoteViewConfig").length, 4, "detaching twice unbinds once");
+  t.actions.attachVideo(null, pid(1), "camera");
+  assert.equal(engine.named("setRemoteViewConfig").length, 4, "nothing bound, nothing to unbind");
+});
+
+test("D3: an interrupted play() (AbortError) is swallowed; real playback errors still surface", async () => {
+  let next = null;
+  const el = { play: () => next() };
+  guardInterruptedPlay(el);
+  guardInterruptedPlay(el); // 包一层就够
+  next = () => Promise.reject(Object.assign(new Error("The play() request was interrupted by a new load request."), { name: "AbortError" }));
+  assert.equal(await el.play(), undefined);
+  next = () => Promise.reject(Object.assign(new Error("play() failed because the user didn't interact"), { name: "NotAllowedError" }));
+  await assert.rejects(el.play(), /user didn't interact/);
+  next = () => Promise.resolve();
+  assert.equal(await el.play(), undefined);
+  next = () => undefined; // 老浏览器 play() 不返回 Promise
+  assert.equal(await el.play(), undefined);
+  const t = await joined();
+  const video = { id: "me-cam", play: () => Promise.reject(Object.assign(new Error("interrupted"), { name: "AbortError" })) };
+  t.actions.attachVideo(video, ME_PID, "camera");
+  assert.equal(await video.play(), undefined, "elements handed to the SDK are guarded");
+});
+
+test("D5: an ARTC kick followed by call_kicked ends with the removal reason, without restarting the idle timer", async () => {
+  const t = await joined();
+  t.engine().emit("bye", 1);
+  await settle();
+  assert.equal(t.snap().error.code, "artc_kicked");
+  const endedAt = t.clock.now();
+  await t.clock.advance(2_000);
+  t.hub({ type: "call_kicked", conversation_id: "conv-1", call_id: "call-1", reason: "removed_from_conversation" });
+  await settle();
+  assert.equal(t.snap().phase, "ended");
+  assert.deepEqual(t.snap().error, { code: "removed_from_conversation", message: "你已被移出这个会话" });
+  await t.clock.advance(ENDED_RESET_MS - 2_000 - 1);
+  assert.equal(t.snap().phase, "ended");
+  await t.clock.advance(1);
+  assert.equal(t.snap().phase, "idle", `idle exactly ${ENDED_RESET_MS} ms after the end (${t.clock.now() - endedAt})`);
+
+  // 两个事件同一拍到达（还在 leaving）也以移出为准。
+  const u = await joined();
+  u.engine().emit("bye", 1);
+  u.hub({ type: "call_kicked", conversation_id: "conv-1", call_id: "call-1", reason: "removed_from_conversation" });
+  await settle();
+  assert.equal(u.snap().error.code, "removed_from_conversation");
+});
+
+test("D5: a late 403 removed_from_conversation after an ARTC kick also switches to the removal reason", async () => {
+  const t = await joined();
+  let reject;
+  t.api.pendingHeartbeat = new Promise((_resolve, r) => {
+    reject = r;
+  });
+  await t.clock.advance(30_000); // 心跳发出，挂着
+  t.engine().emit("bye", 1);
+  await settle();
+  assert.equal(t.snap().error.code, "artc_kicked");
+  reject(apiError(403, "removed_from_conversation", "你已不在这个会话里"));
+  await settle();
+  assert.equal(t.snap().error.code, "removed_from_conversation");
+});
+
+test("D4: call_ring with caller_name/caller_avatar_url shows the caller at once, without a profile round-trip", async () => {
+  const t = setup();
+  t.controller.store.subscribe(() => {});
+  await settle();
+  t.hub({
+    type: "call_ring",
+    conversation_id: "conv-dm",
+    call_id: "call-dm",
+    caller_id: "user-new",
+    expires_at: new Date(START + 45_000).toISOString(),
+    caller_name: "  新同事  ",
+    caller_avatar_url: "https://img.example.com/new.png",
+  });
+  const s = t.snap();
+  assert.equal(s.incoming.callerName, "新同事", "available synchronously, before any await");
+  assert.equal(s.incoming.callerAvatarUrl, "https://img.example.com/new.png");
+  await settle();
+  assert.equal(t.profileCalls.some((ids) => ids.includes("user-new")), false, "no profile request for a named ring");
+
+  t.hub({
+    type: "call_ring",
+    conversation_id: "conv-dm2",
+    call_id: "call-dm2",
+    caller_id: "user-x",
+    expires_at: new Date(START + 45_000).toISOString(),
+    caller_name: "某人",
+    caller_avatar_url: "javascript:alert(1)",
+  });
+  assert.equal(t.snap().incoming.callerAvatarUrl, null, "only https avatars are accepted");
+
+  // 老网关不带名字：照旧查资料后补上，头像也补上。
+  t.hub({ type: "call_ring", conversation_id: "conv-dm3", call_id: "call-dm3", caller_id: "user-caller", expires_at: new Date(START + 45_000).toISOString() });
+  assert.equal(t.snap().incoming.callerName, "");
+  await settle();
+  assert.equal(t.snap().incoming.callerName, "来电人");
+});
+
+test("D2: a stuck SDK leave cannot keep the dock in leaving; ended → idle exactly once", async () => {
+  const t = await joined({ configureEngine: (engine) => { engine.hangLeave = true; } });
+  const leaving = t.actions.leave();
+  await settle();
+  assert.equal(t.snap().phase, "leaving");
+  await t.clock.advance(TEARDOWN_WAIT_MS);
+  await leaving;
+  assert.equal(t.snap().phase, "ended", "ended after the bounded wait even though leaveChannel never resolved");
+  assert.equal(t.mutex.owner, null);
+  await t.clock.advance(ENDED_RESET_MS);
+  assert.equal(t.snap().phase, "idle");
+});
+
+test("D2: repeated status events after the call ended do not postpone returning to idle", async () => {
+  const t = await joined();
+  const first = t.engine();
+  await t.actions.leave();
+  await settle();
+  assert.equal(t.snap().phase, "ended");
+  for (let i = 0; i < 5; i += 1) {
+    await t.clock.advance(1_000);
+    t.hub({ type: "call", conversation_id: "conv-1", call: { ...callView(), status: "ended", ended_reason: "empty" } });
+    t.hub({ type: "call_ring_end", conversation_id: "conv-1", call_id: "call-1", reason: "missed" });
+    first.emit("connectionStatusChange", 1, 10);
+    first.emit("bye", 2);
+    first.emit("remoteUserOffLineNotify", uidOf(1), 0);
+  }
+  await settle();
+  assert.equal(t.snap().phase, "ended");
+  await t.clock.advance(ENDED_RESET_MS - 5_000);
+  assert.equal(t.snap().phase, "idle", "still exactly ENDED_RESET_MS after the end");
+  await t.actions.leave();
+  assert.equal(t.snap().phase, "idle");
 });

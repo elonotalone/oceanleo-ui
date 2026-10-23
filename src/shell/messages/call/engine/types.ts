@@ -42,6 +42,8 @@ export interface IncomingCall {
   callerId: string;
   callerName: string;
   expiresAt: string;
+  /** 主叫头像（https；`call_ring` 带了就直接用，否则查到资料后补上；仲裁 A-34 加的可选字段）。 */
+  callerAvatarUrl?: string | null;
 }
 
 export interface CallSnapshot {

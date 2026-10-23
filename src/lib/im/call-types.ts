@@ -157,6 +157,10 @@ export interface CallRingEvent {
   call_id: string;
   caller_id: string;
   expires_at: string;
+  /** 合同 §3.3（仲裁 A-34 加，可选）：主叫显示名；缺省时前端照旧查资料。 */
+  caller_name?: string | null;
+  /** 合同 §3.3（仲裁 A-34 加，可选）：主叫头像（只认 https）。 */
+  caller_avatar_url?: string | null;
 }
 
 export interface CallRingEndEvent {
