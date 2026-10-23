@@ -1,6 +1,9 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+import { useUI } from "../i18n/ui/useUI";
 import { canonicalArtifactContextId } from "./artifact-contract";
+import { humanErrorMessage } from "./human-error-message";
 import type { LibraryItem } from "./library-data";
 import { MaterialLibrary } from "./MaterialLibrary";
 import type {
@@ -63,12 +66,53 @@ export function InlineEditorMaterialPanel({
   materials: ReturnType<typeof useWorkbenchMaterials>;
   primaryMaterialAction?: WorkbenchMaterialAction;
 }) {
+  const tt = useUI();
+  // 外壳负责插入的反馈（D2）：成功说插进了哪一份，失败说人话原因，几秒后自动消失。
+  const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = globalThis.setTimeout(() => setFeedback(null), 4000);
+    return () => globalThis.clearTimeout(timer);
+  }, [feedback]);
+  const perform = materials?.perform;
+  const onMaterialAction = useCallback(
+    async (action: WorkbenchMaterialAction, material: LibraryItem) => {
+      if (!perform) return { ok: false, error: tt("当前编辑器不能插入素材") };
+      const result = await perform(action, material, { source: "click" });
+      setFeedback(
+        result.ok
+          ? { ok: true, text: tt("已插入「{title}」", { title: material.title }) }
+          : {
+              ok: false,
+              text: tt(humanErrorMessage(result.error, tt("这份素材没能插入，请重试"))),
+            },
+      );
+      return result;
+    },
+    [perform, tt],
+  );
+  // 编辑器申报了能接的素材类型就按它列（PDF → 图片 / 签名），否则按当前文件类型。
+  const curatedType = materials?.materialTypes?.[0] || curatedTypeFor(item);
   return (
-    <div className="h-full min-h-0">
+    <div className="flex h-full min-h-0 flex-col">
+      {feedback ? (
+        <p
+          role={feedback.ok ? "status" : "alert"}
+          data-material-insert-feedback={feedback.ok ? "ok" : "error"}
+          className={`shrink-0 px-3 py-2 text-[12px] ${
+            feedback.ok
+              ? "text-[var(--awb-text,#1c1917)]"
+              : "text-[var(--awb-danger,#dc2626)]"
+          }`}
+        >
+          {feedback.text}
+        </p>
+      ) : null}
+      <div className="min-h-0 flex-1">
       <MaterialLibrary
         materials={[]}
         featuredEntries={[...(materials?.entries || [])]}
-        curatedType={curatedTypeFor(item)}
+        curatedType={curatedType}
         curatedSeriesId={siteId === "design" ? "design-materials" : ""}
         accent={accent}
         taskId={taskId}
@@ -80,12 +124,7 @@ export function InlineEditorMaterialPanel({
         )}
         registerRuntimeSource={false}
         materialActions={materials?.actions || []}
-        onMaterialAction={
-          materials
-            ? (action, material) =>
-                materials.perform(action, material, { source: "click" })
-            : undefined
-        }
+        onMaterialAction={materials ? onMaterialAction : undefined}
         materialActionAvailable={materials?.canPerform}
         primaryMaterialAction={primaryMaterialAction}
         draggableMaterials={Boolean(primaryMaterialAction)}
@@ -94,6 +133,7 @@ export function InlineEditorMaterialPanel({
         allowAdvancedOnSelect={false}
         hideSeeAll
       />
+      </div>
     </div>
   );
 }

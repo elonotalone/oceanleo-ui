@@ -47,6 +47,8 @@ export interface WorkbenchMaterialContextValue {
   scope: string;
   entries: readonly WorkspaceLibraryEntry[];
   actions: readonly WorkbenchMaterialAction[];
+  /** 编辑器申报的素材类型；空 = 按当前文件类型。 */
+  materialTypes: readonly string[];
   registerAdapter: (adapter: WorkbenchMaterialAdapter) => () => void;
   canPerform: (
     action: WorkbenchMaterialAction,
@@ -151,6 +153,7 @@ function useWorkbenchMaterialRuntimeScope(
       appId,
       scope,
       actions: runtime.actions,
+      materialTypes: runtime.materialTypes,
       canPerform,
       availability,
       perform,
@@ -243,6 +246,7 @@ export function useWorkbenchMaterialAdapter(
   adapterRef.current = adapter;
   const adapterId = adapter?.id || "";
   const actionsKey = adapter?.actions.join("|") || "";
+  const typesKey = adapter?.materialTypes?.join("|") || "";
   const commandKey = adapter?.command
     ? `${adapter.command.version}:${adapter.command.history}`
     : "";
@@ -256,6 +260,9 @@ export function useWorkbenchMaterialAdapter(
     return register({
       id: adapterId,
       actions: current.actions,
+      ...(current.materialTypes?.length
+        ? { materialTypes: [...current.materialTypes] }
+        : {}),
       ...(current.command
         ? {
             command: {
@@ -286,5 +293,5 @@ export function useWorkbenchMaterialAdapter(
         return active.mutate(action, item, placement, command);
       },
     });
-  }, [actionsKey, adapterId, commandKey, register]);
+  }, [actionsKey, adapterId, commandKey, register, typesKey]);
 }

@@ -4,6 +4,9 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
   de: {
+    "当前编辑器不能插入素材": "Dieser Editor kann keine Materialien einfügen",
+    "已插入「{title}」": "„{title}“ eingefügt",
+    "这份素材没能插入，请重试": "Dieses Material konnte nicht eingefügt werden. Bitte erneut versuchen.",
     "保存失败，请重试": "Speichern fehlgeschlagen. Bitte erneut versuchen.",
     "切换失败，请重试": "Wechseln fehlgeschlagen. Bitte erneut versuchen.",
     "正在保存当前改动…": "Änderungen werden gespeichert…",
@@ -11,6 +14,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Diese Datei hat noch nicht übernommene Änderungen. Bitte zuerst speichern.",
   },
   en: {
+    "当前编辑器不能插入素材": "This editor can't insert materials",
+    "已插入「{title}」": "Inserted “{title}”",
+    "这份素材没能插入，请重试": "This material couldn't be inserted. Try again.",
     "保存失败，请重试": "Couldn't save. Try again.",
     "切换失败，请重试": "Couldn't switch. Try again.",
     "正在保存当前改动…": "Saving your changes…",
@@ -18,6 +24,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "This file has changes that aren't applied yet. Save them first.",
   },
   es: {
+    "当前编辑器不能插入素材": "Este editor no puede insertar materiales",
+    "已插入「{title}」": "Se insertó «{title}»",
+    "这份素材没能插入，请重试": "No se pudo insertar este material. Inténtalo de nuevo.",
     "保存失败，请重试": "No se pudo guardar. Inténtalo de nuevo.",
     "切换失败，请重试": "No se pudo cambiar. Inténtalo de nuevo.",
     "正在保存当前改动…": "Guardando tus cambios…",
@@ -25,6 +34,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este archivo tiene cambios sin aplicar. Guárdalos primero.",
   },
   "es-419": {
+    "当前编辑器不能插入素材": "Este editor no puede insertar materiales",
+    "已插入「{title}」": "Se insertó «{title}»",
+    "这份素材没能插入，请重试": "No se pudo insertar este material. Inténtalo de nuevo.",
     "保存失败，请重试": "No se pudo guardar. Inténtalo de nuevo.",
     "切换失败，请重试": "No se pudo cambiar. Inténtalo de nuevo.",
     "正在保存当前改动…": "Guardando tus cambios…",
@@ -32,6 +44,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este archivo tiene cambios sin aplicar. Guárdalos primero.",
   },
   fr: {
+    "当前编辑器不能插入素材": "Cet éditeur ne peut pas insérer de ressources",
+    "已插入「{title}」": "« {title} » inséré",
+    "这份素材没能插入，请重试": "Impossible d'insérer cette ressource. Réessayez.",
     "保存失败，请重试": "Échec de l'enregistrement. Réessayez.",
     "切换失败，请重试": "Impossible de changer de fichier. Réessayez.",
     "正在保存当前改动…": "Enregistrement de vos modifications…",
@@ -39,6 +54,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Ce fichier contient des modifications non appliquées. Enregistrez-les d'abord.",
   },
   it: {
+    "当前编辑器不能插入素材": "Questo editor non può inserire materiali",
+    "已插入「{title}」": "Inserito «{title}»",
+    "这份素材没能插入，请重试": "Impossibile inserire questo materiale. Riprova.",
     "保存失败，请重试": "Salvataggio non riuscito. Riprova.",
     "切换失败，请重试": "Cambio non riuscito. Riprova.",
     "正在保存当前改动…": "Salvataggio delle modifiche…",
@@ -46,6 +64,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Questo file ha modifiche non applicate. Salvale prima.",
   },
   "pt-BR": {
+    "当前编辑器不能插入素材": "Este editor não pode inserir materiais",
+    "已插入「{title}」": "“{title}” inserido",
+    "这份素材没能插入，请重试": "Não foi possível inserir este material. Tente de novo.",
     "保存失败，请重试": "Não foi possível salvar. Tente de novo.",
     "切换失败，请重试": "Não foi possível trocar. Tente de novo.",
     "正在保存当前改动…": "Salvando suas alterações…",
@@ -53,6 +74,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este arquivo tem alterações não aplicadas. Salve-as primeiro.",
   },
   "pt-PT": {
+    "当前编辑器不能插入素材": "Este editor não pode inserir materiais",
+    "已插入「{title}」": "“{title}” inserido",
+    "这份素材没能插入，请重试": "Não foi possível inserir este material. Tente novamente.",
     "保存失败，请重试": "Não foi possível guardar. Tente novamente.",
     "切换失败，请重试": "Não foi possível mudar. Tente novamente.",
     "正在保存当前改动…": "A guardar as suas alterações…",
@@ -60,6 +84,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Este ficheiro tem alterações por aplicar. Guarde-as primeiro.",
   },
   vi: {
+    "当前编辑器不能插入素材": "Trình chỉnh sửa này không chèn được tài nguyên",
+    "已插入「{title}」": "Đã chèn “{title}”",
+    "这份素材没能插入，请重试": "Không chèn được tài nguyên này. Hãy thử lại.",
     "保存失败，请重试": "Không lưu được. Hãy thử lại.",
     "切换失败，请重试": "Không chuyển được. Hãy thử lại.",
     "正在保存当前改动…": "Đang lưu thay đổi…",
@@ -67,6 +94,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Tệp này còn thay đổi chưa áp dụng. Hãy lưu trước.",
   },
   tr: {
+    "当前编辑器不能插入素材": "Bu düzenleyici materyal ekleyemez",
+    "已插入「{title}」": "“{title}” eklendi",
+    "这份素材没能插入，请重试": "Bu materyal eklenemedi. Tekrar deneyin.",
     "保存失败，请重试": "Kaydedilemedi. Tekrar deneyin.",
     "切换失败，请重试": "Geçiş yapılamadı. Tekrar deneyin.",
     "正在保存当前改动…": "Değişiklikleriniz kaydediliyor…",
@@ -74,6 +104,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "Bu dosyada uygulanmamış değişiklikler var. Önce kaydedin.",
   },
   "zh-TW": {
+    "当前编辑器不能插入素材": "目前的編輯器不能插入素材",
+    "已插入「{title}」": "已插入「{title}」",
+    "这份素材没能插入，请重试": "這份素材沒能插入，請重試",
     "保存失败，请重试": "儲存失敗，請重試",
     "切换失败，请重试": "切換失敗，請重試",
     "正在保存当前改动…": "正在儲存目前的變更…",
@@ -81,6 +114,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "這份檔案還有未套用的變更，請先儲存",
   },
   ja: {
+    "当前编辑器不能插入素材": "このエディターでは素材を挿入できません",
+    "已插入「{title}」": "「{title}」を挿入しました",
+    "这份素材没能插入，请重试": "この素材を挿入できませんでした。もう一度お試しください。",
     "保存失败，请重试": "保存できませんでした。もう一度お試しください。",
     "切换失败，请重试": "切り替えできませんでした。もう一度お試しください。",
     "正在保存当前改动…": "変更を保存しています…",
@@ -88,6 +124,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "このファイルには未適用の変更があります。先に保存してください。",
   },
   ko: {
+    "当前编辑器不能插入素材": "이 편집기에서는 소재를 삽입할 수 없습니다",
+    "已插入「{title}」": "“{title}”을(를) 삽입했습니다",
+    "这份素材没能插入，请重试": "이 소재를 삽입하지 못했습니다. 다시 시도하세요.",
     "保存失败，请重试": "저장하지 못했습니다. 다시 시도하세요.",
     "切换失败，请重试": "전환하지 못했습니다. 다시 시도하세요.",
     "正在保存当前改动…": "변경 사항을 저장하는 중…",
@@ -95,6 +134,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "이 파일에 적용하지 않은 변경 사항이 있습니다. 먼저 저장하세요.",
   },
   ar: {
+    "当前编辑器不能插入素材": "لا يمكن لهذا المحرر إدراج مواد",
+    "已插入「{title}」": "تم إدراج «{title}»",
+    "这份素材没能插入，请重试": "تعذّر إدراج هذه المادة. حاول مرة أخرى.",
     "保存失败，请重试": "تعذّر الحفظ. حاول مرة أخرى.",
     "切换失败，请重试": "تعذّر التبديل. حاول مرة أخرى.",
     "正在保存当前改动…": "جارٍ حفظ تغييراتك…",
@@ -102,6 +144,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "في هذا الملف تغييرات لم تُطبَّق بعد. احفظها أولًا.",
   },
   th: {
+    "当前编辑器不能插入素材": "ตัวแก้ไขนี้แทรกสื่อไม่ได้",
+    "已插入「{title}」": "แทรก “{title}” แล้ว",
+    "这份素材没能插入，请重试": "แทรกสื่อนี้ไม่สำเร็จ ลองอีกครั้ง",
     "保存失败，请重试": "บันทึกไม่สำเร็จ ลองอีกครั้ง",
     "切换失败，请重试": "สลับไม่สำเร็จ ลองอีกครั้ง",
     "正在保存当前改动…": "กำลังบันทึกการเปลี่ยนแปลง…",
@@ -109,6 +154,9 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "这份文件还有没应用的改动，请先保存": "ไฟล์นี้มีการเปลี่ยนแปลงที่ยังไม่ได้ใช้ โปรดบันทึกก่อน",
   },
   hi: {
+    "当前编辑器不能插入素材": "यह एडिटर सामग्री नहीं डाल सकता",
+    "已插入「{title}」": "“{title}” डाला गया",
+    "这份素材没能插入，请重试": "यह सामग्री डाली नहीं जा सकी। फिर से कोशिश करें।",
     "保存失败，请重试": "सहेजा नहीं जा सका। फिर से कोशिश करें।",
     "切换失败，请重试": "बदला नहीं जा सका। फिर से कोशिश करें।",
     "正在保存当前改动…": "आपके बदलाव सहेजे जा रहे हैं…",

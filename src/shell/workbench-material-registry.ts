@@ -35,6 +35,11 @@ export interface WorkbenchMaterialAdapter {
   id: string;
   actions: readonly WorkbenchMaterialAction[];
   /**
+   * 素材库面板列哪些素材类型（taxonomy，如 `image`）。缺省按当前文件自己的类型列。
+   * 例：PDF 编辑器接图片 / 签名作图章（D2），就报 `["image"]`。
+   */
+  materialTypes?: readonly string[];
+  /**
    * Required for shared Insert/Replace. The target editor owns selection,
    * geometry and expected target revision, and must put the returned command
    * through its own history stack.
@@ -57,6 +62,7 @@ export interface WorkbenchMaterialActionAvailability {
 
 export interface WorkbenchMaterialRuntimeSnapshot {
   actions: readonly WorkbenchMaterialAction[];
+  materialTypes: readonly string[];
   draggedItem: LibraryItem | null;
 }
 
@@ -66,8 +72,10 @@ interface RuntimeState {
   draggedItem: LibraryItem | null;
 }
 
+const EMPTY_TYPES: readonly string[] = Object.freeze([]);
 const EMPTY_RUNTIME: WorkbenchMaterialRuntimeSnapshot = Object.freeze({
   actions: EMPTY_ACTIONS,
+  materialTypes: EMPTY_TYPES,
   draggedItem: null,
 });
 const runtimes = new Map<string, RuntimeState>();
@@ -124,6 +132,9 @@ function emitRuntime(scope: string): void {
     scope,
     Object.freeze({
       actions: actions.length ? Object.freeze([...actions]) : EMPTY_ACTIONS,
+      materialTypes: runtime?.adapter?.materialTypes?.length
+        ? Object.freeze([...runtime.adapter.materialTypes])
+        : EMPTY_TYPES,
       draggedItem: runtime?.draggedItem || null,
     }),
   );

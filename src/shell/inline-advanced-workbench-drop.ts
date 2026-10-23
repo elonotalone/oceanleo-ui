@@ -6,6 +6,7 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
+import { humanErrorMessage } from "./human-error-message";
 import { resolveDroppedWorkbenchMaterial } from "./inline-advanced-shell-helpers";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialContextValue } from "./workbench-material-provider";
@@ -72,7 +73,9 @@ export function useInlineAdvancedWorkbenchDrop({
         })
         .finally(workbenchMaterials.endMaterialDrag);
       setDropMessage(
-        result.ok ? tt("素材已添加到画布") : result.error || tt("素材添加失败"),
+        result.ok
+          ? tt("素材已添加到画布")
+          : tt(humanErrorMessage(result.error, tt("素材添加失败"))),
       );
       window.setTimeout(() => setDropMessage(""), 1800);
     },

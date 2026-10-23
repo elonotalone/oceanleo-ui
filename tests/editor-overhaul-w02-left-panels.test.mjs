@@ -278,3 +278,27 @@ test("mine panel highlights the current file and shows the reason when the switc
     assert.match(m.container.querySelector("[data-inline-editor-mine-switch-error]").textContent, /网络断开，保存失败/);
   } finally { await m.destroy(); }
 });
+
+test("materials panel lists the editor-declared types and reports every insert in plain words", async () => {
+  const { InlineEditorMaterialPanel } = await import(await compileModule("src/shell/InlineEditorMaterialPanel.tsx", {
+    "../i18n/ui/useUI": ui,
+    "./MaterialLibrary": dataModule(`export function MaterialLibrary(p){ globalThis.__materialProps = p; return null; }`),
+  }));
+  let next = { ok: true };
+  const materials = {
+    appId: "library", actions: ["insert"], materialTypes: ["image"], entries: [],
+    perform: async () => next, canPerform: () => true, beginMaterialDrag() {}, endMaterialDrag() {},
+  };
+  const m = await mount(React.createElement(InlineEditorMaterialPanel, {
+    item: { ...item, kind: "document", meta: { format: "pdf" } }, siteId: "oceanleo", accent: "#000", materials, primaryMaterialAction: "insert",
+  }));
+  try {
+    assert.equal(globalThis.__materialProps.curatedType, "image", "PDF editor declared images, not PDFs");
+    await act(async () => { await globalThis.__materialProps.onMaterialAction("insert", { ...item, title: "Logo" }); });
+    assert.equal(m.container.querySelector("[data-material-insert-feedback]").dataset.materialInsertFeedback, "ok");
+    assert.match(m.container.textContent, /已插入「Logo」/);
+    next = { ok: false, error: "当前编辑器不接受这种 artifact type/source。" };
+    await act(async () => { await globalThis.__materialProps.onMaterialAction("insert", { ...item, title: "Clip" }); });
+    assert.equal(m.container.querySelector("[data-material-insert-feedback]").dataset.materialInsertFeedback, "error");
+  } finally { await m.destroy(); }
+});
