@@ -876,12 +876,10 @@ export function GridUniverStage({
 
   const undo = useCallback(() => {
     void handleRef.current?.api.undo?.();
-    bumpHistory();
-  }, [bumpHistory]);
+  }, []);
   const redo = useCallback(() => {
     void handleRef.current?.api.redo?.();
-    bumpHistory();
-  }, [bumpHistory]);
+  }, []);
 
   const workbookBlob = useCallback(
     async () => {

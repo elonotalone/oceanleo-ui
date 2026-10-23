@@ -245,6 +245,39 @@ test("image Undo publishes its late native stack move, without duplicate writes 
   assert.equal(listeners.size, 0);
 });
 
+test("native history buttons dispatch once and leave dirty accounting to the stack observer", () => {
+  const source = readFileSync(new URL('../src/shell/doc-editors/GridUniverStage.tsx', import.meta.url), 'utf8');
+  for (const action of ['undo', 'redo']) {
+    const body = source.match(new RegExp(`const ${action} = useCallback\\(\\(\\) => \\{([\\s\\S]*?)\\}, \\[[^\\]]*\\]\\)`))?.[1];
+    assert.ok(body, `actual ${action} handler must be extractable`);
+    const stack = fakeUndo();
+    const from = action === 'undo' ? stack.undo : stack.redo;
+    const into = action === 'undo' ? stack.redo : stack.undo;
+    from.push({ id: 'insert-image' });
+    let statusChanged;
+    stack.service.undoRedoStatus$ = { subscribe: callback => { statusChanged = callback; return { unsubscribe() {} }; } };
+    let commands = 0, writes = 0, manualWrites = 0;
+    const watch = createGridEditWatch({ undo: stack.service, onPersonWrite: () => writes++, onHistory() {} });
+    const api = { [action]: () => {
+      commands++;
+      if (!from.length) return false;
+      into.push(from.pop());
+      statusChanged();
+      return true;
+    } };
+    const handler = new Function('handleRef', 'bumpHistory', body);
+    handler({ current: { api } }, () => manualWrites++);
+    assert.equal(commands, 1);
+    assert.equal(writes, 1, `${action} moves one native stack entry and records one personal edit`);
+    assert.equal(manualWrites, 0);
+    handler({ current: { api } }, () => manualWrites++);
+    assert.equal(commands, 2);
+    assert.equal(writes, 1, `${action} no-op creates zero additional personal edits`);
+    assert.equal(manualWrites, 0);
+    watch.dispose();
+  }
+});
+
 test("深色画布：默认黑字变浅、表头和网格线变深，用户色原样", () => {
   assert.equal(gridDarkCanvasColor("rgb(0,0,0)"), GRID_DARK_CANVAS.text);
   assert.equal(gridDarkCanvasColor("#000000"), GRID_DARK_CANVAS.text);
