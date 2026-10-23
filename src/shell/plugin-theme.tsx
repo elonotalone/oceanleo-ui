@@ -3,28 +3,31 @@
 /**
  * 插件内主题（契约：oceandino docs/architecture/oceanleo-plugin-theme-contract.md）。
  *
- * 10 件共享高级编辑器的主题与站点主题（html.dark）完全解耦：
- *   - 持久化 localStorage["oceanleo.plugin-theme.<pluginId>"]，取值 "dark" | "light"；
- *     没有存值时用该插件的本命默认。
- *   - 主题以 CSS 变量作用在插件根节点（data-plugin-theme），不污染 document/body。
- *   - light = 真纯白（主面 #ffffff）；dark = 近黑深面。
- *
- * 解耦为何靠「内联变量遮蔽」：站点暗色是 html.dark 下的全局工具类翻转
- * （globals.css 的 `html.dark .bg-white {…} !important` + 语义变量重定义）。
- * 内联 style 里的同名变量在子树内胜过 html 上的定义，因此这里把 --awb-*、
- * 站点语义 token（--bg/--card/--fg…）以及 html.dark 规则引用的 --leo-d-* 一并
- * 显式赋值——站点亮插件暗、站点暗插件亮都不串色。
+ * 2026-10-23 操作员裁定 D7：所有编辑器自动跟随网站主题。不再有各插件的「本命默认」、
+ * 不存 localStorage、没有切换键（PluginThemeToggle 已删）。
+ *   - 站点外观的事实源是 <html> 上的主题类：SSR 由 getThemeClass 按 cookie 写好，首帧前
+ *     ThemeScript 同步校正，之后 ThemeProvider.setMode / auto 跟系统时由 applyClass 同步改写。
+ *     含 `dark`（dark 与暗色特色主题 "dark <slug>"）= dark；其余（light 与浅色特色主题）= light。
+ *   - 为什么客户端不以 useTheme().resolved 为准：Provider 的 resolved 初值恒为 "light"
+ *     （useState 初值），挂载 effect 之后才校正；html 类在首帧前就是对的。编辑器若与 Provider
+ *     同一次提交挂载，读 resolved 会先画一帧浅色再跳暗色。所以读 html 类 + MutationObserver；
+ *     useTheme() 只用来在 Provider 改档时同一批重渲染。
+ *   - SSR / hydration 读不到 DOM：快照为 null，消费方据此走站点语义变量别名
+ *     （advancedWorkbenchStyle / pluginChromeStyle(null)），那套变量由 html.dark 翻转，
+ *     首帧与站点一致，不会先闪一档再跳。
+ *   - 主题仍以 CSS 变量作用在插件根节点（data-plugin-theme），不污染 document/body。
+ *   - accent 身份色表保留，两档各一个值。
  */
 
 import {
   createContext,
-  useCallback,
   useContext,
+  useMemo,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { useUI } from "../i18n/ui/useUI";
+import { useTheme } from "../theme/ThemeProvider";
 
 export type PluginThemeMode = "dark" | "light";
 
@@ -45,67 +48,26 @@ export type PluginThemeId =
   | "video-canvas";
 
 export interface PluginThemeSpec {
-  /** 本命默认：原本暗的默认 dark，原本亮的默认 light。 */
-  defaultTheme: PluginThemeMode;
   /** accent 身份色，两档各一个值（dark 档亮一档以保证近黑底对比度）。 */
   accent: Record<PluginThemeMode, string>;
 }
 
 /**
- * 每件插件的本命默认与 accent 身份色（结构统一、风格各表）。
- * 默认档裁定见任务书：dark = threed / video-timeline / game / audio；
- * light = richdoc / grid / deck / image / pdf。
+ * 每件插件的 accent 身份色（结构统一、风格各表）。明暗不在这里定：一律跟随站点（D7）。
+ * website 两档抄 website 仓 globals.css 的 --wb-accent。
  */
 export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
-  richdoc: {
-    defaultTheme: "light",
-    accent: { light: "#4f46e5", dark: "#818cf8" },
-  },
-  grid: {
-    defaultTheme: "light",
-    accent: { light: "#059669", dark: "#34d399" },
-  },
-  deck: {
-    defaultTheme: "light",
-    accent: { light: "#ea580c", dark: "#fb923c" },
-  },
-  image: {
-    defaultTheme: "light",
-    accent: { light: "#9333ea", dark: "#c084fc" },
-  },
-  pdf: {
-    defaultTheme: "light",
-    accent: { light: "#dc2626", dark: "#f87171" },
-  },
-  audio: {
-    defaultTheme: "dark",
-    accent: { light: "#db2777", dark: "#f472b6" },
-  },
-  "video-timeline": {
-    defaultTheme: "dark",
-    accent: { light: "#0891b2", dark: "#22d3ee" },
-  },
-  threed: {
-    defaultTheme: "dark",
-    accent: { light: "#ea580c", dark: "#fdba74" },
-  },
-  game: {
-    defaultTheme: "dark",
-    accent: { light: "#16a34a", dark: "#4ade80" },
-  },
-  website: {
-    // 本命默认 dark，两档 accent 抄 website 仓 globals.css 的 --wb-accent。
-    // 并入时这里一度写成 light + #fb923c，两处都是错的：工作台 v1 主题迁移的
-    // 交付就是「dark 本命默认」，而 #fb923c 是 dark 档的 --wb-accent-strong，
-    // 不是 accent 本身。两套值又共用同一个 localStorage key，于是同一页里
-    // 陈列馆插件与站点编辑器会各自认一个默认，切换还互不通知。
-    defaultTheme: "dark",
-    accent: { light: "#ea580c", dark: "#f97316" },
-  },
-  "video-canvas": {
-    defaultTheme: "dark",
-    accent: { light: "#0d9488", dark: "#2dd4bf" },
-  },
+  richdoc: { accent: { light: "#4f46e5", dark: "#818cf8" } },
+  grid: { accent: { light: "#059669", dark: "#34d399" } },
+  deck: { accent: { light: "#ea580c", dark: "#fb923c" } },
+  image: { accent: { light: "#9333ea", dark: "#c084fc" } },
+  pdf: { accent: { light: "#dc2626", dark: "#f87171" } },
+  audio: { accent: { light: "#db2777", dark: "#f472b6" } },
+  "video-timeline": { accent: { light: "#0891b2", dark: "#22d3ee" } },
+  threed: { accent: { light: "#ea580c", dark: "#fdba74" } },
+  game: { accent: { light: "#16a34a", dark: "#4ade80" } },
+  website: { accent: { light: "#ea580c", dark: "#f97316" } },
+  "video-canvas": { accent: { light: "#0d9488", dark: "#2dd4bf" } },
 };
 
 /**
@@ -121,7 +83,6 @@ export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
  * 真正没登记的 id 也不该悄悄混过去，所以开发环境下点名警告一次。
  */
 const FALLBACK_THEME_SPEC: PluginThemeSpec = {
-  defaultTheme: "light",
   accent: { light: "#4f46e5", dark: "#818cf8" },
 };
 
@@ -158,129 +119,86 @@ export function pluginThemeIdForAdapter(
     : null;
 }
 
-export function pluginThemeStorageKey(pluginId: PluginThemeId): string {
-  return `oceanleo.plugin-theme.${pluginId}`;
-}
-
-function parseMode(value: string | null): PluginThemeMode | null {
-  return value === "dark" || value === "light" ? value : null;
+/** 站点外观 → 两档。读不到 DOM（SSR）时为 null。 */
+export function readSiteThemeMode(): PluginThemeMode | null {
+  if (typeof document === "undefined" || !document.documentElement) return null;
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
 /* ---------------------------------------------------------------------------
- * 跨实例同步的小仓：同一 pluginId 的所有 hook（外壳根、工具栏切换器、抽屉/弹层
- * 作用域）读同一份值；setPluginTheme 写 localStorage 并通知本页监听者；其他
- * 标签页经 storage 事件收敛。SSR 无 window 时始终回本命默认。
+ * 跟随 <html> 主题类的小仓：一个 MutationObserver 喂全部 hook；最后一个订阅者走时断开，
+ * 下一次订阅重新挂到当时的 document 上。
  * ------------------------------------------------------------------------- */
-const themeCache = new Map<PluginThemeId, PluginThemeMode>();
-const themeListeners = new Map<PluginThemeId, Set<() => void>>();
-let storageListenerInstalled = false;
+const siteThemeListeners = new Set<() => void>();
+let siteThemeObserver: MutationObserver | null = null;
+let lastSiteTheme: PluginThemeMode | null = null;
 
-function notify(pluginId: PluginThemeId) {
-  themeListeners.get(pluginId)?.forEach((listener) => listener());
-}
-
-function ensureStorageListener() {
-  if (storageListenerInstalled || typeof window === "undefined") return;
-  storageListenerInstalled = true;
-  window.addEventListener("storage", (event) => {
-    if (!event.key?.startsWith("oceanleo.plugin-theme.")) return;
-    const pluginId = event.key.slice("oceanleo.plugin-theme.".length);
-    if (!Object.prototype.hasOwnProperty.call(PLUGIN_THEME_SPECS, pluginId)) {
-      return;
-    }
-    const id = pluginId as PluginThemeId;
-    const next = parseMode(event.newValue) || themeSpec(id).defaultTheme;
-    if (themeCache.get(id) === next) return;
-    themeCache.set(id, next);
-    notify(id);
+function ensureSiteThemeObserver() {
+  if (
+    siteThemeObserver ||
+    typeof document === "undefined" ||
+    typeof MutationObserver === "undefined"
+  ) {
+    return;
+  }
+  lastSiteTheme = readSiteThemeMode();
+  siteThemeObserver = new MutationObserver(() => {
+    const next = readSiteThemeMode();
+    if (next === lastSiteTheme) return;
+    lastSiteTheme = next;
+    siteThemeListeners.forEach((listener) => listener());
+  });
+  siteThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
   });
 }
 
-export function currentPluginTheme(pluginId: PluginThemeId): PluginThemeMode {
-  const cached = themeCache.get(pluginId);
-  if (cached) return cached;
-  let stored: PluginThemeMode | null = null;
-  if (typeof window !== "undefined") {
-    try {
-      stored = parseMode(
-        window.localStorage.getItem(pluginThemeStorageKey(pluginId)),
-      );
-    } catch {
-      stored = null;
-    }
-  }
-  const value = stored || themeSpec(pluginId).defaultTheme;
-  themeCache.set(pluginId, value);
-  return value;
-}
-
-export function setPluginTheme(
-  pluginId: PluginThemeId,
-  mode: PluginThemeMode,
-) {
-  themeCache.set(pluginId, mode);
-  try {
-    window.localStorage.setItem(pluginThemeStorageKey(pluginId), mode);
-  } catch {
-    /* 私密模式等存储不可用时主题仍即时生效，只是不持久。 */
-  }
-  notify(pluginId);
-}
-
-function subscribePluginTheme(pluginId: PluginThemeId, listener: () => void) {
-  ensureStorageListener();
-  let set = themeListeners.get(pluginId);
-  if (!set) {
-    set = new Set();
-    themeListeners.set(pluginId, set);
-  }
-  set.add(listener);
+function subscribeSiteTheme(listener: () => void) {
+  ensureSiteThemeObserver();
+  siteThemeListeners.add(listener);
   return () => {
-    set.delete(listener);
+    siteThemeListeners.delete(listener);
+    if (siteThemeListeners.size === 0 && siteThemeObserver) {
+      siteThemeObserver.disconnect();
+      siteThemeObserver = null;
+    }
   };
 }
 
+/** 当前档 = 站点档。pluginId 只为保持签名，主题不再按插件区分。 */
+export function currentPluginTheme(pluginId?: PluginThemeId): PluginThemeMode {
+  void pluginId;
+  return readSiteThemeMode() ?? "light";
+}
+
 export interface PluginThemeHandle {
-  /** null = 该 adapter 不属于 10 件插件（走原站点主题别名，无切换器）。 */
+  /**
+   * null = 该 adapter 不属于 11 件插件（走站点主题别名），或 SSR / hydration 那一帧
+   * 读不到站点档（同样走别名，别名本身跟着 html.dark 走）。
+   */
   theme: PluginThemeMode | null;
   /** 当前档的 accent 身份色；theme 为 null 时为 null。 */
   accent: string | null;
-  setTheme: (mode: PluginThemeMode) => void;
-  toggle: () => void;
 }
 
 export function usePluginTheme(
   pluginId: PluginThemeId | null,
 ): PluginThemeHandle {
-  const subscribe = useCallback(
-    (listener: () => void) =>
-      pluginId ? subscribePluginTheme(pluginId, listener) : () => {},
-    [pluginId],
-  );
+  // Provider 改档时 applyClass 已经同步改好 html 类；订阅 context 让这里同一批重渲染。
+  useTheme();
   const theme = useSyncExternalStore(
-    subscribe,
-    () => (pluginId ? currentPluginTheme(pluginId) : null),
-    () => (pluginId ? themeSpec(pluginId).defaultTheme : null),
+    subscribeSiteTheme,
+    () => (pluginId ? readSiteThemeMode() : null),
+    () => null,
   );
-  const setTheme = useCallback(
-    (mode: PluginThemeMode) => {
-      if (pluginId) setPluginTheme(pluginId, mode);
-    },
-    [pluginId],
+  return useMemo(
+    () => ({
+      theme,
+      accent: pluginId && theme ? themeSpec(pluginId).accent[theme] : null,
+    }),
+    [pluginId, theme],
   );
-  const toggle = useCallback(() => {
-    if (!pluginId) return;
-    setPluginTheme(
-      pluginId,
-      currentPluginTheme(pluginId) === "dark" ? "light" : "dark",
-    );
-  }, [pluginId]);
-  return {
-    theme,
-    accent: pluginId && theme ? themeSpec(pluginId).accent[theme] : null,
-    setTheme,
-    toggle,
-  };
 }
 
 /* ---------------------------------------------------------------------------
@@ -436,53 +354,5 @@ export function PluginThemeScope({
         {children}
       </div>
     </PluginThemePortalContext.Provider>
-  );
-}
-
-/** 插件工具栏里的两档切换器（图标按钮）：dark 显太阳（点了变亮），light 显月亮。 */
-export function PluginThemeToggle({ pluginId }: { pluginId: PluginThemeId }) {
-  const tt = useUI();
-  const { theme, toggle } = usePluginTheme(pluginId);
-  if (!theme) return null;
-  const dark = theme === "dark";
-  return (
-    <button
-      type="button"
-      data-plugin-theme-toggle={pluginId}
-      onClick={toggle}
-      aria-pressed={dark}
-      aria-label={tt(dark ? "切换到纯白主题" : "切换到暗黑主题")}
-      title={tt(dark ? "切换到纯白主题" : "切换到暗黑主题")}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--awb-muted)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--awb-hover)] hover:text-[var(--awb-accent)]"
-    >
-      {dark ? (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-        </svg>
-      ) : (
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
-          aria-hidden="true"
-        >
-          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
-        </svg>
-      )}
-    </button>
   );
 }

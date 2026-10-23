@@ -1,5 +1,17 @@
 "use client";
 
+// ============================================================================
+// 编辑器第一行（编辑器整改波 2026-10-23，操作员裁定 D1：顶栏只剩一行）
+// ----------------------------------------------------------------------------
+//   左：←  ｜ 素材库 我的库 ｜ 模式页签（只有两页以上才有）
+//   右：↶ ↷ ｜ 多人同改头像串与锁 ｜ 保存状态 ｜ ··· ｜ 全屏 ｜ ×
+// `···` 里：邀请一起改、生成回放、分享、收藏、下载 ▸（plugin-chrome/PluginMoreMenu）。
+// 主题键删除：编辑器明暗永远跟着网站（D7，plugin-theme.tsx）。
+// 保存状态槽：有 persistence 就恒在，不再因 recovery.ready === false 藏起来——
+// PDF 处理中把 ready 置 false，用户就看不到云朵，不知道存没存。
+// 可点的东西全部落在 GLOBAL_ROW_SLOTS 的槽位里（plugin-pages.ts）。
+// ============================================================================
+
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { Button, IconButton } from "../ui/Button";
@@ -9,17 +21,25 @@ import { GlobalRowHistoryControls } from "./EditBarDockControls";
 import { actionGroup } from "./advanced-workbench-chrome";
 import { AnchoredPopover } from "./anchored-popover";
 import { CollabActionSlot } from "./collab/CollabActionSlot";
-import { EditorItemSocialChrome } from "./editor-item-social-chrome";
 import type { LibraryItem } from "./library-data";
 import { downloadIconButtonProps } from "./workspace-download-icon-button";
-import { PluginThemeToggle, type PluginThemeId } from "./plugin-theme";
+import type { PluginThemeId } from "./plugin-theme";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import {
   useRightPaneSlot,
   type WorkspaceLibraryPanelId,
 } from "./SplitWorkspace";
+import { PluginMoreMenu } from "./plugin-chrome/PluginMoreMenu";
+import {
+  PluginMoreMenuRegistryContext,
+  usePluginMoreMenuHost,
+} from "./plugin-chrome/more-menu-registry";
+import { PluginPageTabs } from "./plugin-chrome/PluginPageTabs";
+import type { PluginPage } from "./plugin-chrome/plugin-pages";
 
 export { downloadIconButtonProps };
+
+type WorkspaceAction = NonNullable<AdvancedEditorAdapter["actions"]>[number];
 
 function browserFullscreenAvailable(): boolean {
   if (typeof document === "undefined") return false;
@@ -39,6 +59,8 @@ function toggleEditorBrowserFullscreen() {
   void target.requestFullscreen?.();
 }
 
+const NO_PAGES: readonly PluginPage[] = [];
+
 export function AdvancedWorkspaceActionBar({
   adapter,
   item = null,
@@ -46,11 +68,14 @@ export function AdvancedWorkspaceActionBar({
   autoSaveError,
   activeLibraryPanelId,
   pluginThemeId = null,
+  pages = NO_PAGES,
+  activePageId = "",
   showLibrary = true,
   showBack = true,
   showClose = false,
   onBack,
   onOpenLibrary,
+  onSelectPage,
   onRetrySave,
   onClose,
   onTriggerAction,
@@ -63,6 +88,9 @@ export function AdvancedWorkspaceActionBar({
   activeDrawerId?: string;
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
   pluginThemeId?: PluginThemeId | null;
+  /** 模式页签（`buildPluginPages` 的结果）；少于两页时不画。 */
+  pages?: readonly PluginPage[];
+  activePageId?: string;
   showLibrary?: boolean;
   showBack?: boolean;
   showClose?: boolean;
@@ -70,11 +98,10 @@ export function AdvancedWorkspaceActionBar({
   /** @deprecated The shared selection bar is now the only tools launcher. */
   onOpenTools?: () => void;
   onOpenLibrary: (id: WorkspaceLibraryPanelId) => void;
+  onSelectPage?: (pageId: string) => void;
   onRetrySave: () => void;
   onClose?: () => void;
-  onTriggerAction: (
-    action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
-  ) => void | Promise<void>;
+  onTriggerAction: (action: WorkspaceAction) => void | Promise<void>;
   /** Kept so callers can still pass it; upload is no longer on the first row. */
   onUploadFiles?: (files: File[]) => void;
 }) {
@@ -98,9 +125,7 @@ export function AdvancedWorkspaceActionBar({
   const maximize = rightPaneSlot
     ? {
         pressed: rightMaximized,
-        label: tt(
-          rightMaximized ? "退出右侧全屏" : "右侧全屏",
-        ),
+        label: tt(rightMaximized ? "退出右侧全屏" : "右侧全屏"),
         toggle: () => rightPaneSlot.toggleRightMaximized(),
       }
     : browserFullscreenAvailable()
@@ -110,13 +135,11 @@ export function AdvancedWorkspaceActionBar({
           toggle: toggleEditorBrowserFullscreen,
         }
       : null;
-  const downloadButtonRef = useRef<HTMLButtonElement>(null);
-  const downloadMenuRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const saveMenuRef = useRef<HTMLDivElement>(null);
   const [actionError, setActionError] = useState("");
-  const [downloadOpen, setDownloadOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
+  const moreMenu = usePluginMoreMenuHost();
   const actions = adapter.actions || [];
   const downloadActions = [
     ...(adapter.directDownload ? [adapter.directDownload] : []),
@@ -126,8 +149,10 @@ export function AdvancedWorkspaceActionBar({
   const saveActions = actions.filter(
     (action) => actionGroup(action) === "save",
   );
+  // 没有持久化、也没有 save 组的件根本不会把东西存到服务器上：
+  // 这时画一朵绿云写「已保存」就是假成功，整个槽不出。
+  const showSaveState = Boolean(adapter.persistence) || saveActions.length > 0;
   const idBase = useId().replace(/:/g, "");
-  const downloadMenuId = `workspace-download-${idBase}`;
   const saveMenuId = `workspace-save-${idBase}`;
   const saveStateLabel = tt(
     autoSaveState === "unconfirmed"
@@ -144,9 +169,7 @@ export function AdvancedWorkspaceActionBar({
       : confirmation?.message;
   const saveMenuAvailable = saveActions.length > 0 || autoSaveState === "error";
 
-  const triggerAction = async (
-    action: NonNullable<AdvancedEditorAdapter["actions"]>[number],
-  ) => {
+  const triggerAction = async (action: WorkspaceAction) => {
     setActionError("");
     try {
       await onTriggerAction(action);
@@ -158,6 +181,7 @@ export function AdvancedWorkspaceActionBar({
   };
 
   return (
+    <PluginMoreMenuRegistryContext.Provider value={moreMenu.registry}>
     <div
       data-advanced-workspace-actions
       data-advanced-action-row
@@ -165,7 +189,7 @@ export function AdvancedWorkspaceActionBar({
       aria-label={tt("工作区操作")}
       className="flex h-11 w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-hidden bg-transparent"
     >
-      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto">
+      <div className="flex h-full min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div data-global-row-slot="back">
           {showBack ? (
             <IconButton
@@ -200,6 +224,16 @@ export function AdvancedWorkspaceActionBar({
             </>
           ) : null}
         </div>
+        {pages.length > 1 && onSelectPage ? (
+          <div data-global-row-slot="pages" className="flex h-full items-center">
+            <span className="mx-1 h-6 w-px shrink-0 bg-[var(--divider,#e7e5e4)]" />
+            <PluginPageTabs
+              pages={pages}
+              activePageId={activePageId}
+              onSelectPage={onSelectPage}
+            />
+          </div>
+        ) : null}
         <span className="min-w-4 flex-1" />
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
@@ -212,7 +246,7 @@ export function AdvancedWorkspaceActionBar({
           />
         ) : null}
         <CollabActionSlot collab={adapter.collab} pluginThemeId={pluginThemeId} />
-        {adapter.persistence?.recovery?.ready !== false ? (
+        {showSaveState ? (
         <div data-global-row-slot="save-state">
           {/* 保存菜单：按钮本体只说状态；点开才有动作。无任何可点动作时它只是状态，不弹菜单。 */}
           <Button
@@ -230,16 +264,7 @@ export function AdvancedWorkspaceActionBar({
             aria-controls={saveMenuAvailable ? saveMenuId : undefined}
             aria-live="polite"
             title={saveErrorTitle || saveStateLabel}
-            style={{
-              color:
-                autoSaveState === "error"
-                  ? "#dc2626"
-                  : autoSaveState === "saving"
-                    ? "#d97706"
-                    : autoSaveState === "unconfirmed"
-                      ? "#737373"
-                      : "#059669",
-            }}
+            style={{ color: cloudSaveColor(autoSaveState) }}
           >
             <CloudAutoSaveIcon
               state={autoSaveState}
@@ -326,87 +351,16 @@ export function AdvancedWorkspaceActionBar({
           ) : null}
         </div>
         ) : null}
-        <EditorItemSocialChrome item={item} />
-        <div data-global-row-slot="download" className="flex items-center gap-0.5">
-          {downloadActions.length > 0 ? (
-            <>
-              <IconButton
-                ref={downloadButtonRef}
-                {...downloadIconButtonProps}
-                data-workspace-download-launcher
-                onClick={() => setDownloadOpen((value) => !value)}
-                label={tt("下载与导出")}
-                title={actionError || tt("下载与导出")}
-                aria-haspopup="menu"
-                aria-expanded={downloadOpen}
-                aria-controls={downloadMenuId}
-                icon={<AdvancedEditorIcon name="download" className="h-4 w-4" />}
-              />
-              <AnchoredPopover
-                open={downloadOpen}
-                anchorRef={downloadButtonRef}
-                panelRef={downloadMenuRef}
-                onClose={() => setDownloadOpen(false)}
-                id={downloadMenuId}
-                role="menu"
-                ariaLabel={tt("下载与导出")}
-                align="end"
-                maxHeight={384}
-                attributes={{
-                  "data-workspace-download-menu": true,
-                }}
-                className="z-[2147483550] grid w-60 gap-1 overflow-y-auto rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1.5 text-[var(--awb-text)] shadow-2xl"
-              >
-                {downloadActions.map((action, index) => {
-                  const label =
-                    action.busy && action.busyLabel
-                      ? action.busyLabel
-                      : action.label;
-                  return (
-                    <Button
-                      key={action.id}
-                      variant="ghost"
-                      block
-                      align="start"
-                      role="menuitem"
-                      tabIndex={-1}
-                      data-workspace-export-action-id={action.id}
-                      data-workspace-export-action-kind={
-                        index === 0 && adapter.directDownload === action
-                          ? "default"
-                          : "secondary"
-                      }
-                      disabled={action.disabled || action.busy}
-                      aria-busy={action.busy || undefined}
-                      onClick={() => {
-                        setDownloadOpen(false);
-                        window.requestAnimationFrame(() =>
-                          downloadButtonRef.current?.focus(),
-                        );
-                        void triggerAction(action);
-                      }}
-                    >
-                      <AdvancedEditorIcon
-                        name={action.icon || "download"}
-                        className="h-4 w-4 shrink-0"
-                      />
-                      <span className="min-w-0 flex-1 truncate">
-                        {tt(label)}
-                      </span>
-                      {index === 0 && adapter.directDownload === action && (
-                        <span className="shrink-0 text-[9px] text-[var(--awb-muted)]">
-                          {tt("默认")}
-                        </span>
-                      )}
-                    </Button>
-                  );
-                })}
-              </AnchoredPopover>
-            </>
-          ) : null}
-        </div>
-        <div data-global-row-slot="theme">
-          {pluginThemeId ? <PluginThemeToggle pluginId={pluginThemeId} /> : null}
+        <div data-global-row-slot="more" className="flex items-center">
+          <PluginMoreMenu
+            anchorRef={moreMenu.registry.anchorRef}
+            item={item}
+            entries={moreMenu.entries}
+            downloads={downloadActions}
+            defaultDownloadId={adapter.directDownload?.id ?? null}
+            onDownload={(action) => triggerAction(action)}
+            errorMessage={actionError}
+          />
         </div>
         <div data-global-row-slot="maximize">
           {maximize ? (
@@ -431,6 +385,7 @@ export function AdvancedWorkspaceActionBar({
         )}
       </div>
     </div>
+    </PluginMoreMenuRegistryContext.Provider>
   );
 }
 

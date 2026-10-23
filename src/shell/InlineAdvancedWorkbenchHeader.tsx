@@ -1,23 +1,26 @@
 "use client";
 
+// 编辑器顶栏装配（编辑器整改波 2026-10-23，操作员裁定 D1：顶栏只剩一行）。
+//
+// 原来这里装两行：第一行 PluginGlobalRow，第二行 PluginPageRow（页签）。第二行整行删除，
+// 页签与切页逻辑（usePluginPage、aux 回调、PluginModeAdapterBridge）挪进第一行。
+// 「编辑工具」面板的注册（toolsPanel / openTools / useAdvancedToolsLauncherRegistration）
+// 也一并删除：W03 删了触发它的图标，留着就是死代码。抽屉改由 W02 做成编辑栏空态里的按钮。
+//
+// 有 SplitWorkspace 右栏时，整个 header 被 portal 进右栏的标题槽（W02 的壳负责）。
+// `data-plugin-chrome-rows`：编辑栏停靠控制器量「chrome 底边」用它（原来量的是页签行），
+// 浮动编辑栏因此仍停在顶栏下方 8px。
+
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
-import { useUI } from "../i18n/ui/useUI";
 import type {
   AdvancedEditorAdapter,
   AdvancedWorkbenchDrawer,
 } from "./advanced-editor-adapter";
-import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
-import {
-  ADVANCED_TOOLS_PANEL_ID,
-  focusAdvancedToolsTrigger,
-  useAdvancedToolsLauncherRegistration,
-} from "./advanced-layout-context";
 import type { LibraryItem } from "./library-data";
 import type { WorkspaceLibraryPanelId } from "./SplitWorkspace";
 import type { AdvancedAutoSaveState } from "./use-advanced-autosave";
 import { PluginModeAdapterBridge } from "./plugin-chrome/plugin-mode";
 import { PluginGlobalRow } from "./plugin-chrome/PluginGlobalRow";
-import { PluginPageRow } from "./plugin-chrome/PluginPageRow";
 import { buildPluginPages } from "./plugin-chrome/plugin-pages";
 import { usePluginPage } from "./plugin-chrome/plugin-page-store";
 import type { PluginThemeId } from "./plugin-theme";
@@ -27,18 +30,12 @@ export function InlineAdvancedWorkbenchHeader({
   item = null,
   autoSaveState,
   autoSaveError,
-  activeDrawerId,
   activeLibraryPanelId,
-  drawers,
-  accent,
   pluginThemeId = null,
   showLibrary = true,
   showBack = true,
   showClose = true,
   onBack,
-  onOpenDrawer,
-  onCloseDrawer,
-  onOpenTransientPanel,
   onOpenLibrary,
   onRetrySave,
   onUploadFiles,
@@ -48,28 +45,33 @@ export function InlineAdvancedWorkbenchHeader({
   item?: LibraryItem | null;
   autoSaveState: AdvancedAutoSaveState;
   autoSaveError?: string;
-  activeDrawerId: string;
   activeLibraryPanelId: WorkspaceLibraryPanelId | null;
-  drawers: readonly AdvancedWorkbenchDrawer[];
-  accent: string;
   pluginThemeId?: PluginThemeId | null;
   showLibrary?: boolean;
   showBack?: boolean;
   showClose?: boolean;
   onBack: () => void;
-  onOpenDrawer: (drawerId: string) => void;
-  onCloseDrawer: () => void;
-  onOpenTransientPanel: (
-    panelId: string,
-    label: ReactNode,
-    content: ReactNode,
-  ) => void;
   onOpenLibrary: (id: WorkspaceLibraryPanelId) => void;
   onRetrySave: () => void;
   onUploadFiles: (files: File[]) => void;
   onClose?: () => void;
+  /** @deprecated D3：「编辑工具」面板已删除；抽屉进编辑栏空态（W02）。传了也不用。 */
+  activeDrawerId?: string;
+  /** @deprecated 同上。 */
+  drawers?: readonly AdvancedWorkbenchDrawer[];
+  /** @deprecated 同上。 */
+  accent?: string;
+  /** @deprecated 同上。 */
+  onOpenDrawer?: (drawerId: string) => void;
+  /** @deprecated 同上。 */
+  onCloseDrawer?: () => void;
+  /** @deprecated 同上。 */
+  onOpenTransientPanel?: (
+    panelId: string,
+    label: ReactNode,
+    content: ReactNode,
+  ) => void;
 }) {
-  const tt = useUI();
   const pagePluginId = (pluginThemeId ??
     adapter.id.split("@")[0]) as PluginThemeId;
   const { pageId, setPage } = usePluginPage(pagePluginId);
@@ -96,84 +98,21 @@ export function InlineAdvancedWorkbenchHeader({
     if (!reported || reported === pageId) return;
     setPage(reported);
   }, [adapter.pages?.activePageId, pageId, setPage]);
-  const closeToolsAndRestoreFocus = useCallback(() => {
-    onCloseDrawer();
-    window.requestAnimationFrame(() => focusAdvancedToolsTrigger(adapter.id));
-  }, [adapter.id, onCloseDrawer]);
-  const toolsPanel = useMemo(
-    () => (
-      <div
-        id={ADVANCED_TOOLS_PANEL_ID}
-        role="dialog"
-        aria-label={tt("编辑工具")}
-        aria-modal="false"
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.preventDefault();
-          event.stopPropagation();
-          closeToolsAndRestoreFocus();
-        }}
-        className="h-full overflow-y-auto p-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        <p className="mb-3 text-[12px] font-semibold text-[var(--fg,#292524)]">
-          {tt("编辑工具")}
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          {drawers.map((drawer, index) => (
-            <button
-              key={drawer.id}
-              type="button"
-              autoFocus={index === 0}
-              onClick={() => onOpenDrawer(drawer.id)}
-              className="flex min-h-12 items-center gap-2 rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-left text-[11px] font-semibold text-[var(--fg-2,#57534e)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-[var(--awb-accent)]/35 hover:bg-[var(--surface-hover,#fafaf9)] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent)]/35"
-            >
-              <span
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
-                style={{ color: accent, background: `${accent}12` }}
-              >
-                <AdvancedEditorIcon name={drawer.icon} className="h-4 w-4" />
-              </span>
-              {tt(drawer.label)}
-            </button>
-          ))}
-        </div>
-      </div>
-    ),
-    [accent, closeToolsAndRestoreFocus, drawers, onOpenDrawer, tt],
+  const onSelectPageHook = adapter.pages?.onSelectPage;
+  const selectPage = useCallback(
+    (id: string) => {
+      const page = pages.find((entry) => entry.id === id);
+      if (!page || page.disabled || page.unavailableReason) return;
+      setPage(id);
+      if (page.kind === "aux") onSelectPageHook?.(id);
+    },
+    [onSelectPageHook, pages, setPage],
   );
-  const openTools = useCallback(() => {
-    if (activeDrawerId === "workspace-tools") {
-      closeToolsAndRestoreFocus();
-      return;
-    }
-    onOpenTransientPanel("workspace-tools", tt("编辑工具"), toolsPanel);
-  }, [
-    activeDrawerId,
-    closeToolsAndRestoreFocus,
-    onOpenTransientPanel,
-    toolsPanel,
-    tt,
-  ]);
-  const toolsLauncher = useMemo(
-    () => ({
-      id: adapter.id,
-      label: tt("打开{label}工具", { label: tt(adapter.label) }),
-      controlsId: ADVANCED_TOOLS_PANEL_ID,
-      available: drawers.length > 0,
-      expanded: activeDrawerId === "workspace-tools",
-      ...(drawers.length
-        ? {}
-        : { unavailableReason: tt("当前编辑器没有可用工具") }),
-      toggle: openTools,
-    }),
-    [activeDrawerId, adapter.id, adapter.label, drawers.length, openTools, tt],
-  );
-  useAdvancedToolsLauncherRegistration(toolsLauncher);
-  const modeAdapter = adapter.mode;
 
   return (
     <div
       data-advanced-workbench-header
+      data-plugin-chrome-rows
       className="relative z-40 flex w-full min-w-0 flex-col overflow-hidden"
     >
       <PluginGlobalRow
@@ -182,27 +121,20 @@ export function InlineAdvancedWorkbenchHeader({
         autoSaveState={autoSaveState}
         autoSaveError={autoSaveError}
         pluginThemeId={pluginThemeId}
+        pages={pages}
+        activePageId={pageId}
         showLibrary={showLibrary}
         showBack={showBack}
         showClose={showClose}
         activeLibraryPanelId={activeLibraryPanelId}
         onBack={onBack}
         onOpenLibrary={onOpenLibrary}
+        onSelectPage={selectPage}
         onRetrySave={onRetrySave}
         onClose={onClose}
         onUploadFiles={onUploadFiles}
       />
-      <PluginPageRow
-        pages={pages}
-        activePageId={pageId}
-        onSelectPage={(id) => {
-          const page = pages.find((entry) => entry.id === id);
-          if (page?.unavailableReason) return;
-          setPage(id);
-          if (page?.kind === "aux") adapter.pages?.onSelectPage?.(id);
-        }}
-      />
-      <PluginModeAdapterBridge pluginId={pagePluginId} mode={modeAdapter} />
+      <PluginModeAdapterBridge pluginId={pagePluginId} mode={adapter.mode} />
     </div>
   );
 }

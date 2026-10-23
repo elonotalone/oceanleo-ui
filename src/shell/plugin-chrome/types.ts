@@ -9,7 +9,7 @@
 // 保存语义、降级提示收敛到这一个契约上，插件只负责“填槽”。
 //
 // 版式契约（自上而下，顺序不可换）：
-//   [identity | views | actions | status | theme | window]   ← 顶栏，恒有
+//   [identity | views | actions | status | ··· | window]     ← 顶栏，恒有（无主题键：跟随站点）
 //   [edit bar]                                               ← 恒有一行，空时给提示
 //   [left panel | stage]                                     ← 左侧面板按需展开
 // ============================================================================
@@ -43,7 +43,10 @@ export interface PluginChromeView {
   unavailableReason?: string;
 }
 
-/** 顶栏动作按钮。 */
+/**
+ * 顶栏动作按钮。`group: "download"` 的不画在顶栏上，进 `···` 的「下载 ▸」子菜单
+ * （D1，2026-10-23，与门户编辑器同一个菜单）。
+ */
 export interface PluginChromeAction {
   id: string;
   label: string;

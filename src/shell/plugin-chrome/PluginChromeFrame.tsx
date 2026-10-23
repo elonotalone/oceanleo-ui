@@ -3,11 +3,10 @@
 // 统一外壳的版式实现。插件只填槽，不再各自搭 header / toolbar / 左栏。
 // 行序契约见 ./types.ts，任何插件都不许调换或省略。
 //
-// chrome="host"：iframe 由宿主画两行，这里一行都不画，只交舞台。
-// chrome="self"：独立挂载，缺省保持旧顶栏。W01 PluginGlobalRow/PluginPageRow
-// 已落地，但不能换：website/front/tests/gallery-editor.test.mjs（非独占面）
-// 仍断言 data-plugin-chrome-view / data-plugin-chrome-status。video 的
-// VideoConsole overlay 与独立 /canvas-board 是 self 的生产消费者。
+// chrome="host"：iframe 由宿主画顶栏，这里一行都不画，只交舞台。chrome="self"：独立挂载画自己的
+// 顶栏（website gallery-editor 测试仍断言 data-plugin-chrome-view / -status；video VideoConsole
+// 与 /canvas-board 是 self 的生产消费者）。D1/D7（2026-10-23）：没有主题键（明暗跟随站点）；
+// 分享 / 收藏 / 下载走与门户编辑器同一个 `···`，group === "download" 进它的下载子菜单。
 
 import {
   createContext,
@@ -26,7 +25,6 @@ import { IconButton } from "../../ui/Button";
 import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
 import { EditBarAgentIcon } from "../EditBarAgentIcon";
 import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "../agent-conversation-layout";
-import { EditorItemSocialChrome } from "../editor-item-social-chrome";
 import {
   libraryItemIdentityKey,
   requestOpenLibraryItemInEditor,
@@ -35,11 +33,7 @@ import { InlineEditorMinePanel } from "../inline-editor-mine-panel";
 import type { LibraryItem } from "../library-data";
 import { AdvancedLayoutContext } from "../advanced-layout-context";
 import * as SplitWorkspaceMod from "../SplitWorkspace";
-import {
-  PluginThemeToggle,
-  usePluginTheme,
-  type PluginThemeId,
-} from "../plugin-theme";
+import { usePluginTheme, type PluginThemeId } from "../plugin-theme";
 import { PluginChromeEditBarGestureLayer } from "../PluginChromeEditBarGestureLayer";
 import { PluginModeToggle } from "./plugin-mode";
 import { PLUGIN_AGENT_DRAWER_ID } from "./agent-drawer";
@@ -50,6 +44,7 @@ import {
 } from "./use-plugin-chrome-layout";
 import { PluginChromeNotices } from "./PluginChromeNotices";
 import { PluginChromeStatus } from "./PluginChromeStatus";
+import { PluginMoreMenu, splitDownloadActions } from "./PluginMoreMenu";
 import {
   PLUGIN_CHROME_HEADER_H,
   PLUGIN_CHROME_PANEL_DEFAULT_W,
@@ -206,7 +201,7 @@ export interface PluginChromeFrameProps extends PluginChromeLibraryChrome {
   window?: PluginChromeWindowActions;
 
   /**
-   * `"host"`：不画顶栏 / 页签 / 编辑栏 / 主题 / 全屏 / 关闭，只交 children。
+   * `"host"`：不画顶栏 / 页签 / 编辑栏 / `···` / 全屏 / 关闭，只交 children。
    * 缺省 `"self"` 保持旧行为。
    */
   chrome?: PluginChromeOwner;
@@ -387,7 +382,8 @@ export function PluginChromeFrame({
     [hostController],
   );
 
-  const style = pluginChromeStyle(theme || "light", accent || "#4f46e5");
+  const style = pluginChromeStyle(theme, accent || "#4f46e5");
+  const [downloadActions, headerActions] = useMemo(() => splitDownloadActions(actions), [actions]);
 
   // transient 面板（`layout.openTransientPanel`）顶掉常规面板占住左栏，
   // 与基准一致（use-inline-advanced-panels.tsx:156-162）。
@@ -641,8 +637,7 @@ export function PluginChromeFrame({
           {(!views || views.length === 0) && <div className="flex-1" />}
 
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            <EditorItemSocialChrome item={item} />
-            {actions?.map((action) => {
+            {headerActions.map((action) => {
               const iconOnly = action.variant === "icon";
               const active = action.panelId
                 ? !transientPanel && isOpen(action.panelId)
@@ -687,7 +682,13 @@ export function PluginChromeFrame({
               unavailableReason={proModeUnavailableReason}
               onModeChange={onModeChange}
             />
-            <PluginThemeToggle pluginId={pluginId} />
+            <span data-global-row-slot="more" className="flex items-center">
+              <PluginMoreMenu
+                item={item}
+                downloads={downloadActions}
+                onDownload={runAction}
+              />
+            </span>
 
             {maximize ? (
               <button

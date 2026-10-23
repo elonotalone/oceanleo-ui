@@ -4,6 +4,11 @@
  * 「邀请一起改」：选一个会话和权限（可以一起编辑 / 只能查看实时变化）→
  * 把作品的同改权限授给会话里当时的全部成员 → 往会话发一张作品卡（带 coedit 信息）。
  * 发消息用 W09 的 `messagesApi.sendMessage`（import，不复制）。
+ *
+ * 编辑器第一行（D1，2026-10-23）不再放这个图标，入口在 `···` 菜单里：
+ * 菜单项打开的是同一个 `CollabInviteDialog`（由 CollabActionSlotInner 画）。
+ * `CollabInviteButton` 留给没有 `···` 宿主的地方（同一个弹窗）。
+ * 颜色一律走主题 token：编辑器跟随站点明暗，写死的浅色在深色下就是一块白岛。
  */
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -56,12 +61,12 @@ export function CollabInviteButton({
           {label}
         </Button>
       )}
-      {open ? <InviteDialog room={room} artifact={artifact} onClose={() => setOpen(false)} /> : null}
+      {open ? <CollabInviteDialog room={room} artifact={artifact} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
 
-function InviteDialog({
+export function CollabInviteDialog({
   room,
   artifact,
   onClose,
@@ -132,12 +137,12 @@ function InviteDialog({
   return (
     <Modal onClose={onClose} labelledBy={titleId} className="max-w-md">
       <div className="flex flex-col gap-3 p-5" data-collab-invite-dialog>
-        <h2 id={titleId} className="text-base font-semibold text-neutral-900">
+        <h2 id={titleId} className="text-base font-semibold text-[var(--awb-text,var(--fg,#292524))]">
           {tt("邀请一起改")}
         </h2>
         {sentTo ? (
           <>
-            <p role="status" className="text-sm text-neutral-700">
+            <p role="status" className="text-sm text-[var(--awb-text,var(--fg,#292524))]">
               {tt("已发进「{title}」", { title: sentTo })}
             </p>
             <div className="flex justify-end">
@@ -148,16 +153,16 @@ function InviteDialog({
           </>
         ) : (
           <>
-            <p className="text-sm text-neutral-600">{tt("把这个作品发进一个会话，让里面的人一起改")}</p>
-            <div role="radiogroup" aria-label={tt("选择一个会话")} className="max-h-56 overflow-y-auto rounded-lg border border-neutral-200">
+            <p className="text-sm text-[var(--awb-muted,var(--muted,#78716c))]">{tt("把这个作品发进一个会话，让里面的人一起改")}</p>
+            <div role="radiogroup" aria-label={tt("选择一个会话")} className="max-h-56 overflow-y-auto rounded-lg border border-[var(--awb-border,var(--border,#e7e5e4))]">
               {items === null && !loadFailed ? (
-                <p className="p-3 text-sm text-neutral-500">{tt("正在加载会话…")}</p>
+                <p className="p-3 text-sm text-[var(--awb-muted,var(--muted,#78716c))]">{tt("正在加载会话…")}</p>
               ) : loadFailed ? (
-                <p role="alert" className="p-3 text-sm text-red-600">
+                <p role="alert" className="p-3 text-sm text-[var(--awb-danger,var(--danger,#dc2626))]">
                   {tt("会话列表加载失败，请重试")}
                 </p>
               ) : items && items.length === 0 ? (
-                <p className="p-3 text-sm text-neutral-500">{tt("还没有可选的会话。先到「消息」里建一个。")}</p>
+                <p className="p-3 text-sm text-[var(--awb-muted,var(--muted,#78716c))]">{tt("还没有可选的会话。先到「消息」里建一个。")}</p>
               ) : (
                 items?.map((c) => (
                   <Button
@@ -196,7 +201,7 @@ function InviteDialog({
               </Button>
             </div>
             {error ? (
-              <p role="alert" className="text-sm text-red-600">
+              <p role="alert" className="text-sm text-[var(--awb-danger,var(--danger,#dc2626))]">
                 {error}
               </p>
             ) : null}

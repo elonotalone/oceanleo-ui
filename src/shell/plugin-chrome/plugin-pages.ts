@@ -1,10 +1,12 @@
 // 插件「页面」契约（plugin-chrome-unification 波，父 agent 所有；子任务只读，
 // 只有 W01 可按任务书扩展）。
 //
-// 产品规则（见 docs/architecture/oceanleo-plugin-chrome-pages-spec.md）：
-//   第一行 = 全局行：返回 / 素材库 / 撤销重做 / 保存状态 / 下载 / 主题 / 关闭。13 件插件一个样。
-//   第二行 = 页面行：「编辑」（成品页）永远第一；「专业编辑」是一个页面，不再是开关；
-//            其余页面（Code / Database / …）由插件按需申报。
+// 产品规则（见 docs/architecture/oceanleo-plugin-chrome-pages-spec.md；
+// 2026-10-23 操作员裁定 D1：顶栏只剩一行）：
+//   唯一一行 = 左：返回 ｜ 素材库 我的库 ｜ 模式页签；右：撤销重做 ｜ 保存状态 ｜ ··· ｜ 全屏 ｜ 关闭。
+//     `···` 里：邀请一起改、生成回放、分享、收藏、下载 ▸。主题键删除（编辑器跟随站点）。
+//   模式页签：「编辑」（成品页）永远第一；「专业编辑」是一个页面，不再是开关；
+//            其余页面（Code / …）由插件按需申报。只有一页时不画页签。原来的第二行页签行整行删除。
 //   编辑栏（edit bar）只在 kind === "artifact" 的页面出现。
 //   插件专属的编辑动作（重新计算 / 刷新预览 / 运行全部 / 选择 / 编辑 …）
 //   一律不进第一行，进编辑栏的「文档段」。
@@ -124,21 +126,21 @@ export function editorModeToPage(mode: EditorMode | null | undefined): string {
 }
 
 /**
- * 第一行（全局行）允许出现的槽位。除此之外任何按钮出现在第一行都是缺陷；
- * `tests/plugin-chrome-global-row-allowlist.test.mjs`（W01 建）读这张表。
+ * 第一行（唯一一行）允许出现的槽位。除此之外任何按钮出现在第一行都是缺陷；
+ * `tests/plugin-chrome-global-row-allowlist.test.mjs` 读这张表。
+ * D1（2026-10-23）：`theme` 删除；`share` / `favorite` / `download` 不再是独立槽，
+ * 住进 `more`（`···`）；页签从第二行挪进来，占 `pages`。
  */
 export const GLOBAL_ROW_SLOTS = Object.freeze([
   "back",
   "library",
+  "pages",
   "history",
   "save-state",
-  "download",
-  "share",
-  "favorite",
-  "theme",
+  "collab",
+  "more",
   "maximize",
   "close",
-  "collab",
 ] as const);
 
 export type GlobalRowSlot = (typeof GLOBAL_ROW_SLOTS)[number];

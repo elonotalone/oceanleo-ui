@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+// 编辑器里「分享」「收藏」的状态与动作（W01，编辑器整改波 2026-10-23）。
+//
+// D1 之后这两项不再是第一行上的独立图标，住进 `···` 菜单（plugin-chrome/PluginMoreMenu）。
+// 状态必须留在一直挂着的菜单宿主里，不能放进弹层内容：弹层每次打开都会重挂子树，
+// 收藏请求在途时关掉菜单，结果就落不回来了。所以这里只给 hook，不画任何东西。
+//
+// 身份保护照旧（V1 验收的那两条竞态）：
+//   · 分享的链接带当前条目的 artifactId，不带地址栏里旧的 `?item=`；
+//   · 收藏请求在途时换了条目，迟到的结果不许改新条目的状态。
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { IconButton } from "../ui/Button";
 import { useToast } from "../ui/Toast";
-import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { humanErrorMessage } from "./human-error-message";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { writeClipboardText } from "./share/share-clipboard";
@@ -24,11 +32,25 @@ export function shareUrlForLibraryItem(item: LibraryItem): string {
   }
 }
 
-export function EditorItemSocialChrome({
-  item,
-}: {
-  item: LibraryItem | null | undefined;
-}) {
+export interface EditorItemSocial {
+  /** 当前条目的身份；菜单根上落成 data-artifact-id / data-revision-id。 */
+  artifactId: string | null;
+  revisionId: string | null;
+  /** 有可分享的链接才给「分享」。 */
+  shareAvailable: boolean;
+  /** 真条目、可读、完整、允许收藏才给「收藏」——做不到就不出这一项，不放灰按钮。 */
+  favoriteAvailable: boolean;
+  favorite: boolean;
+  busy: "share" | "favorite" | "";
+  /** 最近一次失败的人话原因（同时已经弹过 toast）。 */
+  error: string;
+  share(): Promise<void>;
+  toggleFavorite(): Promise<void>;
+}
+
+export function useEditorItemSocial(
+  item: LibraryItem | null | undefined,
+): EditorItemSocial {
   const tt = useUI();
   const toast = useToast();
   const [favorite, setFavorite] = useState(Boolean(item?.favorite));
@@ -38,6 +60,10 @@ export function EditorItemSocialChrome({
   const generationRef = useRef(0);
   const itemRef = useRef(item);
   itemRef.current = item;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  const favoriteRef = useRef(favorite);
+  favoriteRef.current = favorite;
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -50,67 +76,86 @@ export function EditorItemSocialChrome({
     setBusy("");
     setError("");
   }, [item?.artifactId, item?.favorite, item?.id, item?.revisionId]);
-  if (!item) return null;
-  const shareUrl = shareUrlForLibraryItem(item);
-  const durable = isDurableLibraryItem(item) ? item : null;
+
+  const shareUrl = item ? shareUrlForLibraryItem(item) : "";
+  const durable = item && isDurableLibraryItem(item) ? item : null;
   const favoriteAvailable = Boolean(
     durable &&
       durable.artifact.access.canRead &&
       durable.artifact.integrity.ok &&
       durable.artifact.access.canFavorite,
   );
-  const favoriteReason = favoriteAvailable
-    ? favorite
-      ? tt("已收藏")
-      : tt("收藏")
-    : tt("操作失败，请重试");
-  const share = async () => {
-    if (!shareUrl || busy) return;
+
+  const fail = useCallback(
+    (generation: number, caught: unknown, fallback: string) => {
+      if (!mountedRef.current || generation !== generationRef.current) return;
+      const message = humanErrorMessage(caught, fallback);
+      setError(message);
+      toast.error(message);
+    },
+    [toast],
+  );
+
+  const share = useCallback(async () => {
+    const current = itemRef.current;
+    if (!current || busyRef.current) return;
+    const url = shareUrlForLibraryItem(current);
+    if (!url) return;
     const generation = generationRef.current;
     setBusy("share");
     setError("");
     try {
-      if (typeof navigator.share === "function") {
-        await navigator.share({ title: item.title, url: shareUrl });
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({ title: current.title, url });
         return;
       }
-      const copied = await writeClipboardText(shareUrl);
-      if (!copied) {
-        throw new Error(tt("复制失败，请手动复制文案。"));
-      }
+      const copied = await writeClipboardText(url);
+      if (!copied) throw new Error(tt("复制失败，请手动复制文案。"));
       if (!mountedRef.current || generation !== generationRef.current) return;
       toast.success(tt("已复制"));
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") return;
-      if (!mountedRef.current || generation !== generationRef.current) return;
-      setError(humanErrorMessage(caught, tt("复制失败，请手动复制文案。")));
+      fail(generation, caught, tt("复制失败，请手动复制文案。"));
     } finally {
       if (mountedRef.current && generation === generationRef.current) {
         setBusy("");
       }
     }
-  };
-  const toggleFavorite = async () => {
-    if (!favoriteAvailable || busy || !durable) return;
+  }, [fail, toast, tt]);
+
+  const toggleFavorite = useCallback(async () => {
+    const current = itemRef.current;
+    const currentDurable =
+      current && isDurableLibraryItem(current) ? current : null;
+    if (!currentDurable || busyRef.current) return;
+    const access = currentDurable.artifact.access;
+    if (
+      !access.canRead ||
+      !currentDurable.artifact.integrity.ok ||
+      !access.canFavorite
+    ) {
+      return;
+    }
     const generation = generationRef.current;
     const requested = {
-      artifactId: durable.artifactId,
-      revisionId: durable.revisionId,
+      artifactId: currentDurable.artifactId,
+      revisionId: currentDurable.revisionId,
     };
-    const next = !favorite;
+    const next = !favoriteRef.current;
     setBusy("favorite");
     setError("");
     try {
       const { setArtifactFavorite } = await import("./artifact-client");
-      const result = await setArtifactFavorite(item, next);
-      const current = itemRef.current;
-      const currentDurable = current && isDurableLibraryItem(current) ? current : null;
+      const result = await setArtifactFavorite(currentDurable, next);
+      const latest = itemRef.current;
+      const latestDurable =
+        latest && isDurableLibraryItem(latest) ? latest : null;
       if (
         !mountedRef.current ||
         generation !== generationRef.current ||
-        !currentDurable ||
-        currentDurable.artifactId !== requested.artifactId ||
-        currentDurable.revisionId !== requested.revisionId
+        !latestDurable ||
+        latestDurable.artifactId !== requested.artifactId ||
+        latestDurable.revisionId !== requested.revisionId
       ) {
         return;
       }
@@ -123,57 +168,25 @@ export function EditorItemSocialChrome({
         throw new Error(result.error || tt("操作失败，请重试"));
       }
       setFavorite(next);
+      toast.success(tt(next ? "已加入收藏" : "已取消收藏"));
     } catch (caught) {
-      if (!mountedRef.current || generation !== generationRef.current) return;
-      setError(humanErrorMessage(caught, tt("操作失败，请重试")));
+      fail(generation, caught, tt("操作失败，请重试"));
     } finally {
       if (mountedRef.current && generation === generationRef.current) {
         setBusy("");
       }
     }
+  }, [fail, toast, tt]);
+
+  return {
+    artifactId: item?.artifactId || null,
+    revisionId: item?.revisionId || null,
+    shareAvailable: Boolean(shareUrl),
+    favoriteAvailable,
+    favorite,
+    busy,
+    error,
+    share,
+    toggleFavorite,
   };
-  return (
-    <div
-      data-editor-item-social
-      className="flex items-center gap-0.5"
-      data-artifact-id={item.artifactId || undefined}
-      data-revision-id={item.revisionId || undefined}
-    >
-      <span data-global-row-slot="share" className="flex items-center">
-        {shareUrl ? (
-          <IconButton
-            data-editor-chrome-action="share"
-            onClick={() => void share()}
-            label={tt("分享")}
-            title={error || tt("分享")}
-            loading={busy === "share"}
-            aria-busy={busy === "share" || undefined}
-            icon={<AdvancedEditorIcon name="share" className="h-4 w-4" />}
-          />
-        ) : null}
-      </span>
-      <span data-global-row-slot="favorite" className="flex items-center">
-        <IconButton
-          data-editor-chrome-action="favorite"
-          onClick={() => void toggleFavorite()}
-          label={tt(favorite ? "取消收藏" : "收藏")}
-          title={error || favoriteReason}
-          aria-pressed={favorite}
-          disabled={!favoriteAvailable}
-          loading={busy === "favorite"}
-          aria-busy={busy === "favorite" || undefined}
-          icon={
-            <AdvancedEditorIcon
-              name="star"
-              filled={favorite}
-              className="h-4 w-4"
-            />
-          }
-        />
-      </span>
-      <span className="sr-only" role="status" aria-live="polite">
-        {error}
-      </span>
-    </div>
-  );
 }

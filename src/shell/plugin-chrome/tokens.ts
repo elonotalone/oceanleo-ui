@@ -3,16 +3,21 @@
 // --pchrome-* 是统一外壳对外的 token 名，全部别名到既有的 --awb-*。
 // 刻意不新增第四套变量：改造前已经有 --awb-*（共享插件）、--wb-*（网站工作台）、
 // 站点语义变量三套，再加一套只会让漂移更快。这里只做「一个名字」的收敛。
+//
+// D7（2026-10-23）：编辑器明暗跟随站点。`theme === null` 只出现在 SSR / hydration
+// 那一帧（读不到 <html> 的主题类）：这时 --awb-* 别名到站点语义变量
+// （advancedWorkbenchStyle），那套变量由 html.dark 翻转，首帧与站点一致，不先闪一档。
 
 import type { CSSProperties } from "react";
+import { advancedWorkbenchStyle } from "../advanced-workbench-chrome";
 import { pluginWorkbenchStyle, type PluginThemeMode } from "../plugin-theme";
 
 export function pluginChromeStyle(
-  theme: PluginThemeMode,
+  theme: PluginThemeMode | null,
   accent: string,
 ): CSSProperties {
   return {
-    ...pluginWorkbenchStyle(theme, accent),
+    ...(theme ? pluginWorkbenchStyle(theme, accent) : advancedWorkbenchStyle(accent)),
     "--pchrome-canvas": "var(--awb-shell-bg)",
     "--pchrome-surface": "var(--awb-chrome-bg)",
     "--pchrome-stage": "var(--awb-stage-bg)",

@@ -12,21 +12,19 @@
 - [读码] `useTheme()` 无 Provider 时回落 `resolved: "light"`，分不出「有 Provider 且 light」与「无 Provider」；ThemeProvider.tsx 不归我。站点 `applyClass` 同步写 html class，ThemeScript 首帧写 html class。
 - [读码] 59 个测试文件引用我这片代码/选择器（清单 `/tmp/w01-tests.txt` 的生成命令见下）。
 
-## 正在做
+## 正在做（06:0xZ 恢复后）
 
-- 读测试与周边（anchored-popover、ui/Button、AdvancedEditorIcon 图标名），设计 `···` 菜单与一行顶栏。
+- 新文件已在 main（cbc07b39 salvage）：plugin-chrome/{PluginMoreMenu,PluginPageTabs,more-menu-registry}。
+- 改动暂存于 `/tmp/w01/stage/src/...`（overlay tsc 0 错：`node /tmp/w01/scripts/overlay-tsc.mjs /tmp/w01/stage`），正在整批落盘：
+  ActionBar 一行化、Header 删第二行与 tools 注册、GlobalRow 透传页签、social 改 hook、collab 邀请/回放进 `···`、PluginChromeFrame 去主题键走 `···`、tokens 接受 null 主题、GLOBAL_ROW_SLOTS 新表。
 
 ## 下一步
 
-1. 写 `plugin-chrome/PluginMoreMenu.tsx`（`···`）+ 邀请/回放的菜单项形态。
-2. 改 `AdvancedWorkspaceActionBar` 一行化、页签进第一行、save-state 恒在。
-3. `InlineAdvancedWorkbenchHeader` 删 PageRow 行与 tools 注册。
-4. `plugin-theme.tsx` 跟随站点。
-5. `PluginChromeFrame` 去主题键、走 `···`。
-6. 文案册、测试、类型检查、浏览器验收。
+1. 落盘后删 PluginPageRow.tsx；plugin-theme.tsx 跟随站点（删 toggle / localStorage / defaultTheme）。
+2. W01 文案册；改测试；tsc；浏览器验收 light/dark。
+3. 信号给 W03（readPluginChromeRowsBottom 不再有 page-row）。
 
 ## 复现命令
-
 ```bash
 cd /root/projects/oceanleo-ui
 grep -lE "AdvancedWorkspaceActionBar|PluginPageRow|data-plugin-page-row|GLOBAL_ROW_SLOTS|PluginThemeToggle|plugin-theme-toggle|defaultTheme" tests/*.mjs

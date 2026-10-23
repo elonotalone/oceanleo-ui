@@ -21,8 +21,8 @@ export interface AdvancedWorkbenchAction {
    * membership from translated labels or route-specific ids.
    *
    * 规范 v2 §4：宿主按组分发，三者永不混住——
-   *   `"download"` → 第一行下载菜单；`"save"` → 第一行保存菜单；
-   *   `"edit"`（缺省，不写即是）→ 编辑栏文档段。
+   *   `"download"` → 第一行 `···` 菜单的「下载 ▸」子菜单（D1，2026-10-23）；
+   *   `"save"` → 第一行保存菜单；`"edit"`（缺省，不写即是）→ 编辑栏文档段。
    */
   group?: "download" | "save" | "edit";
   disabled?: boolean;
