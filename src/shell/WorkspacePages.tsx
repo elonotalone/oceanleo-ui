@@ -56,7 +56,7 @@ export interface WorkspaceNavOptions {
   withBay?: boolean;
   /** @deprecated 作废：开了也不再多一行。货架在工作台「全部」。 */
   withPlayground?: boolean;
-  /** 是否显示 LeoChat 这一行。默认 true。境内由 workspaceNav 再用 bayEnabledHere() 拦掉。 */
+  /** 是否显示 LeoChat 这一行。默认 true。境内外一样。 */
   withMessages?: boolean;
   /** v5：导航项下方原地展开的内容；标准用法是 history → 任务列表。 */
   disclosures?: Partial<Record<WorkspacePage, ShellNavDisclosure>>;
@@ -175,7 +175,6 @@ export function workspaceNav(opts: WorkspaceNavOptions = {}): ShellNavItem[] {
   const bayLabel = bayEnabledHere() ? "LeoBay" : "素材";
   // 哪几页、什么次序、受哪个开关控制 —— 全部来自 nav-source，本文件不再自持。
   return navEntries("workspace", resolveOptions(opts))
-    .filter((entry) => entry.id !== "leochat" || bayEnabledHere())
     .filter((entry) => entry.id !== "playground")
     .map((entry) => {
     const p = entry.id as WorkspacePage;

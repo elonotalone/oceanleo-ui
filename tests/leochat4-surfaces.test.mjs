@@ -524,7 +524,7 @@ test("LeoChatButton：点一下调 toggleWindow；整页认领着时 pressed 且
   await pageView.unmount();
 });
 
-test("workspaceNav：海外有 LeoChat 紧跟 LeoBay；境内没有；withMessages:false 没有", () => {
+test("workspaceNav：境内外都有 LeoChat（紧跟 LeoBay 那一项）；withMessages:false 没有", () => {
   globalThis.__leoChat4BayOn = true;
   const overseas = workspaceNav();
   const bayAt = overseas.findIndex((row) => row.href === "/bay");
@@ -537,7 +537,7 @@ test("workspaceNav：海外有 LeoChat 紧跟 LeoBay；境内没有；withMessag
   globalThis.__leoChat4BayOn = false;
   assert.equal(
     workspaceNav().some((row) => row.href === "/leochat"),
-    false,
+    true,
   );
 
   globalThis.__leoChat4BayOn = true;
