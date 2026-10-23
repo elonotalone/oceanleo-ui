@@ -2,13 +2,17 @@
 
 ## Codex continuation（2026-10-23）
 
-最新纠正：2dab34bd给probe补上remote后真实模型读数，确认native源46cells→room首套后liveCells=0；此前「重开两mark在」只来自未更新的初始probe，不是通过。父已接共享collab诊断。pageSize假设无效已撤回。W10 native入口、源ready/维度failclosed和CAShead修复保留；实际完整验收仍待共享修复后复测。
+最新产品源码 `18ad8f0b`：完整 material-dedup-final PASS77.7s（插图/Undo/Redo三版，native/published Redo一致、各history动作editRevision+1，真实close/reopen图片可见、所有原cells保留）；public fork-final PASS75s（一fork、两存、close/reopen/reload全保留）。私有fork `2582122f-6795-4661-9028-50686b8860f7` SQL恰3版、owner=acceptance；公共原件仍1版。offline、merge、源503 failclosed均真PASS。最终剩只读Library卡片，首次搜索过早被hydration清空不算预览红/通过，现等owner-ready再填。最终交付 `verdicts/CODEX-W10.md` 已记录准确版本父链、测试及限制。
+
+最新实测（16:25Z）：父共享修复64657726后，fresh fixture `73b709be-bb23-400d-aea4-e80f206a63e5` 完整 strict PASS。baseline ordinal5→6 `e4f0aa9d`→7 `21690c97`；两次200、零409；实际close/reopen/fullreload均保留 W10a54183/W10b54183 与全部非覆盖原有cells，零额外revision。目视表格非白屏。日志 `/tmp/codex-w10-strict-complete/w10-grid.log`。仍待offline/merge/material/fork最后验收，不能提前算全部完成。
+
+历史纠正：2dab34bd给probe补上remote后真实模型读数，确认旧d8 native源46cells→room首套后liveCells=0；此前「重开两mark在」只来自未更新的初始probe，不是通过。父后续确认ids-v2首alignment前错误local push，64657726修复并加真实Yjs回归。pageSize假设无效已撤回。旧b13/d8房间保留诊断，不用当前head判定最终修复。
 
 - [实测] 原未完成保存验收确有红：旧基线导致第二存409；typed Library重新打开丢了legacy project meta alias，忽略native manifest，降级XLSX路径出现白屏。失败fixture b13b20b5的ordinal2/3源XLSX与native project两mark仍在；之后失败诊断写入的ordinal4/5不可当作验收正确head。
 - [修复] 5e024e3c：typed editor_manifest入口恢复、schema验证与有效sheet模型/尺寸验证，未完成/失败源禁止保存与checkpoint，成功回执推进局部CAS基线。
-- [实测] fresh验收账号fixture d8bf00e4-7d6f-4110-9988-3ac412957d32 两次保存200、DB ordinal1→2→3正确父链；重开两mark均在。65 focused tests passed。
-- 当前：补齐严格full reload（需从详情再点编辑）、offline retry、merge/undo、图片素材插入/undo/reopen、公共模板fork一次，截图两档与卡片。
-- 复现：`bash harness/mint.sh | OUT_DIR=/tmp/codex-w10-reopen THEME=light node harness/run.mjs evidence/W10/scenarios/codex-accept.mjs reopen d8bf00e4-7d6f-4110-9988-3ac412957d32 W10a58517 W10b58517`。
+- [实测] 65 focused tests passed；最终源/文案批35 owned focused tests passed。源故障503场景两次拒读、零staging/revision、无替代空白画布。
+- 当前：补齐offline retry、merge/undo、图片素材插入/undo/reopen、公共模板fork一次，截图两档与卡片。
+- 复现只读：`bash harness/mint.sh | OUT_DIR=/tmp/codex-w10-reopen THEME=light node harness/run.mjs evidence/W10/scenarios/codex-accept.mjs reopen 73b709be-bb23-400d-aea4-e80f206a63e5 W10a54183 W10b54183`。
 
 ---
 

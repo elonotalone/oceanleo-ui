@@ -102,6 +102,42 @@ async function waitEditSaved(page, helpers, log, before, timeout = 90000) {
 export default async function ({ page, context, log, shot, helpers, args }) {
   const [mode, id, tag = mode] = args;
   if (!id) throw new Error("artifact id required");
+  page.on('framenavigated', frame => {
+    if (frame !== page.mainFrame()) return;
+    const url = new URL(frame.url());
+    log('NAV', url.pathname, JSON.stringify({ item: url.searchParams.get('item'), edit: url.searchParams.get('edit') }));
+  });
+  page.on('console', message => {
+    if (message.text().startsWith('W10-HOST ')) log(message.text());
+    if (message.type() === 'warning' && message.text().startsWith('[OceanLeo Library]')) log('LIBRARY-WARN', message.text().slice(0, 250));
+  });
+  await page.addInitScript(() => {
+    window.addEventListener('oceanleo:artifact-library-change', event => {
+      const detail = event.detail || {};
+      console.info('W10-HOST ' + JSON.stringify({ event: 'library-change', action: detail.action,
+        artifactId: detail.artifactId, revisionId: detail.revisionId, previousRevisionId: detail.previousRevisionId }));
+    });
+    window.addEventListener('oceanleo:auth-state', event => {
+      const detail = event.detail || {};
+      console.info('W10-HOST ' + JSON.stringify({ event: 'auth-state', authEvent: detail.event,
+        user: detail.userId === '2ffeef37-102a-431b-b2c2-51c5675dba79' ? 'acceptance' : detail.userId == null ? null : 'other' }));
+    });
+    document.addEventListener('click', event => {
+      if (event.target?.closest?.('[data-global-row-slot="close"] button')) console.info('W10-HOST ' + JSON.stringify({ event: 'close-click', trusted: event.isTrusted }));
+    }, true);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' || event.key === 'Enter') console.info('W10-HOST ' + JSON.stringify({ event: 'key', key: event.key }));
+    }, true);
+    let previous = '';
+    const observe = () => {
+      const editor = document.querySelector('[data-library-standalone-editor]');
+      const state = JSON.stringify({ editor: editor?.getAttribute('data-library-standalone-editor') || null,
+        stage: Boolean(document.querySelector('[data-grid-univer-stage]')),
+        save: document.querySelector('[data-workspace-save-launcher]')?.getAttribute('data-save-state') || null });
+      if (state !== previous) { previous = state; console.info('W10-HOST ' + state); }
+    };
+    new MutationObserver(observe).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-save-state'] });
+  });
   // Gateway answers that matter for saving (status + short body; never headers/tokens).
   page.on("response", async (res) => {
     const url = res.url();
@@ -132,6 +168,28 @@ export default async function ({ page, context, log, shot, helpers, args }) {
   log("surfaces", JSON.stringify(await surfaces(page)));
   log("liveCells@open", await liveCells(page));
   await shot(`${tag}-open`);
+
+  if (mode === 'host-repro') {
+    const cells = await page.evaluate(() => globalThis.__oceanleoGridUniverPaint?.liveCells || []);
+    assert.ok(cells.some(cell => cell.value === 'W10a32757'), 'cold open retains the first committed mark');
+    assert.ok(cells.some(cell => cell.value === 'Task'), 'cold open retains original content');
+    const before = revisionPosts;
+    await clickCell(page, 15, 4);
+    await page.keyboard.type(`W10host-${Date.now()}`);
+    await page.keyboard.press('Enter');
+    for (let n = 0; n < 80; n++) {
+      if (!(await page.locator(STAGE).count())) break;
+      if (revisionPosts > before && (await helpers.saveState(page)) === 'saved') break;
+      await page.waitForTimeout(500);
+    }
+    await page.waitForTimeout(3000);
+    log('HOST-END', JSON.stringify({ editor: await page.locator('[data-library-standalone-editor]').count(),
+      stage: await page.locator(STAGE).count(), save: await helpers.saveState(page), revisionPosts, committedRevisions }));
+    await shot(`${tag}-after-save`);
+    assert.equal(await page.locator(STAGE).count(), 1, 'save must not close the editor');
+    assert.equal(await helpers.saveState(page), 'saved');
+    return;
+  }
 
   if (mode === "probe") {
     await clickCell(page, 0, 0);
@@ -382,6 +440,15 @@ export default async function ({ page, context, log, shot, helpers, args }) {
 
   if (mode === "save") {
     const stamp = String(Date.now()).slice(-5);
+    const originalCells = await page.evaluate(() => structuredClone(globalThis.__oceanleoGridUniverPaint?.liveCells || []));
+    assert.ok(originalCells.length > 0, 'the uploaded non-empty fixture must be visible before editing');
+    const assertOriginal = async () => {
+      const retained = await page.evaluate(expected => {
+        const current = globalThis.__oceanleoGridUniverPaint?.liveCells || [];
+        return expected.every(cell => current.some(next => next.row === cell.row && next.col === cell.col && next.value === cell.value));
+      }, originalCells.filter(cell => !(cell.row === 12 && (cell.col === 4 || cell.col === 5))));
+      assert.ok(retained, 'all original fixture cells must survive the save/reopen cycle');
+    };
     log("canvas tag at open", await tagCanvas(page));
     await page.waitForTimeout(3000);
     const posts0 = revisionPosts;
@@ -420,6 +487,13 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     assert.equal(committedRevisions, 2, "two edits must produce exactly two committed revisions (CAS retries do not count)");
     log("saved 2", page.url());
     // Close → reopen (fresh navigation), then a full page reload; both must show the two edits.
+    const close = page.locator('[data-global-row-slot="close"] button');
+    await close.click({ timeout: 5000 }).catch(async error => {
+      if (!String(error).includes('nextjs-portal')) throw error;
+      log('dev-overlay-only close fallback');
+      await close.evaluate(button => button.click());
+    });
+    await page.locator(STAGE).waitFor({ state: 'hidden', timeout: 20000 });
     await openGrid(page, helpers, id);
     log("saveState@reopen", await helpers.saveState(page));
     const found = await page.evaluate((marks) => {
@@ -428,6 +502,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
     }, [`W10a${stamp}`, `W10b${stamp}`]);
     log("RESULT", found.every(Boolean) ? "both-present" : `MISSING ${JSON.stringify(found)}`, stamp);
     assert.ok(found.every(Boolean), "both edits must survive close/reopen");
+    await assertOriginal();
     await shot(`${tag}-reopened`);
     await page.reload({ waitUntil: "domcontentloaded" });
     if (!(await page.locator(`${STAGE} canvas >> visible=true`).first().isVisible().catch(() => false))) {
@@ -442,6 +517,7 @@ export default async function ({ page, context, log, shot, helpers, args }) {
       return marks.map(mark => all.includes(mark));
     }, [`W10a${stamp}`, `W10b${stamp}`]);
     assert.ok(reloaded.every(Boolean), "both edits must survive full reload");
+    await assertOriginal();
     assert.equal(committedRevisions, 2, "reopen/reload must not create extra revisions");
     log("RESULT full-reload", JSON.stringify(reloaded));
     await shot(`${tag}-full-reload`);

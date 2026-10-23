@@ -1,5 +1,13 @@
 # W10 journal（每条实测/读码结论一行，UTC）
 
+- 2026-10-23 [Codex红→绿] 冻结source567be的material场景真实插图1→Undo0、各200通过，但Redo按钮disabled。4f6c7c3c诊断确认native actualHistory={false,true}，publishedHistory={true,false}；无操作期间collab replace。原因是CommandExecuted最后mutation早于原生popUndoToRedo，顶栏没收到稍后栈变更。6ed2d7bd只订阅既有undoRedoStatus$再走原observe，保持baseline/blocked和栈顶引用去重，清理订阅；late-event回归先红后绿，3focused文件33/33。待原生图片整条终验，不把之前半场当最终通过。
+- 2026-10-23 [Codex实测] 最终loader-only offline-stable PASS64.3s：首次offline→error零版本、online一次retry三staging200+revision923610bc200，fullreload新增mark和全部非覆盖原cells保持。source567be全程一致；初始FastRefresh在stage出现前完成，交互区间无HMR。merge-final PASS40.1s，真实mergeData新增/Undo去除，各200，共2版本，无409；数据不变。
+
+- 2026-10-23 16:38Z [Codex红→绿] strict offline首次保存确有新红：native开表未加载ExcelJS，离线import失败被Turbopack缓存，上线后staging重试但交付生成始终chunk失败、零revision。daccb3b6在未加载exporter且offline时拒绝首次import；成功module缓存后仍可离线CPU导出，不缓存reject promise。新回归先红后绿，14/14 XLSX真实roundtrip绿。广guard初版实际offline→error零revision→online一次retry200→fullreload保内容PASS；最终loader-only版继续稳定快照观察复测，不将途中界面离开算通过或先推共享原因。
+
+- 2026-10-23 16:25Z [Codex strict实测] 父64657726共享ids-v2首alignment修复后，fresh验收root73b709be两次编辑各200，无CAS重试，SQL ordinal5→6 e4f0aa9d→7 21690c97父链。实际close→reopen→fullreload均逐坐标核对所有非覆盖原cells及W10a54183/W10b54183，零额外revision。截图目视内容正常。开发nextjs-portal遮挡close时仅在证据脚本执行真实button.click fallback；不改产品交互。
+- 2026-10-23 16:20Z [Codex observer实测] 单次保存后意外回详情此前未复现。复测加入auth/library/DOM/navigation/close观察，host-repro及strict全程保持stage；只观察到验收账号SIGNED_IN/INITIAL_SESSION及预期revision事件，无异常close/auth失效。不基于猜测改共享权限清理。
+
 - 2026-10-24 [Codex实测] native manifest503故障注入：2次真实拒绝，错误面板出现、无空白canvas；等8s并CtrlS，staging/revision均0（codex-w10-source-fail）。补W01明确signal里的下载格式16语与重复扩展名问题；source等待换项不保留旧ready标记。
 
 - 2026-10-23 [Codex纠正/确认] pageSize假设未解释白字，已移除其专用规范化与测试；Univer上游本就处理null。补probe在remote套用完成后读真实模型：d8bf00e4源46cells，collab-remote后liveCells=0、dirty=true；确认为首套room覆盖，证据codex-w10-live-diagnose2，已交父处理共享collab。初始probe的两mark不能当成功重开证据。
