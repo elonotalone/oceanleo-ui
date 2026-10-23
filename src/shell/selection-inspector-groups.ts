@@ -110,7 +110,27 @@ function inspectorSemantic(
   return undefined;
 }
 
+/**
+ * 统一编辑栏投影（`edit-bar-canon-projection.ts`）已经替控件决定好去处：
+ * 带 `canonPanel` 的是规范面板里的子控件，带 `canonId` 的 compact 控件上栏。
+ * 这两类不再走下面按 id 猜的旧规则（例如行距被一律塞进「间距」）。
+ */
+interface CanonMarks {
+  canonId?: string;
+  canonPanel?: string;
+  canonGroup?: string;
+}
+
+function canonMarks(control: SelectionControl): CanonMarks {
+  return control as SelectionControl & CanonMarks;
+}
+
 export function isCompactSelectionControl(control: SelectionControl): boolean {
+  const marks = canonMarks(control);
+  if (marks.canonPanel) return false;
+  if (marks.canonId && control.slot === "compact") {
+    return control.kind !== "range" && control.kind !== "text";
+  }
   if (
     isHorizontalAlignment(control) &&
     control.slot !== "stage" &&
@@ -162,10 +182,13 @@ export function partitionSelectionInspectorControls(
     ) {
       continue;
     }
-    const spacing = isSpacingDetail(control);
-    const id = spacing
-      ? "text-spacing"
-      : control.inspectorGroup || control.group || "adjustments";
+    const canonPanel = canonMarks(control).canonPanel;
+    const spacing = !canonPanel && isSpacingDetail(control);
+    const id = canonPanel
+      ? canonPanel
+      : spacing
+        ? "text-spacing"
+        : control.inspectorGroup || control.group || "adjustments";
     const presentation = INSPECTOR_GROUP_PRESENTATIONS[id];
     const basePanelId = `selection-inspector-${id.replace(
       /[^a-z0-9_.:-]/gi,
@@ -200,6 +223,24 @@ export function partitionSelectionInspectorControls(
       if (entry.type === "control") return entry.control;
       const group = grouped.get(entry.id)!;
       const presentation = INSPECTOR_GROUP_PRESENTATIONS[entry.id];
+      const first = canonMarks(group.controls[0]);
+      if (first.canonPanel === entry.id) {
+        // 规范面板（§4 增补 A-1）：入口就是那个规范项，id 用规范 id，
+        // 标签 / 图标 / 位置已由投影写在子控件上。
+        return {
+          id: reservedIds.has(entry.id) ? group.panelId : entry.id,
+          kind: "panel",
+          label: group.label,
+          icon: group.icon,
+          iconOnly: true,
+          panelId: group.panelId,
+          placement: group.controls[0].placement === "more" ? "more" : "primary",
+          slot: "compact",
+          ...(group.controls[0].group ? { group: group.controls[0].group } : {}),
+          canonId: entry.id,
+          canonGroup: first.canonGroup,
+        } as SelectionControl;
+      }
       return {
         id: group.panelId,
         kind: "panel",

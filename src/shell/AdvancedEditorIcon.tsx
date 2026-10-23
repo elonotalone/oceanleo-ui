@@ -200,10 +200,11 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
       <path d="M15 21v-6h6" />
     </>
   ),
+  // 透明度：右半渐疏的圆。旧字形是一滴水，和「颜色」那滴水一眼分不开。
   opacity: (
     <>
-      <path d="M12 3s6 6.2 6 11a6 6 0 11-12 0c0-4.8 6-11 6-11z" />
-      <path d="M8 15c2.5-1.2 5.5-1.2 8 0" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 3.5v17M14.8 4v16M17.4 5.6v12.8M19.6 8.4v7.2" />
     </>
   ),
   position: <path d={paths.position} />,
@@ -394,6 +395,102 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
     <path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z" />
   ),
   back: <path d="M15 6l-6 6 6 6" />,
+  // 统一编辑栏词表（2026-10-23 D9）：每个规范项一枚独立字形，一眼能分清。
+  "text-color": (
+    <>
+      <path d="M7 14.5L12 3.5l5 11M8.8 10.6h6.4" />
+      <rect x="4.5" y="17.5" width="15" height="3" rx="1.2" />
+    </>
+  ),
+  highlight: (
+    <>
+      <path d="M9.2 14.6L15 4.5a1.6 1.6 0 012.2-.6l2.1 1.2a1.6 1.6 0 01.6 2.2L14.1 17.4z" />
+      <path d="M9.2 14.6l-1.6 3.8 2.4 1.4 4.1-2.4" />
+      <path d="M3.5 21h7" />
+    </>
+  ),
+  "line-height": (
+    <path d="M10 6.5h10M10 12h10M10 17.5h10M5 4.5v15M3 6.5l2-2 2 2M3 17.5l2 2 2-2" />
+  ),
+  "letter-spacing": (
+    <path d="M4.5 5v14M19.5 5v14M8 12h8M10 10l-2 2 2 2M14 10l2 2-2 2" />
+  ),
+  "clear-format": (
+    <path d="M5 4.5h12M11 4.5L8.6 16M14.5 14l5.5 5.5M20 14l-5.5 5.5" />
+  ),
+  "indent-increase": (
+    <path d="M4 5h16M11 10h9M11 14h9M4 19h16M4 9.5l3.5 2.5L4 14.5" />
+  ),
+  "indent-decrease": (
+    <path d="M4 5h16M11 10h9M11 14h9M4 19h16M7.5 9.5L4 12l3.5 2.5" />
+  ),
+  "list-ordered": (
+    <path d="M10 6.5h10M10 12h10M10 17.5h10M4.6 4.8l1.3-.8v4.6M4.2 8.6h3.2M4.2 14.4a1.5 1.5 0 012.9.5c0 1-2.9 2.3-2.9 3.4h3" />
+  ),
+  replace: <path d="M4 8h13M14 4.5L17.5 8 14 11.5M20 16H7M10 12.5L6.5 16l3.5 3.5" />,
+  radius: (
+    <>
+      <path d="M4 20v-7a9 9 0 019-9h7" />
+      <path d="M4 4h.01M8 4h.01M4 8h.01" />
+    </>
+  ),
+  adjust: (
+    <>
+      <circle cx="12" cy="12" r="3.6" />
+      <path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" />
+    </>
+  ),
+  fill: (
+    <>
+      <path d="M4.6 11.2L11 4.8l6.6 6.6-6.4 6.4a1.5 1.5 0 01-2.1 0l-4.5-4.5a1.5 1.5 0 010-2.1z" />
+      <path d="M4.5 12.2h13" />
+      <path d="M19.8 14.4c.9 1.3 1.6 2.3 1.6 3.1a1.6 1.6 0 01-3.2 0c0-.8.7-1.8 1.6-3.1z" />
+    </>
+  ),
+  stroke: (
+    <>
+      <path d="M4 5.5h16" strokeWidth={1.2} />
+      <path d="M4 11.5h16" strokeWidth={2.2} />
+      <path d="M4 18h16" strokeWidth={3.4} />
+    </>
+  ),
+  shadow: (
+    <>
+      <rect x="7.5" y="7.5" width="12.5" height="12.5" rx="2.5" fill="currentColor" stroke="none" opacity=".32" />
+      <rect x="4" y="4" width="12.5" height="12.5" rx="2.5" />
+    </>
+  ),
+  arrange: (
+    <>
+      <path d="M3 9.2l6.8-3.4 6.8 3.4-6.8 3.4z" />
+      <path d="M3 13.6L9.8 17l6.8-3.4" />
+      <path d="M20 4.5v15M17.8 6.7L20 4.5l2.2 2.2M17.8 17.3l2.2 2.2 2.2-2.2" />
+    </>
+  ),
+  alt: (
+    <>
+      <rect x="2.5" y="6" width="19" height="12" rx="3" />
+      <path d="M5.8 15l1.9-6h.5l1.9 6M6.4 13.1h3.1M12.5 9v6h2.4M16.2 9h3.3M17.85 9v6" />
+    </>
+  ),
+  "image-fit": (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M7.5 10V8h2M14.5 8h2v2M16.5 14v2h-2M9.5 16h-2v-2" />
+    </>
+  ),
+  "remove-background": (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2.5" strokeDasharray="2.6 2.6" />
+      <path d="M12 7.2l1.2 3.4 3.4 1.4-3.4 1.4-1.2 3.4-1.2-3.4-3.4-1.4 3.4-1.4z" />
+    </>
+  ),
+  "rotate-ccw": (
+    <>
+      <path d="M4 11a8 8 0 102.3 5.7" />
+      <path d="M4 4v7h7" />
+    </>
+  ),
 };
 
 const unknownGlyph = (
@@ -426,6 +523,7 @@ export function AdvancedEditorIcon({
       strokeLinejoin="round"
       className={className}
       aria-hidden="true"
+      data-icon={name}
       data-icon-fallback={hasGlyph ? undefined : "true"}
     >
       {hasGlyph ? glyphs[name] : unknownGlyph}

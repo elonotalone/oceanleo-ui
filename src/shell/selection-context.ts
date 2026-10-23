@@ -1,3 +1,8 @@
+import {
+  SELECTION_BARS,
+  SELECTION_CONTROL_ICONS,
+  type SelectionBar,
+} from "./selection-context-types";
 import type {
   AnimationPresetId,
   SelectionAnchorRect,
@@ -75,64 +80,8 @@ const CONTROL_KINDS = new Set<SelectionControlKind>([
   "animation-gallery",
 ]);
 
-const CONTROL_ICONS = new Set<SelectionControlIcon>([
-  "add",
-  "ai",
-  "align-center",
-  "align-justify",
-  "align-left",
-  "align-right",
-  "animate",
-  "background",
-  "bold",
-  "border",
-  "bring-forward",
-  "case",
-  "crop",
-  "color",
-  "delete",
-  "download",
-  "draw",
-  "duplicate",
-  "effects",
-  "elements",
-  "filter",
-  "flip-horizontal",
-  "flip-vertical",
-  "font",
-  "font-size",
-  "image",
-  "italic",
-  "layers",
-  "line",
-  "link",
-  "list",
-  "lock",
-  "more",
-  "materials",
-  "note",
-  "opacity",
-  "pages",
-  "position",
-  "redo",
-  "rotate",
-  "save",
-  "select",
-  "send-backward",
-  "shape",
-  "signature",
-  "spacing",
-  "strike",
-  "table",
-  "text",
-  "templates",
-  "transparency",
-  "underline",
-  "underline-color",
-  "undo",
-  "unlock",
-  "vertical-text",
-]);
+const CONTROL_ICONS = new Set<SelectionControlIcon>(SELECTION_CONTROL_ICONS);
+const BARS = new Set<SelectionBar>(SELECTION_BARS);
 
 const CONTROL_SEMANTICS = new Set<SelectionControlSemantic>([
   "font-size",
@@ -510,6 +459,10 @@ export function normalizeSelectionContext(
     kind,
     id,
     controls,
+    // 未知的栏名丢掉、不整条拒收：缺省时外壳按 kind 推断（edit-bar-canon.ts）。
+    ...(BARS.has(source.bar as SelectionBar)
+      ? { bar: source.bar as SelectionBar }
+      : {}),
     ...(revision !== undefined ? { revision } : {}),
     ...(epoch !== undefined ? { epoch } : {}),
     ...(shortString(source.label, 120)
