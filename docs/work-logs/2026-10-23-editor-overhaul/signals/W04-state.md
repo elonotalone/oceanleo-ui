@@ -24,10 +24,10 @@
 - [实测 浏览器] 文档 §5.1/4/5 通过（2 编辑 = 2 revision、断网 0.8s「保存失败」、重试后 revision）；interrupted-save 修后重开自动存上。
 
 ## 正在做
-- 槽 17:47 本地被重启，等热身后跑：deck 自己的 f04b448c、deck fork 8005de37（§5.3）、image e9c7803e、pdf 952e4481（Check 图章）、draft-restore-publish。
+- 无。交付已写：verdicts/W04-delivery.md（R2 收尾 11:xxZ）。
 
 ## 下一步
-- 写 verdicts/W04-delivery.md。
+- 等父 agent / V02 复核；§8 的代改项归父 agent。
 
 ## 复现命令
 ```bash

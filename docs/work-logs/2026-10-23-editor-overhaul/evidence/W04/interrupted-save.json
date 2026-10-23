@@ -1,0 +1,49 @@
+{
+  "marker": "W04-interrupted-j9050",
+  "offline": [
+    {
+      "t": 13,
+      "state": "saving",
+      "title": "Autosaving",
+      "committedBefore": false
+    },
+    {
+      "t": 705,
+      "state": "error",
+      "title": "网络不通，稍后自动重试",
+      "committedBefore": false
+    }
+  ],
+  "reopened": [
+    {
+      "t": 5,
+      "state": "saved",
+      "title": "Saved",
+      "committedBefore": false
+    }
+  ],
+  "markerVisibleAfterReopen": true,
+  "callsAfterReopen": [
+    {
+      "at": 1792745428748,
+      "method": "POST",
+      "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+      "status": 200,
+      "detail": "{\"blob\":\"private-stage\"}"
+    },
+    {
+      "at": 1792745429135,
+      "method": "POST",
+      "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+      "status": 200,
+      "detail": "{\"blob\":\"private-stage\"}"
+    },
+    {
+      "at": 1792745432856,
+      "method": "POST",
+      "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/revisions",
+      "status": 200,
+      "detail": "{\"revisionId\":\"b3153b86-75d4-4f0a-993e-d9640f783d2c\",\"artifactId\":\"eb23423e-0d3a-436b-b77a-711e2f6c5d93\"}"
+    }
+  ]
+}

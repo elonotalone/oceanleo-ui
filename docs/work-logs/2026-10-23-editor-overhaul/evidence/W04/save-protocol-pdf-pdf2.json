@@ -1,0 +1,178 @@
+{
+  "kind": "pdf",
+  "opened": "952e4481-3d35-4633-a0c6-b78864a8859c",
+  "markers": [
+    "W04-pdf-a-djr81",
+    "W04-pdf-b-djr81"
+  ],
+  "saves": [
+    {
+      "step": 1,
+      "marker": "W04-pdf-a-djr81",
+      "settled": {
+        "state": "error",
+        "seen": [
+          {
+            "t": 5,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 29455,
+            "state": "error",
+            "title": "Save failed, click to retry"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -21375
+      },
+      "calls": [
+        {
+          "at": 1792746252261,
+          "method": "POST",
+          "path": "/v1/artifacts/952e4481-3d35-4633-a0c6-b78864a8859c/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792746257420,
+          "method": "POST",
+          "path": "/v1/artifacts/952e4481-3d35-4633-a0c6-b78864a8859c/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"14b67d08-2d48-4ba5-976d-92ca31faf132\",\"artifactId\":\"952e4481-3d35-4633-a0c6-b78864a8859c\"}"
+        }
+      ],
+      "item": "952e4481-3d35-4633-a0c6-b78864a8859c"
+    },
+    {
+      "step": 2,
+      "marker": "W04-pdf-b-djr81",
+      "settled": {
+        "state": "error",
+        "seen": [
+          {
+            "t": 7,
+            "state": "error",
+            "title": "Save failed, click to retry"
+          }
+        ]
+      },
+      "commit": null,
+      "calls": [],
+      "item": "952e4481-3d35-4633-a0c6-b78864a8859c"
+    }
+  ],
+  "startedAt": "2026-10-23T09:03:14.664Z",
+  "openState": {
+    "state": "saved",
+    "title": "Saved",
+    "text": "Saved",
+    "visible": true
+  },
+  "openedUrlItem": "952e4481-3d35-4633-a0c6-b78864a8859c",
+  "currentItem": "952e4481-3d35-4633-a0c6-b78864a8859c",
+  "afterReopen": {
+    "item": "952e4481-3d35-4633-a0c6-b78864a8859c",
+    "markers": {
+      "W04-pdf-a-djr81": false,
+      "W04-pdf-b-djr81": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "afterReload": {
+    "item": "952e4481-3d35-4633-a0c6-b78864a8859c",
+    "markers": {
+      "W04-pdf-a-djr81": false,
+      "W04-pdf-b-djr81": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "offlineMarker": "W04-pdf-offline-djr81",
+  "offline": {
+    "seen": [
+      {
+        "t": 8,
+        "state": "error",
+        "title": "网络不通，稍后自动重试"
+      }
+    ],
+    "errorInfo": {
+      "state": "error",
+      "title": "网络不通，稍后自动重试",
+      "text": "Save ran into a problem",
+      "visible": true
+    },
+    "sawSavedWhileOffline": false,
+    "retried": true,
+    "after": {
+      "state": "saved",
+      "seen": [
+        {
+          "t": 1,
+          "state": "error",
+          "title": "网络不通，稍后自动重试"
+        },
+        {
+          "t": 4829,
+          "state": "saving",
+          "title": "Autosaving"
+        },
+        {
+          "t": 10501,
+          "state": "saved",
+          "title": "Saved"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "at": 1792746541575,
+        "method": "POST",
+        "path": "/v1/artifacts/952e4481-3d35-4633-a0c6-b78864a8859c/staging",
+        "status": 0,
+        "detail": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "at": 1792746545244,
+        "method": "POST",
+        "path": "/v1/artifacts/952e4481-3d35-4633-a0c6-b78864a8859c/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792746548708,
+        "method": "POST",
+        "path": "/v1/artifacts/952e4481-3d35-4633-a0c6-b78864a8859c/revisions",
+        "status": 200,
+        "detail": "{\"revisionId\":\"29900856-d215-46e3-bd4e-875914bbf052\",\"artifactId\":\"952e4481-3d35-4633-a0c6-b78864a8859c\"}"
+      }
+    ],
+    "afterReopen": {
+      "markers": {
+        "W04-pdf-a-djr81": false,
+        "W04-pdf-b-djr81": false,
+        "W04-pdf-offline-djr81": false
+      }
+    }
+  },
+  "summary": {
+    "uploadsOk": 0,
+    "privateStagesOk": 2,
+    "revisionsOk": 2,
+    "revisionsFailed": 0,
+    "forksOk": 0
+  },
+  "finishedAt": "2026-10-23T09:10:36.885Z"
+}

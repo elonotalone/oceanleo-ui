@@ -86,9 +86,11 @@ const mutators = {
     // A check stamp is one click = one visible mark (free text needs W06's edit/commit flow;
     // see signals/W04-to-W06.md). Each step stamps a different spot on page 1.
     await page.keyboard.press("Escape");
+    await page.locator('button[aria-label="Check"], button[title="Check"]').first().waitFor({ timeout: 60000 }).catch(() => {});
     await clickByName(page, ["Check", "勾", "打勾"]);
     await sleep(500);
-    await page.mouse.click(pageBox.x + pageBox.w * (0.25 + 0.15 * step), pageBox.y + pageBox.h * 0.7);
+    // A fresh spot each run: clicking an earlier run's stamp selects it instead of stamping.
+    await page.mouse.click(pageBox.x + pageBox.w * (0.15 + 0.2 * step + Math.random() * 0.08), pageBox.y + pageBox.h * (0.78 + Math.random() * 0.15));
     await sleep(700);
     await page.keyboard.press("Escape");
   },

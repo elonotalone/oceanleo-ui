@@ -1,0 +1,210 @@
+{
+  "kind": "doc",
+  "opened": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+  "markers": [
+    "W04-doc-a-obhn3",
+    "W04-doc-b-obhn3"
+  ],
+  "saves": [
+    {
+      "step": 1,
+      "marker": "W04-doc-a-obhn3",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 2,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 16204,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -7005
+      },
+      "calls": [
+        {
+          "at": 1792744396041,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792744397139,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792744402549,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"39db4bc6-dd1c-4004-9cb8-84f3b5763867\",\"artifactId\":\"eb23423e-0d3a-436b-b77a-711e2f6c5d93\"}"
+        }
+      ],
+      "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93"
+    },
+    {
+      "step": 2,
+      "marker": "W04-doc-b-obhn3",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 2,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 5230,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": 23118
+      },
+      "calls": [
+        {
+          "at": 1792744416761,
+          "method": "POST",
+          "path": "/v1/database/upload",
+          "status": 200,
+          "detail": "{\"revisionId\":\"82ed98ce-d9b9-4371-8521-6259af8f748d\",\"artifactId\":\"e8c09a25-e0af-4e4e-b0cb-0c072549d008\"}"
+        },
+        {
+          "at": 1792744438871,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792744439429,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792744441433,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"56e85da1-f1e0-4528-91d4-2e62063f1ae1\",\"artifactId\":\"eb23423e-0d3a-436b-b77a-711e2f6c5d93\"}"
+        }
+      ],
+      "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93"
+    }
+  ],
+  "startedAt": "2026-10-23T08:32:51.395Z",
+  "openState": {
+    "state": "saved",
+    "title": "Saved",
+    "text": "Saved",
+    "visible": true
+  },
+  "openedUrlItem": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+  "currentItem": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+  "afterReopen": {
+    "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+    "markers": {
+      "W04-doc-a-obhn3": true,
+      "W04-doc-b-obhn3": true
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "afterReload": {
+    "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+    "markers": {
+      "W04-doc-a-obhn3": true,
+      "W04-doc-b-obhn3": true
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "offlineMarker": "W04-doc-offline-obhn3",
+  "offline": {
+    "seen": [
+      {
+        "t": 2,
+        "state": "saving",
+        "title": "Autosaving"
+      },
+      {
+        "t": 806,
+        "state": "error",
+        "title": "网络不通，稍后自动重试"
+      }
+    ],
+    "errorInfo": {
+      "state": "error",
+      "title": "网络不通，稍后自动重试",
+      "text": "Save ran into a problem",
+      "visible": true
+    },
+    "sawSavedWhileOffline": false,
+    "retried": true,
+    "after": {
+      "state": "error",
+      "seen": [
+        {
+          "t": 1,
+          "state": "error",
+          "title": "网络不通，稍后自动重试"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "at": 1792744485781,
+        "method": "POST",
+        "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+        "status": 0,
+        "detail": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "at": 1792744485816,
+        "method": "POST",
+        "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+        "status": 0,
+        "detail": "net::ERR_INTERNET_DISCONNECTED"
+      }
+    ],
+    "afterReopen": {
+      "markers": {
+        "W04-doc-a-obhn3": true,
+        "W04-doc-b-obhn3": true,
+        "W04-doc-offline-obhn3": true
+      }
+    }
+  },
+  "summary": {
+    "uploadsOk": 1,
+    "privateStagesOk": 5,
+    "revisionsOk": 2,
+    "revisionsFailed": 0,
+    "forksOk": 0
+  },
+  "finishedAt": "2026-10-23T08:35:50.323Z"
+}

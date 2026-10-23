@@ -1,0 +1,161 @@
+{
+  "kind": "deck",
+  "opened": "0e1fa553-de09-41c6-91ee-3f8d1a94a453",
+  "markers": [
+    "W04-deck-a-facn4",
+    "W04-deck-b-facn4"
+  ],
+  "saves": [
+    {
+      "step": 1,
+      "marker": "W04-deck-a-facn4",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 2,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 8853,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -3919
+      },
+      "calls": [
+        {
+          "at": 1792750981567,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750981765,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750981868,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750985036,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"e67ce46e-8522-446b-8959-0bf35659591d\",\"artifactId\":\"0e1fa553-de09-41c6-91ee-3f8d1a94a453\"}"
+        }
+      ],
+      "item": "0e1fa553-de09-41c6-91ee-3f8d1a94a453"
+    },
+    {
+      "step": 2,
+      "marker": "W04-deck-b-facn4",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 15,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 6448,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -1446
+      },
+      "calls": [
+        {
+          "at": 1792750994248,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750994951,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750995280,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750998168,
+          "method": "POST",
+          "path": "/v1/artifacts/0e1fa553-de09-41c6-91ee-3f8d1a94a453/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"69a0073b-a36c-4e30-9a4d-0f3f20593f54\",\"artifactId\":\"0e1fa553-de09-41c6-91ee-3f8d1a94a453\"}"
+        }
+      ],
+      "item": "0e1fa553-de09-41c6-91ee-3f8d1a94a453"
+    }
+  ],
+  "startedAt": "2026-10-23T10:22:40.406Z",
+  "openState": {
+    "state": "saved",
+    "title": "Saved",
+    "text": "Saved",
+    "visible": true
+  },
+  "openedUrlItem": "0e1fa553-de09-41c6-91ee-3f8d1a94a453",
+  "currentItem": "0e1fa553-de09-41c6-91ee-3f8d1a94a453",
+  "afterReopen": {
+    "item": "0e1fa553-de09-41c6-91ee-3f8d1a94a453",
+    "markers": {
+      "W04-deck-a-facn4": false,
+      "W04-deck-b-facn4": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "afterReload": {
+    "item": "0e1fa553-de09-41c6-91ee-3f8d1a94a453",
+    "markers": {
+      "W04-deck-a-facn4": false,
+      "W04-deck-b-facn4": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "summary": {
+    "uploadsOk": 0,
+    "privateStagesOk": 9,
+    "revisionsOk": 3,
+    "revisionsFailed": 0,
+    "forksOk": 0
+  },
+  "finishedAt": "2026-10-23T10:26:06.227Z"
+}

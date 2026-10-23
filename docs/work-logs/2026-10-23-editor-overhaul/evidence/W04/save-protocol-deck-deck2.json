@@ -1,0 +1,285 @@
+{
+  "kind": "deck",
+  "opened": "f04b448c-c51c-490d-a067-30d36ca276ab",
+  "markers": [
+    "W04-deck-a-lc8j5",
+    "W04-deck-b-lc8j5"
+  ],
+  "saves": [
+    {
+      "step": 1,
+      "marker": "W04-deck-a-lc8j5",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 15,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 31583,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -25493
+      },
+      "calls": [
+        {
+          "at": 1792750250375,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750250662,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750251048,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750255160,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"b9d67d8e-bd3c-4e93-9357-910c8a0715f9\",\"artifactId\":\"f04b448c-c51c-490d-a067-30d36ca276ab\"}"
+        },
+        {
+          "at": 1792750261249,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750261545,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750263155,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750269154,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"d22b25e4-7f48-4de0-a498-1f846b2da231\",\"artifactId\":\"f04b448c-c51c-490d-a067-30d36ca276ab\"}"
+        }
+      ],
+      "item": "f04b448c-c51c-490d-a067-30d36ca276ab"
+    },
+    {
+      "step": 2,
+      "marker": "W04-deck-b-lc8j5",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 1,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 8916,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -2170
+      },
+      "calls": [
+        {
+          "at": 1792750287360,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750287547,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750288449,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792750291669,
+          "method": "POST",
+          "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"df303f9e-09b8-4c69-a7b9-8a105bd7564e\",\"artifactId\":\"f04b448c-c51c-490d-a067-30d36ca276ab\"}"
+        }
+      ],
+      "item": "f04b448c-c51c-490d-a067-30d36ca276ab"
+    }
+  ],
+  "startedAt": "2026-10-23T10:10:34.748Z",
+  "openState": {
+    "state": "saved",
+    "title": "Saved",
+    "text": "Saved",
+    "visible": true
+  },
+  "openedUrlItem": "f04b448c-c51c-490d-a067-30d36ca276ab",
+  "currentItem": "f04b448c-c51c-490d-a067-30d36ca276ab",
+  "afterReopen": {
+    "item": "f04b448c-c51c-490d-a067-30d36ca276ab",
+    "markers": {
+      "W04-deck-a-lc8j5": false,
+      "W04-deck-b-lc8j5": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "afterReload": {
+    "item": "f04b448c-c51c-490d-a067-30d36ca276ab",
+    "markers": {
+      "W04-deck-a-lc8j5": false,
+      "W04-deck-b-lc8j5": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "offlineMarker": "W04-deck-offline-lc8j5",
+  "offline": {
+    "seen": [
+      {
+        "t": 45,
+        "state": "error",
+        "title": "网络不通，稍后自动重试"
+      }
+    ],
+    "errorInfo": {
+      "state": "error",
+      "title": "网络不通，稍后自动重试",
+      "text": "Save ran into a problem",
+      "visible": true
+    },
+    "sawSavedWhileOffline": false,
+    "retried": true,
+    "after": {
+      "state": "saved",
+      "seen": [
+        {
+          "t": 2,
+          "state": "error",
+          "title": "网络不通，稍后自动重试"
+        },
+        {
+          "t": 2010,
+          "state": "saving",
+          "title": "Autosaving"
+        },
+        {
+          "t": 3618,
+          "state": "saved",
+          "title": "Saved"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "at": 1792750426993,
+        "method": "POST",
+        "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+        "status": 0,
+        "detail": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "at": 1792750427082,
+        "method": "POST",
+        "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+        "status": 0,
+        "detail": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "at": 1792750428084,
+        "method": "POST",
+        "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792750429249,
+        "method": "POST",
+        "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792750429562,
+        "method": "POST",
+        "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792750429710,
+        "method": "POST",
+        "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792750431208,
+        "method": "POST",
+        "path": "/v1/artifacts/f04b448c-c51c-490d-a067-30d36ca276ab/revisions",
+        "status": 200,
+        "detail": "{\"revisionId\":\"1226dd1e-f016-4c9a-9da8-8f24c4fda4f0\",\"artifactId\":\"f04b448c-c51c-490d-a067-30d36ca276ab\"}"
+      }
+    ],
+    "afterReopen": {
+      "markers": {
+        "W04-deck-a-lc8j5": false,
+        "W04-deck-b-lc8j5": false,
+        "W04-deck-offline-lc8j5": false
+      }
+    }
+  },
+  "summary": {
+    "uploadsOk": 0,
+    "privateStagesOk": 16,
+    "revisionsOk": 5,
+    "revisionsFailed": 0,
+    "forksOk": 0
+  },
+  "finishedAt": "2026-10-23T10:15:31.656Z"
+}

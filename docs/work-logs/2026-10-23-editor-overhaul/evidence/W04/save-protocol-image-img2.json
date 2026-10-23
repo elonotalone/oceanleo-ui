@@ -1,0 +1,234 @@
+{
+  "kind": "image",
+  "opened": "e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad",
+  "markers": [
+    "W04-image-a-d403k",
+    "W04-image-b-d403k"
+  ],
+  "saves": [
+    {
+      "step": 1,
+      "marker": "W04-image-a-d403k",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 1,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 8164,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -3256
+      },
+      "calls": [
+        {
+          "at": 1792751309822,
+          "method": "POST",
+          "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792751310133,
+          "method": "POST",
+          "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792751312964,
+          "method": "POST",
+          "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"4b47b7c3-6b70-4e26-957f-29efa01a39e2\",\"artifactId\":\"e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad\"}"
+        }
+      ],
+      "item": "e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad"
+    },
+    {
+      "step": 2,
+      "marker": "W04-image-b-d403k",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 1,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 7245,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -4126
+      },
+      "calls": [
+        {
+          "at": 1792751320762,
+          "method": "POST",
+          "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792751320762,
+          "method": "POST",
+          "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792751322615,
+          "method": "POST",
+          "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"ce544436-2d94-4df5-9f4b-e8e9c8f8aac3\",\"artifactId\":\"e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad\"}"
+        }
+      ],
+      "item": "e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad"
+    }
+  ],
+  "startedAt": "2026-10-23T10:28:12.463Z",
+  "openState": {
+    "state": "saved",
+    "title": "Saved",
+    "text": "Saved",
+    "visible": true
+  },
+  "openedUrlItem": "e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad",
+  "currentItem": "e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad",
+  "afterReopen": {
+    "item": "e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad",
+    "markers": {
+      "W04-image-a-d403k": false,
+      "W04-image-b-d403k": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "afterReload": {
+    "item": "e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad",
+    "markers": {
+      "W04-image-a-d403k": false,
+      "W04-image-b-d403k": false
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "offlineMarker": "W04-image-offline-d403k",
+  "offline": {
+    "seen": [
+      {
+        "t": 1,
+        "state": "saving",
+        "title": "Autosaving"
+      },
+      {
+        "t": 807,
+        "state": "error",
+        "title": "网络不通，稍后自动重试"
+      }
+    ],
+    "errorInfo": {
+      "state": "error",
+      "title": "网络不通，稍后自动重试",
+      "text": "Save ran into a problem",
+      "visible": true
+    },
+    "sawSavedWhileOffline": false,
+    "retried": true,
+    "after": {
+      "state": "saved",
+      "seen": [
+        {
+          "t": 1,
+          "state": "error",
+          "title": "网络不通，稍后自动重试"
+        },
+        {
+          "t": 4426,
+          "state": "saving",
+          "title": "Autosaving"
+        },
+        {
+          "t": 10054,
+          "state": "saved",
+          "title": "Saved"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "at": 1792751492235,
+        "method": "POST",
+        "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+        "status": 0,
+        "detail": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "at": 1792751492260,
+        "method": "POST",
+        "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+        "status": 0,
+        "detail": "net::ERR_INTERNET_DISCONNECTED"
+      },
+      {
+        "at": 1792751496370,
+        "method": "POST",
+        "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792751496914,
+        "method": "POST",
+        "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792751499021,
+        "method": "POST",
+        "path": "/v1/artifacts/e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad/revisions",
+        "status": 200,
+        "detail": "{\"revisionId\":\"48751dec-5c04-4405-aee4-2ae96585449b\",\"artifactId\":\"e9c7803e-2eac-4d0a-9ea1-fd6922d8ccad\"}"
+      }
+    ],
+    "afterReopen": {
+      "markers": {
+        "W04-image-a-d403k": false,
+        "W04-image-b-d403k": false,
+        "W04-image-offline-d403k": false
+      }
+    }
+  },
+  "summary": {
+    "uploadsOk": 0,
+    "privateStagesOk": 8,
+    "revisionsOk": 4,
+    "revisionsFailed": 0,
+    "forksOk": 0
+  },
+  "finishedAt": "2026-10-23T10:33:22.646Z"
+}

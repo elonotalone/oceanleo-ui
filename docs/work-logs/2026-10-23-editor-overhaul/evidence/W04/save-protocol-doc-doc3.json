@@ -1,0 +1,224 @@
+{
+  "kind": "doc",
+  "opened": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+  "markers": [
+    "W04-doc-a-hrfsg",
+    "W04-doc-b-hrfsg"
+  ],
+  "saves": [
+    {
+      "step": 1,
+      "marker": "W04-doc-a-hrfsg",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 3,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 8480,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -2716
+      },
+      "calls": [
+        {
+          "at": 1792752051023,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792752051217,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792752054649,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"2361044a-bbdf-4fbb-8d86-fedb63549011\",\"artifactId\":\"eb23423e-0d3a-436b-b77a-711e2f6c5d93\"}"
+        }
+      ],
+      "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93"
+    },
+    {
+      "step": 2,
+      "marker": "W04-doc-b-hrfsg",
+      "settled": {
+        "state": "saved",
+        "seen": [
+          {
+            "t": 2,
+            "state": "saving",
+            "title": "Autosaving"
+          },
+          {
+            "t": 8861,
+            "state": "saved",
+            "title": "Saved"
+          }
+        ]
+      },
+      "commit": {
+        "status": 200,
+        "afterMs": -1084
+      },
+      "calls": [
+        {
+          "at": 1792752063587,
+          "method": "POST",
+          "path": "/v1/database/upload",
+          "status": 200,
+          "detail": "{\"revisionId\":\"feeabba4-9866-427e-8810-0e19e4396b64\",\"artifactId\":\"c9a27a95-1a91-4649-a977-44203c459030\"}"
+        },
+        {
+          "at": 1792752066206,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792752066571,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+          "status": 200,
+          "detail": "{\"blob\":\"private-stage\"}"
+        },
+        {
+          "at": 1792752068702,
+          "method": "POST",
+          "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/revisions",
+          "status": 200,
+          "detail": "{\"revisionId\":\"c46f14d1-558f-45cc-85db-3ccd4321ce14\",\"artifactId\":\"eb23423e-0d3a-436b-b77a-711e2f6c5d93\"}"
+        }
+      ],
+      "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93"
+    }
+  ],
+  "startedAt": "2026-10-23T10:40:34.978Z",
+  "openState": {
+    "state": "saved",
+    "title": "Saved",
+    "text": "Saved",
+    "visible": true
+  },
+  "openedUrlItem": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+  "currentItem": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+  "afterReopen": {
+    "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+    "markers": {
+      "W04-doc-a-hrfsg": true,
+      "W04-doc-b-hrfsg": true
+    },
+    "save": {
+      "state": "saved",
+      "title": "Saved",
+      "text": "Saved",
+      "visible": true
+    }
+  },
+  "afterReload": {
+    "item": "eb23423e-0d3a-436b-b77a-711e2f6c5d93",
+    "markers": {
+      "W04-doc-a-hrfsg": true,
+      "W04-doc-b-hrfsg": true
+    },
+    "save": {
+      "state": "saving",
+      "title": "Autosaving",
+      "text": "Autosaving",
+      "visible": true
+    }
+  },
+  "offlineMarker": "W04-doc-offline-hrfsg",
+  "offline": {
+    "seen": [
+      {
+        "t": 1,
+        "state": "error",
+        "title": "最新服务器草稿暂时无法恢复，自动保存已暂停。请点重试。"
+      }
+    ],
+    "errorInfo": {
+      "state": "error",
+      "title": "最新服务器草稿暂时无法恢复，自动保存已暂停。请点重试。",
+      "text": "Save ran into a problem",
+      "visible": true
+    },
+    "sawSavedWhileOffline": false,
+    "retried": true,
+    "after": {
+      "state": "saved",
+      "seen": [
+        {
+          "t": 81,
+          "state": "saving",
+          "title": "Autosaving"
+        },
+        {
+          "t": 11372,
+          "state": "saved",
+          "title": "Saved"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "at": 1792752118753,
+        "method": "POST",
+        "path": "/v1/database/upload",
+        "status": 200,
+        "detail": "{\"revisionId\":\"d817781c-3b69-49f7-93ee-6520716630a5\",\"artifactId\":\"3b24b1de-d296-460a-b175-1afb0765c234\"}"
+      },
+      {
+        "at": 1792752122319,
+        "method": "POST",
+        "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792752122579,
+        "method": "POST",
+        "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/staging",
+        "status": 200,
+        "detail": "{\"blob\":\"private-stage\"}"
+      },
+      {
+        "at": 1792752125150,
+        "method": "POST",
+        "path": "/v1/artifacts/eb23423e-0d3a-436b-b77a-711e2f6c5d93/revisions",
+        "status": 200,
+        "detail": "{\"revisionId\":\"67110b7e-e59e-4857-9040-7e335ea5d4a9\",\"artifactId\":\"eb23423e-0d3a-436b-b77a-711e2f6c5d93\"}"
+      }
+    ],
+    "afterReopen": {
+      "markers": {
+        "W04-doc-a-hrfsg": true,
+        "W04-doc-b-hrfsg": true,
+        "W04-doc-offline-hrfsg": true
+      }
+    }
+  },
+  "summary": {
+    "uploadsOk": 2,
+    "privateStagesOk": 8,
+    "revisionsOk": 4,
+    "revisionsFailed": 0,
+    "forksOk": 0
+  },
+  "finishedAt": "2026-10-23T10:42:25.200Z"
+}
