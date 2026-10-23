@@ -1,3 +1,5 @@
+import { editBarAvoidInset } from "./floating-toolbar-geometry";
+
 export function cssPixelValue(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -88,7 +90,13 @@ export function editBarRowCapacity(row: HTMLElement): number {
   const boundary =
     row.closest<HTMLElement>("[data-workspace-floating-toolbar-overlay]") ||
     row.parentElement;
-  let capacity = visibleBoundaryWidth(boundary) - FLOATING_EDGE_RESERVE_PX;
+  // 编辑器侧栏（`data-edit-bar-avoid`）占去的两侧宽度不算容量：栏先折进「更多」，不去盖侧栏。
+  let capacity =
+    visibleBoundaryWidth(boundary) -
+    FLOATING_EDGE_RESERVE_PX -
+    editBarAvoidInset(
+      row.closest<HTMLElement>("[data-workspace-floating-toolbar-overlay]"),
+    );
   const viewport = window.visualViewport;
   const viewportWidth = viewport?.width || window.innerWidth;
   if (viewportWidth > 0) {

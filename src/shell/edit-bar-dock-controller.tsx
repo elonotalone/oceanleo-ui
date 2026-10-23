@@ -34,6 +34,8 @@ import {
   EDIT_BAR_HEIGHT_PX,
 } from "./edit-bar-surface";
 import {
+  avoidFloatingToolbarRects,
+  readEditBarAvoidRects,
   dockedFloatingToolbarPosition,
   isFloatingToolbarDockIntent,
   sameFloatingToolbarPoint,
@@ -667,8 +669,18 @@ export function useEditBarDockController({
         chromeBottomViewport != null && layer
           ? Math.max(bounds.top, chromeBottomViewport - layer.top)
           : bounds.top;
+      const avoid =
+        layer && presentationRef.current !== "collapsed"
+          ? readEditBarAvoidRects(layerEl, layer)
+          : [];
+      // 先夹在 chrome 之下，再避开编辑器侧栏（`data-edit-bar-avoid`，W03 2026-10-23）。
       const finalize = (point: FloatingToolbarPoint): FloatingToolbarPoint =>
-        clampEditBarBelowChrome(point, chromeBottom, bounds, size);
+        avoidFloatingToolbarRects(
+          clampEditBarBelowChrome(point, chromeBottom, bounds, size),
+          size,
+          avoid,
+          bounds,
+        );
       // 收起态先判：小圆用图层绝对坐标，既不跟选区锚点也不参与停靠。
       if (presentationRef.current === "collapsed") {
         const base = collapsedPositionRef.current || positionRef.current;
