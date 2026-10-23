@@ -2,10 +2,10 @@
  * 素材库 → 视频画布（D2 / _EDITOR.md §E）：点一下图片、视频或音频素材，
  * 画布上多一个对应种类的媒体节点，节点记下来源素材的 artifact / revision。
  *
- * 只记引用、不把字节塞进工程的 `assets`：v2 工程的资产闭包要求每个资产带
- * 可验的私有定位和摘要，并在后续保存里改成 `sourceDependency` 固定路径，
- * 那条链属于视频核心的生成流程；画布这里如实记「这个节点用的是哪份素材」。
- * 缩略图只在本次会话里显示（素材自带的 https 海报图），不写进工程。
+ * 素材字节先进入私有暂存，再把可校验的定位、摘要、媒体类型、大小写进 immutable
+ * `assets`；节点携带 assetId 和来源 materialRef。保存后的依赖按 sourceDependency
+ * 固定到当前 revision。缩略图与播放器使用这些私有闭包字节，重开仍可读取；
+ * 浏览器的临时播放地址从不写进工程。
  */
 import type { LibraryItem } from "../library-data";
 import type { VideoDocPosition } from "./video-project-doc";

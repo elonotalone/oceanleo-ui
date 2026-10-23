@@ -4,6 +4,11 @@
 
 ## Codex 接班
 
+- [实测] 已交付：`verdicts/CODEX-W16.md`。代码 `dddc5330` / `601e2cfd` / `87b01644`。专项 12/12、workflow E9 1/1。
+- [实测] PNG / MP4 / MP3 的完整素材面板→私有暂存→节点资产→真版本→Undo/Redo→重开媒体均通过；深色公共 fork 两次保存/刷新/离线恢复通过；最终节点和连线全按钮 61s 通过。
+- [实测 SQL] 仅 1 个 active workflow root，闭包为入口+3媒体共4项、完整性 ready，每个近期版本均有1张preview。父 agent 负责全量 tsc/suite/slot freshness。
+- 后文是历史断点；接班列出的 W16 缺陷已修，具体证据与限制见交付。
+
 - [实测] 当前 v2 专项 9/9、durable-save 1/1 通过；E9 workflow 测试仍引用已删除的 embedded 变量，准备改成 sourceReady/nativeV2ReadOnlyProjection 的实际安全边界。
 - [读码] 当前素材插入只记 materialRef，不把资产字节和摘要放进 assets；缩略图仅在会话中。正在补完整 private staging → assets → 闭包 → 重开缩略图链路。
 - [实测] 保留并运行旧 untracked s7-material，素材面板只出现当前 workflow 卡片、无可拖入素材，父 agent 正查共享承载。运行期间网关重启，完成后再核。

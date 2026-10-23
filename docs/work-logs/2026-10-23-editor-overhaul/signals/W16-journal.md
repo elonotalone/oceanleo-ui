@@ -9,3 +9,6 @@
 - 2026-10-23 12:34Z [实测 浏览器 s2] 连线拖不出：节点卡 overflow-hidden 把半露在外的把手裁掉了，拖到的是节点本身 → 已去掉裁切、把手加大。
 - Codex 接班 [实测] 旧 s7-material 完整保留；网关恢复后重跑仍无 search 请求，素材面板只有当前 workflow 卡，已把截图与查询证据交父 agent 修共享承载。
 - Codex 接班 [读码+测试] 素材原来只有 materialRef，现补 fresh full → private staging → immutable asset+node 单次历史 → exact closure 引用；重开按依赖读真实媒体、签发地址不进工程。v2 安全私有草稿与保存基线前移同步补齐。专项 10/10、durable-save 1/1、workflow E9 安全测试通过；3D E9 VM binding 错误归父/W13。
+- Codex 最终 [实测] PNG链路90.8s PASS，MP4链路56.3s PASS，深色MP3链路85.5s PASS；各有两次真实版本，Undo/Redo及重开保留媒体。曾发现 Undo 撤销 objectURL 导致短暂缺图，已修为编辑器生命周期缓存，新增真实 hook 回归通过。
+- Codex 最终 [实测] 深色公共模板协议57.4s PASS：1次fork回执复用现存副本，2次修改与离线恢复各一版，刷新保留；最终控件场景61s PASS（加节点/参数/位置/锁定/复制/删除/撤销重做/连线/删线撤销）。
+- Codex 最终 [实测 SQL] active workflow root只有1个；闭包从入口1项变成入口+3媒体共4项，均ready；近期各版本preview=1，最终ordinal31。专项12/12、workflow E9 1/1通过。交付CODEX-W16.md。
