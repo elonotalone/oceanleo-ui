@@ -67,21 +67,36 @@ export function videoNodeText(node: VideoDocNode): string {
   return typeof value === "string" ? value : "";
 }
 
+/**
+ * Official templates store `params.durationMs`; the v2 core stores `durationSeconds`.
+ * The editor always shows seconds and writes back in the unit the node already uses.
+ */
+function durationKey(node: VideoDocNode): "durationMs" | "durationSeconds" {
+  return typeof readField(node, "durationMs") === "number" ? "durationMs" : "durationSeconds";
+}
+
 export function videoNodeOffersDuration(node: VideoDocNode): boolean {
-  return typeof readField(node, "durationSeconds") === "number" || DURATION_KINDS.has(node.kind);
+  return typeof readField(node, durationKey(node)) === "number" || DURATION_KINDS.has(node.kind);
 }
 
 export function videoNodeDuration(node: VideoDocNode): number | null {
-  const value = readField(node, "durationSeconds");
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  const key = durationKey(node);
+  const value = readField(node, key);
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return key === "durationMs" ? Math.round(value / 100) / 10 : value;
+}
+
+/** Templates use `aspectRatio`, the core uses `ratio`. */
+function ratioKey(node: VideoDocNode): "aspectRatio" | "ratio" {
+  return typeof readField(node, "aspectRatio") === "string" ? "aspectRatio" : "ratio";
 }
 
 export function videoNodeOffersRatio(node: VideoDocNode): boolean {
-  return typeof readField(node, "ratio") === "string" || RATIO_KINDS.has(node.kind);
+  return typeof readField(node, ratioKey(node)) === "string" || RATIO_KINDS.has(node.kind);
 }
 
 export function videoNodeRatio(node: VideoDocNode): VideoNodeRatio | "" {
-  const value = readField(node, "ratio");
+  const value = readField(node, ratioKey(node));
   return (VIDEO_NODE_RATIOS as readonly unknown[]).includes(value) ? (value as VideoNodeRatio) : "";
 }
 
@@ -111,12 +126,13 @@ export function patchVideoNodeField(node: VideoDocNode, patch: VideoNodeFieldPat
     case "durationSeconds": {
       if (!videoNodeOffersDuration(node) || !Number.isFinite(patch.value)) return node;
       const seconds = Math.max(1, Math.min(VIDEO_NODE_DURATION_MAX, Math.round(patch.value)));
-      return writeField(node, "durationSeconds", seconds);
+      const key = durationKey(node);
+      return writeField(node, key, key === "durationMs" ? seconds * 1000 : seconds);
     }
     case "ratio": {
       if (!videoNodeOffersRatio(node)) return node;
       if (!(VIDEO_NODE_RATIOS as readonly string[]).includes(patch.value)) return node;
-      return writeField(node, "ratio", patch.value);
+      return writeField(node, ratioKey(node), patch.value);
     }
     case "locked": {
       if (videoNodeLocked(node) === patch.value) return node;

@@ -20,6 +20,8 @@ import {
 } from "../src/shell/workflow-carrier/video-project-doc.ts";
 import {
   patchVideoNodeField,
+  videoNodeDuration,
+  videoNodeRatio,
   videoNodeText,
   videoNodeTextField,
 } from "../src/shell/workflow-carrier/video-project-node-fields.ts";
@@ -63,8 +65,8 @@ function officialTemplate() {
         revision: 1,
         graph: {
           nodes: [
-            { nodeId: "n1", kind: "prompt", title: "简报", position: { x: 0, y: 0 }, params: { prompt: "四段反转" } },
-            { nodeId: "n2", kind: "generate", title: "镜头一", position: { x: 260, y: 0 }, params: { prompt: "街头", durationSeconds: 4 } },
+            { nodeId: "n1", kind: "prompt", title: "简报", position: { x: 0, y: 0 }, params: { text: "四段反转", aspectRatio: "9:16" } },
+            { nodeId: "n2", kind: "generate", title: "镜头一", position: { x: 260, y: 0 }, params: { prompt: "街头", durationMs: 4000, model: "text-to-video" } },
             { nodeId: "n3", kind: "timeline", title: "时间线", position: { x: 520, y: 0 } },
             { nodeId: "n4", kind: "delivery", title: "成片", position: { x: 780, y: 0 } },
           ],
@@ -128,8 +130,14 @@ test("node params write back where they live (params.* for templates, top level 
   assert.equal(edited.params.prompt, "夜市");
   assert.equal(Object.hasOwn(edited, "prompt"), false);
   assert.equal(videoNodeText(edited), "夜市");
+  assert.equal(videoNodeDuration(edited), 4, "template durationMs shows as seconds");
   const longer = patchVideoNodeField(edited, { field: "durationSeconds", value: 9999 });
-  assert.equal(longer.params.durationSeconds, 600);
+  assert.equal(longer.params.durationMs, 600_000, "written back in the node's own unit");
+  assert.equal(Object.hasOwn(longer.params, "durationSeconds"), false);
+  const brief = videoDocGraph(parsed()).nodes[0];
+  assert.equal(videoNodeTextField(brief), "text");
+  assert.equal(videoNodeRatio(brief), "9:16");
+  assert.equal(patchVideoNodeField(brief, { field: "ratio", value: "1:1" }).params.aspectRatio, "1:1");
   const core = { nodeId: "x", kind: "script", title: "", position: { x: 0, y: 0 } };
   assert.equal(patchVideoNodeField(core, { field: "text", value: "旁白" }).text, "旁白");
   const locked = patchVideoNodeField(core, { field: "locked", value: true });
