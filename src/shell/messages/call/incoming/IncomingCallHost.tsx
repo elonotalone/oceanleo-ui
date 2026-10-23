@@ -19,17 +19,21 @@ import { CallAvatar, HandsetIcon, HeadphonesIcon } from "../chat/call-visuals";
 import { sanitizeCallView } from "../chat/conversation-calls";
 import { callErrorText } from "../chat/use-call-entry";
 import { callActions, callStore, useCall, type CallPhase } from "../engine";
+import { useImEvent } from "../../realtime/hooks";
 import { pendingCallLink, setPendingCallLink, subscribePendingCallLink } from "./deep-link";
 import {
   acceptIncomingCard,
   answerFromPush,
+  callerDisplayName,
   declineIncomingCard,
   pickIncoming,
+  ringCallerOf,
   withHandled,
   type IncomingActions,
   type IncomingCardModel,
   type LinkIncomingLike,
   type PushAnswerDeps,
+  type RingCallerInfo,
 } from "./incoming-model";
 import { browserRingLeaderDeps, claimRing } from "./ring-leader";
 import { browserRingtoneDeps, createRingtone, type RingStartResult, type Ringtone } from "./ringtone";
@@ -107,6 +111,9 @@ const PUSH_ANSWER_DEPS: PushAnswerDeps = {
 
 type RingUiState = "idle" | "other_tab" | RingStartResult;
 
+/** 记住最近几通响铃载荷里的主叫名字 / 头像（D4）；同一页面不会同时有很多通来电。 */
+const RING_CALLERS_MAX = 20;
+
 /** 来电卡片的层级（`signals/W07-to-W08.md` 第 4 条：≥1160）。 */
 export const INCOMING_Z = 1160;
 
@@ -124,6 +131,7 @@ export function IncomingCallHost() {
   const [link, setLink] = useState<LinkIncomingLike | null>(null);
   const [, setTick] = useState(0);
   const [ring, setRing] = useState<RingUiState>("idle");
+  const [ringCallers, setRingCallers] = useState<ReadonlyMap<string, RingCallerInfo>>(() => new Map());
   const ringtoneRef = useRef<Ringtone | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -139,6 +147,23 @@ export function IncomingCallHost() {
     if (!engineCallId) return;
     setEngineSeen((current) => (current?.callId === engineCallId ? current : { callId: engineCallId, at: Date.now() }));
   }, [engineCallId]);
+
+  // 响铃载荷带主叫名字 / 头像（V02 D4，合同 §3.3 可选字段）：有就直接用，不等资料接口。
+  useImEvent("call_ring", (event) => {
+    const info = ringCallerOf(event as typeof event & { caller_name?: unknown; caller_avatar_url?: unknown });
+    if (!info || typeof event.call_id !== "string" || !event.call_id) return;
+    setRingCallers((current) => {
+      const next = new Map(current);
+      next.delete(event.call_id);
+      next.set(event.call_id, info);
+      while (next.size > RING_CALLERS_MAX) {
+        const oldest = next.keys().next().value;
+        if (oldest === undefined) break;
+        next.delete(oldest);
+      }
+      return next;
+    });
+  });
 
   // 门户已开着时点了来电推送（A-20）：push-subscribe 的桥把 call_id 放进 `oceanleo:im-open`。
   // 用户在系统通知上点的就是「接听」：收起本页卡片、直接接听 / 加入（通话已结束就只打开会话，由 host-state 处理）。
@@ -167,8 +192,8 @@ export function IncomingCallHost() {
         const [status, me] = await Promise.all([callsApi.status(target.conversationId), getUserId().catch(() => null)]);
         const view = sanitizeCallView(status?.call ?? null, target.conversationId);
         if (!view || view.status !== "active" || view.call_id !== target.callId) return;
-        const ringCaller = view.ring && typeof view.ring.caller_id === "string" ? view.ring.caller_id : "";
-        const callerId = ringCaller || view.started_by;
+        const ringCallerId = view.ring && typeof view.ring.caller_id === "string" ? view.ring.caller_id : "";
+        const callerId = ringCallerId || view.started_by;
         if (!callerId || (me && callerId === me)) return;
         const profile = await loadProfile(callerId);
         if (!mounted.current) return;
@@ -255,6 +280,7 @@ export function IncomingCallHost() {
     <IncomingCallCard
       card={card}
       ring={ring}
+      ringCaller={ringCallers.get(card.callId) ?? null}
       callerProfile={callerProfile}
       liveCallId={liveCallId}
       onUnlockSound={unlockSound}
@@ -267,6 +293,7 @@ export function IncomingCallHost() {
 function IncomingCallCard({
   card,
   ring,
+  ringCaller,
   callerProfile,
   liveCallId,
   onUnlockSound,
@@ -274,6 +301,7 @@ function IncomingCallCard({
 }: {
   card: IncomingCardModel;
   ring: RingUiState;
+  ringCaller: RingCallerInfo | null;
   callerProfile: ImProfile | null;
   liveCallId: string | null;
   onUnlockSound(): void;
@@ -290,7 +318,13 @@ function IncomingCallCard({
     };
   }, []);
 
-  const callerName = card.callerName || callerProfile?.display_name || tt("来电者");
+  // 名字到位前不写占位词（D4）：标题处画一条灰色占位条，读屏用「邀请你通话」。
+  const callerName = callerDisplayName(card.callerName, ringCaller, callerProfile?.display_name);
+  const avatarProfile: ImProfile = {
+    user_id: card.callerId,
+    display_name: callerName,
+    avatar_url: ringCaller?.avatarUrl ?? callerProfile?.avatar_url ?? null,
+  };
   const switching = Boolean(liveCallId && liveCallId !== card.callId);
   const titleId = `incoming-call-title-${card.callId}`;
 
@@ -328,25 +362,30 @@ function IncomingCallCard({
       <section
         role="dialog"
         aria-modal="false"
-        aria-labelledby={titleId}
+        aria-labelledby={callerName ? titleId : undefined}
+        aria-label={callerName ? undefined : tt("邀请你通话")}
         data-incoming-call={card.source}
         data-incoming-call-id={card.callId}
         data-ring={ring}
         className="pointer-events-auto w-full max-w-[360px] rounded-2xl border border-black/10 bg-white p-4 text-neutral-900 shadow-2xl dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-100"
       >
         <span className="sr-only" aria-live="assertive">
-          {tt("{name} 邀请你通话", { name: callerName })}
+          {callerName ? tt("{name} 邀请你通话", { name: callerName }) : tt("邀请你通话")}
         </span>
         <div className="flex items-center gap-3">
           <span className="relative shrink-0">
-            <CallAvatar profile={callerProfile ?? undefined} name={callerName} size={44} />
+            <CallAvatar profile={avatarProfile} name={callerName} size={44} />
             <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-white dark:ring-neutral-900">
               <HeadphonesIcon size={12} />
             </span>
           </span>
           <div className="min-w-0 flex-1">
-            <div id={titleId} className="truncate text-[14px] font-semibold">
-              {callerName}
+            <div id={titleId} className="truncate text-[14px] font-semibold" data-caller-name={callerName ? "ready" : "pending"}>
+              {callerName ? (
+                callerName
+              ) : (
+                <span aria-hidden="true" className="inline-block h-3.5 w-24 animate-pulse rounded bg-neutral-200 align-middle dark:bg-neutral-700" />
+              )}
             </div>
             <div className="text-[12.5px] text-neutral-500 dark:text-neutral-400">{tt("邀请你通话")}</div>
           </div>

@@ -61,8 +61,9 @@ export function TranscriptIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+/** 名字首字；名字还没到（来电卡片的 D4 情形）就什么也不画，不用「?」充数。 */
 function initialOf(name: string): string {
-  return Array.from(name.trim())[0]?.toUpperCase() ?? "?";
+  return Array.from(name.trim())[0]?.toUpperCase() ?? "";
 }
 
 export function CallAvatar({

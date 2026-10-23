@@ -5,6 +5,8 @@
 //   link — 推送点开的深链 `/leochat?c=<cid>&call=<call_id>`，页面是新开的、没收到 call_ring：
 //          W08 自己 `GET …/call` 核实这通还在进行，接听 = join(callId)，拒绝 = POST /calls/{id}/decline。
 // 45 秒后卡片消失（以先到者为准：本地 45 秒上限 / 服务端 expires_at），铃声随之停。
+import { httpsAvatarUrl } from "../../../../lib/im/types";
+
 export const RING_TIMEOUT_MS = 45_000;
 /** 服务端到期时间就算因时钟偏差已经过了，卡片也至少留这么久，免得一闪而过。 */
 export const MIN_VISIBLE_MS = 3_000;
@@ -36,6 +38,44 @@ export interface LinkIncomingLike {
   callerName: string;
   /** 核实通话仍在进行的时刻（ms）。 */
   seenAt: number;
+}
+
+// ── 主叫名字与头像（V02 发现 D4；仲裁 A-34）────────────────────────────────
+// `call_ring` 载荷可选带 `caller_name` / `caller_avatar_url`（合同 §3.3，W01 加）：有就直接用，不等资料接口；
+// 名字到位前卡片不写任何占位词（以前写「来电者」，约 1.3 秒后才换成真名字）。
+
+export interface RingCallerInfo {
+  name: string;
+  avatarUrl: string | null;
+}
+
+/** 名字只当纯文本：去掉控制字符与双向文本控制符，折叠空白，最多 80 字。 */
+function cleanName(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw
+    .replace(/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+export function ringCallerOf(
+  event: { caller_name?: unknown; caller_avatar_url?: unknown } | null | undefined,
+): RingCallerInfo | null {
+  if (!event) return null;
+  const name = cleanName(event.caller_name);
+  const avatarUrl = httpsAvatarUrl(event.caller_avatar_url);
+  if (!name && !avatarUrl) return null;
+  return { name, avatarUrl };
+}
+
+/** 卡片上的主叫名字：引擎给的 → 响铃载荷里的 → 资料接口的；都没有就是空串（界面画占位条，不写字）。 */
+export function callerDisplayName(
+  engineName: string | null | undefined,
+  ring: RingCallerInfo | null | undefined,
+  profileName: string | null | undefined,
+): string {
+  return cleanName(engineName) || ring?.name || cleanName(profileName) || "";
 }
 
 /** ring 来源的消失时刻：本地首见 + 45 秒为上限，服务端 expires_at 更早就用它，但至少再留 3 秒。 */

@@ -15,8 +15,10 @@ import {
   RING_TIMEOUT_MS,
   acceptIncomingCard,
   answerFromPush,
+  callerDisplayName,
   declineIncomingCard,
   pickIncoming,
+  ringCallerOf,
   ringDeadline,
   withHandled,
 } from "../src/shell/messages/call/incoming/incoming-model.ts";
@@ -342,8 +344,28 @@ const callsApiStub = dataModule(`
 const messagesApiStub = dataModule(`
   const state = (globalThis.__W08I = globalThis.__W08I ?? {});
   export const messagesApi = {
-    async profiles(ids) { state.calls.push(["profiles", ids.join(",")]); return ids.map((id) => ({ user_id: id, display_name: state.names?.[id] ?? id, avatar_url: null })); },
+    async profiles(ids) {
+      state.calls.push(["profiles", ids.join(",")]);
+      // D4 用例：资料接口还没回来（主叫名字未到）时，卡片不能写占位词。
+      if (state.profilesHang) await new Promise((resolve) => { state.releaseProfiles = resolve; });
+      return ids.map((id) => ({ user_id: id, display_name: state.names?.[id] ?? id, avatar_url: null }));
+    },
   };
+`);
+const hooksStub = dataModule(`
+  import { useEffect, useRef } from ${JSON.stringify(reactUrl)};
+  const state = (globalThis.__W08I = globalThis.__W08I ?? {});
+  state.imHandlers = state.imHandlers ?? {};
+  export function useImEvent(type, handler) {
+    const ref = useRef(handler);
+    ref.current = handler;
+    useEffect(() => {
+      const set = state.imHandlers[type] ?? (state.imHandlers[type] = new Set());
+      const fn = (event) => ref.current(event);
+      set.add(fn);
+      return () => set.delete(fn);
+    }, [type]);
+  }
 `);
 const authStub = dataModule(`export async function getUserId(){ return "me"; }`);
 const uiStub = dataModule(
@@ -363,6 +385,7 @@ const incoming = await import(
     "./ringtone": ringtoneStub,
     "../../../../lib/im/calls-api": callsApiStub,
     "../../../../lib/im/messages-api": messagesApiStub,
+    "../../realtime/hooks": hooksStub,
     "../../../../lib/auth/client": authStub,
     "../../../../ui/Toast": toastStub,
     "../../../../ui": confirmStub,
@@ -410,6 +433,9 @@ async function mountHost() {
 }
 
 function reset() {
+  globalThis.__W08I.profilesHang = false;
+  globalThis.__W08I.releaseProfiles?.();
+  globalThis.__W08I.releaseProfiles = null;
   globalThis.__W08I.calls = [];
   globalThis.__W08I.toasts = [];
   globalThis.__W08I.ringWins = true;
@@ -743,6 +769,69 @@ test("来电宿主：收到带 callId 的 oceanleo:im-open → 卡片收起、�
   });
   await flush(4);
   assert.deepEqual(globalThis.__W08I.calls, [], "普通的打开会话事件不碰通话");
+  await view.unmount();
+});
+
+// ── 主叫名字（V02 D4，仲裁 A-34）───────────────────────────────────────────
+
+test("ringCallerOf / callerDisplayName：响铃载荷的名字当纯文本、头像只认 https；引擎名字优先，其次载荷，最后资料", () => {
+  assert.deepEqual(ringCallerOf({ caller_name: "  测试‮甲\n ", caller_avatar_url: "https://img.example.com/a.png" }), {
+    name: "测试 甲",
+    avatarUrl: "https://img.example.com/a.png",
+  });
+  assert.deepEqual(ringCallerOf({ caller_name: "乙", caller_avatar_url: "http://img.example.com/a.png" }), { name: "乙", avatarUrl: null });
+  assert.equal(ringCallerOf({ caller_name: 42 }), null);
+  assert.equal(ringCallerOf({}), null);
+  assert.equal(ringCallerOf(null), null);
+  assert.equal(ringCallerOf({ caller_name: "x".repeat(200) }).name.length, 80);
+  assert.equal(callerDisplayName("引擎名", { name: "载荷名", avatarUrl: null }, "资料名"), "引擎名");
+  assert.equal(callerDisplayName("", { name: "载荷名", avatarUrl: null }, "资料名"), "载荷名");
+  assert.equal(callerDisplayName("", null, "资料名"), "资料名");
+  assert.equal(callerDisplayName("", null, null), "", "都没有就是空串，界面不写占位词");
+});
+
+async function emitRing(event) {
+  await act(async () => {
+    for (const handler of Array.from(globalThis.__W08I.imHandlers.call_ring ?? [])) handler({ type: "call_ring", ...event });
+  });
+  await flush();
+}
+
+test("来电卡片：call_ring 带了 caller_name / caller_avatar_url 就直接显示，不等资料接口，也不出现「来电者」", async () => {
+  reset();
+  globalThis.__W08I.profilesHang = true;
+  const view = await mountHost();
+  await emitRing({ conversation_id: "dm-d4", call_id: "call-d4", caller_id: "u-d4a", caller_name: "测试甲", caller_avatar_url: "https://img.example.com/jia.png", expires_at: iso(Date.now() + 45_000) });
+  await view.set({ incoming: ring("call-d4", { callerId: "u-d4a", callerName: "", conversationId: "dm-d4" }) });
+  const card = view.q('[data-incoming-call="ring"]');
+  assert.ok(card);
+  assert.equal(view.q("[data-caller-name]").getAttribute("data-caller-name"), "ready");
+  assert.match(card.textContent, /测试甲/);
+  assert.doesNotMatch(card.textContent, /来电者/);
+  assert.equal(card.querySelector("img").getAttribute("src"), "https://img.example.com/jia.png");
+  assert.equal(card.getAttribute("aria-labelledby"), "incoming-call-title-call-d4");
+  await view.unmount();
+});
+
+test("来电卡片：名字还没到（引擎没有、载荷没带、资料接口在路上）→ 只画占位条，不写任何占位词；资料回来后换成名字", async () => {
+  reset();
+  globalThis.__W08I.profilesHang = true;
+  globalThis.__W08I.names = { "u-d4b": "测试乙" };
+  const view = await mountHost();
+  await view.set({ incoming: ring("call-d4b", { callerId: "u-d4b", callerName: "", conversationId: "dm-d4b" }) });
+  const card = view.q('[data-incoming-call="ring"]');
+  assert.ok(card, "卡片照样马上弹（铃声不等名字）");
+  assert.equal(view.q("[data-caller-name]").getAttribute("data-caller-name"), "pending");
+  assert.doesNotMatch(card.textContent, /来电者/);
+  assert.match(card.textContent, /邀请你通话/);
+  assert.equal(card.getAttribute("aria-label"), "邀请你通话", "名字未到时读屏用这句");
+  assert.equal(card.querySelector("img"), null);
+  await act(async () => {
+    globalThis.__W08I.releaseProfiles?.();
+  });
+  await flush(8);
+  assert.equal(view.q("[data-caller-name]").getAttribute("data-caller-name"), "ready");
+  assert.match(view.q('[data-incoming-call="ring"]').textContent, /测试乙/);
   await view.unmount();
 });
 
