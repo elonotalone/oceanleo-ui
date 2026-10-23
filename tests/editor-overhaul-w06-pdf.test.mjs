@@ -178,9 +178,6 @@ test("basic hides the official chrome and pro shows it, on the same document wit
     toolbars: { "main-toolbar": { id: "main-toolbar", permanent: false } },
   });
 
-  // 加文字用来填表：默认黑字、空内容。
-  assert.deepEqual(named(fake.calls, "setToolDefaults")[0].slice(1), ["freeText", { fontColor: "#000000", contents: "" }]);
-
   bridge.setChrome("basic");
   const closed = named(fake.calls, "closeToolbarSlot").map((call) => call[3]);
   assert.deepEqual(closed.sort(), ["main", "secondary"]);
@@ -311,8 +308,14 @@ test("viewer config: self-hosted only, single document, site-token theme, mark t
   assert.equal(config.theme.light.accent.primary, "#0f766e");
   assert.deepEqual(
     config.annotations.tools.map((tool) => tool.id),
-    [PDF_MARK_TOOL_IDS.check, PDF_MARK_TOOL_IDS.cross],
+    [PDF_MARK_TOOL_IDS.check, PDF_MARK_TOOL_IDS.cross, "freeText"],
   );
+  // 加文字用来填表：黑字、点下去是空框（上游点击预填 "Insert text"，打的字会接在后面）。
+  const freeText = config.annotations.tools.find((tool) => tool.id === "freeText");
+  assert.equal(freeText.defaults.fontColor, "#000000");
+  assert.equal(freeText.defaults.contents, "");
+  assert.equal(freeText.clickBehavior.defaultContent, "");
+  assert.equal(freeText.clickBehavior.enabled, true);
   assert.deepEqual(config.annotations.locked, { type: "include", categories: ["form"] });
   const unsafe = buildPdfViewerConfig({
     wasmUrl: "https://oceanleo.com/p.wasm",

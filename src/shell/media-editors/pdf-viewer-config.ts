@@ -13,6 +13,17 @@ import { PDF_VIEWER_NO_EXTERNAL_FONTS } from "./pdf-next-runtime";
 import { PDF_VIEWER_ALWAYS_DISABLED } from "./pdf-viewer-bridge";
 import { pdfMarkTools } from "./pdf-mark-tools";
 
+/**
+ * 「加文字」是填表用的：默认黑字、点下去是空框直接打字。上游默认红字，且点击时
+ * 用 `clickBehavior.defaultContent`（"Insert text"）预填——打的字会接在它后面
+ * （浏览器实测存进 PDF 的是「Insert textZhang San」）。按 id 覆盖，上游深合并。
+ */
+export const PDF_FREE_TEXT_TOOL = {
+  id: "freeText",
+  defaults: { fontColor: "#000000", fontSize: 12, contents: "" },
+  clickBehavior: { enabled: true, defaultSize: { width: 160, height: 20 }, defaultContent: "" },
+} as const;
+
 /** 查看器配色：全部引外壳 token，两档同形，靠外壳变量切明暗。 */
 export function pdfViewerColors(accent: string) {
   const safe = /^#[0-9a-f]{6}$/i.test(accent.trim()) ? accent.trim() : "#4f46e5";
@@ -90,7 +101,7 @@ export function buildPdfViewerConfig(input: PdfViewerConfigInput) {
     },
     zoom: { minZoom: 0.25, maxZoom: 4 },
     annotations: {
-      tools: pdfMarkTools(),
+      tools: [...pdfMarkTools(), PDF_FREE_TEXT_TOOL],
       ...(input.author ? { annotationAuthor: input.author } : {}),
       locked: { type: "include", categories: ["form"] },
     },

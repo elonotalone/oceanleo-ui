@@ -28,3 +28,6 @@
 - R2 09:1xZ [实测] 页面栏旋转/排序/删页全部失败：`openDocumentBuffer` 在 2.15 返回 Task<{documentId, task}>（旧码当成直接对象 → `reading 'toPromise'`）。修后 r2-rail：旋转 rev0→1、拖 p3→p1 rev→2、删 p2 页数 3→2、顶栏撤销 → 3 页回来，保存 → 已保存。
 - R2 [实测] 删页那一拍缩略图还在画旧第 3 页，引擎同步抛「Page 2 not found」→ 错误边界打崩编辑器。修：bridge.renderThumb 越界/同步抛一律转被拒 promise；Thumb effect 包 Promise.resolve；换文档后立刻同步页数。回归测试已加。
 - R2 [实测] 下载（··· → Download → Download PDF）14 KB，pypdf（非 pdfjs）读：p2 有 14 条标准批注（/Highlight /Ink /Underline /StrikeOut /FreeText「Zhang San 张三」/Text），页序 p3,p1,p2，p3 /Rotate 180。证据 /tmp/w06-dl/download.pdf。
+- R2 10:1xZ [实测] r2-protocol 新文件 971dd460：高亮→已保存 rev2，✓→已保存 rev3；✗/下划线/删除线/加文字/画笔/便签/签名逐个 revision+1；选中 ✓ 编辑栏 = 描边/透明度/删除；选中便签 = 颜色/透明度/便签内容/删除，点删除 revision+1；顶栏撤销/重做各 +1；页面栏旋转/排序/删页/撤销删页全过；专业档同实例、无 pending、Shapes→矩形 +1；下载 pypdf 读到 /Square /Stamp /Ink /Highlight /Underline /StrikeOut /FreeText。
+- R2 [实测] 期间 agent session snapshot 409 → 顶栏保存失败卡住（W04 内核，已写 signals/W06-to-W04.md）。
+- R2 [实测] 加文字存进 PDF 的是「Insert textZhang San」：上游点击用 clickBehavior.defaultContent 预填。改为按 id 覆盖 freeText 工具（黑字、空框）；复测「王五 Wang」存出来原样。
