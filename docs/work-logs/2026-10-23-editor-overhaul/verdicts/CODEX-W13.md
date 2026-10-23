@@ -46,6 +46,8 @@ No dependencies, shared product exports, public snapshots, operator data, push o
 
 Parent independently confirmed the durable two-mesh GLB and reported final typecheck7 exit0 including279b0128. Final stage copy uses existing “场景”/“画布” keys instead of exposing the rendering-library brand; a source regression prohibits its return.
 
+Final independent parent verification: W13 eleven-file batch50/50 green; opaque/bootstrap batches12/12 and7/7 green; UI typecheck9 exit0 including2c511c2c+d60060cc+Grid6ed2d7bd. Parent separately parsed shelf `replaced.glb` as one orange Cube and `undo-replacement.glb` as two blue Cubes with authored position/rotation preserved.
+
 ## Limits
 
 - A full actual public-model fork has not been independently retested here; no public fixture was invented. Actual private shelf scene replacement is now proven above, not arbitrary merge/insertion. Do not infer a public-fork pass from typed-save coverage.

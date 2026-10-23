@@ -9,6 +9,7 @@
 - 核心修复：own external save receipt不重置Undo基准；空typedmeta不抹itemidentity；旧room无identity的expiredopaqueURL只作same-origin/same-validatedroot/exactoldrevision locator hint，认证metadata+grant+实际SHA256验证，保留旧journal不切head；typedGLB素材复用私有identity不再legacy公开重传。完整红→绿回归已落盘。
 - 最后批次：collab policy/remote13绿；source renewal+resilience/save12绿；material/opaque/dependency11绿；controls含brand5绿；stale-room3绿。parent已报告tsc7绿含279b0128，最终d60060cc全仓检查归parent。全局i18n collision2红foreign仍保留，不误宣称修复。
 - 唯一明确未实测分支：public3D fork；未盲造公共fixture。报告`verdicts/CODEX-W13.md`。以下为已过期历史，不作为未完成任务执行；controls4旧Undo pass已撤回，sharedhost缺陷未证实也未修权限。
+- [parent独立最终] W13十一文件50/50绿；opaque/bootstrap12/12与7/7绿；UI tsc9 exit0含2c511c2c+d60060cc+6ed2d7bd。parent独立解析shelf两份持久GLB：replace1橙Cube、Undo2蓝Cube，原平移/旋转保持。无剩余产品源码工作。
 
 ## 归档断点（2026-10-23，已由上文替代）
 - [最终当前] `279b0128` own external receipt回执不能重置collab Undo基准，复用artifact+revision精确identity；真实hook红→绿13/13。`/tmp/codex-w13-controls6` exit0 at133s，真实mesh1→2→1→2，coldreload2，3×200无第4次phantom；直接服务端下载durable-source.glb(2756bytes)独立确认Cube+Cube copy，revision393db0c0-de68-41a6-81c3-4fa8829a7997。
