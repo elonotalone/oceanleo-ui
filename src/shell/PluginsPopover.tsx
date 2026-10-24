@@ -100,6 +100,10 @@ export function PluginsPopover({
         attributes={{ "data-plugins-popover": true }}
       >
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          <button type="button" data-local-browser-entry onClick={() => { onClose(); openSettingsModal("connectors"); }} className="mb-2 w-full rounded-lg border border-neutral-200 px-3 py-2 text-left text-sm hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500">
+            <span className="block font-medium">{tt("我的浏览器")}</span>
+            <span className="block text-xs text-neutral-500">{tt("连接本机 Chrome / Edge，每次任务由扩展本地授权")}</span>
+          </button>
           {signedIn === false ? (
             <div
               data-plugins-signin

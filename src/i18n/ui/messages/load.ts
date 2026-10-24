@@ -8,6 +8,7 @@ import type {
   UIMessageModule,
 } from "./runtime";
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
+import { localBrowserCopy } from "./local-browser-copy";
 import { LEO_PANEL_MESSAGES } from "./leo-panel-copy";
 
 const BASE_MESSAGE_LOADERS = {
@@ -103,6 +104,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...recent.RECENT_MODEL_AND_TASK_MESSAGES[locale],
     ...progress.AGENT_PROGRESS_MESSAGES[locale],
     ...CLOUD_BROWSER_MESSAGES[locale],
+    ...localBrowserCopy(locale),
     ...share.SHARE_COPY_MESSAGES[locale],
     ...accountSecurity.ACCOUNT_SECURITY_MESSAGES[locale],
     ...authOauth.AUTH_OAUTH_MESSAGES[locale],

@@ -23,6 +23,7 @@ import hi from "./hi";
 import { RECENT_MODEL_AND_TASK_MESSAGES } from "./recent-model-and-task-copy";
 import { AGENT_PROGRESS_MESSAGES } from "./agent-progress-copy";
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
+import { localBrowserCopy } from "./local-browser-copy";
 import { SHARE_COPY_MESSAGES } from "./share-copy";
 import { ACCOUNT_SECURITY_MESSAGES } from "./account-security-copy";
 import { AUTH_OAUTH_MESSAGES } from "./auth-oauth-copy";
@@ -43,7 +44,7 @@ import { WORK_CHAT_MESSAGES } from "./work-chat-copy";
 import { BAY_MESSAGES } from "./bay-copy";
 import { EDITOR_OVERHAUL_MESSAGES } from "./editor-overhaul-copy";
 
-export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
+const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
     ...zh,
     ...RECENT_MODEL_AND_TASK_MESSAGES.zh,
@@ -470,3 +471,7 @@ export const UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...EDITOR_OVERHAUL_MESSAGES.hi,
   },
 };
+
+export const UI_MESSAGES = Object.fromEntries(
+  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale) }]),
+) as Record<Locale, Record<string, string>>;

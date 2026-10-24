@@ -23,6 +23,7 @@ import {
   myConnectorStatus,
 } from "../plugins/connector-logic";
 import { useConnectorController } from "../plugins/ConnectorsSection";
+import { MyBrowserPanel } from "./MyBrowserPanel";
 
 export interface ConnectorsSettingsPaneProps {
   /** 独立页（/plugins）上下排列两个 pane 时显示自己的标题；设置窗里标题由设置中心画。 */
@@ -280,6 +281,7 @@ export function ConnectorsSettingsPane({
   return (
     <section data-plugins-connectors data-settings-connectors-pane className="min-h-0 pb-10">
       <span data-mcp-oauth-return-origin={controller.returnOrigin} hidden />
+      <MyBrowserPanel />
       {heading ? (
         <h2 className="mb-4 text-[24px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
           {tt("连接器")}
