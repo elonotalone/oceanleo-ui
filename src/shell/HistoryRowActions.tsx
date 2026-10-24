@@ -15,6 +15,7 @@ const MENU_ICON_PATHS = {
   pin: "m16 3 5 5-4 2-3 5-5-5 5-3zM9 15l-6 6",
   star: "m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z",
   folder: "M3 7V4h6l3 3h9v13H3z",
+  folderOut: "M3 7V4h6l3 3h9v13H3zM9 13.5h6",
   delete: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7",
 } as const;
 
@@ -29,11 +30,13 @@ export function HistoryRowMenu({
   pinned,
   favorite,
   canDelete,
+  inProject = false,
   href,
   onRename,
   onTogglePin,
   onToggleFavorite,
   onMove,
+  onRemoveFromProject,
   onDelete,
 }: {
   open: boolean;
@@ -42,11 +45,14 @@ export function HistoryRowMenu({
   pinned: boolean;
   favorite: boolean;
   canDelete: boolean;
+  /** 条目已归属项目：菜单给「换项目」+「移出项目」，否则给「移动到项目」。 */
+  inProject?: boolean;
   href: string;
   onRename: () => void;
   onTogglePin: () => void;
   onToggleFavorite: () => void;
   onMove: () => void;
+  onRemoveFromProject?: () => void;
   onDelete: () => void;
 }) {
   const tt = useUI();
@@ -106,7 +112,16 @@ export function HistoryRowMenu({
         <FloatingMenuItem icon={<MenuIcon name="rename" />} label={tt("重命名")} onSelect={closeAnd(onRename)} />
         <FloatingMenuItem icon={<MenuIcon name="pin" />} label={pinned ? tt("取消置顶") : tt("置顶")} onSelect={closeAnd(onTogglePin)} />
         <FloatingMenuItem icon={<MenuIcon name="star" />} label={favorite ? tt("取消收藏") : tt("收藏")} onSelect={closeAnd(onToggleFavorite)} />
-        <FloatingMenuItem icon={<MenuIcon name="folder" />} label={tt("移动到项目")} onSelect={closeAnd(onMove)} />
+        {inProject ? (
+          <>
+            <FloatingMenuItem icon={<MenuIcon name="folder" />} label={tt("换项目")} onSelect={closeAnd(onMove)} />
+            {onRemoveFromProject && (
+              <FloatingMenuItem icon={<MenuIcon name="folderOut" />} label={tt("移出项目")} onSelect={closeAnd(onRemoveFromProject)} />
+            )}
+          </>
+        ) : (
+          <FloatingMenuItem icon={<MenuIcon name="folder" />} label={tt("移动到项目")} onSelect={closeAnd(onMove)} />
+        )}
         {canDelete && <>
           <FloatingMenuSeparator />
           <FloatingMenuItem icon={<MenuIcon name="delete" />} label={tt("删除")} danger onSelect={closeAnd(onDelete)} />
@@ -116,11 +131,12 @@ export function HistoryRowMenu({
   );
 }
 
-interface ProjectRow {
+export interface MoveTaskProjectRow {
   id: string;
   name: string;
   icon?: string | null;
 }
+type ProjectRow = MoveTaskProjectRow;
 
 export function MoveTaskProjectDialog({
   title,
@@ -130,7 +146,8 @@ export function MoveTaskProjectDialog({
 }: {
   title: string;
   currentProjectId?: string | null;
-  onSelect: (projectId: string | null) => void;
+  /** 第二个参数是选中的项目行（选「不属于任何项目」时为 null），供调用方乐观显示项目标注。 */
+  onSelect: (projectId: string | null, project: MoveTaskProjectRow | null) => void;
   onClose: () => void;
 }) {
   const tt = useUI();
@@ -174,7 +191,9 @@ export function MoveTaskProjectDialog({
       <button
         key={id || "__none"}
         type="button"
-        onClick={() => onSelect(id)}
+        onClick={() =>
+          onSelect(id, id ? projects.find((project) => project.id === id) ?? null : null)
+        }
         className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] ${
           selected
             ? "bg-neutral-900 text-white"
@@ -203,7 +222,7 @@ export function MoveTaskProjectDialog({
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-[15px] font-semibold text-neutral-900">
-              {tt("移动到项目")}
+              {currentProjectId ? tt("换项目") : tt("移动到项目")}
             </h3>
             <p className="mt-0.5 truncate text-[12px] text-neutral-400">{title}</p>
           </div>

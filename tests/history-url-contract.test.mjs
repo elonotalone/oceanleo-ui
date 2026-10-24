@@ -8,11 +8,14 @@ const source = await readFile(
 );
 
 test("聚合历史与单站历史都把选中记录写入 URL", () => {
-  const clickStart = source.indexOf("onClick={() => {", source.indexOf("items.map"));
-  const clickEnd = source.indexOf("className=", clickStart);
+  // W11（2026-10-24）：行上多了可点的项目标签（独立链接，不能嵌在按钮里），所以打开
+  // 任务的处理器提成 `openEntry`，挂在整行容器上；标题按钮的 click 冒泡到它。
+  const clickStart = source.indexOf("const openEntry = () => {", source.indexOf("items.map"));
+  const clickEnd = source.indexOf("};", clickStart);
   assert.notEqual(clickStart, -1);
   assert.notEqual(clickEnd, -1);
   const clickHandler = source.slice(clickStart, clickEnd);
+  assert.match(source, /onClick=\{openEntry\}/);
   // 选中记录写进 URL 的行为不变；`pathname` 第二参是 W44–W46（`e56a68c`）加的融合挂载
   // 前缀（门户里嵌着打开时 href 要带当前挂载段，否则点一条记录会跳出门户）。
   assert.match(clickHandler, /router\.push\(historyHrefFor\(entry, pathname\)\)/);

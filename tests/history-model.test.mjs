@@ -240,7 +240,8 @@ test("HistoryMasterDetail 删除按资源类型守卫，且成功后清理深链
 test("我的任务包含 active 会话并实时接收新任务，离开历史页不保留旧高亮", () => {
   assert.match(historySource, /includeArchived:\s*true/);
   assert.match(historySource, /surface:\s*"all"/);
-  assert.match(historySource, /listTasks\(100, siteId, pending, "all"\)/);
+  // D11（2026-10-24，W11）：侧栏显式 project_scope=all，项目任务也列出（带项目标注）。
+  assert.match(historySource, /listTasks\(100, siteId, pending, "all", "all"\)/);
   assert.doesNotMatch(historySource, /tt\("高级任务"\)/);
   assert.match(historySource, /historySessionHref\(entry\.id/);
   assert.doesNotMatch(historySource, /advancedFeatureHref/);

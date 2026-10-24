@@ -51,6 +51,7 @@ import {
   type HistoryListEntry,
   type RestorableAppSession,
 } from "./history-model";
+import { portalHref } from "../contracts/domain-family";
 import {
   historySessionHref,
   historySessionIdFromPath,
@@ -72,6 +73,36 @@ export type { RestorableAppSession } from "./history-model";
 function fmtCost(t: AgentTask, currency: string): string {
   const y = taskCostYuan(t);
   return y > 0 ? formatMoney(y, currency, 2) : "";
+}
+
+/** 侧栏行上的项目标注（合同 §3.7 / D11）。 */
+interface HistoryProjectBadge {
+  id: string;
+  /** 网关降级（`project: null`）或旧网关不带时为空串，界面用通用字样兜底。 */
+  name: string;
+  icon: string | null;
+}
+
+/**
+ * 条目所属项目的标注；不属于项目返回 null。只信同一条记录上的 `project_id`，
+ * `project` 对不上 id（脏数据 / 乐观更新残留）时只保留 id，不显示错的名字。
+ */
+function historyEntryProject(entry: HistoryListEntry): HistoryProjectBadge | null {
+  const record = entry.kind === "session" ? entry.session : entry.task;
+  const projectId = String(record.project_id || "").trim();
+  if (!projectId) return null;
+  const project =
+    record.project && record.project.id === projectId ? record.project : null;
+  return {
+    id: projectId,
+    name: String(project?.name || "").trim(),
+    icon: String(project?.icon || "").trim() || null,
+  };
+}
+
+/** 项目工作空间的门户路径；跨站时 `portalHref` 补门户 origin。 */
+function historyProjectHref(projectId: string): string {
+  return portalHref(`/projects/${encodeURIComponent(projectId)}`);
 }
 
 function historyHrefFor(entry: HistoryListEntry, pathname = ""): string {
@@ -177,15 +208,6 @@ function HistoryArtifactPublishRows({ items }: { items: HistoryPublishItem[] }) 
   );
 }
 
-function safeProjectHref(
-  basePath: string | undefined,
-  projectId: string,
-): string | null {
-  const base = (basePath || "").trim().replace(/\/+$/, "");
-  if (!base || !base.startsWith("/") || base.startsWith("//")) return null;
-  return `${base}/${encodeURIComponent(projectId)}`;
-}
-
 const STATUS_DOT: Record<string, string> = {
   running: "bg-amber-400",
   active: "bg-amber-400",
@@ -210,6 +232,14 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     const y = b[i];
     if (x.kind !== y.kind || x.id !== y.id) return false;
     if ((x.created_by ?? null) !== (y.created_by ?? null)) return false;
+    const xProject = historyEntryProject(x);
+    const yProject = historyEntryProject(y);
+    if (
+      (xProject?.name ?? null) !== (yProject?.name ?? null) ||
+      (xProject?.icon ?? null) !== (yProject?.icon ?? null)
+    ) {
+      return false;
+    }
     if (x.kind === "session" && y.kind === "session") {
       if (
         x.session.revision !== y.session.revision ||
@@ -288,21 +318,17 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         siteId,
         includeArchived: true,
         surface: "all",
-        projectScope: "unassigned",
+        // D11（2026-10-24）：「我的任务」也列项目里建的任务，行上带项目标注。
+        // 网关列表本来就只返回本人（user_id = 调用者）的记录，项目里别人的任务不会进来。
+        projectScope: "all",
       }),
-      listTasks(100, siteId, pending, "all"),
+      listTasks(100, siteId, pending, "all", "all"),
     ]).then(([sessionsResult, tasksResult]) => {
       if (generation !== reloadGenerationRef.current) return false;
       const sessions = sessionsResult.ok
-        ? (sessionsResult.data?.items || []).filter(
-            (session) => session.project_id == null,
-          )
+        ? sessionsResult.data?.items || []
         : null;
-      const tasks = tasksResult.ok
-        ? (tasksResult.data?.items || []).filter(
-            (task) => task.project_id == null,
-          )
-        : null;
+      const tasks = tasksResult.ok ? tasksResult.data?.items || [] : null;
       if (sessions === null && tasks === null) {
         // 静默轮询失败不打断已有列表（只在首次加载时报错）。
         if (!silent) {
@@ -446,25 +472,34 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         favorite?: boolean;
         project_id?: string | null;
       },
+      /** 换项目时用于乐观显示的项目标注；只进本地列表，绝不写进数据库。 */
+      projectBadge?: HistoryProjectBadge | null,
     ): Promise<boolean> => {
       const table = entry.kind === "session" ? "app_sessions" : "agent_tasks";
       const id = entry.id;
       const prev = items;
-      // 乐观：就地改标题/pinned/favorite（record 是 session 或 task）。
-      setItems((list) => {
-        if (patch.project_id) {
-          return list.filter(
-            (it) => it.kind !== entry.kind || it.id !== id,
-          );
-        }
-        return list.map((it) => {
+      const movesProject = Object.prototype.hasOwnProperty.call(patch, "project_id");
+      const local = movesProject
+        ? {
+            ...patch,
+            project: patch.project_id
+              ? projectBadge && projectBadge.id === patch.project_id
+                ? projectBadge
+                : null
+              : undefined,
+          }
+        : patch;
+      // 乐观：就地改标题/pinned/favorite/所属项目（record 是 session 或 task）。
+      // 项目任务也留在「我的任务」里，换项目只换行上的项目标注。
+      setItems((list) =>
+        list.map((it) => {
           if (it.kind !== entry.kind || it.id !== id) return it;
           if (it.kind === "session") {
-            return { ...it, session: { ...it.session, ...patch } };
+            return { ...it, session: { ...it.session, ...local } };
           }
-          return { ...it, task: { ...it.task, ...patch } };
-        });
-      });
+          return { ...it, task: { ...it.task, ...local } };
+        }),
+      );
       let mutationError = "";
       if (entry.kind === "session") {
         const result = await updateAppSessionMetadata(
@@ -490,9 +525,11 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         return false;
       }
       setError(null);
+      // 网关给的项目名才是准的：换项目后静默刷新一次拿回 `project` 标注。
+      if (movesProject) void reload(true);
       return true;
     },
-    [items, tt],
+    [items, reload, tt],
   );
   return { items, loading, error, remove, mutate, reload };
 }
@@ -524,6 +561,54 @@ function LeoCreatedMark() {
         opacity="0.65"
       />
     </svg>
+  );
+}
+
+/**
+ * 行副标题里的项目标注（D11）：小圆角标签 = 项目图标（缺省 📁）+ 项目名（截断）。
+ * 点标签进项目工作空间；点行其余位置仍打开任务（标签阻止冒泡）。
+ */
+function HistoryProjectTag({
+  project,
+  active,
+}: {
+  project: HistoryProjectBadge;
+  active: boolean;
+}) {
+  const tt = useUI();
+  const router = useRouter();
+  const name = project.name || tt("项目");
+  const href = historyProjectHref(project.id);
+  return (
+    <a
+      href={href}
+      title={name}
+      aria-label={tt("打开项目「{name}」", { name })}
+      data-history-project-tag={project.id}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (
+          href.startsWith("/") &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.shiftKey &&
+          event.button === 0
+        ) {
+          event.preventDefault();
+          router.push(href);
+        }
+      }}
+      className={`inline-flex min-w-0 max-w-[60%] shrink items-center gap-0.5 rounded-full px-1.5 py-px text-[10.5px] leading-4 outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400 ${
+        active
+          ? "bg-white/20 text-white hover:bg-white/30"
+          : "bg-neutral-200/70 text-neutral-600 hover:bg-neutral-300/70 hover:text-neutral-800"
+      }`}
+    >
+      <span aria-hidden="true" className="shrink-0">
+        {project.icon || "📁"}
+      </span>
+      <span className="min-w-0 truncate">{name}</span>
+    </a>
   );
 }
 
@@ -612,6 +697,20 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           ? Boolean(entry.session.favorite)
           : Boolean(entry.task.favorite);
         const renaming = renameFor === entry.id;
+        const project = historyEntryProject(entry);
+        const openEntry = () => {
+          setSel(entry.id);
+          router.push(historyHrefFor(entry, pathname));
+        };
+        // 项目名优先：项目条目不再显示站点 / app（如 home-agent）这类来源字样。
+        const subtitle = [
+          fmt(timestamp),
+          !project && !siteId && recordSite ? recordSite : "",
+          !project && isSession && entry.session.app_id ? entry.session.app_id : "",
+          cost,
+        ]
+          .filter(Boolean)
+          .join(" · ");
         return (
           <div
             key={`${entry.kind}:${entry.id}`}
@@ -646,17 +745,19 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 />
               </form>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setSel(entry.id);
-                  router.push(historyHrefFor(entry, pathname));
-                }}
-                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              // 整行（除项目标签与 ⋯ 菜单外）点了都打开任务；键盘焦点在标题按钮上，
+              // 回车触发的 click 冒泡到这里。标签是独立链接，不嵌在按钮里。
+              <div
+                onClick={openEntry}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                data-history-row={entry.id}
               >
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-white/80" : STATUS_DOT[record.status] || "bg-stone-400"}`} />
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="flex w-full min-w-0 items-center gap-1 text-left outline-none focus-visible:underline"
+                  >
                     {pinned && (
                       <svg className={`h-3 w-3 shrink-0 ${on ? "text-white/80" : "text-amber-500"}`} viewBox="0 0 24 24" fill="currentColor" aria-label={tt("已置顶")}>
                         <path d="M14 4l6 6-3 1-4 4-1 5-3-3-4 4-1-1 4-4-3-3 5-1 4-4 1-3z" />
@@ -669,15 +770,13 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                         <path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     )}
-                  </span>
-                  <span className={`block truncate text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
-                    {fmt(timestamp)}
-                    {!siteId && recordSite ? ` · ${recordSite}` : ""}
-                    {isSession && entry.session.app_id ? ` · ${entry.session.app_id}` : ""}
-                    {cost ? ` · ${cost}` : ""}
+                  </button>
+                  <span className={`flex min-w-0 items-center gap-1 text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
+                    {project && <HistoryProjectTag project={project} active={on} />}
+                    <span className="min-w-0 flex-1 truncate">{subtitle}</span>
                   </span>
                 </span>
-              </button>
+              </div>
             )}
             {/* 宗旨 v22：Manus 式「⋯」菜单（新标签打开 / 重命名 / 置顶 / 收藏 / 删除）。 */}
             {!renaming && (
@@ -688,6 +787,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 pinned={pinned}
                 favorite={favorite}
                 canDelete={canDeleteHistoryEntry(entry)}
+                inProject={Boolean(project)}
                 href={historyHrefFor(entry, pathname)}
                 onRename={() => {
                   setRenameDraft(title);
@@ -704,6 +804,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 }}
                 onMove={() => {
                   setMoveTarget(entry);
+                  setMenuFor(null);
+                }}
+                onRemoveFromProject={() => {
+                  void mutate(entry, { project_id: null });
                   setMenuFor(null);
                 }}
                 onDelete={() => {
@@ -752,10 +856,16 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
               ? moveTarget.session.project_id
               : moveTarget.task.project_id
           }
-          onSelect={(projectId) => {
+          onSelect={(projectId, project) => {
             const target = moveTarget;
             setMoveTarget(null);
-            void mutate(target, { project_id: projectId });
+            void mutate(
+              target,
+              { project_id: projectId },
+              project
+                ? { id: project.id, name: project.name || "", icon: project.icon || null }
+                : null,
+            );
           }}
           onClose={() => setMoveTarget(null)}
         />
@@ -777,7 +887,10 @@ export type HistoryWorkspaceRenderer = (
 export interface HistoryDetailProps {
   siteId?: string;
   accent?: string;
-  /** Portal-owned relative base used when an old deep link resolves to a project record. */
+  /**
+   * @deprecated 2026-10-24 起项目记录与普通任务一样直接在 `/history` 打开，不再有
+   * 项目归属拦截页；保留可选字段只为旧调用方能编译，传了也不读。
+   */
   projectBasePath?: string;
   /** site_id → app 展示名（回看时在 agent 界面显示「所属 app」）。 */
   appNames?: Record<string, string>;
@@ -800,13 +913,11 @@ export interface HistoryDetailProps {
 
 type LoadedHistoryDetail =
   | { kind: "session"; session: AppSession; fallbackTask?: TaskDetail }
-  | { kind: "task"; detail: TaskDetail }
-  | { kind: "project"; projectId: string };
+  | { kind: "task"; detail: TaskDetail };
 
 export function HistoryDetail({
   siteId = "",
   accent = "#0ea5e9",
-  projectBasePath,
   appNames,
   libraryTabs,
   renderArtifact,
@@ -848,11 +959,7 @@ export function HistoryDetail({
       if (!alive) return;
       if (sessionResult.ok && sessionResult.data) {
         const session = sessionResult.data;
-        if (session.project_id) {
-          setLoaded({ kind: "project", projectId: session.project_id });
-          setDetailLoading(false);
-          return;
-        }
+        // 项目里建的会话与普通会话一样直接打开（D11，撤销 2026-08-13 的拦截页）。
         if (siteId && session.site_id !== siteId &&
             !(siteId === "oceanleo" && session.app_id === "library")) {
           setDetailLoading(false);
@@ -868,6 +975,8 @@ export function HistoryDetail({
             session.site_id,
             false,
             session.surface === "advanced" ? "advanced" : "app",
+            // 项目会话的关联 task 也在项目里；默认 unassigned 会把它漏掉。
+            session.project_id ? "all" : "unassigned",
           );
           const linked = tasksResult.data?.items.find(
             (task) => task.session_id === session.id,
@@ -895,13 +1004,6 @@ export function HistoryDetail({
       if (!alive) return;
       setDetailLoading(false);
       if (taskResult.ok && taskResult.data) {
-        if (taskResult.data.task.project_id) {
-          setLoaded({
-            kind: "project",
-            projectId: taskResult.data.task.project_id,
-          });
-          return;
-        }
         if (
           siteId &&
           taskResult.data.task.site_id &&
@@ -961,45 +1063,6 @@ export function HistoryDetail({
     );
   }
 
-  if (loaded.kind === "project") {
-    const projectHref = safeProjectHref(
-      projectBasePath,
-      loaded.projectId,
-    );
-    return (
-      <div className="grid h-[calc(100dvh-1px)] place-items-center bg-stone-50/60 p-8">
-        <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm">
-          <p className="text-[15px] font-semibold text-stone-900">
-            {tt("这条记录已归属项目")}
-          </p>
-          <p className="mt-2 text-[13px] leading-relaxed text-stone-500">
-            {tt("项目记录不会显示在普通历史中，请从项目工作空间继续查看。")}
-          </p>
-          {projectHref ? (
-            <a
-              href={projectHref}
-              className="mt-4 inline-flex rounded-lg px-4 py-2 text-[13px] font-medium text-white"
-              style={{ background: accent }}
-            >
-              {tt("进入项目")}
-            </a>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setSelected(null);
-                router.replace("/history");
-              }}
-              className="mt-4 rounded-lg border border-stone-200 px-4 py-2 text-[13px] font-medium text-stone-700"
-            >
-              {tt("返回普通历史")}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   if (loaded.kind === "task" && isShellTask(loaded.detail.task)) {
     const shell = shellSessionFromTask(loaded.detail.task);
     return (
@@ -1022,11 +1085,7 @@ export function HistoryDetail({
         )
       : null;
   const publishItems = historyPublishItems(
-    loaded.kind === "task"
-      ? loaded.detail
-      : loaded.kind === "session"
-        ? loaded.fallbackTask
-        : undefined,
+    loaded.kind === "task" ? loaded.detail : loaded.fallbackTask,
   );
   if (runtimeSession && isRestorableAppSession(runtimeSession)) {
     const currentSession = runtimeSession;

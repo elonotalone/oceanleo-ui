@@ -68,6 +68,8 @@ export interface AppSession {
   pinned?: boolean | null;
   favorite?: boolean | null;
   project_id?: string | null;
+  /** List-only project badge when `project_id` is set (contract §3.7); null = lookup degraded. */
+  project?: { id: string; name: string; icon?: string | null } | null;
   /** Revision-pinned references used by save/reopen; never rendition URLs. */
   artifact_refs?: AppSessionArtifactPin[];
 }

@@ -284,6 +284,11 @@ export interface AgentTask {
   /** 宗旨 v22（2026-07-12）：Manus 式任务菜单——置顶。 */
   pinned?: boolean | null;
   project_id?: string | null;
+  /**
+   * 列表接口在 `project_id` 非空时附带的项目标注（合同 §3.7）；
+   * `null` = 项目查不到 / 网关降级。旧网关不带此字段。
+   */
+  project?: { id: string; name: string; icon?: string | null } | null;
   /** 宗旨 v22：结果评分（1-5 星；null=未评）。 */
   rating?: number | null;
   /** 旧口径：整分累加（每次调用 ceil 到 ≥1 分，会虚高）。展示请优先用 nano_spent。 */
