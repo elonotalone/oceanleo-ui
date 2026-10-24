@@ -13,7 +13,7 @@
 ## Verification
 
 - `run-light -- node --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/local-browser.test.mjs tests/composer-plugins-popover.test.mjs`: 8/8 pass. Existing jsdom CSS parser warning for overlay `@starting-style` is non-failing.
-- `run-heavy -- pnpm typecheck`: passed once; final post-edit rerun pending at journal creation.
+- `run-heavy -- pnpm typecheck`: passed twice, including the final post-edit run (exit 0).
 - `oceanleo-dev-slots-fresh.sh`: oceanleo dev slot FRESH(dev), zero stale; existing local UI link. No visual claim.
 - `git diff --check`: clean for scoped changes.
 
