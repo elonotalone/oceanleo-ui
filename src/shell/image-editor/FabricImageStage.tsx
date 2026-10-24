@@ -105,6 +105,8 @@ export function FabricImageStage({
     <div
       className="flex h-full min-h-0 flex-col bg-[var(--advanced-stage-bg,#f4f1e8)]"
       data-editor-loading={editor.loading ? "true" : "false"}
+      // Native hosts need the actual source gate, not a guess from editable layer counts.
+      data-editor-source-ready={editor.sourceReady ? "true" : "false"}
       data-editor-layer-count={editor.layers.length}
       data-editor-unlocked-image-count={unlockedImageCount}
       data-editor-selected-kind={editor.selected?.kind || ""}
