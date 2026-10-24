@@ -236,25 +236,17 @@ test("emptyCapabilityReason 三种判定", () => {
   assert.equal(emptyCategoryReason(catalog.groups[3].capabilities, []), "none");
 });
 
-test("预设空能力写出三种原因，有选中的不写", async () => {
+test("零数量分类和能力只显示名称计数，空状态只说明暂无模型", async () => {
   const view = await render();
   const table = view.host.querySelector("[data-model-group-table]");
   assert.ok(table);
-  console.log("W25_HTML_PRESET\n" + table.innerHTML);
 
   const catReasons = [...view.host.querySelectorAll("[data-empty-cat-reason]")].map((node) => ({
     id: node.getAttribute("data-empty-cat-reason"),
     kind: node.getAttribute("data-empty-reason"),
     text: (node.textContent || "").trim(),
   }));
-  assert.deepEqual(
-    catReasons,
-    [
-      { id: "image", kind: "not_opened", text: "这一类暂未开通" },
-      { id: "video", kind: "byok_only", text: "这一类需自带 Key" },
-      { id: "threed", kind: "none", text: "本版暂无这一类模型" },
-    ],
-  );
+  assert.deepEqual(catReasons, []);
   assert.equal(view.host.querySelector('[data-empty-cat-reason="text"]'), null);
   assert.equal(view.host.querySelector('[data-model-cat="text"] [data-empty-reason]'), null);
   assert.equal(view.host.querySelector("[data-empty-cap-reason]"), null);
@@ -263,30 +255,17 @@ test("预设空能力写出三种原因，有选中的不写", async () => {
   assert.doesNotMatch(view.host.querySelector('[data-model-cap="chat"]').textContent, /这一类/);
 
   await view.click(view.host.querySelector('[data-model-cat="image"]'));
-  const imageCap = view.host.querySelector('[data-empty-cap-reason="text_to_image"]');
-  assert.ok(imageCap);
-  assert.equal(imageCap.getAttribute("data-empty-reason"), "not_opened");
-  assert.equal(imageCap.textContent.trim(), "这一类暂未开通");
+  assert.equal(view.host.querySelector("[data-empty-cap-reason]"), null);
+  assert.equal(view.host.querySelector("[data-model-empty-capability]").textContent.trim(), "这一类暂无可选模型");
 
   await view.click(view.host.querySelector('[data-model-cat="video"]'));
-  const videoCap = view.host.querySelector('[data-empty-cap-reason="text_to_video"]');
-  assert.ok(videoCap);
-  assert.equal(videoCap.getAttribute("data-empty-reason"), "byok_only");
-  assert.equal(videoCap.textContent.trim(), "这一类需自带 Key");
+  assert.equal(view.host.querySelector("[data-empty-cap-reason]"), null);
+  assert.equal(view.host.querySelector("[data-model-empty-capability]").textContent.trim(), "这一类暂无可选模型");
+  assert.equal(view.host.querySelector("[data-model-add-key]"), null);
 
   await view.click(view.host.querySelector('[data-model-cat="threed"]'));
-  const threeCap = view.host.querySelector('[data-empty-cap-reason="general_3d"]');
-  assert.ok(threeCap);
-  assert.equal(threeCap.getAttribute("data-empty-reason"), "none");
-  assert.equal(threeCap.textContent.trim(), "本版暂无这一类模型");
-
-  const kinds = [
-    ...view.host.querySelectorAll("[data-empty-cat-reason]"),
-    imageCap,
-    videoCap,
-    threeCap,
-  ].map((node) => node.getAttribute("data-empty-reason"));
-  assert.deepEqual([...new Set(kinds)].sort(), ["byok_only", "none", "not_opened"]);
+  assert.equal(view.host.querySelector("[data-empty-cap-reason]"), null);
+  assert.equal(view.host.querySelector("[data-model-empty-capability]").textContent.trim(), "这一类暂无可选模型");
   view.cleanup();
 });
 
@@ -307,11 +286,13 @@ test("填了对应自带 key 后 byok 类不再标成空", async () => {
     byok_providers: ["openai"],
   });
   assert.equal(view.host.querySelector('[data-empty-cat-reason="video"]'), null);
-  assert.ok(view.host.querySelector('[data-empty-cat-reason="image"]'));
+  assert.equal(view.host.querySelector('[data-empty-cat-reason="image"]'), null);
+  await view.click(view.host.querySelector('[data-model-cat="video"]'));
+  assert.equal(view.host.querySelector("[data-model-empty-capability]"), null);
   view.cleanup();
 });
 
-test("国际站模型提示缺少 BYOK 并直达 key 设置", async () => {
+test("国际站缺少 BYOK 不显示全局提示，实际模型仍不可选", async () => {
   const intlCatalog = structuredClone(catalog);
   intlCatalog.groups[0].capabilities[0].providers.push({
     id: "alibaba_intl",
@@ -349,12 +330,10 @@ test("国际站模型提示缺少 BYOK 并直达 key 设置", async () => {
   assert.ok(edit);
   await view.click(edit);
   const prompt = view.host.querySelector('[data-model-byok-required="alibaba_intl"]');
-  assert.ok(prompt);
-  assert.match(prompt.textContent, /需自带 Key/);
-  const setup = [...prompt.querySelectorAll("button")]
-    .find((node) => (node.textContent || "").includes("添加 Key"));
-  assert.ok(setup);
-  await view.click(setup);
-  assert.equal(setupClicked, true);
+  assert.equal(prompt, null);
+  assert.equal(view.host.querySelector("[data-model-add-key]"), null);
+  const offerNode = view.host.querySelector('[data-model-offer="alibaba_intl:qwen3.8-max-0902"]');
+  assert.equal(offerNode.disabled, true);
+  assert.equal(setupClicked, false);
   view.cleanup();
 });

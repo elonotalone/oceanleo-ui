@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createModelGroup,
   deleteModelGroup,
-  getKeyProviders,
   getModelGroups,
   MODEL_GROUP_CHANGED_EVENT,
   setActiveModelGroup,
@@ -136,14 +135,6 @@ export function partitionOfferModels<T extends { provider?: string; status?: str
   return { selectable, unavailable };
 }
 
-function emptyReasonText(reason: EmptyCapabilityReason, tt: UITranslate): string {
-  if (reason === "not_opened") return tt("这一类暂未开通");
-  if (reason === "byok_only") return tt("这一类需自带 Key");
-  if (reason === "no_adapter") return tt("这一类暂不支持调用");
-  if (reason === "unpriced") return tt("这一类价未公布");
-  return tt("本版暂无这一类模型");
-}
-
 function flattenProviders(providers: CatalogProviderBlock[] | undefined) {
   return (providers || []).flatMap((provider) => provider.models || []);
 }
@@ -203,36 +194,6 @@ function applyDraftToPayload(
       };
     }),
   };
-}
-
-function helpUrlFor(
-  providerId: string,
-  capability: CatalogCapability | undefined,
-  catalog: ModelCatalog | null,
-  keyHelpByProvider: Record<string, string>,
-): string {
-  const block = capability?.providers.find((item) => item.id === providerId) as
-    | (CatalogProviderBlock & { key_help_url?: string })
-    | undefined;
-  if (block?.key_help_url) return block.key_help_url;
-  const meta = (catalog?.providers || []).find((item) => item.id === providerId) as
-    | { key_help_url?: string }
-    | undefined;
-  if (meta?.key_help_url) return meta.key_help_url;
-  return keyHelpByProvider[providerId] || "";
-}
-
-function writeByokPane() {
-  if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  url.searchParams.delete("guide");
-  url.searchParams.set("pane", "byok");
-  const href = `${url.pathname}${url.search}${url.hash}`;
-  const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  if (here !== href) {
-    window.history.replaceState(window.history.state, "", href);
-  }
-  window.dispatchEvent(new Event("popstate"));
 }
 
 function checkedAgoText(iso: string | undefined, tt: UITranslate, now?: Date) {
@@ -305,7 +266,7 @@ function money(value: number, currency: string) {
 }
 
 function priceText(model: CatalogModel, tt: UITranslate) {
-  if (model.connection_id) return tt("自带连接 · 厂商计费");
+  if (model.connection_id) return "";
   if (model.unpriced || model.status === "unpriced") return tt("价未公布");
   if (!model.price) return "—";
   // 价格所在货币由网关的 pricing 元数据决定（.cn = CNY、.com = USD）；没说就是 CNY。
@@ -343,7 +304,6 @@ export function ModelGroupManager({
   catalog,
   user,
   initialMarketQuery = "",
-  onSetupByok,
 }: {
   catalog: ModelCatalog | null;
   user: boolean;
@@ -370,7 +330,6 @@ export function ModelGroupManager({
   const [menuKey, setMenuKey] = useState("");
   const [pendingDeleteKey, setPendingDeleteKey] = useState("");
   const [unavailableOpen, setUnavailableOpen] = useState(false);
-  const [keyHelpByProvider, setKeyHelpByProvider] = useState<Record<string, string>>({});
   const menuAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   // 依赖里刻意没有 `tt`：模型组合与语言无关，换语言不该重新拉一次 `getModelGroups()`
@@ -401,27 +360,6 @@ export function ModelGroupManager({
       window.removeEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
     };
   }, [user]);
-
-  useEffect(() => {
-    let alive = true;
-    const load = typeof getKeyProviders === "function" ? getKeyProviders : null;
-    if (!load) return;
-    void load()
-      .then((result) => {
-        if (!alive || !result.ok || !result.data) return;
-        const next: Record<string, string> = {};
-        for (const item of result.data.providers || []) {
-          if (item.id && item.key_help_url) next[item.id] = item.key_help_url;
-        }
-        setKeyHelpByProvider(next);
-      })
-      .catch(() => {
-        /* tests stub auth without this helper; catalog may still carry URLs */
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const groups = useMemo(
     () => payload?.groups?.length ? payload.groups : presetGroups(catalog),
@@ -548,14 +486,6 @@ export function ModelGroupManager({
         [capability.id]: next,
       },
     }));
-  }
-
-  function openKeySettings() {
-    if (onSetupByok) {
-      onSetupByok();
-      return;
-    }
-    writeByokPane();
   }
 
   function toggleModel(key: string) {
@@ -720,8 +650,6 @@ export function ModelGroupManager({
                     catalog={catalog}
                     tt={tt}
                     byokProviders={byokProviders}
-                    onAddKey={openKeySettings}
-                    keyHelpByProvider={keyHelpByProvider}
                   />
                 ))}
                 {marketHits.unavailable.map((hit) => (
@@ -733,8 +661,6 @@ export function ModelGroupManager({
                     catalog={catalog}
                     tt={tt}
                     byokProviders={byokProviders}
-                    onAddKey={openKeySettings}
-                    keyHelpByProvider={keyHelpByProvider}
                   />
                 ))}
               </>
@@ -931,12 +857,6 @@ export function ModelGroupManager({
                   0,
                 );
                 const active = item.id === category.id;
-                const categorySelectable = (item.capabilities || []).some((cap) =>
-                  flatten(cap).some((model) => canSelect(model, byokProviders)),
-                );
-                const emptyReason = categorySelectable
-                  ? null
-                  : emptyCategoryReason(item.capabilities, byokProviders);
                 return (
                   <button
                     key={item.id}
@@ -957,17 +877,6 @@ export function ModelGroupManager({
                       <span>{tt(item.label)}</span>
                       <span className={active ? "text-[11px] text-white/65" : "text-[11px] text-neutral-400"}>✓{count}</span>
                     </span>
-                    {emptyReason ? (
-                      <span
-                        data-empty-cat-reason={item.id}
-                        data-empty-reason={emptyReason}
-                        className={`mt-0.5 text-left text-[10px] font-normal ${
-                          active ? "text-amber-100" : "text-amber-700"
-                        }`}
-                      >
-                        {emptyReasonText(emptyReason, tt)}
-                      </span>
-                    ) : null}
                   </button>
                 );
               })}
@@ -979,12 +888,6 @@ export function ModelGroupManager({
               {category.capabilities.map((item) => {
                 const active = item.id === capability.id;
                 const count = (selection[category.id]?.[item.id] || []).length;
-                const capSelectable = flatten(item).some((model) =>
-                  canSelect(model, byokProviders),
-                );
-                const emptyReason = capSelectable
-                  ? null
-                  : emptyCapabilityReason(item, byokProviders);
                 return (
                   <button
                     key={item.id}
@@ -1004,17 +907,6 @@ export function ModelGroupManager({
                       {tt(item.label)}
                       <span className={active ? "ml-1 text-emerald-200" : "ml-1 text-emerald-600"}>✓{count}</span>
                     </span>
-                    {emptyReason ? (
-                      <span
-                        data-empty-cap-reason={item.id}
-                        data-empty-reason={emptyReason}
-                        className={`mt-0.5 block text-[10px] font-normal ${
-                          active ? "text-amber-100" : "text-amber-700"
-                        }`}
-                      >
-                        {emptyReasonText(emptyReason, tt)}
-                      </span>
-                    ) : null}
                   </button>
                 );
               })}
@@ -1051,7 +943,6 @@ export function ModelGroupManager({
                 <EmptyCapabilityPanel
                   reason={capabilityEmptyReason}
                   tt={tt}
-                  onAddKey={openKeySettings}
                 />
               ) : null}
             </div>
@@ -1086,43 +977,6 @@ export function ModelGroupManager({
                     );
                   })}
                 </div>
-                {capabilityModels.some(
-                  (model) => model.provider === "alibaba_intl" && model.status === "byok_only",
-                ) && !byokProviders.includes("alibaba_intl") ? (
-                  <div
-                    data-model-byok-required="alibaba_intl"
-                    className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
-                  >
-                    <span className="text-[11px] text-amber-800">
-                      {tt("这一类需自带 Key")}
-                    </span>
-                    <button
-                      type="button"
-                      data-model-add-key="alibaba_intl"
-                      onClick={openKeySettings}
-                      className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
-                    >
-                      {tt("添加 Key")}
-                    </button>
-                  </div>
-                ) : capabilityEmptyReason === "byok_only" ? (
-                  <div
-                    data-model-byok-required="true"
-                    className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
-                  >
-                    <span className="text-[11px] text-amber-800">
-                      {tt("这一类需自带 Key")}
-                    </span>
-                    <button
-                      type="button"
-                      data-model-add-key=""
-                      onClick={openKeySettings}
-                      className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
-                    >
-                      {tt("添加 Key")}
-                    </button>
-                  </div>
-                ) : null}
                 <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tt("搜索全部可用模型…")} className="mb-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] outline-none placeholder:text-neutral-400 focus:border-neutral-400" />
                 <div data-model-edit-offers="" className="max-h-[360px] overflow-y-auto rounded-xl border border-neutral-200 bg-white">
                   {offerGroups.map((hit, index) => (
@@ -1154,11 +1008,6 @@ export function ModelGroupManager({
                       >
                         <span>
                           {tt("暂不可选 · {n}", { n: partitioned.unavailable.length })}
-                          {unavailableReason !== "none" ? (
-                            <span className="ml-2 font-normal text-amber-700">
-                              {statusLabel(unavailableReason, catalog, tt)}
-                            </span>
-                          ) : null}
                         </span>
                         <span className="text-[11px] text-neutral-400">
                           {showUnavailable ? tt("收起") : tt("展开")}
@@ -1176,10 +1025,6 @@ export function ModelGroupManager({
                             catalog={catalog}
                             tt={tt}
                             onToggle={toggleModel}
-                            onAddKey={openKeySettings}
-                            helpUrlFor={(providerId) =>
-                              helpUrlFor(providerId, capability, catalog, keyHelpByProvider)
-                            }
                           />
                         ))}
                       </div>
@@ -1220,11 +1065,9 @@ export function ModelGroupManager({
 function EmptyCapabilityPanel({
   reason,
   tt,
-  onAddKey,
 }: {
   reason: EmptyCapabilityReason;
   tt: UITranslate;
-  onAddKey: () => void;
 }) {
   return (
     <div
@@ -1233,20 +1076,6 @@ function EmptyCapabilityPanel({
       className="px-3.5 py-3 text-[12px] text-neutral-600"
     >
       <p className="font-medium text-neutral-800">{tt("这一类暂无可选模型")}</p>
-      <p className="mt-1 text-[11px] text-neutral-500">{emptyReasonText(reason, tt)}</p>
-      {reason === "byok_only" ? (
-        <>
-          <p className="mt-1 text-[11px] text-neutral-500">{tt("添加 Key 后即可选用。")}</p>
-          <button
-            type="button"
-            data-model-add-key=""
-            onClick={onAddKey}
-            className="mt-2 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-800 hover:bg-neutral-50"
-          >
-            {tt("添加 Key")}
-          </button>
-        </>
-      ) : null}
     </div>
   );
 }
@@ -1260,8 +1089,6 @@ function EditOfferGroup({
   catalog,
   tt,
   onToggle,
-  onAddKey,
-  helpUrlFor: helpUrl,
 }: {
   hit: { canonical: string; label: string; category: string; offers: CatalogModel[] };
   index: number;
@@ -1271,8 +1098,6 @@ function EditOfferGroup({
   catalog: ModelCatalog | null;
   tt: UITranslate;
   onToggle: (key: string) => void;
-  onAddKey?: () => void;
-  helpUrlFor?: (providerId: string) => string;
 }) {
   return (
     <div
@@ -1291,7 +1116,6 @@ function EditOfferGroup({
         {hit.offers.map((model) => {
           const selectedIndex = selectedKeys.indexOf(model.key);
           const selectable = canSelect(model, byokProviders);
-          const help = helpUrl?.(model.provider || "") || "";
           return (
             <div key={model.key} className="flex flex-col gap-1">
               <button
@@ -1307,9 +1131,9 @@ function EditOfferGroup({
                 }`}
               >
                 <span className="block text-[11px] font-medium">{tt(model.provider_label)}</span>
-                <span className={`block text-[11px] ${selectedIndex >= 0 ? "text-white/80" : "text-neutral-500"}`}>
+                {!model.connection_id ? <span data-model-price="" className={`block text-[11px] ${selectedIndex >= 0 ? "text-white/80" : "text-neutral-500"}`}>
                   {priceText(model, tt)}
-                </span>
+                </span> : null}
                 {!selectable ? (
                   <span data-model-status={offerStatus(model) || "unavailable"} className="mt-0.5 block text-[10px] text-amber-700">
                     {statusLabel(offerStatus(model), catalog, tt)}
@@ -1319,29 +1143,6 @@ function EditOfferGroup({
                   <span className="mt-0.5 block text-[10px] text-amber-200">{fallbackLabel(selectedIndex, tt)}</span>
                 ) : null}
               </button>
-              {!selectable && model.status === "byok_only" && onAddKey ? (
-                <div className="flex flex-wrap gap-1 px-0.5">
-                  <button
-                    type="button"
-                    data-model-add-key={model.provider}
-                    onClick={onAddKey}
-                    className="text-[10px] font-medium text-amber-800 underline"
-                  >
-                    {tt("添加 Key")}
-                  </button>
-                  {help ? (
-                    <a
-                      href={help}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-model-key-help={model.provider}
-                      className="text-[10px] text-neutral-500 underline"
-                    >
-                      {tt("去厂商控制台获取 →")}
-                    </a>
-                  ) : null}
-                </div>
-              ) : null}
             </div>
           );
         })}
@@ -1388,7 +1189,7 @@ function SelectedModelRow({
           <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">{tt(model.provider_label)}</span>
         </span>
       </span>
-      <span className="shrink-0 whitespace-nowrap text-[11px] text-neutral-500">{priceText(model, tt)}</span>
+      {!model.connection_id ? <span data-model-price="" className="shrink-0 whitespace-nowrap text-[11px] text-neutral-500">{priceText(model, tt)}</span> : null}
       {editing && (
         <span className="flex shrink-0 items-center gap-0.5">
           <button type="button" disabled={first} onClick={() => onMove(-1)} aria-label={tt("上移")} className="rounded p-1 text-neutral-400 hover:bg-neutral-100 disabled:opacity-20">↑</button>
@@ -1437,8 +1238,6 @@ function OfferGroupRow({
   catalog,
   tt,
   byokProviders,
-  onAddKey,
-  keyHelpByProvider = {},
 }: {
   label: string;
   category: string;
@@ -1446,8 +1245,6 @@ function OfferGroupRow({
   catalog: ModelCatalog | null;
   tt: UITranslate;
   byokProviders: string[];
-  onAddKey?: () => void;
-  keyHelpByProvider?: Record<string, string>;
 }) {
   const categoryLabel =
     catalog?.groups.find((group) => group.id === category)?.label || category;
@@ -1465,9 +1262,9 @@ function OfferGroupRow({
         {offers.map((model) => {
           const selectable = canSelect(model, byokProviders);
           const currency = model.price?.currency || "CNY";
-          const rules = model.price?.rules || [];
+          const rules = model.connection_id ? [] : model.price?.rules || [];
           const checked = checkedAgoText(model.checked_at || model.price?.checked_at, tt);
-          const official = model.source_url;
+          const official = model.connection_id ? undefined : model.source_url;
           return (
             <div
               key={model.key}
@@ -1478,7 +1275,7 @@ function OfferGroupRow({
               }`}
             >
               <span className="block text-[11px] font-medium text-neutral-800">{tt(model.provider_label)}</span>
-              <span className="block text-[11px] text-neutral-600">{priceText(model, tt)}</span>
+              {!model.connection_id ? <span data-model-price="" className="block text-[11px] text-neutral-600">{priceText(model, tt)}</span> : null}
               {rules.map((rule, index) => (
                 <span key={`${rule.kind || "rule"}-${index}`} className="block text-[10px] text-neutral-400">
                   {formatRuleLine(rule, currency, tt)}
@@ -1498,27 +1295,6 @@ function OfferGroupRow({
                   className="mt-0.5 block text-[10px] text-neutral-500 underline"
                 >
                   {tt("官方价目")}
-                </a>
-              ) : null}
-              {!selectable && model.status === "byok_only" && onAddKey ? (
-                <button
-                  type="button"
-                  data-model-add-key={model.provider}
-                  onClick={onAddKey}
-                  className="mt-0.5 block text-[10px] font-medium text-amber-800 underline"
-                >
-                  {tt("添加 Key")}
-                </button>
-              ) : null}
-              {!selectable && model.status === "byok_only" && keyHelpByProvider[model.provider] ? (
-                <a
-                  href={keyHelpByProvider[model.provider]}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-model-key-help={model.provider}
-                  className="mt-0.5 block text-[10px] text-neutral-500 underline"
-                >
-                  {tt("去厂商控制台获取 →")}
                 </a>
               ) : null}
             </div>

@@ -243,38 +243,32 @@ test("emptyCapabilityReason：全是 no_adapter / 混有 not_opened / 空能力"
   assert.equal(emptyCategoryReason(catalog.groups[3].capabilities, []), "none");
 });
 
-test("预设空能力：全是 no_adapter 写「这一类暂不支持调用」", async () => {
+test("预设空能力：分类和能力不重复不可用原因，保留简洁空状态", async () => {
   const view = await render();
   const image = view.host.querySelector('[data-empty-cat-reason="image"]');
-  assert.ok(image);
-  assert.equal(image.getAttribute("data-empty-reason"), "no_adapter");
-  assert.equal(image.textContent.trim(), "这一类暂不支持调用");
+  assert.equal(image, null);
 
   const video = view.host.querySelector('[data-empty-cat-reason="video"]');
-  assert.ok(video);
-  assert.equal(video.getAttribute("data-empty-reason"), "not_opened");
-  assert.equal(video.textContent.trim(), "这一类暂未开通");
+  assert.equal(video, null);
 
   const three = view.host.querySelector('[data-empty-cat-reason="threed"]');
-  assert.ok(three);
-  assert.equal(three.getAttribute("data-empty-reason"), "none");
-  assert.equal(three.textContent.trim(), "本版暂无这一类模型");
+  assert.equal(three, null);
 
   await view.click(view.host.querySelector('[data-model-cat="image"]'));
   const imageCap = view.host.querySelector('[data-empty-cap-reason="design"]');
-  assert.ok(imageCap);
-  assert.equal(imageCap.getAttribute("data-empty-reason"), "no_adapter");
-  assert.equal(imageCap.textContent.trim(), "这一类暂不支持调用");
+  assert.equal(imageCap, null);
+  assert.equal(view.host.querySelector("[data-model-empty-capability]").textContent.trim(), "这一类暂无可选模型");
+  assert.equal(view.host.querySelector("[data-model-empty-capability]").getAttribute("data-empty-reason"), "no_adapter");
 
   await view.click(view.host.querySelector('[data-model-cat="video"]'));
   const videoCap = view.host.querySelector('[data-empty-cap-reason="keyframe_to_video"]');
-  assert.ok(videoCap);
-  assert.equal(videoCap.getAttribute("data-empty-reason"), "not_opened");
+  assert.equal(videoCap, null);
+  assert.equal(view.host.querySelector("[data-model-empty-capability]").textContent.trim(), "这一类暂无可选模型");
 
   await view.click(view.host.querySelector('[data-model-cat="threed"]'));
   const threeCap = view.host.querySelector('[data-empty-cap-reason="general_3d"]');
-  assert.ok(threeCap);
-  assert.equal(threeCap.getAttribute("data-empty-reason"), "none");
+  assert.equal(threeCap, null);
+  assert.equal(view.host.querySelector("[data-model-empty-capability]").textContent.trim(), "这一类暂无可选模型");
 
   view.cleanup();
 });

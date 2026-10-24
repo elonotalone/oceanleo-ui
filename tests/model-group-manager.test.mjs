@@ -405,19 +405,72 @@ test("搜模型查价：同名合并、不可选禁用、已下架灰显、价�
   view.cleanup();
 });
 
-test("personal model offers show connection alias and provider billing without upstream IDs", async () => {
+test("personal model offers preserve connection alias without unsupported prices or billing labels", async () => {
   const ownCatalog = structuredClone(marketCatalog);
   const alias = {
     ...glmOffer("openai", "connection-opaque", { label: "Writing connection", selectable: true, unpriced: true }),
-    connection_id: "opaque", display_name: "Writing connection", auth_type: "oauth",
+    connection_id: "opaque", display_name: "Writing connection", auth_type: "api_key",
   };
   ownCatalog.groups[0].capabilities[0].providers = [{ id: "openai", label: "OpenAI", models: [alias] }];
   const view = await render({ catalog: ownCatalog, groups: marketGroups, active_group_key: "custom:test", initialMarketQuery: "Writing connection" });
   const results = view.host.querySelector("[data-model-price-search-results]");
   assert.ok(results);
   assert.match(results.textContent, /Writing connection/);
-  assert.match(results.textContent, /自带连接 · 厂商计费/);
+  assert.doesNotMatch(results.textContent, /自带连接|厂商计费|官方价目|—/);
+  assert.equal(results.querySelector("[data-model-price]"), null);
   assert.doesNotMatch(results.textContent, /价未公布|gpt-|connection-opaque/);
   assert.equal(results.querySelector('[data-model-offer-disabled="true"]'), null);
   view.cleanup();
+});
+
+test("custom connection beside unavailable international offer stays selectable, editable and persisted without global prompts", async () => {
+  const ownCatalog = structuredClone(marketCatalog);
+  const connection = {
+    ...glmOffer("custom:opaque", "my-model", { label: "My exact connection name", provider_label: "My connection", selectable: true, unpriced: true }),
+    connection_id: "opaque", display_name: "My exact connection name", auth_type: "api_key",
+  };
+  const unavailable = glmOffer("alibaba_intl", "qwen", {
+    status: "byok_only", selectable: false, provider_label: "阿里云国际站",
+  });
+  ownCatalog.groups[0].capabilities[0].providers.push(
+    { id: "custom:opaque", label: "My connection", models: [connection] },
+    { id: "alibaba_intl", label: "阿里云国际站", models: [unavailable] },
+  );
+  const ownGroups = structuredClone(marketGroups);
+  ownGroups[3].selection.text.chat = ["bailian:ZHIPU/GLM-5.1"];
+  const view = await render({ catalog: ownCatalog, groups: ownGroups, active_group_key: "custom:test", initialMarketQuery: "My exact connection name" });
+  const noPrompts = () => {
+    assert.equal(view.host.querySelector("[data-model-byok-required], [data-model-add-key], [data-empty-cat-reason], [data-empty-cap-reason]"), null);
+    assert.doesNotMatch(view.text(), /这一类需自带 Key|添加 Key|自带连接 · 厂商计费/);
+  };
+  noPrompts();
+  await view.click(view.host.querySelector('[data-model-group-menu="custom:test"]'));
+  await view.click([...view.host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === "编辑组合"));
+  const disabled = view.host.querySelector('[data-model-edit-offers] [data-model-offer="alibaba_intl:qwen"]');
+  assert.equal(disabled.disabled, true);
+  assert.match(disabled.textContent, /需自带 Key/);
+  assert.match(view.host.querySelector('[data-model-edit-offers] [data-model-offer="bailian:ZHIPU/GLM-5.1"]').textContent, /输入 \$1 · 输出 \$4/);
+  await view.click(view.host.querySelector('[data-model-provider-chip="custom:opaque"]'));
+  noPrompts();
+  const custom = view.host.querySelector('[data-model-edit-offers] [data-model-offer="custom:opaque:my-model"]');
+  assert.equal(custom.disabled, false);
+  assert.equal(custom.querySelector("[data-model-price]"), null);
+  assert.doesNotMatch(custom.textContent, /价未公布|—/);
+  await view.click(custom);
+  const table = view.host.querySelector("[data-model-group-table]");
+  const selected = [...table.querySelectorAll("[aria-label='移除']")].at(-1).parentElement.parentElement;
+  assert.match(selected.textContent, /My exact connection name/);
+  assert.equal(selected.querySelector("[data-model-price]"), null);
+  await view.click(selected.querySelector('[aria-label="上移"]'));
+  await view.click([...view.host.querySelectorAll("button")].find((node) => node.textContent === "保存组合"));
+  assert.deepEqual(globalThis.__savedPatch.patch.selection.text.chat, [connection.key, "bailian:ZHIPU/GLM-5.1"]);
+  assert.deepEqual(Object.keys(globalThis.__savedPatch.patch), ["selection"]);
+  noPrompts();
+  const saved = structuredClone(globalThis.__groupsResult.data);
+  view.cleanup();
+  const reloaded = await render({ catalog: ownCatalog, groups: saved.groups, active_group_key: saved.active_group_key });
+  assert.match(reloaded.host.querySelector("[data-model-group-table]").textContent, /My exact connection name/);
+  assert.match(reloaded.host.querySelector('[data-model-cap="chat"]').textContent, /✓2/);
+  assert.doesNotMatch(reloaded.text(), /自带连接 · 厂商计费|这一类需自带 Key|添加 Key/);
+  reloaded.cleanup();
 });

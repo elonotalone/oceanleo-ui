@@ -351,7 +351,7 @@ test("编辑列表先出现可选模型，不可选收进折叠区且不能点�
   view.cleanup();
 });
 
-test("供应商芯片写出可选数量，添加 Key 打开已有 key 设置", async () => {
+test("供应商芯片保留可选数量，不展示添加 Key 提示", async () => {
   let setup = 0;
   const view = await render({ onSetupByok: () => { setup += 1; } });
   await beginEdit(view);
@@ -362,16 +362,14 @@ test("供应商芯片写出可选数量，添加 Key 打开已有 key 设置", a
   const intl = view.host.querySelector('[data-model-provider-chip="alibaba_intl"]');
   assert.equal(intl.getAttribute("data-model-provider-selectable"), "0");
   const addKey = view.host.querySelector('[data-model-add-key="alibaba_intl"]');
-  assert.ok(addKey);
-  await view.click(addKey);
-  assert.equal(setup, 1);
+  assert.equal(addKey, null);
+  assert.equal(setup, 0);
   const help = view.host.querySelector('[data-model-key-help="alibaba_intl"]');
-  assert.ok(help);
-  assert.equal(help.getAttribute("href"), "https://modelstudio.console.alibabacloud.com/");
+  assert.equal(help, null);
   view.cleanup();
 });
 
-test("零可选的图片类写出空状态和添加 Key", async () => {
+test("零可选的图片类保留简洁空状态", async () => {
   let setup = 0;
   const view = await render({ onSetupByok: () => { setup += 1; } });
   await view.click(view.host.querySelector('[data-model-cat="image"]'));
@@ -379,9 +377,9 @@ test("零可选的图片类写出空状态和添加 Key", async () => {
   assert.ok(empty);
   assert.equal(empty.getAttribute("data-empty-reason"), "byok_only");
   assert.match(empty.textContent, /这一类暂无可选模型/);
-  assert.match(empty.textContent, /需自带 Key/);
-  await view.click(empty.querySelector("[data-model-add-key]"));
-  assert.equal(setup, 1);
+  assert.equal(empty.textContent.trim(), "这一类暂无可选模型");
+  assert.equal(empty.querySelector("[data-model-add-key]"), null);
+  assert.equal(setup, 0);
   view.cleanup();
 });
 
