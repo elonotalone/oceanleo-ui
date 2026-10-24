@@ -1,3 +1,4 @@
+// skills-overhaul W10（仲裁 A-16）过期断言改动：账号菜单「插件」→「技能」，落设置中心 skills 栏（原 plugins 栏已拆成技能/连接器）。
 // 账号菜单是全家唯一的「个性化 / 插件 / 获取帮助」入口（editors-and-shell-0924 W05）。
 //
 // 操作员要的顺序：身份切换 / 余额 / 账户 / 个性化 / 设置 / 插件 / 主页 · 获取帮助 · 使用文档 / 退出。
@@ -131,9 +132,9 @@ async function mountMenu(props = {}) {
   };
 }
 
-const EXPECTED_ORDER = ["余额", "账户", "个性化", "设置", "插件", "主页", "获取帮助", "使用文档", "退出登录"];
+const EXPECTED_ORDER = ["余额", "账户", "个性化", "设置", "技能", "主页", "获取帮助", "使用文档", "退出登录"];
 
-test("不传 personalizationTab：菜单顺序是 余额 / 账户 / 个性化 / 设置 / 插件 / 主页 / 获取帮助 / 使用文档 / 退出登录", async () => {
+test("不传 personalizationTab：菜单顺序是 余额 / 账户 / 个性化 / 设置 / 技能 / 主页 / 获取帮助 / 使用文档 / 退出登录", async () => {
   const menu = await mountMenu();
   try {
     // 第一行是身份切换（名字 + 当前身份），之后才是这几项。
@@ -156,14 +157,14 @@ test("不传 personalizationTab 也有「个性化」，点了打开设置窗的
   }
 });
 
-test("「插件」紧跟「设置」，点了打开设置窗的 plugins 面板（不是整页跳 /plugins）", async () => {
+test("「技能」紧跟「设置」，点了打开设置窗的 skills 面板（不是整页跳 /plugins）", async () => {
   const menu = await mountMenu();
   try {
-    const plugins = menu.find("插件");
-    assert.ok(plugins, "菜单里没有「插件」");
-    assert.equal(plugins.tagName, "BUTTON", "「插件」应当打开设置窗，而不是一个跳页的链接");
-    await menu.click("插件");
-    assert.deepEqual(menu.opened, ["plugins"]);
+    const skills = menu.find("技能");
+    assert.ok(skills, "菜单里没有「技能」");
+    assert.equal(skills.tagName, "BUTTON", "「技能」应当打开设置窗，而不是一个跳页的链接");
+    await menu.click("技能");
+    assert.deepEqual(menu.opened, ["skills"]);
   } finally {
     await menu.unmount();
   }
@@ -173,7 +174,7 @@ test("personalizationTab={null} 才隐藏「个性化」；显式传的面板 id
   const hidden = await mountMenu({ personalizationTab: null });
   try {
     assert.equal(hidden.find("个性化"), null);
-    assert.ok(hidden.find("插件"), "隐藏个性化不该连带隐藏插件");
+    assert.ok(hidden.find("技能"), "隐藏个性化不该连带隐藏技能");
   } finally {
     await hidden.unmount();
   }

@@ -1,3 +1,4 @@
+// skills-overhaul W10（仲裁 A-16）过期断言改动：账号菜单「插件」→「技能」，落设置中心 skills 栏（原 plugins 栏已拆成技能/连接器）。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -18,12 +19,12 @@ test("all AppShell layouts share account, device and notification controls", () 
   const accountExports = src("../src/shell/account/index.ts");
   for (const name of ["SidebarAccountCluster", "DeviceStatusPopover", "NotificationBell", "SettingsModalHost", "openSettingsModal"]) assert.match(accountExports, new RegExp(name));
 });
-test("every site's account menu has personalization and plugins; only an explicit null hides personalization", () => {
+test("every site's account menu has personalization and skills; only an explicit null hides personalization", () => {
   const cluster = src("../src/shell/account/SidebarAccountCluster.tsx");
   const menu = src("../src/shell/AccountMenu.tsx");
   assert.match(cluster, /personalizationTab=\{props\.personalizationTab\}/);
   assert.match(menu, /props\.personalizationTab === undefined \? "personalization" : props\.personalizationTab/);
-  assert.match(menu, /settings\("plugins"\)/);
+  assert.match(menu, /settings\("skills"\)/);
   assert.doesNotMatch(shell, /personalizationTab=/, "AppShell must not narrow the shared menu per site");
 });
 test("settings route renders the shared center without site sidebar", () => {

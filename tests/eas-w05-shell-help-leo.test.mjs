@@ -1,3 +1,4 @@
+// skills-overhaul W10（仲裁 A-16）过期断言改动：账号菜单「插件」→「技能」，落设置中心 skills 栏（原 plugins 栏已拆成技能/连接器）。
 // AppShell：左下角 / 顶栏的「?」删掉，帮助只从账号菜单进；子站菜单与主站同一份；壳挂同一个 Leo。
 // （editors-and-shell-0924 W05）
 //
@@ -228,14 +229,14 @@ test("三种布局（侧栏 / 图标栏 / 单页顶栏）的外壳里都没有�
   assert.deepEqual(found, [], `外壳里还有「?」：${found.join("；")}`);
 });
 
-test("子站菜单与主站同一份：点头像有「个性化」「插件」，点了打开设置窗对应面板", async () => {
+test("子站菜单与主站同一份：点头像有「个性化」「技能」，点了打开设置窗对应面板", async () => {
   const shell = await mountShell({ siteId: "ppt" });
   try {
     await shell.openMenu();
     await shell.click("个性化");
     await shell.openMenu();
-    await shell.click("插件");
-    assert.deepEqual(globalThis.__W05_SETTINGS_OPENED__, ["personalization", "plugins"]);
+    await shell.click("技能");
+    assert.deepEqual(globalThis.__W05_SETTINGS_OPENED__, ["personalization", "skills"]);
   } finally {
     await shell.unmount();
   }
