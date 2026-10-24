@@ -7188,11 +7188,7 @@
         },
         {
           "kind": "star",
-          "source": "./skills/kit"
-        },
-        {
-          "kind": "star",
-          "source": "./skills/manager"
+          "source": "./skills"
         },
         {
           "kind": "star",
