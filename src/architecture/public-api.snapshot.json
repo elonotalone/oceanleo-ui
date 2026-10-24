@@ -7188,6 +7188,14 @@
         },
         {
           "kind": "star",
+          "source": "./skills/kit"
+        },
+        {
+          "kind": "star",
+          "source": "./skills/manager"
+        },
+        {
+          "kind": "star",
           "source": "./video-editor/capabilities"
         },
         {
@@ -7715,7 +7723,8 @@
         {
           "kind": "named",
           "name": "registerGameIterationRunner",
-          "source": ""
+          "importedName": "registerGameIterationRunner",
+          "source": "../game-editor/game-iteration-runner"
         },
         {
           "kind": "named",
