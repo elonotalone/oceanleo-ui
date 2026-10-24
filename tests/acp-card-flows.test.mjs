@@ -220,8 +220,7 @@ const confirmStub = dataModule(`
   }
 `);
 
-const { AcpCard } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/AcpCard.tsx", {
+const dialogStubs = {
     "../../../i18n/ui/useUI": uiStub,
     "../../../lib/cloud-computer-api": apiStub,
     "../../../lib/auth/client": authStub,
@@ -230,8 +229,9 @@ const { AcpCard } = await import(
     "../../LeoEntryButton": leoEntryStub,
     "../../../ui": confirmStub,
     "next/navigation": navigationStub,
-  })
-);
+};
+const { AcpCard } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/AcpCard.tsx", dialogStubs));
+const { useAgentDialog } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/useAgentDialogController.tsx", dialogStubs));
 
 const COMPUTER = { id: "cc_1", name: "Box" };
 
@@ -326,7 +326,7 @@ function calls(name) {
 }
 
 let computerSequence = 0;
-async function boot(props = {}, api = {}) {
+async function boot(props = {}, api = {}, Component = AcpCard) {
   const computer = props.computer ?? { ...COMPUTER, id: `cc_${++computerSequence}` };
   FakeSocket.sockets.length = 0;
   globalThis.__acpApi = { ...freshApi(), ...api };
@@ -335,7 +335,7 @@ async function boot(props = {}, api = {}) {
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(AcpCard, { computer, ...props }));
+    root.render(React.createElement(Component, { computer, ...props }));
   });
   await until(() => sentFrames().some((frame) => frame.t === "status"), "status frame");
   await server(STATUS);
@@ -666,7 +666,7 @@ test("思考展开后点击正文折叠；思考增量把发送换成停止", as
   } finally { view.cleanup(); }
 });
 
-test("思考回放残留时 occupancy 确认空闲，输入框恢复发送", async () => {
+test("实时思考与空 occupancy 矛盾时发送保持禁用", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await server({ t: "sessions", program: "cursor", supported: true, sessions: [
@@ -681,13 +681,13 @@ test("思考回放残留时 occupancy 确认空闲，输入框恢复发送", asy
     assert.ok(view.$("[data-oceanleo-cc-stop]"));
     await server({ t: "occupancy", program: "cursor", busy: [] });
     assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
-    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
-    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]'), null);
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
+    assert.equal(view.$('[data-oceanleo-cc-send="idle"]'), null);
     await server({ t: "occupancy", program: "cursor", busy: [] });
     await server({ t: "thought", program: "cursor", acp_session: "live", text: " still" });
     await server({ t: "occupancy", program: "cursor", busy: [] });
     assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
-    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
     const socket = openSocket();
     socket.autoOccupancy = false;
     socket.close();
@@ -749,7 +749,7 @@ test("思考回放仍展开但服务端 live=false 时可发送", async () => {
   } finally { view.cleanup(); }
 });
 
-test("回放用户后的思考也服从新 occupancy 空闲读数", async () => {
+test("回放用户后的实时思考仍需完成确认才能恢复发送", async () => {
   const view = await boot({ initialProgram: "cursor" });
   try {
     await server({ t: "sessions", program: "cursor", supported: true, sessions: [
@@ -772,11 +772,13 @@ test("回放用户后的思考也服从新 occupancy 空闲读数", async () => 
     assert.ok(view.$("[data-oceanleo-cc-stop]"));
     await server({ t: "occupancy", program: "cursor", busy: [] });
     assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
-    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
     await server({ t: "occupancy", program: "cursor", busy: [] });
     await server({ t: "thought", program: "cursor", acp_session: "live", text: " more" });
     await server({ t: "occupancy", program: "cursor", busy: [] });
     assert.equal(view.$("[data-oceanleo-cc-stop]"), null);
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
+    await server({ t: "done", program: "cursor", acp_session: "live", stop: "end_turn" });
     assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
   } finally { view.cleanup(); }
 });
@@ -803,7 +805,9 @@ test("停止时输入框草稿不能当成发送", async () => {
     await click(view.$('[data-oceanleo-program-strip-item="cursor"]'));
     assert.ok(view.$("[data-oceanleo-cc-stop]"), "switching away and back retains the pending stop");
     await server({ t: "occupancy", program: "cursor", busy: [] });
-    assert.equal(view.$("[data-oceanleo-cc-stop]"), null, "server idle confirms termination");
+    assert.equal(view.$("[data-oceanleo-cc-stop]"), null, "contradictory idle reading withholds Stop");
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
+    await server({ t: "done", program: "cursor", acp_session: "live", stop: "cancelled" });
     await click(view.$('[data-oceanleo-cc-send="idle"]'));
     const prompts = sentFrames().filter((frame) => frame.t === "prompt");
     assert.equal(prompts.length, before + 1);
@@ -1770,6 +1774,67 @@ test("过去的会话列表自动刷新：新会话开出来、窗口重新获�
 });
 
 const OCCUPANCY_PROGRAMS = ["cursor", "claude", "codex", "hermes"];
+test("controller send refuses contradictory live work even when called directly", async () => {
+  let dialog;
+  function Controller({ computer }) {
+    dialog = useAgentDialog({ computerId: computer.id, initialProgram: "codex", enabled: true, active: true });
+    return null;
+  }
+  const view = await boot({ initialProgram: "codex" }, {}, Controller);
+  try {
+    await server({ t: "session_opened", program: "codex", acp_session: "live", cwd: "/root", replayed: 0 });
+    await server({ t: "thought", program: "codex", text: "working" });
+    await server({ t: "occupancy", program: "codex", busy: [] });
+    await server({ t: "done", program: "codex", acp_session: "sibling", stop: "end_turn" });
+    await act(async () => dialog.setDraft("next"));
+    const before = sentFrames().filter(frame => frame.t === "prompt").length;
+    await act(async () => dialog.send());
+    assert.equal(sentFrames().filter(frame => frame.t === "prompt").length, before);
+    await server({ t: "done", program: "codex", stop: "end_turn" });
+    await act(async () => dialog.send());
+    assert.equal(sentFrames().filter(frame => frame.t === "prompt").length, before + 1);
+  } finally { view.cleanup(); }
+});
+test("live Codex tool plus empty occupancy disables Send until terminal confirmation", async () => {
+  const view = await boot({ initialProgram: "codex" });
+  try {
+    await server({ t: "session_opened", program: "codex", acp_session: "live", cwd: "/root", replayed: 0 });
+    await server({ t: "thought", program: "codex", text: "working" });
+    await server({ t: "tool", program: "codex", id: "tool", title: "check", status: "in_progress" });
+    await server({ t: "occupancy", program: "codex", busy: [] });
+    assert.equal(view.$('[data-oceanleo-cc-occupancy]').getAttribute('data-oceanleo-cc-occupancy'), "uncertain");
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
+    await setValue(view.$('textarea'), "next");
+    const before = sentFrames().filter(frame => frame.t === "prompt").length;
+    await click(view.$('[data-oceanleo-cc-send="uncertain"]'));
+    await pressEnter(view.$('textarea'));
+    assert.equal(sentFrames().filter(frame => frame.t === "prompt").length, before);
+    await server({ t: "occupancy", program: "codex", busy: ["live"] });
+    assert.ok(view.$('[data-oceanleo-cc-stop]'));
+    await server({ t: "done", program: "codex", stop: "end_turn" });
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
+  } finally { view.cleanup(); }
+});
+test("cancelled Codex stays disabled through empty probes and late tools until done", async () => {
+  const view = await boot({ initialProgram: "codex" });
+  try {
+    await server({ t: "session_opened", program: "codex", acp_session: "live", cwd: "/root", replayed: 0 });
+    await server({ t: "turn_start", program: "codex", acp_session: "live" });
+    await server({ t: "thought", program: "codex", text: "working" });
+    await click(view.$('[data-oceanleo-cc-stop]'));
+    await server({ t: "occupancy", program: "codex", busy: [] });
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
+    await server({ t: "tool", program: "codex", id: "late-tool", title: "still executing", status: "in_progress" });
+    await server({ t: "occupancy", program: "codex", busy: [] });
+    assert.equal(view.$('[data-oceanleo-cc-send="uncertain"]').disabled, true);
+    await setValue(view.$('textarea'), "next");
+    const before = sentFrames().filter(frame => frame.t === "prompt").length;
+    await pressEnter(view.$('textarea'));
+    assert.equal(sentFrames().filter(frame => frame.t === "prompt").length, before);
+    await server({ t: "done", program: "codex", stop: "cancelled" });
+    assert.ok(view.$('[data-oceanleo-cc-send="idle"]'));
+  } finally { view.cleanup(); }
+});
 const READY_STATUS = {
   t: "status",
   program: "",

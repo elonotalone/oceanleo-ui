@@ -135,12 +135,8 @@ function applyOccupancyBusy(state: DialogState, program: string, busyIds: string
   }
   const currentKey = turnKey(state.program, current);
   const currentLive = Boolean(current && liveTurns[currentKey]);
-  const terminated = Boolean(current && !busySet.has(current) && state.occupancyPendingAt == null &&
-    state.messages.some((message) => message.kind === "turn" && message.stop === "stopping" &&
-      (!message.acpSession || message.acpSession === current)));
   return {
     ...state,
-    messages: terminated ? settleStoppingTurn(state.messages, "stopped", current) : state.messages,
     liveTurns,
     occupancyLink: true,
     occupancyAt: Date.now(),
@@ -229,7 +225,11 @@ function settleStoppingTurn(messages: DialogState["messages"], stop: string, ses
     const message = next[index];
     if (message.kind === "turn" && (message.stop === "stopping" || message.stop === "stopped") && (!session || message.acpSession === session)) {
       next[index] = { ...message, stop };
-      return next;
+      // Output may arrive after the cancel request and create another open row.
+      // The terminal frame closes that live output as well as the stopping row.
+      return next.map((row) => row.kind === "turn" && row.live && !row.stop &&
+        (!session || !row.acpSession || row.acpSession === session)
+        ? { ...row, stop } : row);
     }
     if (!session && message.kind === "user") break;
   }
@@ -838,7 +838,11 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       const item = asRecord(raw);
       if (item) next = onFrame(next, item);
     }
-    let messages = next.messages;
+    // An authoritative completed transcript disarms live evidence, including
+    // adapters whose replay omitted done or left a tool in_progress.
+    let messages = frame.live === false
+      ? next.messages.map((message) => message.kind === "turn" ? { ...message, live: false } : message)
+      : next.messages;
     const sid = next.activeSession;
     const program = next.program || "";
     if (
@@ -962,6 +966,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     if (session) next = markTurn(next, program, "", false);
     if (session && started.draftRef) next = markTurn(next, program, started.draftRef, false);
     next = markTurn(next, program, session || next.activeSession, true);
+    if (frame.replay !== true) next = { ...next, messages: markLatestTurnLive(next.messages) };
     return noteProbeWorking(next, session || next.activeSession);
   }
   if (kind === "delta") {

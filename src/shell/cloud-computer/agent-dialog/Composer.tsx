@@ -268,6 +268,7 @@ export function Composer({
     occupancyAt: dialog.occupancyAt ?? null,
     occupancyBusy: dialog.occupancyBusy ?? [],
     sessionId: thisSessionId,
+    messages: dialog.messages,
     pendingAt: dialog.occupancyPendingAt ?? null,
     pendingSession: dialog.occupancyPendingSession ?? null,
     now: occupancyNow,
