@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { Modal as SharedModal } from "../ui";
+import { COLLECTION_ACTION_BTN_PRIMARY } from "./collection-chrome";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
 
@@ -277,7 +278,7 @@ export function ProjectWorkspaceFrame({
                   type="button"
                   aria-label={closeConfigLabel}
                   data-project-config-close
-                  className="min-h-11 min-w-11 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[16px] leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+                  className="relative after:absolute after:-inset-1 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[16px] leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
                   onClick={() => changeConfigOpen(false)}
                 >
                   <span aria-hidden="true">×</span>
@@ -632,7 +633,7 @@ export function ProjectConfigCard({
             aria-label={addAction.ariaLabel}
             disabled={addAction.disabled}
             data-project-config-action="add"
-            className="min-h-11 min-w-11 shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="relative after:absolute after:-inset-1 h-9 min-w-9 shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onAddClick}
           >
             {addAction.label}
@@ -646,7 +647,7 @@ export function ProjectConfigCard({
           aria-label={openAction.ariaLabel}
           disabled={openAction.disabled}
           data-project-config-action="open"
-          className="min-h-11 min-w-11 mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[var(--accent,#4f46e5)] px-3 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
+          className={`${COLLECTION_ACTION_BTN_PRIMARY} relative mt-4 w-full after:absolute after:-inset-1 hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]`}
           onClick={(event) => {
             event.stopPropagation();
             openAction.onClick();
@@ -780,7 +781,7 @@ export function ProjectModal({
             type="button"
             aria-label={closeLabel}
             data-project-modal-close
-            className="min-h-11 min-w-11 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[16px] leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+            className="relative after:absolute after:-inset-1 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[16px] leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
             onClick={onClose}
           >
             <span aria-hidden="true">×</span>

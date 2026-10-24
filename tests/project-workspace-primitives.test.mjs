@@ -20,8 +20,16 @@ const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
 const uiTranslationStub = dataModule(
   "export function useUI(){ return (value) => value; }",
 );
+// Keep this primitive test independent of collection menus and their app services.
+// Use the actual collection action classes rather than duplicating style tokens.
+const collectionSource = await readFile(resolve("src/shell/collection-chrome.tsx"), "utf8");
+const collectionAction = collectionSource.match(/export const COLLECTION_ACTION_BTN =\s*("[^"]+");/)[1];
+const collectionActionsStub = dataModule(
+  `const base = ${collectionAction}; export const COLLECTION_ACTION_BTN_PRIMARY = base + " bg-neutral-900 text-white";`,
+);
 
 const primitivesUrl = await compileModule("src/shell/project-workspace.tsx", {
+  "./collection-chrome": collectionActionsStub,
   "../i18n/ui/useUI": uiTranslationStub,
   "react-dom": reactDomUrl,
 });
@@ -48,7 +56,8 @@ test("compact project cards retain readable hierarchy and full-sized actions", (
   });
   assert.match(html, /<h3[^>]*class="[^"]*text-\[13px\]/);
   assert.match(html, /class="mt-1 text-xs leading-5/);
-  assert.match(html, /data-project-config-action="add"[^>]*class="[^"]*min-h-11 min-w-11/);
+  assert.match(html, /data-project-config-action="add"[^>]*class="[^"]*after:-inset-1 h-9 min-w-9/);
+  assert.doesNotMatch(html, /min-h-11/);
   assert.match(html, /role="button" tabindex="0"/);
   assert.match(html, /focus-visible:outline-2/);
   assert.match(source, /text-\[18px\] font-semibold/);
