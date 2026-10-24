@@ -50,6 +50,8 @@ export const EDIT_BAR_EMPTY_STATE_DRAWERS: Readonly<
     "image-lines",
     "image-notes",
     "image-text",
+    // Native local editor only: the route declares this drawer solely when it was given onLocalSave.
+    "image-insert",
     "image-signature",
     "image-tables",
     "image-layers",
