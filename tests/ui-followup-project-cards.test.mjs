@@ -13,10 +13,29 @@ if (!existsSync(resolve("../oceanleo/components/project/ProjectSidePlanCard.tsx"
 } else {
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const shellUrl = await compileModule("src/shell/project-workspace.tsx", {
+// 2026-10-24（skills-overhaul W13，仲裁 A-23）：计划 / 资产卡点开的是 kit 的统一大弹窗
+// ConfigDialogShell（D8），替身的 `@oceanleo/ui/shell` 因此同时带上 project-workspace 与
+// kit 的 ConfigDialogShell / ConfigToolbar / 图标；页签替身按真组件的 renderFrame 合同把
+// 正文交给卡片的大弹窗。就地「添加待办 / 上传文件」已移进弹窗（由门户
+// tests/sko-w13-side-cards.test.mjs 与 project-plan-tab / project-assets-tab 覆盖），
+// 这里改验：+ 打开大弹窗、卡片自己不写任何东西、只读成员没有 + 也没有文件输入但能打开。
+const workspaceUrl = await compileModule("src/shell/project-workspace.tsx", {
   "../ui": dataModule(`import React from ${JSON.stringify(reactUrl)};
     export function Modal({children}) { return React.createElement("div", {role: "dialog"}, children); }`),
 });
+const useUIStub = dataModule("export function useUI() { return (value) => value; }");
+const kitUrls = [];
+for (const file of ["ConfigDialogShell.tsx", "ConfigToolbar.tsx", "kit-icons.tsx"]) {
+  kitUrls.push(await compileModule(`src/shell/skills/kit/${file}`, { "../../../i18n/ui/useUI": useUIStub }));
+}
+const shellUrl = dataModule(
+  [workspaceUrl, ...kitUrls].map((url) => `export * from ${JSON.stringify(url)};`).join("\n"),
+);
+const framedTab = (attr) => dataModule(`import React from ${JSON.stringify(reactUrl)};
+  export function Tab(props) {
+    const body = React.createElement("div", {"${attr}": true, "data-can-edit": String(props.canEdit)});
+    return props.renderFrame ? props.renderFrame({ toolbar: null, body, holdOpen: false }) : body;
+  }`);
 const resourceUrl = dataModule(`import {useState} from ${JSON.stringify(reactUrl)};
   export function useProjectSideResource() {
     const harness = globalThis.__uiFollowupProjectCards;
@@ -35,10 +54,8 @@ const stubs = {
   "@/app/_components/icons": dataModule('export function IconPlus() { return "+"; } export function IconChevronDown() { return null; }'),
   "@/components/project/ProjectSideResource": resourceUrl,
   "@/components/project/ProjectSidePreview": await compileModule(resolve("../oceanleo/components/project/ProjectSidePreview.ts")),
-  "@/components/project/ProjectPlanTab": dataModule(`import React from ${JSON.stringify(reactUrl)};
-    export function ProjectPlanTab() { return React.createElement("div", {"data-plan-detail": true}); }`),
-  "@/components/project/ProjectAssetsTab": dataModule(`import React from ${JSON.stringify(reactUrl)};
-    export function ProjectAssetsTab() { return React.createElement("div", {"data-assets-detail": true}); }`),
+  "@/components/project/ProjectPlanTab": dataModule(`export { Tab as ProjectPlanTab } from ${JSON.stringify(framedTab("data-plan-detail"))};`),
+  "@/components/project/ProjectAssetsTab": dataModule(`export { Tab as ProjectAssetsTab } from ${JSON.stringify(framedTab("data-assets-detail"))};`),
   "@/lib/projects": dataModule(`
     export const EMPTY_CONFIG = {connectors: [], agent_ids: [], skill_ids: [], workflow_ids: [], organization_id: null, connector_bindings: [], todo_sources: []};
     export async function listProjectTodos() {}
@@ -92,46 +109,33 @@ async function withCard(Component, { canEdit = true, items = [] } = {}, run) {
   }
 }
 
-test("empty Plan header plus opens its form and creates a project todo", async () => {
-  await withCard(ProjectSidePlanCard, {}, async ({ harness, find, click, window }) => {
+test("empty Plan header plus opens the plan dialog; the card itself creates nothing", async () => {
+  await withCard(ProjectSidePlanCard, {}, async ({ harness, find, click }) => {
     const plus = find('[data-project-config-action="add"]');
     assert.equal(plus.getAttribute("aria-label"), "添加待办");
-    assert.equal(plus.parentElement.parentElement.hasAttribute("data-project-config-card"), true);
+    assert.equal(plus.closest("[data-project-config-card]") !== null, true);
     assert.equal(find('[data-project-config-action="open"]'), null);
     await click(plus);
-    assert.ok(find("[data-project-side-plan-add]"));
-    const input = find('input[aria-label="待办标题"]');
-    assert.equal(input.disabled, false);
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(input, "Plan kickoff");
-      input.dispatchEvent(new window.Event("input", { bubbles: true }));
-    });
-    await act(async () => find("[data-project-side-plan-add]").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
-    assert.deepEqual(harness.calls, [{ projectId: "p-one", payload: { title: "Plan kickoff", status: "todo", source_kind: "manual" } }]);
-    assert.equal(find("[data-project-side-plan-add]"), null);
-    assert.match(find("[data-project-side-plan-list]").textContent, /Plan kickoff/);
+    const dialog = find("[data-config-dialog]");
+    assert.ok(dialog, "+ opens the unified dialog");
+    assert.equal(dialog.getAttribute("role"), "dialog");
+    assert.equal(dialog.querySelector("[data-plan-detail]").getAttribute("data-can-edit"), "true");
+    assert.equal(find("[data-project-side-plan-add]"), null, "no inline form on the card any more");
+    assert.deepEqual(harness.calls, []);
   });
 });
 
-test("empty Assets header plus opens the picker and uploads into the project", async () => {
-  await withCard(ProjectSideAssetsCard, {}, async ({ harness, find, click, window }) => {
+test("empty Assets header plus opens the assets dialog; uploading lives in the dialog", async () => {
+  await withCard(ProjectSideAssetsCard, {}, async ({ harness, find, click }) => {
     const plus = find('[data-project-config-action="add"]');
-    assert.equal(plus.getAttribute("aria-label"), "上传文件");
+    assert.equal(plus.getAttribute("aria-label"), "添加资产");
     assert.equal(find('[data-project-config-action="open"]'), null);
-    const picker = find('input[type="file"]');
-    let picked = 0;
-    picker.click = () => { picked += 1; };
+    assert.equal(find('input[type="file"]'), null, "the card carries no file input");
     await click(plus);
-    assert.equal(picked, 1);
-    const file = new window.File(["notes"], "brief.txt", { type: "text/plain" });
-    Object.defineProperty(picker, "files", { configurable: true, value: [file] });
-    await act(async () => picker.dispatchEvent(new window.Event("change", { bubbles: true })));
-    assert.equal(harness.calls.length, 1);
-    assert.equal(harness.calls[0].projectId, "p-one");
-    assert.equal(harness.calls[0].file.name, "brief.txt");
-    assert.equal(harness.calls[0].folderId, null);
-    assert.match(find("[data-project-side-assets-list]").textContent, /brief\.txt/);
-    assert.ok(find('[data-project-config-action="open"]'));
+    const dialog = find("[data-config-dialog]");
+    assert.ok(dialog);
+    assert.equal(dialog.querySelector("[data-assets-detail]").getAttribute("data-can-edit"), "true");
+    assert.deepEqual(harness.calls, []);
   });
 });
 
@@ -143,9 +147,9 @@ test("read-only members cannot add and retain access to populated detail dialogs
     await withCard(Component, { canEdit: false, items }, async ({ find, click }) => {
       assert.equal(find('[data-project-config-action="add"]'), null);
       assert.equal(find('input[type="file"]'), null);
-      await click(find('[data-project-config-action="open"]'));
+      await click(find("[data-project-config-card]"));
       assert.ok(find('[role="dialog"]'));
-      assert.ok(find(detail));
+      assert.equal(find(detail).getAttribute("data-can-edit"), "false");
     });
   }
 });

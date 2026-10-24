@@ -6,6 +6,13 @@
 // 不是源码里写没写某个词。门户不在身边时整份跳过。
 //
 // 版面几何（输入框只在左列、无白色通栏）见 tests/lbp-w10-project-layout.test.mjs。
+//
+// 2026-10-24（skills-overhaul W13，仲裁 A-23）：卡片按 D8/D9 改成整卡可点、点开是统一
+// 大弹窗 ConfigDialogShell（不再是 ProjectModal），就地「添加待办 / 上传文件」移进弹窗
+// 工具条。替身里的 `@oceanleo/ui/shell` 因此除了 project-workspace.tsx 还要带 kit 的
+// ConfigDialogShell / ConfigToolbar / 图标；页签替身按真组件的 `renderFrame` 合同把
+// 工具条与正文交给卡片的大弹窗。断言逐条改成新形态，语义（只读成员看不到写操作、
+// 空态文案、读失败可重试、关弹窗后三卡重读）保留。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -50,15 +57,23 @@ const projectsStub = dataModule(`
 `);
 const iconsStub = dataModule(`export const IconPlus = () => null;`);
 const uiStub = dataModule(`export const timeAgo = (iso) => "ago:" + iso;`);
-const tabStub = (name, attr) =>
+const tabStub = (name, attr, extra = "") =>
   dataModule(`
+    ${extra}
     export function ${name}(props) {
-      return globalThis.__w10.React.createElement("div", {
+      const h = globalThis.__w10.React.createElement;
+      const body = h("div", {
         "data-stub-tab": "${name}",
         "data-project": props.projectId,
         "data-can-edit": String(props.canEdit),
-        "data-initial-scope": props.initialScope ?? "",
       }, "${attr}");
+      // Same contract as the real tabs: toolbar + body handed to the card's dialog.
+      if (!props.renderFrame) return body;
+      return props.renderFrame({
+        toolbar: h("div", { "data-stub-toolbar": "${name}" }),
+        body,
+        holdOpen: Boolean(globalThis.__w10.holdOpen),
+      });
     }
   `);
 
@@ -80,10 +95,26 @@ const cardProbe = (exportName, key) =>
 let modules = null;
 async function load() {
   if (modules) return modules;
-  const frameUrl = await compileModule("src/shell/project-workspace.tsx", {
-    "../i18n/ui/useUI": dataModule("export function useUI(){ return (value) => value; }"),
+  const useUIStub = dataModule("export function useUI(){ return (value) => value; }");
+  const workspaceUrl = await compileModule("src/shell/project-workspace.tsx", {
+    "../i18n/ui/useUI": useUIStub,
     "react-dom": reactDomUrl,
   });
+  const kit = (file) =>
+    compileModule(`src/shell/skills/kit/${file}`, {
+      "../../../i18n/ui/useUI": useUIStub,
+      "react-dom": reactDomUrl,
+    });
+  const frameUrl = dataModule(
+    [
+      workspaceUrl,
+      await kit("ConfigDialogShell.tsx"),
+      await kit("ConfigToolbar.tsx"),
+      await kit("kit-icons.tsx"),
+    ]
+      .map((url) => `export * from ${JSON.stringify(url)};`)
+      .join("\n"),
+  );
   const card = (name) => join(PORTAL, "components/project", name);
   const resourceUrl = await compileModule(card("ProjectSideResource.ts"), { react: reactUrl });
   const common = {
@@ -118,13 +149,22 @@ async function load() {
       await import(
         await compileModule(card("ProjectSideActivityCard.tsx"), {
           ...common,
-          "@/components/project/ProjectFeedTab": tabStub("ProjectFeedTab", "feed tab"),
+          "@/components/project/ProjectFeedTab": tabStub(
+            "ProjectFeedTab",
+            "feed tab",
+            // The card draws its timeline bubbles with the feed tab's icon component.
+            `export function ActivityBubble(props) {
+              return globalThis.__w10.React.createElement("span", { "data-bubble": props.category });
+            }`,
+          ),
         })
       )
     ).ProjectSideActivityCard,
     Cards: (
       await import(
         await compileModule(card("ProjectSideCards.tsx"), {
+          "@oceanleo/ui/i18n": i18nStub,
+          "@oceanleo/ui/shell": frameUrl,
           "@/components/project/ProjectSideActivityCard": cardProbe("ProjectSideActivityCard", "activity"),
           "@/components/project/ProjectSidePlanCard": cardProbe("ProjectSidePlanCard", "plan"),
           "@/components/project/ProjectSideAssetsCard": cardProbe("ProjectSideAssetsCard", "assets"),
@@ -246,67 +286,59 @@ const skipPortal = { skip: !HAVE_PORTAL && "portal checkout not next to oceanleo
 // 计划
 // ---------------------------------------------------------------------------
 
-test("计划卡 · 空：一句话 + 「添加待办」，一行输入直接建，建完重读", skipPortal, async () => {
+test("计划卡 · 空、编辑者：一句话 + 右上 +；点 + 或整卡都打开计划大弹窗（添加待办在弹窗工具条里）", skipPortal, async () => {
   const { Plan } = await load();
-  await withDom(async ({ renderRoot, find, text, click, type, submit }) => {
-    let created = null;
-    let listCalls = 0;
-    let releaseSecondRead;
+  await withDom(async ({ renderRoot, find, text, click, wait }) => {
+    let created = 0;
     globalThis.__w10.api = {
-      listProjectTodos: () => {
-        listCalls += 1;
-        if (listCalls === 2) {
-          // The confirming re-read is slow: the card must already show the new todo.
-          return new Promise((resolveRead) => {
-            releaseSecondRead = () =>
-              resolveRead({ ok: true, data: { items: [todo("n1", "todo", created.title)], sources: [], assignees: [] } });
-          });
-        }
-        return ok({ items: created ? [todo("n1", "todo", created.title)] : [], sources: [], assignees: [] });
-      },
-      createProjectTodo: (projectId, body) => {
-        created = { projectId, ...body };
-        return ok({ todo: todo("n1", "todo", body.title) });
+      listProjectTodos: () => ok({ items: [], sources: [], assignees: [] }),
+      createProjectTodo: () => {
+        created += 1;
+        return ok({ todo: todo("x", "todo") });
       },
     };
     await renderRoot(h(Plan, { projectId: "p1", canEdit: true }));
     assert.match(text(), /还没有待办。把项目目标拆成可以逐条完成的步骤。/);
-    const primary = find('[data-project-config-action="open"]');
-    assert.equal(primary.textContent, "添加待办");
-    assert.equal(find('[data-project-config-action="add"]'), null, "empty state has one main action only");
+    const card = find("[data-project-config-card]");
+    assert.equal(card.getAttribute("role"), "button", "the whole card opens");
+    assert.equal(find('[data-project-config-action="open"]'), null, "no big open button any more");
     assert.equal(find("[data-project-config-count]"), null);
+    const plus = find('[data-project-config-action="add"]');
+    assert.equal(plus.getAttribute("aria-label"), "添加待办");
 
-    await click(primary);
-    const input = find('input[aria-label="待办标题"]');
-    assert.ok(input, "inline input appears");
-    assert.equal(find('[data-project-config-action="open"]'), null, "main button gives way to the input");
-    await type(input, "  订机票  ");
-    await submit(find("[data-project-side-plan-add]"));
+    await click(plus);
+    const dialog = find("[data-config-dialog]");
+    assert.ok(dialog, "+ opens the plan dialog");
+    assert.equal(dialog.getAttribute("data-testid"), "project-plan-dialog");
+    const tab = dialog.querySelector('[data-stub-tab="ProjectPlanTab"]');
+    assert.equal(tab.getAttribute("data-can-edit"), "true");
+    assert.ok(dialog.querySelector('[data-stub-toolbar="ProjectPlanTab"]'), "the tab's toolbar sits in the dialog header");
+    assert.equal(created, 0, "the card itself writes nothing; todos are added in the dialog");
 
-    assert.deepEqual(created, { projectId: "p1", title: "订机票", status: "todo", source_kind: "manual" });
-    assert.ok(listCalls >= 2, "the card re-reads after adding");
-    assert.equal(find("[data-project-side-plan-add]"), null, "input closes after adding");
-    // Before the re-read answers: the new todo is already there, no flash back to the empty state.
-    assert.match(text(), /订机票/);
-    assert.doesNotMatch(text(), /还没有待办/);
-    assert.equal(find('[data-project-config-action="open"]').textContent, "打开");
-    await act(async () => releaseSecondRead());
-    assert.match(text(), /订机票/);
+    await click("[data-config-dialog-close]");
+    await wait(400);
+    assert.equal(find("[data-config-dialog]"), null);
+    await click(card);
+    assert.ok(find("[data-config-dialog]"), "clicking the card opens the same dialog");
   });
 });
 
-test("计划卡 · 空、只读成员：只有说明，没有任何写操作按钮", skipPortal, async () => {
+test("计划卡 · 空、只读成员：只有说明，没有任何写操作按钮；仍能打开看计划", skipPortal, async () => {
   const { Plan } = await load();
-  await withDom(async ({ renderRoot, find, text }) => {
+  await withDom(async ({ renderRoot, find, text, click }) => {
     globalThis.__w10.api = { listProjectTodos: () => ok({ items: [], sources: [], assignees: [] }) };
     await renderRoot(h(Plan, { projectId: "p1", canEdit: false }));
     assert.match(text(), /还没有待办。有编辑权限的成员添加后会显示在这里。/);
     assert.equal(find("[data-project-config-action]"), null);
     assert.equal(find("form"), null);
+    await click("[data-project-config-card]");
+    const tab = find('[data-config-dialog] [data-stub-tab="ProjectPlanTab"]');
+    assert.ok(tab, "view members can still open the plan");
+    assert.equal(tab.getAttribute("data-can-edit"), "false");
   });
 });
 
-test("计划卡 · 有待办：按状态计数、前 3 条（进行中在前）、打开弹窗里是原样的计划页", skipPortal, async () => {
+test("计划卡 · 有待办：计数、进度条（已完成/总数）、前 3 条（进行中在前）、大弹窗里是计划页，关掉通知重读", skipPortal, async () => {
   const { Plan } = await load();
   await withDom(async ({ renderRoot, find, findAll, text, click, wait }) => {
     globalThis.__w10.api = {
@@ -328,28 +360,28 @@ test("计划卡 · 有待办：按状态计数、前 3 条（进行中在前）�
 
     assert.equal(find("[data-project-config-count]").textContent, "5");
     assert.match(text(), /待处理 2 · 进行中 1 · 已完成 1/);
+    const bar = find('[data-project-side-plan-progress] [role="progressbar"]');
+    assert.equal(bar.getAttribute("aria-valuenow"), "1");
+    assert.equal(bar.getAttribute("aria-valuemax"), "5");
+    assert.match(text(), /已完成 1 \/ 5/);
     const rows = findAll("[data-project-side-plan-list] li").map((li) => li.textContent);
     assert.equal(rows.length, 3);
     assert.match(rows[0], /正在做的.*进行中/);
     assert.match(rows[1], /待做一.*待处理/);
     assert.match(rows[2], /待做二.*待处理/);
-    // The "+" add action exists next to the title; the main button opens the plan.
-    assert.ok(find('[data-project-config-action="add"]'));
-    const open = find('[data-project-config-action="open"]');
-    assert.equal(open.textContent, "打开");
+    assert.equal(find('[data-project-config-action="open"]'), null);
 
-    await click(open);
-    const body = find("[data-project-modal-body]");
-    assert.ok(body, "dialog opened");
-    const tab = body.querySelector('[data-stub-tab="ProjectPlanTab"]');
-    assert.ok(tab, "the plan tab lives in the dialog");
+    await click("[data-project-config-card]");
+    const dialog = find("[data-config-dialog]");
+    assert.ok(dialog, "dialog opened");
+    assert.equal(dialog.getAttribute("data-size"), "lg");
+    const tab = dialog.querySelector('[data-stub-tab="ProjectPlanTab"]');
     assert.equal(tab.getAttribute("data-project"), "p1");
     assert.equal(tab.getAttribute("data-can-edit"), "true");
-    assert.equal(find("[data-project-modal-size]").getAttribute("data-project-modal-size"), "wide");
 
-    await click("[data-project-modal-close]");
-    await wait(220);
-    assert.equal(find("[data-project-modal-body]"), null, "dialog closed");
+    await click("[data-config-dialog-close]");
+    await wait(400);
+    assert.equal(find("[data-config-dialog]"), null, "dialog closed");
     assert.equal(closed, 1, "the owner is told the dialog closed (so every card re-reads)");
   });
 });
@@ -368,9 +400,9 @@ test("计划卡 · 读取失败：说明 + 重试", skipPortal, async () => {
     };
     await renderRoot(h(Plan, { projectId: "p1", canEdit: true }));
     assert.match(text(), /网关忙/);
-    assert.equal(find('[data-project-config-action="open"]'), null);
     await click(find('[role="alert"] button'));
     assert.match(text(), /一条/);
+    assert.equal(find("[data-config-dialog]"), null, "retry does not open the dialog");
   });
 });
 
@@ -391,84 +423,66 @@ const asset = (id, kind, updated_at, extra = {}) => ({
   ...extra,
 });
 
-test("资产卡 · 空：「上传文件」直接开文件选择，传到根目录，传完重读", skipPortal, async () => {
+test("资产卡 · 空、编辑者：一句话 + 右上 +「添加资产」，打开资产大弹窗（上传在弹窗 Add ▾ 里）", skipPortal, async () => {
   const { Assets } = await load();
-  await withDom(async ({ window, renderRoot, find, text, click, settle }) => {
-    const uploads = [];
-    let listCalls = 0;
+  await withDom(async ({ renderRoot, find, text, click }) => {
+    let uploads = 0;
     globalThis.__w10.api = {
-      listProjectAssets: () => {
-        listCalls += 1;
-        // The confirming re-read after the upload is slow: the card must already show the file.
-        if (listCalls === 2) return new Promise(() => {});
-        return ok({
-          items: uploads.length ? [asset(uploads[0].name, "file", "2026-10-22T00:00:00Z")] : [],
-          usage: { used_bytes: 0, limit_bytes: 1024 ** 3 },
-        });
-      },
-      uploadProjectAsset: (projectId, file, parent) => {
-        uploads.push({ projectId, name: file.name, parent });
-        return ok({ asset: asset(file.name, "file", "2026-10-22T00:00:00Z"), usage: { used_bytes: 1, limit_bytes: 1 } });
+      listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 1024 ** 3 } }),
+      uploadProjectAsset: () => {
+        uploads += 1;
+        return ok({});
       },
     };
     await renderRoot(h(Assets, { projectId: "p1", canEdit: true }));
-    assert.match(text(), /还没有文件。上传项目资料，团队成员都能看到。/);
-    const primary = find('[data-project-config-action="open"]');
-    assert.equal(primary.textContent, "上传文件");
-
-    const input = find('input[type="file"]');
-    assert.ok(input);
-    let pickerOpened = 0;
-    input.click = () => { pickerOpened += 1; };
-    await click(primary);
-    assert.equal(pickerOpened, 1, "main action opens the file picker");
-
-    const file = new window.File(["hello"], "报价.pdf", { type: "application/pdf" });
-    Object.defineProperty(input, "files", { configurable: true, value: [file] });
-    await act(async () => input.dispatchEvent(new window.Event("change", { bubbles: true })));
-    await settle();
-    assert.deepEqual(uploads, [{ projectId: "p1", name: "报价.pdf", parent: null }]);
-    assert.ok(listCalls >= 2, "the card re-reads after uploading");
-    assert.match(text(), /报价\.pdf/, "the uploaded file is on screen before the re-read answers");
-    assert.doesNotMatch(text(), /还没有文件/);
-    assert.match(text(), /1 个文件 · 0 个文件夹/);
+    assert.match(text(), /还没有文件。上传或从 Library 导入资料，团队成员都能看到。/);
+    assert.equal(find('input[type="file"]'), null, "the card no longer carries its own file input");
+    assert.equal(find('[data-project-config-action="open"]'), null);
+    const plus = find('[data-project-config-action="add"]');
+    assert.equal(plus.getAttribute("aria-label"), "添加资产");
+    await click(plus);
+    const dialog = find("[data-config-dialog]");
+    assert.ok(dialog);
+    assert.equal(dialog.getAttribute("data-testid"), "project-assets-dialog");
+    assert.equal(dialog.getAttribute("data-size"), "xl");
+    assert.equal(dialog.querySelector('[data-stub-tab="ProjectAssetsTab"]').getAttribute("data-can-edit"), "true");
+    assert.equal(uploads, 0);
   });
 });
 
-test("资产卡 · 上传被拒（配额）：提示服务端的原话，不再往下传", skipPortal, async () => {
+test("资产卡 · 弹窗里有子弹窗或上传进行中（holdOpen）时，✕ 不关大弹窗（A-14）", skipPortal, async () => {
   const { Assets } = await load();
-  await withDom(async ({ window, renderRoot, find, settle }) => {
-    const calls = [];
-    globalThis.__w10.api = {
-      listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }),
-      uploadProjectAsset: (projectId, file) => {
-        calls.push(file.name);
-        return Promise.resolve({ ok: false, status: 429, error: "项目存储配额不足" });
-      },
-    };
-    await renderRoot(h(Assets, { projectId: "p1", canEdit: true }));
-    const input = find('input[type="file"]');
-    const files = ["a.bin", "b.bin"].map((name) => new window.File(["x"], name));
-    Object.defineProperty(input, "files", { configurable: true, value: files });
-    await act(async () => input.dispatchEvent(new window.Event("change", { bubbles: true })));
-    await settle();
-    assert.deepEqual(calls, ["a.bin"], "the second file is not attempted after a quota refusal");
-    assert.deepEqual(globalThis.__w10.toasts, [["error", "项目存储配额不足"]]);
+  await withDom(async ({ renderRoot, find, click, wait }) => {
+    globalThis.__w10.api = { listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
+    let closed = 0;
+    globalThis.__w10.holdOpen = true;
+    try {
+      await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onDialogClosed: () => (closed += 1) }));
+      await click("[data-project-config-card]");
+      await click("[data-config-dialog-close]");
+      await wait(400);
+      assert.ok(find("[data-config-dialog]"), "held open while the tab is busy");
+      assert.equal(closed, 0);
+    } finally {
+      globalThis.__w10.holdOpen = false;
+    }
   });
 });
 
-test("资产卡 · 空、只读成员：没有上传入口", skipPortal, async () => {
+test("资产卡 · 空、只读成员：没有上传入口，也没有 +；仍能打开看资产", skipPortal, async () => {
   const { Assets } = await load();
-  await withDom(async ({ renderRoot, find, text }) => {
+  await withDom(async ({ renderRoot, find, text, click }) => {
     globalThis.__w10.api = { listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
     await renderRoot(h(Assets, { projectId: "p1", canEdit: false }));
     assert.match(text(), /还没有文件。有编辑权限的成员上传后会显示在这里。/);
     assert.equal(find('input[type="file"]'), null);
     assert.equal(find("[data-project-config-action]"), null);
+    await click("[data-project-config-card]");
+    assert.equal(find('[data-config-dialog] [data-stub-tab="ProjectAssetsTab"]').getAttribute("data-can-edit"), "false");
   });
 });
 
-test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个、打开弹窗里是原样的资产页", skipPortal, async () => {
+test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个，整卡打开资产大弹窗", skipPortal, async () => {
   const { Assets } = await load();
   await withDom(async ({ renderRoot, find, findAll, text, click }) => {
     globalThis.__w10.api = {
@@ -493,11 +507,10 @@ test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个�
     assert.match(rows[1], /资料.*文件夹/);
     assert.match(rows[2], /中\.png/);
 
-    await click(find('[data-project-config-action="open"]'));
-    const tab = find('[data-stub-tab="ProjectAssetsTab"]');
+    await click("[data-project-config-card]");
+    const tab = find('[data-config-dialog] [data-stub-tab="ProjectAssetsTab"]');
     assert.ok(tab);
     assert.equal(tab.getAttribute("data-can-edit"), "true");
-    assert.equal(find("[data-project-modal-size]").getAttribute("data-project-modal-size"), "wide");
   });
 });
 
@@ -523,10 +536,11 @@ test("动态卡 · 空：一句话，没有「查看全部」", skipPortal, asyn
     await renderRoot(h(Activity, { projectId: "p1" }));
     assert.match(text(), /项目里的任务、待办、资产和成员变化会显示在这里。/);
     assert.equal(find("[data-project-config-action]"), null);
+    assert.equal(find("[data-project-side-activity-all]"), null);
   });
 });
 
-test("动态卡 · 最近 3 条（读的是全员动态），句子按模板认回来，查看全部打开动态弹窗", skipPortal, async () => {
+test("动态卡 · 最近 3 条（读的是全员动态），句子按模板认回来，「查看全部」文字链接打开动态大弹窗", skipPortal, async () => {
   const { Activity } = await load();
   await withDom(async ({ renderRoot, find, findAll, text, click, wait }) => {
     const scopes = [];
@@ -552,16 +566,17 @@ test("动态卡 · 最近 3 条（读的是全员动态），句子按模板认�
     assert.match(rows[1], /小王.*待办“订机票”状态为 待处理/);
     assert.match(rows[2], /文件“报价\.pdf”已更新/);
     assert.doesNotMatch(text(), /成员加入项目/);
+    assert.equal(find('[data-project-config-action="open"]'), null, "no big indigo button");
 
-    const open = find('[data-project-config-action="open"]');
-    assert.equal(open.textContent, "查看全部");
-    await click(open);
-    const tab = find('[data-stub-tab="ProjectFeedTab"]');
-    assert.ok(tab, "the feed lives in the dialog");
-    assert.equal(tab.getAttribute("data-initial-scope"), "members");
-    assert.equal(find("[data-project-modal-size]").getAttribute("data-project-modal-size"), "default");
-    await click("[data-project-modal-close]");
-    await wait(220);
+    const link = find("[data-project-side-activity-all]");
+    assert.equal(link.textContent, "查看全部");
+    await click(link);
+    const dialog = find("[data-config-dialog]");
+    assert.ok(dialog.querySelector('[data-stub-tab="ProjectFeedTab"]'), "the feed lives in the dialog");
+    assert.equal(dialog.getAttribute("data-testid"), "project-activity-dialog");
+    await click("[data-config-dialog-close]");
+    await wait(400);
+    assert.equal(find("[data-config-dialog]"), null);
     assert.equal(closed, 1);
   });
 });
