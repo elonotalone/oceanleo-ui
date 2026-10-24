@@ -82,9 +82,16 @@ const authStubUrl = dataModule(`
   export function putByok() { return stub().putByok(...arguments); }
   export function deleteByok() { return stub().deleteByok(...arguments); }
   export function probeByok() { return stub().probeByok(...arguments); }
+  export async function getModelConnections() { return {ok:true,data:{enabled:true,authorization_available:false,connections:[]}}; }
+  export async function authorizeModelConnection() { return {ok:false}; }
+  export async function getModelConnectionAuthorization() { return {ok:false}; }
+  export async function deleteModelConnection() { return {ok:false}; }
+  export async function activateModelConnection() { return {ok:false}; }
+  export function invalidateSelectedModelsCache() {}
 `);
 
 const clientStubUrl = dataModule(`
+  export async function accessToken() { return null; }
   export async function signOutEverywhere() {
     globalThis.__byokSignedOut = true;
   }

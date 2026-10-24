@@ -305,6 +305,7 @@ function money(value: number, currency: string) {
 }
 
 function priceText(model: CatalogModel, tt: UITranslate) {
+  if (model.connection_id) return tt("自带连接 · 厂商计费");
   if (model.unpriced || model.status === "unpriced") return tt("价未公布");
   if (!model.price) return "—";
   // 价格所在货币由网关的 pricing 元数据决定（.cn = CNY、.com = USD）；没说就是 CNY。

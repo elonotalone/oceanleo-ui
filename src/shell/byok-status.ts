@@ -8,20 +8,28 @@ export type ByokStatusLite = {
 };
 
 const CACHE_TTL_MS = 60_000;
+export const BYOK_STATUS_CHANGED_EVENT = "oceanleo:byok-changed";
 
 let cachedAt = 0;
 let cachedValue: ByokStatusLite | null = null;
+let cachedForToken: string | null = null;
 
 export function invalidateByokStatus(): void {
   cachedAt = 0;
   cachedValue = null;
+  cachedForToken = null;
 }
 
 export async function fetchByokStatusLite(): Promise<ByokStatusLite | null> {
-  if (cachedAt && Date.now() - cachedAt < CACHE_TTL_MS) return cachedValue;
-
   const token = await accessToken();
-  if (!token) return null;
+  if (!token) {
+    invalidateByokStatus();
+    return null;
+  }
+  if (cachedForToken === token && cachedAt && Date.now() - cachedAt < CACHE_TTL_MS) return cachedValue;
+  cachedForToken = token;
+  cachedAt = 0;
+  cachedValue = null;
 
   try {
     const res = await fetch(`${GATEWAY_BASE}/v1/byok`, {
@@ -30,26 +38,30 @@ export async function fetchByokStatusLite(): Promise<ByokStatusLite | null> {
       cache: "no-store",
     });
     if (!res.ok) {
+      if (cachedForToken !== token) return null;
       cachedAt = Date.now();
       cachedValue = null;
       return null;
     }
     const data = (await res.json()) as {
       enabled?: boolean;
-      providers?: Array<{ name?: string; provider?: string }>;
+      providers?: Array<{ display_name?: string; name?: string; provider?: string }>;
     };
     const providers = (Array.isArray(data.providers) ? data.providers : []).map(
-      (entry) => entry.name || entry.provider || "",
+      (entry) => entry.display_name || entry.name || entry.provider || "",
     );
     const value: ByokStatusLite = {
       enabled: Boolean(data.enabled),
       count: providers.length,
       providers,
     };
-    cachedAt = Date.now();
-    cachedValue = value;
+    if (cachedForToken === token) {
+      cachedAt = Date.now();
+      cachedValue = value;
+    }
     return value;
   } catch {
+    if (cachedForToken !== token) return null;
     cachedAt = Date.now();
     cachedValue = null;
     return null;

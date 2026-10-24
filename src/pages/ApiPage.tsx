@@ -17,6 +17,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { ByokKeys } from "./ByokKeys";
 import { ModelGroupManager } from "./ModelCapabilityMarket";
 import { PageHeader } from "./PageHeader";
+import { BYOK_STATUS_CHANGED_EVENT } from "../shell/byok-status";
 
 const API_PANES = [
   { id: "selection", label: "模型选择" },
@@ -141,10 +142,22 @@ export function ApiPage({
   }, []);
 
   useEffect(() => {
-    void getModelCatalog().then((result) => {
-      if (result.ok && result.data) setCatalog(result.data);
-    });
-  }, []);
+    let active = true;
+    let request = 0;
+    function refreshCatalog() {
+      const current = ++request;
+      void getModelCatalog().then((result) => {
+        if (active && current === request && result.ok && result.data) setCatalog(result.data);
+      });
+    }
+    setCatalog(null);
+    refreshCatalog();
+    window.addEventListener(BYOK_STATUS_CHANGED_EVENT, refreshCatalog);
+    return () => {
+      active = false;
+      window.removeEventListener(BYOK_STATUS_CHANGED_EVENT, refreshCatalog);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     function sync() {

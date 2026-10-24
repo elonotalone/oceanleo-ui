@@ -15,6 +15,15 @@ import {
   putByok,
   deleteByok,
   probeByok,
+  getModelConnections,
+  authorizeModelConnection,
+  getModelConnectionAuthorization,
+  deleteModelConnection,
+  activateModelConnection,
+  invalidateSelectedModelsCache,
+  type ModelConnectionAuthorization,
+  type ModelConnectionsStatus,
+  type ModelConnectionProtocol,
   type KeyProvider,
   type ByokStatus,
   type ByokCap,
@@ -22,6 +31,13 @@ import {
 import { runtimePageHost } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { HELP_BYOK_ARTICLE_PATH, helpCenterUrl } from "../lib/help-url";
+import { BYOK_STATUS_CHANGED_EVENT, invalidateByokStatus } from "../shell/byok-status";
+
+function announceConnectionChange() {
+  invalidateByokStatus();
+  invalidateSelectedModelsCache();
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(BYOK_STATUS_CHANGED_EVENT));
+}
 
 const CAP_OPTIONS: { id: ByokCap; label: string }[] = [
   { id: "tools", label: "工具调用" },
@@ -43,6 +59,8 @@ type ByokForm = {
   apiKey: string;
   baseUrl: string;
   model: string;
+  displayName: string;
+  protocol: ModelConnectionProtocol;
   caps: Set<ByokCap>;
 };
 
@@ -52,6 +70,8 @@ function emptyForm(provider = ""): ByokForm {
     apiKey: "",
     baseUrl: "",
     model: "",
+    displayName: "",
+    protocol: "chat_completions",
     caps: new Set<ByokCap>(["tools"]),
   };
 }
@@ -182,7 +202,10 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
 
   async function refreshStatus() {
     const result = await getByok();
-    if (result.ok && result.data) setStatus(result.data);
+    if (result.ok && result.data) {
+      setStatus(result.data);
+      announceConnectionChange();
+    }
   }
 
   async function onReauth() {
@@ -236,6 +259,8 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
       base_url: custom ? form.baseUrl.trim() : undefined,
       model: form.model.trim() || undefined,
       caps: Array.from(form.caps),
+      display_name: form.displayName.trim() || selected?.name || form.provider,
+      protocol: form.protocol,
     });
     setSaving(false);
     if (!result.ok) {
@@ -248,7 +273,10 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
       setError(result.error || tt("添加失败"));
       return;
     }
-    if (result.data) setStatus(result.data);
+    if (result.data) {
+      setStatus(result.data);
+      announceConnectionChange();
+    }
     else await refreshStatus();
     closeAdd();
   }
@@ -256,7 +284,10 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   async function onDelete(provider: string) {
     const result = await deleteByok(provider);
     if (result.ok) {
-      if (result.data) setStatus(result.data);
+      if (result.data) {
+        setStatus(result.data);
+        announceConnectionChange();
+      }
       else await refreshStatus();
       return;
     }
@@ -265,7 +296,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
 
   const inputClass =
     "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-800 outline-none focus:border-neutral-400 disabled:bg-neutral-50 disabled:text-neutral-400";
-  const configured = (status?.providers || []).filter((row) => row.provider !== "cursor");
+  const configured = (status?.providers || []).filter((row) => row.provider !== "cursor" && row.auth_type !== "oauth");
   const gatewayOn = !!status?.enabled;
 
   return (
@@ -278,7 +309,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
         <h2 className="text-[14px] font-semibold text-neutral-900">
           {tt("自带 API key（BYOK）")}
           <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">
-            {tt("仅支持 OpenAI 兼容协议 API")}
+            {tt("Chat Completions / Responses")}
           </span>
         </h2>
         <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
@@ -320,11 +351,11 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
                   .map((cap) => CAP_OPTIONS.find((item) => item.id === cap)?.label || cap)
                   .map((label) => tt(label))
                   .join(" · ");
-                const model = row.model ? row.model : tt("厂商默认");
+                const model = row.display_name ? (row.protocol === "responses" ? "Responses" : "Chat Completions") : row.model || tt("厂商默认");
                 return (
                   <ByokRow
                     key={row.provider}
-                    title={row.name || row.provider}
+                    title={row.display_name || row.name || row.provider}
                     detail={
                       <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-400">
                         <span className="font-mono text-neutral-500">{row.fingerprint}</span>
@@ -384,6 +415,19 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
             disabled={formDisabled}
             className="space-y-3 pb-3"
           >
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-neutral-700" htmlFor="byok-alias">{tt("连接名称")}</label>
+              <input id="byok-alias" value={form.displayName} maxLength={80} placeholder={selected?.name}
+                onChange={(event) => setForm((prev) => ({ ...prev, displayName: event.target.value }))} className={inputClass} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-neutral-700" htmlFor="byok-protocol">{tt("接口协议")}</label>
+              <select id="byok-protocol" value={form.protocol} className={inputClass}
+                onChange={(event) => setForm((prev) => ({ ...prev, protocol: event.target.value as ModelConnectionProtocol }))}>
+                <option value="chat_completions">Chat Completions</option>
+                <option value="responses">Responses</option>
+              </select>
+            </div>
             <div>
               <label className="mb-1 block text-[12px] font-medium text-neutral-700">
                 {tt("厂商")}
@@ -545,8 +589,159 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
             </div>
           </fieldset>
           ) : null}
+          <ModelConnectionSettings onChanged={refreshStatus} onReauth={onReauth} />
         </>
       )}
     </section>
   );
+}
+
+function ModelConnectionSettings({ onChanged, onReauth }: {
+  onChanged: () => Promise<void>;
+  onReauth: () => Promise<void>;
+}) {
+  const tt = useUI();
+  const [list, setList] = useState<ModelConnectionsStatus | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [model, setModel] = useState("");
+  const [caps, setCaps] = useState<ByokCap[]>(["tools"]);
+  const [connectionId, setConnectionId] = useState<string>();
+  const [authorization, setAuthorization] = useState<ModelConnectionAuthorization | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [reauth, setReauth] = useState(false);
+
+  async function refresh() {
+    const result = await getModelConnections();
+    if (result.ok && result.data) setList(result.data);
+    else setError("连接暂不可用，请稍后重试。");
+  }
+
+  useEffect(() => {
+    let active = true;
+    void getModelConnections().then((result) => {
+      if (!active) return;
+      if (result.ok && result.data) setList(result.data);
+      else setError("连接暂不可用，请稍后重试。");
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!authorization || authorization.status !== "pending") return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const abort = new AbortController();
+    const poll = async () => {
+      const result = await getModelConnectionAuthorization(authorization.id, abort.signal);
+      if (!active) return;
+      if (!result.ok || !result.data) {
+        setAuthorization(null);
+        setError("授权状态读取失败，请重试。");
+        setReauth(result.code === "reauth_required");
+        return;
+      }
+      const next = result.data;
+      if (next.status === "ready") {
+        setAuthorization(next);
+        setEditing(false);
+        setName("");
+        setModel("");
+        await Promise.all([refresh(), onChanged()]);
+      } else if (next.status === "expired" || next.status === "failed") {
+        setAuthorization(next);
+        setError(next.status === "expired" ? "授权已过期，请重新授权。" : "授权未完成，请重新授权。");
+      } else {
+        timer = setTimeout(poll, 2000);
+      }
+    };
+    timer = setTimeout(poll, 2000);
+    return () => { active = false; abort.abort(); clearTimeout(timer); };
+  // Polling belongs to this attempt; parent renders must not restart it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorization?.id, authorization?.status]);
+
+  async function start() {
+    if (!name.trim() || !model.trim()) {
+      setError("请填写连接名称和模型名称。");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setReauth(false);
+    const result = await authorizeModelConnection({
+      display_name: name.trim(), model: model.trim(), caps, connection_id: connectionId,
+    });
+    setBusy(false);
+    if (result.ok && result.data) setAuthorization(result.data);
+    else {
+      setError("授权未能开始，请重试。");
+      setReauth(result.code === "reauth_required");
+    }
+  }
+
+  async function disconnect(id: string) {
+    setBusy(true);
+    setError("");
+    const result = await deleteModelConnection(id);
+    if (result.ok) {
+      setAuthorization(null);
+      await refresh();
+      await onChanged();
+    } else {
+      setError("断开连接失败，请重试。");
+      setReauth(result.code === "reauth_required");
+    }
+    setBusy(false);
+  }
+
+  async function activate(id: string) {
+    setBusy(true);
+    setError("");
+    const result = await activateModelConnection(id);
+    if (result.ok) {
+      setAuthorization(null);
+      await Promise.all([refresh(), onChanged()]);
+    } else {
+      setError("连接暂不可用，请稍后重试。");
+      setReauth(result.code === "reauth_required");
+    }
+    setBusy(false);
+  }
+
+  const input = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px]";
+  const available = !!list?.enabled && !!list.authorization_available;
+  return <div data-model-connections="" className="space-y-3 border-t border-neutral-100 pt-3">
+    <ByokRow title={tt("登录授权")} detail={<p className="text-[12px] text-neutral-500">{tt("通过厂商官方流程授权；授权凭据加密保存在网关，可随时断开。")}</p>}
+      action={<button type="button" className={QUIET_BTN} disabled={!available || busy} data-model-connection-add=""
+        onClick={() => { setEditing(true); setConnectionId(undefined); setName(""); setModel(""); setCaps(["tools"]); setAuthorization(null); setError(""); }}>{tt("添加连接")}</button>} />
+    {list && !available ? <p role="status" className="text-[12px] text-neutral-500">{tt("当前暂不支持登录授权。")}{list.unavailable_reason ? ` ${tt(list.unavailable_reason)}` : ""}</p> : null}
+    {list?.connections.some((connection) => !connection.active) || authorization?.activation_required ? <p className="text-[12px] text-neutral-500">{tt("使用此连接将替换这台设备上同厂商的当前配置。")}</p> : null}
+    {list?.connections.map((connection) => <ByokRow key={connection.id} title={connection.display_name}
+      detail={<p className="text-[12px] text-neutral-500">{tt(connection.status === "active" || connection.status === "ready" ? "已连接" : "需要重新授权")}</p>}
+      action={<div className="flex flex-wrap gap-2">
+        {!connection.active && (connection.status === "ready" || connection.status === "active") ? <button type="button" className={QUIET_BTN} disabled={busy || !available} data-model-connection-activate={connection.id} onClick={() => activate(connection.id)}>{tt("使用此连接")}</button> : null}
+        <button type="button" disabled={!available || busy} className={QUIET_BTN} onClick={() => {
+        setEditing(true); setConnectionId(connection.id); setName(connection.display_name); setModel(connection.model || ""); setCaps(connection.caps || ["tools"]); setAuthorization(null); setError("");
+      }}>{tt("重新授权")}</button><button type="button" className={QUIET_BTN} disabled={busy} data-model-connection-delete={connection.id} onClick={() => disconnect(connection.id)}>{tt("断开连接")}</button></div>} />)}
+    {editing ? <fieldset disabled={busy} className="space-y-3" data-model-connection-form="">
+      <label className="block text-[12px]">{tt("连接名称")}<input className={input} value={name} maxLength={80} onChange={(event) => setName(event.target.value)} /></label>
+      <label className="block text-[12px]">{tt("模型名称")}<input className={input} value={model} onChange={(event) => setModel(event.target.value)} /></label>
+      <div className="flex flex-wrap gap-4">{CAP_OPTIONS.map((cap) => <label key={cap.id} className="flex items-center gap-1.5 text-[12px]">
+        <input type="checkbox" checked={caps.includes(cap.id)} onChange={() => setCaps((previous) => previous.includes(cap.id) ? previous.filter((id) => id !== cap.id) : [...previous, cap.id])} />{tt(cap.label)}
+      </label>)}</div>
+      <button type="button" className={QUIET_BTN} disabled={!available || authorization?.status === "pending"} data-model-connection-authorize="" onClick={start}>{tt("开始授权")}</button>{" "}
+      <button type="button" className={QUIET_BTN} onClick={() => { setEditing(false); setAuthorization(null); setError(""); }}>{tt("取消")}</button>
+    </fieldset> : null}
+    {authorization?.status === "pending" ? <div role="status" className="space-y-2 text-[12px]">
+      <p>{tt("等待厂商授权完成…")}</p>
+      {authorization.instructions ? <pre className="whitespace-pre-wrap break-all">{authorization.instructions}</pre> : null}
+      {authorization.helper_url?.startsWith("https://") ? <a href={authorization.helper_url} className="block underline" download="oceanleo-authorize.py">{tt("下载")}</a> : null}
+      {authorization.handoff_token ? <p>{tt("一次性授权交接码")} <code>{authorization.handoff_token}</code></p> : null}
+      {authorization.authorization_url?.startsWith("https://") ? <a href={authorization.authorization_url} target="_blank" rel="noreferrer" className="underline">{tt("前往厂商授权")}</a> : null}
+    </div> : null}
+    {error ? <p role="alert" className="text-[12px] text-rose-600">{tt(error)}</p> : null}
+    {reauth ? <button type="button" className={QUIET_BTN} onClick={onReauth}>{tt("重新登录")}</button> : null}
+  </div>;
 }

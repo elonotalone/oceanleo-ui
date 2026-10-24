@@ -404,3 +404,20 @@ test("搜模型查价：同名合并、不可选禁用、已下架灰显、价�
   assert.ok(editList.querySelector('[data-model-edit-row="glm51"]'));
   view.cleanup();
 });
+
+test("personal model offers show connection alias and provider billing without upstream IDs", async () => {
+  const ownCatalog = structuredClone(marketCatalog);
+  const alias = {
+    ...glmOffer("openai", "connection-opaque", { label: "Writing connection", selectable: true, unpriced: true }),
+    connection_id: "opaque", display_name: "Writing connection", auth_type: "oauth",
+  };
+  ownCatalog.groups[0].capabilities[0].providers = [{ id: "openai", label: "OpenAI", models: [alias] }];
+  const view = await render({ catalog: ownCatalog, groups: marketGroups, active_group_key: "custom:test", initialMarketQuery: "Writing connection" });
+  const results = view.host.querySelector("[data-model-price-search-results]");
+  assert.ok(results);
+  assert.match(results.textContent, /Writing connection/);
+  assert.match(results.textContent, /自带连接 · 厂商计费/);
+  assert.doesNotMatch(results.textContent, /价未公布|gpt-|connection-opaque/);
+  assert.equal(results.querySelector('[data-model-offer-disabled="true"]'), null);
+  view.cleanup();
+});

@@ -349,6 +349,9 @@ export interface CatalogModel {
   selectable?: boolean;
   checked_at?: string;
   source_url?: string;
+  connection_id?: string;
+  display_name?: string;
+  auth_type?: "api_key" | "oauth";
 }
 
 // One provider's models within a category (the picker groups by provider so a
@@ -471,6 +474,9 @@ function normalizeModel(
     selectable: x.selectable,
     checked_at: x.checked_at || "",
     source_url: x.source_url || "",
+    connection_id: x.connection_id,
+    display_name: x.display_name,
+    auth_type: x.auth_type,
   };
 }
 
@@ -594,6 +600,13 @@ function writeCachedCatalog(raw: unknown) {
 }
 
 export async function getModelCatalog() {
+  // Personal connections belong to the authenticated account. Do not persist a
+  // personalized catalog in the shared tab snapshot or reuse it after sign-out.
+  if (await accessToken()) {
+    const result = await authed<Partial<ModelCatalog>>("/v1/models/catalog");
+    if (!result.ok) return result as { ok: false; error?: string };
+    return { ok: true as const, data: normalizeCatalog(result.data) };
+  }
   const r = await publicGet<Partial<ModelCatalog>>("/v1/models/catalog");
   if (!r.ok) {
     // Network/gateway hiccup — fall back to the last good snapshot so the page
@@ -965,6 +978,72 @@ export function getKeyProviders() {
 }
 
 export type ByokCap = "tools" | "vision" | "reasoning";
+export type ModelConnectionProtocol = "chat_completions" | "responses";
+
+export type ModelConnection = {
+  id: string;
+  display_name: string;
+  protocol: ModelConnectionProtocol;
+  auth_type: "oauth";
+  status: string;
+  model?: string;
+  caps?: ByokCap[];
+  active?: boolean;
+};
+
+export type ModelConnectionsStatus = {
+  enabled: boolean;
+  authorization_available: boolean;
+  unavailable_reason?: string;
+  connections: ModelConnection[];
+};
+
+export type ModelConnectionAuthorization = {
+  id: string;
+  status: "pending" | "ready" | "expired" | "failed";
+  authorization_url?: string;
+  helper_url?: string;
+  instructions?: string;
+  handoff_token?: string;
+  expires_at?: number | string;
+  connection?: ModelConnection;
+  activation_required?: boolean;
+  error?: { code: string; message: string };
+};
+
+export function getModelConnections() {
+  return authed<ModelConnectionsStatus>("/v1/model-connections");
+}
+
+export function authorizeModelConnection(body: {
+  display_name: string;
+  model: string;
+  caps: ByokCap[];
+  connection_id?: string;
+}) {
+  return authed<ModelConnectionAuthorization>("/v1/model-connections/authorizations", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getModelConnectionAuthorization(id: string, signal?: AbortSignal) {
+  return authed<ModelConnectionAuthorization>(
+    `/v1/model-connections/authorizations/${encodeURIComponent(id)}`, { signal },
+  );
+}
+
+export function deleteModelConnection(id: string) {
+  return authed<{ ok: boolean }>(`/v1/model-connections/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function activateModelConnection(id: string) {
+  return authed<{ ok: boolean; connection: ModelConnection }>(`/v1/model-connections/${encodeURIComponent(id)}/activate`, {
+    method: "POST",
+  });
+}
 
 export type ByokProviderView = {
   provider: string;
@@ -974,6 +1053,10 @@ export type ByokProviderView = {
   model: string;
   caps: ByokCap[];
   added_at: number;
+  display_name?: string;
+  protocol?: ModelConnectionProtocol;
+  auth_type?: "api_key" | "oauth";
+  connection_id?: string;
 };
 
 export type ByokStatus = {
@@ -995,10 +1078,14 @@ export async function getByok(): Promise<{
 export async function putByok(
   provider: string,
   body: {
-    api_key: string;
+    api_key?: string;
     base_url?: string;
     model?: string;
     caps?: ByokCap[];
+    display_name?: string;
+    protocol?: ModelConnectionProtocol;
+    auth_type?: "api_key" | "oauth";
+    connection_id?: string;
   },
 ) {
   return authed<ByokStatus>(`/v1/byok/${encodeURIComponent(provider)}`, {

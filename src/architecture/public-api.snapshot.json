@@ -2001,6 +2001,16 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "activateModelConnection",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "authorizeModelConnection",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "CapabilitySelection",
           "importedName": "CapabilitySelection",
           "source": "../model-tier"
@@ -2037,6 +2047,11 @@
         },
         {
           "kind": "named",
+          "name": "deleteModelConnection",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "deleteModelGroup",
           "source": ""
         },
@@ -2068,6 +2083,16 @@
         {
           "kind": "named",
           "name": "getModelCatalog",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getModelConnectionAuthorization",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "getModelConnections",
           "source": ""
         },
         {
@@ -2230,6 +2255,26 @@
         {
           "kind": "type",
           "name": "ModelCatalog",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelConnection",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelConnectionAuthorization",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelConnectionProtocol",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModelConnectionsStatus",
           "source": ""
         },
         {

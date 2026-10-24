@@ -2,6 +2,7 @@ import type { Locale } from "../../config";
 import { assembleByokCopy, BYOK_COPY_KEYS } from "./byok-copy-base";
 import { BYOK_COPY_EASTERN } from "./byok-copy-eastern";
 import { BYOK_COPY_WESTERN } from "./byok-copy-western";
+import { MODEL_CONNECTION_COPY_MESSAGES } from "./model-connections-copy";
 
 export { BYOK_COPY_KEYS };
 
@@ -15,3 +16,7 @@ export const BYOK_COPY_MESSAGES: Record<Locale, Record<string, string>> =
     ...BYOK_COPY_WESTERN,
     ...BYOK_COPY_EASTERN,
   });
+
+for (const locale of Object.keys(BYOK_COPY_MESSAGES) as Locale[]) {
+  Object.assign(BYOK_COPY_MESSAGES[locale], MODEL_CONNECTION_COPY_MESSAGES[locale]);
+}
