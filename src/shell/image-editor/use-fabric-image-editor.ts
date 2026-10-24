@@ -986,6 +986,15 @@ export function useFabricImageEditor(
           });
           return;
         }
+        // The work names a picture URL but this item kind has no source path (an unrecognised kind, e.g.
+        // a library type the editor does not read): refuse visibly. Opening an empty canvas as ready
+        // would pass for the work being open, and a save would then replace it.
+        if (!projectLoaded && !sourceUrl && (item.previewUrl || item.thumbUrl || item.url)) {
+          setError(
+            "这份作品的类型暂时无法在图片编辑器里读取原图，没有改用空白画布覆盖它。",
+          );
+          return;
+        }
         if (!projectLoaded && sourceUrl) {
           const loadedSource = await openFabricImagePixels({
             source: sourceUrl,
