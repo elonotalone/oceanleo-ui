@@ -628,6 +628,11 @@ export interface MyLibraryProps {
    * Embedded shelves omit this so no page title appears.
    */
   pageTitle?: ReactNode;
+  /**
+   * 类型筛选行之后、网格之前的一段宿主内容（skills-overhaul W17 / 仲裁 A-04）：
+   * `/library`「全部」时放「文件夹」横排。不传则什么都不渲染。
+   */
+  supplementalSection?: ReactNode;
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -657,6 +662,7 @@ export function MyLibrary({
   onMaterialDragEnd,
   libraryScope,
   pageTitle,
+  supplementalSection,
 }: MyLibraryProps) {
   const tt = useUI();
   const [libraryQuery, setLibraryQuery] = useState("");
@@ -1980,6 +1986,7 @@ export function MyLibrary({
               />
             </CollectionFilterRow>
           ) : null}
+          {supplementalSection}
         </div>
         )
       }

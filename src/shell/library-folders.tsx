@@ -909,3 +909,124 @@ function FoldersEmpty({
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// 「全部」里的文件夹横排（仲裁 A-04：挂在 MyLibrary 的 `supplementalSection`）
+// ---------------------------------------------------------------------------
+
+/** 横排最多放几个；更多的走「查看全部文件夹」。 */
+export const LIBRARY_FOLDER_STRIP_LIMIT = 8;
+
+/** 横排只放最近更新的几个；没有文件夹（或没登录 / 读不到）时整段不渲染。 */
+export function folderStripItems<T extends Pick<Folder, "updated_at" | "created_at" | "title">>(
+  folders: readonly T[],
+  limit: number = LIBRARY_FOLDER_STRIP_LIMIT,
+): T[] {
+  return sortFoldersByTime(folders).slice(0, Math.max(0, limit));
+}
+
+export function LibraryFolderStripCard({ folder, onOpen }: { folder: Folder; onOpen: () => void }) {
+  const tt = useUI();
+  const cover = folderCoverSrc(folder);
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      data-library-folder-strip-card={folder.id}
+      aria-label={tt("打开文件夹「{title}」", { title: folder.title })}
+      className="group flex w-60 shrink-0 items-center gap-3 rounded-xl border border-neutral-200 bg-white p-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-300 hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100 text-neutral-500">
+        {cover ? (
+          // 只有官方封面会走到这里（folderCoverSrc）；40px 方块里 3:4 封面用 object-cover 裁顶部。
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={cover}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="h-full w-full object-cover object-top"
+            data-library-folder-cover="official"
+          />
+        ) : (
+          <FolderGlyph />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-medium text-neutral-900">
+            {folder.title || tt("未命名文件夹")}
+          </span>
+          {folder.skill ? (
+            <span
+              className="shrink-0 rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600"
+              data-library-folder-badge="skill"
+            >
+              {tt("技能")}
+            </span>
+          ) : null}
+        </span>
+        <span className="mt-0.5 block truncate text-[11px] text-neutral-500">
+          {folderFileCountLabel(tt, folder)}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+export function LibraryFoldersStrip({ onViewAll }: { onViewAll: () => void }) {
+  const tt = useUI();
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void folderApi.listFolders({ scope: "mine" }).then((result) => {
+      if (alive && result.ok) setFolders(result.data);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const items = useMemo(() => folderStripItems(folders), [folders]);
+  if (items.length === 0) return null;
+  const openFolder = openId ? folders.find((item) => item.id === openId) || null : null;
+
+  return (
+    <section className="mt-3" aria-label={tt("文件夹")} data-library-folder-strip="">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-[13px] font-semibold text-neutral-800">{tt("文件夹")}</p>
+        <button
+          type="button"
+          onClick={onViewAll}
+          data-library-folder-view-all=""
+          className="text-[12px] text-neutral-500 underline underline-offset-2 hover:text-neutral-800"
+        >
+          {tt("查看全部文件夹")}
+        </button>
+      </div>
+      <div className="v-scroll flex gap-2.5 overflow-x-auto pb-1">
+        {items.map((folder) => (
+          <LibraryFolderStripCard key={folder.id} folder={folder} onOpen={() => setOpenId(folder.id)} />
+        ))}
+      </div>
+      {openId ? (
+        <LibraryFolderDetail
+          key={openId}
+          folderId={openId}
+          initial={openFolder}
+          onClose={() => setOpenId(null)}
+          onChanged={(next) =>
+            setFolders((current) => current.map((item) => (item.id === next.id ? next : item)))
+          }
+          onDeleted={(id) => {
+            setOpenId(null);
+            setFolders((current) => current.filter((item) => item.id !== id));
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}

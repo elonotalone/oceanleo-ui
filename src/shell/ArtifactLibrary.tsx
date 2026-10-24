@@ -52,7 +52,7 @@ import {
   normalizeLibraryCategory,
   translateLibraryTypeLabel,
 } from "./library-editor-category";
-import { LibraryFoldersPage } from "./library-folders";
+import { LibraryFoldersPage, LibraryFoldersStrip } from "./library-folders";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
@@ -334,6 +334,12 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
           onEditorOpenChange={setEditorOpen}
           onlyFavorites={filter === "favorites"}
           onCategoryChange={changeCategory}
+          supplementalSection={
+            // 「全部」时在网格上方放最近的文件夹（仲裁 A-04）；收藏视图与具体类别不放。
+            (myLibraryCategory ?? "all") === "all" && filter !== "favorites" ? (
+              <LibraryFoldersStrip onViewAll={() => changeCategory(LIBRARY_FOLDER_CATEGORY_ID)} />
+            ) : null
+          }
         />
       </div>
     </div>

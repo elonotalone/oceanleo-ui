@@ -34,6 +34,7 @@ const SOURCE = {
   noFoldersBody:
     "上传一个 .zip 就会变成文件夹；带 SKILL.md 的会成为技能。从官方技能库添加的技能也会出现在这里。",
   folderDeleted: "文件夹已删除",
+  viewAllFolders: "查看全部文件夹",
 } as const;
 
 export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
@@ -69,6 +70,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Upload a .zip and it becomes a folder; one with a SKILL.md becomes a skill. Skills you add from the official library show up here too.",
     folderDeleted: "Folder deleted",
+    viewAllFolders: "View all folders",
   },
   de: {
     folderCount: "Ordner · {n} Dateien",
@@ -102,6 +104,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Lade eine .zip hoch und sie wird zum Ordner; mit SKILL.md wird daraus ein Skill. Skills aus der offiziellen Bibliothek erscheinen ebenfalls hier.",
     folderDeleted: "Ordner gelöscht",
+    viewAllFolders: "Alle Ordner anzeigen",
   },
   es: {
     folderCount: "Carpeta · {n} archivos",
@@ -135,6 +138,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Sube un .zip y se convertirá en una carpeta; si incluye SKILL.md, será una habilidad. Las habilidades que añadas desde la biblioteca oficial también aparecen aquí.",
     folderDeleted: "Carpeta eliminada",
+    viewAllFolders: "Ver todas las carpetas",
   },
   "es-419": {
     folderCount: "Carpeta · {n} archivos",
@@ -168,6 +172,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Sube un .zip y se convertirá en una carpeta; si incluye SKILL.md, será una habilidad. Las habilidades que agregues desde la biblioteca oficial también aparecen aquí.",
     folderDeleted: "Carpeta eliminada",
+    viewAllFolders: "Ver todas las carpetas",
   },
   fr: {
     folderCount: "Dossier · {n} fichiers",
@@ -201,6 +206,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Importez un .zip et il devient un dossier ; avec un SKILL.md, il devient une compétence. Les compétences ajoutées depuis la bibliothèque officielle apparaissent aussi ici.",
     folderDeleted: "Dossier supprimé",
+    viewAllFolders: "Voir tous les dossiers",
   },
   it: {
     folderCount: "Cartella · {n} file",
@@ -234,6 +240,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Carica un .zip e diventa una cartella; se contiene SKILL.md diventa una skill. Anche le skill aggiunte dalla libreria ufficiale compaiono qui.",
     folderDeleted: "Cartella eliminata",
+    viewAllFolders: "Vedi tutte le cartelle",
   },
   "pt-BR": {
     folderCount: "Pasta · {n} arquivos",
@@ -267,6 +274,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Envie um .zip e ele vira uma pasta; com SKILL.md, vira uma habilidade. As habilidades adicionadas da biblioteca oficial também aparecem aqui.",
     folderDeleted: "Pasta excluída",
+    viewAllFolders: "Ver todas as pastas",
   },
   "pt-PT": {
     folderCount: "Pasta · {n} ficheiros",
@@ -300,6 +308,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Carregue um .zip e passa a ser uma pasta; com SKILL.md, passa a ser uma competência. As competências adicionadas a partir da biblioteca oficial também aparecem aqui.",
     folderDeleted: "Pasta eliminada",
+    viewAllFolders: "Ver todas as pastas",
   },
   vi: {
     folderCount: "Thư mục · {n} tệp",
@@ -333,6 +342,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Tải lên một tệp .zip sẽ thành một thư mục; có SKILL.md thì thành một kỹ năng. Kỹ năng thêm từ thư viện chính thức cũng hiện ở đây.",
     folderDeleted: "Đã xóa thư mục",
+    viewAllFolders: "Xem tất cả thư mục",
   },
   tr: {
     folderCount: "Klasör · {n} dosya",
@@ -366,6 +376,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "Bir .zip yükle, klasöre dönüşsün; içinde SKILL.md varsa beceri olur. Resmî kütüphaneden eklediğin beceriler de burada görünür.",
     folderDeleted: "Klasör silindi",
+    viewAllFolders: "Tüm klasörleri gör",
   },
   "zh-TW": {
     folderCount: "資料夾 · {n} 個檔案",
@@ -399,6 +410,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "上傳一個 .zip 就會變成資料夾；含 SKILL.md 的會成為技能。從官方技能庫新增的技能也會出現在這裡。",
     folderDeleted: "資料夾已刪除",
+    viewAllFolders: "查看全部資料夾",
   },
   ja: {
     folderCount: "フォルダー · {n} 個のファイル",
@@ -432,6 +444,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       ".zip をアップロードするとフォルダーになり、SKILL.md を含むものはスキルになります。公式ライブラリから追加したスキルもここに表示されます。",
     folderDeleted: "フォルダーを削除しました",
+    viewAllFolders: "すべてのフォルダーを表示",
   },
   ko: {
     folderCount: "폴더 · 파일 {n}개",
@@ -465,6 +478,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       ".zip을 업로드하면 폴더가 되고, SKILL.md가 있으면 스킬이 됩니다. 공식 라이브러리에서 추가한 스킬도 여기에 표시됩니다.",
     folderDeleted: "폴더를 삭제했습니다",
+    viewAllFolders: "모든 폴더 보기",
   },
   ar: {
     folderCount: "مجلد · {n} ملفات",
@@ -498,6 +512,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "ارفع ملف ‎.zip ليصبح مجلدًا؛ وإذا احتوى على SKILL.md يصبح مهارة. تظهر هنا أيضًا المهارات التي تضيفها من المكتبة الرسمية.",
     folderDeleted: "تم حذف المجلد",
+    viewAllFolders: "عرض كل المجلدات",
   },
   th: {
     folderCount: "โฟลเดอร์ · {n} ไฟล์",
@@ -531,6 +546,7 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       "อัปโหลดไฟล์ .zip แล้วจะกลายเป็นโฟลเดอร์ ถ้ามี SKILL.md จะกลายเป็นสกิล สกิลที่เพิ่มจากคลังทางการก็จะแสดงที่นี่ด้วย",
     folderDeleted: "ลบโฟลเดอร์แล้ว",
+    viewAllFolders: "ดูโฟลเดอร์ทั้งหมด",
   },
   hi: {
     folderCount: "फ़ोल्डर · {n} फ़ाइलें",
@@ -564,5 +580,6 @@ export const SKO_W17_MESSAGES = assembleCopy(SOURCE, {
     noFoldersBody:
       ".zip अपलोड करें, वह फ़ोल्डर बन जाएगा; SKILL.md वाला फ़ोल्डर स्किल बनता है। आधिकारिक लाइब्रेरी से जोड़ी गई स्किल भी यहाँ दिखती हैं।",
     folderDeleted: "फ़ोल्डर हटा दिया गया",
+    viewAllFolders: "सभी फ़ोल्डर देखें",
   },
 });

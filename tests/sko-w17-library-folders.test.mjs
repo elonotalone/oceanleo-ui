@@ -196,7 +196,7 @@ test("detail: big dialog with download / copy-to-project / delete; official show
 
 test("source wiring: Library mounts the folders view for the folders category and leaves MyLibrary intact", () => {
   const artifact = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
-  assert.match(artifact, /import \{ LibraryFoldersPage \} from "\.\/library-folders"/);
+  assert.match(artifact, /import \{ LibraryFoldersPage, LibraryFoldersStrip \} from "\.\/library-folders"/);
   assert.match(artifact, /const showFolders = isLibraryFolderCategory\(myLibraryCategory\)/);
   assert.match(artifact, /hidden=\{showFolders\}/, "MyLibrary stays mounted (search/sort/list survive) while folders are shown");
   assert.match(artifact, /\| "folders"/);
@@ -248,4 +248,42 @@ test("every literal tt() key in the folders UI has all 16 translations", async (
       if (!["zh-TW", "ja"].includes(locale)) assert.doesNotMatch(text, /[一-鿿]/, `${locale} ${zh}`);
     }
   }
+});
+
+test("「全部」: MyLibrary renders the host slot after the type row; Library passes the folders strip only there", () => {
+  const mine = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
+  assert.match(mine, /supplementalSection\?: ReactNode;/);
+  // 仲裁 A-04：位置在类型筛选行之后、网格（WorkspaceLibrary）之前，且只此一处。
+  const row = mine.indexOf("</CollectionFilterRow>");
+  const slot = mine.indexOf("{supplementalSection}");
+  const grid = mine.indexOf("<WorkspaceLibrary");
+  assert.ok(row > 0 && slot > row && grid > slot, "slot sits between the type row and the grid");
+  assert.equal(mine.split("supplementalSection").length - 1, 3, "declared, destructured, rendered — nothing else");
+
+  const artifact = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
+  assert.match(
+    artifact,
+    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" \? \(\s*<LibraryFoldersStrip onViewAll=\{\(\) => changeCategory\(LIBRARY_FOLDER_CATEGORY_ID\)\} \/>/,
+  );
+});
+
+test("folder strip: newest first, capped, compact cards with 技能 badge", () => {
+  const many = Array.from({ length: 12 }, (_, index) =>
+    folder({ id: `f${index}`, title: `F${index}`, updated_at: `2026-10-${String(index + 1).padStart(2, "0")}T00:00:00Z` }),
+  );
+  const strip = mod.folderStripItems(many);
+  assert.equal(strip.length, mod.LIBRARY_FOLDER_STRIP_LIMIT);
+  assert.equal(strip[0].id, "f11");
+  assert.deepEqual(mod.folderStripItems([]), []);
+  const html = renderToStaticMarkup(
+    React.createElement(mod.LibraryFolderStripCard, {
+      folder: folder({ skill: { name: "x", description: "", enabled: true } }),
+      onOpen() {},
+    }),
+  );
+  assert.match(html, /data-library-folder-strip-card="f1"/);
+  assert.match(html, />技能</);
+  assert.match(html, /文件夹 · 3 个文件/);
+  // 没有文件夹时整段不渲染（首帧 SSR 也是空的，不会闪一个空标题）。
+  assert.equal(renderToStaticMarkup(React.createElement(mod.LibraryFoldersStrip, { onViewAll() {} })), "");
 });
