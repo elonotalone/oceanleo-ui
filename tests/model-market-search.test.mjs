@@ -41,6 +41,13 @@ test("squash 只做小写去空白与删字符，不去前缀", () => {
   assert.equal(squash("通义千问-Plus"), "通义千问plus");
 });
 
+test("BYOK search finds the account name and upstream model instead of opaque route IDs", () => {
+  const offer = { id: "connection-opaque~route", label: "Friendly model", connection_name: "My writing account", model_id: "vendor/gpt-special" };
+  assert.equal(matchesModel("writing account", offer), true);
+  assert.equal(matchesModel("gpt special", offer), true);
+  assert.equal(matchesModel("unrelated", offer), false);
+});
+
 test("matchesModel：glm 5.1 命中 ZHIPU/GLM-5.1 与 z-ai/glm-5.1", () => {
   assert.equal(
     matchesModel("glm 5.1", { id: "ZHIPU/GLM-5.1", label: "GLM-5.1", provider_label: "百炼" }),

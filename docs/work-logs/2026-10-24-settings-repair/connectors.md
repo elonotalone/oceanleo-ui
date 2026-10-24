@@ -1,3 +1,17 @@
 # Connectors repair task
 
 Own src/pages/plugins connector files, src/pages/settings/ConnectorsSettingsPane.tsx, connector backend chain if necessary and focused tests. Read kernel/bootstrap/oceanleo and mcp-capability-plane map; impact before edits. Replace directory category chips with a dropdown next to search. Redesign Custom MCP server modal with compact modern host styling and clear name/server URL/auth fields, sensible footer; remove requested verbose URL/auth instructions and unsupported-auth yellow warning/link. Trace erroneous custom authorization expired banners/toasts repeated on ordinary navigation (also appears while using skills). Distinguish real invalid credentials from transient/transport/probe errors; no fake success or blind suppression of real failures. Fix lifecycle/races/duplicate toast root cause; preserve actionable auth failures only on relevant connection. Never print secrets or change trust boundaries/CORS/cookies without gate. Other owners handle models and projects; parent owns skills dialog/privacy and general latency. No browser, deploy/push, broad tests or installs. Focused tests with IO guard. Return changed files, root cause and evidence. Do not commit product edits.
+
+## Completed implementation and handoff
+
+- Connector categories now use CollectionFilterSelect beside the search. Custom MCP uses a compact named connection form with URL, credentials, local status and footer actions; requested instruction and unsupported-authorization blocks are removed.
+- Opening an existing connection previously auto-probed, generating a global error toast on each open. Every failed probe was treated as expired, and the API discarded the backend needs_reauth flag. Opening no longer probes. Explicit probing preserves needs_reauth, handles timeouts locally, and sequence guards prevent a closed/switched dialog receiving an old probe response.
+- OAuth refresh previously reported all transport/vendor failures as reauthorization failures. A temporary error now preserves the authorization and is handled by probe/agent context; only explicit grant rejection still requires authorization. Upstream HTTP 401/403 is carried separately from 404/503.
+- Verification: focused UI connectors/catalog 15/15; backend .venv/bin/python tests/test_mcp_probe_oauth.py + tests/test_mcp_oauth_runtime.py 21 passed and 4 subtests passed. Diff checks clean. System Python has a FastAPI import mismatch; project .venv is healthy.
+- Parent still owns combined typecheck and LeoDev freshness/backend integration. No browser, deploy, restart, push, secret access or policy boundary changes performed by this child.
+
+## Integration follow-up
+
+- Fixed the pre-existing saved-token placeholder contract: blank token now reuses a saved pasted credential only when the exact resolved endpoint and auth header match. One row is read and checked before decryption, preventing credential lookup races. OAuth rows cannot use this path, changed targets require a new token, and decryption errors remain actionable. UI also validates target reuse and preserves the saved header.
+- Custom MCP retains one-tap OAuth as a compact footer action when the registry supports it, without restoring verbose authorization instructions.
+- Focused verification after follow-up: UI connector suite 10 passed; backend OAuth runtime and probe/connect suites 28 passed plus 4 subtests. Parent owns final combined typecheck and dev integration; no restart performed.

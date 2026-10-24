@@ -31,6 +31,27 @@ import { BYOK_STATUS_CHANGED_EVENT } from "../shell/byok-status";
 
 const ALL_PROVIDERS = "__all__";
 
+function offerProviderKey(model: CatalogModel): string {
+  return model.connection_id ? `connection:${model.connection_id}` : model.provider;
+}
+
+function capabilityProviders(capability: CatalogCapability | undefined) {
+  const providers = new Map<string, { id: string; label: string }>();
+  for (const block of capability?.providers || []) {
+    // Personal connections belong to their named account, even when several
+    // accounts use the same vendor. Keep their filters and routing distinct.
+    if (!block.models.length || block.models.some(model => !model.connection_id)) {
+      providers.set(block.id, { id: block.id, label: block.label });
+    }
+    for (const model of block.models) {
+      if (!model.connection_id) continue;
+      const id = offerProviderKey(model);
+      providers.set(id, { id, label: model.connection_name || model.display_name || block.label });
+    }
+  }
+  return [...providers.values()];
+}
+
 function cloneSelection(selection: CapabilitySelection): CapabilitySelection {
   return Object.fromEntries(
     Object.entries(selection || {}).map(([category, capabilities]) => [
@@ -342,8 +363,10 @@ export function ModelGroupManager({
       return;
     }
     let alive = true;
+    let request = 0;
+    const initialRequest = ++request;
     void getModelGroups().then((result) => {
-      if (!alive) return;
+      if (!alive || initialRequest !== request) return;
       if (result.ok && result.data) {
         setPayload(result.data);
         setViewKey(result.data.active_group_key);
@@ -353,12 +376,16 @@ export function ModelGroupManager({
     });
     const onChanged = (event: Event) => {
       const detail = (event as CustomEvent<ModelGroupsPayload>).detail;
-      if (detail?.groups) setPayload(detail);
+      if (detail?.groups) {
+        request += 1;
+        setPayload(detail);
+      }
     };
     window.addEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
     const refreshAvailability = () => {
+      const current = ++request;
       void getModelGroups().then(result => {
-        if (alive && result.ok && result.data) setPayload(result.data);
+        if (alive && current === request && result.ok && result.data) setPayload(result.data);
       });
     };
     window.addEventListener(BYOK_STATUS_CHANGED_EVENT, refreshAvailability);
@@ -414,14 +441,15 @@ export function ModelGroupManager({
   }, [catalogGroups]);
   const selectedRows = resolveSelectedRows(selectedKeys, byKey, catalog, group);
   const byokProviders = payload?.byok_providers || [];
-  const providerIds = capability?.providers.map((item) => item.id) || [];
+  const providerOptions = capabilityProviders(capability);
+  const providerIds = providerOptions.map(item => item.id);
   const effectiveProvider =
     provider !== ALL_PROVIDERS && !providerIds.includes(provider)
       ? ALL_PROVIDERS
       : provider;
   const capabilityModels = capability ? flatten(capability) : [];
   const allModels = capabilityModels
-    .filter((model) => effectiveProvider === ALL_PROVIDERS || model.provider === effectiveProvider)
+    .filter((model) => effectiveProvider === ALL_PROVIDERS || offerProviderKey(model) === effectiveProvider)
     .filter((model) => !query.trim() || matchesModel(query, model));
   const partitioned = partitionOfferModels(allModels, byokProviders);
   const offerGroups = groupOffers(partitioned.selectable, PROVIDER_DISPLAY_ORDER);
@@ -992,9 +1020,9 @@ export function ModelGroupManager({
                   >
                     {tt("全部供应商")} {capabilitySelectableCount}
                   </button>
-                  {capability.providers.map((item) => {
+                  {providerOptions.map((item) => {
                     const selectableHere = capabilityModels.filter(
-                      (model) => model.provider === item.id && canSelect(model, byokProviders),
+                      (model) => offerProviderKey(model) === item.id && canSelect(model, byokProviders),
                     ).length;
                     return (
                       <button

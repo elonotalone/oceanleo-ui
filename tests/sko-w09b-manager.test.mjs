@@ -712,7 +712,7 @@ test("SkillsManager: empty state offers the Add menu; signed out shows a sign-in
 // 3. Official library + detail
 // ---------------------------------------------------------------------------
 
-test("OfficialSkillLibraryDialog: tabs, search, added badge, card → detail → add", async () => {
+test("OfficialSkillLibraryDialog: category dropdown, search, added badge, card → detail → add", async () => {
   resetServer();
   server.official = [
     official("deep-dossier", "research"),
@@ -731,8 +731,10 @@ test("OfficialSkillLibraryDialog: tabs, search, added badge, card → detail →
   try {
     const dlg = document.querySelector("[data-testid='official-skill-library']");
     assert.ok(dlg);
-    const tabs = [...dlg.querySelectorAll("[role='tab']")].map((t) => t.textContent.trim());
-    assert.deepEqual(tabs, ["全部", "研究与情报", "数据与金融"]);
+    const category = dlg.querySelector("[data-collection-filter='official-skill-category']");
+    assert.ok(category, "category dropdown shares the search toolbar");
+    assert.ok(category.closest("[data-config-toolbar]").querySelector("input[type='search']"));
+    assert.equal(dlg.querySelector("[role='tablist']"), null);
     assert.equal(dlg.querySelectorAll("[data-official-skill]").length, 3);
     assert.ok(dlg.querySelector("[data-official-skill='deep-dossier'] [data-official-added]"));
     assert.equal(dlg.querySelector("[data-official-skill='chart-smith'] [data-official-added]"), null);
@@ -742,9 +744,13 @@ test("OfficialSkillLibraryDialog: tabs, search, added badge, card → detail →
     assert.equal(link.getAttribute("target"), "_blank");
     assert.match(link.getAttribute("rel"), /noopener/);
 
-    await click(dlg.querySelector("[data-category-tab='data']"));
+    await click(category);
+    const options = [...document.querySelectorAll("[role='option']")];
+    assert.deepEqual(options.map((o) => o.textContent.trim()), ["全部", "研究与情报", "数据与金融"]);
+    await click(options.find((o) => o.textContent.trim() === "数据与金融"));
     assert.deepEqual([...dlg.querySelectorAll("[data-official-skill]")].map((c) => c.getAttribute("data-official-skill")), ["chart-smith"]);
-    await click(dlg.querySelector("[data-category-tab='all']"));
+    await click(category);
+    await click([...document.querySelectorAll("[role='option']")].find((o) => o.textContent.trim() === "全部"));
     await typeInto(dlg.querySelector("[data-config-toolbar-search] input[type='search']"), "verifier");
     assert.deepEqual([...dlg.querySelectorAll("[data-official-skill]")].map((c) => c.getAttribute("data-official-skill")), ["source-verifier"]);
 

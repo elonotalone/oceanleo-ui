@@ -666,6 +666,8 @@ export function CollectionFilterSelect(props: {
   /** 值等于它时视作「未筛选」。用 "all" 当全部的调用方传 "all"；不传以 "" 为未筛选。 */
   defaultValue?: string;
   searchable?: boolean;
+  /** Compact control for inline composer actions; keeps the same menu and keyboard behavior. */
+  size?: "default" | "compact";
   accent?: string;
   disabled?: boolean;
 }): ReactElement {
@@ -831,6 +833,7 @@ export function CollectionFilterSelect(props: {
           }
         }}
         className={collectionFilterTriggerClass({ filtered, open })}
+        style={props.size === "compact" ? { height: 28, minHeight: 28, paddingInline: 9, borderRadius: 8, fontSize: 12, maxWidth: "9.5rem" } : undefined}
       >
         <CollectionFilterTriggerFace id={valueId} text={shownValue} open={open} />
       </button>

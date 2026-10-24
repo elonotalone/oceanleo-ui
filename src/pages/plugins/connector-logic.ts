@@ -109,8 +109,8 @@ export function oauthWaitOutcome(input: {
   return "waiting";
 }
 
-export function isConnectionStale(probe: { ok?: boolean } | null | undefined): boolean {
-  return Boolean(probe && probe.ok === false);
+export function isConnectionStale(probe: { ok?: boolean; needs_reauth?: boolean } | null | undefined): boolean {
+  return Boolean(probe?.ok === false && probe.needs_reauth === true);
 }
 
 /**

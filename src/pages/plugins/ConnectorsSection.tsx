@@ -26,7 +26,6 @@ import {
   OAUTH_POLL_MS,
   OAUTH_WAIT_MS,
   credentialsArePrimaryPath,
-  helpUrlIsPrimaryPath,
   isConnectionStale,
   oauthConnectionLanded,
   oauthWaitOutcome,
@@ -90,6 +89,9 @@ export function useConnectorController({
   const oauthSettledRef = useRef(false);
   const oauthStartedAtRef = useRef<number | null>(null);
   const oauthBeforeRef = useRef<McpConnection | undefined>(undefined);
+  const probeSequenceRef = useRef(0);
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => () => { probeSequenceRef.current += 1; }, []);
 
   const returnOrigin = mcpOauthReturnOrigin();
 
@@ -129,23 +131,25 @@ export function useConnectorController({
   const connByConnector = new Map(connections.map((c) => [c.connector_id, c]));
 
   const runProbe = useCallback(
-    async (connectorId: string, silentOk = false) => {
+    async (connectorId: string) => {
+      const sequence = ++probeSequenceRef.current;
       setProbing(true);
       setProbingId(connectorId);
       const res = await probeMcp(connectorId);
+      if (sequence !== probeSequenceRef.current) return;
       setProbing(false);
       setProbingId("");
       const stale = isConnectionStale(res);
-      setProbeFailed(stale);
-      setProbeError(stale ? res.error || "" : "");
-      markStale(connectorId, stale);
-      if (stale) {
-        toast.error(res.error || tt("连接已失效，请重新授权"));
+      if (selectedIdRef.current === connectorId) {
+        setProbeFailed(stale);
+        setProbeError(!res.ok ? tt(res.error || "网络错误，请稍后再试。") : "");
+      }
+      if (res.ok || stale) markStale(connectorId, stale);
+      if (!res.ok) {
+        toast.error(tt(res.error || "网络错误，请稍后再试。"));
         return;
       }
-      if (!silentOk) {
-        toast.success(tt("连接正常 · {n} 个工具", { n: res.tools_count ?? 0 }));
-      }
+      toast.success(tt("连接正常 · {n} 个工具", { n: res.tools_count ?? 0 }));
       await loadConnections();
     },
     [loadConnections, markStale, toast, tt],
@@ -154,6 +158,10 @@ export function useConnectorController({
   const openConnector = useCallback(
     (c: McpConnectorMeta) => {
       const existing = connByConnector.get(c.id);
+      selectedIdRef.current = c.id;
+      probeSequenceRef.current += 1;
+      setProbing(false);
+      setProbingId("");
       setSelected(c);
       setConnToken("");
       setConnUrl(existing?.endpoint || "");
@@ -163,9 +171,8 @@ export function useConnectorController({
       setProbeError("");
       setConnectError("");
       setConnectToolsCount(null);
-      if (existing) void runProbe(c.id, true);
     },
-    [connByConnector, runProbe, tt],
+    [connByConnector, tt],
   );
 
   useEffect(() => {
@@ -288,7 +295,9 @@ export function useConnectorController({
       return;
     }
     const needsToken = c.auth !== "url" && c.auth !== "none";
-    if (needsToken && !connToken.trim() && !connByConnector.get(c.id)) {
+    const existing = connByConnector.get(c.id);
+    const canReuseToken = existing && existing.auth_kind !== "oauth" && connUrl.trim() === (existing.endpoint || "");
+    if (needsToken && !connToken.trim() && !canReuseToken) {
       setConnectToolsCount(null);
       setConnectError(tt("请填写该连接器所需的 Token / API Key"));
       return;
@@ -302,6 +311,7 @@ export function useConnectorController({
         token: connToken.trim(),
         endpoint: connUrl.trim(),
         label: connLabel.trim() || tt(c.name),
+        auth_header: connByConnector.get(c.id)?.auth_header || "",
       });
       if (!res.ok) {
         setConnectError(res.error || tt("连接失败"));
@@ -397,6 +407,9 @@ export function useConnectorController({
           onLabel={setConnLabel}
           onAdvanced={() => setShowAdvanced((v) => !v)}
           onClose={() => {
+            selectedIdRef.current = null;
+            probeSequenceRef.current += 1;
+            oauthSettledRef.current = true;
             setAuthorizing(false);
             setSelected(null);
           }}
@@ -596,6 +609,10 @@ export function ConnectorDialog({
   ) : null;
   const manualFields = (
     <>
+      <div>
+        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("名称")}</label>
+        <input className={FIELD} value={connLabel} onChange={(e) => onLabel(e.target.value)} />
+      </div>
       {connector.needs_endpoint && (
         <div>
           <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">
@@ -616,7 +633,7 @@ export function ConnectorDialog({
             type="password"
             className={FIELD}
             placeholder={
-              connection
+              connection && connection.auth_kind !== "oauth" && connUrl.trim() === (connection.endpoint || "")
                 ? tt("已保存（{fingerprint}）— 留空则沿用", { fingerprint: connection.fingerprint })
                 : tt("粘贴你的 Token / API Key")
             }
@@ -625,16 +642,38 @@ export function ConnectorDialog({
           />
         </div>
       )}
-      <div>
-        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("名称")}</label>
-        <input
-          className={FIELD}
-          value={connLabel}
-          onChange={(e) => onLabel(e.target.value)}
-        />
-      </div>
     </>
   );
+
+  if (connector.id === "custom") {
+    return (
+      <InTreeDialog onClose={onClose} testId="mcp-connect" zClassName={zClassName}>
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <ConnectorIcon icon={connector.icon} id={connector.id} label={tt(connector.name)} />
+            <h3 className="text-[16px] font-semibold text-neutral-900">{tt(connector.name)}</h3>
+          </div>
+          <button type="button" aria-label={tt("关闭")} onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100">✕</button>
+        </div>
+        <form onSubmit={(event) => { event.preventDefault(); onConnect(); }}>
+          <div className="space-y-4">{manualFields}</div>
+          {probeError || connectStatus ? (
+            <div role="status" data-mcp-connect-status={connectStatus?.kind || "error"} className={`mt-4 rounded-xl px-3 py-2 text-[13px] ${connectStatus?.kind === "ok" ? "bg-emerald-50 text-emerald-800" : connectStatus?.kind === "connecting" ? "bg-neutral-50 text-neutral-600" : "bg-red-50 text-red-800"}`}>
+              {connectStatus?.text || probeError}
+            </div>
+          ) : null}
+          {connection ? <div className="mt-5 flex flex-wrap gap-1 border-t border-neutral-100 pt-3">{manageButtons}</div> : null}
+          <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4">
+            <button type="button" onClick={onClose} className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50">{tt("取消")}</button>
+            {oauth ? (
+              <button type="button" data-mcp-oauth disabled={oneClickDisabled(connector.needs_endpoint, connUrl, authorizing)} onClick={onOauth} className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">{tt(primaryOauthLabel({ authorizing, connected: Boolean(connection), stale }))}</button>
+            ) : null}
+            <button type="submit" data-mcp-connect disabled={connecting || !connUrl.trim()} className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50">{connecting ? tt("连接中…") : connection ? tt("保存") : tt("连接并验证")}</button>
+          </div>
+        </form>
+      </InTreeDialog>
+    );
+  }
 
   return (
     <InTreeDialog onClose={onClose} wide testId="mcp-connect" zClassName={zClassName}>
@@ -655,25 +694,9 @@ export function ConnectorDialog({
       {connector.docs ? (
         <div className="mb-4 text-[13px] leading-relaxed text-neutral-700">{tt(connector.docs)}</div>
       ) : null}
-      {credentialsPrimary && helpUrlIsPrimaryPath(false) && (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-950">
-          <p>{tt("这家需要你自己去 {name} 拿凭证，不能一键授权。", { name: tt(connector.name) })}</p>
-          {connector.help_url ? (
-            <a
-              href={connector.help_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-block font-medium text-sky-700 underline hover:text-sky-800"
-            >
-              {tt("去对方后台获取凭证 ↗")}
-            </a>
-          ) : null}
-        </div>
-      )}
-      {probeFailed && (
+      {probeError && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-[13px] text-red-800">
-          <p>{tt("连接已失效，请重新授权")}</p>
-          {probeError ? <p className="mt-1 text-[12px] text-red-700">{probeError}</p> : null}
+          <p>{probeError}</p>
         </div>
       )}
       {connectStatus ? (

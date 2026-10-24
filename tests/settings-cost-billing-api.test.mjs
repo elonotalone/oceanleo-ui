@@ -68,7 +68,8 @@ const authStub = dataModule(`
   export function browserClient() {
     return {
       auth: {
-        getUser: async () => ({ data: { user: { email: "designer@oceanleo.com" } } }),
+        getUser: async () => { globalThis.__apiGetUserCalls = (globalThis.__apiGetUserCalls || 0) + 1; return { data: { user: { id: "user-1", email: "designer@oceanleo.com" } } }; },
+        getSession: async () => ({ data: { session: { user: { id: "user-1", email: "designer@oceanleo.com" } } } }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       },
     };
@@ -78,7 +79,7 @@ const authStub = dataModule(`
   export async function getCredits() { return { ok: true, data: { balance: 12.5, currency: "CNY" } }; }
   export async function getCreditHistory() { return { ok: true, data: { events: [event] } }; }
   export async function getUsageBySite() { return { ok: true, data: { total: { requests: 3 } } }; }
-  export async function getModelCatalog() { return { ok: true, data: { providers: [], model_count: 0 } }; }
+  export async function getModelCatalog() { globalThis.__apiCatalogCalls = (globalThis.__apiCatalogCalls || 0) + 1; return { ok: true, data: { providers: [], model_count: 0 } }; }
   export function pricingDocUrl() { return "#"; }
   export function getAudit() { return Promise.resolve({ ok: true, data: null }); }
   export async function signOutEverywhere() {}
@@ -390,10 +391,14 @@ test("ApiPage pane：模型选择 | BYOK，?guide=1 打开 BYOK（不再嵌厂�
 });
 
 test("ApiPage 默认页签是模型选择，不含 token 余额", async () => {
+  globalThis.__apiCatalogCalls = 0;
+  globalThis.__apiGetUserCalls = 0;
   const view = await render(React.createElement(ApiPage, { variant: "pane" }), "/settings/ai-models");
   assert.equal(view.host.textContent.includes("token 余额"), false);
   assert.ok(view.host.querySelector("[data-testid=model-market]"));
   assert.ok(view.host.querySelector("[data-api-selection]"));
   assert.equal(view.host.querySelector("[data-testid=byok-keys]"), null);
+  assert.equal(globalThis.__apiCatalogCalls, 1, "restoring identity does not download the catalog twice");
+  assert.equal(globalThis.__apiGetUserCalls, 0, "model settings uses the local session without a blocking identity request");
   view.cleanup();
 });

@@ -233,19 +233,24 @@ export async function toggleMcp(
 
 export async function probeMcp(
   connectorId: string,
-): Promise<{ ok: boolean; error?: string; tools_count?: number }> {
+): Promise<{ ok: boolean; error?: string; tools_count?: number; needs_reauth?: boolean }> {
   const headers = await authHeader();
   if (!headers.Authorization) return { ok: false, error: "请先登录" };
-  const res = await fetch(`${GATEWAY_BASE}/v1/mcp/probe`, {
-    credentials: "include",
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ connector_id: connectorId }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, error: mcpGatewayDetail(data) || `HTTP ${res.status}` };
-  if (data?.ok === false) {
-    return { ok: false, error: mcpGatewayDetail(data) || "探活失败" };
+  try {
+    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/probe`, {
+      credentials: "include",
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ connector_id: connectorId }),
+      signal: AbortSignal.timeout(CONNECT_MCP_TIMEOUT_MS),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: mcpGatewayDetail(data) || `HTTP ${res.status}` };
+    if (data?.ok === false) {
+      return { ok: false, error: mcpGatewayDetail(data) || "探活失败", needs_reauth: data.needs_reauth === true };
+    }
+    return { ok: true, tools_count: data?.tools_count };
+  } catch (err) {
+    return { ok: false, error: "网络错误，请稍后再试。" };
   }
-  return { ok: true, tools_count: data?.tools_count };
 }

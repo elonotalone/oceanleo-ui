@@ -228,7 +228,7 @@ async function withDom(run, { orgApi = {}, storage = {} } = {}) {
       toasts: () => globalThis.__W12_TOASTS__,
       html: () => container.innerHTML,
       find: (selector) => container.querySelector(selector),
-      findAll: (selector) => [...container.querySelectorAll(selector)],
+      findAll: (selector) => [...window.document.querySelectorAll(selector)],
       click: (selector) => {
         const node = container.querySelector(selector);
         assert.ok(node, `点不到 ${selector}`);
@@ -236,17 +236,14 @@ async function withDom(run, { orgApi = {}, storage = {} } = {}) {
           node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
         );
       },
-      pick: (selector, value) => {
+      pick: async (selector, value) => {
         const node = container.querySelector(selector);
         assert.ok(node, `找不到下拉 ${selector}`);
-        const setter = Object.getOwnPropertyDescriptor(
-          window.HTMLSelectElement.prototype,
-          "value",
-        ).set;
-        return act(async () => {
-          setter.call(node, value);
-          node.dispatchEvent(new window.Event("change", { bubbles: true }));
-        });
+        await act(async () => node.click());
+        const label = value === "" ? "个人钱包" : value === "org-a" ? "海狮科技" : "蓝鲸传媒";
+        const option = [...window.document.querySelectorAll('[role="option"]')].find((item) => item.textContent === label);
+        assert.ok(option, `找不到选项 ${label}`);
+        await act(async () => option.click());
       },
     });
   } finally {
@@ -313,20 +310,21 @@ test("零组织：LeoComposer 那一排挂不挂选择器，innerHTML 逐字相�
 
 test("多组织：选项数 = 组织数 + 1（个人钱包恒在第一个）", async () => {
   await withDom(
-    async ({ render, findAll, find }) => {
+    async ({ render, findAll, find, click }) => {
       await render(Controlled, {});
-      const options = findAll("option");
+      await click('[data-collection-filter="payer"]');
+      const options = findAll('[role="option"]');
       assert.equal(options.length, 3, "两个组织应得到 3 个选项");
-      assert.equal(options[0].value, "", "第一个必须是个人钱包（空串）");
+      assert.equal(options[0].getAttribute("aria-selected"), "true", "第一个必须是个人钱包（空串）");
       assert.equal(options[0].textContent, "个人钱包");
       assert.deepEqual(
-        options.slice(1).map((node) => [node.value, node.textContent]),
+        options.slice(1).map((node) => node.textContent),
         [
-          ["org-a", "海狮科技"],
-          ["org-b", "蓝鲸传媒"],
+          "海狮科技",
+          "蓝鲸传媒",
         ],
       );
-      assert.ok(find("select"), "多组织时必须渲染一个下拉");
+      assert.ok(find('[data-collection-filter="payer"]'), "多组织时必须渲染一个下拉");
     },
     { orgApi: { listMyOrgs: async () => [org("org-a", "海狮科技"), org("org-b", "蓝鲸传媒")] } },
   );
@@ -339,14 +337,14 @@ test("选中项写进 localStorage，下次默认选它", async () => {
   await withDom(
     async ({ render, pick, window, find }) => {
       await render(Controlled, {});
-      assert.equal(find("select").value, "", "没记过时默认个人钱包");
-      await pick("select", "org-b");
+      assert.equal(find('[data-collection-filter="payer"]').dataset.value, "", "没记过时默认个人钱包");
+      await pick('[data-collection-filter="payer"]', "org-b");
       assert.equal(
         window.localStorage.getItem(PAYER_LAST_KEY),
         "org-b",
         "手选之后必须记在 oceanleo.payer.last 上",
       );
-      assert.equal(find("select").value, "org-b");
+      assert.equal(find('[data-collection-filter="payer"]').dataset.value, "org-b");
     },
     { orgApi: { listMyOrgs } },
   );
@@ -356,7 +354,7 @@ test("选中项写进 localStorage，下次默认选它", async () => {
   await withDom(
     async ({ render, find }) => {
       await render(Controlled, { onValue: (v) => seen.push(v) });
-      assert.equal(find("select").value, "org-b", "下次默认应当是上次选的组织");
+      assert.equal(find('[data-collection-filter="payer"]').dataset.value, "org-b", "下次默认应当是上次选的组织");
       assert.equal(seen.at(-1), "org-b", "记忆必须经 onChange 通知出去，宿主才发得对");
     },
     { orgApi: { listMyOrgs }, storage: { [PAYER_LAST_KEY]: "org-b" } },
@@ -367,7 +365,7 @@ test("选回个人钱包：记忆被清掉，而不是记下一个空串", async
   await withDom(
     async ({ render, pick, window }) => {
       await render(Controlled, {});
-      await pick("select", "");
+      await pick('[data-collection-filter="payer"]', "");
       assert.equal(
         window.localStorage.getItem(PAYER_LAST_KEY),
         null,
@@ -391,7 +389,7 @@ test("记忆里那个组织已停用：自动回落个人，并清掉记忆", as
       // 列表里只剩「海狮科技」——「蓝鲸传媒」已停用或此人已被移出，
       // 按 §3.3 的 orgs_of 契约它就不会再出现在这里。
       await render(Controlled, { initial: "org-b" });
-      assert.equal(find("select").value, "", "失效的组织必须回落到个人钱包");
+      assert.equal(find('[data-collection-filter="payer"]').dataset.value, "", "失效的组织必须回落到个人钱包");
       assert.equal(
         window.localStorage.getItem(PAYER_LAST_KEY),
         null,
@@ -413,7 +411,7 @@ test("余额读失败：只显示组织名，不显示余额、也不显示错�
   await withDom(
     async ({ render, find, container, toasts }) => {
       await render(Controlled, { initial: "org-a" });
-      assert.equal(find("select").value, "org-a", "余额挂了不该影响选择本身");
+      assert.equal(find('[data-collection-filter="payer"]').dataset.value, "org-a", "余额挂了不该影响选择本身");
       const text = container.textContent || "";
       assert.ok(text.includes("海狮科技"), "组织名照常显示");
       assert.doesNotMatch(text, /¥|\$/, "读不到余额就一个金额都别显示");
@@ -488,7 +486,7 @@ test("LeoComposer：选了组织之后，org_id 就是那个组织", async () =>
         onChange() {},
         onSubmit: (...args) => calls.push(args),
       });
-      await pick('[data-payer-selector] select', "org-b");
+      await pick('[data-collection-filter="payer"]', "org-b");
       await click('button[aria-label="发送"]');
 
       assert.equal(calls.at(-1)[1].org_id, "org-b");
@@ -534,12 +532,14 @@ test("选择器挂在左组（会换行的那半边），发送键那半边不�
   );
 });
 
-test("键盘可达：用的是原生 select，且有 aria-label", async () => {
+test("键盘可达：共享筛选下拉有明确标签和紧凑尺寸", async () => {
   await withDom(
     async ({ render, find }) => {
       await render(Controlled, {});
-      const node = find("select");
-      assert.ok(node, "原生 select 自带键盘可达与屏幕阅读器支持");
+      const node = find('[data-collection-filter="payer"]');
+      assert.ok(node, "使用共享筛选下拉");
+      assert.equal(node.getAttribute("aria-haspopup"), "listbox");
+      assert.equal(node.style.height, "28px");
       assert.equal(node.getAttribute("aria-label"), "这次谁付钱");
       assert.ok(
         !node.hasAttribute("disabled") && node.tabIndex >= 0,

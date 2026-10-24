@@ -13,6 +13,7 @@ import { currencySymbol, formatMinor } from "../../lib/money";
 import { ConfigDialogShell } from "../../shell/skills/kit/ConfigDialogShell";
 import { ConfigEmptyState } from "../../shell/skills/kit/ConfigEmptyState";
 import { ConfigToolbar } from "../../shell/skills/kit/ConfigToolbar";
+import { CollectionFilterSelect } from "../../shell/collection-chrome";
 import { ConnectorIcon } from "./connector-icons";
 import {
   CATALOG_ALL,
@@ -164,35 +165,20 @@ export function ConnectorCatalogDialog({
       title={tt("连接器目录")}
       subtitle={tt("连接应用与 API（MCP）。连接后 Agent 在任务中可直接调用该服务的工具。")}
       toolbar={
-        <div className="space-y-4">
           <ConfigToolbar
             search={{ value: q, onChange: setQ, placeholder: tt("搜索连接器（名称、描述、分类）") }}
+            filter={
+              <CollectionFilterSelect
+                label={tt("分类")}
+                name="connector-category"
+                value={tab}
+                defaultValue={CATALOG_ALL}
+                allLabel={tt("全部分类")}
+                options={tabs.filter((id) => id !== CATALOG_ALL).map((id) => ({ value: id, label: tabLabel(id) }))}
+                onChange={setTab}
+              />
+            }
           />
-          <div
-            role="tablist"
-            aria-label={tt("分类")}
-            data-connector-catalog-tabs
-            className="flex flex-wrap gap-1.5"
-          >
-            {tabs.map((id) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                data-connector-catalog-tab={id}
-                onClick={() => setTab(id)}
-                className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 ${
-                  tab === id
-                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                    : "bg-white text-neutral-600 ring-1 ring-neutral-200 hover:bg-neutral-50 dark:bg-neutral-900 dark:text-neutral-300 dark:ring-neutral-700"
-                }`}
-              >
-                {tabLabel(id)}
-              </button>
-            ))}
-          </div>
-        </div>
       }
     >
       <div data-connector-catalog className="space-y-8">

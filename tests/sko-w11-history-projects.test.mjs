@@ -254,11 +254,11 @@ test("侧栏显式传 project_scope=all，项目任务成行并带项目标注",
     // 名字截断：标签有最大宽度，名字在 truncate 容器里。
     assert.match(tag.className, /max-w-/);
 
-    // 网关降级（project: null）：仍成行，标签用通用字样 + 📁。
+    // 网关降级（project: null）：仍成行，标签只用通用字样，不强加文件夹图标。
     const legacy = row(view.container, "t-legacy-proj");
     const legacyTag = legacy.querySelector('[data-history-project-tag="p2"]');
     assert.ok(legacyTag);
-    assert.match(legacyTag.textContent, /📁/);
+    assert.doesNotMatch(legacyTag.textContent, /📁/);
     assert.match(legacyTag.textContent, /项目/);
 
     // project.id 与 project_id 对不上：只认 project_id，不显示错名。

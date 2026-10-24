@@ -121,9 +121,14 @@ export function ApiPage({
   const frameClass = pane ? "min-h-0" : "px-8 py-6";
   const paneMark = pane ? "" : undefined;
   const [apiPane, setApiPane] = useState<ApiPane>(() => readApiPane());
+  const [openedPanes, setOpenedPanes] = useState<ApiPane[]>(() => [readApiPane()]);
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
+
+  useEffect(() => {
+    setOpenedPanes((opened) => opened.includes(apiPane) ? opened : [...opened, apiPane]);
+  }, [apiPane]);
 
   useEffect(() => {
     const client = browserClient();
@@ -131,17 +136,30 @@ export function ApiPage({
       setChecked(true);
       return;
     }
-    void client.auth.getUser().then(({ data }) => {
-      setUser(data.user ?? null);
+    let active = true;
+    let authChanged = false;
+    // This is display state; the gateway validates every authenticated request.
+    // Restoring the local session avoids waiting for another auth network call.
+    void client.auth.getSession().then(({ data }) => {
+      if (!active || authChanged) return;
+      setUser(data.session?.user ?? null);
+      setChecked(true);
+    }).catch(() => {
+      if (active && !authChanged) setChecked(true);
+    });
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      authChanged = true;
+      setUser(session?.user ?? null);
       setChecked(true);
     });
-    const { data } = client.auth.onAuthStateChange((_event, session) =>
-      setUser(session?.user ?? null),
-    );
-    return () => data.subscription.unsubscribe();
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
+    if (!checked) return;
     let active = true;
     let request = 0;
     function refreshCatalog() {
@@ -157,7 +175,7 @@ export function ApiPage({
       active = false;
       window.removeEventListener(BYOK_STATUS_CHANGED_EVENT, refreshCatalog);
     };
-  }, [user?.id]);
+  }, [checked, user?.id]);
 
   useEffect(() => {
     function sync() {
@@ -213,6 +231,7 @@ export function ApiPage({
   const selection = (
     <div className="space-y-8" data-api-selection="">
       <ModelGroupManager
+        key={user?.id || "guest"}
         catalog={catalog}
         user={!!user}
         onSetupByok={() => selectApiPane("byok")}
@@ -298,8 +317,8 @@ export function ApiPage({
       {!pane && <PageHeader title={tt("AI 模型")} />}
       <div className={`${pane ? "" : "mx-auto mt-6 "}max-w-3xl space-y-6`}>
         {tabs}
-        <div hidden={apiPane !== "selection"}>{selection}</div>
-        <div hidden={apiPane !== "byok"}>{byok}</div>
+        <div hidden={apiPane !== "selection"}>{openedPanes.includes("selection") ? selection : null}</div>
+        <div hidden={apiPane !== "byok"}>{openedPanes.includes("byok") ? byok : null}</div>
       </div>
     </div>
   );

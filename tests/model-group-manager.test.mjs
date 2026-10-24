@@ -108,7 +108,7 @@ const { ModelGroupManager } = await import(
     "../lib/auth": dataModule(`
       export const MODEL_GROUP_CHANGED_EVENT = "oceanleo:model-group-changed";
       export async function getModelGroups() {
-        return globalThis.__groupsResult;
+        return globalThis.__groupsRequest ? globalThis.__groupsRequest() : globalThis.__groupsResult;
       }
       export async function getKeyProviders() {
         return { ok: true, data: { providers: globalThis.__keyProviders || [] } };
@@ -170,6 +170,7 @@ async function flush(count = 8) {
 }
 
 async function render(options = {}) {
+  globalThis.__groupsRequest = null;
   globalThis.__activated = "";
   globalThis.__savedPatch = null;
   globalThis.__updateResult = undefined;
@@ -506,7 +507,7 @@ test("custom connection beside unavailable international offer stays selectable,
   assert.equal(disabled.disabled, true);
   assert.match(disabled.textContent, /需自带 Key/);
   assert.match(view.host.querySelector('[data-model-edit-offers] [data-model-offer="bailian:ZHIPU/GLM-5.1"]').textContent, /输入 \$1 · 输出 \$4/);
-  await view.click(view.host.querySelector('[data-model-provider-chip="custom:opaque"]'));
+  await view.click(view.host.querySelector('[data-model-provider-chip="connection:opaque"]'));
   noPrompts();
   const custom = view.host.querySelector('[data-model-edit-offers] [data-model-offer="custom:opaque:my-model"]');
   assert.equal(custom.disabled, false);
@@ -529,4 +530,40 @@ test("custom connection beside unavailable international offer stays selectable,
   assert.match(reloaded.host.querySelector('[data-model-cap="chat"]').textContent, /✓2/);
   assert.doesNotMatch(reloaded.text(), /自带连接 · 厂商计费|这一类需自带 Key|添加 Key/);
   reloaded.cleanup();
+});
+
+test("same-vendor BYOK accounts have named filters and save the chosen connection without a paid substitute", async () => {
+  const ownCatalog = structuredClone(catalog);
+  const offers = ["first", "second"].map(id => ({
+    ...glmOffer("openai", "shared-model", { selectable: true, label: "Shared model" }),
+    key: `openai:connection-${id}~route`, connection_id: id,
+    connection_name: `${id} account`, model_id: "shared-model", route_id: "route",
+  }));
+  ownCatalog.groups[0].capabilities[0].providers.push({ id: "openai", label: "OpenAI", models: offers });
+  const view = await render({ catalog: ownCatalog, active_group_key: "custom:test" });
+  const first = view.host.querySelector('[data-model-provider-chip="connection:first"]');
+  const second = view.host.querySelector('[data-model-provider-chip="connection:second"]');
+  assert.match(first.textContent, /first account 1/);
+  assert.match(second.textContent, /second account 1/);
+  await view.click(second);
+  assert.equal(view.host.querySelector('[data-model-edit-offers] [data-model-offer="openai:connection-first~route"]'), null);
+  await view.click(view.host.querySelector('[data-model-edit-offers] [data-model-offer="openai:connection-second~route"]'));
+  await view.click([...view.host.querySelectorAll("button")].find(node => node.textContent === "保存组合"));
+  assert.deepEqual(globalThis.__savedPatch.patch.selection.text.chat, ["bailian:qwen", "openai:connection-second~route"]);
+  view.cleanup();
+});
+
+test("a slow availability response cannot overwrite a newer saved group", async () => {
+  const view = await render({ active_group_key: "custom:test" });
+  const old = structuredClone(globalThis.__groupsResult);
+  let resolve;
+  globalThis.__groupsRequest = () => new Promise(done => { resolve = done; });
+  await act(async () => window.dispatchEvent(new window.Event("oceanleo:byok-status-changed")));
+  const current = structuredClone(old.data);
+  current.groups[3].name = "New saved name";
+  await act(async () => window.dispatchEvent(new window.CustomEvent("oceanleo:model-group-changed", { detail: current })));
+  await act(async () => resolve(old));
+  await flush();
+  assert.match(view.host.querySelector('[data-model-group-chip="custom:test"]').textContent, /New saved name/);
+  view.cleanup();
 });

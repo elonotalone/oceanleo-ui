@@ -1,7 +1,7 @@
 "use client";
 
 // W09B · P2 — official skill library browser (contract §3.4; UI-DESIGN). Category
-// tabs (all + 10) + search; cover card grid (3:4 cover, title, two-line description,
+// category filter + search; cover card grid (3:4 cover, title, two-line description,
 // "Added" corner badge); click → `SkillDetailModal`; footer link to the portal `/skills`.
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,6 +9,7 @@ import { useLocale } from "next-intl";
 
 import { currentDomainProfile } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
+import { CollectionFilterSelect } from "../../collection-chrome";
 import {
   ConfigDialogShell,
   ConfigEmptyState,
@@ -137,39 +138,19 @@ export function OfficialSkillLibraryDialog({ open, onClose, projectId, onAdded }
           </>
         }
         toolbar={
-          <div className="flex flex-col gap-4">
-            <ConfigToolbar search={{ value: query, onChange: setQuery, placeholder: tt("搜索官方技能") }} />
-            <div
-              role="tablist"
-              aria-label={tt("分类")}
-              className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]"
-            >
-              {tabs.map((t) => {
-                const selected = t.id === tab;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    data-category-tab={t.id}
-                    onClick={() => setTab(t.id)}
-                    className="group/tab inline-flex min-h-11 shrink-0 items-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500"
-                  >
-                    <span
-                      className={`inline-flex h-8 items-center rounded-full px-3.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-                        selected
-                          ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                          : "border border-neutral-200 bg-white text-neutral-700 group-hover/tab:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:group-hover/tab:bg-neutral-800"
-                      }`}
-                    >
-                      {t.translate ? tt(t.label) : t.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <ConfigToolbar
+            search={{ value: query, onChange: setQuery, placeholder: tt("搜索官方技能") }}
+            filter={
+              <CollectionFilterSelect
+                name="official-skill-category"
+                label={tt("分类")}
+                value={tab}
+                defaultValue="all"
+                onChange={setTab}
+                options={tabs.map((t) => ({ value: t.id, label: t.translate ? tt(t.label) : t.label }))}
+              />
+            }
+          />
         }
         footer={
           <div className="flex items-center justify-between gap-3 text-[13px] text-neutral-500 dark:text-neutral-400">

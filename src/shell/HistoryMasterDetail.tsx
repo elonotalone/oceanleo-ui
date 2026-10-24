@@ -565,7 +565,7 @@ function LeoCreatedMark() {
 }
 
 /**
- * 行副标题里的项目标注（D11）：小圆角标签 = 项目图标（缺省 📁）+ 项目名（截断）。
+ * 行副标题里的项目标注（D11）：项目名（截断）和可选的自选图标。
  * 点标签进项目工作空间；点行其余位置仍打开任务（标签阻止冒泡）。
  */
 function HistoryProjectTag({
@@ -604,9 +604,9 @@ function HistoryProjectTag({
           : "bg-neutral-200/70 text-neutral-600 hover:bg-neutral-300/70 hover:text-neutral-800"
       }`}
     >
-      <span aria-hidden="true" className="shrink-0">
-        {project.icon || "📁"}
-      </span>
+      {project.icon && project.icon !== "📁" ? (
+        <span aria-hidden="true" className="shrink-0">{project.icon}</span>
+      ) : null}
       <span className="min-w-0 truncate">{name}</span>
     </a>
   );

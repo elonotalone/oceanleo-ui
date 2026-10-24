@@ -1,9 +1,8 @@
 "use client";
 
-// 设置中心「消息」栏正文：提醒设置（W03）、拉黑名单入口、隐私说明。
+// 设置中心「消息」栏正文：提醒设置、拉黑名单和通话检测。
 import { useUI } from "../../i18n/ui/useUI";
 import { NotifySettingsPanel } from "./notify/NotifySettingsPanel";
-import { PrivacySummary } from "./PrivacyNotice";
 import { openCallTest } from "./call/diagnostics/diagnostics-store";
 
 export function SettingsView({ onOpenBlocks }: { onOpenBlocks: () => void }) {
@@ -38,10 +37,6 @@ export function SettingsView({ onOpenBlocks }: { onOpenBlocks: () => void }) {
         >
           {tt("打开通话检测")}
         </button>
-      </section>
-      <section>
-        <div className="mb-2 text-[13px] font-semibold tracking-tight">{tt("隐私说明")}</div>
-        <PrivacySummary />
       </section>
     </div>
   );

@@ -27,7 +27,7 @@ import {
   persistPayerOrgId,
   persistedPayerOrgId,
 } from "../lib/payer";
-import { IconChevronDown } from "./icons";
+import { CollectionFilterSelect } from "./collection-chrome";
 import { useUI } from "../i18n/ui/useUI";
 import { useToast } from "../ui/Toast";
 
@@ -149,23 +149,17 @@ export function PayerSelector({ value, onChange, className = "" }: PayerSelector
       className={`relative inline-flex min-w-0 items-center ${className}`}
       data-payer-selector=""
     >
-      <select
+      <CollectionFilterSelect
         value={value}
-        onChange={(e) => handleChange(e.target.value)}
-        aria-label={tt("这次谁付钱")}
-        title={tt("这次谁付钱")}
-        className="max-w-[9.5rem] cursor-pointer appearance-none truncate rounded-lg border border-neutral-200 bg-white py-1 pl-2.5 pr-6 text-[12px] text-neutral-600 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-700 focus:border-neutral-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
-      >
-        <option value={PERSONAL_PAYER}>{personalLabel}</option>
-        {orgs.map((org) => (
-          <option key={org.id} value={org.id}>
-            {org.name}
-          </option>
-        ))}
-      </select>
-      <span className="pointer-events-none absolute right-1.5 flex items-center text-neutral-400">
-        <IconChevronDown />
-      </span>
+        onChange={handleChange}
+        name="payer"
+        label={tt("这次谁付钱")}
+        size="compact"
+        options={[
+          { value: PERSONAL_PAYER, label: personalLabel },
+          ...orgs.map((org) => ({ value: org.id, label: org.name })),
+        ]}
+      />
       {/* 余额跟在控件右边而不是塞进 option 文本里：`<option>` 在各平台上都不让
           排版，塞进去会把团队名挤没；放外面还能在窄屏上单独隐藏（P3）。 */}
       {selected && balanceText && (

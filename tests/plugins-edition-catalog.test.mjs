@@ -234,12 +234,14 @@ test("CN：设置页上不再平铺阿里云市场；目录弹窗里「阿里云
     assert.equal(find("[data-mcp-catalog]"), null, "页面上不再有市场网格（不再是另一大块）");
     assert.ok(!text().includes("书旗"));
     const catalog = await openCatalog(ctx);
-    const tab = catalog.querySelector('[data-connector-catalog-tab="aliyun-marketplace"]');
-    assert.ok(tab, "国内版目录有「阿里云市场」页签");
+    const filter = catalog.querySelector('[data-collection-filter="connector-category"]');
+    await click(filter);
+    const tab = find('[role="option"][data-value="aliyun-marketplace"]');
+    assert.ok(tab, "国内版目录分类下拉有「阿里云市场」");
     assert.match(tab.textContent || "", /阿里云市场/);
     assert.ok(catalog.querySelector("[data-connector-catalog-marketplace] [data-mcp-catalog-grid]"), "「全部」页签里也列出市场条目");
     await click(tab);
-    assert.equal(tab.getAttribute("aria-selected"), "true");
+    assert.equal(filter.getAttribute("data-value"), "aliyun-marketplace");
     assert.equal(catalog.querySelector('[data-mcp-connector="github"]'), null, "「阿里云市场」页签只列市场条目");
     assert.ok(findAll("[data-mcp-catalog-card]").length === 2);
   }, "cn");

@@ -27,6 +27,9 @@ export interface SearchableModel {
   id?: string;
   label?: string;
   provider_label?: string;
+  connection_name?: string;
+  display_name?: string;
+  model_id?: string;
 }
 
 export interface OfferModel extends SearchableModel {
@@ -77,6 +80,9 @@ export function matchesModel(query: string, model: SearchableModel): boolean {
     canonical(model.label || ""),
     squash(model.id || ""),
     squash(model.provider_label || ""),
+    canonical(model.model_id || ""),
+    squash(model.connection_name || ""),
+    squash(model.display_name || ""),
   ].some((haystack) => haystack.includes(needle));
 }
 

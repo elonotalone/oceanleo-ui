@@ -221,8 +221,8 @@ test("页面只列我已连接的连接器：状态、开关、…菜单（重�
   });
 });
 
-test("探活失败 → 卡片显示「已失效」", async () => {
-  globalThis.__W10_MCP_PROBE__ = async () => ({ ok: false, error: "401" });
+test("明确的授权失败 → 卡片显示「已失效」", async () => {
+  globalThis.__W10_MCP_PROBE__ = async () => ({ ok: false, error: "401", needs_reauth: true });
   await withDom(async ({ render, find, click }) => {
     await render();
     const mine = find('[data-my-connector="custom"]');
@@ -230,6 +230,21 @@ test("探活失败 → 卡片显示「已失效」", async () => {
     await click(find('[data-connector-menu="probe"]'));
     assert.equal(find('[data-my-connector="custom"]').getAttribute("data-my-connector-status"), "stale");
     assert.match(find('[data-my-connector="custom"]').textContent || "", /已失效/);
+  });
+});
+
+test("临时连接失败不标记授权失效，打开连接器不会自动探活", async () => {
+  let probes = 0;
+  globalThis.__W10_MCP_PROBE__ = async () => { probes += 1; return { ok: false, error: "HTTP 503" }; };
+  await withDom(async ({ render, find, click }) => {
+    await render();
+    await click(find('[data-my-connector="custom"] [data-connector-row-menu] button'));
+    await click(find('[data-connector-menu="reconnect"]'));
+    assert.equal(probes, 0);
+    await click(find('[data-mcp-probe]'));
+    assert.equal(probes, 1);
+    assert.notEqual(find('[data-my-connector="custom"]').getAttribute("data-my-connector-status"), "stale");
+    assert.match(find('[data-in-tree-dialog="mcp-connect"]').textContent, /HTTP 503/);
   });
 });
 
@@ -243,13 +258,17 @@ test("没有连接器：空状态 + 唯一的「+ 添加连接器」", async () 
   });
 });
 
-test("目录弹窗：分类页签 + 一键授权小标签；未连接的卡打开后有连接 / 一键授权入口", async () => {
+test("目录弹窗：分类下拉与搜索并列；未连接的卡打开后有连接 / 一键授权入口", async () => {
   await withDom(async ({ render, find, click }) => {
     await render();
     const catalog = await openCatalog(find, click);
-    assert.ok(catalog.querySelector('[data-connector-catalog-tab="all"]'), "有「全部」页签");
-    assert.ok(catalog.querySelector('[data-connector-catalog-tab="开发"]'), "注册表分类成为页签");
-    assert.equal(catalog.querySelector('[data-connector-catalog-tab="aliyun-marketplace"]'), null, "海外版没有阿里云市场页签");
+    const filter = catalog.querySelector('[data-collection-filter="connector-category"]');
+    assert.ok(filter, "分类使用统一下拉");
+    assert.equal(filter.getAttribute("data-value"), "all");
+    await click(filter);
+    assert.ok(find('[role="option"][data-value="开发"]'));
+    assert.equal(find('[role="option"][data-value="aliyun-marketplace"]'), null);
+    await click(find('[role="option"][data-value="all"]'));
     const github = catalog.querySelector('[data-mcp-connector="github"]');
     assert.ok(github, "目录里有未连接的 GitHub");
     assert.ok(github.querySelector("[data-mcp-oauth-tag]"), "支持一键授权的卡上只留小标签");
@@ -280,8 +299,8 @@ test("添加菜单「自定义 MCP 服务器」：主按钮是凭证连接，一
     assert.ok(dialog, "连接对话框必须出现");
     const connectBtn = dialog.querySelector("button[data-mcp-connect]");
     assert.ok(connectBtn, "custom 的主路径必须是凭证按钮");
-    assert.match(connectBtn.textContent || "", /用凭证连接并验证/);
-    assert.equal(dialog.querySelector("[data-mcp-oauth]"), null, "一键授权不能当 custom 的主按钮");
+    assert.match(connectBtn.textContent || "", /保存/);
+    assert.ok(dialog.querySelector("[data-mcp-oauth]"), "支持标准远程授权的 custom 保留一键授权");
   });
 });
 
