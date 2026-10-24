@@ -624,7 +624,7 @@ export function PlaygroundDetail({
         }}
         // agent 默认按其原生分类（技术工程 / 内容创作…18 类）分桶，保留细粒度分类。
         nativeFirst={tab === "skill"}
-        nativeLabel={tt("按技能")}
+        nativeLabel={tt("按分类")}
       />
 
       {/* 卡片右上角「prompt」→ 复用共享 SkillPromptPanel（modal 形态，可预览/编辑/

@@ -21,7 +21,7 @@ export function filterRegistryItems<T extends {
   desc: string;
   category: string;
   supports_oauth?: boolean;
-}>(items: T[], term: string, oauthOnly: boolean): T[] {
+}>(items: T[], term: string, oauthOnly = false): T[] {
   const q = term.trim().toLowerCase();
   return items.filter((c) => {
     if (oauthOnly && !c.supports_oauth) return false;
@@ -132,6 +132,106 @@ export function connectorIdFromLocationHash(hash: string): string {
   if (!raw.startsWith("connect=")) return "";
   try {
     return decodeURIComponent(raw.slice("connect=".length)).trim();
+  } catch {
+    return "";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 设置页「连接器」（skills-overhaul W10）：页面只列我已连接/已添加的；目录在弹窗里。
+// ---------------------------------------------------------------------------
+
+/** 目录弹窗的「全部」页签 id。 */
+export const CATALOG_ALL = "all";
+/** 国内版目录里的「阿里云市场」页签 id（不与注册表分类名相撞）。 */
+export const CATALOG_MARKETPLACE = "aliyun-marketplace";
+/** 自定义 MCP 服务器在注册表里的 id。 */
+export const CUSTOM_CONNECTOR_ID = "custom";
+
+export type MyConnectorStatus = "connected" | "disabled" | "stale";
+
+/** 卡片状态：探活失败过 → 已失效；否则看开关。 */
+export function myConnectorStatus(
+  connection: { enabled: boolean },
+  stale: boolean,
+): MyConnectorStatus {
+  if (stale) return "stale";
+  return connection.enabled ? "connected" : "disabled";
+}
+
+/**
+ * 「我的连接器」列表：只含已有连接的条目，按注册表顺序排（注册表里没有的排最后，按名称），
+ * 搜索看连接名、注册表名称、描述、分类。
+ */
+export function myConnectorRows<
+  C extends { connector_id: string; label: string },
+  M extends { id: string; name: string; desc: string; category: string },
+>(connections: C[], registry: M[], term: string): { connection: C; meta: M | null }[] {
+  const order = new Map(registry.map((m, i) => [m.id, i]));
+  const byId = new Map(registry.map((m) => [m.id, m]));
+  const q = term.trim().toLowerCase();
+  return connections
+    .map((connection) => ({ connection, meta: byId.get(connection.connector_id) ?? null }))
+    .filter(({ connection, meta }) => {
+      if (!q) return true;
+      const hay = [connection.label, connection.connector_id, meta?.name, meta?.desc, meta?.category]
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase();
+      return hay.includes(q);
+    })
+    .sort((a, b) => {
+      const ia = order.get(a.connection.connector_id) ?? Number.MAX_SAFE_INTEGER;
+      const ib = order.get(b.connection.connector_id) ?? Number.MAX_SAFE_INTEGER;
+      if (ia !== ib) return ia - ib;
+      return (a.connection.label || "").localeCompare(b.connection.label || "");
+    });
+}
+
+/** 目录弹窗的页签：全部 + 注册表分类（出现顺序）+ 国内版的「阿里云市场」。 */
+export function catalogTabs(
+  registry: { category: string }[],
+  withMarketplace: boolean,
+): string[] {
+  const tabs = [CATALOG_ALL];
+  for (const c of registry) if (c.category && !tabs.includes(c.category)) tabs.push(c.category);
+  if (withMarketplace) tabs.push(CATALOG_MARKETPLACE);
+  return tabs;
+}
+
+/** 目录弹窗里某个页签 + 搜索词下的注册表连接器（阿里云市场页签不含注册表项）。 */
+export function catalogRegistryItems<T extends { name: string; desc: string; category: string }>(
+  registry: T[],
+  tab: string,
+  term: string,
+): T[] {
+  if (tab === CATALOG_MARKETPLACE) return [];
+  const inTab = tab === CATALOG_ALL ? registry : registry.filter((c) => c.category === tab);
+  return filterRegistryItems(inTab, term);
+}
+
+/** 阿里云市场条目：在「全部」与「阿里云市场」页签里出现，按名称/厂商/描述搜索。 */
+export function catalogMarketplaceItems<
+  T extends { name?: string; vendor?: string; description?: string; code?: string },
+>(items: T[], tab: string, term: string, withMarketplace: boolean): T[] {
+  if (!withMarketplace) return [];
+  if (tab !== CATALOG_ALL && tab !== CATALOG_MARKETPLACE) return [];
+  const q = term.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter((it) =>
+    `${it.name || ""}\n${it.vendor || ""}\n${it.description || ""}\n${it.code || ""}`
+      .toLowerCase()
+      .includes(q),
+  );
+}
+
+/** 阿里云市场外链只放行 http(s)；其它协议（脚本伪协议等）一律不渲染成链接。 */
+export function safeExternalHref(raw: string | undefined | null): string {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : "";
   } catch {
     return "";
   }

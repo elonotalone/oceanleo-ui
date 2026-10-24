@@ -19,8 +19,11 @@ import { ApiPage } from "../ApiPage";
 import { AuthPanel } from "../AuthDialog";
 import { DevicesPage } from "../DevicesPage";
 import { PasswordResetPage } from "../PasswordResetPage";
-import { PluginsPage } from "../PluginsPage";
 import { SettingsNav, type SettingsNavGroup } from "./SettingsNav";
+import { settingsNavIcon } from "./SettingsNavIcons";
+import { SkillsSettingsPane } from "./SkillsSettingsPane";
+import { ConnectorsSettingsPane } from "./ConnectorsSettingsPane";
+import { connectorIdFromLocationHash } from "../plugins/connector-logic";
 import { PersonalizationSection } from "./personalization/PersonalizationSection";
 import { MailSection } from "./mail/MailSection";
 import { GeneralSection } from "./sections/GeneralSection";
@@ -98,8 +101,56 @@ const SKIP_MENU_HREFS = new Set([
   "/account",
   "",
 ]);
-/** 旧账号菜单里指向这几页的项（站内或主站外链）已由内置面板承接。 */
+/** 旧账号菜单里指向这几页的项（站内或主站外链）已由内置面板承接（`/plugins` → 「技能」栏）。 */
 const PANE_MENU_PATHS = new Set(["/api", "/plugins", "/devices"]);
+
+/**
+ * 2026-10-24 skills-overhaul W10：「插件与连接器」拆成「技能」「连接器」两栏。
+ * 旧栏目 id `plugins`（`/settings/plugins`、`openSettingsModal("plugins")`、`#settings/plugins`）
+ * 落到「技能」。这两个 id 也作为已知栏目传给解析器——不论 settings-tabs 的内置表是否已收录，
+ * 设置中心自己都认得。
+ */
+export const SKILLS_SETTINGS_TAB = "skills";
+export const CONNECTORS_SETTINGS_TAB = "connectors";
+const LEGACY_PLUGINS_TAB = "plugins";
+const SPLIT_PLUGIN_TABS = [SKILLS_SETTINGS_TAB, CONNECTORS_SETTINGS_TAB];
+
+/** 旧 `plugins` → `skills`；其它原样。 */
+export function settingsHubTabAlias(tab: string | null | undefined): string {
+  const raw = (tab ?? "").trim();
+  return raw === LEGACY_PLUGINS_TAB ? SKILLS_SETTINGS_TAB : raw;
+}
+
+function resolveHubTab(tab: string | null | undefined, known: Iterable<string>, fallback: string): string {
+  const resolved = resolveSettingsTab(settingsHubTabAlias(tab), [...known, ...SPLIT_PLUGIN_TABS], fallback);
+  return settingsHubTabAlias(resolved);
+}
+
+function connectIdFromHere(): string {
+  if (typeof window === "undefined") return "";
+  return connectorIdFromLocationHash(window.location.hash);
+}
+
+function connectorIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      className="shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 2.5v2.7M10 2.5v2.7" />
+      <path d="M4.3 5.2h7.4v2.3a3.7 3.7 0 0 1-7.4 0z" />
+      <path d="M8 11.2v2.3" />
+    </svg>
+  );
+}
 
 function menuPath(href: string): string {
   try {
@@ -126,7 +177,7 @@ function withoutShadowedSections(sections: SettingsSection[]): SettingsSection[]
 
 function tabFromLocation(fallback: string): string {
   if (typeof window === "undefined") return fallback;
-  return tabFromSettingsLocation(window.location.href, [], fallback);
+  return settingsHubTabAlias(tabFromSettingsLocation(window.location.href, SPLIT_PLUGIN_TABS, fallback));
 }
 
 function writeTab(tab: string) {
@@ -198,12 +249,16 @@ export function SettingsHub({
   const fallbackTab = defaultTab || "general";
   const extraIdKey = extraSections.map((section) => section.id).join("\0");
   const extraIds = useMemo(() => extraIdKey.split("\0").filter(Boolean), [extraIdKey]);
+  // `/plugins#connect=<id>`（子站一键授权打开的门户页）重定向到设置后，直接落在「连接器」并弹出连接框。
+  const [connectId] = useState(connectIdFromHere);
+  const connectPendingRef = useRef(Boolean(connectId));
+  function landingTab(raw: string | null | undefined): string {
+    const next = resolveHubTab(raw, extraIds, fallbackTab);
+    if (connectPendingRef.current && next === SKILLS_SETTINGS_TAB) return CONNECTORS_SETTINGS_TAB;
+    return next;
+  }
   const [tab, setTab] = useState(() =>
-    resolveSettingsTab(
-      variant === "modal" ? initialTab || fallbackTab : tabFromLocation(fallbackTab),
-      extraIds,
-      fallbackTab,
-    ),
+    landingTab(variant === "modal" ? initialTab || fallbackTab : tabFromLocation(fallbackTab)),
   );
   const [accountView, setAccountView] = useState<AccountSettingsView>(() =>
     accountSettingsView(href),
@@ -229,17 +284,24 @@ export function SettingsHub({
 
   useEffect(() => {
     if (variant === "modal") {
-      const next = resolveSettingsTab(initialTab || fallbackTab, extraIds, fallbackTab);
+      const next = landingTab(initialTab || fallbackTab);
       setTab(next);
+      if (next !== resolveHubTab(initialTab || fallbackTab, extraIds, fallbackTab)) onTabChange?.(next);
       setAccountView(accountSettingsView(typeof window !== "undefined" ? window.location.href : href));
       if (next === "billing") setBillingView(readSettingsBillingView());
     }
   }, [variant, initialTab, fallbackTab, extraIds, href]);
 
   useEffect(() => {
+    // 独立设置页：从 `#connect=` 落到「连接器」时把地址也写成这一栏。
+    if (variant === "page" && connectPendingRef.current && tab === CONNECTORS_SETTINGS_TAB) writeTab(tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (variant === "modal") return;
     function onPop() {
-      setTab(resolveSettingsTab(tabFromLocation(fallbackTab), extraIds, fallbackTab));
+      setTab(resolveHubTab(tabFromLocation(fallbackTab), extraIds, fallbackTab));
       setAccountView(accountSettingsView(window.location.href));
       setBillingView(readSettingsBillingView());
     }
@@ -250,7 +312,7 @@ export function SettingsHub({
 
   useEffect(() => {
     if (variant !== "page" || typeof window === "undefined") return;
-    if (resolveSettingsTab(tabFromLocation(fallbackTab), extraIds, fallbackTab) !== "billing") return;
+    if (resolveHubTab(tabFromLocation(fallbackTab), extraIds, fallbackTab) !== "billing") return;
     const view = readSettingsBillingView();
     setBillingView(view);
     if (window.location.pathname.replace(/\/+$/, "") !== "/settings/billing") {
@@ -435,10 +497,18 @@ export function SettingsHub({
         render: () => <ApiPage variant="pane" />,
       },
       {
-        id: "plugins",
+        id: SKILLS_SETTINGS_TAB,
         group: "capabilities",
-        label: tt("插件与连接器"),
-        render: () => <PluginsPage variant="pane" />,
+        label: tt("技能"),
+        icon: settingsNavIcon(LEGACY_PLUGINS_TAB),
+        render: () => <SkillsSettingsPane />,
+      },
+      {
+        id: CONNECTORS_SETTINGS_TAB,
+        group: "capabilities",
+        label: tt("连接器"),
+        icon: connectorIcon(),
+        render: () => <ConnectorsSettingsPane initialConnectorId={connectId || undefined} />,
       },
       {
         id: "automation",
@@ -518,7 +588,7 @@ export function SettingsHub({
 
   const paneSections = sections.filter((s) => !s.href);
   const paneIds = paneSections.map((s) => s.id);
-  const requested = resolveSettingsTab(tab, paneIds, fallbackTab);
+  const requested = resolveHubTab(tab, paneIds, fallbackTab);
   const active =
     paneSections.find((s) => s.id === requested) ??
     paneSections.find((s) => s.id === fallbackTab) ??
@@ -526,7 +596,8 @@ export function SettingsHub({
   const navActiveId = active?.id ?? fallbackTab;
 
   function selectTab(id: string, options?: { orgPane?: OrgPane; billingView?: BillingPaneView }) {
-    const next = resolveSettingsTab(id, paneIds, fallbackTab);
+    const next = resolveHubTab(id, paneIds, fallbackTab);
+    connectPendingRef.current = false;
     setOrgInitialPane(next === "team" ? (options?.orgPane ?? "mine") : "mine");
     if (next === "billing") {
       if (options?.billingView) {

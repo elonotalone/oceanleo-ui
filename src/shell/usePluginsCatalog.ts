@@ -33,8 +33,8 @@ export interface OrgMcpConnection {
   forwardMemberIdentity: boolean;
 }
 
-/** 设置窗「插件与连接器」面板；浮层的连接 / 管理都进这里，不整页跳 /plugins。 */
-export const PLUGINS_SETTINGS_HREF = "/settings/plugins";
+/** 设置窗「连接器」面板（skills-overhaul W10 由「插件与连接器」拆出）；浮层的连接 / 管理都进这里，不整页跳 /plugins。 */
+export const PLUGINS_SETTINGS_HREF = "/settings/connectors";
 
 export type PopoverConnectorKind = "connect" | "toggle" | "connected";
 

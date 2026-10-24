@@ -112,7 +112,7 @@ export function SiteSkillDirectory({
       }
       onOpen={(it) => openSkill(it.id)}
       nativeFirst
-      nativeLabel={tt("按技能")}
+      nativeLabel={tt("按分类")}
     />
   );
 }

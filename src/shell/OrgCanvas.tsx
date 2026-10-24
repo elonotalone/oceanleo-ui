@@ -61,7 +61,7 @@ export interface OrgCanvasAgent {
   icon?: string;
   tagline?: string;
   category?: string;
-  /** 有无自定义 prompt/技能（节点上标「有技能」）。 */
+  /** 有无自定义 prompt/技能（节点上标「有专长」）。 */
   hasSkill?: boolean;
 }
 
@@ -157,7 +157,7 @@ function AgentNode({ data, selected }: NodeProps) {
           ) : d.status === "done" ? (
             <span className="block text-[10px] text-emerald-600">{tt("已回复")}</span>
           ) : d.hasSkill ? (
-            <span className="block text-[10px] text-sky-500">{tt("有技能")}</span>
+            <span className="block text-[10px] text-sky-500">{tt("有专长")}</span>
           ) : null}
         </span>
       </div>

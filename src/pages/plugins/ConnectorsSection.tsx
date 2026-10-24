@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { currentDomainProfile } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
@@ -23,9 +23,6 @@ import { useToast } from "../../ui";
 import {
   OAUTH_POLL_MS,
   OAUTH_WAIT_MS,
-  connectorIdFromLocationHash,
-  filterRegistryItems,
-  groupRegistryByCategory,
   credentialsArePrimaryPath,
   helpUrlIsPrimaryPath,
   isConnectionStale,
@@ -38,13 +35,32 @@ import {
 import { ConnectorIcon } from "./connector-icons";
 import { InTreeDialog } from "./parts";
 
-export function ConnectorsSection({
-  search,
-  oauthOnly,
-}: {
-  search: string;
-  oauthOnly: boolean;
-}) {
+export interface ConnectorController {
+  registry: McpConnectorMeta[];
+  registryStatus: "loading" | "ready" | "error";
+  registryError: string;
+  loadRegistry: () => Promise<void>;
+  connections: McpConnection[];
+  connByConnector: Map<string, McpConnection>;
+  /** 探活失败过的连接器 id（「已失效」）。再探活成功或重新连接后移除。 */
+  staleIds: ReadonlySet<string>;
+  probingId: string;
+  openConnector: (c: McpConnectorMeta) => void;
+  probe: (connectorId: string) => void;
+  toggle: (connectorId: string, enabled: boolean) => void;
+  requestDisconnect: (connectorId: string) => void;
+  returnOrigin: string;
+  /** 连接对话框与断开确认。挂在页面任意位置即可（portal 到 body）。 */
+  dialogs: ReactNode;
+}
+
+/**
+ * 个人 MCP 连接器的全部状态与动作：注册表、我的连接、一键授权（弹窗 + 回执 + 轮询）、
+ * 令牌连接、探活、停用、断开。设置页「连接器」与连接器目录弹窗共用这一份，页面只负责画。
+ */
+export function useConnectorController({
+  dialogZClassName = "z-[180]",
+}: { dialogZClassName?: string } = {}): ConnectorController {
   const tt = useUI();
   const ttRef = useRef(tt);
   ttRef.current = tt;
@@ -53,6 +69,8 @@ export function ConnectorsSection({
   const [registryStatus, setRegistryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [registryError, setRegistryError] = useState("");
   const [connections, setConnections] = useState<McpConnection[]>([]);
+  const [staleIds, setStaleIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [probingId, setProbingId] = useState("");
   const [selected, setSelected] = useState<McpConnectorMeta | null>(null);
   const [connToken, setConnToken] = useState("");
   const [connUrl, setConnUrl] = useState("");
@@ -72,6 +90,16 @@ export function ConnectorsSection({
   const oauthBeforeRef = useRef<McpConnection | undefined>(undefined);
 
   const returnOrigin = mcpOauthReturnOrigin();
+
+  const markStale = useCallback((connectorId: string, stale: boolean) => {
+    setStaleIds((prev) => {
+      if (prev.has(connectorId) === stale) return prev;
+      const next = new Set(prev);
+      if (stale) next.add(connectorId);
+      else next.delete(connectorId);
+      return next;
+    });
+  }, []);
 
   const loadConnections = useCallback(async () => {
     setConnections(await getMcpConnections());
@@ -101,11 +129,14 @@ export function ConnectorsSection({
   const runProbe = useCallback(
     async (connectorId: string, silentOk = false) => {
       setProbing(true);
+      setProbingId(connectorId);
       const res = await probeMcp(connectorId);
       setProbing(false);
+      setProbingId("");
       const stale = isConnectionStale(res);
       setProbeFailed(stale);
       setProbeError(stale ? res.error || "" : "");
+      markStale(connectorId, stale);
       if (stale) {
         toast.error(res.error || tt("连接已失效，请重新授权"));
         return;
@@ -115,7 +146,7 @@ export function ConnectorsSection({
       }
       await loadConnections();
     },
-    [loadConnections, toast, tt],
+    [loadConnections, markStale, toast, tt],
   );
 
   const openConnector = useCallback(
@@ -134,19 +165,6 @@ export function ConnectorsSection({
     },
     [connByConnector, runProbe, tt],
   );
-
-  const openedHashRef = useRef("");
-  useEffect(() => {
-    const wanted = connectorIdFromLocationHash(
-      typeof window !== "undefined" ? window.location.hash : "",
-    );
-    if (!wanted || registryStatus !== "ready" || openedHashRef.current === wanted) return;
-    const found = registry.find((c) => c.id === wanted);
-    if (found) {
-      openedHashRef.current = wanted;
-      openConnector(found);
-    }
-  }, [openConnector, registry, registryStatus]);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
@@ -187,6 +205,7 @@ export function ConnectorsSection({
             oauthPopupRef.current = null;
             oauthStartedAtRef.current = null;
             setAuthorizing(false);
+            if (selected) markStale(selected.id, false);
             setSelected(null);
             setConnections(rows);
             toast.success(ttRef.current("授权成功，已连接"));
@@ -212,7 +231,7 @@ export function ConnectorsSection({
     };
     const intervalId = window.setInterval(tick, 400);
     return () => window.clearInterval(intervalId);
-  }, [authorizing, selected, toast]);
+  }, [authorizing, markStale, selected, toast]);
 
   async function handleOauth() {
     const c = selected;
@@ -287,6 +306,9 @@ export function ConnectorsSection({
         return;
       }
       setConnectToolsCount(res.tools_count ?? 0);
+      setProbeFailed(false);
+      setProbeError("");
+      markStale(c.id, false);
       await loadConnections();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -307,6 +329,7 @@ export function ConnectorsSection({
     setSelected(null);
     setProbeFailed(false);
     setProbeError("");
+    markStale(connectorId, false);
     await loadConnections();
   }
 
@@ -319,64 +342,14 @@ export function ConnectorsSection({
     await loadConnections();
   }
 
-  const filtered = filterRegistryItems(registry, search, oauthOnly);
-  const byCategory = groupRegistryByCategory(filtered);
-  const connectedCount = connections.length;
-
-  return (
-    <section data-plugins-connectors className="mt-10 pb-10">
-      <span data-mcp-oauth-return-origin={returnOrigin} hidden />
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-[15px] font-semibold text-neutral-900">{tt("连接器 · MCP")}</h2>
-        {connectedCount > 0 && (
-          <span className="text-[12px] text-neutral-500">{tt("已连接 {n} 个", { n: connectedCount })}</span>
-        )}
-      </div>
-      <p className="mb-4 mt-0.5 text-[12px] text-neutral-500">
-        {tt(
-          "连接应用程序与 API（MCP）。支持官方远程授权的连接器点「一键授权」，在对方网站登录批准后回到这里；其余按提示粘贴 Token 或专属地址。连接后 Agent 在任务中可直接调用该服务的工具。",
-        )}
-      </p>
-      {registryStatus === "loading" ? (
-        <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center">
-          <p className="text-[13px] text-neutral-500">{tt("连接器目录加载中…")}</p>
-        </div>
-      ) : registryStatus === "error" ? (
-        <div className="rounded-xl border border-dashed border-red-200 bg-red-50 p-8 text-center">
-          <p className="text-[13px] text-red-800">{tt("连接器目录加载失败")}</p>
-          {registryError ? <p className="mt-1 text-[12px] text-red-700">{registryError}</p> : null}
-          <button
-            type="button"
-            onClick={() => void loadRegistry()}
-            className="mt-3 rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:bg-neutral-800"
-          >
-            {tt("重试")}
-          </button>
-        </div>
-      ) : byCategory.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center">
-          <p className="text-[13px] text-neutral-500">{tt("没有匹配的连接器")}</p>
-        </div>
-      ) : (
-        byCategory.map((cat) => (
-          <div key={cat.category} className="mb-6">
-            <p className="mb-2 text-[12px] font-medium text-neutral-500">{tt(cat.category)}</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              {cat.items.map((c) => (
-                <ConnectorCard
-                  key={c.id}
-                  connector={c}
-                  connection={connByConnector.get(c.id)}
-                  onClick={() => openConnector(c)}
-                />
-              ))}
-            </div>
-          </div>
-        ))
-      )}
-
+  const dialogs = (
+    <>
       {disconnectingId && (
-        <InTreeDialog onClose={() => setDisconnectingId(null)} testId="mcp-disconnect-confirm">
+        <InTreeDialog
+          onClose={() => setDisconnectingId(null)}
+          testId="mcp-disconnect-confirm"
+          zClassName={dialogZClassName}
+        >
           <h3 className="text-[15px] font-semibold text-neutral-900">{tt("断开连接")}</h3>
           <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
             {tt("断开后需要重新授权或重新粘贴凭证，已授权的访问会被撤销。")}
@@ -391,6 +364,7 @@ export function ConnectorsSection({
             </button>
             <button
               type="button"
+              data-mcp-disconnect-confirm
               onClick={() => void handleDisconnect(disconnectingId)}
               className="rounded-lg bg-red-600 px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-red-700"
             >
@@ -415,6 +389,7 @@ export function ConnectorsSection({
           probeError={probeError}
           connectError={connectError}
           connectToolsCount={connectToolsCount}
+          zClassName={dialogZClassName}
           onToken={setConnToken}
           onUrl={setConnUrl}
           onLabel={setConnLabel}
@@ -433,17 +408,37 @@ export function ConnectorsSection({
           onDisconnect={() => setDisconnectingId(selected.id)}
         />
       )}
-    </section>
+    </>
   );
+
+  return {
+    registry,
+    registryStatus,
+    registryError,
+    loadRegistry,
+    connections,
+    connByConnector,
+    staleIds,
+    probingId,
+    openConnector,
+    probe: (connectorId) => void runProbe(connectorId),
+    toggle: (connectorId, enabled) => void handleToggle(connectorId, enabled),
+    requestDisconnect: (connectorId) => setDisconnectingId(connectorId),
+    returnOrigin,
+    dialogs,
+  };
 }
 
-function ConnectorCard({
+/** 目录里的一张连接器卡：已连接显示状态；支持一键授权的只留一个小标签。 */
+export function ConnectorCard({
   connector,
   connection,
+  stale,
   onClick,
 }: {
   connector: McpConnectorMeta;
   connection?: McpConnection;
+  stale?: boolean;
   onClick: () => void;
 }) {
   const tt = useUI();
@@ -453,28 +448,38 @@ function ConnectorCard({
       type="button"
       data-mcp-connector={connector.id}
       onClick={onClick}
-      className="relative w-full rounded-xl border border-neutral-200 p-4 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-300"
+      className="relative w-full rounded-2xl border border-neutral-200 bg-white p-5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:border-neutral-800 dark:bg-neutral-900"
     >
       {connected ? (
         <span
-          className={`absolute right-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-            connection?.enabled ? "bg-green-100 text-green-700" : "bg-neutral-100 text-neutral-500"
+          data-mcp-connector-status={stale ? "stale" : connection?.enabled ? "connected" : "disabled"}
+          className={`absolute right-4 top-4 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            stale
+              ? "bg-red-50 text-red-700"
+              : connection?.enabled
+                ? "bg-green-100 text-green-700"
+                : "bg-neutral-100 text-neutral-500"
           }`}
         >
-          {connection?.enabled
-            ? tt("已连接 · {n} 工具", { n: connection?.tools_count ?? 0 })
-            : tt("已停用")}
+          {stale
+            ? tt("已失效")
+            : connection?.enabled
+              ? tt("已连接 · {n} 工具", { n: connection?.tools_count ?? 0 })
+              : tt("已停用")}
         </span>
       ) : connector.supports_oauth ? (
-        <span className="absolute right-3 top-3 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
-          {tt("可一键授权")}
+        <span
+          data-mcp-oauth-tag
+          className="absolute right-4 top-4 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700"
+        >
+          {tt("一键授权")}
         </span>
       ) : null}
       <div className="flex gap-3">
         <ConnectorIcon icon={connector.icon} id={connector.id} label={tt(connector.name)} />
-        <div className="min-w-0 pr-16">
-          <p className="text-[13px] font-medium text-neutral-900">{tt(connector.name)}</p>
-          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
+        <div className="min-w-0 pr-20">
+          <p className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">{tt(connector.name)}</p>
+          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-neutral-500">
             {tt(connector.desc)}
           </p>
         </div>
@@ -483,7 +488,7 @@ function ConnectorCard({
   );
 }
 
-function ConnectorDialog({
+export function ConnectorDialog({
   connector,
   connection,
   connToken,
@@ -497,6 +502,7 @@ function ConnectorDialog({
   probeError,
   connectError,
   connectToolsCount,
+  zClassName,
   onToken,
   onUrl,
   onLabel,
@@ -521,6 +527,7 @@ function ConnectorDialog({
   probeError: string;
   connectError: string;
   connectToolsCount: number | null;
+  zClassName?: string;
   onToken: (v: string) => void;
   onUrl: (v: string) => void;
   onLabel: (v: string) => void;
@@ -628,7 +635,7 @@ function ConnectorDialog({
   );
 
   return (
-    <InTreeDialog onClose={onClose} wide testId="mcp-connect">
+    <InTreeDialog onClose={onClose} wide testId="mcp-connect" zClassName={zClassName}>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <ConnectorIcon icon={connector.icon} id={connector.id} label={tt(connector.name)} size="lg" />
