@@ -1,4 +1,5 @@
 import { isRetriableStreamCancelText } from "./session-status";
+import type { AgentDialogMessage } from "./types";
 
 /** Probe of whether this ACP session is working. Absence of a reading is not idle. */
 
@@ -69,6 +70,7 @@ export function composerOccupancy(input: {
   staleMs?: number;
   offline?: boolean;
   sessionLoading?: boolean;
+  messages?: readonly AgentDialogMessage[];
 }): OccupancyMode {
   if (input.offline) return "uncertain";
   const sessionId = input.sessionId.trim();
@@ -76,6 +78,16 @@ export function composerOccupancy(input: {
   if (fresh && sessionId && (input.occupancyBusy ?? []).includes(sessionId)) return "working";
   if (input.sessionLoading) return "uncertain";
   if (input.pendingAt != null && (input.pendingSession || "") === sessionId) return "uncertain";
+  // Only a current live stream can contradict an idle probe. Historical pending
+  // tools are not evidence of work, and a terminal stop resolves residual rows.
+  for (let index = (input.messages?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const message = input.messages![index];
+    if (message.kind === "user") break;
+    if (message.kind !== "turn") continue;
+    if (message.acpSession && message.acpSession !== sessionId) continue;
+    if ((message.live && !message.stop) || message.stop === "stopping") return "uncertain";
+    break;
+  }
   return fresh ? "idle" : "uncertain";
 }
 

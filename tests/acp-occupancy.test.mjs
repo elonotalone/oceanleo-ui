@@ -15,6 +15,39 @@ import { hasOpenTurn, isRetriableStreamCancelText, sessionListStatus, sessionWai
 
 const PROGRAMS = ["cursor", "claude", "codex", "hermes", "oceanleo"];
 
+test("live evidence withholds idle for all programs, without reviving historical tools", () => {
+  for (const program of PROGRAMS) {
+    const probe = { linkUp: true, occupancyAt: 10, now: 11, occupancyBusy: [], sessionId: "s" };
+    const turn = { kind: "turn", id: "turn", acpSession: "s", live: true, stop: "", items: [
+      { kind: "tool", id: "tool", tool: { id: "tool", status: "in_progress", content: [], locations: [] } },
+    ] };
+    assert.equal(composerOccupancy({ ...probe, messages: [turn] }), "uncertain", program);
+    assert.equal(composerOccupancy({ ...probe, occupancyBusy: ["s"], messages: [turn] }), "working", program);
+    for (const stop of ["end_turn", "cancelled", "error"]) {
+      assert.equal(composerOccupancy({ ...probe, messages: [{ ...turn, stop }] }), "idle", `${program}: ${stop}`);
+    }
+    assert.equal(composerOccupancy({ ...probe, messages: [{ ...turn, live: false }] }), "idle", program);
+    assert.equal(composerOccupancy({ ...probe, sessionId: "new", messages: [turn] }), "idle", program);
+    assert.equal(composerOccupancy({ ...probe, messages: [turn, { kind: "user", id: "new", text: "next" }] }), "idle", program);
+  }
+});
+
+test("completed transcript resolves live evidence even with residual pending tools", () => {
+  let state = { ...initialDialogState(), program: "codex", activeSession: "s" };
+  state = applyDialog(state, { type: "frame", frame: { t: "tool", program: "codex", acp_session: "s", id: "tool", status: "in_progress" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "transcript", program: "codex", acp_session: "s", live: false, frames: [
+    { t: "tool", program: "codex", acp_session: "s", id: "tool", status: "in_progress" },
+  ] } });
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s", messages: state.messages }), "idle");
+});
+
+test("turn_start with no output yet still withholds idle after a contradictory probe", () => {
+  let state = { ...initialDialogState(), program: "codex", activeSession: "s" };
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "codex", acp_session: "s" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "codex", busy: [] } });
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s", messages: state.messages }), "uncertain");
+});
+
 test("composerOccupancy：无读数或链路断开是灰的 uncertain", () => {
   assert.equal(composerOccupancy({
     linkUp: false, occupancyAt: Date.now(), occupancyBusy: [], sessionId: "s",
@@ -305,14 +338,14 @@ test("cancel request waits for server termination and survives view restoration"
     assert.equal(state.busy, true, program);
     state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program, busy: [] } });
     assert.equal(state.busy, false, program);
-    assert.equal(state.messages.at(-1)?.stop, "stopped", program);
-    assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s" }), "idle", program);
+    assert.equal(state.messages.at(-1)?.stop, "stopping", program);
+    assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s", messages: state.messages }), "uncertain", program);
     state = applyDialog(state, { type: "frame", frame: { t: "done", program, acp_session: "s", stop: "cancelled" } });
     assert.equal(state.messages.at(-1)?.stop, "cancelled", program);
   }
 });
 
-test("cancel delivery uncertainty resolves on reconnect reading", () => {
+test("cancel delivery uncertainty needs terminal confirmation after reconnect", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "session-loading", id: "s" });
@@ -324,7 +357,9 @@ test("cancel delivery uncertainty resolves on reconnect reading", () => {
   state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: ["s"] } });
   assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s" }), "working");
   state = applyDialog(state, { type: "frame", frame: { t: "occupancy", program: "cursor", busy: [] } });
-  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s" }), "idle");
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s", messages: state.messages }), "uncertain");
+  state = applyDialog(state, { type: "frame", frame: { t: "transcript", program: "cursor", acp_session: "s", live: false, frames: [] } });
+  assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "s", messages: state.messages }), "idle");
 });
 
 test("remote task terminal detail clears a send pending before any running reading", () => {
