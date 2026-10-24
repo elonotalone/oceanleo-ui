@@ -242,7 +242,7 @@ export function AddMenu({ label, items, variant = "primary" }: AddMenuProps) {
                     data-add-menu-item={item.id}
                     onMouseEnter={() => !item.disabled && setActive(index)}
                     onClick={() => select(index)}
-                    className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left outline-none transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                    className={`flex min-h-11 w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500/60 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
                       item.disabled
                         ? "cursor-not-allowed opacity-45"
                         : index === active

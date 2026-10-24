@@ -82,7 +82,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
       type="button"
       data-copy-button=""
       onClick={async () => setState((await copyToClipboard(text)) ? "ok" : "fail")}
-      className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[12px] text-neutral-500 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+      className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2.5 text-[12px] text-neutral-500 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
     >
       {state === "ok" ? <KitIconCheck className="h-3.5 w-3.5" /> : <KitIconCopy className="h-3.5 w-3.5" />}
       <span aria-live="polite">{state === "ok" ? tt("已复制") : state === "fail" ? tt("复制失败") : (label ?? tt("复制"))}</span>
@@ -109,7 +109,7 @@ export function CodeBlock({
       className="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950"
       data-code-block={label}
     >
-      <div className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-50 pl-3 pr-1 dark:border-neutral-800 dark:bg-neutral-900">
         <span className="font-mono text-[11.5px] font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
           {label}
         </span>
@@ -119,7 +119,7 @@ export function CodeBlock({
               type="button"
               aria-pressed={lineNumbers}
               onClick={onToggleLineNumbers}
-              className="inline-flex h-7 items-center rounded-lg px-2 text-[12px] text-neutral-500 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+              className="inline-flex min-h-11 items-center rounded-lg px-2.5 text-[12px] text-neutral-500 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
             >
               {tt("行号")}
             </button>
@@ -188,7 +188,7 @@ function TreeRows({
               title={node.path}
               onClick={() => (node.type === "dir" ? onToggle(node.path) : onSelect(node.path))}
               style={{ paddingLeft: `${8 + node.depth * 14}px` }}
-              className={`flex w-full min-w-0 items-center gap-1.5 rounded-lg py-1.5 pr-2 text-left text-[13px] outline-none transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-sky-200 ${
+              className={`flex min-h-11 w-full min-w-0 items-center gap-1.5 rounded-lg py-1 pr-2 text-left text-[13px] outline-none transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-sky-200 ${
                 isSel
                   ? "bg-neutral-200/70 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
                   : "text-neutral-700 hover:bg-neutral-200/50 dark:text-neutral-300 dark:hover:bg-neutral-800/70"
@@ -219,7 +219,7 @@ function DownloadAction({ url, label }: { url: string; label: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const cls =
-    "inline-flex h-9 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 text-[13px] font-medium text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800";
+    "inline-flex h-11 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 text-[13px] font-medium text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800";
   if (!isGatewayUrl(url)) {
     // 非网关地址不带登录，普通链接即可；只放行 http(s)。
     if (!/^https?:\/\//i.test(url)) return null;
@@ -442,7 +442,7 @@ export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, roo
               <button
                 type="button"
                 onClick={() => void load(state.path)}
-                className="inline-flex h-8 items-center rounded-lg border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                className="inline-flex h-11 items-center rounded-lg border border-neutral-200 bg-white px-3 text-[13px] text-neutral-700 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
               >
                 {tt("重试")}
               </button>

@@ -899,7 +899,13 @@ test("合同 §3.4：W09A 名字全部从 skills/kit 导出，并经 @oceanleo/u
   for (const t of ["OfficialSkill", "Folder", "TreeEntry", "FileContent"]) {
     assert.match(index, new RegExp(`\\b${t},`), `类型 ${t}`);
   }
-  assert.match(read("src/shell/index.ts"), /export \* from "\.\/skills\/kit";/);
+  // 父任务可能把两行收成 `export * from "./skills"`（再由 skills/index.ts 转 `./kit`）；两种接法都认。
+  const shellIndex = read("src/shell/index.ts");
+  const direct = /export \* from "\.\/skills\/kit";/.test(shellIndex);
+  const viaSkills =
+    /export \* from "\.\/skills";/.test(shellIndex) &&
+    /export \* from "\.\/kit";/.test(read("src/shell/skills/index.ts"));
+  assert.ok(direct || viaSkills, "@oceanleo/ui/shell 必须透出 skills/kit");
 });
 
 test("文案分表：16 语齐全、key 等于中文原文、非中日韩语种不含汉字；kit 里每条 tt() 都有译文", async () => {
@@ -932,4 +938,28 @@ test("文案分表：16 语齐全、key 等于中文原文、非中日韩语种�
   }
   assert.deepEqual(missing, []);
   for (const k of keys) assert.doesNotMatch(k, /模板/, "useUI 会把「模板」改写成「灵感」，kit 文案不能用这个词");
+});
+
+test("仲裁 A-24：kit 的点击目标 ≥ 44px，outline-none 的元素都补了 focus-visible 环", async () => {
+  // 交互元素（button / a / input / role=switch|menuitem|treeitem）不再写死 < 44 的高度
+  for (const f of KIT_FILES.filter((x) => x.endsWith(".tsx") && x !== "kit-icons.tsx")) {
+    const src = readFileSync(new URL(f, KIT_DIR), "utf8");
+    for (const m of src.matchAll(/<(button|a|input)\b(?:(?!<)[\s\S])*?className=\{?[`"]([^`"]*)/g)) {
+      assert.doesNotMatch(m[2], /(^|\s)h-(?:[1-9]|10)(\s|$)/, `${f} <${m[1]}> 写死了 < 44 的高度：${m[2].slice(0, 60)}`);
+    }
+    for (const m of src.matchAll(/className=\{?[`"]([^`"]*\boutline-none\b[^`"]*)/g)) {
+      assert.match(m[1], /focus-visible:ring-2/, `${f}: outline-none 要补 focus-visible:ring-2`);
+    }
+  }
+  const toolbar = read("src/shell/skills/kit/ConfigToolbar.tsx");
+  for (const name of ["CONFIG_TOOLBAR_BUTTON_CLASS", "CONFIG_TOOLBAR_ICON_BUTTON_CLASS", "CONFIG_PRIMARY_BUTTON_CLASS"]) {
+    assert.match(toolbar, new RegExp(`${name} =\\s*"[^"]*\\bh-11\\b`), name);
+  }
+  // 开关：可点区 44×44，视觉轨道仍是 40×24
+  const view = await mount(h(kit.ConfigToggle, { checked: false, onChange() {}, label: "t" }));
+  const sw = view.host.querySelector('[role="switch"]');
+  assert.match(sw.className, /\bmin-h-11\b/);
+  assert.match(sw.className, /\bmin-w-11\b/);
+  assert.match(sw.querySelector("[data-config-toggle-track]").className, /\bh-6 w-10\b/);
+  await view.unmount();
 });

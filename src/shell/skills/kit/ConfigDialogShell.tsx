@@ -140,14 +140,14 @@ function ConfigDialogPanel({
         data-size={size}
         data-leo-overlay-state={state}
         onKeyDown={onKeyDown}
-        className={`leo-overlay-panel relative flex h-full w-full flex-col overflow-hidden bg-[#f7f7f5] text-neutral-900 shadow-2xl outline-none sm:h-[min(86vh,900px)] sm:rounded-[24px] dark:bg-neutral-900 dark:text-neutral-100 ${CONFIG_DIALOG_WIDTH[size]}`}
+        className={`leo-overlay-panel relative flex h-full w-full flex-col overflow-hidden bg-[#f7f7f5] text-neutral-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500/60 sm:h-[min(86vh,900px)] sm:rounded-[24px] dark:bg-neutral-900 dark:text-neutral-100 ${CONFIG_DIALOG_WIDTH[size]}`}
       >
         <button
           type="button"
           data-config-dialog-close=""
           aria-label={tt("关闭")}
           onClick={() => requestClose("close-button")}
-          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 sm:right-6 sm:top-6 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 sm:right-5 sm:top-5 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
         >
           <KitIconClose className="h-5 w-5" />
         </button>

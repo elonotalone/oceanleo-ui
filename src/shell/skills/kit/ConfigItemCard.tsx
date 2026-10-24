@@ -33,6 +33,7 @@ export function ConfigToggle({
   disabled?: boolean;
   label: string;
 }) {
+  // 仲裁 A-24：可点区 44×44，视觉轨道仍是 40×24；负外边距让它不撑高卡片标题行。
   return (
     <button
       type="button"
@@ -46,16 +47,21 @@ export function ConfigToggle({
         onChange(!checked);
       }}
       onKeyDown={(event) => event.stopPropagation()}
-      className={`relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? "bg-blue-600 dark:bg-blue-500" : "bg-neutral-300 dark:bg-neutral-700"
-      }`}
+      className="-my-2.5 -mr-1 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span
         aria-hidden="true"
-        className={`inline-block h-[18px] w-[18px] rounded-full bg-white shadow transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-          checked ? "translate-x-[19px]" : "translate-x-[3px]"
+        data-config-toggle-track=""
+        className={`relative inline-flex h-6 w-10 items-center rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+          checked ? "bg-blue-600 dark:bg-blue-500" : "bg-neutral-300 dark:bg-neutral-700"
         }`}
-      />
+      >
+        <span
+          className={`inline-block h-[18px] w-[18px] rounded-full bg-white shadow transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+            checked ? "translate-x-[19px]" : "translate-x-[3px]"
+          }`}
+        />
+      </span>
     </button>
   );
 }
