@@ -132,6 +132,15 @@ async function mount(client = makeClient()) {
         target.dispatchEvent(event);
       });
     },
+    /** 浏览器里 beforeinput 与 input 在同一次任务里连续触发：放进同一个同步块里派发。 */
+    async fireSameTask(target, ...events) {
+      await act(async () => {
+        for (const event of events) {
+          if (typeof event === "function") event();
+          else target.dispatchEvent(event);
+        }
+      });
+    },
     async unmount() {
       await act(async () => root.unmount());
       host.remove();
@@ -310,9 +319,14 @@ test("换行与删除：beforeinput 转成与硬件键盘一致的 keypress，�
 test("beforeinput 取消不了时，随后的 input 里的换行 / 删除不会再发一份", async () => {
   const view = await mount();
   const before = new window.InputEvent("beforeinput", { bubbles: true, cancelable: false, inputType: "insertLineBreak" });
-  await view.fire(view.input(), before);
-  view.input().value = "\n";
-  await view.fire(view.input(), new window.InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }));
+  await view.fireSameTask(
+    view.input(),
+    before,
+    () => {
+      view.input().value = "\n";
+    },
+    new window.InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }),
+  );
   assert.deepEqual(view.actions(), [{ kind: "keypress", key: "Enter" }]);
   assert.equal(view.input().value, "");
   await view.unmount();
@@ -402,5 +416,109 @@ test("键盘已打开时点按画面不会把它收起；没打开时触摸点�
 test("舞台声明 touch-action: none，避免浏览器接管触摸手势", async () => {
   const view = await mount();
   assert.equal(view.host.querySelector("[data-remote-stage]").style.touchAction, "none");
+  await view.unmount();
+});
+
+// ------------------------------------------- 仅 input、迟到回声（合成序列，不是实机证明）
+
+const KEYS = {
+  insertLineBreak: { kind: "keypress", key: "Enter" },
+  insertParagraph: { kind: "keypress", key: "Enter" },
+  deleteContentBackward: { kind: "keypress", key: "Backspace" },
+  deleteContentForward: { kind: "keypress", key: "Delete" },
+};
+
+test("只有 input、没有 beforeinput（也没有有效 keydown）：换行与删除各发一次，不丢", async () => {
+  const view = await mount();
+  const input = view.input();
+  for (const [inputType, action] of Object.entries(KEYS)) {
+    const before = view.actions().length;
+    input.value = inputType.startsWith("insert") ? "\n" : "";
+    await view.fire(input, new window.InputEvent("input", { bubbles: true, inputType }));
+    assert.deepEqual(view.actions().slice(before), [action], inputType);
+    assert.equal(input.value, "", "输入口被清空");
+  }
+  await view.unmount();
+});
+
+test("beforeinput 取消不了 + 随后的 input：换行与删除各只发一次", async () => {
+  const view = await mount();
+  const input = view.input();
+  for (const [inputType, action] of Object.entries(KEYS)) {
+    const before = view.actions().length;
+    await view.fireSameTask(
+      input,
+      new window.InputEvent("beforeinput", { bubbles: true, cancelable: false, inputType }),
+      () => {
+        input.value = inputType.startsWith("insert") ? "\n" : "";
+      },
+      new window.InputEvent("input", { bubbles: true, inputType }),
+    );
+    assert.deepEqual(view.actions().slice(before), [action], inputType);
+  }
+  await view.unmount();
+});
+
+test("beforeinput 可取消：发一次且没有 input 再来一份（保留）", async () => {
+  const view = await mount();
+  for (const [inputType, action] of Object.entries(KEYS)) {
+    const before = view.actions().length;
+    const event = new window.InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType });
+    await view.fire(view.input(), event);
+    assert.equal(event.defaultPrevented, true);
+    assert.deepEqual(view.actions().slice(before), [action], inputType);
+  }
+  await view.unmount();
+});
+
+test("beforeinput 取消不了、而 input 永远不来（空输入口退格）：令牌不会残留去吞下一次真正的删除", async () => {
+  const view = await mount();
+  const input = view.input();
+  await view.fire(input, new window.InputEvent("beforeinput", { bubbles: true, cancelable: false, inputType: "deleteContentBackward" }));
+  await settle(30); // 这次任务已经结束
+  await view.fire(input, new window.InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  assert.deepEqual(view.actions(), [KEYS.deleteContentBackward, KEYS.deleteContentBackward]);
+  await view.unmount();
+});
+
+test("关闭后，只有 input 的删除 / 换行也不外发", async () => {
+  const view = await mount();
+  await act(async () => {
+    [...view.host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "断开").click();
+  });
+  const before = view.actions().length;
+  await view.fire(view.input(), new window.InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }));
+  await view.fire(view.input(), new window.InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  assert.equal(view.actions().length, before);
+  await view.unmount();
+});
+
+test("compositionend 已上屏并清空输入口后，迟到的 insertText 回声（输入口里没有这段文字）不再发第二份", async () => {
+  const view = await mount();
+  const input = view.input();
+  await view.fire(input, new window.CompositionEvent("compositionstart", { bubbles: true }));
+  await view.fire(input, new window.CompositionEvent("compositionend", { bubbles: true, data: "你" }));
+  assert.deepEqual(view.actions(), [{ kind: "type", text: "你" }]);
+  // 回声：input 触发时输入口是空的（文字已被上屏事务取走），与 data 对不上
+  assert.equal(input.value, "");
+  await view.fire(input, new window.InputEvent("input", { bubbles: true, data: "你", inputType: "insertText" }));
+  assert.equal(typed(view), "你");
+  await view.unmount();
+});
+
+test("用户真的连续敲同一个字：每一次 input 的输入口里都有它，必须都发（不按「相同文字」去重）", async () => {
+  const view = await mount();
+  const input = view.input();
+  for (let i = 0; i < 3; i += 1) {
+    input.value = "好";
+    await view.fire(input, new window.InputEvent("input", { bubbles: true, data: "好", inputType: "insertText" }));
+  }
+  assert.equal(typed(view), "好好好");
+  // 紧接着上屏同一个字的输入法也照发
+  await view.fire(input, new window.CompositionEvent("compositionstart", { bubbles: true }));
+  await view.fire(input, new window.CompositionEvent("compositionend", { bubbles: true, data: "好" }));
+  input.value = "好";
+  await view.fire(input, new window.InputEvent("input", { bubbles: true, data: "好", inputType: "insertText" }));
+  assert.equal(typed(view), "好好好好好", "compositionend 一次 + 随后真实的一次 insertText");
   await view.unmount();
 });

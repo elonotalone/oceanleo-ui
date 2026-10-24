@@ -242,7 +242,7 @@ test("移动触屏上下文：点按 / 拖动 / 取消 / 多指 / 留白 / 双�
   }, bundleText);
 });
 
-test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入口；insertText / IME / 换行 / 删除各只发一次；关闭后不外发", { timeout: 120_000, skip }, async () => {
+test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入口；insertText / IME / 换行 / 删除各只发一次；关闭后不外发", { timeout: 120_000, skip }, async (t) => {
   await withFixture(async ({ browser, origin }) => {
     const s = await open(browser, origin, { mobile: true, w: 1280, h: 720 });
     const typedText = async () => (await s.inputs()).filter((x) => x.kind === "type").map((x) => x.text).join("");
@@ -272,6 +272,22 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
     await wait(300);
     assert.equal(await typedText(), "你好ab");
 
+    // 连续敲同一个字：必须都发；并记录真实 Chromium 的 insertText input 触发时输入口里确有这段文字
+    // （迟到回声的判据：value 里没有 data 才是回声）。
+    await s.page.evaluate(() => {
+      const el = document.querySelector("[data-remote-input]");
+      window.__textLog = [];
+      el.addEventListener("input", (e) => window.__textLog.push({ inputType: e.inputType, data: e.data, value: el.value }), true);
+    });
+    await s.page.keyboard.insertText("好");
+    await s.page.keyboard.insertText("好");
+    await wait(300);
+    assert.equal(await typedText(), "你好ab好好");
+    const textLog = await s.page.evaluate(() => window.__textLog);
+    t.diagnostic(`chromium insertText events: ${JSON.stringify(textLog)}`);
+    assert.equal(textLog.length, 2);
+    for (const entry of textLog) assert.equal(entry.value, entry.data, JSON.stringify(entry));
+
     // 换行 / 删除（真实 keydown 路径）各一次
     const before = (await s.inputs()).length;
     await s.page.keyboard.press("Enter");
@@ -284,6 +300,14 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
 
     // 真实 IME 组字（CDP）：组字中不发，提交后只发一次
     const beforeIme = (await s.inputs()).length;
+    // 只读观察：记录这个 Chromium 真实发出的事件顺序与当时输入口的值（作为去重判据的实证）。
+    await s.page.evaluate(() => {
+      const el = document.querySelector("[data-remote-input]");
+      window.__imeLog = [];
+      for (const type of ["compositionstart", "compositionupdate", "compositionend", "beforeinput", "input"]) {
+        el.addEventListener(type, (e) => window.__imeLog.push({ type, inputType: e.inputType, data: e.data, composing: e.isComposing, value: el.value }), true);
+      }
+    });
     await s.cdp.send("Input.imeSetComposition", { text: "ni", selectionStart: 2, selectionEnd: 2 });
     await wait(200);
     assert.equal((await s.inputs()).length, beforeIme, "组字中不能发半成品");
@@ -291,6 +315,7 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
     await wait(400);
     const afterIme = (await s.inputs()).slice(beforeIme);
     assert.equal(afterIme.map((x) => x.text ?? "").join(""), "你", JSON.stringify(afterIme));
+    t.diagnostic(`chromium IME events: ${JSON.stringify(await s.page.evaluate(() => window.__imeLog))}`);
 
     // 再点「键盘」收起
     await button.tap();

@@ -35,6 +35,7 @@ import {
   softInputKeyAction,
   toNormalized,
   type NormalizedPoint,
+  type SoftInputKind,
 } from "./remote-desktop-input";
 
 export interface RemoteDesktopPanelProps {
@@ -388,6 +389,11 @@ export function RemoteDesktopPanel({
       if (closedRef.current) return;
       sendTextRef.current(event.data ?? "");
     };
+    // 换行 / 删除的「事务」：beforeinput 已经发过、但取消不了（随后还会来一个 input）时记在这里，
+    // 对应的那个 input 认领它、不再发第二份；没有 beforeinput 的浏览器，input 自己发。
+    // beforeinput 与 input 同属一次任务，所以令牌在这次任务结束时作废（不是时间窗）：
+    // 对空输入口退格这类「beforeinput 有、input 永远不来」的情况，令牌不会残留去吞下一次真正的删除。
+    let handledByBeforeInput: SoftInputKind | null = null;
     const onBeforeInput = (event: Event) => {
       const native = event as InputEvent;
       const kind = classifyInput(native.inputType, composingRef.current || Boolean(native.isComposing));
@@ -395,6 +401,12 @@ export function RemoteDesktopPanel({
       if (!action) return;
       // 取消默认行为：输入口始终保持为空，也就不会有随后的 input 再来一份。
       if (native.cancelable) native.preventDefault();
+      if (!native.defaultPrevented) {
+        handledByBeforeInput = kind;
+        setTimeout(() => {
+          if (handledByBeforeInput === kind) handledByBeforeInput = null;
+        }, 0);
+      }
       if (closedRef.current) return;
       enqueue(action);
     };
@@ -403,11 +415,26 @@ export function RemoteDesktopPanel({
       // 组字中不能碰输入口的内容，否则输入法的半成品会被打断。
       if (composingRef.current || native.isComposing) return;
       const kind = classifyInput(native.inputType, false);
-      const typed =
-        typeof native.data === "string" && native.data !== "" ? native.data : input.value;
+      // 输入口平时是空的；一次真正的插入，input 触发时 value 里一定有刚插入的文字。
+      const value = input.value;
+      const data = typeof native.data === "string" ? native.data : "";
       input.value = "";
-      if (kind !== "text" || closedRef.current) return;
-      sendTextRef.current(typed);
+      const claimed = handledByBeforeInput;
+      handledByBeforeInput = null;
+      if (closedRef.current) return;
+      if (kind === "enter" || kind === "backspace" || kind === "delete") {
+        // 同一次编辑 beforeinput 已经发过就不再发；没有 beforeinput（或它没发）时这里补发，不丢。
+        if (claimed === kind) return;
+        const action = softInputKeyAction(kind);
+        if (action) enqueue(action);
+        return;
+      }
+      if (kind !== "text") return;
+      // 带 data 的 input 但输入口里并没有这段文字：这段文字已经被前面的事务（如 compositionend
+      // 的上屏）取走并清空了，这是迟到的回声，不是新输入。靠输入口的真实内容判断，不靠时间、
+      // 也不靠「同样的字就去重」——用户连续敲同一个字时，每一次 input 的 value 里都有它。
+      if (data !== "" && !value.includes(data)) return;
+      sendTextRef.current(data !== "" ? data : value);
     };
     input.addEventListener("compositionstart", onStart);
     input.addEventListener("compositionend", onEnd);
