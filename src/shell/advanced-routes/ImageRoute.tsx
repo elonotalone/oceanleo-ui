@@ -66,6 +66,7 @@ export function ImageRoute({
   siteId = "",
   accent = "#4f46e5",
   onLocalSave,
+  localProject,
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const [activeItem, setActiveItem] = useState(item);
@@ -92,7 +93,7 @@ export function ImageRoute({
     }),
     [collabReadOnly],
   );
-  const editor = useFabricImageEditor(activeItem, siteId, { collab: collabOptions });
+  const editor = useFabricImageEditor(activeItem, siteId, { collab: collabOptions, localProject });
   editorCollabRef.current = editor.collab;
   // 载入完成：补齐旧稿对象的 id，把画布现状交给协同层（它据此种子或对齐）
   useEffect(() => {

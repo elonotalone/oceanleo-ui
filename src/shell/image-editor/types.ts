@@ -230,6 +230,8 @@ export interface FabricImageEditorOptions {
   onAiEdit?: (prompt: string, image: Blob) => Promise<string>;
   /** 「保存到我的库」成功后的回调（参数为成品 URL）。 */
   onSaved?: (url: string) => void;
+  /** Native local editor only: the host's stored project for this exact artifact revision (see ImageRoute). */
+  localProject?: unknown;
 }
 
 export interface FabricImageSaveResult {

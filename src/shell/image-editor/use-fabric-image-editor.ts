@@ -827,7 +827,31 @@ export function useFabricImageEditor(
         controllerRef.current = controller;
         let cloudProjectUpdatedAt = "";
         let projectLoaded = false;
-        if (designDocumentSource) {
+        // Native local editor: the host's own stored project (already matched to this artifact and
+        // library revision by the mount) opens the canvas with no remote read, so a restart works
+        // offline and after any signed URL expired. If it cannot be loaded the original opens with a
+        // notice; nothing is saved or cleared by this step.
+        let seededFromHost = false;
+        const hostProject = isNewSourceSession
+          ? parseFabricImageProject(optionsRef.current.localProject)
+          : null;
+        if (hostProject) {
+          try {
+            seededFromHost = await controller.loadSnapshot(hostProject.snapshot);
+          } catch (caught) {
+            if (isAbortError(caught)) throw caught;
+          }
+          if (cancelled || abort.signal.aborted) return;
+          if (seededFromHost) {
+            projectLoaded = true;
+            setNotice("已从本机保存的工程打开");
+          } else {
+            setNotice("本机保存的修改无法载入，已打开原图；保存会替换它们");
+          }
+        }
+        if (seededFromHost) {
+          // The stored project is the document; no source or cloud project is read.
+        } else if (designDocumentSource) {
           try {
             const hydrated = await hydrateDesignCanvasSource(
               planDesignCanvasSource(item),
@@ -1003,6 +1027,7 @@ export function useFabricImageEditor(
         const localTime = Date.parse(localDraft?.updatedAt || "") || 0;
         if (
           localDraft &&
+          !seededFromHost &&
           localTime > cloudTime &&
           !cancelled &&
           !abort.signal.aborted
