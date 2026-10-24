@@ -536,6 +536,14 @@ export function ImageRoute({
               </div>
             ) : null}
             <div className="relative min-h-0 flex-1">
+              {/*
+                The stage stays mounted under a failed source load. The hook only
+                (re)initialises Fabric while it holds the stage's canvas element, so
+                replacing the stage with the failure panel made 重新载入 a no-op:
+                the canvas could never come back. The panel covers the stage; the
+                sourceReady / save admission gates are unchanged (no blank overwrite).
+              */}
+              <FabricImageStage editor={editor} accent={accent} peers={peerSelections} />
               {!editor.loading && !editor.sourceReady ? (
                 <EditorSourceFailurePanel
                   message={
@@ -544,11 +552,9 @@ export function ImageRoute({
                       : imageAdmitted.error
                   }
                   onReload={editor.reload}
-                  variant="surface"
+                  variant="overlay"
                 />
-              ) : (
-                <FabricImageStage editor={editor} accent={accent} peers={peerSelections} />
-              )}
+              ) : null}
             </div>
           </div>
         ),
@@ -581,6 +587,13 @@ export function ImageRoute({
                 await deleteAdvancedRecovery(
                   advancedRecoveryKey("image", activeItem),
                 ).catch(() => undefined);
+              }
+              if (result === true && onLocalSaveRef.current) {
+                // Native host save: the only thing the mount seeds into this slot is the
+                // host's own stored project, already persisted on this device. Restoring it
+                // must not read as an unsaved edit that needs a second host save.
+                const live = editorRef.current.captureLocalSave();
+                if (live) editorRef.current.markLocalSaved(live.revision);
               }
               return result === "unchanged" || result === "stale" ? true : result;
             },

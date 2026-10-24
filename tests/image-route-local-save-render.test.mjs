@@ -43,6 +43,8 @@ export function useFabricImageEditor() {
   const ctl = globalThis.__fakeImageEditor;
   const [dirty, setDirty] = useState(false);
   const [rev, setRev] = useState(0);
+  const [, setTick] = useState(0);
+  ctl.rerender = () => setTick((n) => n + 1);
   const revRef = useRef(0);
   const dirtyRef = useRef(false);
   ctl.edit = () => { revRef.current += 1; dirtyRef.current = true; setRev(revRef.current); setDirty(true); };
@@ -68,7 +70,7 @@ export function useFabricImageEditor() {
   return {
     collab: { readOnly: false, tick: 0, remoteDelta: "", snapshot: () => null, ensureIds() {}, applyRemote() {}, objectBoxes: () => [], adoptRevision: async () => null, markClean() {} },
     vectorConversion: null, confirmVectorConversion() {}, openIdentity: "image-1", loading: false, saving: false, aiBusy: false,
-    error: "", notice: "", sceneDiagnostic: null, sourceReady: true, reload() {}, savedUrl: "", savedProjectUrl: "", savedAt: "",
+    error: ctl.failed ? "图片源未成功载入" : "", notice: "", sceneDiagnostic: null, sourceReady: !ctl.failed, reload() { ctl.reloads += 1; ctl.failed = false; ctl.rerender && ctl.rerender(); }, savedUrl: "", savedProjectUrl: "", savedAt: "",
     dirty, editRevision: rev, captureRecovery: () => null, captureRecoveryRevision: () => null, captureLocalSave, markLocalSaved,
     restoreRecovery: async () => false, stageCanvasRef() {}, stageContainerRef() {}, zoom: 1, setZoom() {}, zoomFit() {},
     layers: [], selected: null, cropping: false, canUndo: false, canRedo: false, undo() {}, redo() {},
@@ -108,7 +110,7 @@ const stubs = {
   "../image-editor/use-fabric-image-editor": dataModule(FAKE_HOOK),
   "../image-editor/FabricImageContextToolbar": nullComponent("FabricImageContextToolbar"),
   "../image-editor/FabricImageControls": nullComponent("FabricImageControls"),
-  "../image-editor/FabricImageStage": nullComponent("FabricImageStage"),
+  "../image-editor/FabricImageStage": dataModule(`export function FabricImageStage() { return globalThis.__fakeImageEditor.createStage(); }`),
   "../image-editor/FabricImageCreationPanels": nullComponent(
     "FabricImageBrushPanel", "FabricImageExportPanel", "FabricImageLinePanel", "FabricImageNotePanel",
     "FabricImageShapePanel", "FabricImageSignaturePanel", "FabricImageTablePanel", "FabricImageTextPanel",
@@ -118,7 +120,6 @@ const stubs = {
   ),
   "../collab/adapters/visual-selection": dataModule("export function useCollabSelections() { return []; }"),
   "../collab/adapters/VisualViewOnlyPanel": dataModule("export function VisualViewOnlyPanel({children}) { return children; }"),
-  "../doc-editors/EditorSourceFailurePanel": nullComponent("EditorSourceFailurePanel"),
 };
 
 const { ImageRoute } = await import(await compileModule("src/shell/advanced-routes/ImageRoute.tsx", stubs));
@@ -145,7 +146,7 @@ async function withRoute(props, body) {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   resetUserEditSession();
-  globalThis.__fakeImageEditor = { captures: [], marks: [], cloudSaves: 0 };
+  globalThis.__fakeImageEditor = { captures: [], marks: [], cloudSaves: 0, reloads: 0, failed: false, createStage: () => h("div", { "data-fake-stage": true }) };
   const errors = [];
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");
@@ -279,5 +280,24 @@ test("without onLocalSave the cloud save runs and the slot stays a cloud slot", 
     assert.ok(ctl.cloudSaves >= 1, "production flush called the cloud save");
     assert.equal(ctl.captures.length, 0, "local capture never used");
     assert.equal(ctl.marks.length, 0);
+  });
+});
+
+test("a failed source load keeps the stage mounted under the failure panel, and 重新载入 reaches the editor", async () => {
+  await withRoute({ onLocalSave: async () => ({ ok: true }) }, async ({ container, ctl, root }) => {
+    assert.ok(container.querySelector("[data-fake-stage]"));
+    assert.equal(container.querySelector("[data-editor-source-failure]"), null);
+    ctl.failed = true;
+    await act(async () => ctl.rerender());
+    const panel = container.querySelector("[data-editor-source-failure]");
+    assert.ok(panel, "failure is shown");
+    assert.ok(container.querySelector("[data-fake-stage]"), "the canvas stage is still mounted so Fabric can be re-initialised");
+    assert.match(panel.className, /absolute inset-0/, "the panel overlays the stage (variant overlay)");
+    assert.equal(slot(container).getAttribute("data-save-state"), "unconfirmed", "no blank overwrite and no success while the source failed");
+    const reload = [...panel.querySelectorAll("button")].find((b) => b.textContent === "重新载入");
+    await act(async () => reload.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+    assert.equal(ctl.reloads, 1);
+    assert.equal(container.querySelector("[data-editor-source-failure]"), null);
+    assert.ok(container.querySelector("[data-fake-stage]"));
   });
 });
