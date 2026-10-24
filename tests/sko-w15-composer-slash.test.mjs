@@ -65,9 +65,10 @@ const settingsStub = dataModule(`
   export function openSettingsModal(tab){ (globalThis.__W15_SETTINGS__ ||= []).push(tab); }
   export function navigateSettingsOrHref(){}
 `);
-// W09B 的数据 hook / 列表用替身：数据来自 globalThis，列表按 W09B 同一个过滤函数渲染行。
+// W09B 的数据 hook / 列表用替身：数据来自 globalThis，列表按 W09B 同一个过滤函数渲染行，
+// 与真件一样经 onItemsChange 报可见列表、onMouseDown 选中。
 const managerStub = dataModule(`
-  import { createElement } from "${reactUrl}";
+  import { createElement, useEffect } from "${reactUrl}";
   import { filterPickerSkills } from "${pathToFileURL(new URL("../src/shell/skills/manager/logic.ts", import.meta.url).pathname).href}";
   export function useAvailableSkills(projectId){
     const g = globalThis.__W15_SKILLS__ || { skills: [], loading: false };
@@ -77,10 +78,13 @@ const managerStub = dataModule(`
   export function SkillPickerList(props){
     const g = globalThis.__W15_SKILLS__ || { skills: [] };
     const rows = filterPickerSkills(g.skills, props.query);
-    return createElement("div", { role: "listbox", "data-stub-picker": "", "data-active": String(props.activeIndex ?? "") },
-      rows.map((s, i) => createElement("button", {
-        key: s.name, type: "button", "data-skill": s.name, "data-active": String(i === props.activeIndex),
-        onClick: () => props.onPick(s.name),
+    const sig = rows.map((r) => r.name).join(",");
+    useEffect(() => { props.onItemsChange?.(rows); }, [sig]);
+    if (!rows.length) return createElement("div", { "data-stub-picker": "" }, "没有匹配的技能");
+    return createElement("ul", { role: "listbox", "data-stub-picker": "" },
+      rows.map((s, i) => createElement("li", {
+        key: s.name, "data-skill": s.name, "data-active": String(i === props.activeIndex),
+        onMouseDown: (e) => { e.preventDefault(); props.onPick(s.name); },
       }, "/" + s.name)));
   }
 `);
@@ -95,7 +99,6 @@ const slash = await import(
 const {
   detectSlashToken,
   isFreshSlash,
-  visibleSlashSkills,
   applySkillPick,
   slashKeyAction,
   resolveSkillSlashOption,
@@ -133,16 +136,6 @@ test("刚键入 /：只有值恰好多一个字符且光标紧贴 / 才弹", () 
   assert.equal(isFreshSlash("", "粘贴 /", detectSlashToken("粘贴 /")), false, "粘贴不弹");
   assert.equal(isFreshSlash("/", "/x", detectSlashToken("/x")), false, "已有片段不算新开");
   assert.equal(isFreshSlash("a", "a/", detectSlashToken("a/")), false);
-});
-
-test("过滤：名字前缀在前，其次名字/标题包含；空片段全部", () => {
-  assert.deepEqual(visibleSlashSkills(SKILLS, "").map((s) => s.name), SKILLS.map((s) => s.name));
-  assert.deepEqual(visibleSlashSkills(SKILLS, "note").map((s) => s.name), ["note-cleaner", "xhs-note-studio"]);
-  assert.deepEqual(visibleSlashSkills(SKILLS, "DECK").map((s) => s.name), ["deck-forge"]);
-  assert.deepEqual(visibleSlashSkills(SKILLS, "x-ray").map((s) => s.name), ["market-xray"], "标题包含");
-  assert.deepEqual(visibleSlashSkills(SKILLS, "/deck").map((s) => s.name), ["deck-forge"], "带 / 前缀也能过滤");
-  assert.deepEqual(visibleSlashSkills(SKILLS, "小红书").map((s) => s.name), ["xhs-note-studio"], "中文标题可搜");
-  assert.deepEqual(visibleSlashSkills(SKILLS, "zzz"), []);
 });
 
 test("替换：/片段 → /name （带一个空格），前后文字不动", () => {
@@ -324,7 +317,7 @@ async function mount(element) {
   };
 }
 
-test("键入 / 弹出个人+项目技能；继续键入过滤；↓ 再 Enter 插入 /name ；浮层关", async () => {
+test("键入 / 弹出个人+项目技能；继续键入过滤（名字前缀在前）；↓ 再 Enter 插入 /name ；浮层关", async () => {
   globalThis.__W15_SKILLS__ = { skills: SKILLS, loading: false };
   globalThis.__W15_SKILL_CALLS__ = [];
   const h = makeHarness();
@@ -343,7 +336,7 @@ test("键入 / 弹出个人+项目技能；继续键入过滤；↓ 再 Enter �
 
     await h.type("帮我 /no");
     const names = [...m.container.querySelectorAll("[data-skill]")].map((b) => b.dataset.skill);
-    assert.deepEqual(names, ["note-cleaner", "xhs-note-studio"]);
+    assert.deepEqual(names, ["note-cleaner", "xhs-note-studio"], "顺序 = SkillPickerList 报上来的顺序");
 
     let ev = key("ArrowDown");
     let handled;
@@ -374,7 +367,7 @@ test("点击条目插入；Esc 关闭后不再拦键；点外关闭", async () =
   try {
     await h.type("/");
     await act(async () => {
-      m.container.querySelector('[data-skill="deck-forge"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      m.container.querySelector('[data-skill="deck-forge"]').dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true }));
     });
     assert.equal(h.model.line, "/deck-forge ");
     assert.equal(h.api.open, false);
@@ -546,7 +539,8 @@ test("composer-skill-slash：未开启时恒 false/null；不碰 innerHTML / dan
   assert.match(slashSource, /SkillPickerList/);
   assert.match(slashSource, /useAvailableSkills\(projectId\)/);
   // 所有界面文字走 tt()
-  for (const zh of ["技能", "还没有技能", "去添加", "没有匹配的技能", "加载中…", "选择技能", "↑↓ 选择 · 回车插入 · Esc 关闭"]) {
+  // 「没有匹配的技能」由 W09B 的 SkillPickerList 渲染。
+  for (const zh of ["技能", "还没有技能", "去添加", "加载中…", "选择技能", "↑↓ 选择 · 回车插入 · Esc 关闭"]) {
     assert.ok(slashSource.includes(`tt("${zh}")`), zh);
   }
 });

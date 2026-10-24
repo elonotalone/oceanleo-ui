@@ -26,9 +26,7 @@ import {
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { openSettingsModal } from "../pages/settings/settings-tabs";
-import { SkillPickerList, useAvailableSkills } from "./skills/manager";
-// 与 SkillPickerList 渲染用的是同一个过滤 + 排序，键盘高亮的第 i 条才对得上（见 signals/W15-to-W09B.md）。
-import { filterPickerSkills, type AvailableSkill } from "./skills/manager/logic";
+import { SkillPickerList, useAvailableSkills, type AvailableSkill } from "./skills/manager";
 
 /** `LeoComposer` 的 `skillSlash` prop：`true` = 个人技能；`{ projectId }` = 个人 + 该项目技能。 */
 export type ComposerSkillSlashOption = boolean | { projectId?: string };
@@ -76,11 +74,6 @@ export function detectSlashToken(textBeforeCaret: string): SlashToken | null {
  */
 export function isFreshSlash(prevValue: string, nextValue: string, token: SlashToken | null): boolean {
   return Boolean(token && token.query === "" && nextValue.length === prevValue.length + 1);
-}
-
-/** 浮层里可见的技能（顺序 = SkillPickerList 的顺序）。 */
-export function visibleSlashSkills(skills: readonly SlashSkill[], query: string): SlashSkill[] {
-  return filterPickerSkills(skills, query);
 }
 
 /**
@@ -392,14 +385,6 @@ export function useComposerSkillSlash({
   return { open, onKeyDown, popover };
 }
 
-/**
- * W09B 的受控高亮 props（`activeIndex` / `onActiveChange`，见 signals/W15-to-W09B.md）。
- * 在它们进 `SkillPickerListProps` 之前以展开方式传，类型上不越过 §3.4 的固定形状。
- */
-function pickerKeyboardProps(activeIndex: number, onActiveChange: (index: number) => void) {
-  return { activeIndex, onActiveChange } as Record<string, unknown>;
-}
-
 // ── 浮层 ─────────────────────────────────────────────────────────────────────
 
 interface SkillSlashLayerProps {
@@ -414,6 +399,10 @@ interface SkillSlashLayerProps {
   ref?: Ref<HTMLDivElement>;
 }
 
+/**
+ * 第一次打开后一直挂着（关着时 `hidden`），所以 SkillPickerList 与数据只取一次，再开不闪。
+ * 列表顺序以 SkillPickerList 经 `onItemsChange` 报上来的为准，键盘第 i 条与屏幕第 i 行永远一致。
+ */
 function SkillSlashLayer({
   open,
   projectId,
@@ -426,34 +415,35 @@ function SkillSlashLayer({
   ref,
 }: SkillSlashLayerProps) {
   const tt = useUI();
+  // 只用来判断「一个技能都没有」（要给「去添加」链接）；列表本身由 SkillPickerList 取数渲染。
   const { skills, loading } = useAvailableSkills(projectId);
-  const items = visibleSlashSkills(skills ?? [], query);
-  // 把可见列表交给 hook（键盘 Enter/Tab 取第 activeIndex 条）。渲染后同步，按键总在其后。
+  const none = skills.length === 0;
+  const showList = !none;
+  const reported = useRef<SlashSkill[]>([]);
+  // 列表藏起来（加载中 / 没有技能）时键盘没有可选项：回车照常发送。
   useEffect(() => {
-    onItems(items);
+    onItems(showList ? reported.current : []);
   });
 
-  if (!open) return <div ref={ref} hidden data-composer-skill-slash="closed" />;
-
-  const empty = !loading && (skills ?? []).length === 0;
   return (
     <div
       ref={ref}
-      data-composer-skill-slash="open"
+      hidden={!open}
+      data-composer-skill-slash={open ? "open" : "closed"}
       role="dialog"
       aria-label={tt("选择技能")}
       // 浮层不抢焦点：点它时光标留在输入框里，键盘继续可用。
       onMouseDown={(event) => event.preventDefault()}
-      className="v-fade-up absolute bottom-full left-0 z-50 mb-2 w-[min(420px,100%)] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)]"
+      className="v-fade-up absolute bottom-full left-0 z-50 mb-2 w-[min(420px,100%)] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-lg transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] dark:border-white/10 dark:bg-neutral-900"
     >
-      <div className="flex items-center justify-between px-4 pb-1 pt-3 text-[12px] font-medium text-neutral-400">
+      <div className="flex items-center justify-between gap-3 px-4 pb-1 pt-3 text-[12px] font-medium text-neutral-400">
         <span>{tt("技能")}</span>
-        {items.length > 0 && <span className="font-normal">{tt("↑↓ 选择 · 回车插入 · Esc 关闭")}</span>}
+        {showList && <span className="truncate font-normal">{tt("↑↓ 选择 · 回车插入 · Esc 关闭")}</span>}
       </div>
-      {loading && (skills ?? []).length === 0 ? (
+      {none && loading ? (
         <p className="px-4 pb-4 pt-2 text-[13px] text-neutral-400">{tt("加载中…")}</p>
-      ) : empty ? (
-        <p className="px-4 pb-4 pt-2 text-[13px] text-neutral-500" data-composer-skill-slash-empty>
+      ) : none ? (
+        <p className="px-4 pb-4 pt-2 text-[13px] text-neutral-500" data-composer-skill-slash-empty="">
           {tt("还没有技能")}
           {" · "}
           <a
@@ -463,23 +453,25 @@ function SkillSlashLayer({
               onClose();
               openSettingsModal("skills");
             }}
-            className="font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-950"
+            className="font-medium text-neutral-800 underline underline-offset-2 hover:text-neutral-950 dark:text-neutral-200"
           >
             {tt("去添加")}
           </a>
         </p>
-      ) : items.length === 0 ? (
-        <p className="px-4 pb-4 pt-2 text-[13px] text-neutral-400">{tt("没有匹配的技能")}</p>
-      ) : (
-        <div className="max-h-[320px] overflow-y-auto pb-1.5">
-          <SkillPickerList
-            projectId={projectId}
-            query={query}
-            onPick={onPick}
-            {...pickerKeyboardProps(activeIndex, onActiveChange)}
-          />
-        </div>
-      )}
+      ) : null}
+      <div hidden={!showList} className="pb-1">
+        <SkillPickerList
+          projectId={projectId}
+          query={query}
+          onPick={onPick}
+          activeIndex={activeIndex}
+          onActiveChange={onActiveChange}
+          onItemsChange={(items) => {
+            reported.current = items;
+            onItems(showList ? items : []);
+          }}
+        />
+      </div>
     </div>
   );
 }
