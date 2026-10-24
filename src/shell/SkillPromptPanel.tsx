@@ -208,11 +208,11 @@ export function SkillPromptPanel({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={14}
-          className="block w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-[14px] leading-relaxed text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+          className="block w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-[13px] leading-relaxed text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
           placeholder={tt("编辑这个 agent 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…")}
         />
       ) : (
-        <pre className="max-h-[55vh] min-h-[8rem] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-stone-100 bg-stone-50 p-4 font-sans text-[14px] leading-[1.75] text-stone-700">
+        <pre className="max-h-[55vh] min-h-[8rem] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-stone-100 bg-stone-50 p-4 font-sans text-[13px] leading-[1.75] text-stone-700">
           {basePrompt}
         </pre>
       )}
@@ -316,7 +316,7 @@ export function SkillPromptPanel({
             <PromptIcon light />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[14px] font-semibold text-stone-900">
+            <p className="truncate text-[13px] font-semibold text-stone-900">
               {name ? tt("{name} 的 prompt", { name }) : tt("agent 设定（prompt）")}
             </p>
             <p className="text-[12px] text-stone-400">

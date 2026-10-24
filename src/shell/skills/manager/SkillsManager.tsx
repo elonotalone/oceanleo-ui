@@ -237,7 +237,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
   const addItems: AddMenuItem[] = [
     {
       id: "upload",
-      icon: <IconUpload className="h-5 w-5" />,
+      icon: <IconUpload className="h-4 w-4" />,
       title: tt("从本地文件添加"),
       description: tt("上传 .zip 或 .skill"),
       onSelect: () => fileInputRef.current?.click(),
@@ -246,7 +246,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
       ? [
           {
             id: "mine",
-            icon: <IconUserCircle className="h-5 w-5" />,
+            icon: <IconUserCircle className="h-4 w-4" />,
             title: tt("从我的技能导入"),
             description: tt("从你的个人技能复制到本项目"),
             onSelect: () => setSub({ kind: "mine" }),
@@ -255,7 +255,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
       : []),
     {
       id: "official",
-      icon: <KitIconShield className="h-5 w-5" />,
+      icon: <KitIconShield className="h-4 w-4" />,
       title: tt("从官方库添加"),
       description: tt("OceanLeo 维护的开源技能"),
       onSelect: openLibrary,
@@ -263,14 +263,14 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
     },
     {
       id: "github",
-      icon: <IconGithub className="h-5 w-5" />,
+      icon: <IconGithub className="h-4 w-4" />,
       title: tt("从 GitHub 导入"),
       description: tt("粘贴公开仓库链接"),
       onSelect: () => setSub({ kind: "github" }),
     },
     {
       id: "create",
-      icon: <IconPencil className="h-5 w-5" />,
+      icon: <IconPencil className="h-4 w-4" />,
       title: tt("自己写一个"),
       description: tt("填写名称、描述和正文"),
       onSelect: () => setSub({ kind: "create" }),
@@ -408,7 +408,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
   } else if (folders.status === "signed-out") {
     body = (
       <ConfigEmptyState
-        icon={<KitIconPuzzle className="h-9 w-9" />}
+        icon={<KitIconPuzzle className="h-8 w-8" />}
         title={tt("登录后管理你的技能")}
         description={tt("登录后可以添加官方技能、导入或自己写技能。")}
       />
@@ -416,7 +416,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
   } else if (folders.status === "error") {
     body = (
       <ConfigEmptyState
-        icon={<KitIconPuzzle className="h-9 w-9" />}
+        icon={<KitIconPuzzle className="h-8 w-8" />}
         title={tt("技能列表加载失败")}
         description={tt(folders.error)}
         action={
@@ -429,7 +429,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
   } else if (folders.items.length === 0) {
     body = (
       <ConfigEmptyState
-        icon={<KitIconPuzzle className="h-9 w-9" />}
+        icon={<KitIconPuzzle className="h-8 w-8" />}
         title={tt("还没有技能")}
         description={
           canEdit
@@ -442,7 +442,7 @@ export function SkillsManager({ scope, onOpenOfficialLibrary }: SkillsManagerPro
   } else if (visible.length === 0) {
     body = (
       <ConfigEmptyState
-        icon={<KitIconPuzzle className="h-9 w-9" />}
+        icon={<KitIconPuzzle className="h-8 w-8" />}
         title={tt("没有匹配的技能")}
         description={tt("换个关键词，或清除筛选。")}
         action={

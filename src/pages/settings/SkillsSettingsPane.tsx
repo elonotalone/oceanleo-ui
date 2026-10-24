@@ -22,11 +22,11 @@ export function SkillsSettingsPane({ heading = false }: SkillsSettingsPaneProps)
   return (
     <section data-plugins-skills data-settings-skills-pane className="min-h-0">
       {heading ? (
-        <h2 className="mb-2 text-[20px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+        <h2 className="mb-2 text-[18px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
           {tt("技能")}
         </h2>
       ) : null}
-      <p data-skills-pane-hint className="text-[14px] leading-relaxed text-neutral-500">
+      <p data-skills-pane-hint className="text-[13px] leading-relaxed text-neutral-500">
         {tt("在输入框输入 / 使用已添加的技能")}
         <span aria-hidden="true" className="mx-1.5">
           ·

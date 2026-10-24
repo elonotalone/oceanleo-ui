@@ -273,7 +273,7 @@ function FileBody({ file, downloadUrl }: { file: FileContent; downloadUrl?: stri
             <CodeBlock text={frontmatter} label="YAML" />
           </div>
         ) : null}
-        <Markdown className="leo-skill-markdown text-[14.5px] leading-relaxed">{body}</Markdown>
+        <Markdown className="leo-skill-markdown text-[13px] leading-relaxed [&_h1]:text-[14px] [&_h2]:text-[14px] [&_h3]:text-[13px]">{body}</Markdown>
       </div>
     );
   }
@@ -308,8 +308,8 @@ function FileBody({ file, downloadUrl }: { file: FileContent; downloadUrl?: stri
       data-file-kind="binary"
       className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 px-6 py-14 text-center dark:border-neutral-700"
     >
-      <KitIconFile className="h-9 w-9 text-neutral-400" />
-      <div className="text-[14px] font-medium text-neutral-800 dark:text-neutral-200">{file.path.split("/").pop()}</div>
+      <KitIconFile className="h-8 w-8 text-neutral-400" />
+      <div className="text-[13px] font-medium text-neutral-800 dark:text-neutral-200">{file.path.split("/").pop()}</div>
       <div className="text-[13px] text-neutral-500 dark:text-neutral-400">
         {tt("这个文件无法预览")} · {formatBytes(file.size)}
       </div>
@@ -435,7 +435,7 @@ export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, roo
             </div>
           ) : state.status === "error" ? (
             <div className="flex flex-col items-start gap-3" role="alert" data-folder-tree-error="">
-              <div className="flex items-center gap-2 text-[14px] text-red-600 dark:text-red-400">
+              <div className="flex items-center gap-2 text-[13px] text-red-600 dark:text-red-400">
                 <KitIconAlert className="h-4 w-4" />
                 {tt("无法读取这个文件")}
               </div>
@@ -450,7 +450,7 @@ export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, roo
           ) : state.status === "ready" ? (
             <FileBody key={state.path} file={state.file} downloadUrl={downloadUrl} />
           ) : (
-            <p className="text-[14px] text-neutral-500">{tt("选择左侧的文件查看内容")}</p>
+            <p className="text-[13px] text-neutral-500">{tt("选择左侧的文件查看内容")}</p>
           )}
         </div>
       </section>

@@ -250,13 +250,13 @@ export function AddMenu({ label, items, variant = "primary" }: AddMenuProps) {
                           : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
                     }`}
                   >
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-neutral-700 dark:text-neutral-300">
+                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-neutral-700 dark:text-neutral-300">
                       {item.icon}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] font-medium leading-snug">{item.title}</span>
+                      <span className="block text-[13px] font-medium leading-snug">{item.title}</span>
                       {item.description ? (
-                        <span className="mt-0.5 block text-[13px] leading-snug text-neutral-500 dark:text-neutral-400">
+                        <span className="mt-0.5 block text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
                           {item.description}
                         </span>
                       ) : null}

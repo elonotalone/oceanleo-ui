@@ -243,7 +243,7 @@ function MarketplaceLogo({ item, large }: { item: McpItem; large?: boolean }) {
       data-mcp-catalog-image
       src={item.image_url}
       alt=""
-      className={`${large ? "h-12 w-12" : "h-9 w-9"} shrink-0 rounded-lg object-cover`}
+      className={`${large ? "h-8 w-8" : "h-6 w-6"} shrink-0 rounded-lg object-contain`}
     />
   ) : (
     <ConnectorIcon id={item.code} label={item.name || item.vendor || item.code} size={large ? "lg" : undefined} />
@@ -270,7 +270,7 @@ function MarketplaceCard({
         <MarketplaceLogo item={item} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">
+            <span className="truncate text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
               {item.name || item.code}
             </span>
             <MarketplacePrice item={item} accent={accent} />
@@ -281,7 +281,7 @@ function MarketplaceCard({
         </div>
       </div>
       {item.description ? (
-        <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-neutral-500">{item.description}</p>
+        <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">{item.description}</p>
       ) : null}
     </button>
   );
@@ -323,7 +323,7 @@ function MarketplaceDetail({
         <MarketplacePrice item={item} accent={accent} />
       </div>
       {item.description ? (
-        <p className="whitespace-pre-line text-[14px] leading-relaxed text-neutral-700">{item.description}</p>
+        <p className="whitespace-pre-line text-[13px] leading-relaxed text-neutral-700">{item.description}</p>
       ) : null}
       <p className="mt-4 text-[12px] text-neutral-500">
         {tt("这是阿里云市场上的 MCP 服务，需要先在阿里云开通，再把服务地址填进「自定义 MCP 服务器」。")}

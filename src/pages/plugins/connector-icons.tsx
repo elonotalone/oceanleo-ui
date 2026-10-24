@@ -40,15 +40,15 @@ export function resolveConnectorSlug(icon?: string, id?: string): string {
 }
 
 const SIZE_BOX: Record<"sm" | "md" | "lg", string> = {
-  sm: "h-8 w-8",
-  md: "h-9 w-9",
-  lg: "h-12 w-12",
+  sm: "h-6 w-6",
+  md: "h-7 w-7",
+  lg: "h-8 w-8",
 };
 
 const SIZE_MARK: Record<"sm" | "md" | "lg", string> = {
   sm: "h-4 w-4",
-  md: "h-5 w-5",
-  lg: "h-7 w-7",
+  md: "h-4 w-4",
+  lg: "h-4 w-4",
 };
 
 export function ConnectorIcon({

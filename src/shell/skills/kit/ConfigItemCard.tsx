@@ -97,7 +97,7 @@ export function ConfigItemCard({ title, description, badge, meta, toggle, menu, 
         {cover !== undefined ? <SkillCover src={cover} title={typeof title === "string" ? title : ""} size="sm" /> : null}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
-            <h3 className="min-w-0 truncate text-[16px] font-semibold leading-snug text-neutral-900 dark:text-neutral-100">
+            <h3 className="min-w-0 truncate text-[13px] font-semibold leading-snug text-neutral-900 dark:text-neutral-100">
               {title}
             </h3>
             {toggle ? (
@@ -110,7 +110,7 @@ export function ConfigItemCard({ title, description, badge, meta, toggle, menu, 
             ) : null}
           </div>
           {description ? (
-            <p className="mt-1.5 line-clamp-2 text-[14px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+            <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
               {description}
             </p>
           ) : null}

@@ -140,7 +140,7 @@ function ConfigDialogPanel({
         data-size={size}
         data-leo-overlay-state={state}
         onKeyDown={onKeyDown}
-        className={`leo-overlay-panel relative flex h-full w-full flex-col overflow-hidden bg-[#f7f7f5] text-neutral-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500/60 sm:h-[min(86vh,900px)] sm:rounded-[24px] dark:bg-neutral-900 dark:text-neutral-100 ${CONFIG_DIALOG_WIDTH[size]}`}
+        className={`leo-overlay-panel relative flex h-full w-full flex-col overflow-hidden bg-[#f7f7f5] text-[13px] text-neutral-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-500/60 sm:h-[min(86vh,900px)] sm:rounded-[24px] dark:bg-neutral-900 dark:text-neutral-100 ${CONFIG_DIALOG_WIDTH[size]}`}
       >
         <button
           type="button"
@@ -149,14 +149,14 @@ function ConfigDialogPanel({
           onClick={() => requestClose("close-button")}
           className="absolute right-3 top-3 inline-flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 sm:right-5 sm:top-5 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
         >
-          <KitIconClose className="h-5 w-5" />
+          <KitIconClose className="h-4 w-4" />
         </button>
         <header className="shrink-0 px-5 pb-4 pr-16 pt-6 sm:px-10 sm:pt-9">
-          <h2 id={titleId} className="text-[22px] font-semibold leading-tight tracking-[-0.01em]">
+          <h2 id={titleId} className="text-[18px] font-semibold leading-tight tracking-[-0.01em]">
             {title}
           </h2>
           {subtitle ? (
-            <div id={descId} className="mt-2 text-[14px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+            <div id={descId} className="mt-2 text-[13px] leading-relaxed text-neutral-500 dark:text-neutral-400">
               {subtitle}
             </div>
           ) : null}

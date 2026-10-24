@@ -34,7 +34,7 @@ export interface ConnectorsSettingsPaneProps {
 
 function CatalogIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
       <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
       <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
       <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
@@ -45,7 +45,7 @@ function CatalogIcon() {
 
 function ServerIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
       <rect x="3.5" y="4" width="17" height="6.5" rx="1.5" />
       <rect x="3.5" y="13.5" width="17" height="6.5" rx="1.5" />
       <path d="M7 7.25h.01M7 16.75h.01M11 7.25h5M11 16.75h5" />
@@ -55,7 +55,7 @@ function ServerIcon() {
 
 function PlugIcon() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-10 w-10" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7" aria-hidden="true">
       <path d="M9 3.5v4M15 3.5v4" />
       <path d="M6.5 7.5h11v3.5a5.5 5.5 0 0 1-11 0z" />
       <path d="M12 16.5v4" />
@@ -281,7 +281,7 @@ export function ConnectorsSettingsPane({
     <section data-plugins-connectors data-settings-connectors-pane className="min-h-0 pb-10">
       <span data-mcp-oauth-return-origin={controller.returnOrigin} hidden />
       {heading ? (
-        <h2 className="mb-4 text-[20px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+        <h2 className="mb-4 text-[18px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
           {tt("连接器")}
         </h2>
       ) : null}

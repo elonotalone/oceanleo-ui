@@ -350,7 +350,7 @@ export function useConnectorController({
           testId="mcp-disconnect-confirm"
           zClassName={dialogZClassName}
         >
-          <h3 className="text-[15px] font-semibold text-neutral-900">{tt("断开连接")}</h3>
+          <h3 className="text-[13px] font-semibold text-neutral-900">{tt("断开连接")}</h3>
           <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
             {tt("断开后需要重新授权或重新粘贴凭证，已授权的访问会被撤销。")}
           </p>
@@ -478,8 +478,8 @@ export function ConnectorCard({
       <div className="flex gap-3">
         <ConnectorIcon icon={connector.icon} id={connector.id} label={tt(connector.name)} />
         <div className="min-w-0 pr-20">
-          <p className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">{tt(connector.name)}</p>
-          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-neutral-500">
+          <p className="text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">{tt(connector.name)}</p>
+          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-neutral-500">
             {tt(connector.desc)}
           </p>
         </div>

@@ -13,9 +13,9 @@ export interface SkillCoverProps {
 }
 
 export const SKILL_COVER_SIZE: Record<"sm" | "md" | "lg", string> = {
-  sm: "w-12 rounded-[4px]",
-  md: "w-24 rounded-[6px]",
-  lg: "w-[180px] rounded-[6px]",
+  sm: "w-8 rounded-[4px]",
+  md: "w-16 rounded-[6px]",
+  lg: "w-[120px] rounded-[6px]",
 };
 
 function initial(title: string): string {
@@ -30,7 +30,7 @@ export function SkillCover({ src, title, size = "md" }: SkillCoverProps) {
   useEffect(() => setFailed(false), [src]);
   const showImage = Boolean(src) && !failed;
   const [bg, fg] = coverTone(title || "");
-  const textSize = size === "sm" ? "text-[16px]" : size === "md" ? "text-[28px]" : "text-[52px]";
+  const textSize = size === "sm" ? "text-[13px]" : size === "md" ? "text-[20px]" : "text-[32px]";
   return (
     <div
       className={`relative aspect-[3/4] shrink-0 overflow-hidden shadow-[0_2px_10px_rgba(0,0,0,0.10)] ring-1 ring-black/5 ${SKILL_COVER_SIZE[size]}`}
@@ -47,7 +47,7 @@ export function SkillCover({ src, title, size = "md" }: SkillCoverProps) {
           draggable={false}
           referrerPolicy="no-referrer"
           onError={() => setFailed(true)}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain"
         />
       ) : (
         <span

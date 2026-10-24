@@ -189,19 +189,19 @@ export function OfficialSkillLibraryDialog({ open, onClose, projectId, onAdded }
         {status === "loading" ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-[300px] animate-pulse rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950" />
+              <div key={i} className="h-[240px] animate-pulse rounded-2xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950" />
             ))}
           </div>
         ) : status === "error" ? (
           <ConfigEmptyState
-            icon={<KitIconPuzzle className="h-9 w-9" />}
+            icon={<KitIconPuzzle className="h-8 w-8" />}
             title={tt("官方技能库加载失败")}
             description={tt(error)}
             action={
               <button
                 type="button"
                 onClick={() => setTick((v) => v + 1)}
-                className="inline-flex h-11 items-center rounded-xl border border-neutral-200 bg-white px-4 text-[14px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:border-neutral-700 dark:bg-neutral-900"
+                className="inline-flex h-11 items-center rounded-xl border border-neutral-200 bg-white px-4 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:border-neutral-700 dark:bg-neutral-900"
               >
                 {tt("重试")}
               </button>
@@ -209,7 +209,7 @@ export function OfficialSkillLibraryDialog({ open, onClose, projectId, onAdded }
           />
         ) : visible.length === 0 ? (
           <ConfigEmptyState
-            icon={<KitIconPuzzle className="h-9 w-9" />}
+            icon={<KitIconPuzzle className="h-8 w-8" />}
             title={tt("没有匹配的技能")}
             description={tt("换个关键词，或切到「全部」。")}
           />
@@ -263,7 +263,7 @@ export function OfficialSkillCard({
       data-official-skill={skill.name}
       className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(0,0,0,0.08)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:border-neutral-800 dark:bg-neutral-950"
     >
-      <div className="flex h-[168px] items-center justify-center bg-gradient-to-b from-neutral-100 to-neutral-50 dark:from-neutral-900 dark:to-neutral-950">
+      <div className="flex h-[120px] items-center justify-center bg-gradient-to-b from-neutral-100 to-neutral-50 dark:from-neutral-900 dark:to-neutral-950">
         <div className="-rotate-[4deg] shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:-rotate-[2deg]">
           <SkillCover src={skill.cover_url ? gatewayAbsoluteUrl(skill.cover_url) : null} title={title} size="md" />
         </div>
@@ -277,9 +277,9 @@ export function OfficialSkillCard({
           {tt("已加入")}
         </span>
       ) : null}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 px-5 pb-5 pt-4">
-        <h3 className="truncate text-[15.5px] font-semibold text-neutral-900 dark:text-neutral-100">{title}</h3>
-        <p className="line-clamp-2 text-[13.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 pb-4 pt-3">
+        <h3 className="truncate text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">{title}</h3>
+        <p className="line-clamp-2 text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
           {officialDescription(skill, locale)}
         </p>
         <p className="mt-auto pt-1 font-mono text-[12px] text-neutral-400">/{skill.name}</p>

@@ -117,7 +117,7 @@ export function CreateSkillModal({
         type="button"
         disabled={busy}
         onClick={submit}
-        className="w-full rounded-xl py-2.5 text-[14px] font-medium text-white disabled:opacity-60"
+        className="w-full rounded-xl py-2.5 text-[13px] font-medium text-white disabled:opacity-60"
         style={{ background: accent }}
       >
         {busy ? tt("保存中…") : submitLabel ?? tt("创建")}
@@ -225,7 +225,7 @@ export function CreateSkillTeamModal({
         type="button"
         disabled={busy}
         onClick={submit}
-        className="w-full rounded-xl py-2.5 text-[14px] font-medium text-white disabled:opacity-60"
+        className="w-full rounded-xl py-2.5 text-[13px] font-medium text-white disabled:opacity-60"
         style={{ background: accent }}
       >
         {busy ? tt("创建中…") : tt("创建 agent 团队")}
@@ -244,7 +244,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
     <SharedModal onClose={onClose} className="max-w-md">
       <div className="p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-[16px] font-semibold text-stone-900">{title}</h3>
+          <h3 className="text-[13px] font-semibold text-stone-900">{title}</h3>
           <button type="button" onClick={onClose} className="text-stone-400 hover:text-stone-600">
             ✕
           </button>

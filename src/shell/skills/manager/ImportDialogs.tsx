@@ -29,7 +29,7 @@ import { listCopyTargetProjects, type CopyTargetProject } from "./projects-clien
 import { useScopeFolders } from "./use-scope-folders";
 
 export const MANAGER_INPUT_CLASS =
-  "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-[14px] text-neutral-900 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-neutral-400 focus:border-neutral-400 focus-visible:ring-2 focus-visible:ring-sky-100 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:placeholder:text-neutral-500";
+  "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-[13px] text-neutral-900 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-neutral-400 focus:border-neutral-400 focus-visible:ring-2 focus-visible:ring-sky-100 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:placeholder:text-neutral-500";
 
 function Field({ label, hint, error, htmlFor, children }: { label: string; hint?: string; error?: string; htmlFor: string; children: ReactNode }) {
   return (
@@ -394,7 +394,7 @@ export function ImportFromMineDialog({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-[14px] font-medium">{folderDisplayTitle(folder, locale)}</span>
+                      <span className="truncate text-[13px] font-medium">{folderDisplayTitle(folder, locale)}</span>
                       {already ? (
                         <span className="shrink-0 text-[12px] text-neutral-500">{tt("已在项目中")}</span>
                       ) : null}
@@ -491,11 +491,11 @@ export function CopyToProjectDialog({
               >
                 <span
                   aria-hidden="true"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-[15px] dark:bg-neutral-800"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-[13px] dark:bg-neutral-800"
                 >
                   {project.icon && Array.from(project.icon).length <= 2 ? project.icon : Array.from(project.name)[0] || "P"}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{project.name}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{project.name}</span>
                 {busyId === project.id ? <Spinner /> : null}
               </button>
             </li>
@@ -545,7 +545,7 @@ export function DeleteFolderDialog({
               onConfirm();
               onClose();
             }}
-            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
           >
             {tt("删除")}
           </button>
@@ -554,4 +554,3 @@ export function DeleteFolderDialog({
     />
   );
 }
-

@@ -107,7 +107,7 @@ function ManagerDialogPanel({ onClose, title, description, children, footer, siz
         data-manager-dialog=""
         data-leo-overlay-state={state}
         onKeyDown={onKeyDown}
-        className={`leo-overlay-panel relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-[20px] bg-white text-neutral-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-sky-500 sm:rounded-[20px] dark:bg-neutral-900 dark:text-neutral-100 ${
+        className={`leo-overlay-panel relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-[20px] bg-white text-[13px] text-neutral-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-sky-500 sm:rounded-[20px] dark:bg-neutral-900 dark:text-neutral-100 ${
           size === "sm" ? "sm:max-w-[420px]" : "sm:max-w-[600px]"
         }`}
       >
@@ -125,7 +125,7 @@ function ManagerDialogPanel({ onClose, title, description, children, footer, siz
             {title}
           </h3>
           {description ? (
-            <div id={descId} className="mt-1.5 text-[13.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+            <div id={descId} className="mt-1.5 text-[13px] leading-relaxed text-neutral-500 dark:text-neutral-400">
               {description}
             </div>
           ) : null}

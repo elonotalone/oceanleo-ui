@@ -195,11 +195,11 @@ export function SkillDetailModal({ open, onClose, skill, projectId, onAdded }: S
     <div className="absolute right-[56px] top-3 z-[1] flex items-center sm:right-[68px] sm:top-5" data-skill-detail-actions="">
       {shareName ? (
         <button type="button" aria-label={tt("分享")} title={tt("复制公开页链接")} onClick={() => void onShare()} className={HEADER_ICON_CLASS}>
-          <KitIconShare className="h-5 w-5" />
+          <KitIconShare className="h-4 w-4" />
         </button>
       ) : null}
       <button type="button" aria-label={tt("下载")} title={tt("下载 zip")} onClick={() => void onDownload()} className={HEADER_ICON_CLASS}>
-        <KitIconDownload className="h-5 w-5" />
+        <KitIconDownload className="h-4 w-4" />
       </button>
     </div>
   );
@@ -210,13 +210,13 @@ export function SkillDetailModal({ open, onClose, skill, projectId, onAdded }: S
         type="button"
         onClick={() => setView("overview")}
         data-skill-detail-back=""
-        className="-ml-1.5 inline-flex min-h-11 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[20px] font-semibold transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
+        className="-ml-1.5 inline-flex min-h-11 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[18px] font-semibold transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
       >
-        <KitIconChevronLeft className="h-5 w-5" />
+        <KitIconChevronLeft className="h-4 w-4" />
         {tt("技能详情")}
       </button>
     ) : (
-      <span className="block pr-28 text-[26px] leading-tight sm:text-[30px]">{title || tt("技能详情")}</span>
+      <span className="block pr-28 text-[18px] leading-tight">{title || tt("技能详情")}</span>
     );
 
   return (
@@ -230,7 +230,7 @@ export function SkillDetailModal({ open, onClose, skill, projectId, onAdded }: S
         </div>
       ) : loaded.status === "error" ? (
         <div className="flex flex-col items-start gap-3 pt-2">
-          <p className="text-[14px] text-rose-600 dark:text-rose-400">{tt(loaded.error)}</p>
+          <p className="text-[13px] text-rose-600 dark:text-rose-400">{tt(loaded.error)}</p>
           <button type="button" className={CONFIG_TOOLBAR_BUTTON_CLASS} onClick={() => setTick((v) => v + 1)}>
             {tt("重试")}
           </button>
@@ -321,7 +321,7 @@ function DetailOverview({
     <div data-skill-detail-overview="">
       <div className="flex items-start gap-6">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[14px] text-neutral-600 dark:text-neutral-300">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-neutral-600 dark:text-neutral-300">
             {official ? (
               <span className="inline-flex items-center gap-1.5">
                 <IconAuthor className="h-4 w-4" />
@@ -365,7 +365,7 @@ function DetailOverview({
               {tt("查看详情")}
             </button>
             {canToggle && folder?.skill ? (
-              <span className="ml-1 inline-flex items-center gap-2 text-[14px] text-neutral-600 dark:text-neutral-300">
+              <span className="ml-1 inline-flex items-center gap-2 text-[13px] text-neutral-600 dark:text-neutral-300">
                 <ConfigToggle
                   checked={folder.skill.enabled}
                   onChange={onToggle}
@@ -393,14 +393,14 @@ function DetailOverview({
         {unreviewed ? (
           <div
             data-unreviewed-warning=""
-            className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13.5px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+            className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
           >
             <KitIconAlert className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{tt("这个技能来自上传或 GitHub，没有经过 OceanLeo 审核。打开之前先点「查看详情」看一遍内容。")}</span>
           </div>
         ) : null}
         {description ? (
-          <p className="whitespace-pre-line text-[16px] leading-[1.7] text-neutral-800 dark:text-neutral-200" data-skill-description="">
+          <p className="whitespace-pre-line text-[13px] leading-[1.7] text-neutral-800 dark:text-neutral-200" data-skill-description="">
             {description}
           </p>
         ) : null}
