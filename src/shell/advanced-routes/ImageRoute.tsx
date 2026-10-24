@@ -592,8 +592,8 @@ export function ImageRoute({
                 // Native host save: the only thing the mount seeds into this slot is the
                 // host's own stored project, already persisted on this device. Restoring it
                 // must not read as an unsaved edit that needs a second host save.
-                const live = editorRef.current.captureLocalSave();
-                if (live) editorRef.current.markLocalSaved(live.revision);
+                const liveRevision = editorRef.current.captureLocalRevision();
+                if (liveRevision != null) editorRef.current.markLocalSaved(liveRevision);
               }
               return result === "unchanged" || result === "stale" ? true : result;
             },

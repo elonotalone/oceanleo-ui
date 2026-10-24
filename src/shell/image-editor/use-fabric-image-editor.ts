@@ -44,6 +44,7 @@ import {
   persistImageProject,
   saveLocalImageDraft,
 } from "./editor-persistence";
+import { embedPixelSources } from "./local-save-pixels";
 import {
   sameImageContent,
   type ImageRecoveryRestoreResult,
@@ -1339,12 +1340,26 @@ export function useFabricImageEditor(
     return { revision, payload };
   }, []);
 
-  /** Native host save: the live project and the edit revision it was captured at. */
-  const captureLocalSave = useCallback(() => {
+  /**
+   * Native host save: the live project and the edit revision it was captured at. Every image layer
+   * carries its own (already loaded) pixels, so the stored project opens after the signed URL it was
+   * loaded from expired. The snapshot and revision are read in one synchronous step; encoding then runs
+   * async, so an edit that lands meanwhile only makes the next save newer. Throws if a layer's pixels
+   * cannot be embedded within the budget; nothing is sent in that case.
+   */
+  const captureLocalSave = useCallback(async () => {
     const controller = controllerRef.current;
     if (!controller || !sourceReadyRef.current) return null;
     const revision = revisionRef.current;
-    return { revision, project: createFabricImageProject(controller.getSnapshot()) };
+    const { snapshot, sources } = controller.getSnapshotWithPixelSources();
+    await embedPixelSources(sources);
+    return { revision, project: createFabricImageProject(snapshot) };
+  }, []);
+
+  /** The edit revision a local save would capture now (no pixels read). */
+  const captureLocalRevision = useCallback(() => {
+    if (!controllerRef.current || !sourceReadyRef.current) return null;
+    return revisionRef.current;
   }, []);
 
   /** Clear "unsaved" only if no edit landed after `revision` (an old ack must not clean new work). */
@@ -1817,6 +1832,7 @@ export function useFabricImageEditor(
     captureRecovery,
     captureRecoveryRevision,
     captureLocalSave,
+    captureLocalRevision,
     markLocalSaved,
     restoreRecovery,
     stageCanvasRef,

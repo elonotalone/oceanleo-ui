@@ -282,8 +282,13 @@ export interface FabricImageEditorState {
     revision: string | number;
     payload: unknown;
   } | null;
-  /** Native host save: the live Fabric project and the edit revision it was captured at. */
-  captureLocalSave: () => { revision: number; project: unknown } | null;
+  /**
+   * Native host save: the live Fabric project (image layers carry their own pixels) and the edit
+   * revision it was captured at. Rejects when the pixels cannot be embedded.
+   */
+  captureLocalSave: () => Promise<{ revision: number; project: unknown } | null>;
+  /** Edit revision a local save would capture right now; null while the canvas is not ready. */
+  captureLocalRevision: () => number | null;
   /** Clears dirty only when no edit landed after `revision`; returns whether it cleared. */
   markLocalSaved: (revision: number) => boolean;
   /** Applies a validated recovery snapshot without recording a user edit. */

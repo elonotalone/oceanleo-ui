@@ -30,8 +30,11 @@ export const LOCAL_SAVED_NOTICE = "已保存到本机（未同步到云端）";
 export interface LocalSaveDeps {
   handler: LocalImageSaveHandler;
   admitted: () => { ok: true } | { ok: false; error: string };
-  /** Synchronous capture of the current project + revision; null = canvas not ready. */
-  capture: () => LocalImageSaveRequest | null;
+  /**
+   * Captures the current project + revision (the snapshot and revision are read together, pixel
+   * encoding may take longer); null = canvas not ready; a rejection fails the save explicitly.
+   */
+  capture: () => LocalImageSaveRequest | null | Promise<LocalImageSaveRequest | null>;
   /**
    * Clears the editor's dirty flag only if no newer edit landed since `revision`.
    * Returns whether it cleared.
@@ -66,7 +69,15 @@ export function createLocalSaveRunner(deps: LocalSaveDeps): LocalSaveRunner {
     if (disposed) return failure("编辑器已关闭，没有保存到本机");
     const admitted = deps.admitted();
     if (!admitted.ok) return failure(admitted.error);
-    const captured = deps.capture();
+    let captured: LocalImageSaveRequest | null;
+    try {
+      captured = await deps.capture();
+    } catch (caught) {
+      return failure(
+        caught instanceof Error && caught.message ? caught.message : "无法读取画布内容，没有保存到本机",
+      );
+    }
+    if (disposed) return failure("编辑器已关闭，没有保存到本机");
     if (!captured) return failure("图片画布尚未就绪，没有保存到本机");
     if (captured.revision === lastSavedRevision) return { ok: true };
     let timer: unknown;

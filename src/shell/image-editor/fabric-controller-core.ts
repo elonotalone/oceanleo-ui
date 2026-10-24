@@ -57,6 +57,7 @@ import {
   type ImageEdgeSnapState,
 } from "./editor-runtime";
 import { imageChangedObjects, imageRebaseSnapshot } from "../collab/adapters/image";
+import { collectPixelSources, type PixelSource } from "./local-save-pixels";
 import {
   collabComparableSnapshot,
   imageIdRelabelMap,
@@ -1253,6 +1254,17 @@ export class FabricEditorCore {
 
   getSnapshot(): EditorSnapshot {
     return captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+  }
+
+  /**
+   * Native local save only: the snapshot plus the loaded pixels behind every URL-backed image entry.
+   * Taken in one synchronous step so the pixels match the snapshot even if the user edits while they
+   * are encoded.
+   */
+  getSnapshotWithPixelSources(): { snapshot: EditorSnapshot; sources: PixelSource[] } {
+    const snapshot = captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+    const entries = (snapshot.json as { objects?: unknown[] }).objects ?? [];
+    return { snapshot, sources: collectPixelSources(this.canvas.getObjects(), entries) };
   }
 
   private relabelObjects(map: Map<string, string>): void {
