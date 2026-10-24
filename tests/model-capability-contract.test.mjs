@@ -58,13 +58,13 @@ test("我的模型选择在同一板块查看与编辑完整能力目录", () =>
   assert.doesNotMatch(page, /<ModelCapabilityMarket/);
 });
 
-test("预设只读，自定义组合可命名删除并按上下顺序兜底", () => {
+test("预设复制编辑，自定义组合可命名删除并调整主备顺序", () => {
   assert.match(manager, /item\.kind === "custom"/);
   assert.match(manager, /group\.kind === "preset"/);
-  assert.match(manager, /平台只读组合/);
+  assert.match(manager, /复制并编辑组合/);
   assert.match(manager, /moveModel\(index, direction\)/);
-  assert.match(manager, /从上到下依次尝试/);
-  assert.match(manager, /data-model-group-fallback/);
+  assert.doesNotMatch(manager, /从上到下依次尝试/);
+  assert.doesNotMatch(manager, /data-model-group-fallback/);
   assert.match(manager, /data-model-group-table/);
   assert.match(manager, /fallbackLabel/);
   assert.match(manager, /updateModelGroup\(group\.id, \{ selection: draft \}\)/);

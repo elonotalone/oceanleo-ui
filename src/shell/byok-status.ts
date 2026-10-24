@@ -45,9 +45,15 @@ export async function fetchByokStatusLite(): Promise<ByokStatusLite | null> {
     }
     const data = (await res.json()) as {
       enabled?: boolean;
+      connections?: Array<{ display_name?: string; name?: string; provider?: string }>;
       providers?: Array<{ display_name?: string; name?: string; provider?: string }>;
     };
-    const providers = (Array.isArray(data.providers) ? data.providers : []).map(
+    // The connection list already contains legacy records; combining both lists
+    // would count those twice. Each connection counts once, regardless of models.
+    const entries = Array.isArray(data.connections)
+      ? data.connections
+      : Array.isArray(data.providers) ? data.providers : [];
+    const providers = entries.map(
       (entry) => entry.display_name || entry.name || entry.provider || "",
     );
     const value: ByokStatusLite = {

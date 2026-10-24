@@ -35,13 +35,11 @@ const accountSource = readFileSync(
 );
 
 test("ByokKeys 走密封 cookie 客户端，不把 key 写入 JS 存储", () => {
-  assert.match(byokSource, /probeByok/);
-  assert.match(byokSource, /putByok/);
+  assert.doesNotMatch(byokSource, /probeByok/);
+  assert.match(byokSource, /saveByokConnection/);
   assert.match(byokSource, /deleteByok/);
   assert.match(byokSource, /type="password"/);
-  assert.match(byokSource, /工具调用/);
-  assert.match(byokSource, /图片输入/);
-  assert.match(byokSource, /推理模式/);
+  assert.match(byokSource, /data-byok-add-model/);
   assert.doesNotMatch(byokSource, /localStorage/);
   assert.doesNotMatch(byokSource, /sessionStorage/);
   assert.doesNotMatch(byokSource, /indexedDB/);
@@ -108,6 +106,8 @@ const authStubUrl = dataModule(`
   export function getKeyProviders() { return stub().getKeyProviders(); }
   export function getByok() { return stub().getByok(); }
   export function putByok() { return stub().putByok(...arguments); }
+  export function saveByokConnection() { return stub().putByok(...arguments); }
+  export function deleteByokConnection() { return stub().deleteByok(...arguments); }
   export function deleteByok() { return stub().deleteByok(...arguments); }
   export function probeByok() { return stub().probeByok(...arguments); }
   export function getModelConnections() { return stub().getModelConnections(); }
@@ -121,6 +121,9 @@ const authStubUrl = dataModule(`
 const { ByokKeys } = await import(
   await compileModule("src/pages/ByokKeys.tsx", {
     "../lib/auth": authStubUrl,
+    "../contracts/domain-family": dataModule('export function runtimePageHost() { return "oceanleo.com"; }'),
+    "../lib/help-url": dataModule('export const HELP_BYOK_ARTICLE_PATH = "/a/bring-your-own-key"; export function helpCenterUrl({path}) { return "https://help.oceanleo.com" + path; }'),
+    "../shell/byok-status": dataModule('export const BYOK_STATUS_CHANGED_EVENT = "oceanleo:byok-status-changed"; export function invalidateByokStatus() {}'),
     "../i18n/ui/useUI": uiStubUrl,
   })
 );
@@ -284,16 +287,20 @@ test("API-key form sends alias/protocol and retains sealed-cookie API contract",
   await click(view.host, "[data-byok-add]");
   await fill(view.host, "#byok-alias", "My writing connection");
   await fill(view.host, "input[type=password]", "sk-private-test");
+  await fill(view.host, '[aria-label="模型 ID 1"]', "upstream-one");
+  await click(view.host, "[data-byok-add-model]");
+  await fill(view.host, '[aria-label="模型 ID 2"]', "upstream-two");
   const select = view.host.querySelector("#byok-protocol");
   await act(async () => {
     select.value = "responses";
     select.dispatchEvent(new window.Event("change", { bubbles: true }));
   });
   await click(view.host, "[data-byok-save]");
-  assert.equal(saved[0], "openai");
-  assert.equal(saved[1].display_name, "My writing connection");
-  assert.equal(saved[1].protocol, "responses");
-  assert.equal(saved[1].api_key, "sk-private-test");
+  assert.equal(saved[0].provider, "openai");
+  assert.equal(saved[0].display_name, "My writing connection");
+  assert.equal(saved[0].protocol, "responses");
+  assert.equal(saved[0].api_key, "sk-private-test");
+  assert.deepEqual(saved[0].models.map(row => row.id), ["upstream-one", "upstream-two"]);
   assert.equal(view.host.querySelector("input[type=password]"), null);
   assert.doesNotMatch(view.text(), /sk-private-test/);
   view.cleanup();
@@ -304,7 +311,7 @@ test("settings show actual provider/model alongside optional remark", async () =
   assert.match(view.text(), /Writing/);
   assert.match(view.text(), /private-upstream-model/);
   assert.match(view.text(), /openai/);
-  assert.match(view.text(), /Responses/);
+  assert.match(view.text(), /responses/);
   assert.equal(view.host.querySelector("[data-model-connections]"), null);
   view.cleanup();
 });
@@ -315,9 +322,41 @@ test("empty remark preserves legacy provider/model display and no OAuth section"
   await click(view.host, "[data-byok-add]");
   assert.match(view.text(), /备注（选填）/);
   await fill(view.host, "input[type=password]", "sk-private-test");
+  await fill(view.host, '[aria-label="模型 ID 1"]', "upstream-one");
   await click(view.host, "[data-byok-save]");
-  assert.equal(saved[1].display_name, "");
+  assert.equal(saved[0].display_name, "");
   assert.equal(view.host.querySelector("[data-model-connection-add]"), null);
   assert.doesNotMatch(view.text(), /登录授权|一次性授权交接码/);
+  view.cleanup();
+});
+
+test("connection metadata edit preserves key and stable model routes; same provider connections stay distinct", async () => {
+  let saved;
+  const connection = { connection_id: "first", provider: "openai", display_name: "First", fingerprint: "…1234", base_url: "https://api.openai.com/v1", protocol: "responses", models: [{ route_id: "stable-one", id: "real-model", name: "Friendly" }] };
+  const status = { ...enabled, connections: [connection, { ...connection, connection_id: "second", display_name: "Second" }] };
+  const view = await render(status, { putByok: async (...args) => { saved = args; return { ok: true, data: status }; } });
+  assert.match(view.text(), /First/);
+  assert.match(view.text(), /Second/);
+  assert.match(view.text(), /real-model/);
+  await click(view.host, '[data-byok-edit="first"]');
+  assert.equal(view.host.querySelector('input[type=password]').value, "");
+  await fill(view.host, "#byok-alias", "Renamed");
+  await click(view.host, "[data-byok-save]");
+  assert.equal(saved[1], "first");
+  assert.equal(saved[0].api_key, undefined);
+  assert.equal(saved[0].models[0].route_id, "stable-one");
+  assert.equal(saved[0].models[0].id, "real-model");
+  view.cleanup();
+});
+
+test("connection save failure keeps manual models and editor visible", async () => {
+  const view = await render(enabled, { putByok: async () => ({ ok: false, error: "Connection could not be saved" }) });
+  await click(view.host, "[data-byok-add]");
+  await fill(view.host, "input[type=password]", "private-key");
+  await fill(view.host, '[aria-label="模型 ID 1"]', "manual-model");
+  await click(view.host, "[data-byok-save]");
+  assert.match(view.text(), /Connection could not be saved/);
+  assert.equal(view.host.querySelector('[aria-label="模型 ID 1"]').value, "manual-model");
+  assert.ok(view.host.querySelector("[data-byok-form]"));
   view.cleanup();
 });

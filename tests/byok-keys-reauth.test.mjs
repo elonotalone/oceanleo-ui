@@ -80,6 +80,8 @@ const authStubUrl = dataModule(`
   export function getKeyProviders() { return stub().getKeyProviders(); }
   export function getByok() { return stub().getByok(); }
   export function putByok() { return stub().putByok(...arguments); }
+  export function saveByokConnection() { return stub().putByok(...arguments); }
+  export function deleteByokConnection() { return stub().deleteByok(...arguments); }
   export function deleteByok() { return stub().deleteByok(...arguments); }
   export function probeByok() { return stub().probeByok(...arguments); }
   export async function getModelConnections() { return {ok:true,data:{enabled:true,authorization_available:false,connections:[]}}; }
@@ -100,6 +102,9 @@ const clientStubUrl = dataModule(`
 const { ByokKeys } = await import(
   await compileModule("src/pages/ByokKeys.tsx", {
     "../lib/auth": authStubUrl,
+    "../contracts/domain-family": dataModule('export function runtimePageHost() { return "oceanleo.com"; }'),
+    "../lib/help-url": dataModule('export const HELP_BYOK_ARTICLE_PATH = "/a/bring-your-own-key"; export function helpCenterUrl({path}) { return "https://help.oceanleo.com" + path; }'),
+    "../shell/byok-status": dataModule('export const BYOK_STATUS_CHANGED_EVENT = "oceanleo:byok-status-changed"; export function invalidateByokStatus() {}'),
     "../lib/auth/client": clientStubUrl,
     "../i18n/ui/useUI": uiStubUrl,
   })
@@ -146,6 +151,15 @@ async function flush(count = 8) {
 }
 
 async function clickLabeled(host, label) {
+  if (label === "保存") {
+    await act(async () => {
+      for (const [selector, value] of [["input[type=password]", "test-key"], ['[aria-label="模型 ID 1"]', "test-model"]]) {
+        const node = host.querySelector(selector);
+        const props = Object.keys(node).find(key => key.startsWith("__reactProps$"));
+        node[props].onChange({ target: { value } });
+      }
+    });
+  }
   const button = [...host.querySelectorAll("button")].find(
     (node) => (node.textContent || "").trim() === label,
   );
@@ -184,7 +198,7 @@ test("403 reauth_required 出现重新登录按钮", async () => {
     error: "为了保护你的钥匙，请重新登录后再添加",
   });
   await clickLabeled(view.host, "添加");
-  await clickLabeled(view.host, "探测");
+  await clickLabeled(view.host, "保存");
   assert.ok(view.text().includes("为了保护你的钥匙，请重新登录后再添加"));
   const button = [...view.host.querySelectorAll("button")].find(
     (node) => (node.textContent || "").trim() === "重新登录",
@@ -200,7 +214,7 @@ test("其它 4xx 只显示原来的错误，不出现重新登录按钮", async 
     error: "未知服务商，不能在此使用。",
   });
   await clickLabeled(view.host, "添加");
-  await clickLabeled(view.host, "探测");
+  await clickLabeled(view.host, "保存");
   assert.ok(view.text().includes("未知服务商，不能在此使用。"));
   const button = [...view.host.querySelectorAll("button")].find(
     (node) => (node.textContent || "").trim() === "重新登录",

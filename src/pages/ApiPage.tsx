@@ -298,7 +298,8 @@ export function ApiPage({
       {!pane && <PageHeader title={tt("AI 模型")} />}
       <div className={`${pane ? "" : "mx-auto mt-6 "}max-w-3xl space-y-6`}>
         {tabs}
-        {apiPane === "byok" ? byok : selection}
+        <div hidden={apiPane !== "selection"}>{selection}</div>
+        <div hidden={apiPane !== "byok"}>{byok}</div>
       </div>
     </div>
   );

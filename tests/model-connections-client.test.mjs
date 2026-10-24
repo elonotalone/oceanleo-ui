@@ -17,6 +17,26 @@ test("retired subscription client exports are unavailable", () => {
   for (const name of ["getModelConnections", "authorizeModelConnection", "getModelConnectionAuthorization", "deleteModelConnection", "activateModelConnection"]) assert.equal(name in api, false);
 });
 
+test("multi-model connection CRUD uses authenticated exact connection routes and preserves omitted edit key", async () => {
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.__connectionTestToken = "owner-test";
+  globalThis.fetch = async (url, init) => { calls.push({ url, init }); return Response.json({ enabled: true, providers: [], connections: [] }); };
+  try {
+    const body = { provider: "custom", models: [{ route_id: "stable", id: "upstream-model", protocol: "images" }] };
+    await api.saveByokConnection(body);
+    await api.saveByokConnection(body, "connection/one");
+    await api.deleteByokConnection("connection/one");
+    assert.match(calls[0].url, /\/v1\/byok\/connections$/);
+    assert.equal(calls[0].init.method, "POST");
+    assert.match(calls[1].url, /\/connections\/connection%2Fone$/);
+    assert.equal(calls[1].init.method, "PUT");
+    assert.equal("api_key" in JSON.parse(calls[1].init.body), false);
+    assert.equal(calls[2].init.method, "DELETE");
+    for (const { init } of calls) { assert.equal(init.credentials, "include"); assert.equal(init.headers.Authorization, "Bearer owner-test"); }
+  } finally { globalThis.fetch = original; delete globalThis.__connectionTestToken; }
+});
+
 test("personal model catalog uses owner auth and no shared-cache fallback", async () => {
   const original = globalThis.fetch;
   const calls = [];

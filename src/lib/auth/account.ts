@@ -350,6 +350,10 @@ export interface CatalogModel {
   checked_at?: string;
   source_url?: string;
   connection_id?: string;
+  route_id?: string;
+  model_id?: string;
+  connection_name?: string;
+  protocol?: ModelConnectionProtocol;
   display_name?: string;
   auth_type?: "api_key" | "oauth";
 }
@@ -475,6 +479,10 @@ function normalizeModel(
     checked_at: x.checked_at || "",
     source_url: x.source_url || "",
     connection_id: x.connection_id,
+    route_id: x.route_id,
+    model_id: x.model_id,
+    connection_name: x.connection_name,
+    protocol: x.protocol,
     display_name: x.display_name,
     auth_type: x.auth_type,
   };
@@ -978,7 +986,25 @@ export function getKeyProviders() {
 }
 
 export type ByokCap = "tools" | "vision" | "reasoning";
-export type ModelConnectionProtocol = "chat_completions" | "responses";
+export type ModelConnectionProtocol = "chat_completions" | "responses" | "images" | "images_edits" | "audio_speech" | "audio_transcriptions" | "video" | "native";
+
+export type ByokConnectionModel = { route_id?: string; id: string; name?: string; protocol?: ModelConnectionProtocol };
+export type ByokConnectionView = {
+  connection_id: string; provider: string; display_name?: string; base_url: string;
+  protocol?: ModelConnectionProtocol; fingerprint: string; models: ByokConnectionModel[]; added_at: number;
+};
+export type ByokConnectionInput = {
+  provider: string; display_name?: string; base_url?: string; protocol?: ModelConnectionProtocol;
+  api_key?: string; models: ByokConnectionModel[];
+};
+export function saveByokConnection(body: ByokConnectionInput, connectionId?: string) {
+  return authed<ByokStatus>(`/v1/byok/connections${connectionId ? `/${encodeURIComponent(connectionId)}` : ""}`, {
+    method: connectionId ? "PUT" : "POST", body: JSON.stringify(body),
+  });
+}
+export function deleteByokConnection(connectionId: string) {
+  return authed<ByokStatus>(`/v1/byok/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" });
+}
 
 export type ByokProviderView = {
   provider: string;
@@ -997,6 +1023,7 @@ export type ByokProviderView = {
 export type ByokStatus = {
   enabled: boolean;
   providers: ByokProviderView[];
+  connections?: ByokConnectionView[];
   limits: { max_providers: number };
 };
 

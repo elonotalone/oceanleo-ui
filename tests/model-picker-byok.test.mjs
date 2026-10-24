@@ -26,6 +26,41 @@ test("byok-status sends the sealed cookie and never reads localStorage", () => {
   assert.doesNotMatch(status, /localStorage/);
 });
 
+test("status counts connections once, prefers canonical connections, and preserves owner cache isolation", async () => {
+  const { compileModule, dataModule } = await import("./helpers/module-bench.mjs");
+  const api = await import(await compileModule("src/shell/byok-status.ts", {
+    "../lib/auth/client": dataModule('export async function accessToken() { return globalThis.__statusOwnerToken; }'),
+    "../lib/auth/config": dataModule('export const GATEWAY_BASE = "https://api.dev.oceanleo.com";'),
+  }));
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  let payload = { enabled: true, connections: [
+    { connection_id: "a", provider: "openai", display_name: "First", models: [{ id: "one" }, { id: "two" }] },
+    { connection_id: "b", provider: "openai", models: [{ id: "one" }] },
+  ] };
+  globalThis.__statusOwnerToken = "owner-a";
+  globalThis.fetch = async (_url, init) => { calls.push(init); return Response.json(payload); };
+  try {
+    assert.deepEqual(await api.fetchByokStatusLite(), { enabled: true, count: 2, providers: ["First", "openai"] });
+    await api.fetchByokStatusLite();
+    assert.equal(calls.length, 1);
+    payload = { enabled: true, connections: [{ provider: "openai", display_name: "Legacy connection" }], providers: [{ provider: "openai", display_name: "Legacy duplicate" }] };
+    globalThis.__statusOwnerToken = "owner-b";
+    assert.deepEqual(await api.fetchByokStatusLite(), { enabled: true, count: 1, providers: ["Legacy connection"] });
+    assert.equal(calls.length, 2);
+    payload = { enabled: true, connections: [], providers: [{ provider: "openai" }] };
+    api.invalidateByokStatus();
+    assert.equal((await api.fetchByokStatusLite()).count, 0, "empty canonical list takes precedence too");
+    payload = { enabled: true, providers: [{ provider: "legacy", name: "Legacy provider" }] };
+    api.invalidateByokStatus();
+    assert.deepEqual(await api.fetchByokStatusLite(), { enabled: true, count: 1, providers: ["Legacy provider"] });
+    for (const init of calls) { assert.equal(init.credentials, "include"); assert.equal(init.cache, "no-store"); }
+    assert.equal(calls[1].headers.Authorization, "Bearer owner-b");
+    globalThis.__statusOwnerToken = null;
+    assert.equal(await api.fetchByokStatusLite(), null);
+  } finally { globalThis.fetch = originalFetch; delete globalThis.__statusOwnerToken; api.invalidateByokStatus(); }
+});
+
 test("byok.count > 0 时弹出层仍不出现我的模型", async () => {
   const { createRequire } = await import("node:module");
   const { pathToFileURL } = await import("node:url");

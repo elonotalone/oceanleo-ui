@@ -174,6 +174,7 @@ const {
   partitionOfferModels,
 } = await import(
   await compileModule("src/pages/ModelCapabilityMarket.tsx", {
+    "../shell/byok-status": dataModule('export const BYOK_STATUS_CHANGED_EVENT = "oceanleo:byok-status-changed";'),
     "../lib/auth": dataModule(`
       export const MODEL_GROUP_CHANGED_EVENT = "oceanleo:model-group-changed";
       export async function getModelGroups() {

@@ -5,21 +5,22 @@
 // ----------------------------------------------------------------------------
 // 用户填自己的厂商 API key，即可免费使用全家桶（用自己的 key、自己的成本，
 // OceanLeo 不扣钱包）。key 只以加密形式保存在这台设备的浏览器里，服务器不保存。
-// 前端只看得到指纹。一个厂商一把配置。
+// 前端只看得到指纹。一个连接可配置多个模型，同一厂商可添加多个连接。
 // ============================================================================
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   getKeyProviders,
   getByok,
-  putByok,
+  saveByokConnection,
+  deleteByokConnection,
   deleteByok,
-  probeByok,
   invalidateSelectedModelsCache,
   type ModelConnectionProtocol,
   type KeyProvider,
   type ByokStatus,
-  type ByokCap,
+  type ByokConnectionModel,
+  type ByokConnectionView,
 } from "../lib/auth";
 import { runtimePageHost } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
@@ -32,11 +33,7 @@ function announceConnectionChange() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(BYOK_STATUS_CHANGED_EVENT));
 }
 
-const CAP_OPTIONS: { id: ByokCap; label: string }[] = [
-  { id: "tools", label: "工具调用" },
-  { id: "vision", label: "图片输入" },
-  { id: "reasoning", label: "推理模式" },
-];
+const PROTOCOLS = ["chat_completions", "responses", "images", "images_edits", "audio_speech", "audio_transcriptions", "video", "native"] as const;
 
 const KNOWN_BASE_URL: Record<string, string> = {
   openai: "https://api.openai.com/v1",
@@ -51,10 +48,10 @@ type ByokForm = {
   provider: string;
   apiKey: string;
   baseUrl: string;
-  model: string;
+  models: ByokConnectionModel[];
   displayName: string;
   protocol: ModelConnectionProtocol;
-  caps: Set<ByokCap>;
+  connectionId?: string;
 };
 
 function emptyForm(provider = ""): ByokForm {
@@ -62,10 +59,9 @@ function emptyForm(provider = ""): ByokForm {
     provider,
     apiKey: "",
     baseUrl: "",
-    model: "",
+    models: [{ id: "", name: "" }],
     displayName: "",
     protocol: "chat_completions",
-    caps: new Set<ByokCap>(["tools"]),
   };
 }
 
@@ -110,13 +106,11 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   const [status, setStatus] = useState<ByokStatus | null>(null);
   const [providers, setProviders] = useState<KeyProvider[]>([]);
   const [form, setForm] = useState<ByokForm>(emptyForm());
-  const [probing, setProbing] = useState(false);
-  const [probeModels, setProbeModels] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [authDenied, setAuthDenied] = useState(false);
   const [reauthRequired, setReauthRequired] = useState(false);
-  const [editor, setEditor] = useState<"none" | "add">("none");
+  const [editor, setEditor] = useState<"none" | "add" | "edit">("none");
 
   const selected = useMemo(
     () => providers.find((provider) => provider.id === form.provider),
@@ -158,7 +152,6 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   function openAdd() {
     const first = providers[0];
     setForm(formForProvider(first?.id || ""));
-    setProbeModels([]);
     setError("");
     setReauthRequired(false);
     setEditor("add");
@@ -167,14 +160,12 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   function closeAdd() {
     setEditor("none");
     setForm(emptyForm());
-    setProbeModels([]);
     setError("");
     setReauthRequired(false);
   }
 
   function pickProvider(id: string) {
     const nextSelected = providers.find((provider) => provider.id === id);
-    setProbeModels([]);
     setError("");
     setReauthRequired(false);
     setForm((prev) => ({
@@ -184,13 +175,11 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     }));
   }
 
-  function toggleCap(cap: ByokCap) {
-    setForm((prev) => {
-      const next = new Set(prev.caps);
-      if (next.has(cap)) next.delete(cap);
-      else next.add(cap);
-      return { ...prev, caps: next };
-    });
+  function openEdit(row: ByokConnectionView) {
+    setForm({ provider: row.provider, apiKey: "", baseUrl: row.base_url || "", displayName: row.display_name || "", protocol: row.protocol || "chat_completions", connectionId: row.connection_id, models: row.models.map(model => ({ ...model })) });
+    setError("");
+    setReauthRequired(false);
+    setEditor("edit");
   }
 
   async function refreshStatus() {
@@ -211,35 +200,15 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     if (typeof window !== "undefined") window.location.reload();
   }
 
-  async function onProbe() {
-    setError("");
-    setReauthRequired(false);
-    setProbing(true);
-    const result = await probeByok({
-      provider: form.provider,
-      base_url: custom ? form.baseUrl.trim() || undefined : undefined,
-      api_key: form.apiKey.trim() || undefined,
-    });
-    setProbing(false);
-    if (!result.ok) {
-      if (result.status === 403 && result.code === "reauth_required") {
-        setReauthRequired(true);
-        setError(result.error || "为了保护你的钥匙，请重新登录后再添加");
-        setProbeModels([]);
-        return;
-      }
-      setError(result.error || tt("探测失败"));
-      setProbeModels([]);
-      return;
-    }
-    setProbeModels(result.data?.models || []);
-  }
-
   async function onSave() {
     setError("");
     setReauthRequired(false);
-    if (!form.apiKey.trim()) {
+    if (!form.connectionId && !form.apiKey.trim()) {
       setError(tt("请填入 API key"));
+      return;
+    }
+    if (form.models.some(model => !model.id.trim())) {
+      setError(tt("请填写模型 ID"));
       return;
     }
     if (custom && !form.baseUrl.trim()) {
@@ -247,14 +216,14 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
       return;
     }
     setSaving(true);
-    const result = await putByok(form.provider, {
-      api_key: form.apiKey.trim(),
+    const result = await saveByokConnection({
+      provider: form.provider,
+      api_key: form.apiKey.trim() || undefined,
       base_url: custom ? form.baseUrl.trim() : undefined,
-      model: form.model.trim() || undefined,
-      caps: Array.from(form.caps),
+      models: form.models.map(model => ({ ...model, id: model.id.trim(), name: model.name?.trim() || undefined })),
       display_name: form.displayName.trim(),
       protocol: form.protocol,
-    });
+    }, form.connectionId);
     setSaving(false);
     if (!result.ok) {
       if (result.status === 403 && result.code === "reauth_required") {
@@ -274,8 +243,8 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
     closeAdd();
   }
 
-  async function onDelete(provider: string) {
-    const result = await deleteByok(provider);
+  async function onDelete(provider: string, connectionId?: string) {
+    const result = await (connectionId ? deleteByokConnection(connectionId) : deleteByok(provider));
     if (result.ok) {
       if (result.data) {
         setStatus(result.data);
@@ -289,7 +258,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
 
   const inputClass =
     "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-800 outline-none focus:border-neutral-400 disabled:bg-neutral-50 disabled:text-neutral-400";
-  const configured = (status?.providers || []).filter((row) => row.provider !== "cursor" && row.auth_type !== "oauth");
+  const configured: ByokConnectionView[] = status?.connections || (status?.providers || []).filter(row => row.auth_type !== "oauth").map(row => ({ ...row, connection_id: row.connection_id || "", models: [{ id: row.model, protocol: row.protocol }] }));
   const gatewayOn = !!status?.enabled;
 
   return (
@@ -302,7 +271,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
         <h2 className="text-[14px] font-semibold text-neutral-900">
           {tt("自带 API key（BYOK）")}
           <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-500">
-            {tt("Chat Completions / Responses")}
+            {tt("一个连接，多个模型")}
           </span>
         </h2>
         <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
@@ -340,39 +309,38 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
           {configured.length > 0 ? (
             <div data-byok-configured="">
               {configured.map((row) => {
-                const capLabels = (row.caps || [])
-                  .map((cap) => CAP_OPTIONS.find((item) => item.id === cap)?.label || cap)
-                  .map((label) => tt(label))
-                  .join(" · ");
-                const model = row.model || tt("厂商默认");
                 return (
                   <ByokRow
-                    key={row.provider}
-                    title={row.display_name || row.name || row.provider}
+                    key={row.connection_id || row.provider}
+                    title={row.display_name || row.provider}
                     detail={
                       <p className="mt-0.5 text-[12px] leading-relaxed text-neutral-400">
                         <span className="font-mono text-neutral-500">{row.fingerprint}</span>
                         {" · "}
-                        {row.name || row.provider}{" · "}{model}{" · "}{row.protocol === "responses" ? "Responses" : "Chat Completions"}
-                        {capLabels ? ` · ${capLabels}` : ""}
+                        {row.provider}{" · "}{row.connection_id}
+                        {row.models.map((model, index) => <span key={model.route_id || index} className="block">{model.name ? `${model.name} · ` : ""}{model.id} · {model.protocol || row.protocol || "chat_completions"}</span>)}
                       </p>
                     }
                     action={
+                      <div className="flex gap-2">
+                      <button type="button" data-byok-edit={row.connection_id || row.provider} disabled={!gatewayOn || !row.connection_id} onClick={() => openEdit(row)} className={QUIET_BTN}>{tt("编辑")}</button>
                       <button
                         type="button"
                         data-byok-delete={row.provider}
                         disabled={!gatewayOn}
-                        onClick={() => onDelete(row.provider)}
+                        onClick={() => onDelete(row.provider, row.connection_id)}
                         className={QUIET_BTN}
                       >
                         {tt("删除")}
                       </button>
+                      </div>
                     }
                   />
                 );
               })}
             </div>
           ) : null}
+          {error && editor === "none" ? <p role="alert" className="text-[12px] text-rose-600">{error}</p> : null}
 
           <ByokRow
             title={tt("添加密钥")}
@@ -384,7 +352,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               ) : null
             }
             action={
-              editor === "add" ? (
+              editor !== "none" ? (
                 <button type="button" data-byok-cancel="" className={QUIET_BTN} onClick={closeAdd}>
                   {tt("取消")}
                 </button>
@@ -402,7 +370,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
             }
           />
 
-          {editor === "add" ? (
+          {editor !== "none" ? (
           <fieldset
             data-byok-form=""
             disabled={formDisabled}
@@ -417,8 +385,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               <label className="mb-1 block text-[12px] font-medium text-neutral-700" htmlFor="byok-protocol">{tt("接口协议")}</label>
               <select id="byok-protocol" value={form.protocol} className={inputClass}
                 onChange={(event) => setForm((prev) => ({ ...prev, protocol: event.target.value as ModelConnectionProtocol }))}>
-                <option value="chat_completions">Chat Completions</option>
-                <option value="responses">Responses</option>
+                {PROTOCOLS.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}
               </select>
             </div>
             <div>
@@ -465,11 +432,12 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               </label>
               <input
                 type="password"
+                aria-label="API Key"
                 value={form.apiKey}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, apiKey: event.target.value }))
                 }
-                placeholder={tt("粘贴厂商 API Key")}
+                placeholder={tt(form.connectionId ? "留空保留现有密钥" : "粘贴厂商 API Key")}
                 autoComplete="off"
                 className={inputClass}
               />
@@ -492,73 +460,23 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
               ) : null}
             </div>
 
-            <div>
-              <label className="mb-1 block text-[12px] font-medium text-neutral-700">
-                {tt("模型名称")}
-              </label>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  value={form.model}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, model: event.target.value }))
-                  }
-                  placeholder={tt("例如 gpt-4o；留空用厂商默认")}
-                  className={`${inputClass} min-w-[12rem] flex-1`}
-                />
-                {probeModels.length > 0 ? (
-                  <select
-                    value={form.model}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, model: event.target.value }))
-                    }
-                    className="rounded-lg border border-neutral-200 px-2 py-2 text-[13px] text-neutral-800 outline-none focus:border-neutral-400"
-                  >
-                    {probeModels.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={probing || formDisabled}
-                  onClick={onProbe}
-                  className="rounded-lg border border-neutral-200 px-3 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:opacity-50"
-                >
-                  {tt("探测")}
-                </button>
-              </div>
+            <div className="space-y-2" data-byok-models="">
+              {form.models.map((model, index) => {
+                const patch = (value: Partial<ByokConnectionModel>) => setForm(prev => ({ ...prev, models: prev.models.map((row, i) => i === index ? { ...row, ...value } : row) }));
+                return <div key={index} data-byok-model-row="" className="space-y-2 rounded-lg border border-neutral-200 p-3">
+                  <label className="block text-[12px]">{tt("模型 ID")}<input aria-label={`模型 ID ${index + 1}`} value={model.id} onChange={event => patch({ id: event.target.value })} className={inputClass} /></label>
+                  <label className="block text-[12px]">{tt("模型备注（选填）")}<input aria-label={`模型备注 ${index + 1}`} value={model.name || ""} onChange={event => patch({ name: event.target.value })} className={inputClass} /></label>
+                  <label className="block text-[12px]">{tt("接口协议")}<select aria-label={`模型协议 ${index + 1}`} value={model.protocol || ""} onChange={event => patch({ protocol: event.target.value as ModelConnectionProtocol || undefined })} className={inputClass}>
+                    <option value="">{tt("使用连接协议")}</option>
+                    {PROTOCOLS.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}
+                  </select></label>
+                  <button type="button" disabled={form.models.length === 1} onClick={() => setForm(prev => ({ ...prev, models: prev.models.filter((_, i) => i !== index) }))} className={QUIET_BTN}>{tt("移除模型")}</button>
+                </div>;
+              })}
+              <button type="button" data-byok-add-model="" onClick={() => setForm(prev => ({ ...prev, models: [...prev.models, { id: "", name: "" }] }))} className={QUIET_BTN}>{tt("添加模型")}</button>
             </div>
 
-            <div>
-              <label className="mb-1 block text-[12px] font-medium text-neutral-700">
-                {tt("能力")}
-              </label>
-              <div className="flex flex-wrap gap-4">
-                {CAP_OPTIONS.map((cap) => (
-                  <label
-                    key={cap.id}
-                    className="flex items-center gap-1.5 text-[13px] text-neutral-700"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={form.caps.has(cap.id)}
-                      onChange={() => toggleCap(cap.id)}
-                    />
-                    {tt(cap.label)}
-                  </label>
-                ))}
-              </div>
-              <p className="mt-1.5 text-[11px] text-neutral-400">
-                {tt(
-                  "勾选「工具调用」后可用于智能体任务；未勾选时智能体会明确报错。",
-                )}
-              </p>
-            </div>
-
-            {error ? <p className="text-[12px] text-rose-600">{error}</p> : null}
+            {error ? <p role="alert" className="text-[12px] text-rose-600">{error}</p> : null}
             {reauthRequired ? (
               <button
                 type="button"

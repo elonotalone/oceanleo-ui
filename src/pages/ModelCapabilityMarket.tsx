@@ -27,6 +27,7 @@ import {
 import { currencySymbol } from "../lib/money";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { ConfirmDialog, FloatingMenu, FloatingMenuItem } from "../ui";
+import { BYOK_STATUS_CHANGED_EVENT } from "../shell/byok-status";
 
 const ALL_PROVIDERS = "__all__";
 
@@ -355,9 +356,16 @@ export function ModelGroupManager({
       if (detail?.groups) setPayload(detail);
     };
     window.addEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
+    const refreshAvailability = () => {
+      void getModelGroups().then(result => {
+        if (alive && result.ok && result.data) setPayload(result.data);
+      });
+    };
+    window.addEventListener(BYOK_STATUS_CHANGED_EVENT, refreshAvailability);
     return () => {
       alive = false;
       window.removeEventListener(MODEL_GROUP_CHANGED_EVENT, onChanged);
+      window.removeEventListener(BYOK_STATUS_CHANGED_EVENT, refreshAvailability);
     };
   }, [user]);
 
@@ -455,8 +463,16 @@ export function ModelGroupManager({
     setError("");
   }
 
-  function beginEdit(item = group) {
-    if (!item?.editable) return;
+  async function beginEdit(item = group) {
+    if (!item || !user) return;
+    if (item.kind === "preset") {
+      setBusy("create");
+      const result = await createModelGroup(`${item.name} · ${tt("自定义")}`, item.key);
+      setBusy("");
+      if (!result.ok || !result.data) { setError(result.error || tt("创建模型组合失败")); return; }
+      setPayload(result.data);
+      item = result.data.group;
+    }
     setViewKey(item.key);
     setDraft(cloneSelection(item.selection));
     setEditing(true);
@@ -501,6 +517,28 @@ export function ModelGroupManager({
       if (model && !canSelect(model, byokProviders)) return;
       patchCapability([...selectedKeys, key]);
     }
+    setError("");
+  }
+
+  async function selectOffer(key: string) {
+    if (editing) { toggleModel(key); return; }
+    if (!user || !group || !category || !capability || busy) return;
+    let target = group;
+    if (target.kind === "preset") {
+      setBusy("create");
+      const result = await createModelGroup(`${target.name} · ${tt("自定义")}`, target.key);
+      setBusy("");
+      if (!result.ok || !result.data) { setError(result.error || tt("创建模型组合失败")); return; }
+      setPayload(result.data);
+      target = result.data.group;
+    }
+    const next = cloneSelection(target.selection);
+    const keys = next[category.id]?.[capability.id] || [];
+    if (keys.includes(key) && keys.length === 1) { setError(tt("每项能力至少保留一个模型。")); return; }
+    next[category.id] = { ...(next[category.id] || {}), [capability.id]: keys.includes(key) ? keys.filter(value => value !== key) : [...keys, key] };
+    setViewKey(target.key);
+    setDraft(next);
+    setEditing(true);
     setError("");
   }
 
@@ -831,19 +869,14 @@ export function ModelGroupManager({
         </FloatingMenu>
       </div>
 
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p data-model-group-fallback="" className="text-[11px] font-medium text-amber-700">
-          {tt("从上到下依次尝试：主用不可用时自动使用下一项。")}
-        </p>
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
         <div className="flex items-center gap-1.5">
-          {group.kind === "preset" ? (
-            <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-500">{tt("平台只读组合")}</span>
-          ) : editing ? (
+          {editing ? (
             <>
               <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50">{tt("取消")}</button>
               <button type="button" disabled={busy === "save"} onClick={() => void saveEdit()} className="rounded-lg bg-neutral-900 px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40">{busy === "save" ? tt("保存中…") : tt("保存组合")}</button>
             </>
-          ) : null}
+          ) : user ? <button type="button" data-model-edit-direct="" disabled={!!busy} onClick={() => void beginEdit()} className="rounded-lg border border-neutral-200 px-3 py-1 text-[11px]">{tt(group.kind === "preset" ? "复制并编辑组合" : "编辑组合")}</button> : null}
         </div>
       </div>
 
@@ -947,7 +980,7 @@ export function ModelGroupManager({
               ) : null}
             </div>
 
-            {editing && (
+            {(
               <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50/50 p-2.5">
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   <button
@@ -989,7 +1022,7 @@ export function ModelGroupManager({
                       byokProviders={byokProviders}
                       catalog={catalog}
                       tt={tt}
-                      onToggle={toggleModel}
+                      onToggle={key => void selectOffer(key)}
                     />
                   ))}
                   {unavailableGroups.length ? (
@@ -1131,6 +1164,7 @@ function EditOfferGroup({
                 }`}
               >
                 <span className="block text-[11px] font-medium">{tt(model.provider_label)}</span>
+                {model.connection_id ? <span className="block text-[11px]">{model.connection_name || model.display_name || model.connection_id} · {model.model_id || model.id}</span> : null}
                 {!model.connection_id ? <span data-model-price="" className={`block text-[11px] ${selectedIndex >= 0 ? "text-white/80" : "text-neutral-500"}`}>
                   {priceText(model, tt)}
                 </span> : null}
@@ -1188,6 +1222,7 @@ function SelectedModelRow({
           <span className="truncate text-[13px] font-medium text-neutral-900">{model.label}</span>
           <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500">{tt(model.provider_label)}</span>
         </span>
+        {model.connection_id ? <span className="block text-[11px] text-neutral-500">{model.connection_name || model.display_name || model.connection_id} · {model.model_id || model.id}</span> : null}
       </span>
       {!model.connection_id ? <span data-model-price="" className="shrink-0 whitespace-nowrap text-[11px] text-neutral-500">{priceText(model, tt)}</span> : null}
       {editing && (
@@ -1275,6 +1310,7 @@ function OfferGroupRow({
               }`}
             >
               <span className="block text-[11px] font-medium text-neutral-800">{tt(model.provider_label)}</span>
+              {model.connection_id ? <span className="block text-[11px] text-neutral-600">{model.connection_name || model.display_name || model.connection_id} · {model.model_id || model.id}</span> : null}
               {!model.connection_id ? <span data-model-price="" className="block text-[11px] text-neutral-600">{priceText(model, tt)}</span> : null}
               {rules.map((rule, index) => (
                 <span key={`${rule.kind || "rule"}-${index}`} className="block text-[10px] text-neutral-400">

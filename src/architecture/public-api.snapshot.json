@@ -2037,6 +2037,11 @@
         },
         {
           "kind": "named",
+          "name": "deleteByokConnection",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "deleteModelGroup",
           "source": ""
         },
@@ -2144,6 +2149,11 @@
         },
         {
           "kind": "named",
+          "name": "saveByokConnection",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "setActiveModelGroup",
           "source": ""
         },
@@ -2180,6 +2190,21 @@
         {
           "kind": "type",
           "name": "ByokCap",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ByokConnectionInput",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ByokConnectionModel",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ByokConnectionView",
           "source": ""
         },
         {

@@ -104,6 +104,7 @@ const groups = [
 
 const { ModelGroupManager } = await import(
   await compileModule("src/pages/ModelCapabilityMarket.tsx", {
+    "../shell/byok-status": dataModule('export const BYOK_STATUS_CHANGED_EVENT = "oceanleo:byok-status-changed";'),
     "../lib/auth": dataModule(`
       export const MODEL_GROUP_CHANGED_EVENT = "oceanleo:model-group-changed";
       export async function getModelGroups() {
@@ -118,7 +119,10 @@ const { ModelGroupManager } = await import(
         globalThis.__groupsResult = { ok: true, data };
         return { ok: true, data };
       }
-      export async function createModelGroup() { return { ok: false }; }
+      export async function createModelGroup(name, source) {
+        globalThis.__createdFrom = source;
+        return globalThis.__createResult || { ok: false };
+      }
       export async function updateModelGroup(id, patch) {
         globalThis.__savedPatch = { id, patch };
         if (globalThis.__updateResult) return globalThis.__updateResult;
@@ -169,6 +173,7 @@ async function render(options = {}) {
   globalThis.__activated = "";
   globalThis.__savedPatch = null;
   globalThis.__updateResult = undefined;
+  globalThis.__createResult = undefined;
   globalThis.__groupsResult = {
     ok: true,
     data: {
@@ -193,6 +198,10 @@ async function render(options = {}) {
   await flush();
   return {
     host,
+    async refreshCatalog(nextCatalog) {
+      await act(async () => root.render(React.createElement(ModelGroupManager, { catalog: nextCatalog, user: true })));
+      await flush();
+    },
     text: () => host.textContent || "",
     async click(node) {
       await act(async () => {
@@ -232,7 +241,8 @@ test("分组按钮没有说明文案和自定义计数，生效标记在标题�
   assert.ok(table);
   assert.doesNotMatch(table.textContent, /改名|编辑组合|删除/);
   assert.doesNotMatch(table.textContent, /从上到下依次尝试/);
-  assert.match(view.host.querySelector("[data-model-group-fallback]").textContent, /从上到下依次尝试/);
+  assert.equal(view.host.querySelector("[data-model-group-fallback]"), null);
+  assert.doesNotMatch(view.text(), /从上到下依次尝试/);
   view.cleanup();
 });
 
@@ -418,8 +428,54 @@ test("personal model offers preserve connection alias without unsupported prices
   assert.match(results.textContent, /Writing connection/);
   assert.doesNotMatch(results.textContent, /自带连接|厂商计费|官方价目|—/);
   assert.equal(results.querySelector("[data-model-price]"), null);
-  assert.doesNotMatch(results.textContent, /价未公布|gpt-|connection-opaque/);
+  assert.doesNotMatch(results.textContent, /价未公布|gpt-/);
+  assert.match(results.textContent, /connection-opaque/);
   assert.equal(results.querySelector('[data-model-offer-disabled="true"]'), null);
+  view.cleanup();
+});
+
+test("direct manual model selection binds text and image, refreshes connection metadata without losing unsaved draft", async () => {
+  const route = "custom:connection-local~route-one";
+  const own = { ...glmOffer("custom", "connection-local~route-one", { label: "Friendly", selectable: true }), key: route, connection_id: "local", route_id: "route-one", model_id: "upstream-actual", connection_name: "My account", protocol: "responses" };
+  const ownCatalog = structuredClone(catalog);
+  ownCatalog.groups[0].capabilities[0].providers.push({ id: "custom", label: "Custom", models: [own] });
+  const image = structuredClone(ownCatalog.groups[0]);
+  image.id = "image"; image.label = "图片"; image.capabilities[0].id = "generate";
+  ownCatalog.groups.push(image);
+  const ownGroups = structuredClone(groups);
+  ownGroups[3].selection.image = { generate: ["bailian:qwen"] };
+  const view = await render({ catalog: ownCatalog, groups: ownGroups, active_group_key: "custom:test" });
+  assert.ok(view.host.querySelector("[data-model-edit-direct]"));
+  const offer = () => view.host.querySelector(`[data-model-edit-offers] [data-model-offer="${route}"]`);
+  assert.ok(offer(), "candidates visible before opening any menu");
+  assert.match(offer().textContent, /My account.*upstream-actual/);
+  await view.click(offer());
+  await view.click(view.host.querySelector('[data-model-cat="image"]'));
+  await view.click(offer());
+  await act(async () => { window.dispatchEvent(new window.Event("oceanleo:byok-status-changed")); });
+  await flush();
+  const edited = structuredClone(ownCatalog);
+  for (const group of edited.groups) {
+    group.capabilities[0].providers.find(provider => provider.id === "custom").models[0].connection_name = "Renamed account";
+  }
+  await view.refreshCatalog(edited);
+  assert.match(offer().textContent, /Renamed account/);
+  assert.match(view.host.querySelector('[data-model-cap="generate"]').textContent, /✓2/);
+  await view.click([...view.host.querySelectorAll("button")].find(node => node.textContent === "保存组合"));
+  assert.deepEqual(globalThis.__savedPatch.patch.selection.text.chat, ["bailian:qwen", route]);
+  assert.deepEqual(globalThis.__savedPatch.patch.selection.image.generate, ["bailian:qwen", route]);
+  view.cleanup();
+});
+
+test("direct edit clones platform preset and leaves original preset selection unchanged", async () => {
+  const view = await render();
+  const before = structuredClone(globalThis.__groupsResult.data.groups[1]);
+  const copy = { ...structuredClone(groups[3]), key: "custom:copy", id: "copy", name: "Pro copy" };
+  globalThis.__createResult = { ok: true, data: { ...globalThis.__groupsResult.data, groups: [...groups, copy], group: copy } };
+  await view.click(view.host.querySelector("[data-model-edit-direct]"));
+  assert.equal(globalThis.__createdFrom, "preset:pro");
+  assert.deepEqual(globalThis.__groupsResult.data.groups[1], before);
+  assert.ok([...view.host.querySelectorAll("button")].find(node => node.textContent === "保存组合"));
   view.cleanup();
 });
 
