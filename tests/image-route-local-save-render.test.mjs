@@ -39,8 +39,9 @@ const nullComponent = (...names) =>
 
 const FAKE_HOOK = `
 import { useCallback, useRef, useState } from ${JSON.stringify(reactUrl)};
-export function useFabricImageEditor() {
+export function useFabricImageEditor(_item, _siteId, options) {
   const ctl = globalThis.__fakeImageEditor;
+  ctl.hookOptions = options;
   const [dirty, setDirty] = useState(false);
   const [rev, setRev] = useState(0);
   const [, setTick] = useState(0);
@@ -112,7 +113,7 @@ const stubs = {
   "../image-editor/FabricImageControls": nullComponent("FabricImageControls"),
   "../image-editor/FabricImageStage": dataModule(`export function FabricImageStage() { return globalThis.__fakeImageEditor.createStage(); }`),
   "../image-editor/FabricImageCreationPanels": nullComponent(
-    "FabricImageBrushPanel", "FabricImageExportPanel", "FabricImageLinePanel", "FabricImageNotePanel",
+    "FabricImageBrushPanel", "FabricImageExportPanel", "FabricImageInsertPanel", "FabricImageLinePanel", "FabricImageNotePanel",
     "FabricImageShapePanel", "FabricImageSignaturePanel", "FabricImageTablePanel", "FabricImageTextPanel",
   ),
   "../collab/adapters/use-entity-collab": dataModule(
@@ -280,6 +281,16 @@ test("without onLocalSave the cloud save runs and the slot stays a cloud slot", 
     assert.ok(ctl.cloudSaves >= 1, "production flush called the cloud save");
     assert.equal(ctl.captures.length, 0, "local capture never used");
     assert.equal(ctl.marks.length, 0);
+  });
+});
+
+test("website path: without onLocalSave the editor is NOT told to import locally (upload policy unchanged); with it, it is", async () => {
+  await withRoute({}, async ({ ctl }) => {
+    assert.equal(ctl.hookOptions.localImport, false, "no local import without the trusted onLocalSave");
+    assert.equal(ctl.hookOptions.localProject, undefined);
+  });
+  await withRoute({ onLocalSave: async () => ({ ok: true }) }, async ({ ctl }) => {
+    assert.equal(ctl.hookOptions.localImport, true, "trusted native local save turns local import on");
   });
 });
 
