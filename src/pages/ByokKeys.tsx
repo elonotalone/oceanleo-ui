@@ -109,7 +109,6 @@ export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [authDenied, setAuthDenied] = useState(false);
-  const [reauthRequired, setReauthRequired] = useState(false);
   const [editor, setEditor] = useState<"none" | "add" | "edit">("none");
   const openedConnectionRef = useRef("");
   const editorEpochRef = useRef(0);
@@ -166,7 +165,6 @@ export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boo
     const first = providers[0];
     setForm(formForProvider(first?.id || ""));
     setError("");
-    setReauthRequired(false);
     setEditor("add");
   }
 
@@ -176,13 +174,11 @@ export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boo
     setEditor("none");
     setForm(emptyForm());
     setError("");
-    setReauthRequired(false);
   }
 
   function pickProvider(id: string) {
     const nextSelected = providers.find((provider) => provider.id === id);
     setError("");
-    setReauthRequired(false);
     setForm((prev) => ({
       ...prev,
       provider: id,
@@ -194,7 +190,6 @@ export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boo
     editorEpochRef.current += 1;
     setForm({ provider: row.provider, apiKey: "", baseUrl: row.base_url || "", displayName: row.display_name || "", protocol: row.protocol || "chat_completions", connectionId: row.connection_id, models: row.models.length ? row.models.map(model => ({ ...model })) : [{ id: "", name: "" }] });
     setError("");
-    setReauthRequired(false);
     setEditor("edit");
   }
 
@@ -206,19 +201,8 @@ export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boo
     }
   }
 
-  async function onReauth() {
-    try {
-      const mod = await import("../lib/auth/client");
-      await mod.signOutEverywhere();
-    } catch {
-      /* 登出失败也不挡用户重新走登录 */
-    }
-    if (typeof window !== "undefined") window.location.reload();
-  }
-
   async function onSave() {
     setError("");
-    setReauthRequired(false);
     if (!form.connectionId && !form.apiKey.trim()) {
       setError(tt("请填入 API key"));
       return;
@@ -247,12 +231,6 @@ export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boo
     }
     setSaving(false);
     if (!result.ok) {
-      if (result.status === 403 && result.code === "reauth_required") {
-        setReauthRequired(true);
-        setError(result.error || "为了保护你的钥匙，请重新登录后再添加");
-        return;
-      }
-      setReauthRequired(false);
       setError(result.error || tt("添加失败"));
       return;
     }
@@ -498,15 +476,6 @@ export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boo
             </div>
 
             {error ? <p role="alert" className="text-[12px] text-rose-600">{error}</p> : null}
-            {reauthRequired ? (
-              <button
-                type="button"
-                onClick={onReauth}
-                className="rounded-lg border border-neutral-200 px-4 py-2 text-[13px] font-medium text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50"
-              >
-                {tt("重新登录")}
-              </button>
-            ) : null}
 
             <div className="flex justify-end">
               <button
