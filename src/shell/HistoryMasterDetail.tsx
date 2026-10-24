@@ -598,7 +598,7 @@ function HistoryProjectTag({
           router.push(href);
         }
       }}
-      className={`inline-flex min-w-0 max-w-[60%] shrink items-center gap-0.5 rounded-full px-1.5 py-px text-[10.5px] leading-4 outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400 ${
+      className={`inline-flex min-w-0 max-w-[60%] shrink items-center gap-0.5 rounded-full px-1.5 py-px text-[10.5px] leading-4 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-sky-400 ${
         active
           ? "bg-white/20 text-white hover:bg-white/30"
           : "bg-neutral-200/70 text-neutral-600 hover:bg-neutral-300/70 hover:text-neutral-800"
@@ -756,7 +756,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 <span className="min-w-0 flex-1">
                   <button
                     type="button"
-                    className="flex w-full min-w-0 items-center gap-1 text-left outline-none focus-visible:underline"
+                    className="flex w-full min-w-0 items-center gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                   >
                     {pinned && (
                       <svg className={`h-3 w-3 shrink-0 ${on ? "text-white/80" : "text-amber-500"}`} viewBox="0 0 24 24" fill="currentColor" aria-label={tt("已置顶")}>
