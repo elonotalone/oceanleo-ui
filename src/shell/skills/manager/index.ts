@@ -11,4 +11,5 @@ export type {
   SkillsManagerProps,
   SkillsManagerScope,
 } from "./types";
+export { filterPickerSkills, mergeAvailableSkills } from "./logic";
 export type { AvailableSkill } from "./logic";

@@ -878,7 +878,14 @@ test("SkillPickerList + useAvailableSkills: personal + project, filter, controll
 
     await act(async () => root.render(React.createElement(Harness, { query: "zzz", active: 0 })));
     await flush();
-    assert.match(host.textContent, /没有匹配的技能/);
+    assert.equal(host.querySelector("[role='listbox']"), null, "empty → renders nothing (W15 owns the empty line)");
+    assert.equal(host.textContent, "");
+    assert.deepEqual(reported.at(-1), []);
+    // Same order as the exported pure function W15 uses for Enter / Tab.
+    assert.deepEqual(
+      manager.filterPickerSkills(logic.mergeAvailableSkills(server.mine, server.project.p1, "zh"), "de").map((s) => s.name),
+      ["deck-architect", "deep-dossier"],
+    );
   } finally {
     await act(async () => root.unmount());
     host.remove();
@@ -895,7 +902,7 @@ function managerSources() {
     .map((f) => ({ file: f, text: readFileSync(new URL(f, MANAGER_DIR), "utf8") }));
 }
 
-test("source gate: no innerHTML / dangerouslySetInnerHTML / eval / new Function / javascript: in manager", () => {
+test("source gate (UC-4): no innerHTML / dangerouslySetInnerHTML / eval / new Function / javascript: in manager", () => {
   for (const { file, text } of managerSources()) {
     const code = text.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
     assert.doesNotMatch(code, /dangerouslySetInnerHTML/, file);
@@ -907,7 +914,7 @@ test("source gate: no innerHTML / dangerouslySetInnerHTML / eval / new Function 
 });
 
 test("source gate: contract §3.4 names are exported from skills/manager/index", () => {
-  for (const name of ["SkillsManager", "OfficialSkillLibraryDialog", "SkillDetailModal", "SkillPickerList", "useAvailableSkills"]) {
+  for (const name of ["SkillsManager", "OfficialSkillLibraryDialog", "SkillDetailModal", "SkillPickerList", "useAvailableSkills", "filterPickerSkills"]) {
     assert.equal(typeof manager[name], "function", name);
   }
   const index = read("src/shell/skills/manager/index.ts");

@@ -12,6 +12,8 @@
 //     changes, so the composer can map ↑/↓/Enter onto `items[activeIndex].name`.
 //   - `id` (optional): listbox id; row `i` gets id `${id}-option-${i}` for
 //     `aria-activedescendant` on the textarea.
+//   - Empty result → renders nothing; the composer owns the empty message.
+//   - The visible order is exactly `filterPickerSkills(skills, query)` (exported from index).
 // Rows use `onMouseDown` + `preventDefault` so clicking never blurs the textarea.
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -92,13 +94,9 @@ export function SkillPickerList({
     );
   }
 
-  if (items.length === 0) {
-    return (
-      <div className="px-3 py-3 text-[13px] text-neutral-500 dark:text-neutral-400" data-testid="skill-picker-list" data-empty="">
-        {skills.length === 0 ? tt("还没有技能。可以在设置的「技能」里添加。") : tt("没有匹配的技能")}
-      </div>
-    );
-  }
+  // Empty (no skills, or nothing matches): render nothing — the composer (W15) shows
+  // its own empty line ("还没有技能 · 去添加" / "没有匹配的技能"), see signals/W15-to-W09B.md.
+  if (items.length === 0) return null;
 
   return (
     <ul
