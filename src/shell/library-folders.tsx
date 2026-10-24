@@ -19,13 +19,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { accessToken } from "../lib/auth/client";
-import { ConfirmDialog, SkeletonCard, Switch, timeAgo } from "../ui";
+import { Modal, SkeletonCard, timeAgo } from "../ui";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
 import { COLLECTION_ACTION_BTN_PRIMARY, CollectionCardGrid } from "./collection-chrome";
 import { CollectionItemCard } from "./collection-items";
 import {
   ConfigDialogShell,
+  ConfigToggle,
   FolderTreeViewer,
   SkillCover,
   folderApi,
@@ -261,7 +262,7 @@ function ShieldGlyph() {
 // ---------------------------------------------------------------------------
 
 const DETAIL_BTN =
-  "inline-flex h-10 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 text-[13px] text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50";
+  "inline-flex h-11 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 text-[13px] text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50";
 
 export function LibraryFolderCover({ folder }: { folder: Folder }) {
   const cover = folderCoverSrc(folder);
@@ -325,7 +326,7 @@ export function LibraryFolderCard({
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
             >
-              <Switch
+              <ConfigToggle
                 checked={skill.enabled}
                 disabled={!folder.can_edit || toggling || !onToggle}
                 onChange={(next) => onToggle?.(next)}
@@ -554,12 +555,12 @@ export function LibraryFolderDetail({
   const toolbar = folder ? (
     <div className="flex flex-wrap items-center gap-2" data-library-folder-actions="">
       {folder.skill ? (
-        <label className="mr-1 inline-flex h-10 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 text-[13px] text-neutral-800">
+        <label className="mr-1 inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 text-[13px] text-neutral-800">
           <span className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700">
             {tt("技能")}
           </span>
           <span>{folder.skill.enabled ? tt("已启用") : tt("已停用")}</span>
-          <Switch
+          <ConfigToggle
             checked={folder.skill.enabled}
             disabled={!folder.can_edit || busy === "toggle"}
             onChange={(next) => void toggle(next)}
@@ -656,20 +657,58 @@ export function LibraryFolderDetail({
         )}
       </ConfigDialogShell>
       {confirmDelete ? (
-        <ConfirmDialog
-          title="删除这个文件夹？"
-          body={
-            folder?.source === "official"
-              ? "只会从你的 Library 移除这条引用，官方技能本身不受影响。"
-              : "删除后无法恢复，已复制到项目里的副本不受影响。"
-          }
-          confirmLabel="删除"
-          danger
-          onConfirm={() => void remove()}
+        <FolderDeleteConfirm
+          official={folder?.source === "official"}
+          onConfirm={remove}
           onCancel={() => setConfirmDelete(false)}
         />
       ) : null}
     </>
+  );
+}
+
+/** 删除确认（叠在详情大弹窗之上）。官方引用讲清只删引用。 */
+function FolderDeleteConfirm({
+  official,
+  onConfirm,
+  onCancel,
+}: {
+  official: boolean;
+  onConfirm: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const tt = useUI();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal onClose={onCancel} className="max-w-sm">
+      <div className="p-5" data-library-folder-delete-confirm="">
+        <h3 className="text-[15px] font-semibold text-neutral-900">{tt("删除这个文件夹？")}</h3>
+        <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
+          {official
+            ? tt("只会从你的 Library 移除这条引用，官方技能本身不受影响。")
+            : tt("删除后无法恢复，已复制到项目里的副本不受影响。")}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className={DETAIL_BTN}>
+            {tt("取消")}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await onConfirm();
+              setBusy(false);
+            }}
+            className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-red-600 px-3.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-red-500 disabled:opacity-60"
+            data-library-folder-delete-confirm-button=""
+          >
+            {busy ? <span className="v-spinner text-[10px]" /> : null}
+            {tt("删除")}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

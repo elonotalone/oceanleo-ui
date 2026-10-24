@@ -52,7 +52,6 @@ import {
   normalizeLibraryCategory,
   translateLibraryTypeLabel,
 } from "./library-editor-category";
-import { LibraryFoldersPage, LibraryFoldersStrip } from "./library-folders";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
@@ -247,6 +246,56 @@ function folderCategoryFromUrl(): boolean {
   }
 }
 
+type LibraryFoldersModule = typeof import("./library-folders");
+
+/**
+ * 文件夹界面（`library-folders.tsx` → W09A `skills/kit` → 网关客户端）按需加载：
+ * 不让 Library 的首屏与静态依赖图多背一整套技能件；加载在 effect 里发生，SSR 首帧
+ * 与只渲染静态标记的宿主都不会去拉它。加载失败只影响文件夹这一块，Library 其它行为不变。
+ */
+function useLibraryFoldersModule(): { module: LibraryFoldersModule | null; failed: boolean } {
+  const [state, setState] = useState<{ module: LibraryFoldersModule | null; failed: boolean }>({
+    module: null,
+    failed: false,
+  });
+  useEffect(() => {
+    let alive = true;
+    import("./library-folders").then(
+      (module) => {
+        if (alive) setState({ module, failed: false });
+      },
+      () => {
+        if (alive) setState({ module: null, failed: true });
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return state;
+}
+
+/** 文件夹模块还没到（或加载失败）时文件夹视图的占位：同一页标题与类型菜单，切回去不受影响。 */
+function LibraryFoldersPending({ failed, filterRow }: { failed: boolean; filterRow: ReactNode }) {
+  const tt = useUI();
+  return (
+    <div className="flex h-full min-h-0 flex-col" data-library-folders-pending={failed ? "failed" : "loading"}>
+      {filterRow}
+      {failed ? (
+        <p role="alert" className="py-16 text-center text-[13px] text-neutral-500">
+          {tt("文件夹暂时无法加载")}
+        </p>
+      ) : (
+        <CollectionCardGrid className="mt-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} className="h-40" />
+          ))}
+        </CollectionCardGrid>
+      )}
+    </div>
+  );
+}
+
 /** 与 MyLibrary 页头同一个「类型」菜单：文件夹视图里也能切回其它类别。 */
 function LibraryTypeFilterRow({
   value,
@@ -286,6 +335,7 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
   // 非受控（门户 /library）时由这里记住当前类别，才知道什么时候换成文件夹视图；
   // MyLibrary 的类别切换照旧走它自己的菜单，只是状态放在这一层。
   const [ownCategory, setOwnCategory] = useState("all");
+  const folders = useLibraryFoldersModule();
   const uncontrolled = props.filter === undefined;
   useEffect(() => {
     if (uncontrolled && folderCategoryFromUrl()) setOwnCategory(LIBRARY_FOLDER_CATEGORY_ID);
@@ -313,12 +363,21 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
     >
       {showFolders ? (
         <div className="min-h-0 flex-1 overflow-hidden" data-library-category="folders">
-          <LibraryFoldersPage
-            pageTitle="我的库"
-            filterRow={
-              <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
-            }
-          />
+          {folders.module ? (
+            <folders.module.LibraryFoldersPage
+              pageTitle="我的库"
+              filterRow={
+                <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
+              }
+            />
+          ) : (
+            <LibraryFoldersPending
+              failed={folders.failed}
+              filterRow={
+                <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
+              }
+            />
+          )}
         </div>
       ) : null}
       {/* 文件夹视图打开时 MyLibrary 只是藏起来：切回别的类别时搜索、排序与已加载的列表都还在。 */}
@@ -336,8 +395,8 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
           onCategoryChange={changeCategory}
           supplementalSection={
             // 「全部」时在网格上方放最近的文件夹（仲裁 A-04）；收藏视图与具体类别不放。
-            (myLibraryCategory ?? "all") === "all" && filter !== "favorites" ? (
-              <LibraryFoldersStrip onViewAll={() => changeCategory(LIBRARY_FOLDER_CATEGORY_ID)} />
+            (myLibraryCategory ?? "all") === "all" && filter !== "favorites" && folders.module ? (
+              <folders.module.LibraryFoldersStrip onViewAll={() => changeCategory(LIBRARY_FOLDER_CATEGORY_ID)} />
             ) : null
           }
         />
@@ -418,6 +477,7 @@ function ArtifactLibraryLegacy({
   hideChips = false,
 }: ArtifactLibraryProps) {
   const tt = useUI();
+  const folders = useLibraryFoldersModule();
   const [internalFilter, setInternalFilter] = useState<ArtifactFilter>("all");
   const [internalOnlyFavorites, setInternalOnlyFavorites] = useState(
     controlledFilter === "favorites",
@@ -732,16 +792,19 @@ function ArtifactLibraryLegacy({
           MaterialLibrary 放大态 `!zoom`）：否则文件多时本 min-h-full 容器被网格撑高，
           `absolute inset-0` 预览浮层随之撑高、下方大片空白。隐藏后 flow 高塌缩到可见高。 */}
       {typeFilter === "folders" && !(selected && fill) ? (
-        <LibraryFoldersPage
-          filterRow={
-            hideChips ? null : (
-              <LibraryTypeFilterRow
-                value={LIBRARY_FOLDER_CATEGORY_ID}
-                onChange={(category) => setFilter(CATEGORY_FILTER[category] || "all")}
-              />
-            )
-          }
-        />
+        (() => {
+          const filterRow = hideChips ? null : (
+            <LibraryTypeFilterRow
+              value={LIBRARY_FOLDER_CATEGORY_ID}
+              onChange={(category) => setFilter(CATEGORY_FILTER[category] || "all")}
+            />
+          );
+          return folders.module ? (
+            <folders.module.LibraryFoldersPage filterRow={filterRow} />
+          ) : (
+            <LibraryFoldersPending failed={folders.failed} filterRow={filterRow} />
+          );
+        })()
       ) : null}
       {!(selected && fill) && typeFilter !== "folders" && (
         <>

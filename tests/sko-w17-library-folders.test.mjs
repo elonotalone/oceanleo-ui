@@ -36,6 +36,9 @@ export function ConfigDialogShell(p) {
 }
 export function FolderTreeViewer(p) { return h("div", { "data-stub": "tree", "data-initial": p.initialPath || "" }); }
 export function SkillCover(p) { return h("img", { "data-stub": "cover", src: p.src || "", alt: "" }); }
+export function ConfigToggle(p) {
+  return h("button", { type: "button", role: "switch", "aria-checked": p.checked, "aria-label": p.label, disabled: p.disabled });
+}
 `);
 const authStub = dataModule(`export async function accessToken() { return null; }`);
 
@@ -196,7 +199,12 @@ test("detail: big dialog with download / copy-to-project / delete; official show
 
 test("source wiring: Library mounts the folders view for the folders category and leaves MyLibrary intact", () => {
   const artifact = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
-  assert.match(artifact, /import \{ LibraryFoldersPage, LibraryFoldersStrip \} from "\.\/library-folders"/);
+  // 按需加载：Library 的静态依赖图不背技能件（别的宿主 / 测试替身照旧能编），SSR 首帧不拉。
+  assert.doesNotMatch(artifact, /from "\.\/library-folders"/);
+  assert.doesNotMatch(artifact, /from "\.\/skills\//);
+  assert.match(artifact, /import\("\.\/library-folders"\)\.then\(/);
+  assert.match(artifact, /<folders\.module\.LibraryFoldersPage/);
+  assert.match(artifact, /<LibraryFoldersPending/);
   assert.match(artifact, /const showFolders = isLibraryFolderCategory\(myLibraryCategory\)/);
   assert.match(artifact, /hidden=\{showFolders\}/, "MyLibrary stays mounted (search/sort/list survive) while folders are shown");
   assert.match(artifact, /\| "folders"/);
@@ -213,7 +221,8 @@ test("source wiring: Library mounts the folders view for the folders category an
   assert.match(folders, /folderApi\.copyFolderToProject\(/);
   assert.match(folders, /folderApi\.downloadFromGateway\(/);
   assert.match(folders, /<FolderTreeViewer/);
-  assert.match(folders, /<ConfirmDialog/);
+  assert.match(folders, /<FolderDeleteConfirm/);
+  assert.match(folders, /<ConfigToggle/);
   // 不可信内容：不许 innerHTML / eval，Markdown 只经 FolderTreeViewer（共享 Markdown，skipHtml）。
   assert.doesNotMatch(folders, /dangerouslySetInnerHTML|innerHTML\s*=|\beval\(|new Function|javascript:/);
 });
@@ -263,7 +272,7 @@ test("「全部」: MyLibrary renders the host slot after the type row; Library 
   const artifact = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
   assert.match(
     artifact,
-    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" \? \(\s*<LibraryFoldersStrip onViewAll=\{\(\) => changeCategory\(LIBRARY_FOLDER_CATEGORY_ID\)\} \/>/,
+    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" && folders\.module \? \(\s*<folders\.module\.LibraryFoldersStrip onViewAll=\{\(\) => changeCategory\(LIBRARY_FOLDER_CATEGORY_ID\)\} \/>/,
   );
 });
 
