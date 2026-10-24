@@ -13,6 +13,7 @@ import {
   ConfigDialogShell,
   ConfigEmptyState,
   ConfigToolbar,
+  CONFIG_TOOLBAR_BUTTON_CLASS,
   KitIconCheck,
   KitIconPuzzle,
   SkillCover,
@@ -201,7 +202,7 @@ export function OfficialSkillLibraryDialog({ open, onClose, projectId, onAdded }
               <button
                 type="button"
                 onClick={() => setTick((v) => v + 1)}
-                className="inline-flex h-11 items-center rounded-xl border border-neutral-200 bg-white px-4 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:border-neutral-700 dark:bg-neutral-900"
+                className={CONFIG_TOOLBAR_BUTTON_CLASS}
               >
                 {tt("重试")}
               </button>

@@ -1,5 +1,7 @@
 "use client";
 
+import { FIELD } from "../settings/personalization/parts";
+
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { currentDomainProfile } from "../../contracts/domain-family";
@@ -600,7 +602,7 @@ export function ConnectorDialog({
             {tt("MCP 服务地址（你的专属 URL）")}
           </label>
           <input
-            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-sky-500"
+            className={FIELD}
             placeholder="https://mcp.example.com/mcp"
             value={connUrl}
             onChange={(e) => onUrl(e.target.value)}
@@ -612,7 +614,7 @@ export function ConnectorDialog({
           <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">Token / API Key</label>
           <input
             type="password"
-            className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-sky-500"
+            className={FIELD}
             placeholder={
               connection
                 ? tt("已保存（{fingerprint}）— 留空则沿用", { fingerprint: connection.fingerprint })
@@ -626,7 +628,7 @@ export function ConnectorDialog({
       <div>
         <label className="mb-1.5 block text-[13px] font-medium text-neutral-700">{tt("名称")}</label>
         <input
-          className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-sky-500"
+          className={FIELD}
           value={connLabel}
           onChange={(e) => onLabel(e.target.value)}
         />
@@ -737,7 +739,7 @@ export function ConnectorDialog({
                   {tt("MCP 服务地址（你的专属 URL）")}
                 </label>
                 <input
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus:border-sky-500"
+                  className={FIELD}
                   value={connUrl}
                   onChange={(e) => onUrl(e.target.value)}
                 />

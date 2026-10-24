@@ -281,7 +281,7 @@ export function ConnectorsSettingsPane({
     <section data-plugins-connectors data-settings-connectors-pane className="min-h-0 pb-10">
       <span data-mcp-oauth-return-origin={controller.returnOrigin} hidden />
       {heading ? (
-        <h2 className="mb-4 text-[18px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+        <h2 className="mb-4 text-[24px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
           {tt("连接器")}
         </h2>
       ) : null}

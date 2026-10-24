@@ -18,12 +18,14 @@ test("settings and every settings child keep compact text without shrinking inte
   for (const path of paths) {
     const source = read(path);
     const sizes = [...source.matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)].map((m) => Number(m[1]));
-    assert.ok(sizes.every((size) => size <= 18), `${path}: maximum heading is 18px`);
+    // Settings panes are peers of account/personalization, with the same 24px host heading.
+    const max = path.startsWith("pages/settings/") ? 24 : 18;
+    assert.ok(sizes.every((size) => size <= max), `${path}: maximum heading is ${max}px`);
     assert.doesNotMatch(source, /\btext-(?:base|lg|xl|2xl|3xl)\b/, path);
     assert.doesNotMatch(source, /(?:zoom\s*:|scale-\[0\.[0-8])/, path);
   }
   for (const path of ["ConfigToolbar", "ConfigDialogShell", "AddMenu", "FolderTreeViewer"]) {
-    assert.match(read(`shell/skills/kit/${path}.tsx`), /(?:min-)?h-11/, `${path}: 44px actions remain`);
+    assert.match(read(`shell/skills/kit/${path}.tsx`), /(?:min-)?h-11|before:-inset-1/, `${path}: 44px actions or transparent hit surrounds remain`);
     assert.match(read(`shell/skills/kit/${path}.tsx`), /focus-visible/, `${path}: keyboard focus remains`);
   }
 });

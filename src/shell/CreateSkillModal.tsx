@@ -1,5 +1,6 @@
 "use client";
 
+
 // ============================================================================
 // @oceanleo/ui — 创建 / 保存 agent 的统一弹窗（单一事实源）
 // ----------------------------------------------------------------------------
@@ -23,6 +24,9 @@ import { Modal as SharedModal } from "../ui";
 import { useUI } from "../i18n/ui/useUI";
 
 const DEFAULT_ACCENT = "#7c3aed";
+
+// Matches settings personalization FIELD; keep shell independent of pages.
+const FIELD = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-sky-500 focus:ring-2 focus:ring-sky-100";
 
 export interface CreateSkillModalProps {
   /** 强调色（按钮 / 选中态）。 */
@@ -91,7 +95,7 @@ export function CreateSkillModal({
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px]"
+            className={`${FIELD} mt-1`}
           >
             <option value="我的 Agent">{tt("我的 Agent")}</option>
             {categories.map((c) => (
@@ -109,7 +113,7 @@ export function CreateSkillModal({
           onChange={(e) => setPrompt(e.target.value)}
           rows={8}
           placeholder={tt("描述这个 agent 的人设、专业领域、回答风格、能力边界…")}
-          className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px] leading-relaxed"
+          className={`${FIELD} mt-1 leading-relaxed`}
         />
       </label>
       {err && <p className="mb-2 text-[13px] text-rose-500">{err}</p>}
@@ -197,7 +201,7 @@ export function CreateSkillTeamModal({
           <select
             value={leader || picked[0]}
             onChange={(e) => setLeader(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px]"
+            className={`${FIELD} mt-1`}
           >
             {picked.map((id) => {
               const e = skills.find((x) => x.agent_id === id);
@@ -217,7 +221,7 @@ export function CreateSkillTeamModal({
           onChange={(e) => setPrompt(e.target.value)}
           rows={4}
           placeholder={tt("描述负责人如何调度成员、如何向用户汇报…")}
-          className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px]"
+          className={`${FIELD} mt-1`}
         />
       </label>
       {err && <p className="mb-2 text-[13px] text-rose-500">{err}</p>}
@@ -273,7 +277,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-1 w-full rounded-lg border border-stone-200 px-3 py-2 text-[13px]"
+        className={`${FIELD} mt-1`}
       />
     </label>
   );

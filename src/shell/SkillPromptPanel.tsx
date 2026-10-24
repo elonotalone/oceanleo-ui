@@ -1,5 +1,6 @@
 "use client";
 
+
 // ============================================================================
 // @oceanleo/ui — skill prompt 开源面板（单一事实源）
 // ----------------------------------------------------------------------------
@@ -27,6 +28,9 @@ import { fetchManifest } from "../lib/manifest-fetch";
 import { CreateSkillModal } from "./CreateSkillModal";
 import { Modal } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+
+// Matches settings personalization FIELD; keep shell independent of pages.
+const FIELD = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-sky-500 focus:ring-2 focus:ring-sky-100";
 
 export interface SkillPromptPanelProps {
   /** 绑定的 skill / 功能区 agent id（"<site_id>.<fn_id>"）。空 → 不渲染。 */
@@ -208,7 +212,7 @@ export function SkillPromptPanel({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={14}
-          className="block w-full resize-y rounded-xl border border-stone-300 bg-white px-4 py-3 text-[13px] leading-relaxed text-stone-800 outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+          className={`${FIELD} block resize-y bg-white leading-relaxed text-neutral-800`}
           placeholder={tt("编辑这个 agent 的设定（人设 / 专业领域 / 回答风格 / 能力边界）…")}
         />
       ) : (

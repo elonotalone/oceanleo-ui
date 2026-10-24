@@ -22,7 +22,7 @@ export function SkillsSettingsPane({ heading = false }: SkillsSettingsPaneProps)
   return (
     <section data-plugins-skills data-settings-skills-pane className="min-h-0">
       {heading ? (
-        <h2 className="mb-2 text-[18px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+        <h2 className="mb-2 text-[24px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
           {tt("技能")}
         </h2>
       ) : null}

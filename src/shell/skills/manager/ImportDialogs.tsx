@@ -11,7 +11,6 @@ import {
   CONFIG_PRIMARY_BUTTON_CLASS,
   CONFIG_TOOLBAR_BUTTON_CLASS,
   KitIconCheck,
-  KitIconSearch,
   type Folder,
 } from "../kit";
 import {
@@ -27,9 +26,13 @@ import {
 import { ManagerDialog } from "./ManagerDialog";
 import { listCopyTargetProjects, type CopyTargetProject } from "./projects-client";
 import { useScopeFolders } from "./use-scope-folders";
+import { CollectionSearchField } from "../../collection-chrome";
+
+// Matches settings personalization FIELD; keep shell independent of pages.
+const FIELD = "w-full rounded-lg border border-neutral-200 px-3 py-2 text-[14px] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-sky-500 focus:ring-2 focus:ring-sky-100";
 
 export const MANAGER_INPUT_CLASS =
-  "w-full rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-[13px] text-neutral-900 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-neutral-400 focus:border-neutral-400 focus-visible:ring-2 focus-visible:ring-sky-100 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:placeholder:text-neutral-500";
+  `${FIELD} bg-white text-neutral-900 placeholder:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:placeholder:text-neutral-500`;
 
 function Field({ label, hint, error, htmlFor, children }: { label: string; hint?: string; error?: string; htmlFor: string; children: ReactNode }) {
   return (
@@ -334,17 +337,11 @@ export function ImportFromMineDialog({
         </>
       }
     >
-      <div className="relative mb-3">
-        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-neutral-400">
-          <KitIconSearch className="h-4 w-4" />
-        </span>
-        <input
-          type="search"
+      <div className="mb-3 max-w-full [&_input]:max-w-full">
+        <CollectionSearchField
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={setQuery}
           placeholder={tt("搜索技能")}
-          aria-label={tt("搜索技能")}
-          className={`${MANAGER_INPUT_CLASS} pl-9`}
         />
       </div>
       {mine.status === "loading" ? (
