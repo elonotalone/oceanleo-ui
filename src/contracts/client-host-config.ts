@@ -46,6 +46,25 @@ export interface ClientHostConfig {
   navItems?: readonly ClientHostNavItem[];
   /** Optional host network (Rust/Tauri). Omitted keeps the previous slot. */
   fetch?: typeof fetch;
+  /** Local desktop surfaces. Never provided by the website or mobile hosts. */
+  localWorkspace?: ClientLocalWorkspace;
+}
+
+export interface ClientLocalTask {
+  id: string;
+  remoteTaskId?: string;
+  title: string;
+  stage: string;
+  path: string;
+  failure: string;
+  summary: string;
+  canCancel: boolean;
+}
+
+export interface ClientLocalWorkspace {
+  listTasks(): Promise<ClientLocalTask[]>;
+  cancelTask(id: string): Promise<unknown>;
+  mountSettings(container: HTMLElement): () => void;
 }
 
 type HostConfigSlot = {
@@ -190,6 +209,9 @@ export function configureClientHost(config: ClientHostConfig): void {
     openExternal: config.openExternal,
     navItems,
     fetch: hostFetch,
+    localWorkspace: config.platform === "desktop"
+      ? config.localWorkspace ?? previous?.localWorkspace
+      : undefined,
   });
   (globalThis as HostConfigSlot)[CLIENT_HOST_CONFIG_GLOBAL_KEY] = next;
   notify();

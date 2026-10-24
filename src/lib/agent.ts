@@ -308,6 +308,8 @@ export interface AgentTask {
   created_by?: string | null;
   /** Ordinary app task or advanced-workbench task. */
   surface?: "app" | "advanced" | string;
+  /** Execution location recorded by the gateway (e.g. desktop local tasks). */
+  engine?: string | null;
   /** Cloud-computer id when this task is a Shell session (`mode === "shell"`). */
   computer_id?: string | null;
   /** 成品 app 身份；旧 task 可能缺失。 */

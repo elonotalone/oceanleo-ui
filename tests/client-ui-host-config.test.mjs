@@ -53,6 +53,18 @@ test.afterEach(() => {
   resetClientHostConfigForTests();
 });
 
+test("local workspace survives desktop boot reconfiguration and is absent on mobile/web", () => {
+  const localWorkspace = { listTasks: async () => [], cancelTask: async () => {}, mountSettings: () => () => {} };
+  configureClientHost(hostConfig({ localWorkspace }));
+  assert.equal(getClientHostConfig().localWorkspace, localWorkspace);
+  configureClientHost(hostConfig());
+  assert.equal(getClientHostConfig().localWorkspace, localWorkspace);
+  configureClientHost(hostConfig({ platform: "android", localWorkspace }));
+  assert.equal(getClientHostConfig().localWorkspace, undefined);
+  configureClientHost(hostConfig({ platform: "web", localWorkspace }));
+  assert.equal(getClientHostConfig().localWorkspace, undefined);
+});
+
 test("unconfigured family/gateway/identity/help/cookies equal live web", () => {
   resetClientHostConfigForTests();
   assert.equal(getClientHostConfig(), null);

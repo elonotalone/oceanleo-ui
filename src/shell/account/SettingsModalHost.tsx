@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SettingsModal } from "../../pages/settings/SettingsModal";
 import type { SettingsHubProps, SettingsSection } from "../../pages/settings/SettingsHub";
+import { getLocalWorkspace } from "../LocalWorkspace";
 import {
   captureSettingsReturnTo,
   isSettingsPathname,
@@ -18,7 +19,7 @@ import {
 export { openSettingsModal };
 
 function extraIdsOf(sections?: SettingsSection[]): string[] {
-  return (sections ?? []).map((section) => section.id);
+  return [...(sections ?? []).map((section) => section.id), ...(getLocalWorkspace() ? ["local-computer"] : [])];
 }
 
 function locationHref(): string {

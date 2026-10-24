@@ -88,11 +88,11 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export function useUI(){ globalThis.__historyGate.ttSeq += 1; return (value) => value; }
   `),
   "next/navigation": dataModule(`
-    export function usePathname(){ return "/workspace/poster"; }
-    export function useRouter(){ return { push(){}, replace(){}, prefetch(){} }; }
+    export function usePathname(){ return globalThis.__historyPath || "/workspace/poster"; }
+    export function useRouter(){ return { push(href){ globalThis.__historyPushed = href; }, replace(){}, prefetch(){} }; }
   `),
   "./WorkspaceSelection": dataModule(`
-    export function useWorkspaceSelection(){ return globalThis.React.useState(null); }
+    export function useWorkspaceSelection(){ return globalThis.React.useState(globalThis.__historySelected || null); }
   `),
   "./AgentChat": dataModule(`export function AgentChat(){ return null; }`),
   "./library-task-history": dataModule(`export function LibraryTaskHistoryWorkspace(){return null;}`),
@@ -111,9 +111,9 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export async function accessToken(){ return null; }
   `),
   "../lib/agent": dataModule(`
-    export async function listTasks(){ return { ok: true, data: { items: [] } }; }
+    export async function listTasks(){ return { ok: true, data: { items: globalThis.__legacyItems || [] } }; }
     export async function deleteTask(){ return { ok: true }; }
-    export async function getTask(){ return { ok: false, status: 404 }; }
+    export async function getTask(){ globalThis.__cloudDetailCalls = (globalThis.__cloudDetailCalls || 0) + 1; return { ok: false, status: 404 }; }
     export function taskCostYuan(){ return 0; }
   `),
   "../lib/app-session": dataModule(`
@@ -123,14 +123,64 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
       if (globalThis.__historyGate.release) await globalThis.__historyGate.release;
       return { ok: true, data: { items: globalThis.__historyItems } };
     }
-    export async function getAppSession(){ return { ok: false, status: 404 }; }
+    export async function getAppSession(){ globalThis.__cloudDetailCalls = (globalThis.__cloudDetailCalls || 0) + 1; return { ok: false, status: 404 }; }
     export async function deleteAppSession(){ return { ok: true }; }
     export async function updateAppSessionMetadata(){ return { ok: true }; }
   `),
 });
 
-const { HistoryInlineList } = await import(historyUrl);
+const { HistoryInlineList, HistoryDetail } = await import(historyUrl);
 const { HISTORY_CHANGED_EVENT } = await import("../src/lib/history-events.ts");
+
+test("local queue appears in My Tasks once and opens native detail without cloud requests", async () => {
+  const saved = globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__;
+  const cancellations = [];
+  const tasks = [{ id: "local-1", remoteTaskId: "cloud-1", title: "写入文件", stage: "waiting_for_network", path: "/work/result.txt", summary: "文件已保存", failure: "", canCancel: false }];
+  globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = { family: "com", portalOrigin: "https://oceanleo.com", gatewayOrigin: "https://api.dev.oceanleo.com", identityOrigin: "https://auth.oceanleo.com", platform: "desktop", localWorkspace: { listTasks: async () => tasks, cancelTask: async (id) => cancellations.push(id) } };
+  globalThis.__legacyItems = [{ id: "cloud-1", title: "不应重复出现", created_at: "2026-10-24T00:00:00Z", status: "running", site_id: "oceanleo" }];
+  globalThis.__historyPath = "/history";
+  let panel;
+  try {
+    panel = await mount("oceanleo");
+    await settle(20);
+    assert.match(panel.text(), /写入文件/);
+    assert.match(panel.text(), /在本机执行.*等待网络恢复/);
+    assert.doesNotMatch(panel.text(), /不应重复出现/);
+    const button = [...panel.container.querySelectorAll("button")].find((node) => node.textContent.includes("写入文件"));
+    await act(async () => button.click());
+    assert.equal(globalThis.__historyPushed, "/history?task=local%3Alocal-1");
+    await panel.unmount(); panel = null;
+    globalThis.__historySelected = "local:local-1";
+    globalThis.__cloudDetailCalls = 0;
+    panel = await mount("oceanleo", true);
+    await settle(20);
+    assert.match(panel.text(), /文件已保存/);
+    assert.match(panel.text(), /联网后会自动同步记录/);
+    assert.equal(globalThis.__cloudDetailCalls, 0);
+    assert.equal([...panel.container.querySelectorAll("button")].some((node) => node.textContent === "停止任务"), false);
+    await panel.unmount(); panel = null;
+    tasks[0] = { ...tasks[0], stage: "queued", canCancel: true };
+    panel = await mount("oceanleo", true);
+    await settle(20);
+    const stop = [...panel.container.querySelectorAll("button")].find((node) => node.textContent === "停止任务");
+    assert.ok(stop);
+    await act(async () => stop.click());
+    assert.deepEqual(cancellations, ["local-1"]);
+    await panel.unmount(); panel = null;
+    tasks[0] = { ...tasks[0], stage: "done", canCancel: false };
+    globalThis.__legacyItems[0] = { ...globalThis.__legacyItems[0], title: "保留云端标题", status: "done" };
+    panel = await mount("oceanleo");
+    await settle(20);
+    assert.match(panel.text(), /保留云端标题/);
+    assert.doesNotMatch(panel.text(), /写入文件/);
+  } finally {
+    await panel?.unmount();
+    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = saved;
+    delete globalThis.__legacyItems;
+    delete globalThis.__historySelected;
+    delete globalThis.__historyPath;
+  }
+});
 
 async function settle(ms = 0) {
   await act(async () => {
@@ -138,7 +188,7 @@ async function settle(ms = 0) {
   });
 }
 
-async function mount() {
+async function mount(siteId = "image", detail = false) {
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
   document.body.append(container);
@@ -147,7 +197,7 @@ async function mount() {
   function Bed() {
     const [, bump] = React.useState(0);
     rerender = () => bump((value) => value + 1);
-    return React.createElement(HistoryInlineList, { siteId: "image" });
+    return React.createElement(detail ? HistoryDetail : HistoryInlineList, { siteId });
   }
   await act(async () => {
     root.render(React.createElement(Bed));

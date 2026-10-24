@@ -39,6 +39,7 @@ import { browserClient } from "../lib/auth/client";
 import { useUI } from "../i18n/ui/useUI";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { LibraryTaskHistoryWorkspace } from "./library-task-history";
+import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace";
 import { ShellTaskView } from "./cloud-computer/ShellTaskView";
 import {
   canDeleteHistoryEntry,
@@ -619,6 +620,14 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const tt = useUI();
   const ledger = useLedgerCurrency();
   const { items, loading, error, remove, mutate } = useHistory(siteId);
+  const local = useLocalTasks();
+  const cloudTaskIds = new Set(items.filter((entry) => entry.kind === "task").map((entry) => entry.id));
+  // Once a finished local record is synced, keep the ordinary task's title,
+  // menu and outputs. Native rows cover live execution and offline records.
+  const localTasks = (!siteId || siteId === "oceanleo") ? local.tasks.filter((task) =>
+    !task.remoteTaskId || !cloudTaskIds.has(task.remoteTaskId) || task.canCancel || task.stage === "waiting_for_network",
+  ) : [];
+  const localRemoteIds = new Set(localTasks.map((task) => task.remoteTaskId).filter(Boolean));
   const [sel, setSel] = useWorkspaceSelection("history");
   const pathname = usePathname() || "";
   const router = useRouter();
@@ -674,10 +683,12 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     <div className="space-y-0.5">
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(error)}</p>}
       {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
-      {!error && !loading && items.length === 0 && (
+      {!error && !loading && items.length === 0 && localTasks.length === 0 && (
         <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有任务。")}</p>
       )}
-      {orderedItems.map((entry) => {
+      {local.error && <p role="status" className="px-3 py-2 text-[12px] text-neutral-400">{tt("无法读取本机任务，请稍后重试。")}</p>}
+      <LocalTaskRows tasks={localTasks} selected={sel} accent={accent} />
+      {orderedItems.filter((entry) => entry.kind !== "task" || !localRemoteIds.has(entry.id)).map((entry) => {
         const isSession = entry.kind === "session";
         const record = isSession ? entry.session : entry.task;
         const on = entry.id === sel;
@@ -705,6 +716,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         // 项目名优先：项目条目不再显示站点 / app（如 home-agent）这类来源字样。
         const subtitle = [
           fmt(timestamp),
+          !isSession && (entry.task.engine === "local" || local.tasks.some((task) => task.remoteTaskId === entry.id)) ? tt("在本机执行") : "",
           !project && !siteId && recordSite ? recordSite : "",
           !project && isSession && entry.session.app_id ? entry.session.app_id : "",
           cost,
@@ -924,6 +936,7 @@ export function HistoryDetail({
   renderWorkspace,
 }: HistoryDetailProps) {
   const tt = useUI();
+  const local = useLocalTasks();
   const [selected, setSelected] = useWorkspaceSelection("history");
   const router = useRouter();
   const detailPathname = usePathname() || "";
@@ -931,6 +944,10 @@ export function HistoryDetail({
   // 先把 id 抄进跨树 selection context。
   const sel =
     historySessionIdFromPath(detailPathname) || selected;
+  const localTask = (!siteId || siteId === "oceanleo")
+    ? local.tasks.find((task) => sel === `local:${task.id}` || (sel === task.remoteTaskId && (task.canCancel || task.stage === "waiting_for_network")))
+    : undefined;
+  const localSelection = Boolean(local.workspace && (sel?.startsWith("local:") || localTask));
   const [loaded, setLoaded] = useState<LoadedHistoryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -943,7 +960,7 @@ export function HistoryDetail({
     let alive = true;
     setLoaded(null);
     setDetailError(null);
-    if (!sel) {
+    if (!sel || localSelection) {
       setDetailLoading(false);
       return () => {
         alive = false;
@@ -1026,13 +1043,15 @@ export function HistoryDetail({
     return () => {
       alive = false;
     };
-  }, [router, sel, siteId]);
+  }, [router, sel, siteId, localSelection]);
 
   // 仅用于 legacy task / 不完整 session 的明确降级。完整 session 的右栏完全由站点 runtime
   // 提供，不再用 AgentChat 的通用 libraryTabs 模拟。
   const effectiveLibraryTabs: AgentLibraryTabs | undefined =
     libraryTabs ??
     (siteId ? { showFiles: true, showBrowser: true } : undefined);
+  if (localTask) return <LocalTaskDetail key={localTask.id} task={localTask} />;
+  if (localSelection) return <div role="status" className="p-8 text-sm text-neutral-500">{tt(local.error ? "无法读取本机任务，请稍后重试。" : local.loading ? "正在读取本机任务…" : "这条本机任务已不存在。")}</div>;
   if (!sel) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">

@@ -209,6 +209,17 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "./sections/TopUpSection": paneStub("TopUpSection", "pane-topup"),
 });
 const { SettingsHub } = await import(hubUrl);
+globalThis.__settingsHubForModal = SettingsHub;
+const modalHostUrl = await compileModule("src/shell/account/SettingsModalHost.tsx", {
+  "next/navigation": navigationStubUrl,
+  "../../pages/settings/SettingsModal": dataModule(`
+    import React from ${JSON.stringify(reactUrl)};
+    export function SettingsModal(props) {
+      return props.open ? React.createElement(globalThis.__settingsHubForModal, { ...props, variant: "modal" }) : null;
+    }
+  `),
+});
+const { SettingsModalHost } = await import(modalHostUrl);
 
 const accountUrl = await compileModule("src/pages/AccountPage.tsx", {
   "next/link": linkStubUrl,
@@ -253,9 +264,9 @@ function signedIn() {
   };
 }
 
-async function render(element) {
-  globalThis.__authStub = signedIn();
-  window.history.replaceState(null, "", "/settings");
+async function render(element, auth = signedIn(), path = "/settings") {
+  globalThis.__authStub = auth;
+  window.history.replaceState(null, "", path);
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
@@ -288,6 +299,60 @@ test("默认 /settings 渲染左列 3 个分组且右侧是通用", async () => 
   assert.ok(view.text().includes("语言与主题"));
   assert.equal(view.host.querySelector("[data-testid=security-panel]"), null);
   view.cleanup();
+});
+
+test("desktop local permissions mount in Settings even offline and dispose on close", async () => {
+  let mounted = 0;
+  let disposed = 0;
+  const previous = globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__;
+  globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+    family: "com", portalOrigin: "https://oceanleo.com", gatewayOrigin: "https://api.dev.oceanleo.com", identityOrigin: "https://auth.oceanleo.com",
+    platform: "desktop",
+    localWorkspace: {
+      listTasks: async () => [],
+      mountSettings(container) {
+        mounted += 1;
+        container.textContent = "本机授权测试";
+        return () => { disposed += 1; };
+      },
+    },
+  };
+  let view;
+  try {
+    view = await render(React.createElement(SettingsHub, { defaultTab: "local-computer" }), { configured: false, email: null });
+    assert.match(view.text(), /本机与权限/);
+    assert.match(view.text(), /本机授权测试/);
+    assert.equal(mounted, 1);
+    assert.equal(view.host.querySelector("[data-settings-guest-auth]"), null);
+  } finally {
+    view?.cleanup();
+    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = previous;
+  }
+  assert.equal(disposed, 1);
+});
+
+test("real settings modal keeps local-computer selected from its menu and direct URL", async () => {
+  const previous = globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__;
+  globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+    family: "com", portalOrigin: "https://oceanleo.com", gatewayOrigin: "https://api.dev.oceanleo.com", identityOrigin: "https://auth.oceanleo.com", platform: "desktop",
+    localWorkspace: { mountSettings(container) { container.textContent = "本机授权测试"; return () => {}; } },
+  };
+  let view;
+  try {
+    view = await render(React.createElement(SettingsModalHost));
+    const local = [...view.host.querySelectorAll("button")].find((node) => node.textContent.includes("本机与权限"));
+    assert.ok(local);
+    await view.click(local);
+    assert.equal(window.location.pathname, "/settings/local-computer");
+    assert.match(view.text(), /本机授权测试/);
+    view.cleanup(); view = null;
+    view = await render(React.createElement(SettingsModalHost), { configured: false, email: null }, "/settings/local-computer");
+    assert.equal(window.location.pathname, "/settings/local-computer");
+    assert.match(view.text(), /本机授权测试/);
+  } finally {
+    view?.cleanup();
+    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = previous;
+  }
 });
 
 test("tab=account 有账户首页与退出，不含创建团队或企业服务协议", async () => {

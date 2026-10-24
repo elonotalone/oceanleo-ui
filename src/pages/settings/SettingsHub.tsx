@@ -34,6 +34,7 @@ import { MessagesSection } from "./sections/MessagesSection";
 import { AutomationSettingsSection } from "./sections/AutomationSettingsSection";
 import { OrgSection, type OrgPane } from "./sections/OrgSection";
 import { SettingsBackButton } from "./SettingsBackButton";
+import { LocalComputerSettings, useLocalWorkspace } from "../../shell/LocalWorkspace";
 import {
   accountSettingsPath,
   accountSettingsView,
@@ -262,11 +263,12 @@ export function SettingsHub({
   guestPrompt = "auth",
 }: SettingsHubProps) {
   const tt = useUI();
+  const localWorkspace = useLocalWorkspace();
   const configured = oceanleoConfigured();
   const href = currentHref ?? (typeof window !== "undefined" ? window.location.href : "");
   const resetLanding = isPasswordResetLanding(href);
   const fallbackTab = defaultTab || "general";
-  const extraIdKey = extraSections.map((section) => section.id).join("\0");
+  const extraIdKey = [...extraSections.map((section) => section.id), ...(localWorkspace ? ["local-computer"] : [])].join("\0");
   const extraIds = useMemo(() => extraIdKey.split("\0").filter(Boolean), [extraIdKey]);
   // `/plugins#connect=<id>`（子站一键授权打开的门户页）重定向到设置后，直接落在「连接器」并弹出连接框。
   const [connectId] = useState(connectIdFromHere);
@@ -445,6 +447,12 @@ export function SettingsHub({
         label: tt("通用"),
         render: () => <GeneralSection />,
       },
+      ...(localWorkspace ? [{
+        id: "local-computer",
+        group: "settings" as const,
+        label: tt("本机与权限"),
+        render: () => <LocalComputerSettings />,
+      }] : []),
       {
         id: "account",
         group: "settings",
@@ -595,6 +603,7 @@ export function SettingsHub({
     currency,
     orgInitialPane,
     billingView,
+    localWorkspace,
   ]);
 
   const groups = useMemo<SettingsNavGroup[]>(() => {
@@ -684,7 +693,8 @@ export function SettingsHub({
     );
   }
 
-  if (!configured) {
+  const localPane = Boolean(localWorkspace && tab === "local-computer");
+  if (!configured && !localPane) {
     const notice = loginUnavailableNotice();
     return (
       <div className="px-8 py-6">
@@ -696,12 +706,13 @@ export function SettingsHub({
           {notice?.detail && (
             <p className="mt-1.5 text-[13px] text-amber-700">{tt(notice.detail)}</p>
           )}
+          {localWorkspace && <button type="button" className="mt-4 text-sm underline" onClick={() => selectTab("local-computer")}>{tt("本机与权限")}</button>}
         </div>
       </div>
     );
   }
 
-  if (checked && !signedIn) {
+  if (checked && !signedIn && !localPane) {
     if (guestPrompt === "notice") {
       return (
         <div className="px-8 py-6">
@@ -710,6 +721,7 @@ export function SettingsHub({
           </h1>
           <div className="v-fade-up mx-auto mt-10 max-w-xl rounded-2xl border border-neutral-200 bg-white p-8 text-center text-[14px] text-neutral-600">
             {tt("请先登录后再管理账户设置。")}
+            {localWorkspace && <button type="button" className="mt-4 block w-full text-sm underline" onClick={() => selectTab("local-computer")}>{tt("本机与权限")}</button>}
           </div>
         </div>
       );
@@ -736,6 +748,7 @@ export function SettingsHub({
           }
           style={variant === "modal" ? { paddingTop: 96 } : undefined}
         >
+        {localWorkspace && <button type="button" className="mb-4 text-sm text-neutral-600 underline" onClick={() => selectTab("local-computer")}>{tt("本机与权限")}</button>}
         {onSignInClick ? (
           <div className="v-fade-up mx-auto mt-8 max-w-sm text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 text-2xl">
