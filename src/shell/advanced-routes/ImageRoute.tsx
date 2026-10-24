@@ -561,6 +561,8 @@ export function ImageRoute({
         collab: collab.collab,
         persistence: {
           autoSave: true,
+          // Typed, not guessed: only a host-saved image says "saved to this device".
+          ...(localSaveRunner ? { destination: "local-device" as const } : {}),
           userEditKey: editor.openIdentity,
           dirty: editor.dirty && collab.saveGate && imageAdmitted.ok,
           editRevision: editor.editRevision,

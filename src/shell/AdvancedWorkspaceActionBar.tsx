@@ -160,14 +160,22 @@ export function AdvancedWorkspaceActionBar({
   const showSaveState = Boolean(adapter.persistence) || saveActions.length > 0;
   const idBase = useId().replace(/:/g, "");
   const saveMenuId = `workspace-save-${idBase}`;
+  // Typed by the editor, never guessed from the platform: only an editor whose
+  // flush lands on this device (not the library) says so and drops the cloud.
+  const saveDestination: "cloud" | "local-device" =
+    adapter.persistence?.destination === "local-device" ? "local-device" : "cloud";
   const saveStateLabel = tt(
     autoSaveState === "unconfirmed"
       ? "尚未确认保存"
       : autoSaveState === "saving"
-      ? "正在自动保存"
+      ? saveDestination === "local-device"
+        ? "正在保存到本机"
+        : "正在自动保存"
       : autoSaveState === "error"
         ? "保存遇到问题"
-        : "已保存",
+        : saveDestination === "local-device"
+          ? "已保存到本机（未同步到云端）"
+          : "已保存",
   );
   const saveErrorTitle =
     autoSaveState === "error"
@@ -262,6 +270,7 @@ export function AdvancedWorkspaceActionBar({
             variant="ghost"
             data-workspace-save-launcher
             data-save-state={autoSaveState}
+            data-save-destination={saveDestination}
             onClick={() => {
               if (!saveMenuAvailable) return;
               setSaveOpen((value) => !value);
@@ -276,6 +285,7 @@ export function AdvancedWorkspaceActionBar({
           >
             <CloudAutoSaveIcon
               state={autoSaveState}
+              destination={saveDestination}
               className="h-4 w-4 shrink-0"
             />
             <span className="sr-only">{saveStateLabel}</span>
@@ -317,7 +327,11 @@ export function AdvancedWorkspaceActionBar({
                     onRetrySave();
                   }}
                 >
-                  <CloudAutoSaveIcon state="error" className="h-4 w-4 shrink-0" />
+                  <CloudAutoSaveIcon
+                    state="error"
+                    destination={saveDestination}
+                    className="h-4 w-4 shrink-0"
+                  />
                   <span className="min-w-0 flex-1 truncate">
                     {tt("保存失败，点击重试")}
                   </span>
@@ -406,11 +420,14 @@ function cloudSaveColor(state: AdvancedAutoSaveState | "unconfirmed"): string {
 
 function CloudAutoSaveIcon({
   state,
+  destination = "cloud",
   className = "",
 }: {
   state: AdvancedAutoSaveState | "unconfirmed";
+  destination?: "cloud" | "local-device";
   className?: string;
 }) {
+  const local = destination === "local-device";
   return (
     <svg
       className={className}
@@ -423,8 +440,17 @@ function CloudAutoSaveIcon({
       aria-hidden="true"
       style={{ color: cloudSaveColor(state) }}
     >
-      <path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.2 8.5 4.5 4.5 0 0 0 7 18Z" />
-      {state === "saved" && <path d="m9.5 13 1.7 1.7 3.5-3.7" />}
+      {local ? (
+        <>
+          <rect x="4" y="5" width="16" height="11" rx="1.5" />
+          <path d="M2 19h20" />
+        </>
+      ) : (
+        <path d="M7 18h10a4 4 0 0 0 .7-7.94A6 6 0 0 0 6.2 8.5 4.5 4.5 0 0 0 7 18Z" />
+      )}
+      {state === "saved" && (
+        <path d={local ? "m9 10.5 2 2 4-4.2" : "m9.5 13 1.7 1.7 3.5-3.7"} />
+      )}
       {state === "error" && (
         <>
           <path d="m10 12 4 4" />

@@ -40,6 +40,12 @@ export interface AdvancedEditorPersistenceAdapter {
    * explicit Apply before Save; host autosave must not consume Apply.
    */
   autoSave?: boolean;
+  /**
+   * Where a successful save lands. Absent / "cloud" = the library (cloud icon,
+   * "已保存"). "local-device" = this device only, never synced: the save slot
+   * says so and shows a device icon instead of a cloud.
+   */
+  destination?: "cloud" | "local-device";
   /** Hosted frames must stay mounted until a durable flush receipt arrives. */
   requiresMountedFlush?: boolean;
   /** Serializes and persists the revision current when this function starts. */
