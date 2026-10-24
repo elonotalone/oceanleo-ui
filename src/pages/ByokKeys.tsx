@@ -8,7 +8,7 @@
 // 前端只看得到指纹。一个连接可配置多个模型，同一厂商可添加多个连接。
 // ============================================================================
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getKeyProviders,
   getByok,
@@ -101,7 +101,7 @@ function ByokRow({
   );
 }
 
-export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
+export function ByokKeys({ loggedIn, initialConnectionId = "" }: { loggedIn: boolean; initialConnectionId?: string }) {
   const tt = useUI();
   const [status, setStatus] = useState<ByokStatus | null>(null);
   const [providers, setProviders] = useState<KeyProvider[]>([]);
@@ -111,6 +111,18 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   const [authDenied, setAuthDenied] = useState(false);
   const [reauthRequired, setReauthRequired] = useState(false);
   const [editor, setEditor] = useState<"none" | "add" | "edit">("none");
+  const openedConnectionRef = useRef("");
+  const editorEpochRef = useRef(0);
+
+  useEffect(() => {
+    if (!initialConnectionId) { openedConnectionRef.current = ""; return; }
+    if (openedConnectionRef.current === initialConnectionId) return;
+    const row = status?.connections?.find(connection => connection.connection_id === initialConnectionId);
+    if (row) {
+      openedConnectionRef.current = initialConnectionId;
+      openEdit(row);
+    }
+  }, [initialConnectionId, status]);
 
   const selected = useMemo(
     () => providers.find((provider) => provider.id === form.provider),
@@ -150,6 +162,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   }
 
   function openAdd() {
+    editorEpochRef.current += 1;
     const first = providers[0];
     setForm(formForProvider(first?.id || ""));
     setError("");
@@ -158,6 +171,8 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   }
 
   function closeAdd() {
+    editorEpochRef.current += 1;
+    setSaving(false);
     setEditor("none");
     setForm(emptyForm());
     setError("");
@@ -176,7 +191,8 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
   }
 
   function openEdit(row: ByokConnectionView) {
-    setForm({ provider: row.provider, apiKey: "", baseUrl: row.base_url || "", displayName: row.display_name || "", protocol: row.protocol || "chat_completions", connectionId: row.connection_id, models: row.models.map(model => ({ ...model })) });
+    editorEpochRef.current += 1;
+    setForm({ provider: row.provider, apiKey: "", baseUrl: row.base_url || "", displayName: row.display_name || "", protocol: row.protocol || "chat_completions", connectionId: row.connection_id, models: row.models.length ? row.models.map(model => ({ ...model })) : [{ id: "", name: "" }] });
     setError("");
     setReauthRequired(false);
     setEditor("edit");
@@ -216,6 +232,7 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
       return;
     }
     setSaving(true);
+    const editorEpoch = editorEpochRef.current;
     const result = await saveByokConnection({
       provider: form.provider,
       api_key: form.apiKey.trim() || undefined,
@@ -224,6 +241,10 @@ export function ByokKeys({ loggedIn }: { loggedIn: boolean }) {
       display_name: form.displayName.trim(),
       protocol: form.protocol,
     }, form.connectionId);
+    if (editorEpoch !== editorEpochRef.current) {
+      if (result.ok && result.data) { setStatus(result.data); announceConnectionChange(); }
+      return;
+    }
     setSaving(false);
     if (!result.ok) {
       if (result.status === 403 && result.code === "reauth_required") {

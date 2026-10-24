@@ -35,8 +35,12 @@ function offerProviderKey(model: CatalogModel): string {
   return model.connection_id ? `connection:${model.connection_id}` : model.provider;
 }
 
-function capabilityProviders(capability: CatalogCapability | undefined) {
+function capabilityProviders(capability: CatalogCapability | undefined, connections: ModelCatalog["configured_connections"]) {
   const providers = new Map<string, { id: string; label: string }>();
+  for (const connection of connections || []) {
+    const id = `connection:${connection.connection_id}`;
+    providers.set(id, { id, label: connection.display_name });
+  }
   for (const block of capability?.providers || []) {
     // Personal connections belong to their named account, even when several
     // accounts use the same vendor. Keep their filters and routing distinct.
@@ -326,11 +330,12 @@ export function ModelGroupManager({
   catalog,
   user,
   initialMarketQuery = "",
+  onSetupByok,
 }: {
   catalog: ModelCatalog | null;
   user: boolean;
   initialMarketQuery?: string;
-  onSetupByok?: () => void;
+  onSetupByok?: (connectionId?: string) => void;
 }) {
   const tt = useUI();
   const [payload, setPayload] = useState<ModelGroupsPayload | null>(null);
@@ -441,13 +446,16 @@ export function ModelGroupManager({
   }, [catalogGroups]);
   const selectedRows = resolveSelectedRows(selectedKeys, byKey, catalog, group);
   const byokProviders = payload?.byok_providers || [];
-  const providerOptions = capabilityProviders(capability);
+  const providerOptions = capabilityProviders(capability, catalog?.configured_connections);
   const providerIds = providerOptions.map(item => item.id);
   const effectiveProvider =
     provider !== ALL_PROVIDERS && !providerIds.includes(provider)
       ? ALL_PROVIDERS
       : provider;
   const capabilityModels = capability ? flatten(capability) : [];
+  const emptyConnection = catalog?.configured_connections?.find(connection =>
+    `connection:${connection.connection_id}` === effectiveProvider && connection.model_count === 0,
+  );
   const allModels = capabilityModels
     .filter((model) => effectiveProvider === ALL_PROVIDERS || offerProviderKey(model) === effectiveProvider)
     .filter((model) => !query.trim() || matchesModel(query, model));
@@ -1040,6 +1048,16 @@ export function ModelGroupManager({
                 </div>
                 <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tt("搜索全部可用模型…")} className="mb-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[12px] outline-none placeholder:text-neutral-400 focus:border-neutral-400" />
                 <div data-model-edit-offers="" className="max-h-[360px] overflow-y-auto rounded-xl border border-neutral-200 bg-white">
+                  {emptyConnection ? (
+                    <div data-model-empty-connection={emptyConnection.connection_id} className="flex items-center justify-between gap-3 p-3 text-[12px] text-neutral-600">
+                      <span>{emptyConnection.display_name} · {tt("请填写模型 ID")}</span>
+                      {onSetupByok ? (
+                        <button type="button" onClick={() => onSetupByok(emptyConnection.connection_id)} className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-neutral-900">{tt("添加模型")}</button>
+                      ) : (
+                        <a href={`/settings/ai-models?pane=byok&connection=${encodeURIComponent(emptyConnection.connection_id)}`} className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-neutral-900">{tt("添加模型")}</a>
+                      )}
+                    </div>
+                  ) : null}
                   {offerGroups.map((hit, index) => (
                     <EditOfferGroup
                       key={hit.canonical}

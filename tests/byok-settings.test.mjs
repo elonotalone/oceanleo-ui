@@ -164,13 +164,13 @@ async function flush(count = 6) {
   }
 }
 
-async function render(status, overrides = {}) {
+async function render(status, overrides = {}, props = {}) {
   globalThis.__byokStub = { ...makeStub(status), ...overrides };
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(ByokKeys, { loggedIn: true }));
+    root.render(React.createElement(ByokKeys, { loggedIn: true, ...props }));
   });
   await flush();
   return {
@@ -358,5 +358,37 @@ test("connection save failure keeps manual models and editor visible", async () 
   assert.match(view.text(), /Connection could not be saved/);
   assert.equal(view.host.querySelector('[aria-label="模型 ID 1"]').value, "manual-model");
   assert.ok(view.host.querySelector("[data-byok-form]"));
+  view.cleanup();
+});
+
+test("legacy key-only target opens a blank model row and preserves its existing key on save", async () => {
+  let saved;
+  const connection = { connection_id: "legacy-custom", provider: "custom", display_name: "中转自用gpt", base_url: "https://example.com/v1", models: [] };
+  const status = { ...enabled, connections: [connection] };
+  const view = await render(status, { putByok: async (...args) => { saved = args; return { ok: true, data: status }; } }, { initialConnectionId: "legacy-custom" });
+  assert.equal(view.host.querySelector('[data-byok-editor]').getAttribute("data-byok-editor"), "edit");
+  assert.equal(view.host.querySelectorAll("[data-byok-model-row]").length, 1);
+  assert.equal(view.host.querySelector('[aria-label="模型 ID 1"]').value, "");
+  assert.equal(view.host.querySelector('input[type="password"]').value, "");
+  await fill(view.host, '[aria-label="模型 ID 1"]', "actual-model-id");
+  await click(view.host, "[data-byok-save]");
+  assert.equal(saved[1], "legacy-custom");
+  assert.equal(saved[0].api_key, undefined);
+  assert.equal(saved[0].models[0].id, "actual-model-id");
+  view.cleanup();
+});
+
+test("a canceled write cannot leave a delayed reauthorization error on the connection list", async () => {
+  let resolve;
+  const view = await render(enabled, { putByok: () => new Promise(done => { resolve = done; }) });
+  await click(view.host, "[data-byok-add]");
+  await fill(view.host, "input[type=password]", "synthetic-test-key");
+  await fill(view.host, '[aria-label="模型 ID 1"]', "actual-model");
+  await click(view.host, "[data-byok-save]");
+  await click(view.host, "[data-byok-cancel]");
+  await act(async () => resolve({ ok: false, status: 403, code: "reauth_required", error: "Stale reauthorization failure" }));
+  await flush();
+  assert.equal(view.host.querySelector('[data-byok-editor]').getAttribute("data-byok-editor"), "none");
+  assert.doesNotMatch(view.text(), /Stale reauthorization failure/);
   view.cleanup();
 });

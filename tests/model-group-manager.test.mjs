@@ -194,6 +194,7 @@ async function render(options = {}) {
       catalog: options.catalog || catalog,
       user: true,
       initialMarketQuery: options.initialMarketQuery || "",
+      onSetupByok: options.onSetupByok,
     }));
   });
   await flush();
@@ -566,4 +567,27 @@ test("a slow availability response cannot overwrite a newer saved group", async 
   await flush();
   assert.match(view.host.querySelector('[data-model-group-chip="custom:test"]').textContent, /New saved name/);
   view.cleanup();
+});
+
+test("legacy key-only account remains filterable and opens its exact editor without an invented model", async () => {
+  const ownCatalog = structuredClone(catalog);
+  ownCatalog.configured_connections = [
+    { connection_id: "legacy-custom", provider: "custom", display_name: "中转自用gpt", model_count: 0 },
+    { connection_id: "normal", provider: "openai", display_name: "Work account", model_count: 2 },
+  ];
+  let target;
+  const view = await render({ catalog: ownCatalog, onSetupByok: id => { target = id; } });
+  const chip = view.host.querySelector('[data-model-provider-chip="connection:legacy-custom"]');
+  assert.match(chip.textContent, /中转自用gpt 0/);
+  await view.click(chip);
+  assert.equal(view.host.querySelectorAll('[data-model-edit-offers] [data-model-offer]').length, 0);
+  const empty = view.host.querySelector('[data-model-empty-connection="legacy-custom"]');
+  assert.match(empty.textContent, /请填写模型 ID/);
+  await view.click(empty.querySelector("button"));
+  assert.equal(target, "legacy-custom");
+  view.cleanup();
+  const standalone = await render({ catalog: ownCatalog });
+  await standalone.click(standalone.host.querySelector('[data-model-provider-chip="connection:legacy-custom"]'));
+  assert.equal(standalone.host.querySelector('[data-model-empty-connection] a').getAttribute("href"), "/settings/ai-models?pane=byok&connection=legacy-custom");
+  standalone.cleanup();
 });

@@ -83,6 +83,24 @@ test("BYOK status cache uses aliases and never carries them across account chang
   }
 });
 
+test("catalog normalization retains key-only connection metadata without creating an offer", async () => {
+  const original = globalThis.fetch;
+  globalThis.__connectionTestToken = "owner";
+  globalThis.fetch = async () => Response.json({ configured_connections: [
+    { connection_id: "legacy-custom", provider: "custom", display_name: "中转自用gpt", model_count: 0 },
+    { connection_id: "normal", provider: "openai", display_name: "Work account", model_count: 2 },
+  ], groups: [] });
+  try {
+    const result = await api.getModelCatalog();
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.data.configured_connections, [
+      { connection_id: "legacy-custom", provider: "custom", display_name: "中转自用gpt", model_count: 0 },
+      { connection_id: "normal", provider: "openai", display_name: "Work account", model_count: 2 },
+    ]);
+    assert.deepEqual(result.data.groups, []);
+  } finally { globalThis.fetch = original; delete globalThis.__connectionTestToken; }
+});
+
 test("connection copy is translated for every supported locale", () => {
   const zhKeys = Object.keys(MODEL_CONNECTION_COPY_MESSAGES.zh);
   for (const locale of LOCALES) {

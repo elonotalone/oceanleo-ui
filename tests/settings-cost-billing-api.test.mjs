@@ -187,11 +187,17 @@ const { ApiPage } = await import(
   await compileModule("src/pages/ApiPage.tsx", {
     "../lib/auth": authStub,
     "../i18n/ui/useUI": uiStub,
-    "./ByokKeys": paneStub("ByokKeys", "byok-keys"),
+    "./ByokKeys": dataModule(`
+      import React from ${JSON.stringify(reactUrl)};
+      export function ByokKeys({ initialConnectionId }) {
+        return React.createElement("div", { "data-testid": "byok-keys", "data-connection-target": initialConnectionId });
+      }
+    `),
     "./ModelCapabilityMarket": dataModule(`
       import React from ${JSON.stringify(reactUrl)};
-      export function ModelGroupManager() {
-        return React.createElement("div", { "data-testid": "model-market" });
+      export function ModelGroupManager({ onSetupByok }) {
+        return React.createElement("div", { "data-testid": "model-market" },
+          React.createElement("button", { "data-edit-empty-connection": "", onClick: () => onSetupByok("legacy-custom") }, "Add model"));
       }
     `),
     "./PageHeader": paneStub("PageHeader", "page-header"),
@@ -401,4 +407,15 @@ test("ApiPage 默认页签是模型选择，不含 token 余额", async () => {
   assert.equal(globalThis.__apiCatalogCalls, 1, "restoring identity does not download the catalog twice");
   assert.equal(globalThis.__apiGetUserCalls, 0, "model settings uses the local session without a blocking identity request");
   view.cleanup();
+});
+
+test("ApiPage routes add-model action and direct connection query to the precise BYOK editor", async () => {
+  const view = await render(React.createElement(ApiPage, { variant: "pane" }), "/settings/ai-models");
+  await view.click(view.host.querySelector("[data-edit-empty-connection]"));
+  assert.equal(view.host.querySelector("[data-testid=byok-keys]").getAttribute("data-connection-target"), "legacy-custom");
+  assert.equal(view.host.querySelector("[data-api-settings-tab=byok]").getAttribute("aria-selected"), "true");
+  view.cleanup();
+  const direct = await render(React.createElement(ApiPage, { variant: "pane" }), "/settings/ai-models?pane=byok&connection=legacy-custom");
+  assert.equal(direct.host.querySelector("[data-testid=byok-keys]").getAttribute("data-connection-target"), "legacy-custom");
+  direct.cleanup();
 });

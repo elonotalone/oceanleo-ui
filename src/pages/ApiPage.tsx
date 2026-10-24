@@ -47,7 +47,7 @@ function writeApiPane(next: ApiPane) {
   const url = new URL(window.location.href);
   url.searchParams.delete("guide");
   if (next === "byok") url.searchParams.set("pane", "byok");
-  else url.searchParams.delete("pane");
+  else { url.searchParams.delete("pane"); url.searchParams.delete("connection"); }
   const href = `${url.pathname}${url.search}${url.hash}`;
   const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (here !== href) {
@@ -125,6 +125,10 @@ export function ApiPage({
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
   const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
+  const [byokConnectionId, setByokConnectionId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URL(window.location.href).searchParams.get("connection") || "";
+  });
 
   useEffect(() => {
     setOpenedPanes((opened) => opened.includes(apiPane) ? opened : [...opened, apiPane]);
@@ -180,12 +184,14 @@ export function ApiPage({
   useEffect(() => {
     function sync() {
       setApiPane(readApiPane());
+      setByokConnectionId(new URL(window.location.href).searchParams.get("connection") || "");
     }
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
 
   function selectApiPane(next: ApiPane) {
+    if (next !== "byok") setByokConnectionId("");
     setApiPane(next);
     writeApiPane(next);
   }
@@ -234,7 +240,7 @@ export function ApiPage({
         key={user?.id || "guest"}
         catalog={catalog}
         user={!!user}
-        onSetupByok={() => selectApiPane("byok")}
+        onSetupByok={(connectionId) => { setByokConnectionId(connectionId || ""); selectApiPane("byok"); }}
       />
       <section className="v-fade-up" style={{ animationDelay: "40ms" }}>
         <div className="rounded-2xl border border-neutral-200 p-5">
@@ -308,7 +314,7 @@ export function ApiPage({
   );
   const byok = (
     <div className="space-y-8" data-api-byok="">
-      <ByokKeys loggedIn={!!user} />
+      <ByokKeys loggedIn={!!user} initialConnectionId={byokConnectionId} />
     </div>
   );
 

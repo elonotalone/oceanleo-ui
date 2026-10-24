@@ -407,6 +407,7 @@ export interface DelistedCatalogEntry {
 }
 
 export interface ModelCatalog {
+  configured_connections?: Array<{ connection_id: string; provider: string; display_name: string; model_count: number }>;
   platform: string;
   providers: ProviderMeta[];
   groups: CatalogGroup[];
@@ -493,6 +494,9 @@ function normalizeCatalog(raw: Partial<ModelCatalog> | null | undefined): ModelC
   const groups = Array.isArray(r.groups) ? r.groups : [];
   const currency = normalizeCurrency(r.pricing?.currency);
   return {
+    configured_connections: (Array.isArray(r.configured_connections) ? r.configured_connections : [])
+      .filter(connection => Boolean(connection?.connection_id))
+      .map(connection => ({ connection_id: connection.connection_id, provider: connection.provider || "", display_name: connection.display_name || connection.provider || "", model_count: num(connection.model_count) })),
     platform: r.platform || "阿里云百炼 · 火山方舟 · OpenRouter",
     providers: (Array.isArray(r.providers) ? r.providers : []).map((p) => ({
       id: p?.id || "",
