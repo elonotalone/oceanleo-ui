@@ -17,13 +17,17 @@ import {
 } from "../api/remote-desktop";
 import { useUI } from "../i18n/ui/useUI";
 import {
+  REMOTE_BACKPRESSURE_CODES,
+  REMOTE_FATAL_CODES,
   chunkText,
   clampPaste,
+  containedRect,
   insideRect,
   isDrag,
   keyEventToAction,
   mouseButton,
   remoteDesktopErrorCopy,
+  sanitizeRemoteText,
   toNormalized,
   type NormalizedPoint,
 } from "./remote-desktop-input";
@@ -37,6 +41,8 @@ export interface RemoteDesktopPanelProps {
   frameIntervalMs?: number;
   /** 单击等待是否会变成双击的窗口。 */
   doubleClickWindowMs?: number;
+  /** 网关说「队列满 / 太频繁」后暂停送输入多久；默认 1s。 */
+  backpressureMs?: number;
 }
 
 type Phase = "starting" | "connecting" | "active" | "closed" | "error";
@@ -49,15 +55,19 @@ const MOVE_THROTTLE_MS = 150;
 const NOTICE_MS = 6000;
 /** 连续取帧失败这么多次就认为失联，不再无限重试。 */
 const MAX_FRAME_FAILURES = 6;
-/** 开会话撞上 409 时的重试（只为吸收上一个面板刚关、服务端还没来得及释放的间隙）。 */
+/** 开会话撞上 `session_active` 时的重试（只为吸收上一个面板刚关、服务端还没来得及释放的间隙）。其他 409 不重试。 */
 const START_CONFLICT_RETRIES = 2;
 const START_CONFLICT_DELAY_MS = 700;
 
 /** 这些状态再重试没有意义：会话没了、登录没了、被拒了。 */
 function isFatalFrameFailure(error?: string, status?: number): boolean {
-  if (error === "unauthorized" || error === "revoked" || error === "device_offline") return true;
+  if (error && REMOTE_FATAL_CODES.has(error)) return true;
   return status === 401 || status === 403 || status === 404 || status === 410;
 }
+
+/** 网关单次滚动量上限 ±10000。 */
+const SCROLL_MAX = 10_000;
+const clampScroll = (value: number) => Math.max(-SCROLL_MAX, Math.min(SCROLL_MAX, value));
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -79,6 +89,7 @@ export function RemoteDesktopPanel({
   onClose,
   frameIntervalMs = 250,
   doubleClickWindowMs = 220,
+  backpressureMs = 1000,
 }: RemoteDesktopPanelProps) {
   const tt = useUI();
   const [phase, setPhase] = useState<Phase>("starting");
@@ -100,6 +111,12 @@ export function RemoteDesktopPanel({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const frameRef = useRef<RemoteDesktopFrameData | null>(null);
+  frameRef.current = frame;
+  // 输入法组字中：半成品不发，compositionend 时整段上屏一次。
+  const composingRef = useRef(false);
+  const sendTextRef = useRef<(text: string) => void>(() => {});
 
   const sessionRef = useRef<string | null>(null);
   const closedRef = useRef(false);
@@ -138,6 +155,13 @@ export function RemoteDesktopPanel({
     }
   }, [deviceId]);
 
+  const contentRect = useCallback(() => {
+    const img = imgRef.current;
+    const current = frameRef.current;
+    if (!img || !current) return null;
+    return containedRect(img.getBoundingClientRect(), current.width, current.height);
+  }, []);
+
   const pump = useCallback(async () => {
     if (pumpingRef.current) return;
     pumpingRef.current = true;
@@ -166,14 +190,22 @@ export function RemoteDesktopPanel({
             finish("error", remoteDesktopErrorCopy(result.error, result.status));
             break;
           }
-          // 429 / 网络错 / 5xx：这一条丢弃，不重放；让用户知道有输入没送到。
+          // 网络错 / 5xx：这一条丢弃，不重放；让用户知道有输入没送到。
           flashNotice(remoteDesktopErrorCopy(result.error, result.status));
+          if (
+            (result.error && REMOTE_BACKPRESSURE_CODES.has(result.error)) ||
+            result.status === 429
+          ) {
+            // 对方队列满/太频繁：把积压的作废并停一会儿，不再继续灌。
+            queueRef.current = [];
+            await sleep(backpressureMs, signal);
+          }
         }
       }
     } finally {
       pumpingRef.current = false;
     }
-  }, [closeRemote, deviceId, finish, flashNotice]);
+  }, [backpressureMs, closeRemote, deviceId, finish, flashNotice]);
 
   const enqueue = useCallback(
     (action: RemoteDesktopAction) => {
@@ -190,8 +222,8 @@ export function RemoteDesktopPanel({
         last.x === action.x &&
         last.y === action.y
       ) {
-        last.deltaX = (last.deltaX ?? 0) + (action.deltaX ?? 0);
-        last.deltaY = (last.deltaY ?? 0) + (action.deltaY ?? 0);
+        last.deltaX = clampScroll((last.deltaX ?? 0) + (action.deltaX ?? 0));
+        last.deltaY = clampScroll((last.deltaY ?? 0) + (action.deltaY ?? 0));
       } else if (
         last &&
         last.kind === "type" &&
@@ -200,14 +232,14 @@ export function RemoteDesktopPanel({
       ) {
         last.text = (last.text ?? "") + (action.text ?? "");
       } else if (queue.length >= INPUT_QUEUE_MAX) {
-        flashNotice(tt("操作太快，部分输入被丢弃了。"));
+        flashNotice("操作太快，部分输入被丢弃了。");
         return;
       } else {
         queue.push(action);
       }
       void pump();
     },
-    [pump, tt, flashNotice],
+    [pump, flashNotice],
   );
 
   // 会话生命周期：开 → 单帧循环 → 关。组件卸载或点断开即取消在途请求。
@@ -228,7 +260,7 @@ export function RemoteDesktopPanel({
           break;
         }
         if (signal.aborted || created.error === "aborted") return;
-        if (created.status === 409 && attempt < START_CONFLICT_RETRIES) {
+        if (created.error === "session_active" && attempt < START_CONFLICT_RETRIES) {
           await sleep(START_CONFLICT_DELAY_MS, signal);
           if (signal.aborted) return;
           continue;
@@ -260,10 +292,10 @@ export function RemoteDesktopPanel({
           failures += 1;
           if (failures >= MAX_FRAME_FAILURES) {
             closeRemote();
-            finish("error", tt("与这台电脑失去联系，已断开。请重新进入。"));
+            finish("error", remoteDesktopErrorCopy("device_lost"));
             return;
           }
-          setLinkNotice(tt("连接不稳，正在重试…"));
+          setLinkNotice("连接不稳，正在重试…");
           await sleep(Math.min(2000, 400 * failures), signal);
           continue;
         }
@@ -274,7 +306,7 @@ export function RemoteDesktopPanel({
           controller.abort();
           finish(
             "closed",
-            data.error ? remoteDesktopErrorCopy(data.error) : tt("远程会话已结束。"),
+            data.error ? remoteDesktopErrorCopy(data.error) : "远程会话已结束。",
           );
           return;
         }
@@ -305,15 +337,15 @@ export function RemoteDesktopPanel({
     const stage = stageRef.current;
     if (!stage) return;
     const onWheel = (event: WheelEvent) => {
-      const img = imgRef.current;
-      if (!img) return;
-      const rect = img.getBoundingClientRect();
-      if (!insideRect(event.clientX, event.clientY, rect)) return;
+      const rect = contentRect();
+      // 画面外（含留白）的滚轮留给网页自己滚；会话已断开时同理。
+      if (!rect || closedRef.current || !insideRect(event.clientX, event.clientY, rect)) return;
       event.preventDefault();
       const point = toNormalized(event.clientX, event.clientY, rect);
       if (!point) return;
       const unit = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? 400 : 1;
-      const cap = (value: number) => Math.max(-2000, Math.min(2000, value * unit));
+      const cap = (value: number) => clampScroll(value * unit);
+      if (!event.deltaX && !event.deltaY) return;
       enqueue({
         kind: "scroll",
         x: point.x,
@@ -324,7 +356,29 @@ export function RemoteDesktopPanel({
     };
     stage.addEventListener("wheel", onWheel, { passive: false });
     return () => stage.removeEventListener("wheel", onWheel);
-  }, [enqueue]);
+  }, [contentRect, enqueue]);
+
+  // 输入法：用原生 composition 事件（React 的合成层对组字有自己的回退逻辑，不可靠）。
+  // 组字中的按键一概不发；compositionend 把整段上屏的文字发一次。
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const onStart = () => {
+      composingRef.current = true;
+    };
+    const onEnd = (event: CompositionEvent) => {
+      composingRef.current = false;
+      input.value = "";
+      if (closedRef.current) return;
+      sendTextRef.current(event.data ?? "");
+    };
+    input.addEventListener("compositionstart", onStart);
+    input.addEventListener("compositionend", onEnd);
+    return () => {
+      input.removeEventListener("compositionstart", onStart);
+      input.removeEventListener("compositionend", onEnd);
+    };
+  }, []);
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement === rootRef.current);
@@ -332,16 +386,23 @@ export function RemoteDesktopPanel({
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  function pointFromEvent(event: ReactMouseEvent): NormalizedPoint | null {
-    const img = imgRef.current;
-    if (!img) return null;
-    return toNormalized(event.clientX, event.clientY, img.getBoundingClientRect());
+  /**
+   * 手势只认「画面真正占的那块」：`object-contain` 的留白不是电脑屏幕。
+   * `strict` 时在画面外返回 null（不点击）；拖动抬起时不 strict，夹到画面边缘。
+   */
+  function pointFromEvent(event: ReactMouseEvent, strict: boolean): NormalizedPoint | null {
+    const rect = contentRect();
+    if (!rect) return null;
+    if (strict && !insideRect(event.clientX, event.clientY, rect)) return null;
+    return toNormalized(event.clientX, event.clientY, rect);
   }
 
   function handleMouseDown(event: ReactMouseEvent) {
-    stageRef.current?.focus();
+    if (closedRef.current) return;
     const button = mouseButton(event.button);
-    const point = pointFromEvent(event);
+    const point = pointFromEvent(event, true);
+    // 点在留白上也让键盘焦点回到输入口，但不产生点击。
+    inputRef.current?.focus();
     if (!button || !point) return;
     event.preventDefault();
     downRef.current = { point, button };
@@ -350,7 +411,8 @@ export function RemoteDesktopPanel({
   function handleMouseUp(event: ReactMouseEvent) {
     const down = downRef.current;
     downRef.current = null;
-    const point = pointFromEvent(event);
+    if (closedRef.current) return;
+    const point = pointFromEvent(event, false);
     if (!down || !point) return;
     event.preventDefault();
     if (isDrag(down.point, point)) {
@@ -384,30 +446,44 @@ export function RemoteDesktopPanel({
   }
 
   function handleMouseMove(event: ReactMouseEvent) {
-    if (downRef.current) return; // 拖动期间只在抬起时送一条 drag
+    if (closedRef.current || downRef.current) return; // 拖动期间只在抬起时送一条 drag
     const now = Date.now();
     if (now - lastMoveRef.current < MOVE_THROTTLE_MS) return;
-    const point = pointFromEvent(event);
+    const point = pointFromEvent(event, true);
     if (!point) return;
     lastMoveRef.current = now;
     enqueue({ kind: "move", x: point.x, y: point.y });
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    if (closedRef.current) return;
     // Ctrl/⌘+V 交给 paste 事件，不当成按键送出去，否则对方会收到「按键 + 文字」两份。
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") return;
-    const action = keyEventToAction(event.nativeEvent);
+    const native = event.nativeEvent;
+    // 输入法组字中（含 Safari 上确认键的 keyCode 229）一律不发，交给 compositionend。
+    const action = keyEventToAction({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
+      isComposing: composingRef.current || native.isComposing || native.keyCode === 229,
+    });
     if (!action) return;
     event.preventDefault();
     enqueue(action);
   }
 
-  function sendText(text: string) {
-    const clamped = clampPaste(text);
+
+  function sendText(raw: string) {
+    if (closedRef.current) return;
+    const clamped = clampPaste(sanitizeRemoteText(raw));
     if (!clamped.text) return;
-    if (clamped.truncated) flashNotice(tt("文字太长，只发送了前面一部分。"));
+    if (clamped.truncated) flashNotice("文字太长，只发送了前面一部分。");
     for (const chunk of chunkText(clamped.text)) enqueue({ kind: "type", text: chunk });
   }
+
+  sendTextRef.current = sendText;
 
   function handlePaste(event: ClipboardEvent) {
     const text = event.clipboardData?.getData("text") ?? "";
@@ -419,7 +495,7 @@ export function RemoteDesktopPanel({
     try {
       sendText(await navigator.clipboard.readText());
     } catch {
-      flashNotice(tt("浏览器没有允许读取剪贴板。请点一下画面，再按 Ctrl+V 粘贴。"));
+      flashNotice("浏览器没有允许读取剪贴板。请点一下画面，再按 Ctrl+V 粘贴。");
     }
   }
 
@@ -430,7 +506,7 @@ export function RemoteDesktopPanel({
       void document.exitFullscreen?.().catch(() => {});
     } else {
       void root.requestFullscreen?.().catch(() => {
-        flashNotice(tt("这个浏览器不允许进入全屏。"));
+        flashNotice("这个浏览器不允许进入全屏。");
       });
     }
   }
@@ -498,7 +574,6 @@ export function RemoteDesktopPanel({
 
       <div
         ref={stageRef}
-        tabIndex={0}
         role="application"
         aria-label={tt("远程桌面画面，点击后可用键盘")}
         data-remote-stage
@@ -508,8 +583,22 @@ export function RemoteDesktopPanel({
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        className="relative flex min-h-48 items-center justify-center overflow-hidden rounded-xl bg-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400"
+        className="relative flex min-h-48 items-center justify-center overflow-hidden rounded-xl bg-neutral-900 outline-none focus-within:ring-2 focus-within:ring-neutral-400"
       >
+        {/* 键盘与输入法的落点：画面本身不是可编辑元素，IME 必须有一个真输入口才能组字。 */}
+        <textarea
+          ref={inputRef}
+          data-remote-input
+          aria-label={tt("远程桌面键盘输入")}
+          disabled={!live}
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          rows={1}
+          onDrop={(event) => event.preventDefault()}
+          className="pointer-events-none absolute bottom-2 left-2 h-5 w-5 resize-none opacity-0"
+        />
         {frame && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -559,7 +648,7 @@ export function RemoteDesktopPanel({
           className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-800"
           data-remote-notice
         >
-          {notice ?? linkNotice ?? tt(message ?? "")}
+          {tt(notice ?? linkNotice ?? message ?? "")}
         </p>
       )}
       {!live && message && (

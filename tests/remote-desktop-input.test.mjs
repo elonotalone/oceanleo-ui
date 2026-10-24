@@ -96,6 +96,16 @@ test("错误码都落成中文，未知码落到兜底，不外泄英文 token",
     "remote_desktop_unsupported",
     "remote_desktop_disabled",
     "session_active",
+    "remote_desktop_unavailable",
+    "disabled_locally",
+    "device_lost",
+    "viewer_idle",
+    "viewer_closed",
+    "account_mismatch",
+    "session_closed",
+    "input_queue_full",
+    "too_many_sessions",
+    "expired",
     "session_expired",
     "session_not_found",
     "rate_limited",
@@ -106,7 +116,42 @@ test("错误码都落成中文，未知码落到兜底，不外泄英文 token",
     assert.match(copy, /[一-鿿]/, code);
     assert.doesNotMatch(copy, /[a-z]+_[a-z_]+/);
   }
-  assert.match(input.remoteDesktopErrorCopy("x", 409), /已有一个正在进行/);
+  assert.doesNotMatch(input.remoteDesktopErrorCopy("x", 409), /已有一个正在进行/, "裸 409 不能说成别人占用");
   assert.match(input.remoteDesktopErrorCopy("x", 404), /已结束/);
   assert.equal(input.remoteDesktopErrorCopy(undefined, 500), "这一步没有完成，请稍后重试。");
+});
+
+test("B 的真实码：旧客户端/断线与「别人占用」是两句话", () => {
+  const unavailable = input.remoteDesktopErrorCopy("remote_desktop_unavailable", 409);
+  const active = input.remoteDesktopErrorCopy("session_active", 409);
+  assert.notEqual(unavailable, active);
+  assert.match(unavailable, /联系不上/);
+  assert.match(active, /已有一个正在进行/);
+  for (const code of ["remote_desktop_unavailable", "disabled_locally", "device_lost", "viewer_idle", "account_mismatch", "session_closed", "session_not_found"]) {
+    assert.ok(input.REMOTE_FATAL_CODES.has(code), code);
+  }
+  assert.ok(!input.REMOTE_FATAL_CODES.has("session_active"));
+  assert.ok(!input.REMOTE_FATAL_CODES.has("input_queue_full"));
+  assert.ok(input.REMOTE_BACKPRESSURE_CODES.has("input_queue_full"));
+});
+
+test("containedRect：留白居中，画面区域等比；无尺寸时原样返回", () => {
+  const wide = input.containedRect({ left: 100, top: 50, width: 400, height: 200 }, 1280, 720);
+  assert.ok(Math.abs(wide.width - 355.5556) < 0.01);
+  assert.equal(wide.height, 200);
+  assert.ok(Math.abs(wide.left - (100 + (400 - wide.width) / 2)) < 1e-9);
+  const tall = input.containedRect({ left: 0, top: 0, width: 200, height: 400 }, 1280, 720);
+  assert.equal(tall.width, 200);
+  assert.ok(Math.abs(tall.height - 112.5) < 1e-9);
+  assert.ok(Math.abs(tall.top - (400 - 112.5) / 2) < 1e-9);
+  const same = { left: 1, top: 2, width: 3, height: 4 };
+  assert.equal(input.containedRect(same, 0, 0), same);
+});
+
+test("sanitizeRemoteText 产出网关可接受的文字（只含可打印字符、换行、制表）", () => {
+  assert.equal(input.sanitizeRemoteText("a\r\nb\rc"), "a\nb\nc");
+  assert.equal(input.sanitizeRemoteText("x\u00a0y\u3000z"), "x y z");
+  assert.equal(input.sanitizeRemoteText("a\u200bb\u0000c\u007fd\u2028e"), "abcde");
+  assert.equal(input.sanitizeRemoteText("\ttab\nline"), "\ttab\nline");
+  assert.equal(input.sanitizeRemoteText("你好，world 😀"), "你好，world 😀");
 });

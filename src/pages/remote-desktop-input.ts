@@ -29,6 +29,24 @@ export interface RectLike {
 const clamp01 = (value: number) => (value < 0 ? 0 : value > 1 ? 1 : value);
 
 /**
+ * `<img>` 用 `object-fit: contain` 时，元素矩形里会有上下或左右的留白；
+ * 画面真正占的是居中的这块。比例坐标必须相对**这块**算，否则点在留白旁边就会偏。
+ */
+export function containedRect(rect: RectLike, contentWidth: number, contentHeight: number): RectLike {
+  if (!(contentWidth > 0) || !(contentHeight > 0)) return rect;
+  if (!(rect.width > 0) || !(rect.height > 0)) return rect;
+  const scale = Math.min(rect.width / contentWidth, rect.height / contentHeight);
+  const width = contentWidth * scale;
+  const height = contentHeight * scale;
+  return {
+    left: rect.left + (rect.width - width) / 2,
+    top: rect.top + (rect.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+/**
  * 把鼠标位置换成 0..1 的比例坐标。比例相对「画面元素」自身的矩形，
  * 所以无论页面缩放、全屏、窗口多大，对方电脑上落点都一致。
  * 元素没有尺寸时返回 null；落在画面之外会夹到边上（拖动时手滑出界不丢事件）。
@@ -114,6 +132,17 @@ export function chunkText(text: string, size = REMOTE_TYPE_CHUNK): string[] {
   return out;
 }
 
+/**
+ * 网关只收「可打印字符 + 换行 + 制表」：回车统一成换行，各种不间断/全角空白换成普通空格，
+ * 控制符、零宽/格式符、未分配码位直接去掉，否则整段会被 422 拒掉。
+ */
+export function sanitizeRemoteText(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\p{Zs}/gu, " ")
+    .replace(/[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/gu, (ch) => (ch === "\n" || ch === "\t" ? ch : ""));
+}
+
 export function clampPaste(text: string): { text: string; truncated: boolean } {
   const points = [...text];
   if (points.length <= REMOTE_PASTE_MAX) return { text, truncated: false };
@@ -130,6 +159,34 @@ export function statusBlocker(status: RemoteDesktopStatus): RemoteDesktopBlocker
   return null;
 }
 
+/**
+ * 网关（B）真实返回的码；这些会话已经不可能继续，不能再重试或再发输入。
+ * `remote_desktop_unavailable` 在创建时是 409，也算：它是旧客户端/断线，不是别人占用。
+ */
+export const REMOTE_FATAL_CODES: ReadonlySet<string> = new Set([
+  "unauthorized",
+  "revoked",
+  "device_offline",
+  "remote_desktop_unavailable",
+  "remote_desktop_disabled",
+  "disabled_locally",
+  "device_lost",
+  "viewer_idle",
+  "viewer_closed",
+  "account_mismatch",
+  "session_closed",
+  "session_not_found",
+  "session_expired",
+  "expired",
+]);
+
+/** 这类拒绝只是「现在太快」，该停一会儿再送，而不是继续灌。 */
+export const REMOTE_BACKPRESSURE_CODES: ReadonlySet<string> = new Set([
+  "input_queue_full",
+  "rate_limited",
+  "quota_rate",
+]);
+
 /** 返回中文原文（调用方再过 `tt`），未知码落到统一兜底，不把英文 token 摆给用户。 */
 export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   switch (code) {
@@ -144,6 +201,8 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       return "这台电脑不在线。";
     case "revoked":
       return "这台电脑已被撤销配对。";
+    case "remote_desktop_unavailable":
+      return "联系不上这台电脑上的 OceanLeo：它可能没有运行、版本太旧或已断线。请在那台电脑上打开并更新 OceanLeo。";
     case "remote_desktop_unsupported":
     case "unsupported":
       return "这台电脑上的 OceanLeo 版本还不支持远程桌面，请先更新客户端。";
@@ -152,9 +211,25 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "not_enabled":
     case "disabled":
       return "这台电脑还没有允许远程桌面。请在那台电脑的 OceanLeo 里打开开关。";
+    case "disabled_locally":
+      return "那台电脑上已关闭远程桌面，会话已断开。";
+    case "device_lost":
+      return "与这台电脑失去联系，会话已断开。请确认它还在线后重新进入。";
+    case "viewer_idle":
+      return "太久没有操作，会话已自动断开。";
+    case "viewer_closed":
+      return "会话已断开。";
+    case "account_mismatch":
+      return "那台电脑上登录的账号与当前网页账号不一致，会话已断开。";
+    case "session_closed":
+      return "会话已结束，请重新进入。";
     case "session_active":
     case "remote_desktop_session_active":
       return "这台电脑已有一个正在进行的远程会话。";
+    case "too_many_sessions":
+      return "同时打开的远程会话太多了，请先关闭不用的会话。";
+    case "input_queue_full":
+      return "那台电脑一时处理不过来，刚才的输入被丢弃了。请放慢一点。";
     case "session_expired":
     case "expired":
       return "会话已到期，请重新进入。";
@@ -169,7 +244,6 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   }
   if (status === 401) return "登录已失效，请重新登录后再试。";
   if (status === 404) return "会话已结束，请重新进入。";
-  if (status === 409) return "这台电脑已有一个正在进行的远程会话。";
   if (status === 429) return "操作太频繁，稍等一下再试。";
   return "这一步没有完成，请稍后重试。";
 }

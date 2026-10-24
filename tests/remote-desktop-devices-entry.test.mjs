@@ -3,12 +3,13 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import { document, window } from "./helpers/remote-desktop-dom.mjs";
+
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
-import { document, window } from "./helpers/remote-desktop-dom.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -101,12 +102,19 @@ function rdClient(statusById = {}) {
 
 const READY = { supported: true, enabled: true, online: true, session_id: null };
 
-async function render(list, remote) {
+async function render(list, remote, props = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(DevicesPage, { client: devicesClient(list), remoteDesktopClient: remote }));
+    root.render(
+      React.createElement(DevicesPage, {
+        client: devicesClient(list),
+        remoteDesktopClient: remote,
+        remoteStatusIntervalMs: 20,
+        ...props,
+      }),
+    );
   });
   await flush();
   return {
@@ -115,6 +123,11 @@ async function render(list, remote) {
     entries: () => [...host.querySelectorAll("[data-oceanleo-remote-entry]")],
     enter: () => [...host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "进入桌面"),
     button: (label) => [...host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === label),
+    async tick(ms = 70) {
+      await act(async () => {
+        await wait(ms);
+      });
+    },
     async click(node) {
       assert.ok(node, "expected button");
       await act(async () => {
@@ -138,12 +151,82 @@ test("电脑卡出现「进入桌面」：新客户端、已开启、在线 ⇒ 
   await view.unmount();
 });
 
-test("离线：说明离线，按钮禁用，也不去问状态", async () => {
-  const remote = rdClient({});
+test("离线：说明离线，按钮禁用；电脑照样问状态，手机不问", async () => {
+  const remote = rdClient({ "pc-1": { supported: true, enabled: true, online: false, session_id: null } });
   const view = await render([device({ online: false })], remote);
   assert.equal(view.enter().disabled, true);
   assert.match(view.entries()[0].textContent, /不在线/);
-  assert.equal(remote.log.status.length, 0);
+  assert.ok(remote.log.status.length >= 1, "初始离线的电脑也要问状态");
+  assert.match(view.text(), /离线/);
+  await view.unmount();
+});
+
+test("初始离线 → 状态刷新为在线：徽标、在线计数与入口自动翻过来，不用手动刷新页面", async () => {
+  const statuses = { "pc-1": { supported: true, enabled: true, online: false, session_id: null } };
+  const remote = rdClient(statuses);
+  const view = await render([device({ online: false })], remote);
+  assert.match(view.entries()[0].getAttribute("data-remote-blocker"), /offline/);
+  assert.equal(view.enter().disabled, true);
+  assert.match(view.text(), /离线/);
+  assert.doesNotMatch(view.text(), /1 台在线/);
+
+  statuses["pc-1"] = { supported: true, enabled: true, online: true, session_id: null };
+  await view.tick(120);
+  assert.equal(view.entries()[0].getAttribute("data-remote-blocker"), "");
+  assert.equal(view.enter().disabled, false);
+  assert.match(view.text(), /1 台在线/);
+  assert.doesNotMatch(view.text(), /需要它执行的步骤会排队/, "不再显示离线排队提示");
+  const badge = [...view.host.querySelectorAll("span")].find((n) => /^(在线|离线)$/.test((n.textContent || "").trim()));
+  assert.equal(badge.textContent.trim(), "在线");
+  await view.unmount();
+});
+
+test("在线 → 状态刷新为失联：徽标变离线、入口收起并说明", async () => {
+  const statuses = { "pc-1": READY };
+  const remote = rdClient(statuses);
+  const view = await render([device()], remote);
+  assert.equal(view.enter().disabled, false);
+  statuses["pc-1"] = { supported: true, enabled: true, online: false, session_id: null };
+  await view.tick(120);
+  assert.equal(view.enter().disabled, true);
+  assert.match(view.entries()[0].textContent, /不在线/);
+  assert.match(view.text(), /需要它执行的步骤会排队/);
+  assert.doesNotMatch(view.text(), /1 台在线/);
+  await view.unmount();
+});
+
+test("刷新是有界的：同一台电脑的状态请求不叠加，卸载后立即停止", async () => {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const remote = rdClient({ "pc-1": READY });
+  remote.getStatus = async (deviceId, options) => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    remote.log.status.push({ deviceId, signal: options?.signal });
+    await wait(30); // 比刷新间隔(20ms)还慢
+    inFlight -= 1;
+    return { ok: true, data: READY };
+  };
+  const view = await render([device()], remote);
+  await view.tick(250);
+  assert.equal(maxInFlight, 1, "上一轮没回来不开下一轮");
+  const calls = remote.log.status.length;
+  assert.ok(calls >= 2 && calls <= 8, `实际 ${calls} 次`);
+  await view.unmount();
+  const after = remote.log.status.length;
+  await wait(150);
+  assert.equal(remote.log.status.length, after, "卸载后不再请求");
+});
+
+test("状态查不到时回到列表里的在线标记，不卡在旧的新鲜状态上", async () => {
+  const statuses = { "pc-1": { supported: true, enabled: true, online: false, session_id: null } };
+  const remote = rdClient(statuses);
+  const view = await render([device({ online: true })], remote);
+  assert.match(view.text(), /离线/);
+  delete statuses["pc-1"]; // 之后每次查询都 network_error
+  await view.tick(120);
+  assert.match(view.text(), /1 台在线/);
+  assert.equal(view.enter().disabled, false);
   await view.unmount();
 });
 

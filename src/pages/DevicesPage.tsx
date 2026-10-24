@@ -29,6 +29,8 @@ export interface DevicesPageProps {
   cloudClient?: CloudComputerClient;
   /** 远程桌面接口；缺省走网站网关。 */
   remoteDesktopClient?: RemoteDesktopClient;
+  /** 远程桌面状态的刷新间隔（毫秒）；缺省 10 秒。 */
+  remoteStatusIntervalMs?: number;
   initialTab?: DevicesPageTab;
   /**
    * `page`（缺省）：独立的 `/devices` 页，带统一页头，认地址栏的 `?tab=cloud` / `#cloud`。
@@ -90,6 +92,10 @@ function actionErrorCopy(code?: string, limit?: number): string {
   return deviceErrorCopy(code, { limit });
 }
 
+/** 状态刷新的间隔与一次最多问几台，避免设备很多时刷屏。 */
+const REMOTE_STATUS_INTERVAL_MS = 10_000;
+const REMOTE_STATUS_MAX_DEVICES = 20;
+
 /** 只有电脑能被远程查看；手机卡不出入口。 */
 function isRemoteDesktopHost(device: Device): boolean {
   return device.platform === "windows" || device.platform === "macos" || device.platform === "linux";
@@ -99,6 +105,7 @@ export function DevicesPage({
   client = devicesFacade,
   cloudClient,
   remoteDesktopClient = defaultRemoteDesktopClient,
+  remoteStatusIntervalMs = REMOTE_STATUS_INTERVAL_MS,
   initialTab,
   variant = "page",
 }: DevicesPageProps) {
@@ -148,11 +155,13 @@ export function DevicesPage({
     };
   }, [client]);
 
-  // 手机是控制端，不提供被控桌面；离线的电脑也不必问状态。
+  // 手机是控制端，不提供被控桌面，所以不问状态；电脑不论列表里是在线还是离线都要问，
+  // 因为列表只在打开页面时取一次，刚上线（或刚掉线）的电脑要靠这里的新鲜状态翻过来。
   const remoteTargetKey = useMemo(
     () =>
       devices
-        .filter((device) => isRemoteDesktopHost(device) && device.online)
+        .filter(isRemoteDesktopHost)
+        .slice(0, REMOTE_STATUS_MAX_DEVICES)
         .map((device) => device.device_id)
         .join(","),
     [devices],
@@ -160,21 +169,57 @@ export function DevicesPage({
 
   useEffect(() => {
     if (!remoteTargetKey) return;
+    const ids = remoteTargetKey.split(",");
     const controller = new AbortController();
-    for (const deviceId of remoteTargetKey.split(",")) {
-      remoteDesktopClient
-        .getStatus(deviceId, { signal: controller.signal })
-        .then((result) => {
-          if (controller.signal.aborted || !result.ok || !result.data) return;
+    const { signal } = controller;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    async function refreshOne(deviceId: string) {
+      try {
+        const result = await remoteDesktopClient.getStatus(deviceId, { signal });
+        if (signal.aborted) return;
+        if (result.ok && result.data) {
           const status = result.data;
           setRemoteStatus((current) => ({ ...current, [deviceId]: status }));
-        })
-        .catch(() => {
-          // 状态查不到就不提示；点「进入桌面」时由会话接口给出明确原因。
-        });
+        } else if (result.error !== "aborted") {
+          // 查不到就不再采信旧状态，回到列表里的在线标记；点进去由会话接口说明原因。
+          setRemoteStatus((current) => {
+            if (!(deviceId in current)) return current;
+            const next = { ...current };
+            delete next[deviceId];
+            return next;
+          });
+        }
+      } catch {
+        /* 同上：静默回退 */
+      }
     }
-    return () => controller.abort();
-  }, [remoteTargetKey, remoteDesktopClient]);
+
+    // 一轮跑完再排下一轮：请求慢时不会叠起来。
+    async function loop() {
+      while (!signal.aborted) {
+        if (typeof document === "undefined" || !document.hidden) {
+          await Promise.all(ids.map(refreshOne));
+        }
+        if (signal.aborted) return;
+        await new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, remoteStatusIntervalMs);
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      }
+    }
+    void loop();
+    return () => {
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [remoteTargetKey, remoteDesktopClient, remoteStatusIntervalMs]);
+
+  /** 电脑以新鲜的远控状态为准（它看的是客户端最近一次心跳），其余回到列表。 */
+  function onlineOf(device: Device): boolean {
+    const status = isRemoteDesktopHost(device) ? remoteStatus[device.device_id] : undefined;
+    return status ? status.online : device.online;
+  }
 
   async function handlePair(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -237,7 +282,7 @@ export function DevicesPage({
     await refreshDevices();
   }
 
-  const allOffline = devices.length > 0 && devices.every((device) => !device.online);
+  const allOffline = devices.length > 0 && devices.every((device) => !onlineOf(device));
 
   return (
     <div
@@ -299,7 +344,7 @@ export function DevicesPage({
             </h2>
             {!loading && devices.length > 0 && (
               <span className="text-[12px] text-neutral-400">
-                {tt("{n} 台在线", { n: devices.filter((device) => device.online).length })}
+                {tt("{n} 台在线", { n: devices.filter(onlineOf).length })}
               </span>
             )}
           </div>
@@ -366,12 +411,12 @@ export function DevicesPage({
                           </h3>
                           <span
                             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              device.online
+                              onlineOf(device)
                                 ? "bg-emerald-50 text-emerald-700"
                                 : "bg-neutral-100 text-neutral-500"
                             }`}
                           >
-                            {device.online ? tt("在线") : tt("离线")}
+                            {onlineOf(device) ? tt("在线") : tt("离线")}
                           </span>
                         </div>
                       )}
@@ -417,6 +462,7 @@ export function DevicesPage({
                   {isRemoteDesktopHost(device) && (
                     <RemoteDesktopEntry
                       device={device}
+                      online={onlineOf(device)}
                       status={remoteStatus[device.device_id]}
                       open={remoteOpenId === device.device_id}
                       client={remoteDesktopClient}
@@ -429,12 +475,12 @@ export function DevicesPage({
                     />
                   )}
 
-                  {!device.online && (
+                  {!onlineOf(device) && (
                     <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">
                       {tt("{name}现在离线，需要它执行的步骤会排队等它上线", { name: device.device_name })}
                     </p>
                   )}
-                  {device.online && !device.local_exec_enabled && (
+                  {onlineOf(device) && !device.local_exec_enabled && (
                     <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">
                       {tt(
                         "{name}在线，但它还没允许云端下发任务。这个开关只能在那台电脑上打开（托盘图标里）。",
@@ -470,6 +516,8 @@ export function DevicesPage({
 
 interface RemoteDesktopEntryProps {
   device: Device;
+  /** 已按新鲜远控状态校正过的在线标记。 */
+  online: boolean;
   status: RemoteDesktopStatus | undefined;
   open: boolean;
   client: RemoteDesktopClient;
@@ -483,6 +531,7 @@ interface RemoteDesktopEntryProps {
  */
 function RemoteDesktopEntry({
   device,
+  online,
   status,
   open,
   client,
@@ -502,7 +551,7 @@ function RemoteDesktopEntry({
       </div>
     );
   }
-  const blocker = !device.online ? "offline" : status ? statusBlocker(status) : null;
+  const blocker = status ? statusBlocker(status) : !online ? "offline" : null;
   const busy = status?.session_id ? true : false;
   return (
     <div

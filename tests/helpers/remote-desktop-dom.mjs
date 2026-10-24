@@ -37,3 +37,8 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+
+// React 的 ChangeEventPlugin 在 jsdom 里会误走 IE9 的 attachEvent 分支（聚焦文本输入时），
+// 真浏览器没有这条路径；补两个空函数，免得测试里满屏无关的 Uncaught。
+window.HTMLElement.prototype.attachEvent ??= function attachEvent() {};
+window.HTMLElement.prototype.detachEvent ??= function detachEvent() {};

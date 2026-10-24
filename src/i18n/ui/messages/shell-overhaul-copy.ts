@@ -82,6 +82,7 @@ import { SKO_W14_MESSAGES } from "./sko-w14-copy";
 import { SKO_W15_MESSAGES } from "./sko-w15-copy";
 import { SKO_W16_MESSAGES } from "./sko-w16-copy";
 import { SKO_W17_MESSAGES } from "./sko-w17-copy";
+import { REMOTE_DESKTOP_MESSAGES } from "./remote-desktop-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -164,6 +165,7 @@ const PARTS = [
   SKO_W15_MESSAGES,
   SKO_W16_MESSAGES,
   SKO_W17_MESSAGES,
+  REMOTE_DESKTOP_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
