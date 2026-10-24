@@ -20,10 +20,15 @@ const itemFor = (row, overrides = {}) => ({
 // D5（2026-10-23）：菜单是素材类别，顺序与名字由操作员定死。
 const MENU = ["视频", "网站", "演示文稿", "文档", "表格", "图片", "PDF", "音频", "视频画布", "3D 模型", "游戏"];
 
-test("the Type menu lists the 11 material categories in order, with no editor names", () => {
+// skills-overhaul W17（2026-10-24，合同 D5）：编辑器类别之后追加「文件夹」。它不是编辑器、
+// 不进能力矩阵，所以只追加在菜单末尾；上面 11 个的顺序与名字不变。
+const FOLDERS = "文件夹";
+
+test("the Type menu lists the 11 material categories in order, then 文件夹, with no editor names", () => {
   const rows = taxonomy.LIBRARY_EDITOR_CATEGORIES;
-  assert.deepEqual(rows.map((row) => row.typeLabel), MENU);
-  assert.deepEqual(rows.map((row) => row.label), MENU, "the menu label is the type name, never the editor name");
+  assert.deepEqual(rows.map((row) => row.typeLabel), [...MENU, FOLDERS]);
+  assert.deepEqual(rows.map((row) => row.label), [...MENU, FOLDERS], "the menu label is the type name, never the editor name");
+  assert.deepEqual(rows.at(-1), { value: "folders", label: FOLDERS, typeLabel: FOLDERS, filter: "folders" });
   for (const row of rows) {
     assert.doesNotMatch(row.label, /编辑|创作|editing|设计画布/i);
   }
@@ -125,4 +130,23 @@ test("valid empty categories return empty results and the component never resets
   assert.match(source, /setCategory\(next\.category\)/);
   const mine = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
   assert.match(mine, /category: libraryEditorCategory\(item\)/);
+});
+
+test("the folders category stays out of the capability matrix and never captures artifact entries", () => {
+  const rows = contract.ADVANCED_CAPABILITY_MATRIX;
+  assert.equal(rows.length, 12, "folders is not a capability row");
+  assert.equal(rows.some((row) => row.featureId === "folders"), false);
+  for (const alias of ["folders", "folder", "文件夹"]) {
+    assert.equal(taxonomy.normalizeLibraryCategory(alias), "folders", alias);
+    assert.equal(taxonomy.isLibraryFolderCategory(alias), true, alias);
+  }
+  assert.equal(taxonomy.isLibraryFolderCategory("images"), false);
+  assert.equal(taxonomy.isLibraryFolderCategory(undefined), false);
+  assert.equal(taxonomy.libraryCategoryLabel("folders"), "文件夹");
+  const entries = rows.map((row) => model.workspaceEntryFromLibraryItem(itemFor(row)));
+  assert.deepEqual(model.filterWorkspaceLibraryEntries(entries, "", "folders"), []);
+  assert.equal(model.filterWorkspaceLibraryEntries(entries, "", "all").length, entries.length);
+  const artifacts = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
+  // ARTIFACT_FILTERS 由 LIBRARY_EDITOR_CATEGORIES 推导，URL / 筛选值是 `folders`。
+  assert.match(artifacts, /\.\.\.LIBRARY_EDITOR_CATEGORIES\.map\(\(row\) => \(\{ id: row\.filter, label: row\.typeLabel \}\)\)/);
 });

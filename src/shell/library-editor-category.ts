@@ -55,18 +55,55 @@ const LEGACY_ALIASES: Record<string, LibraryCategoryId> = {
   游戏创作: "game_editing",
 };
 
+// 字面量而不是 LIBRARY_FOLDER_CATEGORY_ID：那个常量声明在下面，模块求值到这里时还在 TDZ。
+const FOLDER_ALIASES: Record<string, "folders"> = {
+  folder: "folders",
+  文件夹: "folders",
+};
+
 export function libraryCategoryForFeature(feature: AdvancedFeatureId): LibraryCategoryId {
   return FOLDED_FEATURES[feature] || (feature as LibraryCategoryId);
 }
 
-/** 菜单顺序跟能力矩阵走：视频、网站、演示文稿、文档、表格、图片、PDF、音频、视频画布、3D 模型、游戏。 */
-export const LIBRARY_EDITOR_CATEGORIES = ADVANCED_CAPABILITY_MATRIX
-  .filter(({ featureId }) => !FOLDED_FEATURES[featureId])
-  .map(({ featureId }) => {
-    const value = featureId as LibraryCategoryId;
-    const [typeLabel, filter] = PRESENTATION[value];
-    return { value, label: typeLabel, typeLabel, filter };
-  });
+/**
+ * 「文件夹」类别（skills-overhaul D5，2026-10-24）：技能就是一个装着文件树的条目。
+ * 它**不是**编辑器类别，不进能力矩阵（`ADVANCED_CAPABILITY_MATRIX` 一行不动），
+ * 只作为额外类别追加在编辑器类别之后。数据另走 `/v1/folders`（`library-folders.tsx`），
+ * `MyLibrary` 的条目永远不会落进这个类别。
+ */
+export const LIBRARY_FOLDER_CATEGORY_ID = "folders" as const;
+export type LibraryFolderCategoryId = typeof LIBRARY_FOLDER_CATEGORY_ID;
+
+export const LIBRARY_FOLDER_CATEGORY = {
+  value: LIBRARY_FOLDER_CATEGORY_ID,
+  label: "文件夹",
+  typeLabel: "文件夹",
+  filter: LIBRARY_FOLDER_CATEGORY_ID,
+} as const;
+
+export function isLibraryFolderCategory(value: string | null | undefined): boolean {
+  return normalizeLibraryCategory(String(value || "")) === LIBRARY_FOLDER_CATEGORY_ID;
+}
+
+/**
+ * 菜单顺序跟能力矩阵走：视频、网站、演示文稿、文档、表格、图片、PDF、音频、视频画布、3D 模型、游戏，
+ * 最后是不属于编辑器的「文件夹」。
+ */
+export const LIBRARY_EDITOR_CATEGORIES: readonly {
+  value: LibraryCategoryId | LibraryFolderCategoryId;
+  label: string;
+  typeLabel: string;
+  filter: string;
+}[] = [
+  ...ADVANCED_CAPABILITY_MATRIX
+    .filter(({ featureId }) => !FOLDED_FEATURES[featureId])
+    .map(({ featureId }) => {
+      const value = featureId as LibraryCategoryId;
+      const [typeLabel, filter] = PRESENTATION[value];
+      return { value, label: typeLabel, typeLabel, filter };
+    }),
+  LIBRARY_FOLDER_CATEGORY,
+];
 
 const KIND_FEATURE: Partial<Record<LibraryItem["kind"], AdvancedFeatureId>> = {
   website: "website_finetuning", canvas: "design_canvas", ppt: "presentation_editing",
@@ -111,7 +148,7 @@ export function libraryEditorCategory(item: LibraryItem): string {
 }
 
 export function normalizeLibraryCategory(value: string): string {
-  const legacy = LEGACY_ALIASES[value];
+  const legacy = LEGACY_ALIASES[value] || FOLDER_ALIASES[value];
   if (legacy) return legacy;
   return LIBRARY_EDITOR_CATEGORIES.find((row) =>
     row.value === value || row.filter === value || row.typeLabel === value)?.value || value;

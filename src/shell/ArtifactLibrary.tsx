@@ -47,9 +47,12 @@ import { useStandaloneMineEditReceipt } from "./inline-editor-mine-activate";
 import { MyLibrary } from "./MyLibrary";
 import {
   LIBRARY_EDITOR_CATEGORIES,
+  LIBRARY_FOLDER_CATEGORY_ID,
+  isLibraryFolderCategory,
   normalizeLibraryCategory,
   translateLibraryTypeLabel,
 } from "./library-editor-category";
+import { LibraryFoldersPage } from "./library-folders";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
@@ -85,6 +88,8 @@ export type ArtifactFilter =
   | "video-canvas"
   | "threed"
   | "game"
+  // 「文件夹」类别（skills-overhaul D5）：数据走 `/v1/folders`，不是 artifact。
+  | "folders"
   | "favorites";
 
 const KIND_SETS: Record<string, string[]> = {
@@ -229,6 +234,46 @@ const CATEGORY_FILTER = Object.fromEntries(
 );
 
 /**
+ * `?category=folders` 深链（例如技能页「在 Library 查看」）只认文件夹这一个值：
+ * 其它类别在非受控的 /library 上从来不读 URL，这里不顺手改变它们的行为。
+ */
+function folderCategoryFromUrl(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return isLibraryFolderCategory(params.get("category") || params.get("type"));
+  } catch {
+    return false;
+  }
+}
+
+/** 与 MyLibrary 页头同一个「类型」菜单：文件夹视图里也能切回其它类别。 */
+function LibraryTypeFilterRow({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (category: string) => void;
+}) {
+  const tt = useUI();
+  return (
+    <CollectionFilterRow>
+      <CollectionFilterSelect
+        label={tt("类型")}
+        name="type"
+        value={value === "all" ? "" : value}
+        options={LIBRARY_EDITOR_CATEGORIES.map((option) => ({
+          value: option.value,
+          label: translateLibraryTypeLabel(tt, option.typeLabel),
+        }))}
+        onChange={(next) => onChange(next || "all")}
+        allLabel={tt("全部类型")}
+      />
+    </CollectionFilterRow>
+  );
+}
+
+/**
  * Full-page /library is now the same heterogeneous My Library used by the
  * five-slot workspace. `fill` remains the compatibility renderer for legacy
  * tab content; ResultCanvas replaces those tabs with MyLibrary centrally.
@@ -238,12 +283,25 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
     enabled: !props.fill,
   });
   const [editorOpen, setEditorOpen] = useState(false);
+  // 非受控（门户 /library）时由这里记住当前类别，才知道什么时候换成文件夹视图；
+  // MyLibrary 的类别切换照旧走它自己的菜单，只是状态放在这一层。
+  const [ownCategory, setOwnCategory] = useState("all");
+  const uncontrolled = props.filter === undefined;
+  useEffect(() => {
+    if (uncontrolled && folderCategoryFromUrl()) setOwnCategory(LIBRARY_FOLDER_CATEGORY_ID);
+  }, [uncontrolled]);
   if (props.fill) return <ArtifactLibraryLegacy {...props} />;
   const filter = props.filter || "all";
   const controlledType =
     props.filter && props.filter !== "all" && props.filter !== "favorites"
       ? normalizeLibraryCategory(props.filter)
       : undefined;
+  const myLibraryCategory = uncontrolled ? ownCategory : controlledType;
+  const showFolders = isLibraryFolderCategory(myLibraryCategory);
+  const changeCategory = (category: string) => {
+    if (uncontrolled) setOwnCategory(category);
+    props.onFilterChange?.(CATEGORY_FILTER[category] || "all");
+  };
   return (
     <div
       className={
@@ -253,20 +311,29 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
       }
       data-library-layout={editorOpen ? "editor" : "collection"}
     >
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {showFolders ? (
+        <div className="min-h-0 flex-1 overflow-hidden" data-library-category="folders">
+          <LibraryFoldersPage
+            pageTitle="我的库"
+            filterRow={
+              <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
+            }
+          />
+        </div>
+      ) : null}
+      {/* 文件夹视图打开时 MyLibrary 只是藏起来：切回别的类别时搜索、排序与已加载的列表都还在。 */}
+      <div className="min-h-0 flex-1 overflow-hidden" hidden={showFolders}>
         <MyLibrary
           siteId="oceanleo"
           accent={props.accent}
           action={libraryAction}
           plain
           pageTitle="我的库"
-          category={controlledType}
+          category={myLibraryCategory}
           className={editorOpen ? "h-full min-h-0 w-full min-w-0" : ""}
           onEditorOpenChange={setEditorOpen}
           onlyFavorites={filter === "favorites"}
-          onCategoryChange={(category) =>
-            props.onFilterChange?.(CATEGORY_FILTER[category] || "all")
-          }
+          onCategoryChange={changeCategory}
         />
       </div>
     </div>
@@ -425,7 +492,8 @@ function ArtifactLibraryLegacy({
   // 但一次网络请求都不会多发。
   useEffect(() => {
     const supabase = browserClient();
-    if (!supabase) {
+    // 文件夹不在 agent_artifacts 里：选中它时不拉 artifact 列表（否则会拉回整张表）。
+    if (!supabase || typeFilter === "folders") {
       setLoading(false);
       return;
     }
@@ -452,7 +520,7 @@ function ArtifactLibraryLegacy({
     return () => {
       cancelled = true;
     };
-  }, [loadPage]);
+  }, [loadPage, typeFilter]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore) return;
@@ -657,7 +725,19 @@ function ArtifactLibraryLegacy({
       {/* fill 态「文件点开」时（selected&&fill）**整段工具条/分区/网格不渲染**（同
           MaterialLibrary 放大态 `!zoom`）：否则文件多时本 min-h-full 容器被网格撑高，
           `absolute inset-0` 预览浮层随之撑高、下方大片空白。隐藏后 flow 高塌缩到可见高。 */}
-      {!(selected && fill) && (
+      {typeFilter === "folders" && !(selected && fill) ? (
+        <LibraryFoldersPage
+          filterRow={
+            hideChips ? null : (
+              <LibraryTypeFilterRow
+                value={LIBRARY_FOLDER_CATEGORY_ID}
+                onChange={(category) => setFilter(CATEGORY_FILTER[category] || "all")}
+              />
+            )
+          }
+        />
+      ) : null}
+      {!(selected && fill) && typeFilter !== "folders" && (
         <>
       {/* fill 内嵌形态不放页标题，避免右栏突然冒出大标题。搜索行走 LibraryToolbar。 */}
       <LibraryToolbar
