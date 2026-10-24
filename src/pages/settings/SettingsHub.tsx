@@ -659,7 +659,7 @@ export function SettingsHub({
         ) : null}
         <h2
           data-settings-pane-title=""
-          className="text-[24px] font-semibold tracking-tight text-neutral-900"
+          className={`${SPLIT_PLUGIN_TABS.includes(active?.id ?? "") ? "text-[18px]" : "text-[24px]"} font-semibold tracking-tight text-neutral-900`}
         >
           {title}
         </h2>

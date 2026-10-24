@@ -307,6 +307,26 @@ test("设置中心：能力组里「技能」「连接器」两项紧跟「AI �
   }
 });
 
+test("技能和连接器主标题18px，其他设置栏保留24px（页面与弹窗）", async () => {
+  for (const variant of ["page", "modal"]) {
+    for (const tab of ["skills", "connectors", "plugins", "ai-models", "personalization"]) {
+      const view = await mount(
+        React.createElement(SettingsHub, { variant, initialTab: tab, onTabChange() {} }),
+        variant === "page" ? `/settings/${tab}` : "/agent",
+      );
+      try {
+        const heading = view.find("[data-settings-pane-title]");
+        assert.ok(heading);
+        const compact = ["skills", "connectors", "plugins"].includes(tab);
+        assert.ok(heading.classList.contains(compact ? "text-[18px]" : "text-[24px]"), `${variant}/${tab}`);
+        assert.ok(!heading.classList.contains(compact ? "text-[24px]" : "text-[18px]"), `${variant}/${tab}: no conflicting size`);
+      } finally {
+        await view.cleanup();
+      }
+    }
+  }
+});
+
 test("旧地址 /settings/plugins 不 404：落在技能栏", async () => {
   const view = await mount(React.createElement(SettingsHub), "/settings/plugins");
   try {
