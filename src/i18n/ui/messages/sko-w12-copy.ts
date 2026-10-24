@@ -48,6 +48,9 @@ const SOURCE = {
   removeNamed: "移除 {name}",
   searchAutomations: "搜索自动化…",
   noMatchingAutomation: "没有匹配的自动化。",
+  discardInstruction: "指令有未保存的修改，确定放弃并关闭吗？",
+  discardConnectors: "连接器有未保存的修改，确定放弃并关闭吗？",
+  discardAutomation: "自动化有未保存的修改，确定放弃吗？",
 } as const;
 
 export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
@@ -95,6 +98,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Remove {name}",
     searchAutomations: "Search automations…",
     noMatchingAutomation: "No matching automations.",
+    discardInstruction: "Your instructions have unsaved changes. Discard them and close?",
+    discardConnectors: "Your connector changes aren't saved. Discard them and close?",
+    discardAutomation: "This automation has unsaved changes. Discard them?",
   },
   de: {
     projectSkills: "Projekt-Skills",
@@ -140,6 +146,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "{name} entfernen",
     searchAutomations: "Automatisierungen suchen…",
     noMatchingAutomation: "Keine passenden Automatisierungen.",
+    discardInstruction: "Die Anweisungen haben ungespeicherte Änderungen. Verwerfen und schließen?",
+    discardConnectors: "Die Konnektor-Änderungen sind nicht gespeichert. Verwerfen und schließen?",
+    discardAutomation: "Diese Automatisierung hat ungespeicherte Änderungen. Verwerfen?",
   },
   es: {
     projectSkills: "Habilidades del proyecto",
@@ -185,6 +194,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Quitar {name}",
     searchAutomations: "Buscar automatizaciones…",
     noMatchingAutomation: "No hay automatizaciones que coincidan.",
+    discardInstruction: "Las instrucciones tienen cambios sin guardar. ¿Descartarlos y cerrar?",
+    discardConnectors: "Los cambios de conectores no se han guardado. ¿Descartarlos y cerrar?",
+    discardAutomation: "Esta automatización tiene cambios sin guardar. ¿Descartarlos?",
   },
   "es-419": {
     projectSkills: "Habilidades del proyecto",
@@ -230,6 +242,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Quitar {name}",
     searchAutomations: "Buscar automatizaciones…",
     noMatchingAutomation: "No hay automatizaciones que coincidan.",
+    discardInstruction: "Las instrucciones tienen cambios sin guardar. ¿Descartarlos y cerrar?",
+    discardConnectors: "Los cambios de conectores no se guardaron. ¿Descartarlos y cerrar?",
+    discardAutomation: "Esta automatización tiene cambios sin guardar. ¿Descartarlos?",
   },
   fr: {
     projectSkills: "Compétences du projet",
@@ -275,6 +290,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Retirer {name}",
     searchAutomations: "Rechercher des automatisations…",
     noMatchingAutomation: "Aucune automatisation correspondante.",
+    discardInstruction: "Les instructions ont des modifications non enregistrées. Les abandonner et fermer ?",
+    discardConnectors: "Les modifications des connecteurs ne sont pas enregistrées. Les abandonner et fermer ?",
+    discardAutomation: "Cette automatisation a des modifications non enregistrées. Les abandonner ?",
   },
   it: {
     projectSkills: "Skill del progetto",
@@ -320,6 +338,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Rimuovi {name}",
     searchAutomations: "Cerca automazioni…",
     noMatchingAutomation: "Nessuna automazione corrispondente.",
+    discardInstruction: "Le istruzioni hanno modifiche non salvate. Scartarle e chiudere?",
+    discardConnectors: "Le modifiche ai connettori non sono salvate. Scartarle e chiudere?",
+    discardAutomation: "Questa automazione ha modifiche non salvate. Scartarle?",
   },
   "pt-BR": {
     projectSkills: "Habilidades do projeto",
@@ -365,6 +386,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Remover {name}",
     searchAutomations: "Buscar automações…",
     noMatchingAutomation: "Nenhuma automação correspondente.",
+    discardInstruction: "As instruções têm alterações não salvas. Descartar e fechar?",
+    discardConnectors: "As alterações nos conectores não foram salvas. Descartar e fechar?",
+    discardAutomation: "Esta automação tem alterações não salvas. Descartar?",
   },
   "pt-PT": {
     projectSkills: "Competências do projeto",
@@ -410,6 +434,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Remover {name}",
     searchAutomations: "Pesquisar automatizações…",
     noMatchingAutomation: "Nenhuma automatização correspondente.",
+    discardInstruction: "As instruções têm alterações não guardadas. Descartar e fechar?",
+    discardConnectors: "As alterações aos conectores não foram guardadas. Descartar e fechar?",
+    discardAutomation: "Esta automatização tem alterações não guardadas. Descartar?",
   },
   vi: {
     projectSkills: "Kỹ năng của dự án",
@@ -455,6 +482,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "Gỡ {name}",
     searchAutomations: "Tìm tự động hóa…",
     noMatchingAutomation: "Không có tự động hóa phù hợp.",
+    discardInstruction: "Chỉ dẫn có thay đổi chưa lưu. Bỏ thay đổi và đóng?",
+    discardConnectors: "Thay đổi trình kết nối chưa được lưu. Bỏ thay đổi và đóng?",
+    discardAutomation: "Tự động hóa này có thay đổi chưa lưu. Bỏ thay đổi?",
   },
   tr: {
     projectSkills: "Proje becerileri",
@@ -500,6 +530,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "{name} kaldır",
     searchAutomations: "Otomasyon ara…",
     noMatchingAutomation: "Eşleşen otomasyon yok.",
+    discardInstruction: "Talimatlarda kaydedilmemiş değişiklikler var. Atılıp kapatılsın mı?",
+    discardConnectors: "Bağlayıcı değişiklikleri kaydedilmedi. Atılıp kapatılsın mı?",
+    discardAutomation: "Bu otomasyonda kaydedilmemiş değişiklikler var. Atılsın mı?",
   },
   "zh-TW": {
     projectSkills: "專案技能",
@@ -545,6 +578,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "移除 {name}",
     searchAutomations: "搜尋自動化…",
     noMatchingAutomation: "沒有符合的自動化。",
+    discardInstruction: "指令有未儲存的修改，確定放棄並關閉嗎？",
+    discardConnectors: "連接器有未儲存的修改，確定放棄並關閉嗎？",
+    discardAutomation: "自動化有未儲存的修改，確定放棄嗎？",
   },
   ja: {
     projectSkills: "プロジェクトのスキル",
@@ -590,6 +626,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "{name} を削除",
     searchAutomations: "自動化を検索…",
     noMatchingAutomation: "一致する自動化はありません。",
+    discardInstruction: "指示に保存されていない変更があります。破棄して閉じますか？",
+    discardConnectors: "コネクタの変更が保存されていません。破棄して閉じますか？",
+    discardAutomation: "この自動化には保存されていない変更があります。破棄しますか？",
   },
   ko: {
     projectSkills: "프로젝트 스킬",
@@ -635,6 +674,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "{name} 제거",
     searchAutomations: "자동화 검색…",
     noMatchingAutomation: "일치하는 자동화가 없습니다.",
+    discardInstruction: "지침에 저장하지 않은 변경 사항이 있습니다. 버리고 닫을까요?",
+    discardConnectors: "커넥터 변경 사항이 저장되지 않았습니다. 버리고 닫을까요?",
+    discardAutomation: "이 자동화에 저장하지 않은 변경 사항이 있습니다. 버릴까요?",
   },
   ar: {
     projectSkills: "مهارات المشروع",
@@ -680,6 +722,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "إزالة {name}",
     searchAutomations: "ابحث في عمليات الأتمتة…",
     noMatchingAutomation: "لا توجد عمليات أتمتة مطابقة.",
+    discardInstruction: "في التعليمات تغييرات غير محفوظة. هل تريد تجاهلها والإغلاق؟",
+    discardConnectors: "تغييرات الموصلات غير محفوظة. هل تريد تجاهلها والإغلاق؟",
+    discardAutomation: "في هذه الأتمتة تغييرات غير محفوظة. هل تريد تجاهلها؟",
   },
   th: {
     projectSkills: "สกิลของโปรเจกต์",
@@ -725,6 +770,9 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "นำ {name} ออก",
     searchAutomations: "ค้นหาระบบอัตโนมัติ…",
     noMatchingAutomation: "ไม่พบระบบอัตโนมัติที่ตรงกัน",
+    discardInstruction: "คำสั่งมีการแก้ไขที่ยังไม่บันทึก ต้องการทิ้งและปิดหรือไม่",
+    discardConnectors: "การเปลี่ยนแปลงตัวเชื่อมต่อยังไม่ได้บันทึก ต้องการทิ้งและปิดหรือไม่",
+    discardAutomation: "ระบบอัตโนมัตินี้มีการแก้ไขที่ยังไม่บันทึก ต้องการทิ้งหรือไม่",
   },
   hi: {
     projectSkills: "प्रोजेक्ट स्किल",
@@ -770,5 +818,8 @@ export const SKO_W12_MESSAGES = assembleCopy(SOURCE, {
     removeNamed: "{name} हटाएँ",
     searchAutomations: "ऑटोमेशन खोजें…",
     noMatchingAutomation: "कोई मिलता-जुलता ऑटोमेशन नहीं।",
+    discardInstruction: "निर्देशों में बिना सहेजे बदलाव हैं। उन्हें छोड़कर बंद करें?",
+    discardConnectors: "कनेक्टर के बदलाव सहेजे नहीं गए हैं। उन्हें छोड़कर बंद करें?",
+    discardAutomation: "इस ऑटोमेशन में बिना सहेजे बदलाव हैं। उन्हें छोड़ दें?",
   },
 });
