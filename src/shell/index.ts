@@ -583,6 +583,9 @@ export { SkillPromptPanel, type SkillPromptPanelProps } from "./SkillPromptPanel
 export { AppDirectory, type AppDirectoryProps, type DirectoryItem } from "./AppDirectory";
 // 操作员 2026-06-24：站内「相关 skill」目录（按 relatedSkillCategories 过滤 LeoSkill）。
 export { SiteSkillDirectory, type SiteSkillDirectoryProps } from "./SiteSkillDirectory";
+// Skills overhaul 2026-10-24 (W09A kit, W09B manager).
+export * from "./skills/kit";
+export * from "./skills/manager";
 // doctrine v6：创建 / 保存 skill 的统一弹窗（「创建 skill」+「保存为我的 skill」共用）。
 export { CreateSkillModal, CreateSkillTeamModal } from "./CreateSkillModal";
 export type { CreateSkillModalProps, CreateSkillTeamModalProps } from "./CreateSkillModal";

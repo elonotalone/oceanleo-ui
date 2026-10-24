@@ -72,6 +72,16 @@ import { LBP_W08_MESSAGES } from "./lbp-w08-copy";
 import { LBP_W09_MESSAGES } from "./lbp-w09-copy";
 import { LBP_W10_MESSAGES } from "./lbp-w10-copy";
 import { LBP_W11_MESSAGES } from "./lbp-w11-copy";
+import { SKO_W09A_MESSAGES } from "./sko-w09a-copy";
+import { SKO_W09B_MESSAGES } from "./sko-w09b-copy";
+import { SKO_W10_MESSAGES } from "./sko-w10-copy";
+import { SKO_W11_MESSAGES } from "./sko-w11-copy";
+import { SKO_W12_MESSAGES } from "./sko-w12-copy";
+import { SKO_W13_MESSAGES } from "./sko-w13-copy";
+import { SKO_W14_MESSAGES } from "./sko-w14-copy";
+import { SKO_W15_MESSAGES } from "./sko-w15-copy";
+import { SKO_W16_MESSAGES } from "./sko-w16-copy";
+import { SKO_W17_MESSAGES } from "./sko-w17-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -144,6 +154,16 @@ const PARTS = [
   LBP_W09_MESSAGES,
   LBP_W10_MESSAGES,
   LBP_W11_MESSAGES,
+  SKO_W09A_MESSAGES,
+  SKO_W09B_MESSAGES,
+  SKO_W10_MESSAGES,
+  SKO_W11_MESSAGES,
+  SKO_W12_MESSAGES,
+  SKO_W13_MESSAGES,
+  SKO_W14_MESSAGES,
+  SKO_W15_MESSAGES,
+  SKO_W16_MESSAGES,
+  SKO_W17_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
