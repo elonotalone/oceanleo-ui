@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { deviceErrorCopy } from "../api/device-error-copy";
+import {
+  remoteDesktopClient as defaultRemoteDesktopClient,
+  type RemoteDesktopClient,
+  type RemoteDesktopStatus,
+} from "../api/remote-desktop";
 import {
   devicesFacade,
   type Device,
@@ -14,12 +19,16 @@ import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
 import { CloudComputersSection } from "./CloudComputersPage";
 import { PageHeader } from "./PageHeader";
+import { RemoteDesktopPanel } from "./RemoteDesktopPanel";
+import { blockerCopy, statusBlocker } from "./remote-desktop-input";
 
 export type DevicesPageTab = "devices" | "cloud";
 
 export interface DevicesPageProps {
   client?: DevicesFacade;
   cloudClient?: CloudComputerClient;
+  /** 远程桌面接口；缺省走网站网关。 */
+  remoteDesktopClient?: RemoteDesktopClient;
   initialTab?: DevicesPageTab;
   /**
    * `page`（缺省）：独立的 `/devices` 页，带统一页头，认地址栏的 `?tab=cloud` / `#cloud`。
@@ -81,9 +90,15 @@ function actionErrorCopy(code?: string, limit?: number): string {
   return deviceErrorCopy(code, { limit });
 }
 
+/** 只有电脑能被远程查看；手机卡不出入口。 */
+function isRemoteDesktopHost(device: Device): boolean {
+  return device.platform === "windows" || device.platform === "macos" || device.platform === "linux";
+}
+
 export function DevicesPage({
   client = devicesFacade,
   cloudClient,
+  remoteDesktopClient = defaultRemoteDesktopClient,
   initialTab,
   variant = "page",
 }: DevicesPageProps) {
@@ -100,6 +115,9 @@ export function DevicesPage({
   const [editingName, setEditingName] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState<Device | null>(null);
+  // 远程桌面：状态只用于界面提示，本机才是权限的唯一出处（网页不能替电脑开权限）。
+  const [remoteStatus, setRemoteStatus] = useState<Record<string, RemoteDesktopStatus>>({});
+  const [remoteOpenId, setRemoteOpenId] = useState<string | null>(null);
 
   async function refreshDevices() {
     const result = await client.listDevices();
@@ -129,6 +147,34 @@ export function DevicesPage({
       alive = false;
     };
   }, [client]);
+
+  // 手机是控制端，不提供被控桌面；离线的电脑也不必问状态。
+  const remoteTargetKey = useMemo(
+    () =>
+      devices
+        .filter((device) => isRemoteDesktopHost(device) && device.online)
+        .map((device) => device.device_id)
+        .join(","),
+    [devices],
+  );
+
+  useEffect(() => {
+    if (!remoteTargetKey) return;
+    const controller = new AbortController();
+    for (const deviceId of remoteTargetKey.split(",")) {
+      remoteDesktopClient
+        .getStatus(deviceId, { signal: controller.signal })
+        .then((result) => {
+          if (controller.signal.aborted || !result.ok || !result.data) return;
+          const status = result.data;
+          setRemoteStatus((current) => ({ ...current, [deviceId]: status }));
+        })
+        .catch(() => {
+          // 状态查不到就不提示；点「进入桌面」时由会话接口给出明确原因。
+        });
+    }
+    return () => controller.abort();
+  }, [remoteTargetKey, remoteDesktopClient]);
 
   async function handlePair(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -368,6 +414,21 @@ export function DevicesPage({
                     </div>
                   </dl>
 
+                  {isRemoteDesktopHost(device) && (
+                    <RemoteDesktopEntry
+                      device={device}
+                      status={remoteStatus[device.device_id]}
+                      open={remoteOpenId === device.device_id}
+                      client={remoteDesktopClient}
+                      onOpen={() => setRemoteOpenId(device.device_id)}
+                      onClose={() =>
+                        setRemoteOpenId((current) =>
+                          current === device.device_id ? null : current,
+                        )
+                      }
+                    />
+                  )}
+
                   {!device.online && (
                     <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">
                       {tt("{name}现在离线，需要它执行的步骤会排队等它上线", { name: device.device_name })}
@@ -403,6 +464,70 @@ export function DevicesPage({
           </p>
         </details>
       </div>
+    </div>
+  );
+}
+
+interface RemoteDesktopEntryProps {
+  device: Device;
+  status: RemoteDesktopStatus | undefined;
+  open: boolean;
+  client: RemoteDesktopClient;
+  onOpen: () => void;
+  onClose: () => void;
+}
+
+/**
+ * 电脑卡上的「进入桌面」入口。离线、客户端太旧、本机没允许，各说各的；
+ * 状态没查到（网络或旧网关）时不替用户下结论，点进去由会话接口给明确原因。
+ */
+function RemoteDesktopEntry({
+  device,
+  status,
+  open,
+  client,
+  onOpen,
+  onClose,
+}: RemoteDesktopEntryProps) {
+  const tt = useUI();
+  if (open) {
+    return (
+      <div className="mt-4" data-oceanleo-remote-entry>
+        <RemoteDesktopPanel
+          deviceId={device.device_id}
+          deviceName={device.device_name}
+          client={client}
+          onClose={onClose}
+        />
+      </div>
+    );
+  }
+  const blocker = !device.online ? "offline" : status ? statusBlocker(status) : null;
+  const busy = status?.session_id ? true : false;
+  return (
+    <div
+      className="mt-4 flex flex-col gap-2 rounded-xl bg-neutral-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+      data-oceanleo-remote-entry
+      data-remote-blocker={blocker ?? ""}
+    >
+      <div className="min-w-0 text-[12px]">
+        <p className="font-medium text-neutral-800">{tt("远程桌面")}</p>
+        <p className="mt-0.5 leading-relaxed text-neutral-500">
+          {blocker
+            ? tt(blockerCopy(blocker))
+            : busy
+              ? tt("这台电脑已有一个正在进行的远程会话。")
+              : tt("查看这台电脑的屏幕，并用鼠标键盘操控。")}
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={blocker !== null}
+        onClick={onOpen}
+        className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {tt("进入桌面")}
+      </button>
     </div>
   );
 }
