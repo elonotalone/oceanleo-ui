@@ -15,7 +15,7 @@ Allowed source: src/pages/ModelCapabilityMarket.tsx; directly related model
 catalog translation modules only if genuinely needed; focused model tests in
 tests/model-group-manager.test.mjs, tests/model-market-w5.test.mjs,
 tests/model-market-search.test.mjs, tests/model-preset-empty-w25.test.mjs,
-tests/model-capability-contract.test.mjs, tests/model-picker-byok.test.mjs,
+tests/model-preset-no-adapter-w32.test.mjs, tests/model-capability-contract.test.mjs, tests/model-picker-byok.test.mjs,
 and a new focused test if needed. Any other file needs parent agreement.
 Result journal: docs/work-logs/2026-10-24-model-picker-cleanup/A-results.md.
 
