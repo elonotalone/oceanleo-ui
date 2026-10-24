@@ -41,6 +41,7 @@ export {
   ConfigDialogLink,
   ConfigDialogShell,
   CONFIG_DIALOG_WIDTH,
+  type ConfigDialogCloseReason,
   type ConfigDialogShellProps,
 } from "./ConfigDialogShell";
 export {

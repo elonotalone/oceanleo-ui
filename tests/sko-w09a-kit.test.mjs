@@ -519,6 +519,66 @@ test("ConfigDialogShell：嵌套时 Esc 只关最上层；点遮罩关闭、点�
   await view.unmount();
 });
 
+test("ConfigDialogShell onBeforeClose（仲裁 A-14）：三种原因各报一次，返回 false 不关，Esc 仍不漏给外层；不传时行为不变", async () => {
+  const reasons = [];
+  let allow = false;
+  let closed = 0;
+  let escapedToParent = 0;
+  const view = await mount(
+    h(
+      "div",
+      { onKeyDown: (e) => e.key === "Escape" && (escapedToParent += 1) },
+      h(kit.ConfigDialogShell, {
+        open: true,
+        onClose: () => {
+          closed += 1;
+        },
+        onBeforeClose: (reason) => {
+          reasons.push(reason);
+          return allow;
+        },
+        title: "自动化",
+        testId: "guarded",
+        children: h("button", { type: "button" }, "inner"),
+      }),
+    ),
+  );
+  const panel = document.querySelector('[data-testid="guarded"]');
+  await press(document.activeElement, "Escape");
+  await click(panel.parentElement);
+  await click(panel.querySelector("[data-config-dialog-close]"));
+  assert.deepEqual(reasons, ["escape", "backdrop", "close-button"]);
+  assert.equal(closed, 0, "返回 false 一律不关");
+  assert.equal(escapedToParent, 0, "被拦下的 Esc 也不冒泡到外层");
+  assert.ok(document.querySelector('[data-testid="guarded"]'));
+  assert.ok(panel.contains(document.activeElement) || document.activeElement === panel, "焦点留在面板里");
+
+  allow = true;
+  await click(panel.querySelector("[data-config-dialog-close]"));
+  assert.deepEqual(reasons.at(-1), "close-button");
+  assert.equal(closed, 1, "返回 true 正常关闭");
+  await view.unmount();
+
+  // 返回 undefined（非 false）视同放行；不传 prop 时 Esc 照常关
+  let closed2 = 0;
+  const plain = await mount(
+    h(kit.ConfigDialogShell, {
+      open: true,
+      onClose: () => {
+        closed2 += 1;
+      },
+      onBeforeClose: () => undefined,
+      title: "x",
+      children: h("button", { type: "button" }, "b"),
+    }),
+  );
+  await press(document.activeElement, "Escape");
+  assert.equal(closed2, 1);
+  await plain.unmount();
+  assert.match(read("src/shell/skills/kit/ConfigDialogShell.tsx"), /onBeforeClose\?: \(reason: ConfigDialogCloseReason\) => boolean;/);
+  assert.match(read("src/shell/skills/kit/ConfigDialogShell.tsx"), /export type ConfigDialogCloseReason = "escape" \| "backdrop" \| "close-button";/);
+});
+
 test("AddMenu：键盘打开、↑↓ 跳过禁用、回车选中并关闭、Esc 关闭且焦点回按钮、点外关闭", async () => {
   const picked = [];
   const items = [

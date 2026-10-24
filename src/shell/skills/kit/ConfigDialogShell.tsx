@@ -26,7 +26,15 @@ export interface ConfigDialogShellProps {
   footer?: ReactNode;
   size?: "lg" | "xl";
   testId?: string;
+  /**
+   * 仲裁 A-14：关闭前拦一下。返回 `false` 就不关（例如子视图里 Esc 先退回上一层、
+   * 有未保存改动时先确认）；不传时行为不变。只拦用户发起的三种关闭，
+   * 父组件直接把 `open` 设成 false 不经过它。
+   */
+  onBeforeClose?: (reason: ConfigDialogCloseReason) => boolean;
 }
+
+export type ConfigDialogCloseReason = "escape" | "backdrop" | "close-button";
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -56,6 +64,7 @@ function ConfigDialogPanel({
   footer,
   size = "lg",
   testId,
+  onBeforeClose,
 }: ConfigDialogShellProps) {
   const tt = useUI();
   const titleId = useId();
@@ -64,7 +73,13 @@ function ConfigDialogPanel({
   const [closing, setClosing] = useState(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const requestClose = useCallback(() => setClosing(true), []);
+  const onBeforeCloseRef = useRef(onBeforeClose);
+  onBeforeCloseRef.current = onBeforeClose;
+  const requestClose = useCallback((reason: ConfigDialogCloseReason) => {
+    const guard = onBeforeCloseRef.current;
+    if (guard && guard(reason) === false) return;
+    setClosing(true);
+  }, []);
 
   useEffect(() => {
     if (!closing) return;
@@ -93,7 +108,7 @@ function ConfigDialogPanel({
       // React 合成事件会沿组件树穿过 portal 冒泡：内层弹窗处理完就截住，外层不跟着关。
       event.stopPropagation();
       event.preventDefault();
-      requestClose();
+      requestClose("escape");
       return;
     }
     if (event.key === "Tab") {
@@ -110,7 +125,7 @@ function ConfigDialogPanel({
       data-leo-overlay-state={state}
       data-config-dialog-scrim=""
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) requestClose();
+        if (event.target === event.currentTarget) requestClose("backdrop");
       }}
     >
       <div
@@ -131,7 +146,7 @@ function ConfigDialogPanel({
           type="button"
           data-config-dialog-close=""
           aria-label={tt("关闭")}
-          onClick={requestClose}
+          onClick={() => requestClose("close-button")}
           className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 sm:right-6 sm:top-6 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
         >
           <KitIconClose className="h-5 w-5" />
