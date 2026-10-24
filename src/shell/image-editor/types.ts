@@ -282,6 +282,10 @@ export interface FabricImageEditorState {
     revision: string | number;
     payload: unknown;
   } | null;
+  /** Native host save: the live Fabric project and the edit revision it was captured at. */
+  captureLocalSave: () => { revision: number; project: unknown } | null;
+  /** Clears dirty only when no edit landed after `revision`; returns whether it cleared. */
+  markLocalSaved: (revision: number) => boolean;
   /** Applies a validated recovery snapshot without recording a user edit. */
   /**
    * `unchanged`：记录与画布内容相同（可删记录）；`stale`：记录比画布所基于的云端版本旧，

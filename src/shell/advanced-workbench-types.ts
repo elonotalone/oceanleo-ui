@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { AppSession } from "../lib/app-session";
 import type { LibraryItem } from "./library-data";
+import type { LocalImageSaveHandler } from "./image-editor/local-save";
 
 export interface AdvancedContentWorkbenchProps {
   item: LibraryItem;
@@ -19,5 +20,12 @@ export interface AdvancedContentWorkbenchProps {
   embedded?: boolean;
   /** Receives the concrete library version produced by autosave. */
   onSavedItem?: (item: LibraryItem) => void;
+  /**
+   * Trusted native editor mounts only (never the website). When present, the
+   * image editor's autosave and save button hand the real Fabric project to the
+   * host and succeed only on the host's matching ok ack. This is a local save,
+   * not a cloud sync. Absent = the ordinary cloud save, unchanged.
+   */
+  onLocalSave?: LocalImageSaveHandler;
   onClose: () => void;
 }

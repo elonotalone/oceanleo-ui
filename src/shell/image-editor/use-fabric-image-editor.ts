@@ -1339,6 +1339,21 @@ export function useFabricImageEditor(
     return { revision, payload };
   }, []);
 
+  /** Native host save: the live project and the edit revision it was captured at. */
+  const captureLocalSave = useCallback(() => {
+    const controller = controllerRef.current;
+    if (!controller || !sourceReadyRef.current) return null;
+    const revision = revisionRef.current;
+    return { revision, project: createFabricImageProject(controller.getSnapshot()) };
+  }, []);
+
+  /** Clear "unsaved" only if no edit landed after `revision` (an old ack must not clean new work). */
+  const markLocalSaved = useCallback((revision: number) => {
+    if (!Object.is(revisionRef.current, revision)) return false;
+    updateDirty(false);
+    return true;
+  }, [updateDirty]);
+
   const restoreRecovery = useCallback(async (
     payload: unknown,
     updatedAt?: number,
@@ -1801,6 +1816,8 @@ export function useFabricImageEditor(
     editRevision: revisionRef.current,
     captureRecovery,
     captureRecoveryRevision,
+    captureLocalSave,
+    markLocalSaved,
     restoreRecovery,
     stageCanvasRef,
     stageContainerRef,

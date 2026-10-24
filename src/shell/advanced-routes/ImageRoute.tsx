@@ -53,6 +53,10 @@ import {
 } from "../image-editor/image-source-ready";
 import { imageRouteChrome } from "../image-editor/image-editor-ui-offerings";
 import { advancedRecoveryKey, deleteAdvancedRecovery } from "../advanced-recovery-store";
+import {
+  LOCAL_SAVED_NOTICE,
+  createLocalSaveRunner,
+} from "../image-editor/local-save";
 
 export function ImageRoute({
   item,
@@ -61,6 +65,7 @@ export function ImageRoute({
   taskId,
   siteId = "",
   accent = "#4f46e5",
+  onLocalSave,
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const [activeItem, setActiveItem] = useState(item);
@@ -228,6 +233,40 @@ export function ImageRoute({
     [activeItem, editor.loading, materialAdapter, selectedImage],
   );
   useWorkbenchMaterialAdapter(materialCommandAdapter);
+  // Trusted native mount only: save to the host (matching ok ack), never the cloud.
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  const onLocalSaveRef = useRef(onLocalSave);
+  onLocalSaveRef.current = onLocalSave;
+  const [localNotice, setLocalNotice] = useState("");
+  const hasLocalSave = Boolean(onLocalSave);
+  const localSaveRunner = useMemo(
+    () =>
+      hasLocalSave
+        ? createLocalSaveRunner({
+            handler: (request) => onLocalSaveRef.current!(request),
+            admitted: () => {
+              const live = editorRef.current;
+              const admitted = imageSourcePersistenceAdmitted({
+                loading: live.loading,
+                sceneDiagnostic: live.sceneDiagnostic,
+                sourceReady: live.sourceReady,
+              });
+              if (!admitted.ok) return { ok: false as const, error: admitted.error };
+              if (live.cropping) {
+                return { ok: false as const, error: "请先确认或取消当前裁剪，再保存到本机" };
+              }
+              return { ok: true as const };
+            },
+            capture: () => editorRef.current.captureLocalSave(),
+            markSaved: (revision) => editorRef.current.markLocalSaved(revision),
+            onSaved: (_revision, stillDirty) =>
+              setLocalNotice(stillDirty ? "" : LOCAL_SAVED_NOTICE),
+          })
+        : null,
+    [hasLocalSave],
+  );
+  useEffect(() => () => localSaveRunner?.dispose(), [localSaveRunner]);
   const imageAdmitted = imageSourcePersistenceAdmitted({
     loading: editor.loading,
     sceneDiagnostic: editor.sceneDiagnostic,
@@ -517,6 +556,7 @@ export function ImageRoute({
           editor.error ||
           importNotice ||
           editor.notice ||
+          (localSaveRunner && !editor.dirty ? localNotice : "") ||
           (sourceLoadOverlay ? "正在载入图片编辑器" : ""),
         collab: collab.collab,
         persistence: {
@@ -524,7 +564,7 @@ export function ImageRoute({
           userEditKey: editor.openIdentity,
           dirty: editor.dirty && collab.saveGate && imageAdmitted.ok,
           editRevision: editor.editRevision,
-          flush: saveBeforeNewConversation,
+          flush: localSaveRunner ? localSaveRunner.run : saveBeforeNewConversation,
           // 不接草稿层（10-23 W09，同 W07 演示）：草稿层让「已保存」先于新版本出现、断网只转圈不报失败，
           // 且每个会话写一个隐藏「…草稿」root。每次保存都直接提交版本；本机恢复走 IndexedDB。
           recovery: {
