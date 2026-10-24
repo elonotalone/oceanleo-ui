@@ -397,7 +397,7 @@ export function ProjectTabNav<Value extends string = string>({
             disabled={tab.disabled}
             data-project-tab={tab.id}
             className={classNames(
-              "relative shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50",
+              "relative min-h-11 shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50",
               selected
                 ? "border-[var(--accent,#4f46e5)] text-[var(--fg,#292524)]"
                 : "border-transparent text-[var(--muted,#78716c)] hover:border-[var(--border,#e7e5e4)] hover:text-[var(--fg,#292524)]",
