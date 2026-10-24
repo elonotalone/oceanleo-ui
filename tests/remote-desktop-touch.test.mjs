@@ -3,7 +3,7 @@
 // MouseEvent 的垫片造「指针事件」；它**证明组件逻辑**，不是真手机、也不是真 iPhone 输入法。
 // 真浏览器触屏上下文见 remote-desktop-touch-browser.test.mjs。
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 
 import { document, window } from "./helpers/remote-desktop-dom.mjs";
 
@@ -68,6 +68,13 @@ function makeClient() {
     },
   };
 }
+
+// 每个挂载的 view 都登记在这里，afterEach 无条件卸载：断言失败时不会留下取帧轮询
+// （否则后面的测试被拖慢、整个文件撞超时）。unmount 幂等，用例里手动卸载仍然可以。
+const mounted = [];
+afterEach(async () => {
+  while (mounted.length > 0) await mounted.pop().unmount();
+});
 
 async function mount(client = makeClient()) {
   const host = document.createElement("div");
@@ -142,10 +149,13 @@ async function mount(client = makeClient()) {
       });
     },
     async unmount() {
+      if (view.unmounted) return;
+      view.unmounted = true;
       await act(async () => root.unmount());
       host.remove();
     },
   };
+  mounted.push(view);
   return view;
 }
 
