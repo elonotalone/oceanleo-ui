@@ -151,6 +151,30 @@ test("电脑卡出现「进入桌面」：新客户端、已开启、在线 ⇒ 
   await view.unmount();
 });
 
+test("点击自己的电脑显示图标直接进入真实桌面面板", async () => {
+  const remote = rdClient({ "pc-1": READY });
+  const view = await render([device()], remote);
+  const icon = view.host.querySelector('button[data-remote-device-icon="pc-1"]');
+  assert.ok(icon?.querySelector('svg[data-device-kind="computer"]'));
+  assert.match(icon.getAttribute("aria-label"), /工作室.*进入桌面/);
+  await view.click(icon);
+  assert.deepEqual(remote.log.create, ["pc-1"]);
+  await view.unmount();
+});
+
+test("显示图标沿用在线和本机允许门槛，手机图标不是被控电脑入口", async () => {
+  const remote = rdClient({ "pc-1": { ...READY, enabled: false } });
+  const view = await render([device(), device({ device_id: "phone-1", platform: "ios" })], remote);
+  const icon = view.host.querySelector('button[data-remote-device-icon="pc-1"]');
+  assert.equal(icon.disabled, true);
+  await view.click(icon);
+  assert.deepEqual(remote.log.create, []);
+  const phone = view.host.querySelector('svg[data-device-kind="phone"]');
+  assert.ok(phone);
+  assert.equal(phone.closest("button"), null);
+  await view.unmount();
+});
+
 test("离线：说明离线，按钮禁用；电脑照样问状态，手机不问", async () => {
   const remote = rdClient({ "pc-1": { supported: true, enabled: true, online: false, session_id: null } });
   const view = await render([device({ online: false })], remote);

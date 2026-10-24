@@ -101,6 +101,22 @@ function isRemoteDesktopHost(device: Device): boolean {
   return device.platform === "windows" || device.platform === "macos" || device.platform === "linux";
 }
 
+function remoteEntryBlocker(status: RemoteDesktopStatus | undefined, online: boolean) {
+  return status ? statusBlocker(status) : !online ? "offline" : null;
+}
+
+function DeviceDisplayIcon({ phone }: { phone: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7" aria-hidden="true" data-device-kind={phone ? "phone" : "computer"}>
+      {phone ? (
+        <><rect x="6.5" y="2" width="11" height="20" rx="2.5" /><path d="M10 18.5h4" /></>
+      ) : (
+        <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M12 17v4m-4 0h8" /></>
+      )}
+    </svg>
+  );
+}
+
 export function DevicesPage({
   client = devicesFacade,
   cloudClient,
@@ -378,6 +394,27 @@ export function DevicesPage({
                 >
                   <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-3">
+                        {isRemoteDesktopHost(device) ? (
+                          <button
+                            type="button"
+                            data-remote-device-icon={device.device_id}
+                            aria-label={`${device.device_name} · ${tt("进入桌面")}`}
+                            title={remoteEntryBlocker(remoteStatus[device.device_id], onlineOf(device))
+                              ? tt(blockerCopy(remoteEntryBlocker(remoteStatus[device.device_id], onlineOf(device))!))
+                              : tt("进入桌面")}
+                            disabled={remoteEntryBlocker(remoteStatus[device.device_id], onlineOf(device)) !== null}
+                            onClick={() => setRemoteOpenId(device.device_id)}
+                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600 transition hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <DeviceDisplayIcon phone={false} />
+                          </button>
+                        ) : (
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600">
+                            <DeviceDisplayIcon phone />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
                       {editingId === device.device_id ? (
                         <div className="flex max-w-md gap-2">
                           <input
@@ -423,6 +460,8 @@ export function DevicesPage({
                       <p className="mt-1 text-[12px] text-neutral-500">
                         {PLATFORM_LABELS[device.platform] || device.platform}
                       </p>
+                        </div>
+                      </div>
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <button
@@ -551,7 +590,7 @@ function RemoteDesktopEntry({
       </div>
     );
   }
-  const blocker = status ? statusBlocker(status) : !online ? "offline" : null;
+  const blocker = remoteEntryBlocker(status, online);
   const busy = status?.session_id ? true : false;
   return (
     <div
