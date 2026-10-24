@@ -617,6 +617,15 @@ export function FabricImageInsertPanel({ editor }: { editor: FabricImageEditorSt
         >
           {tt("插入图片")}
         </button>
+        {editor.error ? (
+          <p role="alert" data-image-insert-error className="mt-2 text-[11px] leading-relaxed text-[var(--danger,#dc2626)]">
+            {tt(editor.error)}
+          </p>
+        ) : editor.notice ? (
+          <p role="status" className="mt-2 text-[11px] leading-relaxed text-[var(--muted,#78716c)]">
+            {tt(editor.notice)}
+          </p>
+        ) : null}
         <input
           ref={fileRef}
           type="file"
