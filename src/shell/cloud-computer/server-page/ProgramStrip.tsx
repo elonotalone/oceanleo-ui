@@ -54,17 +54,25 @@ export function ProgramStrip({
     if (!node) return;
     const measure = () => {
       const children = Array.from(node.children) as HTMLElement[];
+      // Measure the real flex layout without our controls. Adding their width
+      // back to the current row cannot undo max-w-full clamping: an item can
+      // shrink when the controls appear and make that arithmetic flip the
+      // verdict on every layout effect (React #185).
+      const buttons = controls.current;
+      const previousDisplay = buttons?.style.display ?? "";
+      let needsControls = false;
+      try {
+        if (buttons) buttons.style.display = "none";
+        const naturalTop = Math.min(...children.map((child) => child.offsetTop));
+        needsControls = children.some((child) => child.offsetTop > naturalTop);
+      } finally {
+        if (buttons) buttons.style.display = previousDisplay;
+      }
+      // Visibility must use the layout the person actually sees, with controls
+      // restored. The next commit remeasures if their presence changes.
       const top = Math.min(...children.map((child) => child.offsetTop));
       const first = children.filter((child) => child.offsetTop === top);
-      // Test wrapping against the space available WITHOUT our own controls;
-      // otherwise their width can keep a now-wide-enough strip stuck expanded.
-      const gap = Number.parseFloat(window.getComputedStyle(node).columnGap) || 0;
-      const naturalWidth = children.reduce((width, child) => width + child.offsetWidth, 0)
-        + Math.max(0, children.length - 1) * gap;
-      const controlsWidth = controls.current?.offsetWidth || 0;
-      const fitsWithoutControls = node.clientWidth > 0 && naturalWidth <= node.clientWidth
-        + controlsWidth + (controlsWidth && controls.current?.previousElementSibling ? 4 : 0);
-      setWrapped(!fitsWithoutControls && children.some((child) => child.offsetTop > top));
+      setWrapped(needsControls);
       setFirstHeight(first[0]?.offsetHeight || 40);
       const ids = first.map((child) => child.dataset.programId || "");
       setVisible((previous) => previous.join("|") === ids.join("|") ? previous : ids);
