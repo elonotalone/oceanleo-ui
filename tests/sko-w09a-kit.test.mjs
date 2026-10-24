@@ -474,7 +474,7 @@ test("ConfigDialogShell：role/aria、焦点进面板、Esc 关闭后焦点回�
   assert.equal(title.textContent, "项目技能");
   assert.equal(title.tagName, "H2");
   assert.equal(document.getElementById(dialog.getAttribute("aria-describedby")).textContent, "说明");
-  assert.equal(document.activeElement.getAttribute("data-config-toolbar-search"), "", "首个焦点落在内容里（不是 ✕）");
+  assert.equal(document.activeElement, dialog.querySelector("[data-config-toolbar-search] input[type='search']"), "首个焦点落在搜索输入框里（不是 ✕）");
   assert.equal(dialog.querySelector("[data-config-dialog-close]").getAttribute("aria-label"), "关闭");
   assert.equal(document.body.style.position, "fixed", "锁背景滚动");
 
@@ -945,16 +945,28 @@ test("仲裁 A-24：kit 的点击目标 ≥ 44px，outline-none 的元素都补�
   for (const f of KIT_FILES.filter((x) => x.endsWith(".tsx") && x !== "kit-icons.tsx")) {
     const src = readFileSync(new URL(f, KIT_DIR), "utf8");
     for (const m of src.matchAll(/<(button|a|input)\b(?:(?!<)[\s\S])*?className=\{?[`"]([^`"]*)/g)) {
-      assert.doesNotMatch(m[2], /(^|\s)h-(?:[1-9]|10)(\s|$)/, `${f} <${m[1]}> 写死了 < 44 的高度：${m[2].slice(0, 60)}`);
+      if (/\bh-9\b/.test(m[2])) {
+        assert.match(m[2], /before:-inset-1/, `${f}: 36px control needs transparent 44px hit surround`);
+      } else {
+        assert.doesNotMatch(m[2], /(^|\s)h-(?:[1-9]|10)(\s|$)/, `${f} <${m[1]}> 写死了 < 44 的高度：${m[2].slice(0, 60)}`);
+      }
     }
     for (const m of src.matchAll(/className=\{?[`"]([^`"]*\boutline-none\b[^`"]*)/g)) {
       assert.match(m[1], /focus-visible:ring-2/, `${f}: outline-none 要补 focus-visible:ring-2`);
     }
   }
-  const toolbar = read("src/shell/skills/kit/ConfigToolbar.tsx");
+  // R46 uses the existing app's 36px visuals with transparent hit surrounds.
   for (const name of ["CONFIG_TOOLBAR_BUTTON_CLASS", "CONFIG_TOOLBAR_ICON_BUTTON_CLASS", "CONFIG_PRIMARY_BUTTON_CLASS"]) {
-    assert.match(toolbar, new RegExp(`${name} =\\s*"[^"]*\\bh-11\\b`), name);
+    assert.match(kit[name], /before:-inset(?:-y)?-1/, `${name}: expanded transparent hit target`);
+    assert.doesNotMatch(kit[name], /\bh-11\b/, `${name}: visible control follows app dimensions`);
   }
+  const toolbarView = await mount(h(kit.ConfigToolbar, { search: { value: "", onChange() {}, placeholder: "搜索" } }));
+  const searchHit = toolbarView.host.querySelector("[data-config-toolbar-search]");
+  const searchInput = searchHit.querySelector("input[type='search']");
+  assert.match(searchHit.className, /min-h-11/);
+  assert.match(searchInput.className, /h-9/);
+  assert.equal(searchHit.htmlFor, searchInput.id, "transparent label focuses the real search input");
+  await toolbarView.unmount();
   // 开关：可点区 44×44，视觉轨道仍是 40×24
   const view = await mount(h(kit.ConfigToggle, { checked: false, onChange() {}, label: "t" }));
   const sw = view.host.querySelector('[role="switch"]');

@@ -485,7 +485,7 @@ test("SkillsManager (personal): cards, unreviewed tag, search, filter, add menu 
     assert.equal(card("zip-skill").querySelector("[role='switch']").getAttribute("aria-checked"), "false");
     assert.equal(card("weekly").querySelector("[role='switch']").getAttribute("aria-checked"), "true");
 
-    const search = document.querySelector("[data-config-toolbar-search]");
+    const search = document.querySelector("[data-config-toolbar-search] input[type='search']");
     await typeInto(search, "weekly");
     assert.deepEqual(cards().map((c) => c.getAttribute("data-skill-card")), ["weekly"]);
     await typeInto(search, "nothing-matches-this");
@@ -745,7 +745,7 @@ test("OfficialSkillLibraryDialog: tabs, search, added badge, card → detail →
     await click(dlg.querySelector("[data-category-tab='data']"));
     assert.deepEqual([...dlg.querySelectorAll("[data-official-skill]")].map((c) => c.getAttribute("data-official-skill")), ["chart-smith"]);
     await click(dlg.querySelector("[data-category-tab='all']"));
-    await typeInto(dlg.querySelector("[data-config-toolbar-search]"), "verifier");
+    await typeInto(dlg.querySelector("[data-config-toolbar-search] input[type='search']"), "verifier");
     assert.deepEqual([...dlg.querySelectorAll("[data-official-skill]")].map((c) => c.getAttribute("data-official-skill")), ["source-verifier"]);
 
     await click(dlg.querySelector("[data-official-skill='source-verifier']"));
