@@ -35,26 +35,17 @@ test("history clients accept unassigned by default and only explicit all overrid
   );
 });
 
-test("ordinary shared history keeps each consumer site and fails closed on project rows", () => {
+test("ordinary shared history keeps each consumer site; the sidebar lists the caller's own project rows", () => {
+  // D11（2026-10-24，仲裁 A-12 划给 W11）：侧栏显式 project_scope=all；网关列表本来就只返回本人记录。
   assert.match(
     masterDetail,
-    /listAppSessions\(\{[\s\S]*?siteId,[\s\S]*?projectScope: "unassigned"/,
+    /listAppSessions\(\{[\s\S]*?siteId,[\s\S]*?projectScope: "all"/,
   );
-  assert.match(
-    masterDetail,
-    /listTasks\(100, siteId, pending, "all"\)/,
-  );
-  assert.match(
-    masterDetail,
-    /sessionsResult\.data\?\.items \|\| \[\]\)\.filter\([\s\S]*?session\.project_id == null/,
-  );
-  assert.match(
-    masterDetail,
-    /tasksResult\.data\?\.items \|\| \[\]\)\.filter\([\s\S]*?task\.project_id == null/,
-  );
-  assert.doesNotMatch(masterDetail, /projectScope:\s*"all"/);
+  assert.match(masterDetail, /listTasks\(100, siteId, pending, "all", "all"\)/);
+  assert.doesNotMatch(masterDetail, /project_id == null/);
   assert.doesNotMatch(masterDetail, /siteId\s*=\s*"oceanleo"/);
 
+  // 旧整页 HistoryPage 不在 D11 范围内，仍只列未归属项目的记录。
   assert.match(
     historyPage,
     /listTasks\(100, siteId, false, "app", "unassigned"\)/,
@@ -66,35 +57,13 @@ test("ordinary shared history keeps each consumer site and fails closed on proje
   assert.doesNotMatch(historyPage, /siteId\s*=\s*"oceanleo"/);
 });
 
-test("old project deep links stop before playback and expose only a safe project route", () => {
-  const sessionProjectGuard = masterDetail.indexOf(
-    "if (session.project_id)",
-  );
-  const sessionSiteGuard = masterDetail.indexOf(
-    "if (siteId && session.site_id !== siteId)",
-  );
-  const taskProjectGuard = masterDetail.indexOf(
-    "if (taskResult.data.task.project_id)",
-  );
-  const taskSiteGuard = masterDetail.indexOf(
-    "siteId &&\n          taskResult.data.task.site_id",
-  );
-  assert.ok(sessionProjectGuard > -1);
-  assert.ok(sessionProjectGuard < sessionSiteGuard);
-  assert.ok(taskProjectGuard > -1);
-  assert.ok(taskProjectGuard < taskSiteGuard);
-
-  const projectFallback = masterDetail.indexOf(
-    'if (loaded.kind === "project")',
-  );
-  const playback = masterDetail.indexOf("const runtimeSession");
-  assert.ok(projectFallback > -1);
-  assert.ok(projectFallback < playback);
-  assert.match(
-    masterDetail,
-    /if \(!base \|\| !base\.startsWith\("\/"\) \|\| base\.startsWith\("\/\/"\)\) return null/,
-  );
-  assert.match(masterDetail, /encodeURIComponent\(projectId\)/);
-  assert.match(masterDetail, /项目记录不会显示在普通历史中/);
-  assert.match(masterDetail, /patch\.project_id[\s\S]*?list\.filter/);
+test("project records open in place under /history (no interstitial)", () => {
+  assert.doesNotMatch(masterDetail, /loaded\.kind === "project"/);
+  assert.doesNotMatch(masterDetail, /kind: "project"/);
+  assert.doesNotMatch(masterDetail, /项目记录不会显示在普通历史中/);
+  // 站点归属守卫仍在：别站的会话 / 旧任务照旧拒绝。
+  assert.match(masterDetail, /siteId && session\.site_id !== siteId/);
+  assert.match(masterDetail, /siteId &&\n\s*taskResult\.data\.task\.site_id/);
+  // 移进项目不再把行从列表删掉，只换项目标注。
+  assert.doesNotMatch(masterDetail, /patch\.project_id[\s\S]{0,40}list\.filter/);
 });
