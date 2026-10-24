@@ -186,7 +186,7 @@ export function ProjectWorkspaceFrame({
               aria-expanded={isDesktop || resolvedConfigOpen}
               aria-haspopup="dialog"
               data-project-config-trigger
-              className="inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-sm font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] lg:hidden"
+              className="min-h-11 min-w-11 inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[13px] font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] lg:hidden"
               onClick={() => changeConfigOpen(true)}
             >
               {mobileConfigLabel}
@@ -269,7 +269,7 @@ export function ProjectWorkspaceFrame({
               )}
             >
               <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border,#e7e5e4)] px-4 py-3 lg:hidden">
-                <div className="min-w-0 truncate text-sm font-semibold">
+                <div className="min-w-0 truncate text-[13px] font-semibold">
                   {mobileConfigLabel}
                 </div>
                 <button
@@ -277,7 +277,7 @@ export function ProjectWorkspaceFrame({
                   type="button"
                   aria-label={closeConfigLabel}
                   data-project-config-close
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+                  className="min-h-11 min-w-11 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[16px] leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
                   onClick={() => changeConfigOpen(false)}
                 >
                   <span aria-hidden="true">×</span>
@@ -397,7 +397,7 @@ export function ProjectTabNav<Value extends string = string>({
             disabled={tab.disabled}
             data-project-tab={tab.id}
             className={classNames(
-              "relative shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50",
+              "relative shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50",
               selected
                 ? "border-[var(--accent,#4f46e5)] text-[var(--fg,#292524)]"
                 : "border-transparent text-[var(--muted,#78716c)] hover:border-[var(--border,#e7e5e4)] hover:text-[var(--fg,#292524)]",
@@ -503,19 +503,19 @@ export function ProjectEmptyState({
         <div
           aria-hidden="true"
           data-project-empty-state-icon
-          className="mb-3 text-3xl text-[var(--muted,#78716c)]"
+          className="mb-3 text-[28px] text-[var(--muted,#78716c)]"
         >
           {icon}
         </div>
       )}
       <h2
         id={titleId}
-        className="text-base font-semibold text-[var(--fg,#292524)]"
+        className="text-[14px] font-semibold text-[var(--fg,#292524)]"
       >
         {title}
       </h2>
       {description != null && (
-        <div className="mt-1 max-w-xl text-sm leading-6 text-[var(--muted,#78716c)]">
+        <div className="mt-1 max-w-xl text-xs leading-5 text-[var(--muted,#78716c)]">
           {description}
         </div>
       )}
@@ -607,7 +607,7 @@ export function ProjectConfigCard({
           <div className="flex min-w-0 items-center gap-2">
             <h3
               id={titleId}
-              className="min-w-0 truncate text-sm font-semibold text-[var(--fg,#292524)]"
+              className="min-w-0 truncate text-[13px] font-semibold text-[var(--fg,#292524)]"
             >
               {title}
             </h3>
@@ -621,7 +621,7 @@ export function ProjectConfigCard({
             )}
           </div>
           {summary != null && (
-            <div className="mt-1 text-sm leading-5 text-[var(--muted,#78716c)]">
+            <div className="mt-1 text-xs leading-5 text-[var(--muted,#78716c)]">
               {summary}
             </div>
           )}
@@ -632,7 +632,7 @@ export function ProjectConfigCard({
             aria-label={addAction.ariaLabel}
             disabled={addAction.disabled}
             data-project-config-action="add"
-            className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-sm font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 min-w-11 shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={onAddClick}
           >
             {addAction.label}
@@ -646,7 +646,7 @@ export function ProjectConfigCard({
           aria-label={openAction.ariaLabel}
           disabled={openAction.disabled}
           data-project-config-action="open"
-          className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[var(--accent,#4f46e5)] px-3 py-2 text-sm font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-11 min-w-11 mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[var(--accent,#4f46e5)] px-3 py-2 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
           onClick={(event) => {
             event.stopPropagation();
             openAction.onClick();
@@ -773,14 +773,14 @@ export function ProjectModal({
             headerClassName,
           )}
         >
-          <h2 id={titleId} className="min-w-0 flex-1 text-base font-semibold">
+          <h2 id={titleId} className="min-w-0 flex-1 text-[18px] font-semibold">
             {title}
           </h2>
           <button
             type="button"
             aria-label={closeLabel}
             data-project-modal-close
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xl leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
+            className="min-h-11 min-w-11 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[16px] leading-none text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] hover:text-[var(--fg,#292524)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]"
             onClick={onClose}
           >
             <span aria-hidden="true">×</span>

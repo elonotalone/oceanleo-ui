@@ -38,6 +38,21 @@ const source = await readFile(
   resolve("src/shell/project-workspace.tsx"),
   "utf8",
 );
+
+test("compact project cards retain readable hierarchy and full-sized actions", () => {
+  const html = render(ProjectConfigCard, {
+    title: "Project instructions",
+    summary: "Short project guidance",
+    onOpen() {},
+    addAction: { label: "+", ariaLabel: "Add instruction", onClick() {} },
+  });
+  assert.match(html, /<h3[^>]*class="[^"]*text-\[13px\]/);
+  assert.match(html, /class="mt-1 text-xs leading-5/);
+  assert.match(html, /data-project-config-action="add"[^>]*class="[^"]*min-h-11 min-w-11/);
+  assert.match(html, /role="button" tabindex="0"/);
+  assert.match(html, /focus-visible:outline-2/);
+  assert.match(source, /text-\[18px\] font-semibold/);
+});
 const shellIndex = await readFile(resolve("src/shell/index.ts"), "utf8");
 const packageJson = JSON.parse(await readFile(resolve("package.json"), "utf8"));
 const apiSnapshot = JSON.parse(
