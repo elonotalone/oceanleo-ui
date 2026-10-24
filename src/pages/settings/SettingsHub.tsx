@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   browserClient,
   oceanleoConfigured,
@@ -21,8 +21,6 @@ import { DevicesPage } from "../DevicesPage";
 import { PasswordResetPage } from "../PasswordResetPage";
 import { SettingsNav, type SettingsNavGroup } from "./SettingsNav";
 import { settingsNavIcon } from "./SettingsNavIcons";
-import { SkillsSettingsPane } from "./SkillsSettingsPane";
-import { ConnectorsSettingsPane } from "./ConnectorsSettingsPane";
 import { connectorIdFromLocationHash } from "../plugins/connector-logic";
 import { PersonalizationSection } from "./personalization/PersonalizationSection";
 import { MailSection } from "./mail/MailSection";
@@ -110,6 +108,27 @@ const PANE_MENU_PATHS = new Set(["/api", "/plugins", "/devices"]);
  * 落到「技能」。这两个 id 也作为已知栏目传给解析器——不论 settings-tabs 的内置表是否已收录，
  * 设置中心自己都认得。
  */
+// 两栏按需加载：技能栏拉着整套技能管理面板（文件树查看器、Markdown 渲染），连接器栏拉着
+// 连接器目录与授权流程；设置窗挂在每一页上，不该为没打开的栏目付这份体积。
+const SkillsSettingsPane = lazy(() =>
+  import("./SkillsSettingsPane").then((m) => ({ default: m.SkillsSettingsPane })),
+);
+const ConnectorsSettingsPane = lazy(() =>
+  import("./ConnectorsSettingsPane").then((m) => ({ default: m.ConnectorsSettingsPane })),
+);
+
+function PaneLoading() {
+  return (
+    <div data-settings-pane-loading="" aria-busy="true" className="space-y-3">
+      <div className="h-10 w-80 max-w-full animate-pulse rounded-xl bg-neutral-100 dark:bg-neutral-800" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="h-32 animate-pulse rounded-2xl bg-neutral-100 dark:bg-neutral-800" />
+        <div className="h-32 animate-pulse rounded-2xl bg-neutral-100 dark:bg-neutral-800" />
+      </div>
+    </div>
+  );
+}
+
 export const SKILLS_SETTINGS_TAB = "skills";
 export const CONNECTORS_SETTINGS_TAB = "connectors";
 const LEGACY_PLUGINS_TAB = "plugins";
@@ -501,14 +520,22 @@ export function SettingsHub({
         group: "capabilities",
         label: tt("技能"),
         icon: settingsNavIcon(LEGACY_PLUGINS_TAB),
-        render: () => <SkillsSettingsPane />,
+        render: () => (
+          <Suspense fallback={<PaneLoading />}>
+            <SkillsSettingsPane />
+          </Suspense>
+        ),
       },
       {
         id: CONNECTORS_SETTINGS_TAB,
         group: "capabilities",
         label: tt("连接器"),
         icon: connectorIcon(),
-        render: () => <ConnectorsSettingsPane initialConnectorId={connectId || undefined} />,
+        render: () => (
+          <Suspense fallback={<PaneLoading />}>
+            <ConnectorsSettingsPane initialConnectorId={connectId || undefined} />
+          </Suspense>
+        ),
       },
       {
         id: "automation",

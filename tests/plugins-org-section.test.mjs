@@ -67,16 +67,15 @@ const mcpApiStub = dataModule(`
   export async function probeMcp() { return { ok: true }; }
 `);
 
-const skillsStub = dataModule(`
-  export const OFFICIAL_SKILLS = [];
-  export const SKILLS_NOT_CONFIGURED = "未配置 Supabase";
-  export const SKILLS_SIGNED_OUT = "请先登录";
-  export async function listSkills() { return []; }
-  export async function addSkill() { return null; }
-  export async function setSkillEnabled() { return null; }
-  export async function deleteSkill() { return null; }
-  export async function listRecentTasks() { return []; }
-  export async function firstUserPrompt() { return ""; }
+// skills-overhaul W10（2026-10-24）：PluginsPage 的技能区现在是 SkillsSettingsPane（共享技能管理
+// 面板，走 /v1/folders，判据在 sko-w09b-* / sko-w10-*）。这一份只管组织共用连接器不出现在插件页，
+// 技能面板用替身（保留 data-plugins-skills 标记）。原 `./plugins/skills-api` 替身随旧模块删除。
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const skillsPaneStub = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function SkillsSettingsPane() {
+    return React.createElement("section", { "data-plugins-skills": "" });
+  }
 `);
 
 /** 与真 `useUI` 同一插值规则（`{name}` 占位），这样才能判「由组织 X 提供」真的带了组织名。 */
@@ -86,7 +85,10 @@ const uiStub = dataModule(`
   }
 `);
 
+// 其余导出照真模块转出（连接器栏依赖图里有模块要 CONFIGURED_DOMAIN_FAMILY 等）；本地同名导出优先。
+const domainFamilyUrl = pathToFileURL(new URL("../src/contracts/domain-family.ts", import.meta.url).pathname).href;
 const domainStub = dataModule(`
+  export * from ${JSON.stringify(domainFamilyUrl)};
   export function currentDomainFamily() { return "com"; }
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
 `);
@@ -95,7 +97,7 @@ const OVERRIDES = {
   "../lib/org-api": orgApiStub,
   "../lib/database": databaseStub,
   "../lib/mcp-api": mcpApiStub,
-  "./plugins/skills-api": skillsStub,
+  "./settings/SkillsSettingsPane": skillsPaneStub,
   "../i18n/ui/useUI": uiStub,
   "../contracts/domain-family": domainStub,
 };

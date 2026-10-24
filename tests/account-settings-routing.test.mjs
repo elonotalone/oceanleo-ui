@@ -193,6 +193,9 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   "../ApiPage": paneStub("ApiPage", "pane-api"),
   "../DevicesPage": paneStub("DevicesPage", "pane-devices"),
   "../PluginsPage": paneStub("PluginsPage", "pane-plugins"),
+  // skills-overhaul W10：「技能」「连接器」两栏替身（真身拉进整套技能管理面板，与本文件无关）。
+  "./SkillsSettingsPane": paneStub("SkillsSettingsPane", "pane-skills"),
+  "./ConnectorsSettingsPane": paneStub("ConnectorsSettingsPane", "pane-connectors"),
   "./personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
   "./mail/MailSection": paneStub("MailSection", "pane-mail"),
   "./sections/AutomationSettingsSection": paneStub("AutomationSettingsSection", "pane-automation"),

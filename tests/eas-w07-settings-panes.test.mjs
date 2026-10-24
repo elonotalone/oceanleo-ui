@@ -186,6 +186,9 @@ const STUBS = {
   "../../pages/ApiPage": marker("ApiPage", "pane-api"),
   "../../pages/DevicesPage": marker("DevicesPage", "pane-devices"),
   "../../pages/PluginsPage": marker("PluginsPage", "pane-plugins"),
+  // skills-overhaul W10：「插件与连接器」拆成「技能」「连接器」两栏，各自是独立面板组件。
+  "../../pages/settings/SkillsSettingsPane": marker("SkillsSettingsPane", "pane-skills"),
+  "../../pages/settings/ConnectorsSettingsPane": marker("ConnectorsSettingsPane", "pane-connectors"),
   "../../pages/settings/personalization/PersonalizationSection": marker("PersonalizationSection", "pane-personalization"),
   "../../pages/settings/mail/MailSection": marker("MailSection", "pane-mail"),
   "../../pages/settings/sections/AutomationSettingsSection": marker("AutomationSettingsSection", "pane-automation"),
@@ -255,12 +258,14 @@ async function click(node, what) {
   await settle();
 }
 
+// `variant: false`：技能 / 连接器两栏是专为设置中心写的面板，没有 page/pane 两种形态，不传 variant。
 const CAPABILITIES = [
-  { id: "ai-models", testId: "pane-api", label: "AI 模型" },
-  { id: "plugins", testId: "pane-plugins", label: "插件与连接器" },
-  { id: "automation", testId: "pane-automation", label: "自动化与通知" },
-  { id: "mail", testId: "pane-mail", label: "邮件" },
-  { id: "devices", testId: "pane-devices", label: "我的设备" },
+  { id: "ai-models", testId: "pane-api", label: "AI 模型", variant: true },
+  { id: "skills", testId: "pane-skills", label: "技能", variant: false },
+  { id: "connectors", testId: "pane-connectors", label: "连接器", variant: false },
+  { id: "automation", testId: "pane-automation", label: "自动化与通知", variant: true },
+  { id: "mail", testId: "pane-mail", label: "邮件", variant: true },
+  { id: "devices", testId: "pane-devices", label: "我的设备", variant: true },
 ];
 
 test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
@@ -271,7 +276,11 @@ test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
   assert.equal(settingsPath("knowledge", "https://oceanleo.com/"), "/settings/personalization");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/org"), "team");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/team"), "team");
-  assert.equal(tabFromSettingsLocation("https://oceanleo.com/agent#settings/plugins"), "plugins");
+  // 旧栏目 id plugins 落到「技能」（skills-overhaul W10）。
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/agent#settings/plugins"), "skills");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/plugins"), "skills");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/connectors"), "connectors");
+  assert.equal(settingsPath("plugins", "https://oceanleo.com/"), "/settings/skills");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=devices"), "devices");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=memory"), "personalization");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/knowledge"), "personalization");
@@ -306,7 +315,7 @@ test("关掉设置窗的回跳地址：只要站内非设置页，协议相对�
   );
 });
 
-test("设置窗里点「AI 模型」「插件与连接器」「我的设备」：右侧换成对应面板，窗不关，背后页面不动", async () => {
+test("设置窗里点「AI 模型」「技能」「连接器」「我的设备」：右侧换成对应面板，窗不关，背后页面不动", async () => {
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
   await open("general");
   assert.ok(dialog(), "openSettingsModal 之后设置窗应当打开");
@@ -320,14 +329,16 @@ test("设置窗里点「AI 模型」「插件与连接器」「我的设备」�
     );
   }
 
-  for (const { id, testId, label } of CAPABILITIES) {
+  for (const { id, testId, label, variant } of CAPABILITIES) {
     const item = inDialog(`[data-settings-group="capabilities"] [data-settings-item="${id}"]`);
     assert.ok(item, `能力组里找不到 ${id}`);
     assert.equal(item.tagName, "BUTTON", `${id} 应当是切面板的按钮，不是链接`);
     await click(item, id);
     assert.ok(dialog(), `点「${label}」之后设置窗不该关`);
     assert.ok(pane(testId), `点「${label}」之后右侧应当是 ${testId}`);
-    assert.equal(pane(testId).getAttribute("data-variant"), "pane", `${testId} 要以 pane 形态嵌进设置窗`);
+    if (variant) {
+      assert.equal(pane(testId).getAttribute("data-variant"), "pane", `${testId} 要以 pane 形态嵌进设置窗`);
+    }
     assert.equal(inDialog("h2")?.textContent, label, "面板区标题跟着换");
     assert.equal(
       inDialog(`[data-settings-item="${id}"]`)?.getAttribute("aria-current"),
@@ -352,11 +363,13 @@ test("设置卡片左上角可以放大，放大后仍是同一张卡片", async
   await view.cleanup();
 });
 
-test("openSettingsModal：personalization、plugins、旧地址 memory 分别落在个性化 / 插件 / 个性化面板", async () => {
+test("openSettingsModal：personalization、plugins（旧）、connectors、旧地址 memory 分别落在个性化 / 技能 / 连接器 / 个性化面板", async () => {
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
   const cases = [
     { tab: "personalization", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
-    { tab: "plugins", testId: "pane-plugins", item: "plugins", path: "/settings/plugins" },
+    { tab: "plugins", testId: "pane-skills", item: "skills", path: "/settings/skills" },
+    { tab: "skills", testId: "pane-skills", item: "skills", path: "/settings/skills" },
+    { tab: "connectors", testId: "pane-connectors", item: "connectors", path: "/settings/connectors" },
     { tab: "memory", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
     { tab: "knowledge", testId: "pane-personalization", item: "personalization", path: "/settings/personalization" },
     { tab: "topup", testId: "pane-billing", item: "billing", path: "/settings/billing" },
@@ -494,7 +507,7 @@ test("extraSections 与内置同 id（含旧 id memory）：内置优先，控�
     ];
     const view = await mount(React.createElement(SettingsModalHost, { extraSections }), "/agent");
     await open("plugins");
-    assert.ok(pane("pane-plugins"), "/settings/plugins 打开的是内置插件面板");
+    assert.ok(pane("pane-skills"), "/settings/plugins（旧 id）打开的是内置「技能」面板");
     assert.equal(pane("legacy-plugins") === null, true);
     const labels = [...dialog().querySelectorAll("[data-settings-item]")].map((node) => node.textContent);
     assert.ok(!labels.includes("旧插件"), `同 id 的站点项不该出现在导航里：${labels.join(" / ")}`);

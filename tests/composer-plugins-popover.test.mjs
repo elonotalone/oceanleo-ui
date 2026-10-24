@@ -152,7 +152,7 @@ const fixtureConnections = [
 
 const catalogStub = dataModule(`
   const g = () => globalThis.__W5_PLUGINS_CATALOG__;
-  export const PLUGINS_SETTINGS_HREF = "/settings/plugins";
+  export const PLUGINS_SETTINGS_HREF = "/settings/connectors";
   export function canManageOrgMcp(role){ return role === "owner" || role === "admin"; }
   export function normalizeOrgMcpConnections(){ return []; }
   export function shouldRenderOrgSection(){ return false; }
@@ -298,6 +298,11 @@ test("buildPopoverConnectors：未连接走连接，可管已连接走开关，�
   assert.equal(rows.find((row) => row.id === "gmail")?.kind, "toggle");
   assert.equal(rows.find((row) => row.id === "slack")?.kind, "connected");
   assert.equal(rows.find((row) => row.id === "gmail")?.beta, true);
+  // skills-overhaul W10：连接 / 管理入口都指向设置中心「连接器」栏。
+  for (const row of rows) {
+    assert.equal(row.connectHref, "/settings/connectors");
+    assert.equal(row.manageHref, "/settings/connectors");
+  }
 });
 
 test("插件按钮渲染 SVG 不是 img；点击后浮层 portal 到 body 并列出连接 / 开关 / 添加连接器", async () => {
@@ -345,12 +350,15 @@ test("插件按钮渲染 SVG 不是 img；点击后浮层 portal 到 body 并列
     const add = panel.querySelector("[data-plugins-add-connector]");
     assert.ok(add);
     assert.match(add.textContent, /添加连接器/);
-    // 打开设置窗的插件面板（/settings/plugins），不整页跳 /plugins。
-    assert.equal(add.getAttribute("href"), "/settings/plugins");
+    // 打开设置窗的「连接器」面板（/settings/connectors），不整页跳 /plugins。
+    // skills-overhaul W10 过期断言改动：设置中心把「插件与连接器」拆成「技能」「连接器」两栏，
+    // 「添加连接器」落到连接器栏，原 /settings/plugins 改为 /settings/connectors。
+    assert.equal(add.getAttribute("href"), "/settings/connectors");
     await act(async () => {
       add.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
     });
-    assert.equal(add.getAttribute("href"), "/settings/plugins");
+    assert.equal(add.getAttribute("href"), "/settings/connectors");
+    assert.equal(window.location.pathname, "/settings/connectors", "点了打开设置窗的连接器栏");
     assert.equal(panel.getAttribute("data-leo-overlay-state"), "closed", "浮层要让位给设置窗");
   } finally {
     window.history.replaceState(null, "", "/");

@@ -97,7 +97,7 @@ export function AccountMenu(props: AccountMenuProps) {
       <FloatingMenuItem icon="♙" label={tt("账户")} onSelect={() => settings("account")} />
       {personalizationTab ? <FloatingMenuItem icon="✦" label={tt("个性化")} onSelect={() => settings(personalizationTab)} /> : null}
       <FloatingMenuItem icon="☷" label={tt("设置")} onSelect={() => settings("general")} />
-      <FloatingMenuItem icon="⧉" label={tt("插件")} onSelect={() => settings("plugins")} />
+      <FloatingMenuItem icon="⧉" label={tt("技能")} onSelect={() => settings("skills")} />
       <FloatingMenuSeparator />
       <FloatingMenuItem label={tt("主页")} href={props.homeHref} external onSelect={close} />
       {props.helpHref ? <FloatingMenuItem label={tt("获取帮助")} href={props.helpHref} external onSelect={close} /> : null}

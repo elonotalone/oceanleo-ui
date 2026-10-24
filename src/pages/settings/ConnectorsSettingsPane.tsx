@@ -8,12 +8,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useUI } from "../../i18n/ui/useUI";
-import {
-  AddMenu,
-  ConfigEmptyState,
-  ConfigItemCard,
-  ConfigToolbar,
-} from "../../shell/skills/kit";
+// 直接引 kit 的叶子文件，不经 kit/index（那里还挂着文件夹 API 与鉴权链，连接器页用不到）。
+import { AddMenu } from "../../shell/skills/kit/AddMenu";
+import { ConfigEmptyState } from "../../shell/skills/kit/ConfigEmptyState";
+import { ConfigItemCard } from "../../shell/skills/kit/ConfigItemCard";
+import { ConfigToolbar } from "../../shell/skills/kit/ConfigToolbar";
 import { usePluginsCatalog } from "../../shell/usePluginsCatalog";
 import { ConnectorCatalogDialog, OVER_CONFIG_DIALOG_Z } from "../plugins/ConnectorCatalogDialog";
 import { ConnectorIcon } from "../plugins/connector-icons";
@@ -120,14 +119,14 @@ function ConnectorRowMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
+        className="-my-2 -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-xl text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
       >
         <MoreIcon />
       </button>
       {open ? (
         <div
           role="menu"
-          className="absolute bottom-9 right-0 z-20 w-44 rounded-xl border border-neutral-200 bg-white p-1 shadow-[0_12px_40px_rgba(0,0,0,0.14)] dark:border-neutral-700 dark:bg-neutral-900"
+          className="absolute bottom-10 right-0 z-20 w-44 rounded-xl border border-neutral-200 bg-white p-1 shadow-[0_12px_40px_rgba(0,0,0,0.14)] dark:border-neutral-700 dark:bg-neutral-900"
         >
           <button type="button" role="menuitem" data-connector-menu="reconnect" className={item} onClick={pick(onReconnect)}>
             {tt("重新连接")}

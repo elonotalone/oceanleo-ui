@@ -10,7 +10,9 @@ import { useMemo, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { McpItem } from "../../lib/database";
 import { currencySymbol, formatMinor } from "../../lib/money";
-import { ConfigDialogShell, ConfigEmptyState, ConfigToolbar } from "../../shell/skills/kit";
+import { ConfigDialogShell } from "../../shell/skills/kit/ConfigDialogShell";
+import { ConfigEmptyState } from "../../shell/skills/kit/ConfigEmptyState";
+import { ConfigToolbar } from "../../shell/skills/kit/ConfigToolbar";
 import { ConnectorIcon } from "./connector-icons";
 import {
   CATALOG_ALL,

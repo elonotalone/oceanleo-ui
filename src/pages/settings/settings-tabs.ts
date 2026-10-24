@@ -10,7 +10,9 @@ export const SETTINGS_BUILTIN_TABS = [
   "bay",
   "messages",
   "ai-models",
-  "plugins",
+  // skills-overhaul W10：「插件与连接器」拆成「技能」「连接器」两栏；旧 `plugins` 见下方别名。
+  "skills",
+  "connectors",
   "automation",
   "mail",
   "devices",
@@ -22,6 +24,7 @@ export type SettingsBuiltinTab = (typeof SETTINGS_BUILTIN_TABS)[number];
 /** 退役的 id → 现在承接它的内置栏目。旧书签与旧调用方（`openSettingsModal("memory")`）靠它落地。 */
 export const SETTINGS_TAB_ALIASES: Readonly<Record<string, SettingsBuiltinTab>> = {
   org: "team",
+  plugins: "skills",
   memory: "personalization",
   knowledge: "personalization",
   models: "ai-models",

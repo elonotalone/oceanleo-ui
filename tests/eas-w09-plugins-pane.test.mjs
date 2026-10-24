@@ -1,5 +1,13 @@
 // 「插件与连接器」嵌进设置窗（editors-and-shell-0924 W09）的判据：pane 形态。
 //
+// skills-overhaul W10（2026-10-24）：设置中心拆成「技能」「连接器」两栏（各自的面板组件，
+// 判据见 sko-w10-settings / eas-w09-mcp-connectors）。PluginsPage 保留给各站 /plugins：
+//   - page（缺省）= 统一页头 + 技能、连接器两个面板上下排列；
+//   - pane = 只为兼容旧调用，渲染技能面板。
+// 过期断言改动：原「COM pane 不渲染阿里云市场网格 / 不出现高德地图」改为「pane 只有技能面板、
+// 没有连接器面板」（阿里云市场已并进连接器目录弹窗，CN/COM 判据在 plugins-edition-catalog）；
+// 两个面板在这里用替身——它们各自的内容由各自的测试管，这一份只管 PluginsPage 的外形。
+//
 // 设置窗的「插件与连接器」面板（W07 注册）直接渲染共享 `PluginsPage variant="pane"`。
 // 面板区自己有标题、自己滚动，所以 pane 形态：
 //   ① 不渲染统一页头（没有「返回」键、没有 h1）——否则设置窗里多出一个返回键，
@@ -55,16 +63,12 @@ const mcpApiStub = dataModule(`
   export async function probeMcp() { return { ok: true }; }
 `);
 
-const skillsStub = dataModule(`
-  export const OFFICIAL_SKILLS = [];
-  export const SKILLS_NOT_CONFIGURED = "未配置 Supabase";
-  export const SKILLS_SIGNED_OUT = "请先登录";
-  export async function listSkills() { return []; }
-  export async function addSkill() { return null; }
-  export async function setSkillEnabled() { return null; }
-  export async function deleteSkill() { return null; }
-  export async function listRecentTasks() { return []; }
-  export async function firstUserPrompt() { return ""; }
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const paneMarker = (exportName, attr) => dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function ${exportName}(props) {
+    return React.createElement("section", { "${attr}": "", "data-heading": props.heading ? "1" : "0" });
+  }
 `);
 
 const uiStub = dataModule(`
@@ -88,7 +92,8 @@ const OVERRIDES = {
   "../lib/org-api": orgApiStub,
   "../lib/database": databaseStub,
   "../lib/mcp-api": mcpApiStub,
-  "./plugins/skills-api": skillsStub,
+  "./settings/SkillsSettingsPane": paneMarker("SkillsSettingsPane", "data-plugins-skills"),
+  "./settings/ConnectorsSettingsPane": paneMarker("ConnectorsSettingsPane", "data-plugins-connectors"),
   "../i18n/ui/useUI": uiStub,
   "../contracts/domain-family": domainStub,
 };
@@ -173,8 +178,10 @@ test("pane 形态：没有统一页头（没有「返回」键、没有 h1）", 
     assert.equal(backButtons(findAll).length, 0, "设置窗面板里不该有页头的「返回」键");
     assert.equal(find("h1"), null, "面板自己有标题，pane 形态不该再渲染页头 h1");
     assert.ok(find("[data-plugins-pane]"), "pane 形态的根节点要带 data-plugins-pane，宿主据此认面板");
-    assert.equal(find("[data-mcp-catalog]"), null, "COM pane 不渲染阿里云市场网格");
-    assert.ok(!container.textContent.includes("高德地图"), "COM 不得出现国内货架名");
+    assert.ok(find("[data-plugins-skills]"), "pane 形态（旧调用）渲染技能面板");
+    assert.equal(find("[data-plugins-connectors]"), null, "pane 形态不再混排连接器（连接器是设置中心单独一栏）");
+    assert.equal(find("[data-mcp-catalog]"), null, "页面上没有阿里云市场网格（已并进连接器目录弹窗）");
+    assert.ok(!container.textContent.includes("高德地图"), "页面上不平铺货架");
   });
 });
 
@@ -195,6 +202,12 @@ test("独立页（缺省与 variant=page）：统一页头照旧在", async () =
       assert.equal(backButtons(findAll).length, 1, `独立页要有页头「返回」键（props=${JSON.stringify(props)}）`);
       assert.ok(find("h1"), "独立页要有页头标题");
       assert.equal(find("[data-plugins-pane]"), null, "独立页不带 pane 标记");
+      const skills = find("[data-plugins-skills]");
+      const connectors = find("[data-plugins-connectors]");
+      assert.ok(skills && connectors, "独立页上下排列技能与连接器两个面板");
+      assert.ok(skills.compareDocumentPosition(connectors) & 4, "技能在上、连接器在下");
+      assert.equal(skills.getAttribute("data-heading"), "1", "独立页里两个面板各带自己的标题");
+      assert.equal(connectors.getAttribute("data-heading"), "1");
     });
   }
 });

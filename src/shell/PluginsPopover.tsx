@@ -237,7 +237,7 @@ export function PluginsPopover({
           onClick={(event) => {
             event.preventDefault();
             onClose();
-            openSettingsModal("plugins");
+            openSettingsModal("connectors");
           }}
           className="block shrink-0 border-t border-neutral-100 px-4 py-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50"
         >
