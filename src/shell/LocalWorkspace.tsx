@@ -84,12 +84,12 @@ export function LocalTaskDetail({ task }: { task: ClientLocalTask }) {
   </main>;
 }
 
-export function LocalComputerSettings() {
+export function LocalComputerSettings({ onRequestClose }: { onRequestClose?: () => void | Promise<void> } = {}) {
   const workspace = useLocalWorkspace();
   const target = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!target.current || !workspace) return;
-    return workspace.mountSettings(target.current);
-  }, [workspace]);
+    return workspace.mountSettings(target.current, { onRequestClose });
+  }, [workspace, onRequestClose]);
   return <div ref={target} data-local-computer-settings />;
 }

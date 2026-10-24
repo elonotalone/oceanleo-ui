@@ -64,7 +64,9 @@ export interface ClientLocalTask {
 export interface ClientLocalWorkspace {
   listTasks(): Promise<ClientLocalTask[]>;
   cancelTask(id: string): Promise<unknown>;
-  mountSettings(container: HTMLElement): () => void;
+  mountSettings(container: HTMLElement, options?: {
+    onRequestClose?: () => void | Promise<void>;
+  }): () => void;
 }
 
 type HostConfigSlot = {

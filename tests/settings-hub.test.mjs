@@ -55,6 +55,7 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+globalThis.getComputedStyle = window.getComputedStyle.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 
@@ -210,6 +211,12 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
 });
 const { SettingsHub } = await import(hubUrl);
 globalThis.__settingsHubForModal = SettingsHub;
+const { SettingsModal: RealSettingsModal } = await import(await compileModule("src/pages/settings/SettingsModal.tsx", {
+  "./SettingsHub": dataModule("export const SettingsHub = globalThis.__settingsHubForModal;"),
+  "../../i18n/ui/useUI": uiStubUrl,
+  "../../shell/bay/shell/bay-state": dataModule("export function closeBayOverlay() {}"),
+  "../../shell/messages/host-state": dataModule("export function closeMessages() {}"),
+}));
 const modalHostUrl = await compileModule("src/shell/account/SettingsModalHost.tsx", {
   "next/navigation": navigationStubUrl,
   "../../pages/settings/SettingsModal": dataModule(`
@@ -329,6 +336,89 @@ test("desktop local permissions mount in Settings even offline and dispose on cl
     globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = previous;
   }
   assert.equal(disposed, 1);
+});
+
+test("modal local permissions pass the existing close lifecycle to the native settings mount", async () => {
+  const previous = globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__;
+  let options;
+  let closed = 0;
+  globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+    family: "com", portalOrigin: "https://oceanleo.com", gatewayOrigin: "https://api.dev.oceanleo.com", identityOrigin: "https://auth.oceanleo.com", platform: "desktop",
+    localWorkspace: { mountSettings(container, next) { options = next; container.textContent = "本机授权测试"; return () => {}; } },
+  };
+  let view;
+  try {
+    view = await render(React.createElement(SettingsHub, {
+      variant: "modal", defaultTab: "local-computer", onClose: () => { closed += 1; },
+    }), { configured: false, email: null });
+    assert.equal(typeof options?.onRequestClose, "function");
+    options.onRequestClose();
+    assert.equal(closed, 1);
+  } finally {
+    view?.cleanup();
+    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = previous;
+  }
+});
+
+test("page local permissions do not inherit a modal close callback", async () => {
+  const previous = globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__;
+  let options;
+  globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+    family: "com", portalOrigin: "https://oceanleo.com", gatewayOrigin: "https://api.dev.oceanleo.com", identityOrigin: "https://auth.oceanleo.com", platform: "desktop",
+    localWorkspace: { mountSettings(container, next) { options = next; container.textContent = "本机授权测试"; return () => {}; } },
+  };
+  let view;
+  try {
+    view = await render(React.createElement(SettingsHub, {
+      variant: "page", defaultTab: "local-computer", onClose: () => assert.fail("page should stay open"),
+    }), { configured: false, email: null });
+    assert.equal(options?.onRequestClose, undefined);
+  } finally {
+    view?.cleanup();
+    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = previous;
+  }
+});
+
+test("real modal closes before the independent native remote card becomes usable and keeps the card mounted", async () => {
+  const previous = globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__;
+  const card = document.createElement("section");
+  card.hidden = true;
+  card.setAttribute("data-test-native-remote-card", "");
+  document.body.append(card);
+  let disposed = 0;
+  globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = {
+    family: "com", portalOrigin: "https://oceanleo.com", gatewayOrigin: "https://api.dev.oceanleo.com", identityOrigin: "https://auth.oceanleo.com", platform: "desktop",
+    localWorkspace: { mountSettings(container, options) {
+      const button = document.createElement("button");
+      button.textContent = "网页远程桌面";
+      button.onclick = async () => { await options?.onRequestClose?.(); card.hidden = false; };
+      container.replaceChildren(button);
+      return () => { disposed += 1; container.replaceChildren(); };
+    } },
+  };
+  function Screen() {
+    const [open, setOpen] = React.useState(true);
+    const close = React.useCallback(() => setOpen(false), []);
+    return React.createElement(RealSettingsModal, { open, onClose: close, initialTab: "local-computer" });
+  }
+  let view;
+  try {
+    view = await render(React.createElement(Screen), { configured: false, email: null });
+    assert.ok(document.querySelector("[data-settings-backdrop]"));
+    const button = [...document.querySelectorAll("[data-local-computer-settings] button")]
+      .find((node) => node.textContent === "网页远程桌面");
+    assert.ok(button);
+    await view.click(button);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 15)); });
+    assert.equal(document.querySelector("[data-settings-backdrop]"), null, "do not leave the higher modal and focus trap covering the remote card");
+    assert.equal(card.hidden, false);
+    assert.equal(card.isConnected, true);
+    assert.equal(disposed, 1);
+  } finally {
+    view?.cleanup();
+    card.remove();
+    globalThis.__OCEANLEO_CLIENT_HOST_CONFIG__ = previous;
+  }
 });
 
 test("real settings modal keeps local-computer selected from its menu and direct URL", async () => {

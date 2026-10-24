@@ -247,6 +247,7 @@ function headingForAccountView(view: AccountSettingsView): string {
 
 export function SettingsHub({
   variant = "page",
+  onClose,
   initialTab,
   onTabChange,
   defaultTab = "general",
@@ -451,7 +452,7 @@ export function SettingsHub({
         id: "local-computer",
         group: "settings" as const,
         label: tt("本机与权限"),
-        render: () => <LocalComputerSettings />,
+        render: () => <LocalComputerSettings onRequestClose={variant === "modal" ? onClose : undefined} />,
       }] : []),
       {
         id: "account",
@@ -604,6 +605,8 @@ export function SettingsHub({
     orgInitialPane,
     billingView,
     localWorkspace,
+    variant,
+    onClose,
   ]);
 
   const groups = useMemo<SettingsNavGroup[]>(() => {
