@@ -145,8 +145,13 @@ test("onOpen makes the whole card a keyboard-reachable button", () => {
   assert.match(html, /focus-visible:outline-2/);
   assert.match(html, /hover:shadow-md/);
   assert.match(html, /rounded-2xl/, "card radius is 16px per UI-DESIGN");
-  // Keyboard only: the focus ring never shows on mouse focus.
-  assert.match(html, /focus:outline-none/);
+  // Keyboard only: the ring is drawn on :focus-visible (browsers do not
+  // match it for mouse focus). V03 found that `focus:outline-none` next to
+  // `focus-visible:outline-2` compiles to outline-style:none on keyboard focus
+  // (both pseudo-classes match), so the ring vanished. Guard against that:
+  // no outline suppression on the card, and an explicit solid style.
+  assert.match(html, /focus-visible:outline-solid/);
+  assert.doesNotMatch(html, /(^|[\s"])([\w-]+:)*outline-none\b/);
   assert.doesNotMatch(html, /\bfocus:ring/);
 });
 
@@ -250,4 +255,15 @@ test("addAction keeps working on its own when onOpen is not passed", async () =>
 
 test("source declares onOpen as an optional prop", () => {
   assert.match(source, /onOpen\?: \(\) => void;/);
+});
+
+test("openable card class string keeps a visible keyboard focus ring (V03 A9)", () => {
+  const line = source
+    .split("\n")
+    .find((text) => text.includes("hover:shadow-md") && text.includes("focus-visible:"));
+  assert.ok(line, "openable card class string not found");
+  assert.doesNotMatch(line, /outline-none/);
+  assert.match(line, /focus-visible:outline-2/);
+  assert.match(line, /focus-visible:outline-solid/);
+  assert.match(line, /focus-visible:outline-\[var\(--accent,#4f46e5\)\]/);
 });

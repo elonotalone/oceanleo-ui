@@ -598,7 +598,7 @@ export function ProjectConfigCard({
       className={classNames(
         "rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-4 shadow-sm",
         openable &&
-          "cursor-pointer text-left transition-shadow duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:shadow-md focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]",
+          "cursor-pointer text-left transition-shadow duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:shadow-md focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]",
         className,
       )}
     >
