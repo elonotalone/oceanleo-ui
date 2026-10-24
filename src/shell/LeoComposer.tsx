@@ -40,6 +40,11 @@ import { PayerSelector } from "./PayerSelector";
 import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
+import {
+  composerSlashAdapter,
+  useComposerSkillSlash,
+  type ComposerSkillSlashOption,
+} from "./composer-skill-slash";
 
 // ============================================================================
 // @oceanleo/ui — 标准 OceanLeo 输入框（单一事实源）
@@ -250,6 +255,13 @@ export interface LeoComposerProps {
    * 传 false 可在非 OceanLeo 宿主关掉。
    */
   showComputerDock?: boolean;
+
+  /**
+   * 输入框 `/` 调用技能（skills-overhaul 2026-10-24，合同 §3.5）。默认不开：不传时没有任何
+   * 监听、请求或浮层，行为与之前逐字相同。`true` = 个人技能；`{ projectId }` = 个人 + 该项目技能。
+   * 模板实填模式下不启用。逻辑全在 `composer-skill-slash.tsx`。
+   */
+  skillSlash?: ComposerSkillSlashOption;
 }
 
 export function LeoComposer({
@@ -291,6 +303,7 @@ export function LeoComposer({
   showComputerDock = true,
   appsHost,
   onOpenPlugins,
+  skillSlash,
 }: LeoComposerProps) {
   const tt = useUI();
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
@@ -343,6 +356,18 @@ export function LeoComposer({
   useNativeTaskNotifications();
   // 这次派活谁付钱。空串 = 个人钱包，也是没进过组织的人恒定的值。
   const [payerOrgId, setPayerOrgId] = useState("");
+  // 输入框 `/` 调用技能。skillSlash 不传时 onKeyDown 恒 false、popover 恒 null。
+  const skillSlashUi = useComposerSkillSlash({
+    option: skillSlash,
+    templateActive: effectiveHighlightTemplate != null,
+    disabled,
+    value,
+    adapter: composerSlashAdapter(
+      currentTextarea,
+      () => value,
+      (next) => highlightRef.current?.setText(next),
+    ),
+  });
 
   // 自增高由编辑器自身 CSS 处理（min-height + max-height + overflow-y:auto），LeoComposer 不再管。
   useEffect(() => {
@@ -362,6 +387,7 @@ export function LeoComposer({
     Boolean(attachMenuExtra && attachMenuExtra.length);
 
   function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (skillSlashUi.onKeyDown(e)) return;
     if (
       onSubmit &&
       e.key === "Enter" &&
@@ -476,6 +502,7 @@ export function LeoComposer({
           模板都用它——彻底解决「普通 textarea / 模板编辑器两套切换」导致的光标颜色不一致、切换
           时编辑器实例重建 undo 栈丢失。template=null 时它就是个普通输入框（空、正常光标、正常
           打字/分行/全选/undo），template 有值时把模板灌进去（字面可编辑、`[字段]` 荧光块）。 */}
+      {skillSlashUi.popover}
       <TemplateFillArea
         ref={highlightRef}
         value={value}
