@@ -956,12 +956,14 @@ function FoldersEmpty({
 /** 横排最多放几个；更多的走「查看全部文件夹」。 */
 export const LIBRARY_FOLDER_STRIP_LIMIT = 8;
 
-/** 横排只放最近更新的几个；没有文件夹（或没登录 / 读不到）时整段不渲染。 */
-export function folderStripItems<T extends Pick<Folder, "updated_at" | "created_at" | "title">>(
-  folders: readonly T[],
-  limit: number = LIBRARY_FOLDER_STRIP_LIMIT,
-): T[] {
-  return sortFoldersByTime(folders).slice(0, Math.max(0, limit));
+/**
+ * 横排只放最近更新的几个；有搜索词时先按同一判据（标题 / 技能名 / 描述 / 官方标题）过滤。
+ * 没有命中（或没登录 / 读不到）时整段不渲染。
+ */
+export function folderStripItems<
+  T extends Pick<Folder, "updated_at" | "created_at" | "title" | "skill" | "official">,
+>(folders: readonly T[], query = "", limit: number = LIBRARY_FOLDER_STRIP_LIMIT): T[] {
+  return sortFoldersByTime(filterFolders(folders, query)).slice(0, Math.max(0, limit));
 }
 
 export function LibraryFolderStripCard({ folder, onOpen }: { folder: Folder; onOpen: () => void }) {
@@ -1014,7 +1016,7 @@ export function LibraryFolderStripCard({ folder, onOpen }: { folder: Folder; onO
   );
 }
 
-export function LibraryFoldersStrip({ onViewAll }: { onViewAll: () => void }) {
+export function LibraryFoldersStrip({ onViewAll, query = "" }: { onViewAll: () => void; query?: string }) {
   const tt = useUI();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -1029,7 +1031,7 @@ export function LibraryFoldersStrip({ onViewAll }: { onViewAll: () => void }) {
     };
   }, []);
 
-  const items = useMemo(() => folderStripItems(folders), [folders]);
+  const items = useMemo(() => folderStripItems(folders, query), [folders, query]);
   if (items.length === 0) return null;
   const openFolder = openId ? folders.find((item) => item.id === openId) || null : null;
 

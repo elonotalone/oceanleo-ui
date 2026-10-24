@@ -261,19 +261,30 @@ test("every literal tt() key in the folders UI has all 16 translations", async (
 
 test("「全部」: MyLibrary renders the host slot after the type row; Library passes the folders strip only there", () => {
   const mine = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
-  assert.match(mine, /supplementalSection\?: ReactNode;/);
-  // 仲裁 A-04：位置在类型筛选行之后、网格（WorkspaceLibrary）之前，且只此一处。
+  // 仲裁 A-04 + A-21：ReactNode 或 (ctx: {query, favoritesOnly}) => ReactNode。
+  assert.match(
+    mine,
+    /supplementalSection\?:\s*\| ReactNode\s*\| \(\(ctx: \{ query: string; favoritesOnly: boolean \}\) => ReactNode\);/,
+  );
+  // 位置在类型筛选行之后、网格（WorkspaceLibrary）之前，且只此一处；传的是库自己的搜索词与收藏开关。
   const row = mine.indexOf("</CollectionFilterRow>");
-  const slot = mine.indexOf("{supplementalSection}");
+  const slot = mine.indexOf('{typeof supplementalSection === "function"');
   const grid = mine.indexOf("<WorkspaceLibrary");
   assert.ok(row > 0 && slot > row && grid > slot, "slot sits between the type row and the grid");
-  assert.equal(mine.split("supplementalSection").length - 1, 3, "declared, destructured, rendered — nothing else");
+  assert.match(mine, /supplementalSection\(\{ query: libraryQuery, favoritesOnly \}\)/);
+  assert.equal(
+    mine.split("supplementalSection").length - 1,
+    5,
+    "declared, destructured, type-tested, called, rendered as node — nothing else",
+  );
 
   const artifact = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
   assert.match(
     artifact,
-    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" && folders\.module \? \(\s*<folders\.module\.LibraryFoldersStrip onViewAll=\{\(\) => changeCategory\(LIBRARY_FOLDER_CATEGORY_ID\)\} \/>/,
+    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" && folders\.module\s*\? \(\{ query, favoritesOnly \}/,
   );
+  // 「仅看收藏」打开时不显示；横排跟着搜索词。
+  assert.match(artifact, /return Strip && !favoritesOnly \? \(\s*<Strip query=\{query\} onViewAll=/);
 });
 
 test("folder strip: newest first, capped, compact cards with 技能 badge", () => {
@@ -284,6 +295,17 @@ test("folder strip: newest first, capped, compact cards with 技能 badge", () =
   assert.equal(strip.length, mod.LIBRARY_FOLDER_STRIP_LIMIT);
   assert.equal(strip[0].id, "f11");
   assert.deepEqual(mod.folderStripItems([]), []);
+  // A-21：横排按 MyLibrary 的搜索词过滤（同 filterFolders 判据），没命中就整段不渲染。
+  const skill = folder({
+    id: "s",
+    title: "Notes",
+    updated_at: "2026-09-01T00:00:00Z",
+    skill: { name: "meeting-distiller", description: "minutes", enabled: true },
+  });
+  assert.deepEqual(mod.folderStripItems([...many, skill], "distiller").map((row) => row.id), ["s"]);
+  assert.deepEqual(mod.folderStripItems(many, "F1").map((row) => row.id), ["f11", "f10", "f1"]);
+  assert.deepEqual(mod.folderStripItems(many, "no-such-folder"), []);
+  assert.equal(mod.folderStripItems(many, "  ").length, mod.LIBRARY_FOLDER_STRIP_LIMIT);
   const html = renderToStaticMarkup(
     React.createElement(mod.LibraryFolderStripCard, {
       folder: folder({ skill: { name: "x", description: "", enabled: true } }),

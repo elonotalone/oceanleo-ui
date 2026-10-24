@@ -631,8 +631,11 @@ export interface MyLibraryProps {
   /**
    * 类型筛选行之后、网格之前的一段宿主内容（skills-overhaul W17 / 仲裁 A-04）：
    * `/library`「全部」时放「文件夹」横排。不传则什么都不渲染。
+   * 也可以传函数（仲裁 A-21）：拿到本库当前的搜索词与「仅看收藏」，宿主据此过滤或隐藏。
    */
-  supplementalSection?: ReactNode;
+  supplementalSection?:
+    | ReactNode
+    | ((ctx: { query: string; favoritesOnly: boolean }) => ReactNode);
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -1986,7 +1989,9 @@ export function MyLibrary({
               />
             </CollectionFilterRow>
           ) : null}
-          {supplementalSection}
+          {typeof supplementalSection === "function"
+            ? supplementalSection({ query: libraryQuery, favoritesOnly })
+            : supplementalSection}
         </div>
         )
       }

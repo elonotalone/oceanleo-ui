@@ -395,9 +395,15 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
           onCategoryChange={changeCategory}
           supplementalSection={
             // 「全部」时在网格上方放最近的文件夹（仲裁 A-04）；收藏视图与具体类别不放。
-            (myLibraryCategory ?? "all") === "all" && filter !== "favorites" && folders.module ? (
-              <folders.module.LibraryFoldersStrip onViewAll={() => changeCategory(LIBRARY_FOLDER_CATEGORY_ID)} />
-            ) : null
+            // 函数形式（A-21）：跟着 MyLibrary 的搜索词过滤，「仅看收藏」打开时不显示。
+            (myLibraryCategory ?? "all") === "all" && filter !== "favorites" && folders.module
+              ? ({ query, favoritesOnly }: { query: string; favoritesOnly: boolean }) => {
+                  const Strip = folders.module?.LibraryFoldersStrip;
+                  return Strip && !favoritesOnly ? (
+                    <Strip query={query} onViewAll={() => changeCategory(LIBRARY_FOLDER_CATEGORY_ID)} />
+                  ) : null;
+                }
+              : null
           }
         />
       </div>
