@@ -87,6 +87,29 @@ export function isDrag(from: NormalizedPoint, to: NormalizedPoint): boolean {
   return Math.hypot(to.x - from.x, to.y - from.y) > DRAG_THRESHOLD;
 }
 
+/** 手指/笔点按天然会抖几个像素；按 CSS 像素算位移，超过这个才算拖动，否则仍是点击。 */
+export const TOUCH_SLOP_PX = 10;
+
+/** 同一次手势里，第二次点按离第一次多近（比例坐标）才合成双击。 */
+export const DOUBLE_TAP_RADIUS = 0.03;
+
+/**
+ * 指针手势的拖动判定。鼠标沿用比例阈值；触摸/笔用像素阈值（`rect` 是画面真正占的那块）。
+ */
+export function isPointerDrag(
+  pointerType: string,
+  from: NormalizedPoint,
+  to: NormalizedPoint,
+  rect: RectLike,
+): boolean {
+  if (pointerType !== "touch" && pointerType !== "pen") return isDrag(from, to);
+  return Math.hypot((to.x - from.x) * rect.width, (to.y - from.y) * rect.height) > TOUCH_SLOP_PX;
+}
+
+export function isNearby(a: NormalizedPoint, b: NormalizedPoint): boolean {
+  return Math.hypot(a.x - b.x, a.y - b.y) <= DOUBLE_TAP_RADIUS;
+}
+
 export interface KeyEventLike {
   key: string;
   ctrlKey: boolean;
@@ -107,6 +130,8 @@ const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "C
  */
 export function keyEventToAction(event: KeyEventLike): RemoteDesktopAction | null {
   if (event.isComposing || event.key === "Process" || event.key === "Dead") return null;
+  // 手机软键盘常给 `Unidentified`（或空 key）：它不是一个键，字符要从 input 事件取。
+  if (!event.key || event.key === "Unidentified") return null;
   if (MODIFIER_KEYS.has(event.key)) return null;
   const chord = event.ctrlKey || event.metaKey || event.altKey;
   if (!chord && [...event.key].length === 1) {
@@ -120,6 +145,47 @@ export function keyEventToAction(event: KeyEventLike): RemoteDesktopAction | nul
   const key = event.key === " " ? "Space" : event.key;
   if (!key) return null;
   return modifiers.length > 0 ? { kind: "keypress", key, modifiers } : { kind: "keypress", key };
+}
+
+export type SoftInputKind = "text" | "enter" | "backspace" | "delete" | "ignore";
+
+/**
+ * 软键盘 / 浏览器的 `beforeinput`·`input` 事件的 inputType → 该怎么处理。
+ * - 组字中、以及任何 `insertCompositionText`：一律 ignore，上屏文字只走 `compositionend`
+ *   （Safari 会在 compositionend 之后再补一个 insertCompositionText 的 input，不能二次发送）。
+ * - 粘贴走 paste 事件，不在这里发。
+ * - 缺 inputType（旧浏览器）按普通文字。
+ */
+export function classifyInput(inputType: string | undefined | null, composing: boolean): SoftInputKind {
+  if (composing) return "ignore";
+  switch (inputType || "insertText") {
+    case "insertText":
+    case "insertReplacementText":
+      return "text";
+    case "insertLineBreak":
+    case "insertParagraph":
+      return "enter";
+    case "deleteContentBackward":
+      return "backspace";
+    case "deleteContentForward":
+      return "delete";
+    default:
+      return "ignore";
+  }
+}
+
+/** 换行 / 删除这几类 inputType 对应的按键动作；文字类返回 null。 */
+export function softInputKeyAction(kind: SoftInputKind): RemoteDesktopAction | null {
+  switch (kind) {
+    case "enter":
+      return { kind: "keypress", key: "Enter" };
+    case "backspace":
+      return { kind: "keypress", key: "Backspace" };
+    case "delete":
+      return { kind: "keypress", key: "Delete" };
+    default:
+      return null;
+  }
 }
 
 /** 文字按码点切块，不把代理对劈开。 */

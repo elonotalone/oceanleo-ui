@@ -155,3 +155,42 @@ test("sanitizeRemoteText 产出网关可接受的文字（只含可打印字符�
   assert.equal(input.sanitizeRemoteText("\ttab\nline"), "\ttab\nline");
   assert.equal(input.sanitizeRemoteText("你好，world 😀"), "你好，world 😀");
 });
+
+test("Unidentified / 空 key 不是一个键：不产生 keypress", () => {
+  const base = { ctrlKey: false, metaKey: false, altKey: false, shiftKey: false };
+  assert.equal(input.keyEventToAction({ ...base, key: "Unidentified" }), null);
+  assert.equal(input.keyEventToAction({ ...base, key: "" }), null);
+  assert.deepEqual(input.keyEventToAction({ ...base, key: "Enter" }), { kind: "keypress", key: "Enter" });
+});
+
+test("classifyInput：文字 / 换行 / 删除各归各类，组字与 insertCompositionText 一律忽略", () => {
+  assert.equal(input.classifyInput("insertText", false), "text");
+  assert.equal(input.classifyInput("insertReplacementText", false), "text");
+  assert.equal(input.classifyInput(undefined, false), "text");
+  assert.equal(input.classifyInput("insertLineBreak", false), "enter");
+  assert.equal(input.classifyInput("insertParagraph", false), "enter");
+  assert.equal(input.classifyInput("deleteContentBackward", false), "backspace");
+  assert.equal(input.classifyInput("deleteContentForward", false), "delete");
+  assert.equal(input.classifyInput("insertCompositionText", false), "ignore");
+  assert.equal(input.classifyInput("insertText", true), "ignore");
+  assert.equal(input.classifyInput("insertFromPaste", false), "ignore");
+  assert.equal(input.classifyInput("historyUndo", false), "ignore");
+  assert.deepEqual(input.softInputKeyAction("enter"), { kind: "keypress", key: "Enter" });
+  assert.deepEqual(input.softInputKeyAction("backspace"), { kind: "keypress", key: "Backspace" });
+  assert.deepEqual(input.softInputKeyAction("delete"), { kind: "keypress", key: "Delete" });
+  assert.equal(input.softInputKeyAction("text"), null);
+  assert.equal(input.softInputKeyAction("ignore"), null);
+});
+
+test("isPointerDrag：鼠标沿用比例阈值，触摸 / 笔按 10px 位移；isNearby 判双击距离", () => {
+  const rect = { left: 0, top: 0, width: 400, height: 200 };
+  const a = { x: 0.5, y: 0.5 };
+  const nudge = { x: 0.5 + 5 / 400, y: 0.5 }; // 5px
+  const far = { x: 0.5 + 20 / 400, y: 0.5 }; // 20px
+  assert.equal(input.isPointerDrag("mouse", a, nudge, rect), true);
+  assert.equal(input.isPointerDrag("touch", a, nudge, rect), false);
+  assert.equal(input.isPointerDrag("pen", a, nudge, rect), false);
+  assert.equal(input.isPointerDrag("touch", a, far, rect), true);
+  assert.equal(input.isNearby(a, { x: 0.51, y: 0.5 }), true);
+  assert.equal(input.isNearby(a, { x: 0.6, y: 0.5 }), false);
+});

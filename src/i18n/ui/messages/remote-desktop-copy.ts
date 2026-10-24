@@ -50,6 +50,7 @@ const SOURCE = {
   k39: "进入桌面",
   k40: "远程桌面",
   k41: "查看这台电脑的屏幕，并用鼠标键盘操控。",
+  k42: "键盘",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -97,6 +98,7 @@ const EN: Messages = {
   k39: "Enter desktop",
   k40: "Remote desktop",
   k41: "See this computer's screen and control it with your mouse and keyboard.",
+  k42: "Keyboard",
 };
 
 const ZH_TW: Messages = {
@@ -142,6 +144,7 @@ const ZH_TW: Messages = {
   k39: "進入桌面",
   k40: "遠端桌面",
   k41: "查看這台電腦的螢幕，並用滑鼠鍵盤操控。",
+  k42: "鍵盤",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(

@@ -8,6 +8,7 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   remoteDesktopClient,
@@ -20,14 +21,18 @@ import {
   REMOTE_BACKPRESSURE_CODES,
   REMOTE_FATAL_CODES,
   chunkText,
+  classifyInput,
   clampPaste,
   containedRect,
   insideRect,
   isDrag,
+  isNearby,
+  isPointerDrag,
   keyEventToAction,
   mouseButton,
   remoteDesktopErrorCopy,
   sanitizeRemoteText,
+  softInputKeyAction,
   toNormalized,
   type NormalizedPoint,
 } from "./remote-desktop-input";
@@ -133,7 +138,14 @@ export function RemoteDesktopPanel({
     null,
   );
   const pendingClickRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPointRef = useRef<NormalizedPoint | null>(null);
   const lastMoveRef = useRef(0);
+  // 指针手势：同一时刻只认一个指针；第二个指针（多指）一出现就作废整次手势，且不发任何动作。
+  const gestureRef = useRef<{ pointerId: number; pointerType: string; hadFocus: boolean } | null>(
+    null,
+  );
+  const activePointersRef = useRef<Set<number>>(new Set());
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   const finish = useCallback((nextPhase: "closed" | "error", text: string) => {
     queueRef.current = [];
@@ -360,6 +372,10 @@ export function RemoteDesktopPanel({
 
   // 输入法：用原生 composition 事件（React 的合成层对组字有自己的回退逻辑，不可靠）。
   // 组字中的按键一概不发；compositionend 把整段上屏的文字发一次。
+  // 手机软键盘 / 浏览器 insertText 常常没有可用的 keydown（key 为 Unidentified、keyCode 229），
+  // 文字只出现在 input 事件里：非组字的 input 取出文字发一次并清空输入口；换行与删除在
+  // beforeinput 里转成与硬件键盘一致的 keypress。桌面按键在 keydown 已 preventDefault，
+  // 不会再产生 input/beforeinput，所以不会双发。
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
@@ -372,13 +388,38 @@ export function RemoteDesktopPanel({
       if (closedRef.current) return;
       sendTextRef.current(event.data ?? "");
     };
+    const onBeforeInput = (event: Event) => {
+      const native = event as InputEvent;
+      const kind = classifyInput(native.inputType, composingRef.current || Boolean(native.isComposing));
+      const action = softInputKeyAction(kind);
+      if (!action) return;
+      // 取消默认行为：输入口始终保持为空，也就不会有随后的 input 再来一份。
+      if (native.cancelable) native.preventDefault();
+      if (closedRef.current) return;
+      enqueue(action);
+    };
+    const onInput = (event: Event) => {
+      const native = event as InputEvent;
+      // 组字中不能碰输入口的内容，否则输入法的半成品会被打断。
+      if (composingRef.current || native.isComposing) return;
+      const kind = classifyInput(native.inputType, false);
+      const typed =
+        typeof native.data === "string" && native.data !== "" ? native.data : input.value;
+      input.value = "";
+      if (kind !== "text" || closedRef.current) return;
+      sendTextRef.current(typed);
+    };
     input.addEventListener("compositionstart", onStart);
     input.addEventListener("compositionend", onEnd);
+    input.addEventListener("beforeinput", onBeforeInput);
+    input.addEventListener("input", onInput);
     return () => {
       input.removeEventListener("compositionstart", onStart);
       input.removeEventListener("compositionend", onEnd);
+      input.removeEventListener("beforeinput", onBeforeInput);
+      input.removeEventListener("input", onInput);
     };
-  }, []);
+  }, [enqueue]);
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement === rootRef.current);
@@ -390,11 +431,58 @@ export function RemoteDesktopPanel({
    * 手势只认「画面真正占的那块」：`object-contain` 的留白不是电脑屏幕。
    * `strict` 时在画面外返回 null（不点击）；拖动抬起时不 strict，夹到画面边缘。
    */
-  function pointFromEvent(event: ReactMouseEvent, strict: boolean): NormalizedPoint | null {
+  function pointFromEvent(
+    event: { clientX: number; clientY: number },
+    strict: boolean,
+  ): NormalizedPoint | null {
     const rect = contentRect();
     if (!rect) return null;
     if (strict && !insideRect(event.clientX, event.clientY, rect)) return null;
     return toNormalized(event.clientX, event.clientY, rect);
+  }
+
+  /** 一次完整手势的结果：拖动 / 非左键点击 / 单击（等双击窗口）/ 双击。 */
+  function finishGesture(
+    down: { point: NormalizedPoint; button: "left" | "right" | "middle" },
+    point: NormalizedPoint,
+    drag: boolean,
+    second: boolean,
+  ) {
+    if (drag) {
+      enqueue({
+        kind: "drag",
+        x: down.point.x,
+        y: down.point.y,
+        toX: point.x,
+        toY: point.y,
+        button: down.button,
+      });
+      return;
+    }
+    if (down.button !== "left") {
+      enqueue({ kind: "click", x: point.x, y: point.y, button: down.button });
+      return;
+    }
+    // 左键单击要等一个双击窗口：窗口内第二下到来就合成一个 double_click，
+    // 否则对方会收到 click + double_click 共三下。
+    if (second && pendingClickRef.current) {
+      clearTimeout(pendingClickRef.current);
+      pendingClickRef.current = null;
+      enqueue({ kind: "double_click", x: point.x, y: point.y, button: "left" });
+      return;
+    }
+    if (pendingClickRef.current) {
+      // 前一下还在等双击窗口，但这一下不是它的第二下（离得远）：前一下照常作为单击送出，不能丢。
+      clearTimeout(pendingClickRef.current);
+      pendingClickRef.current = null;
+      const earlier = pendingPointRef.current;
+      if (earlier) enqueue({ kind: "click", x: earlier.x, y: earlier.y, button: "left" });
+    }
+    pendingPointRef.current = point;
+    pendingClickRef.current = setTimeout(() => {
+      pendingClickRef.current = null;
+      enqueue({ kind: "click", x: point.x, y: point.y, button: "left" });
+    }, doubleClickWindowMs);
   }
 
   function handleMouseDown(event: ReactMouseEvent) {
@@ -415,37 +503,10 @@ export function RemoteDesktopPanel({
     const point = pointFromEvent(event, false);
     if (!down || !point) return;
     event.preventDefault();
-    if (isDrag(down.point, point)) {
-      enqueue({
-        kind: "drag",
-        x: down.point.x,
-        y: down.point.y,
-        toX: point.x,
-        toY: point.y,
-        button: down.button,
-      });
-      return;
-    }
-    if (down.button !== "left") {
-      enqueue({ kind: "click", x: point.x, y: point.y, button: down.button });
-      return;
-    }
-    // 左键单击要等一个双击窗口：窗口内第二下到来就合成一个 double_click，
-    // 否则对方会收到 click + double_click 共三下。
-    if (event.detail >= 2 && pendingClickRef.current) {
-      clearTimeout(pendingClickRef.current);
-      pendingClickRef.current = null;
-      enqueue({ kind: "double_click", x: point.x, y: point.y, button: "left" });
-      return;
-    }
-    if (pendingClickRef.current) clearTimeout(pendingClickRef.current);
-    pendingClickRef.current = setTimeout(() => {
-      pendingClickRef.current = null;
-      enqueue({ kind: "click", x: point.x, y: point.y, button: "left" });
-    }, doubleClickWindowMs);
+    finishGesture(down, point, isDrag(down.point, point), event.detail >= 2);
   }
 
-  function handleMouseMove(event: ReactMouseEvent) {
+  function handleMouseMove(event: { clientX: number; clientY: number }) {
     if (closedRef.current || downRef.current) return; // 拖动期间只在抬起时送一条 drag
     const now = Date.now();
     if (now - lastMoveRef.current < MOVE_THROTTLE_MS) return;
@@ -453,6 +514,101 @@ export function RemoteDesktopPanel({
     if (!point) return;
     lastMoveRef.current = now;
     enqueue({ kind: "move", x: point.x, y: point.y });
+  }
+
+  // ---- Pointer Events（有 PointerEvent 的浏览器走这条；没有的才退回上面的鼠标事件）。
+  // 两套处理函数**从不同时挂**：指针事件之后浏览器还会补发兼容鼠标事件，同时吃会一次点击变两次。
+  // 兼容鼠标事件只挂一个 preventDefault（不让点按把输入口的焦点抢走、也不选中文字），不发任何动作。
+  function endPointer(pointerId: number) {
+    const active = activePointersRef.current;
+    active.delete(pointerId);
+    if (gestureRef.current?.pointerId === pointerId) {
+      gestureRef.current = null;
+      downRef.current = null;
+    }
+  }
+
+  function handlePointerDown(event: ReactPointerEvent) {
+    if (closedRef.current) return;
+    const active = activePointersRef.current;
+    // 鼠标永远只有一个：万一漏过一次 up，不能让它把之后所有手势都当成「多指」。
+    if (event.pointerType === "mouse") active.clear();
+    active.add(event.pointerId);
+    // 先捕获再判断落点：手指在留白上按下、滑出画面再抬起，up/cancel 也必须送回这里收尾。
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // 没有捕获也能工作，只是手指滑出画面后抬起事件可能到不了这里（会走 cancel，不发动作）。
+    }
+    if (active.size > 1 || !event.isPrimary) {
+      // 多指：作废已开始的手势，且这一次不会再产生任何动作。
+      gestureRef.current = null;
+      downRef.current = null;
+      return;
+    }
+    const input = inputRef.current;
+    const hadFocus = Boolean(input) && document.activeElement === input;
+    // 触摸点按不自动弹软键盘（会盖住画面），键盘由「键盘」按钮唤起；鼠标/笔保持原来的点击即聚焦。
+    if (event.pointerType !== "touch") input?.focus();
+    const button = mouseButton(event.button);
+    const point = pointFromEvent(event, true);
+    if (!button || !point) return;
+    event.preventDefault();
+    downRef.current = { point, button };
+    gestureRef.current = { pointerId: event.pointerId, pointerType: event.pointerType, hadFocus };
+  }
+
+  function handlePointerUp(event: ReactPointerEvent) {
+    const gesture = gestureRef.current;
+    const down = downRef.current;
+    endPointer(event.pointerId);
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // 已经释放
+    }
+    // 软键盘开着时点按画面不应该把它收起来。
+    if (gesture.hadFocus && document.activeElement !== inputRef.current) {
+      inputRef.current?.focus({ preventScroll: true });
+    }
+    if (closedRef.current || !down) return;
+    const rect = contentRect();
+    const point = pointFromEvent(event, false);
+    if (!rect || !point) return;
+    event.preventDefault();
+    const drag = isPointerDrag(gesture.pointerType, down.point, point, rect);
+    const second =
+      pendingClickRef.current !== null &&
+      pendingPointRef.current !== null &&
+      isNearby(pendingPointRef.current, point);
+    finishGesture(down, point, drag, second);
+  }
+
+  // pointercancel（浏览器接管了手势，如滚动）与 lostpointercapture（元素被移除等）：丢弃，不合成点击。
+  function handlePointerCancel(event: ReactPointerEvent) {
+    endPointer(event.pointerId);
+  }
+
+  function handleLostPointerCapture(event: ReactPointerEvent) {
+    endPointer(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent) {
+    if (event.pointerType === "touch") return; // 触摸没有悬停；拖动在抬起时送一条 drag
+    handleMouseMove(event);
+  }
+
+  function keepInputFocus(event: ReactMouseEvent) {
+    event.preventDefault();
+  }
+
+  function toggleKeyboard() {
+    const input = inputRef.current;
+    if (!input) return;
+    // 必须在这次点击（用户手势）里同步 focus，移动浏览器才会弹出键盘。
+    if (document.activeElement === input) input.blur();
+    else input.focus();
   }
 
   function handleKeyDown(event: KeyboardEvent) {
@@ -518,6 +674,21 @@ export function RemoteDesktopPanel({
   }
 
   const live = phase === "starting" || phase === "active" || phase === "connecting";
+  const pointerMode = typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
+  const stagePointerProps = pointerMode
+    ? {
+        onPointerDown: handlePointerDown,
+        onPointerUp: handlePointerUp,
+        onPointerMove: handlePointerMove,
+        onPointerCancel: handlePointerCancel,
+        onLostPointerCapture: handleLostPointerCapture,
+        onMouseDown: keepInputFocus,
+      }
+    : {
+        onMouseDown: handleMouseDown,
+        onMouseUp: handleMouseUp,
+        onMouseMove: handleMouseMove,
+      };
   const badge =
     phase === "active"
       ? { text: tt("已连接"), cls: "bg-emerald-50 text-emerald-700" }
@@ -558,6 +729,18 @@ export function RemoteDesktopPanel({
         </button>
         <button
           type="button"
+          disabled={!live}
+          aria-pressed={keyboardOpen}
+          data-remote-keyboard-toggle
+          // 按下时不让按钮抢走输入口的焦点，否则点击发生时输入口已经失焦，永远只能「打开」不能「收起」。
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={toggleKeyboard}
+          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 aria-pressed:bg-neutral-100"
+        >
+          {tt("键盘")}
+        </button>
+        <button
+          type="button"
           onClick={toggleFullscreen}
           className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
         >
@@ -577,12 +760,11 @@ export function RemoteDesktopPanel({
         role="application"
         aria-label={tt("远程桌面画面，点击后可用键盘")}
         data-remote-stage
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseMove={handleMouseMove}
+        {...stagePointerProps}
         onContextMenu={(event) => event.preventDefault()}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
+        style={{ touchAction: "none" }}
         className="relative flex min-h-48 items-center justify-center overflow-hidden rounded-xl bg-neutral-900 outline-none focus-within:ring-2 focus-within:ring-neutral-400"
       >
         {/* 键盘与输入法的落点：画面本身不是可编辑元素，IME 必须有一个真输入口才能组字。 */}
@@ -591,13 +773,16 @@ export function RemoteDesktopPanel({
           data-remote-input
           aria-label={tt("远程桌面键盘输入")}
           disabled={!live}
+          onFocus={() => setKeyboardOpen(true)}
+          onBlur={() => setKeyboardOpen(false)}
           autoComplete="off"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
           rows={1}
           onDrop={(event) => event.preventDefault()}
-          className="pointer-events-none absolute bottom-2 left-2 h-5 w-5 resize-none opacity-0"
+          // 字号 ≥16px：iOS Safari 聚焦更小字号的输入口会自动放大页面。
+          className="pointer-events-none absolute bottom-2 left-2 h-5 w-5 resize-none text-[16px] opacity-0"
         />
         {frame && (
           // eslint-disable-next-line @next/next/no-img-element
