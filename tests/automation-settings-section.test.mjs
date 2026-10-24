@@ -154,10 +154,11 @@ test("hosted-sites 列表与下线：DELETE 路径编码 id", async () => {
   });
 });
 
-test("SETTINGS_BUILTIN_TABS 含 automation，紧跟 plugins；resolveSettingsTab 原样返回", () => {
-  const plugins = SETTINGS_BUILTIN_TABS.indexOf("plugins");
-  assert.ok(plugins >= 0);
-  assert.equal(SETTINGS_BUILTIN_TABS[plugins + 1], "automation");
+test("SETTINGS_BUILTIN_TABS 含 automation，紧跟 connectors；resolveSettingsTab 原样返回", () => {
+  // 2026-10-24 skills-overhaul A-03：plugins 拆成 skills + connectors。
+  const connectors = SETTINGS_BUILTIN_TABS.indexOf("connectors");
+  assert.ok(connectors >= 0);
+  assert.equal(SETTINGS_BUILTIN_TABS[connectors + 1], "automation");
   assert.equal(resolveSettingsTab("automation"), "automation");
 });
 
