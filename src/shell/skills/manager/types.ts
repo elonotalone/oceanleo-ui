@@ -1,5 +1,5 @@
 // Skills overhaul 2026-10-24 — W09B public prop shapes (contract §3.4, fixed).
-import type { FolderLike } from "./logic";
+import type { Folder } from "../kit";
 
 /** Scope of a `SkillsManager`: the user's own skills, or one project's skills. */
 export type SkillsManagerScope =
@@ -16,7 +16,7 @@ export interface OfficialSkillLibraryDialogProps {
   open: boolean;
   onClose: () => void;
   projectId?: string;
-  onAdded?: (folder: FolderLike) => void;
+  onAdded?: (folder: Folder) => void;
 }
 
 export type SkillDetailTarget = { kind: "official"; name: string } | { kind: "folder"; id: string };
@@ -26,7 +26,7 @@ export interface SkillDetailModalProps {
   onClose: () => void;
   skill: SkillDetailTarget;
   projectId?: string;
-  onAdded?: (folder: FolderLike) => void;
+  onAdded?: (folder: Folder) => void;
 }
 
 export interface SkillPickerListProps {

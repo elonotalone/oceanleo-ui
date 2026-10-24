@@ -2,7 +2,7 @@
 export { SkillsManager } from "./SkillsManager";
 export { OfficialSkillLibraryDialog } from "./OfficialSkillLibraryDialog";
 export { SkillDetailModal } from "./SkillDetailModal";
-export { SkillPickerList, useAvailableSkills } from "./SkillPickerList";
+export { SkillPickerList, useAvailableSkills, type SkillPickerListExtraProps } from "./SkillPickerList";
 export type {
   OfficialSkillLibraryDialogProps,
   SkillDetailModalProps,
