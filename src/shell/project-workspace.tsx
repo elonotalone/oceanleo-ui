@@ -2,6 +2,7 @@
 
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -542,8 +543,18 @@ export interface ProjectConfigCardProps {
   children?: ReactNode;
   addAction?: ProjectConfigCardAction;
   openAction?: ProjectConfigCardAction;
+  /**
+   * When set, the whole card opens (click, Enter or Space) and the corner +
+   * button opens it too. Other controls inside the card (chip remove buttons,
+   * links, inputs) keep their own behaviour and do not open the card.
+   */
+  onOpen?: () => void;
   className?: string;
 }
+
+/** Controls inside a clickable card that must not open the card. */
+const PROJECT_CONFIG_CARD_INNER_CONTROL =
+  'a[href], button, input, select, textarea, label, summary, [role="button"], [role="switch"], [role="checkbox"], [role="menuitem"], [role="link"], [data-project-config-card-stop]';
 
 export function ProjectConfigCard({
   title,
@@ -552,15 +563,42 @@ export function ProjectConfigCard({
   children,
   addAction,
   openAction,
+  onOpen,
   className,
 }: ProjectConfigCardProps) {
   const titleId = useId();
+  const openable = typeof onOpen === "function";
+  const openFromCard = (event: ReactMouseEvent<HTMLElement>) => {
+    if (!onOpen || event.defaultPrevented) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const control = target?.closest(PROJECT_CONFIG_CARD_INNER_CONTROL);
+    if (control && control !== event.currentTarget) return;
+    onOpen();
+  };
+  const openFromKeyboard = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (!onOpen || event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onOpen();
+  };
+  const onAddClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (onOpen) onOpen();
+    else addAction?.onClick();
+  };
   return (
     <section
       aria-labelledby={titleId}
       data-project-config-card
+      data-project-config-card-openable={openable ? "true" : undefined}
+      role={openable ? "button" : undefined}
+      tabIndex={openable ? 0 : undefined}
+      onClick={openable ? openFromCard : undefined}
+      onKeyDown={openable ? openFromKeyboard : undefined}
       className={classNames(
-        "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-4 shadow-sm",
+        "rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-4 shadow-sm",
+        openable &&
+          "cursor-pointer text-left transition-shadow duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:shadow-md focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]",
         className,
       )}
     >
@@ -595,7 +633,7 @@ export function ProjectConfigCard({
             disabled={addAction.disabled}
             data-project-config-action="add"
             className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-sm font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={addAction.onClick}
+            onClick={onAddClick}
           >
             {addAction.label}
           </button>
@@ -609,7 +647,10 @@ export function ProjectConfigCard({
           disabled={openAction.disabled}
           data-project-config-action="open"
           className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[var(--accent,#4f46e5)] px-3 py-2 text-sm font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={openAction.onClick}
+          onClick={(event) => {
+            event.stopPropagation();
+            openAction.onClick();
+          }}
         >
           {openAction.label}
         </button>
