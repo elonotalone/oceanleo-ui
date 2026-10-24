@@ -107,7 +107,7 @@ function ManagerDialogPanel({ onClose, title, description, children, footer, siz
         data-manager-dialog=""
         data-leo-overlay-state={state}
         onKeyDown={onKeyDown}
-        className={`leo-overlay-panel relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-[20px] bg-white text-neutral-900 shadow-2xl outline-none sm:rounded-[20px] dark:bg-neutral-900 dark:text-neutral-100 ${
+        className={`leo-overlay-panel relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-t-[20px] bg-white text-neutral-900 shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-sky-500 sm:rounded-[20px] dark:bg-neutral-900 dark:text-neutral-100 ${
           size === "sm" ? "sm:max-w-[420px]" : "sm:max-w-[600px]"
         }`}
       >
@@ -116,7 +116,7 @@ function ManagerDialogPanel({ onClose, title, description, children, footer, siz
           data-manager-dialog-close=""
           aria-label={tt("关闭")}
           onClick={requestClose}
-          className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+          className="absolute right-2.5 top-2.5 inline-flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
         >
           <KitIconClose className="h-4 w-4" />
         </button>

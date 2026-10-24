@@ -153,13 +153,17 @@ export function OfficialSkillLibraryDialog({ open, onClose, projectId, onAdded }
                     aria-selected={selected}
                     data-category-tab={t.id}
                     onClick={() => setTab(t.id)}
-                    className={`h-8 shrink-0 rounded-full px-3.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 ${
-                      selected
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                        : "border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
-                    }`}
+                    className="group/tab inline-flex min-h-11 shrink-0 items-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500"
                   >
-                    {t.translate ? tt(t.label) : t.label}
+                    <span
+                      className={`inline-flex h-8 items-center rounded-full px-3.5 text-[13px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                        selected
+                          ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                          : "border border-neutral-200 bg-white text-neutral-700 group-hover/tab:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:group-hover/tab:bg-neutral-800"
+                      }`}
+                    >
+                      {t.translate ? tt(t.label) : t.label}
+                    </span>
                   </button>
                 );
               })}
@@ -197,7 +201,7 @@ export function OfficialSkillLibraryDialog({ open, onClose, projectId, onAdded }
               <button
                 type="button"
                 onClick={() => setTick((v) => v + 1)}
-                className="inline-flex h-10 items-center rounded-xl border border-neutral-200 bg-white px-4 text-[14px] font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900"
+                className="inline-flex h-11 items-center rounded-xl border border-neutral-200 bg-white px-4 text-[14px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:border-neutral-700 dark:bg-neutral-900"
               >
                 {tt("重试")}
               </button>

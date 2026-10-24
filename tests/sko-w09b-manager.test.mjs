@@ -921,7 +921,12 @@ test("source gate: contract §3.4 names are exported from skills/manager/index",
   for (const type of ["SkillsManagerProps", "OfficialSkillLibraryDialogProps", "SkillDetailModalProps", "SkillPickerListProps"]) {
     assert.match(index, new RegExp(`\\b${type}\\b`), type);
   }
-  assert.match(read("src/shell/index.ts"), /export \* from "\.\/skills\/manager"/);
+  // Parent wiring (11a701b7): shell/index.ts → `export * from "./skills"` → skills/index.ts → `export * from "./manager"`.
+  const shellIndex = read("src/shell/index.ts");
+  if (!/export \* from "\.\/skills\/manager"/.test(shellIndex)) {
+    assert.match(shellIndex, /export \* from "\.\/skills"/);
+    assert.match(read("src/shell/skills/index.ts"), /export \* from "\.\/manager"/);
+  }
 });
 
 test("i18n: every tt() string in manager has all 16 non-Chinese translations", async () => {

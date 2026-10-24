@@ -65,7 +65,7 @@ type Loaded =
   | { status: "ready"; official: OfficialSkill | null; folder: Folder | null; tree: TreeEntry[] };
 
 const HEADER_ICON_CLASS =
-  "inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100";
+  "inline-flex h-11 w-11 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/70 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100";
 
 export async function copyText(text: string): Promise<boolean> {
   try {
@@ -192,7 +192,7 @@ export function SkillDetailModal({ open, onClose, skill, projectId, onAdded }: S
   };
 
   const headerActions = (
-    <div className="absolute right-[60px] top-4 z-[1] flex items-center gap-1 sm:right-[72px] sm:top-6" data-skill-detail-actions="">
+    <div className="absolute right-[56px] top-3 z-[1] flex items-center sm:right-[68px] sm:top-5" data-skill-detail-actions="">
       {shareName ? (
         <button type="button" aria-label={tt("分享")} title={tt("复制公开页链接")} onClick={() => void onShare()} className={HEADER_ICON_CLASS}>
           <KitIconShare className="h-5 w-5" />
@@ -210,7 +210,7 @@ export function SkillDetailModal({ open, onClose, skill, projectId, onAdded }: S
         type="button"
         onClick={() => setView("overview")}
         data-skill-detail-back=""
-        className="-ml-1.5 inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[20px] font-semibold transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
+        className="-ml-1.5 inline-flex min-h-11 items-center gap-1 rounded-lg px-1.5 py-0.5 text-[20px] font-semibold transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
       >
         <KitIconChevronLeft className="h-5 w-5" />
         {tt("技能详情")}

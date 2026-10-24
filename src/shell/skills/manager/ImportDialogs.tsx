@@ -10,6 +10,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import {
   CONFIG_PRIMARY_BUTTON_CLASS,
   CONFIG_TOOLBAR_BUTTON_CLASS,
+  KitIconCheck,
   KitIconSearch,
   type Folder,
 } from "../kit";
@@ -364,7 +365,7 @@ export function ImportFromMineDialog({
             return (
               <li key={folder.id}>
                 <label
-                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+                  className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
                     already
                       ? "cursor-not-allowed border-neutral-100 bg-neutral-50 opacity-60 dark:border-neutral-800 dark:bg-neutral-900"
                       : checked
@@ -372,13 +373,25 @@ export function ImportFromMineDialog({
                         : "border-neutral-200 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/60"
                   }`}
                 >
+                  {/* Native checkbox stays in the a11y tree but is visually hidden; the whole
+                      label row (min-h-11) is the hit target, the box below is drawing only. */}
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 shrink-0 accent-neutral-900"
+                    className="peer sr-only"
                     checked={checked}
                     disabled={already}
                     onChange={() => toggle(folder.id)}
                   />
+                  <span
+                    aria-hidden="true"
+                    className={`mt-0.5 flex shrink-0 items-center justify-center rounded-[5px] border [height:18px] [width:18px] transition-colors duration-[var(--leo-dur-1)] ease-[var(--leo-ease-standard)] peer-focus-visible:ring-2 peer-focus-visible:ring-sky-500 peer-focus-visible:ring-offset-1 ${
+                      checked
+                        ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
+                        : "border-neutral-300 bg-white dark:border-neutral-600 dark:bg-neutral-900"
+                    }`}
+                  >
+                    {checked ? <KitIconCheck className="h-3 w-3" /> : null}
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className="truncate text-[14px] font-medium">{folderDisplayTitle(folder, locale)}</span>
@@ -532,7 +545,7 @@ export function DeleteFolderDialog({
               onConfirm();
               onClose();
             }}
-            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 text-[14px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-rose-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
           >
             {tt("删除")}
           </button>

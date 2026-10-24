@@ -588,7 +588,7 @@ function SkillFolderCard({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={() => setMenuOpen((value) => !value)}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+        className="-m-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
       >
         <KitIconMore className="h-4 w-4" />
       </button>
