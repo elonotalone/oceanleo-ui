@@ -4,8 +4,11 @@ import test from "node:test";
 import {
   LOCAL_SAVE_MAX_PIXELS,
   LocalSavePixelError,
+  LOCAL_IMPORT_MAX_BYTES,
+  LOCAL_SAVE_PIXEL_BUDGET,
   collectPixelSources,
   embedPixelSources,
+  readLocalImageDataUrl,
 } from "../src/shell/image-editor/local-save-pixels.ts";
 import { createLocalSaveRunner } from "../src/shell/image-editor/local-save.ts";
 
@@ -167,4 +170,34 @@ test("closing the editor during capture fails the save and sends nothing", async
   assert.equal(result.ok, false);
   assert.equal(state.saved.length, 0);
   assert.equal(state.dirty, true);
+});
+test("local insert: unsupported type, empty file and oversize are refused before anything is read", async () => {
+  let read = false;
+  const blob = (type, size) => ({ type, size, arrayBuffer: () => { read = true; return Promise.resolve(new ArrayBuffer(0)); } });
+  for (const [file, message] of [
+    [blob("image/svg+xml", 10), /只支持 PNG/],
+    [blob("image/vnd.adobe.photoshop", 10), /只支持 PNG/],
+    [blob("", 10), /只支持 PNG/],
+    [blob("image/png", 0), /空的/],
+    [blob("image/png", LOCAL_IMPORT_MAX_BYTES + 1), /太大/],
+  ]) {
+    await assert.rejects(readLocalImageDataUrl(file), (error) => error instanceof LocalSavePixelError && message.test(error.message));
+  }
+  assert.equal(read, false, "nothing was read for a refused file");
+  assert.ok(Math.ceil((LOCAL_IMPORT_MAX_BYTES * 4) / 3) <= LOCAL_SAVE_PIXEL_BUDGET + 4, "the largest accepted file still fits the save budget as base64");
+});
+
+test("hook + route: local insert only exists in the native local mode; the website upload path is untouched", async () => {
+  const { readFileSync } = await import("node:fs");
+  const hook = readFileSync(new URL("../src/shell/image-editor/use-fabric-image-editor.ts", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../src/shell/advanced-routes/ImageRoute.tsx", import.meta.url), "utf8");
+  const local = hook.indexOf("if (optionsRef.current.localImport) {");
+  const cloud = hook.indexOf("const fileName = file.name || `${item.title}-图片`;", local);
+  assert.ok(local > 0 && cloud > local, "local branch returns before the cloud upload code");
+  const branch = hook.slice(local, cloud);
+  assert.match(branch, /return;\s*\}\s*$/);
+  assert.doesNotMatch(branch, /uploadFile|persistPngViaUpload|fetchMediaBlob|importMediaUrl/, "no upload and no network read in the local branch");
+  assert.match(hook.slice(cloud, cloud + 1800), /uploadFile\(file/, "cloud upload is still there for the website");
+  assert.match(route, /localImport: Boolean\(onLocalSave\)/);
+  assert.match(route, /\.\.\.\(onLocalSave\s*\?\s*\[[\s\S]*?id: "image-insert"/, "the 图片 entry exists only with onLocalSave");
 });

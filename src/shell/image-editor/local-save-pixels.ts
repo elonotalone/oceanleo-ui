@@ -20,6 +20,14 @@ export const LOCAL_SAVE_PIXEL_BUDGET = 4_500_000;
  */
 export const LOCAL_SAVE_MAX_PIXELS = 8_000_000;
 
+/** Picture types the native local import keeps byte-for-byte (the browser decodes them itself). */
+export const LOCAL_IMPORT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+/**
+ * Largest file taken for a local insert. The picture is stored as its own bytes in a data URL (base64 is
+ * 4/3 of the file), which must fit the same save budget; checked on `file.size` before anything is read.
+ */
+export const LOCAL_IMPORT_MAX_BYTES = Math.floor((LOCAL_SAVE_PIXEL_BUDGET * 3) / 4);
+
 export class LocalSavePixelError extends Error {
   constructor(message: string) {
     super(message);
@@ -49,6 +57,28 @@ export interface PixelSource {
 }
 
 const MISMATCH = "画布图层与待保存内容对不上，没有保存到本机";
+
+/**
+ * Reads a user-chosen local picture as a data URL of its OWN bytes (no re-encoding, no downsampling, no
+ * network). Refuses an unsupported type or an oversized file before reading anything, so no layer is added.
+ */
+export async function readLocalImageDataUrl(
+  file: Pick<File, "size" | "type"> & Blob,
+  options: { maxBytes?: number } = {},
+): Promise<string> {
+  const type = String(file.type || "").toLowerCase();
+  if (!(LOCAL_IMPORT_TYPES as readonly string[]).includes(type)) {
+    throw new LocalSavePixelError("本机插入只支持 PNG、JPEG、WebP、GIF 图片，没有插入");
+  }
+  const limit = options.maxBytes ?? LOCAL_IMPORT_MAX_BYTES;
+  if (!file.size) throw new LocalSavePixelError("这个图片文件是空的，没有插入");
+  if (file.size > limit) {
+    throw new LocalSavePixelError("图片太大，无法完整保存到本机，没有插入；之前的保存仍然保留");
+  }
+  const url = await blobToDataUrl(file);
+  if (!url.startsWith(`data:${type}`)) throw new LocalSavePixelError("无法读取这个图片文件，没有插入");
+  return url;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

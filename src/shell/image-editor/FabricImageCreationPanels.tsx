@@ -600,3 +600,35 @@ export function FabricImageExportPanel({
     </div>
   );
 }
+/** Native local editor: pick a picture file from this device and put it on the canvas (never uploaded). */
+export function FabricImageInsertPanel({ editor }: { editor: FabricImageEditorState }) {
+  const tt = useUI();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <div>
+      <Panel
+        title={tt("图片")}
+        description={tt("从这台设备选择图片放到画布上；图片随工程保存在本机，不会上传。")}
+      >
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="rounded-xl border border-[var(--border,#e7e5e4)] px-3 py-2 text-[11px] font-semibold"
+        >
+          {tt("插入图片")}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void editor.addImageFromFile(file);
+            event.currentTarget.value = "";
+          }}
+        />
+      </Panel>
+    </div>
+  );
+}

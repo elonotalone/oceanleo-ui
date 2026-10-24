@@ -24,6 +24,7 @@ import {
   FabricImageLinePanel,
   FabricImageNotePanel,
   FabricImageShapePanel,
+  FabricImageInsertPanel,
   FabricImageSignaturePanel,
   FabricImageTablePanel,
   FabricImageTextPanel,
@@ -93,7 +94,11 @@ export function ImageRoute({
     }),
     [collabReadOnly],
   );
-  const editor = useFabricImageEditor(activeItem, siteId, { collab: collabOptions, localProject });
+  const editor = useFabricImageEditor(activeItem, siteId, {
+    collab: collabOptions,
+    localProject,
+    localImport: Boolean(onLocalSave),
+  });
   editorCollabRef.current = editor.collab;
   // 载入完成：补齐旧稿对象的 id，把画布现状交给协同层（它据此种子或对齐）
   useEffect(() => {
@@ -414,6 +419,17 @@ export function ImageRoute({
             hiddenFromRail: true,
             content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageTextPanel editor={editor} /></VisualViewOnlyPanel>,
           },
+          ...(onLocalSave
+            ? [
+                {
+                  id: "image-insert",
+                  label: "图片",
+                  icon: "image" as const,
+                  hiddenFromRail: true,
+                  content: <VisualViewOnlyPanel readOnly={viewOnly}><FabricImageInsertPanel editor={editor} /></VisualViewOnlyPanel>,
+                },
+              ]
+            : []),
           {
             id: "image-signature",
             label: "签名",

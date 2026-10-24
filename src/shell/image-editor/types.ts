@@ -232,6 +232,11 @@ export interface FabricImageEditorOptions {
   onSaved?: (url: string) => void;
   /** Native local editor only: the host's stored project for this exact artifact revision (see ImageRoute). */
   localProject?: unknown;
+  /**
+   * Trusted native local editor only (the route got `onLocalSave`): a chosen picture file is inserted from
+   * its own bytes on this device; nothing is uploaded. Absent = the ordinary cloud upload, unchanged.
+   */
+  localImport?: boolean;
 }
 
 export interface FabricImageSaveResult {

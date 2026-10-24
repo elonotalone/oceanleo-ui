@@ -44,7 +44,11 @@ import {
   persistImageProject,
   saveLocalImageDraft,
 } from "./editor-persistence";
-import { embedPixelSources } from "./local-save-pixels";
+import {
+  LOCAL_SAVE_MAX_PIXELS,
+  embedPixelSources,
+  readLocalImageDataUrl,
+} from "./local-save-pixels";
 import {
   sameImageContent,
   type ImageRecoveryRestoreResult,
@@ -1204,6 +1208,35 @@ export function useFabricImageEditor(
       const controller = controllerRef.current;
       const fabric = fabricRef.current;
       if (!controller || !fabric) return;
+      if (optionsRef.current.localImport) {
+        // Native local editor: the file's own bytes become the layer; no upload, no token, no network.
+        const abort = makeAbort();
+        setError("");
+        setNotice("正在插入图片…");
+        try {
+          const dataUrl = await readLocalImageDataUrl(file);
+          if (abort.signal.aborted || controllerRef.current !== controller) return;
+          const image = await loadImageObject(fabric, dataUrl, abort.signal);
+          if (abort.signal.aborted || controllerRef.current !== controller) {
+            image.dispose();
+            return;
+          }
+          if ((image.width || 0) * (image.height || 0) > LOCAL_SAVE_MAX_PIXELS) {
+            image.dispose();
+            throw new Error("图片像素太多，无法完整保存到本机，没有插入；之前的保存仍然保留");
+          }
+          controller.addImage(image);
+          setNotice("图片已加入画布，保存时随工程存到本机（没有上传）");
+        } catch (caught) {
+          if (!isAbortError(caught)) {
+            setNotice("");
+            setError(caught instanceof Error && caught.message ? caught.message : "图片无法插入");
+          }
+        } finally {
+          finishAbort(abort);
+        }
+        return;
+      }
       const fileName = file.name || `${item.title}-图片`;
       const psdFile = isPsdSource({ name: fileName, mime: file.type });
       if (!psdFile && !file.type.startsWith("image/")) {
