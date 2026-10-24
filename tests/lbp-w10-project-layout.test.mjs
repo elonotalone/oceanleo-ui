@@ -311,7 +311,8 @@ test("白色卡片仍然是卡片：ProjectConfigCard 保留白底、边线和�
   const open = html.match(/<section[^>]*data-project-config-card[^>]*>/)[0];
   assert.match(open, /bg-\[var\(--card,#fff\)\]/);
   assert.match(open, /border/);
-  assert.match(open, /rounded-xl/);
+  // skills-overhaul UI-DESIGN: project config cards are radius 16 (rounded-2xl), W12 182a7db3.
+  assert.match(open, /rounded-2xl/);
 });
 
 test("源码里外框不再出现整行白底：header / footer 不写 --card，也没有 border-b / border-t", () => {
@@ -661,6 +662,8 @@ test("lbp-w10 分表只登记新词：不改写词典里已有的英文", async 
 const PORTAL = resolve(REPO, "..", "oceanleo");
 const PORTAL_FILES = [
   "components/project/ProjectWorkspace.tsx",
+  // skills-overhaul W14: the redone task area (title row, cards, … menu) is on the same page.
+  "components/project/ProjectTasksTab.tsx",
   "components/project/ProjectFeedTab.tsx",
   "components/ProjectConfigEditor.tsx",
   "components/project/ProjectSideActivityCard.tsx",
