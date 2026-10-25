@@ -33,6 +33,7 @@ const lazyStub = dataModule(
 const authStub = dataModule(`
   export async function accessToken(){ return "tok"; }
   export function cachedAccessToken(){ return "tok"; }
+  export async function getUserId(){ return "payer-test-user"; }
 `);
 const gatewayStub = dataModule(`export const GATEWAY_BASE = "https://api.oceanleo.com";`);
 const historyStub = dataModule(`export function notifyHistoryChanged(){}`);
@@ -72,6 +73,8 @@ const START_BODY_BEFORE = {
   team_id: "",
   prompt_override: "",
   attachments: [],
+  execution_target: { kind: "cloud" },
+  computer_id: "",
 };
 
 function installMemoryStorage(seed = {}) {

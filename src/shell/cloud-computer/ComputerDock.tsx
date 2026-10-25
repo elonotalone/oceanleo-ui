@@ -2,263 +2,126 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  cloudComputerApi,
-  type CloudComputerClient,
-  type Computer,
-} from "../../lib/cloud-computer-api";
-import { currentDomainFamily } from "../../contracts/domain-family";
+import { cloudComputerApi, type CloudComputerClient, type Computer, writeMountedComputerId, writeMountedComputerName } from "../../lib/cloud-computer-api";
 import { listDevices, type Device } from "../../api/devices";
+import { getUserId } from "../../lib/auth/client";
+import { portalHref } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
+import { EXECUTION_TARGET_EVENT, readExecutionTarget, writeExecutionTarget, type ExecutionTarget } from "../../lib/execution-target";
 import { AnchoredPopover } from "../anchored-popover";
-import { openSettingsModal } from "../account/SettingsModalHost";
-import { ConnectServerDialog } from "./ConnectServerDialog";
-import { CreateComputerDialog } from "./CreateComputerDialog";
-import {
-  computerDisplayState,
-  isConnectedComputer,
-  isPendingComputer,
-  type ComputerDisplayState,
-} from "./computer-state";
-import { serverPageHref } from "./server-page/href";
-import { useCloudComputers } from "./useCloudComputers";
+import { computerDisplayState, isConnectedComputer } from "./computer-state";
 
-const PLATFORM_LABEL: Record<Device["platform"], string> = {
-  windows: "Windows",
-  macos: "macOS",
-  linux: "Linux",
-  android: "Android",
-  ios: "iOS",
-  harmony: "HarmonyOS",
-};
-
-function statusWord(state: ComputerDisplayState, tt: (zh: string) => string): string {
-  if (state === "ready") return tt("在线");
-  if (state === "offline") return tt("离线");
-  if (state === "stopped") return tt("已停机");
-  if (state === "unpaid") return tt("欠费");
-  return "";
-}
-
-function statusDotClass(state: ComputerDisplayState): string {
-  if (state === "ready") return "bg-emerald-500";
-  if (state === "unpaid") return "bg-rose-500";
-  return "bg-neutral-300";
-}
-
-export function ComputerDock({
-  client = cloudComputerApi,
-  computers: computersProp,
-}: {
-  client?: CloudComputerClient;
-  computers?: Computer[];
+/** Website/native execution picker. Selecting a machine never navigates away. */
+export function ComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange }: {
+  client?: CloudComputerClient; computers?: Computer[]; onTargetChange?: (target: ExecutionTarget) => void;
 }) {
   const tt = useUI();
   const router = useRouter();
-  const { computers, mountedId, setMountedId, refresh, loading } =
-    useCloudComputers({ client, computers: computersProp });
   const [open, setOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [connectOpen, setConnectOpen] = useState(false);
+  const [group, setGroup] = useState<"cloud" | "device">("cloud");
+  const [owner, setOwner] = useState<string | null>(null);
+  const [target, setTarget] = useState<ExecutionTarget>({ kind: "cloud" });
+  const [computers, setComputers] = useState<Computer[]>(supplied || []);
   const [devices, setDevices] = useState<Device[]>([]);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
     let alive = true;
-    void listDevices().then((result) => {
-      if (!alive) return;
-      setDevices(result.ok && result.data ? result.data : []);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [open]);
+    let revision = 0;
+    async function hydrate() {
+      const ticket = ++revision;
+      const id = await getUserId().catch(() => null);
+      if (!alive || ticket !== revision) return;
+      const selected = readExecutionTarget(id);
+      setOwner(id); setTarget(selected); onTargetChange?.(selected);
+      setDevices([]); setComputers(supplied || []); setOpen(false);
+    }
+    function changed(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string; target?: ExecutionTarget }>).detail;
+      if (detail?.userId === owner && detail.target) { setTarget(detail.target); onTargetChange?.(detail.target); }
+    }
+    void hydrate();
+    window.addEventListener("oceanleo:auth-state", hydrate);
+    window.addEventListener(EXECUTION_TARGET_EVENT, changed);
+    return () => { alive = false; window.removeEventListener("oceanleo:auth-state", hydrate); window.removeEventListener(EXECUTION_TARGET_EVENT, changed); };
+  }, [owner, supplied, onTargetChange]);
 
-  const connected = computers.filter(isConnectedComputer);
-  const pending = computers.filter(isPendingComputer);
-  const failed = computers.filter((item) => computerDisplayState(item) === "error");
-  const emptyCloud = connected.length === 0;
-  const failedOnly = emptyCloud && pending.length === 0 && failed.length > 0;
+  useEffect(() => {
+    if (!open || !owner) return;
+    let alive = true;
+    setLoading(true); setError(false);
+    void Promise.all([supplied ? Promise.resolve({ items: supplied }) : client.listComputers(), listDevices()])
+      .then(([cloud, local]) => {
+        if (!alive) return;
+        setComputers(cloud.items || []);
+        setDevices(local.ok && local.data ? local.data.filter((d) => ["windows", "macos", "linux"].includes(d.platform)) : []);
+        setError(!local.ok);
+      }).catch(() => { if (alive) setError(true); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [open, owner, client, supplied]);
 
-  return (
-    <div
-      className="relative"
-      data-oceanleo-cc-dock
-      data-oceanleo-cc-edition={currentDomainFamily()}
-    >
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] text-neutral-600 hover:bg-neutral-100"
-        aria-label={tt("设备")}
-        aria-expanded={open}
-        data-oceanleo-cc-dock-trigger
-        data-oceanleo-cc-dock-empty={emptyCloud && !loading ? "" : undefined}
-        data-oceanleo-cc-dock-waiting={loading ? (mountedId ? "remembered" : "pending") : undefined}
-      >
-        <ComputerGlyph />
-        {tt("设备")}
-      </button>
-      <AnchoredPopover
-        open={open}
-        anchorRef={btnRef}
-        panelRef={panelRef}
-        onClose={() => setOpen(false)}
-        align="start"
-        role="dialog"
-        ariaLabel={tt("设备")}
-        className="z-[80] w-[min(280px,calc(100vw-2rem))] rounded-xl border border-neutral-200 bg-white py-2 shadow-lg"
-      >
-        <div ref={panelRef} className="px-1">
-          <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-            {tt("云服务器")}
-          </p>
-          {loading && <p className="px-2 py-1.5 text-[12px] text-neutral-400">…</p>}
-          {!loading && emptyCloud && (
-            <div className="px-1 pb-1">
-              <button
-                type="button"
-                className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
-                onClick={() => {
-                  setOpen(false);
-                  setCreateOpen(true);
-                }}
-              >
-                {tt("购买云电脑")}
-              </button>
-              <button
-                type="button"
-                className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
-                onClick={() => {
-                  setOpen(false);
-                  setConnectOpen(true);
-                }}
-              >
-                {tt("连接我的服务器")}
-              </button>
-              {pending.length > 0 && (
-                <p className="px-2 py-1 text-[12px] text-neutral-400" data-oceanleo-cc-dock-pending-progress>
-                  {tt("接入进行中 · 查看进度")}
-                </p>
-              )}
-              {failedOnly && (
-                <p className="px-2 py-1 text-[12px] text-neutral-400" data-oceanleo-cc-dock-failed>
-                  {tt("开通失败")}
-                </p>
-              )}
-              {pending.length === 0 && !failedOnly && (
-                <p className="px-2 py-1 text-[12px] text-neutral-400">{tt("还没有云服务器")}</p>
-              )}
-            </div>
-          )}
-          {!loading &&
-            connected.map((item) => {
-              const state = computerDisplayState(item);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  data-oceanleo-cc-dock-mounted={item.id === mountedId ? "" : undefined}
-                  data-oceanleo-cc-switch-item={item.id}
-                  data-oceanleo-cc-status={state}
-                  data-oceanleo-cc-online={state === "ready" ? "1" : "0"}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50 ${
-                    item.id === mountedId ? "font-medium" : ""
-                  }`}
-                  onClick={() => {
-                    setMountedId(item.id);
-                    setOpen(false);
-                    router.push(serverPageHref(item.id));
-                  }}
-                >
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass(state)}`} />
-                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                  {statusWord(state, tt) ? (
-                    <span className="shrink-0 text-neutral-500">{statusWord(state, tt)}</span>
-                  ) : null}
-                </button>
-              );
-            })}
-
-          <p className="mt-2 px-2 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-            {tt("客户端设备")}
-          </p>
-          {devices.length === 0 && (
-            <div className="px-1">
-              <p className="px-2 py-1 text-[12px] text-neutral-400">{tt("还没有客户端设备")}</p>
-              <button
-                type="button"
-                className="block w-full rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
-                onClick={() => {
-                  setOpen(false);
-                  openSettingsModal("devices");
-                }}
-              >
-                {tt("配对客户端")}
-              </button>
-            </div>
-          )}
-          {devices.map((item) => (
-            <button
-              key={item.device_id}
-              type="button"
-              data-oceanleo-device-client={item.device_id}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-neutral-50"
-              onClick={() => {
-                setOpen(false);
-                openSettingsModal("devices");
-              }}
-            >
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.online ? "bg-emerald-500" : "bg-neutral-300"}`}
-              />
-              <span className="min-w-0 flex-1 truncate">{item.device_name || PLATFORM_LABEL[item.platform]}</span>
-              <span className="shrink-0 text-neutral-500">
-                {item.online ? tt("在线") : tt("离线")}
-              </span>
-            </button>
-          ))}
+  function choose(next: ExecutionTarget) {
+    if (!owner) return;
+    writeExecutionTarget(owner, next);
+    writeMountedComputerId(next.kind === "computer" ? next.id : null);
+    writeMountedComputerName(next.kind === "computer" ? next.name : null);
+    onTargetChange?.(next);
+    setTarget(next); setOpen(false);
+  }
+  const row = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
+  const shown = target.kind === "cloud" ? tt("云端") : target.name;
+  return <div className="relative" data-oceanleo-cc-dock data-execution-target={target.kind}>
+    <button ref={anchor} type="button" onClick={() => { setGroup(target.kind === "device" ? "device" : "cloud"); setOpen(!open); }}
+      aria-label={tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
+      className="flex max-w-[220px] items-center gap-2 rounded-lg bg-neutral-100 px-2.5 py-1.5 text-[13px] text-neutral-700 hover:bg-neutral-200">
+      <TargetGlyph cloud={target.kind !== "device"} /><span className="truncate">{shown}</span>
+    </button>
+    <AnchoredPopover open={open} anchorRef={anchor} panelRef={panel} onClose={() => setOpen(false)} align="start" role="dialog" ariaLabel={tt("任务执行位置")}
+      className="z-[80] w-[min(580px,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+      <div ref={panel} className="grid grid-cols-[minmax(130px,0.8fr)_minmax(150px,1fr)]">
+        <div className="border-r border-neutral-100 pr-1.5">
+          <p className="px-3 pb-1 pt-2 text-[12px] font-medium text-neutral-500">{tt("在此设备上运行任务")}</p>
+          <button type="button" className={`${row} ${group === "cloud" ? "bg-neutral-100" : ""}`} onMouseEnter={() => setGroup("cloud")} onFocus={() => setGroup("cloud")} onClick={() => setGroup("cloud")} aria-expanded={group === "cloud"}>
+            <TargetGlyph cloud /><span className="flex-1">{tt("云端")}</span>{target.kind !== "device" && <span aria-label={tt("已选择")}>✓</span>}<span aria-hidden>›</span>
+          </button>
+          <button type="button" className={`${row} ${group === "device" ? "bg-neutral-100" : ""}`} onMouseEnter={() => setGroup("device")} onFocus={() => setGroup("device")} onClick={() => setGroup("device")} aria-expanded={group === "device"}>
+            <TargetGlyph /><span className="flex-1">{tt("本地电脑")}</span>{target.kind === "device" && <span aria-label={tt("已选择")}>✓</span>}<span aria-hidden>›</span>
+          </button>
         </div>
-      </AnchoredPopover>
-      {createOpen && (
-        <CreateComputerDialog
-          client={client}
-          onClose={() => setCreateOpen(false)}
-          onCreated={() => {
-            setCreateOpen(false);
-            void refresh();
-          }}
-        />
-      )}
-      {connectOpen && (
-        <ConnectServerDialog
-          key="new"
-          client={client}
-          onClose={() => setConnectOpen(false)}
-          onCreated={() => {
-            void refresh();
-          }}
-        />
-      )}
-    </div>
-  );
+        <div className="min-w-0 pl-1.5">
+          {!owner ? <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("请先登录")}</p> : <>
+            {group === "cloud" && <>
+              <button type="button" className={row} aria-pressed={target.kind === "cloud"} onClick={() => choose({ kind: "cloud" })}><TargetGlyph cloud /><span className="flex-1">{tt("默认云端")}</span>{target.kind === "cloud" && "✓"}</button>
+              {computers.filter(isConnectedComputer).map((item) => {
+                const ready = computerDisplayState(item) === "ready";
+                return <button key={item.id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={target.kind === "computer" && target.id === item.id} data-oceanleo-cc-switch-item={item.id} onClick={() => choose({ kind: "computer", id: item.id, name: item.name })}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready ? <span className="text-[11px] text-neutral-400">{tt("离线")}</span> : target.kind === "computer" && target.id === item.id ? "✓" : null}
+                </button>;
+              })}
+            </>}
+            {group === "device" && devices.map((item) => {
+              const availability = (item as Device & { availability?: string }).availability;
+              const ready = availability === "online" && item.online;
+              return <button key={item.device_id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={target.kind === "device" && target.id === item.device_id} data-oceanleo-device-client={item.device_id} onClick={() => choose({ kind: "device", id: item.device_id, name: item.device_name })}>
+                <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready ? <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : "未登录")}</span> : target.kind === "device" && target.id === item.device_id ? "✓" : null}
+              </button>;
+            })}
+            {group === "device" && !devices.length && !loading && <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("暂无已连接的电脑")}</p>}
+            {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载中…")}</p>}
+            {error && <p role="status" className="px-3 py-2 text-[12px] text-neutral-500">{tt("设备列表暂不可用")}</p>}
+          </>}
+          <div className="mt-1 border-t border-neutral-100 pt-1"><button type="button" className={row} onClick={() => { setOpen(false); router.push(portalHref("/devices")); }}><span aria-hidden>☷</span>{tt("管理设备")}</button></div>
+        </div>
+      </div>
+    </AnchoredPopover>
+  </div>;
 }
-
-function ComputerGlyph() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      aria-hidden="true"
-    >
-      <rect x="3" y="5" width="18" height="12" rx="2" />
-      <path d="M8 19h8M12 17v2" />
-    </svg>
-  );
+function TargetGlyph({ cloud = false }: { cloud?: boolean }) {
+  return <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {cloud ? <path d="M6 18a4 4 0 0 1-.5-8A6.5 6.5 0 0 1 18 8a5 5 0 0 1 0 10Z" /> : <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></>}
+  </svg>;
 }

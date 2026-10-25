@@ -28,7 +28,8 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { LeoComposer, type ComposerPayer, type ComposerRecentFile } from "./LeoComposer";
+import { LeoComposer, type ComposerPayer, type ComposerRecentFile, type ComposerSubmitContext } from "./LeoComposer";
+import type { ExecutionTarget } from "../lib/execution-target";
 import { HomePromptCards } from "./HomeCards";
 import { HomeAppCards, HOME_APP_FEATURED_LIMIT } from "./HomeAppCards";
 import { type GoalApp } from "./app-catalog";
@@ -71,7 +72,7 @@ export interface HomeIntroProps {
    *     拿到公网 url）。宿主应把它透传给 <AgentChat initialAttachments>，让 agent 拿到
    *     首页就带上来的文件（音频自动转写、其它文件按 url 分析）。老宿主不接这个参数也
    *     不影响文字提交（向后兼容）。 */
-  onStart: (prompt: string, opts?: { agentId?: string; attachments?: AgentAttachment[] }) => void;
+  onStart: (prompt: string, opts?: { agentId?: string; attachments?: AgentAttachment[]; executionTarget?: ExecutionTarget }) => void;
   /** leftSlot：主站放「对话/Agent/设计」；普通站留空。 */
   leftSlot?: ReactNode;
   accent?: string;
@@ -205,7 +206,7 @@ export function HomeIntro({
     setHighlightTemplate(null);
   }, []);
 
-  const submit = (cleanValue?: string, _payer?: ComposerPayer) => {
+  const submit = (cleanValue?: string, _payer?: ComposerPayer, context?: ComposerSubmitContext) => {
     // 第二参留在类型上，不转给 onStart（宿主面不改）。
     // createTask 未传 orgId 时读 PayerSelector 已写入的持久化选择。
     void _payer;
@@ -214,7 +215,7 @@ export function HomeIntro({
     // 有附件时允许空文字提交（与 AgentChat 一致）。
     if (!p && uploaded.length === 0) return;
     if (toolsOn && atts.uploading) return; // 附件还在上传，先别提交
-    onStart(p, uploaded.length ? { attachments: uploaded } : undefined);
+    onStart(p, { ...(uploaded.length ? { attachments: uploaded } : {}), ...context });
     atts.clear();
   };
 

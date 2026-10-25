@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { authFetch } from "../src/lib/auth/auth-fetch.ts";
-import { browserClient, startOauthSignIn } from "../src/lib/auth/client.ts";
+import { browserClient, startOauthSignIn, startDesktopBrowserSignIn, signOutEverywhere } from "../src/lib/auth/client.ts";
 import { COM_AUTH_COOKIE_KEY, CN_AUTH_COOKIE_KEY } from "../src/lib/auth/config.ts";
 import {
   CLIENT_WEB_BOOT_GLOBAL_KEY,
@@ -118,6 +118,51 @@ test("desktop OAuth exchanges a PKCE code through host HTTP and persists the res
     assert.equal(JSON.parse(await storage.getItem(COM_AUTH_COOKIE_KEY)).user.id, "user-1");
     assert.equal(await storage.getItem(`${COM_AUTH_COOKIE_KEY}-code-verifier`), null);
     assert.deepEqual(finished, ["fresh-attempt"]);
+  } finally { await browserClient()?.auth.stopAutoRefresh(); }
+});
+
+test("hosted native login verifies an independent one-use hash and every provider uses the same browser entry", async () => {
+  const storage = createMemoryAuthStorage();
+  let browserLogins = 0;
+  const requests = [];
+  configureClientHost(hostConfig({ authStorage: storage, oauth: {
+    async login() { browserLogins += 1; return { tokenHash: "b".repeat(56), userId: "hosted-user" }; },
+    async begin() { throw new Error("must not use provider-only PKCE"); },
+    async openAndWait() { throw new Error("must not use provider-only PKCE"); },
+    async cancel() {},
+  }, fetch: async (url, init) => {
+    requests.push([String(url), JSON.parse(init.body)]);
+    return Response.json({ access_token: "native-independent-access", refresh_token: "native-independent-refresh",
+      token_type: "bearer", expires_in: 3600,
+      user: { id: "hosted-user", email: "test@example.invalid", aud: "authenticated" } });
+  } }));
+  try {
+    assert.deepEqual(await startDesktopBrowserSignIn(), { signedIn: true });
+    for (const provider of ["google", "microsoft", "apple"]) {
+      assert.deepEqual(await startOauthSignIn(provider), { signedIn: true });
+    }
+    assert.equal(browserLogins, 4);
+    assert.equal(requests.length, 4);
+    for (const [url, body] of requests) {
+      assert.ok(url.endsWith("/auth/v1/verify"));
+      assert.equal(body.type, "magiclink");
+      assert.equal(body.token_hash, "b".repeat(56));
+    }
+    assert.equal(JSON.parse(await storage.getItem(COM_AUTH_COOKIE_KEY)).refresh_token, "native-independent-refresh");
+  } finally { await browserClient()?.auth.stopAutoRefresh(); }
+});
+
+test("desktop shared logout delegates host local removal and never requests global revocation", async () => {
+  let hostLogouts = 0;
+  const requests = [];
+  configureClientHost(hostConfig({ signOut: async () => { hostLogouts += 1; }, fetch: async (url) => {
+    requests.push(String(url));
+    return Response.json({});
+  } }));
+  try {
+    await signOutEverywhere();
+    assert.equal(hostLogouts, 1);
+    assert.ok(!requests.some((url) => url.includes("scope=global")));
   } finally { await browserClient()?.auth.stopAutoRefresh(); }
 });
 

@@ -24,6 +24,8 @@ export interface ClientHostAuthStorage {
 export type ClientHostNavSection = "primary" | "footer";
 
 export interface ClientHostOAuth {
+  /** Complete hosted login, independent of the website's refresh-token session. */
+  login?(signal?: AbortSignal): Promise<{ tokenHash: string; userId: string }>;
   begin(): Promise<{ id: string; redirectTo: string }>;
   openAndWait(id: string, url: string, signal?: AbortSignal): Promise<string>;
   cancel(id: string): Promise<void>;
@@ -49,6 +51,8 @@ export interface ClientHostConfig {
   capabilities: readonly string[];
   openExternal?: (url: string) => void | Promise<void>;
   oauth?: ClientHostOAuth;
+  /** Native local logout; never revokes the operator's other sessions. */
+  signOut?: () => Promise<void>;
   /** Host-only sidebar rows. Omitted keeps the previous slot; `[]` clears. */
   navItems?: readonly ClientHostNavItem[];
   /** Optional host network (Rust/Tauri). Omitted keeps the previous slot. */
@@ -217,6 +221,7 @@ export function configureClientHost(config: ClientHostConfig): void {
     capabilities: Object.freeze([...(config.capabilities || [])]),
     openExternal: config.openExternal,
     oauth: config.platform === "desktop" ? config.oauth ?? previous?.oauth : undefined,
+    signOut: config.platform === "desktop" ? config.signOut ?? previous?.signOut : undefined,
     navItems,
     fetch: hostFetch,
     localWorkspace: config.platform === "desktop"

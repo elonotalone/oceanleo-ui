@@ -453,6 +453,42 @@ const OAUTH_TO_SUPABASE = {
   microsoft: "azure",
 } as const;
 
+export function desktopBrowserLoginAvailable(): boolean {
+  const host = getClientHostConfig();
+  return host?.platform === "desktop";
+}
+
+/** The native entry for every provider and email. The browser owns all credential UI. */
+export async function startDesktopBrowserSignIn(signal?: AbortSignal): Promise<{ error?: string; signedIn?: boolean }> {
+  const host = getClientHostConfig();
+  const c = browserClient();
+  if (host?.platform !== "desktop" || !host.oauth?.login || !c) {
+    return { error: "桌面登录尚未就绪，请重新打开客户端。" };
+  }
+  try {
+    const handoff = await host.oauth.login(signal);
+    if (signal?.aborted) return { error: "登录已取消。" };
+    const exchanged = await c.auth.verifyOtp({ token_hash: handoff.tokenHash, type: "magiclink" });
+    if (exchanged.error || !exchanged.data.session) return { error: "无法完成登录，请重试。" };
+    if (exchanged.data.session.user.id !== handoff.userId) {
+      // Never revoke other devices; remove this untrusted local import only.
+      await c.auth.signOut({ scope: "local" });
+      return { error: "登录账号不匹配，请重试。" };
+    }
+    if (signal?.aborted) {
+      await c.auth.signOut({ scope: "local" });
+      return { error: "登录已取消。" };
+    }
+    return { signedIn: true };
+  } catch (error) {
+    const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+    const safe = ["桌面登录尚未就绪，请重新打开客户端。", "登录等待超时，请重试。",
+      "登录返回端口被占用，请关闭另一个 OceanLeo 客户端后重试。",
+      "网络错误：无法连接到登录服务，请稍后重试。"];
+    return { error: signal?.aborted ? "登录已取消。" : safe.includes(message) ? message : "无法完成登录，请重试。" };
+  }
+}
+
 export async function startOauthSignIn(
   provider: OauthProvider,
   redirect?: string,
@@ -462,6 +498,7 @@ export async function startOauthSignIn(
   if (!c) return { error: "登录服务尚未配置" };
   const host = getClientHostConfig();
   const native = host?.platform === "desktop";
+  if (native && host.oauth?.login) return startDesktopBrowserSignIn(signal);
   if (native && !host.oauth) return { error: "桌面登录尚未就绪，请重新打开客户端。" };
   let attempt: { id: string; redirectTo: string } | undefined;
   let redirectTo =
@@ -750,6 +787,19 @@ export async function signOutEverywhere(): Promise<void> {
   const host = typeof window !== "undefined" ? window.location.host : "";
   const preview = isLeoDevPreviewHost(host);
   const c = browserClient();
+  const hostConfig = getClientHostConfig();
+  if (hostConfig?.platform === "desktop") {
+    // The native host clears remote availability and durable identity first.
+    // Its local-only revoke must never terminate the browser/other computers.
+    _accessToken = null;
+    try { await hostConfig.signOut?.(); }
+    finally {
+      if (c) await c.auth.signOut({ scope: "local" }).catch(() => {});
+      await hostConfig.authStorage?.removeItem(hostConfig.family === "cn" ? CN_AUTH_COOKIE_KEY : COM_AUTH_COOKIE_KEY);
+      _accessToken = null;
+    }
+    return;
+  }
   if (preview) {
     // Local only. `global` would revoke the shared operator refresh token
     // that LeoDev injects for every new preview browser.

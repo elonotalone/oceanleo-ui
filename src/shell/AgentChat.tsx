@@ -45,6 +45,7 @@ import {
 } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
 import { LeoComposer, type ComposerMenuItem } from "./LeoComposer";
+import type { ExecutionTarget } from "../lib/execution-target";
 // 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
 import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
 import { ShareCardPreview } from "./share/ShareCard";
@@ -312,6 +313,7 @@ export interface AgentChatProps {
   siteId?: string;
   /** 初次提交的内容（从首页输入框带进来）；传了会自动创建任务。 */
   initialPrompt?: string;
+  initialExecutionTarget?: ExecutionTarget;
   /**
    * 初次提交随附的附件（用户在**首页输入框**「＋」上传 / 拖入的文件，已上传到文件库、
    * 拿到公网 url）。与 initialPrompt 一起自动创建首个任务——让 agent 从首页就带上来的
@@ -529,6 +531,7 @@ function AgentChatInner({
   projectId,
   siteId = "",
   initialPrompt,
+  initialExecutionTarget,
   initialAttachments,
   taskId: explicitTaskId,
   readOnly: readOnlyProp = false,
@@ -989,6 +992,7 @@ function AgentChatInner({
       uploaded?: AgentAttachment[],
       orgId?: string,
       capturedTurn?: { context: string; filePin: string | null },
+      executionTarget?: ExecutionTarget,
     ) => {
       if (readOnly) {
         setError(tt("当前会话为只读状态。"));
@@ -1082,6 +1086,7 @@ function AgentChatInner({
         sessionId: linkedSessionId || undefined,
         orgId,
         projectId,
+        executionTarget,
       });
       setBusy(false);
       if (!result.ok || !result.data) {
@@ -1245,18 +1250,19 @@ function AgentChatInner({
       }
       return;
     }
-    void start(prompt, initialAtts);
+    void start(prompt, initialAtts, undefined, undefined, initialExecutionTarget);
   }, [
     continueInitialTask,
     initialAtts,
     initialPrompt,
+    initialExecutionTarget,
     start,
     taskId,
     workspace,
     workspace?.availability,
   ]);
 
-  async function send(orgId?: string) {
+  async function send(orgId?: string, executionTarget?: ExecutionTarget) {
     const prompt = input.trim();
     // Allow send when there's an attachment even if the text is empty. But block
     // while any attachment is still uploading.
@@ -1282,7 +1288,7 @@ function AgentChatInner({
     noteUserTurn(turn.filePin);
     beginUserTurn();
     if (!taskId) {
-      const started = await start(effectivePrompt, uploaded, orgId, turn);
+      const started = await start(effectivePrompt, uploaded, orgId, turn, executionTarget);
       if (!started) restoreSubmission();
       return;
     }
@@ -2158,7 +2164,7 @@ function AgentChatInner({
           <LeoComposer
             value={input}
             onChange={setInput}
-            onSubmit={(_, payer) => void send(payer?.org_id)}
+            onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
             loading={running}
             onStop={() => void stop()}
             disabled={readOnly}

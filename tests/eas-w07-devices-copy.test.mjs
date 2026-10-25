@@ -10,6 +10,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { EAS_W07_MESSAGES } from "../src/i18n/ui/messages/eas-w07-copy.ts";
+import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -26,6 +27,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://oceanleo.com/devices",
 });
 const { window } = dom;
+window.scrollTo = () => {};
 for (const [name, value] of Object.entries({
   window,
   document: window.document,
@@ -45,7 +47,7 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-globalThis.__easW07En = EAS_W07_MESSAGES.en;
+globalThis.__easW07En = UI_MESSAGES.en;
 
 const { DevicesPage } = await import(
   await compileModule("src/pages/DevicesPage.tsx", {
@@ -69,6 +71,8 @@ const { DevicesPage } = await import(
       import React from ${JSON.stringify(reactUrl)};
       export function CloudComputersSection() { return null; }
     `),
+    "../shell/cloud-computer/CreateComputerDialog": dataModule(`export function CreateComputerDialog() { return null; }`),
+    "../shell/cloud-computer/ConnectServerDialog": dataModule(`export function ConnectServerDialog() { return null; }`),
   })
 );
 
@@ -84,8 +88,8 @@ const devicesClient = {
     return {
       ok: true,
       data: [
-        { device_id: "d-1", platform: "windows", device_name: "Studio", online: true, local_exec_enabled: true, granted_kinds: ["read"], last_seen_at: "" },
-        { device_id: "d-2", platform: "macos", device_name: "Office", online: false, local_exec_enabled: false, granted_kinds: [], last_seen_at: "" },
+        { device_id: "d-1", platform: "windows", device_name: "Studio", online: true, availability: "online", local_exec_enabled: true, granted_kinds: ["read"], last_seen_at: "" },
+        { device_id: "d-2", platform: "macos", device_name: "Office", online: false, availability: "offline", local_exec_enabled: false, granted_kinds: [], last_seen_at: "" },
       ],
     };
   },
@@ -101,16 +105,22 @@ test("英文词典与页面上这三处都不是中文", async () => {
   const host = window.document.createElement("div");
   window.document.body.append(host);
   const root = createRoot(host);
-  await act(async () => root.render(React.createElement(DevicesPage, { client: devicesClient })));
+  await act(async () => root.render(React.createElement(DevicesPage, { client: devicesClient, settingsClient: { async getSettings() { return { ok: true, data: { controller_id: "controller", controllers: [], preferences: { default_task_directory: null, task_folders: [] }, roots: [], availability: "online", preferences_available: true } }; } } })));
   for (let i = 0; i < 6; i += 1) await act(async () => {});
 
   const text = host.textContent || "";
-  assert.match(text, /1 online/);
+  assert.match(text, /Online/);
   assert.equal(text.includes("台在线"), false);
   assert.equal(text.includes("现在离线"), false);
-  assert.match(text, /Office is offline/);
+  assert.match(text, /Offline/);
+  assert.doesNotMatch(text, /That switch can only|hasn't allowed remote/);
 
-  const revoke = [...host.querySelectorAll("button")].find((node) => (node.textContent || "").includes("撤销设备"));
+  const settings = host.querySelector('[data-device-settings="d-1"]');
+  await act(async () => settings.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+  for (let i = 0; i < 5; i += 1) await act(async () => {});
+  const more = window.document.querySelector('button[aria-label="More"]');
+  await act(async () => more.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+  const revoke = [...window.document.querySelectorAll("button")].find((node) => (node.textContent || "").trim() === UI_MESSAGES.en["撤销设备"]);
   assert.ok(revoke);
   await act(async () => {
     revoke.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));

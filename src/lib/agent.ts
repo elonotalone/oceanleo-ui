@@ -13,11 +13,12 @@
 // 与现有 owner-scoped 网关一致）。
 // ============================================================================
 
-import { accessToken, cachedAccessToken } from "./auth/client";
+import { accessToken, cachedAccessToken, getUserId } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
 import { notifyHistoryChanged } from "./history-events";
 import { computerIdRequestField } from "./cloud-computer-api";
+import { executionTargetRequestFields, readExecutionTarget, type ExecutionTarget } from "./execution-target";
 import { createBackboneField, followUpBackboneField } from "./cursor-model-choice";
 import { payerRequestFields } from "./payer";
 
@@ -356,7 +357,7 @@ export interface AgentAttachment {
   media_type?: string;
 }
 
-export function createTask(body: {
+export async function createTask(body: {
   prompt: string;
   /** Model-only workspace/material context. Never persisted as visible user text. */
   hiddenContext?: string;
@@ -388,9 +389,13 @@ export function createTask(body: {
   orgId?: string;
   /** 挂载的云电脑；不传则读 localStorage['oceanleo.cc.mounted']。 */
   computerId?: string;
+  executionTarget?: ExecutionTarget;
   /** 仅 `"leo"` 表示这条任务由 leo 创建。不传则请求体不含该字段。 */
   created_by?: string;
 }) {
+  const selectedTarget = body.executionTarget ?? (body.computerId
+    ? { kind: "computer" as const, id: body.computerId, name: body.computerId }
+    : readExecutionTarget(await getUserId().catch(() => null)));
   return authed<{
     task_id: string;
     status: string;
@@ -415,7 +420,7 @@ export function createTask(body: {
         prompt_override: body.promptOverride || "",
         attachments: body.attachments || [],
         ...payerRequestFields(body.orgId),
-        ...computerIdRequestField(body.computerId),
+        ...executionTargetRequestFields(selectedTarget),
         ...(typeof body.created_by === "string"
           ? { created_by: body.created_by }
           : {}),
@@ -750,7 +755,7 @@ export function followUp(
         attachments: attachments || [],
         ...(backbone ? { agent_model: backbone } : {}),
         ...payerRequestFields(orgId),
-        ...computerIdRequestField(computerId),
+        ...(computerId ? computerIdRequestField(computerId) : {}),
       }),
     },
   ).then((result) => {

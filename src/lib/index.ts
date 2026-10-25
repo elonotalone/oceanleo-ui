@@ -3,6 +3,7 @@ export * from "./auth";
 export * from "./money";
 export * from "./database";
 export * from "./agent";
+export * from "./execution-target";
 export * from "./agent-progress";
 // 完整 app 工作会话（版本化 snapshot + 乐观并发）。
 export * from "./app-session";

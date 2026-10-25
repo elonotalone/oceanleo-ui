@@ -40,7 +40,7 @@ const SOURCE = {
   on: "开着",
   off: "关着",
   authorizedCategories: "已授权类别",
-  howPermissionsProtectYou: "设备权限如何保护你",
+
   recordBelongsToProject: "这条记录已归属项目",
   projectRecordHidden: "项目记录不会显示在普通历史中，请从项目工作空间继续查看。",
   enterProject: "进入项目",
@@ -123,7 +123,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "On",
     off: "Off",
     authorizedCategories: "Authorized categories",
-    howPermissionsProtectYou: "How device permissions protect you",
+
     recordBelongsToProject: "This record belongs to a project",
     projectRecordHidden: "Project records do not show in ordinary history. Continue from the project workspace.",
     enterProject: "Open project",
@@ -204,7 +204,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "An",
     off: "Aus",
     authorizedCategories: "Autorisierte Kategorien",
-    howPermissionsProtectYou: "Wie Geräteberechtigungen Sie schützen",
+
     recordBelongsToProject: "Dieser Eintrag gehört zu einem Projekt",
     projectRecordHidden: "Projekteinträge erscheinen nicht in der normalen Historie. Weiter im Projekt-Arbeitsbereich.",
     enterProject: "Projekt öffnen",
@@ -285,7 +285,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Encendido",
     off: "Apagado",
     authorizedCategories: "Categorías autorizadas",
-    howPermissionsProtectYou: "Cómo te protegen los permisos del dispositivo",
+
     recordBelongsToProject: "Este registro pertenece a un proyecto",
     projectRecordHidden: "Los registros de proyecto no se muestran en el historial normal. Continúa desde el espacio del proyecto.",
     enterProject: "Abrir proyecto",
@@ -366,7 +366,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Encendido",
     off: "Apagado",
     authorizedCategories: "Categorías autorizadas",
-    howPermissionsProtectYou: "Cómo te protegen los permisos del dispositivo",
+
     recordBelongsToProject: "Este registro pertenece a un proyecto",
     projectRecordHidden: "Los registros de proyecto no se muestran en el historial normal. Continúa desde el espacio del proyecto.",
     enterProject: "Abrir proyecto",
@@ -447,7 +447,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Allumé",
     off: "Éteint",
     authorizedCategories: "Catégories autorisées",
-    howPermissionsProtectYou: "Comment les autorisations de l’appareil vous protègent",
+
     recordBelongsToProject: "Cet enregistrement appartient à un projet",
     projectRecordHidden: "Les enregistrements de projet n’apparaissent pas dans l’historique ordinaire. Continuez depuis l’espace projet.",
     enterProject: "Ouvrir le projet",
@@ -528,7 +528,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Acceso",
     off: "Spento",
     authorizedCategories: "Categorie autorizzate",
-    howPermissionsProtectYou: "Come i permessi del dispositivo ti proteggono",
+
     recordBelongsToProject: "Questo record appartiene a un progetto",
     projectRecordHidden: "I record di progetto non compaiono nella cronologia normale. Continua dallo spazio di lavoro del progetto.",
     enterProject: "Apri progetto",
@@ -609,7 +609,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Ligado",
     off: "Desligado",
     authorizedCategories: "Categorias autorizadas",
-    howPermissionsProtectYou: "Como as permissões do dispositivo te protegem",
+
     recordBelongsToProject: "Este registro pertence a um projeto",
     projectRecordHidden: "Registros de projeto não aparecem no histórico comum. Continue no espaço do projeto.",
     enterProject: "Abrir projeto",
@@ -690,7 +690,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Ligado",
     off: "Desligado",
     authorizedCategories: "Categorias autorizadas",
-    howPermissionsProtectYou: "Como as permissões do dispositivo o protegem",
+
     recordBelongsToProject: "Este registo pertence a um projeto",
     projectRecordHidden: "Os registos de projeto não aparecem no histórico comum. Continue a partir do espaço do projeto.",
     enterProject: "Abrir projeto",
@@ -771,7 +771,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Bật",
     off: "Tắt",
     authorizedCategories: "Danh mục đã cấp quyền",
-    howPermissionsProtectYou: "Quyền thiết bị bảo vệ bạn như thế nào",
+
     recordBelongsToProject: "Bản ghi này đã thuộc dự án",
     projectRecordHidden: "Bản ghi dự án không hiện trong lịch sử thường. Hãy xem tiếp từ không gian làm việc dự án.",
     enterProject: "Vào dự án",
@@ -852,7 +852,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "Açık",
     off: "Kapalı",
     authorizedCategories: "Yetkili kategoriler",
-    howPermissionsProtectYou: "Cihaz izinleri sizi nasıl korur",
+
     recordBelongsToProject: "Bu kayıt bir projeye ait",
     projectRecordHidden: "Proje kayıtları olağan geçmişte görünmez. Proje çalışma alanından devam edin.",
     enterProject: "Projeye gir",
@@ -933,7 +933,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "開著",
     off: "關著",
     authorizedCategories: "已授權類別",
-    howPermissionsProtectYou: "裝置權限如何保護你",
+
     recordBelongsToProject: "這條記錄已歸屬專案",
     projectRecordHidden: "專案記錄不會顯示在普通歷史中，請從專案工作空間繼續查看。",
     enterProject: "進入專案",
@@ -1014,7 +1014,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "オン",
     off: "オフ",
     authorizedCategories: "許可済みの種類",
-    howPermissionsProtectYou: "デバイス権限があなたを守る仕組み",
+
     recordBelongsToProject: "この記録はプロジェクトに属しています",
     projectRecordHidden: "プロジェクトの記録は通常の履歴に出ません。プロジェクトのワークスペースから続けてください。",
     enterProject: "プロジェクトを開く",
@@ -1095,7 +1095,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "켜짐",
     off: "꺼짐",
     authorizedCategories: "허용된 범주",
-    howPermissionsProtectYou: "기기 권한이 나를 보호하는 방식",
+
     recordBelongsToProject: "이 기록은 프로젝트에 속합니다",
     projectRecordHidden: "프로젝트 기록은 일반 기록에 보이지 않습니다. 프로젝트 작업 공간에서 이어 보세요.",
     enterProject: "프로젝트 열기",
@@ -1176,7 +1176,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "تشغيل",
     off: "إيقاف",
     authorizedCategories: "الفئات المصرّح بها",
-    howPermissionsProtectYou: "كيف تحميك أذونات الجهاز",
+
     recordBelongsToProject: "هذا السجل تابع لمشروع",
     projectRecordHidden: "سجلات المشروع لا تظهر في السجل العادي. تابع من مساحة عمل المشروع.",
     enterProject: "دخول المشروع",
@@ -1257,7 +1257,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "เปิด",
     off: "ปิด",
     authorizedCategories: "หมวดที่อนุญาตแล้ว",
-    howPermissionsProtectYou: "สิทธิ์อุปกรณ์ปกป้องคุณอย่างไร",
+
     recordBelongsToProject: "บันทึกนี้สังกัดโปรเจกต์แล้ว",
     projectRecordHidden: "บันทึกโปรเจกต์ไม่แสดงในประวัติทั่วไป ดูต่อจากพื้นที่ทำงานโปรเจกต์",
     enterProject: "เข้าโปรเจกต์",
@@ -1338,7 +1338,7 @@ export const SHELL_OVERHAUL_LEGACY_MESSAGES = assembleCopy(SOURCE, {
     on: "चालू",
     off: "बंद",
     authorizedCategories: "अधिकृत श्रेणियाँ",
-    howPermissionsProtectYou: "डिवाइस अनुमतियाँ आपको कैसे सुरक्षित रखती हैं",
+
     recordBelongsToProject: "यह रिकॉर्ड किसी प्रोजेक्ट का है",
     projectRecordHidden: "प्रोजेक्ट रिकॉर्ड सामान्य इतिहास में नहीं दिखते। प्रोजेक्ट वर्कस्पेस से जारी रखें।",
     enterProject: "प्रोजेक्ट खोलें",

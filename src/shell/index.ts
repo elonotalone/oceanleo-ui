@@ -107,6 +107,7 @@ export type {
   ComposerRecentFile,
   ComposerAttachment,
   ComposerMenuItem,
+  ComposerSubmitContext,
 } from "./LeoComposer";
 // 占位符高亮输入区（宗旨 v12：点 prompt 卡片起手，`[字段]` 上色 + 已填值高亮）。
 export { PromptHighlightArea, TemplateFillArea, templateSegments } from "./PromptHighlightArea";

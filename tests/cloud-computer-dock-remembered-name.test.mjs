@@ -40,6 +40,7 @@ for (const [name, value] of Object.entries({
   Node: window.Node,
   Event: window.Event,
   MouseEvent: window.MouseEvent,
+  CustomEvent: window.CustomEvent,
   localStorage: window.localStorage,
 })) {
   Object.defineProperty(globalThis, name, {
@@ -108,6 +109,7 @@ const { ComputerDock } = await import(
     "../../contracts/domain-family": domainStub,
     "../../lib/cloud-computer-api": apiStub,
     "../../api/devices": dataModule(`export const listDevices = async () => ({ ok: true, data: [] });`),
+    "../../lib/auth/client": dataModule(`export async function getUserId() { return globalThis.__rememberedOwner ?? "account-a"; }`),
     "../account/SettingsModalHost": dataModule(`export function openSettingsModal() {}`),
     "./CreateComputerDialog": dialogStub,
     "./ConnectServerDialog": dialogStub,
@@ -115,6 +117,8 @@ const { ComputerDock } = await import(
     "next/navigation": navStub,
   })
 );
+const { writeExecutionTarget, readExecutionTarget } = await import("../src/lib/execution-target.ts");
+test.beforeEach(() => { window.localStorage.clear(); globalThis.__rememberedOwner = "account-a"; });
 
 const SESSION_NOT_OPENED = "程序没能开新会话。";
 const UNSUPPORTED = "这个程序不接受 acp 子命令，对话起不来。";
@@ -222,58 +226,58 @@ test("错误帧的 text 留在 notice 上，有 text 就显示这句", async () 
   }
 });
 
-test("loading 且记住了名字 elon：按钮仍是设备，不显示接入云电脑", async () => {
-  globalThis.__ccMountedName = "elon";
-  globalThis.__ccMountedId = "cc_1";
-  globalThis.__ccWrittenName = "";
-  globalThis.__ccApi = {
-    listComputers() {
-      return new Promise(() => {});
-    },
-  };
+test("remembered account target name is restored without waiting for a pending list", async () => {
+  writeExecutionTarget("account-a", { kind: "computer", id: "cc_1", name: "elon" });
+  globalThis.__ccApi = { listComputers: () => new Promise(() => {}) };
   const view = await renderDock({ client: globalThis.__ccApi });
   try {
-    assert.equal(view.text().includes("设备"), true);
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "elon");
+    assert.equal(view.host.querySelector("[data-execution-target]").getAttribute("data-execution-target"), "computer");
     assert.equal(view.text().includes("接入云电脑"), false);
-  } finally {
-    await view.cleanup();
-  }
+    assert.equal(readExecutionTarget("account-a").id, "cc_1");
+  } finally { await view.cleanup(); }
 });
 
-test("loading 且没有记住名字：只显示省略号，不显示接入云电脑", async () => {
-  globalThis.__ccMountedName = "";
-  globalThis.__ccMountedId = "";
-  globalThis.__ccApi = {
-    listComputers() {
-      return new Promise(() => {});
-    },
-  };
+test("legacy globally remembered name is never adopted for a new account", async () => {
+  globalThis.__ccMountedName = "Another account PC";
+  globalThis.__ccMountedId = "old-account-computer";
+  globalThis.__ccApi = { listComputers: () => new Promise(() => {}) };
   const view = await renderDock({ client: globalThis.__ccApi });
   try {
-    assert.equal(view.text().includes("设备"), true);
-    assert.equal(view.text().includes("接入云电脑"), false);
-    assert.equal(view.text().includes("elon"), false);
-  } finally {
-    await view.cleanup();
-  }
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "云端");
+    assert.equal(view.text().includes("Another account PC"), false);
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "cloud" });
+  } finally { await view.cleanup(); }
 });
 
-test("名单选定电脑后记下这台的名字", async () => {
-  globalThis.__ccMountedName = "";
-  globalThis.__ccMountedId = "";
+test("only an explicit selection records its name and restores it on remount", async () => {
   globalThis.__ccWrittenName = "";
-  globalThis.__ccApi = {
-    async listComputers() {
-      return { items: [] };
-    },
-  };
-  const view = await renderDock({
-    client: globalThis.__ccApi,
-    computers: [pc({ id: "cc_1", name: "elon" })],
-  });
+  globalThis.__ccApi = { async listComputers() { return { items: [] }; } };
+  const computers = [pc({ id: "cc_1", name: "elon" })];
+  const view = await renderDock({ client: globalThis.__ccApi, computers });
   try {
+    assert.equal(globalThis.__ccWrittenName, "", "rendering a candidate is not selection");
+    await act(async () => view.host.querySelector("[data-oceanleo-cc-dock-trigger]").dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    await act(async () => view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]').dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
     assert.equal(globalThis.__ccWrittenName, "elon");
-  } finally {
-    await view.cleanup();
-  }
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "computer", id: "cc_1", name: "elon" });
+  } finally { await view.cleanup(); }
+  const restored = await renderDock({ client: globalThis.__ccApi, computers });
+  try { assert.equal(restored.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "elon"); }
+  finally { await restored.cleanup(); }
+});
+
+test("names are scoped to account storage, not a shared mounted-name key", async () => {
+  writeExecutionTarget("account-a", { kind: "device", id: "pc_a", name: "A Mac" });
+  writeExecutionTarget("account-b", { kind: "computer", id: "cc_b", name: "B Cloud" });
+  globalThis.__rememberedOwner = "account-b";
+  globalThis.__ccApi = { async listComputers() { return { items: [] }; } };
+  const view = await renderDock({ client: globalThis.__ccApi });
+  try {
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "B Cloud");
+    assert.equal(view.text().includes("A Mac"), false);
+    assert.equal(readExecutionTarget("account-a").name, "A Mac");
+  } finally { await view.cleanup(); }
 });

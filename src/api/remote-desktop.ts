@@ -11,19 +11,22 @@
 
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
+import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
 
-export type RemoteDesktopSessionState = "connecting" | "active" | "closed";
+export type RemoteDesktopSessionState = "pending_consent" | "connecting" | "active" | "closed";
 
 export interface RemoteDesktopStatus {
   supported: boolean;
   enabled: boolean;
   online: boolean;
   session_id: string | null;
+  /** Absence means legacy/unknown, not proof of a signed-in device. */
+  availability?: DeviceAvailability;
 }
 
 export interface RemoteDesktopSession {
   session_id: string;
-  state: "connecting";
+  state: "pending_consent" | "connecting";
   expires_at: string;
 }
 
@@ -128,6 +131,9 @@ async function authed<T>(
 ): Promise<RemoteDesktopApiResult<T>> {
   const token = await accessToken();
   if (!token) return { ok: false, error: "unauthorized", status: 401 };
+  let controller: Record<string, string>;
+  try { controller = controllerHeaders(); }
+  catch { return { ok: false, error: "controller_identity_unavailable", status: 0 }; }
 
   let response: Response;
   try {
@@ -137,6 +143,7 @@ async function authed<T>(
       headers: {
         ...(init.headers || {}),
         Authorization: `Bearer ${token}`,
+        ...controller,
         ...(init.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
@@ -183,6 +190,7 @@ function parseStatus(data: unknown): RemoteDesktopStatus | null {
     enabled: data.enabled,
     online: data.online,
     session_id: sessionId,
+    ...(["online", "signed_out", "offline"].includes(String(data.availability)) ? { availability: data.availability as DeviceAvailability } : {}),
   };
 }
 
@@ -191,11 +199,13 @@ const IMAGE_PREFIX = /^data:image\/(jpeg|png);base64,/i;
 export function parseFrame(data: unknown): RemoteDesktopFrame | null {
   if (!isRecord(data)) return null;
   const state = data.state;
-  if (state !== "connecting" && state !== "active" && state !== "closed") return null;
+  if (state !== "pending_consent" && state !== "connecting" && state !== "active" && state !== "closed") return null;
   const out: RemoteDesktopFrame = { state, frame: null };
   if (typeof data.error === "string" && data.error) out.error = data.error;
   const raw = data.frame;
   if (raw === null || raw === undefined) return out;
+  // A pending/ended request can never carry a view of the target desktop.
+  if (state === "pending_consent" || state === "closed") return null;
   if (!isRecord(raw)) return null;
   const { image, width, height, sequence } = raw;
   if (
@@ -217,6 +227,8 @@ export function parseFrame(data: unknown): RemoteDesktopFrame | null {
 
 export const remoteDesktopClient: RemoteDesktopClient = {
   async getStatus(deviceId, options) {
+    const registered = await registerController(options?.signal);
+    if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
     const result = await authed<unknown>(`${base(deviceId)}/status`, {}, options?.signal);
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
     const status = parseStatus(result.data);
@@ -225,6 +237,8 @@ export const remoteDesktopClient: RemoteDesktopClient = {
   },
 
   async createSession(deviceId, options) {
+    const registered = await registerController(options?.signal);
+    if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
     const result = await authed<unknown>(
       `${base(deviceId)}/sessions`,
       { method: "POST", body: "{}" },
@@ -232,14 +246,14 @@ export const remoteDesktopClient: RemoteDesktopClient = {
     );
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
     const data = result.data;
-    if (!isRecord(data) || typeof data.session_id !== "string" || !data.session_id) {
+    if (!isRecord(data) || typeof data.session_id !== "string" || !data.session_id || (data.state !== "pending_consent" && data.state !== "connecting")) {
       return { ok: false, error: "response_malformed", status: result.status };
     }
     return {
       ok: true,
       data: {
         session_id: data.session_id,
-        state: "connecting",
+        state: data.state,
         expires_at: typeof data.expires_at === "string" ? data.expires_at : "",
       },
       status: result.status,

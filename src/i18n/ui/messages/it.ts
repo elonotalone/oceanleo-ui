@@ -6453,7 +6453,7 @@ const it: Record<string, string> = {
   "操作过于频繁，请稍后再试。": "Troppi tentativi. Riprova tra poco.",
   "登录失败，请稍后重试。": "Accesso non riuscito. Riprova più tardi.",
   "任务已排队，等{device}上线后这一步会自动继续。": "Attività in coda. Riprenderà automaticamente quando {device} tornerà online.",
-  "{device}还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。": "{device} non consente ancora l’esecuzione dal cloud. Questo interruttore si attiva solo su quel computer (nell’icona della barra).",
+
   "{device}还没授权这类操作。需要在那台电脑上授权后重新发起。": "{device} non ha autorizzato questo tipo di azione. Autorizzala su quel computer e riprova.",
   "这个路径不在{device}已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。": "Questo percorso è fuori dalle cartelle autorizzate da {device}. Scegli una cartella autorizzata oppure chiedi a chi è davanti a quel computer di modificare l’autorizzazione.",
   "{device}上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。": "Nessuno ha confermato su {device} entro 90 secondi, quindi questo passaggio è stato annullato. Torna a quel computer e riprova.",

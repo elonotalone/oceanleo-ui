@@ -30,6 +30,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 const { window } = dom;
 const { document } = window;
+window.scrollTo = () => {};
 for (const [name, value] of Object.entries({
   window,
   document,
@@ -93,6 +94,7 @@ const cloudSectionStubUrl = dataModule(`
     return null;
   }
 `);
+const nativeDialogsStubUrl = dataModule(`export function CreateComputerDialog() { return null; } export function ConnectServerDialog() { return null; }`);
 
 const { DevicesPage } = await import(
   await compileModule("src/pages/DevicesPage.tsx", {
@@ -101,6 +103,8 @@ const { DevicesPage } = await import(
     "../ui": confirmDialogStubUrl,
     "./PageHeader": pageHeaderStubUrl,
     "./CloudComputersPage": cloudSectionStubUrl,
+    "../shell/cloud-computer/CreateComputerDialog": nativeDialogsStubUrl,
+    "../shell/cloud-computer/ConnectServerDialog": nativeDialogsStubUrl,
   })
 );
 
@@ -110,6 +114,7 @@ function makeDevice(overrides = {}) {
     platform: "windows",
     device_name: "家里的电脑",
     online: true,
+    availability: "online",
     local_exec_enabled: true,
     granted_kinds: ["read", "write"],
     last_seen_at: "2026-08-15T00:00:00Z",
@@ -152,19 +157,21 @@ async function flush(count = 4) {
   }
 }
 
-async function render(client) {
+async function render(client, props = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(DevicesPage, { client }));
+    root.render(React.createElement(DevicesPage, { client, settingsClient: {
+      async getSettings() { return { ok: true, data: { controller_id: "controller", controllers: [], preferences: { default_task_directory: null, task_folders: [] }, roots: [], availability: "online", preferences_available: true } }; },
+    }, ...props }));
   });
   await flush();
   return {
     host,
-    text: () => host.textContent || "",
+    text: () => document.body.textContent || "",
     button(label) {
-      return [...host.querySelectorAll("button")].find(
+      return [...document.querySelectorAll("button")].find(
         (button) => (button.textContent || "").trim() === label,
       );
     },
@@ -208,20 +215,22 @@ async function render(client) {
 
 test("没有任何设备时显示独立空态和客户端配对入口", async () => {
   const view = await render(makeClient([]));
-  assert.ok(view.text().includes("你还没有把任何电脑连上来"));
-  assert.ok(view.text().includes("下载客户端后，客户端会显示一个配对码"));
-  assert.ok(view.host.querySelector('input[aria-label="8 位配对码"]'));
+  assert.ok(view.text().includes("连接你的电脑"));
+  assert.ok(view.button("连接我的电脑"));
+  assert.equal(document.querySelector('input[aria-label="8 位配对码"]'), null);
+  await view.click(view.button("连接我的电脑"));
+  assert.ok(document.querySelector('input[aria-label="8 位配对码"]'));
   view.cleanup();
 });
 
-test("device management opens inline and connection controls start collapsed", async () => {
+test("device Settings opens a target details dialog, never an inline accordion", async () => {
   const view = await render(makeClient([makeDevice()]));
-  assert.equal(view.host.querySelector("#device-connect-form").hidden, true);
-  const manage = view.button("管理");
-  assert.equal(manage.getAttribute("aria-expanded"), "false");
-  await view.click(manage);
-  assert.equal(manage.getAttribute("aria-expanded"), "true");
-  assert.equal(view.host.querySelector(`[id="${manage.getAttribute("aria-controls")}"]`).hidden, false);
+  assert.equal(document.querySelector("#device-connect-form"), null);
+  await view.click(view.button("设置"));
+  assert.ok(document.querySelector('[data-device-dialog="settings"]'));
+  assert.ok(view.text().includes("允许远程访问的设备"));
+  assert.ok(view.text().includes("默认任务文件夹"));
+  assert.equal(view.host.querySelector("[id^=device-manage]"), null);
   assert.equal(window.location.pathname, "/devices");
   view.cleanup();
 });
@@ -244,25 +253,20 @@ test("account changes reload devices and discard the previous account's late res
   view.cleanup();
 });
 
-test("设备全部离线时说明任务会按设备名排队等待", async () => {
-  const view = await render(makeClient([makeDevice({ online: false })]));
-  assert.ok(
-    view.text().includes("家里的电脑现在离线，需要它执行的步骤会排队等它上线"),
-  );
+test("离线设备显示简短真实状态，入口仍可点击获得具体结果", async () => {
+  const view = await render(makeClient([makeDevice({ online: false, availability: "offline" })]));
+  assert.ok(view.host.querySelector('[data-device-availability="offline"]'));
+  assert.equal(view.button("进入桌面").disabled, false);
   assert.equal(view.host.querySelector('[data-all-offline="true"]') !== null, true);
   view.cleanup();
 });
 
-test("设备在线但总开关关闭时明确说明只能在那台电脑上打开", async () => {
+test("未允许远程访问时不渲染说教文案或禁用进入桌面", async () => {
   const view = await render(
     makeClient([makeDevice({ local_exec_enabled: false, device_name: "工作电脑" })]),
   );
-  assert.ok(
-    view.text().includes(
-      "工作电脑在线，但它还没允许云端下发任务。这个开关只能在那台电脑上打开（托盘图标里）。",
-    ),
-  );
-  assert.ok(view.text().includes("允许云端下发关着"));
+  assert.doesNotMatch(view.text(), /这个开关只能|设备权限如何保护你|允许云端下发/);
+  assert.equal(view.button("进入桌面").disabled, false);
   view.cleanup();
 });
 
@@ -274,9 +278,10 @@ test("pair_code_invalid 显示指定中文文案", async () => {
     },
   });
   const view = await render(client);
-  const input = view.host.querySelector('input[aria-label="8 位配对码"]');
+  await view.click(view.button("连接我的电脑"));
+  const input = document.querySelector('input[aria-label="8 位配对码"]');
   await view.setInput(input, "abcd1234");
-  await view.submit(view.host.querySelector("form"));
+  await view.submit(document.querySelector("#device-connect-form"));
   assert.deepEqual(client.calls.pair, ["abcd1234"]);
   assert.ok(view.text().includes("配对码无效或已过期，请在客户端里重新获取"));
   view.cleanup();
@@ -285,6 +290,8 @@ test("pair_code_invalid 显示指定中文文案", async () => {
 test("撤销必须先显示后果说明，确认后才调用接口并刷新列表", async () => {
   const client = makeClient([makeDevice()]);
   const view = await render(client);
+  await view.click(view.button("设置"));
+  await view.click(document.querySelector('button[aria-label="更多"]'));
   await view.click(view.button("撤销设备"));
   const dialog = view.host.querySelector('[data-testid="confirm-dialog"]');
   assert.ok(dialog);
@@ -294,17 +301,13 @@ test("撤销必须先显示后果说明，确认后才调用接口并刷新列�
   await view.click(view.button("确认撤销"));
   assert.deepEqual(client.calls.revoke, ["d-1"]);
   assert.ok(client.calls.list >= 2);
-  assert.ok(view.text().includes("你还没有把任何电脑连上来"));
+  assert.ok(view.text().includes("连接你的电脑"));
   view.cleanup();
 });
 
-test("页面安全说明只承诺设备侧能改的三项权限", async () => {
+test("页面没有长篇设备权限说明", async () => {
   const view = await render(makeClient([]));
-  assert.ok(
-    view.text().includes(
-      "网页端只能给设备下单。打开开关、放宽授权目录、配对新设备，这三件事只能在那台电脑上做。即使有人拿到你的账号，也改不了这三样，而且那台电脑上会留下记录。",
-    ),
-  );
+  assert.doesNotMatch(view.text(), /网页端只能给设备下单|即使有人拿到你的账号|设备权限如何保护你/);
   view.cleanup();
 });
 
@@ -334,7 +337,7 @@ test("真实包装响应在 HTTP 边界解包为数组并供设备页渲染", as
 
     view = await render(api);
     assert.ok(view.text().includes("真实响应电脑"));
-    assert.ok(view.text().includes("1 台在线"));
+    assert.ok(view.host.querySelector('[data-device-availability="online"]'));
   } finally {
     view?.cleanup();
     globalThis.fetch = previousFetch;
@@ -391,12 +394,12 @@ const CONTRACT_COPY = [
   ["device_offline", "任务已排队，等书房电脑上线后这一步会自动继续。"],
   [
     "local_exec_disabled",
-    "书房电脑还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。",
+    "书房电脑尚未授权此操作。",
   ],
-  ["grant_missing", "书房电脑还没授权这类操作。需要在那台电脑上授权后重新发起。"],
+  ["grant_missing", "书房电脑尚未授权这类操作。"],
   [
     "path_outside_grant",
-    "这个路径不在书房电脑已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。",
+    "所选目录未获授权。",
   ],
   ["confirm_timeout", "书房电脑上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。"],
   ["revoked", "书房电脑已被撤销，需要在那台电脑上重新配对。"],
@@ -573,9 +576,10 @@ test("未知码在页面上落到兜底文案，不会把英文原文摆给用�
       },
     });
     const view = await render(client);
-    const input = view.host.querySelector('input[aria-label="8 位配对码"]');
+    await view.click(view.button("连接我的电脑"));
+    const input = document.querySelector('input[aria-label="8 位配对码"]');
     await view.setInput(input, "abcd1234");
-    await view.submit(view.host.querySelector("form"));
+    await view.submit(document.querySelector("#device-connect-form"));
     assert.ok(view.text().includes("这一步没有完成，请稍后重试。"));
     assert.doesNotMatch(view.text(), /[a-z]+_[a-z_]+/);
     assert.ok(!view.text().includes(unknown));
@@ -591,9 +595,10 @@ test("第 21 台电脑配对失败时页面上是中文上限提示，不是数�
     },
   });
   const view = await render(client);
-  const input = view.host.querySelector('input[aria-label="8 位配对码"]');
+  await view.click(view.button("连接我的电脑"));
+  const input = document.querySelector('input[aria-label="8 位配对码"]');
   await view.setInput(input, "abcd1234");
-  await view.submit(view.host.querySelector("form"));
+  await view.submit(document.querySelector("#device-connect-form"));
   assert.ok(view.text().includes("已连接的电脑达到上限（20台）。撤销一台再连新的。"));
   assert.doesNotMatch(view.text(), /[a-z]+_[a-z_]+/);
   view.cleanup();
@@ -607,9 +612,10 @@ test("配对码请求太频繁时不说「重试」，因为重试再吃一次�
     },
   });
   const view = await render(client);
-  const input = view.host.querySelector('input[aria-label="8 位配对码"]');
+  await view.click(view.button("连接我的电脑"));
+  const input = document.querySelector('input[aria-label="8 位配对码"]');
   await view.setInput(input, "abcd1234");
-  await view.submit(view.host.querySelector("form"));
+  await view.submit(document.querySelector("#device-connect-form"));
   assert.ok(view.text().includes("配对码请求太频繁了，过一会儿再试。"));
   assert.ok(!view.text().includes("请检查网络后重试"));
   view.cleanup();
@@ -623,19 +629,14 @@ test("shell 不再是可授权类别：类型与标签里都没有它", async ()
   const grantKind = api.match(/export type DeviceGrantKind =[^;]*;/);
   assert.ok(grantKind, "DeviceGrantKind 应当仍然存在");
   assert.ok(!grantKind[0].includes("shell"));
-  const labels = page.match(/const GRANT_LABELS[\s\S]*?\n};/);
-  assert.ok(labels, "GRANT_LABELS 应当仍然存在");
-  assert.ok(!labels[0].includes("shell"));
-  assert.ok(!labels[0].includes("Shell"));
+  assert.doesNotMatch(page, /shell\s*:\s*["']/);
 
   const view = await render(makeClient([makeDevice({ granted_kinds: ["read", "python"] })]));
-  assert.ok(view.text().includes("读取、Python"));
   assert.ok(!view.text().includes("Shell"));
   view.cleanup();
 
   // 旧镜像里可能还留着 shell：丢掉，不许让它读起来像一项已生效的授权。
   const stale = await render(makeClient([makeDevice({ granted_kinds: ["shell"] })]));
-  assert.ok(stale.text().includes("已授权类别无"));
   assert.ok(!stale.text().toLowerCase().includes("shell"));
   stale.cleanup();
 });

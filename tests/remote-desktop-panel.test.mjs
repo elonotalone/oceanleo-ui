@@ -69,6 +69,44 @@ function makeClient(overrides = {}) {
   return client;
 }
 
+test("pending consent shows waiting and blocks every input/frame until approval", async () => {
+  let approved = false;
+  const client = makeClient({
+    async createSession() { return { ok: true, data: { session_id: "consent-1", state: "pending_consent", expires_at: "" } }; },
+    async getFrame() { return { ok: true, data: approved ? { state: "active", frame: frameOf(1) } : { state: "pending_consent", frame: frameOf(1) } }; },
+  });
+  const view = await mount(client);
+  try {
+    assert.equal(view.host.querySelector("[data-remote-phase]").getAttribute("data-remote-phase"), "waiting");
+    assert.match(view.text(), /等待这台电脑确认/);
+    assert.equal(view.img(), null, "even a malformed injected pending client cannot show a frame");
+    assert.equal(view.input().disabled, true);
+    await view.key({ key: "Enter" });
+    assert.equal(client.log.inputs.length, 0);
+    approved = true;
+    await settle(800);
+    assert.ok(view.img());
+    assert.equal(view.input().disabled, false);
+    await view.key({ key: "Enter" });
+    assert.equal(client.log.inputs.length, 1);
+  } finally { await view.unmount(); }
+});
+
+for (const [error, phase, text] of [["denied", "denied", "拒绝了请求"], ["request_expired", "timed_out", "请求已超时"], ["revoked", "revoked", "访问权限已撤销"], ["signed_out", "signed_out", "尚未登录"]]) {
+  test(`consent ${error} is a distinct terminal state with no frame or input`, async () => {
+    const client = makeClient({ async getFrame() { return { ok: true, data: { state: "closed", frame: null, error } }; } });
+    const view = await mount(client);
+    try {
+      assert.equal(view.host.querySelector("[data-remote-phase]").getAttribute("data-remote-phase"), phase);
+      assert.ok(view.text().includes(text));
+      assert.equal(view.img(), null);
+      assert.equal(view.input().disabled, true);
+      await view.key({ key: "Enter" });
+      assert.equal(client.log.inputs.length, 0);
+    } finally { await view.unmount(); }
+  });
+}
+
 async function mount(client, props = {}) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -412,7 +450,7 @@ test("创建会话在取消前才落地：补一次关闭，不留空会话占�
 test("进入被拒：B 的真实码各说各的，只有 session_active 才算「别人占着」，其余不重试", async () => {
   const cases = [
     [{ error: "remote_desktop_unavailable", status: 409 }, /联系不上这台电脑上的 OceanLeo/, 1],
-    [{ error: "remote_desktop_disabled", status: 403 }, /还没有允许远程桌面/, 1],
+    [{ error: "remote_desktop_disabled", status: 403 }, /更新.*OceanLeo/, 1],
     [{ error: "device_offline", status: 409 }, /不在线/, 1],
     [{ error: "too_many_sessions", status: 429 }, /远程会话太多/, 1],
     [{ error: "rate_limited", status: 429 }, /操作太频繁/, 1],
@@ -451,7 +489,7 @@ test("session_active 才会重试（吸收上一个面板刚关的间隙），�
   await view.unmount();
 });
 
-test("设备失联 / 会话结束：服务端 closed 后停止取帧并说明原因，保留最后一帧变暗", async () => {
+test("设备失联 / 会话结束：停止取帧并清除旧画面", async () => {
   let n = 0;
   const client = makeClient({
     async getFrame() {
@@ -464,7 +502,7 @@ test("设备失联 / 会话结束：服务端 closed 后停止取帧并说明原
   await settle(100);
   assert.equal(n, 3, "closed 之后不再轮询");
   assert.match(view.text(), /已断开/);
-  assert.ok(view.host.querySelector("[data-remote-ended]"), "最后一帧上盖结束提示");
+  assert.equal(view.host.querySelector("[data-remote-frame]"), null, "结束后不残留受控屏幕");
   assert.match(view.host.querySelector("[data-remote-error]").textContent, /不在线/);
   await view.unmount();
 });
@@ -644,22 +682,18 @@ test("设备失联 / 本机关闭 / 空闲 / 账号不符：服务端 closed 后
       },
     });
     const view = await mount(client);
-    view.pin();
     await settle(100);
     assert.match(view.host.querySelector("[data-remote-error]").textContent, pattern, code);
+    assert.equal(view.img(), null, "closed clears the last desktop frame");
     assert.equal(view.input().disabled, true, "输入口停用");
     client.log.inputs.length = 0;
     // 关闭后的一切输入：按键、鼠标、滚轮、粘贴、输入法
     await view.key({ key: "a" });
     await view.key({ key: "Enter" });
-    await view.mouse("mousedown", 420, 230, { button: 2 });
-    await view.mouse("mouseup", 420, 230, { button: 2 });
-    await view.mouse("mousedown", 420, 230, { button: 0, detail: 1 });
-    await view.mouse("mouseup", 420, 230, { button: 0, detail: 1 });
-    await view.mouse("mousemove", 420, 230);
+    for (const type of ["mousedown", "mouseup", "mousemove"]) await act(async () => view.stage().dispatchEvent(new window.MouseEvent(type, { bubbles: true, clientX: 420, clientY: 230, button: 0 })));
     const wheel = new window.WheelEvent("wheel", { bubbles: true, cancelable: true, clientX: 420, clientY: 230, deltaY: 40 });
     await act(async () => {
-      view.img().dispatchEvent(wheel);
+      view.stage().dispatchEvent(wheel);
     });
     const paste = new window.Event("paste", { bubbles: true, cancelable: true });
     paste.clipboardData = { getData: () => "x" };

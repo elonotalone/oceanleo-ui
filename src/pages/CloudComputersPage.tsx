@@ -17,6 +17,7 @@ import { ConfirmDialog } from "../ui";
 import { PageHeader } from "./PageHeader";
 import { ConnectServerDialog } from "../shell/cloud-computer/ConnectServerDialog";
 import { CreateComputerDialog } from "../shell/cloud-computer/CreateComputerDialog";
+import { CloudDeviceGrid } from "./devices/CloudDeviceGrid";
 import {
   computerDisplayState,
   isConnectedComputer,
@@ -31,6 +32,7 @@ export interface CloudComputersPageProps {
 export interface CloudComputersSectionProps {
   client?: CloudComputerClient;
   autoFocus?: boolean;
+  variant?: "default" | "device-grid";
 }
 
 const CONNECTED_CHIP: Record<
@@ -78,6 +80,13 @@ function chipClass(state: ComputerDisplayState): string {
 }
 
 export function CloudComputersSection({
+  variant = "default",
+  ...props
+}: CloudComputersSectionProps) {
+  return variant === "device-grid" ? <CloudDeviceGrid {...props} /> : <LegacyCloudComputersSection {...props} />;
+}
+
+function LegacyCloudComputersSection({
   client,
   autoFocus = false,
 }: CloudComputersSectionProps) {

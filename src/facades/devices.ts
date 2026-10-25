@@ -3,9 +3,12 @@ import {
   pairDevice,
   renameDevice,
   revokeDevice,
-  type Device,
+  type Device as ApiDevice,
   type DeviceApiResult,
 } from "../api/devices";
+
+/** Presence is authenticated by the target; a raw heartbeat is not Online. */
+export type Device = ApiDevice & { availability?: "online" | "signed_out" | "offline" };
 
 export interface DevicesFacade {
   listDevices(): Promise<DeviceApiResult<Device[]>>;
@@ -22,7 +25,6 @@ export const devicesFacade: DevicesFacade = {
 };
 
 export type {
-  Device,
   DeviceApiResult,
   DeviceGrantKind,
   DevicePlatform,

@@ -53,6 +53,8 @@ import {
   signUp,
   verifyPhoneOtp,
   startOauthSignIn,
+  desktopBrowserLoginAvailable,
+  startDesktopBrowserSignIn,
   wechatLoginUrl,
   type OauthProvider,
 } from "../lib/auth/client";
@@ -119,6 +121,14 @@ const ERROR_COPY = {
 /** 本组件用到的全部中文文案（含 tt() 字面量与错误表）。17 语守卫的清单。 */
 export const AUTH_DIALOG_COPY: readonly string[] = [
   "登录 OceanLeo",
+  "在浏览器中登录",
+  "等待浏览器登录",
+  "登录后会自动返回 OceanLeo。",
+  "桌面登录尚未就绪，请重新打开客户端。",
+  "登录等待超时，请重试。",
+  "登录返回端口被占用，请关闭另一个 OceanLeo 客户端后重试。",
+  "登录已取消。",
+  "无法完成登录，请重试。",
   "登录或注册",
   "开始使用 OceanLeo",
   "继续",
@@ -350,6 +360,8 @@ export interface AuthPanelProps extends Omit<AuthDialogProps, "onClose"> {
    * 内嵌方只有在自带浮层外壳时才需要传；不传则内部 `useId()` 自生成。
    */
   titleId?: string;
+  /** Hosted desktop approval must finish a configured second factor first. */
+  requireMfa?: boolean;
 }
 
 /** 登录列宽。必须写进 style，不能靠 Tailwind 任意值——预览站的 CSS 扫不到就会把整列拉满。 */
@@ -408,6 +420,7 @@ export function AuthPanel({
   closeOnSuccess = true,
   className = "",
   titleId: providedTitleId,
+  requireMfa = false,
 }: AuthPanelProps): ReactElement {
   const tt = useUI();
   const generatedId = useId();
@@ -453,6 +466,18 @@ export function AuthPanel({
     }
     finish();
   }, [finish]);
+
+  useEffect(() => {
+    if (!requireMfa) return;
+    let live = true;
+    void currentAal().then((aal) => { if (live && needsMfaChallenge(aal)) setView("mfa"); });
+    return () => { live = false; };
+  }, [requireMfa]);
+
+  if (desktopBrowserLoginAvailable()) {
+    return <DesktopBrowserLoginPanel tt={tt} titleId={titleId} className={className}
+      onClose={onClose} onDone={finish} />;
+  }
 
   return (
     <div
@@ -576,6 +601,49 @@ export function AuthPanel({
       )}
     </div>
   );
+}
+
+function DesktopBrowserLoginPanel({ tt, titleId, className, onClose, onDone }: {
+  tt: UITranslate; titleId: string; className: string; onClose?: () => void; onDone: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
+  const login = async () => {
+    if (controller.current) return;
+    const current = new AbortController();
+    controller.current = current;
+    setPending(true);
+    setError("");
+    try {
+      const result = await startDesktopBrowserSignIn(current.signal);
+      if (current.signal.aborted) return;
+      if (result.signedIn) onDone();
+      else setError(tt(result.error || "登录失败，请稍后重试。"));
+    } catch {
+      if (!current.signal.aborted) setError(tt("登录失败，请稍后重试。"));
+    } finally {
+      if (controller.current === current) controller.current = null;
+      setPending(false);
+    }
+  };
+  return <section data-auth-panel data-auth-desktop-browser className={className}
+    style={{ maxWidth: AUTH_COLUMN_PX, width: "100%", marginInline: "auto", textAlign: "center" }}>
+    <div className="relative mb-8">
+      {onClose && <button type="button" data-auth-close onClick={onClose} aria-label={tt("关闭")}
+        className="absolute right-0 top-0 rounded p-1 text-neutral-400">✕</button>}
+      <h2 id={titleId} className="text-[28px] font-semibold tracking-tight">{tt("登录 OceanLeo")}</h2>
+      <p className="mt-3 text-sm text-neutral-500">{tt("登录后会自动返回 OceanLeo。")}</p>
+    </div>
+    {error && <p role="alert" data-auth-error className="mb-4 text-sm text-rose-600">{error}</p>}
+    <button type="button" data-auth-submit onClick={() => void login()} disabled={pending}
+      className="w-full rounded-xl bg-neutral-900 px-5 py-3 text-sm font-medium text-white disabled:opacity-60">
+      {pending ? <ButtonSpinner label={tt("等待浏览器登录")} /> : tt("在浏览器中登录")}
+    </button>
+    {pending && <button type="button" className="mt-3 px-4 py-2 text-sm text-neutral-500"
+      onClick={() => { controller.current?.abort(); }}>{tt("取消")}</button>}
+  </section>;
 }
 
 type FormMethod = "email" | "phone" | "wechat";

@@ -33,7 +33,7 @@ const SOURCE = {
   k22: "这台电脑已被撤销配对。",
   k23: "联系不上这台电脑上的 OceanLeo：它可能没有运行、版本太旧或已断线。请在那台电脑上打开并更新 OceanLeo。",
   k24: "这台电脑上的 OceanLeo 版本还不支持远程桌面，请先更新客户端。",
-  k25: "这台电脑还没有允许远程桌面。请在那台电脑的 OceanLeo 里打开开关。",
+
   k26: "那台电脑上已关闭远程桌面，会话已断开。",
   k27: "与这台电脑失去联系，会话已断开。请确认它还在线后重新进入。",
   k28: "太久没有操作，会话已自动断开。",
@@ -46,7 +46,7 @@ const SOURCE = {
   k35: "会话已到期，请重新进入。",
   k36: "操作太频繁，稍等一下再试。",
   k37: "这台电脑不在线，上线后才能查看桌面。",
-  k38: "这台电脑还没有允许远程桌面。这个开关只能在那台电脑的 OceanLeo 里打开。",
+
   k39: "进入桌面",
   k40: "远程桌面",
   k41: "查看这台电脑的屏幕，并用鼠标键盘操控。",
@@ -81,7 +81,7 @@ const EN: Messages = {
   k22: "This computer has been unpaired.",
   k23: "Can't reach OceanLeo on this computer: it may not be running, may be too old, or may be offline. Open and update OceanLeo on that computer.",
   k24: "OceanLeo on this computer doesn't support remote desktop yet. Please update the client first.",
-  k25: "This computer hasn't allowed remote desktop. Turn it on in OceanLeo on that computer.",
+
   k26: "Remote desktop was turned off on that computer. The session has ended.",
   k27: "Lost contact with this computer. The session has ended. Make sure it's online, then enter again.",
   k28: "No activity for too long. The session was closed automatically.",
@@ -94,7 +94,7 @@ const EN: Messages = {
   k35: "The session has expired. Please enter again.",
   k36: "Too many actions. Wait a moment and try again.",
   k37: "This computer is offline. You can view its desktop once it's back online.",
-  k38: "This computer hasn't allowed remote desktop. That switch can only be turned on in OceanLeo on that computer.",
+
   k39: "Enter desktop",
   k40: "Remote desktop",
   k41: "See this computer's screen and control it with your mouse and keyboard.",
@@ -127,7 +127,7 @@ const ZH_TW: Messages = {
   k22: "這台電腦已被撤銷配對。",
   k23: "聯絡不上這台電腦上的 OceanLeo：它可能沒有執行、版本太舊或已斷線。請在那台電腦上開啟並更新 OceanLeo。",
   k24: "這台電腦上的 OceanLeo 版本還不支援遠端桌面，請先更新用戶端。",
-  k25: "這台電腦還沒有允許遠端桌面。請在那台電腦的 OceanLeo 裡開啟開關。",
+
   k26: "那台電腦上已關閉遠端桌面，工作階段已中斷。",
   k27: "與這台電腦失去聯繫，工作階段已中斷。請確認它仍在線上後重新進入。",
   k28: "太久沒有操作，工作階段已自動中斷。",
@@ -140,7 +140,7 @@ const ZH_TW: Messages = {
   k35: "工作階段已到期，請重新進入。",
   k36: "操作太頻繁，請稍等一下再試。",
   k37: "這台電腦不在線上，上線後才能查看桌面。",
-  k38: "這台電腦還沒有允許遠端桌面。這個開關只能在那台電腦的 OceanLeo 裡開啟。",
+
   k39: "進入桌面",
   k40: "遠端桌面",
   k41: "查看這台電腦的螢幕，並用滑鼠鍵盤操控。",

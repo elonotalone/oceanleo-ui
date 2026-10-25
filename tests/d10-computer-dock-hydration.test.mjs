@@ -26,7 +26,8 @@ const dialogs = dataModule("export function CreateComputerDialog() { return null
 const { ComputerDock } = await import(await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
   "../../lib/cloud-computer-api": apiStub,
   "../../i18n/ui/useUI": dataModule("export function useUI() { return value => value; }"),
-  "../../contracts/domain-family": dataModule('export function currentDomainFamily() { return "com"; }'),
+  "../../contracts/domain-family": dataModule('export function currentDomainFamily() { return "com"; } export function portalHref(path) { return path; }'),
+  "../../lib/auth/client": dataModule('export async function getUserId() { return "account-a"; }'),
   "../../api/devices": dataModule("export const listDevices = async () => ({ ok: true, data: [] });"),
   "../account/SettingsModalHost": dataModule("export function openSettingsModal() {}"),
   "./server-page/href": dataModule('export function devicesCloudHref() { return "/settings/devices"; } export function serverPageHref(id) { return "/server/" + id; }'),
@@ -93,12 +94,14 @@ test("D10: hydration first frame neither reads nor renders the browser list cach
 
 for (const cached of [false, true]) {
   test(`D10: ComputerDock hydrates with a remembered name${cached ? " and a cached computer list" : ""}`, async () => {
-    // SSR cannot read browser storage. Hydration sees it but must first render SSR's placeholder.
+    // SSR cannot read private account storage; hydration starts on the same Cloud chip.
     const element = React.createElement(ComputerDock);
     const html = renderToString(element);
     const dom = new JSDOM(`<div id="root">${html}</div>`, { url: "https://hydration.test/" });
     dom.window.localStorage.setItem("mounted-id", "pc-1");
     dom.window.localStorage.setItem("mounted-name", "Remembered PC");
+    dom.window.localStorage.setItem("oceanleo.execution-target.v1:account-a", JSON.stringify({ kind: "computer", id: "pc-1", name: "Remembered PC" }));
+    dom.window.localStorage.setItem("oceanleo.execution-target.v1:account-b", JSON.stringify({ kind: "device", id: "other", name: "Other account PC" }));
     if (cached) {
       dom.window.sessionStorage.setItem("oceanleo.computers.list.v1", JSON.stringify([{
         id: "pc-1", name: "Remembered PC", source: "aliyun", status: "running",
@@ -118,8 +121,11 @@ for (const cached of [false, true]) {
       const host = dom.window.document.getElementById("root");
       await act(async () => { root = hydrateRoot(host, element, { onRecoverableError: error => errors.push(String(error)) }); });
       assert.deepEqual(errors, [], "browser-only storage must not change the first hydration render");
-      assert.match(host.textContent, /设备/, "按钮始终是设备，不把记住的电脑名写在按键上");
-      assert.equal(Boolean(host.querySelector("[data-oceanleo-cc-dock-waiting]")), !cached);
+      assert.match(html, /云端/, "SSR cannot expose a remembered private computer name");
+      assert.equal(html.includes("Remembered PC"), false);
+      assert.match(host.textContent, /Remembered PC/, "effect restores the real account selection after matching hydration");
+      assert.equal(host.textContent.includes("Other account PC"), false);
+      assert.equal(host.querySelector("[data-execution-target]").getAttribute("data-execution-target"), "computer");
       assert.equal(host.textContent.includes("接入云电脑"), false);
     } finally {
       if (root) await act(async () => root.unmount());

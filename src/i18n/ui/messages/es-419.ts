@@ -6453,7 +6453,7 @@ const es419: Record<string, string> = {
   "操作过于频繁，请稍后再试。": "Demasiados intentos. Vuelve a intentarlo en un momento.",
   "登录失败，请稍后重试。": "No se pudo iniciar sesión. Vuelve a intentarlo más tarde.",
   "任务已排队，等{device}上线后这一步会自动继续。": "Tarea en cola. Continuará automáticamente cuando {device} vuelva a estar conectada.",
-  "{device}还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。": "{device} todavía no permite la ejecución desde la nube. Ese interruptor solo se activa en esa computadora (en el icono de la bandeja).",
+
   "{device}还没授权这类操作。需要在那台电脑上授权后重新发起。": "{device} no autorizó este tipo de acción. Autorízala en esa computadora y vuelve a intentarlo.",
   "这个路径不在{device}已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。": "Esta ruta está fuera de las carpetas autorizadas por {device}. Elige una carpeta autorizada o pide a quien esté en esa computadora que ajuste el permiso.",
   "{device}上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。": "Nadie confirmó en {device} en 90 segundos, así que este paso se canceló. Vuelve a esa computadora y empieza de nuevo.",

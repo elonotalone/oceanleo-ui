@@ -215,13 +215,13 @@ export function clampPaste(text: string): { text: string; truncated: boolean } {
   return { text: points.slice(0, REMOTE_PASTE_MAX).join(""), truncated: true };
 }
 
-export type RemoteDesktopBlocker = "offline" | "unsupported" | "disabled" | null;
+export type RemoteDesktopBlocker = "offline" | "unsupported" | "signed_out" | null;
 
-/** 进入前提：在线 → 新客户端已上报支持 → 本机已打开。顺序即用户该先解决的顺序。 */
+/** Missing permission is a request, never an entry blocker. */
 export function statusBlocker(status: RemoteDesktopStatus): RemoteDesktopBlocker {
+  if (status.availability === "signed_out") return "signed_out";
   if (!status.online) return "offline";
   if (!status.supported) return "unsupported";
-  if (!status.enabled) return "disabled";
   return null;
 }
 
@@ -244,6 +244,10 @@ export const REMOTE_FATAL_CODES: ReadonlySet<string> = new Set([
   "session_not_found",
   "session_expired",
   "expired",
+  "denied",
+  "request_expired",
+  "signed_out",
+  "controller_revoked",
 ]);
 
 /** 这类拒绝只是「现在太快」，该停一会儿再送，而不是继续灌。 */
@@ -266,7 +270,16 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "offline":
       return "这台电脑不在线。";
     case "revoked":
-      return "这台电脑已被撤销配对。";
+    case "controller_revoked":
+      return "访问权限已撤销。";
+    case "denied":
+      return "这台电脑拒绝了请求。";
+    case "request_expired":
+      return "请求已超时，请重试。";
+    case "signed_out":
+      return "这台电脑尚未登录。";
+    case "controller_identity_unavailable":
+      return "无法保存此设备的身份，请允许本地存储后重试。";
     case "remote_desktop_unavailable":
       return "联系不上这台电脑上的 OceanLeo：它可能没有运行、版本太旧或已断线。请在那台电脑上打开并更新 OceanLeo。";
     case "remote_desktop_unsupported":
@@ -276,7 +289,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "remote_desktop_not_enabled":
     case "not_enabled":
     case "disabled":
-      return "这台电脑还没有允许远程桌面。请在那台电脑的 OceanLeo 里打开开关。";
+      return "请更新这台电脑上的 OceanLeo 后重试。";
     case "disabled_locally":
       return "那台电脑上已关闭远程桌面，会话已断开。";
     case "device_lost":
@@ -320,7 +333,7 @@ export function blockerCopy(blocker: Exclude<RemoteDesktopBlocker, null>): strin
       return "这台电脑不在线，上线后才能查看桌面。";
     case "unsupported":
       return "这台电脑上的 OceanLeo 版本还不支持远程桌面，请先更新客户端。";
-    case "disabled":
-      return "这台电脑还没有允许远程桌面。这个开关只能在那台电脑的 OceanLeo 里打开。";
+    case "signed_out":
+      return "这台电脑尚未登录。";
   }
 }

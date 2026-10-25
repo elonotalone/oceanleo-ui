@@ -179,6 +179,7 @@ function makeBackend() {
       return { ok: true };
     },
     async createTask(body) {
+      state.lastCreateBody = body;
       const id = `t${state.nextTask++}`;
       state.log.push(`create-task ${id} session=${body.sessionId || "-"}`);
       const task = {
@@ -698,15 +699,18 @@ test("portal homepage shows the real conversation before create settles and rese
   const root = createRoot(host);
   try {
     await act(async () => root.render(React.createElement(HomeContent)));
-    await act(async () => { await globalThis.__portalComposer.onSubmit("马上开始分析"); });
+    const requestedTarget = { kind: "device", id: "test-mac", name: "My Mac" };
+    await act(async () => { await globalThis.__portalComposer.onSubmit("马上开始分析", undefined, { executionTarget: requestedTarget }); });
     assert.ok(host.textContent.includes("马上开始分析"), "submitted user message is visible while session creation is deferred");
     assert.equal(host.querySelector("[data-home-composer]"), null);
     assert.ok(!host.textContent.includes("正在打开任务"));
     assert.equal(backend.log.some(line => line.startsWith("create-task")), false);
     const liveComposer = host.querySelector("[data-composer]");
+    window.localStorage.setItem("oceanleo.execution-target.v1:other", JSON.stringify({ kind: "cloud" }));
     release();
     for (let i = 0; i < 40 && !window.location.pathname.startsWith("/tasks/"); i++) await settle(20);
     assert.match(window.location.pathname, /^\/tasks\/t\d+$/);
+    assert.deepEqual(backend.lastCreateBody.executionTarget, requestedTarget, "session preparation preserves the submitted device snapshot");
     const firstTaskPath = window.location.pathname;
     globalThis.__pathname = window.location.pathname;
     await act(async () => root.render(React.createElement(HomeContent)));

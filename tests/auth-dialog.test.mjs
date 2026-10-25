@@ -58,6 +58,8 @@ const authStubUrl = dataModule(`
   export const verifyPhoneOtp = (...a) => g().verifyPhoneOtp(...a);
   export const wechatLoginUrl = (...a) => g().wechatLoginUrl(...a);
   export const startOauthSignIn = (...a) => g().startOauthSignIn(...a);
+  export const desktopBrowserLoginAvailable = () => g().desktopBrowserLoginAvailable?.() || false;
+  export const startDesktopBrowserSignIn = (...a) => g().startDesktopBrowserSignIn(...a);
   export const normalizeCnPhone = (...a) => g().normalizeCnPhone(...a);
   export const sendPasswordReset = (...a) => g().sendPasswordReset(...a);
   export const currentAal = (...a) => g().currentAal(...a);
@@ -420,6 +422,22 @@ async function withDom(run, { auth = defaultAuth(), url = SUBSITE_URL } = {}) {
 // ————————————————————————————————————————————————————————————————
 // 3. 三个 tab 真实可用
 // ————————————————————————————————————————————————————————————————
+
+test("native AuthPanel has one browser login action and no embedded credential/provider forms", async () => {
+  const auth = defaultAuth();
+  auth.desktopBrowserLoginAvailable = () => true;
+  auth.startDesktopBrowserSignIn = async (signal) => { auth.calls.push(["browser", Boolean(signal)]); return { signedIn: true }; };
+  await withDom(async ({ render, find, findAll, click }) => {
+    let complete = 0;
+    await render(AuthPanel, { onSuccess: () => { complete += 1; } });
+    assert.ok(find("[data-auth-desktop-browser]"));
+    assert.equal(findAll("input").length, 0);
+    assert.equal(findAll("[data-auth-form]").length, 0);
+    await click("[data-auth-submit]");
+    assert.deepEqual(auth.calls, [["browser", true]]);
+    assert.equal(complete, 1);
+  }, { auth });
+});
 
 test("国外默认：第一屏只有继续，邮箱与 Google / Microsoft / Apple 并排，密码在下一步", async () => {
   await withDom(async ({ render, find, findAll, type, submit }) => {

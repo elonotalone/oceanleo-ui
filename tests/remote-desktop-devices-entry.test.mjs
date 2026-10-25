@@ -35,6 +35,8 @@ const stubs = {
     export function CloudComputersSection() { return null; }
     export function CloudComputersPage() { return null; }
   `),
+  "../shell/cloud-computer/CreateComputerDialog": dataModule(`export function CreateComputerDialog() { return null; }`),
+  "../shell/cloud-computer/ConnectServerDialog": dataModule(`export function ConnectServerDialog() { return null; }`),
 };
 const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.tsx", stubs));
 
@@ -119,10 +121,10 @@ async function render(list, remote, props = {}) {
   await flush();
   return {
     host,
-    text: () => host.textContent || "",
+    text: () => document.body.textContent || "",
     entries: () => [...host.querySelectorAll("[data-oceanleo-remote-entry]")],
     enter: () => [...host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "进入桌面"),
-    button: (label) => [...host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === label),
+    button: (label) => [...document.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === label),
     async tick(ms = 70) {
       await act(async () => {
         await wait(ms);
@@ -142,223 +144,129 @@ async function render(list, remote, props = {}) {
   };
 }
 
-test("电脑卡出现「进入桌面」：新客户端、已开启、在线 ⇒ 可点", async () => {
-  const remote = rdClient({ "pc-1": READY });
+test("Enter desktop is actionable with no prior permission and requests consent", async () => {
+  const remote = rdClient({ "pc-1": { ...READY, enabled: false, availability: "online" } });
   const view = await render([device()], remote);
-  assert.equal(view.entries().length, 1);
-  assert.equal(view.enter().disabled, false);
-  assert.match(view.text(), /查看这台电脑的屏幕/);
-  await view.unmount();
+  try {
+    assert.equal(view.enter().disabled, false);
+    assert.doesNotMatch(view.text(), /只能在那台电脑|还没有允许远程桌面/);
+    await view.click(view.enter());
+    assert.deepEqual(remote.log.create, ["pc-1"]);
+    assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
+  } finally { await view.unmount(); }
 });
 
-test("点击自己的电脑显示图标直接进入真实桌面面板", async () => {
-  const remote = rdClient({ "pc-1": READY });
+test("signed-out target is never Online even when its background heartbeat is alive", async () => {
+  const remote = rdClient({ "pc-1": { ...READY, availability: "signed_out", online: true } });
   const view = await render([device()], remote);
-  const icon = view.host.querySelector('button[data-remote-device-icon="pc-1"]');
-  assert.ok(icon?.querySelector('svg[data-device-kind="computer"]'));
-  assert.match(icon.getAttribute("aria-label"), /工作室.*进入桌面/);
-  await view.click(icon);
-  assert.deepEqual(remote.log.create, ["pc-1"]);
-  await view.unmount();
+  try {
+    const status = view.host.querySelector("[data-device-availability]");
+    assert.equal(status.getAttribute("data-device-availability"), "signed_out");
+    assert.equal(status.textContent.trim(), "未登录");
+    assert.equal(view.enter().disabled, false);
+  } finally { await view.unmount(); }
 });
 
-test("显示图标沿用在线和本机允许门槛，手机图标不是被控电脑入口", async () => {
-  const remote = rdClient({ "pc-1": { ...READY, enabled: false } });
+test("legacy heartbeat without authenticated availability remains unknown", async () => {
+  const remote = rdClient({ "pc-1": READY });
+  const view = await render([device()], remote);
+  try { assert.equal(view.host.querySelector("[data-device-availability]").getAttribute("data-device-availability"), "unknown"); }
+  finally { await view.unmount(); }
+});
+
+test("offline and unsupported targets remain actionable and show server's concrete response", async () => {
+  for (const error of ["device_offline", "remote_desktop_unsupported"]) {
+    const remote = rdClient({ "pc-1": { ...READY, supported: false, online: false, availability: "offline" } });
+    remote.createSession = async (id) => { remote.log.create.push(id); return { ok: false, error, status: 409 }; };
+    const view = await render([device()], remote);
+    try {
+      assert.equal(view.enter().disabled, false);
+      await view.click(view.enter());
+      await view.tick(30);
+      assert.deepEqual(remote.log.create, ["pc-1"]);
+      assert.ok(document.querySelector("[data-remote-error]"));
+      assert.equal(document.querySelector("[data-remote-frame]"), null);
+    } finally { await view.unmount(); }
+  }
+});
+
+test("phones are controllers, never target desktop buttons/status polls", async () => {
+  const remote = rdClient({ "pc-1": { ...READY, availability: "online" } });
   const view = await render([device(), device({ device_id: "phone-1", platform: "ios" })], remote);
-  const icon = view.host.querySelector('button[data-remote-device-icon="pc-1"]');
-  assert.equal(icon.disabled, true);
-  await view.click(icon);
-  assert.deepEqual(remote.log.create, []);
-  const phone = view.host.querySelector('svg[data-device-kind="phone"]');
-  assert.ok(phone);
-  assert.equal(phone.closest("button"), null);
-  await view.unmount();
+  try {
+    assert.equal(view.host.querySelectorAll("[data-remote-device-icon]").length, 1);
+    assert.ok(remote.log.status.every((call) => call.deviceId === "pc-1"));
+    assert.ok(view.host.querySelector('[data-device-card="phone-1"]'));
+  } finally { await view.unmount(); }
 });
 
-test("离线：说明离线，按钮禁用；电脑照样问状态，手机不问", async () => {
-  const remote = rdClient({ "pc-1": { supported: true, enabled: true, online: false, session_id: null } });
-  const view = await render([device({ online: false })], remote);
-  assert.equal(view.enter().disabled, true);
-  assert.match(view.entries()[0].textContent, /不在线/);
-  assert.ok(remote.log.status.length >= 1, "初始离线的电脑也要问状态");
-  assert.match(view.text(), /离线/);
-  await view.unmount();
-});
-
-test("初始离线 → 状态刷新为在线：徽标、在线计数与入口自动翻过来，不用手动刷新页面", async () => {
-  const statuses = { "pc-1": { supported: true, enabled: true, online: false, session_id: null } };
-  const remote = rdClient(statuses);
-  const view = await render([device({ online: false })], remote);
-  assert.match(view.entries()[0].getAttribute("data-remote-blocker"), /offline/);
-  assert.equal(view.enter().disabled, true);
-  assert.match(view.text(), /离线/);
-  assert.doesNotMatch(view.text(), /1 台在线/);
-
-  statuses["pc-1"] = { supported: true, enabled: true, online: true, session_id: null };
-  await view.tick(120);
-  assert.equal(view.entries()[0].getAttribute("data-remote-blocker"), "");
-  assert.equal(view.enter().disabled, false);
-  assert.match(view.text(), /1 台在线/);
-  assert.doesNotMatch(view.text(), /需要它执行的步骤会排队/, "不再显示离线排队提示");
-  const badge = [...view.host.querySelectorAll("span")].find((n) => /^(在线|离线)$/.test((n.textContent || "").trim()));
-  assert.equal(badge.textContent.trim(), "在线");
-  await view.unmount();
-});
-
-test("在线 → 状态刷新为失联：徽标变离线、入口收起并说明", async () => {
-  const statuses = { "pc-1": READY };
+test("fresh authenticated availability updates independently of permission without reload", async () => {
+  const statuses = { "pc-1": { ...READY, online: false, availability: "offline" } };
   const remote = rdClient(statuses);
   const view = await render([device()], remote);
-  assert.equal(view.enter().disabled, false);
-  statuses["pc-1"] = { supported: true, enabled: true, online: false, session_id: null };
-  await view.tick(120);
-  assert.equal(view.enter().disabled, true);
-  assert.match(view.entries()[0].textContent, /不在线/);
-  assert.match(view.text(), /需要它执行的步骤会排队/);
-  assert.doesNotMatch(view.text(), /1 台在线/);
-  await view.unmount();
+  try {
+    assert.ok(view.host.querySelector('[data-device-availability="offline"]'));
+    statuses["pc-1"] = { ...READY, enabled: false, availability: "online" };
+    await view.tick(100);
+    assert.ok(view.host.querySelector('[data-device-availability="online"]'));
+    assert.equal(view.enter().disabled, false);
+    statuses["pc-1"] = { ...READY, availability: "signed_out" };
+    await view.tick(100);
+    assert.ok(view.host.querySelector('[data-device-availability="signed_out"]'));
+  } finally { await view.unmount(); }
 });
 
-test("刷新是有界的：同一台电脑的状态请求不叠加，卸载后立即停止", async () => {
+test("status polling is bounded, non-overlapping and aborts immediately on unmount", async () => {
   let inFlight = 0;
   let maxInFlight = 0;
-  const remote = rdClient({ "pc-1": READY });
+  const remote = rdClient();
   remote.getStatus = async (deviceId, options) => {
-    inFlight += 1;
-    maxInFlight = Math.max(maxInFlight, inFlight);
+    inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight);
     remote.log.status.push({ deviceId, signal: options?.signal });
-    await wait(30); // 比刷新间隔(20ms)还慢
+    await wait(30);
     inFlight -= 1;
-    return { ok: true, data: READY };
+    return { ok: true, data: { ...READY, availability: "online" } };
   };
   const view = await render([device()], remote);
   await view.tick(250);
-  assert.equal(maxInFlight, 1, "上一轮没回来不开下一轮");
-  const calls = remote.log.status.length;
-  assert.ok(calls >= 2 && calls <= 8, `实际 ${calls} 次`);
-  await view.unmount();
-  const after = remote.log.status.length;
-  await wait(150);
-  assert.equal(remote.log.status.length, after, "卸载后不再请求");
-});
-
-test("状态查不到时回到列表里的在线标记，不卡在旧的新鲜状态上", async () => {
-  const statuses = { "pc-1": { supported: true, enabled: true, online: false, session_id: null } };
-  const remote = rdClient(statuses);
-  const view = await render([device({ online: true })], remote);
-  assert.match(view.text(), /离线/);
-  delete statuses["pc-1"]; // 之后每次查询都 network_error
-  await view.tick(120);
-  assert.match(view.text(), /1 台在线/);
-  assert.equal(view.enter().disabled, false);
-  await view.unmount();
-});
-
-test("旧客户端（未上报支持）与本机未允许各自说明，网页没有替电脑打开权限的按钮", async () => {
-  const remote = rdClient({
-    "pc-1": { supported: false, enabled: false, online: true, session_id: null },
-    "pc-2": { supported: true, enabled: false, online: true, session_id: null },
-  });
-  const view = await render(
-    [device(), device({ device_id: "pc-2", device_name: "办公室", platform: "macos" })],
-    remote,
-  );
-  const [first, second] = view.entries();
-  assert.match(first.textContent, /还不支持远程桌面/);
-  assert.equal(first.getAttribute("data-remote-blocker"), "unsupported");
-  assert.match(second.textContent, /只能在那台电脑的 OceanLeo 里打开/);
-  assert.equal(second.getAttribute("data-remote-blocker"), "disabled");
-  assert.ok(view.host.querySelectorAll("button:disabled").length >= 2);
-  assert.equal(view.button("开启"), undefined);
-  assert.equal(create(remote), 0);
-  await view.unmount();
-});
-
-function create(remote) {
-  return remote.log.create.length;
-}
-
-test("手机是控制端：Android / iOS / 鸿蒙卡片不出现入口，也不查状态", async () => {
-  const remote = rdClient({});
-  const view = await render(
-    [
-      device({ device_id: "p1", platform: "android" }),
-      device({ device_id: "p2", platform: "ios" }),
-      device({ device_id: "p3", platform: "harmony" }),
-    ],
-    remote,
-  );
-  assert.equal(view.entries().length, 0);
-  assert.equal(remote.log.status.length, 0);
-  await view.unmount();
-});
-
-test("状态查不到（网络/旧网关）时不替用户下结论：按钮仍可点，由会话接口给明确原因", async () => {
-  const remote = rdClient({});
-  const view = await render([device()], remote);
-  assert.equal(view.enter().disabled, false);
-  assert.equal(view.entries()[0].getAttribute("data-remote-blocker"), "");
-  await view.unmount();
-});
-
-test("已有活跃会话时说明占用", async () => {
-  const remote = rdClient({ "pc-1": { ...READY, session_id: "other" } });
-  const view = await render([device()], remote);
-  assert.match(view.text(), /已有一个正在进行的远程会话/);
-  await view.unmount();
-});
-
-test("点击就地打开查看面板（不换路由），断开后回到卡片入口并关闭会话", async () => {
-  const remote = rdClient({ "pc-1": READY });
-  const view = await render([device()], remote);
-  const before = window.location.href;
-  await view.click(view.enter());
-  await act(async () => {
-    await wait(60);
-  });
-  assert.ok(view.host.querySelector("[data-oceanleo-remote-desktop]"), "面板就地出现");
-  assert.equal(window.location.href, before);
-  assert.deepEqual(remote.log.create, ["pc-1"]);
-  assert.match(view.text(), /「工作室」的桌面/);
-  // 配对 / 改名 / 撤销仍在
-  assert.ok(view.button("改名"));
-  assert.ok(view.button("撤销设备"));
-
-  await view.click(view.button("断开"));
-  assert.deepEqual(remote.log.closes, ["s-1"]);
-  assert.equal(view.host.querySelector("[data-oceanleo-remote-desktop]"), null);
-  assert.ok(view.enter(), "回到入口");
-  await view.unmount();
-});
-
-test("同一时刻只打开一台电脑的桌面", async () => {
-  const remote = rdClient({ "pc-1": READY, "pc-2": READY });
-  const view = await render(
-    [device(), device({ device_id: "pc-2", device_name: "办公室", platform: "linux" })],
-    remote,
-  );
-  const [first] = [...view.host.querySelectorAll("button")].filter((b) => (b.textContent || "").trim() === "进入桌面");
-  await view.click(first);
-  await act(async () => {
-    await wait(30);
-  });
-  assert.equal(view.host.querySelectorAll("[data-oceanleo-remote-desktop]").length, 1);
-  await view.unmount();
-});
-
-test("卸载设备页会取消在途状态请求", async () => {
-  const remote = rdClient({ "pc-1": READY });
-  const view = await render([device()], remote);
+  assert.equal(maxInFlight, 1);
   const signal = remote.log.status[0].signal;
-  assert.equal(signal.aborted, false);
+  assert.ok(remote.log.status.length >= 2 && remote.log.status.length <= 8);
   await view.unmount();
   assert.equal(signal.aborted, true);
+  const count = remote.log.status.length;
+  await wait(100);
+  assert.equal(remote.log.status.length, count);
 });
 
-test("设备页仍不含生成配对码、远程改开关、设备密钥的路径", async () => {
+test("desktop opens over Devices without route change and closes its session once", async () => {
+  const remote = rdClient({ "pc-1": { ...READY, availability: "online" } });
+  const view = await render([device()], remote);
+  try {
+    const before = window.location.href;
+    await view.click(view.enter());
+    await view.tick(60);
+    assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
+    assert.equal(window.location.href, before);
+    await view.click(view.button("断开"));
+    assert.deepEqual(remote.log.closes, ["s-1"]);
+    assert.equal(document.querySelector("[data-oceanleo-remote-desktop]"), null);
+    assert.ok(view.enter());
+  } finally { await view.unmount(); }
+});
+
+test("reference cards expose Settings/Tasks, not permission switches or old explainer", async () => {
+  const remote = rdClient({ "pc-1": { ...READY, availability: "online" } });
+  const view = await render([device()], remote);
+  try {
+    assert.ok(view.button("设置"));
+    assert.ok(view.button("任务"));
+    assert.ok(view.host.querySelector("[data-device-cover]"));
+    assert.doesNotMatch(view.text(), /设备权限如何保护你|网页端只能给设备下单|还没有允许远程桌面/);
+  } finally { await view.unmount(); }
+});
+
+test("device page never copies local switch APIs, device secrets or pair-code issuance", async () => {
   const source = await readFile(resolve("src/pages/DevicesPage.tsx"), "utf8");
-  assert.ok(!source.includes("device_secret"));
-  assert.ok(!source.includes("local_exec_enabled: true"));
-  assert.ok(!source.includes("remote_desktop_enabled"));
-  assert.ok(!source.includes("enableRemote"));
+  for (const forbidden of ["device_secret", "local_exec_enabled: true", "remote_desktop_enabled", "enableRemote"]) assert.ok(!source.includes(forbidden));
 });

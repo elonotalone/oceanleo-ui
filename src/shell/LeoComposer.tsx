@@ -39,6 +39,7 @@ import { PluginsPopover } from "./PluginsPopover";
 import { PayerSelector } from "./PayerSelector";
 import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
+import type { ExecutionTarget } from "../lib/execution-target";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
 import {
   composerSlashAdapter,
@@ -127,6 +128,11 @@ export interface ComposerPayer {
   org_id: string;
 }
 
+export interface ComposerSubmitContext {
+  /** Snapshot of the visible selection at the moment Send was pressed. */
+  executionTarget?: ExecutionTarget;
+}
+
 export interface LeoComposerProps {
   value: string;
   onChange: (value: string) => void;
@@ -134,10 +140,9 @@ export interface LeoComposerProps {
    * 点击发送键 / 回车（无 shift）时触发；不传则不显示发送键。参数是已去掉占位 token 的 prompt。
    * 第二个参数是付费主体，**恒有值**，没进过组织的用户拿到的是 `{ org_id: "" }`
    * ——与不带这个字段发出去的请求在网关侧是同一条路径。
-   * AgentChat / FunctionAgentChat 必须把 `payer.org_id` 交给 `send`；HomeIntro 的
-   * `onStart` 不加第三参（宿主不改），靠 `createTask` 读持久化选择。
+   * 第三参固定点击发送时可见的执行位置，避免页面切换或等待上传期间改变目标。
    */
-  onSubmit?: (cleanValue?: string, payer?: ComposerPayer) => void;
+  onSubmit?: (cleanValue?: string, payer?: ComposerPayer, context?: ComposerSubmitContext) => void;
   placeholder?: string;
   /** 提交中：发送键转圈 + 禁用 */
   loading?: boolean;
@@ -319,6 +324,8 @@ export function LeoComposer({
   // 唯一输入框（宗旨 v15j）：全程用 TemplateFillArea（Tiptap 编辑器），普通/模板同一个实例。
   // 真正的可编辑 DOM 藏在组件内，用这个 handle 取（供聚焦 / leo 助手锚点 / 上传落焦等）。
   const highlightRef = useRef<TemplateFillAreaHandle>(null);
+  const executionTargetRef = useRef<ExecutionTarget>({ kind: "cloud" });
+  const rememberExecutionTarget = useCallback((target: ExecutionTarget) => { executionTargetRef.current = target; }, []);
   // 取当前输入元素 = 编辑器根 DOM（不再有第二套 textarea）。
   const currentTextarea = useCallback(
     (): HTMLElement | null => highlightRef.current?.el() ?? null,
@@ -403,7 +410,8 @@ export function LeoComposer({
   // app 会被直接拒掉，而拒绝是永久的。浏览器里这一行是空操作。
   function submitPrompt() {
     requestTaskNotificationsOnce();
-    onSubmit?.(cleanPromptValue(), { org_id: payerOrgId });
+    onSubmit?.(cleanPromptValue(), { org_id: payerOrgId },
+      showComputerDock ? { executionTarget: { ...executionTargetRef.current } } : undefined);
   }
 
   function cleanPromptValue(): string {
@@ -503,6 +511,7 @@ export function LeoComposer({
           时编辑器实例重建 undo 栈丢失。template=null 时它就是个普通输入框（空、正常光标、正常
           打字/分行/全选/undo），template 有值时把模板灌进去（字面可编辑、`[字段]` 荧光块）。 */}
       {skillSlashUi.popover}
+      {showComputerDock && <div className="px-4 pb-1 pt-3" data-composer-execution-row><ComputerDock onTargetChange={rememberExecutionTarget} /></div>}
       <TemplateFillArea
         ref={highlightRef}
         value={value}
@@ -592,7 +601,6 @@ export function LeoComposer({
             </>
           )}
           {leftSlot}
-          {showComputerDock && <ComputerDock />}
           {/* 全站唯一的 leo 入口（合同 I5 / W5B）：三处输入框同一颗 ✦ leo 按钮，
               面板从按钮上方弹出。页面上下文见 leoContext prop。 */}
           {leoSuggest && (

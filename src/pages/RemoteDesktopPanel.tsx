@@ -51,7 +51,15 @@ export interface RemoteDesktopPanelProps {
   backpressureMs?: number;
 }
 
-type Phase = "starting" | "connecting" | "active" | "closed" | "error";
+type Phase = "starting" | "waiting" | "connecting" | "active" | "closed" | "error" | "denied" | "timed_out" | "revoked" | "signed_out";
+
+function terminalPhase(error?: string): Phase {
+  if (error === "denied") return "denied";
+  if (error === "request_expired") return "timed_out";
+  if (error === "revoked" || error === "controller_revoked") return "revoked";
+  if (error === "signed_out") return "signed_out";
+  return "error";
+}
 
 /** 输入队列上限，与服务端队列同量级；满了丢新的，不阻塞页面。 */
 const INPUT_QUEUE_MAX = 64;
@@ -99,6 +107,7 @@ export function RemoteDesktopPanel({
 }: RemoteDesktopPanelProps) {
   const tt = useUI();
   const [phase, setPhase] = useState<Phase>("starting");
+  const phaseRef = useRef<Phase>("starting");
   const [frame, setFrame] = useState<RemoteDesktopFrameData | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   // 两种提示分开：链路提示（连接不稳）由取帧循环维护，操作提示（输入没送到、
@@ -148,8 +157,11 @@ export function RemoteDesktopPanel({
   const activePointersRef = useRef<Set<number>>(new Set());
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
-  const finish = useCallback((nextPhase: "closed" | "error", text: string) => {
+  const finish = useCallback((nextPhase: Phase, text: string) => {
     queueRef.current = [];
+    phaseRef.current = nextPhase;
+    frameRef.current = null;
+    setFrame(null);
     setPhase(nextPhase);
     setMessage(text);
   }, []);
@@ -182,7 +194,7 @@ export function RemoteDesktopPanel({
       while (queueRef.current.length > 0) {
         const sessionId = sessionRef.current;
         const signal = abortRef.current?.signal;
-        if (!sessionId || !signal || signal.aborted) {
+        if (!sessionId || !signal || signal.aborted || phaseRef.current !== "active") {
           queueRef.current = [];
           break;
         }
@@ -200,7 +212,7 @@ export function RemoteDesktopPanel({
           if (result.error === "aborted") break;
           if (isFatalFrameFailure(result.error, result.status)) {
             closeRemote();
-            finish("error", remoteDesktopErrorCopy(result.error, result.status));
+            finish(terminalPhase(result.error), remoteDesktopErrorCopy(result.error, result.status));
             break;
           }
           // 网络错 / 5xx：这一条丢弃，不重放；让用户知道有输入没送到。
@@ -222,7 +234,7 @@ export function RemoteDesktopPanel({
 
   const enqueue = useCallback(
     (action: RemoteDesktopAction) => {
-      if (closedRef.current || !sessionRef.current) return;
+      if (closedRef.current || !sessionRef.current || phaseRef.current !== "active" || !frameRef.current) return;
       const queue = queueRef.current;
       // 单击为识别双击而暂存，但后来的键盘输入不能越过它，否则文字会落在旧焦点。
       // 在同一条有序队列里先提交定位单击；清掉计时器，避免随后再点一次。
@@ -274,15 +286,18 @@ export function RemoteDesktopPanel({
     abortRef.current = controller;
     closedRef.current = false;
     sessionRef.current = null;
+    phaseRef.current = "starting";
     seqRef.current = 0;
     const { signal } = controller;
 
     (async () => {
       let sessionId: string | null = null;
+      let awaitingConsent = false;
       for (let attempt = 0; attempt <= START_CONFLICT_RETRIES; attempt += 1) {
         const created = await clientRef.current.createSession(deviceId, { signal });
         if (created.ok && created.data) {
           sessionId = created.data.session_id;
+          awaitingConsent = created.data.state === "pending_consent";
           break;
         }
         if (signal.aborted || created.error === "aborted") return;
@@ -291,7 +306,7 @@ export function RemoteDesktopPanel({
           if (signal.aborted) return;
           continue;
         }
-        finish("error", remoteDesktopErrorCopy(created.error, created.status));
+        finish(terminalPhase(created.error), remoteDesktopErrorCopy(created.error, created.status));
         return;
       }
       if (!sessionId) return;
@@ -301,7 +316,8 @@ export function RemoteDesktopPanel({
         return;
       }
       sessionRef.current = sessionId;
-      setPhase("connecting");
+      phaseRef.current = awaitingConsent ? "waiting" : "connecting";
+      setPhase(phaseRef.current);
 
       let failures = 0;
       let lastSequence = -1;
@@ -312,7 +328,7 @@ export function RemoteDesktopPanel({
           if (result.error === "aborted") return;
           if (isFatalFrameFailure(result.error, result.status)) {
             closeRemote();
-            finish("error", remoteDesktopErrorCopy(result.error, result.status));
+            finish(terminalPhase(result.error), remoteDesktopErrorCopy(result.error, result.status));
             return;
           }
           failures += 1;
@@ -331,18 +347,28 @@ export function RemoteDesktopPanel({
           closedRef.current = true;
           controller.abort();
           finish(
-            "closed",
+            data.error ? terminalPhase(data.error) : "closed",
             data.error ? remoteDesktopErrorCopy(data.error) : "远程会话已结束。",
           );
           return;
         }
         setLinkNotice(null);
+        if (data.state === "pending_consent") {
+          queueRef.current = [];
+          frameRef.current = null;
+          setFrame(null);
+          phaseRef.current = "waiting";
+          setPhase("waiting");
+          await sleep(Math.max(750, frameIntervalMs), signal);
+          continue;
+        }
         if (data.frame && data.frame.sequence !== lastSequence) {
           lastSequence = data.frame.sequence;
           setFrame(data.frame);
           setImageBroken(false);
         }
-        setPhase(data.state === "active" ? "active" : "connecting");
+        phaseRef.current = data.state === "active" ? "active" : "connecting";
+        setPhase(phaseRef.current);
         if (data.error) setMessage(remoteDesktopErrorCopy(data.error));
         await sleep(frameIntervalMs, signal);
       }
@@ -714,7 +740,8 @@ export function RemoteDesktopPanel({
     onClose();
   }
 
-  const live = phase === "starting" || phase === "active" || phase === "connecting";
+  const live = phase === "starting" || phase === "waiting" || phase === "active" || phase === "connecting";
+  const inputReady = phase === "active" && Boolean(frame);
   const pointerMode = typeof window !== "undefined" && typeof window.PointerEvent !== "undefined";
   const stagePointerProps = pointerMode
     ? {
@@ -733,9 +760,11 @@ export function RemoteDesktopPanel({
   const badge =
     phase === "active"
       ? { text: tt("已连接"), cls: "bg-emerald-50 text-emerald-700" }
+      : phase === "waiting"
+        ? { text: tt("等待确认"), cls: "bg-amber-50 text-amber-700" }
       : phase === "starting" || phase === "connecting"
         ? { text: tt("连接中…"), cls: "bg-amber-50 text-amber-700" }
-        : { text: tt("已断开"), cls: "bg-neutral-100 text-neutral-500" };
+        : { text: tt(phase === "denied" ? "已拒绝" : phase === "timed_out" ? "已超时" : phase === "revoked" ? "已撤销" : phase === "signed_out" ? "未登录" : "已断开"), cls: "bg-neutral-100 text-neutral-500" };
 
   return (
     <div
@@ -762,7 +791,7 @@ export function RemoteDesktopPanel({
         )}
         <button
           type="button"
-          disabled={!live}
+          disabled={!inputReady}
           onClick={() => void pasteFromClipboard()}
           className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
         >
@@ -770,7 +799,7 @@ export function RemoteDesktopPanel({
         </button>
         <button
           type="button"
-          disabled={!live}
+          disabled={!inputReady}
           aria-pressed={keyboardOpen}
           data-remote-keyboard-toggle
           // 按下时不让按钮抢走输入口的焦点，否则点击发生时输入口已经失焦，永远只能「打开」不能「收起」。
@@ -792,7 +821,7 @@ export function RemoteDesktopPanel({
           onClick={disconnect}
           className="rounded-lg border border-red-200 px-3 py-1.5 text-[12px] text-red-600 hover:bg-red-50"
         >
-          {live ? tt("断开") : tt("关闭")}
+          {phase === "waiting" || phase === "starting" ? tt("取消请求") : live ? tt("断开") : tt("关闭")}
         </button>
       </div>
 
@@ -813,7 +842,7 @@ export function RemoteDesktopPanel({
           ref={inputRef}
           data-remote-input
           aria-label={tt("远程桌面键盘输入")}
-          disabled={!live}
+          disabled={!inputReady}
           onFocus={() => setKeyboardOpen(true)}
           onBlur={() => setKeyboardOpen(false)}
           autoComplete="off"
@@ -845,7 +874,9 @@ export function RemoteDesktopPanel({
           <p className="px-6 py-16 text-[13px] text-neutral-300" data-remote-waiting>
             {phase === "starting"
               ? tt("正在请求这台电脑…")
-              : tt("已发出请求，等这台电脑显示画面…")}
+              : phase === "waiting"
+                ? tt("等待这台电脑确认…")
+                : tt("正在连接桌面…")}
           </p>
         )}
         {!frame && !live && (
@@ -885,11 +916,6 @@ export function RemoteDesktopPanel({
           {tt(message)}
         </p>
       )}
-      <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
-        {tt(
-          "画面只在内存里转发，不保存。在那台电脑的 OceanLeo 里随时可以停止远程控制。点击画面后，键盘输入会发给那台电脑。",
-        )}
-      </p>
     </div>
   );
 }

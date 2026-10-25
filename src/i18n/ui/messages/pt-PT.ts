@@ -6453,7 +6453,7 @@ const ptPT: Record<string, string> = {
   "操作过于频繁，请稍后再试。": "Demasiadas tentativas. Tente novamente dentro de momentos.",
   "登录失败，请稍后重试。": "Não foi possível iniciar sessão. Tente novamente mais tarde.",
   "任务已排队，等{device}上线后这一步会自动继续。": "Tarefa em fila. Continuará automaticamente quando {device} voltar a estar online.",
-  "{device}还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。": "{device} ainda não permitiu a execução pela nuvem. Esse interruptor só pode ser ligado nesse computador (no ícone da bandeja).",
+
   "{device}还没授权这类操作。需要在那台电脑上授权后重新发起。": "{device} não autorizou este tipo de ação. Autorize nesse computador e volte a iniciar.",
   "这个路径不在{device}已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。": "Este caminho está fora das pastas autorizadas por {device}. Escolha uma pasta autorizada ou peça a quem está nesse computador para ajustar a autorização.",
   "{device}上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。": "Ninguém confirmou em {device} em 90 segundos, por isso este passo foi cancelado. Volte a esse computador e inicie de novo.",

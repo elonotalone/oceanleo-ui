@@ -6453,7 +6453,7 @@ const tr: Record<string, string> = {
   "操作过于频繁，请稍后再试。": "Çok sık denediniz, lütfen biraz sonra tekrar deneyin.",
   "登录失败，请稍后重试。": "Giriş başarısız, lütfen daha sonra tekrar deneyin.",
   "任务已排队，等{device}上线后这一步会自动继续。": "Görev sıraya alındı. {device} tekrar çevrimiçi olunca kendiliğinden devam edecek.",
-  "{device}还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。": "{device} buluttan çalıştırmaya henüz izin vermedi. Bu anahtar yalnızca o bilgisayarda (tepsi simgesinden) açılabilir.",
+
   "{device}还没授权这类操作。需要在那台电脑上授权后重新发起。": "{device} bu tür bir işleme izin vermemiş. O bilgisayarda izin verip yeniden başlatın.",
   "这个路径不在{device}已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。": "Bu yol, {device} tarafından izin verilen klasörlerin dışında. İzinli bir klasör seçin ya da o bilgisayarın başındaki kişiden izni değiştirmesini isteyin.",
   "{device}上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。": "{device} üzerinde 90 saniye içinde kimse onaylamadı, bu adım iptal edildi. O bilgisayara dönüp yeniden başlatın.",

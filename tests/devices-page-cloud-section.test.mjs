@@ -28,6 +28,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 const { window } = dom;
 const { document } = window;
+window.scrollTo = () => {};
 for (const [name, value] of Object.entries({
   window,
   document,
@@ -50,6 +51,7 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+globalThis.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const uiTextStubUrl = dataModule(`
@@ -82,6 +84,8 @@ const domainStubUrl = dataModule(`
   export function domainProfileForHost() { return currentDomainProfile(); }
   export function familyForHost() { return currentDomainFamily(); }
   export function runtimePageOrigin() { return currentDomainProfile().portalOrigin; }
+  export function portalHref(path) { return path; }
+  export function sharedCookieDomainFor() { return undefined; }
 `);
 const confirmDialogStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -168,7 +172,7 @@ async function render(props) {
   };
 }
 
-test("DevicesPage initialTab=cloud 渲染云电脑区块和配对区", async () => {
+test("paired clients and real cloud rows use a single reference-style grid", async () => {
   const view = await render({
     initialTab: "cloud",
     cloudClient: makeCloudClient([
@@ -185,42 +189,41 @@ test("DevicesPage initialTab=cloud 渲染云电脑区块和配对区", async () 
     ]),
   });
   assert.ok(view.host.querySelector("[data-oceanleo-devices-page]"));
-  assert.ok(view.host.querySelector("[data-oceanleo-devices-phones]"));
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-section]"));
-  assert.ok(view.text().includes("我的电脑与手机"));
+  assert.ok(view.host.querySelector("[data-device-grid]"));
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-section]"), null, "no second old-style cloud section");
   assert.ok(view.text().includes("云电脑"));
   const connected = view.host.querySelector('[data-oceanleo-cc-card="cc_1"]');
   const pending = view.host.querySelector('[data-oceanleo-cc-card="cc_legacy"]');
   assert.ok(connected);
   assert.ok(pending);
-  assert.equal(connected.getAttribute("data-oceanleo-cc-card-kind"), "connected");
-  assert.equal(pending.getAttribute("data-oceanleo-cc-card-kind"), "pending");
+  assert.equal(connected.parentElement.hasAttribute("data-device-grid"), true);
+  assert.equal(pending.parentElement, connected.parentElement);
+  assert.equal(connected.getAttribute("data-oceanleo-cc-display-state"), "ready");
+  assert.equal(pending.getAttribute("data-oceanleo-cc-display-state"), "pending_install");
+  assert.ok(connected.querySelector('a[href="/computers/cc_1?card=acp"]'), "Tasks uses existing server ACP route");
+  assert.doesNotMatch(connected.textContent, /进入桌面/, "a cloud node without desktop capability is not a native remote target");
   view.cleanup();
 });
 
-test("window.location.search tab=cloud 时同样挂载云电脑区块", async () => {
+test("cloud deep link without rows keeps a real create/connect card, not another empty section", async () => {
   const view = await render({
     cloudClient: makeCloudClient([]),
   });
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-section]"));
-  assert.ok(view.host.querySelector("[data-oceanleo-cc-empty]"));
+  assert.ok(view.host.querySelector("[data-device-connect-card]"));
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-empty]"), null);
+  assert.ok(view.text().includes("创建云电脑"));
   view.cleanup();
 });
 
-test("国内版 stub currentDomainFamily=cn 仍挂载云电脑区块", async () => {
+test("CN family keeps the same cloud grid without depending on a COM-only section", async () => {
   globalThis.__devicesFamily = "cn";
   const view = await render({
     initialTab: "cloud",
-    cloudClient: makeCloudClient([]),
+    cloudClient: makeCloudClient([pc()]),
   });
   try {
-    assert.ok(view.host.querySelector("[data-oceanleo-cc-section]"));
-    assert.equal(
-      view.host.querySelector("[data-oceanleo-cc-edition]")?.getAttribute(
-        "data-oceanleo-cc-edition",
-      ),
-      "cn",
-    );
+    assert.ok(view.host.querySelector('[data-oceanleo-cc-card="cc_1"]'));
+    assert.ok(view.host.querySelector("[data-device-grid]"));
   } finally {
     globalThis.__devicesFamily = "com";
     view.cleanup();

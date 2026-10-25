@@ -5,6 +5,9 @@ import test from "node:test";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
+const storage = new Map();
+globalThis.window = { localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) } };
+
 const api = await import(
   await compileModule("src/api/remote-desktop.ts", {
     "../lib/auth/client": dataModule(
@@ -39,6 +42,7 @@ test.afterEach(() => {
 
 test("端点、方法与用户 Bearer 与固定接口 v1 一致，设备密钥不出现", async () => {
   const calls = mockFetch((url) => {
+    if (url.endsWith("/controllers")) return { status: 200, body: { controller_id: "viewer-1" } };
     if (url.endsWith("/status")) {
       return { status: 200, body: { supported: true, enabled: true, online: true, session_id: null } };
     }
@@ -70,6 +74,7 @@ test("端点、方法与用户 Bearer 与固定接口 v1 一致，设备密钥�
   assert.deepEqual(
     calls.map((call) => [call.init.method || "GET", call.url]),
     [
+      ["POST", "https://gw.test/v1/devices/controllers"],
       ["GET", `${base}/status`],
       ["POST", `${base}/sessions`],
       ["GET", `${base}/sessions/s%201/frame`],
@@ -79,9 +84,10 @@ test("端点、方法与用户 Bearer 与固定接口 v1 一致，设备密钥�
   );
   for (const call of calls) {
     assert.equal(call.init.headers.Authorization, "Bearer user-token");
+    assert.match(call.init.headers["X-OceanLeo-Controller"], /^[a-f0-9]{64}$/);
     assert.equal(call.init.cache, "no-store");
   }
-  assert.deepEqual(JSON.parse(calls[3].init.body), {
+  assert.deepEqual(JSON.parse(calls[4].init.body), {
     seq: 7,
     action: { kind: "click", x: 0.5, y: 0.25, button: "left" },
   });
@@ -146,6 +152,20 @@ test("PNG 兼容；connecting 无帧与 closed 带 error 均可解析", () => {
     frame: null,
     error: "device_offline",
   });
+});
+
+test("pending consent is preserved and can never carry a desktop frame", async () => {
+  mockFetch((url) => url.endsWith("/controllers") ? { status: 200, body: { controller_id: "controller-1" } } : { status: 200, body: { session_id: "pending-1", state: "pending_consent", expires_at: "2026-10-25T12:00:00Z" } });
+  const created = await api.remoteDesktopClient.createSession("mac");
+  assert.equal(created.data.state, "pending_consent");
+  assert.deepEqual(api.parseFrame({ state: "pending_consent", frame: null }), { state: "pending_consent", frame: null });
+  assert.equal(api.parseFrame({ state: "pending_consent", frame: { image: JPEG, width: 1, height: 1, sequence: 1 } }), null);
+  assert.equal(api.parseFrame({ state: "closed", frame: { image: JPEG, width: 1, height: 1, sequence: 1 } }), null);
+});
+
+test("signed-out availability is not replaced by the legacy online flag", async () => {
+  mockFetch(() => ({ status: 200, body: { supported: true, enabled: false, online: true, session_id: null, availability: "signed_out" } }));
+  assert.equal((await api.remoteDesktopClient.getStatus("mac")).data.availability, "signed_out");
 });
 
 test("源码不含设备密钥 / 本机令牌 / 本地存储路径，画面不落盘", async () => {

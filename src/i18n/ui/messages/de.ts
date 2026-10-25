@@ -6453,7 +6453,7 @@ const de: Record<string, string> = {
   "操作过于频繁，请稍后再试。": "Zu viele Versuche. Bitte versuchen Sie es gleich noch einmal.",
   "登录失败，请稍后重试。": "Anmeldung fehlgeschlagen. Bitte versuchen Sie es später erneut.",
   "任务已排队，等{device}上线后这一步会自动继续。": "Aufgabe steht in der Warteschlange. Sie läuft automatisch weiter, sobald {device} wieder online ist.",
-  "{device}还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。": "{device} erlaubt die Ausführung aus der Cloud noch nicht. Dieser Schalter lässt sich nur auf diesem Computer umlegen (im Tray-Symbol).",
+
   "{device}还没授权这类操作。需要在那台电脑上授权后重新发起。": "{device} hat diese Art von Aktion nicht freigegeben. Gib sie auf diesem Computer frei und starte erneut.",
   "这个路径不在{device}已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。": "Dieser Pfad liegt außerhalb der von {device} freigegebenen Ordner. Wähle einen freigegebenen Ordner oder lass die Freigabe an diesem Computer anpassen.",
   "{device}上没有人在 90 秒内确认，这一步已取消。请回到那台电脑上重新发起。": "Auf {device} hat niemand innerhalb von 90 Sekunden bestätigt, deshalb wurde dieser Schritt abgebrochen. Geh zurück an diesen Computer und starte erneut.",

@@ -111,17 +111,17 @@ export function deviceErrorCopy(
       return fill(t("任务已排队，等{device}上线后这一步会自动继续。"), { device });
     case "local_exec_disabled":
       return fill(
-        t("{device}还没允许云端下发。这个开关只能在那台电脑上打开（托盘图标里）。"),
+        t("{device}尚未授权此操作。"),
         { device },
       );
     case "grant_missing":
-      return fill(t("{device}还没授权这类操作。需要在那台电脑上授权后重新发起。"), {
+      return fill(t("{device}尚未授权这类操作。"), {
         device,
       });
     case "path_outside_grant":
       return fill(
         t(
-          "这个路径不在{device}已授权的目录范围内。请在那台电脑上选择已授权目录，或由电脑前的人调整授权。",
+          "所选目录未获授权。",
         ),
         { device },
       );

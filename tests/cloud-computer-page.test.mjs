@@ -104,6 +104,9 @@ const { CloudComputersPage, CloudComputersSection } = await import(
       }
       export function domainProfileForHost() { return currentDomainProfile(); }
       export function familyForHost() { return currentDomainFamily(); }
+      export function portalHref(path) { return path; }
+      export function runtimePageOrigin() { return currentDomainProfile().portalOrigin; }
+      export function sharedCookieDomainFor() { return undefined; }
     `),
   })
 );

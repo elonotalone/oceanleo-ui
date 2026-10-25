@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { document, window } from "./helpers/remote-desktop-dom.mjs";
+window.scrollTo = () => {};
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -104,6 +105,8 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
       export function CloudComputersSection() { return null; }
       export function CloudComputersPage() { return null; }
     `),
+    "../shell/cloud-computer/CreateComputerDialog": dataModule(`export function CreateComputerDialog() { return null; }`),
+    "../shell/cloud-computer/ConnectServerDialog": dataModule(`export function ConnectServerDialog() { return null; }`),
   };
   const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.tsx", stubs));
 
@@ -117,10 +120,10 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
     last_seen_at: "",
   });
   const statuses = {
-    a: { supported: true, enabled: true, online: true, session_id: null },
-    b: { supported: false, enabled: false, online: true, session_id: null },
-    c: { supported: true, enabled: false, online: true, session_id: null },
-    d: { supported: true, enabled: true, online: false, session_id: null },
+    a: { supported: true, enabled: true, online: true, availability: "online", session_id: null },
+    b: { supported: false, enabled: false, online: true, availability: "online", session_id: null },
+    c: { supported: true, enabled: false, online: true, availability: "signed_out", session_id: null },
+    d: { supported: true, enabled: true, online: false, availability: "offline", session_id: null },
   };
   const frames = [];
   const remote = {
@@ -160,14 +163,14 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
   });
   for (let i = 0; i < 6; i += 1) await act(async () => {});
 
-  const entries = [...host.querySelectorAll("[data-oceanleo-remote-entry]")];
+  const entries = [...host.querySelectorAll("[data-device-card]")];
   assert.equal(entries.length, 4);
   const entryText = entries.map((node) => node.textContent || "").join("\n");
   assert.doesNotMatch(entryText, HAN, `入口里漏出中文：${entryText}`);
   assert.match(entryText, /Enter desktop/);
-  assert.match(entryText, /Remote desktop/);
-  assert.match(entryText, /doesn't support remote desktop yet/);
-  assert.match(entryText, /That switch can only be turned on in OceanLeo on that computer/);
+  assert.doesNotMatch(entryText, /That switch can only be turned on|hasn't allowed remote desktop/);
+  assert.match(entryText, /Settings/);
+  assert.match(entryText, /Tasks/);
   assert.match(entryText, /offline/i);
 
   const enter = [...host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Enter desktop" && !b.disabled);
@@ -177,7 +180,7 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 80));
   });
-  const panel = host.querySelector("[data-oceanleo-remote-desktop]");
+  const panel = document.querySelector("[data-oceanleo-remote-desktop]");
   assert.ok(panel, "面板打开");
   const panelText = [panel.textContent, panel.querySelector("img")?.getAttribute("alt"), panel.querySelector("[data-remote-stage]")?.getAttribute("aria-label"), panel.querySelector("[data-remote-input]")?.getAttribute("aria-label")].join("\n");
   assert.doesNotMatch(panelText, HAN, `面板里漏出中文：${panelText}`);

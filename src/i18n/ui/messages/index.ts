@@ -43,6 +43,7 @@ import { MODEL_CATALOG_MESSAGES } from "./model-catalog-copy";
 import { WORK_CHAT_MESSAGES } from "./work-chat-copy";
 import { BAY_MESSAGES } from "./bay-copy";
 import { EDITOR_OVERHAUL_MESSAGES } from "./editor-overhaul-copy";
+import { deviceExperienceCopy } from "./device-experience-copy";
 
 const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -473,5 +474,5 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
 };
 
 export const UI_MESSAGES = Object.fromEntries(
-  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale) }]),
+  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale) }]),
 ) as Record<Locale, Record<string, string>>;

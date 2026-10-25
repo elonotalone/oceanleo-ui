@@ -75,15 +75,16 @@ test("文字按码点分块，不劈开代理对；超长粘贴被截断并标�
   assert.deepEqual(input.clampPaste("短"), { text: "短", truncated: false });
 });
 
-test("进入前提按「离线 → 旧客户端 → 本机未允许」的顺序说明", () => {
+test("未授权不是入口障碍；未登录、离线与旧客户端保留真实原因", () => {
   const base = { supported: true, enabled: true, online: true, session_id: null };
   assert.equal(input.statusBlocker(base), null);
   assert.equal(input.statusBlocker({ ...base, online: false, supported: false }), "offline");
   assert.equal(input.statusBlocker({ ...base, supported: false, enabled: false }), "unsupported");
-  assert.equal(input.statusBlocker({ ...base, enabled: false }), "disabled");
-  const copies = ["offline", "unsupported", "disabled"].map(input.blockerCopy);
+  assert.equal(input.statusBlocker({ ...base, enabled: false }), null);
+  assert.equal(input.statusBlocker({ ...base, availability: "signed_out" }), "signed_out");
+  const copies = ["offline", "unsupported", "signed_out"].map(input.blockerCopy);
   assert.equal(new Set(copies).size, 3);
-  assert.match(copies[2], /只能在那台电脑/);
+  assert.match(copies[2], /尚未登录/);
 });
 
 test("错误码都落成中文，未知码落到兜底，不外泄英文 token", () => {
