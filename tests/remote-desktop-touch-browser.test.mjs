@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { chromiumSkip } from "./chromium-availability.mjs";
@@ -335,6 +336,44 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
     assert.equal((await s.page.evaluate(() => window.__rd.closes)).length >= 1, true);
     assert.deepEqual(s.errors, []);
     await s.context.close();
+  }, bundleText);
+});
+
+test("真实验收点击：画面滚入视区、避开留白，再立即输入，点击先送且不重复", { timeout: 120_000, skip }, async () => {
+  const driver = await import(pathToFileURL("/root/projects/oceanleo-app/acceptance-runner/desktop/remote_web.mjs").href);
+  await withFixture(async ({ browser, origin }) => {
+    for (const offset of [0, 1400]) {
+      const s = await open(browser, origin, { mobile: false, w: 1280, h: 720 });
+      try {
+        await s.page.evaluate((top) => {
+          document.querySelector("[data-oceanleo-remote-desktop]").style.marginTop = `${top}px`;
+          window.scrollTo(0, 0);
+        }, offset);
+        if (offset) {
+          const box = await s.page.locator("[data-remote-frame]").boundingBox();
+          assert.ok(box.y > 800, "先确认画面在可视区之外，不能假设 mouse.click 会自动滚动");
+        }
+        // 原验收算法直接乘元素外框：此点在留白里，或根本在 viewport 外，组件不会发出 click。
+        const oldBox = await s.page.locator("[data-remote-frame]").boundingBox();
+        await s.page.mouse.click(oldBox.x + oldBox.width * 0.95, oldBox.y + oldBox.height * 0.85);
+        await wait(180);
+        assert.equal((await s.inputs()).filter((a) => a.kind === "click").length, 0);
+        await s.page.evaluate(() => { window.__rd.inputs.length = 0; });
+        await driver.clickRemoteFrame(s.page, 0.95, 0.85);
+        await s.page.locator("[data-remote-input]").focus();
+        await s.page.keyboard.type("q");
+        await s.page.waitForFunction(() => window.__rd.inputs.filter((a) => a.kind !== "move").length >= 2);
+        await wait(180);
+        const got = (await s.inputs()).filter((a) => a.kind !== "move");
+        assert.deepEqual(got.map((a) => a.kind), ["click", "type"]);
+        assert.ok(Math.abs(got[0].x - 0.95) < 1e-6);
+        assert.ok(Math.abs(got[0].y - 0.85) < 1e-6);
+        assert.equal(got[1].text, "q");
+        assert.deepEqual(s.errors, []);
+      } finally {
+        await s.context.close();
+      }
+    }
   }, bundleText);
 });
 
