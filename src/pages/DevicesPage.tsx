@@ -158,6 +158,7 @@ export function DevicesPage({
   useEffect(() => {
     let alive = true;
     let generation = 0;
+    let account: string | null | undefined;
     async function load() {
       const ticket = ++generation;
       setLoading(true);
@@ -172,7 +173,12 @@ export function DevicesPage({
         if (alive && ticket === generation) setLoading(false);
       }
     }
-    function onAccountChange() {
+    function onAccountChange(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string | null }>).detail;
+      if (detail && "userId" in detail) {
+        if (detail.userId === account) return;
+        account = detail.userId;
+      }
       setDevices([]);
       setRemoteStatus({});
       setRemoteOpenId(null);
