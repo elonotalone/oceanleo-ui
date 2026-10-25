@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactElement } from "react";
+import Link from "next/link";
 import { useUI } from "../../../i18n/ui/useUI";
+import { portalHref } from "../../../contracts/domain-family";
 import {
   checkBayAppEndpoint,
   createBayAppEndpoint,
@@ -173,15 +175,13 @@ export function EndpointPicker({
         <SellerEmpty>
           {tt("你还没有云电脑。带后台的应用要跑在你自己的云电脑上，OceanLeo 只给它一个公开网址，不替你运行程序。")}
         </SellerEmpty>
-        <a
-          href="/devices"
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          href={portalHref("/devices")}
           data-bay-endpoint-devices
           className="inline-flex text-[13px] font-medium text-stone-900 underline underline-offset-2"
         >
-          {tt("设置 → 我的设备")}
-        </a>
+          {tt("我的设备")}
+        </Link>
       </div>
     );
   }

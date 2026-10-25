@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { currentDomainProfile } from "../../contracts/domain-family";
+import { portalHref } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import type { Computer } from "../../lib/cloud-computer-api";
 import type { ComputerDisplayState } from "../cloud-computer/computer-state";
@@ -16,10 +16,6 @@ import {
 } from "./device-status-api";
 
 const REFRESH_MS = 15000;
-
-function portalHref(path: string) {
-  return `${currentDomainProfile().portalOrigin}${path}`;
-}
 
 function IconDevice({ className = "h-4 w-4" }: { className?: string }) {
   return (

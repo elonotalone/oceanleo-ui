@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { portalHref } from "../../contracts/domain-family";
 import { usePathname, useRouter } from "next/navigation";
 import { SettingsModal } from "../../pages/settings/SettingsModal";
 import type { SettingsHubProps, SettingsSection } from "../../pages/settings/SettingsHub";
@@ -51,7 +52,7 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
       if (/^\/settings\/devices\/?$/.test(legacyDeviceUrl.pathname)
         || (legacyDeviceUrl.pathname === "/settings" && legacyDeviceUrl.searchParams.get("tab") === "devices")) {
         setTab(null);
-        router.replace("/devices");
+        router.replace(portalHref("/devices"));
         return;
       }
       const extras = extraIdsOf(extraRef.current);

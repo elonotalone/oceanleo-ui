@@ -73,6 +73,7 @@ const STUBS = {
   "../../contracts/domain-family": dataModule(`
     export function currentDomainFamily() { return globalThis.__w06Family || "com"; }
     export function currentDomainProfile() { return { portalOrigin: ${JSON.stringify(PORTAL)} }; }
+    export function portalHref(path) { return globalThis.__w06Native ? path : ${JSON.stringify(PORTAL)} + path; }
   `),
   "./AnchoredFixedPopover": dataModule(`
     import React from ${JSON.stringify(reactUrl)};
@@ -299,6 +300,19 @@ test("小窗里每种状态的文案与设备页、坞一致；接入中那一�
     }
   } finally {
     view.cleanup();
+  }
+});
+
+test("native Manage my devices stays on the local app route", async () => {
+  globalThis.__w06Native = true;
+  const view = await openPopover({ computers: EVERY_STATE_ROWS });
+  try {
+    const manage = [...view.panel.querySelectorAll("a")].find((link) => link.textContent === "管理我的设备");
+    assert.ok(manage);
+    assert.equal(manage.getAttribute("href"), "/devices");
+  } finally {
+    view.cleanup();
+    delete globalThis.__w06Native;
   }
 });
 

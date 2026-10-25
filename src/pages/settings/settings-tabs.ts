@@ -1,5 +1,6 @@
 // 设置中心的栏目 id。人看到的地址是 `/settings/<tab>`。
 // 旧书签 `/settings?tab=`、`#settings/<tab>` 读进来后写成这条路径。
+import { portalHref } from "../../contracts/domain-family";
 
 /** 内置栏目，按导航里的出现顺序。 */
 export const SETTINGS_BUILTIN_TABS = [
@@ -186,7 +187,7 @@ export function isSettingsPathname(pathname: string): boolean {
 }
 
 export function settingsPath(tab: string, href?: string): string {
-  if (tab === "devices") return "/devices";
+  if (tab === "devices") return portalHref("/devices");
   const source =
     href || (typeof window !== "undefined" ? window.location.href : "https://oceanleo.com/");
   const canonical = canonicalSettingsTab(tab) || "general";
@@ -312,7 +313,7 @@ export function captureSettingsReturnTo(
 export function openSettingsModal(tab = "general") {
   if (typeof window === "undefined") return;
   if (tab === "devices") {
-    window.location.href = "/devices";
+    window.location.href = portalHref("/devices");
     return;
   }
   const billingView = billingViewFromRaw(tab);
@@ -343,7 +344,7 @@ export function navigateSettingsOrHref(href: string) {
     const url = new URL(href, window.location.href);
     if (/^\/settings\/devices\/?$/.test(url.pathname)
       || (url.pathname === "/settings" && url.searchParams.get("tab") === "devices")) {
-      window.location.href = "/devices";
+      window.location.href = portalHref("/devices");
       return;
     }
     if (isSettingsPathname(url.pathname) || SETTINGS_HASH.test(url.hash)) {

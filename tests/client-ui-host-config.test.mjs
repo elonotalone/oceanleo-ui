@@ -106,6 +106,7 @@ test("host mode family/gateway/identity/storage come from injection", () => {
   assert.equal(runtimePageOrigin(), "https://portal.test.example");
   assert.equal(runtimePageHost(), "portal.test.example");
   assert.equal(portalHref("/library"), "/library");
+  assert.equal(portalHref("/devices"), "/devices");
   assert.equal(getClientHostConfig()?.authStorage, storage);
   assert.equal(storage.getItem("k"), "v");
   assert.equal(nativeShellFromHostConfig(), false);
