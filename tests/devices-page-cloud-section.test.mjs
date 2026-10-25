@@ -81,6 +81,7 @@ const domainStubUrl = dataModule(`
   }
   export function domainProfileForHost() { return currentDomainProfile(); }
   export function familyForHost() { return currentDomainFamily(); }
+  export function runtimePageOrigin() { return currentDomainProfile().portalOrigin; }
 `);
 const confirmDialogStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};

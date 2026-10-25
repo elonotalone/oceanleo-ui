@@ -174,7 +174,7 @@ export function EndpointPicker({
           {tt("你还没有云电脑。带后台的应用要跑在你自己的云电脑上，OceanLeo 只给它一个公开网址，不替你运行程序。")}
         </SellerEmpty>
         <a
-          href="/settings/devices"
+          href="/devices"
           target="_blank"
           rel="noopener noreferrer"
           data-bay-endpoint-devices

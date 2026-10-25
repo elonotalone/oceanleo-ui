@@ -14,7 +14,7 @@ export function portalHref(path: string): string {
 }
 
 export function devicesCloudHref(): string {
-  return portalHref("/settings/devices");
+  return portalHref("/devices");
 }
 
 export function serverPageHref(

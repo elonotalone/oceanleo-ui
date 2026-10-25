@@ -188,6 +188,14 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     placements: { portal: { order: 30, iconId: "folder" } },
   },
   {
+    id: "devices",
+    href: "/devices",
+    labelKey: "我的设备",
+    labelSource: "ui",
+    iconId: "device",
+    placements: { portal: { order: 35 } },
+  },
+  {
     id: "workspace",
     href: "/workspace",
     labelKey: "workspace",

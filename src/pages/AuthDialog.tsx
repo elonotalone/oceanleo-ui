@@ -124,6 +124,7 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "继续",
   "输入你的邮箱地址",
   "关闭",
+  "取消",
   "登录方式",
   "邮箱",
   "手机号",
@@ -1295,17 +1296,29 @@ function OauthPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const label = OAUTH_CONTINUE[provider];
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
 
   async function go() {
+    if (controller.current) return;
+    const current = new AbortController();
+    controller.current = current;
     setError("");
     setLoading(true);
-    const r = await startOauthSignIn(provider, wechatRedirectTarget(redirect));
-    if (r.url) {
-      if (typeof window !== "undefined") window.location.href = r.url;
-      return;
+    try {
+      const r = await startOauthSignIn(provider, wechatRedirectTarget(redirect), current.signal);
+      if (current.signal.aborted) return;
+      if (r.url) {
+        if (typeof window !== "undefined") window.location.href = r.url;
+        return;
+      }
+      if (!r.signedIn) setError(tt(authErrorCopy(provider, r.error)));
+    } catch {
+      if (!current.signal.aborted) setError(tt(ERROR_COPY.network));
+    } finally {
+      if (controller.current === current) controller.current = null;
+      setLoading(false);
     }
-    setLoading(false);
-    setError(tt(authErrorCopy(provider, r.error)));
   }
 
   return (
@@ -1339,6 +1352,12 @@ function OauthPanel({
           </>
         )}
       </button>
+      {loading && (
+        <button type="button" onClick={() => { controller.current?.abort(); }}
+          className="w-full py-1 text-[12px] text-neutral-500 hover:text-neutral-900">
+          {tt("取消")}
+        </button>
+      )}
     </div>
   );
 }

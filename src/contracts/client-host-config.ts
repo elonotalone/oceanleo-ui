@@ -23,6 +23,12 @@ export interface ClientHostAuthStorage {
 
 export type ClientHostNavSection = "primary" | "footer";
 
+export interface ClientHostOAuth {
+  begin(): Promise<{ id: string; redirectTo: string }>;
+  openAndWait(id: string, url: string, signal?: AbortSignal): Promise<string>;
+  cancel(id: string): Promise<void>;
+}
+
 export interface ClientHostNavItem {
   href: string;
   label: string;
@@ -42,6 +48,7 @@ export interface ClientHostConfig {
   platform: ClientPlatform;
   capabilities: readonly string[];
   openExternal?: (url: string) => void | Promise<void>;
+  oauth?: ClientHostOAuth;
   /** Host-only sidebar rows. Omitted keeps the previous slot; `[]` clears. */
   navItems?: readonly ClientHostNavItem[];
   /** Optional host network (Rust/Tauri). Omitted keeps the previous slot. */
@@ -209,6 +216,7 @@ export function configureClientHost(config: ClientHostConfig): void {
     platform: config.platform,
     capabilities: Object.freeze([...(config.capabilities || [])]),
     openExternal: config.openExternal,
+    oauth: config.platform === "desktop" ? config.oauth ?? previous?.oauth : undefined,
     navItems,
     fetch: hostFetch,
     localWorkspace: config.platform === "desktop"

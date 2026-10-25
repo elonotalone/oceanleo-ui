@@ -47,6 +47,13 @@ export function SettingsModalHost({ extraSections, orgHref, showRequestStat = fa
   useEffect(() => {
     const apply = () => {
       const href = locationHref();
+      const legacyDeviceUrl = new URL(href, window.location.origin);
+      if (/^\/settings\/devices\/?$/.test(legacyDeviceUrl.pathname)
+        || (legacyDeviceUrl.pathname === "/settings" && legacyDeviceUrl.searchParams.get("tab") === "devices")) {
+        setTab(null);
+        router.replace("/devices");
+        return;
+      }
       const extras = extraIdsOf(extraRef.current);
       const hashMatch = typeof window !== "undefined"
         ? window.location.hash.match(/^#settings(?:\/([^/]*))?$/)

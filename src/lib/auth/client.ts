@@ -72,7 +72,8 @@ function hostBrowserClient(): SupabaseClient | null {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      detectSessionInUrl: hostCfg.platform !== "desktop",
+      flowType: hostCfg.platform === "desktop" ? "pkce" : "implicit",
       lock: browserAuthLock,
       storage,
       storageKey,
@@ -455,12 +456,21 @@ const OAUTH_TO_SUPABASE = {
 export async function startOauthSignIn(
   provider: OauthProvider,
   redirect?: string,
-): Promise<{ url?: string; error?: string }> {
+  signal?: AbortSignal,
+): Promise<{ url?: string; error?: string; signedIn?: boolean }> {
   const c = browserClient();
   if (!c) return { error: "登录服务尚未配置" };
-  const redirectTo =
+  const host = getClientHostConfig();
+  const native = host?.platform === "desktop";
+  if (native && !host.oauth) return { error: "桌面登录尚未就绪，请重新打开客户端。" };
+  let attempt: { id: string; redirectTo: string } | undefined;
+  let redirectTo =
     (redirect || "").trim() || (typeof window !== "undefined" ? window.location.href : "");
   try {
+    if (native) {
+      attempt = await host.oauth!.begin();
+      redirectTo = attempt.redirectTo;
+    }
     const { data, error } = await c.auth.signInWithOAuth({
       provider: OAUTH_TO_SUPABASE[provider],
       options: {
@@ -473,10 +483,27 @@ export async function startOauthSignIn(
       },
     });
     if (error) return { error: error.message };
-    if (data?.url) return { url: data.url };
+    if (data?.url) {
+      if (attempt && host?.oauth) {
+        const code = await host.oauth.openAndWait(attempt.id, data.url, signal);
+        if (signal?.aborted) return { error: "登录已取消。" };
+        const exchanged = await c.auth.exchangeCodeForSession(code);
+        if (exchanged.error || !exchanged.data.session) return { error: "无法完成登录，请重试。" };
+        return { signedIn: true };
+      }
+      return { url: data.url };
+    }
     return { error: `${provider} 登录暂未开放` };
-  } catch {
-    return { error: "网络错误：无法连接到登录服务" };
+  } catch (error) {
+    const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+    // Native errors are fixed host copy. Never echo provider URLs/codes into the UI.
+    return { error: native && /^(登录|已有登录|桌面登录|无法启动登录)/.test(message)
+      ? message : "网络错误：无法连接到登录服务" };
+  } finally {
+    if (attempt && host?.oauth) {
+      await Promise.resolve(host.authStorage?.removeItem(`${host.family === "cn" ? CN_AUTH_COOKIE_KEY : COM_AUTH_COOKIE_KEY}-code-verifier`)).catch(() => {});
+      await host.oauth.cancel(attempt.id).catch(() => {});
+    }
   }
 }
 

@@ -48,6 +48,15 @@ test("Turnstile 脚本走 challenges.cloudflare.com，explicit，不走 hCaptcha
   assert.doesNotMatch(src, /hcaptcha/i);
 });
 
+test("desktop email does not wait for a website-only Turnstile widget", async () => {
+  const hostStub = dataModule(`export function getClientHostConfig() { return { platform: "desktop" }; }`);
+  const { isCaptchaConfigured, getCaptchaToken } = await loadCaptchaModule({
+    "../../contracts/client-host-config": hostStub,
+  });
+  assert.equal(isCaptchaConfigured(), false);
+  assert.equal(await getCaptchaToken(), null);
+});
+
 test("mapCaptchaError 把 captcha 原文翻成可重试的人话", () => {
   assert.equal(
     mapCaptchaError("captcha verification process failed"),
@@ -264,6 +273,10 @@ function configStub() {
     export const SUPABASE_URL = "https://example.supabase.co";
     export const SUPABASE_ANON_KEY = "anon";
     export const GATEWAY_BASE = "https://api.oceanleo.com";
+    export const COM_AUTH_COOKIE_KEY = "sb-test-com-auth-token";
+    export const CN_AUTH_COOKIE_KEY = "sb-test-cn-auth-token";
+    export function currentIdentityUrl() { return SUPABASE_URL; }
+    export function currentIdentityAnonKey() { return SUPABASE_ANON_KEY; }
     export function cookieOptions() { return {}; }
     export function configured() { return true; }
     export function isLeoDevPreviewHost() { return false; }

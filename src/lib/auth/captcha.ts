@@ -7,6 +7,7 @@
 // Supabase captcha switch is off.
 
 import { currentDomainFamily, type DomainFamily } from "../../contracts/domain-family";
+import { getClientHostConfig } from "../../contracts/client-host-config";
 
 /** Public sitekey (not a secret). Managed widget `oceanleo-login`, hostname oceanleo.com. */
 export const TURNSTILE_SITEKEY = "0x4AAAAAAFK-cPFBHQyr7ke8";
@@ -48,6 +49,9 @@ export function captchaEnabledForFamily(family: DomainFamily = currentDomainFami
 }
 
 export function isCaptchaConfigured(): boolean {
+  // Turnstile's registered website origin cannot run inside tauri:// or tauri.localhost.
+  // Native HTTP still obeys GoTrue's server-side CAPTCHA policy; never disable that policy.
+  if (getClientHostConfig()?.platform === "desktop") return false;
   return captchaEnabledForFamily(currentDomainFamily());
 }
 

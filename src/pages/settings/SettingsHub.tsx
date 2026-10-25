@@ -17,7 +17,6 @@ import { currentDomainFamily } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import { ApiPage } from "../ApiPage";
 import { AuthPanel } from "../AuthDialog";
-import { DevicesPage } from "../DevicesPage";
 import { PasswordResetPage } from "../PasswordResetPage";
 import { SettingsNav, type SettingsNavGroup } from "./SettingsNav";
 import { settingsNavIcon } from "./SettingsNavIcons";
@@ -557,12 +556,6 @@ export function SettingsHub({
         group: "capabilities",
         label: tt("邮件"),
         render: () => <MailSection variant="pane" />,
-      },
-      {
-        id: "devices",
-        group: "capabilities",
-        label: tt("我的设备"),
-        render: () => <DevicesPage variant="pane" />,
       },
     ];
     const takenLabels = new Set([...builtin, ...caps].map((section) => section.label));

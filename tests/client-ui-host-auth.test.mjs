@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { authFetch } from "../src/lib/auth/auth-fetch.ts";
-import { browserClient } from "../src/lib/auth/client.ts";
+import { browserClient, startOauthSignIn } from "../src/lib/auth/client.ts";
 import { COM_AUTH_COOKIE_KEY, CN_AUTH_COOKIE_KEY } from "../src/lib/auth/config.ts";
 import {
   CLIENT_WEB_BOOT_GLOBAL_KEY,
@@ -78,6 +78,47 @@ test("unconfigured library timeout stays 20s", () => {
   resetClientHostConfigForTests();
   assert.equal(hostAwareLibraryTimeoutMs(), WEB_LIBRARY_TIMEOUT_MS);
   assert.equal(WEB_LIBRARY_TIMEOUT_MS, 20_000);
+});
+
+test("desktop OAuth exchanges a PKCE code through host HTTP and persists the resulting session", async () => {
+  const storage = createMemoryAuthStorage();
+  const requests = [];
+  const finished = [];
+  configureClientHost(hostConfig({
+    authStorage: storage,
+    oauth: {
+      async begin() { return { id: "fresh-attempt", redirectTo: "http://127.0.0.1:47835/auth/callback/fresh-attempt" }; },
+      async openAndWait(id, url) {
+        assert.equal(id, "fresh-attempt");
+        const target = new URL(url);
+        assert.equal(target.origin, "https://auth.oceanleo.com");
+        assert.equal(target.searchParams.get("code_challenge_method"), "s256");
+        assert.ok(target.searchParams.get("code_challenge"));
+        assert.equal(target.searchParams.get("redirect_to"), "http://127.0.0.1:47835/auth/callback/fresh-attempt");
+        return "one-use-code";
+      },
+      async cancel(id) { finished.push(id); },
+    },
+    fetch: async (url, init) => {
+      requests.push([String(url), JSON.parse(init.body)]);
+      return new Response(JSON.stringify({
+        access_token: "test-access-token", refresh_token: "test-refresh-token",
+        token_type: "bearer", expires_in: 3600,
+        user: { id: "user-1", email: "test@example.invalid", aud: "authenticated" },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    },
+  }));
+  try {
+    const result = await startOauthSignIn("google");
+    assert.deepEqual(result, { signedIn: true });
+    assert.equal(requests.length, 1);
+    assert.match(requests[0][0], /grant_type=pkce/);
+    assert.equal(requests[0][1].auth_code, "one-use-code");
+    assert.ok(requests[0][1].code_verifier.length >= 43);
+    assert.equal(JSON.parse(await storage.getItem(COM_AUTH_COOKIE_KEY)).user.id, "user-1");
+    assert.equal(await storage.getItem(`${COM_AUTH_COOKIE_KEY}-code-verifier`), null);
+    assert.deepEqual(finished, ["fresh-attempt"]);
+  } finally { await browserClient()?.auth.stopAutoRefresh(); }
 });
 
 test("host-mode library timeout is 45s", () => {

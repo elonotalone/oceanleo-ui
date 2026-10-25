@@ -15,7 +15,6 @@ export const SETTINGS_BUILTIN_TABS = [
   "connectors",
   "automation",
   "mail",
-  "devices",
   "team",
 ] as const;
 
@@ -187,6 +186,7 @@ export function isSettingsPathname(pathname: string): boolean {
 }
 
 export function settingsPath(tab: string, href?: string): string {
+  if (tab === "devices") return "/devices";
   const source =
     href || (typeof window !== "undefined" ? window.location.href : "https://oceanleo.com/");
   const canonical = canonicalSettingsTab(tab) || "general";
@@ -311,6 +311,10 @@ export function captureSettingsReturnTo(
 /** 打开设置卡片并把地址写成 `/settings/<tab>`。不从 Host 文件导出，避免把整窗拖进输入框模块图。 */
 export function openSettingsModal(tab = "general") {
   if (typeof window === "undefined") return;
+  if (tab === "devices") {
+    window.location.href = "/devices";
+    return;
+  }
   const billingView = billingViewFromRaw(tab);
   const resolved = canonicalSettingsTab(tab) || "general";
   const next = settingsPath(resolved);
@@ -337,6 +341,11 @@ export function navigateSettingsOrHref(href: string) {
   if (typeof window === "undefined") return;
   try {
     const url = new URL(href, window.location.href);
+    if (/^\/settings\/devices\/?$/.test(url.pathname)
+      || (url.pathname === "/settings" && url.searchParams.get("tab") === "devices")) {
+      window.location.href = "/devices";
+      return;
+    }
     if (isSettingsPathname(url.pathname) || SETTINGS_HASH.test(url.hash)) {
       const tab = tabFromSettingsLocation(url.href);
       const view = accountSettingsView(url.href);

@@ -18,7 +18,6 @@ import type { CloudComputerClient } from "../lib/cloud-computer-api";
 import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
 import { CloudComputersSection } from "./CloudComputersPage";
-import { PageHeader } from "./PageHeader";
 import { RemoteDesktopPanel } from "./RemoteDesktopPanel";
 import { blockerCopy, statusBlocker } from "./remote-desktop-input";
 
@@ -137,6 +136,8 @@ export function DevicesPage({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [managingId, setManagingId] = useState<string | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<Device | null>(null);
   // 远程桌面：状态只用于界面提示，本机才是权限的唯一出处（网页不能替电脑开权限）。
   const [remoteStatus, setRemoteStatus] = useState<Record<string, RemoteDesktopStatus>>({});
@@ -302,11 +303,20 @@ export function DevicesPage({
 
   return (
     <div
-      className={pane ? "min-h-0" : "px-8 py-6"}
+      className={pane ? "min-h-0" : "mx-auto w-full max-w-7xl px-5 py-7 sm:px-8"}
       data-oceanleo-devices-page
       data-devices-pane={pane ? "" : undefined}
     >
-      {!pane && <PageHeader title={tt("我的设备")} />}
+      {!pane && (
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1>
+          <button type="button" aria-expanded={connecting} aria-controls="device-connect-form"
+            onClick={() => setConnecting((open) => !open)}
+            className="shrink-0 rounded-xl bg-neutral-900 px-4 py-2.5 text-[13px] font-medium text-white hover:bg-neutral-800">
+            {tt("连接设备")}
+          </button>
+        </div>
+      )}
 
       {confirmRevoke && (
         <ConfirmDialog
@@ -319,8 +329,10 @@ export function DevicesPage({
         />
       )}
 
-      <div className={pane ? "max-w-3xl space-y-6" : "mx-auto mt-7 max-w-3xl space-y-6"}>
+      <div className={pane ? "space-y-6" : "mt-7 space-y-8"}>
         <section
+          id="device-connect-form"
+          hidden={!pane && !connecting}
           className="rounded-2xl border border-neutral-200 bg-white p-5"
           data-oceanleo-devices-phones
         >
@@ -384,13 +396,22 @@ export function DevicesPage({
               <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
                 {tt("下载客户端后，客户端会显示一个配对码；在上方输入即可连接。")}
               </p>
+              <div className="mt-5 flex justify-center gap-3">
+                <button type="button" onClick={() => setConnecting(true)}
+                  className="rounded-xl bg-neutral-900 px-4 py-2 text-[13px] text-white hover:bg-neutral-800">
+                  {tt("连接设备")}
+                </button>
+                <a href="/download" className="rounded-xl border border-neutral-200 px-4 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50">
+                  {tt("下载客户端")}
+                </a>
+              </div>
             </div>
           ) : (
-            <div className="space-y-3" data-all-offline={allOffline ? "true" : "false"}>
+            <div className="grid items-start gap-4 lg:grid-cols-2" data-all-offline={allOffline ? "true" : "false"}>
               {devices.map((device) => (
                 <article
                   key={device.device_id}
-                  className="rounded-2xl border border-neutral-200 bg-white p-5"
+                  className={`min-w-0 rounded-2xl border border-neutral-200 bg-white p-5 ${managingId === device.device_id || remoteOpenId === device.device_id ? "lg:col-span-2" : ""}`}
                 >
                   <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
@@ -464,6 +485,18 @@ export function DevicesPage({
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-2">
+                      <button type="button"
+                        aria-expanded={managingId === device.device_id}
+                        aria-controls={`device-manage-${device.device_id}`}
+                        onClick={() => setManagingId((current) => current === device.device_id ? null : device.device_id)}
+                        className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50">
+                        {tt("管理")}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div id={`device-manage-${device.device_id}`} hidden={managingId !== device.device_id}>
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-neutral-100 pt-4">
                       <button
                         type="button"
                         onClick={() => beginRename(device)}
@@ -479,7 +512,6 @@ export function DevicesPage({
                         {tt("撤销设备")}
                       </button>
                     </div>
-                  </div>
 
                   <dl className="mt-4 grid gap-3 text-[12px] sm:grid-cols-2">
                     <div className="rounded-xl bg-neutral-50 px-3 py-2.5">
@@ -497,6 +529,7 @@ export function DevicesPage({
                       </dd>
                     </div>
                   </dl>
+                  </div>
 
                   {isRemoteDesktopHost(device) && (
                     <RemoteDesktopEntry
