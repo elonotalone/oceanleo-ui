@@ -214,6 +214,36 @@ test("没有任何设备时显示独立空态和客户端配对入口", async ()
   view.cleanup();
 });
 
+test("device management opens inline and connection controls start collapsed", async () => {
+  const view = await render(makeClient([makeDevice()]));
+  assert.equal(view.host.querySelector("#device-connect-form").hidden, true);
+  const manage = view.button("管理");
+  assert.equal(manage.getAttribute("aria-expanded"), "false");
+  await view.click(manage);
+  assert.equal(manage.getAttribute("aria-expanded"), "true");
+  assert.equal(view.host.querySelector(`[id="${manage.getAttribute("aria-controls")}"]`).hidden, false);
+  assert.equal(window.location.pathname, "/devices");
+  view.cleanup();
+});
+
+test("account changes reload devices and discard the previous account's late response", async () => {
+  let resolveOld;
+  let count = 0;
+  const old = new Promise((resolve) => { resolveOld = resolve; });
+  const view = await render({
+    ...makeClient([]),
+    listDevices: async () => ++count === 1 ? old : ({ ok: true, data: [makeDevice({ device_name: "Account B computer" })] }),
+  });
+  await act(async () => { window.dispatchEvent(new window.Event("oceanleo:auth-state")); });
+  await flush();
+  assert.ok(view.text().includes("Account B computer"));
+  await act(async () => { resolveOld({ ok: true, data: [makeDevice({ device_name: "Account A computer" })] }); });
+  await flush();
+  assert.ok(view.text().includes("Account B computer"));
+  assert.ok(!view.text().includes("Account A computer"));
+  view.cleanup();
+});
+
 test("设备全部离线时说明任务会按设备名排队等待", async () => {
   const view = await render(makeClient([makeDevice({ online: false })]));
   assert.ok(

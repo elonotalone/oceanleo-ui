@@ -138,6 +138,7 @@ export function DevicesPage({
   const [savingName, setSavingName] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [managingId, setManagingId] = useState<string | null>(null);
+  const [authRevision, setAuthRevision] = useState(0);
   const [confirmRevoke, setConfirmRevoke] = useState<Device | null>(null);
   // 远程桌面：状态只用于界面提示，本机才是权限的唯一出处（网页不能替电脑开权限）。
   const [remoteStatus, setRemoteStatus] = useState<Record<string, RemoteDesktopStatus>>({});
@@ -156,19 +157,34 @@ export function DevicesPage({
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    client.listDevices().then((result) => {
-      if (!alive) return;
-      if (result.ok && result.data) {
-        setDevices(result.data);
-        setPageError(null);
-      } else {
-        setPageError(actionErrorCopy(result.error, result.limit));
+    let generation = 0;
+    async function load() {
+      const ticket = ++generation;
+      setLoading(true);
+      try {
+        const result = await client.listDevices();
+        if (!alive || ticket !== generation) return;
+        if (result.ok && result.data) { setDevices(result.data); setPageError(null); }
+        else setPageError(actionErrorCopy(result.error, result.limit));
+      } catch {
+        if (alive && ticket === generation) setPageError(actionErrorCopy("network_error"));
+      } finally {
+        if (alive && ticket === generation) setLoading(false);
       }
-      setLoading(false);
-    });
+    }
+    function onAccountChange() {
+      setDevices([]);
+      setRemoteStatus({});
+      setRemoteOpenId(null);
+      setManagingId(null);
+      setAuthRevision((value) => value + 1);
+      void load();
+    }
+    void load();
+    window.addEventListener("oceanleo:auth-state", onAccountChange);
     return () => {
       alive = false;
+      window.removeEventListener("oceanleo:auth-state", onAccountChange);
     };
   }, [client]);
 
@@ -567,6 +583,7 @@ export function DevicesPage({
         </section>
 
         <CloudComputersSection
+          key={authRevision}
           {...(cloudClient ? { client: cloudClient } : {})}
           autoFocus={tab === "cloud"}
         />
