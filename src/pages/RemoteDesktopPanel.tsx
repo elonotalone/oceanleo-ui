@@ -224,6 +224,19 @@ export function RemoteDesktopPanel({
     (action: RemoteDesktopAction) => {
       if (closedRef.current || !sessionRef.current) return;
       const queue = queueRef.current;
+      // 单击为识别双击而暂存，但后来的键盘输入不能越过它，否则文字会落在旧焦点。
+      // 在同一条有序队列里先提交定位单击；清掉计时器，避免随后再点一次。
+      if ((action.kind === "type" || action.kind === "keypress") && pendingClickRef.current) {
+        if (queue.length >= INPUT_QUEUE_MAX) {
+          flashNotice("操作太快，部分输入被丢弃了。");
+          return;
+        }
+        clearTimeout(pendingClickRef.current);
+        pendingClickRef.current = null;
+        const point = pendingPointRef.current;
+        pendingPointRef.current = null;
+        if (point) queue.push({ kind: "click", x: point.x, y: point.y, button: "left" });
+      }
       const last = queue[queue.length - 1];
       // 能合并的合并：相邻移动只留最后一个，相邻滚轮累加，相邻文字拼接。
       if (last && last.kind === "move" && action.kind === "move") {

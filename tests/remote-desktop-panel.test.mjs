@@ -252,6 +252,54 @@ test("键盘：点画面聚焦后可输入；快速连按合并成一次 type，
   await view.unmount();
 });
 
+for (const source of ["key", "paste", "composition"]) {
+  test(`单击后立即${source}：先提交定位单击，再发送键盘输入，不等双击窗口`, async () => {
+    const client = makeClient();
+    const view = await mount(client, { doubleClickWindowMs: 10000 });
+    try {
+      view.pin();
+      await view.mouse("mousedown", 420, 230, { button: 0, detail: 1 });
+      await view.mouse("mouseup", 420, 230, { button: 0, detail: 1 });
+      assert.equal(client.log.inputs.length, 0);
+      if (source === "key") {
+        await view.key({ key: "Enter" });
+      } else if (source === "paste") {
+        const event = new window.Event("paste", { bubbles: true, cancelable: true });
+        event.clipboardData = { getData: () => "test" };
+        await act(async () => view.stage().dispatchEvent(event));
+      } else {
+        await view.compose("compositionstart", "");
+        await view.compose("compositionend", "test");
+      }
+      await settle(20);
+      assert.deepEqual(actions(client), [
+        { kind: "click", x: 0.5, y: 0.5, button: "left" },
+        source === "key" ? { kind: "keypress", key: "Enter" } : { kind: "type", text: "test" },
+      ]);
+    } finally {
+      await view.unmount();
+    }
+  });
+}
+
+test("键盘提前提交单击后，原双击计时器不再补发第二次单击", async () => {
+  const client = makeClient();
+  const view = await mount(client);
+  try {
+    view.pin();
+    await view.mouse("mousedown", 420, 230, { button: 0, detail: 1 });
+    await view.mouse("mouseup", 420, 230, { button: 0, detail: 1 });
+    await view.key({ key: "Enter" });
+    await settle(100);
+    assert.deepEqual(actions(client), [
+      { kind: "click", x: 0.5, y: 0.5, button: "left" },
+      { kind: "keypress", key: "Enter" },
+    ]);
+  } finally {
+    await view.unmount();
+  }
+});
+
 test("粘贴文字按块发送，Ctrl+V 的按键本身不被送出", async () => {
   const client = makeClient();
   const view = await mount(client);
