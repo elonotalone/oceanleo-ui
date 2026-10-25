@@ -530,7 +530,8 @@ export function RemoteDesktopPanel({
     const button = mouseButton(event.button);
     const point = pointFromEvent(event, true);
     // 点在留白上也让键盘焦点回到输入口，但不产生点击。
-    inputRef.current?.focus();
+    // 隐藏输入口可能在可视区下方；聚焦不能在按下和抬起之间滚动画面、改变落点。
+    inputRef.current?.focus({ preventScroll: true });
     if (!button || !point) return;
     event.preventDefault();
     downRef.current = { point, button };
@@ -589,7 +590,7 @@ export function RemoteDesktopPanel({
     const input = inputRef.current;
     const hadFocus = Boolean(input) && document.activeElement === input;
     // 触摸点按不自动弹软键盘（会盖住画面），键盘由「键盘」按钮唤起；鼠标/笔保持原来的点击即聚焦。
-    if (event.pointerType !== "touch") input?.focus();
+    if (event.pointerType !== "touch") input?.focus({ preventScroll: true });
     const button = mouseButton(event.button);
     const point = pointFromEvent(event, true);
     if (!button || !point) return;

@@ -339,6 +339,36 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
   }, bundleText);
 });
 
+test("点部分可见画面时，聚焦隐藏键盘口不滚动画面或改变远端点击位置", { timeout: 120_000, skip }, async () => {
+  await withFixture(async ({ browser, origin }) => {
+    const s = await open(browser, origin, { mobile: false, w: 1280, h: 720 });
+    try {
+      await s.page.evaluate(() => {
+        document.querySelector("[data-oceanleo-remote-desktop]").style.marginTop = "500px";
+        const spacer = document.createElement("div");
+        spacer.style.height = "1200px";
+        document.body.append(spacer);
+        window.scrollTo(0, 0);
+      });
+      const p = await s.at(0.5, 0.05);
+      assert.ok(p.y > 0 && p.y < 800, "要点的是已可见的画面，不是可视区外的坐标");
+      const before = await s.page.locator("[data-remote-frame]").boundingBox();
+      assert.ok(before.y + before.height > 800, "键盘口仍在可视区下方");
+      await s.page.mouse.click(p.x, p.y);
+      await wait(180);
+      const after = await s.page.locator("[data-remote-frame]").boundingBox();
+      const got = (await s.inputs()).filter((a) => a.kind !== "move");
+      assert.equal(got.length, 1);
+      assert.equal(got[0].kind, "click");
+      assert.ok(Math.abs(got[0].x - 0.5) < 1e-6);
+      assert.ok(Math.abs(got[0].y - 0.05) < 1e-6);
+      assert.ok(Math.abs(after.y - before.y) < 1, "聚焦隐藏输入口不该在按下和抬起之间移动画面");
+    } finally {
+      await s.context.close();
+    }
+  }, bundleText);
+});
+
 test("真实验收点击：画面滚入视区、避开留白，再立即输入，点击先送且不重复", { timeout: 120_000, skip }, async () => {
   const driver = await import(pathToFileURL("/root/projects/oceanleo-app/acceptance-runner/desktop/remote_web.mjs").href);
   await withFixture(async ({ browser, origin }) => {
