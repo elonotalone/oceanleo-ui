@@ -260,6 +260,17 @@ export const REMOTE_BACKPRESSURE_CODES: ReadonlySet<string> = new Set([
 /** 返回中文原文（调用方再过 `tt`），未知码落到统一兜底，不把英文 token 摆给用户。 */
 export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   switch (code) {
+    case "media_first_frame_timeout":
+      return "尚未收到电脑画面，请检查电脑的屏幕录制权限后重新连接。";
+    case "media_frame_timeout":
+    case "media_connection_failed":
+    case "media_subscribe_failed":
+    case "media_session_closed":
+      return "视频连接已中断，控制已停止。请重新连接。";
+    case "media_auth_failed":
+      return "视频授权无法续期，控制已停止。请重新连接。";
+    case "media_unavailable":
+      return "这台电脑的视频服务暂不可用，请稍后重新连接。";
     case "unauthorized":
       return "登录已失效，请重新登录后再试。";
     case "network_error":

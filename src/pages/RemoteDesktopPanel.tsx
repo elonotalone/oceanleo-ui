@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { remoteDesktopClient, type RemoteDesktopAction, type RemoteDesktopClient, type RemoteDesktopFrameData, type RemoteDesktopStream } from "../api/remote-desktop";
+import { remoteDesktopClient, type RemoteDesktopAction, type RemoteDesktopClient, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteMediaStatus } from "../api/remote-desktop";
+import { RemoteDesktopVideo } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
 import { chunkText, clampPaste, classifyInput, containedRect, insideRect, keyEventToAction, mouseButton, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
@@ -38,6 +39,20 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const [toolbar, setToolbar] = useState(true);
   const [coarse, setCoarse] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [mediaMode, setMediaMode] = useState<"legacy" | "artc">("legacy");
+  const mediaModeRef = useRef<"legacy" | "artc">("legacy");
+  const [mediaStatus, setMediaStatus] = useState<RemoteMediaStatus | null>(null);
+  const mediaStatusRef = useRef<RemoteMediaStatus | null>(null);
+  const [displayId, setDisplayId] = useState<string>();
+  const [zoom, setZoom] = useState(1);
+  const [panMode, setPanMode] = useState(false);
+  const panModeRef = useRef(false);
+  panModeRef.current = panMode;
+  const panRef = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
+  const [mediaNotice, setMediaNotice] = useState("");
+  const [mediaReady, setMediaReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const phaseRef = useRef<Phase>(phase);
   const frameRef = useRef(frame);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -107,6 +122,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     moveRef.current = null;
     heldKeys.current.clear();
     pointerRef.current = null;
+    panRef.current = null;
     composing.current = false;
     if (streamModeRef.current) streamRef.current?.send({ kind: "release_all" });
   }, []);
@@ -134,18 +150,20 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     frameRef.current = null;
     setFrame(null);
     setCongested(false);
+    mediaModeRef.current = "legacy";
+    mediaStatusRef.current = null;
+    setMediaMode("legacy"); setMediaReady(false); setMediaStatus(null); setDisplayId(undefined); setZoom(1); setPanMode(false); setMediaNotice(""); setMessage("");
     updatePhase("starting");
     const previousOverflow = document.body.style.overflow;
+    let mediaAttempted = false, mediaDescriptorSeen = false;
     document.body.style.overflow = "hidden";
     setCoarse(Boolean(window.matchMedia?.("(pointer: coarse)").matches));
     const end = (error?: string) => {
-      releaseInput();
-      streamRef.current?.close();
+      disconnect();
       setFrame(null);
       updatePhase(terminal(error));
       setMessage(remoteDesktopErrorCopy(error));
       revealToolbar();
-      if (sessionRef.current) void client.closeSession(deviceId, sessionRef.current).catch(() => {});
     };
     void (async () => {
       let result = await client.createSession(deviceId, { signal: abort.signal });
@@ -166,11 +184,27 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           state(state, error) {
             if (abort.signal.aborted) return;
             if (state === "closed") end(error || "session_closed");
-            else updatePhase(state === "pending_consent" ? "waiting" : state);
+            else {
+              if (state === "active" && client.negotiateMedia && !mediaAttempted) {
+                mediaAttempted = true;
+                mediaModeRef.current = "artc"; setMediaMode("artc"); setFrame(null);
+              }
+              updatePhase(state === "pending_consent" ? "waiting" : state);
+            }
           },
           frame(value) {
             if (abort.signal.aborted || phaseRef.current !== "active") return;
+            if (mediaModeRef.current === "artc") { streamRef.current?.acknowledgeFrame(value.sequence); return; }
             setFrame(value);
+          },
+          media(media, status) {
+            if (abort.signal.aborted) return;
+            mediaStatusRef.current = status;
+            setMediaStatus(status);
+            if (status?.state === "failed") end(status.error || "media_unavailable");
+            // A missing descriptor before negotiation is normal. After activation it revokes video.
+            if (media) mediaDescriptorSeen = true;
+            else if (mediaDescriptorSeen) end("media_session_closed");
           },
           error(code) { if (!abort.signal.aborted) end(code); },
           congestion(busy) { if (!abort.signal.aborted) setCongested(busy); },
@@ -181,6 +215,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         return;
       }
       streamModeRef.current = false;
+      setMediaNotice("兼容画面：请更新电脑客户端以启用流畅视频。");
       let failures = 0;
       while (!abort.signal.aborted && !closedRef.current) {
         const response = await client.getFrame(deviceId, result.data.session_id, { signal: abort.signal });
@@ -202,7 +237,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       document.body.style.overflow = previousOverflow;
       releaseRemoteDesktopFullscreen();
     };
-  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase]);
+  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase, attempt]);
 
   useEffect(() => {
     if (phase === "active") { revealToolbar(); inputRef.current?.focus({ preventScroll: true }); }
@@ -268,7 +303,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   }, [releaseInput, send, sendText]);
 
   const point = (event: { clientX: number; clientY: number }, strict = true) => {
-    const image = imageRef.current, current = frameRef.current;
+    const image = mediaModeRef.current === "artc" ? videoRef.current : imageRef.current, current = frameRef.current;
     if (!image || !current) return null;
     const rect = containedRect(image.getBoundingClientRect(), current.width, current.height);
     if (strict && !insideRect(event.clientX, event.clientY, rect)) return null;
@@ -292,6 +327,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (phaseRef.current !== "active") return;
+    if (panModeRef.current && zoom > 1) {
+      event.preventDefault(); releaseInput();
+      panRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      return;
+    }
     if (pointerRef.current && pointerRef.current.id !== event.pointerId) { releaseInput(); return; }
     const p = point(event), button = mouseButton(event.button);
     if (!p || !button) return;
@@ -306,6 +347,13 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
 
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
     if (event.clientY < 70) revealToolbar();
+    const pan = panRef.current;
+    if (pan && pan.id === event.pointerId) {
+      event.currentTarget.scrollLeft = pan.left + pan.x - event.clientX;
+      event.currentTarget.scrollTop = pan.top + pan.y - event.clientY;
+      return;
+    }
+    if (panModeRef.current) return;
     if (!streamModeRef.current || phaseRef.current !== "active") return;
     if (event.pointerType === "touch" && !pointerRef.current) return;
     const p = point(event, !pointerRef.current);
@@ -326,6 +374,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   }
 
   function pointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (panRef.current?.id === event.pointerId) { panRef.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId); return; }
     const down = pointerRef.current;
     if (!down || down.id !== event.pointerId) return;
     const p = point(event, false);
@@ -374,6 +423,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     const stage = stageRef.current;
     if (!stage) return;
     const wheel = (event: WheelEvent) => {
+      if (panModeRef.current) return;
       const p = point(event);
       if (!p || phaseRef.current !== "active") return;
       event.preventDefault(); flushMove();
@@ -389,30 +439,49 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const active = phase === "active";
   const status = phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? "等待这台电脑确认…" : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
   return createPortal(
-    <div data-oceanleo-remote-desktop data-remote-phase={phase} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
+    <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
       <div ref={stageRef} data-remote-stage tabIndex={0} aria-label={tt("远程桌面")}
         onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp}
         onPointerCancel={releaseInput} onLostPointerCapture={() => { if (pointerRef.current) releaseInput(); }}
         onKeyDown={keyDown} onKeyUp={keyUp} onContextMenu={(event) => event.preventDefault()}
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) releaseInput(); }}
-        style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none" }}>
-        {frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
+        style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", overflow: zoom > 1 ? "auto" : "hidden" }}>
+        {mediaMode === "artc" && active && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId} zoom={zoom}
+          onFrame={(width, height) => {
+            if (displayId && mediaStatusRef.current?.geometry?.display_id !== displayId) return;
+            if (!frameRef.current || frameRef.current.width !== width || frameRef.current.height !== height) {
+              const next = { image: "", width, height, sequence: 0 }; frameRef.current = next; setFrame(next);
+            }
+            setMediaReady(true);
+          }}
+          onState={(value, error) => {
+            if (value !== "playing") { setMediaReady(false); releaseInput(); frameRef.current = null; setFrame(null); }
+            setMediaNotice(value === "playing" ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
+            if (value === "error") { disconnect(); updatePhase("error"); setMessage(remoteDesktopErrorCopy(error)); revealToolbar(); }
+          }}
+          onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("兼容画面：请更新电脑客户端以启用流畅视频。"); }}
+          onStatus={(status) => { mediaStatusRef.current = status; setMediaStatus(status); }} /> : frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
           onLoad={() => streamRef.current?.acknowledgeFrame(frame.sequence)}
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
-          style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} /> :
+          style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, maxWidth: "none", objectFit: "contain", display: "block" }} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status)}</div>}
-        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active} inputMode={coarse && !keyboard ? "none" : "text"}
+        {mediaMode === "artc" && active && !mediaReady ? <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090be8", pointerEvents: "none" }}>{tt(mediaNotice)}</div> : null}
+        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
           style={{ position: "absolute", left: "50%", top: "50%", width: 1, height: 1, opacity: 0, padding: 0, border: 0, resize: "none" }} />
       </div>
       <div onPointerEnter={revealToolbar} onFocus={revealToolbar} style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: `translate(-50%, ${toolbar || !active ? "0" : "-150%"})`, transition: "transform .18s", display: "flex", alignItems: "center", gap: 16, padding: "9px 14px", borderRadius: 12, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deviceName}</span>
-        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active ? "已连接" : status)}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
+        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : status)}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
+        {active ? <select aria-label={tt("画面缩放")} value={zoom} onChange={(event) => { releaseInput(); setZoom(Number(event.target.value)); setPanMode(false); }}><option value={1}>{tt("适应窗口")}</option><option value={1.5}>150%</option><option value={2}>200%</option><option value={3}>300%</option></select> : null}
+        {active && zoom > 1 ? <button type="button" aria-pressed={panMode} onClick={() => { releaseInput(); setPanMode((value) => !value); }}>{tt(panMode ? "操作电脑" : "移动画面")}</button> : null}
+        {active && (mediaStatus?.displays?.length ?? 0) > 1 ? <select aria-label={tt("显示器")} value={displayId || mediaStatus?.geometry?.display_id || ""} onChange={(event) => { releaseInput(); setFrame(null); frameRef.current = null; setMediaReady(false); setDisplayId(event.target.value); }}>{mediaStatus?.displays?.map((display) => <option key={display.display_id} value={display.display_id}>{display.label} · {display.width}×{display.height}</option>)}</select> : null}
         {coarse && active ? <button data-remote-keyboard-toggle type="button" onClick={() => { setKeyboard(true); inputRef.current?.setAttribute("inputmode", "text"); inputRef.current?.focus({ preventScroll: true }); }}>{tt("键盘")}</button> : null}
         <button type="button" onClick={requestRemoteDesktopFullscreen} style={{ whiteSpace: "nowrap" }}>{tt("全屏")}</button>
+        {!active && !["starting", "waiting", "connecting"].includes(phase) ? <button type="button" onClick={() => { disconnect(); setAttempt((value) => value + 1); }}>{tt("重新连接")}</button> : null}
         <button type="button" onClick={() => { disconnect(); onClose(); }} style={{ whiteSpace: "nowrap" }}>{tt("退出桌面")}</button>
       </div>
-      {active && (congested || message) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(congested ? "输入正在等待确认，画面保持连接。" : message)}</div> : null}
+      {active && (congested || message || (mediaMode === "legacy" && mediaNotice)) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(congested ? "输入正在等待确认，画面保持连接。" : message || mediaNotice)}</div> : null}
     </div>, portal,
   );
 }

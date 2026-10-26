@@ -13,6 +13,30 @@ import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
 import { RemoteInputScheduler } from "./remote-desktop-scheduler";
+export interface RemoteMediaCredentials {
+  provider: "artc";
+  transport: "artc-v1";
+  app_id: string;
+  channel_id: string;
+  user_id: string;
+  publisher_id: string;
+  token: string;
+  expires_at: string;
+  timestamp: number;
+  role: "viewer";
+  camera: false;
+  microphone: false;
+  display_id?: string;
+  track: "screen";
+}
+
+export interface RemoteMediaStatus {
+  state: "starting" | "publishing" | "failed";
+  error?: string;
+  geometry?: { display_id: string; width: number; height: number };
+  displays?: Array<{ display_id: string; label: string; width: number; height: number }>;
+}
+export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
 
 export type RemoteDesktopSessionState = "pending_consent" | "connecting" | "active" | "closed";
 
@@ -88,6 +112,7 @@ export interface RemoteDesktopRequestOptions {
 }
 
 export interface RemoteDesktopClient {
+  negotiateMedia?(deviceId: string, sessionId: string, displayId?: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteMediaResponse>>;
   openStream?(
     deviceId: string, sessionId: string, handlers: RemoteDesktopStreamHandlers,
     options?: RemoteDesktopRequestOptions,
@@ -125,6 +150,7 @@ export interface RemoteDesktopStream {
 }
 
 export interface RemoteDesktopStreamHandlers {
+  media?(media: RemoteMediaCredentials | null, status: RemoteMediaStatus | null): void;
   state(state: RemoteDesktopSessionState, error?: string): void;
   frame(frame: RemoteDesktopFrameData): void;
   error(code: string): void;
@@ -253,6 +279,11 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (ended) return;
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }
     handlers.state(state, typeof data.error === "string" ? data.error : undefined);
+    if ("media" in data) {
+      const media = data.media === null ? null : parseRemoteMedia(data.media);
+      if (data.media !== null && !media) { fail("response_malformed"); return; }
+      handlers.media?.(media, parseRemoteMediaStatus(data.media_status));
+    }
     if (state === "closed") dispose();
   };
   socket.onerror = () => fail("network_error");
@@ -324,6 +355,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+export function parseRemoteMedia(data: unknown): RemoteMediaCredentials | null {
+  if (!isRecord(data) || data.provider !== "artc" || data.transport !== "artc-v1" || data.track !== "screen" || data.role !== "viewer" || data.camera !== false || data.microphone !== false) return null;
+  for (const field of ["app_id", "channel_id", "user_id", "publisher_id", "token", "expires_at"]) if (typeof data[field] !== "string" || !data[field]) return null;
+  if (typeof data.timestamp !== "number" || !Number.isFinite(data.timestamp) || !Number.isFinite(Date.parse(data.expires_at as string))) return null;
+  return data as unknown as RemoteMediaCredentials;
+}
+
+export function parseRemoteMediaStatus(data: unknown): RemoteMediaStatus | null {
+  if (!isRecord(data) || !["starting", "publishing", "failed"].includes(String(data.state))) return null;
+  const dimensions = (value: unknown): value is { display_id: string; width: number; height: number } => isRecord(value) && typeof value.display_id === "string" && typeof value.width === "number" && value.width > 0 && typeof value.height === "number" && value.height > 0;
+  return {
+    state: data.state as RemoteMediaStatus["state"],
+    ...(typeof data.error === "string" ? { error: data.error } : {}),
+    ...(dimensions(data.geometry) ? { geometry: data.geometry } : {}),
+    ...(Array.isArray(data.displays) ? { displays: data.displays.filter(dimensions).map((display) => ({ ...display, label: typeof (display as Record<string, unknown>).label === "string" ? (display as Record<string, unknown>).label as string : display.display_id })) } : {}),
+  };
+}
+
 /** 读不懂的形状宁可当「响应异常」，也不把脏数据喂给 <img>。 */
 function parseStatus(data: unknown): RemoteDesktopStatus | null {
   if (!isRecord(data)) return null;
@@ -377,6 +426,13 @@ export function parseFrame(data: unknown): RemoteDesktopFrame | null {
 
 export const remoteDesktopClient: RemoteDesktopClient = {
   openStream,
+  async negotiateMedia(deviceId, sessionId, displayId, options) {
+    const result = await authed<unknown>(`${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/media`, { method: "POST", body: JSON.stringify({ transport: "artc-v1", ...(displayId ? { display_id: displayId } : {}) }) }, options?.signal);
+    if (!result.ok) return { ok: false, error: result.error, status: result.status };
+    const media = isRecord(result.data) ? parseRemoteMedia(result.data.media) : null;
+    if (!media) return { ok: false, error: "response_malformed" };
+    return { ok: true, data: { media, media_status: parseRemoteMediaStatus((result.data as Record<string, unknown>).media_status) } };
+  },
   async getStatus(deviceId, options) {
     const registered = await registerController(options?.signal);
     if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };

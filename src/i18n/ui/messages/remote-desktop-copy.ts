@@ -54,6 +54,20 @@ const SOURCE = {
   k43: "等待这台电脑确认…",
   k44: "退出桌面",
   k45: "画面无法显示，请重新连接。",
+  k46: "兼容画面：请更新电脑客户端以启用流畅视频。",
+  k47: "画面缩放",
+  k48: "适应窗口",
+  k49: "显示器",
+  k50: "重新连接",
+  k51: "尚未收到电脑画面，请检查电脑的屏幕录制权限后重新连接。",
+  k52: "视频连接已中断，控制已停止。请重新连接。",
+  k53: "视频授权无法续期，控制已停止。请重新连接。",
+  k54: "这台电脑的视频服务暂不可用，请稍后重新连接。",
+  k55: "输入正在等待确认，画面保持连接。",
+  k56: "无法确认最后的输入是否执行，已停止控制并尝试释放按键。请检查电脑状态后重新连接，不要重复提交未确认的操作。",
+  k57: "输入队列暂时繁忙，请稍后重试。",
+  k58: "操作电脑",
+  k59: "移动画面",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -105,6 +119,20 @@ const EN: Messages = {
   k43: "Waiting for this computer to approve…",
   k44: "Leave desktop",
   k45: "The screen could not be displayed. Please reconnect.",
+  k46: "Compatibility video: update the computer client to enable smooth streaming.",
+  k47: "Screen zoom",
+  k48: "Fit window",
+  k49: "Display",
+  k50: "Reconnect",
+  k51: "No screen has arrived. Check screen recording permission on the computer, then reconnect.",
+  k52: "Video disconnected and control stopped. Please reconnect.",
+  k53: "Video authorization could not be renewed and control stopped. Please reconnect.",
+  k54: "Video is unavailable on this computer. Please reconnect later.",
+  k55: "Waiting for input confirmation. Video remains connected.",
+  k56: "The last input could not be confirmed. Control stopped and key release was attempted. Check the computer before reconnecting; do not repeat an unconfirmed action.",
+  k57: "The input queue is temporarily busy. Please retry shortly.",
+  k58: "Control computer",
+  k59: "Pan screen",
 };
 
 const ZH_TW: Messages = {
@@ -154,6 +182,20 @@ const ZH_TW: Messages = {
   k43: "等待這台電腦確認…",
   k44: "離開桌面",
   k45: "畫面無法顯示，請重新連線。",
+  k46: "相容畫面：請更新電腦用戶端以啟用流暢視訊。",
+  k47: "畫面縮放",
+  k48: "適應視窗",
+  k49: "顯示器",
+  k50: "重新連線",
+  k51: "尚未收到電腦畫面，請檢查電腦的螢幕錄製權限後重新連線。",
+  k52: "視訊連線已中斷，控制已停止。請重新連線。",
+  k53: "視訊授權無法續期，控制已停止。請重新連線。",
+  k54: "這台電腦的視訊服務暫不可用，請稍後重新連線。",
+  k55: "輸入正在等待確認，畫面保持連線。",
+  k56: "無法確認最後的輸入是否執行，已停止控制並嘗試釋放按鍵。請檢查電腦狀態後重新連線，不要重複提交未確認的操作。",
+  k57: "輸入佇列暫時繁忙，請稍後重試。",
+  k58: "操作電腦",
+  k59: "移動畫面",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(

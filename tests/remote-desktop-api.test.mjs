@@ -36,6 +36,19 @@ function mockFetch(handler) {
 
 const JPEG = "data:image/jpeg;base64,/9j/AAAA";
 
+test("media negotiation uses existing owner/controller authorization and accepts only receive-only viewer descriptors", async () => {
+  const media = { provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "session", user_id: "viewer", publisher_id: "desktop", token: "opaque", timestamp: 2000000000, expires_at: "2033-05-18T03:33:20Z", role: "viewer", track: "screen", camera: false, microphone: false };
+  const calls = mockFetch(() => ({ status: 200, body: { media, media_status: { state: "publishing", geometry: { display_id: "monitor-2", width: 1920, height: 1080 } } } }));
+  const result = await api.remoteDesktopClient.negotiateMedia("d/1", "session 1", "monitor-2");
+  assert.equal(result.ok, true);
+  assert.equal(calls[0].url, "https://gw.test/v1/devices/d%2F1/remote-desktop/sessions/session%201/media");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer user-token");
+  assert.match(calls[0].init.headers["X-OceanLeo-Controller"], /^[a-f0-9]{64}$/);
+  assert.deepEqual(JSON.parse(calls[0].init.body), { transport: "artc-v1", display_id: "monitor-2" });
+  for (const invalid of [{ ...media, role: "publisher" }, { ...media, microphone: true }, { ...media, camera: true }, { ...media, track: "camera" }, { ...media, expires_at: "invalid" }, { ...media, publisher_id: "" }]) assert.equal(api.parseRemoteMedia(invalid), null);
+  assert.equal(api.parseRemoteMediaStatus({ state: "publishing", geometry: { display_id: "a", width: -1, height: 100 } }).geometry, undefined);
+});
+
 test.afterEach(() => {
   delete globalThis.__rdToken;
 });
