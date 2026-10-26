@@ -81,3 +81,23 @@ test("display switch gates input until publisher confirms the selected display A
   await act(async () => view.mediaCallbacks().frame(1920, 1080));
   assert.equal(view.input().disabled, false);
 });
+
+test("reconnect creates a new authorized session and never replays old input", async () => {
+  let sessions = 0;
+  const view = await mount({ overrides: {
+    async createSession() { return { ok: true, data: { session_id: `session-${++sessions}`, state: "connecting", transport: "websocket-v2", expires_at: "" } }; },
+  } });
+  await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
+  await view.key("keydown", "Enter");
+  await act(async () => view.handlers().error("input_ack_unknown"));
+  assert.equal(view.input().disabled, true);
+  const reconnect = [...view.screen().querySelectorAll("button")].find((button) => button.textContent === "重新连接");
+  await act(async () => reconnect.click());
+  await settle();
+  assert.equal(sessions, 2);
+  assert.equal(view.input().disabled, true);
+  assert.deepEqual(view.log.closes, ["session-1"]);
+  await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
+  assert.equal(view.input().disabled, false);
+  assert.equal(view.log.inputs.filter((input) => input.kind === "key_down").length, 1);
+});
