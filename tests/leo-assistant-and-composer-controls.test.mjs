@@ -23,7 +23,7 @@ const OVERRIDES = {
   "./ArtifactRenderer": dataModule("export function ArtifactRenderer(){ return null; }"),
   "./ModelGroupPicker": dataModule("export function ModelGroupPicker(){ return null; }"),
   "./PluginsPopover": dataModule("export function PluginsPopover(){ return null; }"),
-  "./cloud-computer/ComputerDock": dataModule("export function ComputerDock(){ return null; }"),
+  "./cloud-computer/ComputerDock": dataModule(`import { createElement } from "${reactUrl}"; export function ComputerDock(){ return createElement("button", { "data-test-execution-picker": "" }, "云端"); }`),
   "./PromptHighlightArea": dataModule(`
     import { createElement, forwardRef } from "${reactUrl}";
     export const PromptHighlightArea = forwardRef(function PromptHighlightArea(props, _ref){
@@ -82,6 +82,9 @@ test("LeoComposer：在上传按键右侧渲染插件按键（带有指定的插
   //    渲染结果带 data-oceanleo-leo-entry，宿主根带 data-oceanleo-leo-entry-root。
   assert.match(html, /data-oceanleo-leo-entry=""/);
   assert.match(html, /data-oceanleo-leo-entry-root=""/);
+  assert.doesNotMatch(html, /data-composer-execution-row/);
+  assert.ok(html.indexOf("<textarea") < html.indexOf("data-composer-bottom-toolbar"));
+  assert.ok(html.indexOf("data-composer-bottom-toolbar") < html.indexOf("data-test-execution-picker"), "execution picker shares the bottom toolbar");
 });
 
 test("LeoComposer：支持通过 showPlugins={false} 隐藏插件按键", async () => {

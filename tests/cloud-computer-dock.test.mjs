@@ -370,6 +370,21 @@ test("loading never invents another target or overwrites a remembered explicit s
   } finally { view.cleanup(); }
 });
 
+test("cloud list failure still shows actual local devices and preserves a selected offline computer", async () => {
+  globalThis.__ccDevices = [{ device_id: "saved-mac", platform: "macos", device_name: "Saved Mac", online: false, availability: "offline" }];
+  writeExecutionTarget("account-a", { kind: "device", id: "saved-mac", name: "Saved Mac" });
+  const view = await render(undefined, { async listComputers() { throw new Error("unavailable"); } });
+  try {
+    await openDock(view);
+    const selected = view.host.querySelector('[data-oceanleo-device-client="saved-mac"]');
+    assert.ok(selected);
+    assert.equal(selected.disabled, true);
+    assert.equal(selected.getAttribute("aria-pressed"), "true");
+    assert.match(selected.textContent, /离线.*✓/);
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "saved-mac", name: "Saved Mac" });
+  } finally { view.cleanup(); }
+});
+
 test("CN family has the same two-group execution choice and Manage entry", async () => {
   globalThis.__ccDomainFamily = "cn";
   const view = await render([]);

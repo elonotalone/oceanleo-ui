@@ -53,13 +53,15 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     if (!open || !owner) return;
     let alive = true;
     setLoading(true); setError(false);
-    void Promise.all([supplied ? Promise.resolve({ items: supplied }) : client.listComputers(), listDevices()])
-      .then(([cloud, local]) => {
+    void Promise.allSettled([supplied ? Promise.resolve({ items: supplied }) : client.listComputers(), listDevices()])
+      .then(([cloudResult, localResult]) => {
         if (!alive) return;
-        setComputers(cloud.items || []);
-        setDevices(local.ok && local.data ? local.data.filter((d) => ["windows", "macos", "linux"].includes(d.platform)) : []);
-        setError(!local.ok);
-      }).catch(() => { if (alive) setError(true); })
+        const local = localResult.status === "fulfilled" ? localResult.value : null;
+        setComputers(cloudResult.status === "fulfilled" ? cloudResult.value.items || [] : []);
+        setDevices(local?.ok && local.data ? local.data.filter((d) => ["windows", "macos", "linux"].includes(d.platform)) : []);
+        setError(cloudResult.status === "rejected" || !local?.ok);
+      })
+      .catch(() => { if (alive) setError(true); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [open, owner, client, supplied]);
@@ -77,12 +79,14 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   return <div className="relative" data-oceanleo-cc-dock data-execution-target={target.kind}>
     <button ref={anchor} type="button" onClick={() => { setGroup(target.kind === "device" ? "device" : "cloud"); setOpen(!open); }}
       aria-label={tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
-      className="flex max-w-[220px] items-center gap-2 rounded-lg bg-neutral-100 px-2.5 py-1.5 text-[13px] text-neutral-700 hover:bg-neutral-200">
+      title={tt("任务执行位置")}
+      className="flex h-7 max-w-[180px] items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100">
       <TargetGlyph cloud={target.kind !== "device"} /><span className="truncate">{shown}</span>
+      <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
     </button>
     <AnchoredPopover open={open} anchorRef={anchor} panelRef={panel} onClose={() => setOpen(false)} align="start" role="dialog" ariaLabel={tt("任务执行位置")}
-      className="z-[80] w-[min(580px,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
-      <div ref={panel} className="grid grid-cols-[minmax(130px,0.8fr)_minmax(150px,1fr)]">
+      preferredPlacement="above" className="z-[80] w-[min(440px,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+      <div ref={panel} className="grid grid-cols-[minmax(110px,0.75fr)_minmax(150px,1fr)]">
         <div className="border-r border-neutral-100 pr-1.5">
           <p className="px-3 pb-1 pt-2 text-[12px] font-medium text-neutral-500">{tt("在此设备上运行任务")}</p>
           <button type="button" className={`${row} ${group === "cloud" ? "bg-neutral-100" : ""}`} onMouseEnter={() => setGroup("cloud")} onFocus={() => setGroup("cloud")} onClick={() => setGroup("cloud")} aria-expanded={group === "cloud"}>
@@ -98,16 +102,18 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
               <button type="button" className={row} aria-pressed={target.kind === "cloud"} onClick={() => choose({ kind: "cloud" })}><TargetGlyph cloud /><span className="flex-1">{tt("默认云端")}</span>{target.kind === "cloud" && "✓"}</button>
               {computers.filter(isConnectedComputer).map((item) => {
                 const ready = computerDisplayState(item) === "ready";
-                return <button key={item.id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={target.kind === "computer" && target.id === item.id} data-oceanleo-cc-switch-item={item.id} onClick={() => choose({ kind: "computer", id: item.id, name: item.name })}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready ? <span className="text-[11px] text-neutral-400">{tt("离线")}</span> : target.kind === "computer" && target.id === item.id ? "✓" : null}
+                const selected = target.kind === "computer" && target.id === item.id;
+                return <button key={item.id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-cc-switch-item={item.id} onClick={() => choose({ kind: "computer", id: item.id, name: item.name })}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt("离线")}</span>}{selected && <span aria-label={tt("已选择")}>✓</span>}
                 </button>;
               })}
             </>}
             {group === "device" && devices.map((item) => {
               const availability = (item as Device & { availability?: string }).availability;
               const ready = availability === "online" && item.online;
-              return <button key={item.device_id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={target.kind === "device" && target.id === item.device_id} data-oceanleo-device-client={item.device_id} onClick={() => choose({ kind: "device", id: item.device_id, name: item.device_name })}>
-                <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready ? <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : "未登录")}</span> : target.kind === "device" && target.id === item.device_id ? "✓" : null}
+              const selected = target.kind === "device" && target.id === item.device_id;
+              return <button key={item.device_id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-device-client={item.device_id} onClick={() => choose({ kind: "device", id: item.device_id, name: item.device_name })}>
+                <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : availability === "signed_out" ? "未登录" : "状态未知")}</span>}{selected && <span aria-label={tt("已选择")}>✓</span>}
               </button>;
             })}
             {group === "device" && !devices.length && !loading && <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("暂无已连接的电脑")}</p>}

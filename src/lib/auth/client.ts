@@ -1,7 +1,7 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
 import {
   clientHostConfigGeneration,
   createMemoryAuthStorage,
@@ -41,6 +41,19 @@ let _client: SupabaseClient | null = null;
 let _accessToken: string | null = null;
 let _previewJar: ReturnType<typeof createLeoDevPreviewCookieJar> | null = null;
 let _hostClientGeneration = -1;
+let _nativeUnsubscribe: (() => void) | undefined;
+
+async function nativeSdkSession(): Promise<Session | null> {
+  const session = await getClientHostConfig()?.nativeSession?.getSession();
+  if (!session?.userId || !session.accessToken || session.expiresAt <= Date.now()) return null;
+  return {
+    access_token: session.accessToken, refresh_token: session.refreshToken,
+    token_type: "bearer", expires_at: Math.floor(session.expiresAt / 1000),
+    expires_in: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000)),
+    user: { id: session.userId, email: session.email || undefined, aud: "authenticated",
+      role: "authenticated", app_metadata: {}, user_metadata: {}, created_at: "" },
+  };
+}
 
 function attachAuthState(client: SupabaseClient): void {
   client.auth.onAuthStateChange((event, session) => {
@@ -64,14 +77,28 @@ function hostBrowserClient(): SupabaseClient | null {
   const url = currentIdentityUrl();
   const anonKey = currentIdentityAnonKey();
   if (!url || !anonKey) return null;
-  const storage = hostCfg.authStorage ?? createMemoryAuthStorage();
+  const hostStorage = hostCfg.authStorage ?? createMemoryAuthStorage();
   const storageKey =
     hostCfg.family === "cn" ? CN_AUTH_COOKIE_KEY : COM_AUTH_COOKIE_KEY;
+  const native = hostCfg.platform === "desktop" && hostCfg.nativeSession;
+  const storage = native ? {
+    ...hostStorage,
+    async getItem(key: string) {
+      if (key !== storageKey) return hostStorage.getItem(key);
+      // An expired native identity is retained on disk for recovery, but must
+      // never reach SDK's implicit refresh/removal path as a second owner.
+      const session = await nativeSdkSession();
+      // Supabase __loadSession refreshes even with autoRefreshToken=false
+      // inside its90s margin. Host uses120s, leaving headroom for that path.
+      return session && (session.expires_at || 0) * 1000 - Date.now() > 120_000
+        ? JSON.stringify(session) : null;
+    },
+  } : hostStorage;
   const client = createClient(url, anonKey, {
     global: { fetch: authFetch },
     auth: {
       persistSession: true,
-      autoRefreshToken: true,
+      autoRefreshToken: !native,
       detectSessionInUrl: hostCfg.platform !== "desktop",
       flowType: hostCfg.platform === "desktop" ? "pkce" : "implicit",
       lock: browserAuthLock,
@@ -79,7 +106,26 @@ function hostBrowserClient(): SupabaseClient | null {
       storageKey,
     },
   });
-  attachAuthState(client);
+  if (native) {
+    client.auth.getSession = async () => {
+      const session = await nativeSdkSession();
+      return session ? { data: { session }, error: null } : { data: { session: null }, error: null };
+    };
+    client.auth.refreshSession = async () => {
+      const session = await nativeSdkSession();
+      return { data: { session, user: session?.user || null }, error: null };
+    };
+    const publish = async () => {
+      const identity = await native.getSession();
+      const session = await nativeSdkSession();
+      _accessToken = session?.access_token || null;
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent<AuthStateEventDetail>(AUTH_STATE_EVENT, {
+        detail: { event: identity ? "TOKEN_REFRESHED" : "SIGNED_OUT", userId: identity?.userId || null },
+      }));
+    };
+    _nativeUnsubscribe = native.subscribe(() => { void publish(); });
+    void publish();
+  } else attachAuthState(client);
   return client;
 }
 
@@ -87,6 +133,9 @@ export function browserClient(): SupabaseClient | null {
   if (!configured()) return null;
   const generation = clientHostConfigGeneration();
   if (_client && _hostClientGeneration === generation) return _client;
+  _nativeUnsubscribe?.();
+  _nativeUnsubscribe = undefined;
+  if (_client) void _client.auth.stopAutoRefresh();
   _client = null;
   _previewJar = null;
   _hostClientGeneration = generation;
@@ -155,6 +204,8 @@ export async function isSignedIn(): Promise<boolean> {
 }
 
 export async function getUserEmail(): Promise<string | null> {
+  const native = getClientHostConfig()?.nativeSession;
+  if (native) return (await native.getSession())?.email || null;
   const c = browserClient();
   if (!c) return null;
   const { data } = await c.auth.getSession();
@@ -162,6 +213,8 @@ export async function getUserEmail(): Promise<string | null> {
 }
 
 export async function getUserId(): Promise<string | null> {
+  const native = getClientHostConfig()?.nativeSession;
+  if (native) return (await native.getSession())?.userId || null;
   const c = browserClient();
   if (!c) return null;
   const { data } = await c.auth.getSession();
@@ -459,32 +512,21 @@ export function desktopBrowserLoginAvailable(): boolean {
 }
 
 /** The native entry for every provider and email. The browser owns all credential UI. */
-export async function startDesktopBrowserSignIn(signal?: AbortSignal): Promise<{ error?: string; signedIn?: boolean }> {
+export async function startDesktopBrowserSignIn(signal?: AbortSignal, onProgress?: (phase: string) => void): Promise<{ error?: string; signedIn?: boolean }> {
   const host = getClientHostConfig();
   const c = browserClient();
   if (host?.platform !== "desktop" || !host.oauth?.login || !c) {
     return { error: "桌面登录尚未就绪，请重新打开客户端。" };
   }
   try {
-    const handoff = await host.oauth.login(signal);
-    if (signal?.aborted) return { error: "登录已取消。" };
-    const exchanged = await c.auth.verifyOtp({ token_hash: handoff.tokenHash, type: "magiclink" });
-    if (exchanged.error || !exchanged.data.session) return { error: "无法完成登录，请重试。" };
-    if (exchanged.data.session.user.id !== handoff.userId) {
-      // Never revoke other devices; remove this untrusted local import only.
-      await c.auth.signOut({ scope: "local" });
-      return { error: "登录账号不匹配，请重试。" };
-    }
-    if (signal?.aborted) {
-      await c.auth.signOut({ scope: "local" });
-      return { error: "登录已取消。" };
-    }
+    await host.oauth.login(signal, onProgress);
     return { signedIn: true };
   } catch (error) {
     const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
     const safe = ["桌面登录尚未就绪，请重新打开客户端。", "登录等待超时，请重试。",
       "登录返回端口被占用，请关闭另一个 OceanLeo 客户端后重试。",
-      "网络错误：无法连接到登录服务，请稍后重试。"];
+      "网络错误：无法连接到登录服务，请稍后重试。", "无法打开浏览器，请重试。",
+      "无法保存登录状态，请重试。", "登录账号不匹配，请重试。"];
     return { error: signal?.aborted ? "登录已取消。" : safe.includes(message) ? message : "无法完成登录，请重试。" };
   }
 }

@@ -25,10 +25,19 @@ export type ClientHostNavSection = "primary" | "footer";
 
 export interface ClientHostOAuth {
   /** Complete hosted login, independent of the website's refresh-token session. */
-  login?(signal?: AbortSignal): Promise<{ tokenHash: string; userId: string }>;
+  login?(signal?: AbortSignal, onProgress?: (phase: string) => void): Promise<void>;
   begin(): Promise<{ id: string; redirectTo: string }>;
   openAndWait(id: string, url: string, signal?: AbortSignal): Promise<string>;
   cancel(id: string): Promise<void>;
+}
+
+export interface ClientHostNativeSession {
+  /** Retained identity may be expired during recovery; it grants no Online proof. */
+  getSession(): Promise<{
+    accessToken: string; refreshToken: string; userId: string;
+    email: string | null; expiresAt: number;
+  } | null>;
+  subscribe(listener: () => void): () => void;
 }
 
 export interface ClientHostNavItem {
@@ -51,6 +60,8 @@ export interface ClientHostConfig {
   capabilities: readonly string[];
   openExternal?: (url: string) => void | Promise<void>;
   oauth?: ClientHostOAuth;
+  /** One native refresh owner; shared SDK reads this identity and never rotates it. */
+  nativeSession?: ClientHostNativeSession;
   /** Native local logout; never revokes the operator's other sessions. */
   signOut?: () => Promise<void>;
   /** Host-only sidebar rows. Omitted keeps the previous slot; `[]` clears. */
@@ -221,6 +232,7 @@ export function configureClientHost(config: ClientHostConfig): void {
     capabilities: Object.freeze([...(config.capabilities || [])]),
     openExternal: config.openExternal,
     oauth: config.platform === "desktop" ? config.oauth ?? previous?.oauth : undefined,
+    nativeSession: config.platform === "desktop" ? config.nativeSession ?? previous?.nativeSession : undefined,
     signOut: config.platform === "desktop" ? config.signOut ?? previous?.signOut : undefined,
     navItems,
     fetch: hostFetch,

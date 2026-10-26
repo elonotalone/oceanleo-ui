@@ -205,13 +205,19 @@ test("paired clients and real cloud rows use a single reference-style grid", asy
   view.cleanup();
 });
 
-test("cloud deep link without rows keeps a real create/connect card, not another empty section", async () => {
+test("cloud deep link without rows keeps one connect card and one consolidated add entry", async () => {
   const view = await render({
     cloudClient: makeCloudClient([]),
   });
   assert.ok(view.host.querySelector("[data-device-connect-card]"));
   assert.equal(view.host.querySelector("[data-oceanleo-cc-empty]"), null);
-  assert.ok(view.text().includes("创建云电脑"));
+  assert.ok(view.text().includes("添加设备"));
+  assert.ok(view.text().includes("连接我的电脑"));
+  assert.equal(view.host.querySelector("footer"), null, "no repeated create/connect toolbar");
+  const add = [...view.host.querySelectorAll("button")].find((button) => button.textContent.includes("添加设备"));
+  await act(async () => add.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
+  await flush();
+  assert.ok(document.querySelector('[data-device-dialog="add"]').textContent.includes("创建云电脑"));
   view.cleanup();
 });
 

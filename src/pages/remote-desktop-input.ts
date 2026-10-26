@@ -10,9 +10,9 @@ import type {
 } from "../api/remote-desktop";
 
 /** 单次 `type` 的文字上限；粘贴更长的文字按此分块依次送出（后端另有字符串上限）。 */
-export const REMOTE_TYPE_CHUNK = 200;
+export const REMOTE_TYPE_CHUNK = 1000;
 /** 一次粘贴最多送多少字，超出直接截断并提示，避免把对方输入队列灌满。 */
-export const REMOTE_PASTE_MAX = 2000;
+export const REMOTE_PASTE_MAX = 20_000;
 
 export interface NormalizedPoint {
   x: number;
@@ -264,6 +264,9 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       return "登录已失效，请重新登录后再试。";
     case "network_error":
       return "网络不通，暂时连不上。";
+    case "input_ack_unknown":
+    case "stream_failed":
+      return "与这台电脑失去联系，会话已断开。请确认它还在线后重新进入。";
     case "response_malformed":
       return "服务返回的内容读不懂，请稍后重试。";
     case "device_offline":

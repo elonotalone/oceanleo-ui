@@ -123,7 +123,6 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "登录 OceanLeo",
   "在浏览器中登录",
   "等待浏览器登录",
-  "登录后会自动返回 OceanLeo。",
   "桌面登录尚未就绪，请重新打开客户端。",
   "登录等待超时，请重试。",
   "登录返回端口被占用，请关闭另一个 OceanLeo 客户端后重试。",
@@ -607,9 +606,20 @@ function DesktopBrowserLoginPanel({ tt, titleId, className, onClose, onDone }: {
   tt: UITranslate; titleId: string; className: string; onClose?: () => void; onDone: () => void;
 }) {
   const [pending, setPending] = useState(false);
+  const [phase, setPhase] = useState("");
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => controller.current?.abort(), []);
+  const phaseRef = useRef("");
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      // Publishing a durably saved identity replaces the landing. Finish its
+      // native/website acknowledgement even when this component unmounts.
+      if (!["saving", "completing"].includes(phaseRef.current)) controller.current?.abort();
+    };
+  }, []);
   const login = async () => {
     if (controller.current) return;
     const current = new AbortController();
@@ -617,15 +627,18 @@ function DesktopBrowserLoginPanel({ tt, titleId, className, onClose, onDone }: {
     setPending(true);
     setError("");
     try {
-      const result = await startDesktopBrowserSignIn(current.signal);
+      const result = await startDesktopBrowserSignIn(current.signal, (next) => {
+        phaseRef.current = next;
+        if (mounted.current) setPhase(next);
+      });
       if (current.signal.aborted) return;
       if (result.signedIn) onDone();
-      else setError(tt(result.error || "登录失败，请稍后重试。"));
+      else if (mounted.current) setError(tt(result.error || "登录失败，请稍后重试。"));
     } catch {
-      if (!current.signal.aborted) setError(tt("登录失败，请稍后重试。"));
+      if (!current.signal.aborted && mounted.current) setError(tt("登录失败，请稍后重试。"));
     } finally {
       if (controller.current === current) controller.current = null;
-      setPending(false);
+      if (mounted.current) setPending(false);
     }
   };
   return <section data-auth-panel data-auth-desktop-browser className={className}
@@ -633,15 +646,15 @@ function DesktopBrowserLoginPanel({ tt, titleId, className, onClose, onDone }: {
     <div className="relative mb-8">
       {onClose && <button type="button" data-auth-close onClick={onClose} aria-label={tt("关闭")}
         className="absolute right-0 top-0 rounded p-1 text-neutral-400">✕</button>}
-      <h2 id={titleId} className="text-[28px] font-semibold tracking-tight">{tt("登录 OceanLeo")}</h2>
-      <p className="mt-3 text-sm text-neutral-500">{tt("登录后会自动返回 OceanLeo。")}</p>
+      <h2 id={titleId} className="text-[28px] font-semibold tracking-tight">OceanLeo</h2>
     </div>
     {error && <p role="alert" data-auth-error className="mb-4 text-sm text-rose-600">{error}</p>}
     <button type="button" data-auth-submit onClick={() => void login()} disabled={pending}
       className="w-full rounded-xl bg-neutral-900 px-5 py-3 text-sm font-medium text-white disabled:opacity-60">
-      {pending ? <ButtonSpinner label={tt("等待浏览器登录")} /> : tt("在浏览器中登录")}
+      {pending ? <ButtonSpinner label={tt(["opening", "saving", "completing"].includes(phase) ? "处理中..." : "等待浏览器登录")} /> : tt("登录")}
     </button>
-    {pending && <button type="button" className="mt-3 px-4 py-2 text-sm text-neutral-500"
+    {pending && phase === "browser-background" && <p role="status" className="mt-3 text-sm text-neutral-500">{tt("等待浏览器登录")}</p>}
+    {pending && !["saving", "completing"].includes(phase) && <button type="button" className="mt-3 px-4 py-2 text-sm text-neutral-500"
       onClick={() => { controller.current?.abort(); }}>{tt("取消")}</button>}
   </section>;
 }

@@ -79,3 +79,27 @@ test("operations start once, poll only the receipt and preserve target failure/t
   const timedOut = await state.runDeviceSettingsOperation({ ...client, getOperation: async () => ({ ok: true, data: { state: "pending" } }) }, "mac", { kind: "folders.list", path: "/allowed" }, new AbortController().signal, { intervalMs: 1, timeoutMs: 2 });
   assert.equal(timedOut.error, "request_expired");
 });
+
+test("wallpaper uses the authenticated settings receipt with no pathname or public image route", async () => {
+  values.clear();
+  const cover = { state: "available", image: "data:image/jpeg;base64,/9j/2Q==", width: 960, height: 600, observed_at: Math.floor(Date.now() / 1000) };
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init });
+    const body = url.endsWith("/controllers") ? { controller_id: "viewer-cover" }
+      : init.method === "POST" ? { operation_id: "cover-op", state: "pending" }
+      : { state: "succeeded", result: { cover } };
+    return new Response(JSON.stringify(body));
+  };
+  const receipt = await api.deviceSettingsClient.startOperation("mac", { kind: "cover.read" });
+  assert.equal(receipt.data.operation_id, "cover-op");
+  const result = await api.deviceSettingsClient.getOperation("mac", "cover-op");
+  assert.deepEqual(result.data.result, { cover });
+  assert.deepEqual(calls.map(({ url }) => url), ["https://gateway.test/v1/devices/controllers", "https://gateway.test/v1/devices/mac/settings/operations", "https://gateway.test/v1/devices/mac/settings/operations/cover-op"]);
+  assert.deepEqual(JSON.parse(calls[1].init.body), { kind: "cover.read" });
+  for (const { init } of calls) {
+    assert.equal(init.headers.Authorization, "Bearer owner-token");
+    assert.match(init.headers["X-OceanLeo-Controller"], /^[a-f0-9]{64}$/);
+    assert.equal(init.cache, "no-store");
+  }
+});

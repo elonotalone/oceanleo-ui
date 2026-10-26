@@ -148,6 +148,7 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  try {
   await act(async () => {
     root.render(
       React.createElement(DevicesPage, {
@@ -184,12 +185,14 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
   assert.ok(panel, "面板打开");
   const panelText = [panel.textContent, panel.querySelector("img")?.getAttribute("alt"), panel.querySelector("[data-remote-stage]")?.getAttribute("aria-label"), panel.querySelector("[data-remote-input]")?.getAttribute("aria-label")].join("\n");
   assert.doesNotMatch(panelText, HAN, `面板里漏出中文：${panelText}`);
-  assert.match(panelText, /Desktop of “Studio PC”/);
+  assert.match(panelText, /Studio PC/);
   assert.match(panelText, /Connected/);
-  for (const label of ["Paste text", "Fullscreen", "Disconnect"]) {
+  for (const label of ["Fullscreen", "Leave desktop"]) {
     assert.match(panelText + [...panel.querySelectorAll("button")].map((b) => b.textContent).join("|"), new RegExp(label.replace("Fullscreen", "(Fullscreen|Full screen)")), label);
   }
+  } finally {
   await act(async () => root.unmount());
   host.remove();
   delete globalThis.__rdEnDict;
+  }
 });

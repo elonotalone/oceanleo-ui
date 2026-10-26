@@ -511,7 +511,6 @@ export function LeoComposer({
           时编辑器实例重建 undo 栈丢失。template=null 时它就是个普通输入框（空、正常光标、正常
           打字/分行/全选/undo），template 有值时把模板灌进去（字面可编辑、`[字段]` 荧光块）。 */}
       {skillSlashUi.popover}
-      {showComputerDock && <div className="px-4 pb-1 pt-3" data-composer-execution-row><ComputerDock onTargetChange={rememberExecutionTarget} /></div>}
       <TemplateFillArea
         ref={highlightRef}
         value={value}
@@ -563,7 +562,7 @@ export function LeoComposer({
         <div className="px-4 pb-2">{nativeHandoff.panel}</div>
       )}
 
-      <div className="flex items-center justify-between px-4 pb-3.5">
+      <div className="flex items-center justify-between px-4 pb-3.5" data-composer-bottom-toolbar>
         <div className="flex flex-wrap items-center gap-2">
           {hasAttachMenu && (
             <AttachMenu
@@ -576,6 +575,7 @@ export function LeoComposer({
               extra={attachMenuExtra}
             />
           )}
+          {showComputerDock && <ComputerDock onTargetChange={rememberExecutionTarget} />}
           {showPlugins && (
             <>
             <button

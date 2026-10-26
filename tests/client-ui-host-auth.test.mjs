@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { authFetch } from "../src/lib/auth/auth-fetch.ts";
-import { browserClient, startOauthSignIn, startDesktopBrowserSignIn, signOutEverywhere } from "../src/lib/auth/client.ts";
+import { browserClient, getUserEmail, startOauthSignIn, startDesktopBrowserSignIn, signOutEverywhere } from "../src/lib/auth/client.ts";
 import { COM_AUTH_COOKIE_KEY, CN_AUTH_COOKIE_KEY } from "../src/lib/auth/config.ts";
 import {
   CLIENT_WEB_BOOT_GLOBAL_KEY,
@@ -121,12 +121,19 @@ test("desktop OAuth exchanges a PKCE code through host HTTP and persists the res
   } finally { await browserClient()?.auth.stopAutoRefresh(); }
 });
 
-test("hosted native login verifies an independent one-use hash and every provider uses the same browser entry", async () => {
+test("hosted native login waits for host durable completion and every provider uses the same browser entry", async () => {
   const storage = createMemoryAuthStorage();
   let browserLogins = 0;
   const requests = [];
   configureClientHost(hostConfig({ authStorage: storage, oauth: {
-    async login() { browserLogins += 1; return { tokenHash: "b".repeat(56), userId: "hosted-user" }; },
+    async login(_signal, progress) {
+      browserLogins += 1;
+      progress?.("saving");
+      await storage.setItem(COM_AUTH_COOKIE_KEY, JSON.stringify({ access_token: "native-independent-access",
+        refresh_token: "native-independent-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600,
+        user: { id: "hosted-user" } }));
+      progress?.("completing");
+    },
     async begin() { throw new Error("must not use provider-only PKCE"); },
     async openAndWait() { throw new Error("must not use provider-only PKCE"); },
     async cancel() {},
@@ -142,14 +149,33 @@ test("hosted native login verifies an independent one-use hash and every provide
       assert.deepEqual(await startOauthSignIn(provider), { signedIn: true });
     }
     assert.equal(browserLogins, 4);
-    assert.equal(requests.length, 4);
-    for (const [url, body] of requests) {
-      assert.ok(url.endsWith("/auth/v1/verify"));
-      assert.equal(body.type, "magiclink");
-      assert.equal(body.token_hash, "b".repeat(56));
-    }
+    assert.equal(requests.length, 0, "shared SDK does not exchange or rotate the host's native session");
     assert.equal(JSON.parse(await storage.getItem(COM_AUTH_COOKIE_KEY)).refresh_token, "native-independent-refresh");
   } finally { await browserClient()?.auth.stopAutoRefresh(); }
+});
+
+test("native session remains authoritative across SDK expiry margin and transient recovery", async () => {
+  const storage = createMemoryAuthStorage();
+  await storage.setItem(COM_AUTH_COOKIE_KEY, "saved-host-credential");
+  let expiresAt = Date.now() + 75_000;
+  const token = [ { alg: "HS256" }, { sub: "remembered", exp: Math.floor(expiresAt / 1000), aal: "aal1" } ]
+    .map((value) => Buffer.from(JSON.stringify(value)).toString("base64url")).join(".") + ".synthetic-signature";
+  const requests = [];
+  configureClientHost(hostConfig({ authStorage: storage, nativeSession: {
+    async getSession() { return { accessToken: token, refreshToken: "native-refresh", userId: "remembered",
+      email: "remembered@example.invalid", expiresAt }; },
+    subscribe() { return () => {}; },
+  }, fetch: async (url) => { requests.push(String(url)); throw new Error("SDK must not refresh"); } }));
+  const client = browserClient();
+  assert.equal((await client.auth.getSession()).data.session.access_token, token);
+  // Internal SDK session consumers use __loadSession's90s margin. They must
+  // neither rotate nor remove the host's independent refresh credential.
+  await client.auth.mfa.getAuthenticatorAssuranceLevel();
+  expiresAt = Date.now() - 1000;
+  assert.equal((await client.auth.getSession()).data.session, null);
+  assert.equal(await getUserEmail(), "remembered@example.invalid");
+  assert.equal(await storage.getItem(COM_AUTH_COOKIE_KEY), "saved-host-credential");
+  assert.deepEqual(requests, []);
 });
 
 test("desktop shared logout delegates host local removal and never requests global revocation", async () => {

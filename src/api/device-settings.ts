@@ -32,10 +32,21 @@ export interface DeviceFolderListing {
   entries: { name: string; path: string }[];
   roots: string[];
 }
+export type DeviceCover = {
+  state: "available";
+  image: string;
+  width: number;
+  height: number;
+  observed_at: number;
+} | {
+  state: "unavailable";
+  reason: "wallpaper_unavailable" | "unsupported" | "headless";
+  observed_at: number;
+};
 export interface DeviceSettingsOperation {
   operation_id?: string;
   state: "pending" | "succeeded" | "failed";
-  result?: DeviceFolderListing | { preferences: DevicePreferences };
+  result?: DeviceFolderListing | { preferences: DevicePreferences } | { cover: DeviceCover };
   error?: string;
 }
 export interface DeviceTaskSummary {
@@ -50,7 +61,7 @@ export interface DeviceSettingsClient {
   getSettings(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettings>>;
   revokeController(deviceId: string, grantId: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
   shortenControllerExpiry(deviceId: string, grantId: string, expiresAt: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
-  startOperation(deviceId: string, operation: { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
+  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   getOperation(deviceId: string, operationId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   listTasks(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceTaskSummary[]>>;
 }
@@ -156,13 +167,29 @@ export function parseSettingsOperation(value: unknown): DeviceSettingsOperation 
   if (value.state === "succeeded") {
     const result = value.result;
     if (!record(result)) return null;
-    if (record(result.preferences) && nullableString(result.preferences.default_task_directory) && strings(result.preferences.task_folders)) {
+    if ("cover" in result) {
+      const cover = parseDeviceCover(result.cover);
+      if (!cover) return null;
+      operation.result = { cover };
+    } else if (record(result.preferences) && nullableString(result.preferences.default_task_directory) && strings(result.preferences.task_folders)) {
       operation.result = { preferences: { default_task_directory: result.preferences.default_task_directory, task_folders: result.preferences.task_folders } };
     } else if (nullableString(result.path) && nullableString(result.parent) && strings(result.roots) && Array.isArray(result.entries) && result.entries.every((item) => record(item) && typeof item.name === "string" && typeof item.path === "string")) {
       operation.result = result as unknown as DeviceFolderListing;
     } else return null;
   }
   return operation;
+}
+
+/** Only a bounded inline JPEG from this authenticated operation can be shown. */
+export function parseDeviceCover(value: unknown): DeviceCover | null {
+  if (!record(value) || !Number.isSafeInteger(value.observed_at) || Number(value.observed_at) <= 0 || Number(value.observed_at) > Date.now() / 1000 + 300) return null;
+  const observed_at = Number(value.observed_at);
+  if (value.state === "unavailable" && ["wallpaper_unavailable", "unsupported", "headless"].includes(String(value.reason))) {
+    return { state: "unavailable", reason: value.reason as "wallpaper_unavailable" | "unsupported" | "headless", observed_at };
+  }
+  if (value.state !== "available" || typeof value.image !== "string" || value.image.length > 262_167 || !/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value.image)) return null;
+  if (![value.width, value.height].every((dimension) => Number.isInteger(dimension) && Number(dimension) >= 1 && Number(dimension) <= 960)) return null;
+  return { state: "available", image: value.image, width: Number(value.width), height: Number(value.height), observed_at };
 }
 
 function base(deviceId: string) { return `/v1/devices/${encodeURIComponent(deviceId)}`; }
@@ -184,6 +211,8 @@ export const deviceSettingsClient: DeviceSettingsClient = {
     return request(`${base(deviceId)}/controllers/${encodeURIComponent(grantId)}`, { method: "PATCH", body: JSON.stringify({ expires_at: expiresAt }) }, signal);
   },
   async startOperation(deviceId, operation, signal) {
+    const registered = await registerController(signal);
+    if (!registered.ok) return { ...registered, data: undefined };
     const response = await request<unknown>(`${base(deviceId)}/settings/operations`, { method: "POST", body: JSON.stringify(operation) }, signal);
     if (!response.ok) return { ...response, data: undefined };
     const data = parseSettingsOperation(response.data);

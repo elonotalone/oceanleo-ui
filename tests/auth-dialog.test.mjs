@@ -433,9 +433,54 @@ test("native AuthPanel has one browser login action and no embedded credential/p
     assert.ok(find("[data-auth-desktop-browser]"));
     assert.equal(findAll("input").length, 0);
     assert.equal(findAll("[data-auth-form]").length, 0);
+    assert.equal(find("[data-auth-submit]").textContent, "登录");
+    assert.ok(!find("[data-auth-desktop-browser]").textContent.includes("登录后会自动返回"));
     await click("[data-auth-submit]");
     assert.deepEqual(auth.calls, [["browser", true]]);
     assert.equal(complete, 1);
+  }, { auth });
+});
+
+test("native login can cancel a pending attempt and immediately retry", async () => {
+  const auth = defaultAuth();
+  auth.desktopBrowserLoginAvailable = () => true;
+  let attempts = 0;
+  auth.startDesktopBrowserSignIn = async (signal, progress) => {
+    attempts += 1;
+    progress("waiting");
+    if (attempts > 1) return { signedIn: true };
+    return new Promise((resolve) => signal.addEventListener("abort", () => resolve({ error: "登录已取消。" }), { once: true }));
+  };
+  await withDom(async ({ render, find, click }) => {
+    let completed = 0;
+    await render(AuthPanel, { onSuccess: () => { completed += 1; } });
+    await click("[data-auth-submit]");
+    assert.equal(find("[data-auth-submit]").disabled, true);
+    await click("[data-auth-desktop-browser] button:not([data-auth-submit])");
+    assert.equal(find("[data-auth-submit]").disabled, false);
+    await click("[data-auth-submit]");
+    assert.equal(attempts, 2);
+    assert.equal(completed, 1);
+  }, { auth });
+});
+
+test("publishing the saved identity may unmount the landing without cancelling native completion", async () => {
+  const auth = defaultAuth();
+  auth.desktopBrowserLoginAvailable = () => true;
+  let signal;
+  let finish;
+  auth.startDesktopBrowserSignIn = async (current, progress) => {
+    signal = current;
+    progress("saving");
+    return new Promise((resolve) => { finish = resolve; });
+  };
+  await withDom(async ({ render, click }) => {
+    await render(AuthPanel, {});
+    await click("[data-auth-submit]");
+    await render(() => React.createElement("div", null, "account shell"), {});
+    assert.equal(signal.aborted, false);
+    await act(async () => { finish({ signedIn: true }); });
+    assert.equal(signal.aborted, false);
   }, { auth });
 });
 

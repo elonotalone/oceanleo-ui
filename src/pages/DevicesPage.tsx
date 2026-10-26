@@ -11,7 +11,7 @@ import { ConfirmDialog } from "../ui";
 import { CreateComputerDialog } from "../shell/cloud-computer/CreateComputerDialog";
 import { ConnectServerDialog } from "../shell/cloud-computer/ConnectServerDialog";
 import { CloudComputersSection } from "./CloudComputersPage";
-import { RemoteDesktopPanel } from "./RemoteDesktopPanel";
+import { RemoteDesktopPanel, requestRemoteDesktopFullscreen } from "./RemoteDesktopPanel";
 import { DeviceCard, DeviceIcon, isComputer, type DeviceAvailability } from "./devices/DeviceCard";
 import { DEVICE_BUTTON, DEVICE_PRIMARY_BUTTON, DeviceDialog } from "./devices/DeviceDialog";
 import { DeviceSettingsDialog } from "./devices/DeviceSettingsDialog";
@@ -35,6 +35,12 @@ export function deviceAvailability(device: Device, status?: RemoteDesktopStatus)
   return availability === "online" || availability === "signed_out" || availability === "offline" ? availability : "unknown";
 }
 
+function desktopFromLocation(): string | null {
+  if (typeof window === "undefined") return null;
+  const id = new URLSearchParams(window.location.search).get("desktop");
+  return id && /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
+}
+
 export function DevicesPage({ client = devicesFacade, cloudClient = cloudComputerApi, settingsClient = defaultSettingsClient,
   remoteDesktopClient = defaultRemoteDesktopClient, remoteStatusIntervalMs = 10_000, initialTab, variant = "page" }: DevicesPageProps) {
   const tt = useUI();
@@ -42,12 +48,13 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [pairCode, setPairCode] = useState("");
   const [pairing, setPairing] = useState(false);
   const [pairError, setPairError] = useState<string | null>(null);
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [tasksId, setTasksId] = useState<string | null>(null);
-  const [remoteOpenId, setRemoteOpenId] = useState<string | null>(null);
+  const [remoteOpenId, setRemoteOpenId] = useState<string | null>(desktopFromLocation);
   const [remoteStatus, setRemoteStatus] = useState<Record<string, RemoteDesktopStatus>>({});
   const [confirmRevoke, setConfirmRevoke] = useState<Device | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
@@ -55,6 +62,12 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const [connectServer, setConnectServer] = useState(false);
   const [cloudRevision, setCloudRevision] = useState(0);
   const generation = useRef(0);
+
+  useEffect(() => {
+    const changed = () => setRemoteOpenId(desktopFromLocation());
+    window.addEventListener("popstate", changed);
+    return () => window.removeEventListener("popstate", changed);
+  }, []);
 
   async function refreshDevices() {
     const ticket = generation.current;
@@ -85,7 +98,9 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
       generation.current += 1;
       clearTimeout(timer);
       setDevices([]); setRemoteStatus({}); setSettingsId(null); setTasksId(null); setRemoteOpenId(null);
-      setConfirmRevoke(null); setConnecting(false); setCreateCloud(false); setConnectServer(false); setPairCode(""); setPairing(false); setLoading(true);
+      const url = new URL(window.location.href); url.searchParams.delete("desktop");
+      window.history.replaceState(window.history.state, "", url);
+      setConfirmRevoke(null); setAdding(false); setConnecting(false); setCreateCloud(false); setConnectServer(false); setPairCode(""); setPairing(false); setLoading(true);
       setAuthRevision((value) => value + 1);
       void load();
     }
@@ -150,29 +165,49 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
       else await refreshDevices();
     } catch { if (ticket === generation.current) setPageError(deviceErrorCopy("network_error")); }
   }
-  function openDesktop(deviceId: string) { setSettingsId(null); setTasksId(null); setRemoteOpenId(deviceId); }
+  function openDesktop(deviceId: string) {
+    requestRemoteDesktopFullscreen();
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("desktop") !== deviceId) {
+      url.searchParams.set("desktop", deviceId);
+      window.history.pushState({ ...window.history.state, oceanleoDesktopEntry: deviceId }, "", url);
+    }
+    setSettingsId(null); setTasksId(null); setRemoteOpenId(deviceId);
+  }
+  function closeDesktop() {
+    const id = remoteOpenId;
+    setRemoteOpenId(null);
+    if (id && window.history.state?.oceanleoDesktopEntry === id) window.history.back();
+    else {
+      const url = new URL(window.location.href); url.searchParams.delete("desktop");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }
   const selectedSettings = devices.find((item) => item.device_id === settingsId);
   const selectedTasks = devices.find((item) => item.device_id === tasksId);
-  const selectedRemote = devices.find((item) => item.device_id === remoteOpenId);
+  const selectedRemote = devices.find((item) => item.device_id === remoteOpenId && isComputer(item));
 
   return <div className={variant === "pane" ? "min-h-0" : "mx-auto flex min-h-full w-full max-w-7xl flex-col px-5 py-7 sm:px-8"} data-oceanleo-devices-page data-devices-pane={variant === "pane" ? "" : undefined}>
-    <header className="flex items-center justify-between gap-4"><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1><button type="button" className={DEVICE_BUTTON} onClick={() => setCreateCloud(true)}><span aria-hidden="true">＋</span>{tt("创建云电脑")}</button></header>
+    <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div><button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button></header>
     {pageError && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(pageError)}</p>}
-    <div className="mt-7 grid items-start gap-5 lg:grid-cols-2" data-device-grid data-all-offline={devices.length > 0 && devices.every((item) => deviceAvailability(item, remoteStatus[item.device_id]) !== "online") ? "true" : "false"}>
-      {loading ? <div className="min-h-[350px] animate-pulse rounded-[20px] bg-neutral-100" aria-label={tt("正在加载设备")} /> : devices.map((device) => <DeviceCard key={device.device_id} device={device} availability={deviceAvailability(device, remoteStatus[device.device_id])} onSettings={() => setSettingsId(device.device_id)} onTasks={() => setTasksId(device.device_id)} onControl={() => openDesktop(device.device_id)} />)}
+    {remoteOpenId && !selectedRemote && !loading && !pageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><button type="button" onClick={closeDesktop} className="underline underline-offset-4">{tt("返回设备")}</button></div>}
+    <div className="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid data-all-offline={devices.length > 0 && devices.every((item) => deviceAvailability(item, remoteStatus[item.device_id]) !== "online") ? "true" : "false"}>
+      {loading ? <div className="min-h-[300px] animate-pulse rounded-[20px] bg-neutral-100" aria-label={tt("正在加载设备")} /> : devices.map((device) => <DeviceCard key={`${authRevision}-${device.device_id}`} device={device} client={settingsClient} availability={deviceAvailability(device, remoteStatus[device.device_id])} onSettings={() => setSettingsId(device.device_id)} onTasks={() => setTasksId(device.device_id)} onControl={() => openDesktop(device.device_id)} />)}
       <CloudComputersSection key={`${authRevision}-${cloudRevision}`} client={cloudClient} variant="device-grid" autoFocus={initialTab === "cloud" || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("tab") === "cloud" || window.location.hash === "#cloud"))} />
-      <div className="flex min-h-[350px] flex-col items-center justify-center rounded-[20px] border border-dashed border-neutral-300 px-5 py-10 text-center" data-device-connect-card>
+      {!loading && devices.length === 0 && <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[20px] border border-dashed border-neutral-200 px-5 py-10 text-center" data-device-connect-card>
         <DeviceIcon className="h-9 w-9 text-neutral-400" /><p className="mb-5 mt-4 text-base text-neutral-600">{tt(!loading && devices.length === 0 ? "连接你的电脑" : "添加设备")}</p>
-        <div className="flex flex-wrap justify-center gap-2"><button type="button" className={DEVICE_PRIMARY_BUTTON} onClick={() => setCreateCloud(true)}>{tt("创建云电脑")}</button><button type="button" className={DEVICE_BUTTON} onClick={() => setConnecting(true)}>{tt("连接我的电脑")}</button></div>
-      </div>
+        <button type="button" className={DEVICE_BUTTON} onClick={() => setConnecting(true)}>{tt("连接我的电脑")}</button>
+      </div>}
     </div>
-    <footer className="mt-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-5 py-4"><span className="text-sm font-semibold text-neutral-800">{tt("连接你的设备")}</span><div className="flex flex-wrap gap-2"><button type="button" className={DEVICE_BUTTON} onClick={() => setConnecting(true)}><DeviceIcon className="h-4 w-4" />{tt("连接新电脑")}</button><button type="button" className={DEVICE_BUTTON} onClick={() => setConnectServer(true)}>{tt("连接我的服务器")}</button><a className={DEVICE_BUTTON} href="/download">{tt("下载客户端")}</a></div></footer>
+    {adding && <DeviceDialog title={tt("添加设备")} compact onClose={() => setAdding(false)} testId="add">
+      <div className="grid gap-2">{[["连接我的电脑", () => setConnecting(true)], ["创建云电脑", () => setCreateCloud(true)], ["连接我的服务器", () => setConnectServer(true)]].map(([label, action]) => <button key={String(label)} type="button" className={`${DEVICE_BUTTON} justify-start py-3`} onClick={() => { setAdding(false); (action as () => void)(); }}><DeviceIcon className="h-4 w-4" />{tt(String(label))}</button>)}</div><a className="mt-5 inline-block text-sm text-neutral-500 underline underline-offset-4" href="/download">{tt("下载客户端")}</a>
+    </DeviceDialog>}
     {connecting && <DeviceDialog title={tt("连接我的电脑")} compact onClose={() => setConnecting(false)} testId="connect">
       <form id="device-connect-form" onSubmit={pair}><label className="mb-2 block text-sm text-neutral-500" htmlFor="device-pair-code">{tt("输入客户端的配对码")}</label><div className="flex flex-wrap gap-2"><input id="device-pair-code" aria-label={tt("8 位配对码")} autoComplete="one-time-code" inputMode="text" maxLength={8} value={pairCode} onInput={(event) => { setPairCode(event.currentTarget.value.replace(/\s/g, "")); setPairError(null); }} placeholder={tt("输入 8 位配对码")} className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 font-mono text-base tracking-widest outline-none focus:border-neutral-400" /><button type="submit" disabled={pairing || pairCode.trim().length !== 8} className={DEVICE_PRIMARY_BUTTON}>{tt(pairing ? "正在配对…" : "连接设备")}</button></div>{pairError && <p role="alert" className="mt-3 text-sm text-red-600">{tt(pairError)}</p>}</form><a className="mt-5 inline-block text-sm text-neutral-500 underline underline-offset-4" href="/download">{tt("下载客户端")}</a>
     </DeviceDialog>}
     {selectedSettings && <DeviceSettingsDialog key={`${authRevision}-${selectedSettings.device_id}`} device={selectedSettings} availability={deviceAvailability(selectedSettings, remoteStatus[selectedSettings.device_id])} client={settingsClient} onClose={() => setSettingsId(null)} onControl={() => openDesktop(selectedSettings.device_id)} onRename={(name) => rename(selectedSettings, name)} onRevoke={() => { setSettingsId(null); setConfirmRevoke(selectedSettings); }} />}
     {selectedTasks && <DeviceTasksDialog key={`${authRevision}-${selectedTasks.device_id}`} deviceId={selectedTasks.device_id} deviceName={selectedTasks.device_name} client={settingsClient} onClose={() => setTasksId(null)} />}
-    {selectedRemote && <DeviceDialog title={tt("「{name}」的桌面", { name: selectedRemote.device_name })} onClose={() => setRemoteOpenId(null)} testId="remote-desktop"><RemoteDesktopPanel key={`${authRevision}-${selectedRemote.device_id}`} deviceId={selectedRemote.device_id} deviceName={selectedRemote.device_name} client={remoteDesktopClient} onClose={() => setRemoteOpenId(null)} /></DeviceDialog>}
+    {selectedRemote && <RemoteDesktopPanel key={`${authRevision}-${selectedRemote.device_id}`} deviceId={selectedRemote.device_id} deviceName={selectedRemote.device_name} client={remoteDesktopClient} onClose={closeDesktop} />}
     {confirmRevoke && <ConfirmDialog title={tt("撤销「{name}」？", { name: confirmRevoke.device_name })} body={tt("撤销后这台电脑立刻不再接收任何任务，需要重新配对。")} confirmLabel={tt("确认撤销")} danger onConfirm={() => revoke(confirmRevoke)} onCancel={() => setConfirmRevoke(null)} />}
     {createCloud && <CreateComputerDialog client={cloudClient} onClose={() => setCreateCloud(false)} onCreated={() => { setCreateCloud(false); setCloudRevision((value) => value + 1); }} />}
     {connectServer && <ConnectServerDialog client={cloudClient} onClose={() => setConnectServer(false)} onCreated={() => { setConnectServer(false); setCloudRevision((value) => value + 1); }} />}

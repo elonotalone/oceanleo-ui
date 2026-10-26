@@ -51,6 +51,9 @@ const SOURCE = {
   k40: "远程桌面",
   k41: "查看这台电脑的屏幕，并用鼠标键盘操控。",
   k42: "键盘",
+  k43: "等待这台电脑确认…",
+  k44: "退出桌面",
+  k45: "画面无法显示，请重新连接。",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -99,6 +102,9 @@ const EN: Messages = {
   k40: "Remote desktop",
   k41: "See this computer's screen and control it with your mouse and keyboard.",
   k42: "Keyboard",
+  k43: "Waiting for this computer to approve…",
+  k44: "Leave desktop",
+  k45: "The screen could not be displayed. Please reconnect.",
 };
 
 const ZH_TW: Messages = {
@@ -145,6 +151,9 @@ const ZH_TW: Messages = {
   k40: "遠端桌面",
   k41: "查看這台電腦的螢幕，並用滑鼠鍵盤操控。",
   k42: "鍵盤",
+  k43: "等待這台電腦確認…",
+  k44: "離開桌面",
+  k45: "畫面無法顯示，請重新連線。",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(

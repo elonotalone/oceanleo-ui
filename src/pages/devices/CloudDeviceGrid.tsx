@@ -10,6 +10,7 @@ import { serverPageHref } from "../../shell/cloud-computer/server-page/href";
 import { DeviceDialog, DEVICE_BUTTON, DEVICE_PRIMARY_BUTTON } from "./DeviceDialog";
 import { DeviceIcon } from "./DeviceCard";
 import { formatDeviceTime } from "./DeviceTasksDialog";
+import { WallpaperSurface } from "./DeviceCover";
 
 const STATE_LABEL: Record<ComputerDisplayState, string> = { ready: "在线", offline: "离线", stopped: "已停机", unpaid: "欠费", provisioning: "正在开通", pending_install: "等待安装", pending_confirm: "待确认", error: "连接失败", gone: "已移除" };
 
@@ -46,14 +47,14 @@ export function CloudDeviceGrid({ client = cloudComputerApi, autoFocus = false }
     {computers.map((computer, index) => {
       const state = computerDisplayState(computer);
       return <article ref={index === 0 ? firstCard : undefined} key={computer.id} className="min-w-0 overflow-hidden rounded-[20px] border border-neutral-200 bg-white" data-oceanleo-cc-card={computer.id} data-oceanleo-cc-display-state={state}>
-        <div className="relative flex min-h-[240px] flex-col overflow-hidden bg-neutral-800 p-5 text-white sm:min-h-[290px]">
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-slate-500 via-slate-800 to-neutral-950" aria-hidden="true" />
-          <svg className="pointer-events-none absolute right-0 top-0 h-full w-full text-white/10" viewBox="0 0 400 260" fill="none" aria-hidden="true"><path d="M0 240 200 110 400 240M0 175 200 45 400 175M0 305 200 175 400 305" stroke="currentColor" strokeWidth="1" /><path d="M200 0v260M100 0v260M300 0v260" stroke="currentColor" strokeWidth="1" /></svg>
-          <div className="relative flex items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2"><DeviceIcon /><h3 className="truncate text-base font-semibold">{computer.name}</h3></div><span className="flex shrink-0 items-center gap-1.5 text-sm text-white/80"><span className={`h-2 w-2 rounded-full ${state === "ready" ? "bg-emerald-500" : state === "error" || state === "unpaid" ? "bg-red-400" : "bg-neutral-400"}`} />{tt(STATE_LABEL[state])}</span></div>
-          <div className="relative flex flex-1 items-center justify-center">{isConnectedComputer(computer) ? <Link className="rounded-xl border border-white/25 bg-black/20 px-4 py-2 text-sm font-medium hover:bg-white/15" href={serverPageHref(computer.id)}>{tt("打开电脑")}</Link> : (state === "pending_install" || state === "pending_confirm") ? <button type="button" onClick={() => setResume(computer)} className="rounded-xl border border-white/25 bg-black/20 px-4 py-2 text-sm font-medium hover:bg-white/15">{tt(state === "pending_confirm" ? "核对并确认" : "继续连接")}</button> : null}</div>
-          <div className="relative text-sm font-medium">{tt("云电脑")}{computer.node_os ? ` · ${computer.node_os}` : ""}</div>
+        <WallpaperSurface placeholder="此云电脑未提供桌面壁纸">
+          {isConnectedComputer(computer) ? <Link className="absolute bottom-4 left-4 rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50" href={serverPageHref(computer.id)}>{tt("打开电脑")}</Link> : (state === "pending_install" || state === "pending_confirm") ? <button type="button" onClick={() => setResume(computer)} className="absolute bottom-4 left-4 rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50">{tt(state === "pending_confirm" ? "核对并确认" : "继续连接")}</button> : null}
+        </WallpaperSurface>
+        <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
+          <div className="flex min-w-0 items-start gap-3"><DeviceIcon className="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-neutral-900">{computer.name}</h3><p className="mt-1 text-xs text-neutral-500">{tt("云电脑")}{computer.node_os ? ` · ${computer.node_os}` : ""}</p></div></div>
+          <span className="flex shrink-0 items-center gap-1.5 text-sm text-neutral-500"><span className={`h-2 w-2 rounded-full ${state === "ready" ? "bg-emerald-500" : state === "error" || state === "unpaid" ? "bg-red-400" : "bg-neutral-400"}`} />{tt(STATE_LABEL[state])}</span>
         </div>
-        <div className="grid grid-cols-2 divide-x divide-neutral-200 py-3"><button type="button" onClick={() => setSelectedId(computer.id)} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("设置")}</button>{isConnectedComputer(computer) ? <Link className="px-3 py-2 text-center text-sm font-medium text-neutral-800 hover:bg-neutral-50" href={serverPageHref(computer.id, { card: "acp" })}>{tt("任务")}</Link> : <button type="button" onClick={() => setSelectedId(computer.id)} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("详情")}</button>}</div>
+        <div className="grid grid-cols-2 border-t border-neutral-100 py-1.5"><button type="button" onClick={() => setSelectedId(computer.id)} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("设置")}</button>{isConnectedComputer(computer) ? <Link className="px-3 py-2 text-center text-sm font-medium text-neutral-800 hover:bg-neutral-50" href={serverPageHref(computer.id, { card: "acp" })}>{tt("任务")}</Link> : <button type="button" onClick={() => setSelectedId(computer.id)} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("详情")}</button>}</div>
       </article>;
     })}
     {selected && <CloudDeviceDetails key={selected.id} computer={selected} client={client} onClose={() => setSelectedId(null)} onUpdated={updated} onResume={() => { setSelectedId(null); setResume(selected); }} />}

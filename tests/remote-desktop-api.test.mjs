@@ -189,3 +189,79 @@ test("源码不含设备密钥 / 本机令牌 / 本地存储路径，画面不�
     assert.ok(!source.includes(forbidden), `不该出现：${forbidden}`);
   }
 });
+
+function binaryPacket(sequence = 1) {
+  const bytes = new ArrayBuffer(28), view = new DataView(bytes);
+  view.setUint32(0, 0x4f4c5244); view.setUint32(4, 0x02010000);
+  view.setUint32(8, 1920); view.setUint32(12, 1080); view.setUint32(20, sequence);
+  new Uint8Array(bytes, 24).set([0xff, 0xd8, 0xff, 0xd9]);
+  return bytes;
+}
+
+test("v2 binary envelope rejects wrong headers, dimensions, unsafe sequence and oversized bytes", () => {
+  assert.equal(api.parseBinaryFrame(binaryPacket()).width, 1920);
+  for (const offset of [0, 4, 8, 12]) {
+    const packet = binaryPacket(); new DataView(packet).setUint32(offset, 0);
+    assert.equal(api.parseBinaryFrame(packet), null);
+  }
+  const packet = binaryPacket(); new DataView(packet).setUint32(16, 0x200000);
+  assert.equal(api.parseBinaryFrame(packet), null);
+  assert.equal(api.parseBinaryFrame(new ArrayBuffer(1_500_025)), null);
+});
+
+class FakeSocket {
+  static OPEN = 1;
+  static latest;
+  readyState = 1;
+  bufferedAmount = 0;
+  sent = [];
+  constructor(url) { this.url = url; FakeSocket.latest = this; }
+  send(data) { this.sent.push(JSON.parse(data)); }
+  close() { this.readyState = 3; }
+  message(data) { this.onmessage({ data: typeof data === "object" && !(data instanceof ArrayBuffer) ? JSON.stringify(data) : data }); }
+}
+
+async function streamHarness() {
+  window.location = { href: "https://oceanleo.com/devices" };
+  globalThis.WebSocket = FakeSocket;
+  const log = { states: [], frames: [], errors: [] };
+  const promise = api.remoteDesktopClient.openStream("d1", "private-handle", { state: (...state) => log.states.push(state), frame: (frame) => log.frames.push(frame), error: (error) => log.errors.push(error) });
+  await new Promise((resolve) => setImmediate(resolve));
+  const socket = FakeSocket.latest;
+  socket.onopen();
+  socket.message({ type: "state", state: "pending_consent" });
+  return { socket, stream: (await promise).data, log };
+}
+
+test("v2 authenticates only inside the private socket, refuses input before approval, and ACKs displayed frames", async () => {
+  const { socket, stream, log } = await streamHarness();
+  try {
+    assert.doesNotMatch(socket.url, /user-token|controller=|token=/);
+    assert.equal(socket.sent[0].type, "auth");
+    assert.equal(socket.sent[0].token, "user-token");
+    assert.equal(stream.send({ kind: "key_down", key: "Shift" }), false);
+    socket.message({ type: "state", state: "active" });
+    assert.equal(stream.send({ kind: "key_down", key: "Shift" }), true);
+    socket.message({ type: "input_ack", seq: 1 });
+    socket.message(binaryPacket());
+    assert.equal(log.frames[0].sequence, 1);
+    assert.match(log.frames[0].image, /^blob:/);
+    assert.equal(socket.sent.filter((message) => message.type === "frame_ack").length, 0);
+    stream.acknowledgeFrame(1);
+    assert.deepEqual(socket.sent.at(-1), { type: "frame_ack", sequence: 1 });
+  } finally { stream.close(); }
+});
+
+test("v2 never accepts a frame before approval and bounds unacknowledged inputs without replay", async () => {
+  let harness = await streamHarness();
+  harness.socket.message(binaryPacket());
+  assert.deepEqual(harness.log.errors, ["response_malformed"]);
+  assert.equal(harness.log.frames.length, 0);
+  harness = await streamHarness();
+  harness.socket.message({ type: "state", state: "active" });
+  for (let index = 0; index < 64; index++) assert.equal(harness.stream.send({ kind: "key_down", key: "a" }), true);
+  assert.equal(harness.stream.send({ kind: "key_down", key: "a" }), false);
+  assert.deepEqual(harness.log.errors, ["input_queue_full"]);
+  assert.equal(harness.socket.sent.filter((message) => message.type === "input").length, 64);
+  assert.equal(harness.socket.readyState, 3);
+});

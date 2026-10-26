@@ -40,6 +40,8 @@ const stubs = {
 };
 const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.tsx", stubs));
 
+test.beforeEach(() => { window.history.replaceState(null, "", "/devices"); });
+
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const flush = async (n = 4) => {
   for (let i = 0; i < n; i += 1) await act(async () => {});
@@ -184,7 +186,8 @@ test("offline and unsupported targets remain actionable and show server's concre
       await view.click(view.enter());
       await view.tick(30);
       assert.deepEqual(remote.log.create, ["pc-1"]);
-      assert.ok(document.querySelector("[data-remote-error]"));
+      assert.equal(document.querySelector("[data-oceanleo-remote-desktop]").getAttribute("data-remote-phase"), "error");
+      assert.match(view.text(), error === "device_offline" ? /不在线|离线/ : /不支持/);
       assert.equal(document.querySelector("[data-remote-frame]"), null);
     } finally { await view.unmount(); }
   }
@@ -239,20 +242,62 @@ test("status polling is bounded, non-overlapping and aborts immediately on unmou
   assert.equal(remote.log.status.length, count);
 });
 
-test("desktop opens over Devices without route change and closes its session once", async () => {
+test("desktop enters synchronously from the click, writes its URL, and closes its session once", async () => {
   const remote = rdClient({ "pc-1": { ...READY, availability: "online" } });
   const view = await render([device()], remote);
+  const previousFullscreen = window.HTMLElement.prototype.requestFullscreen;
+  const fullscreen = [];
+  window.HTMLElement.prototype.requestFullscreen = function () {
+    fullscreen.push({ id: this.id, query: new URLSearchParams(window.location.search).get("desktop"), creates: remote.log.create.length });
+    return Promise.resolve();
+  };
   try {
-    const before = window.location.href;
     await view.click(view.enter());
     await view.tick(60);
     assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
-    assert.equal(window.location.href, before);
-    await view.click(view.button("断开"));
+    assert.equal(new URLSearchParams(window.location.search).get("desktop"), "pc-1");
+    assert.equal(window.location.pathname, "/devices");
+    assert.deepEqual(fullscreen, [{ id: "oceanleo-remote-desktop-screen", query: null, creates: 0 }]);
+    assert.equal(document.querySelector('[data-device-dialog="remote-desktop"]'), null, "dedicated desktop has no DeviceDialog wrapper");
+    await view.click(view.button("退出桌面"));
+    await view.tick(30);
     assert.deepEqual(remote.log.closes, ["s-1"]);
     assert.equal(document.querySelector("[data-oceanleo-remote-desktop]"), null);
+    assert.equal(new URLSearchParams(window.location.search).get("desktop"), null);
     assert.ok(view.enter());
+  } finally { window.HTMLElement.prototype.requestFullscreen = previousFullscreen; await view.unmount(); }
+});
+
+test("browser back/forward follows the desktop query and refresh restores only a current-account device", async () => {
+  const remote = rdClient({ "pc-1": { ...READY, availability: "online" } });
+  const view = await render([device()], remote);
+  try {
+    await view.click(view.enter());
+    assert.equal(remote.log.create.length, 1);
+    await act(async () => { window.history.back(); await wait(25); });
+    await flush();
+    assert.equal(document.querySelector("[data-oceanleo-remote-desktop]"), null);
+    assert.equal(remote.log.closes.length, 1);
+    await act(async () => { window.history.forward(); await wait(25); });
+    await flush();
+    assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
+    assert.equal(remote.log.create.length, 2);
   } finally { await view.unmount(); }
+  window.history.replaceState(null, "", "/devices?desktop=pc-1");
+  const refreshed = await render([device()], remote);
+  try {
+    assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
+    await refreshed.click(refreshed.button("退出桌面"));
+    assert.equal(new URLSearchParams(window.location.search).get("desktop"), null);
+  } finally { await refreshed.unmount(); }
+  window.history.replaceState(null, "", "/devices?desktop=other-owner");
+  const unknown = await render([device()], remote);
+  try {
+    assert.equal(document.querySelector("[data-oceanleo-remote-desktop]"), null);
+    assert.match(unknown.text(), /当前账号找不到这台电脑/);
+    await unknown.click(unknown.button("返回设备"));
+    assert.equal(new URLSearchParams(window.location.search).get("desktop"), null);
+  } finally { await unknown.unmount(); }
 });
 
 test("reference cards expose Settings/Tasks, not permission switches or old explainer", async () => {
