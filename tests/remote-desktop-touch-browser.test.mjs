@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { chromiumSkip } from "./chromium-availability.mjs";
@@ -27,17 +26,19 @@ import { RemoteDesktopPanel } from "${join(REPO, "src/pages/RemoteDesktopPanel.t
 const params = new URLSearchParams(location.search);
 const width = Number(params.get("w") || 1280);
 const height = Number(params.get("h") || 720);
+const streaming = params.get("transport") === "stream";
 window.__rd = { inputs: [], closes: [], created: 0 };
 let sequence = 0;
 const client = {
   async createSession() {
     window.__rd.created += 1;
-    return { ok: true, data: { session_id: "fixture-session", state: "connecting", expires_at: "2099-01-01T00:00:00Z" } };
+    return { ok: true, data: { session_id: "fixture-session", state: "connecting", ...(streaming ? { transport: "websocket-v2" } : {}), expires_at: "2099-01-01T00:00:00Z" } };
   },
   async getFrame() {
     await new Promise((r) => setTimeout(r, 20));
+    if (window.__rd.revoked) return { ok: false, status: 403, error: "revoked" };
     sequence += 1;
-    return { ok: true, data: { state: "active", frame: { image: "${PNG_1X1}", width, height, sequence } } };
+    return { ok: true, data: { state: "active", frame: { image: "${PNG_1X1}", width: window.__rd.resized ? width * 2 : width, height, sequence } } };
   },
   async sendInput(deviceId, sessionId, seq, action) {
     window.__rd.inputs.push(action);
@@ -47,15 +48,27 @@ const client = {
     window.__rd.closes.push(sessionId);
     return { ok: true, data: { closed: true } };
   },
+  async openStream(deviceId, sessionId, callbacks) {
+    const timer = setTimeout(() => {
+      callbacks.state("active");
+      callbacks.frame({ image: "${PNG_1X1}", width, height, sequence: 1 });
+    }, 20);
+    return { ok: true, data: {
+      send(action) { window.__rd.inputs.push(action); return true; },
+      acknowledgeFrame() {}, close() { clearTimeout(timer); },
+    } };
+  },
 };
-createRoot(document.getElementById("root")).render(
+const root = createRoot(document.getElementById("root"));
+window.__rd.unmount = () => root.unmount();
+root.render(
   React.createElement(RemoteDesktopPanel, {
     deviceId: "fixture-device",
     deviceName: "fixture",
     client,
     onClose: () => { window.__rd.panelClosed = true; },
     frameIntervalMs: 30,
-    doubleClickWindowMs: 120,
+    doubleClickWindowMs: Number(params.get("clickms") || 120),
   }),
 );
 `;
@@ -120,7 +133,7 @@ async function bundleFixture() {
   return result.outputFiles[0].text;
 }
 
-async function open(browser, origin, { mobile, w, h }) {
+async function open(browser, origin, { mobile, w, h, clickMs = 120, transport = "http" }) {
   const context = await browser.newContext(
     mobile
       ? { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }
@@ -136,7 +149,7 @@ async function open(browser, origin, { mobile, w, h }) {
     blocked.push(route.request().url());
     return route.abort();
   });
-  await page.goto(`${origin}/?w=${w}&h=${h}`);
+  await page.goto(`${origin}/?w=${w}&h=${h}&clickms=${clickMs}&transport=${transport}`);
   await page.waitForSelector('[data-remote-phase="active"] [data-remote-frame]');
   await page.waitForFunction(() => document.querySelector("[data-remote-frame]").complete);
   const cdp = await context.newCDPSession(page);
@@ -250,6 +263,8 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
     const focused = () => s.page.evaluate(() => document.activeElement?.hasAttribute("data-remote-input"));
     const button = s.page.getByRole("button", { name: "键盘" });
     assert.equal(await button.isVisible(), true, "键盘入口必须可见且可访问");
+    assert.equal(await focused(), false, "连接成功本身不能聚焦手机软键盘输入口");
+    assert.equal(await s.page.locator("[data-remote-input]").getAttribute("inputmode"), "none");
 
     // 触摸点按画面不会自己弹键盘
     const p = await s.at(0.5, 0.5);
@@ -325,7 +340,7 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
 
     // 断开后，任何输入都不外发
     await button.tap();
-    await s.page.getByRole("button", { name: "断开" }).tap();
+    await s.page.getByRole("button", { name: "退出桌面" }).tap();
     await wait(200);
     const closedAt = (await s.inputs()).length;
     await s.page.keyboard.insertText("不应发送");
@@ -369,27 +384,34 @@ test("点部分可见画面时，聚焦隐藏键盘口不滚动画面或改变�
   }, bundleText);
 });
 
-test("真实验收点击：画面滚入视区、避开留白，再立即输入，点击先送且不重复", { timeout: 120_000, skip }, async () => {
-  const driver = await import(pathToFileURL("/root/projects/oceanleo-app/acceptance-runner/desktop/remote_web.mjs").href);
+test("固定全屏画面：不同视区中避开留白，再立即输入，坐标准确且点击先送、不重复", { timeout: 120_000, skip }, async () => {
   await withFixture(async ({ browser, origin }) => {
-    for (const offset of [0, 1400]) {
+    for (const viewport of [{ width: 1280, height: 800 }, { width: 900, height: 1000 }]) {
       const s = await open(browser, origin, { mobile: false, w: 1280, h: 720 });
       try {
-        await s.page.evaluate((top) => {
-          document.querySelector("[data-oceanleo-remote-desktop]").style.marginTop = `${top}px`;
-          window.scrollTo(0, 0);
-        }, offset);
-        if (offset) {
-          const box = await s.page.locator("[data-remote-frame]").boundingBox();
-          assert.ok(box.y > 800, "先确认画面在可视区之外，不能假设 mouse.click 会自动滚动");
-        }
-        // 原验收算法直接乘元素外框：此点在留白里，或根本在 viewport 外，组件不会发出 click。
-        const oldBox = await s.page.locator("[data-remote-frame]").boundingBox();
-        await s.page.mouse.click(oldBox.x + oldBox.width * 0.95, oldBox.y + oldBox.height * 0.85);
+        await s.page.setViewportSize(viewport);
+        assert.equal(await s.page.locator("[data-oceanleo-remote-desktop]").evaluate((el) => getComputedStyle(el).position), "fixed");
+        const before = await s.page.locator("[data-remote-frame]").boundingBox();
+        await s.page.evaluate(() => {
+          const spacer = document.createElement("div"); spacer.style.height = "2400px"; document.body.append(spacer);
+          window.scrollTo(0, 1400);
+        });
+        const after = await s.page.locator("[data-remote-frame]").boundingBox();
+        assert.ok(Math.abs(before.y - after.y) < 1, "底层页面滚动不能移动固定远程画面");
+        const content = await s.content();
+        const blank = content.width < content.box.width - 5
+          ? { x: content.box.left + 2, y: content.top + content.height / 2 }
+          : { x: content.left + content.width / 2, y: content.box.top + 2 };
+        assert.ok(content.width < content.box.width - 5 || content.height < content.box.height - 5, "夹具必须有实际留白");
+        await s.page.mouse.click(blank.x, blank.y);
         await wait(180);
         assert.equal((await s.inputs()).filter((a) => a.kind === "click").length, 0);
-        await s.page.evaluate(() => { window.__rd.inputs.length = 0; });
-        await driver.clickRemoteFrame(s.page, 0.95, 0.85);
+        await s.page.evaluate(() => {
+          window.__rd.inputs.length = 0;
+          window.scrollTo(0, 0);
+        });
+        const point = await s.at(0.95, 0.85);
+        await s.page.mouse.click(point.x, point.y);
         await s.page.locator("[data-remote-input]").focus();
         await s.page.keyboard.type("q");
         await s.page.waitForFunction(() => window.__rd.inputs.filter((a) => a.kind !== "move").length >= 2);
@@ -454,6 +476,77 @@ test("桌面鼠标上下文：点击 / 双击 / 右击 / 拖动 / 滚轮 / 键�
     ]);
     assert.deepEqual(s.errors, []);
     await s.context.close();
+  }, bundleText);
+});
+
+test("HTTP 待定点击：不同位置与后续输入顺序保持，取消/断开/撤销/卸载/尺寸变化不漏发计时器", { timeout: 120_000, skip }, async () => {
+  await withFixture(async ({ browser, origin }) => {
+    const ordered = await open(browser, origin, { mobile: false, w: 1280, h: 720, clickMs: 700 });
+    try {
+      const a = await ordered.at(0.2, 0.5), b = await ordered.at(0.75, 0.6);
+      await ordered.page.mouse.click(a.x, a.y);
+      assert.deepEqual(await ordered.inputs(), [], "单击等待明确的双击窗口");
+      await ordered.page.mouse.click(b.x, b.y);
+      assert.deepEqual((await ordered.inputs()).map((x) => x.kind), ["click"], "远处第二下先送前一次点击，不能吞掉或合成双击");
+      await ordered.page.keyboard.type("q");
+      await wait(800);
+      const actions = await ordered.inputs();
+      assert.deepEqual(actions.map((x) => x.kind), ["click", "click", "type"]);
+      assert.ok(near(actions[0].x, 0.2) && near(actions[1].x, 0.75));
+      assert.equal(actions[2].text, "q");
+      await ordered.page.evaluate(() => { window.__rd.inputs.length = 0; });
+      await ordered.page.mouse.click(a.x, a.y);
+      await ordered.page.keyboard.press("Enter");
+      assert.deepEqual((await ordered.inputs()).map((x) => x.kind), ["click", "keypress"]);
+      await ordered.page.evaluate(() => { window.__rd.inputs.length = 0; });
+      await ordered.page.mouse.click(a.x, a.y);
+      await ordered.page.mouse.move(b.x, b.y);
+      await ordered.page.mouse.down();
+      await ordered.page.mouse.move(a.x, a.y);
+      await ordered.page.mouse.up();
+      await wait(800);
+      assert.deepEqual((await ordered.inputs()).map((x) => x.kind), ["click", "drag"], "拖动前的待定点击必须先送且不迟到重复");
+      assert.deepEqual(ordered.errors, []);
+    } finally { await ordered.context.close(); }
+
+    for (const stop of ["cancel", "close", "revoke", "unmount", "geometry"]) {
+      const s = await open(browser, origin, { mobile: true, w: 1280, h: 720, clickMs: 700 });
+      try {
+        const point = await s.at(0.4, 0.5);
+        await s.page.touchscreen.tap(point.x, point.y);
+        assert.deepEqual(await s.inputs(), [], stop);
+        if (stop === "cancel") {
+          await s.touch("touchStart", [point]);
+          await s.cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+        } else if (stop === "close") await s.page.getByRole("button", { name: "退出桌面" }).tap();
+        else if (stop === "revoke") await s.page.evaluate(() => { window.__rd.revoked = true; });
+        else if (stop === "unmount") await s.page.evaluate(() => window.__rd.unmount());
+        else await s.page.evaluate(() => { window.__rd.resized = true; });
+        await wait(850);
+        assert.deepEqual(await s.inputs(), [], `${stop}: 已失效的待定点击不能迟到发送`);
+        assert.deepEqual(s.errors, []);
+      } finally { await s.context.close(); }
+    }
+  }, bundleText);
+});
+
+test("WSS 指针路径不等待 HTTP 双击计时器，按下/抬起立即发送且不附加 click", { timeout: 120_000, skip }, async () => {
+  await withFixture(async ({ browser, origin }) => {
+    const s = await open(browser, origin, { mobile: false, w: 1280, h: 720, clickMs: 1000, transport: "stream" });
+    try {
+      const point = await s.at(0.5, 0.5);
+      await s.page.mouse.move(point.x, point.y);
+      await s.page.mouse.down();
+      const actions = async () => (await s.inputs()).filter((x) => x.kind !== "move" && x.kind !== "release_all");
+      assert.deepEqual((await actions()).map((x) => x.kind), ["pointer_down"], "抬起前已发送按下");
+      await s.page.mouse.up();
+      assert.deepEqual((await actions()).map((x) => x.kind), ["pointer_down", "pointer_up"]);
+      await s.page.mouse.dblclick(point.x, point.y);
+      assert.deepEqual((await actions()).map((x) => x.kind), ["pointer_down", "pointer_up", "pointer_down", "pointer_up", "pointer_down", "pointer_up"]);
+      await wait(1100);
+      assert.equal((await actions()).length, 6, "不能迟到补发 HTTP click/double_click");
+      assert.deepEqual(s.errors, []);
+    } finally { await s.context.close(); }
   }, bundleText);
 });
 

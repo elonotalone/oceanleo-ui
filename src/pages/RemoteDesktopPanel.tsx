@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { remoteDesktopClient, type RemoteDesktopAction, type RemoteDesktopClient, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteMediaStatus } from "../api/remote-desktop";
 import { RemoteDesktopVideo } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
-import { chunkText, clampPaste, classifyInput, containedRect, insideRect, keyEventToAction, mouseButton, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
+import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 
 export { requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
@@ -29,7 +29,7 @@ const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) =>
   if (signal.aborted) done(); else signal.addEventListener("abort", done, { once: true });
 });
 
-export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDesktopClient, onClose, frameIntervalMs = 250 }: RemoteDesktopPanelProps) {
+export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220 }: RemoteDesktopPanelProps) {
   const tt = useUI();
   const [portal] = useState(remoteDesktopPortal);
   const [phase, setPhase] = useState<Phase>("starting");
@@ -67,14 +67,22 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const pumpingRef = useRef(false);
   const sequenceRef = useRef(0);
   const heldKeys = useRef(new Map<string, string>());
-  const pointerRef = useRef<{ id: number; x: number; y: number; button: "left" | "right" | "middle"; buttons: Set<"left" | "right" | "middle"> } | null>(null);
+  const pointerRef = useRef<{ id: number; pointerType: string; x: number; y: number; button: "left" | "right" | "middle"; buttons: Set<"left" | "right" | "middle"> } | null>(null);
+  const pendingClick = useRef<{ x: number; y: number } | null>(null);
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composing = useRef(false);
   const moveRef = useRef<RemoteDesktopAction | null>(null);
   const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolbarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   frameRef.current = frame;
 
-  const updatePhase = useCallback((value: Phase) => { phaseRef.current = value; setPhase(value); }, []);
+  const updatePhase = useCallback((value: Phase) => {
+    if (value !== "active") {
+      if (clickTimer.current) clearTimeout(clickTimer.current);
+      clickTimer.current = null; pendingClick.current = null;
+    }
+    phaseRef.current = value; setPhase(value);
+  }, []);
   const revealToolbar = useCallback(() => {
     setToolbar(true);
     if (toolbarTimer.current) clearTimeout(toolbarTimer.current);
@@ -116,7 +124,18 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     moveRef.current = null;
   }, [send]);
 
+  const flushClick = useCallback(() => {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = null;
+    const point = pendingClick.current;
+    pendingClick.current = null;
+    if (point) send({ kind: "click", ...point, button: "left" });
+  }, [send]);
+
   const releaseInput = useCallback(() => {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+    clickTimer.current = null;
+    pendingClick.current = null;
     if (moveTimer.current) clearTimeout(moveTimer.current);
     moveTimer.current = null;
     moveRef.current = null;
@@ -147,6 +166,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     streamRef.current = null;
     streamModeRef.current = false;
     sequenceRef.current = 0;
+    setKeyboard(false);
     frameRef.current = null;
     setFrame(null);
     setCongested(false);
@@ -226,6 +246,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           failures = 0;
           const value = response.data;
           if (value.state === "closed") { end(value.error); break; }
+          const previous = frameRef.current;
+          if (value.state !== "active" || !value.frame || (previous && (previous.width !== value.frame.width || previous.height !== value.frame.height))) releaseInput();
           updatePhase(value.state === "pending_consent" ? "waiting" : value.state);
           setFrame(value.state === "active" ? value.frame : null);
         }
@@ -240,7 +262,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase, attempt]);
 
   useEffect(() => {
-    if (phase === "active") { revealToolbar(); inputRef.current?.focus({ preventScroll: true }); }
+    if (phase === "active") {
+      revealToolbar();
+      if (!window.matchMedia?.("(pointer: coarse)").matches) inputRef.current?.focus({ preventScroll: true });
+    }
   }, [phase, revealToolbar]);
 
   useEffect(() => {
@@ -259,22 +284,24 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   }, [disconnect, releaseInput, revealToolbar]);
 
   const sendText = useCallback((text: string) => {
+    flushClick();
     flushMove();
     const paste = clampPaste(sanitizeRemoteText(text));
     for (const part of chunkText(paste.text)) send({ kind: "type", text: part });
     if (paste.truncated) setMessage("文字太长，只发送了前面一部分。");
-  }, [flushMove, send]);
+  }, [flushClick, flushMove, send]);
 
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
     let claimed: string | null = null;
-    const start = () => { releaseInput(); composing.current = true; };
+    const start = () => { flushClick(); releaseInput(); composing.current = true; };
     const end = (event: CompositionEvent) => { composing.current = false; input.value = ""; sendText(event.data || ""); };
     const before = (event: InputEvent) => {
       const kind = classifyInput(event.inputType, composing.current || event.isComposing);
       const action = softInputKeyAction(kind);
       if (!action) return;
+      flushClick();
       if (event.cancelable) event.preventDefault();
       if (!event.defaultPrevented) { claimed = kind; setTimeout(() => { claimed = null; }, 0); }
       send(action);
@@ -286,11 +313,11 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       input.value = "";
       const already = claimed; claimed = null;
       const action = softInputKeyAction(kind);
-      if (action) { if (already !== kind) send(action); return; }
+      if (action) { if (already !== kind) { flushClick(); send(action); } return; }
       if (kind !== "text" || (event.data && !value.includes(event.data))) return;
       sendText(event.data || value);
     };
-    const paste = (event: ClipboardEvent) => { event.preventDefault(); releaseInput(); sendText(event.clipboardData?.getData("text/plain") || ""); };
+    const paste = (event: ClipboardEvent) => { event.preventDefault(); flushClick(); releaseInput(); sendText(event.clipboardData?.getData("text/plain") || ""); };
     input.addEventListener("compositionstart", start);
     input.addEventListener("compositionend", end);
     input.addEventListener("beforeinput", before as EventListener);
@@ -300,7 +327,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       input.removeEventListener("compositionstart", start); input.removeEventListener("compositionend", end);
       input.removeEventListener("beforeinput", before as EventListener); input.removeEventListener("input", insert as EventListener); input.removeEventListener("paste", paste);
     };
-  }, [releaseInput, send, sendText]);
+  }, [flushClick, releaseInput, send, sendText]);
 
   const point = (event: { clientX: number; clientY: number }, strict = true) => {
     const image = mediaModeRef.current === "artc" ? videoRef.current : imageRef.current, current = frameRef.current;
@@ -337,11 +364,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     const p = point(event), button = mouseButton(event.button);
     if (!p || !button) return;
     event.preventDefault();
-    inputRef.current?.focus({ preventScroll: true });
+    if (event.pointerType !== "touch" || keyboard) inputRef.current?.focus({ preventScroll: true });
+    else event.currentTarget.focus({ preventScroll: true });
     event.currentTarget.setPointerCapture?.(event.pointerId);
     flushMove();
     syncModifiers(event);
-    pointerRef.current = { id: event.pointerId, ...p, button, buttons: new Set([button]) };
+    pointerRef.current = { id: event.pointerId, pointerType: event.pointerType, ...p, button, buttons: new Set([button]) };
     if (streamModeRef.current) send({ kind: "pointer_down", ...p, button });
   }
 
@@ -381,8 +409,24 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     flushMove();
     if (p) {
       if (streamModeRef.current) for (const button of down.buttons) send({ kind: "pointer_up", ...p, button });
-      else if (Math.hypot(p.x - down.x, p.y - down.y) > .006) send({ kind: "drag", x: down.x, y: down.y, toX: p.x, toY: p.y, button: down.button });
-      else send({ kind: "click", ...p, button: down.button });
+      else {
+        const current = frameRef.current;
+        const image = imageRef.current;
+        const rect = image && current ? containedRect(image.getBoundingClientRect(), current.width, current.height) : null;
+        if (rect && isPointerDrag(down.pointerType, down, p, rect)) {
+          flushClick();
+          send({ kind: "drag", x: down.x, y: down.y, toX: p.x, toY: p.y, button: down.button });
+        } else if (down.button !== "left") {
+          flushClick(); send({ kind: "click", ...p, button: down.button });
+        } else if (pendingClick.current && isNearby(pendingClick.current, p)) {
+          if (clickTimer.current) clearTimeout(clickTimer.current);
+          clickTimer.current = null; pendingClick.current = null;
+          send({ kind: "double_click", ...p, button: "left" });
+        } else {
+          flushClick(); pendingClick.current = p;
+          clickTimer.current = setTimeout(flushClick, Math.max(0, doubleClickWindowMs));
+        }
+      }
     } else releaseInput();
     pointerRef.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -396,7 +440,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     flushMove();
     if (!streamModeRef.current) {
       const action = keyEventToAction(event);
-      if (action) { event.preventDefault(); send(action); }
+      if (action) { event.preventDefault(); flushClick(); send(action); }
       return;
     }
     if (!event.key) return;
@@ -426,14 +470,14 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       if (panModeRef.current) return;
       const p = point(event);
       if (!p || phaseRef.current !== "active") return;
-      event.preventDefault(); flushMove();
+      event.preventDefault(); flushClick(); flushMove();
       const factor = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? stage.clientHeight : 1;
       const clamp = (value: number) => Math.max(-10_000, Math.min(10_000, value * factor));
       send({ kind: "scroll", ...p, deltaX: clamp(event.deltaX), deltaY: clamp(event.deltaY) });
     };
     stage.addEventListener("wheel", wheel, { passive: false });
     return () => stage.removeEventListener("wheel", wheel);
-  }, [flushMove, send]);
+  }, [flushClick, flushMove, send]);
 
   if (!portal) return null;
   const active = phase === "active";
@@ -476,7 +520,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         {active ? <select aria-label={tt("画面缩放")} value={zoom} onChange={(event) => { releaseInput(); setZoom(Number(event.target.value)); setPanMode(false); }}><option value={1}>{tt("适应窗口")}</option><option value={1.5}>150%</option><option value={2}>200%</option><option value={3}>300%</option></select> : null}
         {active && zoom > 1 ? <button type="button" aria-pressed={panMode} onClick={() => { releaseInput(); setPanMode((value) => !value); }}>{tt(panMode ? "操作电脑" : "移动画面")}</button> : null}
         {active && (mediaStatus?.displays?.length ?? 0) > 1 ? <select aria-label={tt("显示器")} value={displayId || mediaStatus?.geometry?.display_id || ""} onChange={(event) => { releaseInput(); setFrame(null); frameRef.current = null; setMediaReady(false); setDisplayId(event.target.value); }}>{mediaStatus?.displays?.map((display) => <option key={display.display_id} value={display.display_id}>{display.label} · {display.width}×{display.height}</option>)}</select> : null}
-        {coarse && active ? <button data-remote-keyboard-toggle type="button" onClick={() => { setKeyboard(true); inputRef.current?.setAttribute("inputmode", "text"); inputRef.current?.focus({ preventScroll: true }); }}>{tt("键盘")}</button> : null}
+        {coarse && active ? <button data-remote-keyboard-toggle type="button" aria-pressed={keyboard} onMouseDown={(event) => event.preventDefault()} onClick={() => {
+          const next = !keyboard; setKeyboard(next);
+          inputRef.current?.setAttribute("inputmode", next ? "text" : "none");
+          if (next) inputRef.current?.focus({ preventScroll: true });
+          else { inputRef.current?.blur(); stageRef.current?.focus({ preventScroll: true }); releaseInput(); }
+        }}>{tt("键盘")}</button> : null}
         <button type="button" onClick={requestRemoteDesktopFullscreen} style={{ whiteSpace: "nowrap" }}>{tt("全屏")}</button>
         {!active && !["starting", "waiting", "connecting"].includes(phase) ? <button type="button" onClick={() => { disconnect(); setAttempt((value) => value + 1); }}>{tt("重新连接")}</button> : null}
         <button type="button" onClick={() => { disconnect(); onClose(); }} style={{ whiteSpace: "nowrap" }}>{tt("退出桌面")}</button>
