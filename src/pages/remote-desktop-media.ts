@@ -1,4 +1,5 @@
-import { loadArtcSdk, prepareEngine, type ArtcEngine, type ArtcSdk } from "../shell/messages/call/engine/sdk";
+import { prepareEngine, type ArtcEngine, type ArtcSdk } from "../shell/messages/call/engine/sdk";
+import { loadRemoteArtcSdk } from "./remote-desktop-sdk";
 import type { RemoteMediaCredentials } from "../api/remote-desktop";
 
 /** A remote viewer owns a separate receive-only engine; never reuse the call singleton. */
@@ -34,7 +35,7 @@ export async function openRemoteMedia(
   video: HTMLVideoElement,
   handlers: RemoteMediaHandlers,
   signal: AbortSignal,
-  sdkLoader: () => Promise<ArtcSdk> = loadArtcSdk,
+  sdkLoader: () => Promise<ArtcSdk> = loadRemoteArtcSdk,
 ): Promise<RemoteMediaViewer> {
   const sdk = await sdkLoader();
   if (signal.aborted) throw new Error("aborted");
