@@ -57,6 +57,25 @@ test("desktop email does not wait for a website-only Turnstile widget", async ()
   assert.equal(await getCaptchaToken(), null);
 });
 
+test("LeoDev 邮箱登录不等待正式站验证组件，正式站仍保留验证", async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  try {
+    Object.defineProperty(globalThis, "window", { configurable: true, value: {
+      location: new URL("https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/settings/account"),
+    } });
+    const captcha = await loadCaptchaModule();
+    assert.equal(captcha.isCaptchaConfigured(), false, "开发版不能因正式站验证组件不可用而卡住继续按钮");
+    assert.equal(await captcha.getCaptchaToken(), null);
+    window.location = new URL("https://oceanleo.com/settings/account");
+    assert.equal(captcha.isCaptchaConfigured(), true);
+    window.location = new URL("https://oceanleo.com.evil.invalid/");
+    assert.equal(captcha.isCaptchaConfigured(), true, "域名相似不能触发开发版分支");
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else delete globalThis.window;
+  }
+});
+
 test("mapCaptchaError 把 captcha 原文翻成可重试的人话", () => {
   assert.equal(
     mapCaptchaError("captcha verification process failed"),
@@ -236,7 +255,10 @@ test("模块状态丢失后同一容器仍能挂：凭 data-oceanleo-turnstile-i
 test("Turnstile 脚本超时：可见挂载回调 null 且不抛", async () => {
   const created = installDom({ fireScript: false });
   delete globalThis.turnstile;
-  const familyStub = dataModule(`export function currentDomainFamily() { return "com"; }`);
+  const familyStub = dataModule(`
+    export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
+    export function currentDomainFamily() { return "com"; }
+  `);
   const { mountCheckboxCaptcha, captchaConfig } = await loadCaptchaModule({
     "../../contracts/domain-family": familyStub,
   });
@@ -255,7 +277,10 @@ test("Turnstile 脚本超时：可见挂载回调 null 且不抛", async () => {
 test("国内 getCaptchaToken 立即 null，不插 Turnstile 脚本", async () => {
   const created = installDom({ fireScript: true });
   delete globalThis.turnstile;
-  const familyStub = dataModule(`export function currentDomainFamily() { return "cn"; }`);
+  const familyStub = dataModule(`
+    export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
+    export function currentDomainFamily() { return "cn"; }
+  `);
   const { getCaptchaToken, isCaptchaConfigured } = await loadCaptchaModule({
     "../../contracts/domain-family": familyStub,
   });
@@ -383,6 +408,8 @@ test("AuthDialog 把 captcha 上游错误映射成可重试文案", async () => 
       export async function verifyPhoneOtp() { return {}; }
       export async function wechatLoginUrl() { return {}; }
       export async function startOauthSignIn() { return {}; }
+      export function desktopBrowserLoginAvailable() { return false; }
+      export async function startDesktopBrowserSignIn() { return {}; }
       export function normalizeCnPhone() { return ""; }
       export async function sendPasswordReset() { return {}; }
       export async function currentAal() { return { current: null, next: null }; }

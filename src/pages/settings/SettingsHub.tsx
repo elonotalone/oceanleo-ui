@@ -292,7 +292,6 @@ export function SettingsHub({
   const [currency, setCurrency] = useState<LedgerCurrency>("CNY");
   const [monthSpend, setMonthSpend] = useState<number | null>(null);
   const [requests, setRequests] = useState<number | null>(null);
-  const [checked, setChecked] = useState(() => !configured);
   const [orgInitialPane, setOrgInitialPane] = useState<OrgPane>("mine");
   const [billingView, setBillingView] = useState<BillingPaneView>(() => readSettingsBillingView(href));
   const loadAccountRef = useRef<() => Promise<void>>(async () => {});
@@ -344,7 +343,13 @@ export function SettingsHub({
   useEffect(() => {
     if (!configured) return;
     async function load() {
-      const [e, id] = await Promise.all([getUserEmail(), getUserId()]);
+      // Unknown or unavailable identity is still the login form. A slow read
+      // must not mount empty account controls, and a transient failure must
+      // not discard a session already confirmed by the sign-in callback.
+      const [e, id] = await Promise.all([
+        getUserEmail().catch(() => null),
+        getUserId().catch(() => null),
+      ]);
       if (id) {
         applySession({ email: e, signedIn: true });
         const nextProfile = await readAccountProfile();
@@ -353,7 +358,6 @@ export function SettingsHub({
         applySession({ email: null, signedIn: false });
         setProfile(null);
       }
-      setChecked(true);
       if (!id) return;
       const c = await getCredits();
       if (c.ok && c.data) {
@@ -676,7 +680,6 @@ export function SettingsHub({
     // Never location.reload(): LeoDev keeps the new session in the overlay jar.
     signedInRef.current = true;
     setSignedIn(true);
-    setChecked(true);
     onSignedIn?.();
     void loadAccountRef.current();
   }
@@ -708,7 +711,7 @@ export function SettingsHub({
     );
   }
 
-  if (checked && !signedIn && !localPane) {
+  if (!signedIn && !localPane) {
     if (guestPrompt === "notice") {
       return (
         <div className="px-8 py-6">

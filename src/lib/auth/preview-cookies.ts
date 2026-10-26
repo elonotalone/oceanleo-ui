@@ -14,6 +14,7 @@ export function previewGuestLatchSetCookie(): string {
 
 /** Device-local overlay. Survives reload and new tabs on this LeoDev origin; never Domain=.oceanleo.com. */
 export const PREVIEW_OVERLAY_STORAGE_KEY = "oceanleo-leodev-auth-overlay";
+export const PREVIEW_OAUTH_STORAGE_KEY = "oceanleo-leodev-oauth-proof";
 
 type OverlayStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -26,10 +27,22 @@ function defaultOverlayStorage(): OverlayStorage | null {
   }
 }
 
-function readStoredOverlay(storage: OverlayStorage | null): CookieNameValue[] | null {
+function defaultOauthStorage(): OverlayStorage | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function isOauthProofCookie(name: string): boolean {
+  return /^sb-.+-auth-token-code-verifier(\.\d+)?$/.test(name);
+}
+
+function readStoredOverlay(storage: OverlayStorage | null, key = PREVIEW_OVERLAY_STORAGE_KEY): CookieNameValue[] | null {
   if (!storage) return null;
   try {
-    const raw = storage.getItem(PREVIEW_OVERLAY_STORAGE_KEY);
+    const raw = storage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return null;
@@ -47,11 +60,12 @@ function readStoredOverlay(storage: OverlayStorage | null): CookieNameValue[] | 
 function writeStoredOverlay(
   storage: OverlayStorage | null,
   overlay: CookieNameValue[] | null,
+  key = PREVIEW_OVERLAY_STORAGE_KEY,
 ): void {
   if (!storage) return;
   try {
-    if (!overlay) storage.removeItem(PREVIEW_OVERLAY_STORAGE_KEY);
-    else storage.setItem(PREVIEW_OVERLAY_STORAGE_KEY, JSON.stringify(overlay));
+    if (!overlay) storage.removeItem(key);
+    else storage.setItem(key, JSON.stringify(overlay));
   } catch {
     /* quota / private mode */
   }
@@ -61,6 +75,7 @@ export function clearPreviewAuthOverlay(
   storage: OverlayStorage | null = defaultOverlayStorage(),
 ): void {
   writeStoredOverlay(storage, null);
+  writeStoredOverlay(defaultOauthStorage(), null, PREVIEW_OAUTH_STORAGE_KEY);
 }
 
 export function writePreviewGuestLatch(
@@ -109,43 +124,55 @@ export function parseDocumentCookies(raw: string): CookieNameValue[] {
 export function createLeoDevPreviewCookieJar(
   readRawCookie: () => string,
   storage: OverlayStorage | null = defaultOverlayStorage(),
+  oauthStorage: OverlayStorage | null = defaultOauthStorage(),
 ) {
   let overlay: CookieNameValue[] | null = readStoredOverlay(storage);
+  let oauthProof = readStoredOverlay(oauthStorage, PREVIEW_OAUTH_STORAGE_KEY)
+    ?.filter((entry) => isOauthProofCookie(entry.name)) ?? null;
+  function getAll(): CookieNameValue[] {
+    const stored = readStoredOverlay(storage);
+    if (stored) overlay = stored;
+    const fromDoc = parseDocumentCookies(readRawCookie());
+    const base = overlay ?? fromDoc.filter((entry) => !isFamilyAuthCookieName(entry.name));
+    const map = new Map(base.filter((entry) => entry.name !== PREVIEW_GUEST_COOKIE)
+      .map((entry) => [entry.name, entry.value]));
+    // A separate tab can replace the shared session overlay during Google
+    // navigation. Only this tab's in-flight proof overrides that overlay.
+    oauthProof?.forEach((entry) => map.set(entry.name, entry.value));
+    return [...map].map(([name, value]) => ({ name, value }));
+  }
   return {
-    getAll(): CookieNameValue[] {
-      const fromDoc = parseDocumentCookies(readRawCookie());
-      if (overlay) {
-        return overlay.filter((entry) => entry.name !== PREVIEW_GUEST_COOKIE);
-      }
-      return fromDoc.filter(
-        (entry) =>
-          entry.name !== PREVIEW_GUEST_COOKIE &&
-          !isFamilyAuthCookieName(entry.name),
-      );
-    },
+    getAll,
     setAll(cookiesToSet: ReadonlyArray<{ name: string; value: string }>): void {
-      const fromDoc = parseDocumentCookies(readRawCookie());
-      const seed =
-        overlay ??
-        fromDoc.filter(
-          (entry) =>
-            entry.name !== PREVIEW_GUEST_COOKIE &&
-            !isFamilyAuthCookieName(entry.name),
-        );
-      const map = new Map(seed.map((entry) => [entry.name, entry.value]));
+      const map = new Map(getAll().map((entry) => [entry.name, entry.value]));
       for (const cookie of cookiesToSet) {
         if (cookie.value) map.set(cookie.name, cookie.value);
         else map.delete(cookie.name);
       }
       overlay = [...map].map(([name, value]) => ({ name, value }));
+      if (cookiesToSet.some((entry) => isOauthProofCookie(entry.name))) {
+        const proof = overlay.filter((entry) => isOauthProofCookie(entry.name));
+        oauthProof = proof.length ? proof : null;
+        writeStoredOverlay(oauthStorage, oauthProof, PREVIEW_OAUTH_STORAGE_KEY);
+      }
       writeStoredOverlay(storage, overlay);
+    },
+    hasPersistedOauthProof(): boolean {
+      const expected = getAll().filter((entry) => isOauthProofCookie(entry.name));
+      const saved = [...(readStoredOverlay(storage) ?? []),
+        ...(readStoredOverlay(oauthStorage, PREVIEW_OAUTH_STORAGE_KEY) ?? [])];
+      return expected.length > 0 && expected.every((entry) => saved.some(
+        (stored) => stored.name === entry.name && stored.value === entry.value,
+      ));
     },
     peekOverlay(): CookieNameValue[] | null {
       return overlay;
     },
     clear(): void {
       overlay = null;
+      oauthProof = null;
       writeStoredOverlay(storage, null);
+      writeStoredOverlay(oauthStorage, null, PREVIEW_OAUTH_STORAGE_KEY);
     },
   };
 }

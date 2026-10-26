@@ -28,6 +28,13 @@ import {
   writePreviewGuestLatch,
 } from "./preview-cookies";
 import { getCaptchaToken, mapCaptchaError } from "./captcha";
+import {
+  cleanOauthRedirect,
+  clearBrowserOauthReturnError,
+  completeBrowserOauthReturn,
+  previewOauthReturnCode,
+  waitForBrowserOauthReturn,
+} from "./oauth-return";
 
 // Browser Supabase client for the OceanLeo shared identity. Stores the auth
 // session in a cookie scoped to .oceanleo.com (NOT localStorage), so a login on
@@ -57,6 +64,8 @@ async function nativeSdkSession(): Promise<Session | null> {
 
 function attachAuthState(client: SupabaseClient): void {
   client.auth.onAuthStateChange((event, session) => {
+    if (client !== _client) return;
+    if (event === "SIGNED_IN" && session) clearBrowserOauthReturnError();
     _accessToken = session?.access_token ?? null;
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -145,6 +154,7 @@ export function browserClient(): SupabaseClient | null {
   }
   const host = typeof window !== "undefined" ? window.location.host : "";
   const preview = isLeoDevPreviewHost(host);
+  const returnCode = previewOauthReturnCode();
   // Preview refreshes in this jar only. @supabase/ssr getItem re-reads
   // cookies; a no-op setAll would leave getSession on the stale cookie.
   const previewCookies = preview
@@ -153,15 +163,24 @@ export function browserClient(): SupabaseClient | null {
       )
     : null;
   _previewJar = previewCookies;
+  const sessionCookieName = cookieOptions(host).name;
+  const proofName = `${sessionCookieName}-code-verifier`;
+  const callbackHasProof = !!previewCookies?.getAll().some(({ name, value }) => (name === proofName || name.startsWith(`${proofName}.`)) && value);
+  let skipOldCallbackSession = !!returnCode;
+  const callbackTransport = returnCode ? new AbortController() : null;
   _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    isSingleton: false,
     cookieOptions: cookieOptions(host),
-    global: { fetch: authFetch },
+    global: { fetch: callbackTransport ? (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return authFetch(input, /grant_type=pkce/.test(url) ? { ...init, signal: callbackTransport.signal } : init, true);
+    } : authFetch },
     auth: {
       // Always refresh. Preview still must not persist the result onto
       // Domain=.oceanleo.com — a failed refresh used to sign the operator
-      // out of every family site. detectSessionInUrl stays on so Google /
-      // Microsoft / Apple / magic-link / password-reset returns on a LeoDev
-      // host can establish a device session in the overlay jar.
+      // out of every family site. SDK initialization owns PKCE before old
+      // session recovery; the coordinator exposes its result to the UI.
+      // Other OAuth / magic-link / password-reset returns keep URL detection.
       autoRefreshToken: true,
       detectSessionInUrl: true,
       lock: browserAuthLock,
@@ -170,10 +189,22 @@ export function browserClient(): SupabaseClient | null {
       ? {
           cookies: {
             getAll() {
-              return previewCookies.getAll();
+              const cookies = previewCookies.getAll();
+              // Keep the prior stored session intact, but do not expose it
+              // to initial subscriptions or retries before this login saves
+              // its own session. SDK subscriptions also read/refresh storage.
+              return skipOldCallbackSession ? cookies.filter(({ name }) => name.includes("-code-verifier")) : cookies;
             },
             setAll(cookiesToSet: ReadonlyArray<{ name: string; value: string }>) {
-              previewCookies.setAll(cookiesToSet);
+              const isSessionCookie = (name: string) => name === sessionCookieName || (name.startsWith(`${sessionCookieName}.`) && /^\d+$/.test(name.slice(sessionCookieName.length + 1)));
+              const savesSession = cookiesToSet.some(({ name, value }) => isSessionCookie(name) && value);
+              // SSR cannot see hidden old chunks to remove them. On the first
+              // new session save, explicitly remove the old tails it omitted.
+              const obsolete = skipOldCallbackSession && savesSession
+                ? previewCookies.getAll().filter(({ name }) => isSessionCookie(name) && !cookiesToSet.some((cookie) => cookie.name === name)).map(({ name }) => ({ name, value: "" }))
+                : [];
+              previewCookies.setAll([...obsolete, ...cookiesToSet]);
+              if (savesSession) skipOldCallbackSession = false;
               /* never write family SSO from a capability hostname */
             },
           },
@@ -181,6 +212,12 @@ export function browserClient(): SupabaseClient | null {
       : {}),
   });
   attachAuthState(_client);
+  if (returnCode) completeBrowserOauthReturn(_client, returnCode, {
+    initialize: true,
+    hasProof: callbackHasProof,
+    sessionConfirmed: () => !skipOldCallbackSession,
+    cancel: () => callbackTransport?.abort(),
+  });
   return _client;
 }
 
@@ -189,6 +226,7 @@ export { configured as oceanleoConfigured };
 export async function accessToken(): Promise<string | null> {
   const c = browserClient();
   if (!c) return null;
+  if (!await waitForBrowserOauthReturn()) return null;
   const { data } = await c.auth.getSession();
   _accessToken = data.session?.access_token ?? null;
   return _accessToken;
@@ -208,6 +246,7 @@ export async function getUserEmail(): Promise<string | null> {
   if (native) return (await native.getSession())?.email || null;
   const c = browserClient();
   if (!c) return null;
+  if (!await waitForBrowserOauthReturn()) return null;
   const { data } = await c.auth.getSession();
   return data.session?.user?.email ?? null;
 }
@@ -217,6 +256,7 @@ export async function getUserId(): Promise<string | null> {
   if (native) return (await native.getSession())?.userId || null;
   const c = browserClient();
   if (!c) return null;
+  if (!await waitForBrowserOauthReturn()) return null;
   const { data } = await c.auth.getSession();
   return data.session?.user?.id ?? null;
 }
@@ -239,6 +279,7 @@ export async function getUserIdSnapshot(): Promise<{
   const c = browserClient();
   if (!c) return { available: false, userId: null };
   try {
+    if (!await waitForBrowserOauthReturn()) return { available: false, userId: null };
     const { data, error } = await c.auth.getSession();
     return {
       available: !error,
@@ -545,6 +586,7 @@ export async function startOauthSignIn(
   let attempt: { id: string; redirectTo: string } | undefined;
   let redirectTo =
     (redirect || "").trim() || (typeof window !== "undefined" ? window.location.href : "");
+  if (!native) redirectTo = cleanOauthRedirect(redirectTo);
   try {
     if (native) {
       attempt = await host.oauth!.begin();
@@ -563,6 +605,9 @@ export async function startOauthSignIn(
     });
     if (error) return { error: error.message };
     if (data?.url) {
+      if (_previewJar && !_previewJar.hasPersistedOauthProof()) {
+        return { error: "无法完成登录，请重试。" };
+      }
       if (attempt && host?.oauth) {
         const code = await host.oauth.openAndWait(attempt.id, data.url, signal);
         if (signal?.aborted) return { error: "登录已取消。" };

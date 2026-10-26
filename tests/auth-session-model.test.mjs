@@ -762,7 +762,6 @@ test("LeoDev capability host must never write family SSO; inherited cookie is no
   assert.match(middlewareSource, /all\.filter/);
   assert.match(clientSource, /isLeoDevPreviewHost/);
   assert.match(clientSource, /autoRefreshToken:\s*true/);
-  assert.match(clientSource, /detectSessionInUrl:\s*true/);
   assert.match(clientSource, /lock:\s*browserAuthLock/);
   assert.doesNotMatch(clientSource, /detectSessionInUrl:\s*!preview/);
   assert.match(clientSource, /createLeoDevPreviewCookieJar/);

@@ -77,8 +77,46 @@ function transientFailure(input: RequestInfo | URL): Response {
 export async function authFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
+  boundCallback = false,
 ): Promise<Response> {
   const doFetch = getClientHostConfig() ? (hostInjectedFetch() ?? fetch) : fetch;
+  // A one-time callback must finish before another login can start. Race the
+  // transport as well as aborting it: injected fetch implementations may ignore
+  // AbortSignal, and a late response must never reach SDK session persistence.
+  if (boundCallback && /\/token\?[^#]*grant_type=pkce(?:&|$)/i.test(authRequestUrl(input))) {
+    if (init?.signal?.aborted) return unavailableResponse(408);
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    init?.signal?.addEventListener("abort", abort, { once: true });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await doFetch(input, { ...init, signal: controller.signal });
+          // Include body consumption: fetch may return headers while the body
+          // never completes. SDK must never see that late body after timeout.
+          return new Response(await response.arrayBuffer(), {
+            status: response.status, statusText: response.statusText, headers: response.headers,
+          });
+        })(),
+        new Promise<Response>((resolve) => {
+          controller.signal.addEventListener("abort", () => resolve(unavailableResponse(408)), { once: true });
+        }),
+        new Promise<Response>((resolve) => {
+          timer = setTimeout(() => {
+            controller.abort();
+            // A terminal callback failure must not enter the SDK refresh retry loop.
+            resolve(unavailableResponse(408));
+          }, 10_000);
+        }),
+      ]);
+    } catch {
+      return unavailableResponse(408);
+    } finally {
+      if (timer) clearTimeout(timer);
+      init?.signal?.removeEventListener("abort", abort);
+    }
+  }
   if (init?.signal?.aborted) return transientFailure(input);
   try {
     const res = await doFetch(input, init);

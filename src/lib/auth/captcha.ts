@@ -8,6 +8,7 @@
 
 import { currentDomainFamily, type DomainFamily } from "../../contracts/domain-family";
 import { getClientHostConfig } from "../../contracts/client-host-config";
+import { isLeoDevPreviewHost } from "./config";
 
 /** Public sitekey (not a secret). Managed widget `oceanleo-login`, hostname oceanleo.com. */
 export const TURNSTILE_SITEKEY = "0x4AAAAAAFK-cPFBHQyr7ke8";
@@ -52,6 +53,10 @@ export function isCaptchaConfigured(): boolean {
   // Turnstile's registered website origin cannot run inside tauri:// or tauri.localhost.
   // Native HTTP still obeys GoTrue's server-side CAPTCHA policy; never disable that policy.
   if (getClientHostConfig()?.platform === "desktop") return false;
+  // Capability preview hosts use their own login. The website widget must
+  // not prevent entering credentials here; GoTrue still enforces its own
+  // CAPTCHA policy, password checks and MFA for every request.
+  if (typeof window !== "undefined" && isLeoDevPreviewHost(window.location?.host)) return false;
   return captchaEnabledForFamily(currentDomainFamily());
 }
 
@@ -260,7 +265,7 @@ async function mountVisibleCaptchaNow(
 
 /** Visible-token first. Never throws; null means "send without token". China always null. */
 export function getCaptchaToken(): Promise<string | null> {
-  if (!captchaEnabledForFamily(currentDomainFamily())) {
+  if (!isCaptchaConfigured()) {
     return Promise.resolve(null);
   }
   if (pendingVisibleToken) {

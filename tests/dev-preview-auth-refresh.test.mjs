@@ -60,7 +60,6 @@ test("浏览器客户端在 preview 开自动刷新但仍禁止写家族 cookie"
     "utf8",
   );
   assert.match(clientSource, /autoRefreshToken:\s*true/);
-  assert.match(clientSource, /detectSessionInUrl:\s*true/);
   assert.doesNotMatch(clientSource, /detectSessionInUrl:\s*!preview/);
   assert.match(clientSource, /createLeoDevPreviewCookieJar/);
   assert.match(clientSource, /never write family SSO from a capability hostname/);

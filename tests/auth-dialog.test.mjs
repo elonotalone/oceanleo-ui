@@ -1057,3 +1057,22 @@ test("新词条不会被 useUI 的两条改写规则误伤", async () => {
     assert.doesNotMatch(key, /文件库|檔案庫|灵感|靈感/, `"${key}" 会被 useUI 改写`);
   }
 });
+
+test("Google 回跳兑换期间显示等待，失败后显示可重试提示并去掉旧 code", async () => {
+  const { completeBrowserOauthReturn } = await import("../src/lib/auth/oauth-return.ts");
+  await withDom(async ({ render, find, text }) => {
+    let rejectExchange;
+    const exchange = new Promise((resolve) => { rejectExchange = resolve; });
+    completeBrowserOauthReturn({auth:{exchangeCodeForSession:() => exchange}}, "fixture-return-code");
+    await render(AuthPanel, {});
+    assert.ok(find("[data-auth-oauth-pending]"));
+    assert.equal(find("[data-auth-oauth-stack]"), null);
+    await act(async () => { rejectExchange({data:{session:null},error:{message:"fixture failure"}}); });
+    assert.equal(find("[data-auth-oauth-pending]"), null);
+    assert.ok(find("[data-auth-error]"));
+    assert.ok(text().includes("无法完成登录，请重试。"));
+    assert.ok(find("[data-auth-oauth-stack]"));
+    assert.equal(window.location.search.includes("code="), false);
+    assert.equal(new URL(window.location.href).searchParams.get("keep"), "1");
+  }, {url:"https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/settings/account?code=fixture-return-code&keep=1"});
+});

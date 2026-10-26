@@ -71,8 +71,12 @@ const authStubUrl = dataModule(`
   const s = () => globalThis.__authStub;
   export function oceanleoConfigured() { return s().configured; }
   export function browserClient() { return s().configured ? s().client : null; }
-  export async function getUserEmail() { return s().email; }
+  export async function getUserEmail() {
+    if (s().readEmail) return s().readEmail();
+    return s().email;
+  }
   export async function getUserId() {
+    if (s().readUserId) return s().readUserId();
     if (s().userId !== undefined) return s().userId;
     return s().email ? "user-1" : null;
   }
@@ -155,8 +159,9 @@ const authDialogStubUrl = dataModule(`
   export function AuthDialog() {
     return React.createElement("div", { "data-testid": "auth-dialog" });
   }
-  export function AuthPanel() {
-    return React.createElement("div", { "data-testid": "auth-panel", "data-auth-panel": "" });
+  export function AuthPanel({ onSuccess }) {
+    return React.createElement("div", { "data-testid": "auth-panel", "data-auth-panel": "" },
+      React.createElement("button", { "data-auth-success": "", onClick: onSuccess }, "完成登录"));
   }
 `);
 const resetStubUrl = dataModule(`
@@ -226,7 +231,7 @@ const modalHostUrl = await compileModule("src/shell/account/SettingsModalHost.ts
     }
   `),
 });
-const { SettingsModalHost } = await import(modalHostUrl);
+const { SettingsModalHost, openSettingsModal } = await import(modalHostUrl);
 
 const accountUrl = await compileModule("src/pages/AccountPage.tsx", {
   "next/link": linkStubUrl,
@@ -589,7 +594,6 @@ test("登录成功不得 location.reload（开发版 overlay 经不起刷新）"
   assert.match(src, /function handleSignedIn/);
   assert.match(src, /loadAccountRef\.current/);
   assert.match(src, /event === "SIGNED_OUT"/);
-  assert.match(src, /checked && !signedIn/);
   assert.doesNotMatch(src, /window\.location\.reload/);
   assert.doesNotMatch(src, /checked && !email/);
 });
@@ -631,4 +635,57 @@ test("未登录才出登录门", async () => {
   assert.ok(host.querySelector("[data-auth-panel]"), "未登录应看到登录门");
   act(() => root.unmount());
   host.remove();
+});
+
+test("Log in 打开的账户窗口在会话未返回时先显示登录表单，登录和退出都能切换", async () => {
+  let resolveSession;
+  let onAuthChange;
+  const session = new Promise((resolve) => { resolveSession = resolve; });
+  const auth = {
+    ...signedIn(),
+    readEmail: () => session.then(() => null),
+    readUserId: () => session.then(() => null),
+    client: { auth: { onAuthStateChange(callback) {
+      onAuthChange = callback;
+      return { data: { subscription: { unsubscribe() {} } } };
+    } } },
+  };
+  const view = await render(React.createElement(SettingsModalHost), auth, "/");
+  try {
+    await act(async () => { openSettingsModal("account"); });
+    assert.equal(window.location.pathname, "/settings/account");
+    assert.ok(view.host.querySelector("[data-auth-panel]"), "不能等会话查询完成才显示登录表单");
+    assert.equal(view.host.querySelector("[data-settings-pane=account]"), null);
+    assert.equal(view.host.querySelector("[data-account-sign-out]"), null);
+
+    await view.click(view.host.querySelector("[data-auth-success]"));
+    assert.ok(view.host.querySelector("[data-settings-pane=account]"));
+    assert.equal(view.host.querySelector("[data-auth-panel]"), null);
+
+    await act(async () => { resolveSession(); });
+    assert.ok(view.host.querySelector("[data-settings-pane=account]"), "较早的空会话查询不能覆盖刚完成的登录");
+
+    await act(async () => { onAuthChange("SIGNED_OUT", null); });
+    assert.ok(view.host.querySelector("[data-auth-panel]"));
+    assert.equal(view.host.querySelector("[data-settings-pane=account]"), null);
+  } finally {
+    resolveSession();
+    view.cleanup();
+  }
+});
+
+test("会话查询失败时保留登录表单，不显示空账户或抛出未处理的错误", async () => {
+  const auth = {
+    ...signedIn(),
+    readEmail: async () => { throw new Error("session unavailable"); },
+    readUserId: async () => { throw new Error("session unavailable"); },
+  };
+  const view = await render(React.createElement(SettingsHub, { defaultTab: "account" }), auth);
+  try {
+    assert.ok(view.host.querySelector("[data-auth-panel]"));
+    assert.equal(view.host.querySelector("[data-settings-pane=account]"), null);
+    assert.equal(view.host.querySelector("[data-account-sign-out]"), null);
+  } finally {
+    view.cleanup();
+  }
 });

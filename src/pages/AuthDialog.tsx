@@ -36,6 +36,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type ReactElement,
 } from "react";
@@ -63,6 +64,7 @@ import { currentDomainFamily, type DomainFamily } from "../contracts/domain-fami
 import { ButtonSpinner } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { openSettingsModal } from "./settings/settings-tabs";
+import { browserOauthReturnState, subscribeBrowserOauthReturn } from "../lib/auth/oauth-return";
 import {
   CAPTCHA_FAILED_MESSAGE,
   CAPTCHA_LOAD_FAILED_MESSAGE,
@@ -422,6 +424,7 @@ export function AuthPanel({
   requireMfa = false,
 }: AuthPanelProps): ReactElement {
   const tt = useUI();
+  const oauthReturn = useSyncExternalStore(subscribeBrowserOauthReturn, browserOauthReturnState, () => "idle");
   const generatedId = useId();
   const titleId = providedTitleId || generatedId;
   const requested = methods ?? authMethodsForFamily(currentDomainFamily());
@@ -478,6 +481,13 @@ export function AuthPanel({
       onClose={onClose} onDone={finish} />;
   }
 
+  if (oauthReturn === "pending") {
+    return <div data-auth-panel data-auth-oauth-pending role="status" aria-live="polite"
+      className="flex min-h-40 items-center justify-center">
+      <ButtonSpinner label={tt("处理中...")} />
+    </div>;
+  }
+
   return (
     <div
       data-auth-panel
@@ -509,6 +519,7 @@ export function AuthPanel({
         </p>
       </div>
 
+      {oauthReturn === "error" && <ErrorNote text={tt("无法完成登录，请重试。")} />}
       {!configured ? (
         <div data-auth-unconfigured className="space-y-2 py-4 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-2xl">
