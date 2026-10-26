@@ -8,6 +8,7 @@ The operator's LeoDev Google return remains forever at Processing with a code
 in the URL. Fix callback completion and bounded failure/retry in shared UI.
 Only edit src/lib/auth/client.ts, src/lib/auth/oauth-return.ts,
 src/lib/auth/auth-fetch.ts if needed, tests/helpers/preview-oauth-worker.mjs,
+src/lib/auth/preview-cookies.ts for removal of obsolete session chunks on callback replacement,
 tests/dev-preview-google-callback.test.mjs, tests/auth-dialog.test.mjs,
 focused new auth regression tests and docs/architecture/settings-auth-boundary.md.
 Do not alter cookie/CORS boundaries, external services, settings, dependencies,
@@ -55,3 +56,8 @@ Run Google callback suite and focused additions plus auth-dialog regressions.
 Parent will independently typecheck and run integrated auth tests and freshness.
 Return files, exact change, tests/results and limitations. Do not commit or push
 product changes; parent integrates. Send intermediate evidence promptly.
+
+Integration follow-up: callback getAll hides old token chunks. Ensure a shorter
+replacement session removes hidden obsolete chunks before merging, otherwise
+SDK reload may concatenate a stale tail. Add real-SDK large old session to
+shorter chunked new session regression. Ownership extended to preview-cookies.ts.
