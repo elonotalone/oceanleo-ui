@@ -265,6 +265,8 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "network_error":
       return "网络不通，暂时连不上。";
     case "input_ack_unknown":
+    case "input_backlog_timeout":
+      return "无法确认最后的输入是否执行，已停止控制并尝试释放按键。请检查电脑状态后重新连接，不要重复提交未确认的操作。";
     case "stream_failed":
       return "与这台电脑失去联系，会话已断开。请确认它还在线后重新进入。";
     case "response_malformed":
@@ -311,7 +313,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "too_many_sessions":
       return "同时打开的远程会话太多了，请先关闭不用的会话。";
     case "input_queue_full":
-      return "那台电脑一时处理不过来，刚才的输入被丢弃了。请放慢一点。";
+      return "输入队列暂时繁忙，请稍后重试。";
     case "session_expired":
     case "expired":
       return "会话已到期，请重新进入。";

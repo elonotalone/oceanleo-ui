@@ -224,8 +224,8 @@ class FakeSocket {
 async function streamHarness() {
   window.location = { href: "https://oceanleo.com/devices" };
   globalThis.WebSocket = FakeSocket;
-  const log = { states: [], frames: [], errors: [] };
-  const promise = api.remoteDesktopClient.openStream("d1", "private-handle", { state: (...state) => log.states.push(state), frame: (frame) => log.frames.push(frame), error: (error) => log.errors.push(error) });
+  const log = { states: [], frames: [], errors: [], congestion: [] };
+  const promise = api.remoteDesktopClient.openStream("d1", "private-handle", { state: (...state) => log.states.push(state), frame: (frame) => log.frames.push(frame), error: (error) => log.errors.push(error), congestion: (busy) => log.congestion.push(busy) });
   await new Promise((resolve) => setImmediate(resolve));
   const socket = FakeSocket.latest;
   socket.onopen();
@@ -252,16 +252,64 @@ test("v2 authenticates only inside the private socket, refuses input before appr
   } finally { stream.close(); }
 });
 
-test("v2 never accepts a frame before approval and bounds unacknowledged inputs without replay", async () => {
+test("v2 never accepts a frame before approval and bounds executed-unacknowledged inputs", async () => {
   let harness = await streamHarness();
   harness.socket.message(binaryPacket());
   assert.deepEqual(harness.log.errors, ["response_malformed"]);
   assert.equal(harness.log.frames.length, 0);
   harness = await streamHarness();
   harness.socket.message({ type: "state", state: "active" });
-  for (let index = 0; index < 64; index++) assert.equal(harness.stream.send({ kind: "key_down", key: "a" }), true);
-  assert.equal(harness.stream.send({ kind: "key_down", key: "a" }), false);
-  assert.deepEqual(harness.log.errors, ["input_queue_full"]);
-  assert.equal(harness.socket.sent.filter((message) => message.type === "input").length, 64);
-  assert.equal(harness.socket.readyState, 3);
+  try {
+    for (let index = 0; index < 8; index++) {
+      assert.equal(harness.stream.send({ kind: "key_down", key: "a" }), true);
+      harness.socket.message({ type: "input_ack", seq: index + 1 });
+    }
+    for (let index = 0; index < 1000; index++) assert.equal(harness.stream.send({ kind: "move", x: index / 1000, y: .5 }), true);
+    assert.equal(harness.stream.send({ kind: "key_up", key: "a" }), true);
+    assert.equal(harness.socket.sent.filter((message) => message.type === "input").length, 8);
+    assert.deepEqual(harness.log.errors, []);
+    assert.equal(harness.socket.readyState, 1);
+    harness.socket.message({ type: "state", state: "active", acked_seq: 8 });
+    assert.equal(harness.socket.sent.at(-2).action.kind, "move");
+    assert.equal(harness.socket.sent.at(-1).action.kind, "key_up");
+  } finally { harness.stream.close(); }
+});
+
+test("recoverable rejection and local socket pressure preserve pixels and resume without reconnect", async () => {
+  const { socket, stream, log } = await streamHarness();
+  try {
+    socket.message({ type: "state", state: "active", acked_seq: 0 });
+    socket.message(binaryPacket());
+    socket.bufferedAmount = 65_000;
+    stream.acknowledgeFrame(1);
+    assert.equal(stream.send({ kind: "move", x: .2, y: .3 }), true);
+    assert.equal(socket.sent.filter((item) => item.type === "input").length, 0);
+    assert.equal(log.frames.length, 1);
+    assert.deepEqual(log.errors, []);
+    socket.bufferedAmount = 0;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(socket.sent.filter((item) => item.type === "frame_ack").length, 1, "buffer pressure must not lose frame credit");
+    assert.equal(socket.sent.at(-1).seq, 1);
+    socket.message({ type: "input_rejected", seq: 1, error: "rate_limited", retry_after_ms: 25 });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.deepEqual(socket.sent.filter((item) => item.type === "input").map((item) => item.seq), [1, 1]);
+    socket.message({ type: "input_ack", seq: 1 });
+    socket.message({ type: "state", state: "active", acked_seq: 1 });
+    assert.equal(log.congestion.at(-1), false);
+    assert.equal(socket.readyState, 1);
+  } finally { stream.close(); }
+});
+
+test("a throwing socket write is never retried, including release, and closes as unknown", async () => {
+  const { socket, stream, log } = await streamHarness();
+  socket.message({ type: "state", state: "active", acked_seq: 0 });
+  let attempts = 0;
+  socket.send = () => { attempts++; throw new Error("uncertain write"); };
+  stream.send({ kind: "type", text: "do not repeat" });
+  stream.send({ kind: "pointer_up" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(attempts, 1);
+  assert.deepEqual(log.errors, ["input_ack_unknown"]);
+  assert.equal(socket.readyState, 3);
+  stream.close();
 });

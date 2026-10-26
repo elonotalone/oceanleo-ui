@@ -117,6 +117,20 @@ test("unknown ACK / broken stream ends the session without replay or HTTP downgr
   assert.equal(view.log.httpFrames, 0);
 });
 
+test("transient input congestion keeps the current frame and clears its notice on recovery", async () => {
+  const view = await mount();
+  const image = view.image();
+  await act(async () => view.handlers().congestion(true));
+  assert.equal(view.image(), image);
+  assert.equal(view.screen().getAttribute("data-remote-phase"), "active");
+  assert.match(view.screen().querySelector("[data-remote-input-status]").textContent, /输入正在等待确认/);
+  await view.pointer("pointerdown");
+  await view.pointer("pointerup");
+  await act(async () => view.handlers().congestion(false));
+  assert.equal(view.screen().querySelector("[data-remote-input-status]"), null);
+  assert.deepEqual(view.log.inputs.map((input) => input.kind), ["pointer_down", "pointer_up"]);
+});
+
 for (const [code, phase] of [["denied", "denied"], ["request_expired", "timed_out"], ["revoked", "revoked"], ["signed_out", "signed_out"]]) {
   test(`${code} clears pixels and has a distinct final state`, async () => {
     const view = await mount();

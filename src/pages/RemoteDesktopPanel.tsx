@@ -34,6 +34,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const [phase, setPhase] = useState<Phase>("starting");
   const [frame, setFrame] = useState<RemoteDesktopFrameData | null>(null);
   const [message, setMessage] = useState("");
+  const [congested, setCongested] = useState(false);
   const [toolbar, setToolbar] = useState(true);
   const [coarse, setCoarse] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
@@ -132,6 +133,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     sequenceRef.current = 0;
     frameRef.current = null;
     setFrame(null);
+    setCongested(false);
     updatePhase("starting");
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -171,6 +173,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
             setFrame(value);
           },
           error(code) { if (!abort.signal.aborted) end(code); },
+          congestion(busy) { if (!abort.signal.aborted) setCongested(busy); },
         }, { signal: abort.signal });
         if (abort.signal.aborted) opened.data?.close();
         else if (opened.ok && opened.data) streamRef.current = opened.data;
@@ -409,7 +412,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         <button type="button" onClick={requestRemoteDesktopFullscreen} style={{ whiteSpace: "nowrap" }}>{tt("全屏")}</button>
         <button type="button" onClick={() => { disconnect(); onClose(); }} style={{ whiteSpace: "nowrap" }}>{tt("退出桌面")}</button>
       </div>
-      {active && message ? <div role="status" style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(message)}</div> : null}
+      {active && (congested || message) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(congested ? "输入正在等待确认，画面保持连接。" : message)}</div> : null}
     </div>, portal,
   );
 }

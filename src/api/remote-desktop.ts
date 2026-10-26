@@ -12,6 +12,7 @@
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
+import { RemoteInputScheduler } from "./remote-desktop-scheduler";
 
 export type RemoteDesktopSessionState = "pending_consent" | "connecting" | "active" | "closed";
 
@@ -127,6 +128,8 @@ export interface RemoteDesktopStreamHandlers {
   state(state: RemoteDesktopSessionState, error?: string): void;
   frame(frame: RemoteDesktopFrameData): void;
   error(code: string): void;
+  /** Transient pressure keeps the media/session alive; not a terminal error. */
+  congestion?(busy: boolean): void;
 }
 
 /** Fixed, bounded binary envelope; dimensions are of the encoded frame. */
@@ -153,53 +156,70 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(url.toString());
   socket.binaryType = "arraybuffer";
-  let ended = false, ready = false, sequence = 0, state: RemoteDesktopSessionState = "pending_consent";
+  let ended = false, ready = false, state: RemoteDesktopSessionState = "pending_consent";
   let currentUrl: string | null = null;
   let decoding: { sequence: number; started: number } | null = null;
-  const pending = new Map<number, number>();
+  let pendingFrameAck: number | null = null;
+  let writeFailed = false;
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
   const dispose = () => {
     ended = true;
     clearInterval(heartbeat);
     clearInterval(refresh);
+    clearInterval(inputPump);
     clearTimeout(timeout);
     options?.signal?.removeEventListener("abort", abort);
-    pending.clear();
+    scheduler.dispose();
+    pendingFrameAck = null;
     if (currentUrl) URL.revokeObjectURL(currentUrl);
     currentUrl = null;
     socket.close();
   };
   const fail = (error: string) => {
     if (ended) return;
+    scheduler.emergencyRelease();
     dispose();
     settle!({ ok: false, error });
     handlers.error(error);
   };
   const send = (data: object): boolean => {
-    if (ended || socket.readyState !== WebSocket.OPEN) return false;
-    if (socket.bufferedAmount > 64_000) { fail("input_queue_full"); return false; }
-    socket.send(JSON.stringify(data));
+    if (ended || writeFailed || socket.readyState !== WebSocket.OPEN) return false;
+    if (socket.bufferedAmount > 64_000) return false;
+    try { socket.send(JSON.stringify(data)); }
+    catch {
+      // Never call this write again: its outcome is unknown, unlike bufferedAmount pressure.
+      writeFailed = true;
+      queueMicrotask(() => fail("input_ack_unknown"));
+      return false;
+    }
     return true;
   };
+  const scheduler = new RemoteInputScheduler({
+    now: Date.now,
+    write: (seq, action) => send({ type: "input", seq, action }),
+    congestion: (busy) => handlers.congestion?.(busy),
+    failure: fail,
+  });
   const stream: RemoteDesktopStream = {
     send(action) {
       if (!ready || state !== "active") return false;
-      if (pending.size >= 64) { fail("input_queue_full"); return false; }
-      sequence += 1;
-      pending.set(sequence, Date.now());
-      return send({ type: "input", seq: sequence, action });
+      return scheduler.enqueue(action);
     },
     acknowledgeFrame(value) {
       if (decoding?.sequence === value) decoding = null;
-      send({ type: "frame_ack", sequence: value });
+      pendingFrameAck = Math.max(pendingFrameAck ?? 0, value);
+      if (send({ type: "frame_ack", sequence: pendingFrameAck })) pendingFrameAck = null;
     },
-    close: dispose,
+    close() { scheduler.emergencyRelease(); dispose(); },
   };
-  const abort = () => { if (!ended) { dispose(); settle!({ ok: false, error: "aborted" }); } };
+  const abort = () => { if (!ended) { scheduler.emergencyRelease(); dispose(); settle!({ ok: false, error: "aborted" }); } };
   const timeout = setTimeout(() => fail("network_error"), 10_000);
+  const inputPump = setInterval(() => {
+    if (pendingFrameAck !== null && send({ type: "frame_ack", sequence: pendingFrameAck })) pendingFrameAck = null;
+    scheduler.tick();
+  }, 25);
   const heartbeat = setInterval(() => {
-    if ([...pending.values()].some((sent) => Date.now() - sent > 5000)) { fail("input_ack_unknown"); return; }
     if (decoding && Date.now() - decoding.started > 10_000) { fail("frame_decode_timeout"); return; }
     send({ type: "ping" });
   }, 2000);
@@ -223,9 +243,14 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     let data: Record<string, unknown>;
     try { data = JSON.parse(event.data); } catch { fail("response_malformed"); return; }
     if (!data || typeof data !== "object") { fail("response_malformed"); return; }
-    if (data.type === "input_ack" && typeof data.seq === "number") { pending.delete(data.seq); return; }
+    if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { scheduler.accepted(data.seq as number); return; }
+    if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && typeof data.error === "string" && typeof data.retry_after_ms === "number" && Number.isFinite(data.retry_after_ms)) {
+      scheduler.rejected(data.seq as number, data.error, data.retry_after_ms); return;
+    }
     if (data.type !== "state" || !["pending_consent", "connecting", "active", "closed"].includes(String(data.state))) { fail("response_malformed"); return; }
     state = data.state as RemoteDesktopSessionState;
+    if (state !== "closed" && typeof data.acked_seq === "number") scheduler.executedThrough(data.acked_seq);
+    if (ended) return;
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }
     handlers.state(state, typeof data.error === "string" ? data.error : undefined);
     if (state === "closed") dispose();
