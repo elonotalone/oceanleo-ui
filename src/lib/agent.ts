@@ -822,6 +822,13 @@ export function stopTask(taskId: string) {
   });
 }
 
+/** Revision-fenced local intent. The response does not imply execution stopped. */
+export function controlLocalAgentTask(taskId: string, action: "pause" | "resume" | "stop", revision: number) {
+  return authed<unknown>(`/v1/devices/agent/tasks/${encodeURIComponent(taskId)}/control`, {
+    method: "POST", body: JSON.stringify({action, expected_revision: revision}),
+  });
+}
+
 export function getTask(taskId: string, options?: GetTaskOptions) {
   const afterId = options?.afterId;
   const query =

@@ -73,6 +73,8 @@ import {
 } from "./active-agent-file";
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
+import { LocalAgentTaskStatus } from "./LocalAgentTaskStatus";
+import { taskLocalAgentState, parseLocalAgentRun, newerLocalAgentRun, localAgentCanControl, localTaskArtifacts, type LocalTaskArtifact, type LocalAgentRun, type LocalAgentControl } from "../lib/local-agent-task";
 import { CallHumanIcon } from "./bay/shell/bay-icons";
 import { openBay, setBayTaskContext, useBayEnabled } from "./bay/shell/bay-state";
 import {
@@ -81,6 +83,7 @@ import {
   followUp,
   getTask,
   stopTask,
+  controlLocalAgentTask,
   type AgentAttachment,
   type AgentMessage,
   type ArtifactMeta,
@@ -608,6 +611,12 @@ function AgentChatInner({
     Set<number>
   >(new Set());
   const [status, setStatus] = useState<string>("");
+  const [localExecution, setLocalExecution] = useState<{taskId: string; local: boolean; run: LocalAgentRun | null}>({taskId: "", local: false, run: null});
+  const isLocalExecution = localExecution.taskId === taskId && localExecution.local;
+  const localRun = isLocalExecution ? localExecution.run : null;
+  const [localArtifacts, setLocalArtifacts] = useState<{taskId: string; items: LocalTaskArtifact[]}>({taskId: "", items: []});
+  const localControlInFlight = useRef(false);
+  const [localControlBusy, setLocalControlBusy] = useState(false);
   const [pollEpoch, setPollEpoch] = useState(0);
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
   const [taskSiteId, setTaskSiteId] = useState<string>("");
@@ -720,6 +729,13 @@ function AgentChatInner({
       );
       serverMessagesRef.current = settled;
       setMessagesTaskId(id);
+      const local = taskLocalAgentState(r.data.task);
+      const artifacts = localTaskArtifacts(r.data.task.plan);
+      setLocalArtifacts(current => current.taskId === id && JSON.stringify(current.items) === JSON.stringify(artifacts) ? current : {taskId: id, items: artifacts});
+      setLocalExecution(current => {
+        const run = current.taskId === id ? newerLocalAgentRun(current.run, local.run) : local.run;
+        return current.taskId === id && current.local === local.local && current.run === run ? current : {taskId: id, local: local.local, run};
+      });
       setMessages((current) => mergeAgentMessages(current, settled));
       setActiveArtifactIds((current) => {
         const artifactIds = (r.data ? r.data.artifacts || [] : []).map((artifact) =>
@@ -1411,10 +1427,44 @@ function AgentChatInner({
   }
 
   // 「中止」：AI 工作中（任务 running / 请求在途）点停止键 → 停任务。
+  const controlLocal = useCallback(async (action: LocalAgentControl) => {
+    if (readOnly || !taskId || !isLocalExecution || localControlInFlight.current) return;
+    if (!localAgentCanControl(localRun, action)) {
+      void refresh(taskId);
+      return;
+    }
+    const id = taskId;
+    localControlInFlight.current = true;
+    setLocalControlBusy(true);
+    try {
+      const result = await controlLocalAgentTask(id, action, localRun!.revision);
+      if (loadedTaskRef.current !== id) return;
+      if (result.ok) {
+        const next = parseLocalAgentRun(result.data);
+        setLocalExecution(current => current.taskId === id ? {...current, run: newerLocalAgentRun(current.run, next)} : current);
+      } else {
+        setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
+      }
+      void refresh(id);
+    } catch {
+      if (loadedTaskRef.current === id) {
+        setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
+        void refresh(id);
+      }
+    } finally {
+      localControlInFlight.current = false;
+      setLocalControlBusy(false);
+    }
+  }, [readOnly, taskId, isLocalExecution, localRun, refresh, tt]);
+
   const stop = useCallback(async () => {
     if (readOnly) return;
     if (!taskId) {
       setBusy(false);
+      return;
+    }
+    if (isLocalExecution) {
+      await controlLocal("stop");
       return;
     }
     // 真的把流掐断（AbortSignal 一路传到 fetch），不是拿到结果再丢掉。
@@ -1438,7 +1488,7 @@ function AgentChatInner({
     setStoppedTaskId("");
     setError(r.error || tt("没能停下这次任务，它可能仍在运行。"));
     void refresh(taskId);
-  }, [readOnly, taskId, refresh, tt]);
+  }, [readOnly, taskId, refresh, tt, isLocalExecution, controlLocal]);
 
   // 启发式追问（后端在最终回答的 meta.suggestions 里给 3 个）——取最后一条 assistant
   // 消息上的 suggestions；一旦用户继续输入 / 任务重新 running 就消失。
@@ -2009,6 +2059,7 @@ function AgentChatInner({
 
   const stream = (
     <div className="flex h-full flex-col">
+      {isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={action => void controlLocal(action)} />}
       {/* 相对定位容器：浮标贴着对话区底部，而不是贴着输入框或整页。 */}
       <div className="relative min-h-0 flex-1">
       <div

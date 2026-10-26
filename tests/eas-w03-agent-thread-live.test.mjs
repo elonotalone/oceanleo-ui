@@ -128,7 +128,8 @@ function makeGateway({ status, messages, cursor = false }) {
       return Promise.resolve({
         ok: true,
         data: {
-          task: { id, status: state.status, site_id: "ppt", title: "对话" },
+          task: { id, status: state.status, site_id: "ppt", title: "对话",
+            ...(state.localRun ? {engine: "local", plan: {local_run: {...state.localRun}}} : {}) },
           messages: rows.map(copy),
           artifacts: [],
           ...(state.cursor ? { next_after_id: nextAfterId() } : {}),
@@ -148,6 +149,13 @@ function makeGateway({ status, messages, cursor = false }) {
       state.calls.push({ kind: "stopTask", at: Date.now(), id });
       return { ok: true, data: { task_id: id, status: "stopped" } };
     },
+    async controlLocalAgentTask(id, action, revision) {
+      state.calls.push({kind: "localControl", id, action, revision});
+      if (revision !== state.localRun.control_revision) return {ok:false,status:409};
+      state.localRun = {...state.localRun, control_revision: revision + 1,
+        desired_state: action === "resume" ? "run" : action};
+      return {ok:true,data:{...state.localRun}};
+    },
   };
   return state;
 }
@@ -160,6 +168,7 @@ const gatewayModule = (realUrl) =>
     export function getTask(id, options) { return gw().getTask(id, options); }
     export function followUp(id, prompt) { return gw().followUp(id, prompt); }
     export function stopTask(id) { return gw().stopTask(id); }
+    export function controlLocalAgentTask(id, action, revision) { return gw().controlLocalAgentTask(id, action, revision); }
     export async function branchTask() { return { ok: false, error: "stub" }; }
     export async function reportEditorCommandResult() { return { ok: true }; }
     export function latestArtifact() { return null; }
@@ -397,6 +406,36 @@ const FINISHED_THREAD = [
   { id: 1, role: "user", kind: "text", content: "hi" },
   { id: 2, role: "assistant", kind: "text", content: "你好，我在。", meta: { done: true } },
 ];
+
+test("AgentChat local computer controls wait for real executor state and resume after human takeover", withClock(async () => {
+  const gateway=makeGateway({status:"running",messages:FINISHED_THREAD});
+  gateway.localRun={run_id:"run-1",device_id:"device-1",state:"running",desired_state:"run",control_revision:0,report_seq:1};
+  globalThis.__w03Gateway=gateway;
+  const view=await mount(React.createElement(AgentChat,{taskId:"local-task",siteId:"home",mode:"agent"}));
+  const click=async text => {
+    const button=[...view.host.querySelectorAll("button")].find(node=>node.textContent===text);
+    assert.ok(button, `missing ${text}`);
+    await act(async ()=>button.click()); await flush();
+  };
+  try {
+    assert.match(view.host.textContent,/电脑上的 AI 正在执行/);
+    await click("暂停电脑任务");
+    assert.match(view.host.textContent,/正在请求暂停，等待电脑确认/);
+    gateway.localRun={...gateway.localRun,state:"paused",desired_state:"run",report_seq:2};
+    await advance(3000);
+    await click("让 AI 重新观察并继续");
+    assert.equal(gateway.calls.filter(row=>row.kind==="localControl").at(-1).action,"resume");
+    // Composer stop must use local revision-fenced intent, never generic optimistic stop.
+    await act(async ()=>globalThis.__w03Composer.onStop()); await flush();
+    assert.match(view.host.textContent,/正在请求电脑停止，等待执行端确认/);
+    assert.equal(gateway.calls.some(row=>row.kind==="stopTask"),false);
+    assert.equal(view.host.querySelector('[data-local-agent-state]').dataset.localAgentState,"paused");
+    gateway.localRun={...gateway.localRun,state:"cancelled",report_seq:3}; gateway.status="stopped";
+    await advance(3000);
+    assert.match(view.host.textContent,/电脑已确认停止/);
+    assert.equal(view.host.querySelectorAll('[data-local-agent-state] button').length,0);
+  } finally {await view.unmount();}
+}));
 
 function withClock(fn) {
   return async () => {
