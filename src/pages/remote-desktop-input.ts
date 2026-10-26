@@ -261,15 +261,26 @@ export const REMOTE_BACKPRESSURE_CODES: ReadonlySet<string> = new Set([
 export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   switch (code) {
     case "media_first_frame_timeout":
+    case "screen_permission_or_capture_unavailable":
+    case "media_no_encoded_frame":
       return "尚未收到电脑画面，请检查电脑的屏幕录制权限后重新连接。";
     case "media_frame_timeout":
     case "media_connection_failed":
     case "media_subscribe_failed":
     case "media_session_closed":
+    case "media_capture_or_publish_failed":
       return "视频连接已中断，控制已停止。请重新连接。";
     case "media_auth_failed":
+    case "media_renew_failed":
+    case "media_credential_invalid":
+    case "media_lease_invalid":
       return "视频授权无法续期，控制已停止。请重新连接。";
     case "media_unavailable":
+    case "media_sdk_not_installed":
+    case "media_sdk_start_failed":
+    case "display_enumeration_failed":
+    case "display_geometry_failed":
+    case "display_not_found":
       return "这台电脑的视频服务暂不可用，请稍后重新连接。";
     case "unauthorized":
       return "登录已失效，请重新登录后再试。";

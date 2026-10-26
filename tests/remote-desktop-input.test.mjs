@@ -122,6 +122,19 @@ test("错误码都落成中文，未知码落到兜底，不外泄英文 token",
   assert.equal(input.remoteDesktopErrorCopy(undefined, 500), "这一步没有完成，请稍后重试。");
 });
 
+test("native publisher failures explain the next action without exposing protocol codes", () => {
+  for (const code of ["screen_permission_or_capture_unavailable", "media_no_encoded_frame"]) {
+    assert.match(input.remoteDesktopErrorCopy(code), /屏幕录制权限.*重新连接/);
+  }
+  for (const code of ["media_sdk_not_installed", "media_sdk_start_failed", "display_enumeration_failed", "display_geometry_failed", "display_not_found"]) {
+    assert.equal(input.remoteDesktopErrorCopy(code), input.remoteDesktopErrorCopy("media_unavailable"));
+  }
+  for (const code of ["media_renew_failed", "media_credential_invalid", "media_lease_invalid"]) {
+    assert.equal(input.remoteDesktopErrorCopy(code), input.remoteDesktopErrorCopy("media_auth_failed"));
+  }
+  assert.equal(input.remoteDesktopErrorCopy("media_capture_or_publish_failed"), input.remoteDesktopErrorCopy("media_connection_failed"));
+});
+
 test("B 的真实码：旧客户端/断线与「别人占用」是两句话", () => {
   const unavailable = input.remoteDesktopErrorCopy("remote_desktop_unavailable", 409);
   const active = input.remoteDesktopErrorCopy("session_active", 409);
