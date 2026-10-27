@@ -39,6 +39,7 @@ for (const [name, value] of Object.entries({
   Element: window.Element,
   Node: window.Node,
   Event: window.Event,
+  CustomEvent: window.CustomEvent,
   MouseEvent: window.MouseEvent,
   KeyboardEvent: window.KeyboardEvent,
   PointerEvent: window.PointerEvent || window.MouseEvent,
@@ -875,3 +876,114 @@ test("Escape 只关最上层，一次按键不会把嵌套弹层全掀掉", asyn
     await mounted.unmount();
   }
 });
+
+const { ComputerDock } = await import(await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
+  "../anchored-popover": popoverUrl,
+  "../../lib/cloud-computer-api": dataModule(`
+    export const cloudComputerApi = { async listComputers() { return { items: [] }; } };
+    export function writeMountedComputerId() {}
+    export function writeMountedComputerName() {}
+  `),
+  "../../api/devices": dataModule("export function listDevices() { return globalThis.__pickerDevices; }"),
+  "../../lib/cloud-agent-api": dataModule("export async function listCloudAgentAvailability() { return { kind: 'absent' }; }"),
+  "../../lib/auth/client": dataModule("export async function getUserId() { return 'picker-layout'; }"),
+  "../../i18n/ui/useUI": dataModule("export function useUI() { return text => text; }"),
+  "../../contracts/domain-family": dataModule("export function portalHref(path) { return path; }"),
+  "next/navigation": dataModule("export function useRouter() { return { push() {} }; }"),
+}));
+
+for (const scenario of [
+  { name: "upper composer", viewport: { left: 0, top: 0, width: 1440, height: 857 }, anchor: { left: 533.5, top: 201 }, placement: "below" },
+  { name: "lower composer", viewport: { left: 0, top: 0, width: 1440, height: 900 }, anchor: { left: 533.5, top: 800 }, placement: "above" },
+  { name: "short offset visual viewport", viewport: { left: 42, top: 35, width: 320, height: 260 }, anchor: { left: 300, top: 50 }, placement: "below" },
+]) {
+  test(`target picker: hover, focus and arriving long lists keep group geometry stable (${scenario.name})`, async () => {
+    const previousRect = window.HTMLElement.prototype.getBoundingClientRect;
+    const previousScrollHeight = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, "scrollHeight");
+    const previousViewport = { width: visualViewport.width, height: visualViewport.height, offsetLeft: visualViewport.offsetLeft, offsetTop: visualViewport.offsetTop };
+    const previousScrollTo = window.scrollTo;
+    window.scrollTo = () => {};
+    const { viewport, anchor } = scenario;
+    Object.assign(visualViewport, { width: viewport.width, height: viewport.height, offsetLeft: viewport.left, offsetTop: viewport.top });
+    const rect = (left, top, width, height) => ({ x: left, y: top, left, top, right: left + width, bottom: top + height, width, height, toJSON() { return this; } });
+    const geometry = node => { const r = node.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; };
+    // JSDOM has no CSS layout engine. Model natural list growth and the browser's
+    // explicit height/max-height box constraint; use the real popup/observer/state.
+    const contentHeight = panel => Math.max(142, 14 + panel.lastElementChild.lastElementChild.querySelectorAll("button").length * 44);
+    const panelHeight = panel => Math.min(Number.parseFloat(panel.style.height) || contentHeight(panel), Number.parseFloat(panel.style.maxHeight) || Infinity);
+    window.HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute("data-oceanleo-cc-dock-trigger")) return rect(anchor.left, anchor.top, 100, 28);
+      if (this.hasAttribute("data-anchored-popover")) return rect(Number.parseFloat(this.style.left) || 0, Number.parseFloat(this.style.top) || 0, Math.min(440, viewport.width - 32), panelHeight(this));
+      if (this.matches("button[aria-expanded]") && this.closest("[data-anchored-popover]")) {
+        const panel = this.closest("[data-anchored-popover]").getBoundingClientRect();
+        return rect(panel.left + 14, panel.top + 38 + [...this.parentElement.querySelectorAll("button")].indexOf(this) * 40, 110, 40);
+      }
+      return previousRect.call(this);
+    };
+    Object.defineProperty(window.HTMLElement.prototype, "scrollHeight", { configurable: true, get() {
+      if (this.hasAttribute("data-anchored-popover")) return this.classList.contains("overflow-hidden") ? panelHeight(this) : contentHeight(this);
+      return previousScrollHeight?.get?.call(this) ?? 0;
+    } });
+    window.localStorage.clear();
+    let resolveDevices;
+    globalThis.__pickerDevices = new Promise(resolve => { resolveDevices = resolve; });
+    let mounted;
+    const settle = async () => { await act(async () => {}); await act(async () => PopoverResizeObserver.flush()); };
+    const click = async node => { await act(async () => node.dispatchEvent(new MouseEvent("click", { bubbles: true }))); await settle(); };
+    try {
+      mounted = await createMounted(() => React.createElement(ComputerDock));
+      const trigger = mounted.container.querySelector("[data-oceanleo-cc-dock-trigger]");
+      await click(trigger);
+      const panel = document.querySelector('[data-anchored-popover][aria-label="任务执行位置"]');
+      const [cloudGroup, localGroup] = panel.querySelectorAll("button[aria-expanded]");
+      const before = geometry(localGroup);
+      assert.equal(panel.dataset.anchoredPlacement, scenario.placement);
+      assert.equal(document.activeElement, cloudGroup);
+      await act(async () => localGroup.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+      await settle();
+      assert.equal(localGroup.getAttribute("aria-expanded"), "true");
+      assert.deepEqual(geometry(localGroup), before, "hover must leave the click target under the same pointer");
+      await act(async () => resolveDevices({ ok: true, data: Array.from({ length: 30 }, (_, i) => ({ device_id: `synthetic-${i}`, device_name: `Synthetic ${i}`, platform: "windows", online: true, availability: "online" })) }));
+      await settle();
+      assert.equal(panel.querySelectorAll("[data-oceanleo-device-client]").length, 30);
+      assert.deepEqual(geometry(localGroup), before, "async list growth must not move either group");
+      await click(localGroup);
+      assertOpenInPlace(panel, "group click after hover");
+      await act(async () => cloudGroup.focus());
+      await settle();
+      await act(async () => localGroup.focus());
+      await settle();
+      assert.equal(document.activeElement, localGroup);
+      assert.equal(localGroup.getAttribute("aria-expanded"), "true");
+      assert.deepEqual(geometry(localGroup), before, "keyboard group switching has the same stable geometry");
+      const bounds = panel.getBoundingClientRect();
+      assert.ok(bounds.left >= viewport.left + 8 && bounds.right <= viewport.left + viewport.width - 8);
+      assert.ok(bounds.top >= viewport.top + 8 && bounds.bottom <= viewport.top + viewport.height - 8);
+      assert.ok(bounds.height <= 320);
+      const columns = panel.firstElementChild;
+      assert.ok(columns.firstElementChild.classList.contains("overflow-y-auto"), "groups can scroll in a short viewport");
+      const [list, manage] = columns.lastElementChild.children;
+      assert.ok(list.classList.contains("min-h-0") && list.classList.contains("overflow-y-auto"));
+      assert.match(manage.textContent, /管理设备/);
+      assert.ok(manage.classList.contains("shrink-0"), "management stays outside the scrolling list");
+      await click(panel.querySelector('[data-oceanleo-device-client="synthetic-0"]'));
+      assertClosedInPlace(panel, "explicit device selection");
+      assert.equal(trigger.textContent, "Synthetic 0");
+      await click(trigger);
+      assert.equal(document.activeElement, panel.querySelector('button[aria-expanded="true"]'));
+      assert.match(document.activeElement.textContent, /本地电脑/, "reopen must focus the remembered group, without switching back to cloud");
+      await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+      assertClosedInPlace(panel, "Escape after reopen");
+      assert.equal(document.activeElement, trigger);
+    } finally {
+      if (mounted) await mounted.unmount();
+      window.HTMLElement.prototype.getBoundingClientRect = previousRect;
+      if (previousScrollHeight) Object.defineProperty(window.HTMLElement.prototype, "scrollHeight", previousScrollHeight);
+      else delete window.HTMLElement.prototype.scrollHeight;
+      Object.assign(visualViewport, previousViewport);
+      window.scrollTo = previousScrollTo;
+      delete globalThis.__pickerDevices;
+      window.localStorage.clear();
+    }
+  });
+}

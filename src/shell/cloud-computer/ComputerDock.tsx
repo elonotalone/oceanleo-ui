@@ -202,18 +202,21 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
     </button>
     <AnchoredPopover open={open} anchorRef={anchor} panelRef={panel} onClose={() => setOpen(false)} align="start" role="dialog" ariaLabel={tt("任务执行位置")}
-      preferredPlacement="above" className="z-[80] w-[min(440px,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
-      <div ref={panel} className="grid grid-cols-[minmax(110px,0.75fr)_minmax(150px,1fr)]">
-        <div className="border-r border-neutral-100 pr-1.5">
+      preferredPlacement="above" maxHeight={320} style={{ height: 320 }} initialFocusSelector='button[aria-expanded="true"]'
+      className="z-[80] flex w-[min(440px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+      {/* Keep group controls still while the other column changes or loads. */}
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,0.75fr)_minmax(0,1fr)]">
+        <div className="min-h-0 min-w-0 overflow-y-auto border-r border-neutral-100 pr-1.5">
           <p className="px-3 pb-1 pt-2 text-[12px] font-medium text-neutral-500">{tt("在此设备上运行任务")}</p>
           <button type="button" className={`${row} ${group === "cloud" ? "bg-neutral-100" : ""}`} onMouseEnter={() => setGroup("cloud")} onFocus={() => setGroup("cloud")} onClick={() => setGroup("cloud")} aria-expanded={group === "cloud"}>
-            <TargetGlyph cloud /><span className="flex-1">{tt("云端")}</span>{target.kind !== "device" && <span aria-label={tt("已选择")}>✓</span>}<span aria-hidden>›</span>
+            <TargetGlyph cloud /><span className="min-w-0 flex-1 break-words">{tt("云端")}</span>{target.kind !== "device" && <span aria-label={tt("已选择")}>✓</span>}<span aria-hidden>›</span>
           </button>
           <button type="button" className={`${row} ${group === "device" ? "bg-neutral-100" : ""}`} onMouseEnter={() => setGroup("device")} onFocus={() => setGroup("device")} onClick={() => setGroup("device")} aria-expanded={group === "device"}>
-            <TargetGlyph /><span className="flex-1">{tt("本地电脑")}</span>{target.kind === "device" && <span aria-label={tt("已选择")}>✓</span>}<span aria-hidden>›</span>
+            <TargetGlyph /><span className="min-w-0 flex-1 break-words">{tt("本地电脑")}</span>{target.kind === "device" && <span aria-label={tt("已选择")}>✓</span>}<span aria-hidden>›</span>
           </button>
         </div>
-        <div className="min-w-0 pl-1.5">
+        <div className="flex min-h-0 min-w-0 flex-col pl-1.5">
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {!owner ? <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("请先登录")}</p> : <>
             {group === "cloud" && <>
               <button type="button" className={row} aria-pressed={target.kind === "cloud"} onClick={() => choose({ kind: "cloud" })}><TargetGlyph cloud /><span className="flex-1">{tt("默认云端")}</span>{target.kind === "cloud" && "✓"}</button>
@@ -244,7 +247,8 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
             {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载中…")}</p>}
             {error && <p role="status" className="px-3 py-2 text-[12px] text-neutral-500">{tt("设备列表暂不可用")}</p>}
           </>}
-          <div className="mt-1 border-t border-neutral-100 pt-1"><button type="button" className={row} onClick={() => { setOpen(false); router.push(portalHref("/devices")); }}><span aria-hidden>☷</span>{tt("管理设备")}</button></div>
+          </div>
+          <div className="mt-1 shrink-0 border-t border-neutral-100 pt-1"><button type="button" className={row} onClick={() => { setOpen(false); router.push(portalHref("/devices")); }}><span aria-hidden>☷</span>{tt("管理设备")}</button></div>
         </div>
       </div>
     </AnchoredPopover>
