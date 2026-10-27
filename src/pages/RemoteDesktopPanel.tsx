@@ -7,6 +7,7 @@ import { RemoteDesktopVideo } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
 import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
+import { CLOUD_AGENT_COPY } from "../lib/local-agent-task";
 
 export { requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 
@@ -19,6 +20,22 @@ export interface RemoteDesktopPanelProps {
   frameIntervalMs?: number;
   doubleClickWindowMs?: number;
   backpressureMs?: number;
+  /**
+   * The cloud assistant working on this computer for the task the panel was
+   * opened from (device-link protocol §13, bridge doc §17.6). Banner and hand
+   * back only: the media and input paths are unchanged.
+   */
+  agent?: RemoteDesktopAgentBanner;
+}
+
+export interface RemoteDesktopAgentBanner {
+  /** Chinese source sentence from `CLOUD_AGENT_COPY`, rendered through `tt`. */
+  text: string;
+  /** Offer 交还给 AI (the AI is paused and the owner may resume it). */
+  handBack: boolean;
+  busy: boolean;
+  /** One revision-fenced `resume`; the computer re-observes before acting. */
+  onHandBack: () => void;
 }
 
 type Phase = "starting" | "waiting" | "connecting" | "active" | "closed" | "error" | "denied" | "timed_out" | "revoked" | "signed_out";
@@ -29,7 +46,7 @@ const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) =>
   if (signal.aborted) done(); else signal.addEventListener("abort", done, { once: true });
 });
 
-export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220 }: RemoteDesktopPanelProps) {
+export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent }: RemoteDesktopPanelProps) {
   const tt = useUI();
   const [portal] = useState(remoteDesktopPortal);
   const [phase, setPhase] = useState<Phase>("starting");
@@ -530,6 +547,11 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         {!active && !["starting", "waiting", "connecting"].includes(phase) ? <button type="button" onClick={() => { disconnect(); setAttempt((value) => value + 1); }}>{tt("重新连接")}</button> : null}
         <button type="button" onClick={() => { disconnect(); onClose(); }} style={{ whiteSpace: "nowrap" }}>{tt("退出桌面")}</button>
       </div>
+      {agent ? <div data-remote-agent-banner role="status" style={{ position: "absolute", left: "50%", bottom: "max(64px, calc(env(safe-area-inset-bottom) + 56px))", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 10, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
+        <span>{tt(agent.text)}</span>
+        {/* Let go of anything this viewer still holds first: the computer resumes the AI only once no person holds input. */}
+        {agent.handBack ? <button type="button" data-remote-agent-hand-back disabled={agent.busy} onClick={() => { releaseInput(); agent.onHandBack(); }} style={{ whiteSpace: "nowrap" }}>{tt(CLOUD_AGENT_COPY.handBack)}</button> : null}
+      </div> : null}
       {active && (congested || message || (mediaMode === "legacy" && mediaNotice)) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(congested ? "输入正在等待确认，画面保持连接。" : message || mediaNotice)}</div> : null}
     </div>, portal,
   );

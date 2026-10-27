@@ -1,5 +1,6 @@
 import { LOCALES, type Locale } from "../../config";
-import { LOCAL_AGENT_COPY, type LocalAgentCopyKey } from "../../../lib/local-agent-task";
+import { CLOUD_AGENT_COPY, LOCAL_AGENT_COPY, type CloudAgentCopyKey, type LocalAgentCopyKey } from "../../../lib/local-agent-task";
+import { CLOUD_AGENT_TRANSLATIONS } from "./cloud-agent-copy";
 
 /**
  * Translations of `LOCAL_AGENT_COPY` (src/lib/local-agent-task.ts): what the user
@@ -352,10 +353,19 @@ const translations = {
 
 function dictionaryFor(locale: Locale): Record<string, string> {
   const keys = Object.keys(LOCAL_AGENT_COPY) as LocalAgentCopyKey[];
-  return Object.fromEntries(keys.map((key) => [
-    LOCAL_AGENT_COPY[key],
-    locale === "zh" ? LOCAL_AGENT_COPY[key] : translations[locale][key],
-  ]));
+  // C7-U5: the cloud assistant's words ride in this same catalog (already
+  // loaded by index.ts and load.ts), translated in ./cloud-agent-copy.ts.
+  const cloudKeys = Object.keys(CLOUD_AGENT_COPY) as CloudAgentCopyKey[];
+  return Object.fromEntries([
+    ...keys.map((key) => [
+      LOCAL_AGENT_COPY[key],
+      locale === "zh" ? LOCAL_AGENT_COPY[key] : translations[locale][key],
+    ]),
+    ...cloudKeys.map((key) => [
+      CLOUD_AGENT_COPY[key],
+      locale === "zh" ? CLOUD_AGENT_COPY[key] : CLOUD_AGENT_TRANSLATIONS[locale][key],
+    ]),
+  ]);
 }
 
 export const LOCAL_AGENT_MESSAGES = Object.fromEntries(

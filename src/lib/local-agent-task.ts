@@ -1,3 +1,6 @@
+import { htmlLang, normalizeLocale } from "../i18n/config";
+import { epochMs } from "./execution-target";
+
 /** Authoritative executor state; a requested stop is not a completed stop. */
 export interface LocalAgentRun {
   runId: string;
@@ -6,7 +9,18 @@ export interface LocalAgentRun {
   desiredState: "run" | "pause" | "stop";
   revision: number;
   reportSeq: number;
+  /**
+   * Cloud-assistant runs only (device-link protocol §13): the loop runs in the
+   * cloud and every tool on this computer. Absent on on-device runs and on
+   * gateways that predate the cloud assistant; those keep today's UI.
+   */
+  driver?: "cloud";
+  sessionId?: string;
+  owner?: "ai" | "human";
+  health?: LocalAgentHealth;
 }
+/** `plan.local_run.health` (bridge doc §17.9 kinds). Unknown kinds are kept as sent. */
+export interface LocalAgentHealth { kind: string; since: number | null; lastContactAt: number | null; }
 export type LocalAgentControl = "pause" | "resume" | "stop";
 export interface LocalTaskArtifact { artifactId: string; revisionId: string; title: string; }
 export function localTaskArtifacts(plan: unknown): LocalTaskArtifact[] {
@@ -24,6 +38,9 @@ export function localTaskArtifacts(plan: unknown): LocalTaskArtifact[] {
   });
 }
 const ID = /^[A-Za-z0-9_-]{1,100}$/;
+/** Session ids are `cas_` + a ULID today; anything URL-safe is accepted so a format change cannot hide the screen. */
+const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const HEALTH_KIND = /^[a-z][a-z_]{0,39}$/;
 const states = new Set(["queued", "claimed", "running", "paused", "awaiting_approval", "succeeded", "failed", "denied", "cancelled", "interrupted", "expired"]);
 const terminal = new Set(["succeeded", "failed", "denied", "cancelled", "interrupted", "expired"]);
 function record(value: unknown): Record<string, unknown> {
@@ -35,8 +52,15 @@ export function parseLocalAgentRun(value: unknown): LocalAgentRun | null {
       typeof row.state !== "string" || !states.has(row.state) || !["run", "pause", "stop"].includes(String(row.desired_state)) ||
       !Number.isSafeInteger(row.control_revision) || Number(row.control_revision) < 0 ||
       !Number.isSafeInteger(row.report_seq) || Number(row.report_seq) < 0) return null;
-  return {runId: row.run_id, deviceId: row.device_id, state: row.state,
+  const run: LocalAgentRun = {runId: row.run_id, deviceId: row.device_id, state: row.state,
     desiredState: row.desired_state as LocalAgentRun["desiredState"], revision: Number(row.control_revision), reportSeq: Number(row.report_seq)};
+  if (row.driver !== "cloud") return run;
+  const health = record(row.health);
+  return {...run, driver: "cloud",
+    ...(typeof row.session_id === "string" && SESSION_ID.test(row.session_id) ? {sessionId: row.session_id} : {}),
+    ...(row.owner === "ai" || row.owner === "human" ? {owner: row.owner} : {}),
+    ...(typeof health.kind === "string" && HEALTH_KIND.test(health.kind)
+      ? {health: {kind: health.kind, since: epochMs(health.since), lastContactAt: epochMs(health.last_contact_at)}} : {})};
 }
 export function taskLocalAgentState(task: {engine?: string | null; plan?: unknown}): {local: boolean; run: LocalAgentRun | null} {
   const plan = record(task.plan);
@@ -44,8 +68,20 @@ export function taskLocalAgentState(task: {engine?: string | null; plan?: unknow
 }
 export function newerLocalAgentRun(current: LocalAgentRun | null, next: LocalAgentRun | null): LocalAgentRun | null {
   if (!current || !next || current.runId !== next.runId) return next;
-  return next.revision < current.revision || (next.revision === current.revision && next.reportSeq <= current.reportSeq &&
-    (next.reportSeq < current.reportSeq || (next.state === current.state && next.desiredState === current.desiredState))) ? current : next;
+  if (next.revision !== current.revision) return next.revision < current.revision ? current : next;
+  if (next.reportSeq !== current.reportSeq) return next.reportSeq < current.reportSeq ? current : next;
+  // Equal counters. Cloud runs bump report_seq on every projection write
+  // (device-link protocol §16 D13), so a different live view here is the newer
+  // read of the same write and must still reach the screen.
+  return next.state === current.state && next.desiredState === current.desiredState && sameCloudView(current, next) ? current : next;
+}
+function sameCloudView(a: LocalAgentRun, b: LocalAgentRun): boolean {
+  return a.driver === b.driver && a.sessionId === b.sessionId && a.owner === b.owner && a.health?.kind === b.health?.kind &&
+    a.health?.since === b.health?.since && a.health?.lastContactAt === b.health?.lastContactAt;
+}
+/** Not finished on the computer yet: the task page keeps reading it even when the task row is not `running`. */
+export function localAgentRunLive(run: LocalAgentRun | null): boolean {
+  return run !== null && !terminal.has(run.state);
 }
 export function localAgentCanControl(run: LocalAgentRun | null, action: LocalAgentControl): boolean {
   if (!run || terminal.has(run.state) || run.desiredState === "stop") return false;
@@ -88,14 +124,84 @@ export const LOCAL_AGENT_COPY = {
 } as const;
 export type LocalAgentCopyKey = keyof typeof LOCAL_AGENT_COPY;
 
-/** Wire codes on the local-task paths (`device_agent_v1`, task_service, device_task_target). */
-const CODE_COPY: Record<string, LocalAgentCopyKey> = {
+/**
+ * Everything the web says about the cloud assistant using the user's computer
+ * (device-link protocol `oceanleo-app/docs/react-client-rebuild/device-link/protocol.md`
+ * §12–§13; texts from the bridge doc §17.9, which wins where the two differ).
+ * Chinese source text rendered through `tt`; `i18n/ui/messages/cloud-agent-copy.ts`
+ * translates every entry into the 16 other locales (typecheck fails on a gap).
+ *
+ * - `health*` are the fixed texts the gateway stores in `device_status`
+ *   notices (no clock times, so a stored notice never goes stale); `live*`
+ *   are the task-page templates filled with the viewer's own clock.
+ * - `refused*` adapt the §17.9 reason texts to a refused create: a task that
+ *   was refused must say it did not start and did not move to the cloud.
+ * - The switch name quotes the desktop app's own label (`device_link/surfaces.rs`).
+ */
+export const CLOUD_AGENT_COPY = {
+  // Target picker: one entry per computer (protocol §12.4).
+  cloudUntil: "云端助手可用至 {time}",
+  cloudAvailable: "云端助手可用",
+  needsYou: "需要你在电脑前确认",
+  cloudHint: "任务由 OceanLeo 云端助手使用这台电脑完成：思考在云端，每一步操作都在这台电脑上执行，你不在电脑前也能继续。",
+  needsYouHint: "任务会由这台电脑上的本机 AI 执行，操作需要你在电脑前确认。要在离开电脑时也能继续，请在那台电脑的 OceanLeo 里打开「允许云端助手使用这台电脑」。",
+  aiBusy: "这台电脑上还有一个 AI 操作没结束，请稍等。",
+  // `POST /v1/agent/tasks` with `driver:"cloud"` refused (protocol §12.5).
+  refusedDisabled: "这台电脑还没有允许云端助手，任务没有开始，也没有改到云端。请在那台电脑的 OceanLeo 里打开「允许云端助手使用这台电脑」后重新发送，或重新选择执行位置。",
+  refusedExpired: "电脑上允许云端助手的时间已到，任务没有开始，也没有改到云端。请在那台电脑上续期后重新发送，或重新选择执行位置。",
+  refusedBusy: "这台电脑上还有一个 AI 任务没结束，这项任务没有开始。请等它结束或先停止它，再重新发送。",
+  refusedCleanup: "电脑上有一个中断的命令还没确认清理干净，任务没有开始。请在电脑上处理后重新发送。",
+  refusedScope: "这项任务需要的权限超出了你在电脑上允许云端助手的范围，任务没有开始。请在电脑上调整后重新发送，或重新选择执行位置。",
+  refusedUnavailable: "这台电脑现在不能使用云端助手，任务没有开始，也没有改到云端。请稍后重新发送，或重新选择执行位置。",
+  dispatchFailed: "任务没有成功交给所选电脑，任务没有开始，也没有转到云端。请重新发送。",
+  // Task page block for a cloud-assistant run.
+  statusRunning: "云端助手正在使用你的电脑",
+  statusConnecting: "正在连接你的电脑…",
+  statusPaused: "任务已暂停；继续后 AI 会先重新查看屏幕。",
+  subtitle: "由 OceanLeo 云端助手执行：思考在云端，每一步操作都在你的电脑上完成。关闭此页面不会停止任务。",
+  ownerAi: "AI 正在操作",
+  takeOver: "接管电脑",
+  handBack: "交还给 AI",
+  screenAlt: "电脑屏幕的最新画面",
+  screenCaption: "最新画面 {time} · 只在服务器内存里，只有你能看到",
+  // Health (bridge §17.9): the fixed notice texts, then the live-line templates.
+  healthOk: "电脑已恢复，AI 会先重新查看屏幕再继续。",
+  healthOffline: "你的电脑没有回应，可能已离线或休眠。",
+  healthAsleep: "你的电脑已休眠，醒来后任务继续。",
+  healthLocked: "电脑已锁屏，图形操作暂停；命令仍在运行。",
+  healthHung: "你的电脑卡住了：当前这一步一直没有完成。",
+  healthSignedOut: "你的电脑上已退出 OceanLeo 账号，任务已暂停。",
+  healthCleanup: "电脑上有一个中断的命令还没确认清理干净；在电脑上处理后才能继续运行命令。",
+  healthEnvelope: "电脑上允许云端助手的时间已到，需要在电脑上续期。",
+  healthConfirm: "这一步需要你在电脑前确认。",
+  healthHuman: "你正在控制电脑，AI 已暂停；点「交还给 AI」继续。",
+  healthOther: "你的电脑暂时不能执行操作，AI 正在等待。",
+  liveOffline: "你的电脑 {duration}没有回应，可能已离线或休眠 · 上次联系 {time}",
+  liveAsleep: "你的电脑已休眠 · 上次联系 {time}",
+  liveHung: "你的电脑卡住了：这一步已经 {duration}没有完成",
+  // Remote desktop opened from the task page (接管电脑).
+  bannerAi: "AI 正在操作这台电脑；你一操作，AI 就会停手。",
+  bannerResuming: "正在交还给 AI，它会先重新查看屏幕。",
+  yourComputer: "你的电脑",
+} as const;
+export type CloudAgentCopyKey = keyof typeof CLOUD_AGENT_COPY;
+
+type CloudRefusalKey = Extract<CloudAgentCopyKey,
+  "refusedDisabled" | "refusedExpired" | "refusedBusy" | "refusedCleanup" | "refusedScope" | "refusedUnavailable" | "dispatchFailed">;
+type RefusalKey = LocalAgentCopyKey | CloudRefusalKey;
+function refusalText(key: RefusalKey): string {
+  return key in LOCAL_AGENT_COPY ? LOCAL_AGENT_COPY[key as LocalAgentCopyKey] : CLOUD_AGENT_COPY[key as CloudRefusalKey];
+}
+
+/** Wire codes on the local-task paths (`device_agent_v1`, task_service, device_task_target, the cloud driver). */
+const CODE_COPY: Record<string, RefusalKey> = {
   LOCAL_EXEC_DISABLED: "localExecDisabled",
   LOCAL_AGENT_UNAVAILABLE: "localAgentUnavailable",
   DEVICE_SIGNED_OUT_OR_OFFLINE: "deviceOffline",
   DEVICE_OFFLINE: "deviceOffline",
   DEVICE_NOT_FOUND: "deviceNotFound",
   INVALID_EXECUTION_TARGET: "invalidTarget",
+  LOCAL_AGENT_MODE_UNSUPPORTED: "modeUnsupported",
   EXECUTION_TARGET_MISMATCH: "targetMismatch",
   LOCAL_AGENT_STILL_RUNNING: "stillRunning",
   LOCAL_AGENT_ATTACHMENTS_UNSUPPORTED: "attachmentsUnsupported",
@@ -108,9 +214,26 @@ const CODE_COPY: Record<string, LocalAgentCopyKey> = {
   QUOTA_UNFINISHED_TASKS: "quotaUnfinished",
   TASK_NOT_FOUND: "taskNotFound",
   LOCAL_AGENT_DISPATCH_UNCONFIRMED: "dispatchUnconfirmed",
+  // driver:"cloud" (protocol §12.5); `reason` picks the sentence, see CLOUD_REASON.
+  CLOUD_AGENT_UNAVAILABLE: "refusedUnavailable",
+  CLOUD_AGENT_DISPATCH_UNCONFIRMED: "dispatchUnconfirmed",
+  // The handoff provably did not happen (the gateway read back no run).
+  CLOUD_AGENT_DISPATCH_FAILED: "dispatchFailed",
+  LOCAL_AGENT_DISPATCH_FAILED: "dispatchFailed",
+};
+/** `cloud_agent_unavailable.reason` (protocol §12.4/§12.5) → the sentence for that reason. */
+const CLOUD_REASON: Record<string, RefusalKey> = {
+  cloud_agent_disabled: "refusedDisabled",
+  envelope_expired: "refusedExpired",
+  ai_busy: "refusedBusy",
+  cleanup_required: "refusedCleanup",
+  outside_envelope: "refusedScope",
+  local_exec_disabled: "localExecDisabled",
+  link_lost: "deviceOffline",
+  signed_out: "deviceOffline",
 };
 /** Plain-string details the gateway sends on the same paths; replaced, never shown raw. */
-const TEXT_COPY: Record<string, LocalAgentCopyKey> = {
+const TEXT_COPY: Record<string, RefusalKey> = {
   "所选电脑未登录或已离线，任务没有改到其他设备执行。": "deviceOffline",
   "此任务已绑定本地电脑；更换执行位置请新建任务。": "targetMismatch",
   "此模式不能执行本地任务，请使用任务模式。": "modeUnsupported",
@@ -125,23 +248,28 @@ const TEXT_COPY: Record<string, LocalAgentCopyKey> = {
  * itself refuses (no device run row, no message). Only these allow a caller to
  * discard the draft it created for that task.
  */
-const DEFINITE_REFUSALS = new Set<LocalAgentCopyKey>([
+const DEFINITE_REFUSALS = new Set<RefusalKey>([
   "localExecDisabled", "localAgentUnavailable", "deviceOffline", "deviceNotFound", "invalidTarget",
   "modeUnsupported", "attachmentsUnsupported", "payloadTooLarge", "payloadInvalid", "serviceUnavailable",
   "quotaUnfinished",
+  "refusedDisabled", "refusedExpired", "refusedBusy", "refusedCleanup", "refusedScope", "refusedUnavailable", "dispatchFailed",
 ]);
 const RAW_CODE = /^[A-Z][A-Z0-9_]{1,95}$/;
 
-function copyKeyFor(error: string | null | undefined): LocalAgentCopyKey | null {
+/** Own entries only: a server string such as "constructor" must not hit Object.prototype. */
+function own(table: Record<string, RefusalKey>, key: string): RefusalKey | null {
+  return Object.hasOwn(table, key) ? table[key] : null;
+}
+function copyKeyFor(error: string | null | undefined): RefusalKey | null {
   if (typeof error !== "string") return null;
   const text = error.trim();
-  return TEXT_COPY[text] ?? CODE_COPY[text.toUpperCase()] ?? null;
+  return own(TEXT_COPY, text) ?? own(CODE_COPY, text.toUpperCase());
 }
 
 /** The sentence for a known local-task code or gateway string; null for anything else. */
 export function localAgentRefusalText(error: string | null | undefined): string | null {
   const key = copyKeyFor(error);
-  return key ? LOCAL_AGENT_COPY[key] : null;
+  return key ? refusalText(key) : null;
 }
 export function localAgentRefusalCodes(): string[] { return Object.keys(CODE_COPY); }
 
@@ -159,19 +287,20 @@ export type LocalAgentFailure =
  * when this is not a local-task failure, so the caller keeps its own copy.
  */
 export function localAgentFailure(
-  result: { status?: number; error?: string; detail?: { code?: string; task_id?: string } },
+  result: { status?: number; error?: string; detail?: { code?: string; task_id?: string; reason?: string } },
   local: boolean,
 ): LocalAgentFailure | null {
   if (result.status === 401) return null;
   const code = String(result.detail?.code || result.error || "").trim();
-  const key = copyKeyFor(code) ?? copyKeyFor(result.error);
+  let key = copyKeyFor(code) ?? copyKeyFor(result.error);
+  if (key === "refusedUnavailable") key = own(CLOUD_REASON, String(result.detail?.reason || "")) ?? key;
   if (key === "dispatchUnconfirmed") {
     const taskId = result.detail?.task_id;
     return typeof taskId === "string" && ID.test(taskId)
       ? {kind: "unconfirmed", text: LOCAL_AGENT_COPY.dispatchUnconfirmed, taskId}
       : {kind: "receipt_lost", text: LOCAL_AGENT_COPY.receiptLost};
   }
-  if (key) return {kind: "refused", text: LOCAL_AGENT_COPY[key], definite: DEFINITE_REFUSALS.has(key)};
+  if (key) return {kind: "refused", text: refusalText(key), definite: DEFINITE_REFUSALS.has(key)};
   if (!local) return null;
   const status = result.status ?? 0;
   if (status === 0 || status >= 500) return {kind: "receipt_lost", text: LOCAL_AGENT_COPY.receiptLost};
@@ -188,4 +317,144 @@ export function localAgentStateText(run: LocalAgentRun | null): string {
   return ({queued: "等待电脑领取", claimed: "电脑已领取", running: "电脑上的 AI 正在执行", paused: "AI 已暂停",
     awaiting_approval: "等待电脑上的权限确认", succeeded: "电脑任务已完成", failed: "电脑任务失败", denied: "电脑拒绝执行",
     cancelled: "电脑已确认停止", interrupted: "任务已中断，请核对本机执行状态；未自动重跑", expired: "任务已过期"} as Record<string, string>)[run.state];
+}
+
+// --------------------------------------------------------------------------
+// Cloud-assistant runs: what the task page, the remote desktop and the
+// transcript say. Pure; components pass their `tt` and the current time.
+// --------------------------------------------------------------------------
+
+/** `tt` from `useUI()`; kept structural so this module stays free of React. */
+export type CloudAgentTranslate = (zh: string, vars?: Record<string, string | number>) => string;
+
+/** Fresher numbers from the session route (protocol §12.1), when the page has them. */
+export interface CloudAgentLive { lastContactAt?: number | null; currentElapsedMs?: number | null }
+
+const HEALTH_TEXT: Record<string, CloudAgentCopyKey> = {
+  ok: "healthOk", offline: "healthOffline", asleep: "healthAsleep", screen_locked: "healthLocked", hung: "healthHung",
+  signed_out: "healthSignedOut", cleanup_required: "healthCleanup", envelope_expired: "healthEnvelope",
+  needs_local_confirm: "healthConfirm", human_in_control: "healthHuman",
+};
+const PAUSE_KINDS = new Set(["needs_local_confirm", "human_in_control"]);
+
+/**
+ * The text of a `device_status` notice (protocol §13): the bridge doc's fixed
+ * sentence for a known kind (what the gateway stores), else the stored text.
+ */
+export function deviceStatusNoticeText(kind: unknown, stored: unknown): string {
+  const key = typeof kind === "string" && Object.hasOwn(HEALTH_TEXT, kind) ? HEALTH_TEXT[kind] : undefined;
+  if (key) return CLOUD_AGENT_COPY[key];
+  return typeof stored === "string" && stored.trim() ? stored.trim().slice(0, 500) : CLOUD_AGENT_COPY.healthOther;
+}
+/** `ok` reads as recovered, the two pauses as a state, everything else as a problem. */
+export function cloudHealthTone(kind: unknown): "ok" | "pause" | "stuck" {
+  return kind === "ok" ? "ok" : typeof kind === "string" && PAUSE_KINDS.has(kind) ? "pause" : "stuck";
+}
+
+/** The viewer's UI language for dates (the shell sets `<html lang>`). */
+function dateLocale(): string {
+  return htmlLang(normalizeLocale(typeof document === "undefined" ? undefined : document.documentElement?.lang));
+}
+/** A wall-clock time in the viewer's time zone: "08:41" today, with the date otherwise. */
+export function formatClock(ms: number, now = Date.now()): string {
+  const date = new Date(ms);
+  const sameDay = date.toDateString() === new Date(now).toDateString();
+  try {
+    return new Intl.DateTimeFormat(dateLocale(), sameDay
+      ? {hour: "2-digit", minute: "2-digit"}
+      : {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}).format(date);
+  } catch {
+    return date.toISOString().slice(sameDay ? 11 : 5, 16).replace("T", " ");
+  }
+}
+/** "18 秒" / "2 分钟" / "3 小时", through the shared unit translations. */
+export function formatSpan(ms: number, tt: CloudAgentTranslate): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  if (seconds < 60) return tt("{n} 秒", {n: seconds});
+  if (seconds < 3600) return tt("{n} 分钟", {n: Math.floor(seconds / 60)});
+  return tt("{n} 小时", {n: Math.floor(seconds / 3600)});
+}
+
+/**
+ * The live health line (bridge §17.9 client column), e.g. "你的电脑 2 分钟没有
+ * 回应，可能已离线或休眠 · 上次联系 08:41". Null while the computer answers.
+ */
+export function cloudHealthLine(health: LocalAgentHealth | undefined, tt: CloudAgentTranslate, now: number,
+  live: CloudAgentLive = {}): string | null {
+  if (!health || health.kind === "ok") return null;
+  const contact = Math.max(health.lastContactAt ?? 0, live.lastContactAt ?? 0) || null;
+  if (health.kind === "offline") {
+    return contact ? tt(CLOUD_AGENT_COPY.liveOffline, {duration: formatSpan(now - contact, tt), time: formatClock(contact, now)})
+      : tt(CLOUD_AGENT_COPY.healthOffline);
+  }
+  if (health.kind === "asleep") {
+    return contact ? tt(CLOUD_AGENT_COPY.liveAsleep, {time: formatClock(contact, now)}) : tt(CLOUD_AGENT_COPY.healthAsleep);
+  }
+  if (health.kind === "hung") {
+    const elapsed = live.currentElapsedMs ?? (health.since ? now - health.since : null);
+    return elapsed !== null && elapsed > 0 ? tt(CLOUD_AGENT_COPY.liveHung, {duration: formatSpan(elapsed, tt)})
+      : tt(CLOUD_AGENT_COPY.healthHung);
+  }
+  return tt(deviceStatusNoticeText(health.kind, null));
+}
+
+function humanInControl(run: LocalAgentRun): boolean {
+  return run.owner === "human" || run.health?.kind === "human_in_control";
+}
+
+/** The main status line of a cloud-assistant run. Intents are never shown as done. */
+export function cloudRunStatus(run: LocalAgentRun, tt: CloudAgentTranslate, now: number, live?: CloudAgentLive): string {
+  if (terminal.has(run.state) || run.desiredState === "stop" || (run.desiredState === "pause" && run.state !== "paused")) {
+    return tt(localAgentStateText(run));
+  }
+  const health = cloudHealthLine(run.health, tt, now, live);
+  if (health) return health;
+  if (run.state === "paused") return tt(run.desiredState === "run" ? CLOUD_AGENT_COPY.bannerResuming : CLOUD_AGENT_COPY.statusPaused);
+  if (run.state === "awaiting_approval") return tt(CLOUD_AGENT_COPY.healthConfirm);
+  if (run.state === "queued" || run.state === "claimed") return tt(CLOUD_AGENT_COPY.statusConnecting);
+  return tt(CLOUD_AGENT_COPY.statusRunning);
+}
+
+/** "AI 正在操作" while the AI holds the computer; a person in control is already said by the health line. */
+export function cloudOwnerLine(run: LocalAgentRun): string | null {
+  return run.driver === "cloud" && run.owner === "ai" && localAgentRunLive(run) && run.desiredState !== "stop" &&
+    !humanInControl(run) ? CLOUD_AGENT_COPY.ownerAi : null;
+}
+
+export type CloudRunAction = "pause" | "resume" | "handBack" | "takeOver" | "stop";
+/**
+ * Controls for a live cloud-assistant run. Each is one revision-fenced control
+ * request (`resume` for both 交还给 AI and 让 AI 重新观察并继续), never retried.
+ * - A person holds the computer: 交还给 AI.
+ * - Paused by the owner: 让 AI 重新观察并继续 (hidden while a resume is pending).
+ * - The AI is working: 暂停.
+ * - Always: 接管电脑 (pause, then the remote desktop) and 停止.
+ */
+export function cloudRunActions(run: LocalAgentRun | null): CloudRunAction[] {
+  if (!run || run.driver !== "cloud" || terminal.has(run.state) || run.desiredState === "stop") return [];
+  const actions: CloudRunAction[] = [];
+  if (humanInControl(run)) {
+    if (localAgentCanControl(run, "resume")) actions.push("handBack");
+  } else if (run.state === "paused") {
+    if (run.desiredState !== "run") actions.push("resume");
+  } else if (localAgentCanControl(run, "pause")) actions.push("pause");
+  actions.push("takeOver", "stop");
+  return actions;
+}
+
+/**
+ * What the remote desktop opened from a task says about the AI on that
+ * computer; null when no cloud-assistant run is live. `handBack` = show 交还给 AI.
+ */
+export function remoteDesktopAgentBanner(run: LocalAgentRun | null): {text: string; handBack: boolean} | null {
+  if (!run || run.driver !== "cloud" || terminal.has(run.state) || run.desiredState === "stop") return null;
+  if (humanInControl(run)) return {text: CLOUD_AGENT_COPY.healthHuman, handBack: localAgentCanControl(run, "resume")};
+  if (run.state === "paused") {
+    return run.desiredState === "run" ? {text: CLOUD_AGENT_COPY.bannerResuming, handBack: false}
+      : {text: CLOUD_AGENT_COPY.statusPaused, handBack: true};
+  }
+  if (run.state === "awaiting_approval") return {text: CLOUD_AGENT_COPY.healthConfirm, handBack: false};
+  if (run.health && run.health.kind !== "ok") return {text: deviceStatusNoticeText(run.health.kind, null), handBack: false};
+  if (run.state === "queued" || run.state === "claimed") return {text: CLOUD_AGENT_COPY.statusConnecting, handBack: false};
+  return {text: CLOUD_AGENT_COPY.bannerAi, handBack: false};
 }

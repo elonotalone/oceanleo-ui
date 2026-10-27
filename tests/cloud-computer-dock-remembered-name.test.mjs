@@ -109,6 +109,8 @@ const { ComputerDock } = await import(
     "../../contracts/domain-family": domainStub,
     "../../lib/cloud-computer-api": apiStub,
     "../../api/devices": dataModule(`export const listDevices = async () => ({ ok: true, data: [] });`),
+    // C7-U5: a gateway without the cloud-assistant route (today's 405).
+    "../../lib/cloud-agent-api": dataModule(`export async function listCloudAgentAvailability() { return { kind: "absent" }; }`),
     "../../lib/auth/client": dataModule(`export async function getUserId() { return globalThis.__rememberedOwner ?? "account-a"; }`),
     "../account/SettingsModalHost": dataModule(`export function openSettingsModal() {}`),
     "./CreateComputerDialog": dialogStub,

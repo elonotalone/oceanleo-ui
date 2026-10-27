@@ -74,7 +74,7 @@ import {
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
 import { LocalAgentTaskStatus } from "./LocalAgentTaskStatus";
-import { taskLocalAgentState, parseLocalAgentRun, newerLocalAgentRun, localAgentCanControl, localTaskArtifacts, localAgentRefusalText, localAgentFailure, type LocalTaskArtifact, type LocalAgentRun, type LocalAgentControl } from "../lib/local-agent-task";
+import { taskLocalAgentState, parseLocalAgentRun, newerLocalAgentRun, localAgentCanControl, localAgentRunLive, localTaskArtifacts, localAgentRefusalText, localAgentFailure, type LocalTaskArtifact, type LocalAgentRun, type LocalAgentControl } from "../lib/local-agent-task";
 import { CallHumanIcon } from "./bay/shell/bay-icons";
 import { openBay, setBayTaskContext, useBayEnabled } from "./bay/shell/bay-state";
 import {
@@ -880,7 +880,8 @@ function AgentChatInner({
     workspace?.taskId,
   ]);
 
-  useAgentThreadPolling(taskId, status, refresh, pollEpoch);
+  // A computer run that is paused, stuck or stopping keeps refreshing until it is terminal.
+  useAgentThreadPolling(taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive(localRun));
 
   // 流式正文（可选，见 AgentChatProps.agentStreamEndpoint）。
   // 轮询在旁边照常跑，所以这条流唯一的职责是让正文**早一点**出现；

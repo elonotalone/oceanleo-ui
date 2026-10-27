@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cloudComputerApi, type CloudComputerClient, type Computer, writeMountedComputerId, writeMountedComputerName } from "../../lib/cloud-computer-api";
 import { listDevices, type Device } from "../../api/devices";
+import { listCloudAgentAvailability, type CloudAgentAvailabilityResult } from "../../lib/cloud-agent-api";
 import { getUserId } from "../../lib/auth/client";
 import { portalHref } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
-import { EXECUTION_TARGET_EVENT, readExecutionTarget, writeExecutionTarget, type ExecutionTarget } from "../../lib/execution-target";
-import { LOCAL_AGENT_COPY } from "../../lib/local-agent-task";
+import { EXECUTION_TARGET_EVENT, computerRunMode, readExecutionTarget, withRunMode, writeExecutionTarget, type CloudAgentAvailability, type ExecutionTarget } from "../../lib/execution-target";
+import { CLOUD_AGENT_COPY, LOCAL_AGENT_COPY, formatClock } from "../../lib/local-agent-task";
 import { AnchoredPopover } from "../anchored-popover";
 import { computerDisplayState, isConnectedComputer } from "./computer-state";
 
@@ -16,6 +17,31 @@ const DESKTOP_PLATFORMS = ["windows", "macos", "linux"];
 /** Only an explicit `false` from the gateway counts; an older gateway's missing field says nothing. */
 function localExecOff(device: Device | null | undefined): boolean {
   return device?.local_exec_enabled === false;
+}
+
+/**
+ * What the picker knows about the cloud assistant (`GET /v1/devices/cloud-agent`).
+ * `unknown`: not read yet, or the last read failed: keep the current choice.
+ * `absent`: the gateway predates the route: today's labels, never a driver.
+ */
+type CloudAgentState = { status: "unknown" } | { status: "absent" } | { status: "ok"; devices: Map<string, CloudAgentAvailability> };
+const UNKNOWN: CloudAgentState = { status: "unknown" };
+function nextCloudAgentState(current: CloudAgentState, result: CloudAgentAvailabilityResult): CloudAgentState {
+  if (result.kind === "ok") return { status: "ok", devices: result.devices };
+  return result.kind === "absent" ? { status: "absent" } : current;
+}
+/** The mode a computer row stands for; null shows today's row. */
+function runModeOf(state: CloudAgentState, deviceId: string, device: Device | null | undefined, now: number) {
+  return state.status === "ok" ? computerRunMode(device, state.devices.get(deviceId), now) : null;
+}
+/**
+ * One entry per computer: the target carries `driver:"cloud"` exactly while
+ * that computer allows the cloud assistant, so the label the person sees and
+ * the mode that is sent never differ.
+ */
+function deriveTarget(target: ExecutionTarget, state: CloudAgentState, device: Device | null, now: number): ExecutionTarget {
+  if (target.kind !== "device" || state.status === "unknown") return target;
+  return withRunMode(target, state.status === "absent" ? null : computerRunMode(device, state.devices.get(target.id), now));
 }
 
 /** Website/native execution picker. Selecting a machine never navigates away. */
@@ -33,6 +59,9 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   // The selected computer as the gateway last reported it, kept while the
   // picker is closed so its "local execution off" state shows before Send.
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+  const [cloudAgent, setCloudAgent] = useState<CloudAgentState>(UNKNOWN);
+  // Bumped when the selected computer's permission runs out, so the mode is re-derived.
+  const [clock, setClock] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -47,6 +76,8 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       const id = await getUserId().catch(() => null);
       if (!alive || ticket !== revision) return;
       const selected = readExecutionTarget(id);
+      // Another account's availability must never decide this account's mode.
+      if (id !== owner) setCloudAgent(UNKNOWN);
       setOwner(id); setTarget(selected); onTargetChange?.(selected);
       setDevices([]); setComputers(supplied || []); setOpen(false);
     }
@@ -64,14 +95,15 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     if (!open || !owner) return;
     let alive = true;
     setLoading(true); setError(false);
-    void Promise.allSettled([supplied ? Promise.resolve({ items: supplied }) : client.listComputers(), listDevices()])
-      .then(([cloudResult, localResult]) => {
+    void Promise.allSettled([supplied ? Promise.resolve({ items: supplied }) : client.listComputers(), listDevices(), listCloudAgentAvailability()])
+      .then(([cloudResult, localResult, agentResult]) => {
         if (!alive) return;
         const local = localResult.status === "fulfilled" ? localResult.value : null;
         const listed = local?.ok && local.data ? local.data.filter((d) => DESKTOP_PLATFORMS.includes(d.platform)) : [];
         setComputers(cloudResult.status === "fulfilled" ? cloudResult.value.items || [] : []);
         setDevices(listed);
         if (local?.ok) setSelectedDevice((current) => current && (listed.find((d) => d.device_id === current.device_id) ?? null));
+        if (agentResult.status === "fulfilled") setCloudAgent((current) => nextCloudAgentState(current, agentResult.value));
         setError(cloudResult.status === "rejected" || !local?.ok);
       })
       .catch(() => { if (alive) setError(true); })
@@ -79,9 +111,10 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     return () => { alive = false; };
   }, [open, owner, client, supplied]);
 
-  // Read the selected computer's local-execution mirror without opening the
-  // picker, and again when the page regains focus (e.g. after the user turned
-  // the switch on at that computer). Display only: the gateway still decides.
+  // Read the selected computer's local-execution mirror and its cloud-assistant
+  // availability without opening the picker, and again when the page regains
+  // focus (e.g. after the user changed a switch at that computer). Display and
+  // routing only: the gateway and the computer still decide.
   useEffect(() => {
     if (!owner || !selectedDeviceId) { setSelectedDevice(null); return; }
     let alive = true;
@@ -90,20 +123,61 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
         if (!alive || !result.ok || !result.data) return;
         setSelectedDevice(result.data.find((d) => d.device_id === selectedDeviceId) ?? null);
       }).catch(() => { /* the hint is optional; the send path still explains a refusal */ });
+      void listCloudAgentAvailability().then((result) => {
+        if (alive) setCloudAgent((current) => nextCloudAgentState(current, result));
+      }).catch(() => { /* unknown keeps the current choice */ });
     };
     load();
     window.addEventListener("focus", load);
     return () => { alive = false; window.removeEventListener("focus", load); };
   }, [owner, selectedDeviceId]);
 
+  // Keep the remembered target's driver equal to what the computer allows now.
+  useEffect(() => {
+    if (!owner || target.kind !== "device") return;
+    const next = deriveTarget(target, cloudAgent, selectedDevice?.device_id === target.id ? selectedDevice : null, Date.now());
+    if (next === target) return;
+    writeExecutionTarget(owner, next);
+    onTargetChange?.(next);
+    setTarget(next);
+  }, [owner, target, cloudAgent, selectedDevice, clock, onTargetChange]);
+
+  // The permission set at the computer ends at `until`: re-derive right after it.
+  useEffect(() => {
+    if (target.kind !== "device" || cloudAgent.status !== "ok") return;
+    const until = cloudAgent.devices.get(target.id)?.until;
+    const delay = until ? until - Date.now() : 0;
+    if (delay <= 0 || delay > 86_400_000) return;
+    const timer = setTimeout(() => setClock(Date.now()), delay + 500);
+    return () => clearTimeout(timer);
+  }, [target, cloudAgent]);
+
   function choose(next: ExecutionTarget) {
     if (!owner) return;
-    writeExecutionTarget(owner, next);
-    writeMountedComputerId(next.kind === "computer" ? next.id : null);
-    writeMountedComputerName(next.kind === "computer" ? next.name : null);
-    onTargetChange?.(next);
-    setSelectedDevice(next.kind === "device" ? devices.find((d) => d.device_id === next.id) ?? null : null);
-    setTarget(next); setOpen(false);
+    const device = next.kind === "device" ? devices.find((d) => d.device_id === next.id) ?? null : null;
+    const picked = deriveTarget(next, cloudAgent, device, Date.now());
+    writeExecutionTarget(owner, picked);
+    writeMountedComputerId(picked.kind === "computer" ? picked.id : null);
+    writeMountedComputerName(picked.kind === "computer" ? picked.name : null);
+    onTargetChange?.(picked);
+    setSelectedDevice(device);
+    setTarget(picked); setOpen(false);
+  }
+  const now = Date.now();
+  /** "云端助手可用至 18:00" / "需要你在电脑前确认"; null on gateways without the route. */
+  function modeLabel(mode: "cloud" | "device" | null, deviceId: string): string | null {
+    if (mode === "cloud") {
+      const until = cloudAgent.status === "ok" ? cloudAgent.devices.get(deviceId)?.until : null;
+      return until ? tt(CLOUD_AGENT_COPY.cloudUntil, { time: formatClock(until, now) }) : tt(CLOUD_AGENT_COPY.cloudAvailable);
+    }
+    return mode === "device" ? tt(CLOUD_AGENT_COPY.needsYou) : null;
+  }
+  function modeHint(mode: "cloud" | "device" | null, deviceId: string): string | undefined {
+    if (mode === "cloud") return tt(CLOUD_AGENT_COPY.cloudHint);
+    if (mode !== "device") return undefined;
+    const reason = cloudAgent.status === "ok" ? cloudAgent.devices.get(deviceId)?.reason : null;
+    return tt(reason === "ai_busy" ? CLOUD_AGENT_COPY.aiBusy : reason === "cleanup_required" ? CLOUD_AGENT_COPY.healthCleanup
+      : reason === "envelope_expired" ? CLOUD_AGENT_COPY.healthEnvelope : CLOUD_AGENT_COPY.needsYouHint);
   }
   const row = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
   const shown = target.kind === "cloud" ? tt("云端") : target.name;
@@ -111,13 +185,20 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   const selectedLocalOff = target.kind === "device" && selectedDevice?.device_id === target.id && localExecOff(selectedDevice);
   const localOffLabel = tt(LOCAL_AGENT_COPY.localExecOff);
   const localOffHint = tt(LOCAL_AGENT_COPY.localExecOffHint);
+  // Which way the chosen computer will run the task, said before Send (design §7: labelled, never silent).
+  const selectedMode = target.kind === "device" && !selectedLocalOff
+    ? runModeOf(cloudAgent, target.id, selectedDevice?.device_id === target.id ? selectedDevice : null, now) : null;
+  const selectedModeLabel = target.kind === "device" ? modeLabel(selectedMode, target.id) : null;
+  const triggerNote = selectedLocalOff ? localOffLabel : selectedModeLabel;
   return <div className="relative" data-oceanleo-cc-dock data-execution-target={target.kind}>
     <button ref={anchor} type="button" onClick={() => { setGroup(target.kind === "device" ? "device" : "cloud"); setOpen(!open); }}
-      aria-label={selectedLocalOff ? `${tt("任务执行位置")} · ${localOffLabel}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
-      title={selectedLocalOff ? localOffHint : tt("任务执行位置")}
-      className={`flex h-7 ${selectedLocalOff ? "max-w-[280px]" : "max-w-[180px]"} items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100`}>
+      aria-label={triggerNote ? `${tt("任务执行位置")} · ${triggerNote}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
+      title={selectedLocalOff ? localOffHint : (target.kind === "device" && modeHint(selectedMode, target.id)) || tt("任务执行位置")}
+      className={`flex h-7 ${triggerNote ? "max-w-[280px]" : "max-w-[180px]"} items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100`}>
       <TargetGlyph cloud={target.kind !== "device"} /><span className="truncate">{shown}</span>
       {selectedLocalOff && <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" data-local-exec-off>{localOffLabel}</span>}
+      {!selectedLocalOff && selectedModeLabel && <span data-cloud-agent={selectedMode ?? undefined}
+        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium ${selectedMode === "cloud" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>{selectedModeLabel}</span>}
       <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
     </button>
     <AnchoredPopover open={open} anchorRef={anchor} panelRef={panel} onClose={() => setOpen(false)} align="start" role="dialog" ariaLabel={tt("任务执行位置")}
@@ -151,8 +232,11 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
               // Still selectable: the switch lives on that computer and the
               // user may be about to turn it on; Send explains a refusal.
               const off = ready && localExecOff(item);
-              return <button key={item.device_id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-device-client={item.device_id} data-local-exec-off={off ? "true" : undefined} title={off ? localOffHint : undefined} onClick={() => choose({ kind: "device", id: item.device_id, name: item.device_name })}>
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? (off ? "bg-amber-400" : "bg-emerald-500") : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : availability === "signed_out" ? "未登录" : "状态未知")}</span>}{off && <span className="shrink-0 text-[11px] text-amber-700">{localOffLabel}</span>}{selected && <span aria-label={tt("已选择")}>✓</span>}
+              // One entry per computer; its label says which way the task will run.
+              const mode = ready && !off ? runModeOf(cloudAgent, item.device_id, item, now) : null;
+              const modeText = modeLabel(mode, item.device_id);
+              return <button key={item.device_id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-device-client={item.device_id} data-local-exec-off={off ? "true" : undefined} data-cloud-agent={mode ?? undefined} title={off ? localOffHint : modeHint(mode, item.device_id)} onClick={() => choose({ kind: "device", id: item.device_id, name: item.device_name })}>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? (off ? "bg-amber-400" : "bg-emerald-500") : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : availability === "signed_out" ? "未登录" : "状态未知")}</span>}{off && <span className="shrink-0 text-[11px] text-amber-700">{localOffLabel}</span>}{modeText && <span className={`shrink-0 text-[11px] ${mode === "cloud" ? "text-emerald-700" : "text-neutral-500"}`}>{modeText}</span>}{selected && <span aria-label={tt("已选择")}>✓</span>}
               </button>;
             })}
             {group === "device" && selectedLocalOff && <p className="px-3 py-2 text-[11px] leading-relaxed text-amber-700" data-local-exec-hint>{localOffHint}</p>}

@@ -8,14 +8,23 @@ export interface TaskPollResult {
   streaming?: boolean;
 }
 
+/**
+ * Poll one task thread while it runs.
+ *
+ * `keepAlive`: the task's run on a paired computer (`plan.local_run`) is not
+ * finished yet. A paused, stuck or stopping computer run must keep refreshing
+ * (health, owner, the confirmed stop) even when the task row itself is no
+ * longer `running`; polling stops once the run is terminal and the task is.
+ */
 export function useAgentThreadPolling(
   taskId: string | null | undefined,
   status: string,
   refresh: (id: string) => Promise<TaskPollResult>,
   resetNonce = 0,
+  keepAlive = false,
 ) {
   useEffect(() => {
-    if (!taskId || (status && status !== "running")) return;
+    if (!taskId || (status && status !== "running" && !keepAlive)) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let idleStep = -1;
@@ -28,7 +37,7 @@ export function useAgentThreadPolling(
       if (cancelled) return;
       const isHidden = hidden();
       const result = isHidden ? { status: "", changed: false } : await refresh(taskId);
-      if (cancelled || (result.status && result.status !== "running")) return;
+      if (cancelled || (result.status && result.status !== "running" && !keepAlive)) return;
       const cadence = nextPollCadence({ hidden: isHidden, changed: result.changed || result.streaming === true, idleStep, waitedMs });
       idleStep = cadence.idleStep;
       waitedMs = cadence.waitedMs;
@@ -48,5 +57,5 @@ export function useAgentThreadPolling(
       if (timer) clearTimeout(timer);
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [taskId, status, refresh, resetNonce]);
+  }, [taskId, status, refresh, resetNonce, keepAlive]);
 }

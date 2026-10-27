@@ -1,11 +1,28 @@
 "use client";
-import {useEffect, useRef, useState} from "react";
+import {lazy, Suspense, useEffect, useRef, useState} from "react";
 import {useUI} from "../i18n/ui/useUI";
-import {localAgentCanControl, localAgentStateText, type LocalAgentControl, type LocalAgentRun, type LocalTaskArtifact} from "../lib/local-agent-task";
+import {getAgentObservation, getAgentSession, type AgentSessionView} from "../lib/cloud-agent-api";
+import {CLOUD_AGENT_COPY, cloudHealthTone, cloudOwnerLine, cloudRunActions, cloudRunStatus, formatClock, localAgentCanControl,
+  localAgentRunLive, localAgentStateText, remoteDesktopAgentBanner, type CloudRunAction, type LocalAgentControl, type LocalAgentRun,
+  type LocalTaskArtifact} from "../lib/local-agent-task";
 
-export function LocalAgentTaskStatus({run, artifacts, busy, readOnly, onControl}: {
+// Loaded only when the person takes over the computer from this page.
+const RemoteDesktopPanel = lazy(() => import("../pages/RemoteDesktopPanel").then(module => ({default: module.RemoteDesktopPanel})));
+
+/** The session route and the screen image are read at most this often (memory only, never cached). */
+const SCREEN_POLL_MS = 10_000;
+
+type StatusProps = {
   run: LocalAgentRun | null; artifacts: LocalTaskArtifact[]; busy: boolean; readOnly: boolean; onControl: (action: LocalAgentControl) => void;
-}) {
+};
+
+export function LocalAgentTaskStatus(props: StatusProps) {
+  // A cloud-assistant run (device-link protocol §13) gets health, owner, the
+  // latest screen and takeover; every other run keeps exactly today's block.
+  return props.run?.driver === "cloud" ? <CloudAgentRunStatus {...props} run={props.run} /> : <DeviceAgentRunStatus {...props} />;
+}
+
+function DeviceAgentRunStatus({run, artifacts, busy, readOnly, onControl}: StatusProps) {
   const tt = useUI();
   return <section data-local-agent-state={run?.state || "unknown"} className="shrink-0 border-b border-stone-200 bg-stone-50 px-4 py-3 text-sm">
     <p role="status">{tt(localAgentStateText(run))}</p>
@@ -17,9 +34,134 @@ export function LocalAgentTaskStatus({run, artifacts, busy, readOnly, onControl}
           {tt(action === "pause" ? "暂停电脑任务" : action === "resume" ? "让 AI 重新观察并继续" : "停止电脑任务")}
         </button>)}
     </div>}
-    {artifacts.length > 0 && <ul className="mt-2 space-y-1">{artifacts.map(artifact =>
-      <LocalTaskArtifactDownload key={`${artifact.artifactId}:${artifact.revisionId}`} artifact={artifact} />)}</ul>}
+    <LocalTaskArtifactList artifacts={artifacts} />
   </section>;
+}
+
+function CloudAgentRunStatus({run, artifacts, busy, readOnly, onControl}: StatusProps & {run: LocalAgentRun}) {
+  const tt = useUI();
+  const live = localAgentRunLive(run);
+  const {session, screen} = useCloudAgentScreen(run.deviceId, run.sessionId ?? "", live);
+  const now = useClock(live && (run.health?.kind === "offline" || run.health?.kind === "hung" || run.health?.kind === "asleep"));
+  const [remote, setRemote] = useState<{deviceId: string; name: string} | null>(null);
+  const status = cloudRunStatus(run, tt, now, {lastContactAt: session?.lastContactAt, currentElapsedMs: session?.current?.elapsedMs});
+  const owner = cloudOwnerLine(run);
+  const stuck = live && run.health !== undefined && cloudHealthTone(run.health.kind) === "stuck";
+  const actions = readOnly ? [] : cloudRunActions(run);
+  const banner = remoteDesktopAgentBanner(run);
+
+  const takeOver = () => {
+    // People first: ask the AI to stop touching the computer, then open the
+    // remote desktop here. Any input there also fences the AI on the computer.
+    if (localAgentCanControl(run, "pause")) onControl("pause");
+    const deviceId = run.deviceId;
+    setRemote({deviceId, name: tt(CLOUD_AGENT_COPY.yourComputer)});
+    void import("../api/devices").then(({listDevices}) => listDevices()).then(result => {
+      const name = result.ok ? result.data?.find(device => device.device_id === deviceId)?.device_name : undefined;
+      if (name) setRemote(current => current && current.deviceId === deviceId ? {...current, name} : current);
+    }).catch(() => { /* the generic name stays */ });
+  };
+  const act = (action: CloudRunAction) => {
+    if (action === "takeOver") takeOver();
+    else onControl(action === "handBack" ? "resume" : action);
+  };
+  const label = (action: CloudRunAction) => tt(action === "pause" ? "暂停" : action === "resume" ? "让 AI 重新观察并继续"
+    : action === "stop" ? "停止" : action === "handBack" ? CLOUD_AGENT_COPY.handBack : CLOUD_AGENT_COPY.takeOver);
+
+  return <section data-local-agent-state={run.state} data-local-agent-driver="cloud" data-cloud-agent-health={run.health?.kind ?? "ok"}
+    className="shrink-0 border-b border-stone-200 bg-stone-50 px-4 py-3 text-sm">
+    <p role="status" className={stuck ? "text-amber-800" : undefined}>{status}</p>
+    {owner && <p className="mt-1 text-xs text-stone-600" data-cloud-agent-owner="ai">{tt(owner)}</p>}
+    <p className="mt-1 text-xs text-stone-500">{tt(CLOUD_AGENT_COPY.subtitle)}</p>
+    {live && screen && <figure className="mt-2" data-cloud-agent-screen>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={screen.url} alt={tt(CLOUD_AGENT_COPY.screenAlt)} className="max-h-40 max-w-full rounded border border-stone-200 object-contain" />
+      <figcaption className="mt-1 text-xs text-stone-500">{tt(CLOUD_AGENT_COPY.screenCaption, {time: formatClock(screen.at ?? now, now)})}</figcaption>
+    </figure>}
+    {actions.length > 0 && <div className="mt-2 flex flex-wrap gap-2">
+      {actions.map(action => <button key={action} type="button" disabled={busy && action !== "takeOver"} onClick={() => act(action)}
+        data-cloud-agent-action={action} className="rounded border border-stone-300 bg-white px-3 py-1 disabled:opacity-50">{label(action)}</button>)}
+    </div>}
+    <LocalTaskArtifactList artifacts={artifacts} />
+    {remote && <Suspense fallback={null}>
+      <RemoteDesktopPanel key={remote.deviceId} deviceId={remote.deviceId} deviceName={remote.name} onClose={() => setRemote(null)}
+        agent={banner && !readOnly ? {
+          text: banner.text,
+          handBack: banner.handBack && localAgentCanControl(run, "resume"),
+          busy,
+          onHandBack: () => onControl("resume"),
+        } : undefined} />
+    </Suspense>}
+  </section>;
+}
+
+/**
+ * The live session (§12.1) and the newest screen image (§12.2) of a cloud
+ * run. Both are read at most every 10 s while the page is visible; the image
+ * is fetched only when the hub has a newer one, kept as an in-memory object
+ * URL, and revoked as soon as it is replaced or the block goes away.
+ */
+function useCloudAgentScreen(deviceId: string, sessionId: string, live: boolean) {
+  const [session, setSession] = useState<AgentSessionView | null>(null);
+  const [screen, setScreen] = useState<{url: string; at: number | null} | null>(null);
+  const urlRef = useRef<string | null>(null);
+  const show = (next: {url: string; at: number | null} | null) => {
+    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    urlRef.current = next?.url ?? null;
+    setScreen(next);
+  };
+  useEffect(() => () => { if (urlRef.current) URL.revokeObjectURL(urlRef.current); urlRef.current = null; }, []);
+  useEffect(() => {
+    setSession(null);
+    if (!sessionId || !live) { show(null); return; }
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let shownAt: number | null | undefined;
+    const abort = new AbortController();
+    const schedule = () => { if (alive) timer = setTimeout(() => void tick(), SCREEN_POLL_MS); };
+    const tick = async () => {
+      if (!alive) return;
+      if (typeof document !== "undefined" && document.hidden) { schedule(); return; }
+      const result = await getAgentSession(deviceId, sessionId, abort.signal);
+      if (!alive) return;
+      if (result.kind === "gone") { setSession(null); shownAt = undefined; show(null); }
+      if (result.kind === "ok") {
+        setSession(result.session);
+        const observation = result.session.observation;
+        // Without an `at` there is no way to tell a new frame: read it again (still ≤ once per 10 s).
+        if (!observation) { shownAt = undefined; show(null); }
+        else if (shownAt === undefined || observation.at === null || observation.at !== shownAt) {
+          const picture = await getAgentObservation(deviceId, sessionId, abort.signal);
+          if (!alive) return;
+          if (picture.kind === "image") { shownAt = observation.at; show({url: URL.createObjectURL(picture.image), at: observation.at}); }
+          else if (picture.kind !== "error") { shownAt = undefined; show(null); }
+        }
+      }
+      schedule();
+    };
+    void tick();
+    return () => { alive = false; abort.abort(); if (timer) clearTimeout(timer); };
+  // `show` only touches a ref and a setter.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceId, sessionId, live]);
+  return {session, screen};
+}
+
+/** "Now" for live durations ("你的电脑 2 分钟没有回应"), refreshed every 10 s while it matters. */
+function useClock(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), SCREEN_POLL_MS);
+    return () => clearInterval(timer);
+  }, [active]);
+  return active ? now : Date.now();
+}
+
+function LocalTaskArtifactList({artifacts}: {artifacts: LocalTaskArtifact[]}) {
+  return artifacts.length > 0 ? <ul className="mt-2 space-y-1">{artifacts.map(artifact =>
+    <LocalTaskArtifactDownload key={`${artifact.artifactId}:${artifact.revisionId}`} artifact={artifact} />)}</ul> : null;
 }
 
 function LocalTaskArtifactDownload({artifact}: {artifact: LocalTaskArtifact}) {

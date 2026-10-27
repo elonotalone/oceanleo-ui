@@ -19,6 +19,7 @@ import type { OpsPatch } from "./fn-agent";
 import { notifyHistoryChanged } from "./history-events";
 import { computerIdRequestField } from "./cloud-computer-api";
 import { executionTargetRequestFields, readExecutionTarget, type ExecutionTarget } from "./execution-target";
+import { cloudDriverPreflight } from "./cloud-agent-api";
 import { createBackboneField, followUpBackboneField } from "./cursor-model-choice";
 import { payerRequestFields } from "./payer";
 
@@ -30,8 +31,10 @@ export type AgentApiErrorDetail = {
   retryable?: boolean;
   diagnostics?: Record<string, AgentApiDiagnosticValue>;
   retry_after_seconds?: number;
-  /** Only for LOCAL_AGENT_DISPATCH_UNCONFIRMED: the already-created task to reconcile, never resend. */
+  /** Only for LOCAL_/CLOUD_AGENT_DISPATCH_UNCONFIRMED: the already-created task to reconcile, never resend. */
   task_id?: string;
+  /** CLOUD_AGENT_UNAVAILABLE: why the computer cannot take the cloud assistant now (device-link protocol §12.5). */
+  reason?: string;
 };
 
 /** OceanLeo 网关统一返回形状。导出供同一 client 层的其它资源 API 复用。 */
@@ -131,14 +134,22 @@ function safeAgentApiErrorDetail(
   // A lost enqueue response may follow a committed local handoff. Keep its
   // identity so the UI reconciles the same task instead of inviting a resend.
   const unconfirmedTask =
-    code === "LOCAL_AGENT_DISPATCH_UNCONFIRMED" &&
+    (code === "LOCAL_AGENT_DISPATCH_UNCONFIRMED" || code === "CLOUD_AGENT_DISPATCH_UNCONFIRMED") &&
     typeof source.task_id === "string" &&
     /^[A-Za-z0-9_-]{1,100}$/.test(source.task_id)
       ? source.task_id
       : "";
+  // A closed code only (§12.4 reasons); it picks the sentence, never shown raw.
+  const reason =
+    code === "CLOUD_AGENT_UNAVAILABLE" &&
+    typeof source.reason === "string" &&
+    /^[a-z][a-z0-9_]{0,63}$/.test(source.reason)
+      ? source.reason
+      : "";
   return {
     code,
     ...(unconfirmedTask ? { task_id: unconfirmedTask } : {}),
+    ...(reason ? { reason } : {}),
     ...(/^[a-z][a-z0-9_]{0,63}$/.test(operation)
       ? { operation }
       : {}),
@@ -368,6 +379,13 @@ export interface AgentAttachment {
   media_type?: string;
 }
 
+type CreatedTask = {
+  task_id: string;
+  status: string;
+  mode: string;
+  session_id?: string | null;
+};
+
 export async function createTask(body: {
   prompt: string;
   /** Model-only workspace/material context. Never persisted as visible user text. */
@@ -404,15 +422,23 @@ export async function createTask(body: {
   /** 仅 `"leo"` 表示这条任务由 leo 创建。不传则请求体不含该字段。 */
   created_by?: string;
 }) {
-  const selectedTarget = body.executionTarget ?? (body.computerId
+  const selectedTarget: ExecutionTarget = body.executionTarget ?? (body.computerId
     ? { kind: "computer" as const, id: body.computerId, name: body.computerId }
     : readExecutionTarget(await getUserId().catch(() => null)));
-  return authed<{
-    task_id: string;
-    status: string;
-    mode: string;
-    session_id?: string | null;
-  }>(
+  // driver:"cloud" is sent only after the gateway confirms this computer still
+  // allows the cloud assistant (device-link protocol §12.4/§12.5). Otherwise
+  // nothing is sent, and the task never quietly becomes an on-device run.
+  const cloudRefusal = await cloudDriverPreflight(selectedTarget);
+  if (cloudRefusal) {
+    const refused: AgentApiResult<CreatedTask> = {
+      ok: false,
+      status: 409,
+      error: cloudRefusal.code,
+      detail: { code: cloudRefusal.code, ...(cloudRefusal.reason ? { reason: cloudRefusal.reason } : {}) },
+    };
+    return { ...refused, executionTarget: selectedTarget };
+  }
+  return authed<CreatedTask>(
     "/v1/agent/tasks",
     {
       method: "POST",

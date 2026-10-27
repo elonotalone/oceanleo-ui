@@ -77,6 +77,7 @@ import {
   type ArtifactMeta,
 } from "../lib/agent";
 import { localAgentFailure, localAgentRefusalText } from "../lib/local-agent-task";
+import type { ExecutionTarget } from "../lib/execution-target";
 import {
   buildEditorCommandContext,
   createEditorCommandIntake,
@@ -1459,7 +1460,12 @@ export function FunctionAgentChat({
     }
   }, [messages, messagesTaskId, taskId]);
 
-  async function send(override?: string, orgId?: string) {
+  /**
+   * `executionTarget`: what the composer's picker showed at the moment Send was
+   * pressed (cloud, a cloud computer, or a paired computer with its mode).
+   * Absent for operator-console sends, which keep the remembered choice.
+   */
+  async function send(override?: string, orgId?: string, executionTarget?: ExecutionTarget) {
     // override：由操作台简报桥（submitToAgent）传入的完整 prompt，不经输入框。
     const prompt = (override ?? input).trim();
     // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
@@ -1575,6 +1581,7 @@ export function FunctionAgentChat({
         sessionId: linkedSessionId || undefined,
         attachments: uploaded,
         orgId,
+        executionTarget,
         // 宗旨 v10：agent 独立于操作台——不带 opsState（不读操作台 state）。
       });
       setBusy(false);
@@ -1921,7 +1928,7 @@ export function FunctionAgentChat({
           <LeoComposer
             value={input}
             onChange={setInput}
-            onSubmit={(_, payer) => void send(undefined, payer?.org_id)}
+            onSubmit={(_, payer, context) => void send(undefined, payer?.org_id, context?.executionTarget)}
             loading={running}
             onStop={() => void stop()}
             disabled={sessionReadOnly}

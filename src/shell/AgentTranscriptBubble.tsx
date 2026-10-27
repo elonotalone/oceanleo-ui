@@ -12,6 +12,7 @@ import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
 import { ApprovalCard, parseApprovalMessage } from "./ApprovalCard";
+import { cloudHealthTone, deviceStatusNoticeText } from "../lib/local-agent-task";
 
 export function agentArtifactLabels(
   tt: UITranslate,
@@ -307,6 +308,11 @@ function TranscriptBody({
       </div>
     );
   }
+  if (message.kind === "device_status") {
+    return (
+      <DeviceStatusNotice message={message} highlightQuery={highlightQuery} />
+    );
+  }
   if (
     message.meta?.artifact?.type === "preview" &&
     message.meta.artifact.url
@@ -426,6 +432,53 @@ function GateBubble({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * What the user's computer did while the cloud assistant was using it
+ * (device-link protocol §13): "你的电脑没有回应…", "电脑已恢复…". The gateway
+ * stores the fixed text of the health kind (bridge doc §17.9, no clock times),
+ * so the notice is rendered from the kind in the viewer's language; an unknown
+ * kind falls back to the stored text.
+ */
+function DeviceStatusNotice({
+  message,
+  highlightQuery,
+}: {
+  message: AgentMessage;
+  highlightQuery?: string;
+}) {
+  const tt = useUI();
+  const health = message.meta?.health;
+  const kind =
+    health && typeof health === "object" && !Array.isArray(health)
+      ? (health as { kind?: unknown }).kind
+      : undefined;
+  const tone = cloudHealthTone(kind);
+  const text = tt(deviceStatusNoticeText(kind, message.meta?.text ?? message.content));
+  return (
+    <div
+      role="status"
+      data-device-status={typeof kind === "string" ? kind : "unknown"}
+      className={`flex items-start gap-2 rounded-lg px-3 py-2 text-[13px] leading-relaxed ${
+        tone === "ok"
+          ? "bg-emerald-50 text-emerald-800"
+          : tone === "pause"
+            ? "bg-stone-100 text-stone-700"
+            : "bg-amber-50 text-amber-800"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+          tone === "ok" ? "bg-emerald-500" : tone === "pause" ? "bg-stone-400" : "bg-amber-500"
+        }`}
+      />
+      <span className="min-w-0">
+        <HighlightedText text={text} query={highlightQuery} />
+      </span>
     </div>
   );
 }

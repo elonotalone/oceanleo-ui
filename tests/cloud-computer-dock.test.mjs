@@ -100,6 +100,13 @@ const { ComputerDock } = await import(
       export function listDevices() { return Promise.resolve({ ok: true, data: globalThis.__ccDevices || [] }); }
     `),
     "../../lib/auth/client": dataModule(`export async function getUserId() { return globalThis.__ccOwner ?? null; }`),
+    // C7-U5: GET /v1/devices/cloud-agent; default = a gateway without the route (today's 405).
+    "../../lib/cloud-agent-api": dataModule(`
+      export async function listCloudAgentAvailability() {
+        globalThis.__ccCloudAgentReads = (globalThis.__ccCloudAgentReads || 0) + 1;
+        return globalThis.__ccCloudAgent ?? { kind: "absent" };
+      }
+    `),
     "../account/SettingsModalHost": dataModule(`export function openSettingsModal(tab) { globalThis.__openSettingsTab = tab; }`),
     "./CreateComputerDialog": dialogStubUrl,
     "./ConnectServerDialog": dialogStubUrl,
@@ -115,7 +122,7 @@ const { pickMountedId, newShellEnabled } = await import(
 );
 const { readExecutionTarget, writeExecutionTarget } = await import("../src/lib/execution-target.ts");
 
-test.beforeEach(() => { window.localStorage.clear(); globalThis.__ccOwner = "account-a"; globalThis.__ccDevices = []; globalThis.__ccRouter = { push() {}, replace() {}, refresh() {}, back() {} }; });
+test.beforeEach(() => { window.localStorage.clear(); globalThis.__ccOwner = "account-a"; globalThis.__ccDevices = []; globalThis.__ccCloudAgent = undefined; globalThis.__ccCloudAgentReads = 0; globalThis.__ccRouter = { push() {}, replace() {}, refresh() {}, back() {} }; });
 
 function pc(overrides = {}) {
   return {
@@ -438,5 +445,130 @@ test("C5-T3a: the hint clears when the page regains focus after the switch was t
     await act(async () => window.dispatchEvent(new window.Event("focus")));
     await flush();
     assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "Mac");
+  } finally { view.cleanup(); }
+});
+
+// ---------------------------------------------------------------------------
+// C7-U5: one entry per computer; its label says how the task will run, and the
+// remembered target carries driver:"cloud" exactly while the computer allows
+// the cloud assistant (device-link protocol §12.4/§12.5).
+// ---------------------------------------------------------------------------
+const MAC = { device_id: "mac", platform: "macos", device_name: "Mac", online: true, availability: "online", local_exec_enabled: true };
+const availableUntil = (until, extra = {}) => ({ kind: "ok", devices: new Map([["mac", { deviceId: "mac", available: true, reason: null, until, ...extra }]]) });
+
+test("C7-U5: a computer that allows the cloud assistant says so and is picked with driver:'cloud'", async () => {
+  globalThis.__ccDevices = [MAC, { ...MAC, device_id: "pc", device_name: "PC" }];
+  globalThis.__ccCloudAgent = { kind: "ok", devices: new Map([
+    ["mac", { deviceId: "mac", available: true, reason: null, until: Date.now() + 3_600_000 }],
+    ["pc", { deviceId: "pc", available: false, reason: "cloud_agent_disabled", until: null }],
+  ]) };
+  const changes = [];
+  const view = await render([], undefined, { onTargetChange: (target) => changes.push(target) });
+  try {
+    await openDock(view);
+    await view.click([...view.host.querySelectorAll("button")].find((button) => button.textContent.startsWith("本地电脑")));
+    const mac = view.host.querySelector('[data-oceanleo-device-client="mac"]');
+    assert.equal(mac.getAttribute("data-cloud-agent"), "cloud");
+    assert.match(mac.textContent, /云端助手可用至/);
+    assert.match(mac.getAttribute("title"), /云端助手使用这台电脑完成/);
+    const pc = view.host.querySelector('[data-oceanleo-device-client="pc"]');
+    assert.equal(pc.getAttribute("data-cloud-agent"), "device");
+    assert.match(pc.textContent, /需要你在电脑前确认/);
+    assert.match(pc.getAttribute("title"), /允许云端助手使用这台电脑/);
+    await view.click(mac);
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+    assert.deepEqual(changes.at(-1), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+    const pill = view.host.querySelector("[data-oceanleo-cc-dock-trigger] [data-cloud-agent]");
+    assert.equal(pill.getAttribute("data-cloud-agent"), "cloud");
+    await openDock(view);
+    await view.click(view.host.querySelector('[data-oceanleo-device-client="pc"]'));
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "pc", name: "PC" }, "on-device loop: no driver");
+    assert.match(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, /^PC需要你在电脑前确认$/);
+  } finally { view.cleanup(); }
+});
+
+test("C7-U5: a gateway without the route (405) shows today's picker and a remembered driver is dropped", async () => {
+  globalThis.__ccDevices = [MAC];
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+  const view = await render([]);
+  await flush(12);
+  try {
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "Mac", "today's trigger");
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac" }, "never send a driver to it");
+    await openDock(view);
+    await view.click([...view.host.querySelectorAll("button")].find((button) => button.textContent.startsWith("本地电脑")));
+    assert.equal(view.host.querySelector('[data-oceanleo-device-client="mac"]').getAttribute("data-cloud-agent"), null);
+  } finally { view.cleanup(); }
+});
+
+test("C7-U5: no answer from the route keeps the remembered mode; the send re-checks it anyway", async () => {
+  globalThis.__ccDevices = [MAC];
+  globalThis.__ccCloudAgent = { kind: "error" };
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+  const view = await render([]);
+  await flush(12);
+  try {
+    assert.ok(globalThis.__ccCloudAgentReads >= 1);
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+  } finally { view.cleanup(); }
+});
+
+test("C7-U5: when the permission set at the computer runs out, the label and the mode change before the next Send", async () => {
+  globalThis.__ccDevices = [MAC];
+  globalThis.__ccCloudAgent = availableUntil(Date.now() + 400);
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac" });
+  const view = await render([]);
+  await flush(12);
+  try {
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" }, "picked up on load");
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger] [data-cloud-agent]").getAttribute("data-cloud-agent"), "cloud");
+    // The re-derive timer fires ~0.9 s in; poll (bounded) so a loaded machine cannot flake it.
+    for (let waited = 0; readExecutionTarget("account-a").driver && waited < 5000; waited += 50) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    }
+    await flush();
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac" });
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger] [data-cloud-agent]").getAttribute("data-cloud-agent"), "device");
+  } finally { view.cleanup(); }
+});
+
+test("C7-U5: local execution off outranks the cloud label (the cloud assistant needs it too)", async () => {
+  globalThis.__ccDevices = [{ ...MAC, local_exec_enabled: false }];
+  globalThis.__ccCloudAgent = availableUntil(Date.now() + 3_600_000);
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac" });
+  const view = await render([]);
+  await flush(12);
+  try {
+    assert.match(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, /^Mac本机执行未开启$/);
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger] [data-cloud-agent]"), null);
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac" });
+  } finally { view.cleanup(); }
+});
+
+test("C7-U5: after an account switch, the previous account's availability never decides the new account's mode", async () => {
+  globalThis.__ccDevices = [MAC];
+  globalThis.__ccCloudAgent = availableUntil(Date.now() + 3_600_000);
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac" });
+  writeExecutionTarget("account-b", { kind: "device", id: "mac-b", name: "B Mac", driver: "cloud" });
+  const view = await render([]);
+  await flush(12);
+  try {
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+    // Account B's computer is not in A's rows; its answer has not arrived yet.
+    let answer;
+    globalThis.__ccCloudAgent = undefined;
+    const pending = new Promise((resolve) => { answer = resolve; });
+    globalThis.__ccDevices = [{ ...MAC, device_id: "mac-b", device_name: "B Mac" }];
+    const reads = globalThis.__ccCloudAgentReads;
+    globalThis.__ccCloudAgent = pending;
+    globalThis.__ccOwner = "account-b";
+    await act(async () => window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", { detail: { userId: "account-b" } })));
+    await flush(12);
+    assert.ok(globalThis.__ccCloudAgentReads > reads, "B's availability is read");
+    assert.deepEqual(readExecutionTarget("account-b"), { kind: "device", id: "mac-b", name: "B Mac", driver: "cloud" }, "kept until B's own answer");
+    await act(async () => { answer({ kind: "ok", devices: new Map([["mac-b", { deviceId: "mac-b", available: false, reason: "envelope_expired", until: 1 }]]) }); });
+    await flush(12);
+    assert.deepEqual(readExecutionTarget("account-b"), { kind: "device", id: "mac-b", name: "B Mac" });
+    assert.match(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").getAttribute("title"), /允许云端助手的时间已到/);
   } finally { view.cleanup(); }
 });

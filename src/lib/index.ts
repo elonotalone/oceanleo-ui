@@ -4,6 +4,10 @@ export * from "./money";
 export * from "./database";
 export * from "./agent";
 export * from "./execution-target";
+// C7-U5：交给电脑的任务被拒 / 回执未确认时的那句人话（门户 createAgentTask 也走这一张表，
+// 由调用方 tt() 翻译），以及 driver:"cloud" 发送前「这台电脑仍允许云端助手」的复核。
+export { LOCAL_AGENT_COPY, CLOUD_AGENT_COPY, localAgentFailure, localAgentRefusalText, type LocalAgentFailure } from "./local-agent-task";
+export { cloudDriverPreflight } from "./cloud-agent-api";
 export * from "./agent-progress";
 // 完整 app 工作会话（版本化 snapshot + 乐观并发）。
 export * from "./app-session";

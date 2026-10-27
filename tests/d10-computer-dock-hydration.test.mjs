@@ -29,6 +29,8 @@ const { ComputerDock } = await import(await compileModule("src/shell/cloud-compu
   "../../contracts/domain-family": dataModule('export function currentDomainFamily() { return "com"; } export function portalHref(path) { return path; }'),
   "../../lib/auth/client": dataModule('export async function getUserId() { return "account-a"; }'),
   "../../api/devices": dataModule("export const listDevices = async () => ({ ok: true, data: [] });"),
+  // C7-U5: a gateway without the cloud-assistant route (today's 405).
+  "../../lib/cloud-agent-api": dataModule("export async function listCloudAgentAvailability() { return { kind: \"absent\" }; }"),
   "../account/SettingsModalHost": dataModule("export function openSettingsModal() {}"),
   "./server-page/href": dataModule('export function devicesCloudHref() { return "/settings/devices"; } export function serverPageHref(id) { return "/server/" + id; }'),
   "next/navigation": dataModule("export function useRouter() { return { push() {} }; }"),
