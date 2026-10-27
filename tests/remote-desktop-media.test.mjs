@@ -108,3 +108,18 @@ test("credential expiry is enforced locally even when renewal never returns", as
   assert.equal(h.video.srcObject, null);
   await viewer.close();
 });
+
+test("renewal refusal preserves account and revocation status, tears down, and never retries", async () => {
+  const h = harness();
+  let renewals = 0;
+  h.handlers.renew = async () => { renewals++; throw Object.assign(new Error("controller_revoked"), { status: 403 }); };
+  const viewer = await h.start();
+  h.events.get("authInfoWillExpire")();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.deepEqual(h.states.at(-1), ["error", "controller_revoked", 403]);
+  assert.equal(h.video.srcObject, null);
+  assert.equal(renewals, 1);
+  assert.equal(h.calls.some(([name]) => name === "renew"), false);
+  assert.equal(h.calls.filter(([name]) => name === "destroy").length, 1);
+  await viewer.close();
+});

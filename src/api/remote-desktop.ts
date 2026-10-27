@@ -35,7 +35,11 @@ export interface RemoteMediaStatus {
   error?: string;
   geometry?: { display_id: string; width: number; height: number };
   displays?: Array<{ display_id: string; label: string; width: number; height: number }>;
+  metrics?: RemoteMediaMetrics;
 }
+const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_frames", "capture_idle", "capture_errors", "capture_us", "capture_max_us", "capture_lock_wait_us", "capture_lock_max_us", "last_capture_age_ms", "pushes", "push_errors", "repeated_pushes", "empty_ticks", "push_us", "push_max_us", "push_lock_wait_us", "push_lock_max_us", "sdk_samples", "sdk_age_ms", "sdk_capture_fps", "sdk_encode_fps", "sdk_sent_fps", "sdk_sent_kbps", "sdk_rtt_ms", "sdk_send_bytes", "first_capture_ms", "first_push_ms", "joined_ms", "first_encoded_stats_ms"] as const;
+/** Optional fixed numeric diagnostics only; never publisher tokens or arbitrary text. */
+export type RemoteMediaMetrics = { version: 1 } & Partial<Record<typeof MEDIA_METRICS[number], number>>;
 export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
 
 export type RemoteDesktopSessionState = "pending_consent" | "connecting" | "active" | "closed";
@@ -364,12 +368,18 @@ export function parseRemoteMedia(data: unknown): RemoteMediaCredentials | null {
 
 export function parseRemoteMediaStatus(data: unknown): RemoteMediaStatus | null {
   if (!isRecord(data) || !["starting", "publishing", "failed"].includes(String(data.state))) return null;
-  const dimensions = (value: unknown): value is { display_id: string; width: number; height: number } => isRecord(value) && typeof value.display_id === "string" && typeof value.width === "number" && value.width > 0 && typeof value.height === "number" && value.height > 0;
+  const dimensions = (value: unknown): value is { display_id: string; width: number; height: number } => isRecord(value) && typeof value.display_id === "string" && typeof value.width === "number" && Number.isFinite(value.width) && value.width > 0 && typeof value.height === "number" && Number.isFinite(value.height) && value.height > 0;
+  const rawMetrics = data.metrics;
+  const metrics: RemoteMediaMetrics | null = isRecord(rawMetrics) && rawMetrics.version === 1 ? {
+    version: 1,
+    ...Object.fromEntries(MEDIA_METRICS.filter((key) => typeof rawMetrics[key] === "number" && Number.isSafeInteger(rawMetrics[key]) && Number(rawMetrics[key]) >= 0).map((key) => [key, rawMetrics[key]])),
+  } : null;
   return {
     state: data.state as RemoteMediaStatus["state"],
     ...(typeof data.error === "string" ? { error: data.error } : {}),
     ...(dimensions(data.geometry) ? { geometry: data.geometry } : {}),
     ...(Array.isArray(data.displays) ? { displays: data.displays.filter(dimensions).map((display) => ({ ...display, label: typeof (display as Record<string, unknown>).label === "string" ? (display as Record<string, unknown>).label as string : display.display_id })) } : {}),
+    ...(metrics ? { metrics } : {}),
   };
 }
 
@@ -428,10 +438,14 @@ export const remoteDesktopClient: RemoteDesktopClient = {
   openStream,
   async negotiateMedia(deviceId, sessionId, displayId, options) {
     const result = await authed<unknown>(`${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/media`, { method: "POST", body: JSON.stringify({ transport: "artc-v1", ...(displayId ? { display_id: displayId } : {}) }) }, options?.signal);
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
+    if (!result.ok) {
+      // Missing endpoint is a gateway version mismatch, not missing device consent.
+      const missingRoute = result.status === 405 || result.status === 501 || (result.status === 404 && ["Not Found", "HTTP 404"].includes(result.error ?? ""));
+      return { ok: false, error: missingRoute ? "media_gateway_unsupported" : result.error, status: result.status };
+    }
     const media = isRecord(result.data) ? parseRemoteMedia(result.data.media) : null;
-    if (!media) return { ok: false, error: "response_malformed" };
-    return { ok: true, data: { media, media_status: parseRemoteMediaStatus((result.data as Record<string, unknown>).media_status) } };
+    if (!media) return { ok: false, error: "response_malformed", status: result.status };
+    return { ok: true, data: { media, media_status: parseRemoteMediaStatus((result.data as Record<string, unknown>).media_status) }, status: result.status };
   },
   async getStatus(deviceId, options) {
     const registered = await registerController(options?.signal);

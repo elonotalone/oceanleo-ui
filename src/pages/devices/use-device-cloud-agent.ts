@@ -26,6 +26,8 @@ import type { RemoteDesktopAgentBanner } from "../RemoteDesktopPanel";
 export const LIVE_POLL_MS = 2_000;
 /** The task's projection is read when the live session changes, once more on the next poll, and otherwise at most this often. */
 export const RUN_REFRESH_MS = 10_000;
+/** Failed reads never poll forever or leave stale hand-back controls enabled. */
+const MAX_AVAILABILITY_FAILURES = 3;
 /** The task page's own sentence for a control without a confirmed answer (remote-desktop-copy). */
 const CONTROL_UNCONFIRMED = "没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。";
 
@@ -96,14 +98,16 @@ export function useDeviceCloudAgent(deviceId: string | null, settings: Pick<Devi
   const [grant, setGrant] = useState<boolean | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [unconfirmed, setUnconfirmed] = useState(false);
+  const [availabilityNotice, setAvailabilityNotice] = useState<string | null>(null);
   const inFlight = useRef(false);
   const poke = useRef<() => void>(() => {});
 
   useEffect(() => {
-    setRow(null); setRun(null); setUnconfirmed(false);
+    setRow(null); setRun(null); setUnconfirmed(false); setAvailabilityNotice(null);
     if (!deviceId) return;
     let alive = true;
     let running = false;
+    let stopped = false, failures = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let shown = "";
     let lastLive = "";
@@ -111,7 +115,7 @@ export function useDeviceCloudAgent(deviceId: string | null, settings: Pick<Devi
     let runReadAt = 0;
     const abort = new AbortController();
     const schedule = (ms = LIVE_POLL_MS) => {
-      if (!alive) return;
+      if (!alive || stopped) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => void tick(), ms);
     };
@@ -120,15 +124,25 @@ export function useDeviceCloudAgent(deviceId: string | null, settings: Pick<Devi
       if (key !== shown) { shown = key; setRow(next); }
     };
     const tick = async () => {
-      if (!alive || running) return;
+      if (!alive || running || stopped) return;
       if (typeof document !== "undefined" && document.hidden) { schedule(); return; }
       running = true;
       try {
         const result = await client.availability(abort.signal);
         if (!alive) return;
-        // `absent`: an older gateway or nobody signed in: today's panel. `error`: keep what we knew.
-        if (result.kind === "absent") { show(null); setRun(null); lastLive = ""; }
+        if (result.kind !== "ok") {
+          show(null); setRun(null); lastLive = ""; followUp = false;
+          stopped = result.kind === "absent" || ++failures >= MAX_AVAILABILITY_FAILURES;
+          setAvailabilityNotice(result.kind === "absent" && result.reason === "unsupported"
+            ? "当前服务版本不支持 AI 电脑状态，远程桌面仍可单独连接。"
+            : result.kind === "absent" && ["signed_out", "unauthorized"].includes(result.reason ?? "")
+              ? "登录已失效，无法读取 AI 电脑状态。请重新登录。"
+              : result.kind === "absent" && result.reason === "forbidden"
+                ? "当前账号无法读取 AI 电脑状态；远程桌面仍由电脑单独确认授权。"
+                : result.kind === "error" ? "暂时无法核对 AI 电脑状态，已暂停交还操作。请关闭桌面后重新进入。" : null);
+        }
         if (result.kind === "ok") {
+          failures = 0; setAvailabilityNotice(null);
           const next = result.devices.get(deviceId) ?? null;
           show(next);
           const live = next?.liveSession ?? null;
@@ -148,11 +162,15 @@ export function useDeviceCloudAgent(deviceId: string | null, settings: Pick<Devi
           followUp = changed;
         }
       } catch {
-        // No answer: the next poll asks again.
+        if (alive) {
+          show(null); setRun(null); lastLive = ""; followUp = false;
+          stopped = ++failures >= MAX_AVAILABILITY_FAILURES;
+          setAvailabilityNotice("暂时无法核对 AI 电脑状态，已暂停交还操作。请关闭桌面后重新进入。");
+        }
       } finally {
         running = false;
       }
-      schedule();
+      schedule(LIVE_POLL_MS * 2 ** failures);
     };
     poke.current = () => { followUp = true; schedule(0); };
     const visible = () => { if (!document.hidden) schedule(0); };
@@ -205,7 +223,7 @@ export function useDeviceCloudAgent(deviceId: string | null, settings: Pick<Devi
       handBack: banner.handBack && taskId !== null && localAgentCanControl(matching, "resume"),
       busy,
       onHandBack: () => { void handBack(); },
-    } : undefined,
+    } : availabilityNotice ? { text: availabilityNotice, handBack: false, busy: false, onHandBack: () => {} } : undefined,
   };
 }
 
@@ -228,7 +246,7 @@ export function useRemoteConsent(deviceId: string | null, enabled: boolean,
       if (result.kind === "ok") {
         const next = result.devices.get(deviceId) ?? null;
         setRow((current) => signature(current) === signature(next) ? current : next);
-      } else if (result.kind === "absent") setRow(null);
+      } else setRow(null);
     };
     void read();
     const focus = () => { void read(); };

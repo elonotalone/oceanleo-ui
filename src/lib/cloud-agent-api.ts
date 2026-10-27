@@ -45,22 +45,24 @@ async function get(path: string, accept: string, signal?: AbortSignal): Promise<
 /**
  * `GET /v1/devices/cloud-agent` (§12.4).
  * - `ok`: one row per paired computer.
- * - `absent`: any non-2xx (today's gateways answer 405) or nobody signed in:
- *   show today's choice and never send a driver.
- * - `error`: no answer at all; callers keep what they last knew (a send is
- *   still re-checked by `cloudDriverPreflight`).
+ * - `absent`: an unsupported route or unavailable account; never a cloud driver.
+ *   The reason distinguishes gateway compatibility from account permission.
+ * - `error`: a transient/invalid answer; a send is still re-checked by preflight.
  */
 export type CloudAgentAvailabilityResult =
   | { kind: "ok"; devices: Map<string, CloudAgentAvailability> }
-  | { kind: "absent" }
-  | { kind: "error" };
+  | { kind: "absent"; reason?: "signed_out" | "unauthorized" | "forbidden" | "unsupported"; status?: number }
+  | { kind: "error"; status?: number };
 
 export async function listCloudAgentAvailability(signal?: AbortSignal): Promise<CloudAgentAvailabilityResult> {
   const fetched = await get("/v1/devices/cloud-agent", "application/json", signal);
-  if (fetched.kind === "signed_out") return { kind: "absent" };
+  if (fetched.kind === "signed_out") return { kind: "absent", reason: "signed_out" };
   if (fetched.kind === "failed") return { kind: "error" };
   const { response } = fetched;
-  if (!response.ok) return { kind: "absent" };
+  if (response.status === 401) return { kind: "absent", reason: "unauthorized", status: response.status };
+  if (response.status === 403) return { kind: "absent", reason: "forbidden", status: response.status };
+  if ([404, 405, 501].includes(response.status)) return { kind: "absent", reason: "unsupported", status: response.status };
+  if (!response.ok) return { kind: "error", status: response.status };
   const body = await response.json().catch(() => null);
   return Array.isArray(record(body).devices) ? { kind: "ok", devices: parseCloudAgentAvailability(body) } : { kind: "error" };
 }

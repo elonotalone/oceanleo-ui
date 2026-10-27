@@ -261,9 +261,13 @@ export const REMOTE_BACKPRESSURE_CODES: ReadonlySet<string> = new Set([
 export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   switch (code) {
     case "media_first_frame_timeout":
+      return "尚未收到电脑画面，控制已停止。请确认电脑上的 OceanLeo 正在运行后重新连接。";
     case "screen_permission_or_capture_unavailable":
-    case "media_no_encoded_frame":
       return "尚未收到电脑画面，请检查电脑的屏幕录制权限后重新连接。";
+    case "media_no_encoded_frame":
+      return "电脑尚未发出视频画面，控制已停止。请在电脑上检查视频服务后重新连接。";
+    case "media_gateway_unsupported":
+      return "当前服务版本不支持远程视频，请更新服务后重新连接。";
     case "media_frame_timeout":
     case "media_connection_failed":
     case "media_subscribe_failed":
@@ -349,6 +353,8 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       break;
   }
   if (status === 401) return "登录已失效，请重新登录后再试。";
+  if (status === 403) return "当前账号无法访问这次远程会话。请核对账号和电脑上的授权。";
+  if (status === 405 || status === 501) return "当前服务版本不支持远程视频，请更新服务后重新连接。";
   if (status === 404) return "会话已结束，请重新进入。";
   if (status === 429) return "操作太频繁，稍等一下再试。";
   return "这一步没有完成，请稍后重试。";

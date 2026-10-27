@@ -253,24 +253,20 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     let mediaAttempted = false, mediaDescriptorSeen = false;
     document.body.style.overflow = "hidden";
     setCoarse(Boolean(window.matchMedia?.("(pointer: coarse)").matches));
-    const end = (error?: string) => {
+    const end = (error?: string, status?: number) => {
       disconnect();
       setFrame(null);
       updatePhase(terminal(error));
-      setMessage(remoteDesktopErrorCopy(error));
+      setMessage(remoteDesktopErrorCopy(error, status));
       revealToolbar();
     };
     const connect = async () => {
-      let result = await client.createSession(deviceId, { signal: abort.signal });
-      for (let retry = 0; !result.ok && result.error === "session_active" && retry < 2 && !abort.signal.aborted; retry++) {
-        await wait(700, abort.signal);
-        result = await client.createSession(deviceId, { signal: abort.signal });
-      }
+      const result = await client.createSession(deviceId, { signal: abort.signal });
       if (abort.signal.aborted) {
         if (result.ok && result.data) void client.closeSession(deviceId, result.data.session_id).catch(() => {});
         return;
       }
-      if (!result.ok || !result.data) { end(result.error); return; }
+      if (!result.ok || !result.data) { end(result.error, result.status); return; }
       sessionRef.current = result.data.session_id;
       updatePhase(result.data.state === "pending_consent" ? "waiting" : "connecting");
       if (client.openStream && result.data.transport === "websocket-v2") {
@@ -305,7 +301,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         }, { signal: abort.signal });
         if (abort.signal.aborted) opened.data?.close();
         else if (opened.ok && opened.data) streamRef.current = opened.data;
-        else end(opened.error);
+        else end(opened.error, opened.status);
         return;
       }
       streamModeRef.current = false;
@@ -315,7 +311,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         const response = await client.getFrame(deviceId, result.data.session_id, { signal: abort.signal });
         if (abort.signal.aborted) break;
         if (!response.ok || !response.data) {
-          if (++failures >= 6 || [401, 403, 404, 410].includes(response.status || 0)) { end(response.error); break; }
+          if (++failures >= 6 || [401, 403, 404, 410].includes(response.status || 0)) { end(response.error, response.status); break; }
         } else {
           failures = 0;
           const value = response.data;
@@ -591,10 +587,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
             mediaFrameGeometry.current = geometry;
             setMediaReady(true);
           }}
-          onState={(value, error) => {
+          onState={(value, error, status) => {
             if (value !== "playing") invalidateMediaFrame();
             setMediaNotice(value === "playing" && mediaFrameGeometry.current ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
-            if (value === "error") { disconnect(); updatePhase("error"); setMessage(remoteDesktopErrorCopy(error)); revealToolbar(); }
+            if (value === "error") { disconnect(); updatePhase(terminal(error)); setMessage(remoteDesktopErrorCopy(error, status)); revealToolbar(); }
           }}
           onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("兼容画面：请更新电脑客户端以启用流畅视频。"); }}
           onStatus={acceptMediaStatus} /> : frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}

@@ -90,6 +90,16 @@ const SOURCE = {
   k79: "没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。",
   k80: "无法下载此任务文件，请到我的库核对权限后重试。",
   k81: "任务文件",
+  k82: "尚未收到电脑画面，控制已停止。请确认电脑上的 OceanLeo 正在运行后重新连接。",
+  k83: "电脑尚未发出视频画面，控制已停止。请在电脑上检查视频服务后重新连接。",
+  k84: "当前服务版本不支持远程视频，请更新服务后重新连接。",
+  k85: "当前账号无法访问这次远程会话。请核对账号和电脑上的授权。",
+  k86: "当前服务版本不支持 AI 电脑状态，远程桌面仍可单独连接。",
+  k87: "登录已失效，无法读取 AI 电脑状态。请重新登录。",
+  k88: "当前账号无法读取 AI 电脑状态；远程桌面仍由电脑单独确认授权。",
+  k89: "暂时无法核对 AI 电脑状态，已暂停交还操作。请关闭桌面后重新进入。",
+  k90: "远程桌面仍可单独连接，并由这台电脑确认授权。",
+  k91: "本机 AI 执行已关闭",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -177,6 +187,16 @@ const EN: Messages = {
   k79: "Computer control was not confirmed. Check its latest state; the action will not be repeated automatically.",
   k80: "Cannot download this task file. Check its permissions in My Library, then retry.",
   k81: "Task file",
+  k82: "No computer video has arrived, so control has stopped. Check that OceanLeo is running on the computer, then reconnect.",
+  k83: "The computer has not sent video, so control has stopped. Check its video service, then reconnect.",
+  k84: "This service version does not support remote video. Update the service, then reconnect.",
+  k85: "This account cannot access the remote session. Check the account and the computer’s authorization.",
+  k86: "This service version cannot report AI computer status. Remote desktop can still connect separately.",
+  k87: "Your login has expired, so AI computer status cannot be read. Sign in again.",
+  k88: "This account cannot read AI computer status. The computer still authorizes remote desktop separately.",
+  k89: "AI computer status is unavailable, so handing back to AI is paused. Close the desktop and open it again.",
+  k90: "Remote desktop can still connect separately, with authorization from this computer.",
+  k91: "Local AI execution is off",
 };
 
 const ZH_TW: Messages = {
@@ -262,6 +282,16 @@ const ZH_TW: Messages = {
   k79: "沒有收到電腦控制的確認，請核對最新狀態；不會自動重複操作。",
   k80: "無法下載此任務檔案，請到我的庫核對權限後重試。",
   k81: "任務檔案",
+  k82: "尚未收到電腦畫面，控制已停止。請確認電腦上的 OceanLeo 正在執行後重新連線。",
+  k83: "電腦尚未送出視訊畫面，控制已停止。請在電腦上檢查視訊服務後重新連線。",
+  k84: "目前服務版本不支援遠端視訊，請更新服務後重新連線。",
+  k85: "目前帳號無法存取這次遠端工作階段。請核對帳號和電腦上的授權。",
+  k86: "目前服務版本不支援 AI 電腦狀態，遠端桌面仍可單獨連線。",
+  k87: "登入已失效，無法讀取 AI 電腦狀態。請重新登入。",
+  k88: "目前帳號無法讀取 AI 電腦狀態；遠端桌面仍由電腦單獨確認授權。",
+  k89: "暫時無法核對 AI 電腦狀態，已暫停交還操作。請關閉桌面後重新進入。",
+  k90: "遠端桌面仍可單獨連線，並由這台電腦確認授權。",
+  k91: "本機 AI 執行已關閉",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(

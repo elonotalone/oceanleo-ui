@@ -281,8 +281,9 @@ test("C5-T3a: a computer with local execution off shows the short status; the ho
   ]));
   const off = view.host.querySelector('[data-local-exec-off="d-1"]');
   assert.ok(off, "the switch state is visible before anyone sends a task");
-  assert.equal(off.textContent, "本机执行未开启");
+  assert.equal(off.textContent, "本机 AI 执行已关闭");
   assert.match(off.getAttribute("title"), /设备与授权.*允许云端下发本机任务/);
+  assert.match(off.getAttribute("title"), /远程桌面仍可单独连接.*电脑确认授权/);
   assert.equal(view.host.querySelector('[data-local-exec-off="d-2"]'), null);
   assert.equal(view.host.querySelector('[data-local-exec-off="p-1"]'), null, "phones never run tasks");
   assert.doesNotMatch(view.text(), /这个开关只能|设备权限如何保护你|允许云端下发/);

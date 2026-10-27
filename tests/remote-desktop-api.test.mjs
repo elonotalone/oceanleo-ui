@@ -49,6 +49,30 @@ test("media negotiation uses existing owner/controller authorization and accepts
   assert.equal(api.parseRemoteMediaStatus({ state: "publishing", geometry: { display_id: "a", width: -1, height: 100 } }).geometry, undefined);
 });
 
+test("media negotiation distinguishes missing gateway routes from expired sessions and permission refusals", async () => {
+  for (const [status, body, error] of [
+    [404, { detail: "Not Found" }, "media_gateway_unsupported"],
+    [405, { detail: "Method Not Allowed" }, "media_gateway_unsupported"],
+    [501, {}, "media_gateway_unsupported"],
+    [404, { detail: { code: "session_not_found" } }, "session_not_found"],
+    [403, { detail: { code: "controller_revoked" } }, "controller_revoked"],
+    [409, { detail: { code: "signed_out" } }, "signed_out"],
+  ]) {
+    const calls = mockFetch(() => ({ status, body }));
+    assert.deepEqual(await api.remoteDesktopClient.negotiateMedia("synthetic-device", "synthetic-session"), { ok: false, status, error });
+    assert.equal(calls.length, 1, "no fallback request or session creation");
+  }
+});
+
+test("publisher diagnostics retain only versioned safe numeric metadata", () => {
+  const result = api.parseRemoteMediaStatus({ state: "publishing", geometry: { display_id: "a", width: Infinity, height: 100 }, metrics: {
+    version: 1, capture_frames: 2, pushes: 0, sdk_encode_fps: 15, first_capture_ms: null, first_push_ms: -1,
+    sdk_sent_fps: "30", sdk_age_ms: Infinity, tick_calls: Number.MAX_SAFE_INTEGER + 1, token: "discard", arbitrary: "discard",
+  } });
+  assert.deepEqual(result, { state: "publishing", metrics: { version: 1, capture_frames: 2, pushes: 0, sdk_encode_fps: 15 } });
+  assert.equal(api.parseRemoteMediaStatus({ state: "starting", metrics: { version: 2, pushes: 4 } }).metrics, undefined);
+});
+
 test.afterEach(() => {
   delete globalThis.__rdToken;
 });

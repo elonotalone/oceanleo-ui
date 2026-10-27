@@ -235,15 +235,19 @@ test("session and observation routes: owner token, no cache, no cookies; 404 = g
     const before = seen.length;
     assert.equal((await api.getAgentSession("../x", "cas_A")).kind, "gone");
     assert.equal(seen.length, before, "a bad id never becomes a request");
-    // Any non-2xx from the availability route means "absent" (today's gateways answer 405).
-    for (const status of [401, 404, 405, 500, 503]) {
+    // Account failures and missing routes are distinct from transient server failures.
+    for (const [status, reason] of [[401, "unauthorized"], [403, "forbidden"], [404, "unsupported"], [405, "unsupported"], [501, "unsupported"]]) {
       next = () => jsonResponse(status, { detail: "x" });
-      assert.equal((await api.listCloudAgentAvailability()).kind, "absent", String(status));
+      assert.deepEqual(await api.listCloudAgentAvailability(), { kind: "absent", reason, status });
+    }
+    for (const status of [429, 500, 503]) {
+      next = () => jsonResponse(status, { detail: "x" });
+      assert.deepEqual(await api.listCloudAgentAvailability(), { kind: "error", status });
     }
     next = () => { throw new TypeError("network"); };
     assert.equal((await api.listCloudAgentAvailability()).kind, "error", "no answer keeps what the page knew");
     globalThis.__u5Token = null;
-    assert.equal((await api.listCloudAgentAvailability()).kind, "absent", "signed out");
+    assert.deepEqual(await api.listCloudAgentAvailability(), { kind: "absent", reason: "signed_out" });
   } finally { globalThis.fetch = original; delete globalThis.__u5Token; }
 });
 

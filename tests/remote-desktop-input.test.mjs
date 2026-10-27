@@ -123,8 +123,10 @@ test("错误码都落成中文，未知码落到兜底，不外泄英文 token",
 });
 
 test("native publisher failures explain the next action without exposing protocol codes", () => {
-  for (const code of ["screen_permission_or_capture_unavailable", "media_no_encoded_frame"]) {
-    assert.match(input.remoteDesktopErrorCopy(code), /屏幕录制权限.*重新连接/);
+  assert.match(input.remoteDesktopErrorCopy("screen_permission_or_capture_unavailable"), /屏幕录制权限.*重新连接/);
+  assert.match(input.remoteDesktopErrorCopy("media_no_encoded_frame"), /未发出视频画面.*重新连接/);
+  for (const code of ["media_no_encoded_frame", "media_first_frame_timeout", "media_gateway_unsupported"]) {
+    assert.doesNotMatch(input.remoteDesktopErrorCopy(code), /屏幕录制权限/, "missing video alone is not evidence of denied screen permission");
   }
   for (const code of ["media_sdk_not_installed", "media_sdk_start_failed", "display_enumeration_failed", "display_geometry_failed", "display_not_found"]) {
     assert.equal(input.remoteDesktopErrorCopy(code), input.remoteDesktopErrorCopy("media_unavailable"));

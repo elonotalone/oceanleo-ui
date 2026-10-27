@@ -166,7 +166,9 @@ const { AgentTranscriptBubble } = await import(await compileModule("src/shell/Ag
   "./share/share-clipboard": dataModule("export async function writeClipboardText(){ return true; }"),
 }));
 
-test("transcript, English UI: every notice kind reads translated with its local time; no Chinese, no code", async () => {
+test("transcript, English UI: every notice kind reads translated with its local time; no Chinese, no code", async (t) => {
+  // The fixture is a same-day notice; pin its day so the date label is deterministic.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-27T12:00:00Z") });
   globalThis.__fwDict = UI_MESSAGES.en;
   document.documentElement.lang = "en";
   const since = "2026-10-27T08:41:23Z";

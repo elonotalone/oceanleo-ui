@@ -13,7 +13,7 @@ async function mount(options = {}) {
     return { async close() {} };
   };
   const view = await mountStream({ ...options, overrides: {
-    async negotiateMedia() { negotiations++; return { ok: true, data: { media, media_status: { state: "starting" } } }; },
+    async negotiateMedia() { negotiations++; return { ok: true, data: { media, media_status: { state: "publishing", geometry: { display_id: "a", width: 1920, height: 1080 } } } }; },
     ...options.overrides,
   } });
   mounted.push(view);
@@ -100,4 +100,36 @@ test("reconnect creates a new authorized session and never replays old input", a
   await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
   assert.equal(view.input().disabled, false);
   assert.equal(view.log.inputs.filter((input) => input.kind === "key_down").length, 1);
+});
+
+test("media failures retain HTTP status and explicit terminal reasons without permission advice or fallback", async () => {
+  for (const [error, status, expected, phase] of [
+    ["Method Not Allowed", 405, /服务版本不支持远程视频/, "error"],
+    ["unknown", 401, /登录已失效/, "error"],
+    ["unknown", 403, /当前账号无法访问/, "error"],
+    ["signed_out", 409, /电脑尚未登录/, "signed_out"],
+    ["controller_revoked", 403, /访问权限已撤销/, "revoked"],
+  ]) {
+    const view = await mount({ overrides: { async negotiateMedia() { return { ok: false, error, status }; } } });
+    assert.equal(view.screen().getAttribute("data-remote-phase"), phase);
+    assert.match(view.screen().textContent, expected);
+    assert.doesNotMatch(view.screen().textContent, /屏幕录制权限|兼容画面/);
+    assert.equal(view.input().disabled, true);
+    assert.equal(view.screen().querySelector("video"), null);
+    assert.deepEqual(view.log.closes, ["session-stream"]);
+    await view.unmount();
+  }
+});
+
+test("session conflict stops after one request and only reconnect click requests again", async () => {
+  let requests = 0;
+  const view = await mount({ pending: true, overrides: { async createSession() { requests++; return { ok: false, error: "session_active", status: 409 }; } } });
+  await settle(1600);
+  assert.equal(requests, 1);
+  assert.match(view.screen().textContent, /已有一个正在进行的远程会话/);
+  assert.equal(view.negotiations(), 0);
+  await act(async () => view.screen().querySelector("[data-remote-connect]").click());
+  await settle();
+  assert.equal(requests, 2);
+  assert.deepEqual(view.log.closes, [], "never closes another viewer's session");
 });

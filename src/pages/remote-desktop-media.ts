@@ -8,7 +8,7 @@ export interface RemoteMediaViewer {
   close(): Promise<void>;
 }
 export interface RemoteMediaHandlers {
-  state(value: RemoteMediaState, error?: string): void;
+  state(value: RemoteMediaState, error?: string, status?: number): void;
   frame(width: number, height: number): void;
   renew(): Promise<RemoteMediaCredentials>;
 }
@@ -68,9 +68,10 @@ export async function openRemoteMedia(
     return closePromise;
   };
   const abort = () => { void close(); };
-  const fail = (code: string) => {
+  const fail = (code: string, status?: number) => {
     if (closed) return;
-    handlers.state("error", code);
+    if (status === undefined) handlers.state("error", code);
+    else handlers.state("error", code, status);
     void close();
   };
   const decodedFrame = () => {
@@ -105,7 +106,11 @@ export async function openRemoteMedia(
       if (fresh.channel_id !== credentials.channel_id || fresh.user_id !== credentials.user_id || fresh.publisher_id !== credentials.publisher_id) throw new Error("media_session_changed");
       await engine.refreshAuthInfo(fresh.token);
       if (!closed) scheduleRenew(fresh.expires_at);
-    })().catch(() => fail("media_auth_failed")).finally(() => { refreshPromise = null; });
+    })().catch((error: unknown) => {
+      // A renewal refusal retains account/revocation/compatibility evidence.
+      const status = error instanceof Error && "status" in error && typeof error.status === "number" ? error.status : undefined;
+      fail(status !== undefined && error instanceof Error ? error.message : "media_auth_failed", status);
+    }).finally(() => { refreshPromise = null; });
     return refreshPromise;
   };
   const subscribe = (uid: string, track?: number) => {

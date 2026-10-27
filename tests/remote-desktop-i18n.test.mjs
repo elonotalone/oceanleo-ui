@@ -37,7 +37,7 @@ async function cjkLiterals(file) {
   return [...out];
 }
 
-const NEW_FILES = ["src/pages/RemoteDesktopPanel.tsx", "src/pages/remote-desktop-input.ts"];
+const NEW_FILES = ["src/pages/RemoteDesktopPanel.tsx", "src/pages/remote-desktop-input.ts", "src/pages/devices/use-device-cloud-agent.ts", "src/pages/devices/DeviceCard.tsx"];
 const ENTRY_KEYS = ["进入桌面", "远程桌面", "查看这台电脑的屏幕，并用鼠标键盘操控。"];
 
 test("新增文案的每一条中文原文在运行时英文词典里都有英文译文（没有汉字）", async () => {

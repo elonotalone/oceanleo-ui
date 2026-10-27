@@ -6,7 +6,7 @@ import { openRemoteMedia, type RemoteMediaState, type RemoteMediaViewer } from "
 export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, displayId, zoom }: {
   client: RemoteDesktopClient; deviceId: string; sessionId: string;
   videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; zoom: number;
-  onState(value: RemoteMediaState, error?: string): void;
+  onState(value: RemoteMediaState, error?: string, status?: number): void;
   onFrame(width: number, height: number): void;
   onLegacy(): void;
   onStatus(status: RemoteMediaStatus | null): void;
@@ -20,7 +20,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
     const negotiate = async () => {
       const response = await client.negotiateMedia!(deviceId, sessionId, displayId, { signal: abort.signal });
       if (abort.signal.aborted) throw new Error("aborted");
-      if (!response.ok || !response.data) throw new Error(response.error || "media_unavailable");
+      if (!response.ok || !response.data) throw Object.assign(new Error(response.error || "media_unavailable"), { status: response.status });
       callbacks.current.onStatus(response.data.media_status);
       return response.data.media;
     };
@@ -31,7 +31,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
       const credentials = await negotiate();
       if (abort.signal.aborted || !videoRef.current) return;
       viewer = await openRemoteMedia(credentials, videoRef.current, {
-        state: (state, error) => { if (!abort.signal.aborted) callbacks.current.onState(state, error); },
+        state: (state, error, status) => { if (!abort.signal.aborted) callbacks.current.onState(state, error, status); },
         frame: (width, height) => { if (!abort.signal.aborted) callbacks.current.onFrame(width, height); },
         renew: negotiate,
       }, abort.signal);
@@ -39,7 +39,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
       if (abort.signal.aborted) return;
       const code = error instanceof Error ? error.message : "media_unavailable";
       if (code === "media_unsupported") callbacks.current.onLegacy();
-      else callbacks.current.onState("error", code);
+      else callbacks.current.onState("error", code, error instanceof Error && "status" in error && typeof error.status === "number" ? error.status : undefined);
     });
     return () => {
       abort.abort();
