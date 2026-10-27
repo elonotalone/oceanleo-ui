@@ -1,5 +1,5 @@
 import { htmlLang, normalizeLocale } from "../i18n/config";
-import { epochMs } from "./execution-target";
+import { epochMs, type CloudAgentAvailability, type CloudLiveSession } from "./execution-target";
 
 /** Authoritative executor state; a requested stop is not a completed stop. */
 export interface LocalAgentRun {
@@ -121,6 +121,8 @@ export const LOCAL_AGENT_COPY = {
   receiptLost: "没有收到电脑的回执：任务可能已经交给电脑。请先到「我的任务」核对，确认它没有开始，再重新发送。",
   localExecOff: "本机执行未开启",
   localExecOffHint: "这台电脑没有开启本机执行，交给它的任务不会运行。请在这台电脑的 OceanLeo「设备与授权」里打开「允许云端下发本机任务」，或改用云端。",
+  // History (C11-FW): deleting a computer task whose stop the computer has not confirmed yet.
+  deleteStopPending: "这项任务还在电脑上运行，已请求电脑停止。电脑确认停止后，请再删除一次。",
 } as const;
 export type LocalAgentCopyKey = keyof typeof LOCAL_AGENT_COPY;
 
@@ -183,6 +185,21 @@ export const CLOUD_AGENT_COPY = {
   bannerAi: "AI 正在操作这台电脑；你一操作，AI 就会停手。",
   bannerResuming: "正在交还给 AI，它会先重新查看屏幕。",
   yourComputer: "你的电脑",
+  // C11-FW. The `local_exec_disabled` notice kind (C11 contract §3; `paused` and
+  // `ai_busy` reuse statusPaused / aiBusy), and the last contact under a notice.
+  healthLocalExec: "电脑上的本机执行已关闭，任务在等待；在电脑上打开「允许云端下发本机任务」后继续。",
+  noticeLastContact: "上次联系 {time}",
+  // Remote desktop opened from 我的设备 on a session without a task to hand
+  // back to (developer sessions): no 交还给 AI there, so no instruction to click it.
+  bannerHuman: "你正在控制电脑，AI 已暂停。",
+  // Consent for 接管电脑 and the remote desktop (C11 contract §2). The option is
+  // the desktop app's own label in the envelope window (E, device_link/surfaces.rs).
+  waitConsent: "等待电脑前有人同意这次远程控制…",
+  takeOverAsk: "接管需要电脑前有人同意。",
+  takeOverAskHint: "要在不在电脑前时也能直接接管，请在那台电脑的「允许云端助手使用这台电脑」里打开「授权期间允许我从手机/网页直接查看和接管这台电脑」。",
+  // The remote desktop restored without a click (reload, back/forward): it asks
+  // nothing of the computer until 连接 is clicked (W, 2026-10-27).
+  remoteIdle: "尚未连接。点「连接」向这台电脑发出远程控制请求。",
 } as const;
 export type CloudAgentCopyKey = keyof typeof CLOUD_AGENT_COPY;
 
@@ -307,6 +324,26 @@ export function localAgentFailure(
   return RAW_CODE.test(code) ? {kind: "refused", text: LOCAL_AGENT_COPY.unknownRefusal, definite: false} : null;
 }
 
+/**
+ * What History (我的任务) says when deleting or loading a task fails: a
+ * sentence, never a raw code. Deleting a computer task asks the computer to
+ * stop it first; until the computer confirms, the gateway answers 409
+ * `local_agent_stop_pending`. `fallback` is the caller's own Chinese sentence
+ * for anything else that is only a code.
+ */
+export function taskRequestFailureText(
+  result: {status?: number; error?: string; detail?: {code?: string}},
+  fallback: string,
+): string {
+  const code = String(result.detail?.code || "").trim().toUpperCase();
+  const error = typeof result.error === "string" ? result.error.trim() : "";
+  if (code === "LOCAL_AGENT_STOP_PENDING" || error.toUpperCase() === "LOCAL_AGENT_STOP_PENDING") return LOCAL_AGENT_COPY.deleteStopPending;
+  if (code === "TASK_NOT_FOUND" || own(TEXT_COPY, error) === "taskNotFound") return LOCAL_AGENT_COPY.taskNotFound;
+  // Codes, bare HTTP statuses and the gateway's English task strings are not sentences for this page.
+  if (!error || RAW_CODE.test(error) || /^HTTP \d{3}$/.test(error) || own(TEXT_COPY, error)) return fallback;
+  return error;
+}
+
 export function localAgentStateText(run: LocalAgentRun | null): string {
   if (!run) return "电脑执行状态暂不可用，正在重新核对；不会自动重跑。";
   if (!terminal.has(run.state)) {
@@ -330,12 +367,24 @@ export type CloudAgentTranslate = (zh: string, vars?: Record<string, string | nu
 /** Fresher numbers from the session route (protocol §12.1), when the page has them. */
 export interface CloudAgentLive { lastContactAt?: number | null; currentElapsedMs?: number | null }
 
+/**
+ * Every `device_status` notice kind (C11 contract §3; protocol §13, bridge doc
+ * §17.9): the ten health kinds of protocol §8.3, plus `paused`, `ai_busy` and
+ * `local_exec_disabled` written by the cloud loop while a run has no session.
+ * Each maps to one fixed sentence, translated in every locale.
+ */
 const HEALTH_TEXT: Record<string, CloudAgentCopyKey> = {
   ok: "healthOk", offline: "healthOffline", asleep: "healthAsleep", screen_locked: "healthLocked", hung: "healthHung",
   signed_out: "healthSignedOut", cleanup_required: "healthCleanup", envelope_expired: "healthEnvelope",
   needs_local_confirm: "healthConfirm", human_in_control: "healthHuman",
+  paused: "statusPaused", ai_busy: "aiBusy", local_exec_disabled: "healthLocalExec",
 };
-const PAUSE_KINDS = new Set(["needs_local_confirm", "human_in_control"]);
+/** The kinds above, for callers and tests that must cover all of them. */
+export function deviceStatusKinds(): string[] { return Object.keys(HEALTH_TEXT); }
+/** Waiting on a person or another AI: a state, not a fault. */
+const PAUSE_KINDS = new Set(["needs_local_confirm", "human_in_control", "paused", "ai_busy"]);
+/** The computer is not answering: the useful time is when it last did. */
+const CONTACT_KINDS = new Set(["offline", "asleep"]);
 
 /**
  * The text of a `device_status` notice (protocol §13): the bridge doc's fixed
@@ -346,7 +395,39 @@ export function deviceStatusNoticeText(kind: unknown, stored: unknown): string {
   if (key) return CLOUD_AGENT_COPY[key];
   return typeof stored === "string" && stored.trim() ? stored.trim().slice(0, 500) : CLOUD_AGENT_COPY.healthOther;
 }
-/** `ok` reads as recovered, the two pauses as a state, everything else as a problem. */
+/**
+ * What a `device_status` notice reads in the viewer's language. A known kind
+ * is its translated fixed sentence. For a kind this build does not know, the
+ * stored text is shown only when it is translated or the UI is Chinese;
+ * everyone else reads the generic translated sentence, never untranslated
+ * Chinese or a raw code. (`tt` returns its input when nothing is translated,
+ * so a translated `healthOther` means a non-Chinese UI.)
+ */
+export function deviceStatusNoticeLine(kind: unknown, stored: unknown, tt: CloudAgentTranslate): string {
+  const key = typeof kind === "string" && Object.hasOwn(HEALTH_TEXT, kind) ? HEALTH_TEXT[kind] : undefined;
+  if (key) return tt(CLOUD_AGENT_COPY[key]);
+  const generic = tt(CLOUD_AGENT_COPY.healthOther);
+  const text = typeof stored === "string" ? stored.trim().slice(0, 500) : "";
+  if (!text) return generic;
+  const translated = tt(text);
+  if (translated !== text) return translated;
+  return generic === CLOUD_AGENT_COPY.healthOther ? text : generic;
+}
+/**
+ * The time under a `device_status` notice, from its structured fields in the
+ * viewer's own clock and time zone (the stored text has no times, bridge §17.9):
+ * "上次联系 08:41" while the computer does not answer, else when the state began.
+ */
+export function deviceStatusNoticeTime(kind: unknown, health: unknown, tt: CloudAgentTranslate, now = Date.now()): string | null {
+  const row = record(health);
+  if (typeof kind === "string" && CONTACT_KINDS.has(kind)) {
+    const contact = epochMs(row.last_contact_at);
+    if (contact) return tt(CLOUD_AGENT_COPY.noticeLastContact, {time: formatClock(contact, now)});
+  }
+  const since = epochMs(row.since);
+  return since ? formatClock(since, now) : null;
+}
+/** `ok` reads as recovered, pauses and waits as a state, everything else as a problem. */
 export function cloudHealthTone(kind: unknown): "ok" | "pause" | "stuck" {
   return kind === "ok" ? "ok" : typeof kind === "string" && PAUSE_KINDS.has(kind) ? "pause" : "stuck";
 }
@@ -457,4 +538,42 @@ export function remoteDesktopAgentBanner(run: LocalAgentRun | null): {text: stri
   if (run.health && run.health.kind !== "ok") return {text: deviceStatusNoticeText(run.health.kind, null), handBack: false};
   if (run.state === "queued" || run.state === "claimed") return {text: CLOUD_AGENT_COPY.statusConnecting, handBack: false};
   return {text: CLOUD_AGENT_COPY.bannerAi, handBack: false};
+}
+
+/**
+ * The same banner for the remote desktop opened from 我的设备, found through
+ * the computer's `live_session` (C11 contract §4). With the task's projection
+ * of that same session it is exactly the task page's banner, 交还给 AI
+ * included. Without one (a developer session has no task; or the projection
+ * is not read yet) it only says who is in control and never offers 交还给 AI,
+ * which needs the run's control revision.
+ */
+export function deviceAgentBanner(live: CloudLiveSession | null, run: LocalAgentRun | null): {text: string; handBack: boolean} | null {
+  if (!live) return null;
+  if (run?.driver === "cloud" && (!run.sessionId || run.sessionId === live.sessionId)) return remoteDesktopAgentBanner(run);
+  if (live.owner === "human") return {text: CLOUD_AGENT_COPY.bannerHuman, handBack: false};
+  if (live.state === "paused") return {text: CLOUD_AGENT_COPY.statusPaused, handBack: false};
+  if (live.state === "stuck") return {text: CLOUD_AGENT_COPY.healthOther, handBack: false};
+  if (live.state === "offered") return {text: CLOUD_AGENT_COPY.statusConnecting, handBack: false};
+  return {text: CLOUD_AGENT_COPY.bannerAi, handBack: false};
+}
+
+/** How the owner's remote-desktop request reaches this computer (C11 contract §2). */
+export type RemoteConsent = "direct" | "ask";
+/**
+ * - `direct`: the computer's envelope lets its owner take over without a
+ *   dialog (`remote_takeover`, until the envelope's `until`), or this browser
+ *   already holds a standing grant (永久同意) on that computer.
+ * - `ask`: someone at the computer has to click 同意本次 (also when this
+ *   browser's grants cannot be read: the line then sets the safe expectation).
+ * - null: the gateway does not report `remote_takeover` (older gateways, or no
+ *   availability route), or this browser's grant is still being read
+ *   (`standingGrant` undefined): today's wording, no line that could flicker.
+ */
+export function remoteConsent(row: Pick<CloudAgentAvailability, "remoteTakeover" | "until"> | null | undefined,
+  standingGrant: boolean | null | undefined, now = Date.now()): RemoteConsent | null {
+  if (!row || row.remoteTakeover === null) return null;
+  if (row.remoteTakeover && (row.until === null || row.until > now)) return "direct";
+  if (standingGrant === undefined) return null;
+  return standingGrant ? "direct" : "ask";
 }

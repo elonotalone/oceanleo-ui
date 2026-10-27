@@ -5,6 +5,8 @@ import {getAgentObservation, getAgentSession, type AgentSessionView} from "../li
 import {CLOUD_AGENT_COPY, cloudHealthTone, cloudOwnerLine, cloudRunActions, cloudRunStatus, formatClock, localAgentCanControl,
   localAgentRunLive, localAgentStateText, remoteDesktopAgentBanner, type CloudRunAction, type LocalAgentControl, type LocalAgentRun,
   type LocalTaskArtifact} from "../lib/local-agent-task";
+import {useRemoteConsent} from "../pages/devices/use-device-cloud-agent";
+import {remoteDesktopTicket, type RemoteDesktopTicket} from "../pages/remote-desktop-ticket";
 
 // Loaded only when the person takes over the computer from this page.
 const RemoteDesktopPanel = lazy(() => import("../pages/RemoteDesktopPanel").then(module => ({default: module.RemoteDesktopPanel})));
@@ -43,19 +45,22 @@ function CloudAgentRunStatus({run, artifacts, busy, readOnly, onControl}: Status
   const live = localAgentRunLive(run);
   const {session, screen} = useCloudAgentScreen(run.deviceId, run.sessionId ?? "", live);
   const now = useClock(live && (run.health?.kind === "offline" || run.health?.kind === "hung" || run.health?.kind === "asleep"));
-  const [remote, setRemote] = useState<{deviceId: string; name: string} | null>(null);
+  // `ticket`: this click's one session request (a remount of the panel never sends another).
+  const [remote, setRemote] = useState<{deviceId: string; name: string; ticket: RemoteDesktopTicket} | null>(null);
   const status = cloudRunStatus(run, tt, now, {lastContactAt: session?.lastContactAt, currentElapsedMs: session?.current?.elapsedMs});
   const owner = cloudOwnerLine(run);
   const stuck = live && run.health !== undefined && cloudHealthTone(run.health.kind) === "stuck";
   const actions = readOnly ? [] : cloudRunActions(run);
   const banner = remoteDesktopAgentBanner(run);
+  // 接管电脑 says up front whether someone at the computer has to approve (C11 contract §2).
+  const consent = useRemoteConsent(run.deviceId, actions.includes("takeOver"));
 
   const takeOver = () => {
     // People first: ask the AI to stop touching the computer, then open the
     // remote desktop here. Any input there also fences the AI on the computer.
     if (localAgentCanControl(run, "pause")) onControl("pause");
     const deviceId = run.deviceId;
-    setRemote({deviceId, name: tt(CLOUD_AGENT_COPY.yourComputer)});
+    setRemote({deviceId, name: tt(CLOUD_AGENT_COPY.yourComputer), ticket: remoteDesktopTicket()});
     void import("../api/devices").then(({listDevices}) => listDevices()).then(result => {
       const name = result.ok ? result.data?.find(device => device.device_id === deviceId)?.device_name : undefined;
       if (name) setRemote(current => current && current.deviceId === deviceId ? {...current, name} : current);
@@ -82,9 +87,12 @@ function CloudAgentRunStatus({run, artifacts, busy, readOnly, onControl}: Status
       {actions.map(action => <button key={action} type="button" disabled={busy && action !== "takeOver"} onClick={() => act(action)}
         data-cloud-agent-action={action} className="rounded border border-stone-300 bg-white px-3 py-1 disabled:opacity-50">{label(action)}</button>)}
     </div>}
+    {consent === "ask" && actions.includes("takeOver") && <p className="mt-1 text-xs text-stone-500" data-cloud-agent-consent="ask"
+      title={tt(CLOUD_AGENT_COPY.takeOverAskHint)}>{tt(CLOUD_AGENT_COPY.takeOverAsk)}</p>}
     <LocalTaskArtifactList artifacts={artifacts} />
     {remote && <Suspense fallback={null}>
       <RemoteDesktopPanel key={remote.deviceId} deviceId={remote.deviceId} deviceName={remote.name} onClose={() => setRemote(null)}
+        consent={consent ?? undefined} ticket={remote.ticket}
         agent={banner && !readOnly ? {
           text: banner.text,
           handBack: banner.handBack && localAgentCanControl(run, "resume"),

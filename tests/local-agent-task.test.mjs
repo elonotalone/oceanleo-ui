@@ -130,7 +130,7 @@ test("C5-T3a: every local-task sentence is translated in all 17 locales, identic
   const {UI_MESSAGES} = await import("../src/i18n/ui/messages/index.ts");
   const {loadUiMessages} = await import("../src/i18n/ui/messages/load.ts");
   const sentences = Object.values(model.LOCAL_AGENT_COPY);
-  assert.equal(sentences.length, 19);
+  assert.equal(sentences.length, 20);
   for (const locale of LOCALES.filter(locale => locale !== "zh")) {
     const runtime = await loadUiMessages(locale);
     for (const zh of sentences) {

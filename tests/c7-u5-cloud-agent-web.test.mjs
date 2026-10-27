@@ -252,7 +252,8 @@ test("every cloud-assistant sentence is translated in all 16 locales, identical 
   const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
   const { loadUiMessages } = await import("../src/i18n/ui/messages/load.ts");
   const entries = Object.entries(model.CLOUD_AGENT_COPY);
-  assert.equal(entries.length, 39);
+  // 39 from U5 + 7 from C11-FW (local_exec_disabled notice, last contact, 我的设备 banner, consent lines, idle desktop).
+  assert.equal(entries.length, 46);
   assert.equal(new Set(entries.map(([, zh]) => zh)).size, entries.length, "no two keys share a source sentence");
   for (const locale of LOCALES.filter((locale) => locale !== "zh")) {
     const runtime = await loadUiMessages(locale);
@@ -268,8 +269,8 @@ test("every cloud-assistant sentence is translated in all 16 locales, identical 
   // The how-to quotes the desktop app's own switch (device_link/surfaces.rs).
   assert.match(UI_MESSAGES.en[model.CLOUD_AGENT_COPY.refusedDisabled], /“Allow the cloud assistant to use this computer”/);
   assert.match(model.CLOUD_AGENT_COPY.needsYouHint, /「允许云端助手使用这台电脑」/);
-  // T3a's table is untouched.
-  assert.equal(Object.keys(model.LOCAL_AGENT_COPY).length, 19);
+  // T3a's 19 sentences + C11-FW's History sentence for a refused delete (local_agent_stop_pending).
+  assert.equal(Object.keys(model.LOCAL_AGENT_COPY).length, 20);
 });
 
 // ---------------------------------------------------------------- components
@@ -300,6 +301,8 @@ const { LocalAgentTaskStatus } = await import(await compileModule("src/shell/Loc
   "../lib/cloud-agent-api": dataModule(`
     export async function getAgentSession(...args) { (globalThis.__u5SessionReads ||= []).push(args); return globalThis.__u5Session ?? { kind: "gone" }; }
     export async function getAgentObservation(...args) { (globalThis.__u5ImageReads ||= []).push(args); return globalThis.__u5Image ?? { kind: "none" }; }
+    // C11-FW: 接管电脑's consent line reads availability; no route = today's block.
+    export async function listCloudAgentAvailability() { return { kind: "absent" }; }
   `),
   "../pages/RemoteDesktopPanel": dataModule(`
     import React from ${JSON.stringify(reactUrl)};
@@ -417,7 +420,9 @@ test("transcript: device_status renders the kind's fixed sentence as a notice; u
     const node = view.host.querySelector("[data-device-status]");
     assert.equal(node.getAttribute("data-device-status"), "offline");
     assert.equal(node.getAttribute("role"), "status");
-    assert.equal(node.textContent, "你的电脑没有回应，可能已离线或休眠。");
+    // C11-FW: the sentence, then its time from meta.health in the viewer's clock.
+    assert.ok(node.textContent.startsWith("你的电脑没有回应，可能已离线或休眠。"), node.textContent);
+    assert.ok(node.querySelector("[data-device-status-time]"));
     assert.equal(view.host.querySelectorAll("button").length, 0, "a notice has no copy/regenerate/share actions");
     await act(async () => view.root.render(notice({ text: "新的服务器提示", health: { kind: "brand_new" } }, "新的服务器提示")));
     assert.equal(view.host.querySelector("[data-device-status]").textContent, "新的服务器提示");

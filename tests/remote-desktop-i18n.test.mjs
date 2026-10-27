@@ -174,7 +174,8 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
   assert.match(entryText, /Tasks/);
   assert.match(entryText, /offline/i);
 
-  const enter = [...host.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Enter desktop" && !b.disabled);
+  const studio = host.querySelector('[data-device-card="a"]');
+  const enter = [...studio.querySelectorAll("button")].find((b) => (b.textContent || "").trim() === "Enter desktop" && !b.disabled);
   await act(async () => {
     enter.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   });

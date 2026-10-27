@@ -64,6 +64,40 @@ export interface CloudAgentAvailability {
   reason: string | null;
   /** When the computer's permission ends, epoch milliseconds. */
   until: number | null;
+  /**
+   * The person at the computer set 「授权期间允许我从手机/网页直接查看和接管这台电脑」
+   * in the envelope (C11 contract §2): the owner's remote-desktop request is
+   * approved without a dialog while the envelope lasts. `null`: the gateway
+   * does not report it (older gateways), so the web keeps today's wording.
+   */
+  remoteTakeover: boolean | null;
+  /** The cloud-assistant session live on this computer right now (C11 contract §4), else null. */
+  liveSession: CloudLiveSession | null;
+}
+
+/**
+ * `live_session` of an availability row: present only while a session is
+ * live. `taskId` is null for developer (dogfood) sessions, which have no task
+ * to hand back to.
+ */
+export interface CloudLiveSession {
+  sessionId: string;
+  taskId: string | null;
+  owner: "ai" | "human" | null;
+  /** `offered` | `running` | `paused` | `stuck` (protocol §12.1). */
+  state: string | null;
+}
+const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+function parseLiveSession(value: unknown): CloudLiveSession | null {
+  const live = record(value);
+  if (typeof live.session_id !== "string" || !SESSION_ID.test(live.session_id) || live.state === "ended") return null;
+  return {
+    sessionId: live.session_id,
+    taskId: typeof live.task_id === "string" && ID.test(live.task_id) ? live.task_id : null,
+    owner: live.owner === "ai" || live.owner === "human" ? live.owner : null,
+    state: typeof live.state === "string" && CODE.test(live.state) ? live.state : null,
+  };
 }
 
 /** Epoch milliseconds from epoch seconds (the link's `until`), epoch milliseconds or ISO-8601 text. */
@@ -86,6 +120,8 @@ export function parseCloudAgentAvailability(value: unknown): Map<string, CloudAg
       available: row.available,
       reason: typeof row.reason === "string" && CODE.test(row.reason) ? row.reason : null,
       until: epochMs(row.until),
+      remoteTakeover: typeof row.remote_takeover === "boolean" ? row.remote_takeover : null,
+      liveSession: parseLiveSession(row.live_session),
     });
   }
   return out;

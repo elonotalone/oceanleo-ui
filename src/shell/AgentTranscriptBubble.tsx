@@ -12,7 +12,7 @@ import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
 import { ApprovalCard, parseApprovalMessage } from "./ApprovalCard";
-import { cloudHealthTone, deviceStatusNoticeText } from "../lib/local-agent-task";
+import { cloudHealthTone, deviceStatusNoticeLine, deviceStatusNoticeTime } from "../lib/local-agent-task";
 
 export function agentArtifactLabels(
   tt: UITranslate,
@@ -439,9 +439,11 @@ function GateBubble({
 /**
  * What the user's computer did while the cloud assistant was using it
  * (device-link protocol §13): "你的电脑没有回应…", "电脑已恢复…". The gateway
- * stores the fixed text of the health kind (bridge doc §17.9, no clock times),
- * so the notice is rendered from the kind in the viewer's language; an unknown
- * kind falls back to the stored text.
+ * stores the fixed text of the kind (bridge doc §17.9, no clock times), so the
+ * notice is rendered from the kind in the viewer's language (every kind of
+ * C11 contract §3), with the time from `meta.health` in the viewer's own
+ * clock. A kind this build does not know never shows untranslated Chinese
+ * outside a Chinese UI.
  */
 function DeviceStatusNotice({
   message,
@@ -457,7 +459,8 @@ function DeviceStatusNotice({
       ? (health as { kind?: unknown }).kind
       : undefined;
   const tone = cloudHealthTone(kind);
-  const text = tt(deviceStatusNoticeText(kind, message.meta?.text ?? message.content));
+  const text = deviceStatusNoticeLine(kind, message.meta?.text ?? message.content, tt);
+  const time = deviceStatusNoticeTime(kind, health, tt);
   return (
     <div
       role="status"
@@ -478,6 +481,11 @@ function DeviceStatusNotice({
       />
       <span className="min-w-0">
         <HighlightedText text={text} query={highlightQuery} />
+        {time && (
+          <span data-device-status-time className="ml-1.5 text-[11px] opacity-70">
+            {time}
+          </span>
+        )}
       </span>
     </div>
   );

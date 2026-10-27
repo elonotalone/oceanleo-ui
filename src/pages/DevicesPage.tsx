@@ -12,10 +12,12 @@ import { CreateComputerDialog } from "../shell/cloud-computer/CreateComputerDial
 import { ConnectServerDialog } from "../shell/cloud-computer/ConnectServerDialog";
 import { CloudComputersSection } from "./CloudComputersPage";
 import { RemoteDesktopPanel, requestRemoteDesktopFullscreen } from "./RemoteDesktopPanel";
+import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
 import { DeviceCard, DeviceIcon, isComputer, type DeviceAvailability } from "./devices/DeviceCard";
 import { DEVICE_BUTTON, DEVICE_PRIMARY_BUTTON, DeviceDialog } from "./devices/DeviceDialog";
 import { DeviceSettingsDialog } from "./devices/DeviceSettingsDialog";
 import { DeviceTasksDialog } from "./devices/DeviceTasksDialog";
+import { deviceCloudAgentClient, useDeviceCloudAgent, type DeviceCloudAgentClient } from "./devices/use-device-cloud-agent";
 
 export type DevicesPageTab = "devices" | "cloud";
 export interface DevicesPageProps {
@@ -23,7 +25,13 @@ export interface DevicesPageProps {
   cloudClient?: CloudComputerClient;
   settingsClient?: DeviceSettingsClient;
   remoteDesktopClient?: RemoteDesktopClient;
+  /** The cloud assistant's live session and takeover consent for the open remote desktop (C11 contracts §2, §4). */
+  cloudAgentClient?: DeviceCloudAgentClient;
   remoteStatusIntervalMs?: number;
+  /** How often the device list is re-read. */
+  listIntervalMs?: number;
+  /** Who is signed in now (`getUserIdSnapshot`); `known` false when that cannot be read. */
+  currentUser?: () => Promise<{ known: boolean; userId: string | null }>;
   initialTab?: DevicesPageTab;
   /** Compatibility for embedding consumers, no longer an account Settings tab. */
   variant?: "page" | "pane";
@@ -41,8 +49,41 @@ function desktopFromLocation(): string | null {
   return id && /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
 }
 
+/**
+ * The card order while the page is open. The gateway lists devices in storage
+ * order, which changes whenever a heartbeat rewrites a row, so cards used to
+ * swap places between polls and a click aimed a moment earlier landed on
+ * another computer (W, 2026-10-27). The first load puts online computers first
+ * (then computers before phones, then by name); every later load keeps each
+ * known card where it is, drops removed ones and appends new ones by the same rule.
+ */
+export function stableDeviceOrder(previous: readonly string[], devices: readonly Device[]): Device[] {
+  const position = new Map(previous.map((id, index) => [id, index]));
+  const known = devices.filter((device) => position.has(device.device_id))
+    .sort((a, b) => position.get(a.device_id)! - position.get(b.device_id)!);
+  const added = devices.filter((device) => !position.has(device.device_id)).sort((a, b) =>
+    Number(deviceAvailability(b) === "online") - Number(deviceAvailability(a) === "online")
+    || Number(isComputer(b)) - Number(isComputer(a))
+    || a.device_name.localeCompare(b.device_name)
+    || (a.device_id < b.device_id ? -1 : a.device_id > b.device_id ? 1 : 0));
+  return [...known, ...added];
+}
+
+/** Who is signed in right now; `known` false when that cannot be read. */
+async function signedInUser(): Promise<{ known: boolean; userId: string | null }> {
+  try {
+    const auth = await import("../lib/auth/client");
+    if (typeof auth.getUserIdSnapshot !== "function") return { known: false, userId: null };
+    const snapshot = await auth.getUserIdSnapshot();
+    return { known: snapshot.available, userId: snapshot.userId };
+  } catch {
+    return { known: false, userId: null };
+  }
+}
+
 export function DevicesPage({ client = devicesFacade, cloudClient = cloudComputerApi, settingsClient = defaultSettingsClient,
-  remoteDesktopClient = defaultRemoteDesktopClient, remoteStatusIntervalMs = 10_000, initialTab, variant = "page" }: DevicesPageProps) {
+  remoteDesktopClient = defaultRemoteDesktopClient, cloudAgentClient = deviceCloudAgentClient, remoteStatusIntervalMs = 10_000,
+  listIntervalMs = 15_000, currentUser = signedInUser, initialTab, variant = "page" }: DevicesPageProps) {
   const tt = useUI();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +96,9 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [tasksId, setTasksId] = useState<string | null>(null);
   const [remoteOpenId, setRemoteOpenId] = useState<string | null>(desktopFromLocation);
+  // Set only by a click on 进入桌面. A desktop restored from the URL (reload,
+  // back/forward) has none, so it waits for 连接 instead of asking the computer.
+  const [desktopTicket, setDesktopTicket] = useState<RemoteDesktopTicket | null>(null);
   const [remoteStatus, setRemoteStatus] = useState<Record<string, RemoteDesktopStatus>>({});
   const [confirmRevoke, setConfirmRevoke] = useState<Device | null>(null);
   const [authRevision, setAuthRevision] = useState(0);
@@ -62,8 +106,16 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const [connectServer, setConnectServer] = useState(false);
   const [cloudRevision, setCloudRevision] = useState(0);
   const generation = useRef(0);
+  const order = useRef<string[]>([]);
+  /** Apply a fresh list in the page's stable card order. */
+  function showDevices(list: Device[]) {
+    const ordered = stableDeviceOrder(order.current, list);
+    order.current = ordered.map((device) => device.device_id);
+    setDevices(ordered);
+  }
 
   useEffect(() => {
+    // Back/forward may show or hide the desktop; it never requests a session (no ticket).
     const changed = () => setRemoteOpenId(desktopFromLocation());
     window.addEventListener("popstate", changed);
     return () => window.removeEventListener("popstate", changed);
@@ -73,13 +125,16 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     const ticket = generation.current;
     const result = await client.listDevices();
     if (ticket !== generation.current) return result;
-    if (result.ok && result.data) { setDevices(result.data); setPageError(null); }
+    if (result.ok && result.data) { showDevices(result.data); setPageError(null); }
     else setPageError(deviceErrorCopy(result.error, { limit: result.limit }));
     return result;
   }
   useEffect(() => {
     let alive = true;
     let loadTicket = 0;
+    // The account whose devices this page shows. Learned at mount: an auth event
+    // for the same person (a token refresh) is not a switch. Treating the first
+    // one as a switch closed an open remote desktop (W, 2026-10-27 13:37:05).
     let account: string | null | undefined;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
@@ -87,27 +142,47 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
       try {
         const result = await client.listDevices();
         if (!alive || ticket !== loadTicket) return;
-        if (result.ok && result.data) { setDevices(result.data); setPageError(null); }
+        if (result.ok && result.data) { showDevices(result.data); setPageError(null); }
         else setPageError(deviceErrorCopy(result.error, { limit: result.limit }));
       } catch { if (alive && ticket === loadTicket) setPageError(deviceErrorCopy("network_error")); }
-      finally { if (alive && ticket === loadTicket) { setLoading(false); timer = setTimeout(load, 15_000); } }
+      finally { if (alive && ticket === loadTicket) { setLoading(false); timer = setTimeout(load, listIntervalMs); } }
     }
-    function onAccountChange(event: Event) {
-      const detail = (event as CustomEvent<{ userId?: string | null }>).detail;
-      if (detail && "userId" in detail) { if (detail.userId === account) return; account = detail.userId; }
+    function reset() {
       generation.current += 1;
       clearTimeout(timer);
-      setDevices([]); setRemoteStatus({}); setSettingsId(null); setTasksId(null); setRemoteOpenId(null);
+      order.current = [];
+      setDevices([]); setRemoteStatus({}); setSettingsId(null); setTasksId(null); setRemoteOpenId(null); setDesktopTicket(null);
       const url = new URL(window.location.href); url.searchParams.delete("desktop");
       window.history.replaceState(window.history.state, "", url);
       setConfirmRevoke(null); setAdding(false); setConnecting(false); setCreateCloud(false); setConnectServer(false); setPairCode(""); setPairing(false); setLoading(true);
       setAuthRevision((value) => value + 1);
       void load();
     }
+    function settle(userId: string | null) {
+      if (!alive) return;
+      // Not learned yet: a sign-in names the account already shown; a sign-out clears it.
+      if (account === undefined && userId !== null) { account = userId; return; }
+      if (userId === account) return;
+      account = userId;
+      reset();
+    }
+    function onAccountChange(event: Event) {
+      const detail = (event as CustomEvent<{ userId?: string | null }>).detail;
+      if (detail && "userId" in detail) { settle(detail.userId ?? null); return; }
+      // No account in the event: ask who is signed in; if that cannot be read, reload this account's view.
+      void currentUser().then(({ known, userId }) => {
+        if (!alive) return;
+        if (known) settle(userId);
+        else reset();
+      }, () => { if (alive) reset(); });
+    }
+    void currentUser().then(({ known, userId }) => { if (alive && known && account === undefined) account = userId; }, () => {});
     void load();
     window.addEventListener("oceanleo:auth-state", onAccountChange);
     return () => { alive = false; generation.current += 1; clearTimeout(timer); window.removeEventListener("oceanleo:auth-state", onAccountChange); };
-  }, [client]);
+    // `showDevices` only writes a ref and a setter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, listIntervalMs, currentUser]);
 
   const remoteTargetKey = useMemo(() => devices.filter(isComputer).slice(0, 20).map((item) => item.device_id).join(","), [devices]);
   useEffect(() => {
@@ -165,6 +240,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
       else await refreshDevices();
     } catch { if (ticket === generation.current) setPageError(deviceErrorCopy("network_error")); }
   }
+  /** Only from a click on 进入桌面: the one place on this page that may request a session. */
   function openDesktop(deviceId: string) {
     requestRemoteDesktopFullscreen();
     const url = new URL(window.location.href);
@@ -172,11 +248,12 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
       url.searchParams.set("desktop", deviceId);
       window.history.pushState({ ...window.history.state, oceanleoDesktopEntry: deviceId }, "", url);
     }
-    setSettingsId(null); setTasksId(null); setRemoteOpenId(deviceId);
+    setSettingsId(null); setTasksId(null); setDesktopTicket(remoteDesktopTicket()); setRemoteOpenId(deviceId);
   }
   function closeDesktop() {
     const id = remoteOpenId;
     setRemoteOpenId(null);
+    setDesktopTicket(null);
     if (id && window.history.state?.oceanleoDesktopEntry === id) window.history.back();
     else {
       const url = new URL(window.location.href); url.searchParams.delete("desktop");
@@ -186,6 +263,8 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const selectedSettings = devices.find((item) => item.device_id === settingsId);
   const selectedTasks = devices.find((item) => item.device_id === tasksId);
   const selectedRemote = devices.find((item) => item.device_id === remoteOpenId && isComputer(item));
+  // The same AI banner and 交还给 AI as from the task page, found through the computer's live session.
+  const remoteAgent = useDeviceCloudAgent(selectedRemote?.device_id ?? null, settingsClient, cloudAgentClient);
 
   return <div className={variant === "pane" ? "min-h-0" : "mx-auto flex min-h-full w-full max-w-7xl flex-col px-5 py-7 sm:px-8"} data-oceanleo-devices-page data-devices-pane={variant === "pane" ? "" : undefined}>
     <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div><button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button></header>
@@ -207,7 +286,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     </DeviceDialog>}
     {selectedSettings && <DeviceSettingsDialog key={`${authRevision}-${selectedSettings.device_id}`} device={selectedSettings} availability={deviceAvailability(selectedSettings, remoteStatus[selectedSettings.device_id])} client={settingsClient} onClose={() => setSettingsId(null)} onControl={() => openDesktop(selectedSettings.device_id)} onRename={(name) => rename(selectedSettings, name)} onRevoke={() => { setSettingsId(null); setConfirmRevoke(selectedSettings); }} />}
     {selectedTasks && <DeviceTasksDialog key={`${authRevision}-${selectedTasks.device_id}`} deviceId={selectedTasks.device_id} deviceName={selectedTasks.device_name} client={settingsClient} onClose={() => setTasksId(null)} />}
-    {selectedRemote && <RemoteDesktopPanel key={`${authRevision}-${selectedRemote.device_id}`} deviceId={selectedRemote.device_id} deviceName={selectedRemote.device_name} client={remoteDesktopClient} onClose={closeDesktop} />}
+    {selectedRemote && <RemoteDesktopPanel key={`${authRevision}-${selectedRemote.device_id}`} deviceId={selectedRemote.device_id} deviceName={selectedRemote.device_name} client={remoteDesktopClient} onClose={closeDesktop} agent={remoteAgent.agent} consent={remoteAgent.consent} ticket={desktopTicket} />}
     {confirmRevoke && <ConfirmDialog title={tt("撤销「{name}」？", { name: confirmRevoke.device_name })} body={tt("撤销后这台电脑立刻不再接收任何任务，需要重新配对。")} confirmLabel={tt("确认撤销")} danger onConfirm={() => revoke(confirmRevoke)} onCancel={() => setConfirmRevoke(null)} />}
     {createCloud && <CreateComputerDialog client={cloudClient} onClose={() => setCreateCloud(false)} onCreated={() => { setCreateCloud(false); setCloudRevision((value) => value + 1); }} />}
     {connectServer && <ConnectServerDialog client={cloudClient} onClose={() => setConnectServer(false)} onCreated={() => { setConnectServer(false); setCloudRevision((value) => value + 1); }} />}

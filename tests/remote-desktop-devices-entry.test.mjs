@@ -281,12 +281,17 @@ test("browser back/forward follows the desktop query and refresh restores only a
     await act(async () => { window.history.forward(); await wait(25); });
     await flush();
     assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
+    // C11-FW (W 2026-10-27): navigation restores the view, only a click asks the computer.
+    assert.equal(document.querySelector("[data-oceanleo-remote-desktop]").getAttribute("data-remote-phase"), "idle");
+    assert.equal(remote.log.create.length, 1);
+    await view.click(view.button("连接"));
     assert.equal(remote.log.create.length, 2);
   } finally { await view.unmount(); }
   window.history.replaceState(null, "", "/devices?desktop=pc-1");
   const refreshed = await render([device()], remote);
   try {
     assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
+    assert.equal(remote.log.create.length, 2, "a refreshed page asks nothing until 连接");
     await refreshed.click(refreshed.button("退出桌面"));
     assert.equal(new URLSearchParams(window.location.search).get("desktop"), null);
   } finally { await refreshed.unmount(); }

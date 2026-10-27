@@ -238,19 +238,22 @@ test("device Settings opens a target details dialog, never an inline accordion",
 test("account changes reload devices and discard the previous account's late response", async () => {
   let resolveOld;
   let count = 0;
+  let userId = "account-a";
   const old = new Promise((resolve) => { resolveOld = resolve; });
   const view = await render({
     ...makeClient([]),
     listDevices: async () => ++count === 1 ? old : ({ ok: true, data: [makeDevice({ device_name: "Account B computer" })] }),
-  });
-  await act(async () => { window.dispatchEvent(new window.Event("oceanleo:auth-state")); });
-  await flush();
-  assert.ok(view.text().includes("Account B computer"));
-  await act(async () => { resolveOld({ ok: true, data: [makeDevice({ device_name: "Account A computer" })] }); });
-  await flush();
-  assert.ok(view.text().includes("Account B computer"));
-  assert.ok(!view.text().includes("Account A computer"));
-  view.cleanup();
+  }, { currentUser: async () => ({ known: true, userId }) });
+  try {
+    userId = "account-b";
+    await act(async () => { window.dispatchEvent(new window.Event("oceanleo:auth-state")); });
+    await flush();
+    assert.ok(view.text().includes("Account B computer"));
+    await act(async () => { resolveOld({ ok: true, data: [makeDevice({ device_name: "Account A computer" })] }); });
+    await flush();
+    assert.ok(view.text().includes("Account B computer"));
+    assert.ok(!view.text().includes("Account A computer"));
+  } finally { view.cleanup(); }
 });
 
 test("离线设备显示简短真实状态，入口仍可点击获得具体结果", async () => {

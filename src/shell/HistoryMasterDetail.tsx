@@ -26,6 +26,7 @@ import {
   type ArtifactMeta,
   type TaskDetail,
 } from "../lib/agent";
+import { taskRequestFailureText } from "../lib/local-agent-task";
 import {
   deleteAppSession,
   getAppSession,
@@ -298,13 +299,14 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   );
   const loadedOnceRef = useRef(historyListCache.has(cacheKey));
   const [error, setError] = useState<string | null>(null);
+  // Why the last delete was refused. Kept apart from `error`: the silent reload
+  // that follows a refusal succeeds and clears `error`, which hid the reason.
+  const [notice, setNotice] = useState<string | null>(null);
   const reloadGenerationRef = useRef(0);
   const deletingRef = useRef(new Set<string>());
   const pollFailuresRef = useRef(0);
-  // 文案函数与登录提示走 ref：它们的引用变化（词典对象换了、父级重渲染）不得
-  // 重建 reload、进而触发首屏式的非静默重拉。
-  const ttRef = useRef(tt);
-  ttRef.current = tt;
+  // 登录提示走 ref：它的引用变化（父级重渲染）不得重建 reload、进而触发首屏式的
+  // 非静默重拉。错误文案存中文原文，渲染时再翻（`tt(error)`）。
   const authMessageRef = useRef(authMessage);
   authMessageRef.current = authMessage;
   // silent=true（轮询刷新）：不进「加载…」态、列表不变时不替换数组引用——杜绝左栏
@@ -339,9 +341,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
           setError(
             signedOut
               ? authMessageRef.current
-              : sessionsResult.error ||
-                  tasksResult.error ||
-                  ttRef.current("加载失败"),
+              : taskRequestFailureText(sessionsResult.error ? sessionsResult : tasksResult, "加载失败"),
           );
         }
         return false;
@@ -438,6 +438,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     ++reloadGenerationRef.current;
     const deletionKey = `${entry.kind}:${entry.id}`;
     deletingRef.current.add(deletionKey);
+    setNotice(null);
     const prev = items;
     setItems((list) =>
       list.filter(
@@ -454,13 +455,14 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     deletingRef.current.delete(deletionKey);
     if (!r.ok) {
       setItems(prev);
-      setError(r.error || tt("删除失败，请稍后重试。"));
+      // e.g. 409 local_agent_stop_pending: the computer was asked to stop the task first.
+      setNotice(taskRequestFailureText(r, "删除失败，请重试。"));
       reload(true);
     } else {
       setError(null);
     }
     return r.ok;
-  }, [items, reload, tt]);
+  }, [items, reload]);
   // 轻量字段更新（宗旨 v22：Manus 式任务菜单）：重命名 / 置顶 / 收藏 / 移动项目。
   // task 走 owner RLS；session 走窄 metadata API（ archived snapshot 的 RLS 仍保持不可改）。
   // 两条路径都乐观回填 + 失败回滚，不触碰 conflict-checked 的 snapshot API。
@@ -532,7 +534,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     },
     [items, reload, tt],
   );
-  return { items, loading, error, remove, mutate, reload };
+  return { items, loading, error, notice, remove, mutate, reload };
 }
 
 function LeoCreatedMark() {
@@ -619,7 +621,7 @@ function HistoryProjectTag({
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
   const ledger = useLedgerCurrency();
-  const { items, loading, error, remove, mutate } = useHistory(siteId);
+  const { items, loading, error, notice, remove, mutate } = useHistory(siteId);
   const local = useLocalTasks();
   const cloudTaskIds = new Set(items.filter((entry) => entry.kind === "task").map((entry) => entry.id));
   // Once a finished local record is synced, keep the ordinary task's title,
@@ -682,6 +684,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   return (
     <div className="space-y-0.5">
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(error)}</p>}
+      {notice && <p role="alert" data-history-delete-error className="px-3 py-2 text-[12px] text-rose-600">{tt(notice)}</p>}
       {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
       {!error && !loading && items.length === 0 && localTasks.length === 0 && (
         <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有任务。")}</p>
@@ -1013,7 +1016,7 @@ export function HistoryDetail({
         setDetailError(
           sessionResult.status === 401
             ? "登录后即可查看我的任务。"
-            : sessionResult.error || "加载失败",
+            : taskRequestFailureText(sessionResult, "加载失败"),
         );
         return;
       }
@@ -1037,7 +1040,7 @@ export function HistoryDetail({
       setDetailError(
         signedOut
           ? "登录后即可查看我的任务。"
-          : taskResult.error || sessionResult.error || "加载失败",
+          : taskRequestFailureText(taskResult.error ? taskResult : sessionResult, "加载失败"),
       );
     })();
     return () => {

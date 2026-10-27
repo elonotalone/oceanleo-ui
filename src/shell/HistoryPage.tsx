@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { listTasks, deleteTask, type AgentTask } from "../lib/agent";
+import { taskRequestFailureText } from "../lib/local-agent-task";
 import { ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
@@ -67,6 +68,8 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
   const [items, setItems] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // A refused delete keeps the list (the user tries again from it); its sentence shows above the rows.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AgentTask | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -79,7 +82,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
       if (!alive) return;
       setLoading(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? tt("登录后即可查看我的任务。") : r.error || tt("加载失败"));
+        setError(r.status === 401 ? tt("登录后即可查看我的任务。") : taskRequestFailureText(r, "加载失败"));
         return;
       }
       // 旧后端可能忽略项目范围；普通历史仍须在 UI 侧 fail closed。
@@ -95,13 +98,15 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
     if (!task) return;
     setDeletingId(task.id);
     setPendingDelete(null);
+    setDeleteError(null);
     const prev = items;
     setItems((list) => list.filter((t) => t.id !== task.id)); // optimistic
     const r = await deleteTask(task.id);
     setDeletingId(null);
     if (!r.ok) {
       setItems(prev); // rollback
-      setError(r.error || tt("删除失败，请重试。"));
+      // e.g. 409 local_agent_stop_pending: the computer was asked to stop the task first.
+      setDeleteError(taskRequestFailureText(r, "删除失败，请重试。"));
     }
   }
 
@@ -142,6 +147,11 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
           <Empty text={tt("还没有任务。去工作台完成第一份工作吧。")} />
         ) : (
           <div className="space-y-2">
+            {deleteError && (
+              <p role="alert" data-history-delete-error className="rounded-xl bg-rose-50 px-4 py-2 text-[13px] text-rose-600">
+                {tt(deleteError)}
+              </p>
+            )}
             {shown.map((t) => {
               const st = STATUS_LABEL[t.status] || { text: t.status, cls: "bg-stone-100 text-stone-500" };
               const removing = deletingId === t.id;

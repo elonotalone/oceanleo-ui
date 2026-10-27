@@ -7,9 +7,11 @@ import { RemoteDesktopVideo } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
 import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
-import { CLOUD_AGENT_COPY } from "../lib/local-agent-task";
+import { CLOUD_AGENT_COPY, type RemoteConsent } from "../lib/local-agent-task";
+import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
 
 export { requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
+export { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
 
 export interface RemoteDesktopPanelProps {
   deviceId: string;
@@ -21,16 +23,33 @@ export interface RemoteDesktopPanelProps {
   doubleClickWindowMs?: number;
   backpressureMs?: number;
   /**
-   * The cloud assistant working on this computer for the task the panel was
-   * opened from (device-link protocol §13, bridge doc §17.6). Banner and hand
-   * back only: the media and input paths are unchanged.
+   * The cloud assistant working on this computer (device-link protocol §13,
+   * bridge doc §17.6): from the task the panel was opened from, or from the
+   * computer's live session when opened from 我的设备 (C11 contract §4).
+   * Banner and hand back only: the media and input paths are unchanged.
    */
   agent?: RemoteDesktopAgentBanner;
+  /**
+   * What to expect while the request waits (C11 contract §2): `direct` = the
+   * computer approves this owner's request without a dialog; `ask` = someone
+   * at the computer must click 同意本次. Absent: today's wording.
+   */
+  consent?: RemoteConsent;
+  /**
+   * The person's explicit request to connect (`remoteDesktopTicket()` in a
+   * click handler). The panel sends one session request per fresh ticket.
+   * Spent or null (a reload, back/forward, a remount, a dev hot reload): it
+   * shows 连接 and asks nothing of the computer until that click. Omitted:
+   * the panel was mounted by a click and connects once for this mount.
+   */
+  ticket?: RemoteDesktopTicket | null;
 }
 
 export interface RemoteDesktopAgentBanner {
   /** Chinese source sentence from `CLOUD_AGENT_COPY`, rendered through `tt`. */
   text: string;
+  /** A second sentence, e.g. that the last hand back got no confirmed answer. */
+  note?: string;
   /** Offer 交还给 AI (the AI is paused and the owner may resume it). */
   handBack: boolean;
   busy: boolean;
@@ -38,7 +57,8 @@ export interface RemoteDesktopAgentBanner {
   onHandBack: () => void;
 }
 
-type Phase = "starting" | "waiting" | "connecting" | "active" | "closed" | "error" | "denied" | "timed_out" | "revoked" | "signed_out";
+/** `idle`: no session requested; only a click on 连接 sends one. */
+type Phase = "idle" | "starting" | "waiting" | "connecting" | "active" | "closed" | "error" | "denied" | "timed_out" | "revoked" | "signed_out";
 const terminal = (code?: string): Phase => code === "denied" ? "denied" : code === "request_expired" ? "timed_out" : code === "signed_out" ? "signed_out" : code === "revoked" || code === "controller_revoked" ? "revoked" : "error";
 const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
   const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
@@ -46,21 +66,40 @@ const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) =>
   if (signal.aborted) done(); else signal.addEventListener("abort", done, { once: true });
 });
 
-export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent }: RemoteDesktopPanelProps) {
+/** Only the publisher's current geometry can authorize a fresh video's point mapping. */
+function mediaGeometryKey(status: RemoteMediaStatus | null): string | null {
+  const geometry = status?.state === "publishing" ? status.geometry : null;
+  if (!geometry || !Number.isFinite(geometry.width) || !Number.isFinite(geometry.height) || geometry.width <= 0 || geometry.height <= 0) return null;
+  return `${geometry.display_id}:${geometry.width}x${geometry.height}`;
+}
+
+/** Encoding may scale the display down and round one pixel; a stale aspect is never current. */
+function mediaFrameMatches(status: RemoteMediaStatus | null, width: number, height: number): boolean {
+  const geometry = status?.geometry;
+  return Boolean(geometry && mediaGeometryKey(status) && Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+    && Math.abs(width * geometry.height - height * geometry.width) <= Math.max(geometry.width, geometry.height));
+}
+
+export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, consent, ticket: requested }: RemoteDesktopPanelProps) {
   const tt = useUI();
   const [portal] = useState(remoteDesktopPortal);
-  const [phase, setPhase] = useState<Phase>("starting");
+  // The request this panel may send. State, so a remount starts from the
+  // opener's (by then spent) ticket and a dev Fast Refresh keeps the spent one.
+  const [ticket, setTicket] = useState<RemoteDesktopTicket | null>(() => requested === undefined ? remoteDesktopTicket() : requested);
+  useEffect(() => { if (requested) setTicket(requested); }, [requested]);
+  const [phase, setPhase] = useState<Phase>(() => ticket && !ticket.spent ? "starting" : "idle");
   const [frame, setFrame] = useState<RemoteDesktopFrameData | null>(null);
   const [message, setMessage] = useState("");
   const [congested, setCongested] = useState(false);
   const [toolbar, setToolbar] = useState(true);
   const [coarse, setCoarse] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
-  const [attempt, setAttempt] = useState(0);
   const [mediaMode, setMediaMode] = useState<"legacy" | "artc">("legacy");
   const mediaModeRef = useRef<"legacy" | "artc">("legacy");
   const [mediaStatus, setMediaStatus] = useState<RemoteMediaStatus | null>(null);
   const mediaStatusRef = useRef<RemoteMediaStatus | null>(null);
+  /** Geometry for which a fresh decoded frame has arrived; an ACK never sets it. */
+  const mediaFrameGeometry = useRef<string | null>(null);
   const [displayId, setDisplayId] = useState<string>();
   const [zoom, setZoom] = useState(1);
   const [panMode, setPanMode] = useState(false);
@@ -128,6 +167,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
 
   const send = useCallback((action: RemoteDesktopAction) => {
     if (closedRef.current || phaseRef.current !== "active" || !frameRef.current) return;
+    if (mediaModeRef.current === "artc" && (!mediaFrameGeometry.current || mediaFrameGeometry.current !== mediaGeometryKey(mediaStatusRef.current))) return;
     if (streamModeRef.current) { streamRef.current?.send(action); return; }
     if (queueRef.current.length >= 64) { setMessage("操作太快，部分输入被丢弃了。"); return; }
     queueRef.current.push(action);
@@ -163,6 +203,23 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     if (streamModeRef.current) streamRef.current?.send({ kind: "release_all" });
   }, []);
 
+  const invalidateMediaFrame = useCallback(() => {
+    releaseInput();
+    mediaFrameGeometry.current = null;
+    frameRef.current = null;
+    setFrame(null);
+    setMediaReady(false);
+    setMediaNotice("已发出请求，等这台电脑显示画面…");
+  }, [releaseInput]);
+
+  const acceptMediaStatus = useCallback((status: RemoteMediaStatus | null) => {
+    const previous = mediaGeometryKey(mediaStatusRef.current);
+    const next = mediaGeometryKey(status);
+    mediaStatusRef.current = status;
+    setMediaStatus(status);
+    if (mediaModeRef.current === "artc" && (!next || next !== previous)) invalidateMediaFrame();
+  }, [invalidateMediaFrame]);
+
   const disconnect = useCallback(() => {
     if (closedRef.current) return;
     releaseInput();
@@ -189,8 +246,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     setCongested(false);
     mediaModeRef.current = "legacy";
     mediaStatusRef.current = null;
+    mediaFrameGeometry.current = null;
     setMediaMode("legacy"); setMediaReady(false); setMediaStatus(null); setDisplayId(undefined); setZoom(1); setPanMode(false); setMediaNotice(""); setMessage("");
-    updatePhase("starting");
+    updatePhase(ticket && !ticket.spent ? "starting" : "idle");
     const previousOverflow = document.body.style.overflow;
     let mediaAttempted = false, mediaDescriptorSeen = false;
     document.body.style.overflow = "hidden";
@@ -202,7 +260,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       setMessage(remoteDesktopErrorCopy(error));
       revealToolbar();
     };
-    void (async () => {
+    const connect = async () => {
       let result = await client.createSession(deviceId, { signal: abort.signal });
       for (let retry = 0; !result.ok && result.error === "session_active" && retry < 2 && !abort.signal.aborted; retry++) {
         await wait(700, abort.signal);
@@ -236,8 +294,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           },
           media(media, status) {
             if (abort.signal.aborted) return;
-            mediaStatusRef.current = status;
-            setMediaStatus(status);
+            acceptMediaStatus(status);
             if (status?.state === "failed") end(status.error || "media_unavailable");
             // A missing descriptor before negotiation is normal. After activation it revokes video.
             if (media) mediaDescriptorSeen = true;
@@ -270,13 +327,26 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         }
         await wait(frameIntervalMs, abort.signal);
       }
-    })().catch(() => { if (!abort.signal.aborted) end("network_error"); });
+    };
+    // One session request per fresh ticket, i.e. per click. Spent in a
+    // microtask: React's dev double run of a new effect (StrictMode) cleans the
+    // first run up synchronously, so only the second one sends. A remount,
+    // reload, back/forward or Fast Refresh re-run finds it spent and stays idle.
+    let cancelled = false;
+    if (ticket && !ticket.spent) {
+      queueMicrotask(() => {
+        if (cancelled || abort.signal.aborted || ticket.spent) return;
+        ticket.spent = true;
+        connect().catch(() => { if (!abort.signal.aborted) end("network_error"); });
+      });
+    }
     return () => {
+      cancelled = true;
       disconnect();
       document.body.style.overflow = previousOverflow;
       releaseRemoteDesktopFullscreen();
     };
-  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase, attempt]);
+  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase, ticket, acceptMediaStatus]);
 
   useEffect(() => {
     if (phase === "active") {
@@ -347,6 +417,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   }, [flushClick, releaseInput, send, sendText]);
 
   const point = (event: { clientX: number; clientY: number }, strict = true) => {
+    if (mediaModeRef.current === "artc" && (!mediaFrameGeometry.current || mediaFrameGeometry.current !== mediaGeometryKey(mediaStatusRef.current))) return null;
     const image = mediaModeRef.current === "artc" ? videoRef.current : imageRef.current, current = frameRef.current;
     if (!image || !current) return null;
     const rect = containedRect(image.getBoundingClientRect(), current.width, current.height);
@@ -498,7 +569,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
 
   if (!portal) return null;
   const active = phase === "active";
-  const status = phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? "等待这台电脑确认…" : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
+  // `direct`: the computer approves without a dialog, so this is only the connection; `ask`: a person must approve there.
+  const waiting = consent === "direct" ? CLOUD_AGENT_COPY.statusConnecting : consent === "ask" ? CLOUD_AGENT_COPY.waitConsent : "等待这台电脑确认…";
+  const status = phase === "idle" ? CLOUD_AGENT_COPY.remoteIdle : phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? waiting : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
   return createPortal(
     <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
       <div ref={stageRef} data-remote-stage tabIndex={0} aria-label={tt("远程桌面")}
@@ -509,19 +582,22 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", overflow: zoom > 1 ? "auto" : "hidden" }}>
         {mediaMode === "artc" && active && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId} zoom={zoom}
           onFrame={(width, height) => {
-            if (displayId && mediaStatusRef.current?.geometry?.display_id !== displayId) return;
-            if (!frameRef.current || frameRef.current.width !== width || frameRef.current.height !== height) {
+            const status = mediaStatusRef.current;
+            const geometry = mediaGeometryKey(status);
+            if (!geometry || (displayId && status?.geometry?.display_id !== displayId) || !mediaFrameMatches(status, width, height)) return;
+            if (mediaFrameGeometry.current !== geometry || !frameRef.current || frameRef.current.width !== width || frameRef.current.height !== height) {
               const next = { image: "", width, height, sequence: 0 }; frameRef.current = next; setFrame(next);
             }
+            mediaFrameGeometry.current = geometry;
             setMediaReady(true);
           }}
           onState={(value, error) => {
-            if (value !== "playing") { setMediaReady(false); releaseInput(); frameRef.current = null; setFrame(null); }
-            setMediaNotice(value === "playing" ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
+            if (value !== "playing") invalidateMediaFrame();
+            setMediaNotice(value === "playing" && mediaFrameGeometry.current ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
             if (value === "error") { disconnect(); updatePhase("error"); setMessage(remoteDesktopErrorCopy(error)); revealToolbar(); }
           }}
           onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("兼容画面：请更新电脑客户端以启用流畅视频。"); }}
-          onStatus={(status) => { mediaStatusRef.current = status; setMediaStatus(status); }} /> : frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
+          onStatus={acceptMediaStatus} /> : frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
           onLoad={() => streamRef.current?.acknowledgeFrame(frame.sequence)}
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
           style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, maxWidth: "none", objectFit: "contain", display: "block" }} /> :
@@ -536,7 +612,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : status)}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
         {active ? <select aria-label={tt("画面缩放")} value={zoom} onChange={(event) => { releaseInput(); setZoom(Number(event.target.value)); setPanMode(false); }}><option value={1}>{tt("适应窗口")}</option><option value={1.5}>150%</option><option value={2}>200%</option><option value={3}>300%</option></select> : null}
         {active && zoom > 1 ? <button type="button" aria-pressed={panMode} onClick={() => { releaseInput(); setPanMode((value) => !value); }}>{tt(panMode ? "操作电脑" : "移动画面")}</button> : null}
-        {active && (mediaStatus?.displays?.length ?? 0) > 1 ? <select aria-label={tt("显示器")} value={displayId || mediaStatus?.geometry?.display_id || ""} onChange={(event) => { releaseInput(); setFrame(null); frameRef.current = null; setMediaReady(false); setDisplayId(event.target.value); }}>{mediaStatus?.displays?.map((display) => <option key={display.display_id} value={display.display_id}>{display.label} · {display.width}×{display.height}</option>)}</select> : null}
+        {active && (mediaStatus?.displays?.length ?? 0) > 1 ? <select aria-label={tt("显示器")} value={displayId || mediaStatus?.geometry?.display_id || ""} onChange={(event) => { invalidateMediaFrame(); setDisplayId(event.target.value); }}>{mediaStatus?.displays?.map((display) => <option key={display.display_id} value={display.display_id}>{display.label} · {display.width}×{display.height}</option>)}</select> : null}
         {coarse && active ? <button data-remote-keyboard-toggle type="button" aria-pressed={keyboard} onMouseDown={(event) => event.preventDefault()} onClick={() => {
           const next = !keyboard; setKeyboard(next);
           inputRef.current?.setAttribute("inputmode", next ? "text" : "none");
@@ -544,11 +620,13 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           else { inputRef.current?.blur(); stageRef.current?.focus({ preventScroll: true }); releaseInput(); }
         }}>{tt("键盘")}</button> : null}
         <button type="button" onClick={requestRemoteDesktopFullscreen} style={{ whiteSpace: "nowrap" }}>{tt("全屏")}</button>
-        {!active && !["starting", "waiting", "connecting"].includes(phase) ? <button type="button" onClick={() => { disconnect(); setAttempt((value) => value + 1); }}>{tt("重新连接")}</button> : null}
+        {/* The only ways to a session request: these buttons and the opener's own click. */}
+        {!active && !["starting", "waiting", "connecting"].includes(phase) ? <button type="button" data-remote-connect onClick={() => { disconnect(); setTicket(remoteDesktopTicket()); }}>{phase === "idle" ? tt("连接") : tt("重新连接")}</button> : null}
         <button type="button" onClick={() => { disconnect(); onClose(); }} style={{ whiteSpace: "nowrap" }}>{tt("退出桌面")}</button>
       </div>
       {agent ? <div data-remote-agent-banner role="status" style={{ position: "absolute", left: "50%", bottom: "max(64px, calc(env(safe-area-inset-bottom) + 56px))", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 10, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
         <span>{tt(agent.text)}</span>
+        {agent.note ? <span data-remote-agent-note style={{ opacity: .75 }}>{tt(agent.note)}</span> : null}
         {/* Let go of anything this viewer still holds first: the computer resumes the AI only once no person holds input. */}
         {agent.handBack ? <button type="button" data-remote-agent-hand-back disabled={agent.busy} onClick={() => { releaseInput(); agent.onHandBack(); }} style={{ whiteSpace: "nowrap" }}>{tt(CLOUD_AGENT_COPY.handBack)}</button> : null}
       </div> : null}

@@ -33,6 +33,7 @@ const translations = {
     receiptLost: "No receipt from the computer: the task may already have been handed to it. Check “My Tasks” first, and send again only after confirming it didn't start.",
     localExecOff: "Local execution off",
     localExecOffHint: "This computer has local execution turned off, so tasks sent to it won't run. On this computer, open “Devices and permissions” in OceanLeo and turn on “Let the cloud send tasks to this computer”, or use Cloud instead.",
+    deleteStopPending: "This task is still running on the computer. The computer has been asked to stop it; once it confirms, delete the task again.",
   },
   de: {
     localExecDisabled: "Auf dem ausgewählten Computer ist die lokale Ausführung ausgeschaltet. Die Aufgabe wurde nicht gestartet und auch nicht in die Cloud verschoben. Öffnen Sie auf diesem Computer in OceanLeo „Geräte und Berechtigungen“, schalten Sie „Cloud darf Aufgaben an diesen Computer senden“ ein und senden Sie erneut – oder wählen Sie die Cloud als Ausführungsort.",
@@ -54,6 +55,7 @@ const translations = {
     receiptLost: "Keine Bestätigung vom Computer: Die Aufgabe wurde möglicherweise bereits übergeben. Prüfen Sie zuerst „Meine Aufgaben“ und senden Sie erst erneut, wenn sicher ist, dass sie nicht gestartet wurde.",
     localExecOff: "Lokale Ausführung aus",
     localExecOffHint: "Auf diesem Computer ist die lokale Ausführung ausgeschaltet, an ihn gesendete Aufgaben werden nicht ausgeführt. Öffnen Sie auf diesem Computer in OceanLeo „Geräte und Berechtigungen“ und schalten Sie „Cloud darf Aufgaben an diesen Computer senden“ ein, oder verwenden Sie die Cloud.",
+    deleteStopPending: "Diese Aufgabe läuft noch auf dem Computer. Der Computer wurde gebeten, sie zu stoppen; sobald er das bestätigt, löschen Sie sie erneut.",
   },
   es: {
     localExecDisabled: "El equipo seleccionado tiene la ejecución local desactivada, así que la tarea no se inició ni se pasó a la nube. En ese equipo, abre “Dispositivos y permisos” en OceanLeo, activa “Permitir que la nube envíe tareas a este equipo” y vuelve a enviarla, o cambia la ubicación de ejecución a la nube.",
@@ -75,6 +77,7 @@ const translations = {
     receiptLost: "No hay confirmación del equipo: puede que la tarea ya se le haya entregado. Revisa primero “Mis tareas” y vuelve a enviarla solo si confirmas que no se inició.",
     localExecOff: "Ejecución local desactivada",
     localExecOffHint: "Este equipo tiene la ejecución local desactivada, así que las tareas que le envíes no se ejecutarán. En este equipo, abre “Dispositivos y permisos” en OceanLeo y activa “Permitir que la nube envíe tareas a este equipo”, o usa la nube.",
+    deleteStopPending: "Esta tarea aún se está ejecutando en el equipo. Se le ha pedido al equipo que la detenga; cuando lo confirme, vuelve a eliminarla.",
   },
   "es-419": {
     localExecDisabled: "La computadora seleccionada tiene la ejecución local desactivada, así que la tarea no se inició ni se pasó a la nube. En esa computadora, abre “Dispositivos y permisos” en OceanLeo, activa “Permitir que la nube envíe tareas a esta computadora” y vuelve a enviarla, o cambia la ubicación de ejecución a la nube.",
@@ -96,6 +99,7 @@ const translations = {
     receiptLost: "No hay confirmación de la computadora: puede que la tarea ya se le haya entregado. Revisa primero “Mis tareas” y vuelve a enviarla solo si confirmas que no se inició.",
     localExecOff: "Ejecución local desactivada",
     localExecOffHint: "Esta computadora tiene la ejecución local desactivada, así que las tareas que le envíes no se ejecutarán. En esta computadora, abre “Dispositivos y permisos” en OceanLeo y activa “Permitir que la nube envíe tareas a esta computadora”, o usa la nube.",
+    deleteStopPending: "Esta tarea aún se está ejecutando en la computadora. Se le pidió a la computadora que la detenga; cuando lo confirme, vuelve a eliminarla.",
   },
   fr: {
     localExecDisabled: "L'exécution locale est désactivée sur l'ordinateur sélectionné : la tâche n'a pas démarré et n'a pas été transférée vers le cloud. Sur cet ordinateur, ouvrez « Appareils et autorisations » dans OceanLeo, activez « Autoriser le cloud à envoyer des tâches à cet ordinateur », puis renvoyez-la, ou choisissez le cloud comme lieu d'exécution.",
@@ -117,6 +121,7 @@ const translations = {
     receiptLost: "Aucun accusé de réception de l'ordinateur : la tâche lui a peut-être déjà été transmise. Vérifiez d'abord « Mes tâches » et ne la renvoyez qu'après avoir confirmé qu'elle n'a pas démarré.",
     localExecOff: "Exécution locale désactivée",
     localExecOffHint: "L'exécution locale est désactivée sur cet ordinateur : les tâches qui lui sont envoyées ne s'exécuteront pas. Sur cet ordinateur, ouvrez « Appareils et autorisations » dans OceanLeo et activez « Autoriser le cloud à envoyer des tâches à cet ordinateur », ou utilisez le cloud.",
+    deleteStopPending: "Cette tâche est toujours en cours sur l'ordinateur. Il a été demandé à l'ordinateur de l'arrêter ; une fois l'arrêt confirmé, supprimez-la à nouveau.",
   },
   it: {
     localExecDisabled: "Sul computer selezionato l'esecuzione locale è disattivata: l'attività non è partita e non è stata spostata nel cloud. Su quel computer apri “Dispositivi e autorizzazioni” in OceanLeo, attiva “Consenti al cloud di inviare attività a questo computer” e inviala di nuovo, oppure scegli il cloud come luogo di esecuzione.",
@@ -138,6 +143,7 @@ const translations = {
     receiptLost: "Nessuna conferma dal computer: l'attività potrebbe essergli già stata consegnata. Controlla prima “Le mie attività” e inviala di nuovo solo dopo aver verificato che non è partita.",
     localExecOff: "Esecuzione locale disattivata",
     localExecOffHint: "Su questo computer l'esecuzione locale è disattivata: le attività inviate qui non verranno eseguite. Su questo computer apri “Dispositivi e autorizzazioni” in OceanLeo e attiva “Consenti al cloud di inviare attività a questo computer”, oppure usa il cloud.",
+    deleteStopPending: "Questa attività è ancora in esecuzione sul computer. È stato chiesto al computer di fermarla; quando lo conferma, eliminala di nuovo.",
   },
   "pt-BR": {
     localExecDisabled: "O computador selecionado está com a execução local desligada, então a tarefa não começou nem foi passada para a nuvem. Nesse computador, abra “Dispositivos e permissões” no OceanLeo, ative “Permitir que a nuvem envie tarefas para este computador” e envie de novo, ou mude o local de execução para a nuvem.",
@@ -159,6 +165,7 @@ const translations = {
     receiptLost: "Sem confirmação do computador: a tarefa pode já ter sido entregue a ele. Confira primeiro “Minhas tarefas” e envie de novo só depois de confirmar que ela não começou.",
     localExecOff: "Execução local desligada",
     localExecOffHint: "Este computador está com a execução local desligada, então as tarefas enviadas a ele não serão executadas. Neste computador, abra “Dispositivos e permissões” no OceanLeo e ative “Permitir que a nuvem envie tarefas para este computador”, ou use a nuvem.",
+    deleteStopPending: "Esta tarefa ainda está em execução no computador. Foi pedido ao computador que a pare; quando ele confirmar, exclua-a de novo.",
   },
   "pt-PT": {
     localExecDisabled: "O computador selecionado tem a execução local desligada, por isso a tarefa não começou nem foi passada para a nuvem. Nesse computador, abra “Dispositivos e permissões” no OceanLeo, ative “Permitir que a nuvem envie tarefas para este computador” e volte a enviar, ou mude o local de execução para a nuvem.",
@@ -180,6 +187,7 @@ const translations = {
     receiptLost: "Sem confirmação do computador: a tarefa pode já lhe ter sido entregue. Verifique primeiro “As minhas tarefas” e só volte a enviar depois de confirmar que não começou.",
     localExecOff: "Execução local desligada",
     localExecOffHint: "Este computador tem a execução local desligada, por isso as tarefas enviadas para ele não serão executadas. Neste computador, abra “Dispositivos e permissões” no OceanLeo e ative “Permitir que a nuvem envie tarefas para este computador”, ou use a nuvem.",
+    deleteStopPending: "Esta tarefa ainda está em execução no computador. Foi pedido ao computador que a pare; quando ele confirmar, elimine-a novamente.",
   },
   vi: {
     localExecDisabled: "Máy tính đã chọn chưa bật thực thi trên máy, nên tác vụ chưa bắt đầu và cũng không được chuyển lên đám mây. Trên máy đó, mở “Thiết bị và quyền” trong OceanLeo, bật “Cho phép đám mây gửi tác vụ đến máy này” rồi gửi lại, hoặc đổi nơi thực thi sang đám mây.",
@@ -201,6 +209,7 @@ const translations = {
     receiptLost: "Chưa nhận được xác nhận từ máy tính: tác vụ có thể đã được giao cho máy. Hãy kiểm tra “Nhiệm vụ của tôi” trước, chỉ gửi lại khi chắc chắn nó chưa bắt đầu.",
     localExecOff: "Chưa bật thực thi trên máy",
     localExecOffHint: "Máy tính này chưa bật thực thi trên máy, nên tác vụ gửi đến nó sẽ không chạy. Trên máy này, mở “Thiết bị và quyền” trong OceanLeo và bật “Cho phép đám mây gửi tác vụ đến máy này”, hoặc dùng đám mây.",
+    deleteStopPending: "Tác vụ này vẫn đang chạy trên máy tính. Đã yêu cầu máy tính dừng; khi máy xác nhận đã dừng, hãy xóa lại.",
   },
   tr: {
     localExecDisabled: "Seçilen bilgisayarda yerel çalıştırma kapalı; görev başlamadı ve buluta da aktarılmadı. O bilgisayarda OceanLeo'da “Cihazlar ve izinler”i açın, “Bulutun bu bilgisayara görev göndermesine izin ver” seçeneğini açıp yeniden gönderin ya da çalıştırma konumunu Bulut olarak değiştirin.",
@@ -222,6 +231,7 @@ const translations = {
     receiptLost: "Bilgisayardan onay gelmedi: görev ona zaten iletilmiş olabilir. Önce “Görevlerim” sayfasını kontrol edin; başlamadığını doğruladıktan sonra yeniden gönderin.",
     localExecOff: "Yerel çalıştırma kapalı",
     localExecOffHint: "Bu bilgisayarda yerel çalıştırma kapalı, bu yüzden ona gönderilen görevler çalışmaz. Bu bilgisayarda OceanLeo'da “Cihazlar ve izinler”i açıp “Bulutun bu bilgisayara görev göndermesine izin ver” seçeneğini açın ya da Bulut'u kullanın.",
+    deleteStopPending: "Bu görev bilgisayarda hâlâ çalışıyor. Bilgisayardan görevi durdurması istendi; durdurduğunu onayladığında görevi yeniden silin.",
   },
   "zh-TW": {
     localExecDisabled: "所選電腦沒有開啟本機執行，任務沒有開始，也沒有轉到雲端。請在那台電腦的 OceanLeo「裝置與授權」裡開啟「允許雲端下發本機任務」後重新傳送，或把執行位置改成雲端。",
@@ -243,6 +253,7 @@ const translations = {
     receiptLost: "沒有收到電腦的回執：任務可能已經交給電腦。請先到「我的任務」確認，確定它沒有開始後再重新傳送。",
     localExecOff: "本機執行未開啟",
     localExecOffHint: "這台電腦沒有開啟本機執行，交給它的任務不會執行。請在這台電腦的 OceanLeo「裝置與授權」裡開啟「允許雲端下發本機任務」，或改用雲端。",
+    deleteStopPending: "這項任務還在電腦上執行，已請求電腦停止。電腦確認停止後，請再刪除一次。",
   },
   ja: {
     localExecDisabled: "選択したパソコンでの実行がオフになっているため、タスクは開始されず、クラウドにも切り替わっていません。そのパソコンで OceanLeo の「デバイスと権限」を開き、「クラウドからこのパソコンへのタスク送信を許可」をオンにしてから再送信するか、実行場所をクラウドに変更してください。",
@@ -264,6 +275,7 @@ const translations = {
     receiptLost: "パソコンから受領の確認が届いていません。タスクはすでにパソコンに渡っている可能性があります。まず「マイタスク」で確認し、開始されていないと分かってから再送信してください。",
     localExecOff: "パソコンでの実行がオフ",
     localExecOffHint: "このパソコンでの実行はオフのため、送ったタスクは実行されません。このパソコンで OceanLeo の「デバイスと権限」を開いて「クラウドからこのパソコンへのタスク送信を許可」をオンにするか、クラウドを使ってください。",
+    deleteStopPending: "このタスクはまだパソコンで実行中です。パソコンに停止を依頼しました。停止が確認されたら、もう一度削除してください。",
   },
   ko: {
     localExecDisabled: "선택한 컴퓨터의 로컬 실행이 꺼져 있어 작업이 시작되지 않았고 클라우드로 옮겨지지도 않았습니다. 그 컴퓨터의 OceanLeo에서 “기기와 권한”을 열고 “클라우드가 이 PC에 작업을 보내도록 허용”을 켠 뒤 다시 보내거나, 실행 위치를 클라우드로 바꾸세요.",
@@ -285,6 +297,7 @@ const translations = {
     receiptLost: "컴퓨터에서 수신 확인을 받지 못했습니다. 작업이 이미 컴퓨터에 전달되었을 수 있습니다. 먼저 “내 작업”에서 확인하고, 시작되지 않았음이 확실할 때만 다시 보내세요.",
     localExecOff: "로컬 실행 꺼짐",
     localExecOffHint: "이 컴퓨터는 로컬 실행이 꺼져 있어 보낸 작업이 실행되지 않습니다. 이 컴퓨터의 OceanLeo에서 “기기와 권한”을 열고 “클라우드가 이 PC에 작업을 보내도록 허용”을 켜거나, 클라우드를 사용하세요.",
+    deleteStopPending: "이 작업은 아직 컴퓨터에서 실행 중입니다. 컴퓨터에 중지를 요청했으니, 중지가 확인되면 다시 삭제하세요.",
   },
   ar: {
     localExecDisabled: "التنفيذ المحلي مُعطَّل على الكمبيوتر المحدد، لذلك لم تبدأ المهمة ولم تُنقل إلى السحابة. على ذلك الكمبيوتر، افتح «الأجهزة والأذونات» في OceanLeo وفعّل «السماح للسحابة بإرسال المهام إلى هذا الكمبيوتر» ثم أعد الإرسال، أو غيّر مكان التنفيذ إلى السحابة.",
@@ -306,6 +319,7 @@ const translations = {
     receiptLost: "لم يصل تأكيد من الكمبيوتر: ربما سُلّمت المهمة إليه بالفعل. راجع «مهامي» أولًا، ولا تُعد الإرسال إلا بعد التأكد من أنها لم تبدأ.",
     localExecOff: "التنفيذ المحلي مُعطَّل",
     localExecOffHint: "التنفيذ المحلي مُعطَّل على هذا الكمبيوتر، لذلك لن تعمل المهام المرسلة إليه. على هذا الكمبيوتر، افتح «الأجهزة والأذونات» في OceanLeo وفعّل «السماح للسحابة بإرسال المهام إلى هذا الكمبيوتر»، أو استخدم السحابة.",
+    deleteStopPending: "لا تزال هذه المهمة قيد التشغيل على الكمبيوتر. طُلب من الكمبيوتر إيقافها؛ بعد أن يؤكد الإيقاف، احذفها مرة أخرى.",
   },
   th: {
     localExecDisabled: "คอมพิวเตอร์ที่เลือกปิดการรันในเครื่องอยู่ งานจึงยังไม่เริ่มและไม่ได้ย้ายไปคลาวด์ ที่คอมพิวเตอร์เครื่องนั้น ให้เปิด “อุปกรณ์และสิทธิ์” ใน OceanLeo แล้วเปิด “อนุญาตให้คลาวด์ส่งงานมายังเครื่องนี้” จากนั้นส่งใหม่ หรือเปลี่ยนตำแหน่งที่รันเป็นคลาวด์",
@@ -327,6 +341,7 @@ const translations = {
     receiptLost: "ไม่ได้รับการยืนยันจากคอมพิวเตอร์: งานอาจถูกส่งให้คอมพิวเตอร์แล้ว ให้ตรวจสอบ “งานของฉัน” ก่อน และส่งใหม่เมื่อยืนยันได้ว่างานยังไม่เริ่มเท่านั้น",
     localExecOff: "ปิดการรันในเครื่องอยู่",
     localExecOffHint: "คอมพิวเตอร์เครื่องนี้ปิดการรันในเครื่องอยู่ งานที่ส่งมาจึงจะไม่ทำงาน ที่เครื่องนี้ ให้เปิด “อุปกรณ์และสิทธิ์” ใน OceanLeo แล้วเปิด “อนุญาตให้คลาวด์ส่งงานมายังเครื่องนี้” หรือใช้คลาวด์แทน",
+    deleteStopPending: "งานนี้ยังทำงานอยู่บนคอมพิวเตอร์ ได้ขอให้คอมพิวเตอร์หยุดแล้ว เมื่อคอมพิวเตอร์ยืนยันว่าหยุดแล้ว ให้ลบอีกครั้ง",
   },
   hi: {
     localExecDisabled: "चुने गए कंप्यूटर पर स्थानीय निष्पादन बंद है, इसलिए कार्य शुरू नहीं हुआ और क्लाउड पर भी नहीं भेजा गया। उस कंप्यूटर पर OceanLeo में “डिवाइस और अनुमतियाँ” खोलें, “क्लाउड को इस कंप्यूटर पर काम भेजने दें” चालू करें और फिर से भेजें, या चलाने की जगह क्लाउड चुनें।",
@@ -348,6 +363,7 @@ const translations = {
     receiptLost: "कंप्यूटर से पुष्टि नहीं मिली: हो सकता है कार्य उसे पहले ही सौंपा जा चुका हो। पहले “मेरे कार्य” में जाँचें, और यह पक्का होने के बाद ही फिर से भेजें कि यह शुरू नहीं हुआ।",
     localExecOff: "स्थानीय निष्पादन बंद है",
     localExecOffHint: "इस कंप्यूटर पर स्थानीय निष्पादन बंद है, इसलिए इसे भेजे गए कार्य नहीं चलेंगे। इस कंप्यूटर पर OceanLeo में “डिवाइस और अनुमतियाँ” खोलें और “क्लाउड को इस कंप्यूटर पर काम भेजने दें” चालू करें, या क्लाउड इस्तेमाल करें।",
+    deleteStopPending: "यह कार्य अभी भी कंप्यूटर पर चल रहा है। कंप्यूटर से इसे रोकने को कहा गया है; रुकने की पुष्टि होने पर इसे फिर से हटाएँ।",
   },
 } satisfies Record<Exclude<Locale, "zh">, Record<LocalAgentCopyKey, string>>;
 
