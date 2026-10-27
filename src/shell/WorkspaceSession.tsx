@@ -920,6 +920,27 @@ export function WorkspaceSessionProvider({
     [app, reportFailure, sessionSurface, site],
   );
 
+  // A refused task leaves the draft it was born with. Deleting cascades to the
+  // session's tasks, so only an explicit `first_output_at: null` on the very
+  // session the caller created qualifies; a missing field means "unknown" and
+  // keeps the row (see `sessionHasProducedOutput`). Queued like every other
+  // session mutation, so a follow-up startNew runs only after it.
+  const discardDraft = useCallback(
+    async (sessionId: string): Promise<boolean> =>
+      enqueueMutation(async () => {
+        const active = sessionRef.current;
+        if (mode === "history" || !active || active.id !== sessionId) return false;
+        if (!("first_output_at" in active) || active.first_output_at !== null) return false;
+        const deleted = await deleteAppSession(active.id, sessionSurface);
+        // 404: already gone (e.g. another tab's launch discarded it); forget it too.
+        const gone = deleted.ok || deleted.status === 404;
+        if (!gone || sessionRef.current?.id !== sessionId) return false;
+        clearCurrent();
+        return true;
+      }),
+    [clearCurrent, enqueueMutation, mode, sessionSurface],
+  );
+
   const archive = useCallback(
     async (): Promise<false | "empty" | "archived"> =>
       enqueueMutation(async () => {
@@ -1124,6 +1145,7 @@ export function WorkspaceSessionProvider({
       artifactContext,
       recordArtifact,
       archive,
+      discardDraft,
       restart,
       startNew,
       clearConflict,
@@ -1150,6 +1172,7 @@ export function WorkspaceSessionProvider({
       artifactContext,
       recordArtifact,
       archive,
+      discardDraft,
       restart,
       startNew,
       clearConflict,

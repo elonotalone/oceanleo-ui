@@ -396,3 +396,47 @@ test("CN family has the same two-group execution choice and Manage entry", async
     assert.doesNotMatch(view.text(), /此功能在当前站点不可用/);
   } finally { view.cleanup(); globalThis.__ccDomainFamily = "com"; }
 });
+
+test("C5-T3a: a chosen computer with local execution off says so before Send, stays selectable, and cloud is untouched", async () => {
+  globalThis.__ccDevices = [
+    { device_id: "mac-off", platform: "macos", device_name: "Office Mac", online: true, availability: "online", local_exec_enabled: false },
+    { device_id: "pc-on", platform: "windows", device_name: "Home PC", online: true, availability: "online", local_exec_enabled: true },
+    { device_id: "legacy", platform: "linux", device_name: "Old Gateway", online: true, availability: "online" },
+  ];
+  writeExecutionTarget("account-a", { kind: "device", id: "mac-off", name: "Office Mac" });
+  const view = await render([pc()]);
+  const trigger = () => view.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+  try {
+    assert.match(trigger().textContent, /^Office Mac本机执行未开启$/, "hint shows without opening the picker");
+    assert.match(trigger().getAttribute("title"), /设备与授权.*允许云端下发本机任务/);
+    assert.match(trigger().getAttribute("aria-label"), /本机执行未开启/);
+    await openDock(view);
+    const off = view.host.querySelector('[data-oceanleo-device-client="mac-off"]');
+    assert.equal(off.disabled, false, "the switch lives on that computer; the row stays selectable");
+    assert.equal(off.getAttribute("data-local-exec-off"), "true");
+    assert.match(off.textContent, /本机执行未开启/);
+    assert.equal(view.host.querySelector('[data-oceanleo-device-client="pc-on"]').getAttribute("data-local-exec-off"), null);
+    assert.equal(view.host.querySelector('[data-oceanleo-device-client="legacy"]').getAttribute("data-local-exec-off"), null, "a missing field is not 'off'");
+    assert.ok(view.host.querySelector("[data-local-exec-hint]"));
+    await view.click(view.host.querySelector('[data-oceanleo-device-client="pc-on"]'));
+    assert.equal(trigger().textContent, "Home PC");
+    await openDock(view);
+    await view.click([...view.host.querySelectorAll("button")].find((button) => button.textContent.includes("云端") && button.getAttribute("aria-expanded") !== null));
+    await view.click([...view.host.querySelectorAll("button")].find((button) => button.textContent.startsWith("默认云端")));
+    assert.equal(trigger().textContent, "云端");
+    assert.equal(view.host.querySelector("[data-local-exec-off]"), null);
+  } finally { view.cleanup(); }
+});
+
+test("C5-T3a: the hint clears when the page regains focus after the switch was turned on", async () => {
+  globalThis.__ccDevices = [{ device_id: "mac", platform: "macos", device_name: "Mac", online: true, availability: "online", local_exec_enabled: false }];
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac" });
+  const view = await render([]);
+  try {
+    assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-trigger] [data-local-exec-off]"));
+    globalThis.__ccDevices = [{ ...globalThis.__ccDevices[0], local_exec_enabled: true }];
+    await act(async () => window.dispatchEvent(new window.Event("focus")));
+    await flush();
+    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "Mac");
+  } finally { view.cleanup(); }
+});

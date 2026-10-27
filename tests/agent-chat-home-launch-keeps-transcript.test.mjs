@@ -316,7 +316,8 @@ const OVERRIDES = {
   "./LeoComposer": dataModule(`
     import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
     export function LeoComposer(props) {
-      return jsx("textarea", { "data-composer": true, placeholder: props.placeholder, readOnly: true });
+      globalThis.__agentComposer = props;
+      return jsx("textarea", { "data-composer": true, placeholder: props.placeholder, readOnly: true, value: props.value ?? "" });
     }
   `),
   "./FunctionAgentChat": dataModule(`
@@ -738,5 +739,107 @@ test("portal homepage shows the real conversation before create settles and rese
     release();
     await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
     window.history.replaceState(null, "", "/");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// C5-T3a: a home task handed to a paired computer whose local execution is off
+// ---------------------------------------------------------------------------
+
+const { agentApiFailureFromPayload } = await import(realAgentLibUrl);
+const MAC = { kind: "device", id: "mac-1", name: "Mac" };
+
+async function untilLogged(backend, pattern) {
+  for (let i = 0; i < 60 && !backend.log.some((line) => pattern.test(line)); i += 1) await settle(25);
+  return backend.log.find((line) => pattern.test(line));
+}
+
+test("local execution off: clear words instead of the raw code, the typed task stays, the empty draft goes, a cloud resend works", async () => {
+  const backend = makeBackend();
+  const accept = backend.api.createTask;
+  backend.api.createTask = async (body) => {
+    if (body.executionTarget?.kind !== "device") return accept(body);
+    backend.log.push(`create-task REFUSED session=${body.sessionId || "-"}`);
+    return { ...agentApiFailureFromPayload(409, { detail: { code: "local_exec_disabled" } }), executionTarget: body.executionTarget };
+  };
+  globalThis.__backend = backend;
+  globalThis.__strict = true;
+  const prompt = "在 Mac 上把下载文件夹按类型整理";
+  const view = await mountHome({ initialPrompt: prompt, initialExecutionTarget: MAC });
+  try {
+    assert.ok(await untilLogged(backend, /^create-task REFUSED session=s1$/), JSON.stringify(backend.log));
+    assert.ok(await untilLogged(backend, /^delete-session s1$/), `refused draft must be discarded: ${JSON.stringify(backend.log)}`);
+    const error = view.host.querySelector("[data-agent-chat-error]")?.textContent || "";
+    assert.match(error, /允许云端下发本机任务/, error);
+    assert.match(error, /设备与授权/);
+    assert.match(error, /改成云端/);
+    assert.doesNotMatch(view.text(), /LOCAL_EXEC_DISABLED|local_exec_disabled/);
+    assert.equal(view.host.querySelector("[data-composer]").value, prompt, "the typed task goes back to the composer");
+    assert.equal(backend.tasks.size, 0, "nothing ran");
+    assert.equal(backend.sessions.size, 0, "no invisible draft session is left behind");
+    await settle(200);
+    assert.equal(backend.log.filter((line) => line.startsWith("create-task")).length, 1, "a refusal is never re-sent by itself");
+
+    await act(async () => { globalThis.__agentComposer.onSubmit(prompt, { org_id: "" }, { executionTarget: { kind: "cloud" } }); });
+    const created = await untilLogged(backend, /^create-task t\d+ /);
+    assert.match(created || "", /session=s2$/, `the resend is born on a fresh draft: ${JSON.stringify(backend.log)}`);
+    assert.equal(backend.lastCreateBody.prompt, prompt);
+    assert.equal(view.host.querySelector("[data-composer]").value, "");
+    assert.equal(view.host.querySelector("[data-agent-chat-error]"), null);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("a lost receipt for a computer task keeps the typed text, warns before resending, and keeps the draft", async () => {
+  const backend = makeBackend();
+  backend.api.createTask = async (body) => {
+    backend.log.push(`create-task LOST session=${body.sessionId || "-"}`);
+    return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0, executionTarget: body.executionTarget };
+  };
+  globalThis.__backend = backend;
+  globalThis.__strict = true;
+  const prompt = "在 Mac 上生成周报";
+  const view = await mountHome({ initialPrompt: prompt, initialExecutionTarget: MAC });
+  try {
+    assert.ok(await untilLogged(backend, /^create-task LOST/));
+    for (let i = 0; i < 40 && !view.host.querySelector("[data-agent-chat-error]"); i += 1) await settle(25);
+    assert.match(view.host.querySelector("[data-agent-chat-error]")?.textContent || "", /我的任务.*确认它没有开始/);
+    assert.equal(view.host.querySelector("[data-composer]").value, prompt);
+    await settle(150);
+    assert.ok(!backend.log.some((line) => line.startsWith("delete-session")), "an ambiguous outcome never deletes the draft (cascade)");
+    assert.equal(backend.sessions.size, 1);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("an unconfirmed handoff shows that same task, never a second dispatch, and the typed text is kept", async () => {
+  const backend = makeBackend();
+  const accept = backend.api.createTask;
+  backend.api.createTask = async (body) => {
+    const created = await accept(body);
+    return {
+      ...agentApiFailureFromPayload(503, { detail: { code: "local_agent_dispatch_unconfirmed", task_id: created.data.task_id, message: "本地任务转交结果尚未确认" } }),
+      executionTarget: body.executionTarget,
+    };
+  };
+  globalThis.__backend = backend;
+  globalThis.__strict = true;
+  const prompt = "在 Mac 上压缩照片";
+  const view = await mountHome({ initialPrompt: prompt, initialExecutionTarget: MAC });
+  try {
+    assert.ok(await untilLogged(backend, /^create-task t1 session=s1$/));
+    for (let i = 0; i < 40 && !view.host.querySelector("[data-agent-chat-error]"); i += 1) await settle(25);
+    assert.match(view.host.querySelector("[data-agent-chat-error]")?.textContent || "", /没有收到电脑的回执.*不要再次发送/);
+    assert.doesNotMatch(view.text(), /LOCAL_AGENT_DISPATCH_UNCONFIRMED/);
+    for (let i = 0; i < 40 && !view.text().includes(prompt); i += 1) await settle(25);
+    assert.ok(view.text().includes(prompt), "the reconciled task's own message is shown");
+    assert.equal(view.host.querySelector("[data-composer]").value, prompt);
+    assert.equal(backend.log.filter((line) => line.startsWith("create-task")).length, 1);
+    assert.ok(!backend.log.some((line) => line.startsWith("delete-session")));
+    assert.equal(backend.sessions.get("s1")?.task_id, "t1");
+  } finally {
+    await view.unmount();
   }
 });

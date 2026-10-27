@@ -270,6 +270,23 @@ test("未允许远程访问时不渲染说教文案或禁用进入桌面", async
   view.cleanup();
 });
 
+test("C5-T3a: a computer with local execution off shows the short status; the how-to stays out of the card text", async () => {
+  const view = await render(makeClient([
+    makeDevice({ local_exec_enabled: false, device_name: "工作电脑" }),
+    makeDevice({ device_id: "d-2", device_name: "家里的电脑", local_exec_enabled: true }),
+    makeDevice({ device_id: "p-1", platform: "ios", device_name: "iPhone", local_exec_enabled: false }),
+  ]));
+  const off = view.host.querySelector('[data-local-exec-off="d-1"]');
+  assert.ok(off, "the switch state is visible before anyone sends a task");
+  assert.equal(off.textContent, "本机执行未开启");
+  assert.match(off.getAttribute("title"), /设备与授权.*允许云端下发本机任务/);
+  assert.equal(view.host.querySelector('[data-local-exec-off="d-2"]'), null);
+  assert.equal(view.host.querySelector('[data-local-exec-off="p-1"]'), null, "phones never run tasks");
+  assert.doesNotMatch(view.text(), /这个开关只能|设备权限如何保护你|允许云端下发/);
+  assert.equal(view.button("进入桌面").disabled, false);
+  view.cleanup();
+});
+
 test("pair_code_invalid 显示指定中文文案", async () => {
   const client = makeClient([], {
     async pairDevice(code) {

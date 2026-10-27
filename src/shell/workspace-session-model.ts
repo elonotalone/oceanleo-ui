@@ -203,6 +203,14 @@ export interface WorkspaceSessionContextValue {
     title?: string,
   ) => Promise<boolean>;
   archive: () => Promise<false | "empty" | "archived">;
+  /**
+   * Drop the current session only if it is still `sessionId` and the server
+   * explicitly reported no output (`first_output_at === null`). For a draft a
+   * caller created for a task the gateway then refused. Never archives, never
+   * reports a failure (the next launch discards the draft anyway). Optional so
+   * hand-built context values stay valid.
+   */
+  discardDraft?: (sessionId: string) => Promise<boolean>;
   /** live 工作台保存当前会话并回到“尚未创建新会话”的干净状态。 */
   restart: () => Promise<false | "empty" | "archived">;
   /**

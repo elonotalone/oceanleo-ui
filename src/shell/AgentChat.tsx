@@ -74,7 +74,7 @@ import {
 import { QuickActionChips } from "./quick-actions";
 import { HumanHandoffStatus } from "./HumanHandoffStatus";
 import { LocalAgentTaskStatus } from "./LocalAgentTaskStatus";
-import { taskLocalAgentState, parseLocalAgentRun, newerLocalAgentRun, localAgentCanControl, localTaskArtifacts, type LocalTaskArtifact, type LocalAgentRun, type LocalAgentControl } from "../lib/local-agent-task";
+import { taskLocalAgentState, parseLocalAgentRun, newerLocalAgentRun, localAgentCanControl, localTaskArtifacts, localAgentRefusalText, localAgentFailure, type LocalTaskArtifact, type LocalAgentRun, type LocalAgentControl } from "../lib/local-agent-task";
 import { CallHumanIcon } from "./bay/shell/bay-icons";
 import { openBay, setBayTaskContext, useBayEnabled } from "./bay/shell/bay-state";
 import {
@@ -1036,6 +1036,9 @@ function AgentChatInner({
       ]);
 
       let linkedSessionId = "";
+      // The draft session this very call created for a home launch; only that
+      // one may be discarded again when the gateway refuses the task.
+      let freshDraftId = "";
       if (workspace) {
         let active = workspace.session;
         if (startFreshSession && !freshSessionStartedRef.current) {
@@ -1047,6 +1050,7 @@ function AgentChatInner({
             remountRuntime: false,
             intent: "thread",
           });
+          freshDraftId = active?.id || "";
         } else if (!active) {
           active = await workspace.ensureActive({
             title: prompt,
@@ -1105,19 +1109,40 @@ function AgentChatInner({
         executionTarget,
       });
       setBusy(false);
-      if (!result.ok || !result.data) {
+      // A task aimed at a paired computer is explained in words, never as the
+      // gateway's raw code (`agent.ts` keeps codes in `error` for other callers).
+      const failure = result.ok && result.data ? null : localAgentFailure(
+        result, (result.executionTarget ?? executionTarget)?.kind === "device");
+      const unconfirmed = failure?.kind === "unconfirmed" ? failure : null;
+      if (!unconfirmed && (!result.ok || !result.data)) {
         setMessages((current) =>
           current.filter((message) => message.id !== -1),
         );
         setError(
           result.status === 401
             ? tt("登录后即可使用 app。")
-            : result.error || tt("创建任务失败"),
+            : failure?.text || result.error || tt("创建任务失败"),
         );
+        if (failure?.kind === "refused" && failure.definite && freshDraftId && workspace?.discardDraft) {
+          // The home launch created this draft only for this task, and a
+          // definite refusal proves nothing was handed to the computer: drop
+          // the empty row now instead of at the next launch. The next send
+          // starts a fresh draft; startNew queues behind this discard.
+          freshSessionStartedRef.current = false;
+          void workspace.discardDraft(freshDraftId);
+        }
+        // `false` hands the typed task back to the composer; nothing re-sends it.
         return false;
       }
 
-      const createdTaskId = result.data.task_id;
+      // A lost receipt after the gateway created the task: show that same task
+      // (never a second dispatch to the computer). Its server rows replace the
+      // optimistic bubble, and the typed text still goes back to the composer.
+      const createdTaskId = unconfirmed ? unconfirmed.taskId : result.data!.task_id;
+      if (unconfirmed) {
+        setMessages((current) => current.filter((message) => message.id !== -1));
+        setError(unconfirmed.text);
+      }
       // 这段对话是刚建起来的：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
       noteOwnEditorTask(createdTaskId);
       actionHistoryRef.current = ownTaskActionMark(createdTaskId);
@@ -1141,7 +1166,8 @@ function AgentChatInner({
       onTaskCreated?.(createdTaskId, createdSessionId || undefined);
       markSend(createdTaskId, 1);
       void refresh(createdTaskId);
-      return true;
+      // Unconfirmed: the task is shown, but the typed text is not consumed.
+      return !unconfirmed;
     },
     [
       agentId,
@@ -1161,6 +1187,27 @@ function AgentChatInner({
       tt,
       workspace,
     ],
+  );
+
+  // A task handed in from outside (home launch, ?q=) that did not go through
+  // goes back into this composer, text and files, so nothing the user typed is
+  // lost. It is only offered again; nothing re-sends it.
+  const restoreAttachments = atts.restoreReady;
+  const returnToComposer = useCallback(
+    (prompt: string, uploaded?: AgentAttachment[]) => {
+      if (prompt) setInput((current) => current || prompt);
+      if (!toolsOn || !uploaded?.length) return;
+      restoreAttachments(uploaded.map((attachment, index) => ({
+        id: `returned-${index}-${attachment.url}`,
+        name: attachment.name || attachment.url.split("/").pop() || "",
+        url: attachment.url,
+        mime: attachment.mime,
+        previewUrl: attachment.media_type === "image" ? attachment.url : undefined,
+        uploading: false,
+        attachment,
+      })));
+    },
+    [restoreAttachments, toolsOn],
   );
 
   const continueInitialTask = useCallback(
@@ -1219,10 +1266,17 @@ function AgentChatInner({
       const result = await followUp(id, effectivePrompt, uploaded, turn.context);
       setBusy(false);
       if (!result.ok) {
+        const failure = localAgentFailure(result, isLocalExecution);
         setMessages((current) =>
           current.filter((message) => message.id !== optimisticMessageId),
         );
-        setError(result.error || tt("发送失败"));
+        setError(failure?.text || result.error || tt("发送失败"));
+        returnToComposer(prompt, uploaded);
+        if (failure?.kind === "unconfirmed") {
+          // Possibly committed on the computer: re-read this same task.
+          onTaskCreated?.(id);
+          kickAfterFollowUp(id);
+        }
         return;
       }
       // 对 ?q= 来说，已有 active free session 时 task 已经存在；成功接续后同样通知
@@ -1233,6 +1287,7 @@ function AgentChatInner({
     [
       beginUserTurn,
       captureEditorTurn,
+      isLocalExecution,
       kickAfterFollowUp,
       messages,
       noteOutgoingTurn,
@@ -1240,6 +1295,7 @@ function AgentChatInner({
       onTaskCreated,
       readOnly,
       refresh,
+      returnToComposer,
       tt,
       workspace,
     ],
@@ -1266,12 +1322,17 @@ function AgentChatInner({
       }
       return;
     }
-    void start(prompt, initialAtts, undefined, undefined, initialExecutionTarget);
+    // The home composer already cleared itself: a send that did not go through
+    // (e.g. local execution off on the chosen computer) returns the task here.
+    void start(prompt, initialAtts, undefined, undefined, initialExecutionTarget).then((started) => {
+      if (!started) returnToComposer(prompt, initialAtts);
+    });
   }, [
     continueInitialTask,
     initialAtts,
     initialPrompt,
     initialExecutionTarget,
+    returnToComposer,
     start,
     taskId,
     workspace,
@@ -1418,11 +1479,14 @@ function AgentChatInner({
     setBusy(false);
     if (r.ok) kickAfterFollowUp(taskId);
     else {
+      const failure = localAgentFailure(r, isLocalExecution);
       setMessages((current) =>
         current.filter((message) => message.id !== optimisticMessageId),
       );
       restoreSubmission();
-      setError(r.error || tt("发送失败"));
+      setError(failure?.text || r.error || tt("发送失败"));
+      // Possibly committed on the computer: re-read this task; never re-send.
+      if (failure?.kind === "unconfirmed") kickAfterFollowUp(taskId);
     }
   }
 
@@ -1555,12 +1619,17 @@ function AgentChatInner({
       const r = await followUp(taskId, text, undefined, turn.context);
       setBusy(false);
       if (r.ok) kickAfterFollowUp(taskId);
-      else setError(r.error || tt("发送失败"));
+      else {
+        const failure = localAgentFailure(r, isLocalExecution);
+        setError(failure?.text || r.error || tt("发送失败"));
+        if (failure?.kind === "unconfirmed") kickAfterFollowUp(taskId);
+      }
     },
     [
       taskId,
       beginUserTurn,
       busy,
+      isLocalExecution,
       kickAfterFollowUp,
       messages,
       noteOutgoingTurn,
@@ -2173,7 +2242,8 @@ function AgentChatInner({
           {streamNotice && (
             <p className="text-[13px] text-stone-400">{streamNotice}</p>
           )}
-          {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
+          {/* A local-task code set on any other path is still shown in words. */}
+          {error && <p className="text-[14px] text-rose-500" data-agent-chat-error>{tt(localAgentRefusalText(error) ?? error)}</p>}
         </div>
       </div>
         {backToLatest}

@@ -76,6 +76,7 @@ import {
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
+import { localAgentFailure, localAgentRefusalText } from "../lib/local-agent-task";
 import {
   buildEditorCommandContext,
   createEditorCommandIntake,
@@ -1577,26 +1578,32 @@ export function FunctionAgentChat({
         // 宗旨 v10：agent 独立于操作台——不带 opsState（不读操作台 state）。
       });
       setBusy(false);
+      // createTask falls back to the remembered target, so a computer the user
+      // picked elsewhere can refuse here too; explain it in words, never a code.
+      const failure = r.ok && r.data ? null : localAgentFailure(r, r.executionTarget?.kind === "device");
       if (!r.ok || !r.data) {
         setMessages((current) =>
           current.filter((message) => message.id !== optimisticMessageId),
         );
         restoreSubmission();
-        setError(r.status === 401 ? tt("登录后即可使用 agent。") : r.error || tt("创建失败"));
-        return;
+        setError(r.status === 401 ? tt("登录后即可使用 agent。") : failure?.text || r.error || tt("创建失败"));
+        // A lost receipt after the gateway created the task: show that same
+        // task below (never a second dispatch); the typed text stays above.
+        if (failure?.kind !== "unconfirmed") return;
       }
+      const createdTaskId = failure?.kind === "unconfirmed" ? failure.taskId : r.data!.task_id;
       // 这段对话是刚建起来的：模型的回答哪怕跟第一份消息一起到，也不能被当成历史吞掉。
-      editorCommands.noteOwnTask(r.data.task_id);
-      actionHistoryRef.current = ownTaskActionMark(r.data.task_id);
-      setLocalTaskId(r.data.task_id);
-      onTaskIdChange?.(r.data.task_id);
+      editorCommands.noteOwnTask(createdTaskId);
+      actionHistoryRef.current = ownTaskActionMark(createdTaskId);
+      setLocalTaskId(createdTaskId);
+      onTaskIdChange?.(createdTaskId);
       if (workspace) {
         // task 创建接口也会绑定；这里同步 Provider 内存态并兼容尚未自动绑定的后端。
-        void workspace.bindTask(r.data.task_id, effectivePrompt);
+        void workspace.bindTask(createdTaskId, effectivePrompt);
       }
       setStatus("running");
-      markSend(r.data.task_id, 1);
-      void refresh(r.data.task_id);
+      markSend(createdTaskId, 1);
+      void refresh(createdTaskId);
       return;
     }
     noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
@@ -1607,11 +1614,14 @@ export function FunctionAgentChat({
       kickAfterFollowUp(taskId);
     }
     else {
+      const failure = localAgentFailure(r, false);
       setMessages((current) =>
         current.filter((message) => message.id !== optimisticMessageId),
       );
       restoreSubmission();
-      setError(r.error || tt("发送失败"));
+      setError(failure?.text || r.error || tt("发送失败"));
+      // Possibly committed on the computer: re-read this task; never re-send.
+      if (failure?.kind === "unconfirmed") kickAfterFollowUp(taskId);
     }
   }
   useEffect(() => {
@@ -1693,7 +1703,11 @@ export function FunctionAgentChat({
     if (r.ok) {
       kickAfterFollowUp(taskId);
     }
-    else setError(r.error || tt("发送失败"));
+    else {
+      const failure = localAgentFailure(r, false);
+      setError(failure?.text || r.error || tt("发送失败"));
+      if (failure?.kind === "unconfirmed") kickAfterFollowUp(taskId);
+    }
   }
 
   // 操作台简报桥：让自定义 opsContent 能把拼好的 prompt 交给本功能区 agent 执行。
@@ -1721,7 +1735,7 @@ export function FunctionAgentChat({
           {/* 操作台形态也要能看到「保存工作流」的提示/报错（如「请先填写」）。 */}
           {error && (
             <p className="mb-2 shrink-0 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-600">
-              {tt(error)}
+              {tt(localAgentRefusalText(error) ?? error)}
             </p>
           )}
           {/* 操作员 2026-07-09（截图 63ad18f3）：底部渐隐遮罩会盖住最后一张卡（如「可编辑
@@ -1876,7 +1890,7 @@ export function FunctionAgentChat({
           )}
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
           <EditorCommandNotes notes={editorCommands.notes} />
-          {error && <p className="text-[14px] text-rose-500">{tt(error)}</p>}
+          {error && <p className="text-[14px] text-rose-500">{tt(localAgentRefusalText(error) ?? error)}</p>}
         </div>
       </div>
       <div

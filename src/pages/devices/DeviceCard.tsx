@@ -3,6 +3,7 @@
 import type { Device } from "../../facades/devices";
 import { useUI } from "../../i18n/ui/useUI";
 import { deviceSettingsClient, type DeviceSettingsClient } from "../../api/device-settings";
+import { LOCAL_AGENT_COPY } from "../../lib/local-agent-task";
 import { DeviceCover } from "./DeviceCover";
 
 export type DeviceAvailability = "online" | "signed_out" | "offline" | "unknown";
@@ -37,12 +38,18 @@ export function DeviceCard({ device, availability, client = deviceSettingsClient
   onControl: () => void;
 }) {
   const tt = useUI();
+  // The computer's own switch, mirrored by its heartbeat: tasks sent from the
+  // website or the phone are refused while it is off. Only an explicit false.
+  // A short status only; the how-to stays in the tooltip, because this page
+  // keeps no explanatory copy (devices-page "不渲染说教文案", 2026-10-25), and
+  // the composer picker and the refusal message carry the full sentence.
+  const localOff = isComputer(device) && device.local_exec_enabled === false;
   return <article className="min-w-0 overflow-hidden rounded-[20px] border border-neutral-200 bg-white" data-device-card={device.device_id}>
     <DeviceCover deviceId={device.device_id} availability={availability} client={client} phone={!isComputer(device)}>
       {isComputer(device) && <button type="button" onClick={onControl} data-remote-device-icon={device.device_id} aria-label={`${device.device_name} · ${tt("进入桌面")}`} className="absolute bottom-4 left-4 rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">{tt("进入桌面")}</button>}
     </DeviceCover>
     <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
-      <div className="flex min-w-0 items-start gap-3"><DeviceIcon phone={!isComputer(device)} className="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-neutral-900">{device.device_name}</h3><p className="mt-1 text-xs text-neutral-500">{PLATFORMS[device.platform] ?? device.platform}</p></div></div>
+      <div className="flex min-w-0 items-start gap-3"><DeviceIcon phone={!isComputer(device)} className="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-neutral-900">{device.device_name}</h3><p className="mt-1 text-xs text-neutral-500">{PLATFORMS[device.platform] ?? device.platform}</p>{localOff && <p className="mt-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700" data-local-exec-off={device.device_id} title={tt(LOCAL_AGENT_COPY.localExecOffHint)}>{tt(LOCAL_AGENT_COPY.localExecOff)}</p>}</div></div>
       <DeviceStatus availability={availability} />
     </div>
     <div className="grid grid-cols-2 border-t border-neutral-100 py-1.5">

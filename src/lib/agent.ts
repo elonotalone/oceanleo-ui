@@ -30,6 +30,8 @@ export type AgentApiErrorDetail = {
   retryable?: boolean;
   diagnostics?: Record<string, AgentApiDiagnosticValue>;
   retry_after_seconds?: number;
+  /** Only for LOCAL_AGENT_DISPATCH_UNCONFIRMED: the already-created task to reconcile, never resend. */
+  task_id?: string;
 };
 
 /** OceanLeo 网关统一返回形状。导出供同一 client 层的其它资源 API 复用。 */
@@ -126,8 +128,17 @@ function safeAgentApiErrorDetail(
     source.retry_after_seconds,
   );
   const diagnostics = safeAgentApiDiagnostics(source.diagnostics);
+  // A lost enqueue response may follow a committed local handoff. Keep its
+  // identity so the UI reconciles the same task instead of inviting a resend.
+  const unconfirmedTask =
+    code === "LOCAL_AGENT_DISPATCH_UNCONFIRMED" &&
+    typeof source.task_id === "string" &&
+    /^[A-Za-z0-9_-]{1,100}$/.test(source.task_id)
+      ? source.task_id
+      : "";
   return {
     code,
+    ...(unconfirmedTask ? { task_id: unconfirmedTask } : {}),
     ...(/^[a-z][a-z0-9_]{0,63}$/.test(operation)
       ? { operation }
       : {}),
@@ -428,7 +439,9 @@ export async function createTask(body: {
     },
   ).then((result) => {
     if (result.ok) notifyHistoryChanged();
-    return result;
+    // The target actually sent (explicit or the remembered one), so a failure
+    // can be explained in terms of the computer the user picked.
+    return { ...result, executionTarget: selectedTarget };
   });
 }
 

@@ -8,8 +8,15 @@ import { getUserId } from "../../lib/auth/client";
 import { portalHref } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
 import { EXECUTION_TARGET_EVENT, readExecutionTarget, writeExecutionTarget, type ExecutionTarget } from "../../lib/execution-target";
+import { LOCAL_AGENT_COPY } from "../../lib/local-agent-task";
 import { AnchoredPopover } from "../anchored-popover";
 import { computerDisplayState, isConnectedComputer } from "./computer-state";
+
+const DESKTOP_PLATFORMS = ["windows", "macos", "linux"];
+/** Only an explicit `false` from the gateway counts; an older gateway's missing field says nothing. */
+function localExecOff(device: Device | null | undefined): boolean {
+  return device?.local_exec_enabled === false;
+}
 
 /** Website/native execution picker. Selecting a machine never navigates away. */
 export function ComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange }: {
@@ -23,10 +30,14 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   const [target, setTarget] = useState<ExecutionTarget>({ kind: "cloud" });
   const [computers, setComputers] = useState<Computer[]>(supplied || []);
   const [devices, setDevices] = useState<Device[]>([]);
+  // The selected computer as the gateway last reported it, kept while the
+  // picker is closed so its "local execution off" state shows before Send.
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const selectedDeviceId = target.kind === "device" ? target.id : "";
 
   useEffect(() => {
     let alive = true;
@@ -57,8 +68,10 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       .then(([cloudResult, localResult]) => {
         if (!alive) return;
         const local = localResult.status === "fulfilled" ? localResult.value : null;
+        const listed = local?.ok && local.data ? local.data.filter((d) => DESKTOP_PLATFORMS.includes(d.platform)) : [];
         setComputers(cloudResult.status === "fulfilled" ? cloudResult.value.items || [] : []);
-        setDevices(local?.ok && local.data ? local.data.filter((d) => ["windows", "macos", "linux"].includes(d.platform)) : []);
+        setDevices(listed);
+        if (local?.ok) setSelectedDevice((current) => current && (listed.find((d) => d.device_id === current.device_id) ?? null));
         setError(cloudResult.status === "rejected" || !local?.ok);
       })
       .catch(() => { if (alive) setError(true); })
@@ -66,22 +79,45 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     return () => { alive = false; };
   }, [open, owner, client, supplied]);
 
+  // Read the selected computer's local-execution mirror without opening the
+  // picker, and again when the page regains focus (e.g. after the user turned
+  // the switch on at that computer). Display only: the gateway still decides.
+  useEffect(() => {
+    if (!owner || !selectedDeviceId) { setSelectedDevice(null); return; }
+    let alive = true;
+    const load = () => {
+      void listDevices().then((result) => {
+        if (!alive || !result.ok || !result.data) return;
+        setSelectedDevice(result.data.find((d) => d.device_id === selectedDeviceId) ?? null);
+      }).catch(() => { /* the hint is optional; the send path still explains a refusal */ });
+    };
+    load();
+    window.addEventListener("focus", load);
+    return () => { alive = false; window.removeEventListener("focus", load); };
+  }, [owner, selectedDeviceId]);
+
   function choose(next: ExecutionTarget) {
     if (!owner) return;
     writeExecutionTarget(owner, next);
     writeMountedComputerId(next.kind === "computer" ? next.id : null);
     writeMountedComputerName(next.kind === "computer" ? next.name : null);
     onTargetChange?.(next);
+    setSelectedDevice(next.kind === "device" ? devices.find((d) => d.device_id === next.id) ?? null : null);
     setTarget(next); setOpen(false);
   }
   const row = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
   const shown = target.kind === "cloud" ? tt("云端") : target.name;
+  // Before Send, not after a refusal: the chosen computer will not run tasks.
+  const selectedLocalOff = target.kind === "device" && selectedDevice?.device_id === target.id && localExecOff(selectedDevice);
+  const localOffLabel = tt(LOCAL_AGENT_COPY.localExecOff);
+  const localOffHint = tt(LOCAL_AGENT_COPY.localExecOffHint);
   return <div className="relative" data-oceanleo-cc-dock data-execution-target={target.kind}>
     <button ref={anchor} type="button" onClick={() => { setGroup(target.kind === "device" ? "device" : "cloud"); setOpen(!open); }}
-      aria-label={tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
-      title={tt("任务执行位置")}
-      className="flex h-7 max-w-[180px] items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100">
+      aria-label={selectedLocalOff ? `${tt("任务执行位置")} · ${localOffLabel}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
+      title={selectedLocalOff ? localOffHint : tt("任务执行位置")}
+      className={`flex h-7 ${selectedLocalOff ? "max-w-[280px]" : "max-w-[180px]"} items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100`}>
       <TargetGlyph cloud={target.kind !== "device"} /><span className="truncate">{shown}</span>
+      {selectedLocalOff && <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" data-local-exec-off>{localOffLabel}</span>}
       <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
     </button>
     <AnchoredPopover open={open} anchorRef={anchor} panelRef={panel} onClose={() => setOpen(false)} align="start" role="dialog" ariaLabel={tt("任务执行位置")}
@@ -112,10 +148,14 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
               const availability = (item as Device & { availability?: string }).availability;
               const ready = availability === "online" && item.online;
               const selected = target.kind === "device" && target.id === item.device_id;
-              return <button key={item.device_id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-device-client={item.device_id} onClick={() => choose({ kind: "device", id: item.device_id, name: item.device_name })}>
-                <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : availability === "signed_out" ? "未登录" : "状态未知")}</span>}{selected && <span aria-label={tt("已选择")}>✓</span>}
+              // Still selectable: the switch lives on that computer and the
+              // user may be about to turn it on; Send explains a refusal.
+              const off = ready && localExecOff(item);
+              return <button key={item.device_id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-device-client={item.device_id} data-local-exec-off={off ? "true" : undefined} title={off ? localOffHint : undefined} onClick={() => choose({ kind: "device", id: item.device_id, name: item.device_name })}>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? (off ? "bg-amber-400" : "bg-emerald-500") : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : availability === "signed_out" ? "未登录" : "状态未知")}</span>}{off && <span className="shrink-0 text-[11px] text-amber-700">{localOffLabel}</span>}{selected && <span aria-label={tt("已选择")}>✓</span>}
               </button>;
             })}
+            {group === "device" && selectedLocalOff && <p className="px-3 py-2 text-[11px] leading-relaxed text-amber-700" data-local-exec-hint>{localOffHint}</p>}
             {group === "device" && !devices.length && !loading && <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("暂无已连接的电脑")}</p>}
             {loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载中…")}</p>}
             {error && <p role="status" className="px-3 py-2 text-[12px] text-neutral-500">{tt("设备列表暂不可用")}</p>}
