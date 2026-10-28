@@ -304,3 +304,56 @@ test("unknown input error never displays private OS text or invents a permission
   assert.equal(view.input().disabled, true);
   assert.doesNotMatch(view.screen().textContent, /private|token|synthetic|辅助功能|权限/);
 });
+
+for (const [modifier, flag] of [["Shift", "shiftKey"], ["Control", "ctrlKey"], ["Alt", "altKey"], ["Meta", "metaKey"]]) test(`both ${modifier} keys keep the native modifier pressed until the final release`, async () => {
+  const view = await mount();
+  await view.key("keydown", modifier, { code: `${modifier}Left`, [flag]: true });
+  await view.key("keydown", modifier, { code: `${modifier}Right`, [flag]: true });
+  await view.key("keyup", modifier, { code: `${modifier}Left`, [flag]: true });
+  assert.deepEqual(view.log.inputs, [{ kind: "key_down", key: modifier }]);
+  await view.key("keyup", modifier, { code: `${modifier}Right` });
+  assert.deepEqual(view.log.inputs.slice(0, 2), [{ kind: "key_down", key: modifier }, { kind: "key_up", key: modifier }]);
+});
+
+test("local media and unknown named keys never reach the native injector", async () => {
+  const view = await mount();
+  for (const key of ["AudioVolumeUp", "ContextMenu", "NumLock", "F13", "AltGraph", "Unidentified"]) {
+    await view.key("keydown", key); await view.key("keyup", key);
+  }
+  assert.deepEqual(view.log.inputs, []);
+  await view.key("keydown", "c", { code: "KeyC", metaKey: true });
+  await view.key("keyup", "c", { code: "KeyC", metaKey: true });
+  assert.deepEqual(view.log.inputs, [{ kind: "key_down", key: "Meta" }, { kind: "key_down", key: "c" }, { kind: "key_up", key: "c" }]);
+});
+
+test("Chinese composition commits once and plain soft input remains independent", async () => {
+  const view = await mount();
+  await view.key("keydown", "Control", { code: "ControlLeft", ctrlKey: true });
+  await view.fire(view.input(), new window.CompositionEvent("compositionstart", { bubbles: true }));
+  await view.key("keydown", "Process", { isComposing: true });
+  view.input().value = "ni";
+  await view.fire(view.input(), new window.InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "ni", isComposing: true }));
+  await view.fire(view.input(), new window.CompositionEvent("compositionend", { bubbles: true, data: "你好" }));
+  await view.fire(view.input(), new window.InputEvent("input", { bubbles: true, inputType: "insertText", data: "你好" }));
+  view.input().value = "好";
+  await view.fire(view.input(), new window.InputEvent("input", { bubbles: true, inputType: "insertText", data: "好" }));
+  assert.deepEqual(view.log.inputs, [{ kind: "key_down", key: "Control" }, { kind: "release_all" }, { kind: "type", text: "你好" }, { kind: "type", text: "好" }]);
+});
+
+for (const [modifier, flag] of [["Control", "ctrlKey"], ["Meta", "metaKey"]]) test(`${modifier} shortcut has separate ordered down and up actions`, async () => {
+  const view = await mount();
+  await view.key("keydown", "c", { code: "KeyC", [flag]: true });
+  await view.key("keyup", "c", { code: "KeyC", [flag]: true });
+  await view.key("keyup", modifier, { code: `${modifier}Left` });
+  assert.deepEqual(view.log.inputs.slice(0, 4), [{ kind: "key_down", key: modifier }, { kind: "key_down", key: "c" }, { kind: "key_up", key: "c" }, { kind: "key_up", key: modifier }]);
+});
+
+test("cancelled Chinese composition releases held input and sends no text", async () => {
+  const view = await mount();
+  await view.key("keydown", "Alt", { code: "AltLeft", altKey: true });
+  await view.fire(view.input(), new window.CompositionEvent("compositionstart", { bubbles: true }));
+  view.input().value = "ni";
+  await view.fire(view.input(), new window.CompositionEvent("compositionend", { bubbles: true, data: "" }));
+  await view.fire(view.input(), new window.InputEvent("input", { bubbles: true, inputType: "insertCompositionText", data: "" }));
+  assert.deepEqual(view.log.inputs, [{ kind: "key_down", key: "Alt" }, { kind: "release_all" }]);
+});

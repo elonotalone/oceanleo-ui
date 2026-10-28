@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { remoteDesktopClient, type RemoteDesktopAction, type RemoteDesktopClient, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteMediaStatus } from "../api/remote-desktop";
 import { RemoteDesktopVideo } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
-import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
+import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteKeyboardKey, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 import { CLOUD_AGENT_COPY, type RemoteConsent } from "../lib/local-agent-task";
 import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
@@ -553,13 +553,16 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       if (action) { event.preventDefault(); flushClick(); send(action); }
       return;
     }
-    if (!event.key) return;
+    const mappedKey = remoteKeyboardKey(event.key);
+    if (!mappedKey) return;
     event.preventDefault();
     syncModifiers(event, event.key);
     const id = event.code || event.key;
-    const key = heldKeys.current.get(id) || (event.key === " " ? "Space" : event.key === "OS" ? "Meta" : event.key);
+    const key = heldKeys.current.get(id) || mappedKey;
+    const alreadyHeld = [...heldKeys.current.values()].includes(key);
     if (!heldKeys.current.has(id)) heldKeys.current.set(id, key);
-    send({ kind: "key_down", key });
+    // Left/right modifiers share one native key: release only after both lift.
+    if (!["Control", "Shift", "Alt", "Meta"].includes(key) || !alreadyHeld) send({ kind: "key_down", key });
   }
 
   function keyUp(event: KeyboardEvent<HTMLDivElement>) {
@@ -568,9 +571,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     event.preventDefault();
     flushMove();
     heldKeys.current.delete(id);
-    send({ kind: "key_up", key });
+    if (![...heldKeys.current.values()].includes(key)) send({ kind: "key_up", key });
     syncModifiers(event);
-    if (key === "Meta") releaseInput();
+    if (key === "Meta" && ![...heldKeys.current.values()].includes("Meta")) releaseInput();
   }
 
   useEffect(() => {

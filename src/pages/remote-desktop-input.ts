@@ -119,6 +119,13 @@ export interface KeyEventLike {
   isComposing?: boolean;
 }
 
+/** Names understood by the gateway/native keyboard contract. Browser media and IME keys are local. */
+export function remoteKeyboardKey(key: string): string | null {
+  const normalized = key === " " ? "Space" : key === "OS" ? "Meta" : key;
+  if ([...normalized].length === 1 && !/[\p{C}\p{Z}]/u.test(normalized)) return normalized;
+  return /^(?:Enter|Return|Tab|Escape|Esc|Backspace|Delete|Del|Space|Up|ArrowUp|Down|ArrowDown|Left|ArrowLeft|Right|ArrowRight|Home|End|PageUp|PageDown|CapsLock|F[1-9]|F1[0-2]|Control|Ctrl|Alt|Option|Shift|Meta|Cmd|Command|Super|Win)$/i.test(normalized) ? normalized : null;
+}
+
 const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock", "OS"]);
 
 /**
@@ -131,7 +138,7 @@ const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "C
 export function keyEventToAction(event: KeyEventLike): RemoteDesktopAction | null {
   if (event.isComposing || event.key === "Process" || event.key === "Dead") return null;
   // 手机软键盘常给 `Unidentified`（或空 key）：它不是一个键，字符要从 input 事件取。
-  if (!event.key || event.key === "Unidentified") return null;
+  if (!remoteKeyboardKey(event.key)) return null;
   if (MODIFIER_KEYS.has(event.key)) return null;
   const chord = event.ctrlKey || event.metaKey || event.altKey;
   if (!chord && [...event.key].length === 1) {
