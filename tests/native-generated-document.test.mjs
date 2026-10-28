@@ -77,12 +77,13 @@ test('project downgrade survives reload and never upgrades manually authored ori
   assert.equal(richDocIsGenerated(item('owned')), false);
 });
 
-test('PDF Info and XMP contain identical appendix-E payload; page bytes remain unchanged', async () => {
+test('PDF contains one appendix-E XMP payload with no Info duplicate; page bytes remain unchanged', async () => {
   process.env.NEXT_PUBLIC_OCEANLEO_AIGC_LABEL = '1';
   const seed = await PDFDocument.create();
   const page = seed.addPage([595, 842]);
+  seed.context.lookup(seed.context.trailerInfo.Info, PDFDict).set(PDFName.of('AIGC'), PDFHexString.fromText('{"old":true}'));
   page.drawText('PDF metadata preservation fixture');
-  seed.catalog.set(PDFName.of('Metadata'), seed.context.register(seed.context.stream(new TextEncoder().encode('<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description preserved="yes"/></rdf:RDF></x:xmpmeta>'), { Type: 'Metadata', Subtype: 'XML' })));
+  seed.catalog.set(PDFName.of('Metadata'), seed.context.register(seed.context.stream(new TextEncoder().encode('<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description preserved="yes" xmlns:old="urn:old" old:AIGC="stale"><old:AIGC>stale</old:AIGC></rdf:Description></rdf:RDF></x:xmpmeta>'), { Type: 'Metadata', Subtype: 'XML' })));
   const original = new Blob([await seed.save()], { type: 'application/pdf' });
   assert.equal(await labelGeneratedPdf(original, false), original);
   process.env.NEXT_PUBLIC_OCEANLEO_AIGC_LABEL = '0';
@@ -91,15 +92,19 @@ test('PDF Info and XMP contain identical appendix-E payload; page bytes remain u
   const output = await labelGeneratedPdf(original, true);
   const pdf = await PDFDocument.load(await output.arrayBuffer());
   const info = pdf.context.lookup(pdf.context.trailerInfo.Info, PDFDict);
-  const payload = info.lookup(PDFName.of('AIGC'), PDFHexString).decodeText();
+  assert.equal(info.has(PDFName.of('AIGC')), false);
+  const metadata = pdf.catalog.lookup(PDFName.of('Metadata'), PDFRawStream);
+  const xmp = new TextDecoder().decode(metadata.getContents());
+  const matches = [...xmp.matchAll(/<AIGC:AIGC>([\s\S]*?)<\/AIGC:AIGC>/g)];
+  assert.equal(matches.length, 1);
+  const payload = matches[0][1];
   const parsed = JSON.parse(payload).AIGC;
   assert.equal(parsed.Label, '1');
   assert.equal(parsed.ContentProducer, '91440300MAKE54BD0T');
   assert.match(parsed.ProduceID, /^OL-[a-f0-9-]+$/);
-  const metadata = pdf.catalog.lookup(PDFName.of('Metadata'), PDFRawStream);
-  const xmp = new TextDecoder().decode(metadata.getContents());
   assert.ok(xmp.includes(payload));
   assert.ok(xmp.includes('preserved="yes"'));
+  assert.ok(!xmp.includes('old:AIGC'));
   const before = await PDFDocument.load(await original.arrayBuffer());
   const stream = (doc) => doc.getPages()[0].node.Contents().asArray().map(ref => Buffer.from(doc.context.lookup(ref, PDFRawStream).getContents()).toString('base64'));
   assert.deepEqual(stream(pdf), stream(before));
