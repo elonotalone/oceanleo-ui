@@ -27,7 +27,7 @@ const SOURCE = {
   k16: "远程会话已结束",
   k17: "画面只在内存里转发，不保存。在那台电脑的 OceanLeo 里随时可以停止远程控制。点击画面后，键盘输入会发给那台电脑。",
   k18: "登录已失效，请重新登录后再试。",
-  k19: "网络不通，暂时连不上。",
+  k19: "网络连接中断，请重新连接。",
   k20: "服务返回的内容读不懂，请稍后重试。",
   k21: "这台电脑不在线。",
   k22: "这台电脑已被撤销配对。",
@@ -35,7 +35,7 @@ const SOURCE = {
   k24: "这台电脑上的 OceanLeo 版本还不支持远程桌面，请先更新客户端。",
 
   k26: "那台电脑上已关闭远程桌面，会话已断开。",
-  k27: "与这台电脑失去联系，会话已断开。请确认它还在线后重新进入。",
+  k27: "这台电脑失去联系，会话已断开。请确认它还在线后重新进入。",
   k28: "太久没有操作，会话已自动断开。",
   k29: "会话已断开。",
   k30: "那台电脑上登录的账号与当前网页账号不一致，会话已断开。",
@@ -54,7 +54,6 @@ const SOURCE = {
   k43: "等待这台电脑确认…",
   k44: "退出桌面",
   k45: "画面无法显示，请重新连接。",
-  k46: "兼容画面：请更新电脑客户端以启用流畅视频。",
   k47: "画面缩放",
   k48: "适应窗口",
   k49: "显示器",
@@ -63,7 +62,6 @@ const SOURCE = {
   k52: "视频连接已中断，控制已停止。请重新连接。",
   k53: "视频授权无法续期，控制已停止。请重新连接。",
   k54: "这台电脑的视频服务暂不可用，请稍后重新连接。",
-  k55: "输入正在等待确认，画面保持连接。",
   k56: "无法确认最后的输入是否执行，已停止控制并尝试释放按键。请检查电脑状态后重新连接，不要重复提交未确认的操作。",
   k57: "输入队列暂时繁忙，请稍后重试。",
   k58: "操作电脑",
@@ -100,6 +98,8 @@ const SOURCE = {
   k89: "暂时无法核对 AI 电脑状态，已暂停交还操作。请关闭桌面后重新进入。",
   k90: "远程桌面仍可单独连接，并由这台电脑确认授权。",
   k91: "本机 AI 执行已关闭",
+  k92: "「{name}」上的 OceanLeo 当前没有视频能力。",
+  k93: "网络连接中断，正在重新连接…",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -124,7 +124,7 @@ const EN: Messages = {
   k16: "Remote session ended",
   k17: "The screen is only relayed in memory and is never saved. You can stop remote control at any time in OceanLeo on that computer. After you click the screen, your keyboard input goes to that computer.",
   k18: "Your sign-in has expired. Please sign in again and retry.",
-  k19: "Network unavailable. Can't connect right now.",
+  k19: "Network connection interrupted. Please reconnect.",
   k20: "The service returned something we couldn't read. Please try again later.",
   k21: "This computer is offline.",
   k22: "This computer has been unpaired.",
@@ -151,7 +151,6 @@ const EN: Messages = {
   k43: "Waiting for this computer to approve…",
   k44: "Leave desktop",
   k45: "The screen could not be displayed. Please reconnect.",
-  k46: "Compatibility video: update the computer client to enable smooth streaming.",
   k47: "Screen zoom",
   k48: "Fit window",
   k49: "Display",
@@ -160,7 +159,6 @@ const EN: Messages = {
   k52: "Video disconnected and control stopped. Please reconnect.",
   k53: "Video authorization could not be renewed and control stopped. Please reconnect.",
   k54: "Video is unavailable on this computer. Please reconnect later.",
-  k55: "Waiting for input confirmation. Video remains connected.",
   k56: "The last input could not be confirmed. Control stopped and key release was attempted. Check the computer before reconnecting; do not repeat an unconfirmed action.",
   k57: "The input queue is temporarily busy. Please retry shortly.",
   k58: "Control computer",
@@ -197,6 +195,8 @@ const EN: Messages = {
   k89: "AI computer status is unavailable, so handing back to AI is paused. Close the desktop and open it again.",
   k90: "Remote desktop can still connect separately, with authorization from this computer.",
   k91: "Local AI execution is off",
+  k92: "OceanLeo on “{name}” currently has no video capability.",
+  k93: "Network connection interrupted. Reconnecting…",
 };
 
 const ZH_TW: Messages = {
@@ -219,7 +219,7 @@ const ZH_TW: Messages = {
   k16: "遠端工作階段已結束",
   k17: "畫面只在記憶體中轉送，不會儲存。在那台電腦的 OceanLeo 裡隨時可以停止遠端控制。點擊畫面後，鍵盤輸入會傳給那台電腦。",
   k18: "登入已失效，請重新登入後再試。",
-  k19: "網路不通，暫時連不上。",
+  k19: "網路連線中斷，請重新連線。",
   k20: "服務回傳的內容無法解讀，請稍後重試。",
   k21: "這台電腦不在線上。",
   k22: "這台電腦已被撤銷配對。",
@@ -246,7 +246,6 @@ const ZH_TW: Messages = {
   k43: "等待這台電腦確認…",
   k44: "離開桌面",
   k45: "畫面無法顯示，請重新連線。",
-  k46: "相容畫面：請更新電腦用戶端以啟用流暢視訊。",
   k47: "畫面縮放",
   k48: "適應視窗",
   k49: "顯示器",
@@ -255,7 +254,6 @@ const ZH_TW: Messages = {
   k52: "視訊連線已中斷，控制已停止。請重新連線。",
   k53: "視訊授權無法續期，控制已停止。請重新連線。",
   k54: "這台電腦的視訊服務暫不可用，請稍後重新連線。",
-  k55: "輸入正在等待確認，畫面保持連線。",
   k56: "無法確認最後的輸入是否執行，已停止控制並嘗試釋放按鍵。請檢查電腦狀態後重新連線，不要重複提交未確認的操作。",
   k57: "輸入佇列暫時繁忙，請稍後重試。",
   k58: "操作電腦",
@@ -292,6 +290,8 @@ const ZH_TW: Messages = {
   k89: "暫時無法核對 AI 電腦狀態，已暫停交還操作。請關閉桌面後重新進入。",
   k90: "遠端桌面仍可單獨連線，並由這台電腦確認授權。",
   k91: "本機 AI 執行已關閉",
+  k92: "「{name}」上的 OceanLeo 目前沒有視訊功能。",
+  k93: "網路連線中斷，正在重新連線…",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(

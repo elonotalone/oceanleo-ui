@@ -38,7 +38,7 @@ test("real panel waits for decoded video before enabling input, and a legacy JPE
   assert.deepEqual(view.log.inputs.at(-1), { kind: "release_all" });
 });
 
-test("ARTC unavailable stops and explains failure; only explicit unsupported capability uses labelled legacy", async () => {
+test("ARTC unavailable stops and explains failure; explicit unsupported capability names the computer and retains pictures", async () => {
   const failed = await mount({ overrides: { async negotiateMedia() { return { ok: false, error: "media_unavailable" }; } } });
   assert.equal(failed.screen().getAttribute("data-remote-phase"), "error");
   assert.equal(failed.image(), null);
@@ -47,7 +47,8 @@ test("ARTC unavailable stops and explains failure; only explicit unsupported cap
   const legacy = await mount({ overrides: { async negotiateMedia() { return { ok: false, error: "media_unsupported" }; } } });
   await legacy.frame();
   assert.ok(legacy.image());
-  assert.match(legacy.screen().textContent, /兼容画面/);
+  assert.match(legacy.screen().querySelector("[data-remote-input-status]").textContent, /「Studio」上的 OceanLeo 当前没有视频能力/);
+  assert.doesNotMatch(legacy.screen().textContent, /兼容画面|请更新|输入正在等待确认/);
   await act(async () => legacy.handlers().state("active"));
   assert.equal(legacy.screen().getAttribute("data-remote-media"), "legacy");
 });

@@ -137,6 +137,14 @@ test("native publisher failures explain the next action without exposing protoco
   assert.equal(input.remoteDesktopErrorCopy("media_capture_or_publish_failed"), input.remoteDesktopErrorCopy("media_connection_failed"));
 });
 
+test("viewer and gateway stream failures describe a network interruption; device loss requires its explicit code", () => {
+  for (const code of ["network_error", "stream_failed"]) {
+    assert.match(input.remoteDesktopErrorCopy(code), /网络连接中断/);
+    assert.doesNotMatch(input.remoteDesktopErrorCopy(code), /失去联系|不在线/);
+  }
+  assert.match(input.remoteDesktopErrorCopy("device_lost"), /这台电脑失去联系/);
+});
+
 test("B 的真实码：旧客户端/断线与「别人占用」是两句话", () => {
   const unavailable = input.remoteDesktopErrorCopy("remote_desktop_unavailable", 409);
   const active = input.remoteDesktopErrorCopy("session_active", 409);

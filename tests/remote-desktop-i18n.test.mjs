@@ -84,6 +84,21 @@ test("占位符在译文里原样保留", async () => {
   }
 });
 
+test("all 17 locales explain missing video and network retry without the removed banners", async () => {
+  const unsupported = "「{name}」上的 OceanLeo 当前没有视频能力。";
+  const retry = "网络连接中断，正在重新连接…";
+  const interrupted = "网络连接中断，请重新连接。";
+  for (const locale of LOCALES) {
+    const dict = await loadUiMessages(locale);
+    for (const key of [unsupported, retry, interrupted]) assert.ok(key in dict || locale === "zh", `${locale}: ${key}`);
+    assert.match(dict[unsupported] ?? unsupported, /\{name\}/);
+    assert.ok(!("兼容画面：请更新电脑客户端以启用流畅视频。" in dict));
+    assert.ok(!("输入正在等待确认，画面保持连接。" in dict));
+  }
+  assert.equal((await loadUiMessages("en"))[unsupported], "OceanLeo on “{name}” currently has no video capability.");
+  assert.equal((await loadUiMessages("zh-TW"))[unsupported], "「{name}」上的 OceanLeo 目前沒有視訊功能。");
+});
+
 test("英文页面：设备卡入口与查看面板渲染出来的是英文，没有一个汉字", async () => {
   const dict = await loadUiMessages("en");
   globalThis.__rdEnDict = dict;

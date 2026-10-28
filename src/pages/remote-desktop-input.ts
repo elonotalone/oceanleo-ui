@@ -289,12 +289,11 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "unauthorized":
       return "登录已失效，请重新登录后再试。";
     case "network_error":
-      return "网络不通，暂时连不上。";
+    case "stream_failed":
+      return "网络连接中断，请重新连接。";
     case "input_ack_unknown":
     case "input_backlog_timeout":
       return "无法确认最后的输入是否执行，已停止控制并尝试释放按键。请检查电脑状态后重新连接，不要重复提交未确认的操作。";
-    case "stream_failed":
-      return "与这台电脑失去联系，会话已断开。请确认它还在线后重新进入。";
     case "response_malformed":
       return "服务返回的内容读不懂，请稍后重试。";
     case "device_offline":
@@ -324,7 +323,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "disabled_locally":
       return "那台电脑上已关闭远程桌面，会话已断开。";
     case "device_lost":
-      return "与这台电脑失去联系，会话已断开。请确认它还在线后重新进入。";
+      return "这台电脑失去联系，会话已断开。请确认它还在线后重新进入。";
     case "viewer_idle":
       return "太久没有操作，会话已自动断开。";
     case "viewer_closed":

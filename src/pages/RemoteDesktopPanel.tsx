@@ -90,7 +90,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const [phase, setPhase] = useState<Phase>(() => ticket && !ticket.spent ? "starting" : "idle");
   const [frame, setFrame] = useState<RemoteDesktopFrameData | null>(null);
   const [message, setMessage] = useState("");
-  const [congested, setCongested] = useState(false);
   const [toolbar, setToolbar] = useState(true);
   const [coarse, setCoarse] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
@@ -119,8 +118,11 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const streamModeRef = useRef(false);
   const closedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const previousCloseRef = useRef<Promise<unknown>>(Promise.resolve());
+  const reconnectAttempts = useRef(0);
+  const reconnectTicket = useRef<RemoteDesktopTicket | null>(null);
   const queueRef = useRef<RemoteDesktopAction[]>([]);
-  const pumpingRef = useRef(false);
+  const pumpingRef = useRef<AbortSignal | null>(null);
   const sequenceRef = useRef(0);
   const heldKeys = useRef(new Map<string, string>());
   const pointerRef = useRef<{ id: number; pointerType: string; x: number; y: number; button: "left" | "right" | "middle"; buttons: Set<"left" | "right" | "middle"> } | null>(null);
@@ -145,14 +147,20 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     toolbarTimer.current = setTimeout(() => { if (phaseRef.current === "active") setToolbar(false); }, 2200);
   }, []);
 
+  const canSend = useCallback(() => !closedRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
+    && (mediaModeRef.current !== "artc" || Boolean(mediaFrameGeometry.current && mediaFrameGeometry.current === mediaGeometryKey(mediaStatusRef.current))), []);
+
   const pump = useCallback(async () => {
-    if (pumpingRef.current) return;
-    pumpingRef.current = true;
+    const sessionId = sessionRef.current;
+    const signal = abortRef.current?.signal;
+    if (!sessionId || !signal || signal.aborted || pumpingRef.current === signal) return;
+    pumpingRef.current = signal;
     try {
-      while (queueRef.current.length && !closedRef.current && sessionRef.current) {
+      while (queueRef.current.length && !closedRef.current && !signal.aborted && sessionRef.current === sessionId) {
         const action = queueRef.current.shift()!;
-        const result = await client.sendInput(deviceId, sessionRef.current, ++sequenceRef.current, action, { signal: abortRef.current?.signal });
-        if (!result.ok && !abortRef.current?.signal.aborted) {
+        const result = await client.sendInput(deviceId, sessionId, ++sequenceRef.current, action, { signal });
+        if (signal.aborted || sessionRef.current !== sessionId) return;
+        if (!result.ok) {
           // Unknown ACK must never be replayed. End the session, including held input.
           queueRef.current = [];
           updatePhase(terminal(result.error));
@@ -162,17 +170,16 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           break;
         }
       }
-    } finally { pumpingRef.current = false; }
+    } finally { if (pumpingRef.current === signal) pumpingRef.current = null; }
   }, [client, deviceId, updatePhase]);
 
   const send = useCallback((action: RemoteDesktopAction) => {
-    if (closedRef.current || phaseRef.current !== "active" || !frameRef.current) return;
-    if (mediaModeRef.current === "artc" && (!mediaFrameGeometry.current || mediaFrameGeometry.current !== mediaGeometryKey(mediaStatusRef.current))) return;
+    if (!canSend()) return;
     if (streamModeRef.current) { streamRef.current?.send(action); return; }
     if (queueRef.current.length >= 64) { setMessage("操作太快，部分输入被丢弃了。"); return; }
     queueRef.current.push(action);
     void pump();
-  }, [pump]);
+  }, [canSend, pump]);
 
   const flushMove = useCallback(() => {
     if (moveTimer.current) clearTimeout(moveTimer.current);
@@ -228,11 +235,17 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     streamRef.current = null;
     abortRef.current?.abort();
     queueRef.current = [];
+    pumpingRef.current = null;
     if (toolbarTimer.current) clearTimeout(toolbarTimer.current);
-    if (sessionRef.current) void client.closeSession(deviceId, sessionRef.current).catch(() => {});
+    if (sessionRef.current) {
+      const sessionId = sessionRef.current;
+      sessionRef.current = null;
+      previousCloseRef.current = client.closeSession(deviceId, sessionId).catch(() => {});
+    }
   }, [client, deviceId, releaseInput]);
 
   useEffect(() => {
+    if (ticket !== reconnectTicket.current) reconnectAttempts.current = 0;
     const abort = new AbortController();
     abortRef.current = abort;
     closedRef.current = false;
@@ -243,7 +256,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     setKeyboard(false);
     frameRef.current = null;
     setFrame(null);
-    setCongested(false);
     mediaModeRef.current = "legacy";
     mediaStatusRef.current = null;
     mediaFrameGeometry.current = null;
@@ -256,11 +268,23 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     const end = (error?: string, status?: number) => {
       disconnect();
       setFrame(null);
+      if ((error === "network_error" || error === "stream_failed") && reconnectAttempts.current === 0) {
+        reconnectAttempts.current++;
+        const next = remoteDesktopTicket();
+        reconnectTicket.current = next;
+        setTicket(next);
+        updatePhase("starting");
+        revealToolbar();
+        return;
+      }
       updatePhase(terminal(error));
       setMessage(remoteDesktopErrorCopy(error, status));
       revealToolbar();
     };
     const connect = async () => {
+      // Allow cleanup to finish first, but a broken network must not stall the retry indefinitely.
+      await Promise.race([previousCloseRef.current, wait(1500, abort.signal)]);
+      if (abort.signal.aborted) return;
       const result = await client.createSession(deviceId, { signal: abort.signal });
       if (abort.signal.aborted) {
         if (result.ok && result.data) void client.closeSession(deviceId, result.data.session_id).catch(() => {});
@@ -297,7 +321,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
             else if (mediaDescriptorSeen) end("media_session_closed");
           },
           error(code) { if (!abort.signal.aborted) end(code); },
-          congestion(busy) { if (!abort.signal.aborted) setCongested(busy); },
         }, { signal: abort.signal });
         if (abort.signal.aborted) opened.data?.close();
         else if (opened.ok && opened.data) streamRef.current = opened.data;
@@ -305,7 +328,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         return;
       }
       streamModeRef.current = false;
-      setMediaNotice("兼容画面：请更新电脑客户端以启用流畅视频。");
       let failures = 0;
       while (!abort.signal.aborted && !closedRef.current) {
         const response = await client.getFrame(deviceId, result.data.session_id, { signal: abort.signal });
@@ -324,7 +346,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         await wait(frameIntervalMs, abort.signal);
       }
     };
-    // One session request per fresh ticket, i.e. per click. Spent in a
+    // One session request per fresh ticket: a click or the single network retry. Spent in a
     // microtask: React's dev double run of a new effect (StrictMode) cleans the
     // first run up synchronously, so only the second one sends. A remount,
     // reload, back/forward or Fast Refresh re-run finds it spent and stays idle.
@@ -422,7 +444,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   };
 
   function syncModifiers(event: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean }, exclude?: string) {
-    if (!streamModeRef.current) return;
+    if (!streamModeRef.current || !canSend()) return;
     for (const [name, pressed] of [["Control", event.ctrlKey], ["Shift", event.shiftKey], ["Alt", event.altKey], ["Meta", event.metaKey]] as const) {
       if (exclude === name) continue;
       const matches = [...heldKeys.current].filter(([, key]) => key === name);
@@ -518,7 +540,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape" && event.ctrlKey && event.altKey && event.shiftKey) { event.preventDefault(); releaseInput(); revealToolbar(); return; }
-    if (phaseRef.current !== "active" || composing.current || event.nativeEvent.isComposing || event.keyCode === 229 || ["Process", "Dead", "Unidentified"].includes(event.key)) return;
+    if (!canSend() || composing.current || event.nativeEvent.isComposing || event.keyCode === 229 || ["Process", "Dead", "Unidentified"].includes(event.key)) return;
     // Paste must reach the browser clipboard event so its text travels naturally.
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") return;
     flushMove();
@@ -567,7 +589,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const active = phase === "active";
   // `direct`: the computer approves without a dialog, so this is only the connection; `ask`: a person must approve there.
   const waiting = consent === "direct" ? CLOUD_AGENT_COPY.statusConnecting : consent === "ask" ? CLOUD_AGENT_COPY.waitConsent : "等待这台电脑确认…";
-  const status = phase === "idle" ? CLOUD_AGENT_COPY.remoteIdle : phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? waiting : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
+  const reconnecting = ticket === reconnectTicket.current && ["starting", "waiting", "connecting"].includes(phase);
+  const status = reconnecting ? "网络连接中断，正在重新连接…" : phase === "idle" ? CLOUD_AGENT_COPY.remoteIdle : phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? waiting : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
   return createPortal(
     <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
       <div ref={stageRef} data-remote-stage tabIndex={0} aria-label={tt("远程桌面")}
@@ -592,14 +615,14 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
             setMediaNotice(value === "playing" && mediaFrameGeometry.current ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
             if (value === "error") { disconnect(); updatePhase(terminal(error)); setMessage(remoteDesktopErrorCopy(error, status)); revealToolbar(); }
           }}
-          onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("兼容画面：请更新电脑客户端以启用流畅视频。"); }}
+          onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("「{name}」上的 OceanLeo 当前没有视频能力。"); }}
           onStatus={acceptMediaStatus} /> : frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
           onLoad={() => streamRef.current?.acknowledgeFrame(frame.sequence)}
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
           style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, maxWidth: "none", objectFit: "contain", display: "block" }} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status)}</div>}
         {mediaMode === "artc" && active && !mediaReady ? <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090be8", pointerEvents: "none" }}>{tt(mediaNotice)}</div> : null}
-        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
+        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
           style={{ position: "absolute", left: "50%", top: "50%", width: 1, height: 1, opacity: 0, padding: 0, border: 0, resize: "none" }} />
       </div>
@@ -616,7 +639,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           else { inputRef.current?.blur(); stageRef.current?.focus({ preventScroll: true }); releaseInput(); }
         }}>{tt("键盘")}</button> : null}
         <button type="button" onClick={requestRemoteDesktopFullscreen} style={{ whiteSpace: "nowrap" }}>{tt("全屏")}</button>
-        {/* The only ways to a session request: these buttons and the opener's own click. */}
+        {/* Manual clicks start a fresh request and reset the one-retry allowance. */}
         {!active && !["starting", "waiting", "connecting"].includes(phase) ? <button type="button" data-remote-connect onClick={() => { disconnect(); setTicket(remoteDesktopTicket()); }}>{phase === "idle" ? tt("连接") : tt("重新连接")}</button> : null}
         <button type="button" onClick={() => { disconnect(); onClose(); }} style={{ whiteSpace: "nowrap" }}>{tt("退出桌面")}</button>
       </div>
@@ -626,7 +649,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         {/* Let go of anything this viewer still holds first: the computer resumes the AI only once no person holds input. */}
         {agent.handBack ? <button type="button" data-remote-agent-hand-back disabled={agent.busy} onClick={() => { releaseInput(); agent.onHandBack(); }} style={{ whiteSpace: "nowrap" }}>{tt(CLOUD_AGENT_COPY.handBack)}</button> : null}
       </div> : null}
-      {active && (congested || message || (mediaMode === "legacy" && mediaNotice)) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(congested ? "输入正在等待确认，画面保持连接。" : message || mediaNotice)}</div> : null}
+      {active && (message || (mediaMode === "legacy" && mediaNotice)) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(message || mediaNotice, { name: deviceName })}</div> : null}
     </div>, portal,
   );
 }

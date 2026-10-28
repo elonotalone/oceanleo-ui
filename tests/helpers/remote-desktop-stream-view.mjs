@@ -12,7 +12,7 @@ class Pointer extends window.MouseEvent {
 window.PointerEvent = Pointer;
 const { RemoteDesktopPanel } = await import(await compileModule("src/pages/RemoteDesktopPanel.tsx", {
   "../api/remote-desktop": dataModule("export const remoteDesktopClient = null"),
-  "../i18n/ui/useUI": dataModule("export function useUI(){return (text)=>text;}"),
+  "../i18n/ui/useUI": dataModule("export function useUI(){return (text, vars)=>text.replace(/\\{(\\w+)\\}/g, (match, key)=>String(vars?.[key] ?? match));}"),
   "./remote-desktop-media": dataModule("export async function openRemoteMedia(...args){ return globalThis.__remoteMediaTestStart(...args); }"),
 }));
 export const settle = (ms = 25) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
@@ -49,7 +49,7 @@ export async function mountStream({ pending = false, coarse = false, overrides =
     },
     async fire(target, event) { await act(async () => target.dispatchEvent(event)); },
     async pointer(type, x = 420, y = 230, options = {}) { await view.fire(view.stage(), new Pointer(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, ...options })); },
-    async key(type, key, options = {}) { await view.fire(view.input(), new window.KeyboardEvent(type, { bubbles: true, cancelable: true, key, ...options })); },
+    async key(type, key, options = {}) { await view.fire(view.input().disabled ? view.stage() : view.input(), new window.KeyboardEvent(type, { bubbles: true, cancelable: true, key, ...options })); },
     async unmount() { if (view.unmounted) return; view.unmounted = true; await act(async () => root.unmount()); host.remove(); await settle(0); },
   };
   if (!pending) await view.frame();
