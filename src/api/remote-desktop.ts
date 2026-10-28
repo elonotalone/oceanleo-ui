@@ -282,7 +282,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (state !== "closed" && typeof data.acked_seq === "number") scheduler.executedThrough(data.acked_seq);
     if (ended) return;
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }
-    handlers.state(state, typeof data.error === "string" ? data.error : undefined);
+    handlers.state(state, data.error === "stream_failed" ? "network_error" : typeof data.error === "string" ? data.error : undefined);
     if ("media" in data) {
       const media = data.media === null ? null : parseRemoteMedia(data.media);
       if (data.media !== null && !media) { fail("response_malformed"); return; }
@@ -291,7 +291,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (state === "closed") dispose();
   };
   socket.onerror = () => fail("network_error");
-  socket.onclose = () => { if (!ended) fail("device_lost"); };
+  socket.onclose = () => { if (!ended) fail("network_error"); };
   return connected;
 }
 

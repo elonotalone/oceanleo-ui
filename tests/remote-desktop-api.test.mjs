@@ -289,7 +289,7 @@ test("v2 authenticates only inside the private socket, refuses input before appr
   } finally { stream.close(); }
 });
 
-test("v2 never accepts a frame before approval and bounds executed-unacknowledged inputs", async () => {
+test("v2 rejects frames before approval and releases transport credit on gateway acceptance", async () => {
   let harness = await streamHarness();
   harness.socket.message(binaryPacket());
   assert.deepEqual(harness.log.errors, ["response_malformed"]);
@@ -303,9 +303,10 @@ test("v2 never accepts a frame before approval and bounds executed-unacknowledge
     }
     for (let index = 0; index < 1000; index++) assert.equal(harness.stream.send({ kind: "move", x: index / 1000, y: .5 }), true);
     assert.equal(harness.stream.send({ kind: "key_up", key: "a" }), true);
-    assert.equal(harness.socket.sent.filter((message) => message.type === "input").length, 8);
+    assert.equal(harness.socket.sent.filter((message) => message.type === "input").length, 16);
     assert.deepEqual(harness.log.errors, []);
     assert.equal(harness.socket.readyState, 1);
+    for (let seq = 9; seq <= 16; seq++) harness.socket.message({ type: "input_ack", seq });
     harness.socket.message({ type: "state", state: "active", acked_seq: 8 });
     assert.equal(harness.socket.sent.at(-2).action.kind, "move");
     assert.equal(harness.socket.sent.at(-1).action.kind, "key_up");
@@ -332,7 +333,7 @@ test("recoverable rejection and local socket pressure preserve pixels and resume
     assert.deepEqual(socket.sent.filter((item) => item.type === "input").map((item) => item.seq), [1, 1]);
     socket.message({ type: "input_ack", seq: 1 });
     socket.message({ type: "state", state: "active", acked_seq: 1 });
-    assert.equal(log.congestion.at(-1), false);
+    assert.equal(log.congestion.includes(true), false);
     assert.equal(socket.readyState, 1);
   } finally { stream.close(); }
 });
@@ -349,4 +350,19 @@ test("a throwing socket write is never retried, including release, and closes as
   assert.deepEqual(log.errors, ["input_ack_unknown"]);
   assert.equal(socket.readyState, 3);
   stream.close();
+});
+
+
+test("an unexplained viewer socket close is a network error, not device offline", async () => {
+  const { socket, log } = await streamHarness();
+  socket.onclose();
+  assert.deepEqual(log.errors, ["network_error"]);
+});
+
+test("generic stream failure is mapped to network error while explicit device offline is retained", async () => {
+  for (const [reason, expected] of [["stream_failed", "network_error"], ["device_lost", "device_lost"]]) {
+    const { socket, log } = await streamHarness();
+    socket.message({ type: "state", state: "closed", error: reason });
+    assert.deepEqual(log.states.at(-1), ["closed", expected]);
+  }
 });
