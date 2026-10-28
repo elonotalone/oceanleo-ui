@@ -700,13 +700,26 @@ function transientFromMeta(
   if (!resultId || !idempotencyKey || !payloadDigest || !renditionUrl) {
     return undefined;
   }
+  const provenance =
+    input.meta.provenance && typeof input.meta.provenance === "object"
+      ? (input.meta.provenance as Record<string, unknown>)
+      : undefined;
+  // PDF shares the document viewer, but the producer's typed PDF receipt must
+  // reach pdf-editor admission. This hint grants no origin or rights: the
+  // backend still checks actual bytes and the actor/digest/key signature.
+  const generatedPdf =
+    operation === "generation" &&
+    input.meta.artifact_type === "pdf" &&
+    String(input.meta.format || "").trim().toLowerCase() === "pdf" &&
+    typeof provenance?.generated_file_receipt === "string" &&
+    provenance.generated_file_receipt.trim().length > 0;
   return {
     schema: "oceanleo.transient-generation.v1",
     operation,
     resultId,
     idempotencyKey,
     payloadDigest,
-    artifactType: artifactTypeForLibraryKind(input.kind),
+    artifactType: generatedPdf ? "pdf" : artifactTypeForLibraryKind(input.kind),
     title: input.title,
     renditionUrl,
     sourceUrl:
@@ -717,11 +730,7 @@ function transientFromMeta(
     siteId: input.siteId || "",
     appId: String(input.meta.app_id || ""),
     functionId: String(input.meta.function_id || ""),
-    provenance:
-      input.meta.provenance &&
-      typeof input.meta.provenance === "object"
-        ? (input.meta.provenance as Record<string, unknown>)
-        : undefined,
+    provenance,
   };
 }
 

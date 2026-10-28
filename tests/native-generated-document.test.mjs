@@ -105,6 +105,11 @@ test('PDF contains one appendix-E XMP payload with no Info duplicate; page bytes
   assert.ok(xmp.includes(payload));
   assert.ok(xmp.includes('preserved="yes"'));
   assert.ok(!xmp.includes('old:AIGC'));
+  const metadataPackets = (doc) => doc.context.enumerateIndirectObjects()
+    .filter(([, value]) => value instanceof PDFRawStream && value.dict.get(PDFName.of('Type')) === PDFName.of('Metadata'));
+  assert.equal(metadataPackets(pdf).length, 1, 'stale XMP objects must be replaced, not orphaned');
+  const relabeled = await PDFDocument.load(await (await labelGeneratedPdf(output, true)).arrayBuffer());
+  assert.equal(metadataPackets(relabeled).length, 1, 'repeat export must keep one metadata packet');
   const before = await PDFDocument.load(await original.arrayBuffer());
   const stream = (doc) => doc.getPages()[0].node.Contents().asArray().map(ref => Buffer.from(doc.context.lookup(ref, PDFRawStream).getContents()).toString('base64'));
   assert.deepEqual(stream(pdf), stream(before));

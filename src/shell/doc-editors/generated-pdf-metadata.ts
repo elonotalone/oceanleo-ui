@@ -3,7 +3,7 @@ import { aigcLabelActive, aigcMetadata } from "../../contracts/aigc-label";
 /** The DOCX conversion already carries the visible notice. Preserve all page streams/fonts. */
 export async function labelGeneratedPdf(blob: Blob, generated: boolean): Promise<Blob> {
   if (!generated || !aigcLabelActive()) return blob;
-  const { PDFDocument, PDFName, PDFDict, PDFRawStream, decodePDFRawStream } = await import("pdf-lib");
+  const { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFRef, decodePDFRawStream } = await import("pdf-lib");
   const pdf = await PDFDocument.load(await blob.arrayBuffer());
   const payload = aigcMetadata(`OL-${crypto.randomUUID()}`).AIGC;
   // GB 45438-2025 6.1(c) requires ONE copy, held in XMP, not Info + XMP.
@@ -21,7 +21,15 @@ export async function labelGeneratedPdf(blob: Blob, generated: boolean): Promise
   const xmp = previousXml.includes("</rdf:RDF>")
     ? previousXml.replace("</rdf:RDF>", description + "</rdf:RDF>")
     : `<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">${description}</rdf:RDF></x:xmpmeta><?xpacket end="w"?>`;
-  pdf.catalog.set(PDFName.of("Metadata"), pdf.context.register(pdf.context.stream(new TextEncoder().encode(xmp), { Type: "Metadata", Subtype: "XML" })));
+  const replacement = pdf.context.stream(new TextEncoder().encode(xmp), { Type: "Metadata", Subtype: "XML" });
+  const metadataRef = pdf.catalog.get(PDFName.of("Metadata"));
+  if (metadataRef instanceof PDFRef) {
+    // Replace the existing object as well as the catalog view, so repeated
+    // exports cannot leave stale AIGC packets in unreferenced PDF objects.
+    pdf.context.assign(metadataRef, replacement);
+  } else {
+    pdf.catalog.set(PDFName.of("Metadata"), pdf.context.register(replacement));
+  }
   const bytes = await pdf.save();
   return new Blob([new Uint8Array(bytes).buffer], { type: "application/pdf" });
 }
