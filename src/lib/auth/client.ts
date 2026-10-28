@@ -6,6 +6,7 @@ import {
   clientHostConfigGeneration,
   createMemoryAuthStorage,
   getClientHostConfig,
+  type ClientHostLoginProgress,
 } from "../../contracts/client-host-config";
 import { runtimePageOrigin } from "../../contracts/domain-family";
 import { authFetch } from "./auth-fetch";
@@ -575,7 +576,7 @@ export function desktopBrowserLoginAvailable(): boolean {
 }
 
 /** The native entry for every provider and email. The browser owns all credential UI. */
-export async function startDesktopBrowserSignIn(signal?: AbortSignal, onProgress?: (phase: string) => void): Promise<{ error?: string; signedIn?: boolean }> {
+export async function startDesktopBrowserSignIn(signal?: AbortSignal, onProgress?: (phase: string, details?: ClientHostLoginProgress) => void): Promise<{ error?: string; signedIn?: boolean }> {
   const host = getClientHostConfig();
   const c = browserClient();
   if (host?.platform !== "desktop" || !host.oauth?.login || !c) {

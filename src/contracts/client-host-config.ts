@@ -23,9 +23,16 @@ export interface ClientHostAuthStorage {
 
 export type ClientHostNavSection = "primary" | "footer";
 
+export interface ClientHostLoginProgress {
+  /** Validated first-party login page; contains only the attempt identifier. */
+  loginUrl?: string;
+  /** True only after the gateway observes the page's describe request. */
+  pageOpened?: boolean;
+}
+
 export interface ClientHostOAuth {
   /** Complete hosted login, independent of the website's refresh-token session. */
-  login?(signal?: AbortSignal, onProgress?: (phase: string) => void): Promise<void>;
+  login?(signal?: AbortSignal, onProgress?: (phase: string, details?: ClientHostLoginProgress) => void): Promise<void>;
   begin(): Promise<{ id: string; redirectTo: string }>;
   openAndWait(id: string, url: string, signal?: AbortSignal): Promise<string>;
   cancel(id: string): Promise<void>;

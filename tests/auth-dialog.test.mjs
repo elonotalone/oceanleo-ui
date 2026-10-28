@@ -464,6 +464,38 @@ test("native login can cancel a pending attempt and immediately retry", async ()
   }, { auth });
 });
 
+test("native login exposes a copyable link when no page receipt arrives and clears the warning after receipt", async () => {
+  const auth = defaultAuth();
+  auth.desktopBrowserLoginAvailable = () => true;
+  const loginUrl = "https://p-511af16886fbb22b5ab2367528b458ba.dev.oceanleo.com/auth/desktop?attempt=" + "a".repeat(64);
+  let progress, finish;
+  auth.startDesktopBrowserSignIn = async (signal, notify) => {
+    progress = notify;
+    notify("waiting", { loginUrl });
+    return new Promise((resolve) => {
+      finish = resolve;
+      signal.addEventListener("abort", () => resolve({ error: "登录已取消。" }), { once: true });
+    });
+  };
+  await withDom(async ({ render, find, click, window }) => {
+    const copied = [];
+    Object.defineProperty(window.navigator, "clipboard", { configurable: true, value: { writeText: async (value) => copied.push(value) } });
+    await render(AuthPanel, {});
+    await click("[data-auth-submit]");
+    assert.equal(find("[data-auth-browser-warning]"), null, "opening the browser does not imply failed page delivery");
+    await act(async () => progress("browser-unreachable", { loginUrl, pageOpened: false }));
+    assert.match(find("[data-auth-browser-warning]").textContent, /尚未收到页面打开确认.*可能无法访问.*代理/);
+    assert.equal(find('input[aria-label="登录链接"]').value, loginUrl);
+    await click("[data-auth-copy-login-link]");
+    assert.deepEqual(copied, [loginUrl]);
+    await act(async () => progress("reconnecting"));
+    assert.ok(find("[data-auth-browser-warning]"), "a transient poll failure does not erase the page warning");
+    await act(async () => progress("waiting", { loginUrl, pageOpened: true }));
+    assert.equal(find("[data-auth-browser-warning]"), null);
+    await act(async () => finish({ signedIn: true }));
+  }, { auth });
+});
+
 test("publishing the saved identity may unmount the landing without cancelling native completion", async () => {
   const auth = defaultAuth();
   auth.desktopBrowserLoginAvailable = () => true;

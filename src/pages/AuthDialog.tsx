@@ -125,6 +125,9 @@ export const AUTH_DIALOG_COPY: readonly string[] = [
   "登录 OceanLeo",
   "在浏览器中登录",
   "等待浏览器登录",
+  "尚未收到页面打开确认，浏览器可能无法访问，请检查代理。",
+  "登录链接",
+  "复制链接",
   "桌面登录尚未就绪，请重新打开客户端。",
   "登录等待超时，请重试。",
   "登录返回端口被占用，请关闭另一个 OceanLeo 客户端后重试。",
@@ -619,6 +622,9 @@ function DesktopBrowserLoginPanel({ tt, titleId, className, onClose, onDone }: {
   const [pending, setPending] = useState(false);
   const [phase, setPhase] = useState("");
   const [error, setError] = useState("");
+  const [loginUrl, setLoginUrl] = useState("");
+  const [browserWarning, setBrowserWarning] = useState(false);
+  const loginLink = useRef<HTMLInputElement | null>(null);
   const controller = useRef<AbortController | null>(null);
   const phaseRef = useRef("");
   const mounted = useRef(true);
@@ -637,10 +643,16 @@ function DesktopBrowserLoginPanel({ tt, titleId, className, onClose, onDone }: {
     controller.current = current;
     setPending(true);
     setError("");
+    setLoginUrl("");
+    setBrowserWarning(false);
     try {
-      const result = await startDesktopBrowserSignIn(current.signal, (next) => {
+      const result = await startDesktopBrowserSignIn(current.signal, (next, details) => {
         phaseRef.current = next;
-        if (mounted.current) setPhase(next);
+        if (mounted.current) {
+          setPhase(next);
+          if (details?.loginUrl) setLoginUrl(details.loginUrl);
+          if (details?.pageOpened !== undefined) setBrowserWarning(!details.pageOpened);
+        }
       });
       if (current.signal.aborted) return;
       if (result.signedIn) onDone();
@@ -665,6 +677,14 @@ function DesktopBrowserLoginPanel({ tt, titleId, className, onClose, onDone }: {
       {pending ? <ButtonSpinner label={tt(["opening", "saving", "completing"].includes(phase) ? "处理中..." : "等待浏览器登录")} /> : tt("登录")}
     </button>
     {pending && phase === "browser-background" && <p role="status" className="mt-3 text-sm text-neutral-500">{tt("等待浏览器登录")}</p>}
+    {pending && browserWarning && loginUrl && !["saving", "completing"].includes(phase) && <div data-auth-browser-warning className="mt-4 text-left text-sm">
+      <p role="status" className="text-amber-700">{tt("尚未收到页面打开确认，浏览器可能无法访问，请检查代理。")}</p>
+      <input ref={loginLink} readOnly value={loginUrl} aria-label={tt("登录链接")}
+        className="mt-3 w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs" onFocus={(event) => event.currentTarget.select()} />
+      <button type="button" data-auth-copy-login-link className="mt-2 text-sm text-neutral-600" onClick={() => {
+        void Promise.resolve().then(() => navigator.clipboard.writeText(loginUrl)).catch(() => { loginLink.current?.focus(); loginLink.current?.select(); });
+      }}>{tt("复制链接")}</button>
+    </div>}
     {pending && !["saving", "completing"].includes(phase) && <button type="button" className="mt-3 px-4 py-2 text-sm text-neutral-500"
       onClick={() => { controller.current?.abort(); }}>{tt("取消")}</button>}
   </section>;
