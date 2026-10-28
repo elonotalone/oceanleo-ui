@@ -22,6 +22,9 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
       if (abort.signal.aborted) throw new Error("aborted");
       if (!response.ok || !response.data) throw Object.assign(new Error(response.error || "media_unavailable"), { status: response.status });
       callbacks.current.onStatus(response.data.media_status);
+      if (response.data.media_status?.state === "failed") {
+        throw new Error(response.data.media_status.error || "media_capture_or_publish_failed");
+      }
       return response.data.media;
     };
     const start = (async () => {

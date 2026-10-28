@@ -315,7 +315,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           media(media, status) {
             if (abort.signal.aborted) return;
             acceptMediaStatus(status);
-            if (status?.state === "failed") end(status.error || "media_unavailable");
+            if (status?.state === "failed") { end(status.error || "media_capture_or_publish_failed"); return; }
             // A missing descriptor before negotiation is normal. After activation it revokes video.
             if (media) mediaDescriptorSeen = true;
             else if (mediaDescriptorSeen) end("media_session_closed");

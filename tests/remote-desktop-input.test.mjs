@@ -123,7 +123,8 @@ test("错误码都落成中文，未知码落到兜底，不外泄英文 token",
 });
 
 test("native publisher failures explain the next action without exposing protocol codes", () => {
-  assert.match(input.remoteDesktopErrorCopy("screen_permission_or_capture_unavailable"), /屏幕录制权限.*重新连接/);
+  assert.match(input.remoteDesktopErrorCopy("screen_permission_or_capture_unavailable"), /画面暂时无法获取.*重新连接/);
+  assert.doesNotMatch(input.remoteDesktopErrorCopy("screen_permission_or_capture_unavailable"), /权限|允许.*录制屏幕/);
   assert.match(input.remoteDesktopErrorCopy("media_no_encoded_frame"), /未发出视频画面.*重新连接/);
   for (const code of ["media_no_encoded_frame", "media_first_frame_timeout", "media_gateway_unsupported"]) {
     assert.doesNotMatch(input.remoteDesktopErrorCopy(code), /屏幕录制权限/, "missing video alone is not evidence of denied screen permission");
@@ -134,7 +135,32 @@ test("native publisher failures explain the next action without exposing protoco
   for (const code of ["media_renew_failed", "media_credential_invalid", "media_lease_invalid"]) {
     assert.equal(input.remoteDesktopErrorCopy(code), input.remoteDesktopErrorCopy("media_auth_failed"));
   }
-  assert.equal(input.remoteDesktopErrorCopy("media_capture_or_publish_failed"), input.remoteDesktopErrorCopy("media_connection_failed"));
+  assert.equal(input.remoteDesktopErrorCopy("media_capture_or_publish_failed"), input.remoteDesktopErrorCopy("screen_permission_or_capture_unavailable"));
+});
+
+test("capture stage failures only advise permissions when denial is explicit", () => {
+  const failures = [
+    ["screen_permission_required", /尚未允许屏幕录制/],
+    ["screen_content_unavailable", /无法获取.*屏幕内容/],
+    ["screen_content_timeout", /读取.*屏幕内容超时/],
+    ["screen_display_mismatch", /显示器发生变化或无法使用/],
+    ["screen_geometry_invalid", /显示器发生变化或无法使用/],
+    ["screen_capture_output_failed", /无法输出屏幕画面/],
+    ["screen_capture_start_failed", /画面未能启动/],
+    ["screen_capture_start_timeout", /启动电脑画面超时/],
+    ["screen_capture_cleanup_pending", /结束上一次画面采集/],
+    ["screen_capture_quarantined", /画面采集暂不可用/],
+    ["screen_capture_os_unsupported", /系统暂不支持屏幕采集/],
+    ["screen_permission_or_capture_unavailable", /画面暂时无法获取/],
+  ];
+  for (const [code, expected] of failures) {
+    const copy = input.remoteDesktopErrorCopy(code);
+    assert.match(copy, expected, code);
+    assert.match(copy, /控制已停止/, code);
+    assert.doesNotMatch(copy, /screen_|NSError|离线|失去联系/, code);
+    if (code !== "screen_permission_required") assert.doesNotMatch(copy, /权限|允许.*录制屏幕/, code);
+  }
+  assert.equal(input.remoteDesktopErrorCopy("NSError synthetic-private-detail token=fixture-only"), "这一步没有完成，请稍后重试。");
 });
 
 test("viewer and gateway stream failures describe a network interruption; device loss requires its explicit code", () => {

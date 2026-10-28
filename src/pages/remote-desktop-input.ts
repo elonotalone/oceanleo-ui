@@ -262,8 +262,30 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   switch (code) {
     case "media_first_frame_timeout":
       return "尚未收到电脑画面，控制已停止。请确认电脑上的 OceanLeo 正在运行后重新连接。";
+    case "screen_permission_required":
+      return "这台电脑尚未允许屏幕录制，控制已停止。请在电脑上允许 OceanLeo 录制屏幕后重新连接。";
+    case "screen_content_unavailable":
+      return "无法获取这台电脑的屏幕内容，控制已停止。请稍后重新连接。";
+    case "screen_content_timeout":
+      return "读取电脑屏幕内容超时，控制已停止。请稍后重新连接。";
+    case "screen_display_mismatch":
+    case "screen_geometry_invalid":
+      return "电脑的显示器发生变化或无法使用，控制已停止。请确认显示器连接后重新连接。";
+    case "screen_capture_output_failed":
+      return "电脑无法输出屏幕画面，控制已停止。请稍后重新连接。";
+    case "screen_capture_start_failed":
+      return "电脑画面未能启动，控制已停止。请稍后重新连接。";
+    case "screen_capture_start_timeout":
+      return "启动电脑画面超时，控制已停止。请稍后重新连接。";
+    case "screen_capture_cleanup_pending":
+      return "电脑仍在结束上一次画面采集，控制已停止。请稍后重新连接。";
+    case "screen_capture_quarantined":
+      return "电脑的画面采集暂不可用，控制已停止。请稍后重新连接。";
+    case "screen_capture_os_unsupported":
+      return "这台电脑的系统暂不支持屏幕采集，控制已停止。请检查系统版本。";
     case "screen_permission_or_capture_unavailable":
-      return "尚未收到电脑画面，请检查电脑的屏幕录制权限后重新连接。";
+    case "media_capture_or_publish_failed":
+      return "电脑画面暂时无法获取，控制已停止。请稍后重新连接。";
     case "media_no_encoded_frame":
       return "电脑尚未发出视频画面，控制已停止。请在电脑上检查视频服务后重新连接。";
     case "media_gateway_unsupported":
@@ -272,7 +294,6 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "media_connection_failed":
     case "media_subscribe_failed":
     case "media_session_closed":
-    case "media_capture_or_publish_failed":
       return "视频连接已中断，控制已停止。请重新连接。";
     case "media_auth_failed":
     case "media_renew_failed":
@@ -282,6 +303,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "media_unavailable":
     case "media_sdk_not_installed":
     case "media_sdk_start_failed":
+    case "media_audio_guard_unavailable":
     case "display_enumeration_failed":
     case "display_geometry_failed":
     case "display_not_found":

@@ -134,3 +134,67 @@ test("session conflict stops after one request and only reconnect click requests
   assert.equal(requests, 2);
   assert.deepEqual(view.log.closes, [], "never closes another viewer's session");
 });
+
+test("publisher failure stops rendered video/input and retains its exact reason after descriptor withdrawal", async () => {
+  for (const [code, expected] of [
+    ["screen_permission_required", /尚未允许屏幕录制/],
+    ["screen_content_unavailable", /无法获取.*屏幕内容/],
+    ["screen_content_timeout", /读取.*屏幕内容超时/],
+    ["screen_display_mismatch", /显示器发生变化或无法使用/],
+    ["screen_geometry_invalid", /显示器发生变化或无法使用/],
+    ["screen_capture_output_failed", /无法输出屏幕画面/],
+    ["screen_capture_start_failed", /画面未能启动/],
+    ["screen_capture_start_timeout", /启动电脑画面超时/],
+    ["screen_capture_cleanup_pending", /结束上一次画面采集/],
+    ["screen_capture_quarantined", /画面采集暂不可用/],
+    ["screen_capture_os_unsupported", /系统暂不支持屏幕采集/],
+    ["screen_permission_or_capture_unavailable", /画面暂时无法获取/],
+    ["NSError synthetic-private-detail token=fixture-only", /这一步没有完成/],
+  ]) {
+    const view = await mount();
+    await act(async () => view.handlers().media(media, { state: "publishing", geometry: { display_id: "a", width: 1920, height: 1080 } }));
+    await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
+    assert.equal(view.input().disabled, false);
+    // A revoked descriptor in the same report must not replace the specific failure.
+    await act(async () => view.handlers().media(null, { state: "failed", error: code }));
+    assert.equal(view.input().disabled, true, code);
+    assert.equal(view.screen().querySelector("video"), null, code);
+    assert.equal(view.screen().getAttribute("data-remote-phase"), "error", code);
+    assert.match(view.screen().textContent, expected, code);
+    assert.doesNotMatch(view.screen().textContent, /NSError|private-detail|token=|screen_|失去联系|不在线/, code);
+    if (code !== "screen_permission_required") assert.doesNotMatch(view.screen().textContent, /权限|允许.*录制屏幕/, code);
+    assert.deepEqual(view.log.closes, ["session-stream"]);
+    await view.unmount();
+  }
+});
+
+test("a failed negotiation snapshot never starts the receiver or hides capture timeout behind frame timeout", async () => {
+  const view = await mount({ overrides: {
+    async negotiateMedia() { return { ok: true, data: { media, media_status: { state: "failed", error: "screen_capture_start_timeout" } } }; },
+  } });
+  assert.equal(view.mediaCallbacks(), undefined);
+  assert.equal(view.input().disabled, true);
+  assert.match(view.screen().textContent, /启动电脑画面超时/);
+  assert.deepEqual(view.log.closes, ["session-stream"]);
+});
+
+test("capture failure waits for explicit retry and fresh video without replaying held input", async () => {
+  let sessions = 0;
+  const view = await mount({ overrides: {
+    async createSession() { return { ok: true, data: { session_id: `capture-${++sessions}`, state: "connecting", transport: "websocket-v2", expires_at: "" } }; },
+  } });
+  await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
+  await view.key("keydown", "Enter");
+  await act(async () => view.handlers().media(media, { state: "failed", error: "screen_content_timeout" }));
+  await settle(1600);
+  assert.equal(sessions, 1, "capture failures never automatically reconnect");
+  assert.equal(view.input().disabled, true);
+  await act(async () => view.screen().querySelector("[data-remote-connect]").click());
+  await settle();
+  assert.equal(sessions, 2);
+  assert.equal(view.input().disabled, true);
+  await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
+  assert.equal(view.input().disabled, false);
+  assert.equal(view.log.inputs.filter(input => input.kind === "key_down").length, 1);
+  assert.deepEqual(view.log.closes, ["capture-1"]);
+});

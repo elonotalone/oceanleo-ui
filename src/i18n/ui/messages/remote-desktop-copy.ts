@@ -58,7 +58,7 @@ const SOURCE = {
   k48: "适应窗口",
   k49: "显示器",
   k50: "重新连接",
-  k51: "尚未收到电脑画面，请检查电脑的屏幕录制权限后重新连接。",
+  k51: "电脑画面暂时无法获取，控制已停止。请稍后重新连接。",
   k52: "视频连接已中断，控制已停止。请重新连接。",
   k53: "视频授权无法续期，控制已停止。请重新连接。",
   k54: "这台电脑的视频服务暂不可用，请稍后重新连接。",
@@ -100,6 +100,16 @@ const SOURCE = {
   k91: "本机 AI 执行已关闭",
   k92: "「{name}」上的 OceanLeo 当前没有视频能力。",
   k93: "网络连接中断，正在重新连接…",
+  k94: "这台电脑尚未允许屏幕录制，控制已停止。请在电脑上允许 OceanLeo 录制屏幕后重新连接。",
+  k95: "无法获取这台电脑的屏幕内容，控制已停止。请稍后重新连接。",
+  k96: "读取电脑屏幕内容超时，控制已停止。请稍后重新连接。",
+  k97: "电脑的显示器发生变化或无法使用，控制已停止。请确认显示器连接后重新连接。",
+  k98: "电脑无法输出屏幕画面，控制已停止。请稍后重新连接。",
+  k99: "电脑画面未能启动，控制已停止。请稍后重新连接。",
+  k100: "启动电脑画面超时，控制已停止。请稍后重新连接。",
+  k101: "电脑仍在结束上一次画面采集，控制已停止。请稍后重新连接。",
+  k102: "电脑的画面采集暂不可用，控制已停止。请稍后重新连接。",
+  k103: "这台电脑的系统暂不支持屏幕采集，控制已停止。请检查系统版本。",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -155,7 +165,7 @@ const EN: Messages = {
   k48: "Fit window",
   k49: "Display",
   k50: "Reconnect",
-  k51: "No screen has arrived. Check screen recording permission on the computer, then reconnect.",
+  k51: "The computer screen is temporarily unavailable. Control has stopped. Please reconnect later.",
   k52: "Video disconnected and control stopped. Please reconnect.",
   k53: "Video authorization could not be renewed and control stopped. Please reconnect.",
   k54: "Video is unavailable on this computer. Please reconnect later.",
@@ -197,6 +207,16 @@ const EN: Messages = {
   k91: "Local AI execution is off",
   k92: "OceanLeo on “{name}” currently has no video capability.",
   k93: "Network connection interrupted. Reconnecting…",
+  k94: "Screen recording is not allowed on this computer. Control has stopped. Allow OceanLeo to record the screen on the computer, then reconnect.",
+  k95: "Screen content is unavailable on this computer. Control has stopped. Please reconnect later.",
+  k96: "Reading the computer screen timed out. Control has stopped. Please reconnect later.",
+  k97: "The computer display changed or is unavailable. Control has stopped. Check its display connection, then reconnect.",
+  k98: "The computer could not output its screen. Control has stopped. Please reconnect later.",
+  k99: "The computer screen could not start. Control has stopped. Please reconnect later.",
+  k100: "Starting the computer screen timed out. Control has stopped. Please reconnect later.",
+  k101: "The computer is still ending its previous screen capture. Control has stopped. Please reconnect later.",
+  k102: "Screen capture is temporarily unavailable on the computer. Control has stopped. Please reconnect later.",
+  k103: "This computer’s operating system does not support screen capture. Control has stopped. Check its system version.",
 };
 
 const ZH_TW: Messages = {
@@ -250,7 +270,7 @@ const ZH_TW: Messages = {
   k48: "適應視窗",
   k49: "顯示器",
   k50: "重新連線",
-  k51: "尚未收到電腦畫面，請檢查電腦的螢幕錄製權限後重新連線。",
+  k51: "電腦畫面暫時無法取得，控制已停止。請稍後重新連線。",
   k52: "視訊連線已中斷，控制已停止。請重新連線。",
   k53: "視訊授權無法續期，控制已停止。請重新連線。",
   k54: "這台電腦的視訊服務暫不可用，請稍後重新連線。",
@@ -292,6 +312,16 @@ const ZH_TW: Messages = {
   k91: "本機 AI 執行已關閉",
   k92: "「{name}」上的 OceanLeo 目前沒有視訊功能。",
   k93: "網路連線中斷，正在重新連線…",
+  k94: "這台電腦尚未允許螢幕錄製，控制已停止。請在電腦上允許 OceanLeo 錄製螢幕後重新連線。",
+  k95: "無法取得這台電腦的螢幕內容，控制已停止。請稍後重新連線。",
+  k96: "讀取電腦螢幕內容逾時，控制已停止。請稍後重新連線。",
+  k97: "電腦的顯示器發生變化或無法使用，控制已停止。請確認顯示器連接後重新連線。",
+  k98: "電腦無法輸出螢幕畫面，控制已停止。請稍後重新連線。",
+  k99: "電腦畫面未能啟動，控制已停止。請稍後重新連線。",
+  k100: "啟動電腦畫面逾時，控制已停止。請稍後重新連線。",
+  k101: "電腦仍在結束上一次畫面擷取，控制已停止。請稍後重新連線。",
+  k102: "電腦的畫面擷取暫不可用，控制已停止。請稍後重新連線。",
+  k103: "這台電腦的系統暫不支援螢幕擷取，控制已停止。請檢查系統版本。",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(
