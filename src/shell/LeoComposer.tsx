@@ -260,6 +260,8 @@ export interface LeoComposerProps {
    * 传 false 可在非 OceanLeo 宿主关掉。
    */
   showComputerDock?: boolean;
+  /** undefined=new draft; null=existing task still loading; otherwise immutable task target. */
+  boundExecutionTarget?: ExecutionTarget | null;
 
   /**
    * 输入框 `/` 调用技能（skills-overhaul 2026-10-24，合同 §3.5）。默认不开：不传时没有任何
@@ -306,6 +308,7 @@ export function LeoComposer({
   showPayerSelector = true,
   showAppsBar = true,
   showComputerDock = true,
+  boundExecutionTarget,
   appsHost,
   onOpenPlugins,
   skillSlash,
@@ -325,6 +328,7 @@ export function LeoComposer({
   // 真正的可编辑 DOM 藏在组件内，用这个 handle 取（供聚焦 / leo 助手锚点 / 上传落焦等）。
   const highlightRef = useRef<TemplateFillAreaHandle>(null);
   const executionTargetRef = useRef<ExecutionTarget>({ kind: "cloud" });
+  const [targetDraftRevision, setTargetDraftRevision] = useState(0);
   const rememberExecutionTarget = useCallback((target: ExecutionTarget) => { executionTargetRef.current = target; }, []);
   // 取当前输入元素 = 编辑器根 DOM（不再有第二套 textarea）。
   const currentTextarea = useCallback(
@@ -387,7 +391,7 @@ export function LeoComposer({
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
     !intake.compressing &&
     !loading &&
-    !disabled;
+    !disabled && boundExecutionTarget !== null;
   const hasAttachMenu =
     Boolean(onAttachFiles) ||
     Boolean(recentFiles && onPickRecent) ||
@@ -409,9 +413,15 @@ export function LeoComposer({
   // 用户第一次真的派活的时刻 —— 通知权限在这里要，不在启动时要。启动就弹权限框的
   // app 会被直接拒掉，而拒绝是永久的。浏览器里这一行是空操作。
   function submitPrompt() {
+    if (boundExecutionTarget === null) return;
     requestTaskNotificationsOnce();
+    const selected = boundExecutionTarget ?? executionTargetRef.current;
     onSubmit?.(cleanPromptValue(), { org_id: payerOrgId },
-      showComputerDock ? { executionTarget: { ...executionTargetRef.current } } : undefined);
+      showComputerDock ? { executionTarget: { ...selected } } : undefined);
+    if (boundExecutionTarget === undefined) {
+      if (selected.kind === "device" && selected.driver === "cloud") executionTargetRef.current = {...selected, gui: false};
+      setTargetDraftRevision(revision => revision + 1);
+    }
   }
 
   function cleanPromptValue(): string {
@@ -575,7 +585,7 @@ export function LeoComposer({
               extra={attachMenuExtra}
             />
           )}
-          {showComputerDock && <ComputerDock onTargetChange={rememberExecutionTarget} />}
+          {showComputerDock && <ComputerDock key={targetDraftRevision} boundTarget={boundExecutionTarget} onTargetChange={rememberExecutionTarget} />}
           {showPlugins && (
             <>
             <button

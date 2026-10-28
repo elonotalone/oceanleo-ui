@@ -45,7 +45,7 @@ test("execution target carries driver:'cloud' only for a paired computer, and se
   assert.deepEqual(target.normalizeExecutionTarget({ kind: "device", id: "mac-1", name: "Mac", driver: "cloud" }), { kind: "device", id: "mac-1", name: "Mac", driver: "cloud" });
   assert.deepEqual(target.normalizeExecutionTarget({ kind: "device", id: "mac-1", name: "Mac", driver: "device" }), { kind: "device", id: "mac-1", name: "Mac" });
   assert.deepEqual(target.normalizeExecutionTarget({ kind: "computer", id: "cc_1", name: "Box", driver: "cloud" }), { kind: "computer", id: "cc_1", name: "Box" });
-  assert.deepEqual(target.executionTargetRequestFields({ kind: "device", id: "mac-1", name: "Mac", driver: "cloud" }).execution_target, { kind: "device", id: "mac-1", driver: "cloud" });
+  assert.deepEqual(target.executionTargetRequestFields({ kind: "device", id: "mac-1", name: "Mac", driver: "cloud" }).execution_target, { kind: "device", id: "mac-1", driver: "cloud", gui: false });
   // Old gateways answer 422 to an unknown member: the default never travels.
   assert.deepEqual(target.executionTargetRequestFields({ kind: "device", id: "mac-1", name: "Mac" }).execution_target, { kind: "device", id: "mac-1" });
 });
@@ -68,7 +68,7 @@ test("availability rows (§12.4) decide one mode per computer; no row = today's 
   assert.equal(target.computerRunMode({ ...online, availability: "offline" }, rows.get("mac-1"), now), "device");
   const mac = { kind: "device", id: "mac-1", name: "Mac" };
   const cloud = target.withRunMode(mac, "cloud");
-  assert.deepEqual(cloud, { ...mac, driver: "cloud" });
+  assert.deepEqual(cloud, { ...mac, driver: "cloud", gui: false });
   assert.equal(target.withRunMode(cloud, "cloud"), cloud, "unchanged target is the same object");
   assert.deepEqual(target.withRunMode(cloud, null), mac);
   assert.deepEqual(target.withRunMode(cloud, "device"), mac);
@@ -196,7 +196,7 @@ test("a cloud-driver send is confirmed by GET /v1/devices/cloud-agent first; oth
     availability = { status: 200, body: { devices: [{ device_id: "mac-1", available: true, reason: null, until: Math.floor(Date.now() / 1000) + 3600 }] } };
     result = await transport.createTask({ prompt: "x", orgId: "", executionTarget: mac });
     assert.equal(result.ok, true);
-    assert.deepEqual(calls.find((c) => c.method === "POST").body.execution_target, { kind: "device", id: "mac-1", driver: "cloud" });
+    assert.deepEqual(calls.find((c) => c.method === "POST").body.execution_target, { kind: "device", id: "mac-1", driver: "cloud", gui: false });
     // On-device (no driver): no extra request, today's body.
     calls.length = 0;
     await transport.createTask({ prompt: "x", orgId: "", executionTarget: { kind: "device", id: "mac-1", name: "Mac" } });
@@ -256,8 +256,8 @@ test("every cloud-assistant sentence is translated in all 16 locales, identical 
   const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
   const { loadUiMessages } = await import("../src/i18n/ui/messages/load.ts");
   const entries = Object.entries(model.CLOUD_AGENT_COPY);
-  // 39 from U5 + 7 from C11-FW (local_exec_disabled notice, last contact, 我的设备 banner, consent lines, idle desktop).
-  assert.equal(entries.length, 46);
+  // 39 from U5 + 3 from W16 scope + 7 from C11-FW (local_exec_disabled notice, last contact, 我的设备 banner, consent lines, idle desktop).
+  assert.equal(entries.length, 49);
   assert.equal(new Set(entries.map(([, zh]) => zh)).size, entries.length, "no two keys share a source sentence");
   for (const locale of LOCALES.filter((locale) => locale !== "zh")) {
     const runtime = await loadUiMessages(locale);
@@ -526,7 +526,7 @@ test("portal createAgentTask: refusals are the translated sentence, unconfirmed 
     globalThis.__portalRefusal = null;
     reply = () => jsonResponse(200, { task_id: "t1" });
     assert.deepEqual(await createAgentTask({ prompt: "x", mode: "agent", executionTarget: cloudMac }), { task_id: "t1" });
-    assert.deepEqual(posts[0].execution_target, { kind: "device", id: "mac-1", driver: "cloud" });
+    assert.deepEqual(posts[0].execution_target, { kind: "device", id: "mac-1", driver: "cloud", gui: false });
   } finally { globalThis.fetch = original; delete globalThis.__portalRefusal; delete globalThis.__portalPreflight; }
   // Both portal paths render the sentence through tt.
   const home = readFileSync(new URL("../../oceanleo/app/_components/home-content.tsx", import.meta.url), "utf8");

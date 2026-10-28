@@ -9,7 +9,7 @@
  * set, because a gateway that predates the cloud assistant rejects unknown
  * target fields. No driver means today's on-device loop.
  */
-export type ExecutionTarget = { kind: "cloud" } | { kind: "computer" | "device"; id: string; name: string; driver?: "cloud" };
+export type ExecutionTarget = { kind: "cloud" } | { kind: "computer" | "device"; id: string; name: string; driver?: "cloud"; gui?: boolean };
 export const EXECUTION_TARGET_EVENT = "oceanleo:execution-target";
 const PREFIX = "oceanleo.execution-target.v1:";
 const ID = /^[A-Za-z0-9_-]{1,100}$/;
@@ -22,30 +22,36 @@ function record(value: unknown): Record<string, unknown> {
 export function normalizeExecutionTarget(value: unknown): ExecutionTarget | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
-  if (item.kind === "cloud") return { kind: "cloud" };
+  if (item.kind === "cloud") return item.gui === undefined ? { kind: "cloud" } : null;
   if ((item.kind !== "computer" && item.kind !== "device") || typeof item.id !== "string" ||
       !ID.test(item.id) || typeof item.name !== "string") return null;
   const target: { kind: "computer" | "device"; id: string; name: string } = { kind: item.kind, id: item.id, name: item.name.slice(0, 120) };
-  return item.kind === "device" && item.driver === "cloud" ? { ...target, driver: "cloud" } : target;
+  if (item.gui !== undefined && typeof item.gui !== "boolean") return null;
+  if (item.kind === "device" && item.driver === "cloud") return { ...target, driver: "cloud", ...(typeof item.gui === "boolean" ? {gui: item.gui} : {}) };
+  return item.gui === undefined ? target : null;
 }
 export function readExecutionTarget(userId: string | null): ExecutionTarget {
   if (!userId || typeof window === "undefined") return { kind: "cloud" };
-  try { return normalizeExecutionTarget(JSON.parse(window.localStorage.getItem(PREFIX + userId) || "null")) ?? { kind: "cloud" }; }
+  try {
+    const selected = normalizeExecutionTarget(JSON.parse(window.localStorage.getItem(PREFIX + userId) || "null")) ?? { kind: "cloud" };
+    return selected.kind === "device" && selected.driver === "cloud" ? {...selected, gui: false} : selected;
+  }
   catch { return { kind: "cloud" }; }
 }
 export function writeExecutionTarget(userId: string, target: ExecutionTarget): void {
   const clean = normalizeExecutionTarget(target);
   if (!userId || !clean || typeof window === "undefined") return;
-  try { window.localStorage.setItem(PREFIX + userId, JSON.stringify(clean)); } catch { /* private mode */ }
-  window.dispatchEvent(new CustomEvent(EXECUTION_TARGET_EVENT, { detail: { userId, target: clean } }));
+  const remembered = clean.kind === "device" && clean.driver === "cloud" ? {...clean, gui: false} : clean;
+  try { window.localStorage.setItem(PREFIX + userId, JSON.stringify(remembered)); } catch { /* private mode */ }
+  window.dispatchEvent(new CustomEvent(EXECUTION_TARGET_EVENT, { detail: { userId, target: remembered } }));
 }
 export function executionTargetRequestFields(target: ExecutionTarget): {
-  execution_target: { kind: ExecutionTarget["kind"]; id?: string; driver?: "cloud" }; computer_id: string;
+  execution_target: { kind: ExecutionTarget["kind"]; id?: string; driver?: "cloud"; gui?: boolean }; computer_id: string;
 } {
   return { execution_target: target.kind === "cloud" ? { kind: "cloud" } : {
       kind: target.kind, id: target.id,
       // Only an explicit cloud driver travels; the server default is the on-device loop.
-      ...(target.kind === "device" && target.driver === "cloud" ? { driver: "cloud" as const } : {}),
+      ...(target.kind === "device" && target.driver === "cloud" ? { driver: "cloud" as const, gui: target.gui === true } : {}),
     },
     // Suppress stale legacy mounts for an explicit default-cloud/local choice.
     computer_id: target.kind === "computer" ? target.id : "" };
@@ -157,5 +163,21 @@ export function withRunMode(target: ExecutionTarget, mode: "cloud" | "device" | 
   if (target.kind !== "device") return target;
   const wanted = mode === "cloud" ? "cloud" : undefined;
   if (target.driver === wanted) return target;
-  return wanted ? { kind: "device", id: target.id, name: target.name, driver: wanted } : { kind: "device", id: target.id, name: target.name };
+  return wanted ? { kind: "device", id: target.id, name: target.name, driver: wanted, gui: false } : { kind: "device", id: target.id, name: target.name };
+}
+
+/** A loaded task binds its own target; it never borrows a new draft's remembered selection. */
+export function taskExecutionTarget(task: {plan?: unknown; computer_id?: string | null}): ExecutionTarget | null {
+  const plan = record(task.plan);
+  const planned = record(plan.execution_target);
+  if (planned.kind === "cloud") return {kind: "cloud"};
+  if (planned.kind === "device" || planned.kind === "computer") {
+    return normalizeExecutionTarget({...planned, name: typeof planned.name === "string" ? planned.name : planned.id});
+  }
+  const id = task.computer_id || "";
+  if (id.startsWith("desktop:")) {
+    return normalizeExecutionTarget({kind: "device", id: id.slice(8), name: id.slice(8),
+      ...(record(plan.local_run).driver === "cloud" ? {driver: "cloud"} : {})});
+  }
+  return id ? normalizeExecutionTarget({kind: "computer", id, name: id}) : {kind: "cloud"};
 }

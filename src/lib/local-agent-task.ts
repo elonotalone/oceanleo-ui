@@ -141,6 +141,10 @@ export type LocalAgentCopyKey = keyof typeof LOCAL_AGENT_COPY;
  * - The switch name quotes the desktop app's own label (`device_link/surfaces.rs`).
  */
 export const CLOUD_AGENT_COPY = {
+  scopeFiles: "仅文件（不截图或操作界面）",
+  scopeGui: "允许截图和操作界面",
+  scopeNewTask: "此任务权限已固定；要改变权限请创建新任务",
+
   // Target picker: one entry per computer (protocol §12.4).
   cloudUntil: "云端助手可用至 {time}",
   cloudAvailable: "云端助手可用",

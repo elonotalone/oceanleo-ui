@@ -1,5 +1,7 @@
 "use client";
 
+import { taskExecutionTarget } from "../lib/execution-target";
+
 // ============================================================================
 // @oceanleo/ui — agent 工作界面 AgentChat（单一事实源）
 // ----------------------------------------------------------------------------
@@ -611,6 +613,7 @@ function AgentChatInner({
     Set<number>
   >(new Set());
   const [status, setStatus] = useState<string>("");
+  const [boundTarget, setBoundTarget] = useState<{taskId: string; target: ExecutionTarget | null}>({taskId: "", target: null});
   const [localExecution, setLocalExecution] = useState<{taskId: string; local: boolean; run: LocalAgentRun | null}>({taskId: "", local: false, run: null});
   const isLocalExecution = localExecution.taskId === taskId && localExecution.local;
   const localRun = isLocalExecution ? localExecution.run : null;
@@ -729,6 +732,7 @@ function AgentChatInner({
       );
       serverMessagesRef.current = settled;
       setMessagesTaskId(id);
+      setBoundTarget({taskId: id, target: taskExecutionTarget(r.data.task)});
       const local = taskLocalAgentState(r.data.task);
       const artifacts = localTaskArtifacts(r.data.task.plan);
       setLocalArtifacts(current => current.taskId === id && JSON.stringify(current.items) === JSON.stringify(artifacts) ? current : {taskId: id, items: artifacts});
@@ -2284,6 +2288,7 @@ function AgentChatInner({
             </div>
           )}
           <LeoComposer
+            boundExecutionTarget={taskId ? (boundTarget.taskId === taskId ? boundTarget.target : null) : undefined}
             value={input}
             onChange={setInput}
             onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}

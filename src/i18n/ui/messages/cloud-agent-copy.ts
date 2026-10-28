@@ -19,6 +19,10 @@ import type { CloudAgentCopyKey } from "../../../lib/local-agent-task";
  */
 export const CLOUD_AGENT_TRANSLATIONS = {
   en: {
+    scopeFiles: "Files only (no screenshots or interface control)",
+    scopeGui: "Allow screenshots and interface control",
+    scopeNewTask: "This task’s permissions are fixed. Start a new task to change them.",
+
     cloudUntil: "Cloud assistant until {time}",
     cloudAvailable: "Cloud assistant available",
     needsYou: "Needs you at the computer",
@@ -67,6 +71,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Not connected. Click “Connect” to send this computer a remote control request.",
   },
   de: {
+    scopeFiles: "Nur Dateien (keine Bildschirmaufnahmen oder Bedienung)",
+    scopeGui: "Bildschirmaufnahmen und Bedienung erlauben",
+    scopeNewTask: "Die Berechtigungen dieser Aufgabe sind festgelegt. Zum Ändern eine neue Aufgabe starten.",
+
     cloudUntil: "Cloud-Assistent bis {time}",
     cloudAvailable: "Cloud-Assistent verfügbar",
     needsYou: "Bestätigung am Computer nötig",
@@ -115,6 +123,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Nicht verbunden. Klicken Sie auf „Verbinden“, um diesem Computer eine Anfrage zur Fernsteuerung zu senden.",
   },
   es: {
+    scopeFiles: "Solo archivos (sin capturas ni control de interfaz)",
+    scopeGui: "Permitir capturas y control de interfaz",
+    scopeNewTask: "Los permisos de esta tarea son fijos. Crea otra tarea para cambiarlos.",
+
     cloudUntil: "Asistente en la nube hasta {time}",
     cloudAvailable: "Asistente en la nube disponible",
     needsYou: "Requiere confirmar en el equipo",
@@ -163,6 +175,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Sin conexión. Haz clic en “Conectar” para enviar a este equipo una solicitud de control remoto.",
   },
   "es-419": {
+    scopeFiles: "Solo archivos (sin capturas ni control de interfaz)",
+    scopeGui: "Permitir capturas y control de interfaz",
+    scopeNewTask: "Los permisos de esta tarea son fijos. Crea otra tarea para cambiarlos.",
+
     cloudUntil: "Asistente en la nube hasta {time}",
     cloudAvailable: "Asistente en la nube disponible",
     needsYou: "Requiere confirmar en la computadora",
@@ -211,6 +227,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Sin conexión. Haz clic en “Conectar” para enviar a esta computadora una solicitud de control remoto.",
   },
   fr: {
+    scopeFiles: "Fichiers uniquement (sans capture ni contrôle d’interface)",
+    scopeGui: "Autoriser les captures et le contrôle d’interface",
+    scopeNewTask: "Les autorisations de cette tâche sont fixes. Créez une nouvelle tâche pour les modifier.",
+
     cloudUntil: "Assistant cloud jusqu'à {time}",
     cloudAvailable: "Assistant cloud disponible",
     needsYou: "À confirmer devant l'ordinateur",
@@ -259,6 +279,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Non connecté. Cliquez sur « Connecter » pour envoyer à cet ordinateur une demande de contrôle à distance.",
   },
   it: {
+    scopeFiles: "Solo file (senza schermate o controllo dell’interfaccia)",
+    scopeGui: "Consenti schermate e controllo dell’interfaccia",
+    scopeNewTask: "I permessi di questa attività sono fissi. Crea una nuova attività per cambiarli.",
+
     cloudUntil: "Assistente cloud fino a {time}",
     cloudAvailable: "Assistente cloud disponibile",
     needsYou: "Serve conferma al computer",
@@ -307,6 +331,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Non connesso. Fai clic su “Connetti” per inviare a questo computer una richiesta di controllo remoto.",
   },
   "pt-BR": {
+    scopeFiles: "Somente arquivos (sem capturas ou controle da interface)",
+    scopeGui: "Permitir capturas e controle da interface",
+    scopeNewTask: "As permissões desta tarefa são fixas. Crie outra tarefa para alterá-las.",
+
     cloudUntil: "Assistente na nuvem até {time}",
     cloudAvailable: "Assistente na nuvem disponível",
     needsYou: "Precisa de confirmação no computador",
@@ -355,6 +383,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Sem conexão. Clique em “Conectar” para enviar a este computador um pedido de controle remoto.",
   },
   "pt-PT": {
+    scopeFiles: "Apenas ficheiros (sem capturas ou controlo da interface)",
+    scopeGui: "Permitir capturas e controlo da interface",
+    scopeNewTask: "As permissões desta tarefa são fixas. Crie outra tarefa para as alterar.",
+
     cloudUntil: "Assistente na nuvem até {time}",
     cloudAvailable: "Assistente na nuvem disponível",
     needsYou: "Precisa de confirmação no computador",
@@ -403,6 +435,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Sem ligação. Clique em “Ligar” para enviar a este computador um pedido de controlo remoto.",
   },
   vi: {
+    scopeFiles: "Chỉ tệp (không chụp hoặc điều khiển màn hình)",
+    scopeGui: "Cho phép chụp và điều khiển màn hình",
+    scopeNewTask: "Quyền của tác vụ này đã cố định. Hãy tạo tác vụ mới để thay đổi.",
+
     cloudUntil: "Trợ lý đám mây đến {time}",
     cloudAvailable: "Trợ lý đám mây dùng được",
     needsYou: "Cần xác nhận tại máy",
@@ -451,6 +487,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Chưa kết nối. Nhấn “Kết nối” để gửi yêu cầu điều khiển từ xa đến máy này.",
   },
   tr: {
+    scopeFiles: "Yalnızca dosyalar (ekran görüntüsü veya arayüz kontrolü yok)",
+    scopeGui: "Ekran görüntüsüne ve arayüz kontrolüne izin ver",
+    scopeNewTask: "Bu görevin izinleri sabittir. Değiştirmek için yeni bir görev başlatın.",
+
     cloudUntil: "Bulut asistanı (bitiş: {time})",
     cloudAvailable: "Bulut asistanı kullanılabilir",
     needsYou: "Bilgisayar başında onay gerekir",
@@ -499,6 +539,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "Bağlı değil. Bu bilgisayara uzaktan kontrol isteği göndermek için “Bağlan” düğmesine tıklayın.",
   },
   "zh-TW": {
+    scopeFiles: "僅檔案（不擷取螢幕或操作介面）",
+    scopeGui: "允許擷取螢幕和操作介面",
+    scopeNewTask: "此任務權限已固定；要變更權限請建立新任務",
+
     cloudUntil: "雲端助手可用至 {time}",
     cloudAvailable: "雲端助手可用",
     needsYou: "需要你在電腦前確認",
@@ -547,6 +591,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "尚未連接。點「連接」向這台電腦發出遠端控制請求。",
   },
   ja: {
+    scopeFiles: "ファイルのみ（画面撮影・操作なし）",
+    scopeGui: "画面撮影と操作を許可",
+    scopeNewTask: "このタスクの権限は固定されています。変更するには新しいタスクを作成してください。",
+
     cloudUntil: "クラウドアシスタント（{time} まで）",
     cloudAvailable: "クラウドアシスタント利用可",
     needsYou: "パソコンの前で確認が必要",
@@ -595,6 +643,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "未接続です。「接続」を押すと、このパソコンに遠隔操作のリクエストを送ります。",
   },
   ko: {
+    scopeFiles: "파일만 사용 (화면 캡처 및 조작 안 함)",
+    scopeGui: "화면 캡처 및 조작 허용",
+    scopeNewTask: "이 작업의 권한은 고정되어 있습니다. 변경하려면 새 작업을 시작하세요.",
+
     cloudUntil: "클라우드 어시스턴트 ({time}까지)",
     cloudAvailable: "클라우드 어시스턴트 사용 가능",
     needsYou: "컴퓨터 앞에서 확인 필요",
@@ -643,6 +695,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "연결되지 않았습니다. “연결”을 누르면 이 컴퓨터에 원격 제어 요청을 보냅니다.",
   },
   ar: {
+    scopeFiles: "الملفات فقط (دون لقطات شاشة أو تحكم بالواجهة)",
+    scopeGui: "السماح بلقطات الشاشة والتحكم بالواجهة",
+    scopeNewTask: "أذونات هذه المهمة ثابتة. أنشئ مهمة جديدة لتغييرها.",
+
     cloudUntil: "المساعد السحابي حتى {time}",
     cloudAvailable: "المساعد السحابي متاح",
     needsYou: "يتطلب تأكيدًا أمام الكمبيوتر",
@@ -691,6 +747,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "غير متصل. انقر «توصيل» لإرسال طلب تحكم عن بُعد إلى هذا الكمبيوتر.",
   },
   th: {
+    scopeFiles: "เฉพาะไฟล์ (ไม่จับภาพหรือควบคุมหน้าจอ)",
+    scopeGui: "อนุญาตให้จับภาพและควบคุมหน้าจอ",
+    scopeNewTask: "สิทธิ์ของงานนี้ถูกกำหนดแล้ว โปรดสร้างงานใหม่เพื่อเปลี่ยนสิทธิ์",
+
     cloudUntil: "ผู้ช่วยคลาวด์ถึง {time}",
     cloudAvailable: "ผู้ช่วยคลาวด์ใช้ได้",
     needsYou: "ต้องยืนยันที่หน้าเครื่อง",
@@ -739,6 +799,10 @@ export const CLOUD_AGENT_TRANSLATIONS = {
     remoteIdle: "ยังไม่ได้เชื่อมต่อ กด “เชื่อมต่อ” เพื่อส่งคำขอควบคุมระยะไกลไปยังเครื่องนี้",
   },
   hi: {
+    scopeFiles: "केवल फ़ाइलें (स्क्रीनशॉट या इंटरफ़ेस नियंत्रण नहीं)",
+    scopeGui: "स्क्रीनशॉट और इंटरफ़ेस नियंत्रण की अनुमति दें",
+    scopeNewTask: "इस कार्य की अनुमतियाँ तय हैं। बदलने के लिए नया कार्य शुरू करें।",
+
     cloudUntil: "क्लाउड सहायक {time} तक",
     cloudAvailable: "क्लाउड सहायक उपलब्ध",
     needsYou: "कंप्यूटर पर पुष्टि ज़रूरी",

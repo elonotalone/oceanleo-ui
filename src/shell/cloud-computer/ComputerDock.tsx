@@ -44,8 +44,24 @@ function deriveTarget(target: ExecutionTarget, state: CloudAgentState, device: D
   return withRunMode(target, state.status === "absent" ? null : computerRunMode(device, state.devices.get(target.id), now));
 }
 
+/** undefined is a fresh draft; null is an existing task whose binding is not loaded yet. */
+export function ComputerDock({boundTarget, ...props}: {
+  client?: CloudComputerClient; computers?: Computer[]; onTargetChange?: (target: ExecutionTarget) => void;
+  boundTarget?: ExecutionTarget | null;
+}) {
+  const tt = useUI();
+  if (boundTarget === undefined) return <DraftComputerDock {...props} />;
+  const scope = boundTarget?.kind === "device" && boundTarget.driver === "cloud" && typeof boundTarget.gui === "boolean"
+    ? tt(CLOUD_AGENT_COPY[boundTarget.gui ? "scopeGui" : "scopeFiles"]) : null;
+  return <div className="max-w-[360px] truncate px-2 text-[12px] text-neutral-600" data-task-bound-target
+    title={`${scope ? `${scope} · ` : ""}${tt(CLOUD_AGENT_COPY.scopeNewTask)}`}>
+    {boundTarget ? (boundTarget.kind === "cloud" ? tt("云端") : boundTarget.name) : tt("正在加载…")}
+    {scope ? ` · ${scope}` : ""} · {tt(CLOUD_AGENT_COPY.scopeNewTask)}
+  </div>;
+}
+
 /** Website/native execution picker. Selecting a machine never navigates away. */
-export function ComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange }: {
+function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange }: {
   client?: CloudComputerClient; computers?: Computer[]; onTargetChange?: (target: ExecutionTarget) => void;
 }) {
   const tt = useUI();
@@ -152,6 +168,13 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     return () => clearTimeout(timer);
   }, [target, cloudAgent]);
 
+  function chooseGui(gui: boolean) {
+    if (target.kind !== "device" || target.driver !== "cloud") return;
+    const next = {...target, gui};
+    setTarget(next);
+    onTargetChange?.(next);
+  }
+
   function choose(next: ExecutionTarget) {
     if (!owner) return;
     const device = next.kind === "device" ? devices.find((d) => d.device_id === next.id) ?? null : null;
@@ -189,7 +212,8 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   const selectedMode = target.kind === "device" && !selectedLocalOff
     ? runModeOf(cloudAgent, target.id, selectedDevice?.device_id === target.id ? selectedDevice : null, now) : null;
   const selectedModeLabel = target.kind === "device" ? modeLabel(selectedMode, target.id) : null;
-  const triggerNote = selectedLocalOff ? localOffLabel : selectedModeLabel;
+  const scopeLabel = target.kind === "device" && target.driver === "cloud" ? tt(CLOUD_AGENT_COPY[target.gui ? "scopeGui" : "scopeFiles"]) : null;
+  const triggerNote = [selectedLocalOff ? localOffLabel : selectedModeLabel, scopeLabel].filter(Boolean).join(" · ");
   return <div className="relative" data-oceanleo-cc-dock data-execution-target={target.kind}>
     <button ref={anchor} type="button" onClick={() => { setGroup(target.kind === "device" ? "device" : "cloud"); setOpen(!open); }}
       aria-label={triggerNote ? `${tt("任务执行位置")} · ${triggerNote}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
@@ -197,6 +221,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       className={`flex h-7 ${triggerNote ? "max-w-[280px]" : "max-w-[180px]"} items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100`}>
       <TargetGlyph cloud={target.kind !== "device"} /><span className="truncate">{shown}</span>
       {selectedLocalOff && <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" data-local-exec-off>{localOffLabel}</span>}
+      {scopeLabel && <span className="min-w-0 max-w-[140px] truncate" title={scopeLabel} data-task-gui-scope>{scopeLabel}</span>}
       {!selectedLocalOff && selectedModeLabel && <span data-cloud-agent={selectedMode ?? undefined}
         className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium ${selectedMode === "cloud" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>{selectedModeLabel}</span>}
       <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
@@ -214,6 +239,10 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
           <button type="button" className={`${row} ${group === "device" ? "bg-neutral-100" : ""}`} onMouseEnter={() => setGroup("device")} onFocus={() => setGroup("device")} onClick={() => setGroup("device")} aria-expanded={group === "device"}>
             <TargetGlyph /><span className="min-w-0 flex-1 break-words">{tt("本地电脑")}</span>{target.kind === "device" && <span aria-label={tt("已选择")}>✓</span>}<span aria-hidden>›</span>
           </button>
+          {target.kind === "device" && target.driver === "cloud" && <div className="border-t border-neutral-100 pt-1">
+            <button type="button" className={row} aria-pressed={target.gui !== true} onClick={() => chooseGui(false)}>{target.gui !== true ? "✓ " : ""}{tt(CLOUD_AGENT_COPY.scopeFiles)}</button>
+            <button type="button" className={row} aria-pressed={target.gui === true} onClick={() => chooseGui(true)}>{target.gui === true ? "✓ " : ""}{tt(CLOUD_AGENT_COPY.scopeGui)}</button>
+          </div>}
         </div>
         <div className="flex min-h-0 min-w-0 flex-col pl-1.5">
           <div className="min-h-0 flex-1 overflow-y-auto">
