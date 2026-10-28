@@ -13,6 +13,25 @@ export interface RemoteMediaHandlers {
   renew(): Promise<RemoteMediaCredentials>;
 }
 
+const PUBLISHER_ERROR_CODES: ReadonlySet<string> = new Set([
+  "screen_permission_required", "screen_content_unavailable", "screen_content_timeout",
+  "screen_display_mismatch", "screen_geometry_invalid", "screen_capture_output_failed",
+  "screen_capture_start_failed", "screen_capture_start_timeout", "screen_capture_cleanup_pending",
+  "screen_capture_quarantined", "screen_capture_os_unsupported", "screen_permission_or_capture_unavailable",
+  "display_enumeration_failed", "display_geometry_failed", "display_not_found",
+  "media_audio_guard_unavailable", "media_sdk_not_installed", "media_sdk_start_failed",
+  "media_credential_invalid", "media_lease_invalid", "media_renew_failed", "media_no_encoded_frame",
+  "media_capture_or_publish_failed",
+]);
+
+/** Only a failed publisher snapshot can carry these codes through RTC renewal. */
+export class RemotePublisherStatusError extends Error {
+  constructor(code?: string) {
+    super(code && PUBLISHER_ERROR_CODES.has(code) ? code : "media_capture_or_publish_failed");
+    this.name = "RemotePublisherStatusError";
+  }
+}
+
 function untilAborted<T>(promise: Promise<T> | T, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
     const abort = () => reject(new Error("aborted"));
@@ -104,12 +123,15 @@ export async function openRemoteMedia(
       const fresh = await handlers.renew();
       if (closed) return;
       if (fresh.channel_id !== credentials.channel_id || fresh.user_id !== credentials.user_id || fresh.publisher_id !== credentials.publisher_id) throw new Error("media_session_changed");
-      await engine.refreshAuthInfo(fresh.token);
+      // SDK exceptions are not gateway HTTP or publisher status evidence.
+      try { await engine.refreshAuthInfo(fresh.token); }
+      catch { throw new Error("media_auth_failed"); }
       if (!closed) scheduleRenew(fresh.expires_at);
     })().catch((error: unknown) => {
       // A renewal refusal retains account/revocation/compatibility evidence.
       const status = error instanceof Error && "status" in error && typeof error.status === "number" ? error.status : undefined;
-      fail(status !== undefined && error instanceof Error ? error.message : "media_auth_failed", status);
+      fail(error instanceof RemotePublisherStatusError ? error.message
+        : status !== undefined && error instanceof Error ? error.message : "media_auth_failed", status);
     }).finally(() => { refreshPromise = null; });
     return refreshPromise;
   };

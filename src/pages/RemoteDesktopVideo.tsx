@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, type RefObject } from "react";
 import type { RemoteDesktopClient, RemoteMediaStatus } from "../api/remote-desktop";
-import { openRemoteMedia, type RemoteMediaState, type RemoteMediaViewer } from "./remote-desktop-media";
+import { openRemoteMedia, RemotePublisherStatusError, type RemoteMediaState, type RemoteMediaViewer } from "./remote-desktop-media";
 
 export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, displayId, zoom }: {
   client: RemoteDesktopClient; deviceId: string; sessionId: string;
@@ -23,7 +23,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
       if (!response.ok || !response.data) throw Object.assign(new Error(response.error || "media_unavailable"), { status: response.status });
       callbacks.current.onStatus(response.data.media_status);
       if (response.data.media_status?.state === "failed") {
-        throw new Error(response.data.media_status.error || "media_capture_or_publish_failed");
+        throw new RemotePublisherStatusError(response.data.media_status.error);
       }
       return response.data.media;
     };

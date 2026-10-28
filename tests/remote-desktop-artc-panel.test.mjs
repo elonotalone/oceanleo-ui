@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { mountStream, window, act, settle } from "./helpers/remote-desktop-stream-view.mjs";
+import { openRemoteMedia } from "../src/pages/remote-desktop-media.ts";
 
 const mounted = [];
 afterEach(async () => { while (mounted.length) await mounted.pop().unmount(); delete globalThis.__remoteMediaTestStart; });
@@ -197,4 +198,44 @@ test("capture failure waits for explicit retry and fresh video without replaying
   assert.equal(view.input().disabled, false);
   assert.equal(view.log.inputs.filter(input => input.kind === "key_down").length, 1);
   assert.deepEqual(view.log.closes, ["capture-1"]);
+});
+
+test("real RTC renewal retains HTTP200 publisher failures, HTTP401/403 and neutral SDK errors", async () => {
+  for (const [renewal, sdkFailure, expected, phase] of [
+    [{ ok: true, data: { media, media_status: { state: "failed", error: "screen_content_timeout" } }, status: 200 }, false, /读取电脑屏幕内容超时/, "error"],
+    [{ ok: true, data: { media, media_status: { state: "failed", error: "screen_permission_required" } }, status: 200 }, false, /尚未允许屏幕录制/, "error"],
+    [{ ok: true, data: { media, media_status: { state: "failed", error: "NSError synthetic-private token=fixture-only" } }, status: 200 }, false, /画面暂时无法获取/, "error"],
+    [{ ok: false, error: "unauthorized", status: 401 }, false, /登录已失效/, "error"],
+    [{ ok: false, error: "controller_revoked", status: 403 }, false, /访问权限已撤销/, "revoked"],
+    [{ ok: true, data: { media, media_status: { state: "publishing" } }, status: 200 }, true, /视频授权无法续期/, "error"],
+  ]) {
+    const events = new Map();
+    let destroyed = 0, negotiations = 0;
+    const engine = {
+      on: (name, listener) => events.set(name, listener), off: name => events.delete(name),
+      setChannelProfile() {}, setClientRole() {}, setDefaultSubscribeAllRemoteAudioStreams() {}, setDefaultSubscribeAllRemoteVideoStreams() {},
+      publishLocalAudioStream() {}, publishLocalVideoStream() {}, publishLocalScreenShareStream() {},
+      joinChannel() {}, leaveChannel() {}, destroy() { destroyed++; },
+      getOnlineRemoteUsers: () => [],
+      refreshAuthInfo() { if (sdkFailure) throw Object.assign(new Error("SDK synthetic-private token=fixture-only"), { status: 403 }); },
+    };
+    globalThis.__remoteMediaTestStart = (...args) => openRemoteMedia(...args, async () => ({ createEngine: () => engine }));
+    const view = await mountStream({ overrides: {
+      async negotiateMedia() {
+        return ++negotiations === 1 ? { ok: true, data: { media, media_status: { state: "publishing" } }, status: 200 } : renewal;
+      },
+    } });
+    mounted.push(view);
+    assert.equal(typeof events.get("authInfoWillExpire"), "function");
+    await act(async () => { events.get("authInfoWillExpire")(); });
+    await settle();
+    assert.equal(negotiations, 2);
+    assert.match(view.screen().textContent, expected);
+    assert.doesNotMatch(view.screen().textContent, /NSError|SDK synthetic|private|fixture-only|screen_/);
+    assert.equal(view.screen().getAttribute("data-remote-phase"), phase);
+    assert.equal(view.input().disabled, true);
+    assert.deepEqual(view.log.closes, ["session-stream"]);
+    assert.equal(destroyed, 1);
+    await view.unmount();
+  }
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { openRemoteMedia } from "../src/pages/remote-desktop-media.ts";
+import { openRemoteMedia, RemotePublisherStatusError } from "../src/pages/remote-desktop-media.ts";
 
 const credentials = () => ({ provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "session-channel", user_id: "viewer", publisher_id: "desktop", token: "opaque-token", timestamp: Math.floor(Date.now() / 1000) + 120, expires_at: new Date(Date.now() + 120000).toISOString(), track: "screen", role: "viewer", camera: false, microphone: false });
 function harness() {
@@ -122,4 +122,24 @@ test("renewal refusal preserves account and revocation status, tears down, and n
   assert.equal(h.calls.some(([name]) => name === "renew"), false);
   assert.equal(h.calls.filter(([name]) => name === "destroy").length, 1);
   await viewer.close();
+});
+
+test("RTC renewal preserves a typed publisher failure and keeps untrusted exceptions neutral", async () => {
+  for (const [error, expected] of [
+    [new RemotePublisherStatusError("screen_content_timeout"), "screen_content_timeout"],
+    [new RemotePublisherStatusError("screen_permission_or_capture_unavailable"), "screen_permission_or_capture_unavailable"],
+    [new RemotePublisherStatusError("NSError synthetic-private token=fixture-only"), "media_capture_or_publish_failed"],
+    [new Error("screen_permission_required"), "media_auth_failed"],
+    [new Error("SDK synthetic-private token=fixture-only"), "media_auth_failed"],
+  ]) {
+    const h = harness();
+    h.handlers.renew = async () => { throw error; };
+    const viewer = await h.start();
+    h.events.get("authInfoWillExpire")();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    assert.deepEqual(h.states.at(-1), ["error", expected]);
+    assert.equal(h.calls.some(([name]) => name === "renew"), false);
+    assert.equal(h.calls.filter(([name]) => name === "destroy").length, 1);
+    await viewer.close();
+  }
 });

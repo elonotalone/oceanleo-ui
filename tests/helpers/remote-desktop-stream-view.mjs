@@ -13,7 +13,7 @@ window.PointerEvent = Pointer;
 const { RemoteDesktopPanel } = await import(await compileModule("src/pages/RemoteDesktopPanel.tsx", {
   "../api/remote-desktop": dataModule("export const remoteDesktopClient = null"),
   "../i18n/ui/useUI": dataModule("export function useUI(){return (text, vars)=>text.replace(/\\{(\\w+)\\}/g, (match, key)=>String(vars?.[key] ?? match));}"),
-  "./remote-desktop-media": dataModule("export async function openRemoteMedia(...args){ return globalThis.__remoteMediaTestStart(...args); }"),
+  "./remote-desktop-media": dataModule(`export { RemotePublisherStatusError } from ${JSON.stringify(new URL("../../src/pages/remote-desktop-media.ts", import.meta.url).href)}; export async function openRemoteMedia(...args){ return globalThis.__remoteMediaTestStart(...args); }`),
 }));
 export const settle = (ms = 25) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 export { document, window, act };
