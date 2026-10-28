@@ -236,6 +236,10 @@ export const REMOTE_FATAL_CODES: ReadonlySet<string> = new Set([
   "remote_desktop_unavailable",
   "remote_desktop_disabled",
   "disabled_locally",
+  "input_permission_required",
+  "input_unavailable",
+  "input_release_failed",
+  "input_failed",
   "device_lost",
   "viewer_idle",
   "viewer_closed",
@@ -260,6 +264,13 @@ export const REMOTE_BACKPRESSURE_CODES: ReadonlySet<string> = new Set([
 /** 返回中文原文（调用方再过 `tt`），未知码落到统一兜底，不把英文 token 摆给用户。 */
 export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   switch (code) {
+    case "input_permission_required":
+      return "这台电脑尚未允许辅助功能，控制已停止。请在电脑上允许 OceanLeo 使用辅助功能后重新连接。";
+    case "input_unavailable":
+    case "input_failed":
+      return "这台电脑暂时无法执行键鼠输入，控制已停止。请在电脑上检查 OceanLeo 后重新连接，不要重复提交未确认的操作。";
+    case "input_release_failed":
+      return "电脑无法确认按键已释放，控制已停止。请在电脑上检查按键状态后重新连接，不要重复提交未确认的操作。";
     case "media_first_frame_timeout":
       return "尚未收到电脑画面，控制已停止。请确认电脑上的 OceanLeo 正在运行后重新连接。";
     case "screen_permission_required":

@@ -275,3 +275,32 @@ test("a late HTTP input response cannot drain or terminate a manually reconnecte
   assert.equal(view.screen().getAttribute("data-remote-phase"), "active");
   assert.deepEqual(inputs.map(({ session, action }) => [session, action.key ?? action.text]), [["http-1", "Enter"], ["http-2", "y"]]);
 });
+
+for (const code of ["input_permission_required", "input_unavailable", "input_release_failed", "input_failed"]) test(`${code} closes input without network retry or replay and shows only its fixed cause`, async () => {
+  let sessions = 0;
+  const view = await mount({ overrides: { async createSession() {
+    sessions++;
+    return { ok: true, data: { session_id: `input-${sessions}`, state: "connecting", expires_at: "", transport: "websocket-v2" } };
+  } } });
+  await view.key("keydown", "Enter");
+  await act(async () => view.handlers().state("closed", code));
+  const inputCount = view.log.inputs.length;
+  assert.equal(view.input().disabled, true);
+  await view.key("keydown", "Enter");
+  await view.pointer("pointerdown");
+  await settle(40);
+  assert.equal(sessions, 1, "input failure never automatically retries");
+  assert.equal(view.log.inputs.length, inputCount, "no input is replayed or accepted after termination");
+  assert.equal(view.log.closes.length, 1);
+  assert.match(view.screen().textContent, /控制已停止/);
+  assert.doesNotMatch(view.screen().textContent, /已关闭远程桌面|网络连接|失去联系|input_/);
+  if (code === "input_permission_required") assert.match(view.screen().textContent, /辅助功能/);
+  else assert.doesNotMatch(view.screen().textContent, /辅助功能|权限/);
+});
+
+test("unknown input error never displays private OS text or invents a permission requirement", async () => {
+  const view = await mount();
+  await act(async () => view.handlers().state("closed", "input_failure private OS detail token=synthetic"));
+  assert.equal(view.input().disabled, true);
+  assert.doesNotMatch(view.screen().textContent, /private|token|synthetic|辅助功能|权限/);
+});

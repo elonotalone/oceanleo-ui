@@ -244,3 +244,15 @@ test("isPointerDrag：鼠标沿用比例阈值，触摸 / 笔按 10px 位移；i
   assert.equal(input.isNearby(a, { x: 0.51, y: 0.5 }), true);
   assert.equal(input.isNearby(a, { x: 0.6, y: 0.5 }), false);
 });
+
+test("fixed native input termination codes are fatal; only NoPermission requests Accessibility", () => {
+  for (const code of ["input_permission_required", "input_unavailable", "input_release_failed", "input_failed"]) {
+    assert.equal(input.REMOTE_FATAL_CODES.has(code), true);
+    const text = input.remoteDesktopErrorCopy(code);
+    assert.match(text, /控制已停止/);
+    assert.doesNotMatch(text, /网络|已关闭远程桌面|input_/);
+    if (code === "input_permission_required") assert.match(text, /辅助功能/);
+    else assert.doesNotMatch(text, /辅助功能|权限/);
+  }
+  assert.doesNotMatch(input.remoteDesktopErrorCopy("input_unavailable private OS detail"), /private|OS|辅助功能/);
+});

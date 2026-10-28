@@ -110,6 +110,9 @@ const SOURCE = {
   k101: "电脑仍在结束上一次画面采集，控制已停止。请稍后重新连接。",
   k102: "电脑的画面采集暂不可用，控制已停止。请稍后重新连接。",
   k103: "这台电脑的系统暂不支持屏幕采集，控制已停止。请检查系统版本。",
+  k104: "这台电脑尚未允许辅助功能，控制已停止。请在电脑上允许 OceanLeo 使用辅助功能后重新连接。",
+  k105: "这台电脑暂时无法执行键鼠输入，控制已停止。请在电脑上检查 OceanLeo 后重新连接，不要重复提交未确认的操作。",
+  k106: "电脑无法确认按键已释放，控制已停止。请在电脑上检查按键状态后重新连接，不要重复提交未确认的操作。",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -217,6 +220,9 @@ const EN: Messages = {
   k101: "The computer is still ending its previous screen capture. Control has stopped. Please reconnect later.",
   k102: "Screen capture is temporarily unavailable on the computer. Control has stopped. Please reconnect later.",
   k103: "This computer’s operating system does not support screen capture. Control has stopped. Check its system version.",
+  k104: "This computer has not allowed Accessibility. Control has stopped. Allow OceanLeo to use Accessibility on the computer, then reconnect.",
+  k105: "This computer cannot currently perform mouse or keyboard input. Control has stopped. Check OceanLeo on the computer before reconnecting. Do not repeat unconfirmed actions.",
+  k106: "The computer cannot confirm that held input was released. Control has stopped. Check the input state on the computer before reconnecting. Do not repeat unconfirmed actions.",
 };
 
 const ZH_TW: Messages = {
@@ -322,6 +328,9 @@ const ZH_TW: Messages = {
   k101: "電腦仍在結束上一次畫面擷取，控制已停止。請稍後重新連線。",
   k102: "電腦的畫面擷取暫不可用，控制已停止。請稍後重新連線。",
   k103: "這台電腦的系統暫不支援螢幕擷取，控制已停止。請檢查系統版本。",
+  k104: "這台電腦尚未允許輔助使用，控制已停止。請在電腦上允許 OceanLeo 使用輔助使用後重新連線。",
+  k105: "這台電腦暫時無法執行鍵鼠輸入，控制已停止。請在電腦上檢查 OceanLeo 後重新連線，不要重複提交未確認的操作。",
+  k106: "電腦無法確認按鍵已釋放，控制已停止。請在電腦上檢查按鍵狀態後重新連線，不要重複提交未確認的操作。",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(
