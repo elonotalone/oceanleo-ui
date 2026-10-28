@@ -13,6 +13,7 @@ import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
 import { RemoteInputScheduler } from "./remote-desktop-scheduler";
+import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
 export interface RemoteMediaCredentials {
   provider: "artc";
   transport: "artc-v1";
@@ -154,6 +155,8 @@ export interface RemoteDesktopStream {
 }
 
 export interface RemoteDesktopStreamHandlers {
+  /** Numeric diagnostics only; completion watermark is not proof of successful OS input. */
+  controlTiming?(sample: RemoteControlTiming): void;
   media?(media: RemoteMediaCredentials | null, status: RemoteMediaStatus | null): void;
   state(state: RemoteDesktopSessionState, error?: string): void;
   frame(frame: RemoteDesktopFrameData): void;
@@ -193,8 +196,10 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let writeFailed = false;
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
+  const timings = new RemoteControlTimings(() => performance.now(), sample => handlers.controlTiming?.(sample));
   const dispose = () => {
     ended = true;
+    timings.dispose();
     clearInterval(heartbeat);
     clearInterval(refresh);
     clearInterval(inputPump);
@@ -227,7 +232,11 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   };
   const scheduler = new RemoteInputScheduler({
     now: Date.now,
-    write: (seq, action) => send({ type: "input", seq, action }),
+    write: (seq, action) => {
+      const written = send({ type: "input", seq, action });
+      if (written) timings.sent(seq);
+      return written;
+    },
     congestion: (busy) => handlers.congestion?.(busy),
     failure: fail,
   });
@@ -273,13 +282,16 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     let data: Record<string, unknown>;
     try { data = JSON.parse(event.data); } catch { fail("response_malformed"); return; }
     if (!data || typeof data !== "object") { fail("response_malformed"); return; }
-    if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { scheduler.accepted(data.seq as number); return; }
+    if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { timings.accepted(data.seq as number); scheduler.accepted(data.seq as number); return; }
     if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && typeof data.error === "string" && typeof data.retry_after_ms === "number" && Number.isFinite(data.retry_after_ms)) {
       scheduler.rejected(data.seq as number, data.error, data.retry_after_ms); return;
     }
     if (data.type !== "state" || !["pending_consent", "connecting", "active", "closed"].includes(String(data.state))) { fail("response_malformed"); return; }
     state = data.state as RemoteDesktopSessionState;
-    if (state !== "closed" && typeof data.acked_seq === "number") scheduler.executedThrough(data.acked_seq);
+    if (state !== "closed" && typeof data.acked_seq === "number") {
+      scheduler.executedThrough(data.acked_seq);
+      if (!ended) timings.completedThrough(data.acked_seq);
+    }
     if (ended) return;
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }
     handlers.state(state, data.error === "stream_failed" ? "network_error" : typeof data.error === "string" ? data.error : undefined);

@@ -261,8 +261,8 @@ class FakeSocket {
 async function streamHarness() {
   window.location = { href: "https://oceanleo.com/devices" };
   globalThis.WebSocket = FakeSocket;
-  const log = { states: [], frames: [], errors: [], congestion: [] };
-  const promise = api.remoteDesktopClient.openStream("d1", "private-handle", { state: (...state) => log.states.push(state), frame: (frame) => log.frames.push(frame), error: (error) => log.errors.push(error), congestion: (busy) => log.congestion.push(busy) });
+  const log = { states: [], frames: [], errors: [], congestion: [], timings: [] };
+  const promise = api.remoteDesktopClient.openStream("d1", "private-handle", { state: (...state) => log.states.push(state), frame: (frame) => log.frames.push(frame), error: (error) => log.errors.push(error), congestion: (busy) => log.congestion.push(busy), controlTiming: sample => log.timings.push(sample) });
   await new Promise((resolve) => setImmediate(resolve));
   const socket = FakeSocket.latest;
   socket.onopen();
@@ -287,6 +287,26 @@ test("v2 authenticates only inside the private socket, refuses input before appr
     stream.acknowledgeFrame(1);
     assert.deepEqual(socket.sent.at(-1), { type: "frame_ack", sequence: 1 });
   } finally { stream.close(); }
+});
+
+test("stream timing separates accepted from completion without exposing input content", async () => {
+  const {socket,stream,log}=await streamHarness();
+  try {
+    socket.message({type:"state",state:"active",acked_seq:0});
+    stream.send({kind:"type",text:"private-fixture-content"});
+    assert.equal(log.timings.length,0);
+    socket.message({type:"input_ack",seq:1});
+    assert.equal(log.timings[0].stage,"accepted");
+    assert.equal(log.timings.length,1);
+    socket.message({type:"state",state:"active",acked_seq:1});
+    assert.equal(log.timings[1].stage,"completion_watermark");
+    assert.equal(log.timings[1].seq,1);
+    assert.ok(log.timings[1].elapsedMs>=log.timings[0].elapsedMs);
+    assert.doesNotMatch(JSON.stringify(log.timings),/private-fixture|text|token|session|controller/);
+    assert.deepEqual(Object.keys(log.timings[0]),["seq","stage","elapsedMs"]);
+    socket.message({type:"input_ack",seq:1});
+    assert.equal(log.timings.length,2);
+  } finally {stream.close();}
 });
 
 test("v2 rejects frames before approval and releases transport credit on gateway acceptance", async () => {
