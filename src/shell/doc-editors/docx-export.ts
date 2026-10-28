@@ -38,8 +38,10 @@ export interface DocxExportOptions {
    * 与接线前的行为一字不差——批注是加法，不改既有导出的任何字节。
    */
   comments?: readonly DocxCommentEntry[];
-  /** 文档/工件 id，写入自定义属性 ContentID；开关开且未提供时用 crypto.randomUUID()。 */
+  /** Compatibility reference; every generated export receives its own production UUID. */
   contentId?: string;
+  /** Only set for content with established AI-generation provenance. */
+  generated?: boolean;
 }
 
 /** 正文里认锚点的 mark 名（`richdocComment`），不硬编码字符串。 */
@@ -455,10 +457,9 @@ export async function tiptapJsonToDocxBlob(
     docx,
     commentIdIndex(entries),
   );
-  const aigcOn = aigcLabelActive();
+  const aigcOn = options.generated === true && aigcLabelActive();
   const contentId =
-    String(options.contentId || "").trim() ||
-    (aigcOn ? crypto.randomUUID() : "");
+    aigcOn ? `OL-${crypto.randomUUID()}` : "";
   const meta = aigcOn ? aigcMetadata(contentId) : null;
   const document = new docx.Document({
     creator: "OceanLeo",
@@ -485,16 +486,15 @@ export async function tiptapJsonToDocxBlob(
       ? {
           customProperties: [
             { name: "AIGC", value: meta.AIGC },
-            { name: "ServiceProvider", value: meta.ServiceProvider },
-            { name: "ContentID", value: meta.ContentID },
-            { name: "ProducedAt", value: meta.ProducedAt },
           ],
         }
       : {}),
     sections: [
       {
         properties: {},
-        children: children as never[],
+        children: (aigcOn
+          ? [new docx.Paragraph(AIGC_TEXT_NOTICE), ...children]
+          : children) as never[],
       },
     ],
   });

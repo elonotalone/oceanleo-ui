@@ -37,7 +37,7 @@ export interface ShareDocxInput {
   /** 页脚上的来源链接（有就写一行）。 */
   linkText?: string;
   messages: readonly ShareDocxMessage[];
-  /** 会话/工件 id，写入自定义属性 ContentID；开关开且未提供时用 crypto.randomUUID()。 */
+  /** Compatibility reference; each export receives a unique production UUID. */
   contentId?: string;
 }
 
@@ -418,6 +418,7 @@ export async function shareMessagesToDocxBlob(
       }),
     );
   }
+  const aigcOn = aigcLabelActive() && input.messages.some((message) => message.role === "assistant");
   for (const message of input.messages) {
     children.push(
       new docx.Paragraph({
@@ -425,16 +426,18 @@ export async function shareMessagesToDocxBlob(
         children: [new docx.TextRun({ text: message.speaker })] as never[],
       }),
     );
+    if (aigcOn && message.role === "assistant") {
+      children.push(new docx.Paragraph(AIGC_TEXT_NOTICE));
+    }
     for (const block of message.blocks) {
       children.push(...(await blockToDocx(block, docx)));
     }
   }
 
-  // 生成合成内容制作要素：与 doc-editors/docx-export.ts 同一套四项自定义属性。
+  // A single appendix-E property, only when assistant-generated text is included.
   // 开关关（.com 且未设 env）时这段不产生任何字节。
-  const aigcOn = aigcLabelActive();
   const aigcMeta = aigcOn
-    ? aigcMetadata(String(input.contentId || "").trim() || crypto.randomUUID())
+    ? aigcMetadata(`OL-${crypto.randomUUID()}`)
     : null;
   const document = new docx.Document({
     creator: "OceanLeo",
@@ -444,9 +447,6 @@ export async function shareMessagesToDocxBlob(
       ? {
           customProperties: [
             { name: "AIGC", value: aigcMeta.AIGC },
-            { name: "ServiceProvider", value: aigcMeta.ServiceProvider },
-            { name: "ContentID", value: aigcMeta.ContentID },
-            { name: "ProducedAt", value: aigcMeta.ProducedAt },
           ],
         }
       : {}),
@@ -517,8 +517,12 @@ export function downloadBlob(blob: Blob, fileName: string): void {
 /** 纯文本预览，供测试与「导出前看看有什么」使用。 */
 export function shareDocxOutline(input: ShareDocxInput): string[] {
   const out: string[] = [`TITLE ${input.title}`];
+  const aigcOn = aigcLabelActive() && input.messages.some((message) => message.role === "assistant");
   for (const message of input.messages) {
     out.push(`SPEAKER ${message.speaker}`);
+    if (aigcOn && message.role === "assistant") {
+      out.push(AIGC_TEXT_NOTICE);
+    }
     for (const block of message.blocks) {
       switch (block.type) {
         case "heading":

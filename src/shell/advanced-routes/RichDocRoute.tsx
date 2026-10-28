@@ -290,11 +290,12 @@ export function RichDocRoute({
     if (!editor.editor) return "文档尚未载入，不能导出 PDF。";
     const title = item.title || "document";
     try {
-      const docx = await tiptapJsonToDocxBlob(title, editor.editor.getJSON());
+      const docx = await tiptapJsonToDocxBlob(title, editor.editor.getJSON(), { generated: editor.isGenerated() });
       return await downloadConvertedCopy({
         source: docx,
         sourceName: `${title}.docx`,
         target: "pdf",
+        generated: editor.isGenerated(),
         baseName: title,
       });
     } catch (caught) {

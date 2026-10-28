@@ -832,6 +832,8 @@ export interface ArtifactContextBinding {
 }
 
 export interface ArtifactProvenance {
+  /** Server-derived generation ancestry; client metadata/project flags cannot grant this. */
+  generatedOrigin?: boolean;
   id: string;
   sourceKind: string;
   licenseCode: string;
@@ -1658,6 +1660,11 @@ function normalizeProvenance(value: unknown): ArtifactProvenance | null {
     id,
     sourceKind,
     licenseCode,
+    ...(raw.generatedOrigin === false || raw.generated_origin === false
+      ? { generatedOrigin: false }
+      : raw.generatedOrigin === true || raw.generated_origin === true
+        ? { generatedOrigin: true }
+        : {}),
     licenseUrl: text(raw.licenseUrl, raw.license_url),
     attribution: text(raw.attribution, raw.attribution_text),
     // 缺这个 key 的老部署按 `false` 处理，与后端 `ProvenanceProjection` 的默认值一致。

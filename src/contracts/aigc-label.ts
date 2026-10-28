@@ -41,16 +41,17 @@ export function withAigcTextNotice(text: string): string {
   return `${AIGC_TEXT_NOTICE}\n\n${text}`;
 }
 
-export function aigcMetadata(contentId: string): {
-  AIGC: "true";
-  ServiceProvider: string;
-  ContentID: string;
-  ProducedAt: string;
-} {
-  return {
-    AIGC: "true",
-    ServiceProvider: AIGC_SERVICE_PROVIDER,
-    ContentID: contentId,
-    ProducedAt: new Date().toISOString(),
-  };
+/** One appendix-E JSON string; use as a single AIGC metadata property. */
+export function aigcMetadata(contentId: string): { AIGC: string } {
+  if (!/^[!-~]+$/.test(contentId)) throw new Error("Invalid production ID");
+  const provider = "91440300MAKE54BD0T";
+  return { AIGC: JSON.stringify({ AIGC: {
+    Label: "1",
+    ContentProducer: provider,
+    ProduceID: contentId,
+    ReservedCode1: "",
+    ContentPropagator: provider,
+    PropagateID: contentId,
+    ReservedCode2: "",
+  } }) };
 }

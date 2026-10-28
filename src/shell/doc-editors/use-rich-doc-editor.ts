@@ -1,5 +1,7 @@
 "use client";
 
+import { richDocIsGenerated, richDocLabeledText, richDocLabeledHtml } from "./rich-doc-provenance";
+
 // ============================================================================
 // @oceanleo/ui — useRichDocEditor：tiptap v3 富文本编辑器状态 hook
 // ----------------------------------------------------------------------------
@@ -130,6 +132,7 @@ export interface RichDocEditorState {
   save: () => Promise<PersistedEditorVersion | null>;
   /** 上一次 `save()` 失败的原因（同步可读；React state 里的 `error` 要等下一次渲染）。 */
   lastSaveError: () => string;
+  isGenerated: () => boolean;
   exportMarkdown: () => Promise<void>;
   exportHtml: () => Promise<void>;
   /**
@@ -345,6 +348,8 @@ export function useRichDocEditor(
   const workingHeadUrlRef = useRef(item.url || item.previewUrl || "");
   /** The pin a save publishes against; advances with every committed revision. */
   const persistedItemRef = useRef(item);
+  const generatedRef = useRef(richDocIsGenerated(item));
+  const isGenerated = useCallback(() => generatedRef.current, []);
   const preparedSaveRef = useRef<{
     key: string;
     project?: PreparedProjectUpload;
@@ -528,6 +533,7 @@ export function useRichDocEditor(
     setSourceReady(false);
     revisionRef.current = 0;
     persistedItemRef.current = source;
+    generatedRef.current = richDocIsGenerated(source);
     preparedSaveRef.current = null;
     workingHeadUrlRef.current = String(
       source.meta.editor_working_head_url ||
@@ -554,6 +560,7 @@ export function useRichDocEditor(
           setLoading(false);
           return;
         }
+        generatedRef.current = richDocIsGenerated(source) && result.generatedOrigin !== false;
         sourceReadyRef.current = true;
         setSourceReady(true);
         setLoaded(result);
@@ -675,6 +682,7 @@ export function useRichDocEditor(
       json?: JSONContent;
       html: string;
       item: LibraryItem;
+      generatedOrigin: boolean;
     }>({
       room: collabRoom,
       read: async (revisionId) => {
@@ -699,7 +707,7 @@ export function useRichDocEditor(
           },
         );
         if (loaded.error) return null;
-        return { json: loaded.json, html: loaded.html, item: revision };
+        return { json: loaded.json, html: loaded.html, item: revision, generatedOrigin: richDocIsGenerated(revision) && loaded.generatedOrigin !== false };
       },
       apply: (content) => {
         editor.commands.setContent(content.json || content.html, {
@@ -707,6 +715,7 @@ export function useRichDocEditor(
         });
         hydrateReview(content.json);
         persistedItemRef.current = content.item;
+        generatedRef.current = content.generatedOrigin;
         workingHeadUrlRef.current = String(
           content.item.meta.editor_working_head_url ||
             content.item.url ||
@@ -744,7 +753,7 @@ export function useRichDocEditor(
     if (!editor || !requireSourceReady()) return;
     try {
       const markdown = await htmlToMarkdown(editor.getHTML());
-      downloadText(`${baseTitle}.md`, markdown, "text/markdown;charset=utf-8");
+      downloadText(`${baseTitle}.md`, richDocLabeledText(markdown, generatedRef.current), "text/markdown;charset=utf-8");
     } catch (caught) {
       setError(
         caught instanceof Error ? tt(caught.message) : tt("导出 Markdown 失败"),
@@ -756,7 +765,7 @@ export function useRichDocEditor(
     if (!editor || !requireSourceReady()) return;
     downloadText(
       `${baseTitle}.html`,
-      fullHtmlDocument(baseTitle, editor.getHTML()),
+      fullHtmlDocument(baseTitle, richDocLabeledHtml(editor.getHTML(), generatedRef.current)),
       "text/html;charset=utf-8",
     );
   }, [editor, baseTitle, requireSourceReady]);
@@ -785,6 +794,7 @@ export function useRichDocEditor(
           ? applyRevisionExportChoice(editor.getJSON(), choice)
           : editor.getJSON();
         const blob = await tiptapJsonToDocxBlob(baseTitle, json, {
+          generated: generatedRef.current,
           comments: carriesComments
             ? buildDocxCommentPayload(editor.state.doc, reviewSidecar).entries
             : [],
@@ -804,7 +814,7 @@ export function useRichDocEditor(
 
   const exportText = useCallback(() => {
     if (!editor || !requireSourceReady()) return;
-    downloadText(`${baseTitle}.txt`, editor.getText(), "text/plain;charset=utf-8");
+    downloadText(`${baseTitle}.txt`, richDocLabeledText(editor.getText(), generatedRef.current), "text/plain;charset=utf-8");
   }, [editor, baseTitle, requireSourceReady]);
 
   const importSource = useCallback(
@@ -826,6 +836,7 @@ export function useRichDocEditor(
         setSourceFailed(false);
         sourceReadyRef.current = true;
         setSourceReady(true);
+        generatedRef.current = false;
         importedLoadRef.current = result;
         setLoaded(result);
       } catch (caught) {
@@ -893,6 +904,7 @@ export function useRichDocEditor(
           createRichDocDeliveryFile({
             item: baseItem,
             title: baseTitle,
+            generated: generatedRef.current,
             html,
             json: persist.extension === "docx" ? deliveryJson : json,
           }),
@@ -926,7 +938,7 @@ export function useRichDocEditor(
           // 多余键，所以只认 `type`/`content` 的老读者读到的文档一模一样，
           // `RICHDOC_PROJECT_SCHEMA` 的版本号因此不动（任务书禁区第 3 条）。
           // 空 sidecar 原样剥离 ⇒ 没开审阅的文档零 diff。
-          data: attachReviewSidecar(json, reviewSidecar),
+          data: { ...attachReviewSidecar(json, reviewSidecar), generatedOrigin: generatedRef.current },
         },
         editorManifest: {
           id: RICHDOC_EDITOR_CAPABILITY,
@@ -934,7 +946,10 @@ export function useRichDocEditor(
         },
         artifactRevision: {
           artifactType: "document",
-          provenance: { editorRevision: savingRevision },
+          provenance: {
+            editorRevision: savingRevision,
+            ...(generatedRef.current ? {} : { generatedOrigin: false }),
+          },
           // 进 artifact_revisions.metadata：库卡片优先读它，不必再抓源文本。
           metadata: { text_excerpt: textExcerpt },
         },
@@ -1174,6 +1189,7 @@ export function useRichDocEditor(
     reload,
     save: saveInRoom,
     lastSaveError,
+    isGenerated,
     exportMarkdown,
     exportHtml,
     exportDoc,

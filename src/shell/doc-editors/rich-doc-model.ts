@@ -1,5 +1,7 @@
 "use client";
 
+import { richDocIsGenerated, richDocLabeledText, richDocLabeledHtml } from "./rich-doc-provenance";
+
 // ============================================================================
 // @oceanleo/ui — RichDocEditor 数据层（加载 / 导出转换，无 React）
 // ----------------------------------------------------------------------------
@@ -58,6 +60,8 @@ export type RichDocDetectedFormat =
   | null;
 
 export interface RichDocLoadResult {
+  /** Project can revoke generated origin after replacing the body with an upload; never grants it. */
+  generatedOrigin?: false;
   html: string;
   json?: JSONContent;
   source: RichDocSource;
@@ -530,7 +534,10 @@ export function resolveRichDocProjectAgainstOriginal(
 ): RichDocLoadResult {
   const unwrapped = unwrapNativeRichDocJson(projectJson);
   if (unwrapped && richDocHasContent(unwrapped)) {
-    return { html: "", json: unwrapped, source: "project", error: "" };
+    return {
+      html: "", json: unwrapped, source: "project", error: "",
+      ...((projectJson as { generatedOrigin?: unknown })?.generatedOrigin === false ? { generatedOrigin: false as const } : {}),
+    };
   }
   if (
     admitRichDocEditorSource(original, item).ok &&
@@ -547,7 +554,10 @@ export function resolveRichDocProjectAgainstOriginal(
     ) {
       return original.error ? original : emptyExistingRichDocResult(item);
     }
-    return { html: "", json: unwrapped, source: "project", error: "" };
+    return {
+      html: "", json: unwrapped, source: "project", error: "",
+      ...((projectJson as { generatedOrigin?: unknown })?.generatedOrigin === false ? { generatedOrigin: false as const } : {}),
+    };
   }
   if (admitRichDocEditorSource(original, item).ok) return original;
   return original.error ? original : emptyExistingRichDocResult(item);
@@ -722,14 +732,16 @@ export async function createRichDocDeliveryFile(input: {
   title: string;
   html: string;
   json?: JSONContent;
+  generated?: boolean;
 }): Promise<File> {
+  const generated = input.generated ?? richDocIsGenerated(input.item);
   const target = richDocPersistTarget(input.item);
   const stem = deliveryFileStem(input.title);
   if (target.extension === "md") {
     const markdown = await richDocHtmlToMarkdown(
       input.html || richDocJsonToHtmlFragment(input.json),
     );
-    return new File([markdown], `${stem}.md`, { type: target.sourceMediaType });
+    return new File([richDocLabeledText(markdown, generated)], `${stem}.md`, { type: target.sourceMediaType });
   }
   if (target.extension === "html") {
     const html =
@@ -738,18 +750,18 @@ export async function createRichDocDeliveryFile(input: {
         input.title,
         richDocJsonToHtmlFragment(input.json),
       );
-    return new File([html], `${stem}.html`, { type: target.sourceMediaType });
+    return new File([richDocLabeledHtml(html, generated)], `${stem}.html`, { type: target.sourceMediaType });
   }
   if (target.extension === "txt") {
     // 从结构写，不从「去标签 + 压空白」写：后者存一次整篇就成了一行。
     const text = input.json
       ? richDocJsonToPlainText(input.json)
       : richDocHtmlToPlainText(input.html);
-    return new File([text], `${stem}.txt`, { type: target.sourceMediaType });
+    return new File([richDocLabeledText(text, generated)], `${stem}.txt`, { type: target.sourceMediaType });
   }
   const { tiptapJsonToDocxBlob } = await import("./docx-export");
   const json = input.json || { type: "doc", content: [] };
-  const blob = await tiptapJsonToDocxBlob(input.title, json);
+  const blob = await tiptapJsonToDocxBlob(input.title, json, { generated });
   return new File([blob], `${stem}.docx`, { type: target.sourceMediaType });
 }
 
@@ -954,7 +966,10 @@ export async function loadRichDocSource(
       const json = await deps.loadProject(projectUrl);
       const unwrapped = unwrapNativeRichDocJson(json);
       if (unwrapped && richDocHasContent(unwrapped)) {
-        return { html: "", json: unwrapped, source: "project", error: "" };
+        return {
+          html: "", json: unwrapped, source: "project", error: "",
+          ...((json as { generatedOrigin?: unknown })?.generatedOrigin === false ? { generatedOrigin: false as const } : {}),
+        };
       }
       const original = await loadRichDocHtml(item, onSourceAccessError, deps);
       return resolveRichDocProjectAgainstOriginal(

@@ -24,6 +24,8 @@ export interface ConvertDownloadInput {
   target: OfficeConvertTarget;
   /** 落地文件名（不含后缀）。 */
   baseName: string;
+  /** Trusted native generated-document provenance; arbitrary conversion stays byte-preserved. */
+  generated?: boolean;
 }
 
 /**
@@ -39,7 +41,10 @@ export async function downloadConvertedCopy(
       input.sourceName,
       input.target,
     );
-    downloadBlob(`${input.baseName || "document"}.${input.target}`, blob);
+    const delivery = input.target === "pdf" && input.generated === true
+      ? await (await import("./generated-pdf-metadata")).labelGeneratedPdf(blob, true)
+      : blob;
+    downloadBlob(`${input.baseName || "document"}.${input.target}`, delivery);
     return "";
   } catch (caught) {
     if (caught instanceof OfficeConvertError) return caught.message;
