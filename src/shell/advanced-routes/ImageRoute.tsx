@@ -67,6 +67,7 @@ export function ImageRoute({
   siteId = "",
   accent = "#4f46e5",
   onLocalSave,
+  onLocalChange,
   localProject,
   onClose,
 }: AdvancedContentWorkbenchProps) {
@@ -81,10 +82,13 @@ export function ImageRoute({
   const [localSnapshot, setLocalSnapshot] = useState<ImageSnapshot | null>(null);
   const collabSavedRef = useRef<(revisionId: string) => void>(() => undefined);
   const editorCollabRef = useRef<ReturnType<typeof useFabricImageEditor>["collab"] | null>(null);
+  const onLocalChangeRef = useRef(onLocalChange);
+  onLocalChangeRef.current = onLocalChange;
   const collabOptions = useMemo(
     () => ({
       readOnly: collabReadOnly,
       onLocalChange: () => {
+        onLocalChangeRef.current?.();
         const handle = editorCollabRef.current;
         if (!handle) return;
         handle.ensureIds();

@@ -27,6 +27,8 @@ export interface AdvancedContentWorkbenchProps {
    * not a cloud sync. Absent = the ordinary cloud save, unchanged.
    */
   onLocalSave?: LocalImageSaveHandler;
+  /** Trusted native mount: report a real document edit, not a selection change. */
+  onLocalChange?: () => void;
   /**
    * Trusted native editor mounts only, together with `onLocalSave`: the host's own stored image project
    * (oceanleo.fabric-image.v1) the mount already matched to this artifact and library revision. The image
