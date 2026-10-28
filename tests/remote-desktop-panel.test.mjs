@@ -117,18 +117,26 @@ test("unknown ACK / broken stream ends the session without replay or HTTP downgr
   assert.equal(view.log.httpFrames, 0);
 });
 
-test("transient input congestion keeps the current frame without an input-confirmation banner", async () => {
+test("a full keyboard backlog keeps the frame, shows queue-busy copy, and clears only that notice on recovery", async () => {
   const view = await mount();
   const image = view.image();
-  await act(async () => view.handlers().congestion?.(true));
+  await act(async () => view.handlers().congestion(true));
   assert.equal(view.image(), image);
   assert.equal(view.screen().getAttribute("data-remote-phase"), "active");
-  assert.equal(view.screen().querySelector("[data-remote-input-status]"), null);
+  assert.equal(view.screen().querySelector("[data-remote-input-status]").textContent, "输入队列暂时繁忙，请稍后重试。");
+  assert.doesNotMatch(view.screen().textContent, /输入正在等待确认/);
   await view.pointer("pointerdown");
   await view.pointer("pointerup");
-  await act(async () => view.handlers().congestion?.(false));
+  await act(async () => view.handlers().congestion(false));
   assert.equal(view.screen().querySelector("[data-remote-input-status]"), null);
   assert.deepEqual(view.log.inputs.map((input) => input.kind), ["pointer_down", "pointer_up"]);
+  const paste = new window.Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(paste, "clipboardData", { value: { getData: () => "x".repeat(40000) } });
+  await view.fire(view.input(), paste);
+  const notice = view.screen().querySelector("[data-remote-input-status]").textContent;
+  assert.match(notice, /文字太长/);
+  await act(async () => view.handlers().congestion(false));
+  assert.equal(view.screen().querySelector("[data-remote-input-status]").textContent, notice, "recovery must preserve unrelated newer notices");
 });
 
 for (const reason of ["network_error", "stream_failed"]) test(`${reason} reconnects once with a fresh session and drops old input`, async () => {

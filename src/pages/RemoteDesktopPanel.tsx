@@ -321,6 +321,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
             else if (mediaDescriptorSeen) end("media_session_closed");
           },
           error(code) { if (!abort.signal.aborted) end(code); },
+          congestion(busy) {
+            if (abort.signal.aborted) return;
+            setMessage((current) => busy ? "输入队列暂时繁忙，请稍后重试。" : current === "输入队列暂时繁忙，请稍后重试。" ? "" : current);
+          },
         }, { signal: abort.signal });
         if (abort.signal.aborted) opened.data?.close();
         else if (opened.ok && opened.data) streamRef.current = opened.data;
