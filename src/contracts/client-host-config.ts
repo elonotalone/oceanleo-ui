@@ -38,6 +38,8 @@ export interface ClientHostNativeSession {
     email: string | null; expiresAt: number;
   } | null>;
   subscribe(listener: () => void): () => void;
+  /** Reject only this snapshot; the native owner checks its current generation. */
+  invalidateIfCurrent?(accessToken: string): Promise<boolean | undefined>;
 }
 
 export interface ClientHostNavItem {

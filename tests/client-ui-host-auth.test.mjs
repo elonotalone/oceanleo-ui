@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { createGoTrueSession, SESSION_STORAGE_KEY } from "../../oceanleo-app/desktop/src/gotrue-session.js";
+import { createClientHostConfig } from "../../oceanleo-app/desktop/src/boot.js";
 
 import { authFetch } from "../src/lib/auth/auth-fetch.ts";
 import { browserClient, getUserEmail, startOauthSignIn, startDesktopBrowserSignIn, signOutEverywhere } from "../src/lib/auth/client.ts";
@@ -63,6 +65,188 @@ function hostConfig(overrides = {}) {
     ...overrides,
   };
 }
+
+const gate = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
+function nativeAccount(label, userId = "synthetic-owner") {
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const body = { sub: userId, exp, session_id: label };
+  return { accessToken: `e30.${Buffer.from(JSON.stringify(body)).toString("base64url")}.c2ln`,
+    refreshToken: `synthetic-${label}`, userId, email: `${userId}@example.invalid`, expiresAt: exp * 1000 };
+}
+function sdkIssued(session) {
+  return { access_token: session.accessToken, refresh_token: session.refreshToken, expires_at: session.expiresAt / 1000, expires_in: 3600,
+    token_type: "bearer", user: { id: session.userId, email: session.email } };
+}
+async function nativeFixture(t, fetch) {
+  const initial = nativeAccount("initial");
+  const keys = new Map([[SESSION_STORAGE_KEY, JSON.stringify(initial)], [CN_AUTH_COOKIE_KEY, "{stale-mirror"]]);
+  const f = { initial, keys, current: initial, pending: null, failClear: false, loseClearReply: false, invalidations: 0, presences: [], clock: Date.now() };
+  const host = createGoTrueSession({ anonKey: "synthetic-anon", identityOrigin: "https://id-cn.dev.oceanleo.com", clock: () => f.clock,
+    port: { secureGet: async (key) => keys.get(key) || null,
+      secureSet: async (key, value) => { keys.set(key, value); if (key === SESSION_STORAGE_KEY) f.current = JSON.parse(value); },
+      secureClear: async (key) => { keys.delete(key); if (key === SESSION_STORAGE_KEY) f.current = null; } },
+    fetch: async () => { throw new Error("Unexpected host HTTP"); },
+    invoke: async (command, args) => {
+      if (command === "device_set_auth_presence") { f.presences.push(args); return; }
+      if (command === "device_refresh_auth_session") return { status: 409, body: { error: "native_session_changed" } };
+      assert.equal(command, "device_invalidate_auth_session", "SDK must not own native refresh");
+      f.invalidations += 1;
+      const matches = f.current?.accessToken === args.accessToken || (!f.current && f.pending === args.accessToken);
+      if (!matches) {
+        const reply = { cleared: false, durable: true, session: f.current ? sdkIssued(f.current) : null };
+        await f.beforeReply?.();
+        return reply;
+      }
+      f.current = null; f.pending = f.failClear ? args.accessToken : null;
+      if (!f.failClear) keys.clear();
+      if (f.loseClearReply) throw new Error("Synthetic lost native acknowledgement");
+      return { cleared: true, durable: !f.failClear };
+    } });
+  await host.ready;
+  configureClientHost(createClientHostConfig({ session: host, identityAnonKey: "synthetic-anon", family: "cn",
+    identityOrigin: "https://id-cn.dev.oceanleo.com", apiEndpoint: "https://api-cn.dev.oceanleo.com", fetch }));
+  const client = browserClient(); await client.auth.initialize();
+  t.after(async () => { await client.auth.stopAutoRefresh(); host.dispose(); });
+  return { ...f, host, client, state: f, async adopt(session) { assert.equal((await host.auth.importSession(sdkIssued(session))).ok, true); } };
+}
+const rejectedSession = () => Response.json({ code: "session_not_found" }, { status: 401,
+  headers: { "X-Supabase-Api-Version": "2024-01-01" } });
+
+test("native SDK late rejection cannot remove a newer login or account replacement", async (t) => {
+  for (const user of ["synthetic-owner", "replacement-owner"]) {
+    await t.test(user, async (t) => {
+      const seen = gate(), release = gate();
+      const f = await nativeFixture(t, async () => { seen.resolve(); await release.promise; return rejectedSession(); });
+      const request = f.client.auth.getUser(); await seen.promise;
+      const next = nativeAccount("new", user); await f.adopt(next);
+      release.resolve(); assert.equal((await request).error.name, "AuthSessionMissingError");
+      assert.equal(JSON.parse(f.keys.get(SESSION_STORAGE_KEY)).accessToken, next.accessToken);
+      assert.equal((await f.host.getIdentity()).accessToken, next.accessToken);
+      assert.equal(f.state.invalidations, 0, "JS queue rejects an old snapshot before native IPC");
+    });
+  }
+});
+
+test("native SDK stale JS snapshot cannot remove native background or unsaved rotation", async (t) => {
+  for (const durable of [true, false]) {
+    await t.test(`durable=${durable}`, async (t) => {
+      const f = await nativeFixture(t, async () => rejectedSession());
+      const next = nativeAccount("native-rotation"); f.state.current = next;
+      if (durable) f.keys.set(SESSION_STORAGE_KEY, JSON.stringify(next));
+      assert.equal((await f.host.getIdentity()).accessToken, f.initial.accessToken);
+      await f.client.auth.getUser();
+      assert.equal(f.state.current.accessToken, next.accessToken);
+      assert.equal(JSON.parse(f.keys.get(SESSION_STORAGE_KEY)).accessToken, durable ? next.accessToken : f.initial.accessToken);
+      assert.equal(f.state.invalidations, 1);
+    });
+  }
+});
+
+test("native SDK current revocation clears once without an unconditional null publication", async (t) => {
+  const f = await nativeFixture(t, async () => rejectedSession());
+  const before = f.state.presences.length;
+  await Promise.all([f.client.auth.getUser(), f.client.auth.getUser()]);
+  assert.equal(await f.host.getIdentity(), null);
+  assert.equal(f.keys.has(SESSION_STORAGE_KEY), false);
+  assert.equal(f.state.invalidations, 1);
+  assert.equal(f.state.presences.length, before, "native conditional IPC already fenced; no later unconditional null");
+});
+
+test("native current revocation retries a failed durable clear conditionally and preserves later login", async (t) => {
+  const f = await nativeFixture(t, async () => rejectedSession()); f.state.failClear = true;
+  await f.client.auth.getUser();
+  assert.equal(await f.host.getIdentity(), null);
+  assert.deepEqual(f.host.auth.persistence(), { durable: false, pending: "remove" });
+  const next = nativeAccount("external-login"); f.state.current = next;
+  f.keys.set(SESSION_STORAGE_KEY, JSON.stringify(next)); f.state.clock += 5001;
+  const restored = await f.host.getIdentity();
+  assert.equal(restored.accessToken, next.accessToken);
+  assert.equal(JSON.parse(f.keys.get(SESSION_STORAGE_KEY)).accessToken, next.accessToken);
+  assert.equal(f.state.invalidations, 2);
+});
+
+test("native unrelated JWT, generic rejection and transient error preserve canonical", async (t) => {
+  for (const category of ["unrelated", "generic", "transient"]) {
+    await t.test(category, async (t) => {
+      const f = await nativeFixture(t, async () => category === "unrelated" ? rejectedSession()
+        : Response.json({ code: category === "generic" ? "bad_jwt" : "temporarily_unavailable" }, { status: category === "generic" ? 401 : 503 }));
+      await f.client.auth.getUser(category === "unrelated" ? nativeAccount("unrelated", "other").accessToken : undefined);
+      assert.equal((await f.host.getIdentity()).accessToken, f.initial.accessToken);
+      assert.equal(f.state.invalidations, 0);
+    });
+  }
+});
+
+test("native SDK password login persists normally through setItem", async (t) => {
+  const next = nativeAccount("sdk-login", "sdk-owner");
+  const f = await nativeFixture(t, async () => Response.json(sdkIssued(next)));
+  assert.equal((await f.client.auth.signInWithPassword({ email: next.email, password: "synthetic" })).error, null);
+  assert.equal((await f.host.getIdentity()).accessToken, next.accessToken);
+  assert.equal(JSON.parse(f.keys.get(SESSION_STORAGE_KEY)).accessToken, next.accessToken);
+});
+
+test("native SDK explicit logout delegates unconditional local host removal", async (t) => {
+  const f = await nativeFixture(t, async () => { throw new Error("SDK must not own logout HTTP"); });
+  assert.equal((await f.client.auth.signOut()).error, null);
+  assert.equal(await f.host.getIdentity(), null);
+  assert.equal(f.keys.has(SESSION_STORAGE_KEY), false);
+  assert.deepEqual(f.state.presences.at(-1), { userId: null, accessToken: null });
+  assert.equal(f.state.invalidations, 0, "explicit logout does not use conditional revocation");
+});
+
+test("native SDK rejection after explicit logout and login C leaves C intact", async (t) => {
+  const seen = gate(), release = gate();
+  const f = await nativeFixture(t, async () => { seen.resolve(); await release.promise; return rejectedSession(); });
+  const request = f.client.auth.getUser(); await seen.promise;
+  await f.host.signOut();
+  const next = nativeAccount("after-logout", "owner-c"); await f.adopt(next);
+  release.resolve(); await request;
+  assert.equal((await f.host.getIdentity()).accessToken, next.accessToken);
+  assert.equal(JSON.parse(f.keys.get(SESSION_STORAGE_KEY)).accessToken, next.accessToken);
+});
+
+test("native current revocation retries a refused clear without reviving the rejected snapshot", async (t) => {
+  const f = await nativeFixture(t, async () => rejectedSession()); f.state.failClear = true;
+  await f.client.auth.getUser();
+  assert.equal(await f.host.getIdentity(), null);
+  f.state.failClear = false; f.state.clock += 5001;
+  assert.equal(await f.host.getIdentity(), null);
+  assert.equal(f.keys.has(SESSION_STORAGE_KEY), false);
+  assert.deepEqual(f.host.auth.persistence(), { durable: true, pending: null });
+});
+
+test("native lost clear acknowledgement ends only the rejected JS snapshot and keeps retry conditional", async (t) => {
+  const f = await nativeFixture(t, async () => rejectedSession()); f.state.loseClearReply = true;
+  await f.client.auth.getUser();
+  assert.equal(await f.host.getIdentity(), null);
+  const next = nativeAccount("after-lost-clear"); f.state.current = next;
+  f.keys.set(SESSION_STORAGE_KEY, JSON.stringify(next)); f.state.clock += 5001;
+  assert.equal((await f.host.getIdentity()).accessToken, next.accessToken);
+});
+
+test("native mismatch reply B stays a reader snapshot after external logout or account C", async (t) => {
+  for (const action of ["logout", "account-c"]) {
+    await t.test(action, async (t) => {
+      const seen = gate(), release = gate();
+      const f = await nativeFixture(t, async () => rejectedSession());
+      const b = nativeAccount("native-b"); f.state.current = b;
+      f.keys.set(SESSION_STORAGE_KEY, JSON.stringify(b));
+      f.state.beforeReply = () => { seen.resolve(); return release.promise; };
+      const pending = f.client.auth.getUser(); await seen.promise;
+      const before = f.state.presences.length;
+      const c = action === "account-c" ? nativeAccount("native-c", "owner-c") : null;
+      f.state.current = c; f.keys.clear();
+      if (c) f.keys.set(SESSION_STORAGE_KEY, JSON.stringify(c));
+      release.resolve(); await pending;
+      assert.equal((await f.host.getIdentity()).accessToken, b.accessToken, "receipt only updates this reader");
+      assert.equal(f.keys.get(SESSION_STORAGE_KEY) || null, c ? JSON.stringify(c) : null);
+      assert.equal(f.state.presences.length, before, "late getIdentity cannot authorize the reader's B snapshot");
+      f.state.clock = b.expiresAt + 1;
+      await f.host.getIdentity();
+      assert.equal(f.state.presences.length, before, "expiry observations cannot republish the native reader snapshot either");
+    });
+  }
+});
 
 test.beforeEach(() => {
   resetClientHostConfigForTests();

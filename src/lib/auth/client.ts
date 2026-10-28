@@ -92,6 +92,12 @@ function hostBrowserClient(): SupabaseClient | null {
   const native = hostCfg.platform === "desktop" && hostCfg.nativeSession;
   const storage = native ? {
     ...hostStorage,
+    removeItem(key: string) {
+      // SDK cleanup has no request identity. The contextual getUser rejection
+      // below delegates account invalidation to the native publication owner.
+      if (key === storageKey) return;
+      return hostStorage.removeItem(key);
+    },
     async getItem(key: string) {
       if (key !== storageKey) return hostStorage.getItem(key);
       // An expired native identity is retained on disk for recovery, but must
@@ -116,6 +122,22 @@ function hostBrowserClient(): SupabaseClient | null {
     },
   });
   if (native) {
+    client.auth.signOut = async () => {
+      // Explicit logout has unconditional authority. The host owns its local
+      // revoke; SDK cleanup must not read a later login and revoke that instead.
+      if (hostCfg.signOut) await hostCfg.signOut();
+      else await hostStorage.removeItem(storageKey);
+      return { error: null };
+    };
+    const sdkGetUser = client.auth.getUser.bind(client.auth);
+    client.auth.getUser = async (jwt?: string) => {
+      const expectedToken = jwt || (await nativeSdkSession())?.access_token;
+      const result = await sdkGetUser(expectedToken);
+      if (expectedToken && result.error?.name === "AuthSessionMissingError") {
+        await native.invalidateIfCurrent?.(expectedToken);
+      }
+      return result;
+    };
     client.auth.getSession = async () => {
       const session = await nativeSdkSession();
       return session ? { data: { session }, error: null } : { data: { session: null }, error: null };
@@ -879,6 +901,13 @@ export async function signOutEverywhere(): Promise<void> {
     // The native host clears remote availability and durable identity first.
     // Its local-only revoke must never terminate the browser/other computers.
     _accessToken = null;
+    if (hostConfig.nativeSession) {
+      try {
+        if (c) await c.auth.signOut({ scope: "local" });
+        else await hostConfig.signOut?.();
+      } finally { _accessToken = null; }
+      return;
+    }
     try { await hostConfig.signOut?.(); }
     finally {
       if (c) await c.auth.signOut({ scope: "local" }).catch(() => {});
