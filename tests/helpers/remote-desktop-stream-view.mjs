@@ -18,11 +18,11 @@ const { RemoteDesktopPanel } = await import(await compileModule("src/pages/Remot
 export const settle = (ms = 25) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 export { document, window, act };
 
-export async function mountStream({ pending = false, coarse = false, overrides = {} } = {}) {
+export async function mountStream({ pending = false, coarse = false, overrides = {}, agent, streamOverrides = {} } = {}) {
   window.matchMedia = () => ({ matches: coarse });
-  const log = { inputs: [], acknowledgements: [], closes: [], streamCloses: 0, httpFrames: 0, onClose: 0 };
+  const log = { inputs: [], acknowledgements: [], closes: [], streamCloses: 0, handoffs: 0, httpFrames: 0, onClose: 0 };
   let handlers;
-  const stream = { send(action) { log.inputs.push(action); return true; }, acknowledgeFrame(seq) { log.acknowledgements.push(seq); }, close() { log.streamCloses++; } };
+  const stream = { releaseForHandoff() { log.inputs.push({kind: "release_all"}); return Promise.resolve(); }, finishHandoff() { log.handoffs++; }, send(action) { log.inputs.push(action); return true; }, acknowledgeFrame(seq) { log.acknowledgements.push(seq); }, close() { log.streamCloses++; }, ...streamOverrides };
   const client = {
     async createSession() { return { ok: true, data: { session_id: "session-stream", state: pending ? "pending_consent" : "connecting", expires_at: "", transport: "websocket-v2" } }; },
     async openStream(_device, _session, callbacks) { handlers = callbacks; callbacks.state(pending ? "pending_consent" : "active"); return { ok: true, data: stream }; },
@@ -34,11 +34,12 @@ export async function mountStream({ pending = false, coarse = false, overrides =
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  await act(async () => { root.render(React.createElement(RemoteDesktopPanel, { deviceId: "d-1", deviceName: "Studio", client, onClose: () => { log.onClose++; }, frameIntervalMs: 5 })); });
+  await act(async () => { root.render(React.createElement(RemoteDesktopPanel, { deviceId: "d-1", deviceName: "Studio", client, onClose: () => { log.onClose++; }, frameIntervalMs: 5, agent })); });
   await settle();
   const screen = () => document.querySelector("[data-oceanleo-remote-desktop]");
   const view = {
     host, log, client, screen,
+    async setAgent(next) { await act(async () => root.render(React.createElement(RemoteDesktopPanel, {deviceId: "d-1", deviceName: "Studio", client, onClose() {}, frameIntervalMs: 5, agent: next}))); },
     handlers: () => handlers,
     stage: () => screen().querySelector("[data-remote-stage]"),
     input: () => screen().querySelector("[data-remote-input]"),

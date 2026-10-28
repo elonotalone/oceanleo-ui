@@ -149,6 +149,8 @@ export interface RemoteDesktopClient {
 }
 
 export interface RemoteDesktopStream {
+  releaseForHandoff(): Promise<void>;
+  finishHandoff(): void;
   send(action: RemoteDesktopAction): boolean;
   acknowledgeFrame(sequence: number): void;
   close(): void;
@@ -194,6 +196,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let decoding: { sequence: number; started: number } | null = null;
   let pendingFrameAck: number | null = null;
   let writeFailed = false;
+  let handoff: Promise<void> | null = null;
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
   const timings = new RemoteControlTimings(() => performance.now(), sample => handlers.controlTiming?.(sample));
@@ -241,6 +244,14 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     failure: fail,
   });
   const stream: RemoteDesktopStream = {
+    releaseForHandoff() {
+      if (ended || !ready || state !== "active") return Promise.reject(new Error("input_ack_unknown"));
+      if (!handoff) handoff = scheduler.releaseForHandoff().then(() => {
+        if (ended || state !== "active") throw new Error("input_ack_unknown");
+      });
+      return handoff;
+    },
+    finishHandoff() { if (!ended && state === "active") { scheduler.finishHandoff(); handoff = null; } },
     send(action) {
       if (!ready || state !== "active") return false;
       return scheduler.enqueue(action);
@@ -288,6 +299,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     }
     if (data.type !== "state" || !["pending_consent", "connecting", "active", "closed"].includes(String(data.state))) { fail("response_malformed"); return; }
     state = data.state as RemoteDesktopSessionState;
+    if (handoff && state !== "active") { fail("input_ack_unknown"); return; }
     if (state !== "closed" && typeof data.acked_seq === "number") {
       scheduler.executedThrough(data.acked_seq);
       if (!ended) timings.completedThrough(data.acked_seq);

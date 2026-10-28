@@ -312,12 +312,13 @@ const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.
   "../shell/cloud-computer/ConnectServerDialog": dataModule(`export function ConnectServerDialog() { return null; }`),
 }));
 
-function rdClient() {
-  const log = { create: 0, closes: 0 };
+function rdClient(executable = false, releaseWait) {
+  const log = { create: 0, closes: 0, releases: 0 };
   return {
     log,
     async getStatus() { return { ok: true, data: { supported: true, enabled: true, online: true, session_id: null, availability: "online" } }; },
-    async createSession() { log.create += 1; return { ok: true, data: { session_id: `rd-${log.create}`, state: "pending_consent", expires_at: "" } }; },
+    async createSession() { log.create += 1; return { ok: true, data: { session_id: `rd-${log.create}`, state: "pending_consent", expires_at: "", ...(executable ? {transport: "websocket-v2"} : {}) } }; },
+    async openStream(_device, _session, handlers) { handlers.state("active"); return {ok: true, data: {send(){return true;}, acknowledgeFrame(){}, close(){}, async releaseForHandoff(){log.releases++;if(releaseWait)await releaseWait;}, finishHandoff(){}}}; },
     async getFrame() { await wait(5); return { ok: true, data: { state: "pending_consent", frame: null } }; },
     async sendInput(deviceId, sessionId, seq) { return { ok: true, data: { accepted: true, seq } }; },
     async closeSession() { log.closes += 1; return { ok: true, data: { closed: true } }; },
@@ -349,7 +350,7 @@ const waitingText = () => document.querySelector("[data-remote-stage] [role='sta
 async function openFromDevices(state, settings = settingsClient()) {
   window.history.replaceState(null, "", "/devices");
   const cloud = cloudClient(state);
-  const remote = rdClient();
+  const remote = rdClient(Boolean(state.executable), state.releaseWait);
   const view = await mount(React.createElement(DevicesPage, { client: devicesClient, remoteDesktopClient: remote, cloudAgentClient: cloud,
     settingsClient: settings, remoteStatusIntervalMs: 1000, listIntervalMs: 60_000, currentUser: async () => ({ known: true, userId: "owner" }) }));
   await tick(20);
@@ -361,7 +362,7 @@ async function openFromDevices(state, settings = settingsClient()) {
 test("我的设备 → remote desktop: the live session's task gives the task page's banner and 交还给 AI", async () => {
   globalThis.__fwDict = {};
   const live = { session_id: "cas_01JD00000000000000000000AB", task_id: "task-1", owner: "ai", state: "running" };
-  const state = { row: { remote_takeover: false, live_session: live }, run: cloudRun() };
+  const state = { executable: true, row: { remote_takeover: false, live_session: live }, run: cloudRun() };
   const { view, cloud, remote } = await openFromDevices(state);
   try {
     assert.equal(remote.log.create, 1, "进入桌面 is the one request");
@@ -399,7 +400,7 @@ test("我的设备 → remote desktop: the live session's task gives the task pa
 test("我的设备: a hand back without a confirmed answer says so and is not re-sent", async () => {
   globalThis.__fwDict = {};
   const live = { session_id: "cas_A", task_id: "task-2", owner: "human", state: "paused" };
-  const state = { row: { remote_takeover: false, live_session: live }, controlFails: true,
+  const state = { executable: true, row: { remote_takeover: false, live_session: live }, controlFails: true,
     run: cloudRun({ session_id: "cas_A", state: "paused", owner: "human", control_revision: 5, health: { kind: "human_in_control" } }) };
   const { view, cloud } = await openFromDevices(state);
   try {
@@ -534,3 +535,5 @@ test("接管电脑 says up front whether someone at the computer must approve, a
   try { await tick(30); assert.equal(globalThis.__fwAvailabilityReads.length, 0); }
   finally { await page.view.unmount(); }
 });
+
+test('device handback reads the current revision only after executed release',async()=>{let release;const releaseWait=new Promise(resolve=>{release=resolve;});const live={session_id:'cas_A',task_id:'task-fresh',owner:'human',state:'paused'};const state={executable:true,releaseWait,row:{remote_takeover:false,live_session:live},run:cloudRun({session_id:'cas_A',state:'paused',owner:'human',control_revision:5,report_seq:8,health:{kind:'human_in_control'}})};const {view,cloud}=await openFromDevices(state);try{await waitFor(()=>handBack());await click(handBack());assert.deepEqual(cloud.log.control,[]);state.run=cloudRun({session_id:'cas_A',state:'paused',owner:'human',control_revision:6,report_seq:9,health:{kind:'human_in_control'}});await poll();await act(async()=>release());await tick(20);assert.deepEqual(cloud.log.control,[['task-fresh','resume',6]]);}finally{await view.unmount();}});

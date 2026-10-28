@@ -15,7 +15,7 @@ const RemoteDesktopPanel = lazy(() => import("../pages/RemoteDesktopPanel").then
 const SCREEN_POLL_MS = 10_000;
 
 type StatusProps = {
-  run: LocalAgentRun | null; artifacts: LocalTaskArtifact[]; busy: boolean; readOnly: boolean; onControl: (action: LocalAgentControl) => void;
+  run: LocalAgentRun | null; artifacts: LocalTaskArtifact[]; busy: boolean; readOnly: boolean; onControl: (action: LocalAgentControl) => void | Promise<boolean>;
 };
 
 export function LocalAgentTaskStatus(props: StatusProps) {
@@ -97,6 +97,7 @@ function CloudAgentRunStatus({run, artifacts, busy, readOnly, onControl}: Status
           text: banner.text,
           handBack: banner.handBack && localAgentCanControl(run, "resume"),
           busy,
+          handoffKey: `${run.deviceId}:${run.sessionId ?? ""}`,
           onHandBack: () => onControl("resume"),
         } : undefined} />
     </Suspense>}

@@ -197,22 +197,30 @@ export function useDeviceCloudAgent(deviceId: string | null, settings: Pick<Devi
   const live = row?.liveSession ?? null;
   const taskId = live?.taskId ?? null;
   const matching = run?.driver === "cloud" && (!run.sessionId || run.sessionId === live?.sessionId) ? run : null;
-  const handBack = useCallback(async () => {
-    if (!taskId || !matching || inFlight.current || !localAgentCanControl(matching, "resume")) return;
+  const latestControl = useRef({ taskId, matching }); latestControl.current = { taskId, matching };
+  const controlEpoch = useRef(0);
+  useEffect(() => { controlEpoch.current++; setBusy(false); return () => { controlEpoch.current++; }; }, [deviceId]);
+  const handBack = useCallback(async (): Promise<boolean> => {
+    const {taskId: id, matching: current} = latestControl.current;
+    if (!id || !current || inFlight.current || !localAgentCanControl(current, "resume")) return false;
+    const epoch = controlEpoch.current;
     inFlight.current = true;
     setBusy(true); setUnconfirmed(false);
     try {
-      const result = await client.control(taskId, "resume", matching.revision);
-      if (result.ok && result.run) setRun((current) => newerLocalAgentRun(current, result.run));
+      const result = await client.control(id, "resume", current.revision);
+      if (epoch !== controlEpoch.current || latestControl.current.taskId !== id
+        || latestControl.current.matching?.sessionId !== current.sessionId) return false;
+      if (result.ok && result.run) setRun((value) => newerLocalAgentRun(value, result.run));
       if (!result.ok) setUnconfirmed(true);
+      return result.ok;
     } catch {
-      setUnconfirmed(true);
+      if (epoch === controlEpoch.current) setUnconfirmed(true);
+      return false;
     } finally {
       inFlight.current = false;
-      setBusy(false);
-      poke.current();
+      if (epoch === controlEpoch.current) { setBusy(false); poke.current(); }
     }
-  }, [client, matching, taskId]);
+  }, [client]);
 
   const banner = deviceAgentBanner(live, matching);
   return {
@@ -222,7 +230,8 @@ export function useDeviceCloudAgent(deviceId: string | null, settings: Pick<Devi
       ...(unconfirmed ? { note: CONTROL_UNCONFIRMED } : {}),
       handBack: banner.handBack && taskId !== null && localAgentCanControl(matching, "resume"),
       busy,
-      onHandBack: () => { void handBack(); },
+      handoffKey: `${taskId}:${matching?.sessionId ?? ""}`,
+      onHandBack: handBack,
     } : availabilityNotice ? { text: availabilityNotice, handBack: false, busy: false, onHandBack: () => {} } : undefined,
   };
 }

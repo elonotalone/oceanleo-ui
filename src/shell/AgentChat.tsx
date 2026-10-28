@@ -1497,17 +1497,17 @@ function AgentChatInner({
 
   // 「中止」：AI 工作中（任务 running / 请求在途）点停止键 → 停任务。
   const controlLocal = useCallback(async (action: LocalAgentControl) => {
-    if (readOnly || !taskId || !isLocalExecution || localControlInFlight.current) return;
+    if (readOnly || !taskId || !isLocalExecution || localControlInFlight.current) return false;
     if (!localAgentCanControl(localRun, action)) {
       void refresh(taskId);
-      return;
+      return false;
     }
     const id = taskId;
     localControlInFlight.current = true;
     setLocalControlBusy(true);
     try {
       const result = await controlLocalAgentTask(id, action, localRun!.revision);
-      if (loadedTaskRef.current !== id) return;
+      if (loadedTaskRef.current !== id) return false;
       if (result.ok) {
         const next = parseLocalAgentRun(result.data);
         setLocalExecution(current => current.taskId === id ? {...current, run: newerLocalAgentRun(current.run, next)} : current);
@@ -1515,11 +1515,13 @@ function AgentChatInner({
         setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
       }
       void refresh(id);
+      return result.ok;
     } catch {
       if (loadedTaskRef.current === id) {
         setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
         void refresh(id);
       }
+      return false;
     } finally {
       localControlInFlight.current = false;
       setLocalControlBusy(false);
@@ -2133,7 +2135,7 @@ function AgentChatInner({
 
   const stream = (
     <div className="flex h-full flex-col">
-      {isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={action => void controlLocal(action)} />}
+      {isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={controlLocal} />}
       {/* 相对定位容器：浮标贴着对话区底部，而不是贴着输入框或整页。 */}
       <div className="relative min-h-0 flex-1">
       <div

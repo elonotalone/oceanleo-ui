@@ -1,6 +1,6 @@
 import type { RemoteDesktopAction } from "./remote-desktop";
 
-type Entry = { action: RemoteDesktopAction; seq?: number };
+type Entry = { barrier?: boolean; action: RemoteDesktopAction; seq?: number };
 const WINDOW = 8;
 const KEY_BACKLOG = 32;
 const SOFT = new Set(["move", "scroll"]);
@@ -13,7 +13,7 @@ export interface RemoteInputSchedulerOptions {
   failure(code: string): void;
 }
 
-/** Gateway acceptance releases transport credit; execution watermarks are diagnostics only. */
+/** Acceptance releases transport credit; explicit handback separately waits for release execution. */
 export class RemoteInputScheduler {
   private queue: Entry[] = [];
   private outstanding = new Map<number, Entry>();
@@ -26,6 +26,43 @@ export class RemoteInputScheduler {
   private heldKeys = new Set<string>();
   private heldButtons = new Set<string>();
   private options: RemoteInputSchedulerOptions;
+  private handoff: { promise: Promise<void>; resolve(): void; reject(error: Error): void;
+    deadline: number; seq?: number; executed: boolean; timer?: ReturnType<typeof setTimeout> } | null = null;
+
+  /** Explicit handback only. Keep manual input frozen through the subsequent CAS. */
+  releaseForHandoff(): Promise<void> {
+    if (this.ended) return Promise.reject(new Error("input_ack_unknown"));
+    if (this.handoff) return this.handoff.promise;
+    let resolve!: () => void, reject!: (error: Error) => void;
+    const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    const pending = { promise, resolve, reject, deadline: this.options.now() + 5000,
+      executed: false, timer: undefined as ReturnType<typeof setTimeout> | undefined, seq: undefined as number | undefined };
+    this.handoff = pending;
+    pending.timer = setTimeout(() => { if (this.handoff === pending && !pending.executed) this.fail("input_ack_unknown"); }, 5000);
+    this.enqueueAction({ kind: "release_all" }, true);
+    return promise;
+  }
+
+  /** Called only after the same handback's CAS has a confirmed successful answer. */
+  finishHandoff(): void {
+    if (!this.ended && this.handoff?.executed) this.handoff = null;
+  }
+
+  private completeHandoff(): void {
+    const pending = this.handoff;
+    if (pending && !pending.executed && pending.seq !== undefined && this.executed >= pending.seq) {
+      pending.executed = true;
+      if (pending.timer !== undefined) clearTimeout(pending.timer);
+      pending.resolve();
+    }
+  }
+
+  private cancelHandoff(): void {
+    const pending = this.handoff;
+    this.handoff = null;
+    if (pending) { if (pending.timer !== undefined) clearTimeout(pending.timer); if (!pending.executed) pending.reject(new Error("input_ack_unknown")); }
+  }
+
 
   constructor(options: RemoteInputSchedulerOptions) { this.options = options; }
 
@@ -33,8 +70,10 @@ export class RemoteInputScheduler {
     return [...this.queue, ...this.retries].filter((entry) => !SOFT.has(entry.action.kind)).length;
   }
 
-  enqueue(action: RemoteDesktopAction): boolean {
-    if (this.ended) return false;
+  enqueue(action: RemoteDesktopAction): boolean { return this.enqueueAction(action); }
+
+  private enqueueAction(action: RemoteDesktopAction, barrier = false): boolean {
+    if (this.ended || (this.handoff && !barrier)) return false;
     const release = RELEASE.has(action.kind);
     const key = action.key ?? "";
     const button = action.button ?? "left";
@@ -45,7 +84,7 @@ export class RemoteInputScheduler {
       this.report(true);
       return false; // Pause new presses/text; retain every previously queued action.
     }
-    if (release) {
+    if (release && !barrier) {
       const known = action.kind === "key_up" ? this.heldKeys.has(key) : action.kind === "pointer_up" ? this.heldButtons.has(button) : true;
       // A repeated release has no OS effect unless this session pressed that key again.
       // Keep the first release in place; never replace ordinary releases with release_all.
@@ -82,7 +121,7 @@ export class RemoteInputScheduler {
     if (action.kind === "pointer_down") this.heldButtons.add(button);
     if (action.kind === "pointer_up") this.heldButtons.delete(button);
     if (action.kind === "release_all") { this.heldKeys.clear(); this.heldButtons.clear(); }
-    this.queue.push({ action });
+    this.queue.push({ action, barrier });
     this.tick();
     return !this.ended;
   }
@@ -96,6 +135,7 @@ export class RemoteInputScheduler {
   executedThrough(seq: number): void {
     if (!Number.isSafeInteger(seq) || seq < 0 || seq > this.sequence) { this.fail("response_malformed"); return; }
     this.executed = Math.max(this.executed, seq);
+    this.completeHandoff();
   }
 
   rejected(seq: number, code: string, retryAfterMs: number): void {
@@ -113,6 +153,7 @@ export class RemoteInputScheduler {
   tick(): void {
     if (this.ended) return;
     const now = this.options.now();
+    if (this.handoff && !this.handoff.executed && now >= this.handoff.deadline) { this.fail("input_ack_unknown"); return; }
     while (this.outstanding.size < WINDOW) {
       const head = this.retries[0] || this.queue[0];
       if (!head) break;
@@ -132,7 +173,8 @@ export class RemoteInputScheduler {
       }
       if (!this.options.write(seq, action)) break;
       this.sequence = Math.max(this.sequence, seq);
-      this.outstanding.set(seq, { action, seq });
+      if (head.barrier && this.handoff) this.handoff.seq = seq;
+      this.outstanding.set(seq, { action, seq, barrier: head.barrier });
       if (this.retries.length) this.retries.shift(); else this.queue.shift();
       if (remainder) this.queue.unshift({ action: remainder });
     }
@@ -142,6 +184,7 @@ export class RemoteInputScheduler {
 
   /** Closing never replays old input into a replacement session. */
   dispose(): void {
+    this.cancelHandoff();
     this.ended = true;
     this.queue = [];
     this.outstanding.clear();

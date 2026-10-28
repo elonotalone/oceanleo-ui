@@ -452,7 +452,7 @@ test("remote desktop opened from a task: AI banner and 交还给 AI only; hand b
     assert.ok(banner, "banner shown over the remote screen");
     assert.match(banner.textContent, /你正在控制电脑，AI 已暂停/);
     await click(document.querySelector("[data-remote-agent-hand-back]"));
-    assert.deepEqual(handBacks, [1]);
+    assert.deepEqual(handBacks, [], "HTTP-only target has no execution watermark; never resume");
     await act(async () => view.root.render(panel({ text: "AI 正在操作这台电脑；你一操作，AI 就会停手。", handBack: false, busy: false, onHandBack() {} })));
     assert.equal(document.querySelector("[data-remote-agent-hand-back]"), null);
     await act(async () => view.root.render(panel(undefined)));

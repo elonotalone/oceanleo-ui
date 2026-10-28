@@ -54,7 +54,8 @@ export interface RemoteDesktopAgentBanner {
   handBack: boolean;
   busy: boolean;
   /** One revision-fenced `resume`; the computer re-observes before acting. */
-  onHandBack: () => void;
+  handoffKey?: string;
+  onHandBack: () => void | Promise<boolean | void>;
 }
 
 /** `idle`: no session requested; only a click on 连接 sends one. */
@@ -90,6 +91,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const [phase, setPhase] = useState<Phase>(() => ticket && !ticket.spent ? "starting" : "idle");
   const [frame, setFrame] = useState<RemoteDesktopFrameData | null>(null);
   const [message, setMessage] = useState("");
+  const [handingBack, setHandingBack] = useState(false);
+  const [handoffFrozen, setHandoffFrozen] = useState(false);
+  const [handoffDone, setHandoffDone] = useState(false);
+  const completedHandoff = useRef<{key?: string; callback: RemoteDesktopAgentBanner["onHandBack"]} | null>(null);
+  const handoffRef = useRef<object | null>(null);
+  const agentRef = useRef(agent); agentRef.current = agent;
   const [toolbar, setToolbar] = useState(true);
   const [coarse, setCoarse] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
@@ -129,6 +136,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const pendingClick = useRef<{ x: number; y: number } | null>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composing = useRef(false);
+  const inputEpoch = useRef(0);
   const moveRef = useRef<RemoteDesktopAction | null>(null);
   const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toolbarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,7 +155,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     toolbarTimer.current = setTimeout(() => { if (phaseRef.current === "active") setToolbar(false); }, 2200);
   }, []);
 
-  const canSend = useCallback(() => !closedRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
+  const canSend = useCallback(() => !handoffRef.current && !closedRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
     && (mediaModeRef.current !== "artc" || Boolean(mediaFrameGeometry.current && mediaFrameGeometry.current === mediaGeometryKey(mediaStatusRef.current))), []);
 
   const pump = useCallback(async () => {
@@ -175,7 +183,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
 
   const send = useCallback((action: RemoteDesktopAction) => {
     if (!canSend()) return;
-    if (streamModeRef.current) { streamRef.current?.send(action); return; }
+    if (streamModeRef.current) {
+      if (streamRef.current?.send(action) && action.kind !== "release_all") { completedHandoff.current = null; setHandoffDone(false); }
+      return;
+    }
     if (queueRef.current.length >= 64) { setMessage("操作太快，部分输入被丢弃了。"); return; }
     queueRef.current.push(action);
     void pump();
@@ -196,7 +207,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     if (point) send({ kind: "click", ...point, button: "left" });
   }, [send]);
 
-  const releaseInput = useCallback(() => {
+  const clearLocalInput = useCallback(() => {
+    inputEpoch.current++;
+    if (inputRef.current) inputRef.current.value = "";
     if (clickTimer.current) clearTimeout(clickTimer.current);
     clickTimer.current = null;
     pendingClick.current = null;
@@ -207,8 +220,39 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     pointerRef.current = null;
     panRef.current = null;
     composing.current = false;
-    if (streamModeRef.current) streamRef.current?.send({ kind: "release_all" });
   }, []);
+  const releaseInput = useCallback(() => {
+    clearLocalInput();
+    if (streamModeRef.current) streamRef.current?.send({ kind: "release_all" });
+  }, [clearLocalInput]);
+
+  const handBack = useCallback(async () => {
+    const original = agentRef.current, stream = streamRef.current;
+    const sessionId = sessionRef.current, signal = abortRef.current?.signal;
+    if (!original?.handBack || original.busy || handoffRef.current) return;
+    if (completedHandoff.current && (original.handoffKey ? completedHandoff.current.key === original.handoffKey
+      : completedHandoff.current.callback === original.onHandBack)) return;
+    const attempt = {}; handoffRef.current = attempt;
+    setHandingBack(true); setHandoffFrozen(true);
+    clearLocalInput();
+    const sameSession = () => handoffRef.current === attempt && !closedRef.current && !signal?.aborted
+      && sessionRef.current === sessionId && streamRef.current === stream;
+    const current = () => sameSession() && phaseRef.current === "active"
+      && (original.handoffKey ? agentRef.current?.handoffKey === original.handoffKey : agentRef.current?.onHandBack === original.onHandBack);
+    try {
+      if (!streamModeRef.current || !stream?.releaseForHandoff) throw new Error("input_ack_unknown");
+      await stream.releaseForHandoff();
+      const latest = agentRef.current;
+      if (!current() || !latest?.handBack || latest.busy
+        || (original.handoffKey ? latest.handoffKey !== original.handoffKey : latest.onHandBack !== original.onHandBack)) throw new Error("input_ack_unknown");
+      const confirmed = await latest.onHandBack();
+      if (!current()) return;
+      if (confirmed !== true) throw new Error("input_ack_unknown");
+      clearLocalInput(); stream.finishHandoff(); completedHandoff.current = {key: original.handoffKey, callback: original.onHandBack}; setHandoffDone(true); handoffRef.current = null; setHandoffFrozen(false);
+    } catch {
+      if (sameSession()) setMessage("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。");
+    } finally { if (sameSession() || handoffRef.current === null && !closedRef.current) setHandingBack(false); }
+  }, [clearLocalInput]);
 
   const invalidateMediaFrame = useCallback(() => {
     releaseInput();
@@ -249,6 +293,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     const abort = new AbortController();
     abortRef.current = abort;
     closedRef.current = false;
+    handoffRef.current = null; completedHandoff.current = null; setHandoffDone(false); setHandingBack(false); setHandoffFrozen(false);
     sessionRef.current = null;
     streamRef.current = null;
     streamModeRef.current = false;
@@ -404,8 +449,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     const input = inputRef.current;
     if (!input) return;
     let claimed: string | null = null;
-    const start = () => { flushClick(); releaseInput(); composing.current = true; };
-    const end = (event: CompositionEvent) => { composing.current = false; input.value = ""; sendText(event.data || ""); };
+    let compositionEpoch: number | null = null;
+    const start = () => { flushClick(); releaseInput(); if (canSend()) { composing.current = true; compositionEpoch = inputEpoch.current; } };
+    const end = (event: CompositionEvent) => { const valid = composing.current && compositionEpoch === inputEpoch.current; compositionEpoch = null; composing.current = false; input.value = ""; if (valid) sendText(event.data || ""); };
     const before = (event: InputEvent) => {
       const kind = classifyInput(event.inputType, composing.current || event.isComposing);
       const action = softInputKeyAction(kind);
@@ -436,7 +482,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       input.removeEventListener("compositionstart", start); input.removeEventListener("compositionend", end);
       input.removeEventListener("beforeinput", before as EventListener); input.removeEventListener("input", insert as EventListener); input.removeEventListener("paste", paste);
     };
-  }, [flushClick, releaseInput, send, sendText]);
+  }, [canSend, flushClick, releaseInput, send, sendText]);
 
   const point = (event: { clientX: number; clientY: number }, strict = true) => {
     if (mediaModeRef.current === "artc" && (!mediaFrameGeometry.current || mediaFrameGeometry.current !== mediaGeometryKey(mediaStatusRef.current))) return null;
@@ -654,7 +700,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         <span>{tt(agent.text)}</span>
         {agent.note ? <span data-remote-agent-note style={{ opacity: .75 }}>{tt(agent.note)}</span> : null}
         {/* Let go of anything this viewer still holds first: the computer resumes the AI only once no person holds input. */}
-        {agent.handBack ? <button type="button" data-remote-agent-hand-back disabled={agent.busy} onClick={() => { releaseInput(); agent.onHandBack(); }} style={{ whiteSpace: "nowrap" }}>{tt(CLOUD_AGENT_COPY.handBack)}</button> : null}
+        {agent.handBack ? <button type="button" data-remote-agent-hand-back disabled={agent.busy || handingBack || handoffFrozen || (handoffDone && (agent.handoffKey ? completedHandoff.current?.key === agent.handoffKey : completedHandoff.current?.callback === agent.onHandBack))} onClick={() => { void handBack(); }} style={{ whiteSpace: "nowrap" }}>{tt(CLOUD_AGENT_COPY.handBack)}</button> : null}
       </div> : null}
       {active && (message || (mediaMode === "legacy" && mediaNotice)) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(message || mediaNotice, { name: deviceName })}</div> : null}
     </div>, portal,

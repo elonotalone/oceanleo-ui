@@ -386,3 +386,6 @@ test("generic stream failure is mapped to network error while explicit device of
     assert.deepEqual(log.states.at(-1), ["closed", expected]);
   }
 });
+
+test('real websocket handoff accepts execution before acceptance and gates new input through CAS',async()=>{const {socket,stream}=await streamHarness();try{socket.message({type:'state',state:'active',acked_seq:0});stream.send({kind:'key_down',key:'Shift'});let done=false;const p=stream.releaseForHandoff().then(()=>{done=true;});const release=socket.sent.filter(x=>x.type==='input'&&x.action.kind==='release_all').at(-1);socket.message({type:'input_ack',seq:release.seq});await Promise.resolve();assert.equal(done,false);assert.equal(stream.send({kind:'type',text:'late'}),false);socket.message({type:'state',state:'active',acked_seq:release.seq});await p;assert.equal(stream.send({kind:'keypress',key:'Enter'}),false);stream.finishHandoff();assert.equal(stream.send({kind:'keypress',key:'Enter'}),true);}finally{stream.close();}});
+test('closed websocket cannot confirm an old handoff with a late execution state',async()=>{const {socket,stream}=await streamHarness();socket.message({type:'state',state:'active',acked_seq:0});const p=stream.releaseForHandoff(),rejected=assert.rejects(p,/input_ack_unknown/);stream.close();socket.message({type:'state',state:'active',acked_seq:1});await rejected;});
