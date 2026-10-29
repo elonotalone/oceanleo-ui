@@ -1,5 +1,5 @@
 // Mechanically derived from aliyun-rtc-sdk@7.3.8; upstream SHA256 ef9c768984463027dad8aa064bda7180d1fecb23c037902b5bc264797dc6c74d.
-// See README.md and scripts/prepare-private-artc-sdk.mjs; media/signaling code unchanged.
+// See README.md and scripts/prepare-private-artc-sdk.mjs; media unchanged, RTS signalling pinned to HTTPS.
 const console = Object.freeze(Object.fromEntries(["log","info","debug","warn","error","trace","group","groupCollapsed","groupEnd","table","time","timeEnd","timeLog","assert","count","countReset","clear","dir","dirxml"].map(name => [name, () => undefined])));
 var fp = Object.defineProperty, gp = Object.defineProperties;
 var bp = Object.getOwnPropertyDescriptors;
@@ -10446,7 +10446,7 @@ class Ef extends ri {
     if ((i == null ? void 0 : i.indexOf("artc://")) === 0) {
       i.indexOf("@subaudio=no") > -1 && (this.subscribeAudio = !1, i = i.replace("@subaudio=no", "")), i.indexOf("@subvideo=no") > -1 && (this.subscribeVideo = !1, i = i.replace("@subvideo=no", "")), this.pullStreamUrl = i;
       const { protocol: e } = window.location;
-      let t = (["http:", "https:"].indexOf(e) > -1 ? e : "https:") + "//";
+      let t = "https://" /* OceanLeo: media signalling is always HTTPS, never the page scheme. */;
       this.signalingUrl = this.pullStreamUrl.replace("artc://", t);
     }
   }
@@ -10670,7 +10670,7 @@ class Cf extends ri {
     if (!this.publishUrl || this.publishUrl.indexOf("artc://") !== 0)
       return !1;
     const { protocol: i } = window.location;
-    let e = (["http:", "https:"].indexOf(i) > -1 ? i : "https:") + "//";
+    let e = "https://" /* OceanLeo: media signalling is always HTTPS, never the page scheme. */;
     return this.signalingUrl = this.publishUrl.replace("artc://", e), !0;
   }
   isSingleMsid() {
@@ -11052,7 +11052,7 @@ class Af extends ri {
     if (!i || i.indexOf(e) !== 0)
       return;
     const { protocol: t } = window.location;
-    let r = (["http:", "https:"].indexOf(t) > -1 ? t : "https:") + "//";
+    let r = "https://" /* OceanLeo: media signalling is always HTTPS, never the page scheme. */;
     return this.signalUrl = i.replace(e, r), !0;
   }
   throwRtsError(i, e) {
@@ -25183,4 +25183,4 @@ export {
   Gb as default
 };
 
-export const OCEANLEO_REMOTE_PRIVACY = "oceanleo-remote-artc-7.3.8-private-v1";
+export const OCEANLEO_REMOTE_PRIVACY = "oceanleo-remote-artc-7.3.8-private-v2";

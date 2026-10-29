@@ -10,6 +10,10 @@ test('private remote SDK is exactly the reviewed deterministic patch; drift fail
   assert.match(output, /Ni = new Oo\([^\n]+disabled: true, deferRegionSet: !0/);
   assert.doesNotMatch(output, /disabled: window\.AliRtcOptionsDisableProxy/);
   assert.throws(() => privateSdk(source + '\n'), /Unreviewed/);
+  // Bug #6: RTS edge SDP/data-channel signalling never inherits the webview page scheme
+  // (http://tauri.localhost on Windows); it is always HTTPS.
+  assert.doesNotMatch(output, /\["http:", "https:"\]\.indexOf/);
+  assert.equal(output.split('"https://" /* OceanLeo: media signalling is always HTTPS').length, 4);
 });
 test('remote viewer cannot fall back to unpatched SDK or CDN', async () => {
   const loader = await readFile(new URL('../src/pages/remote-desktop-sdk.ts', import.meta.url), 'utf8');

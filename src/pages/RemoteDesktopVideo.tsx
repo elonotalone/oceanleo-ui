@@ -1,18 +1,27 @@
 "use client";
 import { useEffect, useRef, type RefObject } from "react";
-import type { RemoteDesktopClient, RemoteMediaStatus } from "../api/remote-desktop";
+import type { CSSProperties } from "react";
+import type { RemoteDesktopClient, RemoteDesktopDataLane, RemoteMediaStatus } from "../api/remote-desktop";
 import { openRemoteMedia, RemotePublisherStatusError, type RemoteMediaState, type RemoteMediaViewer } from "./remote-desktop-media";
 
-export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, displayId, zoom }: {
+/** D7: fit-to-window (default) or the remote screen at its original pixel size. */
+export function remoteFrameStyle(fit: boolean, width?: number, height?: number): CSSProperties {
+  const ratio = typeof window !== "undefined" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+  if (fit || !width || !height) return { width: "100%", height: "100%", maxWidth: "none", objectFit: "contain", display: "block" };
+  return { width: `${width / ratio}px`, height: `${height / ratio}px`, maxWidth: "none", objectFit: "contain", display: "block", flex: "none" };
+}
+
+export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, onDataChannel, displayId, fit, width, height }: {
   client: RemoteDesktopClient; deviceId: string; sessionId: string;
-  videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; zoom: number;
+  videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; fit: boolean; width?: number; height?: number;
+  onDataChannel?(lane: RemoteDesktopDataLane | null): void;
   onState(value: RemoteMediaState, error?: string, status?: number): void;
   onFrame(width: number, height: number): void;
   onLegacy(): void;
   onStatus(status: RemoteMediaStatus | null): void;
 }) {
-  const callbacks = useRef({ onState, onFrame, onLegacy, onStatus });
-  callbacks.current = { onState, onFrame, onLegacy, onStatus };
+  const callbacks = useRef({ onState, onFrame, onLegacy, onStatus, onDataChannel });
+  callbacks.current = { onState, onFrame, onLegacy, onStatus, onDataChannel };
   const previousClose = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     const abort = new AbortController();
@@ -37,6 +46,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
         state: (state, error, status) => { if (!abort.signal.aborted) callbacks.current.onState(state, error, status); },
         frame: (width, height) => { if (!abort.signal.aborted) callbacks.current.onFrame(width, height); },
         renew: negotiate,
+        dataChannel: (lane) => { callbacks.current.onDataChannel?.(abort.signal.aborted ? null : lane); },
       }, abort.signal);
     })().catch((error: unknown) => {
       if (abort.signal.aborted) return;
@@ -46,9 +56,10 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
     });
     return () => {
       abort.abort();
+      callbacks.current.onDataChannel?.(null);
       previousClose.current = start.then(async () => { await viewer?.close(); });
     };
   }, [client, deviceId, sessionId, videoRef, displayId]);
-  return <video ref={videoRef} data-remote-video autoPlay muted playsInline
-    style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%`, maxWidth: "none", objectFit: "contain", display: "block" }} />;
+  // No canvas copy: the SDK attaches the decoded MediaStream to this element directly (D5).
+  return <video ref={videoRef} data-remote-video autoPlay muted playsInline style={remoteFrameStyle(fit, width, height)} />;
 }

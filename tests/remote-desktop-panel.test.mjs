@@ -14,13 +14,42 @@ test("desktop fills a dedicated portal, preserves aspect ratio and uses continuo
   assert.equal(view.image().style.objectFit, "contain");
   assert.equal(view.log.httpFrames, 0);
   assert.equal(document.body.style.overflow, "hidden");
-  const buttons = [...view.screen().querySelectorAll("button")].map((button) => button.textContent);
-  assert.deepEqual(buttons, ["全屏", "退出桌面"]);
+  const buttons = [...view.screen().querySelectorAll("button")].map((button) => button.textContent || button.getAttribute("aria-label"));
+  assert.deepEqual(buttons, ["原始大小", "全屏", "退出桌面"]);
   await view.fire(view.image(), new window.Event("load"));
   assert.deepEqual(view.log.acknowledgements, [1], "capture credit follows actual image load");
   await view.unmount();
   assert.equal(document.body.style.overflow, "");
   assert.deepEqual(view.log.closes, ["session-stream"]);
+});
+
+test("D6/D7: local OS cursor over the picture, no zoom select, one fit/original icon toggle", async () => {
+  const view = await mount();
+  const stage = view.screen().querySelector("[data-remote-stage]");
+  assert.equal(stage.style.cursor, "default", "the controller's own cursor is never hidden");
+  assert.equal(view.screen().querySelector("select[aria-label='画面缩放']"), null);
+  assert.equal(view.screen().querySelectorAll("[data-remote-cursor]").length, 0, "no remote cursor is drawn");
+  const toggle = view.screen().querySelector("[data-remote-fit-toggle]");
+  assert.equal(toggle.getAttribute("title"), "原始大小");
+  assert.equal(view.image().style.width, "100%", "fit to window by default");
+  await view.fire(toggle, new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(toggle.getAttribute("title"), "适应窗口");
+  assert.equal(toggle.getAttribute("aria-pressed"), "true");
+  assert.match(view.image().style.width, /px$/, "original size uses the frame's own pixels");
+  assert.equal(stage.style.overflow, "auto");
+  await view.fire(toggle, new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(view.image().style.width, "100%");
+});
+
+test("goal 6: view-only access and per-minute billing from the gateway are shown read-only; input is not sent", async () => {
+  const view = await mount();
+  await act(async () => view.handlers().session({ access: { input_allowed: false, audio: false }, billing: { per_minute: 0.096, currency: "CNY", charged_minutes: 3 } }));
+  assert.equal(view.screen().querySelector("[data-remote-view-only]").textContent, "对方仅允许查看");
+  assert.equal(view.screen().querySelector("[data-remote-billing]").textContent, "按分钟从账户余额扣费 · ¥0.096/分钟 · 已计 3 分钟");
+  const before = view.log.inputs.filter((input) => input.kind !== "release_all").length;
+  await view.pointer("pointerdown", 260, 140);
+  await view.key("keydown", "a");
+  assert.equal(view.log.inputs.filter((input) => input.kind !== "release_all").length, before, "view only: no input leaves the viewer");
 });
 
 test("pending target consent cannot display even an injected frame or emit input", async () => {

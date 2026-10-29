@@ -113,6 +113,14 @@ const SOURCE = {
   k104: "这台电脑尚未允许辅助功能，控制已停止。请在电脑上允许 OceanLeo 使用辅助功能后重新连接。",
   k105: "这台电脑暂时无法执行键鼠输入，控制已停止。请在电脑上检查 OceanLeo 后重新连接，不要重复提交未确认的操作。",
   k106: "电脑无法确认按键已释放，控制已停止。请在电脑上检查按键状态后重新连接，不要重复提交未确认的操作。",
+  k107: "原始大小",
+  k108: "对方仅允许查看",
+  k109: "对方仅允许查看，输入没有发送。",
+  k110: "按分钟从账户余额扣费 · {price}/分钟 · 已计 {minutes} 分钟",
+  k111: "账户余额不足一分钟的远程桌面费用，请充值后再连接。",
+  k112: "账户余额已用完，远程桌面已断开。充值后可重新连接。",
+  k113: "已达到你设置的每日消费上限，远程桌面已断开。",
+  k114: "暂时无法从账户余额扣费，远程桌面已断开。请稍后重新连接。",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -223,6 +231,14 @@ const EN: Messages = {
   k104: "This computer has not allowed Accessibility. Control has stopped. Allow OceanLeo to use Accessibility on the computer, then reconnect.",
   k105: "This computer cannot currently perform mouse or keyboard input. Control has stopped. Check OceanLeo on the computer before reconnecting. Do not repeat unconfirmed actions.",
   k106: "The computer cannot confirm that held input was released. Control has stopped. Check the input state on the computer before reconnecting. Do not repeat unconfirmed actions.",
+  k107: "Original size",
+  k108: "View only",
+  k109: "The other computer allows viewing only. Your input was not sent.",
+  k110: "Billed per minute from your account balance · {price}/min · {minutes} min so far",
+  k111: "Your balance does not cover one minute of remote desktop. Top up, then connect again.",
+  k112: "Your balance ran out, so the remote desktop was disconnected. Top up to reconnect.",
+  k113: "You reached your daily spending limit, so the remote desktop was disconnected.",
+  k114: "Your balance cannot be charged right now, so the remote desktop was disconnected. Please reconnect later.",
 };
 
 const ZH_TW: Messages = {
@@ -331,6 +347,14 @@ const ZH_TW: Messages = {
   k104: "這台電腦尚未允許輔助使用，控制已停止。請在電腦上允許 OceanLeo 使用輔助使用後重新連線。",
   k105: "這台電腦暫時無法執行鍵鼠輸入，控制已停止。請在電腦上檢查 OceanLeo 後重新連線，不要重複提交未確認的操作。",
   k106: "電腦無法確認按鍵已釋放，控制已停止。請在電腦上檢查按鍵狀態後重新連線，不要重複提交未確認的操作。",
+  k107: "原始大小",
+  k108: "對方僅允許檢視",
+  k109: "對方僅允許檢視，輸入沒有送出。",
+  k110: "按分鐘從帳戶餘額扣費 · {price}/分鐘 · 已計 {minutes} 分鐘",
+  k111: "帳戶餘額不足一分鐘的遠端桌面費用，請儲值後再連線。",
+  k112: "帳戶餘額已用完，遠端桌面已中斷。儲值後可重新連線。",
+  k113: "已達到你設定的每日消費上限，遠端桌面已中斷。",
+  k114: "暫時無法從帳戶餘額扣費，遠端桌面已中斷。請稍後重新連線。",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(

@@ -132,6 +132,44 @@ export class RemoteInputScheduler {
     this.tick();
   }
 
+  /**
+   * Data-channel lane (D4): true only when every WebSocket input was written, accepted AND
+   * executed, so a faster peer-to-peer message can never overtake an older gateway one (the
+   * computer drops any seq at or below the last it ran).
+   */
+  drained(): boolean {
+    return !this.ended && !this.handoff && !this.queue.length && !this.retries.length && !this.outstanding.size && this.executed >= this.sequence;
+  }
+
+  /** Any key or button this session still holds (either lane). */
+  holding(): boolean { return this.heldKeys.size > 0 || this.heldButtons.size > 0; }
+
+  /** One seq space for both lanes: the data channel claims the next number, the gateway path continues above it. */
+  claimSequence(): number {
+    this.sequence += 1;
+    // Peer input has no gateway receipt; the gateway path only proves its own seqs.
+    this.executed = this.sequence;
+    return this.sequence;
+  }
+
+  /** Track press state of input sent on the other lane so emergency release stays complete. */
+  noteSent(action: RemoteDesktopAction): void {
+    const key = action.key ?? "", button = action.button ?? "left";
+    if (action.kind === "key_down") this.heldKeys.add(key);
+    if (action.kind === "key_up") this.heldKeys.delete(key);
+    if (action.kind === "pointer_down") this.heldButtons.add(button);
+    if (action.kind === "pointer_up") this.heldButtons.delete(button);
+    if (action.kind === "release_all") { this.heldKeys.clear(); this.heldButtons.clear(); }
+  }
+
+  /** A final refusal (e.g. `input_not_allowed`: the computer allows viewing only). Never retried. */
+  refused(seq: number): boolean {
+    if (!this.outstanding.has(seq)) return false;
+    this.outstanding.delete(seq);
+    this.tick();
+    return true;
+  }
+
   executedThrough(seq: number): void {
     if (!Number.isSafeInteger(seq) || seq < 0 || seq > this.sequence) { this.fail("response_malformed"); return; }
     this.executed = Math.max(this.executed, seq);

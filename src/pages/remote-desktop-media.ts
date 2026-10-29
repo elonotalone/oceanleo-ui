@@ -1,6 +1,6 @@
-import { prepareEngine, type ArtcEngine, type ArtcSdk } from "../shell/messages/call/engine/sdk";
-import { loadRemoteArtcSdk } from "./remote-desktop-sdk";
-import type { RemoteMediaCredentials } from "../api/remote-desktop";
+import { prepareEngine, PUBLISH_STATE, type ArtcEngine } from "../shell/messages/call/engine/sdk";
+import { loadRemoteArtcSdk, type RemoteArtcSdk } from "./remote-desktop-sdk";
+import type { RemoteDesktopDataLane, RemoteMediaCredentials } from "../api/remote-desktop";
 
 /** A remote viewer owns a separate receive-only engine; never reuse the call singleton. */
 export type RemoteMediaState = "joining" | "waiting_frame" | "playing" | "reconnecting" | "error";
@@ -11,6 +11,86 @@ export interface RemoteMediaHandlers {
   state(value: RemoteMediaState, error?: string, status?: number): void;
   frame(width: number, height: number): void;
   renew(): Promise<RemoteMediaCredentials>;
+  /** D4: the viewer's published ARTC data channel, or null when it is (no longer) usable. */
+  dataChannel?(lane: RemoteDesktopDataLane | null): void;
+}
+
+/** The engine surface the data-channel lane needs (index.d.ts:1178 setParameter, :1183 sendDataChannelMessage, AliRtcScreenShareStartConfig.videoTrack). */
+type DataChannelEngine = ArtcEngine & {
+  setParameter?(parameter: string): void;
+  sendDataChannelMessage?(message: unknown): void;
+  startScreenShare(config?: { audio?: boolean; videoTrack?: MediaStreamTrack }): Promise<void>;
+};
+
+/**
+ * ARTC data channels need the SENDER to be publishing a stream ("发送消息需正在推流"). The viewer
+ * never publishes a microphone, camera or its own screen: it publishes this synthetic 16x16 black
+ * track as its *screen-share* track (uid = the viewer descriptor's `user_id`), repainted once a
+ * second so the encoder keeps a live stream. Absent canvas capture: no data channel (WS input).
+ */
+export function syntheticScreenTrack(): { track: MediaStreamTrack; stop(): void } | null {
+  if (typeof document === "undefined") return null;
+  try {
+    const canvas = document.createElement("canvas") as HTMLCanvasElement & { captureStream?(rate?: number): MediaStream };
+    canvas.width = 16; canvas.height = 16;
+    const context = canvas.getContext("2d");
+    const track = canvas.captureStream?.(1).getVideoTracks()[0];
+    if (!context || !track) return null;
+    const paint = () => { context.fillStyle = "#000"; context.fillRect(0, 0, 16, 16); };
+    paint();
+    const timer = setInterval(paint, 1000);
+    return { track, stop() { clearInterval(timer); track.stop(); } };
+  } catch { return null; }
+}
+
+/*
+ * D5 lowest playout delay. The SDK does not expose its RTCPeerConnection, so while a viewer is
+ * open the prototype records the connections that get a remote description; only receivers whose
+ * track is this <video>'s screen track get `jitterBufferTarget = 0` (Chromium/WebView2, Safari
+ * 18+/WKWebView) or the older `playoutDelayHint = 0`. Other calls' receivers are never touched.
+ */
+const recordedPeers = new Set<RTCPeerConnection>();
+let recorders = 0;
+let originalSetRemote: RTCPeerConnection["setRemoteDescription"] | null = null;
+function recordPeers(): () => void {
+  const Peer = typeof RTCPeerConnection === "function" ? RTCPeerConnection : null;
+  if (!Peer) return () => {};
+  if (recorders++ === 0) {
+    const original = Peer.prototype.setRemoteDescription;
+    originalSetRemote = original;
+    Peer.prototype.setRemoteDescription = function (this: RTCPeerConnection, ...args: Parameters<RTCPeerConnection["setRemoteDescription"]>) {
+      recordedPeers.add(this);
+      return original.apply(this, args);
+    } as RTCPeerConnection["setRemoteDescription"];
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--recorders === 0) {
+      if (originalSetRemote) Peer.prototype.setRemoteDescription = originalSetRemote;
+      originalSetRemote = null;
+      recordedPeers.clear();
+    }
+  };
+}
+const tunedReceivers = new WeakSet<object>();
+export function lowerPlayoutDelay(video: HTMLVideoElement, peers: Iterable<{ getReceivers?(): RTCRtpReceiver[]; connectionState?: string }> = recordedPeers): number {
+  const stream = video.srcObject as { getVideoTracks?(): MediaStreamTrack[] } | null;
+  const ids = new Set((stream?.getVideoTracks?.() ?? []).map((track) => track.id));
+  let tuned = 0;
+  if (!ids.size) return tuned;
+  for (const peer of peers) {
+    if (peer.connectionState === "closed") { recordedPeers.delete(peer as RTCPeerConnection); continue; }
+    for (const receiver of peer.getReceivers?.() ?? []) {
+      if (!receiver.track || !ids.has(receiver.track.id) || tunedReceivers.has(receiver)) continue;
+      const tunable = receiver as unknown as { jitterBufferTarget?: number | null; playoutDelayHint?: number | null };
+      try { if ("jitterBufferTarget" in tunable) tunable.jitterBufferTarget = 0; else tunable.playoutDelayHint = 0; } catch { /* browser keeps its default */ }
+      tunedReceivers.add(receiver);
+      tuned++;
+    }
+  }
+  return tuned;
 }
 
 const PUBLISHER_ERROR_CODES: ReadonlySet<string> = new Set([
@@ -54,11 +134,31 @@ export async function openRemoteMedia(
   video: HTMLVideoElement,
   handlers: RemoteMediaHandlers,
   signal: AbortSignal,
-  sdkLoader: () => Promise<ArtcSdk> = loadRemoteArtcSdk,
+  sdkLoader: () => Promise<RemoteArtcSdk> = loadRemoteArtcSdk,
+  inputTrack: typeof syntheticScreenTrack = syntheticScreenTrack,
 ): Promise<RemoteMediaViewer> {
   const sdk = await sdkLoader();
   if (signal.aborted) throw new Error("aborted");
-  const engine: ArtcEngine = sdk.createEngine();
+  const engine = sdk.createEngine() as DataChannelEngine;
+  const releasePeers = recordPeers();
+  // Peer input only when the gateway granted it for this controller and the SDK can carry it.
+  const wantsDataChannel = credentials.data_channel_input === true && typeof sdk.dataChannelMessage === "function"
+    && typeof engine.setParameter === "function" && typeof engine.sendDataChannelMessage === "function";
+  let laneOpen = false;
+  let synthetic: ReturnType<typeof syntheticScreenTrack> = null;
+  const encoder = new TextEncoder();
+  const setLane = (open: boolean) => {
+    if (open === laneOpen || (open && closed)) return;
+    laneOpen = open;
+    handlers.dataChannel?.(open ? {
+      send(payload: string) {
+        if (closed || !laneOpen) return false;
+        const bytes = encoder.encode(payload);
+        engine.sendDataChannelMessage!(sdk.dataChannelMessage!(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer));
+        return true;
+      },
+    } : null);
+  };
   const lifetime = new AbortController();
   let closed = false, joining = false, closePromise: Promise<void> | null = null;
   let refreshPromise: Promise<void> | null = null;
@@ -71,11 +171,15 @@ export async function openRemoteMedia(
   const on = (name: string, fn: (...args: any[]) => void) => { listeners.push([name, fn]); engine.on(name, fn); };
   const close = (): Promise<void> => {
     if (closePromise) return closePromise;
+    setLane(false);
     closed = true;
+    releasePeers();
+    synthetic?.stop(); synthetic = null;
     lifetime.abort();
     clearInterval(watchdog); clearTimeout(renewal); clearTimeout(expiry);
     signal.removeEventListener("abort", abort);
     video.removeEventListener("timeupdate", fallbackFrame);
+    video.removeEventListener("loadedmetadata", playMuted);
     if (frameCallback !== null) video.cancelVideoFrameCallback?.(frameCallback);
     for (const [name, fn] of listeners) engine.off?.(name, fn);
     video.srcObject = null;
@@ -99,7 +203,7 @@ export async function openRemoteMedia(
     // Notify on every decoded frame so display-switch geometry can gate input even
     // when two displays happen to have identical encoded dimensions.
     handlers.frame(video.videoWidth, video.videoHeight);
-    if (!playing) { playing = true; handlers.state("playing"); }
+    if (!playing) { playing = true; lowerPlayoutDelay(video); handlers.state("playing"); }
   };
   const fallbackFrame = () => {
     if (video.currentTime === lastTime) return;
@@ -148,6 +252,9 @@ export async function openRemoteMedia(
   };
   signal.addEventListener("abort", abort, { once: true });
   video.muted = true; video.autoplay = true; video.playsInline = true;
+  // A webview whose autoplay policy ignored the muted autoplay attribute still starts here.
+  const playMuted = () => { void Promise.resolve().then(() => video.play?.()).catch(() => {}); };
+  video.addEventListener("loadedmetadata", playMuted);
   if (video.requestVideoFrameCallback) frameCallback = video.requestVideoFrameCallback(watchFrame);
   else video.addEventListener("timeupdate", fallbackFrame);
   on("remoteTrackAvailableNotify", (uid: string, _audio: number, track: number) => subscribe(uid, track));
@@ -155,10 +262,11 @@ export async function openRemoteMedia(
   on("remoteUserOffLineNotify", (uid: string) => {
     if (uid === credentials.publisher_id && !closed) { playing = false; handlers.state("reconnecting"); }
   });
+  on("dataPublishStateChanged", (_previous: number, next: number) => { if (!closed) setLane(next === PUBLISH_STATE.published); });
   on("connectionStatusChange", (status: number) => {
     if (closed) return;
     if (status === 5) fail("media_connection_failed");
-    else if (status === 4 || status === 1) { playing = false; handlers.state("reconnecting"); }
+    else if (status === 4 || status === 1) { playing = false; setLane(false); handlers.state("reconnecting"); }
   });
   on("authInfoWillExpire", () => { void renew(); });
   on("authInfoExpired", () => { void renew(); });
@@ -173,6 +281,12 @@ export async function openRemoteMedia(
     handlers.state("joining");
     scheduleRenew(credentials.expires_at);
     await untilAborted(prepareEngine(engine, { autoSubscribeAudio: false }), lifetime.signal);
+    // index.d.ts ParameterData: documented publisher-side data channel; it rides the synthetic track below.
+    let dataChannelEnabled = false;
+    if (wantsDataChannel) {
+      try { engine.setParameter!(JSON.stringify({ data: { enablePubDataChannel: true, enableSubDataChannel: false } })); dataChannelEnabled = true; }
+      catch { /* input stays on the gateway path */ }
+    }
     await untilAborted(engine.publishLocalAudioStream(false), lifetime.signal);
     await untilAborted(engine.publishLocalVideoStream(false), lifetime.signal);
     await untilAborted(engine.publishLocalScreenShareStream?.(false), lifetime.signal);
@@ -184,6 +298,21 @@ export async function openRemoteMedia(
     if (closed) throw new Error("aborted");
     if (!playing) handlers.state("waiting_frame");
     for (const uid of engine.getOnlineRemoteUsers?.() ?? []) subscribe(uid);
+    if (dataChannelEnabled) {
+      // The custom track first, then publish: with a local screen stream present the SDK never
+      // falls back to getDisplayMedia. Any failure leaves input on the gateway path; video is unaffected.
+      synthetic = inputTrack();
+      if (synthetic) {
+        try {
+          await untilAborted(engine.startScreenShare({ audio: false, videoTrack: synthetic.track }), lifetime.signal);
+          await untilAborted(engine.publishLocalScreenShareStream?.(true), lifetime.signal);
+        } catch (error) {
+          if (closed) throw error;
+          synthetic.stop(); synthetic = null;
+          void Promise.resolve().then(() => engine.stopScreenShare()).catch(() => {});
+        }
+      }
+    }
     scheduleRenew(credentials.expires_at);
     return { close };
   } catch (error) {

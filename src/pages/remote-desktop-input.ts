@@ -342,6 +342,16 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "revoked":
     case "controller_revoked":
       return "访问权限已撤销。";
+    case "insufficient_balance":
+      return "账户余额不足一分钟的远程桌面费用，请充值后再连接。";
+    case "balance_exhausted":
+      return "账户余额已用完，远程桌面已断开。充值后可重新连接。";
+    case "spend_limit_reached":
+      return "已达到你设置的每日消费上限，远程桌面已断开。";
+    case "billing_unavailable":
+      return "暂时无法从账户余额扣费，远程桌面已断开。请稍后重新连接。";
+    case "input_not_allowed":
+      return "对方仅允许查看，输入没有发送。";
     case "denied":
       return "这台电脑拒绝了请求。";
     case "request_expired":

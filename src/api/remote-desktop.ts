@@ -29,6 +29,31 @@ export interface RemoteMediaCredentials {
   microphone: false;
   display_id?: string;
   track: "screen";
+  /**
+   * D4: the gateway minted this viewer token with data-channel publish permission and the
+   * computer listens for input on the session's ARTC data channel (and allows input).
+   * Absent/false: input stays on the gateway WebSocket.
+   */
+  data_channel_input?: boolean;
+}
+
+/** What the controlled computer allows (its 允许访问 options, enforced there). */
+export interface RemoteDesktopAccess {
+  input_allowed: boolean;
+  audio: boolean;
+}
+
+/** Per-minute metering of the controller's balance while a session is live (gateway R3). */
+export interface RemoteDesktopBilling {
+  per_minute: number;
+  currency: "CNY" | "USD";
+  charged_minutes: number;
+}
+
+/** Access + billing as last reported; either may be null (legacy gateway/computer). */
+export interface RemoteDesktopSessionInfo {
+  access: RemoteDesktopAccess | null;
+  billing: RemoteDesktopBilling | null;
 }
 
 export interface RemoteMediaStatus {
@@ -38,7 +63,9 @@ export interface RemoteMediaStatus {
   displays?: Array<{ display_id: string; label: string; width: number; height: number }>;
   metrics?: RemoteMediaMetrics;
 }
-const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_frames", "capture_idle", "capture_errors", "capture_us", "capture_max_us", "capture_lock_wait_us", "capture_lock_max_us", "last_capture_age_ms", "pushes", "push_errors", "repeated_pushes", "empty_ticks", "push_us", "push_max_us", "push_lock_wait_us", "push_lock_max_us", "sdk_samples", "sdk_age_ms", "sdk_capture_fps", "sdk_encode_fps", "sdk_sent_fps", "sdk_sent_kbps", "sdk_rtt_ms", "sdk_send_bytes", "first_capture_ms", "first_push_ms", "joined_ms", "first_encoded_stats_ms"] as const;
+const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_frames", "capture_idle", "capture_errors", "capture_us", "capture_max_us", "capture_lock_wait_us", "capture_lock_max_us", "last_capture_age_ms", "pushes", "push_errors", "repeated_pushes", "empty_ticks", "push_us", "push_max_us", "push_lock_wait_us", "push_lock_max_us", "sdk_samples", "sdk_age_ms", "sdk_capture_fps", "sdk_encode_fps", "sdk_sent_fps", "sdk_sent_kbps", "sdk_rtt_ms", "sdk_send_bytes", "first_capture_ms", "first_push_ms", "joined_ms", "first_encoded_stats_ms",
+  // D4 receipt: highest data-channel seq the computer accepted (R1a/R1b publish it; absent = unproven lane).
+  "dc_input_seq"] as const;
 /** Optional fixed numeric diagnostics only; never publisher tokens or arbitrary text. */
 export type RemoteMediaMetrics = { version: 1 } & Partial<Record<typeof MEDIA_METRICS[number], number>>;
 export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
@@ -52,6 +79,8 @@ export interface RemoteDesktopStatus {
   session_id: string | null;
   /** Absence means legacy/unknown, not proof of a signed-in device. */
   availability?: DeviceAvailability;
+  access?: RemoteDesktopAccess | null;
+  billing?: RemoteDesktopBilling | null;
 }
 
 export interface RemoteDesktopSession {
@@ -59,6 +88,7 @@ export interface RemoteDesktopSession {
   state: "pending_consent" | "connecting";
   expires_at: string;
   transport?: "websocket-v2" | "http-v1";
+  billing?: RemoteDesktopBilling | null;
 }
 
 export interface RemoteDesktopFrameData {
@@ -148,11 +178,35 @@ export interface RemoteDesktopClient {
   ): Promise<RemoteDesktopApiResult<{ closed: true }>>;
 }
 
+/** The viewer's ARTC data channel to the computer (D4). `send` false/throw = unusable now. */
+export interface RemoteDesktopDataLane {
+  send(payload: string): boolean;
+}
+
+/** A trusted data channel must show each send in `metrics.dc_input_seq` within this window. */
+export const PEER_RECEIPT_MS = 1500;
+
+/** Contract D4 bound: one JSON message per input, at most 1 KB. */
+export const DATA_CHANNEL_MAX_BYTES = 1024;
+
+/** Contract D4 message (field names fixed by the parent): `{"v":1,"sid","seq","a"}`. */
+export function dataChannelMessage(sessionId: string, seq: number, action: RemoteDesktopAction): string | null {
+  const text = JSON.stringify({ v: 1, sid: sessionId, seq, a: action });
+  return new TextEncoder().encode(text).byteLength <= DATA_CHANNEL_MAX_BYTES ? text : null;
+}
+
 export interface RemoteDesktopStream {
   releaseForHandoff(): Promise<void>;
   finishHandoff(): void;
   send(action: RemoteDesktopAction): boolean;
   acknowledgeFrame(sequence: number): void;
+  /**
+   * Input goes peer-to-peer while a lane is attached and the gateway path is drained; the
+   * WebSocket path stays the automatic fallback. `null` detaches (lane broke or video ended).
+   */
+  attachDataChannel?(lane: RemoteDesktopDataLane | null): void;
+  /** Which path the last input took (diagnostics/UI only). */
+  inputPath?(): "data_channel" | "websocket";
   close(): void;
 }
 
@@ -165,6 +219,23 @@ export interface RemoteDesktopStreamHandlers {
   error(code: string): void;
   /** Transient pressure keeps the media/session alive; not a terminal error. */
   congestion?(busy: boolean): void;
+  /** Access/billing from the state snapshot (only when the gateway sends them). */
+  session?(info: RemoteDesktopSessionInfo): void;
+  /** The computer refused input because it allows viewing only (never retried). */
+  inputRefused?(code: "input_not_allowed"): void;
+}
+
+export function parseRemoteAccess(data: unknown): RemoteDesktopAccess | null {
+  if (!isRecord(data) || typeof data.input_allowed !== "boolean") return null;
+  return { input_allowed: data.input_allowed, audio: data.audio === true };
+}
+
+export function parseRemoteBilling(data: unknown): RemoteDesktopBilling | null {
+  if (!isRecord(data) || (data.currency !== "CNY" && data.currency !== "USD")) return null;
+  const { per_minute: price, charged_minutes: minutes } = data;
+  if (typeof price !== "number" || !Number.isFinite(price) || price < 0) return null;
+  if (typeof minutes !== "number" || !Number.isSafeInteger(minutes) || minutes < 0) return null;
+  return { per_minute: price, currency: data.currency, charged_minutes: minutes };
 }
 
 /** Fixed, bounded binary envelope; dimensions are of the encoded frame. */
@@ -197,6 +268,60 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let pendingFrameAck: number | null = null;
   let writeFailed = false;
   let handoff: Promise<void> | null = null;
+  let lane: RemoteDesktopDataLane | null = null;
+  let lastPath: "data_channel" | "websocket" = "websocket";
+  /*
+   * The data channel has no per-message reply, so it is used only once the computer proved it
+   * receives it: a harmless `release_all` probe (sent only while nothing is held) must show up in
+   * the publisher's `metrics.dc_input_seq`. Afterwards every peer send must be confirmed within
+   * PEER_RECEIPT_MS, else the lane is dropped and input continues on the gateway path (unconfirmed
+   * peer input is never replayed). Without that metric the lane is never trusted: WS only.
+   */
+  let peerTrusted = false, peerProbe = 0, peerReceipt = 0, peerSent = 0, peerSentAt = 0;
+  const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; };
+  const peerHealthy = (now: number) => {
+    if (peerTrusted && peerSent > peerReceipt && now - peerSentAt > PEER_RECEIPT_MS) dropLane();
+  };
+  const notePeerReceipt = (value: number | undefined) => {
+    if (value === undefined || value <= peerReceipt) return;
+    peerReceipt = value;
+    if (peerProbe && value >= peerProbe) peerTrusted = true;
+    peerSentAt = peerReceipt >= peerSent ? 0 : Date.now(); // progress restarts the window
+  };
+  const writePeer = (seq: number, action: RemoteDesktopAction): boolean => {
+    const message = dataChannelMessage(sessionId, seq, action);
+    if (!message || !lane) return false;
+    try { if (lane.send(message)) return true; } catch { /* broken channel */ }
+    dropLane();
+    return false;
+  };
+  /** Peer path: no stop-and-wait, no gateway hop. Returns false when it cannot carry this action now. */
+  const sendPeer = (action: RemoteDesktopAction): boolean => {
+    peerHealthy(Date.now());
+    if (!lane || !scheduler.drained()) return false;
+    if (!peerTrusted) {
+      if (!peerProbe && !scheduler.holding()) {
+        peerProbe = scheduler.claimSequence();
+        if (!writePeer(peerProbe, { kind: "release_all" })) peerProbe = 0;
+      }
+      return false;
+    }
+    const seq = scheduler.claimSequence();
+    const message = dataChannelMessage(sessionId, seq, action);
+    let sent = false;
+    if (message) { try { sent = lane.send(message); } catch { sent = false; } }
+    if (!sent) {
+      // A refused/oversize message never reached the computer: its seq is just a gap.
+      // A broken channel is detached; this and later input take the gateway path.
+      if (message) dropLane();
+      return false;
+    }
+    scheduler.noteSent(action);
+    if (peerSent <= peerReceipt) peerSentAt = Date.now();
+    peerSent = seq;
+    lastPath = "data_channel";
+    return true;
+  };
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
   const timings = new RemoteControlTimings(() => performance.now(), sample => handlers.controlTiming?.(sample));
@@ -216,6 +341,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   };
   const fail = (error: string) => {
     if (ended) return;
+    peerRelease();
     scheduler.emergencyRelease();
     dispose();
     settle!({ ok: false, error });
@@ -254,19 +380,31 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     finishHandoff() { if (!ended && state === "active") { scheduler.finishHandoff(); handoff = null; } },
     send(action) {
       if (!ready || state !== "active") return false;
+      if (sendPeer(action)) return true;
+      lastPath = "websocket";
       return scheduler.enqueue(action);
     },
+    attachDataChannel(next) { if (next !== lane) { dropLane(); lane = ended ? null : next; } },
+    inputPath: () => lastPath,
     acknowledgeFrame(value) {
       if (decoding?.sequence === value) decoding = null;
       pendingFrameAck = Math.max(pendingFrameAck ?? 0, value);
       if (send({ type: "frame_ack", sequence: pendingFrameAck })) pendingFrameAck = null;
     },
-    close() { scheduler.emergencyRelease(); dispose(); },
+    close() { peerRelease(); scheduler.emergencyRelease(); dispose(); },
   };
-  const abort = () => { if (!ended) { scheduler.emergencyRelease(); dispose(); settle!({ ok: false, error: "aborted" }); } };
+  /** Emergency release on both lanes: the peer one is fastest, the gateway one is the backstop (higher seq). */
+  const peerRelease = () => {
+    if (!lane || ended) return;
+    const message = dataChannelMessage(sessionId, scheduler.claimSequence(), { kind: "release_all" });
+    try { if (message) lane.send(message); } catch { /* the gateway release still follows */ }
+    dropLane();
+  };
+  const abort = () => { if (!ended) { peerRelease(); scheduler.emergencyRelease(); dispose(); settle!({ ok: false, error: "aborted" }); } };
   const timeout = setTimeout(() => fail("network_error"), 10_000);
   const inputPump = setInterval(() => {
     if (pendingFrameAck !== null && send({ type: "frame_ack", sequence: pendingFrameAck })) pendingFrameAck = null;
+    peerHealthy(Date.now());
     scheduler.tick();
   }, 25);
   const heartbeat = setInterval(() => {
@@ -294,6 +432,11 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     try { data = JSON.parse(event.data); } catch { fail("response_malformed"); return; }
     if (!data || typeof data !== "object") { fail("response_malformed"); return; }
     if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { timings.accepted(data.seq as number); scheduler.accepted(data.seq as number); return; }
+    if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && data.error === "input_not_allowed") {
+      // View-only computer: final, never retried; the session (and video) stays.
+      if (scheduler.refused(data.seq as number)) handlers.inputRefused?.("input_not_allowed");
+      return;
+    }
     if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && typeof data.error === "string" && typeof data.retry_after_ms === "number" && Number.isFinite(data.retry_after_ms)) {
       scheduler.rejected(data.seq as number, data.error, data.retry_after_ms); return;
     }
@@ -306,13 +449,16 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     }
     if (ended) return;
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }
+    if ("access" in data || "billing" in data) handlers.session?.({ access: parseRemoteAccess(data.access), billing: parseRemoteBilling(data.billing) });
     handlers.state(state, data.error === "stream_failed" ? "network_error" : typeof data.error === "string" ? data.error : undefined);
     if ("media" in data) {
       const media = data.media === null ? null : parseRemoteMedia(data.media);
       if (data.media !== null && !media) { fail("response_malformed"); return; }
-      handlers.media?.(media, parseRemoteMediaStatus(data.media_status));
+      const mediaStatus = parseRemoteMediaStatus(data.media_status);
+      notePeerReceipt(mediaStatus?.metrics?.dc_input_seq);
+      handlers.media?.(media, mediaStatus);
     }
-    if (state === "closed") dispose();
+    if (state === "closed") { dropLane(); dispose(); }
   };
   socket.onerror = () => fail("network_error");
   socket.onclose = () => { if (!ended) fail("network_error"); };
@@ -424,6 +570,8 @@ function parseStatus(data: unknown): RemoteDesktopStatus | null {
     online: data.online,
     session_id: sessionId,
     ...(["online", "signed_out", "offline"].includes(String(data.availability)) ? { availability: data.availability as DeviceAvailability } : {}),
+    ...("access" in data ? { access: parseRemoteAccess(data.access) } : {}),
+    ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}),
   };
 }
 
@@ -501,6 +649,7 @@ export const remoteDesktopClient: RemoteDesktopClient = {
         state: data.state,
         expires_at: typeof data.expires_at === "string" ? data.expires_at : "",
         ...(data.transport === "websocket-v2" || data.transport === "http-v1" ? { transport: data.transport } : {}),
+        ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}),
       },
       status: result.status,
     };

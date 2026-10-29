@@ -5,7 +5,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import path from 'node:path';
 
 export const UPSTREAM_SHA256 = 'ef9c768984463027dad8aa064bda7180d1fecb23c037902b5bc264797dc6c74d';
-export const PRIVACY_REVISION = 'oceanleo-remote-artc-7.3.8-private-v1';
+export const PRIVACY_REVISION = 'oceanleo-remote-artc-7.3.8-private-v2';
 const root = fileURLToPath(new URL('../', import.meta.url));
 export function privateSdk(source) {
   if (createHash('sha256').update(source).digest('hex') !== UPSTREAM_SHA256) throw Error('Unreviewed ARTC SDK digest');
@@ -45,11 +45,19 @@ export function privateSdk(source) {
   const scheduler = '  startSTSUpdateTask() {\n    return w(this, null, function* () {';
   if (source.split(scheduler).length !== 3) throw Error('Unexpected SDK diagnostic scheduler count');
   source = source.replaceAll(scheduler, '  startSTSUpdateTask() {\n    return; // OceanLeo: diagnostic STS requests disabled.\n    return w(this, null, function* () {');
+  // The RTS edge (artc://host/...) is reached over HTTP POST for subscribe, publish and data
+  // channel SDP. Upstream copies the *page* scheme, so a desktop webview served from
+  // http://tauri.localhost (Windows) would send the SDP and token in clear text to
+  // http://<edge>, which the desktop CSP also refuses. Media signalling is always HTTPS.
+  for (const name of ['e', 'i', 't']) {
+    replaceOnce(`(["http:", "https:"].indexOf(${name}) > -1 ? ${name} : "https:") + "//"`,
+      `"https://" /* OceanLeo: media signalling is always HTTPS, never the page scheme. */`);
+  }
   // A few RTS retry/error branches bypass all collectors and call console
   // directly with signed URLs. Shadow console in this module only; never
   // replace window.console or affect other app/call diagnostics.
   const consoleSink = 'const console = Object.freeze(Object.fromEntries(["log","info","debug","warn","error","trace","group","groupCollapsed","groupEnd","table","time","timeEnd","timeLog","assert","count","countReset","clear","dir","dirxml"].map(name => [name, () => undefined])));';
-  return `// Mechanically derived from aliyun-rtc-sdk@7.3.8; upstream SHA256 ${UPSTREAM_SHA256}.\n// See README.md and scripts/prepare-private-artc-sdk.mjs; media/signaling code unchanged.\n${consoleSink}\n${source}\nexport const OCEANLEO_REMOTE_PRIVACY = ${JSON.stringify(PRIVACY_REVISION)};\n`;
+  return `// Mechanically derived from aliyun-rtc-sdk@7.3.8; upstream SHA256 ${UPSTREAM_SHA256}.\n// See README.md and scripts/prepare-private-artc-sdk.mjs; media unchanged, RTS signalling pinned to HTTPS.\n${consoleSink}\n${source}\nexport const OCEANLEO_REMOTE_PRIVACY = ${JSON.stringify(PRIVACY_REVISION)};\n`;
 }
 export async function generate() {
   const source = await readFile(path.join(root, 'node_modules/aliyun-rtc-sdk/dist/aliyun-rtc-sdk.es.js'), 'utf8');

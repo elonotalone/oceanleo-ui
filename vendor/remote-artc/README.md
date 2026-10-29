@@ -19,7 +19,11 @@ diagnostic STS/upload scheduling, independent RTS signed-URL reporter, and
 ARMS error/health proxy. A module-local console sink suppresses direct RTS
 retry logs without modifying the application's global console.
 It does not change channel authentication,
-signaling, media decoding, subscriptions or RTC statistics events. The remote
+media decoding, subscriptions or RTC statistics events. One signalling change:
+the RTS edge SDP exchange (`artc://` subscribe / publish / data channel) always
+uses `https://`; upstream copied the page scheme, which inside the Windows
+desktop webview (`http://tauri.localhost`) meant clear-text SDP and tokens to
+`http://<edge>` (refused by the desktop CSP, so the viewer never got video). The remote
 viewer imports only this module and fails closed instead of loading an
 unpatched npm/CDN fallback. The existing call loader is unchanged.
 
