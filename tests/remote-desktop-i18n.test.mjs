@@ -116,8 +116,9 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
       import React from ${JSON.stringify(reactUrl)};
       export function PageHeader({ title }) { return React.createElement("h1", null, title); }
     `),
-    "./CloudComputersPage": dataModule(`
-      export function CloudComputersSection() { return null; }
+    "./AuthDialog": dataModule(`export function AuthDialog() { return null; }`),
+    "./devices/CloudDeviceGrid": dataModule(`
+      export function CloudDeviceGrid() { return null; }
       export function CloudComputersPage() { return null; }
     `),
     "../shell/cloud-computer/CreateComputerDialog": dataModule(`export function CreateComputerDialog() { return null; }`),

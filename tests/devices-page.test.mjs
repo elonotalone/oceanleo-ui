@@ -90,11 +90,21 @@ const cloudSectionStubUrl = dataModule(`
   export function CloudComputersSection() {
     return React.createElement("div", { "data-oceanleo-cc-section-stub": "1" });
   }
+  export const CloudDeviceGrid = CloudComputersSection;
   export function CloudComputersPage() {
     return null;
   }
 `);
 const nativeDialogsStubUrl = dataModule(`export function CreateComputerDialog() { return null; } export function ConnectServerDialog() { return null; }`);
+const authDialogStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function AuthDialog({onClose, onSuccess}) {
+    return React.createElement("div", {role: "dialog", "data-testid": "normal-auth-dialog"},
+      React.createElement("h2", null, "登录或注册"),
+      React.createElement("button", {onClick: onClose}, "取消登录"),
+      React.createElement("button", {onClick: onSuccess}, "完成登录"));
+  }
+`);
 
 const { DevicesPage } = await import(
   await compileModule("src/pages/DevicesPage.tsx", {
@@ -103,6 +113,8 @@ const { DevicesPage } = await import(
     "../ui": confirmDialogStubUrl,
     "./PageHeader": pageHeaderStubUrl,
     "./CloudComputersPage": cloudSectionStubUrl,
+    "./devices/CloudDeviceGrid": cloudSectionStubUrl,
+    "./AuthDialog": authDialogStubUrl,
     "../shell/cloud-computer/CreateComputerDialog": nativeDialogsStubUrl,
     "../shell/cloud-computer/ConnectServerDialog": nativeDialogsStubUrl,
   })
@@ -221,6 +233,120 @@ test("没有任何设备时显示独立空态和客户端配对入口", async ()
   await view.click(view.button("连接我的电脑"));
   assert.ok(document.querySelector('input[aria-label="8 位配对码"]'));
   view.cleanup();
+});
+
+test("unauthorized device read offers normal login instead of service/add remedies", async () => {
+  let signedIn = false;
+  let remoteRequests = 0;
+  const client = makeClient([], {async listDevices() {
+    return signedIn ? {ok: true, data: [makeDevice({device_name: "Fresh account computer"})]}
+      : {ok: false, status: 401, error: "unauthorized"};
+  }});
+  const view = await render(client, {currentUser: async () => ({known: false, userId: null}), remoteDesktopClient: {
+    async getStatus() { return {ok: false, status: 0}; },
+    async createSession() { remoteRequests++; throw new Error("login must not create remote sessions"); },
+  }});
+  try {
+    assert.ok(view.text().includes("请先登录"));
+    assert.equal(view.button("添加设备"), undefined);
+    assert.equal(view.button("连接我的电脑"), undefined);
+    assert.equal(view.host.querySelector('[data-oceanleo-cc-section-stub]'), null);
+    assert.equal(view.host.querySelector('[role="alert"]'), null);
+    assert.equal(client.calls.pair.length, 0);
+    assert.equal(remoteRequests, 0);
+    await view.click(view.button("登录"));
+    assert.ok(view.host.querySelector('[data-testid="normal-auth-dialog"]'));
+    assert.equal(client.calls.pair.length, 0);
+    signedIn = true;
+    await view.click(view.button("完成登录"));
+    assert.ok(view.text().includes("Fresh account computer"));
+    assert.equal(view.host.querySelector('[data-testid="normal-auth-dialog"]'), null);
+    assert.equal(remoteRequests, 0);
+  } finally { view.cleanup(); }
+});
+
+test("network/503/403 reads remain errors even when user identity is unknown", async () => {
+  for (const result of [{ok: false, error: "network_error", status: 0}, {ok: false, error: "unauthorized", status: 503}, {ok: false, error: "unauthorized", status: 403}]) {
+    const view = await render(makeClient([], {async listDevices() { return result; }}), {currentUser: async () => ({known: false, userId: null})});
+    try {
+      assert.ok(view.host.querySelector('[role="alert"]'));
+      assert.ok(!view.text().includes("请先登录"));
+      assert.equal(view.button("登录"), undefined);
+    } finally { view.cleanup(); }
+  }
+});
+
+test("known signout clears private dialogs and rejects late prior-account devices", async () => {
+  let userId = "owner-a";
+  let resolveOld;
+  let calls = 0;
+  const old = new Promise(resolve => { resolveOld = resolve; });
+  const view = await render(makeClient([], {async listDevices() {
+    calls++;
+    if (userId === "owner-b") return {ok: true, data: [makeDevice({device_name: "Fresh B computer"})]};
+    return calls === 1 ? {ok: true, data: [makeDevice({device_name: "Old private computer"})]} : old;
+  }}), {currentUser: async () => ({known: true, userId}), listIntervalMs: 5});
+  try {
+    await view.click(view.button("设置"));
+    assert.ok(document.querySelector('[data-device-dialog="settings"]'));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)); });
+    userId = null;
+    await act(async () => { window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", {detail: {userId: null}})); });
+    assert.equal(document.querySelector('[data-device-dialog="settings"]'), null);
+    assert.ok(view.text().includes("请先登录"));
+    await act(async () => { resolveOld({ok: true, data: [makeDevice({device_name: "Late private computer"})]}); });
+    await flush();
+    assert.ok(!view.text().includes("Old private computer"));
+    assert.ok(!view.text().includes("Late private computer"));
+    assert.equal(view.button("添加设备"), undefined);
+    userId = "owner-b";
+    await act(async () => { window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", {detail: {userId}})); });
+    await flush();
+    assert.ok(view.text().includes("Fresh B computer"));
+    assert.ok(!view.text().includes("Late private computer"));
+  } finally { view.cleanup(); }
+});
+
+test("authoritative polling 401 removes previous device cards and private dialogs", async () => {
+  let denied = false;
+  const client = makeClient([], {async listDevices() { return denied ? {ok: false, status: 401, error: "unauthorized"} : {ok: true, data: [makeDevice()]}; }});
+  const view = await render(client, {currentUser: async () => ({known: true, userId: "owner"}), listIntervalMs: 10});
+  try {
+    await view.click(view.button("设置"));
+    assert.ok(document.querySelector('[data-device-dialog="settings"]'));
+    denied = true;
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+    await flush();
+    assert.equal(document.querySelector('[data-device-dialog="settings"]'), null);
+    assert.equal(view.host.querySelector('[data-device-grid] article'), null);
+    assert.ok(view.text().includes("请先登录"));
+  } finally { view.cleanup(); }
+});
+
+test("a device read 401 closes an open remote viewer through its normal cleanup", async () => {
+  let denied = false;
+  let closes = 0;
+  const remote = {
+    async getStatus() { return {ok: true, data: {supported: true, enabled: true, online: true, availability: "online"}}; },
+    async createSession() { return {ok: true, data: {session_id: "fixture-session", state: "active", expires_at: ""}}; },
+    async getFrame() { return {ok: true, data: {state: "active", frame: null}}; },
+    async sendInput(_device, _session, seq) { return {ok: true, data: {accepted: true, seq}}; },
+    async closeSession() { closes++; return {ok: true, data: {closed: true}}; },
+  };
+  const cloudAgentClient = {async availability() { return {kind: "absent"}; }, async taskRun() { return {kind: "error"}; }, async control() { return {ok: false, run: null}; }, async standingGrant() { return null; }};
+  const client = makeClient([], {async listDevices() { return denied ? {ok: false, status: 401} : {ok: true, data: [makeDevice()]}; }});
+  const view = await render(client, {remoteDesktopClient: remote, cloudAgentClient, currentUser: async () => ({known: true, userId: "owner"}), listIntervalMs: 20});
+  try {
+    await view.click(view.button("进入桌面"));
+    assert.ok(document.querySelector('[data-oceanleo-remote-desktop]'));
+    denied = true;
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    await flush();
+    assert.equal(document.querySelector('[data-oceanleo-remote-desktop]'), null);
+    assert.ok(closes > 0);
+    assert.equal(new URL(window.location.href).searchParams.has("desktop"), false);
+    assert.ok(view.text().includes("请先登录"));
+  } finally { view.cleanup(); window.history.replaceState(null, "", "/devices"); }
 });
 
 test("device Settings opens a target details dialog, never an inline accordion", async () => {

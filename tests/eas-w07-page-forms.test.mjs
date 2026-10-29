@@ -102,7 +102,7 @@ const confirmStub = dataModule(`
 const facadeStub = dataModule(`export const devicesFacade = null;`);
 const cloudStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
-  export function CloudComputersSection({ autoFocus }) {
+  export function CloudDeviceGrid({ autoFocus }) {
     return React.createElement("div", { "data-stub": "cloud", "data-autofocus": String(Boolean(autoFocus)) });
   }
   export function CloudComputersPage() { return null; }
@@ -121,7 +121,8 @@ const { DevicesPage } = await import(
     "../facades/devices": facadeStub,
     "../i18n/ui/useUI": uiStub,
     "../ui": confirmStub,
-    "./CloudComputersPage": cloudStub,
+    "./AuthDialog": dataModule(`export function AuthDialog() { return null; }`),
+    "./devices/CloudDeviceGrid": cloudStub,
   })
 );
 

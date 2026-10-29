@@ -10,7 +10,8 @@ import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
 import { CreateComputerDialog } from "../shell/cloud-computer/CreateComputerDialog";
 import { ConnectServerDialog } from "../shell/cloud-computer/ConnectServerDialog";
-import { CloudComputersSection } from "./CloudComputersPage";
+import { CloudDeviceGrid } from "./devices/CloudDeviceGrid";
+import { AuthDialog } from "./AuthDialog";
 import { RemoteDesktopPanel, requestRemoteDesktopFullscreen } from "./RemoteDesktopPanel";
 import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
 import { DeviceCard, DeviceIcon, isComputer, type DeviceAvailability } from "./devices/DeviceCard";
@@ -88,6 +89,10 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [loginRequired, setLoginRequired] = useState(false);
+  const loginRequiredRef = useRef(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [loginRevision, setLoginRevision] = useState(0);
   const [connecting, setConnecting] = useState(false);
   const [adding, setAdding] = useState(false);
   const [pairCode, setPairCode] = useState("");
@@ -113,6 +118,23 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     order.current = ordered.map((device) => device.device_id);
     setDevices(ordered);
   }
+  function clearPrivateViews() {
+    generation.current += 1;
+    order.current = [];
+    setDevices([]); setRemoteStatus({}); setSettingsId(null); setTasksId(null); setRemoteOpenId(null); setDesktopTicket(null);
+    setConfirmRevoke(null); setAdding(false); setConnecting(false); setCreateCloud(false); setConnectServer(false);
+    setPairCode(""); setPairing(false); setPairError(null);
+    const url = new URL(window.location.href); url.searchParams.delete("desktop");
+    window.history.replaceState(window.history.state, "", url);
+    setAuthRevision((value) => value + 1);
+  }
+  function applyDeviceResult(result: Awaited<ReturnType<DevicesFacade["listDevices"]>>) {
+    if (!result.ok && (result.status === 401 || (!result.status && result.error === "unauthorized"))) {
+      clearPrivateViews(); loginRequiredRef.current = true; setLoginRequired(true); setPageError(null);
+    } else if (result.ok && result.data) {
+      showDevices(result.data); loginRequiredRef.current = false; setLoginRequired(false); setPageError(null);
+    } else setPageError(deviceErrorCopy(result.error, { limit: result.limit }));
+  }
 
   useEffect(() => {
     // Back/forward may show or hide the desktop; it never requests a session (no ticket).
@@ -125,8 +147,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     const ticket = generation.current;
     const result = await client.listDevices();
     if (ticket !== generation.current) return result;
-    if (result.ok && result.data) { showDevices(result.data); setPageError(null); }
-    else setPageError(deviceErrorCopy(result.error, { limit: result.limit }));
+    applyDeviceResult(result);
     return result;
   }
   useEffect(() => {
@@ -139,32 +160,27 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       const ticket = ++loadTicket;
+      const accountTicket = generation.current;
       try {
         const result = await client.listDevices();
-        if (!alive || ticket !== loadTicket) return;
-        if (result.ok && result.data) { showDevices(result.data); setPageError(null); }
-        else setPageError(deviceErrorCopy(result.error, { limit: result.limit }));
-      } catch { if (alive && ticket === loadTicket) setPageError(deviceErrorCopy("network_error")); }
+        if (!alive || ticket !== loadTicket || accountTicket !== generation.current) return;
+        applyDeviceResult(result);
+      } catch { if (alive && ticket === loadTicket && accountTicket === generation.current) setPageError(deviceErrorCopy("network_error")); }
       finally { if (alive && ticket === loadTicket) { setLoading(false); timer = setTimeout(load, listIntervalMs); } }
     }
-    function reset() {
-      generation.current += 1;
+    function reset(signedOut = false) {
+      loadTicket += 1;
       clearTimeout(timer);
-      order.current = [];
-      setDevices([]); setRemoteStatus({}); setSettingsId(null); setTasksId(null); setRemoteOpenId(null); setDesktopTicket(null);
-      const url = new URL(window.location.href); url.searchParams.delete("desktop");
-      window.history.replaceState(window.history.state, "", url);
-      setConfirmRevoke(null); setAdding(false); setConnecting(false); setCreateCloud(false); setConnectServer(false); setPairCode(""); setPairing(false); setLoading(true);
-      setAuthRevision((value) => value + 1);
-      void load();
+      clearPrivateViews(); setShowAuth(false); setPageError(null); loginRequiredRef.current = signedOut; setLoginRequired(signedOut); setLoading(!signedOut);
+      if (!signedOut) void load();
     }
     function settle(userId: string | null) {
       if (!alive) return;
       // Not learned yet: a sign-in names the account already shown; a sign-out clears it.
-      if (account === undefined && userId !== null) { account = userId; return; }
-      if (userId === account) return;
+      if (account === undefined && userId !== null) { account = userId; if (loginRequiredRef.current) reset(); return; }
+      if (userId === account) { if (userId !== null && loginRequiredRef.current) reset(); return; }
       account = userId;
-      reset();
+      reset(userId === null);
     }
     function onAccountChange(event: Event) {
       const detail = (event as CustomEvent<{ userId?: string | null }>).detail;
@@ -182,7 +198,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     return () => { alive = false; generation.current += 1; clearTimeout(timer); window.removeEventListener("oceanleo:auth-state", onAccountChange); };
     // `showDevices` only writes a ref and a setter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, listIntervalMs, currentUser]);
+  }, [client, listIntervalMs, currentUser, loginRevision]);
 
   const remoteTargetKey = useMemo(() => devices.filter(isComputer).slice(0, 20).map((item) => item.device_id).join(","), [devices]);
   useEffect(() => {
@@ -265,15 +281,17 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const selectedRemote = devices.find((item) => item.device_id === remoteOpenId && isComputer(item));
   // The same AI banner and 交还给 AI as from the task page, found through the computer's live session.
   const remoteAgent = useDeviceCloudAgent(selectedRemote?.device_id ?? null, settingsClient, cloudAgentClient);
+  const accountGeneration = generation.current;
 
   return <div className={variant === "pane" ? "min-h-0" : "mx-auto flex min-h-full w-full max-w-7xl flex-col px-5 py-7 sm:px-8"} data-oceanleo-devices-page data-devices-pane={variant === "pane" ? "" : undefined}>
-    <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div><button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button></header>
+    <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div>{!loginRequired && <button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button>}</header>
+    {loginRequired && <div role="status" className="mt-5 flex items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm"><span>{tt("请先登录")}</span><button type="button" className={DEVICE_PRIMARY_BUTTON} onClick={() => setShowAuth(true)}>{tt("登录")}</button></div>}
     {pageError && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(pageError)}</p>}
-    {remoteOpenId && !selectedRemote && !loading && !pageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><button type="button" onClick={closeDesktop} className="underline underline-offset-4">{tt("返回设备")}</button></div>}
+    {remoteOpenId && !selectedRemote && !loading && !loginRequired && !pageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><button type="button" onClick={closeDesktop} className="underline underline-offset-4">{tt("返回设备")}</button></div>}
     <div className="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid data-all-offline={devices.length > 0 && devices.every((item) => deviceAvailability(item, remoteStatus[item.device_id]) !== "online") ? "true" : "false"}>
       {loading ? <div className="min-h-[300px] animate-pulse rounded-[20px] bg-neutral-100" aria-label={tt("正在加载设备")} /> : devices.map((device) => <DeviceCard key={`${authRevision}-${device.device_id}`} device={device} client={settingsClient} availability={deviceAvailability(device, remoteStatus[device.device_id])} onSettings={() => setSettingsId(device.device_id)} onTasks={() => setTasksId(device.device_id)} onControl={() => openDesktop(device.device_id)} />)}
-      <CloudComputersSection key={`${authRevision}-${cloudRevision}`} client={cloudClient} variant="device-grid" autoFocus={initialTab === "cloud" || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("tab") === "cloud" || window.location.hash === "#cloud"))} />
-      {!loading && devices.length === 0 && <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[20px] border border-dashed border-neutral-200 px-5 py-10 text-center" data-device-connect-card>
+      {!loading && !loginRequired && <CloudDeviceGrid key={`${authRevision}-${cloudRevision}`} client={cloudClient} onUnauthorized={() => { if (accountGeneration === generation.current) applyDeviceResult({ ok: false, status: 401 }); }} autoFocus={initialTab === "cloud" || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("tab") === "cloud" || window.location.hash === "#cloud"))} />}
+      {!loading && !loginRequired && devices.length === 0 && <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[20px] border border-dashed border-neutral-200 px-5 py-10 text-center" data-device-connect-card>
         <DeviceIcon className="h-9 w-9 text-neutral-400" /><p className="mb-5 mt-4 text-base text-neutral-600">{tt(!loading && devices.length === 0 ? "连接你的电脑" : "添加设备")}</p>
         <button type="button" className={DEVICE_BUTTON} onClick={() => setConnecting(true)}>{tt("连接我的电脑")}</button>
       </div>}
@@ -290,5 +308,6 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     {confirmRevoke && <ConfirmDialog title={tt("撤销「{name}」？", { name: confirmRevoke.device_name })} body={tt("撤销后这台电脑立刻不再接收任何任务，需要重新配对。")} confirmLabel={tt("确认撤销")} danger onConfirm={() => revoke(confirmRevoke)} onCancel={() => setConfirmRevoke(null)} />}
     {createCloud && <CreateComputerDialog client={cloudClient} onClose={() => setCreateCloud(false)} onCreated={() => { setCreateCloud(false); setCloudRevision((value) => value + 1); }} />}
     {connectServer && <ConnectServerDialog client={cloudClient} onClose={() => setConnectServer(false)} onCreated={() => { setConnectServer(false); setCloudRevision((value) => value + 1); }} />}
+    {showAuth && <AuthDialog onClose={() => setShowAuth(false)} onSuccess={() => { setShowAuth(false); setLoginRevision((value) => value + 1); }} />}
   </div>;
 }

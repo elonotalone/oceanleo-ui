@@ -11,19 +11,24 @@ import { DeviceDialog, DEVICE_BUTTON, DEVICE_PRIMARY_BUTTON } from "./DeviceDial
 import { DeviceIcon } from "./DeviceCard";
 import { formatDeviceTime } from "./DeviceTasksDialog";
 import { WallpaperSurface } from "./DeviceCover";
+import { AuthDialog } from "../AuthDialog";
 
 const STATE_LABEL: Record<ComputerDisplayState, string> = { ready: "在线", offline: "离线", stopped: "已停机", unpaid: "欠费", provisioning: "正在开通", pending_install: "等待安装", pending_confirm: "待确认", error: "连接失败", gone: "已移除" };
 
 /** Paired local clients and cloud nodes share a card grid, not their authority. */
-export function CloudDeviceGrid({ client = cloudComputerApi, autoFocus = false }: { client?: CloudComputerClient; autoFocus?: boolean }) {
+export function CloudDeviceGrid({ client = cloudComputerApi, autoFocus = false, onUnauthorized }: { client?: CloudComputerClient; autoFocus?: boolean; onUnauthorized?: () => void }) {
   const tt = useUI();
   const [computers, setComputers] = useState<Computer[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loginRequired, setLoginRequired] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [resume, setResume] = useState<Computer | null>(null);
   const [revision, setRevision] = useState(0);
   const firstCard = useRef<HTMLElement | null>(null);
   const focused = useRef(false);
+  const unauthorized = useRef(onUnauthorized);
+  unauthorized.current = onUnauthorized;
   useEffect(() => { if (autoFocus && !focused.current && firstCard.current?.scrollIntoView) { focused.current = true; firstCard.current.scrollIntoView({ block: "start" }); } }, [autoFocus, computers]);
   useEffect(() => {
     let alive = true;
@@ -33,8 +38,16 @@ export function CloudDeviceGrid({ client = cloudComputerApi, autoFocus = false }
         const result = await client.listComputers();
         if (!alive) return;
         setComputers((result.items ?? []).filter((item) => computerDisplayState(item) !== "gone"));
+        setLoginRequired(false);
         setError(null);
-      } catch { if (alive) setError("云电脑暂时无法加载。"); }
+      } catch (cause) {
+        if (!alive) return;
+        const failure = cause as {status?: number; code?: string} | null;
+        if (failure?.status === 401 || (!failure?.status && failure?.code === "client_unauthorized")) {
+          setComputers([]); setSelectedId(null); setResume(null); setError(null); setLoginRequired(true);
+          unauthorized.current?.();
+        } else setError("云电脑暂时无法加载。");
+      }
       finally { if (alive) timer = setTimeout(refresh, 15_000); }
     }
     void refresh();
@@ -43,6 +56,7 @@ export function CloudDeviceGrid({ client = cloudComputerApi, autoFocus = false }
   const selected = computers.find((item) => item.id === selectedId);
   function updated() { setRevision((value) => value + 1); }
   return <>
+    {loginRequired && <div role="status" className="col-span-full flex items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm"><span>{tt("请先登录")}</span><button type="button" className={DEVICE_PRIMARY_BUTTON} onClick={() => setShowAuth(true)}>{tt("登录")}</button></div>}
     {error && <p role="alert" className="col-span-full rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(error)} <button type="button" onClick={updated} className="underline underline-offset-2">{tt("重试")}</button></p>}
     {computers.map((computer, index) => {
       const state = computerDisplayState(computer);
@@ -59,6 +73,7 @@ export function CloudDeviceGrid({ client = cloudComputerApi, autoFocus = false }
     })}
     {selected && <CloudDeviceDetails key={selected.id} computer={selected} client={client} onClose={() => setSelectedId(null)} onUpdated={updated} onResume={() => { setSelectedId(null); setResume(selected); }} />}
     {resume && <ConnectServerDialog key={resume.id} client={client} resumeComputer={resume} onClose={() => setResume(null)} onCreated={() => { setResume(null); updated(); }} />}
+    {showAuth && <AuthDialog onClose={() => setShowAuth(false)} onSuccess={() => { setShowAuth(false); updated(); }} />}
   </>;
 }
 

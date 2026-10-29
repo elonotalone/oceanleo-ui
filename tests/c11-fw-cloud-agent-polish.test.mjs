@@ -307,7 +307,8 @@ const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.
   "../i18n/ui/useUI": ttStub,
   "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
   "./PageHeader": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function PageHeader({ title }) { return React.createElement("h1", null, title); }`),
-  "./CloudComputersPage": dataModule(`export function CloudComputersSection() { return null; } export function CloudComputersPage() { return null; }`),
+  "./AuthDialog": dataModule(`export function AuthDialog() { return null; }`),
+  "./devices/CloudDeviceGrid": dataModule(`export function CloudDeviceGrid() { return null; } export function CloudComputersPage() { return null; }`),
   "../shell/cloud-computer/CreateComputerDialog": dataModule(`export function CreateComputerDialog() { return null; }`),
   "../shell/cloud-computer/ConnectServerDialog": dataModule(`export function ConnectServerDialog() { return null; }`),
 }));

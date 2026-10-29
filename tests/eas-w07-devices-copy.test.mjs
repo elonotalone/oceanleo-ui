@@ -67,9 +67,10 @@ const { DevicesPage } = await import(
         return React.createElement("div", { "data-testid": "confirm-dialog" }, title);
       }
     `),
-    "./CloudComputersPage": dataModule(`
+    "./AuthDialog": dataModule(`export function AuthDialog() { return null; }`),
+    "./devices/CloudDeviceGrid": dataModule(`
       import React from ${JSON.stringify(reactUrl)};
-      export function CloudComputersSection() { return null; }
+      export function CloudDeviceGrid() { return null; }
     `),
     "../shell/cloud-computer/CreateComputerDialog": dataModule(`export function CreateComputerDialog() { return null; }`),
     "../shell/cloud-computer/ConnectServerDialog": dataModule(`export function ConnectServerDialog() { return null; }`),

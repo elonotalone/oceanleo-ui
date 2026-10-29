@@ -105,12 +105,22 @@ const facadeStubUrl = dataModule(`
     async revokeDevice() { return { ok: true, data: null }; },
   };
 `);
+const authDialogStubUrl = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function AuthDialog({onClose, onSuccess}) {
+    return React.createElement("div", {role: "dialog", "data-testid": "normal-auth-dialog"},
+      React.createElement("button", {onClick: onClose}, "取消登录"),
+      React.createElement("button", {onClick: onSuccess}, "完成登录"));
+  }
+`);
 
 const { DevicesPage } = await import(
   await compileModule("src/pages/DevicesPage.tsx", {
     "../facades/devices": facadeStubUrl,
     "../i18n/ui/useUI": uiTextStubUrl,
     "../ui": confirmDialogStubUrl,
+    "./AuthDialog": authDialogStubUrl,
+    "../AuthDialog": authDialogStubUrl,
     "./PageHeader": pageHeaderStubUrl,
     "../contracts/domain-family": domainStubUrl,
     "../shell/cloud-computer/CreateComputerDialog": dialogStubUrl,
@@ -203,6 +213,61 @@ test("paired clients and real cloud rows use a single reference-style grid", asy
   assert.ok(connected.querySelector('a[href="/computers/cc_1?card=acp"]'), "Tasks uses existing server ACP route");
   assert.doesNotMatch(connected.textContent, /进入桌面/, "a cloud node without desktop capability is not a native remote target");
   view.cleanup();
+});
+
+test("cloud 401 offers normal login, while 403 and 503 retain cloud errors", async () => {
+  for (const status of [401, 403, 503]) {
+    let signedIn = false;
+    const cloudClient = {async listComputers() {
+      if (!signedIn) throw Object.assign(new Error("fixture"), {status, code: "client_unauthorized"});
+      return {items: [pc({name: "Signed-in cloud computer"})]};
+    }};
+    const view = await render({cloudClient, currentUser: async () => ({known: false, userId: null})});
+    try {
+      const text = view.text();
+      if (status !== 401) {
+        assert.ok(text.includes("云电脑暂时无法加载。"));
+        assert.ok(text.includes("重试"));
+        assert.ok(!text.includes("请先登录"));
+        continue;
+      }
+      assert.ok(text.includes("请先登录"));
+      assert.ok(!text.includes("云电脑暂时无法加载。"));
+      assert.ok(!text.includes("重试"));
+      const click = async label => { await act(async () => {
+        [...view.host.querySelectorAll("button")].find(b => b.textContent.trim() === label).click();
+      }); await flush(); };
+      await click("登录");
+      assert.ok(view.host.querySelector('[data-testid="normal-auth-dialog"]'));
+      signedIn = true;
+      await click("完成登录");
+      assert.ok(view.text().includes("Signed-in cloud computer"));
+    } finally { view.cleanup(); }
+  }
+});
+
+test("a previous account's late cloud 401 cannot sign out the new account view", async () => {
+  let rejectOld;
+  let calls = 0;
+  let userId = "owner-a";
+  const previous = new Promise((_resolve, reject) => { rejectOld = reject; });
+  const cloudClient = {async listComputers() {
+    return ++calls === 1 ? previous : {items: [pc({name: "Account B cloud computer"})]};
+  }};
+  const view = await render({cloudClient, currentUser: async () => ({known: true, userId})});
+  try {
+    userId = "owner-b";
+    await act(async () => {
+      window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", {detail: {userId}}));
+      // The old request rejects before React has to commit the new grid.
+      rejectOld(Object.assign(new Error("old account"), {status: 401}));
+      await Promise.resolve();
+    });
+    await flush();
+    assert.ok(view.text().includes("Account B cloud computer"));
+    assert.ok(view.text().includes("Account B cloud computer"));
+    assert.ok(!view.text().includes("请先登录"));
+  } finally { view.cleanup(); }
 });
 
 test("cloud deep link without rows keeps one connect card and one consolidated add entry", async () => {
