@@ -788,8 +788,10 @@ test("带 Set-Cookie 的响应必须应用 @supabase/ssr 下发的 no-store 头"
 
 // UC-NONE：不对应 UC-1…UC-7 中的任何一条。
 // 判断依据：会话吊销与 token 生命周期，UC-1…UC-7 无对应条款。已登记进 W25 的「无对应 UC 规则」清单。
-test("全局登出失败时兜底清掉本地会话", () => {
-  assert.match(clientSource, /signOut\(\{\s*scope:\s*"global"\s*\}\)/);
+test("登出只吊销本机会话，不连带其他设备", () => {
+  // `global` deleted every session of the account: signing out in a browser or
+  // on the phone also logged out the operator's desktop clients (2026-10-29).
+  assert.doesNotMatch(clientSource, /signOut\(\{\s*scope:\s*"global"\s*\}\)/);
   assert.match(clientSource, /signOut\(\{\s*scope:\s*"local"\s*\}\)/);
   assert.match(clientSource, /writePreviewGuestLatch/);
   assert.match(
