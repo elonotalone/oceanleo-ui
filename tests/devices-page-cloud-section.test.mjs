@@ -234,6 +234,8 @@ test("cloud 401 offers normal login, while 403 and 503 retain cloud errors", asy
       assert.ok(text.includes("请先登录"));
       assert.ok(!text.includes("云电脑暂时无法加载。"));
       assert.ok(!text.includes("重试"));
+      assert.ok(!text.includes("添加设备"));
+      assert.ok(!text.includes("连接我的电脑"));
       const click = async label => { await act(async () => {
         [...view.host.querySelectorAll("button")].find(b => b.textContent.trim() === label).click();
       }); await flush(); };
