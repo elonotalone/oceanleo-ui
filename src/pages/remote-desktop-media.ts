@@ -13,7 +13,29 @@ export interface RemoteMediaHandlers {
   renew(): Promise<RemoteMediaCredentials>;
   /** D4: the viewer's published ARTC data channel, or null when it is (no longer) usable. */
   dataChannel?(lane: RemoteDesktopDataLane | null): void;
+  /** Why media setup failed, before the matching `state("error")`; host names and numeric SDK codes only. */
+  diagnostic?(detail: RemoteMediaDiagnostic): void;
 }
+
+export interface RemoteMediaDiagnostic { blocked_host?: string; sdk_error?: number }
+
+/**
+ * ARTC media signalling hosts (scheduler/room `*.rtn.aliyuncs.com`, RTS edges `*.alivecdn.com`).
+ * A CSP refusal for one of them means this client cannot ever show the picture: fail at once with
+ * `media_host_blocked` and the host, instead of a black video until the first-frame timeout.
+ */
+export function blockedMediaHost(event: { blockedURI?: string; effectiveDirective?: string; violatedDirective?: string }): string | null {
+  const directive = event.effectiveDirective || event.violatedDirective || "";
+  if (!directive.startsWith("connect-src")) return null;
+  let host: string;
+  try { host = new URL(event.blockedURI || "").hostname.toLowerCase(); } catch { return null; }
+  return /(^|\.)alivecdn\.com$/.test(host) || /(^|\.)rtn\.aliyuncs\.com$/.test(host) ? host : null;
+}
+
+/** AliRtcErrorCode screen/video subscribe failures (index.d.ts:1770-1780). */
+const SUBSCRIBE_ERRORS: ReadonlySet<number> = new Set([16974852, 16844114, 16844116]);
+/** A subscribe error without any decoded frame afterwards ends the attempt this soon. */
+export const SUBSCRIBE_ERROR_GRACE_MS = 5000;
 
 /** The engine surface the data-channel lane needs (index.d.ts:1178 setParameter, :1183 sendDataChannelMessage, AliRtcScreenShareStartConfig.videoTrack). */
 type DataChannelEngine = ArtcEngine & {
@@ -167,6 +189,13 @@ export async function openRemoteMedia(
   let playing = false, renewal: ReturnType<typeof setTimeout> | undefined, expiry: ReturnType<typeof setTimeout> | undefined;
   const started = Date.now();
   let watchdog: ReturnType<typeof setInterval> | undefined;
+  let subscribeFailure: ReturnType<typeof setTimeout> | undefined;
+  const violation = (event: Event) => {
+    const host = blockedMediaHost(event as SecurityPolicyViolationEvent);
+    if (!host || closed) return;
+    handlers.diagnostic?.({ blocked_host: host });
+    fail("media_host_blocked");
+  };
   const listeners: Array<[string, (...args: any[]) => void]> = [];
   const on = (name: string, fn: (...args: any[]) => void) => { listeners.push([name, fn]); engine.on(name, fn); };
   const close = (): Promise<void> => {
@@ -176,7 +205,8 @@ export async function openRemoteMedia(
     releasePeers();
     synthetic?.stop(); synthetic = null;
     lifetime.abort();
-    clearInterval(watchdog); clearTimeout(renewal); clearTimeout(expiry);
+    clearInterval(watchdog); clearTimeout(renewal); clearTimeout(expiry); clearTimeout(subscribeFailure);
+    if (typeof document !== "undefined") document.removeEventListener("securitypolicyviolation", violation);
     signal.removeEventListener("abort", abort);
     video.removeEventListener("timeupdate", fallbackFrame);
     video.removeEventListener("loadedmetadata", playMuted);
@@ -203,7 +233,7 @@ export async function openRemoteMedia(
     // Notify on every decoded frame so display-switch geometry can gate input even
     // when two displays happen to have identical encoded dimensions.
     handlers.frame(video.videoWidth, video.videoHeight);
-    if (!playing) { playing = true; lowerPlayoutDelay(video); handlers.state("playing"); }
+    if (!playing) { playing = true; clearTimeout(subscribeFailure); subscribeFailure = undefined; lowerPlayoutDelay(video); handlers.state("playing"); }
   };
   const fallbackFrame = () => {
     if (video.currentTime === lastTime) return;
@@ -251,6 +281,7 @@ export async function openRemoteMedia(
     } catch { fail("media_subscribe_failed"); }
   };
   signal.addEventListener("abort", abort, { once: true });
+  if (typeof document !== "undefined") document.addEventListener("securitypolicyviolation", violation);
   video.muted = true; video.autoplay = true; video.playsInline = true;
   // A webview whose autoplay policy ignored the muted autoplay attribute still starts here.
   const playMuted = () => { void Promise.resolve().then(() => video.play?.()).catch(() => {}); };
@@ -267,6 +298,16 @@ export async function openRemoteMedia(
     if (closed) return;
     if (status === 5) fail("media_connection_failed");
     else if (status === 4 || status === 1) { playing = false; setLane(false); handlers.state("reconnecting"); }
+  });
+  on("occurError", (error: { code?: unknown } | undefined, uid?: string) => {
+    const code = typeof error?.code === "number" ? error.code : NaN;
+    if (closed || playing || !SUBSCRIBE_ERRORS.has(code) || (uid !== undefined && uid !== credentials.publisher_id) || subscribeFailure) return;
+    // The SDK retries internally; only a retry that still yields no frame becomes explicit.
+    subscribeFailure = setTimeout(() => {
+      if (closed || playing) return;
+      handlers.diagnostic?.({ sdk_error: code });
+      fail("media_subscribe_failed");
+    }, SUBSCRIBE_ERROR_GRACE_MS);
   });
   on("authInfoWillExpire", () => { void renew(); });
   on("authInfoExpired", () => { void renew(); });

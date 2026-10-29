@@ -309,8 +309,11 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "media_gateway_unsupported":
       return "当前服务版本不支持远程视频，请更新服务后重新连接。";
     case "media_frame_timeout":
-    case "media_connection_failed":
+    case "media_host_blocked":
+      return "本机的 OceanLeo 拦截了视频服务器 {host}，无法显示画面。请把这个地址告诉我们，或更新 OceanLeo 后重新连接。";
     case "media_subscribe_failed":
+      return "无法接收这台电脑的画面（错误 {code}），控制已停止。请重新连接。";
+    case "media_connection_failed":
     case "media_session_closed":
       return "视频连接已中断，控制已停止。请重新连接。";
     case "media_auth_failed":

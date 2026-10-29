@@ -176,7 +176,7 @@ function engineHarness() {
   const track = { id: "synthetic", kind: "video" };
   let stopped = 0;
   const inputTrack = () => ({ track, stop() { stopped++; } });
-  return { events, calls, lanes, track, stopped: () => stopped, start: (extra) => openRemoteMedia(credentials(extra), video, handlers, new AbortController().signal, sdk, inputTrack) };
+  return { engine, events, calls, lanes, track, stopped: () => stopped, start: (extra) => openRemoteMedia(credentials(extra), video, handlers, new AbortController().signal, sdk, inputTrack) };
 }
 
 test("the viewer publishes a media-less data channel only when the gateway granted it, and exposes it once published", async () => {
@@ -214,4 +214,51 @@ test("lowest playout delay touches only this video's screen receiver", () => {
   assert.equal(other.jitterBufferTarget, null);
   assert.equal(legacy.playoutDelayHint, 0);
   assert.equal(lowerPlayoutDelay(video, [{ getReceivers: () => [mine] }]), 0, "tuned once");
+});
+
+test("a CSP-blocked ARTC media host ends setup at once with media_host_blocked and the host, not a black video", async () => {
+  const { blockedMediaHost } = await import("../src/pages/remote-desktop-media.ts");
+  assert.equal(blockedMediaHost({ effectiveDirective: "connect-src", blockedURI: "https://r6-rtcsub.media-bj.alivecdn.com/x?token=secret" }), "r6-rtcsub.media-bj.alivecdn.com");
+  assert.equal(blockedMediaHost({ violatedDirective: "connect-src https://x", blockedURI: "wss://rs.rtn.aliyuncs.com/roomserver" }), "rs.rtn.aliyuncs.com");
+  assert.equal(blockedMediaHost({ effectiveDirective: "img-src", blockedURI: "https://a.alivecdn.com/" }), null);
+  assert.equal(blockedMediaHost({ effectiveDirective: "connect-src", blockedURI: "https://evil.example/alivecdn.com" }), null);
+  assert.equal(blockedMediaHost({ effectiveDirective: "connect-src", blockedURI: "https://cn-hangzhou.log.aliyuncs.com/" }), null, "telemetry is not media");
+
+  const listeners = new Map();
+  const previous = globalThis.document;
+  globalThis.document = { addEventListener: (n, fn) => listeners.set(n, fn), removeEventListener: (n) => listeners.delete(n) };
+  try {
+    const h = engineHarness();
+    const states = [], diagnostics = [];
+    const video = Object.assign(new EventTarget(), { videoWidth: 0, videoHeight: 0, readyState: 0, srcObject: {}, requestVideoFrameCallback() { return 1; }, cancelVideoFrameCallback() {} });
+    const viewer = await openRemoteMedia(credentials(), video, { state: (...a) => states.push(a), frame() {}, renew: async () => credentials(), diagnostic: (d) => diagnostics.push(d) },
+      new AbortController().signal, async () => ({ createEngine: () => h.engine }), () => null);
+    listeners.get("securitypolicyviolation")({ effectiveDirective: "connect-src", blockedURI: "https://r6-rtcsub.media-bj.alivecdn.com/pull" });
+    assert.deepEqual(diagnostics, [{ blocked_host: "r6-rtcsub.media-bj.alivecdn.com" }]);
+    assert.deepEqual(states.at(-1), ["error", "media_host_blocked"]);
+    await viewer.close();
+    assert.equal(listeners.has("securitypolicyviolation"), false, "listener removed on close");
+  } finally { globalThis.document = previous; }
+});
+
+test("a screen subscribe error with no frame afterwards becomes media_subscribe_failed with the SDK code", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  try {
+    const h = engineHarness();
+    const states = [], diagnostics = [];
+    const video = Object.assign(new EventTarget(), { videoWidth: 0, videoHeight: 0, readyState: 0, srcObject: {}, requestVideoFrameCallback() { return 1; }, cancelVideoFrameCallback() {} });
+    const viewer = await openRemoteMedia(credentials(), video, { state: (...a) => states.push(a), frame() {}, renew: async () => credentials(), diagnostic: (d) => diagnostics.push(d) },
+      new AbortController().signal, async () => ({ createEngine: () => h.engine }), () => null);
+    h.events.get("occurError")({ code: 16844116 }, "intruder");
+    h.events.get("occurError")({ code: 1 }, "desktop");
+    t.mock.timers.tick(6000);
+    assert.deepEqual(diagnostics, [], "foreign uid and unrelated codes are ignored");
+    h.events.get("occurError")({ code: 16844116 }, "desktop");
+    t.mock.timers.tick(4900);
+    assert.notDeepEqual(states.at(-1), ["error", "media_subscribe_failed"], "SDK retry gets its grace");
+    t.mock.timers.tick(200);
+    assert.deepEqual(diagnostics, [{ sdk_error: 16844116 }]);
+    assert.deepEqual(states.at(-1), ["error", "media_subscribe_failed"]);
+    await viewer.close();
+  } finally { t.mock.timers.reset(); }
 });

@@ -126,6 +126,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const viewOnlyRef = useRef(false);
   const [billing, setBilling] = useState<RemoteDesktopBilling | null>(null);
   const laneRef = useRef<RemoteDesktopDataLane | null>(null);
+  /** Media failure evidence (blocked ARTC host / SDK code), kept on screen and on the root element. */
+  const [mediaDiagnostic, setMediaDiagnostic] = useState<{ blocked_host?: string; sdk_error?: number } | null>(null);
   const [panMode, setPanMode] = useState(false);
   const panModeRef = useRef(false);
   panModeRef.current = panMode;
@@ -323,7 +325,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
     mediaStatusRef.current = null;
     mediaFrameGeometry.current = null;
     setMediaMode("legacy"); setMediaReady(false); setMediaStatus(null); setDisplayId(undefined); setFit(true); setPanMode(false); setMediaNotice(""); setMessage("");
-    viewOnlyRef.current = false; setAccess(null); setBilling(null); laneRef.current = null;
+    viewOnlyRef.current = false; setAccess(null); setBilling(null); laneRef.current = null; setMediaDiagnostic(null);
     const acceptAccess = (value: RemoteDesktopAccess | null) => {
       viewOnlyRef.current = value?.input_allowed === false;
       setAccess(value);
@@ -680,7 +682,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   const reconnecting = ticket === reconnectTicket.current && ["starting", "waiting", "connecting"].includes(phase);
   const status = reconnecting ? "网络连接中断，正在重新连接…" : phase === "idle" ? CLOUD_AGENT_COPY.remoteIdle : phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? waiting : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
   return createPortal(
-    <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
+    <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady}
+      data-remote-media-blocked-host={mediaDiagnostic?.blocked_host} data-remote-media-sdk-error={mediaDiagnostic?.sdk_error} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
       <div ref={stageRef} data-remote-stage tabIndex={0} aria-label={tt("远程桌面")}
         onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp}
         onPointerCancel={releaseInput} onLostPointerCapture={() => { if (pointerRef.current) releaseInput(); }}
@@ -691,6 +694,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
         {mediaMode === "artc" && active && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId}
           fit={fit} width={frame?.width} height={frame?.height}
           onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); }}
+          onDiagnostic={setMediaDiagnostic}
           onFrame={(width, height) => {
             const status = mediaStatusRef.current;
             const geometry = mediaGeometryKey(status);
@@ -711,7 +715,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
           onLoad={() => streamRef.current?.acknowledgeFrame(frame.sequence)}
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
           style={remoteFrameStyle(fit, frame.width, frame.height)} /> :
-          <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status)}</div>}
+          <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}</div>}
         {mediaMode === "artc" && active && !mediaReady ? <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090be8", pointerEvents: "none" }}>{tt(mediaNotice)}</div> : null}
         <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
@@ -719,7 +723,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       </div>
       <div onPointerEnter={revealToolbar} onFocus={revealToolbar} style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: `translate(-50%, ${toolbar || !active ? "0" : "-150%"})`, transition: "transform .18s", display: "flex", alignItems: "center", gap: 16, padding: "9px 14px", borderRadius: 12, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deviceName}</span>
-        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : status)}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
+        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
         {active && access?.input_allowed === false ? <span data-remote-view-only style={{ whiteSpace: "nowrap", color: "#f5c76b" }}>{tt("对方仅允许查看")}</span> : null}
         {active && billing ? <span data-remote-billing style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt("按分钟从账户余额扣费 · {price}/分钟 · 已计 {minutes} 分钟", { price: billingPrice(billing), minutes: String(billing.charged_minutes) })}</span> : null}
         {/* D7: one icon toggle, the tooltip names what a click does. */}
