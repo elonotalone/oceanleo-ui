@@ -106,3 +106,19 @@ test("AppShell 仍收 helpHref / showHelp / siteKey（子站在传），只喂�
   assert.match(appShell, /helpHref=\{accountHelpHref\}/);
   assert.match(appShell, /helpCenterUrl\(\{\s*host: window\.location\.host,/);
 });
+
+test("分身 ws 子站 / 门户 → 门户自己的 /help，不回落 help.oceanleo.com", () => {
+  assert.equal(
+    helpCenterUrl({ host: "oceanbizs.com" }),
+    "https://oceanbizs.com/help",
+  );
+  assert.equal(
+    helpCenterUrl({ host: "design.oceanbizs.com", siteKey: "design" }),
+    "https://oceanbizs.com/help?site=design",
+  );
+  assert.equal(
+    helpCenterUrl({ host: "oceanbizs.com", path: HELP_BYOK_ARTICLE_PATH }),
+    "https://oceanbizs.com/help/a/bring-your-own-key",
+  );
+  assert.equal(isHelpCenterHost("oceanbizs.com"), false);
+});

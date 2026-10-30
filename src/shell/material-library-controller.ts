@@ -53,13 +53,12 @@ import {
   currentFamilySubsiteOrigin,
 } from "../contracts/domain-family";
 
-// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
+// 网关一律按**当前家族档案**取（contracts/domain-family.ts，含同家族 env overlay）；
+// 不许 env 优先（ws 与 com 同一份构建，env 是 com 网关）。每次调用现取。
 // 素材页链接走当前站 `/bay?kind=asset`；`assetOrigin` 只用来认旧地址，不生成主机链接。
-const GATEWAY =
-  (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
-      process.env.NEXT_PUBLIC_GATEWAY_URL)) ||
-  currentDomainProfile().gatewayOrigin;
+function gatewayBase(): string {
+  return currentDomainProfile().gatewayOrigin;
+}
 
 export {
   MATERIAL_APP_BINDINGS_META_KEY,
@@ -362,9 +361,9 @@ export function platformToEntry(
       : null;
   const starterId = starterMatch?.[1] || "";
   const htmlViewer = starterId
-    ? `${GATEWAY}/v1/assets/library/starters/${encodeURIComponent(starterId)}/view`
+    ? `${gatewayBase()}/v1/assets/library/starters/${encodeURIComponent(starterId)}/view`
     : kind === "website" && rawId
-      ? `${GATEWAY}/v1/assets/library/${encodeURIComponent(rawId)}/view`
+      ? `${gatewayBase()}/v1/assets/library/${encodeURIComponent(rawId)}/view`
       : "";
   const assetPopularity = popularityMetricsFromWire(asset);
   const item: LibraryItem = {

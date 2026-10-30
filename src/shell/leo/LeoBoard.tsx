@@ -27,15 +27,12 @@ import {
   type HostTarget,
 } from "./host-input";
 
-// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
-// `.com` 与本地开发解析出来的仍是 https://api.oceanleo.com（逐字不变），
-// `.cn` 站解析成 https://api.oceanleo.cn —— 境内页面不会把请求发到境外网关。
-const GATEWAY_BASE =
-  (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
-      process.env.NEXT_PUBLIC_GATEWAY_URL ||
-      process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY)) ||
-  currentDomainProfile().gatewayOrigin;
+// 网关一律按**当前家族档案**取（contracts/domain-family.ts，含同家族 env / LeoDev
+// overlay）。不许 env 优先：oceanbizs.com 与 oceanleo.com 同一份 Vercel 构建，
+// env 钉的是 api.oceanleo.com，ws 页会被送去 com 网关。每次调用现取，不用模块快照。
+function gatewayBase(): string {
+  return currentDomainProfile().gatewayOrigin;
+}
 
 /** 面板工作文本（leo board）的来源上下文——与 I5 的 LeoContext（页面上下文）是两回事。 */
 export interface LeoBoardContext {
@@ -67,7 +64,7 @@ async function boardCall(input: {
   user_answer?: string;
 }): Promise<{ ok: boolean; data?: BoardResult; error?: string }> {
   try {
-    const res = await fetch(`${GATEWAY_BASE}/v1/assistant/board`, {
+    const res = await fetch(`${gatewayBase()}/v1/assistant/board`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -89,7 +86,7 @@ async function transform(input: {
   target_lang?: string;
 }): Promise<{ ok: boolean; result?: string; error?: string }> {
   try {
-    const res = await fetch(`${GATEWAY_BASE}/v1/assistant/transform`, {
+    const res = await fetch(`${gatewayBase()}/v1/assistant/transform`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),

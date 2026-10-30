@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { currentDomainProfile } from "../../../contracts";
 import { useUI } from "../../../i18n/ui/useUI";
 
@@ -191,7 +192,29 @@ export function deriveProvenance(asset: ProvenanceAssetLike): ProvenanceFacts {
   };
 }
 
-export const FIRST_PARTY_TERMS_URL = `${currentDomainProfile().portalOrigin}/legal/first-party-assets`;
+const FIRST_PARTY_TERMS_PATH = "/legal/first-party-assets";
+
+/** 当前家族门户上的自产素材条款页。每次调用现取（ws 页面不拿 com 快照）。 */
+export function firstPartyTermsUrl(): string {
+  return `${currentDomainProfile().portalOrigin}${FIRST_PARTY_TERMS_PATH}`;
+}
+
+/**
+ * 模块加载时的快照：服务端渲染没有 window，所以永远是构建家族（com / cn）的门户。
+ * 只当 SSR 首帧用；组件里走 `useFirstPartyTermsUrl()`，水合后换成页面所在家族
+ * （oceanbizs.com 与 oceanleo.com 同一份构建，SSR 拿不到 ws）。
+ */
+export const FIRST_PARTY_TERMS_URL = firstPartyTermsUrl();
+
+const noopSubscribe = () => () => {};
+
+function useFirstPartyTermsUrl(): string {
+  return useSyncExternalStore(
+    noopSubscribe,
+    firstPartyTermsUrl,
+    () => FIRST_PARTY_TERMS_URL,
+  );
+}
 
 function Divider() {
   return <div className="my-2.5 h-px bg-stone-200" />;
@@ -227,6 +250,7 @@ export function BayAssetProvenance({
   facts?: ProvenanceFacts;
 }) {
   const tt = useUI();
+  const termsUrl = useFirstPartyTermsUrl();
   const f = facts || (asset ? deriveProvenance(asset) : null);
   if (!f) return null;
 
@@ -254,7 +278,7 @@ export function BayAssetProvenance({
             )}
           </p>
           <a
-            href={FIRST_PARTY_TERMS_URL}
+            href={termsUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-1 inline-block text-xs text-sky-600 hover:underline"

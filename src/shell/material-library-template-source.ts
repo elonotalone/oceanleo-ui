@@ -29,13 +29,11 @@ import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 import { currentDomainProfile } from "../contracts/domain-family";
 
-// env 仍然优先；没给时按**当前家族**取网关（contracts/domain-family.ts）。
-// `.com` 与本地开发解析出来的仍是 https://api.oceanleo.com（逐字不变）。
-const GATEWAY =
-  (typeof process !== "undefined" &&
-    (process.env.NEXT_PUBLIC_OCEANLEO_GATEWAY_URL ||
-      process.env.NEXT_PUBLIC_GATEWAY_URL)) ||
-  currentDomainProfile().gatewayOrigin;
+// 网关一律按**当前家族档案**取（contracts/domain-family.ts，含同家族 env overlay）；
+// 不许 env 优先（ws 与 com 同一份构建，env 是 com 网关）。每次调用现取。
+function gatewayBase(): string {
+  return currentDomainProfile().gatewayOrigin;
+}
 // ============================================================================
 
 export interface TemplateMaterialListing {
@@ -89,7 +87,7 @@ export function templateMaterialPreviewUrl(
   const path = templateMaterialPreviewPath(templateId);
   if (!path) return "";
   const suffix = (page || "").trim();
-  return `${GATEWAY}${path}${suffix ? `/${encodeURIComponent(suffix)}` : ""}`;
+  return `${gatewayBase()}${path}${suffix ? `/${encodeURIComponent(suffix)}` : ""}`;
 }
 
 export function templateMaterialPreviewManifestUrl(templateId: string): string {
@@ -555,7 +553,7 @@ async function fetchTemplateMaterialsPage(
   },
   signal?: AbortSignal,
 ): Promise<TemplateMaterialListResult> {
-  const url = new URL(`${GATEWAY}/v1/template-materials`);
+  const url = new URL(`${gatewayBase()}/v1/template-materials`);
   if (query.siteKey) url.searchParams.set("siteKey", query.siteKey);
   if (query.appId) url.searchParams.set("appId", query.appId);
   if (query.artifactType) url.searchParams.set("artifactType", query.artifactType);

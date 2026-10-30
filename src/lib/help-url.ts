@@ -1,6 +1,7 @@
 import { getClientHostConfig } from "../contracts/client-host-config";
 import {
   CONFIGURED_DOMAIN_FAMILY,
+  domainFamilyProfile,
   familyForHost,
   normalizeHost,
   type DomainFamily,
@@ -37,7 +38,19 @@ function helpFamilyFor(host?: string | null): DomainFamily {
   const injected = getClientHostConfig();
   if (injected) return injected.family;
   if (CONFIGURED_DOMAIN_FAMILY) return CONFIGURED_DOMAIN_FAMILY;
-  return familyForHost(host) === "cn" ? "cn" : "com";
+  const fromHost = familyForHost(host);
+  return fromHost === "cn" || fromHost === "ws" ? fromHost : "com";
+}
+
+/**
+ * 帮助中心 origin（含路径前缀）。com / cn 是独立的 help 主机；分身 ws 没有
+ * `help.oceanbizs.com`，帮助中心就是门户自己的 `/help`（同一份 Vercel 构建），
+ * 绝不回落到 help.oceanleo.com —— 那会把分身用户送去生产站、而且未登录。
+ */
+function helpCenterOrigin(family: DomainFamily): string {
+  if (family === "cn") return "https://help.oceanleo.cn";
+  if (family === "ws") return `${domainFamilyProfile("ws").portalOrigin}/help`;
+  return "https://help.oceanleo.com";
 }
 
 /**
@@ -45,8 +58,9 @@ function helpFamilyFor(host?: string | null): DomainFamily {
  *
  * Family comes from `NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY` when set, else the
  * same `familyForHost()` table as production hosts. Unrecognized hosts and
- * LeoDev preview without a configured family still go to `.com`. Pure
- * function; no DOM.
+ * LeoDev preview without a configured family still go to `.com`. The ws twin
+ * (`*.oceanbizs.com`) goes to `https://oceanbizs.com/help…`. Pure function;
+ * no DOM.
  */
 export function helpCenterUrl(input: {
   host?: string | null;
@@ -54,12 +68,12 @@ export function helpCenterUrl(input: {
   from?: string | null;
   path?: string;
 }): string {
-  const origin =
-    helpFamilyFor(input.host) === "cn"
-      ? "https://help.oceanleo.cn"
-      : "https://help.oceanleo.com";
+  const family = helpFamilyFor(input.host);
+  const origin = helpCenterOrigin(family);
   let path = input.path ?? "/";
   if (!path.startsWith("/")) path = `/${path}`;
+  // 门户 `/help` 前缀下，根路径就是 `/help` 本身，不拼成 `/help/`。
+  if (family === "ws" && path === "/") path = "";
 
   const query: string[] = [];
   const siteKey = (input.siteKey ?? "").trim();

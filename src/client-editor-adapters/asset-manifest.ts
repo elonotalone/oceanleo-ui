@@ -12,7 +12,9 @@ export interface EditorAssetManifestV1 {
   nativeCapabilities: readonly string[];
 }
 
-const REMOTE_SUFFIXES = [".oceanleo.com", ".oceanleo.cn", ".oceanleo.app"];
+// 每个家族的第一方远端（含分身 oceanbizs.com）与用户内容域都不许当本地编辑器入口。
+const REMOTE_APEXES = ["oceanleo.com", "oceanleo.cn", "oceanleo.app", "oceanbizs.com"];
+const REMOTE_SUFFIXES = REMOTE_APEXES.map((apex) => `.${apex}`);
 
 export function isForbiddenRemoteEditorEntry(entry: string): boolean {
   const raw = String(entry || "").trim();
@@ -29,7 +31,7 @@ export function isForbiddenRemoteEditorEntry(entry: string): boolean {
   if (parsed.protocol === "http:" && (host === "127.0.0.1" || host === "localhost")) {
     return false;
   }
-  if (host === "oceanleo.com" || host === "oceanleo.cn" || host === "oceanleo.app") {
+  if (REMOTE_APEXES.includes(host)) {
     return true;
   }
   return REMOTE_SUFFIXES.some((suffix) => host.endsWith(suffix));
