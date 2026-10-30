@@ -200,9 +200,12 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   // Read the selected computer's local-execution mirror and its cloud-assistant
   // availability without opening the picker, and again when the page regains
   // focus (e.g. after the user changed a switch at that computer). Display and
-  // routing only: the gateway and the computer still decide.
+  // routing only: the gateway and the computer still decide. A Claude Code /
+  // Cursor / 终端 conversation does not show those badges, so it must not
+  // probe `/v1/devices/cloud-agent` on every home load.
+  const nativeShown = Boolean(conversation && conversation.kind !== "oceanleo");
   useEffect(() => {
-    if (!owner || !selectedDeviceId) { setSelectedDevice(null); return; }
+    if (!owner || !selectedDeviceId || nativeShown) { setSelectedDevice(null); return; }
     let alive = true;
     const load = () => {
       void listDevices().then((result) => {
@@ -216,7 +219,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     load();
     window.addEventListener("focus", load);
     return () => { alive = false; window.removeEventListener("focus", load); };
-  }, [owner, selectedDeviceId]);
+  }, [owner, selectedDeviceId, nativeShown]);
 
   // Keep the remembered target's driver equal to what the computer allows now.
   useEffect(() => {

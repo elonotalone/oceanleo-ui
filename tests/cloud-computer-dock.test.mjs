@@ -556,6 +556,22 @@ test("C7-U5: local execution off outranks the cloud label (the cloud assistant n
   } finally { view.cleanup(); }
 });
 
+test("a Claude Code conversation does not probe cloud-agent until the picker opens", async () => {
+  globalThis.__ccDevices = [MAC];
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false });
+  const view = await render([], undefined, {
+    conversation: { kind: "native", computerId: "cc_6b9905f8aaf2", computerName: "elon", program: "claude", view: "chat" },
+    onConversationChange() {},
+  });
+  await flush(12);
+  try {
+    assert.equal(globalThis.__ccCloudAgentReads, 0);
+    assert.match(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, /elon/);
+    await openDock(view);
+    assert.ok(globalThis.__ccCloudAgentReads >= 1);
+  } finally { view.cleanup(); }
+});
+
 test("C7-U5: after an account switch, the previous account's availability never decides the new account's mode", async () => {
   globalThis.__ccDevices = [MAC];
   globalThis.__ccCloudAgent = availableUntil(Date.now() + 3_600_000);
