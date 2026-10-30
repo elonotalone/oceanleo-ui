@@ -567,7 +567,7 @@ const { LeoComposer } = await import(
       `),
       "../lib/auth": dataModule("export async function getUserEmail(){ return null; }"),
       "../pages/AuthDialog": dataModule("export function AuthDialog(){ return null; }"),
-      "./cloud-computer/ComputerDock": dataModule("export function ComputerDock(){ return null; }"),
+      "./cloud-computer/ComputerDock": dataModule("export function ComputerDock(props){ globalThis.__W15_DOCK__ = props; return null; }"),
       "./ModelPicker": dataModule("export function ModelGroupPicker(){ return null; }"),
       "./PayerSelector": dataModule("export function PayerSelector(){ return null; }"),
       "./mcp-apps": dataModule("export function ComposerAppsBar(){ return null; }"),
@@ -609,9 +609,39 @@ test("LeoComposer 不传 skillSlash：键入 / 不出浮层、不请求；传了
   }
 });
 
-test("shared paired-device picker snapshot reaches Composer submit with original driver and GUI scope",async()=>{
- let submitted;const selected={kind:'device',id:'paired-mac',name:'Mac',driver:'cloud',gui:true};
- const base={value:'paired draft',onChange(){},onSubmit:(text,payer,context)=>submitted={text,context},draftExecutionTarget:selected,hideComputerDockControl:true,showPlugins:false,showAppsBar:false,showPayerSelector:false,showModelPicker:false};
- const m=await mount(React.createElement(LeoComposer,base));
- try{const editor=m.container.querySelector('[data-editor]');assert.ok(editor);await act(async()=>editor.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));assert.deepEqual(submitted?.context.executionTarget,selected);selected.gui=false;assert.equal(submitted.context.executionTarget.gui,true,'submit captures original GUI scope');}finally{await m.unmount();}
+test("Device picker snapshot reaches Composer submit with original driver and GUI scope, plus the shown conversation", async () => {
+  let submitted; const selected = { kind: "device", id: "paired-mac", name: "Mac", driver: "cloud", gui: true };
+  const picks = [];
+  const base = { value: "paired draft", onChange() {}, onSubmit: (text, payer, context) => submitted = { text, context }, onConversationChange: (c) => picks.push(c), showPlugins: false, showAppsBar: false, showPayerSelector: false, showModelPicker: false };
+  const m = await mount(React.createElement(LeoComposer, base));
+  const enter = async () => { const editor = m.container.querySelector("[data-editor]"); assert.ok(editor); await act(async () => editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }))); };
+  try {
+    await act(async () => globalThis.__W15_DOCK__.onTargetChange(selected));
+    await enter();
+    assert.deepEqual(submitted?.context.executionTarget, selected);
+    assert.deepEqual(submitted.context.conversation, { kind: "oceanleo", target: selected });
+    selected.gui = false;
+    assert.equal(submitted.context.executionTarget.gui, true, "submit captures original GUI scope");
+    const native = { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat", sessionId: "s1" };
+    await act(async () => globalThis.__W15_DOCK__.onConversationChange(native));
+    assert.deepEqual(picks, [native]);
+    assert.deepEqual(globalThis.__W15_DOCK__.conversation, native, "uncontrolled composer keeps the pick for the dock");
+    await enter();
+    assert.deepEqual(submitted.context.conversation, native, "the host routes a native send by the shown conversation");
+  } finally { await m.unmount(); }
+});
+
+test("Composer: a loading task binding blocks an OceanLeo send but not a native conversation send", async () => {
+  let submitted = null;
+  const native = { kind: "terminal", computerId: "cc_1", computerName: "elon" };
+  const base = { value: "ls", onChange() {}, onSubmit: (text, payer, context) => submitted = context, boundExecutionTarget: null, showPlugins: false, showAppsBar: false, showPayerSelector: false, showModelPicker: false };
+  const m = await mount(React.createElement(LeoComposer, { ...base, conversation: { kind: "oceanleo", target: { kind: "cloud" } } }));
+  try {
+    const editor = () => m.container.querySelector("[data-editor]");
+    await act(async () => editor().dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    assert.equal(submitted, null, "OceanLeo send waits for the task binding");
+    await m.rerender(React.createElement(LeoComposer, { ...base, conversation: native }));
+    await act(async () => editor().dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    assert.deepEqual(submitted?.conversation, native);
+  } finally { await m.unmount(); }
 });

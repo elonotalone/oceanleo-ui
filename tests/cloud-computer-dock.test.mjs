@@ -93,7 +93,6 @@ const apiStubUrl = dataModule(`
 
 const { ComputerDock } = await import(
   await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
-    "../../lib/computer-task-api": dataModule(`export async function createComputerTaskSession(){globalThis.__managedCreates=(globalThis.__managedCreates||0)+1;return {task_id:"task",session:{id:"managed"}}}`),
     "../../i18n/ui/useUI": uiTextStubUrl,
     "../../contracts/domain-family": domainStubUrl,
     "../../lib/cloud-computer-api": apiStubUrl,
@@ -263,7 +262,6 @@ test("selecting a ready cloud computer changes actual persisted target, not loca
   try {
     await openDock(view);
     await view.click(view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]'));
-    await view.click(view.button("用此电脑执行 OceanLeo 任务"));
     assert.deepEqual(readExecutionTarget("account-a"), { kind: "computer", id: "cc_1", name: "新加坡" });
     assert.equal(globalThis.__ccMounted, "cc_1");
     assert.equal(globalThis.__ccMountedName, "新加坡");
@@ -276,17 +274,28 @@ test("selecting a ready cloud computer changes actual persisted target, not loca
   } finally { view.cleanup(); }
 });
 
-test("offline cloud computers remain inspectable without changing execution target; legacy shell utility keeps its contract", async () => {
+test("offline cloud computers are not execution choices; with conversations they stay inspectable without changing the target", async () => {
   const offline = pc({ node_online: false });
   assert.equal(newShellEnabled(offline), false);
-  const view = await render([offline]);
+  const plain = await render([offline]);
+  try {
+    await openDock(plain);
+    const row = plain.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]');
+    assert.equal(row.disabled, true, "a host without conversations keeps today's picker");
+    assert.match(row.textContent, /离线/);
+  } finally { plain.cleanup(); }
+  const picks = [];
+  const view = await render([offline], undefined, { onConversationChange: (c) => picks.push(c) });
   try {
     await openDock(view);
     const row = view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]');
     assert.equal(row.disabled, false);
     await view.click(row);
+    assert.equal(view.host.querySelector('[data-dock-program-row="oceanleo"]').disabled, true, "an offline computer cannot run the OceanLeo task");
+    assert.equal(view.host.querySelector('[data-dock-program-row="codex"]').disabled, false, "saved history stays reachable");
+    assert.match(view.host.querySelector('[data-dock-program-row="codex"]').textContent, /离线/);
     assert.deepEqual(readExecutionTarget("account-a"), { kind: "cloud" });
-    assert.match(row.textContent, /离线/);
+    assert.deepEqual(picks, []);
   } finally { view.cleanup(); }
 });
 
@@ -573,10 +582,4 @@ test("C7-U5: after an account switch, the previous account's availability never 
     assert.deepEqual(readExecutionTarget("account-b"), { kind: "device", id: "mac-b", name: "B Mac" });
     assert.match(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").getAttribute("title"), /允许云端助手的时间已到/);
   } finally { view.cleanup(); }
-});
-
-test("native navigation preserves draft before creating a managed session and blocked upload stays put",async()=>{
- const pushes=[];globalThis.__ccRouter.push=url=>pushes.push(url);globalThis.__managedCreates=0;let preserved=0;
- const view=await render([pc()],makeClient([pc()]),{onBeforeNavigate:async()=>{preserved++;throw new Error('请等待文件上传完成')}});
- try{await openDock(view);await view.click(view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]'));await view.click([...view.host.querySelectorAll('button')].find(b=>b.textContent.includes('Codex')));assert.equal(preserved,1);assert.equal(globalThis.__managedCreates,0);assert.deepEqual(pushes,[]);assert.match(view.text(),/请等待文件上传完成/);}finally{view.cleanup();}
 });

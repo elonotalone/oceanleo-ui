@@ -39,7 +39,10 @@ import { PluginsPopover } from "./PluginsPopover";
 import { PayerSelector } from "./PayerSelector";
 import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
+import { ConversationSettingsButton } from "./cloud-computer/ConversationBar";
 import type { ExecutionTarget } from "../lib/execution-target";
+import type { ComputerTaskSession } from "../lib/computer-task-api";
+import type { ConversationTarget } from "./native-thread/types";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
 import {
   composerSlashAdapter,
@@ -131,6 +134,8 @@ export interface ComposerPayer {
 export interface ComposerSubmitContext {
   /** Snapshot of the visible selection at the moment Send was pressed. */
   executionTarget?: ExecutionTarget;
+  /** The conversation shown when Send was pressed; the host routes native sends by it. */
+  conversation?: ConversationTarget;
 }
 
 export interface LeoComposerProps {
@@ -260,10 +265,22 @@ export interface LeoComposerProps {
    * 传 false 可在非 OceanLeo 宿主关掉。
    */
   showComputerDock?: boolean;
-  hideComputerDockControl?: boolean;
-  computerDockSlot?: ReactNode;
-  draftExecutionTarget?: ExecutionTarget;
+  /** Called before the Device control's only navigation (管理设备), e.g. to keep the home draft. */
   onBeforeComputerNavigate?: () => void | Promise<void>;
+  /**
+   * The conversation this composer talks to (OceanLeo / a program on a computer /
+   * its terminal). Omitted: the composer keeps the last pick itself.
+   */
+  conversation?: ConversationTarget;
+  /** Given: the Device control drills into a computer's programs and terminal. */
+  onConversationChange?: (conversation: ConversationTarget) => void;
+  /** Conversations this task already has (marked and reused in the Device menu). */
+  taskSessions?: ComputerTaskSession[];
+  /** Replaces the model picker (e.g. a native program's model control); null hides it. */
+  modelPickerSlot?: ReactNode;
+  /** Settings gear beside the Device control; shown only for native / terminal conversations. */
+  onOpenSettings?: () => void;
+  settingsOpen?: boolean;
   /** undefined=new draft; null=existing task still loading; otherwise immutable task target. */
   boundExecutionTarget?: ExecutionTarget | null;
 
@@ -312,10 +329,13 @@ export function LeoComposer({
   showPayerSelector = true,
   showAppsBar = true,
   showComputerDock = true,
-  hideComputerDockControl = false,
-  computerDockSlot,
-  draftExecutionTarget,
   onBeforeComputerNavigate,
+  conversation,
+  onConversationChange,
+  taskSessions,
+  modelPickerSlot,
+  onOpenSettings,
+  settingsOpen = false,
   boundExecutionTarget,
   appsHost,
   onOpenPlugins,
@@ -338,6 +358,14 @@ export function LeoComposer({
   const executionTargetRef = useRef<ExecutionTarget>({ kind: "cloud" });
   const [targetDraftRevision, setTargetDraftRevision] = useState(0);
   const rememberExecutionTarget = useCallback((target: ExecutionTarget) => { executionTargetRef.current = target; }, []);
+  // Uncontrolled hosts: the composer remembers the last Device pick itself.
+  const [ownConversation, setOwnConversation] = useState<ConversationTarget | null>(null);
+  const activeConversation = conversation ?? ownConversation;
+  const nativeConversation = Boolean(activeConversation && activeConversation.kind !== "oceanleo");
+  const changeConversation = useCallback((next: ConversationTarget) => {
+    setOwnConversation(next);
+    onConversationChange?.(next);
+  }, [onConversationChange]);
   // 取当前输入元素 = 编辑器根 DOM（不再有第二套 textarea）。
   const currentTextarea = useCallback(
     (): HTMLElement | null => highlightRef.current?.el() ?? null,
@@ -399,7 +427,7 @@ export function LeoComposer({
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
     !intake.compressing &&
     !loading &&
-    !disabled && boundExecutionTarget !== null;
+    !disabled && (boundExecutionTarget !== null || nativeConversation);
   const hasAttachMenu =
     Boolean(onAttachFiles) ||
     Boolean(recentFiles && onPickRecent) ||
@@ -421,12 +449,14 @@ export function LeoComposer({
   // 用户第一次真的派活的时刻 —— 通知权限在这里要，不在启动时要。启动就弹权限框的
   // app 会被直接拒掉，而拒绝是永久的。浏览器里这一行是空操作。
   function submitPrompt() {
-    if (boundExecutionTarget === null) return;
+    if (boundExecutionTarget === null && !nativeConversation) return;
     requestTaskNotificationsOnce();
-    const selected = boundExecutionTarget ?? draftExecutionTarget ?? executionTargetRef.current;
+    const selected = boundExecutionTarget ?? executionTargetRef.current;
+    const shownConversation: ConversationTarget = activeConversation && activeConversation.kind !== "oceanleo"
+      ? { ...activeConversation } : { kind: "oceanleo", target: { ...selected } };
     onSubmit?.(cleanPromptValue(), { org_id: payerOrgId },
-      showComputerDock ? { executionTarget: { ...selected } } : undefined);
-    if (boundExecutionTarget === undefined) {
+      showComputerDock ? { executionTarget: { ...selected }, conversation: shownConversation } : undefined);
+    if (boundExecutionTarget === undefined && !nativeConversation) {
       if (selected.kind === "device" && selected.driver === "cloud") executionTargetRef.current = {...selected, gui: false};
       setTargetDraftRevision(revision => revision + 1);
     }
@@ -593,7 +623,20 @@ export function LeoComposer({
               extra={attachMenuExtra}
             />
           )}
-          {showComputerDock && (computerDockSlot ?? (!hideComputerDockControl && <ComputerDock onBeforeNavigate={onBeforeComputerNavigate} key={targetDraftRevision} boundTarget={boundExecutionTarget} onTargetChange={rememberExecutionTarget} />))}
+          {showComputerDock && (
+            <ComputerDock
+              key={targetDraftRevision}
+              boundTarget={boundExecutionTarget}
+              onTargetChange={rememberExecutionTarget}
+              onBeforeNavigate={onBeforeComputerNavigate}
+              conversation={activeConversation ?? undefined}
+              onConversationChange={onConversationChange ? changeConversation : undefined}
+              taskSessions={taskSessions}
+            />
+          )}
+          {showComputerDock && onOpenSettings && nativeConversation && (
+            <ConversationSettingsButton onOpenSettings={onOpenSettings} settingsOpen={settingsOpen} />
+          )}
           {showPlugins && (
             <>
             <button
@@ -642,9 +685,9 @@ export function LeoComposer({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {showModelPicker && (
-            <ModelGroupPicker compact placement="top" align="right" />
-          )}
+          {modelPickerSlot !== undefined
+            ? modelPickerSlot
+            : showModelPicker && <ModelGroupPicker compact placement="top" align="right" />}
           {onMeetingRecording && (
             <button
               type="button"

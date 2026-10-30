@@ -116,7 +116,6 @@ test("bound target renders actual immutable scope and never exposes the draft se
   const React = await import("react");
   const {renderToStaticMarkup} = await import("react-dom/server");
   const {ComputerDock} = await import(await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
-    "../../lib/computer-task-api": dataModule("export async function createComputerTaskSession(){}"),
     "next/navigation": dataModule('export function useRouter(){return {push(){}}}'),
     "../../i18n/ui/useUI": dataModule('export function useUI(){return value=>value}'),
     "../../lib/auth/client": dataModule('export async function getUserId(){return "alice"}'),
@@ -130,7 +129,8 @@ test("bound target renders actual immutable scope and never exposes the draft se
     const html = renderToStaticMarkup(React.createElement(ComputerDock, {boundTarget: {kind: "device", id: "pc", name: "PC", driver: "cloud", gui}}));
     assert.match(html, /data-task-bound-target/);
     assert.match(html, gui ? /允许截图和操作界面/ : /仅文件（不截图或操作界面）/);
-    assert.doesNotMatch(html, /<button/);
+    assert.match(html, /此任务权限已固定/, "the trigger says a new task is needed to change it");
+    assert.equal(html.match(/<button/g)?.length, 1, "only the Device trigger; the draft scope selector is not rendered");
   }
   const loading = renderToStaticMarkup(React.createElement(ComputerDock, {boundTarget: null}));
   assert.match(loading, /正在加载/);

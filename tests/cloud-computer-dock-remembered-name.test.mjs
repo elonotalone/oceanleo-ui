@@ -105,7 +105,6 @@ const { MessageList } = await import(
 );
 const { ComputerDock } = await import(
   await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
-    "../../lib/computer-task-api": dataModule("export async function createComputerTaskSession(){throw new Error('unexpected native navigation');}"),
     "../../i18n/ui/useUI": uiStub,
     "../../contracts/domain-family": domainStub,
     "../../lib/cloud-computer-api": apiStub,
@@ -257,7 +256,8 @@ test("only an explicit selection records its name and restores it on remount", a
   globalThis.__ccWrittenName = "";
   globalThis.__ccApi = { async listComputers() { return { items: [] }; } };
   const computers = [pc({ id: "cc_1", name: "elon" })];
-  const view = await renderDock({ client: globalThis.__ccApi, computers });
+  const picks = [];
+  const view = await renderDock({ client: globalThis.__ccApi, computers, onConversationChange: (c) => picks.push(c) });
   try {
     assert.equal(globalThis.__ccWrittenName, "", "rendering a candidate is not selection");
     await act(async () => view.host.querySelector("[data-oceanleo-cc-dock-trigger]").dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -265,12 +265,13 @@ test("only an explicit selection records its name and restores it on remount", a
     await act(async () => view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]').dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await flush();
     assert.equal(globalThis.__ccWrittenName, "", "inspecting a device is not an execution selection");
-    const select=[...view.host.querySelectorAll("button")].find(button=>button.textContent==="用此电脑执行 OceanLeo 任务");
+    const select=view.host.querySelector('[data-dock-program-row="oceanleo"]');
     assert.ok(select);
     await act(async()=>select.dispatchEvent(new MouseEvent("click",{bubbles:true})));
     await flush();
     assert.equal(globalThis.__ccWrittenName, "elon");
     assert.deepEqual(readExecutionTarget("account-a"), { kind: "computer", id: "cc_1", name: "elon" });
+    assert.deepEqual(picks, [{ kind: "oceanleo", target: { kind: "computer", id: "cc_1", name: "elon" } }]);
   } finally { await view.cleanup(); }
   const restored = await renderDock({ client: globalThis.__ccApi, computers });
   try { assert.equal(restored.host.querySelector("[data-oceanleo-cc-dock-trigger]").textContent, "elon"); }

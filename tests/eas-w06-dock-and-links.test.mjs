@@ -1,5 +1,5 @@
-// W06 第二段：开通失败不算接入中；坞只有开通失败时写「开通失败」；
-// 子站上坞 / 服务器页链到门户，门户上保持相对路径；云电脑页把开通失败单独成组。
+// W06 第二段：开通失败不算接入中；坞只列可用的已接入电脑；
+// 子站上坞「管理设备」/ 服务器页链到门户，门户上保持相对路径；云电脑页把开通失败单独成组。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -107,6 +107,7 @@ const pageHeaderStub = dataModule(`
 const confirmStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function ConfirmDialog() { return null; }
+  export function ButtonSpinner() { return null; }
 `);
 const navStub = dataModule(`
   export function useRouter() {
@@ -158,6 +159,8 @@ const { ComputerDock } = await import(
       export const listDevices = async () => ({ ok: true, data: [] });
     `),
     "../account/SettingsModalHost": dataModule(`export function openSettingsModal() {}`),
+    "../../lib/auth/client": dataModule(`export async function getUserId() { return "owner"; }`),
+    "../../lib/cloud-agent-api": dataModule(`export async function listCloudAgentAvailability() { return { kind: "absent" }; }`),
     "../../contracts/domain-family": dataModule(`
       export function currentDomainFamily() { return "com"; }
       export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
@@ -293,15 +296,24 @@ async function renderDock(computers) {
   };
 }
 
-async function openEmptyDock(computers) {
+async function openDock(computers) {
   const view = await renderDock(computers);
-  const trigger = view.host.querySelector("[data-oceanleo-cc-dock-empty]");
-  assert.ok(trigger, `坞没有空态按钮，写着：${view.text()}`);
+  const trigger = view.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+  assert.ok(trigger, `坞没有设备按钮，写着：${view.text()}`);
   await act(async () => {
     trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   });
   await flush();
   return view;
+}
+
+async function clickManage(view) {
+  const manage = [...view.host.querySelectorAll("button")].find((node) => (node.textContent || "").includes("管理设备"));
+  assert.ok(manage, "坞里没有「管理设备」");
+  await act(async () => {
+    manage.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  await flush();
 }
 
 async function renderDevicesPage(computers) {
@@ -356,14 +368,13 @@ test("开通失败不算接入中；开通中仍算", () => {
   assert.equal(isPendingComputer(READY), false);
 });
 
-test("坞只有开通失败机器时写「开通失败」，不写「接入进行中」", async () => {
+test("坞只列可用的已接入电脑：开通失败与开通中都不成为可选项，也不写「接入进行中」", async () => {
   setPageUrl(`${PORTAL}/`);
-  const view = await openEmptyDock([FAILED]);
+  const view = await openDock([FAILED, PROVISIONING, READY]);
   try {
-    assert.match(view.text(), /开通失败/, `坞写着：${view.text()}`);
-    assert.doesNotMatch(view.text(), /接入进行中/, `坞仍在催接入进度：${view.text()}`);
-    assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-pending-progress]"), null);
-    assert.ok(view.host.querySelector("[data-oceanleo-cc-dock-failed]"));
+    const items = [...view.host.querySelectorAll("[data-oceanleo-cc-switch-item]")].map((node) => node.getAttribute("data-oceanleo-cc-switch-item"));
+    assert.deepEqual(items, ["cc_ready"]);
+    assert.doesNotMatch(view.text(), /接入进行中/);
   } finally {
     view.cleanup();
   }
@@ -372,35 +383,16 @@ test("坞只有开通失败机器时写「开通失败」，不写「接入进�
 test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 origin 下是相对路径", async () => {
   setPageUrl(`${SUBSITE}/`);
   assert.equal(serverPageHref("cc_ready"), `${PORTAL}/computers/cc_ready`);
-  assert.equal(devicesCloudHref(), `${PORTAL}/settings/devices`);
-
-  const dockSub = await openEmptyDock([FAILED]);
-  try {
-    const failedLink = dockSub.host.querySelector("[data-oceanleo-cc-dock-failed]");
-    assert.ok(failedLink);
-    assert.match(failedLink.textContent || "", /开通失败/);
-  } finally {
-    dockSub.cleanup();
-  }
+  assert.equal(devicesCloudHref(), `${PORTAL}/devices`);
 
   const subPushes = [];
   globalThis.__w06Router = { push(href) { subPushes.push(href); }, replace() {}, refresh() {}, back() {} };
-  const mountedSub = await renderDock([READY]);
+  const dockSub = await openDock([READY]);
   try {
-    const trigger = mountedSub.host.querySelector("[data-oceanleo-cc-dock-trigger]");
-    assert.ok(trigger);
-    await act(async () => {
-      trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    await flush();
-    const mounted = mountedSub.host.querySelector("[data-oceanleo-cc-dock-mounted]");
-    assert.ok(mounted);
-    await act(async () => {
-      mounted.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(subPushes.at(-1), `${PORTAL}/computers/cc_ready`);
+    await clickManage(dockSub);
+    assert.equal(subPushes.at(-1), `${PORTAL}/devices`);
   } finally {
-    mountedSub.cleanup();
+    dockSub.cleanup();
   }
 
   const serverSub = await renderServerPage([OFFLINE]);
@@ -409,41 +401,23 @@ test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 or
       (node.textContent || "").includes("查看我的设备"),
     );
     assert.ok(link, "服务器页离线态没有「查看我的设备」");
-    assert.equal(link.getAttribute("href"), `${PORTAL}/settings/devices`);
+    assert.equal(link.getAttribute("href"), `${PORTAL}/devices`);
   } finally {
     serverSub.cleanup();
   }
 
   setPageUrl(`${PORTAL}/`);
   assert.equal(serverPageHref("cc_ready"), "/computers/cc_ready");
-  assert.equal(devicesCloudHref(), "/settings/devices");
-
-  const dockPortal = await openEmptyDock([PROVISIONING]);
-  try {
-    const pending = dockPortal.host.querySelector("[data-oceanleo-cc-dock-pending-progress]");
-    assert.ok(pending);
-    assert.match(pending.textContent || "", /接入进行中/);
-  } finally {
-    dockPortal.cleanup();
-  }
+  assert.equal(devicesCloudHref(), "/devices");
 
   const portalPushes = [];
   globalThis.__w06Router = { push(href) { portalPushes.push(href); }, replace() {}, refresh() {}, back() {} };
-  const mountedPortal = await renderDock([READY]);
+  const dockPortal = await openDock([READY]);
   try {
-    const trigger = mountedPortal.host.querySelector("[data-oceanleo-cc-dock-trigger]");
-    await act(async () => {
-      trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    await flush();
-    const mounted = mountedPortal.host.querySelector("[data-oceanleo-cc-dock-mounted]");
-    assert.ok(mounted);
-    await act(async () => {
-      mounted.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(portalPushes.at(-1), "/computers/cc_ready");
+    await clickManage(dockPortal);
+    assert.equal(portalPushes.at(-1), "/devices");
   } finally {
-    mountedPortal.cleanup();
+    dockPortal.cleanup();
   }
 
   const serverPortal = await renderServerPage([OFFLINE]);
@@ -452,7 +426,7 @@ test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 or
       (node.textContent || "").includes("查看我的设备"),
     );
     assert.ok(link);
-    assert.equal(link.getAttribute("href"), "/settings/devices");
+    assert.equal(link.getAttribute("href"), "/devices");
   } finally {
     serverPortal.cleanup();
   }
