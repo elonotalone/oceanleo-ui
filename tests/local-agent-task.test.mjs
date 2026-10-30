@@ -55,7 +55,7 @@ test("actual control transport fences revision and never retries failed or ambig
 });
 test("real AgentChat integrates local status and routes stop before cloud optimistic stop", () => {
   const source=readFileSync(new URL("../src/shell/AgentChat.tsx",import.meta.url),"utf8");
-  assert.match(source,/taskLocalAgentState\(r.data.task\)/);
+  assert.match(source,/taskLocalAgentState\((?:r\.)?data\.task\)/);
   assert.match(source,/isLocalExecution && <LocalAgentTaskStatus/);
   const stop=source.slice(source.indexOf("const stop = useCallback"));
   assert.ok(stop.indexOf('await controlLocal("stop")')<stop.indexOf('setStatus("stopped")'));

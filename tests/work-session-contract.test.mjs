@@ -176,7 +176,7 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
       ?.map((line) => line.trim()),
     ['if (action.tab === "bay") setRightOpen(true);'],
   );
-  assert.match(agentChatSource, /setActiveArtifactIds\([\s\S]*?r\.data\.artifacts/);
+  assert.match(agentChatSource, /setActiveArtifactIds\([\s\S]*?(?:r\.)?data\.artifacts/);
   assert.match(agentChatSource, /activeArtifactIds\.has\(artifact\.id\)/);
   assert.match(agentChatSource, /await deleteArtifact\(artifactId\)/);
   assert.match(
