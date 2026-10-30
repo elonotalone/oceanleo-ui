@@ -242,7 +242,7 @@ function TranscriptBody({
           </div>
         )}
         {message.content && (
-          <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900">
+          <div className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-neutral-100 px-4 py-2.5 text-[15px] leading-relaxed text-neutral-900 [overflow-wrap:anywhere]">
             <HighlightedText text={message.content} query={highlightQuery} />
           </div>
         )}
@@ -304,7 +304,7 @@ function TranscriptBody({
     // 克制版（操作员 2026-07-12：agent 正文不许被色块包裹）：计划用极细左边线 + 中性小字，
     // 不再是一整块灰底圆角卡片。
     return (
-      <div className="border-l-2 border-stone-200 pl-3">
+      <div className="min-w-0 break-words border-l-2 border-stone-200 pl-3 [overflow-wrap:anywhere]">
         <Markdown
           className="text-[14px] leading-relaxed text-stone-500"
           highlightQuery={highlightQuery}
@@ -321,15 +321,30 @@ function TranscriptBody({
   }
   if (message.kind === "step") {
     return (
-      <div className="px-1 text-[13px] font-medium text-stone-500">
+      <div className="min-w-0 break-words px-1 text-[13px] font-medium text-stone-500 [overflow-wrap:anywhere]">
         <HighlightedText text={message.content} query={highlightQuery} />
       </div>
     );
   }
   if (message.kind === "error") {
     return (
-      <div className="rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600">
+      <div className="min-w-0 whitespace-pre-wrap break-words rounded-lg bg-rose-50 px-3 py-2 text-[14px] text-rose-600 [overflow-wrap:anywhere]">
         <HighlightedText text={message.content} query={highlightQuery} />
+      </div>
+    );
+  }
+  if (message.kind === "notice") {
+    // A program's informational notice (e.g. its process exited): neutral, not a failure.
+    return (
+      <div
+        role="status"
+        data-agent-notice={typeof message.meta?.native_notice === "string" ? message.meta.native_notice : ""}
+        className="flex min-w-0 items-start gap-2 px-1 text-[13px] leading-relaxed text-stone-500"
+      >
+        <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-300" />
+        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+          <HighlightedText text={message.content} query={highlightQuery} />
+        </span>
       </div>
     );
   }
@@ -421,11 +436,11 @@ function GateBubble({
     message.content ||
     tt("请确认后继续。");
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3">
+    <div className="min-w-0 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3">
       <p className="text-[12px] font-semibold text-amber-800">
         {active ? tt("需要你确认") : tt("已确认")}
       </p>
-      <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-900">
+      <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-amber-900 [overflow-wrap:anywhere]">
         <HighlightedText text={prompt} query={highlightQuery} />
       </p>
       {active && onGate && (
@@ -516,11 +531,11 @@ function GateFrame({
 }) {
   const tt = useUI();
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3" {...attributes}>
+    <div className="min-w-0 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3" {...attributes}>
       <p className="text-[12px] font-semibold text-amber-800">
         {active ? tt("需要你确认") : tt("已确认")}
       </p>
-      <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-900">
+      <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-amber-900 [overflow-wrap:anywhere]">
         <HighlightedText text={prompt} query={highlightQuery} />
       </p>
       {children}
@@ -690,7 +705,7 @@ function NativeQuestionGate({
       attributes={{ "data-native-question": questionId }}
     >
       {detail && (
-        <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap text-[12px] leading-relaxed text-amber-900/80">
+        <pre className="mt-1.5 max-h-40 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words text-[12px] leading-relaxed text-amber-900/80 [overflow-wrap:anywhere]">
           {detail}
         </pre>
       )}
@@ -709,7 +724,7 @@ function NativeQuestionGate({
           {fields ? (
             fields.map((field) => (
               <fieldset key={field.id} className="space-y-1.5">
-                <legend className="text-[12px] text-amber-800">{field.title}</legend>
+                <legend className="max-w-full break-words text-[12px] text-amber-800 [overflow-wrap:anywhere]">{field.title}</legend>
                 {field.options.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {field.options.map((option) => {
@@ -808,7 +823,7 @@ function DeviceStatusNotice({
     <div
       role="status"
       data-device-status={typeof kind === "string" ? kind : "unknown"}
-      className={`flex items-start gap-2 rounded-lg px-3 py-2 text-[13px] leading-relaxed ${
+      className={`flex min-w-0 items-start gap-2 rounded-lg px-3 py-2 text-[13px] leading-relaxed ${
         tone === "ok"
           ? "bg-emerald-50 text-emerald-800"
           : tone === "pause"
@@ -822,7 +837,7 @@ function DeviceStatusNotice({
           tone === "ok" ? "bg-emerald-500" : tone === "pause" ? "bg-stone-400" : "bg-amber-500"
         }`}
       />
-      <span className="min-w-0">
+      <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
         <HighlightedText text={text} query={highlightQuery} />
         {time && (
           <span data-device-status-time className="ml-1.5 text-[11px] opacity-70">

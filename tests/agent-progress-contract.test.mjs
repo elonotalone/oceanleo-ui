@@ -3,10 +3,11 @@ import test from "node:test";
 
 import {
   activeAgentProgressKey,
-  buildAgentProgressActions,
   buildAgentRenderItems,
+  buildProcessEntries,
   isAgentProgressMessage,
   sameAgentMessages,
+  summarizeProcess,
   takeUnreportedAgentArtifacts,
 } from "../src/lib/agent-progress.ts";
 
@@ -76,7 +77,7 @@ test("新旧过程消息都识别为 agent 进度，最终回答不混入", () =
   assert.equal(isAgentProgressMessage(final), false);
 });
 
-test("同一轮过程聚合成一张进度卡，产物与最终回答保持独立", () => {
+test("过程按真实顺序成块：产物留在原处并切开过程块，最终回答在块外", () => {
   const items = buildAgentRenderItems([
     user,
     plan,
@@ -89,16 +90,83 @@ test("同一轮过程聚合成一张进度卡，产物与最终回答保持独�
 
   assert.deepEqual(
     items.map((item) => item.type),
-    ["message", "progress", "message", "message"],
+    ["message", "progress", "message", "progress", "message"],
   );
-  const progress = items[1];
-  assert.equal(progress.type, "progress");
-  assert.deepEqual(
-    progress.messages.map((message) => message.id),
-    [2, 3, 4, 6],
-  );
+  assert.deepEqual(items[1].messages.map((message) => message.id), [2, 3, 4]);
   assert.equal(items[2].message.id, 5);
-  assert.equal(items[3].message.id, 7);
+  assert.deepEqual(items[3].messages.map((message) => message.id), [6]);
+  assert.equal(items[4].message.id, 7);
+});
+
+test("text1 · toolA · text2 · toolB 保持原序；回合最后一段文字是块外的回答", () => {
+  const text1 = { id: 11, role: "assistant", kind: "text", content: "先看看。" };
+  const toolA = { id: 12, role: "assistant", kind: "step", content: "▶ 读取文件", meta: { tool: "read_file", status: "done" } };
+  const text2 = { id: 13, role: "assistant", kind: "text", content: "再跑一下。" };
+  const toolB = { id: 14, role: "assistant", kind: "step", content: "运行命令", meta: { tool: "run", status: "running" } };
+  const answer = { id: 15, role: "assistant", kind: "text", content: "好了。", meta: { done: true } };
+  const items = buildAgentRenderItems([user, text1, toolA, text2, toolB, answer]);
+  assert.deepEqual(items.map((item) => item.type), ["message", "progress", "message"]);
+  assert.deepEqual(items[1].messages.map((message) => message.id), [11, 12, 13, 14]);
+  assert.equal(items[2].message.id, 15);
+  const entries = buildProcessEntries(items[1].messages);
+  assert.deepEqual(entries.map((entry) => entry.type), ["text", "tool", "text", "tool"]);
+  assert.equal(entries[1].title, "读取文件");
+  assert.equal(entries[3].status, "running");
+
+  // Still streaming text2 with nothing after it: it is the (current) answer, outside the block.
+  const live = buildAgentRenderItems([user, text1, toolA, text2]);
+  assert.deepEqual(live.map((item) => item.type), ["message", "progress", "message"]);
+  assert.deepEqual(live[1].messages.map((message) => message.id), [11, 12]);
+  assert.equal(live[2].message.id, 13);
+});
+
+test("回复行的 meta.reasoning 成为回答之前的思考条目（C1），老行没有也不出块", () => {
+  const streaming = { id: 21, role: "assistant", kind: "text", content: "", meta: { streaming: true, reasoning: "用户要一个网站……" } };
+  const items = buildAgentRenderItems([user, streaming]);
+  assert.deepEqual(items.map((item) => item.type), ["message", "progress", "message"]);
+  const [thought] = buildProcessEntries(items[1].messages);
+  assert.equal(thought.type, "thought");
+  assert.equal(thought.text, "用户要一个网站……");
+  assert.equal(thought.streaming, true);
+  assert.equal(items[2].message.id, 21, "the reply row itself stays a normal bubble");
+  assert.ok(activeAgentProgressKey(items, [user, streaming]), "the live thought replaces the bare spinner");
+
+  const answered = { ...streaming, content: "好的", meta: { reasoning: "想好了", reasoning_ms: 4200, done: true } };
+  const done = buildProcessEntries(buildAgentRenderItems([user, answered])[1].messages);
+  assert.equal(done[0].streaming, false);
+  assert.equal(done[0].ms, 4200);
+  assert.equal(summarizeProcess(buildAgentRenderItems([user, answered])[1].messages).ms, 4200);
+
+  const legacy = buildAgentRenderItems([user, { id: 22, role: "assistant", kind: "text", content: "hi", meta: { done: true } }]);
+  assert.deepEqual(legacy.map((item) => item.type), ["message", "message"]);
+});
+
+test("云端步骤带上入参、结果、错误与状态（C2），分析是步骤之前的思考而不是步骤正文", () => {
+  const failedStep = {
+    id: 31, role: "assistant", kind: "step", content: "在电脑上查找元素",
+    meta: { tool: "computer_ui_find", status: "failed", step_index: 1, args_preview: '{"name":"OK"}', result_preview: "", error: "失败：failed（没有执行）：ui.find: the foreground window is the hand itself" },
+  };
+  const entries = buildProcessEntries([analysis, failedStep, step]);
+  assert.deepEqual(entries.map((entry) => entry.type), ["thought", "tool", "tool"]);
+  assert.equal(entries[0].text, "详细分析与代码");
+  assert.equal(entries[0].summary, "先检查项目");
+  assert.equal(entries[1].title, "在电脑上查找元素");
+  assert.equal(entries[1].status, "failed");
+  assert.equal(entries[1].args, '{"name":"OK"}');
+  assert.match(entries[1].error, /foreground window is the hand itself/);
+  assert.equal(entries[2].status, "done");
+  const summary = summarizeProcess([analysis, failedStep, step], entries);
+  assert.deepEqual(
+    { thoughts: summary.thoughts, tools: summary.tools, failed: summary.failed },
+    { thoughts: 1, tools: 2, failed: 1 },
+  );
+});
+
+test("用时：没有 reasoning_ms 时按过程行的时间跨度算，不足 1 秒不报", () => {
+  const a = { ...analysis, created_at: "2026-10-30T10:00:00Z" };
+  const b = { ...step, created_at: "2026-10-30T10:00:12Z" };
+  assert.equal(summarizeProcess([a, b]).ms, 12000);
+  assert.equal(summarizeProcess([a, { ...b, created_at: a.created_at }]).ms, null);
 });
 
 test("下一条用户消息开始新的进度组", () => {
@@ -191,14 +259,10 @@ test("task 切换过渡帧不会把旧消息产物上报给新 task", () => {
 });
 
 
-test("结构化与旧 interim 混排时不会共用索引并覆盖分析", () => {
-  const actions = buildAgentProgressActions([
-    analysis,
-    legacyAnalysis,
-    step,
-  ]);
-  assert.equal(actions.length, 2);
-  assert.equal(actions[0].analysis?.id, analysis.id);
-  assert.deepEqual(actions[0].labels, ["读取项目结构"]);
-  assert.equal(actions[1].analysis?.id, legacyAnalysis.id);
+test("结构化与旧 interim 混排时逐条成条目，不合并不覆盖", () => {
+  const entries = buildProcessEntries([analysis, legacyAnalysis, step, plan]);
+  assert.deepEqual(entries.map((entry) => entry.type), ["thought", "thought", "tool", "plan"]);
+  assert.equal(entries[1].text, "Thought: legacy");
+  assert.equal(entries[1].summary, "legacy");
+  assert.deepEqual(entries[3].items.map((item) => item.content), ["创建会话", "编写页面", "检查结果"]);
 });

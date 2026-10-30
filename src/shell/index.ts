@@ -532,7 +532,9 @@ export { Markdown } from "./Markdown";
 // 全站 agent 共用：规划 + 执行步骤 + 自动折叠分析/代码。
 export { AgentProgress } from "./AgentProgress";
 // agent 工作界面（左推导 / 右固定五槽位，真实调 /v1/agent/tasks）。
-export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentLibraryTabs } from "./AgentChat";
+export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentChatNativeLaunch, type AgentLibraryTabs } from "./AgentChat";
+// Homepage native chat: the composer's prewarmed thread is handed to AgentChat (nativeLaunch).
+export { useNativeThread, type NativeThread } from "./native-thread";
 // 人才市场 v1：对话里卡住了「叫真人」。AgentChat 已经自带入口按钮与状态条，这四个
 // 单独导出是给别的场景（工作台、企业任务、设置页）复用同一套授权与闸门语义用的。
 // 上下文默认一条都不勾、可逐条撤回；agent 雇人默认全关且每个决定都能被人推翻。

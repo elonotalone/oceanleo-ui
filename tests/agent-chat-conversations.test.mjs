@@ -86,6 +86,7 @@ const computerTaskApiUrl = await compileModule("src/lib/computer-task-api.ts", {
     export async function cloudComputerRequest(path, init = {}) {
       globalThis.__gateway.push({ path, method: init.method || "GET", body: init.body ? JSON.parse(init.body) : null });
       if (path.startsWith("/v1/computer-task-sessions?")) {
+        if (globalThis.__listHang) return new Promise(() => {});
         if (globalThis.__listFails > 0) { globalThis.__listFails--; throw Object.assign(new Error("offline"), { status: 503 }); }
         return { sessions: globalThis.__sessions };
       }
@@ -174,22 +175,52 @@ const OVERRIDES = {
     export function useHostReviewActions(){ return { busy: false, accept(){}, reject(){}, rollback(){} }; }
   `),
   "./plugin-command": dataModule("export function currentPluginCommandSurface(){ return null; }"),
+  // The thread stub keeps the real hook's pending contract: queue() shows the bubble at
+  // once, it goes out once ready, a blocked one is marked unsent (never handed back).
   "./native-thread": dataModule(`
+    import React from ${reactUrl};
     globalThis.__threadInputs = []; globalThis.__sent = []; globalThis.__threadStops = 0;
     export function useNativeThread(input) {
       globalThis.__threadInputs.push(input);
       const state = { ...(globalThis.__thread || {}) };
       const live = Boolean(input.session && input.enabled && input.computer && input.computer.node_online && state.live !== false);
+      const ready = live && !state.blockedReason && state.ready !== false;
+      const blockedReason = input.session ? state.blockedReason || null : null;
+      const [pending, setPending] = React.useState(null);
+      const pendingRef = React.useRef(pending);
+      pendingRef.current = pending;
+      const send = async (text) => { globalThis.__sent.push({ session: input.session && input.session.id, text }); return state.sendResult ?? true; };
+      React.useEffect(() => {
+        if (!pending || pending.unsent || pending.sending) return;
+        if (ready) {
+          const sending = { ...pending, sending: true };
+          setPending(sending);
+          void send(pending.text).then((ok) => setPending((current) => current === sending ? (ok ? null : { ...pending, unsent: "没能发出去，请重试。" }) : current));
+        } else if (blockedReason && input.computer) setPending({ ...pending, unsent: blockedReason });
+      }, [pending, ready, blockedReason]);
+      const bubble = pending ? [{ id: -2147483648, role: "user", kind: "text", content: pending.text, meta: { native: true, native_pending: true, ...(pending.unsent ? { native_unsent: true } : {}) } }] : [];
       return {
-        messages: input.session ? (state.messages || []) : [], live, draft: !input.session, running: false,
-        ready: live && !state.blockedReason && state.ready !== false,
+        messages: [...(input.session ? (state.messages || []) : []), ...bubble], live, draft: !input.session, running: false,
+        ready,
         offline: Boolean(input.computer && !input.computer.node_online),
-        blockedReason: input.session ? state.blockedReason || null : null,
-        async send(text) { globalThis.__sent.push({ session: input.session && input.session.id, text }); return state.sendResult ?? true; },
+        blockedReason,
+        send,
         stop() { globalThis.__threadStops++; },
         answer(message, answer) { (globalThis.__answers ||= []).push({ id: message.id, answer }); },
         composerAttachments: state.attachments || [], onAttachFiles: undefined, onRemoveAttachment() {},
-        modelPicker: null, hasOlder: false, loadOlder() {}, saveFailed: Boolean(state.saveFailed), dialog: { stub: true },
+        modelPicker: null, hasOlder: false, loadOlder() {}, saveFailed: Boolean(state.saveFailed), dialog: { stub: true, activeSession: "" },
+        pending: pending ? { text: pending.text, unsent: pending.unsent ?? null } : null,
+        queue(text) {
+          if (pendingRef.current && !pendingRef.current.unsent) return false;
+          if (!text && !(state.attachments || []).length) return false;
+          (globalThis.__queued ||= []).push(text);
+          const next = { text, unsent: null };
+          pendingRef.current = next;
+          setPending(next);
+          return true;
+        },
+        markUnsent(reason) { setPending((current) => current && !current.unsent ? { ...current, sending: false, unsent: reason } : current); },
+        retry() { setPending((current) => current && current.unsent ? { text: current.text, unsent: null } : current); },
       };
     }
   `),
@@ -248,9 +279,11 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false } = {}) {
   window.history.replaceState(null, "", url);
   globalThis.__listFails = listFails;
+  globalThis.__listHang = listHang;
+  globalThis.__queued = [];
   globalThis.__createFails = createFails;
   globalThis.__computerMode = computerMode;
   globalThis.__barProps = null;
@@ -270,6 +303,7 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   return {
     host,
     composer: (kind) => host.querySelector(`[data-leo-composer="${kind}"]`),
+    rerender(next) { root.render(React.createElement(AgentChat, { siteId: "oceanleo", ...next })); },
     async unmount() { await act(async () => root.unmount()); host.remove(); globalThis.__task = null; },
   };
 }
@@ -496,26 +530,28 @@ test("a failed pick shows in the visible (cloud) stream and nothing switches", a
 });
 
 test("an unreadable session list keeps the URL, shows one line with retry, and recovers", async () => {
+  // A session this tab has never seen (a seen one would show at once from memory).
   const view = await mount({ taskId: "t1" }, {
-    task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")],
-    url: "/tasks/t1?computerSession=cts_codex", listFails: 1,
+    task: computerTask(), sessions: [session("cts_unread", "acp", "codex", "2026-10-30T11:00:00Z")],
+    url: "/tasks/t1?computerSession=cts_unread", listFails: 1,
   });
   try {
-    assert.match(window.location.search, /computerSession=cts_codex/, "the param is kept while the list cannot be read");
-    const notice = view.host.querySelector("[data-computer-sessions-failed]");
+    assert.match(window.location.search, /computerSession=cts_unread/, "the param is kept while the list cannot be read");
+    const notice = [...view.host.querySelectorAll("[data-computer-sessions-failed]")].find(visible);
     assert.ok(visible(notice));
     await act(async () => { notice.querySelector("button").click(); await new Promise((r) => setTimeout(r, 0)); });
     await settle();
     assert.equal(view.host.querySelector("[data-computer-sessions-failed]"), null);
     assert.ok(visible(view.composer("native")));
-    assert.equal(view.composer("native").__props.conversation.sessionId, "cts_codex");
+    assert.equal(view.composer("native").__props.conversation.sessionId, "cts_unread");
   } finally { await view.unmount(); }
 });
 
 test("a computer whose state is not known yet says 正在连接…, not offline, and the composer stays usable", async () => {
   globalThis.__thread = { blockedReason: "这台电脑离线，只能查看已保存的对话。" };
   const view = await mount({ taskId: "t1" }, {
-    task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")], computerMode: "hang",
+    // A computer this tab has never read (earlier tests read cc_elon, which would count as known).
+    task: computerTask(), sessions: [{ ...session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z"), computer_id: "cc_never_read" }], computerMode: "hang",
   });
   try {
     const pane = view.host.querySelector('[data-agent-stream="native"]');
@@ -543,17 +579,104 @@ test("offline: saved transcript gates are read-only (no onNativeAnswer) and the 
   } finally { await view.unmount(); globalThis.__thread = null; }
 });
 
-test("a queued first prompt for a program that needs setup goes back to the composer and opens settings", async () => {
+test("a queued first prompt that cannot go out is never handed back silently: bubble stays, 未发送 with the reason and a retry, settings open", async () => {
   window.sessionStorage.setItem("oceanleo.pending-native-prompt:cts_codex", JSON.stringify({ text: "先跑测试", queued_at: Date.now() }));
   globalThis.__thread = { blockedReason: "Codex 还没有登录，请在设置里登录。" };
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
   try {
     await settle();
-    assert.equal(view.composer("native").__props.value, "先跑测试", "text handed back");
-    assert.equal(window.sessionStorage.getItem("oceanleo.pending-native-prompt:cts_codex"), null, "stash dropped");
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    assert.ok(pane.textContent.includes("先跑测试"), "the user's bubble stays in the conversation");
+    assert.equal(view.composer("native").__props.value, "", "nothing is put back into the input box");
+    assert.equal(window.sessionStorage.getItem("oceanleo.pending-native-prompt:cts_codex"), null, "stash taken once");
+    const unsent = pane.querySelector("[data-native-unsent]");
+    assert.ok(visible(unsent), "one plain line under the bubble");
+    assert.match(unsent.textContent, /未发送：Codex 还没有登录，请在设置里登录。/);
+    assert.ok(unsent.querySelector("button").textContent.includes("重试"));
     assert.deepEqual(globalThis.__sent, []);
     assert.ok(visible(view.host.querySelector('[data-native-settings="native"]')), "settings opened");
+    // Fixed in settings, then retried: it goes out once.
+    globalThis.__thread = {};
+    await act(async () => { unsent.querySelector("button").click(); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    assert.deepEqual(globalThis.__sent, [{ session: "cts_codex", text: "先跑测试" }]);
+    assert.equal(view.host.querySelector("[data-native-unsent]"), null);
   } finally { await view.unmount(); globalThis.__thread = null; }
+});
+
+test("a draft send whose session cannot be created keeps the bubble, says 未发送 with a retry, and the retry creates it and sends once", async () => {
+  const draft = await mount({}, { url: "/", createFails: true });
+  try {
+    await changeConversation(draft, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" });
+    await act(async () => { draft.composer("native").__props.onSubmit("看看日志"); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    const pane = draft.host.querySelector('[data-agent-stream="native"]');
+    assert.ok(pane.textContent.includes("看看日志"), "bubble shown although nothing was created");
+    assert.equal(draft.composer("native").__props.value, "", "the text is in the bubble, not handed back");
+    const unsent = pane.querySelector("[data-native-unsent]");
+    assert.match(unsent.textContent, /未发送：没能打开这段对话，请稍后再试。/);
+    const posts = () => globalThis.__gateway.filter((call) => call.method === "POST");
+    assert.equal(posts().length, 1);
+    globalThis.__createFails = false;
+    await act(async () => { unsent.querySelector("button").click(); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    await settle();
+    assert.equal(posts().length, 2);
+    assert.equal(posts()[1].body.request_id, posts()[0].body.request_id, "the retry reuses the request id (no second session)");
+    assert.deepEqual(globalThis.__sent.map((row) => row.text), ["看看日志"], "sent exactly once after the retry");
+    assert.equal(draft.host.querySelector("[data-native-unsent]"), null);
+  } finally { await draft.unmount(); }
+});
+
+test("homepage launch (nativeLaunch): bubble before the session exists, adoption keeps the host's thread, URL replaced, no list read, no own connection", async () => {
+  const api = await import(computerTaskApiUrl);
+  const conversation = { kind: "native", computerId: "cc_launch", computerName: "elon", program: "codex", view: "chat" };
+  const computer = { id: "cc_launch", name: "elon", status: "active", node_online: true };
+  const hostThread = {
+    messages: [{ id: -2147483648, role: "user", kind: "text", content: "马上看日志", meta: { native: true, native_pending: true } }],
+    live: true, draft: true, running: false, ready: false, offline: false, blockedReason: null,
+    async send() { return false; }, stop() {}, answer() {},
+    composerAttachments: [], onAttachFiles() {}, onRemoveAttachment() {}, modelPicker: null, hasOlder: false, loadOlder() {},
+    saveFailed: false, dialog: { stub: true, activeSession: "" }, pending: { text: "马上看日志", unsent: null },
+    queue() { return false; }, markUnsent() {}, retry() {},
+  };
+  const created = [];
+  const view = await mount({ nativeLaunch: { conversation, computer, thread: hostThread, created: null }, onTaskCreated: (id) => created.push(id) }, { url: "/" });
+  try {
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    assert.ok(visible(pane), "the native conversation is in front at once");
+    assert.ok(pane.textContent.includes("马上看日志"), "the user's bubble shows before the session exists");
+    assert.doesNotMatch(pane.textContent, /正在连接…|正在打开对话…/, "the known computer is not waited for");
+    assert.equal(globalThis.__gateway.filter((call) => call.method === "POST").length, 0, "the host creates the session, not this page");
+    const session = { id: "cts_launch", task_id: "t_launch", computer_id: "cc_launch", computer_name: "elon", kind: "acp", program: "codex",
+      native_session_id: null, created_at: "", updated_at: "", sync_status: "saved" };
+    api.rememberComputerTaskSession(session);
+    await act(async () => {
+      view.rerender({ nativeLaunch: { conversation, computer, thread: { ...hostThread, draft: false }, created: { taskId: "t_launch", session } }, onTaskCreated: (id) => created.push(id) });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await settle();
+    assert.deepEqual(created, ["t_launch"], "the host is told once (it replaces the URL)");
+    assert.equal(view.host.querySelector('[data-native-chat="cts_launch"]')?.contains(pane) ?? false, true, "same pane, no remount");
+    assert.equal(globalThis.__gateway.some((call) => call.path.startsWith("/v1/computer-task-sessions?")), false, "no session list read for the task it just created");
+    assert.equal(globalThis.__threadInputs.filter((input) => input.enabled && input.session?.id === "cts_launch").length, 0,
+      "the page's own thread for the launched chat never connects (one socket: the host's)");
+    assert.deepEqual(globalThis.__pushed, []);
+  } finally { await view.unmount(); }
+});
+
+test("a session handed over by the homepage (?computerSession) shows at once; its list and computer are read in parallel", async () => {
+  const api = await import(computerTaskApiUrl);
+  // Its own task id: the hung list read must not be shared with later tests' reads.
+  api.rememberComputerTaskSession({ id: "cts_handed", task_id: "t_handed", computer_id: "cc_elon", computer_name: "elon", kind: "acp", program: "codex",
+    native_session_id: null, created_at: "", updated_at: "", sync_status: "saved" });
+  const view = await mount({ taskId: "t_handed" }, { task: computerTask(), sessions: [], url: "/tasks/t_handed?computerSession=cts_handed", listHang: true });
+  try {
+    const native = view.composer("native");
+    assert.ok(visible(native), "the handed session is in front although the list has not arrived");
+    assert.equal(native.__props.conversation.sessionId, "cts_handed");
+    assert.match(window.location.search, /computerSession=cts_handed/);
+  } finally { await view.unmount(); globalThis.__listHang = false; }
 });
 
 test("native composer hides controls that do nothing for a native send and respects the host placeholder", async () => {

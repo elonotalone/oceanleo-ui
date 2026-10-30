@@ -365,6 +365,9 @@ export function LeoComposer({
   // The host owns the conversation; the composer keeps no copy of a pick.
   const activeConversation = conversation;
   const nativeConversation = Boolean(activeConversation && activeConversation.kind !== "oceanleo");
+  // A program on a computer (Codex / Claude Code / …) is not paid by an OceanLeo
+  // wallet and has no Leo tier: never show either, even if a host forgets.
+  const nativeProgramConversation = activeConversation?.kind === "native";
   // 取当前输入元素 = 编辑器根 DOM（不再有第二套 textarea）。
   const currentTextarea = useCallback(
     (): HTMLElement | null => highlightRef.current?.el() ?? null,
@@ -671,7 +674,7 @@ export function LeoComposer({
           {/* 「这次谁付钱」。进了组织才渲染，否则这里是 null，整排与企业版之前逐字相同。
               挂在左组而不是右组：左组本来就 flex-wrap，窄屏时它换行，
               右组那颗 shrink-0 的发送键因此永远挤不掉（P3）。 */}
-          {showPayerSelector && (
+          {showPayerSelector && !nativeProgramConversation && (
             <PayerSelector value={payerOrgId} onChange={setPayerOrgId} />
           )}
           {/* MCP Apps「应用」入口（A6）。此人没有带界面的 MCP 工具时它是 null，
@@ -687,7 +690,7 @@ export function LeoComposer({
         <div className="flex items-center gap-1.5">
           {modelPickerSlot !== undefined
             ? modelPickerSlot
-            : showModelPicker && <ModelGroupPicker compact placement="top" align="right" />}
+            : showModelPicker && !nativeProgramConversation && <ModelGroupPicker compact placement="top" align="right" />}
           {onMeetingRecording && (
             <button
               type="button"

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { dialogToAgentMessages } from "../src/shell/native-thread/map-dialog.ts";
-import { buildAgentRenderItems, buildAgentProgressActions } from "../src/lib/agent-progress.ts";
+import { buildAgentRenderItems, buildProcessEntries, summarizeProcess } from "../src/lib/agent-progress.ts";
 import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
 
 const archive = {
@@ -17,9 +17,9 @@ function dialog() {
     {
       kind: "turn", id: "t1", acpSession: "s", stop: "end_turn", items: [
         { kind: "thought", id: "i1", text: "Look at the failing step" },
-        { kind: "tool", id: "i2", tool: { id: "tool-1", kind: "read", title: "Read package.json", status: "completed", content: [], locations: [] } },
+        { kind: "tool", id: "i2", tool: { id: "tool-1", kind: "read", title: "Read package.json", status: "completed", content: [{ type: "content", text: "{\"name\":\"x\"}" }], locations: [{ path: "/repo/package.json", line: 1 }] } },
         { kind: "assistant", id: "i3", text: "Found it. " },
-        { kind: "tool", id: "i4", tool: { id: "tool-2", kind: "execute", title: "npm test", status: "failed", content: [], locations: [] } },
+        { kind: "tool", id: "i4", tool: { id: "tool-2", kind: "execute", title: "npm test", status: "failed", content: [{ type: "terminal", output: "FAIL a.test.ts" }, { type: "diff", path: "/repo/a.ts", old_text: "a\nb", new_text: "a\nc" }], locations: [] } },
         { kind: "plan", id: "i5", entries: [{ content: "Patch", priority: "high", status: "completed" }, { content: "Verify", priority: "low", status: "pending" }] },
         { kind: "permission", id: "i6", permId: "p-auto", title: "Run", permKind: "execute", options: [], toolTitle: "ls", chosen: "", auto: true },
         { kind: "permission", id: "i7", permId: "p1", title: "Allow edit?", permKind: "edit", options: [{ id: "a", name: "Allow", kind: "allow_once" }, { id: "r", name: "Reject", kind: "reject_once" }], toolTitle: "Edit src/a.ts", chosen: "", auto: false },
@@ -44,29 +44,33 @@ test("every dialog item kind maps to the main stream message model", () => {
     ["assistant", "text"],
     ["assistant", "step"],
     ["assistant", "plan"],
-    ["assistant", "step"],
     ["assistant", "gate"],
     ["assistant", "gate"],
     ["assistant", "text"],
-    ["assistant", "error"],
+    ["assistant", "notice"],
     ["assistant", "error"],
   ]);
-  const [user, thought, read, text1, failed, plan, auto, gate, question, text2, exited, frameText] = out;
+  const [user, thought, read, text1, failed, plan, gate, question, text2, exited, frameText] = out;
   assert.equal(user.content, "Fix the build");
   assert.equal(user.meta.attachments.length, 2);
   assert.equal(user.meta.attachments[0].native_archive.download_path, archive.download_path);
   assert.equal(user.meta.attachments[0].url, "");
   assert.equal(user.meta.attachments[1].url, "data:image/png;base64,AAAA");
   assert.equal(user.meta.attachments[1].media_type, "image");
-  assert.equal(thought.meta.step_index, read.meta.step_index, "a thought pairs with the tool it led to");
+  assert.equal(thought.content, "Look at the failing step");
   assert.equal(read.content, "Read package.json");
   assert.equal(read.meta.native_tool, true);
   assert.equal(read.meta.tool_status, "completed");
-  assert.equal(failed.content, "npm test（失败）");
-  assert.notEqual(failed.meta.step_index, read.meta.step_index);
+  assert.deepEqual(read.meta.tool_card.locations, [{ path: "/repo/package.json", line: 1 }]);
+  assert.deepEqual(read.meta.tool_card.content, [{ type: "content", text: '{"name":"x"}' }]);
+  assert.equal(failed.content, "npm test", "status is its own field, not glued to the title");
+  assert.equal(failed.meta.tool_status, "failed");
+  assert.equal(failed.meta.tool_card.kind, "execute");
+  assert.deepEqual(failed.meta.tool_card.content.map((part) => part.type), ["terminal", "diff"]);
   assert.deepEqual(plan.meta.plan_steps, ["Patch", "Verify"]);
-  assert.equal(auto.kind, "step");
-  assert.equal(auto.content, "已自动允许：ls");
+  assert.deepEqual(plan.meta.plan_entries.map((entry) => [entry.status, entry.priority]), [["completed", "high"], ["pending", "low"]]);
+  assert.deepEqual(plan.meta.native_usage, { used: 10, size: 100 }, "usage rides on the turn's last process row");
+  assert.ok(!out.some((m) => String(m.content).includes("已自动允许")), "auto-allowed permissions are hidden");
   assert.equal(gate.meta.native_permission.permId, "p1");
   assert.deepEqual(gate.meta.native_permission.options.map((o) => o.id), ["a", "r"]);
   assert.equal(gate.meta.native_permission.chosen, "");
@@ -76,6 +80,7 @@ test("every dialog item kind maps to the main stream message model", () => {
   assert.equal(text1.meta.final, undefined);
   assert.equal(text2.meta.final, true, "last answer of a finished turn is final");
   assert.equal(exited.content, "这个程序的对话进程退出了，重新发一句会再启动。");
+  assert.equal(exited.meta.native_notice, "acp_exited", "an exited process is a neutral notice, not a red error");
   assert.equal(frameText.content, "Model overloaded");
   assert.ok(!out.some((m) => m.meta?.native_notice === "computer_reconnecting"), "reconnect churn is not conversation content");
 });
@@ -90,17 +95,25 @@ test("ids are deterministic negative integers, unique and stable", () => {
   assert.deepEqual(grown.slice(0, a.length).map((m) => m.id), a.map((m) => m.id), "appending keeps earlier ids");
 });
 
-test("buildAgentRenderItems yields one progress card per turn with tool labels; gates stay in the stream", () => {
+test("buildAgentRenderItems keeps the real order: thought, tool, text, tool, plan in one block; gates and the answer stay in the stream", () => {
   const out = dialogToAgentMessages(dialog(), { live: true });
   const items = buildAgentRenderItems(out);
   const progress = items.filter((item) => item.type === "progress");
   assert.equal(progress.length, 1);
-  const labels = buildAgentProgressActions(progress[0].messages).flatMap((action) => action.labels);
-  assert.deepEqual(labels, ["Read package.json", "npm test（失败）", "已自动允许：ls"]);
-  const first = buildAgentProgressActions(progress[0].messages)[0];
-  assert.equal(first.analysis.content, "Look at the failing step");
+  const entries = buildProcessEntries(progress[0].messages);
+  assert.deepEqual(entries.map((entry) => entry.type), ["thought", "tool", "text", "tool", "plan"]);
+  assert.equal(entries[0].text, "Look at the failing step");
+  assert.equal(entries[1].title, "Read package.json");
+  assert.equal(entries[1].kind, "read");
+  assert.equal(entries[2].text, "Found it. ", "text between tools stays where it happened");
+  assert.equal(entries[3].status, "failed");
+  assert.equal(entries[3].content[0].output, "FAIL a.test.ts");
+  assert.equal(entries[3].content[1].type, "diff");
+  assert.deepEqual(entries[4].items.map((item) => item.status), ["completed", "pending"]);
+  const summary = summarizeProcess(progress[0].messages, entries);
+  assert.deepEqual([summary.thoughts, summary.tools, summary.failed, summary.usagePct], [1, 2, 1, 10]);
   const visible = items.filter((item) => item.type === "message").map((item) => item.message.kind);
-  assert.deepEqual(visible, ["text", "text", "gate", "gate", "text", "error", "error"]);
+  assert.deepEqual(visible, ["text", "gate", "gate", "text", "notice", "error"]);
 });
 
 test("a live turn without a stop leaves the last answer streaming; interrupted turns are marked stopped", () => {

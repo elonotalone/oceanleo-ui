@@ -11,6 +11,12 @@ export interface AgentMessageRenderItem {
 export interface AgentProgressRenderItem {
   type: "progress";
   key: string;
+  /**
+   * The process of one stretch of a turn, in real order: plans, thoughts
+   * (`analysis`, interim rows, and a reply's streamed `meta.reasoning` as a
+   * synthetic `analysis` row with `meta.reasoning === true`), tool steps, and
+   * any assistant text that was followed by more process in the same turn.
+   */
   messages: AgentMessage[];
   startIndex: number;
   endIndex: number;
@@ -20,11 +26,63 @@ export type AgentRenderItem =
   | AgentMessageRenderItem
   | AgentProgressRenderItem;
 
-export interface AgentProgressAction {
-  id: string;
-  index: number;
-  labels: string[];
-  analysis: AgentMessage | null;
+export type ProcessToolStatus = "pending" | "running" | "done" | "failed";
+
+export type ProcessToolContent =
+  | { type: "text"; text: string }
+  | { type: "diff"; path: string; oldText: string; newText: string }
+  | { type: "terminal"; output: string };
+
+export interface ProcessPlanItem {
+  content: string;
+  status: "pending" | "in_progress" | "completed" | "";
+  priority: "high" | "medium" | "low" | "";
+}
+
+export type ProcessEntry =
+  | {
+      type: "thought";
+      key: string;
+      text: string;
+      /** One-line preview: the row's `meta.summary` or the first prose line. */
+      summary: string;
+      /** Reasoning time when the gateway reported it (`meta.reasoning_ms`). */
+      ms: number | null;
+      /** The model is still writing this thought. */
+      streaming: boolean;
+    }
+  | {
+      type: "tool";
+      key: string;
+      title: string;
+      /** ACP tool kind (`read`, `edit`, `execute`, …) or one guessed from a cloud tool name. */
+      kind: string;
+      status: ProcessToolStatus;
+      content: ProcessToolContent[];
+      locations: { path: string; line?: number }[];
+      args: string;
+      result: string;
+      error: string;
+    }
+  | {
+      type: "plan";
+      key: string;
+      items: ProcessPlanItem[];
+      text: string;
+      /** 0 for the first plan of the block, then 1, 2… for updates. */
+      revision: number;
+    }
+  | { type: "text"; key: string; text: string; message: AgentMessage };
+
+export interface ProcessSummary {
+  thoughts: number;
+  tools: number;
+  failed: number;
+  plans: number;
+  /** Known thinking/working time, or null. */
+  ms: number | null;
+  /** Native context usage percentage, or null. */
+  usagePct: number | null;
 }
 
 /** Keep polling idempotent so an unchanged transcript does not re-render or
@@ -50,58 +108,6 @@ export function sameAgentMessages(
 }
 
 
-function progressMetaNumber(message: AgentMessage, key: string): number {
-  const value = Number(message.meta?.[key] || 0);
-  return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-
-/** Pair analysis and tool rows without colliding legacy and indexed events. */
-export function buildAgentProgressActions(
-  messages: AgentMessage[],
-): AgentProgressAction[] {
-  const actions = new Map<string, AgentProgressAction>();
-  let legacyIndex = 0;
-  let lastAnalysisKey = "";
-
-  const ensure = (key: string): AgentProgressAction => {
-    const existing = actions.get(key);
-    if (existing) return existing;
-    const created: AgentProgressAction = {
-      id: `action-${key}`,
-      index: actions.size + 1,
-      labels: [],
-      analysis: null,
-    };
-    actions.set(key, created);
-    return created;
-  };
-
-  for (const message of messages) {
-    if (message.kind === "plan" || message.meta?.plan === true) continue;
-    const explicit = progressMetaNumber(message, "step_index");
-    if (message.kind === "analysis" || message.meta?.interim === true) {
-      const key = explicit ? `step-${explicit}` : `legacy-${++legacyIndex}`;
-      const action = ensure(key);
-      action.analysis = message;
-      lastAnalysisKey = key;
-      continue;
-    }
-    if (message.kind === "step") {
-      const key =
-        (explicit ? `step-${explicit}` : "") ||
-        lastAnalysisKey ||
-        `legacy-${++legacyIndex}`;
-      const action = ensure(key);
-      const label = (message.content || "").replace(/^▶\s*/, "").trim();
-      if (label && !action.labels.includes(label)) action.labels.push(label);
-      lastAnalysisKey = "";
-    }
-  }
-  return [...actions.values()];
-}
-
-
 /** Process-only messages belong in the task timeline, never as chat answers. */
 export function isAgentProgressMessage(message: AgentMessage): boolean {
   if (message.role !== "assistant" || message.meta?.done === true) return false;
@@ -114,13 +120,54 @@ export function isAgentProgressMessage(message: AgentMessage): boolean {
   );
 }
 
+function isAnswerText(message: AgentMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (message.kind === "text" || !message.kind) &&
+    message.meta?.interim !== true
+  );
+}
+
+/** The reply row's streamed reasoning (contract C1); "" when absent. */
+export function agentReasoningText(message: AgentMessage): string {
+  const raw = message.meta?.reasoning;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+function positiveNumber(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+/** A reply's reasoning, as the thought row that precedes its text. */
+function reasoningRow(message: AgentMessage): AgentMessage {
+  const ms = positiveNumber(message.meta?.reasoning_ms);
+  return {
+    id: message.id,
+    role: "assistant",
+    kind: "analysis",
+    content: agentReasoningText(message),
+    created_at: message.created_at,
+    meta: {
+      reasoning: true,
+      ...(ms !== null ? { reasoning_ms: ms } : {}),
+      // Still reasoning: the reply is streaming and has no answer text yet.
+      streaming: message.meta?.streaming === true && !(message.content || "").trim(),
+      ...(message.meta?.native === true ? { native: true } : {}),
+    },
+  };
+}
 
 /**
- * Aggregate all process messages in one user turn into one progress card.
+ * Ordered timeline items.
  *
- * Artifacts and final answers keep their original relative order. The card is
- * inserted where the first process event occurred, so a task never degenerates
- * into many disconnected Thought/code bubbles when artifacts arrive mid-run.
+ * Inside one assistant turn (between user messages) every process message
+ * stays where it happened. A stretch of process is one block; assistant text
+ * that is followed by more process in the same turn is part of that block (in
+ * place), and the text after the turn's last process entry — the answer — is
+ * a normal message outside the fold. Gates, artifacts, errors and other
+ * non-process rows also stay outside and end the current block. A reply's
+ * `meta.reasoning` becomes the thought right before that reply's text.
  */
 export function buildAgentRenderItems(
   messages: AgentMessage[],
@@ -137,31 +184,47 @@ export function buildAgentRenderItems(
       segmentEnd += 1;
     }
 
-    const progressIndexes: number[] = [];
+    let lastProcess = -1;
     for (let index = segmentStart; index < segmentEnd; index += 1) {
-      if (isAgentProgressMessage(messages[index])) progressIndexes.push(index);
+      if (isAgentProgressMessage(messages[index])) lastProcess = index;
     }
-    const progressSet = new Set(progressIndexes);
-    const firstProgress = progressIndexes[0] ?? -1;
+
+    let block: AgentProgressRenderItem | null = null;
+    const flush = () => {
+      if (block && block.messages.length) items.push(block);
+      block = null;
+    };
+    const join = (message: AgentMessage, index: number) => {
+      if (!block) {
+        block = {
+          type: "progress",
+          key: `progress-${message.id}-${segmentStart}`,
+          messages: [],
+          startIndex: index,
+          endIndex: index,
+        };
+      }
+      block.messages.push(message);
+      block.endIndex = index;
+    };
 
     for (let index = segmentStart; index < segmentEnd; index += 1) {
       const message = messages[index];
       // Trusted workspace actions are machine-to-UI transport. They must never
       // appear as an empty or JSON-shaped chat bubble.
       if (message.kind === "ui_action") continue;
-      if (index === firstProgress) {
-        const progressMessages = progressIndexes.map(
-          (progressIndex) => messages[progressIndex],
-        );
-        items.push({
-          type: "progress",
-          key: `progress-${message.id}-${segmentStart}`,
-          messages: progressMessages,
-          startIndex: firstProgress,
-          endIndex: progressIndexes[progressIndexes.length - 1],
-        });
+      if (isAgentProgressMessage(message)) {
+        join(message, index);
+        continue;
       }
-      if (progressSet.has(index)) continue;
+      if (isAnswerText(message)) {
+        if (agentReasoningText(message)) join(reasoningRow(message), index);
+        if (index < lastProcess && (message.content || "").trim()) {
+          join(message, index);
+          continue;
+        }
+      }
+      flush();
       items.push({
         type: "message",
         key: `message-${message.id}-${index}`,
@@ -169,6 +232,7 @@ export function buildAgentRenderItems(
         index,
       });
     }
+    flush();
     segmentStart = segmentEnd;
   }
 
@@ -201,6 +265,211 @@ export function activeAgentProgressKey(
     }
   }
   return "";
+}
+
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** Cloud `<code>` blocks and legacy "Thought:" prefixes, as Markdown. */
+export function normalizeProcessText(value: string): string {
+  return (value || "")
+    .replace(/^\s*(Thought|Analysis|Reasoning)\s*:\s*/i, "")
+    .replace(/<code>\s*/gi, "```python\n")
+    .replace(/\s*<\/code>/gi, "\n```")
+    .trim();
+}
+
+function firstLine(value: string): string {
+  return (
+    (value || "")
+      .replace(/^\s*(Thought|Analysis|Reasoning)\s*:\s*/i, "")
+      .replace(/<code>[\s\S]*?<\/code>|```[\s\S]*?```/gi, "")
+      .split(/\n+/)
+      .map((line) => line.replace(/^[#>*\-\s]+/, "").trim())
+      .find(Boolean) || ""
+  );
+}
+
+function toolStatus(message: AgentMessage): ProcessToolStatus {
+  const meta = message.meta || {};
+  const raw = text(meta.tool_status) || text(meta.status);
+  const status = raw.toLowerCase();
+  if (["failed", "error", "failure", "cancelled", "canceled"].includes(status)) return "failed";
+  if (text(meta.error).trim()) return "failed";
+  if (["running", "in_progress", "started"].includes(status)) return "running";
+  if (status === "pending") return "pending";
+  return "done";
+}
+
+/** A cloud tool name → the ACP kind vocabulary, only to pick an icon. */
+function guessToolKind(name: string): string {
+  const tool = name.toLowerCase();
+  if (/search|find|grep|query/.test(tool)) return "search";
+  if (/fetch|http|browse|web|url|download/.test(tool)) return "fetch";
+  if (/write|edit|save|patch|update|create/.test(tool)) return "edit";
+  if (/delete|remove/.test(tool)) return "delete";
+  if (/read|get|list|open|view/.test(tool)) return "read";
+  if (/run|exec|shell|python|code|command|device|computer|ui\./.test(tool)) return "execute";
+  return "other";
+}
+
+function toolCardOf(message: AgentMessage): {
+  kind: string;
+  title: string;
+  content: ProcessToolContent[];
+  locations: { path: string; line?: number }[];
+} | null {
+  const card = message.meta?.tool_card;
+  if (!card || typeof card !== "object") return null;
+  const raw = card as Record<string, unknown>;
+  const content: ProcessToolContent[] = [];
+  for (const part of Array.isArray(raw.content) ? raw.content : []) {
+    if (!part || typeof part !== "object") continue;
+    const row = part as Record<string, unknown>;
+    if (row.type === "diff") {
+      content.push({
+        type: "diff",
+        path: text(row.path),
+        oldText: text(row.old_text),
+        newText: text(row.new_text),
+      });
+    } else if (row.type === "terminal") {
+      content.push({ type: "terminal", output: text(row.output) });
+    } else if (text(row.text)) {
+      content.push({ type: "text", text: text(row.text) });
+    }
+  }
+  const locations: { path: string; line?: number }[] = [];
+  for (const loc of Array.isArray(raw.locations) ? raw.locations : []) {
+    if (!loc || typeof loc !== "object") continue;
+    const row = loc as Record<string, unknown>;
+    const path = text(row.path);
+    if (!path) continue;
+    locations.push(typeof row.line === "number" ? { path, line: row.line } : { path });
+  }
+  return { kind: text(raw.kind) || "other", title: text(raw.title), content, locations };
+}
+
+function planItems(message: AgentMessage): ProcessPlanItem[] {
+  const entries = message.meta?.plan_entries;
+  if (Array.isArray(entries)) {
+    return entries.flatMap((entry): ProcessPlanItem[] => {
+      if (!entry || typeof entry !== "object") return [];
+      const row = entry as Record<string, unknown>;
+      const content = text(row.content).trim();
+      if (!content) return [];
+      const status = text(row.status);
+      const priority = text(row.priority);
+      return [{
+        content,
+        status: status === "pending" || status === "in_progress" || status === "completed" ? status : "",
+        priority: priority === "high" || priority === "medium" || priority === "low" ? priority : "",
+      }];
+    });
+  }
+  const steps = message.meta?.plan_steps;
+  if (!Array.isArray(steps)) return [];
+  return steps
+    .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    .map((content) => ({ content: content.trim(), status: "", priority: "" }));
+}
+
+/** One ordered entry per process message; nothing is merged or reordered. */
+export function buildProcessEntries(messages: AgentMessage[]): ProcessEntry[] {
+  const entries: ProcessEntry[] = [];
+  let plans = 0;
+  messages.forEach((message, position) => {
+    const key = `${message.kind || "text"}-${message.id}-${position}`;
+    if (message.kind === "plan" || message.meta?.plan === true) {
+      const items = planItems(message);
+      const body = normalizeProcessText(message.content || "");
+      if (!items.length && !body) return;
+      entries.push({ type: "plan", key, items, text: body, revision: plans });
+      plans += 1;
+      return;
+    }
+    if (message.kind === "step") {
+      const card = toolCardOf(message);
+      const tool = text(message.meta?.tool);
+      const title =
+        (message.content || "").replace(/^▶\s*/, "").trim() || card?.title.trim() || tool;
+      entries.push({
+        type: "tool",
+        key,
+        title,
+        kind: card?.kind || text(message.meta?.tool_kind) || guessToolKind(tool || title),
+        status: toolStatus(message),
+        content: card?.content ?? [],
+        locations: card?.locations ?? [],
+        args: text(message.meta?.args_preview),
+        result: text(message.meta?.result_preview),
+        error: text(message.meta?.error).trim(),
+      });
+      return;
+    }
+    if (message.kind === "analysis" || message.meta?.interim === true) {
+      const body = message.content || "";
+      if (!body.trim()) return;
+      entries.push({
+        type: "thought",
+        key,
+        text: body,
+        summary: text(message.meta?.summary).trim() || firstLine(body),
+        ms: positiveNumber(message.meta?.reasoning_ms),
+        streaming: message.meta?.streaming === true,
+      });
+      return;
+    }
+    if ((message.content || "").trim()) {
+      entries.push({ type: "text", key, text: message.content, message });
+    }
+  });
+  return entries;
+}
+
+/** The numbers behind the folded line "思考 X 秒 · N 个步骤 · 1 个失败". */
+export function summarizeProcess(
+  messages: AgentMessage[],
+  entries: ProcessEntry[] = buildProcessEntries(messages),
+): ProcessSummary {
+  let thoughts = 0;
+  let tools = 0;
+  let failed = 0;
+  let plans = 0;
+  let reasoningMs = 0;
+  for (const entry of entries) {
+    if (entry.type === "thought") {
+      thoughts += 1;
+      if (entry.ms) reasoningMs += entry.ms;
+    } else if (entry.type === "tool") {
+      tools += 1;
+      if (entry.status === "failed") failed += 1;
+    } else if (entry.type === "plan") {
+      plans += 1;
+    }
+  }
+  let ms: number | null = reasoningMs > 0 ? reasoningMs : null;
+  if (ms === null) {
+    const times = messages
+      .map((message) => Date.parse(message.created_at || ""))
+      .filter((time) => Number.isFinite(time));
+    if (times.length > 1) {
+      const span = Math.max(...times) - Math.min(...times);
+      if (span >= 1000) ms = span;
+    }
+  }
+  let usagePct: number | null = null;
+  for (const message of messages) {
+    const usage = message.meta?.native_usage as { used?: unknown; size?: unknown } | undefined;
+    const used = Number(usage?.used);
+    const size = Number(usage?.size);
+    if (Number.isFinite(used) && Number.isFinite(size) && size > 0) {
+      usagePct = Math.min(100, Math.max(0, Math.round((used / size) * 100)));
+    }
+  }
+  return { thoughts, tools, failed, plans, ms, usagePct };
 }
 
 

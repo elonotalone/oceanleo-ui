@@ -1034,7 +1034,10 @@ export function useAgentDialog({
     const sessionId = current.activeSession || current.draftRef || "";
     const occupancyMode = composerOccupancy({
       linkUp: current.occupancyLink,
-      occupancyAt: current.occupancyAt,
+      // A brand-new conversation (no native session yet) cannot be busy on the
+      // computer: with the link up it does not wait for an occupancy reply. A
+      // send already pending for it, or a live turn, still holds it.
+      occupancyAt: !current.activeSession && current.occupancyLink ? Date.now() : current.occupancyAt,
       occupancyBusy: current.occupancyBusy,
       sessionId,
       messages: current.messages,

@@ -5,6 +5,12 @@
 // buildAgentRenderItems -> AgentTranscriptBubble / AgentProgress and look
 // identical to a cloud conversation. Ids are negative so branch/regenerate
 // (which only accept server ids > 0) never apply to native messages.
+//
+// Nothing the program said is reduced (contract C3): a tool carries its full
+// ACP card (`meta.tool_card`: kind, status, content diff | terminal | text,
+// locations), a plan carries its entries with status and priority, a thought
+// keeps its text, and the turn's last usage rides on its last process row.
+// Auto-allowed permissions are dropped; only real failures are `error` rows.
 
 import type { AgentAttachment, AgentMessage } from "../../lib/agent";
 import { isReconnectingNotice, noticeCopy, visibleNoticeCopy } from "../cloud-computer/agent-dialog/notice";
@@ -44,6 +50,20 @@ export type NativeQuestionMeta = {
 };
 
 const INTERRUPTED = new Set(["cancelled", "canceled", "stopped"]);
+
+/** Notices that are not failures: shown as a neutral line, never red. */
+const NEUTRAL_NOTICES = new Set([
+  "acp_exited",
+  "dialog_detached",
+  "agent_busy",
+  "permission_timeout",
+  "computer_not_confirmed",
+  "session_not_found",
+]);
+
+export function isNeutralNotice(code: string): boolean {
+  return NEUTRAL_NOTICES.has(code);
+}
 
 function sourceText(zh: string, vars?: Record<string, string | number>): string {
   if (!vars) return zh;
@@ -145,7 +165,7 @@ export function dialogToAgentMessages(
       out.push({
         id: nextId(`n:${message.id}`),
         role: "assistant",
-        kind: "error",
+        kind: isNeutralNotice(message.code) ? "notice" : "error",
         content: noticeText(tt, message),
         meta: { native: true, native_notice: message.code },
       });
@@ -156,13 +176,13 @@ export function dialogToAgentMessages(
       !opts.live || (Boolean(message.stop) && message.stop !== "stopping") || message.live !== true;
     const interrupted = INTERRUPTED.has(message.stop);
     let lastText = -1;
-    let pendingThought = 0;
+    let lastProcess = -1;
+    let usage: { used: number; size: number } | null = null;
 
     for (const item of message.items) {
       const key = `${message.id}/${item.id}`;
       if (item.kind === "assistant") {
         if (!item.text) continue;
-        pendingThought = 0;
         lastText = out.length;
         out.push({
           id: nextId(`a:${key}`),
@@ -176,7 +196,7 @@ export function dialogToAgentMessages(
       if (item.kind === "thought") {
         if (!item.text.trim()) continue;
         step += 1;
-        pendingThought = step;
+        lastProcess = out.length;
         out.push({
           id: nextId(`t:${key}`),
           role: "assistant",
@@ -187,20 +207,35 @@ export function dialogToAgentMessages(
         continue;
       }
       if (item.kind === "tool") {
-        const index = pendingThought || (step += 1);
-        pendingThought = 0;
-        const title = item.tool.title.trim() || tt("执行步骤");
+        step += 1;
+        lastProcess = out.length;
+        const tool = item.tool;
+        const title = tool.title.trim() || tt("执行步骤");
         out.push({
           id: nextId(`s:${key}`),
           role: "assistant",
           kind: "step",
-          content: item.tool.status === "failed" ? tt("{title}（失败）", { title }) : title,
-          meta: { native: true, native_tool: true, step_index: index, tool_status: item.tool.status, tool_kind: item.tool.kind },
+          content: title,
+          meta: {
+            native: true,
+            native_tool: true,
+            step_index: step,
+            tool_status: tool.status,
+            tool_kind: tool.kind,
+            tool_card: {
+              id: tool.id,
+              kind: tool.kind,
+              title: tool.title,
+              status: tool.status,
+              content: tool.content ?? [],
+              locations: tool.locations ?? [],
+            },
+          },
         });
         continue;
       }
       if (item.kind === "plan") {
-        pendingThought = 0;
+        lastProcess = out.length;
         out.push({
           id: nextId(`p:${key}`),
           role: "assistant",
@@ -215,18 +250,8 @@ export function dialogToAgentMessages(
         continue;
       }
       if (item.kind === "permission") {
-        pendingThought = 0;
-        if (item.auto) {
-          step += 1;
-          out.push({
-            id: nextId(`s:${key}`),
-            role: "assistant",
-            kind: "step",
-            content: tt("已自动允许：{name}", { name: item.toolTitle || item.title || tt("这项操作") }),
-            meta: { native: true, native_tool: true, step_index: step, tool_status: "completed" },
-          });
-          continue;
-        }
+        // Auto-allowed permissions are noise (as on the old Computers page).
+        if (item.auto) continue;
         const native_permission: NativePermissionMeta = {
           permId: item.permId,
           options: item.options,
@@ -244,7 +269,6 @@ export function dialogToAgentMessages(
         continue;
       }
       if (item.kind === "question") {
-        pendingThought = 0;
         const native_question: NativeQuestionMeta = {
           questionId: item.questionId,
           title: item.title,
@@ -262,7 +286,16 @@ export function dialogToAgentMessages(
         });
         continue;
       }
-      // usage: dropped (settings/status surfaces own it).
+      if (item.kind === "usage") {
+        if (item.size > 0) usage = { used: item.used, size: item.size };
+        continue;
+      }
+    }
+
+    // Usage is shown faintly in the folded process line of this turn.
+    if (usage && lastProcess >= 0) {
+      const row = out[lastProcess];
+      out[lastProcess] = { ...row, meta: { ...row.meta, native_usage: usage } };
     }
 
     if (finished && lastText >= 0) {

@@ -5,14 +5,12 @@
 // Computers-page component (program strip, session sidebar, MessageList,
 // Composer) is involved.
 
-import { createElement, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage } from "../../lib/agent";
 import type { Computer } from "../../lib/cloud-computer-api";
 import { getComputerTaskTranscript, type ComputerTaskSession } from "../../lib/computer-task-api";
 import { useUI } from "../../i18n/ui/useUI";
 import type { ComposerAttachment } from "../LeoComposer";
-import { modelControls } from "../cloud-computer/agent-dialog/model-controls";
-import { readModelParamMemory } from "../cloud-computer/agent-dialog/model-param-memory";
 import { composerOccupancy } from "../cloud-computer/agent-dialog/occupancy";
 import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
 import { PROGRAM_LABEL, type AgentDialogMessage, type WsProgram } from "../cloud-computer/agent-dialog/types";
@@ -20,7 +18,7 @@ import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/
 import { useAgentDialog, type AgentDialogControllerV2 } from "../cloud-computer/agent-dialog/useAgentDialogController";
 import { dialogToAgentMessages, type NativePermissionMeta, type NativeQuestionMeta } from "./map-dialog";
 import type { NativeProgram } from "./types";
-import { NativeModelPicker } from "./NativeModelPicker";
+import { nativeModelPickerFor } from "./NativeModelPicker";
 
 export type NativeThreadInput = {
   computer: Computer | null;
@@ -70,7 +68,42 @@ export type NativeThread = {
   saveFailed: boolean;
   /** The headless controller (settings panel reads models/config/programs from it). */
   dialog: AgentDialogControllerV2;
+  /**
+   * The first prompt typed before this conversation could take it (homepage
+   * launch, a picked chat's first send). It is the user's bubble in `messages`
+   * at once, with its attachments, and goes out by itself as soon as the
+   * session and the connection are bound. Never handed back silently: when it
+   * cannot go out, `unsent` holds the plain reason (shown with a retry).
+   */
+  pending: NativePendingPrompt | null;
+  /** Show `text` (and the composer's files) as the user's bubble now; send it once ready. False when one is already waiting. */
+  queue(text: string): boolean;
+  /** The waiting prompt cannot go out (e.g. its session could not be created). */
+  markUnsent(reason: string): void;
+  /** Try the unsent prompt again (it goes out as soon as it can). */
+  retry(): void;
 };
+
+export type NativePendingPrompt = {
+  text: string;
+  /** null while it is waiting to go out; the plain reason once it could not be sent. */
+  unsent: string | null;
+};
+
+type PendingState = NativePendingPrompt & {
+  key: number;
+  queuedAt: number;
+  attachmentIds: string[];
+  attachments: { name: string; mime: string }[];
+};
+
+/**
+ * A queued prompt that has found no way out for this long (computer state never
+ * arrived, connection never came up) is marked unsent with a reason and a retry.
+ */
+export const PENDING_PROMPT_CONNECT_MS = 45_000;
+/** The queued prompt's bubble id: below every id map-dialog hands out (-1 … -2147483647). */
+const PENDING_BUBBLE_ID = -2147483648;
 
 type Archive = Awaited<ReturnType<typeof getComputerTaskTranscript>>;
 
@@ -81,6 +114,14 @@ function nativeProgramOf(session: ComputerTaskSession | null): WsProgram | null 
 
 function hasConversation(messages: AgentDialogMessage[]): boolean {
   return messages.some((message) => message.kind === "user" || message.kind === "turn");
+}
+
+function userCount(messages: AgentDialogMessage[]): number {
+  return messages.filter((message) => message.kind === "user").length;
+}
+
+function isImageFile(mime: string, name: string): boolean {
+  return mime.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
 }
 
 export function useNativeThread({ computer, session, enabled, onNativeSessionChange, program: draftProgram }: NativeThreadInput): NativeThread {
@@ -112,6 +153,14 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     if (program && dialog.program !== program) dialog.setProgram(program);
   }, [dialog, program]);
 
+  // The first prompt waiting for this conversation (NativeThread.pending).
+  const [pending, setPending] = useState<PendingState | null>(null);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  // A session that grows out of this thread's draft is brand new.
+  const wasDraft = useRef(false);
+  if (!session) wasDraft.current = true;
+
   // Open this managed session's native conversation once per binding.
   const openedRef = useRef("");
   const sessionKey = session?.id ?? "";
@@ -140,6 +189,20 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     dialog.openSession(nativeId);
   }, [live, program, dialog, dialog.program, dialog.activeSession, nativeId, sessionKey, session]);
 
+  // The host started over (a session, then a draft again, e.g. the homepage's
+  // New Task): a fresh view with nothing waiting; the next session is born here.
+  const hadSession = useRef(Boolean(session));
+  useEffect(() => {
+    if (session) { hadSession.current = true; return; }
+    if (!hadSession.current) return;
+    hadSession.current = false;
+    previousSession.current = "";
+    openedRef.current = "";
+    pendingRef.current = null;
+    setPending(null);
+    if (dialog.activeSession || dialog.messages.length) dialog.newSession();
+  }, [session, dialog]);
+
   const reportedRef = useRef(nativeId);
   const onNativeRef = useRef(onNativeSessionChange);
   onNativeRef.current = onNativeSessionChange;
@@ -158,15 +221,20 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const [archiveLoading, setArchiveLoading] = useState(false);
   const archiveFor = useRef("");
   const olderLoaded = useRef(false);
+  const bornHere = useRef("");
   useEffect(() => {
     // Only a different session clears what is shown; reconnects and
     // enable/disable keep the saved transcript (and any older pages read).
     if (archiveFor.current !== sessionKey) {
+      // Created from this thread's draft a moment ago: nothing is saved yet.
+      if (!archiveFor.current && wasDraft.current && session && !session.native_session_id) bornHere.current = sessionKey;
       setArchive(null);
       olderLoaded.current = false;
       archiveFor.current = sessionKey;
     }
     if (!enabled || !session || session.kind !== "acp") return;
+    // A brand-new conversation reads its saved copy only once the computer is offline.
+    if (bornHere.current === sessionKey && online) return;
     const controller = new AbortController();
     void getComputerTaskTranscript(session.id, { signal: controller.signal })
       .then((next) => {
@@ -196,9 +264,12 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     return [...saved, ...notices.filter((message) => !used.has(message.id))];
   }, [showArchive, live, dialog.messages, archiveDialog, tt]);
 
+  // A brand-new conversation (no native session yet) cannot be busy on the
+  // computer: once the link is up it never waits for an occupancy reply.
+  const brandNew = !nativeId && !dialog.activeSession;
   const occupancyMode = composerOccupancy({
     linkUp: dialog.occupancyLink === true,
-    occupancyAt: dialog.occupancyAt ?? null,
+    occupancyAt: brandNew && dialog.occupancyLink === true ? Date.now() : dialog.occupancyAt ?? null,
     occupancyBusy: dialog.occupancyBusy ?? [],
     sessionId: dialog.activeSession || dialog.draftRef || "",
     messages: dialog.messages,
@@ -227,6 +298,72 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     }
   }, [ready, dialog]);
 
+  // Queued first prompt: shown now, sent the moment the session and link are
+  // bound, never handed back silently (unsent → a reason and a retry).
+  const pendingKey = useRef(0);
+  const sendingRef = useRef(0);
+  const sentBaseline = useRef(0);
+  const attachmentsRef = useRef(dialog.attachments);
+  attachmentsRef.current = dialog.attachments;
+  const dialogMessagesRef = useRef(dialog.messages);
+  dialogMessagesRef.current = dialog.messages;
+  const queue = useCallback((text: string) => {
+    const current = pendingRef.current;
+    if (current && !current.unsent) return false;
+    const clean = text.trim();
+    const files = attachmentsRef.current.filter((item) => item.state !== "error");
+    if (!clean && !files.length) return false;
+    pendingKey.current += 1;
+    const next: PendingState = {
+      key: pendingKey.current, text: clean, unsent: null, queuedAt: Date.now(),
+      attachmentIds: files.map((item) => item.id),
+      attachments: files.map((item) => ({ name: item.name, mime: item.mime })),
+    };
+    pendingRef.current = next;
+    setPending(next);
+    return true;
+  }, []);
+  const settlePending = useCallback((key: number, unsent: string | null) => {
+    const current = pendingRef.current;
+    if (!current || current.key !== key) return;
+    const next = unsent === null ? null : { ...current, unsent };
+    pendingRef.current = next;
+    setPending(next);
+  }, []);
+  const markUnsent = useCallback((reason: string) => {
+    const current = pendingRef.current;
+    if (current && !current.unsent) settlePending(current.key, reason);
+  }, [settlePending]);
+  const retry = useCallback(() => {
+    const current = pendingRef.current;
+    if (!current?.unsent) return;
+    const next = { ...current, unsent: null, queuedAt: Date.now() };
+    pendingRef.current = next;
+    setPending(next);
+  }, []);
+  // Only a known computer can be "offline"; null is still connecting.
+  const blockedNow = computer ? blockedReason : null;
+  useEffect(() => {
+    if (!pending || pending.unsent || sendingRef.current === pending.key) return;
+    const key = pending.key;
+    if (ready) {
+      sendingRef.current = key;
+      sentBaseline.current = userCount(dialogMessagesRef.current);
+      void send(pending.text).then((sent) => {
+        if (sendingRef.current === key) sendingRef.current = 0;
+        settlePending(key, sent ? null : tt("没能发出去，请重试。"));
+      });
+      return;
+    }
+    if (blockedNow) {
+      settlePending(key, blockedNow);
+      return;
+    }
+    const timer = setTimeout(() => settlePending(key, tt("暂时连不上这台电脑，请稍后重试。")),
+      Math.max(0, pending.queuedAt + PENDING_PROMPT_CONNECT_MS - Date.now()));
+    return () => clearTimeout(timer);
+  }, [pending, ready, blockedNow, send, settlePending, tt]);
+
   const stop = useCallback(() => {
     if (live) dialog.abort();
   }, [live, dialog]);
@@ -250,28 +387,52 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     }
   }, [connected, dialog]);
 
-  const composerAttachments = useMemo(() => dialog.attachments.map((item): ComposerAttachment => ({
-    id: item.id,
-    name: item.state === "error" ? `${item.name} · ${tt("上传失败")}` : item.name,
-    mime: item.mime,
-    uploading: item.state === "uploading",
-  })), [dialog.attachments, tt]);
+  // Files that went into the queued prompt ride on its bubble, not in the composer.
+  const queuedFiles = pending?.attachmentIds;
+  const composerAttachments = useMemo(() => dialog.attachments
+    .filter((item) => !queuedFiles?.includes(item.id))
+    .map((item): ComposerAttachment => ({
+      id: item.id,
+      name: item.state === "error" ? `${item.name} · ${tt("上传失败")}` : item.name,
+      mime: item.mime,
+      uploading: item.state === "uploading",
+    })), [dialog.attachments, queuedFiles, tt]);
 
-  const controls = program
-    ? modelControls(program, dialog.models, dialog.configOptions || [], dialog.selectedModel,
-      readModelParamMemory(computer?.id ?? "", program))
-    : null;
-  const hasModes = Boolean(dialog.mode && dialog.mode.options.length > 0);
-  const modelPicker = live && controls && (controls.models.length > 0 || hasModes)
-    ? createElement(NativeModelPicker, {
-      models: controls.models,
-      selected: controls.selected,
-      onSelect: dialog.setSelectedModel,
-      mode: dialog.mode,
-      selectedMode: dialog.selectedMode,
-      onMode: dialog.setMode,
-    })
-    : null;
+  // The queued prompt is the user's bubble until the real one (sent) arrives.
+  const pendingShown = Boolean(pending) &&
+    !(sendingRef.current === pending?.key && userCount(dialog.messages) > sentBaseline.current);
+  const threadMessages = useMemo(() => {
+    if (!pending || !pendingShown) return messages;
+    const attachments = pending.attachments.map((item) => ({
+      url: "", name: item.name, mime: item.mime,
+      media_type: isImageFile(item.mime, item.name) ? "image" : "doc",
+    }));
+    const bubble: AgentMessage = {
+      id: PENDING_BUBBLE_ID,
+      role: "user",
+      kind: "text",
+      content: pending.text,
+      meta: {
+        native: true,
+        native_pending: true,
+        ...(pending.unsent ? { native_unsent: true } : {}),
+        ...(attachments.length ? { attachments } : {}),
+      },
+    };
+    return [...messages, bubble];
+  }, [messages, pending, pendingShown]);
+  const pendingPublic = useMemo<NativePendingPrompt | null>(
+    () => (pending ? { text: pending.text, unsent: pending.unsent } : null), [pending]);
+
+  // Composer controls (model · mode · fast · effort). Drafts count: shown as
+  // soon as the program reports them; "正在读取…" while the computer or the
+  // program's catalog is still on its way; nothing when offline or blocked.
+  const modelPicker = nativeModelPickerFor({
+    program: enabled && !(computer && !online) ? program : null,
+    computerId: computer?.id ?? "",
+    dialog,
+    waiting: !computer || !blockedReason,
+  });
 
   const loadOlder = useCallback(() => {
     if (!showArchive) {
@@ -296,7 +457,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const savedStatus = live ? archiveStatus : archive?.sync_status ?? session?.sync_status ?? null;
 
   return {
-    messages,
+    messages: threadMessages,
     live: connected,
     draft,
     running,
@@ -314,5 +475,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     loadOlder,
     saveFailed: savedStatus === "error",
     dialog,
+    pending: pendingPublic,
+    queue,
+    markUnsent,
+    retry,
   };
 }

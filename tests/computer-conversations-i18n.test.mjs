@@ -40,7 +40,7 @@ const STRICT_ENTRIES = [
   "src/lib/computer-task-api.ts",
 ];
 /** 只在门户首页（/root/projects/oceanleo/app/_components/home-content.tsx）用到的 key。 */
-const PORTAL_ONLY = new Set(["发给电脑上的程序时，请进入对话后再添加附件。"]);
+const PORTAL_ONLY = new Set([]);
 
 function walk(target) {
   if (statSync(target).isFile()) return [target];

@@ -6876,6 +6876,12 @@
         },
         {
           "kind": "named",
+          "name": "useNativeThread",
+          "importedName": "useNativeThread",
+          "source": "./native-thread"
+        },
+        {
+          "kind": "named",
           "name": "useOperatorRemark",
           "importedName": "useOperatorRemark",
           "source": "./OperatorRemark"
@@ -7310,6 +7316,12 @@
         },
         {
           "kind": "type",
+          "name": "AgentChatNativeLaunch",
+          "importedName": "AgentChatNativeLaunch",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "type",
           "name": "AgentChatProps",
           "importedName": "AgentChatProps",
           "source": "./AgentChat"
@@ -7529,6 +7541,12 @@
           "name": "MyLibraryProps",
           "importedName": "MyLibraryProps",
           "source": "./MyLibrary"
+        },
+        {
+          "kind": "type",
+          "name": "NativeThread",
+          "importedName": "NativeThread",
+          "source": "./native-thread"
         },
         {
           "kind": "type",

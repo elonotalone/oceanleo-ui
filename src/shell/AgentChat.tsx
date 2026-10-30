@@ -67,7 +67,10 @@ import {
   latestComputerTaskSession,
   listComputerTaskSessions,
   hasPendingNativePrompt,
-  stashPendingNativePrompt,
+  knownComputer,
+  knownComputerTaskSession,
+  rememberComputer,
+  rememberComputerTaskSession,
   takePendingNativePrompt,
   type ComputerTaskSession,
 } from "../lib/computer-task-api";
@@ -343,6 +346,15 @@ export interface AgentChatProps {
   initialPrompt?: string;
   initialExecutionTarget?: ExecutionTarget;
   /**
+   * Homepage → native chat in place (no page jump). The host already owns the
+   * prewarmed thread (picked on its composer) with the first prompt queued in
+   * it (`thread.queue`), and creates the managed session in the background.
+   * This page shows that conversation at once through the same stream, adopts
+   * the task when `created` arrives (`onTaskCreated`), and never opens a
+   * second connection for it. Mutually exclusive with `initialPrompt`.
+   */
+  nativeLaunch?: AgentChatNativeLaunch;
+  /**
    * 初次提交随附的附件（用户在**首页输入框**「＋」上传 / 拖入的文件，已上传到文件库、
    * 拿到公网 url）。与 initialPrompt 一起自动创建首个任务——让 agent 从首页就带上来的
    * 文件（音频自动转写、其它文件按 url 分析）。宿主从 HomeIntro.onStart 的
@@ -480,6 +492,19 @@ export interface AgentChatProps {
   agentStreamEndpoint?: string;
 }
 
+/** See {@link AgentChatProps.nativeLaunch}. */
+export interface AgentChatNativeLaunch {
+  conversation: Extract<ConversationTarget, { kind: "native" }>;
+  /** The computer as the host knows it (null while it is being read). */
+  computer: Computer | null;
+  /** The host's live thread for this conversation (its first prompt already queued). */
+  thread: NativeThread;
+  /** The task and managed session, once the host has created them. */
+  created: { taskId: string; session: ComputerTaskSession } | null;
+  /** Creating the session failed: try again (the queued prompt is kept and retried with it). */
+  retry?: () => void;
+}
+
 /** agent 右栏多标签库配置（宗旨 v19）。 */
 export interface AgentLibraryTabs {
   /** 当前 app 的精选素材；素材库槽位始终存在。 */
@@ -589,6 +614,7 @@ function AgentChatInner({
   siteId = "",
   initialPrompt,
   initialExecutionTarget,
+  nativeLaunch,
   initialAttachments,
   taskId: explicitTaskId,
   readOnly: readOnlyProp = false,
@@ -657,8 +683,13 @@ function AgentChatInner({
   /** Draft (no task yet) only: the OceanLeo target picked in the dock; undefined = today's remembered target. */
   const [draftConversation, setDraftConversation] = useState<ConversationTarget | undefined>(undefined);
   /** A native chat picked for a program this task (or draft) has no session for: created by the first send. */
-  const [pickedChat, setPickedChat] = useState<{taskId: string; conversation: Extract<ConversationTarget, {kind: "native"}>} | null>(null);
-  const [computers, setComputers] = useState<Record<string, Computer>>({});
+  const [pickedChat, setPickedChat] = useState<{taskId: string; conversation: Extract<ConversationTarget, {kind: "native"}>} | null>(
+    () => nativeLaunch ? {taskId: "", conversation: nativeLaunch.conversation} : null);
+  // Computers already known in this tab (the homepage's pick, a page that just created a session) are not waited for.
+  const [computers, setComputers] = useState<Record<string, Computer>>(() => {
+    const known = nativeLaunch?.computer ?? (nativeLaunch ? knownComputer(nativeLaunch.conversation.computerId) : null);
+    return known ? {[known.id]: known} : {};
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationBusy, setConversationBusy] = useState(false);
   const [conversationError, setConversationError] = useState("");
@@ -981,14 +1012,23 @@ function AgentChatInner({
     setOpenedChats([]);
     sessionsRetryRef.current = 0;
   }, [taskId]);
+  /** The task adopted in place (and the list epoch then): its list is not read again. */
+  const adoptedTaskRef = useRef("");
+  const adoptedEpochRef = useRef(0);
   useEffect(() => {
     if (!taskId) {
       setTaskSessions({taskId: "", items: [], loaded: false, failed: false});
       return;
     }
+    // A task this page just created in place already holds its only session: no list read.
+    if (adoptedTaskRef.current === taskId && sessionsEpoch === adoptedEpochRef.current) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    setTaskSessions((current) => current.taskId === taskId ? current : {taskId, items: [], loaded: false, failed: false});
+    // A session this tab was just handed (`?computerSession=` from the homepage) shows at once;
+    // the list (and its computer) are read in parallel instead of one after the other.
+    const handed = knownComputerTaskSession(new URL(window.location.href).searchParams.get("computerSession") || "");
+    const seed = handed && handed.task_id === taskId ? [handed] : [];
+    setTaskSessions((current) => current.taskId === taskId ? current : {taskId, items: seed, loaded: false, failed: false});
     void listComputerTaskSessions(taskId).then((result) => {
       if (!alive) return;
       sessionsRetryRef.current = 0;
@@ -1086,9 +1126,13 @@ function AgentChatInner({
     const ids = computerIds ? computerIds.split(",") : [];
     if (!ids.length) return;
     let alive = true;
+    // Rows this tab read a moment ago (the homepage pick) show at once instead of "connecting"; the read below refreshes them.
+    const known = ids.map((id) => knownComputer(id));
+    setComputers((current) => known.reduce((next, row) => row && !next[row.id] ? {...next, [row.id]: row} : next, current));
     const load = () => {
       void Promise.allSettled(ids.map((id) => getComputer(id))).then((rows) => {
         if (!alive) return;
+        rows.forEach((row) => { if (row.status === "fulfilled" && row.value?.id) rememberComputer(row.value); });
         setComputers((current) => {
           let next = current;
           rows.forEach((row, index) => {
@@ -1144,6 +1188,8 @@ function AgentChatInner({
   const conversationComputer = conversation && conversation.kind !== "oceanleo" ? computerFor(conversation.computerId) : null;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
+    const known = knownComputerTaskSession(sessionId);
+    if (known) rememberComputerTaskSession({...known, native_session_id: nativeId});
     setTaskSessions((current) => ({...current, items: current.items.map((row) => row.id === sessionId ? {...row, native_session_id: nativeId} : row)}));
   }, []);
   // CLI / terminal surfaces report their native id; the page binds it once, in order.
@@ -1176,9 +1222,11 @@ function AgentChatInner({
     writeSessionParam(id);
   }, [taskId, writeSessionParam]);
 
-  // A draft created a task: this page adopts it in place (same origin, so the stashed
-  // first prompt is there), and tells the host once; the host decides any navigation.
+  // A draft created a task: this page adopts it in place (its only session is the one
+  // just created: no list read), and tells the host once; the host decides any navigation.
   const adoptCreatedTask = useCallback(async (task: string, session: ComputerTaskSession, prompt?: string) => {
+    adoptedTaskRef.current = task;
+    adoptedEpochRef.current = sessionsEpoch;
     setTaskSessions({taskId: task, items: [session], loaded: true, failed: false});
     setSelectedSession({taskId: task, id: session.id, resolved: true});
     setPickedChat(null);
@@ -1189,7 +1237,7 @@ function AgentChatInner({
       workspaceSessionId = bound?.id || "";
     }
     onTaskCreated?.(task, workspaceSessionId || undefined);
-  }, [explicitTaskId, onTaskCreated, workspace]);
+  }, [explicitTaskId, onTaskCreated, sessionsEpoch, workspace]);
 
   const changeConversation = useCallback(async (next: ConversationTarget) => {
     setConversationError("");
@@ -1244,20 +1292,26 @@ function AgentChatInner({
     if (!conversation || conversation.kind === "oceanleo") setSettingsOpen(false);
   }, [conversation?.kind]);
 
-  // First send of a picked native chat: create the managed session (and, in a draft,
-  // the task), stash the text, and the conversation sends it once connected
-  // (NativeChatConversation). Text is never dropped: it stays in the composer on failure.
+  // First send of a picked native chat: the text is already queued in its thread (the
+  // user's bubble shows at once); this creates the managed session (and, in a draft, the
+  // task) and the same thread sends it as soon as the session and link are bound. A
+  // failure is never silent: the caller marks the bubble unsent with a retry.
   const chatKeysRef = useRef(new Map<string, string>());
+  /** One request id per picked chat until it is created, so a retry cannot make a second session. */
+  const pickRequestIds = useRef(new Map<string, string>());
   const startNative = useCallback(async (text: string): Promise<boolean> => {
-    if (!text || readOnly || conversationBusy || !pick) return false;
+    if (readOnly || conversationBusy || !pick) return false;
     const requestTask = taskId;
+    const key = pickChatKey(pick);
+    let requestId = pickRequestIds.current.get(key);
+    if (!requestId) pickRequestIds.current.set(key, requestId = crypto.randomUUID());
     setConversationBusy(true);
     try {
       const result = await createComputerTaskSession(pick.computerId, {
-        kind: "acp", program: pick.program, ...(requestTask ? {task_id: requestTask} : {}), request_id: crypto.randomUUID(),
+        kind: "acp", program: pick.program, ...(requestTask ? {task_id: requestTask} : {}), request_id: requestId,
       });
-      stashPendingNativePrompt(result.session.id, text);
-      chatKeysRef.current.set(result.session.id, pickChatKey(pick));
+      pickRequestIds.current.delete(key);
+      chatKeysRef.current.set(result.session.id, key);
       if (requestTask) {
         setTaskSessions((current) => current.taskId === requestTask ? {...current, items: [...current.items, result.session]} : current);
         setPickedChat(null);
@@ -1265,12 +1319,28 @@ function AgentChatInner({
       } else await adoptCreatedTask(result.task_id, result.session, text);
       return true;
     } catch {
-      setConversationError(tt("没能打开这段对话，请稍后再试。"));
       return false;
     } finally {
       setConversationBusy(false);
     }
-  }, [adoptCreatedTask, conversationBusy, pick, readOnly, showSession, taskId, tt]);
+  }, [adoptCreatedTask, conversationBusy, pick, readOnly, showSession, taskId]);
+
+  // Homepage launch (nativeLaunch): the host created the task; adopt it under the
+  // same chat entry key, so the host's thread carries over (no remount, no second socket).
+  const launchKey = nativeLaunch ? pickChatKey(nativeLaunch.conversation) : "";
+  const launchCreated = nativeLaunch?.created ?? null;
+  const launchPrompt = nativeLaunch?.thread.pending?.text;
+  const adoptedLaunchRef = useRef("");
+  useEffect(() => {
+    if (!launchCreated || adoptedLaunchRef.current === launchCreated.session.id) return;
+    adoptedLaunchRef.current = launchCreated.session.id;
+    chatKeysRef.current.set(launchCreated.session.id, launchKey);
+    void adoptCreatedTask(launchCreated.taskId, launchCreated.session, launchPrompt);
+  }, [launchCreated, launchKey, launchPrompt, adoptCreatedTask]);
+  const launchComputer = nativeLaunch?.computer ?? null;
+  useEffect(() => {
+    if (launchComputer) setComputers((current) => current[launchComputer.id] === launchComputer ? current : {...current, [launchComputer.id]: launchComputer});
+  }, [launchComputer]);
 
   // One plain line (with retry) while this task's computer conversations cannot be read.
   const sessionsNotice = sessionsFailed ? (
@@ -1992,7 +2062,7 @@ function AgentChatInner({
   const thinkingSeconds = useThinkingSeconds(showThinkingTicker, sentAt);
   const thinkingText = showThinkingTicker
     ? thinkingLabel(tt, thinkingSeconds, turnState.thinkingChars)
-    : tt("agent 正在思考…");
+    : tt("正在理解问题…");
 
   const sendSuggestion = useCallback(
     async (text: string) => {
@@ -2556,10 +2626,12 @@ function AgentChatInner({
       <div
         ref={pane.scrollRef}
         onScroll={pane.onScroll}
-        className="h-full overflow-y-auto px-4 py-4"
+        className="h-full overflow-y-auto overflow-x-hidden px-4 py-4"
+        data-agent-stream-scroller=""
       >
-        {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。 */}
-        <div className="mx-auto w-full max-w-2xl space-y-3">
+        {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。
+            Never a horizontal scrollbar: long paths / URLs / commands wrap here. */}
+        <div className="mx-auto w-full min-w-0 max-w-2xl space-y-3 break-words [overflow-wrap:anywhere]" data-agent-stream-column="">
           {pane.empty}
           {pane.items}
           {pane.tail}
@@ -2693,10 +2765,10 @@ function AgentChatInner({
           {/* 流式回落的告知。正文仍会到齐（轮询始终是真源），所以这是一句说明、
               不是报错——用 stone 而不是 rose，免得用户以为要重发一遍。 */}
           {streamNotice && (
-            <p className="text-[13px] text-stone-400">{streamNotice}</p>
+            <p className="break-words text-[13px] text-stone-400 [overflow-wrap:anywhere]">{streamNotice}</p>
           )}
           {/* A local-task code set on any other path is still shown in words. */}
-          {error && <p className="text-[14px] text-rose-500" data-agent-chat-error>{tt(localAgentRefusalText(error) ?? error)}</p>}
+          {error && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error>{tt(localAgentRefusalText(error) ?? error)}</p>}
           {/* A failed computer pick / unreadable session list shows here too (the pick did not switch). */}
           {conversationNotice}
       </>
@@ -2797,11 +2869,29 @@ function AgentChatInner({
     // Install / sign-in live in the settings pane: a send blocked for that reason opens it.
     const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
     const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason;
+    // The homepage created this chat's session itself (nativeLaunch): no second create here.
+    const hostLaunch = !session && Boolean(nativeLaunch) && Boolean(pick) && pickChatKey(pick!) === launchKey;
+    const notOpened = () => tt("没能打开这段对话，请稍后再试。");
+    const retryPending = () => {
+      const text = thread.pending?.text ?? "";
+      thread.retry();
+      if (session) { if (blockedBySetup) setSettingsOpen(true); return; }
+      if (hostLaunch) nativeLaunch?.retry?.();
+      else if (!conversationBusy) void startNative(text).then((ok) => { if (!ok) thread.markUnsent(notOpened()); });
+    };
     const submit = async (value?: string) => {
       const text = (value ?? input).trim();
       if (readOnly) return;
-      if (!session) {
-        if (text && await startNative(text)) setInput("");
+      // A first prompt on its way is already the user's bubble; one at a time.
+      if (thread.pending && !thread.pending.unsent) return;
+      // No session yet, or replacing an unsent first prompt: the bubble shows now and
+      // goes out by itself once the session and link are bound (never handed back).
+      if (!session || thread.pending) {
+        if (!thread.queue(text)) return;
+        setInput("");
+        if (session) { if (blockedBySetup) setSettingsOpen(true); return; }
+        if (hostLaunch) { nativeLaunch?.retry?.(); return; }
+        if (!(await startNative(text))) thread.markUnsent(notOpened());
         return;
       }
       if (!thread.ready) {
@@ -2855,14 +2945,30 @@ function AgentChatInner({
               />
             ),
           )}
-          {nativePresentation.thinking && (
+          {/* Only until the turn's first entry: after that the process block / streaming text is the live signal. */}
+          {nativePresentation.thinking &&
+            !nativeMessages.slice(nativeLastUserIdx + 1).some((message) => message.role === "assistant") && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
           )}
         </>
       ),
-      tail: conversationNotice,
+      tail: (
+        <>
+          {/* A first prompt that could not go out: said plainly under its bubble, with a retry (never handed back silently). */}
+          {thread.pending?.unsent && (
+            <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500" data-native-unsent>
+              <span>{tt("未发送：{reason}", { reason: thread.pending.unsent })}</span>
+              <button type="button" onClick={retryPending}
+                className="rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50">
+                {tt("重试")}
+              </button>
+            </div>
+          )}
+          {conversationNotice}
+        </>
+      ),
       overlay: null,
       footer: (
         <>
@@ -2923,6 +3029,8 @@ function AgentChatInner({
           <NativeChatConversation
             session={entry.session}
             computer={computerFor(entry.conversation.computerId)}
+            // The homepage's prewarmed thread drives its launched chat (one connection).
+            external={nativeLaunch && entry.key === launchKey ? nativeLaunch.thread : undefined}
             active={entry.active}
             onNativeSessionChange={patchSession}
             onSetupBlocked={openSettings}
@@ -3110,20 +3218,21 @@ interface NativeChatPane {
   connecting: boolean;
 }
 
-/** A queued first prompt that cannot go out (setup block, offline) is handed back after this long. */
-const PENDING_PROMPT_SETTLE_MS = 20_000;
-
 /**
  * One native chat conversation: its own thread (a hook, so one component per
  * session), kept mounted AND connected while hidden so permission prompts and
- * progress keep arriving; switching never kills a run. It sends the home → task
- * handoff prompt exactly once when connected (or hands it back to the composer
- * when it cannot go out), keeps its own draft text and scroll position, and
- * portals its settings panel (with the live `thread.dialog`) into the right pane.
+ * progress keep arriving; switching never kills a run. A first prompt handed
+ * over by link is queued in its thread (the user's bubble at once, sent once
+ * connected, or marked unsent with a reason and a retry — never handed back
+ * silently). It keeps its own draft text and scroll position, and portals its
+ * settings panel (with the live `thread.dialog`) into the right pane. With
+ * `external` (the homepage's prewarmed thread) it renders that thread and
+ * opens no connection of its own.
  */
-function NativeChatConversation({ session, computer, active, onNativeSessionChange, onSetupBlocked, settingsTarget, conversation, render }: {
+function NativeChatConversation({ session, computer, external, active, onNativeSessionChange, onSetupBlocked, settingsTarget, conversation, render }: {
   session: ComputerTaskSession | null;
   computer: Computer | null;
+  external?: NativeThread;
   active: boolean;
   onNativeSessionChange: (sessionId: string, nativeId: string) => void;
   onSetupBlocked: () => void;
@@ -3136,37 +3245,36 @@ function NativeChatConversation({ session, computer, active, onNativeSessionChan
     if (sessionId) onNativeSessionChange(sessionId, nativeId);
   }, [sessionId, onNativeSessionChange]);
   // A picked (session-less) chat still connects for program status and models;
-  // it never opens, creates or prompts a session.
-  const thread = useNativeThread({
+  // it never opens or creates a session. A host-owned thread replaces this one
+  // (which then stays disconnected).
+  const own = useNativeThread({
     computer, session, program: conversation.program,
-    enabled: true,
+    enabled: !external,
     onNativeSessionChange: onNative,
   });
-  const connecting = !computer;
+  const thread = external ?? own;
+  // The host-owned thread reports its native id to its host; this page's row learns it here.
+  const externalNative = external?.dialog.activeSession ?? "";
+  useEffect(() => {
+    if (externalNative) onNative(externalNative);
+  }, [externalNative, onNative]);
+  const connecting = !computer && !external?.live;
   const [input, setInput] = useState("");
-  const threadRef = useRef(thread);
-  threadRef.current = thread;
   const onSetupBlockedRef = useRef(onSetupBlocked);
   onSetupBlockedRef.current = onSetupBlocked;
   const setupBlocked = Boolean(!connecting && thread.blockedReason && !thread.offline);
+  const queue = thread.queue;
   useEffect(() => {
     if (!active || !sessionId || !hasPendingNativePrompt(sessionId)) return;
-    const handBack = (text: string | null) => { if (text) setInput((current) => current || text); };
-    if (thread.ready) {
-      // takePendingNativePrompt removes the entry before returning it: one send, even under StrictMode.
-      const text = takePendingNativePrompt(sessionId);
-      if (text) void threadRef.current.send(text).then((sent) => { if (!sent) handBack(text); });
-      return;
-    }
-    if (setupBlocked) {
-      // Needs install / sign-in: the text goes back to the composer and settings open.
-      handBack(takePendingNativePrompt(sessionId));
-      onSetupBlockedRef.current();
-      return;
-    }
-    const timer = setTimeout(() => handBack(takePendingNativePrompt(sessionId)), PENDING_PROMPT_SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [active, sessionId, thread.ready, setupBlocked]);
+    // takePendingNativePrompt removes the entry before returning it: queued once, even under StrictMode.
+    const text = takePendingNativePrompt(sessionId);
+    if (text) queue(text);
+  }, [active, sessionId, queue]);
+  // A queued prompt held back by install / sign-in opens the settings pane once.
+  const unsent = thread.pending?.unsent ?? null;
+  useEffect(() => {
+    if (active && unsent && setupBlocked) onSetupBlockedRef.current();
+  }, [active, unsent, setupBlocked]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
   const onScroll = useCallback(() => {

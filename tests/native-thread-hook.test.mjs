@@ -55,7 +55,7 @@ class FakeSocket {
     this.sent.push(frame);
     const reply = (out) => queueMicrotask(() => { if (this.readyState === 1) this.server(out); });
     if (frame.t === "status") reply(STATUS);
-    if (frame.t === "occupancy") reply({ t: "occupancy", program: frame.program, busy: this.busy ?? [] });
+    if (frame.t === "occupancy" && !FakeSocket.silentOccupancy) reply({ t: "occupancy", program: frame.program, busy: this.busy ?? [] });
     if (frame.t === "models") reply({ t: "models", program: frame.program, models: [{ id: "gpt-x", name: "GPT X", default: true }, { id: "gpt-y", name: "GPT Y" }] });
     if (frame.t === "sessions") reply({ t: "sessions", program: frame.program, sessions: [{ id: "srv-active", title: "Someone else's", updated_at: "2026-10-30" }], active: "srv-active" });
     if (frame.t === "open_session") {
@@ -356,4 +356,94 @@ test("a hidden chat stays connected and keeps receiving frames", async () => {
     else delete window.document.hidden;
     view.cleanup();
   }
+});
+
+test("a brand-new session is ready once the link is up, without waiting for an occupancy reply", async () => {
+  FakeSocket.sockets = [];
+  FakeSocket.silentOccupancy = true;
+  globalThis.__taskApi = { async transcript() { return { session: session({ native_session_id: null }), frames: [], saved_at: null, sync_status: "pending" }; } };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: session({ native_session_id: null }), enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready without occupancy");
+    assert.equal(globalThis.__thread.dialog.occupancyAt ?? null, null, "no occupancy reply was ever received");
+    assert.equal(await sendVia(globalThis.__thread, "Go"), true, "the controller sends too");
+    assert.equal(sent().filter((frame) => frame.t === "prompt").length, 1);
+    await until(() => !globalThis.__thread.ready, "a pending send still holds the new conversation");
+    assert.equal(await sendVia(globalThis.__thread, "Again"), false, "no double send into the same new conversation");
+  } finally { view.cleanup(); FakeSocket.silentOccupancy = false; }
+});
+
+test("queued first prompt: the bubble (with its files) shows at once in a draft, goes out once when the session binds, no archive read", async () => {
+  FakeSocket.sockets = [];
+  const reads = [];
+  globalThis.__taskApi = { async transcript(id) { reads.push(id); return { session: session({ native_session_id: null }), frames: [], saved_at: null, sync_status: "pending" }; } };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: null, program: "codex", enabled: true });
+  try {
+    await until(() => sent().some((frame) => frame.t === "models"), "prewarm: models requested on pick");
+    await until(() => globalThis.__thread.onAttachFiles, "attachments accepted in a draft");
+    const file = new window.File(["png"], "shot.png", { type: "image/png" });
+    await act(async () => globalThis.__thread.onAttachFiles([file]));
+    await until(() => globalThis.__thread.composerAttachments.length === 1 && !globalThis.__thread.composerAttachments[0].uploading, "uploaded");
+    let queued;
+    await act(async () => { queued = globalThis.__thread.queue("先看日志"); });
+    assert.equal(queued, true);
+    const bubble = globalThis.__thread.messages.at(-1);
+    assert.equal(bubble.role, "user");
+    assert.equal(bubble.content, "先看日志");
+    assert.equal(bubble.meta.native_pending, true);
+    assert.deepEqual(bubble.meta.attachments.map((item) => [item.name, item.media_type]), [["shot.png", "image"]]);
+    assert.deepEqual(globalThis.__thread.composerAttachments, [], "its files ride on the bubble, not in the composer");
+    assert.deepEqual(globalThis.__thread.pending, { text: "先看日志", unsent: null });
+    let again;
+    await act(async () => { again = globalThis.__thread.queue("第二句"); });
+    assert.equal(again, false, "one first prompt at a time");
+    assert.equal(sent().some((frame) => frame.t === "prompt"), false, "nothing goes out without a session");
+
+    await view.update({ session: session({ native_session_id: null }) });
+    await until(() => sent().some((frame) => frame.t === "prompt"), "sent once bound");
+    const prompt = sent().find((frame) => frame.t === "prompt");
+    assert.equal(prompt.text, "先看日志");
+    assert.equal(prompt.task_session_id, "managed-1");
+    assert.deepEqual(prompt.files, [{ name: "shot.png", mime: "image/png", path: "/home/elon/.oceanleo/inbox/shot.png" }]);
+    await until(() => globalThis.__thread.pending === null, "pending cleared");
+    assert.equal(globalThis.__thread.messages.filter((message) => message.role === "user").length, 1, "one bubble, not two");
+    for (let i = 0; i < 5; i += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    assert.equal(sent().filter((frame) => frame.t === "prompt").length, 1, "exactly one prompt");
+    assert.deepEqual(reads, [], "a session born from this draft has nothing saved to read");
+  } finally { view.cleanup(); }
+});
+
+test("a queued prompt that cannot go out is marked unsent with the reason (never dropped); retry tries again", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__taskApi = { async transcript() { return { session: session(), frames: [], saved_at: null, sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: session({ program: "claude", native_session_id: null }), enabled: true });
+  try {
+    await act(async () => { globalThis.__thread.queue("跑测试"); });
+    await until(() => globalThis.__thread.pending?.unsent, "unsent");
+    assert.equal(globalThis.__thread.pending.unsent, "Claude Code 还没有登录，请在设置里登录。");
+    const bubble = globalThis.__thread.messages.at(-1);
+    assert.equal(bubble.content, "跑测试");
+    assert.equal(bubble.meta.native_unsent, true);
+    await act(async () => globalThis.__thread.retry());
+    await until(() => globalThis.__thread.pending?.unsent, "still blocked after retry");
+    assert.equal(sent().some((frame) => frame.t === "prompt"), false);
+  } finally { view.cleanup(); }
+  FakeSocket.sockets = [];
+  const draft = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: null, program: "codex", enabled: true });
+  try {
+    await act(async () => { globalThis.__thread.queue("先看日志"); });
+    await act(async () => globalThis.__thread.markUnsent("没能打开这段对话，请稍后再试。"));
+    assert.deepEqual(globalThis.__thread.pending, { text: "先看日志", unsent: "没能打开这段对话，请稍后再试。" });
+    assert.equal(globalThis.__thread.messages.at(-1).content, "先看日志", "the bubble stays");
+  } finally { draft.cleanup(); }
+});
+
+test("a computer whose state is not known yet does not mark a queued prompt unsent (it is connecting, not offline)", async () => {
+  FakeSocket.sockets = [];
+  const view = await mount({ computer: null, session: null, program: "codex", enabled: true });
+  try {
+    await act(async () => { globalThis.__thread.queue("hi"); });
+    for (let i = 0; i < 5; i += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    assert.deepEqual(globalThis.__thread.pending, { text: "hi", unsent: null });
+  } finally { view.cleanup(); }
 });

@@ -116,3 +116,94 @@ You may import pure helpers (`diff-lines.ts` `lineDiff`, `types.ts` types). Neve
 - Nothing is committed.
 
 ## Checkpoint
+
+### W3 checkpoint — 2026-10-30 (not committed)
+
+**Design.** There is one ordered timeline, rendered by one component. `AgentChat`, the native pane and `FunctionAgentChat` keep the same imports (`AgentProgress`, `buildAgentRenderItems`, `activeAgentProgressKey`), so the test stubs that replace those modules still work.
+- `buildAgentRenderItems` works on one user turn at a time:
+  - Every process row stays where it happened, and a run of process rows forms one block.
+  - Assistant text that is followed by more process in the same turn stays inside the block, in place. A turn of text1, A, text2, B, answer renders as `[text1 · A · text2 · B]`, then the answer.
+  - The text after the turn's last process row is the answer. It stays outside the fold.
+  - Gates, artifacts, errors, notices and device_status stay in the stream and end the current block.
+  - A reply's `meta.reasoning` (C1) becomes a synthetic `analysis` row (`meta.reasoning:true`, `reasoning_ms`, `streaming` while there is no text yet). It sits right before that reply's text, so the live thought replaces the bare spinner (`activeProgress`).
+- `buildProcessEntries` produces ordered entries: thought / tool / plan / text.
+  - Native tools carry the full `meta.tool_card` (diff | terminal | text, locations).
+  - Cloud steps carry `args_preview`, `result_preview`, `error` and `status` (C2). A failure is detected from status or from a non-empty `error`.
+  - Plans carry their entries with status and priority. A plan built only from `plan_steps` gets a numbered list.
+- `summarizeProcess` gives the counts for thoughts, tools, failed, plans and usage, plus `ms`. `ms` comes from the sum of `reasoning_ms`; without it, from the `created_at` span of the rows (≥1 s).
+- `buildAgentProgressActions` is gone. It was the thought→tool pairing that mislabelled rows.
+- `AgentProgress.tsx` is the renderer, built with host styling (stone palette, accent).
+  - While running, the block is open and live, with a spinner in its header. When it finishes it collapses to one line, "思考 X 秒 · N 个步骤 · 1 个失败 · 用量 N%" (the failure count is in red). Clicking the line toggles the whole process.
+  - Each thought, tool and plan folds on its own. A live thought or the latest plan opens while running and closes when it stops being live, unless the user has toggled it.
+  - Clicking an open body collapses it only when no text is selected (`collapseUnlessSelecting`).
+  - A tool row shows the kind icon, a one-line truncated title and its status (运行中 / 完成 / 失败 / 等待).
+  - A failed tool shows its error on a red line even while collapsed.
+  - Expanding a tool shows the full title, red/green `lineDiff` rows, terminal output in a `<pre>` with its own `overflow-auto max-h-64`, text, locations, args (JSON pretty-printed), result, and the error in red.
+  - It imports only the pure `diff-lines.ts`. No agent-dialog components and no `server-page/tone`.
+- `map-dialog.ts` (C3):
+  - Tools keep their full card and no longer get "（失败）" glued onto the title.
+  - Thoughts and plans keep everything.
+  - Auto-allowed permissions are dropped.
+  - Usage rides on the turn's last process row as `meta.native_usage`.
+  - Neutral notices (`acp_exited`, `dialog_detached`, `agent_busy`, `permission_timeout`, `computer_not_confirmed`, `session_not_found`) become `kind:"notice"`. Real failures stay `kind:"error"` (red), and reconnect churn stays hidden.
+- No horizontal overflow:
+  - The scroller gets `overflow-x-hidden` (`data-agent-stream-scroller`), and the column gets `min-w-0 break-words [overflow-wrap:anywhere]` (`data-agent-stream-column`).
+  - Wrapping is added to the user bubble, GateBubble / GateFrame and their prompts, the native question `<pre>` and legend, the plan bubble, the standalone step, the error bubble, `DeviceStatusNotice`, and the streamNotice / error tail lines.
+  - `<pre>` blocks scroll only inside themselves.
+  - Every class used already exists in `src/theme/ui.css`. I replaced `ml-[2px]` with `ml-0.5` for that reason.
+- Spinners:
+  - Cloud: the fallback label is now 「正在理解问题…」. The existing seconds ticker is kept.
+  - Native: 「agent 正在思考…」 shows only until the turn's first assistant entry.
+
+**Files**
+- `src/lib/agent-progress.ts`
+- `src/shell/AgentProgress.tsx`
+- `src/shell/native-thread/map-dialog.ts`
+- `src/shell/AgentTranscriptBubble.tsx`: overflow classes, plus the new neutral `kind:"notice"` branch
+- `src/shell/AgentChat.tsx`, render regions only:
+  - the scroller and column classes in `renderStream`
+  - the streamNotice and error tail lines
+  - the cloud thinking fallback label
+  - the native spinner condition in `renderNativePane`
+- `src/i18n/ui/messages/agent-progress-copy.ts`: 5 new keys × 17 locales
+- `src/i18n/ui/messages/computer-task-workspace-copy.ts`: removed the dead `{title}（失败）`
+- Tests:
+  - new: `tests/process-timeline.test.mjs`
+  - updated: `tests/agent-progress-contract.test.mjs`, `tests/native-thread-map.test.mjs`
+  - `tests/i18n-tt-key-coverage.test.mjs`: removed the dead baseline entries 已制定计划 / 已更新计划 / 正在继续执行… / 步, which no longer have any `tt()` call site
+
+**New user-visible strings** (zh source via `tt`, 16 translations each, in agent-progress-copy):
+- 「思考 {seconds} 秒」
+- 「{count} 个步骤」
+- 「{count} 个失败」
+- 「计划已更新」
+- 「正在理解问题…」
+
+Reused existing keys: 思考, 计划, 任务过程, 运行中, 完成, 失败, 等待, 参数, 结果, 优先级高/中/低, 用量 {pct}%, 执行步骤.
+
+**Tests run**
+- `process-timeline` (7) + `agent-progress-contract` (12) + `native-thread-map` + `native-thread-gate`: 30/30 green in the working tree.
+  - The DOM tests cover: order, running open / finished collapsed with the summary, native diff / terminal / locations, cloud args / result / error, reasoning thought, selection not collapsing, auto-allowed hidden, notice not red, long-word wrapping, scroller and column classes.
+- Typecheck (`run-heavy npx tsc --noEmit`): clean in the working tree, and clean (exit 0) in a `git archive HEAD` copy that has only W3's changes.
+- The related suites (every test that touches these modules, 500 tests) were run on that isolated copy.
+  - All W3-related tests are green, including all of `agent-chat-conversations`.
+  - The remaining reds are not W3's: they also fail on pristine HEAD, or come only from running in /tmp:
+    - `eas-w03` "AgentChat：流式期间每次轮询只换正在长的那一行…" (32≠20 renders)
+    - `library-task-render-loop`
+    - `workbench-toolbar-rendered`
+    - `hit-target-budget` (149 vs 98; W3 adds 0)
+    - `effect-tt-dependency` (ConversationView)
+    - `bay-shell-static` (BayMine)
+    - `tpp-w3-thread`
+    - the /tmp-location baseline self-checks
+- `architecture:check` is OK. `api:check` is unchanged (exit 0).
+
+**Requests / notes for the parent**
+- The working-tree i18n reds come from other units' new strings:
+  - W4: 「未发送：{reason}」 (AgentChat native tail) and 「没能发出去，请重试。」 (useNativeThread)
+  - W5: NativeModelPicker (手动确认 / 代理 / 全部放行 / 完全访问 …)
+  - These also fail `computer-conversations-i18n` and `i18n-tt-key-coverage`.
+- The working-tree `agent-chat-conversations` reds (native composer `null`) appeared while W4 was editing AgentChat. They pass with W3's edits alone.
+- Pre-existing HEAD reds (listed above) are not addressed by W3.
+- `FunctionAgentChat` uses the new renderer through the unchanged `AgentProgress` and `buildAgentRenderItems` API. Its scroller was not part of W3's scope.
+- Cloud timing in the summary is shown only when known: `reasoning_ms` (W1, C1) or a ≥1 s `created_at` span. Native turns have no timestamps, so they show "思考" without seconds.

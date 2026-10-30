@@ -21,6 +21,12 @@ const sourceKeys = {
   backToLatestUnread: "回到最新 · {count} 条新消息",
   stoppedGenerating: "已停止生成",
   stopTaskFailed: "没能停下这次任务，它可能仍在运行。",
+  // W3 2026-10-30 one process timeline: folded summary line + cloud pre-row spinner.
+  thinkSeconds: "思考 {seconds} 秒",
+  stepCount: "{count} 个步骤",
+  failedCount: "{count} 个失败",
+  planUpdated: "计划已更新",
+  understandingQuestion: "正在理解问题…",
 } as const;
 
 type MessageName = keyof typeof sourceKeys;
@@ -47,6 +53,11 @@ const translations = {
     stoppedGenerating: "Generierung gestoppt",
     stopTaskFailed:
       "Die Aufgabe konnte nicht gestoppt werden; sie läuft möglicherweise weiter.",
+    thinkSeconds: "{seconds} s nachgedacht",
+    stepCount: "{count} Schritte",
+    failedCount: "{count} fehlgeschlagen",
+    planUpdated: "Plan aktualisiert",
+    understandingQuestion: "Frage wird erfasst…",
   },
   en: {
     previewReady: "Live preview is ready and displayed on the right.",
@@ -67,6 +78,11 @@ const translations = {
     backToLatestUnread: "Back to latest · {count} new messages",
     stoppedGenerating: "Generation stopped",
     stopTaskFailed: "Couldn’t stop this task; it may still be running.",
+    thinkSeconds: "Thought for {seconds}s",
+    stepCount: "{count} steps",
+    failedCount: "{count} failed",
+    planUpdated: "Plan updated",
+    understandingQuestion: "Understanding the question…",
   },
   es: {
     previewReady: "La vista previa en directo está lista y se muestra a la derecha.",
@@ -87,6 +103,11 @@ const translations = {
     backToLatestUnread: "Volver a lo más reciente · {count} mensajes nuevos",
     stoppedGenerating: "Generación detenida",
     stopTaskFailed: "No se pudo detener esta tarea; puede que siga en ejecución.",
+    thinkSeconds: "Pensó {seconds} s",
+    stepCount: "{count} pasos",
+    failedCount: "{count} con error",
+    planUpdated: "Plan actualizado",
+    understandingQuestion: "Entendiendo la pregunta…",
   },
   "es-419": {
     previewReady: "La vista previa en vivo está lista y se muestra a la derecha.",
@@ -107,6 +128,11 @@ const translations = {
     backToLatestUnread: "Volver a lo más reciente · {count} mensajes nuevos",
     stoppedGenerating: "Generación detenida",
     stopTaskFailed: "No se pudo detener esta tarea; puede que siga ejecutándose.",
+    thinkSeconds: "Pensó {seconds} s",
+    stepCount: "{count} pasos",
+    failedCount: "{count} con error",
+    planUpdated: "Plan actualizado",
+    understandingQuestion: "Entendiendo la pregunta…",
   },
   fr: {
     previewReady: "L’aperçu en direct est prêt et s’affiche à droite.",
@@ -128,6 +154,11 @@ const translations = {
     stoppedGenerating: "Génération arrêtée",
     stopTaskFailed:
       "Impossible d’arrêter cette tâche ; elle est peut-être toujours en cours.",
+    thinkSeconds: "Réflexion : {seconds} s",
+    stepCount: "{count} étapes",
+    failedCount: "{count} en échec",
+    planUpdated: "Plan mis à jour",
+    understandingQuestion: "Compréhension de la question…",
   },
   it: {
     previewReady: "L’anteprima live è pronta ed è mostrata a destra.",
@@ -149,6 +180,11 @@ const translations = {
     stoppedGenerating: "Generazione interrotta",
     stopTaskFailed:
       "Non è stato possibile interrompere l’attività; potrebbe essere ancora in esecuzione.",
+    thinkSeconds: "Ragionato per {seconds} s",
+    stepCount: "{count} passaggi",
+    failedCount: "{count} non riusciti",
+    planUpdated: "Piano aggiornato",
+    understandingQuestion: "Comprensione della domanda…",
   },
   "pt-BR": {
     previewReady: "A prévia ao vivo está pronta e aparece à direita.",
@@ -169,6 +205,11 @@ const translations = {
     backToLatestUnread: "Voltar para o mais recente · {count} novas mensagens",
     stoppedGenerating: "Geração interrompida",
     stopTaskFailed: "Não foi possível parar esta tarefa; ela ainda pode estar em execução.",
+    thinkSeconds: "Pensou por {seconds} s",
+    stepCount: "{count} etapas",
+    failedCount: "{count} com falha",
+    planUpdated: "Plano atualizado",
+    understandingQuestion: "Entendendo a pergunta…",
   },
   "pt-PT": {
     previewReady: "A pré-visualização em direto está pronta e aparece à direita.",
@@ -189,6 +230,11 @@ const translations = {
     backToLatestUnread: "Voltar ao mais recente · {count} novas mensagens",
     stoppedGenerating: "Geração interrompida",
     stopTaskFailed: "Não foi possível parar esta tarefa; pode ainda estar em execução.",
+    thinkSeconds: "Pensou durante {seconds} s",
+    stepCount: "{count} passos",
+    failedCount: "{count} com falha",
+    planUpdated: "Plano atualizado",
+    understandingQuestion: "A compreender a pergunta…",
   },
   vi: {
     previewReady: "Bản xem trước trực tiếp đã sẵn sàng và hiển thị ở bên phải.",
@@ -209,6 +255,11 @@ const translations = {
     backToLatestUnread: "Về mới nhất · {count} tin nhắn mới",
     stoppedGenerating: "Đã dừng tạo",
     stopTaskFailed: "Không dừng được nhiệm vụ này; nó có thể vẫn đang chạy.",
+    thinkSeconds: "Suy nghĩ {seconds} giây",
+    stepCount: "{count} bước",
+    failedCount: "{count} thất bại",
+    planUpdated: "Đã cập nhật kế hoạch",
+    understandingQuestion: "Đang tìm hiểu câu hỏi…",
   },
   tr: {
     previewReady: "Canlı önizleme hazır ve sağ tarafta gösteriliyor.",
@@ -229,6 +280,11 @@ const translations = {
     backToLatestUnread: "En yenilere dön · {count} yeni mesaj",
     stoppedGenerating: "Üretim durduruldu",
     stopTaskFailed: "Bu görev durdurulamadı; hâlâ çalışıyor olabilir.",
+    thinkSeconds: "{seconds} sn düşündü",
+    stepCount: "{count} adım",
+    failedCount: "{count} başarısız",
+    planUpdated: "Plan güncellendi",
+    understandingQuestion: "Soru anlaşılıyor…",
   },
   zh: {
     previewReady: "实时预览已就绪，已显示在右侧。",
@@ -249,6 +305,11 @@ const translations = {
     backToLatestUnread: "回到最新 · {count} 条新消息",
     stoppedGenerating: "已停止生成",
     stopTaskFailed: "没能停下这次任务，它可能仍在运行。",
+    thinkSeconds: "思考 {seconds} 秒",
+    stepCount: "{count} 个步骤",
+    failedCount: "{count} 个失败",
+    planUpdated: "计划已更新",
+    understandingQuestion: "正在理解问题…",
   },
   "zh-TW": {
     previewReady: "即時預覽已就緒，已顯示於右側。",
@@ -269,6 +330,11 @@ const translations = {
     backToLatestUnread: "回到最新 · {count} 則新訊息",
     stoppedGenerating: "已停止生成",
     stopTaskFailed: "沒能停下這次任務，它可能仍在執行。",
+    thinkSeconds: "思考 {seconds} 秒",
+    stepCount: "{count} 個步驟",
+    failedCount: "{count} 個失敗",
+    planUpdated: "計畫已更新",
+    understandingQuestion: "正在理解問題…",
   },
   ja: {
     previewReady: "ライブプレビューの準備ができ、右側に表示されています。",
@@ -289,6 +355,11 @@ const translations = {
     backToLatestUnread: "最新に戻る · 新着 {count} 件",
     stoppedGenerating: "生成を停止しました",
     stopTaskFailed: "このタスクを停止できませんでした。まだ実行中の可能性があります。",
+    thinkSeconds: "{seconds} 秒間思考",
+    stepCount: "{count} ステップ",
+    failedCount: "{count} 件失敗",
+    planUpdated: "計画を更新しました",
+    understandingQuestion: "質問を理解しています…",
   },
   ko: {
     previewReady: "실시간 미리보기가 준비되어 오른쪽에 표시됩니다.",
@@ -309,6 +380,11 @@ const translations = {
     backToLatestUnread: "최신으로 이동 · 새 메시지 {count}개",
     stoppedGenerating: "생성이 중지됨",
     stopTaskFailed: "이 작업을 중지하지 못했습니다. 아직 실행 중일 수 있습니다.",
+    thinkSeconds: "{seconds}초 동안 생각",
+    stepCount: "{count}개 단계",
+    failedCount: "{count}개 실패",
+    planUpdated: "계획이 업데이트됨",
+    understandingQuestion: "질문을 이해하는 중…",
   },
   ar: {
     previewReady: "المعاينة المباشرة جاهزة وتظهر على اليمين.",
@@ -329,6 +405,11 @@ const translations = {
     backToLatestUnread: "العودة إلى الأحدث · {count} رسائل جديدة",
     stoppedGenerating: "تم إيقاف التوليد",
     stopTaskFailed: "تعذّر إيقاف هذه المهمة، وقد تكون ما زالت قيد التشغيل.",
+    thinkSeconds: "تفكير لمدة {seconds} ث",
+    stepCount: "{count} خطوات",
+    failedCount: "{count} فشل",
+    planUpdated: "تم تحديث الخطة",
+    understandingQuestion: "جارٍ فهم السؤال…",
   },
   th: {
     previewReady: "ตัวอย่างแบบสดพร้อมแล้วและแสดงอยู่ทางขวา",
@@ -349,6 +430,11 @@ const translations = {
     backToLatestUnread: "กลับไปล่าสุด · {count} ข้อความใหม่",
     stoppedGenerating: "หยุดสร้างแล้ว",
     stopTaskFailed: "ไม่สามารถหยุดงานนี้ได้ อาจยังทำงานอยู่",
+    thinkSeconds: "คิด {seconds} วินาที",
+    stepCount: "{count} ขั้นตอน",
+    failedCount: "ล้มเหลว {count} รายการ",
+    planUpdated: "อัปเดตแผนแล้ว",
+    understandingQuestion: "กำลังทำความเข้าใจคำถาม…",
   },
   hi: {
     previewReady: "लाइव प्रीव्यू तैयार है और दाईं ओर दिख रहा है।",
@@ -369,6 +455,11 @@ const translations = {
     backToLatestUnread: "नवीनतम पर लौटें · {count} नए संदेश",
     stoppedGenerating: "जनरेशन रोका गया",
     stopTaskFailed: "यह कार्य रोका नहीं जा सका; यह अब भी चल रहा हो सकता है।",
+    thinkSeconds: "{seconds} सेकंड सोचा",
+    stepCount: "{count} चरण",
+    failedCount: "{count} विफल",
+    planUpdated: "योजना अपडेट हुई",
+    understandingQuestion: "प्रश्न समझा जा रहा है…",
   },
 } satisfies Record<Locale, LocaleMessages>;
 
