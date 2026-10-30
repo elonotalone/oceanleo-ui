@@ -48,6 +48,7 @@ function userFileRows(items: DialogAttachment[]): UserMessageAttachment[] {
     name: item.name,
     mime: item.mime,
     path: item.path,
+    ...(item.archive ? { archive: item.archive } : {}),
   }));
 }
 
@@ -158,6 +159,7 @@ export function useAgentDialog({
   initialProgram = "oceanleo",
   initialSessionId,
   oceanleoReady = true,
+  taskSessionId,
 }: {
   computerId: string;
   sessionId?: string;
@@ -167,7 +169,10 @@ export function useAgentDialog({
   initialProgram?: AgentProgram;
   initialSessionId?: string;
   oceanleoReady?: boolean;
+  taskSessionId?: string;
 }): AgentDialogControllerV2 {
+  const taskSessionRef = useRef(taskSessionId);
+  taskSessionRef.current = taskSessionId;
   const tt = useUI();
   const [mountProgram] = useState(() => initialProgram);
   const [mountRef] = useState(() => `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`);
@@ -435,7 +440,7 @@ export function useAgentDialog({
     if (frame.t === "sessions" && frameProgram === stateRef.current.program) {
       const program = frameProgram as AgentProgram;
       const listed = cached.sessions.get(program)?.sessions ?? [];
-      const target = program === mountProgram && initialSessionId ? initialSessionId : typeof frame.active === "string" ? frame.active.trim() : "";
+      const target = program === mountProgram && initialSessionId ? initialSessionId : taskSessionRef.current ? "" : typeof frame.active === "string" ? frame.active.trim() : "";
       if (
         target
         && listed.some((session) => session.id === target)
@@ -552,7 +557,7 @@ export function useAgentDialog({
             const acpSession = stateRef.current.activeSession;
             // The initial openSession caller sends its own request once the
             // first socket resolves. Only reattach on subsequent connections.
-            if (gen > 1 && acpSession) sendJson(socket, { t: "open_session", program, acp_session: acpSession });
+            if (gen > 1 && acpSession) sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
           }
           finish(socket);
         },
@@ -1050,7 +1055,7 @@ export function useAgentDialog({
       ingest(JSON.stringify({ t: "error", code: "dialog_unreachable", program, ...(acpSession ? { acp_session: acpSession } : { ref }) }));
       return;
     }
-    const frame: Record<string, unknown> = { t: "prompt", program, text };
+    const frame: Record<string, unknown> = { t: "prompt", program, text, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) };
     if (acpSession) frame.acp_session = acpSession;
     else {
       frame.ref = ref;
@@ -1268,7 +1273,7 @@ export function useAgentDialog({
         dispatch({ type: "send-failed" });
         return;
       }
-      sendJson(socket, { t: "open_session", program, acp_session: acpSession });
+      sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
     })();
   }, [clearUnread, ensureOpen]);
   openSessionRef.current = openSession;
@@ -1566,12 +1571,13 @@ export function useAgentDialog({
       }
       void put(computerId, file, (percent) => {
         finish({ percent });
-      })
+      }, taskSessionRef.current ? { task_session_id: taskSessionRef.current } : undefined)
         .then((result) => {
           finish({
             state: "done",
             percent: 100,
             path: result.path,
+            archive: result.archive,
             name: result.name || chip.name,
             mime: result.mime || chip.mime,
             size: typeof result.size === "number" ? result.size : chip.size,

@@ -1915,3 +1915,36 @@ test("ACP 探针三态：本地 OceanLeo agent 与其它程序同一套 occupanc
     view.cleanup();
   }
 });
+
+test("managed graphical session hides nested navigation and scopes first prompt without selecting machine active history", async () => {
+  let settings;
+  const initialHref = window.location.href;
+  const view = await boot({ computer: {...COMPUTER, id:"cc-managed-new", node_online:true}, embedded:true, initialProgram:"cursor", taskSessionId:"managed-new", settingsOpen:true, onSettingsContent:(value) => { settings = value; } });
+  try {
+    assert.equal(view.$("aside"), null);
+    assert.equal(view.$("[data-oceanleo-program-strip]"), null);
+    assert.ok(settings);
+    assert.equal(window.location.href, initialHref);
+    await server({t:"sessions",program:"cursor",supported:true,active:"unrelated",sessions:[{id:"unrelated",title:"Other task"}]});
+    assert.equal(sentFrames().some(frame => frame.t === "open_session" || frame.t === "prompt"), false);
+    await server({t:"models",program:"cursor",source:"acp",models:[{id:"a",name:"A",default:true}]});
+    await setValue(view.$('[data-oceanleo-cc-dialog-input]'),"managed instruction");
+    await pressEnter(view.$('[data-oceanleo-cc-dialog-input]'));
+    const prompt = sentFrames().find(frame => frame.t === "prompt");
+    assert.equal(prompt.task_session_id,"managed-new");
+    assert.equal(prompt.acp_session,undefined);
+    await view.rerender({active:false});
+    assert.equal(sentFrames().some(frame => frame.t === "cancel" || frame.t === "close"),false);
+  } finally {view.cleanup();}
+});
+
+test("managed graphical open carries durable binding and managed OceanLeo never falls back to cloud agent", async () => {
+  const view = await boot({ computer: {...COMPUTER, id:"cc-managed-open", node_online:true}, embedded:true, initialProgram:"oceanleo", initialSessionId:"native-managed", taskSessionId:"managed-open" });
+  try {
+    await until(() => sentFrames().some(frame => frame.t === "open_session"),"managed open");
+    assert.equal(sentFrames().find(frame => frame.t === "open_session").task_session_id,"managed-open");
+    assert.equal(calls("agentState").length,0);
+    assert.equal(calls("agentTurn").length,0);
+    assert.equal(view.$('[data-oceanleo-acp-oceanleo-banner]'),null);
+  } finally {view.cleanup();}
+});

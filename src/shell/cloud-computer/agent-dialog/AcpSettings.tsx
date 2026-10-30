@@ -62,6 +62,7 @@ function Toggle({
 
 export function AcpSettings({
   open,
+  embedded = false,
   computerId,
   program,
   dialog,
@@ -73,6 +74,7 @@ export function AcpSettings({
   onOceanleoStatusChange,
 }: {
   open: boolean;
+  embedded?: boolean;
   computerId: string;
   program: AgentProgram;
   dialog: AgentDialogControllerV2;
@@ -160,17 +162,17 @@ export function AcpSettings({
 
   return (
     <div
-      className="absolute inset-0 z-20 flex justify-end bg-black/20 backdrop-blur-[1px]"
-      data-oceanleo-acp-settings-overlay=""
+      className={embedded ? "h-full overflow-y-auto" : "absolute inset-0 z-20 flex justify-end bg-black/20 backdrop-blur-[1px]"}
+      data-oceanleo-acp-settings-overlay={embedded ? undefined : ""}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <section
         role="dialog"
-        aria-modal="true"
+        aria-modal={embedded ? undefined : true}
         aria-label={`${PROGRAM_LABEL[program]} · ${tt("设置")}`}
-        className={`h-full w-full max-w-[384px] overflow-y-auto border-l p-4 shadow-2xl ${tone.border} ${tone.page}`}
+        className={embedded ? `p-4 ${tone.page}` : `h-full w-full max-w-[384px] overflow-y-auto border-l p-4 shadow-2xl ${tone.border} ${tone.page}`}
         data-oceanleo-acp-settings={program}
       >
         <header className={`flex items-center justify-between gap-3 border-b pb-3 ${tone.border}`}>
@@ -178,17 +180,18 @@ export function AcpSettings({
             <p className="text-[13px] font-semibold">{PROGRAM_LABEL[program]}</p>
             <p className={`text-xs ${tone.muted}`}>{tt("设置")}</p>
           </div>
-          <button
+          {!embedded && <button
             type="button"
             onClick={onClose}
             className={`h-8 rounded-lg px-2 py-1 text-[13px] ${tone.hover} ${tone.muted}`}
             data-oceanleo-acp-settings-close=""
           >
             {tt("关闭")}
-          </button>
+          </button>}
         </header>
 
         <div className="mt-4 space-y-3">
+          <p className={`text-xs ${tone.muted}`}>{tt("模型与配置仅影响当前对话；危险操作确认、工具与计费开关影响整台电脑。")}</p>
           {dialog.models.length > 0 ? (
             <label className={`block text-xs ${tone.muted}`}>
               {tt("模型")}

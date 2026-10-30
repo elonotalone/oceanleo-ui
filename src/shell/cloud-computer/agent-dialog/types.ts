@@ -155,7 +155,10 @@ export type TurnItem =
 
 export type DialogAttachmentState = "uploading" | "done" | "error";
 
+export type ArchivedAttachment = { id: string; name: string; mime: string; size: number; download_path: string };
+
 export type DialogAttachment = {
+  archive?: ArchivedAttachment;
   id: string;
   name: string;
   mime: string;
@@ -167,6 +170,7 @@ export type DialogAttachment = {
 };
 
 export type UserMessageAttachment = {
+  archive?: ArchivedAttachment;
   name: string;
   mime: string;
   preview?: string;

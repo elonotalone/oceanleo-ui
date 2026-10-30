@@ -337,3 +337,29 @@ test("旧节点只显示活终端并提示更新后才能保留记录", async ()
     view.cleanup();
   }
 });
+
+test("managed terminal waits for explicit open and durable identity before attaching, retries binding without new process", async () => {
+  const api = createClient({ initialRecords: [record({ id: "unrelated" })] });
+  let binds = 0;
+  let settings;
+  const originalHref = window.location.href;
+  const view = await renderCard({ api, props: {
+    embedded: true, settingsOpen: true, onSettingsContent: (value) => { settings = value; },
+    onNativeSessionChange: async () => { if (++binds === 1) throw new Error("storage unavailable"); },
+  } });
+  try {
+    assert.equal(view.host.querySelector("aside"), null);
+    assert.equal(view.host.querySelector("[data-test-terminal-viewport]"), null);
+    assert.equal(api.calls.open.length, 0);
+    assert.ok(settings);
+    assert.equal(window.location.href, originalHref);
+    const open = [...view.host.querySelectorAll("button")].find((item) => item.textContent.includes("新终端"));
+    await act(async () => open.click()); await flush();
+    assert.equal(api.calls.open.length, 1);
+    assert.equal(view.host.querySelector("[data-test-terminal-viewport]"), null);
+    await act(async () => open.click()); await flush();
+    assert.equal(api.calls.open.length, 1);
+    assert.equal(binds, 2);
+    assert.equal(view.host.querySelector("[data-test-terminal-viewport]")?.getAttribute("data-test-terminal-viewport"), "new-1");
+  } finally { view.cleanup(); }
+});

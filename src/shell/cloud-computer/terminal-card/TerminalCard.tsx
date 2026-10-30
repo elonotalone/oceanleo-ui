@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   cloudComputerApi,
   type CloudComputerClient,
@@ -25,6 +25,10 @@ import { TerminalViewport } from "./TerminalViewport";
 export type TerminalCardProps = {
   computer: Computer;
   active?: boolean;
+  embedded?: boolean;
+  settingsOpen?: boolean;
+  onSettingsContent?: (content: ReactNode | null) => void;
+  onNativeSessionChange?: (id: string) => Promise<void>;
   initialSessionId?: string;
   client?: CloudComputerClient;
   refreshIntervalMs?: number;
@@ -37,10 +41,15 @@ type NoticeKind = "info" | "error";
 export function TerminalCard({
   computer,
   active = true,
+  embedded = false,
+  settingsOpen = false,
+  onSettingsContent,
+  onNativeSessionChange,
   initialSessionId,
   client = cloudComputerApi,
   refreshIntervalMs = 15_000,
 }: TerminalCardProps) {
+  const pendingNative = useRef<TerminalRecord | null>(null);
   const tt = useUI();
   const [mountSessionId] = useState(() => initialSessionId ?? null);
   const [cached] = useState(() => terminalLists.get(computer.id));
@@ -48,7 +57,7 @@ export function TerminalCard({
   const [recordsSupported, setRecordsSupported] = useState(cached?.supported ?? true);
   const refreshVersion = useRef(0);
   const [selectedId, setSelectedId] = useState<string | null>(
-    () => mountSessionId ?? cached?.records.find((record) => cached.supported || record.alive)?.id ?? null,
+    () => mountSessionId ?? (embedded ? null : cached?.records.find((record) => cached.supported || record.alive)?.id ?? null),
   );
   const [showAppearance, setShowAppearance] = useState(false);
   const [loading, setLoading] = useState(!cached);
@@ -95,6 +104,7 @@ export function TerminalCard({
       setRecords(next);
       setRecordsSupported(result.records_supported);
       setSelectedId((current) => {
+        if (embedded) return current;
         if (current && visible.some((record) => record.id === current)) {
           return current;
         }
@@ -120,19 +130,22 @@ export function TerminalCard({
   }, [active, refresh, refreshIntervalMs]);
 
   useEffect(() => {
-    if (!active) return;
+    if (embedded || !active) return;
     replaceServerPageUrl(computer.id, { card: "terminal", session: selectedId });
   }, [active, computer.id, selectedId]);
 
   const openTerminal = useCallback(async () => {
-    if (!computer.node_online || busyId) return;
+    if (!computer.node_online || busyId || (embedded && (mountSessionId || selectedId))) return;
     setBusyId("new");
     try {
-      const result = await client.openTerminalSession(computer.id, {
+      const result = pendingNative.current ? { session: pendingNative.current } : await client.openTerminalSession(computer.id, {
         cols: DEFAULT_PTY_COLS,
         rows: DEFAULT_PTY_ROWS,
         kind: "shell",
       });
+      pendingNative.current = result.session;
+      await onNativeSessionChange?.(result.session.id);
+      pendingNative.current = null;
       setRecords((current) => [
         result.session,
         ...current.filter((record) => record.id !== result.session.id),
@@ -145,7 +158,7 @@ export function TerminalCard({
     } finally {
       setBusyId(null);
     }
-  }, [busyId, client, computer.id, computer.node_online, refresh, showNotice, tt]);
+  }, [busyId, client, computer.id, computer.node_online, refresh, showNotice, tt, onNativeSessionChange, embedded, mountSessionId, selectedId]);
 
   const closeTerminal = useCallback(
     async (sessionId: string) => {
@@ -183,6 +196,14 @@ export function TerminalCard({
     [busyId, client, computer.id, refresh, showNotice, tt],
   );
 
+  useEffect(() => {
+    if (!embedded || !active) return;
+    onSettingsContent?.(settingsOpen ? <div className="space-y-4 p-4">
+      <p className="text-xs">{tt("终端外观同时影响所有终端和 AI 命令行。终端按键不会保存为任务对话。")}</p>
+      <AppearancePanel />
+    </div> : null);
+  }, [embedded, active, settingsOpen, onSettingsContent]);
+
   return (
     <section
       aria-label={tt("终端")}
@@ -190,7 +211,7 @@ export function TerminalCard({
       data-oceanleo-terminal-card=""
       data-initial-session={mountSessionId || undefined}
     >
-      {active && <ServerPageStripPortal card="terminal">
+      {!embedded && active && <ServerPageStripPortal card="terminal">
       <div className="relative flex w-full shrink-0 items-center justify-end px-3 py-2">
         <button
           type="button"
@@ -248,12 +269,12 @@ export function TerminalCard({
         </div>
       )}
       <div className="flex min-h-0 flex-1" data-oceanleo-terminal-card-body="">
-        <aside className={`flex min-h-0 w-32 shrink-0 flex-col sm:w-52 border-r ${tone.border}`}>
+        {!embedded && <aside className={`flex min-h-0 w-32 shrink-0 flex-col sm:w-52 border-r ${tone.border}`}>
           <div className={`border-b p-2 ${tone.border}`}>
             <button
               type="button"
               className="inline-flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!computer.node_online || busyId !== null}
+              disabled={!computer.node_online || busyId !== null || (embedded && Boolean(mountSessionId || selectedId))}
               data-oceanleo-new-terminal=""
               onClick={() => void openTerminal()}
             >
@@ -345,7 +366,7 @@ export function TerminalCard({
               </p>
             )}
           </div>
-        </aside>
+        </aside>}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {failed && (
             <div className={`border-b px-3 py-2 text-xs ${tone.danger}`} role="alert">
@@ -363,7 +384,7 @@ export function TerminalCard({
                   <button
                     type="button"
                     className="font-medium underline underline-offset-2"
-                    disabled={!computer.node_online || busyId !== null}
+                    disabled={!computer.node_online || busyId !== null || (embedded && Boolean(mountSessionId || selectedId))}
                     onClick={() => void openTerminal()}
                   >
                     {tt("在这台服务器上开一个新终端")}
@@ -382,11 +403,11 @@ export function TerminalCard({
           ) : (
             <div className={`grid min-h-0 flex-1 place-items-center p-6 text-center text-sm ${tone.muted}`}>
               <div>
-                <p>{tt("选择一个终端，或新建终端。")}</p>
+                <p>{embedded && mountSessionId ? tt("原终端暂不可用；请在任务工具栏新建独立终端。") : tt("选择一个终端，或新建终端。")}</p>
                 <button
                   type="button"
                   className="mt-3 inline-flex items-center gap-2 text-xs underline-offset-2 hover:underline disabled:opacity-50"
-                  disabled={!computer.node_online || busyId !== null}
+                  disabled={!computer.node_online || busyId !== null || (embedded && Boolean(mountSessionId || selectedId))}
                   onClick={() => void openTerminal()}
                 >
                   <IconPlus className="size-3.5" />

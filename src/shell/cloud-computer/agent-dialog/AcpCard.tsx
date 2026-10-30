@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   getOceanleoAgent,
   installOceanleoAgent,
@@ -80,11 +80,21 @@ export function AcpCard({
   initialProgram,
   initialSessionId,
   active = true,
+  embedded = false,
+  taskSessionId,
+  settingsOpen = false,
+  onSettingsContent,
+  onNativeSessionChange,
 }: {
   computer: Computer;
   initialProgram?: string;
   initialSessionId?: string;
   active?: boolean;
+  embedded?: boolean;
+  taskSessionId?: string;
+  settingsOpen?: boolean;
+  onSettingsContent?: (content: ReactNode | null) => void;
+  onNativeSessionChange?: (id: string) => void;
 }) {
   const tt = useUI();
   const [selected, setSelected] = useState<AgentProgram>(() =>
@@ -105,12 +115,13 @@ export function AcpCard({
 
   const dialog = useAgentDialog({
     computerId: computer.id,
-    enabled: true,
+    enabled: !embedded || computer.node_online === true,
+    taskSessionId,
     active,
     initialProgram: selected,
     initialSessionId: mountSession,
     oceanleoReady: oceanleoLoaded || oceanleoStatus !== null,
-    localOceanleo: oceanleoStatus?.installed === true,
+    localOceanleo: embedded || oceanleoStatus?.installed === true,
   });
 
   useEffect(() => {
@@ -142,7 +153,7 @@ export function AcpCard({
   }, [dialog, selected]);
 
   useEffect(() => {
-    if (selected === "oceanleo" && !oceanleoLoaded) return;
+    if (!active || (selected === "oceanleo" && !oceanleoLoaded)) return;
     if (!mountSession || selected !== mountTarget.program || dialog.program !== selected || initialSessionApplied.current) return;
     const key = `${computer.id}:${selected}:${mountSession}`;
     if (initialSessionApplied.current === key) return;
@@ -151,7 +162,7 @@ export function AcpCard({
   }, [computer.id, dialog, mountSession, mountTarget.program, selected, oceanleoLoaded]);
 
   function replaceAddress(program: AgentProgram, session?: string) {
-    replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
+    if (!embedded) replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
   }
 
   function conversationFilePath(): string {
@@ -234,7 +245,7 @@ export function AcpCard({
   }, [computer.id, selected]);
 
   useEffect(() => {
-    if (active && dialog.program === selected) replaceServerPageUrl(computer.id, {
+    if (!embedded && active && dialog.program === selected) replaceServerPageUrl(computer.id, {
       card: "acp", program: selected, session: dialog.activeSession || null,
     });
   }, [active, computer.id, selected, dialog.program, dialog.activeSession, mountSession]);
@@ -299,6 +310,30 @@ export function AcpCard({
   const copyLabel = linkCopied ? tt("已复制对话位置") : copyMissing ? tt("还没有可复制的对话文件") : tt("复制对话位置");
   const keyRow = keyProgram ? statusOf(keyProgram, dialog.programs) : undefined;
 
+  const settingsContent = (<AcpSettings
+          open
+          embedded={embedded}
+          computerId={computer.id}
+          program={embedded ? selected : settingsProgram!}
+          dialog={dialog}
+          oceanleoStatus={oceanleoStatus}
+          onClose={() => setSettingsProgram(null)}
+          onRequestInstall={requestInstall}
+          onRequestLogin={requestLogin}
+          onRequestKey={requestKey}
+          onOceanleoStatusChange={(status) => {
+            oceanleoCache.set(computer.id, status);
+            setOceanleoStatus(status);
+            setOceanleoError("");
+          }}
+        />);
+  useEffect(() => {
+    if (embedded && active) onSettingsContent?.(settingsOpen ? settingsContent : null);
+  }, [embedded, active, settingsOpen, onSettingsContent, selected, oceanleoStatus, dialog.models, dialog.selectedModel, dialog.selectedMode, dialog.mode, dialog.configOptions, dialog.programs, dialog.activeSession]);
+  useEffect(() => {
+    if (dialog.activeSession) onNativeSessionChange?.(dialog.activeSession);
+  }, [dialog.activeSession, onNativeSessionChange]);
+
   return (
     <section
       aria-label={tt("AI 对话")}
@@ -306,7 +341,7 @@ export function AcpCard({
       data-oceanleo-acp-card=""
       data-oceanleo-acp-program={selected ?? ""}
     >
-      {active ? <ServerPageStripPortal card="acp">
+      {!embedded && active ? <ServerPageStripPortal card="acp">
         <ProgramStrip
           items={PROGRAMS.map((program): ProgramStripItem => {
             const row = program === "oceanleo" ? undefined : statusOf(program, dialog.programs);
@@ -322,7 +357,7 @@ export function AcpCard({
         />
       </ServerPageStripPortal> : null}
           <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-            <aside
+            {!embedded && <aside
               className={`flex min-h-0 max-h-48 w-full shrink-0 flex-col border-b p-3 md:max-h-none md:w-60 md:border-b-0 md:border-r ${tone.border}`}
               data-oceanleo-acp-sessions=""
             >
@@ -410,7 +445,7 @@ export function AcpCard({
                   })
                 )}
               </div>
-            </aside>
+            </aside>}
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-oceanleo-acp-conversation="">
               <header className={`flex shrink-0 items-center gap-2 border-b px-3 py-2 text-xs ${tone.border} ${tone.muted}`}>
@@ -440,7 +475,7 @@ export function AcpCard({
                   {copiedPath}
                 </p>
               ) : null}
-              {selected === "oceanleo" && !oceanleoStatus?.installed ? (
+              {!embedded && selected === "oceanleo" && oceanleoLoaded && !oceanleoStatus?.installed ? (
                 <p className={`mx-3 mt-3 shrink-0 text-xs ${tone.muted}`} data-oceanleo-acp-oceanleo-banner="">
                   {tt("当前使用云端 OceanLeo agent；也可以安装到这台服务器本地运行。")}
                   <button type="button" disabled={!oceanleoLoaded || oceanleoInstalling} onClick={() => void installLocalAgent()} data-oceanleo-acp-oceanleo-install="" className="ml-2 underline disabled:opacity-50">{oceanleoInstalling ? tt("正在安装…") : tt("安装")}</button>
@@ -493,24 +528,7 @@ export function AcpCard({
         onClose={() => setKeyProgram(null)}
         onChanged={dialog.retryConnect}
       />
-      {settingsProgram ? (
-        <AcpSettings
-          open
-          computerId={computer.id}
-          program={settingsProgram}
-          dialog={dialog}
-          oceanleoStatus={oceanleoStatus}
-          onClose={() => setSettingsProgram(null)}
-          onRequestInstall={requestInstall}
-          onRequestLogin={requestLogin}
-          onRequestKey={requestKey}
-          onOceanleoStatusChange={(status) => {
-            oceanleoCache.set(computer.id, status);
-            setOceanleoStatus(status);
-            setOceanleoError("");
-          }}
-        />
-      ) : null}
+      {!embedded && settingsProgram ? settingsContent : null}
     </section>
   );
 }

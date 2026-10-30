@@ -8,6 +8,7 @@ import { lineDiff } from "./diff-lines";
 import { isReconnectingNotice, noticeAction, visibleNoticeCopy } from "./notice";
 import { isWsProgram } from "./parse";
 import { normalizeQuestions } from "./questions";
+import { ArchivedAttachmentLink } from "./ArchivedAttachment";
 import { normalizeUserMessage } from "./message-attachments";
 import { AgentText } from "./text";
 import type { AgentDialogController, AgentDialogMessage, ToolCard, TurnItem } from "./types";
@@ -707,7 +708,7 @@ export function MessageList({ dialog }: { dialog: AgentDialogController }) {
                               onError={(event) => { event.currentTarget.hidden = true; }}
                             />
                           ) : null}
-                          <span>{item.name === "图片" ? tt("图片") : item.name}</span>
+                          <ArchivedAttachmentLink attachment={item} />
                           {item.path ? (
                             <span
                               data-oceanleo-cc-user-path={item.path}

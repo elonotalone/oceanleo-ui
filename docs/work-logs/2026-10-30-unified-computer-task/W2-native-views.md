@@ -6,4 +6,13 @@ Implement exact ComputerSessionView props from 00-contract. Adapt existing live 
 
 ## Checkpoint
 
-Not started.
+Implemented and verified.
+
+- Added `task-workspace/ComputerSessionView.tsx` with exact contract props. Native views mount lazily on first activation and retain mounted identity afterward. Offline graphical history uses owner archive, honest saved/pending/error status and earlier-page loading; private uploaded attachments resolve owner-checked expiring download URLs only after a click.
+- Embedded ACP/CLI/terminal hide program strips and past-session columns; suppress route mutation. Managed ACP carries `task_session_id` on first prompt/open/reconnect and inbox upload, never adopts machine-active unrelated history and never uses cloud OceanLeo fallback. Standalone APIs remain opt-in compatible.
+- CLI/terminal bind native ID before attaching; retry a failed binding against the same newly created PTY without creating another process. Bound sessions cannot create replacements under the same immutable binding. Session switching does not cancel/close.
+- Settings content goes to the outer callback only while active. ACP settings render inline in that pane; CLI launch defaults and machine program tools are labelled separately, terminal appearance explicitly affects CLI too.
+- Focused baseline 66/66 passed (ACP/CLI/terminal), then new managed ACP cases 2/2 passed. Offline component test caught a reducer identity initialization omission; fixed, rerun 2/2 passed. Final suite now includes archive attachment route validation/download-on-click.
+- Final focused command (through `agent-io-guard.sh run-light`): `node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test --test-concurrency=1 tests/computer-session-view.test.mjs tests/acp-card-flows.test.mjs tests/cli-card-view.test.mjs tests/terminal-card-view.test.mjs`: **71/71 passed**, 0 failures, 24.3s (final repeat).
+- Guarded full UI `npx tsc --noEmit`: **exit 0**. Initial reducer inference and mechanical CLI argument insertion defects were fixed before this green run. No browser, pushes, bumps, node/service/agent restarts.
+- Parent owns final dev-slot refresh/HTTP acceptance and independent typecheck/test rerun.

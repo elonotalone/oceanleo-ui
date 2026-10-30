@@ -559,3 +559,32 @@ test("地址变化只更新浅地址，不重拉列表；失活时暂停终端�
     view.cleanup();
   }
 });
+
+test("managed CLI never selects unrelated running CLI and binds before attach; inactive keeps the native session", async () => {
+  const api = createClient();
+  let binds = 0;
+  let settings;
+  const originalHref = window.location.href;
+  const view = await renderCard({ api, props: {
+    embedded: true, settingsOpen: true, onSettingsContent: (value) => { settings = value; },
+    onNativeSessionChange: async () => { if (++binds === 1) throw new Error("storage unavailable"); },
+  } });
+  try {
+    assert.equal(view.host.querySelector("aside"), null);
+    assert.equal(view.host.querySelector("[data-test-cli-viewport]"), null);
+    assert.equal(api.calls.launch.length, 0);
+    assert.ok(settings);
+    assert.equal(window.location.href, originalHref);
+    const open = [...view.host.querySelectorAll("button")].find((item) => item.textContent.includes("打开命令行"));
+    await act(async () => open.click()); await flush();
+    assert.equal(api.calls.launch.length, 1);
+    assert.equal(view.host.querySelector("[data-test-cli-viewport]"), null);
+    await act(async () => open.click()); await flush();
+    assert.equal(api.calls.launch.length, 1);
+    assert.equal(binds, 2);
+    assert.ok(view.host.querySelector("[data-test-cli-viewport]"));
+    await view.rerender({active:false}); await flush();
+    assert.equal(api.calls.launch.length, 1);
+    assert.equal(api.calls.close.length, 0);
+  } finally { view.cleanup(); }
+});

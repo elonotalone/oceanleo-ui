@@ -1,4 +1,5 @@
-export type UserAttachment = { name: string; mime: string; preview?: string; path?: string };
+import type { ArchivedAttachment } from "./types";
+export type UserAttachment = { archive?: ArchivedAttachment; name: string; mime: string; preview?: string; path?: string };
 
 function inboxPath(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -25,7 +26,8 @@ export function userAttachments(raw: unknown): UserAttachment[] {
     if (!name) return [];
     const preview = safeImagePreview(row.preview);
     const path = inboxPath(row.path);
-    return [{ name, mime, ...(preview ? { preview } : {}), ...(path ? { path } : {}) }];
+    const archive = safeArchivedAttachment(row.archive);
+    return [{ name, mime, ...(archive ? { archive } : {}), ...(preview ? { preview } : {}), ...(path ? { path } : {}) }];
   });
 }
 
@@ -59,4 +61,13 @@ export function normalizeUserMessage(text: string, rawAttachments?: unknown): { 
   }
   if (!images.length) return { text, attachments };
   return { text: texts.join(""), attachments: [...attachments, ...images] };
+}
+
+// Only owner-checked attachment routes are allowed; arbitrary URLs stay inert text.
+export function safeArchivedAttachment(raw: unknown): ArchivedAttachment | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  if (typeof row.id !== "string" || typeof row.name !== "string" || typeof row.mime !== "string" || typeof row.size !== "number" || typeof row.download_path !== "string") return undefined;
+  if (!/^\/v1\/computer-task-sessions\/[A-Za-z0-9_-]{1,128}\/attachments\/[A-Za-z0-9_-]{1,128}$/.test(row.download_path)) return undefined;
+  return { id: row.id, name: row.name.slice(0, 200), mime: row.mime.slice(0, 100), size: row.size, download_path: row.download_path };
 }
