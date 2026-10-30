@@ -7,3 +7,20 @@ Implement shared HTTP client contract, Device -> device -> agent/terminal hierar
 ## Checkpoint
 
 Not started.
+
+## Checkpoint — host implemented, focused verification
+
+- Added shared authenticated `computer-task-api.ts` create/list/transcript/bind functions, pagination and AbortSignal; exports in lib barrel.
+- Added `task-host/ComputerTaskWorkspace.tsx`: task-owned durable discovery, URL session restoration, device/program hierarchy, passive device inspection, managed descriptor creation on graphical program selection, explicit independent CLI/terminal creation, stable session.id keys and hidden mounted views, always-present toolbar.
+- AgentChat uses this host in its existing SplitWorkspace; right settings temporarily replace visible right content while preserving prior content mounted and its open/tab state. Existing boundTarget remains unchanged and cloud chat remains mounted.
+- Home ComputerDock computer rows lead to program selection; offline computer remains inspectable. Managed selection forwards to task URL. Device management remains reachable.
+- Legacy computer URLs use `ComputerTaskImport` (known native identity only); legacy shell tasks import their own identity into that same task then display main AgentChat. Portal task and computer routes updated.
+- Managed inbox upload fourth argument `{task_session_id}` adds query and returns optional private archive metadata per W1; W2 notified.
+- Focused command `agent-io-guard.sh run-light -- node --test tests/computer-task-host.test.mjs tests/computer-task-api.test.mjs`: PASS 3/3. Behavioral host test checks offline inspection without execution, URL restoration/switch, stable mounted views, independent CLI label, cloud default and settings toggle.
+- First guarded UI typecheck ran before W2 ComputerSessionView existed; only missing module and inferred callback id. Explicit callback typing fixed; full integration typecheck pending W2 file arrival.
+
+## Checkpoint — focused integration verification complete
+
+Expanded actual DOM behavioral tests (no browser): settings close preserves exact prior preview instance and edited input; native switching preserves both mounted instances; offline device drill-in/back is passive; explicit independent CLI wording and cloud return; legacy named CLI deep link imports into existing task and forwards to managed URL under StrictMode. Added actual authenticated gateway request/error-path coverage, including storage failure.
+
+Final focused command: `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --test tests/computer-task-host.test.mjs tests/computer-task-api.test.mjs` — PASS 6/6. `git diff --check` PASS. No second whole typecheck queued because W2/root own integrated typechecks. New ComputerTaskSettingsPane preserves prior right workspace instance. New cloud tasks explicitly submit cloud target rather than inheriting a previously remembered execution choice. Parent owns remaining integrated typecheck/dev-slot checks.

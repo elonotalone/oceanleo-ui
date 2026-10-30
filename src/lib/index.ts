@@ -45,3 +45,5 @@ export * from "./workflows";
 export * from "./console-draft";
 // 插件与连接器面板的 MCP 连接器 API；门户从 `@oceanleo/ui` 直接取。
 export * from "./mcp-api";
+
+export * from "./computer-task-api";

@@ -706,7 +706,10 @@ export function getUsageSummary() {
   return ccRequest<UsageSummary>("/v1/computers/usage/summary");
 }
 
+export type ComputerInboxArchive = { id: string; name: string; mime: string; size: number; download_path: string };
+
 export type ComputerInboxFile = {
+  archive?: ComputerInboxArchive;
   path: string;
   name: string;
   size: number;
@@ -721,6 +724,7 @@ export async function putComputerInbox(
   computerId: string,
   file: File,
   onProgress?: (percent: number) => void,
+  options: { task_session_id?: string } = {},
 ): Promise<ComputerInboxFile> {
   const token = await accessToken();
   if (!token) {
@@ -732,6 +736,7 @@ export async function putComputerInbox(
   }
   const name = (file.name || "file").trim() || "file";
   const query = new URLSearchParams({ name });
+  if (options.task_session_id) query.set("task_session_id", options.task_session_id);
   const url = `${GATEWAY_BASE}/v1/computers/${encodeURIComponent(id)}/inbox?${query.toString()}`;
   return await new Promise<ComputerInboxFile>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -773,6 +778,7 @@ export async function putComputerInbox(
       finished = true;
       onProgress?.(100);
       resolve({
+        ...(row.archive && typeof row.archive === "object" ? { archive: row.archive as ComputerInboxArchive } : {}),
         path,
         name: typeof row.name === "string" && row.name.trim() ? row.name.trim() : name,
         size: typeof row.size === "number" ? row.size : file.size,

@@ -1,5 +1,6 @@
 "use client";
 
+import { createComputerTaskSession } from "../../lib/computer-task-api";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cloudComputerApi, type CloudComputerClient, type Computer, writeMountedComputerId, writeMountedComputerName } from "../../lib/cloud-computer-api";
@@ -67,6 +68,9 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
   const tt = useUI();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [nativeComputer, setNativeComputer] = useState<Computer | null>(null);
+  const [nativeBusy, setNativeBusy] = useState(false);
+  const [nativeError, setNativeError] = useState("");
   const [group, setGroup] = useState<"cloud" | "device">("cloud");
   const [owner, setOwner] = useState<string | null>(null);
   const [target, setTarget] = useState<ExecutionTarget>({ kind: "cloud" });
@@ -186,6 +190,15 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
     setSelectedDevice(device);
     setTarget(picked); setOpen(false);
   }
+  async function openNative(program: "oceanleo"|"cursor"|"claude"|"codex"|"hermes"|null) {
+    if (!nativeComputer || nativeBusy) return;
+    setNativeBusy(true); setNativeError("");
+    try {
+      const result = await createComputerTaskSession(nativeComputer.id, {kind: program ? "acp" : "terminal", program, request_id: crypto.randomUUID()});
+      setOpen(false); router.push(portalHref(`/tasks/${encodeURIComponent(result.task_id)}?computerSession=${encodeURIComponent(result.session.id)}`));
+    } catch (error) { setNativeError(error instanceof Error ? error.message : "打开会话失败"); }
+    finally { setNativeBusy(false); }
+  }
   const now = Date.now();
   /** "云端助手可用至 18:00" / "需要你在电脑前确认"; null on gateways without the route. */
   function modeLabel(mode: "cloud" | "device" | null, deviceId: string): string | null {
@@ -249,10 +262,10 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
           {!owner ? <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("请先登录")}</p> : <>
             {group === "cloud" && <>
               <button type="button" className={row} aria-pressed={target.kind === "cloud"} onClick={() => choose({ kind: "cloud" })}><TargetGlyph cloud /><span className="flex-1">{tt("默认云端")}</span>{target.kind === "cloud" && "✓"}</button>
-              {computers.filter(isConnectedComputer).map((item) => {
+              {nativeComputer ? <div><button type="button" className={row} onClick={() => setNativeComputer(null)}>‹ {tt("返回设备")}</button><p className="px-3 text-xs text-neutral-500">{nativeComputer.name}</p>{(["oceanleo", "cursor", "claude", "codex", "hermes", null] as const).map(program => <button type="button" key={program || "terminal"} className={row} disabled={nativeBusy} onClick={() => void openNative(program)}>{program || tt("终端")}</button>)}{nativeError && <p role="alert" className="px-3 text-xs text-red-600">{nativeError}</p>}</div> : computers.filter(isConnectedComputer).map((item) => {
                 const ready = computerDisplayState(item) === "ready";
                 const selected = target.kind === "computer" && target.id === item.id;
-                return <button key={item.id} type="button" disabled={!ready} className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-cc-switch-item={item.id} onClick={() => choose({ kind: "computer", id: item.id, name: item.name })}>
+                return <button key={item.id} type="button" className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-cc-switch-item={item.id} onClick={() => setNativeComputer(item)}>
                   <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt("离线")}</span>}{selected && <span aria-label={tt("已选择")}>✓</span>}
                 </button>;
               })}

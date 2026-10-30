@@ -1,4 +1,6 @@
 "use client";
+import { ComputerTaskSettingsPane } from "./cloud-computer/task-host/ComputerTaskSettingsPane";
+import { ComputerTaskWorkspace } from "./cloud-computer/task-host/ComputerTaskWorkspace";
 
 import { taskExecutionTarget } from "../lib/execution-target";
 
@@ -593,6 +595,8 @@ function AgentChatInner({
   // 团队默认开库；主页普通 agent 始终默认收起。新产物只在隐藏的库内更新，
   // 用户点结果卡或「库」按钮时才展开，避免主页 Enter 后页面自行改布局。
   const [rightOpen, setRightOpen] = useState(hasOrgPanel);
+  const [computerSettingsOpen, setComputerSettingsOpen] = useState(false);
+  const [computerSettingsContent, setComputerSettingsContent] = useState<ReactNode>(null);
   const [localTaskId, setLocalTaskId] = useState<string | null>(
     explicitTaskId ?? null,
   );
@@ -2290,10 +2294,11 @@ function AgentChatInner({
             </div>
           )}
           <LeoComposer
+            showComputerDock={false}
             boundExecutionTarget={taskId ? (boundTarget.taskId === taskId ? boundTarget.target : null) : undefined}
             value={input}
             onChange={setInput}
-            onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
+            onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget ?? (taskId ? undefined : { kind: "cloud" }))}
             loading={running}
             onStop={() => void stop()}
             disabled={readOnly}
@@ -2386,7 +2391,7 @@ function AgentChatInner({
   // 就在 SplitWorkspace 左栏里，所以 SplitWorkspace 永远 fillParent 填满宿主给的高度。
   const split = (
     <SplitWorkspace
-      left={stream}
+      left={<ComputerTaskWorkspace taskId={taskId} cloud={stream} settingsOpen={computerSettingsOpen} onSettingsOpenChange={setComputerSettingsOpen} onSettingsContent={setComputerSettingsContent} onTaskCreated={onTaskCreated} />}
       right={
         <WorkspacePaneErrorBoundary
           recoveryKey={`${taskId || ""}:${libTab}:${workspaceAction?.nonce || ""}:${workspaceOpen ?? rightOpen}`}
@@ -2396,7 +2401,7 @@ function AgentChatInner({
           detailsLabel={tt("技术详情")}
           onClose={() => (onWorkspaceOpenChange || setRightOpen)(false)}
         >
-          {workspaceContent ?? right}
+          <ComputerTaskSettingsPane open={computerSettingsOpen} content={computerSettingsContent} onClose={() => setComputerSettingsOpen(false)}>{workspaceContent ?? right}</ComputerTaskSettingsPane>
         </WorkspacePaneErrorBoundary>
       }
       leftHidden={!workspaceAgentVisible}
@@ -2414,7 +2419,7 @@ function AgentChatInner({
       fillParent
       // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
-      library={effectiveLibrary}
+      library={computerSettingsOpen ? { ...(effectiveLibrary || {}), label: "设置", open: true, onOpenChange: setComputerSettingsOpen, paneTitle: "设置" } : effectiveLibrary}
     />
   );
 
