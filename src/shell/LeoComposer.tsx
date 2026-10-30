@@ -260,6 +260,7 @@ export interface LeoComposerProps {
    * 传 false 可在非 OceanLeo 宿主关掉。
    */
   showComputerDock?: boolean;
+  onBeforeComputerNavigate?: () => void | Promise<void>;
   /** undefined=new draft; null=existing task still loading; otherwise immutable task target. */
   boundExecutionTarget?: ExecutionTarget | null;
 
@@ -308,6 +309,7 @@ export function LeoComposer({
   showPayerSelector = true,
   showAppsBar = true,
   showComputerDock = true,
+  onBeforeComputerNavigate,
   boundExecutionTarget,
   appsHost,
   onOpenPlugins,
@@ -585,7 +587,7 @@ export function LeoComposer({
               extra={attachMenuExtra}
             />
           )}
-          {showComputerDock && <ComputerDock key={targetDraftRevision} boundTarget={boundExecutionTarget} onTargetChange={rememberExecutionTarget} />}
+          {showComputerDock && <ComputerDock onBeforeNavigate={onBeforeComputerNavigate} key={targetDraftRevision} boundTarget={boundExecutionTarget} onTargetChange={rememberExecutionTarget} />}
           {showPlugins && (
             <>
             <button

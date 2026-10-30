@@ -24,3 +24,12 @@ Not started.
 Expanded actual DOM behavioral tests (no browser): settings close preserves exact prior preview instance and edited input; native switching preserves both mounted instances; offline device drill-in/back is passive; explicit independent CLI wording and cloud return; legacy named CLI deep link imports into existing task and forwards to managed URL under StrictMode. Added actual authenticated gateway request/error-path coverage, including storage failure.
 
 Final focused command: `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-light -- node --test tests/computer-task-host.test.mjs tests/computer-task-api.test.mjs` — PASS 6/6. `git diff --check` PASS. No second whole typecheck queued because W2/root own integrated typechecks. New ComputerTaskSettingsPane preserves prior right workspace instance. New cloud tasks explicitly submit cloud target rather than inheriting a previously remembered execution choice. Parent owns remaining integrated typecheck/dev-slot checks.
+
+## Review correction checkpoint
+
+- Direct active toolbar 对话 / 命令行 / 终端 reuse the task's matching machine/program/kind session. Explicit New actions remain separate.
+- Cloud choice encodes `computerSession=cloud`, restores after remount, and on native-only tasks opens a fresh portal cloud draft. AgentChat passes scoped native task mode and resolution state; cloud composer stays hidden until task and managed-session discovery complete.
+- Device management links now use canonical `portalHref('/devices')`.
+- New host/import/settings use useUI; program names use PROGRAM_LABEL. Read-only CLI program installation probe shows installed/uninstalled/unknown, separate from machine online/offline status, in both host and home ComputerDock.
+- ComputerDock invokes optional LeoComposer pre-navigation callback; portal home retains prompt, uploaded attachments and highlight per signed-in owner in memory for return, clears it on cloud task submission, and prevents navigating during an in-flight upload. This is a draft only; durable task history remains server-owned.
+- Focused actual DOM+HTTP command rerun PASS 7/7, now additionally covering direct kind reuse without create, distinct New creation, cloud query restoration, native task fresh cloud action, loading protection and supported display names/status. `git diff --check` PASS.

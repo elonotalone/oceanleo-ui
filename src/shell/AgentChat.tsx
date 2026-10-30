@@ -595,6 +595,7 @@ function AgentChatInner({
   // 团队默认开库；主页普通 agent 始终默认收起。新产物只在隐藏的库内更新，
   // 用户点结果卡或「库」按钮时才展开，避免主页 Enter 后页面自行改布局。
   const [rightOpen, setRightOpen] = useState(hasOrgPanel);
+  const [computerTaskMode,setComputerTaskMode] = useState<{taskId:string;native:boolean}>({taskId:"",native:false});
   const [computerSettingsOpen, setComputerSettingsOpen] = useState(false);
   const [computerSettingsContent, setComputerSettingsContent] = useState<ReactNode>(null);
   const [localTaskId, setLocalTaskId] = useState<string | null>(
@@ -736,6 +737,7 @@ function AgentChatInner({
       );
       serverMessagesRef.current = settled;
       setMessagesTaskId(id);
+      setComputerTaskMode({taskId:id,native:r.data.task.mode === "computer" || r.data.task.mode === "shell"});
       setBoundTarget({taskId: id, target: taskExecutionTarget(r.data.task)});
       const local = taskLocalAgentState(r.data.task);
       const artifacts = localTaskArtifacts(r.data.task.plan);
@@ -2391,7 +2393,7 @@ function AgentChatInner({
   // 就在 SplitWorkspace 左栏里，所以 SplitWorkspace 永远 fillParent 填满宿主给的高度。
   const split = (
     <SplitWorkspace
-      left={<ComputerTaskWorkspace taskId={taskId} cloud={stream} settingsOpen={computerSettingsOpen} onSettingsOpenChange={setComputerSettingsOpen} onSettingsContent={setComputerSettingsContent} onTaskCreated={onTaskCreated} />}
+      left={<ComputerTaskWorkspace taskId={taskId} nativeTask={computerTaskMode.taskId===taskId&&computerTaskMode.native} taskResolved={!taskId||computerTaskMode.taskId===taskId} cloud={stream} settingsOpen={computerSettingsOpen} onSettingsOpenChange={setComputerSettingsOpen} onSettingsContent={setComputerSettingsContent} onTaskCreated={onTaskCreated} />}
       right={
         <WorkspacePaneErrorBoundary
           recoveryKey={`${taskId || ""}:${libTab}:${workspaceAction?.nonce || ""}:${workspaceOpen ?? rightOpen}`}
