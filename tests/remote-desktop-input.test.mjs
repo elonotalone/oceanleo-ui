@@ -185,6 +185,15 @@ test("B 的真实码：旧客户端/断线与「别人占用」是两句话", ()
   assert.ok(input.REMOTE_BACKPRESSURE_CODES.has("input_queue_full"));
 });
 
+test("remote_desktop_other_gateway：库里在线但连在另一台网关上，是独立的一句话并且终止会话", () => {
+  const other = input.remoteDesktopErrorCopy("remote_desktop_other_gateway", 409);
+  assert.equal(other, "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端");
+  assert.notEqual(other, input.remoteDesktopErrorCopy("remote_desktop_unavailable", 409));
+  assert.notEqual(other, input.remoteDesktopErrorCopy("device_offline", 409));
+  assert.ok(input.REMOTE_FATAL_CODES.has("remote_desktop_other_gateway"));
+  assert.ok(input.REMOTE_FATAL_CODES.has("remote_desktop_unavailable"));
+});
+
 test("containedRect：留白居中，画面区域等比；无尺寸时原样返回", () => {
   const wide = input.containedRect({ left: 100, top: 50, width: 400, height: 200 }, 1280, 720);
   assert.ok(Math.abs(wide.width - 355.5556) < 0.01);

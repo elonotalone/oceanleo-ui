@@ -235,12 +235,14 @@ export function statusBlocker(status: RemoteDesktopStatus): RemoteDesktopBlocker
 /**
  * 网关（B）真实返回的码；这些会话已经不可能继续，不能再重试或再发输入。
  * `remote_desktop_unavailable` 在创建时是 409，也算：它是旧客户端/断线，不是别人占用。
+ * `remote_desktop_other_gateway`（409）：库里显示在线，但电脑的客户端连在另一台网关上。
  */
 export const REMOTE_FATAL_CODES: ReadonlySet<string> = new Set([
   "unauthorized",
   "revoked",
   "device_offline",
   "remote_desktop_unavailable",
+  "remote_desktop_other_gateway",
   "remote_desktop_disabled",
   "disabled_locally",
   "input_permission_required",
@@ -363,6 +365,8 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       return "这台电脑尚未登录。";
     case "controller_identity_unavailable":
       return "无法保存此设备的身份，请允许本地存储后重试。";
+    case "remote_desktop_other_gateway":
+      return "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端";
     case "remote_desktop_unavailable":
       return "联系不上这台电脑上的 OceanLeo：它可能没有运行、版本太旧或已断线。请在那台电脑上打开并更新 OceanLeo。";
     case "remote_desktop_unsupported":

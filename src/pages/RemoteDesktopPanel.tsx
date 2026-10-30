@@ -680,6 +680,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
   // `direct`: the computer approves without a dialog, so this is only the connection; `ask`: a person must approve there.
   const waiting = consent === "direct" ? CLOUD_AGENT_COPY.statusConnecting : consent === "ask" ? CLOUD_AGENT_COPY.waitConsent : "等待这台电脑确认…";
   const reconnecting = ticket === reconnectTicket.current && ["starting", "waiting", "connecting"].includes(phase);
+  // Ended sessions: the top bar says only 「已断开」; the full reason is shown once, in the center.
+  const ended = !active && !reconnecting && !["idle", "starting", "waiting", "connecting"].includes(phase);
   const status = reconnecting ? "网络连接中断，正在重新连接…" : phase === "idle" ? CLOUD_AGENT_COPY.remoteIdle : phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? waiting : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
   return createPortal(
     <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady}
@@ -723,7 +725,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       </div>
       <div onPointerEnter={revealToolbar} onFocus={revealToolbar} style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: `translate(-50%, ${toolbar || !active ? "0" : "-150%"})`, transition: "transform .18s", display: "flex", alignItems: "center", gap: 16, padding: "9px 14px", borderRadius: 12, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deviceName}</span>
-        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
+        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : ended ? "已断开" : status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
         {active && access?.input_allowed === false ? <span data-remote-view-only style={{ whiteSpace: "nowrap", color: "#f5c76b" }}>{tt("对方仅允许查看")}</span> : null}
         {active && billing ? <span data-remote-billing style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt("按分钟从账户余额扣费 · {price}/分钟 · 已计 {minutes} 分钟", { price: billingPrice(billing), minutes: String(billing.charged_minutes) })}</span> : null}
         {/* D7: one icon toggle, the tooltip names what a click does. */}

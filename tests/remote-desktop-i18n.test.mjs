@@ -76,6 +76,17 @@ test("17 个语种都有这批词条；拉丁文字语种与英文里都没有�
   assert.equal(tw["粘贴文字"], "貼上文字");
 });
 
+test("remote_desktop_other_gateway 的文案跟随界面语言：中文页是中文，英文页是英文，「已断开」也是", async () => {
+  const zh = "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端";
+  const en = await loadUiMessages("en");
+  assert.equal(en[zh], "This computer's OceanLeo is connected to a different server. Update the client to the latest version.");
+  assert.equal(en["已断开"], "Disconnected");
+  const zhDict = await loadUiMessages("zh");
+  assert.equal(zhDict[zh] ?? zh, zh);
+  assert.equal(zhDict["已断开"] ?? "已断开", "已断开");
+  assert.match((await loadUiMessages("zh-TW"))[zh], /另一個伺服器/);
+});
+
 test("占位符在译文里原样保留", async () => {
   for (const locale of ["en", "zh-TW"]) {
     const dict = await loadUiMessages(locale);

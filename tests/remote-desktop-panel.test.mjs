@@ -327,6 +327,17 @@ for (const code of ["input_permission_required", "input_unavailable", "input_rel
   else assert.doesNotMatch(view.screen().textContent, /辅助功能|权限/);
 });
 
+for (const [code, reason] of [["remote_desktop_other_gateway", "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端"], ["remote_desktop_unavailable", "联系不上这台电脑上的 OceanLeo"]]) test(`${code}: top bar says only 已断开, the center shows the full reason once`, async () => {
+  // `pending` only skips the helper's initial frame injection; createSession itself fails.
+  const view = await mount({ pending: true, overrides: { async createSession() { return { ok: false, error: code, status: 409 }; } } });
+  await settle(40);
+  const statuses = [...view.screen().querySelectorAll('[role="status"]')].map((node) => (node.textContent || "").trim());
+  assert.ok(statuses.includes("已断开"), `top bar: ${JSON.stringify(statuses)}`);
+  const full = statuses.filter((text) => text.includes(reason));
+  assert.equal(full.length, 1, `reason shown exactly once: ${JSON.stringify(statuses)}`);
+  assert.equal(view.screen().textContent.split(reason).length - 1, 1);
+});
+
 test("unknown input error never displays private OS text or invents a permission requirement", async () => {
   const view = await mount();
   await act(async () => view.handlers().state("closed", "input_failure private OS detail token=synthetic"));

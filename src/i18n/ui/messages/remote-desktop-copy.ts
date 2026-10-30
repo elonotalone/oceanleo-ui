@@ -123,6 +123,7 @@ const SOURCE = {
   k114: "暂时无法从账户余额扣费，远程桌面已断开。请稍后重新连接。",
   k115: "本机的 OceanLeo 拦截了视频服务器 {host}，无法显示画面。请把这个地址告诉我们，或更新 OceanLeo 后重新连接。",
   k116: "无法接收这台电脑的画面（错误 {code}），控制已停止。请重新连接。",
+  k117: "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -243,6 +244,7 @@ const EN: Messages = {
   k114: "Your balance cannot be charged right now, so the remote desktop was disconnected. Please reconnect later.",
   k115: "OceanLeo on this device blocked the video server {host}, so the screen cannot be shown. Report this address to us, or update OceanLeo and reconnect.",
   k116: "The computer's screen could not be received (error {code}). Control has stopped. Please reconnect.",
+  k117: "This computer's OceanLeo is connected to a different server. Update the client to the latest version.",
 };
 
 const ZH_TW: Messages = {
@@ -361,6 +363,7 @@ const ZH_TW: Messages = {
   k114: "暫時無法從帳戶餘額扣費，遠端桌面已中斷。請稍後重新連線。",
   k115: "本機的 OceanLeo 攔截了視訊伺服器 {host}，無法顯示畫面。請把這個位址告訴我們，或更新 OceanLeo 後重新連線。",
   k116: "無法接收這台電腦的畫面（錯誤 {code}），控制已停止。請重新連線。",
+  k117: "這台電腦的 OceanLeo 連在另一個伺服器上，請更新到最新版用戶端",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(
