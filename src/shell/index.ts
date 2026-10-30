@@ -805,3 +805,12 @@ export { MessagesNavIcon } from "./messages/MessagesNavIcon";
 export { imEnabledHere, useImEnabled } from "../lib/im/client";
 
 export { ComputerTaskImport } from "./cloud-computer/computer-task-import";
+// W6 (2026-10-31): composer uploads go to the private Library only; messages carry
+// `{artifact_id, revision_id}`. Display URLs come from `@oceanleo/ui/lib` attachment-url.
+export {
+  uploadComposerFile,
+  composerLibraryItem,
+  type ComposerPrivateUpload,
+  type ComposerUploadResult,
+} from "./composer-upload";
+export { listMyArtifacts } from "./artifact-client";

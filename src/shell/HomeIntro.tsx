@@ -271,6 +271,7 @@ export function HomeIntro({
           recentLoading={toolsOn ? recentLoading : undefined}
           attachments={toolsOn ? atts.composerAttachments : undefined}
           onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
+          onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
           onVoiceTranscript={toolsOn ? appendVoice : undefined}
           voiceLang={voiceLang}
         />

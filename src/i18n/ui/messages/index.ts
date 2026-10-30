@@ -20,6 +20,7 @@ import zhTW from "./zh-TW";
 import ar from "./ar";
 import th from "./th";
 import hi from "./hi";
+import { COMPOSER_UPLOAD_MESSAGES } from "./composer-upload-copy";
 import { RECENT_MODEL_AND_TASK_MESSAGES } from "./recent-model-and-task-copy";
 import { COMPUTER_TASK_WORKSPACE_MESSAGES } from "./computer-task-workspace-copy";
 import { NATIVE_ATTACHMENTS_MESSAGES } from "./native-attachments-copy";
@@ -73,6 +74,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.zh,
     ...BAY_MESSAGES.zh,
     ...EDITOR_OVERHAUL_MESSAGES.zh,
+    ...COMPOSER_UPLOAD_MESSAGES.zh,
   },
   en: {
     ...en,
@@ -98,6 +100,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.en,
     ...BAY_MESSAGES.en,
     ...EDITOR_OVERHAUL_MESSAGES.en,
+    ...COMPOSER_UPLOAD_MESSAGES.en,
   },
   ja: {
     ...ja,
@@ -123,6 +126,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.ja,
     ...BAY_MESSAGES.ja,
     ...EDITOR_OVERHAUL_MESSAGES.ja,
+    ...COMPOSER_UPLOAD_MESSAGES.ja,
   },
   ko: {
     ...ko,
@@ -148,6 +152,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.ko,
     ...BAY_MESSAGES.ko,
     ...EDITOR_OVERHAUL_MESSAGES.ko,
+    ...COMPOSER_UPLOAD_MESSAGES.ko,
   },
   fr: {
     ...fr,
@@ -173,6 +178,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.fr,
     ...BAY_MESSAGES.fr,
     ...EDITOR_OVERHAUL_MESSAGES.fr,
+    ...COMPOSER_UPLOAD_MESSAGES.fr,
   },
   de: {
     ...de,
@@ -198,6 +204,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.de,
     ...BAY_MESSAGES.de,
     ...EDITOR_OVERHAUL_MESSAGES.de,
+    ...COMPOSER_UPLOAD_MESSAGES.de,
   },
   it: {
     ...it,
@@ -223,6 +230,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.it,
     ...BAY_MESSAGES.it,
     ...EDITOR_OVERHAUL_MESSAGES.it,
+    ...COMPOSER_UPLOAD_MESSAGES.it,
   },
   es: {
     ...es,
@@ -248,6 +256,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.es,
     ...BAY_MESSAGES.es,
     ...EDITOR_OVERHAUL_MESSAGES.es,
+    ...COMPOSER_UPLOAD_MESSAGES.es,
   },
   "es-419": {
     ...es419,
@@ -273,6 +282,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES["es-419"],
     ...BAY_MESSAGES["es-419"],
     ...EDITOR_OVERHAUL_MESSAGES["es-419"],
+    ...COMPOSER_UPLOAD_MESSAGES["es-419"],
   },
   "pt-BR": {
     ...ptBR,
@@ -298,6 +308,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES["pt-BR"],
     ...BAY_MESSAGES["pt-BR"],
     ...EDITOR_OVERHAUL_MESSAGES["pt-BR"],
+    ...COMPOSER_UPLOAD_MESSAGES["pt-BR"],
   },
   "pt-PT": {
     ...ptPT,
@@ -323,6 +334,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES["pt-PT"],
     ...BAY_MESSAGES["pt-PT"],
     ...EDITOR_OVERHAUL_MESSAGES["pt-PT"],
+    ...COMPOSER_UPLOAD_MESSAGES["pt-PT"],
   },
   vi: {
     ...vi,
@@ -348,6 +360,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.vi,
     ...BAY_MESSAGES.vi,
     ...EDITOR_OVERHAUL_MESSAGES.vi,
+    ...COMPOSER_UPLOAD_MESSAGES.vi,
   },
   tr: {
     ...tr,
@@ -373,6 +386,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.tr,
     ...BAY_MESSAGES.tr,
     ...EDITOR_OVERHAUL_MESSAGES.tr,
+    ...COMPOSER_UPLOAD_MESSAGES.tr,
   },
   "zh-TW": {
     ...zhTW,
@@ -398,6 +412,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES["zh-TW"],
     ...BAY_MESSAGES["zh-TW"],
     ...EDITOR_OVERHAUL_MESSAGES["zh-TW"],
+    ...COMPOSER_UPLOAD_MESSAGES["zh-TW"],
   },
   ar: {
     ...ar,
@@ -423,6 +438,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.ar,
     ...BAY_MESSAGES.ar,
     ...EDITOR_OVERHAUL_MESSAGES.ar,
+    ...COMPOSER_UPLOAD_MESSAGES.ar,
   },
   th: {
     ...th,
@@ -448,6 +464,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.th,
     ...BAY_MESSAGES.th,
     ...EDITOR_OVERHAUL_MESSAGES.th,
+    ...COMPOSER_UPLOAD_MESSAGES.th,
   },
   hi: {
     ...hi,
@@ -473,6 +490,7 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
     ...WORK_CHAT_MESSAGES.hi,
     ...BAY_MESSAGES.hi,
     ...EDITOR_OVERHAUL_MESSAGES.hi,
+    ...COMPOSER_UPLOAD_MESSAGES.hi,
   },
 };
 

@@ -735,6 +735,13 @@ async function loadHomeContent() {
       return createElement("div", { "data-home-composer": "" }, props.value);
     }
     export function HomeAppCards(){ return null; }
+    // W6: private composer uploads; results queued by the test.
+    globalThis.__homeUploads = []; globalThis.__homeUploadResults = [];
+    export async function uploadComposerFile(file, opts){
+      globalThis.__homeUploads.push({ name: file.name, opts });
+      return globalThis.__homeUploadResults.shift() || { ok: false, error: "x" };
+    }
+    export async function listMyArtifacts(){ return { ok: true, data: { items: [] } }; }
   `);
   const portalOverrides = {
     ...OVERRIDES,
@@ -742,6 +749,11 @@ async function loadHomeContent() {
     "@oceanleo/ui/lib": dataModule(`
       export async function uploadFile(){return {ok:false};}
       export async function listFiles(){return {ok:true,data:{items:[]}};}
+      export const PRIVATE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+      export const PRIVATE_ATTACHMENT_TOO_LARGE = "文件超过 20MB，暂不支持";
+      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      export function attachmentRef(a){ const x = a && (a.artifactId || a.artifact_id), y = a && (a.revisionId || a.revision_id); return UUID.test(x||"") && UUID.test(y||"") ? { artifactId: x, revisionId: y } : null; }
+      export function isRawStorageUrl(u){ return /supabase\.co/.test(String(u||"")); }
       globalThis.__homeCreates = []; globalThis.__homeStashes = [];
       export async function createComputerTaskSession(computerId, input){
         globalThis.__homeCreates.push({ computerId, input });
@@ -1091,5 +1103,68 @@ test("an unconfirmed handoff shows that same task, never a second dispatch, and 
     assert.equal(backend.sessions.get("s1")?.task_id, "t1");
   } finally {
     await view.unmount();
+  }
+});
+
+test("portal homepage W6: a failed private upload stays as a failed tile, retry re-uploads, send carries only the reference", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  globalThis.__backend = makeBackend();
+  globalThis.__pathname = "/";
+  window.history.replaceState(null, "", "/");
+  const ART = "11111111-2222-4333-8444-555555555555";
+  const REV = "66666666-7777-4888-9999-aaaaaaaaaaaa";
+  const previousCreate = URL.createObjectURL;
+  URL.createObjectURL = () => "blob:https://oceanbizs.com/local-1";
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    globalThis.__homeUploads.length = 0;
+    globalThis.__homeUploadResults.push(
+      { ok: false, error: "网络错误" },
+      { ok: true, upload: { artifactId: ART, revisionId: REV, name: "bill.pdf", mime: "application/pdf", mediaType: "doc",
+        libraryItem: { key: "lib-1" }, attachment: { url: "", artifact_id: ART, revision_id: REV, name: "bill.pdf" } } },
+    );
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const file = new File(["%PDF"], "bill.pdf", { type: "application/pdf" });
+    await act(async () => { await globalThis.__portalComposer.onAttachFiles([file]); });
+    let tile = globalThis.__portalComposer.attachments[0];
+    assert.equal(globalThis.__portalComposer.attachments.length, 1, "a failed upload is not dropped");
+    assert.equal(tile.failed, true);
+    assert.equal(tile.uploading, false);
+    assert.equal(globalThis.__homeUploads[0].opts.siteId, "oceanleo");
+    assert.equal(typeof globalThis.__portalComposer.onRetryAttachment, "function");
+
+    await act(async () => { await globalThis.__portalComposer.onSubmit("分析账单"); });
+    assert.ok(host.querySelector("[data-home-composer]"), "a failed tile blocks sending");
+
+    await act(async () => { globalThis.__portalComposer.onRetryAttachment(tile.id); await Promise.resolve(); await Promise.resolve(); });
+    tile = globalThis.__portalComposer.attachments[0];
+    assert.equal(globalThis.__homeUploads.length, 2, "retry re-runs the private upload");
+    assert.equal(tile.failed, false);
+    assert.equal(tile.artifactId, ART);
+    assert.equal(tile.libraryItem.key, "lib-1");
+    assert.equal(tile.url, "blob:https://oceanbizs.com/local-1", "UI state holds the local blob, never a storage URL");
+
+    const stored = [];
+    // Storage instances intercept property writes as items: patch the prototype.
+    const proto = Object.getPrototypeOf(globalThis.sessionStorage);
+    const originalSet = proto.setItem;
+    proto.setItem = function (key, value) { if (key === "oceanleo_pending_task") stored.push(value); return originalSet.call(this, key, value); };
+    try {
+      await act(async () => { await globalThis.__portalComposer.onSubmit("分析账单"); });
+    } finally {
+      proto.setItem = originalSet;
+    }
+    assert.equal(stored.length, 1);
+    const pending = JSON.parse(stored[0]);
+    assert.deepEqual(pending.attachments, [
+      { url: "", artifact_id: ART, revision_id: REV, name: "bill.pdf", mime: "application/pdf", media_type: "doc" },
+    ]);
+  } finally {
+    URL.createObjectURL = previousCreate;
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
   }
 });

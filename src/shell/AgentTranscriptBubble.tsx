@@ -9,6 +9,7 @@ import {
 } from "../contracts/aigc-label";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { UploadTile } from "../lib/upload/upload-tile";
+import { attachmentRef, useAttachmentDisplayUrl } from "../lib/attachment-url";
 import { archivedImageEligible, NativeArchivedImage } from "./native-thread/NativeArchivedImage";
 import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
@@ -936,13 +937,32 @@ function TranscriptAttachment({
     }
     return chip;
   }
+  return <UserUploadTile attachment={attachment} onOpen={onOpen} />;
+}
+
+/**
+ * 用户上传的附件（2026-10-31）：与输入框同一种干净方块——图片只显示缩略图，
+ * 文件是图标 + 截断名。点了交给宿主（右侧栏），不在新标签页开原始地址。
+ * 地址只来自 `useAttachmentDisplayUrl`（W6）：私有引用换网关 rendition，
+ * 旧公开对象走网关代理，绝不出现存储域名。
+ */
+function UserUploadTile({
+  attachment,
+  onOpen,
+}: {
+  attachment: AgentAttachment;
+  onOpen?: (attachment: AgentAttachment) => void;
+}) {
+  const tt = useUI();
+  const isRef = Boolean(attachmentRef(attachment));
   const isImage =
     (attachment.mime || "").startsWith("image/") ||
     attachment.media_type === "image" ||
     /\.(png|jpe?g|webp|gif)$/i.test(
-      (attachment.url || "").split("?")[0],
+      (attachment.url || attachment.name || "").split("?")[0],
     );
-  if (!attachment.url) {
+  const displayUrl = useAttachmentDisplayUrl(isImage ? attachment : null, "thumbnail");
+  if (!attachment.url && !isRef) {
     return (
       <span className={ATTACHMENT_CHIP} data-native-attachment="">
         <FileGlyph />
@@ -952,16 +972,14 @@ function TranscriptAttachment({
       </span>
     );
   }
-  // 用户上传的附件（2026-10-31）：与输入框同一种干净方块——图片只显示缩略图，
-  // 文件是图标 + 截断名。点了交给宿主（右侧栏），不在新标签页开原始地址。
   return (
     <UploadTile
       name={attachment.name}
       mime={attachment.mime || (isImage ? "image/*" : undefined)}
-      previewUrl={isImage ? attachment.url : undefined}
+      previewUrl={isImage ? displayUrl : undefined}
       size={64}
       tt={tt}
-      onOpen={onOpen ? () => onOpen(attachment) : undefined}
+      onOpen={onOpen ? () => onOpen({ ...attachment, url: displayUrl || "" }) : undefined}
     />
   );
 }

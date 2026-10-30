@@ -11,6 +11,7 @@ import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
 import { localBrowserCopy } from "./local-browser-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
 import { LEO_PANEL_MESSAGES } from "./leo-panel-copy";
+import { COMPOSER_UPLOAD_MESSAGES } from "./composer-upload-copy";
 
 const BASE_MESSAGE_LOADERS = {
   de: () => import("./de"),
@@ -109,6 +110,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   ]);
   return {
     ...base.default,
+    ...COMPOSER_UPLOAD_MESSAGES[locale],
     ...recent.RECENT_MODEL_AND_TASK_MESSAGES[locale],
     ...progress.AGENT_PROGRESS_MESSAGES[locale],
     ...CLOUD_BROWSER_MESSAGES[locale],

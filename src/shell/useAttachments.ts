@@ -3,16 +3,23 @@
 // ============================================================================
 // @oceanleo/ui — 附件上传 hook（AgentChat / FunctionAgentChat 共用，单一事实源）
 // ----------------------------------------------------------------------------
-// 用户在 agent 输入框「＋」里选/拖文件 → 本 hook 复用文件库 upload 端点上传到公网桶，
-// 拿到 url 后作为 AgentAttachment 随消息交给 agent（后端把音频转写进 prompt、把其它
-// 文件的 url 给 CodeAgent 在内核里下载分析）。见
+// 用户在 agent 输入框「＋」里选/拖文件 → 本 hook 用 `uploadComposerFile` 传进**私有**
+// Library（桶 project-assets，W6 2026-10-31），拿到 `{artifact_id, revision_id}` 引用随消息
+// 交给 agent；网关按 owner 校验后给 agent 一个短期签名地址（音频转写进 prompt、其它文件
+// 在内核里下载分析）。缩略块只用本地 blob: 地址，状态里不放任何存储 URL。见
 // docs/architecture/oceanleo-agent-file-upload.md。
 // ============================================================================
 
-import { useCallback, useState } from "react";
-import { uploadFile } from "../lib/database";
+import { useCallback, useRef, useState } from "react";
 import type { AgentAttachment } from "../lib/agent";
+import {
+  PRIVATE_ATTACHMENT_MAX_BYTES,
+  PRIVATE_ATTACHMENT_TOO_LARGE,
+  attachmentDisplayUrl,
+} from "../lib/attachment-url";
 import type { ComposerAttachment } from "./LeoComposer";
+import { uploadComposerFile } from "./composer-upload";
+import type { LibraryItem } from "./library-data";
 
 /** 附件在组件内的状态：上传中 → 上传成功（带可交付的 attachment）。 */
 export interface PendingAttachment {
@@ -22,7 +29,13 @@ export interface PendingAttachment {
   url?: string;
   mime?: string;
   uploading: boolean;
+  /** Upload failed: the tile stays with a retry badge (`retryAttachment`). */
+  failed?: boolean;
   attachment?: AgentAttachment;
+  /** Private Library identity of a finished upload (contract C2). */
+  artifactId?: string;
+  revisionId?: string;
+  libraryItem?: LibraryItem;
 }
 
 export interface UseAttachments {
@@ -38,6 +51,8 @@ export interface UseAttachments {
   /** 请求失败时仅在用户尚未选择新附件的情况下恢复刚提交的附件。 */
   restoreReady: (items: PendingAttachment[]) => void;
   removeAttachment: (id: string) => void;
+  /** 重新上传一个失败的附件（LeoComposer `onRetryAttachment`）。 */
+  retryAttachment: (id: string) => void;
   /** 已上传成功、可随消息发送的附件。 */
   ready: () => AgentAttachment[];
   /** 是否还有附件在上传中（阻止发送）。 */
@@ -52,48 +67,77 @@ export function useAttachments(
 ): UseAttachments {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 
+  // The original File of every tile that has not finished, so a failed one can retry.
+  const filesRef = useRef(new Map<string, File>());
+
+  const startUpload = useCallback(
+    (id: string, file: File) => {
+      void uploadComposerFile(file, { siteId }).then((r) => {
+        if (r.ok) {
+          filesRef.current.delete(id);
+          const up = r.upload;
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === id
+                ? {
+                    ...a,
+                    name: up.name || file.name,
+                    mime: up.mime || file.type,
+                    uploading: false,
+                    failed: false,
+                    attachment: up.attachment,
+                    artifactId: up.artifactId,
+                    revisionId: up.revisionId,
+                    ...(up.libraryItem ? { libraryItem: up.libraryItem } : {}),
+                  }
+                : a,
+            ),
+          );
+        } else {
+          // Keep the tile with a retry badge; it is not sent while failed.
+          setAttachments((prev) =>
+            prev.map((a) => (a.id === id ? { ...a, uploading: false, failed: true } : a)),
+          );
+          onError?.(r.error || "文件上传失败");
+        }
+      });
+    },
+    [siteId, onError],
+  );
+
   const handleAttachFiles = useCallback(
     (files: File[]) => {
       for (const file of files) {
+        if (file.size > PRIVATE_ATTACHMENT_MAX_BYTES) {
+          // Private storage only: an oversize file is refused, never sent public.
+          onError?.(PRIVATE_ATTACHMENT_TOO_LARGE);
+          continue;
+        }
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const isImage = file.type.startsWith("image/");
         const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
         const localUrl = previewUrl || URL.createObjectURL(file);
+        filesRef.current.set(id, file);
         setAttachments((prev) => [
           ...prev,
           { id, name: file.name, previewUrl, url: localUrl, mime: file.type, uploading: true },
         ]);
-        void uploadFile(file, { siteId }).then((r) => {
-          if (r.ok && r.data?.file?.url) {
-            const f = r.data.file;
-            setAttachments((prev) =>
-              prev.map((a) =>
-                a.id === id
-                  ? {
-                      id,
-                      name: f.title || file.name,
-                      previewUrl: previewUrl || f.thumb_url,
-                      url: localUrl,
-                      mime: f.mime || file.type,
-                      uploading: false,
-                      attachment: {
-                        url: f.url,
-                        mime: f.mime,
-                        name: f.title || file.name,
-                        media_type: f.media_type,
-                      },
-                    }
-                  : a,
-              ),
-            );
-          } else {
-            setAttachments((prev) => prev.filter((a) => a.id !== id));
-            onError?.(r.error || "文件上传失败");
-          }
-        });
+        startUpload(id, file);
       }
     },
-    [siteId, onError],
+    [onError, startUpload],
+  );
+
+  const retryAttachment = useCallback(
+    (id: string) => {
+      const file = filesRef.current.get(id);
+      if (!file) return;
+      setAttachments((prev) =>
+        prev.map((a) => (a.id === id && a.failed ? { ...a, uploading: true, failed: false } : a)),
+      );
+      startUpload(id, file);
+    },
+    [startUpload],
   );
 
   const addReady = useCallback(
@@ -117,6 +161,7 @@ export function useAttachments(
   );
 
   const removeAttachment = useCallback((id: string) => {
+    filesRef.current.delete(id);
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
@@ -131,12 +176,15 @@ export function useAttachments(
   const ready = useCallback(
     () =>
       attachments
-        .filter((a) => !a.uploading && a.attachment)
+        .filter((a) => !a.uploading && !a.failed && a.attachment)
         .map((a) => a.attachment as AgentAttachment),
     [attachments],
   );
 
-  const clear = useCallback(() => setAttachments([]), []);
+  const clear = useCallback(() => {
+    filesRef.current.clear();
+    setAttachments([]);
+  }, []);
 
   return {
     attachments,
@@ -144,16 +192,22 @@ export function useAttachments(
       (a): ComposerAttachment => ({
         id: a.id,
         name: a.name,
-        previewUrl: a.previewUrl,
-        url: a.url || a.attachment?.url,
+        // Local blob first; a legacy public URL goes through the gateway proxy.
+        previewUrl: attachmentDisplayUrl({ previewUrl: a.previewUrl }),
+        url: attachmentDisplayUrl({ url: a.url || a.attachment?.url }),
         mime: a.mime || a.attachment?.mime,
         uploading: a.uploading,
+        ...(a.failed ? { failed: true } : {}),
+        ...(a.artifactId ? { artifactId: a.artifactId } : {}),
+        ...(a.revisionId ? { revisionId: a.revisionId } : {}),
+        ...(a.libraryItem ? { libraryItem: a.libraryItem } : {}),
       }),
     ),
     handleAttachFiles,
     addReady,
     restoreReady,
     removeAttachment,
+    retryAttachment,
     ready,
     uploading: attachments.some((a) => a.uploading),
     clear,

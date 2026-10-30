@@ -2824,6 +2824,7 @@ function AgentChatInner({
             onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
             attachments={toolsOn ? atts.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
+            onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
             onVoiceTranscript={handleVoiceTranscript}
             attachMenuExtra={getHelpMenu}
             {...conversationProps}

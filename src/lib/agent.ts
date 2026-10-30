@@ -377,11 +377,18 @@ export interface GetTaskOptions {
  *  audio 会被后端自动转写成文字进 prompt；其它文件的 url 交给 CodeAgent 在内核里下载分析
  *  （如账单 PDF → Excel）。见 docs/architecture/oceanleo-agent-file-upload.md。 */
 export interface AgentAttachment {
+  /**
+   * Legacy public URL. A private Library upload sends `""` here plus the
+   * `artifact_id`/`revision_id` reference; the gateway owner-checks it and
+   * signs a short-lived URL for the agent only (never shown in the UI).
+   */
   url: string;
   mime?: string;
   name?: string;
   /** image | doc | video | audio | ...（用于前端展示 + 后端识别语音） */
   media_type?: string;
+  artifact_id?: string;
+  revision_id?: string;
 }
 
 type CreatedTask = {

@@ -2,6 +2,8 @@ export * from "./auth";
 // 2026-09-07 账本货币契约：钱包 / AI 费用文案的唯一格式化入口（$0.70 / ¥5.00）。
 export * from "./money";
 export * from "./database";
+// W6 (2026-10-31): user attachment display URLs (never a raw storage URL).
+export * from "./attachment-url";
 export * from "./agent";
 export * from "./execution-target";
 // C7-U5：交给电脑的任务被拒 / 回执未确认时的那句人话（门户 createAgentTask 也走这一张表，
