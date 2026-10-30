@@ -35,23 +35,9 @@ const SCANNED = ["share", "replay", "AgentChat.tsx", "AgentTranscriptBubble.tsx"
  * 开波之前就缺译文的 key（`AgentChat` / `AgentTranscriptBubble` 的成员、分支、确认那几套）。
  * 这一波只补自己新加的文案，不顺手翻历史缺口——但历史缺口也不许再长：
  * 这张表只能变短，新加的中文一律要有译文。
+ * 2026-10-30 R5：这 14 条已在 computer-task-workspace-copy.ts 补齐 17 语种，表已清空。
  */
-const PRE_EXISTING_GAPS = new Set([
-  "@ 某个成员：只让 TA 处理",
-  "@ 谁（可多选）",
-  "从这里重新开始",
-  "分支已创建，但工作会话暂未同步；本次任务仍会继续运行。",
-  "创建分支失败",
-  "到此停止",
-  "在右侧打开",
-  "如需调整，可在确认前补充说明",
-  "实时预览已就绪",
-  "将从所选消息之前创建新分支；原对话保持不变。",
-  "已处理的确认",
-  "当前会话为只读状态。",
-  "暂无成员",
-  "请确认后继续。",
-]);
+const PRE_EXISTING_GAPS = new Set([]);
 
 function sourceFiles() {
   const walk = (target) => {
