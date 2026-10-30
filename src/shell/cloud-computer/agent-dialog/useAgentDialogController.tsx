@@ -160,6 +160,7 @@ export function useAgentDialog({
   initialSessionId,
   oceanleoReady = true,
   taskSessionId,
+  onArchiveStatus,
 }: {
   computerId: string;
   sessionId?: string;
@@ -170,9 +171,12 @@ export function useAgentDialog({
   initialSessionId?: string;
   oceanleoReady?: boolean;
   taskSessionId?: string;
+  onArchiveStatus?: (status: "saved" | "pending" | "error") => void;
 }): AgentDialogControllerV2 {
   const taskSessionRef = useRef(taskSessionId);
   taskSessionRef.current = taskSessionId;
+  const archiveStatusRef = useRef(onArchiveStatus);
+  archiveStatusRef.current = onArchiveStatus;
   const tt = useUI();
   const [mountProgram] = useState(() => initialProgram);
   const [mountRef] = useState(() => `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`);
@@ -183,8 +187,8 @@ export function useAgentDialog({
         next.program = mountProgram;
         next.draftRef = `new:${mountRef}`;
       }
-      return event.type === "reset" || event.type === "program" ? hydratePresentation(computerId, next) : next;
-    }, undefined, () => hydratePresentation(computerId, { ...initialDialogState(), program: mountProgram, draftRef: `new:${mountRef}` }),
+      return event.type === "reset" || event.type === "program" ? hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, next) : next;
+    }, undefined, () => hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, { ...initialDialogState(), program: mountProgram, draftRef: `new:${mountRef}` }),
   );
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
@@ -253,7 +257,7 @@ export function useAgentDialog({
 
   stateRef.current = state;
   if (state.program) {
-    const cached = presentationFor(computerId);
+    const cached = presentationFor(taskSessionId ? `${computerId}:${taskSessionId}` : computerId);
     cached.views.set(viewKeyRef.current, viewSnapOf(state));
     cached.last.set(state.program, viewKeyRef.current);
   }
@@ -328,6 +332,12 @@ export function useAgentDialog({
       socketRef.current?.close();
       return;
     }
+    if (frame.t === "archive_status") {
+      if (taskSessionRef.current && frame.task_session_id !== taskSessionRef.current) return;
+      const status = frame.sync_status;
+      if (status === "saved" || status === "pending" || status === "error") archiveStatusRef.current?.(status);
+      return;
+    }
     const viewingSession = stateRef.current.activeSession;
     if (frame.t === "error" && isReconnectingNotice(String(frame.code))) {
       // A node reconnects after gateway replacement. Treat offline as a
@@ -345,7 +355,7 @@ export function useAgentDialog({
       return;
     }
     if (frame.t === "status") delayRef.current = 1000;
-    const cached = presentationFor(computerIdRef.current);
+    const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
     if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
     if (frame.t === "occupancy" && typeof frame.program === "string") {
       occupancyProbeRef.current?.receive(frame.program);
@@ -943,7 +953,7 @@ export function useAgentDialog({
       const prev = stateRef.current.program;
       // 同一程序再选一次（如对话中点当前 agent 的齿轮）不能清掉模型、会话和消息。
       if (prev === next) return;
-      const cached = presentationFor(computerIdRef.current);
+      const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
       if (prev) {
         cached.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
         cached.last.set(prev, viewKeyRef.current);
@@ -951,7 +961,7 @@ export function useAgentDialog({
       const key = cached.last.get(next) ?? `${next}::new:${clientRef(next)}`;
       const saved = cached.views.get(key);
       viewKeyRef.current = key;
-      const switched = hydratePresentation(computerIdRef.current, applyDialog(stateRef.current, { type: "program", program: next }));
+      const switched = hydratePresentation(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, applyDialog(stateRef.current, { type: "program", program: next }));
       stateRef.current = saved ? applyDialog(switched, { type: "restore-view", ...saved }) : { ...switched, messages: [], draftRef: `new:${clientRef(next)}` };
       dispatch({ type: "program", program: next });
       dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
@@ -1048,7 +1058,7 @@ export function useAgentDialog({
       ).map((option) => [option.id, option.current])),
       ...pendingConfig.current.get(origin),
     };
-    presentationFor(computerIdRef.current).views.set(origin, viewSnapOf(stateRef.current));
+    presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current).views.set(origin, viewSnapOf(stateRef.current));
     dispatch({ type: "send-began" });
     const socket = await ensureOpen();
     if (!socket) {
@@ -1066,6 +1076,7 @@ export function useAgentDialog({
     if (files.length) {
       frame.files = promptFiles(files);
     }
+    if (taskSessionRef.current) archiveStatusRef.current?.("pending");
     socket.send(JSON.stringify(frame));
     ingest(JSON.stringify({
       t: "user_message",
@@ -1257,7 +1268,7 @@ export function useAgentDialog({
     if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
     if (stateRef.current.activeSession === acpSession && stateRef.current.sessionLoading) return;
     clearUnread(program ?? "", acpSession);
-    const cache = presentationFor(computerIdRef.current);
+    const cache = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
     cache.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
     const cacheKey = `${program}::${acpSession}`;
     const saved = cache.views.get(cacheKey);
@@ -1434,7 +1445,7 @@ export function useAgentDialog({
 
   const setSelectedModel = useCallback((id: string) => {
     const program = stateRef.current.program;
-    if (program) rememberProgramSelection(computerIdRef.current, program, { model: id });
+    if (program) rememberProgramSelection(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, program, { model: id });
     dispatch({ type: "set-model", id });
     stateRef.current = applyDialog(stateRef.current, { type: "set-model", id });
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
@@ -1456,10 +1467,10 @@ export function useAgentDialog({
   const setConfig = useCallback((id: string, value: string | boolean) => {
     const program = stateRef.current.program;
     if (program && stateRef.current.selectedModel) {
-      rememberModelParam(computerIdRef.current, program, stateRef.current.selectedModel, id, String(value));
+      rememberModelParam(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, program, stateRef.current.selectedModel, id, String(value));
     }
     if (program && (id === "mode" || id === stateRef.current.mode?.id)) {
-      rememberProgramSelection(computerIdRef.current, program, { mode: String(value) });
+      rememberProgramSelection(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, program, { mode: String(value) });
     }
     dispatch({ type: "set-config", id, value });
     stateRef.current = applyDialog(stateRef.current, { type: "set-config", id, value });
@@ -1633,7 +1644,7 @@ export function useAgentDialog({
       }),
     ),
     runningSessions: state.runningSessions,
-    interruptedSessions: [...presentationFor(computerId).views.entries()]
+    interruptedSessions: [...presentationFor(taskSessionId ? `${computerId}:${taskSessionId}` : computerId).views.entries()]
       .filter(([key, view]) => key.startsWith(`${state.program}::`) && view.activeSession && sessionInterrupted(view.messages))
       .map(([, view]) => view.activeSession),
     unreadSessions,

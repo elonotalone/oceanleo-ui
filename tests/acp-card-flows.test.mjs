@@ -1948,3 +1948,41 @@ test("managed graphical open carries durable binding and managed OceanLeo never 
     assert.equal(view.$('[data-oceanleo-acp-oceanleo-banner]'),null);
   } finally {view.cleanup();}
 });
+
+test('managed archive status ignores other binding and unbound task isolates cached native presentation',async()=>{
+ const computer={...COMPUTER,id:'cc-cache-isolation',node_online:true};
+ const old=await boot({computer,embedded:true,initialProgram:'cursor',initialSessionId:'old-native',taskSessionId:'old-binding'});
+ await server({t:'models',program:'cursor',acp_session:'old-native',source:'acp',models:[{id:'old-model',name:'Old model',default:true}]});
+ old.cleanup();
+ const statuses=[];const view=await boot({computer,embedded:true,initialProgram:'cursor',taskSessionId:'fresh-binding',onArchiveStatus:status=>statuses.push(status)});
+ try{
+  assert.equal(sentFrames().some(frame=>frame.t==='open_session'||frame.t==='prompt'),false);
+  await server({t:'archive_status',task_session_id:'old-binding',sync_status:'error'});
+  assert.deepEqual(statuses,[]);
+  await server({t:'archive_status',task_session_id:'fresh-binding',sync_status:'pending'});
+  await server({t:'archive_status',task_session_id:'fresh-binding',sync_status:'error'});
+  assert.deepEqual(statuses,['pending','error']);
+  assert.doesNotMatch(view.text(),/Old model/);
+  await setValue(view.$('[data-oceanleo-cc-dialog-input]'),'own retained draft');
+  await view.rerender({active:false});await view.rerender({active:true});
+  assert.equal(view.$('[data-oceanleo-cc-dialog-input]').value,'own retained draft');
+ }finally{view.cleanup();}
+});
+
+test('two retained managed views keep independent drafts when active binding switches',async()=>{
+ function Retained({computer}) {
+  const [selected,setSelected]=React.useState('a');
+  return React.createElement(React.Fragment,null,
+   React.createElement('button',{'data-switch-binding':'a',onClick:()=>setSelected('a')},'A'),
+   React.createElement('button',{'data-switch-binding':'b',onClick:()=>setSelected('b')},'B'),
+   ...['a','b'].map(id=>React.createElement('div',{key:id,'data-retained-binding':id,hidden:selected!==id},React.createElement(AcpCard,{computer,initialProgram:'cursor',embedded:true,taskSessionId:'retained-'+id,active:selected===id}))));
+ }
+ const view=await boot({computer:{...COMPUTER,id:'cc-retained-drafts',node_online:true},initialProgram:'cursor'},{},Retained);
+ try{
+  const input=id=>view.$(`[data-retained-binding="${id}"] [data-oceanleo-cc-dialog-input]`);
+  await setValue(input('a'),'draft A');await click(view.$('[data-switch-binding="b"]'));
+  await setValue(input('b'),'draft B');await click(view.$('[data-switch-binding="a"]'));
+  assert.equal(input('a').value,'draft A');assert.equal(input('b').value,'draft B');
+  assert.equal(sentFrames().some(frame=>['prompt','cancel','close'].includes(frame.t)),false);
+ }finally{view.cleanup();}
+});

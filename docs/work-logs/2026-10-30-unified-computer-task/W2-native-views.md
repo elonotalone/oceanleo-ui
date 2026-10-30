@@ -16,3 +16,11 @@ Implemented and verified.
 - Final focused command (through `agent-io-guard.sh run-light`): `node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test --test-concurrency=1 tests/computer-session-view.test.mjs tests/acp-card-flows.test.mjs tests/cli-card-view.test.mjs tests/terminal-card-view.test.mjs`: **71/71 passed**, 0 failures, 24.3s (final repeat).
 - Guarded full UI `npx tsc --noEmit`: **exit 0**. Initial reducer inference and mechanical CLI argument insertion defects were fixed before this green run. No browser, pushes, bumps, node/service/agent restarts.
 - Parent owns final dev-slot refresh/HTTP acceptance and independent typecheck/test rerun.
+
+## Independent review follow-up
+
+- Added an always-available online cloud-history toggle. Native adapter/session/file failure does not hide cloud records, and archive copy explicitly says it does not restore/start the native session. Offline initially mounts no native card; existing mounted ACP runtime is retained with transport disabled and local-agent probe skipped. Offline settings remain inspectable; terminal appearance remains configurable without the device.
+- Managed socket archive status is filtered by exact `task_session_id` and passed to the outer status display. First prompt changes status to pending before send. An HTTP saved snapshot cannot replace a current pending/error event or claim current saved before any live status.
+- Archive polling pauses while reading; requests already in flight cannot replace the visible archive. Loaded older pages remain retained after returning to native mode, avoiding scroll/history resets.
+- Scoped all managed presentation-cache access by computer plus binding ID; machine-active native history cannot leak into a fresh managed binding. Added behavioral tests covering old binding cache, cross-binding archive status rejection, retained draft switching, online missing-native history access, older-page scroll retention, and cold offline no-native mount/settings.
+- Focused four-file suite: **75/75 passed**, 0 failures, 17.8s (`/tmp/w2-review-tests.log`). Guarded `npx tsc --noEmit`: **exit 0** (`/tmp/w2-followup-types.log`). All changes remain within W2 ownership; no browser/runtime restart/push/bump.

@@ -57,7 +57,7 @@ const apiStub = dataModule(`
 `);
 const cardStub = dataModule(`
  import React from ${JSON.stringify(reactUrl)};
- function Card(props) { return React.createElement('div',{'data-native-card':props.taskSessionId || props.initialProgram || 'terminal','data-active':String(props.active)}); }
+ function Card(props) { globalThis.__lastNativeProps=props; return React.createElement('div',{'data-native-card':props.taskSessionId || props.initialProgram || 'terminal','data-active':String(props.active)}); }
  export const AcpCard=Card; export const CliCard=Card; export const TerminalCard=Card;
 `);
 const attachmentStub = dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ArchivedAttachmentLink({attachment}) { return React.createElement('span', {'data-archive-attachment':attachment.archive?.id},attachment.name); }`);
@@ -90,7 +90,7 @@ test("offline task reads owner archive and earlier pages including private attac
   await act(async()=>older.click());await flush();
   assert.match(view.host.textContent,/Earlier question/);assert.match(view.host.textContent,/Latest question/);
   assert.equal(calls[1].before,9);
-  assert.equal(view.host.querySelectorAll('[data-native-card]').length,1);
+  assert.equal(view.host.querySelectorAll('[data-native-card]').length,0);
  }finally{view.cleanup();}
 });
 test("inactive bindings mount lazily then retain native card while hidden",async()=>{
@@ -124,4 +124,27 @@ test('cloud attachments preserve bounded owner route and fetch signed URL only o
   assert.deepEqual(calls,[metadata.download_path]);
   assert.equal(host.querySelector('a').href,'https://storage.example.test/private-signed');
  }finally{act(()=>root.unmount());host.remove();}
+});
+
+test('online machine with missing native history can always read saved history; reading pauses refresh and preserves older pages',async()=>{
+ const callbacks=[];const original=setInterval;globalThis.setInterval=(fn)=>{callbacks.push(fn);return 999};
+ let reads=0;globalThis.__nativeTaskApi={async transcript(id,options){reads++;return {session,frames:saved(options.before?'Earlier still readable':'Native files deleted'),sync_status:'saved',saved_at:'now',has_older:!options.before,next_before:options.before?null:9}},async bind(){}};
+ const view=await renderView({computer:{id:'cc',name:'Mac',node_online:true}});
+ try{
+  assert.equal(view.host.querySelector('[data-computer-saved-transcript]'),null);
+  await act(async()=>view.host.querySelector('[data-computer-history-toggle]').click());await flush();
+  assert.match(view.host.textContent,/Native files deleted/);
+  await act(async()=>[...view.host.querySelectorAll('button')].find(b=>b.textContent.includes('更早')).click());await flush();
+  const archive=view.host.querySelector('[data-computer-saved-transcript]');archive.scrollTop=73;
+  const before=reads;await act(async()=>callbacks.forEach(fn=>fn()));await flush();
+  assert.equal(reads,before);assert.match(archive.textContent,/Earlier still readable/);assert.equal(archive.scrollTop,73);
+  assert.equal(view.host.querySelector('[data-computer-archive-status]').getAttribute('data-computer-archive-status'),'pending');
+  await act(async()=>globalThis.__lastNativeProps.onArchiveStatus('error'));await flush();
+  assert.equal(view.host.querySelector('[data-computer-archive-status]').getAttribute('data-computer-archive-status'),'error');
+ }finally{view.cleanup();globalThis.setInterval=original;}
+});
+test('initial offline view never mounts native adapter and still publishes offline settings',async()=>{
+ let settings;globalThis.__nativeTaskApi={async transcript(){return {session,frames:[],sync_status:'saved'}},async bind(){}};
+ const view=await renderView({settingsOpen:true,onSettingsContent:value=>{settings=value}});
+ try{assert.equal(view.host.querySelector('[data-native-card]'),null);assert.ok(settings);}finally{view.cleanup();}
 });

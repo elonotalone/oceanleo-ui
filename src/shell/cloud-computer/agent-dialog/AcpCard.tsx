@@ -82,6 +82,7 @@ export function AcpCard({
   active = true,
   embedded = false,
   taskSessionId,
+  onArchiveStatus,
   settingsOpen = false,
   onSettingsContent,
   onNativeSessionChange,
@@ -92,6 +93,7 @@ export function AcpCard({
   active?: boolean;
   embedded?: boolean;
   taskSessionId?: string;
+  onArchiveStatus?: (status: "saved" | "pending" | "error") => void;
   settingsOpen?: boolean;
   onSettingsContent?: (content: ReactNode | null) => void;
   onNativeSessionChange?: (id: string) => void;
@@ -117,6 +119,7 @@ export function AcpCard({
     computerId: computer.id,
     enabled: !embedded || computer.node_online === true,
     taskSessionId,
+    onArchiveStatus,
     active,
     initialProgram: selected,
     initialSessionId: mountSession,
@@ -132,6 +135,7 @@ export function AcpCard({
     setSettingsProgram(null);
     setKeyProgram(null);
     initialSessionApplied.current = "";
+    if (embedded && !computer.node_online) return;
     void getOceanleoAgent(computer.id)
       .then((status) => {
         if (active) { oceanleoCache.set(computer.id, status); setOceanleoStatus(status); }
@@ -145,7 +149,7 @@ export function AcpCard({
     return () => {
       active = false;
     };
-  }, [computer.id]);
+  }, [computer.id, embedded, computer.node_online]);
 
   useEffect(() => {
     if (!selected || dialog.program === selected) return;
@@ -153,7 +157,7 @@ export function AcpCard({
   }, [dialog, selected]);
 
   useEffect(() => {
-    if (!active || (selected === "oceanleo" && !oceanleoLoaded)) return;
+    if ((embedded && !computer.node_online) || !active || (selected === "oceanleo" && !oceanleoLoaded)) return;
     if (!mountSession || selected !== mountTarget.program || dialog.program !== selected || initialSessionApplied.current) return;
     const key = `${computer.id}:${selected}:${mountSession}`;
     if (initialSessionApplied.current === key) return;
