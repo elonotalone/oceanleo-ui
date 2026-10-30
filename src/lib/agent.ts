@@ -335,6 +335,11 @@ export interface AgentTask {
   engine?: string | null;
   /** Cloud-computer id when this task is a Shell session (`mode === "shell"`). */
   computer_id?: string | null;
+  /**
+   * 列表/详情附带：本任务挂着的电脑原生会话（Codex、Claude…）正在运行或等待确认。
+   * 只读投影，不改云端任务自身的 status；没有活动会话时省略。
+   */
+  computer_run_status?: "running" | "waiting_user";
   /** 成品 app 身份；旧 task 可能缺失。 */
   app_id?: string | null;
   parent_task_id?: string | null;

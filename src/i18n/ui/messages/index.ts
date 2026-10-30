@@ -21,6 +21,7 @@ import ar from "./ar";
 import th from "./th";
 import hi from "./hi";
 import { RECENT_MODEL_AND_TASK_MESSAGES } from "./recent-model-and-task-copy";
+import { COMPUTER_TASK_WORKSPACE_MESSAGES } from "./computer-task-workspace-copy";
 import { AGENT_PROGRESS_MESSAGES } from "./agent-progress-copy";
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
 import { localBrowserCopy } from "./local-browser-copy";
@@ -475,5 +476,5 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
 };
 
 export const UI_MESSAGES = Object.fromEntries(
-  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale), ...LOCAL_AGENT_MESSAGES[locale as Locale] }]),
+  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale), ...LOCAL_AGENT_MESSAGES[locale as Locale], ...COMPUTER_TASK_WORKSPACE_MESSAGES[locale as Locale] }]),
 ) as Record<Locale, Record<string, string>>;

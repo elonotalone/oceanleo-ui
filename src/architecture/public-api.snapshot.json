@@ -1850,6 +1850,36 @@
       "target": "./src/lib/index.ts",
       "declarations": [
         {
+          "kind": "named",
+          "name": "CLOUD_AGENT_COPY",
+          "importedName": "CLOUD_AGENT_COPY",
+          "source": "./local-agent-task"
+        },
+        {
+          "kind": "named",
+          "name": "cloudDriverPreflight",
+          "importedName": "cloudDriverPreflight",
+          "source": "./cloud-agent-api"
+        },
+        {
+          "kind": "named",
+          "name": "LOCAL_AGENT_COPY",
+          "importedName": "LOCAL_AGENT_COPY",
+          "source": "./local-agent-task"
+        },
+        {
+          "kind": "named",
+          "name": "localAgentFailure",
+          "importedName": "localAgentFailure",
+          "source": "./local-agent-task"
+        },
+        {
+          "kind": "named",
+          "name": "localAgentRefusalText",
+          "importedName": "localAgentRefusalText",
+          "source": "./local-agent-task"
+        },
+        {
           "kind": "star",
           "source": "./agent-progress"
         },
@@ -1892,6 +1922,10 @@
         {
           "kind": "star",
           "source": "./capabilities"
+        },
+        {
+          "kind": "star",
+          "source": "./computer-task-api"
         },
         {
           "kind": "star",
@@ -1964,6 +1998,12 @@
         {
           "kind": "star",
           "source": "./workflows"
+        },
+        {
+          "kind": "type",
+          "name": "LocalAgentFailure",
+          "importedName": "LocalAgentFailure",
+          "source": "./local-agent-task"
         }
       ]
     },
@@ -4583,6 +4623,18 @@
           "name": "ComposerSubmitContext",
           "importedName": "ComposerSubmitContext",
           "source": "./LeoComposer"
+        },
+        {
+          "kind": "named",
+          "name": "ComputerTaskImport",
+          "importedName": "ComputerTaskImport",
+          "source": "./cloud-computer/task-host/ComputerTaskImport"
+        },
+        {
+          "kind": "named",
+          "name": "ComputerTaskWorkspace",
+          "importedName": "ComputerTaskWorkspace",
+          "source": "./cloud-computer/task-host/ComputerTaskWorkspace"
         },
         {
           "kind": "named",

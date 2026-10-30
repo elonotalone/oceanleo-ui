@@ -212,8 +212,10 @@ function HistoryArtifactPublishRows({ items }: { items: HistoryPublishItem[] }) 
 
 const STATUS_DOT: Record<string, string> = {
   running: "bg-amber-400",
+  waiting_user: "bg-amber-400",
   active: "bg-amber-400",
   done: "bg-emerald-500",
+  completed: "bg-emerald-500",
   archived: "bg-stone-400",
   failed: "bg-rose-500",
   stopped: "bg-stone-400",
@@ -767,7 +769,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
                 data-history-row={entry.id}
               >
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-white/80" : STATUS_DOT[record.status] || "bg-stone-400"}`} />
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-white/80" : STATUS_DOT[isSession ? record.status : entry.task.computer_run_status || entry.task.status] || "bg-stone-400"}`} />
                 <span className="min-w-0 flex-1">
                   <button
                     type="button"

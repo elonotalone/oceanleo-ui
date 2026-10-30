@@ -6,6 +6,8 @@ export type ComputerTaskSession = {
   program: "oceanleo" | "cursor" | "claude" | "codex" | "hermes" | null;
   native_session_id: string | null; created_at: string; updated_at: string;
   saved_at?: string | null; sync_status: "saved" | "pending" | "error";
+  /** Graphical sessions only; CLI/terminal stay "associated" (no observable agent turn). */
+  run_status?: "associated" | "running" | "waiting_user" | "completed" | "failed" | "cancelled";
 };
 export type CreateComputerTaskSessionInput = Pick<ComputerTaskSession, "kind"> & {
   program?: ComputerTaskSession["program"]; task_id?: string; native_session_id?: string;

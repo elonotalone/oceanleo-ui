@@ -682,7 +682,7 @@ test("portal homepage shows the real conversation before create settles and rese
     "@oceanleo/ui/shell": portalShell,
     "@oceanleo/ui/lib": dataModule("export async function uploadFile(){return {ok:false};} export async function listFiles(){return {ok:true,data:{items:[]}};}"),
     "@oceanleo/ui/i18n": dataModule("const tr = (text) => text; export function useT(){return tr;} export function useUI(){return tr;}"),
-    "@/lib/oceanleo-ai": dataModule("export async function isSignedIn(){return true;} export async function createAgentTask(){throw new Error('must use real AgentChat');} export async function transcribeAudioUrl(){return {};}"),
+    "@/lib/oceanleo-ai": dataModule("export async function getUserId(){return globalThis.__portalOwner || 'owner-a';} export async function isSignedIn(){return true;} export async function createAgentTask(){throw new Error('must use real AgentChat');} export async function transcribeAudioUrl(){return {};}"),
     "@/lib/app-catalog": dataModule("export const OCEANLEO_APPS = [];"),
     "./auth-modal": dataModule("export function AuthModal(){return null;}"),
     "sonner": dataModule("export const toast = {error(){},loading(){},success(){}};"),
@@ -723,6 +723,20 @@ test("portal homepage shows the real conversation before create settles and rese
     assert.equal(globalThis.__portalComposer.loading, false);
     assert.equal(globalThis.__portalComposer.value, "");
     assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 1);
+    await act(async () => globalThis.__portalComposer.onChange("native navigation draft"));
+    await act(async () => globalThis.__portalComposer.onBeforeComputerNavigate());
+    globalThis.__pathname = firstTaskPath;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    globalThis.__pathname = "/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(globalThis.__portalComposer.value,"native navigation draft","cached home restores only the explicitly preserved native-navigation draft");
+    globalThis.__portalOwner="owner-b";
+    globalThis.__pathname=firstTaskPath;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    globalThis.__pathname="/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(globalThis.__portalComposer.value,"","another owner cannot read the saved draft");
+    globalThis.__portalOwner="owner-a";
     globalThis.__pathname = firstTaskPath;
     await act(async () => root.render(React.createElement(HomeContent)));
     await settle(40);

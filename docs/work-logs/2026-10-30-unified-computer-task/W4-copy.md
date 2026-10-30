@@ -9,3 +9,19 @@ Cover new Device/workspace/import/settings/archive/native binding messages intro
 ## Checkpoint
 
 Not started.
+
+## Checkpoint — localization and regression fixtures complete
+
+Added `src/i18n/ui/messages/computer-task-workspace-copy.ts`: 48 new source keys with complete translations for all 17 configured locales (including simplified-Chinese source fallback and Traditional Chinese); regional Spanish and Portuguese variants adapt their existing language family wording. Covers device/program selection, conversation/command line labels, independent sessions, loading/retry/errors, archive saved/pending/error and read-only semantics, terminal keystroke limits, machine versus session settings scope, original native-session availability, and private attachment actions/errors. Existing common keys and installed-version interpolation remain reused. Brands stay unchanged.
+
+Registered the module in both `messages/load.ts` dynamic assembly and `messages/index.ts` legacy aggregate. No useUI client imports, package exports, product components or generated assets changed. Default zh still loads no dictionary payload.
+
+New `tests/computer-task-workspace-i18n.test.mjs` tests actual loadUiMessages assembly for every locale/key, aggregate parity, missing-Han fallback protection, real useUI lookup/render for en/zh/zh-TW, existing {version} interpolation, source call-site coverage, and selective-loading boundary.
+
+Parent additionally authorized two existing test fixture repairs: added missing HomeContent getUserId dependency and isolated ComputerDock native task API boundary. Preserved existing first-send/reset and remembered-name assertions; added cached-tree native draft restoration and owner separation, and explicitly verified device inspection is passive before execution selection.
+
+Guarded command: `agent-io-guard.sh run-light -- node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/computer-task-workspace-i18n.test.mjs tests/agent-chat-home-launch-keeps-transcript.test.mjs tests/cloud-computer-dock-remembered-name.test.mjs` — PASS 23/23 (all formerly unregistered files now execute). `git diff --check` PASS. Parent owns final integrated typecheck/public API generation/dev evidence.
+
+## Root verification (Claude Code takeover)
+
+Moved the new import in `messages/index.ts` below the header comment so it sits with the other imports. `public-api-snapshot --check` passes. Focused suites re-run by root: W2 75/75, W3 56/56, W4 23/23, history list 21/21. Guarded full `tsc --noEmit` exit 0.
