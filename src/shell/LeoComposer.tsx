@@ -220,6 +220,12 @@ export interface LeoComposerProps {
   // --- 附件缩略条（2026-06-26） ---
   attachments?: ComposerAttachment[];
   onRemoveAttachment?: (id: string) => void;
+  /**
+   * C1 (2026-10-31): given → clicking an attachment tile calls this (the host opens
+   * it, e.g. in the task right sidebar) and the strip's own PreviewPanel is not
+   * rendered. Omitted → the old built-in preview panel.
+   */
+  onOpenAttachment?: (att: ComposerAttachment) => void;
 
   // --- 语音输入（2026-06-26） ---
   /** 传它才出现麦克风键。每段识别结果（最终态）回调给调用方拼进输入框。 */
@@ -323,6 +329,7 @@ export function LeoComposer({
   attachMenuExtra,
   attachments,
   onRemoveAttachment,
+  onOpenAttachment,
   onVoiceTranscript,
   voiceLang = "zh-CN",
   onMeetingRecording,
@@ -581,6 +588,7 @@ export function LeoComposer({
       <AttachmentStrip
         attachments={attachments ?? []}
         onRemove={onRemoveAttachment}
+        onOpenAttachment={onOpenAttachment}
         className="px-4 pb-1"
       />
 

@@ -149,18 +149,25 @@ function PreviewPanel({ item, onClose }: { item: StripAttachment; onClose: () =>
   );
 }
 
-export function AttachmentStrip({
+export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   attachments,
   onRemove,
+  onOpenAttachment,
   className = "",
 }: {
-  attachments: readonly StripAttachment[];
+  attachments: readonly T[];
   onRemove?: (id: string) => void;
+  /**
+   * C1 (2026-10-31): given → a tile click hands the attachment to the host
+   * (e.g. the task right sidebar) and the built-in PreviewPanel never renders.
+   * Omitted → the old built-in preview panel (sub-sites).
+   */
+  onOpenAttachment?: (att: T) => void;
   className?: string;
 }) {
   const tt = useUI();
   const [openId, setOpenId] = useState<string | null>(null);
-  const opened = attachments.find((a) => a.id === openId) || null;
+  const opened = onOpenAttachment ? null : attachments.find((a) => a.id === openId) || null;
   useEffect(() => {
     if (openId && !opened) setOpenId(null);
   }, [openId, opened]);
@@ -176,7 +183,10 @@ export function AttachmentStrip({
                 type="button"
                 disabled={a.uploading}
                 aria-label={a.name || tt("附件")}
-                onClick={() => setOpenId((current) => (current === a.id ? null : a.id))}
+                onClick={() => {
+                  if (onOpenAttachment) onOpenAttachment(a);
+                  else setOpenId((current) => (current === a.id ? null : a.id));
+                }}
                 className={`flex items-center gap-1.5 rounded-lg border bg-white px-1 py-1 pr-2 text-left text-[11px] text-neutral-600 shadow-sm transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:cursor-default dark:bg-neutral-900 dark:text-neutral-300 ${
                   openId === a.id ? "border-neutral-400" : "border-neutral-200 dark:border-neutral-800"
                 }`}
