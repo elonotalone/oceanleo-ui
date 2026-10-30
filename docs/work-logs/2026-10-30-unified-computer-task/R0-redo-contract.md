@@ -67,3 +67,11 @@ R3 owns integration in AgentChat and deletes the old workspace.
 - No browser, Playwright, screenshots. No push, bump, deploy, migration.
 - Commit on `main` only your own paths: `git add <paths> && git commit -m "<msg>" -- <paths>`; if `index.lock` exists, wait 5s and retry. Never `git add -A`, never reset/checkout others' files. Trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Update your R-book Checkpoint section with files, decisions, exact commands + results, New strings, Requests.
+
+## Root final acceptance (2026-10-30 ~17:55)
+
+- Commits (oceanleo-ui main): 48db3d66 contract · 779d50ee/7fc228d2 R4 · 5f691d29/304e1329 R1 · 08cf56a6/b0eeab12 R2 · 81d4ada7/1a4073d9/1fda6c2f R3 · 22ba95fb/4384a346 R5 · a8ee1e34 V1 findings. Portal (oceanleo main, local only): 00cd51ed, babc246d home handoff. oceandino a78c7a866 map/manifest/§15 (pushed to GitHub).
+- Root-run checks: UI `tsc --noEmit` 0 errors; portal `tsc --noEmit` 0 errors; `public-api-snapshot --check` ok; 31 focused/regression test files 350/351. The single failure, `ui-followup-project-cards` (missing `COLLECTION_ACTION_BTN_GHOST` in its module bench), fails identically at 9dcf64cb with the sibling portal present. The full suite at base vs. mid-fix head showed no new failing files beyond those re-run green here.
+- V1 read-only audit: no tone/agent-dialog presentational import on the task page; one stream; Device drill-down inside the original ComputerDock. Its 20 findings were fixed by the owners (see V1-review-fixes.md and each Fix checkpoint).
+- LeoDev: `oceanleo` slot FRESH(dev), 0 STALE; `/`, `/tasks/<computer task>?computerSession=cloud`, `/history`, `/computers/x` → 200 with no compile errors.
+- Not done (not authorized): browser/screenshots, real devices, twin/production push, package bump. Gateway: `cli/programs` rows do not report sign-in state, so the menu cannot show 需要登录 before connecting (the composer still says so once the chat connects).
