@@ -33,3 +33,14 @@ Final focused command: `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-g
 - New host/import/settings use useUI; program names use PROGRAM_LABEL. Read-only CLI program installation probe shows installed/uninstalled/unknown, separate from machine online/offline status, in both host and home ComputerDock.
 - ComputerDock invokes optional LeoComposer pre-navigation callback; portal home retains prompt, uploaded attachments and highlight per signed-in owner in memory for return, clears it on cloud task submission, and prevents navigating during an in-flight upload. This is a draft only; durable task history remains server-owned.
 - Focused actual DOM+HTTP command rerun PASS 7/7, now additionally covering direct kind reuse without create, distinct New creation, cloud query restoration, native task fresh cloud action, loading protection and supported display names/status. `git diff --check` PASS.
+
+## Paired-device regression correction
+
+- Composed the original ComputerDock inline inside the outer Device popover, preserving authenticated paired Mac/Windows/local availability, local permission, cloud driver and GUI scope controls rather than rebuilding those rules. Existing bound target labels remain read-only. New draft target hydrates per owner before Send; shared selected target is snapshotted by LeoComposer, and user-selected local drafts are no longer forced to cloud.
+- Header and familiar bottom Device shortcut control one `computerPickerOpen` state/picker. Header uses horizontal scrolling with nonshrinking labels instead of wrapping arbitrarily into conversation space.
+- Normal Terminal in machine submenu reuses matching managed terminal; explicit New stays separate.
+- Failed optional native-session discovery settles resolution and leaves a known ordinary task usable. Native task remains protected and presents retry; retry reloads discovery.
+- Original ready-node execution selection remains available in standalone ComputerDock alongside native program browsing. Offline nodes are inspectable without becoming executable selections. Managed navigation invokes draft preservation before creation; pending upload rejection does not create a session or navigate.
+- Expanded existing target/dock/composer tests plus host/API tests cover actual paired driver/GUI submit snapshot, default GUI-off semantics, owner isolation, availability expiry, upload block before creation, normal machine-menu Terminal reuse, discovery retry and cloud conversation availability.
+
+Validation: `agent-io-guard.sh run-light -- node --experimental-strip-types --experimental-loader ./tests/ts-extension-loader.mjs --test tests/computer-task-host.test.mjs tests/computer-task-api.test.mjs tests/execution-target.test.mjs tests/cloud-computer-dock.test.mjs tests/sko-w15-composer-slash.test.mjs` — PASS 56/56. `git diff --check` PASS. Integrated typecheck remains parent-owned; no push/bump/browser/restart.

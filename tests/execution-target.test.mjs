@@ -116,6 +116,7 @@ test("bound target renders actual immutable scope and never exposes the draft se
   const React = await import("react");
   const {renderToStaticMarkup} = await import("react-dom/server");
   const {ComputerDock} = await import(await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
+    "../../lib/computer-task-api": dataModule("export async function createComputerTaskSession(){}"),
     "next/navigation": dataModule('export function useRouter(){return {push(){}}}'),
     "../../i18n/ui/useUI": dataModule('export function useUI(){return value=>value}'),
     "../../lib/auth/client": dataModule('export async function getUserId(){return "alice"}'),

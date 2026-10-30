@@ -608,3 +608,10 @@ test("LeoComposer 不传 skillSlash：键入 / 不出浮层、不请求；传了
     await m2.unmount();
   }
 });
+
+test("shared paired-device picker snapshot reaches Composer submit with original driver and GUI scope",async()=>{
+ let submitted;const selected={kind:'device',id:'paired-mac',name:'Mac',driver:'cloud',gui:true};
+ const base={value:'paired draft',onChange(){},onSubmit:(text,payer,context)=>submitted={text,context},draftExecutionTarget:selected,hideComputerDockControl:true,showPlugins:false,showAppsBar:false,showPayerSelector:false,showModelPicker:false};
+ const m=await mount(React.createElement(LeoComposer,base));
+ try{const editor=m.container.querySelector('[data-editor]');assert.ok(editor);await act(async()=>editor.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})));assert.deepEqual(submitted?.context.executionTarget,selected);selected.gui=false;assert.equal(submitted.context.executionTarget.gui,true,'submit captures original GUI scope');}finally{await m.unmount();}
+});

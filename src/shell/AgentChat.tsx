@@ -2,7 +2,8 @@
 import { ComputerTaskSettingsPane } from "./cloud-computer/task-host/ComputerTaskSettingsPane";
 import { ComputerTaskWorkspace } from "./cloud-computer/task-host/ComputerTaskWorkspace";
 
-import { taskExecutionTarget } from "../lib/execution-target";
+import { getUserId } from "../lib/auth/client";
+import { readExecutionTarget, EXECUTION_TARGET_EVENT, taskExecutionTarget } from "../lib/execution-target";
 
 // ============================================================================
 // @oceanleo/ui — agent 工作界面 AgentChat（单一事实源）
@@ -595,6 +596,13 @@ function AgentChatInner({
   // 团队默认开库；主页普通 agent 始终默认收起。新产物只在隐藏的库内更新，
   // 用户点结果卡或「库」按钮时才展开，避免主页 Enter 后页面自行改布局。
   const [rightOpen, setRightOpen] = useState(hasOrgPanel);
+  const [computerPickerOpen,setComputerPickerOpen] = useState(false);
+  const [computerDraftTarget,setComputerDraftTarget] = useState<ExecutionTarget|null>(null);
+  useEffect(()=>{let alive=true;let owner:string|null=null;let revision=0;
+    async function hydrate(){const ticket=++revision;setComputerDraftTarget(null);const id=await getUserId().catch(()=>null);if(alive&&ticket===revision){owner=id;setComputerDraftTarget(readExecutionTarget(id));}}
+    function changed(event:Event){const detail=(event as CustomEvent<{userId?:string;target?:ExecutionTarget}>).detail;if(detail?.userId===owner&&detail.target)setComputerDraftTarget(detail.target);}
+    void hydrate();window.addEventListener("oceanleo:auth-state",hydrate);window.addEventListener(EXECUTION_TARGET_EVENT,changed);return()=>{alive=false;window.removeEventListener("oceanleo:auth-state",hydrate);window.removeEventListener(EXECUTION_TARGET_EVENT,changed);};
+  },[]);
   const [computerTaskMode,setComputerTaskMode] = useState<{taskId:string;native:boolean}>({taskId:"",native:false});
   const [computerSettingsOpen, setComputerSettingsOpen] = useState(false);
   const [computerSettingsContent, setComputerSettingsContent] = useState<ReactNode>(null);
@@ -2296,11 +2304,13 @@ function AgentChatInner({
             </div>
           )}
           <LeoComposer
-            showComputerDock={false}
-            boundExecutionTarget={taskId ? (boundTarget.taskId === taskId ? boundTarget.target : null) : undefined}
+            computerDockSlot={<button type="button" onClick={()=>setComputerPickerOpen(true)} className="rounded-lg px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100">{tt("设备")}</button>}
+            hideComputerDockControl
+            draftExecutionTarget={computerDraftTarget ?? undefined}
+            boundExecutionTarget={taskId ? (boundTarget.taskId === taskId ? boundTarget.target : null) : computerDraftTarget === null ? null : undefined}
             value={input}
             onChange={setInput}
-            onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget ?? (taskId ? undefined : { kind: "cloud" }))}
+            onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
             loading={running}
             onStop={() => void stop()}
             disabled={readOnly}
@@ -2393,7 +2403,7 @@ function AgentChatInner({
   // 就在 SplitWorkspace 左栏里，所以 SplitWorkspace 永远 fillParent 填满宿主给的高度。
   const split = (
     <SplitWorkspace
-      left={<ComputerTaskWorkspace taskId={taskId} nativeTask={computerTaskMode.taskId===taskId&&computerTaskMode.native} taskResolved={!taskId||computerTaskMode.taskId===taskId} cloud={stream} settingsOpen={computerSettingsOpen} onSettingsOpenChange={setComputerSettingsOpen} onSettingsContent={setComputerSettingsContent} onTaskCreated={onTaskCreated} />}
+      left={<ComputerTaskWorkspace devicePickerOpen={computerPickerOpen} onDevicePickerOpenChange={setComputerPickerOpen} taskId={taskId} executionTarget={taskId ? (boundTarget.taskId===taskId ? boundTarget.target : null) : undefined} draftExecutionTarget={computerDraftTarget ?? undefined} onExecutionTargetChange={setComputerDraftTarget} nativeTask={computerTaskMode.taskId===taskId&&computerTaskMode.native} taskResolved={!taskId||computerTaskMode.taskId===taskId} cloud={stream} settingsOpen={computerSettingsOpen} onSettingsOpenChange={setComputerSettingsOpen} onSettingsContent={setComputerSettingsContent} onTaskCreated={onTaskCreated} />}
       right={
         <WorkspacePaneErrorBoundary
           recoveryKey={`${taskId || ""}:${libTab}:${workspaceAction?.nonce || ""}:${workspaceOpen ?? rightOpen}`}

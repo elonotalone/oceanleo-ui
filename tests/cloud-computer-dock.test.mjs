@@ -93,6 +93,7 @@ const apiStubUrl = dataModule(`
 
 const { ComputerDock } = await import(
   await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
+    "../../lib/computer-task-api": dataModule(`export async function createComputerTaskSession(){globalThis.__managedCreates=(globalThis.__managedCreates||0)+1;return {task_id:"task",session:{id:"managed"}}}`),
     "../../i18n/ui/useUI": uiTextStubUrl,
     "../../contracts/domain-family": domainStubUrl,
     "../../lib/cloud-computer-api": apiStubUrl,
@@ -262,6 +263,7 @@ test("selecting a ready cloud computer changes actual persisted target, not loca
   try {
     await openDock(view);
     await view.click(view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]'));
+    await view.click(view.button("用此电脑执行 OceanLeo 任务"));
     assert.deepEqual(readExecutionTarget("account-a"), { kind: "computer", id: "cc_1", name: "新加坡" });
     assert.equal(globalThis.__ccMounted, "cc_1");
     assert.equal(globalThis.__ccMountedName, "新加坡");
@@ -274,14 +276,14 @@ test("selecting a ready cloud computer changes actual persisted target, not loca
   } finally { view.cleanup(); }
 });
 
-test("offline cloud computers are visible but disabled; legacy shell utility keeps its contract", async () => {
+test("offline cloud computers remain inspectable without changing execution target; legacy shell utility keeps its contract", async () => {
   const offline = pc({ node_online: false });
   assert.equal(newShellEnabled(offline), false);
   const view = await render([offline]);
   try {
     await openDock(view);
     const row = view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]');
-    assert.equal(row.disabled, true);
+    assert.equal(row.disabled, false);
     await view.click(row);
     assert.deepEqual(readExecutionTarget("account-a"), { kind: "cloud" });
     assert.match(row.textContent, /离线/);
@@ -476,8 +478,8 @@ test("C7-U5: a computer that allows the cloud assistant says so and is picked wi
     assert.match(pc.textContent, /需要你在电脑前确认/);
     assert.match(pc.getAttribute("title"), /允许云端助手使用这台电脑/);
     await view.click(mac);
-    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
-    assert.deepEqual(changes.at(-1), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false });
+    assert.deepEqual(changes.at(-1), { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false });
     const pill = view.host.querySelector("[data-oceanleo-cc-dock-trigger] [data-cloud-agent]");
     assert.equal(pill.getAttribute("data-cloud-agent"), "cloud");
     await openDock(view);
@@ -489,7 +491,7 @@ test("C7-U5: a computer that allows the cloud assistant says so and is picked wi
 
 test("C7-U5: a gateway without the route (405) shows today's picker and a remembered driver is dropped", async () => {
   globalThis.__ccDevices = [MAC];
-  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false });
   const view = await render([]);
   await flush(12);
   try {
@@ -504,12 +506,12 @@ test("C7-U5: a gateway without the route (405) shows today's picker and a rememb
 test("C7-U5: no answer from the route keeps the remembered mode; the send re-checks it anyway", async () => {
   globalThis.__ccDevices = [MAC];
   globalThis.__ccCloudAgent = { kind: "error" };
-  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+  writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false });
   const view = await render([]);
   await flush(12);
   try {
     assert.ok(globalThis.__ccCloudAgentReads >= 1);
-    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false });
   } finally { view.cleanup(); }
 });
 
@@ -520,7 +522,7 @@ test("C7-U5: when the permission set at the computer runs out, the label and the
   const view = await render([]);
   await flush(12);
   try {
-    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" }, "picked up on load");
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false }, "picked up on load");
     assert.equal(view.host.querySelector("[data-oceanleo-cc-dock-trigger] [data-cloud-agent]").getAttribute("data-cloud-agent"), "cloud");
     // The re-derive timer fires ~0.9 s in; poll (bounded) so a loaded machine cannot flake it.
     for (let waited = 0; readExecutionTarget("account-a").driver && waited < 5000; waited += 50) {
@@ -549,11 +551,11 @@ test("C7-U5: after an account switch, the previous account's availability never 
   globalThis.__ccDevices = [MAC];
   globalThis.__ccCloudAgent = availableUntil(Date.now() + 3_600_000);
   writeExecutionTarget("account-a", { kind: "device", id: "mac", name: "Mac" });
-  writeExecutionTarget("account-b", { kind: "device", id: "mac-b", name: "B Mac", driver: "cloud" });
+  writeExecutionTarget("account-b", { kind: "device", id: "mac-b", name: "B Mac", driver: "cloud", gui: false });
   const view = await render([]);
   await flush(12);
   try {
-    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud" });
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "device", id: "mac", name: "Mac", driver: "cloud", gui: false });
     // Account B's computer is not in A's rows; its answer has not arrived yet.
     let answer;
     globalThis.__ccCloudAgent = undefined;
@@ -565,10 +567,16 @@ test("C7-U5: after an account switch, the previous account's availability never 
     await act(async () => window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", { detail: { userId: "account-b" } })));
     await flush(12);
     assert.ok(globalThis.__ccCloudAgentReads > reads, "B's availability is read");
-    assert.deepEqual(readExecutionTarget("account-b"), { kind: "device", id: "mac-b", name: "B Mac", driver: "cloud" }, "kept until B's own answer");
+    assert.deepEqual(readExecutionTarget("account-b"), { kind: "device", id: "mac-b", name: "B Mac", driver: "cloud", gui: false }, "kept until B's own answer");
     await act(async () => { answer({ kind: "ok", devices: new Map([["mac-b", { deviceId: "mac-b", available: false, reason: "envelope_expired", until: 1 }]]) }); });
     await flush(12);
     assert.deepEqual(readExecutionTarget("account-b"), { kind: "device", id: "mac-b", name: "B Mac" });
     assert.match(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").getAttribute("title"), /允许云端助手的时间已到/);
   } finally { view.cleanup(); }
+});
+
+test("native navigation preserves draft before creating a managed session and blocked upload stays put",async()=>{
+ const pushes=[];globalThis.__ccRouter.push=url=>pushes.push(url);globalThis.__managedCreates=0;let preserved=0;
+ const view=await render([pc()],makeClient([pc()]),{onBeforeNavigate:async()=>{preserved++;throw new Error('请等待文件上传完成')}});
+ try{await openDock(view);await view.click(view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]'));await view.click([...view.host.querySelectorAll('button')].find(b=>b.textContent.includes('Codex')));assert.equal(preserved,1);assert.equal(globalThis.__managedCreates,0);assert.deepEqual(pushes,[]);assert.match(view.text(),/请等待文件上传完成/);}finally{view.cleanup();}
 });

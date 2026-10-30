@@ -49,7 +49,7 @@ function deriveTarget(target: ExecutionTarget, state: CloudAgentState, device: D
 /** undefined is a fresh draft; null is an existing task whose binding is not loaded yet. */
 export function ComputerDock({boundTarget, ...props}: {
   client?: CloudComputerClient; computers?: Computer[]; onTargetChange?: (target: ExecutionTarget) => void;
-  boundTarget?: ExecutionTarget | null; onBeforeNavigate?: () => void | Promise<void>;
+  inline?: boolean; boundTarget?: ExecutionTarget | null; onBeforeNavigate?: () => void | Promise<void>;
 }) {
   const tt = useUI();
   if (boundTarget === undefined) return <DraftComputerDock {...props} />;
@@ -63,15 +63,15 @@ export function ComputerDock({boundTarget, ...props}: {
 }
 
 /** Website/native execution picker. Selecting a machine never navigates away. */
-function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange, onBeforeNavigate }: {
-  client?: CloudComputerClient; computers?: Computer[]; onTargetChange?: (target: ExecutionTarget) => void; onBeforeNavigate?: () => void | Promise<void>;
+function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange, onBeforeNavigate, inline = false }: {
+  client?: CloudComputerClient; computers?: Computer[]; onTargetChange?: (target: ExecutionTarget) => void; onBeforeNavigate?: () => void | Promise<void>; inline?: boolean;
 }) {
   const tt = useUI();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(inline);
   const [nativeComputer, setNativeComputer] = useState<Computer | null>(null);
   const [nativePrograms, setNativePrograms] = useState<import("../../lib/cloud-computer-api").CliProgram[]>([]);
-  useEffect(() => { setNativePrograms([]); if (!nativeComputer) return; let alive = true; void client.listCliPrograms(nativeComputer.id).then(r => { if(alive)setNativePrograms(r.programs); }).catch(() => {}); return () => { alive=false; }; }, [nativeComputer, client]);
+  useEffect(() => { setNativePrograms([]); if (!nativeComputer || !client.listCliPrograms) return; let alive = true; void client.listCliPrograms(nativeComputer.id).then(r => { if(alive)setNativePrograms(r.programs); }).catch(() => {}); return () => { alive=false; }; }, [nativeComputer, client]);
   const [nativeBusy, setNativeBusy] = useState(false);
   const [nativeError, setNativeError] = useState("");
   const [group, setGroup] = useState<"cloud" | "device">("cloud");
@@ -115,7 +115,7 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
   }, [owner, supplied, onTargetChange]);
 
   useEffect(() => {
-    if (!open || !owner) return;
+    if ((!open && !inline) || !owner) return;
     let alive = true;
     setLoading(true); setError(false);
     void Promise.allSettled([supplied ? Promise.resolve({ items: supplied }) : client.listComputers(), listDevices(), listCloudAgentAvailability()])
@@ -132,7 +132,7 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
       .catch(() => { if (alive) setError(true); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [open, owner, client, supplied]);
+  }, [open, inline, owner, client, supplied]);
 
   // Read the selected computer's local-execution mirror and its cloud-assistant
   // availability without opening the picker, and again when the page regains
@@ -231,8 +231,9 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
   const selectedModeLabel = target.kind === "device" ? modeLabel(selectedMode, target.id) : null;
   const scopeLabel = target.kind === "device" && target.driver === "cloud" ? tt(CLOUD_AGENT_COPY[target.gui ? "scopeGui" : "scopeFiles"]) : null;
   const triggerNote = [selectedLocalOff ? localOffLabel : selectedModeLabel, scopeLabel].filter(Boolean).join(" · ");
+  const PickerContainer = inline ? InlineComputerPicker : AnchoredPopover;
   return <div className="relative" data-oceanleo-cc-dock data-execution-target={target.kind}>
-    <button ref={anchor} type="button" onClick={() => { setGroup(target.kind === "device" ? "device" : "cloud"); setOpen(!open); }}
+    {!inline && <button ref={anchor} type="button" onClick={() => { setGroup(target.kind === "device" ? "device" : "cloud"); setOpen(!open); }}
       aria-label={triggerNote ? `${tt("任务执行位置")} · ${triggerNote}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
       title={selectedLocalOff ? localOffHint : (target.kind === "device" && modeHint(selectedMode, target.id)) || tt("任务执行位置")}
       className={`flex h-7 ${triggerNote ? "max-w-[280px]" : "max-w-[180px]"} items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100`}>
@@ -242,8 +243,8 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
       {!selectedLocalOff && selectedModeLabel && <span data-cloud-agent={selectedMode ?? undefined}
         className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium ${selectedMode === "cloud" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-600"}`}>{selectedModeLabel}</span>}
       <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
-    </button>
-    <AnchoredPopover open={open} anchorRef={anchor} panelRef={panel} onClose={() => setOpen(false)} align="start" role="dialog" ariaLabel={tt("任务执行位置")}
+    </button>}
+    <PickerContainer open={inline || open} anchorRef={anchor} panelRef={panel} onClose={() => setOpen(false)} align="start" role="dialog" ariaLabel={tt("任务执行位置")}
       preferredPlacement="above" maxHeight={320} style={{ height: 320 }} initialFocusSelector='button[aria-expanded="true"]'
       className="z-[80] flex w-[min(440px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
       {/* Keep group controls still while the other column changes or loads. */}
@@ -266,7 +267,7 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
           {!owner ? <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("请先登录")}</p> : <>
             {group === "cloud" && <>
               <button type="button" className={row} aria-pressed={target.kind === "cloud"} onClick={() => choose({ kind: "cloud" })}><TargetGlyph cloud /><span className="flex-1">{tt("默认云端")}</span>{target.kind === "cloud" && "✓"}</button>
-              {nativeComputer ? <div><button type="button" className={row} onClick={() => setNativeComputer(null)}>‹ {tt("返回设备")}</button><p className="px-3 text-xs text-neutral-500">{nativeComputer.name}</p>{(["oceanleo", "cursor", "claude", "codex", "hermes", null] as const).map(program => <button type="button" key={program || "terminal"} className={row} disabled={nativeBusy} onClick={() => void openNative(program)}>{program ? PROGRAM_LABEL[program] : tt("终端")} · {tt(program ? nativePrograms.find(row=>row.id===program)?.installed ? "已安装" : nativePrograms.some(row=>row.id===program) ? "未安装" : "状态未知" : computerDisplayState(nativeComputer)==="ready" ? "在线" : "离线")}</button>)}{nativeError && <p role="alert" className="px-3 text-xs text-red-600">{nativeError}</p>}</div> : computers.filter(isConnectedComputer).map((item) => {
+              {nativeComputer ? <div><button type="button" className={row} onClick={() => setNativeComputer(null)}>‹ {tt("返回设备")}</button><p className="px-3 text-xs text-neutral-500">{nativeComputer.name}</p><button type="button" className={row} disabled={computerDisplayState(nativeComputer)!=="ready"} onClick={()=>{choose({kind:"computer",id:nativeComputer.id,name:nativeComputer.name});setNativeComputer(null);}}>{tt("用此电脑执行 OceanLeo 任务")}</button>{(["oceanleo", "cursor", "claude", "codex", "hermes", null] as const).map(program => <button type="button" key={program || "terminal"} className={row} disabled={nativeBusy} onClick={() => void openNative(program)}>{program ? PROGRAM_LABEL[program] : tt("终端")} · {tt(program ? nativePrograms.find(row=>row.id===program)?.installed ? "已安装" : nativePrograms.some(row=>row.id===program) ? "未安装" : "状态未知" : computerDisplayState(nativeComputer)==="ready" ? "在线" : "离线")}</button>)}{nativeError && <p role="alert" className="px-3 text-xs text-red-600">{nativeError}</p>}</div> : computers.filter(isConnectedComputer).map((item) => {
                 const ready = computerDisplayState(item) === "ready";
                 const selected = target.kind === "computer" && target.id === item.id;
                 return <button key={item.id} type="button" className={`${row} disabled:opacity-50`} aria-pressed={selected} data-oceanleo-cc-switch-item={item.id} onClick={() => setNativeComputer(item)}>
@@ -297,7 +298,7 @@ function DraftComputerDock({ client = cloudComputerApi, computers: supplied, onT
           <div className="mt-1 shrink-0 border-t border-neutral-100 pt-1"><button type="button" className={row} onClick={() => { setOpen(false); router.push(portalHref("/devices")); }}><span aria-hidden>☷</span>{tt("管理设备")}</button></div>
         </div>
       </div>
-    </AnchoredPopover>
+    </PickerContainer>
   </div>;
 }
 function TargetGlyph({ cloud = false }: { cloud?: boolean }) {
@@ -305,3 +306,5 @@ function TargetGlyph({ cloud = false }: { cloud?: boolean }) {
     {cloud ? <path d="M6 18a4 4 0 0 1-.5-8A6.5 6.5 0 0 1 18 8a5 5 0 0 1 0 10Z" /> : <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></>}
   </svg>;
 }
+
+function InlineComputerPicker({children}: {children: React.ReactNode; [key:string]: unknown}) { return <div className="flex h-72 min-h-0">{children}</div>; }

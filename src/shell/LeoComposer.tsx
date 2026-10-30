@@ -260,6 +260,9 @@ export interface LeoComposerProps {
    * 传 false 可在非 OceanLeo 宿主关掉。
    */
   showComputerDock?: boolean;
+  hideComputerDockControl?: boolean;
+  computerDockSlot?: ReactNode;
+  draftExecutionTarget?: ExecutionTarget;
   onBeforeComputerNavigate?: () => void | Promise<void>;
   /** undefined=new draft; null=existing task still loading; otherwise immutable task target. */
   boundExecutionTarget?: ExecutionTarget | null;
@@ -309,6 +312,9 @@ export function LeoComposer({
   showPayerSelector = true,
   showAppsBar = true,
   showComputerDock = true,
+  hideComputerDockControl = false,
+  computerDockSlot,
+  draftExecutionTarget,
   onBeforeComputerNavigate,
   boundExecutionTarget,
   appsHost,
@@ -417,7 +423,7 @@ export function LeoComposer({
   function submitPrompt() {
     if (boundExecutionTarget === null) return;
     requestTaskNotificationsOnce();
-    const selected = boundExecutionTarget ?? executionTargetRef.current;
+    const selected = boundExecutionTarget ?? draftExecutionTarget ?? executionTargetRef.current;
     onSubmit?.(cleanPromptValue(), { org_id: payerOrgId },
       showComputerDock ? { executionTarget: { ...selected } } : undefined);
     if (boundExecutionTarget === undefined) {
@@ -587,7 +593,7 @@ export function LeoComposer({
               extra={attachMenuExtra}
             />
           )}
-          {showComputerDock && <ComputerDock onBeforeNavigate={onBeforeComputerNavigate} key={targetDraftRevision} boundTarget={boundExecutionTarget} onTargetChange={rememberExecutionTarget} />}
+          {showComputerDock && (computerDockSlot ?? (!hideComputerDockControl && <ComputerDock onBeforeNavigate={onBeforeComputerNavigate} key={targetDraftRevision} boundTarget={boundExecutionTarget} onTargetChange={rememberExecutionTarget} />))}
           {showPlugins && (
             <>
             <button
