@@ -11,7 +11,8 @@ export function ArchivedAttachmentLink({ attachment }: { attachment: UserAttachm
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const archive = safeArchivedAttachment(attachment.archive);
-  if (!archive) return <span>{attachment.name}</span>;
+  const name = attachment.name === "图片" ? tt("图片") : attachment.name;
+  if (!archive) return <span>{name}</span>;
   async function prepare() {
     if (busy || !archive) return;
     setBusy(true); setError("");
@@ -24,7 +25,7 @@ export function ArchivedAttachmentLink({ attachment }: { attachment: UserAttachm
     finally { setBusy(false); }
   }
   return <span>
-    {url ? <a href={url} target="_blank" rel="noreferrer" download={archive.name}>{attachment.name} · {tt("下载")}</a> : <button type="button" disabled={busy} onClick={() => void prepare()}>{attachment.name} · {busy ? tt("正在读取…") : tt("获取云端附件")}</button>}
+    {url ? <a href={url} target="_blank" rel="noreferrer" download={archive.name}>{name} · {tt("下载")}</a> : <button type="button" disabled={busy} onClick={() => void prepare()}>{name} · {busy ? tt("正在读取…") : tt("获取云端附件")}</button>}
     {error ? <span role="alert">{error}</span> : null}
   </span>;
 }

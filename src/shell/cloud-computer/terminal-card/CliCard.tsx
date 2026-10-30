@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   cloudComputerApi,
   type CliChat,
@@ -37,15 +37,10 @@ import {
   sortTerminalRecords,
   terminalEndCopy,
 } from "./model";
-import { AppearancePanel } from "./AppearancePanel";
 import { TerminalViewport } from "./TerminalViewport";
 
 export type CliCardProps = {
   active?: boolean;
-  embedded?: boolean;
-  settingsOpen?: boolean;
-  onSettingsContent?: (content: ReactNode | null) => void;
-  onNativeSessionChange?: (id: string) => Promise<void>;
   computer: Computer;
   initialProgram?: string;
   initialSessionId?: string;
@@ -79,16 +74,11 @@ type NoticeKind = "info" | "error";
 export function CliCard({
   computer,
   active = true,
-  embedded = false,
-  settingsOpen = false,
-  onSettingsContent,
-  onNativeSessionChange,
   initialProgram,
   initialSessionId,
   client = cloudComputerApi,
   refreshIntervalMs = 15_000,
 }: CliCardProps) {
-  const pendingNative = useRef<TerminalRecord | null>(null);
   const tt = useUI();
   const cache = useMemo(() => computerCache(computer.id), [computer.id]);
   const [initial] = useState(() => ({ program: initialProgram || "oceanleo", session: initialSessionId ?? null }));
@@ -156,7 +146,7 @@ export function CliCard({
       cache.programs = next;
       setPrograms(next);
       setProgramId((current) => {
-        if (embedded || next.some((program) => program.id === current)) return current;
+        if (next.some((program) => program.id === current)) return current;
         return next[0]?.id ?? current;
       });
       setFailed(false);
@@ -228,7 +218,6 @@ export function CliCard({
   }, [active, refreshIntervalMs, refreshTerminals]);
 
   useEffect(() => {
-    if (embedded) return;
     setSelectedSessionId((current) =>
       pickCliSessionId(
         current,
@@ -240,17 +229,17 @@ export function CliCard({
   }, [ended, initial.session, programId, running]);
 
   useEffect(() => {
-    if (embedded || !active || !programId) return;
+    if (!active || !programId) return;
     replaceServerPageUrl(computer.id, { card: "cli", program: programId, session: selectedSessionId });
   }, [active, computer.id, programId, selectedSessionId]);
 
   const launch = useCallback(
     async (resumeId?: string) => {
-      if (!selectedProgram?.installed || busy || (embedded && (initial.session || selectedSessionId))) return;
+      if (!selectedProgram?.installed || busy) return;
       setBusy(resumeId ? `resume:${resumeId}` : "new");
       try {
         const stored = readCliProgramSettings(computer.id, selectedProgram.id);
-        const result = pendingNative.current ? { session: pendingNative.current } : await client.launchCli(computer.id, {
+        const result = await client.launchCli(computer.id, {
           program: selectedProgram.id,
           ...(resumeId ? { resume_id: resumeId } : {}),
           options: cliLaunchOptions(
@@ -262,9 +251,6 @@ export function CliCard({
           rows: DEFAULT_PTY_ROWS,
         });
         const session = normalizeCliRecord(result.session, selectedProgram.id);
-        pendingNative.current = session;
-        await onNativeSessionChange?.(session.id);
-        pendingNative.current = null;
         legacyCliPrograms.current.set(session.id, selectedProgram.id);
         setRecords((current) => [
           session,
@@ -274,7 +260,7 @@ export function CliCard({
         setFailed(false);
         await Promise.all([refreshTerminals(), refreshChats()]);
       } catch {
-      showNotice(tt("AI 命令行启动失败，请稍后重试。"), "error");
+        showNotice(tt("AI 命令行启动失败，请稍后重试。"), "error");
       } finally {
         setBusy(null);
       }
@@ -286,10 +272,6 @@ export function CliCard({
       refreshChats,
       refreshTerminals,
       selectedProgram,
-      onNativeSessionChange,
-      embedded,
-      initial.session,
-      selectedSessionId,
       serverConfirmDangerous,
       showNotice,
       tt,
@@ -332,19 +314,6 @@ export function CliCard({
     [client, computer.id, programId, showNotice, toolsBusy, tt],
   );
 
-  useEffect(() => {
-    if (!embedded || !active) return;
-    onSettingsContent?.(settingsOpen ? <div className="space-y-4 p-4">
-      <p className="text-xs">{tt("命令行启动默认值仅影响下次打开；工具开关影响这台电脑上的程序。图形对话与命令行使用独立会话。")}</p>
-      {selectedProgram ? <CliSettingsPanel computerId={computer.id} program={selectedProgram}
-        serverConfirmDangerous={serverConfirmDangerous}
-        toolsEnabled={isCliToolProgram(programId) ? cliTools[programId] : undefined}
-        toolsBusy={toolsBusy} onToolsEnabledChange={(enabled) => void toggleCliTools(enabled)} /> : <p>{tt("正在读取…")}</p>}
-      <p className="text-xs">{tt("终端外观同时影响所有终端和 AI 命令行。")}</p>
-      <AppearancePanel />
-    </div> : null);
-  }, [embedded, active, settingsOpen, onSettingsContent, selectedProgram, computer.id, programId, serverConfirmDangerous, cliTools, toolsBusy, toggleCliTools]);
-
   return (
     <section
       aria-label={tt("AI 命令行")}
@@ -353,7 +322,7 @@ export function CliCard({
       data-initial-program={initial.program}
       data-initial-session={initial.session || undefined}
     >
-      {!embedded && active && <ServerPageStripPortal card="cli">
+      {active && <ServerPageStripPortal card="cli">
         <ProgramStrip
           items={programs.map((program) => ({
             id: program.id,
@@ -371,7 +340,7 @@ export function CliCard({
           trailing={loadingPrograms && !programs.length ? <span className={`text-xs ${tone.muted}`}>{tt("加载中…")}</span> : undefined}
         />
       </ServerPageStripPortal>}
-      {!embedded && showSettings && selectedProgram ? (
+      {showSettings && selectedProgram ? (
         <div
           className="absolute inset-0 z-20 bg-black/10"
           data-oceanleo-cli-settings-overlay=""
@@ -426,12 +395,12 @@ export function CliCard({
         </div>
       )}
       <div className="flex min-h-0 flex-1" data-oceanleo-cli-card-body="">
-        {!embedded && <aside className={`flex min-h-0 w-56 shrink-0 flex-col overflow-hidden border-r ${tone.border}`}>
+        <aside className={`flex min-h-0 w-56 shrink-0 flex-col overflow-hidden border-r ${tone.border}`}>
           <div className={`border-b p-2 ${tone.border}`}>
             <button
               type="button"
               className="inline-flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!computer.node_online || !selectedProgram?.installed || busy !== null || (embedded && Boolean(initial.session || selectedSessionId))}
+              disabled={!computer.node_online || !selectedProgram?.installed || busy !== null}
               data-oceanleo-new-cli-chat=""
               onClick={() => void launch()}
             >
@@ -546,7 +515,7 @@ export function CliCard({
               </p>
             )}
           </div>
-        </aside>}
+        </aside>
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {failed && (
             <div className={`border-b px-3 py-2 text-xs ${tone.danger}`} role="alert">
@@ -564,7 +533,7 @@ export function CliCard({
                   className="mt-3 text-xs underline-offset-2 hover:underline"
                   data-oceanleo-cli-install={selectedProgram.id}
                   onClick={() =>
-                    !embedded && replaceServerPageUrl(computer.id, { card: "acp", program: selectedProgram.id, session: null })
+                    replaceServerPageUrl(computer.id, { card: "acp", program: selectedProgram.id, session: null })
                   }
                 >
                   {tt("安装")}
@@ -582,11 +551,11 @@ export function CliCard({
           ) : (
             <div className={`grid min-h-0 flex-1 overflow-y-auto place-items-center p-6 text-center text-sm ${tone.muted}`}>
               <div>
-                <p>{embedded && initial.session ? tt("原命令行暂不可用；请在任务工具栏新建独立会话。") : tt("选择运行中的命令行，或打开一个新的。")}</p>
+                <p>{tt("选择运行中的命令行，或打开一个新的。")}</p>
                 <button
                   type="button"
                   className="mt-3 inline-flex items-center gap-2 text-xs underline-offset-2 hover:underline disabled:opacity-50"
-                  disabled={!computer.node_online || !selectedProgram?.installed || busy !== null || (embedded && Boolean(initial.session || selectedSessionId))}
+                  disabled={!computer.node_online || !selectedProgram?.installed || busy !== null}
                   onClick={() => void launch()}
                 >
                   <IconPlus className="size-3.5" />

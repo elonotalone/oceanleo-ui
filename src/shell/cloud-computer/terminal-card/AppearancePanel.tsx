@@ -1,7 +1,7 @@
 "use client";
 
 import { useUI } from "../../../i18n/ui/useUI";
-import { tone } from "../server-page/tone";
+import { SERVER_PANEL_SKIN, type PanelSkin } from "./panel-skin";
 import {
   useTerminalAppearance,
   type TerminalAppearance,
@@ -23,6 +23,7 @@ const FONT_WEIGHTS: readonly TerminalFontWeight[] = [
 ];
 
 function NumericField({
+  skin,
   label,
   value,
   min,
@@ -30,6 +31,7 @@ function NumericField({
   step,
   onChange,
 }: {
+  skin: PanelSkin;
   label: string;
   value: number;
   min: number;
@@ -39,14 +41,14 @@ function NumericField({
 }) {
   return (
     <label className="grid gap-1 text-xs">
-      <span className={tone.muted}>{label}</span>
+      <span className={skin.muted}>{label}</span>
       <input
         type="number"
         value={value}
         min={min}
         max={max}
         step={step}
-        className={`w-full rounded-lg border px-2 py-1.5 ${tone.input}`}
+        className={`w-full rounded-lg border px-2 py-1.5 ${skin.input}`}
         onChange={(event) => onChange(Number(event.currentTarget.value))}
       />
     </label>
@@ -54,10 +56,12 @@ function NumericField({
 }
 
 function ToggleField({
+  skin,
   label,
   checked,
   onChange,
 }: {
+  skin: PanelSkin;
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -69,7 +73,7 @@ function ToggleField({
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.currentTarget.checked)}
-        className="size-4 shrink-0 accent-zinc-900 dark:accent-neutral-100"
+        className={skin.check}
       />
     </label>
   );
@@ -78,9 +82,14 @@ function ToggleField({
 export function AppearancePanel({
   className = "",
   framed = true,
+  skin = SERVER_PANEL_SKIN,
+  showHeading = true,
 }: {
   className?: string;
   framed?: boolean;
+  skin?: PanelSkin;
+  /** The task page labels the group itself; it hides this inner heading. */
+  showHeading?: boolean;
 }) {
   const tt = useUI();
   const [appearance, setAppearance] = useTerminalAppearance();
@@ -91,15 +100,15 @@ export function AppearancePanel({
 
   return (
     <div
-      className={`grid gap-3 ${framed ? `rounded-lg border p-3 ${tone.border} ${tone.panel}` : ""} ${className}`}
+      className={`grid gap-3 ${framed ? skin.frame : ""} ${className}`}
       data-oceanleo-terminal-appearance=""
     >
-      <h3 className="text-sm font-semibold">{tt("外观设置")}</h3>
+      {showHeading ? <h3 className={skin.heading}>{tt("外观设置")}</h3> : null}
       <label className="grid gap-1 text-xs">
-        <span className={tone.muted}>{tt("终端主题")}</span>
+        <span className={skin.muted}>{tt("终端主题")}</span>
         <select
           value={appearance.theme}
-          className={`rounded-lg border px-2 py-1.5 ${tone.input}`}
+          className={`rounded-lg border px-2 py-1.5 ${skin.input}`}
           onChange={(event) =>
             update("theme", event.currentTarget.value as TerminalThemePreference)
           }
@@ -109,15 +118,16 @@ export function AppearancePanel({
         </select>
       </label>
       <label className="grid gap-1 text-xs">
-        <span className={tone.muted}>{tt("字体")}</span>
+        <span className={skin.muted}>{tt("字体")}</span>
         <input
           value={appearance.fontFamily}
-          className={`rounded-lg border px-2 py-1.5 ${tone.input}`}
+          className={`rounded-lg border px-2 py-1.5 ${skin.input}`}
           onChange={(event) => update("fontFamily", event.currentTarget.value)}
         />
       </label>
       <div className="grid grid-cols-2 gap-2">
         <NumericField
+          skin={skin}
           label={tt("字号")}
           value={appearance.fontSize}
           min={9}
@@ -126,6 +136,7 @@ export function AppearancePanel({
           onChange={(value) => update("fontSize", value)}
         />
         <NumericField
+          skin={skin}
           label={tt("字间距")}
           value={appearance.letterSpacing}
           min={-2}
@@ -134,6 +145,7 @@ export function AppearancePanel({
           onChange={(value) => update("letterSpacing", value)}
         />
         <NumericField
+          skin={skin}
           label={tt("行高")}
           value={appearance.lineHeight}
           min={1}
@@ -142,6 +154,7 @@ export function AppearancePanel({
           onChange={(value) => update("lineHeight", value)}
         />
         <NumericField
+          skin={skin}
           label={tt("回滚行数")}
           value={appearance.scrollback}
           min={100}
@@ -153,12 +166,12 @@ export function AppearancePanel({
       <div className="grid grid-cols-2 gap-2">
         {(["fontWeight", "fontWeightBold"] as const).map((key) => (
           <label key={key} className="grid gap-1 text-xs">
-            <span className={tone.muted}>
+            <span className={skin.muted}>
               {tt(key === "fontWeight" ? "常规字重" : "粗体字重")}
             </span>
             <select
               value={appearance[key]}
-              className={`rounded-lg border px-2 py-1.5 ${tone.input}`}
+              className={`rounded-lg border px-2 py-1.5 ${skin.input}`}
               onChange={(event) =>
                 update(key, event.currentTarget.value as TerminalFontWeight)
               }
@@ -173,10 +186,10 @@ export function AppearancePanel({
         ))}
       </div>
       <label className="grid gap-1 text-xs">
-        <span className={tone.muted}>{tt("光标样式")}</span>
+        <span className={skin.muted}>{tt("光标样式")}</span>
         <select
           value={appearance.cursorStyle}
-          className={`rounded-lg border px-2 py-1.5 ${tone.input}`}
+          className={`rounded-lg border px-2 py-1.5 ${skin.input}`}
           onChange={(event) =>
             update("cursorStyle", event.currentTarget.value as TerminalCursorStyle)
           }
@@ -186,13 +199,15 @@ export function AppearancePanel({
           <option value="bar">{tt("竖线")}</option>
         </select>
       </label>
-      <div className={`divide-y ${tone.divide}`}>
+      <div className={`divide-y ${skin.divide}`}>
         <ToggleField
+          skin={skin}
           label={tt("选中即复制")}
           checked={appearance.copyOnSelect}
           onChange={(value) => update("copyOnSelect", value)}
         />
         <ToggleField
+          skin={skin}
           label={tt("光标闪烁")}
           checked={appearance.cursorBlink}
           onChange={(value) => update("cursorBlink", value)}
