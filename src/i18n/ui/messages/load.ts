@@ -80,6 +80,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     editorOverhaul,
     localAgent,
     computerTaskWorkspace,
+    nativeAttachments,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -104,6 +105,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./editor-overhaul-copy"),
     import("./local-agent-copy"),
     import("./computer-task-workspace-copy"),
+    import("./native-attachments-copy"),
   ]);
   return {
     ...base.default,
@@ -133,5 +135,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...editorOverhaul.EDITOR_OVERHAUL_MESSAGES[locale],
     ...localAgent.LOCAL_AGENT_MESSAGES[locale],
     ...computerTaskWorkspace.COMPUTER_TASK_WORKSPACE_MESSAGES[locale],
+    ...nativeAttachments.NATIVE_ATTACHMENTS_MESSAGES[locale],
   };
 };

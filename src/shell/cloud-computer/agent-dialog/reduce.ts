@@ -18,7 +18,7 @@ import {
   conversationPath,
 } from "./parse";
 import { isModelFamilyConfig } from "./notice";
-import { normalizeUserMessage } from "./message-attachments";
+import { mergeLocalPreviews, normalizeUserMessage } from "./message-attachments";
 import { blankOccupancy } from "./occupancy";
 import {
   hasOpenTurn,
@@ -76,6 +76,7 @@ const TURN_END_ERRORS = new Set([
   "runtime_missing",
   "not_logged_in",
   "node_error",
+  "gateway_error",
   "dialog_unreachable",
   "dialog_detached",
   "invalid_argument",
@@ -315,6 +316,10 @@ export type DialogEvent =
   | { type: "program"; program: AgentProgram }
   | { type: "send-began" }
   | { type: "send-failed" }
+  /** The optimistic echo (last user bubble, same text) of a prompt the gateway refused before acknowledging it. */
+  | { type: "drop-unsent"; text: string }
+  /** `open_session` got no answer after the retry: stop the loading state. */
+  | { type: "session-load-timeout"; acpSession: string }
   | { type: "occupancy-lost" }
   | { type: "occupancy-link"; up: boolean }
   | { type: "user"; text: string; attachments?: { name: string; mime: string; preview?: string }[] }
@@ -374,6 +379,17 @@ function forCurrent(state: DialogState, frame: Record<string, unknown>): boolean
   const program = str(frame.program);
   if (!program || !state.program) return true;
   return program === state.program;
+}
+
+/** Remove the last user bubble when it is the (never acknowledged) echo of `text`. */
+export function dropUnsentEcho(messages: AgentDialogMessage[], text: string): AgentDialogMessage[] {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.kind !== "user") continue;
+    if (message.replay || message.text !== text) return messages;
+    return [...messages.slice(0, index), ...messages.slice(index + 1)];
+  }
+  return messages;
 }
 
 function pushNotice(messages: AgentDialogMessage[], code: string, program: string): AgentDialogMessage[] {
@@ -941,10 +957,13 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       last.kind === "user" &&
       last.text === text
     ) {
-      if (attachments.length && !last.attachments?.length) {
+      // The gateway's copy (archive ids) supersedes the optimistic echo; the
+      // echo's local thumbnails stay on the same files.
+      const serverRows = attachments.some((item) => item.archive);
+      if (attachments.length && (!last.attachments?.length || serverRows)) {
         return {
           ...state,
-          messages: state.messages.slice(0, -1).concat({ ...last, attachments }),
+          messages: state.messages.slice(0, -1).concat({ ...last, attachments: mergeLocalPreviews(attachments, last.attachments) }),
         };
       }
       return state;
@@ -1066,6 +1085,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       return occupancyLost(markTurn(
         {
           ...state,
+          sessionLoading: false,
           occupancyPendingAt: null,
           occupancyPendingSession: null,
           messages: pushNotice(state.messages, "dialog_unreachable", state.program ?? ""),
@@ -1074,6 +1094,15 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         state.activeSession || state.draftRef || "",
         false,
       ));
+    case "drop-unsent":
+      return { ...state, messages: dropUnsentEcho(state.messages, event.text) };
+    case "session-load-timeout":
+      if (!state.sessionLoading || state.activeSession !== event.acpSession) return state;
+      return {
+        ...state,
+        sessionLoading: false,
+        messages: pushNotice(state.messages, "session_load_timeout", state.program ?? ""),
+      };
     case "occupancy-lost":
       return occupancyLost(state);
     case "occupancy-link":

@@ -8,6 +8,10 @@ export function isReconnectingNotice(code: string): boolean {
 }
 
 const SESSION_NOT_OPENED = "程序没能开新会话。";
+/** A gateway fault, nothing was kept (not a prompt, or nothing to restore). */
+export const GATEWAY_ERROR_COPY = "服务器出错了，请稍后重试。";
+/** A prompt the gateway refused: its text and attachments are back in the composer. */
+export const UNSENT_RESTORED_COPY = "没发出去：服务器出错了。文字和附件已保留，可直接重试。";
 const SESSION_UNAVAILABLE = "这个程序现在开不了会话。";
 const OPAQUE_DIALOG_DID_NOT_START = new Set([
   "对话没有启动。",
@@ -65,6 +69,11 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
       return tt("这句话发不出去。");
     case "node_error":
       return tt("这台电脑上的程序出错了。");
+    case "gateway_error":
+      // The gateway itself failed (not the user's computer or its program).
+      return tt(GATEWAY_ERROR_COPY);
+    case "session_load_timeout":
+      return tt("这段对话打开得太久了，已重试过一次。请再点一下它，或稍后再试。");
     case "feature_disabled":
       return tt("这个功能在当前站点不可用。");
     case "acp_start_failed":

@@ -13,7 +13,32 @@ const MAX_PREVIEW = 128 * 1024;
 
 export function safeImagePreview(value: unknown): string | undefined {
   if (typeof value !== "string" || value.length > MAX_PREVIEW) return undefined;
+  if (isLocalBlobPreview(value)) return value;
   return /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(value) ? value : undefined;
+}
+
+/**
+ * A `blob:` object URL this tab made from a file the user just picked. Only
+ * this document can resolve it, so it is a local thumbnail, never a storage
+ * address (2026-10-31 W1: native image attachments show the picture).
+ */
+export function isLocalBlobPreview(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 300
+    && /^blob:(?:https?:\/\/[A-Za-z0-9.:[\]-]+|null)\/[A-Za-z0-9-]{8,64}$/.test(value);
+}
+
+/**
+ * Server rows (with `archive`) replace the optimistic echo, but keep the local
+ * thumbnail of the same file (matched by inbox path, then by position+name).
+ */
+export function mergeLocalPreviews(server: UserAttachment[], local: UserAttachment[] | undefined): UserAttachment[] {
+  if (!local?.length) return server;
+  return server.map((item, index) => {
+    if (item.preview) return item;
+    const twin = (item.path ? local.find((row) => row.path === item.path) : undefined)
+      ?? (local[index]?.name === item.name ? local[index] : undefined);
+    return twin?.preview ? { ...item, preview: twin.preview } : item;
+  });
 }
 
 export function userAttachments(raw: unknown): UserAttachment[] {

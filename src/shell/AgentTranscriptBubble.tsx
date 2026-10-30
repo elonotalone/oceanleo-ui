@@ -9,6 +9,7 @@ import {
 } from "../contracts/aigc-label";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { UploadTile } from "../lib/upload/upload-tile";
+import { archivedImageEligible, NativeArchivedImage } from "./native-thread/NativeArchivedImage";
 import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
@@ -239,7 +240,7 @@ function TranscriptBody({
     return (
       <div className="group flex flex-col items-end gap-1.5">
         {attachments.length > 0 && (
-          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+          <div className="flex max-w-[85%] select-none flex-wrap justify-end gap-1.5" data-transcript-attachments="">
             {attachments.map((attachment, index) => (
               <TranscriptAttachment
                 key={`${attachment.url || attachment.name || "attachment"}-${index}`}
@@ -897,19 +898,43 @@ function TranscriptAttachment({
   onOpen?: (attachment: AgentAttachment) => void;
 }) {
   const tt = useUI();
-  const archive = (attachment as { native_archive?: { download_path?: unknown } })
+  const archive = (attachment as { native_archive?: { download_path?: unknown; size?: unknown } })
     .native_archive;
   if (
     archive &&
     typeof archive.download_path === "string" &&
     !(attachment.url && (attachment.mime || "").startsWith("image/"))
   ) {
-    return (
+    const chip = (
       <NativeArchivedAttachment
         name={attachment.name || tt("附件")}
         path={archive.download_path}
       />
     );
+    // A saved native image shows the picture (read once into a local blob:),
+    // the file chip only when that cannot be done (W1 2026-10-31).
+    const mime = attachment.mime || "";
+    if (archivedImageEligible(mime, archive.size, archive.download_path)) {
+      return (
+        <NativeArchivedImage
+          name={attachment.name || tt("附件")}
+          path={archive.download_path}
+          mime={mime}
+          fallback={chip}
+          render={(url) => (
+            <UploadTile
+              name={attachment.name}
+              mime={mime}
+              previewUrl={url}
+              size={64}
+              tt={tt}
+              onOpen={onOpen ? () => onOpen({ ...attachment, url }) : undefined}
+            />
+          )}
+        />
+      );
+    }
+    return chip;
   }
   const isImage =
     (attachment.mime || "").startsWith("image/") ||
@@ -941,8 +966,9 @@ function TranscriptAttachment({
   );
 }
 
+// select-none: copying a bubble must not carry file names into the prompt.
 const ATTACHMENT_CHIP =
-  "flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[12px] text-stone-600 shadow-sm hover:bg-stone-50";
+  "flex select-none items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[12px] text-stone-600 shadow-sm hover:bg-stone-50";
 
 function FileGlyph() {
   return (

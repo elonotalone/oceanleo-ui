@@ -12,12 +12,12 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { installDirPayload } from "./install-dir";
 import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oceanleo-program";
 import { isWsProgram } from "./parse";
-import { applyDialog, initialDialogState } from "./reduce";
+import { applyDialog, dropUnsentEcho, initialDialogState } from "./reduce";
 import { nextReconnectDelay } from "./reconnect";
-import { isReconnectingNotice } from "./notice";
+import { isReconnectingNotice, UNSENT_RESTORED_COPY } from "./notice";
 import { composerOccupancy, confirmedBusySessions, confirmedWaitingSessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
 import { createOccupancyProbe } from "./occupancy-probe";
-import { isCompletedStop, sessionInterrupted } from "./session-status";
+import { isCompletedStop, isRetriableStreamCancelText, sessionInterrupted } from "./session-status";
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
@@ -49,7 +49,68 @@ function userFileRows(items: DialogAttachment[]): UserMessageAttachment[] {
     mime: item.mime,
     path: item.path,
     ...(item.archive ? { archive: item.archive } : {}),
+    ...(item.preview ? { preview: item.preview } : {}),
   }));
+}
+
+const RASTER_PREVIEW = /^image\/(?:png|jpeg|gif|webp)$/i;
+const MAX_PREVIEW_BYTES = 25 * 1024 * 1024;
+/** `open_session` with no answer: retry once after this, give up after twice this. */
+export const SESSION_LOAD_TIMEOUT_MS = 20_000;
+
+/** A local thumbnail for a picked image (`blob:` of this tab), or nothing. */
+function localPreview(file: File): string | undefined {
+  if (!RASTER_PREVIEW.test(file.type || "") || file.size > MAX_PREVIEW_BYTES) return undefined;
+  try {
+    return typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `image.png` → `image-2.png`, `image-3.png`… until it is not in `taken`. */
+export function distinctName(name: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(name)) return name;
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  for (let n = 2; n < 1000; n += 1) {
+    const next = `${stem}-${n}${ext}`;
+    if (!taken.has(next)) return next;
+  }
+  return `${stem}-${Date.now().toString(36)}${ext}`;
+}
+
+function renamedFile(file: File, name: string): File {
+  try {
+    return new File([file], name, { type: file.type, lastModified: file.lastModified });
+  } catch {
+    return file;
+  }
+}
+
+/**
+ * A prompt that went out but the gateway has not acknowledged yet
+ * (`user_message` / `turn_start`). Its draft and attachments are kept here so
+ * a refusal puts them back in the composer instead of losing them.
+ */
+type UnsentPrompt = { text: string; files: DialogAttachment[]; echoed: boolean; viewKey: string };
+
+/** The error frame speaks for the view on screen (its session, or a new view with no session). */
+function frameTargetsCurrentView(frame: Record<string, unknown>, state: { activeSession: string; program: string | null }): boolean {
+  const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+  const program = typeof frame.program === "string" ? frame.program : "";
+  if (program && program !== (state.program ?? "")) return false;
+  return session ? session === state.activeSession : true;
+}
+
+function unsentKeys(frame: Record<string, unknown>): string[] {
+  const keys: string[] = [];
+  if (typeof frame.ref === "string" && frame.ref) keys.push(`ref:${frame.ref}`);
+  if (typeof frame.acp_session === "string" && frame.acp_session && typeof frame.program === "string") {
+    keys.push(`s:${frame.program}::${frame.acp_session}`);
+  }
+  return keys;
 }
 
 // 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
@@ -59,6 +120,14 @@ export type AgentDialogControllerV2 = AgentDialogController & {
   computerName: string;
   /** 登录卡贴码输入框的受控草稿（W3 的 LoginCard 也可以自己持局部 state）。 */
   setLoginCodeDraft: (code: string) => void;
+  /**
+   * The text of the last prompt the gateway refused before acknowledging it
+   * (2026-10-31 W1). Its attachments are already back in `attachments` and
+   * this controller's own `draft` is refilled when empty. A host composer that
+   * owns its text (main chat `send(override)`) puts `text` back into its input
+   * when `seq` changes.
+   */
+  restoredDraft: { seq: number; text: string } | null;
 };
 
 const MAX_PROMPT_CHARS = 32000;
@@ -202,6 +271,9 @@ export function useAgentDialog({
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
   const inboxWaiters = useRef(new Map<string, Promise<void>>());
+  const unsentRef = useRef(new Map<string, UnsentPrompt>());
+  const [restoredDraft, setRestoredDraft] = useState<{ seq: number; text: string } | null>(null);
+  const sessionLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fresh, setFresh] = useState(false);
   const [computerName, setComputerName] = useState("");
   const unreadRef = useRef<string[]>([]);
@@ -325,6 +397,69 @@ export function useAgentDialog({
     }
   }, []);
 
+  const restoreSeqRef = useRef(0);
+  /**
+   * Settle the not-yet-acknowledged prompt a frame speaks for: the gateway's
+   * `user_message` / `turn_start` acknowledges it; an error before that is a
+   * refusal, so its text and attachments go back to the composer and its echo
+   * bubble goes away. Returns the frame to process.
+   */
+  const settleUnsent = useCallback((frame: Record<string, unknown>): Record<string, unknown> => {
+    const pending = unsentRef.current;
+    if (!pending.size || frame.replay === true) return frame;
+    const kind = String(frame.t ?? "");
+    const keys = unsentKeys(frame);
+    if (kind === "user_message" || kind === "turn_start") {
+      for (const key of keys) pending.delete(key);
+      return frame;
+    }
+    if (kind !== "error") return frame;
+    const code = String(frame.code ?? "");
+    const spoken = typeof frame.text === "string" ? frame.text.trim() : "";
+    // A dropped link does not prove a refusal: the turn may still be running.
+    if (isReconnectingNotice(code) || code === "dialog_detached"
+      || isRetriableStreamCancelText(spoken) || isRetriableStreamCancelText(code)) return frame;
+    let key = keys.find((item) => pending.has(item));
+    if (!key && !keys.length) {
+      // Early refusals (attachment outside the inbox, empty prompt…) carry no
+      // ref or session: they answer the latest prompt of the view on screen.
+      key = [...pending.entries()].reverse().find(([, item]) => item.viewKey === viewKeyRef.current)?.[0];
+    }
+    const kept = key ? pending.get(key) : undefined;
+    if (!key || !kept) return frame;
+    pending.delete(key);
+    setAttachments((current) => {
+      const present = new Set(current.map((item) => item.id));
+      return [...kept.files.filter((item) => !present.has(item.id)), ...current].slice(0, 20);
+    });
+    if (kept.text && !draftRef.current.trim()) {
+      draftRef.current = kept.text;
+      setDraft(kept.text);
+    }
+    restoreSeqRef.current += 1;
+    setRestoredDraft({ seq: restoreSeqRef.current, text: kept.text });
+    if (kept.echoed) {
+      // The view the prompt was sent from may have been re-keyed by
+      // session_opened since; drop the echo wherever it is the last user bubble.
+      const drop = { type: "drop-unsent" as const, text: kept.text };
+      const before = stateRef.current.messages;
+      const after = dropUnsentEcho(before, kept.text);
+      if (after !== before && (viewKeyRef.current === kept.viewKey || frameTargetsCurrentView(frame, stateRef.current))) {
+        stateRef.current = { ...stateRef.current, messages: after };
+        dispatch(drop);
+      }
+      const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
+      for (const [viewKey, view] of cached.views) {
+        if (viewKey === viewKeyRef.current) continue;
+        if (viewKey !== kept.viewKey && !unsentKeys(frame).some((item) => item === `s:${viewKey}`)) continue;
+        const messages = dropUnsentEcho(view.messages, kept.text);
+        if (messages !== view.messages) cached.views.set(viewKey, { ...view, messages });
+      }
+    }
+    // Prefer the gateway's own sentence; a bare gateway fault says the draft was kept.
+    return !spoken && code === "gateway_error" ? { ...frame, text: UNSENT_RESTORED_COPY } : frame;
+  }, []);
+
   const ingest = useCallback((raw: string) => {
     let parsed: unknown = null;
     try {
@@ -334,7 +469,7 @@ export function useAgentDialog({
     }
     const frame =
       parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
+        ? settleUnsent(parsed as Record<string, unknown>)
         : null;
     if (!frame) {
       dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
@@ -484,7 +619,7 @@ export function useAgentDialog({
       else if (isCompletedStop(typeof frame.stop === "string" ? frame.stop : "")) addUnread(frameProgram, frameSession);
     }
     if (frame.t === "turn_start" && frameSession && frameProgram) clearUnread(frameProgram, frameSession);
-  }, [addUnread, clearTimer, clearUnread, initialSessionId, mountProgram]);
+  }, [addUnread, clearTimer, clearUnread, initialSessionId, mountProgram, settleUnsent]);
 
   const scheduleReconnect = useCallback(() => {
     if (!enabledRef.current || !activeRef.current) return;
@@ -863,6 +998,7 @@ export function useAgentDialog({
   useEffect(() => {
     dispatch({ type: "reset" });
     setDraft("");
+    unsentRef.current.clear();
     setFresh(false);
     setComputerName("");
     oceanGen.current += 1;
@@ -1102,6 +1238,17 @@ export function useAgentDialog({
       ...(acpSession ? { acp_session: acpSession } : { ref }),
       attachments: userFileRows(files),
     }));
+    // Kept (after the local echo, which must not count as the gateway's
+    // acknowledgement) until the gateway acknowledges or refuses this prompt.
+    const echoed = stateRef.current.messages[stateRef.current.messages.length - 1];
+    const unsent = unsentRef.current;
+    unsent.set(acpSession ? `s:${program}::${acpSession}` : `ref:${ref}`, {
+      text,
+      files,
+      echoed: echoed?.kind === "user" && echoed.text === text,
+      viewKey: viewKeyRef.current,
+    });
+    while (unsent.size > 20) unsent.delete(unsent.keys().next().value as string);
     pendingConfig.current.delete(origin);
     setDraft("");
     setAttachments((current) => current.filter((item) => item.state === "error"));
@@ -1296,15 +1443,42 @@ export function useAgentDialog({
       sessionsSupported: stateRef.current.sessionsSupported, liveTurns: stateRef.current.liveTurns, sessionLoading: true };
     stateRef.current = { ...stateRef.current, ...viewSnapOf(restored) };
     dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
-    void (async () => {
+    const request = async (): Promise<boolean> => {
       const socket = await ensureOpen();
-      if (!socket) {
+      return sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
+    };
+    // No answer in 20 s: ask once more; still nothing after another 20 s:
+    // stop "loading" and say so (2026-10-31 W1), never spin forever.
+    const arm = (attempt: number) => {
+      if (sessionLoadTimerRef.current) clearTimeout(sessionLoadTimerRef.current);
+      sessionLoadTimerRef.current = setTimeout(() => {
+        sessionLoadTimerRef.current = null;
+        const now = stateRef.current;
+        if (!now.sessionLoading || now.activeSession !== acpSession || now.program !== program) return;
+        if (attempt === 0) {
+          arm(1);
+          void request();
+          return;
+        }
+        const timeout = { type: "session-load-timeout" as const, acpSession };
+        stateRef.current = applyDialog(stateRef.current, timeout);
+        dispatch(timeout);
+      }, SESSION_LOAD_TIMEOUT_MS);
+    };
+    void (async () => {
+      if (!(await request())) {
+        if (sessionLoadTimerRef.current) clearTimeout(sessionLoadTimerRef.current);
+        sessionLoadTimerRef.current = null;
+        stateRef.current = applyDialog(stateRef.current, { type: "send-failed" });
         dispatch({ type: "send-failed" });
         return;
       }
-      sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
+      arm(0);
     })();
   }, [clearUnread, ensureOpen]);
+  useEffect(() => () => {
+    if (sessionLoadTimerRef.current) clearTimeout(sessionLoadTimerRef.current);
+  }, []);
   openSessionRef.current = openSession;
 
   const loadOlderHistory = useCallback(() => {
@@ -1562,16 +1736,28 @@ export function useAgentDialog({
   const addAttachments = useCallback((files: File[]) => {
     const computerId = computerIdRef.current.trim();
     const room = Math.max(0, 20 - attachmentsRef.current.length);
-    const accepted = files.slice(0, room);
+    // One paste of two screenshots is two files named image.png: give each a
+    // distinct name (image.png, image-2.png) so the chips, the inbox and the
+    // program can tell them apart.
+    const taken = new Set(attachmentsRef.current.map((item) => item.name));
+    const accepted = files.slice(0, room).map((file) => {
+      const name = distinctName(file.name || "file", taken);
+      taken.add(name);
+      return name === (file.name || "file") ? file : renamedFile(file, name);
+    });
     if (!accepted.length) return;
-    const created: DialogAttachment[] = accepted.map((file) => ({
-      id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      name: file.name || "file",
-      mime: file.type || "application/octet-stream",
-      size: file.size,
-      percent: 0,
-      state: "uploading",
-    }));
+    const created: DialogAttachment[] = accepted.map((file) => {
+      const preview = localPreview(file);
+      return {
+        id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name || "file",
+        mime: file.type || "application/octet-stream",
+        size: file.size,
+        percent: 0,
+        state: "uploading" as const,
+        ...(preview ? { preview } : {}),
+      };
+    });
     setAttachments((current) => [...current, ...created].slice(0, 20));
     const put = computerApi.putComputerInbox;
     created.forEach((chip, index) => {
@@ -1628,6 +1814,12 @@ export function useAgentDialog({
   }, []);
 
   const removeAttachment = useCallback((id: string) => {
+    // Never sent from here (sent files leave the composer), so its local
+    // thumbnail is no longer shown anywhere.
+    const gone = attachmentsRef.current.find((item) => item.id === id);
+    if (gone?.preview) {
+      try { URL.revokeObjectURL(gone.preview); } catch { /* already gone */ }
+    }
     setAttachments((current) => current.filter((item) => item.id !== id));
   }, []);
 
@@ -1711,6 +1903,7 @@ export function useAgentDialog({
     submitLoginCode,
     cancelLogin,
     setLoginCodeDraft,
+    restoredDraft,
     answerPermission,
     answerQuestion,
     openedPrograms: state.opened,

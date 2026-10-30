@@ -167,6 +167,8 @@ export type DialogAttachment = {
   percent?: number;
   state?: DialogAttachmentState;
   error?: string;
+  /** Local `blob:` thumbnail of an image chosen in this tab (never a storage URL). */
+  preview?: string;
 };
 
 export type UserMessageAttachment = {
