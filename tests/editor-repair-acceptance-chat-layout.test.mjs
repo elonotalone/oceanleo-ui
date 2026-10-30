@@ -170,6 +170,7 @@ const chatStubs = {
   ),
   "../lib/agent-progress": dataModule(`
     export function activeAgentProgressKey() { return null; }
+    export function liveAgentProgressKey() { return ""; }
     export function buildAgentRenderItems() { return []; }
     export function takeUnreportedAgentArtifacts() { return []; }
     export function sameAgentMessages() { return true; }

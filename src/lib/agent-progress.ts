@@ -12,10 +12,10 @@ export interface AgentProgressRenderItem {
   type: "progress";
   key: string;
   /**
-   * The process of one stretch of a turn, in real order: plans, thoughts
-   * (`analysis`, interim rows, and a reply's streamed `meta.reasoning` as a
-   * synthetic `analysis` row with `meta.reasoning === true`), tool steps, and
-   * any assistant text that was followed by more process in the same turn.
+   * One run of consecutive process in a turn, in real order: plans, thoughts
+   * (`analysis`, interim rows, and a reply's or a speech row's `meta.reasoning`
+   * as a synthetic `analysis` row with `meta.reasoning === true`) and tool
+   * steps. Never words the agent said to the user (2026-10-31 invariant).
    */
   messages: AgentMessage[];
   startIndex: number;
@@ -71,8 +71,7 @@ export type ProcessEntry =
       text: string;
       /** 0 for the first plan of the block, then 1, 2… for updates. */
       revision: number;
-    }
-  | { type: "text"; key: string; text: string; message: AgentMessage };
+    };
 
 export interface ProcessSummary {
   thoughts: number;
@@ -134,6 +133,29 @@ export function agentReasoningText(message: AgentMessage): string {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
+/**
+ * A cloud `analysis` row whose content is words the agent said to the user in
+ * a round that also called tools (backend `round_end`). Its `meta.reasoning`
+ * is the thought; its content is a normal message. `meta.speech` decides;
+ * rows written before that flag existed count as speech when their content
+ * is not just the reasoning repeated.
+ */
+export function isAgentSpeechMessage(message: AgentMessage): boolean {
+  if (message.role !== "assistant" || message.kind !== "analysis") return false;
+  const content = (message.content || "").trim();
+  if (!content) return false;
+  const flag = message.meta?.speech;
+  if (flag === true) return true;
+  if (flag === false) return false;
+  const reasoning = agentReasoningText(message);
+  return Boolean(reasoning) && content !== reasoning;
+}
+
+/** An assistant answer row that has no visible words yet (still reasoning). */
+function isPendingAnswer(message: AgentMessage): boolean {
+  return isAnswerText(message) && !(message.content || "").trim();
+}
+
 function positiveNumber(value: unknown): number | null {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : null;
@@ -161,13 +183,14 @@ function reasoningRow(message: AgentMessage): AgentMessage {
 /**
  * Ordered timeline items.
  *
- * Inside one assistant turn (between user messages) every process message
- * stays where it happened. A stretch of process is one block; assistant text
- * that is followed by more process in the same turn is part of that block (in
- * place), and the text after the turn's last process entry — the answer — is
- * a normal message outside the fold. Gates, artifacts, errors and other
- * non-process rows also stay outside and end the current block. A reply's
- * `meta.reasoning` becomes the thought right before that reply's text.
+ * Inside one assistant turn (between user messages) every message stays
+ * where it happened. Only consecutive process (thoughts, tools, plans) forms
+ * a collapsible block. Any words the agent says to the user — interim text
+ * between tools, a speech row's content, the answer — end the block and are
+ * a normal message in place, with a key that never changes as more process
+ * arrives after it. Gates, artifacts, errors and other non-process rows also
+ * stay outside and end the current block. A reply's or speech row's
+ * `meta.reasoning` becomes the thought right before its text.
  */
 export function buildAgentRenderItems(
   messages: AgentMessage[],
@@ -182,11 +205,6 @@ export function buildAgentRenderItems(
       messages[segmentEnd].role !== "user"
     ) {
       segmentEnd += 1;
-    }
-
-    let lastProcess = -1;
-    for (let index = segmentStart; index < segmentEnd; index += 1) {
-      if (isAgentProgressMessage(messages[index])) lastProcess = index;
     }
 
     let block: AgentProgressRenderItem | null = null;
@@ -213,16 +231,13 @@ export function buildAgentRenderItems(
       // Trusted workspace actions are machine-to-UI transport. They must never
       // appear as an empty or JSON-shaped chat bubble.
       if (message.kind === "ui_action") continue;
-      if (isAgentProgressMessage(message)) {
+      const speech = isAgentSpeechMessage(message);
+      if (!speech && isAgentProgressMessage(message)) {
         join(message, index);
         continue;
       }
-      if (isAnswerText(message)) {
-        if (agentReasoningText(message)) join(reasoningRow(message), index);
-        if (index < lastProcess && (message.content || "").trim()) {
-          join(message, index);
-          continue;
-        }
+      if ((speech || isAnswerText(message)) && agentReasoningText(message)) {
+        join(reasoningRow(message), index);
       }
       flush();
       items.push({
@@ -265,6 +280,27 @@ export function activeAgentProgressKey(
     }
   }
   return "";
+}
+
+/**
+ * The progress block that is live right now: the latest turn's last block,
+ * and only while nothing visible follows it. Once the agent's words (or a
+ * gate, artifact, error…) start after it, it is no longer live, so it folds
+ * by itself; the next run of process opens a new live block.
+ */
+export function liveAgentProgressKey(
+  items: AgentRenderItem[],
+  messages: AgentMessage[],
+): string {
+  const key = activeAgentProgressKey(items, messages);
+  if (!key) return "";
+  const at = items.findIndex((item) => item.key === key);
+  for (let index = at + 1; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.type === "message" && isPendingAnswer(item.message)) continue;
+    return "";
+  }
+  return key;
 }
 
 
@@ -376,11 +412,18 @@ function planItems(message: AgentMessage): ProcessPlanItem[] {
     .map((content) => ({ content: content.trim(), status: "", priority: "" }));
 }
 
-/** One ordered entry per process message; nothing is merged or reordered. */
+/**
+ * One ordered entry per process message; nothing is merged or reordered.
+ * Hard invariant: no entry is ever words to the user. A speech row passed in
+ * contributes only its reasoning; answer text is dropped.
+ */
 export function buildProcessEntries(messages: AgentMessage[]): ProcessEntry[] {
   const entries: ProcessEntry[] = [];
   let plans = 0;
-  messages.forEach((message, position) => {
+  messages.forEach((original, position) => {
+    const speech = isAgentSpeechMessage(original);
+    if (speech && !agentReasoningText(original)) return;
+    const message = speech ? reasoningRow(original) : original;
     const key = `${message.kind || "text"}-${message.id}-${position}`;
     if (message.kind === "plan" || message.meta?.plan === true) {
       const items = planItems(message);
@@ -420,10 +463,6 @@ export function buildProcessEntries(messages: AgentMessage[]): ProcessEntry[] {
         ms: positiveNumber(message.meta?.reasoning_ms),
         streaming: message.meta?.streaming === true,
       });
-      return;
-    }
-    if ((message.content || "").trim()) {
-      entries.push({ type: "text", key, text: message.content, message });
     }
   });
   return entries;

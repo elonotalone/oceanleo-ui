@@ -95,25 +95,32 @@ test("ids are deterministic negative integers, unique and stable", () => {
   assert.deepEqual(grown.slice(0, a.length).map((m) => m.id), a.map((m) => m.id), "appending keeps earlier ids");
 });
 
-test("buildAgentRenderItems keeps the real order: thought, tool, text, tool, plan in one block; gates and the answer stay in the stream", () => {
+test("buildAgentRenderItems keeps the real order: text between tools is a normal message in place, only consecutive process forms a block; gates and the answer stay in the stream", () => {
   const out = dialogToAgentMessages(dialog(), { live: true });
   const items = buildAgentRenderItems(out);
   const progress = items.filter((item) => item.type === "progress");
-  assert.equal(progress.length, 1);
-  const entries = buildProcessEntries(progress[0].messages);
-  assert.deepEqual(entries.map((entry) => entry.type), ["thought", "tool", "text", "tool", "plan"]);
-  assert.equal(entries[0].text, "Look at the failing step");
-  assert.equal(entries[1].title, "Read package.json");
-  assert.equal(entries[1].kind, "read");
-  assert.equal(entries[2].text, "Found it. ", "text between tools stays where it happened");
-  assert.equal(entries[3].status, "failed");
-  assert.equal(entries[3].content[0].output, "FAIL a.test.ts");
-  assert.equal(entries[3].content[1].type, "diff");
-  assert.deepEqual(entries[4].items.map((item) => item.status), ["completed", "pending"]);
-  const summary = summarizeProcess(progress[0].messages, entries);
-  assert.deepEqual([summary.thoughts, summary.tools, summary.failed, summary.usagePct], [1, 2, 1, 10]);
+  assert.equal(progress.length, 2, "the text between tools splits the process");
+  const first = buildProcessEntries(progress[0].messages);
+  const second = buildProcessEntries(progress[1].messages);
+  assert.deepEqual(first.map((entry) => entry.type), ["thought", "tool"]);
+  assert.deepEqual(second.map((entry) => entry.type), ["tool", "plan"]);
+  assert.equal(first[0].text, "Look at the failing step");
+  assert.equal(first[1].title, "Read package.json");
+  assert.equal(first[1].kind, "read");
+  assert.equal(second[0].status, "failed");
+  assert.equal(second[0].content[0].output, "FAIL a.test.ts");
+  assert.equal(second[0].content[1].type, "diff");
+  assert.deepEqual(second[1].items.map((item) => item.status), ["completed", "pending"]);
+  const firstAt = items.indexOf(progress[0]);
+  assert.equal(items[firstAt + 1].type, "message");
+  assert.equal(items[firstAt + 1].message.content, "Found it. ", "text between tools stays where it happened, outside the block");
+  assert.equal(items[firstAt + 2], progress[1]);
+  const s1 = summarizeProcess(progress[0].messages, first);
+  const s2 = summarizeProcess(progress[1].messages, second);
+  assert.deepEqual([s1.thoughts, s1.tools, s1.failed, s1.usagePct], [1, 1, 0, null]);
+  assert.deepEqual([s2.thoughts, s2.tools, s2.failed, s2.usagePct], [0, 1, 1, 10]);
   const visible = items.filter((item) => item.type === "message").map((item) => item.message.kind);
-  assert.deepEqual(visible, ["text", "gate", "gate", "text", "notice", "error"]);
+  assert.deepEqual(visible, ["text", "text", "gate", "gate", "text", "notice", "error"]);
 });
 
 test("a live turn without a stop leaves the last answer streaming; interrupted turns are marked stopped", () => {

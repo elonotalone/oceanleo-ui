@@ -395,6 +395,7 @@ const appendRemarkStubUrl = dataModule(`
 `);
 const agentProgressStubUrl = dataModule(`
   export function activeAgentProgressKey() { return null; }
+  export function liveAgentProgressKey() { return ""; }
   export function buildAgentRenderItems() { return []; }
   export function sameAgentMessages() { return true; }
   export function takeUnreportedAgentArtifacts() { return []; }

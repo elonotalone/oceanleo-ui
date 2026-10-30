@@ -185,6 +185,7 @@ const functionAgentUrl = await compileModule("src/shell/FunctionAgentChat.tsx", 
   "../lib/operator-remark": dataModule("export function appendOperatorRemark(prompt){ return prompt; }"),
   "../lib/agent-progress": dataModule(`
     export function activeAgentProgressKey() { return null; }
+    export function liveAgentProgressKey() { return ""; }
     export function buildAgentRenderItems() { return []; }
     export function sameAgentMessages() { return true; }
     export function takeUnreportedAgentArtifacts() { return []; }

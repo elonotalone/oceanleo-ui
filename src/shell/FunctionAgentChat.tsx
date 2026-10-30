@@ -130,6 +130,7 @@ import { appendOperatorRemark } from "../lib/operator-remark";
 import {
   activeAgentProgressKey,
   buildAgentRenderItems,
+  liveAgentProgressKey,
   takeUnreportedAgentArtifacts,
 } from "../lib/agent-progress";
 
@@ -1649,6 +1650,8 @@ export function FunctionAgentChat({
   const running = status === "running" || busy;
   const renderItems = buildAgentRenderItems(messages);
   const activeProgressKey = activeAgentProgressKey(renderItems, messages);
+  // Only the block nothing visible follows yet is live; it folds once text starts after it.
+  const liveProgressKey = liveAgentProgressKey(renderItems, messages);
 
   // 「中止」：AI 工作中点停止键 → 停任务。
   const stop = useCallback(async () => {
@@ -1667,8 +1670,8 @@ export function FunctionAgentChat({
     }
   }, [sessionReadOnly, taskId, refresh]);
 
-  // 启发式追问（后端 meta.suggestions）——最后一条 assistant 消息上取；点了直接发送。
-  // 同时记录最新 assistant 文本条 index，用于给它流式打字机。
+  // 记录最新 assistant 文本条 index，用于给它流式打字机。
+  // 回答后的追问 chip 已取消（操作员 2026-10-31），旧行的 meta.suggestions 不再渲染。
   let lastAssistantIdx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (
@@ -1683,7 +1686,6 @@ export function FunctionAgentChat({
   const presentation = threadPresentation(messages, status, {
     busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
-  const suggestions = presentation.suggestions;
   const turnState = latestTurn(messages);
   const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
   const showThinkingTicker = Boolean(
@@ -1693,29 +1695,6 @@ export function FunctionAgentChat({
   const thinkingText = showThinkingTicker
     ? thinkingLabel(tt, thinkingSeconds, turnState.thinkingChars)
     : tt("agent 正在思考…");
-
-  async function sendSuggestion(text: string) {
-    if (!taskId || busy || sessionReadOnly) return;
-    const effectiveText = appendOperatorRemark(text, operatorRemark);
-    editorCommands.noteUserTurn();
-    const editorContext = editorCommands.contextFor(effectiveText);
-    setBusy(true);
-    setMessages((m) => [
-      ...m,
-      { id: Date.now(), role: "user", kind: "text", content: effectiveText },
-    ]);
-    noteOutgoingTurn(taskId, userTurnCount(messages) + 1);
-    const r = await followUp(taskId, effectiveText, undefined, editorContext);
-    setBusy(false);
-    if (r.ok) {
-      kickAfterFollowUp(taskId);
-    }
-    else {
-      const failure = localAgentFailure(r, false);
-      setError(failure?.text || r.error || tt("发送失败"));
-      if (failure?.kind === "unconfirmed") kickAfterFollowUp(taskId);
-    }
-  }
 
   // 操作台简报桥：让自定义 opsContent 能把拼好的 prompt 交给本功能区 agent 执行。
   const bridge = useMemo<FnAgentBridge>(
@@ -1819,7 +1798,7 @@ export function FunctionAgentChat({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={presentation.working && item.key === activeProgressKey}
+                running={presentation.working && item.key === liveProgressKey}
                 accent={accent}
               />
             ) : (
@@ -1870,29 +1849,6 @@ export function FunctionAgentChat({
           {presentation.thinking && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {thinkingText}
-            </div>
-          )}
-          {/* 灵感（3 个可点追问）：从上到下渐变显示（错峰淡入，非流式）。 */}
-          {suggestions.length > 0 && (
-            <div className="flex flex-col items-stretch gap-0.5 pt-1.5">
-              {suggestions.map((s, i) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => void sendSuggestion(s)}
-                  style={{ animationDelay: `${i * 130}ms` }}
-                  className="group v-fade-up flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[14px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100/70 hover:text-stone-900"
-                >
-                  <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="M8 12h8M12 8v8" strokeLinecap="round" />
-                    <circle cx="12" cy="12" r="9" />
-                  </svg>
-                  <span className="min-w-0 flex-1 truncate">{s}</span>
-                  <svg className="h-4 w-4 shrink-0 text-stone-300 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              ))}
             </div>
           )}
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}

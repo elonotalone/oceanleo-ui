@@ -2,7 +2,8 @@
 // programs (Claude Code / Codex / Cursor / Hermes), and no horizontal scrollbar.
 //
 // Mounts the REAL AgentProgress and AgentTranscriptBubble in jsdom and pins the
-// operator rulings: real order; full tool detail (native diff / terminal /
+// operator rulings: real order; words to the user never inside a block (10-31);
+// the rail darkens on hover and folds the module; full tool detail (native diff / terminal /
 // locations, cloud args / result / error); reasoning renders as a thought;
 // running = open and live, finished = one summary line; each entry folds on its
 // own and selecting text never collapses it; auto-allowed permissions hidden;
@@ -49,7 +50,7 @@ const { AgentProgress } = await import(await compileModule("src/shell/AgentProgr
 const { AgentTranscriptBubble } = await import(await compileModule("src/shell/AgentTranscriptBubble.tsx", {
   "../i18n/ui/useUI": uiStub,
   "./share/share-clipboard": dataModule("export async function writeClipboardText() { return true; }"),
-  "../lib/cloud-computer-api": dataModule("export async function cloudComputerRequest() { return {}; }"),
+  "../lib/cloud-computer-api": dataModule("export async function cloudComputerRequest() { return {}; } export function computerIdRequestField() { return {}; }"),
 }));
 const { buildAgentRenderItems } = await import("../src/lib/agent-progress.ts");
 const { dialogToAgentMessages } = await import("../src/shell/native-thread/map-dialog.ts");
@@ -94,36 +95,48 @@ function nativeTurn(live = true) {
 
 function progressOf(messages) {
   const items = buildAgentRenderItems(messages);
-  return { items, block: items.find((item) => item.type === "progress") };
+  const blocks = items.filter((item) => item.type === "progress");
+  return { items, blocks, block: blocks[0] };
 }
 
-test("native: order preserved, running block is open and live, tool expands to diff / terminal / locations, auto-allowed hidden", async () => {
-  const { items, block } = progressOf(nativeTurn(true));
-  assert.deepEqual(items.map((item) => item.type), ["message", "progress"], "text between tools is inside the block, in place");
-  const view = await render(AgentProgress, { messages: block.messages, running: true, accent: "#123456" });
+function entryKinds(host) {
+  const list = host.querySelector("[data-agent-process-entries]");
+  return [...list.children].map((node) =>
+    node.hasAttribute("data-agent-process-thought") ? "thought"
+      : node.hasAttribute("data-agent-process-tool") ? `tool:${node.getAttribute("data-agent-process-tool")}`
+        : node.hasAttribute("data-agent-process-plan") ? "plan" : "?");
+}
+
+test("native: order preserved, text between tools is a normal message in place, tools expand to diff / terminal / locations, auto-allowed hidden", async () => {
+  const { items, blocks } = progressOf(nativeTurn(true));
+  assert.deepEqual(items.map((item) => item.type), ["message", "progress", "message", "progress"], "text between tools ends the block");
+  assert.equal(items[2].message.content, "Now running the tests.");
+  const first = await render(AgentProgress, { messages: blocks[0].messages, running: false, accent: "#123456" });
+  const live = await render(AgentProgress, { messages: blocks[1].messages, running: true, accent: "#123456" });
   try {
-    const root = view.host.querySelector("[data-agent-process]");
-    assert.equal(root.getAttribute("data-agent-process-state"), "running");
-    const list = view.host.querySelector("[data-agent-process-entries]");
-    assert.ok(list, "running block is expanded");
-    const order = [...list.children].map((node) =>
-      node.hasAttribute("data-agent-process-thought") ? "thought"
-        : node.hasAttribute("data-agent-process-tool") ? `tool:${node.getAttribute("data-agent-process-tool")}`
-          : node.hasAttribute("data-agent-process-text") ? "text"
-            : node.hasAttribute("data-agent-process-plan") ? "plan" : "?");
-    assert.deepEqual(order, ["thought", "tool:edit", "text", "tool:execute", "plan"]);
-    assert.doesNotMatch(view.host.textContent, /已自动允许|runInBand/, "auto-allowed permission is hidden");
+    assert.equal(first.host.querySelector("[data-agent-process]").getAttribute("data-agent-process-state"), "done");
+    assert.equal(first.host.querySelector("[data-agent-process-entries]"), null, "the block before the text is folded");
+    await click(first.host.querySelector("[data-agent-process-toggle]"));
+    assert.deepEqual(entryKinds(first.host), ["thought", "tool:edit"]);
+    assert.equal(live.host.querySelector("[data-agent-process]").getAttribute("data-agent-process-state"), "running");
+    assert.ok(live.host.querySelector("[data-agent-process-entries]"), "the live block is expanded");
+    assert.deepEqual(entryKinds(live.host), ["tool:execute", "plan"]);
+    for (const view of [first, live]) {
+      assert.equal(view.host.querySelector("[data-agent-process-text]"), null, "no text inside a block");
+      assert.doesNotMatch(view.host.textContent, /Now running the tests/);
+      assert.doesNotMatch(view.host.textContent, /已自动允许|runInBand/, "auto-allowed permission is hidden");
+    }
     // Latest plan open while running, with status marks and priority.
-    const plan = view.host.querySelector("[data-agent-process-plan-body]");
+    const plan = live.host.querySelector("[data-agent-process-plan-body]");
     assert.ok(plan, "latest plan is expanded while running");
     assert.deepEqual([...plan.querySelectorAll("[data-plan-status]")].map((li) => li.getAttribute("data-plan-status")), ["completed", "in_progress"]);
     assert.match(plan.textContent, /☑/);
     assert.match(plan.textContent, /优先级高/);
     // Running tool shows its status in words.
-    const exec = view.host.querySelector('[data-agent-process-tool="execute"]');
+    const exec = live.host.querySelector('[data-agent-process-tool="execute"]');
     assert.match(exec.textContent, /运行中/);
     // Expand the edit tool: red/green diff lines and its location.
-    const edit = view.host.querySelector('[data-agent-process-tool="edit"]');
+    const edit = first.host.querySelector('[data-agent-process-tool="edit"]');
     await click(edit.querySelector("button"));
     const ops = [...edit.querySelectorAll("[data-diff-op]")].map((row) => row.getAttribute("data-diff-op"));
     assert.deepEqual(ops, [" ", "-", "+"]);
@@ -137,19 +150,21 @@ test("native: order preserved, running block is open and live, tool expands to d
     assert.match(terminal.textContent, /expected c/);
     assert.match(terminal.className, /overflow-auto/);
     assert.match(terminal.className, /max-h-/);
-  } finally { view.cleanup(); }
+  } finally { first.cleanup(); live.cleanup(); }
 });
 
-test("finished turn collapses to one summary line with steps, failures and usage; the answer stays outside; toggling opens it", async () => {
-  const { items, block } = progressOf(nativeTurn(false));
-  assert.deepEqual(items.map((item) => item.type), ["message", "progress", "message"]);
-  assert.equal(items[2].message.content, "Patched; one test still fails.", "final answer outside the fold");
-  const view = await render(AgentProgress, { messages: block.messages, running: false });
+test("finished turn: each block collapses to one summary line with steps, failures and usage; texts stay outside; toggling opens it", async () => {
+  const { items, blocks } = progressOf(nativeTurn(false));
+  assert.deepEqual(items.map((item) => item.type), ["message", "progress", "message", "progress", "message"]);
+  assert.equal(items[2].message.content, "Now running the tests.");
+  assert.equal(items[4].message.content, "Patched; one test still fails.", "final answer outside the fold");
+  const first = await render(AgentProgress, { messages: blocks[0].messages, running: false });
+  const view = await render(AgentProgress, { messages: blocks[1].messages, running: false });
   try {
+    assert.match(first.host.querySelector("[data-agent-process-summary]").textContent, /思考 · 1 个步骤/);
     assert.equal(view.host.querySelector("[data-agent-process-entries]"), null, "finished = collapsed");
     const line = view.host.querySelector("[data-agent-process-summary]").textContent;
-    assert.match(line, /思考/);
-    assert.match(line, /2 个步骤/);
+    assert.match(line, /1 个步骤/);
     assert.match(line, /1 个失败/);
     assert.match(line, /用量 42%/);
     assert.match(view.host.querySelector("[data-agent-process-failed]").className, /rose/);
@@ -157,7 +172,70 @@ test("finished turn collapses to one summary line with steps, failures and usage
     assert.ok(view.host.querySelector("[data-agent-process-entries]"), "click opens the whole process");
     await click(view.host.querySelector("[data-agent-process-toggle]"));
     assert.equal(view.host.querySelector("[data-agent-process-entries]"), null);
+  } finally { first.cleanup(); view.cleanup(); }
+});
+
+test("rail: a 12 px button with a 1 px line that darkens on hover; clicking it folds the whole module and it stays folded", async () => {
+  const messages = [
+    { id: 1, role: "assistant", kind: "analysis", content: "Look first.", meta: { interim: true } },
+    { id: 2, role: "assistant", kind: "step", content: "读取文件", meta: { tool: "read_file", status: "running" } },
+  ];
+  const view = await render(AgentProgress, { messages, running: true });
+  try {
+    const rail = view.host.querySelector("[data-agent-process-rail]");
+    assert.ok(rail, "the rail is rendered while open");
+    assert.equal(rail.tagName, "BUTTON");
+    assert.equal(rail.getAttribute("type"), "button");
+    assert.equal(rail.getAttribute("aria-label"), "收起");
+    assert.equal(rail.getAttribute("aria-expanded"), "true");
+    assert.match(rail.className, /(^|\s)group(\s|$)/);
+    assert.match(rail.className, /(^|\s)w-3(\s|$)/, "12 px hit area");
+    assert.match(rail.className, /inset-y-0/, "spans the whole module height");
+    const line = rail.querySelector("span");
+    assert.match(line.className, /(^|\s)w-px(\s|$)/, "1 px line");
+    assert.match(line.className, /(^|\s)bg-stone-200(\s|$)/);
+    assert.match(line.className, /group-hover:bg-stone-400/, "darkens on hover");
+    assert.match(line.className, /transition-colors/);
+    assert.equal(view.host.querySelector("[data-agent-process-entries]").className.includes("border-l"), false, "the old static border is gone");
+    await click(rail);
+    assert.equal(view.host.querySelector("[data-agent-process-entries]"), null, "click folds the whole module");
+    assert.equal(view.host.querySelector("[data-agent-process-rail]"), null);
+    assert.equal(view.host.querySelector("[data-agent-process-toggle]").getAttribute("aria-expanded"), "false");
+    // The user's fold stands while the block keeps running and when it ends.
+    await view.update({ messages: [...messages, { id: 3, role: "assistant", kind: "step", content: "运行", meta: { status: "running" } }], running: true });
+    assert.equal(view.host.querySelector("[data-agent-process-entries]"), null);
+    await view.update({ running: false });
+    assert.equal(view.host.querySelector("[data-agent-process-entries]"), null);
+    await click(view.host.querySelector("[data-agent-process-toggle]"));
+    assert.ok(view.host.querySelector("[data-agent-process-rail]"), "the header reopens it");
   } finally { view.cleanup(); }
+});
+
+test("live → text starts after the block: running drops and it folds by itself; the text renders as a normal bubble", async () => {
+  const { liveAgentProgressKey } = await import("../src/lib/agent-progress.ts");
+  const user = { id: 1, role: "user", kind: "text", content: "天气" };
+  const streaming = { id: 2, role: "assistant", kind: "text", content: "", meta: { streaming: true, reasoning: "要查一下" } };
+  const before = [user, streaming];
+  const beforeItems = buildAgentRenderItems(before);
+  const key = beforeItems[1].key;
+  assert.equal(liveAgentProgressKey(beforeItems, before), key);
+  const view = await render(AgentProgress, { messages: beforeItems[1].messages, running: true });
+  try {
+    assert.ok(view.host.querySelector("[data-agent-process-entries]"));
+    const after = [user, { ...streaming, content: "我先查一下上海的天气。" }];
+    const afterItems = buildAgentRenderItems(after);
+    assert.equal(afterItems[1].key, key, "same block, same key");
+    assert.equal(afterItems[2].key, beforeItems[2].key, "same message, same key");
+    assert.equal(liveAgentProgressKey(afterItems, after), "");
+    await view.update({ messages: afterItems[1].messages, running: false });
+    assert.equal(view.host.querySelector("[data-agent-process-entries]"), null, "folded once text started");
+  } finally { view.cleanup(); }
+  // The cloud speech row, after its round ends, is still the same normal bubble.
+  const speech = { id: 2, role: "assistant", kind: "analysis", content: "我先查一下上海的天气。", meta: { interim: true, speech: true, reasoning: "要查一下" } };
+  const items = buildAgentRenderItems([user, speech]);
+  assert.equal(items[2].type, "message");
+  const bubble = await render(AgentTranscriptBubble, { message: items[2].message });
+  try { assert.match(bubble.host.textContent, /我先查一下上海的天气。/); } finally { bubble.cleanup(); }
 });
 
 test("running → finished collapses on its own; a thought opens live and does not collapse while text is selected", async () => {

@@ -44,9 +44,7 @@ export function threadPresentation(
     (reply.meta?.done || reply.meta?.final));
   const working = (effectiveStatus === "running" || Boolean(options.busy)) && !stopped && !complete;
   const thinking = working && !options.activeProgress && !(visible && reply?.meta?.streaming === true);
-  const suggestions = effectiveStatus === "done" && complete && !stopped && Array.isArray(reply?.meta?.suggestions)
-    ? (reply.meta.suggestions as unknown[]).filter((item): item is string =>
-        typeof item === "string" && Boolean(item.trim())).slice(0, 3)
-    : [];
-  return { complete, working, thinking, stopped, suggestions, effectiveStatus };
+  // No follow-up suggestion chips (operator, 2026-10-31): old rows may still
+  // carry `meta.suggestions`; nothing reads them.
+  return { complete, working, thinking, stopped, effectiveStatus };
 }

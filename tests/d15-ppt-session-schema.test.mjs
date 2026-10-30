@@ -181,6 +181,7 @@ const chatUrl = await compileModule("src/shell/FunctionAgentChat.tsx", {
   `),
   "../lib/agent-progress": dataModule(`
     export function activeAgentProgressKey() { return null; }
+    export function liveAgentProgressKey() { return ""; }
     export function buildAgentRenderItems() { return []; }
     export function sameAgentMessages(current, incoming) {
       try {

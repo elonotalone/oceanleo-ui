@@ -136,6 +136,7 @@ import { RestartDraftButton } from "./RestartDraftButton";
 import {
   activeAgentProgressKey,
   buildAgentRenderItems,
+  liveAgentProgressKey,
 } from "../lib/agent-progress";
 import { historySessionHref } from "./workspace-route";
 import {
@@ -2033,9 +2034,8 @@ function AgentChatInner({
     void refresh(taskId);
   }, [readOnly, taskId, refresh, tt, isLocalExecution, controlLocal]);
 
-  // 启发式追问（后端在最终回答的 meta.suggestions 里给 3 个）——取最后一条 assistant
-  // 消息上的 suggestions；一旦用户继续输入 / 任务重新 running 就消失。
-  // 同时记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
+  // 记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
+  // 回答后的追问 chip 已取消（操作员 2026-10-31），旧行的 meta.suggestions 不再渲染。
   let lastAssistantIdx = -1;
   const lastUserIdx = messages.findLastIndex((message) => message.role === "user");
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -2050,10 +2050,11 @@ function AgentChatInner({
   }
   const renderItems = buildAgentRenderItems(messages);
   const activeProgressKey = activeAgentProgressKey(renderItems, messages);
+  // Only the block nothing visible follows yet is live; it folds once text starts after it.
+  const liveProgressKey = liveAgentProgressKey(renderItems, messages);
   const presentation = threadPresentation(messages, status, {
     busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
-  const suggestions = presentation.suggestions;
   const turnState = latestTurn(messages);
   const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
   const showThinkingTicker = Boolean(
@@ -2669,7 +2670,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={presentation.working && item.key === activeProgressKey}
+                running={presentation.working && item.key === liveProgressKey}
                 accent={accent}
               />
             ) : (
@@ -2734,30 +2735,6 @@ function AgentChatInner({
     ),
     tail: (
       <>
-          {/* 灵感（回答完成后给 3 个可点追问，对照 Manus）：从上到下渐变显示
-              （不是流式，是错峰淡入）；点了直接发送。 */}
-          {suggestions.length > 0 && (
-            <div className="flex flex-col items-stretch gap-0.5 pt-1.5">
-              {suggestions.map((s, i) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => void sendSuggestion(s)}
-                  style={{ animationDelay: `${i * 130}ms` }}
-                  className="group v-fade-up flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[14px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100/70 hover:text-stone-900"
-                >
-                  <svg className="h-4 w-4 shrink-0 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="M8 12h8M12 8v8" strokeLinecap="round" />
-                    <circle cx="12" cy="12" r="9" />
-                  </svg>
-                  <span className="min-w-0 flex-1 truncate">{s}</span>
-                  <svg className="h-4 w-4 shrink-0 text-stone-300 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              ))}
-            </div>
-          )}
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
           <EditorCommandNotes notes={editorCommands.notes} />
           {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
@@ -2860,6 +2837,7 @@ function AgentChatInner({
     const nativeMessages = thread.messages;
     const nativeRenderItems = buildAgentRenderItems(nativeMessages);
     const nativeProgressKey = activeAgentProgressKey(nativeRenderItems, nativeMessages);
+    const nativeLiveProgressKey = liveAgentProgressKey(nativeRenderItems, nativeMessages);
     const nativePresentation = threadPresentation(nativeMessages, thread.running ? "running" : "", {
       activeProgress: Boolean(nativeProgressKey),
     });
@@ -2935,7 +2913,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={nativePresentation.working && item.key === nativeProgressKey}
+                running={nativePresentation.working && item.key === nativeLiveProgressKey}
                 accent={accent}
               />
             ) : (

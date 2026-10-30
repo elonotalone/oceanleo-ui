@@ -40,28 +40,31 @@ test("active progress and multi-step replies keep the right activity indicator",
   );
 });
 
-test("all stop sources clear activity and suggestions", () => {
+test("all stop sources clear activity", () => {
   const cases = [
-    view("stopped", reply("partial", { suggestions: ["next"] })),
-    view("running", reply("partial", { stopped: true, suggestions: ["next"] })),
-    view("running", reply("partial", { suggestions: ["next"] }), { taskId: "t", stoppedTaskId: "t" }),
+    view("stopped", reply("partial")),
+    view("running", reply("partial", { stopped: true })),
+    view("running", reply("partial"), { taskId: "t", stoppedTaskId: "t" }),
   ];
   for (const result of cases) {
     assert.equal(result.working, false);
     assert.equal(result.thinking, false);
-    assert.deepEqual(result.suggestions, []);
   }
 });
 
-test("suggestions require completed current turn and done status", () => {
-  const suggested = reply("hello", { done: true, suggestions: ["a", "b", "c"] });
-  for (const status of ["running", "stopped", "failed", "error"]) {
-    assert.deepEqual(view(status, suggested).suggestions, []);
+test("no follow-up suggestion chips (2026-10-31): old rows' meta.suggestions are never surfaced", async () => {
+  const suggested = reply("hello", { done: true, suggestions: ["把结果再精炼一版", "补充可执行的下一步", "换一个角度继续深入"] });
+  const result = view("done", suggested);
+  assert.equal(result.complete, true);
+  assert.equal("suggestions" in result, false);
+  const root = new URL("../src/shell/", import.meta.url);
+  for (const path of ["AgentChat.tsx", "FunctionAgentChat.tsx", "agent-thread/rules.ts"]) {
+    const source = await readFile(new URL(path, root), "utf8");
+    assert.doesNotMatch(source, /presentation\.suggestions|suggestions\.map\(|sendSuggestion\(s\)/, path);
+    assert.doesNotMatch(source, /meta\?\.suggestions|meta\.suggestions as/, `${path} reads no meta.suggestions`);
   }
-  assert.deepEqual(view("done", suggested).suggestions, ["a", "b", "c"]);
-  assert.deepEqual(view("done", reply("hello", { stopped: true, suggestions: ["a"] })).suggestions, []);
-  assert.deepEqual(threadPresentation([suggested, user], "done").suggestions, []);
-  assert.deepEqual(view("done", suggested, { stoppedTaskId: "t", taskId: "t" }).suggestions, []);
+  const fn = await readFile(new URL("FunctionAgentChat.tsx", root), "utf8");
+  assert.doesNotMatch(fn, /function sendSuggestion/, "the chip-only sender is gone");
 });
 
 test("stop override survives a stale running refresh and durable stopped meta", () => {
@@ -97,7 +100,8 @@ test("both chats wire shared working and thinking and retain stopped history", a
   for (const path of ["AgentChat.tsx", "FunctionAgentChat.tsx"]) {
     const source = await readFile(new URL(path, root), "utf8");
     assert.match(source, /threadPresentation\(messages, status, \{[^}]*activeProgress: Boolean\(activeProgressKey\)/);
-    assert.match(source, /running=\{presentation\.working && item\.key === activeProgressKey\}/);
+    assert.match(source, /running=\{presentation\.working && item\.key === liveProgressKey\}/);
+    assert.match(source, /const liveProgressKey = liveAgentProgressKey\(renderItems, messages\)/);
     assert.match(source, /\{presentation\.thinking && \(\s*<div/);
     const stoppedProp = source.match(/stopped=\{([\s\S]*?)\}\s*onArtifactOpen=/)?.[1] || "";
     assert.ok(/item\.message\.meta\?\.stopped === true\s*\|\|/.test(stoppedProp), `${path}: durable stop should stand alone`);

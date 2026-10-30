@@ -3,13 +3,15 @@
 // The ONE process timeline for the task chat (2026-10-30 overhaul, W3).
 //
 // Serves the OceanLeo cloud agent and the native programs (Claude Code / Codex /
-// Cursor / Hermes via map-dialog) alike: a block is one stretch of a turn's
+// Cursor / Hermes via map-dialog) alike: a block is one run of consecutive
 // process in real order — thoughts (incl. streamed `meta.reasoning`), tools with
-// their full detail, plans with status, and text that was followed by more work.
+// their full detail, plans with status. Words to the user are never in here
+// (2026-10-31): they end the block and render as normal messages in place.
 //
-// Fold (operator ruling): while the turn runs the block is open and live; when
-// it finishes it collapses to one line ("思考 12 秒 · 9 个步骤"). Each entry also
-// folds on its own; selecting text inside an open entry never collapses it.
+// Fold (operator ruling): while the block is live it is open; once text starts
+// after it (or the turn finishes) it collapses to one line ("思考 12 秒 · 9 个
+// 步骤"). The left rail darkens on hover and a click on it folds the module.
+// Each entry also folds on its own; selecting text never collapses it.
 // Rendered with the host's own styling (stone palette, accent); nothing here is
 // borrowed from agent-dialog components or server-page/tone.
 
@@ -111,7 +113,7 @@ export function AgentProgress({
   const tt = useUI();
   const entries = useMemo(() => buildProcessEntries(messages), [messages]);
   const summary = useMemo(() => summarizeProcess(messages, entries), [messages, entries]);
-  const [open, toggle] = useLiveFold(running);
+  const [open, toggle, close] = useLiveFold(running);
   if (!entries.length) return null;
   let latestPlan = "";
   for (const entry of entries) if (entry.type === "plan") latestPlan = entry.key;
@@ -144,17 +146,29 @@ export function AgentProgress({
         <Chevron open={open} />
       </button>
       {open && (
-        <div
-          data-agent-process-entries=""
-          className={`ml-0.5 mt-0.5 space-y-0.5 border-l border-stone-200 pl-3 ${WRAP}`}
-        >
-          {entries.map((entry, index) => {
-            const live = running && (index === last || (entry.type === "thought" && entry.streaming));
-            if (entry.type === "thought") return <ThoughtView key={entry.key} entry={entry} live={live} />;
-            if (entry.type === "tool") {
-              return <ToolView key={entry.key} entry={entry} running={running} accent={accent} />;
-            }
-            if (entry.type === "plan") {
+        <div className={`relative mt-0.5 pl-4 ${WRAP}`}>
+          {/* The rail: darkens on hover; clicking it folds the whole module. */}
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={tt("收起")}
+            title={tt("收起")}
+            data-agent-process-rail=""
+            onClick={close}
+            className="group absolute inset-y-0 left-0 flex w-3 cursor-pointer justify-center"
+          >
+            <span
+              aria-hidden="true"
+              className="h-full w-px bg-stone-200 transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover:bg-stone-400"
+            />
+          </button>
+          <div data-agent-process-entries="" className={`space-y-0.5 ${WRAP}`}>
+            {entries.map((entry, index) => {
+              const live = running && (index === last || (entry.type === "thought" && entry.streaming));
+              if (entry.type === "thought") return <ThoughtView key={entry.key} entry={entry} live={live} />;
+              if (entry.type === "tool") {
+                return <ToolView key={entry.key} entry={entry} running={running} accent={accent} />;
+              }
               return (
                 <PlanView
                   key={entry.key}
@@ -163,15 +177,8 @@ export function AgentProgress({
                   accent={accent}
                 />
               );
-            }
-            return (
-              <div key={entry.key} data-agent-process-text="" className={`py-1 ${WRAP}`}>
-                <Markdown className="text-[13px] leading-relaxed text-stone-600">
-                  {entry.text}
-                </Markdown>
-              </div>
-            );
-          })}
+            })}
+          </div>
         </div>
       )}
     </div>
