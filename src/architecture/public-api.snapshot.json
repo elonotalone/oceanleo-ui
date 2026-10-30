@@ -4628,13 +4628,7 @@
           "kind": "named",
           "name": "ComputerTaskImport",
           "importedName": "ComputerTaskImport",
-          "source": "./cloud-computer/task-host/ComputerTaskImport"
-        },
-        {
-          "kind": "named",
-          "name": "ComputerTaskWorkspace",
-          "importedName": "ComputerTaskWorkspace",
-          "source": "./cloud-computer/task-host/ComputerTaskWorkspace"
+          "source": "./cloud-computer/computer-task-import"
         },
         {
           "kind": "named",

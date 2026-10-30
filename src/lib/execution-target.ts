@@ -166,9 +166,20 @@ export function withRunMode(target: ExecutionTarget, mode: "cloud" | "device" | 
   return wanted ? { kind: "device", id: target.id, name: target.name, driver: wanted, gui: false } : { kind: "device", id: target.id, name: target.name };
 }
 
-/** A loaded task binds its own target; it never borrows a new draft's remembered selection. */
-export function taskExecutionTarget(task: {plan?: unknown; computer_id?: string | null}): ExecutionTarget | null {
+/** A `mode="computer"` task (or legacy `shell`) made from a computer conversation, not a cloud run. */
+export function isComputerWorkspaceTask(task: {mode?: unknown; plan?: unknown}): boolean {
+  return task.mode === "computer" || task.mode === "shell" || Boolean(record(task.plan).computer_workspace);
+}
+
+/**
+ * A loaded task binds its own target; it never borrows a new draft's remembered selection.
+ * `null`: not knowable from the task row alone. A computer-workspace task whose
+ * row carries no `computer_id` (the task detail API omits it) is bound to the
+ * computer of its sessions, never shown as "cloud".
+ */
+export function taskExecutionTarget(task: {mode?: unknown; plan?: unknown; computer_id?: string | null}): ExecutionTarget | null {
   const plan = record(task.plan);
+  if (isComputerWorkspaceTask(task) && !task.computer_id) return null;
   const planned = record(plan.execution_target);
   if (planned.kind === "cloud") return {kind: "cloud"};
   if (planned.kind === "device" || planned.kind === "computer") {

@@ -802,6 +802,4 @@ export { openMessages, closeMessages } from "./messages/host-state";
 export { MessagesNavIcon } from "./messages/MessagesNavIcon";
 export { imEnabledHere, useImEnabled } from "../lib/im/client";
 
-export { ComputerTaskWorkspace } from "./cloud-computer/task-host/ComputerTaskWorkspace";
-
-export { ComputerTaskImport } from "./cloud-computer/task-host/ComputerTaskImport";
+export { ComputerTaskImport } from "./cloud-computer/computer-task-import";
