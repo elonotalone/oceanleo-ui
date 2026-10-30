@@ -110,3 +110,51 @@ AgentTranscriptBubble: (reused) `已选：{name}` · `已经提交` · `写下�
 - R3 (host): render native messages via `buildAgentRenderItems(thread.messages)`; pass `onNativeAnswer={thread.answer}` to `AgentTranscriptBubble`; `running`→`presentation.working`; disable branch/regenerate for native (ids are negative — `onBranch` already requires `id > 0`; `onRegenerate` should be omitted when the conversation is native). Show `blockedReason` as the one plain line and disable the composer when `!thread.ready && !thread.running`; show "这段对话暂时没能保存到云端" only when `thread.saveFailed`. Mount the hook per conversation (key the owner by `session.id`) and set `enabled` only for the visible native chat conversation. Pass `thread.modelPicker` as R2's `modelPickerSlot`, `thread.composerAttachments/onAttachFiles/onRemoveAttachment` to LeoComposer, `thread.send(text)` on submit (clear input only when it resolves true), `thread.stop` on stop. Show a "读取更早的对话" control when `thread.hasOlder` → `thread.loadOlder()`.
 - R4 (settings): `thread.dialog` is the full `AgentDialogControllerV2` (programs/models/configOptions/mode/openInstall/openLogin/logoutProgram/retryConnect). Install/login sheets are not rendered by R1; settings must host them.
 - Parent (i18n): add the New strings above to `computer-task-workspace-copy.ts`.
+
+## Fix checkpoint (V1 review, R1 items 1–4 + wording)
+
+### New / changed fields (exact)
+
+```ts
+// NativeThreadInput — backward compatible (new field optional; `enabled` semantics documented)
+export type NativeThreadInput = {
+  computer: Computer | null;
+  session: ComputerTaskSession | null;      // null + program = draft
+  enabled: boolean;                          // keep connected; hosts keep it true for opened chats, visible or hidden
+  onNativeSessionChange?: (nativeId: string) => void;
+  program?: NativeProgram | null;            // NEW: draft only (ignored when session is given)
+};
+// NativeThread — added
+live: boolean;    // NEW: connected right now (link up, not offline) → permissions/questions can be answered
+draft: boolean;   // NEW: no managed session yet; status/models only; ready=false; send resolves false
+send(text: string): Promise<boolean>;   // now the controller's real outcome; "" + ready attachments is a valid send
+// Controller (agent-dialog)
+AgentDialogController.send: (text?: string) => Promise<boolean>;   // was Promise<void>; true only when the prompt frame went out
+useAgentDialog({ ..., openActiveSession?: boolean /* default true; native thread passes false */ })
+```
+
+### Fixes
+
+1. `live` exposed. `answer()` is a no-op unless live. `AgentTranscriptBubble` native gates: without `onNativeAnswer`, read-only (all buttons disabled, no form). A click no longer shows a local 已选 / 已经提交. It only holds the controls until the record (`chosen` / `submitted`) arrives, or for at most 8 s.
+2. Truthful send. Controller `send`/`sendOcean` return `boolean`: every early return gives false, and the prompt is written through `sendJson` (false + unreachable notice if the socket is not open). The hook returns that value and no longer pre-filters, so attachment-only sends work (tested: `text:""` + `files`).
+3. Draft mode. `session:null` + `program`: the controller connects (status, models, sessions list) with `openActiveSession:false`, so the gateway's active session is never adopted. No `open_session`, no prompt, no archive read; `ready=false`. When the host then supplies the newly created session (no native id), the draft view is kept rather than reset, so the first prompt carries the draft's model choice.
+4. Hidden but connected. No separate `visible` flag was added because the controller doesn't need one. Connection = `enabled`, and a `document.hidden` page keeps the socket and keeps ingesting frames (tested). The cloud-saved archive is now cleared only when the session changes, not on reconnect or enable toggles, and pages read via "load older" survive refreshes.
+5. Wording. NativeModelPicker `{provider} 尚未认证。` → `{provider} 还没有登录。`. GateBubble + native GateFrame `已处理的确认` → `已确认`.
+
+### Commands + results
+
+Same run-light command as above:
+- native-thread-hook: 8/8 pass (4 new: live/offline, truthful + attachment-only send, draft mode, hidden).
+- native-thread-gate: 5/5 pass (read-only and no-local-choice assertions added).
+- native-thread-map: 6/6 pass.
+- acp-card-flows: 55/55 pass. aigc-label: 17/17. approval-card: 11/11. d5-share-checkbox: 1/1.
+- Scoped tsc on native-thread/index.ts, AgentTranscriptBubble.tsx and agent-dialog/Composer.tsx: no errors in R1 files. The only errors were in R3's in-progress AgentChat.tsx (`NativeChatPane.connecting`, `onSetupBlocked` props) and the known xterm.css ambient declaration. No full typecheck was run this round.
+
+### New strings
+
+- `{provider} 还没有登录。` (replaces `{provider} 尚未认证。`)
+- `已确认` (replaces `已处理的确认` in AgentTranscriptBubble). Parent: `computer-task-workspace-copy.ts` `handledConfirmation` and `tests/i18n-tt-key-coverage.test.mjs:819` still list the old key.
+
+### Requests
+
+- R3: pass `onNativeAnswer` only when `thread.live`. For draft use `useNativeThread({ computer, session: null, program, enabled: true })`; after creating the session pass it in and call `send` once `ready`. Clear the input only when `send` resolves true. Keep `enabled` true for hidden opened chats.

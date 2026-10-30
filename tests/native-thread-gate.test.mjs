@@ -90,12 +90,13 @@ test("native permission renders one gate button per option; allow kinds primary;
     assert.match(buttons[2].className, /border-amber-300/);
     await click(buttons[1]);
     assert.deepEqual(calls, [[message.id, "always"]]);
-    assert.ok([...view.host.querySelectorAll("[data-native-permission-option]")].every((b) => b.disabled));
-    assert.match(view.host.querySelector("[data-native-permission-chosen]").textContent, /已选：Always/);
+    assert.ok([...view.host.querySelectorAll("[data-native-permission-option]")].every((b) => b.disabled), "held while the answer is in flight");
+    assert.equal(view.host.querySelector("[data-native-permission-chosen]"), null, "no local 已选 before the record says so");
     await click(view.host.querySelector('[data-native-permission-option="no"]'));
     assert.equal(calls.length, 1, "a second pick is ignored");
     await view.update({ message: permissionMessage("Always") });
-    assert.match(view.host.textContent, /已处理的确认/);
+    assert.match(view.host.querySelector("[data-native-permission-chosen]").textContent, /已选：Always/);
+    assert.match(view.host.textContent, /已确认/);
   } finally { view.cleanup(); }
 });
 
@@ -104,8 +105,22 @@ test("a chosen or read-only permission is not actionable", async () => {
   try {
     assert.ok([...view.host.querySelectorAll("[data-native-permission-option]")].every((b) => b.disabled));
     assert.match(view.host.textContent, /已选：Allow once/);
-    assert.match(view.host.textContent, /已处理的确认/);
+    assert.match(view.host.textContent, /已确认/);
   } finally { view.cleanup(); }
+  // Pending but not live (no onNativeAnswer, e.g. offline archive): read-only, no local choice.
+  const readOnly = await render({ message: permissionMessage() });
+  try {
+    const buttons = [...readOnly.host.querySelectorAll("[data-native-permission-option]")];
+    assert.ok(buttons.length === 3 && buttons.every((b) => b.disabled));
+    await click(buttons[0]);
+    assert.equal(readOnly.host.querySelector("[data-native-permission-chosen]"), null);
+    assert.doesNotMatch(readOnly.host.textContent, /需要你确认/);
+  } finally { readOnly.cleanup(); }
+  const question = await render({ message: questionMessage({ questions: [{ id: "c", prompt: "Pick", options: ["A"] }] }) });
+  try {
+    assert.equal(question.host.querySelector("form"), null, "read-only question has no form");
+    assert.equal(question.host.querySelector("[data-native-question-submitted]"), null);
+  } finally { question.cleanup(); }
 });
 
 test("native question with options submits field values in gate style", async () => {
@@ -122,6 +137,11 @@ test("native question with options submits field values in gate style", async ()
     assert.equal(view.host.querySelector('[data-native-question-option="b"]').getAttribute("aria-pressed"), "true");
     await click(view.host.querySelector("[data-native-question-submit]"));
     assert.deepEqual(calls, [{ color: "b" }]);
+    assert.equal(view.host.querySelector("[data-native-question-submitted]"), null, "no local 已经提交 before the record says so");
+    assert.equal(view.host.querySelector("[data-native-question-submit]").disabled, true, "held while in flight");
+    await click(view.host.querySelector("[data-native-question-submit]"));
+    assert.equal(calls.length, 1);
+    await view.update({ message: questionMessage({ questions: [{ id: "color", prompt: "Pick a color", options: [{ id: "r", label: "Red" }, { id: "b", label: "Blue" }] }] }, true) });
     assert.ok(view.host.querySelector("[data-native-question-submitted]"));
   } finally { view.cleanup(); }
 });

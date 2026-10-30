@@ -161,6 +161,7 @@ export function useAgentDialog({
   oceanleoReady = true,
   taskSessionId,
   onArchiveStatus,
+  openActiveSession = true,
 }: {
   computerId: string;
   sessionId?: string;
@@ -172,11 +173,19 @@ export function useAgentDialog({
   oceanleoReady?: boolean;
   taskSessionId?: string;
   onArchiveStatus?: (status: "saved" | "pending" | "error") => void;
+  /**
+   * When the sessions list arrives, open the gateway's active (or the mount
+   * `initialSessionId`) conversation by itself. Hosts that open sessions
+   * explicitly (the main-chat native thread, including draft mode) pass false.
+   */
+  openActiveSession?: boolean;
 }): AgentDialogControllerV2 {
   const taskSessionRef = useRef(taskSessionId);
   taskSessionRef.current = taskSessionId;
   const archiveStatusRef = useRef(onArchiveStatus);
   archiveStatusRef.current = onArchiveStatus;
+  const openActiveSessionRef = useRef(openActiveSession);
+  openActiveSessionRef.current = openActiveSession;
   const tt = useUI();
   const [mountProgram] = useState(() => initialProgram);
   const [mountRef] = useState(() => `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`);
@@ -447,7 +456,7 @@ export function useAgentDialog({
       stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
       dispatch({ type: "frame", frame });
     }
-    if (frame.t === "sessions" && frameProgram === stateRef.current.program) {
+    if (openActiveSessionRef.current && frame.t === "sessions" && frameProgram === stateRef.current.program) {
       const program = frameProgram as AgentProgram;
       const listed = cached.sessions.get(program)?.sessions ?? [];
       const target = program === mountProgram && initialSessionId ? initialSessionId : taskSessionRef.current ? "" : typeof frame.active === "string" ? frame.active.trim() : "";
@@ -774,9 +783,9 @@ export function useAgentDialog({
 
   refreshOceanRef.current = refreshOcean;
 
-  const sendOcean = useCallback(async (override?: string) => {
+  const sendOcean = useCallback(async (override?: string): Promise<boolean> => {
     const computerId = computerIdRef.current;
-    if (!computerId) return;
+    if (!computerId) return false;
     const ocean = stateRef.current;
     const oceanMode = composerOccupancy({
       linkUp: ocean.occupancyLink,
@@ -789,17 +798,17 @@ export function useAgentDialog({
       offline: ocean.offline,
       sessionLoading: ocean.sessionLoading,
     });
-    if (oceanMode !== "idle") return;
+    if (oceanMode !== "idle") return false;
     if (inboxWaiters.current.size) {
       await Promise.all([...inboxWaiters.current.values()]);
     }
     const pendingFiles = attachmentsRef.current.filter(isInboxReady);
     const text = (override ?? draftRef.current).trim();
-    if (!text && pendingFiles.length === 0) return;
+    if (!text && pendingFiles.length === 0) return false;
     // 后端 turn 上限 8000：超了明说，不静默截断（WS 程序的 32000 是另一条协议）。
     if (text.length > MAX_OCEAN_PROMPT_CHARS) {
       dispatch({ type: "notice", code: "invalid_argument", program: "oceanleo" });
-      return;
+      return false;
     }
     const gen = (oceanGen.current += 1);
     clearOceanWait();
@@ -819,7 +828,7 @@ export function useAgentDialog({
     if (freshTurn) {
       // 「新对话」：先丢掉服务端任务指针，下一句必然新建任务。
       await agentReset(computerId);
-      if (gen !== oceanGen.current) return;
+      if (gen !== oceanGen.current) return false;
       oceanTaskRef.current = "";
       // 新任务从 0 条用户消息计起；旧缓存的计数会把落地判定永远挡住。
       messagesCacheRef.current.set("oceanleo", []);
@@ -833,7 +842,7 @@ export function useAgentDialog({
       text: outgoing,
       shell_session_id: sessionIdRef.current || undefined,
     });
-    if (gen !== oceanGen.current) return;
+    if (gen !== oceanGen.current) return true;
     if (!result.ok || !result.data?.task_id) {
       oceanSendRef.current = null;
       if (result.status === 0) {
@@ -844,10 +853,11 @@ export function useAgentDialog({
           frame: { t: "error", code: "node_error", program: "oceanleo" },
         });
       }
-      return;
+      return false;
     }
     oceanTaskRef.current = result.data.task_id;
     void pollOcean(result.data.task_id, gen);
+    return true;
   }, [clearOceanWait, pollOcean]);
 
   useEffect(() => {
@@ -1012,15 +1022,14 @@ export function useAgentDialog({
 
   // `override` lets a host composer (main chat LeoComposer) send its own text
   // without first round-tripping it through this controller's draft state.
-  const send = useCallback(async (override?: string) => {
-    if (abortSendGuardRef.current) return;
+  const send = useCallback(async (override?: string): Promise<boolean> => {
+    if (abortSendGuardRef.current) return false;
     const program = stateRef.current.program;
     // 合同 I6：oceanleo 走 REST turn + 轮询，不碰 WS（P7：不为它等 15s 连接超时）。
     if (program === "oceanleo" && !localOceanleoRef.current) {
-      await sendOcean(typeof override === "string" ? override : undefined);
-      return;
+      return await sendOcean(typeof override === "string" ? override : undefined);
     }
-    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return false;
     const current = stateRef.current;
     const sessionId = current.activeSession || current.draftRef || "";
     const occupancyMode = composerOccupancy({
@@ -1034,16 +1043,16 @@ export function useAgentDialog({
       offline: current.offline,
       sessionLoading: current.sessionLoading,
     });
-    if (occupancyMode !== "idle") return;
+    if (occupancyMode !== "idle") return false;
     const text = (typeof override === "string" ? override : draftRef.current).trim();
     if (inboxWaiters.current.size) {
       await Promise.all([...inboxWaiters.current.values()]);
     }
     const files = attachmentsRef.current.filter(isInboxReady);
-    if (!text && files.length === 0) return;
+    if (!text && files.length === 0) return false;
     if (text.length > MAX_PROMPT_CHARS) {
       dispatch({ type: "notice", code: "invalid_argument", program });
-      return;
+      return false;
     }
     stateRef.current = applyDialog(current, { type: "send-began" });
     const model = current.selectedModel;
@@ -1065,7 +1074,7 @@ export function useAgentDialog({
     const socket = await ensureOpen();
     if (!socket) {
       ingest(JSON.stringify({ t: "error", code: "dialog_unreachable", program, ...(acpSession ? { acp_session: acpSession } : { ref }) }));
-      return;
+      return false;
     }
     const frame: Record<string, unknown> = { t: "prompt", program, text, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) };
     if (acpSession) frame.acp_session = acpSession;
@@ -1079,7 +1088,10 @@ export function useAgentDialog({
       frame.files = promptFiles(files);
     }
     if (taskSessionRef.current) archiveStatusRef.current?.("pending");
-    socket.send(JSON.stringify(frame));
+    if (!sendJson(socket, frame)) {
+      ingest(JSON.stringify({ t: "error", code: "dialog_unreachable", program, ...(acpSession ? { acp_session: acpSession } : { ref }) }));
+      return false;
+    }
     ingest(JSON.stringify({
       t: "user_message",
       program,
@@ -1091,6 +1103,7 @@ export function useAgentDialog({
     setDraft("");
     setAttachments((current) => current.filter((item) => item.state === "error"));
     setFresh(false);
+    return true;
   }, [ensureOpen, ingest]);
 
   const abort = useCallback(() => {

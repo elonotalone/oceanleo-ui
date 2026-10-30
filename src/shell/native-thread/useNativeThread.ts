@@ -19,25 +19,44 @@ import { PROGRAM_LABEL, type AgentDialogMessage, type WsProgram } from "../cloud
 import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
 import { useAgentDialog, type AgentDialogControllerV2 } from "../cloud-computer/agent-dialog/useAgentDialogController";
 import { dialogToAgentMessages, type NativePermissionMeta, type NativeQuestionMeta } from "./map-dialog";
+import type { NativeProgram } from "./types";
 import { NativeModelPicker } from "./NativeModelPicker";
 
 export type NativeThreadInput = {
   computer: Computer | null;
+  /** The managed session. `null` + `program` = draft: connect for status/models only. */
   session: ComputerTaskSession | null;
+  /**
+   * Keep this conversation connected. Hosts keep it true for every opened
+   * native chat, visible or hidden, so prompts and progress keep arriving.
+   */
   enabled: boolean;
   onNativeSessionChange?: (nativeId: string) => void;
+  /**
+   * Draft mode only (used when `session` is null): the program picked for a
+   * conversation that has no managed session yet. The thread connects to read
+   * program status and models (model picker and settings work) but never
+   * opens, creates or prompts a session; `send` resolves false.
+   * Ignored when `session` is given (the session's program wins).
+   */
+  program?: NativeProgram | null;
 };
 
 export type NativeThread = {
   messages: AgentMessage[];
+  /** Connected to the computer right now: permissions/questions can be answered. */
+  live: boolean;
+  /** No managed session yet (draft): status/models only, nothing can be sent. */
+  draft: boolean;
   /** The program is working on this conversation (show Stop / progress). */
   running: boolean;
-  /** A send right now would go out. */
+  /** A send right now would go out (always false in draft mode). */
   ready: boolean;
   /** The computer is offline: messages are the cloud-saved transcript, composer read-only. */
   offline: boolean;
   /** One plain-language line when sending is not possible, else null. */
   blockedReason: string | null;
+  /** Resolves true only when the prompt actually went out. Empty text with ready attachments is a valid send. */
   send(text: string): Promise<boolean>;
   stop(): void;
   answer(message: AgentMessage, optionIdOrAnswers: unknown): void;
@@ -64,10 +83,12 @@ function hasConversation(messages: AgentDialogMessage[]): boolean {
   return messages.some((message) => message.kind === "user" || message.kind === "turn");
 }
 
-export function useNativeThread({ computer, session, enabled, onNativeSessionChange }: NativeThreadInput): NativeThread {
+export function useNativeThread({ computer, session, enabled, onNativeSessionChange, program: draftProgram }: NativeThreadInput): NativeThread {
   const tt = useUI();
-  const program = nativeProgramOf(session);
+  const draft = !session;
+  const program = session ? nativeProgramOf(session) : isWsProgram(draftProgram) ? draftProgram : null;
   const online = computer?.node_online === true;
+  // `live` below = "this hook keeps a connection"; the exported `live` also needs the link up.
   const live = Boolean(enabled && online && computer && program);
   const nativeId = session?.native_session_id ?? "";
   const [archiveStatus, setArchiveStatus] = useState<"saved" | "pending" | "error" | null>(null);
@@ -82,6 +103,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     initialSessionId: nativeId || undefined,
     oceanleoReady: false,
     localOceanleo: false,
+    // Sessions are opened explicitly below; a draft never opens one.
+    openActiveSession: false,
   });
 
   // Keep the controller on this session's program (never a program strip).
@@ -92,17 +115,21 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // Open this managed session's native conversation once per binding.
   const openedRef = useRef("");
   const sessionKey = session?.id ?? "";
-  const firstSession = useRef(sessionKey);
+  const previousSession = useRef(sessionKey);
   useEffect(() => {
-    if (!live || !program || dialog.program !== program) return;
+    if (!live || !program || dialog.program !== program || !session) return;
     if (!nativeId) {
-      // A different managed session without a native id starts a fresh view.
-      if (firstSession.current !== sessionKey && openedRef.current !== `${sessionKey}:`) {
+      // Switching from another managed session starts a fresh view. Coming
+      // from a draft keeps the draft view (it already is fresh, and the host
+      // may be about to send the first prompt into it).
+      if (previousSession.current && previousSession.current !== sessionKey && openedRef.current !== `${sessionKey}:`) {
         openedRef.current = `${sessionKey}:`;
         dialog.newSession();
       }
+      previousSession.current = sessionKey;
       return;
     }
+    previousSession.current = sessionKey;
     if (dialog.activeSession === nativeId) {
       openedRef.current = `${sessionKey}:${nativeId}`;
       return;
@@ -111,7 +138,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     if (openedRef.current === key) return;
     openedRef.current = key;
     dialog.openSession(nativeId);
-  }, [live, program, dialog, dialog.program, dialog.activeSession, nativeId, sessionKey]);
+  }, [live, program, dialog, dialog.program, dialog.activeSession, nativeId, sessionKey, session]);
 
   const reportedRef = useRef(nativeId);
   const onNativeRef = useRef(onNativeSessionChange);
@@ -130,13 +157,22 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const [archive, setArchive] = useState<Archive | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const archiveFor = useRef("");
+  const olderLoaded = useRef(false);
   useEffect(() => {
-    setArchive(null);
-    archiveFor.current = sessionKey;
+    // Only a different session clears what is shown; reconnects and
+    // enable/disable keep the saved transcript (and any older pages read).
+    if (archiveFor.current !== sessionKey) {
+      setArchive(null);
+      olderLoaded.current = false;
+      archiveFor.current = sessionKey;
+    }
     if (!enabled || !session || session.kind !== "acp") return;
     const controller = new AbortController();
     void getComputerTaskTranscript(session.id, { signal: controller.signal })
-      .then((next) => { if (archiveFor.current === session.id) setArchive(next); })
+      .then((next) => {
+        if (archiveFor.current !== session.id) return;
+        setArchive((current) => (current && olderLoaded.current ? current : next));
+      })
       .catch(() => { /* Reading stays quiet; the stream just shows nothing saved yet. */ });
     return () => controller.abort();
   }, [enabled, sessionKey, session?.kind, online]);
@@ -179,13 +215,16 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   if (!computer || !online) blockedReason = tt("这台电脑离线，只能查看已保存的对话。");
   else if (row && !row.installed) blockedReason = tt("这台电脑上还没有安装 {program}，请在设置里安装。", { program: name });
   else if (row && (row.logged_in === false || row.auth === "none")) blockedReason = tt("{program} 还没有登录，请在设置里登录。", { program: name });
-  const ready = live && !blockedReason && occupancyMode === "idle" && dialog.program === program;
+  const ready = live && !draft && !blockedReason && occupancyMode === "idle" && dialog.program === program;
+  const connected = live && dialog.occupancyLink === true && !dialog.offline;
 
   const send = useCallback(async (text: string) => {
     if (!ready) return false;
-    if (!text.trim() && !dialog.attachments.some((item) => item.state === "done")) return false;
-    await dialog.send(text);
-    return true;
+    try {
+      return (await dialog.send(text)) === true;
+    } catch {
+      return false;
+    }
   }, [ready, dialog]);
 
   const stop = useCallback(() => {
@@ -193,7 +232,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   }, [live, dialog]);
 
   const answer = useCallback((message: AgentMessage, value: unknown) => {
-    if (!live) return;
+    if (!connected) return;
     const permission = message.meta?.native_permission as NativePermissionMeta | undefined;
     if (permission && typeof value === "string") {
       if (permission.chosen) return;
@@ -209,7 +248,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       );
       dialog.answerQuestion(question.questionId, values);
     }
-  }, [live, dialog]);
+  }, [connected, dialog]);
 
   const composerAttachments = useMemo(() => dialog.attachments.map((item): ComposerAttachment => ({
     id: item.id,
@@ -245,6 +284,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     void getComputerTaskTranscript(id, { before: archive.next_before })
       .then((older) => {
         if (archiveFor.current !== id) return;
+        olderLoaded.current = true;
         setArchive((current) => current
           ? { ...current, frames: [...older.frames, ...current.frames], has_older: older.has_older, next_before: older.next_before }
           : older);
@@ -257,6 +297,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
 
   return {
     messages,
+    live: connected,
+    draft,
     running,
     ready,
     offline: !online,

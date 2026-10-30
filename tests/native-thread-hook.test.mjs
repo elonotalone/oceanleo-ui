@@ -56,6 +56,8 @@ class FakeSocket {
     const reply = (out) => queueMicrotask(() => { if (this.readyState === 1) this.server(out); });
     if (frame.t === "status") reply(STATUS);
     if (frame.t === "occupancy") reply({ t: "occupancy", program: frame.program, busy: this.busy ?? [] });
+    if (frame.t === "models") reply({ t: "models", program: frame.program, models: [{ id: "gpt-x", name: "GPT X", default: true }, { id: "gpt-y", name: "GPT Y" }] });
+    if (frame.t === "sessions") reply({ t: "sessions", program: frame.program, sessions: [{ id: "srv-active", title: "Someone else's", updated_at: "2026-10-30" }], active: "srv-active" });
     if (frame.t === "open_session") {
       reply({ t: "session_opened", program: frame.program, acp_session: frame.acp_session });
       reply({ t: "transcript", program: frame.program, acp_session: frame.acp_session, live: false, frames: [
@@ -91,7 +93,10 @@ const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/cloud-computer-api": dataModule(`
     export function agentDialogWsUrl(id) { return "ws://example.test/v1/computers/" + id + "/agent-dialog"; }
-    export async function putComputerInbox() { throw new Error("no upload in test"); }
+    export async function putComputerInbox(id, file, onProgress) {
+      onProgress?.(100);
+      return { path: "/home/elon/.oceanleo/inbox/" + file.name, name: file.name, mime: file.type || "text/plain", size: file.size };
+    }
   `),
   "../../../lib/auth/client": dataModule(`export async function accessToken() { return "tok"; }`),
   "../../../lib/agent": dataModule(`export async function getTask() { return { ok: false }; } export async function stopTask() { return { ok: false }; }`),
@@ -257,4 +262,98 @@ test("program not logged in or not installed is a plain blocked reason pointing 
     await until(() => globalThis.__thread.blockedReason !== null, "blocked install");
     assert.equal(globalThis.__thread.blockedReason, "这台电脑上还没有安装 Hermes，请在设置里安装。");
   } finally { missing.cleanup(); }
+});
+
+test("live is exposed; offline threads are not live and ignore answers", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__taskApi = { async transcript() { return { session: session(), frames: [], saved_at: null, sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: session(), enabled: true });
+  try {
+    await until(() => globalThis.__thread.live === true, "live");
+    assert.equal(globalThis.__thread.draft, false);
+    await view.update({ computer: { id: "cc_1", name: "elon", node_online: false } });
+    await until(() => globalThis.__thread.live === false, "not live offline");
+    const before = sent().length;
+    await act(async () => globalThis.__thread.answer({ id: -1, role: "assistant", kind: "gate", content: "", meta: { native_permission: { permId: "p", options: [{ id: "o", name: "O", kind: "allow_once" }], chosen: "", auto: false } } }, "o"));
+    assert.equal(sent().slice(before).some((frame) => frame.t === "permission"), false);
+  } finally { view.cleanup(); }
+});
+
+test("send reports the controller's outcome; attachment-only sends go out with files", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__taskApi = { async transcript() { return { session: session(), frames: [], saved_at: null, sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: session(), enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready");
+    assert.equal(await sendVia(globalThis.__thread, "   "), false, "nothing to send is not a send");
+    assert.equal(sent().some((frame) => frame.t === "prompt"), false);
+    const file = new window.File(["hello"], "notes.txt", { type: "text/plain" });
+    await act(async () => globalThis.__thread.onAttachFiles([file]));
+    await until(() => globalThis.__thread.composerAttachments.length === 1 && !globalThis.__thread.composerAttachments[0].uploading, "uploaded");
+    assert.equal(await sendVia(globalThis.__thread, ""), true);
+    const prompt = sent().find((frame) => frame.t === "prompt");
+    assert.equal(prompt.text, "");
+    assert.deepEqual(prompt.files, [{ name: "notes.txt", mime: "text/plain", path: "/home/elon/.oceanleo/inbox/notes.txt" }]);
+    await until(() => globalThis.__thread.composerAttachments.length === 0, "attachments cleared");
+    await until(() => !globalThis.__thread.ready, "busy after send");
+    assert.equal(await sendVia(globalThis.__thread, "again"), false, "a send while the turn is pending is refused");
+    assert.equal(sent().filter((frame) => frame.t === "prompt").length, 1);
+  } finally { view.cleanup(); }
+});
+
+test("draft mode connects for status and models, never opens, creates or prompts a session; then hands over to the new session", async () => {
+  FakeSocket.sockets = [];
+  const reads = [];
+  globalThis.__taskApi = { async transcript(id) { reads.push(id); return { session: session({ native_session_id: null }), frames: [], saved_at: null, sync_status: "pending" }; } };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: null, program: "codex", enabled: true });
+  try {
+    await until(() => sent().some((frame) => frame.t === "models"), "models requested");
+    await until(() => globalThis.__thread.modelPicker !== null, "model picker");
+    await until(() => sent().some((frame) => frame.t === "sessions"), "sessions listed");
+    for (let i = 0; i < 5; i += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    const thread = globalThis.__thread;
+    assert.equal(thread.draft, true);
+    assert.equal(thread.live, true);
+    assert.equal(thread.ready, false);
+    assert.equal(thread.blockedReason, null);
+    assert.equal(thread.dialog.programs.find((row) => row.id === "codex")?.installed, true, "program status loaded for settings");
+    assert.equal(await sendVia(thread, "hi"), false);
+    assert.deepEqual(sent().filter((frame) => ["open_session", "prompt", "new_session"].includes(frame.t)), [], "no session opened, created or prompted");
+    assert.equal(thread.dialog.activeSession, "", "the gateway's active session is not adopted");
+    assert.deepEqual(reads, [], "no archive read without a session");
+
+    await act(async () => globalThis.__thread.dialog.setSelectedModel("gpt-y"));
+    await view.update({ session: session({ native_session_id: null }) });
+    await until(() => globalThis.__thread.ready, "ready with session");
+    assert.equal(globalThis.__thread.draft, false);
+    assert.equal(await sendVia(globalThis.__thread, "First prompt"), true);
+    const prompt = sent().find((frame) => frame.t === "prompt");
+    assert.equal(prompt.task_session_id, "managed-1");
+    assert.equal(prompt.model, "gpt-y", "the draft's model choice carries into the first prompt");
+  } finally { view.cleanup(); }
+});
+
+test("a hidden chat stays connected and keeps receiving frames", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__taskApi = { async transcript() { return { session: session(), frames: [], saved_at: null, sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: session(), enabled: true });
+  const hiddenDescriptor = Object.getOwnPropertyDescriptor(window.document, "hidden");
+  try {
+    await until(() => globalThis.__thread.live, "live");
+    Object.defineProperty(window.document, "hidden", { configurable: true, get: () => true });
+    await act(async () => window.document.dispatchEvent(new window.Event("visibilitychange")));
+    await view.update({});
+    const socket = openSocket();
+    assert.ok(socket, "socket still open while hidden");
+    await act(async () => {
+      socket.server({ t: "turn_start", program: "codex", acp_session: "nat-1" });
+      socket.server({ t: "question", program: "codex", acp_session: "nat-1", id: "ask-2", title: "Continue?", questions: [] });
+    });
+    await until(() => globalThis.__thread.messages.some((m) => m.meta?.native_question?.questionId === "ask-2"), "frame received while hidden");
+    assert.equal(globalThis.__thread.live, true);
+  } finally {
+    if (hiddenDescriptor) Object.defineProperty(window.document, "hidden", hiddenDescriptor);
+    else delete window.document.hidden;
+    view.cleanup();
+  }
 });

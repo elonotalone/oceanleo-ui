@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import {
   AIGC_LABEL_TEXT,
@@ -423,7 +423,7 @@ function GateBubble({
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3">
       <p className="text-[12px] font-semibold text-amber-800">
-        {active ? tt("需要你确认") : tt("已处理的确认")}
+        {active ? tt("需要你确认") : tt("已确认")}
       </p>
       <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-900">
         <HighlightedText text={prompt} query={highlightQuery} />
@@ -518,7 +518,7 @@ function GateFrame({
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3" {...attributes}>
       <p className="text-[12px] font-semibold text-amber-800">
-        {active ? tt("需要你确认") : tt("已处理的确认")}
+        {active ? tt("需要你确认") : tt("已确认")}
       </p>
       <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-900">
         <HighlightedText text={prompt} query={highlightQuery} />
@@ -538,9 +538,11 @@ function NativePermissionGate({
   highlightQuery?: string;
 }) {
   const tt = useUI();
-  const [picked, setPicked] = useState("");
   const permission = nativePermissionOf(message);
-  const chosen = permission.chosen || picked;
+  // Only the conversation's own record says what was chosen. A local click
+  // just holds the buttons until that record arrives (or a short wait ends).
+  const pending = useLocalHold(permission.chosen);
+  const chosen = permission.chosen;
   const active = !chosen && Boolean(onAnswer);
   const prompt =
     (message.meta?.gate_prompt as string) || message.content || tt("请确认后继续。");
@@ -557,11 +559,11 @@ function NativePermissionGate({
             <button
               key={option.id}
               type="button"
-              disabled={!active}
+              disabled={!active || pending.held}
               data-native-permission-option={option.id}
               onClick={() => {
-                if (!active || !onAnswer) return;
-                setPicked(option.name);
+                if (!active || pending.held || !onAnswer) return;
+                pending.hold();
                 onAnswer(message, option.id);
               }}
               className={isAllowKind(option.kind) ? GATE_PRIMARY : GATE_SECONDARY}
@@ -581,6 +583,22 @@ function NativePermissionGate({
       )}
     </GateFrame>
   );
+}
+
+/** How long a sent answer holds the controls before they unlock again if no record arrives. */
+const NATIVE_ANSWER_HOLD_MS = 8000;
+
+function useLocalHold(confirmed: string): { held: boolean; hold: () => void } {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (confirmed) setHeld(false);
+  }, [confirmed]);
+  useEffect(() => {
+    if (!held) return;
+    const timer = setTimeout(() => setHeld(false), NATIVE_ANSWER_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [held]);
+  return { held, hold: () => setHeld(true) };
 }
 
 type NativeQuestionField = {
@@ -647,8 +665,8 @@ function NativeQuestionGate({
     | undefined;
   const [values, setValues] = useState<Record<string, string>>({});
   const [text, setText] = useState("");
-  const [sent, setSent] = useState(false);
-  const submitted = raw?.submitted === true || sent;
+  const submitted = raw?.submitted === true;
+  const pending = useLocalHold(submitted ? "submitted" : "");
   const active = !submitted && Boolean(onAnswer);
   const fields = nativeQuestionFields(raw?.questions);
   const detail = typeof raw?.detail === "string" ? raw.detail : "";
@@ -660,8 +678,8 @@ function NativeQuestionGate({
     ? fields.every((field) => (values[field.id] ?? "").trim() !== "")
     : Boolean(text.trim());
   const submit = () => {
-    if (!active || !ready || !onAnswer) return;
-    setSent(true);
+    if (!active || !ready || pending.held || !onAnswer) return;
+    pending.hold();
     onAnswer(message, fields ? values : { text });
   };
   return (
@@ -749,7 +767,7 @@ function NativeQuestionGate({
           )}
           <button
             type="submit"
-            disabled={!ready}
+            disabled={!ready || pending.held}
             data-native-question-submit=""
             className={GATE_PRIMARY}
           >

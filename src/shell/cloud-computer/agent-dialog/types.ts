@@ -291,8 +291,8 @@ export type AgentDialogController = {
   interruptedSessions?: string[];
   /** Completions the operator has not opened since they finished. */
   unreadSessions?: string[];
-  /** Sends the draft, or `text` when a host composer owns the input. */
-  send: (text?: string) => Promise<void>;
+  /** Sends the draft, or `text` when a host composer owns the input. True only when the prompt went out. */
+  send: (text?: string) => Promise<boolean>;
   abort: () => void;
   /** Pointer-down on Stop: ignore the rest of this click so the draft is not sent. */
   armAbortSendGuard?: () => void;

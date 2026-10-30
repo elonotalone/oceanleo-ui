@@ -25,7 +25,7 @@ export type NativeModelPickerProps = {
 function unusableReason(model: DialogModel, tt: UITranslate): string {
   const provider = model.provider_label || providerLabel(model.provider || "") || tt("供应商");
   if (model.reason === "needs_credits") return tt("{provider} 的付费模型需要账户余额。", { provider });
-  if (model.reason === "no_credentials") return tt("{provider} 尚未认证。", { provider });
+  if (model.reason === "no_credentials") return tt("{provider} 还没有登录。", { provider });
   return tt("这个模型现在不可用。");
 }
 
