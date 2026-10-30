@@ -27,10 +27,18 @@ import {
   type RefObject,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
+import { type SplitLibraryConfig } from "./SplitWorkspace";
+import {
+  TaskWorkspaceShell,
+  attachmentOpenMode,
+  attachmentWorkspaceItem,
+  useTaskWorkspaceState,
+  type OpenableAttachment,
+  type TaskWorkspaceInitial,
+} from "./TaskWorkspaceShell";
 import { IconSearch } from "./icons";
 import { CollabTaskPresence } from "./collab/CollabActionSlot";
-import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
+import { type CanvasTab } from "./ResultCanvas";
 import { WorkspacePaneErrorBoundary } from "./WorkspacePaneErrorBoundary";
 import { type MaterialItem } from "./MaterialLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
@@ -38,10 +46,7 @@ import {
   ArtifactRenderer,
   artifactToLibraryItem,
 } from "./ArtifactRenderer";
-import {
-  normalizeWorkspaceAction,
-  type WorkspaceActionEnvelope,
-} from "./workspace-actions";
+import { normalizeWorkspaceAction } from "./workspace-actions";
 import {
   AgentTranscriptBubble,
   agentArtifactLabels,
@@ -498,6 +503,12 @@ export interface AgentChatProps {
    * 只需要把话说清楚。
    */
   agentStreamEndpoint?: string;
+  /**
+   * W7 (2026-10-31): the right sidebar's first state, e.g. the file the home
+   * page had open when its first prompt started this task (opened at once,
+   * its editor session bound to the task once it exists).
+   */
+  initialWorkspace?: TaskWorkspaceInitial | null;
 }
 
 /** See {@link AgentChatProps.nativeLaunch}. */
@@ -655,6 +666,7 @@ function AgentChatInner({
   enableEditorCommands = true,
   editorCommandSurface,
   agentStreamEndpoint,
+  initialWorkspace,
 }: AgentChatInnerProps) {
   const tt = useUI();
   // `tt` 是 locale provider 所有的函数。它进下面那条 SSE effect 的依赖，会让
@@ -674,12 +686,15 @@ function AgentChatInner({
   const readOnly = readOnlyProp || Boolean(workspace?.readOnly);
   // 团队/组织页与所有生成结果都归入固定「预览」槽的卡片，不再占一级标签。
   const hasOrgPanel = Boolean(renderOrgPanel);
-  const [libTab, setLibTab] = useState(hasOrgPanel ? "preview" : "home");
-  const [workspaceAction, setWorkspaceAction] =
-    useState<WorkspaceActionEnvelope | null>(null);
   // 团队默认开库；主页普通 agent 始终默认收起。新产物只在隐藏的库内更新，
   // 用户点结果卡或「库」按钮时才展开，避免主页 Enter 后页面自行改布局。
-  const [rightOpen, setRightOpen] = useState(hasOrgPanel);
+  // State lives in the shared TaskWorkspaceShell hook (W7); same names, same defaults.
+  const taskWorkspace = useTaskWorkspaceState({
+    defaultOpen: hasOrgPanel,
+    defaultTab: hasOrgPanel ? "preview" : "home",
+    initial: initialWorkspace,
+  });
+  const { libTab, setLibTab, workspaceAction, setWorkspaceAction, rightOpen, setRightOpen } = taskWorkspace;
   // Which conversation of this task is shown (redo 2026-10-30): the task's own
   // OceanLeo conversation, or one of its managed computer sessions.
   /** `loaded`: one successful list; `failed`: the last attempt failed (retried with backoff). */
@@ -2563,6 +2578,25 @@ function AgentChatInner({
     });
   }, []);
 
+  // W7: a user-uploaded file (message bubble tile or composer tile) opens in
+  // this task's own right sidebar: never a new tab, never a second panel.
+  const openWorkspaceItem = taskWorkspace.openWorkspaceItem;
+  const openTaskAttachment = useCallback(
+    (attachment: OpenableAttachment | AgentAttachment) => {
+      const openable: OpenableAttachment = "id" in attachment
+        ? attachment
+        : {
+            id: attachment.url || attachment.name || "attachment",
+            name: attachment.name,
+            mime: attachment.mime || (attachment.media_type ? `${attachment.media_type}/*` : undefined),
+            url: attachment.url,
+          };
+      const item = attachmentWorkspaceItem(openable, siteId || "oceanleo");
+      openWorkspaceItem(item, attachmentOpenMode(item));
+    },
+    [openWorkspaceItem, siteId],
+  );
+
   const removePreviewArtifact = useCallback(
     async (message: AgentMessage) => {
       const artifactId = message.meta?.artifact?.id;
@@ -2712,6 +2746,7 @@ function AgentChatInner({
                     ? () => openArtifactMessage(item.message)
                     : undefined
                 }
+                onOpenAttachment={openTaskAttachment}
                 onBranch={
                   !running &&
                   !readOnly &&
@@ -2808,6 +2843,7 @@ function AgentChatInner({
             onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
             loading={running}
             onStop={() => void stop()}
+            onOpenAttachment={openTaskAttachment}
             // A computer task has no OceanLeo conversation to send into (its Device row says why).
             disabled={readOnly || computerTask}
             leoSuggest
@@ -3098,6 +3134,19 @@ function AgentChatInner({
   );
 
 
+  // W7: a carried sidebar (the home's open file) survives this component's own
+  // draft/first-task resets above: declared after them, so it runs after them,
+  // on mount and once more when the new task's id arrives; never again.
+  const carriedWorkspaceRef = useRef(initialWorkspace);
+  useEffect(() => {
+    const carried = carriedWorkspaceRef.current;
+    if (!carried) return;
+    if (taskId) carriedWorkspaceRef.current = null;
+    if (carried.open || carried.item) setRightOpen(true);
+    if (carried.tab) setLibTab(carried.tab);
+    if (carried.action) setWorkspaceAction(carried.action);
+  }, [taskId, setLibTab, setRightOpen, setWorkspaceAction]);
+
   // Every generated item becomes a Preview card. Existing organization and
   // browser surfaces are also legacy tabs consumed by the fixed five-slot shell.
   const orgTab: CanvasTab | null = renderOrgPanel
@@ -3137,27 +3186,24 @@ function AgentChatInner({
       content: <CloudBrowserPanel taskId={taskId} accent={accent} />,
     },
   ];
-  const right: ReactNode = (
-    <ResultCanvas
-      tabs={rightTabs}
-      materials={libraryTabs?.materials || []}
-      onSeeAllMaterials={libraryTabs?.onSeeAllMaterials}
-      active={libTab}
-      onChange={setLibTab}
-      accent={accent}
-      action={workspaceAction}
-      showTemplate={siteId !== "oceanleo"}
-      taskId={taskId}
-      siteId={siteId}
-    />
-  );
-
   // 高度账（2026-09-07 顶栏收成一行之后）：对话区不再有自己的返回行，唯一的一行顶栏
   // 就在 SplitWorkspace 左栏里，所以 SplitWorkspace 永远 fillParent 填满宿主给的高度。
+  // SplitWorkspace + ResultCanvas are assembled by the shared TaskWorkspaceShell (W7),
+  // the same shell the home page hosts its column in.
   const split = (
-    <SplitWorkspace
+    <TaskWorkspaceShell
+      state={taskWorkspace}
+      tabs={rightTabs}
+      canvas={{
+        materials: libraryTabs?.materials || [],
+        onSeeAllMaterials: libraryTabs?.onSeeAllMaterials,
+        accent,
+        showTemplate: siteId !== "oceanleo",
+        taskId,
+        siteId,
+      }}
       left={leftPane}
-      right={
+      renderRight={(right) => (
         <WorkspacePaneErrorBoundary
           recoveryKey={`${taskId || ""}:${libTab}:${workspaceAction?.nonce || ""}:${workspaceOpen ?? rightOpen}`}
           title={tt("右侧工作区暂时无法显示，对话仍可继续。")}
@@ -3176,7 +3222,7 @@ function AgentChatInner({
             </div>
           )}
         </WorkspacePaneErrorBoundary>
-      }
+      )}
       leftHidden={!workspaceAgentVisible}
       onAgentFocus={() => onWorkspaceAgentFocus?.()}
       onAgentClose={onWorkspaceAgentClose}
@@ -3197,7 +3243,7 @@ function AgentChatInner({
             // The settings title wins over any hidden editor's header claim while open.
             paneTitle: <span className="truncate text-[12px] font-medium text-stone-500" data-native-settings-title>{settingsTitle}</span>,
             paneTitleOwned: true }
-        : effectiveLibrary}
+        : effectiveLibrary ?? null}
     />
   );
 

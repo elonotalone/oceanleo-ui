@@ -93,6 +93,25 @@ const EMPTY_MATERIALS: MaterialItem[] = [];
 
 export interface CanvasTab extends LegacyWorkspaceSurfaceTab {}
 
+/**
+ * A direct-open request (W7 2026-10-31): open this exact item now, without
+ * waiting for any library list to load and resolve an `itemId`. Consumed once
+ * per `nonce`. `edit` falls back to preview when no typed editor exists.
+ */
+export interface TaskWorkspaceOpenItem {
+  nonce: string;
+  item: LibraryItem;
+  mode: "preview" | "edit";
+  /** Bind the editor's work session to this canvas's task once that task exists. */
+  bindTask?: boolean;
+}
+
+/** What the canvas has open in the foreground (reported to the host). */
+export interface TaskWorkspaceOpenState {
+  item: LibraryItem;
+  mode: "preview" | "edit";
+}
+
 export interface ResultCanvasProps {
   /**
    * Compatibility input. Existing pages can keep declaring their domain tabs;
@@ -123,6 +142,18 @@ export interface ResultCanvasProps {
    * **可选**，不传时空态仍然是既有的图标 + 两行灰字，一个字都不改。
    */
   materialsEmptyCta?: ReactNode;
+  /** Direct-open input (see TaskWorkspaceOpenItem). */
+  openItem?: TaskWorkspaceOpenItem | null;
+  /** The foreground item (or null) whenever it changes, including saved revisions. */
+  onOpenItemChange?: (open: TaskWorkspaceOpenState | null) => void;
+  /**
+   * Wraps the editor of a `bindTask` direct-open item when no work session is
+   * inherited (TaskWorkspaceShell supplies a session provider + task binder).
+   */
+  renderBoundEditor?: (
+    editor: ReactNode,
+    context: { item: LibraryItem; rootId: string; taskId: string | null; siteId: string },
+  ) => ReactNode;
 }
 
 class PluginModuleErrorBoundary extends Component<
@@ -191,6 +222,9 @@ export function ResultCanvas({
   siteId = "",
   materialContext,
   materialsEmptyCta,
+  openItem,
+  onOpenItemChange,
+  renderBoundEditor,
 }: ResultCanvasProps) {
   const tt = useUI();
   const workspaceSession = useOptionalWorkspaceSession();
@@ -251,6 +285,8 @@ export function ResultCanvas({
     workbenchMaterials.actions.includes("insert")
       ? "insert"
       : workbenchMaterials.actions[0];
+  // Set only by a direct-open request carrying `bindTask`; any other open clears it.
+  const [bindEditorToTask, setBindEditorToTask] = useState(false);
   const openCanvasEntry = useCallback(
     (entry: WorkspaceLibraryEntry) => {
       // An explicit library card is a pinned artifact/revision identity.
@@ -259,6 +295,7 @@ export function ResultCanvas({
       setHasCommittedEditorRevision(false);
       setActiveCanvasMode("preview");
       setArtifactSaveError("");
+      setBindEditorToTask(false);
     },
     [],
   );
@@ -268,9 +305,34 @@ export function ResultCanvas({
       setActiveCanvasMode("edit");
       setArtifactSaveError("");
       setActiveCanvasEntry(workspaceEntryFromLibraryItem(item));
+      setBindEditorToTask(false);
     },
     [],
   );
+  // Direct open (W7): the host already holds the exact item, so no library
+  // list has to load and resolve an id first. One request per nonce.
+  const consumedOpenNonceRef = useRef("");
+  useEffect(() => {
+    if (!openItem || consumedOpenNonceRef.current === openItem.nonce) return;
+    consumedOpenNonceRef.current = openItem.nonce;
+    if (
+      openItem.mode === "edit" &&
+      editorCapabilityFor(openItem.item).available
+    ) {
+      openCanvasItem(openItem.item);
+    } else {
+      openCanvasEntry(workspaceEntryFromLibraryItem(openItem.item));
+    }
+    if (openItem.bindTask) setBindEditorToTask(true);
+  }, [openCanvasEntry, openCanvasItem, openItem]);
+  const onOpenItemChangeRef = useRef(onOpenItemChange);
+  onOpenItemChangeRef.current = onOpenItemChange;
+  const reportedItem = activeCanvasEntry?.libraryItem || null;
+  useEffect(() => {
+    onOpenItemChangeRef.current?.(
+      reportedItem ? { item: reportedItem, mode: activeCanvasMode } : null,
+    );
+  }, [activeCanvasMode, reportedItem]);
   const recordSavedEditorItem = useCallback((item: LibraryItem) => {
     const source = activeCanvasEntry?.libraryItem;
     const transition = source
@@ -652,7 +714,7 @@ export function ResultCanvas({
     editorCapabilityFor(activeCanvasEntry.libraryItem).available
       ? activeCanvasEntry.libraryItem
       : null;
-  const editorContent = activeEditorItem ? (
+  const editorWorkbench = activeEditorItem ? (
     <AdvancedContentWorkbench
       key={advancedRootItemId(activeEditorItem)}
       item={activeEditorItem}
@@ -671,6 +733,19 @@ export function ResultCanvas({
       }}
     />
   ) : null;
+  // A carried-over file (home → its new task): the host wraps the editor in
+  // the session provider the embedded workbench would create, plus a binder to
+  // the task once it exists. Decided per opened entry, so the task arriving
+  // never remounts the editor.
+  const editorContent =
+    activeEditorItem && bindEditorToTask && !workspaceSession && renderBoundEditor
+      ? renderBoundEditor(editorWorkbench, {
+          item: activeEditorItem,
+          rootId: advancedRootItemId(activeEditorItem),
+          taskId: effectiveTaskId,
+          siteId: effectiveSiteId || activeEditorItem.siteId,
+        })
+      : editorWorkbench;
   const viewerContent =
     activeCanvasEntry && activeCanvasMode === "preview" ? (
       <div className="flex h-full min-h-0 flex-col">

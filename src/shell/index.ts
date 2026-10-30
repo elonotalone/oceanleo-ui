@@ -209,6 +209,20 @@ export { StudioSection, CollapsibleSection, type StudioSectionProps } from "./St
 // 操作台的比例/画质/风格/数量档等选项统一用它，自动获得「再点一次取消选择」。
 export { OptionRow, type OptionRowProps, type OptionItem } from "./OptionRow";
 export { ResultCanvas, CanvasEmpty, CanvasSubTabs, type ResultCanvasProps, type CanvasTab } from "./ResultCanvas";
+// W7 (2026-10-31): the task right sidebar as one shared shell (AgentChat + the home page).
+export {
+  TaskWorkspaceShell,
+  useTaskWorkspaceState,
+  attachmentWorkspaceItem,
+  attachmentOpenMode,
+  TASK_WORKSPACE_PLAIN_CLOSED_CLASS,
+  type TaskWorkspaceShellProps,
+  type TaskWorkspaceState,
+  type TaskWorkspaceInitial,
+  type TaskWorkspaceOpenItem,
+  type TaskWorkspaceOpenState,
+  type OpenableAttachment,
+} from "./TaskWorkspaceShell";
 // v0.179 canonical artifact control-plane surface. Consumers must not fork
 // response parsers, /v1 HTTP clients, ACL checks or editor command contracts.
 export * from "./artifact-contract";

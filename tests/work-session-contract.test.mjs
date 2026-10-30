@@ -154,7 +154,9 @@ test("共享 AgentChat 可选复用 workspace task，并在首建前绑定真实
     agentChatSource,
     /router\.replace\(historySessionHref\(sessionId, undefined, pathname\)\)/,
   );
-  assert.match(agentChatSource, /const \[rightOpen, setRightOpen\] = useState\(hasOrgPanel\)/);
+  // W7 (2026-10-31): the state lives in the shared TaskWorkspaceShell hook, same default.
+  assert.match(agentChatSource, /useTaskWorkspaceState\(\{\s*defaultOpen: hasOrgPanel,/);
+  assert.match(agentChatSource, /rightOpen, setRightOpen \} = taskWorkspace;/);
   assert.match(agentChatSource, /open: rightOpen/);
   const artifactAutoStart = agentChatSource.indexOf(
     "const seenArtRef = useRef",

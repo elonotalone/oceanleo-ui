@@ -351,7 +351,7 @@ const OVERRIDES = {
   ),
   "./CloudBrowserPanel": dataModule("export function CloudBrowserPanel(){ return null; }"),
   "./ResultCanvas": dataModule(
-    "export function ResultCanvas(){ return null; }\nexport function CanvasEmpty(){ return null; }\nexport function CanvasSubTabs(){ return null; }",
+    "export function ResultCanvas(props){ globalThis.__canvasProps = props; return null; }\nexport function CanvasEmpty(){ return null; }\nexport function CanvasSubTabs(){ return null; }",
   ),
   "./ArtifactRenderer": dataModule(
     "export function ArtifactRenderer(){ return null; }\nexport function artifactToLibraryItem(){ return {}; }",
@@ -726,9 +726,12 @@ let homeContentModule = null;
 /** The real portal HomeContent with the real AgentChat; the computer-task lib calls are recorded. */
 async function loadHomeContent() {
   if (homeContentModule) return homeContentModule;
+  // W7: the home hosts the real TaskWorkspaceShell (same SplitWorkspace/ResultCanvas instances as AgentChat).
+  const taskWorkspaceShellUrl = await compileModule("src/shell/TaskWorkspaceShell.tsx", OVERRIDES, { missingPackageStub: lazyStub });
   const portalShell = dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
     export { AgentChat } from ${JSON.stringify(agentChatUrl)};
+    export { TaskWorkspaceShell, useTaskWorkspaceState, attachmentWorkspaceItem, attachmentOpenMode } from ${JSON.stringify(taskWorkspaceShellUrl)};
     export { useNativeThread } from ${JSON.stringify(nativeThreadStub)};
     export function LeoComposer(props) {
       globalThis.__portalComposer = props;
@@ -852,6 +855,43 @@ test("portal homepage shows the real conversation before create settles and rese
     assert.ok(host.textContent.includes("第二个新任务"));
   } finally {
     release();
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("portal homepage W7: an uploaded tile opens the task sidebar in place and the same file stays open in the new task", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  window.history.replaceState(null, "", "/");
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  const pane = () => host.querySelector('[data-workspace-pane="main"]')?.getAttribute("data-workspace-pane-state");
+  try {
+    globalThis.__canvasProps = null;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(host.querySelector("[data-home-workspace]")?.getAttribute("data-home-workspace"), "closed");
+    assert.equal(pane(), "closed", "collapsed by default");
+    assert.equal(globalThis.__canvasProps, null, "no canvas mounted before the first open");
+    assert.equal(typeof globalThis.__portalComposer.onOpenAttachment, "function", "C1 wired: the composer never renders its own PreviewPanel");
+    await act(async () => globalThis.__portalComposer.onOpenAttachment({ id: "up_1", name: "cat.png", mime: "image/png", url: "https://x.supabase.co/cat.png", previewUrl: "blob:https://oceanbizs.com/cat" }));
+    assert.equal(host.querySelector("[data-home-workspace]")?.getAttribute("data-home-workspace"), "open");
+    assert.equal(pane(), "open", "the task page's own right sidebar opened on the home");
+    assert.equal(globalThis.__canvasProps.openItem.item.url, "blob:https://oceanbizs.com/cat", "the local blob, never the storage URL");
+    assert.equal(globalThis.__canvasProps.openItem.mode, "preview");
+    assert.equal(globalThis.__canvasProps.taskId, null);
+    assert.ok(host.querySelector("[data-home-composer]"), "the home column stays in the left pane");
+    await act(async () => globalThis.__canvasProps.onOpenItemChange({ item: globalThis.__canvasProps.openItem.item, mode: "preview" }));
+    await act(async () => { await globalThis.__portalComposer.onSubmit("看看这张图"); });
+    assert.ok(host.querySelector("[data-composer]"), "the live task conversation replaced the home");
+    assert.equal(pane(), "open", "the sidebar stays open in the new task");
+    assert.equal(globalThis.__canvasProps.openItem.item.key, "attachment:up_1", "with the same file");
+    assert.equal(globalThis.__canvasProps.openItem.bindTask, true, "its editor session binds to the new task");
+  } finally {
     await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
     window.history.replaceState(null, "", "/");
   }
