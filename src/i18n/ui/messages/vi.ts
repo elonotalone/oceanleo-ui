@@ -429,7 +429,7 @@ const vi: Record<string, string> = {
   "回到 OceanLeo 查看结果": "Quay lại OceanLeo để xem kết quả",
   "发送到电脑": "Gửi tới máy tính",
   "发到哪台电脑": "Gửi tới máy nào",
-  "离线": "ngoại tuyến",
+  "离线": "Ngoại tuyến",
   "正在查你的电脑…": "Đang tìm máy tính của bạn…",
   "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。": "Chưa có máy tính nào đã ghép nối có thể nhận tệp. Hãy cài OceanLeo trên máy đó và ghép nối trước.",
   "去连接一台电脑": "Kết nối một máy tính",

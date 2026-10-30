@@ -429,7 +429,7 @@ const tr: Record<string, string> = {
   "回到 OceanLeo 查看结果": "Sonucu görmek için OceanLeo'ya dönün",
   "发送到电脑": "Bilgisayara gönder",
   "发到哪台电脑": "Hangi bilgisayara",
-  "离线": "çevrimdışı",
+  "离线": "Çevrimdışı",
   "正在查你的电脑…": "Bilgisayarların aranıyor…",
   "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。": "Dosya alabilecek eşleştirilmiş bir bilgisayar henüz yok. O bilgisayara OceanLeo’yu kurup önce eşleştir.",
   "去连接一台电脑": "Bir bilgisayar bağla",

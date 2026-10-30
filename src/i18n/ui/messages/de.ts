@@ -429,7 +429,7 @@ const de: Record<string, string> = {
   "回到 OceanLeo 查看结果": "Zurück zu OceanLeo, um das Ergebnis zu sehen",
   "发送到电脑": "An den Computer senden",
   "发到哪台电脑": "An welchen Computer",
-  "离线": "offline",
+  "离线": "Offline",
   "正在查你的电脑…": "Deine Computer werden gesucht…",
   "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。": "Es ist noch kein gekoppelter Computer da, der Dateien empfangen kann. Installiere OceanLeo auf diesem Computer und koppele ihn zuerst.",
   "去连接一台电脑": "Einen Computer verbinden",

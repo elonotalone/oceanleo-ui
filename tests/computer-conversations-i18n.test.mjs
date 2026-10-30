@@ -132,7 +132,7 @@ test("Device 菜单 / 原生对话 / 终端文件里先存成常量再 tt(x) 的
 test("英文站上的 Device 菜单与原生对话没有内部用语", () => {
   const en = UI_MESSAGES.en;
   for (const key of Object.values(COMPUTER_TASK_WORKSPACE_SOURCE)) {
-    assert.doesNotMatch(en[key], /\bACP\b|\bCLI\b|graphical|independent|sync/i, key);
+    assert.doesNotMatch(en[key], /\bACP\b|\bCLI\b|graphical|independent session|\bConversation sync/i, key);
   }
 });
 

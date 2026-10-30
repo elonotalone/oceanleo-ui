@@ -429,7 +429,7 @@ const es419: Record<string, string> = {
   "回到 OceanLeo 查看结果": "Vuelve a OceanLeo para ver el resultado",
   "发送到电脑": "Enviar a la computadora",
   "发到哪台电脑": "A qué computadora",
-  "离线": "sin conexión",
+  "离线": "Sin conexión",
   "正在查你的电脑…": "Buscando tus computadoras…",
   "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。": "Todavía no hay una computadora vinculada que pueda recibir archivos. Instala OceanLeo en esa computadora y vincúlala primero.",
   "去连接一台电脑": "Conectar una computadora",

@@ -429,7 +429,7 @@ const ptBR: Record<string, string> = {
   "回到 OceanLeo 查看结果": "Volte ao OceanLeo para ver o resultado",
   "发送到电脑": "Enviar para o computador",
   "发到哪台电脑": "Para qual computador",
-  "离线": "offline",
+  "离线": "Offline",
   "正在查你的电脑…": "Procurando seus computadores…",
   "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。": "Ainda não há um computador pareado que possa receber arquivos. Instale o OceanLeo nesse computador e faça o pareamento primeiro.",
   "去连接一台电脑": "Conectar um computador",

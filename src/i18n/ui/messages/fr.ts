@@ -429,7 +429,7 @@ const fr: Record<string, string> = {
   "回到 OceanLeo 查看结果": "Revenez sur OceanLeo pour voir le résultat",
   "发送到电脑": "Envoyer vers l’ordinateur",
   "发到哪台电脑": "Vers quel ordinateur",
-  "离线": "hors ligne",
+  "离线": "Hors ligne",
   "正在查你的电脑…": "Recherche de vos ordinateurs…",
   "你还没有一台配对好的电脑可以收东西。先在那台电脑上装好 OceanLeo 并配对。": "Aucun ordinateur appairé ne peut encore recevoir de fichiers. Installez OceanLeo sur cet ordinateur et appairez-le d’abord.",
   "去连接一台电脑": "Connecter un ordinateur",
