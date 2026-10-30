@@ -293,7 +293,7 @@ const OVERRIDES = {
     "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
   ),
   "next/navigation": dataModule(
-    "export function useRouter(){ return { push(){}, replace(){ globalThis.__routerReplace = (globalThis.__routerReplace||0)+1; }, refresh(){}, back(){} }; }\n" +
+    "export function useRouter(){ return { push(url){ (globalThis.__routerPushes ||= []).push(url); }, replace(){ globalThis.__routerReplace = (globalThis.__routerReplace||0)+1; }, refresh(){}, back(){} }; }\n" +
       "export function useSearchParams(){ return new URLSearchParams(); }\n" +
       "export function usePathname(){ return globalThis.__pathname || '/'; }",
   ),
@@ -665,9 +665,11 @@ test("a right-pane render loop stays contained and retry preserves the live conv
   }
 });
 
-test("portal homepage shows the real conversation before create settles and resets on New Task", {
-  skip: !existsSync(new URL("../../oceanleo/app/_components/home-content.tsx", import.meta.url)),
-}, async () => {
+const HOME_CONTENT_URL = new URL("../../oceanleo/app/_components/home-content.tsx", import.meta.url);
+let homeContentModule = null;
+/** The real portal HomeContent with the real AgentChat; the computer-task lib calls are recorded. */
+async function loadHomeContent() {
+  if (homeContentModule) return homeContentModule;
   const portalShell = dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
     export { AgentChat } from ${JSON.stringify(agentChatUrl)};
@@ -680,14 +682,32 @@ test("portal homepage shows the real conversation before create settles and rese
   const portalOverrides = {
     ...OVERRIDES,
     "@oceanleo/ui/shell": portalShell,
-    "@oceanleo/ui/lib": dataModule("export async function uploadFile(){return {ok:false};} export async function listFiles(){return {ok:true,data:{items:[]}};}"),
+    "@oceanleo/ui/lib": dataModule(`
+      export async function uploadFile(){return {ok:false};}
+      export async function listFiles(){return {ok:true,data:{items:[]}};}
+      globalThis.__homeCreates = []; globalThis.__homeStashes = [];
+      export async function createComputerTaskSession(computerId, input){
+        globalThis.__homeCreates.push({ computerId, input });
+        if (globalThis.__homeCreateFails) throw new Error("没能打开这段对话，请稍后再试。");
+        const id = "cts_home" + globalThis.__homeCreates.length;
+        return { task_id: "t_home" + globalThis.__homeCreates.length, session: { id, kind: input.kind, program: input.program ?? null } };
+      }
+      export function stashPendingNativePrompt(sessionId, text){ globalThis.__homeStashes.push({ sessionId, text }); }
+    `),
     "@oceanleo/ui/i18n": dataModule("const tr = (text) => text; export function useT(){return tr;} export function useUI(){return tr;}"),
     "@/lib/oceanleo-ai": dataModule("export async function getUserId(){return globalThis.__portalOwner || 'owner-a';} export async function isSignedIn(){return true;} export async function createAgentTask(){throw new Error('must use real AgentChat');} export async function transcribeAudioUrl(){return {};}"),
     "@/lib/app-catalog": dataModule("export const OCEANLEO_APPS = [];"),
     "./auth-modal": dataModule("export function AuthModal(){return null;}"),
-    "sonner": dataModule("export const toast = {error(){},loading(){},success(){}};"),
+    "sonner": dataModule("globalThis.__toasts = []; export const toast = {error(text){ globalThis.__toasts.push(text); },loading(){},success(){}};"),
   };
-  const { HomeContent } = await import(await compileModule("../oceanleo/app/_components/home-content.tsx", portalOverrides, { missingPackageStub: lazyStub }));
+  homeContentModule = await import(await compileModule("../oceanleo/app/_components/home-content.tsx", portalOverrides, { missingPackageStub: lazyStub }));
+  return homeContentModule;
+}
+
+test("portal homepage shows the real conversation before create settles and resets on New Task", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
   const backend = makeBackend();
   globalThis.__backend = backend;
   globalThis.__pathname = "/";
@@ -753,6 +773,73 @@ test("portal homepage shows the real conversation before create settles and rese
     release();
     await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
     window.history.replaceState(null, "", "/");
+  }
+});
+
+test("portal homepage native chat: Send creates the session, stashes the prompt and opens /tasks/<id>?computerSession=<sid>", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  globalThis.__routerPushes = [];
+  globalThis.__homeCreates.length = 0;
+  globalThis.__homeStashes.length = 0;
+  globalThis.__homeCreateFails = false;
+  window.history.replaceState(null, "", "/");
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const codex = { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" };
+    await act(async () => { globalThis.__portalComposer.onConversationChange(codex); });
+    assert.deepEqual(globalThis.__homeCreates, [], "picking 对话 creates nothing");
+    assert.deepEqual(globalThis.__portalComposer.conversation, codex, "the Device label follows the pick");
+    await act(async () => { await globalThis.__portalComposer.onSubmit("看看日志", undefined, { conversation: codex }); });
+    assert.equal(globalThis.__homeCreates.length, 1);
+    assert.equal(globalThis.__homeCreates[0].computerId, "cc_elon");
+    assert.equal(globalThis.__homeCreates[0].input.kind, "acp");
+    assert.equal(globalThis.__homeCreates[0].input.program, "codex");
+    assert.deepEqual(globalThis.__homeStashes, [{ sessionId: "cts_home1", text: "看看日志" }]);
+    assert.deepEqual(globalThis.__routerPushes, ["/tasks/t_home1?computerSession=cts_home1"]);
+    assert.equal(backend.log.some((line) => line.startsWith("create-task")), false, "nothing goes to the cloud");
+  } finally {
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+test("portal homepage: a failed 命令行 pick keeps the label and sends nothing to the cloud", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  globalThis.__routerPushes = [];
+  globalThis.__homeCreates.length = 0;
+  globalThis.__homeStashes.length = 0;
+  globalThis.__toasts.length = 0;
+  globalThis.__homeCreateFails = true;
+  window.history.replaceState(null, "", "/");
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const before = globalThis.__portalComposer.conversation;
+    const cli = { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "cli" };
+    await act(async () => { globalThis.__portalComposer.onConversationChange(cli); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle(20);
+    assert.equal(globalThis.__homeCreates.length, 1, "命令行 opens on pick");
+    assert.deepEqual(globalThis.__portalComposer.conversation, before, "the label does not change after a failed pick");
+    assert.equal(globalThis.__portalComposer.loading, false, "the composer is usable again");
+    assert.ok(globalThis.__toasts.some((text) => String(text).includes("没能打开这段对话")), "the failure is said");
+    assert.deepEqual(globalThis.__routerPushes, []);
+    assert.deepEqual(globalThis.__homeStashes, []);
+    assert.equal(backend.log.some((line) => line.startsWith("create-task")), false, "the failed pick sent nothing to the cloud");
+  } finally {
+    globalThis.__homeCreateFails = false;
+    await act(async () => root.unmount()); host.remove();
   }
 });
 
