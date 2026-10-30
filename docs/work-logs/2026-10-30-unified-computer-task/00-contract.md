@@ -53,3 +53,16 @@ Behavioral focused tests: ownership/isolation/idempotency/archive restart/offlin
 ## Checkpoints
 
 Every child updates its W*-book with actual files, decisions, command results and remaining work before finishing/interruption. Return commit IDs, exact focused tests, exports/API shape, limitations. No TODO stubs, no deferred product chain. Parent verifies artifact existence and tests rather than accepting reports alone.
+
+## Root final acceptance (Claude Code takeover, 2026-10-30 ~14:00)
+
+The Codex root session and all children stopped around 13:10 (W4 uncommitted, W5 a half-finished draft). A Claude Code agent took over as root to finish W5 (see W5 book), verify and commit W4, and do the integration acceptance.
+
+- Commits: oceanleo `00f1df37` (W5 backend + 0306 + SQL scenarios); oceanleo-ui `9fa80630` (W4 localization, run-state types, task-list status dot, work logs); oceandino `d6a726157` (architecture §15 run state, manifest, regenerated code map; pushed to GitHub main).
+- Migration 0306 applied to oceanleo Supabase (shared by dev gateway and production) and local dev-CN postgres. The SQL scenarios passed on both, with all fixtures rolled back.
+- `oceanleo-api` (api.dev, :8008) and `oceanleo-dev-cn-api` (:8018) restarted per the verification-tiers runbook; /health 200. The lease-maintenance RPC runs every 30s on both.
+- Real-database smoke inside the dev gateway (operator computer `cc_6b9905f8aaf2`, fixtures deleted, 0 left): new W5 smoke 8/8 (idle/seen/generic title → first-message title + running + pending list → approval wait/stale/resume/done with no payload archived + unseen completion → opening marks seen → sibling running → lapsed lease to failed → linked cloud task unchanged with projection → deleted task not resurrected); W1 regression smoke 14/14.
+- Unauthenticated api.dev `/v1/computer-task-sessions` and `POST /v1/computers/{id}/task-sessions` → 401.
+- UI: guarded full `tsc --noEmit` exit 0; `api:check` clean; focused suites 75 + 56 + 23 + history 21 all pass.
+- LeoDev: `oceanleo-dev-slots-fresh.sh` 0 STALE (only the `oceanleo` slot runs, in dev mode). Slot preview `/`, `/history`, `/tasks/<id>` return 200 with no compile errors; `/computers` → 307 `/settings/devices`.
+- Not done (outside authorization): no browser/screenshots/real devices, no twin/production push, no shared-package bump.
