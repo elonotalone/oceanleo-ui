@@ -53,12 +53,20 @@ function sameTarget(a: ExecutionTarget | null | undefined, b: ExecutionTarget): 
   return a.kind === "cloud" || (b.kind !== "cloud" && a.id === b.id);
 }
 
-type SessionKind = ComputerTaskSession["kind"];
-/** The task's most recent conversation of this kind on that computer (reused instead of a new one). */
-function existingSession(sessions: ComputerTaskSession[], computerId: string, kind: SessionKind, program: NativeProgram | null): ComputerTaskSession | undefined {
-  return sessions
-    .filter((row) => row.computer_id === computerId && row.kind === kind && (kind === "terminal" || row.program === program))
-    .sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""))[0];
+/**
+ * The task's most recent conversation of this kind on that computer (reused
+ * instead of a new one). Same rule as `findComputerTaskSession` in
+ * lib/computer-task-api (tests/conversation-dock pins the two together); kept
+ * here only so the dock, which every LeoComposer host imports, does not load
+ * the gateway client at runtime.
+ */
+function existingSession(sessions: readonly ComputerTaskSession[], computerId: string, kind: ComputerTaskSession["kind"], program: NativeProgram | null): ComputerTaskSession | null {
+  let latest: ComputerTaskSession | null = null;
+  for (const row of sessions) {
+    if (row.computer_id !== computerId || row.kind !== kind || (kind !== "terminal" && row.program !== program)) continue;
+    if (!latest || Date.parse(row.updated_at || row.created_at || "") > Date.parse(latest.updated_at || latest.created_at || "")) latest = row;
+  }
+  return latest;
 }
 /** `listCliPrograms` row; newer gateways may add the sign-in probe the dialog already reads. */
 type ProgramRow = CliProgram & { logged_in?: boolean | null; auth?: string };
@@ -71,7 +79,11 @@ export type ComputerDockProps = {
   onTargetChange?: (target: ExecutionTarget) => void;
   /** undefined is a fresh draft; null is an existing task whose binding is not loaded yet. */
   boundTarget?: ExecutionTarget | null;
-  /** The conversation shown now; omitted = the dock's own last pick (OceanLeo by default). */
+  /**
+   * The conversation shown now, fully controlled by the host: the label follows
+   * this prop only (omitted = the OceanLeo conversation on the current target),
+   * so a pick the host could not open simply leaves the label as it was.
+   */
   conversation?: ConversationTarget;
   /**
    * Given: a connected computer opens its own list (OceanLeo, Codex, Claude Code,
@@ -79,6 +91,12 @@ export type ComputerDockProps = {
    * execution target, exactly as before. The dock never creates a session or navigates.
    */
   onConversationChange?: (conversation: ConversationTarget) => void;
+  /**
+   * Non-empty: every OceanLeo row (云端 / computer OceanLeo / local computers) is
+   * disabled and this reason is shown in the menu, e.g. a task that belongs to
+   * one computer's programs. Programs and 终端 stay selectable.
+   */
+  oceanleoDisabledReason?: string | null;
   /** Conversations this task already has; picking one reuses it (`sessionId`). */
   taskSessions?: ComputerTaskSession[];
   /** Called before the dock's only navigation (管理设备). */
@@ -86,7 +104,7 @@ export type ComputerDockProps = {
 };
 
 /** Composer-bar Device control: where the OceanLeo task runs, and which conversation of this task is shown. */
-export function ComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange, boundTarget, conversation, onConversationChange, taskSessions, onBeforeNavigate }: ComputerDockProps) {
+export function ComputerDock({ client = cloudComputerApi, computers: supplied, onTargetChange, boundTarget, conversation, onConversationChange, taskSessions, onBeforeNavigate, oceanleoDisabledReason }: ComputerDockProps) {
   const tt = useUI();
   const router = useRouter();
   const bound = boundTarget !== undefined;
@@ -98,8 +116,6 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   const [programs, setPrograms] = useState<{ id: string; rows: ProgramRow[] } | null>(null);
   const [owner, setOwner] = useState<string | null>(null);
   const [target, setTarget] = useState<ExecutionTarget>({ kind: "cloud" });
-  // A pick made while the host does not control `conversation`.
-  const [ownConversation, setOwnConversation] = useState<ConversationTarget | null>(null);
   const [computers, setComputers] = useState<Computer[]>(supplied || []);
   const [devices, setDevices] = useState<Device[]>([]);
   // The selected computer as the gateway last reported it, kept while the
@@ -114,7 +130,8 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   const panel = useRef<HTMLDivElement>(null);
   /** The OceanLeo conversation's target: fixed for a task, remembered for a draft. */
   const oceanTarget: ExecutionTarget | null = bound ? boundTarget ?? null : target;
-  const current: ConversationTarget | null = conversation ?? ownConversation ?? (oceanTarget ? { kind: "oceanleo", target: oceanTarget } : null);
+  // No memory of its own: a native / terminal label exists only while the host says so.
+  const current: ConversationTarget | null = conversation ?? (oceanTarget ? { kind: "oceanleo", target: oceanTarget } : null);
   const selectedDeviceId = !bound && target.kind === "device" ? target.id : "";
 
   useEffect(() => {
@@ -128,7 +145,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       if (id !== owner) setCloudAgent(UNKNOWN);
       setOwner(id);
       if (!bound) { const selected = readExecutionTarget(id); setTarget(selected); onTargetChange?.(selected); }
-      setOwnConversation(null); setDrill(null);
+      setDrill(null);
       setDevices([]); setComputers(supplied || []); setOpen(false);
     }
     function changed(event: Event) {
@@ -223,7 +240,6 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
 
   function close() { setOpen(false); setDrill(null); }
   function emit(next: ConversationTarget) {
-    setOwnConversation(next.kind === "oceanleo" ? null : next);
     onConversationChange?.(next);
     close();
   }
@@ -238,6 +254,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
 
   /** The OceanLeo conversation. A task keeps its own target; only a draft can move it. */
   function choose(next: ExecutionTarget) {
+    if (oceanBlocked) return;
     if (bound) { if (boundTarget && sameTarget(boundTarget, next)) emit({ kind: "oceanleo", target: boundTarget }); return; }
     if (!owner) return;
     const device = next.kind === "device" ? devices.find((d) => d.device_id === next.id) ?? null : null;
@@ -286,7 +303,10 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   const row = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none";
   const selectedMark = <span aria-label={tt("已选择")}>✓</span>;
   const existsMark = <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-400" role="img" aria-label={tt("本任务已有")} data-dock-exists />;
-  const lockedHint = tt("要换执行位置，请新建任务");
+  const oceanBlocked = Boolean(oceanleoDisabledReason);
+  const lockedHint = oceanleoDisabledReason || tt("要换执行位置，请新建任务");
+  // Said in the menu, not only as a tooltip (touch has no hover).
+  const lockedNote = (oceanBlocked || bound) && <p className="px-3 pb-1 pt-2 text-[11px] leading-snug text-neutral-500" data-dock-locked-hint>{lockedHint}</p>;
   const onOcean = current?.kind === "oceanleo";
   const onComputer = (id: string) => current !== null && current.kind !== "oceanleo" && current.computerId === id;
   // The OceanLeo row for this target: ✓ while shown; in a task, a dot while another conversation is shown.
@@ -294,7 +314,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     if (!sameTarget(oceanTarget, candidate)) return null;
     return onOcean ? selectedMark : bound ? existsMark : null;
   }
-  function oceanLocked(candidate: ExecutionTarget): boolean { return bound && !(boundTarget && sameTarget(boundTarget, candidate)); }
+  function oceanLocked(candidate: ExecutionTarget): boolean { return oceanBlocked || (bound && !(boundTarget && sameTarget(boundTarget, candidate))); }
 
   // Before Send, not after a refusal: the chosen computer will not run tasks.
   const selectedLocalOff = !bound && target.kind === "device" && selectedDevice?.device_id === target.id && localExecOff(selectedDevice);
@@ -313,7 +333,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     ? [native.computerName, native.kind === "terminal" ? tt("终端") : PROGRAM_LABEL[native.program], native.kind === "native" && native.view === "cli" ? tt("命令行") : null].filter(Boolean).join(" · ")
     : oceanTarget ? (oceanTarget.kind === "cloud" ? tt("云端") : oceanTarget.name) : tt("正在加载…");
   const triggerNote = native ? "" : [selectedLocalOff ? localOffLabel : selectedModeLabel, scopeLabel].filter(Boolean).join(" · ");
-  const triggerTitle = native ? tt("任务执行位置")
+  const triggerTitle = native ? tt("切换对话")
     : bound ? `${scopeLabel ? `${scopeLabel} · ` : ""}${tt(CLOUD_AGENT_COPY.scopeNewTask)}`
     : selectedLocalOff ? localOffHint : (target.kind === "device" && modeHint(selectedMode, target.id)) || tt("任务执行位置");
 
@@ -330,7 +350,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     const dot = (ok: boolean) => <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ok ? "bg-emerald-500" : "bg-neutral-300"}`} />;
     if (computer.program) {
       const program = computer.program;
-      const views = [["chat", tt("对话"), null], ["cli", tt("命令行"), tt("在这台电脑的命令行里继续，记录和对话分开")]] as const;
+      const views = [["chat", tt("对话"), null], ["cli", tt("命令行"), tt("在电脑的命令行窗口里继续，和这里的对话分开记录")]] as const;
       return <div data-dock-level="program" data-dock-program={program}>
         <button type="button" className={`${row} font-medium`} data-dock-back aria-label={`${tt("返回")} · ${computer.name}`} onClick={() => setDrill({ id: computer.id, name: computer.name })}>
           <span aria-hidden="true">‹</span><span className="min-w-0 flex-1 truncate">{PROGRAM_LABEL[program]}</span>
@@ -346,15 +366,16 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       </div>;
     }
     const ocean: ExecutionTarget = { kind: "computer", id: computer.id, name: computer.name };
-    const oceanDisabled = bound ? oceanLocked(ocean) : ready !== true;
+    const oceanDisabled = oceanBlocked || bound ? oceanLocked(ocean) : ready !== true;
+    const oceanReason = oceanBlocked || (bound && oceanDisabled) ? lockedHint : null;
     const terminalCurrent = current?.kind === "terminal" && current.computerId === computer.id;
     return <div data-dock-level="computer" data-dock-computer={computer.id}>
       <button type="button" className={`${row} font-medium`} data-dock-back aria-label={tt("返回")} onClick={() => setDrill(null)}>
         <span aria-hidden="true">‹</span><span className="min-w-0 flex-1 truncate">{computer.name}</span>
       </button>
       <button type="button" className={`${row} disabled:opacity-50`} disabled={oceanDisabled} aria-pressed={onOcean && sameTarget(oceanTarget, ocean)} data-dock-program-row="oceanleo"
-        title={bound && oceanDisabled ? lockedHint : undefined} onClick={() => choose(ocean)}>
-        {dot(ready === true)}<span className="min-w-0 flex-1 truncate">OceanLeo</span>{offline}{oceanMark(ocean)}
+        title={oceanReason ?? undefined} onClick={() => choose(ocean)}>
+        {dot(ready === true)}<span className="min-w-0 flex-1"><span className="block truncate">OceanLeo</span>{oceanReason && <span className="mt-0.5 block text-[11px] leading-snug text-neutral-500" data-dock-locked-hint>{oceanReason}</span>}</span>{offline}{oceanMark(ocean)}
       </button>
       {NATIVE_PROGRAMS.map((program) => {
         const note = programNote(program);
@@ -374,7 +395,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
 
   return <div className="relative" data-oceanleo-cc-dock data-execution-target={oceanTarget?.kind ?? "loading"} data-conversation={current?.kind}>
     <button ref={anchor} type="button" onClick={openPicker}
-      aria-label={triggerNote ? `${tt("任务执行位置")} · ${triggerNote}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
+      aria-label={native ? `${tt("切换对话")} · ${shown}` : triggerNote ? `${tt("任务执行位置")} · ${triggerNote}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
       data-task-bound-target={bound && !native ? "" : undefined} title={triggerTitle}
       className={`flex h-7 ${triggerNote || native ? "max-w-[280px]" : "max-w-[180px]"} items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100`}>
       <TargetGlyph cloud={!native && oceanTarget?.kind !== "device"} /><span className="truncate">{shown}</span>
@@ -406,6 +427,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
           <div className="min-h-0 flex-1 overflow-y-auto">
           {!owner ? <p className="px-3 py-3 text-[12px] text-neutral-500">{tt("请先登录")}</p> : <>
             {group === "cloud" && (drill && drillable ? renderDrill(drill) : <>
+              {lockedNote}
               <button type="button" className={`${row} disabled:opacity-50`} disabled={oceanLocked({ kind: "cloud" })} title={oceanLocked({ kind: "cloud" }) ? lockedHint : undefined}
                 aria-pressed={onOcean && oceanTarget?.kind === "cloud"} onClick={() => choose({ kind: "cloud" })}>
                 <TargetGlyph cloud /><span className="flex-1">{tt("默认云端")}</span>{oceanMark({ kind: "cloud" })}
@@ -420,11 +442,12 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
                   </button>;
                 }
                 const locked = oceanLocked(asTarget);
-                return <button key={item.id} type="button" disabled={bound ? locked : !ready} title={locked ? lockedHint : undefined} className={`${row} disabled:opacity-50`} aria-pressed={onOcean && sameTarget(oceanTarget, asTarget)} data-oceanleo-cc-switch-item={item.id} onClick={() => choose(asTarget)}>
+                return <button key={item.id} type="button" disabled={oceanBlocked || bound ? locked : !ready} title={locked ? lockedHint : undefined} className={`${row} disabled:opacity-50`} aria-pressed={onOcean && sameTarget(oceanTarget, asTarget)} data-oceanleo-cc-switch-item={item.id} onClick={() => choose(asTarget)}>
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt("离线")}</span>}{oceanMark(asTarget)}
                 </button>;
               })}
             </>)}
+            {group === "device" && devices.length > 0 && lockedNote}
             {group === "device" && devices.map((item) => {
               const availability = (item as Device & { availability?: string }).availability;
               const ready = availability === "online" && item.online;
@@ -436,7 +459,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
               // One entry per computer; its label says which way the task will run.
               const mode = ready && !off && !bound ? runModeOf(cloudAgent, item.device_id, item, now) : null;
               const modeText = modeLabel(mode, item.device_id);
-              return <button key={item.device_id} type="button" disabled={bound ? locked : !ready} className={`${row} disabled:opacity-50`} aria-pressed={onOcean && sameTarget(oceanTarget, asTarget)} data-oceanleo-device-client={item.device_id} data-local-exec-off={off ? "true" : undefined} data-cloud-agent={mode ?? undefined} title={locked ? lockedHint : off ? localOffHint : modeHint(mode, item.device_id)} onClick={() => choose(asTarget)}>
+              return <button key={item.device_id} type="button" disabled={oceanBlocked || bound ? locked : !ready} className={`${row} disabled:opacity-50`} aria-pressed={onOcean && sameTarget(oceanTarget, asTarget)} data-oceanleo-device-client={item.device_id} data-local-exec-off={off ? "true" : undefined} data-cloud-agent={mode ?? undefined} title={locked ? lockedHint : off ? localOffHint : modeHint(mode, item.device_id)} onClick={() => choose(asTarget)}>
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? (off ? "bg-amber-400" : "bg-emerald-500") : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.device_name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt(availability === "offline" ? "离线" : availability === "signed_out" ? "未登录" : "状态未知")}</span>}{off && <span className="shrink-0 text-[11px] text-amber-700">{localOffLabel}</span>}{modeText && <span className={`shrink-0 text-[11px] ${mode === "cloud" ? "text-emerald-700" : "text-neutral-500"}`}>{modeText}</span>}{oceanMark(asTarget)}
               </button>;
             })}
@@ -452,7 +475,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     </AnchoredPopover>
   </div>;
 }
-export function TargetGlyph({ cloud = false }: { cloud?: boolean }) {
+function TargetGlyph({ cloud = false }: { cloud?: boolean }) {
   return <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {cloud ? <path d="M6 18a4 4 0 0 1-.5-8A6.5 6.5 0 0 1 18 8a5 5 0 0 1 0 10Z" /> : <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></>}
   </svg>;

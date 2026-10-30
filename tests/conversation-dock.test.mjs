@@ -124,7 +124,7 @@ test("computer → Codex → 对话 emits a native chat target; 命令行 emits 
     await view.click(view.q('[data-dock-program-row="codex"]'));
     assert.ok(view.q('[data-dock-level="program"][data-dock-program="codex"]'));
     assert.deepEqual([...view.host.querySelectorAll("[data-dock-view]")].map((n) => n.getAttribute("data-dock-view")), ["chat", "cli"], "对话 first");
-    assert.match(view.q('[data-dock-view="cli"]').textContent, /命令行.*记录和对话分开/);
+    assert.match(view.q('[data-dock-view="cli"]').textContent, /命令行在电脑的命令行窗口里继续，和这里的对话分开记录/);
     await view.click(view.q('[data-dock-view="chat"]'));
     assert.deepEqual(view.picks.at(-1), { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" });
     assert.equal(view.q("[data-anchored-popover]"), null, "picking closes the menu");
@@ -229,8 +229,10 @@ test("bound task: the OceanLeo target stays locked but native conversations can 
     const cloud = [...view.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("默认云端"));
     assert.equal(cloud.disabled, true);
     assert.match(cloud.getAttribute("title"), /新建任务/);
+    assert.equal(view.q("[data-dock-locked-hint]").textContent, "要换执行位置，请新建任务", "the reason is visible in the menu, not only on hover");
     await view.click(view.q('[data-oceanleo-cc-switch-item="cc_2"]'));
     assert.equal(view.q('[data-dock-program-row="oceanleo"]').disabled, true, "another computer cannot take over this task");
+    assert.match(view.q('[data-dock-program-row="oceanleo"] [data-dock-locked-hint]').textContent, /新建任务/);
     assert.equal(view.q('[data-dock-program-row="codex"]').disabled, false);
     await view.click(view.q('[data-dock-program-row="codex"]'));
     await view.click(view.q('[data-dock-view="chat"]'));
@@ -241,6 +243,7 @@ test("bound task: the OceanLeo target stays locked but native conversations can 
     const local = [...view.host.querySelectorAll("button")].find((b) => b.getAttribute("aria-expanded") !== null && b.textContent.includes("本地电脑"));
     await view.click(local);
     assert.equal(view.q('[data-oceanleo-device-client="mac"]').disabled, true, "local devices are locked too");
+    assert.ok(view.q("[data-dock-locked-hint]"), "local list says why too");
     const cloudGroup = [...view.host.querySelectorAll("button")].find((b) => b.getAttribute("aria-expanded") !== null && b.textContent.includes("云端"));
     await view.click(cloudGroup);
     await view.click(view.q('[data-oceanleo-cc-switch-item="cc_1"]'));
@@ -269,6 +272,98 @@ test("without onConversationChange a computer row is a plain execution choice (n
     assert.equal(host.querySelector("[data-dock-program-row]"), null);
     assert.equal(globalThis.__cdProgramReads, 0);
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("controlled: a pick the host does not apply leaves the label as it was; the host's prop decides", async () => {
+  const view = await renderDock();
+  try {
+    await view.openComputer();
+    await view.click(view.q('[data-dock-program-row="codex"]'));
+    await view.click(view.q('[data-dock-view="chat"]'));
+    assert.equal(view.picks.length, 1);
+    assert.equal(view.trigger().textContent, "云端", "host failed to open it: nothing changes");
+    assert.equal(view.q("[data-oceanleo-cc-dock]").getAttribute("data-conversation"), "oceanleo");
+    await view.open();
+    assert.ok(view.q('[data-oceanleo-cc-switch-item="cc_1"]'), "menu reopens at the top, not at a conversation that never opened");
+    await view.click(view.trigger());
+    await view.render({ conversation: view.picks[0] });
+    assert.equal(view.trigger().textContent, "elon · Codex");
+    await view.render({ conversation: undefined });
+    assert.equal(view.trigger().textContent, "云端", "undefined = the draft OceanLeo target");
+  } finally { await view.cleanup(); }
+});
+
+test("native trigger is labelled as switching conversations, not as the run location", async () => {
+  const view = await renderDock({ conversation: { kind: "terminal", computerId: "cc_1", computerName: "elon" } });
+  try {
+    assert.equal(view.trigger().getAttribute("title"), "切换对话");
+    assert.equal(view.trigger().getAttribute("aria-label"), "切换对话 · elon · 终端");
+    await view.render({ conversation: { kind: "oceanleo", target: { kind: "cloud" } } });
+    assert.equal(view.trigger().getAttribute("aria-label"), "任务执行位置");
+  } finally { await view.cleanup(); }
+});
+
+test("oceanleoDisabledReason disables every OceanLeo row with a visible reason; programs and 终端 stay open", async () => {
+  globalThis.__cdDevices = [{ device_id: "mac", platform: "macos", device_name: "Mac", online: true, availability: "online" }];
+  const reason = "这个任务属于 elon 上的程序";
+  const targets = [];
+  const view = await renderDock({ oceanleoDisabledReason: reason, boundTarget: { kind: "computer", id: "cc_1", name: "elon" }, onTargetChange: (t) => targets.push(t),
+    conversation: { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat", sessionId: "s1" } });
+  try {
+    await view.open();
+    const ocean = view.q('[data-dock-program-row="oceanleo"]');
+    assert.equal(ocean.disabled, true, "even the task's own computer");
+    assert.equal(ocean.querySelector("[data-dock-locked-hint]").textContent, reason);
+    await view.click(ocean);
+    assert.deepEqual(view.picks, []);
+    assert.equal(view.q('[data-dock-program-row="codex"]').disabled, false);
+    assert.equal(view.q('[data-dock-program-row="terminal"]').disabled, false);
+    await view.click(view.q("[data-dock-back]"));
+    const cloud = [...view.host.querySelectorAll("button")].find((b) => b.textContent.startsWith("默认云端"));
+    assert.equal(cloud.disabled, true);
+    assert.equal(view.q("[data-dock-locked-hint]").textContent, reason);
+    const local = [...view.host.querySelectorAll("button")].find((b) => b.getAttribute("aria-expanded") !== null && b.textContent.includes("本地电脑"));
+    await view.click(local);
+    assert.equal(view.q('[data-oceanleo-device-client="mac"]').disabled, true);
+    assert.equal(view.q("[data-dock-locked-hint]").textContent, reason);
+    await view.click(view.q('[data-oceanleo-device-client="mac"]'));
+    assert.deepEqual(view.picks, []);
+    assert.deepEqual(targets, []);
+  } finally { await view.cleanup(); }
+  const draft = await renderDock({ oceanleoDisabledReason: reason, onConversationChange: undefined });
+  try {
+    await draft.open();
+    assert.equal(draft.q('[data-oceanleo-cc-switch-item="cc_1"]').disabled, true, "plain picker rows are disabled too");
+    assert.deepEqual(readExecutionTarget("account-a"), { kind: "cloud" });
+  } finally { await draft.cleanup(); }
+});
+
+test("session reuse follows lib/computer-task-api findComputerTaskSession exactly", async () => {
+  const { findComputerTaskSession } = await import(await compileModule("src/lib/computer-task-api.ts", {
+    "./cloud-computer-api": dataModule("export function cloudComputerRequest(){ throw new Error('no network'); }"),
+  }));
+  const taskSessions = [
+    session({ id: "a", kind: "cli", program: "claude", updated_at: "2026-10-30T01:00:00Z" }),
+    session({ id: "b", kind: "cli", program: "claude", updated_at: "", created_at: "2026-10-30T03:00:00Z" }),
+    session({ id: "c", kind: "cli", program: "claude", updated_at: "2026-10-30T02:00:00+08:00" }),
+    session({ id: "d", kind: "terminal", program: null, updated_at: "2026-10-30T01:00:00Z" }),
+    session({ id: "e", kind: "terminal", program: "codex", updated_at: "2026-10-30T05:00:00Z" }),
+  ];
+  const view = await renderDock({ taskSessions });
+  try {
+    await view.openComputer();
+    await view.click(view.q('[data-dock-program-row="claude"]'));
+    await view.click(view.q('[data-dock-view="cli"]'));
+    assert.equal(view.picks.at(-1).sessionId, findComputerTaskSession(taskSessions, { computerId: "cc_1", kind: "cli", program: "claude" }).id);
+    await view.openComputer();
+    await view.click(view.q('[data-dock-program-row="terminal"]'));
+    assert.equal(view.picks.at(-1).sessionId, findComputerTaskSession(taskSessions, { computerId: "cc_1", kind: "terminal", program: null }).id);
+    await view.openComputer();
+    await view.click(view.q('[data-dock-program-row="hermes"]'));
+    await view.click(view.q('[data-dock-view="chat"]'));
+    assert.equal(findComputerTaskSession(taskSessions, { computerId: "cc_1", kind: "acp", program: "hermes" }), null);
+    assert.equal("sessionId" in view.picks.at(-1), false);
+  } finally { await view.cleanup(); }
 });
 
 test("dock source: no session creation, no navigation besides Manage devices, no emoji glyphs", () => {
@@ -303,6 +398,12 @@ const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.
     export const PromptHighlightArea = TemplateFillArea;
   `),
 }, { missingPackageStub: lazyStub }));
+test("LeoComposer passes oceanleoDisabledReason to the Device control", async () => {
+  const m = await mount(React.createElement(LeoComposer, { ...composerBase, onConversationChange() {}, oceanleoDisabledReason: "这个任务属于 elon 上的程序" }));
+  try { assert.equal(globalThis.__cdDockProps.oceanleoDisabledReason, "这个任务属于 elon 上的程序"); }
+  finally { await m.unmount(); }
+});
+
 const { ConversationBar } = await import(await compileModule("src/shell/cloud-computer/ConversationBar.tsx", {
   "../../i18n/ui/useUI": uiStub,
   "./ComputerDock": dockStub,
@@ -329,7 +430,8 @@ test("LeoComposer: the gear shows only for native / terminal conversations and o
   try {
     assert.equal(m.container.querySelector("[data-conversation-settings]"), null);
     assert.deepEqual(globalThis.__cdDockProps.taskSessions, props.taskSessions, "taskSessions reach the dock");
-    assert.equal(typeof globalThis.__cdDockProps.onConversationChange, "function");
+    assert.equal(globalThis.__cdDockProps.onConversationChange, props.onConversationChange, "the host's own callback, no composer memory in between");
+    assert.equal(globalThis.__cdDockProps.conversation.kind, "oceanleo");
     await m.rerender(React.createElement(LeoComposer, { ...props, conversation: NATIVE, settingsOpen: true }));
     const gear = m.container.querySelector("[data-conversation-settings]");
     assert.ok(gear);
@@ -363,7 +465,7 @@ test("LeoComposer: modelPickerSlot replaces ModelGroupPicker; null hides it", as
 
 test("ConversationBar: composer bottom-bar row with the same Device control and gear", async () => {
   let opened = 0; const picks = [];
-  const props = { conversation: NATIVE, onConversationChange: (c) => picks.push(c), taskSessions: [], boundTarget: { kind: "cloud" }, onOpenSettings: () => { opened += 1; }, settingsOpen: false };
+  const props = { conversation: NATIVE, onConversationChange: (c) => picks.push(c), taskSessions: [], boundTarget: { kind: "cloud" }, onOpenSettings: () => { opened += 1; }, settingsOpen: false, oceanleoDisabledReason: "原因" };
   const m = await mount(React.createElement(ConversationBar, props));
   try {
     const bar = m.container.querySelector("[data-conversation-bar]");
@@ -372,6 +474,7 @@ test("ConversationBar: composer bottom-bar row with the same Device control and 
     assert.ok(bar.querySelector("[data-oceanleo-cc-dock-trigger]"));
     assert.deepEqual(globalThis.__cdDockProps.boundTarget, { kind: "cloud" });
     assert.equal(globalThis.__cdDockProps.conversation, NATIVE);
+    assert.equal(globalThis.__cdDockProps.oceanleoDisabledReason, "原因");
     globalThis.__cdDockProps.onConversationChange({ kind: "oceanleo", target: { kind: "cloud" } });
     assert.deepEqual(picks, [{ kind: "oceanleo", target: { kind: "cloud" } }]);
     const gear = bar.querySelector("[data-conversation-settings]");

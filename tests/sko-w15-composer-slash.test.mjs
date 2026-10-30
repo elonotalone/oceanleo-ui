@@ -625,7 +625,11 @@ test("Device picker snapshot reaches Composer submit with original driver and GU
     const native = { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat", sessionId: "s1" };
     await act(async () => globalThis.__W15_DOCK__.onConversationChange(native));
     assert.deepEqual(picks, [native]);
-    assert.deepEqual(globalThis.__W15_DOCK__.conversation, native, "uncontrolled composer keeps the pick for the dock");
+    assert.equal(globalThis.__W15_DOCK__.conversation, undefined, "the composer keeps no copy of a pick the host has not applied");
+    await enter();
+    assert.deepEqual(submitted.context.conversation, { kind: "oceanleo", target: selected }, "an unapplied pick never routes a send");
+    await m.rerender(React.createElement(LeoComposer, { ...base, conversation: native }));
+    assert.deepEqual(globalThis.__W15_DOCK__.conversation, native);
     await enter();
     assert.deepEqual(submitted.context.conversation, native, "the host routes a native send by the shown conversation");
   } finally { await m.unmount(); }

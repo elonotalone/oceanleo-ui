@@ -99,3 +99,42 @@ taskSessions?: ComputerTaskSession[]; modelPickerSlot?: ReactNode; onOpenSetting
 - R3 / parent: AgentChat should pass `conversation`, `onConversationChange`, `taskSessions`, `modelPickerSlot={thread.modelPicker}`, `onOpenSettings`, `settingsOpen` to LeoComposer and route sends by `context.conversation`. The removed props `computerDockSlot`, `hideComputerDockControl`, `draftExecutionTarget` must be gone from AgentChat; old `ComputerTaskWorkspace` used `ComputerDock inline`, which no longer exists. Use `ConversationBar` under CLI/terminal surfaces.
 - Parent (portal `/root/projects/oceanleo/app/_components/home-content.tsx`, which no child owns): for "home → elon · Codex → send", home has to pass `onConversationChange` to its LeoComposer and, on submit with a native `context.conversation`, create the managed session and navigate. CLI/终端 should create and navigate as soon as they are picked. Until that lands, home keeps the plain pre-W picker. `onBeforeComputerNavigate` is still accepted and now runs before 管理设备.
 - Gateway (optional): add `logged_in`/`auth` to `GET /v1/computers/{id}/cli/programs` rows so 需要登录 can show in the menu. The dock already reads these fields.
+
+## Fix checkpoint (V1 review, R2 items 1–6)
+
+**Prop for R3 (item 4): `oceanleoDisabledReason?: string | null`**, same name on all three:
+- `ComputerDock({ …, oceanleoDisabledReason })`
+- `LeoComposer({ …, oceanleoDisabledReason })` (passed through to the dock)
+- `ConversationBar({ …, oceanleoDisabledReason })` (passed through to the dock)
+
+If it is non-empty, every OceanLeo row is disabled: 默认云端, each computer's OceanLeo row, local computers, and plain-picker computer rows. Picking one does nothing (no `onConversationChange`, no `onTargetChange`, no remembered-target write). The reason is shown as visible muted text (`data-dock-locked-hint`) at the top of the 云端 and 本地电脑 lists and under the OceanLeo row. Programs and 终端 stay selectable. For `mode="computer"` tasks R3 passes e.g. `oceanleoDisabledReason={tt("…")}` (R3 owns that string).
+
+Items:
+1. When a native or terminal conversation is shown, the trigger `title` is 切换对话 and its `aria-label` is `切换对话 · <label>` (e.g. `切换对话 · elon · 终端`). OceanLeo conversations keep 任务执行位置.
+2. Locked rows in a bound task now show their reason in the menu, not only in a tooltip. The reason (要换执行位置，请新建任务, or `oceanleoDisabledReason` when given) appears as an inline muted line at the top of the cloud and local lists, and as a second line under a locked OceanLeo row. The `title` tooltips stay.
+3. Conversations are fully controlled now. `ComputerDock` and `LeoComposer` no longer keep their own copy of a pick (`ownConversation` is removed from both). The label follows the `conversation` prop only; when it is `undefined`, the dock shows the draft or bound OceanLeo target. LeoComposer passes the host's `onConversationChange` straight through. A pick the host does not apply leaves the label unchanged, the menu reopens at the top, and `context.conversation` stays OceanLeo.
+4. `oceanleoDisabledReason`: see above.
+5. Dead code:
+   - `TargetGlyph` is no longer exported.
+   - `ConversationBar`'s `client`/`computers` are documented as data seams.
+   - `existingSession` keeps its own copy of `findComputerTaskSession`'s rule (same Date.parse, falls back to created_at; my first version used localeCompare). Importing `lib/computer-task-api` at runtime pulls `cloudComputerRequest` into every module that imports the dock. That broke the stubs in 8 test files I don't own, among them anchored-popover, d10 and conversation-dock. A test in `tests/conversation-dock.test.mjs` ("session reuse follows … findComputerTaskSession exactly") compiles the real `findComputerTaskSession` and checks the dock's `sessionId` against it, including created_at fallback and timezone cases.
+6. The 命令行 hint now reads 「在电脑的命令行窗口里继续，和这里的对话分开记录」.
+
+Also: the gear (`ConversationSettingsButton`) no longer pins `h-7 w-7`. It now uses the plugins-button shape (`rounded-full border p-1`), so `ConversationBar.tsx` adds no hit-target debt (`tests/hit-target-budget` per-file list no longer names it).
+
+Tests (run-light, same command as above):
+- My files, all passing: conversation-dock 16/16 (new: controlled revert, native trigger label, oceanleoDisabledReason, finder parity, LeoComposer pass-through), sko-w15-composer-slash 19/19 (an unapplied pick never routes a send), cloud-computer-dock 22/22, cloud-computer-dock-remembered-name 6/6, d10-computer-dock-hydration 3/3, eas-w06-dock-and-links 4/4, execution-target 7/7.
+- Other files that compile the dock or composer, also passing: anchored-popover 12/12, composer-plugins-popover 4/4, mobile-native-attach 25/25, leo-assistant-and-composer-controls 4/4, agent-composer-contract 7/7, agent-upload-affordance 7/7, client-ui-host-auth 33/33, payer-selector 12/12, W4-conversation-anchor 5/5, workspace-restore-ui-contract 2/2.
+- Still red, none caused by R2's code:
+  - device-experience-i18n and computer-conversations-i18n: only missing translations (the 2 new strings below, plus R3/R1/R4 strings).
+  - hit-target-budget: repo-wide overrun of 149 against a budget of 98. ComputerDock's one site is the pre-W `h-7` trigger.
+  - mcp-apps-host and upload-progress: their auth stub lacks `desktopBrowserLoginAvailable`.
+- `git diff --check` is clean, and `run-heavy -- npx tsc --noEmit` reports no errors.
+
+New strings:
+- 切换对话
+- 在电脑的命令行窗口里继续，和这里的对话分开记录 (replaces 在这台电脑的命令行里继续，记录和对话分开, which can be dropped)
+
+Requests:
+- Parent: add the 2 strings.
+- Optional cleanup for R3/parent: move `latestComputerTaskSession`/`findComputerTaskSession` into a dependency-free module (e.g. `src/lib/computer-task-session-match.ts`, re-exported from computer-task-api). The dock could then import it and drop its copy.

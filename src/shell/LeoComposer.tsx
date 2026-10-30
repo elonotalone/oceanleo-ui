@@ -269,11 +269,14 @@ export interface LeoComposerProps {
   onBeforeComputerNavigate?: () => void | Promise<void>;
   /**
    * The conversation this composer talks to (OceanLeo / a program on a computer /
-   * its terminal). Omitted: the composer keeps the last pick itself.
+   * its terminal). Controlled by the host only: omitted = the OceanLeo conversation
+   * on the Device control's target. A pick the host could not open never shows.
    */
   conversation?: ConversationTarget;
   /** Given: the Device control drills into a computer's programs and terminal. */
   onConversationChange?: (conversation: ConversationTarget) => void;
+  /** Disables the Device menu's OceanLeo rows with this visible reason (see ComputerDock). */
+  oceanleoDisabledReason?: string | null;
   /** Conversations this task already has (marked and reused in the Device menu). */
   taskSessions?: ComputerTaskSession[];
   /** Replaces the model picker (e.g. a native program's model control); null hides it. */
@@ -332,6 +335,7 @@ export function LeoComposer({
   onBeforeComputerNavigate,
   conversation,
   onConversationChange,
+  oceanleoDisabledReason,
   taskSessions,
   modelPickerSlot,
   onOpenSettings,
@@ -358,14 +362,9 @@ export function LeoComposer({
   const executionTargetRef = useRef<ExecutionTarget>({ kind: "cloud" });
   const [targetDraftRevision, setTargetDraftRevision] = useState(0);
   const rememberExecutionTarget = useCallback((target: ExecutionTarget) => { executionTargetRef.current = target; }, []);
-  // Uncontrolled hosts: the composer remembers the last Device pick itself.
-  const [ownConversation, setOwnConversation] = useState<ConversationTarget | null>(null);
-  const activeConversation = conversation ?? ownConversation;
+  // The host owns the conversation; the composer keeps no copy of a pick.
+  const activeConversation = conversation;
   const nativeConversation = Boolean(activeConversation && activeConversation.kind !== "oceanleo");
-  const changeConversation = useCallback((next: ConversationTarget) => {
-    setOwnConversation(next);
-    onConversationChange?.(next);
-  }, [onConversationChange]);
   // 取当前输入元素 = 编辑器根 DOM（不再有第二套 textarea）。
   const currentTextarea = useCallback(
     (): HTMLElement | null => highlightRef.current?.el() ?? null,
@@ -629,8 +628,9 @@ export function LeoComposer({
               boundTarget={boundExecutionTarget}
               onTargetChange={rememberExecutionTarget}
               onBeforeNavigate={onBeforeComputerNavigate}
-              conversation={activeConversation ?? undefined}
-              onConversationChange={onConversationChange ? changeConversation : undefined}
+              conversation={activeConversation}
+              onConversationChange={onConversationChange}
+              oceanleoDisabledReason={oceanleoDisabledReason}
               taskSessions={taskSessions}
             />
           )}
