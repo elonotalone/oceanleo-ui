@@ -28,9 +28,6 @@ import {
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
-// Namespace import: many tests stub "./SplitWorkspace" with SplitWorkspace only; the
-// settings title claim must not make those module graphs fail to link.
-import * as SplitWorkspaceModule from "./SplitWorkspace";
 import { IconSearch } from "./icons";
 import { CollabTaskPresence } from "./collab/CollabActionSlot";
 import { ResultCanvas, type CanvasTab } from "./ResultCanvas";
@@ -60,7 +57,6 @@ import { createPortal } from "react-dom";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
 import { NativeSettingsPanel, NativeTerminalSurface, nativeSettingsTitle } from "./cloud-computer/native-surface";
-import { portalHref } from "../contracts/domain-family";
 import type { Computer } from "../lib/cloud-computer-api";
 import { getComputer } from "../lib/cloud-computer-api";
 import {
@@ -70,6 +66,7 @@ import {
   findComputerTaskSession,
   latestComputerTaskSession,
   listComputerTaskSessions,
+  hasPendingNativePrompt,
   stashPendingNativePrompt,
   takePendingNativePrompt,
   type ComputerTaskSession,
@@ -554,9 +551,22 @@ export function AgentChat(props: AgentChatProps) {
 
 const NO_TASK_SESSIONS: ComputerTaskSession[] = [];
 
-/** A computer this page could not read (removed, or the request failed): shown offline. */
-function offlineComputer(session: ComputerTaskSession): Computer {
-  return {id: session.computer_id, name: session.computer_name, status: "removed", node_online: false} as Computer;
+function pickChatKey(conversation: {computerId: string; program: string}): string {
+  return `pick:${conversation.computerId}:${conversation.program}`;
+}
+
+/** Same cadence as the computer views (`useCloudComputers` CC_POLL_MS). */
+const COMPUTER_REFRESH_MS = 15_000;
+
+/** A computer that no longer exists (404): shown offline, never "connecting". */
+function removedComputer(id: string, sessions: readonly ComputerTaskSession[]): Computer {
+  const name = sessions.find((session) => session.computer_id === id)?.computer_name || id;
+  return {id, name, status: "removed", node_online: false} as Computer;
+}
+
+/** ACP sessions without a native program (legacy program "oceanleo") are not native chats. */
+function usableSession(session: ComputerTaskSession): boolean {
+  return session.kind !== "acp" || Boolean(session.program && session.program !== "oceanleo");
 }
 
 /** The R0 conversation a managed session stands for. */
@@ -564,7 +574,6 @@ function sessionConversation(session: ComputerTaskSession): ConversationTarget {
   if (session.kind === "terminal" || !session.program) {
     return {kind: "terminal", computerId: session.computer_id, computerName: session.computer_name, sessionId: session.id};
   }
-  // Legacy imports may carry program "oceanleo" (an ACP OceanLeo on that computer); it is still that session.
   return {kind: "native", computerId: session.computer_id, computerName: session.computer_name, program: session.program as NativeProgram,
     view: session.kind === "cli" ? "cli" : "chat", sessionId: session.id};
 }
@@ -638,12 +647,17 @@ function AgentChatInner({
   const [rightOpen, setRightOpen] = useState(hasOrgPanel);
   // Which conversation of this task is shown (redo 2026-10-30): the task's own
   // OceanLeo conversation, or one of its managed computer sessions.
-  const [taskSessions, setTaskSessions] = useState<{taskId: string; items: ComputerTaskSession[]; loaded: boolean}>({taskId: "", items: [], loaded: false});
+  /** `loaded`: one successful list; `failed`: the last attempt failed (retried with backoff). */
+  const [taskSessions, setTaskSessions] = useState<{taskId: string; items: ComputerTaskSession[]; loaded: boolean; failed: boolean}>({taskId: "", items: [], loaded: false, failed: false});
+  const [sessionsEpoch, setSessionsEpoch] = useState(0);
+  const sessionsRetryRef = useRef(0);
   /** `id: null` = the OceanLeo conversation; `resolved: false` = not decided yet for this task. */
   const [selectedSession, setSelectedSession] = useState<{taskId: string; id: string | null; resolved: boolean}>({taskId: "", id: null, resolved: false});
   const [taskMode, setTaskMode] = useState<{taskId: string; computer: boolean}>({taskId: "", computer: false});
-  /** Draft (no task yet) only: the conversation picked in the dock; undefined = today's remembered target. */
+  /** Draft (no task yet) only: the OceanLeo target picked in the dock; undefined = today's remembered target. */
   const [draftConversation, setDraftConversation] = useState<ConversationTarget | undefined>(undefined);
+  /** A native chat picked for a program this task (or draft) has no session for: created by the first send. */
+  const [pickedChat, setPickedChat] = useState<{taskId: string; conversation: Extract<ConversationTarget, {kind: "native"}>} | null>(null);
   const [computers, setComputers] = useState<Record<string, Computer>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationBusy, setConversationBusy] = useState(false);
@@ -654,8 +668,6 @@ function AgentChatInner({
   const [settingsHost, setSettingsHost] = useState<HTMLDivElement | null>(null);
   /** CLI / terminal surfaces opened on this page; kept mounted (hidden) so nothing restarts. */
   const [openedSurfaces, setOpenedSurfaces] = useState<string[]>([]);
-  /** A session this page just created; wins over the URL while the router catches up. */
-  const preferredSessionRef = useRef<{taskId: string; id: string} | null>(null);
   const [localTaskId, setLocalTaskId] = useState<string | null>(
     explicitTaskId ?? null,
   );
@@ -961,90 +973,164 @@ function AgentChatInner({
   // (portal links use this name) → that managed session; a computer task
   // without one → its most recent session; otherwise the task's own OceanLeo
   // conversation. Choosing never executes anything and never cancels a run.
-  const conversationRouter = useRouter();
+  // A native chat is created by its first send; CLI / terminal on pick.
   useEffect(() => {
     setSettingsOpen(false);
     setConversationError("");
     setOpenedSurfaces([]);
     setOpenedChats([]);
+    sessionsRetryRef.current = 0;
+  }, [taskId]);
+  useEffect(() => {
     if (!taskId) {
-      setTaskSessions({taskId: "", items: [], loaded: false});
+      setTaskSessions({taskId: "", items: [], loaded: false, failed: false});
       return;
     }
     let alive = true;
-    setTaskSessions((current) => current.taskId === taskId ? current : {taskId, items: [], loaded: false});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setTaskSessions((current) => current.taskId === taskId ? current : {taskId, items: [], loaded: false, failed: false});
     void listComputerTaskSessions(taskId).then((result) => {
-      if (alive) setTaskSessions({taskId, items: result.sessions, loaded: true});
+      if (!alive) return;
+      sessionsRetryRef.current = 0;
+      setTaskSessions((current) => {
+        // Sessions this page just created stay even if the list was read a moment before.
+        const local = current.taskId === taskId ? current.items.filter((row) => !result.sessions.some((item) => item.id === row.id)) : [];
+        return {taskId, items: [...result.sessions, ...local], loaded: true, failed: false};
+      });
     }).catch(() => {
-      // Optional: the OceanLeo conversation stays usable without the list.
-      if (alive) setTaskSessions((current) => current.taskId === taskId ? {...current, loaded: true} : {taskId, items: [], loaded: true});
+      if (!alive) return;
+      setTaskSessions((current) => current.taskId === taskId ? {...current, failed: true} : {taskId, items: [], loaded: false, failed: true});
+      const attempt = sessionsRetryRef.current++;
+      timer = setTimeout(() => setSessionsEpoch((epoch) => epoch + 1), Math.min(30_000, 2_000 * 2 ** attempt));
     });
-    return () => { alive = false; };
-  }, [taskId]);
-  const sessions = taskSessions.taskId === (taskId || "") ? taskSessions.items : NO_TASK_SESSIONS;
+    return () => { alive = false; clearTimeout(timer); };
+  }, [taskId, sessionsEpoch]);
+  const retrySessions = useCallback(() => {
+    sessionsRetryRef.current = 0;
+    setSessionsEpoch((epoch) => epoch + 1);
+  }, []);
+  const allSessions = taskSessions.taskId === (taskId || "") ? taskSessions.items : NO_TASK_SESSIONS;
+  // An ACP session with program "oceanleo" (old imports) is not a native chat: it is never shown as one.
+  const sessions = useMemo(() => allSessions.filter(usableSession), [allSessions]);
+  const sessionsLoaded = taskSessions.taskId === taskId && taskSessions.loaded;
+  const sessionsFailed = Boolean(taskId) && taskSessions.taskId === taskId && taskSessions.failed;
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
 
+  // The URL names the conversation; a change from outside (back/forward, a link
+  // to another `computerSession` of this task) switches it.
+  const lastParamRef = useRef<string | null>(null);
+  const writeSessionParam = useCallback((id: string | null) => {
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("computerSession", id);
+    else url.searchParams.delete("computerSession");
+    lastParamRef.current = id ?? "";
+    window.history.replaceState(window.history.state, "", url);
+  }, []);
+  const [, setLocationTick] = useState(0);
   useEffect(() => {
-    if (!taskId || taskSessions.taskId !== taskId || !taskSessions.loaded) return;
+    const changed = () => setLocationTick((tick) => tick + 1);
+    window.addEventListener("popstate", changed);
+    return () => window.removeEventListener("popstate", changed);
+  }, []);
+  useEffect(() => {
+    const param = new URL(window.location.href).searchParams.get("computerSession") || "";
+    if (lastParamRef.current === null || lastParamRef.current === param) { lastParamRef.current = param; return; }
+    lastParamRef.current = param;
+    // Not decided yet for this task: the resolution below reads the URL itself.
+    if (!taskId || selectedSession.taskId !== taskId || !selectedSession.resolved) return;
+    if (param && param !== "cloud") {
+      const named = sessions.find((session) => session.id === param);
+      if (named) { setPickedChat(null); setSelectedSession({taskId, id: named.id, resolved: true}); }
+      else if (sessionsLoaded) setSessionsEpoch((epoch) => epoch + 1);
+    } else if (!computerTask) {
+      setPickedChat(null);
+      setSelectedSession({taskId, id: null, resolved: true});
+    }
+  });
+
+  useEffect(() => {
+    if (!taskId) return;
     if (selectedSession.taskId === taskId && selectedSession.resolved) return;
-    const url = typeof window === "undefined" ? null : new URL(window.location.href);
-    const preferred = preferredSessionRef.current?.taskId === taskId ? preferredSessionRef.current.id : null;
-    const requested = preferred || url?.searchParams.get("computerSession") || "";
+    const requested = new URL(window.location.href).searchParams.get("computerSession") || "";
     const named = requested && requested !== "cloud" ? sessions.find((session) => session.id === requested) : undefined;
-    // A task without a named session waits for its mode (computer tasks open their latest session).
-    if (!named && !taskModeKnown) return;
+    if (!named) {
+      if (!taskModeKnown) return;
+      // Until the list is read, a named session or a computer task waits (the URL is kept);
+      // a cloud task opens its OceanLeo conversation right away.
+      if (!sessionsLoaded && (computerTask || (requested && requested !== "cloud"))) return;
+    }
     const chosen = named ?? (computerTask ? latestComputerTaskSession(sessions) : null);
     setSelectedSession({taskId, id: chosen?.id ?? null, resolved: true});
-    if (url && (url.searchParams.get("computerSession") || "") !== (chosen?.id ?? "")) {
+    if (requested !== (chosen?.id ?? "")) {
       // A legacy `computerSession=cloud` (or a stale id) is dropped instead of opening an empty page;
       // a computer task opened on its latest session names it, so a reload lands on the same one.
-      url.searchParams.delete("computerSession");
-      if (chosen) url.searchParams.set("computerSession", chosen.id);
-      window.history.replaceState(window.history.state, "", url);
+      writeSessionParam(chosen?.id ?? null);
     }
-  }, [taskId, taskSessions, sessions, selectedSession, taskModeKnown, computerTask]);
-
-  // Computers referenced by this task's sessions (name, online state).
-  const draftComputerId = !taskId && draftConversation && draftConversation.kind !== "oceanleo" ? draftConversation.computerId : "";
-  useEffect(() => {
-    const missing = [...new Set([...sessions.map((session) => session.computer_id), ...(draftComputerId ? [draftComputerId] : [])])]
-      .filter((id) => !computers[id]);
-    if (!missing.length) return;
-    let alive = true;
-    void Promise.allSettled(missing.map((id) => getComputer(id))).then((rows) => {
-      if (!alive) return;
-      setComputers((current) => {
-        const next = {...current};
-        rows.forEach((row, index) => {
-          const known = sessions.find((session) => session.computer_id === missing[index]);
-          next[missing[index]] = row.status === "fulfilled" ? row.value : next[missing[index]] ?? (known ? offlineComputer(known)
-            : {id: missing[index], name: draftConversation && draftConversation.kind !== "oceanleo" ? draftConversation.computerName : missing[index], status: "removed", node_online: false} as Computer);
-        });
-        return next;
-      });
-    });
-    return () => { alive = false; };
-  }, [sessions, computers, draftComputerId]);
-  const computerFor = useCallback((session: ComputerTaskSession | null): Computer | null =>
-    session ? computers[session.computer_id] ?? offlineComputer(session) : null, [computers]);
+  }, [taskId, sessions, sessionsLoaded, selectedSession, taskModeKnown, computerTask, writeSessionParam]);
 
   const activeSession = selectedSession.taskId === (taskId || "") && selectedSession.id
     ? sessions.find((session) => session.id === selectedSession.id) ?? null : null;
   const conversationResolved = !taskId || (selectedSession.taskId === taskId && selectedSession.resolved);
-  // The bound target of the OceanLeo conversation. A computer task's row carries no
-  // `computer_id` (the task detail API omits it), so its sessions name the computer.
+  const pick = !activeSession && pickedChat && pickedChat.taskId === (taskId || "") ? pickedChat.conversation : null;
+
+  // Computers in play (name, online state). "Not known yet" is not offline; the state
+  // refreshes on the cadence the computer views use (15 s) and on window focus.
+  const draftComputerId = !taskId && draftConversation && draftConversation.kind !== "oceanleo" ? draftConversation.computerId : "";
+  const computerIds = useMemo(() => [...new Set([
+    ...allSessions.map((session) => session.computer_id),
+    ...(pick ? [pick.computerId] : []),
+    ...(draftComputerId ? [draftComputerId] : []),
+  ])].sort().join(","), [allSessions, pick?.computerId, draftComputerId]);
+  useEffect(() => {
+    const ids = computerIds ? computerIds.split(",") : [];
+    if (!ids.length) return;
+    let alive = true;
+    const load = () => {
+      void Promise.allSettled(ids.map((id) => getComputer(id))).then((rows) => {
+        if (!alive) return;
+        setComputers((current) => {
+          let next = current;
+          rows.forEach((row, index) => {
+            const id = ids[index];
+            // A computer that no longer exists is shown offline; any other failure retries on the next tick.
+            const value = row.status === "fulfilled" ? row.value
+              : (row.reason as {status?: number} | null)?.status === 404 ? removedComputer(id, allSessions) : null;
+            if (value && current[id] !== value) next = next === current ? {...current, [id]: value} : {...next, [id]: value};
+          });
+          return next;
+        });
+      });
+    };
+    load();
+    const timer = setInterval(() => { if (!document.hidden) load(); }, COMPUTER_REFRESH_MS);
+    window.addEventListener("focus", load);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener("focus", load); };
+  }, [computerIds]);
+  const computerFor = useCallback((computerId: string): Computer | null => computers[computerId] ?? null, [computers]);
+
+  // The OceanLeo conversation's bound target. A computer task (`mode="computer"`) has
+  // no OceanLeo conversation of its own: its Device control shows the computer of the
+  // conversation in front, and the OceanLeo row is disabled with a reason.
   const taskBound = boundTarget.taskId === taskId ? boundTarget.target : null;
+  const frontComputer = activeSession
+    ? {id: activeSession.computer_id, name: activeSession.computer_name}
+    : pick ? {id: pick.computerId, name: pick.computerName} : null;
   const resolvedBoundTarget: ExecutionTarget | null = !taskId ? null
-    : taskBound ?? (computerTask && taskSessions.taskId === taskId && taskSessions.loaded ? computerTaskSessionsTarget(sessions) : null);
+    : computerTask
+      ? (frontComputer ? {kind: "computer", id: frontComputer.id, name: frontComputer.name || frontComputer.id}
+        : sessionsLoaded ? computerTaskSessionsTarget(allSessions) : null)
+      : taskBound;
+  const oceanleoDisabledReason = computerTask ? tt("OceanLeo 请在新任务里使用") : null;
   const conversation: ConversationTarget | undefined = activeSession
     ? sessionConversation(activeSession)
-    : taskId
-      ? resolvedBoundTarget && conversationResolved ? {kind: "oceanleo", target: resolvedBoundTarget} : undefined
-      : draftConversation;
+    : pick
+      ? pick
+      : taskId
+        ? resolvedBoundTarget && conversationResolved ? {kind: "oceanleo", target: resolvedBoundTarget} : undefined
+        : draftConversation;
   const nativeChat = conversation?.kind === "native" && conversation.view === "chat";
   const surfaceActive = Boolean(activeSession && activeSession.kind !== "acp");
-  const nativeChatActive = nativeChat;
   useEffect(() => {
     if (activeSession?.kind === "acp") {
       const id = activeSession.id;
@@ -1055,8 +1141,7 @@ function AgentChatInner({
       setOpenedSurfaces((current) => current.includes(id) ? current : [...current, id]);
     }
   }, [activeSession]);
-  const conversationComputer = conversation && conversation.kind !== "oceanleo"
-    ? (activeSession ? computerFor(activeSession) : computers[conversation.computerId] ?? null) : null;
+  const conversationComputer = conversation && conversation.kind !== "oceanleo" ? computerFor(conversation.computerId) : null;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     setTaskSessions((current) => ({...current, items: current.items.map((row) => row.id === sessionId ? {...row, native_session_id: nativeId} : row)}));
@@ -1088,21 +1173,29 @@ function AgentChatInner({
   const showSession = useCallback((id: string | null) => {
     if (!taskId) return;
     setSelectedSession({taskId, id, resolved: true});
-    const url = new URL(window.location.href);
-    if (id) url.searchParams.set("computerSession", id);
-    else url.searchParams.delete("computerSession");
-    window.history.replaceState(window.history.state, "", url);
-  }, [taskId]);
+    writeSessionParam(id);
+  }, [taskId, writeSessionParam]);
 
-  const openComputerTask = useCallback((task: string, session: ComputerTaskSession) => {
-    preferredSessionRef.current = {taskId: task, id: session.id};
-    onTaskCreated?.(task);
-    conversationRouter.push(portalHref(`/tasks/${encodeURIComponent(task)}?computerSession=${encodeURIComponent(session.id)}`));
-  }, [conversationRouter, onTaskCreated]);
+  // A draft created a task: this page adopts it in place (same origin, so the stashed
+  // first prompt is there), and tells the host once; the host decides any navigation.
+  const adoptCreatedTask = useCallback(async (task: string, session: ComputerTaskSession, prompt?: string) => {
+    setTaskSessions({taskId: task, items: [session], loaded: true, failed: false});
+    setSelectedSession({taskId: task, id: session.id, resolved: true});
+    setPickedChat(null);
+    if (explicitTaskId === undefined) setLocalTaskId(task);
+    let workspaceSessionId = "";
+    if (workspace) {
+      const bound = await workspace.bindTask(task, prompt).catch(() => null);
+      workspaceSessionId = bound?.id || "";
+    }
+    onTaskCreated?.(task, workspaceSessionId || undefined);
+  }, [explicitTaskId, onTaskCreated, workspace]);
 
   const changeConversation = useCallback(async (next: ConversationTarget) => {
     setConversationError("");
     if (next.kind === "oceanleo") {
+      if (computerTask) return;
+      setPickedChat(null);
       setSettingsOpen(false);
       if (taskId) showSession(null);
       else setDraftConversation(next);
@@ -1112,9 +1205,15 @@ function AgentChatInner({
     const program: ComputerTaskSession["program"] = next.kind === "terminal" ? null : next.program;
     const existing = (next.sessionId ? sessions.find((session) => session.id === next.sessionId) : null) ??
       findComputerTaskSession(sessions, {computerId: next.computerId, kind, program});
-    if (taskId && existing) { showSession(existing.id); return; }
-    // Draft native chat: the session is created by the first send.
-    if (!taskId && kind === "acp") { setDraftConversation(next); return; }
+    if (taskId && existing) { setPickedChat(null); showSession(existing.id); return; }
+    // A native chat is created by its first send (nothing to run before that).
+    if (next.kind === "native" && next.view === "chat") {
+      const {sessionId: _ignored, ...picked} = next;
+      void _ignored;
+      setPickedChat({taskId: taskId || "", conversation: picked});
+      if (taskId) showSession(null);
+      return;
+    }
     if (conversationBusy) return;
     const requestTask = taskId;
     setConversationBusy(true);
@@ -1125,43 +1224,45 @@ function AgentChatInner({
       if (requestTask) {
         setTaskSessions((current) => current.taskId === requestTask
           ? {...current, items: [...current.items.filter((row) => row.id !== result.session.id), result.session]} : current);
+        setPickedChat(null);
         setSelectedSession((current) => current.taskId === requestTask ? {taskId: requestTask, id: result.session.id, resolved: true} : current);
-        if (taskId === requestTask) {
-          const url = new URL(window.location.href);
-          url.searchParams.set("computerSession", result.session.id);
-          window.history.replaceState(window.history.state, "", url);
-        }
+        if (taskId === requestTask) writeSessionParam(result.session.id);
       } else {
-        openComputerTask(result.task_id, result.session);
+        await adoptCreatedTask(result.task_id, result.session);
       }
     } catch {
+      // The conversation (and the Device label) stay where they were.
       setConversationError(tt("没能打开这段对话，请稍后再试。"));
     } finally {
       setConversationBusy(false);
     }
-  }, [conversationBusy, openComputerTask, sessions, showSession, taskId, tt]);
+  }, [adoptCreatedTask, computerTask, conversationBusy, sessions, showSession, taskId, tt, writeSessionParam]);
   const onConversationChange = useCallback((next: ConversationTarget) => { void changeConversation(next); }, [changeConversation]);
   const toggleSettings = useCallback(() => setSettingsOpen((open) => !open), []);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
   useEffect(() => {
     if (!conversation || conversation.kind === "oceanleo") setSettingsOpen(false);
   }, [conversation?.kind]);
 
-  // A draft native chat (or a task without that conversation yet): the first send
-  // creates the managed session (and task), then the task page sends the prompt once
-  // that conversation is connected (see NativeChatConversation).
+  // First send of a picked native chat: create the managed session (and, in a draft,
+  // the task), stash the text, and the conversation sends it once connected
+  // (NativeChatConversation). Text is never dropped: it stays in the composer on failure.
+  const chatKeysRef = useRef(new Map<string, string>());
   const startNative = useCallback(async (text: string): Promise<boolean> => {
-    if (!text || readOnly || conversationBusy) return false;
-    if (conversation?.kind !== "native" || conversation.view !== "chat") return false;
+    if (!text || readOnly || conversationBusy || !pick) return false;
+    const requestTask = taskId;
     setConversationBusy(true);
     try {
-      const result = await createComputerTaskSession(conversation.computerId, {
-        kind: "acp", program: conversation.program, ...(taskId ? {task_id: taskId} : {}), request_id: crypto.randomUUID(),
+      const result = await createComputerTaskSession(pick.computerId, {
+        kind: "acp", program: pick.program, ...(requestTask ? {task_id: requestTask} : {}), request_id: crypto.randomUUID(),
       });
       stashPendingNativePrompt(result.session.id, text);
-      if (taskId) {
-        setTaskSessions((current) => current.taskId === taskId ? {...current, items: [...current.items, result.session]} : current);
+      chatKeysRef.current.set(result.session.id, pickChatKey(pick));
+      if (requestTask) {
+        setTaskSessions((current) => current.taskId === requestTask ? {...current, items: [...current.items, result.session]} : current);
+        setPickedChat(null);
         showSession(result.session.id);
-      } else openComputerTask(result.task_id, result.session);
+      } else await adoptCreatedTask(result.task_id, result.session, text);
       return true;
     } catch {
       setConversationError(tt("没能打开这段对话，请稍后再试。"));
@@ -1169,7 +1270,24 @@ function AgentChatInner({
     } finally {
       setConversationBusy(false);
     }
-  }, [conversation, conversationBusy, openComputerTask, readOnly, showSession, taskId, tt]);
+  }, [adoptCreatedTask, conversationBusy, pick, readOnly, showSession, taskId, tt]);
+
+  // One plain line (with retry) while this task's computer conversations cannot be read.
+  const sessionsNotice = sessionsFailed ? (
+    <p className="flex items-center gap-2 text-[13px] text-stone-500" data-computer-sessions-failed>
+      <span>{tt("暂时没读到这个任务在电脑上的对话。")}</span>
+      <button type="button" onClick={retrySessions}
+        className="rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50">
+        {tt("重试")}
+      </button>
+    </p>
+  ) : null;
+  const conversationNotice = conversationError || sessionsNotice ? (
+    <>
+      {conversationError && <p className="text-[14px] text-rose-500" data-agent-chat-error>{conversationError}</p>}
+      {sessionsNotice}
+    </>
+  ) : null;
 
   // 流式正文（可选，见 AgentChatProps.agentStreamEndpoint）。
   // 轮询在旁边照常跑，所以这条流唯一的职责是让正文**早一点**出现；
@@ -1300,7 +1418,7 @@ function AgentChatInner({
       executionTarget?: ExecutionTarget,
     ) => {
       if (readOnly) {
-        setError(tt("当前会话为只读状态。"));
+        setError(tt("这段对话只能查看。"));
         return false;
       }
       // Freeze both the model-visible file contents and exact target before the
@@ -1506,7 +1624,7 @@ function AgentChatInner({
       uploaded?: AgentAttachment[],
     ) => {
       if (readOnly) {
-        setError(tt("当前会话为只读状态。"));
+        setError(tt("这段对话只能查看。"));
         return;
       }
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
@@ -1638,7 +1756,7 @@ function AgentChatInner({
     if ((!prompt && uploaded.length === 0) || busy || (toolsOn && atts.uploading))
       return;
     if (readOnly) {
-      setError(tt("当前会话为只读状态。"));
+      setError(tt("这段对话只能查看。"));
       return;
     }
     const submittedInput = input;
@@ -1704,7 +1822,7 @@ function AgentChatInner({
       if (workspace && createdSessionId) {
         const adopted = await workspace.adoptSession(createdSessionId);
         if (!adopted) {
-          setError(tt("分支已创建，但工作会话暂未同步；本次任务仍会继续运行。"));
+          setError(tt("分支已创建，右侧工作区稍后更新；任务会继续运行。"));
         }
       }
       setMessages([
@@ -2424,6 +2542,7 @@ function AgentChatInner({
     taskSessions: sessions,
     onOpenSettings: toggleSettings,
     settingsOpen,
+    oceanleoDisabledReason,
   };
 
   // The ONE stream. The OceanLeo conversation and a native computer conversation
@@ -2578,6 +2697,8 @@ function AgentChatInner({
           )}
           {/* A local-task code set on any other path is still shown in words. */}
           {error && <p className="text-[14px] text-rose-500" data-agent-chat-error>{tt(localAgentRefusalText(error) ?? error)}</p>}
+          {/* A failed computer pick / unreadable session list shows here too (the pick did not switch). */}
+          {conversationNotice}
       </>
     ),
     overlay: backToLatest,
@@ -2617,7 +2738,8 @@ function AgentChatInner({
             onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
             loading={running}
             onStop={() => void stop()}
-            disabled={readOnly}
+            // A computer task has no OceanLeo conversation to send into (its Device row says why).
+            disabled={readOnly || computerTask}
             leoSuggest
             leoContext={{ page: "task", taskId: taskId || undefined }}
             inlineSlot={inlineSlot}
@@ -2653,16 +2775,16 @@ function AgentChatInner({
 
   // Settings of the native/terminal conversation open in the existing right pane;
   // the previous right content stays mounted (hidden) and comes back on close.
-  const settingsShown = Boolean(settingsOpen && conversation && conversation.kind !== "oceanleo" && conversationComputer);
+  const settingsShown = Boolean(settingsOpen && conversation && conversation.kind !== "oceanleo");
   const settingsTitle = settingsShown && conversation ? nativeSettingsTitle(conversation, tt) : "";
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   // A native conversation through the SAME stream: no branch, regenerate, share,
   // suggestions or quick-action chips; gates answer the computer's program.
   // Each opened native chat is its own <NativeChatConversation> (one hook per
-  // session, kept mounted while hidden); this function is its stream.
+  // session, kept mounted and connected while hidden); this function is its stream.
   const renderNativePane = (pane: NativeChatPane): ReactNode => {
-    const { thread, session, input, setInput, scrollRef, onScroll } = pane;
+    const { thread, session, input, setInput, scrollRef, onScroll, connecting } = pane;
     const nativeMessages = thread.messages;
     const nativeRenderItems = buildAgentRenderItems(nativeMessages);
     const nativeProgressKey = activeAgentProgressKey(nativeRenderItems, nativeMessages);
@@ -2673,18 +2795,20 @@ function AgentChatInner({
     const nativeLastAssistantIdx = nativeMessages.findLastIndex((message) =>
       message.role === "assistant" && (message.kind === "text" || !message.kind) && message.meta?.interim !== true);
     // Install / sign-in live in the settings pane: a send blocked for that reason opens it.
-    const blockedBySetup = Boolean(session && thread.blockedReason && !thread.offline);
+    const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
+    const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason;
     const submit = async (value?: string) => {
       const text = (value ?? input).trim();
-      if (!text || readOnly) return;
+      if (readOnly) return;
       if (!session) {
-        if (await startNative(text)) setInput("");
+        if (text && await startNative(text)) setInput("");
         return;
       }
       if (!thread.ready) {
         if (blockedBySetup) setSettingsOpen(true);
         return;
       }
+      // Attachment-only sends are allowed; the input clears only when the prompt really went out.
       if (await thread.send(text)) setInput("");
     };
     return renderStream({
@@ -2704,7 +2828,7 @@ function AgentChatInner({
       ) : null,
       empty: nativeMessages.length === 0 && !thread.running ? (
         <div className="py-10 text-center text-[15px] text-stone-400">
-          {session && !thread.ready && !thread.offline && !thread.blockedReason ? tt("正在读取会话…") : tt("在下方输入，开始与 agent 对话。")}
+          {session && (connecting || (!thread.ready && !thread.offline && !thread.blockedReason)) ? tt("正在打开对话…") : tt("在下方输入，开始与 agent 对话。")}
         </div>
       ) : null,
       items: (
@@ -2725,10 +2849,9 @@ function AgentChatInner({
                   item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
                   item.message.meta?.final !== true && item.message.meta?.stopped !== true}
                 stopped={item.message.meta?.stopped === true}
-                gateActive={nativeGateOpen(item.message)}
-                gateBusy={false}
                 taskRunning={thread.running}
-                onNativeAnswer={readOnly ? undefined : thread.answer}
+                // Saved transcript (offline): gates are read-only.
+                onNativeAnswer={!readOnly && thread.live ? thread.answer : undefined}
               />
             ),
           )}
@@ -2739,12 +2862,12 @@ function AgentChatInner({
           )}
         </>
       ),
-      tail: conversationError ? <p className="text-[14px] text-rose-500" data-agent-chat-error>{conversationError}</p> : null,
+      tail: conversationNotice,
       overlay: null,
       footer: (
         <>
-          {session && thread.blockedReason && (
-            <p className="px-1 text-[12px] text-stone-500" data-native-blocked>{thread.blockedReason}</p>
+          {session && blockedLine && (
+            <p className="px-1 text-[12px] text-stone-500" data-native-blocked>{blockedLine}</p>
           )}
           {thread.saveFailed && (
             <p className="px-1 text-[12px] text-stone-400" data-native-save-failed>{tt("这段对话暂时没能保存到云端")}</p>
@@ -2756,14 +2879,18 @@ function AgentChatInner({
             onSubmit={(clean) => void submit(clean)}
             loading={thread.running || (!session && conversationBusy)}
             onStop={() => thread.stop()}
-            // Offline / still connecting: read-only. Setup-blocked stays enabled so Send opens settings.
-            disabled={readOnly || Boolean(session && !thread.ready && !thread.running && !blockedBySetup)}
-            placeholder={toolsOn ? tt("继续追问，或上传文件让 agent 分析…") : tt("继续追问")}
+            // Offline: read-only. Connecting or setup-blocked stays usable (Send opens settings).
+            disabled={readOnly || Boolean(session && !connecting && !thread.ready && !thread.running && !blockedBySetup)}
+            placeholder={placeholder ?? (toolsOn ? tt("继续追问，或上传文件让 agent 分析…") : tt("继续追问"))}
             rows={1}
             onAttachFiles={toolsOn ? thread.onAttachFiles : undefined}
             attachments={toolsOn ? thread.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? thread.onRemoveAttachment : undefined}
             onVoiceTranscript={(text: string) => setInput((current) => (current ? current + " " : "") + text)}
+            // Controls that do nothing for a native send are not shown.
+            showPlugins={false}
+            showPayerSelector={false}
+            showAppsBar={false}
             modelPickerSlot={thread.modelPicker}
             {...conversationProps}
           />
@@ -2776,40 +2903,35 @@ function AgentChatInner({
     .map((id) => sessions.find((session) => session.id === id))
     .filter((session): session is ComputerTaskSession => Boolean(session));
   if (activeSession?.kind === "acp" && !chatSessions.some((session) => session.id === activeSession.id)) chatSessions.push(activeSession);
-  const draftChat = nativeChat && !activeSession && conversation?.kind === "native" ? conversation : null;
-  const settingsForChat = (session: ComputerTaskSession | null) =>
-    settingsShown && nativeChat && (session ? activeSession?.id === session.id : Boolean(draftChat)) ? settingsHost : null;
-  const nativeStream = chatSessions.length || draftChat ? (
+  const settingsForChat = (active: boolean) => settingsShown && nativeChat && active ? settingsHost : null;
+  // One keyed list: a picked chat and the session its first send creates share a key,
+  // so the same thread instance carries over (draft model choice included).
+  const chatEntries: {key: string; session: ComputerTaskSession | null; conversation: Extract<ConversationTarget, {kind: "native"}>; active: boolean}[] = [
+    ...chatSessions.map((session) => ({
+      key: chatKeysRef.current.get(session.id) ?? session.id,
+      session,
+      conversation: sessionConversation(session) as Extract<ConversationTarget, {kind: "native"}>,
+      active: activeSession?.id === session.id,
+    })),
+    ...(pick ? [{key: pickChatKey(pick), session: null, conversation: pick, active: true}] : []),
+  ];
+  const nativeStream = chatEntries.length ? (
     <>
-      {chatSessions.map((session) => {
-        const active = activeSession?.id === session.id;
-        return (
-          <div key={session.id} className={active ? "relative min-h-0 flex-1" : "hidden"} hidden={!active} data-native-chat={session.id}>
-            <NativeChatConversation
-              session={session}
-              computer={computerFor(session)}
-              active={active}
-              onNativeSessionChange={patchSession}
-              settingsTarget={settingsForChat(session)}
-              conversation={sessionConversation(session)}
-              render={renderNativePane}
-            />
-          </div>
-        );
-      })}
-      {draftChat && (
-        <div key={`draft:${draftChat.computerId}:${draftChat.program}`} className="relative min-h-0 flex-1" data-native-chat="draft">
+      {chatEntries.map((entry) => (
+        <div key={entry.key} className={entry.active ? "relative min-h-0 flex-1" : "hidden"} hidden={!entry.active}
+          data-native-chat={entry.session?.id ?? "pick"}>
           <NativeChatConversation
-            session={null}
-            computer={computers[draftChat.computerId] ?? null}
-            active
+            session={entry.session}
+            computer={computerFor(entry.conversation.computerId)}
+            active={entry.active}
             onNativeSessionChange={patchSession}
-            settingsTarget={settingsForChat(null)}
-            conversation={draftChat}
+            onSetupBlocked={openSettings}
+            settingsTarget={settingsForChat(entry.active)}
+            conversation={entry.conversation}
             render={renderNativePane}
           />
         </div>
-      )}
+      ))}
     </>
   ) : null;
 
@@ -2825,14 +2947,14 @@ function AgentChatInner({
     <div className="flex h-full min-h-0 flex-col">
       <div className={cloudShown ? "relative min-h-0 flex-1" : "hidden"} hidden={!cloudShown}>{stream}</div>
       {nativeStream && (
-        <div className={nativeChatActive ? "flex min-h-0 flex-1 flex-col" : "hidden"} hidden={!nativeChatActive}>{nativeStream}</div>
+        <div className={nativeChat ? "flex min-h-0 flex-1 flex-col" : "hidden"} hidden={!nativeChat}>{nativeStream}</div>
       )}
       {surfaceSessions.map((session) => {
         const active = surfaceActive && activeSession?.id === session.id;
         return (
           <div key={session.id} className={active ? "relative min-h-0 flex-1" : "hidden"} hidden={!active} data-computer-surface={session.id}>
             <NativeTerminalSurface
-              computer={computerFor(session)}
+              computer={computerFor(session.computer_id)}
               session={session}
               active={active}
               onNativeSessionChange={surfaceBinder(session)}
@@ -2843,7 +2965,7 @@ function AgentChatInner({
       {surfaceActive && (
         <div className="shrink-0 border-t border-stone-100">
           <div className="mx-auto w-full max-w-2xl">
-            {conversationError && <p className="px-4 pt-2 text-[13px] text-rose-500" data-agent-chat-error>{conversationError}</p>}
+            {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}
             <ConversationBar
               conversation={conversation!}
               onConversationChange={onConversationChange}
@@ -2851,6 +2973,7 @@ function AgentChatInner({
               boundTarget={taskId ? resolvedBoundTarget : undefined}
               onOpenSettings={toggleSettings}
               settingsOpen={settingsOpen}
+              oceanleoDisabledReason={oceanleoDisabledReason}
             />
           </div>
         </div>
@@ -2928,9 +3051,8 @@ function AgentChatInner({
           onClose={() => settingsShown ? closeSettings() : (onWorkspaceOpenChange || setRightOpen)(false)}
         >
           <div className={settingsShown ? "hidden" : "h-full"} hidden={settingsShown}>{workspaceContent ?? right}</div>
-          {settingsShown && conversation && conversation.kind !== "oceanleo" && conversationComputer && (
+          {settingsShown && conversation && conversation.kind !== "oceanleo" && (
             <div className="h-full overflow-y-auto" data-native-settings-pane>
-              <SettingsPaneTitle title={settingsTitle} />
               {nativeChat
                 // The on-screen native chat portals its panel here with its live thread.dialog.
                 ? <div ref={setSettingsHost} className="h-full" />
@@ -2955,7 +3077,10 @@ function AgentChatInner({
       // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
       library={settingsShown
-        ? { ...(effectiveLibrary || {}), label: settingsTitle, open: true, onOpenChange: (open) => { if (!open) closeSettings(); }, paneTitle: settingsTitle }
+        ? { ...(effectiveLibrary || {}), label: settingsTitle, open: true, onOpenChange: (open) => { if (!open) closeSettings(); },
+            // The settings title wins over any hidden editor's header claim while open.
+            paneTitle: <span className="truncate text-[12px] font-medium text-stone-500" data-native-settings-title>{settingsTitle}</span>,
+            paneTitleOwned: true }
         : effectiveLibrary}
     />
   );
@@ -2972,75 +3097,76 @@ function AgentChatInner({
   );
 }
 
-/** The right pane's title while it shows conversation settings (claims the header the result tabs use). */
-function SettingsPaneTitle({ title }: { title: string }) {
-  const slot = (SplitWorkspaceModule.useRightPaneSlot ?? noRightPaneSlot)();
-  useEffect(() => {
-    if (!slot) return;
-    slot.setRightPaneClaim(SETTINGS_PANE_OWNER, {
-      label: <span className="truncate text-[12px] font-medium text-stone-500" data-native-settings-title>{title}</span>,
-      editorHeader: false,
-      frameless: false,
-    });
-  }, [slot, title]);
-  useEffect(() => () => slot?.clearRightPaneClaim(SETTINGS_PANE_OWNER), [slot]);
-  return null;
-}
-const SETTINGS_PANE_OWNER = "agent-chat:conversation-settings";
-const noRightPaneSlot = () => null;
-
-/** A native permission/question the program is still waiting on. */
-function nativeGateOpen(message: AgentMessage): boolean {
-  if (message.kind !== "gate") return false;
-  const permission = message.meta?.native_permission as { chosen?: unknown } | undefined;
-  const question = message.meta?.native_question as { submitted?: unknown } | undefined;
-  if (permission) return permission.chosen === undefined || permission.chosen === null || permission.chosen === "";
-  if (question) return !question.submitted;
-  return false;
-}
-
 /** What one native chat hands the host's stream renderer. */
 interface NativeChatPane {
   thread: NativeThread;
-  /** null: a draft conversation whose session is created by the first send. */
+  /** null: a picked conversation whose session is created by the first send. */
   session: ComputerTaskSession | null;
   input: string;
   setInput: (next: string | ((current: string) => string)) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
   onScroll: () => void;
+  /** The computer's state is not known yet: "正在连接…", never "offline". */
+  connecting: boolean;
 }
+
+/** A queued first prompt that cannot go out (setup block, offline) is handed back after this long. */
+const PENDING_PROMPT_SETTLE_MS = 20_000;
 
 /**
  * One native chat conversation: its own thread (a hook, so one component per
- * session), kept mounted while hidden so switching never kills a run. It sends
- * the home → task handoff prompt exactly once when connected, keeps its own
- * draft text and scroll position, and portals its settings panel (with the live
- * `thread.dialog`) into the right pane while that pane is open for it.
+ * session), kept mounted AND connected while hidden so permission prompts and
+ * progress keep arriving; switching never kills a run. It sends the home → task
+ * handoff prompt exactly once when connected (or hands it back to the composer
+ * when it cannot go out), keeps its own draft text and scroll position, and
+ * portals its settings panel (with the live `thread.dialog`) into the right pane.
  */
-function NativeChatConversation({ session, computer, active, onNativeSessionChange, settingsTarget, conversation, render }: {
+function NativeChatConversation({ session, computer, active, onNativeSessionChange, onSetupBlocked, settingsTarget, conversation, render }: {
   session: ComputerTaskSession | null;
   computer: Computer | null;
   active: boolean;
   onNativeSessionChange: (sessionId: string, nativeId: string) => void;
+  onSetupBlocked: () => void;
   settingsTarget: HTMLElement | null;
-  conversation: ConversationTarget;
+  conversation: Extract<ConversationTarget, { kind: "native" }>;
   render: (pane: NativeChatPane) => ReactNode;
 }) {
   const sessionId = session?.id ?? "";
   const onNative = useCallback((nativeId: string) => {
     if (sessionId) onNativeSessionChange(sessionId, nativeId);
   }, [sessionId, onNativeSessionChange]);
-  const thread = useNativeThread({ computer, session, enabled: active && Boolean(session), onNativeSessionChange: onNative });
+  // A picked (session-less) chat still connects for program status and models;
+  // it never opens, creates or prompts a session.
+  const thread = useNativeThread({
+    computer, session, program: conversation.program,
+    enabled: true,
+    onNativeSessionChange: onNative,
+  });
+  const connecting = !computer;
   const [input, setInput] = useState("");
   const threadRef = useRef(thread);
   threadRef.current = thread;
+  const onSetupBlockedRef = useRef(onSetupBlocked);
+  onSetupBlockedRef.current = onSetupBlocked;
+  const setupBlocked = Boolean(!connecting && thread.blockedReason && !thread.offline);
   useEffect(() => {
-    if (!active || !sessionId || !thread.ready) return;
-    // takePendingNativePrompt removes the entry before returning it: one send, even under StrictMode.
-    const text = takePendingNativePrompt(sessionId);
-    if (!text) return;
-    void threadRef.current.send(text).then((sent) => { if (!sent) setInput((current) => current || text); });
-  }, [active, sessionId, thread.ready]);
+    if (!active || !sessionId || !hasPendingNativePrompt(sessionId)) return;
+    const handBack = (text: string | null) => { if (text) setInput((current) => current || text); };
+    if (thread.ready) {
+      // takePendingNativePrompt removes the entry before returning it: one send, even under StrictMode.
+      const text = takePendingNativePrompt(sessionId);
+      if (text) void threadRef.current.send(text).then((sent) => { if (!sent) handBack(text); });
+      return;
+    }
+    if (setupBlocked) {
+      // Needs install / sign-in: the text goes back to the composer and settings open.
+      handBack(takePendingNativePrompt(sessionId));
+      onSetupBlockedRef.current();
+      return;
+    }
+    const timer = setTimeout(() => handBack(takePendingNativePrompt(sessionId)), PENDING_PROMPT_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [active, sessionId, thread.ready, setupBlocked]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
   const onScroll = useCallback(() => {
@@ -3053,7 +3179,7 @@ function NativeChatConversation({ session, computer, active, onNativeSessionChan
   }, [thread.messages, active]);
   return (
     <>
-      {render({ thread, session, input, setInput, scrollRef, onScroll })}
+      {render({ thread, session, input, setInput, scrollRef, onScroll, connecting })}
       {settingsTarget && createPortal(
         <NativeSettingsPanel computer={computer} conversation={conversation} dialog={thread.dialog} />,
         settingsTarget,

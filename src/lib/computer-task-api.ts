@@ -71,6 +71,12 @@ export function stashPendingNativePrompt(sessionId: string, text: string): void 
   try { window.sessionStorage.setItem(PENDING_PROMPT_PREFIX + sessionId, value); }
   catch { pendingPrompts.set(sessionId, value); }
 }
+/** Whether a first prompt is waiting for this session (does not consume it). */
+export function hasPendingNativePrompt(sessionId: string): boolean {
+  if (!sessionId) return false;
+  if (pendingPrompts.has(sessionId)) return true;
+  try { return window.sessionStorage.getItem(PENDING_PROMPT_PREFIX + sessionId) !== null; } catch { return false; }
+}
 export function takePendingNativePrompt(sessionId: string): string | null {
   if (!sessionId) return null;
   let raw: string | null = pendingPrompts.get(sessionId) ?? null;

@@ -70,3 +70,43 @@ Done 2026-10-30 (R3). Integrated against landed R4 `779d50ee`, R1 `5f691d29`, R2
 ### Requests
 - Parent (portal home `app/_components/home-content.tsx`): use `stashPendingNativePrompt` / `takePendingNativePrompt` from `@oceanleo/ui/lib` for the home → task handoff; AgentChat's task page consumes it.
 - Tests stubbing `../lib/agent` without `authed` that compile the real AgentChat now also load the native thread (`useAgentDialogController` → `lib/cloud-computer-agent-api` imports `authed`); `library-task-render-loop` was already red at base for this reason. Owners: add `authed` to those stubs (or `export *` from the real module).
+
+## Fix checkpoint (V1 review, R3 items 1–18)
+
+Integrated against R1 fixes `304e1329` (`live`, `draft`, truthful `send`, `program` draft input, hidden stays connected) and R2's in-progress `oceanleoDisabledReason` prop (LeoComposer / ConversationBar / ComputerDock).
+
+1. `computer-task-import.tsx`: no native program (absent / `oceanleo`) → OceanLeo conversation on that computer: `writeExecutionTarget(owner, {kind:"computer", id, name})` + `router.replace("/")` (or `/tasks/<taskId>`); never creates an oceanleo session. Stable request id `legacyImportRequestId(...)` (hash of computer+kind+program+native id+task). AgentChat filters ACP sessions without a native program (`usableSession`): never rendered as a native chat.
+2. No cross-origin hop: a draft that creates a task adopts it in place (`setLocalTaskId` when the host doesn't control `taskId`, workspace `bindTask`, then `onTaskCreated` once); the stashed prompt is on the same origin and sent by the same thread instance. `portalHref` navigation removed.
+3. Create failures show `没能打开这段对话，请稍后再试。` in whichever pane is visible (cloud tail included, bar under terminal); the conversation and label change only after the session exists. Draft passes `draftConversation` (undefined = R2's draft OceanLeo target; with R2 fix 3 the label follows the prop, so a failed pick reverts).
+4. Session list failure: retried with backoff (2 s → 30 s cap), `computerSession` kept, one line `暂时没读到这个任务在电脑上的对话。` + `重试`. A cloud task without a named session still opens its OceanLeo conversation meanwhile.
+5. Computers: unknown ≠ offline (`正在连接…`, composer not disabled); refreshed every 15 s (CC_POLL_MS cadence) and on window focus; only a 404 counts as removed; other failures retry.
+6. Queued first prompt: sent when `ready`; setup block → text back in composer, settings open, stash dropped; otherwise handed back after 20 s.
+7. `onNativeAnswer` only when `thread.live`.
+8. Native LeoComposer: `showPlugins={false}`, `showPayerSelector={false}`, `showAppsBar={false}`, host `placeholder` respected.
+9. `mode="computer"` tasks: `oceanleoDisabledReason = "OceanLeo 请在新任务里使用"`, OceanLeo pick ignored, cloud composer disabled; bound target = the computer of the conversation in front (not a flipping latest session). Cloud tasks keep their real bound target.
+10. Picked (session-less) chats run `useNativeThread({computer, session:null, program, enabled:true})`: status, models, settings work without a session.
+11. Every opened chat keeps `enabled: true` while hidden; one keyed list, and a picked chat shares its key with the session its first send creates (same thread instance carries over).
+12. `SplitLibraryConfig.paneTitleOwned` (SplitWorkspace): while settings are open the pane title wins over content/editor claims; the claim-based `SettingsPaneTitle` and its namespace-import hack are gone.
+13. Attachment-only native sends allowed; input cleared only when `send` resolves true.
+14. `popstate` / external `computerSession` changes inside the same task switch the conversation (`lastParamRef`, own writes recorded).
+15. 对话 creates its session on first send in tasks too; 命令行 / 终端 still create on pick.
+16. One navigation path: `onTaskCreated` only (no router push).
+17. Native empty hint `正在打开对话…`.
+18. Removed `nativeChatActive`, `preferredSessionRef`, `nativeGateOpen`, `gateActive`/`gateBusy` on native gates.
+- Wording (R5): `这段对话只能查看。` ×3, `分支已创建，右侧工作区稍后更新；任务会继续运行。`.
+
+### Commands + results (fix round)
+- `tests/agent-chat-conversations.test.mjs` 26/26 (one test per fix, plus import tests).
+- agent-chat-single-header 6/6, agent-chat-streaming 15/15, agent-chat-search-highlight 12/12, computer-task-api 3/3, local-agent-task 12/12, agent-action-history-live 6/6, library-shared-split-runtime 6/6.
+- agent-chat-home-launch-keeps-transcript 13/14: #11 compiles portal `home-content.tsx` (parent's in-progress `createComputerTaskSession` import vs the test's lib stub), not R3 code.
+- eas-w13-right-maximize: did not run before this round either (AnchoredPopover stub lacks `runAfterOverlayExit`, from `c3c55de1`).
+- tpp-w3-thread 7/8 and effect-tt-dependency (ConversationView) unchanged from base.
+- computer-conversations-i18n / share-i18n-coverage: red only for the new/removed strings below (parent i18n).
+
+### New strings (fix round)
+- `OceanLeo 请在新任务里使用`
+- `暂时没读到这个任务在电脑上的对话。`
+- `正在连接…`
+- `这段对话只能查看。`
+- `分支已创建，右侧工作区稍后更新；任务会继续运行。`
+- No longer used by R3: `正在读取会话…`, `当前会话为只读状态。`, `分支已创建，但工作会话暂未同步；本次任务仍会继续运行。`

@@ -85,8 +85,12 @@ const computerTaskApiUrl = await compileModule("src/lib/computer-task-api.ts", {
     globalThis.__gateway = [];
     export async function cloudComputerRequest(path, init = {}) {
       globalThis.__gateway.push({ path, method: init.method || "GET", body: init.body ? JSON.parse(init.body) : null });
-      if (path.startsWith("/v1/computer-task-sessions?")) return { sessions: globalThis.__sessions };
+      if (path.startsWith("/v1/computer-task-sessions?")) {
+        if (globalThis.__listFails > 0) { globalThis.__listFails--; throw Object.assign(new Error("offline"), { status: 503 }); }
+        return { sessions: globalThis.__sessions };
+      }
       if (path.endsWith("/task-sessions")) {
+        if (globalThis.__createFails) throw Object.assign(new Error("create failed"), { status: 503 });
         const body = JSON.parse(init.body);
         const session = { id: "cts_new" + globalThis.__gateway.length, task_id: body.task_id || "t_new", computer_id: path.split("/")[3],
           computer_name: "elon", kind: body.kind, program: body.program ?? null, native_session_id: null,
@@ -97,12 +101,16 @@ const computerTaskApiUrl = await compileModule("src/lib/computer-task-api.ts", {
     }
   `),
 });
+const uiStub = dataModule(
+  "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
+);
+// One SplitWorkspace instance shared by AgentChat and the ResultCanvas stub (same context).
+const splitWorkspaceUrl = await compileModule("src/shell/SplitWorkspace.tsx", { "../i18n/ui/useUI": uiStub }, { missingPackageStub: lazyStub });
 const cloudComputerApiUrl = await compileModule("src/lib/cloud-computer-api.ts", {}, { missingPackageStub: lazyStub });
 
 const OVERRIDES = {
-  "../i18n/ui/useUI": dataModule(
-    "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
-  ),
+  "../i18n/ui/useUI": uiStub,
+  "./SplitWorkspace": splitWorkspaceUrl,
   "next/navigation": dataModule(
     "export function useRouter(){ return { push(url){ (globalThis.__pushed ||= []).push(url); }, replace(){}, refresh(){}, back(){} }; }\n" +
       "export function useSearchParams(){ return new URLSearchParams(); }\n" +
@@ -112,12 +120,20 @@ const OVERRIDES = {
   "../lib/computer-task-api": computerTaskApiUrl,
   "../lib/cloud-computer-api": dataModule(`
     export * from ${JSON.stringify(cloudComputerApiUrl)};
-    export async function getComputer(id) { return { id, name: "elon", status: "active", node_online: true }; }
+    export async function getComputer(id) {
+      if (globalThis.__computerMode === "hang") return new Promise(() => {});
+      if (globalThis.__computerMode === "offline") return { id, name: "elon", status: "active", node_online: false };
+      return { id, name: "elon", status: "active", node_online: true };
+    }
   `),
   "./CloudBrowserPanel": dataModule("export function CloudBrowserPanel(){ return null; }"),
   "./ResultCanvas": dataModule(`
     import React from ${reactUrl};
+    import { useRightPaneSlot } from ${JSON.stringify(splitWorkspaceUrl)};
     export function ResultCanvas(){
+      const slot = useRightPaneSlot();
+      // Like an editor header: claims the right pane's title while mounted (even hidden).
+      React.useEffect(() => { slot?.setRightPaneClaim("stub-editor", { label: React.createElement("span", null, "编辑器标题"), editorHeader: true, frameless: false }); return () => slot?.clearRightPaneClaim("stub-editor"); }, [slot]);
       React.useEffect(() => { globalThis.__previewMounts = (globalThis.__previewMounts || 0) + 1; return () => { globalThis.__previewMounts--; }; }, []);
       return React.createElement("div", { "data-preview-content": true }, "preview");
     }
@@ -162,15 +178,17 @@ const OVERRIDES = {
     globalThis.__threadInputs = []; globalThis.__sent = []; globalThis.__threadStops = 0;
     export function useNativeThread(input) {
       globalThis.__threadInputs.push(input);
-      const state = globalThis.__thread || {};
+      const state = { ...(globalThis.__thread || {}) };
+      const live = Boolean(input.session && input.enabled && input.computer && input.computer.node_online && state.live !== false);
       return {
-        messages: input.session ? (state.messages || []) : [], running: false,
-        ready: Boolean(input.session && input.enabled && state.ready !== false && !state.blockedReason), offline: false,
+        messages: input.session ? (state.messages || []) : [], live, draft: !input.session, running: false,
+        ready: live && !state.blockedReason && state.ready !== false,
+        offline: Boolean(input.computer && !input.computer.node_online),
         blockedReason: input.session ? state.blockedReason || null : null,
-        async send(text) { globalThis.__sent.push({ session: input.session && input.session.id, text }); return true; },
+        async send(text) { globalThis.__sent.push({ session: input.session && input.session.id, text }); return state.sendResult ?? true; },
         stop() { globalThis.__threadStops++; },
         answer(message, answer) { (globalThis.__answers ||= []).push({ id: message.id, answer }); },
-        composerAttachments: [], onAttachFiles: undefined, onRemoveAttachment() {},
+        composerAttachments: state.attachments || [], onAttachFiles: undefined, onRemoveAttachment() {},
         modelPicker: null, hasOlder: false, loadOlder() {}, saveFailed: Boolean(state.saveFailed), dialog: { stub: true },
       };
     }
@@ -178,6 +196,7 @@ const OVERRIDES = {
   "./cloud-computer/ConversationBar": dataModule(`
     import React from ${reactUrl};
     export function ConversationBar(props) {
+      globalThis.__barProps = props;
       return React.createElement("div", { "data-conversation-bar": true, ref: (node) => { if (node) node.__props = props; } },
         props.conversation.computerName + " · 终端");
     }
@@ -229,8 +248,12 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1" } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode } = {}) {
   window.history.replaceState(null, "", url);
+  globalThis.__listFails = listFails;
+  globalThis.__createFails = createFails;
+  globalThis.__computerMode = computerMode;
+  globalThis.__barProps = null;
   globalThis.__task = task ?? null;
   globalThis.__sessions = sessions;
   globalThis.__gateway.length = 0;
@@ -369,37 +392,52 @@ test("terminal shows the surface with ConversationBar and no LeoComposer; settin
   } finally { await view.unmount(); }
 });
 
-test("draft native chat: the first send creates the session, navigates, and the task page sends it once", async () => {
-  const draft = await mount({}, { url: "/" });
-  let created;
+test("draft native chat: the first send creates the session, the page adopts the task in place and sends once (no second navigation)", async () => {
+  const created = [];
+  const draft = await mount({ onTaskCreated: (id) => created.push(id) }, { url: "/" });
   try {
     await changeConversation(draft, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" });
     assert.equal(globalThis.__gateway.filter((call) => call.method === "POST").length, 0, "selection alone creates nothing");
+    const draftInput = globalThis.__threadInputs.at(-1);
+    assert.equal(draftInput.session, null);
+    assert.equal(draftInput.program, "codex", "a picked chat connects for status and models (draft mode)");
+    assert.equal(draftInput.enabled, true);
     const composer = draft.composer("native");
     assert.ok(visible(composer));
+    assert.equal(composer.__props.conversation.kind, "native", "the composer gets the controlled conversation");
     await act(async () => { composer.__props.onSubmit("看看日志"); await new Promise((r) => setTimeout(r, 0)); });
     await settle();
-    created = globalThis.__gateway.find((call) => call.method === "POST");
-    assert.ok(created, "the send created the managed session");
-    assert.equal(created.body.kind, "acp");
-    assert.equal(created.body.program, "codex");
-    assert.equal(created.body.task_id, undefined);
-    assert.match(globalThis.__pushed.at(-1), /\/tasks\/t_new\?computerSession=cts_new/);
-    assert.deepEqual(globalThis.__sent, [], "nothing is sent before the conversation is connected");
-  } finally { await draft.unmount(); }
-  const sid = decodeURIComponent(globalThis.__pushed.at(-1).split("computerSession=")[1]);
-  const page = await mount({ taskId: "t1" }, {
-    task: computerTask(), sessions: [session(sid, "acp", "codex", "2026-10-30T11:00:00Z")], url: `/tasks/t1?computerSession=${sid}`,
-  });
-  try {
     await settle();
-    assert.deepEqual(globalThis.__sent, [{ session: sid, text: "看看日志" }], "sent exactly once");
-  } finally { await page.unmount(); }
-  // A second page for the same session does not resend.
-  const again = await mount({ taskId: "t1" }, {
-    task: computerTask(), sessions: [session(sid, "acp", "codex", "2026-10-30T11:00:00Z")], url: `/tasks/t1?computerSession=${sid}`,
-  });
-  try { assert.deepEqual(globalThis.__sent, []); } finally { await again.unmount(); }
+    const post = globalThis.__gateway.find((call) => call.method === "POST");
+    assert.ok(post, "the send created the managed session");
+    assert.equal(post.body.kind, "acp");
+    assert.equal(post.body.program, "codex");
+    assert.equal(post.body.task_id, undefined);
+    assert.deepEqual(created, ["t_new"], "the host is told once");
+    assert.deepEqual(globalThis.__pushed, [], "no router push on top of onTaskCreated (and no cross-origin hop)");
+    const sid = post.body && globalThis.__sent.at(-1)?.session;
+    assert.deepEqual(globalThis.__sent.map((row) => row.text), ["看看日志"], "sent exactly once, in place");
+    assert.match(sid, /^cts_new/);
+  } finally { await draft.unmount(); }
+});
+
+test("in a task, picking 对话 for a program without a session creates nothing; the first send creates it with the task id", async () => {
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [] });
+  try {
+    await changeConversation(view, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "claude", view: "chat" });
+    assert.equal(globalThis.__gateway.filter((call) => call.method === "POST").length, 0);
+    const composer = view.composer("native");
+    assert.ok(visible(composer), "an empty native pane with a ready composer");
+    assert.equal(composer.__props.disabled, false);
+    await act(async () => { composer.__props.onSubmit("你好"); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    await settle();
+    const post = globalThis.__gateway.find((call) => call.method === "POST");
+    assert.equal(post.body.task_id, "t1");
+    assert.equal(post.body.program, "claude");
+    assert.deepEqual(globalThis.__sent.map((row) => row.text), ["你好"]);
+    assert.match(window.location.search, /computerSession=cts_new/);
+  } finally { await view.unmount(); }
 });
 
 test("in a task, a conversation without a session is created with the task id and never executes", async () => {
@@ -445,33 +483,250 @@ test("pending native prompt helpers: removed before returned, stale entries disc
   assert.equal(window.sessionStorage.getItem("oceanleo.pending-native-prompt:cts_old"), null);
 });
 
-// The legacy deep-link import moved from task-host/ into a small host helper; behavior kept.
-const { ComputerTaskImport } = await import(await compileModule("src/shell/cloud-computer/computer-task-import.tsx", {
+test("a failed pick shows in the visible (cloud) stream and nothing switches", async () => {
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [], createFails: true });
+  try {
+    await changeConversation(view, "cloud", { kind: "terminal", computerId: "cc_elon", computerName: "elon" });
+    const pane = view.host.querySelector('[data-agent-stream="cloud"]');
+    assert.ok(visible(pane));
+    assert.ok(pane.querySelector("[data-agent-chat-error]").textContent.includes("没能打开这段对话"));
+    assert.equal(view.composer("cloud").__props.conversation.kind, "oceanleo", "the Device label stays on the old conversation");
+    assert.doesNotMatch(window.location.search, /computerSession/);
+  } finally { await view.unmount(); }
+});
+
+test("an unreadable session list keeps the URL, shows one line with retry, and recovers", async () => {
+  const view = await mount({ taskId: "t1" }, {
+    task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")],
+    url: "/tasks/t1?computerSession=cts_codex", listFails: 1,
+  });
+  try {
+    assert.match(window.location.search, /computerSession=cts_codex/, "the param is kept while the list cannot be read");
+    const notice = view.host.querySelector("[data-computer-sessions-failed]");
+    assert.ok(visible(notice));
+    await act(async () => { notice.querySelector("button").click(); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    assert.equal(view.host.querySelector("[data-computer-sessions-failed]"), null);
+    assert.ok(visible(view.composer("native")));
+    assert.equal(view.composer("native").__props.conversation.sessionId, "cts_codex");
+  } finally { await view.unmount(); }
+});
+
+test("a computer whose state is not known yet says 正在连接…, not offline, and the composer stays usable", async () => {
+  globalThis.__thread = { blockedReason: "这台电脑离线，只能查看已保存的对话。" };
+  const view = await mount({ taskId: "t1" }, {
+    task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")], computerMode: "hang",
+  });
+  try {
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    assert.ok(pane.querySelector("[data-native-blocked]").textContent.includes("正在连接…"));
+    assert.doesNotMatch(pane.textContent, /离线/);
+    assert.ok(pane.textContent.includes("正在打开对话…"), "plain empty hint");
+    assert.equal(view.composer("native").__props.disabled, false);
+  } finally { await view.unmount(); globalThis.__thread = null; }
+});
+
+test("offline: saved transcript gates are read-only (no onNativeAnswer) and the composer is read-only", async () => {
+  globalThis.__thread = { messages: [
+    { id: -21, role: "assistant", kind: "gate", content: "允许运行 npm test？", meta: { gate_prompt: "允许运行 npm test？",
+      native_permission: { permId: "p1", options: [{ id: "allow", name: "允许", kind: "allow_once" }], chosen: null } } },
+  ] };
+  const view = await mount({ taskId: "t1" }, {
+    task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")], computerMode: "offline",
+  });
+  try {
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    const option = pane.querySelector("[data-native-permission-option]");
+    assert.ok(option, "the gate renders");
+    assert.equal(option.disabled, true, "no answer button is active while not live");
+    assert.equal(view.composer("native").__props.disabled, true);
+  } finally { await view.unmount(); globalThis.__thread = null; }
+});
+
+test("a queued first prompt for a program that needs setup goes back to the composer and opens settings", async () => {
+  window.sessionStorage.setItem("oceanleo.pending-native-prompt:cts_codex", JSON.stringify({ text: "先跑测试", queued_at: Date.now() }));
+  globalThis.__thread = { blockedReason: "Codex 还没有登录，请在设置里登录。" };
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    await settle();
+    assert.equal(view.composer("native").__props.value, "先跑测试", "text handed back");
+    assert.equal(window.sessionStorage.getItem("oceanleo.pending-native-prompt:cts_codex"), null, "stash dropped");
+    assert.deepEqual(globalThis.__sent, []);
+    assert.ok(visible(view.host.querySelector('[data-native-settings="native"]')), "settings opened");
+  } finally { await view.unmount(); globalThis.__thread = null; }
+});
+
+test("native composer hides controls that do nothing for a native send and respects the host placeholder", async () => {
+  const view = await mount({ taskId: "t1", placeholder: "宿主占位" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const props = view.composer("native").__props;
+    assert.equal(props.showPlugins, false);
+    assert.equal(props.showPayerSelector, false);
+    assert.equal(props.showAppsBar, false);
+    assert.equal(props.placeholder, "宿主占位");
+  } finally { await view.unmount(); }
+});
+
+test("a computer task offers no OceanLeo turn: the row is disabled with a reason and picking it does nothing", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const composer = view.composer("native");
+    assert.equal(composer.__props.oceanleoDisabledReason, "OceanLeo 请在新任务里使用");
+    await changeConversation(view, "native", { kind: "oceanleo", target: { kind: "computer", id: "cc_elon", name: "elon" } });
+    assert.ok(visible(view.composer("native")), "still on the native conversation");
+    assert.equal(view.composer("cloud").__props.disabled, true, "the hidden cloud composer cannot send into a computer task");
+  } finally { await view.unmount(); }
+});
+
+test("a cloud task with native sessions keeps its real bound target and no disabled reason", async () => {
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const composer = view.composer("cloud");
+    assert.deepEqual(composer.__props.boundExecutionTarget, { kind: "cloud" });
+    assert.equal(composer.__props.oceanleoDisabledReason, null);
+  } finally { await view.unmount(); }
+});
+
+test("hidden native chats stay connected; switching back reuses the same thread instance", async () => {
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    await changeConversation(view, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" });
+    const chat = view.host.querySelector('[data-native-chat="cts_codex"]');
+    await changeConversation(view, "native", { kind: "oceanleo", target: { kind: "cloud" } });
+    assert.equal(visible(chat), false);
+    const last = globalThis.__threadInputs.filter((input) => input.session?.id === "cts_codex").at(-1);
+    assert.equal(last.enabled, true, "hidden chat keeps its connection");
+    await changeConversation(view, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat", sessionId: "cts_codex" });
+    assert.equal(view.host.querySelector('[data-native-chat="cts_codex"]'), chat, "same instance");
+  } finally { await view.unmount(); }
+});
+
+test("the settings title wins over a hidden editor's header claim", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_term", "terminal", null, "2026-10-30T11:00:00Z")] });
+  try {
+    await act(async () => { globalThis.__barProps.onOpenSettings(); });
+    await settle();
+    const title = view.host.querySelector("[data-native-settings-title]");
+    assert.ok(title, "settings title rendered in the pane header");
+    assert.equal(title.textContent, "终端设置 · elon");
+    assert.doesNotMatch(title.closest("[data-pane-header]")?.textContent || "", /编辑器标题/);
+  } finally { await view.unmount(); }
+});
+
+test("attachment-only native send goes out; the input clears only when the thread says it was sent", async () => {
+  globalThis.__thread = { attachments: [{ id: "a1", name: "log.txt", state: "done" }], sendResult: false };
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    await act(async () => { view.composer("native").__props.onChange("保留"); });
+    await act(async () => { view.composer("native").__props.onSubmit(""); await new Promise((r) => setTimeout(r, 0)); });
+    assert.deepEqual(globalThis.__sent.at(-1), { session: "cts_codex", text: "" }, "attachment-only send attempted");
+    assert.equal(view.composer("native").__props.value, "保留", "not cleared when send resolved false");
+  } finally { await view.unmount(); globalThis.__thread = null; }
+});
+
+test("a URL change inside the same task (back/forward) switches the conversation", async () => {
+  const view = await mount({ taskId: "t1" }, {
+    task: computerTask(),
+    sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z"), session("cts_term", "terminal", null, "2026-10-30T09:00:00Z")],
+  });
+  try {
+    assert.equal(view.composer("native").__props.conversation.sessionId, "cts_codex");
+    await act(async () => {
+      window.history.pushState(null, "", "/tasks/t1?computerSession=cts_term");
+      window.dispatchEvent(new window.PopStateEvent("popstate"));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await settle();
+    assert.ok(visible(view.host.querySelector('[data-native-surface="cts_term"]')));
+  } finally { await view.unmount(); }
+});
+
+test("legacy ACP sessions with program oceanleo are never shown as a native chat", async () => {
+  const view = await mount({ taskId: "t1" }, {
+    task: computerTask(), sessions: [session("cts_legacy", "acp", "oceanleo", "2026-10-30T11:00:00Z")], url: "/tasks/t1?computerSession=cts_legacy",
+  });
+  try {
+    assert.equal(view.host.querySelector('[data-native-chat="cts_legacy"]'), null);
+    assert.equal(globalThis.__threadInputs.some((input) => input.session?.id === "cts_legacy"), false);
+  } finally { await view.unmount(); }
+});
+
+test("source: no dead native gate props, no cross-origin task push, plain read-only wording", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /nativeChatActive|preferredSessionRef|nativeGateOpen/);
+  assert.doesNotMatch(source, /portalHref\(`\/tasks/);
+  assert.doesNotMatch(source, /当前会话为只读状态|分支已创建，但工作会话暂未同步/);
+  assert.match(source, /这段对话只能查看。/);
+  assert.match(source, /分支已创建，右侧工作区稍后更新；任务会继续运行。/);
+});
+
+// The legacy deep-link import moved from task-host/ into a small host helper.
+const importModuleUrl = await compileModule("src/shell/cloud-computer/computer-task-import.tsx", {
   "../../i18n/ui/useUI": dataModule("export function useUI(){ return (zh) => zh; }"),
   "next/navigation": dataModule(
     "export function useRouter(){ return { replace(url){ globalThis.__forward = url; } }; }\n" +
-      "export function useSearchParams(){ return new URLSearchParams('card=cli&program=codex&session=known-native'); }",
+      "export function useSearchParams(){ return new URLSearchParams(globalThis.__importParams || ''); }",
   ),
+  "../../lib/auth/client": dataModule("export async function getUserId(){ return 'owner'; }"),
+  "../../lib/cloud-computer-api": dataModule("export async function getComputer(id){ return { id, name: 'elon' }; }"),
+  "../../lib/execution-target": dataModule("globalThis.__targets = [];\nexport function writeExecutionTarget(owner, target){ globalThis.__targets.push({ owner, target }); }"),
   "../../lib/computer-task-api": dataModule(
     "globalThis.__imports = [];\nexport async function createComputerTaskSession(id, input){ globalThis.__imports.push({ id, input }); return { task_id: 'existing', session: { id: 'managed' } }; }",
   ),
-}));
+});
+const { ComputerTaskImport, legacyImportRequestId } = await import(importModuleUrl);
 
-test("legacy deep link imports only its named native session into the task and forwards once", async () => {
+async function mountImport(props, params) {
+  globalThis.__importParams = params;
+  globalThis.__forward = undefined;
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   await act(async () => {
-    root.render(React.createElement(React.StrictMode, null, React.createElement(ComputerTaskImport, { computerId: "cc", taskId: "existing" })));
+    root.render(React.createElement(React.StrictMode, null, React.createElement(ComputerTaskImport, props)));
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
+  return { host, async unmount() { await act(async () => root.unmount()); host.remove(); } };
+}
+
+test("legacy deep link imports only its named native session, once, with a request id stable across reloads", async () => {
+  globalThis.__imports.length = 0;
+  const first = await mountImport({ computerId: "cc", taskId: "existing" }, "card=cli&program=codex&session=known-native");
   try {
     assert.equal(globalThis.__imports.length, 1, "imports exactly once under StrictMode");
-    assert.deepEqual(globalThis.__imports[0].input, {
-      kind: "cli", program: "codex", task_id: "existing", native_session_id: "known-native", request_id: globalThis.__imports[0].input.request_id,
+    const { input } = globalThis.__imports[0];
+    assert.deepEqual({ ...input, request_id: undefined }, {
+      kind: "cli", program: "codex", task_id: "existing", native_session_id: "known-native", request_id: undefined,
     });
     assert.equal(globalThis.__forward, "/tasks/existing?computerSession=managed");
-    assert.match(host.textContent, /正在打开对话/);
-    assert.equal(host.querySelector("a.underline, .underline"), null, "no underlined text link as a control");
-  } finally { await act(async () => root.unmount()); host.remove(); }
+    assert.match(first.host.textContent, /正在打开对话/);
+    assert.equal(first.host.querySelector(".underline"), null, "no underlined text link as a control");
+  } finally { await first.unmount(); }
+  const again = await mountImport({ computerId: "cc", taskId: "existing" }, "card=cli&program=codex&session=known-native");
+  try {
+    assert.equal(globalThis.__imports[1].input.request_id, globalThis.__imports[0].input.request_id, "reload reuses the request id");
+    assert.match(globalThis.__imports[0].input.request_id, /^[A-Za-z0-9_.:@\/+~-]{1,160}$/);
+  } finally { await again.unmount(); }
+  assert.notEqual(
+    legacyImportRequestId({ computerId: "cc", kind: "terminal", program: null }),
+    legacyImportRequestId({ computerId: "cc2", kind: "terminal", program: null }),
+  );
+});
+
+test("a computer link without a native program opens the OceanLeo conversation on that computer and creates no session", async () => {
+  globalThis.__imports.length = 0;
+  globalThis.__targets.length = 0;
+  const view = await mountImport({ computerId: "cc_elon" }, "");
+  try {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(globalThis.__imports.length, 0, "no oceanleo native session");
+    assert.deepEqual(globalThis.__targets, [{ owner: "owner", target: { kind: "computer", id: "cc_elon", name: "elon" } }]);
+    assert.equal(globalThis.__forward, "/");
+  } finally { await view.unmount(); }
+  const program = await mountImport({ computerId: "cc_elon" }, "program=oceanleo");
+  try {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(globalThis.__imports.length, 0);
+  } finally { await program.unmount(); }
 });

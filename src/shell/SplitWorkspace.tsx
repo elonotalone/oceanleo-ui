@@ -260,6 +260,12 @@ export interface SplitLibraryConfig {
   onOpenChange?: (open: boolean) => void;
   /** 右版面顶部居中标题，默认「预览」。 */
   paneTitle?: ReactNode;
+  /**
+   * The pane shows host content of its own (e.g. a conversation's settings) over
+   * the mounted-but-hidden library: `paneTitle` wins over every content claim
+   * (ResultCanvas tabs, editor headers, frameless workbenches) while this is true.
+   */
+  paneTitleOwned?: boolean;
   /** @deprecated v23.2 起库固定在右侧，编辑器只通过顶部按钮在左栏打开内容。 */
   dock?: WorkspaceLibraryDock;
   /** @deprecated 保留类型兼容，不再触发。 */
@@ -461,9 +467,10 @@ export function SplitWorkspace({
     () => new Map<string, RightPanePresentation>(),
   );
   const activeRightClaim = Array.from(rightPaneClaims.values()).at(-1);
-  const rightLabelOverride = activeRightClaim ? activeRightClaim.label : baseRightLabel;
-  const rightFrameless = activeRightClaim?.frameless ?? baseRightFrameless;
-  const rightEditorHeader = activeRightClaim?.editorHeader ?? baseRightEditorHeader;
+  const paneTitleOwned = Boolean(library?.paneTitleOwned);
+  const rightLabelOverride = paneTitleOwned ? null : activeRightClaim ? activeRightClaim.label : baseRightLabel;
+  const rightFrameless = paneTitleOwned ? false : activeRightClaim?.frameless ?? baseRightFrameless;
+  const rightEditorHeader = paneTitleOwned ? false : activeRightClaim?.editorHeader ?? baseRightEditorHeader;
   const [rightMaximized, setRightMaximizedState] = useState(false);
   const rightMaximizedRef = useRef(false);
   rightMaximizedRef.current = rightMaximized;
