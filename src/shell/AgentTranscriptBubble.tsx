@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import {
   AIGC_LABEL_TEXT,
@@ -58,6 +58,12 @@ export interface AgentTranscriptBubbleProps {
    * `<mark data-leo-search-hit>`，搜索控件据此计数、标当前项、滚动定位。
    */
   highlightQuery?: string;
+  /**
+   * 电脑上的原生对话（Codex / Claude Code / Cursor / Hermes）的确认与提问：
+   * `meta.native_permission` 收到所选选项 id，`meta.native_question` 收到
+   * `{ [questionId]: value }`。不传时这类确认只读显示。
+   */
+  onNativeAnswer?: (message: AgentMessage, answer: unknown) => void;
 }
 
 /**
@@ -216,6 +222,7 @@ function TranscriptBody({
   taskRunning = false,
   onContinue,
   highlightQuery,
+  onNativeAnswer,
 }: AgentTranscriptBubbleProps) {
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
@@ -253,6 +260,24 @@ function TranscriptBody({
   }
 
   if (message.kind === "ui_action") return null;
+  if (message.kind === "gate" && message.meta?.native_permission) {
+    return (
+      <NativePermissionGate
+        message={message}
+        onAnswer={onNativeAnswer}
+        highlightQuery={highlightQuery}
+      />
+    );
+  }
+  if (message.kind === "gate" && message.meta?.native_question) {
+    return (
+      <NativeQuestionGate
+        message={message}
+        onAnswer={onNativeAnswer}
+        highlightQuery={highlightQuery}
+      />
+    );
+  }
   if (message.kind === "gate") {
     return (
       <GateBubble
@@ -436,6 +461,306 @@ function GateBubble({
   );
 }
 
+type NativeGateOption = { id: string; name: string; kind: string };
+
+function nativePermissionOf(message: AgentMessage): {
+  permId: string;
+  options: NativeGateOption[];
+  chosen: string;
+} {
+  const raw = message.meta?.native_permission as
+    | { permId?: unknown; options?: unknown; chosen?: unknown }
+    | undefined;
+  const options = Array.isArray(raw?.options)
+    ? raw.options.flatMap((item): NativeGateOption[] => {
+        if (!item || typeof item !== "object") return [];
+        const row = item as Record<string, unknown>;
+        const id = typeof row.id === "string" ? row.id : "";
+        if (!id) return [];
+        return [{
+          id,
+          name: typeof row.name === "string" && row.name ? row.name : id,
+          kind: typeof row.kind === "string" ? row.kind : "",
+        }];
+      })
+    : [];
+  return {
+    permId: typeof raw?.permId === "string" ? raw.permId : "",
+    options,
+    chosen: typeof raw?.chosen === "string" ? raw.chosen : "",
+  };
+}
+
+/** allow_* 是主按钮（同 GateBubble「确认继续」），其余是次按钮（同「到此停止」）。 */
+function isAllowKind(kind: string): boolean {
+  return kind.startsWith("allow");
+}
+
+const GATE_PRIMARY =
+  "rounded-lg bg-amber-500 px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50";
+const GATE_SECONDARY =
+  "rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-medium text-amber-700 disabled:opacity-50";
+
+function GateFrame({
+  active,
+  prompt,
+  highlightQuery,
+  children,
+  attributes,
+}: {
+  active: boolean;
+  prompt: string;
+  highlightQuery?: string;
+  children?: ReactNode;
+  attributes?: Record<string, string>;
+}) {
+  const tt = useUI();
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3" {...attributes}>
+      <p className="text-[12px] font-semibold text-amber-800">
+        {active ? tt("需要你确认") : tt("已处理的确认")}
+      </p>
+      <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-amber-900">
+        <HighlightedText text={prompt} query={highlightQuery} />
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function NativePermissionGate({
+  message,
+  onAnswer,
+  highlightQuery,
+}: {
+  message: AgentMessage;
+  onAnswer?: (message: AgentMessage, answer: unknown) => void;
+  highlightQuery?: string;
+}) {
+  const tt = useUI();
+  const [picked, setPicked] = useState("");
+  const permission = nativePermissionOf(message);
+  const chosen = permission.chosen || picked;
+  const active = !chosen && Boolean(onAnswer);
+  const prompt =
+    (message.meta?.gate_prompt as string) || message.content || tt("请确认后继续。");
+  return (
+    <GateFrame
+      active={active}
+      prompt={prompt}
+      highlightQuery={highlightQuery}
+      attributes={{ "data-native-permission": permission.permId }}
+    >
+      {permission.options.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {permission.options.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              disabled={!active}
+              data-native-permission-option={option.id}
+              onClick={() => {
+                if (!active || !onAnswer) return;
+                setPicked(option.name);
+                onAnswer(message, option.id);
+              }}
+              className={isAllowKind(option.kind) ? GATE_PRIMARY : GATE_SECONDARY}
+            >
+              {option.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {chosen && (
+        <p
+          data-native-permission-chosen=""
+          className="mt-2 text-[12px] text-amber-800"
+        >
+          {tt("已选：{name}", { name: chosen })}
+        </p>
+      )}
+    </GateFrame>
+  );
+}
+
+type NativeQuestionField = {
+  id: string;
+  title: string;
+  options: { id: string; label: string }[];
+  allowMultiple: boolean;
+};
+
+/** 同 agent-dialog/questions.ts：认得出「标题 + 选项」就逐项渲染，否则退成一个文本框。 */
+function nativeQuestionFields(raw: unknown): NativeQuestionField[] | null {
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { questions?: unknown }).questions)
+      ? ((raw as { questions: unknown[] }).questions)
+      : [];
+  if (!list.length) return null;
+  const text = (...values: unknown[]) =>
+    (values.find((value) => typeof value === "string" && value.trim()) as string | undefined) ?? "";
+  const fields: NativeQuestionField[] = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const item = list[index];
+    if (!item || typeof item !== "object") return null;
+    const row = item as Record<string, unknown>;
+    const title = text(row.prompt, row.question, row.title, row.text, row.label);
+    if (!title) return null;
+    const rawOptions = row.options ?? row.choices;
+    if (rawOptions !== undefined && !Array.isArray(rawOptions)) return null;
+    const options: { id: string; label: string }[] = [];
+    for (const option of (rawOptions as unknown[] | undefined) ?? []) {
+      if (typeof option === "string" && option.trim()) {
+        options.push({ id: option, label: option });
+        continue;
+      }
+      if (!option || typeof option !== "object") return null;
+      const choice = option as Record<string, unknown>;
+      const label = text(choice.label, choice.name, choice.title, choice.value, choice.id);
+      const id = text(choice.id, choice.value) || label;
+      if (!label || !id) return null;
+      options.push({ id, label });
+    }
+    fields.push({
+      id: text(row.id) || `q${index}`,
+      title,
+      options,
+      allowMultiple: row.allowMultiple === true,
+    });
+  }
+  return fields;
+}
+
+function NativeQuestionGate({
+  message,
+  onAnswer,
+  highlightQuery,
+}: {
+  message: AgentMessage;
+  onAnswer?: (message: AgentMessage, answer: unknown) => void;
+  highlightQuery?: string;
+}) {
+  const tt = useUI();
+  const raw = message.meta?.native_question as
+    | { questionId?: unknown; detail?: unknown; questions?: unknown; submitted?: unknown }
+    | undefined;
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [text, setText] = useState("");
+  const [sent, setSent] = useState(false);
+  const submitted = raw?.submitted === true || sent;
+  const active = !submitted && Boolean(onAnswer);
+  const fields = nativeQuestionFields(raw?.questions);
+  const detail = typeof raw?.detail === "string" ? raw.detail : "";
+  const prompt =
+    (message.meta?.gate_prompt as string) || message.content || tt("需要你回答");
+  const questionId = typeof raw?.questionId === "string" ? raw.questionId : "";
+  const ids = (value: string) => value.split(",").map((part) => part.trim()).filter(Boolean);
+  const ready = fields
+    ? fields.every((field) => (values[field.id] ?? "").trim() !== "")
+    : Boolean(text.trim());
+  const submit = () => {
+    if (!active || !ready || !onAnswer) return;
+    setSent(true);
+    onAnswer(message, fields ? values : { text });
+  };
+  return (
+    <GateFrame
+      active={active}
+      prompt={prompt}
+      highlightQuery={highlightQuery}
+      attributes={{ "data-native-question": questionId }}
+    >
+      {detail && (
+        <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap text-[12px] leading-relaxed text-amber-900/80">
+          {detail}
+        </pre>
+      )}
+      {submitted ? (
+        <p data-native-question-submitted="" className="mt-2 text-[12px] text-amber-800">
+          {tt("已经提交")}
+        </p>
+      ) : active ? (
+        <form
+          className="mt-3 space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+        >
+          {fields ? (
+            fields.map((field) => (
+              <fieldset key={field.id} className="space-y-1.5">
+                <legend className="text-[12px] text-amber-800">{field.title}</legend>
+                {field.options.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {field.options.map((option) => {
+                      const pressed = ids(values[field.id] ?? "").includes(option.id);
+                      const label =
+                        field.id === "__plan__" && option.id === "accepted"
+                          ? tt("接受计划")
+                          : field.id === "__plan__" && option.id === "rejected"
+                            ? tt("拒绝")
+                            : option.label;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          aria-pressed={pressed}
+                          data-native-question-option={option.id}
+                          onClick={() =>
+                            setValues((current) => {
+                              if (!field.allowMultiple) return { ...current, [field.id]: option.id };
+                              const have = ids(current[field.id] ?? "");
+                              const next = have.includes(option.id)
+                                ? have.filter((id) => id !== option.id)
+                                : [...have, option.id];
+                              return { ...current, [field.id]: next.join(",") };
+                            })
+                          }
+                          className={pressed ? GATE_PRIMARY : GATE_SECONDARY}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <input
+                    value={values[field.id] ?? ""}
+                    data-native-question-input={field.id}
+                    onChange={(event) =>
+                      setValues((current) => ({ ...current, [field.id]: event.target.value }))
+                    }
+                    className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-amber-400"
+                  />
+                )}
+              </fieldset>
+            ))
+          ) : (
+            <textarea
+              value={text}
+              data-native-question-input=""
+              onChange={(event) => setText(event.target.value)}
+              rows={2}
+              placeholder={tt("写下回答")}
+              className="w-full resize-y rounded-lg border border-amber-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-amber-400"
+            />
+          )}
+          <button
+            type="submit"
+            disabled={!ready}
+            data-native-question-submit=""
+            className={GATE_PRIMARY}
+          >
+            {tt("提交")}
+          </button>
+        </form>
+      ) : null}
+    </GateFrame>
+  );
+}
+
 /**
  * What the user's computer did while the cloud assistant was using it
  * (device-link protocol §13): "你的电脑没有回应…", "电脑已恢复…". The gateway
@@ -529,6 +854,20 @@ function TranscriptAttachment({
   attachment: AgentAttachment;
 }) {
   const tt = useUI();
+  const archive = (attachment as { native_archive?: { download_path?: unknown } })
+    .native_archive;
+  if (
+    archive &&
+    typeof archive.download_path === "string" &&
+    !(attachment.url && (attachment.mime || "").startsWith("image/"))
+  ) {
+    return (
+      <NativeArchivedAttachment
+        name={attachment.name || tt("附件")}
+        path={archive.download_path}
+      />
+    );
+  }
   const isImage =
     (attachment.mime || "").startsWith("image/") ||
     attachment.media_type === "image" ||
@@ -552,12 +891,22 @@ function TranscriptAttachment({
       </a>
     );
   }
+  if (!attachment.url) {
+    return (
+      <span className={ATTACHMENT_CHIP} data-native-attachment="">
+        <FileGlyph />
+        <span className="max-w-[140px] truncate">
+          {attachment.name || tt("附件")}
+        </span>
+      </span>
+    );
+  }
   return (
     <a
       href={attachment.url}
       target="_blank"
       rel="noreferrer"
-      className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[12px] text-stone-600 shadow-sm hover:bg-stone-50"
+      className={ATTACHMENT_CHIP}
     >
       <svg
         className="h-4 w-4 shrink-0 text-stone-400"
@@ -577,5 +926,82 @@ function TranscriptAttachment({
         {attachment.name || tt("附件")}
       </span>
     </a>
+  );
+}
+
+const ATTACHMENT_CHIP =
+  "flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-[12px] text-stone-600 shadow-sm hover:bg-stone-50";
+
+function FileGlyph() {
+  return (
+    <svg
+      className="h-4 w-4 shrink-0 text-stone-400"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
+      <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * 原生对话里存到云端的附件：路径只指向本人可读的路由，点了才换一次性下载地址
+ * （同 agent-dialog/ArchivedAttachment），不预取、不内联。
+ */
+function NativeArchivedAttachment({ name, path }: { name: string; path: string }) {
+  const tt = useUI();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [url, setUrl] = useState("");
+  const allowed = /^\/v1\/computer-task-sessions\/[A-Za-z0-9_-]{1,128}\/attachments\/[A-Za-z0-9_-]{1,128}$/.test(path);
+  async function open() {
+    if (busy || !allowed) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const api = await import("../lib/cloud-computer-api");
+      const result = await api.cloudComputerRequest<{ url: string }>(path);
+      const parsed = new URL(result.url);
+      if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error("invalid");
+      setUrl(parsed.href);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        download={name}
+        className={ATTACHMENT_CHIP}
+        data-native-archived-attachment="ready"
+      >
+        <FileGlyph />
+        <span className="max-w-[140px] truncate">{name}</span>
+        <span className="shrink-0 text-[11px] text-stone-400">{tt("下载")}</span>
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={busy || !allowed}
+      onClick={() => void open()}
+      className={`${ATTACHMENT_CHIP} disabled:cursor-default`}
+      data-native-archived-attachment=""
+      title={failed ? tt("附件读取失败") : name}
+    >
+      <FileGlyph />
+      <span className="max-w-[140px] truncate">
+        {busy ? tt("正在读取…") : failed ? tt("附件读取失败") : name}
+      </span>
+    </button>
   );
 }

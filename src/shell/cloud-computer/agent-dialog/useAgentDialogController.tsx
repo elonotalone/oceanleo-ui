@@ -774,7 +774,7 @@ export function useAgentDialog({
 
   refreshOceanRef.current = refreshOcean;
 
-  const sendOcean = useCallback(async () => {
+  const sendOcean = useCallback(async (override?: string) => {
     const computerId = computerIdRef.current;
     if (!computerId) return;
     const ocean = stateRef.current;
@@ -794,7 +794,7 @@ export function useAgentDialog({
       await Promise.all([...inboxWaiters.current.values()]);
     }
     const pendingFiles = attachmentsRef.current.filter(isInboxReady);
-    const text = draftRef.current.trim();
+    const text = (override ?? draftRef.current).trim();
     if (!text && pendingFiles.length === 0) return;
     // 后端 turn 上限 8000：超了明说，不静默截断（WS 程序的 32000 是另一条协议）。
     if (text.length > MAX_OCEAN_PROMPT_CHARS) {
@@ -1010,12 +1010,14 @@ export function useAgentDialog({
     window.addEventListener("pointercancel", onUp);
   }, []);
 
-  const send = useCallback(async () => {
+  // `override` lets a host composer (main chat LeoComposer) send its own text
+  // without first round-tripping it through this controller's draft state.
+  const send = useCallback(async (override?: string) => {
     if (abortSendGuardRef.current) return;
     const program = stateRef.current.program;
     // 合同 I6：oceanleo 走 REST turn + 轮询，不碰 WS（P7：不为它等 15s 连接超时）。
     if (program === "oceanleo" && !localOceanleoRef.current) {
-      await sendOcean();
+      await sendOcean(typeof override === "string" ? override : undefined);
       return;
     }
     if (!usesDialogSocket(program, localOceanleoRef.current)) return;
@@ -1033,7 +1035,7 @@ export function useAgentDialog({
       sessionLoading: current.sessionLoading,
     });
     if (occupancyMode !== "idle") return;
-    const text = draftRef.current.trim();
+    const text = (typeof override === "string" ? override : draftRef.current).trim();
     if (inboxWaiters.current.size) {
       await Promise.all([...inboxWaiters.current.values()]);
     }
