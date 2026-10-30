@@ -505,6 +505,31 @@ test("a send blocked because the program needs setup opens the settings pane ins
   } finally { await view.unmount(); globalThis.__thread = null; }
 });
 
+test("re-entry while the session is still opening: the composer is usable and Enter queues (正在打开对话…), then sends once", async () => {
+  // Known computer (no 正在连接…) but the link / occupancy is not read yet: not ready, not blocked.
+  globalThis.__thread = { messages: NATIVE_MESSAGES, ready: false };
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const composer = view.composer("native");
+    assert.equal(composer.__props.disabled, false, "typing is never blocked by an unknown state");
+    await act(async () => { composer.__props.onChange("继续看"); });
+    await act(async () => { view.composer("native").__props.onSubmit("继续看"); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    assert.deepEqual(globalThis.__queued, ["继续看"], "Enter is not dropped: the prompt is queued");
+    assert.deepEqual(globalThis.__sent, [], "not sent before the session is ready");
+    assert.ok(pane.textContent.includes("继续看"), "the user's bubble shows at once");
+    assert.equal(view.composer("native").__props.value, "", "the text moved into the bubble");
+    assert.match(pane.querySelector("[data-native-blocked]").textContent, /正在打开对话…/);
+    // The session becomes ready: it goes out by itself, once.
+    globalThis.__thread = { messages: NATIVE_MESSAGES };
+    await act(async () => { view.composer("native").__props.onChange("x"); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    assert.deepEqual(globalThis.__sent, [{ session: "cts_codex", text: "继续看" }]);
+    assert.equal(pane.querySelector("[data-native-blocked]"), null, "the opening line is gone");
+  } finally { await view.unmount(); globalThis.__thread = null; }
+});
+
 test("pending native prompt helpers: removed before returned, stale entries discarded", async () => {
   const api = await import(computerTaskApiUrl);
   api.stashPendingNativePrompt("cts_x", "你好");

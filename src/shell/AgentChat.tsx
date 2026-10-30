@@ -2868,7 +2868,10 @@ function AgentChatInner({
       message.role === "assistant" && (message.kind === "text" || !message.kind) && message.meta?.interim !== true);
     // Install / sign-in live in the settings pane: a send blocked for that reason opens it.
     const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
-    const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason;
+    // A prompt typed while the session is still opening waits in the queue (its bubble shows);
+    // the line says why it has not gone out yet.
+    const openingQueued = Boolean(session && thread.pending && !thread.pending.unsent && !thread.ready && !thread.blockedReason);
+    const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason || (openingQueued ? tt("正在打开对话…") : null);
     // The homepage created this chat's session itself (nativeLaunch): no second create here.
     const hostLaunch = !session && Boolean(nativeLaunch) && Boolean(pick) && pickChatKey(pick!) === launchKey;
     const notOpened = () => tt("没能打开这段对话，请稍后再试。");
@@ -2895,7 +2898,11 @@ function AgentChatInner({
         return;
       }
       if (!thread.ready) {
-        if (blockedBySetup) setSettingsOpen(true);
+        if (blockedBySetup) { setSettingsOpen(true); return; }
+        // Still opening (link / occupancy not read yet): never drop Enter. The prompt is
+        // the user's bubble now and goes out by itself once ready (unsent after 45 s).
+        if (thread.running || thread.offline) return;
+        if (thread.queue(text)) setInput("");
         return;
       }
       // Attachment-only sends are allowed; the input clears only when the prompt really went out.
@@ -2985,8 +2992,9 @@ function AgentChatInner({
             onSubmit={(clean) => void submit(clean)}
             loading={thread.running || (!session && conversationBusy)}
             onStop={() => thread.stop()}
-            // Offline: read-only. Connecting or setup-blocked stays usable (Send opens settings).
-            disabled={readOnly || Boolean(session && !connecting && !thread.ready && !thread.running && !blockedBySetup)}
+            // Offline: read-only. Connecting, still opening, or setup-blocked stays usable
+            // (Send queues, or opens settings). Typing is never blocked by an unknown state.
+            disabled={readOnly || Boolean(session && !connecting && thread.offline)}
             placeholder={placeholder ?? (toolsOn ? tt("继续追问，或上传文件让 agent 分析…") : tt("继续追问"))}
             rows={1}
             onAttachFiles={toolsOn ? thread.onAttachFiles : undefined}

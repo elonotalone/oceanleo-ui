@@ -277,6 +277,18 @@ export interface SplitLibraryConfig {
 const MIN_RATIO = 0.18;
 const MAX_RATIO = 0.82;
 
+/** The editable composer textbox shown in this pane (hidden kept-mounted chats are skipped). */
+function visibleComposerTextbox(root: HTMLElement | null): HTMLElement | null {
+  if (!root) return null;
+  const boxes = root.querySelectorAll<HTMLElement>(
+    '[data-oceanleo-leo-entry-root] [role="textbox"][contenteditable="true"]',
+  );
+  for (const box of boxes) {
+    if (!box.closest('.hidden, [hidden], [aria-hidden="true"], [inert]')) return box;
+  }
+  return null;
+}
+
 export function SplitWorkspace({
   left,
   right,
@@ -566,7 +578,10 @@ export function SplitWorkspace({
   useEffect(() => {
     if (hasRight || !restoreAppFocusRef.current) return;
     restoreAppFocusRef.current = false;
-    const target = libraryToggleRef.current || appPaneRef.current;
+    // Prefer the conversation's composer so typing just continues; the pane itself is
+    // only a last resort (focusing it is what drew the stray black outline).
+    const target =
+      visibleComposerTextbox(appPaneRef.current) || libraryToggleRef.current || appPaneRef.current;
     target?.focus({ preventScroll: true });
   }, [hasRight]);
   useEffect(() => {
@@ -842,7 +857,7 @@ export function SplitWorkspace({
         activeDetail ? "tool-detail" : activeLibraryPanel ? "library" : "app"
       }
       data-workspace-pane-state={paneMaximized ? "closed" : "open"}
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${paneTransitionClass} ${
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 outline-none focus:outline-none focus-visible:outline-none focus-visible:border-stone-300 ${paneTransitionClass} ${
         paneMaximized ? "pointer-events-none border-0 opacity-0" : "pointer-events-auto opacity-100"
       }`}
       tabIndex={-1}

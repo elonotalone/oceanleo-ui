@@ -250,6 +250,9 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
     // 合成途中把 DOM 整个重建，导致正文瞬移到第二行，操作员 2026-07-06 复现）。只有当 value
     // ≠ 最后吐出的值时，才是「外部程序化改了 value」，那才需要同步进编辑器。
     const lastEmittedRef = useRef<string>("");
+    // An external value that arrived mid-IME-composition (e.g. the host cleared the box after a
+    // send): held here and applied once the composition has ended, never silently dropped.
+    const deferredExternalRef = useRef<string | null>(null);
 
     const editor = useEditor({
       immediatelyRender: false,
@@ -571,7 +574,12 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       }
       if (template != null) return;
       if (value === lastEmittedRef.current) return; // 自己的回声，忽略
-      if (editor.view.composing) return; // IME 合成途中，绝不重建 DOM
+      if (editor.view.composing) {
+        // IME 合成途中，绝不重建 DOM；记下，compositionend 后再应用（见下方 effect）。
+        deferredExternalRef.current = value;
+        return;
+      }
+      deferredExternalRef.current = null;
       const current = docToPlain(editor);
       if (value !== current) {
         replaceFromExternalValue(value, template != null);
@@ -582,6 +590,40 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       template,
       replaceFromExternalValue,
     ]);
+
+    // The external value deferred during composition: ProseMirror flushes the composed text
+    // within ~20 ms of compositionend (its own echo then reaches the host), so apply after that.
+    useEffect(() => {
+      if (!editor) return;
+      const dom = editor.view.dom as HTMLElement;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const onCompositionEnd = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = null;
+          const next = deferredExternalRef.current;
+          if (next == null || editor.isDestroyed || editor.view.composing) return;
+          deferredExternalRef.current = null;
+          if (next !== docToPlain(editor)) replaceFromExternalValue(next, false);
+          lastEmittedRef.current = next;
+          onChangeRef.current(next);
+        }, 40);
+      };
+      dom.addEventListener("compositionend", onCompositionEnd);
+      return () => {
+        dom.removeEventListener("compositionend", onCompositionEnd);
+        if (timer) clearTimeout(timer);
+      };
+    }, [editor, replaceFromExternalValue]);
+
+    // useEditor only reads `editable` at creation (later option syncs keep the editor's own
+    // isEditable), so an editor created while disabled would stay frozen forever — the
+    // re-entered task composer that showed nothing and accepted no typing. Keep it in sync.
+    useEffect(() => {
+      if (editor && !editor.isDestroyed && editor.isEditable === disabled) {
+        editor.setEditable(!disabled, false);
+      }
+    }, [editor, disabled]);
 
     useEffect(() => {
       if (editor && autoFocus) editor.commands.focus();
