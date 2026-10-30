@@ -110,3 +110,4 @@ Integrated against R1 fixes `304e1329` (`live`, `draft`, truthful `send`, `progr
 - `这段对话只能查看。`
 - `分支已创建，右侧工作区稍后更新；任务会继续运行。`
 - No longer used by R3: `正在读取会话…`, `当前会话为只读状态。`, `分支已创建，但工作会话暂未同步；本次任务仍会继续运行。`
+- After R2 `b0eeab12`: `agent-io-guard.sh run-heavy -- npx tsc --noEmit` exit 0, 0 errors; agent-chat-conversations 26/26 against the landed R2; `public-api-snapshot.mjs --check` pass. `oceanleoDisabledReason` is passed to the native and cloud LeoComposer and to ConversationBar.
