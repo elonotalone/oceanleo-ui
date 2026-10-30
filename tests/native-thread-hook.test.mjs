@@ -58,6 +58,10 @@ class FakeSocket {
     if (frame.t === "occupancy" && !FakeSocket.silentOccupancy) reply({ t: "occupancy", program: frame.program, busy: this.busy ?? [] });
     if (frame.t === "models") reply({ t: "models", program: frame.program, models: [{ id: "gpt-x", name: "GPT X", default: true }, { id: "gpt-y", name: "GPT Y" }] });
     if (frame.t === "sessions") reply({ t: "sessions", program: frame.program, sessions: [{ id: "srv-active", title: "Someone else's", updated_at: "2026-10-30" }], active: "srv-active" });
+    if (frame.t === "open_session" && FakeSocket.holdOpen) {
+      FakeSocket.heldOpen = { socket: this, frame };
+      return;
+    }
     if (frame.t === "open_session") {
       reply({ t: "session_opened", program: frame.program, acp_session: frame.acp_session });
       reply({ t: "transcript", program: frame.program, acp_session: frame.acp_session, live: false, frames: [
@@ -446,4 +450,75 @@ test("a computer whose state is not known yet does not mark a queued prompt unse
     for (let i = 0; i < 5; i += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
     assert.deepEqual(globalThis.__thread.pending, { text: "hi", unsent: null });
   } finally { view.cleanup(); }
+});
+
+// W3 2026-10-31: while the computer is still opening the session (cold ACP start,
+// session/load) the pane shows the cloud-saved transcript instead of an empty
+// 「正在打开对话…」, and swaps to the live replay the moment it arrives.
+test("online, session still opening: the cloud-saved transcript shows; the live replay replaces it", async () => {
+  FakeSocket.sockets = [];
+  FakeSocket.holdOpen = true;
+  FakeSocket.heldOpen = null;
+  // Own computer + session ids: the tab's cached view of other tests' sessions does not apply.
+  const opening = session({ id: "managed-open", computer_id: "cc_open", native_session_id: "nat-open" });
+  globalThis.__taskApi = { async transcript() {
+    return { session: opening, frames: [
+      { t: "user_message", program: "codex", acp_session: "nat-open", text: "Saved question", replay: true },
+      { t: "delta", program: "codex", acp_session: "nat-open", text: "Saved answer", replay: true },
+      { t: "done", program: "codex", acp_session: "nat-open", stop: "end_turn" },
+    ], saved_at: "now", sync_status: "saved", has_older: false, next_before: null };
+  } };
+  const view = await mount({ computer: { id: "cc_open", name: "elon", node_online: true }, session: opening, enabled: true });
+  try {
+    await until(() => Boolean(FakeSocket.heldOpen), "open_session sent and held");
+    assert.equal(globalThis.__thread.dialog.sessionLoading, true);
+    await until(() => globalThis.__thread.messages.some((m) => m.content === "Saved answer"), "saved transcript while opening");
+    assert.equal(globalThis.__thread.ready, false, "nothing can be sent before the session is open");
+    const { socket, frame } = FakeSocket.heldOpen;
+    FakeSocket.holdOpen = false;
+    await act(async () => {
+      socket.server({ t: "session_opened", program: frame.program, acp_session: frame.acp_session });
+      socket.server({ t: "transcript", program: frame.program, acp_session: frame.acp_session, live: false, frames: [
+        { t: "user_message", program: frame.program, acp_session: frame.acp_session, text: "Earlier", replay: true },
+        { t: "delta", program: frame.program, acp_session: frame.acp_session, text: "Earlier answer", replay: true },
+      ] });
+    });
+    await until(() => globalThis.__thread.messages.some((m) => m.content === "Earlier answer"), "live replay");
+    assert.equal(globalThis.__thread.messages.some((m) => m.content === "Saved answer"), false, "the live replay replaced the saved copy");
+  } finally { FakeSocket.holdOpen = false; FakeSocket.heldOpen = null; view.cleanup(); }
+});
+
+// W3 2026-10-31 (W1 hookups): an image picked in this tab shows its local blob:
+// thumbnail on the composer tile; a send the computer refuses hands its text back.
+test("composer tiles carry the local image preview; a refused send exposes restoredDraft", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__taskApi = { async transcript() { return { session: session({ id: "managed-r", computer_id: "cc_r", native_session_id: "nat-r" }), frames: [], saved_at: null, sync_status: "saved" }; } };
+  const originalCreate = URL.createObjectURL;
+  const originalRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = () => "blob:https://oceanleo.com/local-1";
+  URL.revokeObjectURL = () => {};
+  const view = await mount({ computer: { id: "cc_r", name: "elon", node_online: true }, session: session({ id: "managed-r", computer_id: "cc_r", native_session_id: "nat-r" }), enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready");
+    assert.equal(globalThis.__thread.restoredDraft, null);
+    const image = new window.File(["png"], "shot.png", { type: "image/png" });
+    await act(async () => globalThis.__thread.onAttachFiles([image]));
+    await until(() => globalThis.__thread.composerAttachments.length === 1, "tile");
+    const tile = globalThis.__thread.composerAttachments[0];
+    assert.equal(tile.previewUrl, "blob:https://oceanleo.com/local-1");
+    assert.equal(tile.url, "blob:https://oceanleo.com/local-1");
+    assert.doesNotMatch(JSON.stringify(globalThis.__thread.composerAttachments), /supabase\.co/);
+
+    await act(async () => globalThis.__thread.onRemoveAttachment(tile.id));
+    assert.equal(await sendVia(globalThis.__thread, "Refuse me"), true);
+    // The computer refuses it (no ref / session: it answers the latest prompt of this view).
+    await act(async () => { openSocket().server({ t: "error", program: "codex", code: "invalid_argument", text: "不行" }); });
+    await until(() => Boolean(globalThis.__thread.restoredDraft), "restoredDraft");
+    assert.equal(globalThis.__thread.restoredDraft.text, "Refuse me");
+    assert.equal(typeof globalThis.__thread.restoredDraft.seq, "number");
+  } finally {
+    URL.createObjectURL = originalCreate;
+    URL.revokeObjectURL = originalRevoke;
+    view.cleanup();
+  }
 });

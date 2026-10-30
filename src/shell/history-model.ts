@@ -109,26 +109,50 @@ export function canDeleteHistoryEntry(entry: HistoryListEntry): boolean {
 }
 
 /**
+ * A real snapshot: a non-empty plain object. Home submissions create their
+ * `home-agent` session with `snapshot: {}` — that is no workspace state.
+ */
+export function hasRealSnapshot(session: Pick<AppSession, "snapshot"> | null | undefined): boolean {
+  const snapshot = session?.snapshot;
+  return (
+    snapshot !== undefined &&
+    snapshot !== null &&
+    typeof snapshot === "object" &&
+    !Array.isArray(snapshot) &&
+    Object.keys(snapshot).length > 0
+  );
+}
+
+/**
  * 带真实 snapshot 的 app 可恢复完整操作台；workspace `agent` 与独立首页
  * `home-agent` 的完整 runtime 都是持续 task thread，因此允许 task_id 代替
- * snapshot。其它 app 绝不拿当前默认值冒充历史。
+ * snapshot。其它 app 绝不拿当前默认值冒充历史（空对象 `{}` 不算 snapshot）。
  */
 export function isRestorableAppSession(
   session: AppSession | null | undefined,
 ): session is RestorableAppSession {
   if (!session?.id || !session.site_id || !session.app_id) return false;
-  const snapshot = session.snapshot;
-  const hasSnapshot =
-    snapshot !== undefined &&
-    snapshot !== null &&
-    typeof snapshot === "object" &&
-    !Array.isArray(snapshot);
   return (
-    hasSnapshot ||
+    hasRealSnapshot(session) ||
     ((session.app_id === "agent" || session.app_id === "home-agent") &&
       typeof session.task_id === "string" &&
       Boolean(session.task_id))
   );
+}
+
+/**
+ * A portal (`oceanleo`) task-thread conversation (`home-agent` / `agent`)
+ * with no workspace snapshot: there is no site workspace to mount, the
+ * conversation IS the task. History opens it as the task chat (AgentChat)
+ * instead of asking the host for a site workspace that does not exist —
+ * the portal is not a sub-site, so mounting one failed with
+ * 「该工作会话所属网站已下线」. Sub-sites keep their own workspace runtime.
+ */
+export function isTaskThreadSession(
+  session: AppSession | null | undefined,
+): boolean {
+  if (!session?.id || session.site_id !== "oceanleo" || hasRealSnapshot(session)) return false;
+  return session.app_id === "home-agent" || session.app_id === "agent";
 }
 
 export const HISTORY_POLL_INTERVAL_MS = 8_000;

@@ -42,11 +42,13 @@ import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { LibraryTaskHistoryWorkspace } from "./library-task-history";
 import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace";
 import { ShellTaskView } from "./cloud-computer/ShellTaskView";
+import { listComputerTaskSessions } from "../lib/computer-task-api";
 import {
   canDeleteHistoryEntry,
   historyPollDelayMs,
   isRestorableAppSession,
   isShellTask,
+  isTaskThreadSession,
   mergeHistoryEntries,
   shellSessionFromTask,
   withLinkedAgentTask,
@@ -972,7 +974,45 @@ export function HistoryDetail({
       };
     }
     setDetailLoading(true);
+    const search =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    // `?task=<id>` names a task (historyHrefFor / onTaskCreated write it): read the
+    // task directly instead of two serial app_session 404s first.
+    const taskQuery = !historySessionIdFromPath(detailPathname) && search?.get("task") === sel;
+    // A named computer session reads its list alongside the task; AgentChat then
+    // finds the session already known (its first paint needs no list round trip).
+    if (taskQuery && search?.get("computerSession")) {
+      void listComputerTaskSessions(sel).catch(() => null);
+    }
     void (async () => {
+      let directTask: Awaited<ReturnType<typeof getTask>> | null = null;
+      if (taskQuery) {
+        directTask = await getTask(sel);
+        if (!alive) return;
+        if (directTask.ok && directTask.data) {
+          setDetailLoading(false);
+          if (
+            siteId &&
+            directTask.data.task.site_id &&
+            directTask.data.task.site_id !== siteId
+          ) {
+            setDetailError("这条旧记录不属于当前网站。");
+            return;
+          }
+          setLoaded({ kind: "task", detail: directTask.data });
+          return;
+        }
+        if (directTask.status !== 404) {
+          setDetailLoading(false);
+          setDetailError(
+            directTask.status === 401
+              ? "登录后即可查看我的任务。"
+              : taskRequestFailureText(directTask, "加载失败"),
+          );
+          return;
+        }
+        // Not a task after all (an old link carrying a session id): read it as one.
+      }
       let sessionResult = await getAppSession(sel);
       if (!sessionResult.ok && sessionResult.status === 404) {
         const advancedResult = await getAppSession(sel, "advanced");
@@ -1022,7 +1062,7 @@ export function HistoryDetail({
         );
         return;
       }
-      const taskResult = await getTask(sel);
+      const taskResult = directTask ?? (await getTask(sel));
       if (!alive) return;
       setDetailLoading(false);
       if (taskResult.ok && taskResult.data) {
@@ -1111,7 +1151,13 @@ export function HistoryDetail({
   const publishItems = historyPublishItems(
     loaded.kind === "task" ? loaded.detail : loaded.fallbackTask,
   );
-  if (runtimeSession && isRestorableAppSession(runtimeSession)) {
+  // A portal home/agent chat without a workspace snapshot IS its task thread:
+  // it opens as the task chat below, never as a (non-existent) site workspace.
+  if (
+    runtimeSession &&
+    isRestorableAppSession(runtimeSession) &&
+    !isTaskThreadSession(runtimeSession)
+  ) {
     const currentSession = runtimeSession;
     if (!renderWorkspace && currentSession.app_id !== "library") {
       return (
@@ -1169,6 +1215,7 @@ export function HistoryDetail({
             key={fallbackTaskId}
             siteId={fallbackSiteId}
             taskId={fallbackTaskId}
+            initialTask={loaded.kind === "task" ? loaded.detail : loaded.fallbackTask}
             accent={accent}
             headerHeight={41}
             appNames={appNames}

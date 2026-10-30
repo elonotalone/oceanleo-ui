@@ -82,6 +82,12 @@ export type NativeThread = {
   markUnsent(reason: string): void;
   /** Try the unsent prompt again (it goes out as soon as it can). */
   retry(): void;
+  /**
+   * A send the computer refused hands its typed text back here (W1 controller
+   * `restoredDraft`); `seq` changes once per restore. Hosts put `text` back into
+   * an empty composer.
+   */
+  restoredDraft: { seq: number; text: string } | null;
 };
 
 export type NativePendingPrompt = {
@@ -253,7 +259,10 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   }, [archive, program, nativeId]);
 
   const liveHasConversation = live && hasConversation(dialog.messages);
-  const showArchive = !live || (!liveHasConversation && !dialog.sessionLoading && !dialog.busy && hasConversation(archiveDialog));
+  // While the computer is still opening the session (sessionLoading) the
+  // cloud-saved transcript is shown instead of an empty 「正在打开对话…」; the
+  // live replay replaces it the moment it arrives.
+  const showArchive = !live || (!liveHasConversation && !dialog.busy && hasConversation(archiveDialog));
   const messages = useMemo(() => {
     if (!showArchive) return dialogToAgentMessages(dialog.messages, { live: true, tt });
     const saved = dialogToAgentMessages(archiveDialog, { live: false, tt });
@@ -396,6 +405,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       name: item.state === "error" ? `${item.name} · ${tt("上传失败")}` : item.name,
       mime: item.mime,
       uploading: item.state === "uploading",
+      // The tile thumbnail: the local `blob:` preview of an image picked in this tab.
+      ...(item.preview ? { previewUrl: item.preview, url: item.preview } : {}),
     })), [dialog.attachments, queuedFiles, tt]);
 
   // The queued prompt is the user's bubble until the real one (sent) arrives.
@@ -479,5 +490,6 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     queue,
     markUnsent,
     retry,
+    restoredDraft: dialog.restoredDraft ?? null,
   };
 }

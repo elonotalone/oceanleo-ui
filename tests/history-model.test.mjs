@@ -260,3 +260,51 @@ test("我的任务包含 active 会话并实时接收新任务，离开历史页
     /includes\("history"\)\) \{\s*setSel\(null\);\s*return;/,
   );
 });
+
+// W3 2026-10-31: home submissions create `home-agent` sessions on the portal with
+// `snapshot: {}`. `{}` is no workspace state; such a session is its task thread and
+// opens as AgentChat, never as a (non-existent) portal "site workspace" that said
+// 「该工作会话所属网站已下线」.
+test("空 snapshot `{}` 不算 snapshot；门户 home-agent/agent 无 snapshot 会话按 task 对话打开", async () => {
+  const { hasRealSnapshot, isTaskThreadSession } = await import("../src/shell/history-model.ts");
+  assert.equal(hasRealSnapshot({ snapshot: {} }), false);
+  assert.equal(hasRealSnapshot({ snapshot: { topic: "x" } }), true);
+  assert.equal(isRestorableAppSession({ ...baseSession, snapshot: {} }), false);
+
+  const home = {
+    ...baseSession,
+    id: "426451f2-1bd4-4231-8e18-175863f8a9fb",
+    site_id: "oceanleo",
+    app_id: "home-agent",
+    snapshot: {},
+    task_id: "4d784a1b-88bc-478e-b643-fc7204bb55bf",
+  };
+  assert.equal(isRestorableAppSession(home), true, "the task thread restores it");
+  assert.equal(isTaskThreadSession(home), true);
+  assert.equal(isTaskThreadSession({ ...home, app_id: "agent" }), true);
+  assert.equal(isTaskThreadSession({ ...home, task_id: null }), true, "no task_id → linked-task / empty state path");
+  // A real snapshot, or a sub-site's own runtime, keeps the site workspace.
+  assert.equal(isTaskThreadSession({ ...home, snapshot: { draft: 1 } }), false);
+  assert.equal(isTaskThreadSession({ ...home, site_id: "word" }), false);
+  assert.equal(isTaskThreadSession({ ...home, app_id: "library" }), false);
+});
+
+test("HistoryDetail：门户 task-thread 会话走 AgentChat；?task= 直接读 task，不先串行两次 404", () => {
+  assert.match(
+    historySource,
+    /isRestorableAppSession\(runtimeSession\) &&\s*!isTaskThreadSession\(runtimeSession\)/,
+  );
+  // `?task=` selection: getTask first; a 404 falls back to the session lookup, a second
+  // getTask is never issued for the same id.
+  assert.match(historySource, /const taskQuery = !historySessionIdFromPath\(detailPathname\) && search\?\.get\("task"\) === sel;/);
+  const effect = historySource.slice(historySource.indexOf("const taskQuery"));
+  assert.ok(
+    effect.indexOf("directTask = await getTask(sel)") < effect.indexOf("await getAppSession(sel)"),
+    "the task is read before any app_session lookup",
+  );
+  assert.match(historySource, /const taskResult = directTask \?\? \(await getTask\(sel\)\);/);
+  // A named computer session's list is read alongside the task.
+  assert.match(historySource, /search\?\.get\("computerSession"\)\) \{\s*void listComputerTaskSessions\(sel\)/);
+  // The task already read is handed to AgentChat (no duplicate GET on mount).
+  assert.match(historySource, /initialTask=\{loaded\.kind === "task" \? loaded\.detail : loaded\.fallbackTask\}/);
+});

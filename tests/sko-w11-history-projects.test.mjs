@@ -303,7 +303,9 @@ test("点项目标签进项目、不打开任务；点行其余位置仍打开�
 // ---------------------------------------------------------------------------
 // 主区：项目任务直接打开
 // ---------------------------------------------------------------------------
-test("/history 打开项目会话：直接挂工作台，不再出拦截页", async () => {
+// W3 2026-10-31: a portal home-agent session with `snapshot: {}` is its task thread —
+// it opens as the task chat (its task_id), never as a portal "site workspace".
+test("/history 打开项目会话：直接进对话（门户 home-agent 无 snapshot），不再出拦截页", async () => {
   globalThis.__w11Path = "/history/s-proj";
   globalThis.__w11SessionDetail = { ...globalThis.__w11Sessions[0], snapshot: {} };
   globalThis.__w11TaskDetail = null;
@@ -315,8 +317,9 @@ test("/history 打开项目会话：直接挂工作台，不再出拦截页", as
     }),
   );
   try {
-    assert.ok(view.container.querySelector('[data-w11-workspace="s-proj"]'));
-    assert.doesNotMatch(view.container.textContent, /这条记录已归属项目|进入项目|返回普通历史/);
+    assert.ok(view.container.querySelector('[data-w11-agent-chat="t-x"]'));
+    assert.equal(view.container.querySelector('[data-w11-workspace="s-proj"]'), null);
+    assert.doesNotMatch(view.container.textContent, /这条记录已归属项目|进入项目|返回普通历史|网站已下线/);
   } finally {
     await view.unmount();
     globalThis.__w11Path = undefined;

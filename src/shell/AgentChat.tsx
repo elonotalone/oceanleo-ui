@@ -115,6 +115,7 @@ import {
   type AgentAttachment,
   type AgentMessage,
   type ArtifactMeta,
+  type TaskDetail,
 } from "../lib/agent";
 import { deleteArtifact } from "../lib/database";
 import {
@@ -147,7 +148,7 @@ import {
 } from "./agent-thread/action-history";
 import { mergeAgentMessages } from "./agent-thread/merge";
 import { threadPresentation, resolveTaskStatus } from "./agent-thread/rules";
-import { createAgentThreadSync } from "./agent-thread/sync";
+import { createAgentThreadSync, type AgentThreadPull } from "./agent-thread/sync";
 import { thinkingLabel, useThinkingSeconds } from "./agent-thread/thinking-label";
 import { markSend, noteFirstVisibleReply, sentAtFor } from "./agent-thread/ttfv";
 import { latestTurn, userTurnCount } from "./agent-thread/turn";
@@ -365,6 +366,12 @@ export interface AgentChatProps {
    * 已有 agent task id（从历史记录点进来回看）；与 initialPrompt 二选一。
    * 省略时会复用最近的 WorkspaceSessionProvider.taskId；不在 Provider 内时保持旧行为。 */
   taskId?: string | null;
+  /**
+   * The `GET /tasks/{id}` the host already read for `taskId` (history opens a
+   * task this way). Shown at once instead of fetching the same task again;
+   * polling still follows while the task runs. Ignored for any other task.
+   */
+  initialTask?: TaskDetail | null;
   /** 显式只读嵌入场景；历史任务默认仍可续聊或从任一用户消息创建分支。 */
   readOnly?: boolean;
   /** 模式：agent（默认，带规划循环 + artifact）| chat（纯对话）。 */
@@ -618,6 +625,7 @@ function AgentChatInner({
   nativeLaunch,
   initialAttachments,
   taskId: explicitTaskId,
+  initialTask,
   readOnly: readOnlyProp = false,
   mode = "agent",
   agentId = "",
@@ -742,6 +750,9 @@ function AgentChatInner({
   const startedRef = useRef(false);
   const freshSessionStartedRef = useRef(false);
   const loadedTaskRef = useRef("");
+  const initialTaskRef = useRef(initialTask);
+  initialTaskRef.current = initialTask;
+  const seededTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
   const actionHistoryRef = useRef<ActionHistoryMark | null>(null);
@@ -817,71 +828,73 @@ function AgentChatInner({
   }, []);
 
   /**
-   * 拉一次任务。返回 `status` 与 `changed`（这一轮有没有拿到新消息）——
+   * 拉一次任务（`applyTask` 落一份已拿到的 TaskDetail：轮询结果或宿主给的 initialTask）。
+   * 返回 `status` 与 `changed`（这一轮有没有拿到新消息）——
    * `changed` 是轮询节奏的输入：还在出字就跟紧，没动静就退避。
    */
+  const applyTask = useCallback((id: string, pull: AgentThreadPull, data: TaskDetail): TaskPollResult => {
+    const settled = threadSyncRef.current.settle(
+      pull,
+      serverMessagesRef.current,
+      data,
+    );
+    if (settled === null) return IDLE_POLL_RESULT;
+    const changed = settled !== serverMessagesRef.current;
+    actionHistoryRef.current = settleActionHistory(
+      actionHistoryRef.current,
+      id,
+      settled,
+    );
+    serverMessagesRef.current = settled;
+    setMessagesTaskId(id);
+    setTaskMode((current) => {
+      const computer = isComputerWorkspaceTask(data.task);
+      return current.taskId === id && current.computer === computer ? current : {taskId: id, computer};
+    });
+    setBoundTarget({taskId: id, target: taskExecutionTarget(data.task)});
+    const local = taskLocalAgentState(data.task);
+    const artifacts = localTaskArtifacts(data.task.plan);
+    setLocalArtifacts(current => current.taskId === id && JSON.stringify(current.items) === JSON.stringify(artifacts) ? current : {taskId: id, items: artifacts});
+    setLocalExecution(current => {
+      const run = current.taskId === id ? newerLocalAgentRun(current.run, local.run) : local.run;
+      return current.taskId === id && current.local === local.local && current.run === run ? current : {taskId: id, local: local.local, run};
+    });
+    setMessages((current) => mergeAgentMessages(current, settled));
+    setActiveArtifactIds((current) => {
+      const artifactIds = (data.artifacts || []).map((artifact) =>
+        String(artifact.id),
+      );
+      if (
+        current &&
+        current.size === artifactIds.length &&
+        artifactIds.every((artifactId) => current.has(artifactId))
+      ) {
+        return current;
+      }
+      return new Set(artifactIds);
+    });
+    // 用户已经按过停止：服务端还没跟上不代表它还在跑，本地判定优先。
+    // 少了这一句，停止键按下去就是「界面停半秒又自己动起来」。
+    const status = resolveTaskStatus({
+      serverStatus: data.task?.status || "",
+      taskId: id,
+      stoppedTaskId: stoppedTaskRef.current,
+    });
+    setStatus(status);
+    if (data.task?.site_id) setTaskSiteId(data.task.site_id);
+    // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
+    if (data.task?.title) setTaskTitle(data.task.title);
+    return { status, changed, streaming: status === "running" && settled.some(
+      (message) => message.role === "assistant" && message.meta?.streaming === true,
+    ) };
+  }, []);
   const refresh = useCallback(async (id: string): Promise<TaskPollResult> => {
     const pull = threadSyncRef.current.begin(id);
     const r = await getTask(id, pull.options);
     if (loadedTaskRef.current !== id) return IDLE_POLL_RESULT;
-    if (r.ok && r.data) {
-      const settled = threadSyncRef.current.settle(
-        pull,
-        serverMessagesRef.current,
-        r.data,
-      );
-      if (settled === null) return IDLE_POLL_RESULT;
-      const changed = settled !== serverMessagesRef.current;
-      actionHistoryRef.current = settleActionHistory(
-        actionHistoryRef.current,
-        id,
-        settled,
-      );
-      serverMessagesRef.current = settled;
-      setMessagesTaskId(id);
-      setTaskMode((current) => {
-        const computer = isComputerWorkspaceTask(r.data!.task);
-        return current.taskId === id && current.computer === computer ? current : {taskId: id, computer};
-      });
-      setBoundTarget({taskId: id, target: taskExecutionTarget(r.data.task)});
-      const local = taskLocalAgentState(r.data.task);
-      const artifacts = localTaskArtifacts(r.data.task.plan);
-      setLocalArtifacts(current => current.taskId === id && JSON.stringify(current.items) === JSON.stringify(artifacts) ? current : {taskId: id, items: artifacts});
-      setLocalExecution(current => {
-        const run = current.taskId === id ? newerLocalAgentRun(current.run, local.run) : local.run;
-        return current.taskId === id && current.local === local.local && current.run === run ? current : {taskId: id, local: local.local, run};
-      });
-      setMessages((current) => mergeAgentMessages(current, settled));
-      setActiveArtifactIds((current) => {
-        const artifactIds = (r.data ? r.data.artifacts || [] : []).map((artifact) =>
-          String(artifact.id),
-        );
-        if (
-          current &&
-          current.size === artifactIds.length &&
-          artifactIds.every((artifactId) => current.has(artifactId))
-        ) {
-          return current;
-        }
-        return new Set(artifactIds);
-      });
-      // 用户已经按过停止：服务端还没跟上不代表它还在跑，本地判定优先。
-      // 少了这一句，停止键按下去就是「界面停半秒又自己动起来」。
-      const status = resolveTaskStatus({
-        serverStatus: r.data.task?.status || "",
-        taskId: id,
-        stoppedTaskId: stoppedTaskRef.current,
-      });
-      setStatus(status);
-      if (r.data.task?.site_id) setTaskSiteId(r.data.task.site_id);
-      // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
-      if (r.data.task?.title) setTaskTitle(r.data.task.title);
-      return { status, changed, streaming: status === "running" && settled.some(
-        (message) => message.role === "assistant" && message.meta?.streaming === true,
-      ) };
-    }
+    if (r.ok && r.data) return applyTask(id, pull, r.data);
     return IDLE_POLL_RESULT;
-  }, []);
+  }, [applyTask]);
 
   const noteOutgoingTurn = useCallback((id: string, turn: number) => {
     markSend(id, turn);
@@ -962,8 +975,16 @@ function AgentChatInner({
     setStatus("");
     setTaskSiteId("");
     setTaskTitle("");
+    // The host already read this task (history): show it now, no second GET.
+    // Only once per task on this mount; later loads read the server again.
+    const seed = initialTaskRef.current;
+    if (seed?.task?.id === taskId && seededTaskRef.current !== taskId) {
+      seededTaskRef.current = taskId;
+      applyTask(taskId, threadSyncRef.current.begin(taskId), seed);
+      return;
+    }
     void refresh(taskId);
-  }, [hasOrgPanel, taskId, refresh]);
+  }, [hasOrgPanel, taskId, refresh, applyTask]);
 
   // Provider 算出的 task_id 只在**有值**时接管本地 task。
   // 操作员 2026-09-07 图 f2dde413（LeoSheet 首页）：发完 hi、回答已出现，几秒后整块对话
@@ -3246,6 +3267,16 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   }, [externalNative, onNative]);
   const connecting = !computer && !external?.live;
   const [input, setInput] = useState("");
+  // A send the computer refused hands its text back (thread.restoredDraft): it goes
+  // back into the composer when that is empty. Only restores after this mount count.
+  const restored = thread.restoredDraft ?? null;
+  const restoredSeqRef = useRef(restored?.seq ?? 0);
+  useEffect(() => {
+    if (!restored || restored.seq === restoredSeqRef.current) return;
+    restoredSeqRef.current = restored.seq;
+    const text = restored.text;
+    if (text) setInput((current) => (current.trim() ? current : text));
+  }, [restored]);
   const onSetupBlockedRef = useRef(onSetupBlocked);
   onSetupBlockedRef.current = onSetupBlocked;
   const setupBlocked = Boolean(!connecting && thread.blockedReason && !thread.offline);

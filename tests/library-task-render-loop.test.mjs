@@ -223,6 +223,7 @@ const historyModel = dataModule(`
  export function historyPollDelayMs(){return 60000;}
  export function isRestorableAppSession(){return false;}
  export function isShellTask(){return false;}
+ export function isTaskThreadSession(){return false;}
  export function mergeHistoryEntries(){return [];}
  export function shellSessionFromTask(){return null;}
  export function withLinkedAgentTask(session){return session;}
@@ -251,6 +252,7 @@ const historyDetailUrl = await compileModule("src/shell/HistoryMasterDetail.tsx"
   "../i18n/ui/useUI": uiStubUrl,
   "./WorkspaceSession": workspaceSessionStub,
   "./cloud-computer/ShellTaskView": historyNoop,
+  "../lib/computer-task-api": dataModule(`export async function listComputerTaskSessions(){return {sessions:[]};}`),
   "./history-model": historyModel,
   "./workspace-route": historyRoutes,
   "../lib/history-events": dataModule(`export const HISTORY_CHANGED_EVENT='history-changed';`),
