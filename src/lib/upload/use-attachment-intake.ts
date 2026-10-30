@@ -14,23 +14,18 @@
 //      `useAttachments.handleAttachFiles` 恰好把收到的那个 File **原样**传给
 //      `uploadFile`（`useAttachments.ts:63`），所以两边的键天然对得上——
 //      **不必改业务侧一个字，也不必让 31 个站改调用。**
-//   2. **压缩**：默认开、只碰图片、永远留着原图（`image-compress.ts`）。
+//   2. **压缩**：默认开、只碰图片（`image-compress.ts`）。压缩期间文件挂在 `pending`
+//      里，输入框先画成「上传中」方块。
 //   3. **粘贴与拖拽同一条入口**（P4）：两者都落到这里的 `emit`。
 //
 // 【为什么「在传」这件事由读数驱动，而不是由「我交出去了」驱动】
 // 宿主完全可能拿了文件却不上传（比如它只想读一读内容，或者压根没接上传）。
 // 若一交出去就挂一行进度，那一行会永远停在 0%——比没有进度更糟。所以 `inFlight`
 // 只在**总线真的报了数之后**才有内容，`done`/`failed` 即撤。没人报数时它是空数组，
-// 渲染层因此一个字节都不变，35 个站的现状零回归。
+// 方块上就是不确定态小圈。
 //
-// 【「用原图」在这里为什么是「重新交一次」而不是「换掉那一次」】
-// 这两个组件不持有附件状态，也拿不到在飞的那次上传的 AbortSignal——它们没有
-// 「取消并替换」这个能力。所以本 hook 的 `useOriginals()` 做两件它做得到的事：
-// 关掉后续压缩 + 把原图重新交给宿主。宿主（`useAttachments`）会因此**多出一条
-// 附件**而不是替换掉旧的那条，用户需要自己把压缩那条删掉。
-// 要做到真正的一键替换，得让 `useAttachments` 暴露一个「按 id 替换」的口子——
-// 那份文件不在 W08 独占面上，已写进 `signals/W08-request.md`。
-// 真上传方（`AdvancedWorkbenchBlankStage`）自己持有 AbortController，那边是真替换。
+// 2026-10-31：输入框里的「已压缩：A → B · 用原图」回执与整行进度已撤（操作员：
+// 上传过程要简洁，只显示图片）。进度只画在方块上的小圆环里。
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -48,14 +43,6 @@ export interface UploadInFlight {
   file: File;
   name: string;
   snapshot: UploadProgressSnapshot;
-}
-
-/** 这一批里真被压过的那些的合计。一个都没压就是 `null`。 */
-export interface CompressionSummary {
-  /** 真被压过的文件数。 */
-  files: number;
-  originalBytes: number;
-  uploadBytes: number;
 }
 
 export interface AttachmentIntakeOptions {
@@ -76,14 +63,13 @@ export interface AttachmentIntake {
   handlePaste: (event: PasteLike) => void;
   /** 正在压缩。调用方要把它算进「发送键禁用」里。 */
   compressing: boolean;
+  /**
+   * 正在压缩、还没交给宿主的那几个文件（2026-10-31）。输入框用它先画出
+   * 「上传中」缩略块，用户粘贴/拖入的那一刻就看得见，不再另起一行「正在压缩图片…」。
+   */
+  pending: readonly File[];
   /** 正在传的那几个（读数驱动，见文件头）。 */
   inFlight: readonly UploadInFlight[];
-  /** 最近一批压缩的前后字节；没压过是 `null`。 */
-  compression: CompressionSummary | null;
-  /** 压缩开关的当前值（用户点过「用原图」就是 false）。 */
-  compressEnabled: boolean;
-  /** 「用原图」：关掉后续压缩，并把原图重新交给宿主。 */
-  useOriginals: () => void;
 }
 
 function toFileArray(
@@ -98,21 +84,16 @@ export function useAttachmentIntake(
   options: AttachmentIntakeOptions = {},
 ): AttachmentIntake {
   const [compressing, setCompressing] = useState(false);
+  const [pending, setPending] = useState<readonly File[]>([]);
   const [inFlight, setInFlight] = useState<readonly UploadInFlight[]>([]);
-  const [compression, setCompression] = useState<CompressionSummary | null>(null);
-  const [compressEnabled, setCompressEnabled] = useState(
-    options.compressImages !== false,
-  );
 
   // 回调与开关都走 ref：`emit` 会被挂在 DOM 事件上，闭包里读到的必须是此刻的值，
   // 而不是这一轮渲染冻住的那份。
   const onFilesRef = useRef(onFiles);
   onFilesRef.current = onFiles;
-  const compressEnabledRef = useRef(compressEnabled);
-  compressEnabledRef.current = compressEnabled;
+  const compressEnabledRef = useRef(options.compressImages !== false);
+  compressEnabledRef.current = options.compressImages !== false;
 
-  /** 上一批交出去的原图，供「用原图」重交。 */
-  const originalsRef = useRef<File[]>([]);
   const subscriptionsRef = useRef(new Map<File, () => void>());
   /** 卸载之后不许再 setState（上传比组件活得久是常态）。 */
   const aliveRef = useRef(true);
@@ -177,9 +158,7 @@ export function useAttachmentIntake(
   );
 
   const deliver = useCallback(
-    (payload: File[], originals: File[], summary: CompressionSummary | null) => {
-      originalsRef.current = originals;
-      if (aliveRef.current) setCompression(summary);
+    (payload: File[]) => {
       // 先订阅再交出去：宿主可能在同一个 tick 里就把请求发出去了。
       watch(payload);
       onFilesRef.current?.(payload);
@@ -192,31 +171,23 @@ export function useAttachmentIntake(
       const files = toFileArray(input);
       if (!files.length || !onFilesRef.current) return;
       if (!compressEnabledRef.current) {
-        deliver(files, files, null);
+        deliver(files);
         return;
       }
       setCompressing(true);
+      setPending((prev) => [...prev, ...files]);
       void compressImageFiles(files)
         .then((outcomes) => {
-          const squeezed = outcomes.filter((outcome) => outcome.compressed);
-          deliver(
-            outcomes.map((outcome) => outcome.upload),
-            outcomes.map((outcome) => outcome.original),
-            squeezed.length
-              ? {
-                  files: squeezed.length,
-                  originalBytes: squeezed.reduce((n, o) => n + o.originalBytes, 0),
-                  uploadBytes: squeezed.reduce((n, o) => n + o.uploadBytes, 0),
-                }
-              : null,
-          );
+          deliver(outcomes.map((outcome) => outcome.upload));
         })
         .catch(() => {
           // `compressImageFiles` 按契约不抛。真抛了也绝不能把用户的文件吞掉。
-          deliver(files, files, null);
+          deliver(files);
         })
         .finally(() => {
-          if (aliveRef.current) setCompressing(false);
+          if (!aliveRef.current) return;
+          setCompressing(false);
+          setPending((prev) => prev.filter((file) => !files.includes(file)));
         });
     },
     [deliver],
@@ -235,23 +206,11 @@ export function useAttachmentIntake(
     [emit],
   );
 
-  const useOriginals = useCallback(() => {
-    setCompressEnabled(false);
-    compressEnabledRef.current = false;
-    setCompression(null);
-    const originals = originalsRef.current;
-    if (!originals.length || !onFilesRef.current) return;
-    watch(originals);
-    onFilesRef.current(originals);
-  }, [watch]);
-
   return {
     emit,
     handlePaste,
     compressing,
+    pending,
     inFlight,
-    compression,
-    compressEnabled,
-    useOriginals,
   };
 }

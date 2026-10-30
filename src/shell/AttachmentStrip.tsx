@@ -1,16 +1,20 @@
 "use client";
 
 // ============================================================================
-// 输入框附件缩略条 + 右侧预览面板（LeoComposer / InputCard 共用）
+// 输入框附件缩略条（LeoComposer / InputCard 共用）
 // ----------------------------------------------------------------------------
-// - 点击缩略卡 → 右侧展开预览面板（图片 / 文本 / PDF / 音视频，其余给文件名 + 打开）。
-// - 上传中：未接进度读数时显示转圈；有真读数时用统一的百分比进度 chip。
-// - 删除键附着在卡片右上角。
+// 2026-10-31 重做（操作员：「看看 chatgpt 怎么做的。它只显示图片，且过程简洁」）：
+// 每个附件一块圆角方块（`UploadTile`）——图片只显示缩略图，上传中压暗 + 小圆环，
+// 失败给红色小徽章，悬停右上角 ×。不再有文件名 chip、进度行、字节与用时。
+//
+// - 宿主传 onOpenAttachment（C1）：点方块交给宿主打开（任务右侧栏），本组件不渲染预览。
+// - 不传：点方块在右侧展开内置预览面板（子站沿用的旧行为）。
 // ============================================================================
 
 import { useEffect, useState } from "react";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
-import { AttachmentProgressChip, liveProgress } from "../lib/upload/progress-view";
+import { UploadTile, withBusProgress } from "../lib/upload/upload-tile";
+import type { UploadInFlight } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 
 export interface StripAttachment {
@@ -21,9 +25,14 @@ export interface StripAttachment {
   url?: string;
   mime?: string;
   uploading?: boolean;
-  /** 真上传读数；缺省时仍显示既有的不确定态转圈。 */
+  /** 上传失败但宿主仍保留着它（等用户重试或移除）：方块右下角红色小徽章。 */
+  failed?: boolean;
+  /** 真上传读数；缺省时由总线读数（inFlight）按名配上，再缺省是不确定态小圈。 */
   progress?: UploadProgressSnapshot | null;
 }
+
+/** 输入框里方块的边长（px）。 */
+export const COMPOSER_TILE_SIZE = 56;
 
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|log|xml|ya?ml|html?|css|js|jsx|ts|tsx|py|sh|sql|ini|toml)$/i;
 const MAX_TEXT_BYTES = 256 * 1024;
@@ -39,15 +48,6 @@ function kindOf(a: StripAttachment): Kind {
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("text/") || mime === "application/json" || TEXT_EXT.test(name)) return "text";
   return "other";
-}
-
-function FileGlyph() {
-  return (
-    <svg className="h-4 w-4 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
-      <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 function Spinner({ className = "" }: { className?: string }) {
@@ -149,10 +149,35 @@ function PreviewPanel({ item, onClose }: { item: StripAttachment; onClose: () =>
   );
 }
 
+/** 正在压缩、还没交给宿主的文件：先画一块「上传中」方块，缩略图用本地 blob。 */
+function PendingFileTile({ file }: { file: File }) {
+  const tt = useUI();
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (!file.type.startsWith("image/") || typeof URL.createObjectURL !== "function") return;
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return (
+    <UploadTile
+      name={file.name}
+      mime={file.type}
+      previewUrl={previewUrl}
+      state="uploading"
+      size={COMPOSER_TILE_SIZE}
+      tt={tt}
+    />
+  );
+}
+
 export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   attachments,
   onRemove,
   onOpenAttachment,
+  onRetry,
+  pendingFiles,
+  inFlight,
   className = "",
 }: {
   attachments: readonly T[];
@@ -163,6 +188,12 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
    * Omitted → the old built-in preview panel (sub-sites).
    */
   onOpenAttachment?: (att: T) => void;
+  /** 失败方块上的重试；不传时失败徽章只是标记，用户可移除后重传。 */
+  onRetry?: (id: string) => void;
+  /** 正在压缩、尚未交给宿主的文件（`useAttachmentIntake().pending`）。 */
+  pendingFiles?: readonly File[];
+  /** 进度总线读数（`useAttachmentIntake().inFlight`），按名配给上传中的方块。 */
+  inFlight?: readonly UploadInFlight[];
   className?: string;
 }) {
   const tt = useUI();
@@ -171,57 +202,41 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   useEffect(() => {
     if (openId && !opened) setOpenId(null);
   }, [openId, opened]);
-  if (attachments.length === 0) return null;
+  const pending = pendingFiles ?? [];
+  if (attachments.length === 0 && pending.length === 0) return null;
+  const shown = withBusProgress(attachments, inFlight ?? []);
   return (
     <>
-      <div className={`flex flex-wrap gap-2 ${className}`} data-oceanleo-attachments="">
-        {attachments.map((a) => {
-          const progress = liveProgress(a.progress) ? a.progress : null;
+      <div className={`flex flex-wrap gap-2 pt-1.5 ${className}`} data-oceanleo-attachments="">
+        {shown.map((a) => {
+          const failed = Boolean(a.failed || a.progress?.failed);
+          const state = failed ? "failed" : a.uploading ? "uploading" : "ready";
           return (
-            <div key={a.id} className="group relative">
-              <button
-                type="button"
-                disabled={a.uploading}
-                aria-label={a.name || tt("附件")}
-                onClick={() => {
-                  if (onOpenAttachment) onOpenAttachment(a);
-                  else setOpenId((current) => (current === a.id ? null : a.id));
-                }}
-                className={`flex items-center gap-1.5 rounded-lg border bg-white px-1 py-1 pr-2 text-left text-[11px] text-neutral-600 shadow-sm transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 disabled:cursor-default dark:bg-neutral-900 dark:text-neutral-300 ${
-                  openId === a.id ? "border-neutral-400" : "border-neutral-200 dark:border-neutral-800"
-                }`}
-              >
-                <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-neutral-100 dark:bg-neutral-800">
-                  {a.previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.previewUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <FileGlyph />
-                  )}
-                  {a.uploading && !a.progress ? (
-                    <span className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-black/50">
-                      <Spinner className="h-4 w-4" />
-                    </span>
-                  ) : null}
-                </span>
-                <span className="max-w-[120px] truncate">{a.name || tt("附件")}</span>
-                {a.uploading && progress ? (
-                  <AttachmentProgressChip snapshot={progress} tt={tt} />
-                ) : null}
-              </button>
-              {onRemove && !a.uploading ? (
-                <button
-                  type="button"
-                  aria-label={tt("移除")}
-                  onClick={() => onRemove(a.id)}
-                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[11px] leading-none text-white shadow hover:bg-neutral-900"
-                >
-                  ×
-                </button>
-              ) : null}
-            </div>
+            <UploadTile
+              key={a.id}
+              name={a.name}
+              mime={a.mime}
+              previewUrl={a.previewUrl}
+              state={state}
+              progress={a.progress}
+              size={COMPOSER_TILE_SIZE}
+              tt={tt}
+              onOpen={
+                a.uploading && !failed
+                  ? undefined
+                  : () => {
+                      if (onOpenAttachment) onOpenAttachment(a);
+                      else setOpenId((current) => (current === a.id ? null : a.id));
+                    }
+              }
+              onRemove={onRemove && (!a.uploading || failed) ? () => onRemove(a.id) : undefined}
+              onRetry={failed && onRetry ? () => onRetry(a.id) : undefined}
+            />
           );
         })}
+        {pending.map((file, index) => (
+          <PendingFileTile key={`pending-${index}-${file.name}-${file.size}`} file={file} />
+        ))}
       </div>
       {opened ? <PreviewPanel item={opened} onClose={() => setOpenId(null)} /> : null}
     </>

@@ -53,6 +53,9 @@ const STUBS = {
     export async function isSignedIn(){ return true; }
     export async function getUserEmail(){ return "test@example.com"; }
     export async function getUserId(){ return "user-test"; }
+    export async function getUserIdSnapshot(){ return { userId: "user-test" }; }
+    export function desktopBrowserLoginAvailable(){ return false; }
+    export async function startDesktopBrowserSignIn(){ return {}; }
     export async function signIn(){ return {}; }
     export async function signUp(){ return {}; }
     export function normalizeCnPhone(raw){ return String(raw); }
@@ -407,11 +410,15 @@ async function withDom(run) {
   const find = (selector) => container.querySelector(selector);
   const html = () => container.innerHTML;
   /** 造一次粘贴。jsdom 没有可用的 DataTransfer，而三个提取函数只读 items/files。 */
-  const paste = async (selector, files) => {
+  const paste = async (selector, given) => {
     const node = find(selector);
     assert.ok(node, `粘贴目标 ${selector} 不在`);
+    // 传数组：items 与 files 是同一批 File 对象；传 `{ items, files }`：两边各给各的
+    // （Chrome 对截图就是这样——两个不同的 File、不同的 lastModified）。
+    const itemFiles = Array.isArray(given) ? given : given.items;
+    const files = Array.isArray(given) ? given : given.files;
     const transfer = {
-      items: files.map((file) => ({ kind: "file", getAsFile: () => file })),
+      items: itemFiles.map((file) => ({ kind: "file", getAsFile: () => file })),
       files,
     };
     await act(async () => {
@@ -447,72 +454,74 @@ for (const [label, Component, baseProps, target] of [
 ]) {
   const attachProp = label === "LeoComposer" ? "onAttachFiles" : "onFiles";
 
-  test(`消费点：${label} 订阅自己刚交出去的那几个 File，业务层零改动也看得见进度`, async () => {
+  test(`消费点：${label} 订阅自己刚交出去的那几个 File，进度画在方块的小圆环里，不另起进度行`, async () => {
     await withDom(async ({ render, html, paste }) => {
       const emitted = [];
-      await render(Component(), {
-        ...baseProps,
-        [attachProp]: (files) => emitted.push(...files),
-      });
+      const props = { ...baseProps, [attachProp]: (files) => emitted.push(...files) };
+      await render(Component(), props);
 
       const file = smallFile("会议纪要.pdf", 4096);
       await paste(target, [file]);
       assert.equal(emitted.length, 1, "粘贴没把文件交给宿主");
       assert.equal(emitted[0], file, "交出去的应当就是这个 File 对象本身");
 
-      // 还没人报数：**一行进度都不许有**。宿主完全可能拿了文件却不上传，
-      // 那时候挂一行永远停在 0% 的进度比没有更糟。
-      assert.equal(/data-upload-progress/.test(html()), false, "没人报数却已经画了进度");
+      // 宿主（useAttachments）的做法：按文件名挂一条 uploading 附件，不回传进度。
+      const hosted = { id: "h1", name: file.name, mime: file.type, uploading: true };
+      await render(Component(), { ...props, attachments: [hosted] });
+      // 还没人报数：方块上只是不确定态小圈。
+      assert.match(html(), /data-attachment-spinner/, "没人报数时应是不确定态小圈");
+      assert.equal(/data-attachment-progress=/.test(html()), false, "没人报数却画了百分比");
 
-      // 业务层调 uploadFile 时会发生的事（这里直接发布，等价且不必真起一次上传）。
       await act(async () => {
         publishUploadProgress(emitted[0], halfwaySnapshot(4096));
       });
       const shown = html();
-      assert.match(shown, /data-upload-progress/, `${label} 没有渲染进度`);
-      assert.match(shown, /50%/, "百分比不对");
-      assert.match(shown, /2\.0 KB \/ 4\.0 KB/, "没显示已传/总计");
-      assert.match(shown, /已用 0:01/, "没显示已用时");
-      assert.match(shown, /剩余约/, "估得出剩余时间却没显示（P1 点名要的就是这个）");
+      assert.match(shown, /data-upload-tile="uploading"/, `${label} 没有上传中方块`);
+      assert.match(shown, /data-attachment-progress="50"/, "总线读数没配到方块的圆环上");
+      assert.equal(/data-upload-progress/.test(shown), false, "不许再有整行进度");
+      assert.equal(/2\.0 KB|4\.0 KB|已用|剩余约/.test(shown), false, "方块上不许出现字节或用时");
 
-      // 传完就撤，不留一条 100% 的僵尸行。
+      // 传完：读数撤掉，宿主把 uploading 翻成 false 后就是普通方块。
       const tracker = createProgressTracker(4096, () => 0);
       await act(async () => {
         publishUploadProgress(emitted[0], tracker.finish());
       });
-      assert.equal(/data-upload-progress/.test(html()), false, "done 之后进度行没撤掉");
-
-      const failedFile = smallFile("上传失败.pdf", 4096);
-      await paste(target, [failedFile]);
-      assert.equal(emitted[1], failedFile, "失败样本也必须保留原 File 身份");
-      await act(async () => {
-        publishUploadProgress(failedFile, halfwaySnapshot(4096));
-      });
-      assert.match(html(), /data-upload-progress/, "失败前真进度行没有显示");
-      const failure = createProgressTracker(4096, () => 0);
-      failure.report(2048);
-      await act(async () => {
-        publishUploadProgress(failedFile, failure.fail());
-      });
-      assert.equal(/data-upload-progress/.test(html()), false, "failed 之后进度行没撤掉");
+      assert.equal(/data-attachment-progress=/.test(html()), false, "done 之后圆环读数没撤掉");
+      await render(Component(), { ...props, attachments: [{ ...hosted, uploading: false }] });
+      assert.match(html(), /data-upload-tile="ready"/);
+      assert.equal(/data-attachment-spinner/.test(html()), false, "传完了还在转");
     });
   });
 
-  test(`消费点：${label} 的缩略条拿到 progress 字段就把不确定态转圈换成真进度`, async () => {
-    await withDom(async ({ render, html }) => {
+  test(`消费点：${label} 的方块：progress 字段画真圆环、失败给红色重试徽章`, async () => {
+    await withDom(async ({ window, render, html, find }) => {
       const spinnerOnly = { id: "a1", name: "报表.xlsx", uploading: true };
       await render(Component(), { ...baseProps, attachments: [spinnerOnly] });
-      assert.match(html(), /data-attachment-spinner/, "不传 progress 时应维持今天的不确定态转圈");
-      assert.equal(/data-attachment-progress/.test(html()), false);
+      assert.match(html(), /data-attachment-spinner/, "不传 progress 时应是不确定态小圈");
+      assert.equal(/data-attachment-progress=/.test(html()), false);
 
       await render(Component(), {
         ...baseProps,
         attachments: [{ ...spinnerOnly, progress: halfwaySnapshot(8192) }],
       });
       const shown = html();
-      assert.match(shown, /data-attachment-progress="50"/, "缩略条没换成真进度");
-      assert.match(shown, /4\.0 KB \/ 8\.0 KB/, "title 里应有已传/总计");
+      assert.match(shown, /data-attachment-progress="50"/, "方块没换成真圆环");
+      assert.equal(/4\.0 KB \/ 8\.0 KB/.test(shown), false, "方块上不许再有字节读数");
       assert.equal(/data-attachment-spinner/.test(shown), false, "有真读数时不该再转圈");
+
+      const retried = [];
+      await render(Component(), {
+        ...baseProps,
+        attachments: [{ id: "f1", name: "坏掉.png", mime: "image/png", failed: true }],
+        onRetryAttachment: (id) => retried.push(id),
+      });
+      assert.match(html(), /data-upload-tile="failed"/, "失败方块没标出来");
+      const retry = find("[data-upload-retry]");
+      assert.ok(retry, "失败方块没有重试键");
+      await act(async () => {
+        retry.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      });
+      assert.deepEqual(retried, ["f1"]);
     });
   });
 
@@ -537,7 +546,50 @@ for (const [label, Component, baseProps, target] of [
       assert.equal(defaultPrevented, false, "粘贴纯文本被 preventDefault 了，文字插不进去");
     });
   });
+
+  test(`消费点：${label} 一次截图粘贴只交出一个文件（Chrome 给 items 与 files 两个不同的 File）`, async () => {
+    await withDom(async ({ render, paste }) => {
+      const emitted = [];
+      await render(Component(), {
+        ...baseProps,
+        [attachProp]: (files) => emitted.push(...files),
+      });
+      const fromItems = new File([new Uint8Array(4096)], "image.png", { type: "image/png", lastModified: 1_000 });
+      const fromFiles = new File([new Uint8Array(4096)], "image.png", { type: "image/png", lastModified: 2_000 });
+      assert.notEqual(fromItems, fromFiles);
+      await paste(target, { items: [fromItems], files: [fromFiles] });
+      assert.equal(emitted.length, 1, `一次粘贴交出了 ${emitted.length} 个文件——会传两次、显示两块`);
+      assert.match(emitted[0].name, /^粘贴图片-\d{14}\.png$/, "通用名的截图没改成带时刻的名字");
+    });
+  });
 }
+
+test("拖进 LeoComposer 的文件只处理一次：不冒泡到宿主页面的整页 drop 监听", async () => {
+  await withDom(async ({ window, render, find, container }) => {
+    const emitted = [];
+    await render(LeoComposer, { value: "", onChange() {}, onAttachFiles: (files) => emitted.push(...files) });
+    let pageDrops = 0;
+    const onPageDrop = () => { pageDrops += 1; };
+    window.addEventListener("drop", onPageDrop);
+    try {
+      const root = find("[data-oceanleo-leo-entry-root]");
+      const file = smallFile("拖进来.pdf", 4096);
+      await act(async () => {
+        const event = new window.Event("drop", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "dataTransfer", {
+          value: { types: ["Files"], items: [{ kind: "file", getAsFile: () => file }], files: [file] },
+        });
+        root.dispatchEvent(event);
+      });
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      assert.equal(emitted.length, 1, "一次拖拽应交出恰好一个文件");
+      assert.equal(pageDrops, 0, "drop 冒泡到了整页监听，宿主会再交一遍");
+      assert.ok(container);
+    } finally {
+      window.removeEventListener("drop", onPageDrop);
+    }
+  });
+});
 
 // ---------------------------------------------------------------- 压缩（P3）
 //
@@ -546,9 +598,9 @@ for (const [label, Component, baseProps, target] of [
 //   · 真 `image-compress.ts`：它的**不变量**——永远同时带回原图、只碰该碰的、
 //     且在压不动的环境里绝不抛也绝不吞文件。jsdom 里 canvas 装不上，压缩必然走
 //     「压不动」那条路，而那恰好就是要钉的那条：压缩失败绝不能让上传失败。
-//   · 组件那一层：默认开、可一键改回原图、显示前后字节。这一层需要「压缩真的
-//     发生过」，所以在第二个编译上下文里把 `./image-compress` 换成一个必压的桩。
-//     换掉的是压缩本身，**不是**开关与回原图的逻辑——被测的正是后者。
+//   · 组件那一层：默认开、压缩期间先画上传中方块、输入框里不挂回执（2026-10-31）。
+//     这一层需要「压缩真的发生过」，所以在第二个编译上下文里把 `./image-compress`
+//     换成一个必压的桩（可用 `globalThis.__compressGate` 卡住）。
 
 const { compressImageFile, compressImageFiles, savedBytes, isImageFile } = await load(
   "src/lib/upload/image-compress.ts",
@@ -605,7 +657,7 @@ test("前后字节算得出来：一个都没压就是 0，不是 NaN", async ()
   );
 });
 
-// 第二个编译上下文：压缩必成。被测的是开关与回原图，不是压缩算法。
+// 第二个编译上下文：压缩必成。被测的是组件这一层，不是压缩算法。
 const compressStub = dataModule(`
   export const DEFAULT_MAX_EDGE = 4096;
   export const MIN_COMPRESS_BYTES = 512 * 1024;
@@ -617,6 +669,7 @@ const compressStub = dataModule(`
   }
   export async function compressImageFile(file){ return (await compressImageFiles([file]))[0]; }
   export async function compressImageFiles(files){
+    if (globalThis.__compressGate) await globalThis.__compressGate;
     return Array.from(files).map((file) => {
       if (!String(file.type || "").startsWith("image/")) {
         return { original: file, upload: file, compressed: false,
@@ -644,8 +697,8 @@ for (const [label, attachProp] of [
   ["LeoComposer", "onAttachFiles"],
   ["InputCard", "onFiles"],
 ]) {
-  test(`压缩在 ${label} 上：默认开、显示前后字节、「用原图」一键改回`, async () => {
-    await withDom(async ({ window, render, find, html, paste }) => {
+  test(`压缩在 ${label} 上：默认开；压缩中先画上传中方块；输入框里不再挂压缩回执`, async () => {
+    await withDom(async ({ render, html, paste }) => {
       const batches = [];
       await render(squeezing[label], {
         value: "",
@@ -653,8 +706,16 @@ for (const [label, attachProp] of [
         [attachProp]: (files) => batches.push(files),
       });
 
+      // 压缩卡住的那一刻：文件还没交给宿主，但用户已经看得见一块上传中方块。
+      let release;
+      globalThis.__compressGate = new Promise((resolve) => { release = resolve; });
       const original = imageFile("截图.png", 4096);
       await paste("textarea", [original]);
+      assert.equal(batches.length, 0, "压缩还没完就交出去了");
+      assert.match(html(), /data-upload-tile="uploading"/, "压缩期间没有上传中方块");
+      assert.equal(/正在压缩图片/.test(html()), false, "不许再另起一行「正在压缩图片…」");
+      delete globalThis.__compressGate;
+      await act(async () => { release(); await Promise.resolve(); await Promise.resolve(); });
 
       // 默认开：交出去的是压过的那一份，不是原图。
       assert.equal(batches.length, 1, "粘贴没把文件交给宿主");
@@ -662,34 +723,75 @@ for (const [label, attachProp] of [
       assert.notEqual(batches[0][0], original, "压缩默认开，交出去的却还是原图");
       assert.equal(batches[0][0].size, 1024);
 
-      // 显示前后字节——P3 原话：这是用户信任这个功能的唯一方式。
+      // 2026-10-31：输入框只显示方块，「已压缩：A → B · 用原图」回执撤掉。
       const shown = html();
-      assert.match(shown, /data-upload-compression/, "没显示压缩摘要");
-      assert.match(shown, /4\.0 KB/, "没显示压缩前的字节");
-      assert.match(shown, /1\.0 KB/, "没显示压缩后的字节");
-
-      // 一键改回：原图重新交给宿主，摘要撤掉。
-      const revert = find("[data-upload-compression] button");
-      assert.ok(revert, "没有「用原图」的开关——那就是静默降质");
-      assert.match(revert.textContent, /用原图/);
-      await act(async () => {
-        revert.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-      });
-      assert.equal(batches.length, 2, "点了「用原图」却没把原图交回去");
-      assert.equal(batches[1][0], original, "交回去的不是原图本身");
-      assert.equal(/data-upload-compression/.test(html()), false, "改回原图后摘要没撤");
-
-      // 关掉之后就一直关着：再粘一张也不许偷偷再压。
-      await paste("textarea", [imageFile("第二张.png", 4096)]);
-      assert.equal(batches.length, 3);
-      assert.equal(batches[2][0].size, 4096, "用户说了用原图，却又压了一张");
+      assert.equal(/data-upload-compression|用原图/.test(shown), false, "输入框里还挂着压缩回执");
+      assert.equal(/data-upload-tile/.test(shown), false, "交出去之后压缩占位方块没撤");
     });
   });
 }
 
+// ---------------------------------------------------------------- 入口去重（2026-10-31「上传文件显示两次」）
+
+const { filesFromTransfer, filesFromPaste } = await load("src/lib/upload/intake.ts");
+const { withBusProgress } = await load("src/lib/upload/upload-tile.tsx");
+
+test("items 给出了文件就不读 files：两个不同的 File、不同的 lastModified 也只算一个", () => {
+  const a = new File([new Uint8Array(4096)], "image.png", { type: "image/png", lastModified: 111 });
+  const b = new File([new Uint8Array(4096)], "image.png", { type: "image/png", lastModified: 222 });
+  const picked = filesFromTransfer({ items: [{ kind: "file", getAsFile: () => a }], files: [b] });
+  assert.equal(picked.length, 1, "一次粘贴被拆成了两个文件");
+  assert.equal(picked[0], a, "应当用 items 给的那一个");
+});
+
+test("items 一个文件都没给时才退到 files（部分浏览器截图 items 为空）", () => {
+  const f = new File([new Uint8Array(10)], "设计稿-v3.png", { type: "image/png" });
+  const picked = filesFromTransfer({ items: [{ kind: "string", getAsFile: () => null }], files: [f] });
+  assert.deepEqual(picked, [f]);
+  assert.deepEqual(filesFromTransfer({ items: [], files: [] }), []);
+});
+
+test("一次粘多张通用名的图：按次序编 -1、-2；只粘一张不带序号；真名字原样保留", () => {
+  const now = new Date(2026, 9, 31, 9, 8, 7);
+  const shot = (lastModified) => new File([new Uint8Array(8)], "image.png", { type: "image/png", lastModified });
+  const real = new File([new Uint8Array(8)], "设计稿-v3.png", { type: "image/png" });
+  const many = filesFromPaste(
+    { items: [shot(1), real, shot(2)].map((file) => ({ kind: "file", getAsFile: () => file })), files: [] },
+    now,
+  );
+  assert.deepEqual(
+    many.map((file) => file.name),
+    ["粘贴图片-20261031090807-1.png", "设计稿-v3.png", "粘贴图片-20261031090807-2.png"],
+  );
+  const one = filesFromPaste({ items: [{ kind: "file", getAsFile: () => shot(3) }], files: [] }, now);
+  assert.deepEqual(one.map((file) => file.name), ["粘贴图片-20261031090807.png"]);
+});
+
+test("总线读数按名一对一配给上传中的方块；宿主自己给了 progress 的不动", () => {
+  const snap = halfwaySnapshot(4096);
+  const other = halfwaySnapshot(8192);
+  const own = halfwaySnapshot(1024);
+  const out = withBusProgress(
+    [
+      { id: "1", name: "a.png", uploading: true },
+      { id: "2", name: "a.png", uploading: true },
+      { id: "3", name: "b.pdf", uploading: false },
+      { id: "4", name: "c.pdf", uploading: true, progress: own },
+    ],
+    [
+      { file: new File([], "a.png"), name: "a.png", snapshot: snap },
+      { file: new File([], "c.pdf"), name: "c.pdf", snapshot: other },
+    ],
+  );
+  assert.equal(out[0].progress, snap);
+  assert.equal(out[1].progress, undefined, "一条读数只配一个方块");
+  assert.equal(out[2].progress, undefined, "不在上传的不配");
+  assert.equal(out[3].progress, own, "宿主给的 progress 被覆盖了");
+});
+
 // ---------------------------------------------------------------- 同一套字
 
-test("三个消费点共用同一套格式化：一处叫「4.0 KB」，别处就不许叫「4K」", () => {
+test("格式化只有一套：一处叫「4.0 KB」，别处就不许叫「4K」", () => {
   assert.equal(formatBytes(512), "512 B");
   assert.equal(formatBytes(4096), "4.0 KB");
   assert.equal(formatBytes(20 * 1024 * 1024), "20 MB");

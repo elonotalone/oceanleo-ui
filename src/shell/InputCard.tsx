@@ -39,7 +39,6 @@ import {
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import { persistedPayerOrgId } from "../lib/payer";
-import { CompressionNote, UploadProgressList } from "../lib/upload/progress-view";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
@@ -51,15 +50,16 @@ export interface InputAttachment {
   previewUrl?: string;
   /** 文件名（链接类可放 url）。 */
   name?: string;
-  /** 仍在上传中：缩略条上显示转圈。 */
+  /** 仍在上传中：方块压暗 + 小圆环。 */
   uploading?: boolean;
-  /** 点击缩略卡时右侧预览用的文件地址与类型。 */
+  /** 上传失败但仍保留着：方块右下角红色小徽章（配 onRetryAttachment 即重试键）。 */
+  failed?: boolean;
+  /** 点击方块时右侧预览用的文件地址与类型。 */
   url?: string;
   mime?: string;
   /**
-   * 真读数（W08）。业务把 `uploadFile` 的进度填进来，缩略条就把那个不确定态
-   * 转圈换成真进度条。**不传时行为与今天逐字一致**——业务侧没接进度的站
-   * （目前是全部）照旧转圈，不会因为多了这个字段而变样。
+   * 真读数（W08）。不传时由本组件从进度总线按文件名配上（业务零改动）；
+   * 总线也没报数时是不确定态小圈。
    */
   progress?: UploadProgressSnapshot | null;
 }
@@ -100,6 +100,10 @@ export interface InputCardProps {
   attachments?: InputAttachment[];
   /** 点缩略条上的删除。 */
   onRemoveAttachment?: (id: string) => void;
+  /** 给了它：点方块交给宿主打开，不渲染内置预览面板（C1）。 */
+  onOpenAttachment?: (att: InputAttachment) => void;
+  /** 失败方块上的重试。 */
+  onRetryAttachment?: (id: string) => void;
 
   /** 输入框下方、上传按钮上方的自定义插槽（如链接输入、风格 chips）。 */
   belowComposer?: ReactNode;
@@ -128,6 +132,8 @@ export function InputCard({
   uploadLabel: uploadLabelProp,
   attachments,
   onRemoveAttachment,
+  onOpenAttachment,
+  onRetryAttachment,
   belowComposer,
   submitLabel,
   submitDisabled,
@@ -184,6 +190,8 @@ export function InputCard({
         onFiles
           ? (e) => {
               e.preventDefault();
+              // 只处理一次：不让宿主页面的整页 drop 监听再交一遍同样的文件。
+              e.stopPropagation();
               setDragging(false);
               // 拖拽与粘贴同一条提取器（P4）：不是两套。
               intake.emit(filesFromTransfer(e.dataTransfer));
@@ -207,21 +215,13 @@ export function InputCard({
         className={dragging ? "border-dashed" : ""}
       />
 
-      <AttachmentStrip attachments={attachments ?? []} onRemove={onRemoveAttachment} />
-
-      {intake.inFlight.length > 0 ? (
-        <UploadProgressList entries={intake.inFlight} accent={accent} tt={tt} />
-      ) : null}
-
-      {intake.compressing && (
-        <p className="text-[11px] text-stone-500">{tt("正在压缩图片…")}</p>
-      )}
-
-      <CompressionNote
-        summary={intake.compression}
-        accent={accent}
-        tt={tt}
-        onUseOriginals={intake.useOriginals}
+      <AttachmentStrip
+        attachments={attachments ?? []}
+        onRemove={onRemoveAttachment}
+        onOpenAttachment={onOpenAttachment}
+        onRetry={onRetryAttachment}
+        pendingFiles={intake.pending}
+        inFlight={intake.inFlight}
       />
 
       {belowComposer}

@@ -14,7 +14,13 @@
 // 截图粘贴（Win+Shift+S、macOS 截屏到剪贴板）在 `items` 里是一条
 // `kind:"file"` 的项，`getAsFile()` 拿得到 Blob；而 `clipboardData.files`
 // 在部分浏览器上对截图是空的。反过来，从文件管理器复制的真文件两边都有。
-// 所以：先 items，拿不到再退 files，最后按 name+size 去重。
+// 所以：先 items；**items 只要给出了文件，就不再读 files**——只有 items 一个都
+// 没给时才退到 files。
+//
+// 【为什么不能两边都读再去重】（2026-10-31「上传文件显示两次」）
+// Chrome 对同一张截图，`items[i].getAsFile()` 与 `files[i]` 给的是**两个不同的
+// File 对象**，而且各自的 `lastModified` 是各自被取出那一刻的时间——不一样。
+// 按 name+size+lastModified 去重拦不住，一次粘贴就变成两次上传、两块缩略图。
 //
 // 【为什么粘贴要挑掉纯文本】
 // 用户在输入框里粘一段字是最常见的操作，绝不能被当成「上传一个 .txt」。
@@ -53,6 +59,8 @@ export function filesFromTransfer(
       take(item.getAsFile());
     }
   }
+  // items 给出了文件就到此为止：files 里是同一批文件的另一份 File 对象（见文件头）。
+  if (collected.length > 0) return collected;
 
   const files = transfer.files;
   if (files && files.length > 0) {
@@ -89,8 +97,13 @@ export function transferHasFiles(
  * 只在**名字确实是通用占位**时改名——用户从文件管理器复制的 `设计稿-v3.png`
  * 必须原样保留。
  */
-export function namedClipboardFile(file: File, now: Date = new Date()): File {
-  if (!/^(image|screenshot|untitled|pasted)([ _-]?\d*)?\.[a-z0-9]+$/i.test(file.name)) {
+export function namedClipboardFile(
+  file: File,
+  now: Date = new Date(),
+  /** 同一次粘贴里的第几张（从 1 起）；一次只粘一张时不传，名字里不带序号。 */
+  ordinal?: number,
+): File {
+  if (!isGenericClipboardName(file.name)) {
     return file;
   }
   const extension = (file.name.split(".").pop() || "png").toLowerCase();
@@ -102,7 +115,8 @@ export function namedClipboardFile(file: File, now: Date = new Date()): File {
     String(now.getMinutes()).padStart(2, "0"),
     String(now.getSeconds()).padStart(2, "0"),
   ].join("");
-  return new File([file], `粘贴图片-${stamp}.${extension}`, {
+  const suffix = ordinal ? `-${ordinal}` : "";
+  return new File([file], `粘贴图片-${stamp}${suffix}.${extension}`, {
     type: file.type,
     lastModified: file.lastModified,
   });
@@ -116,5 +130,17 @@ export function filesFromPaste(
   transfer: DataTransfer | null | undefined,
   now: Date = new Date(),
 ): File[] {
-  return filesFromTransfer(transfer).map((file) => namedClipboardFile(file, now));
+  const files = filesFromTransfer(transfer);
+  // 一次粘多张通用名的图：同一秒的时刻戳会撞名，按次序编 -1、-2…，用户分得清。
+  const generic = files.filter((file) => isGenericClipboardName(file.name)).length;
+  let ordinal = 0;
+  return files.map((file) => {
+    if (!isGenericClipboardName(file.name)) return file;
+    ordinal += 1;
+    return namedClipboardFile(file, now, generic > 1 ? ordinal : undefined);
+  });
+}
+
+function isGenericClipboardName(name: string): boolean {
+  return /^(image|screenshot|untitled|pasted)([ _-]?\d*)?\.[a-z0-9]+$/i.test(name);
 }

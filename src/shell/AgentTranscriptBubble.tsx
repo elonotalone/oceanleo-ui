@@ -8,6 +8,7 @@ import {
   withAigcTextNotice,
 } from "../contracts/aigc-label";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+import { UploadTile } from "../lib/upload/upload-tile";
 import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
@@ -64,6 +65,11 @@ export interface AgentTranscriptBubbleProps {
    * `{ [questionId]: value }`。不传时这类确认只读显示。
    */
   onNativeAnswer?: (message: AgentMessage, answer: unknown) => void;
+  /**
+   * 用户消息里上传的附件方块被点（2026-10-31）。宿主据此在右侧栏打开它；
+   * 不传时方块只展示，**绝不**在新标签页打开原始地址。
+   */
+  onOpenAttachment?: (attachment: AgentAttachment) => void;
 }
 
 /**
@@ -223,6 +229,7 @@ function TranscriptBody({
   onContinue,
   highlightQuery,
   onNativeAnswer,
+  onOpenAttachment,
 }: AgentTranscriptBubbleProps) {
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
@@ -237,6 +244,7 @@ function TranscriptBody({
               <TranscriptAttachment
                 key={`${attachment.url || attachment.name || "attachment"}-${index}`}
                 attachment={attachment}
+                onOpen={onOpenAttachment}
               />
             ))}
           </div>
@@ -883,8 +891,10 @@ function WorkerReportBubble({
 
 function TranscriptAttachment({
   attachment,
+  onOpen,
 }: {
   attachment: AgentAttachment;
+  onOpen?: (attachment: AgentAttachment) => void;
 }) {
   const tt = useUI();
   const archive = (attachment as { native_archive?: { download_path?: unknown } })
@@ -907,23 +917,6 @@ function TranscriptAttachment({
     /\.(png|jpe?g|webp|gif)$/i.test(
       (attachment.url || "").split("?")[0],
     );
-  if (isImage && attachment.url) {
-    return (
-      <a
-        href={attachment.url}
-        target="_blank"
-        rel="noreferrer"
-        className="block"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={attachment.url}
-          alt={attachment.name || ""}
-          className="h-16 w-16 rounded-lg border border-stone-200 object-cover"
-        />
-      </a>
-    );
-  }
   if (!attachment.url) {
     return (
       <span className={ATTACHMENT_CHIP} data-native-attachment="">
@@ -934,31 +927,17 @@ function TranscriptAttachment({
       </span>
     );
   }
+  // 用户上传的附件（2026-10-31）：与输入框同一种干净方块——图片只显示缩略图，
+  // 文件是图标 + 截断名。点了交给宿主（右侧栏），不在新标签页开原始地址。
   return (
-    <a
-      href={attachment.url}
-      target="_blank"
-      rel="noreferrer"
-      className={ATTACHMENT_CHIP}
-    >
-      <svg
-        className="h-4 w-4 shrink-0 text-stone-400"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.8}
-      >
-        <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
-        <path
-          d="M14 3v4h4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <span className="max-w-[140px] truncate">
-        {attachment.name || tt("附件")}
-      </span>
-    </a>
+    <UploadTile
+      name={attachment.name}
+      mime={attachment.mime || (isImage ? "image/*" : undefined)}
+      previewUrl={isImage ? attachment.url : undefined}
+      size={64}
+      tt={tt}
+      onOpen={onOpen ? () => onOpen(attachment) : undefined}
+    />
   );
 }
 

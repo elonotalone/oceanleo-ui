@@ -1,18 +1,10 @@
 /**
  * 守的是 **W08 的「上传进度三态」**（queued / uploading / failed）。
  *
- * ⚠️ **本文件抬头 2026-08-31 17:4x 整段改写过，因为原文写的是一条假事实。**
- * 原文说「今天是真缺席：`UploadProgress` 在 `src/` 零命中 ⇒ 这条红记在 W08 头上」。
- * 零命中本身没错，**由它推出的结论错了**：W08 早已交卷，产出叫
- * `UploadProgressRow` / `UploadProgressList`，落在
- * `src/lib/upload/progress-view.tsx`，不在登记表指着的 `src/shell/ArtifactActions.tsx`。
- * 照原样跑，这道闸会对一位已交卷的 owner 报「没交」。
- *
- * 这是本套件第三次踩同一个坑（前两次：`Button` 指错桶文件、`Toast` 找错导出名），
- * 所以把教训再钉一次：**「我搜的那个名字零命中」不等于「那个东西不存在」。**
- * 判缺席之前先问「我搜的名字对吗、我搜的模块对吗」，两条都要自证。
- *
- * 登记表已改指真身，详见 `subjects.mjs` 的 `uploadProgress` 条。
+ * 2026-10-31（oceanbizs W5）：被测主体从 `progress-view.tsx` 的 `UploadProgressRow`
+ * 改成 `src/lib/upload/upload-tile.tsx` 的 `UploadTile`——整行读数已撤，进度只画在
+ * ChatGPT 式附件方块上。失败态现在自带重试键，下面第二条应当转绿；
+ * 截图基线要重录（本批次未授权跑 Playwright，见 `subjects.mjs` 的 `uploadProgress` 条）。
  */
 import { SUBJECTS } from "../harness/subjects.mjs";
 import {
@@ -48,27 +40,9 @@ test.describe("W08 · 上传进度", () => {
     await expectSubjectPresent(page, "uploadProgress");
 
     /**
-     * 和 W09 的 chunk 失败态同一条道理，这里再钉一次：
-     * **失败态里不许只有一个进度条**。进度条的语义是「还在传」，
-     * 传挂了还留着它，用户会一直等。失败必须能被看见，且能被处理。
-     *
-     * ⚠️ `[实测] 2026-08-31 17:5x` **这条今天是红的，但它红的不是 W08 的缺陷。**
-     * 判据本身一个字都没改弱（仍是 `> 0`），改的只是下面那段文案——
-     * 原文把这条红说成产品缺陷，而实测归属不是那样：
-     *
-     * 本闸挑 `UploadProgressRow` 当被测主体，是**为了确定性**挑的
-     * （吃纯标量 + 调用方传入的翻译函数，见 `subjects.mjs`）。
-     * 但那个组件按 W08 的设计就是「一行完整读数」，**从来不拥有动作**——
-     * 它渲染的是文件名 / 百分比 / 进度条 / 明细四样，没有也不该有按钮。
-     * 动作归宿主：`InputCard.tsx:255` 与 `LeoComposer.tsx:471` 各挂一处
-     * `UploadProgressList`。⇒ 在这一层断言动作，是**本闸把判据挂错了层**，
-     * 按 `_COMMON` §8 记在 W10 头上，不记 W08 人头。
-     *
-     * 不删这条、让它继续红，理由与 `fixture.ts` 对 skip 的那段一致：
-     * 红着才有人问。而且它下面压着一个**确实还没有答案**的问题——
-     * `[实测]` `rg "重试|retry|Retry" src/lib/upload/**` 只命中两条注释，
-     * 整个上传层今天找不到任何重试入口。那是不是缺口要由拥有那一面的人回答，
-     * 已写进 `signals/W10-request.md`，不在本闸这一棒里替他们判。
+     * 和 W09 的 chunk 失败态同一条道理：**失败态里不许只有一个进度圈**。
+     * 进度圈的语义是「还在传」，传挂了还留着它，用户会一直等。
+     * `UploadTile` 的失败态给的是红色重试徽章（宿主给了 onRetry 时是按钮）。
      */
     const failedSlot = page.locator('[data-leo-slot="failed"]');
     const actionable = await failedSlot
@@ -77,11 +51,7 @@ test.describe("W08 · 上传进度", () => {
     expect(
       actionable,
       "failed 态里没有任何可操作元素（重试 / 取消 / 换一份）。\n  " +
-        "上传失败而界面只是停在那儿，用户唯一能做的是刷新页面重来一遍。\n  " +
-        "归属：本闸挂错了层（W10），不是 W08 的缺陷——`UploadProgressRow` 按设计\n  " +
-        "就是一行只读读数，动作在宿主 InputCard / LeoComposer 那一层。\n  " +
-        "解封：把被测主体换成宿主那一层（要 hydration），或由拥有上传面的 owner\n  " +
-        "确认「上传失败后用户下一步做什么」今天是否真的没有入口（见 W10-request.md）。",
+        "上传失败而界面只是停在那儿，用户唯一能做的是刷新页面重来一遍。",
     ).toBeGreaterThan(0);
   });
 

@@ -26,10 +26,6 @@ import {
 } from "./mobile-native-actions";
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
-import {
-  CompressionNote,
-  UploadProgressList,
-} from "../lib/upload/progress-view";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
@@ -101,15 +97,16 @@ export interface ComposerAttachment {
   id: string;
   previewUrl?: string;
   name?: string;
-  /** 仍在上传中：缩略条上显示转圈。 */
+  /** 仍在上传中：方块压暗 + 小圆环。 */
   uploading?: boolean;
-  /** 点击缩略卡时右侧预览用的文件地址与类型。 */
+  /** 上传失败但仍保留在输入框里：方块右下角红色小徽章（配 onRetryAttachment 即重试键）。 */
+  failed?: boolean;
+  /** 点击方块时打开用的文件地址与类型（本地 blob 优先）。 */
   url?: string;
   mime?: string;
   /**
-   * 真读数（W08）。业务把 `uploadFile` 的进度填进来，缩略条就把那个不确定态
-   * 转圈换成真进度条。**不传时行为与今天逐字一致**——业务侧没接进度的站
-   * （目前是全部）照旧转圈，不会因为多了这个字段而变样。
+   * 真读数（W08）。不传时由本组件从进度总线按文件名配上（宿主零改动）；
+   * 总线也没报数时是不确定态小圈。
    */
   progress?: UploadProgressSnapshot | null;
 }
@@ -226,6 +223,8 @@ export interface LeoComposerProps {
    * rendered. Omitted → the old built-in preview panel.
    */
   onOpenAttachment?: (att: ComposerAttachment) => void;
+  /** 失败方块（`failed: true`）右下角的重试；不传时失败徽章只是标记。 */
+  onRetryAttachment?: (id: string) => void;
 
   // --- 语音输入（2026-06-26） ---
   /** 传它才出现麦克风键。每段识别结果（最终态）回调给调用方拼进输入框。 */
@@ -330,6 +329,7 @@ export function LeoComposer({
   attachments,
   onRemoveAttachment,
   onOpenAttachment,
+  onRetryAttachment,
   onVoiceTranscript,
   voiceLang = "zh-CN",
   onMeetingRecording,
@@ -513,6 +513,8 @@ export function LeoComposer({
   function onDrop(e: ReactDragEvent) {
     if (!dragEnabled || !hasFiles(e)) return;
     e.preventDefault();
+    // 只处理一次：宿主页面（如主站首页）还挂着整页 drop 监听，冒上去会再交一次同样的文件。
+    e.stopPropagation();
     dragDepth.current = 0;
     setDragOver(false);
     // 拖拽与粘贴同一条提取器（P4）：不是两套。
@@ -563,6 +565,17 @@ export function LeoComposer({
           <span className="text-[13px] font-medium">{tt("松开即可上传文件")}</span>
         </div>
       )}
+      {/* 附件方块（ChatGPT 式，2026-10-31）：在输入区上方；上传中压暗 + 小圆环，失败红徽章，
+          悬停 ×。进度来自总线读数（intake.inFlight），压缩中的文件先画成上传中方块。 */}
+      <AttachmentStrip
+        attachments={attachments ?? []}
+        onRemove={onRemoveAttachment}
+        onOpenAttachment={onOpenAttachment}
+        onRetry={onRetryAttachment}
+        pendingFiles={intake.pending}
+        inFlight={intake.inFlight}
+        className="px-4 pt-3"
+      />
       {/* 宗旨 v15j（2026-07-06）：**全程只用这一个编辑器**（一种输入框），有没有 prompt 卡片
           模板都用它——彻底解决「普通 textarea / 模板编辑器两套切换」导致的光标颜色不一致、切换
           时编辑器实例重建 undo 栈丢失。template=null 时它就是个普通输入框（空、正常光标、正常
@@ -583,37 +596,6 @@ export function LeoComposer({
         onKeyDown={handleKeyDown}
         className="rounded-t-2xl"
       />
-
-      {/* 附件缩略条（上传中转圈 / 点击右侧预览 / 右上角删除） */}
-      <AttachmentStrip
-        attachments={attachments ?? []}
-        onRemove={onRemoveAttachment}
-        onOpenAttachment={onOpenAttachment}
-        className="px-4 pb-1"
-      />
-
-      {intake.inFlight.length > 0 ? (
-        <div className="px-4 pb-2">
-          <UploadProgressList entries={intake.inFlight} accent={accentColor} tt={tt} />
-        </div>
-      ) : null}
-
-      {intake.compressing && (
-        <p className="px-4 pb-2 text-[11px] text-neutral-500">
-          {tt("正在压缩图片…")}
-        </p>
-      )}
-
-      {intake.compression && (
-        <div className="px-4 pb-2">
-          <CompressionNote
-            summary={intake.compression}
-            accent={accentColor}
-            tt={tt}
-            onUseOriginals={intake.useOriginals}
-          />
-        </div>
-      )}
 
       {/* 「发送到电脑」的落点选择器。浏览器里 nativeHandoff.panel 恒为 null。 */}
       {hasAttachMenu && nativeHandoff.panel && (

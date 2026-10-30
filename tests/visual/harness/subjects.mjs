@@ -208,31 +208,19 @@ export const SUBJECTS = {
     owner: "W08",
     guards: "上传进度三态",
     /**
-     * ⚠️ 这条 2026-08-31 17:4x 改过，**同样是一条会冤枉已交卷 owner 的假红**。
+     * 2026-10-31 改指（oceanbizs W5，ChatGPT 式上传方块）：旧的
+     * `progress-view.tsx` 的 `UploadProgressRow`（一行文件名 + 百分比 + 字节 + 用时）
+     * 已整件删掉——操作员要「只显示图片，且过程简洁」。上传进度现在只画在
+     * `src/lib/upload/upload-tile.tsx` 的 `UploadTile` 方块上：
+     *   queued    = 上传中、总线还没报数 ⇒ 不确定态小圈；
+     *   uploading = 总线报了数 ⇒ 真百分比圆环；
+     *   failed    = 红色重试徽章（给了 onRetry 就是可操作的按钮）。
      *
-     * 原先指着 `src/shell/ArtifactActions.tsx` 的 `UploadProgress`。
-     * `[实测]` 那个模块只导出 `artifactActionMatrix`（:311）与
-     * `ArtifactActionButtons`（:405）；标识符 `UploadProgress` 在**整个 `src/`**
-     * 下没有任何一处是组件导出（对照组：同一次搜索命中了
-     * `UploadProgressSnapshot` 类型与 `UploadProgressList`，故正则可信，
-     * `_COMMON` §7b③）。
-     *
-     * W08 真正的产出在 `src/lib/upload/progress-view.tsx`：
-     * `UploadProgressRow`（:122，一行完整读数）与 `UploadProgressList`（:154）。
-     *
-     * 取 `Row` 不取 `List` 是刻意的：`List` 吃的是 `UploadInFlight[]`，
-     * 每项都要一个真的 `File` 对象（:168 拿 `entry.file.size` /
-     * `entry.file.lastModified` 当 key），在 jsdom 夹具里造 `File` 属于给闸自己
-     * 加一层可以漂的东西；而 `Row` 吃的是 `{ name, snapshot, accent?, tt }`
-     * ——纯标量 + 一个翻译函数，**确定性天然成立**。
-     * 三态由 `snapshot` 的 `done`/`failed`/`ratio` 三个字段驱动，正是要守的那三态。
-     *
-     * 这个模块还有一个性质让它特别适合当被测主体，且是 W08 自己写在文件头的：
-     * 「这一层要能在没有 `I18nProvider` 的地方（测试、以及将来任何非 Next 宿主）
-     * 直接渲染」⇒ 翻译函数由调用方传入，本闸不必拖 i18n 运行时进来。
+     * 选它的理由与旧条一致：吃纯标量 + 调用方传入的翻译函数，不依赖 I18nProvider，
+     * SSR 得出来，确定性天然成立。截图基线因此要重录（本批次未授权跑 Playwright）。
      */
-    module: "src/lib/upload/progress-view.tsx",
-    exportName: "UploadProgressRow",
+    module: "src/lib/upload/upload-tile.tsx",
+    exportName: "UploadTile",
     states: ["queued", "uploading", "failed"],
     render: "ssr",
   },
