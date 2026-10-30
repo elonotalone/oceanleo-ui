@@ -220,7 +220,7 @@ export function NativeTerminalSurface({
                 : phase === "failed"
                   ? isCli ? tt("AI 命令行启动失败，请稍后重试。") : tt("新终端创建失败，请稍后重试。")
                   : phase === "bind_failed"
-                    ? tt("没能把它保存到这个任务，请重试。")
+                    ? (isCli ? tt("没能把这个命令行加入任务，请重试。") : tt("没能把这个终端加入任务，请重试。"))
                     : isCli ? tt("正在启动…") : tt("正在创建…")}
             </p>
             {phase === "failed" || phase === "bind_failed" || phase === "not_installed" ? (
@@ -241,7 +241,7 @@ export function NativeTerminalSurface({
       ) : null}
       {nativeId && phase === "bind_failed" ? (
         <div className="flex shrink-0 items-center gap-2 px-1 pt-2" role="alert">
-          <span className={HOST.error}>{tt("没能把它保存到这个任务，请重试。")}</span>
+          <span className={HOST.error}>{(isCli ? tt("没能把这个命令行加入任务，请重试。") : tt("没能把这个终端加入任务，请重试。"))}</span>
           <button type="button" className={HOST.secondary} onClick={() => void open()}>{tt("重试")}</button>
         </div>
       ) : null}

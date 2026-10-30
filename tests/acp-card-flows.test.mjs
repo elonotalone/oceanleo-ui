@@ -1915,3 +1915,39 @@ test("ACP 探针三态：本地 OceanLeo agent 与其它程序同一套 occupanc
     view.cleanup();
   }
 });
+
+test("hidden card does not open its initial session until it is shown", async () => {
+  function ShowLater({ computer }) {
+    const [shown, setShown] = React.useState(false);
+    return React.createElement(React.Fragment, null,
+      React.createElement("button", { "data-show-card": "", onClick: () => setShown(true) }, "show"),
+      React.createElement(AcpCard, { computer, initialProgram: "cursor", initialSessionId: "s-hidden", active: shown }));
+  }
+  const view = await boot({}, {}, ShowLater);
+  try {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    assert.equal(sentFrames().some((frame) => frame.t === "open_session"), false, "hidden card opens nothing");
+    await click(view.$("[data-show-card]"));
+    await until(() => sentFrames().some((frame) => frame.t === "open_session"), "open_session after show");
+    assert.deepEqual(
+      sentFrames().filter((frame) => frame.t === "open_session"),
+      [{ t: "open_session", program: "cursor", acp_session: "s-hidden" }],
+    );
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("cloud OceanLeo banner waits for the local agent status instead of flashing", async () => {
+  let resolveStatus;
+  const pending = new Promise((resolve) => { resolveStatus = resolve; });
+  const view = await boot({}, { oceanleoPending: pending });
+  try {
+    await until(() => calls("getOceanleoAgent").length > 0, "status read");
+    assert.equal(view.$("[data-oceanleo-acp-oceanleo-banner]"), null, "no banner while the status is unknown");
+    await act(async () => { resolveStatus({ installed: false, version: null, token_active: false }); await pending; });
+    await until(() => view.$("[data-oceanleo-acp-oceanleo-banner]"), "banner once known to be cloud");
+  } finally {
+    view.cleanup();
+  }
+});

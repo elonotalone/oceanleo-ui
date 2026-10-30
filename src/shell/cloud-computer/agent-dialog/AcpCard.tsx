@@ -142,13 +142,14 @@ export function AcpCard({
   }, [dialog, selected]);
 
   useEffect(() => {
-    if (selected === "oceanleo" && !oceanleoLoaded) return;
+    // Hidden cards never open their mount session; it opens once the card is shown.
+    if (!active || (selected === "oceanleo" && !oceanleoLoaded)) return;
     if (!mountSession || selected !== mountTarget.program || dialog.program !== selected || initialSessionApplied.current) return;
     const key = `${computer.id}:${selected}:${mountSession}`;
     if (initialSessionApplied.current === key) return;
     initialSessionApplied.current = key;
     dialog.openSession(mountSession);
-  }, [computer.id, dialog, mountSession, mountTarget.program, selected, oceanleoLoaded]);
+  }, [active, computer.id, dialog, mountSession, mountTarget.program, selected, oceanleoLoaded]);
 
   function replaceAddress(program: AgentProgram, session?: string) {
     replaceServerPageUrl(computer.id, { card: "acp", program, session: session || null });
@@ -440,7 +441,7 @@ export function AcpCard({
                   {copiedPath}
                 </p>
               ) : null}
-              {selected === "oceanleo" && !oceanleoStatus?.installed ? (
+              {selected === "oceanleo" && oceanleoLoaded && !oceanleoStatus?.installed ? (
                 <p className={`mx-3 mt-3 shrink-0 text-xs ${tone.muted}`} data-oceanleo-acp-oceanleo-banner="">
                   {tt("当前使用云端 OceanLeo agent；也可以安装到这台服务器本地运行。")}
                   <button type="button" disabled={!oceanleoLoaded || oceanleoInstalling} onClick={() => void installLocalAgent()} data-oceanleo-acp-oceanleo-install="" className="ml-2 underline disabled:opacity-50">{oceanleoInstalling ? tt("正在安装…") : tt("安装")}</button>

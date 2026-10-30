@@ -163,7 +163,7 @@ test("bind failure keeps the process and retry binds the same id without a new p
   try {
     await view.render();
     assert.equal(view.$("[data-oceanleo-native-terminal-frame]"), null, "no attach before the binding is saved");
-    assert.match(view.text(), /没能把它保存到这个任务，请重试。/);
+    assert.match(view.text(), /没能把这个终端加入任务，请重试。/);
     await act(async () => view.$("[data-oceanleo-native-surface-retry]").click());
     await flush();
     assert.equal(api.calls.open.length, 1);

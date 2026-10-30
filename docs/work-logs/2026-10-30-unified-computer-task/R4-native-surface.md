@@ -120,3 +120,14 @@ All via `bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-lig
 - R3/R1: when the stream asks the user to sign in / install (dialog `openLogin` / `openInstall` from a notice action), open the settings pane — `ProgramAccess` shows the live login/install flow there; nothing else renders LoginCard/InstallSheet on the task page.
 - R1: the removed `acp-card-flows` cases covered controller behavior for `taskSessionId` (prompt carries `task_session_id`, `archive_status` filtered by binding, per-binding presentation cache). Keep that coverage in `tests/native-thread-*.test.mjs`.
 - Parent: add the New strings above to `computer-task-workspace-copy.ts` (+17); the old W2 keys used only by the deleted embedded branches (e.g. `fullSettingsScope`, 原命令行暂不可用…, 原终端暂不可用…, 命令行启动默认值仅影响下次打开…, 终端外观同时影响所有终端和 AI 命令行。…) are now unused.
+
+### Fix checkpoint (V1 review, R4 section)
+
+- `agent-dialog/AcpCard.tsx`: restored both guards W2 had added (`97e759cb` / `81d4ada7^`):
+  - initial-session effect returns early when `!active`, so hidden cards don't open sessions. `active` is now also in the effect deps, so the session opens once the card is shown. W2 had the guard without the dep.
+  - 「当前使用云端 OceanLeo agent…」 banner renders only once `oceanleoLoaded`, so it doesn't flash before the local agent status arrives.
+- `native-surface/NativeTerminalSurface.tsx`: bind-failure wording is now 「没能把这个终端加入任务，请重试。」 for terminal sessions and 「没能把这个命令行加入任务，请重试。」 for CLI sessions (both places: empty state and the line under an attached viewport).
+- Tests: `tests/acp-card-flows.test.mjs` adds "hidden card does not open its initial session until it is shown" and "cloud OceanLeo banner waits for the local agent status instead of flashing". Mutation check: with either guard removed, its test fails (2/2 red); with the guards restored they pass. `tests/native-surface.test.mjs` assertion updated to the new wording.
+- Results (agent-io-guard run-light): `acp-card-flows` 55/55, `native-surface` 12/12, `cli-card-view` 8/8, `terminal-card-view` 3/3. `git diff --check` clean.
+- New strings: 没能把这个终端加入任务，请重试。 / 没能把这个命令行加入任务，请重试。
+- Retired string (no longer used): 没能把它保存到这个任务，请重试。
