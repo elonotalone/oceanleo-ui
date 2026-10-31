@@ -10,10 +10,11 @@
 //   - native chat renders through the same bubbles and LeoComposer, sends via
 //     the native thread; switching keeps the cloud stream mounted and never stops;
 //   - terminal shows the surface + ConversationBar and no LeoComposer;
-//   - the settings gear opens the right pane with a title and restores it;
+//   - no settings gear / right pane: settings live in the composer / bar pill, and a
+//     send held back by install / sign-in asks the pill to open its 账号 card;
 //   - a draft native send creates the session, then sends exactly once.
 // Stubbed: network (agent lib, computer-task gateway), LeoComposer (Tiptap),
-// the native thread hook, the terminal surface, settings panel, ConversationBar.
+// the native thread hook, the terminal surface, ConversationBar.
 // ============================================================================
 
 import assert from "node:assert/strict";
@@ -156,7 +157,8 @@ const OVERRIDES = {
       return React.createElement("div", { "data-leo-composer": kind, ref: (node) => { if (node) node.__props = props; } },
         props.conversation ? (props.conversation.kind === "oceanleo"
           ? (props.conversation.target.kind === "cloud" ? "云端" : props.conversation.target.name)
-          : props.conversation.computerName + " · " + (props.conversation.kind === "terminal" ? "终端" : props.conversation.program)) : "—");
+          : props.conversation.computerName + " · " + (props.conversation.kind === "terminal" ? "终端" : props.conversation.program)) : "—",
+        props.modelPickerSlot ?? null);
     }
   `),
   "./FunctionAgentChat": dataModule(`
@@ -180,6 +182,10 @@ const OVERRIDES = {
   "./native-thread": dataModule(`
     import React from ${reactUrl};
     globalThis.__threadInputs = []; globalThis.__sent = []; globalThis.__threadStops = 0;
+    // A held-back send asks the composer pill to open its 账号 card (count of requests);
+    // the stub pill shows the count it sees.
+    export const NativeSetupRequest = React.createContext(0);
+    function SetupProbe() { return React.createElement("span", { "data-setup-request": String(React.useContext(NativeSetupRequest)) }); }
     export function useNativeThread(input) {
       globalThis.__threadInputs.push(input);
       const state = { ...(globalThis.__thread || {}) };
@@ -209,7 +215,7 @@ const OVERRIDES = {
         stop() { globalThis.__threadStops++; },
         answer(message, answer) { (globalThis.__answers ||= []).push({ id: message.id, answer }); },
         composerAttachments: state.attachments || [], onAttachFiles: undefined, onRemoveAttachment() {},
-        modelPicker: null, hasOlder: Boolean(state.hasOlder), olderLoading: Boolean(state.olderLoading),
+        modelPicker: React.createElement(SetupProbe), hasOlder: Boolean(state.hasOlder), olderLoading: Boolean(state.olderLoading),
         loadOlder() { globalThis.__loadOlder = (globalThis.__loadOlder || 0) + 1; },
         saveFailed: Boolean(state.saveFailed), dialog: { stub: true, activeSession: "" },
         pending: pending ? { text: pending.text, unsent: pending.unsent ?? null } : null,
@@ -240,12 +246,6 @@ const OVERRIDES = {
     export function NativeTerminalSurface({ session, active }) {
       React.useEffect(() => { globalThis.__surfaceMounts = (globalThis.__surfaceMounts || 0) + 1; return () => { globalThis.__surfaceMounts--; }; }, []);
       return React.createElement("div", { "data-native-surface": session.id, "data-active": String(active) });
-    }
-    export function NativeSettingsPanel({ conversation, dialog }) {
-      return React.createElement("div", { "data-native-settings": conversation.kind, "data-has-dialog": String(Boolean(dialog)) }, "settings body");
-    }
-    export function nativeSettingsTitle(conversation) {
-      return conversation.kind === "terminal" ? "终端设置 · " + conversation.computerName : conversation.program + " 设置 · " + conversation.computerName;
     }
   `),
 };
@@ -402,7 +402,7 @@ test("switching keeps the cloud stream mounted, never stops a run, and reuses an
   } finally { await view.unmount(); }
 });
 
-test("terminal shows the surface with ConversationBar and no LeoComposer; settings open the right pane and restore it", async () => {
+test("terminal shows the surface with ConversationBar and no LeoComposer; its settings live in the bar's pill, not the right pane", async () => {
   const view = await mount({ taskId: "t1" }, {
     task: computerTask(), sessions: [session("cts_term", "terminal", null, "2026-10-30T11:00:00Z")],
   });
@@ -413,18 +413,12 @@ test("terminal shows the surface with ConversationBar and no LeoComposer; settin
     assert.ok(visible(bar));
     assert.equal(bar.__props.conversation.kind, "terminal");
     assert.ok(![...view.host.querySelectorAll("[data-leo-composer]")].some(visible), "no visible LeoComposer under a terminal");
+    // 2026-10-31 night: no gear, no settings pane; the bar gets the computer for its settings pill.
+    assert.equal("onOpenSettings" in bar.__props, false);
+    assert.equal(bar.__props.computer?.id, bar.__props.conversation.computerId);
     const preview = view.host.querySelector("[data-preview-content]");
     assert.ok(preview, "right content mounted");
-    await act(async () => { bar.__props.onOpenSettings(); });
-    await settle();
-    const settings = view.host.querySelector('[data-native-settings="terminal"]');
-    assert.ok(visible(settings), "settings shown in the right pane");
-    assert.ok(view.host.textContent.includes("终端设置 · elon"), "pane titled for the conversation");
-    assert.equal(visible(preview), false, "previous right content hidden, not unmounted");
-    await act(async () => { view.host.querySelector("[data-conversation-bar]").__props.onOpenSettings(); });
-    await settle();
-    assert.equal(view.host.querySelector("[data-native-settings]"), null);
-    assert.equal(view.host.querySelector("[data-preview-content]"), preview, "same right content instance restored");
+    assert.equal(view.host.querySelector("[data-native-settings-pane],[data-native-settings-title]"), null);
     assert.equal(globalThis.__surfaceMounts, 1);
   } finally { await view.unmount(); }
 });
@@ -458,8 +452,8 @@ test("draft native chat: the first send creates the session, the page adopts the
   } finally { await draft.unmount(); }
 });
 
-test("in a task, picking 对话 for a program without a session creates nothing; the first send creates it with the task id", async () => {
-  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [] });
+test("in a computer task, picking 对话 for a program without a session creates nothing; the first send creates it with the task id", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [] });
   try {
     await changeConversation(view, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "claude", view: "chat" });
     assert.equal(globalThis.__gateway.filter((call) => call.method === "POST").length, 0);
@@ -491,7 +485,7 @@ test("in a task, a conversation without a session is created with the task id an
   } finally { await view.unmount(); }
 });
 
-test("a send blocked because the program needs setup opens the settings pane instead of sending", async () => {
+test("a send blocked because the program needs setup opens the composer pill's 账号 card instead of sending", async () => {
   globalThis.__thread = { messages: [], blockedReason: "这台电脑上还没有安装 Codex，请在设置里安装。" };
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
   try {
@@ -501,10 +495,8 @@ test("a send blocked because the program needs setup opens the settings pane ins
     await act(async () => { composer.__props.onSubmit("你好"); await new Promise((r) => setTimeout(r, 0)); });
     await settle();
     assert.deepEqual(globalThis.__sent, [], "nothing sent");
-    const settings = view.host.querySelector('[data-native-settings="native"]');
-    assert.ok(visible(settings), "settings opened in the right pane");
-    assert.equal(settings.getAttribute("data-has-dialog"), "true", "the panel gets the live thread.dialog");
-    assert.ok(view.host.textContent.includes("codex 设置 · elon"));
+    assert.equal(composer.querySelector("[data-setup-request]").getAttribute("data-setup-request"), "1", "the pill is asked to open its 账号 card");
+    assert.equal(view.host.querySelector("[data-native-settings-pane]"), null, "no right-pane settings");
   } finally { await view.unmount(); globalThis.__thread = null; }
 });
 
@@ -643,7 +635,7 @@ test("a queued first prompt that cannot go out is never handed back silently: bu
     assert.match(unsent.textContent, /未发送：Codex 还没有登录，请在设置里登录。/);
     assert.ok(unsent.querySelector("button").textContent.includes("重试"));
     assert.deepEqual(globalThis.__sent, []);
-    assert.ok(visible(view.host.querySelector('[data-native-settings="native"]')), "settings opened");
+    assert.notEqual(view.composer("native").querySelector("[data-setup-request]").getAttribute("data-setup-request"), "0", "the pill's 账号 card is asked to open");
     // Fixed in settings, then retried: it goes out once.
     globalThis.__thread = {};
     await act(async () => { unsent.querySelector("button").click(); await new Promise((r) => setTimeout(r, 0)); });
@@ -739,14 +731,14 @@ test("native composer hides controls that do nothing for a native send and respe
   } finally { await view.unmount(); }
 });
 
-test("a computer task offers no OceanLeo turn: the row is disabled with a reason and picking it does nothing", async () => {
+test("a computer task can continue in OceanLeo on the same task", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
   try {
     const composer = view.composer("native");
-    assert.equal(composer.__props.oceanleoDisabledReason, "OceanLeo 请在新任务里使用");
+    assert.equal(composer.__props.oceanleoDisabledReason, null);
     await changeConversation(view, "native", { kind: "oceanleo", target: { kind: "computer", id: "cc_elon", name: "elon" } });
-    assert.ok(visible(view.composer("native")), "still on the native conversation");
-    assert.equal(view.composer("cloud").__props.disabled, true, "the hidden cloud composer cannot send into a computer task");
+    assert.ok(visible(view.composer("cloud")), "switching to OceanLeo reveals the task composer");
+    assert.equal(view.composer("cloud").__props.disabled, false, "the task composer can continue the same task");
   } finally { await view.unmount(); }
 });
 
@@ -770,18 +762,6 @@ test("hidden native chats stay connected; switching back reuses the same thread 
     assert.equal(last.enabled, true, "hidden chat keeps its connection");
     await changeConversation(view, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat", sessionId: "cts_codex" });
     assert.equal(view.host.querySelector('[data-native-chat="cts_codex"]'), chat, "same instance");
-  } finally { await view.unmount(); }
-});
-
-test("the settings title wins over a hidden editor's header claim", async () => {
-  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_term", "terminal", null, "2026-10-30T11:00:00Z")] });
-  try {
-    await act(async () => { globalThis.__barProps.onOpenSettings(); });
-    await settle();
-    const title = view.host.querySelector("[data-native-settings-title]");
-    assert.ok(title, "settings title rendered in the pane header");
-    assert.equal(title.textContent, "终端设置 · elon");
-    assert.doesNotMatch(title.closest("[data-pane-header]")?.textContent || "", /编辑器标题/);
   } finally { await view.unmount(); }
 });
 

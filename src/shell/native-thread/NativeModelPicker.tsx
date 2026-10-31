@@ -5,10 +5,23 @@
 // ("Opus 4.x"); it opens the shared settings menu (composer-settings-menu) with
 // one row per thing the program reports — model, reasoning effort, its other
 // options, its modes, fast mode — and a row opens a card of choices beside it.
+// 2026-10-31 night: the gear + right-pane settings are gone; this menu also
+// carries 「这台电脑上的 <程序>」 (account: sign in / out, install, Key) and
+// 「整台电脑」 (two switches) under headed sections, read-only while offline.
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI, type UITranslate } from "../../i18n/ui/useUI";
-import { ComposerSettingsMenu, type ComposerSettingRow } from "../composer-settings-menu";
+import { ComposerSettingsMenu, type ComposerSettingRow, type ComposerSettingsOpenRequest } from "../composer-settings-menu";
+import { cloudComputerApi, type CloudComputerClient } from "../../lib/cloud-computer-api";
+import {
+  machineSettingRows,
+  offlineSettingRows,
+  programAccountRow,
+  useMachineSettings,
+} from "../cloud-computer/native-surface/computer-settings-rows";
+import type { NativeDialog } from "../cloud-computer/native-surface/ProgramAccess";
+import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
+import { PROGRAM_LABEL } from "../cloud-computer/agent-dialog/types";
 import { modelDisplayName, modelParamOptions, providerLabel } from "../cloud-computer/agent-dialog/notice";
 import { modelControls } from "../cloud-computer/agent-dialog/model-controls";
 import {
@@ -50,7 +63,19 @@ export type NativeModelPickerProps = {
   loading?: boolean;
   disabled?: boolean;
   className?: string;
+  /** The host's extra sections (account, whole computer, offline lock) around this conversation's rows. */
+  decorateRows?: (rows: ComposerSettingRow[]) => ComposerSettingRow[];
+  /** Pill text when the program reports no model or mode (its name). */
+  fallbackSummary?: string;
+  onOpenChange?: (open: boolean) => void;
+  openRequest?: ComposerSettingsOpenRequest;
 };
+
+/**
+ * A send held back by install / sign-in bumps this (AgentChat): the pill
+ * opens on its 账号 card. 0 = never asked.
+ */
+export const NativeSetupRequest = createContext(0);
 
 /** Programs whose adapters offer a fast mode on at least some models. */
 const FAST_PROGRAMS = new Set(["claude", "codex"]);
@@ -216,6 +241,10 @@ export function NativeModelPicker({
   loading = false,
   disabled = false,
   className = "",
+  decorateRows,
+  fallbackSummary,
+  onOpenChange,
+  openRequest,
 }: NativeModelPickerProps) {
   const tt = useUI();
 
@@ -233,17 +262,20 @@ export function NativeModelPicker({
     for (const { option, wire } of restoresForModel(params, remembered)) onParamRef.current(option, wire);
   }, [fresh, remembered, params, selected]);
 
-  const rows = loading ? [] : nativeSettingRows({
+  const own = loading ? [] : nativeSettingRows({
     program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort, fastSupported,
   }, tt);
   // The pill names the model only (operator 10-31: not `Opus 5.5 · Auto-accept edits`);
   // a program with no model list names its mode instead.
-  const summary = rows.find((row) => row.id === "model")?.value || rows.find((row) => row.id === "mode")?.value || tt("模式");
+  const summary = own.find((row) => row.id === "model")?.value || own.find((row) => row.id === "mode")?.value || fallbackSummary || tt("模式");
+  const rows = decorateRows && !loading ? decorateRows(own) : own;
 
   return (
     <ComposerSettingsMenu
       summary={summary}
       rows={rows}
+      onOpenChange={onOpenChange}
+      openRequest={openRequest}
       ariaLabel={tt("模型")}
       loading={loading}
       loadingLabel={tt("正在读取…")}
@@ -262,6 +294,50 @@ export type NativePickerDialog = Pick<
   "models" | "configOptions" | "selectedModel" | "setSelectedModel" | "mode" | "selectedMode" | "setMode" | "setConfig" | "activeSession"
 >;
 
+/** The full controller (programs, login, install): the pill can carry the account section. */
+function isNativeDialog(dialog: NativePickerDialog): dialog is NativeDialog {
+  const full = dialog as Partial<NativeDialog>;
+  return Array.isArray(full.programs) && Boolean(full.login) && Boolean(full.install);
+}
+
+/**
+ * A native chat's pill with its computer sections: this conversation (the
+ * picker's own rows), 「这台电脑上的 <程序>」 and 「整台电脑（所有程序）」.
+ * The whole-computer settings are read the first time the menu opens.
+ */
+function NativeChatSettings({ program, computerId, dialog, online, client = cloudComputerApi, picker }: {
+  program: string;
+  computerId: string;
+  dialog: NativeDialog;
+  online: boolean;
+  client?: CloudComputerClient;
+  picker: NativeModelPickerProps;
+}) {
+  const tt = useUI();
+  const [opened, setOpened] = useState(false);
+  const [keyOpen, setKeyOpen] = useState(false);
+  const machine = useMachineSettings(computerId, client, opened && online);
+  const setupRequest = useContext(NativeSetupRequest);
+  const decorateRows = (own: ComposerSettingRow[]) => {
+    const conversation = tt("本对话");
+    const rows = [
+      ...own.map((row) => ({ ...row, section: conversation })),
+      ...(isWsProgram(program) ? [programAccountRow({ computerId, program, dialog, keyOpen, onKeyOpen: setKeyOpen, tt })] : []),
+      ...machineSettingRows(machine, tt),
+    ];
+    return online ? rows : offlineSettingRows(rows, tt);
+  };
+  return (
+    <NativeModelPicker
+      {...picker}
+      decorateRows={decorateRows}
+      fallbackSummary={isWsProgram(program) ? PROGRAM_LABEL[program] : program}
+      onOpenChange={(open) => { if (open) setOpened(true); }}
+      openRequest={setupRequest ? { nonce: setupRequest, row: "account" } : undefined}
+    />
+  );
+}
+
 /**
  * The composer control for one native conversation (contract C4), built from
  * the headless controller. Shown as soon as the program reports models, modes
@@ -270,12 +346,15 @@ export type NativePickerDialog = Pick<
  * remembered per program and computer and go out through the controller's own
  * setters (`setSelectedModel` / `setMode` / `setConfig`).
  */
-export function nativeModelPickerFor({ program, computerId, dialog, waiting }: {
-  /** null = no picker (no program, hidden, or the computer is offline). */
+export function nativeModelPickerFor({ program, computerId, dialog, waiting, online = true }: {
+  /** null = no picker (no program, or hidden). */
   program: string | null;
   computerId: string;
-  dialog: NativePickerDialog;
+  /** The full controller adds the account and whole-computer sections. */
+  dialog: NativePickerDialog | NativeDialog;
   waiting: boolean;
+  /** false = the computer is offline: the pill stays, every row read-only with the reason. */
+  online?: boolean;
 }): ReactNode | null {
   if (!program) return null;
   const configOptions = dialog.configOptions || [];
@@ -284,33 +363,37 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting }: {
   const params = modelParamOptions(configOptions, dialog.mode?.id);
   const hasModes = Boolean(dialog.mode && dialog.mode.options.length > 0);
   const known = controls.models.length > 0 || hasModes || params.length > 0 || Boolean(controls.effort);
-  if (!known) return waiting ? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading /> : null;
+  const full = computerId && isNativeDialog(dialog) ? dialog : null;
+  // Nothing known yet: a waiting trigger. A blocked program (not installed / signed
+  // out) or an offline computer still gets the pill: its account and computer rows.
+  if (!known && ((online && waiting) || !full)) return waiting ? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading /> : null;
   const remember = (configId: string, wire: string) => {
     if (controls.memoryModel) rememberModelParam(computerId, program, controls.memoryModel, configId, wire);
   };
-  return (
-    <NativeModelPicker
-      program={program}
-      models={controls.models}
-      selected={controls.selected}
-      onSelect={dialog.setSelectedModel}
-      mode={dialog.mode}
-      selectedMode={dialog.selectedMode}
-      onMode={dialog.setMode}
-      params={params}
-      onParam={(option, wire) => {
-        remember(option.id, wire);
-        dialog.setConfig(option.id, coerceOptionValue(option, wire));
-      }}
-      effort={controls.effort}
-      onEffort={(wire) => {
-        const name = controls.effort?.options.find((choice) => choice.value === wire)?.name;
-        if (name) remember("reasoning_effort", name);
-        dialog.setSelectedModel(wire);
-      }}
-      fastSupported={programOffersFast(program)}
-      remembered={memory[controls.memoryModel]}
-      fresh={!dialog.activeSession}
-    />
-  );
+  const picker: NativeModelPickerProps = {
+    program,
+    models: controls.models,
+    selected: controls.selected,
+    onSelect: dialog.setSelectedModel,
+    mode: dialog.mode,
+    selectedMode: dialog.selectedMode,
+    onMode: dialog.setMode,
+    params,
+    onParam: (option, wire) => {
+      remember(option.id, wire);
+      dialog.setConfig(option.id, coerceOptionValue(option, wire));
+    },
+    effort: controls.effort,
+    onEffort: (wire) => {
+      const name = controls.effort?.options.find((choice) => choice.value === wire)?.name;
+      if (name) remember("reasoning_effort", name);
+      dialog.setSelectedModel(wire);
+    },
+    fastSupported: programOffersFast(program),
+    remembered: memory[controls.memoryModel],
+    fresh: !dialog.activeSession,
+  };
+  return full
+    ? <NativeChatSettings program={program} computerId={computerId} dialog={full} online={online} picker={picker} />
+    : <NativeModelPicker {...picker} />;
 }

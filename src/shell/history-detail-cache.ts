@@ -32,6 +32,11 @@ export function peekHistoryDetail<T>(key: string, seeds: (value: T) => Array<obj
   return value;
 }
 
+/** A TaskDetail served from another cache (task-open-cache): AgentChat reads it once more. */
+export function markStaleTaskSeed(seed: object | null | undefined): void {
+  if (seed) staleSeeds.add(seed);
+}
+
 /** True for a TaskDetail that came back from this cache (not from a read just now). */
 export function isStaleTaskSeed(seed: object | null | undefined): boolean {
   return Boolean(seed && staleSeeds.has(seed));

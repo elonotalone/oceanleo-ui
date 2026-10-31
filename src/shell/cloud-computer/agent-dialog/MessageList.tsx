@@ -164,6 +164,14 @@ function ToolView({ tool }: { tool: ToolCard }) {
               ))}
             </ul>
           ) : null}
+          {tool.children?.length ? (
+            // Background sub-agent steps of this Task/Agent tool.
+            <div data-oceanleo-cc-tool-children="" className="space-y-1" onClick={(event) => event.stopPropagation()}>
+              {tool.children.map((child) => (
+                <ToolView key={child.id} tool={child} />
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

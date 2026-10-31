@@ -1,7 +1,8 @@
 // R4 (2026-10-30 redo): task-page computer surfaces use the host UI system.
 // NativeTerminalSurface = xterm only in a host frame (no program strip, no
-// session sidebar, no server-page tone); NativeSettingsPanel = scoped groups in
-// host style for native chat / CLI / terminal.
+// session sidebar, no server-page tone). 2026-10-31 night: the gear and its
+// right-pane NativeSettingsPanel are gone; the same scoped settings live in the
+// composer's model pill (native chat) and the bar's settings pill (CLI / terminal).
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -61,14 +62,32 @@ const keyApiStub = dataModule(`
   export async function saveProgramKey(...args) { (globalThis.__keyCalls ||= []).push(["save", ...args]); }
   export async function removeProgramKey(...args) { (globalThis.__keyCalls ||= []).push(["remove", ...args]); }
 `);
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const popoverStub = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  export function AnchoredPopover({ open, children, attributes, role }) {
+    if (!open) return null;
+    return React.createElement("div", { "data-anchored-popover": "1", role, ...(attributes || {}) }, children);
+  }
+`);
+// The settings pills default to cloudComputerApi: route it to the test's client.
+const apiStub = dataModule("export const cloudComputerApi = new Proxy({}, { get: (_, key) => globalThis.__api?.[key] });");
 const stubs = {
-  "../../../lib/cloud-computer-api": dataModule("export const cloudComputerApi = {};"),
+  "../../../lib/cloud-computer-api": apiStub,
   "../../../i18n/ui/useUI": uiStub,
   "../TerminalPanel": terminalStub,
   "../agent-dialog/program-key-api": keyApiStub,
+  "../../anchored-popover": popoverStub,
 };
 const surface = await import(await compileModule("src/shell/cloud-computer/native-surface/index.ts", stubs));
-const { NativeTerminalSurface, NativeSettingsPanel, nativeSettingsTitle } = surface;
+const { NativeTerminalSurface, ComputerConversationSettings } = surface;
+const picker = await import(await compileModule("src/shell/native-thread/NativeModelPicker.tsx", {
+  "../../lib/cloud-computer-api": apiStub,
+  "../../i18n/ui/useUI": uiStub,
+  "../anchored-popover": popoverStub,
+  "../cloud-computer/agent-dialog/program-key-api": keyApiStub,
+}));
+const { nativeModelPickerFor, NativeSetupRequest } = picker;
 
 async function flush(count = 8) {
   for (let index = 0; index < count; index += 1) await act(async () => {});
@@ -250,15 +269,8 @@ test("inactive new surface waits until shown before opening anything", async () 
   } finally { view.cleanup(); }
 });
 
-test("nativeSettingsTitle names the program or terminal and the computer", () => {
-  const tt = (value, values) => !values ? value : Object.entries(values).reduce((text, [key, v]) => text.replaceAll(`{${key}}`, String(v)), value);
-  assert.equal(nativeSettingsTitle({ kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" }, tt), "Codex 设置 · elon");
-  assert.equal(nativeSettingsTitle({ kind: "native", computerId: "cc_1", computerName: "elon", program: "claude", view: "cli" }, tt), "Claude Code 设置 · elon");
-  assert.equal(nativeSettingsTitle({ kind: "terminal", computerId: "cc_1", computerName: "elon" }, tt), "终端设置 · elon");
-});
-
 function fakeDialog(overrides = {}) {
-  const calls = { model: [], mode: [], login: [], install: [] };
+  const calls = { model: [], mode: [], login: [], install: [], logout: [] };
   return {
     calls,
     dialog: {
@@ -271,6 +283,7 @@ function fakeDialog(overrides = {}) {
       setMode: (value) => calls.mode.push(value),
       configOptions: [],
       setConfig() {},
+      activeSession: "s1",
       login: { open: false, program: null, phase: "idle", url: "", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false },
       install: { open: false, program: null, dir: "", running: false, lines: [], donePath: "", failedText: "" },
       messages: [],
@@ -278,87 +291,151 @@ function fakeDialog(overrides = {}) {
       openInstall: (program) => calls.install.push(program),
       closeLogin() {}, cancelLogin() {}, submitLoginCode() {}, setLoginCodeDraft() {},
       closeInstall() {}, setInstallDir() {}, startInstall() {},
-      logoutProgram() {}, retryConnect() {},
+      logoutProgram: (program) => calls.logout.push(program), retryConnect() {},
       ...overrides,
     },
   };
 }
 
-function groups(view) {
-  return [...view.host.querySelectorAll("[data-oceanleo-native-settings-group]")].map((node) => [
-    node.getAttribute("data-oceanleo-native-settings-group"),
-    node.querySelector("h3")?.textContent,
-  ]);
+function Pill({ request = 0, ...input }) {
+  return React.createElement(NativeSetupRequest.Provider, { value: request },
+    React.createElement("div", null, nativeModelPickerFor({ program: "codex", computerId: "cc_1", waiting: false, ...input })));
 }
 
-test("native chat settings: scoped groups, model change goes to the dialog, machine toggle hits the settings API", async () => {
+async function click(node) {
+  assert.ok(node, "expected control");
+  await act(async () => node.click());
+  await flush();
+}
+const rowIds = (view) => [...view.host.ownerDocument.querySelectorAll("[data-composer-setting-row]")].map((node) => node.getAttribute("data-composer-setting-row"));
+const sections = (view) => [...view.host.querySelectorAll("[data-composer-settings-section]")].map((node) => node.textContent);
+
+test("native chat pill: this conversation, Codex on this computer and the whole computer, in one menu", async () => {
   const api = client();
+  globalThis.__api = api;
   const { dialog, calls } = fakeDialog();
-  const view = mount(NativeSettingsPanel, { computer: COMPUTER, conversation: { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" }, dialog, client: api });
+  const view = mount(Pill, { dialog });
   try {
     await view.render();
-    assert.deepEqual(groups(view), [
-      ["conversation", "本对话"],
-      ["program", "这台电脑上的 Codex"],
-      ["computer", "整台电脑（所有程序）"],
-    ]);
-    const select = view.$("[data-oceanleo-native-settings-model]");
-    select.value = "b";
-    await act(async () => select.dispatchEvent(new window.Event("change", { bubbles: true })));
+    assert.equal(api.calls.settings, 0, "nothing read until the menu opens");
+    await click(view.$("[data-native-model-trigger]"));
+    assert.deepEqual(sections(view), ["本对话", "这台电脑上的 Codex", "整台电脑（所有程序）"]);
+    assert.deepEqual(rowIds(view), ["model", "mode", "fast", "account", "computer:confirm_dangerous", "computer:oceanleo_tools"]);
+    assert.equal(api.calls.settings, 1, "whole-computer settings read on first open");
+    const account = view.$('[data-composer-setting-row="account"]');
+    assert.equal(account.getAttribute("data-state"), "signed_out");
+    assert.equal(account.querySelector("[data-composer-setting-value]").textContent, "未登录 · 0.9");
+    await click(view.$('[data-composer-setting-row="model"]'));
+    await click(view.$('[data-composer-setting-choice="model:b"]'));
     assert.deepEqual(calls.model, ["b"]);
-    const mode = view.$("[data-oceanleo-native-settings-mode]");
-    mode.value = "agent";
-    await act(async () => mode.dispatchEvent(new window.Event("change", { bubbles: true })));
-    assert.deepEqual(calls.mode, ["agent"]);
-    assert.equal(view.$("[data-oceanleo-native-program]").getAttribute("data-state"), "signed_out");
-    await act(async () => view.$("[data-oceanleo-native-program-login]").click());
+    await click(view.$("[data-native-model-trigger]"));
+    await click(view.$('[data-composer-setting-row="account"]'));
+    assert.ok(view.$('[data-composer-settings-card="account"]'));
+    assert.ok(view.$("[data-oceanleo-native-program-key]"), "Key beside sign-in");
+    await click(view.$("[data-oceanleo-native-program-login]"));
     assert.deepEqual(calls.login, ["codex"]);
-    await act(async () => view.$('[data-oceanleo-native-setting="confirm_dangerous"]').click());
-    await flush();
+    assert.ok(view.$("[data-composer-settings-menu]"), "an account action keeps the menu open");
+    const toggle = view.$('[data-oceanleo-native-setting="confirm_dangerous"]');
+    assert.equal(toggle.getAttribute("role"), "menuitemcheckbox");
+    assert.equal(toggle.getAttribute("aria-checked"), "true");
+    await click(toggle);
     assert.deepEqual(api.calls.patch, [{ id: "cc_1", patch: { confirm_dangerous: false } }]);
+    assert.equal(view.$('[data-oceanleo-native-setting="confirm_dangerous"]').getAttribute("aria-checked"), "false");
     assert.match(view.text(), /下次打开时生效/);
     assert.doesNotMatch(view.host.innerHTML, /zinc-/);
-    assert.doesNotMatch(view.text(), /图形|独立 CLI|ACP|Conversation/);
   } finally { view.cleanup(); }
 });
 
-test("native chat login flow renders inline in host style", async () => {
-  const { dialog } = fakeDialog({ login: { open: true, program: "codex", phase: "waiting", url: "https://auth.example/login", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false } });
-  const view = mount(NativeSettingsPanel, { computer: COMPUTER, conversation: { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" }, dialog, client: client() });
+test("account card: sign out when signed in; the login flow renders inside the card", async () => {
+  globalThis.__api = client();
+  const signedIn = fakeDialog({ programs: [{ id: "codex", installed: true, path: "", version: "0.90.0", auth: "login", logged_in: true, dir_capability: "full", running: false }] });
+  const view = mount(Pill, { dialog: signedIn.dialog });
   try {
     await view.render();
-    const open = view.$("[data-oceanleo-native-login-open]");
+    await click(view.$("[data-native-model-trigger]"));
+    assert.equal(view.$('[data-composer-setting-row="account"] [data-composer-setting-value]').textContent, "已登录 · 0.90.0");
+    await click(view.$('[data-composer-setting-row="account"]'));
+    await click(view.$("[data-oceanleo-native-program-logout]"));
+    assert.deepEqual(signedIn.calls.logout, ["codex"]);
+  } finally { view.cleanup(); }
+
+  const waiting = fakeDialog({ login: { open: true, program: "codex", phase: "waiting", url: "https://auth.example/login", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false } });
+  const flow = mount(Pill, { dialog: waiting.dialog });
+  try {
+    await flow.render();
+    await click(flow.$("[data-native-model-trigger]"));
+    await click(flow.$('[data-composer-setting-row="account"]'));
+    const open = flow.$('[data-composer-settings-card="account"] [data-oceanleo-native-login-open]');
     assert.equal(open.getAttribute("href"), "https://auth.example/login");
-    assert.doesNotMatch(open.className, /underline/);
-    assert.doesNotMatch(view.host.innerHTML, /zinc-/);
+    assert.doesNotMatch(flow.host.innerHTML, /zinc-/);
+  } finally { flow.cleanup(); }
+});
+
+test("not installed: the pill still shows (program name) with Install; a held-back send opens the 账号 card", async () => {
+  globalThis.__api = client();
+  const { dialog, calls } = fakeDialog({
+    programs: [{ id: "codex", installed: false, path: "", version: null, auth: "none", logged_in: false, dir_capability: "full", running: false }],
+    models: [], mode: null, selectedModel: "",
+  });
+  const view = mount(Pill, { dialog });
+  try {
+    await view.render();
+    assert.equal(view.$("[data-native-model-summary]").textContent, "Codex");
+    assert.equal(view.$("[data-composer-settings-menu]"), null);
+    await view.render({ request: 1 });
+    assert.ok(view.$('[data-composer-settings-card="account"]'), "the request opens the account card");
+    assert.equal(view.$('[data-composer-setting-row="account"]').getAttribute("data-state"), "not_installed");
+    await click(view.$("[data-oceanleo-native-program-install]"));
+    assert.deepEqual(calls.install, ["codex"]);
   } finally { view.cleanup(); }
 });
 
-test("CLI settings: program group (next-launch defaults + tools) and shared appearance group", async () => {
-  const api = client({ programs: [{ id: "codex", label: "Codex", installed: true, version: "1", supports_resume: true, options: [{ key: "sandbox", label: "Sandbox", type: "bool", default: false }] }] });
-  const view = mount(NativeSettingsPanel, { computer: COMPUTER, conversation: { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "cli" }, client: api });
+test("offline: the pill stays, every row read-only with the reason, nothing read", async () => {
+  const api = client();
+  globalThis.__api = api;
+  const { dialog } = fakeDialog();
+  const view = mount(Pill, { dialog, online: false });
   try {
     await view.render();
-    assert.deepEqual(groups(view), [
-      ["program", "这台电脑上的 Codex"],
-      ["appearance", "终端外观（命令行和终端共用）"],
-    ]);
-    assert.match(view.text(), /这些设置将在下一次启动时生效。/);
-    assert.ok(view.$("[data-oceanleo-terminal-appearance]"));
-    await act(async () => view.$('[data-oceanleo-cli-tools="codex"]').click());
-    await flush();
-    assert.deepEqual(api.calls.tools, [{ id: "cc_1", program: "codex", enabled: true }]);
-    assert.doesNotMatch(view.host.innerHTML, /zinc-/);
-  } finally { view.cleanup(); }
-});
-
-test("terminal settings show only the shared appearance group; offline says so once", async () => {
-  const view = mount(NativeSettingsPanel, { computer: { ...COMPUTER, node_online: false }, conversation: { kind: "terminal", computerId: "cc_1", computerName: "elon" }, client: client() });
-  try {
-    await view.render();
-    assert.deepEqual(groups(view), [["appearance", "终端外观（命令行和终端共用）"]]);
+    await click(view.$("[data-native-model-trigger]"));
     assert.ok(view.$("[data-oceanleo-native-settings-offline]"));
+    for (const id of ["model", "mode", "account", "computer:confirm_dangerous"]) {
+      const row = view.$(`[data-composer-setting-row="${id}"]`);
+      assert.equal(row.disabled, true, id);
+      assert.match(row.textContent, /这台电脑联网后可以修改。/, id);
+    }
+    assert.equal(api.calls.settings, 0);
+  } finally { view.cleanup(); }
+});
+
+test("CLI bar pill: the program's next-launch options, tools switch and the shared appearance card", async () => {
+  const api = client({ programs: [{ id: "codex", label: "Codex", installed: true, version: "1", supports_resume: true, options: [{ key: "sandbox", label: "Sandbox", type: "bool", default: false }] }] });
+  const view = mount(ComputerConversationSettings, { computer: COMPUTER, conversation: { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "cli" }, client: api });
+  try {
+    await view.render();
+    const trigger = view.$("[data-conversation-settings-pill] > button");
+    assert.match(trigger.textContent, /Codex/);
+    assert.equal(api.calls.programs, 0, "nothing read until opened");
+    await click(trigger);
+    assert.deepEqual(sections(view), ["这台电脑上的 Codex", "终端外观（命令行和终端共用）"]);
+    assert.deepEqual(rowIds(view), ["cli:next-launch", "cli:sandbox", "cli:confirm_dangerous", "cli:tools", "appearance"]);
+    assert.match(view.text(), /这些设置将在下一次启动时生效。/);
+    await click(view.$('[data-oceanleo-cli-tools="codex"]'));
+    assert.deepEqual(api.calls.tools, [{ id: "cc_1", program: "codex", enabled: true }]);
+    await click(view.$('[data-composer-setting-row="appearance"]'));
+    assert.ok(view.$('[data-composer-settings-card="appearance"] [data-oceanleo-terminal-appearance]'));
     assert.doesNotMatch(view.host.innerHTML, /zinc-/);
+  } finally { view.cleanup(); }
+});
+
+test("terminal bar pill: appearance only; offline says so once and appearance stays usable", async () => {
+  const view = mount(ComputerConversationSettings, { computer: { ...COMPUTER, node_online: false }, conversation: { kind: "terminal", computerId: "cc_1", computerName: "elon" }, client: client() });
+  try {
+    await view.render();
+    await click(view.$("[data-conversation-settings-pill] > button"));
+    assert.deepEqual(rowIds(view), ["offline", "appearance"]);
+    assert.equal(view.host.querySelectorAll("[data-oceanleo-native-settings-offline]").length, 1);
+    assert.equal(view.$('[data-composer-setting-row="appearance"]').disabled, false);
   } finally { view.cleanup(); }
 });
 

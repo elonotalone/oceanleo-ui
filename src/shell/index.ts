@@ -223,6 +223,8 @@ export {
   type TaskWorkspaceOpenState,
   type OpenableAttachment,
 } from "./TaskWorkspaceShell";
+// 10-31: a chat file already in the Library opens the sidebar's Library at it.
+export { taskAttachmentLibraryAction, openTaskWorkspaceLibrary } from "./task-attachment-open";
 // v0.179 canonical artifact control-plane surface. Consumers must not fork
 // response parsers, /v1 HTTP clients, ACL checks or editor command contracts.
 export * from "./artifact-contract";
@@ -467,6 +469,7 @@ export { ArtifactRenderer, type ArtifactRendererProps } from "./ArtifactRenderer
 export {
   buildLibraryItems,
   inferLibraryKind,
+  isUploadedLibraryItem,
   libraryItemMatches,
   normalizeArtifact,
   normalizeWork,

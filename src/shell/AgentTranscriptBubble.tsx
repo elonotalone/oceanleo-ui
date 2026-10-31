@@ -60,12 +60,11 @@ export interface AgentTranscriptBubbleProps {
   selectMode?: boolean;
   selected?: boolean;
   onSelectToggle?: () => void;
-  /** 普通模式下回答底下那排小图标。 */
+  /** 普通模式下回答底下那排小图标（分享只在顶栏，2026-10-31）。 */
   onRegenerate?: () => void;
-  onShare?: () => void;
   /**
    * 一轮一排操作（2026-10-31，参考 Manus）：宿主按 `agentTurnActionTargets` 算出这一轮。
-   * - 字符串：这条是这一轮 agent 最后一段话，底下显示「复制 / 重做 / 分享」，复制的是这串
+   * - 字符串：这条是这一轮 agent 最后一段话，底下显示「复制 / 重做」，复制的是这串
    *   （整轮所有说给用户的话按序拼接，不含工具输出 / 思考）。
    * - `null`：这条不是一轮的最后一段（或这一轮还在跑），不显示操作。
    * - 不传：旧行为，这条自己能操作就显示（单条预览等宿主）。
@@ -90,7 +89,7 @@ export interface AgentTranscriptBubbleProps {
 }
 
 /**
- * 一条消息。普通模式下助手回答底下有「复制 / 重做 / 分享」一排小图标；
+ * 一条消息。普通模式下助手回答底下有「复制 / 重做」一排小图标；
  * 选段模式下整条变成可勾选的行，图标收起（此时用户是在选，不是在操作单条）。
  */
 export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
@@ -114,7 +113,6 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
     selected = false,
     onSelectToggle,
     onRegenerate,
-    onShare,
     streaming = false,
     turnCopyText,
   } = props;
@@ -151,7 +149,6 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
           <MessageActions
             content={perTurn ? turnCopyText ?? "" : message.content}
             onRegenerate={onRegenerate}
-            onShare={onShare}
             persistent={perTurn}
           />
         )}
@@ -161,18 +158,17 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
 }
 
 /**
- * 「复制 / 重做 / 分享」。单条模式平时淡出，鼠标移到这条回答上才显形；
+ * 「复制 / 重做」。单条模式平时淡出，鼠标移到这条回答上才显形；
  * 一轮一排（`persistent`）时整轮只有这一排，常显（Manus 式回答末尾一行）。
+ * 分享不在这里：顶栏「分享」进入选段模式（2026-10-31）。
  */
 function MessageActions({
   content,
   onRegenerate,
-  onShare,
   persistent = false,
 }: {
   content: string;
   onRegenerate?: () => void;
-  onShare?: () => void;
   persistent?: boolean;
 }) {
   const tt = useUI();
@@ -217,22 +213,6 @@ function MessageActions({
           <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M20 11a8 8 0 10-2.3 6.3" strokeLinecap="round" />
             <path d="M20 5v6h-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      )}
-      {onShare && (
-        <button
-          type="button"
-          title={tt("分享")}
-          aria-label={tt("分享")}
-          className={buttonClass}
-          onClick={onShare}
-        >
-          <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" strokeLinecap="round" />
           </svg>
         </button>
       )}

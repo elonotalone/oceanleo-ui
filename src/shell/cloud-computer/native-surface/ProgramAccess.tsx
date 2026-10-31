@@ -1,8 +1,9 @@
 "use client";
 
-// 「这台电脑上的 <程序>」一组：安装 / 登录 / Key，宿主样式内联展示。
+// 「这台电脑上的 <程序>」：安装 / 登录 / Key，宿主样式。
 // 逻辑与 Computers 页的 LoginCard / InstallSheet / KeySheet 相同（同一个 dialog 控制器、
-// 同一条 key 路由），只是换成宿主样式、放在右栏里，不浮在对话上。
+// 同一条 key 路由），只是换成宿主样式。2026-10-31 夜：右栏设置面板删除后，这些流程显示
+// 在输入框模型药丸菜单「账号」一行的卡片里（computer-settings-rows.tsx）。
 
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -51,7 +52,7 @@ function copyToClipboard(value: string, done: () => void) {
   void write.call(navigator.clipboard, value).then(done, () => undefined);
 }
 
-function LoginFlow({ dialog, program }: { dialog: NativeDialog; program: WsProgram }) {
+export function LoginFlow({ dialog, program }: { dialog: NativeDialog; program: WsProgram }) {
   const tt = useUI();
   const login = dialog.login;
   const phase = phaseOf(login);
@@ -155,7 +156,7 @@ function installDirCopy(tt: Translate, row: ProgramStatus | undefined): string {
   return tt("整个程序装到这个目录");
 }
 
-function InstallFlow({ dialog, program }: { dialog: NativeDialog; program: WsProgram }) {
+export function InstallFlow({ dialog, program }: { dialog: NativeDialog; program: WsProgram }) {
   const tt = useUI();
   const install = dialog.install;
   const logRef = useRef<HTMLPreElement>(null);
@@ -197,7 +198,7 @@ function InstallFlow({ dialog, program }: { dialog: NativeDialog; program: WsPro
   );
 }
 
-function KeyForm({
+export function KeyForm({
   computerId,
   program,
   status,
@@ -296,12 +297,11 @@ function KeyForm({
   );
 }
 
-/** Install / sign-in / key for one program on one computer. */
-export function ProgramAccess({ computerId, program, dialog }: { computerId: string; program: WsProgram; dialog: NativeDialog }) {
-  const tt = useUI();
-  const [keyOpen, setKeyOpen] = useState(false);
-  const status = dialog.programs.find((item) => item.id === program);
-  const state = !status
+export type ProgramAccessState = "reading" | "not_installed" | "signed_in" | "signed_out" | "unknown";
+
+/** Where one program stands on one computer, and its short status copy ("已登录" / "未安装" …). */
+export function programAccessState(status: ProgramStatus | undefined, tt: Translate): { state: ProgramAccessState; copy: string } {
+  const state: ProgramAccessState = !status
     ? "reading"
     : !status.installed
       ? "not_installed"
@@ -310,7 +310,7 @@ export function ProgramAccess({ computerId, program, dialog }: { computerId: str
         : status.logged_in === false
           ? "signed_out"
           : "unknown";
-  const stateCopy = state === "reading"
+  const copy = state === "reading"
     ? tt("正在读取…")
     : state === "not_installed"
       ? tt("未安装")
@@ -319,33 +319,5 @@ export function ProgramAccess({ computerId, program, dialog }: { computerId: str
         : state === "signed_out"
           ? tt("未登录")
           : tt("未知");
-  const loginOpen = dialog.login.open && dialog.login.program === program;
-  const installOpen = dialog.install.open && dialog.install.program === program;
-  return (
-    <div className="grid gap-3" data-oceanleo-native-program={program} data-state={state}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[13px] text-neutral-800">
-          {stateCopy}
-          {status?.installed && status.version ? <span className={`ml-2 ${HOST.faint}`}>{status.version}</span> : null}
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {state === "not_installed" ? (
-            <button type="button" className={HOST.primary} onClick={() => dialog.openInstall(program)} data-oceanleo-native-program-install="">{tt("安装")}</button>
-          ) : state === "signed_in" && program !== "hermes" && status?.logged_in === true ? (
-            <button type="button" className={HOST.secondary} onClick={() => dialog.logoutProgram(program)} data-oceanleo-native-program-logout="">{tt("退出登录")}</button>
-          ) : state === "signed_out" || state === "unknown" ? (
-            <button type="button" className={HOST.primary} onClick={() => dialog.openLogin(program)} data-oceanleo-native-program-login="">{tt("登录")}</button>
-          ) : null}
-          {status?.installed ? (
-            <button type="button" className={HOST.secondary} onClick={() => setKeyOpen((open) => !open)} data-oceanleo-native-program-key="">
-              {program === "hermes" ? tt("管理凭据") : tt("Key")}
-            </button>
-          ) : null}
-        </div>
-      </div>
-      {installOpen ? <InstallFlow dialog={dialog} program={program} /> : null}
-      {loginOpen ? <LoginFlow dialog={dialog} program={program} /> : null}
-      {keyOpen ? <KeyForm computerId={computerId} program={program} status={status} dialog={dialog} onClose={() => setKeyOpen(false)} /> : null}
-    </div>
-  );
+  return { state, copy };
 }

@@ -97,6 +97,8 @@ const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/cloud-computer-api": dataModule(`
     export function agentDialogWsUrl(id) { return "ws://example.test/v1/computers/" + id + "/agent-dialog"; }
+    // The composer pill's computer sections default to this client (never called here).
+    export const cloudComputerApi = {};
     export async function putComputerInbox(id, file, onProgress, options) {
       (globalThis.__inboxPuts ??= []).push({ name: file.name, task_session_id: options?.task_session_id ?? null });
       onProgress?.(100);
@@ -173,7 +175,8 @@ test("offline computer: cloud-saved transcript in the main stream, plain blocked
     assert.equal(thread.ready, false);
     assert.equal(thread.running, false);
     assert.equal(thread.blockedReason, "这台电脑离线，只能查看已保存的对话。");
-    assert.equal(thread.modelPicker, null);
+    // 2026-10-31 night: offline keeps the settings pill (rows read-only, the reason said there).
+    assert.notEqual(thread.modelPicker, null);
     assert.equal(thread.onAttachFiles, undefined);
     assert.equal(thread.saveFailed, true);
     assert.equal(await sendVia(thread, "hi"), false);

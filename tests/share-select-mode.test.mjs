@@ -265,6 +265,62 @@ test("Copy Link 只把选中的 message_ids 交给后端，复制回来的是分
   view.unmount();
 });
 
+// 2026-10-31: the header 「分享」 on a Computers chat. Native bubbles have local
+// negative ids; the link names the session's cloud copy by turns.
+const nativeMessages = [
+  { id: -9, role: "assistant", kind: "text", content: "上一轮的尾巴" },
+  { id: -1, role: "user", kind: "text", content: "第一问" },
+  { id: -2, role: "assistant", kind: "text", content: "**第一答：**内容" },
+  { id: -3, role: "user", kind: "text", content: "", meta: { attachments: [{ name: "a.png", url: "" }] } },
+  { id: -4, role: "assistant", kind: "text", content: "看了图" },
+  { id: -5, role: "user", kind: "text", content: "第二问" },
+  { id: -6, role: "assistant", kind: "text", content: "第二答" },
+  { id: -7, role: "user", kind: "text", content: "排队中", meta: { native_pending: true } },
+];
+
+test("Copy Link on a computer chat: session + turns, never the local ids", async () => {
+  globalThis.__shareCalls = [];
+  const view = mountShare({
+    messages: nativeMessages, taskId: "task-1", title: "elon · claude",
+    native: { sessionId: "cts_1", hasOlder: false },
+  });
+  act(() => view.get().enter("all"));
+  await act(async () => { await view.get().copyLink(); });
+  // The attachment-only prompt is not mirrored: its reply belongs to turn 0; the
+  // queued prompt is not saved yet; the tail before the first prompt has no turn.
+  assert.deepEqual(globalThis.__shareCalls, [
+    { taskId: "task-1", computerTaskSessionId: "cts_1", userTurns: [0, 1], replyTurns: [0, 1] },
+  ]);
+  view.unmount();
+
+  // Older history not loaded: indexes count from the end, and the leading tail is turn -3.
+  globalThis.__shareCalls = [];
+  const older = mountShare({
+    messages: nativeMessages, taskId: "task-1",
+    native: { sessionId: "cts_1", hasOlder: true },
+  });
+  act(() => older.get().toggle(-9));
+  act(() => older.get().toggle(-6));
+  await act(async () => { await older.get().copyLink(); });
+  assert.deepEqual(globalThis.__shareCalls, [
+    { taskId: "task-1", computerTaskSessionId: "cts_1", userTurns: [], replyTurns: [-3, -1] },
+  ]);
+  older.unmount();
+});
+
+test("a computer chat not saved yet: text still copies, the link says so", async () => {
+  globalThis.__shareCalls = [];
+  globalThis.__clipboard = [];
+  const view = mountShare({ messages: nativeMessages, taskId: "task-1", native: { sessionId: null, hasOlder: false } });
+  act(() => view.get().enter("all"));
+  await act(async () => { await view.get().copyLink(); });
+  assert.deepEqual(globalThis.__shareCalls, []);
+  assert.equal(view.get().notice.text, "这段对话还没保存，稍后再分享。");
+  await act(async () => { await view.get().copyText(); });
+  assert.ok(globalThis.__clipboard[0].includes("第二答"));
+  view.unmount();
+});
+
 test("没有勾选时四个动作都拒绝执行，并提示先勾选", async () => {
   globalThis.__clipboard = [];
   globalThis.__imageCalls = [];
@@ -358,30 +414,24 @@ test("选段模式下每条消息左侧出现圆形勾选框；普通模式下�
   normal.unmount();
 });
 
-test("普通模式下每条回答底下有复制 / 重做 / 分享三个小图标", () => {
+test("普通模式下每条回答底下只有复制 / 重做两个小图标（分享只在顶栏）", () => {
   const message = { id: 4, role: "assistant", kind: "text", content: "同比增长 12%。" };
   let regenerated = 0;
-  let shared = 0;
   const view = mount(
     React.createElement(AgentTranscriptBubble, {
       message,
       onRegenerate: () => {
         regenerated += 1;
       },
-      onShare: () => {
-        shared += 1;
-      },
     }),
   );
   const labels = [...view.host.querySelectorAll("button")].map((button) =>
     button.getAttribute("aria-label"),
   );
-  assert.deepEqual(labels, ["复制", "重做", "分享"]);
-  const [, redo, share] = view.host.querySelectorAll("button");
+  assert.deepEqual(labels, ["复制", "重做"]);
+  const [, redo] = view.host.querySelectorAll("button");
   act(() => redo.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-  act(() => share.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
   assert.equal(regenerated, 1);
-  assert.equal(shared, 1);
   view.unmount();
 });
 
@@ -403,7 +453,7 @@ test("勾选框与消息渲染都在，用户消息也能被选中", () => {
 // 2026-10-31 item 6: one action row per turn (host passes turnCopyText).
 test("一轮一排：turnCopyText 为 null 的回答没有操作；最后一段常显一排，复制的是整轮拼好的话", async () => {
   const message = { id: 5, role: "assistant", kind: "text", content: "第二段。" };
-  const middle = mount(React.createElement(AgentTranscriptBubble, { message, turnCopyText: null, onShare: () => {} }));
+  const middle = mount(React.createElement(AgentTranscriptBubble, { message, turnCopyText: null, onRegenerate: () => {} }));
   assert.equal(middle.host.querySelectorAll("button").length, 0, "not the turn's last words: no row");
   middle.unmount();
 

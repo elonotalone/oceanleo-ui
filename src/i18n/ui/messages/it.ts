@@ -880,6 +880,7 @@ const it: Record<string, string> = {
   "列表视图": "Vista elenco",
   "查看选项": "Opzioni di visualizzazione",
   "仅看收藏": "Solo preferiti",
+  "仅看上传": "Solo caricati",
   "创建 prompt": "Crea prompt",
   "删除卡片": "Elimina scheda",
   "前往 Cost 页 →": "Vai alla pagina Cost →",

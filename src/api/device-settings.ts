@@ -131,6 +131,7 @@ async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSi
 }
 
 let registered: { token: string; credential: string; data: unknown } | null = null;
+let registering: { key: string; promise: Promise<DeviceApiResult<unknown>> } | null = null;
 /** Cache only a successful registration for this exact account token+credential. */
 export async function registerController(signal?: AbortSignal): Promise<DeviceApiResult<unknown>> {
   if (signal?.aborted) return { ok: false, error: "aborted" };
@@ -140,10 +141,27 @@ export async function registerController(signal?: AbortSignal): Promise<DeviceAp
   try { headers = controllerHeaders(); } catch { return { ok: false, error: "controller_identity_unavailable" }; }
   const credential = headers["X-OceanLeo-Controller"];
   if (registered?.token === token && registered.credential === credential) return { ok: true, data: registered.data };
-  const result = await request("/v1/devices/controllers", { method: "POST", body: JSON.stringify({ label: controllerLabel() }) }, signal, { token, headers });
-  if (result.ok && (!record(result.data) || typeof result.data.controller_id !== "string" || !result.data.controller_id)) return { ok: false, error: "response_malformed", status: result.status };
-  if (result.ok && !signal?.aborted) registered = { token, credential, data: result.data };
-  return result;
+  // One registration in flight per token+credential: the devices page asks for every
+  // computer's status at once and a click may follow; N parallel POSTs used to hit the
+  // gateway's rate limit (429) and fail the click (twin probe 2026-10-31).
+  const key = `${token}\n${credential}`;
+  if (registering?.key !== key) {
+    const timeout = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(10_000) : undefined;
+    const promise = request("/v1/devices/controllers", { method: "POST", body: JSON.stringify({ label: controllerLabel() }) }, timeout, { token, headers })
+      .then((result): DeviceApiResult<unknown> => {
+        if (result.ok && (!record(result.data) || typeof result.data.controller_id !== "string" || !result.data.controller_id)) return { ok: false, error: "response_malformed", status: result.status };
+        if (result.ok) registered = { token, credential, data: result.data };
+        return result;
+      })
+      .finally(() => { if (registering?.promise === promise) registering = null; });
+    registering = { key, promise };
+  }
+  const shared = registering.promise;
+  if (!signal) return shared;
+  return Promise.race([shared, new Promise<DeviceApiResult<unknown>>((resolve) => {
+    if (signal.aborted) resolve({ ok: false, error: "aborted" });
+    else signal.addEventListener("abort", () => resolve({ ok: false, error: "aborted" }), { once: true });
+  })]);
 }
 
 export function parseDeviceSettings(value: unknown): DeviceSettings | null {

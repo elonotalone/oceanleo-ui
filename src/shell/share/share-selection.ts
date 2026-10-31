@@ -100,3 +100,39 @@ export function pruneShareSelection(
   for (const id of selected) if (live.has(id)) next.add(id);
   return next;
 }
+
+/**
+ * A computer (native) conversation's picks → turn indexes of its cloud-saved copy
+ * (2026-10-31). Its bubbles carry local negative ids; the server's copy is the
+ * `agent_messages` rows the archive mirrors (user prompts and reply text only),
+ * so the link names turns instead: a turn starts at each user message with text
+ * (an attachment-only prompt or a not-yet-sent queued one is not mirrored, so it
+ * starts none). `fromEnd` (older history not loaded): indexes count back from the
+ * last turn (-1); messages before the first loaded prompt belong to the turn
+ * before it. With everything loaded they are 0-based and such messages have no
+ * turn (nothing of them is linked).
+ */
+export function nativeShareTurns(
+  messages: readonly ShareSelectableMessage[],
+  selected: ReadonlySet<number>,
+  fromEnd: boolean,
+): { userTurns: number[]; replyTurns: number[] } {
+  const starts = (message: ShareSelectableMessage) =>
+    message.role === "user" &&
+    Boolean(message.content?.trim()) &&
+    message.meta?.native_pending !== true;
+  const total = messages.filter(starts).length;
+  const userTurns: number[] = [];
+  const replyTurns: number[] = [];
+  let turn = -1;
+  for (const message of messages) {
+    if (starts(message)) turn += 1;
+    if (!selected.has(message.id) || !isShareSelectable(message)) continue;
+    if (message.role === "user" && !starts(message)) continue;
+    if (turn < 0 && !fromEnd) continue;
+    const index = fromEnd ? turn - total : turn;
+    const list = message.role === "user" ? userTurns : replyTurns;
+    if (list[list.length - 1] !== index) list.push(index);
+  }
+  return { userTurns, replyTurns };
+}

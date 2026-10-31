@@ -345,8 +345,10 @@ test("HistoryDetail：门户 task-thread 会话走 AgentChat；?task= 直接读 
   // getTask is never issued for the same id.
   assert.match(historySource, /const taskQuery = !historySessionIdFromPath\(detailPathname\) && search\?\.get\("task"\) === sel;/);
   const effect = historySource.slice(historySource.indexOf("const taskQuery"));
+  // 2026-10-31: the read a sidebar hover / press started is taken (openTaskFirstPage).
   assert.ok(
-    effect.indexOf("directTask = await getTask(sel)") < effect.indexOf("await getAppSession(sel)"),
+    effect.indexOf("directTask = await openTaskFirstPage(sel)") > -1 &&
+      effect.indexOf("directTask = await openTaskFirstPage(sel)") < effect.indexOf("getAppSession(sel)"),
     "the task is read before any app_session lookup",
   );
   assert.match(historySource, /const taskResult = directTask \?\? \(await getTask\(sel\)\);/);

@@ -706,7 +706,7 @@ export function getUsageSummary() {
   return ccRequest<UsageSummary>("/v1/computers/usage/summary");
 }
 
-export type ComputerInboxArchive = { id: string; name: string; mime: string; size: number; download_path: string };
+export type ComputerInboxArchive = { id: string; name: string; mime: string; size: number; download_path: string; artifact_id?: string };
 
 export type ComputerInboxFile = {
   archive?: ComputerInboxArchive;

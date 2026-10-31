@@ -35,13 +35,27 @@ import {
 } from "../lib/app-session";
 import { ConfirmDialog } from "../ui";
 import { browserClient } from "../lib/auth/client";
+import { setCacheUser } from "../lib/user-scoped-cache";
+import {
+  prefetchHistoryOpen,
+  readHistorySession,
+  readTaskDetail,
+  openTaskFirstPage,
+  rememberHistorySession,
+  takeAppSessionPrefetch,
+  type HistoryOpenHint,
+} from "./task-open-cache";
 import { useUI } from "../i18n/ui/useUI";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { LibraryTaskHistoryWorkspace } from "./library-task-history";
 import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace";
 import { ShellTaskView } from "./cloud-computer/ShellTaskView";
 import { SessionRunningIcon } from "./cloud-computer/agent-dialog/SessionRunningIcon";
-import { listComputerTaskSessions } from "../lib/computer-task-api";
+import {
+  knownComputerTaskSessions,
+  latestComputerTaskSession,
+  listComputerTaskSessions,
+} from "../lib/computer-task-api";
 import { TaskLoadingGate } from "./task-loading-gate";
 import {
   historyDetailCacheKey,
@@ -49,6 +63,7 @@ import {
   storeHistoryDetail,
 } from "./history-detail-cache";
 import {
+  bumpHistoryEntries,
   canDeleteHistoryEntry,
   HISTORY_WORKING_POLL_MS,
   historyEntryTimestamp,
@@ -60,6 +75,7 @@ import {
   mergeHistoryEntries,
   shellSessionFromTask,
   withLinkedAgentTask,
+  type HistoryEntryActivity,
   type HistoryListEntry,
   type RestorableAppSession,
 } from "./history-model";
@@ -69,7 +85,11 @@ import {
   historySessionIdFromPath,
   withFusionMountPrefix,
 } from "./workspace-route";
-import { HISTORY_CHANGED_EVENT } from "../lib/history-events";
+import {
+  HISTORY_ACTIVITY_EVENT,
+  HISTORY_CHANGED_EVENT,
+  type HistoryActivityDetail,
+} from "../lib/history-events";
 import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
@@ -115,6 +135,44 @@ function historyHrefFor(entry: HistoryListEntry, pathname = ""): string {
         `/history?task=${encodeURIComponent(entry.id)}`,
         pathname,
       );
+}
+
+/** What a row carries for the prefetch: task id, mode, and its last known computer conversation. */
+function historyOpenHint(entry: HistoryListEntry): HistoryOpenHint {
+  if (entry.kind === "session") {
+    return { kind: "session", id: entry.id, taskId: entry.session.task_id || null };
+  }
+  const taskId = entry.task.id;
+  const mode = String(entry.task.mode || "");
+  const sessions = mode === "computer" ? knownComputerTaskSessions(taskId) : null;
+  return { kind: "task", id: taskId, taskId, mode, computerSessionId: latestComputerTaskSession(sessions ?? [])?.id ?? null };
+}
+
+/** HistoryDetail instances mounted now: a row click switches them in place (no page load). */
+let mountedHistoryDetails = 0;
+
+/**
+ * Open a history href. While a HistoryDetail is mounted on this page the switch
+ * is client-only (2026-10-31 task switch speed): the History API moves the URL
+ * (Next's app router syncs usePathname / back-forward with it, no server
+ * render), the shared selection moves the detail. Elsewhere it is a navigation.
+ */
+function openHistoryHref(href: string, push: (href: string) => void): void {
+  if (
+    mountedHistoryDetails > 0 &&
+    typeof window !== "undefined" &&
+    href.startsWith("/") &&
+    !href.startsWith("//")
+  ) {
+    const next = new URL(href, window.location.href);
+    if (next.origin === window.location.origin) {
+      if (next.pathname + next.search !== window.location.pathname + window.location.search) {
+        window.history.pushState(null, "", next.pathname + next.search + next.hash);
+      }
+      return;
+    }
+  }
+  push(href);
 }
 
 type HistoryPublishItem = {
@@ -220,6 +278,12 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     if (x.kind !== y.kind || x.id !== y.id) return false;
     if ((x.created_by ?? null) !== (y.created_by ?? null)) return false;
     if (isHistoryEntryWorking(x) !== isHistoryEntryWorking(y)) return false;
+    if (
+      (x.activity_at ?? null) !== (y.activity_at ?? null) ||
+      (x.user_activity_at ?? null) !== (y.user_activity_at ?? null)
+    ) {
+      return false;
+    }
     const xProject = historyEntryProject(x);
     const yProject = historyEntryProject(y);
     if (
@@ -246,6 +310,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
       if (
         x.task.status !== y.task.status ||
         (x.task.computer_run_status ?? null) !== (y.task.computer_run_status ?? null) ||
+        (x.task.last_activity_at ?? null) !== (y.task.last_activity_at ?? null) ||
         x.task.title !== y.task.title ||
         (x.task.created_by ?? null) !== (y.task.created_by ?? null) ||
         Boolean(x.task.pinned) !== Boolean(y.task.pinned) ||
@@ -267,6 +332,35 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
  * 用户就不会看到列表被「加载…」清空一下又回来。
  */
 const historyListCache = new Map<string, HistoryListEntry[]>();
+
+/**
+ * Conversation activity this page saw before the gateway list caught up
+ * (`HISTORY_ACTIVITY_EVENT`, keyed by task id and session id). Applied on every
+ * merge so a refresh cannot drop a just-bumped row back down; entries expire
+ * once the gateway's own `last_activity_at` (≤15s throttle) has had time to land.
+ */
+const LOCAL_ACTIVITY_TTL_MS = 120_000;
+const localHistoryActivity = new Map<string, HistoryEntryActivity & { seen: number }>();
+/** task id → bound session id from the last task list, so a task-only event can bump its session row. */
+const historyTaskSession = new Map<string, string>();
+
+function liveLocalActivity(): ReadonlyMap<string, HistoryEntryActivity> {
+  const cutoff = Date.now() - LOCAL_ACTIVITY_TTL_MS;
+  for (const [key, value] of localHistoryActivity) {
+    if (value.seen < cutoff) localHistoryActivity.delete(key);
+  }
+  return localHistoryActivity;
+}
+
+function noteLocalActivity(key: string | undefined, detail: HistoryActivityDetail): void {
+  if (!key) return;
+  const prev = localHistoryActivity.get(key);
+  localHistoryActivity.set(key, {
+    at: detail.at,
+    userAt: detail.user ? detail.at : prev?.userAt,
+    seen: Date.now(),
+  });
+}
 
 function historyCacheKey(siteId?: string, pending = false): string {
   return `${siteId || ""}|${pending ? "pending" : "all"}`;
@@ -338,10 +432,14 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       setError(null);
       // session API 尚未部署时 sessions=null → 完整退回旧 task 列表。API 已部署时，
       // session 置顶，并只保留未绑定 session 的旧 task。
+      for (const task of tasks || []) {
+        if (task.session_id) historyTaskSession.set(task.id, task.session_id);
+      }
       const next = mergeHistoryEntries(sessions || [], tasks || [], {
         sessionApiUnavailable:
           !sessionsResult.ok &&
           isAppSessionApiUnavailableStatus(sessionsResult.status),
+        localActivity: liveLocalActivity(),
       }).filter(
         (entry) => !deletingRef.current.has(`${entry.kind}:${entry.id}`),
       );
@@ -375,6 +473,24 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     };
     window.addEventListener(HISTORY_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
+  }, [reload]);
+  // A chat on screen moved (native frame / Leo reply / user send): bump its row
+  // right away (throttled at the source). The working mark itself still comes
+  // from the list, so a user send also refreshes it; otherwise the working poll
+  // (3s) and the regular poll pick up the server's order.
+  useEffect(() => {
+    const onActivity = (event: Event) => {
+      const detail = (event as CustomEvent<HistoryActivityDetail>).detail;
+      if (!detail?.at || (!detail.taskId && !detail.sessionId)) return;
+      const sessionId =
+        detail.sessionId || (detail.taskId ? historyTaskSession.get(detail.taskId) : undefined);
+      noteLocalActivity(detail.taskId, detail);
+      noteLocalActivity(sessionId, detail);
+      setItems((prev) => bumpHistoryEntries(prev, { ...detail, sessionId }));
+      if (detail.user) void reload(true);
+    };
+    window.addEventListener(HISTORY_ACTIVITY_EVENT, onActivity);
+    return () => window.removeEventListener(HISTORY_ACTIVITY_EVENT, onActivity);
   }, [reload]);
   // 全部任务静默刷新：active 会话也必须在创建后进入「我的任务」，不能因为当前列表
   // 还没有 active 项就永远不再请求。sameHistory 保证无变化时不替换数组、不闪烁。
@@ -600,6 +716,26 @@ function HistoryProjectTag({ project }: { project: HistoryProjectBadge }) {
   );
 }
 
+/** Hover a row this long (pointer resting, not sweeping past) and its reads start. */
+const HOVER_PREFETCH_MS = 80;
+
+function useHoverPrefetch() {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
+  const start = useCallback((entry: HistoryListEntry) => {
+    cancel();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      prefetchHistoryOpen(historyOpenHint(entry));
+    }, HOVER_PREFETCH_MS);
+  }, [cancel]);
+  useEffect(() => cancel, [cancel]);
+  return useMemo(() => ({ start, cancel }), [start, cancel]);
+}
+
 // ----------------------------------------------------------------------------
 // 主侧栏内联区：我的任务列表（可删除）。v5 起不再覆盖主导航。
 // ----------------------------------------------------------------------------
@@ -623,8 +759,25 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const [renameFor, setRenameFor] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [moveTarget, setMoveTarget] = useState<HistoryListEntry | null>(null);
+  const hoverPrefetch = useHoverPrefetch();
+  // The caches the rows feed are kept per signed-in user (task-open-cache).
+  // A signed-out read never clears them here (the auth-state event does).
+  useEffect(() => {
+    let alive = true;
+    const client = browserClient();
+    if (!client) return;
+    void client.auth.getSession().then(({ data }) => {
+      const id = data.session?.user?.id;
+      if (alive && id) setCacheUser(id);
+    }, () => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  // 置顶的排在前面（稳定：仅把 pinned 提到前，保持原有时间序）。
+  // 置顶的排在前面（稳定：仅把 pinned 提到前，保持原有顺序）。置顶是用户的明确意图，
+  // 所以仍压过「工作中优先」：置顶组、普通组内部各自是 mergeHistoryEntries 的顺序——
+  // 工作中的在前，其余按最近活动倒序（compareHistoryEntries）。
   const orderedItems = useMemo(() => {
     const pinnedOf = (e: HistoryListEntry) =>
       e.kind === "session" ? Boolean(e.session.pinned) : Boolean(e.task.pinned);
@@ -693,8 +846,11 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         const renaming = renameFor === entry.id;
         const project = historyEntryProject(entry);
         const openEntry = () => {
+          // Reads start before anything renders; the switch itself is client-only
+          // while the detail is on this page (openHistoryHref).
+          prefetchHistoryOpen(historyOpenHint(entry));
+          openHistoryHref(historyHrefFor(entry, pathname), router.push);
           setSel(entry.id);
-          router.push(historyHrefFor(entry, pathname));
         };
         // 2026-10-31 Manus 式行：只有一行任务名（无时间 / 来源 / 花费副标题），选中 =
         // 与主导航同一档中性灰底，悬停更浅；完整名 + 时间在悬停气泡里（HistoryRowFrame）。
@@ -741,6 +897,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
               // 回车触发的 click 冒泡到这里。标签是独立链接，不嵌在按钮里。
               <div
                 onClick={openEntry}
+                onPointerEnter={() => hoverPrefetch.start(entry)}
+                onPointerLeave={hoverPrefetch.cancel}
+                onPointerDown={() => prefetchHistoryOpen(historyOpenHint(entry))}
+                onFocus={() => prefetchHistoryOpen(historyOpenHint(entry))}
                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
                 data-history-row={entry.id}
               >
@@ -954,6 +1114,13 @@ export function HistoryDetail({
   // Which selection the shown detail / error belongs to: until the read for a new
   // selection settles, the previous task is covered (never shown under the new row).
   const [settledFor, setSettledFor] = useState<string | null>(null);
+  // Row clicks switch this detail in place while it is mounted (openHistoryHref).
+  useEffect(() => {
+    mountedHistoryDetails += 1;
+    return () => {
+      mountedHistoryDetails -= 1;
+    };
+  }, []);
 
   // 新后端优先按 app_session 读取；404/旧后端再把同一个 id 当 legacy task 读取。
   // 依赖里刻意没有 `tt`：换语言不该重新拉一遍会话与任务详情。effect 里只存中文原文
@@ -977,17 +1144,25 @@ export function HistoryDetail({
       };
     }
     setDetailLoading(!cached);
+    /** What is on screen for this selection (memory / this browser's copy / the read). */
+    let shown: LoadedHistoryDetail | undefined = cached;
+    let answered = false;
     const commit = (value: LoadedHistoryDetail) => {
+      answered = true;
       storeHistoryDetail(cacheKey, value);
+      // A session row survives a reload too (task details are kept by AgentChat).
+      if (value.kind === "session" && !value.fallbackTask) rememberHistorySession(cacheKey, value.session);
       setDetailLoading(false);
       setSettledFor(sel);
-      if (!cached || historyDetailShape(cached) !== historyDetailShape(value)) setLoaded(value);
+      if (!shown || historyDetailShape(shown) !== historyDetailShape(value)) setLoaded(value);
+      shown = value;
     };
     // A background re-read that fails keeps what is already shown (silent).
     const fail = (message: string) => {
+      answered = true;
       setDetailLoading(false);
       setSettledFor(sel);
-      if (!cached) setDetailError(message);
+      if (!shown) setDetailError(message);
     };
     const search =
       typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
@@ -999,10 +1174,27 @@ export function HistoryDetail({
     if (taskQuery && search?.get("computerSession")) {
       void listComputerTaskSessions(sel).catch(() => null);
     }
+    // Not in this page's memory: this browser's copy (IndexedDB, user-scoped) paints
+    // while the gateway read runs; the read replaces it only when the shape changed.
+    if (!cached) {
+      const fromDisk: Promise<LoadedHistoryDetail | undefined> = taskQuery
+        ? readTaskDetail(sel).then((detail) => (detail ? { kind: "task", detail } : undefined))
+        : readHistorySession<AppSession>(cacheKey).then((session) =>
+            session ? { kind: "session", session } : undefined);
+      void fromDisk.then((value) => {
+        if (!alive || answered || !value) return;
+        if (value.kind === "task" && siteId && value.detail.task.site_id && value.detail.task.site_id !== siteId) return;
+        shown = value;
+        setLoaded(value);
+        setSettledFor(sel);
+        setDetailLoading(false);
+      }, () => undefined);
+    }
     void (async () => {
       let directTask: Awaited<ReturnType<typeof getTask>> | null = null;
       if (taskQuery) {
-        directTask = await getTask(sel);
+        // A sidebar hover / press may already have started this read (newest messages first).
+        directTask = await openTaskFirstPage(sel);
         if (!alive) return;
         if (directTask.ok && directTask.data) {
           if (
@@ -1026,7 +1218,7 @@ export function HistoryDetail({
         }
         // Not a task after all (an old link carrying a session id): read it as one.
       }
-      let sessionResult = await getAppSession(sel);
+      let sessionResult = await (takeAppSessionPrefetch(sel) ?? getAppSession(sel));
       if (!sessionResult.ok && sessionResult.status === 404) {
         const advancedResult = await getAppSession(sel, "advanced");
         sessionResult = advancedResult;

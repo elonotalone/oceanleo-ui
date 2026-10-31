@@ -349,6 +349,13 @@ export interface AgentTask {
   branch_depth?: number;
   created_at?: string;
   updated_at?: string;
+  /**
+   * 列表附带（网关 migration 0313）：这条任务最近一次对话活动——用户发言、回合开始/结束、
+   * 流式输出（≤15s 一次）、状态变化。「我的任务」按它排序；旧网关缺省。
+   */
+  last_activity_at?: string | null;
+  /** 列表附带：用户最近一次发言。工作中的任务按它排，不会随流式输出来回换位。 */
+  last_user_message_at?: string | null;
 }
 
 /**
@@ -368,10 +375,18 @@ export interface TaskDetail {
   artifacts: AgentArtifact[];
   /** 网关支持按游标只取新行时才会出现；没有这个字段就一直拉全表。 */
   next_after_id?: number;
+  /** Only with `message_limit`: older messages exist before this page. */
+  has_more?: boolean;
 }
 
 export interface GetTaskOptions {
   afterId?: number;
+  /**
+   * Newest N messages only (first paint of a task switch). A gateway without
+   * `message_limit` ignores it and returns the whole thread; callers treat a
+   * reply with N or more messages as possibly partial and read the full thread after.
+   */
+  messageLimit?: number;
 }
 
 /** 用户随消息上传的附件（文件/图片/语音）。上传到文件库拿到公网 url 后传给 agent：
@@ -885,10 +900,15 @@ export function controlLocalAgentTask(taskId: string, action: "pause" | "resume"
 
 export function getTask(taskId: string, options?: GetTaskOptions) {
   const afterId = options?.afterId;
-  const query =
-    typeof afterId === "number" && Number.isSafeInteger(afterId) && afterId >= 0
-      ? `?after_id=${afterId}`
-      : "";
+  const limit = options?.messageLimit;
+  const params = new URLSearchParams();
+  if (typeof afterId === "number" && Number.isSafeInteger(afterId) && afterId >= 0) {
+    params.set("after_id", String(afterId));
+  }
+  if (typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0) {
+    params.set("message_limit", String(limit));
+  }
+  const query = params.size ? `?${params}` : "";
   return authed<TaskDetail>(`/v1/agent/tasks/${encodeURIComponent(taskId)}${query}`);
 }
 

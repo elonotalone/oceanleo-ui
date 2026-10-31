@@ -18,6 +18,7 @@ import type {
   AgentDialogMessage,
   ArchivedAttachment,
   PermissionOption,
+  ToolCard,
   TurnItem,
   UserMessageAttachment,
 } from "../cloud-computer/agent-dialog/types";
@@ -50,6 +51,29 @@ export type NativeQuestionMeta = {
 };
 
 const INTERRUPTED = new Set(["cancelled", "canceled", "stopped"]);
+
+type ToolCardMeta = {
+  id: string;
+  kind: string;
+  title: string;
+  status: string;
+  content: ToolCard["content"];
+  locations: ToolCard["locations"];
+  /** A Task/Agent step's background sub-agent steps, nested the same way. */
+  children?: ToolCardMeta[];
+};
+
+function toolCardMeta(tool: ToolCard): ToolCardMeta {
+  return {
+    id: tool.id,
+    kind: tool.kind,
+    title: tool.title,
+    status: tool.status,
+    content: tool.content ?? [],
+    locations: tool.locations ?? [],
+    ...(tool.children?.length ? { children: tool.children.map(toolCardMeta) } : {}),
+  };
+}
 
 /** Notices that are not failures: shown as a neutral line, never red. */
 const NEUTRAL_NOTICES = new Set([
@@ -223,14 +247,7 @@ export function dialogToAgentMessages(
             step_index: step,
             tool_status: tool.status,
             tool_kind: tool.kind,
-            tool_card: {
-              id: tool.id,
-              kind: tool.kind,
-              title: tool.title,
-              status: tool.status,
-              content: tool.content ?? [],
-              locations: tool.locations ?? [],
-            },
+            tool_card: toolCardMeta(tool),
           },
         });
         continue;

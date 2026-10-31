@@ -16,6 +16,10 @@
 //   5. 其余（旧公开地址）→ 经网关代理的显示地址。
 //
 // 打不开（4 读失败 / 什么地址都没有）时返回 null，调用方保持自己的退路。
+//
+// 10-31：已进资料库的文件（1 / 3 / 4 带 artifact_id）由宿主传 `showLibrary` 时改为
+// 打开右侧栏的资料库并定位到它（类型类别 + 「上传」筛选，`taskAttachmentLibraryAction`）；
+// 只有还没上传完的本地 `blob:` 仍走上面的直接预览。
 // ============================================================================
 
 import { useCallback, useRef } from "react";
@@ -26,13 +30,15 @@ import {
   resolveAttachmentDisplayUrl,
   type AttachmentRenditionPurpose,
 } from "../lib/attachment-url";
-import type { LibraryItem } from "./library-data";
+import { isDurableLibraryItem, isUploadedLibraryItem, type LibraryItem } from "./library-data";
 import {
   attachmentOpenMode,
   attachmentWorkspaceItem,
   type OpenableAttachment,
+  type TaskWorkspaceState,
 } from "./TaskWorkspaceShell";
 import type { TaskWorkspaceOpenItem } from "./ResultCanvas";
+import type { WorkspaceActionV1 } from "./workspace-actions";
 
 /** 电脑任务 inbox 里的云端副本（网关 `/v1/computer-task-sessions/<s>/attachments/<a>`）。 */
 export interface NativeArchiveRef {
@@ -40,6 +46,8 @@ export interface NativeArchiveRef {
   size?: number;
   mime?: string;
   name?: string;
+  /** The private Library upload the gateway registered for this file (0314). */
+  artifact_id?: string;
 }
 
 // A native composer tile carries its inbox copy once uploaded under the task session,
@@ -109,6 +117,70 @@ export function taskOpenable(att: TaskOpenableAttachment): OpenableAttachment {
       (message.media_type && message.media_type !== "doc" ? `${message.media_type}/*` : undefined),
     url: message.url || undefined,
   };
+}
+
+const ARTIFACT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Library type category (filter id) of an uploaded file, by MIME / extension. */
+export function uploadLibraryCategory(mime: string | undefined, name: string | undefined): string | undefined {
+  const type = (mime || "").split(";")[0].trim().toLowerCase();
+  const ext = (name || "").split(".").pop()?.toLowerCase() || "";
+  if (type.startsWith("image/")) return "images";
+  if (type.startsWith("video/")) return "videos";
+  if (type.startsWith("audio/")) return "audio";
+  if (type === "application/pdf" || ext === "pdf") return "pdf";
+  if (/presentation|powerpoint/.test(type) || ["ppt", "pptx", "odp"].includes(ext)) return "presentations";
+  if (/spreadsheet|ms-excel|text\/csv/.test(type) || ["xls", "xlsx", "csv", "ods"].includes(ext)) return "spreadsheets";
+  if (/wordprocessing|msword|text\/plain|text\/markdown/.test(type) || ["doc", "docx", "txt", "md", "rtf", "odt"].includes(ext)) {
+    return "documents";
+  }
+  return undefined;
+}
+
+/**
+ * A file that is already in the Library (uploaded / picked / a sent private ref /
+ * a computer-task file the gateway registered) opens the right sidebar's Library
+ * at that file, in its type category with the Uploaded filter. Null = not in the
+ * Library yet (a local `blob:` tile still uploading): keep the direct preview.
+ */
+export function taskAttachmentLibraryAction(att: TaskOpenableAttachment): WorkspaceActionV1 | null {
+  const openable = taskOpenable(att);
+  const item = openable.libraryItem || null;
+  const archive = nativeArchiveOf(att);
+  const candidates = [
+    item && isDurableLibraryItem(item) ? item.artifactId : "",
+    "artifactId" in att && typeof att.artifactId === "string" ? att.artifactId : "",
+    attachmentRef(att as Parameters<typeof attachmentRef>[0])?.artifactId || "",
+    archive?.artifact_id || "",
+  ];
+  const itemId = candidates.map((id) => String(id || "").trim()).find((id) => ARTIFACT_ID_RE.test(id));
+  if (!itemId) return null;
+  const category = uploadLibraryCategory(
+    openable.mime || archive?.mime || (item ? String(item.meta?.source_media_type || "") : ""),
+    openable.name || archive?.name || item?.title,
+  );
+  return {
+    version: 1,
+    tab: "mine",
+    itemId,
+    intent: "open",
+    ...(category ? { category } : {}),
+    // A Library pick that is not an upload opens in Library without the filter.
+    ...(item && isDurableLibraryItem(item) && !isUploadedLibraryItem(item) ? {} : { filter: "uploaded" as const }),
+  };
+}
+
+let libraryOpenSeq = 0;
+
+/** Open the task sidebar's Library on `action` (a `taskAttachmentLibraryAction`). */
+export function openTaskWorkspaceLibrary(
+  state: Pick<TaskWorkspaceState, "setRightOpen" | "setLibTab" | "setWorkspaceAction">,
+  action: WorkspaceActionV1,
+): void {
+  libraryOpenSeq += 1;
+  state.setRightOpen(true);
+  state.setLibTab(action.tab);
+  state.setWorkspaceAction({ nonce: `library-open:${action.itemId || ""}:${Date.now()}:${libraryOpenSeq}`, action });
 }
 
 function isImageAttachment(att: OpenableAttachment): boolean {
@@ -226,12 +298,21 @@ export async function resolveTaskAttachment(
 export function useTaskAttachmentOpener(
   siteId: string,
   show: (target: TaskAttachmentTarget) => void,
+  /** When given, a file already in the Library opens there (`taskAttachmentLibraryAction`). */
+  showLibrary?: (action: WorkspaceActionV1) => void,
 ): (attachment: TaskOpenableAttachment) => Promise<boolean> {
   const showRef = useRef(show);
   showRef.current = show;
+  const showLibraryRef = useRef(showLibrary);
+  showLibraryRef.current = showLibrary;
   const seqRef = useRef(0);
   return useCallback(async (attachment: TaskOpenableAttachment) => {
     const seq = ++seqRef.current;
+    const library = showLibraryRef.current ? taskAttachmentLibraryAction(attachment) : null;
+    if (library) {
+      showLibraryRef.current!(library);
+      return true;
+    }
     const now = immediateTaskAttachment(attachment, siteId);
     if (now) {
       showRef.current(now);

@@ -598,7 +598,7 @@ export function AnchoredPopover({
       }
       const items = [
         ...(internalPanelRef.current?.querySelectorAll<HTMLElement>(
-          '[role="menuitem"]:not([aria-disabled="true"]):not(:disabled), [role="option"]:not([aria-disabled="true"]):not(:disabled)',
+          '[role="menuitem"]:not([aria-disabled="true"]):not(:disabled), [role="menuitemcheckbox"]:not([aria-disabled="true"]):not(:disabled), [role="option"]:not([aria-disabled="true"]):not(:disabled)',
         ) || []),
       ];
       if (!items.length) return;

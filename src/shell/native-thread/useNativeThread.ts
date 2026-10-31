@@ -19,6 +19,7 @@ import { useAgentDialog, type AgentDialogControllerV2 } from "../cloud-computer/
 import { dialogToAgentMessages, type NativePermissionMeta, type NativeQuestionMeta } from "./map-dialog";
 import type { NativeProgram } from "./types";
 import { nativeModelPickerFor } from "./NativeModelPicker";
+import { peekTranscript, readTranscript, rememberTranscript, takeTranscriptPrefetch } from "./transcript-cache";
 
 export type NativeThreadInput = {
   computer: Computer | null;
@@ -149,6 +150,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const draft = !session;
   const program = session ? nativeProgramOf(session) : isWsProgram(draftProgram) ? draftProgram : null;
   const online = computer?.node_online === true;
+  const computerOnlineRef = useRef(online);
+  computerOnlineRef.current = online;
   // `live` below = "this hook keeps a connection"; the exported `live` also needs the link up.
   const live = Boolean(enabled && online && computer && program);
   const nativeId = session?.native_session_id ?? "";
@@ -255,34 +258,58 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const olderLoaded = useRef(false);
   const olderInFlight = useRef(false);
   const bornHere = useRef("");
+  // Only a conversation born in this thread depends on the computer's online
+  // state (it has nothing saved while online). Every other conversation's read
+  // starts at once and is never restarted (or aborted) when the computer's state
+  // arrives (2026-10-31 task switch speed: `online` left these deps).
+  const waitsForOffline = bornHere.current === sessionKey && online;
+  /** A read from the gateway landed for this session (a cached copy never overrides it). */
+  const archiveFresh = useRef("");
   useEffect(() => {
     // Only a different session clears what is shown; reconnects and
     // enable/disable keep the saved transcript (and any older pages read).
     if (archiveFor.current !== sessionKey) {
       // Created from this thread's draft a moment ago: nothing is saved yet.
       if (!archiveFor.current && wasDraft.current && session && !session.native_session_id) bornHere.current = sessionKey;
-      setArchive(null);
+      // A conversation opened before paints from its kept copy at once; the read below refreshes it.
+      const kept = bornHere.current === sessionKey ? undefined : peekTranscript(sessionKey);
+      setArchive(kept ?? null);
+      if (kept) setArchiveReadFor(sessionKey);
       setOlderArchive(null);
       olderLoaded.current = false;
       olderInFlight.current = false;
+      archiveFresh.current = "";
       archiveFor.current = sessionKey;
     }
     if (!enabled || !session || session.kind !== "acp") return;
     // A brand-new conversation reads its saved copy only once the computer is offline.
-    if (bornHere.current === sessionKey && online) return;
+    if (bornHere.current === sessionKey && computerOnlineRef.current) return;
+    const id = session.id;
     const controller = new AbortController();
-    void getComputerTaskTranscript(session.id, { signal: controller.signal })
+    // This browser's saved copy (IndexedDB) shows while the gateway read is on its way.
+    if (!archiveFresh.current) {
+      void readTranscript(id).then((kept) => {
+        if (!kept || controller.signal.aborted || archiveFor.current !== id || archiveFresh.current === id) return;
+        setArchive((current) => current ?? kept);
+        setArchiveReadFor(id);
+      }).catch(() => undefined);
+    }
+    // A sidebar hover / press may already have started this read: take it.
+    const read = takeTranscriptPrefetch(id) ?? getComputerTaskTranscript(id, { signal: controller.signal });
+    void read
       .then((next) => {
-        if (archiveFor.current !== session.id) return;
+        if (controller.signal.aborted || archiveFor.current !== id) return;
+        archiveFresh.current = id;
+        rememberTranscript(id, next);
         setArchive((current) => (current && olderLoaded.current ? current : next));
-        setArchiveReadFor(session.id);
+        setArchiveReadFor(id);
       })
       .catch(() => {
         // Reading stays quiet; the stream just shows nothing saved yet.
-        if (!controller.signal.aborted && archiveFor.current === session.id) setArchiveReadFor(session.id);
+        if (!controller.signal.aborted && archiveFor.current === id) setArchiveReadFor(id);
       });
     return () => controller.abort();
-  }, [enabled, sessionKey, session?.kind, online]);
+  }, [enabled, sessionKey, session?.kind, waitsForOffline]);
 
   const reduceArchive = useCallback((page: Archive): AgentDialogMessage[] => {
     type State = ReturnType<typeof initialDialogState>;
@@ -485,12 +512,14 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
 
   // Composer controls (model · mode · fast · effort). Drafts count: shown as
   // soon as the program reports them; "正在读取…" while the computer or the
-  // program's catalog is still on its way; nothing when offline or blocked.
+  // program's catalog is still on its way. Blocked (install / sign-in) or offline
+  // keeps the pill: its account and computer rows (read-only while offline).
   const modelPicker = nativeModelPickerFor({
-    program: enabled && !(computer && !online) ? program : null,
+    program: enabled ? program : null,
     computerId: computer?.id ?? "",
     dialog,
     waiting: !computer || !blockedReason,
+    online: !(computer && !online),
   });
 
   const loadOlder = useCallback(() => {

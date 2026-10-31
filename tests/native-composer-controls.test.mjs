@@ -328,13 +328,17 @@ test("draft mode: the picker appears from the warm connection before any session
   window.WebSocket = FakeSocket;
   const hookUi = dataModule(`export function useUI() { return (value, vars) => value.replace(/\\{(\\w+)\\}/g, (_, key) => String(vars?.[key] ?? "{" + key + "}")); }`);
   const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", {
-    "../../lib/computer-task-api": dataModule(`export async function getComputerTaskTranscript() { throw new Error("no archive in draft"); }`),
+    "../../lib/computer-task-api": dataModule(`export async function getComputerTaskTranscript() { throw new Error("no archive in draft"); }
+      export function knownComputerTaskSessions() { return null; }
+      export function latestComputerTaskSession() { return null; }
+      export async function listComputerTaskSessions() { return []; }`),
     "../../i18n/ui/useUI": hookUi,
     "../../../i18n/ui/useUI": hookUi,
     "../anchored-popover": popoverStub,
     "../../../lib/cloud-computer-api": dataModule(`
       export function agentDialogWsUrl(id) { return "ws://example.test/v1/computers/" + id + "/agent-dialog"; }
       export async function putComputerInbox() { throw new Error("unused"); }
+      export const cloudComputerApi = {};
     `),
     "../../../lib/auth/client": dataModule(`export async function accessToken() { return "tok"; }`),
     "../../../lib/agent": dataModule(`export async function getTask() { return { ok: false }; } export async function stopTask() { return { ok: false }; }`),
@@ -369,6 +373,10 @@ test("draft mode: the picker appears from the warm connection before any session
     assert.equal(rowValue(m, "fast"), "开");
     assert.equal(FakeSocket.sockets.flatMap((socket) => socket.sent).some((frame) => ["open_session", "new_session", "prompt"].includes(frame.t)), false, "a draft never opens a session");
     await m.rerender(React.createElement(Host, { ...props, computer: { ...props.computer, node_online: false } }));
-    assert.equal(m.q("[data-native-model-picker]"), null, "offline: no picker");
+    // 2026-10-31 night: the gear is gone, so offline keeps the pill (its rows read-only, reason said).
+    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x", "offline: the pill stays");
+    if (!m.q("[data-composer-settings-menu]")) await m.click(m.q("[data-native-model-trigger]"));
+    assert.ok(m.q("[data-oceanleo-native-settings-offline]"), "offline said once");
+    assert.equal(m.q('[data-composer-setting-row="model"]').disabled, true, "offline rows are read-only");
   } finally { await m.unmount(); }
 });

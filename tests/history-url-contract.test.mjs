@@ -18,7 +18,10 @@ test("聚合历史与单站历史都把选中记录写入 URL", () => {
   assert.match(source, /onClick=\{openEntry\}/);
   // 选中记录写进 URL 的行为不变；`pathname` 第二参是 W44–W46（`e56a68c`）加的融合挂载
   // 前缀（门户里嵌着打开时 href 要带当前挂载段，否则点一条记录会跳出门户）。
-  assert.match(clickHandler, /router\.push\(historyHrefFor\(entry, pathname\)\)/);
+  // 2026-10-31: while the detail is on this page the switch is client-only
+  // (History API, no server render); elsewhere openHistoryHref falls back to router.push.
+  assert.match(clickHandler, /openHistoryHref\(historyHrefFor\(entry, pathname\), router\.push\)/);
+  assert.match(source, /window\.history\.pushState\(null, "", next\.pathname \+ next\.search \+ next\.hash\)/);
   assert.match(source, /function historyHrefFor\(entry: HistoryListEntry, pathname = ""\)/);
   assert.match(source, /historySessionHref\(entry\.id, undefined, pathname\)/);
   assert.doesNotMatch(source, /advancedFeatureHref/);

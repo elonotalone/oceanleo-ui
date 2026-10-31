@@ -880,6 +880,7 @@ const vi: Record<string, string> = {
   "列表视图": "Xem dạng danh sách",
   "查看选项": "Tùy chọn xem",
   "仅看收藏": "Chỉ mục yêu thích",
+  "仅看上传": "Chỉ tệp đã tải lên",
   "创建 prompt": "Tạo prompt",
   "删除卡片": "Xóa thẻ",
   "前往 Cost 页 →": "Đến trang Cost →",

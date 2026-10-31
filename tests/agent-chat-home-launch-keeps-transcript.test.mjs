@@ -292,6 +292,7 @@ const cloudComputerApiUrl = await compileModule("src/lib/cloud-computer-api.ts",
 const nativeThreadStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   globalThis.__threadInputs = []; globalThis.__threadSent = []; globalThis.__threadFiles = [];
+  export const NativeSetupRequest = React.createContext(0);
   export function useNativeThread(input) {
     globalThis.__threadInputs.push(input);
     const [pending, setPending] = React.useState(null);
@@ -728,10 +729,12 @@ async function loadHomeContent() {
   if (homeContentModule) return homeContentModule;
   // W7: the home hosts the real TaskWorkspaceShell (same SplitWorkspace/ResultCanvas instances as AgentChat).
   const taskWorkspaceShellUrl = await compileModule("src/shell/TaskWorkspaceShell.tsx", OVERRIDES, { missingPackageStub: lazyStub });
+  const taskAttachmentOpenUrl = await compileModule("src/shell/task-attachment-open.ts", OVERRIDES, { missingPackageStub: lazyStub });
   const portalShell = dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
     export { AgentChat } from ${JSON.stringify(agentChatUrl)};
     export { TaskWorkspaceShell, useTaskWorkspaceState, attachmentWorkspaceItem, attachmentOpenMode } from ${JSON.stringify(taskWorkspaceShellUrl)};
+    export { openTaskWorkspaceLibrary, taskAttachmentLibraryAction } from ${JSON.stringify(taskAttachmentOpenUrl)};
     export { useNativeThread } from ${JSON.stringify(nativeThreadStub)};
     // Native draft files (IndexedDB) are not under test here: attach passes straight through.
     export function useNativeDraftFiles(input) {
@@ -774,6 +777,7 @@ async function loadHomeContent() {
       export function stashPendingNativePrompt(sessionId, text){ globalThis.__homeStashes.push({ sessionId, text }); }
       const watchers = new Map(); globalThis.__homeComputerLoads = [];
       export function knownComputer(){ return null; }
+      export function lastKnownComputer(){ return null; }
       export async function loadComputer(id){
         globalThis.__homeComputerLoads.push(id);
         const row = { id, name: "elon", status: "active", node_online: true };

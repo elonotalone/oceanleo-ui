@@ -325,6 +325,18 @@ export function ResultCanvas({
     }
     if (openItem.bindTask) setBindEditorToTask(true);
   }, [openCanvasEntry, openCanvasItem, openItem]);
+  // A chat upload opened in the Library (`filter: "uploaded"`) takes the place of
+  // whatever file was in front, as a direct open does; otherwise it would sit hidden.
+  const consumedLibraryOpenNonceRef = useRef("");
+  useEffect(() => {
+    const nonce = externalAction?.nonce || "";
+    if (!nonce || consumedLibraryOpenNonceRef.current === nonce) return;
+    consumedLibraryOpenNonceRef.current = nonce;
+    if (externalAction!.action.tab !== "mine" || externalAction!.action.filter !== "uploaded") return;
+    setActiveCanvasEntry(null);
+    setHasCommittedEditorRevision(false);
+    setArtifactSaveError("");
+  }, [externalAction]);
   const onOpenItemChangeRef = useRef(onOpenItemChange);
   onOpenItemChangeRef.current = onOpenItemChange;
   const reportedItem = activeCanvasEntry?.libraryItem || null;

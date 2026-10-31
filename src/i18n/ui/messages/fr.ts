@@ -880,6 +880,7 @@ const fr: Record<string, string> = {
   "列表视图": "Vue liste",
   "查看选项": "Options d'affichage",
   "仅看收藏": "Favoris uniquement",
+  "仅看上传": "Fichiers importés uniquement",
   "创建 prompt": "Créer un prompt",
   "删除卡片": "Supprimer la carte",
   "前往 Cost 页 →": "Aller à la page Cost →",

@@ -34,7 +34,7 @@ import {
   useTaskWorkspaceState,
   type TaskWorkspaceInitial,
 } from "./TaskWorkspaceShell";
-import { useTaskAttachmentOpener, type TaskAttachmentTarget } from "./task-attachment-open";
+import { openTaskWorkspaceLibrary, useTaskAttachmentOpener, type TaskAttachmentTarget } from "./task-attachment-open";
 import { IconSearch } from "./icons";
 import { CollabTaskPresence } from "./collab/CollabActionSlot";
 import { type CanvasTab } from "./ResultCanvas";
@@ -45,7 +45,7 @@ import {
   ArtifactRenderer,
   artifactToLibraryItem,
 } from "./ArtifactRenderer";
-import { normalizeWorkspaceAction } from "./workspace-actions";
+import { normalizeWorkspaceAction, type WorkspaceActionV1 } from "./workspace-actions";
 import {
   AgentTranscriptBubble,
   agentArtifactLabels,
@@ -58,12 +58,11 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // One UI system for computer conversations (redo 2026-10-30): a native
 // Codex/Claude/Cursor/Hermes conversation renders through this same stream and
 // LeoComposer; CLI/terminal show the host-styled surface with the same dock below.
-import { useNativeThread, type NativeThread } from "./native-thread";
+import { NativeSetupRequest, useNativeThread, type NativeThread } from "./native-thread";
 import { libraryAttachmentFile } from "./native-draft-files";
-import { createPortal } from "react-dom";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
-import { NativeSettingsPanel, NativeTerminalSurface, nativeSettingsTitle } from "./cloud-computer/native-surface";
+import { NativeTerminalSurface } from "./cloud-computer/native-surface";
 import type { Computer } from "../lib/cloud-computer-api";
 import { getComputer } from "../lib/cloud-computer-api";
 import {
@@ -76,6 +75,8 @@ import {
   hasPendingNativePrompt,
   knownComputer,
   knownComputerTaskSession,
+  knownComputerTaskSessions,
+  lastKnownComputer,
   rememberComputer,
   rememberComputerTaskSession,
   takePendingNativePrompt,
@@ -84,7 +85,8 @@ import {
 // 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
 import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
 import { ShareCardPreview } from "./share/ShareCard";
-import { useShareMode } from "./share/useShareMode";
+import { useShareMode, type ShareModeState } from "./share/useShareMode";
+import { PROGRAM_LABEL } from "./cloud-computer/agent-dialog/types";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
@@ -165,6 +167,14 @@ import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAg
 import { useTaskLoadingReport } from "./task-loading-gate";
 import { placeConversationScroll, rememberConversationScroll, scrollPaneShown } from "./task-scroll-memory";
 import { isStaleTaskSeed } from "./history-detail-cache";
+import { notifyHistoryActivity } from "../lib/history-events";
+import {
+  isPartialTaskSeed,
+  markPartialTaskSeed,
+  peekTaskDetail,
+  rememberTaskDetail,
+  takeTaskPrefetch,
+} from "./task-open-cache";
 import { RoutePageSkeleton } from "./nav-source/route-boundary";
 
 /**
@@ -752,13 +762,10 @@ function AgentChatInner({
     const known = nativeLaunch?.computer ?? (nativeLaunch ? knownComputer(nativeLaunch.conversation.computerId) : null);
     return known ? {[known.id]: known} : {};
   });
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationBusy, setConversationBusy] = useState(false);
   const [conversationError, setConversationError] = useState("");
   /** Native chat sessions opened on this page; each keeps its thread mounted (hidden) so switching never kills a run. */
   const [openedChats, setOpenedChats] = useState<string[]>([]);
-  /** The right-pane node the on-screen native chat portals its settings into. */
-  const [settingsHost, setSettingsHost] = useState<HTMLDivElement | null>(null);
   /** CLI / terminal surfaces opened on this page; kept mounted (hidden) so nothing restarts. */
   const [openedSurfaces, setOpenedSurfaces] = useState<string[]>([]);
   const [localTaskId, setLocalTaskId] = useState<string | null>(
@@ -807,6 +814,8 @@ function AgentChatInner({
   const initialTaskRef = useRef(initialTask);
   initialTaskRef.current = initialTask;
   const seededTaskRef = useRef("");
+  /** The task whose thread holds only its newest messages so far (task-open-cache). */
+  const partialTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
   const actionHistoryRef = useRef<ActionHistoryMark | null>(null);
@@ -894,12 +903,21 @@ function AgentChatInner({
     );
     if (settled === null) return IDLE_POLL_RESULT;
     const changed = settled !== serverMessagesRef.current;
+    // A running task that produced output moves up in My Tasks (throttled).
+    if (changed && data.task?.status === "running") notifyHistoryActivity({ taskId: id });
     actionHistoryRef.current = settleActionHistory(
       actionHistoryRef.current,
       id,
       settled,
     );
     serverMessagesRef.current = settled;
+    // Kept for the next open of this task (task-open-cache, 2026-10-31). A thread
+    // that started from a cut copy (newest messages only) stays marked cut until a
+    // whole read lands, so the next open reads the whole thread again.
+    if (!pull.options) partialTaskRef.current = isPartialTaskSeed(data) ? id : "";
+    const snapshot: TaskDetail = { ...data, messages: settled };
+    if (partialTaskRef.current === id) markPartialTaskSeed(snapshot);
+    rememberTaskDetail(snapshot);
     setMessagesTaskId(id);
     setTaskMode((current) => {
       const computer = isComputerWorkspaceTask(data.task);
@@ -1038,11 +1056,42 @@ function AgentChatInner({
       seededTaskRef.current = taskId;
       applyTask(taskId, threadSyncRef.current.begin(taskId), seed);
       // A copy the history page kept from an earlier visit shows at once; the task
-      // may have moved on since, so it is read once more (silently merged).
-      if (isStaleTaskSeed(seed)) void refresh(taskId);
+      // may have moved on since, so it is read once more (silently merged). A cut
+      // copy (newest messages only) is followed by a read of the whole thread.
+      if (isPartialTaskSeed(seed)) {
+        threadSyncRef.current.invalidate();
+        void refresh(taskId);
+      } else if (isStaleTaskSeed(seed)) void refresh(taskId);
       return;
     }
-    void refresh(taskId);
+    // 2026-10-31 task switch speed: this tab's kept copy of the task paints at once
+    // (then a cheap delta read, or the whole thread when the copy was cut); else a
+    // read the sidebar already started (hover / press) is taken, not started again.
+    const kept = peekTaskDetail(taskId);
+    if (kept) {
+      takeTaskPrefetch(taskId);
+      applyTask(taskId, threadSyncRef.current.begin(taskId), kept);
+      if (isPartialTaskSeed(kept)) threadSyncRef.current.invalidate();
+      void refresh(taskId);
+      return;
+    }
+    const prefetched = takeTaskPrefetch(taskId);
+    if (!prefetched) {
+      void refresh(taskId);
+      return;
+    }
+    const pull = threadSyncRef.current.begin(taskId);
+    void prefetched.then((result) => {
+      if (loadedTaskRef.current !== taskId) return;
+      if (result.ok && result.data) {
+        applyTask(taskId, pull, result.data);
+        if (!isPartialTaskSeed(result.data)) return;
+        threadSyncRef.current.invalidate();
+      }
+      void refresh(taskId);
+    }, () => {
+      if (loadedTaskRef.current === taskId) void refresh(taskId);
+    });
   }, [hasOrgPanel, taskId, refresh, applyTask]);
 
   // Provider 算出的 task_id 只在**有值**时接管本地 task。
@@ -1087,7 +1136,6 @@ function AgentChatInner({
   // conversation. Choosing never executes anything and never cancels a run.
   // A native chat is created by its first send; CLI / terminal on pick.
   useEffect(() => {
-    setSettingsOpen(false);
     setConversationError("");
     setOpenedSurfaces([]);
     setOpenedChats([]);
@@ -1108,8 +1156,11 @@ function AgentChatInner({
     // A session this tab was just handed (`?computerSession=` from the homepage) shows at once;
     // the list (and its computer) are read in parallel instead of one after the other.
     const handed = knownComputerTaskSession(new URL(window.location.href).searchParams.get("computerSession") || "");
-    const seed = handed && handed.task_id === taskId ? [handed] : [];
-    setTaskSessions((current) => current.taskId === taskId ? current : {taskId, items: seed, loaded: false, failed: false});
+    // The list this tab read before (a revisit, or the sidebar's prefetch) picks the
+    // conversation at once; the read below replaces it (2026-10-31 task switch speed).
+    const listed = knownComputerTaskSessions(taskId);
+    const seed = listed ?? (handed && handed.task_id === taskId ? [handed] : []);
+    setTaskSessions((current) => current.taskId === taskId ? current : {taskId, items: seed, loaded: Boolean(listed), failed: false});
     void listComputerTaskSessions(taskId).then((result) => {
       if (!alive) return;
       sessionsRetryRef.current = 0;
@@ -1145,7 +1196,7 @@ function AgentChatInner({
     const url = new URL(window.location.href);
     if (id) url.searchParams.set("computerSession", id);
     else url.searchParams.delete("computerSession");
-    lastParamRef.current = id ?? "";
+    lastParamRef.current = id ?? "cloud";
     window.history.replaceState(window.history.state, "", url);
   }, []);
   const [, setLocationTick] = useState(0);
@@ -1156,15 +1207,16 @@ function AgentChatInner({
   }, []);
   useEffect(() => {
     const param = new URL(window.location.href).searchParams.get("computerSession") || "";
-    if (lastParamRef.current === null || lastParamRef.current === param) { lastParamRef.current = param; return; }
-    lastParamRef.current = param;
+    const normalizedParam = param || "cloud";
+    if (lastParamRef.current === null || lastParamRef.current === normalizedParam) { lastParamRef.current = normalizedParam; return; }
+    lastParamRef.current = normalizedParam;
     // Not decided yet for this task: the resolution below reads the URL itself.
     if (!taskId || selectedSession.taskId !== taskId || !selectedSession.resolved) return;
     if (param && param !== "cloud") {
       const named = sessions.find((session) => session.id === param);
       if (named) { setPickedChat(null); setSelectedSession({taskId, id: named.id, resolved: true}); }
       else if (sessionsLoaded) setSessionsEpoch((epoch) => epoch + 1);
-    } else if (!computerTask) {
+    } else {
       setPickedChat(null);
       setSelectedSession({taskId, id: null, resolved: true});
     }
@@ -1181,7 +1233,12 @@ function AgentChatInner({
       // a cloud task opens its OceanLeo conversation right away.
       if (!sessionsLoaded && (computerTask || (requested && requested !== "cloud"))) return;
     }
-    const chosen = named ?? (computerTask ? latestComputerTaskSession(sessions) : null);
+    // `computerSession=cloud` is also used as the explicit marker when the
+    // user switches a computer task to OceanLeo. On an initial deep link,
+    // however, it is the legacy "open this task" marker and should land on
+    // the newest native conversation once the session list arrives.
+    const chosen = named ?? (computerTask && (!requested || requested === "cloud")
+      ? latestComputerTaskSession(sessions) : null);
     setSelectedSession({taskId, id: chosen?.id ?? null, resolved: true});
     if (requested !== (chosen?.id ?? "")) {
       // A legacy `computerSession=cloud` (or a stale id) is dropped instead of opening an empty page;
@@ -1208,7 +1265,8 @@ function AgentChatInner({
     if (!ids.length) return;
     let alive = true;
     // Rows this tab read a moment ago (the homepage pick) show at once instead of "connecting"; the read below refreshes them.
-    const known = ids.map((id) => knownComputer(id));
+    // A row older than that (this browser's last read) still shows its last known state at once.
+    const known = ids.map((id) => knownComputer(id) ?? lastKnownComputer(id));
     setComputers((current) => known.reduce((next, row) => row && !next[row.id] ? {...next, [row.id]: row} : next, current));
     const load = () => {
       void Promise.allSettled(ids.map((id) => getComputer(id))).then((rows) => {
@@ -1234,9 +1292,7 @@ function AgentChatInner({
   }, [computerIds]);
   const computerFor = useCallback((computerId: string): Computer | null => computers[computerId] ?? null, [computers]);
 
-  // The OceanLeo conversation's bound target. A computer task (`mode="computer"`) has
-  // no OceanLeo conversation of its own: its Device control shows the computer of the
-  // conversation in front, and the OceanLeo row is disabled with a reason.
+  // Native engines keep their computer binding; OceanLeo can continue the same task.
   const taskBound = boundTarget.taskId === taskId ? boundTarget.target : null;
   const frontComputer = activeSession
     ? {id: activeSession.computer_id, name: activeSession.computer_name}
@@ -1246,7 +1302,7 @@ function AgentChatInner({
       ? (frontComputer ? {kind: "computer", id: frontComputer.id, name: frontComputer.name || frontComputer.id}
         : sessionsLoaded ? computerTaskSessionsTarget(allSessions) : null)
       : taskBound;
-  const oceanleoDisabledReason = computerTask ? tt("OceanLeo 请在新任务里使用") : null;
+  const oceanleoDisabledReason = null;
   const conversation: ConversationTarget | undefined = activeSession
     ? sessionConversation(activeSession)
     : pick
@@ -1323,9 +1379,7 @@ function AgentChatInner({
   const changeConversation = useCallback(async (next: ConversationTarget) => {
     setConversationError("");
     if (next.kind === "oceanleo") {
-      if (computerTask) return;
       setPickedChat(null);
-      setSettingsOpen(false);
       if (taskId) showSession(null);
       else setDraftConversation(next);
       return;
@@ -1367,11 +1421,6 @@ function AgentChatInner({
     }
   }, [adoptCreatedTask, computerTask, conversationBusy, sessions, showSession, taskId, tt, writeSessionParam]);
   const onConversationChange = useCallback((next: ConversationTarget) => { void changeConversation(next); }, [changeConversation]);
-  const toggleSettings = useCallback(() => setSettingsOpen((open) => !open), []);
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
-  useEffect(() => {
-    if (!conversation || conversation.kind === "oceanleo") setSettingsOpen(false);
-  }, [conversation?.kind]);
 
   // First send of a picked native chat: the text is already queued in its thread (the
   // user's bubble shows at once); this creates the managed session (and, in a draft, the
@@ -2270,23 +2319,37 @@ function AgentChatInner({
   }, [fireAgentText]);
 
   // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
+  const shareSiteLabel =
+    appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined;
   const share = useShareMode({
     messages,
     taskId,
     title: taskTitle,
-    siteLabel:
-      appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined,
+    siteLabel: shareSiteLabel,
   });
   // W5 share fix (2026-10-31): the select mode lives in the OceanLeo conversation's
   // own stream (its footer becomes the action bar). With a computer conversation in
   // front that stream is hidden: entering there looked like "the button vanished,
-  // nothing happened". So the header entry is offered only while the OceanLeo
-  // conversation is shown, and leaving it ends the select mode.
+  // nothing happened". So the OceanLeo select mode ends when that conversation is
+  // not shown; a computer chat in front has its own (below).
   const shareAvailable = cloudPaneShown && share.selectable.length > 0;
   const exitShare = share.exit;
   useEffect(() => {
     if (!cloudPaneShown && share.active) exitShare();
   }, [cloudPaneShown, share.active, exitShare]);
+  // A computer chat in front (2026-10-31): the same header 「分享」 puts THAT chat's
+  // stream in select mode (each NativeChatConversation owns its share state; this
+  // only says "on" for the one in front). Switching conversations leaves it.
+  const [nativeShareOn, setNativeShareOn] = useState(false);
+  const frontChatKey = activeSession?.id ?? (pick ? pickChatKey(pick) : "");
+  useEffect(() => {
+    setNativeShareOn(false);
+  }, [frontChatKey]);
+  const endNativeShare = useCallback(() => setNativeShareOn(false), []);
+  const nativeShareInfo = useMemo(
+    () => ({ taskId, title: taskTitle, siteLabel: shareSiteLabel }),
+    [taskId, taskTitle, shareSiteLabel],
+  );
 
   // ---------------------------------------------------------------------
   // 对话内搜索（操作员 2026-09-07，图 662b8bb0）
@@ -2644,7 +2707,12 @@ function AgentChatInner({
       {/* Stays in place while selecting (pressed; a second click leaves). It used to be
           unmounted on click, so the header looked like it lost the button. Entering
           from here selects every message: 「复制链接」 works straight away. */}
-      {(share.active || shareAvailable) && (
+      {nativeChat ? (
+        <ShareEntryButton
+          active={nativeShareOn}
+          onClick={() => setNativeShareOn((on) => !on)}
+        />
+      ) : (share.active || shareAvailable) && (
         <ShareEntryButton
           active={share.active}
           onClick={() => (share.active ? share.exit() : share.enter("all"))}
@@ -2695,11 +2763,16 @@ function AgentChatInner({
   const openTaskAttachment = useTaskAttachmentOpener(
     siteId || "oceanleo",
     useCallback((target: TaskAttachmentTarget) => {
-      setSettingsOpen(false);
       if (hasWorkspaceContent) setFileOverWorkspace(true);
       onWorkspaceOpenChange?.(true);
       openWorkspaceItem(target.item, target.mode);
     }, [hasWorkspaceContent, onWorkspaceOpenChange, openWorkspaceItem]),
+    // A file already in the Library opens the sidebar's Library at it (Uploaded filter).
+    useCallback((action: WorkspaceActionV1) => {
+      if (hasWorkspaceContent) setFileOverWorkspace(true);
+      onWorkspaceOpenChange?.(true);
+      openTaskWorkspaceLibrary({ setRightOpen, setLibTab, setWorkspaceAction }, action);
+    }, [hasWorkspaceContent, onWorkspaceOpenChange, setLibTab, setRightOpen, setWorkspaceAction]),
   );
   const workspacePaneOpen = workspaceOpen ?? rightOpen;
   useEffect(() => {
@@ -2780,8 +2853,6 @@ function AgentChatInner({
     conversation,
     onConversationChange,
     taskSessions: sessions,
-    onOpenSettings: toggleSettings,
-    settingsOpen,
     oceanleoDisabledReason,
   };
 
@@ -2896,7 +2967,6 @@ function AgentChatInner({
                     ? () => regenerateFrom(item.message.id)
                     : undefined
                 }
-                onShare={() => share.enter(item.message.id)}
                 turnCopyText={turnActions.get(item.key) ?? null}
                 highlightQuery={highlightQuery || undefined}
               />
@@ -2964,8 +3034,7 @@ function AgentChatInner({
             loading={running}
             onStop={() => void stop()}
             onOpenAttachment={openTaskAttachment}
-            // A computer task has no OceanLeo conversation to send into (its Device row says why).
-            disabled={readOnly || computerTask}
+            disabled={readOnly}
             leoSuggest
             leoContext={{ page: "task", taskId: taskId || undefined }}
             inlineSlot={inlineSlot}
@@ -3003,18 +3072,12 @@ function AgentChatInner({
     ),
   });
 
-  // Settings of the native/terminal conversation open in the existing right pane;
-  // the previous right content stays mounted (hidden) and comes back on close.
-  const settingsShown = Boolean(settingsOpen && conversation && conversation.kind !== "oceanleo");
-  const settingsTitle = settingsShown && conversation ? nativeSettingsTitle(conversation, tt) : "";
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
-
   // A native conversation through the SAME stream: no branch, regenerate, share,
   // suggestions or quick-action chips; gates answer the computer's program.
   // Each opened native chat is its own <NativeChatConversation> (one hook per
   // session, kept mounted and connected while hidden); this function is its stream.
   const renderNativePane = (pane: NativeChatPane): ReactNode => {
-    const { thread, session, input, setInput, scrollRef, onScroll, connecting } = pane;
+    const { thread, session, input, setInput, scrollRef, onScroll, connecting, share: nativeShare } = pane;
     const nativeMessages = thread.messages;
     const nativeRenderItems = buildAgentRenderItems(nativeMessages);
     const nativeProgressKey = activeAgentProgressKey(nativeRenderItems, nativeMessages);
@@ -3028,7 +3091,7 @@ function AgentChatInner({
     // One copy row per turn, under its last words; none while the turn is still running.
     const nativeTurnActions = agentTurnActionTargets(nativeRenderItems, nativePresentation.working || thread.running);
     const nativeTimeSeparators = agentMessageTimeSeparators(nativeMessages);
-    // Install / sign-in live in the settings pane: a send blocked for that reason opens it.
+    // Install / sign-in live in the composer pill's 账号 card: a send blocked for that reason opens it.
     const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
     // A prompt typed while the session is still opening waits in the queue: its bubble
     // is the whole signal (no 「正在打开对话…」 line, 2026-10-31 D); a real reason
@@ -3040,7 +3103,7 @@ function AgentChatInner({
     const retryPending = () => {
       const text = thread.pending?.text ?? "";
       thread.retry();
-      if (session) { if (blockedBySetup) setSettingsOpen(true); return; }
+      if (session) { if (blockedBySetup) pane.requestSetup(); return; }
       if (hostLaunch) nativeLaunch?.retry?.();
       else if (!conversationBusy) void startNative(text).then((ok) => { if (!ok) thread.markUnsent(notOpened()); });
     };
@@ -3054,13 +3117,13 @@ function AgentChatInner({
       if (!session || thread.pending) {
         if (!thread.queue(text)) return;
         setInput("");
-        if (session) { if (blockedBySetup) setSettingsOpen(true); return; }
+        if (session) { if (blockedBySetup) pane.requestSetup(); return; }
         if (hostLaunch) { nativeLaunch?.retry?.(); return; }
         if (!(await startNative(text))) thread.markUnsent(notOpened());
         return;
       }
       if (!thread.ready) {
-        if (blockedBySetup) { setSettingsOpen(true); return; }
+        if (blockedBySetup) { pane.requestSetup(); return; }
         // Still opening (link / occupancy not read yet): never drop Enter. The prompt is
         // the user's bubble now and goes out by itself once ready (unsent after 45 s).
         if (thread.running || thread.offline) return;
@@ -3117,6 +3180,9 @@ function AgentChatInner({
                 // Saved transcript (offline): gates are read-only.
                 onNativeAnswer={!readOnly && thread.live ? thread.answer : undefined}
                 onOpenAttachment={openTaskAttachment}
+                selectMode={nativeShare.active}
+                selected={nativeShare.selectedIds.has(item.message.id)}
+                onSelectToggle={() => nativeShare.toggle(item.message.id)}
               />
             ),
           )}
@@ -3145,7 +3211,10 @@ function AgentChatInner({
         </>
       ),
       overlay: null,
-      footer: (
+      // Select mode (header 「分享」): the same action bar as the OceanLeo conversation.
+      footer: nativeShare.active ? (
+        <ShareActionBar share={nativeShare} />
+      ) : (
         <>
           {session && blockedLine && (
             <p className="px-1 text-[12px] text-stone-500" data-native-blocked>{blockedLine}</p>
@@ -3189,14 +3258,19 @@ function AgentChatInner({
           />
         </>
       ),
-      after: null,
+      after: nativeShare.preview ? (
+        <ShareCardPreview
+          images={nativeShare.preview}
+          fileBaseName="oceanleo-share"
+          onClose={nativeShare.closePreview}
+        />
+      ) : null,
     });
   };
   const chatSessions = openedChats
     .map((id) => sessions.find((session) => session.id === id))
     .filter((session): session is ComputerTaskSession => Boolean(session));
   if (activeSession?.kind === "acp" && !chatSessions.some((session) => session.id === activeSession.id)) chatSessions.push(activeSession);
-  const settingsForChat = (active: boolean) => settingsShown && nativeChat && active ? settingsHost : null;
   // One keyed list: a picked chat and the session its first send creates share a key,
   // so the same thread instance carries over (draft model choice included).
   const chatEntries: {key: string; session: ComputerTaskSession | null; conversation: Extract<ConversationTarget, {kind: "native"}>; active: boolean}[] = [
@@ -3220,9 +3294,10 @@ function AgentChatInner({
             external={nativeLaunch && entry.key === launchKey ? nativeLaunch.thread : undefined}
             active={entry.active}
             onNativeSessionChange={patchSession}
-            onSetupBlocked={openSettings}
-            settingsTarget={settingsForChat(entry.active)}
             conversation={entry.conversation}
+            shareOn={nativeShareOn && entry.active}
+            onShareExit={endNativeShare}
+            shareInfo={nativeShareInfo}
             render={renderNativePane}
           />
         </div>
@@ -3266,8 +3341,7 @@ function AgentChatInner({
               onConversationChange={onConversationChange}
               taskSessions={sessions}
               boundTarget={taskId ? resolvedBoundTarget : undefined}
-              onOpenSettings={toggleSettings}
-              settingsOpen={settingsOpen}
+              computer={conversationComputer}
               oceanleoDisabledReason={oceanleoDisabledReason}
             />
           </div>
@@ -3353,25 +3427,15 @@ function AgentChatInner({
           retryLabel={tt("重试")}
           closeLabel={tt("关闭")}
           detailsLabel={tt("技术详情")}
-          onClose={() => settingsShown ? closeSettings() : (onWorkspaceOpenChange || setRightOpen)(false)}
+          onClose={() => (onWorkspaceOpenChange || setRightOpen)(false)}
         >
-          <div className={settingsShown ? "hidden" : "h-full"} hidden={settingsShown}>
-            {workspaceContent ? (
-              <>
-                {/* The editor stays mounted (unsaved work kept) while an opened file is shown. */}
-                <div className={fileOverWorkspace ? "hidden" : "h-full"} hidden={fileOverWorkspace} data-task-workspace-content="">{workspaceContent}</div>
-                {fileOverWorkspace && right}
-              </>
-            ) : right}
-          </div>
-          {settingsShown && conversation && conversation.kind !== "oceanleo" && (
-            <div className="h-full overflow-y-auto" data-native-settings-pane>
-              {nativeChat
-                // The on-screen native chat portals its panel here with its live thread.dialog.
-                ? <div ref={setSettingsHost} className="h-full" />
-                : <NativeSettingsPanel computer={conversationComputer} conversation={conversation} />}
-            </div>
-          )}
+          {workspaceContent ? (
+            <>
+              {/* The editor stays mounted (unsaved work kept) while an opened file is shown. */}
+              <div className={fileOverWorkspace ? "hidden" : "h-full"} hidden={fileOverWorkspace} data-task-workspace-content="">{workspaceContent}</div>
+              {fileOverWorkspace && right}
+            </>
+          ) : right}
         </WorkspacePaneErrorBoundary>
       )}
       leftHidden={!workspaceAgentVisible}
@@ -3389,12 +3453,7 @@ function AgentChatInner({
       fillParent
       // AgentChat 的对话流/输入框内部已按 AGENT_CONVERSATION_MAX_WIDTH_CLASS 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
-      library={settingsShown
-        ? { ...(effectiveLibrary || {}), label: settingsTitle, open: true, onOpenChange: (open) => { if (!open) closeSettings(); },
-            // The settings title wins over any hidden editor's header claim while open.
-            paneTitle: <span className="truncate text-[12px] font-medium text-stone-500" data-native-settings-title>{settingsTitle}</span>,
-            paneTitleOwned: true }
-        : effectiveLibrary ?? null}
+      library={effectiveLibrary ?? null}
     />
   );
 
@@ -3421,6 +3480,10 @@ interface NativeChatPane {
   onScroll: () => void;
   /** The computer's state is not known yet: "正在连接…", never "offline". */
   connecting: boolean;
+  /** This chat's select mode (header 「分享」); its `exit` asks the host to end it. */
+  share: ShareModeState;
+  /** A send held back by install / sign-in: open the composer pill on its 账号 card. */
+  requestSetup: () => void;
 }
 
 /**
@@ -3429,20 +3492,22 @@ interface NativeChatPane {
  * progress keep arriving; switching never kills a run. A first prompt handed
  * over by link is queued in its thread (the user's bubble at once, sent once
  * connected, or marked unsent with a reason and a retry — never handed back
- * silently). It keeps its own draft text and scroll position, and portals its
- * settings panel (with the live `thread.dialog`) into the right pane. With
+ * silently). It keeps its own draft text and scroll position; a send held back
+ * by install / sign-in opens its composer pill on the 账号 card. With
  * `external` (the homepage's prewarmed thread) it renders that thread and
  * opens no connection of its own.
  */
-function NativeChatConversation({ session, computer, external, active, onNativeSessionChange, onSetupBlocked, settingsTarget, conversation, render }: {
+function NativeChatConversation({ session, computer, external, active, onNativeSessionChange, conversation, shareOn, onShareExit, shareInfo, render }: {
   session: ComputerTaskSession | null;
   computer: Computer | null;
   external?: NativeThread;
   active: boolean;
   onNativeSessionChange: (sessionId: string, nativeId: string) => void;
-  onSetupBlocked: () => void;
-  settingsTarget: HTMLElement | null;
   conversation: Extract<ConversationTarget, { kind: "native" }>;
+  /** The header 「分享」 is on for this (front) chat. */
+  shareOn: boolean;
+  onShareExit: () => void;
+  shareInfo: { taskId?: string | null; title?: string; siteLabel?: string };
   render: (pane: NativeChatPane) => ReactNode;
 }) {
   const sessionId = session?.id ?? "";
@@ -3458,6 +3523,39 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     onNativeSessionChange: onNative,
   });
   const thread = external ?? own;
+  // New messages in a live native chat move its row up in My Tasks (throttled
+  // at the source; a user send always). The first look at a conversation —
+  // the saved transcript or a replay — is a baseline, not activity.
+  const activityTaskId = session?.task_id ?? "";
+  const lastMessage = thread.messages[thread.messages.length - 1];
+  const lastMessageKey = lastMessage ? `${lastMessage.id}:${lastMessage.role}:${String(lastMessage.content ?? "").length}` : "";
+  const activityBaselineRef = useRef<{ taskId: string; key: string } | null>(null);
+  useEffect(() => {
+    const baseline = activityBaselineRef.current;
+    activityBaselineRef.current = { taskId: activityTaskId, key: lastMessageKey };
+    if (!activityTaskId || !thread.live || !baseline || baseline.taskId !== activityTaskId) return;
+    if (!lastMessageKey || baseline.key === lastMessageKey) return;
+    notifyHistoryActivity({ taskId: activityTaskId, user: lastMessage?.role === "user" });
+  }, [activityTaskId, lastMessageKey, thread.live, lastMessage?.role]);
+  // Header 「分享」 on a computer chat: the same select mode and action bar as the
+  // OceanLeo conversation, over this chat's own messages. Text / image / document
+  // are built from what is shown; the link names this session's cloud-saved copy.
+  const share = useShareMode({
+    messages: thread.messages,
+    taskId: shareInfo.taskId,
+    title: shareInfo.title,
+    siteLabel: shareInfo.siteLabel,
+    assistantLabel: PROGRAM_LABEL[conversation.program],
+    native: { sessionId: session?.id ?? null, hasOlder: thread.hasOlder },
+  });
+  const shareModeRef = useRef(share);
+  shareModeRef.current = share;
+  useEffect(() => {
+    // Entering selects every message (「复制链接」 works straight away), as in OceanLeo.
+    if (shareOn) shareModeRef.current.enter("all");
+    else shareModeRef.current.exit();
+  }, [shareOn]);
+  const paneShare: ShareModeState = { ...share, exit: onShareExit };
   // The host-owned thread reports its native id to its host; this page's row learns it here.
   const externalNative = external?.dialog.activeSession ?? "";
   useEffect(() => {
@@ -3475,8 +3573,8 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     const text = restored.text;
     if (text) setInput((current) => (current.trim() ? current : text));
   }, [restored]);
-  const onSetupBlockedRef = useRef(onSetupBlocked);
-  onSetupBlockedRef.current = onSetupBlocked;
+  const [setupRequest, setSetupRequest] = useState(0);
+  const requestSetup = useCallback(() => setSetupRequest((count) => count + 1), []);
   const setupBlocked = Boolean(!connecting && thread.blockedReason && !thread.offline);
   const queue = thread.queue;
   useEffect(() => {
@@ -3485,11 +3583,11 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     const text = takePendingNativePrompt(sessionId);
     if (text) queue(text);
   }, [active, sessionId, queue]);
-  // A queued prompt held back by install / sign-in opens the settings pane once.
+  // A queued prompt held back by install / sign-in opens the pill's 账号 card once.
   const unsent = thread.pending?.unsent ?? null;
   useEffect(() => {
-    if (active && unsent && setupBlocked) onSetupBlockedRef.current();
-  }, [active, unsent, setupBlocked]);
+    if (active && unsent && setupBlocked) requestSetup();
+  }, [active, unsent, setupBlocked, requestSetup]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
   // Scroll-up history: near the top (or while the stream does not fill the pane)
@@ -3567,8 +3665,10 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   }, [active, thread.messages, scrollKey]);
   useEffect(() => () => placedHoldRef.current?.(), []);
   // Shown and its saved copy still on its way: the task's loading cover stays on.
+  // Never waits for the computer's state (2026-10-31): the saved transcript is read
+  // whatever the computer is doing and shows the moment it is in.
   useTaskLoadingReport(
-    !(session && thread.messages.length === 0 && !thread.running && (connecting || thread.opening)),
+    !(session && thread.messages.length === 0 && !thread.running && thread.opening),
     active,
   );
   useEffect(() => {
@@ -3580,13 +3680,9 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     maybeLoadOlder(false);
   }, [thread.messages, active, thread.olderLoading, maybeLoadOlder]);
   return (
-    <>
-      {render({ thread, session, input, setInput, scrollRef, onScroll, connecting })}
-      {settingsTarget && createPortal(
-        <NativeSettingsPanel computer={computer} conversation={conversation} dialog={thread.dialog} />,
-        settingsTarget,
-      )}
-    </>
+    <NativeSetupRequest.Provider value={setupRequest}>
+      {render({ thread, session, input, setInput, scrollRef, onScroll, connecting, share: paneShare, requestSetup })}
+    </NativeSetupRequest.Provider>
   );
 }
 

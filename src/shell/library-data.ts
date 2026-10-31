@@ -623,6 +623,27 @@ export function isDurableLibraryItem(
   );
 }
 
+/** Library "Uploaded" filter role (`/v1/library/mine?role=user_upload`). */
+export const LIBRARY_UPLOAD_ROLE = "user_upload";
+
+/**
+ * A file the user uploaded (any type): typed revisions carry
+ * `roles: ["user_upload"]` / provenance `user_upload`; legacy rows only
+ * `meta.library_source === "upload"`.
+ */
+export function isUploadedLibraryItem(item: LibraryItem): boolean {
+  const meta = item.meta || {};
+  const roles = item.artifact?.roles ?? meta.roles;
+  if (Array.isArray(roles) && roles.includes(LIBRARY_UPLOAD_ROLE)) return true;
+  const provenance = (item.artifact?.provenance ?? meta.provenance) as
+    | { sourceKind?: unknown; source_kind?: unknown }
+    | null
+    | undefined;
+  const sourceKind = provenance?.sourceKind ?? provenance?.source_kind;
+  if (typeof sourceKind === "string" && sourceKind.trim().toLowerCase() === LIBRARY_UPLOAD_ROLE) return true;
+  return meta.library_source === "upload";
+}
+
 function libraryItemMetaText(item: LibraryItem, key: string): string {
   const value = item.meta?.[key];
   return typeof value === "string" ? value.trim() : "";

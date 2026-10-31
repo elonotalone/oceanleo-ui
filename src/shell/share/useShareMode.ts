@@ -12,6 +12,7 @@ import type { AgentMessage } from "../../lib/agent";
 import { useUI } from "../../i18n/ui/useUI";
 import {
   isAllShareSelected,
+  nativeShareTurns,
   pruneShareSelection,
   selectedShareMessages,
   shareSelectableMessages,
@@ -47,6 +48,11 @@ export interface UseShareModeInput {
   siteLabel?: string;
   /** 助手侧的说话人标签，默认 OceanLeo。 */
   assistantLabel?: string;
+  /**
+   * 电脑上的原生对话（2026-10-31）：它的云端存档 id（没有 = 还没保存，链接建不了）
+   * 与「更早的记录还没读」。给了它，链接按存档的轮次建（见 nativeShareTurns）。
+   */
+  native?: { sessionId: string | null; hasOlder: boolean };
 }
 
 export interface ShareModeState {
@@ -190,17 +196,28 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
   }, [busy, chosen, requireSelection, say, speakers, tt]);
 
   /** 建一次链接就缓存起来：Copy Link 与长图上的二维码指向同一个地址。 */
+  const native = input.native;
   const ensureLink = useCallback(async (): Promise<string> => {
     const ids = chosen.map((message) => message.id);
-    const key = `${input.taskId || ""}:${ids.join(",")}`;
+    if (native && !native.sessionId) {
+      throw new ShareLinkError("这段对话还没保存，稍后再分享。", 0);
+    }
+    const turns = native?.sessionId
+      ? nativeShareTurns(input.messages, new Set(ids), native.hasOlder)
+      : null;
+    const key = `${input.taskId || ""}:${native?.sessionId || ""}:${
+      turns ? `${turns.userTurns.join(",")}/${turns.replyTurns.join(",")}` : ids.join(",")
+    }`;
     if (linkRef.current?.key === key) return linkRef.current.url;
     const link = await createShareLink({
       taskId: String(input.taskId || ""),
-      messageIds: ids,
+      ...(native?.sessionId && turns
+        ? { computerTaskSessionId: native.sessionId, ...turns }
+        : { messageIds: ids }),
     });
     linkRef.current = { key, url: link.url };
     return link.url;
-  }, [chosen, input.taskId]);
+  }, [chosen, input.messages, input.taskId, native?.sessionId, native?.hasOlder]);
 
   const copyLink = useCallback(async () => {
     if (busy || !requireSelection()) return;

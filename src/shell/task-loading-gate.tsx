@@ -37,11 +37,36 @@ import {
   type ReactNode,
 } from "react";
 import { RoutePageSkeleton } from "./nav-source/route-boundary";
+import { cacheUser, onUserScopedClear } from "../lib/user-scoped-cache";
 
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /** A stuck read (no answer, no error) must not hide the page forever. */
 export const TASK_LOADING_MAX_MS = 10_000;
+
+// Keys that have been ready once in this tab (2026-10-31 task switch speed): the
+// gate remounts with the detail area, so its own state forgets; this does not.
+// Coming back to a task never shows the cover again (its caches paint at once).
+const SEEN_MAX = 300;
+const seenGateKeys = new Set<string>();
+onUserScopedClear(() => seenGateKeys.clear());
+function rememberSeenGateKey(key: string): void {
+  // Per signed-in user, like the caches that make a revisit paint at once.
+  if (!key || seenGateKeys.has(key) || !cacheUser()) return;
+  seenGateKeys.add(key);
+  if (seenGateKeys.size > SEEN_MAX) {
+    const oldest = seenGateKeys.values().next().value;
+    if (oldest !== undefined) seenGateKeys.delete(oldest);
+  }
+}
+/** True once `key` has been shown ready in this tab. */
+export function taskLoadingSeen(key: string): boolean {
+  return Boolean(key) && seenGateKeys.has(key);
+}
+/** Test seam. */
+export function clearTaskLoadingSeen(): void {
+  seenGateKeys.clear();
+}
 
 interface TaskLoadingGateApi {
   set: (id: object, ready: boolean) => void;
@@ -119,14 +144,17 @@ function OwnTaskLoadingGate({
   }), []);
   const covered = useCallback(() => taskLoadingCovered({
     gateKey,
-    readyKey: expiredKey === gateKey ? gateKey : readyKey,
+    readyKey: expiredKey === gateKey || taskLoadingSeen(gateKey) ? gateKey : readyKey,
     hostReady,
     reporters: reportersRef.current.values(),
   }), [gateKey, readyKey, expiredKey, hostReady]);
   const cover = covered();
   // Every commit: once nothing is pending for this key, latch it (never covered again).
   useIsoLayoutEffect(() => {
-    if (readyKey !== gateKey && !covered()) setReadyKey(gateKey);
+    if (readyKey !== gateKey && !covered()) {
+      rememberSeenGateKey(gateKey);
+      setReadyKey(gateKey);
+    }
   });
   useEffect(() => {
     if (!cover) return;

@@ -8,4 +8,4 @@ export {
   type NativeQuestionMeta,
 } from "./map-dialog";
 export { useNativeThread, type NativeThread, type NativeThreadInput } from "./useNativeThread";
-export { NativeModelPicker, type NativeModelPickerProps } from "./NativeModelPicker";
+export { NativeModelPicker, NativeSetupRequest, type NativeModelPickerProps } from "./NativeModelPicker";

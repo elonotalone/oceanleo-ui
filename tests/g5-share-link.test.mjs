@@ -63,6 +63,26 @@ test("Copy link uses the current site origin and selected message ids", async ()
   }
 });
 
+test("Copy link on a computer chat sends the session and turns, not message ids", async () => {
+  const seen = [];
+  await createShareLink({
+    taskId: "task-42",
+    messageIds: [-1, -2],
+    computerTaskSessionId: "cts_1",
+    userTurns: [0],
+    replyTurns: [0, -1],
+    origin: "https://oceanbizs.com",
+    tokenImpl: async () => "test-token",
+    fetchImpl: async (url, init) => {
+      seen.push(JSON.parse(init.body));
+      return { ok: true, status: 200, async json() { return { share_id: "ShareId_123456" }; }, async text() { return ""; } };
+    },
+  });
+  assert.deepEqual(seen, [
+    { task_id: "task-42", computer_task_session_id: "cts_1", user_turns: [0], reply_turns: [0, -1] },
+  ]);
+});
+
 test("anonymous shared replay renders text, code, and image or attachment media", () => {
   const markup = renderToStaticMarkup(
     React.createElement(AgentReplayPage, {

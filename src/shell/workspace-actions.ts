@@ -52,7 +52,12 @@ export interface WorkspaceActionV1 {
   url?: string;
   browserSessionId?: string;
   intent?: WorkspaceActionIntent;
+  /** Library collection filter on top of `category` (only `uploaded` exists). */
+  filter?: WorkspaceLibraryFilter;
 }
+
+/** `uploaded` = the Library "Uploaded" filter (files the user uploaded, any type). */
+export type WorkspaceLibraryFilter = "uploaded";
 
 export interface WorkspaceActionEnvelope {
   nonce: string;
@@ -171,6 +176,7 @@ export function normalizeWorkspaceAction(
       ? rawIntent
       : undefined;
   const entryId = clean("entryId", 300);
+  const filter = clean("filter", 16) === "uploaded" ? "uploaded" as const : undefined;
   return {
     version: 1,
     tab,
@@ -181,6 +187,7 @@ export function normalizeWorkspaceAction(
     browserSessionId: clean("browserSessionId", 300),
     ...(entryId ? { entryId } : {}),
     ...(intent ? { intent } : {}),
+    ...(filter ? { filter } : {}),
   };
 }
 

@@ -1,16 +1,24 @@
 import type { AgentTask } from "../lib/agent";
 import type { AppSession } from "../lib/app-session";
 
+/** Ordering times `mergeHistoryEntries` resolved for a row (see `HistoryEntryActivity`). */
+type HistoryEntryTimes = {
+  /** Latest conversation activity the row stands for; the list sorts by it. */
+  activity_at?: string;
+  /** Latest user message; working rows sort by it so streams do not swap places. */
+  user_activity_at?: string;
+};
+
 export type HistoryListEntry =
-  | {
+  | ({
       kind: "session";
       id: string;
       session: AppSession & { created_by?: string | null };
       created_by?: string | null;
       /** Present (true) only while the agent is working on this row; see `isTaskWorking`. */
       working?: true;
-    }
-  | { kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true };
+    } & HistoryEntryTimes)
+  | ({ kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true } & HistoryEntryTimes);
 
 /**
  * 「在干活」：云端 run 正在跑（task.status === "running"），或挂着的电脑原生会话
@@ -31,11 +39,12 @@ export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
   return entry.working === true;
 }
 
-/** The time a row stands for: a session's last activity, an old task's creation. */
+/** The time a row stands for: its last conversation activity (an old task without one: its creation). */
 export function historyEntryTimestamp(entry: HistoryListEntry): string {
+  if (entry.activity_at) return entry.activity_at;
   return entry.kind === "session"
     ? String(entry.session.last_activity_at || entry.session.updated_at || "")
-    : String(entry.task.created_at || "");
+    : String(entry.task.last_activity_at || entry.task.created_at || "");
 }
 
 /**
@@ -96,10 +105,67 @@ export interface MergeHistoryEntriesOptions {
    * 瞬时 5xx 不能把 session-bound task 误装成可删除的旧记录。
    */
   sessionApiUnavailable?: boolean;
+  /**
+   * Activity seen on this page before the server list caught up (keyed by task
+   * id or session id; `HISTORY_ACTIVITY_EVENT`). Only ever moves a row up.
+   */
+  localActivity?: ReadonlyMap<string, HistoryEntryActivity>;
+}
+
+/** Activity times for one task/session; ISO strings. */
+export interface HistoryEntryActivity {
+  at?: string | null;
+  userAt?: string | null;
+}
+
+function timeOf(value?: string | null): number {
+  if (!value) return Number.NaN;
+  return Date.parse(value);
+}
+
+/** The latest of several ISO times (gateway rows mix `Z` / `+00:00` / fractions, so compare as dates). */
+function latestTime(...values: Array<string | null | undefined>): string | undefined {
+  let best: string | undefined;
+  let bestTime = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    const time = timeOf(value);
+    if (value && !Number.isNaN(time) && time > bestTime) {
+      best = value;
+      bestTime = time;
+    }
+  }
+  return best;
 }
 
 function newestFirst(a?: string | null, b?: string | null): number {
-  return String(b || "").localeCompare(String(a || ""));
+  const aTime = timeOf(a);
+  const bTime = timeOf(b);
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+    if (Number.isNaN(aTime) !== Number.isNaN(bTime)) return Number.isNaN(aTime) ? 1 : -1;
+    return String(b || "").localeCompare(String(a || ""));
+  }
+  return bTime - aTime;
+}
+
+/**
+ * 「我的任务」的顺序（2026-10-31）：在干活的行永远在最上面，其余按最近活动时间倒序。
+ * - 活动时间：task.last_activity_at（网关 0313 的对话活动）‖ updated_at ‖ created_at；
+ *   session 取自身 last_activity_at 与它挂着的 task 的活动时间中较新的；本页刚看到的
+ *   活动（`localActivity`）只会把行往上提。
+ * - 工作组内按用户最近一次发言排（last_user_message_at，缺省回退活动时间），两条同时在
+ *   流式输出的任务不会每次刷新都互换位置。
+ * - 置顶（pinned）在 HistorySubNav 里再稳定地提到最前：置顶组、普通组各自保持本顺序。
+ */
+export function compareHistoryEntries(a: HistoryListEntry, b: HistoryListEntry): number {
+  const aWorking = isHistoryEntryWorking(a);
+  const bWorking = isHistoryEntryWorking(b);
+  if (aWorking !== bWorking) return aWorking ? -1 : 1;
+  const byTime = aWorking
+    ? newestFirst(a.user_activity_at || a.activity_at, b.user_activity_at || b.activity_at) ||
+      newestFirst(a.activity_at, b.activity_at)
+    : newestFirst(a.activity_at, b.activity_at);
+  if (byTime) return byTime;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 /**
@@ -116,24 +182,62 @@ export function mergeHistoryEntries(
   // only active/archived and says nothing about a run).
   const workingSessionIds = new Set<string>();
   const workingTaskIds = new Set<string>();
+  const local = options.localActivity;
+  // Conversation activity per task (gateway last_activity_at + what this page
+  // saw). A session's conversation runs in its bound task(s), so theirs is the
+  // session's activity too (app_sessions.last_activity_at moves on saves only).
+  // A task's updated_at (title, cost) is not conversation activity.
+  const conversationOf = (task: AgentTask): HistoryEntryTimes => {
+    const seen = local?.get(task.id);
+    return {
+      activity_at: latestTime(task.last_activity_at, seen?.at),
+      user_activity_at: latestTime(task.last_user_message_at, seen?.userAt),
+    };
+  };
+  const taskConversation = new Map<string, HistoryEntryTimes>();
+  const boundConversation = new Map<string, HistoryEntryTimes>();
   for (const task of tasks) {
     if (task.session_id && task.created_by === "leo") leoSessionIds.add(task.session_id);
     if (isTaskWorking(task)) {
       workingTaskIds.add(task.id);
       if (task.session_id) workingSessionIds.add(task.session_id);
     }
+    const own = conversationOf(task);
+    taskConversation.set(task.id, own);
+    if (task.session_id) {
+      const prev = boundConversation.get(task.session_id);
+      boundConversation.set(task.session_id, {
+        activity_at: latestTime(prev?.activity_at, own.activity_at),
+        user_activity_at: latestTime(prev?.user_activity_at, own.user_activity_at),
+      });
+    }
   }
-  const orderedSessions = [...sessions].sort((a, b) =>
-    newestFirst(a.last_activity_at || a.updated_at, b.last_activity_at || b.updated_at),
-  );
+  const taskTimes = (task: AgentTask): HistoryEntryTimes => ({
+    activity_at: latestTime(
+      task.last_activity_at || task.updated_at || task.created_at,
+      local?.get(task.id)?.at,
+    ),
+    user_activity_at: taskConversation.get(task.id)?.user_activity_at,
+  });
+  const sessionTimes = (session: AppSession): HistoryEntryTimes => {
+    const bound = boundConversation.get(session.id);
+    const linked = session.task_id ? taskConversation.get(session.task_id) : undefined;
+    const seen = local?.get(session.id);
+    return {
+      activity_at: latestTime(
+        session.last_activity_at || session.updated_at,
+        bound?.activity_at,
+        linked?.activity_at,
+        seen?.at,
+      ),
+      user_activity_at: latestTime(bound?.user_activity_at, linked?.user_activity_at, seen?.userAt),
+    };
+  };
   const legacyTasks = tasks
     .filter((task) => !isShellTask(task))
-    .filter((task) => options.sessionApiUnavailable || !task.session_id)
-    .sort((a, b) =>
-      newestFirst(a.updated_at || a.created_at, b.updated_at || b.created_at),
-    );
+    .filter((task) => options.sessionApiUnavailable || !task.session_id);
   const entries: HistoryListEntry[] = [
-    ...orderedSessions.map((session): HistoryListEntry => {
+    ...sessions.map((session): HistoryListEntry => {
       const own = readCreatedBy(session);
       const created_by =
         own === "leo" || leoSessionIds.has(session.id) ? "leo" : own;
@@ -149,6 +253,7 @@ export function mergeHistoryEntries(
             : session,
         created_by,
         ...(working ? { working: true as const } : {}),
+        ...definedTimes(sessionTimes(session)),
       };
     }),
     ...legacyTasks.map(
@@ -158,20 +263,47 @@ export function mergeHistoryEntries(
         task,
         created_by: task.created_by,
         ...(isTaskWorking(task) ? { working: true as const } : {}),
+        ...definedTimes(taskTimes(task)),
       }),
     ),
   ];
-  return entries.sort((a, b) => {
-    const aTime =
-      a.kind === "session"
-        ? a.session.last_activity_at || a.session.updated_at
-        : a.task.updated_at || a.task.created_at;
-    const bTime =
-      b.kind === "session"
-        ? b.session.last_activity_at || b.session.updated_at
-        : b.task.updated_at || b.task.created_at;
-    return newestFirst(aTime, bTime);
+  return entries.sort(compareHistoryEntries);
+}
+
+/** Omit absent times so entries stay structurally equal to older ones. */
+function definedTimes(times: HistoryEntryTimes): HistoryEntryTimes {
+  return {
+    ...(times.activity_at ? { activity_at: times.activity_at } : {}),
+    ...(times.user_activity_at ? { user_activity_at: times.user_activity_at } : {}),
+  };
+}
+
+/**
+ * Re-applies page-local activity to an already merged list (no refetch): rows
+ * only move up, then the list re-sorts by `compareHistoryEntries`.
+ */
+export function bumpHistoryEntries(
+  entries: HistoryListEntry[],
+  activity: { taskId?: string; sessionId?: string; at: string; user?: boolean },
+): HistoryListEntry[] {
+  let changed = false;
+  const next = entries.map((entry) => {
+    const hit =
+      entry.kind === "session"
+        ? (activity.sessionId && entry.id === activity.sessionId) ||
+          (activity.taskId && entry.session.task_id === activity.taskId)
+        : (activity.taskId && entry.id === activity.taskId) ||
+          (activity.sessionId && entry.task.session_id === activity.sessionId);
+    if (!hit) return entry;
+    const activity_at = latestTime(entry.activity_at, activity.at);
+    const user_activity_at = activity.user
+      ? latestTime(entry.user_activity_at, activity.at)
+      : entry.user_activity_at;
+    if (activity_at === entry.activity_at && user_activity_at === entry.user_activity_at) return entry;
+    changed = true;
+    return { ...entry, ...definedTimes({ activity_at, user_activity_at }) };
   });
+  return changed ? next.sort(compareHistoryEntries) : entries;
 }
 
 /** session 走聚合删除；只有无 session 的 legacy task 走旧 task 删除。 */

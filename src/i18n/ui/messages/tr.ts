@@ -880,6 +880,7 @@ const tr: Record<string, string> = {
   "列表视图": "Liste görünümü",
   "查看选项": "Görünüm seçenekleri",
   "仅看收藏": "Yalnızca favoriler",
+  "仅看上传": "Yalnızca yüklenenler",
   "创建 prompt": "Prompt oluştur",
   "删除卡片": "Kartı sil",
   "前往 Cost 页 →": "Cost sayfasına git →",

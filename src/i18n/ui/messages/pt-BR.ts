@@ -880,6 +880,7 @@ const ptBR: Record<string, string> = {
   "列表视图": "Visão em lista",
   "查看选项": "Opções de visualização",
   "仅看收藏": "Só favoritos",
+  "仅看上传": "Só enviados",
   "创建 prompt": "Criar prompt",
   "删除卡片": "Excluir card",
   "前往 Cost 页 →": "Ir para a página Cost →",

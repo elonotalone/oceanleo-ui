@@ -13,6 +13,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { KATEX_OPTIONS, hasMathDelimiters } from "./share/katex-runtime";
+import { cjkFriendlyEmphasis, streamingTailSource } from "./markdown-inline-repair";
 
 type Plugins = NonNullable<ComponentProps<typeof ReactMarkdown>["remarkPlugins"]>;
 
@@ -555,7 +556,8 @@ function MarkdownBody({
           ),
         }}
       >
-        {source || ""}
+        {/* `**粗体：**后文` pairs too (CommonMark flanking; markdown-inline-repair). */}
+        {cjkFriendlyEmphasis(source || "")}
       </ReactMarkdown>
     </>
   );
@@ -636,6 +638,12 @@ export function TypewriterMarkdown({
   // 尾巴只是过渡态的显示，去掉首尾空行免得它顶出一行空白；
   // 纯函数那边的 `closed + open === source` 不受影响。
   const tail = open.replace(/^\n+/, "").replace(/\s+$/, "");
+  // 2026-10-31: the tail used to be plain text until its block closed (a blank
+  // line), so a long paragraph or list showed raw `**…**` for a minute. Its inline
+  // formatting renders now; block markers stay as typed (no early <li>/<table>/<pre>)
+  // and a dangling `**` at the end is closed. Code (fence / indented) and a tail
+  // without any inline marker stay plain text.
+  const tailSource = useMemo(() => (tail ? streamingTailSource(tail) : null), [tail]);
   return (
     <div className={markdownWrapperClass(className)}>
       {blocks.map((block, index) => (
@@ -651,7 +659,9 @@ export function TypewriterMarkdown({
           />
         </Fragment>
       ))}
-      {tail ? (
+      {tail && tailSource !== null ? (
+        <MarkdownBody source={tailSource} math={null} highlightQuery={highlightQuery} />
+      ) : tail ? (
         <p className="my-1.5 whitespace-pre-wrap leading-relaxed text-stone-700">
           <HighlightedText text={tail} query={highlightQuery} />
         </p>

@@ -916,6 +916,7 @@ const en: Record<string, string> = {
   "网格视图": "Grid view",
   "查看选项": "View options",
   "仅看收藏": "Favorites only",
+  "仅看上传": "Uploads only",
   "让 agent 帮你做「{title}」": "Let an agent do \\\"{title}\\\" for you",
   "让 agent 帮你做「{x}」": "Let an agent do \\\"{x}\\\" for you",
   "请填写标题与 prompt": "Please fill in a title and prompt",

@@ -94,5 +94,9 @@ export function safeArchivedAttachment(raw: unknown): ArchivedAttachment | undef
   const row = raw as Record<string, unknown>;
   if (typeof row.id !== "string" || typeof row.name !== "string" || typeof row.mime !== "string" || typeof row.size !== "number" || typeof row.download_path !== "string") return undefined;
   if (!/^\/v1\/computer-task-sessions\/[A-Za-z0-9_-]{1,128}\/attachments\/[A-Za-z0-9_-]{1,128}$/.test(row.download_path)) return undefined;
-  return { id: row.id, name: row.name.slice(0, 200), mime: row.mime.slice(0, 100), size: row.size, download_path: row.download_path };
+  // The private Library upload the gateway registered for this file (opens the Library at it).
+  const artifactId = typeof row.artifact_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.artifact_id)
+    ? row.artifact_id : "";
+  return { id: row.id, name: row.name.slice(0, 200), mime: row.mime.slice(0, 100), size: row.size, download_path: row.download_path,
+    ...(artifactId ? { artifact_id: artifactId } : {}) };
 }

@@ -367,6 +367,8 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     export function isDurableLibraryItem(item){ return Boolean(item?.artifactId && item?.revisionId && item?.artifact); }
     export function libraryItemIdentityKey(item){ return String(item?.artifactId || item?.id || ""); }
     export function sortLibraryItems(items){ return [...items]; }
+    export const LIBRARY_UPLOAD_ROLE = "user_upload";
+    export function isUploadedLibraryItem(){ return false; }
   `),
   "./library-scope": dataModule(`
     import { createElement as h } from "${reactUrl}";

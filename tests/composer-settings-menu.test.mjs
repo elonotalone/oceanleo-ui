@@ -37,9 +37,9 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 const uiStub = dataModule(`export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : zh; }`);
 const popoverStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
-  export function AnchoredPopover({ open, children, attributes, side }) {
+  export function AnchoredPopover({ open, children, attributes, side, role }) {
     if (!open) return null;
-    return React.createElement("div", { "data-anchored-popover": "1", "data-side": side || "", ...(attributes || {}) }, children);
+    return React.createElement("div", { "data-anchored-popover": "1", "data-side": side || "", role, ...(attributes || {}) }, children);
   }
 `);
 
@@ -134,6 +134,65 @@ test("menu keyboard: ArrowRight opens the row's card, ArrowLeft closes it back t
     assert.equal(m.q('[data-composer-settings-card="effort"]'), null);
     assert.equal(window.document.activeElement, m.q('[data-composer-setting-row="effort"]'), "focus goes back to the row");
   } finally { await m.unmount(); }
+});
+
+// ── 2026-10-31 night: the gear's settings moved into this menu ──────────────
+test("menu sections: headed groups, a switch row, a note row, and a row whose card hosts a form", async () => {
+  const calls = [];
+  let checked = true;
+  const sectioned = () => [
+    { id: "model", section: "本对话", label: "模型", value: "Opus 5.5", selected: "opus", choices: [{ value: "opus", label: "Opus 5.5" }], onPick: (v) => calls.push(["model", v]) },
+    { id: "account", section: "这台电脑上的 Codex", label: "账号", value: "已登录 · 0.90.0", selected: "", keepOpen: true,
+      choices: [{ value: "logout", label: "退出登录" }, { value: "key", label: "Key" }], onPick: (v) => calls.push(["account", v]),
+      card: React.createElement("form", { "data-test-form": "" }, React.createElement("input", { "data-test-input": "" })) },
+    { id: "computer:confirm", section: "整台电脑（所有程序）", kind: "toggle", label: "危险操作先问我", hint: "关掉后不再问你", checked, onToggle: (next) => calls.push(["toggle", next]) },
+    { id: "computer:tools", section: "整台电脑（所有程序）", kind: "toggle", label: "让它能用 OceanLeo 的工具", checked: false },
+    { id: "computer:error", section: "整台电脑（所有程序）", kind: "note", label: "设置保存失败，请稍后重试。" },
+  ];
+  const m = await mount(React.createElement(ComposerSettingsMenu, { summary: "Opus 5.5", rows: sectioned(), ariaLabel: "模型" }));
+  try {
+    await m.click(m.q("[data-composer-settings] > button"));
+    assert.deepEqual(m.qa("[data-composer-settings-section]").map((n) => n.textContent), ["本对话", "这台电脑上的 Codex", "整台电脑（所有程序）"], "one heading per section");
+    const toggle = m.q('[data-composer-setting-row="computer:confirm"]');
+    assert.equal(toggle.getAttribute("role"), "menuitemcheckbox");
+    assert.equal(toggle.getAttribute("aria-checked"), "true");
+    assert.match(toggle.textContent, /关掉后不再问你/, "the hint under its name");
+    await m.click(toggle);
+    assert.deepEqual(calls, [["toggle", false]]);
+    assert.ok(m.q("[data-composer-settings-menu]"), "a switch keeps the menu open");
+    assert.equal(m.q('[data-composer-setting-row="computer:tools"]').disabled, true, "a switch without a setter is read-only");
+    assert.equal(m.q('[data-composer-setting-row="computer:error"]').textContent, "设置保存失败，请稍后重试。");
+    await m.click(m.q('[data-composer-setting-row="account"]'));
+    const card = m.q('[data-composer-settings-card="account"]');
+    assert.equal(card.getAttribute("role"), "dialog", "a card with a form is a dialog, not a listbox");
+    assert.ok(card.querySelector("[data-test-form] [data-test-input]"), "the card hosts the form under its choices");
+    const logout = m.q('[data-composer-setting-choice="account:logout"]');
+    assert.equal(logout.getAttribute("aria-selected"), null, "actions are not options");
+    await m.click(logout);
+    assert.deepEqual(calls.at(-1), ["account", "logout"]);
+    assert.ok(m.q('[data-composer-settings-card="account"]'), "an action keeps the card open");
+  } finally { await m.unmount(); }
+});
+
+test("menu open request: the host opens the menu on a row's card once per request", async () => {
+  const card = { id: "account", label: "账号", value: "未安装", selected: "", keepOpen: true, choices: [{ value: "install", label: "安装" }], onPick() {} };
+  const element = (nonce) => React.createElement(ComposerSettingsMenu, { summary: "Codex", rows: [card], ariaLabel: "模型", openRequest: nonce ? { nonce, row: "account" } : undefined });
+  const container = window.document.createElement("div");
+  window.document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(element(0)));
+    assert.equal(container.querySelector("[data-composer-settings-menu]"), null);
+    await act(async () => root.render(element(1)));
+    await flush();
+    assert.ok(container.querySelector('[data-composer-settings-card="account"]'), "opened on the account card");
+    await act(async () => container.querySelector("[data-composer-settings] > button").click());
+    await flush();
+    assert.equal(container.querySelector("[data-composer-settings-menu]"), null, "closed by the user");
+    await act(async () => root.render(element(1)));
+    await flush();
+    assert.equal(container.querySelector("[data-composer-settings-menu]"), null, "the same request is not replayed");
+  } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
 // ── 12. OceanLeo (cloud Leo) in the same menu, with fast mode ────────────────

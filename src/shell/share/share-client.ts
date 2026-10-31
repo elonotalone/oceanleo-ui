@@ -75,6 +75,14 @@ export interface CreateShareLinkInput {
   taskId: string;
   /** 只分享选中的这几条；不传 = 整段对话。 */
   messageIds?: readonly number[];
+  /**
+   * 电脑上的原生对话（2026-10-31）：气泡是本地负数 id，链接改按这段对话的云端存档
+   * 取。`userTurns` / `replyTurns` 是轮次下标（一轮 = 一条用户消息 + 其后的回答；
+   * 负数从末尾数），分别选这一轮的提问 / 回答。给了它就不发 `messageIds`。
+   */
+  computerTaskSessionId?: string;
+  userTurns?: readonly number[];
+  replyTurns?: readonly number[];
   /** 注入点，只给测试用。 */
   fetchImpl?: typeof fetch;
   /** 注入点，只给测试用。 */
@@ -100,7 +108,11 @@ export async function createShareLink(
     throw new ShareLinkError(shareFailureMessage(401, ""), 401);
   }
   const body: Record<string, unknown> = { task_id: taskId };
-  if (input.messageIds && input.messageIds.length) {
+  if (input.computerTaskSessionId) {
+    body.computer_task_session_id = input.computerTaskSessionId;
+    body.user_turns = [...(input.userTurns ?? [])];
+    body.reply_turns = [...(input.replyTurns ?? [])];
+  } else if (input.messageIds && input.messageIds.length) {
     body.message_ids = [...input.messageIds];
   }
   // Gateway is the configured edition origin (`GATEWAY_BASE` already prefers

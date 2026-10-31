@@ -264,6 +264,9 @@ function ToolView({
   const [open, setOpen] = useState(false);
   const status = statusText(tt, entry.status, running);
   const title = entry.title || tt("执行步骤");
+  // A Task/Agent step: its background sub-agent's steps live inside it.
+  const children = entry.children ?? [];
+  const childFailed = children.filter((child) => child.status === "failed").length;
   return (
     <div data-agent-process-tool={entry.kind} data-tool-status={entry.status}>
       <button
@@ -276,6 +279,19 @@ function ToolView({
         <span className="min-w-0 flex-1 truncate text-stone-500" data-agent-process-tool-title="">
           {title}
         </span>
+        {children.length > 0 && (
+          <span className="shrink-0" data-agent-process-substeps={children.length}>
+            {tt("{count} 个步骤", { count: children.length })}
+            {childFailed > 0 && (
+              <>
+                {" · "}
+                <span className="text-rose-500" data-agent-process-substeps-failed="">
+                  {tt("{count} 个失败", { count: childFailed })}
+                </span>
+              </>
+            )}
+          </span>
+        )}
         {status && (
           <span
             data-agent-process-tool-status=""
@@ -368,6 +384,17 @@ function ToolView({
             <p data-agent-process-tool-error="" className={`whitespace-pre-wrap text-rose-600 ${WRAP}`}>
               {entry.error}
             </p>
+          )}
+          {children.length > 0 && (
+            <div
+              data-agent-process-substep-list=""
+              className={`cursor-default space-y-0.5 ${WRAP}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {children.map((child) => (
+                <ToolView key={child.key} entry={child} running={running} />
+              ))}
+            </div>
           )}
         </div>
       )}

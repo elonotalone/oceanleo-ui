@@ -13,6 +13,8 @@ import { installDirPayload } from "./install-dir";
 import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oceanleo-program";
 import { isWsProgram } from "./parse";
 import { applyDialog, dropUnsentEcho, initialDialogState } from "./reduce";
+import { modelCatalogFrames, rememberModelCatalogFrame } from "./model-catalog-cache";
+import { setCacheUser } from "../../../lib/user-scoped-cache";
 import { nextReconnectDelay } from "./reconnect";
 import { isReconnectingNotice, UNSENT_RESTORED_COPY } from "./notice";
 import { composerOccupancy, confirmedBusySessions, confirmedWaitingSessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
@@ -211,12 +213,20 @@ function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
     occupancyPendingSession: state.occupancyPendingSession,
   };
 }
-function hydratePresentation(id: string, state: ReturnType<typeof initialDialogState>) {
+function hydratePresentation(id: string, state: ReturnType<typeof initialDialogState>, computerId = "") {
   const cached = presentationFor(id);
   const selection = readProgramSelection(id, state.program ?? "");
-  return { ...state, programs: cached.programs, ...cached.sessions.get(state.program ?? ""),
+  let next: ReturnType<typeof initialDialogState> = { ...state, programs: cached.programs, ...cached.sessions.get(state.program ?? ""),
     ...(!state.activeSession ? { selectedModel: selection.model || state.selectedModel,
       selectedMode: selection.mode || state.selectedMode } : {}) };
+  // A fresh view with no catalog yet: the last one this computer reported for the
+  // program (model-catalog-cache, per user + computer + program) goes through the
+  // same reducer as the live frames, so the model pill names the model at once
+  // instead of 「正在读取…」. The live `models` / `config` frames replace it.
+  if (computerId && next.program && !next.activeSession && !next.models.length && !next.configOptions.length) {
+    for (const frame of modelCatalogFrames(computerId, next.program)) next = applyDialog(next, { type: "frame", frame });
+  }
+  return next;
 }
 
 export function useAgentDialog({
@@ -282,8 +292,8 @@ export function useAgentDialog({
         next.program = mountProgram;
         next.draftRef = `new:${mountRef}`;
       }
-      return event.type === "reset" || event.type === "program" ? hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, next) : next;
-    }, undefined, () => hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, { ...initialDialogState(), program: mountProgram, draftRef: `new:${mountRef}` }),
+      return event.type === "reset" || event.type === "program" ? hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, next, computerId) : next;
+    }, undefined, () => hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, { ...initialDialogState(), program: mountProgram, draftRef: `new:${mountRef}` }, computerId),
   );
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
@@ -368,6 +378,26 @@ export function useAgentDialog({
   computerIdRef.current = computerId;
   sessionIdRef.current = sessionId;
   localOceanleoRef.current = localOceanleo;
+
+  // The computer is often known only after mount (its row is read in parallel):
+  // a fresh view still without a catalog then takes this computer's kept one
+  // (model-catalog-cache), as the mount would have. Live frames replace it.
+  useEffect(() => {
+    const current = stateRef.current;
+    if (!computerId || !current.program || current.activeSession || current.models.length || current.configOptions.length) return;
+    const frames = modelCatalogFrames(computerId, current.program);
+    if (!frames.length) return;
+    // The user's last pick on this computer (the mount read it under an unknown computer).
+    const picked = readProgramSelection(taskSessionRef.current ? `${computerId}:${taskSessionRef.current}` : computerId, current.program).model;
+    if (picked && picked !== current.selectedModel) {
+      stateRef.current = applyDialog(stateRef.current, { type: "set-model", id: picked });
+      dispatch({ type: "set-model", id: picked });
+    }
+    for (const frame of frames) {
+      stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
+      dispatch({ type: "frame", frame });
+    }
+  }, [computerId]);
 
   const [occupancyClock, setOccupancyClock] = useState(() => Date.now());
   useEffect(() => {
@@ -518,6 +548,10 @@ export function useAgentDialog({
     if (frame.t === "status") delayRef.current = 1000;
     const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
     if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
+    if (frame.t === "models" || frame.t === "config") {
+      const catalogProgram = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      if (isWsProgram(catalogProgram)) rememberModelCatalogFrame(computerIdRef.current, catalogProgram, frame);
+    }
     if (frame.t === "occupancy" && typeof frame.program === "string") {
       occupancyProbeRef.current?.receive(frame.program);
     }
@@ -679,6 +713,8 @@ export function useAgentDialog({
       const client = await import("../../../lib/auth/client");
       const value = typeof client.accessToken === "function" ? await client.accessToken() : "";
       token = typeof value === "string" ? value : "";
+      // The model catalog this socket reports is kept for this user (model-catalog-cache).
+      if (token && typeof client.getUserId === "function") void client.getUserId().then(setCacheUser, () => undefined);
     } catch {
       token = "";
     }
@@ -1131,7 +1167,7 @@ export function useAgentDialog({
       const key = cached.last.get(next) ?? `${next}::new:${clientRef(next)}`;
       const saved = cached.views.get(key);
       viewKeyRef.current = key;
-      const switched = hydratePresentation(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, applyDialog(stateRef.current, { type: "program", program: next }));
+      const switched = hydratePresentation(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, applyDialog(stateRef.current, { type: "program", program: next }), computerIdRef.current);
       stateRef.current = saved ? applyDialog(switched, { type: "restore-view", ...saved }) : { ...switched, messages: [], draftRef: `new:${clientRef(next)}` };
       dispatch({ type: "program", program: next });
       dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });

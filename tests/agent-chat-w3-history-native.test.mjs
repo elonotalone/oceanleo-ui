@@ -174,6 +174,8 @@ const OVERRIDES = {
   "./native-thread": dataModule(`
     import React from ${reactUrl};
     globalThis.__threadInputs = []; globalThis.__sent = []; globalThis.__threadStops = 0;
+    // A held-back send asks the composer pill to open its 账号 card (count of requests).
+    export const NativeSetupRequest = React.createContext(0);
     export function useNativeThread(input) {
       globalThis.__threadInputs.push(input);
       const state = { ...(globalThis.__thread || {}) };
@@ -232,12 +234,6 @@ const OVERRIDES = {
     export function NativeTerminalSurface({ session, active }) {
       React.useEffect(() => { globalThis.__surfaceMounts = (globalThis.__surfaceMounts || 0) + 1; return () => { globalThis.__surfaceMounts--; }; }, []);
       return React.createElement("div", { "data-native-surface": session.id, "data-active": String(active) });
-    }
-    export function NativeSettingsPanel({ conversation, dialog }) {
-      return React.createElement("div", { "data-native-settings": conversation.kind, "data-has-dialog": String(Boolean(dialog)) }, "settings body");
-    }
-    export function nativeSettingsTitle(conversation) {
-      return conversation.kind === "terminal" ? "终端设置 · " + conversation.computerName : conversation.program + " 设置 · " + conversation.computerName;
     }
   `),
 };

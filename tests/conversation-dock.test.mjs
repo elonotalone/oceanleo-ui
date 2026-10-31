@@ -544,6 +544,10 @@ test("LeoComposer passes oceanleoDisabledReason to the Device control", async ()
 const { ConversationBar } = await import(await compileModule("src/shell/cloud-computer/ConversationBar.tsx", {
   "../../i18n/ui/useUI": uiStub,
   "./ComputerDock": dockStub,
+  "./native-surface/computer-settings-rows": dataModule(`
+    import React from ${JSON.stringify(reactUrl)};
+    export function ComputerConversationSettings(props) { globalThis.__cdSettingsProps = props; return React.createElement("div", { "data-conversation-settings-pill": "" }); }
+  `),
 }));
 
 async function mount(element) {
@@ -560,30 +564,20 @@ async function mount(element) {
 const composerBase = { value: "hi", onChange() {}, onSubmit() {}, showPlugins: false, showAppsBar: false, showPayerSelector: false };
 const NATIVE = { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" };
 
-test("LeoComposer: the gear shows only for native / terminal conversations and opens settings", async () => {
-  let opened = 0;
-  const props = { ...composerBase, onOpenSettings: () => { opened += 1; }, onConversationChange() {}, taskSessions: [session({ id: "x" })] };
+// 2026-10-31 night: the gear and its right-pane panel are gone; every setting lives
+// in the composer's model pill (native chat) or the bar's settings pill (CLI / terminal).
+test("LeoComposer: the Device control gets the host's lists; no settings gear for any conversation", async () => {
+  const props = { ...composerBase, onConversationChange() {}, taskSessions: [session({ id: "x" })] };
   const m = await mount(React.createElement(LeoComposer, { ...props, conversation: { kind: "oceanleo", target: { kind: "cloud" } } }));
   try {
-    assert.equal(m.container.querySelector("[data-conversation-settings]"), null);
     assert.deepEqual(globalThis.__cdDockProps.taskSessions, props.taskSessions, "taskSessions reach the dock");
     assert.equal(globalThis.__cdDockProps.onConversationChange, props.onConversationChange, "the host's own callback, no composer memory in between");
     assert.equal(globalThis.__cdDockProps.conversation.kind, "oceanleo");
-    await m.rerender(React.createElement(LeoComposer, { ...props, conversation: NATIVE, settingsOpen: true }));
-    const gear = m.container.querySelector("[data-conversation-settings]");
-    assert.ok(gear);
-    assert.equal(gear.getAttribute("aria-pressed"), "true");
-    assert.equal(gear.getAttribute("aria-label"), "设置");
-    assert.ok(gear.querySelector("svg"), "an icon button, not a text button");
-    const toolbar = m.container.querySelector("[data-composer-bottom-toolbar]");
-    const dock = toolbar.querySelector("[data-oceanleo-cc-dock-trigger]");
-    assert.equal(dock.nextElementSibling, gear, "right after the Device control");
-    await act(async () => gear.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-    assert.equal(opened, 1);
-    await m.rerender(React.createElement(LeoComposer, { ...props, conversation: { kind: "terminal", computerId: "cc_1", computerName: "elon" } }));
-    assert.ok(m.container.querySelector("[data-conversation-settings]"));
+    for (const conversation of [NATIVE, { kind: "terminal", computerId: "cc_1", computerName: "elon" }]) {
+      await m.rerender(React.createElement(LeoComposer, { ...props, conversation }));
+      assert.equal(m.container.querySelector("[data-conversation-settings]"), null, `no gear: ${conversation.kind}`);
+    }
     await m.rerender(React.createElement(LeoComposer, { ...composerBase, conversation: NATIVE }));
-    assert.equal(m.container.querySelector("[data-conversation-settings]"), null, "no gear without onOpenSettings");
     assert.equal(globalThis.__cdDockProps.onConversationChange, undefined, "no drill-down for hosts that cannot switch");
   } finally { await m.unmount(); }
 });
@@ -600,9 +594,11 @@ test("LeoComposer: modelPickerSlot replaces ModelGroupPicker; null hides it", as
   } finally { await m.unmount(); }
 });
 
-test("ConversationBar: composer bottom-bar row with the same Device control and gear", async () => {
-  let opened = 0; const picks = [];
-  const props = { conversation: NATIVE, onConversationChange: (c) => picks.push(c), taskSessions: [], boundTarget: { kind: "cloud" }, onOpenSettings: () => { opened += 1; }, settingsOpen: false, oceanleoDisabledReason: "原因" };
+test("ConversationBar: composer bottom-bar row with the same Device control and, for CLI / terminal, the settings pill", async () => {
+  const picks = [];
+  const CLI = { ...NATIVE, view: "cli" };
+  const computer = { id: "cc_1", name: "elon", node_online: true };
+  const props = { conversation: CLI, onConversationChange: (c) => picks.push(c), taskSessions: [], boundTarget: { kind: "cloud" }, computer, oceanleoDisabledReason: "原因" };
   const m = await mount(React.createElement(ConversationBar, props));
   try {
     const bar = m.container.querySelector("[data-conversation-bar]");
@@ -610,15 +606,19 @@ test("ConversationBar: composer bottom-bar row with the same Device control and 
     assert.match(bar.className, /flex items-center justify-between px-4 pb-3\.5/);
     assert.ok(bar.querySelector("[data-oceanleo-cc-dock-trigger]"));
     assert.deepEqual(globalThis.__cdDockProps.boundTarget, { kind: "cloud" });
-    assert.equal(globalThis.__cdDockProps.conversation, NATIVE);
+    assert.equal(globalThis.__cdDockProps.conversation, CLI);
     assert.equal(globalThis.__cdDockProps.oceanleoDisabledReason, "原因");
     globalThis.__cdDockProps.onConversationChange({ kind: "oceanleo", target: { kind: "cloud" } });
     assert.deepEqual(picks, [{ kind: "oceanleo", target: { kind: "cloud" } }]);
-    const gear = bar.querySelector("[data-conversation-settings]");
-    assert.equal(gear.getAttribute("aria-pressed"), "false");
-    await act(async () => gear.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-    assert.equal(opened, 1);
+    assert.equal(bar.querySelector("[data-conversation-settings]"), null, "no gear");
+    const pill = bar.querySelector("[data-conversation-settings-pill]");
+    assert.ok(pill, "the settings pill sits in the bar");
+    assert.equal(pill.parentElement, bar, "on the right, outside the Device group");
+    assert.equal(globalThis.__cdSettingsProps.computer, computer);
+    assert.equal(globalThis.__cdSettingsProps.conversation, CLI);
+    await m.rerender(React.createElement(ConversationBar, { ...props, conversation: { kind: "terminal", computerId: "cc_1", computerName: "elon" } }));
+    assert.ok(m.container.querySelector("[data-conversation-settings-pill]"), "terminal too");
     await m.rerender(React.createElement(ConversationBar, { ...props, conversation: { kind: "oceanleo", target: { kind: "cloud" } } }));
-    assert.equal(m.container.querySelector("[data-conversation-settings]"), null);
+    assert.equal(m.container.querySelector("[data-conversation-settings-pill]"), null);
   } finally { await m.unmount(); }
 });

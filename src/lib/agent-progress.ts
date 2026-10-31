@@ -39,6 +39,22 @@ export interface ProcessPlanItem {
   priority: "high" | "medium" | "low" | "";
 }
 
+export interface ProcessToolEntry {
+  type: "tool";
+  key: string;
+  title: string;
+  /** ACP tool kind (`read`, `edit`, `execute`, …) or one guessed from a cloud tool name. */
+  kind: string;
+  status: ProcessToolStatus;
+  content: ProcessToolContent[];
+  locations: { path: string; line?: number }[];
+  args: string;
+  result: string;
+  error: string;
+  /** A Task/Agent step's background sub-agent steps (native `tool_card.children`). */
+  children?: ProcessToolEntry[];
+}
+
 export type ProcessEntry =
   | {
       type: "thought";
@@ -51,19 +67,7 @@ export type ProcessEntry =
       /** The model is still writing this thought. */
       streaming: boolean;
     }
-  | {
-      type: "tool";
-      key: string;
-      title: string;
-      /** ACP tool kind (`read`, `edit`, `execute`, …) or one guessed from a cloud tool name. */
-      kind: string;
-      status: ProcessToolStatus;
-      content: ProcessToolContent[];
-      locations: { path: string; line?: number }[];
-      args: string;
-      result: string;
-      error: string;
-    }
+  | ProcessToolEntry
   | {
       type: "plan";
       key: string;
@@ -398,13 +402,53 @@ function guessToolKind(name: string): string {
   return "other";
 }
 
-function toolCardOf(message: AgentMessage): {
+type ToolCardFields = {
   kind: string;
   title: string;
   content: ProcessToolContent[];
   locations: { path: string; line?: number }[];
-} | null {
-  const card = message.meta?.tool_card;
+  children: ProcessToolEntry[];
+};
+
+/** Native card status (`pending` | `in_progress` | `completed` | `failed`) as a timeline status. */
+function cardStatus(raw: unknown): ProcessToolStatus {
+  const status = text(raw);
+  if (status === "failed") return "failed";
+  if (status === "in_progress") return "running";
+  if (status === "pending") return "pending";
+  return "done";
+}
+
+/** Sub-agent steps nested under a Task/Agent card, as full tool entries. */
+function childEntries(raw: unknown, parentKey: string): ProcessToolEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProcessToolEntry[] = [];
+  raw.forEach((child, index) => {
+    const card = parseToolCard(child, parentKey);
+    if (!card) return;
+    const row = child as Record<string, unknown>;
+    out.push({
+      type: "tool",
+      key: `${parentKey}/${text(row.id) || index}`,
+      title: card.title.trim(),
+      kind: card.kind,
+      status: cardStatus(row.status),
+      content: card.content,
+      locations: card.locations,
+      args: "",
+      result: "",
+      error: "",
+      ...(card.children.length ? { children: card.children } : {}),
+    });
+  });
+  return out;
+}
+
+function toolCardOf(message: AgentMessage, key = ""): ToolCardFields | null {
+  return parseToolCard(message.meta?.tool_card, key);
+}
+
+function parseToolCard(card: unknown, key = ""): ToolCardFields | null {
   if (!card || typeof card !== "object") return null;
   const raw = card as Record<string, unknown>;
   const content: ProcessToolContent[] = [];
@@ -432,7 +476,8 @@ function toolCardOf(message: AgentMessage): {
     if (!path) continue;
     locations.push(typeof row.line === "number" ? { path, line: row.line } : { path });
   }
-  return { kind: text(raw.kind) || "other", title: text(raw.title), content, locations };
+  const children = childEntries(raw.children, `${key}/${text(raw.id)}`);
+  return { kind: text(raw.kind) || "other", title: text(raw.title), content, locations, children };
 }
 
 function planItems(message: AgentMessage): ProcessPlanItem[] {
@@ -481,7 +526,7 @@ export function buildProcessEntries(messages: AgentMessage[]): ProcessEntry[] {
       return;
     }
     if (message.kind === "step") {
-      const card = toolCardOf(message);
+      const card = toolCardOf(message, key);
       const tool = text(message.meta?.tool);
       const title =
         (message.content || "").replace(/^▶\s*/, "").trim() || card?.title.trim() || tool;
@@ -496,6 +541,7 @@ export function buildProcessEntries(messages: AgentMessage[]): ProcessEntry[] {
         args: text(message.meta?.args_preview),
         result: text(message.meta?.result_preview),
         error: text(message.meta?.error).trim(),
+        ...(card?.children.length ? { children: card.children } : {}),
       });
       return;
     }

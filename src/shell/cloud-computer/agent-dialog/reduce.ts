@@ -33,6 +33,7 @@ import type {
   DialogState,
   InstallState,
   LoginState,
+  ToolCard,
   TurnItem,
   WsProgram,
 } from "./types";
@@ -405,9 +406,11 @@ function pushNotice(messages: AgentDialogMessage[], code: string, program: strin
   return [...messages, { kind: "notice", id: nextId(), code, program }];
 }
 
-function mapOpenTurn(
+type TurnMessage = Extract<AgentDialogMessage, { kind: "turn" }>;
+
+function mapOpenTurnMessage(
   state: DialogState,
-  update: (items: TurnItem[]) => TurnItem[],
+  update: (turn: TurnMessage) => TurnMessage,
 ): DialogState {
   const messages = state.messages.slice();
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -415,18 +418,25 @@ function mapOpenTurn(
     // 回放（I6 `replay:true`）不发 done：一条用户消息之前的轮次不再接收后续回复。
     if (message.kind === "user") break;
     if (message.kind === "turn" && !message.stop) {
-      messages[index] = { ...message, items: update(message.items) };
+      messages[index] = update(message);
       return { ...state, messages };
     }
   }
-  const turn: AgentDialogMessage = {
+  const turn = update({
     kind: "turn",
     id: nextId(),
     acpSession: "",
     stop: "",
-    items: update([]),
-  };
+    items: [],
+  });
   return { ...state, messages: [...messages, turn] };
+}
+
+function mapOpenTurn(
+  state: DialogState,
+  update: (items: TurnItem[]) => TurnItem[],
+): DialogState {
+  return mapOpenTurnMessage(state, (turn) => ({ ...turn, items: update(turn.items) }));
 }
 
 function num(value: unknown): number | undefined {
@@ -491,12 +501,61 @@ function onTurnStart(state: DialogState, frame: Record<string, unknown>): Dialog
   return rememberSession(base, frame);
 }
 
+// Claude Code's Task/Agent tool (claude-agent-acp AgentReporter: kind "think",
+// title = the description). Other "think" tools are todo/task-list/findings/compaction.
+const NOT_AGENT_LAUNCH = /^(Update TODOs|Create task|Update task|List tasks|Get task|Report findings|Report \d+ findings?\b|Compact conversation)/;
+
+function isAgentLaunch(tool: ToolCard): boolean {
+  return tool.kind === "think" && !tool.parent && !NOT_AGENT_LAUNCH.test(tool.title);
+}
+
+/** The new chunk carries on the sentence before it rather than starting a new message. */
+function continuesText(before: string, next: string): boolean {
+  if (/^[ \t,，、;；:：)）\]]/.test(next) || /^[a-z]/.test(next)) return true;
+  return !/(?:[.!?。！？:：…]|\n)\s*$/.test(before);
+}
+
+/**
+ * Saved sessions from before tool frames carried `parent`: a background
+ * sub-agent's tool calls landed between two chunks of the parent's reply and
+ * split it mid-sentence ("Point" · 1 step · " 2 (line width)…"). When the only
+ * items since the previous text are tools that came after an Agent launch that
+ * precedes that text, the chunk rejoins the text and those tools move under the
+ * launch (one launch) or after the text (several, so the owner is unknown).
+ */
+function rejoinSubagentSplit(items: TurnItem[], text: string): TurnItem[] | null {
+  const prev = lastOfKind(items, "assistant");
+  const previous = items[prev];
+  if (!previous || previous.kind !== "assistant" || prev === items.length - 1) return null;
+  const between = items.slice(prev + 1);
+  const tools: ToolCard[] = [];
+  for (const item of between) {
+    if (item.kind !== "tool" || isAgentLaunch(item.tool)) return null;
+    tools.push(item.tool);
+  }
+  const launches = items
+    .slice(0, prev)
+    .filter((item): item is Extract<TurnItem, { kind: "tool" }> => item.kind === "tool" && isAgentLaunch(item.tool));
+  if (!launches.length || !continuesText(previous.text, text)) return null;
+  const merged: TurnItem = { ...previous, text: previous.text + text };
+  if (launches.length === 1) {
+    const owner = launches[0].tool.id;
+    return items.slice(0, prev + 1).map((item, index) => {
+      if (index === prev) return merged;
+      if (item.kind !== "tool" || item.tool.id !== owner) return item;
+      return { ...item, tool: { ...item.tool, children: [...(item.tool.children ?? []), ...tools] } };
+    });
+  }
+  return [...items.slice(0, prev), merged, ...between];
+}
+
 function appendText(
   state: DialogState,
   kind: "assistant" | "thought",
   text: string,
 ): DialogState {
   if (!text) return state;
+  const legacy = kind === "assistant" && (state.program === "claude" || !state.program);
   return mapOpenTurn(state, (items) => {
     const last = items[items.length - 1];
     if (last && last.kind === kind) {
@@ -504,8 +563,59 @@ function appendText(
       copy[copy.length - 1] = { ...last, text: last.text + text };
       return copy;
     }
+    const rejoined = legacy ? rejoinSubagentSplit(items, text) : null;
+    if (rejoined) return rejoined;
     return [...items, { kind, id: nextId(), text }];
   });
+}
+
+/** `tool` (or a sub-agent step under it) updated by this frame; null when `id` is not in it. */
+function updateToolTree(tool: ToolCard, id: string, frame: Record<string, unknown>): ToolCard | null {
+  if (tool.id === id) return parseTool(frame, tool);
+  if (!tool.children) return null;
+  for (let index = 0; index < tool.children.length; index += 1) {
+    const child = updateToolTree(tool.children[index], id, frame);
+    if (!child) continue;
+    const children = tool.children.slice();
+    children[index] = child;
+    return { ...tool, children };
+  }
+  return null;
+}
+
+/** `tool` with `child` under its launcher (any depth); null when the launcher is not in it. */
+function addToolChild(tool: ToolCard, child: ToolCard): ToolCard | null {
+  if (tool.id === child.parent) return { ...tool, children: [...(tool.children ?? []), child] };
+  if (!tool.children) return null;
+  for (let index = 0; index < tool.children.length; index += 1) {
+    const nested = addToolChild(tool.children[index], child);
+    if (!nested) continue;
+    const children = tool.children.slice();
+    children[index] = nested;
+    return { ...tool, children };
+  }
+  return null;
+}
+
+/** Waiting sub-agent steps whose launcher is `tool` (or one of them), moved under it. */
+function adoptOrphans(tool: ToolCard, orphans: ToolCard[]): { tool: ToolCard; rest: ToolCard[] } {
+  let next = tool;
+  let rest = orphans;
+  for (let moved = true; moved && rest.length; ) {
+    moved = false;
+    const left: ToolCard[] = [];
+    for (const orphan of rest) {
+      const adopted = addToolChild(next, orphan);
+      if (adopted) {
+        next = adopted;
+        moved = true;
+      } else {
+        left.push(orphan);
+      }
+    }
+    rest = left;
+  }
+  return { tool: next, rest };
 }
 
 function onTool(state: DialogState, frame: Record<string, unknown>): DialogState {
@@ -516,17 +626,56 @@ function onTool(state: DialogState, frame: Record<string, unknown>): DialogState
     if (message.kind !== "turn") return message;
     let changed = false;
     const items = message.items.map((item) => {
-      if (item.kind !== "tool" || item.tool.id !== id) return item;
+      if (item.kind !== "tool") return item;
+      const tool = updateToolTree(item.tool, id, frame);
+      if (!tool) return item;
       found = true;
       changed = true;
-      return { ...item, tool: parseTool(frame, item.tool) };
+      return { ...item, tool };
     });
-    return changed ? { ...message, items } : message;
+    const orphans = message.orphans?.map((tool) => {
+      const next = updateToolTree(tool, id, frame);
+      if (!next) return tool;
+      found = true;
+      changed = true;
+      return next;
+    });
+    return changed ? { ...message, items, ...(orphans ? { orphans } : {}) } : message;
   });
   if (found) return { ...state, messages };
-  return mapOpenTurn({ ...state, messages }, (items) => [
+  const tool = parseTool(frame);
+  if (tool.parent) {
+    // A background sub-agent's step: under its Task/Agent tool, never in the
+    // main timeline (it would split the reply text it streams beside).
+    let attached = false;
+    const nested = messages.map((message) => {
+      if (attached || message.kind !== "turn") return message;
+      const items = message.items.map((item) => {
+        if (attached || item.kind !== "tool") return item;
+        const next = addToolChild(item.tool, tool);
+        if (!next) return item;
+        attached = true;
+        return { ...item, tool: next };
+      });
+      return attached ? { ...message, items } : message;
+    });
+    if (attached) return { ...state, messages: nested };
+    return mapOpenTurnMessage({ ...state, messages }, (turn) => ({
+      ...turn,
+      orphans: [...(turn.orphans ?? []), tool],
+    }));
+  }
+  let launched = tool;
+  const adopted = messages.map((message) => {
+    if (message.kind !== "turn" || !message.orphans?.length) return message;
+    const { tool: next, rest } = adoptOrphans(launched, message.orphans);
+    if (next === launched) return message;
+    launched = next;
+    return { ...message, orphans: rest };
+  });
+  return mapOpenTurn({ ...state, messages: adopted }, (items) => [
     ...items,
-    { kind: "tool", id: nextId(), tool: parseTool(frame) },
+    { kind: "tool", id: nextId(), tool: launched },
   ]);
 }
 

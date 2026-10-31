@@ -1,6 +1,7 @@
 "use client";
 import { cloudComputerRequest, type Computer } from "./cloud-computer-api";
 import type { ExecutionTarget } from "./execution-target";
+import { cacheUser, onUserScopedClear, readUserJson, writeUserJson } from "./user-scoped-cache";
 export type ComputerTaskSession = {
   id: string; task_id: string; computer_id: string; computer_name: string;
   kind: "acp" | "cli" | "terminal";
@@ -33,6 +34,7 @@ export function listComputerTaskSessions(taskId: string, options: Options = {}) 
   if (shared && Date.now() - shared.at < SHARE_IN_FLIGHT_MS) return shared.request;
   const request = cloudComputerRequest<{sessions: ComputerTaskSession[]}>(path).then((result) => {
     for (const session of result?.sessions ?? []) rememberComputerTaskSession(session);
+    if (Array.isArray(result?.sessions)) rememberTaskSessionList(taskId, result.sessions);
     return result;
   }).finally(() => { if (sessionListsInFlight.get(taskId)?.request === request) sessionListsInFlight.delete(taskId); });
   sessionListsInFlight.set(taskId, {at: Date.now(), request});
@@ -54,6 +56,25 @@ export function knownComputerTaskSession(id: string): ComputerTaskSession | null
   return (id && knownSessions.get(id)) || null;
 }
 
+// The last list read per task (this tab): reopening a task picks its conversation
+// from it at once while the list is read again (2026-10-31 task switch speed).
+const MAX_TASK_SESSION_LISTS = 100;
+const taskSessionLists = new Map<string, ComputerTaskSession[]>();
+function rememberTaskSessionList(taskId: string, sessions: ComputerTaskSession[]): void {
+  // Only for a known signed-in user (user-scoped cache; dropped on sign-out).
+  if (!cacheUser()) return;
+  taskSessionLists.delete(taskId);
+  taskSessionLists.set(taskId, sessions);
+  if (taskSessionLists.size > MAX_TASK_SESSION_LISTS) {
+    const oldest = taskSessionLists.keys().next().value;
+    if (oldest !== undefined) taskSessionLists.delete(oldest);
+  }
+}
+/** The task's session list as last read in this tab (null = never read here). */
+export function knownComputerTaskSessions(taskId: string): ComputerTaskSession[] | null {
+  return (taskId && cacheUser() && taskSessionLists.get(taskId)) || null;
+}
+
 /** A computer read within this long counts as known (its online state is refreshed anyway). */
 const KNOWN_COMPUTER_MS = 60_000;
 const knownComputers = new Map<string, {computer: Computer; at: number}>();
@@ -63,12 +84,37 @@ const computersInFlight = new Map<string, {at: number; request: Promise<Computer
 export function rememberComputer(computer: Computer): void {
   if (!computer?.id) return;
   knownComputers.set(computer.id, {computer, at: Date.now()});
+  persistComputer(computer);
   for (const watcher of computerWatchers.get(computer.id) ?? []) watcher(computer);
 }
 export function knownComputer(id: string): Computer | null {
   const known = id ? knownComputers.get(id) : undefined;
   return known && Date.now() - known.at <= KNOWN_COMPUTER_MS ? known.computer : null;
 }
+/** The fields a page needs to connect before the fresh row is in (no addresses / billing). */
+const PERSISTED_COMPUTER_FIELDS = ["id", "name", "source", "status", "edition", "node_online", "node_os", "confirmed_at", "created_at", "updated_at"] as const;
+function persistComputer(computer: Computer): void {
+  const row: Record<string, unknown> = {};
+  for (const field of PERSISTED_COMPUTER_FIELDS) if (computer[field] !== undefined) row[field] = computer[field];
+  writeUserJson(`computer:${computer.id}`, row);
+}
+/**
+ * The last row this browser read for the signed-in user, however old (memory,
+ * else localStorage). Optimistic: a page connects on its last known online state
+ * while the fresh read runs, and the fresh row replaces it (2026-10-31 model pill).
+ */
+export function lastKnownComputer(id: string): Computer | null {
+  if (!id || !cacheUser()) return null;
+  const known = knownComputers.get(id);
+  if (known) return known.computer;
+  const saved = readUserJson<Computer>(`computer:${id}`);
+  return saved && saved.id === id ? saved : null;
+}
+onUserScopedClear(() => {
+  knownSessions.clear();
+  taskSessionLists.clear();
+  knownComputers.clear();
+});
 /** Read one computer (concurrent reads share one request) and remember it. */
 export function loadComputer(id: string): Promise<Computer> {
   const shared = computersInFlight.get(id);

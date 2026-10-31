@@ -325,6 +325,9 @@ export function parseTool(frame: Record<string, unknown>, prev?: ToolCard): Tool
         : prev?.status ?? "pending",
     content: frame.content === undefined ? prev?.content ?? [] : parseContent(frame.content),
     locations: frame.locations === undefined ? prev?.locations ?? [] : parseLocations(frame.locations),
+    // A later update can lose the sub-agent stamp; the first one sticks.
+    ...(prev?.parent || str(frame.parent) ? { parent: prev?.parent || str(frame.parent).slice(0, 160) } : {}),
+    ...(prev?.children ? { children: prev.children } : {}),
   };
 }
 

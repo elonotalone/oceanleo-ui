@@ -35,7 +35,6 @@ import { PluginsPopover } from "./PluginsPopover";
 import { PayerSelector } from "./PayerSelector";
 import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
-import { ConversationSettingsButton } from "./cloud-computer/ConversationBar";
 import type { ExecutionTarget } from "../lib/execution-target";
 import type { ComputerTaskSession } from "../lib/computer-task-api";
 import type { ConversationTarget } from "./native-thread/types";
@@ -306,9 +305,6 @@ export interface LeoComposerProps {
   taskSessions?: ComputerTaskSession[];
   /** Replaces the model picker (e.g. a native program's model control); null hides it. */
   modelPickerSlot?: ReactNode;
-  /** Settings gear beside the Device control; shown only for native / terminal conversations. */
-  onOpenSettings?: () => void;
-  settingsOpen?: boolean;
   /** undefined=new draft; null=existing task still loading; otherwise immutable task target. */
   boundExecutionTarget?: ExecutionTarget | null;
 
@@ -367,8 +363,6 @@ export function LeoComposer({
   oceanleoDisabledReason,
   taskSessions,
   modelPickerSlot,
-  onOpenSettings,
-  settingsOpen = false,
   boundExecutionTarget,
   appsHost,
   onOpenPlugins,
@@ -656,9 +650,6 @@ export function LeoComposer({
               oceanleoDisabledReason={oceanleoDisabledReason}
               taskSessions={taskSessions}
             />
-          )}
-          {showComputerDock && onOpenSettings && nativeConversation && (
-            <ConversationSettingsButton onOpenSettings={onOpenSettings} settingsOpen={settingsOpen} />
           )}
           {showPlugins && (
             <>

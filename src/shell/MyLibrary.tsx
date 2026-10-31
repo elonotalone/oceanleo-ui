@@ -35,6 +35,8 @@ import {
   artifactTypeForLibraryKind,
   inferLibraryKind,
   isDurableLibraryItem,
+  isUploadedLibraryItem,
+  LIBRARY_UPLOAD_ROLE,
   libraryItemIdentityKey,
   sortLibraryItems,
   type LibrarySort,
@@ -557,7 +559,7 @@ function toEntry(
   item: LibraryItem,
   onDelete?: () => Promise<void>,
 ) {
-  const uploaded = item.meta.library_source === "upload";
+  const uploaded = isUploadedLibraryItem(item);
   const userAsset = item.meta.library_source === "asset";
   const publicFavorite =
     isDurableLibraryItem(item) &&
@@ -680,6 +682,11 @@ export function MyLibrary({
   });
   const [internalCategory, setInternalCategory] = useState(category ?? "all");
   const [favoritesOnly, setFavoritesOnly] = useState(onlyFavorites);
+  // "Uploaded" filter: files the user uploaded, across every type category.
+  const [uploadedOnly, setUploadedOnly] = useState(false);
+  // Owner-verified `/v1/library/mine?role=user_upload` page, so uploads older
+  // than the mixed first page still show while the filter is on.
+  const [uploadedItems, setUploadedItems] = useState<LibraryItem[]>([]);
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -792,6 +799,12 @@ export function MyLibrary({
       checked: favoritesOnly,
       onSelect: () => setFavoritesOnly((value) => !value),
     },
+    {
+      id: "uploaded",
+      label: tt("仅看上传"),
+      checked: uploadedOnly,
+      onSelect: () => setUploadedOnly((value) => !value),
+    },
   ];
 
   const requestEpochRef = useRef(0);
@@ -807,7 +820,7 @@ export function MyLibrary({
     );
     return documentsFirstItems(
       dedupeDurableItems([
-        ...ownedItems.map((item) =>
+        ...[...ownedItems, ...(uploadedOnly ? uploadedItems : [])].map((item) =>
           favoriteIdentity.has(libraryItemIdentityKey(item))
             ? withFavoriteState(item, true)
             : item,
@@ -815,7 +828,7 @@ export function MyLibrary({
         ...favoriteItems,
       ]),
     );
-  }, [favoriteItems, ownedItems]);
+  }, [favoriteItems, ownedItems, uploadedItems, uploadedOnly]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -1305,11 +1318,34 @@ export function MyLibrary({
   useEffect(() => {
     if (!action?.nonce || lastActionNonceRef.current === action.nonce) return;
     lastActionNonceRef.current = action.nonce;
+    // A chat upload opens here with the Uploaded filter on; its type category
+    // (`action.category`) is applied by WorkspaceLibrary.
+    if (action.action?.filter === "uploaded") setUploadedOnly(true);
     // A result card can be clicked immediately after its durable artifact row
     // is inserted. Revalidate the per-user cache; WorkspaceLibrary retries the
     // same itemId/URL action when the fresh entry list arrives, then opens it.
     void load();
   }, [action?.nonce, load]);
+
+  useEffect(() => {
+    if (!uploadedOnly || !ownerPrincipalId) {
+      setUploadedItems([]);
+      return;
+    }
+    const controller = new AbortController();
+    void listMyArtifacts({ role: LIBRARY_UPLOAD_ROLE, limit: 100, signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        // Same owner gate as the main list: never adopt another principal's rows.
+        setUploadedItems(
+          result.ok && result.data && result.data.ownerPrincipalId === ownerPrincipalId
+            ? result.data.items
+            : [],
+        );
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [uploadedOnly, ownerPrincipalId, refreshNonce, action?.nonce]);
 
   const openLibraryItem = useCallback(
     (item: LibraryItem) => {
@@ -1830,6 +1866,7 @@ export function MyLibrary({
           .filter(
             (item) =>
               (!favoritesOnly || item.favorite) &&
+              (!uploadedOnly || isUploadedLibraryItem(item)) &&
               (!itemFilter || itemFilter(item)),
           )
           .map((item) => {
@@ -1842,7 +1879,7 @@ export function MyLibrary({
               owned ? () => removeItem(item) : undefined,
             );
           }),
-        ...(favoritesOnly
+        ...(favoritesOnly || uploadedOnly
           ? []
           : featuredEntries.filter(
               (entry) =>
@@ -1867,6 +1904,7 @@ export function MyLibrary({
       itemFilter,
       orderedItems,
       favoritesOnly,
+      uploadedOnly,
       ownerPrincipalId,
       previewIntentItem,
       removeItem,

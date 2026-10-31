@@ -1646,6 +1646,8 @@ export async function resolveArtifactEditOwnership(
 
 export async function listMyArtifacts(options: {
   artifactType?: ArtifactType | "";
+  /** Revision role filter, e.g. `user_upload` for the Library "Uploaded" filter. */
+  role?: string;
   offset?: number;
   cursor?: string;
   limit?: number;
@@ -1655,6 +1657,7 @@ export async function listMyArtifacts(options: {
     limit: boundedLibraryLimit(options.limit),
   });
   setTrimmedParam(params, "artifactType", options.artifactType);
+  setTrimmedParam(params, "role", options.role);
   const offset = boundedLibraryOffset(options.offset ?? options.cursor);
   if (offset > 0) params.set("offset", String(offset));
   const result = await artifactRequest<unknown>(

@@ -106,6 +106,10 @@ export type ToolCard = {
   status: ToolStatus;
   content: ToolContent[];
   locations: ToolLocation[];
+  /** Background sub-agent tool: the id of the Task/Agent tool that launched it. */
+  parent?: string;
+  /** Sub-agent steps of this Task/Agent tool; they never enter the main timeline. */
+  children?: ToolCard[];
 };
 
 export type PlanEntry = {
@@ -155,7 +159,7 @@ export type TurnItem =
 
 export type DialogAttachmentState = "uploading" | "done" | "error";
 
-export type ArchivedAttachment = { id: string; name: string; mime: string; size: number; download_path: string };
+export type ArchivedAttachment = { id: string; name: string; mime: string; size: number; download_path: string; artifact_id?: string };
 
 export type DialogAttachment = {
   archive?: ArchivedAttachment;
@@ -187,7 +191,8 @@ export type UserMessageAttachment = {
 export type AgentDialogMessage =
   // at: epoch ms the user sent it, when known (a live send here, or a frame that carries a time); drives the chat time line.
   | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: UserMessageAttachment[]; at?: number }
-  | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[]; live?: boolean }
+  // orphans: sub-agent tools whose Task/Agent tool has not arrived yet; adopted when it does, never shown on their own.
+  | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[]; live?: boolean; orphans?: ToolCard[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
   | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string };
 
