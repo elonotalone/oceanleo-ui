@@ -206,6 +206,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         const result = await client.sendInput(deviceId, sessionId, ++sequenceRef.current, action, { signal });
         if (signal.aborted || sessionRef.current !== sessionId) return;
         if (!result.ok) {
+          // HTTP-v1 is only a compatibility path. A lost move reply has an unknown
+          // outcome, so never replay that sequence; discard it and keep the newest
+          // pointer position flowing instead of freezing the whole queue.
+          if (action.kind === "move" && (result.error === "request_timeout" || result.error === "network_error")) {
+            continue;
+          }
           // Unknown ACK must never be replayed. End the session, including held input.
           queueRef.current = [];
           updatePhase(terminal(result.error));
@@ -222,6 +228,14 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     if (!canSend()) return;
     if (streamModeRef.current) {
       if (streamRef.current?.send(action) && action.kind !== "release_all") { completedHandoff.current = null; setHandoffDone(false); }
+      return;
+    }
+    if (action.kind === "move") {
+      const last = queueRef.current[queueRef.current.length - 1];
+      if (last?.kind === "move") queueRef.current[queueRef.current.length - 1] = action;
+      else if (queueRef.current.length < 64) queueRef.current.push(action);
+      else return;
+      void pump();
       return;
     }
     if (queueRef.current.length >= 64) { setMessage("操作太快，部分输入被丢弃了。"); return; }

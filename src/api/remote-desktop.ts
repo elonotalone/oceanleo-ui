@@ -157,6 +157,8 @@ export interface RemoteDesktopRequestOptions {
 
 /** One HTTP attempt never waits longer than this for its reply (lossy paths drop replies). */
 export const REQUEST_TIMEOUT_MS = 10_000;
+/** Input fallback calls must not hold the pointer behind a dead HTTP reply. */
+export const INPUT_REQUEST_TIMEOUT_MS = 1_500;
 /** createSession keeps retrying the same request id for at most this long. */
 export const CREATE_RETRY_WINDOW_MS = 30_000;
 
@@ -734,6 +736,7 @@ export const remoteDesktopClient: RemoteDesktopClient = {
       `${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/input`,
       { method: "POST", body: JSON.stringify({ seq, action }) },
       options?.signal,
+      INPUT_REQUEST_TIMEOUT_MS,
     );
     return result;
   },
