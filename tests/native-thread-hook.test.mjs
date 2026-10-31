@@ -243,6 +243,28 @@ test("online: opens the bound native session, send carries task_session_id, answ
   } finally { view.cleanup(); }
 });
 
+test("a terminal managed run never keeps the Stop state from a stale live turn", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__taskApi = { async transcript() {
+    return { session: session({ run_status: "failed" }), frames: [], saved_at: null, sync_status: "saved", has_older: false, next_before: null };
+  } };
+  const view = await mount({
+    computer: { id: "cc_1", name: "elon", node_online: true },
+    session: session({ run_status: "failed" }), enabled: true,
+  });
+  try {
+    await until(() => sent().some((frame) => frame.t === "open_session"), "open terminal session");
+    const socket = openSocket();
+    socket.busy = ["nat-1"];
+    await act(async () => {
+      socket.server({ t: "turn_start", program: "codex", acp_session: "nat-1" });
+      socket.server({ t: "delta", program: "codex", acp_session: "nat-1", text: "stale output" });
+      socket.server({ t: "occupancy", program: "codex", busy: ["nat-1"] });
+    });
+    assert.equal(globalThis.__thread.running, false);
+  } finally { view.cleanup(); }
+});
+
 test("online without a native id: first prompt creates the session and reports it once", async () => {
   FakeSocket.sockets = [];
   globalThis.__taskApi = { async transcript() { return { session: session({ native_session_id: null }), frames: [], saved_at: null, sync_status: "pending" }; } };

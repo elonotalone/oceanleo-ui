@@ -133,6 +133,11 @@ function nativeProgramOf(session: ComputerTaskSession | null): WsProgram | null 
   return isWsProgram(session.program) ? session.program : null;
 }
 
+/** A managed run can finish with a stale live turn still present in the socket. */
+function terminalRun(session: ComputerTaskSession | null): boolean {
+  return session?.run_status === "completed" || session?.run_status === "failed" || session?.run_status === "cancelled";
+}
+
 function hasConversation(messages: AgentDialogMessage[]): boolean {
   return messages.some((message) => message.kind === "user" || message.kind === "turn");
 }
@@ -355,7 +360,11 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     offline: dialog.offline,
     sessionLoading: dialog.sessionLoading,
   });
-  const running = live && (occupancyMode === "working" || dialog.busy);
+  // The persisted task-session state is authoritative once a run is terminal.
+  // A reconnect/error frame can leave the controller's old live-turn bit set;
+  // without this guard the composer keeps showing Stop forever and cancel has
+  // nothing live left to cancel (the exact failure seen on task history pages).
+  const running = live && !terminalRun(session) && (occupancyMode === "working" || dialog.busy);
 
   const row = program ? dialog.programs.find((item) => item.id === program) : undefined;
   const name = program ? PROGRAM_LABEL[program] : "";
