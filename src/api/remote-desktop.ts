@@ -13,6 +13,7 @@ import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
 import { RemoteInputScheduler } from "./remote-desktop-scheduler";
+import { isNetworkFailure, newRequestId } from "./remote-desktop-retry";
 import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
 import type { RemoteDesktopQualityReport, RemoteMediaQualitySink } from "./remote-desktop-quality";
 export interface RemoteMediaCredentials {
@@ -145,7 +146,21 @@ export interface RemoteDesktopApiResult<T> {
 /** 网站侧的每个请求都可以带 AbortSignal，关闭面板即取消在途请求。 */
 export interface RemoteDesktopRequestOptions {
   signal?: AbortSignal;
+  /**
+   * createSession: the viewer's idempotency key. A retry with the same id (its first reply
+   * lost on a lossy path) gets the same session back instead of a second consent request.
+   */
+  requestId?: string;
+  /** openStream on re-attach: continue input numbering above this (the previous socket's last seq). */
+  sequenceFloor?: number;
 }
+
+/** One HTTP attempt never waits longer than this for its reply (lossy paths drop replies). */
+export const REQUEST_TIMEOUT_MS = 10_000;
+/** createSession keeps retrying the same request id for at most this long. */
+export const CREATE_RETRY_WINDOW_MS = 30_000;
+
+export { isNetworkFailure, newRequestId };
 
 export interface RemoteDesktopClient {
   negotiateMedia?(deviceId: string, sessionId: string, displayId?: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteMediaResponse>>;
@@ -205,6 +220,7 @@ export interface RemoteDesktopStream {
   finishHandoff(): void;
   send(action: RemoteDesktopAction): boolean;
   acknowledgeFrame(sequence: number): void;
+  acknowledgeMediaFrame?(): void;
   /**
    * Input goes peer-to-peer while a lane is attached and the gateway path is drained; the
    * WebSocket path stays the automatic fallback. `null` detaches (lane broke or video ended).
@@ -212,6 +228,8 @@ export interface RemoteDesktopStream {
   attachDataChannel?(lane: RemoteDesktopDataLane | null): void;
   /** Which path the last input took (diagnostics/UI only). */
   inputPath?(): "data_channel" | "websocket";
+  /** Highest input seq used on this socket (both lanes): the floor for a re-attached stream. */
+  lastSequence?(): number;
   close(): void;
 }
 
@@ -226,6 +244,8 @@ export interface RemoteDesktopStreamHandlers {
   congestion?(busy: boolean): void;
   /** Access/billing from the state snapshot (only when the gateway sends them). */
   session?(info: RemoteDesktopSessionInfo): void;
+  /** Gateway milestones in ms since the request was created (created, consented, attached, media, publishing, active). */
+  serverTiming?(timing: Record<string, number>): void;
   /** The computer refused input because it allows viewing only (never retried). */
   inputRefused?(code: "input_not_allowed"): void;
 }
@@ -379,6 +399,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     congestion: (busy) => handlers.congestion?.(busy),
     failure: fail,
   });
+  if (options?.sequenceFloor) scheduler.seed(options.sequenceFloor);
   const stream: RemoteDesktopStream = {
     releaseForHandoff() {
       if (ended || !ready || state !== "active") return Promise.reject(new Error("input_ack_unknown"));
@@ -396,6 +417,8 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     },
     attachDataChannel(next) { if (next !== lane) { dropLane(); lane = ended ? null : next; } },
     inputPath: () => lastPath,
+    lastSequence: () => scheduler.lastSequence(),
+    acknowledgeMediaFrame() { send({ type: "media_ready" }); },
     acknowledgeFrame(value) {
       if (decoding?.sequence === value) decoding = null;
       pendingFrameAck = Math.max(pendingFrameAck ?? 0, value);
@@ -453,6 +476,8 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (data.type !== "state" || !["pending_consent", "connecting", "active", "closed"].includes(String(data.state))) { fail("response_malformed"); return; }
     state = data.state as RemoteDesktopSessionState;
     if (handoff && state !== "active") { fail("input_ack_unknown"); return; }
+    // First snapshot of a re-attached socket: continue above what the session already took.
+    if (!ready && typeof data.input_seq === "number") scheduler.seed(data.input_seq);
     if (state !== "closed" && typeof data.acked_seq === "number") {
       scheduler.executedThrough(data.acked_seq);
       if (!ended) timings.completedThrough(data.acked_seq);
@@ -460,6 +485,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (ended) return;
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }
     if ("access" in data || "billing" in data) handlers.session?.({ access: parseRemoteAccess(data.access), billing: parseRemoteBilling(data.billing) });
+    if (isRecord(data.timing)) handlers.serverTiming?.(Object.fromEntries(Object.entries(data.timing).filter(([, value]) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0)) as Record<string, number>);
     handlers.state(state, data.error === "stream_failed" ? "network_error" : typeof data.error === "string" ? data.error : undefined);
     if ("media" in data) {
       const media = data.media === null ? null : parseRemoteMedia(data.media);
@@ -493,42 +519,57 @@ async function authed<T>(
   path: string,
   init: RequestInit = {},
   signal?: AbortSignal,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<RemoteDesktopApiResult<T>> {
   const token = await accessToken();
   if (!token) return { ok: false, error: "unauthorized", status: 401 };
   let controller: Record<string, string>;
   try { controller = controllerHeaders(); }
   catch { return { ok: false, error: "controller_identity_unavailable", status: 0 }; }
+  if (signal?.aborted) return { ok: false, error: "aborted", status: 0 };
 
-  let response: Response;
+  // On a lossy path the request can reach the gateway while its reply never returns:
+  // never wait forever (the caller retries idempotently where that is safe).
+  const local = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; local.abort(); }, timeoutMs);
+  const forward = () => local.abort();
+  signal?.addEventListener("abort", forward, { once: true });
+  const failed = () => ({ ok: false as const, error: timedOut ? "request_timeout" : signal?.aborted ? "aborted" : "network_error", status: 0 });
   try {
-    response = await fetch(`${GATEWAY_BASE}${path}`, {
-      ...init,
-      ...(signal ? { signal } : {}),
-      headers: {
-        ...(init.headers || {}),
-        Authorization: `Bearer ${token}`,
-        ...controller,
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-      },
-      cache: "no-store",
-      credentials: "include",
-    });
-  } catch {
-    if (signal?.aborted) return { ok: false, error: "aborted", status: 0 };
-    return { ok: false, error: "network_error", status: 0 };
-  }
+    let response: Response;
+    try {
+      response = await fetch(`${GATEWAY_BASE}${path}`, {
+        ...init,
+        signal: local.signal,
+        headers: {
+          ...(init.headers || {}),
+          Authorization: `Bearer ${token}`,
+          ...controller,
+          ...(init.body ? { "Content-Type": "application/json" } : {}),
+        },
+        cache: "no-store",
+        credentials: "include",
+      });
+    } catch {
+      return failed();
+    }
 
-  let data: unknown = null;
-  try {
-    data = await response.json();
-  } catch {
-    // 空体或非 JSON：成功时按空处理，失败时落到 HTTP 码。
+    let data: unknown = null;
+    try {
+      data = await response.json();
+    } catch {
+      // 空体或非 JSON：成功时按空处理，失败时落到 HTTP 码。读到一半超时/取消不算成功。
+      if (timedOut || signal?.aborted) return failed();
+    }
+    if (!response.ok) {
+      return { ok: false, error: errorCode(data, response.status), status: response.status };
+    }
+    return { ok: true, data: data as T, status: response.status };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", forward);
   }
-  if (!response.ok) {
-    return { ok: false, error: errorCode(data, response.status), status: response.status };
-  }
-  return { ok: true, data: data as T, status: response.status };
 }
 
 function base(deviceId: string): string {
@@ -642,11 +683,22 @@ export const remoteDesktopClient: RemoteDesktopClient = {
   async createSession(deviceId, options) {
     const registered = await registerController(options?.signal);
     if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
-    const result = await authed<unknown>(
-      `${base(deviceId)}/sessions`,
-      { method: "POST", body: "{}" },
-      options?.signal,
-    );
+    // One request id for every attempt: the gateway hands a retry the session the first
+    // attempt created (its reply lost on the way) instead of a second consent request.
+    const body = JSON.stringify({ request_id: options?.requestId ?? newRequestId(), media: ["artc-v1"], first_frame_ack: true });
+    const started = Date.now();
+    let result: RemoteDesktopApiResult<unknown>;
+    for (let delay = 500; ; delay = Math.min(delay * 2, 4000)) {
+      result = await authed<unknown>(`${base(deviceId)}/sessions`, { method: "POST", body }, options?.signal);
+      if (result.ok || !isNetworkFailure(result.error) || options?.signal?.aborted) break;
+      if (Date.now() - started + delay >= CREATE_RETRY_WINDOW_MS) break;
+      await new Promise<void>((resolve) => {
+        const done = () => { clearTimeout(timer); options?.signal?.removeEventListener("abort", done); resolve(); };
+        const timer = setTimeout(done, delay);
+        options?.signal?.addEventListener("abort", done, { once: true });
+      });
+      if (options?.signal?.aborted) return { ok: false, error: "aborted", status: 0 };
+    }
     if (!result.ok) return { ok: false, error: result.error, status: result.status };
     const data = result.data;
     if (!isRecord(data) || typeof data.session_id !== "string" || !data.session_id || (data.state !== "pending_consent" && data.state !== "connecting")) {

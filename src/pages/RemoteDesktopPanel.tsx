@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { remoteDesktopClient, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopBilling, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteMediaStatus } from "../api/remote-desktop";
+import { remoteDesktopClient, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopBilling, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
+import { isNetworkFailure, newRequestId } from "../api/remote-desktop-retry";
 import { RemoteDesktopVideo, remoteFrameStyle } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
 import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteChordKey, remoteKeyboardKey, remoteDesktopErrorCopy, remoteDesktopNoticeCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
@@ -62,6 +63,8 @@ export interface RemoteDesktopAgentBanner {
 /** `idle`: no session requested; only a click on 连接 sends one. */
 type Phase = "idle" | "starting" | "waiting" | "connecting" | "active" | "closed" | "error" | "denied" | "timed_out" | "revoked" | "signed_out";
 const terminal = (code?: string): Phase => code === "denied" ? "denied" : code === "request_expired" ? "timed_out" : code === "signed_out" ? "signed_out" : code === "revoked" || code === "controller_revoked" ? "revoked" : "error";
+/** How long a dropped viewer stream keeps re-attaching to its session (the gateway keeps it 40 s). */
+export const RECONNECT_WINDOW_MS = 35_000;
 const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
   const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
   const timer = setTimeout(done, ms);
@@ -156,6 +159,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const previousCloseRef = useRef<Promise<unknown>>(Promise.resolve());
   const reconnectAttempts = useRef(0);
   const reconnectTicket = useRef<RemoteDesktopTicket | null>(null);
+  /** The viewer stream dropped; it is re-attaching to the SAME session (no new request/consent/billing). */
+  const [reconnecting, setReconnecting] = useState(false);
+  const reconnectingRef = useRef(false);
+  /** Click -> first picture step timings (ms), client and gateway side; shown on the root element. */
+  const [connectTiming, setConnectTiming] = useState("");
+  const markRef = useRef<((name: string) => void) | null>(null);
   const queueRef = useRef<RemoteDesktopAction[]>([]);
   const pumpingRef = useRef<AbortSignal | null>(null);
   const sequenceRef = useRef(0);
@@ -183,7 +192,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     toolbarTimer.current = setTimeout(() => { if (phaseRef.current === "active") setToolbar(false); }, 2200);
   }, []);
 
-  const canSend = useCallback(() => !handoffRef.current && !closedRef.current && !viewOnlyRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
+  const canSend = useCallback(() => !handoffRef.current && !closedRef.current && !reconnectingRef.current && !viewOnlyRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
     && (mediaModeRef.current !== "artc" || Boolean(mediaFrameGeometry.current && mediaFrameGeometry.current === mediaGeometryKey(mediaStatusRef.current))), []);
 
   const pump = useCallback(async () => {
@@ -343,18 +352,26 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     let mediaAttempted = false, mediaDescriptorSeen = false;
     document.body.style.overflow = "hidden";
     setCoarse(Boolean(window.matchMedia?.("(pointer: coarse)").matches));
+    setReconnecting(false); reconnectingRef.current = false; setConnectTiming("");
+    // Step timings of this connection (ms since the click started it). Diagnostics only.
+    const clickedAt = performance.now();
+    const marks: Record<string, number> = {};
+    let gatewayTiming: Record<string, number> = {};
+    const mark = (name: string) => {
+      if (name in marks) return;
+      marks[name] = Math.max(0, Math.round(performance.now() - clickedAt));
+      setConnectTiming([...Object.entries(marks), ...Object.entries(gatewayTiming).map(([key, value]) => [`gw_${key}`, value])].map(([key, value]) => `${key}=${value}`).join(" "));
+    };
+    markRef.current = mark;
+    let wakeRetry: (() => void) | null = null;
+    const online = () => wakeRetry?.();
+    window.addEventListener("online", online);
     const end = (error?: string, status?: number) => {
+      // A closed session is final. Network trouble on a live session never comes here first:
+      // `reattach` re-joins the same session (no second request, consent prompt or bill).
       disconnect();
       setFrame(null);
-      if ((error === "network_error" || error === "stream_failed") && reconnectAttempts.current === 0) {
-        reconnectAttempts.current++;
-        const next = remoteDesktopTicket();
-        reconnectTicket.current = next;
-        setTicket(next);
-        updatePhase("starting");
-        revealToolbar();
-        return;
-      }
+      reconnectingRef.current = false; setReconnecting(false);
       updatePhase(terminal(error));
       setMessage(remoteDesktopErrorCopy(error, status));
       revealToolbar();
@@ -363,32 +380,43 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       // Allow cleanup to finish first, but a broken network must not stall the retry indefinitely.
       await Promise.race([previousCloseRef.current, wait(1500, abort.signal)]);
       if (abort.signal.aborted) return;
-      const result = await client.createSession(deviceId, { signal: abort.signal });
+      mark("request");
+      // One id per click; the client retries a lost reply with it (same session back).
+      const result = await client.createSession(deviceId, { signal: abort.signal, requestId: newRequestId() });
       if (abort.signal.aborted) {
         if (result.ok && result.data) void client.closeSession(deviceId, result.data.session_id).catch(() => {});
         return;
       }
       if (!result.ok || !result.data) { end(result.error, result.status); return; }
+      mark("session");
       sessionRef.current = result.data.session_id;
       if (result.data.billing) setBilling(result.data.billing);
       updatePhase(result.data.state === "pending_consent" ? "waiting" : "connecting");
       if (client.openStream && result.data.transport === "websocket-v2") {
         streamModeRef.current = true;
-        const opened = await client.openStream(deviceId, result.data.session_id, {
+        const sessionId = result.data.session_id;
+        const handlers: RemoteDesktopStreamHandlers = {
           state(state, error) {
             if (abort.signal.aborted) return;
             if (state === "closed") end(error || "session_closed");
             else {
-              if (state === "active" && client.negotiateMedia && !mediaAttempted) {
+              if (state !== "pending_consent") mark("consented");
+              // Negotiate video the moment the computer consents: the gateway counts the session
+              // as live (and bills) only once that video is publishing, so waiting for "active"
+              // here would deadlock, and it used to cost a full device report round trip.
+              if ((state === "connecting" || state === "active") && client.negotiateMedia && !mediaAttempted) {
                 mediaAttempted = true;
                 mediaModeRef.current = "artc"; setMediaMode("artc"); setFrame(null);
               }
+              if (state === "active") mark("active");
               updatePhase(state === "pending_consent" ? "waiting" : state);
             }
           },
+          serverTiming(timing) { gatewayTiming = timing; if (!abort.signal.aborted) mark("gateway"); },
           frame(value) {
             if (abort.signal.aborted || phaseRef.current !== "active") return;
             if (mediaModeRef.current === "artc") { streamRef.current?.acknowledgeFrame(value.sequence); return; }
+            mark("first_frame");
             setFrame(value);
           },
           media(media, status) {
@@ -402,7 +430,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             if (media) mediaDescriptorSeen = true;
             else if (mediaDescriptorSeen) end("media_session_closed");
           },
-          error(code) { if (!abort.signal.aborted) end(code); },
+          error(code) {
+            if (abort.signal.aborted) return;
+            // The socket broke (lossy path, Wi-Fi switch, sleep): the session is still there.
+            if (isNetworkFailure(code)) void reattach();
+            else end(code);
+          },
           congestion(busy) {
             if (abort.signal.aborted) return;
             setMessage((current) => busy ? "输入队列暂时繁忙，请稍后重试。" : current === "输入队列暂时繁忙，请稍后重试。" ? "" : current);
@@ -418,10 +451,58 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             acceptAccess({ input_allowed: false, audio: false });
             setMessage("对方仅允许查看，输入没有发送。");
           },
-        }, { signal: abort.signal });
-        if (abort.signal.aborted) opened.data?.close();
-        else if (opened.ok && opened.data) { streamRef.current = opened.data; opened.data.attachDataChannel?.(laneRef.current); }
-        else end(opened.error, opened.status);
+        };
+        const adopt = (opened: RemoteDesktopApiResult<RemoteDesktopStream>): boolean => {
+          if (abort.signal.aborted || closedRef.current) { opened.data?.close(); return true; }
+          if (!opened.ok || !opened.data) return false;
+          streamRef.current = opened.data; opened.data.attachDataChannel?.(laneRef.current);
+          // Back on the same session: let go of anything held before the drop, first.
+          if (reconnectingRef.current) {
+            opened.data.send({ kind: "release_all" });
+            if (mediaFrameGeometry.current) opened.data.acknowledgeMediaFrame?.();
+          }
+          reconnectingRef.current = false; setReconnecting(false);
+          return true;
+        };
+        /**
+         * Re-attach to the SAME session with backoff while the gateway keeps it
+         * (VIEWER_RECONNECT_S = 40 s there). No new request, no new consent prompt on the
+         * computer, no new bill; the gateway starts no minute while we are away.
+         */
+        const reattach = async () => {
+          if (reconnectingRef.current || abort.signal.aborted || closedRef.current) return;
+          const lost = streamRef.current;
+          streamRef.current = null;
+          const floor = lost?.lastSequence ? lost.lastSequence() + 1 : 0;
+          lost?.close();
+          reconnectingRef.current = true; setReconnecting(true);
+          releaseInput(); revealToolbar();
+          reconnectAttempts.current++;
+          const started = Date.now();
+          for (let delay = 500; !abort.signal.aborted && !closedRef.current; delay = Math.min(delay * 2, 4000)) {
+            // Offline: wait for the browser's "online" (or the next backoff tick) before trying.
+            if (typeof navigator === "undefined" || navigator.onLine !== false) {
+              const opened = await client.openStream!(deviceId, sessionId, handlers, { signal: abort.signal, sequenceFloor: floor });
+              if (adopt(opened)) return;
+              if (!isNetworkFailure(opened.error)) { end(opened.error, opened.status); return; }
+            }
+            const left = RECONNECT_WINDOW_MS - (Date.now() - started);
+            if (left <= 0) break;
+            await new Promise<void>((resolve) => {
+              const done = () => { clearTimeout(timer); if (wakeRetry === done) wakeRetry = null; abort.signal.removeEventListener("abort", done); resolve(); };
+              const timer = setTimeout(done, Math.min(delay, left));
+              wakeRetry = done;
+              abort.signal.addEventListener("abort", done, { once: true });
+            });
+          }
+          if (!abort.signal.aborted && !closedRef.current) end("reconnect_timeout");
+        };
+        const opened = await client.openStream(deviceId, sessionId, handlers, { signal: abort.signal });
+        if (!adopt(opened)) {
+          mark("stream_failed");
+          if (isNetworkFailure(opened.error)) void reattach();
+          else end(opened.error, opened.status);
+        } else mark("stream");
         return;
       }
       streamModeRef.current = false;
@@ -458,6 +539,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     }
     return () => {
       cancelled = true;
+      window.removeEventListener("online", online);
+      wakeRetry = null;
+      markRef.current = null;
       disconnect();
       document.body.style.overflow = previousOverflow;
       releaseRemoteDesktopFullscreen();
@@ -691,12 +775,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const active = phase === "active";
   // `direct`: the computer approves without a dialog, so this is only the connection; `ask`: a person must approve there.
   const waiting = consent === "direct" ? CLOUD_AGENT_COPY.statusConnecting : consent === "ask" ? CLOUD_AGENT_COPY.waitConsent : "等待这台电脑确认…";
-  const reconnecting = ticket === reconnectTicket.current && ["starting", "waiting", "connecting"].includes(phase);
   // Ended sessions: the top bar says only 「已断开」; the full reason is shown once, in the center.
   const ended = !active && !reconnecting && !["idle", "starting", "waiting", "connecting"].includes(phase);
   const status = reconnecting ? "网络连接中断，正在重新连接…" : phase === "idle" ? CLOUD_AGENT_COPY.remoteIdle : phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? waiting : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
   return createPortal(
     <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady}
+      data-remote-reconnecting={reconnecting || undefined} data-remote-connect-timing={connectTiming || undefined}
       data-remote-media-blocked-host={mediaDiagnostic?.blocked_host} data-remote-media-sdk-error={mediaDiagnostic?.sdk_error} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
       <div ref={stageRef} data-remote-stage tabIndex={0} aria-label={tt("远程桌面")}
         onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp}
@@ -705,17 +789,19 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) releaseInput(); }}
         /* D6: the controller's own OS cursor stays visible over the video; no remote cursor is drawn. */
         style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", cursor: panMode && !fit ? "grab" : "default", overflow: fit ? "hidden" : "auto" }}>
-        {mediaMode === "artc" && active && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId}
+        {mediaMode === "artc" && (active || phase === "connecting") && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId}
           fit={fit} width={frame?.width} height={frame?.height}
           onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); }}
           onDiagnostic={setMediaDiagnostic}
           onFrame={(width, height) => {
+            markRef.current?.("first_frame");
             const status = mediaStatusRef.current;
             const geometry = mediaGeometryKey(status);
             if (!geometry || (displayId && status?.geometry?.display_id !== displayId) || !mediaFrameMatches(status, width, height)) return;
             if (mediaFrameGeometry.current !== geometry || !frameRef.current || frameRef.current.width !== width || frameRef.current.height !== height) {
               const next = { image: "", width, height, sequence: 0 }; frameRef.current = next; setFrame(next);
             }
+            if (mediaFrameGeometry.current !== geometry) streamRef.current?.acknowledgeMediaFrame?.();
             mediaFrameGeometry.current = geometry;
             setMediaReady(true);
           }}
@@ -730,14 +816,15 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
           style={remoteFrameStyle(fit, frame.width, frame.height)} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}</div>}
-        {mediaMode === "artc" && active && !mediaReady ? <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090be8", pointerEvents: "none" }}>{tt(mediaNotice)}</div> : null}
+        {reconnecting ? <div role="status" data-remote-reconnecting-notice style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090bcc", pointerEvents: "none" }}>{tt("网络连接中断，正在重新连接…")}</div>
+          : mediaMode === "artc" && (active || phase === "connecting") && !mediaReady ? <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090be8", pointerEvents: "none" }}>{tt(mediaNotice)}</div> : null}
         <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
           style={{ position: "absolute", left: "50%", top: "50%", width: 1, height: 1, opacity: 0, padding: 0, border: 0, resize: "none" }} />
       </div>
       <div onPointerEnter={revealToolbar} onFocus={revealToolbar} style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: `translate(-50%, ${toolbar || !active ? "0" : "-150%"})`, transition: "transform .18s", display: "flex", alignItems: "center", gap: 16, padding: "9px 14px", borderRadius: 12, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deviceName}</span>
-        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : ended ? "已断开" : status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
+        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(reconnecting ? "网络连接中断，正在重新连接…" : active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : ended ? "已断开" : status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
         {active && access?.input_allowed === false ? <span data-remote-view-only style={{ whiteSpace: "nowrap", color: "#f5c76b" }}>{tt("对方仅允许查看")}</span> : null}
         {active && billing ? <span data-remote-billing style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt("按分钟从账户余额扣费 · {price}/分钟 · 已计 {minutes} 分钟", { price: billingPrice(billing), minutes: String(billing.charged_minutes) })}</span> : null}
         {/* D7: one icon toggle, the tooltip names what a click does. */}

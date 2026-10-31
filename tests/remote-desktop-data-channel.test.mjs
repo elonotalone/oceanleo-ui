@@ -287,3 +287,13 @@ test("a screen subscribe error with no frame afterwards becomes media_subscribe_
     await viewer.close();
   } finally { t.mock.timers.reset(); }
 });
+
+
+test("decoded media receipt is sent over the authenticated stream without injecting input", async () => {
+  const { socket, stream } = await streamHarness();
+  try {
+    socket.sent.length = 0;
+    stream.acknowledgeMediaFrame();
+    assert.deepEqual(socket.sent, [{ type: "media_ready" }]);
+  } finally { stream.close(); }
+});

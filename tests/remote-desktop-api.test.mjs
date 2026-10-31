@@ -389,3 +389,35 @@ test("generic stream failure is mapped to network error while explicit device of
 
 test('real websocket handoff accepts execution before acceptance and gates new input through CAS',async()=>{const {socket,stream}=await streamHarness();try{socket.message({type:'state',state:'active',acked_seq:0});stream.send({kind:'key_down',key:'Shift'});let done=false;const p=stream.releaseForHandoff().then(()=>{done=true;});const release=socket.sent.filter(x=>x.type==='input'&&x.action.kind==='release_all').at(-1);socket.message({type:'input_ack',seq:release.seq});await Promise.resolve();assert.equal(done,false);assert.equal(stream.send({kind:'type',text:'late'}),false);socket.message({type:'state',state:'active',acked_seq:release.seq});await p;assert.equal(stream.send({kind:'keypress',key:'Enter'}),false);stream.finishHandoff();assert.equal(stream.send({kind:'keypress',key:'Enter'}),true);}finally{stream.close();}});
 test('closed websocket cannot confirm an old handoff with a late execution state',async()=>{const {socket,stream}=await streamHarness();socket.message({type:'state',state:'active',acked_seq:0});const p=stream.releaseForHandoff(),rejected=assert.rejects(p,/input_ack_unknown/);stream.close();socket.message({type:'state',state:'active',acked_seq:1});await rejected;});
+
+test("createSession retries a lost reply with the SAME request id and declares ARTC (2026-10-31)", async () => {
+  let sessionPosts = 0;
+  const calls = mockFetch((url) => {
+    if (url.endsWith("/v1/devices/controllers")) return { status: 200, body: { controller_id: "ctl-1" } };
+    if (url.endsWith("/remote-desktop/sessions")) {
+      sessionPosts += 1;
+      if (sessionPosts === 1) throw new TypeError("Failed to fetch"); // reached the gateway, reply lost
+      return { status: 200, body: { session_id: "s-1", state: "pending_consent", transport: "websocket-v2", billing: null } };
+    }
+    return { status: 404, body: {} };
+  });
+  const result = await api.remoteDesktopClient.createSession("d-1", { requestId: "rq_test_0001" });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.data.session_id, "s-1");
+  const bodies = calls.filter((call) => call.url.endsWith("/sessions")).map((call) => JSON.parse(call.init.body));
+  assert.deepEqual(bodies, [{ request_id: "rq_test_0001", media: ["artc-v1"], first_frame_ack: true }, { request_id: "rq_test_0001", media: ["artc-v1"], first_frame_ack: true }]);
+  assert.ok(calls.every((call) => call.init.signal), "every attempt carries its own timeout signal");
+});
+
+test("a gateway refusal is never retried as if it were the network", async () => {
+  let posts = 0;
+  mockFetch((url) => {
+    if (url.endsWith("/v1/devices/controllers")) return { status: 200, body: { controller_id: "ctl-1" } };
+    posts += 1;
+    return { status: 409, body: { detail: { code: "session_active" } } };
+  });
+  const result = await api.remoteDesktopClient.createSession("d-1", { requestId: "rq_test_0002" });
+  assert.deepEqual([result.ok, result.error, posts], [false, "session_active", 1]);
+  assert.equal(api.isNetworkFailure("request_timeout"), true);
+  assert.match(api.newRequestId(), /^[A-Za-z0-9_-]{8,80}$/);
+});
