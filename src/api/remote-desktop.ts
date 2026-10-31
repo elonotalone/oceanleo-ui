@@ -276,8 +276,11 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
    * the publisher's `metrics.dc_input_seq`. Afterwards every peer send must be confirmed within
    * PEER_RECEIPT_MS, else the lane is dropped and input continues on the gateway path (unconfirmed
    * peer input is never replayed). Without that metric the lane is never trusted: WS only.
+   * The lane opens when the viewer's data publish is up, which can be before the computer has
+   * subscribed to it; those first messages are lost (2026-10-31 SDK probe: 3-5 messages). So an
+   * unconfirmed probe is re-sent with a fresh seq after PEER_RECEIPT_MS instead of being waited on forever.
    */
-  let peerTrusted = false, peerProbe = 0, peerReceipt = 0, peerSent = 0, peerSentAt = 0;
+  let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, peerSent = 0, peerSentAt = 0;
   const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; };
   const peerHealthy = (now: number) => {
     if (peerTrusted && peerSent > peerReceipt && now - peerSentAt > PEER_RECEIPT_MS) dropLane();
@@ -300,8 +303,10 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     peerHealthy(Date.now());
     if (!lane || !scheduler.drained()) return false;
     if (!peerTrusted) {
+      if (peerProbe && Date.now() - peerProbeAt > PEER_RECEIPT_MS) peerProbe = 0;
       if (!peerProbe && !scheduler.holding()) {
         peerProbe = scheduler.claimSequence();
+        peerProbeAt = Date.now();
         if (!writePeer(peerProbe, { kind: "release_all" })) peerProbe = 0;
       }
       return false;

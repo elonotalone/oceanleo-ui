@@ -139,6 +139,31 @@ test("without a device receipt the lane is never trusted; a stalled receipt fall
   } finally { t.mock.timers.reset(); second.stream.close(); }
 });
 
+test("a probe lost before the computer subscribed is re-sent with a fresh seq, then the lane is trusted", async (t) => {
+  const { socket, stream } = await streamHarness();
+  const executed = (seq) => { socket.message({ type: "input_ack", seq }); socket.message({ type: "state", state: "active", acked_seq: seq }); };
+  try {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const peer = lane();
+    stream.attachDataChannel(peer);
+    stream.send({ kind: "move", x: 1, y: 1 });
+    assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[1, "release_all"]]);
+    executed(2);
+    stream.send({ kind: "move", x: 2, y: 2 });
+    assert.equal(peer.sent.length, 1, "within the receipt window: no second probe");
+    executed(3);
+    t.mock.timers.tick(1600);
+    stream.send({ kind: "move", x: 3, y: 3 });
+    assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[1, "release_all"], [4, "release_all"]], "retry, higher seq");
+    assert.equal(inputs(socket).at(-1).seq, 5, "the input itself still took the gateway");
+    executed(5);
+    receipt(socket, 4, 5);
+    assert.equal(stream.send({ kind: "move", x: 4, y: 4 }), true);
+    assert.deepEqual(peer.sent.at(-1).a, { kind: "move", x: 4, y: 4 });
+    assert.equal(stream.inputPath(), "data_channel");
+  } finally { t.mock.timers.reset(); stream.close(); }
+});
+
 test("view-only refusal is final, never retried, keeps the session; access and billing reach the viewer", async () => {
   const { socket, stream, log } = await streamHarness();
   try {
