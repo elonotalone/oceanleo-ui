@@ -6,6 +6,8 @@ import type { RemoteDesktopDataLane, RemoteMediaCredentials } from "../api/remot
 export type RemoteMediaState = "joining" | "waiting_frame" | "playing" | "reconnecting" | "error";
 export interface RemoteMediaViewer {
   close(): Promise<void>;
+  /** getStats of this <video>'s screen receiver(s), for the anonymous quality report only. */
+  stats?(): Promise<unknown[]>;
 }
 export interface RemoteMediaHandlers {
   state(value: RemoteMediaState, error?: string, status?: number): void;
@@ -113,6 +115,21 @@ export function lowerPlayoutDelay(video: HTMLVideoElement, peers: Iterable<{ get
     }
   }
   return tuned;
+}
+
+/** Stats of the receivers that feed this <video> (never other calls' receivers); [] when unavailable. */
+export async function receiverStats(video: HTMLVideoElement, peers: Iterable<{ getReceivers?(): RTCRtpReceiver[]; connectionState?: string }> = recordedPeers): Promise<unknown[]> {
+  const stream = video.srcObject as { getVideoTracks?(): MediaStreamTrack[] } | null;
+  const ids = new Set((stream?.getVideoTracks?.() ?? []).map((track) => track.id));
+  if (!ids.size) return [];
+  const pending: Promise<unknown>[] = [];
+  for (const peer of peers) {
+    if (peer.connectionState === "closed") continue;
+    for (const receiver of peer.getReceivers?.() ?? []) {
+      if (receiver.track && ids.has(receiver.track.id) && typeof receiver.getStats === "function") pending.push(receiver.getStats().catch(() => null));
+    }
+  }
+  return (await Promise.all(pending)).filter(Boolean);
 }
 
 const PUBLISHER_ERROR_CODES: ReadonlySet<string> = new Set([
@@ -355,7 +372,7 @@ export async function openRemoteMedia(
       }
     }
     scheduleRenew(credentials.expires_at);
-    return { close };
+    return { close, stats: () => closed ? Promise.resolve([]) : receiverStats(video) };
   } catch (error) {
     await close();
     throw error;

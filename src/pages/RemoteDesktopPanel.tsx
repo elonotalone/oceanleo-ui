@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { remoteDesktopClient, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopBilling, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteMediaStatus } from "../api/remote-desktop";
 import { RemoteDesktopVideo, remoteFrameStyle } from "./RemoteDesktopVideo";
@@ -9,6 +9,7 @@ import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNear
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 import { CLOUD_AGENT_COPY, type RemoteConsent } from "../lib/local-agent-task";
 import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
+import { RemoteDesktopQualityHub } from "../api/remote-desktop-quality";
 
 export { requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 export { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
@@ -94,8 +95,15 @@ function mediaFrameMatches(status: RemoteMediaStatus | null, width: number, heig
     && Math.abs(width * geometry.height - height * geometry.width) <= Math.max(geometry.width, geometry.height));
 }
 
-export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, consent, ticket: requested }: RemoteDesktopPanelProps) {
+export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, consent, ticket: requested }: RemoteDesktopPanelProps) {
   const tt = useUI();
+  // Anonymous per-session quality report: the wrapper measures the client calls; control flow is unchanged.
+  const qualityRef = useRef<RemoteDesktopQualityHub | null>(null);
+  const client = useMemo(() => {
+    if (!baseClient) return baseClient;
+    qualityRef.current ??= new RemoteDesktopQualityHub();
+    return qualityRef.current.wrap(baseClient);
+  }, [baseClient]);
   const [portal] = useState(remoteDesktopPortal);
   // The request this panel may send. State, so a remount starts from the
   // opener's (by then spent) ticket and a dev Fast Refresh keeps the spent one.
@@ -444,6 +452,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       queueMicrotask(() => {
         if (cancelled || abort.signal.aborted || ticket.spent) return;
         ticket.spent = true;
+        qualityRef.current?.begin({ at: ticket.at, attempt: ticket === reconnectTicket.current ? reconnectAttempts.current : 0 });
         connect().catch(() => { if (!abort.signal.aborted) end("network_error"); });
       });
     }

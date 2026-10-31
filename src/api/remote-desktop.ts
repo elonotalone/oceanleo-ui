@@ -14,6 +14,7 @@ import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
 import { RemoteInputScheduler } from "./remote-desktop-scheduler";
 import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
+import type { RemoteDesktopQualityReport, RemoteMediaQualitySink } from "./remote-desktop-quality";
 export interface RemoteMediaCredentials {
   provider: "artc";
   transport: "artc-v1";
@@ -176,6 +177,10 @@ export interface RemoteDesktopClient {
     deviceId: string,
     sessionId: string,
   ): Promise<RemoteDesktopApiResult<{ closed: true }>>;
+  /** Anonymous end-of-session quality report (`remote-desktop-quality.ts`); keepalive, best effort. */
+  reportQuality?(report: RemoteDesktopQualityReport): Promise<RemoteDesktopApiResult<{ stored: boolean }>>;
+  /** Set by `RemoteDesktopQualityHub.wrap`: the media-side quality hooks of a live session. */
+  mediaQuality?(sessionId: string): RemoteMediaQualitySink | null;
 }
 
 /** The viewer's ARTC data channel to the computer (D4). `send` false/throw = unusable now. */
@@ -686,5 +691,10 @@ export const remoteDesktopClient: RemoteDesktopClient = {
       `${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}`,
       { method: "DELETE", keepalive: true },
     );
+  },
+
+  reportQuality(report) {
+    // keepalive (not sendBeacon): it still leaves on pagehide and can carry the owner's bearer.
+    return authed<{ stored: boolean }>("/v1/devices/remote-desktop/quality", { method: "POST", body: JSON.stringify(report), keepalive: true });
   },
 };

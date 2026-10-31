@@ -13,6 +13,8 @@ export interface RemoteDesktopTicket {
   readonly id: number;
   /** Set by the panel when it sends the session request for this ticket. */
   spent: boolean;
+  /** `performance.now()` of the click: origin of the anonymous click -> first frame timing. */
+  readonly at?: number;
 }
 
 let sequence = 0;
@@ -20,5 +22,5 @@ let sequence = 0;
 /** Call only from a user's click (or tap) handler. */
 export function remoteDesktopTicket(): RemoteDesktopTicket {
   sequence += 1;
-  return { id: sequence, spent: false };
+  return { id: sequence, spent: false, at: typeof performance !== "undefined" ? performance.now() : Date.now() };
 }
