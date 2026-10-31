@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { remoteDesktopClient, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopBilling, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteMediaStatus } from "../api/remote-desktop";
 import { RemoteDesktopVideo, remoteFrameStyle } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
-import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteKeyboardKey, remoteDesktopErrorCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
+import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteChordKey, remoteKeyboardKey, remoteDesktopErrorCopy, remoteDesktopNoticeCopy, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 import { CLOUD_AGENT_COPY, type RemoteConsent } from "../lib/local-agent-task";
 import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
@@ -387,6 +387,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
             if (abort.signal.aborted) return;
             acceptMediaStatus(status);
             if (status?.state === "failed") { end(status.error || "media_capture_or_publish_failed"); return; }
+            // Video is fine but input cannot reach the target (admin window, lock screen): say so, keep the session.
+            const notice = remoteDesktopNoticeCopy(status?.error);
+            setMessage((current) => notice ? notice : current && [remoteDesktopNoticeCopy("input_target_elevated"), remoteDesktopNoticeCopy("screen_locked")].includes(current) ? "" : current);
             // A missing descriptor before negotiation is normal. After activation it revokes video.
             if (media) mediaDescriptorSeen = true;
             else if (mediaDescriptorSeen) end("media_session_closed");
@@ -636,7 +639,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client = remoteDeskto
       if (action) { event.preventDefault(); flushClick(); send(action); }
       return;
     }
-    const mappedKey = remoteKeyboardKey(event.key);
+    const mappedKey = remoteKeyboardKey(remoteChordKey(event));
     if (!mappedKey) return;
     event.preventDefault();
     syncModifiers(event, event.key);

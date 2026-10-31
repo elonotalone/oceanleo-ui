@@ -265,3 +265,39 @@ test("fixed native input termination codes are fatal; only NoPermission requests
   }
   assert.doesNotMatch(input.remoteDesktopErrorCopy("input_unavailable private OS detail"), /private|OS|辅助功能/);
 });
+
+test("2026-10-31: a sleeping or locked computer gets its own message instead of 「视频服务暂不可用」", () => {
+  const generic = input.remoteDesktopErrorCopy("media_unavailable");
+  const locked = input.remoteDesktopErrorCopy("screen_locked");
+  const asleep = input.remoteDesktopErrorCopy("display_asleep");
+  assert.notEqual(locked, generic);
+  assert.notEqual(asleep, generic);
+  assert.match(locked, /锁屏.*解锁后重新连接/);
+  assert.match(asleep, /显示器.*休眠.*按任意键或移动鼠标/);
+  for (const copy of [locked, asleep]) assert.doesNotMatch(copy, /[a-z]+_[a-z_]+/);
+});
+
+test("non-fatal input notices: admin window (Windows UIPI) and lock screen keep the session", () => {
+  assert.match(input.remoteDesktopNoticeCopy("input_target_elevated"), /管理员身份运行.*Windows 不允许/);
+  assert.match(input.remoteDesktopNoticeCopy("screen_locked"), /锁屏.*暂时无法送达/);
+  assert.notEqual(input.remoteDesktopNoticeCopy("screen_locked"), input.remoteDesktopErrorCopy("screen_locked"));
+  assert.equal(input.REMOTE_FATAL_CODES.has("input_target_elevated"), false);
+  for (const code of [undefined, "", "media_sdk_start_failed", "input_failed"]) assert.equal(input.remoteDesktopNoticeCopy(code), null);
+});
+
+test("shortcuts on non-Latin keyboards travel by their Latin key; typed characters stay as typed", () => {
+  const ev = (k, code, extra = {}) => ({ key: k, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra });
+  // Russian layout: Ctrl+C reports "с" (Cyrillic) on KeyC.
+  assert.equal(input.remoteChordKey(ev("с", "KeyC", { ctrlKey: true })), "c");
+  assert.equal(input.remoteChordKey(ev("ф", "KeyA", { metaKey: true })), "a");
+  assert.equal(input.remoteChordKey(ev("ç", "Digit9", { ctrlKey: true })), "9");
+  assert.deepEqual(input.keyEventToAction(ev("с", "KeyC", { ctrlKey: true })), { kind: "keypress", key: "c", modifiers: ["ctrl"] });
+  // Without a shortcut modifier, with AltGr (Ctrl+Alt) or ⌥ alone, the character is what the person typed.
+  assert.equal(input.remoteChordKey(ev("с", "KeyC")), "с");
+  assert.equal(input.remoteChordKey(ev("€", "KeyE", { ctrlKey: true, altKey: true })), "€");
+  assert.equal(input.remoteChordKey(ev("å", "KeyA", { altKey: true })), "å");
+  // ASCII keys and named keys are never renamed.
+  assert.equal(input.remoteChordKey(ev("z", "KeyY", { ctrlKey: true })), "z", "German Ctrl+Z keeps the layout's letter");
+  assert.equal(input.remoteChordKey(ev("Enter", "Enter", { ctrlKey: true })), "Enter");
+  assert.equal(input.remoteChordKey(ev("ü", undefined, { ctrlKey: true })), "ü");
+});

@@ -112,6 +112,8 @@ export function isNearby(a: NormalizedPoint, b: NormalizedPoint): boolean {
 
 export interface KeyEventLike {
   key: string;
+  /** Physical key (`KeyC`, `Digit1`…); used only to name shortcuts on non-Latin layouts. */
+  code?: string;
   ctrlKey: boolean;
   metaKey: boolean;
   altKey: boolean;
@@ -127,6 +129,21 @@ export function remoteKeyboardKey(key: string): string | null {
 }
 
 const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock", "OS"]);
+
+/**
+ * Shortcut keys travel by their Latin name. On a Russian/Greek/Arabic/Hebrew… keyboard Ctrl+C reports
+ * `key: "с"` (Cyrillic); the controlled computer may use a Latin layout where no key types "с", so the
+ * shortcut would arrive as text. With Ctrl/⌘ held (and not AltGr = Ctrl+Alt, nor ⌥ alone, which type
+ * characters), a non-ASCII letter on a letter/digit key is sent as that key's Latin letter/digit.
+ */
+export function remoteChordKey(event: Pick<KeyEventLike, "key" | "code" | "ctrlKey" | "metaKey" | "altKey">): string {
+  const { key, code } = event;
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || [...key].length !== 1 || /^[\x00-\x7f]$/.test(key)) return key;
+  const letter = /^Key([A-Z])$/.exec(code ?? "");
+  if (letter) return letter[1].toLowerCase();
+  const digit = /^Digit([0-9])$/.exec(code ?? "");
+  return digit ? digit[1] : key;
+}
 
 /**
  * 键盘事件 → 动作。
@@ -149,7 +166,7 @@ export function keyEventToAction(event: KeyEventLike): RemoteDesktopAction | nul
   if (event.altKey) modifiers.push("alt");
   if (event.metaKey) modifiers.push("meta");
   if (event.shiftKey) modifiers.push("shift");
-  const key = event.key === " " ? "Space" : event.key;
+  const key = event.key === " " ? "Space" : remoteChordKey(event);
   if (!key) return null;
   return modifiers.length > 0 ? { kind: "keypress", key, modifiers } : { kind: "keypress", key };
 }
@@ -323,6 +340,10 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "media_credential_invalid":
     case "media_lease_invalid":
       return "视频授权无法续期，控制已停止。请重新连接。";
+    case "screen_locked":
+      return "这台电脑处于锁屏或系统安全界面，画面无法显示，控制已停止。请先在那台电脑上解锁后重新连接。";
+    case "display_asleep":
+      return "这台电脑的显示器处于休眠状态，未能唤醒，控制已停止。请在那台电脑上按任意键或移动鼠标后重新连接。";
     case "media_unavailable":
     case "media_sdk_not_installed":
     case "media_sdk_start_failed":
@@ -414,6 +435,21 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   if (status === 404) return "会话已结束，请重新进入。";
   if (status === 429) return "操作太频繁，稍等一下再试。";
   return "这一步没有完成，请稍后重试。";
+}
+
+/**
+ * Non-fatal notices the computer reports in `media_status.error` while video is still publishing:
+ * the input was sent, but cannot reach where the person is typing. `null` = not a notice code.
+ */
+export function remoteDesktopNoticeCopy(code?: string): string | null {
+  switch (code) {
+    case "input_target_elevated":
+      return "你正在操作的窗口以管理员身份运行，Windows 不允许 OceanLeo 向它发送键盘和鼠标。请换一个窗口，或在那台电脑上以管理员身份运行 OceanLeo。";
+    case "screen_locked":
+      return "这台电脑处于锁屏或系统安全界面，键盘和鼠标暂时无法送达。请先在那台电脑上解锁。";
+    default:
+      return null;
+  }
 }
 
 export function blockerCopy(blocker: Exclude<RemoteDesktopBlocker, null>): string {

@@ -124,6 +124,10 @@ const SOURCE = {
   k115: "本机的 OceanLeo 拦截了视频服务器 {host}，无法显示画面。请把这个地址告诉我们，或更新 OceanLeo 后重新连接。",
   k116: "无法接收这台电脑的画面（错误 {code}），控制已停止。请重新连接。",
   k117: "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端",
+  k118: "这台电脑处于锁屏或系统安全界面，画面无法显示，控制已停止。请先在那台电脑上解锁后重新连接。",
+  k119: "这台电脑的显示器处于休眠状态，未能唤醒，控制已停止。请在那台电脑上按任意键或移动鼠标后重新连接。",
+  k120: "你正在操作的窗口以管理员身份运行，Windows 不允许 OceanLeo 向它发送键盘和鼠标。请换一个窗口，或在那台电脑上以管理员身份运行 OceanLeo。",
+  k121: "这台电脑处于锁屏或系统安全界面，键盘和鼠标暂时无法送达。请先在那台电脑上解锁。",
 } as const;
 
 type Messages = CopyMessagesOf<typeof SOURCE>;
@@ -245,6 +249,10 @@ const EN: Messages = {
   k115: "OceanLeo on this device blocked the video server {host}, so the screen cannot be shown. Report this address to us, or update OceanLeo and reconnect.",
   k116: "The computer's screen could not be received (error {code}). Control has stopped. Please reconnect.",
   k117: "This computer's OceanLeo is connected to a different server. Update the client to the latest version.",
+  k118: "This computer is locked or showing a system security screen, so its screen can't be shown and control has stopped. Unlock it on that computer, then reconnect.",
+  k119: "This computer's display is asleep and could not be woken, so control has stopped. Press any key or move the mouse on that computer, then reconnect.",
+  k120: "The window you're working in is running as administrator, and Windows doesn't let OceanLeo send it keyboard or mouse input. Switch to another window, or run OceanLeo as administrator on that computer.",
+  k121: "This computer is locked or showing a system security screen, so keyboard and mouse input can't reach it right now. Unlock it on that computer first.",
 };
 
 const ZH_TW: Messages = {
@@ -364,6 +372,10 @@ const ZH_TW: Messages = {
   k115: "本機的 OceanLeo 攔截了視訊伺服器 {host}，無法顯示畫面。請把這個位址告訴我們，或更新 OceanLeo 後重新連線。",
   k116: "無法接收這台電腦的畫面（錯誤 {code}），控制已停止。請重新連線。",
   k117: "這台電腦的 OceanLeo 連在另一個伺服器上，請更新到最新版用戶端",
+  k118: "這台電腦處於鎖定畫面或系統安全畫面，畫面無法顯示，控制已停止。請先在那台電腦上解鎖後重新連線。",
+  k119: "這台電腦的顯示器處於睡眠狀態，未能喚醒，控制已停止。請在那台電腦上按任意鍵或移動滑鼠後重新連線。",
+  k120: "你正在操作的視窗以系統管理員身分執行，Windows 不允許 OceanLeo 向它傳送鍵盤和滑鼠輸入。請換一個視窗，或在那台電腦上以系統管理員身分執行 OceanLeo。",
+  k121: "這台電腦處於鎖定畫面或系統安全畫面，鍵盤和滑鼠暫時無法送達。請先在那台電腦上解鎖。",
 };
 
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(
