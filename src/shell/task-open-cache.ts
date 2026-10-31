@@ -59,7 +59,17 @@ const partialSeeds = new WeakSet<object>();
 
 /** A TaskDetail that may hold only the newest messages: read the whole thread after showing it. */
 export function isPartialTaskSeed(seed: object | null | undefined): boolean {
-  return Boolean(seed && partialSeeds.has(seed));
+  if (!seed) return false;
+  if (partialSeeds.has(seed)) return true;
+  // The history page may pass the detail through a cache/serialization boundary,
+  // so the identity-only marker is not sufficient.  The gateway's explicit
+  // cursor flag is authoritative; an exact first-page-sized response is the
+  // compatibility fallback for older gateways that ignored message_limit.
+  const detail = seed as Partial<TaskDetail>;
+  if (detail.has_more === true) return true;
+  return detail.has_more === undefined
+    && Array.isArray(detail.messages)
+    && detail.messages.length >= TASK_FIRST_PAGE_MESSAGES;
 }
 
 /** Mark a snapshot built from a cut copy (it is cut too until a whole read lands). */

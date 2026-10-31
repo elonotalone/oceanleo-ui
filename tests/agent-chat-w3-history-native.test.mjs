@@ -62,8 +62,10 @@ const agentLibStub = dataModule(`
   export * from ${JSON.stringify(realAgentLibUrl)};
   globalThis.__task = null; globalThis.__stops = 0; globalThis.__followUps = [];
   globalThis.__getTaskCalls = [];
+  globalThis.__getTaskOptions = [];
   export async function getTask(id) {
     globalThis.__getTaskCalls.push(id);
+    globalThis.__getTaskOptions.push(arguments[1] || {});
     return globalThis.__task ? { ok: true, data: globalThis.__task } : { ok: false, status: 404, error: "no task" };
   }
   export async function createTask() { return { ok: false, error: "stub" }; }
@@ -261,6 +263,7 @@ async function mount(props, { task = null, sessions = [] } = {}) {
   globalThis.__listFails = 0;
   globalThis.__listHang = false;
   globalThis.__getTaskCalls.length = 0;
+  globalThis.__getTaskOptions.length = 0;
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
@@ -280,6 +283,28 @@ test("initialTask paints the conversation with no GET of the same task", async (
   try {
     assert.match(view.host.textContent, /同比增长 12%。/);
     assert.deepEqual(globalThis.__getTaskCalls, [], "the seeded task is not fetched again");
+  } finally { await view.unmount(); }
+});
+
+test("a newest-message seed is followed by an unpaged full read", async () => {
+  const newest = Array.from({ length: 60 }, (_, i) => ({
+    id: i + 41, role: i % 2 ? "assistant" : "user", kind: "text", content: `newest-${i}`,
+  }));
+  const full = {
+    task: { id: "t1", status: "done", title: "长对话", mode: "agent", plan: {} },
+    messages: [
+      { id: 1, role: "user", kind: "text", content: "最早的一条" },
+      ...newest,
+    ], artifacts: [],
+  };
+  const view = await mount({
+    taskId: "t1",
+    initialTask: { ...full, messages: newest, has_more: true },
+  }, { task: full });
+  try {
+    assert.match(view.host.textContent, /最早的一条/);
+    assert.equal(globalThis.__getTaskCalls.length, 1);
+    assert.deepEqual(globalThis.__getTaskOptions[0], {}, "the follow-up is a full, unpaged read");
   } finally { await view.unmount(); }
 });
 

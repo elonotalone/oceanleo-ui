@@ -329,6 +329,19 @@ test("a computer task row starts the task read and its session list together, th
   assert.equal(openCache.peekTaskDetail("t-comp"), detail, "kept for the next open");
 });
 
+test("a partial marker survives a history/cache boundary", () => {
+  const messages = Array.from({ length: openCache.TASK_FIRST_PAGE_MESSAGES }, (_, i) => ({
+    id: i + 1, role: "assistant", content: String(i),
+  }));
+  // This models the JSON/React copy that no longer has the original WeakSet
+  // identity.  The gateway flag must still force the whole-thread read.
+  const copied = {
+    task: { id: "t-copy" }, messages, artifacts: [], has_more: true,
+  };
+  assert.equal(openCache.isPartialTaskSeed(copied), true);
+  assert.equal(openCache.isPartialTaskSeed({ task: { id: "t-short" }, messages: messages.slice(0, 2), artifacts: [] }), false);
+});
+
 test("a session row reads its app_session and linked task together; a short thread is not partial", async () => {
   calls.length = 0;
   globalThis.__openReplies = {};
