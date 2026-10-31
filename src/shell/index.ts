@@ -549,6 +549,8 @@ export { AgentProgress } from "./AgentProgress";
 export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentChatNativeLaunch, type AgentLibraryTabs } from "./AgentChat";
 // Homepage native chat: the composer's prewarmed thread is handed to AgentChat (nativeLaunch).
 export { useNativeThread, type NativeThread } from "./native-thread";
+// Homepage native chat: files held before the session exists survive a refresh (IndexedDB).
+export { useNativeDraftFiles, clearNativeDraftFiles, libraryAttachmentFile, type NativeDraftFilesHandle } from "./native-draft-files";
 // 人才市场 v1：对话里卡住了「叫真人」。AgentChat 已经自带入口按钮与状态条，这四个
 // 单独导出是给别的场景（工作台、企业任务、设置页）复用同一套授权与闸门语义用的。
 // 上下文默认一条都不勾、可逐条撤回；agent 雇人默认全关且每个决定都能被人推翻。

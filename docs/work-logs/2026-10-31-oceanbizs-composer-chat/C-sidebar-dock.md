@@ -20,4 +20,24 @@
 `pnpm typecheck`；`tests/execution-target.test.mjs`、`tests/*history*`、`tests/*computer-dock*`（先 ls 找）；两项各加测试。
 
 ## 结果
-（完成后在此追加）
+
+### 改了哪些文件
+- `src/shell/history-model.ts`：新增 `isTaskWorking`（`task.status === "running"` 或 gateway `attach_run_states` 投影的 `computer_run_status ∈ running / waiting_user`）、`isHistoryEntryWorking`、`HISTORY_WORKING_POLL_MS = 3000`；`mergeHistoryEntries` 给在干活的行加 `working: true`（session 行看绑定它的 task：`task.session_id === session.id` 或 `session.task_id`）。不干活的行不加字段。
+- `src/shell/HistoryMasterDetail.tsx`：删 `STATUS_DOT` 红黄绿灰点；任务名左侧固定 12px 槽位，在干活时放工作中动效（电脑对话列表同一个像素小人 `SessionRunningIcon`，未选中 `text-emerald-600`，选中蓝底行 `text-white`），否则空槽（标题对齐、开始/结束时不跳）。`sameHistory` 补比 working 与 `task.computer_run_status`（以前 computer_run_status 变了列表不刷新）。有工作中的行时每 3s 静默刷新，运行结束后几秒内动效停；没有时仍是原 8s 轮询。
+- `src/shell/cloud-computer/agent-dialog/SessionRunningIcon.tsx`：只加可选 `toneClassName`（默认值 = 原来的 emerald 色），AcpCard 不变。
+- `src/shell/cloud-computer/remembered-conversation.ts`（新）：按账号存「电脑 · 程序」对话选择 `oceanleo.dock-conversation.v1:<userId>`，只存 `{kind:"native", computerId, computerName, program, view:"chat"}`，读写都丢掉 sessionId；`resolveRememberedConversation` 按当前已接入电脑 + 程序清单判断是否失效。
+- `src/shell/cloud-computer/ComputerDock.tsx`：草稿（无 `boundTarget`、有 `onConversationChange`、host 没给 `conversation`）挂载后按账号恢复一次上一次的对话选择：电脑不在 / 未接入、或程序清单显示未安装/不存在 → 清掉记忆，回落到 OceanLeo 目标（默认云端）；电脑离线不算失效（照常恢复）；列表读不到 → 不恢复也不清。用户已经点过、host 已有 conversation 时不覆盖。草稿里点「对话」写记忆；点任何 OceanLeo 行清记忆；命令行/终端不改记忆（它们一点就跳任务页，恢复它们会导致首页一加载就跳走）。任务页（bound）既不恢复也不写。dock 仍不建 session、不导航。
+- 测试：`tests/conversation-dock.test.mjs`（+3 条 C-3）、`tests/history-model.test.mjs`（+2 条 C-7）、`tests/history-working-mark.test.mjs`（新，渲染级：只有在干活的行有动效、无任何彩色点、结束后 ≤4.5s 内消失、history-changed 事件后重新出现）、`tests/library-task-render-loop.test.mjs`（只给它的 `./history-model` 桩补两个新导出）。
+
+### 默认值根因（3）
+OceanLeo 执行目标本来就按账号记在 `execution-target.ts`（`oceanleo.execution-target.v1:`）。丢的是电脑程序对话（`elon · Claude Code`）：它是 host（oceanleo 仓 `app/_components/home-content.tsx` 的 `useState<Conversation|undefined>(undefined)`）的纯内存状态，dock 文档写明「No memory of its own」，刷新即回云端。修法放在共享包 dock 里：恢复时调用 host 已有的 `onConversationChange`，host 代码不用改。只恢复 computer + program，**不恢复 session/task id**。
+
+### 测试
+- `pnpm typecheck`（agent-io-guard run-heavy）：通过。
+- 通过：`history-model`(14) `history-working-mark`(1) `history-leo-created-mark`(1) `history-subnav-loading`(4) `history-url-contract`(2) `conversation-dock`(19) `cloud-computer-dock`(23) `cloud-computer-dock-remembered-name`(6) `d10-computer-dock-hydration`(3) `execution-target`(7) `acp-card-flows`(55) `sko-w11-history-projects`(8) `project-history-scope`(3) `rebuild-global-history`(6) `eas-w06-dock-and-links`(4)。
+- `library-task-render-loop`：失败，但在干净 HEAD worktree 上同样失败（AgentChat 桩缺 `authed` 导出，既有问题，与本改动无关）；本改动所需的 history-model 桩导出已补。
+
+### 交接（parent）
+- 首页 host 不用改，但 oceanleo / oceanbizs 需要升 `@oceanleo/ui` 版本才生效。
+- 恢复后首页 host 会像用户手动选了一样预热该电脑程序的连接（`useNativeThread` enabled），这是现有选择行为，不是新的发送路径；发送路径没动（D 的范围）。
+- `SessionRunningIcon.tsx` 在 agent-dialog 目录里，只加了一个带默认值的可选 prop。

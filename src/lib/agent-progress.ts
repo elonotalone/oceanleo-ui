@@ -196,6 +196,15 @@ export function buildAgentRenderItems(
   messages: AgentMessage[],
 ): AgentRenderItem[] {
   const items: AgentRenderItem[] = [];
+  // Keys come from message ids, not positions: an earlier batch prepended on
+  // scroll-up must not remount every bubble already on screen. A repeated id
+  // (optimistic rows) falls back to its position so keys stay unique.
+  const usedKeys = new Set<string>();
+  const uniqueKey = (base: string, index: number): string => {
+    const key = usedKeys.has(base) ? `${base}@${index}` : base;
+    usedKeys.add(key);
+    return key;
+  };
   let segmentStart = 0;
 
   while (segmentStart < messages.length) {
@@ -216,7 +225,7 @@ export function buildAgentRenderItems(
       if (!block) {
         block = {
           type: "progress",
-          key: `progress-${message.id}-${segmentStart}`,
+          key: uniqueKey(`progress-${message.id}`, index),
           messages: [],
           startIndex: index,
           endIndex: index,
@@ -242,7 +251,7 @@ export function buildAgentRenderItems(
       flush();
       items.push({
         type: "message",
-        key: `message-${message.id}-${index}`,
+        key: uniqueKey(`message-${message.id}`, index),
         message,
         index,
       });
@@ -301,6 +310,44 @@ export function liveAgentProgressKey(
     return "";
   }
   return key;
+}
+
+/** Words the agent said to the user: an answer, a speech row's content, a report. Never tools or thoughts. */
+function isTurnWords(message: AgentMessage): boolean {
+  if (message.role !== "assistant" || !(message.content || "").trim()) return false;
+  return isAnswerText(message) || isAgentSpeechMessage(message) || message.kind === "report";
+}
+
+/**
+ * One action row (copy · redo · share) per agent turn (operator 2026-10-31,
+ * Manus-style): only under the turn's LAST words, never under every scattered
+ * sentence. Returns render-item key → the text that row copies: all of the
+ * turn's words in order, joined by blank lines (no tool output, no thoughts).
+ * A turn is everything between two user messages. The turn still running gets
+ * no row; it appears once the turn ends.
+ */
+export function agentTurnActionTargets(
+  items: AgentRenderItem[],
+  running: boolean,
+): Map<string, string> {
+  const targets = new Map<string, string>();
+  let words: AgentMessageRenderItem[] = [];
+  const close = () => {
+    const last = words[words.length - 1];
+    if (last) targets.set(last.key, words.map((item) => item.message.content.trim()).join("\n\n"));
+    words = [];
+  };
+  for (const item of items) {
+    if (item.type !== "message") continue;
+    if (item.message.role === "user") {
+      close();
+      continue;
+    }
+    if (isTurnWords(item.message)) words.push(item);
+  }
+  if (running) words = [];
+  close();
+  return targets;
 }
 
 

@@ -53,9 +53,17 @@ export interface AgentTranscriptBubbleProps {
   selectMode?: boolean;
   selected?: boolean;
   onSelectToggle?: () => void;
-  /** 普通模式下每条回答底下那排小图标。 */
+  /** 普通模式下回答底下那排小图标。 */
   onRegenerate?: () => void;
   onShare?: () => void;
+  /**
+   * 一轮一排操作（2026-10-31，参考 Manus）：宿主按 `agentTurnActionTargets` 算出这一轮。
+   * - 字符串：这条是这一轮 agent 最后一段话，底下显示「复制 / 重做 / 分享」，复制的是这串
+   *   （整轮所有说给用户的话按序拼接，不含工具输出 / 思考）。
+   * - `null`：这条不是一轮的最后一段（或这一轮还在跑），不显示操作。
+   * - 不传：旧行为，这条自己能操作就显示（单条预览等宿主）。
+   */
+  turnCopyText?: string | null;
   /**
    * 对话内搜索的当前搜索词。非空时正文里每一处大小写不敏感的纯文本命中都包成
    * `<mark data-leo-search-hit>`，搜索控件据此计数、标当前项、滚动定位。
@@ -88,15 +96,19 @@ export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
     onRegenerate,
     onShare,
     streaming = false,
+    turnCopyText,
   } = props;
   if (message.kind === "ui_action") return null;
   const body = <TranscriptBody {...props} />;
+  const perTurn = turnCopyText !== undefined;
   const actionable =
     !selectMode &&
     message.role === "assistant" &&
     !streaming &&
-    (message.kind === "text" || !message.kind || message.kind === "report") &&
-    Boolean(message.content?.trim());
+    (perTurn
+      ? Boolean(turnCopyText?.trim())
+      : (message.kind === "text" || !message.kind || message.kind === "report") &&
+        Boolean(message.content?.trim()));
   if (!selectMode && !actionable) return body;
   return (
     <div
@@ -118,9 +130,10 @@ export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
         {body}
         {actionable && (
           <MessageActions
-            content={message.content}
+            content={perTurn ? turnCopyText ?? "" : message.content}
             onRegenerate={onRegenerate}
             onShare={onShare}
+            persistent={perTurn}
           />
         )}
       </div>
@@ -128,15 +141,20 @@ export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
   );
 }
 
-/** 「复制 / 重做 / 分享」——平时淡出，鼠标移到这条回答上才显形。 */
+/**
+ * 「复制 / 重做 / 分享」。单条模式平时淡出，鼠标移到这条回答上才显形；
+ * 一轮一排（`persistent`）时整轮只有这一排，常显（Manus 式回答末尾一行）。
+ */
 function MessageActions({
   content,
   onRegenerate,
   onShare,
+  persistent = false,
 }: {
   content: string;
   onRegenerate?: () => void;
   onShare?: () => void;
+  persistent?: boolean;
 }) {
   const tt = useUI();
   const [copied, setCopied] = useState(false);
@@ -144,8 +162,10 @@ function MessageActions({
   const iconClass = "h-4 w-4";
   const buttonClass =
     "inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] text-stone-400 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-700";
-  const actionsClass =
-    "mt-1 flex items-center gap-0.5 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover/message:opacity-100 focus-within:opacity-100";
+  const reveal = persistent
+    ? ""
+    : " opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover/message:opacity-100 focus-within:opacity-100";
+  const actionsClass = `mt-1 flex items-center gap-0.5${reveal}`;
   const buttons = (
     <>
       <button
@@ -201,17 +221,17 @@ function MessageActions({
   );
   // 开关关：根节点 class 与今天的 MessageActions 逐字相同，不多一层包裹。
   if (!showAigc) {
-    return <div className={actionsClass}>{buttons}</div>;
+    return <div className={actionsClass} data-agent-turn-actions={persistent ? "" : undefined}>{buttons}</div>;
   }
   return (
-    <div className="mt-1 flex items-center gap-0.5">
+    <div className="mt-1 flex items-center gap-0.5" data-agent-turn-actions={persistent ? "" : undefined}>
       <span
         data-testid="aigc-label"
         className="text-[11px] rounded px-1.5 py-0.5 border border-stone-200 text-stone-500 whitespace-nowrap shrink-0"
       >
         {AIGC_LABEL_TEXT}
       </span>
-      <div className="flex items-center gap-0.5 opacity-0 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] group-hover/message:opacity-100 focus-within:opacity-100">
+      <div className={`flex items-center gap-0.5${reveal}`}>
         {buttons}
       </div>
     </div>

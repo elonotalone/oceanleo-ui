@@ -7,8 +7,29 @@ export type HistoryListEntry =
       id: string;
       session: AppSession & { created_by?: string | null };
       created_by?: string | null;
+      /** Present (true) only while the agent is working on this row; see `isTaskWorking`. */
+      working?: true;
     }
-  | { kind: "task"; id: string; task: AgentTask; created_by?: string | null };
+  | { kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true };
+
+/**
+ * 「在干活」：云端 run 正在跑（task.status === "running"），或挂着的电脑原生会话
+ * 正在跑 / 等用户确认（gateway `attach_run_states` 投影的 computer_run_status）。
+ * 完成、失败、停止、session 的 active/archived 都不算——侧栏对用户只分两种状态。
+ */
+export function isTaskWorking(
+  task: Pick<AgentTask, "status" | "computer_run_status">,
+): boolean {
+  return (
+    task.status === "running" ||
+    task.computer_run_status === "running" ||
+    task.computer_run_status === "waiting_user"
+  );
+}
+
+export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
+  return entry.working === true;
+}
 
 function readCreatedBy(record: object): string | null | undefined {
   const value = (record as { created_by?: unknown }).created_by;
@@ -54,8 +75,16 @@ export function mergeHistoryEntries(
   options: MergeHistoryEntriesOptions = {},
 ): HistoryListEntry[] {
   const leoSessionIds = new Set<string>();
+  // A session row works while any task bound to it works (session.status is
+  // only active/archived and says nothing about a run).
+  const workingSessionIds = new Set<string>();
+  const workingTaskIds = new Set<string>();
   for (const task of tasks) {
     if (task.session_id && task.created_by === "leo") leoSessionIds.add(task.session_id);
+    if (isTaskWorking(task)) {
+      workingTaskIds.add(task.id);
+      if (task.session_id) workingSessionIds.add(task.session_id);
+    }
   }
   const orderedSessions = [...sessions].sort((a, b) =>
     newestFirst(a.last_activity_at || a.updated_at, b.last_activity_at || b.updated_at),
@@ -71,6 +100,9 @@ export function mergeHistoryEntries(
       const own = readCreatedBy(session);
       const created_by =
         own === "leo" || leoSessionIds.has(session.id) ? "leo" : own;
+      const working =
+        workingSessionIds.has(session.id) ||
+        Boolean(session.task_id && workingTaskIds.has(session.task_id));
       return {
         kind: "session",
         id: session.id,
@@ -79,6 +111,7 @@ export function mergeHistoryEntries(
             ? { ...session, created_by: "leo" }
             : session,
         created_by,
+        ...(working ? { working: true as const } : {}),
       };
     }),
     ...legacyTasks.map(
@@ -87,6 +120,7 @@ export function mergeHistoryEntries(
         id: task.id,
         task,
         created_by: task.created_by,
+        ...(isTaskWorking(task) ? { working: true as const } : {}),
       }),
     ),
   ];
@@ -156,6 +190,8 @@ export function isTaskThreadSession(
 }
 
 export const HISTORY_POLL_INTERVAL_MS = 8_000;
+/** While a row shows the working mark, refresh this often so it stops within seconds of the run ending. */
+export const HISTORY_WORKING_POLL_MS = 3_000;
 export const HISTORY_POLL_MAX_INTERVAL_MS = 60_000;
 
 /** Silent history refresh backs off while the gateway is 503/SSL failing. */

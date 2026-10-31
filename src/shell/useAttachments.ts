@@ -16,6 +16,8 @@ import {
   PRIVATE_ATTACHMENT_MAX_BYTES,
   PRIVATE_ATTACHMENT_TOO_LARGE,
   attachmentDisplayUrl,
+  attachmentRef,
+  mediaTypeFromMime,
 } from "../lib/attachment-url";
 import type { ComposerAttachment } from "./LeoComposer";
 import { uploadComposerFile } from "./composer-upload";
@@ -48,6 +50,11 @@ export interface UseAttachments {
    * 不走 uploadFile，直接进 ready 态。按 id 去重（重复选同一个不叠加）。
    */
   addReady: (att: { id: string; name: string; previewUrl?: string; attachment: AgentAttachment }) => void;
+  /**
+   * 加入已在私有 Library 里的文件（LeoComposer `onAddAttachments`：「从资料库添加文件」/
+   * 刷新恢复的草稿附件）。只收带 artifactId/revisionId 的；按 id 去重。
+   */
+  addComposerAttachments: (items: ComposerAttachment[]) => void;
   /** 请求失败时仅在用户尚未选择新附件的情况下恢复刚提交的附件。 */
   restoreReady: (items: PendingAttachment[]) => void;
   removeAttachment: (id: string) => void;
@@ -69,10 +76,18 @@ export function useAttachments(
 
   // The original File of every tile that has not finished, so a failed one can retry.
   const filesRef = useRef(new Map<string, File>());
+  // A5: the in-flight upload of each tile; removing the tile aborts it.
+  const uploadsRef = useRef(new Map<string, AbortController>());
 
   const startUpload = useCallback(
     (id: string, file: File) => {
-      void uploadComposerFile(file, { siteId }).then((r) => {
+      uploadsRef.current.get(id)?.abort();
+      const controller = new AbortController();
+      uploadsRef.current.set(id, controller);
+      void uploadComposerFile(file, { siteId, signal: controller.signal }).then((r) => {
+        // Removed while uploading: the late result never brings the tile back or toasts.
+        if (controller.signal.aborted) return;
+        if (uploadsRef.current.get(id) === controller) uploadsRef.current.delete(id);
         if (r.ok) {
           filesRef.current.delete(id);
           const up = r.upload;
@@ -160,7 +175,44 @@ export function useAttachments(
     [],
   );
 
+  const addComposerAttachments = useCallback((items: ComposerAttachment[]) => {
+    const picked: PendingAttachment[] = [];
+    for (const item of items) {
+      const ref = attachmentRef(item);
+      if (!ref || picked.some((a) => a.id === item.id)) continue;
+      const mediaType = item.mediaType || mediaTypeFromMime(item.mime, item.name);
+      // Same reference-only shape a finished private upload sends (`url: ""`).
+      const attachment: AgentAttachment = {
+        url: "",
+        artifact_id: ref.artifactId,
+        revision_id: ref.revisionId,
+        ...(item.name ? { name: item.name } : {}),
+        ...(item.mime ? { mime: item.mime } : {}),
+        ...(mediaType ? { media_type: mediaType } : {}),
+      };
+      picked.push({
+        id: item.id,
+        name: item.name || "",
+        ...(item.previewUrl ? { previewUrl: item.previewUrl } : {}),
+        ...(item.mime ? { mime: item.mime } : {}),
+        uploading: false,
+        attachment,
+        artifactId: ref.artifactId,
+        revisionId: ref.revisionId,
+        ...(item.libraryItem ? { libraryItem: item.libraryItem } : {}),
+      });
+    }
+    if (!picked.length) return;
+    setAttachments((prev) => {
+      const have = new Set(prev.map((a) => a.id));
+      const fresh = picked.filter((a) => !have.has(a.id));
+      return fresh.length ? [...prev, ...fresh] : prev;
+    });
+  }, []);
+
   const removeAttachment = useCallback((id: string) => {
+    uploadsRef.current.get(id)?.abort();
+    uploadsRef.current.delete(id);
     filesRef.current.delete(id);
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
@@ -182,6 +234,8 @@ export function useAttachments(
   );
 
   const clear = useCallback(() => {
+    for (const controller of uploadsRef.current.values()) controller.abort();
+    uploadsRef.current.clear();
     filesRef.current.clear();
     setAttachments([]);
   }, []);
@@ -196,6 +250,7 @@ export function useAttachments(
         previewUrl: attachmentDisplayUrl({ previewUrl: a.previewUrl }),
         url: attachmentDisplayUrl({ url: a.url || a.attachment?.url }),
         mime: a.mime || a.attachment?.mime,
+        ...(a.attachment?.media_type ? { mediaType: a.attachment.media_type } : {}),
         uploading: a.uploading,
         ...(a.failed ? { failed: true } : {}),
         ...(a.artifactId ? { artifactId: a.artifactId } : {}),
@@ -205,6 +260,7 @@ export function useAttachments(
     ),
     handleAttachFiles,
     addReady,
+    addComposerAttachments,
     restoreReady,
     removeAttachment,
     retryAttachment,

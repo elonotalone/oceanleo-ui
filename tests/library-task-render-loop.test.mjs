@@ -221,6 +221,8 @@ const historyNoop = dataModule(`export function ConfirmDialog(){return null;} ex
 const historyModel = dataModule(`
  export function canDeleteHistoryEntry(){return false;}
  export function historyPollDelayMs(){return 60000;}
+ export const HISTORY_WORKING_POLL_MS=3000;
+ export function isHistoryEntryWorking(){return false;}
  export function isRestorableAppSession(){return false;}
  export function isShellTask(){return false;}
  export function isTaskThreadSession(){return false;}

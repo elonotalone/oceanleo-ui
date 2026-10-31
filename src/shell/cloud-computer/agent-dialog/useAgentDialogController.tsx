@@ -231,6 +231,7 @@ export function useAgentDialog({
   taskSessionId,
   onArchiveStatus,
   openActiveSession = true,
+  bindUploadsToTaskSession = false,
 }: {
   computerId: string;
   sessionId?: string;
@@ -248,9 +249,25 @@ export function useAgentDialog({
    * explicitly (the main-chat native thread, including draft mode) pass false.
    */
   openActiveSession?: boolean;
+  /**
+   * Managed (task-session) threads: composer files are put into the inbox
+   * under the conversation's own task session, never without it or under a
+   * previous one. Files added before the session exists wait in this tab and
+   * are uploaded with it; a session change puts them again under the new one.
+   * The Computers page (no task sessions) leaves this off.
+   */
+  bindUploadsToTaskSession?: boolean;
 }): AgentDialogControllerV2 {
   const taskSessionRef = useRef(taskSessionId);
   taskSessionRef.current = taskSessionId;
+  const bindUploadsRef = useRef(bindUploadsToTaskSession);
+  bindUploadsRef.current = bindUploadsToTaskSession;
+  /** Managed threads: the bytes of each composer file (to upload or put again under the right session). */
+  const uploadFilesRef = useRef(new Map<string, File>());
+  /** Managed threads: the task session each composer file was put into the inbox under. */
+  const uploadedForRef = useRef(new Map<string, string>());
+  /** Before a send: every composer file uploaded (and, managed, under this send's task session). */
+  const settleUploadsRef = useRef<() => Promise<void>>(async () => {});
   const archiveStatusRef = useRef(onArchiveStatus);
   archiveStatusRef.current = onArchiveStatus;
   const openActiveSessionRef = useRef(openActiveSession);
@@ -515,7 +532,14 @@ export function useAgentDialog({
     const related = new Set(["user_message", "turn_start", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "models", "config", "commands", "session_opened", "transcript", "session_path", "error"]);
     if (related.has(String(frame.t)) && (isWsProgram(frameProgram) || frameProgram === "oceanleo")) {
       const ref = typeof frame.ref === "string" ? frame.ref : "";
-      const pendingKey = ref ? pendingRefs.current.get(ref) : frame.t === "session_opened" && frameProgram === stateRef.current.program && !stateRef.current.activeSession ? viewKeyRef.current : undefined;
+      // A ref-less `session_opened` is another view's open on this computer:
+      // the gateway sends it to every page attached here (one shared shell
+      // scope). The Computers page follows it into its new view; a host that
+      // opens its sessions itself (task chats, the homepage draft) never
+      // adopts it, or a brand-new chat would turn into another task's
+      // conversation and its first prompt would land there (2026-10-31 D).
+      const adoptUnsolicited = openActiveSessionRef.current;
+      const pendingKey = ref ? pendingRefs.current.get(ref) : adoptUnsolicited && frame.t === "session_opened" && frameProgram === stateRef.current.program && !stateRef.current.activeSession ? viewKeyRef.current : undefined;
       if (ref && !pendingKey && !frameSession) return;
       let key = frameSession ? `${frameProgram}::${frameSession}` : `${frameProgram}::new`;
       if (pendingKey && !frameSession) key = pendingKey;
@@ -1184,10 +1208,11 @@ export function useAgentDialog({
     });
     if (occupancyMode !== "idle") return false;
     const text = (typeof override === "string" ? override : draftRef.current).trim();
-    if (inboxWaiters.current.size) {
-      await Promise.all([...inboxWaiters.current.values()]);
-    }
-    const files = attachmentsRef.current.filter(isInboxReady);
+    await settleUploadsRef.current();
+    // A managed prompt carries only files archived under its own task session.
+    const sendSession = taskSessionRef.current || "";
+    const files = attachmentsRef.current.filter((item) => isInboxReady(item)
+      && (!bindUploadsRef.current || (uploadedForRef.current.get(item.id) ?? "") === sendSession));
     if (!text && files.length === 0) return false;
     if (text.length > MAX_PROMPT_CHARS) {
       dispatch({ type: "notice", code: "invalid_argument", program });
@@ -1251,6 +1276,12 @@ export function useAgentDialog({
     while (unsent.size > 20) unsent.delete(unsent.keys().next().value as string);
     pendingConfig.current.delete(origin);
     setDraft("");
+    // Sent files stay known a while (a refused prompt hands them back to the
+    // composer with their session); only the oldest are forgotten.
+    for (const id of [...uploadFilesRef.current.keys()].slice(0, Math.max(0, uploadFilesRef.current.size - 60))) {
+      uploadFilesRef.current.delete(id);
+      uploadedForRef.current.delete(id);
+    }
     setAttachments((current) => current.filter((item) => item.state === "error"));
     setFresh(false);
     return true;
@@ -1733,8 +1764,113 @@ export function useAgentDialog({
     setFresh(value);
   }, []);
 
-  const addAttachments = useCallback((files: File[]) => {
+  /**
+   * Put one chip's file into the computer's inbox under the conversation's
+   * CURRENT task session (the gateway archives it in that session and only a
+   * prompt of that same session may carry it).
+   */
+  const startUpload = useCallback((chip: DialogAttachment, file: File) => {
     const computerId = computerIdRef.current.trim();
+    const bound = taskSessionRef.current || "";
+    const put = computerApi.putComputerInbox;
+    let settleWaiter: () => void = () => {};
+    const waiter = new Promise<void>((resolve) => {
+      settleWaiter = resolve;
+    });
+    inboxWaiters.current.set(chip.id, waiter);
+    const finish = (patch: Partial<DialogAttachment>) => {
+      const apply = (item: DialogAttachment) => (item.id === chip.id ? { ...item, ...patch } : item);
+      attachmentsRef.current = attachmentsRef.current.map(apply);
+      setAttachments((current) => current.map(apply));
+    };
+    const done = () => {
+      if (inboxWaiters.current.get(chip.id) === waiter) inboxWaiters.current.delete(chip.id);
+      settleWaiter();
+    };
+    finish({ state: "uploading", deferred: undefined, percent: 0, path: undefined, archive: undefined, error: undefined });
+    if (typeof put !== "function" || !computerId) {
+      finish({
+        state: "error",
+        error: !computerId ? "missing computer" : "inbox upload unavailable",
+      });
+      done();
+      return;
+    }
+    void put(computerId, file, (percent) => {
+      finish({ percent });
+    }, bound ? { task_session_id: bound } : undefined)
+      .then((result) => {
+        uploadedForRef.current.set(chip.id, bound);
+        finish({
+          state: "done",
+          percent: 100,
+          path: result.path,
+          archive: result.archive,
+          name: result.name || chip.name,
+          mime: result.mime || chip.mime,
+          size: typeof result.size === "number" ? result.size : chip.size,
+          error: undefined,
+        });
+      })
+      .catch((err: unknown) => {
+        const message =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message || "").trim()
+            : "";
+        finish({
+          state: "error",
+          error: message || "upload failed",
+        });
+      })
+      .finally(done);
+  }, []);
+
+  /**
+   * Managed threads only: every composer file must belong to the task session
+   * the next prompt goes out with. Files held while there was no session are
+   * uploaded now; files put under another session (the conversation was
+   * switched or started over) are put again under this one, or dropped when
+   * this tab no longer has their bytes. Without a session they wait.
+   */
+  const bindSessionUploads = useCallback(() => {
+    if (!bindUploadsRef.current) return;
+    const bound = taskSessionRef.current || "";
+    for (const item of attachmentsRef.current) {
+      if (item.state === "error") continue;
+      if (item.state === "uploading" && !item.deferred) continue;
+      const file = uploadFilesRef.current.get(item.id);
+      const stale = item.deferred || (item.state === "done" && (uploadedForRef.current.get(item.id) ?? "") !== bound);
+      if (!stale) continue;
+      if (!file) {
+        removeAttachmentRef.current(item.id);
+        continue;
+      }
+      if (!bound) {
+        if (item.deferred) continue;
+        const hold = (entry: DialogAttachment) => (entry.id === item.id
+          ? { ...entry, state: "uploading" as const, deferred: true, percent: 0, path: undefined, archive: undefined } : entry);
+        attachmentsRef.current = attachmentsRef.current.map(hold);
+        setAttachments((current) => current.map(hold));
+        continue;
+      }
+      startUpload(item, file);
+    }
+  }, [startUpload]);
+  const removeAttachmentRef = useRef<(id: string) => void>(() => {});
+  useEffect(() => {
+    bindSessionUploads();
+  }, [taskSessionId, bindSessionUploads]);
+  settleUploadsRef.current = async () => {
+    // An upload that was in flight under a previous session finishes stale and
+    // is put again: a few rounds at most (bounded, never a loop on failures).
+    for (let round = 0; round < 3; round += 1) {
+      bindSessionUploads();
+      if (!inboxWaiters.current.size) return;
+      await Promise.all([...inboxWaiters.current.values()]);
+    }
+  };
+
+  const addAttachments = useCallback((files: File[]) => {
     const room = Math.max(0, 20 - attachmentsRef.current.length);
     // One paste of two screenshots is two files named image.png: give each a
     // distinct name (image.png, image-2.png) so the chips, the inbox and the
@@ -1758,60 +1894,19 @@ export function useAgentDialog({
         ...(preview ? { preview } : {}),
       };
     });
-    setAttachments((current) => [...current, ...created].slice(0, 20));
-    const put = computerApi.putComputerInbox;
-    created.forEach((chip, index) => {
-      const file = accepted[index];
-      let settleWaiter: () => void = () => {};
-      const waiter = new Promise<void>((resolve) => {
-        settleWaiter = resolve;
-      });
-      inboxWaiters.current.set(chip.id, waiter);
-      const finish = (patch: Partial<DialogAttachment>) => {
-        setAttachments((current) =>
-          current.map((item) => (item.id === chip.id ? { ...item, ...patch } : item)),
-        );
-      };
-      const done = () => {
-        inboxWaiters.current.delete(chip.id);
-        settleWaiter();
-      };
-      if (typeof put !== "function" || !computerId) {
-        finish({
-          state: "error",
-          error: !computerId ? "missing computer" : "inbox upload unavailable",
-        });
-        done();
-        return;
-      }
-      void put(computerId, file, (percent) => {
-        finish({ percent });
-      }, taskSessionRef.current ? { task_session_id: taskSessionRef.current } : undefined)
-        .then((result) => {
-          finish({
-            state: "done",
-            percent: 100,
-            path: result.path,
-            archive: result.archive,
-            name: result.name || chip.name,
-            mime: result.mime || chip.mime,
-            size: typeof result.size === "number" ? result.size : chip.size,
-            error: undefined,
-          });
-        })
-        .catch((err: unknown) => {
-          const message =
-            err && typeof err === "object" && "message" in err
-              ? String((err as { message: unknown }).message || "").trim()
-              : "";
-          finish({
-            state: "error",
-            error: message || "upload failed",
-          });
-        })
-        .finally(done);
-    });
-  }, []);
+    // A managed conversation without its task session yet (homepage launch, a
+    // picked chat before its first send): the files wait in this tab and go
+    // to the inbox WITH the session once it exists (bindSessionUploads). An
+    // inbox file uploaded without the session has no archive row, and the
+    // gateway then refuses the first prompt ("附件还没存好", 2026-10-31 D).
+    const holding = bindUploadsRef.current && !taskSessionRef.current;
+    const chips = holding ? created.map((chip) => ({ ...chip, deferred: true })) : created;
+    if (bindUploadsRef.current) chips.forEach((chip, index) => uploadFilesRef.current.set(chip.id, accepted[index]));
+    setAttachments((current) => [...current, ...chips].slice(0, 20));
+    attachmentsRef.current = [...attachmentsRef.current, ...chips].slice(0, 20);
+    if (holding) return;
+    chips.forEach((chip, index) => startUpload(chip, accepted[index]));
+  }, [startUpload]);
 
   const removeAttachment = useCallback((id: string) => {
     // Never sent from here (sent files leave the composer), so its local
@@ -1820,8 +1915,12 @@ export function useAgentDialog({
     if (gone?.preview) {
       try { URL.revokeObjectURL(gone.preview); } catch { /* already gone */ }
     }
+    uploadFilesRef.current.delete(id);
+    uploadedForRef.current.delete(id);
+    attachmentsRef.current = attachmentsRef.current.filter((item) => item.id !== id);
     setAttachments((current) => current.filter((item) => item.id !== id));
   }, []);
+  removeAttachmentRef.current = removeAttachment;
 
   return {
     computerId,

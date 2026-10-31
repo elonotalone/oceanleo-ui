@@ -30,3 +30,13 @@ Operator 原话要点（14:45 CST，附 4 张截图在 `/root/oceanleo-inbox/202
 - 改了已有测试锁定的行为：改测试使其锁定新行为，不要删测试了事。为新行为至少加一条测试。
 - 别人的文件不碰；必须碰时在你的任务书末尾「交接」一节写清楚，parent 处理。
 - 结束时在自己的任务书末尾追加「结果」：改了哪些文件、根因（D 必写）、跑了哪些测试及结果。
+
+## Parent 集成（2026-10-31）
+
+- A/B/C/D 均完成；D 首轮被中断但代码与结果已落盘，parent 核对后收口（未重派）。
+- 补：首页电脑对话（Claude Code/Codex）附件在 session 建好前只在本标签页，A 的草稿存不了 → 新增 `src/shell/native-draft-files.ts`（IndexedDB 存 File，刷新后交回 `thread.onAttachFiles`；删 tile 跟着删；首条 prompt 发出即清）。`libraryAttachmentFile`：电脑对话里「从资料库添加文件」读一次原件，作为文件进那台电脑的 inbox。
+- 主站 `oceanleo/app/_components/home-content.tsx`：`draftKey="home"`、`onAddAttachments`（云端=引用；电脑对话=下载后进 inbox）、`useNativeDraftFiles`、上传中删除 → abort。
+- 任务页 `AgentChat.tsx` 两个 LeoComposer：`draftKey=task:<id>` + `onAddAttachments`。
+- 删除已无用词条 `olderMessages`。
+- 验证：两仓 `pnpm typecheck` 通过；相关测试 400/400 + `native-draft-files` 3/3；未跑全量（operator 规则：只跑改动相关测试）。LeoDev oceanleo slot FRESH(dev)。
+- 未证实、未改：D 观察到 06:20–06:42 孪生网关切换后约 20 分钟无 agent-dialog 连接；前端重连逻辑（1s→30s 退避）检查无缺陷。

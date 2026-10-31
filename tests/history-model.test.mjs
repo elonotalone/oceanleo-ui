@@ -4,8 +4,11 @@ import test from "node:test";
 
 import {
   canDeleteHistoryEntry,
+  HISTORY_WORKING_POLL_MS,
   historyPollDelayMs,
+  isHistoryEntryWorking,
   isRestorableAppSession,
+  isTaskWorking,
   mergeHistoryEntries,
   withLinkedAgentTask,
 } from "../src/shell/history-model.ts";
@@ -35,6 +38,50 @@ test("history poll backs off on consecutive failures and caps at 60s", () => {
   assert.equal(historyPollDelayMs(2), 32_000);
   assert.equal(historyPollDelayMs(3), 60_000);
   assert.equal(historyPollDelayMs(8), 60_000);
+});
+
+test("C-7: 只有在干活（云端 running / 电脑会话 running·waiting_user）才算工作中；session.active 不算", () => {
+  assert.equal(isTaskWorking({ status: "running" }), true);
+  assert.equal(isTaskWorking({ status: "done", computer_run_status: "running" }), true);
+  assert.equal(isTaskWorking({ status: "done", computer_run_status: "waiting_user" }), true);
+  for (const status of ["done", "completed", "failed", "stopped", "active", "archived"]) {
+    assert.equal(isTaskWorking({ status }), false, status);
+  }
+  const entries = mergeHistoryEntries(
+    [
+      { ...baseSession, id: "s-run", status: "active" },
+      { ...baseSession, id: "s-idle", status: "active" },
+      { ...baseSession, id: "s-by-task-id", status: "archived", task_id: "t-thread" },
+    ],
+    [
+      { id: "t-run", status: "running", mode: "agent", session_id: "s-run" },
+      { id: "t-idle", status: "done", mode: "agent", session_id: "s-idle" },
+      { id: "t-thread", status: "done", mode: "agent", computer_run_status: "running" },
+      { id: "t-legacy-run", status: "running", mode: "agent" },
+      { id: "t-legacy-failed", status: "failed", mode: "agent" },
+    ],
+  );
+  const working = Object.fromEntries(entries.map((entry) => [entry.id, isHistoryEntryWorking(entry)]));
+  assert.deepEqual(working, {
+    "s-run": true,
+    "s-idle": false,
+    "s-by-task-id": true,
+    "t-thread": true,
+    "t-legacy-run": true,
+    "t-legacy-failed": false,
+  });
+  // Idle rows carry no extra key, so list equality / snapshots stay as before.
+  assert.equal("working" in entries.find((entry) => entry.id === "s-idle"), false);
+  assert.ok(HISTORY_WORKING_POLL_MS <= 5_000, "the mark stops within a few seconds of the run ending");
+});
+
+test("C-7: 侧栏任务行只有工作中动效，不再有红黄绿灰状态点；工作状态变化会刷新列表", () => {
+  assert.doesNotMatch(historySource, /STATUS_DOT/);
+  assert.doesNotMatch(historySource, /bg-amber-400|bg-rose-500/);
+  assert.match(historySource, /SessionRunningIcon/);
+  assert.match(historySource, /isHistoryEntryWorking\(x\) !== isHistoryEntryWorking\(y\)/);
+  assert.match(historySource, /computer_run_status \?\? null\) !== \(y\.task\.computer_run_status/);
+  assert.match(historySource, /HISTORY_WORKING_POLL_MS/);
 });
 
 test("session 优先，已归属 session 的多次 run 不再重复成历史项", () => {

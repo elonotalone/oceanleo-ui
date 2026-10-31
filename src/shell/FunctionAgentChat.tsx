@@ -129,6 +129,7 @@ import {
 import { appendOperatorRemark } from "../lib/operator-remark";
 import {
   activeAgentProgressKey,
+  agentTurnActionTargets,
   buildAgentRenderItems,
   liveAgentProgressKey,
   takeUnreportedAgentArtifacts,
@@ -1686,6 +1687,8 @@ export function FunctionAgentChat({
   const presentation = threadPresentation(messages, status, {
     busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
+  // Copy row: once per turn, under its last words; none while the turn runs (operator 2026-10-31).
+  const turnActions = agentTurnActionTargets(renderItems, running || presentation.working);
   const turnState = latestTurn(messages);
   const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
   const showThinkingTicker = Boolean(
@@ -1806,6 +1809,7 @@ export function FunctionAgentChat({
                 key={item.key}
                 message={item.message}
                 streaming={running && item.index === lastAssistantIdx}
+                turnCopyText={turnActions.get(item.key) ?? null}
                 stopped={item.message.meta?.stopped === true || ((stoppedTaskId === taskId && Boolean(stoppedTaskId)) && item.index === lastAssistantIdx)}
                 onArtifactOpen={
                   item.message.meta?.artifact

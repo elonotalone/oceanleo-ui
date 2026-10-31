@@ -399,3 +399,25 @@ test("勾选框与消息渲染都在，用户消息也能被选中", () => {
   assert.ok(view.host.textContent.includes("帮我算个同比"));
   view.unmount();
 });
+
+// 2026-10-31 item 6: one action row per turn (host passes turnCopyText).
+test("一轮一排：turnCopyText 为 null 的回答没有操作；最后一段常显一排，复制的是整轮拼好的话", async () => {
+  const message = { id: 5, role: "assistant", kind: "text", content: "第二段。" };
+  const middle = mount(React.createElement(AgentTranscriptBubble, { message, turnCopyText: null, onShare: () => {} }));
+  assert.equal(middle.host.querySelectorAll("button").length, 0, "not the turn's last words: no row");
+  middle.unmount();
+
+  const last = mount(React.createElement(AgentTranscriptBubble, { message, turnCopyText: "第一段。\n\n第二段。" }));
+  const row = last.host.querySelector("[data-agent-turn-actions]");
+  assert.ok(row, "the turn's row is there");
+  assert.doesNotMatch(row.className, /opacity-0/, "the single per-turn row is always visible");
+  const copy = last.host.querySelector('button[aria-label="复制"]');
+  globalThis.__clipboard.length = 0;
+  await act(async () => { copy.dispatchEvent(new window.MouseEvent("click", { bubbles: true })); });
+  assert.deepEqual(globalThis.__clipboard, ["第一段。\n\n第二段。"]);
+  last.unmount();
+
+  const streaming = mount(React.createElement(AgentTranscriptBubble, { message, turnCopyText: "第二段。", streaming: true }));
+  assert.equal(streaming.host.querySelectorAll("button").length, 0, "never while streaming");
+  streaming.unmount();
+});

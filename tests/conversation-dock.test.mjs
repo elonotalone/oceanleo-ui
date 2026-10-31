@@ -366,6 +366,72 @@ test("session reuse follows lib/computer-task-api findComputerTaskSession exactl
   } finally { await view.cleanup(); }
 });
 
+// C-3 (2026-10-31): a draft shows the account's last 「电脑 · 程序」 chat pick, not 云端 every time.
+const REMEMBERED_KEY = "oceanleo.dock-conversation.v1:account-a";
+test("C-3: a new draft restores the last computer + program chat pick (never a session id)", async () => {
+  const first = await renderDock();
+  try {
+    await first.openComputer();
+    await first.click(first.q('[data-dock-program-row="codex"]'));
+    await first.click(first.q('[data-dock-view="chat"]'));
+  } finally { await first.cleanup(); }
+  assert.deepEqual(JSON.parse(window.localStorage.getItem(REMEMBERED_KEY)),
+    { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" });
+  // A stored session id (older / tampered value) is never restored.
+  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ kind: "native", computerId: "cc_1", computerName: "old name", program: "codex", view: "chat", sessionId: "acp-old" }));
+  const second = await renderDock();
+  try {
+    assert.deepEqual(second.picks, [{ kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" }],
+      "restored once with the computer's current name and no sessionId");
+    await second.render({ conversation: second.picks[0] });
+    assert.equal(second.trigger().textContent, "elon · Codex");
+    assert.equal(second.trigger().getAttribute("title"), "切换对话");
+    assert.equal(globalThis.__cdCreates, 0);
+    assert.deepEqual(globalThis.__cdPushes, []);
+  } finally { await second.cleanup(); }
+});
+
+test("C-3: a pick that no longer exists (computer gone / program not installed) falls back to 云端 and is forgotten", async () => {
+  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ kind: "native", computerId: "cc_gone", computerName: "old", program: "codex", view: "chat" }));
+  const gone = await renderDock();
+  try {
+    assert.deepEqual(gone.picks, []);
+    assert.equal(gone.trigger().textContent, "云端");
+    assert.equal(window.localStorage.getItem(REMEMBERED_KEY), null);
+  } finally { await gone.cleanup(); }
+  // The default client reports Claude Code as not installed on cc_1.
+  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ kind: "native", computerId: "cc_1", computerName: "elon", program: "claude", view: "chat" }));
+  const missing = await renderDock();
+  try {
+    assert.deepEqual(missing.picks, []);
+    assert.equal(missing.trigger().textContent, "云端");
+    assert.equal(window.localStorage.getItem(REMEMBERED_KEY), null);
+  } finally { await missing.cleanup(); }
+});
+
+test("C-3: a task never borrows the draft memory; going back to an OceanLeo row forgets it", async () => {
+  const remembered = { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" };
+  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify(remembered));
+  const task = await renderDock({ boundTarget: { kind: "cloud" } });
+  try {
+    assert.deepEqual(task.picks, [], "a bound task keeps its own conversation");
+    await task.openComputer();
+    await task.click(task.q('[data-dock-program-row="hermes"]'));
+    await task.click(task.q('[data-dock-view="chat"]'));
+    assert.deepEqual(JSON.parse(window.localStorage.getItem(REMEMBERED_KEY)), remembered, "a pick inside a task does not move the draft default");
+  } finally { await task.cleanup(); }
+  const draft = await renderDock();
+  try {
+    assert.deepEqual(draft.picks, [remembered]);
+    await draft.render({ conversation: remembered });
+    await draft.openComputer();
+    await draft.click(draft.q('[data-dock-program-row="oceanleo"]'));
+    assert.equal(window.localStorage.getItem(REMEMBERED_KEY), null);
+  } finally { await draft.cleanup(); }
+  const after = await renderDock();
+  try { assert.deepEqual(after.picks, []); } finally { await after.cleanup(); }
+});
+
 test("dock source: no session creation, no navigation besides Manage devices, no emoji glyphs", () => {
   const source = readFileSync(new URL("../src/shell/cloud-computer/ComputerDock.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /createComputerTaskSession|computerSession=|\/tasks\//);

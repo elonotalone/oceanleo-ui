@@ -54,6 +54,11 @@ export type NativeThread = {
   offline: boolean;
   /** One plain-language line when sending is not possible, else null. */
   blockedReason: string | null;
+  /**
+   * An existing conversation with nothing to show yet because its cloud-saved
+   * copy is still being read (a quiet spinner, never 「正在打开对话…」).
+   */
+  opening: boolean;
   /** Resolves true only when the prompt actually went out. Empty text with ready attachments is a valid send. */
   send(text: string): Promise<boolean>;
   stop(): void;
@@ -63,7 +68,10 @@ export type NativeThread = {
   onRemoveAttachment: (id: string) => void;
   modelPicker: ReactNode | null;
   hasOlder: boolean;
+  /** Reads ONE more batch of earlier messages and prepends it (never re-reads the whole conversation). */
   loadOlder(): void;
+  /** A batch of earlier messages is on its way (the host shows a small spinner at the top). */
+  olderLoading: boolean;
   /** True only when saving this conversation to the cloud reported an error. */
   saveFailed: boolean;
   /** The headless controller (settings panel reads models/config/programs from it). */
@@ -112,6 +120,12 @@ export const PENDING_PROMPT_CONNECT_MS = 45_000;
 const PENDING_BUBBLE_ID = -2147483648;
 
 type Archive = Awaited<ReturnType<typeof getComputerTaskTranscript>>;
+/** Earlier saved batches (oldest first) and the cursor for the next one. */
+type OlderArchive = { dialog: AgentDialogMessage[]; has_older: Archive["has_older"]; next_before: Archive["next_before"] };
+
+function archiveHasOlder(cursor: Pick<Archive, "has_older" | "next_before"> | null): boolean {
+  return cursor?.has_older === true && cursor.next_before != null;
+}
 
 function nativeProgramOf(session: ComputerTaskSession | null): WsProgram | null {
   if (!session || session.kind !== "acp") return null;
@@ -152,6 +166,10 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     localOceanleo: false,
     // Sessions are opened explicitly below; a draft never opens one.
     openActiveSession: false,
+    // Composer files go to the inbox under THIS conversation's task session:
+    // held in a draft until the session exists (homepage launch, a picked
+    // chat's first send), never sent under another task's session.
+    bindUploadsToTaskSession: true,
   });
 
   // Keep the controller on this session's program (never a program strip).
@@ -207,6 +225,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     pendingRef.current = null;
     setPending(null);
     if (dialog.activeSession || dialog.messages.length) dialog.newSession();
+    // Files left in the previous conversation's composer were put under its
+    // task session: they never ride into the next new chat.
+    for (const item of dialog.attachments) dialog.removeAttachment(item.id);
   }, [session, dialog]);
 
   const reportedRef = useRef(nativeId);
@@ -224,9 +245,15 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // Cloud-saved transcript: the source while offline, and the fallback when an
   // online computer no longer has this conversation's native history.
   const [archive, setArchive] = useState<Archive | null>(null);
+  // Earlier saved batches, already reduced and kept as they are: a new batch is
+  // prepended, so the messages already on screen keep their ids (no full re-render).
+  const [olderArchive, setOlderArchive] = useState<OlderArchive | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  /** The session whose saved copy has been read (or could not be): until then an empty view is "opening". */
+  const [archiveReadFor, setArchiveReadFor] = useState("");
   const archiveFor = useRef("");
   const olderLoaded = useRef(false);
+  const olderInFlight = useRef(false);
   const bornHere = useRef("");
   useEffect(() => {
     // Only a different session clears what is shown; reconnects and
@@ -235,7 +262,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       // Created from this thread's draft a moment ago: nothing is saved yet.
       if (!archiveFor.current && wasDraft.current && session && !session.native_session_id) bornHere.current = sessionKey;
       setArchive(null);
+      setOlderArchive(null);
       olderLoaded.current = false;
+      olderInFlight.current = false;
       archiveFor.current = sessionKey;
     }
     if (!enabled || !session || session.kind !== "acp") return;
@@ -246,23 +275,35 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       .then((next) => {
         if (archiveFor.current !== session.id) return;
         setArchive((current) => (current && olderLoaded.current ? current : next));
+        setArchiveReadFor(session.id);
       })
-      .catch(() => { /* Reading stays quiet; the stream just shows nothing saved yet. */ });
+      .catch(() => {
+        // Reading stays quiet; the stream just shows nothing saved yet.
+        if (!controller.signal.aborted && archiveFor.current === session.id) setArchiveReadFor(session.id);
+      });
     return () => controller.abort();
   }, [enabled, sessionKey, session?.kind, online]);
 
-  const archiveDialog = useMemo(() => {
-    if (!archive) return [] as AgentDialogMessage[];
+  const reduceArchive = useCallback((page: Archive): AgentDialogMessage[] => {
     type State = ReturnType<typeof initialDialogState>;
-    const start: State = { ...initialDialogState(), program: program ?? session?.program ?? null, activeSession: archive.session?.native_session_id ?? nativeId };
-    return archive.frames.reduce<State>((state, frame) => applyDialog(state, { type: "frame", frame }), start).messages;
-  }, [archive, program, nativeId]);
+    const start: State = { ...initialDialogState(), program: program ?? session?.program ?? null, activeSession: page.session?.native_session_id ?? nativeId };
+    return page.frames.reduce<State>((state, frame) => applyDialog(state, { type: "frame", frame }), start).messages;
+  }, [program, nativeId]);
+  const newestArchiveDialog = useMemo(
+    () => (archive ? reduceArchive(archive) : ([] as AgentDialogMessage[])),
+    [archive, reduceArchive],
+  );
+  const archiveDialog = useMemo(
+    () => (olderArchive?.dialog.length ? [...olderArchive.dialog, ...newestArchiveDialog] : newestArchiveDialog),
+    [olderArchive, newestArchiveDialog],
+  );
 
   const liveHasConversation = live && hasConversation(dialog.messages);
-  // While the computer is still opening the session (sessionLoading) the
-  // cloud-saved transcript is shown instead of an empty 「正在打开对话…」; the
-  // live replay replaces it the moment it arrives.
-  const showArchive = !live || (!liveHasConversation && !dialog.busy && hasConversation(archiveDialog));
+  // While the computer is still opening the session (sessionLoading), or a
+  // running turn's live replay has not arrived yet, the cloud-saved transcript
+  // is shown instead of an empty view; the live replay replaces it the moment
+  // it arrives (2026-10-31 D: a busy session no longer hides the saved copy).
+  const showArchive = !live || (!liveHasConversation && hasConversation(archiveDialog));
   const messages = useMemo(() => {
     if (!showArchive) return dialogToAgentMessages(dialog.messages, { live: true, tt });
     const saved = dialogToAgentMessages(archiveDialog, { live: false, tt });
@@ -404,7 +445,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       id: item.id,
       name: item.state === "error" ? `${item.name} · ${tt("上传失败")}` : item.name,
       mime: item.mime,
-      uploading: item.state === "uploading",
+      // A file held until the session exists is ready from the user's side (no spinner).
+      uploading: item.state === "uploading" && !item.deferred,
       // The tile thumbnail: the local `blob:` preview of an image picked in this tab.
       ...(item.preview ? { previewUrl: item.preview, url: item.preview } : {}),
     })), [dialog.attachments, queuedFiles, tt]);
@@ -432,6 +474,10 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     };
     return [...messages, bubble];
   }, [messages, pending, pendingShown]);
+  // A chat born from this draft has nothing saved to read; any other session is
+  // "opening" only until its saved copy has been read.
+  const opening = Boolean(enabled && session && session.kind === "acp") && threadMessages.length === 0 &&
+    archiveReadFor !== sessionKey && !(bornHere.current === sessionKey && online);
   const pendingPublic = useMemo<NativePendingPrompt | null>(
     () => (pending ? { text: pending.text, unsent: pending.unsent } : null), [pending]);
 
@@ -450,20 +496,29 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       dialog.loadOlderHistory();
       return;
     }
-    if (!session || !archive?.has_older || archive.next_before == null || archiveLoading) return;
+    const cursor = olderArchive ?? archive;
+    // One batch at a time: scroll events fire faster than state settles.
+    if (!session || !cursor?.has_older || cursor.next_before == null || olderInFlight.current) return;
     const id = session.id;
+    olderInFlight.current = true;
     setArchiveLoading(true);
-    void getComputerTaskTranscript(id, { before: archive.next_before })
+    void getComputerTaskTranscript(id, { before: cursor.next_before })
       .then((older) => {
         if (archiveFor.current !== id) return;
         olderLoaded.current = true;
-        setArchive((current) => current
-          ? { ...current, frames: [...older.frames, ...current.frames], has_older: older.has_older, next_before: older.next_before }
-          : older);
+        const batch = reduceArchive(older);
+        setOlderArchive((current) => ({
+          dialog: current ? [...batch, ...current.dialog] : batch,
+          has_older: older.has_older,
+          next_before: older.next_before,
+        }));
       })
-      .catch(() => { /* Keep what is shown; the button stays available. */ })
-      .finally(() => setArchiveLoading(false));
-  }, [showArchive, dialog, session, archive, archiveLoading]);
+      .catch(() => { /* Keep what is shown; scrolling to the top again retries. */ })
+      .finally(() => {
+        if (archiveFor.current === id) olderInFlight.current = false;
+        setArchiveLoading(false);
+      });
+  }, [showArchive, dialog, session, archive, olderArchive, reduceArchive]);
 
   const savedStatus = live ? archiveStatus : archive?.sync_status ?? session?.sync_status ?? null;
 
@@ -475,6 +530,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     ready,
     offline: !online,
     blockedReason,
+    opening,
     send,
     stop,
     answer,
@@ -482,8 +538,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     onAttachFiles: live ? dialog.addAttachments : undefined,
     onRemoveAttachment: dialog.removeAttachment,
     modelPicker,
-    hasOlder: showArchive ? archive?.has_older === true && archive.next_before != null : dialog.hasOlder,
+    hasOlder: showArchive ? archiveHasOlder(olderArchive ?? archive) : dialog.hasOlder,
     loadOlder,
+    olderLoading: showArchive ? archiveLoading : dialog.historyLoading === true,
     saveFailed: savedStatus === "error",
     dialog,
     pending: pendingPublic,

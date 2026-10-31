@@ -204,11 +204,14 @@ const OVERRIDES = {
         ready,
         offline: Boolean(input.computer && !input.computer.node_online),
         blockedReason,
+        opening: Boolean(input.session && state.opening),
         send,
         stop() { globalThis.__threadStops++; },
         answer(message, answer) { (globalThis.__answers ||= []).push({ id: message.id, answer }); },
         composerAttachments: state.attachments || [], onAttachFiles: undefined, onRemoveAttachment() {},
-        modelPicker: null, hasOlder: false, loadOlder() {}, saveFailed: Boolean(state.saveFailed), dialog: { stub: true, activeSession: "" },
+        modelPicker: null, hasOlder: Boolean(state.hasOlder), olderLoading: Boolean(state.olderLoading),
+        loadOlder() { globalThis.__loadOlder = (globalThis.__loadOlder || 0) + 1; },
+        saveFailed: Boolean(state.saveFailed), dialog: { stub: true, activeSession: "" },
         pending: pending ? { text: pending.text, unsent: pending.unsent ?? null } : null,
         queue(text) {
           if (pendingRef.current && !pendingRef.current.unsent) return false;
@@ -247,7 +250,7 @@ const OVERRIDES = {
   `),
 };
 
-const { AgentChat } = await import(await compileModule("src/shell/AgentChat.tsx", OVERRIDES, { missingPackageStub: lazyStub }));
+const { AgentChat, shouldLoadOlder, LOAD_OLDER_PX } = await import(await compileModule("src/shell/AgentChat.tsx", OVERRIDES, { missingPackageStub: lazyStub }));
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -505,7 +508,7 @@ test("a send blocked because the program needs setup opens the settings pane ins
   } finally { await view.unmount(); globalThis.__thread = null; }
 });
 
-test("re-entry while the session is still opening: the composer is usable and Enter queues (正在打开对话…), then sends once", async () => {
+test("re-entry while the session is still opening: the composer is usable and Enter queues (the bubble is the only signal), then sends once", async () => {
   // Known computer (no 正在连接…) but the link / occupancy is not read yet: not ready, not blocked.
   globalThis.__thread = { messages: NATIVE_MESSAGES, ready: false };
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
@@ -520,13 +523,32 @@ test("re-entry while the session is still opening: the composer is usable and En
     assert.deepEqual(globalThis.__sent, [], "not sent before the session is ready");
     assert.ok(pane.textContent.includes("继续看"), "the user's bubble shows at once");
     assert.equal(view.composer("native").__props.value, "", "the text moved into the bubble");
-    assert.match(pane.querySelector("[data-native-blocked]").textContent, /正在打开对话…/);
+    // 2026-10-31 D: no 「正在打开对话…」 line; the queued bubble says it all.
+    assert.equal(pane.querySelector("[data-native-blocked]"), null, "no opening line under a queued prompt");
+    assert.doesNotMatch(pane.textContent, /正在打开对话/);
     // The session becomes ready: it goes out by itself, once.
     globalThis.__thread = { messages: NATIVE_MESSAGES };
     await act(async () => { view.composer("native").__props.onChange("x"); await new Promise((r) => setTimeout(r, 0)); });
     await settle();
     assert.deepEqual(globalThis.__sent, [{ session: "cts_codex", text: "继续看" }]);
     assert.equal(pane.querySelector("[data-native-blocked]"), null, "the opening line is gone");
+  } finally { await view.unmount(); globalThis.__thread = null; }
+});
+
+test("opening an existing conversation never says 正在打开对话…: quiet spinner until its saved copy is read, then the plain hint", async () => {
+  globalThis.__thread = { messages: [], opening: true };
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    assert.ok(pane.querySelector("[data-native-opening]"), "quiet spinner while the saved copy is on its way");
+    assert.doesNotMatch(view.host.textContent, /正在打开对话/);
+    assert.equal(pane.querySelector("[data-native-blocked]"), null);
+    globalThis.__thread = { messages: [], opening: false };
+    await act(async () => { view.composer("native").__props.onChange("x"); await new Promise((r) => setTimeout(r, 0)); });
+    await settle();
+    assert.equal(pane.querySelector("[data-native-opening]"), null);
+    assert.ok(pane.textContent.includes("在下方输入，开始与 agent 对话。"));
+    assert.doesNotMatch(view.host.textContent, /正在打开对话/);
   } finally { await view.unmount(); globalThis.__thread = null; }
 });
 
@@ -582,7 +604,9 @@ test("a computer whose state is not known yet says 正在连接…, not offline,
     const pane = view.host.querySelector('[data-agent-stream="native"]');
     assert.ok(pane.querySelector("[data-native-blocked]").textContent.includes("正在连接…"));
     assert.doesNotMatch(pane.textContent, /离线/);
-    assert.ok(pane.textContent.includes("正在打开对话…"), "plain empty hint");
+    // 2026-10-31 D: an empty view that is still connecting shows a quiet spinner, not 「正在打开对话…」.
+    assert.doesNotMatch(pane.textContent, /正在打开对话/);
+    assert.ok(pane.querySelector("[data-native-opening]"), "quiet spinner while nothing can be shown yet");
     assert.equal(view.composer("native").__props.disabled, false);
   } finally { await view.unmount(); globalThis.__thread = null; }
 });
@@ -877,4 +901,63 @@ test("a computer link without a native program opens the OceanLeo conversation o
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(globalThis.__imports.length, 0);
   } finally { await program.unmount(); }
+});
+
+// 2026-10-31 item 4: no 「读取更早的对话」 button; scrolling up reads one batch by itself.
+test("shouldLoadOlder: only the user's own scroll up near the top, or a pane the stream does not fill; never while reading", () => {
+  const tall = { scrollHeight: 5000, clientHeight: 600 };
+  const base = { hasOlder: true, loading: false };
+  assert.equal(shouldLoadOlder({ ...tall, scrollTop: 50 }, { ...base, movingUp: true }), true);
+  assert.equal(shouldLoadOlder({ ...tall, scrollTop: 50 }, { ...base, movingUp: false }), false,
+    "the smooth follow-to-bottom starting at 0 never reads older batches");
+  assert.equal(shouldLoadOlder({ ...tall, scrollTop: LOAD_OLDER_PX + 1 }, { ...base, movingUp: true }), false);
+  assert.equal(shouldLoadOlder({ ...tall, scrollTop: 0 }, { ...base, loading: true, movingUp: true }), false, "one batch at a time");
+  assert.equal(shouldLoadOlder({ ...tall, scrollTop: 0 }, { ...base, hasOlder: false, movingUp: true }), false);
+  assert.equal(shouldLoadOlder({ scrollTop: 0, scrollHeight: 500, clientHeight: 600 }, { ...base, movingUp: false }), true,
+    "a short batch that cannot be scrolled up reads the next one");
+});
+
+test("native stream: no load-earlier button; a pane that is not filled reads one batch; a small spinner while it loads", async () => {
+  globalThis.__loadOlder = 0;
+  globalThis.__thread = { messages: NATIVE_MESSAGES, hasOlder: true };
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    assert.doesNotMatch(pane.textContent, /读取更早的对话/);
+    assert.equal([...pane.querySelectorAll("button")].some((button) => /更早/.test(button.textContent)), false);
+    // jsdom has no layout (0-height pane): the stream does not fill it, so it reads exactly one batch.
+    assert.equal(globalThis.__loadOlder, 1, "one batch, not the whole conversation");
+    assert.equal(pane.querySelector("[data-native-older-loading]"), null);
+    assert.equal(pane.querySelector("[data-agent-stream-scroller]").style.overflowAnchor, "none");
+  } finally { await view.unmount(); globalThis.__thread = null; }
+
+  globalThis.__thread = { messages: NATIVE_MESSAGES, hasOlder: true, olderLoading: true };
+  const loading = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const spinner = loading.host.querySelector('[data-agent-stream="native"] [data-native-older-loading]');
+    assert.ok(spinner?.querySelector(".v-spinner"), "the host's own spinner, no text button");
+  } finally { await loading.unmount(); globalThis.__thread = null; }
+});
+
+// 2026-10-31 item 6: copy only once, at the end of the agent's turn.
+test("native stream: one copy row per finished turn, under its last words", async () => {
+  globalThis.__thread = { messages: [
+    { id: -31, role: "user", kind: "text", content: "看一下日志" },
+    { id: -32, role: "assistant", kind: "text", content: "我先看看。" },
+    { id: -33, role: "assistant", kind: "step", content: "读取 server.log", meta: { step_index: 1, native_tool: true } },
+    { id: -34, role: "assistant", kind: "text", content: "日志里没有错误。", meta: { final: true } },
+    { id: -35, role: "user", kind: "text", content: "谢谢" },
+    { id: -36, role: "assistant", kind: "text", content: "不客气。", meta: { final: true } },
+  ] };
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  try {
+    const pane = view.host.querySelector('[data-agent-stream="native"]');
+    const rows = [...pane.querySelectorAll("[data-agent-turn-actions]")];
+    assert.equal(rows.length, 2, "two turns, two rows (not one per sentence)");
+    assert.equal(pane.querySelectorAll('button[aria-label="复制"]').length, 2);
+    // The first turn's row sits under its last words, not under 「我先看看。」.
+    const firstRowBubble = rows[0].parentElement;
+    assert.ok(firstRowBubble.textContent.includes("日志里没有错误。"));
+    assert.ok(!firstRowBubble.textContent.includes("我先看看。"));
+  } finally { await view.unmount(); globalThis.__thread = null; }
 });

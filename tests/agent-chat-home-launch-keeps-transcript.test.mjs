@@ -733,6 +733,11 @@ async function loadHomeContent() {
     export { AgentChat } from ${JSON.stringify(agentChatUrl)};
     export { TaskWorkspaceShell, useTaskWorkspaceState, attachmentWorkspaceItem, attachmentOpenMode } from ${JSON.stringify(taskWorkspaceShellUrl)};
     export { useNativeThread } from ${JSON.stringify(nativeThreadStub)};
+    // Native draft files (IndexedDB) are not under test here: attach passes straight through.
+    export function useNativeDraftFiles(input) {
+      return { attachFiles(files) { if (input.attach) input.attach(files); }, clear() {} };
+    }
+    export async function libraryAttachmentFile() { return null; }
     export function LeoComposer(props) {
       globalThis.__portalComposer = props;
       return createElement("div", { "data-home-composer": "" }, props.value);

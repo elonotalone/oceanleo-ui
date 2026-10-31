@@ -37,7 +37,8 @@ const PIXEL_RUN_CSS = `
 }
 `;
 
-export function SessionRunningIcon({ label }: { label: string }) {
+/** `toneClassName`: the walker's color (currentColor); hosts on a filled row pass e.g. `text-white`. */
+export function SessionRunningIcon({ label, toneClassName = "text-emerald-700 dark:text-emerald-300" }: { label: string; toneClassName?: string }) {
   return (
     <span
       data-oceanleo-acp-session-status="running"
@@ -45,7 +46,7 @@ export function SessionRunningIcon({ label }: { label: string }) {
       role="img"
       aria-label={label}
       title={label}
-      className="inline-flex size-3 shrink-0 text-emerald-700 dark:text-emerald-300"
+      className={`inline-flex size-3 shrink-0 ${toneClassName}`}
     >
       <style>{PIXEL_RUN_CSS}</style>
       <svg

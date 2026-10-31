@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   activeAgentProgressKey,
+  agentTurnActionTargets,
   buildAgentRenderItems,
   buildProcessEntries,
   isAgentProgressMessage,
@@ -380,4 +381,57 @@ test("结构化与旧 interim 混排时逐条成条目，不合并不覆盖", ()
   assert.equal(entries[1].text, "Thought: legacy");
   assert.equal(entries[1].summary, "legacy");
   assert.deepEqual(entries[3].items.map((item) => item.content), ["创建会话", "编写页面", "检查结果"]);
+});
+
+// 2026-10-31 item 6: copy only once per turn, under its last words.
+test("agentTurnActionTargets：一轮只在最后一段话下面一排操作，复制整轮说给用户的话（不含工具 / 思考），跑着的这一轮没有", () => {
+  const turn = [
+    { id: 101, role: "user", kind: "text", content: "查一下日志" },
+    { id: 102, role: "assistant", kind: "text", content: "我先看看。" },
+    { id: 103, role: "assistant", kind: "step", content: "读取 server.log", meta: { step_index: 1 } },
+    { id: 104, role: "assistant", kind: "analysis", content: "想一想", meta: { interim: true } },
+    { id: 105, role: "assistant", kind: "text", content: "日志里没有错误。", meta: { final: true } },
+    { id: 106, role: "user", kind: "text", content: "再看看 nginx" },
+    { id: 107, role: "assistant", kind: "text", content: "正在看…" },
+  ];
+  const items = buildAgentRenderItems(turn);
+  const keyOf = (id) => items.find((item) => item.type === "message" && item.message.id === id).key;
+
+  const running = agentTurnActionTargets(items, true);
+  assert.deepEqual([...running.keys()], [keyOf(105)], "the running turn has no row; the finished one has one");
+  assert.equal(running.get(keyOf(105)), "我先看看。\n\n日志里没有错误。", "all words of the turn, in order, no tool / thought");
+
+  const done = agentTurnActionTargets(items, false);
+  assert.deepEqual([...done.keys()], [keyOf(105), keyOf(107)], "exactly one row per turn once it ended");
+  assert.equal(done.get(keyOf(107)), "正在看…");
+
+  // A turn with no words (only tools) has no row; empty text never counts.
+  const toolsOnly = buildAgentRenderItems([
+    { id: 1, role: "user", kind: "text", content: "跑测试" },
+    { id: 2, role: "assistant", kind: "step", content: "npm test", meta: { step_index: 1 } },
+    { id: 3, role: "assistant", kind: "text", content: "  " },
+  ]);
+  assert.equal(agentTurnActionTargets(toolsOnly, false).size, 0);
+});
+
+// 2026-10-31 item 4: an earlier batch prepended on scroll-up must not remount what is on screen.
+test("buildAgentRenderItems：前面插入更早的一批时，已有消息和过程块的 key 不变", () => {
+  const recent = [
+    { id: 201, role: "user", kind: "text", content: "第二问" },
+    { id: 202, role: "assistant", kind: "step", content: "工具", meta: { step_index: 1 } },
+    { id: 203, role: "assistant", kind: "text", content: "第二答" },
+  ];
+  const older = [
+    { id: 199, role: "user", kind: "text", content: "第一问" },
+    { id: 200, role: "assistant", kind: "text", content: "第一答" },
+  ];
+  const before = buildAgentRenderItems(recent).map((item) => item.key);
+  const after = buildAgentRenderItems([...older, ...recent]).map((item) => item.key);
+  assert.deepEqual(after.slice(-before.length), before);
+  // Repeated ids still get unique keys.
+  const dup = buildAgentRenderItems([
+    { id: 0, role: "user", kind: "text", content: "a" },
+    { id: 0, role: "user", kind: "text", content: "b" },
+  ]).map((item) => item.key);
+  assert.equal(new Set(dup).size, 2);
 });

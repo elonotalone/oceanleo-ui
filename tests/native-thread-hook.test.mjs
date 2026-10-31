@@ -97,7 +97,8 @@ const stubs = {
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/cloud-computer-api": dataModule(`
     export function agentDialogWsUrl(id) { return "ws://example.test/v1/computers/" + id + "/agent-dialog"; }
-    export async function putComputerInbox(id, file, onProgress) {
+    export async function putComputerInbox(id, file, onProgress, options) {
+      (globalThis.__inboxPuts ??= []).push({ name: file.name, task_session_id: options?.task_session_id ?? null });
       onProgress?.(100);
       return { path: "/home/elon/.oceanleo/inbox/" + file.name, name: file.name, mime: file.type || "text/plain", size: file.size };
     }
@@ -178,10 +179,18 @@ test("offline computer: cloud-saved transcript in the main stream, plain blocked
     assert.equal(await sendVia(thread, "hi"), false);
     assert.equal(FakeSocket.sockets.length, 0, "an offline computer is never dialled");
     assert.equal(thread.hasOlder, true);
-    await act(async () => thread.loadOlder());
+    assert.equal(thread.olderLoading, false);
+    const shownIds = thread.messages.map((m) => m.id);
+    // Scroll events fire faster than state settles: a second call while reading is ignored (one batch).
+    await act(async () => { thread.loadOlder(); thread.loadOlder(); });
     await until(() => globalThis.__thread.messages.length === 4, "older page");
+    assert.equal(reads.length, 2, "exactly one batch read");
     assert.equal(reads[1].before, 7);
     assert.deepEqual(globalThis.__thread.messages.map((m) => m.content), ["Older question", "Saved answer", "Saved question", "Saved answer"]);
+    // Prepended, not rebuilt: what was on screen keeps its ids (no full re-render).
+    assert.deepEqual(globalThis.__thread.messages.slice(2).map((m) => m.id), shownIds);
+    assert.equal(globalThis.__thread.hasOlder, false);
+    assert.equal(globalThis.__thread.olderLoading, false);
   } finally { view.cleanup(); }
 });
 
@@ -385,9 +394,13 @@ test("queued first prompt: the bubble (with its files) shows at once in a draft,
   try {
     await until(() => sent().some((frame) => frame.t === "models"), "prewarm: models requested on pick");
     await until(() => globalThis.__thread.onAttachFiles, "attachments accepted in a draft");
+    globalThis.__inboxPuts = [];
     const file = new window.File(["png"], "shot.png", { type: "image/png" });
     await act(async () => globalThis.__thread.onAttachFiles([file]));
-    await until(() => globalThis.__thread.composerAttachments.length === 1 && !globalThis.__thread.composerAttachments[0].uploading, "uploaded");
+    await until(() => globalThis.__thread.composerAttachments.length === 1 && !globalThis.__thread.composerAttachments[0].uploading, "held, ready from the user's side");
+    // 2026-10-31 D: an inbox file put without the task session has no archive row and
+    // the gateway refuses the first prompt (managed_attachment_not_saved). It waits.
+    assert.deepEqual(globalThis.__inboxPuts, [], "nothing goes to the inbox before the task session exists");
     let queued;
     await act(async () => { queued = globalThis.__thread.queue("先看日志"); });
     assert.equal(queued, true);
@@ -409,6 +422,8 @@ test("queued first prompt: the bubble (with its files) shows at once in a draft,
     assert.equal(prompt.text, "先看日志");
     assert.equal(prompt.task_session_id, "managed-1");
     assert.deepEqual(prompt.files, [{ name: "shot.png", mime: "image/png", path: "/home/elon/.oceanleo/inbox/shot.png" }]);
+    assert.deepEqual(globalThis.__inboxPuts, [{ name: "shot.png", task_session_id: "managed-1" }],
+      "the file went to the inbox once, under the same task session as the prompt");
     await until(() => globalThis.__thread.pending === null, "pending cleared");
     assert.equal(globalThis.__thread.messages.filter((message) => message.role === "user").length, 1, "one bubble, not two");
     for (let i = 0; i < 5; i += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
@@ -521,4 +536,98 @@ test("composer tiles carry the local image preview; a refused send exposes resto
     URL.revokeObjectURL = originalRevoke;
     view.cleanup();
   }
+});
+
+// 2026-10-31 D (session identity). Every native thread of a computer shares one
+// gateway shell scope, so another view's open (`session_opened` + `transcript`,
+// no ref) reaches a homepage draft too. The draft must stay a new chat: never
+// show the other task's conversation, never send its first prompt there.
+test("a draft never adopts another view's session_opened; its first prompt is a new session with its own files", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__inboxPuts = [];
+  const reads = [];
+  globalThis.__taskApi = { async transcript(id) { reads.push(id); return { session: session({ id: "managed-new", computer_id: "cc_hj", native_session_id: null }), frames: [], saved_at: null, sync_status: "pending" }; } };
+  const view = await mount({ computer: { id: "cc_hj", name: "elon", node_online: true }, session: null, program: "codex", enabled: true });
+  try {
+    await until(() => sent().some((frame) => frame.t === "models"), "draft connected");
+    await act(async () => {
+      openSocket().server({ t: "session_opened", program: "codex", acp_session: "other-task-native" });
+      openSocket().server({ t: "transcript", program: "codex", acp_session: "other-task-native", live: true, frames: [
+        { t: "user_message", program: "codex", acp_session: "other-task-native", text: "Other task question", replay: true },
+        { t: "delta", program: "codex", acp_session: "other-task-native", text: "Other task answer", replay: true },
+      ] });
+      openSocket().server({ t: "delta", program: "codex", acp_session: "other-task-native", text: " still running" });
+    });
+    for (let i = 0; i < 5; i += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
+    assert.equal(globalThis.__thread.dialog.activeSession, "", "the draft is still a new chat");
+    assert.equal(globalThis.__thread.messages.some((m) => /Other task/.test(String(m.content))), false, "the other task's conversation is not shown here");
+
+    const file = new window.File(["png"], "home.png", { type: "image/png" });
+    await act(async () => globalThis.__thread.onAttachFiles([file]));
+    await act(async () => { globalThis.__thread.queue("新对话"); });
+    assert.deepEqual(globalThis.__thread.messages.filter((m) => m.role === "user").map((m) => m.content), ["新对话"], "only the user's own bubble");
+    await view.update({ session: session({ id: "managed-new", computer_id: "cc_hj", native_session_id: null }) });
+    await until(() => sent().some((frame) => frame.t === "prompt"), "first prompt sent");
+    const prompt = sent().find((frame) => frame.t === "prompt");
+    assert.equal(prompt.acp_session, undefined, "never sent into another task's native session");
+    assert.match(prompt.ref, /^new_/);
+    assert.equal(prompt.task_session_id, "managed-new");
+    assert.deepEqual(prompt.files.map((item) => item.name), ["home.png"]);
+    assert.deepEqual(globalThis.__inboxPuts, [{ name: "home.png", task_session_id: "managed-new" }]);
+  } finally { view.cleanup(); }
+});
+
+test("composer files follow the conversation's task session: put again under a new one, dropped on New Task", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__inboxPuts = [];
+  globalThis.__taskApi = { async transcript(id) { return { session: session({ id, computer_id: "cc_sw" }), frames: [], saved_at: null, sync_status: "saved" }; } };
+  const first = session({ id: "managed-a", computer_id: "cc_sw", native_session_id: "nat-a" });
+  const view = await mount({ computer: { id: "cc_sw", name: "elon", node_online: true }, session: first, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready on A");
+    const file = new window.File(["a"], "a.txt", { type: "text/plain" });
+    await act(async () => globalThis.__thread.onAttachFiles([file]));
+    await until(() => globalThis.__inboxPuts.length === 1 && !globalThis.__thread.composerAttachments[0]?.uploading, "uploaded under A");
+    assert.deepEqual(globalThis.__inboxPuts, [{ name: "a.txt", task_session_id: "managed-a" }]);
+
+    await view.update({ session: session({ id: "managed-b", computer_id: "cc_sw", native_session_id: null }) });
+    await until(() => globalThis.__inboxPuts.length === 2, "put again under B");
+    assert.deepEqual(globalThis.__inboxPuts[1], { name: "a.txt", task_session_id: "managed-b" });
+    await until(() => globalThis.__thread.ready, "ready on B");
+    assert.equal(await sendVia(globalThis.__thread, "with a"), true);
+    const prompt = sent().filter((frame) => frame.t === "prompt").at(-1);
+    assert.equal(prompt.task_session_id, "managed-b");
+    assert.deepEqual(prompt.files.map((item) => item.name), ["a.txt"]);
+
+    const stale = new window.File(["s"], "stale.txt", { type: "text/plain" });
+    await act(async () => globalThis.__thread.onAttachFiles([stale]));
+    await until(() => globalThis.__thread.composerAttachments.length === 1, "a file waiting in B's composer");
+    await view.update({ session: null, program: "codex" });
+    await until(() => globalThis.__thread.composerAttachments.length === 0, "New Task: the previous conversation's files are gone");
+  } finally { view.cleanup(); }
+});
+
+test("an existing conversation is 'opening' (quiet spinner) only until its saved copy is read", async () => {
+  FakeSocket.sockets = [];
+  FakeSocket.holdOpen = true;
+  FakeSocket.heldOpen = null;
+  const saved = session({ id: "managed-op", computer_id: "cc_op", native_session_id: "nat-op" });
+  let release;
+  globalThis.__taskApi = { transcript() {
+    return new Promise((resolve) => { release = () => resolve({ session: saved, frames: [
+      { t: "user_message", program: "codex", acp_session: "nat-op", text: "hi", replay: true },
+      { t: "turn_start", program: "codex", acp_session: "nat-op" },
+      { t: "delta", program: "codex", acp_session: "nat-op", text: "Hello", replay: true },
+      { t: "done", program: "codex", acp_session: "nat-op", stop_reason: "end_turn" },
+    ], saved_at: "now", sync_status: "saved", has_older: false, next_before: null }); });
+  } };
+  const view = await mount({ computer: { id: "cc_op", name: "elon", node_online: true }, session: saved, enabled: true });
+  try {
+    await until(() => typeof release === "function", "saved copy requested");
+    assert.equal(globalThis.__thread.messages.length, 0);
+    assert.equal(globalThis.__thread.opening, true);
+    await act(async () => { release(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await until(() => globalThis.__thread.messages.some((m) => m.content === "Hello"), "saved copy shown while the live open is pending");
+    assert.equal(globalThis.__thread.opening, false);
+  } finally { FakeSocket.holdOpen = false; FakeSocket.heldOpen = null; view.cleanup(); }
 });

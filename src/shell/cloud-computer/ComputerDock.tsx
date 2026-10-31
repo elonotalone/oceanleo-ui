@@ -15,6 +15,7 @@ import { EXECUTION_TARGET_EVENT, computerRunMode, readExecutionTarget, withRunMo
 import { CLOUD_AGENT_COPY, LOCAL_AGENT_COPY, formatClock } from "../../lib/local-agent-task";
 import { AnchoredPopover } from "../anchored-popover";
 import { computerDisplayState, isConnectedComputer } from "./computer-state";
+import { readRememberedConversation, resolveRememberedConversation, writeRememberedConversation } from "./remembered-conversation";
 
 const DESKTOP_PLATFORMS = ["windows", "macos", "linux"];
 /** Menu order of the programs a connected computer can talk through. */
@@ -89,6 +90,8 @@ export type ComputerDockProps = {
    * Given: a connected computer opens its own list (OceanLeo, Codex, Claude Code,
    * Cursor, Hermes, 终端). Not given: picking a computer only sets the OceanLeo
    * execution target, exactly as before. The dock never creates a session or navigates.
+   * A draft (no `boundTarget`) with no `conversation` gets the account's last
+   * 「电脑 · 程序」 chat pick once on load (computer + program only), if it still exists.
    */
   onConversationChange?: (conversation: ConversationTarget) => void;
   /**
@@ -133,6 +136,16 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   // No memory of its own: a native / terminal label exists only while the host says so.
   const current: ConversationTarget | null = conversation ?? (oceanTarget ? { kind: "oceanleo", target: oceanTarget } : null);
   const selectedDeviceId = !bound && target.kind === "device" ? target.id : "";
+  // A draft shows the account's last 「电脑 · 程序」 pick instead of 云端 (C-3, 2026-10-31).
+  // Only computer + program are restored, never a session; the host decides what a pick does.
+  const pickedRef = useRef(false);
+  const restoredForRef = useRef<string | null>(null);
+  const conversationRef = useRef(conversation);
+  conversationRef.current = conversation;
+  const conversationChangeRef = useRef(onConversationChange);
+  conversationChangeRef.current = onConversationChange;
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   useEffect(() => {
     let alive = true;
@@ -157,6 +170,26 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     window.addEventListener(EXECUTION_TARGET_EVENT, changed);
     return () => { alive = false; window.removeEventListener("oceanleo:auth-state", hydrate); window.removeEventListener(EXECUTION_TARGET_EVENT, changed); };
   }, [owner, supplied, onTargetChange, bound]);
+
+  useEffect(() => {
+    if (bound || !drillable || !owner || conversation !== undefined || restoredForRef.current === owner) return;
+    restoredForRef.current = owner;
+    const remembered = readRememberedConversation(owner);
+    if (!remembered) return;
+    void (async () => {
+      const listed = supplied && supplied.length > 0 ? supplied : (await client.listComputers()).items || [];
+      const connected = listed.filter(isConnectedComputer);
+      const computer = connected.find((item) => item.id === remembered.computerId);
+      const programs = computer && computerDisplayState(computer) === "ready" && client.listCliPrograms
+        ? await client.listCliPrograms(computer.id).then((result) => (result.programs || []) as ProgramRow[]).catch(() => null)
+        : null;
+      const resolved = resolveRememberedConversation(remembered, connected, programs);
+      // The user picked meanwhile, or the host already shows something: leave it.
+      if (!mountedRef.current || pickedRef.current || conversationRef.current !== undefined) return;
+      if (!resolved) { writeRememberedConversation(owner, null); return; }
+      conversationChangeRef.current?.(resolved);
+    })().catch(() => { /* list unreadable: keep the memory, show the OceanLeo target */ });
+  }, [bound, drillable, owner, conversation, supplied, client]);
 
   useEffect(() => {
     if (!open || !owner) return;
@@ -260,6 +293,8 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     if (oceanBlocked) return;
     if (bound) { if (boundTarget && sameTarget(boundTarget, next)) emit({ kind: "oceanleo", target: boundTarget }); return; }
     if (!owner) return;
+    pickedRef.current = true;
+    writeRememberedConversation(owner, null);
     const device = next.kind === "device" ? devices.find((d) => d.device_id === next.id) ?? null : null;
     const picked = deriveTarget(next, cloudAgent, device, Date.now());
     writeExecutionTarget(owner, picked);
@@ -272,10 +307,13 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   }
   function chooseNative(computer: Drill, program: NativeProgram, view: "chat" | "cli") {
     const reuse = existingSession(sessions, computer.id, view === "chat" ? "acp" : "cli", program);
+    pickedRef.current = true;
+    if (!bound && view === "chat") writeRememberedConversation(owner, { kind: "native", computerId: computer.id, computerName: computer.name, program, view });
     emit({ kind: "native", computerId: computer.id, computerName: computer.name, program, view, ...(reuse ? { sessionId: reuse.id } : {}) });
   }
   function chooseTerminal(computer: Drill) {
     const reuse = existingSession(sessions, computer.id, "terminal", null);
+    pickedRef.current = true;
     emit({ kind: "terminal", computerId: computer.id, computerName: computer.name, ...(reuse ? { sessionId: reuse.id } : {}) });
   }
 

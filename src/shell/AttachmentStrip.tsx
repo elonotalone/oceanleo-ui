@@ -9,11 +9,14 @@
 //
 // - 宿主传 onOpenAttachment（C1）：点方块交给宿主打开（任务右侧栏），本组件不渲染预览。
 // - 不传：点方块在右侧展开内置预览面板（子站沿用的旧行为）。
+// - 2026-10-31 A5：上传中的方块也挂 ×（与上传完成的一样）；宿主的 onRemove 负责取消上传。
+// - 2026-10-31 A1：刷新后恢复的私有附件没有本地 blob，图片缩略图按引用向网关要短期地址。
 // ============================================================================
 
 import { useEffect, useState } from "react";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
-import { UploadTile, withBusProgress } from "../lib/upload/upload-tile";
+import { UploadTile, isImageTile, withBusProgress, type UploadTileProps } from "../lib/upload/upload-tile";
+import { useAttachmentDisplayUrl } from "../lib/attachment-url";
 import type { UploadInFlight } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -29,6 +32,9 @@ export interface StripAttachment {
   failed?: boolean;
   /** 真上传读数；缺省时由总线读数（inFlight）按名配上，再缺省是不确定态小圈。 */
   progress?: UploadProgressSnapshot | null;
+  /** 私有 Library 引用（恢复的草稿附件没有本地预览时，按它取缩略图）。 */
+  artifactId?: string;
+  revisionId?: string;
 }
 
 /** 输入框里方块的边长（px）。 */
@@ -149,6 +155,23 @@ function PreviewPanel({ item, onClose }: { item: StripAttachment; onClose: () =>
   );
 }
 
+/** 一块附件方块：没有可用预览的私有图片按引用向网关要短期缩略图地址。 */
+function StripTile({
+  attachment,
+  ...tile
+}: Omit<UploadTileProps, "previewUrl"> & { attachment: StripAttachment }) {
+  const needsRemote =
+    !attachment.previewUrl &&
+    Boolean(attachment.artifactId && attachment.revisionId) &&
+    isImageTile(attachment.mime, attachment.name);
+  const remote = useAttachmentDisplayUrl(
+    needsRemote
+      ? { artifactId: attachment.artifactId, revisionId: attachment.revisionId, mime: attachment.mime }
+      : null,
+  );
+  return <UploadTile {...tile} previewUrl={attachment.previewUrl || remote} />;
+}
+
 /** 正在压缩、还没交给宿主的文件：先画一块「上传中」方块，缩略图用本地 blob。 */
 function PendingFileTile({ file }: { file: File }) {
   const tt = useUI();
@@ -212,11 +235,11 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
           const failed = Boolean(a.failed || a.progress?.failed);
           const state = failed ? "failed" : a.uploading ? "uploading" : "ready";
           return (
-            <UploadTile
+            <StripTile
               key={a.id}
+              attachment={a}
               name={a.name}
               mime={a.mime}
-              previewUrl={a.previewUrl}
               state={state}
               progress={a.progress}
               size={COMPOSER_TILE_SIZE}
@@ -229,7 +252,8 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
                       else setOpenId((current) => (current === a.id ? null : a.id));
                     }
               }
-              onRemove={onRemove && (!a.uploading || failed) ? () => onRemove(a.id) : undefined}
+              // A5：上传中也能删（宿主取消上传、迟到的结果不会把它加回来）。
+              onRemove={onRemove ? () => onRemove(a.id) : undefined}
               onRetry={failed && onRetry ? () => onRetry(a.id) : undefined}
             />
           );

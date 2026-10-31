@@ -42,10 +42,13 @@ import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { LibraryTaskHistoryWorkspace } from "./library-task-history";
 import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace";
 import { ShellTaskView } from "./cloud-computer/ShellTaskView";
+import { SessionRunningIcon } from "./cloud-computer/agent-dialog/SessionRunningIcon";
 import { listComputerTaskSessions } from "../lib/computer-task-api";
 import {
   canDeleteHistoryEntry,
+  HISTORY_WORKING_POLL_MS,
   historyPollDelayMs,
+  isHistoryEntryWorking,
   isRestorableAppSession,
   isShellTask,
   isTaskThreadSession,
@@ -212,17 +215,6 @@ function HistoryArtifactPublishRows({ items }: { items: HistoryPublishItem[] }) 
   );
 }
 
-const STATUS_DOT: Record<string, string> = {
-  running: "bg-amber-400",
-  waiting_user: "bg-amber-400",
-  active: "bg-amber-400",
-  done: "bg-emerald-500",
-  completed: "bg-emerald-500",
-  archived: "bg-stone-400",
-  failed: "bg-rose-500",
-  stopped: "bg-stone-400",
-};
-
 function fmt(ts?: string): string {
   if (!ts) return "";
   const d = new Date(ts);
@@ -238,6 +230,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     const y = b[i];
     if (x.kind !== y.kind || x.id !== y.id) return false;
     if ((x.created_by ?? null) !== (y.created_by ?? null)) return false;
+    if (isHistoryEntryWorking(x) !== isHistoryEntryWorking(y)) return false;
     const xProject = historyEntryProject(x);
     const yProject = historyEntryProject(y);
     if (
@@ -263,6 +256,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     } else if (x.kind === "task" && y.kind === "task") {
       if (
         x.task.status !== y.task.status ||
+        (x.task.computer_run_status ?? null) !== (y.task.computer_run_status ?? null) ||
         x.task.title !== y.task.title ||
         (x.task.created_by ?? null) !== (y.task.created_by ?? null) ||
         Boolean(x.task.pinned) !== Boolean(y.task.pinned) ||
@@ -436,6 +430,14 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     const timer = setInterval(() => reload(true), 2000);
     return () => clearInterval(timer);
   }, [hasPendingSessionTitle, reload]);
+  // Runs end without a client event: while any row shows the working mark,
+  // refresh every few seconds so the mark stops shortly after the run ends.
+  const hasWorkingEntry = items.some(isHistoryEntryWorking);
+  useEffect(() => {
+    if (!hasWorkingEntry) return;
+    const timer = setInterval(() => reload(true), HISTORY_WORKING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [hasWorkingEntry, reload]);
   const remove = useCallback(async (entry: HistoryListEntry) => {
     if (!canDeleteHistoryEntry(entry)) return false;
     // Invalidate any older list request before applying the optimistic delete.
@@ -771,7 +773,13 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
                 data-history-row={entry.id}
               >
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${on ? "bg-white/80" : STATUS_DOT[isSession ? record.status : entry.task.computer_run_status || entry.task.status] || "bg-stone-400"}`} />
+                {/* Two states only: working → the walker (same mark as the computer
+                    conversation list); otherwise an empty slot so titles stay aligned. */}
+                <span className="inline-flex w-3 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined}>
+                  {isHistoryEntryWorking(entry) && (
+                    <SessionRunningIcon label={tt("进行中")} toneClassName={on ? "text-white" : "text-emerald-600"} />
+                  )}
+                </span>
                 <span className="min-w-0 flex-1">
                   <button
                     type="button"

@@ -269,6 +269,9 @@ export function HomeIntro({
           recentFiles={toolsOn ? recentFiles : undefined}
           onPickRecent={toolsOn ? pickRecent : undefined}
           recentLoading={toolsOn ? recentLoading : undefined}
+          // A1/A2（2026-10-31）：刷新不丢文字与已上传的附件；「＋」里可从资料库加文件。
+          draftKey={`home:${attachSiteId}`}
+          onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
           attachments={toolsOn ? atts.composerAttachments : undefined}
           onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
           onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}

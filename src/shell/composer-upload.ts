@@ -17,6 +17,8 @@ import {
   PRIVATE_ATTACHMENT_MAX_BYTES,
   PRIVATE_ATTACHMENT_TOO_LARGE,
   agentAttachmentFromPrivateUpload,
+  attachmentRef,
+  isRawStorageUrl,
   mediaTypeFromMime,
 } from "../lib/attachment-url";
 import {
@@ -30,6 +32,7 @@ import {
   normalizeArtifactProjectionResult,
 } from "./artifact-contract";
 import { artifactProjectionToLibraryItem, type LibraryItem } from "./library-data";
+import type { ComposerAttachment } from "./LeoComposer";
 
 export interface ComposerPrivateUpload {
   artifactId: string;
@@ -63,6 +66,48 @@ export function composerLibraryItem(uploaded: FileItem): LibraryItem | undefined
     return undefined;
   }
   return artifactProjectionToLibraryItem(normalized.data);
+}
+
+/**
+ * A file already in the user's private Library → a ready composer attachment
+ * (「从资料库添加文件」 and a restored draft use this). Same shape the home page's
+ * 「最近文件」 builds: the private reference + typed `libraryItem`; the preview is a
+ * gateway rendition, never a raw storage URL. No reference → `null` (not attachable).
+ */
+export function composerAttachmentFromLibraryItem(item: LibraryItem): ComposerAttachment | null {
+  const ref =
+    attachmentRef(item) ??
+    attachmentRef({ artifactId: item.artifact?.artifactId, revisionId: item.artifact?.revisionId });
+  if (!ref) return null;
+  const name = item.title || undefined;
+  const mime = item.artifact?.renditions?.source?.mediaType || undefined;
+  const poster = item.posterUrl && !isRawStorageUrl(item.posterUrl) ? item.posterUrl : undefined;
+  const mediaType = mediaTypeFromMime(mime, name) ?? item.kind;
+  return {
+    id: ref.artifactId,
+    ...(name ? { name } : {}),
+    ...(poster ? { previewUrl: poster } : {}),
+    ...(mime ? { mime } : {}),
+    ...(mediaType ? { mediaType } : {}),
+    artifactId: ref.artifactId,
+    revisionId: ref.revisionId,
+    libraryItem: item,
+  };
+}
+
+/** A ready private composer attachment → what goes to `/v1/agent/tasks` (reference only). */
+export function agentAttachmentFromComposer(att: ComposerAttachment): AgentAttachment | null {
+  const ref = attachmentRef(att);
+  if (!ref) return null;
+  const mediaType = att.mediaType || mediaTypeFromMime(att.mime, att.name);
+  return {
+    url: "",
+    artifact_id: ref.artifactId,
+    revision_id: ref.revisionId,
+    ...(att.name ? { name: att.name } : {}),
+    ...(att.mime ? { mime: att.mime } : {}),
+    ...(mediaType ? { media_type: mediaType } : {}),
+  };
 }
 
 export async function uploadComposerFile(
@@ -134,5 +179,7 @@ declare module "./LeoComposer" {
     revisionId?: string;
     /** Typed Library item for opening it in the right workspace / editor. */
     libraryItem?: LibraryItem;
+    /** image | doc | video | audio | … (sent as `media_type`). */
+    mediaType?: string;
   }
 }

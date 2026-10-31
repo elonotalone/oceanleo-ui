@@ -144,6 +144,12 @@ async function compileComposerUpload(responses) {
         export const PRIVATE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
         export const PRIVATE_ATTACHMENT_TOO_LARGE = "文件超过 20MB，暂不支持";
         export function mediaTypeFromMime(m){ return String(m||"").startsWith("image/") ? "image" : "doc"; }
+        export function attachmentRef(a){
+          const artifactId = a && (a.artifactId || a.artifact_id);
+          const revisionId = a && (a.revisionId || a.revision_id);
+          return artifactId && revisionId ? { artifactId, revisionId } : null;
+        }
+        export function isRawStorageUrl(u){ return /supabase\.co/.test(String(u || "")); }
         export function agentAttachmentFromPrivateUpload(u, f){
           if (!u.artifact_id || !u.revision_id) return null;
           return { url: "", artifact_id: u.artifact_id, revision_id: u.revision_id, name: u.title || f.name, mime: u.mime || f.mime };

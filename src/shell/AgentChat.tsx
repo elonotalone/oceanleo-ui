@@ -19,6 +19,7 @@ import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-t
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -58,6 +59,7 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // Codex/Claude/Cursor/Hermes conversation renders through this same stream and
 // LeoComposer; CLI/terminal show the host-styled surface with the same dock below.
 import { useNativeThread, type NativeThread } from "./native-thread";
+import { libraryAttachmentFile } from "./native-draft-files";
 import { createPortal } from "react-dom";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
@@ -141,6 +143,7 @@ import {
 import { RestartDraftButton } from "./RestartDraftButton";
 import {
   activeAgentProgressKey,
+  agentTurnActionTargets,
   buildAgentRenderItems,
   liveAgentProgressKey,
 } from "../lib/agent-progress";
@@ -217,6 +220,36 @@ export function isNearBottom(metrics: ScrollMetrics): boolean {
   const distanceFromBottom =
     metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight;
   return distanceFromBottom <= STICK_TO_BOTTOM_PX;
+}
+
+/** Scrolled within this many px of the top, the stream reads one more batch of earlier messages. */
+export const LOAD_OLDER_PX = 200;
+const OLDER_ANCHOR_STALE_MS = 15_000;
+
+/** Where the user was when an earlier batch was asked for (to keep that spot after the prepend). */
+interface OlderScrollAnchor {
+  scrollHeight: number;
+  firstId: number | null;
+  sawLoading: boolean;
+  at: number;
+}
+
+function scrollMetricsOf(el: HTMLElement): ScrollMetrics {
+  return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
+}
+
+/**
+ * 上滑自动读更早的一批（操作员 2026-10-31：去掉「读取更早的对话」按键）。
+ * 用户自己往上滑到离顶不足 `LOAD_OLDER_PX`，或这一批短到撑不满可视区（没法再往上滑）时，
+ * 读下一批；正在读、或没有更早的了就不读。
+ */
+export function shouldLoadOlder(
+  metrics: ScrollMetrics,
+  state: { hasOlder: boolean; loading: boolean; movingUp: boolean },
+): boolean {
+  if (!state.hasOlder || state.loading) return false;
+  if (metrics.scrollHeight <= metrics.clientHeight + LOAD_OLDER_PX) return true;
+  return state.movingUp && metrics.scrollTop < LOAD_OLDER_PX;
 }
 
 function documentHidden(): boolean {
@@ -2646,6 +2679,9 @@ function AgentChatInner({
       </button>
     ) : null;
 
+  // 复制 / 重做 / 分享：一轮只在最后一段话底下出现一次（操作员 2026-10-31），跑着的这一轮不出现。
+  const turnActions = agentTurnActionTargets(renderItems, running || presentation.working);
+
   /** 把上面那条裁决接到实际渲染的那条消息上。 */
   const messageForBubble = (item: {
     index: number;
@@ -2684,6 +2720,9 @@ function AgentChatInner({
         onScroll={pane.onScroll}
         className="h-full overflow-y-auto overflow-x-hidden px-4 py-4"
         data-agent-stream-scroller=""
+        // Native: earlier batches are prepended and the position is restored by hand
+        // (NativeChatConversation); browser scroll anchoring would shift it a second time.
+        style={pane.pane === "native" ? { overflowAnchor: "none" } : undefined}
       >
         {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。
             Never a horizontal scrollbar: long paths / URLs / commands wrap here. */}
@@ -2778,6 +2817,7 @@ function AgentChatInner({
                     : undefined
                 }
                 onShare={() => share.enter(item.message.id)}
+                turnCopyText={turnActions.get(item.key) ?? null}
                 highlightQuery={highlightQuery || undefined}
               />
             ),
@@ -2861,6 +2901,9 @@ function AgentChatInner({
             attachments={toolsOn ? atts.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
             onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
+            // Refresh keeps the follow-up text and its Library files; 「从资料库添加文件」.
+            draftKey={taskId ? `task:${taskId}` : undefined}
+            onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
             onVoiceTranscript={handleVoiceTranscript}
             attachMenuExtra={getHelpMenu}
             {...conversationProps}
@@ -2902,12 +2945,14 @@ function AgentChatInner({
     const nativeLastUserIdx = nativeMessages.findLastIndex((message) => message.role === "user");
     const nativeLastAssistantIdx = nativeMessages.findLastIndex((message) =>
       message.role === "assistant" && (message.kind === "text" || !message.kind) && message.meta?.interim !== true);
+    // One copy row per turn, under its last words; none while the turn is still running.
+    const nativeTurnActions = agentTurnActionTargets(nativeRenderItems, nativePresentation.working || thread.running);
     // Install / sign-in live in the settings pane: a send blocked for that reason opens it.
     const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
-    // A prompt typed while the session is still opening waits in the queue (its bubble shows);
-    // the line says why it has not gone out yet.
-    const openingQueued = Boolean(session && thread.pending && !thread.pending.unsent && !thread.ready && !thread.blockedReason);
-    const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason || (openingQueued ? tt("正在打开对话…") : null);
+    // A prompt typed while the session is still opening waits in the queue: its bubble
+    // is the whole signal (no 「正在打开对话…」 line, 2026-10-31 D); a real reason
+    // (offline, not installed / signed in) or a still-unknown computer is said.
+    const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason;
     // The homepage created this chat's session itself (nativeLaunch): no second create here.
     const hostLaunch = !session && Boolean(nativeLaunch) && Boolean(pick) && pickChatKey(pick!) === launchKey;
     const notOpened = () => tt("没能打开这段对话，请稍后再试。");
@@ -2948,21 +2993,23 @@ function AgentChatInner({
       pane: "native",
       scrollRef,
       onScroll,
-      top: thread.hasOlder ? (
-        <div className="flex shrink-0 justify-center px-4 pt-3">
-          <button
-            type="button"
-            onClick={() => thread.loadOlder()}
-            className="rounded-full border border-stone-200 bg-white px-3 py-1 text-[12px] text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50 hover:text-stone-700"
-          >
-            {tt("读取更早的对话")}
-          </button>
+      // No "load earlier" button: scrolling near the top reads one more batch by itself
+      // (NativeChatConversation.onScroll); only a small spinner while it is on its way.
+      top: thread.olderLoading ? (
+        <div className="flex shrink-0 justify-center px-4 pt-2" role="status" aria-label={tt("正在读取…")} data-native-older-loading="">
+          <span className="v-spinner" />
         </div>
       ) : null,
+      // An existing conversation shows its cloud-saved copy at once; only while that
+      // copy is still on its way is there a quiet spinner (never 「正在打开对话…」).
       empty: nativeMessages.length === 0 && !thread.running ? (
-        <div className="py-10 text-center text-[15px] text-stone-400">
-          {session && (connecting || (!thread.ready && !thread.offline && !thread.blockedReason)) ? tt("正在打开对话…") : tt("在下方输入，开始与 agent 对话。")}
-        </div>
+        session && (connecting || thread.opening) ? (
+          <div className="flex justify-center py-10" role="status" aria-label={tt("正在读取…")} data-native-opening="">
+            <span className="v-spinner" />
+          </div>
+        ) : (
+          <div className="py-10 text-center text-[15px] text-stone-400">{tt("在下方输入，开始与 agent 对话。")}</div>
+        )
       ) : null,
       items: (
         <>
@@ -2982,6 +3029,7 @@ function AgentChatInner({
                   item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
                   item.message.meta?.final !== true && item.message.meta?.stopped !== true}
                 stopped={item.message.meta?.stopped === true}
+                turnCopyText={nativeTurnActions.get(item.key) ?? null}
                 taskRunning={thread.running}
                 // Saved transcript (offline): gates are read-only.
                 onNativeAnswer={!readOnly && thread.live ? thread.answer : undefined}
@@ -3036,6 +3084,15 @@ function AgentChatInner({
             onAttachFiles={toolsOn ? thread.onAttachFiles : undefined}
             attachments={toolsOn ? thread.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? thread.onRemoveAttachment : undefined}
+            draftKey={taskId ? `task:${taskId}` : undefined}
+            // A computer's inbox takes bytes: a Library pick is read once and attached as a file.
+            onAddAttachments={toolsOn && thread.onAttachFiles ? (items) => {
+              const attach = thread.onAttachFiles;
+              void Promise.all(items.map((item) => libraryAttachmentFile(item))).then((files) => {
+                const ok = files.filter((file): file is File => Boolean(file));
+                if (ok.length && attach) attach(ok);
+              });
+            } : undefined}
             onVoiceTranscript={(text: string) => setInput((current) => (current ? current + " " : "") + text)}
             // Controls that do nothing for a native send are not shown.
             showPlugins={false}
@@ -3341,14 +3398,60 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   }, [active, unsent, setupBlocked]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
+  // Scroll-up history: near the top (or while the stream does not fill the pane)
+  // read ONE more batch; the anchor keeps what the user is reading in place once
+  // the batch is prepended. No button.
+  const olderAnchor = useRef<OlderScrollAnchor | null>(null);
+  const lastScrollTop = useRef(0);
+  const threadRef = useRef(thread);
+  threadRef.current = thread;
+  const maybeLoadOlder = useCallback((movingUp: boolean) => {
+    const el = scrollRef.current;
+    const current = threadRef.current;
+    if (!el || !active) return;
+    // A read that never started (or never answered) does not block the next try forever.
+    if (olderAnchor.current && Date.now() - olderAnchor.current.at > OLDER_ANCHOR_STALE_MS) olderAnchor.current = null;
+    if (olderAnchor.current) return;
+    if (!shouldLoadOlder(scrollMetricsOf(el), { hasOlder: current.hasOlder, loading: current.olderLoading === true, movingUp })) return;
+    olderAnchor.current = {
+      scrollHeight: el.scrollHeight,
+      firstId: current.messages[0]?.id ?? null, sawLoading: false, at: Date.now(),
+    };
+    current.loadOlder();
+  }, [active]);
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
-    if (el) followRef.current = isNearBottom({scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight});
-  }, []);
+    if (!el) return;
+    const metrics = scrollMetricsOf(el);
+    followRef.current = isNearBottom(metrics);
+    // Only the user's own scroll up reads more; the smooth follow-to-bottom from 0 never does.
+    const movingUp = metrics.scrollTop < lastScrollTop.current;
+    lastScrollTop.current = metrics.scrollTop;
+    maybeLoadOlder(movingUp);
+  }, [maybeLoadOlder]);
+  const firstMessageId = thread.messages[0]?.id ?? null;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const anchor = olderAnchor.current;
+    if (!el || !anchor) return;
+    if (firstMessageId !== anchor.firstId) {
+      // The earlier batch is in: grow scrollTop by exactly what was added above.
+      // (From where the user is now: they may have kept scrolling while it loaded.)
+      el.scrollTop += el.scrollHeight - anchor.scrollHeight;
+      lastScrollTop.current = el.scrollTop;
+      olderAnchor.current = null;
+      return;
+    }
+    if (thread.olderLoading) anchor.sawLoading = true;
+    // The read ended with nothing new (or never started): free the trigger again.
+    else if (anchor.sawLoading || !thread.hasOlder) olderAnchor.current = null;
+  }, [firstMessageId, thread.olderLoading, thread.hasOlder]);
   useEffect(() => {
     const el = scrollRef.current;
     if (el && active && followRef.current) el.scrollTo({top: el.scrollHeight, behavior: scrollBehavior()});
-  }, [thread.messages, active]);
+    // A short first batch that does not fill the pane cannot be scrolled up: read the next one.
+    maybeLoadOlder(false);
+  }, [thread.messages, active, thread.olderLoading, maybeLoadOlder]);
   return (
     <>
       {render({ thread, session, input, setInput, scrollRef, onScroll, connecting })}

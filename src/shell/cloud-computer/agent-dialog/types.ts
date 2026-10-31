@@ -169,6 +169,11 @@ export type DialogAttachment = {
   error?: string;
   /** Local `blob:` thumbnail of an image chosen in this tab (never a storage URL). */
   preview?: string;
+  /**
+   * Held in this tab until the conversation's task session exists, then put
+   * into the inbox under it (state stays "uploading", not sendable yet).
+   */
+  deferred?: boolean;
 };
 
 export type UserMessageAttachment = {

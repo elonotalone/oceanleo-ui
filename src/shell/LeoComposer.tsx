@@ -40,6 +40,8 @@ import type { ExecutionTarget } from "../lib/execution-target";
 import type { ComputerTaskSession } from "../lib/computer-task-api";
 import type { ConversationTarget } from "./native-thread/types";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
+import { useComposerDraft } from "./composer-draft";
+import { ComposerLibraryPicker } from "./ComposerLibraryPicker";
 import {
   composerSlashAdapter,
   useComposerSkillSlash,
@@ -80,6 +82,13 @@ import {
 //   - leftSlot：左下角自定义控制区（保留，向后兼容）。
 //   - leoSuggest：true 时在左下角渲染「leo」按钮。
 //   - 附件 / 语音 / 最近文件：见上。
+//
+// 2026-10-31（oceanbizs 首页诉求 A1/A2/A5）：
+//   - `draftKey`：传了就把输入的文字与已上传完成的私有附件存进 sessionStorage，刷新后
+//     原样回来（逻辑全在 `composer-draft.ts`）。附件靠 `onAddAttachments` 交回宿主。
+//   - `onAddAttachments`：传了「＋」菜单才出现「从资料库添加文件」（`ComposerLibraryPicker`，
+//     在同一张浮层里原地换成资料库列表），选中的文件与「最近文件」同一形态交回宿主。
+//   - 上传中的方块也有 ×（AttachmentStrip）；宿主的 onRemoveAttachment 负责取消上传。
 // ============================================================================
 
 /** 「最近文件」菜单条目（调用方从用户 oceanleo 文件库取，传进来渲染）。 */
@@ -213,6 +222,16 @@ export interface LeoComposerProps {
   recentLoading?: boolean;
   /** 「＋」菜单里追加的额外项（如「使用技能」）。 */
   attachMenuExtra?: ComposerMenuItem[];
+  /**
+   * 把已在私有 Library 里的文件加成附件（ready 态，带 artifactId/revisionId/libraryItem）。
+   * 传它才出现「从资料库添加文件」；`draftKey` 恢复附件也走它。宿主按 id 去重即可。
+   */
+  onAddAttachments?: (items: ComposerAttachment[]) => void;
+  /**
+   * 草稿作用域（如 "home" / `task:<id>`）。传了 → 文字与已上传完成的私有附件刷新不丢
+   * （sessionStorage；上传中 / 失败 / 电脑 inbox 的附件不存）。不传零行为变化。
+   */
+  draftKey?: string;
 
   // --- 附件缩略条（2026-06-26） ---
   attachments?: ComposerAttachment[];
@@ -326,6 +345,8 @@ export function LeoComposer({
   onPickRecent,
   recentLoading = false,
   attachMenuExtra,
+  onAddAttachments,
+  draftKey,
   attachments,
   onRemoveAttachment,
   onOpenAttachment,
@@ -410,6 +431,8 @@ export function LeoComposer({
     : nativeAttachActions;
   // 任务跑完推一条系统通知（手机后台/息屏时才推）。浏览器里是空操作。
   useNativeTaskNotifications();
+  // 刷新不丢（A1）：draftKey 不传时这个 hook 什么都不做。
+  const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments });
   // 这次派活谁付钱。空串 = 个人钱包，也是没进过组织的人恒定的值。
   const [payerOrgId, setPayerOrgId] = useState("");
   // 输入框 `/` 调用技能。skillSlash 不传时 onKeyDown 恒 false、popover 恒 null。
@@ -440,6 +463,7 @@ export function LeoComposer({
   const hasAttachMenu =
     Boolean(onAttachFiles) ||
     Boolean(recentFiles && onPickRecent) ||
+    Boolean(onAddAttachments) ||
     Boolean(attachMenuExtra && attachMenuExtra.length);
 
   function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
@@ -461,6 +485,7 @@ export function LeoComposer({
     if (boundExecutionTarget === null && !nativeConversation) return;
     requestTaskNotificationsOnce();
     const selected = boundExecutionTarget ?? executionTargetRef.current;
+    draft.markSubmitted();
     const shownConversation: ConversationTarget = activeConversation && activeConversation.kind !== "oceanleo"
       ? { ...activeConversation } : { kind: "oceanleo", target: { ...selected } };
     onSubmit?.(cleanPromptValue(), { org_id: payerOrgId },
@@ -612,6 +637,8 @@ export function LeoComposer({
               recentFiles={recentFiles}
               onPickRecent={onPickRecent}
               recentLoading={recentLoading}
+              onAddAttachments={onAddAttachments}
+              attachedIds={(attachments ?? []).map((attachment) => attachment.id)}
               extra={attachMenuExtra}
             />
           )}
@@ -753,6 +780,8 @@ function AttachMenu({
   recentFiles,
   onPickRecent,
   recentLoading,
+  onAddAttachments,
+  attachedIds,
   extra,
 }: {
   onAttachFiles?: (files: File[]) => void;
@@ -762,11 +791,16 @@ function AttachMenu({
   recentFiles?: ComposerRecentFile[];
   onPickRecent?: (f: ComposerRecentFile) => void;
   recentLoading: boolean;
+  /** 传了才出现「从资料库添加文件」（A2）。 */
+  onAddAttachments?: (items: ComposerAttachment[]) => void;
+  attachedIds?: readonly string[];
   extra?: ComposerMenuItem[];
 }) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
+  // 「从资料库添加文件」：同一张浮层原地换成资料库列表（手机上也够得着，不靠悬停）。
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -775,6 +809,7 @@ function AttachMenu({
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
         setRecentOpen(false);
+        setLibraryOpen(false);
       }
     }
     document.addEventListener("mousedown", onDoc);
@@ -787,7 +822,10 @@ function AttachMenu({
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v);
+          setLibraryOpen(false);
+        }}
         aria-label={tt("添加附件")}
         aria-expanded={open}
         className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
@@ -799,7 +837,22 @@ function AttachMenu({
         <PlusGlyph />
       </button>
 
-      {open && (
+      {open && libraryOpen && onAddAttachments && (
+        <div className="v-fade-up absolute bottom-9 left-0 z-50 min-w-[208px] rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
+          <ComposerLibraryPicker
+            onBack={() => setLibraryOpen(false)}
+            attachedIds={attachedIds}
+            fileIcon={(file) => <MediaGlyph mediaType={file.mediaType} />}
+            onPick={(file) => {
+              onAddAttachments([file]);
+              setOpen(false);
+              setLibraryOpen(false);
+            }}
+          />
+        </div>
+      )}
+
+      {open && !libraryOpen && (
         <div className="v-fade-up absolute bottom-9 left-0 z-50 min-w-[208px] rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
           {/* 手机上「从本地添加文件」被这三项取代 —— 手机里「本地」本来就分成
               相机、相册、文件三处，一颗笼统的「本地」既到不了相机，也让相册要多绕
@@ -826,6 +879,19 @@ function AttachMenu({
                 setOpen(false);
                 setRecentOpen(false);
                 openFilePicker();
+              }}
+            />
+          )}
+
+          {/* A2：手机原生宿主（上面三项）与浏览器（「从本地添加文件」）都有这一项。 */}
+          {onAddAttachments && (
+            <MenuRow
+              icon={<LibraryGlyph />}
+              label={tt("从资料库添加文件")}
+              chevron
+              onClick={() => {
+                setRecentOpen(false);
+                setLibraryOpen(true);
               }}
             />
           )}
@@ -1340,6 +1406,15 @@ function DocGlyph() {
     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
       <path d="M14 3v4h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LibraryGlyph() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 5a1 1 0 011-1h4l2 2h8a1 1 0 011 1v11a1 1 0 01-1 1H5a1 1 0 01-1-1z" strokeLinejoin="round" />
+      <path d="M8 13h8M8 16h5" strokeLinecap="round" />
     </svg>
   );
 }

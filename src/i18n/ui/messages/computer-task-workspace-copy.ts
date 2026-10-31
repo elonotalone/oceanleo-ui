@@ -7,7 +7,6 @@ import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 export const COMPUTER_TASK_WORKSPACE_SOURCE = {
   "commandLine": "命令行",
-  "olderMessages": "读取更早的对话",
   "invalidAttachmentUrl": "附件下载地址无效",
   "attachmentLoadFailed": "附件读取失败",
   "getCloudAttachment": "获取云端附件",
@@ -95,7 +94,6 @@ export const COMPUTER_TASK_WORKSPACE_SOURCE = {
 
 const COPY_en = {
   "commandLine": "Command line",
-  "olderMessages": "Load earlier messages",
   "invalidAttachmentUrl": "Invalid attachment download URL",
   "attachmentLoadFailed": "Could not load attachment",
   "getCloudAttachment": "Get cloud attachment",
@@ -183,7 +181,6 @@ const COPY_en = {
 
 const COPY_zh_TW = {
   "commandLine": "命令列",
-  "olderMessages": "讀取更早的對話",
   "invalidAttachmentUrl": "附件下載網址無效",
   "attachmentLoadFailed": "附件讀取失敗",
   "getCloudAttachment": "取得雲端附件",
@@ -271,7 +268,6 @@ const COPY_zh_TW = {
 
 const COPY_de = {
   "commandLine": "Befehlszeile",
-  "olderMessages": "Ältere Nachrichten laden",
   "invalidAttachmentUrl": "Ungültige Download-Adresse für den Anhang",
   "attachmentLoadFailed": "Anhang konnte nicht geladen werden",
   "getCloudAttachment": "Cloud-Anhang abrufen",
@@ -359,7 +355,6 @@ const COPY_de = {
 
 const COPY_es = {
   "commandLine": "Línea de comandos",
-  "olderMessages": "Cargar mensajes anteriores",
   "invalidAttachmentUrl": "Dirección de descarga del adjunto no válida",
   "attachmentLoadFailed": "No se pudo cargar el adjunto",
   "getCloudAttachment": "Obtener adjunto de la nube",
@@ -447,7 +442,6 @@ const COPY_es = {
 
 const COPY_fr = {
   "commandLine": "Ligne de commande",
-  "olderMessages": "Charger les messages précédents",
   "invalidAttachmentUrl": "Adresse de téléchargement de pièce jointe invalide",
   "attachmentLoadFailed": "Impossible de charger la pièce jointe",
   "getCloudAttachment": "Obtenir la pièce jointe cloud",
@@ -535,7 +529,6 @@ const COPY_fr = {
 
 const COPY_it = {
   "commandLine": "Riga di comando",
-  "olderMessages": "Carica messaggi precedenti",
   "invalidAttachmentUrl": "Indirizzo di download dell’allegato non valido",
   "attachmentLoadFailed": "Impossibile caricare l’allegato",
   "getCloudAttachment": "Ottieni allegato dal cloud",
@@ -623,7 +616,6 @@ const COPY_it = {
 
 const COPY_pt_BR = {
   "commandLine": "Linha de comando",
-  "olderMessages": "Carregar mensagens anteriores",
   "invalidAttachmentUrl": "Endereço de download do anexo inválido",
   "attachmentLoadFailed": "Não foi possível carregar o anexo",
   "getCloudAttachment": "Obter anexo da nuvem",
@@ -711,7 +703,6 @@ const COPY_pt_BR = {
 
 const COPY_vi = {
   "commandLine": "Dòng lệnh",
-  "olderMessages": "Tải tin nhắn cũ hơn",
   "invalidAttachmentUrl": "Địa chỉ tải tệp đính kèm không hợp lệ",
   "attachmentLoadFailed": "Không thể tải tệp đính kèm",
   "getCloudAttachment": "Lấy tệp đính kèm từ đám mây",
@@ -799,7 +790,6 @@ const COPY_vi = {
 
 const COPY_tr = {
   "commandLine": "Komut satırı",
-  "olderMessages": "Önceki mesajları yükle",
   "invalidAttachmentUrl": "Ek indirme adresi geçersiz",
   "attachmentLoadFailed": "Ek yüklenemedi",
   "getCloudAttachment": "Bulut ekini al",
@@ -887,7 +877,6 @@ const COPY_tr = {
 
 const COPY_ja = {
   "commandLine": "コマンドライン",
-  "olderMessages": "以前のメッセージを読み込む",
   "invalidAttachmentUrl": "添付ファイルのダウンロード先が無効です",
   "attachmentLoadFailed": "添付ファイルを読み込めませんでした",
   "getCloudAttachment": "クラウドの添付ファイルを取得",
@@ -975,7 +964,6 @@ const COPY_ja = {
 
 const COPY_ko = {
   "commandLine": "명령줄",
-  "olderMessages": "이전 메시지 불러오기",
   "invalidAttachmentUrl": "첨부 파일 다운로드 주소가 올바르지 않습니다",
   "attachmentLoadFailed": "첨부 파일을 불러오지 못했습니다",
   "getCloudAttachment": "클라우드 첨부 파일 가져오기",
@@ -1063,7 +1051,6 @@ const COPY_ko = {
 
 const COPY_ar = {
   "commandLine": "سطر الأوامر",
-  "olderMessages": "تحميل الرسائل الأقدم",
   "invalidAttachmentUrl": "عنوان تنزيل المرفق غير صالح",
   "attachmentLoadFailed": "تعذر تحميل المرفق",
   "getCloudAttachment": "الحصول على المرفق السحابي",
@@ -1151,7 +1138,6 @@ const COPY_ar = {
 
 const COPY_th = {
   "commandLine": "บรรทัดคำสั่ง",
-  "olderMessages": "โหลดข้อความก่อนหน้า",
   "invalidAttachmentUrl": "ที่อยู่ดาวน์โหลดไฟล์แนบไม่ถูกต้อง",
   "attachmentLoadFailed": "โหลดไฟล์แนบไม่สำเร็จ",
   "getCloudAttachment": "รับไฟล์แนบจากคลาวด์",
@@ -1239,7 +1225,6 @@ const COPY_th = {
 
 const COPY_hi = {
   "commandLine": "कमांड लाइन",
-  "olderMessages": "पुराने संदेश लोड करें",
   "invalidAttachmentUrl": "अटैचमेंट डाउनलोड पता अमान्य है",
   "attachmentLoadFailed": "अटैचमेंट लोड नहीं हो सका",
   "getCloudAttachment": "क्लाउड अटैचमेंट प्राप्त करें",
@@ -1327,7 +1312,6 @@ const COPY_hi = {
 
 const COPY_es_419 = {
   "commandLine": "Línea de comandos",
-  "olderMessages": "Cargar mensajes anteriores",
   "invalidAttachmentUrl": "Dirección de descarga del adjunto no válida",
   "attachmentLoadFailed": "No se pudo cargar el adjunto",
   "getCloudAttachment": "Obtener adjunto de la nube",
@@ -1415,7 +1399,6 @@ const COPY_es_419 = {
 
 const COPY_pt_PT = {
   "commandLine": "Linha de comando",
-  "olderMessages": "Carregar mensagens anteriores",
   "invalidAttachmentUrl": "Endereço de transferência do anexo inválido",
   "attachmentLoadFailed": "Não foi possível carregar o anexo",
   "getCloudAttachment": "Obter anexo da nuvem",
