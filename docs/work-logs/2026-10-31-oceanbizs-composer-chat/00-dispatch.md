@@ -40,3 +40,9 @@ Operator 原话要点（14:45 CST，附 4 张截图在 `/root/oceanleo-inbox/202
 - 删除已无用词条 `olderMessages`。
 - 验证：两仓 `pnpm typecheck` 通过；相关测试 400/400 + `native-draft-files` 3/3；未跑全量（operator 规则：只跑改动相关测试）。LeoDev oceanleo slot FRESH(dev)。
 - 未证实、未改：D 观察到 06:20–06:42 孪生网关切换后约 20 分钟无 agent-dialog 连接；前端重连逻辑（1s→30s 退避）检查无缺陷。
+
+## 同步 oceanbizs（operator：「推到oceanbizs.com线上」）
+
+- `@oceanleo/ui` v0.236.0（69079553，tag 已推）；`oceanleo-ui-bump.sh v0.235.0 v0.236.0 --only oceanleo` OK。
+- 主站 `main` 推到 d35e9662（含本批 ea3bd935 + pin；连带推了此前未推的 2f0181f9 / 3656e8ac 两个后端提交 → 触发孪生网关镜像）。
+- Vercel `oceanleo` dpl_FiDd3bN2XNrhRvkmamVCHMT6SeZT；CN frontend image 构建失败（前两次推送同样失败，既有问题，非本批；不切广州机）。
