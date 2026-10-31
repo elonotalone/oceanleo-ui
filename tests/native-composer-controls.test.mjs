@@ -1,6 +1,7 @@
 // W5 (2026-10-30 task-chat overhaul): composer controls for native programs.
 // A Codex / Claude Code conversation never shows the OceanLeo wallet or the
-// Lite/Pro/Max tier; its own picker shows model, effort, fast and modes, with
+// Lite/Pro/Max tier; its own picker shows model, effort, fast and modes (W7: as
+// setting rows behind a model-name pill, each opening a card of choices), with
 // fast explained when the current model lacks it, choices persisted per
 // program + computer and sent through the controller's setters, and a draft
 // (before the first send) shows the picker as soon as the program reports.
@@ -132,7 +133,16 @@ const EFFORT = { id: "reasoning_effort", name: "Reasoning effort", category: "mo
   { value: "low", name: "Low" }, { value: "medium", name: "Medium" }, { value: "high", name: "High" },
 ] };
 
-test("picker renders model, effort, fast and mode in plain language; the trigger summarises them", async () => {
+// W7 (2026-10-31 evening): the pill names the model only; the menu lists one row per setting
+// the program reports (name left, current value right); a row opens a card of choices beside it.
+async function openRow(m, id) {
+  if (!m.q("[data-composer-settings-menu]")) await m.click(m.q("[data-native-model-trigger]"));
+  await m.click(m.q(`[data-composer-setting-row="${id}"]`));
+  return m.q(`[data-composer-settings-card="${id}"]`);
+}
+const rowValue = (m, id) => m.q(`[data-composer-setting-row="${id}"] [data-composer-setting-value]`)?.textContent;
+
+test("pill shows the model only; rows per setting with current values; a row opens its choices card", async () => {
   const calls = [];
   const m = await mount(React.createElement(NativeModelPicker, {
     program: "claude", models: MODELS, selected: "opus", onSelect: (id) => calls.push(["model", id]),
@@ -140,56 +150,73 @@ test("picker renders model, effort, fast and mode in plain language; the trigger
     params: [FAST, EFFORT], onParam: (option, wire) => calls.push(["param", option.id, wire]), fastSupported: true,
   }));
   try {
-    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x · 计划 · 快速");
+    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x", "no · mode · 快速 in the pill");
     await m.click(m.q("[data-native-model-trigger]"));
-    assert.deepEqual(m.qa("[data-native-section]").map((n) => n.getAttribute("data-native-section")),
-      ["model", "param:reasoning_effort", "fast", "mode"]);
+    assert.deepEqual(m.qa("[data-composer-setting-row]").map((n) => n.getAttribute("data-composer-setting-row")),
+      ["model", "param:reasoning_effort", "mode", "fast"]);
+    assert.match(m.q('[data-composer-setting-row="param:reasoning_effort"]').textContent, /推理强度/);
+    assert.match(m.q('[data-composer-setting-row="mode"]').textContent, /权限模式/);
+    assert.deepEqual(["model", "param:reasoning_effort", "mode", "fast"].map((id) => rowValue(m, id)), ["Opus 4.x", "Medium", "计划", "开"]);
+    assert.equal(m.q("[data-composer-settings-card]"), null, "no card until a row is picked");
+    const card = await openRow(m, "model");
+    assert.ok(card, "the model row opens its card");
     const paid = m.q('[data-native-model-option="paid"]');
     assert.equal(paid.disabled, true, "unusable model is disabled");
     assert.match(paid.textContent, /Anthropic 的付费模型需要账户余额。/, "with its reason on screen");
+    await openRow(m, "mode");
     assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["手动确认", "自动接受改动", "计划", "自动", "全部放行"]);
-    assert.match(m.q('[data-native-section="param:reasoning_effort"]').textContent, /推理强度/);
-    const toggle = m.q("[data-native-fast-toggle]");
-    assert.equal(toggle.getAttribute("aria-checked"), "true");
-    assert.equal(toggle.disabled, false);
-    await m.click(toggle);
+    await openRow(m, "fast");
+    await m.click(m.q('[data-native-fast-option="off"]'));
+    assert.equal(m.q("[data-composer-settings-menu]"), null, "a pick closes the menu");
+    await openRow(m, "param:reasoning_effort");
     await m.click(m.q('[data-native-param-option="reasoning_effort:high"]'));
-    await m.click(m.q("[data-native-model-trigger]"));
+    await openRow(m, "mode");
     await m.click(m.q('[data-native-mode-option="acceptEdits"]'));
-    await m.click(m.q("[data-native-model-trigger]"));
+    await openRow(m, "model");
     await m.click(m.q('[data-native-model-option="sonnet"]'));
     assert.deepEqual(calls, [["param", "fast_mode", "false"], ["param", "reasoning_effort", "high"], ["mode", "acceptEdits"], ["model", "sonnet"]]);
   } finally { await m.unmount(); }
 });
 
-test("Codex modes in plain language", async () => {
+test("Codex: no model list → the pill names the permission mode, in plain language", async () => {
   const mode = { id: "mode", name: "mode", current: "agent", options: [
     { value: "read-only", name: "Read Only" }, { value: "agent", name: "Agent" }, { value: "agent-full-access", name: "Agent (full access)" },
   ] };
   const m = await mount(React.createElement(NativeModelPicker, { program: "codex", models: [], selected: "", onSelect() {}, mode, selectedMode: "agent", onMode() {} }));
   try {
     assert.equal(m.q("[data-native-model-summary]").textContent, "代理");
-    await m.click(m.q("[data-native-model-trigger]"));
+    await openRow(m, "mode");
     assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["只读", "代理", "完全访问"]);
   } finally { await m.unmount(); }
 });
 
-test("fast is shown disabled with its reason when the program has it but the current model does not", async () => {
+test("rows follow what each program reports (Cursor / Hermes modes are plain 模式, no invented rows)", async () => {
+  const cursorMode = { id: "mode", name: "mode", current: "agent", options: [{ value: "agent", name: "Agent" }, { value: "plan", name: "Plan" }, { value: "ask", name: "Ask" }] };
+  const m = await mount(React.createElement(NativeModelPicker, { program: "cursor", models: MODELS.slice(0, 2), selected: "opus", onSelect() {}, mode: cursorMode, selectedMode: "plan", onMode() {} }));
+  try {
+    await m.click(m.q("[data-native-model-trigger]"));
+    assert.deepEqual(m.qa("[data-composer-setting-row]").map((n) => n.getAttribute("data-composer-setting-row")), ["model", "mode"]);
+    assert.match(m.q('[data-composer-setting-row="mode"]').textContent, /^模式/);
+    assert.equal(rowValue(m, "mode"), "Plan");
+  } finally { await m.unmount(); }
+});
+
+test("fast is a disabled row with its reason when the program has it but the current model does not", async () => {
   const m = await mount(React.createElement(NativeModelPicker, {
     program: "codex", models: MODELS.slice(0, 2), selected: "sonnet", onSelect() {}, params: [EFFORT], onParam() {}, fastSupported: true,
   }));
   try {
     await m.click(m.q("[data-native-model-trigger]"));
-    const toggle = m.q("[data-native-fast-toggle]");
-    assert.ok(toggle, "fast does not just vanish");
-    assert.equal(toggle.disabled, true);
-    assert.equal(toggle.getAttribute("aria-checked"), "false");
-    assert.equal(m.q("[data-native-fast-reason]").textContent, "当前模型不支持快速模式");
+    const row = m.q('[data-composer-setting-row="fast"]');
+    assert.ok(row, "fast does not just vanish");
+    assert.equal(row.disabled, true);
+    assert.equal(rowValue(m, "fast"), "关");
+    assert.equal(m.q("[data-composer-setting-reason]").textContent, "当前模型不支持快速模式");
   } finally { await m.unmount(); }
   const none = await mount(React.createElement(NativeModelPicker, { program: "hermes", models: MODELS.slice(0, 2), selected: "opus", onSelect() {}, fastSupported: false }));
   try {
     await none.click(none.q("[data-native-model-trigger]"));
-    assert.equal(none.q("[data-native-fast-toggle]"), null, "programs without fast show nothing about it");
+    assert.equal(none.q('[data-composer-setting-row="fast"]'), null, "programs without fast show nothing about it");
   } finally { await none.unmount(); }
 });
 
@@ -210,9 +237,10 @@ test("a choice goes through the controller's setter and is remembered per progra
   const dialog = fakeDialog();
   const m = await mount(React.createElement("div", null, nativeModelPickerFor({ program: "claude", computerId: "cc_1", dialog, waiting: true })));
   try {
-    await m.click(m.q("[data-native-model-trigger]"));
-    await m.click(m.q("[data-native-fast-toggle]"));
+    await openRow(m, "fast");
+    await m.click(m.q('[data-native-fast-option="off"]'));
     assert.deepEqual(dialog.calls, [["setConfig", "fast_mode", false]], "bool wire is coerced for the setter");
+    await openRow(m, "param:reasoning_effort");
     await m.click(m.q('[data-native-param-option="reasoning_effort:high"]'));
     assert.deepEqual(dialog.calls.at(-1), ["setConfig", "reasoning_effort", "high"]);
     const memory = JSON.parse(window.localStorage.getItem("oceanleo.acp.modelParams.cc_1.claude"));
@@ -240,8 +268,7 @@ test("Codex legacy effort-in-model-id catalogs: effort picks the variant id and 
   const dialog = fakeDialog({ models, selectedModel: "gpt-5[high]", configOptions: [], mode: null, selectedMode: "" });
   const m = await mount(React.createElement("div", null, nativeModelPickerFor({ program: "codex", computerId: "cc_1", dialog, waiting: true })));
   try {
-    await m.click(m.q("[data-native-model-trigger]"));
-    assert.ok(m.q('[data-native-section="effort"]'));
+    assert.ok(await openRow(m, "effort"));
     await m.click(m.q('[data-native-effort-option="gpt-5[low]"]'));
     assert.deepEqual(dialog.calls, [["setSelectedModel", "gpt-5[low]"]]);
     assert.deepEqual(JSON.parse(window.localStorage.getItem("oceanleo.acp.modelParams.cc_1.codex")), { "gpt-5": { reasoning_effort: "low" } });
@@ -331,12 +358,15 @@ test("draft mode: the picker appears from the warm connection before any session
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
     }
     assert.equal(thread.draft, true);
-    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x · 手动确认");
-    await m.click(m.q("[data-native-model-trigger]"));
+    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x");
+    await openRow(m, "mode");
     assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["手动确认", "计划"]);
-    await m.click(m.q("[data-native-fast-toggle]"));
+    await openRow(m, "fast");
+    await m.click(m.q('[data-native-fast-option="on"]'));
     assert.equal(thread.dialog.configOptions.find((option) => option.id === "fast_mode").current, true, "the controller's setConfig ran");
-    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x · 手动确认 · 快速");
+    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x", "the pill stays the model name");
+    await m.click(m.q("[data-native-model-trigger]"));
+    assert.equal(rowValue(m, "fast"), "开");
     assert.equal(FakeSocket.sockets.flatMap((socket) => socket.sent).some((frame) => ["open_session", "new_session", "prompt"].includes(frame.t)), false, "a draft never opens a session");
     await m.rerender(React.createElement(Host, { ...props, computer: { ...props.computer, node_online: false } }));
     assert.equal(m.q("[data-native-model-picker]"), null, "offline: no picker");

@@ -12,11 +12,30 @@ export type RouteSkeletonVariant =
   | "grid"
   | "settings";
 
+/**
+ * The page-level loading look (the portal's `/projects` `loading.tsx` renders the
+ * `list` shape). Also the ONE loading look of a task switch (`TaskLoadingGate`),
+ * LeoChat and LeoBay (2026-10-31 W5): one shape everywhere, no spinner, no text.
+ * `role=status` + `aria-busy` so screen readers hear "loading" too (same frame as
+ * the portal's twin in `oceanleo/app/_components/route-boundary.tsx`).
+ */
 export function RoutePageSkeleton({
   variant = "list",
+  label,
 }: {
   variant?: RouteSkeletonVariant;
+  /** Announced to screen readers; defaults to 「正在加载…」. */
+  label?: string;
 }) {
+  const tt = useUI();
+  return (
+    <div role="status" aria-busy="true" aria-label={label ?? tt("正在加载…")} data-route-page-skeleton={variant}>
+      <RouteSkeletonShape variant={variant} />
+    </div>
+  );
+}
+
+function RouteSkeletonShape({ variant }: { variant: RouteSkeletonVariant }) {
   if (variant === "home") {
     return (
       <div className="mx-auto max-w-3xl space-y-4 px-6 py-10">

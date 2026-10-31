@@ -76,7 +76,7 @@ test("首选向下、下方够：不翻转", () => {
   assert.equal(r.side, "bottom");
 });
 
-test("源码契约：弹层走 AnchoredPopover（portal + fixed），条目区可滚、紧凑模式更窄更小", async () => {
+test("源码契约：弹层走 AnchoredPopover（portal + fixed），条目区可滚；紧凑模式（输入框里）走统一设置菜单", async () => {
   const { readFile } = await import("node:fs/promises");
   const src = await readFile(new URL("../src/shell/ModelPicker.tsx", import.meta.url), "utf8");
   assert.match(src, /data-model-picker-popover/);
@@ -85,8 +85,12 @@ test("源码契约：弹层走 AnchoredPopover（portal + fixed），条目区�
   assert.match(src, /maxHeight=\{POPOVER_MAX_HEIGHT\}/);
   assert.match(src, /flex flex-col overflow-hidden/);
   assert.match(src, /data-model-picker-list[\s\S]{0,200}min-h-0 flex-1 overflow-y-auto/);
-  assert.match(src, /compact \? "w-\[min\(15rem,88vw\)\]" : "w-\[min\(22rem,88vw\)\]"/);
-  assert.match(src, /compact \? "gap-2 px-3 py-1\.5" : "gap-3 px-3\.5 py-2\.5"/);
+  // W7（2026-10-31 晚）：输入框里的紧凑态 = 和电脑程序同一个设置菜单（药丸只显示组合名，
+  // 行 = 模型 / 快速模式，点行右侧出卡片）；顶栏的完整态保持原来的宽列表。
+  assert.match(src, /if \(compact\) \{[\s\S]{0,200}<LeoComposerSettings/);
+  assert.match(src, /<ComposerSettingsMenu/);
+  assert.match(src, /"w-\[min\(22rem,88vw\)\]"/);
+  assert.match(src, /"gap-3 px-3\.5 py-2\.5"/);
   assert.doesNotMatch(
     src,
     /absolute z-50/,

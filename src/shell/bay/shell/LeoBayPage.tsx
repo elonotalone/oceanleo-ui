@@ -21,6 +21,7 @@ import { BayAssetLibrary } from "../asset/BayAssetLibrary";
 import { BayLessonShelf } from "../lessons/BayLessonShelf";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { BayAuthHost } from "./bay-auth-host";
+import { RoutePageSkeleton } from "../../nav-source/route-boundary";
 import { BayGlyph } from "./bay-icons";
 import { canonicalBayFeedKind, formatBayParam } from "./bay-links";
 import {
@@ -350,8 +351,14 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   // 挂载：登记 /bay 页在场，接管 `?bay=`（详情）与 `?kind=`（种类）。
   useEffect(() => (availability === "on" ? registerBayPage() : undefined), [availability]);
 
+  // Server render / hydration frame: the page-level skeleton every OceanLeo page opens
+  // with (the `/projects` look; 2026-10-31 W5), not a blank frame.
   if (availability === "pending") {
-    return <div className={FRAME_CLASS} data-bay-page="pending" />;
+    return (
+      <div className={FRAME_CLASS} data-bay-page="pending">
+        <RoutePageSkeleton variant="grid" />
+      </div>
+    );
   }
   // 境内没有交易市场（发布、找人帮忙、主页都不开），但现成文件照旧能逛：这张页只剩现成文件库。
   if (availability === "off") {

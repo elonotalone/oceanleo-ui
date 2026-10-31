@@ -154,6 +154,7 @@ export function dialogToAgentMessages(
         kind: "text",
         content: message.text,
         meta: { native: true, ...(attachments.length ? { attachments } : {}) },
+        ...(typeof message.at === "number" ? { created_at: new Date(message.at).toISOString() } : {}),
       });
       continue;
     }

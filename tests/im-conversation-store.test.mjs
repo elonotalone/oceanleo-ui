@@ -472,14 +472,29 @@ test("同一人 5 分钟内连续消息合并头像；超过 5 分钟、换人�
   assert.deepEqual(rows.map((r) => r.grouped), [false, true, false, false, false, false]);
 });
 
-test("跨天插日期分隔；日期分隔后不合并头像", () => {
+test("时间分隔（与任务页同一纯函数）：首条、跨天各一条；分隔后不合并头像", () => {
   const rows = buildRows(
     [at(1, "2026-10-05T10:00:00"), at(2, "2026-10-05T10:01:00"), at(3, "2026-10-06T10:02:00")],
     [],
   );
-  assert.deepEqual(rows.map((r) => r.type), ["day", "message", "message", "day", "message"]);
+  assert.deepEqual(rows.map((r) => r.type), ["time", "message", "message", "time", "message"]);
+  assert.equal(rows[0].at, Date.parse("2026-10-05T10:00:00"));
   assert.equal(rows[2].grouped, true);
   assert.equal(rows[4].grouped, false);
+});
+
+test("时间分隔：同一天隔 5 分钟以上再插一条，连着发的不插（LeoChat 与任务页同一规则）", () => {
+  const rows = buildRows(
+    [
+      at(1, "2026-10-05T10:00:00"),
+      at(2, "2026-10-05T10:04:00", { sender_id: "other" }),
+      at(3, "2026-10-05T10:09:30"),
+      at(4, "2026-10-05T10:10:00"),
+    ],
+    [],
+  );
+  assert.deepEqual(rows.map((r) => r.type), ["time", "message", "message", "time", "message", "message"]);
+  assert.equal(rows[3].at, Date.parse("2026-10-05T10:09:30"));
 });
 
 test("未读分隔线：画在 last_read_seq 之后第一条别人的消息前，只画一次，自己的消息不触发", () => {
@@ -490,7 +505,7 @@ test("未读分隔线：画在 last_read_seq 之后第一条别人的消息前�
     at(4, "2026-10-06T10:03:00Z"),
   ];
   const rows = buildRows(messages, [], { unreadAfterSeq: 1, viewerId: ME });
-  assert.deepEqual(rows.map((r) => r.type), ["day", "message", "message", "unread", "message", "message"]);
+  assert.deepEqual(rows.map((r) => r.type), ["time", "message", "message", "unread", "message", "message"]);
   const none = buildRows(messages, [], { unreadAfterSeq: null, viewerId: ME });
   assert.ok(!none.some((r) => r.type === "unread"));
   const zero = buildRows(messages, [], { unreadAfterSeq: 0, viewerId: ME });

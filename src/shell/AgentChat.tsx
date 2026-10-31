@@ -31,12 +31,10 @@ import { useRouter, usePathname } from "next/navigation";
 import { type SplitLibraryConfig } from "./SplitWorkspace";
 import {
   TaskWorkspaceShell,
-  attachmentOpenMode,
-  attachmentWorkspaceItem,
   useTaskWorkspaceState,
-  type OpenableAttachment,
   type TaskWorkspaceInitial,
 } from "./TaskWorkspaceShell";
+import { useTaskAttachmentOpener, type TaskAttachmentTarget } from "./task-attachment-open";
 import { IconSearch } from "./icons";
 import { CollabTaskPresence } from "./collab/CollabActionSlot";
 import { type CanvasTab } from "./ResultCanvas";
@@ -53,6 +51,8 @@ import {
   agentArtifactLabels,
 } from "./AgentTranscriptBubble";
 import { AgentProgress } from "./AgentProgress";
+import { AGENT_CONVERSATION_MAX_WIDTH_CLASS } from "./agent-conversation-layout";
+import { agentMessageTimeSeparators } from "./chat-time-separators";
 import { LeoComposer, type ComposerMenuItem } from "./LeoComposer";
 import type { ExecutionTarget } from "../lib/execution-target";
 // One UI system for computer conversations (redo 2026-10-30): a native
@@ -161,6 +161,11 @@ import { thinkingLabel, useThinkingSeconds } from "./agent-thread/thinking-label
 import { markSend, noteFirstVisibleReply, sentAtFor } from "./agent-thread/ttfv";
 import { latestTurn, userTurnCount } from "./agent-thread/turn";
 import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
+// W5 (2026-10-31): one loading look per task switch, per-conversation scroll memory.
+import { useTaskLoadingReport } from "./task-loading-gate";
+import { placeConversationScroll, rememberConversationScroll, scrollPaneShown } from "./task-scroll-memory";
+import { isStaleTaskSeed } from "./history-detail-cache";
+import { RoutePageSkeleton } from "./nav-source/route-boundary";
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
@@ -769,6 +774,7 @@ function AgentChatInner({
   // 手上这份消息属于哪段对话。换对话时它先归零，等服务端那份到齐才跟上；
   // 编辑器指令只在两者一致时才看，否则会拿上一段对话的消息去对新对话记账。
   const [messagesTaskId, setMessagesTaskId] = useState("");
+  const [readFailedTaskId, setReadFailedTaskId] = useState("");
   const [activeArtifactIds, setActiveArtifactIds] = useState<Set<string> | null>(
     null,
   );
@@ -941,6 +947,8 @@ function AgentChatInner({
     const r = await getTask(id, pull.options);
     if (loadedTaskRef.current !== id) return IDLE_POLL_RESULT;
     if (r.ok && r.data) return applyTask(id, pull, r.data);
+    // A task that cannot be read is not "loading" forever (W5 loading gate).
+    setReadFailedTaskId(id);
     return IDLE_POLL_RESULT;
   }, [applyTask]);
 
@@ -1029,6 +1037,9 @@ function AgentChatInner({
     if (seed?.task?.id === taskId && seededTaskRef.current !== taskId) {
       seededTaskRef.current = taskId;
       applyTask(taskId, threadSyncRef.current.begin(taskId), seed);
+      // A copy the history page kept from an earlier visit shows at once; the task
+      // may have moved on since, so it is read once more (silently merged).
+      if (isStaleTaskSeed(seed)) void refresh(taskId);
       return;
     }
     void refresh(taskId);
@@ -1491,6 +1502,43 @@ function AgentChatInner({
     scrollToLatest(scrollBehavior());
   }, [scrollToLatest]);
 
+  // W5 (2026-10-31): where this task's conversation opens. Its first frame is placed
+  // once (instant, never smooth): back at the remembered spot when the user had
+  // scrolled up there earlier in this page, otherwise at the latest message
+  // (reload / first open). Placed while the loading cover is still on, so the
+  // first visible frame is already in place.
+  const placedTaskRef = useRef("");
+  /** The `messages` the first frame was placed for (that render needs no follow scroll). */
+  const justPlacedRef = useRef<AgentMessage[] | null>(null);
+  const placedHoldRef = useRef<(() => void) | null>(null);
+  const scrollKeyRef = useRef("");
+  scrollKeyRef.current = taskId ? `task:${taskId}` : "";
+  const cloudPaneShown = !conversation || conversation.kind === "oceanleo";
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !taskId || messagesTaskId !== taskId || placedTaskRef.current === taskId) return;
+    if (messages.length === 0 || !cloudPaneShown || !scrollPaneShown(el)) return;
+    placedTaskRef.current = taskId;
+    seenMessageCountRef.current = messages.length;
+    const placed = placeConversationScroll(el, `task:${taskId}`, () => followingRef.current);
+    followingRef.current = placed.follow;
+    setFollowing(placed.follow);
+    justPlacedRef.current = messages;
+    placedHoldRef.current?.();
+    placedHoldRef.current = placed.release;
+  }, [messages, messagesTaskId, taskId, cloudPaneShown]);
+  useEffect(() => () => placedHoldRef.current?.(), []);
+
+  // W5: one loading look per task switch. This conversation is ready to be shown
+  // once the task's first read is in and the page decided which conversation is
+  // in front (a native chat then reports its own saved copy). No-op without a
+  // TaskLoadingGate above (home page, workspace consoles).
+  useTaskLoadingReport(
+    !taskId ||
+      readFailedTaskId === taskId ||
+      (messagesTaskId === taskId && (conversationResolved || sessionsFailed)),
+  );
+
   const handleStreamScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -1499,6 +1547,9 @@ function AgentChatInner({
       scrollHeight: el.scrollHeight,
       clientHeight: el.clientHeight,
     });
+    if (placedTaskRef.current && scrollKeyRef.current === `task:${placedTaskRef.current}`) {
+      rememberConversationScroll(scrollKeyRef.current, el.scrollTop, atBottom);
+    }
     if (followingRef.current === atBottom) return;
     followingRef.current = atBottom;
     setFollowing(atBottom);
@@ -1510,6 +1561,13 @@ function AgentChatInner({
     // 那是同一条在变，不该让计数一路往上跳。
     const added = Math.max(0, messages.length - seenMessageCountRef.current);
     seenMessageCountRef.current = messages.length;
+    // The first frame was just placed (instant): no smooth scroll from the top.
+    if (justPlacedRef.current === messages) {
+      justPlacedRef.current = null;
+      return;
+    }
+    // Nothing placed for this task yet (its copy is still on its way): nothing to follow.
+    if (taskId && placedTaskRef.current !== taskId) return;
     if (followingRef.current) {
       scrollToLatest(scrollBehavior());
       return;
@@ -2219,6 +2277,16 @@ function AgentChatInner({
     siteLabel:
       appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined,
   });
+  // W5 share fix (2026-10-31): the select mode lives in the OceanLeo conversation's
+  // own stream (its footer becomes the action bar). With a computer conversation in
+  // front that stream is hidden: entering there looked like "the button vanished,
+  // nothing happened". So the header entry is offered only while the OceanLeo
+  // conversation is shown, and leaving it ends the select mode.
+  const shareAvailable = cloudPaneShown && share.selectable.length > 0;
+  const exitShare = share.exit;
+  useEffect(() => {
+    if (!cloudPaneShown && share.active) exitShare();
+  }, [cloudPaneShown, share.active, exitShare]);
 
   // ---------------------------------------------------------------------
   // 对话内搜索（操作员 2026-09-07，图 662b8bb0）
@@ -2573,8 +2641,14 @@ function AgentChatInner({
       {headerExtra}
       {searchControl}
       {/* 「分享」：点它整页进入选段模式（对标 Kimi）。只在这里出现一次。 */}
-      {!share.active && share.selectable.length > 0 && (
-        <ShareEntryButton onClick={() => share.enter()} />
+      {/* Stays in place while selecting (pressed; a second click leaves). It used to be
+          unmounted on click, so the header looked like it lost the button. Entering
+          from here selects every message: 「复制链接」 works straight away. */}
+      {(share.active || shareAvailable) && (
+        <ShareEntryButton
+          active={share.active}
+          onClick={() => (share.active ? share.exit() : share.enter("all"))}
+        />
       )}
     </div>
   );
@@ -2611,24 +2685,26 @@ function AgentChatInner({
     });
   }, []);
 
-  // W7: a user-uploaded file (message bubble tile or composer tile) opens in
-  // this task's own right sidebar: never a new tab, never a second panel.
+  // W7 + W6: every file on the task page (composer tile, sent attachment, a computer
+  // task's inbox file; cloud AND native pane) opens in this task's own right sidebar,
+  // the same one the home page uses: never a new tab, never the strip's old panel.
+  // A Library editor thread (workspaceContent) gives way to the file until the pane closes.
   const openWorkspaceItem = taskWorkspace.openWorkspaceItem;
-  const openTaskAttachment = useCallback(
-    (attachment: OpenableAttachment | AgentAttachment) => {
-      const openable: OpenableAttachment = "id" in attachment
-        ? attachment
-        : {
-            id: attachment.url || attachment.name || "attachment",
-            name: attachment.name,
-            mime: attachment.mime || (attachment.media_type ? `${attachment.media_type}/*` : undefined),
-            url: attachment.url,
-          };
-      const item = attachmentWorkspaceItem(openable, siteId || "oceanleo");
-      openWorkspaceItem(item, attachmentOpenMode(item));
-    },
-    [openWorkspaceItem, siteId],
+  const [fileOverWorkspace, setFileOverWorkspace] = useState(false);
+  const hasWorkspaceContent = Boolean(workspaceContent);
+  const openTaskAttachment = useTaskAttachmentOpener(
+    siteId || "oceanleo",
+    useCallback((target: TaskAttachmentTarget) => {
+      setSettingsOpen(false);
+      if (hasWorkspaceContent) setFileOverWorkspace(true);
+      onWorkspaceOpenChange?.(true);
+      openWorkspaceItem(target.item, target.mode);
+    }, [hasWorkspaceContent, onWorkspaceOpenChange, openWorkspaceItem]),
   );
+  const workspacePaneOpen = workspaceOpen ?? rightOpen;
+  useEffect(() => {
+    if (!workspacePaneOpen) setFileOverWorkspace(false);
+  }, [workspacePaneOpen]);
 
   const removePreviewArtifact = useCallback(
     async (message: AgentMessage) => {
@@ -2681,6 +2757,8 @@ function AgentChatInner({
 
   // 复制 / 重做 / 分享：一轮只在最后一段话底下出现一次（操作员 2026-10-31），跑着的这一轮不出现。
   const turnActions = agentTurnActionTargets(renderItems, running || presentation.working);
+  // W4 2026-10-31: the small time above user bubbles (first one, then after a 5-minute gap).
+  const timeSeparators = agentMessageTimeSeparators(messages);
 
   /** 把上面那条裁决接到实际渲染的那条消息上。 */
   const messageForBubble = (item: {
@@ -2724,9 +2802,10 @@ function AgentChatInner({
         // (NativeChatConversation); browser scroll anchoring would shift it a second time.
         style={pane.pane === "native" ? { overflowAnchor: "none" } : undefined}
       >
-        {/* 对话内容与下方输入框同宽、居中：读感更集中，气泡不再拉满整栏。
+        {/* 对话内容与下方输入框同宽、居中（宽度上限 = agent-conversation-layout 的
+            AGENT_CONVERSATION_MAX_WIDTH_CLASS，比 Manus 比例略宽，W4 2026-10-31）。
             Never a horizontal scrollbar: long paths / URLs / commands wrap here. */}
-        <div className="mx-auto w-full min-w-0 max-w-2xl space-y-3 break-words [overflow-wrap:anywhere]" data-agent-stream-column="">
+        <div className={`mx-auto w-full min-w-0 ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-3 break-words [overflow-wrap:anywhere]`} data-agent-stream-column="">
           {pane.empty}
           {pane.items}
           {pane.tail}
@@ -2737,8 +2816,8 @@ function AgentChatInner({
       <div className="shrink-0 border-t border-stone-100 px-3 py-3">
         {/* 输入框收窄居中（操作员 2026-07-01）：不再铺满整栏，限宽 + 居中，
             与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。
-            选段模式下**这一整块**换成操作条，退出即恢复。 */}
-        <div className="mx-auto w-full max-w-2xl space-y-2">
+            选段模式下**这一整块**换成操作条，退出即恢复。宽度与正文列同一常量。 */}
+        <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-2`}>
           {pane.footer}
         </div>
       </div>
@@ -2771,6 +2850,7 @@ function AgentChatInner({
               <AgentTranscriptBubble
                 key={item.key}
                 message={messageForBubble(item)}
+                timeAbove={timeSeparators.get(item.index)}
                 streaming={presentation.working && item.index === lastAssistantIdx &&
                   item.index > lastUserIdx && item.message.meta?.done !== true &&
                   item.message.meta?.final !== true && item.message.meta?.stopped !== true}
@@ -2947,6 +3027,7 @@ function AgentChatInner({
       message.role === "assistant" && (message.kind === "text" || !message.kind) && message.meta?.interim !== true);
     // One copy row per turn, under its last words; none while the turn is still running.
     const nativeTurnActions = agentTurnActionTargets(nativeRenderItems, nativePresentation.working || thread.running);
+    const nativeTimeSeparators = agentMessageTimeSeparators(nativeMessages);
     // Install / sign-in live in the settings pane: a send blocked for that reason opens it.
     const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
     // A prompt typed while the session is still opening waits in the queue: its bubble
@@ -3001,11 +3082,12 @@ function AgentChatInner({
         </div>
       ) : null,
       // An existing conversation shows its cloud-saved copy at once; only while that
-      // copy is still on its way is there a quiet spinner (never 「正在打开对话…」).
+      // copy is still on its way is there the page-level skeleton (never 「正在打开对话…」).
       empty: nativeMessages.length === 0 && !thread.running ? (
         session && (connecting || thread.opening) ? (
-          <div className="flex justify-center py-10" role="status" aria-label={tt("正在读取…")} data-native-opening="">
-            <span className="v-spinner" />
+          // The same page-level skeleton as the task switch (W5): one loading look, no spinner.
+          <div data-native-opening="">
+            <RoutePageSkeleton variant="list" label={tt("正在读取…")} />
           </div>
         ) : (
           <div className="py-10 text-center text-[15px] text-stone-400">{tt("在下方输入，开始与 agent 对话。")}</div>
@@ -3025,6 +3107,7 @@ function AgentChatInner({
               <AgentTranscriptBubble
                 key={item.key}
                 message={item.message}
+                timeAbove={nativeTimeSeparators.get(item.index)}
                 streaming={nativePresentation.working && item.index === nativeLastAssistantIdx &&
                   item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
                   item.message.meta?.final !== true && item.message.meta?.stopped !== true}
@@ -3033,6 +3116,7 @@ function AgentChatInner({
                 taskRunning={thread.running}
                 // Saved transcript (offline): gates are read-only.
                 onNativeAnswer={!readOnly && thread.live ? thread.answer : undefined}
+                onOpenAttachment={openTaskAttachment}
               />
             ),
           )}
@@ -3084,6 +3168,8 @@ function AgentChatInner({
             onAttachFiles={toolsOn ? thread.onAttachFiles : undefined}
             attachments={toolsOn ? thread.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? thread.onRemoveAttachment : undefined}
+            // W6: a tile opens in this task's right sidebar (never AttachmentStrip's old PreviewPanel).
+            onOpenAttachment={openTaskAttachment}
             draftKey={taskId ? `task:${taskId}` : undefined}
             // A computer's inbox takes bytes: a Library pick is read once and attached as a file.
             onAddAttachments={toolsOn && thread.onAttachFiles ? (items) => {
@@ -3173,7 +3259,7 @@ function AgentChatInner({
       })}
       {surfaceActive && (
         <div className="shrink-0 border-t border-stone-100">
-          <div className="mx-auto w-full max-w-2xl">
+          <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
             {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}
             <ConversationBar
               conversation={conversation!}
@@ -3269,7 +3355,15 @@ function AgentChatInner({
           detailsLabel={tt("技术详情")}
           onClose={() => settingsShown ? closeSettings() : (onWorkspaceOpenChange || setRightOpen)(false)}
         >
-          <div className={settingsShown ? "hidden" : "h-full"} hidden={settingsShown}>{workspaceContent ?? right}</div>
+          <div className={settingsShown ? "hidden" : "h-full"} hidden={settingsShown}>
+            {workspaceContent ? (
+              <>
+                {/* The editor stays mounted (unsaved work kept) while an opened file is shown. */}
+                <div className={fileOverWorkspace ? "hidden" : "h-full"} hidden={fileOverWorkspace} data-task-workspace-content="">{workspaceContent}</div>
+                {fileOverWorkspace && right}
+              </>
+            ) : right}
+          </div>
           {settingsShown && conversation && conversation.kind !== "oceanleo" && (
             <div className="h-full overflow-y-auto" data-native-settings-pane>
               {nativeChat
@@ -3293,7 +3387,7 @@ function AgentChatInner({
       // 杜绝「相对 100dvh 记账 → 比父容器高一截 → 从历史重开输入框上移、上面内容被挤出」
       // （操作员 2026-07-12）。onBack 场景下方另给一个 100dvh 的外框。
       fillParent
-      // AgentChat 的对话流/输入框内部已 max-w-2xl 居中，外层单栏不再二次限宽（否则双重收窄）。
+      // AgentChat 的对话流/输入框内部已按 AGENT_CONVERSATION_MAX_WIDTH_CLASS 居中，外层单栏不再二次限宽（否则双重收窄）。
       soloMaxWidth={null}
       library={settingsShown
         ? { ...(effectiveLibrary || {}), label: settingsTitle, open: true, onOpenChange: (open) => { if (!open) closeSettings(); },
@@ -3419,16 +3513,22 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     };
     current.loadOlder();
   }, [active]);
+  // W5: remembered per session for the life of the page (see task-scroll-memory).
+  const scrollKey = sessionId ? `native:${sessionId}` : "";
+  const placedRef = useRef(false);
+  const justPlacedRef = useRef<unknown>(null);
+  const placedHoldRef = useRef<(() => void) | null>(null);
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const metrics = scrollMetricsOf(el);
     followRef.current = isNearBottom(metrics);
+    if (placedRef.current) rememberConversationScroll(scrollKey, metrics.scrollTop, followRef.current);
     // Only the user's own scroll up reads more; the smooth follow-to-bottom from 0 never does.
     const movingUp = metrics.scrollTop < lastScrollTop.current;
     lastScrollTop.current = metrics.scrollTop;
     maybeLoadOlder(movingUp);
-  }, [maybeLoadOlder]);
+  }, [maybeLoadOlder, scrollKey]);
   const firstMessageId = thread.messages[0]?.id ?? null;
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -3446,9 +3546,36 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     // The read ended with nothing new (or never started): free the trigger again.
     else if (anchor.sawLoading || !thread.hasOlder) olderAnchor.current = null;
   }, [firstMessageId, thread.olderLoading, thread.hasOlder]);
+  // W5: the first frame each time this chat comes to the front is placed instantly:
+  // the remembered spot if the user had scrolled up, otherwise the latest message
+  // (never a smooth scroll down from the top). lastScrollTop follows, so the
+  // placement itself is never read as "scrolling up" (no older batch from it).
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!active) {
+      placedRef.current = false;
+      return;
+    }
+    if (!el || placedRef.current || thread.messages.length === 0 || !scrollPaneShown(el)) return;
+    placedRef.current = true;
+    const placed = placeConversationScroll(el, scrollKey, () => followRef.current);
+    followRef.current = placed.follow;
+    lastScrollTop.current = el.scrollTop;
+    justPlacedRef.current = thread.messages;
+    placedHoldRef.current?.();
+    placedHoldRef.current = placed.release;
+  }, [active, thread.messages, scrollKey]);
+  useEffect(() => () => placedHoldRef.current?.(), []);
+  // Shown and its saved copy still on its way: the task's loading cover stays on.
+  useTaskLoadingReport(
+    !(session && thread.messages.length === 0 && !thread.running && (connecting || thread.opening)),
+    active,
+  );
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && active && followRef.current) el.scrollTo({top: el.scrollHeight, behavior: scrollBehavior()});
+    if (justPlacedRef.current === thread.messages) justPlacedRef.current = null;
+    // Nothing placed yet (no messages, or hidden): nothing to follow.
+    else if (el && active && placedRef.current && followRef.current) el.scrollTo({top: el.scrollHeight, behavior: scrollBehavior()});
     // A short first batch that does not fill the pane cannot be scrolled up: read the next one.
     maybeLoadOlder(false);
   }, [thread.messages, active, thread.olderLoading, maybeLoadOlder]);

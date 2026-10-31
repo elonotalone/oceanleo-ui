@@ -231,7 +231,7 @@ test("我的任务 page: a refused delete keeps the list and says the computer i
   const { HistoryPage } = await import(await compileModule("src/shell/HistoryPage.tsx", {
     "../lib/agent": historyAgentStub,
     "../i18n/ui/useUI": ttStub,
-    "../ui": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ConfirmDialog({ onConfirm }) { return React.createElement("button", { "data-fw-confirm": "1", onClick: onConfirm }, "confirm"); }`),
+    "../ui": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ConfirmDialog({ onConfirm }) { return React.createElement("button", { "data-fw-confirm": "1", onClick: onConfirm }, "confirm"); } export function SkeletonCard() { return null; } export function SkeletonLine() { return null; }`),
     "./AppPageHeader": dataModule(`import React from ${JSON.stringify(reactUrl)}; export const APP_PAGE_FRAME_CLASS = ""; export function AppPageHeader({ children }) { return React.createElement("div", null, children); }`),
     "./LibraryLayout": dataModule(`export function LibraryToolbar() { return null; }`),
   }));
@@ -271,7 +271,7 @@ test("我的任务 sidebar: a refused delete reads as the sentence and the row c
       export function HistoryRowMenu({ canDelete, onDelete }) { return canDelete ? React.createElement("button", { "data-fw-row-delete": "1", onClick: onDelete }, "row-delete") : null; }
       export function MoveTaskProjectDialog(){ return null; }
     `),
-    "../ui": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ConfirmDialog({ onConfirm }) { return React.createElement("button", { "data-fw-confirm": "1", onClick: onConfirm }, "confirm"); }`),
+    "../ui": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function ConfirmDialog({ onConfirm }) { return React.createElement("button", { "data-fw-confirm": "1", onClick: onConfirm }, "confirm"); } export function SkeletonCard() { return null; } export function SkeletonLine() { return null; }`),
     "../lib/auth/client": dataModule(`export function browserClient(){ return null; } export async function accessToken(){ return null; }`),
     "../lib/agent": historyAgentStub,
     "../lib/app-session": dataModule(`
@@ -305,7 +305,7 @@ const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.
   "../facades/devices": dataModule(`export const devicesFacade = { async listDevices(){ return { ok: true, data: [] }; } };`),
   "../api/remote-desktop": dataModule(`export const remoteDesktopClient = { async getStatus(){ return { ok: false, error: "x", status: 0 }; } };`),
   "../i18n/ui/useUI": ttStub,
-  "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
+  "../ui": dataModule(`export function ConfirmDialog() { return null; } export function SkeletonCard() { return null; } export function SkeletonLine() { return null; }`),
   "./PageHeader": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function PageHeader({ title }) { return React.createElement("h1", null, title); }`),
   "./AuthDialog": dataModule(`export function AuthDialog() { return null; }`),
   "./devices/CloudDeviceGrid": dataModule(`export function CloudDeviceGrid() { return null; } export function CloudComputersPage() { return null; }`),

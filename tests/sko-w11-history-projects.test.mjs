@@ -158,7 +158,7 @@ const sharedStubs = {
     }
     export function MoveTaskProjectDialog(){ return null; }
   `),
-  "../ui": dataModule(`export function ConfirmDialog(){ return null; }`),
+  "../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`),
   "./PublishToOrgButton": dataModule(`export function PublishToOrgButton(){ return null; }`),
   "./cloud-computer/ShellTaskView": dataModule(`export function ShellTaskView(){ return null; }`),
   "../lib/auth/client": dataModule(`
@@ -246,9 +246,9 @@ test("侧栏显式传 project_scope=all，项目任务成行并带项目标注",
     assert.match(tag.querySelector(".truncate")?.textContent || "", /非常非常长/);
     // 标签不嵌在按钮里（嵌套交互元素非法）。
     assert.equal(tag.closest("button"), null);
-    // 项目名优先：项目行不再显示 home-agent 来源字样；普通行照旧显示。
+    // 2026-10-31 Manus 式一行：任何行都不再显示 home-agent 这类来源字样（项目行只留项目标签）。
     assert.doesNotMatch(projRow.textContent, /home-agent/);
-    assert.match(row(view.container, "s-plain").textContent, /home-agent/);
+    assert.doesNotMatch(row(view.container, "s-plain").textContent, /home-agent/);
     assert.equal(row(view.container, "s-plain").querySelector("[data-history-project-tag]"), null);
 
     // 名字截断：标签有最大宽度，名字在 truncate 容器里。

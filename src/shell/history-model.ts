@@ -31,6 +31,43 @@ export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
   return entry.working === true;
 }
 
+/** The time a row stands for: a session's last activity, an old task's creation. */
+export function historyEntryTimestamp(entry: HistoryListEntry): string {
+  return entry.kind === "session"
+    ? String(entry.session.last_activity_at || entry.session.updated_at || "")
+    : String(entry.task.created_at || "");
+}
+
+/**
+ * Time shown in the My Tasks hover bubble (Manus style), in the viewer's own
+ * time zone: today → the clock time ("4:54 PM" / "16:54"); earlier this year →
+ * a short date ("Oct 20" / "10月20日"); another year → the date with its year.
+ * `locale` is the page language; an unknown tag falls back to the runtime default.
+ */
+export function formatHistoryTime(
+  ts: string | null | undefined,
+  now: Date = new Date(),
+  locale?: string,
+): string {
+  if (!ts) return "";
+  const date = new Date(ts);
+  if (Number.isNaN(date.getTime())) return "";
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const options: Intl.DateTimeFormatOptions = sameDay
+    ? { hour: "numeric", minute: "2-digit" }
+    : date.getFullYear() === now.getFullYear()
+      ? { month: "short", day: "numeric" }
+      : { year: "numeric", month: "short", day: "numeric" };
+  try {
+    return new Intl.DateTimeFormat(locale || undefined, options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options).format(date);
+  }
+}
+
 function readCreatedBy(record: object): string | null | undefined {
   const value = (record as { created_by?: unknown }).created_by;
   if (typeof value === "string" || value === null) return value;

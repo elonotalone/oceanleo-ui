@@ -546,3 +546,15 @@ test("workspaceNav：境内外都有 LeoChat（紧跟 LeoBay 那一项）；with
     false,
   );
 });
+
+test("W5 2026-10-31：LeoChat 打开、登录态还没查清时显示页面级骨架（与 /projects 同一套），不是空白", async () => {
+  resetHost();
+  globalThis.__leoChat4ImOn = false;
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  // 服务端快照：登录态未查清 → pending。
+  const markup = renderToStaticMarkup(React.createElement(LeoChatPage, { siteKey: "music" }));
+  assert.match(markup, /data-leochat-page="pending"/);
+  assert.match(markup, /data-route-page-skeleton="list"/);
+  assert.match(markup, /aria-busy="true"/);
+  globalThis.__leoChat4ImOn = true;
+});

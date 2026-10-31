@@ -104,7 +104,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export function HistoryRowMenu(){ return null; }
     export function MoveTaskProjectDialog(){ return null; }
   `),
-  "../ui": dataModule(`export function ConfirmDialog(){ return null; }`),
+  "../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`),
   "../lib/auth/client": dataModule(`
     export function browserClient(){ return null; }
     export async function accessToken(){ return null; }
@@ -158,7 +158,8 @@ test("C-7: 只有在干活的行显示工作中动效；完成/失败/停止都�
     // Idle rows keep an empty, same-width slot: titles stay aligned, nothing coloured shows.
     const idleSlot = row(container, "t-failed").firstElementChild;
     assert.equal(idleSlot.children.length, 0);
-    assert.match(idleSlot.getAttribute("class"), /w-3/);
+    // 2026-10-31: the slot is as wide as a nav icon so names line up with the nav labels.
+    assert.match(idleSlot.getAttribute("class"), /\bw-4\b/);
     assert.equal(container.querySelector(".rounded-full.h-1\\.5"), null, "no red/amber/green/grey status dots");
     for (const cls of ["bg-amber-400", "bg-emerald-500", "bg-rose-500", "bg-stone-400"]) {
       assert.equal(container.querySelector(`[data-history-row] .${cls}`), null, cls);

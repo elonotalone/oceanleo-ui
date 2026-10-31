@@ -22,6 +22,7 @@ import { executionTargetRequestFields, readExecutionTarget, type ExecutionTarget
 import { cloudDriverPreflight } from "./cloud-agent-api";
 import { createBackboneField, followUpBackboneField } from "./cursor-model-choice";
 import { payerRequestFields } from "./payer";
+import { leoRunRequestFields } from "./leo-run-options";
 
 export type AgentApiDiagnosticValue = string | number | boolean;
 
@@ -469,6 +470,7 @@ export async function createTask(body: {
         prompt_override: body.promptOverride || "",
         attachments: body.attachments || [],
         ...payerRequestFields(body.orgId),
+        ...leoRunRequestFields(),
         ...executionTargetRequestFields(selectedTarget),
         ...(typeof body.created_by === "string"
           ? { created_by: body.created_by }
@@ -806,6 +808,7 @@ export function followUp(
         attachments: attachments || [],
         ...(backbone ? { agent_model: backbone } : {}),
         ...payerRequestFields(orgId),
+        ...leoRunRequestFields(),
         ...(computerId ? computerIdRequestField(computerId) : {}),
       }),
     },

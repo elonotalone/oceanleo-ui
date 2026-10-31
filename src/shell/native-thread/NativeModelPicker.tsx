@@ -1,15 +1,14 @@
 "use client";
 
 // The native program's composer control, placed where ModelGroupPicker sits in
-// LeoComposer. One trigger ("Opus 4.x · 计划 · 快速") opens one popover with
-// everything the program offers: model, reasoning effort, fast mode and the
-// program's own modes. Trigger, popover and rows reuse ModelGroupPicker's
-// compact classes so a native conversation's composer looks the same.
+// LeoComposer. W7 (2026-10-31 evening): the pill shows the model name only
+// ("Opus 4.x"); it opens the shared settings menu (composer-settings-menu) with
+// one row per thing the program reports — model, reasoning effort, its other
+// options, its modes, fast mode — and a row opens a card of choices beside it.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useUI, type UITranslate } from "../../i18n/ui/useUI";
-import { AnchoredPopover } from "../anchored-popover";
-import { IconCheck, IconChevronDown } from "../icons";
+import { ComposerSettingsMenu, type ComposerSettingRow } from "../composer-settings-menu";
 import { modelDisplayName, modelParamOptions, providerLabel } from "../cloud-computer/agent-dialog/notice";
 import { modelControls } from "../cloud-computer/agent-dialog/model-controls";
 import {
@@ -103,104 +102,100 @@ function unusableReason(model: DialogModel, tt: UITranslate): string {
   return tt("这个模型现在不可用。");
 }
 
-function groupsOf(models: DialogModel[]): { label: string; models: DialogModel[] }[] {
-  const groups = new Map<string, DialogModel[]>();
-  for (const model of models) {
-    const label = model.provider_label || (model.provider ? providerLabel(model.provider) : "");
-    groups.set(label, [...(groups.get(label) || []), model]);
+function modelGroupLabel(model: DialogModel): string {
+  return model.provider_label || (model.provider ? providerLabel(model.provider) : "");
+}
+
+/** Claude Code / Codex modes are permission modes; other programs' modes keep the plain name. */
+function modeRowLabel(program: string | undefined, tt: UITranslate): string {
+  return program === "claude" || program === "codex" ? tt("权限模式") : tt("模式");
+}
+
+/**
+ * The program's settings as menu rows: only what it reports now (models,
+ * effort, other config options, its modes, fast). Nothing is hard-coded.
+ */
+export function nativeSettingRows({
+  program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort, fastSupported,
+}: Required<Pick<NativeModelPickerProps, "models" | "selected" | "onSelect">> & Omit<NativeModelPickerProps, "models" | "selected" | "onSelect">, tt: UITranslate): ComposerSettingRow[] {
+  const rows: ComposerSettingRow[] = [];
+  const list = params ?? [];
+  if (models.length) {
+    const active = models.find((model) => model.id === selected);
+    const providers = new Set(models.map(modelGroupLabel));
+    const grouped = providers.size > 1;
+    rows.push({
+      id: "model",
+      label: tt("模型"),
+      value: active ? modelDisplayName(active) : tt("选择模型"),
+      selected,
+      choices: models.map((model) => {
+        const usable = model.usable !== false;
+        return {
+          value: model.id,
+          label: modelDisplayName(model),
+          detail: usable ? (grouped ? modelGroupLabel(model) || undefined : undefined) : unusableReason(model, tt),
+          disabled: !usable,
+          attrs: { "data-native-model-option": model.id },
+        };
+      }),
+      onPick: onSelect,
+    });
   }
-  return Array.from(groups, ([label, rows]) => ({ label, models: rows }));
-}
-
-/** Same cap as ModelPicker POPOVER_MAX_HEIGHT (kept local to avoid pulling the account client in). */
-const POPOVER_MAX_HEIGHT = 360;
-
-const ROW =
-  "flex w-full items-center gap-2 px-3 py-1.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-default disabled:opacity-60";
-const HEADER = "px-3 pb-1 pt-1.5 text-[11px] font-semibold text-neutral-800";
-const SECTION = "mt-1 border-t border-neutral-100 pt-1";
-
-function TriggerGlyph() {
-  return (
-    <svg className="h-3 w-3 shrink-0 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
-      <circle cx="8" cy="7" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-const TRIGGER =
-  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:scale-95 disabled:cursor-default disabled:opacity-50";
-
-function ChoiceRow({ selected, label, detail, disabled = false, onPick, attrs }: {
-  selected: boolean;
-  label: string;
-  detail?: string;
-  disabled?: boolean;
-  onPick: () => void;
-  attrs: Record<string, string>;
-}) {
-  return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      disabled={disabled}
-      title={detail || label}
-      onClick={onPick}
-      className={`${ROW} ${selected ? "bg-neutral-50" : "hover:bg-neutral-50/70"}`}
-      {...attrs}
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12px] font-medium text-neutral-900">{label}</span>
-        {detail ? <span className="block truncate text-[10px] text-neutral-400">{detail}</span> : null}
-      </span>
-      {selected ? <IconCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" /> : null}
-    </button>
-  );
-}
-
-function FastSwitch({ checked, disabled, reason, onToggle }: {
-  checked: boolean;
-  disabled: boolean;
-  reason?: string;
-  onToggle?: () => void;
-}) {
-  const tt = useUI();
-  return (
-    <div className="flex items-center gap-2 px-3 py-1" data-native-fast-row="" data-native-fast-disabled={disabled ? "" : undefined}>
-      <span className="min-w-0 flex-1">
-        <span className={`block text-[12px] font-medium ${disabled ? "text-neutral-400" : "text-neutral-900"}`}>{tt("快速模式")}</span>
-        {reason ? <span className="block text-[10px] text-neutral-400" data-native-fast-reason="">{reason}</span> : null}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={tt("快速模式")}
-        title={reason || tt("快速模式")}
-        disabled={disabled}
-        onClick={onToggle}
-        className="flex h-8 w-11 shrink-0 items-center justify-center disabled:cursor-default disabled:opacity-50"
-        data-native-fast-toggle=""
-      >
-        <span
-          aria-hidden="true"
-          className={`relative block h-5 w-9 rounded-full transition-colors duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-            checked ? "bg-neutral-900" : "bg-neutral-200"
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-              checked ? "left-4" : "left-0.5"
-            }`}
-          />
-        </span>
-      </button>
-    </div>
-  );
+  if (effort && effort.options.length > 1 && onEffort) {
+    rows.push({
+      id: "effort",
+      label: tt("推理强度"),
+      value: effort.options.find((choice) => choice.value === effort.current)?.name ?? effort.current,
+      selected: effort.current,
+      choices: effort.options.map((choice) => ({ value: choice.value, label: choice.name, attrs: { "data-native-effort-option": choice.value } })),
+      onPick: onEffort,
+    });
+  }
+  const fastOption = list.find((option) => isFastOption(option) && fastWires(option));
+  const fastPair = fastOption ? fastWires(fastOption) : null;
+  for (const option of list) {
+    if (option === fastOption) continue;
+    const current = optionCurrentWire(option);
+    rows.push({
+      id: `param:${option.id}`,
+      label: isEffortOption(option) ? tt("推理强度") : option.name || option.id,
+      value: option.options.find((choice) => choice.value === current)?.name || current,
+      selected: current,
+      choices: option.options.map((choice) => ({ value: choice.value, label: choice.name || choice.value, attrs: { "data-native-param-option": `${option.id}:${choice.value}` } })),
+      onPick: onParam ? (wire) => onParam(option, wire) : undefined,
+    });
+  }
+  const modeChoices = mode?.options ?? [];
+  if (modeChoices.length && onMode) {
+    const current = modeChoices.find((choice) => choice.value === selectedMode);
+    rows.push({
+      id: "mode",
+      label: modeRowLabel(program, tt),
+      value: current ? nativeModeLabel(program, current, tt) : selectedMode ?? "",
+      selected: selectedMode ?? "",
+      choices: modeChoices.map((choice) => ({ value: choice.value, label: nativeModeLabel(program, choice, tt), attrs: { "data-native-mode-option": choice.value } })),
+      onPick: onMode,
+    });
+  }
+  if (fastOption && fastPair) {
+    const on = optionCurrentWire(fastOption) === fastPair.on;
+    rows.push({
+      id: "fast",
+      label: tt("快速模式"),
+      value: on ? tt("开") : tt("关"),
+      selected: on ? fastPair.on : fastPair.off,
+      choices: [
+        { value: fastPair.on, label: tt("开"), attrs: { "data-native-fast-option": "on" } },
+        { value: fastPair.off, label: tt("关"), attrs: { "data-native-fast-option": "off" } },
+      ],
+      onPick: onParam ? (wire) => onParam(fastOption, wire) : undefined,
+    });
+  } else if (fastSupported && !list.some(isFastOption)) {
+    // The program has fast mode, the current model does not: said, not hidden.
+    rows.push({ id: "fast", label: tt("快速模式"), value: tt("关"), selected: "", choices: [], reason: tt("当前模型不支持快速模式") });
+  }
+  return rows;
 }
 
 export function NativeModelPicker({
@@ -223,8 +218,6 @@ export function NativeModelPicker({
   className = "",
 }: NativeModelPickerProps) {
   const tt = useUI();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
 
   // Remembered fast / effort for this program and computer: a fresh view
   // starts from the user's last choice for this model, sent through the same
@@ -240,178 +233,27 @@ export function NativeModelPicker({
     for (const { option, wire } of restoresForModel(params, remembered)) onParamRef.current(option, wire);
   }, [fresh, remembered, params, selected]);
 
-  if (loading) {
-    return (
-      <div className={className} data-native-model-picker="" data-native-model-loading="">
-        <button type="button" disabled className={`${TRIGGER} border-neutral-200/90 bg-stone-50/80 text-neutral-600`} data-native-model-trigger="">
-          <TriggerGlyph />
-          <span className="max-w-[140px] truncate">{tt("正在读取…")}</span>
-        </button>
-      </div>
-    );
-  }
-
-  const active = models.find((model) => model.id === selected);
-  const modeChoices = mode?.options ?? [];
-  const modeChoice = modeChoices.find((choice) => choice.value === selectedMode);
-  const modeName = modeChoice ? nativeModeLabel(program, modeChoice, tt) : "";
-  const fastOption = params.find((option) => isFastOption(option) && fastWires(option));
-  const fastPair = fastOption ? fastWires(fastOption) : null;
-  const fastOn = Boolean(fastOption && fastPair && optionCurrentWire(fastOption) === fastPair.on);
-  const otherParams = params.filter((option) => option !== fastOption);
-  const showFastUnavailable = !fastOption && fastSupported && !params.some(isFastOption);
-  const modelName = active ? modelDisplayName(active) : models.length ? tt("选择模型") : "";
-  const summary = [modelName, modeName, fastOn ? tt("快速") : ""].filter(Boolean).join(" · ") || tt("模式");
-  const groups = groupsOf(models);
-  const grouped = groups.length > 1 || Boolean(groups[0]?.label);
-  let sections = 0;
-  const sectionClass = () => (sections++ ? SECTION : "");
+  const rows = loading ? [] : nativeSettingRows({
+    program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort, fastSupported,
+  }, tt);
+  // The pill names the model only (operator 10-31: not `Opus 5.5 · Auto-accept edits`);
+  // a program with no model list names its mode instead.
+  const summary = rows.find((row) => row.id === "model")?.value || rows.find((row) => row.id === "mode")?.value || tt("模式");
 
   return (
-    <div className={className} data-native-model-picker="">
-      <button
-        ref={triggerRef}
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className={`${TRIGGER} ${
-          open
-            ? "border-neutral-300 bg-neutral-100 text-neutral-900"
-            : "border-neutral-200/90 bg-stone-50/80 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-900"
-        }`}
-        title={summary}
-        data-native-model-trigger=""
-      >
-        <TriggerGlyph />
-        <span className="max-w-[200px] truncate" data-native-model-summary="">{summary}</span>
-        <span className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${open ? "rotate-180" : ""}`}>
-          <IconChevronDown className="h-3 w-3" />
-        </span>
-      </button>
-
-      <AnchoredPopover
-        open={open && !disabled}
-        anchorRef={triggerRef}
-        onClose={() => setOpen(false)}
-        align="end"
-        preferredPlacement="above"
-        maxHeight={POPOVER_MAX_HEIGHT}
-        role="listbox"
-        ariaLabel={tt("模型")}
-        className="z-50 flex w-[min(16rem,88vw)] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl"
-        attributes={{ "data-native-model-popover": true }}
-      >
-        <div data-model-picker-list className="min-h-0 flex-1 overflow-y-auto py-1 [scrollbar-width:thin]">
-          {models.length ? (
-            <div className={sectionClass()} data-native-section="model">
-              <p className={HEADER}>{tt("模型")}</p>
-              {groups.map((group) => (
-                <div key={group.label || "models"}>
-                  {grouped && group.label ? (
-                    <p className="px-3 pb-0.5 pt-1.5 text-[10px] text-neutral-400">{group.label}</p>
-                  ) : null}
-                  {group.models.map((model) => {
-                    const isSelected = model.id === selected;
-                    const usable = model.usable !== false;
-                    return (
-                      <ChoiceRow
-                        key={model.id}
-                        selected={isSelected}
-                        label={modelDisplayName(model)}
-                        detail={usable ? undefined : unusableReason(model, tt)}
-                        disabled={!usable}
-                        onPick={() => {
-                          setOpen(false);
-                          if (!isSelected) onSelect(model.id);
-                        }}
-                        attrs={{ "data-native-model-option": model.id }}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {effort && effort.options.length > 1 && onEffort ? (
-            <div className={sectionClass()} data-native-section="effort">
-              <p className={HEADER}>{tt("推理强度")}</p>
-              {effort.options.map((choice) => (
-                <ChoiceRow
-                  key={choice.value}
-                  selected={choice.value === effort.current}
-                  label={choice.name}
-                  onPick={() => {
-                    setOpen(false);
-                    if (choice.value !== effort.current) onEffort(choice.value);
-                  }}
-                  attrs={{ "data-native-effort-option": choice.value }}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {otherParams.map((option) => {
-            const current = optionCurrentWire(option);
-            return (
-              <div key={option.id} className={sectionClass()} data-native-section={`param:${option.id}`}>
-                <p className={HEADER}>{isEffortOption(option) ? tt("推理强度") : option.name || option.id}</p>
-                {option.options.map((choice) => (
-                  <ChoiceRow
-                    key={choice.value}
-                    selected={choice.value === current}
-                    label={choice.name || choice.value}
-                    disabled={!onParam}
-                    onPick={() => {
-                      setOpen(false);
-                      if (choice.value !== current) onParam?.(option, choice.value);
-                    }}
-                    attrs={{ "data-native-param-option": `${option.id}:${choice.value}` }}
-                  />
-                ))}
-              </div>
-            );
-          })}
-
-          {fastOption && fastPair ? (
-            <div className={sectionClass()} data-native-section="fast">
-              <FastSwitch
-                checked={fastOn}
-                disabled={!onParam}
-                onToggle={() => onParam?.(fastOption, fastOn ? fastPair.off : fastPair.on)}
-              />
-            </div>
-          ) : showFastUnavailable ? (
-            <div className={sectionClass()} data-native-section="fast">
-              <FastSwitch checked={false} disabled reason={tt("当前模型不支持快速模式")} />
-            </div>
-          ) : null}
-
-          {modeChoices.length && onMode ? (
-            <div className={sectionClass()} data-native-section="mode">
-              <p className={HEADER}>{tt("模式")}</p>
-              {modeChoices.map((choice) => {
-                const isSelected = choice.value === selectedMode;
-                return (
-                  <ChoiceRow
-                    key={choice.value}
-                    selected={isSelected}
-                    label={nativeModeLabel(program, choice, tt)}
-                    onPick={() => {
-                      setOpen(false);
-                      if (!isSelected) onMode(choice.value);
-                    }}
-                    attrs={{ "data-native-mode-option": choice.value }}
-                  />
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-      </AnchoredPopover>
-    </div>
+    <ComposerSettingsMenu
+      summary={summary}
+      rows={rows}
+      ariaLabel={tt("模型")}
+      loading={loading}
+      loadingLabel={tt("正在读取…")}
+      disabled={disabled}
+      className={className}
+      rootAttrs={loading ? { "data-native-model-picker": "", "data-native-model-loading": "" } : { "data-native-model-picker": "" }}
+      triggerAttrs={{ "data-native-model-trigger": "" }}
+      summaryAttrs={{ "data-native-model-summary": "" }}
+      popoverAttrs={{ "data-native-model-popover": true }}
+    />
   );
 }
 

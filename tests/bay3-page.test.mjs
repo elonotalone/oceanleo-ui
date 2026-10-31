@@ -475,3 +475,13 @@ test("渲染出来的每个元素：没有两个类在抢同一个属性", async
   assert.ok(checked > 40, `只查到 ${checked} 个元素，取样失效`);
   assert.deepEqual([...new Set(found)], []);
 });
+
+test("W5 2026-10-31：首帧（服务端 / 水合）是页面级骨架，不是空白框", () => {
+  reset();
+  // renderToStaticMarkup 走 useSyncExternalStore 的 server snapshot = "pending"。
+  const markup = html(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
+  assert.match(markup, /data-bay-page="pending"/);
+  assert.match(markup, /data-route-page-skeleton="grid"/, "LeoBay 打开时用 RoutePageSkeleton（与 /projects 同一套）");
+  assert.match(markup, /role="status"/);
+  assert.match(markup, /aria-busy="true"/);
+});

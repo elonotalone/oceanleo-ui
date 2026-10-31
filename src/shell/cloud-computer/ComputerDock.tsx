@@ -171,24 +171,45 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     return () => { alive = false; window.removeEventListener("oceanleo:auth-state", hydrate); window.removeEventListener(EXECUTION_TARGET_EVENT, changed); };
   }, [owner, supplied, onTargetChange, bound]);
 
+  // W7 (2026-10-31 evening) root cause: the restore used to wait for
+  // `listCliPrograms` — a live shell probe on the user's computer (install +
+  // sign-in checks, `claude auth status` up to 15 s where the login sits in the
+  // macOS Keychain, then `codex debug models` / `cursor-agent models` up to
+  // 20 s) — before telling the host. For all that time the trigger said 云端,
+  // so a refresh looked like it forgot the pick. Now the remembered pick is
+  // shown as soon as the account is known; the computer list and program probe
+  // only check it afterwards and fall back to the OceanLeo target if it is gone.
   useEffect(() => {
     if (bound || !drillable || !owner || conversation !== undefined || restoredForRef.current === owner) return;
     restoredForRef.current = owner;
     const remembered = readRememberedConversation(owner);
     if (!remembered) return;
+    conversationChangeRef.current?.(remembered);
+    // Still showing what was restored (the host may not have re-rendered yet).
+    const stillRestored = () => {
+      if (!mountedRef.current || pickedRef.current) return false;
+      const shown = conversationRef.current;
+      return shown === undefined || (shown.kind === "native" && shown.computerId === remembered.computerId && shown.program === remembered.program && shown.view === "chat");
+    };
+    const fallBack = () => {
+      // Forget only this pick; a newer one the user made meanwhile stays remembered.
+      const now = readRememberedConversation(owner);
+      if (now && now.computerId === remembered.computerId && now.program === remembered.program) writeRememberedConversation(owner, null);
+      if (stillRestored()) conversationChangeRef.current?.({ kind: "oceanleo", target: readExecutionTarget(owner) });
+    };
     void (async () => {
       const listed = supplied && supplied.length > 0 ? supplied : (await client.listComputers()).items || [];
       const connected = listed.filter(isConnectedComputer);
       const computer = connected.find((item) => item.id === remembered.computerId);
+      if (!resolveRememberedConversation(remembered, connected, null)) { fallBack(); return; }
+      if (computer && computer.name && computer.name !== remembered.computerName && stillRestored()) {
+        conversationChangeRef.current?.({ ...remembered, computerName: computer.name });
+      }
       const programs = computer && computerDisplayState(computer) === "ready" && client.listCliPrograms
         ? await client.listCliPrograms(computer.id).then((result) => (result.programs || []) as ProgramRow[]).catch(() => null)
         : null;
-      const resolved = resolveRememberedConversation(remembered, connected, programs);
-      // The user picked meanwhile, or the host already shows something: leave it.
-      if (!mountedRef.current || pickedRef.current || conversationRef.current !== undefined) return;
-      if (!resolved) { writeRememberedConversation(owner, null); return; }
-      conversationChangeRef.current?.(resolved);
-    })().catch(() => { /* list unreadable: keep the memory, show the OceanLeo target */ });
+      if (!resolveRememberedConversation(remembered, connected, programs)) fallBack();
+    })().catch(() => { /* list unreadable: keep the restored pick and the memory */ });
   }, [bound, drillable, owner, conversation, supplied, client]);
 
   useEffect(() => {

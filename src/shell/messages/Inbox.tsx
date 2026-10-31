@@ -4,6 +4,7 @@
 // 通话（calls-v2 W08）：每行读 `active_call`，实时 `call` 事件更新人数；标记组件 InboxCallDecor 注入给 InboxRow。
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { RoutePageSkeleton } from "../nav-source/route-boundary";
 import { fetchDraftConversationIds } from "../../lib/im/inbox-api";
 import { clearConversationHistory, markConversationUnread, patchMySettings } from "../../lib/im/groups-api";
 import { ConfirmDialog } from "../../ui";
@@ -165,8 +166,9 @@ export function Inbox(props: InboxProps) {
         ) : null}
         {rows.length === 0 && (inbox.loading || (!inbox.loaded && !inbox.error)) ? (
           // 列表空且还没加载完（含刚被实时层清空、补拉还没发出的那一瞬）：显示「正在加载」，不留一片空白（V02 D1）。
-          <div className="px-4 py-10 text-center text-sm text-black/45 dark:text-white/45" data-inbox-loading="">
-            {tt("正在加载…")}
+          // 2026-10-31 W5：与 LeoChat 页、任务切换同一个页面级骨架（`/projects` 那一套），不再是一行字。
+          <div data-inbox-loading="">
+            <RoutePageSkeleton variant="list" label={tt("正在加载…")} />
           </div>
         ) : null}
         {inbox.error && rows.length === 0 && !inbox.loading ? (

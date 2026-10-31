@@ -60,7 +60,7 @@ const { ComputerDock } = await import(await compileModule("src/shell/cloud-compu
     export async function listComputerTaskSessions() { globalThis.__cdCreates = (globalThis.__cdCreates || 0) + 1; return { sessions: [] }; }
   `),
   "../../api/devices": dataModule(`export async function listDevices() { return { ok: true, data: globalThis.__cdDevices || [] }; }`),
-  "../../lib/auth/client": dataModule(`export async function getUserId() { return "account-a"; }`),
+  "../../lib/auth/client": dataModule(`export async function getUserId() { return globalThis.__cdUserGate ?? "account-a"; }`),
   "../../lib/cloud-agent-api": dataModule(`export async function listCloudAgentAvailability() { return { kind: "absent" }; }`),
   "../anchored-popover": popoverStub,
   "next/navigation": dataModule(`export function useRouter() { return { push(href) { (globalThis.__cdPushes ||= []).push(href); }, replace() {}, refresh() {}, back() {} }; }`),
@@ -381,8 +381,12 @@ test("C-3: a new draft restores the last computer + program chat pick (never a s
   window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ kind: "native", computerId: "cc_1", computerName: "old name", program: "codex", view: "chat", sessionId: "acp-old" }));
   const second = await renderDock();
   try {
-    assert.deepEqual(second.picks, [{ kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" }],
-      "restored once with the computer's current name and no sessionId");
+    // W7: shown at once from memory (no sessionId), then renamed once the computer list says so.
+    assert.deepEqual(second.picks, [
+      { kind: "native", computerId: "cc_1", computerName: "old name", program: "codex", view: "chat" },
+      { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" },
+    ], "restored with no sessionId, then the computer's current name");
+    second.picks.splice(0, 1);
     await second.render({ conversation: second.picks[0] });
     assert.equal(second.trigger().textContent, "elon · Codex");
     assert.equal(second.trigger().getAttribute("title"), "切换对话");
@@ -395,7 +399,11 @@ test("C-3: a pick that no longer exists (computer gone / program not installed) 
   window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ kind: "native", computerId: "cc_gone", computerName: "old", program: "codex", view: "chat" }));
   const gone = await renderDock();
   try {
-    assert.deepEqual(gone.picks, []);
+    // W7: the pick is shown at once, then the check takes it back to the OceanLeo target.
+    assert.deepEqual(gone.picks, [
+      { kind: "native", computerId: "cc_gone", computerName: "old", program: "codex", view: "chat" },
+      { kind: "oceanleo", target: { kind: "cloud" } },
+    ]);
     assert.equal(gone.trigger().textContent, "云端");
     assert.equal(window.localStorage.getItem(REMEMBERED_KEY), null);
   } finally { await gone.cleanup(); }
@@ -403,7 +411,10 @@ test("C-3: a pick that no longer exists (computer gone / program not installed) 
   window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify({ kind: "native", computerId: "cc_1", computerName: "elon", program: "claude", view: "chat" }));
   const missing = await renderDock();
   try {
-    assert.deepEqual(missing.picks, []);
+    assert.deepEqual(missing.picks, [
+      { kind: "native", computerId: "cc_1", computerName: "elon", program: "claude", view: "chat" },
+      { kind: "oceanleo", target: { kind: "cloud" } },
+    ]);
     assert.equal(missing.trigger().textContent, "云端");
     assert.equal(window.localStorage.getItem(REMEMBERED_KEY), null);
   } finally { await missing.cleanup(); }
@@ -430,6 +441,66 @@ test("C-3: a task never borrows the draft memory; going back to an OceanLeo row 
   } finally { await draft.cleanup(); }
   const after = await renderDock();
   try { assert.deepEqual(after.picks, []); } finally { await after.cleanup(); }
+});
+
+// W7 (2026-10-31 evening): the real home mount order — account id late, computer list late,
+// program probe (a shell probe on the computer, seconds) later still. The pick must show as
+// soon as the account is known, not after the probe.
+test("W7: refresh shows the remembered pick before the computer list and program probe arrive", async () => {
+  const remembered = { kind: "native", computerId: "cc_1", computerName: "elon", program: "claude", view: "chat" };
+  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify(remembered));
+  let releaseUser; globalThis.__cdUserGate = new Promise((resolve) => { releaseUser = resolve; });
+  let releaseList; let releasePrograms;
+  const slow = {
+    listComputers: () => new Promise((resolve) => { releaseList = resolve; }),
+    listCliPrograms: () => new Promise((resolve) => { releasePrograms = resolve; }),
+  };
+  const view = await renderDock({ client: slow, computers: undefined });
+  try {
+    assert.deepEqual(view.picks, [], "account not known yet: nothing restored");
+    await act(async () => { releaseUser("account-a"); }); await flush();
+    assert.deepEqual(view.picks, [remembered], "shown as soon as the account is known");
+    await view.render({ conversation: view.picks[0] });
+    assert.equal(view.trigger().textContent, "elon · Claude Code");
+    assert.equal(typeof releaseList, "function", "the computer list is read only to check the pick");
+    await act(async () => { releaseList({ items: [computer()] }); }); await flush();
+    assert.equal(typeof releasePrograms, "function");
+    await act(async () => { releasePrograms({ programs: [{ id: "claude", label: "Claude Code", installed: true, version: "", supports_resume: true, options: [] }] }); }); await flush();
+    assert.deepEqual(view.picks, [remembered], "the checks confirm it: no second pick");
+    assert.equal(view.trigger().textContent, "elon · Claude Code");
+    assert.deepEqual(JSON.parse(window.localStorage.getItem(REMEMBERED_KEY)), remembered);
+  } finally { delete globalThis.__cdUserGate; await view.cleanup(); }
+});
+
+test("W7: a late probe that finds the program gone takes a shown pick back to the OceanLeo target", async () => {
+  const remembered = { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "chat" };
+  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify(remembered));
+  let releasePrograms;
+  const slow = { listComputers: async () => ({ items: [] }), listCliPrograms: () => new Promise((resolve) => { releasePrograms = resolve; }) };
+  const view = await renderDock({ client: slow });
+  try {
+    assert.deepEqual(view.picks, [remembered]);
+    await view.render({ conversation: remembered });
+    await act(async () => { releasePrograms({ programs: [{ id: "codex", label: "Codex", installed: false, version: "", supports_resume: true, options: [] }] }); }); await flush();
+    assert.deepEqual(view.picks.at(-1), { kind: "oceanleo", target: { kind: "cloud" } });
+    assert.equal(window.localStorage.getItem(REMEMBERED_KEY), null);
+  } finally { await view.cleanup(); }
+  // The user picked something else before the probe came back: their pick stays.
+  window.localStorage.setItem(REMEMBERED_KEY, JSON.stringify(remembered));
+  const waiting = [];
+  releasePrograms = (value) => { for (const resolve of waiting.splice(0)) resolve(value); };
+  const picked = await renderDock({ client: { listComputers: async () => ({ items: [] }), listCliPrograms: () => new Promise((resolve) => { waiting.push(resolve); }) } });
+  try {
+    await picked.openComputer();
+    await picked.click(picked.q('[data-dock-program-row="hermes"]'));
+    await picked.click(picked.q('[data-dock-view="chat"]'));
+    const hermes = { kind: "native", computerId: "cc_1", computerName: "elon", program: "hermes", view: "chat" };
+    await picked.render({ conversation: hermes });
+    assert.equal(waiting.length >= 1, true, "the restore probe is still out");
+    await act(async () => { releasePrograms({ programs: [{ id: "codex", label: "Codex", installed: false, version: "", supports_resume: true, options: [] }, { id: "hermes", label: "Hermes", installed: true, version: "", supports_resume: true, options: [] }] }); }); await flush();
+    assert.deepEqual(picked.picks, [remembered, hermes], "no fallback over the user's own pick");
+    assert.deepEqual(JSON.parse(window.localStorage.getItem(REMEMBERED_KEY)), hermes, "and the newer pick stays remembered");
+  } finally { await picked.cleanup(); }
 });
 
 test("dock source: no session creation, no navigation besides Manage devices, no emoji glyphs", () => {

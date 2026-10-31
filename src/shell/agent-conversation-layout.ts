@@ -21,6 +21,18 @@ export const AGENT_CONVERSATION_SCROLL_CLASS =
 
 export const AGENT_COMPOSER_DOCK_CLASS = "mt-auto shrink-0";
 
+// Task-page reading column (2026-10-31 W4). Measured on the operator's Manus
+// screenshot (2877 px wide at ~2.25 device px per CSS px): Manus's text column
+// and composer are 768 px (48rem) inside a ~970 px main area (79%). Ours had
+// 42rem (672 px) inside ~1010 px (66%): too much white on both sides. Our
+// sidebar is narrower, so we go a little past Manus: 52rem (832 px) ≈ 82% of
+// the same window. The transcript column and the composer below it share this
+// one cap (OceanLeo agent and computer conversations alike); the column is
+// `w-full min-w-0` under the cap, so with the right preview open it narrows
+// with the pane and never scrolls sideways.
+export const AGENT_CONVERSATION_MAX_WIDTH_REM = 52;
+export const AGENT_CONVERSATION_MAX_WIDTH_CLASS = "max-w-[52rem]";
+
 /** Stretch the host's first child only when a conversation column is inside. */
 export const AGENT_CONVERSATION_HOST_STRETCH_CLASS = [
   "[&:has([data-agent-conversation])>*]:flex",

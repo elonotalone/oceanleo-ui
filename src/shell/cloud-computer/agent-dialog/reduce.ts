@@ -20,6 +20,7 @@ import {
 import { isModelFamilyConfig } from "./notice";
 import { mergeLocalPreviews, normalizeUserMessage } from "./message-attachments";
 import { blankOccupancy } from "./occupancy";
+import { chatTimeMs } from "../../chat-time-separators";
 import {
   hasOpenTurn,
   isRetriableStreamCancelText,
@@ -370,6 +371,12 @@ export type DialogEvent =
       occupancyPendingAt?: number | null;
       occupancyPendingSession?: string | null;
     };
+
+/** A user frame's own send time (ISO or epoch), when the gateway includes one; saved frames without it stay untimed. */
+function frameTime(frame: Record<string, unknown>): { at?: number } {
+  const at = chatTimeMs(frame.ts ?? frame.at ?? frame.created_at);
+  return at === null ? {} : { at };
+}
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -972,7 +979,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       ...state,
       messages: [
         ...state.messages,
-        { kind: "user", id: nextId(), text, replay: frame.replay === true, ...(attachments.length ? { attachments } : {}) },
+        { kind: "user", id: nextId(), text, replay: frame.replay === true, ...(attachments.length ? { attachments } : {}), ...frameTime(frame) },
       ],
     };
   }
@@ -1119,6 +1126,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
             id: nextId(),
             text,
             ...(attachments.length ? { attachments } : {}),
+            at: Date.now(),
           }],
         },
         state.program,

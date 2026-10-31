@@ -449,6 +449,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       uploading: item.state === "uploading" && !item.deferred,
       // The tile thumbnail: the local `blob:` preview of an image picked in this tab.
       ...(item.preview ? { previewUrl: item.preview, url: item.preview } : {}),
+      // W6: its inbox copy (once uploaded under the session) opens any file type in the sidebar.
+      ...(item.archive ? { nativeArchive: item.archive } : {}),
     })), [dialog.attachments, queuedFiles, tt]);
 
   // The queued prompt is the user's bubble until the real one (sent) arrives.

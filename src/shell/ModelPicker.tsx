@@ -21,6 +21,8 @@ import { IconCheck, IconChevronDown } from "./icons";
 import { useUI } from "../i18n/ui/useUI";
 import { useWorkbenchOpen } from "./workbench-open-store";
 import { AnchoredPopover } from "./anchored-popover";
+import { ComposerSettingsMenu, type ComposerSettingRow } from "./composer-settings-menu";
+import { LEO_FAST_MODE_EVENT, readLeoFastMode, writeLeoFastMode } from "../lib/leo-run-options";
 
 export type ModelCategory = "text" | "image" | "video" | "threed" | "audio";
 
@@ -173,82 +175,63 @@ function ModelGroupPickerBody({
     }
   }
 
+  // 输入框里（紧凑态，2026-10-31 晚 W7）：和电脑上的程序同一个设置菜单——药丸只显示
+  // 组合名，点开是「模型」「快速模式」两行（Leo 只真实支持这两项），点行右侧出卡片。
+  if (compact) {
+    return (
+      <LeoComposerSettings
+        className={className}
+        groups={groups}
+        activeKey={activeKey}
+        summary={loading ? "…" : active?.name || "Pro"}
+        busy={!payload || Boolean(saving)}
+        error={error ? tt(error) : !payload && !loading ? tt("登录后可切换并使用自定义模型组合。") : ""}
+        apiHref={apiHref}
+        onActivate={(key) => {
+          const group = groups.find((item) => item.key === key);
+          if (group) void activate(group);
+        }}
+      />
+    );
+  }
+
   return (
     <div className={className}>
-      {compact ? (
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:scale-95 ${
-            open
-              ? "border-neutral-300 bg-neutral-100 text-neutral-900"
-              : "border-neutral-200/90 bg-stone-50/80 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-900"
-          }`}
-          title={
-            active?.name ? `${tt("模型组合")} · ${active.name}` : tt("模型组合")
-          }
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+          open
+            ? "border-neutral-300 bg-neutral-50 text-neutral-900"
+            : "border-neutral-200 bg-white/90 text-neutral-700 hover:border-neutral-300 hover:bg-white"
+        }`}
+        title={tt("选择全站通用的模型组合")}
+      >
+        <svg
+          className="h-3.5 w-3.5 shrink-0 text-neutral-400"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
         >
-          <svg
-            className="h-3 w-3 shrink-0 text-neutral-400"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
-            <circle cx="8" cy="7" r="1.5" fill="currentColor" stroke="none" />
-            <circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none" />
-            <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
-          </svg>
-          <span className="max-w-[70px] truncate">
-            {loading ? "…" : active?.name || "Pro"}
-          </span>
-          <span
-            className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
-              open ? "rotate-180" : ""
-            }`}
-          >
-            <IconChevronDown className="h-3 w-3" />
-          </span>
-        </button>
-      ) : (
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className={`inline-flex max-w-[220px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-            open
-              ? "border-neutral-300 bg-neutral-50 text-neutral-900"
-              : "border-neutral-200 bg-white/90 text-neutral-700 hover:border-neutral-300 hover:bg-white"
+          <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
+          <circle cx="8" cy="7" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+        <span className="shrink-0 text-neutral-500">{tt("模型组合")}</span>
+        <span className="truncate text-neutral-900">
+          {loading ? "…" : active?.name || "Pro"}
+        </span>
+        <span
+          className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
+            open ? "rotate-180" : ""
           }`}
-          title={tt("选择全站通用的模型组合")}
         >
-          <svg
-            className="h-3.5 w-3.5 shrink-0 text-neutral-400"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path d="M5 7h14M5 12h14M5 17h14" strokeLinecap="round" />
-            <circle cx="8" cy="7" r="1.5" fill="currentColor" stroke="none" />
-            <circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none" />
-            <circle cx="11" cy="17" r="1.5" fill="currentColor" stroke="none" />
-          </svg>
-          <span className="shrink-0 text-neutral-500">{tt("模型组合")}</span>
-          <span className="truncate text-neutral-900">
-            {loading ? "…" : active?.name || "Pro"}
-          </span>
-          <span
-            className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
-              open ? "rotate-180" : ""
-            }`}
-          >
-            <IconChevronDown className="h-3.5 w-3.5" />
-          </span>
-        </button>
-      )}
+          <IconChevronDown className="h-3.5 w-3.5" />
+        </span>
+      </button>
 
       <AnchoredPopover
         open={open}
@@ -260,23 +243,23 @@ function ModelGroupPickerBody({
         role="listbox"
         ariaLabel={tt("全站模型组合")}
         className={`z-50 flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl ${
-          compact ? "w-[min(15rem,88vw)]" : "w-[min(22rem,88vw)]"
+          "w-[min(22rem,88vw)]"
         }`}
         attributes={{ "data-model-picker-popover": true }}
       >
           <div
             className={`shrink-0 border-b border-neutral-100 ${
-              compact ? "px-3 py-2" : "px-3.5 py-3"
+              "px-3.5 py-3"
             }`}
           >
             <p
               className={`font-semibold text-neutral-800 ${
-                compact ? "text-[11px]" : "text-[12px]"
+                "text-[12px]"
               }`}
             >
               {tt("全站模型组合")}
             </p>
-            {!compact && (
+            {(
               <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-400">
                 {tt("所有 OceanLeo 网站共用；组合内模型从上到下依次兜底。")}
               </p>
@@ -286,7 +269,7 @@ function ModelGroupPickerBody({
           <div
             data-model-picker-list
             className={`min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin] ${
-              compact ? "py-1" : "py-1.5"
+              "py-1.5"
             }`}
           >
             {groups.map((group) => {
@@ -301,14 +284,14 @@ function ModelGroupPickerBody({
                   disabled={!payload || !!saving}
                   onClick={() => void activate(group)}
                   className={`flex w-full items-center text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
-                    compact ? "gap-2 px-3 py-1.5" : "gap-3 px-3.5 py-2.5"
+                    "gap-3 px-3.5 py-2.5"
                   } ${
                     selected ? "bg-neutral-50" : "hover:bg-neutral-50/70"
                   } disabled:cursor-default disabled:opacity-60`}
                 >
                   <span
                     className={`grid shrink-0 place-items-center rounded-lg font-bold ${
-                      compact ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-[11px]"
+                      "h-7 w-7 text-[11px]"
                     } ${
                       group.kind === "preset"
                         ? "bg-neutral-900 text-white"
@@ -322,7 +305,7 @@ function ModelGroupPickerBody({
                   <span className="min-w-0 flex-1">
                     <span
                       className={`block truncate font-medium text-neutral-900 ${
-                        compact ? "text-[12px]" : "text-[13px]"
+                        "text-[13px]"
                       }`}
                     >
                       {busy ? tt("切换中…") : group.name}
@@ -330,7 +313,7 @@ function ModelGroupPickerBody({
                     {group.kind === "custom" && (
                       <span
                         className={`block text-neutral-400 ${
-                          compact ? "text-[10px]" : "mt-0.5 text-[11px]"
+                          "mt-0.5 text-[11px]"
                         }`}
                       >
                         {tt("我的自定义组合")}
@@ -340,7 +323,7 @@ function ModelGroupPickerBody({
                   {selected && (
                     <IconCheck
                       className={`shrink-0 text-emerald-600 ${
-                        compact ? "h-3.5 w-3.5" : "h-4 w-4"
+                        "h-4 w-4"
                       }`}
                     />
                   )}
@@ -361,13 +344,99 @@ function ModelGroupPickerBody({
           <a
             href={apiHref}
             className={`block shrink-0 border-t border-neutral-100 font-medium text-neutral-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50 hover:text-neutral-900 ${
-              compact ? "px-3 py-2 text-[11px]" : "px-3.5 py-2.5 text-[12px]"
+              "px-3.5 py-2.5 text-[12px]"
             }`}
           >
             {tt("管理模型组合 →")}
           </a>
       </AnchoredPopover>
     </div>
+  );
+}
+
+/** Short line under each preset in the composer menu (the model list "with a short note"). */
+const PRESET_NOTES: Record<string, string> = {
+  lite: "响应最快，适合简单任务",
+  pro: "速度与质量均衡",
+  max: "最强，适合复杂任务",
+};
+
+/** Leo's rows in the shared composer settings menu: 模型 (the global group) and 快速模式. */
+export function leoSettingRows({ groups, activeKey, busy, fast, onActivate, onFast, tt }: {
+  groups: ModelGroup[];
+  activeKey: string;
+  busy: boolean;
+  fast: boolean;
+  onActivate: (key: string) => void;
+  onFast: (on: boolean) => void;
+  tt: (zh: string) => string;
+}): ComposerSettingRow[] {
+  const active = groups.find((group) => group.key === activeKey);
+  return [
+    {
+      id: "model",
+      label: tt("模型"),
+      value: active?.name || "Pro",
+      selected: activeKey,
+      choices: groups.map((group) => ({
+        value: group.key,
+        label: group.name,
+        detail: group.kind === "preset" ? (PRESET_NOTES[group.id] ? tt(PRESET_NOTES[group.id]) : undefined) : tt("我的自定义组合"),
+        attrs: { "data-leo-model-option": group.key },
+      })),
+      onPick: busy ? undefined : onActivate,
+    },
+    {
+      id: "fast",
+      label: tt("快速模式"),
+      value: fast ? tt("开") : tt("关"),
+      selected: fast ? "on" : "off",
+      choices: [
+        { value: "on", label: tt("开"), detail: tt("少思考，回复更快"), attrs: { "data-leo-fast-option": "on" } },
+        { value: "off", label: tt("关"), attrs: { "data-leo-fast-option": "off" } },
+      ],
+      onPick: (value) => onFast(value === "on"),
+    },
+  ];
+}
+
+function LeoComposerSettings({ className, groups, activeKey, summary, busy, error, apiHref, onActivate }: {
+  className: string;
+  groups: ModelGroup[];
+  activeKey: string;
+  summary: string;
+  busy: boolean;
+  error: string;
+  apiHref: string;
+  onActivate: (key: string) => void;
+}) {
+  const tt = useUI();
+  const [fast, setFast] = useState(false);
+  useEffect(() => {
+    setFast(readLeoFastMode());
+    const onChanged = (event: Event) => setFast(Boolean((event as CustomEvent<boolean>).detail));
+    window.addEventListener(LEO_FAST_MODE_EVENT, onChanged);
+    return () => window.removeEventListener(LEO_FAST_MODE_EVENT, onChanged);
+  }, []);
+  const rows = leoSettingRows({ groups, activeKey, busy, fast, onActivate, onFast: writeLeoFastMode, tt });
+  return (
+    <ComposerSettingsMenu
+      className={className}
+      summary={summary}
+      rows={rows}
+      ariaLabel={tt("全站模型组合")}
+      rootAttrs={{ "data-leo-settings": "" }}
+      triggerAttrs={{ "data-leo-settings-trigger": "" }}
+      popoverAttrs={{ "data-model-picker-popover": true }}
+      footer={
+        <>
+          {error ? <p className="px-2.5 py-1.5 text-[11px] text-rose-600" data-leo-settings-error="">{error}</p> : null}
+          <a href={apiHref} className="block rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900">
+            {tt("管理模型组合 →")}
+          </a>
+        </>
+      }
+    />
   );
 }
 

@@ -273,7 +273,7 @@ test("AgentChat assembles its sidebar through TaskWorkspaceShell and opens uploa
   assert.doesNotMatch(src, /<ResultCanvas\b/, "no second inline ResultCanvas");
   assert.match(src, /<TaskWorkspaceShell[\s\S]*?state=\{taskWorkspace\}[\s\S]*?renderRight=[\s\S]*?\bfillParent\b[\s\S]*?soloMaxWidth=\{null\}/);
   assert.match(src, /useTaskWorkspaceState\(\{\s*defaultOpen: hasOrgPanel,\s*defaultTab: hasOrgPanel \? "preview" : "home",\s*initial: initialWorkspace,/);
-  assert.match(src, /const openTaskAttachment = useCallback/);
+  assert.match(src, /const openTaskAttachment = useTaskAttachmentOpener\(/);
   const index = readFileSync(new URL("../src/shell/index.ts", import.meta.url), "utf8");
   assert.match(index, /TaskWorkspaceShell,[\s\S]*?useTaskWorkspaceState,[\s\S]*?attachmentWorkspaceItem/);
 });

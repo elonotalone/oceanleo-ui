@@ -16,6 +16,7 @@ import { useLeoChatUnread } from "../messages/notices/use-notices";
 import { consumeCallDeepLink } from "../messages/call/incoming/deep-link";
 import { LeoChatBody } from "./leochat-body";
 import { LeoChatTabs } from "./LeoChatTabs";
+import { RoutePageSkeleton } from "../nav-source/route-boundary";
 
 export interface LeoChatPageProps {
   siteKey: string;
@@ -98,6 +99,9 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
           ) : null}
         </div>
       </header>
+      {/* Opening (sign-in not settled yet): the page-level skeleton every OceanLeo page
+          opens with (the `/projects` look; 2026-10-31 W5), not a blank frame. */}
+      {pageState === "pending" ? <RoutePageSkeleton variant="list" label={tt("正在加载…")} /> : null}
       {pageState === "signin" ? <BaySignInPrompt text={tt("登录后查看聊天和联系人")} /> : null}
       {pageState === "ready" ? (
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-stone-200 bg-white">

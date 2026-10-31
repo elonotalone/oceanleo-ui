@@ -852,6 +852,101 @@ body {
 .v-typing-dot:nth-child(2) { animation-delay: var(--leo-loop-dot-stagger); }
 .v-typing-dot:nth-child(3) { animation-delay: calc(var(--leo-loop-dot-stagger) * 2); }
 
+/* ---------- 步骤色块（AgentStepMark，2026-10-31 W4）----------
+   取代对话过程里的强调色蓝点：比原点（6px）稍大的 12px 方框，状态切换时颜色与形状
+   一起平滑过渡（时长走 --leo-dur-*，reduced-motion 下由 token 层归零）。中性 stone
+   色系，失败用暖色，绝不用蓝。running / waiting 是载荷指示器：reduced-motion 下不停，
+   只换成不变形的透明度呼吸。 */
+@keyframes leo-step-morph {
+  0% { transform: rotate(0deg) scale(0.86); border-radius: 30%; opacity: 0.78; }
+  50% { transform: rotate(90deg) scale(1); border-radius: 50%; opacity: 1; }
+  100% { transform: rotate(180deg) scale(0.86); border-radius: 30%; opacity: 0.78; }
+}
+@keyframes leo-step-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.leo-step-mark {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: #fff;
+}
+.leo-step-mark-core {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2.5px;
+  background-color: #a8a29e;
+  transition:
+    width var(--leo-dur-5) var(--leo-ease-standard),
+    height var(--leo-dur-5) var(--leo-ease-standard),
+    border-radius var(--leo-dur-5) var(--leo-ease-standard),
+    transform var(--leo-dur-5) var(--leo-ease-standard),
+    background-color var(--leo-dur-5) var(--leo-ease-standard),
+    box-shadow var(--leo-dur-5) var(--leo-ease-standard),
+    opacity var(--leo-dur-3) var(--leo-ease-standard);
+}
+.leo-step-mark-check {
+  position: absolute;
+  inset: 0;
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity var(--leo-dur-3) var(--leo-ease-standard),
+    transform var(--leo-dur-4) var(--leo-ease-emphasis);
+}
+.leo-step-mark[data-step-state="running"] .leo-step-mark-core {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background-color: #78716c;
+  background-image: linear-gradient(135deg, #e7e5e4 0%, #a8a29e 45%, #44403c 100%);
+  animation: leo-step-morph var(--leo-loop-halo) var(--leo-ease-standard) infinite;
+}
+.leo-step-mark[data-step-state="waiting"] .leo-step-mark-core {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1.5px #78716c;
+  animation: leo-step-breathe var(--leo-loop-pulse-dot) var(--leo-ease-standard) infinite;
+}
+.leo-step-mark[data-step-state="done"] .leo-step-mark-core {
+  width: 12px;
+  height: 12px;
+  border-radius: 3.5px;
+  background-color: #44403c;
+}
+.leo-step-mark[data-step-state="done"] .leo-step-mark-check {
+  opacity: 1;
+  transform: scale(1);
+}
+.leo-step-mark[data-step-state="failed"] .leo-step-mark-core {
+  width: 8px;
+  height: 8px;
+  border-radius: 1.5px;
+  background-color: #f43f5e;
+  transform: rotate(45deg);
+}
+.leo-step-mark[data-step-state="stopped"] .leo-step-mark-core {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background-color: #d6d3d1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .leo-step-mark[data-step-state="running"] .leo-step-mark-core {
+    animation: leo-step-breathe var(--leo-loop-pulse-dot) var(--leo-ease-standard) infinite;
+  }
+}
+
 /* 滚动条：细一倍（6px → 3px）+ 颜色更浅（操作员 2026-07-03）。 */
 .v-scroll::-webkit-scrollbar { width: 3px; height: 3px; }
 .v-scroll::-webkit-scrollbar-thumb {

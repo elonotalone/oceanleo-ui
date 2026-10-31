@@ -12,7 +12,7 @@
 // after it (or the turn finishes) it collapses to one line ("思考 12 秒 · 9 个
 // 步骤"). The left rail darkens on hover and a click on it folds the module.
 // Each entry also folds on its own; selecting text never collapses it.
-// Rendered with the host's own styling (stone palette, accent); nothing here is
+// Rendered with the host's own styling (stone palette, the AgentStepMark block); nothing here is
 // borrowed from agent-dialog components or server-page/tone.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -27,6 +27,7 @@ import {
   type ProcessToolStatus,
 } from "../lib/agent-progress";
 import { lineDiff } from "./cloud-computer/agent-dialog/diff-lines";
+import { AgentStepMark, agentStepState } from "./AgentStepMark";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 
@@ -104,10 +105,10 @@ function summaryParts(tt: UITranslate, summary: ProcessSummary): ReactNode[] {
 export function AgentProgress({
   messages,
   running,
-  accent = "#4f46e5",
 }: {
   messages: AgentMessage[];
   running: boolean;
+  /** Kept for callers; the timeline is neutral now (the step mark replaced the accent dot). */
   accent?: string;
 }) {
   const tt = useUI();
@@ -132,14 +133,7 @@ export function AgentProgress({
         onClick={toggle}
         className={ROW}
       >
-        {running ? (
-          <span className="v-spinner h-3 w-3 shrink-0" style={{ color: accent }} />
-        ) : (
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full opacity-70"
-            style={{ background: accent }}
-          />
-        )}
+        <AgentStepMark state={agentStepState(entries, running, summary.failed)} />
         <span className="min-w-0 flex-1 truncate" data-agent-process-summary="">
           {summaryParts(tt, summary)}
         </span>
@@ -167,14 +161,13 @@ export function AgentProgress({
               const live = running && (index === last || (entry.type === "thought" && entry.streaming));
               if (entry.type === "thought") return <ThoughtView key={entry.key} entry={entry} live={live} />;
               if (entry.type === "tool") {
-                return <ToolView key={entry.key} entry={entry} running={running} accent={accent} />;
+                return <ToolView key={entry.key} entry={entry} running={running} />;
               }
               return (
                 <PlanView
                   key={entry.key}
                   entry={entry}
                   live={running && entry.key === latestPlan}
-                  accent={accent}
                 />
               );
             })}
@@ -263,11 +256,9 @@ function prettyPreview(value: string): string {
 function ToolView({
   entry,
   running,
-  accent,
 }: {
   entry: ToolEntry;
   running: boolean;
-  accent: string;
 }) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
@@ -288,8 +279,13 @@ function ToolView({
         {status && (
           <span
             data-agent-process-tool-status=""
-            className={`shrink-0 ${entry.status === "failed" ? "text-rose-500" : ""}`}
-            style={entry.status === "running" || entry.status === "pending" ? { color: accent } : undefined}
+            className={`shrink-0 ${
+              entry.status === "failed"
+                ? "text-rose-500"
+                : entry.status === "running" || entry.status === "pending"
+                  ? "text-stone-600"
+                  : ""
+            }`}
           >
             {status}
           </span>
@@ -386,7 +382,7 @@ function planMark(item: ProcessPlanItem, index: number): string {
   return `${index + 1}.`;
 }
 
-function PlanView({ entry, live, accent }: { entry: PlanEntry; live: boolean; accent: string }) {
+function PlanView({ entry, live }: { entry: PlanEntry; live: boolean }) {
   const tt = useUI();
   const [open, toggle, close] = useLiveFold(live);
   const known = entry.items.some((item) => item.status);
@@ -395,7 +391,7 @@ function PlanView({ entry, live, accent }: { entry: PlanEntry; live: boolean; ac
   return (
     <div data-agent-process-plan="" data-plan-revision={entry.revision}>
       <button type="button" aria-expanded={open} onClick={toggle} className={ROW}>
-        <span aria-hidden="true" className="w-3 shrink-0 text-center" style={{ color: accent }}>☰</span>
+        <span aria-hidden="true" className="w-3 shrink-0 text-center text-stone-500">☰</span>
         <span className="min-w-0 flex-1 truncate">
           {entry.revision > 0 ? tt("计划已更新") : tt("计划")}
           {count ? ` · ${count}` : ""}

@@ -20,8 +20,6 @@ import {
   listTasks,
   deleteTask,
   getTask,
-  taskCostYuan,
-  type AgentTask,
   type AgentMessage,
   type ArtifactMeta,
   type TaskDetail,
@@ -44,9 +42,16 @@ import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace"
 import { ShellTaskView } from "./cloud-computer/ShellTaskView";
 import { SessionRunningIcon } from "./cloud-computer/agent-dialog/SessionRunningIcon";
 import { listComputerTaskSessions } from "../lib/computer-task-api";
+import { TaskLoadingGate } from "./task-loading-gate";
+import {
+  historyDetailCacheKey,
+  peekHistoryDetail,
+  storeHistoryDetail,
+} from "./history-detail-cache";
 import {
   canDeleteHistoryEntry,
   HISTORY_WORKING_POLL_MS,
+  historyEntryTimestamp,
   historyPollDelayMs,
   isHistoryEntryWorking,
   isRestorableAppSession,
@@ -65,22 +70,13 @@ import {
   withFusionMountPrefix,
 } from "./workspace-route";
 import { HISTORY_CHANGED_EVENT } from "../lib/history-events";
-import { formatMoney, useLedgerCurrency } from "../lib/money";
 import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
 } from "./HistoryRowActions";
+import { HistoryRowFrame } from "./HistoryRowBubble";
 
 export type { RestorableAppSession } from "./history-model";
-
-/**
- * 任务花费 → 「¥x.xx」/「$x.xx」展示（精确口径）。0 / 无花费返回空串。
- * 货币是网关最近告诉共享包的账本货币（.cn = CNY、.com = USD；未知 = CNY）。
- */
-function fmtCost(t: AgentTask, currency: string): string {
-  const y = taskCostYuan(t);
-  return y > 0 ? formatMoney(y, currency, 2) : "";
-}
 
 /** 侧栏行上的项目标注（合同 §3.7 / D11）。 */
 interface HistoryProjectBadge {
@@ -213,13 +209,6 @@ function HistoryArtifactPublishRows({ items }: { items: HistoryPublishItem[] }) 
       ))}
     </ul>
   );
-}
-
-function fmt(ts?: string): string {
-  if (!ts) return "";
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 /** 两个任务列表是否「实质相同」——避免静默刷新时整列抽动。 */
@@ -577,13 +566,7 @@ function LeoCreatedMark() {
  * 行副标题里的项目标注（D11）：项目名（截断）和可选的自选图标。
  * 点标签进项目工作空间；点行其余位置仍打开任务（标签阻止冒泡）。
  */
-function HistoryProjectTag({
-  project,
-  active,
-}: {
-  project: HistoryProjectBadge;
-  active: boolean;
-}) {
+function HistoryProjectTag({ project }: { project: HistoryProjectBadge }) {
   const tt = useUI();
   const router = useRouter();
   const name = project.name || tt("项目");
@@ -607,11 +590,7 @@ function HistoryProjectTag({
           router.push(href);
         }
       }}
-      className={`inline-flex min-w-0 max-w-[60%] shrink items-center gap-0.5 rounded-full px-1.5 py-px text-[10.5px] leading-4 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-visible:ring-2 focus-visible:ring-sky-400 ${
-        active
-          ? "bg-white/20 text-white hover:bg-white/30"
-          : "bg-neutral-200/70 text-neutral-600 hover:bg-neutral-300/70 hover:text-neutral-800"
-      }`}
+      className="inline-flex min-w-0 max-w-[45%] shrink items-center gap-0.5 rounded-full bg-neutral-200/70 px-1.5 py-px text-[10.5px] leading-4 text-neutral-600 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-300/70 hover:text-neutral-800 focus-visible:ring-2 focus-visible:ring-neutral-400"
     >
       {project.icon && project.icon !== "📁" ? (
         <span aria-hidden="true" className="shrink-0">{project.icon}</span>
@@ -626,7 +605,6 @@ function HistoryProjectTag({
 // ----------------------------------------------------------------------------
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
-  const ledger = useLedgerCurrency();
   const { items, loading, error, notice, remove, mutate } = useHistory(siteId);
   const local = useLocalTasks();
   const cloudTaskIds = new Set(items.filter((entry) => entry.kind === "task").map((entry) => entry.id));
@@ -705,11 +683,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           record.title ||
           (isSession ? entry.session.app_id : "") ||
           tt("未命名任务");
-        const timestamp = isSession
-          ? entry.session.last_activity_at
-          : entry.task.created_at;
-        const recordSite = record.site_id;
-        const cost = isSession ? "" : fmtCost(entry.task, ledger);
+        const timestamp = historyEntryTimestamp(entry);
         const pinned = isSession
           ? Boolean(entry.session.pinned)
           : Boolean(entry.task.pinned);
@@ -722,24 +696,21 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
           setSel(entry.id);
           router.push(historyHrefFor(entry, pathname));
         };
-        // 项目名优先：项目条目不再显示站点 / app（如 home-agent）这类来源字样。
-        const subtitle = [
-          fmt(timestamp),
-          !isSession && (entry.task.engine === "local" || local.tasks.some((task) => task.remoteTaskId === entry.id)) ? tt("在本机执行") : "",
-          !project && !siteId && recordSite ? recordSite : "",
-          !project && isSession && entry.session.app_id ? entry.session.app_id : "",
-          cost,
-        ]
-          .filter(Boolean)
-          .join(" · ");
+        // 2026-10-31 Manus 式行：只有一行任务名（无时间 / 来源 / 花费副标题），选中 =
+        // 与主导航同一档中性灰底，悬停更浅；完整名 + 时间在悬停气泡里（HistoryRowFrame）。
         return (
-          <div
+          <HistoryRowFrame
             key={`${entry.kind}:${entry.id}`}
-            className={`group relative flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
- on ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"
- }`}
-            style={on ? { background: accent } : undefined}
+            title={title}
+            timestamp={timestamp}
+            disabled={renaming || menuFor === entry.id}
+            className={`group relative flex items-center gap-1 rounded-lg px-3 py-2 text-[14px] leading-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
+              on
+                ? "bg-neutral-200/80 text-neutral-900"
+                : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
+            }`}
           >
+            {(describedBy) => (<>
             {renaming ? (
               <form
                 className="flex min-w-0 flex-1 items-center gap-1"
@@ -770,38 +741,38 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
               // 回车触发的 click 冒泡到这里。标签是独立链接，不嵌在按钮里。
               <div
                 onClick={openEntry}
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
                 data-history-row={entry.id}
               >
                 {/* Two states only: working → the walker (same mark as the computer
-                    conversation list); otherwise an empty slot so titles stay aligned. */}
-                <span className="inline-flex w-3 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined}>
+                    conversation list); otherwise an empty slot so titles stay aligned.
+                    The slot is as wide as a nav icon, so task names line up with the
+                    nav labels above (no indent line). */}
+                <span className="inline-flex w-4 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined}>
                   {isHistoryEntryWorking(entry) && (
-                    <SessionRunningIcon label={tt("进行中")} toneClassName={on ? "text-white" : "text-emerald-600"} />
+                    <SessionRunningIcon label={tt("进行中")} toneClassName="text-emerald-600" />
                   )}
                 </span>
-                <span className="min-w-0 flex-1">
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
                   <button
                     type="button"
-                    className="flex w-full min-w-0 items-center gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                    aria-describedby={describedBy}
+                    className="flex min-w-0 flex-1 items-center gap-1 rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
                   >
                     {pinned && (
-                      <svg className={`h-3 w-3 shrink-0 ${on ? "text-white/80" : "text-amber-500"}`} viewBox="0 0 24 24" fill="currentColor" aria-label={tt("已置顶")}>
+                      <svg className="h-3 w-3 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="currentColor" aria-label={tt("已置顶")}>
                         <path d="M14 4l6 6-3 1-4 4-1 5-3-3-4 4-1-1 4-4-3-3 5-1 4-4 1-3z" />
                       </svg>
                     )}
-                    <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
+                    <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>
                     {entry.created_by === "leo" && <LeoCreatedMark />}
                     {favorite && (
-                      <svg className={`h-3 w-3 shrink-0 ${on ? "fill-white/80 text-white/80" : "fill-yellow-500 text-yellow-500"}`} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>
+                      <svg className="h-3 w-3 shrink-0 fill-yellow-500 text-yellow-500" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>
                         <path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8L12 3z" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                     )}
                   </button>
-                  <span className={`flex min-w-0 items-center gap-1 text-[11px] ${on ? "text-white/70" : "text-neutral-400"}`}>
-                    {project && <HistoryProjectTag project={project} active={on} />}
-                    <span className="min-w-0 flex-1 truncate">{subtitle}</span>
-                  </span>
+                  {project && <HistoryProjectTag project={project} />}
                 </span>
               </div>
             )}
@@ -843,7 +814,8 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 }}
               />
             )}
-          </div>
+            </>)}
+          </HistoryRowFrame>
         );
       })}
 
@@ -942,6 +914,19 @@ type LoadedHistoryDetail =
   | { kind: "session"; session: AppSession; fallbackTask?: TaskDetail }
   | { kind: "task"; detail: TaskDetail };
 
+/** The TaskDetail objects AgentChat is seeded with (marked stale when served from cache). */
+function historyDetailSeeds(value: LoadedHistoryDetail): Array<TaskDetail | undefined> {
+  return value.kind === "task" ? [value.detail] : [value.fallbackTask];
+}
+
+/** What decides which runtime mounts: a change here replaces a cached detail. */
+function historyDetailShape(value: LoadedHistoryDetail): string {
+  if (value.kind === "task") {
+    return `task:${value.detail.task.id}:${String(value.detail.task.mode ?? "")}:${value.detail.task.site_id ?? ""}`;
+  }
+  return `session:${value.session.id}:${value.session.task_id ?? ""}:${value.fallbackTask?.task.id ?? ""}:${isRestorableAppSession(value.session) ? 1 : 0}:${isTaskThreadSession(value.session) ? 1 : 0}`;
+}
+
 export function HistoryDetail({
   siteId = "",
   accent = "#0ea5e9",
@@ -966,6 +951,9 @@ export function HistoryDetail({
   const [loaded, setLoaded] = useState<LoadedHistoryDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // Which selection the shown detail / error belongs to: until the read for a new
+  // selection settles, the previous task is covered (never shown under the new row).
+  const [settledFor, setSettledFor] = useState<string | null>(null);
 
   // 新后端优先按 app_session 读取；404/旧后端再把同一个 id 当 legacy task 读取。
   // 依赖里刻意没有 `tt`：换语言不该重新拉一遍会话与任务详情。effect 里只存中文原文
@@ -973,15 +961,34 @@ export function HistoryDetail({
   // 后端串在词典里查不到会原样回落，不会被吞。
   useEffect(() => {
     let alive = true;
-    setLoaded(null);
+    // 2026-10-31 W5: a task opened before in this page comes back at once (no cover);
+    // the read below still runs and only replaces it when the task's shape changed.
+    const cacheKey = historyDetailCacheKey(siteId, sel || "");
+    const cached = sel && !localSelection
+      ? peekHistoryDetail<LoadedHistoryDetail>(cacheKey, historyDetailSeeds)
+      : undefined;
+    setLoaded(cached ?? null);
     setDetailError(null);
+    if (!sel || localSelection || cached) setSettledFor(sel || "");
     if (!sel || localSelection) {
       setDetailLoading(false);
       return () => {
         alive = false;
       };
     }
-    setDetailLoading(true);
+    setDetailLoading(!cached);
+    const commit = (value: LoadedHistoryDetail) => {
+      storeHistoryDetail(cacheKey, value);
+      setDetailLoading(false);
+      setSettledFor(sel);
+      if (!cached || historyDetailShape(cached) !== historyDetailShape(value)) setLoaded(value);
+    };
+    // A background re-read that fails keeps what is already shown (silent).
+    const fail = (message: string) => {
+      setDetailLoading(false);
+      setSettledFor(sel);
+      if (!cached) setDetailError(message);
+    };
     const search =
       typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     // `?task=<id>` names a task (historyHrefFor / onTaskCreated write it): read the
@@ -998,21 +1005,19 @@ export function HistoryDetail({
         directTask = await getTask(sel);
         if (!alive) return;
         if (directTask.ok && directTask.data) {
-          setDetailLoading(false);
           if (
             siteId &&
             directTask.data.task.site_id &&
             directTask.data.task.site_id !== siteId
           ) {
-            setDetailError("这条旧记录不属于当前网站。");
+            fail("这条旧记录不属于当前网站。");
             return;
           }
-          setLoaded({ kind: "task", detail: directTask.data });
+          commit({ kind: "task", detail: directTask.data });
           return;
         }
         if (directTask.status !== 404) {
-          setDetailLoading(false);
-          setDetailError(
+          fail(
             directTask.status === 401
               ? "登录后即可查看我的任务。"
               : taskRequestFailureText(directTask, "加载失败"),
@@ -1032,8 +1037,7 @@ export function HistoryDetail({
         // 项目里建的会话与普通会话一样直接打开（D11，撤销 2026-08-13 的拦截页）。
         if (siteId && session.site_id !== siteId &&
             !(siteId === "oceanleo" && session.app_id === "library")) {
-          setDetailLoading(false);
-          setDetailError("这条工作会话不属于当前网站。");
+          fail("这条工作会话不属于当前网站。");
           return;
         }
         let fallbackTask: TaskDetail | undefined;
@@ -1057,13 +1061,11 @@ export function HistoryDetail({
           }
           if (!alive) return;
         }
-        setLoaded({ kind: "session", session, fallbackTask });
-        setDetailLoading(false);
+        commit({ kind: "session", session, fallbackTask });
         return;
       }
       if (!isAppSessionApiUnavailableStatus(sessionResult.status)) {
-        setDetailLoading(false);
-        setDetailError(
+        fail(
           sessionResult.status === 401
             ? "登录后即可查看我的任务。"
             : taskRequestFailureText(sessionResult, "加载失败"),
@@ -1072,22 +1074,21 @@ export function HistoryDetail({
       }
       const taskResult = directTask ?? (await getTask(sel));
       if (!alive) return;
-      setDetailLoading(false);
       if (taskResult.ok && taskResult.data) {
         if (
           siteId &&
           taskResult.data.task.site_id &&
           taskResult.data.task.site_id !== siteId
         ) {
-          setDetailError("这条旧记录不属于当前网站。");
+          fail("这条旧记录不属于当前网站。");
           return;
         }
-        setLoaded({ kind: "task", detail: taskResult.data });
+        commit({ kind: "task", detail: taskResult.data });
         return;
       }
       const signedOut =
         sessionResult.status === 401 || taskResult.status === 401;
-      setDetailError(
+      fail(
         signedOut
           ? "登录后即可查看我的任务。"
           : taskRequestFailureText(taskResult.error ? taskResult : sessionResult, "加载失败"),
@@ -1103,10 +1104,29 @@ export function HistoryDetail({
   const effectiveLibraryTabs: AgentLibraryTabs | undefined =
     libraryTabs ??
     (siteId ? { showFiles: true, showBrowser: true } : undefined);
-  if (localTask) return <LocalTaskDetail key={localTask.id} task={localTask} />;
-  if (localSelection) return <div role="status" className="p-8 text-sm text-neutral-500">{tt(local.error ? "无法读取本机任务，请稍后重试。" : local.loading ? "正在读取本机任务…" : "这条本机任务已不存在。")}</div>;
+  // ONE loading look for the whole detail area (2026-10-31 W5): the host's own read
+  // and every runtime below it (AgentChat's first task read, its conversation
+  // choice, a native chat's saved copy) report into this gate; the page-level
+  // skeleton covers them until all are in, once per selection.
+  const hostReady =
+    (!sel || settledFor === sel) &&
+    !detailLoading &&
+    !(localSelection && !localTask && local.loading);
+  const gated = (body: ReactNode) => (
+    <TaskLoadingGate gateKey={sel || ""} hostReady={hostReady}>
+      {body}
+    </TaskLoadingGate>
+  );
+  if (localTask) return gated(<LocalTaskDetail key={localTask.id} task={localTask} />);
+  if (localSelection) {
+    return gated(
+      local.loading
+        ? <div className="h-[calc(100dvh-1px)]" />
+        : <div role="status" className="p-8 text-sm text-neutral-500">{tt(local.error ? "无法读取本机任务，请稍后重试。" : "这条本机任务已不存在。")}</div>,
+    );
+  }
   if (!sel) {
-    return (
+    return gated(
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-neutral-400">
           {tt("在左侧选择一个任务，即可继续操作或查看对话与产出。")}
@@ -1115,18 +1135,13 @@ export function HistoryDetail({
     );
   }
 
-  if (detailLoading) {
-    return (
-      <div className="flex h-[calc(100dvh-1px)] flex-col">
-        <div className="grid flex-1 place-items-center text-[13px] text-neutral-400">
-          {tt("加载工作会话…")}
-        </div>
-      </div>
-    );
+  // Still reading: the gate's skeleton covers this placeholder (no loading text line).
+  if (!hostReady) {
+    return gated(<div className="h-[calc(100dvh-1px)]" data-history-detail-pending="" />);
   }
 
   if (detailError || !loaded) {
-    return (
+    return gated(
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         <div className="grid flex-1 place-items-center p-8 text-center text-[13px] text-rose-500">
           {detailError ? tt(detailError) : tt("这个任务不存在或已无权访问。")}
@@ -1137,7 +1152,7 @@ export function HistoryDetail({
 
   if (loaded.kind === "task" && isShellTask(loaded.detail.task)) {
     const shell = shellSessionFromTask(loaded.detail.task);
-    return (
+    return gated(
       <div className="flex h-[calc(100dvh-1px)] min-h-0 flex-col">
         <ShellTaskView
           taskId={loaded.detail.task.id}
@@ -1168,7 +1183,7 @@ export function HistoryDetail({
   ) {
     const currentSession = runtimeSession;
     if (!renderWorkspace && currentSession.app_id !== "library") {
-      return (
+      return gated(
         <div className="grid h-[calc(100dvh-1px)] place-items-center bg-stone-50/60 p-8">
           <div className="w-full max-w-xl rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
             <p className="text-[15px] font-semibold text-stone-900">
@@ -1184,7 +1199,7 @@ export function HistoryDetail({
         </div>
       );
     }
-    return (
+    return gated(
       <div className="flex h-[calc(100dvh-1px)] flex-col">
         <HistoryArtifactPublishRows items={publishItems} />
         <div className="min-h-0 flex-1">
@@ -1214,7 +1229,7 @@ export function HistoryDetail({
     loaded.kind === "task"
       ? loaded.detail.task.site_id || siteId
       : loaded.session.site_id || siteId;
-  return (
+  return gated(
     <div className="flex h-[calc(100dvh-1px)] flex-col">
       <HistoryArtifactPublishRows items={publishItems} />
       <div className="min-h-0 flex-1">

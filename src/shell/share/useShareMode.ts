@@ -51,7 +51,8 @@ export interface UseShareModeInput {
 
 export interface ShareModeState {
   active: boolean;
-  enter: (messageId?: number) => void;
+  /** No argument: nothing ticked; a message id: that one; `"all"`: every selectable message. */
+  enter: (messageId?: number | "all") => void;
   exit: () => void;
   selectable: AgentMessage[];
   selectedIds: ReadonlySet<number>;
@@ -120,14 +121,16 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
   }, [input.taskId]);
 
   const enter = useCallback(
-    (messageId?: number) => {
+    (messageId?: number | "all") => {
       setActive(true);
       setNotice(null);
       setSelectedIds(
-        typeof messageId === "number" ? new Set([messageId]) : new Set<number>(),
+        messageId === "all"
+          ? new Set(selectable.map((message) => message.id))
+          : typeof messageId === "number" ? new Set([messageId]) : new Set<number>(),
       );
     },
-    [],
+    [selectable],
   );
 
   const exit = useCallback(() => {

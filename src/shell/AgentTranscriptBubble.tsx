@@ -15,6 +15,7 @@ import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
 import { ApprovalCard, parseApprovalMessage } from "./ApprovalCard";
+import { ChatTimeSeparator } from "./ChatTimeSeparator";
 import { cloudHealthTone, deviceStatusNoticeLine, deviceStatusNoticeTime } from "../lib/local-agent-task";
 
 export function agentArtifactLabels(
@@ -34,6 +35,12 @@ export function agentArtifactLabels(
 
 export interface AgentTranscriptBubbleProps {
   message: AgentMessage;
+  /**
+   * Epoch ms for the small centred time above this (user) bubble — Manus
+   * "Today 4:54 PM". Decided by `agentMessageTimeSeparators` (first user message,
+   * and again after a 5-minute gap or a new day); absent = no time line.
+   */
+  timeAbove?: number | null;
   streaming?: boolean;
   /**
    * 这条回答是被用户按停止中断的。已经生成的部分照常显示（用户可能已经在读了），
@@ -79,7 +86,7 @@ export interface AgentTranscriptBubbleProps {
    * 用户消息里上传的附件方块被点（2026-10-31）。宿主据此在右侧栏打开它；
    * 不传时方块只展示，**绝不**在新标签页打开原始地址。
    */
-  onOpenAttachment?: (attachment: AgentAttachment) => void;
+  onOpenAttachment?: (attachment: AgentAttachment) => void | Promise<boolean>;
 }
 
 /**
@@ -88,6 +95,19 @@ export interface AgentTranscriptBubbleProps {
  */
 export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
   const tt = useUI();
+  const { message, timeAbove } = props;
+  if (message.kind === "ui_action") return null;
+  const bubble = renderTranscriptBubble(props, tt);
+  if (typeof timeAbove !== "number") return bubble;
+  return (
+    <>
+      <ChatTimeSeparator at={timeAbove} />
+      {bubble}
+    </>
+  );
+}
+
+function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnType<typeof useUI>) {
   const {
     message,
     selectMode = false,
@@ -98,7 +118,6 @@ export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
     streaming = false,
     turnCopyText,
   } = props;
-  if (message.kind === "ui_action") return null;
   const body = <TranscriptBody {...props} />;
   const perTurn = turnCopyText !== undefined;
   const actionable =
@@ -916,7 +935,7 @@ function TranscriptAttachment({
   onOpen,
 }: {
   attachment: AgentAttachment;
-  onOpen?: (attachment: AgentAttachment) => void;
+  onOpen?: (attachment: AgentAttachment) => void | Promise<boolean>;
 }) {
   const tt = useUI();
   const archive = (attachment as { native_archive?: { download_path?: unknown; size?: unknown } })
@@ -930,6 +949,7 @@ function TranscriptAttachment({
       <NativeArchivedAttachment
         name={attachment.name || tt("附件")}
         path={archive.download_path}
+        onOpen={onOpen ? () => onOpen(attachment) : undefined}
       />
     );
     // A saved native image shows the picture (read once into a local blob:),
@@ -1027,7 +1047,12 @@ function FileGlyph() {
  * 原生对话里存到云端的附件：路径只指向本人可读的路由，点了才换一次性下载地址
  * （同 agent-dialog/ArchivedAttachment），不预取、不内联。
  */
-function NativeArchivedAttachment({ name, path }: { name: string; path: string }) {
+function NativeArchivedAttachment({ name, path, onOpen }: {
+  name: string;
+  path: string;
+  /** W6: the host opens it in the task sidebar; `false` (cannot preview) falls back to download. */
+  onOpen?: () => void | Promise<boolean>;
+}) {
   const tt = useUI();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -1037,6 +1062,13 @@ function NativeArchivedAttachment({ name, path }: { name: string; path: string }
     if (busy || !allowed) return;
     setBusy(true);
     setFailed(false);
+    if (onOpen) {
+      const shown = await Promise.resolve(onOpen()).catch(() => false);
+      if (shown !== false) {
+        setBusy(false);
+        return;
+      }
+    }
     try {
       const api = await import("../lib/cloud-computer-api");
       const result = await api.cloudComputerRequest<{ url: string }>(path);

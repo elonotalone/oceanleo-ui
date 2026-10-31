@@ -126,7 +126,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export function HistoryRowMenu(){ return null; }
     export function MoveTaskProjectDialog(){ return null; }
   `),
-  "../ui": dataModule(`export function ConfirmDialog(){ return null; }`),
+  "../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`),
   "../lib/auth/client": dataModule(`
     export function browserClient(){ return null; }
     export async function accessToken(){ return null; }
@@ -158,7 +158,8 @@ const { HistoryInlineList } = await import(historyUrl);
 function titleEl(button, title) {
   return [...button.querySelectorAll("span")].find(
     (span) =>
-      span.textContent === title && String(span.className).includes("font-medium"),
+      // 2026-10-31: the title is regular weight now (Manus row); find it by its hook.
+      span.textContent === title && span.hasAttribute("data-history-title"),
   );
 }
 

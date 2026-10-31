@@ -41,6 +41,7 @@ import type { ComputerTaskSession } from "../lib/computer-task-api";
 import type { ConversationTarget } from "./native-thread/types";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
 import { useComposerDraft } from "./composer-draft";
+import { useComposerMaxHeight } from "./composer-max-height";
 import { ComposerLibraryPicker } from "./ComposerLibraryPicker";
 import {
   composerSlashAdapter,
@@ -183,7 +184,7 @@ export interface LeoComposerProps {
    */
   inlineSlot?: ReactNode;
   rows?: number;
-  /** textarea 自增高上限（px），默认 280 */
+  /** textarea 自增高的绝对上限（px），默认 280；实际还按视口 30% 封顶（composer-max-height）。 */
   maxHeight?: number;
   /** 透传给最外层卡片的额外 class */
   className?: string;
@@ -433,6 +434,8 @@ export function LeoComposer({
   useNativeTaskNotifications();
   // 刷新不丢（A1）：draftKey 不传时这个 hook 什么都不做。
   const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments });
+  // 最高约占视口 30%（仿 Manus），`maxHeight` 是绝对上限；再多在框内滚动。
+  const editorMaxHeight = useComposerMaxHeight(maxHeight);
   // 这次派活谁付钱。空串 = 个人钱包，也是没进过组织的人恒定的值。
   const [payerOrgId, setPayerOrgId] = useState("");
   // 输入框 `/` 调用技能。skillSlash 不传时 onKeyDown 恒 false、popover 恒 null。
@@ -616,7 +619,7 @@ export function LeoComposer({
         accentColor={accentColor}
         placeholder={placeholderText}
         rows={rows}
-        maxHeight={maxHeight}
+        maxHeight={editorMaxHeight}
         disabled={disabled}
         onKeyDown={handleKeyDown}
         className="rounded-t-2xl"

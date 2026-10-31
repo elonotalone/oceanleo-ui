@@ -238,7 +238,7 @@ const uiStub = dataModule(
   "export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : zh; }",
 );
 const toastStub = dataModule(`export function useToast(){ return { error(){}, success(){}, info(){} }; }`);
-const confirmStub = dataModule(`export function ConfirmDialog(){ return null; }`);
+const confirmStub = dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`);
 const storeStub = dataModule(`export function formatBadge(n){ return n > 0 ? String(n) : ""; }`);
 
 const IDLE = { phase: "idle", conversationId: null, callId: null, incoming: null, server: null, participants: [] };
@@ -585,7 +585,11 @@ const EMPTY = { filter: "all", items: [], nextCursor: null, loaded: false, loadi
 test("D1 列表：空且还没加载（刚被实时层清空）→ 显示「正在加载…」并自己补拉一次，不留空白", async () => {
   const view = await mountInbox({ ...EMPTY });
   assert.ok(view.host.querySelector("[data-inbox-loading]"), "显示正在加载");
-  assert.match(view.text(), /正在加载…/);
+  // 2026-10-31 W5：加载态是页面级骨架（与 LeoChat 页 / 任务切换同一个），读屏念「正在加载…」。
+  const skeleton = view.host.querySelector("[data-inbox-loading] [data-route-page-skeleton]");
+  assert.ok(skeleton, "加载态用 RoutePageSkeleton");
+  assert.equal(skeleton.getAttribute("role"), "status");
+  assert.equal(skeleton.getAttribute("aria-label"), "正在加载…");
   assert.doesNotMatch(view.text(), /还没有会话/);
   assert.deepEqual(globalThis.__W08D1.loads, ["all"], "挂载与空闲补拉合起来只发一次");
   await view.unmount();

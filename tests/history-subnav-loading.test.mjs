@@ -103,7 +103,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export function HistoryRowMenu(){ return null; }
     export function MoveTaskProjectDialog(){ return null; }
   `),
-  "../ui": dataModule(`export function ConfirmDialog(){ return null; }`),
+  "../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`),
   // HistoryDetail 现在会为 mode=shell 的任务渲染 ShellTaskView，其 cloud-computer-api
   // 依赖还从这里取 accessToken；bench 补上这个导出，历史列表本身不碰它。
   "../lib/auth/client": dataModule(`
@@ -144,9 +144,12 @@ test("local queue appears in My Tasks once and opens native detail without cloud
     panel = await mount("oceanleo");
     await settle(20);
     assert.match(panel.text(), /写入文件/);
-    assert.match(panel.text(), /在本机执行.*等待网络恢复/);
+    // 2026-10-31 Manus 式一行：本机阶段不再占第二行，悬停 title 里看。
+    assert.doesNotMatch(panel.text(), /在本机执行.*等待网络恢复/);
     assert.doesNotMatch(panel.text(), /不应重复出现/);
     const button = [...panel.container.querySelectorAll("button")].find((node) => node.textContent.includes("写入文件"));
+    assert.match(button.getAttribute("title") || "", /在本机执行.*等待网络恢复/);
+    assert.equal(button.style.background, "", "selected/idle rows never paint the accent colour");
     await act(async () => button.click());
     assert.equal(globalThis.__historyPushed, "/history?task=local%3Alocal-1");
     await panel.unmount(); panel = null;

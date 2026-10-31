@@ -346,7 +346,9 @@ test("stream scroller never scrolls sideways and the column wraps (AgentChat ren
   assert.ok(scroller, "scroller is marked");
   assert.match(scroller[1], /overflow-y-auto/);
   assert.match(scroller[1], /overflow-x-hidden/);
-  const column = source.match(/<div className="([^"]*)" data-agent-stream-column="">/);
+  const column = source.match(/<div className=\{`([^`]*)`\} data-agent-stream-column="">/);
   assert.ok(column, "column is marked");
+  // W4 2026-10-31: the width cap is the shared layout constant, not a literal max-w-2xl.
+  assert.ok(column[1].includes("${AGENT_CONVERSATION_MAX_WIDTH_CLASS}"), "column uses the shared width cap");
   for (const cls of ["min-w-0", "break-words", "[overflow-wrap:anywhere]"]) assert.ok(column[1].includes(cls), cls);
 });

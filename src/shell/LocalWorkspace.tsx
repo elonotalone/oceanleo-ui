@@ -45,17 +45,21 @@ const STAGES: Record<string, string> = {
   done: "已完成", failed: "失败", cancelled: "已取消",
 };
 
-export function LocalTaskRows({ tasks, selected, accent }: { tasks: ClientLocalTask[]; selected: string | null; accent: string }) {
+/**
+ * Native local tasks in My Tasks: same one-line, neutral-grey row as the cloud
+ * entries (2026-10-31 Manus polish). `accent` is kept for API compatibility only.
+ */
+export function LocalTaskRows({ tasks, selected }: { tasks: ClientLocalTask[]; selected: string | null; accent?: string }) {
   const router = useRouter();
   const tt = useUI();
   return tasks.map((task) => {
     const id = `local:${task.id}`;
     const active = selected === id || selected === task.remoteTaskId;
-    return <button key={task.id} type="button" onClick={() => router.push(`/history?task=${encodeURIComponent(id)}`)}
-      className={`w-full rounded-lg px-3 py-2 text-left text-[13px] transition ${active ? "text-white" : "text-neutral-700 hover:bg-neutral-200/50"}`}
-      style={active ? { background: accent } : undefined}>
-      <span className="block truncate">{tt(task.title)}</span>
-      <span className={`block truncate text-[11px] ${active ? "text-white/70" : "text-neutral-400"}`}>{tt("在本机执行")} · {tt(STAGES[task.stage] || task.stage)}</span>
+    const stage = `${tt("在本机执行")} · ${tt(STAGES[task.stage] || task.stage)}`;
+    return <button key={task.id} type="button" title={`${tt(task.title)}\n${stage}`} onClick={() => router.push(`/history?task=${encodeURIComponent(id)}`)}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[14px] leading-5 transition ${active ? "bg-neutral-200/80 text-neutral-900" : "text-neutral-800 hover:bg-neutral-200/50"}`}>
+      <span className="w-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">{tt(task.title)}</span>
     </button>;
   });
 }

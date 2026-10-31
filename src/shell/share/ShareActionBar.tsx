@@ -186,10 +186,13 @@ export function ShareEntryButton({
   onClick,
   className = "",
   showLabel = false,
+  active,
 }: {
   onClick: () => void;
   className?: string;
   showLabel?: boolean;
+  /** Select mode is on: the button stays, pressed (neutral grey), and a click leaves. */
+  active?: boolean;
 }) {
   const tt = useUI();
   return (
@@ -198,7 +201,9 @@ export function ShareEntryButton({
       onClick={onClick}
       title={tt("分享")}
       aria-label={tt("分享")}
-      className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg p-1.5 text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95 ${className}`}
+      aria-pressed={active === undefined ? undefined : active}
+      data-share-entry={active ? "active" : "idle"}
+      className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg p-1.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95 ${active ? "bg-stone-100 text-stone-800" : "text-stone-500"} ${className}`}
     >
       <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 12v-1a7 7 0 0 1 7-7h8m0 0-4-4m4 4-4 4" />

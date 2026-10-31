@@ -1,7 +1,7 @@
 "use client";
 
 // 消息流：按时间往下走，往上滚加载更早的；新消息来时贴底，离底部远就显示「N 条新消息」；
-// 日期分隔、未读分隔线、同一人 5 分钟内合并头像；`highlightSeq` 滚到那条并闪一下。
+// 时间分隔（与任务页共用 chat-time-separators）、未读分隔线、同一人 5 分钟内合并头像；`highlightSeq` 滚到那条并闪一下。
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -10,32 +10,12 @@ import { MessageItem, type MessageItemHandlers } from "./MessageItem";
 import { dmReadState } from "./ReadReceipt";
 import { useImEvent } from "../realtime/hooks";
 import { buildRows, type ConversationSnapshot, type ConversationStore } from "./conversation-store";
+import { ChatTimeSeparator } from "../../ChatTimeSeparator";
 
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const NEAR_BOTTOM_PX = 80;
 const LOAD_MORE_PX = 160;
 const FLASH_MS = 1800;
-
-function DayDivider({ day }: { day: string }) {
-  const tt = useUI();
-  const locale = useLocale();
-  const [y, m, d] = day.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  const today = new Date();
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  const diffDays = Math.round((startOfToday - date.getTime()) / 86_400_000);
-  const label =
-    diffDays === 0
-      ? tt("今天")
-      : diffDays === 1
-        ? tt("昨天")
-        : new Intl.DateTimeFormat(locale, { dateStyle: "full" }).format(date);
-  return (
-    <div className="my-3 px-4 text-center text-[12px] text-neutral-400" data-day-divider={day}>
-      {label}
-    </div>
-  );
-}
 
 export interface MessageListProps {
   store: ConversationStore;
@@ -74,6 +54,7 @@ export function MessageList(props: MessageListProps) {
     onToggleSelected,
   } = props;
   const tt = useUI();
+  const locale = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const initializedRef = useRef(false);
@@ -216,7 +197,7 @@ export function MessageList(props: MessageListProps) {
           </div>
         ) : null}
         {rows.map((row) => {
-          if (row.type === "day") return <DayDivider key={row.key} day={row.day} />;
+          if (row.type === "time") return <ChatTimeSeparator key={row.key} at={row.at} locale={locale} />;
           if (row.type === "unread") {
             return (
               <div key={row.key} className="my-2 px-4 text-center text-[12px] text-neutral-400" data-unread-divider="">

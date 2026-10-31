@@ -3,6 +3,7 @@
 // 每个会话一个 store，关掉再打开还在，打开时 `catchUp()` 补上期间漏掉的。
 
 import type { MessagesApi, MessagePage, SendMessageInput } from "../../../lib/im/messages-api";
+import { chatTimeMs, chatTimeSeparators } from "../../chat-time-separators";
 import type {
   ImAttachment,
   ImCard,
@@ -551,7 +552,9 @@ export function attachmentSummary(attachments: ImAttachment[]): string {
 export const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
 export type MessageRow =
-  | { type: "day"; key: string; day: string }
+  // The small centred time (shared with the task chat: chat-time-separators.ts):
+  // first message, then after a 5-minute gap or on a new day.
+  | { type: "time"; key: string; at: number }
   | { type: "unread"; key: string }
   | { type: "message"; key: string; message: ImMessage; grouped: boolean; pending: PendingMessage | null };
 
@@ -568,7 +571,7 @@ function groupable(message: ImMessage): boolean {
 
 /**
  * 把消息变成行：
- * - 跨天插日期分隔；
+ * - 时间分隔（与任务页同一个纯函数 chatTimeSeparators）：第一条、与上一条隔了 5 分钟以上、或跨天；
  * - `unreadAfterSeq` 之后的第一条别人的消息前插「未读」分隔线（0 / null = 不画）；
  * - 同一人 5 分钟内、同一天、中间没有分隔线的连续消息合并头像。
  */
@@ -584,12 +587,13 @@ export function buildRows(
     ...messages.map((message) => ({ message, pending: null })),
     ...pending.map((entry) => ({ message: entry.message, pending: entry })),
   ];
-  for (const entry of entries) {
+  const times = chatTimeSeparators(entries, { timeOf: (entry) => chatTimeMs(entry.message.created_at) });
+  entries.forEach((entry, index) => {
     const { message } = entry;
     let separated = false;
-    const day = dayKey(message.created_at);
-    if (day && (!previous || dayKey(previous.created_at) !== day)) {
-      rows.push({ type: "day", key: `day:${day}`, day });
+    const at = times.get(index);
+    if (at !== undefined) {
+      rows.push({ type: "time", key: `time:${entry.pending ? `pending:${entry.pending.clientId}` : message.id}`, at });
       separated = true;
     }
     if (
@@ -619,7 +623,7 @@ export function buildRows(
       pending: entry.pending,
     });
     previous = message;
-  }
+  });
   return rows;
 }
 

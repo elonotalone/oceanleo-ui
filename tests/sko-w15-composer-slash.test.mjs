@@ -526,7 +526,7 @@ test("LeoComposer：skillSlash 是可选 prop，逻辑在 composer-skill-slash.t
   // 浮层渲染在编辑器之前（同一个 relative 卡片里），编辑器的 props 一行没变。
   assert.match(
     composerSource,
-    /\{skillSlashUi\.popover\}\n      <TemplateFillArea\n        ref=\{highlightRef\}\n        value=\{value\}\n        onChange=\{onChange\}\n        template=\{effectiveHighlightTemplate\}\n        fillNonce=\{effectiveFillNonce\}\n        restoreEpoch=\{runtimeHydration\?\.snapshotRestoreEpoch\}\n        accentColor=\{accentColor\}\n        placeholder=\{placeholderText\}\n        rows=\{rows\}\n        maxHeight=\{maxHeight\}\n        disabled=\{disabled\}\n        onKeyDown=\{handleKeyDown\}\n        className="rounded-t-2xl"\n      \/>/,
+    /\{skillSlashUi\.popover\}\n      <TemplateFillArea\n        ref=\{highlightRef\}\n        value=\{value\}\n        onChange=\{onChange\}\n        template=\{effectiveHighlightTemplate\}\n        fillNonce=\{effectiveFillNonce\}\n        restoreEpoch=\{runtimeHydration\?\.snapshotRestoreEpoch\}\n        accentColor=\{accentColor\}\n        placeholder=\{placeholderText\}\n        rows=\{rows\}\n        maxHeight=\{editorMaxHeight\}\n        disabled=\{disabled\}\n        onKeyDown=\{handleKeyDown\}\n        className="rounded-t-2xl"\n      \/>/,
   );
   assert.match(composerSource, /function cleanPromptValue\(\): string \{\n[^}]*return value\.trim\(\);\n  \}/, "提交前不改写 /name");
   assert.equal(composerSource.includes("skillSlashUi.") && composerSource.split("skillSlashUi.").length - 1, 2, "只有 onKeyDown 与 popover 两处用到");

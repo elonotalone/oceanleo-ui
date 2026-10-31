@@ -1849,7 +1849,7 @@ const { Inbox } = await import(
     "../../lib/im/groups-api": dataModule(`export async function clearConversationHistory(){} export async function markConversationUnread(){} export async function patchMySettings(){}`),
     "../../lib/im/people-api": dataModule(`export function reasonOf(_e, fallback){ return fallback; }`),
     "../../lib/im/search-api": dataModule(`export function searchQueryReady(){ return globalThis.__w08.searching; }`),
-    "../../ui": dataModule(`export function ConfirmDialog(){ return null; }`),
+    "../../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`),
     "./InboxRow": nullStub("InboxRow"),
     "./people/InviteLinkDialog": nullStub("InviteLinkDialog"),
     "./search/SearchView": nullStub("SearchView"),

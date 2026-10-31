@@ -94,8 +94,8 @@ export function HistoryRowMenu({
         aria-expanded={open}
         className={`rounded p-0.5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
           active
-            ? "text-white/70 hover:bg-white/20 hover:text-white"
-            : `text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-100 ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`
+            ? "text-neutral-500 hover:bg-neutral-300/60 hover:text-neutral-800 dark:hover:bg-white/10 dark:hover:text-neutral-100"
+            :`text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-100 ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`
         }`}
       >
         <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
