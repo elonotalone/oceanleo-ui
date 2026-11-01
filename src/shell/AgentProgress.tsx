@@ -30,6 +30,7 @@ import { lineDiff } from "./cloud-computer/agent-dialog/diff-lines";
 import { AgentStepMark, agentStepState } from "./AgentStepMark";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
+import { useStepsFoldPreference } from "./steps-fold-preference";
 
 type ToolEntry = Extract<ProcessEntry, { type: "tool" }>;
 type ThoughtEntry = Extract<ProcessEntry, { type: "thought" }>;
@@ -50,21 +51,38 @@ function collapseUnlessSelecting(close: () => void) {
  * Open while `live`, closed when it stops being live — unless the user has
  * toggled it, in which case their choice stands.
  */
-function useLiveFold(live: boolean, initial = live): [boolean, () => void, () => void] {
+function useLiveFold(
+  live: boolean,
+  initial = live,
+  preference: boolean | null = null,
+  onRunningToggle?: (expanded: boolean) => void,
+): [boolean, () => void, () => void] {
   const [open, setOpen] = useState(initial);
   const touched = useRef(false);
   const previous = useRef(live);
+  const previousPreference = useRef(preference);
+  useEffect(() => {
+    if (previousPreference.current === preference) return;
+    previousPreference.current = preference;
+    if (preference !== null) {
+      touched.current = true;
+      setOpen(preference);
+    }
+  }, [preference]);
   useEffect(() => {
     if (previous.current === live) return;
     previous.current = live;
-    if (!touched.current) setOpen(live);
-  }, [live]);
+    if (!touched.current && preference === null) setOpen(live);
+  }, [live, preference]);
   const toggle = () => {
     touched.current = true;
-    setOpen((value) => !value);
+    const next = !open;
+    if (live) onRunningToggle?.(next);
+    setOpen(next);
   };
   const close = () => {
     touched.current = true;
+    if (live) onRunningToggle?.(false);
     setOpen(false);
   };
   return [open, toggle, close];
@@ -114,7 +132,14 @@ export function AgentProgress({
   const tt = useUI();
   const entries = useMemo(() => buildProcessEntries(messages), [messages]);
   const summary = useMemo(() => summarizeProcess(messages, entries), [messages, entries]);
-  const [open, toggle, close] = useLiveFold(running);
+  const foldPreference = useStepsFoldPreference();
+  const preference = foldPreference?.preference ?? null;
+  const [open, toggle, close] = useLiveFold(
+    running,
+    preference ?? running,
+    preference,
+    foldPreference ? foldPreference.setPreference : undefined,
+  );
   if (!entries.length) return null;
   let latestPlan = "";
   for (const entry of entries) if (entry.type === "plan") latestPlan = entry.key;
