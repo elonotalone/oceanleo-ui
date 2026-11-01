@@ -35,7 +35,8 @@ async function mount(element) {
   return { host, async render(next) { await act(async () => root.render(next)); }, cleanup() { act(() => root.unmount()); host.remove(); } };
 }
 function block(host, index) { return host.querySelectorAll("[data-agent-process]")[index]; }
-function expanded(host, id) { return block(host, id)?.querySelector("[data-agent-process-toggle]")?.getAttribute("aria-expanded"); }
+function expanded(host, index) { return block(host, index)?.querySelector("[data-agent-process-toggle]")?.getAttribute("aria-expanded"); }
+function entriesVisible(host, index) { return Boolean(block(host, index)?.querySelector("[data-agent-process-entries]")); }
 function provider(taskId, children) { return React.createElement(StepsFoldPreferenceProvider, { taskId }, children); }
 
 test("expanding a running block opens later blocks and keeps them open after completion", async () => {
@@ -44,7 +45,7 @@ test("expanding a running block opens later blocks and keeps them open after com
   try {
     assert.equal(expanded(view.host, 0), "false"); assert.equal(expanded(view.host, 1), "false");
     await act(async () => block(view.host, 0).querySelector("[data-agent-process-toggle]").click());
-    assert.equal(expanded(view.host, 0), "true"); assert.equal(expanded(view.host, 1), "true");
+    assert.equal(expanded(view.host, 0), "true"); assert.equal(expanded(view.host, 1), "true"); assert.equal(entriesVisible(view.host, 0), true); assert.equal(entriesVisible(view.host, 1), true);
     await view.render(provider("expand", React.createElement(React.Fragment, null, React.createElement(AgentProgress, { messages: [message(1, "done")], running: false }), React.createElement(AgentProgress, { messages: [message(2)], running: true }))));
     assert.equal(expanded(view.host, 0), "true"); assert.equal(expanded(view.host, 1), "true");
   } finally { view.cleanup(); }
