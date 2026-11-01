@@ -152,6 +152,20 @@ export class RemoteInputScheduler {
     return this.sequence;
   }
 
+  /**
+   * A re-attached stream of the same session continues numbering above everything the session
+   * already accepted (the gateway and the computer drop seqs at or below that). Earlier seqs
+   * belong to the previous socket: they are not tracked here, so they count as settled.
+   */
+  seed(sequence: number): void {
+    if (!Number.isSafeInteger(sequence) || sequence <= this.sequence) return;
+    this.sequence = sequence;
+    this.executed = Math.max(this.executed, sequence);
+  }
+
+  /** Highest seq claimed so far (both lanes); the floor for a re-attached stream. */
+  lastSequence(): number { return this.sequence; }
+
   /** Track press state of input sent on the other lane so emergency release stays complete. */
   noteSent(action: RemoteDesktopAction): void {
     const key = action.key ?? "", button = action.button ?? "left";

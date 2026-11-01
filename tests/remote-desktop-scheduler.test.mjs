@@ -183,3 +183,15 @@ test('blocked handoff binds only to its eventual written sequence',async()=>{con
 test('explicit rejected release retries only that exact seq and never completes on acceptance',async()=>{const h=harness();let done=false;const p=h.scheduler.releaseForHandoff().then(()=>{done=true;});h.scheduler.rejected(1,'rate_limited',25);h.advance(25);assert.deepEqual(h.sent.map(x=>x.seq),[1,1]);h.scheduler.accepted(1);await Promise.resolve();assert.equal(done,false);h.scheduler.executedThrough(1);await p;h.scheduler.dispose();});
 test('queued release cannot use an older execution watermark',async()=>{const h=harness();for(let i=0;i<8;i++)h.scheduler.enqueue({kind:'keypress',key:'Enter'});let done=false;const p=h.scheduler.releaseForHandoff().then(()=>{done=true;});h.scheduler.executedThrough(8);await Promise.resolve();assert.equal(done,false);h.scheduler.accepted(1);assert.equal(h.sent.at(-1).seq,9);h.scheduler.executedThrough(9);await p;h.scheduler.dispose();});
 for(const mode of ['timeout','dispose','malformed'])test(`handoff ${mode} never confirms execution`,async()=>{const h=harness();const p=h.scheduler.releaseForHandoff();const rejected=assert.rejects(p,/input_ack_unknown/);if(mode==='timeout')h.advance(5000);if(mode==='dispose')h.scheduler.dispose();if(mode==='malformed')h.scheduler.executedThrough(10);await rejected;assert.equal(h.scheduler.enqueue({kind:'type',text:'stale'}),false);h.scheduler.dispose();});
+
+test("a re-attached stream continues numbering above the session's accepted input", () => {
+  const { scheduler, sent, errors } = harness();
+  scheduler.seed(41);
+  scheduler.executedThrough(37); // the gateway's older execution watermark is not a malformed reply
+  scheduler.enqueue({ kind: "release_all" });
+  assert.deepEqual(sent.map((entry) => entry.seq), [42]);
+  assert.equal(scheduler.lastSequence(), 42);
+  scheduler.seed(10); // never moves backwards
+  assert.equal(scheduler.lastSequence(), 42);
+  assert.deepEqual(errors, []);
+});

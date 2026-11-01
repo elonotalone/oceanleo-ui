@@ -252,6 +252,31 @@ export interface RemoteDesktopStreamHandlers {
   inputRefused?(code: "input_not_allowed"): void;
 }
 
+/**
+ * Advance the input sequence when a stream is re-attached. A cached split chunk can briefly
+ * contain the stream code from the previous UI release and the scheduler class from the
+ * previous release; feature-detect the method so the first state message never throws
+ * `U.seed is not a function`. A zero floor needs no compatibility work. If a positive floor
+ * cannot be applied, fail closed and let the stream reconnect instead of replaying input.
+ */
+export function seedRemoteInputScheduler(scheduler: RemoteInputScheduler, sequence: number): boolean {
+  if (!Number.isSafeInteger(sequence) || sequence <= 0) return true;
+  const legacy = scheduler as unknown as {
+    seed?: (value: number) => void;
+    claimSequence?: () => number;
+    lastSequence?: () => number;
+  };
+  if (typeof legacy.seed === "function") {
+    legacy.seed.call(scheduler, sequence);
+    return true;
+  }
+  if (typeof legacy.claimSequence !== "function" || typeof legacy.lastSequence !== "function") return false;
+  let current = legacy.lastSequence.call(scheduler);
+  let steps = 0;
+  while (current < sequence && steps++ <= 100_000) current = legacy.claimSequence.call(scheduler);
+  return current >= sequence;
+}
+
 export function parseRemoteAccess(data: unknown): RemoteDesktopAccess | null {
   if (!isRecord(data) || typeof data.input_allowed !== "boolean") return null;
   return { input_allowed: data.input_allowed, audio: data.audio === true };
@@ -401,7 +426,10 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     congestion: (busy) => handlers.congestion?.(busy),
     failure: fail,
   });
-  if (options?.sequenceFloor) scheduler.seed(options.sequenceFloor);
+  if (options?.sequenceFloor && !seedRemoteInputScheduler(scheduler, options.sequenceFloor)) {
+    socket.close();
+    return { ok: false, error: "response_malformed" };
+  }
   const stream: RemoteDesktopStream = {
     releaseForHandoff() {
       if (ended || !ready || state !== "active") return Promise.reject(new Error("input_ack_unknown"));
@@ -479,7 +507,10 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     state = data.state as RemoteDesktopSessionState;
     if (handoff && state !== "active") { fail("input_ack_unknown"); return; }
     // First snapshot of a re-attached socket: continue above what the session already took.
-    if (!ready && typeof data.input_seq === "number") scheduler.seed(data.input_seq);
+    if (!ready && typeof data.input_seq === "number" && !seedRemoteInputScheduler(scheduler, data.input_seq)) {
+      fail("response_malformed");
+      return;
+    }
     if (state !== "closed" && typeof data.acked_seq === "number") {
       scheduler.executedThrough(data.acked_seq);
       if (!ended) timings.completedThrough(data.acked_seq);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { DeviceControllerGrant, DevicePreferences, DeviceSettings, DeviceSettingsClient } from "../../api/device-settings";
+import type { DeviceControllerGrant, DevicePreferences, DeviceRemoteAccessSettings, DeviceSettings, DeviceSettingsClient } from "../../api/device-settings";
 import type { Device } from "../../facades/devices";
 import { useUI } from "../../i18n/ui/useUI";
 import { DEVICE_BUTTON, DEVICE_PRIMARY_BUTTON, DeviceDialog } from "./DeviceDialog";
@@ -96,7 +96,22 @@ export function DeviceSettingsDialog({ device, availability, client, onClose, on
     } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
     finally { if (!signal.aborted) setBusy(false); }
   }
+  async function saveRemoteAccess(remoteAccess: DeviceRemoteAccessSettings) {
+    if (busy) return;
+    const signal = lifetime.current!.signal;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await runDeviceSettingsOperation(client, device.device_id, { kind: "remote_access.update", ...remoteAccess }, signal);
+      if (signal.aborted) return;
+      if (result.ok && result.data?.result && "remote_access" in result.data.result) {
+        setSettings((current) => current ? { ...current, remote_access: (result.data!.result as { remote_access: DeviceRemoteAccessSettings }).remote_access } : current);
+      } else setError(deviceSettingsErrorCopy(result.error));
+    } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
+    finally { if (!signal.aborted) setBusy(false); }
+  }
   const preferences = settings?.preferences;
+  const remoteAccess: DeviceRemoteAccessSettings = settings?.remote_access ?? { agent_control_allowed: false, agent_always_ask: true };
   const effectiveAvailability = availability === "unknown" ? settings?.availability ?? "unknown" : availability;
   const folderReady = effectiveAvailability === "online" && settings?.preferences_available;
 
@@ -118,6 +133,22 @@ export function DeviceSettingsDialog({ device, availability, client, onClose, on
     </section>
 
     {error && <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(error)}<button type="button" className={DEVICE_BUTTON} disabled={busy} onClick={() => void refresh(lifetime.current!.signal)}>{tt("重试")}</button></div>}
+
+    <section className="border-t border-neutral-200 py-7">
+      <h3 className="mb-2 text-sm font-semibold">{tt("访问与控制")}</h3>
+      <p className="mb-4 text-xs text-neutral-500">{tt("自己的账号访问这台设备会直接连接。Agent 是否可以控制，以及是否每次询问，在这里设置。")}</p>
+      {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="space-y-3">
+        <label className="flex items-start justify-between gap-4 rounded-2xl border border-neutral-200 p-4">
+          <span><span className="block text-sm font-medium">{tt("允许 Agent 控制此设备")}</span><span className="mt-1 block text-xs text-neutral-500">{tt("关闭后，Agent 申请仍会显示，但不会自动获得远程控制。")}</span></span>
+          <input type="checkbox" role="switch" checked={remoteAccess.agent_control_allowed} disabled={busy || effectiveAvailability !== "online"} onChange={(event) => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed: event.currentTarget.checked })} />
+        </label>
+        <label className="flex items-start justify-between gap-4 rounded-2xl border border-neutral-200 p-4">
+          <span><span className="block text-sm font-medium">{tt("Agent 每次控制都要同意")}</span><span className="mt-1 block text-xs text-neutral-500">{tt("开启后，Agent 每次申请都会在这台电脑上等待确认。")}</span></span>
+          <input type="checkbox" role="switch" checked={remoteAccess.agent_always_ask} disabled={busy || effectiveAvailability !== "online"} onChange={(event) => void saveRemoteAccess({ ...remoteAccess, agent_always_ask: event.currentTarget.checked })} />
+        </label>
+        {!folderReady && <p className="text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
+      </div>}
+    </section>
 
     <section className="border-t border-neutral-200 py-7">
       <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{tt("允许远程访问的设备")}</h3>{isComputer(device) && <button type="button" className={DEVICE_BUTTON} onClick={onControl}><span aria-hidden="true">＋</span>{tt("添加当前设备")}</button>}</div>

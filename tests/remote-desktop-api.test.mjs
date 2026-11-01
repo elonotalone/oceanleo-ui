@@ -36,6 +36,17 @@ function mockFetch(handler) {
 
 const JPEG = "data:image/jpeg;base64,/9j/AAAA";
 
+test("a cached scheduler chunk without seed never throws and can still advance a reconnect floor", () => {
+  let sequence = 0;
+  const legacy = {
+    lastSequence: () => sequence,
+    claimSequence: () => ++sequence,
+  };
+  assert.equal(api.seedRemoteInputScheduler(legacy, 41), true);
+  assert.equal(sequence, 41);
+  assert.equal(api.seedRemoteInputScheduler({ lastSequence: () => 0 }, 41), false);
+});
+
 test("media negotiation uses existing owner/controller authorization and accepts only receive-only viewer descriptors", async () => {
   const media = { provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "session", user_id: "viewer", publisher_id: "desktop", token: "opaque", timestamp: 2000000000, expires_at: "2033-05-18T03:33:20Z", role: "viewer", track: "screen", camera: false, microphone: false };
   const calls = mockFetch(() => ({ status: 200, body: { media, media_status: { state: "publishing", geometry: { display_id: "monitor-2", width: 1920, height: 1080 } } } }));

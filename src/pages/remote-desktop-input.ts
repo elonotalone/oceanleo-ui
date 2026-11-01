@@ -357,6 +357,15 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "network_error":
     case "stream_failed":
       return "网络连接中断，请重新连接。";
+    case "request_timeout":
+      return "这台电脑的服务迟迟没有回应，请检查网络后重新连接。";
+    case "reconnect_timeout":
+    case "viewer_lost":
+      return "网络中断太久，远程会话已结束。请检查网络后重新连接。";
+    case "viewer_not_attached":
+      return "没有连上这台电脑的画面，会话已结束，未扣费。请重新连接。";
+    case "viewer_replaced":
+      return "这次远程会话已在另一个窗口打开。";
     case "input_ack_unknown":
     case "input_backlog_timeout":
       return "无法确认最后的输入是否执行，已停止控制并尝试释放按键。请检查电脑状态后重新连接，不要重复提交未确认的操作。";

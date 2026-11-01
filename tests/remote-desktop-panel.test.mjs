@@ -168,66 +168,68 @@ test("a full keyboard backlog keeps the frame, shows queue-busy copy, and clears
   assert.equal(view.screen().querySelector("[data-remote-input-status]").textContent, notice, "recovery must preserve unrelated newer notices");
 });
 
-for (const reason of ["network_error", "stream_failed"]) test(`${reason} reconnects once with a fresh session and drops old input`, async () => {
+for (const reason of ["network_error", "stream_failed"]) test(`${reason} on the socket re-attaches to the SAME session: no new request, consent or bill`, async () => {
+  let sessions = 0, current;
+  const opens = [];
+  const streams = [];
+  const view = await mount({ pending: true, overrides: {
+    async createSession() { return { ok: true, data: { session_id: `session-${++sessions}`, state: "connecting", transport: "websocket-v2", expires_at: "" } }; },
+    async openStream(_device, session, callbacks, options) {
+      opens.push({ session, floor: options?.sequenceFloor ?? 0 });
+      const sent = [];
+      const stream = { send(action) { sent.push(action); return true; }, acknowledgeFrame() {}, close() {}, lastSequence: () => 41, sent };
+      streams.push(stream);
+      current = callbacks;
+      callbacks.state("active");
+      return { ok: true, data: stream };
+    },
+  } });
+  await act(async () => current.error(reason));
+  await settle();
+  assert.equal(sessions, 1, "no second session request");
+  assert.deepEqual(view.log.closes, [], "the session is kept, not deleted");
+  assert.deepEqual(opens.map((open) => open.session), ["session-1", "session-1"]);
+  assert.equal(opens[1].floor, 42, "input numbering continues above the lost socket");
+  assert.deepEqual(streams[1].sent[0], { kind: "release_all" }, "anything held before the drop is released first");
+  assert.equal(view.screen().getAttribute("data-remote-phase"), "active");
+  assert.equal(view.screen().getAttribute("data-remote-reconnecting"), null);
+});
+
+test("while re-attaching the panel says so, blocks input, and backs off until the network is back", async () => {
+  let attempts = 0, current;
+  const view = await mount({ pending: true, overrides: {
+    async openStream(_device, _session, callbacks) {
+      attempts++;
+      current = callbacks;
+      if (attempts === 1) { callbacks.state("active"); return { ok: true, data: { send() { return true; }, acknowledgeFrame() {}, close() {} } }; }
+      if (attempts < 3) return { ok: false, error: "network_error" };
+      callbacks.state("active");
+      return { ok: true, data: { send() { return true; }, acknowledgeFrame() {}, close() {} } };
+    },
+  } });
+  await act(async () => current.error("network_error"));
+  assert.ok(attempts >= 2);
+  assert.match(view.screen().textContent, /网络连接中断，正在重新连接/);
+  assert.equal(view.screen().getAttribute("data-remote-reconnecting"), "true");
+  await settle(700);
+  assert.equal(attempts, 3);
+  assert.equal(view.screen().getAttribute("data-remote-reconnecting"), null);
+  assert.doesNotMatch(view.screen().textContent, /正在重新连接/);
+});
+
+test("a session the gateway closed is final: no automatic new session", async () => {
   let sessions = 0;
   const view = await mount({ overrides: {
     async createSession() { return { ok: true, data: { session_id: `session-${++sessions}`, state: "connecting", transport: "websocket-v2", expires_at: "" } }; },
   } });
-  await view.key("keydown", "Enter");
-  await view.pointer("pointerdown");
-  await view.pointer("pointermove", 700, 300);
-  const oldHandlers = view.handlers();
-  await act(async () => oldHandlers.state("closed", reason));
-  await settle();
-  assert.equal(sessions, 2);
-  assert.deepEqual(view.log.closes, ["session-1"]);
-  assert.equal(view.image(), null, "old pixels do not authorize control on the new session");
-  assert.equal(view.input().disabled, true);
-  await view.fire(view.stage(), new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
-  await act(async () => { oldHandlers.frame({ image: "old", width: 1920, height: 1080, sequence: 9 }); oldHandlers.error(reason); });
-  assert.equal(view.image(), null, "late frames and failures belong to the old session");
-  await view.frame(2);
-  await view.key("keyup", "Enter");
-  assert.equal(view.log.inputs.filter((action) => action.kind === "key_down").length, 1);
-  assert.equal(view.log.inputs.some((action) => action.kind === "move"), false, "unsent motion was discarded");
-  assert.equal(view.log.inputs.some((action) => action.kind === "key_up"), false, "old held keys were discarded");
-  await act(async () => view.handlers().error(reason));
-  await settle();
-  assert.equal(sessions, 2, "the automatic retry allowance does not reset on a successful connection");
-  assert.match(view.screen().textContent, /网络连接中断/);
-  assert.doesNotMatch(view.screen().textContent, /失去联系/);
-  assert.equal(view.input().disabled, true);
+  await act(async () => view.handlers().state("closed", "network_error"));
+  await settle(1600);
+  assert.equal(sessions, 1);
+  assert.equal(view.screen().getAttribute("data-remote-phase"), "error");
+  assert.match(view.screen().textContent, /网络连接中断，请重新连接/);
   await act(async () => view.screen().querySelector("[data-remote-connect]").click());
   await settle();
-  assert.equal(sessions, 3);
-  await act(async () => view.handlers().error(reason));
-  await settle();
-  assert.equal(sessions, 4, "a manual reconnect grants a fresh single automatic retry");
-});
-
-test("automatic reconnect waits for the old session to close and reports the network interruption", async () => {
-  let sessions = 0, finishClose;
-  const view = await mount({ overrides: {
-    async createSession() { return { ok: true, data: { session_id: `session-${++sessions}`, state: "connecting", transport: "websocket-v2", expires_at: "" } }; },
-    closeSession() { return new Promise((resolve) => { finishClose = resolve; }); },
-  } });
-  await act(async () => view.handlers().error("network_error"));
-  assert.equal(sessions, 1);
-  assert.match(view.screen().textContent, /网络连接中断，正在重新连接/);
-  await act(async () => finishClose({ ok: true }));
-  await settle();
-  assert.equal(sessions, 2);
-});
-
-test("an unreachable cleanup request cannot prevent the single automatic reconnect", async () => {
-  let sessions = 0;
-  const view = await mount({ overrides: {
-    async createSession() { return { ok: true, data: { session_id: `session-${++sessions}`, state: "connecting", transport: "websocket-v2", expires_at: "" } }; },
-    closeSession() { return new Promise(() => {}); },
-  } });
-  await act(async () => view.handlers().error("network_error"));
-  await settle(1600);
-  assert.equal(sessions, 2);
+  assert.equal(sessions, 2, "only the person's click asks the computer again");
 });
 
 test("only an explicit device_lost reports lost computer contact and never reconnects automatically", async () => {
