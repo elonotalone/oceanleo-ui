@@ -13,7 +13,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import {
@@ -753,12 +753,15 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
   const [sel, setSel] = useWorkspaceSelection("history");
   const pathname = usePathname() || "";
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, setPending] = useState<HistoryListEntry | null>(null);
   // 宗旨 v22：Manus 式任务菜单 —— 打开菜单的条目 id、正在重命名的条目 id + 草稿标题。
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [renameFor, setRenameFor] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [moveTarget, setMoveTarget] = useState<HistoryListEntry | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const hoverPrefetch = useHoverPrefetch();
   // The caches the rows feed are kept per signed-in user (task-open-cache).
   // A signed-out read never clears them here (the auth-state event does).
@@ -817,18 +820,69 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     return () => window.removeEventListener("popstate", syncLegacySelection);
   }, [setSel]);
 
+  // The shell opens this subnav with ?search=1. Keep the small search surface
+  // URL-addressable so it survives a refresh and back/forward navigation.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const syncSearch = () => {
+      const params = new URLSearchParams(window.location.search);
+      setSearchOpen(params.get("search") === "1");
+      setSearchQuery(params.get("q") || "");
+    };
+    syncSearch();
+    window.addEventListener("popstate", syncSearch);
+    return () => window.removeEventListener("popstate", syncSearch);
+  }, [pathname, searchParams]);
+
+  const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
+  const visibleItems = useMemo(() => {
+    if (!normalizedSearch) return orderedItems;
+    return orderedItems.filter((entry) => {
+      const record = entry.kind === "session" ? entry.session : entry.task;
+      const project = historyEntryProject(entry);
+      return [record.title, project?.name, project?.id]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase().includes(normalizedSearch));
+    });
+  }, [normalizedSearch, orderedItems]);
+  const visibleLocalTasks = useMemo(() => {
+    if (!normalizedSearch) return localTasks;
+    return localTasks.filter((task) => {
+      const haystack = `${task.title} ${task.path}`.toLocaleLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }, [localTasks, normalizedSearch]);
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    router.replace("/history");
+  };
+
   // 模型选择已移到主区右上角（HistoryDetail），侧栏子栏只列任务本身。
   return (
     <div className="space-y-0.5">
+      {searchOpen ? (
+        <div className="flex items-center gap-1 px-3 py-2" data-history-search>
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={tt("搜索任务")}
+            aria-label={tt("搜索任务")}
+            className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[13px] outline-none focus:border-neutral-400"
+          />
+          <button type="button" onClick={closeSearch} className="leo-tap-icon p-1 text-neutral-500" aria-label={tt("关闭搜索")}>×</button>
+        </div>
+      ) : null}
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(error)}</p>}
       {notice && <p role="alert" data-history-delete-error className="px-3 py-2 text-[12px] text-rose-600">{tt(notice)}</p>}
       {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
-      {!error && !loading && items.length === 0 && localTasks.length === 0 && (
-        <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("还没有任务。")}</p>
+      {!error && !loading && visibleItems.length === 0 && visibleLocalTasks.length === 0 && (
+        <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(normalizedSearch ? "没有匹配的任务。" : "还没有任务。")}</p>
       )}
       {local.error && <p role="status" className="px-3 py-2 text-[12px] text-neutral-400">{tt("无法读取本机任务，请稍后重试。")}</p>}
-      <LocalTaskRows tasks={localTasks} selected={sel} accent={accent} />
-      {orderedItems.filter((entry) => entry.kind !== "task" || !localRemoteIds.has(entry.id)).map((entry) => {
+      <LocalTaskRows tasks={visibleLocalTasks} selected={sel} accent={accent} />
+      {visibleItems.filter((entry) => entry.kind !== "task" || !localRemoteIds.has(entry.id)).map((entry) => {
         const isSession = entry.kind === "session";
         const record = isSession ? entry.session : entry.task;
         const on = entry.id === sel;

@@ -2,9 +2,10 @@
 
 /**
  * 顶部的「谁也在这里」：房间里其他人的头像串。颜色按用户 id 固定，悬停出名字。
- * 断线时在头像旁提示「已断开，恢复网络后会自动合并你的改动」。
+ * 断线时在头像旁提示协作连接状态；文件保存与同步由文件运行时负责。
  * 名字、头像一律当纯文本 / `<img>` 渲染（契约 §10）。
  */
+import { useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { CollabRoom, CollabUser } from "./index";
 import { useCollabRoomVersion } from "./use-collab-room";
@@ -45,9 +46,14 @@ function Avatar({ user, label }: { user: CollabUser; label: string }) {
 export function CollabPresenceBar({ room }: { room: CollabRoom | null }) {
   const tt = useUI();
   useCollabRoomVersion(room);
+  const hadConnection = useRef(false);
   if (!room) return null;
   const peers = room.peers;
-  const offline = room.status === "offline";
+  if (room.status === "syncing" || room.status === "synced") hadConnection.current = true;
+  // A room can be created while an editor is still loading. Do not call that
+  // a collaboration outage unless the room had actually connected before, or
+  // there are peers whose presence is meaningful to preserve.
+  const offline = room.status === "offline" && (hadConnection.current || peers.length > 0);
   if (peers.length === 0 && !offline) return null;
   const shown = peers.slice(0, MAX_AVATARS);
   const more = peers.length - shown.length;
@@ -75,10 +81,10 @@ export function CollabPresenceBar({ room }: { room: CollabRoom | null }) {
       {offline ? (
         <span
           role="status"
-          title={tt("已断开，恢复网络后会自动合并你的改动")}
+          title={tt("协作连接已断开，正在重试")}
           className="max-w-[10rem] truncate text-[11px] text-[var(--awb-muted,#737373)]"
         >
-          {tt("已断开，恢复网络后会自动合并你的改动")}
+          {tt("协作连接已断开，正在重试")}
         </span>
       ) : null}
     </div>
