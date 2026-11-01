@@ -49,6 +49,7 @@ import { SitePuckBridgeContext, SitePuckBridgeHost } from "./WebsiteSitePuckBrid
 import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 import { captureSiteDraft, restoreSiteDraft } from "./website-site-recovery";
 import { useSiteMaterial } from "./use-site-material";
+import { WebsiteWorkbenchPanels } from "../website-platform/WebsiteWorkbenchPanels";
 
 function debugW14(...parts: unknown[]) {
   if (typeof window !== "undefined" && (window as { __W14_DEBUG__?: boolean }).__W14_DEBUG__) {
@@ -104,6 +105,8 @@ export interface WebsiteSiteWorkbenchProps extends AdvancedContentWorkbenchProps
   identity: SiteRevisionIdentity;
   /** The route must not reload the editor when the item moves to a revision we saved. */
   onSavedRevision: (revisionId: string) => void;
+  /** Canonical website-platform project id, when this artifact is linked to a repo. */
+  projectId?: string;
 }
 
 export function WebsiteSiteWorkbench(props: WebsiteSiteWorkbenchProps) {
@@ -161,6 +164,7 @@ function SiteEditor({
   identity,
   onSavedRevision,
   initial,
+  projectId,
 }: WebsiteSiteWorkbenchProps & { item: LibraryItem; initial: SiteDoc }) {
   const tt = useUI();
   const history = useMemo(() => createSiteHistory(initial), [initial]);
@@ -433,6 +437,13 @@ function SiteEditor({
                 </SitePuckBridgeContext.Provider>
               </SiteEditorContext.Provider>
             </div>
+            {projectId ? (
+              <WebsiteWorkbenchPanels
+                projectId={projectId}
+                stack={String((item as any).meta?.stack || (item as any).metadata?.stack || "static")}
+                commit={String((item as any).meta?.git_commit || (item as any).metadata?.git_commit || "") || undefined}
+              />
+            ) : null}
           </div>
         ),
         persistence: {

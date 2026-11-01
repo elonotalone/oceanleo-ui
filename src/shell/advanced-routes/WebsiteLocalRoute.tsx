@@ -50,6 +50,7 @@ import { useUI } from "../../i18n/ui/useUI";
 import { SelectionToolbar } from "../SelectionToolbar";
 import { SitePuckBridgeContext, SitePuckBridgeHost } from "../website-local/WebsiteSitePuckBridge";
 import { strictWebsiteSelection, applyStrictWebsiteCommand } from "../website-local/website-strict-bar";
+import { WebsiteWorkbenchPanels } from "../website-platform/WebsiteWorkbenchPanels";
 
 /** Entry text → site-document envelope (bundle `site.json` or structured), else null. */
 export function websiteSiteEnvelopeFromText(text: string): SiteEnvelope | null {
@@ -71,6 +72,14 @@ export function WebsiteLocalRoute({
   onClose,
 }: AdvancedContentWorkbenchProps) {
   const tt = useUI();
+  const projectId = String(
+    (item as any)?.meta?.website_id ||
+      (item as any)?.meta?.project_id ||
+      (item as any)?.metadata?.website_id ||
+      (item as any)?.metadata?.project_id ||
+      (item as any)?.websiteProjectId ||
+      "",
+  );
   const [reloadNonce, setReloadNonce] = useState(0);
   const itemIdentity = `${item?.key || item?.id || ""}:${item?.revisionId || ""}:${item?.artifactId || ""}:${reloadNonce}`;
   const plan = useMemo(
@@ -292,6 +301,7 @@ export function WebsiteLocalRoute({
         onClose={onClose}
         envelope={siteEntry.envelope}
         identity={{ artifactId: siteEntry.artifactId, revisionId: siteEntry.revisionId }}
+        projectId={projectId || undefined}
         onSavedRevision={(revisionId) => ownSavedRevisionsRef.current.add(revisionId)}
       />
     );
@@ -466,6 +476,13 @@ export function WebsiteLocalRoute({
               </SitePuckBridgeContext.Provider>
               </WebsiteStrictThemeContext.Provider>
             </div>
+            {projectId ? (
+              <WebsiteWorkbenchPanels
+                projectId={projectId}
+                stack={String((item as any)?.meta?.stack || (item as any)?.metadata?.stack || "static")}
+                commit={String((item as any)?.meta?.git_commit || (item as any)?.metadata?.git_commit || "") || undefined}
+              />
+            ) : null}
           </div>
         ),
         persistence: {
