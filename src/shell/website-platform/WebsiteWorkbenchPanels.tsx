@@ -7,24 +7,38 @@ import {
   type WebsiteCommit,
   type WebsiteDatabaseTable,
   type WebsiteDeployment,
+  type WebsiteDomain,
   type WebsitePlatformApi,
 } from "../../lib/website-platform-api";
 import { useUI } from "../../i18n/ui/useUI";
 
-type Panel = "preview" | "code" | "history" | "database" | "publish";
+type Panel =
+  | "preview"
+  | "code"
+  | "history"
+  | "dashboard"
+  | "database"
+  | "storage"
+  | "settings"
+  | "publish";
 
 export interface WebsiteWorkbenchPanelsProps {
   projectId: string;
   stack?: string;
   commit?: string;
   api?: WebsitePlatformApi;
+  panel?: Panel;
+  hideTabs?: boolean;
 }
 
 const tabs: Array<[Panel, string]> = [
   ["preview", "预览"],
   ["code", "代码"],
   ["history", "历史"],
+  ["dashboard", "仪表盘"],
   ["database", "数据库"],
+  ["storage", "文件存储"],
+  ["settings", "设置"],
   ["publish", "发布"],
 ];
 
@@ -86,37 +100,42 @@ export function WebsiteWorkbenchPanels({
   stack = "static",
   commit,
   api = websitePlatformApi,
+  panel: controlledPanel,
+  hideTabs = false,
 }: WebsiteWorkbenchPanelsProps) {
   const tt = useUI();
-  const [panel, setPanel] = useState<Panel>("preview");
+  const [internalPanel, setInternalPanel] = useState<Panel>("preview");
+  const panel = controlledPanel || internalPanel;
 
   return (
     <section
       className="border-t border-[var(--awb-border)] bg-[var(--awb-chrome-bg)]"
       data-testid="website-platform-panels"
     >
-      <nav
-        className="flex gap-1 overflow-x-auto px-3 py-2"
-        aria-label={tt("网站工作台")}
-      >
-        {tabs.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            data-testid={`website-panel-${id}`}
-            aria-selected={panel === id}
-            className={`rounded px-2.5 py-1 text-xs ${
-              panel === id
-                ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
-                : "hover:bg-[var(--awb-hover)]"
-            }`}
-            onClick={() => setPanel(id)}
-          >
-            {tt(label)}
-          </button>
-        ))}
-      </nav>
-      <div className="max-h-[42vh] min-h-[180px] overflow-auto border-t border-[var(--awb-border)] p-3 text-sm">
+      {!hideTabs ? (
+        <nav
+          className="flex gap-1 overflow-x-auto px-3 py-2"
+          aria-label={tt("网站工作台")}
+        >
+          {tabs.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              data-testid={`website-panel-${id}`}
+              aria-selected={panel === id}
+              className={`rounded px-2.5 py-1 text-xs ${
+                panel === id
+                  ? "bg-[var(--awb-accent-soft)] text-[var(--awb-accent)]"
+                  : "hover:bg-[var(--awb-hover)]"
+              }`}
+              onClick={() => setInternalPanel(id)}
+            >
+              {tt(label)}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      <div className={`${hideTabs ? "h-full" : "max-h-[42vh] min-h-[180px]"} overflow-auto ${hideTabs ? "" : "border-t border-[var(--awb-border)]"} p-3 text-sm`}>
         {panel === "preview" ? (
           <PreviewPanel projectId={projectId} stack={stack} commit={commit} api={api} />
         ) : null}
@@ -126,7 +145,10 @@ export function WebsiteWorkbenchPanels({
         {panel === "history" ? (
           <HistoryPanel projectId={projectId} commit={commit} api={api} />
         ) : null}
+        {panel === "dashboard" ? <DashboardPanel projectId={projectId} api={api} /> : null}
         {panel === "database" ? <DatabasePanel projectId={projectId} api={api} /> : null}
+        {panel === "storage" ? <StoragePanel projectId={projectId} api={api} /> : null}
+        {panel === "settings" ? <SettingsPanel projectId={projectId} api={api} /> : null}
         {panel === "publish" ? (
           <PublishPanel projectId={projectId} commit={commit} api={api} />
         ) : null}
@@ -399,6 +421,164 @@ function HistoryPanel({
 
 function quoteIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
+}
+
+function formatBytes(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function DashboardPanel({
+  projectId,
+  api,
+}: {
+  projectId: string;
+  api: WebsitePlatformApi;
+}) {
+  const tt = useUI();
+  const state = useLoad(
+    (signal) =>
+      Promise.all([
+        api.project(projectId, signal),
+        api.capabilities(projectId, signal),
+        api.analytics(projectId, undefined, undefined, signal),
+        api.usageSettings(projectId, signal),
+      ]),
+    [api, projectId],
+  );
+  return (
+    <State {...state}>
+      <div className="space-y-4" data-testid="website-dashboard-panel">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard label={tt("网站") } value={state.value?.[0].display_name || state.value?.[0].slug || projectId} />
+          <MetricCard label={tt("技术栈")} value={String(state.value?.[0].stack || state.value?.[0].stack_key || "static")} />
+          <MetricCard label={tt("访问量") } value={String(state.value?.[2].metrics?.page_views ?? "—")} />
+          <MetricCard label={tt("存储用量") } value={formatUsageMetric(state.value?.[3].metrics?.storage)} />
+        </div>
+        <div className="rounded border p-3" data-testid="website-dashboard-cost">
+          <h3 className="font-medium">{tt("用量与成本")}</h3>
+          <p className="mt-1 text-xs opacity-70">{tt("以下读数来自网站项目 API；没有返回的计量保持不可用。")}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(state.value?.[3].metrics || {}).map(([key, metric]) => (
+              <MetricCard key={key} label={key} value={formatUsageMetric(metric)} />
+            ))}
+          </div>
+        </div>
+        <p className="text-xs opacity-70">
+          {tt("权限")}：{String(state.value?.[1].role || state.value?.[0].role || "—")} · {tt("分析状态")}：{String(state.value?.[2].status || "—")}
+        </p>
+      </div>
+    </State>
+  );
+}
+
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded border p-3">
+      <dt className="text-xs opacity-70">{label}</dt>
+      <dd className="mt-1 truncate font-medium" title={value}>{value}</dd>
+    </div>
+  );
+}
+
+function formatUsageMetric(metric: { status?: string; value?: number | null; unit?: string; reason?: string } | undefined): string {
+  if (!metric || metric.status !== "actual" || typeof metric.value !== "number") return metric?.reason || "—";
+  return `${metric.unit === "bytes" ? formatBytes(metric.value) : metric.value.toLocaleString()} ${metric.unit === "bytes" ? "" : metric.unit || ""}`.trim();
+}
+
+function StoragePanel({
+  projectId,
+  api,
+}: {
+  projectId: string;
+  api: WebsitePlatformApi;
+}) {
+  const tt = useUI();
+  const binding = useLoad((signal) => api.storageBinding(projectId, signal), [api, projectId]);
+  const buckets = useLoad((signal) => api.storageBuckets(projectId, signal), [api, projectId]);
+  const [bucket, setBucket] = useState("");
+  useEffect(() => {
+    if (!bucket && buckets.value?.items[0]?.name) setBucket(buckets.value.items[0].name);
+  }, [bucket, buckets.value]);
+  const objects = useLoad(
+    (signal) => (bucket ? api.storageObjects(projectId, bucket, "", "", "", signal) : Promise.resolve({ items: [] })),
+    [api, projectId, bucket],
+  );
+  return (
+    <div className="space-y-4" data-testid="website-storage-panel">
+      <State {...binding}>
+        <p>{tt("文件存储")}: {binding.value?.provider || "—"} · {binding.value?.status || tt("未绑定")}</p>
+        <p className="text-xs opacity-70">{formatBytes(binding.value?.used_bytes)} / {formatBytes(binding.value?.quota_bytes)} · {binding.value?.allowed_prefix || ""}</p>
+      </State>
+      <State {...buckets}>
+        <label className="block text-xs">
+          <span className="mr-2">{tt("存储桶")}</span>
+          <select className="rounded border bg-transparent px-2 py-1" value={bucket} onChange={(event) => setBucket(event.target.value)}>
+            {buckets.value?.items.map((entry) => <option key={entry.name} value={entry.name}>{entry.name}</option>)}
+          </select>
+        </label>
+      </State>
+      <State {...objects}>
+        {objects.value?.items.length ? (
+          <ul className="divide-y rounded border" aria-label={tt("存储文件列表")}>
+            {objects.value.items.map((entry) => <li key={`${entry.path || entry.name}:${entry.updated_at || ""}`} className="flex items-center justify-between gap-2 px-2 py-2 text-xs"><span className="truncate">{entry.path || entry.name}</span><span className="shrink-0 opacity-60">{formatBytes(entry.size)}</span></li>)}
+          </ul>
+        ) : <p className="text-xs opacity-70">{tt("此存储桶还没有文件。")}</p>}
+      </State>
+    </div>
+  );
+}
+
+function SettingsPanel({
+  projectId,
+  api,
+}: {
+  projectId: string;
+  api: WebsitePlatformApi;
+}) {
+  const tt = useUI();
+  const project = useLoad((signal) => api.project(projectId, signal), [api, projectId]);
+  const capabilities = useLoad((signal) => api.capabilities(projectId, signal), [api, projectId]);
+  const domains = useLoad((signal) => api.domains(projectId, signal), [api, projectId]);
+  const secrets = useLoad((signal) => api.secrets(projectId, signal), [api, projectId]);
+  const [domainDraft, setDomainDraft] = useState("");
+  const [notice, setNotice] = useState("");
+  const add = async () => {
+    if (!domainDraft.trim()) return;
+    try {
+      await api.addDomain(projectId, domainDraft.trim());
+      setDomainDraft("");
+      setNotice(tt("域名已添加"));
+    } catch (error) {
+      setNotice(errText(error));
+    }
+  };
+  return (
+    <div className="space-y-4" data-testid="website-settings-panel">
+      <State {...project}>
+        <dl className="grid gap-2 sm:grid-cols-2">
+          <MetricCard label={tt("技术栈")} value={String(project.value?.stack || project.value?.stack_key || "static")} />
+          <MetricCard label={tt("环境")} value={String(project.value?.environment || "production")} />
+          <MetricCard label={tt("仓库") } value={String(project.value?.git_repo || "—")} />
+          <MetricCard label={tt("当前提交")} value={String(project.value?.git_head || "—")} />
+        </dl>
+        {project.value?.env_refs ? <p className="text-xs opacity-70">{tt("环境变量引用")}：{Object.keys(project.value.env_refs).join(", ") || "—"}</p> : null}
+      </State>
+      <State {...capabilities}><p className="text-xs">{tt("权限")}: {String(capabilities.value?.role || "—")} · {Object.entries(capabilities.value?.permissions || {}).filter(([, allowed]) => allowed).map(([name]) => name).join(", ") || "—"}</p></State>
+      <State {...domains}>
+        <div className="space-y-2">
+          <h3 className="font-medium">{tt("域名")}</h3>
+          {(domains.value?.domains || []).map((domain: WebsiteDomain) => <div key={domain.domain} className="flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs"><span>{domain.domain}{domain.is_primary ? ` · ${tt("主域名")}` : ""}</span><span className="opacity-60">{domain.status || "—"}</span></div>)}
+          <div className="flex gap-2"><input aria-label={tt("域名")} className="min-w-0 flex-1 rounded border bg-transparent px-2 py-1 text-xs" value={domainDraft} onChange={(event) => setDomainDraft(event.target.value)} placeholder="example.com" /><button type="button" className="rounded bg-[var(--awb-accent)] px-2 py-1 text-xs text-white" onClick={() => void add()}>{tt("添加")}</button></div>
+        </div>
+      </State>
+      <State {...secrets}><p className="text-xs">{tt("环境变量引用")}: {(secrets.value?.secrets || []).map((secret) => `${secret.name}${secret.environment ? ` (${secret.environment})` : ""}`).join(", ") || "—"}</p></State>
+      {notice ? <p role="status" className="text-xs">{notice}</p> : null}
+    </div>
+  );
 }
 
 function DatabasePanel({

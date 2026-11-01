@@ -60,7 +60,115 @@ export interface WebsitePreview {
   session_id?: string;
 }
 
+export interface WebsiteProjectSummary {
+  project_id?: string;
+  display_name?: string;
+  slug?: string;
+  stack?: WebsiteStack;
+  stack_key?: WebsiteStack;
+  environment?: string;
+  env_refs?: Record<string, string>;
+  git_repo?: string;
+  git_head?: string;
+  working_revision_id?: string | null;
+  published_revision_id?: string | null;
+  role?: string;
+  project_access?: { role?: string; state?: string };
+  [key: string]: unknown;
+}
+
+export interface WebsiteCapabilitySnapshot {
+  role?: string;
+  permissions?: Record<string, boolean>;
+  availability?: Record<string, unknown>;
+  detected?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface WebsiteStorageBinding {
+  provider?: string;
+  allowed_buckets?: string[];
+  allowed_prefix?: string;
+  max_object_bytes?: number;
+  status?: string;
+  quota_bytes?: number | null;
+  used_bytes?: number;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface WebsiteStorageBucket {
+  name: string;
+  public?: boolean;
+  file_size_limit?: number | null;
+  allowed_mime_types?: string[] | null;
+  [key: string]: unknown;
+}
+
+export interface WebsiteStorageObject {
+  name: string;
+  id?: string | null;
+  bucket?: string;
+  path?: string;
+  size?: number;
+  updated_at?: string;
+  created_at?: string;
+  mime_type?: string;
+  [key: string]: unknown;
+}
+
+export interface WebsiteStorageObjects {
+  items: WebsiteStorageObject[];
+  next_cursor?: string | null;
+}
+
+export interface WebsiteDomain {
+  id?: string;
+  domain: string;
+  provider?: string;
+  status?: string;
+  verification?: unknown;
+  certificate_status?: string;
+  is_primary?: boolean;
+  [key: string]: unknown;
+}
+
+export interface WebsiteSecretReference {
+  id?: string;
+  name: string;
+  target?: string;
+  environment?: string;
+  fingerprint?: string;
+  version?: number;
+  updated_at?: string;
+}
+
+export interface WebsiteUsageMetric {
+  status?: string;
+  value?: number | null;
+  unit?: string;
+  reason?: string;
+  [key: string]: unknown;
+}
+
+export interface WebsiteUsageSettings {
+  range?: { start?: string; end?: string; label?: string };
+  metrics?: Record<string, WebsiteUsageMetric>;
+  [key: string]: unknown;
+}
+
+export interface WebsiteAnalyticsSummary {
+  status?: string;
+  range?: { start?: string; end?: string };
+  metrics?: Record<string, number | null>;
+  timeseries?: Array<Record<string, unknown>>;
+  unavailable_metrics?: string[];
+  [key: string]: unknown;
+}
+
 export interface WebsitePlatformApi {
+  project(projectId: string, signal?: AbortSignal): Promise<WebsiteProjectSummary>;
+  capabilities(projectId: string, signal?: AbortSignal): Promise<WebsiteCapabilitySnapshot>;
   history(projectId: string, signal?: AbortSignal): Promise<{ commits: WebsiteCommit[] }>;
   files(projectId: string, revisionId?: string, signal?: AbortSignal): Promise<{ files: WebsiteProjectFile[] }>;
   file(projectId: string, path: string, revisionId?: string, signal?: AbortSignal): Promise<WebsiteProjectFile>;
@@ -72,6 +180,19 @@ export interface WebsitePlatformApi {
   deployments(projectId: string, signal?: AbortSignal): Promise<{ deployments: WebsiteDeployment[] }>;
   publish(projectId: string, revisionId?: string, provider?: string, signal?: AbortSignal): Promise<{ deployment: WebsiteDeployment }>;
   rollback(projectId: string, deploymentId: string, expectedVersion?: string, signal?: AbortSignal): Promise<{ deployment?: WebsiteDeployment }>;
+  storageBinding(projectId: string, signal?: AbortSignal): Promise<WebsiteStorageBinding | null>;
+  storageBuckets(projectId: string, signal?: AbortSignal): Promise<{ items: WebsiteStorageBucket[] }>;
+  storageObjects(projectId: string, bucket: string, prefix?: string, search?: string, cursor?: string, signal?: AbortSignal): Promise<WebsiteStorageObjects>;
+  storageDownload(projectId: string, bucket: string, path: string, signal?: AbortSignal): Promise<{ url: string; expires_at?: string }>;
+  storageDelete(projectId: string, bucket: string, path: string, expectedVersion?: string, signal?: AbortSignal): Promise<{ deleted?: boolean }>;
+  domains(projectId: string, signal?: AbortSignal): Promise<{ domains: WebsiteDomain[] }>;
+  addDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ domain: WebsiteDomain }>;
+  verifyDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ domain: WebsiteDomain }>;
+  setPrimaryDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ domain: WebsiteDomain }>;
+  removeDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ deleted?: boolean }>;
+  secrets(projectId: string, signal?: AbortSignal): Promise<{ secrets: WebsiteSecretReference[] }>;
+  usageSettings(projectId: string, signal?: AbortSignal): Promise<WebsiteUsageSettings>;
+  analytics(projectId: string, start?: string, end?: string, signal?: AbortSignal): Promise<WebsiteAnalyticsSummary>;
 }
 
 async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSignal): Promise<T> {
@@ -110,6 +231,14 @@ export function websiteStaticPreviewUrl(projectId: string, commit: string, path 
 }
 
 export const websitePlatformApi: WebsitePlatformApi = {
+  project: async (projectId, signal) => {
+    const body = await request<{ project?: WebsiteProjectSummary }>(`/v1/website-projects/${segment(projectId)}`, {}, signal);
+    return body.project || {};
+  },
+
+  capabilities: (projectId, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/capabilities`, {}, signal),
+
   history: (projectId, signal) =>
     request(`/v1/website-projects/${segment(projectId)}/create-flow/history`, {}, signal),
 
@@ -198,4 +327,63 @@ export const websitePlatformApi: WebsitePlatformApi = {
       },
       body: JSON.stringify(expectedVersion ? { expected_version: expectedVersion } : {}),
     }, signal),
+
+  storageBinding: async (projectId, signal) => {
+    const body = await request<{ binding?: WebsiteStorageBinding | null }>(`/v1/website-projects/${segment(projectId)}/storage/binding`, {}, signal);
+    return body.binding || null;
+  },
+
+  storageBuckets: (projectId, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/storage/buckets`, {}, signal),
+
+  storageObjects: (projectId, bucket, prefix = "", search = "", cursor = "", signal) => {
+    const query = new URLSearchParams({ bucket, prefix, search, ...(cursor ? { cursor } : {}) });
+    query.set("page_size", "50");
+    return request(`/v1/website-projects/${segment(projectId)}/storage/objects?${query}`, {}, signal);
+  },
+
+  storageDownload: (projectId, bucket, path, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/storage/objects/sign-download`, {
+      method: "POST",
+      body: JSON.stringify({ bucket, path }),
+    }, signal),
+
+  storageDelete: (projectId, bucket, path, expectedVersion, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/storage/objects`, {
+      method: "DELETE",
+      body: JSON.stringify({ bucket, path, ...(expectedVersion ? { expected_version: expectedVersion } : {}) }),
+    }, signal),
+
+  domains: async (projectId, signal) => {
+    const body = await request<{ items?: WebsiteDomain[]; domains?: WebsiteDomain[] }>(`/v1/website-projects/${segment(projectId)}/settings/domains`, {}, signal);
+    return { domains: body.domains || body.items || [] };
+  },
+
+  addDomain: (projectId, domain, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/settings/domains`, { method: "POST", body: JSON.stringify({ domain }) }, signal),
+
+  verifyDomain: (projectId, domain, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/settings/domains/${segment(domain)}/verify`, { method: "POST" }, signal),
+
+  setPrimaryDomain: (projectId, domain, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/settings/domains/${segment(domain)}/primary`, { method: "PUT" }, signal),
+
+  removeDomain: (projectId, domain, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/settings/domains/${segment(domain)}`, { method: "DELETE" }, signal),
+
+  secrets: async (projectId, signal) => {
+    const body = await request<{ items?: WebsiteSecretReference[]; secrets?: WebsiteSecretReference[] }>(`/v1/website-projects/${segment(projectId)}/settings/secrets`, {}, signal);
+    return { secrets: body.secrets || body.items || [] };
+  },
+
+  usageSettings: (projectId, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/settings/usage`, {}, signal),
+
+  analytics: (projectId, start, end, signal) => {
+    const query = new URLSearchParams();
+    if (start) query.set("start", start);
+    if (end) query.set("end", end);
+    const suffix = query.toString() ? `?${query}` : "";
+    return request(`/v1/website-projects/${segment(projectId)}/analytics/summary${suffix}`, {}, signal);
+  },
 };

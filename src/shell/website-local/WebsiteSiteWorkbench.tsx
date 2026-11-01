@@ -50,6 +50,15 @@ import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 import { captureSiteDraft, restoreSiteDraft } from "./website-site-recovery";
 import { useSiteMaterial } from "./use-site-material";
 import { WebsiteWorkbenchPanels } from "../website-platform/WebsiteWorkbenchPanels";
+import { usePluginPage } from "../plugin-chrome/plugin-page-store";
+
+const WEBSITE_AUX_PANELS = [
+  ["code", "源码"],
+  ["dashboard", "仪表盘"],
+  ["database", "数据库"],
+  ["storage", "文件存储"],
+  ["settings", "设置"],
+] as const;
 
 function debugW14(...parts: unknown[]) {
   if (typeof window !== "undefined" && (window as { __W14_DEBUG__?: boolean }).__W14_DEBUG__) {
@@ -363,6 +372,36 @@ function SiteEditor({
   };
 
   const page = doc.pages[pageIndex] || doc.pages[0];
+  const { pageId, setPage } = usePluginPage("website");
+  const activePanel = WEBSITE_AUX_PANELS.some(([id]) => id === pageId)
+    ? (pageId as "code" | "dashboard" | "database" | "storage" | "settings")
+    : null;
+  const websitePages = useMemo(
+    () => ({
+      activePageId: pageId,
+      onSelectPage: (next: string) => setPage(next),
+      aux: WEBSITE_AUX_PANELS.map(([id, label]) => ({
+        id,
+        label,
+        kind: "aux" as const,
+        ...(projectId
+          ? {}
+          : { disabled: true, unavailableReason: "网站项目尚未关联" }),
+      })),
+    }),
+    [pageId, projectId, setPage],
+  );
+  const websiteStage = activePanel && projectId ? (
+    <div className="flex h-full min-h-0 flex-col bg-[var(--awb-stage-bg)]" data-testid={`website-${activePanel}-stage`}>
+      <WebsiteWorkbenchPanels
+        projectId={projectId}
+        stack={String((item as any).meta?.stack || (item as any).metadata?.stack || "static")}
+        commit={String((item as any).meta?.git_commit || (item as any).metadata?.git_commit || "") || undefined}
+        panel={activePanel}
+        hideTabs
+      />
+    </div>
+  ) : null;
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -390,7 +429,8 @@ function SiteEditor({
           <SelectionToolbar context={context} onCommand={onCommand} accent={accent} />
         ) : null,
         ...(notice ? { notices: [{ id: "website-image", text: notice, severity: "warn" as const }] } : {}),
-        stage: (
+        pages: websitePages,
+        stage: websiteStage || (
           <div className="flex h-full min-h-0 flex-col bg-[var(--awb-stage-bg)] text-[var(--awb-text)]" data-testid="website-site-stage" data-website-shape={envelope.kind}>
             {doc.pages.length > 1 ? (
               <div className="flex flex-wrap items-center gap-1 border-b border-[var(--awb-border)] bg-[var(--awb-chrome-bg)] px-3 py-1.5 text-[12px]" data-testid="website-page-bar" role="tablist" aria-label={tt("网站页面")}>
@@ -437,13 +477,6 @@ function SiteEditor({
                 </SitePuckBridgeContext.Provider>
               </SiteEditorContext.Provider>
             </div>
-            {projectId ? (
-              <WebsiteWorkbenchPanels
-                projectId={projectId}
-                stack={String((item as any).meta?.stack || (item as any).metadata?.stack || "static")}
-                commit={String((item as any).meta?.git_commit || (item as any).metadata?.git_commit || "") || undefined}
-              />
-            ) : null}
           </div>
         ),
         persistence: {

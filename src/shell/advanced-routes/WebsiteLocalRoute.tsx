@@ -51,6 +51,15 @@ import { SelectionToolbar } from "../SelectionToolbar";
 import { SitePuckBridgeContext, SitePuckBridgeHost } from "../website-local/WebsiteSitePuckBridge";
 import { strictWebsiteSelection, applyStrictWebsiteCommand } from "../website-local/website-strict-bar";
 import { WebsiteWorkbenchPanels } from "../website-platform/WebsiteWorkbenchPanels";
+import { usePluginPage } from "../plugin-chrome/plugin-page-store";
+
+const WEBSITE_AUX_PANELS = [
+  ["code", "源码"],
+  ["dashboard", "仪表盘"],
+  ["database", "数据库"],
+  ["storage", "文件存储"],
+  ["settings", "设置"],
+] as const;
 
 /** Entry text → site-document envelope (bundle `site.json` or structured), else null. */
 export function websiteSiteEnvelopeFromText(text: string): SiteEnvelope | null {
@@ -79,6 +88,25 @@ export function WebsiteLocalRoute({
       (item as any)?.metadata?.project_id ||
       (item as any)?.websiteProjectId ||
       "",
+  );
+  const { pageId: pluginPageId, setPage: setPluginPage } = usePluginPage("website");
+  const activePanel = WEBSITE_AUX_PANELS.some(([id]) => id === pluginPageId)
+    ? (pluginPageId as "code" | "dashboard" | "database" | "storage" | "settings")
+    : null;
+  const websitePages = useMemo(
+    () => ({
+      activePageId: pluginPageId,
+      onSelectPage: (next: string) => setPluginPage(next),
+      aux: WEBSITE_AUX_PANELS.map(([id, label]) => ({
+        id,
+        label,
+        kind: "aux" as const,
+        ...(projectId
+          ? {}
+          : { disabled: true, unavailableReason: "网站项目尚未关联" }),
+      })),
+    }),
+    [pluginPageId, projectId, setPluginPage],
   );
   const [reloadNonce, setReloadNonce] = useState(0);
   const itemIdentity = `${item?.key || item?.id || ""}:${item?.revisionId || ""}:${item?.artifactId || ""}:${reloadNonce}`;
@@ -327,9 +355,20 @@ export function WebsiteLocalRoute({
             setPluginMode("website", next);
           },
         },
+        pages: websitePages,
         stage: remoteLoading ? (
           <div className="flex h-full items-center justify-center p-8 text-sm" data-testid="website-remote-loading">
             正在读取远程网站工程。
+          </div>
+        ) : activePanel && projectId ? (
+          <div className="flex h-full min-h-0 flex-col bg-[var(--awb-stage-bg)]" data-testid={`website-${activePanel}-stage`}>
+            <WebsiteWorkbenchPanels
+              projectId={projectId}
+              stack={String((item as any)?.meta?.stack || (item as any)?.metadata?.stack || "static")}
+              commit={String((item as any)?.meta?.git_commit || (item as any)?.metadata?.git_commit || "") || undefined}
+              panel={activePanel}
+              hideTabs
+            />
           </div>
         ) : sourceFailed ? (
           <EditorSourceFailurePanel
@@ -476,13 +515,6 @@ export function WebsiteLocalRoute({
               </SitePuckBridgeContext.Provider>
               </WebsiteStrictThemeContext.Provider>
             </div>
-            {projectId ? (
-              <WebsiteWorkbenchPanels
-                projectId={projectId}
-                stack={String((item as any)?.meta?.stack || (item as any)?.metadata?.stack || "static")}
-                commit={String((item as any)?.meta?.git_commit || (item as any)?.metadata?.git_commit || "") || undefined}
-              />
-            ) : null}
           </div>
         ),
         persistence: {

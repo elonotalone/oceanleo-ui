@@ -7,7 +7,7 @@ const api = readFileSync(new URL("../src/lib/website-platform-api.ts", import.me
 const route = readFileSync(new URL("../src/shell/advanced-routes/WebsiteLocalRoute.tsx", import.meta.url), "utf8");
 
 test("website workbench exposes all platform panels and injectable API", () => {
-  for (const id of ["preview", "code", "history", "database", "publish"]) assert.match(panels, new RegExp(`['"]${id}['"]`));
+  for (const id of ["preview", "code", "history", "dashboard", "database", "storage", "settings", "publish"]) assert.match(panels, new RegExp(`['"]${id}['"]`));
   assert.match(panels, /api\?: WebsitePlatformApi/);
   assert.match(panels, /data-testid="website-preview-boot"/);
   assert.match(panels, /保存并提交/);
@@ -19,6 +19,31 @@ test("website workbench exposes all platform panels and injectable API", () => {
 
 test("website platform client covers source, history, database, preview, and deployment routes", () => {
   for (const path of ["create-flow/history", "create-flow/save", "/preview", "/database/usage", "/database/schema", "/database/query", "/deployments"]) assert.match(api, new RegExp(path.replaceAll("/", "\\/")));
+});
+
+test("website platform client covers management, storage, settings, usage, and analytics routes", () => {
+  for (const path of [
+    "/capabilities",
+    "/storage/binding",
+    "/storage/buckets",
+    "/storage/objects",
+    "/storage/objects/sign-download",
+    "/settings/domains",
+    "/settings/secrets",
+    "/settings/usage",
+    "/analytics/summary",
+  ]) assert.match(api, new RegExp(path.replaceAll("/", "\\/")));
+  for (const id of ["website-dashboard-panel", "website-storage-panel", "website-settings-panel"]) {
+    assert.match(panels, new RegExp(`data-testid=\"${id}\"`));
+  }
+});
+
+test("website route declares shared aux pages for code, dashboard, database, storage, and settings", () => {
+  for (const id of ["code", "dashboard", "database", "storage", "settings"]) {
+    assert.match(route, new RegExp(`\\[\\\"${id}\\\"`));
+  }
+  assert.match(route, /pages: websitePages/);
+  assert.match(route, /usePluginPage\("website"\)/);
 });
 
 test("website local route passes linked project id into the workbench", () => {
