@@ -8,6 +8,7 @@
 import { useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { CollabRoom, CollabUser } from "./index";
+import { shouldShowOfflinePresence } from "./collab-presence-status";
 import { useCollabRoomVersion } from "./use-collab-room";
 
 const MAX_AVATARS = 4;
@@ -46,14 +47,22 @@ function Avatar({ user, label }: { user: CollabUser; label: string }) {
 export function CollabPresenceBar({ room }: { room: CollabRoom | null }) {
   const tt = useUI();
   useCollabRoomVersion(room);
-  const hadConnection = useRef(false);
+  // A room can reconnect without any other user ever being present (the task
+  // room does this routinely). Remembering only a successful connection made
+  // that quiet reconnect surface an "offline" pill in agent chat. Keep the
+  // outage indicator tied to a collaborator whose presence we actually saw.
+  const hadPeer = useRef(false);
   if (!room) return null;
   const peers = room.peers;
-  if (room.status === "syncing" || room.status === "synced") hadConnection.current = true;
+  if (peers.length > 0) hadPeer.current = true;
   // A room can be created while an editor is still loading. Do not call that
   // a collaboration outage unless the room had actually connected before, or
   // there are peers whose presence is meaningful to preserve.
-  const offline = room.status === "offline" && (hadConnection.current || peers.length > 0);
+  const offline = shouldShowOfflinePresence({
+    status: room.status,
+    peerCount: peers.length,
+    hadPeer: hadPeer.current,
+  });
   if (peers.length === 0 && !offline) return null;
   const shown = peers.slice(0, MAX_AVATARS);
   const more = peers.length - shown.length;
