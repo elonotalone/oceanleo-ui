@@ -248,7 +248,10 @@ export const deviceSettingsClient: DeviceSettingsClient = {
   async startOperation(deviceId, operation, signal) {
     const registered = await registerController(signal);
     if (!registered.ok) return { ...registered, data: undefined };
-    const response = await request<unknown>(`${base(deviceId)}/settings/operations`, { method: "POST", body: JSON.stringify(operation) }, signal);
+    // `expires_at` is read-only state the device reports; the gateway rejects it as an extra field (422).
+    // The lease length travels as `duration_minutes`.
+    const body = operation.kind === "remote_access.update" ? (({ expires_at: _readOnly, ...rest }) => rest)(operation) : operation;
+    const response = await request<unknown>(`${base(deviceId)}/settings/operations`, { method: "POST", body: JSON.stringify(body) }, signal);
     if (!response.ok) return { ...response, data: undefined };
     const data = parseSettingsOperation(response.data);
     return data ? { ...response, data } : malformed(response);
