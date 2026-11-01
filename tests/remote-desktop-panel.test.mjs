@@ -329,7 +329,7 @@ for (const code of ["input_permission_required", "input_unavailable", "input_rel
   else assert.doesNotMatch(view.screen().textContent, /辅助功能|权限/);
 });
 
-for (const [code, reason] of [["remote_desktop_other_gateway", "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端"], ["remote_desktop_unavailable", "联系不上这台电脑上的 OceanLeo"]]) test(`${code}: top bar says only 已断开, the center shows the full reason once`, async () => {
+for (const [code, reason] of [["remote_desktop_other_gateway", "这台电脑在线，但连在另一个 OceanLeo 服务上，当前页面无法控制。请让电脑连接到与此页面相同的 OceanLeo 站点后，再点「重新连接」。"], ["remote_desktop_unavailable", "联系不上这台电脑上的 OceanLeo"]]) test(`${code}: top bar says only 已断开, the center shows the full reason once`, async () => {
   // `pending` only skips the helper's initial frame injection; createSession itself fails.
   const view = await mount({ pending: true, overrides: { async createSession() { return { ok: false, error: code, status: 409 }; } } });
   await settle(40);

@@ -396,7 +396,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "controller_identity_unavailable":
       return "无法保存此设备的身份，请允许本地存储后重试。";
     case "remote_desktop_other_gateway":
-      return "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端";
+      return "这台电脑在线，但连在另一个 OceanLeo 服务上，当前页面无法控制。请让电脑连接到与此页面相同的 OceanLeo 站点后，再点「重新连接」。";
     case "remote_desktop_unavailable":
       return "联系不上这台电脑上的 OceanLeo：它可能没有运行、版本太旧或已断线。请在那台电脑上打开并更新 OceanLeo。";
     case "remote_desktop_unsupported":

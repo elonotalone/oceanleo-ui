@@ -77,14 +77,14 @@ test("17 个语种都有这批词条；拉丁文字语种与英文里都没有�
 });
 
 test("remote_desktop_other_gateway 的文案跟随界面语言：中文页是中文，英文页是英文，「已断开」也是", async () => {
-  const zh = "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端";
+  const zh = "这台电脑在线，但连在另一个 OceanLeo 服务上，当前页面无法控制。请让电脑连接到与此页面相同的 OceanLeo 站点后，再点「重新连接」。";
   const en = await loadUiMessages("en");
-  assert.equal(en[zh], "This computer's OceanLeo is connected to a different server. Update the client to the latest version.");
+  assert.equal(en[zh], "This computer is online, but it is connected to a different OceanLeo server. This page cannot control it until both use the same site. Connect the computer to this site's OceanLeo server, then choose Reconnect.");
   assert.equal(en["已断开"], "Disconnected");
   const zhDict = await loadUiMessages("zh");
   assert.equal(zhDict[zh] ?? zh, zh);
   assert.equal(zhDict["已断开"] ?? "已断开", "已断开");
-  assert.match((await loadUiMessages("zh-TW"))[zh], /另一個伺服器/);
+  assert.match((await loadUiMessages("zh-TW"))[zh], /另一個 OceanLeo 服務/);
 });
 
 test("占位符在译文里原样保留", async () => {

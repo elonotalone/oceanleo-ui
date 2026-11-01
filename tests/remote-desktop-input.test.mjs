@@ -187,7 +187,10 @@ test("B 的真实码：旧客户端/断线与「别人占用」是两句话", ()
 
 test("remote_desktop_other_gateway：库里在线但连在另一台网关上，是独立的一句话并且终止会话", () => {
   const other = input.remoteDesktopErrorCopy("remote_desktop_other_gateway", 409);
-  assert.equal(other, "这台电脑的 OceanLeo 连在另一个服务器上，请更新到最新版客户端");
+  assert.equal(other, "这台电脑在线，但连在另一个 OceanLeo 服务上，当前页面无法控制。请让电脑连接到与此页面相同的 OceanLeo 站点后，再点「重新连接」。");
+  assert.match(other, /在线/);
+  assert.match(other, /相同的 OceanLeo 站点/);
+  assert.doesNotMatch(other, /更新到最新版客户端/);
   assert.notEqual(other, input.remoteDesktopErrorCopy("remote_desktop_unavailable", 409));
   assert.notEqual(other, input.remoteDesktopErrorCopy("device_offline", 409));
   assert.ok(input.REMOTE_FATAL_CODES.has("remote_desktop_other_gateway"));
