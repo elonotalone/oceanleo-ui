@@ -4,9 +4,10 @@
 // @oceanleo/ui — 工作台 master-detail（doctrine v4，单一事实源）
 // ----------------------------------------------------------------------------
 // 主站 oceanleo.com/workspace：
-//   app 分区读 my_apps（与 playground「加入工作台」同一套），点开跳子站对应 app 页。
+//   app 分区读 my_apps（与 playground「加入工作台」同一套），点开进入对应子站的
+//   站点作用域工作台；只有没有第一方内嵌 surface 的站点才交给宿主系统浏览器。
 //   旧「放入工作台」写进 my_agents 的功能区条目，若还没出现在 my_apps 里，仍并进
-//   同一张 app 目录，点开同样跳子站，不再 iframe。
+//   同一张 app 目录。
 //   agent 分区只列 site_id=agent 的聊天体，点开才 iframe。
 // WorkspaceSubNav 仍给子站侧栏用，只列聊天 agent，不再把功能区 app 挂进侧栏。
 // ============================================================================
@@ -39,6 +40,7 @@ import {
   type MarketApp,
 } from "../lib/app-market";
 import { capabilityImageKey } from "../lib/app-capability-image";
+import { getClientHostConfig } from "../client-ui/core";
 import { useUI } from "../i18n/ui/useUI";
 import {
   APP_PAGE_FRAME_CLASS,
@@ -48,6 +50,19 @@ import {
 
 function isMarketAuthError(error: unknown): boolean {
   return error instanceof Error && error.name === "MarketAuthError";
+}
+
+function openWorkspaceExternal(url: string): void {
+  const href = url.trim();
+  if (!href) return;
+  const hostOpen = getClientHostConfig()?.openExternal;
+  if (hostOpen) {
+    void hostOpen(href);
+    return;
+  }
+  if (typeof window !== "undefined") {
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
 }
 
 function EmptyDirectoryChrome({
@@ -79,6 +94,37 @@ function EmptyDirectoryChrome({
       <CollectionFilterRow>{tabsBar}</CollectionFilterRow>
       {children}
     </>
+  );
+}
+
+function WorkspaceEmbeddedSurface({
+  source: embedSrc,
+  title,
+  emptyText,
+}: {
+  source: string;
+  title: string;
+  emptyText: string;
+}) {
+  return (
+    <div className="min-h-0 flex-1 p-1.5">
+      {embedSrc ? (
+        <iframe
+          key={embedSrc}
+          src={embedSrc}
+          title={title}
+          className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
+          // UC-3 §8.3：src 先过 workspaceEmbedSrc 的第一方闸门，再复用唯一的可信沙箱策略。
+          sandbox={WORKSPACE_EMBED_SANDBOX}
+          allow="clipboard-write; clipboard-read; fullscreen"
+          allowFullScreen
+        />
+      ) : (
+        <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
+          {emptyText}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -166,6 +212,21 @@ const SITE_ORIGIN_ALIASES: Record<string, string> = {
 };
 
 type WorkspaceAppKind = "market" | "agent";
+
+type WorkspaceApp = {
+  id: string;
+  kind: WorkspaceAppKind;
+  name: string;
+  tagline: string;
+  site_id: string;
+  app_key: string;
+  site_url: string;
+  open_path: string;
+  category: string;
+  icon: string;
+  href: string;
+  capabilityImage: string;
+};
 
 function resolveSiteOrigin(
   siteId: string,
@@ -367,8 +428,8 @@ export function WorkspaceSubNav({
 
 // ----------------------------------------------------------------------------
 // 主区详情（doctrine v7）：右侧主区自带「我的 网站 / app / skill」目录页——选择不再
-// 在左侧窄侧栏。点一个 app/skill → 整页换成它的内嵌功能区 + 右上角「← 返回」回到目录；
-// 网站 tab 的卡片点击直接新开子站。
+// 在左侧窄侧栏。点一个 app/skill → 整页换成它的站点作用域功能区 + 「← 返回」回到目录；
+// 没有第一方内嵌 surface 的网站或 app 由宿主交给系统浏览器。
 // ----------------------------------------------------------------------------
 export interface WorkspaceSiteItem {
   /** site_id（= AgentDef.site_id），用于跳子站。 */
@@ -431,6 +492,7 @@ export function WorkspaceDetail({
   const tt = useUI();
   const { apps: workspaceApps, mine, loading, needsLogin, removeApp } = useWorkspaceApps(siteOrigin);
   const [sel, setSel] = useWorkspaceSelection("workspace");
+  const [activeApp, setActiveApp] = useState<WorkspaceApp | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("app");
 
   const mySkills = useMemo(() => mine.filter((a) => (a.site_id || "") === SKILL_SITE_ID), [mine]);
@@ -445,6 +507,16 @@ export function WorkspaceDetail({
   const embedSrc = useMemo(
     () => workspaceEmbedSrc(siteOrigin, active),
     [active, siteOrigin],
+  );
+  const appEmbedSrc = useMemo(
+    () => activeApp
+      ? workspaceEmbedSrc(siteOrigin, {
+          agent_id: activeApp.id,
+          site_id: activeApp.site_id,
+          fn_id: activeApp.app_key,
+        })
+      : "",
+    [activeApp, siteOrigin],
   );
 
   const pageTitle = (
@@ -482,7 +554,31 @@ export function WorkspaceDetail({
     </div>
   );
 
-  // ── 选中一个 agent：整页换成内嵌功能区。成品 app 不再走这条，点开直接跳子站。 ──
+  // ── 选中一个 app/agent：整页换成该站自己的、站点作用域的工作台。 ──
+  // 成品 app 只有在第一方站点明确通过 workspaceEmbedSrc 闸门时才内嵌；
+  // 没有该 surface 的站点由 onOpen 走宿主系统浏览器，绝不伪造主站副本。
+  if (activeApp) {
+    return (
+      <div className="flex h-[calc(100dvh-1px)] flex-col" data-workspace-app-surface={activeApp.id}>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <BackButton onClick={() => setActiveApp(null)} />
+            <span className="min-w-0 truncate text-[13px] font-medium text-stone-600">
+              {activeApp.icon ? `${activeApp.icon} ` : ""}
+              {activeApp.name}
+            </span>
+          </div>
+        </div>
+        <WorkspaceEmbeddedSurface
+          source={appEmbedSrc}
+          title={activeApp.name}
+          emptyText={tt("该 app 所属站点暂未接入内嵌工作台。")}
+        />
+      </div>
+    );
+  }
+
+  // ── 选中一个 agent：整页换成内嵌功能区。 ──
   if (active) {
     return (
       <div className="flex h-[calc(100dvh-1px)] flex-col">
@@ -495,24 +591,11 @@ export function WorkspaceDetail({
             </span>
           </div>
         </div>
-        <div className="min-h-0 flex-1 p-1.5">
-          {embedSrc ? (
-            <iframe
-              key={active.agent_id}
-              src={embedSrc}
-              title={active.name}
-              className="h-full w-full rounded-2xl border border-stone-200 bg-white/60"
-              // UC-3 §8.3：embedSrc 已被证明是第一方子站工作台地址，才配这一档沙箱。
-              sandbox={WORKSPACE_EMBED_SANDBOX}
-              allow="clipboard-write; clipboard-read; fullscreen"
-              allowFullScreen
-            />
-          ) : (
-            <div className="grid h-full place-items-center rounded-2xl border border-stone-200 bg-white/60 p-8 text-center text-sm text-stone-400">
-              {tt("该 app 所属站点暂未接入内嵌工作台。")}
-            </div>
-          )}
-        </div>
+        <WorkspaceEmbeddedSurface
+          source={embedSrc}
+          title={active.name}
+          emptyText={tt("该 app 所属站点暂未接入内嵌工作台。")}
+        />
       </div>
     );
   }
@@ -603,7 +686,7 @@ export function WorkspaceDetail({
             emptyText={tt("暂无网站。")}
             onOpen={(it) => {
               const s = sites.find((x) => x.key === it.id);
-              if (s) window.open(s.href, "_blank", "noopener,noreferrer");
+              if (s) openWorkspaceExternal(s.href);
             }}
           />
         )
@@ -629,7 +712,19 @@ export function WorkspaceDetail({
             openLabel={tt("打开")}
             onOpen={(it) => {
               const app = workspaceApps.find((entry) => entry.id === it.id);
-              if (app?.href) openMarketApp(app);
+              if (!app) return;
+              const candidate = workspaceEmbedSrc(siteOrigin, {
+                agent_id: app.id,
+                site_id: app.site_id,
+                fn_id: app.app_key,
+              });
+              if (candidate) {
+                setActiveApp(app);
+                return;
+              }
+              if (app.href) {
+                openMarketApp(app, getClientHostConfig()?.openExternal);
+              }
             }}
             onDelete={(it) => {
               const app = workspaceApps.find((entry) => entry.id === it.id);

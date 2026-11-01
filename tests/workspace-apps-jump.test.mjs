@@ -61,12 +61,35 @@ test("没有子站 origin 时不许 window.open 主站相对路径", () => {
   }
 });
 
-test("主站工作台 app 分区读 my_apps，点开跳子站而不是 iframe", async () => {
+test("宿主提供外部打开器时，成品 app 不调用 WebView window.open", () => {
+  const opened = [];
+  const external = [];
+  const prev = globalThis.window;
+  globalThis.window = { open: (...args) => opened.push(args) };
+  try {
+    const href = openMarketApp(
+      { site_url: "https://image.oceanleo.com", open_path: "", app_key: "poster" },
+      (url) => external.push(url),
+    );
+    assert.equal(href, "https://image.oceanleo.com/workspace/poster");
+    assert.deepEqual(external, [href]);
+    assert.equal(opened.length, 0);
+  } finally {
+    if (prev === undefined) delete globalThis.window;
+    else globalThis.window = prev;
+  }
+});
+
+test("主站工作台 app 分区读 my_apps，优先打开站点作用域 surface", async () => {
   const source = await readFile("src/shell/WorkspaceMasterDetail.tsx", "utf8");
   assert.match(source, /listMyApps/);
   assert.match(source, /openMarketApp/);
   assert.match(source, /capabilityImageKey/);
   assert.match(source, /workspaceAppJumpUrl/);
+  assert.match(source, /data-workspace-app-surface/);
+  assert.match(source, /workspaceEmbedSrc\(siteOrigin/);
+  assert.match(source, /getClientHostConfig\(\)\?\.openExternal/);
+  assert.match(source, /openWorkspaceExternal\(s\.href\)/);
   assert.match(source, /money:\s*"finance"/);
   assert.match(
     source,

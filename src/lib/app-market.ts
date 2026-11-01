@@ -205,9 +205,13 @@ export function workspaceAppJumpUrl(
 
 export function openMarketApp(
   app: Pick<MarketApp, "site_url" | "open_path" | "app_key">,
+  openExternal?: (url: string) => void | Promise<void>,
 ): string {
   const href = workspaceAppJumpUrl(app);
-  if (href && typeof window !== "undefined") {
+  if (!href) return href;
+  if (openExternal) {
+    void openExternal(href);
+  } else if (typeof window !== "undefined") {
     window.open(href, "_blank", "noopener,noreferrer");
   }
   return href;
