@@ -261,7 +261,7 @@ test("我的任务 page: a refused delete keeps the list and says the computer i
 test("我的任务 sidebar: a refused delete reads as the sentence and the row comes back", async () => {
   const { HistoryInlineList } = await import(await compileModule("src/shell/HistoryMasterDetail.tsx", {
     "../i18n/ui/useUI": ttStub,
-    "next/navigation": dataModule(`export function usePathname(){ return "/history"; } export function useRouter(){ return { push(){}, replace(){}, prefetch(){} }; }`),
+    "next/navigation": dataModule(`export function usePathname(){ return "/history"; } export function useSearchParams(){ return new URLSearchParams(); } export function useRouter(){ return { push(){}, replace(){}, prefetch(){} }; }`),
     "./WorkspaceSelection": dataModule(`export function useWorkspaceSelection(){ return globalThis.React.useState(null); }`),
     "./AgentChat": dataModule(`export function AgentChat(){ return null; }`),
     "./library-task-history": dataModule(`export function LibraryTaskHistoryWorkspace(){ return null; }`),

@@ -130,6 +130,7 @@ const sharedStubs = {
   `),
   "next/navigation": dataModule(`
     export function usePathname(){ return globalThis.__w11Path || "/history"; }
+    export function useSearchParams(){ return new URLSearchParams(); }
     // 稳定引用：HistoryDetail 的加载 effect 依赖 router，新对象会让它每次渲染都重拉。
     const router = {
       push(href){ globalThis.__w11.pushes.push(href); },
