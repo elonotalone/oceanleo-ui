@@ -92,7 +92,7 @@ function CloudAgentRunStatus({run, artifacts, busy, readOnly, onControl}: Status
     <LocalTaskArtifactList artifacts={artifacts} />
     {remote && <Suspense fallback={null}>
       <RemoteDesktopPanel key={remote.deviceId} deviceId={remote.deviceId} deviceName={remote.name} onClose={() => setRemote(null)}
-        consent={consent ?? undefined} ticket={remote.ticket}
+        consent={consent ?? undefined} agentRequest ticket={remote.ticket}
         agent={banner && !readOnly ? {
           text: banner.text,
           handBack: banner.handBack && localAgentCanControl(run, "resume"),

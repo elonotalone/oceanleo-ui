@@ -13,7 +13,7 @@ const { DeviceFolderPicker } = await import(await compileModule("src/pages/devic
 const device = { device_id: "mac-target", device_name: "My Mac", platform: "macos", availability: "online", online: true, local_exec_enabled: false, granted_kinds: ["read"], last_seen_at: null };
 function fakeClient() {
   const calls = { revoke: [], expiry: [], operations: [], reads: 0 };
-  const settings = { controller_id: "viewer-1", availability: "online", preferences_available: true, controllers: [{ grant_id: "grant-1", controller_id: "viewer-1", label: "Chrome · Windows", is_current: true, last_used_at: "2026-10-25T00:00:00Z", expires_at: null, created_at: "2026-10-25T00:00:00Z" }], roots: ["/allowed"], preferences: { default_task_directory: "/allowed/OceanLeo", task_folders: ["/allowed/Projects"] } };
+  const settings = { controller_id: "viewer-1", availability: "online", preferences_available: true, controllers: [{ grant_id: "grant-1", controller_id: "viewer-1", label: "Chrome · Windows", is_current: true, last_used_at: "2026-10-25T00:00:00Z", expires_at: null, created_at: "2026-10-25T00:00:00Z" }], roots: ["/allowed"], preferences: { default_task_directory: "/allowed/OceanLeo", task_folders: ["/allowed/Projects"] }, remote_access: { agent_control_allowed: false, agent_always_ask: true } };
   return { calls, settings,
     async getSettings() { calls.reads += 1; return { ok: true, data: structuredClone(settings) }; },
     async revokeController(id, grantId) { calls.revoke.push([id, grantId]); settings.controllers = []; return { ok: true }; },
@@ -21,6 +21,7 @@ function fakeClient() {
     async startOperation(id, op) {
       calls.operations.push([id, op]);
       if (op.kind === "preferences.update") { settings.preferences = { default_task_directory: op.default_task_directory ?? "/allowed/OceanLeo", task_folders: op.task_folders }; return { ok: true, data: { state: "succeeded", result: { preferences: structuredClone(settings.preferences) } } }; }
+      if (op.kind === "remote_access.update") { settings.remote_access = { agent_control_allowed: op.agent_control_allowed, agent_always_ask: op.agent_always_ask }; return { ok: true, data: { state: "succeeded", result: { remote_access: structuredClone(settings.remote_access) } } }; }
       if (op.path === "/outside") return { ok: true, data: { state: "failed", error: "path_outside_grant" } };
       const listing = op.path === null ? { path: null, parent: null, entries: [{ name: "Allowed", path: "/allowed" }], roots: ["/allowed"] } : { path: op.path, parent: op.path === "/allowed" ? null : "/allowed", entries: op.path === "/allowed" ? [{ name: "Projects", path: "/allowed/Projects" }] : [], roots: ["/allowed"] };
       return { ok: true, data: { state: "succeeded", result: listing } };
@@ -56,6 +57,17 @@ test("target details show real controller/current-device/expiry and revoke persi
     assert.deepEqual(client.calls.revoke, [["mac-target", "grant-1"]]);
     assert.equal(client.calls.reads, 2);
     assert.ok(view.text().includes("暂无已授权设备"));
+  } finally { view.cleanup(); }
+});
+
+test("device settings persist both Agent policy switches through the target operation", async () => {
+  const client = fakeClient();
+  const view = await mount(DeviceSettingsDialog, { device, availability: "online", client, onClose() {}, onControl() {}, onRename: async () => true, onRevoke() {} });
+  try {
+    const switches = [...document.querySelectorAll('input[role="switch"]')];
+    assert.equal(switches.length, 2);
+    await view.click(switches[0]);
+    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", agent_control_allowed: true, agent_always_ask: true }]);
   } finally { view.cleanup(); }
 });
 

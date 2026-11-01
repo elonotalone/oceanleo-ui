@@ -151,6 +151,8 @@ export interface RemoteDesktopRequestOptions {
    * lost on a lossy path) gets the same session back instead of a second consent request.
    */
   requestId?: string;
+  /** The authenticated owner opened this from 我的设备; agent takeover stays consent-gated. */
+  ownerDirect?: boolean;
   /** openStream on re-attach: continue input numbering above this (the previous socket's last seq). */
   sequenceFloor?: number;
 }
@@ -718,7 +720,8 @@ export const remoteDesktopClient: RemoteDesktopClient = {
     if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
     // One request id for every attempt: the gateway hands a retry the session the first
     // attempt created (its reply lost on the way) instead of a second consent request.
-    const body = JSON.stringify({ request_id: options?.requestId ?? newRequestId(), media: ["artc-v1"], first_frame_ack: true });
+    const body = JSON.stringify({ request_id: options?.requestId ?? newRequestId(), media: ["artc-v1"], first_frame_ack: true,
+      ...(options?.ownerDirect === true ? { owner_direct: true } : {}) });
     const started = Date.now();
     let result: RemoteDesktopApiResult<unknown>;
     for (let delay = 500; ; delay = Math.min(delay * 2, 4000)) {

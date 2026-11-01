@@ -31,6 +31,8 @@ export interface RemoteDesktopPanelProps {
    * Banner and hand back only: the media and input paths are unchanged.
    */
   agent?: RemoteDesktopAgentBanner;
+  /** True when this panel was opened as an agent takeover; those requests remain consent-gated. */
+  agentRequest?: boolean;
   /**
    * What to expect while the request waits (C11 contract §2): `direct` = the
    * computer approves this owner's request without a dialog; `ask` = someone
@@ -98,7 +100,7 @@ function mediaFrameMatches(status: RemoteMediaStatus | null, width: number, heig
     && Math.abs(width * geometry.height - height * geometry.width) <= Math.max(geometry.width, geometry.height));
 }
 
-export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, consent, ticket: requested }: RemoteDesktopPanelProps) {
+export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, agentRequest = false, consent, ticket: requested }: RemoteDesktopPanelProps) {
   const tt = useUI();
   // Anonymous per-session quality report: the wrapper measures the client calls; control flow is unchanged.
   const qualityRef = useRef<RemoteDesktopQualityHub | null>(null);
@@ -396,7 +398,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       if (abort.signal.aborted) return;
       mark("request");
       // One id per click; the client retries a lost reply with it (same session back).
-      const result = await client.createSession(deviceId, { signal: abort.signal, requestId: newRequestId() });
+      const result = await client.createSession(deviceId, { signal: abort.signal, requestId: newRequestId(), ownerDirect: !agentRequest });
       if (abort.signal.aborted) {
         if (result.ok && result.data) void client.closeSession(deviceId, result.data.session_id).catch(() => {});
         return;

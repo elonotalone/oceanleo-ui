@@ -96,6 +96,8 @@ const devicesClient = {
   },
 };
 
+globalThis.__OCEANLEO_HOST__ = { bridge: { status: async () => ({ device: { device_id: "d-1" } }) } };
+
 test("英文词典与页面上这三处都不是中文", async () => {
   for (const key of KEYS) {
     const en = EAS_W07_MESSAGES.en[key];
@@ -115,6 +117,8 @@ test("英文词典与页面上这三处都不是中文", async () => {
   assert.equal(text.includes("现在离线"), false);
   assert.match(text, /Offline/);
   assert.doesNotMatch(text, /That switch can only|hasn't allowed remote/);
+  assert.equal(host.querySelector('[data-remote-device-icon="d-1"]'), null, "the desktop's own device has no Enter control");
+  assert.ok(host.querySelector('[data-remote-device-icon="d-2"]'), "other computers keep Enter control");
 
   const settings = host.querySelector('[data-device-settings="d-1"]');
   await act(async () => settings.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
@@ -133,4 +137,5 @@ test("英文词典与页面上这三处都不是中文", async () => {
 
   await act(async () => root.unmount());
   host.remove();
+  delete globalThis.__OCEANLEO_HOST__;
 });

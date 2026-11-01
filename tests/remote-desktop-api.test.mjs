@@ -149,6 +149,20 @@ test("没有登录令牌不发请求", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("owner-direct sessions carry an explicit owner bit; ordinary and agent requests stay consent-gated", async () => {
+  const calls = mockFetch((url) => url.endsWith("/controllers")
+    ? { status: 200, body: { controller_id: "viewer-1" } }
+    : { status: 200, body: { session_id: "s-owner", state: "connecting", transport: "websocket-v2" } });
+  const result = await api.remoteDesktopClient.createSession("device-1", { ownerDirect: true, requestId: "owner_1234" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(JSON.parse(calls.find((call) => call.url.endsWith("/sessions")).init.body), {
+    request_id: "owner_1234", media: ["artc-v1"], first_frame_ack: true, owner_direct: true,
+  });
+  const ordinary = await api.remoteDesktopClient.createSession("device-1", { requestId: "agent_1234" });
+  assert.equal(ordinary.ok, true);
+  assert.equal(JSON.parse(calls.filter((call) => call.url.endsWith("/sessions")).at(-1).init.body).owner_direct, undefined);
+});
+
 test("HTTP 失败解出码；detail 对象 / 字符串 / 顶层 code 都认；409 保留状态", async () => {
   mockFetch(() => ({ status: 409, body: { detail: { code: "session_active" } } }));
   let result = await api.remoteDesktopClient.createSession("d1");

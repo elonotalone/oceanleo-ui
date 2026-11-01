@@ -50,6 +50,21 @@ function desktopFromLocation(): string | null {
   return id && /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
 }
 
+/** The desktop host exposes its own device id through a read-only bridge status.
+ * Web pages have no such id and keep the normal remote entry for every owned device. */
+export async function readLocalDeviceId(): Promise<string | null> {
+  if (typeof globalThis === "undefined") return null;
+  const host = (globalThis as typeof globalThis & { __OCEANLEO_HOST__?: { bridge?: { status?: () => Promise<{ device?: { device_id?: unknown } }> } } }).__OCEANLEO_HOST__;
+  if (typeof host?.bridge?.status !== "function") return null;
+  try {
+    const value = await host.bridge.status();
+    const id = value?.device?.device_id;
+    return typeof id === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The card order while the page is open. The gateway lists devices in storage
  * order, which changes whenever a heartbeat rewrites a row, so cards used to
@@ -101,6 +116,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [tasksId, setTasksId] = useState<string | null>(null);
   const [remoteOpenId, setRemoteOpenId] = useState<string | null>(desktopFromLocation);
+  const [localDeviceId, setLocalDeviceId] = useState<string | null>(null);
   // Set only by a click on 进入桌面. A desktop restored from the URL (reload,
   // back/forward) has none, so it waits for 连接 instead of asking the computer.
   const [desktopTicket, setDesktopTicket] = useState<RemoteDesktopTicket | null>(null);
@@ -118,6 +134,11 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     order.current = ordered.map((device) => device.device_id);
     setDevices(ordered);
   }
+  useEffect(() => {
+    let alive = true;
+    void readLocalDeviceId().then((id) => { if (alive) setLocalDeviceId(id); });
+    return () => { alive = false; };
+  }, []);
   function clearPrivateViews() {
     generation.current += 1;
     order.current = [];
@@ -289,7 +310,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     {pageError && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(pageError)}</p>}
     {remoteOpenId && !selectedRemote && !loading && !loginRequired && !pageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><button type="button" onClick={closeDesktop} className="underline underline-offset-4">{tt("返回设备")}</button></div>}
     <div className="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid data-all-offline={devices.length > 0 && devices.every((item) => deviceAvailability(item, remoteStatus[item.device_id]) !== "online") ? "true" : "false"}>
-      {loading ? <div className="min-h-[300px] animate-pulse rounded-[20px] bg-neutral-100" aria-label={tt("正在加载设备")} /> : devices.map((device) => <DeviceCard key={`${authRevision}-${device.device_id}`} device={device} client={settingsClient} availability={deviceAvailability(device, remoteStatus[device.device_id])} onSettings={() => setSettingsId(device.device_id)} onTasks={() => setTasksId(device.device_id)} onControl={() => openDesktop(device.device_id)} />)}
+      {loading ? <div className="min-h-[300px] animate-pulse rounded-[20px] bg-neutral-100" aria-label={tt("正在加载设备")} /> : devices.map((device) => <DeviceCard key={`${authRevision}-${device.device_id}`} device={device} client={settingsClient} isLocalDevice={device.device_id === localDeviceId} availability={deviceAvailability(device, remoteStatus[device.device_id])} onSettings={() => setSettingsId(device.device_id)} onTasks={() => setTasksId(device.device_id)} onControl={() => openDesktop(device.device_id)} />)}
       {!loading && !loginRequired && <CloudDeviceGrid key={`${authRevision}-${cloudRevision}`} client={cloudClient} onUnauthorized={() => { if (accountGeneration === generation.current) applyDeviceResult({ ok: false, status: 401 }); }} autoFocus={initialTab === "cloud" || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("tab") === "cloud" || window.location.hash === "#cloud"))} />}
       {!loading && !loginRequired && devices.length === 0 && <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[20px] border border-dashed border-neutral-200 px-5 py-10 text-center" data-device-connect-card>
         <DeviceIcon className="h-9 w-9 text-neutral-400" /><p className="mb-5 mt-4 text-base text-neutral-600">{tt(!loading && devices.length === 0 ? "连接你的电脑" : "添加设备")}</p>
@@ -302,7 +323,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     {connecting && <DeviceDialog title={tt("连接我的电脑")} compact onClose={() => setConnecting(false)} testId="connect">
       <form id="device-connect-form" onSubmit={pair}><label className="mb-2 block text-sm text-neutral-500" htmlFor="device-pair-code">{tt("输入客户端的配对码")}</label><div className="flex flex-wrap gap-2"><input id="device-pair-code" aria-label={tt("8 位配对码")} autoComplete="one-time-code" inputMode="text" maxLength={8} value={pairCode} onInput={(event) => { setPairCode(event.currentTarget.value.replace(/\s/g, "")); setPairError(null); }} placeholder={tt("输入 8 位配对码")} className="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 font-mono text-base tracking-widest outline-none focus:border-neutral-400" /><button type="submit" disabled={pairing || pairCode.trim().length !== 8} className={DEVICE_PRIMARY_BUTTON}>{tt(pairing ? "正在配对…" : "连接设备")}</button></div>{pairError && <p role="alert" className="mt-3 text-sm text-red-600">{tt(pairError)}</p>}</form><a className="mt-5 inline-block text-sm text-neutral-500 underline underline-offset-4" href="/download">{tt("下载客户端")}</a>
     </DeviceDialog>}
-    {selectedSettings && <DeviceSettingsDialog key={`${authRevision}-${selectedSettings.device_id}`} device={selectedSettings} availability={deviceAvailability(selectedSettings, remoteStatus[selectedSettings.device_id])} client={settingsClient} onClose={() => setSettingsId(null)} onControl={() => openDesktop(selectedSettings.device_id)} onRename={(name) => rename(selectedSettings, name)} onRevoke={() => { setSettingsId(null); setConfirmRevoke(selectedSettings); }} />}
+    {selectedSettings && <DeviceSettingsDialog key={`${authRevision}-${selectedSettings.device_id}`} device={selectedSettings} isLocalDevice={selectedSettings.device_id === localDeviceId} availability={deviceAvailability(selectedSettings, remoteStatus[selectedSettings.device_id])} client={settingsClient} onClose={() => setSettingsId(null)} onControl={() => openDesktop(selectedSettings.device_id)} onRename={(name) => rename(selectedSettings, name)} onRevoke={() => { setSettingsId(null); setConfirmRevoke(selectedSettings); }} />}
     {selectedTasks && <DeviceTasksDialog key={`${authRevision}-${selectedTasks.device_id}`} deviceId={selectedTasks.device_id} deviceName={selectedTasks.device_name} client={settingsClient} onClose={() => setTasksId(null)} />}
     {selectedRemote && <RemoteDesktopPanel key={`${authRevision}-${selectedRemote.device_id}`} deviceId={selectedRemote.device_id} deviceName={selectedRemote.device_name} client={remoteDesktopClient} onClose={closeDesktop} agent={remoteAgent.agent} consent={remoteAgent.consent} ticket={desktopTicket} />}
     {confirmRevoke && <ConfirmDialog title={tt("撤销「{name}」？", { name: confirmRevoke.device_name })} body={tt("撤销后这台电脑立刻不再接收任何任务，需要重新配对。")} confirmLabel={tt("确认撤销")} danger onConfirm={() => revoke(confirmRevoke)} onCancel={() => setConfirmRevoke(null)} />}

@@ -10,10 +10,11 @@ import { DeviceFolderPicker, FolderIcon } from "./DeviceFolderPicker";
 import { formatDeviceTime } from "./DeviceTasksDialog";
 import { deviceSettingsErrorCopy, runDeviceSettingsOperation } from "./device-settings-state";
 
-export function DeviceSettingsDialog({ device, availability, client, onClose, onControl, onRename, onRevoke }: {
+export function DeviceSettingsDialog({ device, availability, client, isLocalDevice = false, onClose, onControl, onRename, onRevoke }: {
   device: Device;
   availability: DeviceAvailability;
   client: DeviceSettingsClient;
+  isLocalDevice?: boolean;
   onClose: () => void;
   onControl: () => void;
   onRename: (name: string) => Promise<boolean>;
@@ -126,7 +127,7 @@ export function DeviceSettingsDialog({ device, availability, client, onClose, on
           <div className="mt-1"><DeviceStatus availability={effectiveAvailability} /></div>
         </div>
       </div>
-      <div className="relative flex shrink-0 items-center gap-2">{isComputer(device) && <button type="button" className={DEVICE_BUTTON} onClick={onControl}>{tt("进入桌面")}</button>}
+      <div className="relative flex shrink-0 items-center gap-2">{isComputer(device) && !isLocalDevice && <button type="button" className={DEVICE_BUTTON} onClick={onControl}>{tt("进入桌面")}</button>}
         <button type="button" aria-label={tt("更多")} aria-expanded={menu} onClick={() => setMenu((open) => !open)} className="flex h-10 w-10 items-center justify-center rounded-xl text-xl text-neutral-500 hover:bg-neutral-200/70">···</button>
         {menu && <div className="absolute right-0 top-full z-10 mt-1 rounded-xl border border-neutral-200 bg-white p-1 shadow-lg"><button type="button" className="whitespace-nowrap rounded-lg px-4 py-2 text-sm text-red-600 hover:bg-red-50" onClick={onRevoke}>{tt("撤销设备")}</button></div>}
       </div>
@@ -151,7 +152,7 @@ export function DeviceSettingsDialog({ device, availability, client, onClose, on
     </section>
 
     <section className="border-t border-neutral-200 py-7">
-      <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{tt("允许远程访问的设备")}</h3>{isComputer(device) && <button type="button" className={DEVICE_BUTTON} onClick={onControl}><span aria-hidden="true">＋</span>{tt("添加当前设备")}</button>}</div>
+      <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{tt("允许远程访问的设备")}</h3>{isComputer(device) && !isLocalDevice && <button type="button" className={DEVICE_BUTTON} onClick={onControl}><span aria-hidden="true">＋</span>{tt("添加当前设备")}</button>}</div>
       {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings?.controllers.length ? <div className="space-y-2">{settings.controllers.map((grant) => <div key={grant.grant_id} className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 px-4 py-4" data-controller-grant={grant.grant_id}>
         <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-medium">{grant.label}</span>{grant.is_current && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[11px] text-sky-600">{tt("当前设备")}</span>}</div>
           <p className="mt-1 text-xs text-neutral-500">{tt("最近使用：{time}", { time: formatDeviceTime(grant.last_used_at) })}<span className="mx-2" aria-hidden="true">·</span>{grant.expires_at ? tt("有效期至 {time}", { time: formatDeviceTime(grant.expires_at) }) : tt("永不过期")}</p>
