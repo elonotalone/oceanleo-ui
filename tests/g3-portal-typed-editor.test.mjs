@@ -12,6 +12,7 @@ const client = dataModule(`
   export async function listMyArtifacts() { return { ok: true, data: { items: globalThis.__g3library.items, ownerPrincipalId: 'owner', nextCursor: null } }; }
   export async function listFavoriteArtifacts() { return { ok: true, data: { items: [], ownerPrincipalId: 'owner', nextCursor: null } }; }
   export async function getCurrentArtifactItem(id) { return { ok: true, data: globalThis.__g3library.items.find(item => item.artifactId === id) }; }
+  export async function getArtifactItem(id) { return { ok: true, data: globalThis.__g3library.items.find(item => item.artifactId === id) }; }
   export async function prepareArtifactForAction(action, item) {
     globalThis.__g3library.prepared.push({ action, id: item.artifactId });
     if (globalThis.__g3library.hold) await new Promise(resolve => { globalThis.__g3library.release = resolve; });
