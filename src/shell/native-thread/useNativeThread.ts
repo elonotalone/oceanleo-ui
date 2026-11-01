@@ -11,7 +11,7 @@ import type { Computer } from "../../lib/cloud-computer-api";
 import { getComputerTaskTranscript, type ComputerTaskSession } from "../../lib/computer-task-api";
 import { useUI } from "../../i18n/ui/useUI";
 import type { ComposerAttachment } from "../LeoComposer";
-import { composerOccupancy } from "../cloud-computer/agent-dialog/occupancy";
+import { composerOccupancy, pendingUnsentReason } from "../cloud-computer/agent-dialog/occupancy";
 import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
 import { PROGRAM_LABEL, type AgentDialogMessage, type WsProgram } from "../cloud-computer/agent-dialog/types";
 import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
@@ -364,7 +364,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // A reconnect/error frame can leave the controller's old live-turn bit set;
   // without this guard the composer keeps showing Stop forever and cancel has
   // nothing live left to cancel (the exact failure seen on task history pages).
-  const running = live && !terminalRun(session) && (occupancyMode === "working" || dialog.busy);
+  const running = live && (occupancyMode === "working" || (dialog.busy && !terminalRun(session)));
 
   const row = program ? dialog.programs.find((item) => item.id === program) : undefined;
   const name = program ? PROGRAM_LABEL[program] : "";
@@ -445,10 +445,26 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       settlePending(key, blockedNow);
       return;
     }
-    const timer = setTimeout(() => settlePending(key, tt("暂时连不上这台电脑，请稍后重试。")),
+    const reason = pendingUnsentReason({
+      linkUp: dialog.occupancyLink === true && !dialog.offline,
+      offline: dialog.offline,
+      occupancyMode,
+      sessionLoading: dialog.sessionLoading,
+      messages: dialog.messages,
+      sessionId: dialog.activeSession || dialog.draftRef || "",
+    });
+    const reasonText = reason === "connect"
+      ? tt("暂时连不上这台电脑，请稍后重试。")
+      : reason === "busy"
+        ? tt("这段对话还在执行上一步，先停止它再发送。")
+        : reason === "loading"
+          ? tt("这段对话还在打开，请稍后重试。")
+          : tt("没能发出去，请重试。");
+    const timer = setTimeout(() => settlePending(key, reasonText),
       Math.max(0, pending.queuedAt + PENDING_PROMPT_CONNECT_MS - Date.now()));
     return () => clearTimeout(timer);
-  }, [pending, ready, blockedNow, send, settlePending, tt]);
+  }, [pending, ready, blockedNow, send, settlePending, tt, dialog.occupancyLink, dialog.offline,
+    occupancyMode, dialog.sessionLoading, dialog.messages, dialog.activeSession, dialog.draftRef]);
 
   const stop = useCallback(() => {
     if (live) dialog.abort();

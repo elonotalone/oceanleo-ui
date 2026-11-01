@@ -287,6 +287,17 @@ test("nothing known yet: a disabled 正在读取… trigger, or nothing when not
   assert.equal(nativeModelPickerFor({ program: null, computerId: "cc_1", dialog: fakeDialog(), waiting: true }), null);
 });
 
+test("nothing known yet stops spinning after the bounded wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const m = await mount(React.createElement(NativeModelPicker, { program: "codex", models: [], selected: "", onSelect() {}, loading: true }));
+  try {
+    assert.equal(m.q("[data-native-model-trigger]").textContent, "正在读取…");
+    await act(async () => { t.mock.timers.tick(20_000); });
+    assert.equal(m.q("[data-native-model-trigger]").textContent, "暂时读不到模型");
+    assert.equal(m.q("[data-native-model-trigger]").disabled, false);
+  } finally { await m.unmount(); }
+});
+
 // ── Draft (homepage, before the first send) through the real hook ────────────
 
 class FakeSocket {

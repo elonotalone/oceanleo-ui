@@ -7,6 +7,7 @@ import {
   confirmedWaitingSessions,
   occupancyBusyAfterFrame,
   occupancyFresh,
+  pendingUnsentReason,
   OCCUPANCY_STALE_MS,
 } from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
 import { createOccupancyProbe } from "../src/shell/cloud-computer/agent-dialog/occupancy-probe.ts";
@@ -92,6 +93,16 @@ test("composerOccupancy：确认在干活 / 确认空闲", () => {
   assert.equal(composerOccupancy({
     linkUp: false, occupancyAt: null, occupancyBusy: [], sessionId: "s",
   }), "uncertain");
+});
+
+test("queued prompt timeout chooses the state-specific reason", () => {
+  assert.equal(pendingUnsentReason({ linkUp: false, occupancyMode: "uncertain" }), "connect");
+  assert.equal(pendingUnsentReason({ linkUp: true, occupancyMode: "working" }), "busy");
+  assert.equal(pendingUnsentReason({ linkUp: true, occupancyMode: "uncertain", sessionLoading: true }), "loading");
+  assert.equal(pendingUnsentReason({ linkUp: true, occupancyMode: "uncertain", messages: [
+    { kind: "turn", id: "t", acpSession: "s", live: true, stop: "", items: [] },
+  ], sessionId: "s" }), "busy");
+  assert.equal(pendingUnsentReason({ linkUp: true, occupancyMode: "idle" }), "generic");
 });
 
 test("后台 session 的 turn_start/done/error 改 occupancy.busy，空数组也要落地", () => {

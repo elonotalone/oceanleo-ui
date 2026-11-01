@@ -4,6 +4,7 @@ import type { AgentDialogMessage } from "./types";
 /** Probe of whether this ACP session is working. Absence of a reading is not idle. */
 
 export type OccupancyMode = "uncertain" | "working" | "idle";
+export type PendingUnsentReason = "connect" | "busy" | "loading" | "generic";
 
 export const OCCUPANCY_STALE_MS = 6_000;
 export const OCCUPANCY_POLL_MS = 2_000;
@@ -89,6 +90,34 @@ export function composerOccupancy(input: {
     break;
   }
   return fresh ? "idle" : "uncertain";
+}
+
+/** A live turn is evidence of work even before the next occupancy probe arrives. */
+export function liveTurnOpen(messages: readonly AgentDialogMessage[] | undefined, sessionId: string): boolean {
+  const id = sessionId.trim();
+  for (let index = (messages?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const message = messages![index];
+    if (message.kind === "user") break;
+    if (message.kind !== "turn") continue;
+    if (message.acpSession && message.acpSession !== id) continue;
+    return Boolean((message.live && !message.stop) || message.stop === "stopping");
+  }
+  return false;
+}
+
+/** Pick the plain-language reason shown when a queued prompt reaches its deadline. */
+export function pendingUnsentReason(input: {
+  linkUp: boolean;
+  offline?: boolean;
+  occupancyMode: OccupancyMode;
+  sessionLoading?: boolean;
+  messages?: readonly AgentDialogMessage[];
+  sessionId?: string;
+}): PendingUnsentReason {
+  if (input.offline || !input.linkUp) return "connect";
+  if (input.occupancyMode === "working" || liveTurnOpen(input.messages, input.sessionId ?? "")) return "busy";
+  if (input.sessionLoading) return "loading";
+  return "generic";
 }
 
 /** Pixel runner only while occupancy is a confirmed working reading. */

@@ -243,7 +243,7 @@ test("online: opens the bound native session, send carries task_session_id, answ
   } finally { view.cleanup(); }
 });
 
-test("a terminal managed run never keeps the Stop state from a stale live turn", async () => {
+test("a fresh working occupancy keeps Stop reachable even when the managed run row is terminal", async () => {
   FakeSocket.sockets = [];
   globalThis.__taskApi = { async transcript() {
     return { session: session({ run_status: "failed" }), frames: [], saved_at: null, sync_status: "saved", has_older: false, next_before: null };
@@ -261,7 +261,7 @@ test("a terminal managed run never keeps the Stop state from a stale live turn",
       socket.server({ t: "delta", program: "codex", acp_session: "nat-1", text: "stale output" });
       socket.server({ t: "occupancy", program: "codex", busy: ["nat-1"] });
     });
-    assert.equal(globalThis.__thread.running, false);
+    assert.equal(globalThis.__thread.running, true);
   } finally { view.cleanup(); }
 });
 

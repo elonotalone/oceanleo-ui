@@ -247,6 +247,16 @@ export function NativeModelPicker({
   openRequest,
 }: NativeModelPickerProps) {
   const tt = useUI();
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  useEffect(() => {
+    if (!loading) {
+      setLoadingTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => setLoadingTimedOut(true), 20_000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+  const effectiveLoading = loading && !loadingTimedOut;
 
   // Remembered fast / effort for this program and computer: a fresh view
   // starts from the user's last choice for this model, sent through the same
@@ -262,13 +272,13 @@ export function NativeModelPicker({
     for (const { option, wire } of restoresForModel(params, remembered)) onParamRef.current(option, wire);
   }, [fresh, remembered, params, selected]);
 
-  const own = loading ? [] : nativeSettingRows({
+  const own = effectiveLoading ? [] : nativeSettingRows({
     program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort, fastSupported,
   }, tt);
   // The pill names the model only (operator 10-31: not `Opus 5.5 · Auto-accept edits`);
   // a program with no model list names its mode instead.
-  const summary = own.find((row) => row.id === "model")?.value || own.find((row) => row.id === "mode")?.value || fallbackSummary || tt("模式");
-  const rows = decorateRows && !loading ? decorateRows(own) : own;
+  const summary = own.find((row) => row.id === "model")?.value || own.find((row) => row.id === "mode")?.value || fallbackSummary || (loadingTimedOut ? tt("暂时读不到模型") : tt("模式"));
+  const rows = decorateRows && !effectiveLoading ? decorateRows(own) : own;
 
   return (
     <ComposerSettingsMenu
@@ -277,11 +287,11 @@ export function NativeModelPicker({
       onOpenChange={onOpenChange}
       openRequest={openRequest}
       ariaLabel={tt("模型")}
-      loading={loading}
+      loading={effectiveLoading}
       loadingLabel={tt("正在读取…")}
       disabled={disabled}
       className={className}
-      rootAttrs={loading ? { "data-native-model-picker": "", "data-native-model-loading": "" } : { "data-native-model-picker": "" }}
+      rootAttrs={effectiveLoading ? { "data-native-model-picker": "", "data-native-model-loading": "" } : { "data-native-model-picker": "" }}
       triggerAttrs={{ "data-native-model-trigger": "" }}
       summaryAttrs={{ "data-native-model-summary": "" }}
       popoverAttrs={{ "data-native-model-popover": true }}
@@ -366,7 +376,7 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
   const full = computerId && isNativeDialog(dialog) ? dialog : null;
   // Nothing known yet: a waiting trigger. A blocked program (not installed / signed
   // out) or an offline computer still gets the pill: its account and computer rows.
-  if (!known && ((online && waiting) || !full)) return waiting ? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading /> : null;
+  if (!known && !full) return waiting ? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading /> : null;
   const remember = (configId: string, wire: string) => {
     if (controls.memoryModel) rememberModelParam(computerId, program, controls.memoryModel, configId, wire);
   };
@@ -392,6 +402,7 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
     fastSupported: programOffersFast(program),
     remembered: memory[controls.memoryModel],
     fresh: !dialog.activeSession,
+    loading: !known && online && waiting,
   };
   return full
     ? <NativeChatSettings program={program} computerId={computerId} dialog={full} online={online} picker={picker} />
