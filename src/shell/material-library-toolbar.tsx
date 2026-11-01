@@ -152,7 +152,7 @@ export function MaterialShelfToolbar({
       onClick={() => onGoToLevel("primary")}
       className={`${TOOLBAR_BUTTON} ${TOOLBAR_BUTTON_OFF}`}
     >
-      ← {tt("当前 App")}
+      ← {tt("所有素材")}
     </button>
   );
 

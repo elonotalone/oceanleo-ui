@@ -21,6 +21,17 @@ export interface WorkspaceLibraryEntry {
   trustedSearchMatch?: boolean;
   /** Present only for user-owned rows. Curated/platform entries stay read-only. */
   onDelete?: () => Promise<void> | void;
+  /** Optional storefront metadata rendered in the shared detail header. */
+  detail?: {
+    uploader?: string;
+    uploadedAt?: string;
+    priceFen?: number;
+    currency?: string;
+    purchased?: boolean;
+    official?: boolean;
+    assetId?: string;
+    onPurchase?: () => Promise<void> | void;
+  };
 }
 
 /**

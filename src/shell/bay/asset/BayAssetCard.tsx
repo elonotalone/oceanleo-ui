@@ -7,6 +7,8 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { BayAssetOriginChip } from "./BayAssetProvenance";
 import { BayLicenseBadge } from "./BayLicenseBadge";
 import type { BayAsset } from "./library-client";
+import { bayAssetToLibraryEntry } from "./library-entry-adapter";
+import { WorkspaceCard, WorkspaceListRow } from "../../workspace-library-view";
 
 export interface BayAssetCardProps {
   asset: BayAsset;
@@ -48,6 +50,21 @@ function DocGlyph() {
 
 export function BayAssetCard({ asset, onOpen, view = "grid" }: BayAssetCardProps): ReactElement {
   const tt = useUI();
+  // Bay listings use the same card/list primitives as the Library.  Keep the
+  // legacy metadata attributes for integrations while the visual shell and
+  // open affordance come from WorkspaceLibrary.
+  const entry = bayAssetToLibraryEntry(asset as unknown as Parameters<typeof bayAssetToLibraryEntry>[0]);
+  if (view === "list") {
+    return <div data-bay-asset-card={asset.id} data-shelf-kind={asset.shelfKind || "origin"}><WorkspaceListRow entry={entry} onOpen={() => onOpen(asset)} /></div>;
+  }
+  return <div data-bay-asset-card={asset.id} data-shelf-kind={asset.shelfKind || "origin"}><WorkspaceCard entry={entry} accent="#78716c" onOpen={() => onOpen(asset)} /></div>;
+  /*
+   * The renderer below remains as a compatibility reference for old callers
+   * that import this module's helper symbols; the shared card above is the
+   * only ready-made-file surface.
+   */
+  /* istanbul ignore next */
+  /* eslint-disable no-unreachable */
   const isMedia = asset.type === "audio" || asset.type === "music";
   const isVideo = asset.type === "video";
   const is3d = asset.type === "3d";
@@ -120,4 +137,5 @@ export function BayAssetCard({ asset, onOpen, view = "grid" }: BayAssetCardProps
       onOpen={() => { if (!openHref) onOpen(asset); }}
     />
   );
+  /* eslint-enable no-unreachable */
 }

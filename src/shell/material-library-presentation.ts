@@ -164,8 +164,8 @@ export interface MaterialLibraryProps {
  * 查表一律走 `materialLevelLabel`。
  */
 export const MATERIAL_LEVEL_LABEL: Record<string, string> = {
-  primary: "此 app",
-  site: "本站素材",
+  primary: "所有素材",
+  site: "本站精选",
 };
 
 export function materialLevelLabel(level: MaterialLibraryLevel): string {
@@ -175,13 +175,13 @@ export function materialLevelLabel(level: MaterialLibraryLevel): string {
 export function materialLevelSearchPlaceholder(
   level: MaterialLibraryLevel,
 ): string {
-  return level === "primary" ? "筛选当前 App 可编辑素材" : "搜索本站素材";
+  return level === "primary" ? "搜索所有 LeoBay 素材" : "搜索本站精选";
 }
 
 export function materialLevelEmptyTitle(
   level: MaterialLibraryLevel,
 ): string {
-  return level === "primary" ? "当前 App 暂无可编辑素材" : "本站暂无可编辑素材";
+  return level === "primary" ? "暂时没有 LeoBay 素材" : "本站暂时没有精选素材";
 }
 
 export function materialLevelEmptyDescription(
@@ -190,8 +190,8 @@ export function materialLevelEmptyDescription(
 ): string {
   if (level === "primary") {
     return contextMissing
-      ? "当前 App 暂未提供可用素材。"
-      : "这里只显示当前 App 已绑定且可安全编辑的素材。";
+      ? "暂时没有可用素材。"
+      : "这里显示可直接预览的素材。";
   }
   // D1 之后不再有「更多素材」可以指路：本站没有就是没有，不许把读者送去别站的货架。
   return "这里只显示本站已登记的素材；可换一个分区或关键词。";
@@ -309,7 +309,7 @@ export function materialFailureCopy(
   if (status === 401) {
     return {
       title: "登录后访问素材库",
-      description: "登录后可查看当前 App 素材和可编辑模板。",
+      description: "登录后可查看与本站相关的素材和模板。",
     };
   }
   if (status === 403) {

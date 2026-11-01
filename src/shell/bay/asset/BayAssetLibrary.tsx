@@ -13,7 +13,9 @@ import { BaySignInPrompt } from "../shell/BayMine";
 import { BayFilterSelect, BayToolbarFilters, type BayFilterOption } from "../shell/BayFilterSelect";
 import { useBayFeed } from "../shell/use-bay-data";
 import { BayAssetCard } from "./BayAssetCard";
-import { BayAssetDetail } from "./BayAssetDetail";
+import { WorkspaceLibrary } from "../../WorkspaceLibrary";
+import { bayAssetToLibraryEntry } from "./library-entry-adapter";
+import { purchaseBayAsset } from "../../../lib/bay/assets";
 import { BayAssetLive } from "./BayAssetLive";
 import { BayAssetSeries } from "./BayAssetSeries";
 import { BayAssetSellerSite, BayAssetSellers } from "./BayAssetSellers";
@@ -1056,7 +1058,24 @@ export function BayAssetLibrary({
         </div>
       )}
 
-      {active ? <BayAssetDetail asset={active} onClose={closeAsset} /> : null}
+      {active ? (
+        <div className="fixed inset-0 z-[90] bg-black/50 p-4" data-bay-asset-detail>
+          <div className="mx-auto h-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <WorkspaceLibrary
+              entries={[bayAssetToLibraryEntry(active as never, async (assetId) => {
+                await purchaseBayAsset(assetId, { purchase_site: siteKey });
+              })]}
+              openEntryId={`bay:${active.id}`}
+              plain
+              hideToolbar
+              onDetailOpenChange={(open) => { if (!open) closeAsset(); }}
+              allowAdvanced={false}
+              emptyTitle={tt("暂时无法预览")}
+              emptyDescription={tt("这个条目还没有可显示的内容。")}
+            />
+          </div>
+        </div>
+      ) : null}
       <BayArtifactDeepLink accent={accent} />
     </div>
   );
