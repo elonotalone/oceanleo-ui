@@ -72,6 +72,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
   "../i18n/ui/useUI": dataModule(`export function useUI(){ return (value) => value; }`),
   "next/navigation": dataModule(`
     export function usePathname(){ return "/history/s-long"; }
+    export function useSearchParams(){ return new URLSearchParams(); }
     export function useRouter(){ return { push(){}, replace(){}, prefetch(){} }; }
   `),
   "./WorkspaceSelection": dataModule(`

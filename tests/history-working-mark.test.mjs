@@ -90,6 +90,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
   ),
   "next/navigation": dataModule(`
     export function usePathname(){ return "/workspace/poster"; }
+    export function useSearchParams(){ return new URLSearchParams(); }
     export function useRouter(){ return { push(){}, replace(){}, prefetch(){} }; }
   `),
   "./WorkspaceSelection": dataModule(`
