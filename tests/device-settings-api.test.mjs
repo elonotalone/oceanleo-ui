@@ -29,7 +29,7 @@ test("settings/grant/expiry/target folder routes use the same owner-bound contro
     const body = url.endsWith("/controllers") ? { controller_id: "viewer-1" } : url.endsWith("/settings") ? settings : url.includes("/operations/") ? { state: "succeeded", result: { path: "/allowed", parent: null, roots: ["/allowed"], entries: [{ name: "work", path: "/allowed/work" }] } } : url.endsWith("/operations") ? { operation_id: "op-1", state: "pending" } : url.includes("/tasks?") ? { tasks: [{ task_id: "t-1", action_kind: "fs.list", status: "succeeded", created_at: "2026-10-25T00:00:00Z" }] } : {};
     return new Response(JSON.stringify(body), { status: 200 });
   };
-  assert.deepEqual((await api.deviceSettingsClient.getSettings("mac/id")).data, { ...settings, remote_access: { agent_control_allowed: false, agent_always_ask: true } });
+  assert.deepEqual((await api.deviceSettingsClient.getSettings("mac/id")).data, { ...settings, remote_access: { enabled: false, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true } });
   await api.deviceSettingsClient.revokeController("mac/id", "grant/id");
   await api.deviceSettingsClient.shortenControllerExpiry("mac/id", "grant/id", "2026-10-25T12:00:00Z");
   await api.deviceSettingsClient.startOperation("mac/id", { kind: "folders.list", path: "/allowed/work" });

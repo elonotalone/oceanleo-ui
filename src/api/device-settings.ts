@@ -19,6 +19,9 @@ export interface DevicePreferences {
   task_folders: string[];
 }
 export interface DeviceRemoteAccessSettings {
+  enabled: boolean;
+  input_allowed: boolean;
+  expires_at: number | null;
   agent_control_allowed: boolean;
   agent_always_ask: boolean;
 }
@@ -66,7 +69,7 @@ export interface DeviceSettingsClient {
   getSettings(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettings>>;
   revokeController(deviceId: string, grantId: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
   shortenControllerExpiry(deviceId: string, grantId: string, expiresAt: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
-  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences) | ({ kind: "remote_access.update" } & DeviceRemoteAccessSettings), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
+  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences) | ({ kind: "remote_access.update" } & DeviceRemoteAccessSettings & { duration_minutes?: number }), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   getOperation(deviceId: string, operationId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   listTasks(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceTaskSummary[]>>;
 }
@@ -106,6 +109,9 @@ function strings(value: unknown): value is string[] {
 }
 function nullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
+}
+function nullableNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
 }
 function errorCode(data: unknown, status: number): string {
   if (record(data)) {
@@ -174,14 +180,14 @@ export function parseDeviceSettings(value: unknown): DeviceSettings | null {
   if (!["online", "signed_out", "offline"].includes(String(value.availability))) return null;
   const preferences = value.preferences;
   if (!nullableString(preferences.default_task_directory) || !strings(preferences.task_folders)) return null;
-  const remoteAccess = record(value.remote_access) ? value.remote_access : { agent_control_allowed: false, agent_always_ask: true };
-  if (typeof remoteAccess.agent_control_allowed !== "boolean" || typeof remoteAccess.agent_always_ask !== "boolean") return null;
+  const remoteAccess = { enabled: false, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true, ...(record(value.remote_access) ? value.remote_access : {}) };
+  if (typeof remoteAccess.enabled !== "boolean" || typeof remoteAccess.input_allowed !== "boolean" || !nullableNumber(remoteAccess.expires_at) || typeof remoteAccess.agent_control_allowed !== "boolean" || typeof remoteAccess.agent_always_ask !== "boolean") return null;
   const controllers: DeviceControllerGrant[] = [];
   for (const item of value.controllers) {
     if (!record(item) || typeof item.grant_id !== "string" || typeof item.controller_id !== "string" || typeof item.label !== "string" || typeof item.is_current !== "boolean" || !nullableString(item.last_used_at) || !nullableString(item.expires_at) || typeof item.created_at !== "string") return null;
     controllers.push(item as unknown as DeviceControllerGrant);
   }
-  return { controller_id: value.controller_id, controllers, preferences: { default_task_directory: preferences.default_task_directory, task_folders: preferences.task_folders }, remote_access: { agent_control_allowed: remoteAccess.agent_control_allowed, agent_always_ask: remoteAccess.agent_always_ask }, roots: value.roots, availability: value.availability as DeviceAvailability, preferences_available: value.preferences_available };
+  return { controller_id: value.controller_id, controllers, preferences: { default_task_directory: preferences.default_task_directory, task_folders: preferences.task_folders }, remote_access: { enabled: remoteAccess.enabled, input_allowed: remoteAccess.input_allowed, expires_at: remoteAccess.expires_at === null ? null : Number(remoteAccess.expires_at), agent_control_allowed: remoteAccess.agent_control_allowed, agent_always_ask: remoteAccess.agent_always_ask }, roots: value.roots, availability: value.availability as DeviceAvailability, preferences_available: value.preferences_available };
 }
 
 export function parseSettingsOperation(value: unknown): DeviceSettingsOperation | null {
@@ -199,7 +205,9 @@ export function parseSettingsOperation(value: unknown): DeviceSettingsOperation 
     } else if (record(result.preferences) && nullableString(result.preferences.default_task_directory) && strings(result.preferences.task_folders)) {
       operation.result = { preferences: { default_task_directory: result.preferences.default_task_directory, task_folders: result.preferences.task_folders } };
     } else if (record(result.remote_access) && typeof result.remote_access.agent_control_allowed === "boolean" && typeof result.remote_access.agent_always_ask === "boolean") {
-      operation.result = { remote_access: { agent_control_allowed: result.remote_access.agent_control_allowed, agent_always_ask: result.remote_access.agent_always_ask } };
+      const remoteAccess = { enabled: typeof result.remote_access.enabled === "boolean" ? result.remote_access.enabled : false, input_allowed: typeof result.remote_access.input_allowed === "boolean" ? result.remote_access.input_allowed : true, expires_at: nullableNumber(result.remote_access.expires_at) ? result.remote_access.expires_at : null, agent_control_allowed: result.remote_access.agent_control_allowed, agent_always_ask: result.remote_access.agent_always_ask };
+      if (typeof remoteAccess.enabled !== "boolean" || typeof remoteAccess.input_allowed !== "boolean" || !nullableNumber(remoteAccess.expires_at)) return null;
+      operation.result = { remote_access: { enabled: remoteAccess.enabled, input_allowed: remoteAccess.input_allowed, expires_at: remoteAccess.expires_at === null ? null : Number(remoteAccess.expires_at), agent_control_allowed: remoteAccess.agent_control_allowed, agent_always_ask: remoteAccess.agent_always_ask } };
     } else if (nullableString(result.path) && nullableString(result.parent) && strings(result.roots) && Array.isArray(result.entries) && result.entries.every((item) => record(item) && typeof item.name === "string" && typeof item.path === "string")) {
       operation.result = result as unknown as DeviceFolderListing;
     } else return null;

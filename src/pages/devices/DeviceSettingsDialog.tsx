@@ -30,6 +30,7 @@ export function DeviceSettingsDialog({ device, availability, client, isLocalDevi
   const [picker, setPicker] = useState<"default" | "shortcut" | null>(null);
   const [expiryGrant, setExpiryGrant] = useState<DeviceControllerGrant | null>(null);
   const [menu, setMenu] = useState(false);
+  const [remoteDuration, setRemoteDuration] = useState(240);
   const lifetime = useRef<AbortController | null>(null);
 
   async function refresh(signal: AbortSignal) {
@@ -97,13 +98,14 @@ export function DeviceSettingsDialog({ device, availability, client, isLocalDevi
     } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
     finally { if (!signal.aborted) setBusy(false); }
   }
-  async function saveRemoteAccess(remoteAccess: DeviceRemoteAccessSettings) {
+  async function saveRemoteAccess(remoteAccess: DeviceRemoteAccessSettings, durationMinutes = remoteDuration) {
     if (busy) return;
     const signal = lifetime.current!.signal;
     setBusy(true);
     setError(null);
     try {
-      const result = await runDeviceSettingsOperation(client, device.device_id, { kind: "remote_access.update", ...remoteAccess }, signal);
+      const operation = remoteAccess.enabled ? { kind: "remote_access.update" as const, ...remoteAccess, duration_minutes: durationMinutes } : { kind: "remote_access.update" as const, ...remoteAccess };
+      const result = await runDeviceSettingsOperation(client, device.device_id, operation, signal);
       if (signal.aborted) return;
       if (result.ok && result.data?.result && "remote_access" in result.data.result) {
         setSettings((current) => current ? { ...current, remote_access: (result.data!.result as { remote_access: DeviceRemoteAccessSettings }).remote_access } : current);
@@ -112,7 +114,7 @@ export function DeviceSettingsDialog({ device, availability, client, isLocalDevi
     finally { if (!signal.aborted) setBusy(false); }
   }
   const preferences = settings?.preferences;
-  const remoteAccess: DeviceRemoteAccessSettings = settings?.remote_access ?? { agent_control_allowed: false, agent_always_ask: true };
+  const remoteAccess: DeviceRemoteAccessSettings = { enabled: false, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true, ...(settings?.remote_access ?? {}) };
   const effectiveAvailability = availability === "unknown" ? settings?.availability ?? "unknown" : availability;
   const folderReady = effectiveAvailability === "online" && settings?.preferences_available;
 
@@ -137,8 +139,22 @@ export function DeviceSettingsDialog({ device, availability, client, isLocalDevi
 
     <section className="border-t border-neutral-200 py-7">
       <h3 className="mb-2 text-sm font-semibold">{tt("访问与控制")}</h3>
-      <p className="mb-4 text-xs text-neutral-500">{tt("自己的账号访问这台设备会直接连接。Agent 是否可以控制，以及是否每次询问，在这里设置。")}</p>
+      <p className="mb-4 text-xs text-neutral-500">{tt("自己的账号访问这台设备会直接连接。远程访问和云端助手的权限在这里设置。")}</p>
       {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="space-y-3">
+        <label className="flex items-start justify-between gap-4 rounded-2xl border border-neutral-200 p-4">
+          <span><span className="block text-sm font-medium">{tt("允许云端助手使用这台电脑")}</span><span className="mt-1 block text-xs text-neutral-500">{tt("仅你的账号可以开启；到时间会自动关闭，也可以在这台电脑的托盘中停止。")}</span></span>
+          <input type="checkbox" role="switch" checked={remoteAccess.enabled} disabled={busy || effectiveAvailability !== "online"} onChange={(event) => void saveRemoteAccess({ ...remoteAccess, enabled: event.currentTarget.checked })} />
+        </label>
+        <label className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-200 p-4">
+          <span className="text-sm font-medium">{tt("允许操作屏幕（查看、点击、输入）")}</span>
+          <input type="checkbox" role="switch" checked={remoteAccess.input_allowed} disabled={busy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(event) => void saveRemoteAccess({ ...remoteAccess, input_allowed: event.currentTarget.checked })} />
+        </label>
+        <label className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-200 p-4">
+          <span className="text-sm font-medium">{tt("允许时长")}</span>
+          <select aria-label={tt("允许时长")} value={remoteDuration} disabled={busy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(event) => { const value = Number(event.currentTarget.value); setRemoteDuration(value); void saveRemoteAccess(remoteAccess, value); }} className="rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm">
+            <option value={60}>{tt("1 小时")}</option><option value={240}>{tt("4 小时")}</option><option value={480}>{tt("8 小时")}</option><option value={1440}>{tt("24 小时")}</option>
+          </select>
+        </label>
         <label className="flex items-start justify-between gap-4 rounded-2xl border border-neutral-200 p-4">
           <span><span className="block text-sm font-medium">{tt("允许 Agent 控制此设备")}</span><span className="mt-1 block text-xs text-neutral-500">{tt("关闭后，Agent 申请仍会显示，但不会自动获得远程控制。")}</span></span>
           <input type="checkbox" role="switch" checked={remoteAccess.agent_control_allowed} disabled={busy || effectiveAvailability !== "online"} onChange={(event) => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed: event.currentTarget.checked })} />
