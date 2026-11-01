@@ -88,6 +88,11 @@ export function historySessionIdFromPath(
   return segmentAfterBase(pathname, route?.historyBasePath || "/history");
 }
 
+/** ``/tasks/<id>`` — the task page every new and native task opens on. */
+export function taskIdFromPath(pathname: string): string {
+  return segmentAfterBase(pathname, "/tasks");
+}
+
 export function legacyWorkspaceAppId(
   search: string | URLSearchParams,
   route?: Pick<OceanLeoWorkspaceRouteContract, "legacyQueryKeys">,

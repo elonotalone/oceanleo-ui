@@ -5,6 +5,7 @@ import {
   fusionMountPrefix,
   historySessionHref,
   historySessionIdFromPath,
+  taskIdFromPath,
   withFusionMountPrefix,
   workspaceAppHref,
   workspaceAppIdFromPath,
@@ -88,4 +89,11 @@ test("fusion-station mount prefix is added to generated hrefs and ignored on pro
 test("invalid percent encoding never becomes an app identity", () => {
   assert.equal(workspaceAppIdFromPath("/workspace/%E0%A4%A"), "");
   assert.equal(historySessionIdFromPath("/history/%"), "");
+});
+
+test("task pages select their task row", () => {
+  assert.equal(taskIdFromPath("/tasks/a918e5e1-be26-4c7f-8dc6-91235d867d52"), "a918e5e1-be26-4c7f-8dc6-91235d867d52");
+  assert.equal(taskIdFromPath("/en/tasks/abc"), "abc");
+  assert.equal(taskIdFromPath("/tasks"), "");
+  assert.equal(taskIdFromPath("/history/abc"), "");
 });

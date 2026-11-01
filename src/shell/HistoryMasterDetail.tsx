@@ -83,6 +83,7 @@ import { portalHref } from "../contracts/domain-family";
 import {
   historySessionHref,
   historySessionIdFromPath,
+  taskIdFromPath,
   withFusionMountPrefix,
 } from "./workspace-route";
 import {
@@ -837,6 +838,13 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     const pathSession = historySessionIdFromPath(pathname);
     if (pathSession) {
       setSel(pathSession);
+      return;
+    }
+    // Tasks open on /tasks/<id>; that row is the selected one (2026-11-02: the
+    // sidebar showed no selection on every task page).
+    const pathTask = taskIdFromPath(pathname);
+    if (pathTask) {
+      setSel(pathTask);
       return;
     }
     if (!pathname.split("/").filter(Boolean).includes("history")) {
