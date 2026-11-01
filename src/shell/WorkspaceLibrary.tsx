@@ -385,6 +385,7 @@ export function WorkspaceLibrary({
     onCategoryChange?.(next);
   };
   const [selectedId, setSelectedId] = useState(openEntryId || "");
+  const [purchasing, setPurchasing] = useState(false);
   const setDetailSelection = useCallback(
     (id: string) => {
       setSelectedId(id);
@@ -872,6 +873,16 @@ export function WorkspaceLibrary({
           description: selected.description || "",
         },
       };
+    const storefront = selected.detail;
+    const purchase = async () => {
+      if (!storefront?.onPurchase || purchasing || storefront.purchased) return;
+      setPurchasing(true);
+      try {
+        await storefront.onPurchase();
+      } finally {
+        setPurchasing(false);
+      }
+    };
     return (
       <>
       <div
@@ -920,11 +931,28 @@ export function WorkspaceLibrary({
                 {tt(selected.description)}
               </p>
             )}
+            {storefront?.uploader ? (
+              <p data-library-uploader className="mt-0.5 text-[11px] text-[var(--muted,#a8a29e)]">
+                {tt("由 {seller} 于 {time} 上传", { seller: storefront.uploader, time: storefront.uploadedAt || tt("未知时间") })}
+              </p>
+            ) : null}
             {/* 编辑按钮收成一颗之后，「这份素材还挂在别的 app 名下」这件事屏幕上
                 就没有别的地方讲了。这一行归属名单是那个说法的唯一出处，也是用户
                 理解「同一件素材为什么会在别的素材包里再出现一次」的依据。 */}
             <MaterialOwningAppList plan={detailAppPlan} />
           </div>
+          {storefront ? (
+            <div className="flex shrink-0 items-center gap-2" data-library-purchase>
+              <span className="text-[12px] font-semibold text-[var(--fg,#292524)]">
+                {storefront.official ? "0" : storefront.priceFen === 0 ? tt("免费") : `${(storefront.priceFen || 0) / 100} ${storefront.currency || "CNY"}`}
+              </span>
+              {!storefront.purchased && storefront.onPurchase ? (
+                <button type="button" onClick={() => void purchase()} disabled={purchasing} className="rounded-lg bg-[var(--accent,#0f766e)] px-2.5 py-1.5 text-[11px] font-medium text-white disabled:opacity-60">
+                  {purchasing ? tt("处理中…") : storefront.priceFen === 0 ? tt("获取") : tt("购买")}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <MaterialOwningAppEdit
             plan={hostDetailPlan}
             item={workbenchItem}

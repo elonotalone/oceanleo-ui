@@ -31,7 +31,7 @@ const { WorkspaceLibrary } = await import(await compileModule('src/shell/Workspa
   '../i18n/ui/useUI': dataModule('export const useUI = () => text => text;'),
   '../lib/virtual': dataModule('export const pixelsPerRem = () => 16; export const useVirtualGrid = ({itemCount}) => ({startIndex:0,endIndex:itemCount,spacerTop:0,spacerBottom:0,containerProps:{}});'),
   './LibraryLayout': dataModule('export const LibraryChips = () => null; export const LibraryToolbar = () => null;'),
-  './ArtifactActions': dataModule('export const ArtifactActionButtons = () => null; export const artifactActionMatrix = () => ({});'),
+  './ArtifactActions': dataModule(`import { createElement as h } from ${JSON.stringify(reactUrl)}; export const ArtifactActionButtons = () => h('div', {'data-header-actions': true}, ['zoom','edit','favourite','share','download'].map(label => h('button', {key: label, 'aria-label': label}, label))); export const artifactActionMatrix = () => ({});`),
   './library-detail-app-actions': dataModule('export const MaterialOwningAppEdit = () => null; export const MaterialOwningAppList = () => null; export const useMaterialDetailAppPlan = () => ({editRoute:"none"});'),
   './workspace-library-view': leaf,
 }));
@@ -97,6 +97,33 @@ test('visible explicit card click still opens the host canvas', () => mounted(as
   await act(async () => root.render(React.createElement(WorkspaceLibrary, { entries: [entry], onOpenEntry: e => opened.push(e.id) })));
   await act(async () => container.querySelector('[data-card]').click());
   assert.deepEqual(opened, [entry.id]);
+}));
+
+test('composer upload tile opens Library detail with its header actions', () => mounted(async (root, container) => {
+  const upload = {
+    ...entry,
+    id: 'uploaded-entry',
+    title: 'Uploaded reference',
+    detail: { uploader: '作者', uploadedAt: '刚刚' },
+    libraryItem: {
+      id: 'upload-1', artifactType: 'image', kind: 'image', title: 'Uploaded reference', meta: {},
+    },
+  };
+  function Host() {
+    const [selected, setSelected] = React.useState('');
+    return React.createElement(WorkspaceLibrary, {
+      entries: [upload], openEntryId: selected,
+      onOpenEntry: item => setSelected(item.id),
+    });
+  }
+  await act(async () => root.render(React.createElement(Host)));
+  await act(async () => container.querySelector('[data-card]').click());
+  await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+  assert.ok(container.querySelector('[data-detail]'));
+  assert.ok(container.querySelector('[data-library-uploader]'));
+  for (const label of ['zoom', 'edit', 'favourite', 'share', 'download']) {
+    assert.ok(container.querySelector(`[data-header-actions] [aria-label="${label}"]`), label);
+  }
 }));
 
 test('hidden late explicit preview action also restores only local selection', () => mounted(async (root, container) => {
