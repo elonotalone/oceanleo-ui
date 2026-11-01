@@ -167,7 +167,9 @@ import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAg
 import { useTaskLoadingReport } from "./task-loading-gate";
 import { placeConversationScroll, rememberConversationScroll, scrollPaneShown } from "./task-scroll-memory";
 import { isStaleTaskSeed } from "./history-detail-cache";
-import { notifyHistoryActivity } from "../lib/history-events";
+import { HISTORY_CHANGED_EVENT, notifyHistoryActivity } from "../lib/history-events";
+
+const HISTORY_TITLE_CHANGED_EVENT = "oceanleo:history-title-changed";
 import {
   isPartialTaskSeed,
   markPartialTaskSeed,
@@ -996,6 +998,20 @@ function AgentChatInner({
   useEffect(() => {
     if (taskId) noteFirstVisibleReply(taskId, messages);
   }, [taskId, messages]);
+
+  // HistorySubNav polls the task rows independently of this chat. Native
+  // computer tasks receive their generated title there first, so listen for
+  // the row update and keep the header in sync while the chat stays mounted.
+  useEffect(() => {
+    if (!taskId || typeof window === "undefined") return;
+    const onHistoryChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ taskId?: string; title?: string }>).detail;
+      const title = detail?.title?.trim();
+      if (detail?.taskId === taskId && title) setTaskTitle(title);
+    };
+    window.addEventListener(HISTORY_TITLE_CHANGED_EVENT, onHistoryChanged);
+    return () => window.removeEventListener(HISTORY_TITLE_CHANGED_EVENT, onHistoryChanged);
+  }, [taskId]);
 
   // 「找人帮忙」在任务页自动带上当前任务；只读（别人的任务、回放）不带。
   useEffect(() => {

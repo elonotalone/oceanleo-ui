@@ -96,6 +96,8 @@ import {
 } from "./HistoryRowActions";
 import { HistoryRowFrame } from "./HistoryRowBubble";
 
+const HISTORY_TITLE_CHANGED_EVENT = "oceanleo:history-title-changed";
+
 export type { RestorableAppSession } from "./history-model";
 
 /** 侧栏行上的项目标注（合同 §3.7 / D11）。 */
@@ -455,6 +457,28 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       }).filter(
         (entry) => !deletingRef.current.has(`${entry.kind}:${entry.id}`),
       );
+      // The sidebar is the first live source to see native task auto-titles and
+      // renames. Carry those row updates over the existing history channel so
+      // an AgentChat mounted for the same task can update its header without a
+      // remount or a page refresh.
+      if (typeof window !== "undefined") {
+        const previous = historyListCache.get(cacheKey) ?? [];
+        const previousTitles = new Map<string, string>();
+        for (const entry of previous) {
+          const taskId = entry.kind === "session" ? entry.session.task_id : entry.task.id;
+          const title = entry.kind === "session" ? entry.session.title : entry.task.title;
+          if (taskId) previousTitles.set(taskId, String(title || ""));
+        }
+        for (const entry of next) {
+          const taskId = entry.kind === "session" ? entry.session.task_id : entry.task.id;
+          const title = String(entry.kind === "session" ? entry.session.title : entry.task.title || "").trim();
+          if (taskId && title && previousTitles.get(taskId) !== title) {
+            window.dispatchEvent(new CustomEvent(HISTORY_TITLE_CHANGED_EVENT, {
+              detail: { taskId, title },
+            }));
+          }
+        }
+      }
       historyListCache.set(cacheKey, next);
       setItems((prev) => (sameHistory(prev, next) ? prev : next));
       return true;
@@ -649,6 +673,14 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         setItems(prev);
         setError(tt("操作失败，请稍后重试。"));
         return false;
+      }
+      if (typeof window !== "undefined") {
+        const taskId = entry.kind === "session" ? entry.session.task_id : entry.task.id;
+        if (taskId && patch.title?.trim()) {
+          window.dispatchEvent(new CustomEvent(HISTORY_TITLE_CHANGED_EVENT, {
+            detail: { taskId, title: patch.title.trim() },
+          }));
+        }
       }
       setError(null);
       // 网关给的项目名才是准的：换项目后静默刷新一次拿回 `project` 标注。

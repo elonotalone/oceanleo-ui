@@ -517,6 +517,22 @@ test("回答出现后再等几秒，正文与标题都还在，不会退回「�
   }
 });
 
+test("sidebar title updates reach a mounted chat header without remount", async () => {
+  const backend = makeBackend();
+  const { view, taskId } = await launchAndAnswer(backend);
+  try {
+    backend.tasks.get(taskId).title = "排查消息发送失败和加载bug";
+    await act(async () => {
+      window.dispatchEvent(new window.CustomEvent("oceanleo:history-title-changed", {
+        detail: { taskId, title: backend.tasks.get(taskId).title },
+      }));
+    });
+    assert.ok(view.header().textContent.includes("排查消息发送失败和加载bug"));
+  } finally {
+    await view.unmount();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 3 慢会话：POST /sessions 3 秒才回（真机日志里就是这样）——任务仍必须等它
 // ---------------------------------------------------------------------------
