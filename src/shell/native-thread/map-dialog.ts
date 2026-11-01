@@ -172,12 +172,13 @@ export function dialogToAgentMessages(
   for (const message of messages) {
     if (message.kind === "user") {
       const attachments = (message.attachments ?? []).map(attachmentOf);
+      const sender = message.sender;
       out.push({
         id: nextId(`u:${message.id}`),
-        role: "user",
+        role: sender ? "assistant" : "user",
         kind: "text",
         content: message.text,
-        meta: { native: true, ...(attachments.length ? { attachments } : {}) },
+        meta: { native: true, ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}) },
         ...(typeof message.at === "number" ? { created_at: new Date(message.at).toISOString() } : {}),
       });
       continue;

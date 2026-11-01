@@ -188,9 +188,16 @@ export type UserMessageAttachment = {
   path?: string;
 };
 
+export type AgentMessageSender = {
+  kind: "agent";
+  label: string;
+  program: string;
+  task_id: string | null;
+};
+
 export type AgentDialogMessage =
   // at: epoch ms the user sent it, when known (a live send here, or a frame that carries a time); drives the chat time line.
-  | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: UserMessageAttachment[]; at?: number }
+  | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: UserMessageAttachment[]; at?: number; sender?: AgentMessageSender }
   // orphans: sub-agent tools whose Task/Agent tool has not arrived yet; adopted when it does, never shown on their own.
   | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[]; live?: boolean; orphans?: ToolCard[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。

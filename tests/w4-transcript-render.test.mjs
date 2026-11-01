@@ -55,6 +55,7 @@ const { AgentTranscriptBubble } = await import(await compileModule("src/shell/Ag
 }));
 const { buildRows } = await import("../src/shell/messages/conversation/conversation-store.ts");
 const { dialogToAgentMessages } = await import("../src/shell/native-thread/map-dialog.ts");
+const { applyDialog, initialDialogState } = await import("../src/shell/cloud-computer/agent-dialog/reduce.ts");
 
 async function render(Component, props) {
   const host = document.createElement("div");
@@ -115,6 +116,40 @@ test("native: a live send carries its time through map-dialog as created_at", ()
   assert.equal(message.created_at, new Date(at).toISOString());
   const [untimed] = dialogToAgentMessages([{ kind: "user", id: "u2", text: "hi" }], { live: false });
   assert.equal(untimed.created_at, undefined);
+});
+
+test("agent sender survives replay deduplication and maps to the assistant side", () => {
+  let state = initialDialogState();
+  const frame = {
+    t: "user_message", text: "continue", replay: true,
+    sender: { kind: "agent", label: "Claude Code · task", program: "claude", task_id: "task-1" },
+  };
+  state = applyDialog(state, { type: "frame", frame });
+  state = applyDialog(state, { type: "frame", frame: { ...frame, sender: undefined } });
+  assert.equal(state.messages.length, 1);
+  assert.equal(state.messages[0].sender.task_id, "task-1");
+  const [message] = dialogToAgentMessages(state.messages, { live: false });
+  assert.equal(message.role, "assistant");
+  assert.equal(message.meta.sender.label, "Claude Code · task");
+});
+
+test("agent sender renders as a left tinted bubble with a task link", async () => {
+  const view = await render(AgentTranscriptBubble, {
+    message: {
+      id: 1, role: "assistant", kind: "text", content: "continue",
+      meta: { sender: { kind: "agent", label: "Claude Code · task", program: "claude", task_id: "task-1" } },
+    },
+  });
+  try {
+    const root = view.host.querySelector("[data-agent-sender=agent]");
+    assert.ok(root);
+    assert.match(root.className, /items-start/);
+    assert.match(root.querySelector("div.border-sky-200").className, /bg-sky-50/);
+    assert.equal(root.querySelector("a").getAttribute("href"), "/history?task=task-1");
+    assert.match(root.textContent, /Claude Code · task/);
+  } finally {
+    view.cleanup();
+  }
 });
 
 test("chatTimeMs reads ISO and epoch seconds / ms; junk is null", () => {

@@ -31,6 +31,7 @@ import type {
   AgentDialogMessage,
   AgentProgram,
   DialogState,
+  AgentMessageSender,
   InstallState,
   LoginState,
   ToolCard,
@@ -1105,10 +1106,18 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
   }
   if (kind === "user_message") {
     const { text, attachments } = normalizeUserMessage(str(frame.text), frame.attachments);
+    const rawSender = asRecord(frame.sender);
+    const sender: AgentMessageSender | undefined = rawSender?.kind === "agent" && str(rawSender.label)
+      ? {
+          kind: "agent",
+          label: str(rawSender.label).slice(0, 80),
+          program: str(rawSender.program),
+          task_id: str(rawSender.task_id) || null,
+        }
+      : undefined;
     if (!text && attachments.length === 0) return state;
     const last = state.messages[state.messages.length - 1];
     if (
-      frame.replay !== true &&
       last &&
       last.kind === "user" &&
       last.text === text
@@ -1119,8 +1128,11 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       if (attachments.length && (!last.attachments?.length || serverRows)) {
         return {
           ...state,
-          messages: state.messages.slice(0, -1).concat({ ...last, attachments: mergeLocalPreviews(attachments, last.attachments) }),
+          messages: state.messages.slice(0, -1).concat({ ...last, ...(sender ? { sender } : {}), attachments: mergeLocalPreviews(attachments, last.attachments) }),
         };
+      }
+      if (sender && !last.sender) {
+        return { ...state, messages: state.messages.slice(0, -1).concat({ ...last, sender }) };
       }
       return state;
     }
@@ -1128,7 +1140,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       ...state,
       messages: [
         ...state.messages,
-        { kind: "user", id: nextId(), text, replay: frame.replay === true, ...(attachments.length ? { attachments } : {}), ...frameTime(frame) },
+        { kind: "user", id: nextId(), text, replay: frame.replay === true, ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}), ...frameTime(frame) },
       ],
     };
   }

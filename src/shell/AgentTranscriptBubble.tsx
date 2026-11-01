@@ -121,6 +121,7 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
   const actionable =
     !selectMode &&
     message.role === "assistant" &&
+    !message.meta?.sender &&
     !streaming &&
     (perTurn
       ? Boolean(turnCopyText?.trim())
@@ -254,6 +255,27 @@ function TranscriptBody({
 }: AgentTranscriptBubbleProps) {
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
+
+  const sender = message.meta?.sender as { kind?: unknown; label?: unknown; program?: unknown; task_id?: unknown } | undefined;
+  if (sender?.kind === "agent" && typeof sender.label === "string") {
+    const icon = sender.program === "claude" ? "◈" : sender.program === "codex" ? "◇" : sender.program === "cursor" ? "⌁" : "•";
+    const label = sender.label;
+    const labelContent = <><span aria-hidden="true" className="text-sky-500">{icon}</span><span>{label}</span></>;
+    return (
+      <div className="group flex max-w-full flex-col items-start gap-1.5" data-agent-sender="agent">
+        {typeof sender.task_id === "string" && sender.task_id ? (
+          <a href={`/history?task=${encodeURIComponent(sender.task_id)}`} className="inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200">
+            {labelContent}
+          </a>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[12px] text-stone-500 dark:text-stone-400">{labelContent}</span>
+        )}
+        <div className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-bl-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[15px] leading-relaxed text-sky-950 [overflow-wrap:anywhere] dark:border-sky-800/70 dark:bg-sky-950/40 dark:text-sky-100">
+          <HighlightedText text={message.content} query={highlightQuery} />
+        </div>
+      </div>
+    );
+  }
 
   if (message.role === "user") {
     const attachments = message.meta?.attachments || [];

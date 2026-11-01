@@ -1,0 +1,20 @@
+// Agent-authored transcript labels. The sender label itself is supplied by the gateway.
+export const AGENT_SENDER_MESSAGES = {
+  zh: {},
+  en: {},
+  ja: {},
+  ko: {},
+  fr: {},
+  de: {},
+  it: {},
+  es: {},
+  "es-419": {},
+  "pt-BR": {},
+  "pt-PT": {},
+  vi: {},
+  tr: {},
+  "zh-TW": {},
+  ar: {},
+  th: {},
+  hi: {},
+} as const;
