@@ -55,6 +55,8 @@ export interface WebsitePreview {
   tier?: "static" | "sandbox";
   stack?: WebsiteStack;
   url?: string;
+  /** Public capability host on the user-content domain (static tier). */
+  public_url?: string;
   status?: string;
   boot_progress?: number;
   session_id?: string;
@@ -238,12 +240,33 @@ async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSi
 
 const segment = (value: string) => encodeURIComponent(value);
 
-/** URL for the immutable, no-sandbox static gateway preview. */
-export function websiteStaticPreviewUrl(projectId: string, commit: string, path = "index.html"): string {
-  return `${gatewayBase()}/v1/website-projects/${segment(projectId)}/preview/static/${segment(commit)}/${path
-    .split("/")
-    .map(segment)
-    .join("/")}`;
+const USER_CONTENT_ROOTS = ["oceanleo.app", "leoapp.cn"] as const;
+
+/**
+ * The URL the editor may frame and open in a new tab: an absolute https URL on
+ * an isolated user-content domain (`*.oceanleo.app`, twin `*.ws.oceanleo.app`,
+ * CN `*.leoapp.cn`; same roots as the gateway's USER_CONTENT_DOMAIN).
+ * Anything else — notably the authenticated
+ * `/v1/website-projects/{id}/preview/static/...` API route, which an iframe
+ * cannot call without the bearer header — is refused.
+ */
+export function websitePreviewFrameUrl(preview: WebsitePreview | null | undefined): string {
+  const candidates = [preview?.public_url, preview?.url];
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
+    if (!value) continue;
+    let parsed: URL;
+    try {
+      parsed = new URL(value);
+    } catch {
+      continue;
+    }
+    if (parsed.protocol !== "https:") continue;
+    const host = parsed.hostname.toLowerCase();
+    if (!USER_CONTENT_ROOTS.some((root) => host.endsWith(`.${root}`))) continue;
+    return parsed.toString();
+  }
+  return "";
 }
 
 export const websitePlatformApi: WebsitePlatformApi = {
@@ -282,29 +305,36 @@ export const websitePlatformApi: WebsitePlatformApi = {
       body: JSON.stringify({ changes, base_commit: baseCommit, message }),
     }, signal),
 
-  // Framework previews use the existing warm website session endpoint. The
-  // backend has no generic /preview endpoint yet; the static tier is handled
-  // by websiteStaticPreviewUrl in the panel so it never waits on a sandbox.
+  // One preview route for every stack (static capability host or warm sandbox).
   preview: async (projectId, revisionId, signal) => {
     const body = await request<{
-      preview_url?: string;
+      url?: string | null;
+      preview_url?: string | null;
+      public_url?: string | null;
+      tier?: WebsitePreview["tier"];
       preview_tier?: WebsitePreview["tier"];
+      stack?: WebsiteStack;
       preview_stack?: WebsiteStack;
       session_id?: string;
+      status?: string;
       state?: string;
       ready?: boolean;
+      boot_progress?: number;
     }>(
-      `/v1/website-projects/${segment(projectId)}/sessions`,
-      { method: "POST", body: JSON.stringify(revisionId ? { revision_id: revisionId } : {}) },
+      `/v1/website-projects/${segment(projectId)}/preview`,
+      { method: "POST", body: JSON.stringify(revisionId ? { git_commit: revisionId } : {}) },
       signal,
     );
+    const url = String(body.url || body.preview_url || "") || undefined;
     return {
-      tier: body.preview_tier,
-      stack: body.preview_stack,
-      url: body.preview_url,
+      tier: body.tier || body.preview_tier,
+      stack: body.stack || body.preview_stack,
+      url,
+      public_url: body.public_url || undefined,
       session_id: body.session_id,
-      status: body.state || (body.ready ? "ready" : "starting"),
-      boot_progress: body.ready ? 100 : 65,
+      status: body.status || body.state || (body.ready ? "ready" : "starting"),
+      boot_progress:
+        typeof body.boot_progress === "number" ? body.boot_progress : body.ready ? 100 : 65,
     };
   },
 

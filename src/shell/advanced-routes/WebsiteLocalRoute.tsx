@@ -51,6 +51,11 @@ import { SelectionToolbar } from "../SelectionToolbar";
 import { SitePuckBridgeContext, SitePuckBridgeHost } from "../website-local/WebsiteSitePuckBridge";
 import { strictWebsiteSelection, applyStrictWebsiteCommand } from "../website-local/website-strict-bar";
 import { WebsiteWorkbenchPanels } from "../website-platform/WebsiteWorkbenchPanels";
+import { WebsiteCodeFace } from "../website-platform/WebsiteCodeFace";
+import {
+  websiteCodeProjectFromText,
+  type WebsiteCodeProject,
+} from "../website-platform/website-code-project";
 import { usePluginPage } from "../plugin-chrome/plugin-page-store";
 
 const WEBSITE_AUX_PANELS = [
@@ -60,6 +65,20 @@ const WEBSITE_AUX_PANELS = [
   ["storage", "文件存储"],
   ["settings", "设置"],
 ] as const;
+
+/**
+ * Code websites (git repo) open on the code face: 「编辑」 is Source + preview,
+ * and the platform pages follow. Visual sites keep WEBSITE_AUX_PANELS.
+ */
+const WEBSITE_CODE_AUX_PANELS = [
+  ["history", "历史"],
+  ["publish", "发布"],
+  ["database", "数据库"],
+  ["storage", "文件存储"],
+  ["dashboard", "仪表盘"],
+  ["settings", "设置"],
+] as const;
+type WebsiteCodeAuxPanel = (typeof WEBSITE_CODE_AUX_PANELS)[number][0];
 
 /** Entry text → site-document envelope (bundle `site.json` or structured), else null. */
 export function websiteSiteEnvelopeFromText(text: string): SiteEnvelope | null {
@@ -128,6 +147,24 @@ export function WebsiteLocalRoute({
     revisionId: string;
   } | null>(null);
   const ownSavedRevisionsRef = useRef(new Set<string>());
+  // Git/code websites: the Library entry is a website-project manifest.
+  const [codeProject, setCodeProject] = useState<WebsiteCodeProject | null>(null);
+  const activeCodePanel = WEBSITE_CODE_AUX_PANELS.some(([id]) => id === pluginPageId)
+    ? (pluginPageId as WebsiteCodeAuxPanel)
+    : null;
+  const websiteCodePages = useMemo(
+    () => ({
+      activePageId: pluginPageId,
+      onSelectPage: (next: string) => setPluginPage(next),
+      proUnavailableReason: "代码网站在「编辑」页里改源码",
+      aux: WEBSITE_CODE_AUX_PANELS.map(([id, label]) => ({
+        id,
+        label,
+        kind: "aux" as const,
+      })),
+    }),
+    [pluginPageId, setPluginPage],
+  );
 
   useEffect(() => {
     if (plan.kind !== "remote") {
@@ -149,6 +186,7 @@ export function WebsiteLocalRoute({
     setRemoteError("");
     setRemoteSource(null);
     setSiteEntry(null);
+    setCodeProject(null);
     let entryText = "";
     // The source URL is a 300 s signed grant and the gateway can restart under
     // an open editor: re-sign through the gateway on 410, retry transient
@@ -188,6 +226,14 @@ export function WebsiteLocalRoute({
       if (result.ok) {
         loadedIdentityRef.current = itemIdentity;
         setRemoteSource(result.source);
+        return;
+      }
+      // A git/code website is not a visual website-source: open its code face
+      // instead of reporting the visual editor's §3.1 schema failure.
+      const code = entryText ? websiteCodeProjectFromText(entryText) : null;
+      if (code) {
+        loadedIdentityRef.current = itemIdentity;
+        setCodeProject(code);
         return;
       }
       const envelope = entryText ? websiteSiteEnvelopeFromText(entryText) : null;
@@ -316,6 +362,34 @@ export function WebsiteLocalRoute({
 
   if (!item) {
     return <div data-testid="website-missing-item">没有打开的网站工程。</div>;
+  }
+
+  if (codeProject) {
+    const codeProjectId = codeProject.projectId || projectId;
+    return (
+      <AdvancedWorkbenchShell
+        item={item}
+        taskId={taskId}
+        siteId={siteId}
+        accent={accent}
+        adapter={{
+          id: "website",
+          label: "网站",
+          pages: websiteCodePages,
+          stage: activeCodePanel ? (
+            <div
+              className="flex h-full min-h-0 flex-col bg-[var(--awb-stage-bg)]"
+              data-testid={`website-${activeCodePanel}-stage`}
+            >
+              <WebsiteWorkbenchPanels projectId={codeProjectId} panel={activeCodePanel} hideTabs />
+            </div>
+          ) : (
+            <WebsiteCodeFace projectId={codeProjectId} />
+          ),
+        }}
+        onClose={onClose}
+      />
+    );
   }
 
   if (siteEntry) {

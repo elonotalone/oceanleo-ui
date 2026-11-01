@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   websitePlatformApi,
-  websiteStaticPreviewUrl,
+  websitePreviewFrameUrl,
   type WebsiteCommit,
   type WebsiteDatabaseTable,
   type WebsiteDeployment,
@@ -29,6 +29,8 @@ export interface WebsiteWorkbenchPanelsProps {
   api?: WebsitePlatformApi;
   panel?: Panel;
   hideTabs?: boolean;
+  /** Called with the new git commit after the code panel saves. */
+  onCommit?: (commit: string) => void;
 }
 
 const tabs: Array<[Panel, string]> = [
@@ -102,6 +104,7 @@ export function WebsiteWorkbenchPanels({
   api = websitePlatformApi,
   panel: controlledPanel,
   hideTabs = false,
+  onCommit,
 }: WebsiteWorkbenchPanelsProps) {
   const tt = useUI();
   const [internalPanel, setInternalPanel] = useState<Panel>("preview");
@@ -140,7 +143,7 @@ export function WebsiteWorkbenchPanels({
           <PreviewPanel projectId={projectId} stack={stack} commit={commit} api={api} />
         ) : null}
         {panel === "code" ? (
-          <CodePanel projectId={projectId} commit={commit} api={api} />
+          <CodePanel projectId={projectId} commit={commit} api={api} onCommit={onCommit} />
         ) : null}
         {panel === "history" ? (
           <HistoryPanel projectId={projectId} commit={commit} api={api} />
@@ -150,7 +153,7 @@ export function WebsiteWorkbenchPanels({
         {panel === "storage" ? <StoragePanel projectId={projectId} api={api} /> : null}
         {panel === "settings" ? <SettingsPanel projectId={projectId} api={api} /> : null}
         {panel === "publish" ? (
-          <PublishPanel projectId={projectId} commit={commit} api={api} />
+          <PublishPanel projectId={projectId} api={api} />
         ) : null}
       </div>
     </section>
@@ -169,51 +172,63 @@ function PreviewPanel({
   api: WebsitePlatformApi;
 }) {
   const tt = useUI();
+  // One preview contract for every stack: POST /preview returns the public,
+  // immutable capability host on the user-content domain (static) or the
+  // sandbox host (Vite/Next). The authenticated API file route is never framed:
+  // an iframe cannot send the bearer header.
   const state = useLoad(
-    (signal) => {
-      if (stack === "static") {
-        return Promise.resolve({
-          tier: "static" as const,
-          stack,
-          ...(commit ? { url: websiteStaticPreviewUrl(projectId, commit) } : {}),
-          status: commit ? "ready" : tt("等待保存后的提交"),
-          boot_progress: commit ? 100 : 0,
-        });
-      }
-      return api.preview(projectId, commit, signal);
-    },
-    [api, projectId, stack, commit, tt],
+    (signal) => api.preview(projectId, commit, signal),
+    [api, projectId, commit],
   );
   const data = state.value;
+  const openUrl = websitePreviewFrameUrl(data);
 
   return (
     <State {...state}>
-      {data?.url ? (
-        <iframe
-          title={tt("网站预览")}
-          src={data.url}
-          className="h-[300px] w-full rounded border"
-          sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts"
-        />
-      ) : (
-        <div
-          data-testid="website-preview-boot"
-          className="rounded border p-6"
-          aria-live="polite"
-        >
-          <strong>
-            {data?.tier === "sandbox" || stack !== "static"
-              ? tt("正在启动网站预览")
-              : tt("正在准备静态预览")}
-          </strong>
-          <p className="mt-2 text-xs opacity-70">
-            {data?.status || tt("预览会在这里显示，不会留白。")}
-            {typeof data?.boot_progress === "number"
-              ? ` ${data.boot_progress}%`
-              : ""}
-          </p>
+      <div className="flex h-full min-h-0 flex-col gap-2" data-testid="website-preview-pane">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="truncate opacity-70">
+            {data?.tier === "sandbox" ? tt("开发预览") : tt("静态预览")}
+          </span>
+          {openUrl ? (
+            <a
+              href={openUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="website-preview-open-tab"
+              className="shrink-0 text-[var(--awb-accent)] underline-offset-2 hover:underline"
+            >
+              {tt("在新标签页打开预览")}
+            </a>
+          ) : null}
         </div>
-      )}
+        {openUrl ? (
+          <iframe
+            title={tt("网站预览")}
+            src={openUrl}
+            className="min-h-[300px] w-full flex-1 rounded border"
+            sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts"
+          />
+        ) : (
+          <div
+            data-testid="website-preview-boot"
+            className="rounded border p-6"
+            aria-live="polite"
+          >
+            <strong>
+              {data?.tier === "sandbox" || (stack && stack !== "static")
+                ? tt("正在启动网站预览")
+                : tt("正在准备静态预览")}
+            </strong>
+            <p className="mt-2 text-xs opacity-70">
+              {data?.status || tt("预览会在这里显示，不会留白。")}
+              {typeof data?.boot_progress === "number"
+                ? ` ${data.boot_progress}%`
+                : ""}
+            </p>
+          </div>
+        )}
+      </div>
     </State>
   );
 }
@@ -222,10 +237,12 @@ function CodePanel({
   projectId,
   commit,
   api,
+  onCommit,
 }: {
   projectId: string;
   commit?: string;
   api: WebsitePlatformApi;
+  onCommit?: (commit: string) => void;
 }) {
   const tt = useUI();
   const [baseCommit, setBaseCommit] = useState(commit);
@@ -267,9 +284,17 @@ function CodePanel({
   const save = async () => {
     if (!selected) return;
     try {
-      const result = await api.save(projectId, { [selected]: content }, baseCommit);
+      // A save is based on the current git head; without a known commit, the
+      // newest commit in the project's history is that head.
+      let base = baseCommit;
+      if (!base) {
+        const history = await api.history(projectId);
+        base = history.commits?.[0] ? commitKey(history.commits[0]) : undefined;
+      }
+      const result = await api.save(projectId, { [selected]: content }, base);
       setBaseCommit(result.commit);
       setReload((value) => value + 1);
+      onCommit?.(result.commit);
       setNotice(tt("已保存 {commit}", { commit: result.commit }));
     } catch (error) {
       setNotice(errText(error));
@@ -343,9 +368,12 @@ function HistoryPanel({
 
   const restore = async () => {
     if (!selectedId) return;
+    // The restore commit is based on the current head: the caller's commit,
+    // else the newest commit in this history list.
+    const head = commit || (state.value?.commits?.[0] ? commitKey(state.value.commits[0]) : "");
     try {
       const tree = await api.files(projectId, selectedId);
-      const current = commit ? await api.files(projectId, commit) : { files: [] };
+      const current = head ? await api.files(projectId, head) : { files: [] };
       const entries = await Promise.all(
         tree.files.map(async (file) => {
           const loaded = await api.file(projectId, file.path, selectedId);
@@ -363,7 +391,7 @@ function HistoryPanel({
       const result = await api.save(
         projectId,
         changes,
-        commit,
+        head || undefined,
         tt("恢复网站版本 {commit}", { commit: selectedId }),
       );
       setNotice(tt("已创建恢复提交 {commit}", { commit: result.commit }));
@@ -710,7 +738,6 @@ function DatabasePanel({
 
 function PublishPanel({
   projectId,
-  commit,
   api,
 }: {
   projectId: string;
@@ -728,7 +755,12 @@ function PublishPanel({
 
   const publish = async () => {
     try {
-      const result = await api.publish(projectId, commit);
+      // Publishing takes the project's working revision (every save advances
+      // it); a git commit is not a revision id.
+      const project = await api.project(projectId);
+      const revisionId = String(project.working_revision_id || "").trim();
+      if (!revisionId) throw new Error(tt("网站还没有可发布的版本。"));
+      const result = await api.publish(projectId, revisionId);
       setNotice(result.deployment.url || result.deployment.status || tt("已提交发布"));
       setReload((value) => value + 1);
     } catch (error) {
