@@ -360,14 +360,8 @@ export function useComposerDraft({
     void getComposerDrafts([draftKey]).then(({ drafts }) => {
       const remote = drafts[0];
       if (!remote || remote.rev <= revRef.current) return;
+      // A newer server copy wins over this tab's restored text (rev-guarded inside).
       applyRemote({ type: "composer_draft", ...serverRecord(remote), key: remote.key || draftKey, rev: remote.rev, device_id: remote.device_id, updated_at: remote.updated_at }, true);
-      // The initial GET can resolve in the same commit as the restore effect;
-      // apply the server text directly as a final guard so a non-empty tab
-      // cannot win merely because its first render raced the request.
-      if (latest.current.value !== remote.text) {
-        remoteSignatureRef.current = JSON.stringify([remote.text, remote.attachments || []]);
-        latest.current.onChange(remote.text || "");
-      }
     }).catch(() => {});
   }, [applyRemote, draftKey]);
 

@@ -35,23 +35,24 @@ export function StepsFoldPreferenceProvider({
   taskId: string | null | undefined;
   children: ReactNode;
 }) {
-  if (!taskId) return <>{children}</>;
-  return <TaskStepsFoldPreference taskId={taskId}>{children}</TaskStepsFoldPreference>;
+  // Always the same element type: a task id arriving (home → task) must not
+  // remount the conversation and composer underneath.
+  return <TaskStepsFoldPreference taskId={taskId || null}>{children}</TaskStepsFoldPreference>;
 }
 
-function TaskStepsFoldPreference({ taskId, children }: { taskId: string; children: ReactNode }) {
+function TaskStepsFoldPreference({ taskId, children }: { taskId: string | null; children: ReactNode }) {
   const [preference, setPreferenceState] = useState<StepsFoldPreference>(null);
   const loadedTask = useRef<string | null>(null);
 
   useEffect(() => {
     loadedTask.current = null;
-    const stored = readPreference(taskId);
+    const stored = taskId ? readPreference(taskId) : null;
     setPreferenceState(stored);
     loadedTask.current = taskId;
   }, [taskId]);
 
   useEffect(() => {
-    if (loadedTask.current !== taskId || preference === null) return;
+    if (!taskId || loadedTask.current !== taskId || preference === null) return;
     try {
       window.localStorage.setItem(storageKey(taskId), preference ? "1" : "0");
     } catch {
@@ -59,12 +60,13 @@ function TaskStepsFoldPreference({ taskId, children }: { taskId: string; childre
     }
   }, [preference, taskId]);
 
-  const value = useMemo<StepsFoldPreferenceContextValue>(
-    () => ({
+  // No task yet → no context value: AgentProgress keeps today's behaviour.
+  const value = useMemo<StepsFoldPreferenceContextValue | null>(
+    () => (taskId ? {
       preference,
       setPreference: (expanded) => setPreferenceState(expanded),
-    }),
-    [preference],
+    } : null),
+    [preference, taskId],
   );
   return <StepsFoldPreferenceContext.Provider value={value}>{children}</StepsFoldPreferenceContext.Provider>;
 }

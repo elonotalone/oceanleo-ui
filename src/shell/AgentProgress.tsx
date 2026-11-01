@@ -101,7 +101,7 @@ function summaryParts(tt: UITranslate, summary: ProcessSummary): ReactNode[] {
   } else if (summary.tools === 0 && summary.plans > 0) {
     parts.push(tt("计划"));
   }
-  if (summary.tools > 0) parts.push(tt("{count} 个步骤", { count: summary.tools }));
+  if (summary.tools > 0) parts.push(summary.tools === 1 ? tt("1 个步骤") : tt("{count} 个步骤", { count: summary.tools }));
   if (summary.failed > 0) {
     parts.push(
       <span key="failed" className="text-rose-500" data-agent-process-failed="">
@@ -306,7 +306,7 @@ function ToolView({
         </span>
         {children.length > 0 && (
           <span className="shrink-0" data-agent-process-substeps={children.length}>
-            {tt("{count} 个步骤", { count: children.length })}
+            {children.length === 1 ? tt("1 个步骤") : tt("{count} 个步骤", { count: children.length })}
             {childFailed > 0 && (
               <>
                 {" · "}
