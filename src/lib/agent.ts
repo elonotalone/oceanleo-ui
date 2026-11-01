@@ -14,7 +14,7 @@
 // ============================================================================
 
 import { accessToken, cachedAccessToken, getUserId } from "./auth/client";
-import { GATEWAY_BASE } from "./auth/config";
+import { gatewayBase } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
 import { notifyHistoryChanged } from "./history-events";
 import { computerIdRequestField } from "./cloud-computer-api";
@@ -213,7 +213,7 @@ export async function authed<T>(
   if (!token) return { ok: false, error: "未登录", status: 401 };
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}${path}`, {
+    res = await fetch(`${gatewayBase()}${path}`, {
       ...init,
       headers: {
         ...(init?.headers || {}),
@@ -598,8 +598,8 @@ export async function listAgents(
   const token = await accessToken();
   const site = (siteId || "").trim();
   const url = site
-    ? `${GATEWAY_BASE}/v1/agents?site_id=${encodeURIComponent(site)}`
-    : `${GATEWAY_BASE}/v1/agents`;
+    ? `${gatewayBase()}/v1/agents?site_id=${encodeURIComponent(site)}`
+    : `${gatewayBase()}/v1/agents`;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -742,8 +742,8 @@ export async function listTeams(
   const token = await accessToken();
   const site = (siteId || "").trim();
   const url = site
-    ? `${GATEWAY_BASE}/v1/agent-teams?site_id=${encodeURIComponent(site)}`
-    : `${GATEWAY_BASE}/v1/agent-teams`;
+    ? `${gatewayBase()}/v1/agent-teams?site_id=${encodeURIComponent(site)}`
+    : `${gatewayBase()}/v1/agent-teams`;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -768,7 +768,7 @@ export async function getTeam(teamId: string): Promise<AgentApiResult<{ team: Te
   const token = await accessToken();
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}/v1/agent-teams/${encodeURIComponent(teamId)}`, {
+    res = await fetch(`${gatewayBase()}/v1/agent-teams/${encodeURIComponent(teamId)}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
       credentials: "include",

@@ -3,12 +3,12 @@
 // ============================================================================
 // @oceanleo/ui — 云电脑 REST 客户端（《契约》§4.1–4.3）
 // ----------------------------------------------------------------------------
-// 鉴权与网关 origin 与 `lib/agent.ts` 相同：Bearer + GATEWAY_BASE。
+// 鉴权与网关 origin 与 `lib/agent.ts` 相同：Bearer + gatewayBase()。
 // 错误码是契约 §8 的小写闭集；不走 agent `authed`（它会把 code 收成大写）。
 // ============================================================================
 
 import { accessToken } from "./auth/client";
-import { GATEWAY_BASE } from "./auth/config";
+import { gatewayBase } from "./auth/config";
 import {
   MOUNTED_COMPUTER_NAME_STORAGE_KEY,
   MOUNTED_COMPUTER_STORAGE_KEY,
@@ -322,7 +322,7 @@ export async function cloudComputerRequest<T>(
   }
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}${path}`, {
+    res = await fetch(`${gatewayBase()}${path}`, {
       ...init,
       headers: {
         ...(init?.headers || {}),
@@ -400,7 +400,7 @@ export function terminalWsUrl(
   sessionId: string,
   token: string,
 ): string {
-  const wsBase = GATEWAY_BASE.replace(/^http/i, "ws");
+  const wsBase = gatewayBase().replace(/^http/i, "ws");
   const query = new URLSearchParams({
     session_id: sessionId,
     token,
@@ -414,27 +414,27 @@ export function agentDialogWsUrl(
   sessionId: string | undefined,
   token: string,
 ): string {
-  const wsBase = GATEWAY_BASE.replace(/^http/i, "ws");
+  const wsBase = gatewayBase().replace(/^http/i, "ws");
   const query = new URLSearchParams({ token });
   if (sessionId) query.set("session_id", sessionId);
   return `${wsBase}/v1/computers/${encodeURIComponent(id)}/agent-dialog?${query.toString()}`;
 }
 
 export function nodeWsUrl(): string {
-  const wsBase = GATEWAY_BASE.replace(/^http/i, "ws");
+  const wsBase = gatewayBase().replace(/^http/i, "ws");
   return `${wsBase}/v1/computers/node/ws`;
 }
 
 export function nodeInstallScriptUrl(): string {
-  return `${GATEWAY_BASE}/v1/computers/node/install.sh`;
+  return `${gatewayBase()}/v1/computers/node/install.sh`;
 }
 
 export function nodeDownloadUrl(os: "linux", arch: "amd64" | "arm64"): string {
-  return `${GATEWAY_BASE}/v1/computers/node/download/${os}-${arch}`;
+  return `${gatewayBase()}/v1/computers/node/download/${os}-${arch}`;
 }
 
 export function nodeSha256SumsUrl(): string {
-  return `${GATEWAY_BASE}/v1/computers/node/download/SHA256SUMS`;
+  return `${gatewayBase()}/v1/computers/node/download/SHA256SUMS`;
 }
 
 export function listComputers() {
@@ -737,7 +737,7 @@ export async function putComputerInbox(
   const name = (file.name || "file").trim() || "file";
   const query = new URLSearchParams({ name });
   if (options.task_session_id) query.set("task_session_id", options.task_session_id);
-  const url = `${GATEWAY_BASE}/v1/computers/${encodeURIComponent(id)}/inbox?${query.toString()}`;
+  const url = `${gatewayBase()}/v1/computers/${encodeURIComponent(id)}/inbox?${query.toString()}`;
   return await new Promise<ComputerInboxFile>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let finished = false;

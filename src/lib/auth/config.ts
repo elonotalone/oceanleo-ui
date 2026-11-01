@@ -97,7 +97,17 @@ export const SUPABASE_ANON_KEY = envAnonKey();
 // 与正式站共用 Vercel 项目的 production env，那条 env 钉的是 api.oceanleo.com。
 // Unconfigured snapshot at module load (existing importers). Host mode reads
 // `currentDomainProfile().gatewayOrigin` live after configureClientHost.
-export const GATEWAY_BASE = currentDomainProfile().gatewayOrigin;
+/** Resolve the gateway after a native host has injected its edition profile.
+ * Shared UI modules load before `bootClientWeb` calls `configureClientHost`, so
+ * a module-level string would pin desktop history to the web gateway.
+ */
+export function gatewayBase(): string {
+  return currentDomainProfile().gatewayOrigin;
+}
+
+/** Legacy snapshot for callers that only need a build-time default. Network
+ * requests should use `gatewayBase()` so desktop/mobile host injection wins. */
+export const GATEWAY_BASE = gatewayBase();
 
 // 跨子站 cookie 的 Domain。缺省不再是一个写死的字面量，而是**请求 host 所属
 // 家族**那一行的 cookieDomain：`.com` host 得到 `.oceanleo.com`，
