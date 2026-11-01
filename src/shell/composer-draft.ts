@@ -21,6 +21,8 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { attachmentRef } from "../lib/attachment-url";
+import { getComposerDrafts, putComposerDraft, type ComposerDraftServerRecord } from "../lib/composer-drafts-api";
+import { useImConnection, useImEvent } from "./messages/realtime/hooks";
 import type { ComposerAttachment } from "./LeoComposer";
 
 export const COMPOSER_DRAFT_PREFIX = "oceanleo_composer_draft:v1:";
@@ -38,6 +40,18 @@ export interface ComposerDraftAttachment {
 export interface ComposerDraftRecord {
   text: string;
   attachments: ComposerDraftAttachment[];
+  rev?: number;
+}
+
+function composerDeviceId(): string {
+  const fallback = `web-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+  if (typeof window === "undefined") return fallback;
+  try {
+    const existing = window.localStorage.getItem("oceanleo_composer_device_id");
+    if (existing) return existing;
+    window.localStorage.setItem("oceanleo_composer_device_id", fallback);
+  } catch { /* private mode */ }
+  return fallback;
 }
 
 function draftStorage(): Storage | null {
@@ -99,7 +113,8 @@ export function readComposerDraft(draftKey: string): ComposerDraftRecord | null 
     Array.isArray(record.attachments) ? (record.attachments as ComposerAttachment[]) : [],
   );
   if (!text.trim() && attachments.length === 0) return null;
-  return { text, attachments };
+  const rev = typeof (record as { rev?: unknown }).rev === "number" ? (record as { rev: number }).rev : undefined;
+  return { text, attachments, ...(rev === undefined ? {} : { rev }) };
 }
 
 export function clearComposerDraft(draftKey: string): void {
@@ -196,6 +211,7 @@ export interface UseComposerDraftOptions {
   attachments?: readonly ComposerAttachment[];
   /** 宿主把恢复出来的附件加回自己的状态。不传 = 只存文字。 */
   onAddAttachments?: (items: ComposerAttachment[]) => void;
+  onRemoveAttachment?: (id: string) => void;
   /** 测试注入；缺省按引用向网关取 LibraryItem。 */
   fetchItem?: FetchLibraryItem;
 }
@@ -205,16 +221,22 @@ export interface ComposerDraftHandle {
   markSubmitted: () => void;
 }
 
+function serverRecord(record: ComposerDraftServerRecord): ComposerDraftRecord {
+  return { text: record.text || "", attachments: record.attachments || [], rev: record.rev };
+}
+
 export function useComposerDraft({
   draftKey,
   value,
   onChange,
   attachments,
   onAddAttachments,
+  onRemoveAttachment,
   fetchItem,
 }: UseComposerDraftOptions): ComposerDraftHandle {
-  const latest = useRef({ value, onChange, attachments, onAddAttachments, fetchItem });
-  latest.current = { value, onChange, attachments, onAddAttachments, fetchItem };
+  const connection = useImConnection();
+  const latest = useRef({ value, onChange, attachments, onAddAttachments, onRemoveAttachment, fetchItem });
+  latest.current = { value, onChange, attachments, onAddAttachments, onRemoveAttachment, fetchItem };
   const keyRef = useRef(draftKey);
   keyRef.current = draftKey;
   const restoredKeyRef = useRef<string | undefined>(undefined);
@@ -224,6 +246,11 @@ export function useComposerDraft({
   const submittedRef = useRef<string | null>(null);
   // Restored references still being re-read: kept in storage until they land.
   const pendingRestoreRef = useRef<ComposerDraftAttachment[]>([]);
+  const revRef = useRef(0);
+  const pendingPutRef = useRef<{ text: string; attachments: ComposerDraftAttachment[]; base_rev?: number } | null>(null);
+  const putTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deviceIdRef = useRef<string>("");
+  if (!deviceIdRef.current) deviceIdRef.current = composerDeviceId();
 
   const saveable = onAddAttachments ? draftAttachmentsOf(attachments) : [];
   const signature = draftKey ? JSON.stringify([value, saveable]) : "";
@@ -238,6 +265,7 @@ export function useComposerDraft({
     submittedRef.current = null;
     pendingRestoreRef.current = [];
     const record = readComposerDraft(draftKey);
+    if (record?.rev) revRef.current = record.rev;
     if (!record) return;
     if (record.text && !latest.current.value.trim()) latest.current.onChange(record.text);
     if (!record.attachments.length || !latest.current.onAddAttachments) return;
@@ -257,6 +285,60 @@ export function useComposerDraft({
     });
   }, [draftKey]);
 
+  const applyRemote = useCallback((event: Extract<import("../lib/im/types").ImEvent, { type: "composer_draft" }>, allowOwn = false) => {
+    if (!draftKey || event.key !== draftKey || (!allowOwn && event.device_id === deviceIdRef.current) || event.rev <= revRef.current) return;
+    revRef.current = event.rev;
+    const now = latest.current;
+    if (event.text !== now.value) now.onChange(event.text);
+    const remoteIds = new Set(event.attachments.map((item) => item.id));
+    for (const item of now.attachments ?? []) {
+      const ref = draftAttachmentsOf([item])[0];
+      if (ref && !remoteIds.has(ref.id)) now.onRemoveAttachment?.(item.id);
+    }
+    if (now.onAddAttachments) {
+      void rehydrateDraftAttachments(event.attachments, now.fetchItem).then((items) => {
+        if (keyRef.current !== draftKey) return;
+        const existing = new Set((latest.current.attachments ?? []).map((item) => item.id));
+        const fresh = items.filter((item) => !existing.has(item.id));
+        if (fresh.length) latest.current.onAddAttachments?.(fresh);
+      });
+    }
+    // Attachments without Library refs (computer inbox files) are intentionally untouched.
+  }, [draftKey]);
+  useImEvent("composer_draft", applyRemote);
+
+  const queuePut = useCallback((key: string, text: string, attachments: ComposerDraftAttachment[]) => {
+    pendingPutRef.current = { text, attachments, ...(revRef.current ? { base_rev: revRef.current } : {}) };
+    if (putTimerRef.current) clearTimeout(putTimerRef.current);
+    putTimerRef.current = setTimeout(() => {
+      putTimerRef.current = null;
+      const body = pendingPutRef.current;
+      if (!body) return;
+      void putComposerDraft(key, { ...body, device_id: deviceIdRef.current }).then((result) => {
+        revRef.current = Math.max(revRef.current, result.rev);
+        if (pendingPutRef.current === body) pendingPutRef.current = null;
+      }).catch(() => { /* retried on reconnect or next edit */ });
+    }, 300);
+  }, []);
+
+  useEffect(() => {
+    if (!draftKey || connection !== "open" || !pendingPutRef.current) return;
+    const body = pendingPutRef.current;
+    void putComposerDraft(draftKey, { ...body, device_id: deviceIdRef.current }).then((result) => {
+      revRef.current = Math.max(revRef.current, result.rev);
+      if (pendingPutRef.current === body) pendingPutRef.current = null;
+    }).catch(() => {});
+  }, [connection, draftKey]);
+
+  useEffect(() => {
+    if (!draftKey) return;
+    void getComposerDrafts([draftKey]).then(({ drafts }) => {
+      const remote = drafts[0];
+      if (!remote || remote.rev <= revRef.current) return;
+      applyRemote({ type: "composer_draft", ...serverRecord(remote), device_id: remote.device_id, updated_at: remote.updated_at }, true);
+    }).catch(() => {});
+  }, [applyRemote, draftKey]);
+
   useEffect(() => {
     if (!draftKey) return;
     if (lastSeenRef.current === null || lastSeenRef.current === signature) {
@@ -272,6 +354,7 @@ export function useComposerDraft({
     const shown = now.onAddAttachments ? draftAttachmentsOf(now.attachments) : [];
     const pending = pendingRestoreRef.current.filter((item) => !shown.some((att) => att.id === item.id));
     writeComposerDraft(draftKey, now.value, [...shown, ...pending]);
+    queuePut(draftKey, now.value, [...shown, ...pending]);
   }, [draftKey, signature]);
 
   // Sent and then unmounted unchanged (home → the task conversation): the draft is spent.
@@ -285,7 +368,8 @@ export function useComposerDraft({
 
   const markSubmitted = useCallback(() => {
     if (keyRef.current) submittedRef.current = signatureRef.current;
-  }, []);
+    if (keyRef.current) queuePut(keyRef.current, "", []);
+  }, [queuePut]);
 
   return { markSubmitted };
 }

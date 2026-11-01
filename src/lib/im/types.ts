@@ -361,7 +361,18 @@ export interface ImErrorBody {
   message: string;
 }
 
+export interface ComposerDraftEvent {
+  type: "composer_draft";
+  key: string;
+  text: string;
+  attachments: Array<{ id: string; artifactId: string; revisionId: string; name?: string; mime?: string; mediaType?: string }>;
+  rev: number;
+  device_id: string;
+  updated_at: string;
+}
+
 export type ImEvent =
+  | ComposerDraftEvent
   | { type: "message.created"; conversation_id: string; message: ImMessage }
   | { type: "message.updated"; conversation_id: string; message: ImMessage }
   | { type: "leo.delta"; conversation_id: string; message_id: string; text: string }

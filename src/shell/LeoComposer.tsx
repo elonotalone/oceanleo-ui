@@ -427,7 +427,7 @@ export function LeoComposer({
   // 任务跑完推一条系统通知（手机后台/息屏时才推）。浏览器里是空操作。
   useNativeTaskNotifications();
   // 刷新不丢（A1）：draftKey 不传时这个 hook 什么都不做。
-  const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments });
+  const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment });
   // 最高约占视口 30%（仿 Manus），`maxHeight` 是绝对上限；再多在框内滚动。
   const editorMaxHeight = useComposerMaxHeight(maxHeight);
   // 这次派活谁付钱。空串 = 个人钱包，也是没进过组织的人恒定的值。
