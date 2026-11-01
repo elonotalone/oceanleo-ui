@@ -225,6 +225,14 @@ function serverRecord(record: ComposerDraftServerRecord): ComposerDraftRecord {
   return { text: record.text || "", attachments: record.attachments || [], rev: record.rev };
 }
 
+function preserveCaretAfterRemoteText(previous: string, next: string, caret: number): number {
+  if (previous === next) return caret;
+  let prefix = 0;
+  const limit = Math.min(previous.length, next.length);
+  while (prefix < limit && previous[prefix] === next[prefix]) prefix += 1;
+  return prefix < caret ? next.length : caret;
+}
+
 export function useComposerDraft({
   draftKey,
   value,
@@ -235,6 +243,8 @@ export function useComposerDraft({
   fetchItem,
 }: UseComposerDraftOptions): ComposerDraftHandle {
   const connection = useImConnection();
+  const connectionRef = useRef(connection);
+  connectionRef.current = connection;
   const latest = useRef({ value, onChange, attachments, onAddAttachments, onRemoveAttachment, fetchItem });
   latest.current = { value, onChange, attachments, onAddAttachments, onRemoveAttachment, fetchItem };
   const keyRef = useRef(draftKey);
@@ -246,6 +256,7 @@ export function useComposerDraft({
   const submittedRef = useRef<string | null>(null);
   // Restored references still being re-read: kept in storage until they land.
   const pendingRestoreRef = useRef<ComposerDraftAttachment[]>([]);
+  const remoteSignatureRef = useRef<string | null>(null);
   const revRef = useRef(0);
   const pendingPutRef = useRef<{ text: string; attachments: ComposerDraftAttachment[]; base_rev?: number } | null>(null);
   const putTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -289,7 +300,20 @@ export function useComposerDraft({
     if (!draftKey || event.key !== draftKey || (!allowOwn && event.device_id === deviceIdRef.current) || event.rev <= revRef.current) return;
     revRef.current = event.rev;
     const now = latest.current;
-    if (event.text !== now.value) now.onChange(event.text);
+    if (event.text !== now.value) {
+      const active = typeof document !== "undefined" ? document.activeElement : null;
+      const editable = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ? active : null;
+      const caret = editable && typeof editable.selectionStart === "number" ? editable.selectionStart : null;
+      const nextCaret = caret === null ? null : preserveCaretAfterRemoteText(now.value, event.text, caret);
+      now.onChange(event.text);
+      if (editable && nextCaret !== null) {
+        queueMicrotask(() => {
+          if (document.activeElement !== editable) return;
+          try { editable.setSelectionRange(nextCaret, nextCaret); } catch { /* non-text input */ }
+        });
+      }
+    }
+    remoteSignatureRef.current = JSON.stringify([event.text, event.attachments]);
     const remoteIds = new Set(event.attachments.map((item) => item.id));
     for (const item of now.attachments ?? []) {
       const ref = draftAttachmentsOf([item])[0];
@@ -312,6 +336,7 @@ export function useComposerDraft({
     if (putTimerRef.current) clearTimeout(putTimerRef.current);
     putTimerRef.current = setTimeout(() => {
       putTimerRef.current = null;
+      if (connectionRef.current !== "open") return;
       const body = pendingPutRef.current;
       if (!body) return;
       void putComposerDraft(key, { ...body, device_id: deviceIdRef.current }).then((result) => {
@@ -336,6 +361,13 @@ export function useComposerDraft({
       const remote = drafts[0];
       if (!remote || remote.rev <= revRef.current) return;
       applyRemote({ type: "composer_draft", ...serverRecord(remote), device_id: remote.device_id, updated_at: remote.updated_at }, true);
+      // The initial GET can resolve in the same commit as the restore effect;
+      // apply the server text directly as a final guard so a non-empty tab
+      // cannot win merely because its first render raced the request.
+      if (latest.current.value !== remote.text) {
+        remoteSignatureRef.current = JSON.stringify([remote.text, remote.attachments || []]);
+        latest.current.onChange(remote.text || "");
+      }
     }).catch(() => {});
   }, [applyRemote, draftKey]);
 
@@ -346,6 +378,10 @@ export function useComposerDraft({
       return;
     }
     lastSeenRef.current = signature;
+    if (remoteSignatureRef.current === signature) {
+      remoteSignatureRef.current = null;
+      return;
+    }
     if (submittedRef.current !== null) {
       if (submittedRef.current === signature) return;
       submittedRef.current = null;
