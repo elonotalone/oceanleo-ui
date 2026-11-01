@@ -357,3 +357,16 @@ test("HistoryDetail：门户 task-thread 会话走 AgentChat；?task= 直接读 
   // The task already read is handed to AgentChat (no duplicate GET on mount).
   assert.match(historySource, /initialTask=\{loaded\.kind === "task" \? loaded\.detail : loaded\.fallbackTask\}/);
 });
+
+test("a session row is linked to its latest task so /tasks/<id> selects it", () => {
+  const entries = mergeHistoryEntries(
+    [{ ...baseSession, id: "s-chat" }],
+    [
+      { id: "t-old", status: "done", mode: "agent", session_id: "s-chat", created_at: "2026-11-01T10:00:00Z" },
+      { id: "t-new", status: "done", mode: "agent", session_id: "s-chat", created_at: "2026-11-01T11:00:00Z" },
+    ],
+  );
+  const row = entries.find((entry) => entry.id === "s-chat");
+  assert.equal(row?.kind, "session");
+  assert.equal(row.session.task_id, "t-new");
+});

@@ -236,8 +236,21 @@ export function mergeHistoryEntries(
   const legacyTasks = tasks
     .filter((task) => !isShellTask(task))
     .filter((task) => options.sessionApiUnavailable || !task.session_id);
+  // A session row is opened from /tasks/<task id>; the list API does not compute
+  // `task_id`, so link each session to its latest task here (2026-11-02: the
+  // sidebar never showed the open task as selected).
+  const latestTaskBySession = new Map<string, AgentTask>();
+  for (const task of tasks) {
+    if (!task.session_id || isShellTask(task)) continue;
+    const prior = latestTaskBySession.get(task.session_id);
+    if (!prior || String(task.created_at || "") > String(prior.created_at || "")) {
+      latestTaskBySession.set(task.session_id, task);
+    }
+  }
   const entries: HistoryListEntry[] = [
-    ...sessions.map((session): HistoryListEntry => {
+    ...sessions.map((rawSession): HistoryListEntry => {
+      const linkedTask = rawSession.task_id ? null : latestTaskBySession.get(rawSession.id);
+      const session = linkedTask ? { ...rawSession, task_id: linkedTask.id } : rawSession;
       const own = readCreatedBy(session);
       const created_by =
         own === "leo" || leoSessionIds.has(session.id) ? "leo" : own;
