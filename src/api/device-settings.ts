@@ -18,6 +18,10 @@ export interface DevicePreferences {
   default_task_directory: string | null;
   task_folders: string[];
 }
+export interface DeviceRemoteAccessSettings {
+  agent_control_allowed: boolean;
+  agent_always_ask: boolean;
+}
 export interface DeviceSettings {
   controller_id: string;
   controllers: DeviceControllerGrant[];
@@ -25,6 +29,7 @@ export interface DeviceSettings {
   roots: string[];
   availability: DeviceAvailability;
   preferences_available: boolean;
+  remote_access: DeviceRemoteAccessSettings;
 }
 export interface DeviceFolderListing {
   path: string | null;
@@ -46,7 +51,7 @@ export type DeviceCover = {
 export interface DeviceSettingsOperation {
   operation_id?: string;
   state: "pending" | "succeeded" | "failed";
-  result?: DeviceFolderListing | { preferences: DevicePreferences } | { cover: DeviceCover };
+  result?: DeviceFolderListing | { preferences: DevicePreferences } | { remote_access: DeviceRemoteAccessSettings } | { cover: DeviceCover };
   error?: string;
 }
 export interface DeviceTaskSummary {
@@ -61,7 +66,7 @@ export interface DeviceSettingsClient {
   getSettings(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettings>>;
   revokeController(deviceId: string, grantId: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
   shortenControllerExpiry(deviceId: string, grantId: string, expiresAt: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
-  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
+  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences) | ({ kind: "remote_access.update" } & DeviceRemoteAccessSettings), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   getOperation(deviceId: string, operationId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   listTasks(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceTaskSummary[]>>;
 }
@@ -169,12 +174,14 @@ export function parseDeviceSettings(value: unknown): DeviceSettings | null {
   if (!["online", "signed_out", "offline"].includes(String(value.availability))) return null;
   const preferences = value.preferences;
   if (!nullableString(preferences.default_task_directory) || !strings(preferences.task_folders)) return null;
+  const remoteAccess = record(value.remote_access) ? value.remote_access : { agent_control_allowed: false, agent_always_ask: true };
+  if (typeof remoteAccess.agent_control_allowed !== "boolean" || typeof remoteAccess.agent_always_ask !== "boolean") return null;
   const controllers: DeviceControllerGrant[] = [];
   for (const item of value.controllers) {
     if (!record(item) || typeof item.grant_id !== "string" || typeof item.controller_id !== "string" || typeof item.label !== "string" || typeof item.is_current !== "boolean" || !nullableString(item.last_used_at) || !nullableString(item.expires_at) || typeof item.created_at !== "string") return null;
     controllers.push(item as unknown as DeviceControllerGrant);
   }
-  return { controller_id: value.controller_id, controllers, preferences: { default_task_directory: preferences.default_task_directory, task_folders: preferences.task_folders }, roots: value.roots, availability: value.availability as DeviceAvailability, preferences_available: value.preferences_available };
+  return { controller_id: value.controller_id, controllers, preferences: { default_task_directory: preferences.default_task_directory, task_folders: preferences.task_folders }, remote_access: { agent_control_allowed: remoteAccess.agent_control_allowed, agent_always_ask: remoteAccess.agent_always_ask }, roots: value.roots, availability: value.availability as DeviceAvailability, preferences_available: value.preferences_available };
 }
 
 export function parseSettingsOperation(value: unknown): DeviceSettingsOperation | null {
@@ -191,6 +198,8 @@ export function parseSettingsOperation(value: unknown): DeviceSettingsOperation 
       operation.result = { cover };
     } else if (record(result.preferences) && nullableString(result.preferences.default_task_directory) && strings(result.preferences.task_folders)) {
       operation.result = { preferences: { default_task_directory: result.preferences.default_task_directory, task_folders: result.preferences.task_folders } };
+    } else if (record(result.remote_access) && typeof result.remote_access.agent_control_allowed === "boolean" && typeof result.remote_access.agent_always_ask === "boolean") {
+      operation.result = { remote_access: { agent_control_allowed: result.remote_access.agent_control_allowed, agent_always_ask: result.remote_access.agent_always_ask } };
     } else if (nullableString(result.path) && nullableString(result.parent) && strings(result.roots) && Array.isArray(result.entries) && result.entries.every((item) => record(item) && typeof item.name === "string" && typeof item.path === "string")) {
       operation.result = result as unknown as DeviceFolderListing;
     } else return null;
