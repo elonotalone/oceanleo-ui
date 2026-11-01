@@ -55,9 +55,8 @@ export function CollabPresenceBar({ room }: { room: CollabRoom | null }) {
   if (!room) return null;
   const peers = room.peers;
   if (peers.length > 0) hadPeer.current = true;
-  // A room can be created while an editor is still loading. Do not call that
-  // a collaboration outage unless the room had actually connected before, or
-  // there are peers whose presence is meaningful to preserve.
+  // A room can be created while an editor is still loading. Do not call an
+  // empty room a collaboration outage; there is no collaborator to notify.
   const offline = shouldShowOfflinePresence({
     status: room.status,
     peerCount: peers.length,
