@@ -57,7 +57,6 @@ import {
   type ArtifactContextRef,
 } from "./artifact-contract";
 import { AdvancedContentWorkbench } from "./AdvancedContentWorkbench";
-import { WorkspaceEntryCanvas } from "./WorkspaceEntryCanvas";
 import { editorCapabilityFor } from "./workbench-routes";
 import {
   advancedRootItemId,
@@ -760,31 +759,27 @@ export function ResultCanvas({
       : editorWorkbench;
   const viewerContent =
     activeCanvasEntry && activeCanvasMode === "preview" ? (
-      <div className="flex h-full min-h-0 flex-col">
-        {hasCommittedEditorRevision && activeCanvasEntry.libraryItem && (
-          <div className="flex shrink-0 justify-end px-3 py-1">
-            <button
-              type="button"
-              className="rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#f5f5f4)]"
-              style={{ color: accent }}
-              onClick={() => openCanvasItem(activeCanvasEntry.libraryItem!)}
-            >
-              {tt("编辑")}
-            </button>
-          </div>
-        )}
-        <div className="min-h-0 flex-1">
-          <WorkspaceEntryCanvas
-            entry={activeCanvasEntry}
-            accent={accent}
-            onClose={() => {
-              setActiveCanvasEntry(null);
-              setHasCommittedEditorRevision(false);
-              setArtifactSaveError("");
-            }}
-          />
-        </div>
-      </div>
+      <WorkspaceLibrary
+        entries={
+          previewEntries.some((entry) => entry.id === activeCanvasEntry.id)
+            ? previewEntries
+            : [...previewEntries, activeCanvasEntry]
+        }
+        accent={accent}
+        openEntryId={activeCanvasEntry.id}
+        taskId={effectiveTaskId}
+        siteId={effectiveSiteId}
+        onOpenItem={openCanvasItem}
+        onDetailOpenChange={(open) => {
+          if (open) return;
+          setActiveCanvasEntry(null);
+          setHasCommittedEditorRevision(false);
+          setArtifactSaveError("");
+        }}
+        searchPlaceholder="搜索生成结果和当前应用页面"
+        emptyTitle="还没有生成内容"
+        emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里；点开即可继续编辑。"
+      />
     ) : null;
   const pluginHost = useMemo<PluginHost | null>(() => {
     if (!activeCapability) return null;

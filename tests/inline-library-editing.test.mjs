@@ -12,7 +12,8 @@ test("library items open in the fixed main canvas without advanced navigation", 
   assert.doesNotMatch(library, /<AdvancedContentWorkbench/);
   assert.match(canvas, /<AdvancedContentWorkbench/);
   assert.match(canvas, /embedded/);
-  assert.match(canvas, /<WorkspaceEntryCanvas/);
+  assert.match(canvas, /<WorkspaceLibrary[\s\S]*openEntryId=\{activeCanvasEntry\.id\}/);
+  assert.doesNotMatch(canvas, /WorkspaceEntryCanvas/);
   assert.doesNotMatch(library, /advancedFeatureHrefForItem/);
   assert.doesNotMatch(library, /router\.push\(href\)/);
 });

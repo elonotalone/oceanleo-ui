@@ -109,6 +109,8 @@ export interface WorkspaceLibraryProps {
   hideToolbar?: boolean;
   /** Hosts that keep chrome outside this component hide it while a file is open. */
   onDetailOpenChange?: (open: boolean) => void;
+  /** Open a specific entry directly in the shared detail view. */
+  openEntryId?: string | null;
   /** Warm the typed editor route/source while its read-only preview is visible. */
   onDetailItemChange?: (item: LibraryItem | null) => void;
   toolbarActions?: ReactNode;
@@ -330,6 +332,7 @@ export function WorkspaceLibrary({
   pageTitle,
   hideToolbar = false,
   onDetailOpenChange,
+  openEntryId,
   onDetailItemChange,
   toolbarActions,
   viewOptions,
@@ -381,7 +384,7 @@ export function WorkspaceLibrary({
     if (controlledCategory === undefined) setInternalCategory(next);
     onCategoryChange?.(next);
   };
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(openEntryId || "");
   const setDetailSelection = useCallback(
     (id: string) => {
       setSelectedId(id);
@@ -418,6 +421,11 @@ export function WorkspaceLibrary({
       ?.libraryItem || null;
     onDetailItemChange?.(selectedItem);
   }, [entries, onDetailItemChange, onDetailOpenChange, selectedId]);
+
+  useEffect(() => {
+    if (openEntryId === undefined) return;
+    setDetailSelection(openEntryId || "");
+  }, [openEntryId, setDetailSelection]);
 
   const clearRestoreEntry = useCallback(() => setRestoreEntryId(""), []);
 

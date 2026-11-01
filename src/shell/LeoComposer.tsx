@@ -238,8 +238,8 @@ export interface LeoComposerProps {
   onRemoveAttachment?: (id: string) => void;
   /**
    * C1 (2026-10-31): given → clicking an attachment tile calls this (the host opens
-   * it, e.g. in the task right sidebar) and the strip's own PreviewPanel is not
-   * rendered. Omitted → the old built-in preview panel.
+   * it, e.g. in the task right sidebar); the shared Library detail handles opening.
+   * rendered. Omitted → AttachmentStrip opens the shared Library detail locally.
    */
   onOpenAttachment?: (att: ComposerAttachment) => void;
   /** 失败方块（`failed: true`）右下角的重试；不传时失败徽章只是标记。 */

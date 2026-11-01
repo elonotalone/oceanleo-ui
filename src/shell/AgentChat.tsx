@@ -3263,7 +3263,7 @@ function AgentChatInner({
             onAttachFiles={toolsOn ? thread.onAttachFiles : undefined}
             attachments={toolsOn ? thread.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? thread.onRemoveAttachment : undefined}
-            // W6: a tile opens in this task's right sidebar (never AttachmentStrip's old PreviewPanel).
+            // W6: a tile opens in this task's right sidebar through the shared Library detail.
             onOpenAttachment={openTaskAttachment}
             draftKey={taskId ? `task:${taskId}` : undefined}
             // A computer's inbox takes bytes: a Library pick is read once and attached as a file.

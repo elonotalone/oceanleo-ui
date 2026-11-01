@@ -7,8 +7,8 @@
 // 每个附件一块圆角方块（`UploadTile`）——图片只显示缩略图，上传中压暗 + 小圆环，
 // 失败给红色小徽章，悬停右上角 ×。不再有文件名 chip、进度行、字节与用时。
 //
-// - 宿主传 onOpenAttachment（C1）：点方块交给宿主打开（任务右侧栏），本组件不渲染预览。
-// - 不传：点方块在右侧展开内置预览面板（子站沿用的旧行为）。
+// - 宿主传 onOpenAttachment（C1）：点方块交给宿主打开（任务右侧栏）。
+// - 不传：点方块也在这里打开共享的 WorkspaceLibrary 详情（适合没有任务栏的首页/子站）。
 // - 2026-10-31 A5：上传中的方块也挂 ×（与上传完成的一样）；宿主的 onRemove 负责取消上传。
 // - 2026-10-31 A1：刷新后恢复的私有附件没有本地 blob，图片缩略图按引用向网关要短期地址。
 // ============================================================================
@@ -19,12 +19,15 @@ import { UploadTile, isImageTile, withBusProgress, type UploadTileProps } from "
 import { useAttachmentDisplayUrl } from "../lib/attachment-url";
 import type { UploadInFlight } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
+import type { LibraryItem, LibraryKind } from "./library-data";
+import { WorkspaceLibrary } from "./WorkspaceLibrary";
+import { workspaceEntryFromLibraryItem } from "./workspace-library-model";
 
 export interface StripAttachment {
   id: string;
   name?: string;
   previewUrl?: string;
-  /** 可打开的文件地址（本地 blob 或已上传 url）；预览面板优先用它。 */
+  /** 可打开的文件地址（本地 blob 或已上传 url）；共享详情用它读取内容。 */
   url?: string;
   mime?: string;
   uploading?: boolean;
@@ -35,124 +38,51 @@ export interface StripAttachment {
   /** 私有 Library 引用（恢复的草稿附件没有本地预览时，按它取缩略图）。 */
   artifactId?: string;
   revisionId?: string;
+  /** 已上传附件的完整 typed Library 行，优先保留给详情查看器。 */
+  libraryItem?: LibraryItem;
 }
 
 /** 输入框里方块的边长（px）。 */
 export const COMPOSER_TILE_SIZE = 56;
 
 const TEXT_EXT = /\.(txt|md|markdown|csv|tsv|json|log|xml|ya?ml|html?|css|js|jsx|ts|tsx|py|sh|sql|ini|toml)$/i;
-const MAX_TEXT_BYTES = 256 * 1024;
 
-type Kind = "image" | "text" | "pdf" | "audio" | "video" | "other";
-
-function kindOf(a: StripAttachment): Kind {
-  const mime = (a.mime || "").toLowerCase();
-  const name = a.name || "";
-  if (mime.startsWith("image/") || (!a.url && a.previewUrl)) return "image";
-  if (mime === "application/pdf" || /\.pdf$/i.test(name)) return "pdf";
-  if (mime.startsWith("audio/")) return "audio";
-  if (mime.startsWith("video/")) return "video";
-  if (mime.startsWith("text/") || mime === "application/json" || TEXT_EXT.test(name)) return "text";
-  return "other";
+function libraryKindForAttachment(item: StripAttachment): LibraryKind {
+  const mime = (item.mime || "").toLowerCase();
+  const name = item.name || "";
+  if (mime.startsWith("image/") || (!item.url && item.previewUrl)) return "image";
+  if (mime.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(name)) return "video";
+  if (mime.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(name)) return "audio";
+  if (mime === "application/pdf" || /\.pdf$/i.test(name)) return "document";
+  if (/presentation|powerpoint/.test(mime) || /\.(ppt|pptx|odp)$/i.test(name)) return "ppt";
+  if (/spreadsheet|ms-excel|text\/csv/.test(mime) || /\.(xls|xlsx|csv|ods)$/i.test(name)) return "sheet";
+  if (mime.startsWith("text/") || mime === "application/json" || TEXT_EXT.test(name)) return "document";
+  return "file";
 }
 
-function Spinner({ className = "" }: { className?: string }) {
-  return (
-    <span
-      role="status"
-      data-attachment-spinner=""
-      className={`inline-block animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-700 ${className}`}
-    />
-  );
-}
-
-function PreviewPanel({ item, onClose }: { item: StripAttachment; onClose: () => void }) {
-  const tt = useUI();
-  const kind = kindOf(item);
-  const src = item.url || item.previewUrl || "";
-  const [text, setText] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    setText(null);
-    setFailed(false);
-    if (kind !== "text" || !src) return;
-    let alive = true;
-    fetch(src)
-      .then((res) => {
-        if (!res.ok) throw new Error(String(res.status));
-        return res.blob();
-      })
-      .then((blob) => blob.slice(0, MAX_TEXT_BYTES).text())
-      .then((value) => alive && setText(value))
-      .catch(() => alive && setFailed(true));
-    return () => {
-      alive = false;
-    };
-  }, [kind, src]);
-
-  return (
-    <aside
-      data-attachment-preview=""
-      className="fixed inset-y-0 right-0 z-[80] flex w-[min(520px,92vw)] flex-col border-l border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950"
-    >
-      <header className="flex items-center gap-2 border-b border-neutral-200 px-4 py-1.5 dark:border-neutral-800">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.name || tt("附件")}</span>
-        {src ? (
-          <a
-            href={src}
-            target="_blank"
-            rel="noreferrer"
-            download={item.name || undefined}
-            className="rounded-md px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-          >
-            {tt("打开")}
-          </a>
-        ) : null}
-        <button
-          type="button"
-          aria-label={tt("关闭")}
-          onClick={onClose}
-          className="-mr-2 flex h-11 w-11 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-        >
-          ×
-        </button>
-      </header>
-      <div className="min-h-0 flex-1 overflow-auto p-4 text-sm">
-        {kind === "image" && src ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={item.name || ""} className="mx-auto max-h-full max-w-full object-contain" />
-        ) : kind === "text" ? (
-          failed ? (
-            <p className="text-neutral-500">{item.name || tt("附件")}</p>
-          ) : text === null ? (
-            <Spinner className="h-5 w-5" />
-          ) : (
-            <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">{text}</pre>
-          )
-        ) : kind === "pdf" && src ? (
-          // 不内嵌 iframe。src 经常是 blob:（与宿主同源），PDF 又不得免沙箱
-          // 渲染（UC-3）；库里的 PDF 走自家 EmbedPDF 阅读器。
-          // 这里只用顶栏「打开」在新标签看文件。
-          <p className="text-neutral-500">{item.name || tt("附件")}</p>
-        ) : kind === "audio" && src ? (
-          <audio controls src={src} className="w-full" />
-        ) : kind === "video" && src ? (
-          <video controls src={src} className="max-h-full w-full" />
-        ) : (
-          <p className="text-neutral-500">{item.name || tt("附件")}</p>
-        )}
-      </div>
-    </aside>
-  );
+function libraryEntryForAttachment(item: StripAttachment) {
+  if (item.libraryItem) return workspaceEntryFromLibraryItem(item.libraryItem);
+  const url = item.url || item.previewUrl || undefined;
+  return workspaceEntryFromLibraryItem({
+    key: `local-attachment:${item.id}`,
+    source: "creation",
+    id: item.id,
+    title: item.name || "附件",
+    kind: libraryKindForAttachment(item),
+    siteId: "",
+    url,
+    previewUrl: item.previewUrl || url,
+    thumbUrl: item.previewUrl || url,
+    favorite: false,
+    artifactId: item.artifactId,
+    revisionId: item.revisionId,
+    meta: {
+      library_source: "local-attachment",
+      mime: item.mime || "",
+      filename: item.name || "",
+      local_attachment: true,
+    },
+  });
 }
 
 /** 一块附件方块：没有可用预览的私有图片按引用向网关要短期缩略图地址。 */
@@ -207,8 +137,8 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   onRemove?: (id: string) => void;
   /**
    * C1 (2026-10-31): given → a tile click hands the attachment to the host
-   * (e.g. the task right sidebar) and the built-in PreviewPanel never renders.
-   * Omitted → the old built-in preview panel (sub-sites).
+   * (e.g. the task right sidebar); the shared Library detail handles opening.
+   * Omitted → the shared Library detail opens locally (home/sub-sites).
    */
   onOpenAttachment?: (att: T) => void;
   /** 失败方块上的重试；不传时失败徽章只是标记，用户可移除后重传。 */
@@ -228,6 +158,7 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   const pending = pendingFiles ?? [];
   if (attachments.length === 0 && pending.length === 0) return null;
   const shown = withBusProgress(attachments, inFlight ?? []);
+  const openedEntry = opened ? libraryEntryForAttachment(opened) : null;
   return (
     <>
       <div className={`flex flex-wrap gap-2 pt-1.5 ${className}`} data-oceanleo-attachments="">
@@ -262,7 +193,20 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
           <PendingFileTile key={`pending-${index}-${file.name}-${file.size}`} file={file} />
         ))}
       </div>
-      {opened ? <PreviewPanel item={opened} onClose={() => setOpenId(null)} /> : null}
+      {opened ? (
+        <div className="fixed inset-0 z-[80] bg-[var(--surface,#fafaf9)]">
+          <WorkspaceLibrary
+            entries={openedEntry ? [openedEntry] : []}
+            openEntryId={openedEntry?.id}
+            onDetailOpenChange={(open) => {
+              if (!open) setOpenId(null);
+            }}
+            plain
+            emptyTitle=""
+            emptyDescription=""
+          />
+        </div>
+      ) : null}
     </>
   );
 }

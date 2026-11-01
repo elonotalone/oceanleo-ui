@@ -17,7 +17,8 @@ test("workspace files leave the library list and take over the fixed main canvas
   assert.match(canvas, /<AdvancedContentWorkbench/);
   assert.match(canvas, /activeCanvasEntry/);
   assert.match(canvas, /activeCanvasMode === "edit"/);
-  assert.match(canvas, /<WorkspaceEntryCanvas/);
+  assert.match(canvas, /<WorkspaceLibrary[\s\S]*openEntryId=\{activeCanvasEntry\.id\}/);
+  assert.doesNotMatch(canvas, /WorkspaceEntryCanvas/);
   assert.doesNotMatch(library, /advancedFeatureHrefForItem/);
   assert.doesNotMatch(library, /router\.push\(href\)/);
 });

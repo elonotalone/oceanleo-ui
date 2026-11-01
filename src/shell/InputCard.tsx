@@ -100,7 +100,7 @@ export interface InputCardProps {
   attachments?: InputAttachment[];
   /** 点缩略条上的删除。 */
   onRemoveAttachment?: (id: string) => void;
-  /** 给了它：点方块交给宿主打开，不渲染内置预览面板（C1）。 */
+  /** 给了它：点方块交给宿主打开；省略时 AttachmentStrip 在共享 Library 详情中打开（C1）。 */
   onOpenAttachment?: (att: InputAttachment) => void;
   /** 失败方块上的重试。 */
   onRetryAttachment?: (id: string) => void;
