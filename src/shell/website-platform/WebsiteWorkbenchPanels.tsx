@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   websitePlatformApi,
+  websiteFileText,
   websitePreviewFrameUrl,
   type WebsiteCommit,
   type WebsiteDatabaseTable,
@@ -256,6 +257,7 @@ function CodePanel({
   ]);
   const [selected, setSelected] = useState("");
   const [content, setContent] = useState("");
+  const [binary, setBinary] = useState(false);
   const [notice, setNotice] = useState("");
   const list = files.value?.files || [];
 
@@ -273,7 +275,10 @@ function CodePanel({
     api
       .file(projectId, selected, commit, controller.signal)
       .then((file) => {
-        if (!controller.signal.aborted) setContent(file.content || "");
+        if (controller.signal.aborted) return;
+        const loaded = websiteFileText(file);
+        setBinary(loaded.binary);
+        setContent(loaded.text);
       })
       .catch((error) => {
         if (!controller.signal.aborted) setNotice(errText(error));
@@ -319,16 +324,22 @@ function CodePanel({
           ))}
         </div>
         <div>
-          <textarea
-            aria-label={tt("文件内容")}
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            className="min-h-[180px] w-full rounded border bg-transparent p-2 font-mono text-xs"
-          />
+          {binary ? (
+            <p className="rounded border p-3 text-xs opacity-70" data-testid="website-code-binary">
+              {tt("这是二进制文件（图片、字体等），不能在这里按文本编辑。")}
+            </p>
+          ) : (
+            <textarea
+              aria-label={tt("文件内容")}
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              className="min-h-[180px] w-full rounded border bg-transparent p-2 font-mono text-xs"
+            />
+          )}
           <button
             type="button"
             className="mt-2 rounded bg-[var(--awb-accent)] px-3 py-1 text-xs text-white"
-            disabled={!selected}
+            disabled={!selected || binary}
             onClick={save}
           >
             {tt("保存并提交")}

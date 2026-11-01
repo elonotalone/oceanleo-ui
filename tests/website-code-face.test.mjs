@@ -89,3 +89,14 @@ test("the preview pane frames only the public user-content host and always offer
   assert.match(api, /\/preview`,\n\s+\{ method: "POST"/);
   assert.doesNotMatch(api, /\/sessions`/);
 });
+
+test("files stored as base64 still open as text in the code editor", async () => {
+  const { websiteFileText } = await import("../src/lib/website-platform-api.ts");
+  const html = "<h1>蓝色海洋</h1>";
+  const b64 = Buffer.from(html, "utf8").toString("base64");
+  assert.deepEqual(websiteFileText({ path: "index.html", content_base64: b64, is_binary: true }), { text: html, binary: false });
+  assert.deepEqual(websiteFileText({ path: "index.html", content: "x" }), { text: "x", binary: false });
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]).toString("base64");
+  assert.deepEqual(websiteFileText({ path: "logo.png", content_base64: png }), { text: "", binary: true });
+  assert.match(panels, /websiteFileText\(file\)/);
+});

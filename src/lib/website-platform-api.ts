@@ -240,6 +240,27 @@ async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSi
 
 const segment = (value: string) => encodeURIComponent(value);
 
+/**
+ * Editable text of a source file. The gateway sends text as `content`, but
+ * files stored as base64 (older create-flow sites) arrive as `content_base64`
+ * only; decode them when they are valid UTF-8 without NUL bytes. Anything
+ * else is binary and is not shown as text.
+ */
+export function websiteFileText(file: WebsiteProjectFile | null | undefined): { text: string; binary: boolean } {
+  if (typeof file?.content === "string") return { text: file.content, binary: false };
+  const encoded = String(file?.content_base64 || "");
+  if (!encoded) return { text: "", binary: false };
+  try {
+    const raw = atob(encoded);
+    const bytes = new Uint8Array(raw.length);
+    for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+    if (bytes.includes(0)) return { text: "", binary: true };
+    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), binary: false };
+  } catch {
+    return { text: "", binary: true };
+  }
+}
+
 const USER_CONTENT_ROOTS = ["oceanleo.app", "leoapp.cn"] as const;
 
 /**
