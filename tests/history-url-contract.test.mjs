@@ -37,3 +37,7 @@ test("HistoryDetail 刷新动态路由时直接从 pathname 恢复，不依赖�
   );
   assert.match(source, /siteId && session\.site_id !== siteId/);
 });
+
+test("历史任务把已读标题直接交给 AgentChat，首帧不回退到 computer label", () => {
+  assert.match(source, /initialTitle=\{loaded\.kind === "session" \? loaded\.session\.title : loaded\.detail\.task\.title\}/);
+});

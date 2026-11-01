@@ -148,6 +148,18 @@ function historyOpenHint(entry: HistoryListEntry): HistoryOpenHint {
   return { kind: "task", id: taskId, taskId, mode, computerSessionId: latestComputerTaskSession(sessions ?? [])?.id ?? null };
 }
 
+/** A URL may name either side of a task/session pair. Keep the row selected
+ * while the list is still represented by the bound app_session row. */
+export function historyEntryMatchesSelection(
+  entry: HistoryListEntry,
+  selection: string | null | undefined,
+): boolean {
+  if (!selection) return false;
+  if (entry.id === selection) return true;
+  if (entry.kind === "session") return entry.session.task_id === selection;
+  return entry.task.session_id === selection;
+}
+
 /** HistoryDetail instances mounted now: a row click switches them in place (no page load). */
 let mountedHistoryDetails = 0;
 
@@ -885,7 +897,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
       {visibleItems.filter((entry) => entry.kind !== "task" || !localRemoteIds.has(entry.id)).map((entry) => {
         const isSession = entry.kind === "session";
         const record = isSession ? entry.session : entry.task;
-        const on = entry.id === sel;
+        const on = historyEntryMatchesSelection(entry, sel);
         const title =
           record.title ||
           (isSession ? entry.session.app_id : "") ||
@@ -1485,6 +1497,7 @@ export function HistoryDetail({
             siteId={fallbackSiteId}
             taskId={fallbackTaskId}
             initialTask={loaded.kind === "task" ? loaded.detail : loaded.fallbackTask}
+            initialTitle={loaded.kind === "session" ? loaded.session.title : loaded.detail.task.title}
             accent={accent}
             headerHeight={41}
             appNames={appNames}

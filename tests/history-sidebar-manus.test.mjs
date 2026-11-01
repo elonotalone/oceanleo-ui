@@ -106,7 +106,19 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
   `),
 });
 
-const { HistoryInlineList } = await import(historyUrl);
+const { HistoryInlineList, historyEntryMatchesSelection } = await import(historyUrl);
+
+test("task URL selection highlights its bound session row immediately", () => {
+  const row = session("s-native", "排查消息发送失败和加载bug", { task_id: "t-native" });
+  assert.equal(
+    historyEntryMatchesSelection({ kind: "session", id: row.id, session: row }, "t-native"),
+    true,
+  );
+  assert.equal(
+    historyEntryMatchesSelection({ kind: "session", id: row.id, session: row }, "other-task"),
+    false,
+  );
+});
 
 async function mount() {
   const { createRoot } = await import("react-dom/client");

@@ -425,6 +425,8 @@ export interface AgentChatProps {
    * polling still follows while the task runs. Ignored for any other task.
    */
   initialTask?: TaskDetail | null;
+  /** Title already present in the history/session row; shown before the first refresh. */
+  initialTitle?: string | null;
   /** 显式只读嵌入场景；历史任务默认仍可续聊或从任一用户消息创建分支。 */
   readOnly?: boolean;
   /** 模式：agent（默认，带规划循环 + artifact）| chat（纯对话）。 */
@@ -685,6 +687,7 @@ function AgentChatInner({
   initialAttachments,
   taskId: explicitTaskId,
   initialTask,
+  initialTitle,
   readOnly: readOnlyProp = false,
   mode = "agent",
   agentId = "",
@@ -800,7 +803,9 @@ function AgentChatInner({
   // 「所属 app」展示名：优先 appLabel prop，其次从 task.site_id 解析。
   const [taskSiteId, setTaskSiteId] = useState<string>("");
   // 本次对话「总结」= 后端自动生成的 task.title（首轮收尾时 AI 概括，见 refresh）。
-  const [taskTitle, setTaskTitle] = useState<string>("");
+  const [taskTitle, setTaskTitle] = useState<string>(
+    () => String(initialTask?.task?.title || initialTitle || ""),
+  );
   const [input, setInput] = useState("");
   const [gateBusy, setGateBusy] = useState(false);
   const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
@@ -813,6 +818,10 @@ function AgentChatInner({
   const loadedTaskRef = useRef("");
   const initialTaskRef = useRef(initialTask);
   initialTaskRef.current = initialTask;
+  useEffect(() => {
+    const next = String(initialTask?.task?.title || initialTitle || "").trim();
+    if (next) setTaskTitle(next);
+  }, [initialTask, initialTitle]);
   const seededTaskRef = useRef("");
   /** The task whose thread holds only its newest messages so far (task-open-cache). */
   const partialTaskRef = useRef("");
