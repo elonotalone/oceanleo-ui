@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import React, { act } from "react";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -51,59 +49,12 @@ test("paid lesson and bundle metadata survives compact rendering", () => {
   assert.match(bundleRow, /省 \$5\.00/);
 });
 
-test("asset deep links remain native links in both collection views", () => {
+test("asset cards open the shared detail with a button in both collection views", () => {
   for (const view of ["list", "grid"]) {
     const html = renderToStaticMarkup(React.createElement(BayAssetCard, { asset: { ...asset, openHref: "/en/library?asset=asset-1" }, view, onOpen() {} }));
-    assert.match(html, /<a[^>]*href="\/en\/library\?asset=asset-1"/);
-  }
-});
-
-test("asset native links never invoke the detail callback, including modified clicks; buttons do", async () => {
-  const require = createRequire(import.meta.url);
-  const fabricRequire = createRequire(require.resolve("fabric/node"));
-  const canvasEntry = fabricRequire.resolve("canvas");
-  const previousCanvas = require.cache[canvasEntry];
-  require.cache[canvasEntry] = { id: canvasEntry, filename: canvasEntry, loaded: true, exports: {} };
-  const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
-  if (previousCanvas) require.cache[canvasEntry] = previousCanvas;
-  else delete require.cache[canvasEntry];
-  const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "https://example.test/en/bay" });
-  for (const name of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "MouseEvent"]) {
-    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: name === "window" ? dom.window : dom.window[name] });
-  }
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  const { createRoot } = await import("react-dom/client");
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  let opened = 0;
-  let cancelledByComponent = false;
-  // Observe after React's root handler; suppress only jsdom's unsupported navigation.
-  document.addEventListener("click", (event) => {
-    cancelledByComponent ||= event.defaultPrevented;
-    event.preventDefault();
-  });
-  try {
-    for (const view of ["list", "grid"]) {
-      await act(async () => root.render(React.createElement(BayAssetCard, {
-        asset: { ...asset, openHref: "/en/library?asset=asset-1" }, view, onOpen() { opened += 1; },
-      })));
-      const link = host.querySelector("a");
-      assert.ok(Boolean(link));
-      for (const modifiers of [{}, { ctrlKey: true }, { metaKey: true }]) {
-        await act(async () => link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers })));
-      }
-      assert.equal(opened, view === "list" ? 0 : 1, "anchor click must not call openAsset");
-      assert.equal(cancelledByComponent, false, "native link defaults remain available");
-      await act(async () => root.render(React.createElement(BayAssetCard, { asset, view, onOpen(value) { assert.equal(value.id, asset.id); opened += 1; } })));
-      const button = host.querySelector("button");
-      assert.ok(Boolean(button));
-      await act(async () => button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
-      assert.equal(opened, view === "list" ? 1 : 2, "button click still opens asset details");
-    }
-  } finally {
-    await act(async () => root.unmount());
-    host.remove();
+    assert.match(html, /data-bay-asset-card="asset-1"/);
+    assert.match(html, /<button[^>]*aria-label="预览「Asset title」"/);
+    assert.doesNotMatch(html, /<a[^>]*href=/);
   }
 });
 
