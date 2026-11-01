@@ -406,6 +406,19 @@ function ConversationBody(props: ConversationViewProps & {
     [viewerId, conversationId, conversation?.kind, conversation?.show_member_nicknames, title, profiles, endedMetaOf, showCallButton],
   );
 
+  // Keep the conversation in the same page-level loading state until both the
+  // conversation header and its first message page have settled. Rendering the
+  // header/composer first left a blank shell on every switch, followed by a
+  // second spinner inside MessageList; the Projects-style skeleton is the one
+  // loading surface for the whole conversation instead.
+  if (!conversation || !snapshot.loaded) {
+    return (
+      <div className="h-full" data-conversation-loading="">
+        <RoutePageSkeleton variant="list" label={tt("正在加载…")} />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-full min-h-0" data-conversation-view={conversationId}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">

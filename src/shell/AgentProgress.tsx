@@ -301,7 +301,10 @@ function ToolView({
         className={ROW}
       >
         <span aria-hidden="true" className="w-3 shrink-0 text-center">{toolMark(entry.kind)}</span>
-        <span className="min-w-0 flex-1 truncate text-stone-500" data-agent-process-tool-title="">
+        <span
+          className={`min-w-0 flex-1 break-words text-stone-500 ${WRAP}`}
+          data-agent-process-tool-title=""
+        >
           {title}
         </span>
         {children.length > 0 && (

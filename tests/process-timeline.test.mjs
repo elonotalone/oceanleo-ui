@@ -331,7 +331,8 @@ test("long unbroken strings wrap: user bubble, gate prompt, error, tool title/bo
   try {
     await click(tool.host.querySelector("[data-agent-process-toggle]"));
     const title = tool.host.querySelector("[data-agent-process-tool-title]");
-    assert.match(title.className, /truncate/, "single line, truncated");
+    assert.doesNotMatch(title.className, /truncate/, "step sentences stay readable instead of being cut");
+    assert.match(title.className, /break-words/);
     assert.match(title.className, /min-w-0/);
     await click(tool.host.querySelector("[data-agent-process-tool] button"));
     const body = tool.host.querySelector("[data-agent-process-tool-body]");

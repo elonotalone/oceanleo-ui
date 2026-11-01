@@ -272,8 +272,8 @@ test("AgentProgress: the summary row shows the step mark (no accent dot / spinne
 // Width
 // ---------------------------------------------------------------------------
 
-test("reading column: 45rem (at most 47 CJK chars at 15px); transcript and composer share the one constant", () => {
-  assert.equal(AGENT_CONVERSATION_MAX_WIDTH_REM, 45);
+test("reading column: 52rem (slightly wider than Manus relative to the narrower sidebar); transcript and composer share the one constant", () => {
+  assert.equal(AGENT_CONVERSATION_MAX_WIDTH_REM, 52);
   assert.equal(AGENT_CONVERSATION_MAX_WIDTH_CLASS, `max-w-[${AGENT_CONVERSATION_MAX_WIDTH_REM}rem]`);
   const source = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /max-w-2xl/, "no literal width left in the task chat");
