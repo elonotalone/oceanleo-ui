@@ -162,6 +162,8 @@ test("选中任务 = 中性灰底，不再蓝底白字；未选中只有悬停�
     const selected = view.frame("s-long");
     const idle = view.frame("s-short");
     assert.match(selected.className, /bg-neutral-200\/80/);
+    assert.match(selected.className, /outline-neutral-300/, "selected row has a neutral outline");
+    assert.match(selected.className, /outline-offset-\[-1px\]/);
     assert.doesNotMatch(selected.className, /text-white/);
     assert.equal(selected.getAttribute("style"), null, "no inline accent background");
     assert.doesNotMatch(idle.className, /(^|\s)bg-neutral-200\/80/);

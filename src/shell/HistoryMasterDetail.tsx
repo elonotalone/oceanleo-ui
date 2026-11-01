@@ -960,7 +960,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
             disabled={renaming || menuFor === entry.id}
             className={`group relative flex items-center gap-1 rounded-lg px-3 py-2 text-[14px] leading-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
               on
-                ? "bg-neutral-200/80 text-neutral-900"
+                ? "bg-neutral-200/80 text-neutral-900 outline outline-1 outline-neutral-300 outline-offset-[-1px]"
                 : "text-neutral-800 hover:bg-neutral-200/50 hover:text-neutral-900"
             }`}
           >
