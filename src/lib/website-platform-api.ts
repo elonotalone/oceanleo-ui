@@ -154,6 +154,22 @@ export interface WebsiteUsageMetric {
 export interface WebsiteUsageSettings {
   range?: { start?: string; end?: string; label?: string };
   metrics?: Record<string, WebsiteUsageMetric>;
+  cost_ledger?: {
+    status?: string;
+    reason?: string;
+    totals?: Record<string, number>;
+    unpriced_kinds?: string[];
+    events?: Array<{
+      kind?: string;
+      quantity?: number;
+      unit?: string;
+      unit_cost?: number | null;
+      currency?: string;
+      cost?: number | null;
+      resource_id?: string;
+      occurred_at?: string;
+    }>;
+  };
   [key: string]: unknown;
 }
 

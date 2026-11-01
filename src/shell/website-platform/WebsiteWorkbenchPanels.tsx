@@ -466,6 +466,31 @@ function DashboardPanel({
               <MetricCard key={key} label={key} value={formatUsageMetric(metric)} />
             ))}
           </div>
+          <div className="mt-4" data-testid="website-dashboard-cost-ledger">
+            <h4 className="text-xs font-medium">{tt("成本记录")}</h4>
+            {state.value?.[3].cost_ledger?.status === "actual" ? (
+              <div className="mt-2 space-y-1">
+                {Object.entries(state.value[3].cost_ledger.totals || {}).map(([kind, total]) => (
+                  <div key={kind} className="flex items-center justify-between gap-2 text-xs">
+                    <span>{kind}</span>
+                    <span>{Number(total).toFixed(6)}</span>
+                  </div>
+                ))}
+                {(state.value[3].cost_ledger.unpriced_kinds || []).length ? (
+                  <p className="text-xs opacity-70">
+                    {tt("未定价")}: {state.value[3].cost_ledger.unpriced_kinds?.join(", ")}
+                  </p>
+                ) : null}
+                {(state.value[3].cost_ledger.events || []).length === 0 ? (
+                  <p className="text-xs opacity-70">{tt("此网站还没有成本记录。")}</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="mt-1 text-xs opacity-70">
+                {state.value?.[3].cost_ledger?.reason || tt("成本记录暂不可用。")}
+              </p>
+            )}
+          </div>
         </div>
         <p className="text-xs opacity-70">
           {tt("权限")}：{String(state.value?.[1].role || state.value?.[0].role || "—")} · {tt("分析状态")}：{String(state.value?.[2].status || "—")}

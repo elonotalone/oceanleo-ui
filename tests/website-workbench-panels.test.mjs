@@ -36,6 +36,8 @@ test("website platform client covers management, storage, settings, usage, and a
   for (const id of ["website-dashboard-panel", "website-storage-panel", "website-settings-panel"]) {
     assert.match(panels, new RegExp(`data-testid=\"${id}\"`));
   }
+  assert.match(panels, /website-dashboard-cost-ledger/);
+  assert.match(api, /cost_ledger/);
 });
 
 test("website route declares shared aux pages for code, dashboard, database, storage, and settings", () => {
