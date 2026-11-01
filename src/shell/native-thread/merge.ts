@@ -20,23 +20,23 @@ export function mapNativeTranscript(
     (current, frame) => applyDialog(current, { type: "frame", frame }),
     initial,
   );
-  const fallback = Date.parse(session.created_at || "");
-  return dialogToAgentMessages(state.messages, { live: false, tt, engine: session.program ?? undefined }).map((message) =>
-    message.created_at || !Number.isFinite(fallback) ? message : { ...message, created_at: new Date(fallback).toISOString() },
-  );
+  // Untimed rows (replies, steps) are placed by the merge, after the timed row before them.
+  return dialogToAgentMessages(state.messages, { live: false, tt, engine: session.program ?? undefined });
 }
 
-function messageTime(message: AgentMessage, fallback: number): number {
-  const value = message.created_at ? Date.parse(message.created_at) : NaN;
-  return Number.isFinite(value) ? value : fallback;
-}
 
 /** Merge every engine's mapped transcript into one stable, chronological stream. */
 export function mergeNativeThreadMessages(sources: readonly NativeThreadSource[]): AgentMessage[] {
   const rows: { message: AgentMessage; time: number; source: number; order: number }[] = [];
   sources.forEach((source, sourceIndex) => {
-    const fallback = Date.parse(source.session.created_at || "") || sourceIndex;
-    source.messages.forEach((message, order) => rows.push({ message, time: messageTime(message, fallback), source: sourceIndex, order }));
+    // Only user prompts carry a time in saved transcripts: a reply or step takes the time
+    // of the row before it in its own session, so it stays right after its prompt.
+    let time = Date.parse(source.session.created_at || "") || sourceIndex;
+    source.messages.forEach((message, order) => {
+      const own = message.created_at ? Date.parse(message.created_at) : NaN;
+      if (Number.isFinite(own)) time = own;
+      rows.push({ message, time, source: sourceIndex, order });
+    });
   });
   rows.sort((a, b) => a.time - b.time || a.source - b.source || a.order - b.order);
   return rows.map(({ message }) => message);

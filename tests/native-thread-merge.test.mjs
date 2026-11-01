@@ -20,3 +20,16 @@ test("uses session creation order when timestamps are absent", () => {
   ]);
   assert.deepEqual(result.map((row) => row.id), [1, 2]);
 });
+
+const prompt = (id, created_at) => ({ id, role: "user", kind: "text", content: id, created_at });
+
+test("an untimed reply stays right after its own prompt across engine switches", () => {
+  // Codex → Claude → Codex: only prompts are timed, replies are not.
+  const result = mergeNativeThreadMessages([
+    { session: session("claude", "claude", "2026-01-01T00:00:05Z"), messages: [prompt("q2", "2026-01-01T00:00:06Z"), message("a2")] },
+    { session: session("codex", "codex", "2026-01-01T00:00:00Z"), messages: [
+      prompt("q1", "2026-01-01T00:00:01Z"), message("a1"), prompt("q3", "2026-01-01T00:00:09Z"), message("a3"),
+    ] },
+  ]);
+  assert.deepEqual(result.map((row) => row.id), ["q1", "a1", "q2", "a2", "q3", "a3"]);
+});
