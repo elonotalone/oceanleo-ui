@@ -62,7 +62,15 @@ const panelStub = dataModule(`
   export function MaterialLibrary(){ return panel("materials"); }
   export function MyLibrary(){ return panel("mine"); }
   export function CloudBrowserPanel(){ return panel("browser"); }
-  export function WorkspaceLibrary(){ return panel("preview"); }
+  export function WorkspaceLibrary({ entries = [], openEntryId, onDetailOpenChange }){
+    const entry = entries.find((candidate) => candidate.id === openEntryId) || null;
+    if (!entry) return panel("preview");
+    return jsx("button", {
+      "data-entry-canvas": entry.libraryItem?.id || "",
+      "data-entry-url": entry.libraryItem?.url || "",
+      onClick: () => onDetailOpenChange?.(false),
+    });
+  }
   export function workspaceEntryFromLibraryItem(item, extra = {}){ return { id: item.key, title: item.title, libraryItem: item, ...extra }; }
   export function AdvancedContentWorkbench({ item }){
     React.useEffect(() => { globalThis.__editorMounts = (globalThis.__editorMounts || 0) + 1; }, []);
