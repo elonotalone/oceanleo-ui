@@ -118,6 +118,13 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
     turnCopyText,
   } = props;
   const body = <TranscriptBody {...props} />;
+  const engineLabel = typeof message.meta?.engine_label === "string" ? message.meta.engine_label : "";
+  const labelledBody = engineLabel ? (
+    <div className="space-y-0.5">
+      <div className="text-[11px] font-medium text-stone-400">{engineLabel}</div>
+      {body}
+    </div>
+  ) : body;
   const perTurn = turnCopyText !== undefined;
   const actionable =
     !selectMode &&
@@ -128,7 +135,7 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
       ? Boolean(turnCopyText?.trim())
       : (message.kind === "text" || !message.kind || message.kind === "report") &&
         Boolean(message.content?.trim()));
-  if (!selectMode && !actionable) return body;
+  if (!selectMode && !actionable) return labelledBody;
   return (
     <div
       className={`group/message flex gap-2.5 ${
@@ -146,7 +153,7 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
         />
       )}
       <div className={`min-w-0 flex-1 ${selectMode ? "pointer-events-none" : ""}`}>
-        {body}
+        {labelledBody}
         {actionable && (
           <MessageActions
             content={perTurn ? turnCopyText ?? "" : message.content}

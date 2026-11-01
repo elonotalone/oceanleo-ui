@@ -337,14 +337,14 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // it arrives (2026-10-31 D: a busy session no longer hides the saved copy).
   const showArchive = !live || (!liveHasConversation && hasConversation(archiveDialog));
   const messages = useMemo(() => {
-    if (!showArchive) return dialogToAgentMessages(dialog.messages, { live: true, tt });
-    const saved = dialogToAgentMessages(archiveDialog, { live: false, tt });
+    if (!showArchive) return dialogToAgentMessages(dialog.messages, { live: true, tt, engine: program ?? undefined });
+    const saved = dialogToAgentMessages(archiveDialog, { live: false, tt, engine: program ?? undefined });
     if (!live) return saved;
     // Online fallback: keep live notices (e.g. a failed reopen) under the saved transcript.
-    const notices = dialogToAgentMessages(dialog.messages.filter((message) => message.kind === "notice"), { live: true, tt });
+    const notices = dialogToAgentMessages(dialog.messages.filter((message) => message.kind === "notice"), { live: true, tt, engine: program ?? undefined });
     const used = new Set(saved.map((message) => message.id));
     return [...saved, ...notices.filter((message) => !used.has(message.id))];
-  }, [showArchive, live, dialog.messages, archiveDialog, tt]);
+  }, [showArchive, live, dialog.messages, archiveDialog, tt, program]);
 
   // A brand-new conversation (no native session yet) cannot be busy on the
   // computer: once the link is up it never waits for an occupancy reply.

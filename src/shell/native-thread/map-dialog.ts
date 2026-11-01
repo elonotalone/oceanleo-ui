@@ -30,6 +30,8 @@ export type DialogMapOptions = {
   live: boolean;
   /** Viewer-language translate; defaults to the Chinese source text. */
   tt?: MapTranslate;
+  /** Program that authored this saved/live stream, used by cross-engine task views. */
+  engine?: string;
 };
 
 /** Attachment as rendered on the user bubble; `native_archive` is the owner-checked cloud copy. */
@@ -178,7 +180,7 @@ export function dialogToAgentMessages(
         role: sender ? "assistant" : "user",
         kind: "text",
         content: message.text,
-        meta: { native: true, ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}) },
+        meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}) },
         ...(typeof message.at === "number" ? { created_at: new Date(message.at).toISOString() } : {}),
       });
       continue;
@@ -193,7 +195,7 @@ export function dialogToAgentMessages(
         role: "assistant",
         kind: isNeutralNotice(message.code) ? "notice" : "error",
         content: noticeText(tt, message),
-        meta: { native: true, native_notice: message.code },
+        meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), native_notice: message.code },
       });
       continue;
     }
@@ -215,7 +217,7 @@ export function dialogToAgentMessages(
           role: "assistant",
           kind: "text",
           content: item.text,
-          meta: { native: true },
+          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}) },
         });
         continue;
       }
@@ -228,7 +230,7 @@ export function dialogToAgentMessages(
           role: "assistant",
           kind: "analysis",
           content: item.text,
-          meta: { native: true, step_index: step },
+          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), step_index: step },
         });
         continue;
       }
@@ -244,6 +246,7 @@ export function dialogToAgentMessages(
           content: title,
           meta: {
             native: true,
+            ...(opts.engine ? { engine: opts.engine } : {}),
             native_tool: true,
             step_index: step,
             tool_status: tool.status,
@@ -262,6 +265,7 @@ export function dialogToAgentMessages(
           content: "",
           meta: {
             native: true,
+            ...(opts.engine ? { engine: opts.engine } : {}),
             plan_steps: item.entries.map((entry) => entry.content).filter((text) => text.trim()),
             plan_entries: item.entries,
           },
@@ -283,7 +287,7 @@ export function dialogToAgentMessages(
           role: "assistant",
           kind: "gate",
           content: prompt,
-          meta: { native: true, gate_prompt: prompt, native_permission },
+          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_permission },
         });
         continue;
       }
@@ -301,7 +305,7 @@ export function dialogToAgentMessages(
           role: "assistant",
           kind: "gate",
           content: prompt,
-          meta: { native: true, gate_prompt: prompt, native_question },
+          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_question },
         });
         continue;
       }

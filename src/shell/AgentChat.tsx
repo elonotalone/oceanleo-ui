@@ -73,6 +73,7 @@ import {
   findComputerTaskSession,
   latestComputerTaskSession,
   listComputerTaskSessions,
+  getComputerTaskTranscript,
   hasPendingNativePrompt,
   knownComputer,
   knownComputerTaskSession,
@@ -88,6 +89,7 @@ import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
 import { ShareCardPreview } from "./share/ShareCard";
 import { useShareMode, type ShareModeState } from "./share/useShareMode";
 import { PROGRAM_LABEL } from "./cloud-computer/agent-dialog/types";
+import { mapNativeTranscript, mergeNativeThreadMessages, type NativeThreadSource } from "./native-thread/merge";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
@@ -1212,6 +1214,20 @@ function AgentChatInner({
   const sessions = useMemo(() => allSessions.filter(usableSession), [allSessions]);
   const sessionsLoaded = taskSessions.taskId === taskId && taskSessions.loaded;
   const sessionsFailed = Boolean(taskId) && taskSessions.taskId === taskId && taskSessions.failed;
+  const [archivedNativeSources, setArchivedNativeSources] = useState<NativeThreadSource[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const nativeSessions = sessions.filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo");
+    if (!taskId || !nativeSessions.length) { setArchivedNativeSources([]); return () => { alive = false; }; }
+    void Promise.allSettled(nativeSessions.map(async (session) => {
+      const transcript = await getComputerTaskTranscript(session.id);
+      return { session, messages: mapNativeTranscript(session, transcript.frames, tt) } satisfies NativeThreadSource;
+    })).then((results) => {
+      if (!alive) return;
+      setArchivedNativeSources(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
+    });
+    return () => { alive = false; };
+  }, [taskId, sessions, tt]);
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
 
@@ -3104,7 +3120,15 @@ function AgentChatInner({
   // session, kept mounted and connected while hidden); this function is its stream.
   const renderNativePane = (pane: NativeChatPane): ReactNode => {
     const { thread, session, input, setInput, scrollRef, onScroll, connecting, share: nativeShare } = pane;
-    const nativeMessages = thread.messages;
+    let previousEngine = "";
+    const nativeMessages = thread.messages.map((message) => {
+      const engine = typeof message.meta?.engine === "string" ? message.meta.engine : "";
+      const showLabel = Boolean(engine && previousEngine && engine !== previousEngine && message.role === "assistant");
+      previousEngine = engine || previousEngine;
+      if (!showLabel) return message;
+      const label = PROGRAM_LABEL[engine as keyof typeof PROGRAM_LABEL] ?? engine;
+      return { ...message, meta: { ...message.meta, engine_label: label } };
+    });
     const nativeRenderItems = buildAgentRenderItems(nativeMessages);
     const nativeProgressKey = activeAgentProgressKey(nativeRenderItems, nativeMessages);
     const nativeLiveProgressKey = liveAgentProgressKey(nativeRenderItems, nativeMessages);
@@ -3324,6 +3348,7 @@ function AgentChatInner({
             shareOn={nativeShareOn && entry.active}
             onShareExit={endNativeShare}
             shareInfo={nativeShareInfo}
+            archivedSources={archivedNativeSources}
             render={renderNativePane}
           />
         </div>
@@ -3526,7 +3551,7 @@ interface NativeChatPane {
  * `external` (the homepage's prewarmed thread) it renders that thread and
  * opens no connection of its own.
  */
-function NativeChatConversation({ session, computer, external, active, onNativeSessionChange, conversation, shareOn, onShareExit, shareInfo, render }: {
+function NativeChatConversation({ session, computer, external, active, onNativeSessionChange, conversation, shareOn, onShareExit, shareInfo, archivedSources, render }: {
   session: ComputerTaskSession | null;
   computer: Computer | null;
   external?: NativeThread;
@@ -3537,6 +3562,7 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   shareOn: boolean;
   onShareExit: () => void;
   shareInfo: { taskId?: string | null; title?: string; siteLabel?: string };
+  archivedSources?: NativeThreadSource[];
   render: (pane: NativeChatPane) => ReactNode;
 }) {
   const sessionId = session?.id ?? "";
@@ -3552,6 +3578,15 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     onNativeSessionChange: onNative,
   });
   const thread = external ?? own;
+  const displayMessages = useMemo(() => {
+    if (!archivedSources?.length) return thread.messages;
+    const activeSource: NativeThreadSource = {
+      session: session ?? { id: "live", program: conversation.program, created_at: new Date(0).toISOString() },
+      messages: thread.messages,
+    };
+    return mergeNativeThreadMessages([activeSource, ...archivedSources.filter((source) => source.session.id !== session?.id)]);
+  }, [archivedSources, conversation.program, session, thread.messages]);
+  const displayThread = useMemo(() => ({ ...thread, messages: displayMessages }), [thread, displayMessages]);
   // New messages in a live native chat move its row up in My Tasks (throttled
   // at the source; a user send always). The first look at a conversation —
   // the saved transcript or a replay — is a baseline, not activity.
@@ -3570,7 +3605,7 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   // OceanLeo conversation, over this chat's own messages. Text / image / document
   // are built from what is shown; the link names this session's cloud-saved copy.
   const share = useShareMode({
-    messages: thread.messages,
+    messages: displayMessages,
     taskId: shareInfo.taskId,
     title: shareInfo.title,
     siteLabel: shareInfo.siteLabel,
@@ -3710,7 +3745,7 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   }, [thread.messages, active, thread.olderLoading, maybeLoadOlder]);
   return (
     <NativeSetupRequest.Provider value={setupRequest}>
-      {render({ thread, session, input, setInput, scrollRef, onScroll, connecting, share: paneShare, requestSetup })}
+      {render({ thread: displayThread, session, input, setInput, scrollRef, onScroll, connecting, share: paneShare, requestSetup })}
     </NativeSetupRequest.Provider>
   );
 }
