@@ -1218,7 +1218,13 @@ function AgentChatInner({
   useEffect(() => {
     let alive = true;
     const nativeSessions = sessions.filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo");
-    if (!taskId || !nativeSessions.length) { setArchivedNativeSources([]); return () => { alive = false; }; }
+    if (!taskId || !nativeSessions.length) {
+      // Keep this cleanup idempotent. Some hosts recreate their translation
+      // function on each render; setting a fresh [] here would then make the
+      // effect render forever even though there are no archived sessions.
+      setArchivedNativeSources((current) => current.length ? [] : current);
+      return () => { alive = false; };
+    }
     void Promise.allSettled(nativeSessions.map(async (session) => {
       const transcript = await getComputerTaskTranscript(session.id);
       return { session, messages: mapNativeTranscript(session, transcript.frames, tt) } satisfies NativeThreadSource;

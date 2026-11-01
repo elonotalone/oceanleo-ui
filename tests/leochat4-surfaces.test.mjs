@@ -1,6 +1,7 @@
 // LeoChat 三处入口：整页、右侧栏、小窗；一次只显示一处。host-state 用真的 createHostState + 假环境。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
@@ -557,4 +558,14 @@ test("W5 2026-10-31：LeoChat 打开、登录态还没查清时显示页面级�
   assert.match(markup, /data-route-page-skeleton="list"/);
   assert.match(markup, /aria-busy="true"/);
   globalThis.__leoChat4ImOn = true;
+});
+
+test("W5：LeoChat 切换会话时也沿用页面级骨架，不显示单行加载文字", () => {
+  const source = readFileSync(
+    new URL("../src/shell/messages/conversation/ConversationView.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /from "\.\.\/\.\.\/nav-source\/route-boundary"/);
+  assert.match(source, /data-conversation-loading/);
+  assert.match(source, /<RoutePageSkeleton variant="list" label=\{tt\("正在加载…"\)\} \/>/);
 });

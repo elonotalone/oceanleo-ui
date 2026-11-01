@@ -9,6 +9,7 @@ import { messagesApi } from "../../../lib/im/messages-api";
 import { fetchConversations } from "../../../lib/im/inbox-api";
 import type { ImConversationDetail, ImConversationSummary, ImMessage, ImProfile } from "../../../lib/im/types";
 import { ConfirmDialog } from "../../../ui";
+import { RoutePageSkeleton } from "../../nav-source/route-boundary";
 import { Composer } from "../composer/Composer";
 import { openMessages } from "../host-state";
 import { ImBackIcon, ImInfoIcon, ImSearchIcon } from "../messages-surface";
@@ -155,7 +156,11 @@ export function ConversationView({ conversationId, layout, onBack, onOpenInfo, h
     [conversationId, viewerId],
   );
   if (!store) {
-    return <div className="flex h-full items-center justify-center text-[13px] text-neutral-400">{tt("正在加载…")}</div>;
+    return (
+      <div className="h-full" data-conversation-loading="">
+        <RoutePageSkeleton variant="list" label={tt("正在加载…")} />
+      </div>
+    );
   }
   return (
     <ConversationBody
