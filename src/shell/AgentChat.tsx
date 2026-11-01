@@ -1,6 +1,7 @@
 "use client";
 
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
+import { StepsFoldPreferenceProvider } from "./steps-fold-preference";
 
 // ============================================================================
 // @oceanleo/ui — agent 工作界面 AgentChat（单一事实源）
@@ -3433,6 +3434,8 @@ function AgentChatInner({
   // SplitWorkspace + ResultCanvas are assembled by the shared TaskWorkspaceShell (W7),
   // the same shell the home page hosts its column in.
   const split = (
+    // Steps fold follows the person's last toggle on a running block, per task (W9).
+    <StepsFoldPreferenceProvider taskId={taskId}>
     <TaskWorkspaceShell
       state={taskWorkspace}
       tabs={rightTabs}
@@ -3480,6 +3483,7 @@ function AgentChatInner({
       soloMaxWidth={null}
       library={effectiveLibrary ?? null}
     />
+    </StepsFoldPreferenceProvider>
   );
 
   // 未给 onBack（主站 tasks 页 / 子站 history 回看）：宿主已约束高度，直接返回分栏骨架。
