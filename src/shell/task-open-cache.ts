@@ -91,10 +91,14 @@ export function rememberTaskDetail(detail: TaskDetail | null | undefined): void 
   if (!detail || !id || !Array.isArray(detail.messages) || !cacheUser()) return;
   details.set(id, detail);
   schedulePersist(`task:${id}`, (): StoredTask => {
+    // A first page can be exactly the requested size. Older gateways omit
+    // `has_more`, so persisting `partial:false` at this boundary would make a
+    // reload trust a cut transcript and skip the full read.
     const cut = detail.messages.length > TASK_FIRST_PAGE_MESSAGES;
+    const partial = isPartialTaskSeed(detail) || cut;
     return {
       v: 1,
-      partial: cut || isPartialTaskSeed(detail),
+      partial,
       detail: cut ? { ...detail, messages: detail.messages.slice(-TASK_FIRST_PAGE_MESSAGES) } : detail,
     };
   });
