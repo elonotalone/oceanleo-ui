@@ -89,6 +89,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
   `),
   "next/navigation": dataModule(`
     export function usePathname(){ return globalThis.__historyPath || "/workspace/poster"; }
+    export function useSearchParams(){ return new URLSearchParams(window.location.search); }
     export function useRouter(){ return { push(href){ globalThis.__historyPushed = href; }, replace(){}, prefetch(){} }; }
   `),
   "./WorkspaceSelection": dataModule(`
@@ -233,6 +234,32 @@ test("首屏拿到数据前显示「加载…」，拿到后消失", async () =>
     assert.match(panel.text(), /第一条任务/);
   } finally {
     await panel.unmount();
+  }
+});
+
+test("侧栏搜索入口按 URL 打开并过滤云端任务", async () => {
+  const previousPath = globalThis.__historyPath;
+  const previousItems = globalThis.__historyItems;
+  const previousUrl = window.location.href;
+  globalThis.__historyPath = "/history";
+  globalThis.__historyItems = [
+    session("s-search-a", "Alpha report"),
+    session("s-search-b", "Beta plan"),
+  ];
+  window.history.replaceState({}, "", "/history?search=1&q=Alpha");
+  const panel = await mount("search-filter");
+  try {
+    await settle(20);
+    const search = panel.container.querySelector("[data-history-search]");
+    assert.ok(search, "?search=1 should render the task search surface");
+    assert.equal(search.querySelector("input")?.value, "Alpha");
+    assert.match(panel.text(), /Alpha report/);
+    assert.doesNotMatch(panel.text(), /Beta plan/);
+  } finally {
+    await panel.unmount();
+    globalThis.__historyPath = previousPath;
+    globalThis.__historyItems = previousItems;
+    window.history.replaceState({}, "", new URL(previousUrl).pathname + new URL(previousUrl).search);
   }
 });
 
