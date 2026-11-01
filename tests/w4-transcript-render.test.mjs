@@ -24,6 +24,7 @@ import {
 } from "../src/shell/agent-conversation-layout.ts";
 
 const require = createRequire(import.meta.url);
+const reactUrl = pathToFileURL(require.resolve("react")).href;
 const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
 const previousCanvasModule = require.cache[canvasEntry];
@@ -52,6 +53,7 @@ const { AgentTranscriptBubble } = await import(await compileModule("src/shell/Ag
   "../i18n/ui/useUI": uiStub,
   "./share/share-clipboard": dataModule("export async function writeClipboardText() { return true; }"),
   "../lib/cloud-computer-api": dataModule("export async function cloudComputerRequest() { return {}; } export function computerIdRequestField() { return {}; }"),
+  "next/link": dataModule(`import React from ${JSON.stringify(reactUrl)}; export default function Link({ children, href, ...props }) { return React.createElement("a", { ...props, href }, children); }`),
 }));
 const { buildRows } = await import("../src/shell/messages/conversation/conversation-store.ts");
 const { dialogToAgentMessages } = await import("../src/shell/native-thread/map-dialog.ts");
@@ -147,6 +149,7 @@ test("agent sender renders as a left tinted bubble with a task link", async () =
     assert.match(root.querySelector("div.border-sky-200").className, /bg-sky-50/);
     assert.equal(root.querySelector("a").getAttribute("href"), "/history?task=task-1");
     assert.match(root.textContent, /Claude Code · task/);
+    assert.doesNotMatch(root.textContent, /[◈◇⌁•]/);
   } finally {
     view.cleanup();
   }

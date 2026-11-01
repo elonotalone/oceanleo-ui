@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import {
   AIGC_LABEL_TEXT,
@@ -258,15 +259,14 @@ function TranscriptBody({
 
   const sender = message.meta?.sender as { kind?: unknown; label?: unknown; program?: unknown; task_id?: unknown } | undefined;
   if (sender?.kind === "agent" && typeof sender.label === "string") {
-    const icon = sender.program === "claude" ? "◈" : sender.program === "codex" ? "◇" : sender.program === "cursor" ? "⌁" : "•";
     const label = sender.label;
-    const labelContent = <><span aria-hidden="true" className="text-sky-500">{icon}</span><span>{label}</span></>;
+    const labelContent = <span>{label}</span>;
     return (
       <div className="group flex max-w-full flex-col items-start gap-1.5" data-agent-sender="agent">
         {typeof sender.task_id === "string" && sender.task_id ? (
-          <a href={`/history?task=${encodeURIComponent(sender.task_id)}`} className="inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200">
+          <Link href={`/history?task=${encodeURIComponent(sender.task_id)}`} className="inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200">
             {labelContent}
-          </a>
+          </Link>
         ) : (
           <span className="inline-flex items-center gap-1 text-[12px] text-stone-500 dark:text-stone-400">{labelContent}</span>
         )}
