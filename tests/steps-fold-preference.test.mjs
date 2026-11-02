@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 import { compileModule } from "./helpers/module-bench.mjs";
+
+// Keep the repository's node:test entrypoint while allowing the same component
+// assertions to run under Vitest without adding a package dependency here.
+const { test } = process.env.VITEST ? await import("vitest") : await import("node:test");
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -39,46 +42,152 @@ function expanded(host, index) { return block(host, index)?.querySelector("[data
 function entriesVisible(host, index) { return Boolean(block(host, index)?.querySelector("[data-agent-process-entries]")); }
 function provider(taskId, children) { return React.createElement(StepsFoldPreferenceProvider, { taskId }, children); }
 
-test("expanding a running block opens later blocks and keeps them open after completion", async () => {
-  window.localStorage.clear(); window.localStorage.setItem("oceanleo_steps_fold:v1:expand", "0");
-  const view = await mount(provider("expand", React.createElement(React.Fragment, null, React.createElement(AgentProgress, { messages: [message(1)], running: true }), React.createElement(AgentProgress, { messages: [message(2)], running: true }))));
+function timeline(taskId, ids, running = false) {
+  return provider(taskId, React.createElement("div", { "data-agent-stream": "cloud" },
+    ...ids.map((id, index) => React.createElement(AgentProgress, {
+      key: id,
+      messages: [{ id, role: "assistant", kind: "analysis", content: `thinking-${id}` }],
+      running: running && index === ids.length - 1,
+    })),
+  ));
+}
+async function toggle(view, index, rail = false) {
+  await act(async () => block(view.host, index).querySelector(rail ? "[data-agent-process-rail]" : "[data-agent-process-toggle]").click());
+}
+function expectOpen(view, expected) {
+  assert.deepEqual([...view.host.querySelectorAll("[data-agent-process-toggle]")].map((button) => button.getAttribute("aria-expanded") === "true"), expected);
+  expected.forEach((open, index) => assert.equal(entriesVisible(view.host, index), open));
+}
+function saved(taskId) { return window.localStorage.getItem(`oceanleo_steps_fold:v1:${taskId}`); }
+
+test("only the latest thought inherits the task preference; new thoughts fold their predecessors", async () => {
+  window.localStorage.clear();
+  const view = await mount(timeline("sequence", [1, 2, 3]));
   try {
-    assert.equal(expanded(view.host, 0), "false"); assert.equal(expanded(view.host, 1), "false");
-    await act(async () => block(view.host, 0).querySelector("[data-agent-process-toggle]").click());
-    assert.equal(expanded(view.host, 0), "true"); assert.equal(expanded(view.host, 1), "true"); assert.equal(entriesVisible(view.host, 0), true); assert.equal(entriesVisible(view.host, 1), true);
-    await view.render(provider("expand", React.createElement(React.Fragment, null, React.createElement(AgentProgress, { messages: [message(1, "done")], running: false }), React.createElement(AgentProgress, { messages: [message(2)], running: true }))));
-    assert.equal(expanded(view.host, 0), "true"); assert.equal(expanded(view.host, 1), "true");
+    expectOpen(view, [false, false, false]);
+    await toggle(view, 2);
+    expectOpen(view, [false, false, true]);
+    assert.equal(saved("sequence"), "1");
+    await view.render(timeline("sequence", [1, 2, 3, 4], true));
+    expectOpen(view, [false, false, false, true]);
+    await toggle(view, 3, true);
+    assert.equal(saved("sequence"), "0");
+    await view.render(timeline("sequence", [1, 2, 3, 4, 5], true));
+    expectOpen(view, [false, false, false, false, false]);
   } finally { view.cleanup(); }
 });
 
-test("collapsing a running block makes the next live block start collapsed", async () => {
+test("opening a historical thought is local and preference changes leave it alone", async () => {
   window.localStorage.clear();
-  const view = await mount(provider("collapse", React.createElement(React.Fragment, null, React.createElement(AgentProgress, { messages: [message(3)], running: true }))));
+  const view = await mount(timeline("local", [1, 2, 3]));
   try {
-    await act(async () => block(view.host, 0).querySelector("[data-agent-process-toggle]").click());
-    await view.render(provider("collapse", React.createElement(React.Fragment, null, React.createElement(AgentProgress, { messages: [message(3, "done")], running: false }), React.createElement(AgentProgress, { messages: [message(4)], running: true }))));
-    assert.equal(expanded(view.host, 1), "false");
+    await toggle(view, 0);
+    expectOpen(view, [true, false, false]);
+    assert.equal(saved("local"), null);
+    await toggle(view, 2);
+    expectOpen(view, [true, false, true]);
+    await toggle(view, 1);
+    expectOpen(view, [true, true, true]);
+    await toggle(view, 0, true);
+    expectOpen(view, [false, true, true]);
+    assert.equal(saved("local"), "1");
+    await view.render(timeline("local", [1, 2, 3, 4]));
+    expectOpen(view, [false, true, false, true]);
   } finally { view.cleanup(); }
 });
 
-test("finished block toggles do not set a task preference", async () => {
+test("reopening a completed task restores only its latest thought and forgets local history toggles", async () => {
   window.localStorage.clear();
-  const view = await mount(provider("finished", React.createElement(AgentProgress, { messages: [message(5, "done")], running: false })));
-  try { await act(async () => block(view.host, 0).querySelector("[data-agent-process-toggle]").click()); assert.equal(window.localStorage.getItem("oceanleo_steps_fold:v1:finished"), null); } finally { view.cleanup(); }
+  const first = await mount(timeline("reopen", [1, 2, 3]));
+  await toggle(first, 2);
+  await toggle(first, 0);
+  first.cleanup();
+  const reopened = await mount(timeline("reopen", [1, 2, 3]));
+  try { expectOpen(reopened, [false, false, true]); } finally { reopened.cleanup(); }
 });
 
-test("preferences are isolated by task and survive unmount/remount", async () => {
+test("a saved collapsed preference applies to current and future thoughts after reopening", async () => {
   window.localStorage.clear();
-  const first = await mount(provider("one", React.createElement(AgentProgress, { messages: [message(6)], running: true })));
-  await act(async () => block(first.host, 0).querySelector("[data-agent-process-toggle]").click()); first.cleanup();
-  const second = await mount(provider("two", React.createElement(AgentProgress, { messages: [message(7)], running: true })));
-  try { assert.equal(expanded(second.host, 0), "true"); } finally { second.cleanup(); }
-  const remount = await mount(provider("one", React.createElement(AgentProgress, { messages: [message(8)], running: true })));
-  try { assert.equal(expanded(remount.host, 0), "false"); } finally { remount.cleanup(); }
+  window.localStorage.setItem("oceanleo_steps_fold:v1:collapsed", "false");
+  const view = await mount(timeline("collapsed", [1, 2, 3], true));
+  try {
+    expectOpen(view, [false, false, false]);
+    await view.render(timeline("collapsed", [1, 2, 3, 4], true));
+    expectOpen(view, [false, false, false, false]);
+  } finally { view.cleanup(); }
+});
+
+test("prepending older native history does not make it latest; finishing keeps the latest preference", async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("oceanleo_steps_fold:v1:prepend", "true");
+  const view = await mount(timeline("prepend", [3], true));
+  try {
+    expectOpen(view, [true]);
+    await view.render(timeline("prepend", [1, 2, 3], true));
+    expectOpen(view, [false, false, true]);
+    await view.render(timeline("prepend", [1, 2, 3]));
+    expectOpen(view, [false, false, true]);
+  } finally { view.cleanup(); }
+});
+
+test("switching tasks in place reads each preference without overwriting the destination", async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("oceanleo_steps_fold:v1:one", "1");
+  window.localStorage.setItem("oceanleo_steps_fold:v1:two", "0");
+  const view = await mount(timeline("one", [1, 2, 3]));
+  try {
+    expectOpen(view, [false, false, true]);
+    await toggle(view, 0);
+    await view.render(timeline("two", [1, 2, 3]));
+    expectOpen(view, [false, false, false]);
+    assert.equal(saved("two"), "0");
+    assert.equal(saved("one"), "1");
+    await view.render(timeline("one", [1, 2, 3]));
+    expectOpen(view, [false, false, true]);
+    await view.render(timeline("unset", [1, 2, 3]));
+    expectOpen(view, [false, false, false]);
+    assert.equal(saved("unset"), null);
+  } finally { view.cleanup(); }
+});
+
+test("separately mounted cloud and native streams each identify their own latest block", async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("oceanleo_steps_fold:v1:streams", "1");
+  const stream = (name, ids) => React.createElement("div", { "data-agent-stream": name },
+    ...ids.map((id) => React.createElement(AgentProgress, { key: id, messages: [message(id, "done")], running: false })));
+  const view = await mount(provider("streams", React.createElement(React.Fragment, null, stream("cloud", [1, 2]), stream("native", [3, 4]))));
+  try {
+    expectOpen(view, [false, true, false, true]);
+    await toggle(view, 0);
+    expectOpen(view, [true, true, false, true]);
+    assert.equal(saved("streams"), "1");
+  } finally { view.cleanup(); }
+});
+
+test("reordering existing blocks recomputes the latest without remounting them", async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("oceanleo_steps_fold:v1:reorder", "1");
+  const view = await mount(timeline("reorder", [1, 2, 3]));
+  try {
+    expectOpen(view, [false, false, true]);
+    await view.render(timeline("reorder", [3, 1, 2]));
+    expectOpen(view, [false, false, true]);
+    assert.equal(saved("reorder"), "1");
+  } finally { view.cleanup(); }
+});
+
+test("StrictMode registration leaves only the latest block expanded", async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("oceanleo_steps_fold:v1:strict", "1");
+  const view = await mount(React.createElement(React.StrictMode, null, timeline("strict", [1, 2, 3])));
+  try {
+    expectOpen(view, [false, false, true]);
+    await view.render(React.createElement(React.StrictMode, null, timeline("strict", [1, 2, 3, 4])));
+    expectOpen(view, [false, false, false, true]);
+  } finally { view.cleanup(); }
 });
 
 test("without a provider, live blocks keep the legacy auto-open then collapse behavior", async () => {
   const view = await mount(React.createElement(AgentProgress, { messages: [message(9)], running: true }));
   try { assert.equal(expanded(view.host, 0), "true"); await view.render(React.createElement(AgentProgress, { messages: [message(9, "done")], running: false })); assert.equal(expanded(view.host, 0), "false"); } finally { view.cleanup(); }
 });
-

@@ -8,9 +8,10 @@
 // their full detail, plans with status. Words to the user are never in here
 // (2026-10-31): they end the block and render as normal messages in place.
 //
-// Fold (operator ruling): while the block is live it is open; once text starts
-// after it (or the turn finishes) it collapses to one line ("思考 12 秒 · 9 个
-// 步骤"). The left rail darkens on hover and a click on it folds the module.
+// Fold: historical blocks start closed. Only the latest block inherits and
+// updates the task preference; a new block folds its predecessor. With no saved
+// preference, live blocks open and finished blocks collapse to one summary line.
+// The left rail darkens on hover and a click on it folds the module.
 // Each entry also folds on its own; selecting text never collapses it.
 // Rendered with the host's own styling (stone palette, the AgentStepMark block); nothing here is
 // borrowed from agent-dialog components or server-page/tone.
@@ -30,7 +31,7 @@ import { lineDiff } from "./cloud-computer/agent-dialog/diff-lines";
 import { AgentStepMark, agentStepState } from "./AgentStepMark";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
-import { useStepsFoldPreference } from "./steps-fold-preference";
+import { useStepsFoldBlock } from "./steps-fold-preference";
 
 type ToolEntry = Extract<ProcessEntry, { type: "tool" }>;
 type ThoughtEntry = Extract<ProcessEntry, { type: "thought" }>;
@@ -54,35 +55,22 @@ function collapseUnlessSelecting(close: () => void) {
 function useLiveFold(
   live: boolean,
   initial = live,
-  preference: boolean | null = null,
-  onRunningToggle?: (expanded: boolean) => void,
 ): [boolean, () => void, () => void] {
   const [open, setOpen] = useState(initial);
   const touched = useRef(false);
   const previous = useRef(live);
-  const previousPreference = useRef(preference);
-  useEffect(() => {
-    if (previousPreference.current === preference) return;
-    previousPreference.current = preference;
-    if (preference !== null) {
-      touched.current = true;
-      setOpen(preference);
-    }
-  }, [preference]);
   useEffect(() => {
     if (previous.current === live) return;
     previous.current = live;
-    if (!touched.current && preference === null) setOpen(live);
-  }, [live, preference]);
+    if (!touched.current) setOpen(live);
+  }, [live]);
   const toggle = () => {
     touched.current = true;
     const next = !open;
-    if (live) onRunningToggle?.(next);
     setOpen(next);
   };
   const close = () => {
     touched.current = true;
-    if (live) onRunningToggle?.(false);
     setOpen(false);
   };
   return [open, toggle, close];
@@ -132,14 +120,7 @@ export function AgentProgress({
   const tt = useUI();
   const entries = useMemo(() => buildProcessEntries(messages), [messages]);
   const summary = useMemo(() => summarizeProcess(messages, entries), [messages, entries]);
-  const foldPreference = useStepsFoldPreference();
-  const preference = foldPreference?.preference ?? null;
-  const [open, toggle, close] = useLiveFold(
-    running,
-    preference ?? running,
-    preference,
-    foldPreference ? foldPreference.setPreference : undefined,
-  );
+  const { elementRef, open, toggle, close } = useStepsFoldBlock(running, entries.length > 0);
   if (!entries.length) return null;
   let latestPlan = "";
   for (const entry of entries) if (entry.type === "plan") latestPlan = entry.key;
@@ -147,6 +128,7 @@ export function AgentProgress({
 
   return (
     <div
+      ref={elementRef}
       data-agent-process=""
       data-agent-process-state={running ? "running" : "done"}
       className={`my-1 max-w-full ${WRAP}`}
