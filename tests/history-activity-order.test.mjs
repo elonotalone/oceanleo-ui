@@ -44,7 +44,7 @@ test("我的任务：工作中的永远在最上面，其余按最近活动倒�
     [session("s-recent", { last_activity_at: "2026-10-31T09:00:00Z" })],
     [
       // Old task, still streaming: its frames moved last_activity_at, not updated_at.
-      task("old-running", { status: "running", last_activity_at: "2026-10-31T08:00:00Z" }),
+      task("old-running", { status: "running", open_turn: true, last_activity_at: "2026-10-31T08:00:00Z" }),
       task("native-running", { computer_run_status: "waiting_user", last_activity_at: "2026-10-30T00:00:00Z" }),
       task("newest-created", { created_at: "2026-10-30T12:00:00Z", updated_at: "2026-10-30T12:00:00Z", last_activity_at: "2026-10-30T12:00:00Z" }),
       task("resumed", { last_activity_at: "2026-10-31T10:00:00+00:00" }),
@@ -64,19 +64,19 @@ test("我的任务：工作中的永远在最上面，其余按最近活动倒�
 
 test("工作组内按用户最近发言排，流式输出不会让两条任务来回换位", () => {
   const first = mergeHistoryEntries([], [
-    task("a", { status: "running", last_user_message_at: "2026-10-31T10:00:00Z", last_activity_at: "2026-10-31T10:05:10Z" }),
-    task("b", { status: "running", last_user_message_at: "2026-10-31T10:02:00Z", last_activity_at: "2026-10-31T10:05:00Z" }),
+    task("a", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:00:00Z", last_activity_at: "2026-10-31T10:05:10Z" }),
+    task("b", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:02:00Z", last_activity_at: "2026-10-31T10:05:00Z" }),
   ]);
   const later = mergeHistoryEntries([], [
-    task("a", { status: "running", last_user_message_at: "2026-10-31T10:00:00Z", last_activity_at: "2026-10-31T10:05:20Z" }),
-    task("b", { status: "running", last_user_message_at: "2026-10-31T10:02:00Z", last_activity_at: "2026-10-31T10:05:30Z" }),
+    task("a", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:00:00Z", last_activity_at: "2026-10-31T10:05:20Z" }),
+    task("b", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:02:00Z", last_activity_at: "2026-10-31T10:05:30Z" }),
   ]);
   assert.deepEqual(first.map((entry) => entry.id), ["b", "a"]);
   assert.deepEqual(later.map((entry) => entry.id), ["b", "a"]);
   // Without a user-message time the activity time decides.
   const bare = mergeHistoryEntries([], [
-    task("x", { status: "running", last_activity_at: "2026-10-31T10:00:00Z" }),
-    task("y", { status: "running", last_activity_at: "2026-10-31T10:01:00Z" }),
+    task("x", { status: "running", open_turn: true, last_activity_at: "2026-10-31T10:00:00Z" }),
+    task("y", { status: "running", open_turn: true, last_activity_at: "2026-10-31T10:01:00Z" }),
   ]);
   assert.deepEqual(bare.map((entry) => entry.id), ["y", "x"]);
 });

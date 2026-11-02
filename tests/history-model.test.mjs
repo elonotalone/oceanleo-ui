@@ -370,3 +370,21 @@ test("a session row is linked to its latest task so /tasks/<id> selects it", () 
   assert.equal(row?.kind, "session");
   assert.equal(row.session.task_id, "t-new");
 });
+
+test("W11: open_turn overrides dirty master status; native tasks require execution evidence", () => {
+  for (const status of ["running", "completed", "failed", "stopped"]) {
+    assert.equal(isTaskWorking({ status, open_turn: false }), false);
+    assert.equal(isTaskWorking({ status, open_turn: true }), true);
+  }
+  assert.equal(isTaskWorking({ status: "running", mode: "computer" }), false);
+  assert.equal(isTaskWorking({ status: "running", computer_id: "paired" }), false);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "running" }), true);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "waiting_user" }), true);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "running", open_turn: false }), false);
+  assert.equal(isTaskWorking({ status: "running", mode: "agent" }), true);
+  const entries = mergeHistoryEntries(
+    [{ ...baseSession, id: "w11-session" }],
+    [{ id: "w11-task", status: "running", mode: "computer", open_turn: false, session_id: "w11-session" }],
+  );
+  assert.equal(entries.some(isHistoryEntryWorking), false);
+});

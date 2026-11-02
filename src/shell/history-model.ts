@@ -21,15 +21,20 @@ export type HistoryListEntry =
   | ({ kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true } & HistoryEntryTimes);
 
 /**
- * 「在干活」：云端 run 正在跑（task.status === "running"），或挂着的电脑原生会话
- * 正在跑 / 等用户确认（gateway `attach_run_states` 投影的 computer_run_status）。
+ * 优先使用网关核对回合/租约得到的 open_turn；原生任务仅主记录 running 不算在干活。
+ * 旧网关的云端任务保留 status 回退，原生会话使用 computer_run_status。
  * 完成、失败、停止、session 的 active/archived 都不算——侧栏对用户只分两种状态。
  */
 export function isTaskWorking(
-  task: Pick<AgentTask, "status" | "computer_run_status">,
+  task: Pick<AgentTask, "status" | "computer_run_status"> & {
+    open_turn?: boolean;
+    mode?: string;
+    computer_id?: string | null;
+  },
 ): boolean {
+  if (typeof task.open_turn === "boolean") return task.open_turn;
   return (
-    task.status === "running" ||
+    (task.status === "running" && task.mode !== "computer" && !task.computer_id) ||
     task.computer_run_status === "running" ||
     task.computer_run_status === "waiting_user"
   );
