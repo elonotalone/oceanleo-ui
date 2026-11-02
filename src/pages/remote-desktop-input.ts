@@ -268,6 +268,8 @@ export const REMOTE_FATAL_CODES: ReadonlySet<string> = new Set([
   "input_failed",
   "device_lost",
   "viewer_idle",
+  "link_lost",
+  "idle_confirmed",
   "viewer_closed",
   "account_mismatch",
   "session_closed",
@@ -288,6 +290,11 @@ export const REMOTE_BACKPRESSURE_CODES: ReadonlySet<string> = new Set([
 ]);
 
 /** 返回中文原文（调用方再过 `tt`），未知码落到统一兜底，不把英文 token 摆给用户。 */
+/** A deadline keeps counting down even when the transport cannot deliver snapshots. */
+export function remoteDesktopRemainingSeconds(deadline: number | null, now = Date.now()): number | null {
+  return deadline === null || !Number.isFinite(deadline) ? null : Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
 export function remoteDesktopErrorCopy(code?: string, status?: number): string {
   switch (code) {
     case "input_permission_required":
@@ -361,6 +368,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       return "这台电脑的服务迟迟没有回应，请检查网络后重新连接。";
     case "reconnect_timeout":
     case "viewer_lost":
+    case "link_lost":
       return "网络中断太久，远程会话已结束。请检查网络后重新连接。";
     case "viewer_not_attached":
       return "没有连上这台电脑的画面，会话已结束，未扣费。请重新连接。";
@@ -412,7 +420,9 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "device_lost":
       return "这台电脑失去联系，会话已断开。请确认它还在线后重新进入。";
     case "viewer_idle":
-      return "太久没有操作，会话已自动断开。";
+      return "观看端心跳中断，旧版网关已结束会话。请重新连接。";
+    case "idle_confirmed":
+      return "长时间没有输入，且未回应仍在使用的提示，会话已结束。";
     case "viewer_closed":
       return "会话已断开。";
     case "account_mismatch":

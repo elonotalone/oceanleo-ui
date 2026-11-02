@@ -72,7 +72,23 @@ const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_f
 export type RemoteMediaMetrics = { version: 1 } & Partial<Record<typeof MEDIA_METRICS[number], number>>;
 export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
 
-export type RemoteDesktopSessionState = "pending_consent" | "connecting" | "active" | "closed";
+export type RemoteDesktopSessionState = "pending_consent" | "connecting" | "active" | "reconnecting" | "closed";
+
+export interface RemoteDesktopActivity {
+  reconnect_window_s?: number;
+  reconnect_remaining_s: number | null;
+  idle_confirmation_required: boolean;
+  idle_remaining_s: number | null;
+}
+
+export function parseRemoteDesktopActivity(value: unknown): RemoteDesktopActivity | null {
+  if (!isRecord(value)) return null;
+  const seconds = (raw: unknown) => typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? Math.ceil(raw) : null;
+  return { reconnect_remaining_s: seconds(value.reconnect_remaining_s),
+    ...(typeof value.reconnect_window_s === "number" && Number.isFinite(value.reconnect_window_s) && value.reconnect_window_s > 0 ? { reconnect_window_s: value.reconnect_window_s } : {}),
+    idle_confirmation_required: value.idle_confirmation_required === true,
+    idle_remaining_s: seconds(value.idle_remaining_s) };
+}
 
 export interface RemoteDesktopStatus {
   supported: boolean;
@@ -106,6 +122,7 @@ export interface RemoteDesktopFrame {
   state: RemoteDesktopSessionState;
   frame: RemoteDesktopFrameData | null;
   error?: string;
+  activity?: RemoteDesktopActivity | null;
 }
 
 export type RemoteDesktopInputKind =
@@ -238,6 +255,7 @@ export interface RemoteDesktopStream {
 }
 
 export interface RemoteDesktopStreamHandlers {
+  activity?(activity: RemoteDesktopActivity | null): void;
   /** Numeric diagnostics only; completion watermark is not proof of successful OS input. */
   controlTiming?(sample: RemoteControlTiming): void;
   media?(media: RemoteMediaCredentials | null, status: RemoteMediaStatus | null): void;
@@ -505,7 +523,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && typeof data.error === "string" && typeof data.retry_after_ms === "number" && Number.isFinite(data.retry_after_ms)) {
       scheduler.rejected(data.seq as number, data.error, data.retry_after_ms); return;
     }
-    if (data.type !== "state" || !["pending_consent", "connecting", "active", "closed"].includes(String(data.state))) { fail("response_malformed"); return; }
+    if (data.type !== "state" || !["pending_consent", "connecting", "active", "reconnecting", "closed"].includes(String(data.state))) { fail("response_malformed"); return; }
     state = data.state as RemoteDesktopSessionState;
     if (handoff && state !== "active") { fail("input_ack_unknown"); return; }
     // First snapshot of a re-attached socket: continue above what the session already took.
@@ -521,6 +539,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }
     if ("access" in data || "billing" in data) handlers.session?.({ access: parseRemoteAccess(data.access), billing: parseRemoteBilling(data.billing) });
     if (isRecord(data.timing)) handlers.serverTiming?.(Object.fromEntries(Object.entries(data.timing).filter(([, value]) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0)) as Record<string, number>);
+    if ("activity" in data) handlers.activity?.(parseRemoteDesktopActivity(data.activity));
     handlers.state(state, data.error === "stream_failed" ? "network_error" : typeof data.error === "string" ? data.error : undefined);
     if ("media" in data) {
       const media = data.media === null ? null : parseRemoteMedia(data.media);
@@ -666,8 +685,9 @@ const IMAGE_PREFIX = /^data:image\/(jpeg|png);base64,/i;
 export function parseFrame(data: unknown): RemoteDesktopFrame | null {
   if (!isRecord(data)) return null;
   const state = data.state;
-  if (state !== "pending_consent" && state !== "connecting" && state !== "active" && state !== "closed") return null;
+  if (state !== "pending_consent" && state !== "connecting" && state !== "active" && state !== "reconnecting" && state !== "closed") return null;
   const out: RemoteDesktopFrame = { state, frame: null };
+  if ("activity" in data) out.activity = parseRemoteDesktopActivity(data.activity);
   if (typeof data.error === "string" && data.error) out.error = data.error;
   const raw = data.frame;
   if (raw === null || raw === undefined) return out;
