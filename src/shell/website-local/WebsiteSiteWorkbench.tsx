@@ -53,7 +53,6 @@ import { WebsiteWorkbenchPanels } from "../website-platform/WebsiteWorkbenchPane
 import { usePluginPage } from "../plugin-chrome/plugin-page-store";
 
 const WEBSITE_AUX_PANELS = [
-  ["code", "源码"],
   ["dashboard", "仪表盘"],
   ["database", "数据库"],
   ["storage", "文件存储"],
@@ -374,7 +373,7 @@ function SiteEditor({
   const page = doc.pages[pageIndex] || doc.pages[0];
   const { pageId, setPage } = usePluginPage("website");
   const activePanel = WEBSITE_AUX_PANELS.some(([id]) => id === pageId)
-    ? (pageId as "code" | "dashboard" | "database" | "storage" | "settings")
+    ? (pageId as "dashboard" | "database" | "storage" | "settings")
     : null;
   const websitePages = useMemo(
     () => ({

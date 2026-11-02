@@ -51,7 +51,7 @@ import { SelectionToolbar } from "../SelectionToolbar";
 import { SitePuckBridgeContext, SitePuckBridgeHost } from "../website-local/WebsiteSitePuckBridge";
 import { strictWebsiteSelection, applyStrictWebsiteCommand } from "../website-local/website-strict-bar";
 import { WebsiteWorkbenchPanels } from "../website-platform/WebsiteWorkbenchPanels";
-import { WebsiteCodeFace } from "../website-platform/WebsiteCodeFace";
+import { WebsitePreviewWorkbench } from "../website-platform/WebsitePreviewWorkbench";
 import {
   websiteCodeProjectFromText,
   type WebsiteCodeProject,
@@ -59,26 +59,11 @@ import {
 import { usePluginPage } from "../plugin-chrome/plugin-page-store";
 
 const WEBSITE_AUX_PANELS = [
-  ["code", "源码"],
   ["dashboard", "仪表盘"],
   ["database", "数据库"],
   ["storage", "文件存储"],
   ["settings", "设置"],
 ] as const;
-
-/**
- * Code websites (git repo) open on the code face: 「编辑」 is Source + preview,
- * and the platform pages follow. Visual sites keep WEBSITE_AUX_PANELS.
- */
-const WEBSITE_CODE_AUX_PANELS = [
-  ["history", "历史"],
-  ["publish", "发布"],
-  ["database", "数据库"],
-  ["storage", "文件存储"],
-  ["dashboard", "仪表盘"],
-  ["settings", "设置"],
-] as const;
-type WebsiteCodeAuxPanel = (typeof WEBSITE_CODE_AUX_PANELS)[number][0];
 
 /** Entry text → site-document envelope (bundle `site.json` or structured), else null. */
 export function websiteSiteEnvelopeFromText(text: string): SiteEnvelope | null {
@@ -110,7 +95,7 @@ export function WebsiteLocalRoute({
   );
   const { pageId: pluginPageId, setPage: setPluginPage } = usePluginPage("website");
   const activePanel = WEBSITE_AUX_PANELS.some(([id]) => id === pluginPageId)
-    ? (pluginPageId as "code" | "dashboard" | "database" | "storage" | "settings")
+    ? (pluginPageId as "dashboard" | "database" | "storage" | "settings")
     : null;
   const websitePages = useMemo(
     () => ({
@@ -149,22 +134,6 @@ export function WebsiteLocalRoute({
   const ownSavedRevisionsRef = useRef(new Set<string>());
   // Git/code websites: the Library entry is a website-project manifest.
   const [codeProject, setCodeProject] = useState<WebsiteCodeProject | null>(null);
-  const activeCodePanel = WEBSITE_CODE_AUX_PANELS.some(([id]) => id === pluginPageId)
-    ? (pluginPageId as WebsiteCodeAuxPanel)
-    : null;
-  const websiteCodePages = useMemo(
-    () => ({
-      activePageId: pluginPageId,
-      onSelectPage: (next: string) => setPluginPage(next),
-      proUnavailableReason: "代码网站在「编辑」页里改源码",
-      aux: WEBSITE_CODE_AUX_PANELS.map(([id, label]) => ({
-        id,
-        label,
-        kind: "aux" as const,
-      })),
-    }),
-    [pluginPageId, setPluginPage],
-  );
 
   useEffect(() => {
     if (plan.kind !== "remote") {
@@ -228,7 +197,7 @@ export function WebsiteLocalRoute({
         setRemoteSource(result.source);
         return;
       }
-      // A git/code website is not a visual website-source: open its code face
+      // A git website is not a visual website-source: open its runtime preview
       // instead of reporting the visual editor's §3.1 schema failure.
       const code = entryText ? websiteCodeProjectFromText(entryText) : null;
       if (code) {
@@ -375,17 +344,8 @@ export function WebsiteLocalRoute({
         adapter={{
           id: "website",
           label: "网站",
-          pages: websiteCodePages,
-          stage: activeCodePanel ? (
-            <div
-              className="flex h-full min-h-0 flex-col bg-[var(--awb-stage-bg)]"
-              data-testid={`website-${activeCodePanel}-stage`}
-            >
-              <WebsiteWorkbenchPanels projectId={codeProjectId} panel={activeCodePanel} hideTabs />
-            </div>
-          ) : (
-            <WebsiteCodeFace projectId={codeProjectId} />
-          ),
+          pages: { activePageId: "artifact", aux: [] },
+          stage: <WebsitePreviewWorkbench key={codeProjectId} projectId={codeProjectId} />,
         }}
         onClose={onClose}
       />

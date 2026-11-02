@@ -7,10 +7,10 @@ const api = readFileSync(new URL("../src/lib/website-platform-api.ts", import.me
 const route = readFileSync(new URL("../src/shell/advanced-routes/WebsiteLocalRoute.tsx", import.meta.url), "utf8");
 
 test("website workbench exposes all platform panels and injectable API", () => {
-  for (const id of ["preview", "code", "history", "dashboard", "database", "storage", "settings", "publish"]) assert.match(panels, new RegExp(`['"]${id}['"]`));
+  for (const id of ["preview", "history", "dashboard", "database", "storage", "settings", "publish"]) assert.match(panels, new RegExp(`['"]${id}['"]`));
   assert.match(panels, /api\?: WebsitePlatformApi/);
-  assert.match(panels, /data-testid="website-preview-boot"/);
-  assert.match(panels, /保存并提交/);
+  assert.match(panels, /<WebsitePreviewWorkbench projectId=/);
+  assert.doesNotMatch(panels, /CodePanel/);
   assert.match(panels, /运行 SQL/);
   assert.match(panels, /发布到 \.ws\.oceanleo\.app/);
   assert.match(panels, /恢复为新提交/);
@@ -40,8 +40,8 @@ test("website platform client covers management, storage, settings, usage, and a
   assert.match(api, /cost_ledger/);
 });
 
-test("website route declares shared aux pages for code, dashboard, database, storage, and settings", () => {
-  for (const id of ["code", "dashboard", "database", "storage", "settings"]) {
+test("website route declares shared aux pages for legacy dashboard, database, storage, and settings", () => {
+  for (const id of ["dashboard", "database", "storage", "settings"]) {
     assert.match(route, new RegExp(`\\[\\\"${id}\\\"`));
   }
   assert.match(route, /pages: websitePages/);

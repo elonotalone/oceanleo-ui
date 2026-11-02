@@ -3,19 +3,17 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   websitePlatformApi,
-  websiteFileText,
-  websitePreviewFrameUrl,
   type WebsiteCommit,
   type WebsiteDatabaseTable,
   type WebsiteDeployment,
   type WebsiteDomain,
   type WebsitePlatformApi,
 } from "../../lib/website-platform-api";
+import { WebsitePreviewWorkbench } from "./WebsitePreviewWorkbench";
 import { useUI } from "../../i18n/ui/useUI";
 
 type Panel =
   | "preview"
-  | "code"
   | "history"
   | "dashboard"
   | "database"
@@ -30,13 +28,10 @@ export interface WebsiteWorkbenchPanelsProps {
   api?: WebsitePlatformApi;
   panel?: Panel;
   hideTabs?: boolean;
-  /** Called with the new git commit after the code panel saves. */
-  onCommit?: (commit: string) => void;
 }
 
 const tabs: Array<[Panel, string]> = [
   ["preview", "预览"],
-  ["code", "代码"],
   ["history", "历史"],
   ["dashboard", "仪表盘"],
   ["database", "数据库"],
@@ -105,7 +100,6 @@ export function WebsiteWorkbenchPanels({
   api = websitePlatformApi,
   panel: controlledPanel,
   hideTabs = false,
-  onCommit,
 }: WebsiteWorkbenchPanelsProps) {
   const tt = useUI();
   const [internalPanel, setInternalPanel] = useState<Panel>("preview");
@@ -141,10 +135,7 @@ export function WebsiteWorkbenchPanels({
       ) : null}
       <div className={`${hideTabs ? "h-full" : "max-h-[42vh] min-h-[180px]"} overflow-auto ${hideTabs ? "" : "border-t border-[var(--awb-border)]"} p-3 text-sm`}>
         {panel === "preview" ? (
-          <PreviewPanel projectId={projectId} stack={stack} commit={commit} api={api} />
-        ) : null}
-        {panel === "code" ? (
-          <CodePanel projectId={projectId} commit={commit} api={api} onCommit={onCommit} />
+          <WebsitePreviewWorkbench projectId={projectId} />
         ) : null}
         {panel === "history" ? (
           <HistoryPanel projectId={projectId} commit={commit} api={api} />
@@ -158,196 +149,6 @@ export function WebsiteWorkbenchPanels({
         ) : null}
       </div>
     </section>
-  );
-}
-
-function PreviewPanel({
-  projectId,
-  stack,
-  commit,
-  api,
-}: {
-  projectId: string;
-  stack?: string;
-  commit?: string;
-  api: WebsitePlatformApi;
-}) {
-  const tt = useUI();
-  // One preview contract for every stack: POST /preview returns the public,
-  // immutable capability host on the user-content domain (static) or the
-  // sandbox host (Vite/Next). The authenticated API file route is never framed:
-  // an iframe cannot send the bearer header.
-  const state = useLoad(
-    (signal) => api.preview(projectId, commit, signal),
-    [api, projectId, commit],
-  );
-  const data = state.value;
-  const openUrl = websitePreviewFrameUrl(data);
-
-  return (
-    <State {...state}>
-      <div className="flex h-full min-h-0 flex-col gap-2" data-testid="website-preview-pane">
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="truncate opacity-70">
-            {data?.tier === "sandbox" ? tt("开发预览") : tt("静态预览")}
-          </span>
-          {openUrl ? (
-            <a
-              href={openUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="website-preview-open-tab"
-              className="shrink-0 text-[var(--awb-accent)] underline-offset-2 hover:underline"
-            >
-              {tt("在新标签页打开预览")}
-            </a>
-          ) : null}
-        </div>
-        {openUrl ? (
-          <iframe
-            title={tt("网站预览")}
-            src={openUrl}
-            className="min-h-[300px] w-full flex-1 rounded border"
-            sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts"
-          />
-        ) : (
-          <div
-            data-testid="website-preview-boot"
-            className="rounded border p-6"
-            aria-live="polite"
-          >
-            <strong>
-              {data?.tier === "sandbox" || (stack && stack !== "static")
-                ? tt("正在启动网站预览")
-                : tt("正在准备静态预览")}
-            </strong>
-            <p className="mt-2 text-xs opacity-70">
-              {data?.status || tt("预览会在这里显示，不会留白。")}
-              {typeof data?.boot_progress === "number"
-                ? ` ${data.boot_progress}%`
-                : ""}
-            </p>
-          </div>
-        )}
-      </div>
-    </State>
-  );
-}
-
-function CodePanel({
-  projectId,
-  commit,
-  api,
-  onCommit,
-}: {
-  projectId: string;
-  commit?: string;
-  api: WebsitePlatformApi;
-  onCommit?: (commit: string) => void;
-}) {
-  const tt = useUI();
-  const [baseCommit, setBaseCommit] = useState(commit);
-  const [reload, setReload] = useState(0);
-  useEffect(() => setBaseCommit(commit), [commit]);
-  const files = useLoad((signal) => api.files(projectId, baseCommit, signal), [
-    api,
-    projectId,
-    baseCommit,
-    reload,
-  ]);
-  const [selected, setSelected] = useState("");
-  const [content, setContent] = useState("");
-  const [binary, setBinary] = useState(false);
-  const [notice, setNotice] = useState("");
-  const list = files.value?.files || [];
-
-  useEffect(() => {
-    if (!list.some((file) => file.path === selected)) {
-      setSelected(list[0]?.path || "");
-      setContent("");
-    }
-  }, [list, selected]);
-
-  useEffect(() => {
-    if (!selected) return;
-    const controller = new AbortController();
-    setNotice("");
-    api
-      .file(projectId, selected, commit, controller.signal)
-      .then((file) => {
-        if (controller.signal.aborted) return;
-        const loaded = websiteFileText(file);
-        setBinary(loaded.binary);
-        setContent(loaded.text);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setNotice(errText(error));
-      });
-    return () => controller.abort();
-  }, [api, projectId, selected, baseCommit]);
-
-  const save = async () => {
-    if (!selected) return;
-    try {
-      // A save is based on the current git head; without a known commit, the
-      // newest commit in the project's history is that head.
-      let base = baseCommit;
-      if (!base) {
-        const history = await api.history(projectId);
-        base = history.commits?.[0] ? commitKey(history.commits[0]) : undefined;
-      }
-      const result = await api.save(projectId, { [selected]: content }, base);
-      setBaseCommit(result.commit);
-      setReload((value) => value + 1);
-      onCommit?.(result.commit);
-      setNotice(tt("已保存 {commit}", { commit: result.commit }));
-    } catch (error) {
-      setNotice(errText(error));
-    }
-  };
-
-  return (
-    <State {...files}>
-      <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-        <div className="space-y-1">
-          {list.map((file) => (
-            <button
-              key={file.path}
-              type="button"
-              className={`block w-full truncate rounded px-2 py-1 text-left text-xs ${
-                selected === file.path ? "bg-[var(--awb-accent-soft)]" : ""
-              }`}
-              onClick={() => setSelected(file.path)}
-            >
-              {file.path}
-            </button>
-          ))}
-        </div>
-        <div>
-          {binary ? (
-            <p className="rounded border p-3 text-xs opacity-70" data-testid="website-code-binary">
-              {tt("这是二进制文件（图片、字体等），不能在这里按文本编辑。")}
-            </p>
-          ) : (
-            <textarea
-              aria-label={tt("文件内容")}
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              className="min-h-[180px] w-full rounded border bg-transparent p-2 font-mono text-xs"
-            />
-          )}
-          <button
-            type="button"
-            className="mt-2 rounded bg-[var(--awb-accent)] px-3 py-1 text-xs text-white"
-            disabled={!selected || binary}
-            onClick={save}
-          >
-            {tt("保存并提交")}
-          </button>
-          {notice ? <p className="mt-2 text-xs">{notice}</p> : null}
-        </div>
-      </div>
-    </State>
   );
 }
 

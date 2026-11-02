@@ -65,6 +65,7 @@ import { useAdvancedRecovery } from "./use-advanced-recovery";
 import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
 import { editBarVisibleOnPage } from "./plugin-chrome/plugin-pages";
 import { usePluginPage } from "./plugin-chrome/plugin-page-store";
+import { PluginGlobalRow } from "./plugin-chrome/PluginGlobalRow";
 
 export interface InlineAdvancedWorkbenchShellProps {
   item: LibraryItem;
@@ -91,7 +92,11 @@ export function InlineAdvancedWorkbenchShell({
   const pagePluginId = (pluginThemeId ??
     adapter.id.split("@")[0]) as PluginThemeId;
   const { pageId } = usePluginPage(pagePluginId);
-  const pluginPages = usePluginPagesForAdapter(adapter);
+  const websitePreviewOnly = adapter.id === "website" && !adapter.mode && !adapter.contextToolbar;
+  const configuredPluginPages = usePluginPagesForAdapter(adapter);
+  const pluginPages = useMemo(() => websitePreviewOnly
+    ? configuredPluginPages.filter(page => page.kind === "artifact")
+    : configuredPluginPages, [configuredPluginPages, websitePreviewOnly]);
   const activePluginPage =
     pluginPages.find((page) => page.id === pageId) ?? pluginPages[0];
   const pluginTheme = usePluginTheme(pluginThemeId);
@@ -128,7 +133,7 @@ export function InlineAdvancedWorkbenchShell({
    * ——不渲染那条栏，也不占那条停靠带。判据在 `editBarOwnershipForItem()`：它按
    * 挂的是插件实例还是素材来判，不按适配器判（`grid` 两种身份共用一个适配器）。
    */
-  const editBarSuppressed = editBarOwnershipForItem(item) === "none";
+  const editBarSuppressed = websitePreviewOnly || editBarOwnershipForItem(item) === "none";
   const showEditBar =
     !editBarSuppressed && editBarVisibleOnPage(activePluginPage);
   const localDockPresentation = useEditBarDockPresentation({
@@ -360,7 +365,26 @@ export function InlineAdvancedWorkbenchShell({
       activateMineItem,
     });
   const actionBar = useMemo(
-    () => (
+    () => websitePreviewOnly ? (
+      <div data-advanced-workbench-header data-plugin-chrome-rows className="w-full min-w-0">
+        <PluginGlobalRow
+          adapter={adapter}
+          item={item}
+          autoSaveState={autoSaveState}
+          autoSaveError={autoSaveError}
+          pluginThemeId={pluginThemeId}
+          pages={pluginPages}
+          activePageId="artifact"
+          activeLibraryPanelId={activeLibraryPanelId}
+          showLibrary={siteId !== "plugin-gallery"}
+          showBack={siteId !== "plugin-gallery"}
+          onBack={requestClose}
+          onOpenLibrary={openLibraryPanel}
+          onRetrySave={() => void autoSave.retry()}
+          onClose={requestPaneClose}
+        />
+      </div>
+    ) : (
       <InlineAdvancedWorkbenchHeader
         adapter={adapter}
         item={item}
@@ -404,6 +428,8 @@ export function InlineAdvancedWorkbenchShell({
       requestPaneClose,
       rightPaneSlot,
       siteId,
+      websitePreviewOnly,
+      pluginPages,
     ],
   );
   useLayoutEffect(() => {
@@ -520,7 +546,7 @@ export function InlineAdvancedWorkbenchShell({
               />
               {/* 规范 v2 §1：提示是画布左下角的小胶囊，不是顶部通栏；与右下角缩放控件同高。 */}
               <StageNoticeCorner notices={adapter.notices} />
-              <div
+              {!websitePreviewOnly && <div
                 className="absolute bottom-3 right-3"
                 style={{ zIndex: 2_147_483_010 }}
               >
@@ -529,7 +555,7 @@ export function InlineAdvancedWorkbenchShell({
                   viewport={editorViewport}
                   accent={effectiveAccent}
                 />
-              </div>
+              </div>}
             </div>
           </div>
         </div>

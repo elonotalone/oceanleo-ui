@@ -1,8 +1,8 @@
 /**
- * Code websites (git repo: static / Vite / Next) are stored in the Library as
+ * Code websites (any framework, backed by git) are stored in the Library as
  * a website-project manifest (`projectSchema: "oceanleo.website-project.v1"`,
  * a `files` list and the git-backed `projectId`), not as the visual
- * `website-source` document. They open on the code face (Source + preview),
+ * `website-source` document. They open on the runtime preview,
  * never on the visual editor's §3.1 validator.
  */
 
