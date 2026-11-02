@@ -176,7 +176,7 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
               size={COMPOSER_TILE_SIZE}
               tt={tt}
               onOpen={
-                a.uploading && !failed
+                a.uploading && !failed && !isImageTile(a.mime, a.name, a.previewUrl)
                   ? undefined
                   : () => {
                       if (onOpenAttachment) onOpenAttachment(a);

@@ -17,9 +17,8 @@
 //
 // 打不开（4 读失败 / 什么地址都没有）时返回 null，调用方保持自己的退路。
 //
-// 10-31：已进资料库的文件（1 / 3 / 4 带 artifact_id）由宿主传 `showLibrary` 时改为
-// 打开右侧栏的资料库并定位到它（类型类别 + 「上传」筛选，`taskAttachmentLibraryAction`）；
-// 只有还没上传完的本地 `blob:` 仍走上面的直接预览。
+// W13：图片始终直接预览；Library 身份只用于查看器里的附加操作。
+// 非图片仍可由宿主传 `showLibrary`，打开右侧资料库并定位条目。
 // ============================================================================
 
 import { useCallback, useRef } from "react";
@@ -39,6 +38,7 @@ import {
 } from "./TaskWorkspaceShell";
 import type { TaskWorkspaceOpenItem } from "./ResultCanvas";
 import type { WorkspaceActionV1 } from "./workspace-actions";
+import { withTaskAttachmentLibraryLink } from "./task-attachment-library-link";
 
 /** 电脑任务 inbox 里的云端副本（网关 `/v1/computer-task-sessions/<s>/attachments/<a>`）。 */
 export interface NativeArchiveRef {
@@ -138,10 +138,9 @@ export function uploadLibraryCategory(mime: string | undefined, name: string | u
 }
 
 /**
- * A file that is already in the Library (uploaded / picked / a sent private ref /
- * a computer-task file the gateway registered) opens the right sidebar's Library
- * at that file, in its type category with the Uploaded filter. Null = not in the
- * Library yet (a local `blob:` tile still uploading): keep the direct preview.
+ * Optional Library destination of an attachment. Image clicks use the direct
+ * viewer; this action is only their explicit "view in Library" destination.
+ * Null means there is no durable Library identity yet.
  */
 export function taskAttachmentLibraryAction(att: TaskOpenableAttachment): WorkspaceActionV1 | null {
   const openable = taskOpenable(att);
@@ -187,6 +186,10 @@ function isImageAttachment(att: OpenableAttachment): boolean {
   return attachmentWorkspaceItem(att).kind === "image";
 }
 
+function taskAttachmentMode(item: LibraryItem): TaskAttachmentTarget["mode"] {
+  return item.kind === "image" ? "preview" : attachmentOpenMode(item);
+}
+
 /**
  * 不用等网络就能打开的那一份（同首页）：typed `libraryItem`，或本页的本地 `blob:`。
  * 已发送的私有引用 / inbox 文件返回 null（要走 `resolveTaskAttachment`）。
@@ -197,11 +200,11 @@ export function immediateTaskAttachment(
 ): TaskAttachmentTarget | null {
   const openable = taskOpenable(att);
   if (openable.libraryItem) {
-    return { item: openable.libraryItem, mode: attachmentOpenMode(openable.libraryItem) };
+    return { item: openable.libraryItem, mode: taskAttachmentMode(openable.libraryItem) };
   }
   if (isLocal(openable.previewUrl) || isLocal(openable.url)) {
     const item = attachmentWorkspaceItem(openable, siteId);
-    return { item, mode: attachmentOpenMode(item) };
+    return { item, mode: taskAttachmentMode(item) };
   }
   return null;
 }
@@ -260,7 +263,7 @@ export async function resolveTaskAttachment(
   if (ref) {
     const load = deps.loadLibraryItem ?? defaultLoadLibraryItem;
     const durable = await load(ref.artifactId, ref.revisionId).catch(() => null);
-    if (durable) return { item: durable, mode: attachmentOpenMode(durable) };
+    if (durable) return { item: durable, mode: taskAttachmentMode(durable) };
     const resolve = deps.resolveUrl ?? resolveAttachmentDisplayUrl;
     const url = await resolve(
       { ...ref, mime: openable.mime },
@@ -298,7 +301,7 @@ export async function resolveTaskAttachment(
 export function useTaskAttachmentOpener(
   siteId: string,
   show: (target: TaskAttachmentTarget) => void,
-  /** When given, a file already in the Library opens there (`taskAttachmentLibraryAction`). */
+  /** Non-images may open the Library; images always open their direct preview. */
   showLibrary?: (action: WorkspaceActionV1) => void,
 ): (attachment: TaskOpenableAttachment) => Promise<boolean> {
   const showRef = useRef(show);
@@ -308,19 +311,32 @@ export function useTaskAttachmentOpener(
   const seqRef = useRef(0);
   return useCallback(async (attachment: TaskOpenableAttachment) => {
     const seq = ++seqRef.current;
-    const library = showLibraryRef.current ? taskAttachmentLibraryAction(attachment) : null;
+    const showTarget = (target: TaskAttachmentTarget) => {
+      const action = taskAttachmentLibraryAction(attachment);
+      showRef.current({
+        ...target,
+        item: withTaskAttachmentLibraryLink(
+          target.item,
+          action,
+          showLibraryRef.current ? (next) => showLibraryRef.current?.(next) : undefined,
+        ),
+      });
+    };
+    const library = showLibraryRef.current && !isImageAttachment(taskOpenable(attachment))
+      ? taskAttachmentLibraryAction(attachment)
+      : null;
     if (library) {
       showLibraryRef.current!(library);
       return true;
     }
     const now = immediateTaskAttachment(attachment, siteId);
     if (now) {
-      showRef.current(now);
+      showTarget(now);
       return true;
     }
     const target = await resolveTaskAttachment(attachment, siteId);
     if (!target) return false;
-    if (seq === seqRef.current) showRef.current(target);
+    if (seq === seqRef.current) showTarget(target);
     return true;
   }, [siteId]);
 }

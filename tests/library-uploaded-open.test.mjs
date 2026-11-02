@@ -3,9 +3,8 @@
 // ----------------------------------------------------------------------------
 // - isUploadedLibraryItem: typed roles / provenance user_upload, or the legacy
 //   meta.library_source === "upload";
-// - a file already in the Library (typed libraryItem, sent private ref, computer
-//   task archive artifact_id) → Library action {tab:"mine", itemId, intent:"open",
-//   category, filter:"uploaded"}; a local blob: tile still uploading → direct preview;
+// - a non-image already in the Library → Library action; images always preview,
+//   and can use that action explicitly from the viewer;
 // - the workspace action normalizer keeps `filter: "uploaded"` and drops other values;
 // - the computer-task archive sanitizer keeps a UUID artifact_id only.
 // ============================================================================
@@ -50,7 +49,7 @@ test("isUploadedLibraryItem: roles, provenance, or legacy library_source", () =>
   assert.equal(isUploadedLibraryItem({ meta: { library_source: "asset" } }), false);
 });
 
-test("Library action: typed item, sent reference and computer-task archive all open the Library at the file", () => {
+test("Library action helper: typed item, sent reference and archive all retain their optional Library destination", () => {
   assert.deepEqual(taskAttachmentLibraryAction({ id: "t1", name: "shot.png", mime: "image/png", libraryItem: durable() }), {
     version: 1, tab: "mine", itemId: ART, intent: "open", category: "images", filter: "uploaded",
   });
@@ -73,7 +72,7 @@ test("Library action: typed item, sent reference and computer-task archive all o
   assert.equal(uploadLibraryCategory("", "deck.pptx"), "presentations");
 });
 
-test("opener: with showLibrary, an uploaded file emits the Library action; a local blob still previews", async () => {
+test("opener: uploaded non-images emit Library actions; uploaded and local images preview", async () => {
   const shown = [];
   const library = [];
   let open;
@@ -85,11 +84,11 @@ test("opener: with showLibrary, an uploaded file emits the Library action; a loc
   await act(async () => root.render(React.createElement(Host)));
   assert.equal(await open({ url: "", name: "notes.md", native_archive: { download_path: ROUTE, mime: "text/markdown", artifact_id: ART } }), true);
   assert.equal(await open({ id: "t1", name: "a.png", mime: "image/png", libraryItem: durable() }), true);
-  assert.deepEqual(library.map((a) => [a.tab, a.itemId, a.intent, a.filter]), [["mine", ART, "open", "uploaded"], ["mine", ART, "open", "uploaded"]]);
-  assert.deepEqual(shown, []);
+  assert.deepEqual(library.map((a) => [a.tab, a.itemId, a.intent, a.filter]), [["mine", ART, "open", "uploaded"]]);
+  assert.deepEqual(shown, [`artifact:${ART}:${REV}`]);
   assert.equal(await open({ id: "t2", name: "b.png", mime: "image/png", previewUrl: "blob:https://oceanbizs.com/b" }), true);
-  assert.deepEqual(shown, ["attachment:t2"]);
-  assert.equal(library.length, 2);
+  assert.deepEqual(shown, [`artifact:${ART}:${REV}`, "attachment:t2"]);
+  assert.equal(library.length, 1);
   await act(async () => root.unmount());
 
   const calls = [];

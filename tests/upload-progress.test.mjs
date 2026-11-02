@@ -87,6 +87,7 @@ const STUBS = {
   `),
   "./auth/config": dataModule(`
     export const GATEWAY_BASE = "https://gateway.test";
+    export function gatewayBase(){ return GATEWAY_BASE; }
     export const SUPABASE_URL = "https://supabase.test";
     export const SUPABASE_ANON_KEY = "anon-test";
     export function isLeoDevPreviewHost(){ return false; }
