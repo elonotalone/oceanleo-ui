@@ -28,7 +28,6 @@ import {
   CAPTCHA_VERIFYING_MESSAGE,
   TURNSTILE_SITEKEY,
   captchaEnabledForFamily,
-  captchaErrorStatus,
   isCaptchaConfigured,
   mapCaptchaError,
   turnstileScriptSrc,
@@ -47,15 +46,6 @@ test("Turnstile 脚本走 challenges.cloudflare.com，explicit，不走 hCaptcha
   assert.match(src, /^https:\/\/challenges\.cloudflare\.com\/turnstile\/v0\/api\.js\?/);
   assert.match(src, /render=explicit/);
   assert.doesNotMatch(src, /hcaptcha/i);
-});
-
-test("配置和脚本不可用可放行，挑战或未知错误必须重试", () => {
-  for (const code of ["110100", "110110", "110200", "110500", "110999", "turnstile-load-timeout", "turnstile-load-error"]) {
-    assert.equal(captchaErrorStatus(code), "unavailable", code);
-  }
-  for (const code of ["600010", "600000", "expired", "unknown", undefined, "110200-extra"]) {
-    assert.equal(captchaErrorStatus(code), "failed", String(code));
-  }
 });
 
 test("desktop email does not wait for a website-only Turnstile widget", async () => {
@@ -274,50 +264,14 @@ test("Turnstile 脚本超时：可见挂载回调 null 且不抛", async () => {
   });
   captchaConfig.loadTimeoutMs = 20;
   let seen = "unset";
-  let status;
-  mountCheckboxCaptcha(fakeContainer(), (token, nextStatus) => {
+  mountCheckboxCaptcha(fakeContainer(), (token) => {
     seen = token;
-    status = nextStatus;
   });
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(seen, null);
-  assert.equal(status, "unavailable");
   assert.ok(
     created.some((el) => /challenges\.cloudflare\.com\/turnstile/.test(String(el.src || ""))),
   );
-});
-
-test("110200 仅报告一次、清除旧 token，忽略迟到成功和过期回调", async () => {
-  installDom();
-  let params;
-  let removed = 0;
-  globalThis.turnstile = {
-    render(_el, value) { params = value; return "w-failsafe"; },
-    remove() { removed += 1; },
-  };
-  const captcha = await loadCaptchaModule();
-  const changes = [];
-  const warnings = [];
-  const previousWarn = console.warn;
-  console.warn = (...args) => warnings.push(args);
-  try {
-    const stop = captcha.mountCheckboxCaptcha(fakeContainer(), (...args) => changes.push(args));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    params.callback("old-token");
-    params["error-callback"]("110200");
-    params["error-callback"]("110200");
-    params["expired-callback"]();
-    params.callback("late-token");
-    await Promise.resolve();
-    assert.deepEqual(changes.at(-1), [null, "unavailable"]);
-    assert.equal(await captcha.getCaptchaToken(), null);
-    assert.equal(warnings.length, 1);
-    assert.deepEqual(warnings[0], ["[oceanleo-auth] Turnstile unavailable", "110200"]);
-    assert.equal(removed, 1);
-    stop();
-  } finally {
-    console.warn = previousWarn;
-  }
 });
 
 test("国内 getCaptchaToken 立即 null，不插 Turnstile 脚本", async () => {

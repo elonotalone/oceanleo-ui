@@ -10,7 +10,7 @@ import { currentDomainFamily, type DomainFamily } from "../../contracts/domain-f
 import { getClientHostConfig } from "../../contracts/client-host-config";
 import { isLeoDevPreviewHost } from "./config";
 
-/** Public sitekey (not a secret). Managed widget `oceanleo-login`. */
+/** Public sitekey (not a secret). Managed widget `oceanleo-login`, hostname oceanleo.com. */
 export const TURNSTILE_SITEKEY = "0x4AAAAAAFK-cPFBHQyr7ke8";
 
 export const CAPTCHA_VERIFYING_MESSAGE = "正在进行安全验证…";
@@ -24,17 +24,6 @@ const WIDGET_ATTR = "data-oceanleo-turnstile-id";
 export const captchaConfig = {
   loadTimeoutMs: 8000,
 };
-
-export type CaptchaStatus = "pending" | "verified" | "unavailable" | "failed";
-type CaptchaChange = (token: string | null, status: CaptchaStatus) => void;
-
-/** Only known configuration / script availability errors may bypass the widget. */
-export function captchaErrorStatus(code: unknown): "unavailable" | "failed" {
-  const text = code instanceof Error ? code.message : String(code ?? "");
-  return /^(110\d{3}|turnstile-load-(timeout|error))$/.test(text.trim())
-    ? "unavailable"
-    : "failed";
-}
 
 interface TurnstileApi {
   render?(container: string | HTMLElement, params: Record<string, unknown>): string;
@@ -175,7 +164,7 @@ function destroyVisibleWidget(api: TurnstileApi | undefined, container?: HTMLEle
  */
 export function mountCheckboxCaptcha(
   container: HTMLElement,
-  onChange: CaptchaChange,
+  onChange: (token: string | null) => void,
 ): () => void {
   const ac = new AbortController();
   const { signal } = ac;
@@ -192,42 +181,29 @@ export function mountCheckboxCaptcha(
 
 async function mountVisibleCaptchaNow(
   container: HTMLElement,
-  onChange: CaptchaChange,
+  onChange: (token: string | null) => void,
   signal: AbortSignal,
 ): Promise<void> {
   if (signal.aborted || !inBrowser() || !isCaptchaConfigured()) return;
-  let unavailable = false;
-  pendingVisibleToken = null;
-  onChange(null, "pending");
-  const markUnavailable = (reason: string) => {
-    if (signal.aborted || unavailable) return;
-    unavailable = true;
-    pendingVisibleToken = null;
-    console.warn("[oceanleo-auth] Turnstile unavailable", reason);
-    onChange(null, "unavailable");
-    // A callback can fire synchronously inside render; remove its error UI
-    // after the widget id has been assigned, without retrying a broken config.
-    queueMicrotask(() => {
-      if (!signal.aborted) destroyVisibleWidget(turnstileApi(), container);
-    });
-  };
   try {
     await loadScript(turnstileScriptSrc());
   } catch (err) {
-    markUnavailable(captchaErrorStatus(err) === "unavailable"
-      ? (err as Error).message : "turnstile-load-error");
+    if (!signal.aborted) {
+      console.warn("[oceanleo-auth] Turnstile unavailable", err);
+      onChange(null);
+    }
     return;
   }
   if (signal.aborted) return;
   const api = turnstileApi();
   if (!api?.render) {
-    markUnavailable("turnstile-load-error");
+    onChange(null);
     return;
   }
   const connected =
     typeof container.isConnected === "boolean" ? container.isConnected : true;
   if (!connected) {
-    onChange(null, "pending");
+    onChange(null);
     return;
   }
   destroyVisibleWidget(api, container);
@@ -242,29 +218,20 @@ async function mountVisibleCaptchaNow(
     size: "flexible",
     appearance: "always",
     callback: (token: string) => {
-      if (signal.aborted || unavailable) return;
       pendingVisibleToken = token ? String(token) : null;
-      onChange(pendingVisibleToken, pendingVisibleToken ? "verified" : "failed");
+      onChange(pendingVisibleToken);
     },
     "expired-callback": () => {
-      if (signal.aborted || unavailable) return;
       pendingVisibleToken = null;
-      onChange(null, "failed");
+      onChange(null);
     },
-    "error-callback": (code: unknown) => {
-      if (signal.aborted || unavailable) return true;
-      if (captchaErrorStatus(code) === "unavailable") {
-        markUnavailable(String(code).trim());
-        return true;
-      }
+    "error-callback": () => {
       pendingVisibleToken = null;
-      onChange(null, "failed");
-      return true;
+      onChange(null);
     },
     "timeout-callback": () => {
-      if (signal.aborted || unavailable) return;
       pendingVisibleToken = null;
-      onChange(null, "failed");
+      onChange(null);
     },
   };
   try {
@@ -287,9 +254,12 @@ async function mountVisibleCaptchaNow(
       destroyVisibleWidget(api, container);
       return;
     }
-    if (pendingVisibleToken) onChange(pendingVisibleToken, "verified");
-  } catch {
-    markUnavailable("turnstile-render-error");
+    if (pendingVisibleToken) onChange(pendingVisibleToken);
+  } catch (err) {
+    if (!signal.aborted) {
+      console.warn("[oceanleo-auth] Turnstile render failed", err);
+      onChange(null);
+    }
   }
 }
 

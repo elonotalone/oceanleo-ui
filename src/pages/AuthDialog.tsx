@@ -72,7 +72,6 @@ import {
   clearCaptchaToken,
   isCaptchaConfigured,
   mountCheckboxCaptcha,
-  type CaptchaStatus,
 } from "../lib/auth/captcha";
 
 export type AuthMethod = "email" | "phone" | "wechat" | "google" | "microsoft" | "apple";
@@ -829,23 +828,20 @@ function LegalNote({ tt }: { tt: UITranslate }) {
   );
 }
 
-function CaptchaBox({ onToken, status }: {
-  onToken: (token: string | null, status: CaptchaStatus) => void;
-  status: CaptchaStatus;
-}) {
+function CaptchaBox({ onToken }: { onToken: (token: string | null) => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const onTokenRef = useRef(onToken);
   onTokenRef.current = onToken;
 
   useEffect(() => {
     if (!isCaptchaConfigured()) {
-      onTokenRef.current(null, "unavailable");
+      onTokenRef.current(null);
       return;
     }
     const el = hostRef.current;
     if (!el) return;
-    return mountCheckboxCaptcha(el, (token, nextStatus) => {
-      onTokenRef.current(token, nextStatus ?? (token ? "verified" : "pending"));
+    return mountCheckboxCaptcha(el, (token) => {
+      onTokenRef.current(token);
     });
   }, []);
 
@@ -854,7 +850,6 @@ function CaptchaBox({ onToken, status }: {
     <div
       ref={hostRef}
       data-auth-captcha=""
-      style={status === "unavailable" ? { display: "none" } : undefined}
       className="flex w-full items-center justify-center"
     />
   );
@@ -875,7 +870,6 @@ function EmailForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaStatus, setCaptchaStatus] = useState<CaptchaStatus>("pending");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
@@ -883,15 +877,12 @@ function EmailForm({
   const emailReady = emailLooksValid(email);
   const captchaRequired =
     currentDomainFamily() !== "cn" && isCaptchaConfigured();
-  const identifyReady = emailReady && (
-    !captchaRequired || captchaStatus === "unavailable" || Boolean(captchaToken)
-  );
+  const identifyReady = emailReady && (!captchaRequired || Boolean(captchaToken));
   const passwordReady = password.trim().length >= 6;
 
   function goIdentify() {
     clearCaptchaToken();
     setCaptchaToken(null);
-    setCaptchaStatus("pending");
     setError("");
     setPendingVerify(false);
     setStep("identify");
@@ -957,11 +948,7 @@ function EmailForm({
           style={FIELD_STYLE}
           placeholder={tt("输入你的邮箱地址")}
         />
-        {captchaRequired ? <CaptchaBox status={captchaStatus} onToken={(token, status) => {
-          setCaptchaToken(token);
-          setCaptchaStatus(status);
-        }} /> : null}
-        {captchaRequired && captchaStatus === "failed" ? <ErrorNote text={tt(CAPTCHA_FAILED_MESSAGE)} /> : null}
+        {captchaRequired ? <CaptchaBox onToken={setCaptchaToken} /> : null}
         <button
           type="submit"
           data-auth-submit
