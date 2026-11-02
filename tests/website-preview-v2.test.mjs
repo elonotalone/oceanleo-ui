@@ -20,6 +20,8 @@ const { WebsitePreviewWorkbench } = await import(await compileModule("src/shell/
 }));
 const { createRoot } = await import("react-dom/client");
 const states = ["stopped", "installing", "starting", "running", "crashed", "sleeping"];
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// C3 runtime enum labels, colors and descriptions are presentation completeness, not browser origin or content isolation.
 test("C3 mapping contains every runtime state and distinct readable labels", () => {
   assert.deepEqual(Object.keys(RUNTIME_STATES).sort(), states.toSorted());
   assert.equal(new Set(Object.values(RUNTIME_STATES).map(s=>s.label)).size, 6);
@@ -75,6 +77,8 @@ test("UC-3 preview keeps scripts without same-origin, no frame messaging or inli
   const shell=readFileSync("src/shell/InlineAdvancedWorkbenchShell.tsx","utf8");
   assert.match(shell,/editBarSuppressed = websitePreviewOnly \|\|/);
 });
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// C10 composer transaction appends coordinates while preserving draft; no frame messaging, origin acceptance or HTML execution is tested.
 test("picker inserts a coordinate reference through the existing composer transaction bridge and preserves draft",()=>{
   const host=document.createElement("div");
   host.setAttribute("data-oceanleo-leo-entry-root","");
@@ -99,6 +103,8 @@ test("runtime logs use cursor and fix shows returned task next to the composer",
   assert.equal(composer.querySelector("a").getAttribute("href"),"/tasks/task-fixed");
   await act(async()=>root.unmount()); host.remove(); composer.remove();
 });
+// UC-5: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Supporting owner-only gateway access: every runtime/panel request carries bearer auth, encodes resource ids and disables caching.
 test("C3 and C7 clients encode ids and log cursors, use gateway auth and preserve task ids",async()=>{
   const calls=[];
   const original=globalThis.fetch;
@@ -132,6 +138,8 @@ test("English preview vocabulary covers every runtime state, panel state and int
   for(const meta of Object.values(RUNTIME_STATES)) {assert.ok(WEBSITE_PREVIEW_EN[meta.label]);assert.ok(WEBSITE_PREVIEW_EN[meta.description]);}
   for(const label of ["未接线","已接线","错误","共 {total} 条"]) assert.ok(WEBSITE_PREVIEW_EN[label]);
 });
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// C7 wiring UI dispatches a panel task and shows its returned id; the mocked API does not test authorization or content isolation.
 test("C7 not_wired dropdown invokes wire and exposes the returned task",async()=>{
   const host=document.createElement("div"); document.body.append(host);
   const root=createRoot(host); const wired=[];
@@ -146,6 +154,8 @@ test("C7 not_wired dropdown invokes wire and exposes the returned task",async()=
   assert.deepEqual(wired,[["p","users"]]); assert.equal(host.querySelector('[data-testid="website-agent-task"] a').getAttribute("href"),"/tasks/wire-task");
   await act(async()=>root.unmount()); host.remove();
 });
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// C10 synthetic File paste intake transports the selected attachment; it performs no screenshot capture or untrusted HTML execution.
 test("screenshot file uses the existing composer paste intake alongside the reference",()=>{
   const oldTransfer=globalThis.DataTransfer, oldClipboard=globalThis.ClipboardEvent;
   class Transfer {items={add:file=>{this.file=file;}}}

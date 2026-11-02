@@ -269,8 +269,10 @@ export function UploadTile({
           aria-label={tt("移除")}
           data-upload-remove=""
           onClick={onRemove}
-          className="absolute flex h-11 w-11 items-center justify-center"
-          style={{ right: -14, top: -14 }}
+          // 20px 徽章居于右上角；44px 命中区的额外空间只朝上/右扩展。
+          // 不把触控目标向图片中心扩展，否则悬停后点图片会变成移除。
+          className="absolute flex h-11 w-11 items-end justify-start"
+          style={{ right: -34, top: -34 }}
         >
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800 text-white shadow ring-2 ring-white hover:bg-neutral-900 dark:ring-neutral-900">
             <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
