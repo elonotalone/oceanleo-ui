@@ -1,5 +1,6 @@
 // @oceanleo/ui — UI 文案词典：简体中文（规范来源，key===值）。自动生成 + 人工维护。
 const zh: Record<string, string> = {
+  "在 Library 中查看": "在 Library 中查看",
   "AI 模型": "AI 模型",
   "+ 在「AI 模型」页管理模型": "+ 在「AI 模型」页管理模型",
   "前往 AI 模型页 →": "前往 AI 模型 页 →",

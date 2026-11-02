@@ -1,5 +1,6 @@
 // @oceanleo/ui — UI 文案词典：English。人工翻译。
 const en: Record<string, string> = {
+  "在 Library 中查看": "View in Library",
   "AI 模型": "AI Models",
   "+ 在「AI 模型」页管理模型": "+ Manage models on the AI Models page",
   "前往 AI 模型页 →": "Go to AI Models page →",

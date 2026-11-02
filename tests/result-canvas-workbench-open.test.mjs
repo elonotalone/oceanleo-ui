@@ -10,7 +10,7 @@
 //   - `./WorkspaceLibrary` 桩暴露两个按钮，分别走 `onOpenEntry`（详情预览）与
 //     `onOpenItem`（编辑器）；
 //   - `./workbench-routes` 桩判 `available: true`，编辑器才挂得上；
-//   - `./AdvancedContentWorkbench` 与 `./WorkspaceEntryCanvas` 桩各渲染一个标记 +
+//   - `./AdvancedContentWorkbench` 与 `./WorkspaceLibrary` 详情桩各渲染一个标记 +
 //     「关闭」按钮，好把 `onClose` 那条路也走一遍。
 // store 本体不打桩：它是纯 `.ts`，编译台把它挂成 `file://` 真模块，
 // 测试直接 import 的与 ResultCanvas 链过去的是同一份实例。
@@ -113,7 +113,15 @@ const panelStubUrl = dataModule(`
   export function MaterialLibrary() { return jsx("div", { "data-live-panel": "materials" }); }
   export function MyLibrary() { return jsx("div", { "data-live-panel": "mine" }); }
   export function CloudBrowserPanel() { return jsx("div", { "data-live-panel": "browser" }); }
-  export function WorkspaceLibrary({ onOpenEntry, onOpenItem }) {
+  export function WorkspaceLibrary({ onOpenEntry, onOpenItem, openEntryId, onDetailOpenChange }) {
+    if (openEntryId) {
+      return jsx("button", {
+        type: "button",
+        "data-fake-viewer": true,
+        onClick: () => onDetailOpenChange(false),
+        children: "viewer · close"
+      });
+    }
     return jsxs("div", {
       "data-live-panel": "preview",
       children: [

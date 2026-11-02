@@ -324,14 +324,15 @@ export function ResultCanvas({
     }
     if (openItem.bindTask) setBindEditorToTask(true);
   }, [openCanvasEntry, openCanvasItem, openItem]);
-  // A chat upload opened in the Library (`filter: "uploaded"`) takes the place of
-  // whatever file was in front, as a direct open does; otherwise it would sit hidden.
+  // An explicit Library open replaces the foreground file, including attachments
+  // picked from the Library. Keep the legacy uploaded-filter action compatible.
   const consumedLibraryOpenNonceRef = useRef("");
   useEffect(() => {
     const nonce = externalAction?.nonce || "";
     if (!nonce || consumedLibraryOpenNonceRef.current === nonce) return;
     consumedLibraryOpenNonceRef.current = nonce;
-    if (externalAction!.action.tab !== "mine" || externalAction!.action.filter !== "uploaded") return;
+    const action = externalAction!.action;
+    if (action.tab !== "mine" || (action.intent !== "open" && action.filter !== "uploaded")) return;
     setActiveCanvasEntry(null);
     setHasCommittedEditorRevision(false);
     setArtifactSaveError("");
@@ -762,7 +763,9 @@ export function ResultCanvas({
       <WorkspaceLibrary
         entries={
           previewEntries.some((entry) => entry.id === activeCanvasEntry.id)
-            ? previewEntries
+            ? previewEntries.map((entry) =>
+                entry.id === activeCanvasEntry.id ? activeCanvasEntry : entry,
+              )
             : [...previewEntries, activeCanvasEntry]
         }
         accent={accent}

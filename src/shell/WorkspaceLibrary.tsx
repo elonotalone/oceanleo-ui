@@ -13,6 +13,7 @@ import {
   type SetStateAction,
 } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { TaskAttachmentLibraryLink } from "./task-attachment-library-link";
 import {
   pixelsPerRem,
   useVirtualGrid,
@@ -953,6 +954,7 @@ export function WorkspaceLibrary({
               ) : null}
             </div>
           ) : null}
+          <TaskAttachmentLibraryLink item={selected.libraryItem} />
           <MaterialOwningAppEdit
             plan={hostDetailPlan}
             item={workbenchItem}
