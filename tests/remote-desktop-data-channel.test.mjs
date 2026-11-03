@@ -126,7 +126,7 @@ test("without a device receipt the lane is never trusted; stalled trusted input 
     t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
     second.stream.send({ kind: "key_down", key: "b" });
     assert.equal(peer.sent.at(-1).a.kind, "key_down");
-    t.mock.timers.tick(1600);
+    t.mock.timers.tick(5100);
     assert.equal(second.stream.send({ kind: "key_up", key: "b" }), false);
     assert.equal(inputs(second.socket).some((m) => m.action.kind === "key_up"), false, "no later key action overtakes unresolved peer input");
     assert.deepEqual(second.log.errors, ["input_ack_unknown"]);

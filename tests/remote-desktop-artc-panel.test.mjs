@@ -239,3 +239,20 @@ test("real RTC renewal retains HTTP200 publisher failures, HTTP401/403 and neutr
     await view.unmount();
   }
 });
+
+test("first frame chain: video negotiation starts with the stream socket and is not repeated", async () => {
+  const calls = [];
+  const view = await mount({ overrides: {
+    async negotiateMedia() { calls.push(Boolean(document.querySelector("[data-oceanleo-remote-desktop] video"))); return { ok: true, data: { media, media_status: { state: "publishing" } } }; },
+  } });
+  await settle();
+  assert.deepEqual(calls, [false], "one negotiation, issued from session create before the video mounted");
+  assert.ok(view.screen().querySelector("video"));
+  assert.ok(view.mediaCallbacks(), "the video joined with the early credentials");
+});
+
+test("a consent-pending session does not negotiate video early", async () => {
+  const view = await mount({ pending: true });
+  await settle();
+  assert.equal(view.negotiations(), 0);
+});

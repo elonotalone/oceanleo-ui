@@ -106,7 +106,7 @@ test('a peer throw after possible side effect is never replayed on WS and consum
 test('partial completion progress cannot reset the original oldest outstanding deadline',async t=>{
   const h=await harness(t),p=peer();trust(h,p);p.sent.length=0;
   for(let i=0;i<8;i++)h.stream.send({kind:'keypress',key:'ArrowRight'});
-  h.step(800);h.report(10,3);h.step(800);
+  h.step(2600);h.report(10,3);h.step(2600);
   assert.deepEqual(h.errors,['input_ack_unknown']);assert.equal(inputs(h).filter(m=>m.action.kind==='keypress').length,0);assert.equal(h.socket.readyState,3);
 });
 test('explicit handoff drains peer retirement before WS release and completes only on WS retirement',async t=>{
@@ -248,4 +248,14 @@ test('a host report that drops completion falls back to admission credit instead
   for(let i=0;i<4;i++){h.stream.send(motion(.7));h.report(p.sent.at(-1).seq);h.step(600);}
   assert.deepEqual(h.errors,[],'completion gap is not input_ack_unknown');
   assert.ok(p.sent.length>8,'admission credit keeps DC moving');assert.equal(h.stream.inputPath(),'data_channel');
+});
+test('a gateway socket silence over 1.5 s with DC writes in flight pauses input instead of closing',async t=>{
+  const h=await harness(t),p=peer();trust(h,p);p.sent.length=0;
+  for(let i=0;i<20;i++)h.stream.send(motion(i/20));
+  assert.equal(p.sent.length,8);
+  for(let i=0;i<10;i++){h.stream.send(motion(.5));h.step(200);}
+  assert.deepEqual(h.errors,[],'2 s without receipts (measured on the twin path) is not ambiguity');
+  assert.equal(p.sent.length,8,'the window stays full while receipts are delayed');
+  h.report(p.sent.at(-1).seq,p.sent.at(-1).seq);h.step();
+  assert.ok(p.sent.length>8,'input resumes when the delayed receipts arrive');assert.equal(h.socket.readyState,1);
 });

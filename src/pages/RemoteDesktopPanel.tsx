@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import { createPortal } from "react-dom";
 import { remoteDesktopClient, type RemoteDesktopActivity, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopBilling, type RemoteDesktopBrokerClient, type RemoteDesktopBrokerStatus, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
 import { isNetworkFailure, newRequestId } from "../api/remote-desktop-retry";
-import { RemoteDesktopVideo, remoteFrameStyle } from "./RemoteDesktopVideo";
+import { RemoteDesktopVideo, remoteFrameStyle, type RemoteEarlyMedia } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
 import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteChordKey, remoteKeyboardKey, remoteDesktopErrorCopy, remoteDesktopNoticeCopy, remoteDesktopRemainingSeconds, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
@@ -131,6 +131,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const [brokerMode, setBrokerMode] = useState(false);
   const [brokerDecoded, setBrokerDecoded] = useState(false);
   const brokerModeRef = useRef(false);
+  const earlyMediaRef = useRef<RemoteEarlyMedia | null>(null);
   const brokerFrameReady = useRef(false);
   const brokerDecodedImage = useRef<{ image: string; width: number; height: number } | null>(null);
   const sessionClientRef = useRef<RemoteDesktopClient | RemoteDesktopBrokerClient>(client);
@@ -492,6 +493,11 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       sessionRef.current = result.data.session_id;
       if (result.data.billing) setBilling(result.data.billing);
       updatePhase(result.data.state === "pending_consent" ? "waiting" : "connecting");
+      // First-frame chain: negotiate video while the stream socket is still opening (cold TLS from the
+      // controller's network). The gateway refuses media while consent is pending, so only for a live session.
+      earlyMediaRef.current = result.data.state === "connecting" && client.openStream && client.negotiateMedia && result.data.transport === "websocket-v2"
+        ? { sessionId: result.data.session_id, response: client.negotiateMedia(deviceId, result.data.session_id, undefined, { signal: abort.signal }).catch(() => ({ ok: false, error: "media_unavailable" })) }
+        : null;
       if (client.openStream && result.data.transport === "websocket-v2") {
         streamModeRef.current = true;
         const sessionId = result.data.session_id;
@@ -965,7 +971,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) releaseInput(); }}
         /* D6: the controller's own OS cursor stays visible over the video; no remote cursor is drawn. */
         style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", cursor: panMode && !fit ? "grab" : "default", overflow: fit ? "hidden" : "auto" }}>
-        {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId}
+        {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId} early={earlyMediaRef.current}
           fit={fit} width={frame?.width} height={frame?.height} showFrame={Boolean(frame)}
           onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); }}
           onDiagnostic={setMediaDiagnostic}

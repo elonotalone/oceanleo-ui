@@ -243,6 +243,12 @@ export interface RemoteDesktopDataLane {
 
 /** Oldest pending peer write deadline; partial progress never restarts an older write's clock. */
 export const PEER_RECEIPT_MS = 1500;
+/**
+ * Real data-channel writes are credited by receipts relayed over the gateway socket. That socket
+ * goes quiet for over a second on the controller's path (measured 2026-11-04, CN -> SG twin), so
+ * an unreceipted write waits like the handoff fence before it counts as ambiguous.
+ */
+export const PEER_WRITE_RECEIPT_MS = 5000;
 
 /** Contract D4 bound: one JSON message per input, at most 1 KB. */
 export const DATA_CHANNEL_MAX_BYTES = 1024;
@@ -380,7 +386,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; };
   const peerHealthy = (now: number) => {
     const oldest = scheduler.oldestPeerPendingAt();
-    if (oldest !== undefined && now - oldest > PEER_RECEIPT_MS) fail("input_ack_unknown");
+    if (oldest !== undefined && now - oldest > PEER_WRITE_RECEIPT_MS) fail("input_ack_unknown");
   };
   const notePeerReceipt = (value: number | undefined, completed?: number) => {
     if (value !== undefined) {
