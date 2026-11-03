@@ -10,6 +10,7 @@
 // ============================================================================
 
 import {
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -38,6 +39,7 @@ import type { LibraryItem, LibraryKind } from "./library-data";
 import { editorCapabilityFor } from "./workbench-routes";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
+import { WorkspacePaneSkeleton } from "./WorkspacePaneSkeleton";
 
 export type { TaskWorkspaceOpenItem, TaskWorkspaceOpenState } from "./ResultCanvas";
 export type { TaskWorkspaceOpenEntry, WorkspaceEntryOpenOptions } from "./result-canvas-entry-state";
@@ -249,7 +251,7 @@ export function TaskWorkspaceShell({
       {...split}
       className={`${className} ${closedPlain ? TASK_WORKSPACE_PLAIN_CLOSED_CLASS : ""}`.trim()}
       left={left}
-      right={renderRight ? renderRight(canvasNode) : canvasNode}
+      right={<Suspense fallback={<WorkspacePaneSkeleton />}>{renderRight ? renderRight(canvasNode) : canvasNode}</Suspense>}
       library={effectiveLibrary}
     />
   );

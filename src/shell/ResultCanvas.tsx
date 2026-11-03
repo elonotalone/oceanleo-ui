@@ -19,6 +19,7 @@ import { NavigatorGuide } from "./NavigatorGuide";
 import type { MaterialItem } from "./MaterialLibrary";
 import { resolveAssetDetail } from "./asset-detail/resolve";
 import { AssetDetail } from "./asset-detail/AssetDetail";
+import { WorkspacePaneSkeleton } from "./WorkspacePaneSkeleton";
 import { BayAssetActions } from "./asset-detail/BayAssetActions";
 import type { AssetActionContext } from "./asset-detail/types";
 import { useWorkspaceEntryRequest, type TaskWorkspaceOpenEntry } from "./result-canvas-entry-state";
@@ -895,10 +896,11 @@ export function ResultCanvas({
           </div>
         ) : null}
       </div>
-      {openingEntry && <div className="absolute inset-0 z-10 bg-white" data-workspace-entry-open={entryRequest.status}>
-        <CanvasEmpty title={entryRequest.status === "loading" ? "正在打开素材…" : "无法打开这份素材"}
-          description={entryRequest.status === "loading" ? "请稍候。" : entryRequest.reason}
-          action={<><button type="button" onClick={entryRequest.dismiss}>{tt("返回")}</button>{entryRequest.status === "error" && <button type="button" onClick={entryRequest.retry}>{tt("重试")}</button>}</>} />
+      {openingEntry && <div className="absolute inset-0 z-10 bg-[var(--card,#fff)]" data-workspace-entry-open={entryRequest.status}>
+        {entryRequest.status === "loading"
+          ? <WorkspacePaneSkeleton action={<button type="button" onClick={entryRequest.dismiss}>{tt("返回")}</button>} />
+          : <CanvasEmpty title="无法打开这份素材" description={entryRequest.reason}
+              action={<><button type="button" onClick={entryRequest.dismiss}>{tt("返回")}</button><button type="button" onClick={entryRequest.retry}>{tt("重试")}</button></>} />}
       </div>}
       {foregroundContent && (
         <div

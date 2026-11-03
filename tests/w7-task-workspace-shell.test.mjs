@@ -201,6 +201,7 @@ const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
 const canvasStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function ResultCanvas(props){
+    if (globalThis.__canvasWait) throw globalThis.__canvasWait;
     React.useEffect(() => { globalThis.__canvasMounts = (globalThis.__canvasMounts || 0) + 1; }, []);
     globalThis.__canvasProps = props;
     return React.createElement("div", { "data-canvas": props.openItem?.item?.id || "" });
@@ -245,6 +246,41 @@ test("shell: collapsed home draws no chrome and mounts no canvas; opening an ite
   await act(async () => handle.state.setRightOpen(false));
   assert.equal(globalThis.__canvasMounts, 1, "closing keeps the canvas mounted (state kept)");
   await m.unmount();
+});
+
+test("shell: a suspended sidebar chunk shows its skeleton while the same home and focus stay visible", async () => {
+  const handle = {};
+  let resolveCanvas;
+  globalThis.__canvasWait = new Promise(resolve => { resolveCanvas = resolve; });
+  function Host() {
+    const state = useTaskWorkspaceState();
+    handle.state = state;
+    return React.createElement(TaskWorkspaceShell, {
+      state, tabs: [], lazyRight: true, plainWhenClosed: true,
+      left: React.createElement("button", { "data-home-column": true }, "Home card"),
+    });
+  }
+  const m = await mount(React.createElement(React.Suspense, {
+    fallback: React.createElement("div", { "data-root-fallback": true }, "Blank page"),
+  }, React.createElement(Host)));
+  try {
+    const home = m.container.querySelector("[data-home-column]");
+    home.focus();
+    await act(async () => handle.state.openWorkspaceItem(item("slow-chunk"), "preview"));
+    assert.equal(m.container.querySelector("[data-root-fallback]"), null);
+    assert.equal(m.container.querySelector("[data-home-column]"), home);
+    assert.equal(document.activeElement, home);
+    assert.equal(home.closest('[style*="display: none"]'), null);
+    assert.ok(m.container.querySelector('[data-workspace-pane="main"] [data-workspace-pane-loading][role="status"]'));
+    await act(async () => { globalThis.__canvasWait = null; resolveCanvas(); });
+    assert.equal(m.container.querySelector("[data-workspace-pane-loading]"), null);
+    assert.equal(m.container.querySelector("[data-canvas]")?.getAttribute("data-canvas"), "slow-chunk");
+    assert.equal(m.container.querySelector("[data-home-column]"), home);
+  } finally {
+    globalThis.__canvasWait = null;
+    resolveCanvas();
+    await m.unmount();
+  }
 });
 
 test("shell: AgentChat-shaped use passes the canvas through renderRight; an initial item opens the sidebar", async () => {
@@ -374,6 +410,7 @@ test("W4 a later entry cancels an unresolved reference and a stale response cann
   const m = await mount(el({ nonce: "slow", ref: { kind: "platform", id: "slow" }, mode: "preview" }));
   try {
     assert.equal(m.container.querySelector('[data-workspace-entry-open]').getAttribute('data-workspace-entry-open'), 'loading');
+    assert.ok(m.container.querySelector('[data-workspace-entry-open] [data-workspace-pane-loading][role="status"]'));
     const entry = commerceEntry("new");
     await m.render(el({ nonce: "fast", entry, actionContext: commerceContext(), mode: "preview" }));
     assert.equal(signal.aborted, true);
