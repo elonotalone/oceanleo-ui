@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {buildAgentRenderItems} from '../src/lib/agent-progress.ts';
-import {nativeDeliveryStatus, nativeLastActivity, nativeThinkingVisible} from '../src/shell/native-chat-presentation.ts';
+import {nativeDeliveryStatus, nativeFinishingItemKey, nativeLastActivity, nativeThinkingVisible} from '../src/shell/native-chat-presentation.ts';
 
 test('adjacent native turns keep separate process blocks, including autonomous work after a waiting prompt', () => {
   const messages = [
@@ -46,4 +46,23 @@ test('a queued prompt never borrows an autonomous turn thinking indicator, and i
     assert.equal(nativeThinkingVisible([{...prompt,meta:{native_delivery:{state}}}],true,true),false);
   }
   assert.equal(nativeThinkingVisible([prompt,{id:2,role:'assistant',kind:'analysis',content:'working'}],true,true),false);
+});
+
+test('unconfirmed completion retains active controls without claiming that the agent is thinking', () => {
+  const prompt={id:1,role:'user',kind:'text',content:'hello',meta:{native_delivery:{state:'started_new_turn'}}};
+  assert.equal(nativeThinkingVisible([prompt],true,true,true),false);
+  assert.equal(nativeThinkingVisible([prompt],true,true,false),true);
+});
+
+test('an autonomous finishing label belongs to its own block before a later waiting message', () => {
+  const meta={native_turn_id:'background',native_turn_autonomous:true,native_turn_live:true,native_turn_finishing:true};
+  const items=buildAgentRenderItems([
+    {id:1,role:'assistant',kind:'analysis',content:'background work',meta},
+    {id:2,role:'assistant',kind:'text',content:'background result',meta},
+    {id:3,role:'user',kind:'text',content:'waiting',meta:{native_delivery:{state:'queued'}}},
+  ]);
+  assert.equal(nativeFinishingItemKey(items,true,true),items[1].key);
+  assert.notEqual(nativeFinishingItemKey(items,true,true),items[2].key);
+  assert.equal(nativeFinishingItemKey(items,false,true),null);
+  assert.equal(nativeFinishingItemKey(items,true,false),null);
 });

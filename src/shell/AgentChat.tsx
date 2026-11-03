@@ -99,7 +99,7 @@ import {
   type StopState,
 } from "./cloud-computer/agent-dialog/reduce";
 import { mapNativeTranscript, mergeNativeThreadMessages, type NativeThreadSource } from "./native-thread/merge";
-import { nativeDeliveryStatus, nativeLastActivity, nativeThinkingVisible } from "./native-chat-presentation";
+import { nativeDeliveryStatus, nativeFinishingItemKey, nativeLastActivity, nativeThinkingVisible } from "./native-chat-presentation";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
@@ -3166,6 +3166,7 @@ function AgentChatInner({
             </div>
           )}
           <LeoComposer
+            optimizeImages
             boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
             value={input}
             onChange={setInput}
@@ -3229,10 +3230,11 @@ function AgentChatInner({
       return { ...message, meta: { ...message.meta, engine_label: label } };
     });
     const nativeRenderItems = buildAgentRenderItems(nativeMessages);
+    const nativeFinishingKey = nativeFinishingItemKey(nativeRenderItems, thread.finishing, thread.live);
     const nativeProgressKey = activeAgentProgressKey(nativeRenderItems, nativeMessages);
     const nativeLiveProgressKey = liveAgentProgressKey(nativeRenderItems, nativeMessages);
     const nativeRunning = thread.running || (!session && conversationBusy);
-    const nativePresentation = threadPresentation(nativeMessages, nativeRunning ? "running" : "", {
+    const nativePresentation = threadPresentation(nativeMessages, thread.finishing ? "finishing" : nativeRunning ? "running" : "", {
       activeProgress: Boolean(nativeProgressKey),
     });
     const nativeLastUserIdx = nativeMessages.findLastIndex((message) => message.role === "user");
@@ -3330,7 +3332,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={nativeRunning && (item.messages.some((message) => message.meta?.native_turn_live === true) ||
+                running={nativeRunning && !thread.finishing && (item.messages.some((message) => message.meta?.native_turn_live === true) ||
                   (!item.messages.some((message) => message.meta?.native_turn_id) && item.key === nativeLiveProgressKey))}
                 accent={accent}
               />
@@ -3339,7 +3341,7 @@ function AgentChatInner({
               <AgentTranscriptBubble
                 message={item.message}
                 timeAbove={nativeTimeSeparators.get(item.index)}
-                streaming={nativeRunning && (item.message.meta?.native_turn_id
+                streaming={nativeRunning && !thread.finishing && (item.message.meta?.native_turn_id
                   ? item.message.meta.native_streaming === true
                   : item.index === nativeLastAssistantIdx && item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
                     item.message.meta?.final !== true && item.message.meta?.stopped !== true)}
@@ -3373,10 +3375,13 @@ function AgentChatInner({
               </div>
             )
               }
+              {item.key === nativeFinishingKey && (
+                <div className="text-[13px] text-stone-400" data-native-finishing="">{tt("正在确认结束")}</div>
+              )}
             </div>;
           })}
           {/* Only until the turn's first entry: after that the process block / streaming text is the live signal. */}
-          {nativePresentation.thinking && nativeThinkingVisible(nativeMessages, thread.running, thread.live) && (
+          {nativePresentation.thinking && nativeThinkingVisible(nativeMessages, thread.running, thread.live, thread.finishing) && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400" data-native-thinking="">
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
@@ -3417,6 +3422,7 @@ function AgentChatInner({
             <p className="px-1 text-[12px] text-stone-400" data-native-save-failed>{tt("这段对话暂时没能保存到云端")}</p>
           )}
           <LeoComposer
+            optimizeImages
             boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
             value={input}
             onChange={setInput}

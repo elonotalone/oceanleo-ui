@@ -770,6 +770,8 @@ async function loadHomeContent() {
       globalThis.__homeUploads.push({ name: file.name, opts });
       return globalThis.__homeUploadResults.shift() || { ok: false, error: "x" };
     }
+    export function originalForPreparedFile(){return undefined;}
+    export function dimensionsForPreparedFile(){return undefined;}
     export async function listMyArtifacts(){ return { ok: true, data: { items: [] } }; }
   `);
   const portalOverrides = {
@@ -915,6 +917,7 @@ test("portal homepage W7: an uploaded tile opens the task sidebar in place and t
     await act(async () => globalThis.__canvasProps.onOpenItemChange({ item: globalThis.__canvasProps.openItem.item, mode: "preview" }));
     await act(async () => { await globalThis.__portalComposer.onSubmit("看看这张图"); });
     assert.ok(host.querySelector("[data-composer]"), "the live task conversation replaced the home");
+    assert.equal(globalThis.__agentComposer.optimizeImages, true, "task chat opts into the reversible photo preparation UI");
     assert.equal(pane(), "open", "the sidebar stays open in the new task");
     assert.equal(globalThis.__canvasProps.openItem.item.key, "attachment:up_1", "with the same file");
     assert.equal(globalThis.__canvasProps.openItem.bindTask, true, "its editor session binds to the new task");
@@ -970,6 +973,7 @@ test("portal homepage native chat: in place, bubble before the session exists, p
     await act(async () => { await globalThis.__portalComposer.onSubmit("看看日志", undefined, { conversation: codex }); });
     assert.equal(host.querySelector("[data-home-composer]"), null, "the homepage turned into the conversation");
     assert.ok(host.querySelector('[data-agent-stream="native"]'), "native stream in front");
+    assert.equal(globalThis.__agentComposer.optimizeImages, true, "native chat opts in with original-photo recovery available");
     assert.ok(host.textContent.includes("看看日志"), "the user's bubble shows before the session is created");
     assert.equal(globalThis.__homeCreates.length, 1, "creation started in the background");
     assert.deepEqual(globalThis.__routerPushes, [], "no page jump");

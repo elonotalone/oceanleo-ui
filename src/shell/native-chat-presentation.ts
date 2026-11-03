@@ -1,4 +1,5 @@
 import type { AgentMessage } from "../lib/agent";
+import type { AgentRenderItem } from "../lib/agent-progress";
 
 /** A receipt does not mean that the native agent has consumed the input. */
 export function nativeDeliveryStatus(state: string): string | null {
@@ -33,10 +34,17 @@ export function nativeLastActivity(messages: readonly AgentMessage[]): { at: str
 }
 
 /** A waiting prompt must not borrow a background turn's thinking indicator. */
-export function nativeThinkingVisible(messages: readonly AgentMessage[], running: boolean, live: boolean): boolean {
-  if (!running || !live) return false;
+export function nativeThinkingVisible(messages: readonly AgentMessage[], running: boolean, live: boolean, finishing = false): boolean {
+  if (!running || !live || finishing) return false;
   const lastUser = messages.findLastIndex((message) => message.role === "user");
   const delivery = messages[lastUser]?.meta?.native_delivery as { state?: string } | undefined;
   if (delivery?.state === "queued" || delivery?.state === "sending" || delivery?.state === "unsent" || delivery?.state === "cancelled") return false;
   return !messages.slice(lastUser + 1).some((message) => message.role === "assistant");
+}
+
+/** Keep completion confirmation with its own turn, above any later queued user. */
+export function nativeFinishingItemKey(items: readonly AgentRenderItem[], finishing: boolean, live: boolean): string | null {
+  if (!finishing || !live) return null;
+  return items.findLast((item) => (item.type === "progress" ? item.messages : [item.message])
+    .some((message) => message.meta?.native_turn_finishing === true && message.meta?.native_turn_live === true))?.key ?? null;
 }
