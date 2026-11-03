@@ -11,7 +11,7 @@ export function browserTrustActionLabel(kind: string, tt: UITranslate): string {
   const labels: Record<string, string> = {
     send_email: "发送邮件", email_send: "发送邮件", send_message: "发送消息", message_send: "发送消息",
     payment: "付款", pay: "付款", purchase: "购买", place_order: "下单", order: "下单",
-    submit_order: "提交订单", submit: "提交信息", irreversible_submit: "提交信息",
+    submit_order: "提交订单", submit: "提交信息", irreversible_submit: "提交信息", delete: "删除网站内容",
   };
   return tt(labels[kind] || "提交网站操作");
 }
