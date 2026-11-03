@@ -414,6 +414,30 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   // Why the last delete was refused. Kept apart from `error`: the silent reload
   // that follows a refusal succeeds and clears `error`, which hid the reason.
   const [notice, setNotice] = useState<string | null>(null);
+  // Polls set state only when it changes. A bailed-out setState is still queued on
+  // the hook until the component renders again; an idle list never does, so every
+  // 8 s poll's rows (and its closure) stayed reachable (W2 heap probe 2026-11-04).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  const errorRef = useRef(error);
+  errorRef.current = error;
+  const putLoading = useCallback((next: boolean) => {
+    if (loadingRef.current === next) return;
+    loadingRef.current = next;
+    setLoading(next);
+  }, []);
+  const putError = useCallback((next: string | null) => {
+    if (errorRef.current === next) return;
+    errorRef.current = next;
+    setError(next);
+  }, []);
+  const putItems = useCallback((next: HistoryListEntry[]) => {
+    if (next === itemsRef.current) return;
+    itemsRef.current = next;
+    setItems(next);
+  }, []);
   const reloadGenerationRef = useRef(0);
   const listReadRef = useRef<{ key: string; request: Promise<boolean>; controller: AbortController } | null>(null);
   const deletingRef = useRef(new Set<string>());
@@ -441,7 +465,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     prior?.controller.abort();
     const generation = ++reloadGenerationRef.current;
     const controller = new AbortController();
-    if (!silent && !loadedOnceRef.current) setLoading(true);
+    if (!silent && !loadedOnceRef.current) putLoading(true);
     let sessionsResult: AgentApiResult<{ items: AppSession[] }> | undefined;
     let tasksResult: AgentApiResult<{ items: AgentTask[] }> | undefined;
     const publish = () => {
@@ -449,9 +473,9 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       if (sessionsResult?.status === 401 || tasksResult?.status === 401) {
         historyListCache.delete(cacheKey);
         historySourceCache.delete(cacheKey);
-        setItems([]);
-        setLoading(false);
-        setError(authMessageRef.current);
+        putItems([]);
+        putLoading(false);
+        putError(authMessageRef.current);
         return false;
       }
       // A failed source keeps its last successful rows; it is never replaced
@@ -476,7 +500,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       const unavailable = Boolean(sessionsResult && !sessionsResult.ok && isAppSessionApiUnavailableStatus(sessionsResult.status));
       const failure = [sessionsResult, tasksResult].find((result, index) =>
         result && !result.ok && !(index === 0 && unavailable));
-      setError(failure ? taskRequestFailureText(failure, "加载失败") : null);
+      putError(failure ? taskRequestFailureText(failure, "加载失败") : null);
       for (const task of tasks) {
         if (task.session_id) historyTaskSession.set(task.id, task.session_id);
       }
@@ -489,7 +513,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       );
       if (next.length || complete || loadedOnceRef.current) {
         if (sessionsResult?.ok || tasksResult?.ok) loadedOnceRef.current = true;
-        setLoading(false);
+        putLoading(false);
       }
       if (!sources.sessions && !sources.tasks) return false;
       // The sidebar is the first live source to see native task auto-titles and
@@ -515,7 +539,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         }
       }
       historyListCache.set(cacheKey, next);
-      setItems((prev) => (sameHistory(prev, next) ? prev : next));
+      if (!sameHistory(itemsRef.current, next)) putItems(next);
       return Boolean(tasksResult?.ok && (sessionsResult?.ok || unavailable));
     };
     const request = Promise.all([
@@ -541,7 +565,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     });
     listReadRef.current = { key: cacheKey, request, controller };
     return request;
-  }, [cacheKey, siteId, pending]);
+  }, [cacheKey, siteId, pending, putItems, putLoading, putError]);
   reloadRef.current = reload;
   useEffect(() => onUserScopedClear(() => {
     ++reloadGenerationRef.current;
@@ -595,7 +619,10 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         detail.sessionId || (detail.taskId ? historyTaskSession.get(detail.taskId) : undefined);
       noteLocalActivity(detail.taskId, detail);
       noteLocalActivity(sessionId, detail);
-      setItems((prev) => bumpHistoryEntries(prev, { ...detail, sessionId }));
+      // Only an activity that moves or restamps a row is queued (see putItems).
+      if (bumpHistoryEntries(itemsRef.current, { ...detail, sessionId }) !== itemsRef.current) {
+        setItems((prev) => bumpHistoryEntries(prev, { ...detail, sessionId }));
+      }
       if (detail.user) void reload(true, true);
     };
     window.addEventListener(HISTORY_ACTIVITY_EVENT, onActivity);

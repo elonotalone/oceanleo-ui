@@ -237,3 +237,42 @@ test("an unmounted list does not start a follow-up read", async () => {
   await settle(10);
   assert.equal(reads.length, 2);
 });
+
+/** Hook updates React has queued on the list's fibers but never processed. */
+function queuedHookUpdates(container) {
+  const node = container.querySelector("[data-history-row]");
+  const key = node && Object.keys(node).find((name) => name.startsWith("__reactFiber$"));
+  let fiber = key ? node[key] : null;
+  let total = 0;
+  for (; fiber; fiber = fiber.return) {
+    if (typeof fiber.type !== "function") continue;
+    for (let hook = fiber.memoizedState; hook && typeof hook === "object" && "next" in hook; hook = hook.next) {
+      const pending = hook.queue?.pending;
+      if (!pending) continue;
+      let update = pending.next, count = 0;
+      do { count += 1; update = update.next; } while (update && update !== pending.next && count < 100_000);
+      total += count;
+    }
+  }
+  return total;
+}
+
+test("unchanged polls queue no list updates: an idle sidebar does not retain every poll's rows (W2 heap probe 2026-11-04)", async () => {
+  // V8 heap retainers on an idle task page: every 8 s poll's task rows were held by
+  // bailed-out setState updates of useHistory that a list with no changes never drains.
+  globalThis.__tasksRead = async () => ({ ok: true, data: { items: before() } });
+  const panel = await mount();
+  try {
+    await settle(10);
+    assert.deepEqual(panel.order(), ["task-a", "task-b", "task-c", "task-x"]);
+    for (let i = 0; i < 25; i += 1) {
+      await act(async () => window.dispatchEvent(new Event(HISTORY_CHANGED_EVENT)));
+      await settle(2);
+    }
+    assert.deepEqual(panel.order(), ["task-a", "task-b", "task-c", "task-x"]);
+    const queued = queuedHookUpdates(panel.container);
+    assert.ok(queued <= 2, `idle polls must not pile up hook updates (queued ${queued})`);
+  } finally {
+    await panel.unmount();
+  }
+});
