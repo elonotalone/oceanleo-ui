@@ -260,6 +260,8 @@ test("presets create a backend task and leave individual choices editable", asyn
   } finally { await m.destroy(); }
 });
 
+// UC-NONE: this checks task-result presentation against controlled connector snapshots.
+// A completed task must not fabricate a connected provider; owner/provider boundaries are verified separately.
 test("polling shows the actual task result while a completed task can still have an unconnected service", async t => {
   const snapshot = fixture();
   let latest = snapshot;

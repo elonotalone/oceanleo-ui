@@ -34,6 +34,18 @@ export function previewPathUrl(base: string | null | undefined, path: string): s
     if (url.protocol !== "https:" || !url.hostname.endsWith(".oceanleo.app") || url.username || url.password || url.port) return "";
     if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "";
     const next = new URL(path, url);
-    return next.origin === url.origin ? next.href : "";
+    if (next.origin !== url.origin) return "";
+    // Only the trusted runtime response supplies the host-bound assertion.
+    // A path cannot replace it, duplicate it or introduce a new assertion.
+    const owners = url.searchParams.getAll("__oceanleo_owner");
+    if (owners.length > 1 || (owners.length === 1 && !owners[0])) return "";
+    const query = next.search ? next.search.slice(1).split("&").filter(part => {
+      try { return decodeURIComponent(part.split("=", 1)[0].replace(/\+/g, " ")) !== "__oceanleo_owner"; }
+      catch { return true; }
+    }) : [];
+    if (owners.length === 1) query.push(new URLSearchParams({ __oceanleo_owner: owners[0] }).toString());
+    // Preserve the encoding of unrelated user query fields.
+    next.search = query.join("&");
+    return next.href;
   } catch { return ""; }
 }
