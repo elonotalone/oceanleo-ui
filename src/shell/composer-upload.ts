@@ -33,6 +33,7 @@ import {
 } from "./artifact-contract";
 import { artifactProjectionToLibraryItem, type LibraryItem } from "./library-data";
 import type { ComposerAttachment } from "./LeoComposer";
+import { recordClientUploadTiming, uploadTimingNow } from "../lib/upload/timing";
 
 export interface ComposerPrivateUpload {
   artifactId: string;
@@ -122,6 +123,7 @@ export async function uploadComposerFile(
     return { ok: false, error: PRIVATE_ATTACHMENT_TOO_LARGE, status: 413, tooLarge: true };
   }
   const siteId = opts.siteId || "home";
+  const keyStartedAt = uploadTimingNow();
   const idempotencyKey = await normalizeUploadIdempotencyKey([
     "composer-upload-v1",
     siteId,
@@ -129,6 +131,7 @@ export async function uploadComposerFile(
     file.size,
     file.lastModified,
   ]);
+  recordClientUploadTiming(file, "client_key", uploadTimingNow() - keyStartedAt);
   const result = await uploadFile(file, {
     siteId,
     title: file.name,

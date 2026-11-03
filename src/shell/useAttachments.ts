@@ -33,6 +33,7 @@ export interface PendingAttachment {
   uploading: boolean;
   /** Upload failed: the tile stays with a retry badge (`retryAttachment`). */
   failed?: boolean;
+  failedReason?: string;
   attachment?: AgentAttachment;
   /** Private Library identity of a finished upload (contract C2). */
   artifactId?: string;
@@ -100,6 +101,7 @@ export function useAttachments(
                     mime: up.mime || file.type,
                     uploading: false,
                     failed: false,
+                    failedReason: undefined,
                     attachment: up.attachment,
                     artifactId: up.artifactId,
                     revisionId: up.revisionId,
@@ -111,10 +113,16 @@ export function useAttachments(
         } else {
           // Keep the tile with a retry badge; it is not sent while failed.
           setAttachments((prev) =>
-            prev.map((a) => (a.id === id ? { ...a, uploading: false, failed: true } : a)),
+            prev.map((a) => (a.id === id ? { ...a, uploading: false, failed: true, failedReason: r.error || "文件上传失败" } : a)),
           );
           onError?.(r.error || "文件上传失败");
         }
+      }, () => {
+        if (controller.signal.aborted) return;
+        if (uploadsRef.current.get(id) === controller) uploadsRef.current.delete(id);
+        setAttachments((prev) => prev.map((a) => a.id === id
+          ? { ...a, uploading: false, failed: true, failedReason: "文件上传失败" } : a));
+        onError?.("文件上传失败");
       });
     },
     [siteId, onError],
@@ -148,7 +156,7 @@ export function useAttachments(
       const file = filesRef.current.get(id);
       if (!file) return;
       setAttachments((prev) =>
-        prev.map((a) => (a.id === id && a.failed ? { ...a, uploading: true, failed: false } : a)),
+        prev.map((a) => (a.id === id && a.failed ? { ...a, uploading: true, failed: false, failedReason: undefined } : a)),
       );
       startUpload(id, file);
     },
@@ -253,6 +261,7 @@ export function useAttachments(
         ...(a.attachment?.media_type ? { mediaType: a.attachment.media_type } : {}),
         uploading: a.uploading,
         ...(a.failed ? { failed: true } : {}),
+        ...(a.failedReason ? { failedReason: a.failedReason } : {}),
         ...(a.artifactId ? { artifactId: a.artifactId } : {}),
         ...(a.revisionId ? { revisionId: a.revisionId } : {}),
         ...(a.libraryItem ? { libraryItem: a.libraryItem } : {}),

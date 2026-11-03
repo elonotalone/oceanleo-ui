@@ -257,7 +257,7 @@ test("A1: LeoComposer wires draftKey through useComposerDraft and marks the send
   const source = readFileSync(new URL("../src/shell/LeoComposer.tsx", import.meta.url), "utf8");
   // 2026-11-02 unit D: every file the composer takes in goes through the draft first (bytes survive refresh).
   assert.match(source, /useComposerDraft\(\{ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles \}\)/);
-  assert.match(source, /useAttachmentIntake\(onAttachFiles \? draft\.attachFiles : undefined\)/);
+  assert.match(source, /useAttachmentIntake\(onAttachFiles \? draft\.attachFiles : undefined, \{ deliverAsReady: true \}\)/);
   assert.match(source, /draft\.markSubmitted\(\);/);
   const home = readFileSync(new URL("../src/shell/HomeIntro.tsx", import.meta.url), "utf8");
   assert.match(home, /draftKey=\{`home:\$\{attachSiteId\}`\}/);
@@ -316,6 +316,11 @@ test("A2: the picker lists private Library files, filters, marks attached ones a
     );
     await flush();
     const rows = () => [...container.querySelectorAll("[data-composer-library-item]")];
+    // The picker imports its upload adapter lazily; wait for that task, not just microtasks.
+    const deadline = Date.now() + 5000;
+    while (rows().length === 0 && Date.now() < deadline) {
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    }
     assert.deepEqual(rows().map((row) => row.getAttribute("data-composer-library-item")), [ART, ART2]);
     assert.equal(rows()[0].disabled, true, "an attached file is not added twice");
 

@@ -221,6 +221,7 @@ export function InputCard({
         onOpenAttachment={onOpenAttachment}
         onRetry={onRetryAttachment}
         pendingFiles={intake.pending}
+        onRemovePending={intake.removePending}
         inFlight={intake.inFlight}
       />
 

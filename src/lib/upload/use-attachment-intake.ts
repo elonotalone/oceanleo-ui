@@ -31,6 +31,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { compressImageFiles } from "./image-compress";
+import { recordCompressionTiming, uploadTimingNow } from "./timing";
 import { filesFromPaste, transferHasFiles } from "./intake";
 import {
   latestUploadProgress,
@@ -48,6 +49,8 @@ export interface UploadInFlight {
 export interface AttachmentIntakeOptions {
   /** 默认压。传 false 表示宿主自己另有压缩策略，这里原图直出。 */
   compressImages?: boolean;
+  /** Append-only attachment owners can start each upload as soon as that file is prepared. */
+  deliverAsReady?: boolean;
 }
 
 /** 只接受带 `clipboardData` 的事件，React 合成事件与原生事件都吃得下。 */
@@ -68,6 +71,8 @@ export interface AttachmentIntake {
    * 「上传中」缩略块，用户粘贴/拖入的那一刻就看得见，不再另起一行「正在压缩图片…」。
    */
   pending: readonly File[];
+  /** Remove a file before upload; a late compression result is discarded. */
+  removePending: (file: File) => void;
   /** 正在传的那几个（读数驱动，见文件头）。 */
   inFlight: readonly UploadInFlight[];
 }
@@ -83,7 +88,6 @@ export function useAttachmentIntake(
   onFiles: ((files: File[]) => void) | undefined,
   options: AttachmentIntakeOptions = {},
 ): AttachmentIntake {
-  const [compressing, setCompressing] = useState(false);
   const [pending, setPending] = useState<readonly File[]>([]);
   const [inFlight, setInFlight] = useState<readonly UploadInFlight[]>([]);
 
@@ -93,8 +97,13 @@ export function useAttachmentIntake(
   onFilesRef.current = onFiles;
   const compressEnabledRef = useRef(options.compressImages !== false);
   compressEnabledRef.current = options.compressImages !== false;
+  const deliverAsReadyRef = useRef(options.deliverAsReady === true);
+  deliverAsReadyRef.current = options.deliverAsReady === true;
 
   const subscriptionsRef = useRef(new Map<File, () => void>());
+  const pendingJobsRef = useRef(new Set<{ file: File }>());
+  // Decode one image at a time, including files added while a previous batch runs.
+  const compressionQueueRef = useRef(Promise.resolve());
   /** 卸载之后不许再 setState（上传比组件活得久是常态）。 */
   const aliveRef = useRef(true);
 
@@ -103,6 +112,7 @@ export function useAttachmentIntake(
     const subscriptions = subscriptionsRef.current;
     return () => {
       aliveRef.current = false;
+      pendingJobsRef.current.clear();
       for (const unsubscribe of subscriptions.values()) unsubscribe();
       subscriptions.clear();
     };
@@ -159,12 +169,20 @@ export function useAttachmentIntake(
 
   const deliver = useCallback(
     (payload: File[]) => {
+      if (!aliveRef.current) return;
       // 先订阅再交出去：宿主可能在同一个 tick 里就把请求发出去了。
       watch(payload);
       onFilesRef.current?.(payload);
     },
     [watch],
   );
+
+  const removePending = useCallback((file: File) => {
+    for (const job of pendingJobsRef.current) {
+      if (job.file === file) pendingJobsRef.current.delete(job);
+    }
+    setPending(Array.from(pendingJobsRef.current, (job) => job.file));
+  }, []);
 
   const emit = useCallback(
     (input: FileList | readonly File[] | null | undefined) => {
@@ -174,21 +192,43 @@ export function useAttachmentIntake(
         deliver(files);
         return;
       }
-      setCompressing(true);
-      setPending((prev) => [...prev, ...files]);
-      void compressImageFiles(files)
-        .then((outcomes) => {
-          deliver(outcomes.map((outcome) => outcome.upload));
-        })
-        .catch(() => {
-          // `compressImageFiles` 按契约不抛。真抛了也绝不能把用户的文件吞掉。
-          deliver(files);
-        })
-        .finally(() => {
-          if (!aliveRef.current) return;
-          setCompressing(false);
-          setPending((prev) => prev.filter((file) => !files.includes(file)));
-        });
+      const jobs = files.map((file) => ({ file }));
+      const streamPrepared = deliverAsReadyRef.current;
+      for (const job of jobs) pendingJobsRef.current.add(job);
+      setPending(Array.from(pendingJobsRef.current, (job) => job.file));
+      compressionQueueRef.current = compressionQueueRef.current.then(async () => {
+        try {
+          const prepared: { job: typeof jobs[number]; upload: File }[] = [];
+          for (const job of jobs) {
+            if (!aliveRef.current || !pendingJobsRef.current.has(job)) continue;
+            let upload = job.file;
+            const startedAt = uploadTimingNow();
+            try {
+              const [outcome] = await compressImageFiles([job.file]);
+              upload = outcome?.upload ?? job.file;
+            } catch {
+              // Compression is optional: keep the original if decoding fails.
+            }
+            if (!aliveRef.current || !pendingJobsRef.current.has(job)) continue;
+            recordCompressionTiming(job.file, upload, uploadTimingNow() - startedAt);
+            if (streamPrepared) {
+              pendingJobsRef.current.delete(job);
+              setPending(Array.from(pendingJobsRef.current, (entry) => entry.file));
+              // Start this upload while the next image is being prepared.
+              deliver([upload]);
+            } else prepared.push({ job, upload });
+          }
+          if (!streamPrepared && aliveRef.current) {
+            const ready = prepared.filter(({ job }) => pendingJobsRef.current.has(job));
+            if (ready.length) deliver(ready.map(({ upload }) => upload));
+          }
+        } finally {
+          for (const job of jobs) pendingJobsRef.current.delete(job);
+          if (aliveRef.current) setPending(Array.from(pendingJobsRef.current, (entry) => entry.file));
+        }
+      }).catch(() => {
+        // A host may throw after accepting a file. Never replay it or poison later picks.
+      });
     },
     [deliver],
   );
@@ -209,8 +249,9 @@ export function useAttachmentIntake(
   return {
     emit,
     handlePaste,
-    compressing,
+    compressing: pending.length > 0,
     pending,
+    removePending,
     inFlight,
   };
 }

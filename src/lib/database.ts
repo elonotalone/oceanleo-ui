@@ -32,6 +32,7 @@ import {
   type UploadResumeTicket,
 } from "./upload/chunked";
 import { gatewayErrorMessage } from "./upload/idempotency";
+import { recordClientUploadTiming, recordServerUploadTiming, uploadTimingNow } from "./upload/timing";
 
 export {
   gatewayErrorMessage,
@@ -1020,6 +1021,7 @@ export async function uploadFile(
   // explicit caller key. The request stays on the selected route for every
   // attempt, and FormData's boundary remains browser-generated.
   const replaySafe = opts.privateUpload === true || Boolean(opts.idempotencyKey);
+  const requestStartedAt = uploadTimingNow();
   const sent = await uploadRequest({
     url: uploadUrl,
     method: "POST",
@@ -1031,11 +1033,19 @@ export async function uploadFile(
     onProgress: (loaded) => progress.report(loaded),
     signal: opts.signal,
   });
+  if (opts.privateUpload) recordClientUploadTiming(file, "client_request", uploadTimingNow() - requestStartedAt);
   if (sent.aborted) {
     progress.fail();
     return { ok: false, error: "上传已取消", status: 0, retryable: false };
   }
+  const responseStartedAt = uploadTimingNow();
   const data = parseUploadResponse(sent.responseText);
+  if (opts.privateUpload) {
+    recordClientUploadTiming(file, "client_response", uploadTimingNow() - responseStartedAt);
+    if (sent.ok && data && typeof data === "object") {
+      recordServerUploadTiming(file, (data as { upload_timing_ms?: unknown }).upload_timing_ms);
+    }
+  }
   if (!sent.ok) {
     progress.fail();
     return {

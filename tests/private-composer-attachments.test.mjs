@@ -248,6 +248,7 @@ test("useAttachments: failed upload stays as a failed tile and retry re-uploads 
   globalThis.__w6Composer = [];
   globalThis.__w6ComposerResults = [
     { ok: false, error: "网络错误" },
+    new Error("unexpected upload failure"),
     {
       ok: true,
       upload: {
@@ -266,7 +267,9 @@ test("useAttachments: failed upload stays as a failed tile and retry re-uploads 
       "./composer-upload": dataModule(`
         export async function uploadComposerFile(file, opts){
           globalThis.__w6Composer.push({ name: file.name, opts });
-          return globalThis.__w6ComposerResults.shift();
+          const result = globalThis.__w6ComposerResults.shift();
+          if (result instanceof Error) throw result;
+          return result;
         }
       `),
       "../lib/attachment-url": await compileModule("src/lib/attachment-url.ts", AUTH_STUBS),
@@ -286,6 +289,7 @@ test("useAttachments: failed upload stays as a failed tile and retry re-uploads 
 
     assert.equal(hook.composerAttachments.length, 1, "a failed upload is not dropped");
     assert.equal(hook.composerAttachments[0].failed, true);
+    assert.equal(hook.composerAttachments[0].failedReason, "网络错误");
     assert.equal(hook.uploading, false);
     assert.deepEqual(hook.ready(), [], "a failed tile is never sent");
     assert.deepEqual(errors, ["网络错误"]);
@@ -295,9 +299,16 @@ test("useAttachments: failed upload stays as a failed tile and retry re-uploads 
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
     assert.equal(globalThis.__w6Composer.length, 2);
+    assert.equal(hook.composerAttachments[0].failed, true);
+    assert.equal(hook.composerAttachments[0].failedReason, "文件上传失败");
+    assert.equal(hook.uploading, false, "a rejected upload must not leave an endless spinner");
+    await act(async () => hook.retryAttachment(id));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    assert.equal(globalThis.__w6Composer.length, 3);
     assert.equal(globalThis.__w6Composer[1].opts.siteId, "oceanleo");
     const tile = hook.composerAttachments[0];
     assert.equal(tile.failed, undefined);
+    assert.equal(tile.failedReason, undefined);
     assert.equal(tile.artifactId, ART);
     assert.equal(tile.revisionId, REV);
     assert.equal(tile.libraryItem.key, "k");

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { File } from "node:buffer";
 import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { latestUploadTiming } from "../src/lib/upload/timing.ts";
 
 const moduleUrl = await compileModule("src/lib/database.ts", {
   "./auth/client": dataModule('export async function accessToken(){return "owner-test-token";}'),
@@ -22,7 +23,7 @@ async function withFetch(status, run) {
   globalThis.fetch = async (url, init) => {
     calls.push({ url, init });
     return new Response(JSON.stringify(status === 200
-      ? { ok: true, file: { id: "a1", artifact_id: "a1", url: "" } }
+      ? { ok: true, file: { id: "a1", artifact_id: "a1", url: "" }, upload_timing_ms: { body_read: 2, private_write: 10, total: 20, filename: "private.pdf" } }
       : { detail: "private storage unavailable" }), { status });
   };
   try { await run(calls); } finally { globalThis.fetch = previous; }
@@ -38,6 +39,10 @@ test("private files above 8 MiB use only the private owner-authenticated route",
     assert.equal(calls[0].url, "https://gateway.test/v1/database/private-upload");
     assert.equal(calls[0].init.credentials, "include");
     assert.equal(calls[0].init.headers.Authorization, "Bearer owner-test-token");
+    const timing = latestUploadTiming(file);
+    assert.deepEqual(timing.server_ms, { body_read: 2, private_write: 10, total: 20 });
+    assert.ok(timing.client_ms.client_request >= 0);
+    assert.ok(timing.client_ms.client_response >= 0);
   });
 });
 

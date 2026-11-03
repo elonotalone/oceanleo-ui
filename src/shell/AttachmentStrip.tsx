@@ -105,7 +105,7 @@ function StripTile({
 }
 
 /** 正在压缩、还没交给宿主的文件：缩略图用本地 blob，完成前不能打开。 */
-function PendingFileTile({ file }: { file: File }) {
+function PendingFileTile({ file, onRemove }: { file: File; onRemove?: () => void }) {
   const tt = useUI();
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
@@ -120,6 +120,7 @@ function PendingFileTile({ file }: { file: File }) {
       mime={file.type}
       previewUrl={previewUrl}
       state="compressing"
+      onRemove={onRemove}
       size={COMPOSER_TILE_SIZE}
       tt={tt}
     />
@@ -132,6 +133,7 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   onOpenAttachment,
   onRetry,
   pendingFiles,
+  onRemovePending,
   inFlight,
   className = "",
 }: {
@@ -147,6 +149,8 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   onRetry?: (id: string) => void;
   /** 正在压缩、尚未交给宿主的文件（`useAttachmentIntake().pending`）。 */
   pendingFiles?: readonly File[];
+  /** Cancel preparation before the file reaches the upload owner. */
+  onRemovePending?: (file: File) => void;
   /** 进度总线读数（`useAttachmentIntake().inFlight`），按名配给上传中的方块。 */
   inFlight?: readonly UploadInFlight[];
   className?: string;
@@ -196,6 +200,7 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
           <PendingFileTile
             key={`pending-${index}-${file.name}-${file.size}`}
             file={file}
+            onRemove={onRemovePending ? () => onRemovePending(file) : undefined}
           />
         ))}
       </div>

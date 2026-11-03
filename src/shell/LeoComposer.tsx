@@ -160,7 +160,7 @@ export interface LeoComposerProps {
   placeholder?: string;
   /** 提交中：发送键转圈 + 禁用 */
   loading?: boolean;
-  /** Native conversations accept follow-ups while their agent works; Stop stays available. */
+  /** Accept follow-ups while the agent works (default true when onStop is provided). */
   allowSendWhileRunning?: boolean;
   /**
    * AI 正在工作时的「中止」回调（操作员 2026-07-02）：传了它，loading 期间发送键
@@ -335,7 +335,7 @@ export function LeoComposer({
   onSubmit,
   placeholder,
   loading: loadingProp = false,
-  allowSendWhileRunning = false,
+  allowSendWhileRunning,
   onStop,
   stopping = false,
   stopError = null,
@@ -387,6 +387,7 @@ export function LeoComposer({
   const tt = useUI();
   // A stop on its way is still work in progress: Stop stays on screen, nothing is sent.
   const loading = loadingProp || stopping;
+  const canSendWhileRunning = allowSendWhileRunning ?? Boolean(onStop);
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
   // 命令式重灌 nonce（v20）：优先用 context（FunctionAgentChat 每次点导航/起手卡自增，站点
   // 零改动即生效）；站点也可显式传 fillNonce 叠加。两源相加 → 任一自增都触发 TemplateFillArea
@@ -427,7 +428,7 @@ export function LeoComposer({
   // 它顺带做两件本组件自己做不到的事：图片压缩，以及从进度总线上把「业务正在传
   // 我刚交出去的那几个文件」的真读数捞回来（本组件按契约不负责上传）。
   const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles });
-  const intake = useAttachmentIntake(onAttachFiles ? draft.attachFiles : undefined);
+  const intake = useAttachmentIntake(onAttachFiles ? draft.attachFiles : undefined, { deliverAsReady: true });
   // 手机原生宿主下，「＋」菜单里的「从本地添加文件」换成「拍照 / 从相册选择 / 选择文件」
   // 三项；普通浏览器里它恒为空数组，菜单与今天逐字相同。拿到的文件走的是下面同一条
   // `onAttachFiles` 通路，附件缩略条 / 上传中转圈 / 发送键可用性全部照旧。
@@ -476,11 +477,12 @@ export function LeoComposer({
     failedFiles.length === 0 &&
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
     !intake.compressing &&
-    (!loading || (allowSendWhileRunning && !stopping)) &&
+    (!loading || (canSendWhileRunning && !stopping)) &&
     !disabled && (boundExecutionTarget !== null || nativeConversation);
   // 误触停止（F3 2026-11-02）：发送键原地变成停止键，双击「发送」的第二下曾把刚开始的
   // 任务停掉。停止键出现 800ms 内不认，且只认从停止键本身按下去的那一下（键盘不受后者限）。
-  const stopShown = Boolean(onSubmit && loading && onStop);
+  const hasContent = Boolean(value.trim() || attachments?.length || intake.pending.length);
+  const stopShown = Boolean(onSubmit && loading && onStop && (stopping || !hasContent));
   const stopShownAt = useRef(0);
   const stopPressOk = useRef(false);
   useEffect(() => {
@@ -494,7 +496,7 @@ export function LeoComposer({
     Boolean(attachMenuExtra && attachMenuExtra.length);
 
   function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
-    if (e.key === "Escape" && loading && onStop && !stopping) {
+    if (e.key === "Escape" && !e.nativeEvent.isComposing && loading && onStop && !stopping) {
       e.preventDefault();
       onStop();
       return;
@@ -630,6 +632,7 @@ export function LeoComposer({
         onOpenAttachment={onOpenAttachment}
         onRetry={onRetryAttachment}
         pendingFiles={intake.pending}
+        onRemovePending={intake.removePending}
         inFlight={intake.inFlight}
         className="px-4 pt-3"
       />
@@ -776,8 +779,8 @@ export function LeoComposer({
           {onVoiceTranscript && (
             <VoiceButton lang={voiceLang} onTranscript={onVoiceTranscript} disabled={disabled} />
           )}
-          {onSubmit && loading && onStop && (
-              // AI 工作中 + 支持中止 → 发送键变「停止」键（黑底白■，可点击随时中止）。
+          {stopShown && (
+              // 工作中只有空输入框显示停止；有文字或附件时同一位置显示发送。
               // 停止指令在路上（stopping）：转圈、「正在停止」、不可再点，直到有结果。
               <button
                 type="button"
@@ -807,19 +810,20 @@ export function LeoComposer({
                 {stopping ? <span className="v-spinner text-[12px]" aria-hidden="true" /> : <StopGlyph />}
               </button>
           )}
-          {onSubmit && (!loading || !onStop || allowSendWhileRunning) && (
+          {onSubmit && !stopShown && (
               <button
                 type="button"
                 onClick={() => canSend && submitPrompt()}
                 disabled={!canSend}
                 aria-label={tt("发送")}
+                data-composer-send=""
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
  canSend
  ? "bg-neutral-900 hover:scale-105 hover:bg-neutral-800 active:scale-95"
  : "cursor-not-allowed bg-neutral-300"
  }`}
               >
-                {loading && !allowSendWhileRunning ? <span className="v-spinner text-[12px]" /> : <ArrowUp />}
+                {loading && !canSendWhileRunning ? <span className="v-spinner text-[12px]" /> : <ArrowUp />}
               </button>
           )}
         </div>

@@ -31,7 +31,7 @@ async function render(element, run) {
 const snapshot = (ratio) => ({ loaded: ratio * 100, total: 100, ratio, elapsedMs: 10, remainingMs: null, bytesPerSecond: 0, done: false, failed: false });
 
 test("all four chip states: only ready opens; upload progress, remove and retry stay usable", async () => {
-  const opened = [], removed = [], retried = [];
+  const opened = [], removed = [], retried = [], cancelled = [];
   const attachments = [
     { id: "up", name: "up.png", mime: "image/png", previewUrl: "blob:up", uploading: true, progress: snapshot(0.42) },
     { id: "ready", name: "ready.png", mime: "image/png", previewUrl: "blob:ready" },
@@ -43,7 +43,7 @@ test("all four chip states: only ready opens; upload progress, remove and retry 
   URL.createObjectURL = () => "blob:compress";
   URL.revokeObjectURL = (url) => revoked.push(url);
   try {
-    await render(h(AttachmentStrip, { attachments, pendingFiles: [pending], onOpenAttachment: (item) => opened.push(item.id), onRemove: (id) => removed.push(id), onRetry: (id) => retried.push(id) }), async (container) => {
+    await render(h(AttachmentStrip, { attachments, pendingFiles: [pending], onRemovePending: (file) => cancelled.push(file), onOpenAttachment: (item) => opened.push(item.id), onRemove: (id) => removed.push(id), onRetry: (id) => retried.push(id) }), async (container) => {
       assert.deepEqual([...container.querySelectorAll("[data-upload-tile]")].map((el) => el.dataset.uploadTile), ["uploading", "ready", "failed", "compressing"]);
       for (const state of ["uploading", "failed", "compressing"]) {
         assert.equal(container.querySelector(`[data-upload-tile="${state}"] button[aria-label$=".png"]`), null, state);
@@ -52,10 +52,12 @@ test("all four chip states: only ready opens; upload progress, remove and retry 
       assert.equal(up.querySelector('[role="progressbar"]').getAttribute("aria-valuenow"), "42");
       await act(async () => {
         up.querySelector("[data-upload-remove]").click();
+        container.querySelector('[data-upload-tile="compressing"] [data-upload-remove]').click();
         container.querySelector("[data-upload-retry]").click();
         container.querySelector('[data-upload-tile="ready"] button[aria-label="ready.png"]').click();
       });
       assert.deepEqual(removed, ["up"]);
+      assert.deepEqual(cancelled, [pending]);
       assert.deepEqual(retried, ["bad"]);
       assert.deepEqual(opened, ["ready"]);
     });

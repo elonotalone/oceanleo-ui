@@ -38,7 +38,9 @@ for (const result of ["stopped", "not_running"]) test(`cancel_result ${result} e
   const duplicate = applyDialog(stopped, { type: "frame", frame: { t: "done", stop: "cancelled", acp_session: "s" } });
   assert.deepEqual(duplicate.messages, stopped.messages);
   assert.equal(duplicate.busy, false);
-  assert.equal(applyDialog(duplicate, { type: "send-began" }).busy, true);
+  const sending = applyDialog(duplicate, { type: "send-began" });
+  assert.equal(sending.busy, false, "accepting the next send is not proof of active execution");
+  assert.ok(sending.occupancyPendingAt != null);
 });
 
 for (const result of ["offline", "failed"]) test(`cancel_result ${result} restores running with a readable error`, () => {
@@ -137,7 +139,7 @@ const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.
   "./mobile-native-actions": dataModule(`export function useNativeAttachActions(){return [];}
     export function useNativeHandoffEntry(){return {action:null,panel:null};}
     export function useNativeTaskNotifications(){} export function requestTaskNotificationsOnce(){}`),
-  "../lib/upload/use-attachment-intake": dataModule("export function useAttachmentIntake(){return {compressing:false,pending:[],inFlight:[],emit(){},handlePaste(){}};}"),
+  "../lib/upload/use-attachment-intake": dataModule("export function useAttachmentIntake(){return globalThis.__composerIntake || {compressing:false,pending:[],inFlight:[],emit(){},handlePaste(){}};}"),
   "./workspace-runtime-hydration": dataModule("export function useWorkspaceRuntimeHydration(){return null;}"),
   "./composer-draft": dataModule("export function useComposerDraft(){return {markSubmitted(){}};}"),
   "./composer-max-height": dataModule("export function useComposerMaxHeight(){return 300;}"),
@@ -171,7 +173,8 @@ test("composer stopping shows a disabled busy spinner and localized reason; erro
     assert.equal(button.getAttribute("aria-label"), "正在停止");
     assert.ok(button.querySelector(".v-spinner"));
     assert.match(view.host.querySelector('[role="alert"]').textContent, /电脑不在线/);
-    await view.update({ stopping: false, loading: true });
+    assert.equal(view.host.querySelector("[data-composer-send]"), null);
+    await view.update({ stopping: false, loading: true, value: "" });
     assert.equal(view.host.querySelector("[data-composer-stop]").disabled, false);
     assert.equal(view.host.querySelector("[data-composer-stop]").getAttribute("aria-label"), "停止");
   } finally { view.cleanup(); }
@@ -205,7 +208,7 @@ test("composer rejects Send's second click and pointer held through transition; 
   const view = await composer({ onStop() { stops++; } });
   t.mock.timers.enable({ apis: ["Date"], now: 1000 });
   try {
-    await view.update({ loading: true });
+    await view.update({ loading: true, value: "" });
     const button = view.host.querySelector("[data-composer-stop]");
     const pointer = () => button.dispatchEvent(new dom.window.Event("pointerdown", { bubbles: true }));
     const click = () => button.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, detail: 1 }));
@@ -219,6 +222,39 @@ test("composer rejects Send's second click and pointer held through transition; 
     await act(async () => view.host.querySelector("textarea").dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     assert.equal(stops, 2);
   } finally { t.mock.timers.reset(); view.cleanup(); }
+});
+
+test("clearing follow-up text or the last file re-arms Stop while the same run continues", async (t) => {
+  let stops = 0;
+  t.mock.timers.enable({ apis: ["Date"], now: 1000 });
+  const view = await composer({ value: "", loading: true, onStop() { stops++; } });
+  const press = (button) => button.dispatchEvent(new dom.window.Event("pointerdown", { bubbles: true }));
+  const click = (button, detail = 1) => button.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, detail }));
+  try {
+    t.mock.timers.tick(800);
+    await act(async () => press(view.host.querySelector('[data-composer-stop]')));
+    await view.update({ value: "follow-up" });
+    assert.equal(view.host.querySelector('[data-composer-stop]'), null);
+    await view.update({ value: "" });
+    let stop = view.host.querySelector('[data-composer-stop]');
+    await act(async () => { click(stop); click(stop, 0); });
+    assert.equal(stops, 0, "a press from before Send replaced Stop is discarded");
+    t.mock.timers.tick(799);
+    await act(async () => { press(stop); click(stop); });
+    assert.equal(stops, 0);
+    t.mock.timers.tick(1);
+    await act(async () => { press(stop); click(stop); });
+    assert.equal(stops, 1);
+    await view.update({ attachments: [{ id: "photo", name: "photo.png" }] });
+    assert.ok(view.host.querySelector('[data-composer-send]'));
+    await view.update({ attachments: [] });
+    stop = view.host.querySelector('[data-composer-stop]');
+    await act(async () => { press(stop); click(stop); });
+    assert.equal(stops, 1, "removing the last file starts a fresh guard window");
+    t.mock.timers.tick(800);
+    await act(async () => click(stop, 0));
+    assert.equal(stops, 2);
+  } finally { view.cleanup(); t.mock.timers.reset(); }
 });
 
 test("all Stop, reconnect and upload copy is translated in all 17 locales", async () => {
@@ -310,22 +346,71 @@ test("cloud Stop confirms its HTTP result and never applies an old success to a 
   } finally { stopped.cleanup(); late.cleanup(); }
 });
 
-test('N3 composer: native Enter/click sends while working and keeps Stop; stopping still blocks sends', async () => {
+test('composer has one action: content sends while working; stopping blocks sends', async () => {
   let submits=0, stops=0;
   const view=await composer({loading:true,allowSendWhileRunning:true,onStop(){stops++;},onSubmit(){submits++;}});
   try {
     const send=()=>view.host.querySelector('[aria-label="发送"]');
     assert.equal(send().disabled,false);
-    assert.ok(view.host.querySelector('[data-composer-stop]'));
+    assert.equal(view.host.querySelector('[data-composer-stop]'),null);
+    assert.equal(view.host.querySelectorAll('[data-composer-send],[data-composer-stop]').length,1);
     await act(async()=>send().click());
     await act(async()=>view.host.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})));
     assert.equal(submits,2);
     assert.equal(stops,0,'Send can never become an accidental Stop');
     await view.update({stopping:true});
-    assert.equal(send().disabled,true);
+    assert.equal(send(),null);
+    assert.equal(view.host.querySelector('[data-composer-stop]').disabled,true);
     await act(async()=>view.host.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})));
     assert.equal(submits,2);
     await view.update({stopping:false,allowSendWhileRunning:false});
-    assert.equal(send(),null,'existing non-native loading composer keeps its original Stop-only UI');
+    assert.equal(send().disabled,true,'a host that opts out cannot submit a follow-up');
+    assert.equal(view.host.querySelector('[data-composer-stop]'),null);
   } finally {view.cleanup();}
+});
+
+for (const conversation of [
+  { kind: "oceanleo", target: { kind: "cloud" } },
+  { kind: "native", computerId: "cc_test", program: "codex", view: "chat" },
+]) test(`composer ${conversation.kind}: files-only sends with Enter by default during a run`, async () => {
+  const sent = [];
+  let stops = 0;
+  const view = await composer({ value: "", loading: true, conversation,
+    attachments: [{ id: "image", name: "photo.png", artifactId: "a", revisionId: "r" }],
+    onSubmit: (text) => sent.push(text), onStop() { stops++; } });
+  const key = (key, extra = {}) => view.host.querySelector("textarea").dispatchEvent(
+    new dom.window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...extra }));
+  try {
+    assert.equal(view.host.querySelectorAll('[data-composer-send],[data-composer-stop]').length, 1);
+    assert.equal(view.host.querySelector('[data-composer-send]').disabled, false);
+    await act(async () => { key("Enter", { shiftKey: true }); key("Enter", { isComposing: true }); key("Escape", { isComposing: true }); });
+    assert.deepEqual(sent, []);
+    assert.equal(stops, 0);
+    await act(async () => key("Enter"));
+    assert.deepEqual(sent, [""]);
+    await act(async () => key("Escape"));
+    assert.equal(stops, 1, "Escape remains available while content shows Send");
+    await view.update({ attachments: [], value: "   " });
+    assert.ok(view.host.querySelector('[data-composer-stop]'));
+    assert.equal(view.host.querySelector('[data-composer-send]'), null);
+    await act(async () => key("Enter"));
+    assert.deepEqual(sent, [""], "Enter never activates an empty running Stop key");
+    await view.update({ loading: false });
+    assert.equal(view.host.querySelector('[data-composer-send]').disabled, true);
+  } finally { view.cleanup(); }
+});
+
+test("a preparing, uploading or failed file keeps the single action on disabled Send", async () => {
+  globalThis.__composerIntake = { compressing: true, pending: [new File(["image"], "photo.png")], inFlight: [] };
+  const view = await composer({ value: "", loading: true, onStop() {} });
+  try {
+    assert.equal(view.host.querySelector('[data-composer-stop]'), null);
+    assert.equal(view.host.querySelector('[data-composer-send]').disabled, true);
+    delete globalThis.__composerIntake;
+    for (const state of [{ uploading: true }, { failed: true }]) {
+      await view.update({ attachments: [{ id: "photo", name: "photo.png", ...state }] });
+      assert.equal(view.host.querySelector('[data-composer-stop]'), null);
+      assert.equal(view.host.querySelector('[data-composer-send]').disabled, true);
+    }
+  } finally { delete globalThis.__composerIntake; view.cleanup(); }
 });
