@@ -256,6 +256,19 @@ test("disabled vaults show their actual state with no add forms", async () => {
   } finally { await main.close(); await site.close(); }
 });
 
+test("pending credential imports leave existing main items manageable", async () => {
+  for (const reason of ["quota", "rate_limited"]) {
+    const h = harness(); h.state.vault.migration_pending = reason;
+    const view = await mount(h.VaultSettingsSection);
+    try {
+      assert.match(view.host.textContent, /waiting to be imported/);
+      assert.equal(button(view.host, "Rotate").disabled, false);
+      assert.equal(button(view.host, "Delete").disabled, false);
+      assert.equal(button(view.host, "Refresh").disabled, false);
+    } finally { await view.close(); }
+  }
+});
+
 test("changing language during main-vault deletion preserves the request and releases busy state", async () => {
   const h = harness(); const pending = deferred(); let requestSignal;
   h.api.deleteVaultSecret = async (id, signal) => {

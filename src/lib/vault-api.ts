@@ -22,6 +22,7 @@ export type VaultReference = {
 };
 export type VaultStatus = {
   enabled: boolean; limits: { max_secrets: number; max_value_bytes: number };
+  migration_pending?: "quota" | "rate_limited";
   secrets: VaultSecret[];
   pending: Array<{ grant_id: string; secret_name: string; computer_name: string; reason: string }>;
 };

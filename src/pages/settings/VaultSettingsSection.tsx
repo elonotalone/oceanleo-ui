@@ -133,6 +133,12 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
       <p>{error}</p><button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button>
     </div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">{notice}</p>}
+    {status?.migration_pending && <div role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+      <p>{status.migration_pending === "quota"
+        ? text("保险箱已满，部分已连接的密钥还在等待迁入。现有项目仍可管理，移除不再需要的项目后可重试。", "Your vault is full, so some connected credentials are waiting to be imported. You can still manage existing items. Remove an unused item and retry.")
+        : text("部分已连接的密钥稍后才能迁入。现有项目仍可管理，请稍后刷新。", "Some connected credentials are waiting to be imported. You can still manage existing items. Refresh again shortly.")}</p>
+      <button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button>
+    </div>}
     {status && !status.enabled && <p role="status" className="rounded-2xl border border-dashed border-neutral-200 p-5 dark:border-neutral-700">{text("你连接的服务尚未启用保险箱，当前不能保存或授权密钥。", "Vault is not enabled on your connected service. Saving and granting secrets are unavailable.")}</p>}
     {status?.enabled && <>
       <div className="flex items-center justify-between gap-3">
