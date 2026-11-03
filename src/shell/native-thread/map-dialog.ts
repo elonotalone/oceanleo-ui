@@ -389,6 +389,26 @@ function sameTurnItem(old: TurnItem, item: TurnItem): boolean {
         : old.text.includes(item.text) || item.text.includes(old.text))));
 }
 
+function sameDialogRow(own: AgentDialogMessage, row: AgentDialogMessage): boolean {
+  if (own.kind !== row.kind) return false;
+  if (own.kind === "notice" && row.kind === "notice") {
+    if (own.program !== row.program || own.code !== row.code || own.provider !== row.provider || own.model !== row.model) return false;
+    // Error/notice reducers allocate local ids on every replay. Only the stored
+    // frame identifies those copies; equal text at another seq is a real row.
+    if (Number.isFinite(own.seq) && Number.isFinite(row.seq)) return own.seq === row.seq;
+    return own.id === row.id;
+  }
+  if (own.kind === "user" && row.kind === "user" && row.messageId) return own.messageId === row.messageId;
+  if (own.kind === "turn" && row.kind === "turn") {
+    if (own.turnId && row.turnId) return own.turnId === row.turnId;
+    // Older stored turns can lack a wire turn id, but their container's first
+    // frame is still durable. Never cross a session or conflicting turn ids.
+    if (own.acpSession === row.acpSession && Number.isFinite(own.seq) && Number.isFinite(row.seq) && own.seq === row.seq) return true;
+    if (row.turnId) return false;
+  }
+  return own.id === row.id;
+}
+
 /** ID-aware union for the durable protocol. Legacy sessions still use the legacy merger. */
 export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], live: readonly AgentDialogMessage[]): AgentDialogMessage[] {
   const out = saved.slice();
@@ -401,9 +421,7 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
   let replayCursor = -1;
   const restated = new Set<number>();
   for (const row of live) {
-    let index = out.findIndex((own) => own.kind === row.kind && (
-      row.kind === "user" && own.kind === "user" && row.messageId ? own.messageId === row.messageId :
-      row.kind === "turn" && own.kind === "turn" && row.turnId ? own.turnId === row.turnId : own.id === row.id));
+    let index = out.findIndex((own) => sameDialogRow(own, row));
     if (index < 0 && row.kind === "user" && !row.messageId && row.replay === true) {
       index = out.findIndex((own, at) => at > replayCursor && at < saved.length && !restated.has(at) && own.kind === "user" && own.text === row.text);
       if (index >= 0) { replayCursor = index; restated.add(index); }
@@ -430,6 +448,8 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
         ...(row.arrivalSource ? { arrivalSource: row.arrivalSource, arrival: row.arrival, updatedArrival: row.updatedArrival } : {}),
         turnId: row.delivery ? row.turnId ?? own.turnId : own.delivery ? own.turnId ?? row.turnId : row.turnId ?? own.turnId,
         id: own.id, delivery: row.delivery ?? own.delivery, attachments };
+    } else if (row.kind === "notice" && own.kind === "notice") {
+      out[index] = { ...own, ...mergeNativePosition(own, row) };
     } else if (row.kind === "turn" && own.kind === "turn") {
       const items = own.items.slice();
       const replayed = replayAnchor && !row.turnId;
