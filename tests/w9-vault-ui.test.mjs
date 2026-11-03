@@ -55,6 +55,7 @@ function harness() {
   Object.assign(api, {
     getVault: async () => structuredClone(state.vault),
     getVaultReferences: async () => ({ references: structuredClone(state.references) }),
+    getVaultProjectNames: async () => { state.nameReads = (state.nameReads || 0) + 1; return structuredClone(state.projectNames || {}); },
     getProjectVaultReferences: async (projectId, signal) => state.loadReferences ? state.loadReferences(projectId, signal) : ({ references: structuredClone(state.references.filter((ref) => ref.project_id === projectId)) }),
     getVaultSealKey: (...args) => state.sealKey(...args),
     createVaultSecret: async (input) => {
@@ -168,6 +169,22 @@ test("cancel, rejected submission and account changes never retain or restore a 
     assert.equal(view.host.querySelector("input[type='password']"), null);
     assert.match(view.host.textContent, /Sign in to manage/);
   } finally { await view.close(); }
+});
+
+test("use locations name the website when its display name is known, else keep its id", async () => {
+  const h = harness(); h.state.references = [reference(), reference({ id: "reference-2", project_id: "project-2" })];
+  h.state.projectNames = { "project-1": "Corner Bakery" };
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    assert.match(view.host.textContent, /Corner Bakery/);
+    assert.doesNotMatch(view.host.textContent, /project-1/);
+    assert.match(view.host.textContent, /project-2/);
+    assert.equal(h.state.nameReads, 1);
+  } finally { await view.close(); }
+  const empty = harness();
+  const none = await mount(empty.VaultSettingsSection);
+  try { assert.equal(empty.state.nameReads, undefined, "no website lookup without a website reference"); }
+  finally { await none.close(); }
 });
 
 test("rotation keeps item identity, shows used-by references and asks before deleting the main item", async () => {

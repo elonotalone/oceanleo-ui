@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { useLocale } from "../../i18n/useT.client";
 import { AUTH_STATE_EVENT, getUserId } from "../../lib/auth/client";
 import {
-  createVaultSecret, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultReferences, getVaultSealKey, recoverVault,
+  createVaultSecret, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultProjectNames, getVaultReferences, getVaultSealKey, recoverVault,
   safeVaultFingerprint, updateVaultSecret, vaultFenceState, vaultMutationWasCommitted, VaultApiError,
   type VaultFenceRow, type VaultKind, type VaultManagedCredentials, type VaultRecovery, type VaultReference, type VaultSecret, type VaultStatus,
 } from "../../lib/vault-api";
@@ -169,6 +169,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
   latestText.current = text;
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [references, setReferences] = useState<VaultReference[] | null>(null);
+  const [projectNames, setProjectNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -188,7 +189,12 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     setReferences(null);
     if (next.enabled) {
       const usage = await getVaultReferences(signal);
-      if (!signal.aborted) setReferences(usage.references);
+      if (signal.aborted) return;
+      setReferences(usage.references);
+      if (usage.references.some((ref) => ref.project_id)) {
+        const names = await getVaultProjectNames(signal);
+        if (!signal.aborted) setProjectNames(names);
+      }
     } else setReferences([]);
   }, []);
 
@@ -300,7 +306,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
               {!references.some((ref) => ref.secret_id === secret.id) && !secret.machines?.length && <p>{text("尚未授权给任何网站、应用或电脑。", "Not granted to any website, app or computer.")}</p>}
               <ul className="space-y-1">
                 {references.filter((ref) => ref.secret_id === secret.id).map((ref) => <li key={ref.id} data-vault-used-by={ref.id} className="break-all">
-                  {ref.purpose === "supabase_provision_password" ? text("服务", "Service") : ref.scope === "browser" ? text("浏览器", "Browser") : ref.scope === "connector" ? text("连接器", "Connector") : ref.scope === "project_connector" ? text("网站服务", "Website service") : text("网站 / 应用", "Website / app")} · {ref.project_id || text("账号", "Account")} · {vaultPurposeLabel(ref, text)}
+                  {ref.purpose === "supabase_provision_password" ? text("服务", "Service") : ref.scope === "browser" ? text("浏览器", "Browser") : ref.scope === "connector" ? text("连接器", "Connector") : ref.scope === "project_connector" ? text("网站服务", "Website service") : text("网站 / 应用", "Website / app")} · {ref.project_id ? projectNames[ref.project_id] || ref.project_id : text("账号", "Account")} · {vaultPurposeLabel(ref, text)}
                   {ref.origin && <> · <code>{ref.origin}</code></>}
                   {ref.scope === "browser" && ref.purpose !== "supabase_provision_password" && <> · {text("用途", "Purpose")}: <code>{ref.purpose}</code></>}
                   {(ref.scope === "connector" || ref.scope === "project_connector") && typeof ref.binding?.provider === "string" && <> · {ref.binding.provider}</>}

@@ -121,6 +121,23 @@ export const deleteVaultSecret = (id: string, signal?: AbortSignal) =>
 export const getVaultReferences = (signal?: AbortSignal) =>
   request<{ references: VaultReference[] }>("/v1/vault/references", "GET", undefined, signal);
 
+/** Display names of the owner's websites for use-location labels; best effort, never required. */
+export async function getVaultProjectNames(signal?: AbortSignal): Promise<Record<string, string>> {
+  const names: Record<string, string> = {};
+  try {
+    const result = await request<{ items?: unknown }>("/v1/website-projects?limit=200", "GET", undefined, signal);
+    for (const item of Array.isArray(result?.items) ? result.items : []) {
+      const row = item as { project_id?: unknown; display_name?: unknown; slug?: unknown } | null;
+      const label = typeof row?.display_name === "string" && row.display_name.trim() ? row.display_name.trim()
+        : typeof row?.slug === "string" ? row.slug.trim() : "";
+      if (typeof row?.project_id === "string" && label) names[row.project_id] = label.slice(0, 80);
+    }
+  } catch (cause) {
+    if (signal?.aborted) throw cause;
+  }
+  return names;
+}
+
 const projectPath = (projectId: string) => `/v1/website-projects/${encodeURIComponent(projectId)}/vault/references`;
 export const getProjectVaultReferences = (projectId: string, signal?: AbortSignal) =>
   request<{ references: VaultReference[] }>(projectPath(projectId), "GET", undefined, signal);
