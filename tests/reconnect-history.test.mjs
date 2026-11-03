@@ -241,7 +241,8 @@ async function openThread({ offline = false, frames = [], hasOlder = false } = {
 test("Stop sends bounded identified cancel, ignores foreign reply, then ends output and allows next prompt", async () => {
   const view = await openThread();
   try {
-    await view.start();
+    await view.frame({ t: "turn_start", turn_id: "old" });
+    await view.frame({ t: "tool", turn_id: "old", id: "work", status: "in_progress" });
     assert.equal(view.thread.running, true);
     await act(async () => { view.thread.stop(); view.thread.stop(); });
     const cancels = sent().filter((frame) => frame.t === "cancel");
@@ -258,8 +259,20 @@ test("Stop sends bounded identified cancel, ignores foreign reply, then ends out
     assert.equal(view.thread.running, false);
     assert.equal(view.thread.ready, true);
     assert.equal(await sendVia(view.thread, "next turn"), true);
+    const bubble = () => view.thread.messages.find((m) => m.role === "user" && m.content === "next turn");
+    assert.ok(bubble());
+    // 86432c89: a send alone is not turn evidence; the bubble waits, Stop does not appear yet.
+    assert.equal(view.thread.running, false, "sending does not claim active execution");
     await view.frame({ t: "done", stop: "cancelled" });
+    assert.ok(bubble(), "the stop echo must not drop the sent message");
+    const prompt = sent().findLast((frame) => frame.t === "prompt");
+    await view.frame({ t: "prompt_ack", message_id: prompt.message_id, turn_id: "next", state: "started_new_turn" });
+    await view.frame({ t: "turn_start", turn_id: "next" });
+    await view.frame({ t: "tool", turn_id: "next", id: "work-2", status: "in_progress" });
+    assert.equal(view.thread.running, true);
+    await view.frame({ t: "done", turn_id: "old", stop: "cancelled" });
     assert.equal(view.thread.running, true, "late duplicate done must not close the next prompt");
+    assert.ok(bubble());
   } finally { view.cleanup(); }
 });
 
@@ -438,6 +451,7 @@ const scrollModule = ts.transpileModule(`
   const hasPendingNativePrompt=()=>false;
   const takePendingNativePrompt=()=>null;
   const notifyHistoryActivity=()=>{};
+  import { nativeLastActivity } from ${JSON.stringify(new URL("../src/shell/native-chat-presentation.ts", import.meta.url).href)};
   const useTaskLoadingReport=()=>{};
   ${extracted}
   export {NativeChatConversation};
