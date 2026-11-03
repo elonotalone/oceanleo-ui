@@ -20,9 +20,16 @@ export type VaultReference = {
   environment: VaultEnvironment; purpose: string; origin: string; created_at: string; updated_at: string;
   binding: Record<string, unknown>;
 };
+export type VaultManagedCredential = {
+  id: string; label: string;
+  auth_kind: "token" | "bearer" | "header" | "url" | "url+token" | "oauth" | "none" | "other";
+  enabled: boolean; expires_at?: string;
+};
+export type VaultManagedCredentials = { available: boolean; items: VaultManagedCredential[] };
 export type VaultStatus = {
   enabled: boolean; limits: { max_secrets: number; max_value_bytes: number };
   migration_pending?: "quota" | "rate_limited";
+  managed_credentials?: VaultManagedCredentials;
   secrets: VaultSecret[];
   pending: Array<{ grant_id: string; secret_name: string; computer_name: string; reason: string }>;
 };

@@ -6,7 +6,7 @@ import { AUTH_STATE_EVENT, getUserId } from "../../lib/auth/client";
 import {
   createVaultSecret, deleteVaultSecret, getVault, getVaultReferences, getVaultSealKey,
   safeVaultFingerprint, updateVaultSecret, VaultApiError,
-  type VaultKind, type VaultReference, type VaultSecret, type VaultStatus,
+  type VaultKind, type VaultManagedCredentials, type VaultReference, type VaultSecret, type VaultStatus,
 } from "../../lib/vault-api";
 import { sealVaultValue } from "../../lib/vault-seal";
 
@@ -198,6 +198,52 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
         </article>)}
       </div>
     </>}
+    {status && <ManagedCredentialsSection summary={status.managed_credentials} />}
+  </section>;
+}
+
+function ManagedCredentialsSection({ summary }: { summary?: VaultManagedCredentials }) {
+  const text = useVaultText();
+  const items = Array.isArray(summary?.items) ? summary.items : [];
+  const available = summary?.available === true && Array.isArray(summary.items) && items.length <= 1000
+    && items.every((item) => item && typeof item.id === "string" && item.id.length > 0 && item.id.length <= 64
+      && typeof item.label === "string" && item.label.length > 0 && item.label.length <= 200
+      && typeof item.auth_kind === "string" && typeof item.enabled === "boolean"
+      && (item.expires_at === undefined || (typeof item.expires_at === "string"
+        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(item.expires_at)
+        && Number.isFinite(Date.parse(item.expires_at)))));
+  const kindLabel = (kind: string) => {
+    switch (kind) {
+      case "oauth": return text("OAuth 登录授权", "OAuth sign-in");
+      case "token": case "bearer": case "header": return text("令牌 / API 密钥", "Token / API key");
+      case "url": return text("专用服务地址", "Personal service URL");
+      case "url+token": return text("专用服务地址与令牌", "Personal service URL and token");
+      case "none": return text("无需凭据的连接", "Connection without credentials");
+      default: return text("连接器授权", "Connector authorization");
+    }
+  };
+
+  return <section data-vault-managed-credentials="" aria-label={text("已连接服务", "Connected services")} className="space-y-3 border-t border-neutral-200 pt-5 dark:border-neutral-700">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <h3 className="text-[14px] font-medium text-neutral-900 dark:text-neutral-100">{text("已连接服务", "Connected services")}</h3>
+      <a href="/settings/connectors" className={`${QUIET} inline-block`} onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        // Load only on navigation: importing the Settings shell eagerly would
+        // enlarge this page and break isolated vault consumers.
+        void import("./settings-tabs").then(({ openSettingsModal }) => openSettingsModal("connectors"))
+          .catch(() => { window.location.href = "/settings/connectors"; });
+      }}>{text("在连接器中管理", "Managed in Connectors")}</a>
+    </div>
+    <p className="text-[12px] leading-relaxed text-neutral-500">{text("这些个人 MCP 授权由连接器管理，可在那里检查、重新连接或移除；这里不能把它们选入网站小保险箱。", "These personal MCP authorizations are managed in Connectors, where you can check, reconnect or remove them. They cannot be selected for website vaults here.")}</p>
+    {!available ? <p role="status" className="text-[12px] text-neutral-500">{text("暂时无法读取已连接服务。主保险箱项目仍可正常管理。", "Connected services are temporarily unavailable. You can still manage your main vault items.")}</p>
+      : !items.length ? <p className="text-[12px] text-neutral-500">{text("还没有保存的个人 MCP 授权。", "No personal MCP authorizations are saved.")}</p>
+        : <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">{items.map((item) => <li key={item.id} data-vault-managed-credential={item.id} className="space-y-1 py-3">
+          <p className="break-words font-medium text-neutral-900 dark:text-neutral-100">{item.label}</p>
+          <p className="text-[12px] text-neutral-500">{kindLabel(item.auth_kind)} · {item.enabled ? text("已启用", "Enabled") : text("已停用", "Disabled")}</p>
+          {item.expires_at && <p className="text-[12px] text-neutral-500">{text("已保存的到期时间", "Saved expiry")}: <time dateTime={item.expires_at}>{item.expires_at}</time></p>}
+          {item.auth_kind === "oauth" && <p className="text-[12px] text-neutral-500">{text("OAuth 登录可自动续期；已保存的到期时间不代表需要重新授权。", "OAuth sign-ins may refresh automatically; a saved expiry does not mean reauthorization is required.")}</p>}
+        </li>)}</ul>}
   </section>;
 }
 
