@@ -148,6 +148,9 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
   const remoteAccess: DeviceRemoteAccessSettings = { enabled: false, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true, ...(settings?.remote_access ?? {}) };
   const effectiveAvailability = availability === "unknown" ? settings?.availability ?? "unknown" : availability;
   const folderReady = effectiveAvailability === "online" && settings?.preferences_available;
+  // Own access, input and Ask come only from the device's live snapshot; while it is stale the
+  // values are defaults, so they are not editable. Agent consent is the durable server policy.
+  const deviceStateReady = effectiveAvailability === "online" && settings?.preferences_available === true;
   const controlsBusy = busy || revokingAgent;
 
   return <div className="space-y-5" data-device-settings-panel={device.device_id}>
@@ -177,11 +180,11 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
       {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="mt-3 divide-y divide-neutral-100">
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("允许远程访问")}</p><p className={CARD_DESC}>{tt("自己的账号可以连接；其他人仍需这台电脑确认。")}</p></div>
-          <Switch label={tt("允许远程访问")} checked={remoteAccess.enabled} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(enabled) => void saveRemoteAccess({ kind: "remote_access.preferences.update", enabled })} />
+          <Switch label={tt("允许远程访问")} checked={remoteAccess.enabled} disabled={controlsBusy || !deviceStateReady} onChange={(enabled) => void saveRemoteAccess({ kind: "remote_access.preferences.update", enabled })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <p className="text-[13px] font-medium">{tt("允许操作屏幕（查看、点击、输入）")}</p>
-          <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={controlsBusy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ kind: "remote_access.preferences.update", input_allowed })} />
+          <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={controlsBusy || !deviceStateReady || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ kind: "remote_access.preferences.update", input_allowed })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("允许远程 Agent 控制")}</p><p className={CARD_DESC}>{tt("开启即表示同意，直到你关闭。关闭后撤销权限，离线设备会在重新连接后同步。")}</p></div>
@@ -189,9 +192,9 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("每次询问")}</p><p className={CARD_DESC}>{tt("开启后，Agent 每次申请都会在这台电脑上等待确认。")}</p></div>
-          <Switch label={tt("每次询问")} checked={remoteAccess.agent_always_ask} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_always_ask) => void saveRemoteAccess({ kind: "remote_access.preferences.update", agent_always_ask })} />
+          <Switch label={tt("每次询问")} checked={remoteAccess.agent_always_ask} disabled={controlsBusy || !deviceStateReady} onChange={(agent_always_ask) => void saveRemoteAccess({ kind: "remote_access.preferences.update", agent_always_ask })} />
         </div>
-        {effectiveAvailability !== "online" && <p className="pt-3 text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
+        {!deviceStateReady && <p className="pt-3 text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
       </div>}
     </section>}
 

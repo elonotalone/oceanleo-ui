@@ -152,3 +152,27 @@ test("a late scoped reply cannot undo a newer Agent revoke", async (t) => {
     assert.equal(view.checked("允许操作屏幕（查看、点击、输入）"), "true", "the cancelled scope receipt is not merged");
   } finally { view.cleanup(); }
 });
+
+// UC-NONE
+// A stale device snapshot projects default own/input/Ask values; they must not look editable or send writes, while durable Agent revoke stays available.
+test("stale device snapshot keeps snapshot-derived switches read-only and Agent switch usable", async () => {
+  const stale = {...snapshot, preferences_available: false, remote_access: {...snapshot.remote_access, enabled: false, input_allowed: true, agent_always_ask: true}};
+  const wire = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (url.endsWith("/controllers")) return response({controller_id: "viewer"});
+    const body = JSON.parse(init.body); wire.push(body);
+    return response({state: "succeeded", result: {remote_access: {...stale.remote_access, agent_control_allowed: false}}});
+  };
+  const view = await mount(stale);
+  const node = (label) => view.host.querySelector(`button[role="switch"][aria-label="${label}"]`);
+  try {
+    for (const label of ["允许远程访问", "允许操作屏幕（查看、点击、输入）", "每次询问"]) assert.equal(node(label).disabled, true, label);
+    assert.equal(node("允许远程 Agent 控制").disabled, false);
+    assert.match(view.host.textContent, /等待设备同步…/);
+    await view.click("每次询问");
+    assert.deepEqual(wire, [], "a disabled stale switch sends nothing");
+    await view.click("允许远程 Agent 控制");
+    assert.deepEqual(wire, [{kind: "remote_access.update", agent_control_allowed: false}]);
+  } finally { view.cleanup(); globalThis.fetch = originalFetch; }
+});
