@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
 import "./helpers/w1-jsdom-window.mjs";
+import "./helpers/assert-dom-guard.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -52,11 +53,17 @@ async function withFetch(handler, run) {
 }
 
 test("authenticated requests follow trusted desktop and mobile host injection after the helper has loaded", async () => {
-  const host = await import("../src/contracts/client-host-config.ts");
+  const hostUrl = await compileModule("src/contracts/client-host-config.ts");
+  const host = await import(hostUrl);
   const previousHost = host.getClientHostConfig();
   host.resetClientHostConfigForTests();
   try {
-    const actualConfigUrl = await compileModule("src/lib/auth/config.ts");
+    // Keep real host/profile code, while compiling the extensionless import edges for plain node --test.
+    const familyUrl = await compileModule("src/contracts/domain-family.ts", { "./client-host-config": hostUrl });
+    const actualConfigUrl = await compileModule("src/lib/auth/config.ts", {
+      "../../contracts/client-host-config": hostUrl,
+      "../../contracts/domain-family": familyUrl,
+    });
     const actualConfig = await import(actualConfigUrl);
     const loadedBeforeInjection = await import(await compileModule("src/pages/settings/cloud-browser-flows-api.ts", {
       "../../lib/auth/client": auth, "../../lib/auth/config": actualConfigUrl,
