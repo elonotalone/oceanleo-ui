@@ -179,6 +179,9 @@ export function dialogToAgentMessages(
   for (const message of messages) {
     if (message.kind === "user") {
       const attachments = (message.attachments ?? []).map(attachmentOf);
+      // Delivery metadata alone is not conversation content. Older saved
+      // states may contain an empty placeholder; file-only prompts still count.
+      if (!message.text.trim() && !attachments.length) continue;
       const sender = message.sender;
       out.push({
         id: nextId(`u:${message.id}`),

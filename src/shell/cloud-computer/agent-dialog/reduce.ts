@@ -902,7 +902,8 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
 }
 
 function onDone(state: DialogState, frame: Record<string, unknown>): DialogState {
-  const stop = str(frame.stop);
+  // Archived frames carry `stop_reason`, live ones `stop`: replayed turns stayed open without it (2026-11-03).
+  const stop = str(frame.stop) || str(frame.stop_reason);
   const session = str(frame.acp_session);
   const messages = settleStoppingTurn(state.messages, stop, session);
   const program = str(frame.program) || state.program;
@@ -1059,12 +1060,16 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
   }
   if (frame.t === "prompt_ack" || frame.t === "prompt_state") {
     const messageId = str(frame.message_id);
-    if (!messageId) return input;
+    const turnId = str(frame.turn_id);
+    if (!messageId && !turnId) return input;
     const delivery: NativeMessageDelivery = { state: frame.state as NativeMessageDelivery["state"],
       uncertain: frame.uncertain === true, reason: str(frame.reason), intent: frame.intent === "send_now" ? "send_now" : "normal" };
     if (!["sending", "queued", "injected", "replaced", "started_new_turn", "unsent", "cancelled"].includes(delivery.state)) return input;
-    return { ...input, messages: input.messages.map((m) => m.kind === "user" && m.messageId === messageId
-      ? { ...m, turnId: str(frame.turn_id) || m.turnId, delivery } : m) };
+    // Exact message id first; a turn-only update may address the existing user of that turn, but an explicit
+    // (foreign) message id never falls back to the turn.
+    return { ...input, messages: input.messages.map((m) => m.kind === "user" &&
+      (messageId ? m.messageId === messageId : m.turnId === turnId)
+      ? { ...m, turnId: turnId || m.turnId, delivery } : m) };
   }
   const kind = str(frame.t);
   let state = kind === "status" || isLinkEvidenceFrame(frame) ? recoverLink(input) : input;
