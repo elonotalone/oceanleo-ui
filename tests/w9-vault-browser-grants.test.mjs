@@ -151,7 +151,7 @@ test("create helper whitelists the three browser-login fields and uses the curre
   assert.equal(grants(h).length, 1);
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: explicit owner metadata only.
+// UC-NONE: Owner-vault metadata-reference lifecycle; K1 requires no value release, and no untrusted-content boundary changes (docs/architecture/oceanleo-security-regression-matrix.md).
 test("an owner explicitly grants the selected saved item, sees its origin under Used by and revokes only that reference", async () => {
   const h = harness(); const view = await mount(h);
   try {
