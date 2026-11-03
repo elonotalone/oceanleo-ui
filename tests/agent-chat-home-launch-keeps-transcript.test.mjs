@@ -396,7 +396,12 @@ const OVERRIDES = {
   "../lib/cloud-computer-api": dataModule(`
     export * from ${JSON.stringify(cloudComputerApiUrl)};
     export async function getComputer(id) { (globalThis.__ccCalls ||= []).push("computer " + id); return { id, name: "elon", status: "active", node_online: true }; }
-    export async function cloudComputerRequest(path) { (globalThis.__ccCalls ||= []).push(path); throw Object.assign(new Error("offline"), { status: 503 }); }
+    export async function cloudComputerRequest(path, init) {
+      (globalThis.__ccCalls ||= []).push(path);
+      const answer = globalThis.__ccRespond ? await globalThis.__ccRespond(path, init) : undefined;
+      if (answer !== undefined) return answer;
+      throw Object.assign(new Error("offline"), { status: 503 });
+    }
   `),
   "./PromptHighlightArea": dataModule(`
     import { createElement, forwardRef } from "${reactUrl}";
@@ -1323,4 +1328,66 @@ test("resolved upload errors clear only their own current message and preserve t
     assert.equal(host.querySelector("[data-agent-chat-upload-error]"), null);
     assert.equal(host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent, taskError, "even equal text has independent error ownership");
   } finally { await act(async () => root.unmount());host.remove();delete globalThis.__uploadErrorHooks; }
+});
+
+test("saved native transcripts are read once per saved copy, not on every session-list identity change", async () => {
+  // V2/W2 2026-11-03: one open native task re-read its saved transcript on every
+  // new session-list array (native id report, list re-read) — 7 reads in 3 s with
+  // nothing new saved, and 2572 reads in the worst trace.
+  const backend = makeBackend();
+  backend.api.getTask = async (id) => ({ ok: true, data: { task: { id, status: "completed", title: "saved native", site_id: "excel", mode: "computer", session_id: null }, messages: [], artifacts: [] } });
+  globalThis.__backend = backend;
+  globalThis.__strict = false;
+  globalThis.__ccCalls = [];
+  globalThis.__threadInputs = [];
+  let savedAt = "2026-11-03T10:00:00.000Z";
+  const row = () => ({ id: "cts_arch", task_id: "t_arch", computer_id: "cc_elon", computer_name: "elon", kind: "acp", program: "claude",
+    native_session_id: "nat-1", created_at: "2026-11-03T09:00:00.000Z", updated_at: savedAt, saved_at: savedAt, sync_status: "saved" });
+  globalThis.__ccRespond = (path) => {
+    if (path.startsWith("/v1/computer-task-sessions?")) return { sessions: [row()] };
+    if (path.startsWith("/v1/computer-task-sessions/cts_arch/transcript")) return { session: row(), frames: [], saved_at: savedAt, sync_status: "saved" };
+    return undefined;
+  };
+  const transcriptReads = () => globalThis.__ccCalls.filter((call) => String(call).startsWith("/v1/computer-task-sessions/cts_arch/transcript")).length;
+  const listReads = () => globalThis.__ccCalls.filter((call) => String(call).startsWith("/v1/computer-task-sessions?")).length;
+  window.history.replaceState(null, "", "/tasks/t_arch");
+  const view = await mountHome({ taskId: "t_arch", initialPrompt: undefined });
+  try {
+    for (let i = 0; i < 40 && !transcriptReads(); i++) await settle(20);
+    await settle(80);
+    assert.equal(transcriptReads(), 1, "the saved copy is read once on open");
+    const report = () => globalThis.__threadInputs.filter((input) => input.session?.id === "cts_arch").at(-1)?.onNativeSessionChange;
+    assert.equal(typeof report(), "function");
+    // The open conversation learns (and re-reports) its native id: same saved copy.
+    await act(async () => report()("cts_arch", "nat-2"));
+    await settle(60);
+    await act(async () => report()("cts_arch", "nat-2"));
+    await settle(60);
+    assert.equal(transcriptReads(), 1, "a native id report does not re-read the saved copy");
+    // The list is read again (an unknown conversation link) and nothing new was saved.
+    const listsBefore = listReads();
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_arch?computerSession=cts_unknown");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    for (let i = 0; i < 40 && listReads() === listsBefore; i++) await settle(20);
+    await settle(80);
+    assert.ok(listReads() > listsBefore, "the list was really read again");
+    assert.equal(transcriptReads(), 1, "an identical list re-read does not re-read the saved copy");
+    // Something new was saved: the next list read brings exactly one fresh read.
+    savedAt = "2026-11-03T10:05:00.000Z";
+    const listsAgain = listReads();
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_arch?computerSession=cts_unknown2");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    for (let i = 0; i < 40 && listReads() === listsAgain; i++) await settle(20);
+    for (let i = 0; i < 40 && transcriptReads() < 2; i++) await settle(20);
+    await settle(80);
+    assert.equal(transcriptReads(), 2, "a newer saved copy is read once");
+  } finally {
+    globalThis.__ccRespond = undefined;
+    await view.unmount();
+    window.history.replaceState(null, "", "/");
+  }
 });

@@ -1254,9 +1254,19 @@ function AgentChatInner({
   // task handoff).
   type ArchivedFrames = { session: (typeof sessions)[number]; frames: Parameters<typeof mapNativeTranscript>[1] };
   const [archivedNativeFrames, setArchivedNativeFrames] = useState<ArchivedFrames[]>([]);
+  // Read again only when a saved copy can differ: another native session, or a newer
+  // `saved_at`. Every list read, native id report and local patch makes a new array
+  // with the same saved copies; keyed on that identity the page re-read every
+  // transcript each time (V2/W2 2026-11-03: 7 reads in 3 s with nothing new saved,
+  // 2572 in the worst trace).
+  const nativeArchiveKey = useMemo(() => JSON.stringify(sessions
+    .filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo")
+    .map((row) => [row.id, row.program, row.saved_at ?? null])), [sessions]);
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
   useEffect(() => {
     let alive = true;
-    const nativeSessions = sessions.filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo");
+    const nativeSessions = sessionsRef.current.filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo");
     if (!taskId || !nativeSessions.length) {
       setArchivedNativeFrames((current) => current.length ? [] : current);
       return () => { alive = false; };
@@ -1272,13 +1282,15 @@ function AgentChatInner({
       setArchivedNativeFrames(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
     });
     return () => { alive = false; };
-  }, [taskId, sessions]);
+  }, [taskId, nativeArchiveKey]);
   const archivedNativeSources = useMemo<NativeThreadSource[]>(
-    () => archivedNativeFrames.flatMap(({ session, frames }) => {
+    () => archivedNativeFrames.flatMap(({ session: read, frames }) => {
+      // The row as known now (a native id learned since the read), same saved frames.
+      const session = sessions.find((row) => row.id === read.id) ?? read;
       // One malformed saved transcript must not take the whole page down.
       try { return [{ session, messages: mapNativeTranscript(session, frames, tt) }]; } catch { return []; }
     }),
-    [archivedNativeFrames, tt],
+    [archivedNativeFrames, sessions, tt],
   );
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
@@ -1424,7 +1436,10 @@ function AgentChatInner({
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
     if (known) rememberComputerTaskSession({...known, native_session_id: nativeId});
-    setTaskSessions((current) => ({...current, items: current.items.map((row) => row.id === sessionId ? {...row, native_session_id: nativeId} : row)}));
+    // An id already known changes nothing (no new list, so nothing downstream re-runs).
+    setTaskSessions((current) => current.items.some((row) => row.id === sessionId && row.native_session_id !== nativeId)
+      ? {...current, items: current.items.map((row) => row.id === sessionId ? {...row, native_session_id: nativeId} : row)}
+      : current);
   }, []);
   // CLI / terminal surfaces report their native id; the page binds it once, in order.
   // A rejected bind is handed back so the surface keeps its process and retries.
