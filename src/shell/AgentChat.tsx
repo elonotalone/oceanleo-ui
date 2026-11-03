@@ -3320,6 +3320,8 @@ function AgentChatInner({
             if (autonomous) autonomousTurns.add(turnId);
             return <div key={item.key} className="contents"
               data-native-frame-seq={typeof first?.meta?.native_seq === "number" ? first.meta.native_seq : undefined}
+              data-native-message-role={first?.role}
+              data-native-message-key={first?.id}
               data-native-turn-id={turnId || undefined}>
               {autonomous && <div data-native-autonomous-turn={turnId}
                 className="pt-3 text-[12px] text-stone-500">{tt("agent 的后台工作")}</div>}
