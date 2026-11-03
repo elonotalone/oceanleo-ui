@@ -185,7 +185,7 @@ test("connector client authenticates and encodes project/slot ids and exact muta
   try {
     const runtime = await compileModule("src/api/website-runtime.ts", {
       "../lib/auth/client": dataModule('export async function accessToken(){return "fixture-token";}'),
-      "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.invalid";'),
+      "../lib/auth/config": dataModule('export function gatewayBase(){return "https://gateway.invalid";}'),
     });
     const { websiteConnectorsApi } = await import(await compileModule("src/api/website-connectors.ts", { "./website-runtime": runtime }));
     await websiteConnectorsApi.get("project/8");

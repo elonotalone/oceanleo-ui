@@ -122,7 +122,7 @@ test("C3 and C7 clients encode ids and log cursors, use gateway auth and preserv
   globalThis.fetch=async(url,init)=>{calls.push({url,init});return {ok:true,json:async()=>({task_id:"new-task"})};};
   try {
     const auth=dataModule('export async function accessToken(){return "test-only";}');
-    const config=dataModule('export const GATEWAY_BASE="https://gateway.invalid";');
+    const config=dataModule('export const GATEWAY_BASE="https://gateway.invalid"; let current=GATEWAY_BASE; export function gatewayBase(){return current;} export function setGateway(value){current=value;}');
     const runtimeModule=await compileModule("src/api/website-runtime.ts",{"../lib/auth/client":auth,"../lib/auth/config":config});
     const {websiteRuntimeApi}=await import(runtimeModule);
     const {websitePanelsApi}=await import(await compileModule("src/api/website-panels.ts",{"./website-runtime":runtimeModule}));
@@ -140,6 +140,12 @@ test("C3 and C7 clients encode ids and log cursors, use gateway auth and preserv
     assert.match(calls[6].url,/\/panels\/users%2Fall\/wire$/);
     await websiteRuntimeApi.checkpoint("id/one");
     assert.equal(calls[7].url,"https://gateway.invalid/v1/website-projects/id%2Fone/runtime/checkpoint");
+    const profile=await import(config);
+    profile.setGateway("https://twin-gateway.invalid");
+    await websiteRuntimeApi.get("id/one");
+    await websitePanelsApi.list("id/one");
+    assert.equal(calls[8].url,"https://twin-gateway.invalid/v1/website-projects/id%2Fone/runtime");
+    assert.equal(calls[9].url,"https://twin-gateway.invalid/v1/website-projects/id%2Fone/panels");
     assert.equal(calls[7].init.method,"POST"); assert.equal(calls[7].init.keepalive,true);
     assert.deepEqual(JSON.parse(calls[7].init.body),{reason:"leave"});
     for(const call of calls) {assert.equal(call.init.headers.Authorization,"Bearer test-only");assert.equal(call.init.cache,"no-store");}

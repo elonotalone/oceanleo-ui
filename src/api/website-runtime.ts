@@ -1,6 +1,6 @@
 "use client";
 import { accessToken } from "../lib/auth/client";
-import { GATEWAY_BASE } from "../lib/auth/config";
+import { gatewayBase } from "../lib/auth/config";
 
 export type WebsiteRuntimeState = "stopped" | "installing" | "starting" | "running" | "crashed" | "sleeping";
 export interface WebsiteRuntime {
@@ -15,7 +15,7 @@ export interface WebsiteLogs { lines: WebsiteLogLine[]; cursor: string | null }
 /** Authenticated gateway calls only. Preview origins never receive this token. */
 export async function websiteRequest<T>(projectId: string, suffix: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
-  const response = await fetch(GATEWAY_BASE + "/v1/website-projects/" + encodeURIComponent(projectId) + suffix, {
+  const response = await fetch(gatewayBase() + "/v1/website-projects/" + encodeURIComponent(projectId) + suffix, {
     ...init, credentials: "include", cache: "no-store",
     headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: "Bearer " + token } : {}) },
