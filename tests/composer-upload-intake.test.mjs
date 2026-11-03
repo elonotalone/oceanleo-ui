@@ -9,9 +9,9 @@ import { latestUploadTiming } from "../src/lib/upload/timing.ts";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { useAttachmentIntake } = await import(await compileModule("src/lib/upload/use-attachment-intake.ts", {
   "./image-compress": dataModule(`
-    export async function compressImageFiles(files) {
+    export async function compressImageFiles(files, options) {
       const outcomes = [];
-      for (const file of files) outcomes.push(await globalThis.__w3Prepare(file));
+      for (const file of files) outcomes.push(await globalThis.__w3Prepare(file, options));
       return outcomes;
     }
   `),
@@ -126,6 +126,19 @@ test("a host that disables compression receives the original batch immediately",
   try {
     await act(async () => view.api.emit(files));
     assert.deepEqual(delivered, [files]);
+    assert.equal(view.api.compressing, false);
+  } finally { await view.unmount(); }
+});
+
+test("the explicit original choice bypasses compression and delivers the exact File", async () => {
+  const original = new File(["exact-original-content"], "phone.jpg", { type: "image/jpeg" });
+  const delivered = [];
+  globalThis.__w3Prepare = () => { throw new Error("the chosen original must never be compressed"); };
+  const view = await mounted((files) => delivered.push(...files), { byteAwareJpeg: true });
+  try {
+    await act(async () => view.api.emitOriginal(original));
+    assert.equal(delivered[0], original);
+    assert.equal(await delivered[0].text(), "exact-original-content");
     assert.equal(view.api.compressing, false);
   } finally { await view.unmount(); }
 });

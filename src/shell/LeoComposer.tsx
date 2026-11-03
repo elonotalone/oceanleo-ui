@@ -26,6 +26,7 @@ import {
 } from "./mobile-native-actions";
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
+import { PRIVATE_ATTACHMENT_MAX_BYTES } from "../lib/attachment-url";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
@@ -121,6 +122,9 @@ export interface ComposerAttachment {
    * 总线也没报数时是不确定态小圈。
    */
   progress?: UploadProgressSnapshot | null;
+  /** Local-only exact original of a visibly optimized image; never stored in drafts or sent. */
+  originalFile?: File;
+  uploadBytes?: number;
 }
 
 /** 「＋」菜单里调用方注入的额外项（如「使用技能」）。 */
@@ -428,7 +432,11 @@ export function LeoComposer({
   // 它顺带做两件本组件自己做不到的事：图片压缩，以及从进度总线上把「业务正在传
   // 我刚交出去的那几个文件」的真读数捞回来（本组件按契约不负责上传）。
   const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles });
-  const intake = useAttachmentIntake(onAttachFiles ? draft.attachFiles : undefined, { deliverAsReady: true });
+  const intake = useAttachmentIntake(onAttachFiles ? draft.attachFiles : undefined, {
+    deliverAsReady: true,
+    byteAwareJpeg: Boolean(onRemoveAttachment && attachments),
+  });
+  const replacedOriginalsRef = useRef(new Set<string>());
   // 手机原生宿主下，「＋」菜单里的「从本地添加文件」换成「拍照 / 从相册选择 / 选择文件」
   // 三项；普通浏览器里它恒为空数组，菜单与今天逐字相同。拿到的文件走的是下面同一条
   // `onAttachFiles` 通路，附件缩略条 / 上传中转圈 / 发送键可用性全部照旧。
@@ -631,6 +639,15 @@ export function LeoComposer({
         onRemove={onRemoveAttachment}
         onOpenAttachment={onOpenAttachment}
         onRetry={onRetryAttachment}
+        onUseOriginal={!disabled && !stopping && onRemoveAttachment && onAttachFiles ? (attachment) => {
+          if (!attachment.originalFile) return;
+          if (!nativeConversation && attachment.originalFile.size > PRIVATE_ATTACHMENT_MAX_BYTES) return;
+          if (replacedOriginalsRef.current.has(attachment.id)) return;
+          replacedOriginalsRef.current.add(attachment.id);
+          onRemoveAttachment(attachment.id);
+          intake.emitOriginal(attachment.originalFile);
+        } : undefined}
+        originalMaxBytes={nativeConversation ? undefined : PRIVATE_ATTACHMENT_MAX_BYTES}
         pendingFiles={intake.pending}
         onRemovePending={intake.removePending}
         inFlight={intake.inFlight}

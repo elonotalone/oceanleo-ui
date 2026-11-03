@@ -54,7 +54,10 @@ export function recordClientUploadTiming(file: File, phase: ClientUploadPhase, d
 
 /** Original and compressed bytes share one record without retaining either file globally. */
 export function recordCompressionTiming(original: File, upload: File, durationMs: number): void {
-  const record = recordFor(original);
+  // Late events from an aborted prepared upload must not overwrite a new original upload.
+  const record = { snapshot: { input_bytes: original.size, upload_bytes: upload.size,
+    client_ms: {}, server_ms: {} } as UploadTimingSnapshot };
+  records.set(original, record);
   records.set(upload, record);
   publish(record, { ...record.snapshot, input_bytes: original.size, upload_bytes: upload.size });
   recordClientUploadTiming(upload, "client_compress", durationMs);

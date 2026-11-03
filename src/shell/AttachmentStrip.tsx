@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
 import { UploadTile, isImageTile, withBusProgress, type UploadTileProps } from "../lib/upload/upload-tile";
-import { useAttachmentDisplayUrl } from "../lib/attachment-url";
+import { PRIVATE_ATTACHMENT_TOO_LARGE, useAttachmentDisplayUrl } from "../lib/attachment-url";
 import type { UploadInFlight } from "../lib/upload/use-attachment-intake";
 import { useUI } from "../i18n/ui/useUI";
 import type { LibraryItem, LibraryKind } from "./library-data";
@@ -42,6 +42,8 @@ export interface StripAttachment {
   revisionId?: string;
   /** 已上传附件的完整 typed Library 行，优先保留给详情查看器。 */
   libraryItem?: LibraryItem;
+  originalFile?: File;
+  uploadBytes?: number;
 }
 
 /** 输入框里方块的边长（px）。 */
@@ -132,6 +134,8 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   onRemove,
   onOpenAttachment,
   onRetry,
+  onUseOriginal,
+  originalMaxBytes,
   pendingFiles,
   onRemovePending,
   inFlight,
@@ -147,6 +151,9 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
   onOpenAttachment?: (att: T) => void;
   /** 失败方块上的重试；不传时失败徽章只是标记，用户可移除后重传。 */
   onRetry?: (id: string) => void;
+  /** Replace this exact attachment with its local original, aborting an active upload. */
+  onUseOriginal?: (att: T) => void;
+  originalMaxBytes?: number;
   /** 正在压缩、尚未交给宿主的文件（`useAttachmentIntake().pending`）。 */
   pendingFiles?: readonly File[];
   /** Cancel preparation before the file reaches the upload owner. */
@@ -193,6 +200,11 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
               // A5：上传中也能删（宿主取消上传、迟到的结果不会把它加回来）。
               onRemove={onRemove ? () => onRemove(a.id) : undefined}
               onRetry={failed && onRetry ? () => onRetry(a.id) : undefined}
+              onUseOriginal={a.originalFile && onUseOriginal ? () => onUseOriginal(a) : undefined}
+              originalBytes={a.originalFile?.size}
+              uploadBytes={a.uploadBytes}
+              originalDisabledReason={a.originalFile && originalMaxBytes !== undefined && a.originalFile.size > originalMaxBytes
+                ? tt(PRIVATE_ATTACHMENT_TOO_LARGE) : undefined}
             />
           );
         })}

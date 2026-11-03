@@ -45,3 +45,15 @@ test("invalid or unrelated timing responses do not create a measurement", () => 
   for (const value of [null, [], "12", { unknown: 1 }, { total: NaN }]) recordServerUploadTiming(file, value);
   assert.equal(latestUploadTiming(file), undefined);
 });
+
+test("late timing from a replaced compressed upload cannot overwrite the original upload", () => {
+  const original = new File(["original bytes"], "phone.jpg");
+  const prepared = new File(["small"], "phone.jpg");
+  recordCompressionTiming(original, prepared, 12);
+  recordClientUploadTiming(prepared, "client_request", 50);
+  recordCompressionTiming(original, original, 0);
+  recordClientUploadTiming(prepared, "client_request", 80);
+  assert.equal(latestUploadTiming(original).upload_bytes, original.size);
+  assert.equal(latestUploadTiming(original).client_ms.client_request, undefined);
+  assert.equal(latestUploadTiming(prepared).upload_bytes, prepared.size);
+});

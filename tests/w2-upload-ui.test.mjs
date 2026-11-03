@@ -9,7 +9,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 const stubs = {
   "../i18n/ui/useUI": dataModule('export function useUI(){return (s, vars) => s.replace(/\\{(\\w+)\\}/g, (_, k) => String(vars?.[k] ?? k));}'),
-  "../lib/attachment-url": dataModule('export function useAttachmentDisplayUrl(){return undefined;} export function attachmentRef(){return null;} export function attachmentDisplayUrl(a){return a.url || a.previewUrl;} export async function resolveAttachmentDisplayUrl(){throw Error("pending attachment resolved URL");}'),
+  "../lib/attachment-url": dataModule('export const PRIVATE_ATTACHMENT_TOO_LARGE="文件超过 20MB，暂不支持"; export function useAttachmentDisplayUrl(){return undefined;} export function attachmentRef(){return null;} export function attachmentDisplayUrl(a){return a.url || a.previewUrl;} export async function resolveAttachmentDisplayUrl(){throw Error("pending attachment resolved URL");}'),
   "./WorkspaceLibrary": dataModule('export function WorkspaceLibrary(){throw Error("pending attachment opened local viewer");}'),
   "./TaskWorkspaceShell": dataModule('export function attachmentWorkspaceItem(a){return {id:a.id,kind:"image",url:a.url || a.previewUrl,meta:{}};} export function attachmentOpenMode(){return "preview";}'),
   "./artifact-client": dataModule('export async function getArtifactItem(){throw Error("pending attachment read Library");}'),
@@ -77,6 +77,34 @@ test("UploadTile independently blocks onOpen during compression, uploading and f
     await update(component("ready"));
     await act(async () => container.querySelector("button").click());
     assert.deepEqual(opened, ["ready"]);
+  });
+});
+
+test("optimized tiles visibly offer the exact original without opening the pending image", async () => {
+  const original = new File(["exact original"], "phone.jpg", { type: "image/jpeg" });
+  const replaced = [], opened = [];
+  const attachment = { id: "exact-id", name: "phone.jpg", mime: original.type, previewUrl: "blob:prepared", uploading: true, originalFile: original, uploadBytes: 4 };
+  await render(h(AttachmentStrip, { attachments: [attachment], onUseOriginal: (item) => replaced.push(item), onOpenAttachment: (item) => opened.push(item) }), async (container) => {
+    const button = container.querySelector('[data-upload-original]');
+    assert.ok(button);
+    assert.equal(button.textContent, "用原图");
+    assert.equal(container.querySelector('button[aria-label="phone.jpg"]'), null);
+    await act(async () => button.click());
+    assert.equal(replaced[0], attachment);
+    assert.equal(replaced[0].originalFile, original);
+    assert.deepEqual(opened, []);
+  });
+});
+
+test("an original beyond the host limit stays visible but cannot remove the usable prepared file", async () => {
+  const original = new File(["original"], "phone.jpg", { type: "image/jpeg" });
+  const replaced = [];
+  await render(h(AttachmentStrip, { attachments: [{ id: "prepared", name: "phone.jpg", originalFile: original, uploadBytes: 1 }], originalMaxBytes: 2, onUseOriginal: (item) => replaced.push(item.id) }), async (container) => {
+    const button = container.querySelector('[data-upload-original]');
+    assert.equal(button.disabled, true);
+    assert.match(button.title, /20MB/);
+    await act(async () => button.click());
+    assert.deepEqual(replaced, []);
   });
 });
 

@@ -149,7 +149,7 @@ async function flush(count = 6) {
 
 test("A1: only finished private references are stored, without any URL", () => {
   const stored = draftAttachmentsOf([
-    { id: "a", name: "a.png", mime: "image/png", previewUrl: "blob:https://x/1", url: "blob:https://x/1", artifactId: ART, revisionId: REV, mediaType: "image", libraryItem: { url: "https://gateway.test/x" } },
+    { id: "a", name: "a.png", mime: "image/png", previewUrl: "blob:https://x/1", url: "blob:https://x/1", artifactId: ART, revisionId: REV, mediaType: "image", libraryItem: { url: "https://gateway.test/x" }, originalFile: new File(["private original bytes"], "private.jpg"), uploadBytes: 3 },
     { id: "b", name: "b.png", uploading: true },
     { id: "c", name: "c.png", failed: true, artifactId: ART2, revisionId: REV2 },
     { id: "d", name: "inbox.txt", mime: "text/plain", previewUrl: "blob:https://x/2" },
@@ -257,7 +257,7 @@ test("A1: LeoComposer wires draftKey through useComposerDraft and marks the send
   const source = readFileSync(new URL("../src/shell/LeoComposer.tsx", import.meta.url), "utf8");
   // 2026-11-02 unit D: every file the composer takes in goes through the draft first (bytes survive refresh).
   assert.match(source, /useComposerDraft\(\{ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles \}\)/);
-  assert.match(source, /useAttachmentIntake\(onAttachFiles \? draft\.attachFiles : undefined, \{ deliverAsReady: true \}\)/);
+  assert.match(source, /useAttachmentIntake\(onAttachFiles \? draft\.attachFiles : undefined,/);
   assert.match(source, /draft\.markSubmitted\(\);/);
   const home = readFileSync(new URL("../src/shell/HomeIntro.tsx", import.meta.url), "utf8");
   assert.match(home, /draftKey=\{`home:\$\{attachSiteId\}`\}/);

@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { rememberImagePreparation } from "../src/lib/upload/image-preparation.ts";
 
 import React, { act } from "react";
 
@@ -284,12 +285,16 @@ test("useAttachments: failed upload stays as a failed tile and retry re-uploads 
   await withDom(async (root) => {
     await act(async () => root.render(React.createElement(Probe)));
     const file = new File([new Uint8Array(4)], "a.png", { type: "image/png" });
+    const original = new File(["exact original image bytes"], file.name, { type: file.type });
+    rememberImagePreparation({ original, upload: file, compressed: true, originalBytes: original.size, uploadBytes: file.size, skippedReason: null });
     await act(async () => hook.handleAttachFiles([file]));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
     assert.equal(hook.composerAttachments.length, 1, "a failed upload is not dropped");
     assert.equal(hook.composerAttachments[0].failed, true);
     assert.equal(hook.composerAttachments[0].failedReason, "网络错误");
+    assert.equal(hook.composerAttachments[0].originalFile, original);
+    assert.equal(hook.composerAttachments[0].uploadBytes, file.size);
     assert.equal(hook.uploading, false);
     assert.deepEqual(hook.ready(), [], "a failed tile is never sent");
     assert.deepEqual(errors, ["网络错误"]);

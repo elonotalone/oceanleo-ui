@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // 判据（W08 P3）：
 //   · **只压图片**，视频音频文档一个字节都不碰；
-//   · 长边超阈值（默认 4096）才压；没超就原样放过，不做无谓的重编码；
+//   · 默认只压长边超阈值的图；有原图恢复入口的 composer 可另开大 JPEG 字节优化；
 //   · **保留原始文件供用户选择**，默认压缩、可一键改回原图——不许静默降质；
 //   · 压缩前后字节数要交出去（这是用户信任这个功能的唯一方式）。
 //
@@ -34,6 +34,11 @@ export const MIN_COMPRESS_BYTES = 512 * 1024;
 
 /** 有损编码质量。0.82 是肉眼几乎看不出差别、体积却掉一大截的常用拐点。 */
 export const DEFAULT_QUALITY = 0.82;
+/** Only the explicit, reversible composer policy opts into these JPEG settings. */
+export const BYTE_AWARE_JPEG_MIN_BYTES = 1024 * 1024;
+export const BYTE_AWARE_JPEG_QUALITY = 0.92;
+export const BYTE_AWARE_MIN_SAVED_BYTES = 256 * 1024;
+export const BYTE_AWARE_MIN_SAVED_RATIO = 0.2;
 
 /** canvas 能可靠重编码的输入类型。 */
 const COMPRESSIBLE_MIME = new Set([
@@ -75,6 +80,8 @@ export interface CompressOptions {
   maxEdge?: number;
   quality?: number;
   minBytes?: number;
+  /** Large JPEGs may be recompressed at the same dimensions; caller must expose the original choice. */
+  byteAwareJpeg?: boolean;
 }
 
 function skip(file: File, reason: CompressionSkipReason): CompressionOutcome {
@@ -238,7 +245,6 @@ export async function compressImageFile(
   options: CompressOptions = {},
 ): Promise<CompressionOutcome> {
   const maxEdge = options.maxEdge ?? DEFAULT_MAX_EDGE;
-  const quality = options.quality ?? DEFAULT_QUALITY;
   const minBytes = options.minBytes ?? MIN_COMPRESS_BYTES;
 
   if (!isImageFile(file)) return skip(file, "not-an-image");
@@ -250,19 +256,25 @@ export async function compressImageFile(
     return skip(file, "unsupported-image-type");
   }
   if (file.size < minBytes) return skip(file, "already-small");
+  const byteAwareJpeg = options.byteAwareJpeg === true &&
+    (sourceType === "image/jpeg" || sourceType === "image/jpg") && file.size >= BYTE_AWARE_JPEG_MIN_BYTES;
 
   const decoded = await decode(file);
   if (!decoded) return skip(file, "canvas-unavailable");
 
   try {
     const target = scaleToMaxEdge(decoded.width, decoded.height, maxEdge);
-    // 长边在限内：P3 说「长边超过阈值才压」，那就不压。
-    if (!target.scaled) return skip(file, "within-max-edge");
+    const byteAwareSameSize = byteAwareJpeg && !target.scaled;
+    const quality = options.quality ?? (byteAwareSameSize ? BYTE_AWARE_JPEG_QUALITY : DEFAULT_QUALITY);
+    // Legacy callers only resize oversized images; the reversible JPEG policy also targets bytes.
+    if (!target.scaled && !byteAwareJpeg) return skip(file, "within-max-edge");
 
     const type = outputType(sourceType);
     const blob = await encode(decoded, target.width, target.height, type, quality);
     if (!blob || blob.size === 0) return skip(file, "encode-failed");
     if (blob.size >= file.size) return skip(file, "not-smaller");
+    if (byteAwareSameSize && (file.size - blob.size < BYTE_AWARE_MIN_SAVED_BYTES ||
+      (file.size - blob.size) / file.size < BYTE_AWARE_MIN_SAVED_RATIO)) return skip(file, "not-smaller");
 
     const compressed = new File([blob], outputName(file.name, type), {
       type,

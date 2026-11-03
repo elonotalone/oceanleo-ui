@@ -127,6 +127,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
 const noopComponent = (name) => dataModule(`export function ${name}(){return null;}`);
 const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.tsx", {
+  "../lib/attachment-url": dataModule("export const PRIVATE_ATTACHMENT_MAX_BYTES=20*1024*1024;"),
   "../i18n/ui/useUI": dataModule(`export function useUI(){return ${tt.toString()};}`),
   "./PromptHighlightArea": dataModule(`import React from ${JSON.stringify(pathToFileURL(require.resolve("react")).href)};
     export const TemplateFillArea = React.forwardRef((p, ref) => {
@@ -150,6 +151,9 @@ const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.
     ["./PayerSelector", "PayerSelector"], ["./mcp-apps", "ComposerAppsBar"],
     ["./cloud-computer/ComputerDock", "ComputerDock"], ["./ComposerLibraryPicker", "ComposerLibraryPicker"],
   ].map(([path, name]) => [path, noopComponent(name)])),
+  "./AttachmentStrip": dataModule(`import React from ${JSON.stringify(pathToFileURL(require.resolve("react")).href)};
+    export function AttachmentStrip(props){const file=props.attachments?.find(item=>item.originalFile);
+      return file && props.onUseOriginal ? React.createElement("button", {"data-test-original":"",onClick:()=>props.onUseOriginal(file)}, "original") : null;}`),
 }));
 
 async function composer(extra) {
@@ -412,5 +416,25 @@ test("a preparing, uploading or failed file keeps the single action on disabled 
       assert.equal(view.host.querySelector('[data-composer-stop]'), null);
       assert.equal(view.host.querySelector('[data-composer-send]').disabled, true);
     }
+  } finally { delete globalThis.__composerIntake; view.cleanup(); }
+});
+
+for (const kind of ["oceanleo", "native"]) test(`composer ${kind}: original removes the exact upload before bypass reattach, once; read-only withholds it`, async () => {
+  const original = new File(["exact original"], "phone.jpg", { type: "image/jpeg" });
+  const actions = [];
+  globalThis.__composerIntake = { compressing: false, pending: [], inFlight: [], emitOriginal: (file) => actions.push(["original", file]) };
+  const conversation = kind === "native" ? { kind, computerId: "cc_test", program: "codex", view: "chat" } : { kind, target: { kind: "cloud" } };
+  const view = await composer({ value: "", loading: true, conversation,
+    onAttachFiles() {}, onRemoveAttachment: (id) => actions.push(["remove", id]),
+    attachments: [{ id: "exact-id", name: "phone.jpg", uploading: true, originalFile: original, uploadBytes: 4 }] });
+  try {
+    const button = view.host.querySelector('[data-test-original]');
+    assert.ok(button);
+    await act(async () => { button.click(); button.click(); });
+    assert.deepEqual(actions, [["remove", "exact-id"], ["original", original]]);
+    await view.update({ disabled: true });
+    assert.equal(view.host.querySelector('[data-test-original]'), null);
+    await view.update({ disabled: false, stopping: true });
+    assert.equal(view.host.querySelector('[data-test-original]'), null);
   } finally { delete globalThis.__composerIntake; view.cleanup(); }
 });

@@ -18,7 +18,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
 import type { UploadProgressSnapshot } from "./progress";
-import { progressPercent } from "./progress";
+import { formatBytes, progressPercent } from "./progress";
 import type { UploadInFlight } from "./use-attachment-intake";
 
 /** 与 `i18n/ui/useUI` 的 `UITranslate` 结构一致；这里不 import，避免把 i18n 运行时拖进 `src/lib/upload/`。 */
@@ -145,6 +145,11 @@ export interface UploadTileProps {
   onOpen?: () => void;
   onRemove?: () => void;
   onRetry?: () => void;
+  /** Explicit replacement of an optimized image with the original bytes. */
+  onUseOriginal?: () => void;
+  originalBytes?: number;
+  uploadBytes?: number;
+  originalDisabledReason?: string;
   tt: ProgressTranslate;
   className?: string;
 }
@@ -160,6 +165,10 @@ export function UploadTile({
   onOpen,
   onRemove,
   onRetry,
+  onUseOriginal,
+  originalBytes,
+  uploadBytes,
+  originalDisabledReason,
   tt,
   className = "",
 }: UploadTileProps) {
@@ -213,7 +222,7 @@ export function UploadTile({
   return (
     <div
       className={`relative shrink-0 ${className}`}
-      style={box}
+      style={onUseOriginal ? { width: size } : box}
       title={status ? `${label} · ${status}` : label}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -230,11 +239,12 @@ export function UploadTile({
           aria-label={label}
           onClick={onOpen}
           className={`${faceClass} cursor-pointer outline-none focus-visible:ring-2`}
+          style={box}
         >
           {face}
         </button>
       ) : (
-        <span aria-label={label} role="img" className={faceClass}>
+        <span aria-label={label} role="img" className={faceClass} style={box}>
           {face}
         </span>
       )}
@@ -248,7 +258,7 @@ export function UploadTile({
             data-upload-retry=""
             onClick={onRetry}
             className="absolute flex h-11 w-11 items-center justify-center"
-            style={{ right: -14, bottom: -14 }}
+            style={{ right: -14, bottom: onUseOriginal ? 30 : -14 }}
           >
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white shadow ring-2 ring-white hover:bg-red-600 dark:ring-neutral-900">
               <RetryGlyph />
@@ -260,11 +270,28 @@ export function UploadTile({
             aria-label={tt("上传失败")}
             title={tt("上传失败")}
             data-upload-failed=""
-            className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-semibold leading-none text-white shadow ring-2 ring-white dark:ring-neutral-900"
+            className="absolute -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[11px] font-semibold leading-none text-white shadow ring-2 ring-white dark:ring-neutral-900"
+            style={{ bottom: onUseOriginal ? 40 : -4 }}
           >
             !
           </span>
         )
+      ) : null}
+      {onUseOriginal ? (
+        <button
+          type="button"
+          aria-label={tt("用原图")}
+          disabled={Boolean(originalDisabledReason)}
+          title={originalDisabledReason || tt("已压缩：{before} → {after}", {
+            before: formatBytes(originalBytes ?? 0),
+            after: formatBytes(uploadBytes ?? 0),
+          })}
+          data-upload-original=""
+          onClick={onUseOriginal}
+          className="flex h-11 w-full items-center justify-center rounded text-[10px] text-neutral-600 hover:bg-neutral-100"
+        >
+          {tt("用原图")}
+        </button>
       ) : null}
       {onRemove && (!canHover || hovered) ? (
         // 只在悬停/聚焦时挂出来（触屏恒显）：藏起来的 × 不许还留着一块看不见的命中区。

@@ -32,6 +32,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { compressImageFiles } from "./image-compress";
 import { recordCompressionTiming, uploadTimingNow } from "./timing";
+import { rememberImagePreparation } from "./image-preparation";
 import { filesFromPaste, transferHasFiles } from "./intake";
 import {
   latestUploadProgress,
@@ -51,6 +52,8 @@ export interface AttachmentIntakeOptions {
   compressImages?: boolean;
   /** Append-only attachment owners can start each upload as soon as that file is prepared. */
   deliverAsReady?: boolean;
+  /** Enabled only by a composer that offers a visible exact-original replacement. */
+  byteAwareJpeg?: boolean;
 }
 
 /** 只接受带 `clipboardData` 的事件，React 合成事件与原生事件都吃得下。 */
@@ -62,6 +65,8 @@ export interface PasteLike {
 export interface AttachmentIntake {
   /** 选择 / 拖拽 / 粘贴**共用**的唯一入口。 */
   emit: (files: FileList | readonly File[] | null | undefined) => void;
+  /** Explicit original choice bypasses every compression policy. */
+  emitOriginal: (file: File) => void;
   /** 粘贴：有文件才拦，没有一律放过（粘贴文字必须照常插入）。 */
   handlePaste: (event: PasteLike) => void;
   /** 正在压缩。调用方要把它算进「发送键禁用」里。 */
@@ -99,6 +104,8 @@ export function useAttachmentIntake(
   compressEnabledRef.current = options.compressImages !== false;
   const deliverAsReadyRef = useRef(options.deliverAsReady === true);
   deliverAsReadyRef.current = options.deliverAsReady === true;
+  const byteAwareJpegRef = useRef(options.byteAwareJpeg === true);
+  byteAwareJpegRef.current = options.byteAwareJpeg === true;
 
   const subscriptionsRef = useRef(new Map<File, () => void>());
   const pendingJobsRef = useRef(new Set<{ file: File }>());
@@ -184,6 +191,12 @@ export function useAttachmentIntake(
     setPending(Array.from(pendingJobsRef.current, (job) => job.file));
   }, []);
 
+  const emitOriginal = useCallback((file: File) => {
+    if (!aliveRef.current || !onFilesRef.current) return;
+    recordCompressionTiming(file, file, 0);
+    deliver([file]);
+  }, [deliver]);
+
   const emit = useCallback(
     (input: FileList | readonly File[] | null | undefined) => {
       const files = toFileArray(input);
@@ -194,6 +207,7 @@ export function useAttachmentIntake(
       }
       const jobs = files.map((file) => ({ file }));
       const streamPrepared = deliverAsReadyRef.current;
+      const byteAwareJpeg = byteAwareJpegRef.current;
       for (const job of jobs) pendingJobsRef.current.add(job);
       setPending(Array.from(pendingJobsRef.current, (job) => job.file));
       compressionQueueRef.current = compressionQueueRef.current.then(async () => {
@@ -204,8 +218,9 @@ export function useAttachmentIntake(
             let upload = job.file;
             const startedAt = uploadTimingNow();
             try {
-              const [outcome] = await compressImageFiles([job.file]);
+              const [outcome] = await compressImageFiles([job.file], { byteAwareJpeg });
               upload = outcome?.upload ?? job.file;
+              if (outcome) rememberImagePreparation(outcome);
             } catch {
               // Compression is optional: keep the original if decoding fails.
             }
@@ -248,6 +263,7 @@ export function useAttachmentIntake(
 
   return {
     emit,
+    emitOriginal,
     handlePaste,
     compressing: pending.length > 0,
     pending,
