@@ -343,6 +343,8 @@ test("a language switch during recovery neither aborts nor reassigns it", async 
   }
 });
 
+// UC-NONE
+// First-party vault notice text; no origin, iframe, injection sink or cookie surface involved.
 test("recovery surfaces never render transport text or secret values", async () => {
   const h = harness();
   const canary = randomUUID();
