@@ -138,7 +138,14 @@ export type PermissionOption = {
   kind: string;
 };
 
-export type TurnItem =
+/** First stored position and latest content update; timestamps are server times, never hydration time. */
+export type NativeFramePosition = {
+  seq?: number; at?: number; updatedSeq?: number; updatedAt?: number;
+  /** View-local arrival order until storage assigns seq. Never compared across sources. */
+  arrival?: number; updatedArrival?: number; arrivalSource?: string;
+};
+
+export type TurnItem = NativeFramePosition & (
   | { kind: "assistant"; id: string; text: string }
   | { kind: "thought"; id: string; text: string }
   | { kind: "tool"; id: string; tool: ToolCard }
@@ -169,7 +176,7 @@ export type TurnItem =
       detail: string;
       questions: unknown;
       submitted: boolean;
-    };
+    });
 
 export type DialogAttachmentState = "uploading" | "done" | "error";
 
@@ -209,7 +216,7 @@ export type AgentMessageSender = {
   task_id: string | null;
 };
 
-export const NATIVE_DELIVERY_STATES = ["sending", "queued", "injected", "replaced", "started_new_turn", "unsent", "cancelled"] as const;
+export const NATIVE_DELIVERY_STATES = ["sending", "queued", "injected", "replaced", "started_new_turn", "delivered", "unsent", "cancelled"] as const;
 export type NativeDeliveryState = (typeof NATIVE_DELIVERY_STATES)[number];
 export type NativeMessageDelivery = { state: NativeDeliveryState; uncertain?: boolean; reason?: string; intent?: "normal" | "send_now" };
 export type NativeMessageSnapshot = {
@@ -219,13 +226,13 @@ export type NativeMessageSnapshot = {
   snapshot_available?: boolean;
 };
 
-export type AgentDialogMessage =
+export type AgentDialogMessage = NativeFramePosition & (
   // at: epoch ms the user sent it, when known (a live send here, or a frame that carries a time); drives the chat time line.
   | { kind: "user"; id: string; messageId?: string; turnId?: string; delivery?: NativeMessageDelivery; text: string; replay?: boolean; attachments?: UserMessageAttachment[]; at?: number; sender?: AgentMessageSender }
   // orphans: sub-agent tools whose Task/Agent tool has not arrived yet; adopted when it does, never shown on their own.
-  | { kind: "turn"; id: string; turnId?: string; acpSession: string; stop: string; items: TurnItem[]; live?: boolean; orphans?: ToolCard[] }
+  | { kind: "turn"; id: string; turnId?: string; autonomous?: boolean; acpSession: string; stop: string; items: TurnItem[]; live?: boolean; orphans?: ToolCard[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
-  | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string };
+  | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string });
 
 export type ModeOption = {
   id: string;
@@ -263,6 +270,8 @@ export type LoginState = {
 };
 
 export type DialogState = {
+  frameCursor?: number;
+  frameSource?: string;
   program: AgentProgram | null;
   messages: AgentDialogMessage[];
   busy: boolean;

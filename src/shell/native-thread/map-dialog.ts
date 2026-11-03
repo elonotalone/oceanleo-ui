@@ -21,7 +21,10 @@ import type {
   ToolCard,
   TurnItem,
   UserMessageAttachment,
+  NativeFramePosition,
 } from "../../native-agent-core/index";
+import { mergeLocalPreviews } from "../cloud-computer/agent-dialog/message-attachments";
+import { mergeNativePosition, orderNativeFrames } from "./order";
 
 export type MapTranslate = (zh: string, vars?: Record<string, string | number>) => string;
 
@@ -174,6 +177,15 @@ export function dialogToAgentMessages(
   const tt = opts.tt ?? sourceText;
   const nextId = idAllocator();
   const out: AgentMessage[] = [];
+  const push = (row: AgentMessage, position: NativeFramePosition) => out.push({
+    ...row,
+    ...(position.at !== undefined ? { created_at: new Date(position.at).toISOString() } : {}),
+    meta: { ...row.meta,
+      ...(position.seq !== undefined ? { native_seq: position.seq } : {}),
+      ...(position.arrivalSource ? { native_arrival_source: position.arrivalSource, native_arrival: position.arrival } : {}),
+      ...(position.updatedAt !== undefined ? { native_updated_at: new Date(position.updatedAt).toISOString() } : {}),
+    },
+  });
   let step = 0;
 
   for (const message of messages) {
@@ -183,14 +195,14 @@ export function dialogToAgentMessages(
       // states may contain an empty placeholder; file-only prompts still count.
       if (!message.text.trim() && !attachments.length) continue;
       const sender = message.sender;
-      out.push({
+      push({
         id: nextId(`u:${message.id}`),
         role: sender ? "assistant" : "user",
         kind: "text",
         content: message.text,
         meta: { native: true, ...(message.messageId ? { native_message_id: message.messageId } : {}), ...(message.turnId ? { native_turn_id: message.turnId } : {}), ...(message.delivery ? { native_delivery: message.delivery } : {}), ...(opts.engine ? { engine: opts.engine } : {}), ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}) },
         ...(typeof message.at === "number" ? { created_at: new Date(message.at).toISOString() } : {}),
-      });
+      }, message);
       continue;
     }
 
@@ -198,13 +210,13 @@ export function dialogToAgentMessages(
       // Connection churn is machine state, not conversation content. The host
       // shows reachability through the thread's blocked/offline signals.
       if (isReconnectingNotice(message.code)) continue;
-      out.push({
+      push({
         id: nextId(`n:${message.id}`),
         role: "assistant",
         kind: isNeutralNotice(message.code) ? "notice" : "error",
         content: noticeText(tt, message),
         meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), native_notice: message.code },
-      });
+      }, message);
       continue;
     }
 
@@ -217,30 +229,33 @@ export function dialogToAgentMessages(
     let usage: { used: number; size: number } | null = null;
 
     for (const item of message.items) {
-      const key = `${message.id}/${item.id}`;
+      const key = `${message.turnId ?? message.id}/${item.seq !== undefined ? `frame:${item.seq}` : item.id}`;
+      // A live continuation has no stored seq yet; inheriting the turn-start
+      // position would move it above newer user input.
+      const position = item;
       if (item.kind === "assistant") {
         if (!item.text) continue;
         lastText = out.length;
-        out.push({
+        push({
           id: nextId(`a:${key}`),
           role: "assistant",
           kind: "text",
           content: item.text,
           meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}) },
-        });
+        }, position);
         continue;
       }
       if (item.kind === "thought") {
         if (!item.text.trim()) continue;
         step += 1;
         lastProcess = out.length;
-        out.push({
+        push({
           id: nextId(`t:${key}`),
           role: "assistant",
           kind: "analysis",
           content: item.text,
           meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), step_index: step },
-        });
+        }, position);
         continue;
       }
       if (item.kind === "tool") {
@@ -248,7 +263,7 @@ export function dialogToAgentMessages(
         lastProcess = out.length;
         const tool = item.tool;
         const title = tool.title.trim() || tt("执行步骤");
-        out.push({
+        push({
           id: nextId(`s:${key}`),
           role: "assistant",
           kind: "step",
@@ -262,12 +277,12 @@ export function dialogToAgentMessages(
             tool_kind: tool.kind,
             tool_card: toolCardMeta(tool),
           },
-        });
+        }, position);
         continue;
       }
       if (item.kind === "plan") {
         lastProcess = out.length;
-        out.push({
+        push({
           id: nextId(`p:${key}`),
           role: "assistant",
           kind: "plan",
@@ -278,7 +293,7 @@ export function dialogToAgentMessages(
             plan_steps: item.entries.map((entry) => entry.content).filter((text) => text.trim()),
             plan_entries: item.entries,
           },
-        });
+        }, position);
         continue;
       }
       if (item.kind === "permission") {
@@ -291,13 +306,13 @@ export function dialogToAgentMessages(
           auto: false,
         };
         const prompt = permissionPrompt(item, tt);
-        out.push({
+        push({
           id: nextId(`g:${key}`),
           role: "assistant",
           kind: "gate",
           content: prompt,
           meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_permission },
-        });
+        }, position);
         continue;
       }
       if (item.kind === "question") {
@@ -309,13 +324,13 @@ export function dialogToAgentMessages(
           submitted: item.submitted,
         };
         const prompt = item.title.trim() || tt("需要你回答");
-        out.push({
+        push({
           id: nextId(`q:${key}`),
           role: "assistant",
           kind: "gate",
           content: prompt,
           meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_question },
-        });
+        }, position);
         continue;
       }
       if (item.kind === "usage") {
@@ -325,7 +340,8 @@ export function dialogToAgentMessages(
     }
 
     if (message.turnId) {
-      for (let index = firstTurnRow; index < out.length; index += 1) out[index] = { ...out[index], meta: { ...out[index].meta, native_turn_id: message.turnId, native_turn_live: !finished } };
+      for (let index = firstTurnRow; index < out.length; index += 1) out[index] = { ...out[index], meta: { ...out[index].meta, native_turn_id: message.turnId, native_turn_live: !finished,
+        ...(message.autonomous ? { native_turn_autonomous: true } : {}) } };
     }
     if (!finished && lastText >= 0 && message.turnId) out[lastText] = { ...out[lastText], meta: { ...out[lastText].meta, native_streaming: true } };
     // Usage is shown faintly in the folded process line of this turn.
@@ -339,7 +355,11 @@ export function dialogToAgentMessages(
       out[lastText] = { ...last, meta: { ...last.meta, final: true, ...(interrupted ? { stopped: true } : {}) } };
     }
   }
-  return out;
+  return orderNativeFrames(out, (message) => ({ seq: typeof message.meta?.native_seq === "number" ? message.meta.native_seq : undefined,
+    at: message.created_at ? Date.parse(message.created_at) : undefined,
+    arrival: typeof message.meta?.native_arrival === "number" ? message.meta.native_arrival : undefined,
+    arrivalSource: typeof message.meta?.native_arrival_source === "string" ? message.meta.native_arrival_source : undefined,
+  }));
 }
 
 /** ID-aware union for the durable protocol. Legacy sessions still use the legacy merger. */
@@ -365,8 +385,12 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
     if (row.kind === "user") userAnchor = index;
     const own = out[index];
     if (row.kind === "user" && own.kind === "user") {
-      out[index] = { ...own, ...row, id: own.id, delivery: row.delivery ?? own.delivery,
-        attachments: row.attachments?.length ? row.attachments : own.attachments };
+      const attachments = row.attachments?.some((item) => item.archive) ? mergeLocalPreviews(row.attachments, own.attachments ?? [])
+        : own.attachments?.some((item) => item.archive) ? mergeLocalPreviews(own.attachments, row.attachments ?? [])
+        : row.attachments?.length ? row.attachments : own.attachments;
+      out[index] = { ...own, ...row, ...mergeNativePosition(own, row),
+        ...(row.arrivalSource ? { arrivalSource: row.arrivalSource, arrival: row.arrival, updatedArrival: row.updatedArrival } : {}),
+        id: own.id, delivery: row.delivery ?? own.delivery, attachments };
     } else if (row.kind === "turn" && own.kind === "turn") {
       const items = own.items.slice();
       for (const item of row.items) {
@@ -377,16 +401,38 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
           (old.kind === "question" && item.kind === "question" && old.questionId === item.questionId) ||
           old.kind === "plan" || old.kind === "usage" ||
           ((old.kind === "assistant" || old.kind === "thought") && (item.kind === "assistant" || item.kind === "thought") &&
-            (old.text.includes(item.text) || item.text.includes(old.text)))));
+            (old.seq !== undefined && item.seq !== undefined
+              ? old.seq === item.seq || (old.seq <= (item.updatedSeq ?? item.seq) && item.seq <= (old.updatedSeq ?? old.seq) &&
+                (old.text.includes(item.text) || item.text.includes(old.text)))
+              : old.text.includes(item.text) || item.text.includes(old.text)))));
         if (at < 0) items.push(item);
         else {
           const old = items[at];
-          items[at] = (old.kind === "assistant" || old.kind === "thought") &&
+          const kept = (old.kind === "assistant" || old.kind === "thought") &&
             (item.kind === "assistant" || item.kind === "thought") && old.text.length > item.text.length ? old : item;
+          items[at] = { ...kept, ...mergeNativePosition(old, item) };
         }
       }
-      out[index] = { ...own, ...row, id: own.id, items, stop: row.live ? row.stop : row.stop || own.stop };
+      out[index] = { ...own, ...row, ...mergeNativePosition(own, row), id: own.id, items: orderNativeFrames(items, (item) => item), stop: row.live ? row.stop : row.stop || own.stop };
     }
   }
-  return out;
+  const joined = out.map((message) => {
+    if (message.kind !== "turn") return message;
+    const foreign = out.flatMap((other) => other === message ? [] : other.kind === "turn"
+      ? [other.seq, ...other.items.map((item) => item.seq)] : [other.seq]);
+    const items: TurnItem[] = [];
+    for (const item of message.items) {
+      const previous = items[items.length - 1];
+      if (previous && (previous.kind === "thought" || previous.kind === "assistant") &&
+          (item.kind === "thought" || item.kind === "assistant") && item.kind === previous.kind &&
+          previous.seq !== undefined && item.seq !== undefined && (previous.updatedSeq ?? previous.seq) < item.seq &&
+          !foreign.some((seq) => seq !== undefined && seq > (previous.updatedSeq ?? previous.seq!) && seq < item.seq!)) {
+        // A page edge can split a text/thought chunk (including whitespace-only
+        // fragments). Join only across a clear stored interval, never across input.
+        items[items.length - 1] = { ...previous, ...mergeNativePosition(previous, item), text: previous.text + item.text };
+      } else items.push(item);
+    }
+    return { ...message, items };
+  });
+  return orderNativeFrames(joined, (message) => message);
 }

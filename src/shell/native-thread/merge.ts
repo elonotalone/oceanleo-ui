@@ -2,6 +2,7 @@ import type { NativeAgentMessage as AgentMessage, NativeTranscriptSession } from
 import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
 import type { AgentDialogMessage, TurnItem } from "../../native-agent-core/index";
 import { dialogToAgentMessages, type MapTranslate } from "./map-dialog";
+import { orderNativeFrames } from "./order";
 
 // ── Saved transcript + live conversation: merge, never switch (2026-11-02 F2) ──
 //
@@ -312,11 +313,14 @@ export function mergeNativeThreadMessages(sources: readonly NativeThreadSource[]
     let time = Date.parse(source.session.created_at || "") || sourceIndex;
     source.messages.forEach((message, order) => {
       const own = message.created_at ? Date.parse(message.created_at) : NaN;
-      if (Number.isFinite(own)) time = own;
+      if (Number.isFinite(own)) time = Math.max(time, own);
       rows.push({ message, time, source: sourceIndex, order });
     });
   });
   rows.sort((a, b) => a.time - b.time || a.source - b.source || a.order - b.order);
-  return rows.map(({ message }) => message);
+  return orderNativeFrames(rows.map(({ message }) => message), (message) => ({
+    seq: typeof message.meta?.native_seq === "number" ? message.meta.native_seq : undefined,
+    at: message.created_at ? Date.parse(message.created_at) : undefined,
+  }));
 }
 

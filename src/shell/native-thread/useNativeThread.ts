@@ -393,11 +393,11 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const replayKey = program ? `${program}::${dialog.activeSession || nativeId}` : "";
   const liveReplay = replayKey ? dialog.historyReplay?.[replayKey] ?? null : null;
   const merged = useMemo(
-    () => (live ? dialog.messages.some((m) => (m.kind === "user" && m.messageId) || (m.kind === "turn" && m.turnId))
+    () => (dialog.messages.some((m) => m.seq !== undefined || (m.kind === "user" && m.messageId) || (m.kind === "turn" && m.turnId))
       ? { messages: mergeNativeDialogPages(archiveDialog, dialog.messages), source: "merged" as const }
       : mergeSavedAndLive(archiveDialog, dialog.messages, { replay: liveReplay })
-      : { messages: archiveDialog, source: "saved" as const }),
-    [live, archiveDialog, dialog.messages, liveReplay],
+    ),
+    [archiveDialog, dialog.messages, liveReplay],
   );
   // Older batches come from the saved copy whenever it is part of what is shown.
   const showArchive = !live || (merged.source !== "live" && hasConversation(archiveDialog));
@@ -428,9 +428,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // always ends in an outcome), and a stop on its way counts as running.
   const viewSession = dialog.activeSession || dialog.draftRef || "";
   const stopping = dialog.stopState === "stopping";
-  const protocolWorking = dialog.messages.some((message) =>
-    (message.kind === "turn" && message.live && !message.stop) ||
-    (message.kind === "user" && (message.delivery?.state === "sending" || message.delivery?.state === "queued")));
+  const protocolWorking = dialog.messages.some((message) => message.kind === "turn" && message.live && !message.stop);
+  const pendingDelivery = dialog.messages.some((message) => message.kind === "user" &&
+    (message.delivery?.state === "sending" || message.delivery?.state === "queued"));
   const running = stopping || (live && (
     protocolWorking ||
     occupancyMode === "working"
@@ -446,7 +446,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   else if (row && (row.logged_in === false || row.auth === "none")) blockedReason = tt("{program} 还没有登录，请在设置里登录。", { program: name });
   const ready = live && !draft && !blockedReason && !stopping && !dialog.sessionLoading &&
     !dialog.offline && dialog.occupancyLink === true &&
-    (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking) && dialog.program === program;
+    (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking || pendingDelivery) && dialog.program === program;
   const connected = live && dialog.occupancyLink === true && !dialog.offline;
 
   const send = useCallback(async (text: string) => {

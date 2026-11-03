@@ -6,7 +6,7 @@ const frame = (state, fields) => applyDialog(state, {type:'frame', frame:{progra
 const user = (state, id, text=id, turn_id) => frame(state, {t:'user_message', message_id:id, text, turn_id});
 const turns = state => state.messages.filter(m=>m.kind==='turn');
 
-for (const state of ['sending','queued','injected','replaced','started_new_turn','unsent','cancelled']) {
+for (const state of ['sending','queued','injected','replaced','started_new_turn','delivered','unsent','cancelled']) {
   test(`durable message state ${state} is retained on the addressed bubble and exposed to the host`,()=>{
     let s=user(user(start(),'one'),'two');
     s=frame(s,{t:'prompt_ack', message_id:'one',turn_id:'t1',state,uncertain:state==='unsent'});
@@ -35,7 +35,8 @@ test('late deltas, tools, thoughts, plans and final boundaries stay with the ori
   assert.equal(turns(s)[0].turnId,'t1');
   assert.deepEqual(turns(s)[0].items.map(m=>m.kind),['assistant','thought','tool','plan','assistant']);
   assert.equal(turns(s)[0].items.at(-1).text,'B');
-  assert.equal(s.busy,true,'pending second message survives the first done');
+  assert.equal(s.busy,false,'a queued second message remains visible without asserting active execution');
+  assert.equal(s.messages.find(m=>m.messageId==='two').delivery.state,'queued');
   s=frame(s,{t:'prompt_state',message_id:'two',state:'started_new_turn',turn_id:'t2'});
   s=frame(s,{t:'turn_start',turn_id:'t2'});
   s=frame(s,{t:'delta',turn_id:'t2',text:'C'});

@@ -21,6 +21,8 @@ import { isModelFamilyConfig } from "./notice";
 import { mergeLocalPreviews, normalizeUserMessage } from "./message-attachments";
 import { blankOccupancy } from "./occupancy";
 import { chatTimeMs } from "../../chat-time-separators";
+import { orderNativeFrames } from "../../native-thread/order";
+import { mergeNativeDialogPages } from "../../native-thread/map-dialog";
 import {
   hasOpenTurn,
   isRetriableStreamCancelText,
@@ -34,6 +36,7 @@ import type {
   AgentMessageSender,
   NativeMessageSnapshot,
   NativeMessageDelivery,
+  NativeFramePosition,
   InstallState,
   LoginState,
   ToolCard,
@@ -398,6 +401,8 @@ function blankLogin(): LoginState {
 
 export function initialDialogState(): DialogState {
   return {
+    frameCursor: 0,
+    frameSource: nextId(),
     // 合同 I6：OceanLeo agent 是对话框第一个程序，打开即选中。
     program: "oceanleo",
     messages: [],
@@ -602,7 +607,8 @@ function mergeMessageLists(
   if (!newer.length) return older;
   const last = older[older.length - 1];
   const first = newer[0];
-  if (last.kind === "turn" && first.kind === "turn" && last.acpSession === first.acpSession && !last.stop) {
+  if (last.kind === "turn" && first.kind === "turn" && last.acpSession === first.acpSession &&
+      last.turnId === first.turnId && !last.stop) {
     return [
       ...older.slice(0, -1),
       { ...first, items: mergeTurnItems(last.items, first.items), stop: first.stop || last.stop },
@@ -690,17 +696,18 @@ function appendText(
   state: DialogState,
   kind: "assistant" | "thought",
   text: string,
+  boundary = false,
 ): DialogState {
   if (!text) return state;
   const legacy = kind === "assistant" && (state.program === "claude" || !state.program);
   return mapOpenTurn(state, (items) => {
     const last = items[items.length - 1];
-    if (last && last.kind === kind) {
+    if (!boundary && last && last.kind === kind) {
       const copy = items.slice();
       copy[copy.length - 1] = { ...last, text: last.text + text };
       return copy;
     }
-    const rejoined = legacy ? rejoinSubagentSplit(items, text) : null;
+    const rejoined = legacy && !boundary ? rejoinSubagentSplit(items, text) : null;
     if (rejoined) return rejoined;
     return [...items, { kind, id: nextId(), text }];
   });
@@ -1016,16 +1023,47 @@ export function restoreNativeMessages(state: DialogState, rows: readonly NativeM
     if (!row.message_id || !row.payload) continue;
     state = onFrame(state, { t: "user_message", program: state.program, acp_session: state.activeSession,
       message_id: row.message_id, turn_id: row.turn_id, text: row.payload.text,
-      attachments: row.payload.attachments, created_at: row.created_at, replay: true });
+      attachments: row.payload.attachments, created_at: row.created_at, replay: true, _native_snapshot: true });
     state = onFrame(state, { t: "prompt_state", message_id: row.message_id, turn_id: row.turn_id,
       state: row.state, uncertain: row.uncertain, reason: row.reason, intent: row.intent });
   }
-  return state;
+  return { ...state, messages: orderNativeFrames(state.messages, (message) => message) };
 }
 
 const TURN_FRAMES = new Set(["turn_start", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done"]);
 
 function onFrame(input: DialogState, frame: Record<string, unknown>): DialogState {
+  const source = typeof frame._native_source === "string" ? frame._native_source : input.frameSource ?? nextId();
+  const arrival = typeof frame._native_arrival === "number" ? frame._native_arrival : (input.frameCursor ?? 0) + 1;
+  const next = reduceFrame({ ...input, frameSource: source, frameCursor: arrival }, { ...frame, _native_source: source, _native_arrival: arrival });
+  // Delivery receipts update labels, not the conversation's activity clock.
+  if (!TURN_FRAMES.has(str(frame.t)) && frame.t !== "user_message" && frame.t !== "notice" && frame.t !== "error") return next;
+  const storedSeq = typeof frame.seq === "number" ? frame.seq : Number(frame.seq);
+  const frameSeq = Number.isFinite(storedSeq) && frame.seq != null ? storedSeq : undefined;
+  const at = frameTime(frame).at;
+  const stamp = <T extends NativeFramePosition>(row: T, old?: T): T => ({
+    ...row,
+    ...(row.seq !== undefined || old?.seq !== undefined || frameSeq !== undefined ? { seq: old?.seq ?? row.seq ?? frameSeq } : {}),
+    ...(row.at !== undefined || old?.at !== undefined || at !== undefined ? { at: row.at ?? old?.at ?? at } : {}),
+    ...(frameSeq !== undefined ? { updatedSeq: Math.max(old?.updatedSeq ?? row.updatedSeq ?? frameSeq, frameSeq) } : {}),
+    ...(at !== undefined ? { updatedAt: Math.max(old?.updatedAt ?? row.updatedAt ?? at, at) } : {}),
+    ...(frame._native_snapshot !== true ? { arrival: old?.arrival ?? row.arrival ?? arrival,
+      updatedArrival: arrival, arrivalSource: source } : {}),
+  });
+  const oldRows = new Map(input.messages.map((message) => [message.id, message]));
+  const oldItems = new Map(input.messages.flatMap((message) => message.kind === "turn" ? message.items.map((item) => [item.id, item] as const) : []));
+  return { ...next, messages: next.messages.map((message) => {
+    const old = oldRows.get(message.id);
+    if (message === old) return message;
+    const positioned = stamp(message, old);
+    return positioned.kind === "turn" ? { ...positioned, items: positioned.items.map((item) => {
+      const previous = oldItems.get(item.id);
+      return item === previous ? item : stamp(item, previous);
+    }) } : positioned;
+  }) };
+}
+
+function reduceFrame(input: DialogState, frame: Record<string, unknown>): DialogState {
   const wireTurn = str(frame.turn_id);
   if (wireTurn && TURN_FRAMES.has(str(frame.t))) {
     // Run the existing per-turn parser against only the addressed turn. A new
@@ -1035,10 +1073,19 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
     const turn: TurnMessage = previous ?? { kind: "turn", id: `turn:${wireTurn}`, turnId: wireTurn,
       acpSession: str(frame.acp_session) || input.activeSession, stop: "", items: [] };
     const { turn_id: ignored, ...legacy } = frame;
+    const lastItem = turn.items[turn.items.length - 1];
+    const lastSeq = lastItem?.updatedSeq ?? lastItem?.seq;
+    // A continuation after another user/turn is a new display text row. Keeping
+    // its turn identity must not concatenate it above an intervening input.
+    if (input.messages.some((message) => message.id !== turn.id && (
+      (lastSeq !== undefined && message.seq !== undefined && message.seq > lastSeq) ||
+      (lastItem?.arrivalSource === message.arrivalSource && lastItem?.updatedArrival !== undefined &&
+        message.arrival !== undefined && message.arrival > lastItem.updatedArrival)))) legacy.text_boundary = true;
     const next = str(frame.t) === "turn_start" && previous
       ? armTurn({ ...input, messages: [turn] }, legacy)
       : onFrame({ ...input, messages: str(frame.t) === "turn_start" ? [] : [{ ...turn, stop: "" }] }, legacy);
-    const updated = next.messages.map((m) => m.kind === "turn" ? { ...m, id: turn.id, turnId: wireTurn } : m);
+    const updated = next.messages.map((m) => m.kind === "turn" ? { ...m, id: turn.id, turnId: wireTurn,
+      ...(frame.autonomous === true || previous?.autonomous ? { autonomous: true } : {}) } : m);
     const ownerIndex = input.messages.findIndex((m) => m.kind === "user" && m.turnId === wireTurn);
     const nextUser = ownerIndex < 0 ? -1 : input.messages.findIndex((m, i) => i > ownerIndex && m.kind === "user");
     const insertion = nextUser < 0 ? input.messages.length : nextUser;
@@ -1052,8 +1099,7 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
     }
     const result = { ...next, messages };
     if (frame.t === "done" && messages.some((m) =>
-      (m.kind === "turn" && m.turnId !== wireTurn && !m.stop) ||
-      (m.kind === "user" && (m.delivery?.state === "queued" || m.delivery?.state === "sending")))) {
+      m.kind === "turn" && m.turnId !== wireTurn && m.live === true && !m.stop)) {
       return markTurn(result, str(frame.program) || input.program, str(frame.acp_session) || input.activeSession || input.draftRef || "", true);
     }
     return result;
@@ -1064,7 +1110,7 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
     if (!messageId && !turnId) return input;
     const delivery: NativeMessageDelivery = { state: frame.state as NativeMessageDelivery["state"],
       uncertain: frame.uncertain === true, reason: str(frame.reason), intent: frame.intent === "send_now" ? "send_now" : "normal" };
-    if (!["sending", "queued", "injected", "replaced", "started_new_turn", "unsent", "cancelled"].includes(delivery.state)) return input;
+    if (!["sending", "queued", "injected", "replaced", "started_new_turn", "delivered", "unsent", "cancelled"].includes(delivery.state)) return input;
     // Exact message id first; a turn-only update may address the existing user of that turn, but an explicit
     // (foreign) message id never falls back to the turn.
     return { ...input, messages: input.messages.map((m) => m.kind === "user" &&
@@ -1235,6 +1281,12 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
       const item = asRecord(raw);
       if (item) next = onFrame(next, item);
     }
+    // A transcript can be older than an already accepted local send. Replacing
+    // the current view with that snapshot would erase the bubble until reload.
+    if ((!session || !state.activeSession || session === state.activeSession) &&
+        state.messages.some((message) => message.kind === "user" && message.messageId)) {
+      next = { ...next, messages: mergeNativeDialogPages(state.messages, next.messages) };
+    }
     // An authoritative completed transcript disarms live evidence, including
     // adapters whose replay omitted done or left a tool in_progress.
     let messages = frame.live === false
@@ -1399,11 +1451,11 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
   if (kind === "delta") {
     const text = str(frame.text);
     if (isRetriableStreamCancelText(text)) return armTurn(state, frame);
-    return text ? armTurn(appendText(state, "assistant", text), frame) : state;
+    return text ? armTurn(appendText(state, "assistant", text, frame.text_boundary === true), frame) : state;
   }
   if (kind === "thought") {
     const text = str(frame.text);
-    return text ? armTurn(appendText(state, "thought", text), frame) : state;
+    return text ? armTurn(appendText(state, "thought", text, frame.text_boundary === true), frame) : state;
   }
   if (kind === "tool") return str(frame.id) ? armTurn(onTool(state, frame), frame) : state;
   if (kind === "plan") return armTurn(onPlan(state, frame), frame);
@@ -1484,7 +1536,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
     case "send-began": {
       const pendingSession = state.activeSession || state.draftRef || "";
       return {
-        ...markTurn(state, state.program, pendingSession, true),
+        ...state,
         occupancyPendingAt: Date.now(),
         occupancyPendingSession: pendingSession || null,
       };

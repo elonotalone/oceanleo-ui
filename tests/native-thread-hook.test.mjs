@@ -155,6 +155,26 @@ function session(overrides = {}) {
     native_session_id: "nat-1", created_at: "", updated_at: "", sync_status: "saved", ...overrides };
 }
 
+test("W2: an acknowledged optimistic bubble stays visible while the computer reconnects", async () => {
+  FakeSocket.sockets = [];
+  const own = session({ id: "w2-offline-retention", computer_id: "cc_w2-retention" });
+  globalThis.__taskApi = { async transcript() { return { session: own, frames: [], saved_at: null, sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: own.computer_id, name: "elon", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready");
+    assert.equal(await sendVia(globalThis.__thread, "keep my sent message"), true);
+    const prompt = sent().findLast((frame) => frame.t === "prompt");
+    await act(async () => openSocket().server({ t: "prompt_ack", program: "codex", acp_session: "nat-1", message_id: prompt.message_id, turn_id: "new-turn", state: "queued" }));
+    const bubble = globalThis.__thread.messages.find((row) => row.meta?.native_message_id === prompt.message_id);
+    assert.ok(bubble);
+    await view.update({ computer: { id: own.computer_id, name: "elon", node_online: false } });
+    assert.equal(globalThis.__thread.live, false);
+    assert.equal(globalThis.__thread.messages.filter((row) => row.meta?.native_message_id === prompt.message_id).length, 1);
+    assert.equal(globalThis.__thread.messages.find((row) => row.id === bubble.id)?.content, "keep my sent message");
+    assert.equal(globalThis.__thread.running, false);
+  } finally { view.cleanup(); }
+});
+
 test("W2: native composer receives transfer percent and stays uploading until computer acknowledgement", async () => {
   FakeSocket.sockets = [];
   globalThis.__taskApi = { async transcript() { return { session: session(), frames: [], saved_at: null, sync_status: "saved" }; } };
@@ -249,7 +269,7 @@ test("online: opens the bound native session, send carries task_session_id, answ
     assert.equal(prompt.acp_session, "nat-1");
     assert.equal(prompt.task_session_id, "managed-1");
     await until(() => globalThis.__thread.messages.some((m) => m.role === "user" && m.content === "Ship it"), "echo");
-    assert.equal(globalThis.__thread.running, true);
+    assert.equal(globalThis.__thread.running, false, "send waits for actual turn evidence");
 
     await act(async () => {
       openSocket().server({ t: "turn_start", program: "codex", acp_session: "nat-1" });
@@ -257,6 +277,7 @@ test("online: opens the bound native session, send carries task_session_id, answ
         options: [{ id: "ok", name: "Allow", kind: "allow_once" }, { id: "no", name: "Reject", kind: "reject_once" }], tool: { title: "Edit a.ts" } });
     });
     await until(() => globalThis.__thread.messages.some((m) => m.kind === "gate"), "gate");
+    assert.equal(globalThis.__thread.running, true);
     const gate = globalThis.__thread.messages.find((m) => m.kind === "gate");
     await act(async () => globalThis.__thread.answer(gate, "ok"));
     await until(() => sent().some((frame) => frame.t === "permission"), "permission frame");
@@ -361,7 +382,7 @@ test("send reports the controller's outcome; attachment-only sends go out with f
     assert.equal(prompt.text, "");
     assert.deepEqual(prompt.files, [{ name: "notes.txt", mime: "text/plain", path: "/home/elon/.oceanleo/inbox/notes.txt" }]);
     await until(() => globalThis.__thread.composerAttachments.length === 0, "attachments cleared");
-    assert.equal(globalThis.__thread.running, true, "Stop remains available after send");
+    assert.equal(globalThis.__thread.running, false, "sending a message does not prove the agent started work");
     assert.equal(globalThis.__thread.ready, true, "follow-up input remains sendable");
     assert.equal(await sendVia(globalThis.__thread, "again"), true);
     assert.equal(sent().filter((frame) => frame.t === "prompt").length, 2);
@@ -435,7 +456,7 @@ test("a brand-new session is ready once the link is up, without waiting for an o
     assert.equal(globalThis.__thread.dialog.occupancyAt ?? null, null, "no occupancy reply was ever received");
     assert.equal(await sendVia(globalThis.__thread, "Go"), true, "the controller sends too");
     assert.equal(sent().filter((frame) => frame.t === "prompt").length, 1);
-    assert.equal(globalThis.__thread.running, true, "pending message keeps Stop");
+    assert.equal(globalThis.__thread.running, false, "pending delivery does not claim active execution");
     assert.equal(await sendVia(globalThis.__thread, "Again"), true, "a distinct message can follow a pending one");
     const prompts = sent().filter((frame) => frame.t === "prompt");
     assert.equal(prompts[0].ref, prompts[1].ref, "same provisional session executor");
@@ -721,7 +742,8 @@ test('N3: consecutive messages while working/permission waiting retain distinct 
     assert.equal(messageById(two.message_id).meta.native_delivery.state,'injected');
     await serverFrame({t:'delta',turn_id:'old',text:'late original output'});
     await serverFrame({t:'done',turn_id:'old',stop:'end_turn'});
-    assert.equal(globalThis.__thread.running,true,'waiting message survives earlier completion');
+    assert.equal(globalThis.__thread.running,false,'waiting input stays visible while the agent is idle');
+    assert.equal(messageById(one.message_id).meta.native_delivery.state,'queued');
     assert.equal(globalThis.__thread.messages.find(m=>m.content==='late original output').meta.native_turn_id,'old');
   } finally {view.cleanup();}
 });

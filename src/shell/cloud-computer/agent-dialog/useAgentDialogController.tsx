@@ -1589,7 +1589,9 @@ export function useAgentDialog({
       occupancyBusy: initial.occupancyBusy, sessionId: initial.activeSession || initial.draftRef || "",
       messages: initial.messages, pendingAt: initial.occupancyPendingAt, pendingSession: initial.occupancyPendingSession,
       offline: initial.offline, sessionLoading: initial.sessionLoading });
-    if (occupancyMode !== "idle" && occupancyMode !== "working" && !initial.busy && !initial.messages.some((m) => m.kind === "turn" && m.live && !m.stop)) return false;
+    if (occupancyMode !== "idle" && occupancyMode !== "working" && !initial.busy && !initial.messages.some((m) =>
+      (m.kind === "turn" && m.live && !m.stop) ||
+      (m.kind === "user" && (m.delivery?.state === "sending" || m.delivery?.state === "queued")))) return false;
     const text = (typeof override === "string" ? override : draftRef.current).trim();
     const ids = attachmentsRef.current.map((file) => file.id);
     if (!text && !ids.length) return false;

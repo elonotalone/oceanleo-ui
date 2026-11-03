@@ -1,0 +1,180 @@
+[
+  {
+    "seq": 99374,
+    "frame": {
+      "t": "prompt_state",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "967f5615-ae99-4066-996d-0636482330be",
+      "message_id": "0de49ee9-428f-497c-9459-26dd7fde5304",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "state": "queued"
+    },
+    "created_at": "2026-11-03 12:24:59.34827+00"
+  },
+  {
+    "seq": 99375,
+    "frame": {
+      "t": "user_message",
+      "ts": "2026-11-03T12:25:03.119397+00:00",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "967f5615-ae99-4066-996d-0636482330be",
+      "message_id": "0de49ee9-428f-497c-9459-26dd7fde5304",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "text": "user_message-99375"
+    },
+    "created_at": "2026-11-03 12:25:03.646508+00"
+  },
+  {
+    "seq": 99376,
+    "frame": {
+      "t": "turn_start",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "967f5615-ae99-4066-996d-0636482330be",
+      "message_id": "0de49ee9-428f-497c-9459-26dd7fde5304",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b"
+    },
+    "created_at": "2026-11-03 12:25:06.163084+00"
+  },
+  {
+    "seq": 99379,
+    "frame": {
+      "t": "prompt_state",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "967f5615-ae99-4066-996d-0636482330be",
+      "message_id": "0de49ee9-428f-497c-9459-26dd7fde5304",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "state": "started_new_turn"
+    },
+    "created_at": "2026-11-03 12:25:14.007845+00"
+  },
+  {
+    "seq": 99380,
+    "frame": {
+      "t": "delta",
+      "program": "claude",
+      "turn_id": "967f5615-ae99-4066-996d-0636482330be",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "text": "delta-99380"
+    },
+    "created_at": "2026-11-03 12:25:14.007845+00"
+  },
+  {
+    "seq": 99383,
+    "frame": {
+      "t": "done",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "967f5615-ae99-4066-996d-0636482330be",
+      "message_id": "0de49ee9-428f-497c-9459-26dd7fde5304",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "stop_reason": "end_turn"
+    },
+    "created_at": "2026-11-03 12:25:21.791495+00"
+  },
+  {
+    "seq": 99387,
+    "frame": {
+      "t": "prompt_ack",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "message_id": "52c09bf5-fe74-4e73-bd45-62ee0869732d",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "state": "queued"
+    },
+    "created_at": "2026-11-03 12:25:29.445635+00"
+  },
+  {
+    "seq": 99390,
+    "frame": {
+      "t": "prompt_state",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "message_id": "52c09bf5-fe74-4e73-bd45-62ee0869732d",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "state": "queued"
+    },
+    "created_at": "2026-11-03 12:25:36.210493+00"
+  },
+  {
+    "seq": 99391,
+    "frame": {
+      "t": "prompt_state",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "message_id": "52c09bf5-fe74-4e73-bd45-62ee0869732d",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "state": "queued"
+    },
+    "created_at": "2026-11-03 12:25:36.210493+00"
+  },
+  {
+    "seq": 99394,
+    "frame": {
+      "t": "user_message",
+      "ts": "2026-11-03T12:25:45.854954+00:00",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "message_id": "52c09bf5-fe74-4e73-bd45-62ee0869732d",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "text": "user_message-99394"
+    },
+    "created_at": "2026-11-03 12:25:46.407227+00"
+  },
+  {
+    "seq": 99395,
+    "frame": {
+      "t": "turn_start",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "message_id": "52c09bf5-fe74-4e73-bd45-62ee0869732d",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b"
+    },
+    "created_at": "2026-11-03 12:25:49.031468+00"
+  },
+  {
+    "seq": 99396,
+    "frame": {
+      "t": "prompt_state",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "message_id": "52c09bf5-fe74-4e73-bd45-62ee0869732d",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "state": "started_new_turn"
+    },
+    "created_at": "2026-11-03 12:25:55.302704+00"
+  },
+  {
+    "seq": 99397,
+    "frame": {
+      "t": "delta",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "text": "delta-99397"
+    },
+    "created_at": "2026-11-03 12:25:55.302704+00"
+  },
+  {
+    "seq": 99398,
+    "frame": {
+      "t": "done",
+      "intent": "normal",
+      "program": "claude",
+      "turn_id": "3bec46a5-f176-4547-bf1c-1b68a3cc2dc6",
+      "message_id": "52c09bf5-fe74-4e73-bd45-62ee0869732d",
+      "acp_session": "b4830155-e228-44c1-8aef-88c43fc18d1b",
+      "stop_reason": "end_turn"
+    },
+    "created_at": "2026-11-03 12:25:58.654449+00"
+  }
+]
