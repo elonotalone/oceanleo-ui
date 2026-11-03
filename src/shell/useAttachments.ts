@@ -76,6 +76,8 @@ export interface UseAttachments {
 export function useAttachments(
   siteId: string,
   onError?: (msg: string) => void,
+  /** Clear only a matching upload error; unrelated host errors remain owned by the host. */
+  onErrorResolved?: (message: string) => void,
 ): UseAttachments {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 
@@ -83,6 +85,24 @@ export function useAttachments(
   const filesRef = useRef(new Map<string, File>());
   // A5: the in-flight upload of each tile; removing the tile aborts it.
   const uploadsRef = useRef(new Map<string, AbortController>());
+  const onErrorResolvedRef = useRef(onErrorResolved);
+  onErrorResolvedRef.current = onErrorResolved;
+  // Track message ownership synchronously, outside React's replayable state updaters.
+  const failedErrorsRef = useRef(new Map<string, string>());
+  const oversizeErrorRef = useRef(false);
+
+  const reportResolved = useCallback((message: string) => {
+    if ([...failedErrorsRef.current.values()].includes(message)) return;
+    if (oversizeErrorRef.current && message === PRIVATE_ATTACHMENT_TOO_LARGE) return;
+    onErrorResolvedRef.current?.(message);
+  }, []);
+
+  const resolveAttachmentError = useCallback((id: string) => {
+    const message = failedErrorsRef.current.get(id);
+    if (!message) return;
+    failedErrorsRef.current.delete(id);
+    reportResolved(message);
+  }, [reportResolved]);
 
   const startUpload = useCallback(
     (id: string, file: File) => {
@@ -114,8 +134,10 @@ export function useAttachments(
                 : a,
             ),
           );
+          resolveAttachmentError(id);
         } else {
           // Keep the tile with a retry badge; it is not sent while failed.
+          failedErrorsRef.current.set(id, r.error || "文件上传失败");
           setAttachments((prev) =>
             prev.map((a) => (a.id === id ? { ...a, uploading: false, failed: true, failedReason: r.error || "文件上传失败" } : a)),
           );
@@ -124,22 +146,28 @@ export function useAttachments(
       }, () => {
         if (controller.signal.aborted) return;
         if (uploadsRef.current.get(id) === controller) uploadsRef.current.delete(id);
+        failedErrorsRef.current.set(id, "文件上传失败");
         setAttachments((prev) => prev.map((a) => a.id === id
           ? { ...a, uploading: false, failed: true, failedReason: "文件上传失败" } : a));
         onError?.("文件上传失败");
       });
     },
-    [siteId, onError],
+    [siteId, onError, resolveAttachmentError],
   );
 
   const handleAttachFiles = useCallback(
     (files: File[]) => {
+      let acceptedFile = false;
+      let rejectedOversize = false;
       for (const file of files) {
         if (file.size > PRIVATE_ATTACHMENT_MAX_BYTES) {
           // Private storage only: an oversize file is refused, never sent public.
+          rejectedOversize = true;
+          oversizeErrorRef.current = true;
           onError?.(PRIVATE_ATTACHMENT_TOO_LARGE);
           continue;
         }
+        acceptedFile = true;
         const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const isImage = file.type.startsWith("image/");
         const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
@@ -154,8 +182,13 @@ export function useAttachments(
         ]);
         startUpload(id, file);
       }
+      // A mixed selection still has an actionable validation failure.
+      if (acceptedFile && !rejectedOversize && oversizeErrorRef.current) {
+        oversizeErrorRef.current = false;
+        reportResolved(PRIVATE_ATTACHMENT_TOO_LARGE);
+      }
     },
-    [onError, startUpload],
+    [onError, startUpload, reportResolved],
   );
 
   const retryAttachment = useCallback(
@@ -166,8 +199,9 @@ export function useAttachments(
         prev.map((a) => (a.id === id && a.failed ? { ...a, uploading: true, failed: false, failedReason: undefined } : a)),
       );
       startUpload(id, file);
+      resolveAttachmentError(id);
     },
-    [startUpload],
+    [startUpload, resolveAttachmentError],
   );
 
   const addReady = useCallback(
@@ -230,7 +264,8 @@ export function useAttachments(
     uploadsRef.current.delete(id);
     filesRef.current.delete(id);
     setAttachments((prev) => prev.filter((a) => a.id !== id));
-  }, []);
+    resolveAttachmentError(id);
+  }, [resolveAttachmentError]);
 
   const restoreReady = useCallback((items: PendingAttachment[]) => {
     const readyItems = items.filter(
@@ -249,11 +284,16 @@ export function useAttachments(
   );
 
   const clear = useCallback(() => {
+    const messages = new Set(failedErrorsRef.current.values());
+    if (oversizeErrorRef.current) messages.add(PRIVATE_ATTACHMENT_TOO_LARGE);
     for (const controller of uploadsRef.current.values()) controller.abort();
     uploadsRef.current.clear();
     filesRef.current.clear();
+    failedErrorsRef.current.clear();
+    oversizeErrorRef.current = false;
     setAttachments([]);
-  }, []);
+    for (const message of messages) reportResolved(message);
+  }, [reportResolved]);
 
   return {
     attachments,
