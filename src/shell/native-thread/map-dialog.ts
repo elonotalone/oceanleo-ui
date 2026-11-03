@@ -378,23 +378,26 @@ export function dialogToAgentMessages(
 export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], live: readonly AgentDialogMessage[]): AgentDialogMessage[] {
   const out = saved.slice();
   let userAnchor = -1;
+  // The gateway's text-only replay of the native session (session/load after a gateway
+  // restart: no message/turn identity) restates saved rows; it never adds them again.
+  let replayAnchor = false;
   for (const row of live) {
     let index = out.findIndex((own) => own.kind === row.kind && (
       row.kind === "user" && own.kind === "user" && row.messageId ? own.messageId === row.messageId :
       row.kind === "turn" && own.kind === "turn" && row.turnId ? own.turnId === row.turnId : own.id === row.id));
     if (index < 0 && row.kind === "user" && !row.messageId) {
-      index = out.findIndex((own, at) => at > userAnchor && own.kind === "user" && !own.messageId && own.text === row.text &&
+      index = out.findIndex((own, at) => at > userAnchor && own.kind === "user" && (!own.messageId || row.replay === true) && own.text === row.text &&
         (own.at == null || row.at == null || Math.abs(own.at - row.at) < 10_000));
     }
     if (index < 0 && row.kind === "turn" && !row.turnId && userAnchor >= 0) {
       for (let at = userAnchor + 1; at < out.length; at += 1) {
         const candidate = out[at];
         if (candidate.kind === "user") break;
-        if (candidate.kind === "turn" && !candidate.turnId) { index = at; break; }
+        if (candidate.kind === "turn" && (!candidate.turnId || replayAnchor)) { index = at; break; }
       }
     }
-    if (index < 0) { out.push(row); if (row.kind === "user") userAnchor = out.length - 1; continue; }
-    if (row.kind === "user") userAnchor = index;
+    if (index < 0) { out.push(row); if (row.kind === "user") { userAnchor = out.length - 1; replayAnchor = false; } continue; }
+    if (row.kind === "user") { userAnchor = index; replayAnchor = row.replay === true && !row.messageId; }
     const own = out[index];
     if (row.kind === "user" && own.kind === "user") {
       const attachments = row.attachments?.some((item) => item.archive) ? mergeLocalPreviews(row.attachments, own.attachments ?? [])
@@ -423,7 +426,12 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
           const old = items[at];
           const kept = (old.kind === "assistant" || old.kind === "thought") &&
             (item.kind === "assistant" || item.kind === "thought") && old.text.length > item.text.length ? old : item;
-          items[at] = { ...kept, ...mergeNativePosition(old, item) };
+          // Seen again on the newer page, an item keeps that page's arrival, as a user
+          // does: later rows of that page then sort after it. With only the echoed user
+          // carrying it, a live U2 landed between a saved U1 and its saved answer A1
+          // (V1 2026-11-04). The turn keeps its own first position.
+          items[at] = { ...kept, ...mergeNativePosition(old, item),
+            ...(item.arrivalSource ? { arrivalSource: item.arrivalSource, arrival: item.arrival, updatedArrival: item.updatedArrival } : {}) };
         }
       }
       const status = own.turnStateSeq !== undefined && row.turnStateSeq !== undefined && own.turnStateSeq > row.turnStateSeq

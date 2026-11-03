@@ -172,3 +172,85 @@ test("archive requests stay read-only until explicit gateway confirmation, inclu
   s = frame(s, { t: "permission", turn_id: "pending", id: "p", title: "Read", replay: true, actionable: true, request_state: "expired" });
   assert.ok(mapped(s).every((m) => m.meta.native_actionable === false));
 });
+
+test("a saved snapshot continued by live turns keeps the saved answer above everything that arrives live (V1 03:32 U1)", () => {
+  // Recorded identities/times of V1's Codex task (seq 104999..105041); texts replaced.
+  // Saved page: U1 (104999) and its answer A1 (105004). Live (no stored seq, server
+  // arrival order): U2's turn, a browser-sent U3 injected into it, then the answers.
+  const codex = () => ({ ...initialDialogState(), program: "codex", activeSession: "s" });
+  const at = (s, row) => applyDialog(s, { type: "frame", frame: { program: "codex", acp_session: "s", ...row } });
+  const savedRows = [
+    { t: "user_message", seq: 104999, created_at: "2026-11-03T18:53:45.012Z", ts: "2026-11-03T18:53:44.900Z", message_id: "v1-f8e80", turn_id: "bd82526f", text: "U1" },
+    { t: "turn_start", seq: 105001, created_at: "2026-11-03T18:53:47.802Z", message_id: "v1-f8e80", turn_id: "bd82526f" },
+    { t: "prompt_state", seq: 105003, created_at: "2026-11-03T18:53:51.761Z", message_id: "v1-f8e80", turn_id: "bd82526f", state: "started_new_turn", reason: "idle" },
+    { t: "delta", seq: 105004, created_at: "2026-11-03T18:53:51.761Z", message_id: "v1-f8e80", turn_id: "bd82526f", text: "A1" },
+    { t: "done", seq: 105005, created_at: "2026-11-03T18:53:52.233Z", message_id: "v1-f8e80", turn_id: "bd82526f", stop_reason: "end_turn" },
+  ];
+  const saved = savedRows.reduce((s, row) => at(s, { ...row, replay: true }), codex());
+  const liveRows = [
+    { t: "prompt_ack", message_id: "v1-9e68b", turn_id: "b147999f", state: "queued", reason: "accepting" },
+    { t: "user_message", ts: "2026-11-03T18:54:24.000Z", message_id: "v1-9e68b", turn_id: "b147999f", text: "U2" },
+    { t: "turn_start", message_id: "v1-9e68b", turn_id: "b147999f" },
+    { t: "delta", message_id: "v1-9e68b", turn_id: "b147999f", text: "A2 first" },
+    { t: "user_message", ts: "2026-11-03T18:54:34.700Z", message_id: "ff8e3f49", turn_id: "3811f052", text: "U3" },
+    { t: "prompt_state", message_id: "ff8e3f49", turn_id: "b147999f", state: "injected", reason: "steer" },
+    { t: "delta", message_id: "v1-9e68b", turn_id: "b147999f", text: "A2 second" },
+    { t: "done", message_id: "v1-9e68b", turn_id: "b147999f", stop_reason: "end_turn" },
+  ];
+  // On attach the gateway first sends the copy it holds (`transcript`, mode replace):
+  // the same frames with their OceanLeo identity, but no stored seq or time.
+  let live = at(codex(), { t: "transcript", mode: "replace", live: false,
+    frames: savedRows.map(({ seq: _seq, created_at: _at, ...row }) => ({ program: "codex", acp_session: "s", ...row })) });
+  const contents = [];
+  for (const row of liveRows) {
+    live = at(live, row);
+    const union = mergeNativeDialogPages(saved.messages, live.messages);
+    contents.push(dialogToAgentMessages(union, { live: true }).map((m) => m.content));
+  }
+  for (const rows of contents) {
+    assert.deepEqual(rows.slice(0, 2), ["U1", "A1"], `saved U1/A1 stay first and together: ${JSON.stringify(rows)}`);
+  }
+  assert.deepEqual(contents.at(-1), ["U1", "A1", "U2", "A2 first", "U3", "A2 second"]);
+});
+
+test("a text-only native replay on attach restates the saved turn once, and live turns still follow its answer", () => {
+  // Recorded identities/times of V1's Codex task (seq 104999..105041); texts replaced.
+  // Saved page: U1 (104999) and its answer A1 (105004). Live (no stored seq, server
+  // arrival order): U2's turn, a browser-sent U3 injected into it, then the answers.
+  const codex = () => ({ ...initialDialogState(), program: "codex", activeSession: "s" });
+  const at = (s, row) => applyDialog(s, { type: "frame", frame: { program: "codex", acp_session: "s", ...row } });
+  const savedRows = [
+    { t: "user_message", seq: 104999, created_at: "2026-11-03T18:53:45.012Z", ts: "2026-11-03T18:53:44.900Z", message_id: "v1-f8e80", turn_id: "bd82526f", text: "U1" },
+    { t: "turn_start", seq: 105001, created_at: "2026-11-03T18:53:47.802Z", message_id: "v1-f8e80", turn_id: "bd82526f" },
+    { t: "prompt_state", seq: 105003, created_at: "2026-11-03T18:53:51.761Z", message_id: "v1-f8e80", turn_id: "bd82526f", state: "started_new_turn", reason: "idle" },
+    { t: "delta", seq: 105004, created_at: "2026-11-03T18:53:51.761Z", message_id: "v1-f8e80", turn_id: "bd82526f", text: "A1" },
+    { t: "done", seq: 105005, created_at: "2026-11-03T18:53:52.233Z", message_id: "v1-f8e80", turn_id: "bd82526f", stop_reason: "end_turn" },
+  ];
+  const saved = savedRows.reduce((s, row) => at(s, { ...row, replay: true }), codex());
+  const liveRows = [
+    { t: "prompt_ack", message_id: "v1-9e68b", turn_id: "b147999f", state: "queued", reason: "accepting" },
+    { t: "user_message", ts: "2026-11-03T18:54:24.000Z", message_id: "v1-9e68b", turn_id: "b147999f", text: "U2" },
+    { t: "turn_start", message_id: "v1-9e68b", turn_id: "b147999f" },
+    { t: "delta", message_id: "v1-9e68b", turn_id: "b147999f", text: "A2 first" },
+    { t: "user_message", ts: "2026-11-03T18:54:34.700Z", message_id: "ff8e3f49", turn_id: "3811f052", text: "U3" },
+    { t: "prompt_state", message_id: "ff8e3f49", turn_id: "b147999f", state: "injected", reason: "steer" },
+    { t: "delta", message_id: "v1-9e68b", turn_id: "b147999f", text: "A2 second" },
+    { t: "done", message_id: "v1-9e68b", turn_id: "b147999f", stop_reason: "end_turn" },
+  ];
+  // After a gateway restart the copy is the native session/load replay: text only,
+  // no OceanLeo message/turn identity, no stored seq or time.
+  let live = at(codex(), { t: "transcript", mode: "replace", live: false, frames: [
+    { t: "user_message", program: "codex", acp_session: "s", text: "U1", replay: true },
+    { t: "delta", program: "codex", acp_session: "s", text: "A1", replay: true },
+  ] });
+  const contents = [];
+  for (const row of liveRows) {
+    live = at(live, row);
+    const union = mergeNativeDialogPages(saved.messages, live.messages);
+    contents.push(dialogToAgentMessages(union, { live: true }).map((m) => m.content));
+  }
+  for (const rows of contents) {
+    assert.deepEqual(rows.slice(0, 2), ["U1", "A1"], `saved U1/A1 stay first and together: ${JSON.stringify(rows)}`);
+  }
+  assert.deepEqual(contents.at(-1), ["U1", "A1", "U2", "A2 first", "U3", "A2 second"]);
+});
