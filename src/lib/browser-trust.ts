@@ -27,6 +27,11 @@ export type BrowserPendingApproval = {
   reason: string;
 };
 export type BrowserLoginCandidate = { id: string; origin: string };
+export type BrowserLoginDeletePreview = {
+  login: BrowserLoginCandidate;
+  related_logins: BrowserLoginCandidate[];
+  revision: string;
+};
 export type BrowserSessionTrust = {
   pending_approvals: BrowserPendingApproval[];
   login_candidates: BrowserLoginCandidate[];
@@ -105,6 +110,31 @@ function projectGrant(row: Record<string, unknown>): BrowserApprovalGrant | null
   } : null;
 }
 
+function loginDeleteRevision(value: unknown): value is string {
+  return typeof value === "string" && /^(0|[1-9][0-9]{0,127})$/.test(value);
+}
+
+function projectLoginReference(value: unknown): BrowserLoginCandidate | null {
+  const row = record(value);
+  const id = text(row?.id);
+  const origin = browserTrustOrigin(row?.origin);
+  return id && row?.id === id && origin ? { id, origin } : null;
+}
+
+function projectLoginDeletePreview(value: unknown, expectedId: string): BrowserLoginDeletePreview | null {
+  const row = record(value);
+  if (!row) return null;
+  const login = projectLoginReference(row.login);
+  const related_logins = items(row.related_logins, projectLoginReference);
+  if (!login || login.id !== expectedId || !related_logins || !loginDeleteRevision(row.revision)) return null;
+  const seen = new Set([login.id]);
+  for (const related of related_logins) {
+    if (seen.has(related.id)) return null;
+    seen.add(related.id);
+  }
+  return { login, related_logins, revision: row.revision };
+}
+
 /** Explicit projection prevents profile bytes, cookies and action arguments entering UI state. */
 export function projectBrowserSessionTrust(value: unknown): BrowserSessionTrust | null {
   const row = record(value);
@@ -172,6 +202,12 @@ export function createCloudBrowserTrustClient(request: BrowserTrustRequest = aut
     }, "GET", undefined, signal),
     deleteLogin: (id: string, signal?: AbortSignal) =>
       call(`${root}/logins/${encodeURIComponent(id)}`, acknowledged, "DELETE", undefined, signal),
+    loginDeletePreview: (id: string, signal?: AbortSignal) =>
+      call(`${root}/logins/${encodeURIComponent(id)}/delete-preview`, value => projectLoginDeletePreview(value, id), "GET", undefined, signal),
+    deleteRelatedLogins: (id: string, revision: string, signal?: AbortSignal): Promise<AgentApiResult<{ ok: true }>> =>
+      loginDeleteRevision(revision)
+        ? call(`${root}/logins/${encodeURIComponent(id)}?include_related=true&expected_revision=${encodeURIComponent(revision)}`, acknowledged, "DELETE", undefined, signal)
+        : Promise.resolve({ ok: false, status: 422, error: "BROWSER_TRUST_INVALID_RESPONSE" }),
     deleteAllLogins: (signal?: AbortSignal) =>
       call(root + "/logins", acknowledged, "DELETE", undefined, signal),
     approvals: (signal?: AbortSignal) => call(root + "/approvals", (value) => {

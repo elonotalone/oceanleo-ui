@@ -80,6 +80,67 @@ test("trust settings/logins/grants use only the owner-scoped collection endpoint
   ]);
 });
 
+test("login deletion preview projects only the requested record, related site references and exact decimal revision", async () => {
+  const revision = "9223372036854775807";
+  const { client, calls } = harness({
+    login: { id: "login/1", origin: "https://accounts.example.com/login?token=hidden", cookies: "never-in-state" },
+    related_logins: [{ id: "login/2", origin: "https://mail.example.com/inbox", owner_id: "never-in-state" }],
+    revision, provider_session: "never-in-state",
+  });
+  assert.deepEqual(await client.loginDeletePreview("login/1"), { ok: true, data: {
+    login: { id: "login/1", origin: "https://accounts.example.com" },
+    related_logins: [{ id: "login/2", origin: "https://mail.example.com" }], revision,
+  } });
+  assert.equal(calls[0].path, "/v1/browser/trust/logins/login%2F1/delete-preview");
+  assert.equal(calls[0].init.method, "GET");
+  assert.equal(calls[0].init.body, undefined);
+});
+
+test("related deletion sends only server revision and group intent, preserving record-only and all-delete paths", async () => {
+  const { client, calls } = harness();
+  await client.deleteRelatedLogins("login/1", "9223372036854775807");
+  await client.deleteLogin("login/1");
+  await client.deleteAllLogins();
+  assert.deepEqual(calls.map(call => [call.path, call.init.method, call.init.body]), [
+    ["/v1/browser/trust/logins/login%2F1?include_related=true&expected_revision=9223372036854775807", "DELETE", undefined],
+    ["/v1/browser/trust/logins/login%2F1", "DELETE", undefined],
+    ["/v1/browser/trust/logins", "DELETE", undefined],
+  ]);
+  for (const invalid of [1, "", "01", "-1", "+1", "1.0", "1e3", " 1", "1&other=true"]) {
+    assert.equal((await client.deleteRelatedLogins("login/1", invalid)).ok, false);
+  }
+  assert.equal(calls.length, 3, "invalid revisions never reach a destructive endpoint");
+});
+
+test("foreign targets, repeated references and malformed deletion previews fail closed", async () => {
+  const valid = { login: { id: "mine", origin: "https://accounts.example.com" }, related_logins: [{ id: "related", origin: "https://mail.example.com" }], revision: "12" };
+  for (const value of [
+    { ...valid, login: { ...valid.login, id: "foreign" } },
+    { ...valid, related_logins: [valid.login] },
+    { ...valid, related_logins: [valid.related_logins[0], valid.related_logins[0]] },
+    { ...valid, related_logins: [{ id: "related", origin: "javascript:secret" }] },
+    { ...valid, revision: 12 },
+    { ...valid, revision: "012" },
+    { ...valid, revision: undefined },
+  ]) {
+    const { client, calls } = harness(value);
+    assert.deepEqual(await client.loginDeletePreview("mine"), { ok: false, status: 502, error: "BROWSER_TRUST_INVALID_RESPONSE" });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].init.method, "GET");
+  }
+});
+
+test("a stale related-delete receipt preserves409 and never retries destruction in the API helper", async () => {
+  const calls = [];
+  const client = createCloudBrowserTrustClient(async (path, init) => {
+    calls.push({ path, init });
+    return { ok: false, status: 409, error: "private raw server detail" };
+  });
+  assert.deepEqual(await client.deleteRelatedLogins("mine", "12"), { ok: false, status: 409, error: "BROWSER_TRUST_UNAVAILABLE" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.method, "DELETE");
+});
+
 test("approval choices send the exact selected-session scope without durations or action replay", async () => {
   const { client, calls } = harness({ ok: true, result: { plaintext: "never-in-state" } });
   for (const scope of ["once", "task", "site_action"]) {

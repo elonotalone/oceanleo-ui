@@ -75,6 +75,11 @@ function runtime(status = empty()) {
     logins: async () => ({ ok: true, data: { logins: value.savedLogins } }),
     approvals: async () => ({ ok: true, data: { approvals: value.grants } }),
     updateSettings: async (enabled) => { calls.push({ method: "settings", enabled }); value.preferences = { save_logins: enabled }; return { ok: true, data: value.preferences }; },
+    loginDeletePreview: async (id, signal) => {
+      calls.push({ method: "loginDeletePreview", id, signal });
+      const login = value.savedLogins.find(item => item.id === id);
+      return { ok: true, data: { login: { id, origin: login.origin }, related_logins: [], revision: "1" } };
+    },
     deleteLogin: async (id) => { calls.push({ method: "deleteLogin", id }); return { ok: true }; },
     deleteAllLogins: async () => { calls.push({ method: "deleteAllLogins" }); return { ok: true }; },
     revokeApproval: async (id) => { calls.push({ method: "revokeApproval", id }); return { ok: true }; },
