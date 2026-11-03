@@ -106,8 +106,9 @@ test('a peer throw after possible side effect is never replayed on WS and consum
 test('partial completion progress cannot reset the original oldest outstanding deadline',async t=>{
   const h=await harness(t),p=peer();trust(h,p);p.sent.length=0;
   for(let i=0;i<8;i++)h.stream.send({kind:'keypress',key:'ArrowRight'});
-  h.step(2600);h.report(10,3);h.step(2600);
-  assert.deepEqual(h.errors,['input_ack_unknown']);assert.equal(inputs(h).filter(m=>m.action.kind==='keypress').length,0);assert.equal(h.socket.readyState,3);
+  h.step(2000);h.report(10,3);h.step(1200);h.stream.send(motion(.5));h.step();
+  assert.deepEqual(h.errors,[]);assert.equal(inputs(h).filter(m=>m.action.kind==='keypress').length,0,'abandoned peer keypresses are not replayed');
+  assert.ok(inputs(h).some(m=>m.action.kind==='release_all'),'the original deadline still expired and fell back');assert.equal(h.socket.readyState,1);
 });
 test('explicit handoff drains peer retirement before WS release and completes only on WS retirement',async t=>{
   const h=await harness(t),p=peer();trust(h,p);p.sent.length=0;
@@ -170,10 +171,10 @@ test('an unproven late-attach probe allows WS motion and retries after lost star
   for(let round=0;round<5;round++){
     for(let i=0;i<40;i++)h.stream.send(motion(i/40));
     for(const item of inputs(h).filter(m=>m.seq>h.acked))h.retireWs(item.seq);h.step();
-    assert.equal(p.sent.length,round+1,'one new harmless probe per failed receipt interval');
+    assert.equal(p.sent.length,round+1,'one new harmless probe per (backed-off) failed receipt interval');
     const before=inputs(h).length;for(let i=0;i<20;i++){h.stream.send(motion(i/20));for(const item of inputs(h).filter(m=>m.seq>h.acked))h.retireWs(item.seq);h.step();}
     assert.ok(inputs(h).length>before,'an unproven probe cannot freeze WS motion');
-    if(round<4)h.step(1600);
+    if(round<4){h.step(1500*2**round-600);for(let i=0;i<4;i++)h.stream.send(motion(.3));assert.equal(p.sent.length,round+1,'lost probes back off');h.step(1000);}
   }
   assert.deepEqual(p.sent.map(m=>m.a.kind),Array(5).fill('release_all'));assert.deepEqual(h.errors,[]);
 });
@@ -258,4 +259,24 @@ test('a gateway socket silence over 1.5 s with DC writes in flight pauses input 
   assert.equal(p.sent.length,8,'the window stays full while receipts are delayed');
   h.report(p.sent.at(-1).seq,p.sent.at(-1).seq);h.step();
   assert.ok(p.sent.length>8,'input resumes when the delayed receipts arrive');assert.equal(h.socket.readyState,1);
+});
+test('a DC receipt silence past the deadline falls back to WS behind release_all and re-proves the lane, never closing',async t=>{
+  const h=await harness(t),p=peer();trust(h,p);p.sent.length=0;
+  for(let i=0;i<20;i++)h.stream.send(motion(i/20));
+  assert.equal(p.sent.length,8);const lastDc=p.sent.at(-1).seq;
+  for(let i=0;i<32;i++){h.stream.send(motion(.6));h.step(200);}
+  assert.deepEqual(h.errors,[],'5.6 s of silence is not a session failure');assert.equal(h.socket.readyState,1);
+  const ws=inputs(h).filter(m=>m.seq>lastDc);
+  assert.equal(ws[0]?.action.kind,'release_all','the fallback starts with a release_all barrier over WS');
+  assert.ok(ws.some(m=>m.action.kind==='move'),'motion continues over WS');
+  assert.equal(new Set([...p.sent,...inputs(h)].map(m=>m.seq)).size,p.sent.length+inputs(h).length,'no seq reused, nothing replayed');
+});
+test('a frozen completion value (re-sent by the gateway) falls back to admission credit while admission advances',async t=>{
+  const h=await harness(t),p=peer();trust(h,p,0);p.sent.length=0;
+  for(let i=0;i<20;i++)h.stream.send(motion(i/20));
+  assert.equal(p.sent.length,8);
+  for(let i=0;i<12;i++){h.stream.send(motion(.7));h.report(p.sent.at(-1).seq,2);h.step(500);}
+  assert.deepEqual(h.errors,[]);assert.ok(p.sent.length>8,'admission credit moves DC on');assert.equal(h.stream.inputPath(),'data_channel');
+  const before=p.sent.length;h.report(p.sent.at(-1).seq,2);h.step();h.stream.send(motion(.8));h.step();
+  assert.ok(p.sent.length>before,'the same frozen value cannot re-enable completion credit');
 });

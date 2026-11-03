@@ -4,6 +4,8 @@ import type { RemoteInputSchedulerDiagnostics } from "./remote-desktop-diagnosti
 type Entry = { barrier?: boolean; action: RemoteDesktopAction; seq?: number; lane?: "websocket" | "data_channel"; sentAt?: number };
 const WINDOW = 8;
 const KEY_BACKLOG = 32;
+/** Completion credit that stops advancing this long while admission runs ahead falls back to admission. */
+const COMPLETION_STALL_MS = 1500;
 const SOFT = new Set(["move", "scroll"]);
 const RELEASE = new Set(["release_all", "pointer_up", "key_up"]);
 export interface RemoteInputSchedulerOptions {
@@ -30,6 +32,9 @@ export class RemoteInputScheduler {
   private peerCompleted: number | undefined;
   private peerUpgradeFence = 0;
   private peerUpgradeAt = 0;
+  /** Completion value the host stopped advancing (the gateway keeps re-sending its last one). */
+  private completionFrozenAt: number | undefined;
+  private completionStalledSince: number | undefined;
   private ended = false;
   private busy = false;
   private heldKeys = new Set<string>();
@@ -174,12 +179,38 @@ export class RemoteInputScheduler {
     if (valid(value.admissionSeq) && value.completedSeq === undefined && this.peerCompleted !== undefined) {
       this.peerCompleted = undefined; this.peerUpgradeFence = 0;
     }
-    if (valid(value.completedSeq)) {
-      if (this.peerCompleted === undefined) { this.peerUpgradeFence = this.peerWritten; this.peerUpgradeAt = this.options.now(); }
+    const now = this.options.now();
+    // Only a value past the frozen one re-enables completion credit after a stall.
+    if (valid(value.completedSeq) && (this.completionFrozenAt === undefined || value.completedSeq > this.completionFrozenAt)) {
+      this.completionFrozenAt = undefined;
+      if (this.peerCompleted === undefined) { this.peerUpgradeFence = this.peerWritten; this.peerUpgradeAt = now; }
+      if (this.peerCompleted === undefined || value.completedSeq > this.peerCompleted) this.completionStalledSince = undefined;
       this.peerCompleted = Math.max(this.peerCompleted ?? 0, value.completedSeq);
     }
+    // The gateway re-sends the last stored completion, so a host that stopped reporting it (pending
+    // overflow, generation change) shows a frozen value while admission keeps advancing.
+    if (this.peerCompleted !== undefined && this.peerAdmission > this.peerCompleted) {
+      this.completionStalledSince ??= now;
+      if (now - this.completionStalledSince > COMPLETION_STALL_MS) {
+        this.completionFrozenAt = this.peerCompleted; this.peerCompleted = undefined; this.peerUpgradeFence = 0; this.completionStalledSince = undefined;
+      }
+    } else this.completionStalledSince = undefined;
     const through = this.peerCompleted ?? this.peerAdmission;
     for (const [seq, entry] of this.outstanding) if (entry.lane === "data_channel" && seq <= through) this.outstanding.delete(seq);
+    this.tick();
+  }
+
+  /**
+   * Peer receipts stopped: forget its unretired writes (never replayed) and continue on WS behind
+   * a release_all barrier. The host rejects a late lower-seq peer write once a higher WS seq has
+   * settled into the shared sequence (native 2675+, same session/generation).
+   */
+  abandonPeer(): void {
+    if (this.ended) return;
+    for (const [seq, entry] of this.outstanding) if (entry.lane === "data_channel") this.outstanding.delete(seq);
+    this.peerAdmission = Math.max(this.peerAdmission, this.peerWritten);
+    this.peerCompleted = undefined; this.peerUpgradeFence = 0; this.completionStalledSince = undefined;
+    this.queue.unshift({ action: { kind: "release_all" }, barrier: true });
     this.tick();
   }
 

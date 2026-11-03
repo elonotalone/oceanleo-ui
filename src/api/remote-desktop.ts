@@ -246,9 +246,11 @@ export const PEER_RECEIPT_MS = 1500;
 /**
  * Real data-channel writes are credited by receipts relayed over the gateway socket. That socket
  * goes quiet for over a second on the controller's path (measured 2026-11-04, CN -> SG twin), so
- * an unreceipted write waits like the handoff fence before it counts as ambiguous.
+ * an unreceipted write waits this long before input falls back to the gateway (never a close).
  */
-export const PEER_WRITE_RECEIPT_MS = 5000;
+export const PEER_WRITE_RECEIPT_MS = 3000;
+/** Unanswered probes back off (1.5, 3, 6, 12, 24 s): each probe briefly pauses gateway writes. */
+const PEER_PROBE_BACKOFF_MAX = 4;
 
 /** Contract D4 bound: one JSON message per input, at most 1 KB. */
 export const DATA_CHANNEL_MAX_BYTES = 1024;
@@ -380,25 +382,32 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
    * subscribed to it; those first messages are lost (2026-10-31 SDK probe: 3-5 messages). So an
    * unconfirmed probe is re-sent with a fresh seq after PEER_RECEIPT_MS instead of being waited on forever.
    */
-  let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, probeRequested = false;
+  let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, probeRequested = false, peerProbesLost = 0;
   const diagnostics = new RemoteTransportDiagnostics(() => performance.now());
   let lastDiagnosticsAt = performance.now();
-  const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; };
+  const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; peerProbesLost = 0; };
   const peerHealthy = (now: number) => {
     const oldest = scheduler.oldestPeerPendingAt();
-    if (oldest !== undefined && now - oldest > PEER_WRITE_RECEIPT_MS) fail("input_ack_unknown");
+    if (oldest === undefined || now - oldest <= PEER_WRITE_RECEIPT_MS) return;
+    // Receipts stopped: keep the session and video, move input back to the gateway behind a
+    // release_all, and prove the lane again later instead of guessing what the host ran.
+    scheduler.abandonPeer();
+    peerTrusted = false; peerProbe = 0; peerProbesLost = Math.min(PEER_PROBE_BACKOFF_MAX, peerProbesLost + 1); peerProbeAt = now;
+    if (lane) probeRequested = true;
   };
   const notePeerReceipt = (value: number | undefined, completed?: number) => {
     if (value !== undefined) {
       peerReceipt = Math.max(peerReceipt, value);
-      if (peerProbe && peerReceipt >= peerProbe) peerTrusted = true;
+      if (peerProbe && peerReceipt >= peerProbe) { peerTrusted = true; peerProbesLost = 0; }
     }
     scheduler.observePeerProgress({ admissionSeq: value, completedSeq: completed });
   };
-  const probeDue = () => !!lane && !peerTrusted && probeRequested && (!peerProbe || Date.now() - peerProbeAt > PEER_RECEIPT_MS);
+  const probeWait = () => PEER_RECEIPT_MS * 2 ** peerProbesLost;
+  const probeDue = () => !!lane && !peerTrusted && probeRequested && (peerProbe ? Date.now() - peerProbeAt > probeWait() : !peerProbesLost || Date.now() - peerProbeAt > probeWait());
   /** Probe only between retired writes and new queue writes, never inside a provisional write. */
   const probePeer = () => {
     if (ended || !ready || state !== "active" || !probeDue() || !lane || !scheduler.probeAllowed() || !scheduler.gatewayDrained() || !scheduler.peerDrained()) return;
+    if (peerProbe) peerProbesLost = Math.min(PEER_PROBE_BACKOFF_MAX, peerProbesLost + 1);
     peerProbe = scheduler.claimSequence();
     peerProbeAt = Date.now();
     probeRequested = false;

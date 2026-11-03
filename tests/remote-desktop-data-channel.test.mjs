@@ -109,7 +109,7 @@ test("stop releases on both lanes; the gateway release has the higher seq", asyn
   assert.deepEqual(inputs(socket).map((m) => [m.seq, m.action.kind]), [[2, "move"], [5, "release_all"]]);
 });
 
-test("without a device receipt the lane is never trusted; stalled trusted input fails without replay", async (t) => {
+test("without a device receipt the lane is never trusted; stalled trusted input falls back to the gateway without replay", async (t) => {
   const { socket, stream } = await streamHarness();
   try {
     const peer = lane();
@@ -126,12 +126,14 @@ test("without a device receipt the lane is never trusted; stalled trusted input 
     t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
     second.stream.send({ kind: "key_down", key: "b" });
     assert.equal(peer.sent.at(-1).a.kind, "key_down");
-    t.mock.timers.tick(5100);
-    assert.equal(second.stream.send({ kind: "key_up", key: "b" }), false);
-    assert.equal(inputs(second.socket).some((m) => m.action.kind === "key_up"), false, "no later key action overtakes unresolved peer input");
-    assert.deepEqual(second.log.errors, ["input_ack_unknown"]);
-    assert.equal(inputs(second.socket).at(-1).action.kind, "release_all");
-    assert.equal(second.socket.readyState, 3);
+    const peerSeq = peer.sent.at(-1).seq;
+    t.mock.timers.tick(3100);
+    assert.equal(second.stream.send({ kind: "key_up", key: "b" }), true);
+    const later = inputs(second.socket).filter((m) => m.seq > peerSeq);
+    assert.deepEqual(later.map((m) => m.action.kind), ["release_all", "key_up"], "a release_all barrier precedes later gateway input; the host drops the late lower-seq peer write");
+    assert.equal(inputs(second.socket).some((m) => m.action.kind === "key_down"), false, "unresolved peer input is never replayed");
+    assert.deepEqual(second.log.errors, [], "the session and video stay up");
+    assert.equal(second.socket.readyState, 1);
   } finally { t.mock.timers.reset(); second.stream.close(); }
 });
 
