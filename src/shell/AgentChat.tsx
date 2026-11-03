@@ -828,6 +828,7 @@ function AgentChatInner({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const startedRef = useRef(false);
   const freshSessionStartedRef = useRef(false);
   const loadedTaskRef = useRef("");
@@ -879,7 +880,10 @@ function AgentChatInner({
   const [streamNotice, setStreamNotice] = useState("");
   // 停止键要真的把流掐掉，而不是丢弃结果——取消要省下的是上游的算力。
   const streamAbortRef = useRef<AbortController | null>(null);
-  const atts = useAttachments(siteId, setError);
+  const resolveUploadError = useCallback((message: string) => {
+    setUploadError((current) => current === message ? null : current);
+  }, []);
+  const atts = useAttachments(siteId, setUploadError, resolveUploadError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
   // mutates 的 run() 必须进审阅闸：allowAlways / 确认卡都不能直接写文档。
   const gatedSurfaceReader = useMemo(
@@ -3131,6 +3135,7 @@ function AgentChatInner({
           )}
           {/* A local-task code set on any other path is still shown in words. */}
           {error && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error>{tt(localAgentRefusalText(error) ?? error)}</p>}
+          {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
           {/* A failed computer pick / unreadable session list shows here too (the pick did not switch). */}
           {conversationNotice}
       </>

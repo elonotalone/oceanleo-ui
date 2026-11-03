@@ -1261,3 +1261,48 @@ test("portal homepage W6: a failed private upload stays as a failed tile, retry 
     window.history.replaceState(null, "", "/");
   }
 });
+
+test("resolved upload errors clear only their own current message and preserve task failures", async () => {
+  const uploadStub = dataModule(`
+    export function useAttachments(siteId, onError, onErrorResolved) {
+      globalThis.__uploadErrorHooks = { fail: onError, resolve: onErrorResolved };
+      return { attachments: [], composerAttachments: [], ready: () => [], uploading: false,
+        handleAttachFiles() {}, addReady() {}, addComposerAttachments() {}, restoreReady() {},
+        removeAttachment() {}, retryAttachment() {}, clear() {} };
+    }
+  `);
+  const { AgentChat: WithUploadEvents } = await import(await compileModule("src/shell/AgentChat.tsx", {
+    ...OVERRIDES, "./useAttachments": uploadStub,
+  }, { missingPackageStub: lazyStub }));
+  const backend = makeBackend();globalThis.__backend = backend;
+  backend.api.createTask = async () => {
+    backend.log.push("create-task upload-error-test");
+    return { ok: false, status: 500, error: "W2 independent task error" };
+  };
+  const host = document.createElement("div");document.body.appendChild(host);const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(WithUploadEvents, { siteId: "excel", mode: "agent" })));
+    await act(async () => globalThis.__uploadErrorHooks.fail("W2 upload old"));
+    assert.ok(host.textContent.includes("W2 upload old"));
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.("W2 upload old"));
+    assert.equal(host.textContent.includes("W2 upload old"), false, "retry success/removal resolution clears the upload's global error");
+
+    await act(async () => globalThis.__uploadErrorHooks.fail("W2 upload old"));
+    await act(async () => globalThis.__uploadErrorHooks.fail("W2 upload newer"));
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.("W2 upload old"));
+    assert.ok(host.textContent.includes("W2 upload newer"), "a late resolution cannot clear a newer upload error");
+    await act(async () => globalThis.__agentComposer.onChange("try task"));
+    await act(async () => globalThis.__agentComposer.onSubmit("try task", undefined, { executionTarget: { kind: "cloud" } }));
+    assert.ok(await untilLogged(backend, /^create-task upload-error-test$/), "the independent task failure was actually requested");
+    const taskError = host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent;
+    assert.ok(taskError, "the task failure is shown using its human-readable refusal text");
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.("W2 upload newer"));
+    assert.equal(host.textContent.includes("W2 upload newer"), false);
+    assert.equal(host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent, taskError, "upload resolution never clears task/send failure");
+
+    await act(async () => globalThis.__uploadErrorHooks.fail(taskError));
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.(taskError));
+    assert.equal(host.querySelector("[data-agent-chat-upload-error]"), null);
+    assert.equal(host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent, taskError, "even equal text has independent error ownership");
+  } finally { await act(async () => root.unmount());host.remove();delete globalThis.__uploadErrorHooks; }
+});
