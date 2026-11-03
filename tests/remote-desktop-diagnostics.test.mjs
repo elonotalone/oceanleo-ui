@@ -111,8 +111,9 @@ test("real stream exposes numeric snapshots without input changes or raw state c
   } finally { assert.doesNotThrow(() => stream.close()); }
   assert.ok(observed.length);
   const status = api.parseRemoteMediaStatus({ state: "publishing", metrics: { version: 1, input_completed_seq: 0,
-    input_injected_seq: 2, input_queue_depth: 4, input_inject_us: 123, input_error_count: true, input_queue_oldest_ms: -1 } });
-  assert.deepEqual(status.metrics, { version: 1, input_queue_depth: 4, input_inject_us: 123, input_completed_seq: 0, input_injected_seq: 2 });
+    input_injected_seq: 2, input_queue_depth: 4, input_inject_us: 123, first_packet_sent_ms: 0, input_error_count: true, input_queue_oldest_ms: -1 } });
+  assert.deepEqual(status.metrics, { version: 1, input_queue_depth: 4, input_inject_us: 123, input_completed_seq: 0, input_injected_seq: 2, first_packet_sent_ms: 0 });
+  assert.equal(api.parseRemoteMediaStatus({ state: "publishing", metrics: { version: 1, first_packet_sent_ms: null } }).metrics.first_packet_sent_ms, undefined);
 });
 
 function mediaHarness(t, pendingStats = false) {

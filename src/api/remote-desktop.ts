@@ -70,7 +70,9 @@ export interface RemoteMediaStatus {
 }
 const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_frames", "capture_idle", "capture_errors", "capture_us", "capture_max_us", "capture_lock_wait_us", "capture_lock_max_us", "last_capture_age_ms", "pushes", "push_errors", "repeated_pushes", "empty_ticks", "push_us", "push_max_us", "push_lock_wait_us", "push_lock_max_us", "sdk_samples", "sdk_age_ms", "sdk_capture_fps", "sdk_encode_fps", "sdk_sent_fps", "sdk_sent_kbps", "sdk_rtt_ms", "sdk_send_bytes", "first_capture_ms", "first_push_ms", "joined_ms", "first_encoded_stats_ms",
   // D4 receipt: highest data-channel seq the computer accepted (R1a/R1b publish it; absent = unproven lane).
-  "dc_input_seq", ...REMOTE_INPUT_METRICS] as const;
+  "dc_input_seq", ...REMOTE_INPUT_METRICS,
+  // Publisher-elapsed first screen packet send, not encode/keyframe or viewer paint. Absent = unknown.
+  "first_packet_sent_ms"] as const;
 /** Optional fixed numeric diagnostics only; never publisher tokens or arbitrary text. */
 export type RemoteMediaMetrics = { version: 1 } & Partial<Record<typeof MEDIA_METRICS[number], number>>;
 export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
