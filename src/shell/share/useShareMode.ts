@@ -115,11 +115,16 @@ export function useShareMode(input: UseShareModeInput): ShareModeState {
   );
 
   // 换对话 / 消息被删：把失效的勾选丢掉，计数不许撒谎。
+  // Only a selection that really loses an id is set. A native chat's message list
+  // changes with every live frame; queuing an unchanged update on each one kept the
+  // page committing again and again ("Maximum update depth exceeded", W2 2026-11-04).
+  const selectedRef = useRef(selectedIds);
+  selectedRef.current = selectedIds;
   useEffect(() => {
-    setSelectedIds((current) => {
-      const next = pruneShareSelection(current, selectable);
-      return next.size === current.size ? current : next;
-    });
+    const current = selectedRef.current;
+    if (!current.size) return;
+    const next = pruneShareSelection(current, selectable);
+    if (next.size !== current.size) setSelectedIds(next);
   }, [selectable]);
 
   useEffect(() => {
