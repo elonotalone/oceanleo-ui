@@ -71,6 +71,19 @@ test("not_wired app panel offers wiring, error panel displays reason and never d
   const error=renderToStaticMarkup(React.createElement(WebsitePanelView,{panel:{...panel,state:"error",error:"upstream timeout"},onWire(){}}));
   assert.match(error,/upstream timeout/); assert.doesNotMatch(error,/<table/);
 });
+test("platform not_wired reasons explain the cause and fractional metrics are rounded",()=>{
+  const visits=renderToStaticMarkup(React.createElement(WebsitePanelView,{panel:{id:"visits",title:"访问统计",kind:"metric",source:"platform",state:"not_wired",error:"analytics_collector_not_observed"},onWire(){}}));
+  assert.match(visits,/还没有收到这个环境的访问数据/); assert.doesNotMatch(visits,/analytics_collector_not_observed|该看板尚未接线|让 agent 配置此看板/);
+  const users=renderToStaticMarkup(React.createElement(WebsitePanelView,{panel:{id:"users",title:"已注册用户",kind:"table",source:"platform",state:"not_wired",error:"auth_connector_not_connected"},onWire(){}}));
+  assert.match(users,/登录服务尚未连接/);
+  const unknown=renderToStaticMarkup(React.createElement(WebsitePanelView,{panel:{id:"x",title:"X",kind:"table",source:"platform",state:"not_wired",error:"something_new"},onWire(){}}));
+  assert.match(unknown,/该看板尚未接线/); assert.doesNotMatch(unknown,/something_new/);
+  const metric=renderToStaticMarkup(React.createElement(WebsitePanelDataView,{data:{kind:"metric",items:[
+    {label:"min",value:94.53998071666666,unit:"min"},{label:"usd",value:0.012623541,unit:"USD"},{label:"rate",value:1.0729,unit:"x"},{label:"big",value:12345.6},{label:"count",value:3},{label:"text",value:"n/a"}]}}));
+  assert.match(metric,/>94.54 min</); assert.match(metric,/title="94.53998071666666"/); assert.match(metric,/>0.0126 USD</);
+  assert.match(metric,/>1.07 x</); assert.match(metric,/>12,346 </); assert.match(metric,/>3 </); assert.match(metric,/>n\/a </);
+  assert.doesNotMatch(metric,/>94\.5399/);
+});
 test("UC-3 preview keeps scripts without same-origin, no frame messaging or inline editing",()=>{
   // docs/architecture/oceanleo-untrusted-content-isolation.md UC-3 / UC-6
   const source=readFileSync("src/shell/website-platform/WebsitePreviewWorkbench.tsx","utf8");
