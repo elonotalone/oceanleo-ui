@@ -68,6 +68,8 @@ function scoped(snapshot, environment) {
   return next;
 }
 const environmentSelect = host => host.querySelector('[data-testid="website-connector-environment"]');
+const directAlerts = host => [...host.querySelector('[data-testid="website-configuration"]').children]
+  .filter(node => node.getAttribute("role") === "alert").map(node => node.textContent).join("\n");
 
 test("Configuration exposes every slot and preset from first use with provider, cost, limits, interfaces and the project vault", async () => {
   const snapshot = fixture();
@@ -392,6 +394,7 @@ test("a 503 dispatch receipt immediately reconciles and blocks blind repeats acr
     await choose(row.querySelector("select"), "own_db"); await act(async () => row.querySelector("button").click());
     assert.equal(reads, 2); assert.equal(writes, 1); assert.deepEqual(m.tasks, []);
     assert.match(m.host.textContent, /勿重复提交/);
+    assert.match(directAlerts(m.host), /任务提交结果尚未确认/);
     assert.ok(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'));
     assert.equal(m.host.querySelector('[data-testid="website-connector-code"] button').disabled, true);
     assert.doesNotMatch(m.host.textContent, /HTTP 503|agent_task_dispatch_unconfirmed|raw-provider-private-value/);
@@ -440,6 +443,78 @@ test("a task created before 503 remains linked while failed reconciliation preve
   } finally { await m.destroy(); globalThis.fetch = original; }
 });
 
+// UC-NONE: rendered reconciliation-alert ownership.
+// This case uses a synthetic completed task to check obsolete copy, one notification and independent service status.
+test("immediate reconciliation clears only the matching completed operation's obsolete uncertainty alert", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let reads = 0, writes = 0;
+  const m = await mount({ get: async (_id, environment) => {
+    reads++;
+    return writes ? changed(fixture(environment), { database: "own_db" }, {
+      id: CHANGE_ID, task_id: TASK_ID, status: "completed", task_status: "completed",
+    }) : fixture(environment);
+  }, select: async () => {
+    writes++;
+    throw new WebsiteRequestError(503, { detail: { code: "connector_response_unavailable", change_id: CHANGE_ID, task_id: TASK_ID } });
+  } });
+  try {
+    const row = m.host.querySelector('[data-testid="website-connector-database"]');
+    await choose(row.querySelector("select"), "own_db"); await act(async () => row.querySelector("button").click());
+    assert.equal(reads, 2); assert.equal(writes, 1); assert.deepEqual(m.tasks, [TASK_ID]);
+    const confirmed = m.host.querySelector('[data-testid="website-connector-change"]');
+    assert.equal(confirmed.dataset.changeStatus, "completed");
+    assert.equal(confirmed.querySelector("a").getAttribute("href"), "/tasks/" + TASK_ID);
+    assert.equal(directAlerts(m.host), "");
+    assert.equal(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'), null);
+    assert.equal(row.querySelector("[data-connection-status]").dataset.connectionStatus, "not_connected");
+  } finally { await m.destroy(); t.mock.timers.reset(); }
+});
+
+// UC-NONE: rendered reconciliation-alert correlation.
+// A different completed change cannot settle this synthetic request or clear its own uncertainty message.
+test("an unrelated completed change preserves uncertainty until the matching operation is confirmed", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let writes = 0, matching = false;
+  const otherChange = "44444444-4444-4444-8444-444444444444", otherTask = "55555555-5555-4555-8555-555555555555";
+  const m = await mount({ get: async (_id, environment) => writes ? changed(fixture(environment), { database: "own_db" }, {
+    id: matching ? CHANGE_ID : otherChange, task_id: matching ? TASK_ID : otherTask, status: "completed", task_status: "completed",
+  }) : fixture(environment), select: async () => {
+    writes++;
+    throw new WebsiteRequestError(503, { detail: { code: "connector_response_unavailable", change_id: CHANGE_ID, task_id: TASK_ID } });
+  } });
+  try {
+    const row = m.host.querySelector('[data-testid="website-connector-database"]');
+    await choose(row.querySelector("select"), "own_db"); await act(async () => row.querySelector("button").click());
+    assert.match(directAlerts(m.host), /配置变更已提交，暂时无法读取结果/);
+    assert.ok(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'));
+    matching = true; await act(async () => t.mock.timers.tick(5001));
+    assert.equal(directAlerts(m.host), "");
+    assert.equal(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'), null);
+    assert.equal(writes, 1); assert.deepEqual(m.tasks, [TASK_ID]);
+  } finally { await m.destroy(); t.mock.timers.reset(); }
+});
+
+// UC-NONE: rendered unrelated-error preservation.
+// A successful synthetic read may contain old completed work while the current validation error must remain visible.
+test("successful reads of completed history preserve an unrelated current validation error", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let reads = 0, writes = 0;
+  const m = await mount({ get: async (_id, environment) => {
+    reads++;
+    return changed(fixture(environment), { code: "ours_code" }, { id: CHANGE_ID, task_id: TASK_ID, status: "completed", task_status: "completed" });
+  }, select: async () => {
+    writes++;
+    throw new WebsiteRequestError(422, { detail: { code: "invalid_connector_request" } });
+  } });
+  try {
+    const row = m.host.querySelector('[data-testid="website-connector-database"]');
+    await choose(row.querySelector("select"), "own_db"); await act(async () => row.querySelector("button").click());
+    assert.equal(reads, 2); assert.equal(writes, 1); assert.deepEqual(m.tasks, []);
+    assert.match(directAlerts(m.host), /配置请求无效，请刷新后重新选择/);
+    assert.equal(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'), null);
+  } finally { await m.destroy(); t.mock.timers.reset(); }
+});
+
 // UC-5: docs/architecture/oceanleo-untrusted-content-isolation.md. Unknown provider codes cannot authorize a safe retry or a task link.
 test("an unknown handoff stays held even if an immediate read has no matching change", async () => {
   let writes = 0, reads = 0;
@@ -472,6 +547,7 @@ test("a trusted 4xx task refusal permits retry only after its actual failed reco
     assert.equal(reads, 2); assert.deepEqual(m.tasks, []);
     assert.equal(row.querySelector("button").disabled, false); assert.equal(row.querySelector("button").textContent, "重试");
     assert.equal(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'), null);
+    assert.match(directAlerts(m.host), /无法创建配置任务，请重试/);
     assert.doesNotMatch(m.host.innerHTML, /raw-provider-private-value/);
   } finally { await m.destroy(); }
 });

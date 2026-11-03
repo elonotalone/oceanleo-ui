@@ -186,6 +186,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
   const scope = useRef(environment);
   const currentSnapshot = useRef<WebsiteConnectorsSnapshot | null>(null);
   const unresolved = useRef<OutcomeReceipt | null>(null);
+  const uncertaintyAlert = useRef<{ receipt: OutcomeReceipt; text: string } | null>(null);
   const notifiedTasks = useRef(new Set<string>());
   const reconciliation = useRef<AbortController | null>(null);
 
@@ -193,6 +194,11 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
     mounted.current = true;
     return () => { mounted.current = false; generation.current++; reconciliation.current?.abort(); };
   }, []);
+
+  function showActionError(text: string, receipt?: OutcomeReceipt | null) {
+    uncertaintyAlert.current = receipt ? { receipt, text } : null;
+    setActionError(text);
+  }
 
   function retainReceipt(next: OutcomeReceipt) {
     if (!next.change_id && !next.task_id) return;
@@ -218,6 +224,11 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
       ? change.id === waiting.change_id : Boolean(waiting.task_id && change.task_id === waiting.task_id));
     if (known && !isUnconfirmed(known) && (known.status === "failed" || known.status === "completed" || known.task_id)) {
       unresolved.current = null; setUncertain(false);
+      const obsolete = uncertaintyAlert.current;
+      if (known.status !== "failed" && obsolete && obsolete.receipt === waiting) {
+        uncertaintyAlert.current = null;
+        setActionError(current => current === obsolete.text ? "" : current);
+      }
       if (known.task_id) retainReceipt({ change_id: known.id, task_id: known.task_id });
     }
     return next;
@@ -240,7 +251,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
     let timer: ReturnType<typeof setTimeout>;
     scope.current = environment;
     currentSnapshot.current = null;
-    setSnapshot(null); setLoading(true); setError(""); setActionError(""); setPreset("");
+    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset("");
     const poll = async () => {
       try {
         await readSnapshot(environment, epoch, controller.signal);
@@ -260,7 +271,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
     generation.current++; mutation.current++;
     reconciliation.current?.abort();
     currentSnapshot.current = null;
-    setSnapshot(null); setLoading(true); setError(""); setActionError(""); setPreset("");
+    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset("");
     setEnvironment(next);
   }
 
@@ -271,7 +282,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
     const epoch = generation.current;
     const requested = scope.current;
     mutation.current++;
-    setPending(true); setActionError("");
+    setPending(true); showActionError("");
     try {
       const next = await action(requested);
       if (!mounted.current) return;
@@ -280,7 +291,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
       if (epoch !== generation.current) { await reconcileCurrent(); return; }
       if (!matchesEnvironment(next, requested) || (!next.task_id && next.change.status !== "failed")) {
         unresolved.current = { change_id: next.change.id, task_id: next.task_id || undefined };
-        setUncertain(true); setActionError(tt("配置提交结果尚未确认，请先刷新状态，勿重复提交。"));
+        setUncertain(true); showActionError(tt("配置提交结果尚未确认，请先刷新状态，勿重复提交。"), unresolved.current);
         await reconcileCurrent();
         return;
       }
@@ -291,8 +302,9 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, onTaskCre
       const knownReceipt = { change_id: failure?.change_id, task_id: failure?.task_id };
       retainReceipt(knownReceipt);
       if (!failure?.code || !NO_WRITE_CODES.has(failure.code)) { unresolved.current = knownReceipt; setUncertain(true); }
-      if (epoch === generation.current) setActionError(tt(failure?.code && TASK_ERRORS[failure.code]
-        ? TASK_ERRORS[failure.code] : "配置提交结果尚未确认，请先刷新状态，勿重复提交。"));
+      if (epoch === generation.current) showActionError(tt(failure?.code && TASK_ERRORS[failure.code]
+        ? TASK_ERRORS[failure.code] : "配置提交结果尚未确认，请先刷新状态，勿重复提交。"),
+        !failure?.code || UNCONFIRMED_CODES.has(failure.code) ? unresolved.current : null);
       mutation.current++;
       await reconcileCurrent();
     } finally {
