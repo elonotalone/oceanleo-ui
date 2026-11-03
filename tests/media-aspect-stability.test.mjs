@@ -495,6 +495,44 @@ test("查看器媒体框的几何在 img load 前后逐字相等，而渐进档�
   }
 });
 
+test("an image already loaded from cache before mount effects stays visible (no load event)", async () => {
+  // oceanbizs.com 2026-11-03: the LeoBay grid card had loaded the same CDN URL, so the detail image was
+  // complete before the mount effect ran; the effect reset `painted` and no second load event came.
+  const { window, document } = await bootstrapDom();
+  const { createRoot } = await import("react-dom/client");
+  const proto = window.HTMLImageElement.prototype;
+  const saved = {
+    complete: Object.getOwnPropertyDescriptor(proto, "complete"),
+    naturalWidth: Object.getOwnPropertyDescriptor(proto, "naturalWidth"),
+  };
+  Object.defineProperty(proto, "complete", { configurable: true, get: () => true });
+  Object.defineProperty(proto, "naturalWidth", { configurable: true, get: () => 640 });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        React.createElement(ProgressiveArtifactImage, {
+          thumbUrl: "https://signed.test/cached-thumb.webp",
+          fullUrl: "https://signed.test/cached-full.png",
+          alt: "cached",
+          geometry: artifactMediaGeometry({ rendition: { width: 800, height: 600 }, artifactType: "image" }),
+        }),
+      ),
+    );
+    const frame = container.querySelector('[data-media-frame="progressive"]');
+    assert.notEqual(frame.getAttribute("data-progressive-stage"), "lqip", "a cached image must not stay invisible");
+    assert.equal(container.querySelector("img").style.opacity, "1");
+  } finally {
+    await act(async () => root.unmount());
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(proto, key, descriptor);
+      else delete proto[key];
+    }
+  }
+});
+
 test("缺 width/height 时查看器媒体框仍在加载前占好地且高度非 0", async () => {
   const { window, document } = await bootstrapDom();
   const { createRoot } = await import("react-dom/client");

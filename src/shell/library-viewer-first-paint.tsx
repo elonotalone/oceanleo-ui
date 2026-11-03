@@ -13,7 +13,7 @@
 // 包 ≤800 的硬顶，首屏策略与类型分发也本来就是两件事。
 // ============================================================================
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { ArtifactRendition, ArtifactType } from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
@@ -418,8 +418,17 @@ export function ProgressiveArtifactImage({
   const [painted, setPainted] = useState(false);
   /** 全尺寸预载失败：停在缩略图上，并且**摘掉模糊**，不要假装还有下一级要来。 */
   const [upgradeFailed, setUpgradeFailed] = useState(false);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
-    setPainted(false);
+    // A cached image (the grid card already loaded this URL) can finish loading before this effect
+    // runs; its load event is gone, so resetting here left it at opacity 0 for good — an empty
+    // LeoBay/Library detail on oceanbizs.com (2026-11-03). Keep it painted when it already shows
+    // exactly the first URL.
+    const first = progressive ? thumbUrl : fullUrl || thumbUrl;
+    const image = imageRef.current;
+    setPainted(
+      Boolean(image && image.complete && image.naturalWidth > 0 && image.getAttribute("src") === first),
+    );
     setUpgradeFailed(false);
     if (!progressive || typeof window === "undefined") {
       setSrc(fullUrl || thumbUrl);
@@ -458,6 +467,7 @@ export function ProgressiveArtifactImage({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imageRef}
         src={src}
         alt={alt}
         onLoad={() => setPainted(true)}
