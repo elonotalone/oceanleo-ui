@@ -948,4 +948,3 @@ test("login save confirmation is reachable before first paint without saving aut
     await mounted.unmount();
   }
 });
-
