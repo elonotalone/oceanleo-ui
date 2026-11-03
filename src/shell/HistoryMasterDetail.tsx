@@ -418,6 +418,12 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   const listReadRef = useRef<{ key: string; request: Promise<boolean>; controller: AbortController } | null>(null);
   const deletingRef = useRef(new Set<string>());
   const pollFailuresRef = useRef(0);
+  // A change signal (chat phase change, user send, edit) that lands while a
+  // read is on the wire must not be answered by that older read: it was sent
+  // before the change (V1 U5 2026-11-04: a replying task kept its old place
+  // until the next poll). One follow-up read covers any burst of signals.
+  const followUpRef = useRef(false);
+  const reloadRef = useRef<(silent?: boolean, fresh?: boolean) => Promise<boolean>>(() => Promise.resolve(false));
   // 登录提示走 ref：它的引用变化（父级重渲染）不得重建 reload、进而触发首屏式的
   // 非静默重拉。错误文案存中文原文，渲染时再翻（`tt(error)`）。
   const authMessageRef = useRef(authMessage);
@@ -425,9 +431,13 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   // silent=true（轮询刷新）：不进「加载…」态、列表不变时不替换数组引用——杜绝左栏
   // 每 8s 抽动 + 闪「加载…」。silent=false（首屏 / 站点切换）只在还没有任何数据时
   // 显示首次加载骨架。
-  const reload = useCallback((silent = false) => {
+  const reload = useCallback((silent = false, fresh = false) => {
     const prior = listReadRef.current;
-    if (prior?.key === cacheKey) return prior.request;
+    if (prior?.key === cacheKey) {
+      if (fresh) followUpRef.current = true;
+      return prior.request;
+    }
+    followUpRef.current = false;
     prior?.controller.abort();
     const generation = ++reloadGenerationRef.current;
     const controller = new AbortController();
@@ -521,11 +531,18 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         publish();
       }),
     ]).then(publish).finally(() => {
-      if (listReadRef.current?.request === request) listReadRef.current = null;
+      if (listReadRef.current?.request !== request) return;
+      listReadRef.current = null;
+      // Same generation = still mounted and nothing newer started.
+      if (followUpRef.current && generation === reloadGenerationRef.current) {
+        followUpRef.current = false;
+        void reloadRef.current(true);
+      }
     });
     listReadRef.current = { key: cacheKey, request, controller };
     return request;
   }, [cacheKey, siteId, pending]);
+  reloadRef.current = reload;
   useEffect(() => onUserScopedClear(() => {
     ++reloadGenerationRef.current;
     listReadRef.current?.controller.abort();
@@ -561,7 +578,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   }, [cacheKey, reload]);
   useEffect(() => {
     const refresh = () => {
-      void reload(true);
+      void reload(true, true);
     };
     window.addEventListener(HISTORY_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
@@ -579,7 +596,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       noteLocalActivity(detail.taskId, detail);
       noteLocalActivity(sessionId, detail);
       setItems((prev) => bumpHistoryEntries(prev, { ...detail, sessionId }));
-      if (detail.user) void reload(true);
+      if (detail.user) void reload(true, true);
     };
     window.addEventListener(HISTORY_ACTIVITY_EVENT, onActivity);
     return () => window.removeEventListener(HISTORY_ACTIVITY_EVENT, onActivity);
@@ -742,7 +759,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       }
       setError(null);
       // 网关给的项目名才是准的：换项目后静默刷新一次拿回 `project` 标注。
-      if (movesProject) void reload(true);
+      if (movesProject) void reload(true, true);
       return true;
     },
     [items, reload, tt],
